@@ -24,7 +24,7 @@ import type { SessionMeta } from '@shared/events'
 import { STALE_WATCH_MS } from '@shared/watch'
 import { gateLine, type GateNotice, gateFailureDetail } from '@shared/gate'
 import { ADOPT_THREAD_TOOL_NAME, ARCHIVE_THREADS_TOOL_NAME, BATCH_GATE_TOOL_NAME, BATCH_RULES_TOOL_NAME, GATE_TEXT_TAIL, logTail } from '@shared/gate'
-import { PUBLISH_PHASES, PhaseTracker, deployProgress, formatDuration } from '@shared/releasePhases'
+import { PUBLISH_PHASES, PhaseTracker, deployProgress, formatDuration, redProofsNotice } from '@shared/releasePhases'
 import { gateQueue, type GateQueue, type GateWait } from './gateQueue'
 import { runGateStep } from './gateRun'
 import { commandShell, posixShell, shellLine, type ShellSpec } from './loginShell'
@@ -1191,6 +1191,19 @@ export class Batches {
     }
   }
 
+  /** The proofs that ran after a live release: a line in the step's log, and a red row a report to the master. */
+  private proofsDone(master: SessionMeta, row: StoredBatch, stepId: string, phases: PhaseTracker, version: string): void {
+    const notice = redProofsNotice(version, phases.proofs)
+    if (notice) {
+      this.logLine(row, stepId, `== ${notice}`)
+      this.tell(master, 'done', notice)
+    } else if (phases.failed.has('proofs')) {
+      const text = `The proofs after v${version} are red; the step's log has the rows. The release stays live.`
+      this.logLine(row, stepId, `== ${text}`)
+      this.tell(master, 'done', text)
+    } else if (phases.times.has('proofs')) this.logLine(row, stepId, `== the proofs after v${version} are green in ${formatDuration(phases.times.get('proofs')!)}`)
+  }
+
   private fail(master: SessionMeta, row: StoredBatch, stepId: string, text: string): void {
     // A step that already failed with its own detail (a gate's failing step
     // and its first error line) keeps it; the long sentence is the master's.
@@ -1276,25 +1289,41 @@ export class Batches {
           const phases = new PhaseTracker(PUBLISH_PHASES)
           this.progress(row, spec.id, { done: 0, total: PUBLISH_PHASES.length, label: 'pulling' })
           this.save(row)
+          // The step passes when the feed serves the release (the total line);
+          // the proofs that follow it report on their own, and never fail it.
+          let live!: () => void
+          const isLive = new Promise<'live'>((resolve) => (live = () => resolve('live')))
           const run = this.deps.publish.start(master.id, { sha, branch: target!, version: row.version, notes: this.notes(master, row) }, (line) => {
             this.logLine(row, spec.id, line)
-            if (phases.feed(line)) this.progress(row, spec.id, phases.progress())
+            if (!phases.feed(line) || this.step(row, spec.id).status !== 'running') return
+            this.progress(row, spec.id, phases.progress())
+            if (phases.live) live()
           })
           this.publishing.set(master.id, run)
-          let outcome: PublishRun
+          const settled = (): void => void (this.publishing.get(master.id) === run && this.publishing.delete(master.id))
+          let outcome: PublishRun | 'live'
           try {
-            outcome = await run.done
+            outcome = await Promise.race([run.done, isLive])
           } catch (err) {
-            this.publishing.delete(master.id)
+            settled()
             this.fail(master, row, spec.id, `The Mac's publish (${mac}) failed: ${err instanceof Error ? err.message : String(err)}`)
             return 'failed'
           }
-          this.publishing.delete(master.id)
-          if (!outcome.ok) {
+          if (outcome === 'live') {
+            const published = phases.version ?? row.version
+            void run.done.then(
+              () => this.proofsDone(master, row, spec.id, phases, published),
+              (err) => this.logLine(row, spec.id, `== the proofs after v${published} did not report: ${err instanceof Error ? err.message : String(err)}`)
+            ).finally(() => {
+              settled()
+              this.save(row)
+            })
+          } else settled()
+          if (outcome !== 'live' && !outcome.ok) {
             this.fail(master, row, spec.id, `The Mac's publish of v${row.version} FAILED (exit ${outcome.exit ?? '?'}): ${outcome.text}`)
             return 'failed'
           }
-          const version = outcome.version ?? row.version
+          const version = (outcome === 'live' ? phases.version : outcome.version) ?? row.version
           const took = formatDuration(this.now() - (this.step(row, spec.id).startedAt ?? this.now()))
           this.logLine(row, spec.id, `== v${version} published in ${took}${phases.summary() ? ` (${phases.summary()})` : ''}`)
           this.progress(row, spec.id, { done: PUBLISH_PHASES.length, total: PUBLISH_PHASES.length })

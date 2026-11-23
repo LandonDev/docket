@@ -25,7 +25,7 @@ import {
   type HostLogPush,
   type PublishStatus
 } from '@shared/contract-host'
-import { PhaseTracker, formatDuration } from '@shared/releasePhases'
+import { PhaseTracker, formatDuration, redProofsNotice } from '@shared/releasePhases'
 import { updatePhaseLine, type SelfUpdateOutcome } from '../updateTrigger'
 import { loginShell, withToolPath } from './loginShell'
 import { adoptTree, killTree, treeSpawnOptions } from './procTree'
@@ -517,27 +517,47 @@ export class Publisher {
     this.child = child
     this.log.reset({ job: 'publish', phase: 'running', target, startedAt: at, finishedAt: null, exit: null, stoppable: true })
     this.log.append(`== release ${target ?? ''} from ${status.checkout}\n`)
-    child.stdout?.on('data', (chunk: Buffer | string) => this.log.append(String(chunk)))
-    child.stderr?.on('data', (chunk: Buffer | string) => this.log.append(String(chunk)))
-    child.once('error', (err) => this.log.append(`ERROR: ${err.message}\n`))
+    // The release is live at the total line, before the proofs that follow it:
+    // the update starts there. Whole lines only, so the update's own lines
+    // never land inside one of the script's.
+    const phases = new PhaseTracker()
+    let updating: Promise<void> | null = null
+    const lines = (): ((chunk: Buffer | string) => void) => {
+      let rest = ''
+      return (chunk) => {
+        // the exit's empty chunk ends a last line that has no newline
+        rest += chunk === '' && rest ? '\n' : String(chunk)
+        const cut = rest.lastIndexOf('\n') + 1
+        if (!cut) return
+        const whole = rest.slice(0, cut)
+        rest = rest.slice(cut)
+        this.log.append(whole)
+        for (const line of whole.split(/\r?\n/)) phases.feed(line)
+        if (phases.live && !updating && phases.version && this.deps.selfUpdate) updating = this.update(phases.version)
+      }
+    }
+    const out = lines()
+    const err = lines()
+    child.stdout?.on('data', out)
+    child.stderr?.on('data', err)
+    child.once('error', (e) => this.log.append(`ERROR: ${e.message}\n`))
     child.once('exit', (code, signal) => {
       if (this.child !== child) return
       this.child = null
+      out('')
+      err('')
       const exit = code ?? (signal ? 128 + 15 : 1)
       this.log.append(signal ? `== stopped (${signal})\n` : `== exited ${exit}\n`)
+      const notice = redProofsNotice(phases.version, phases.proofs)
+      if (notice) this.log.append(`== ${notice}\n`)
       const finish = (): void => this.log.setStatus({ ...this.log.status, phase: 'done', finishedAt: this.deps.now(), exit })
-      const version = exit === 0 ? this.publishedVersion() : null
-      if (version && this.deps.selfUpdate) void this.update(version).finally(finish)
+      // A script with no total line before its exit (an older one) still gets its update.
+      const version = exit === 0 && !updating ? (phases.version ?? this.log.status.target?.replace(/^v/, '') ?? null) : null
+      if (version && this.deps.selfUpdate) updating = this.update(version)
+      if (updating) void updating.finally(finish)
       else finish()
     })
     return this.status()
-  }
-
-  /** The version the script's total line names, else the job's target. */
-  private publishedVersion(): string | null {
-    const tracker = new PhaseTracker()
-    for (const line of this.log.snapshot().text.split(/\r?\n/)) tracker.feed(line)
-    return tracker.version ?? this.log.status.target?.replace(/^v/, '') ?? null
   }
 
   /** The `update` phase: this app fetches what it just published, and the log says how it went. */

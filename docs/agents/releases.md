@@ -111,10 +111,18 @@ Two separate steps, on purpose, over one gate.
    release opened first (its notes are the commit subjects since the last
    `v1.0.*` tag, newest first, cut at whole lines to 100,000 characters
    with "… and N more commits since vPREV" last: scripts/lib/release-notes.sh,
-   since GitHub refuses a body over 125,000); then `gate --tier publish` runs BESIDE the
-   electron-vite build (they share nothing; a red gate still stops the
-   upload and deletes the draft; `GATE_SKIP=1` only to retry a failed
-   upload). Before either starts, the `install` phase runs `bun install --frozen-lockfile`
+   since GitHub refuses a body over 125,000); then the electron-vite build.
+   The publish tier of the gate does NOT stand in the way: it runs after
+   the feed serves the release (`gate --tier publish --after-release
+   vPREV`), only the rows whose paths changed since the last published
+   v1.0.N (or since the row's own last pass, `rows-green.json`), each red
+   row once more alone; `proof ✗ <row> <note>, log <path>` names a red row
+   and `proof ✓ <row> passed on the second try` a flake, and neither fails
+   or deletes the release (the script exits 0). `--gated` (or
+   `TEMP_CODE_GATED=1`) brings back the old way: the whole tier beside the
+   build, a red gate stopping the upload and deleting the draft.
+   `GATE_SKIP=1` runs no gate and no proofs, to retry a failed upload.
+   Before the build, the `install` phase runs `bun install --frozen-lockfile`
    unless the SHA-256 of `bun.lock` matches `node_modules/.tc-installed-lock`, written only
    after a successful install. ONE electron-builder call (`--mac zip`, the `sign` phase)
    packs, signs with the Developer ID Application identity in the login
@@ -127,17 +135,25 @@ Two separate steps, on purpose, over one gate.
    the same `out/`, package.json with `tempcodeBuild.sha`, release.json,
    bun.lock, scripts/box, a build-manifest.json) is packed from `out/` the
    moment the build is done and uploaded to the draft while the app is
-   still being signed. The zip is checked the way Squirrel's ShipIt will
-   (against /Applications/TempCode.app when it is there) and refused
+   still being signed. The zip, its blockmap and latest-mac.yml go up to
+   the draft while the zip is checked the way Squirrel's ShipIt will
+   (the `check` phase; against /Applications/TempCode.app when it is there
+   and never on a dry run; scripts/sqrlcheck.swift compiled once per version
+   into ~/Library/Caches/temp-code-release) and refused
    without an app-update.yml naming github LandonDev/temp-code; a bundle
    that still lacks the file sets that feed itself (update.ts
-   `applyFeedFallback`, `feedFallback` in updateInstall.ts). Then the zip (and
-   its blockmap), latest-mac.yml and the tarball are the whole upload, the
-   draft goes live, the feed is verified. One line per phase with its
-   duration (`phase › gate`, `phase ✓ gate 1m11s`, `phase ✗ build 12s`,
-   `phase – gate skipped`, `phase ✓ total 4m12s 1.0.N`; the parser is
-   src/shared/releasePhases.ts; the phases are gate, build, sign, pack,
-   upload and feed). Not notarized by default: Squirrel
+   `applyFeedFallback`, `feedFallback` in updateInstall.ts). Then the draft
+   goes live and the feed is read once a second until it names the
+   version. One line per phase with its duration (`phase › build`,
+   `phase ✓ build 1m11s`, `phase ✗ sign 12s`, `phase – gate after the
+   release`, `phase ✓ total 4m12s 1.0.N`, then `phase › proofs` and its
+   `proof` lines; the parser is src/shared/releasePhases.ts; the phases are
+   install, gate, build, sign, pack, check, upload, feed and proofs). The
+   total line is the moment the release is live: the app that ran the
+   script fetches the update there, and a batch's publish step passes there,
+   not when the proofs end. Restarting to update ends the proofs the app's
+   own Publisher is running; their logs so far stay under
+   `<git-dir>/temp-code-gate`. Not notarized by default: Squirrel
    validates an update against the installed app's designated requirement,
    so the signature is what makes updates install, and Gatekeeper reads a
    notarization ticket only on a quarantined (browser-downloaded) bundle.

@@ -11,8 +11,8 @@ file. A sibling change that needs a new check (the bundle-size check after
 
 | tier | steps | runs |
 | --- | --- | --- |
-| `commit` | typecheck, build, bundle-size; vitest only under `--full` or `--only vitest` | in the post-commit hook, on every commit on master, and as a batch's gate step. The vitest row is `whenAsked` (scripts/gate.ts `whenAskedSkips`): a plain tier run skips it with a note. The whole suite is the building thread's job, in its own worktree, before it lands; it holds the prompt budgets too (scripts/claudeMdBudget.test.ts: CLAUDE.md at most 40,000 bytes with every docs/agents file linked once; src/main/server/promptBudget.test.ts: the host-written prompt parts against src/shared/promptBudget.ts) |
-| `publish` | renderer-soak, renderer-soak-chat, renderer-soak-typing, renderer-soak-scroll, e2e-remote-fence, e2e-addons, e2e-addon-grants, e2e-skills-store, e2e-skills-drivers, hub, ios, ios-client, computer-swift, e2e-tc-computer, e2e-computer-bridge, e2e-computer-preview, computer-bench | before signing in `release:publish`; and in the hook when a commit touches a guarded path, all but computer-bench. The four soaks, hub, ios, ios-client, computer-swift, e2e-tc-computer, e2e-computer-bridge, e2e-computer-preview and computer-bench are `mac: true`: a host off macOS (the box's merge gate) skips them with a note, since `release:publish` runs them on the Mac before anything ships; the four store proofs run on both hosts |
+| `commit` | typecheck, build, bundle-size, guards (the tests that hold a repo rule, `GUARD_TESTS` in scripts/gate.ts, 11 s); vitest only under `--full` or `--only vitest` | in the post-commit hook, on every commit on master, and as a batch's gate step. The vitest row is `whenAsked` (scripts/gate.ts `whenAskedSkips`): a plain tier run skips it with a note. The whole suite is the building thread's job, in its own worktree, before it lands; it holds the prompt budgets too (scripts/claudeMdBudget.test.ts: CLAUDE.md at most 40,000 bytes with every docs/agents file linked once; src/main/server/promptBudget.test.ts: the host-written prompt parts against src/shared/promptBudget.ts) |
+| `publish` | renderer-soak, renderer-soak-chat, renderer-soak-typing, renderer-soak-scroll, e2e-remote-fence, e2e-addons, e2e-addon-grants, e2e-skills-store, e2e-skills-drivers, hub, ios, ios-client, computer-swift, e2e-tc-computer, e2e-computer-bridge, e2e-computer-preview, computer-bench | in `release:publish` after the feed serves the release (`--after-release <last v1.0.N>`: only the rows whose paths changed, each red row once more alone, a red row a notice that never fails the release; "Proofs after the release" below), or beside the build and blocking under `--gated`; and in the hook when a commit touches a guarded path, all but computer-bench. The four soaks, hub, ios, ios-client, computer-swift, e2e-tc-computer, e2e-computer-bridge, e2e-computer-preview and computer-bench are `mac: true`: a host off macOS (the box's merge gate) skips them with a note, since `release:publish` runs them on the Mac; the four store proofs run on both hosts |
 
 The `computer` lane starts only once the `build` lane has finished
 (`LANE_AFTER` in scripts/gate.ts), so the four renderer soaks and the
@@ -220,10 +220,12 @@ report.
 All three read `out/`, so they sit in the `build` lane after the build and
 the bundle-size check, the board scene first, then the chat and the typing
 scenes, one instance at a time. In
-`release:publish` the gate runs beside the build, so the script touches
-`$STAGE/build.done` once its build and size check pass and starts the gate
-with `TEMP_CODE_SOAK_BUILD_DONE` naming that file; each soak waits for it
-(at most 10 minutes) and then runs its 90 s at most while the app signs.
+`release:publish` the script touches `$STAGE/build.done` once its build and
+size check pass and starts the gate with `TEMP_CODE_SOAK_BUILD_DONE` naming
+that file: under `--gated` the gate runs beside the build and each soak
+waits for the file (at most 10 minutes) and then runs its 90 s at most
+while the app signs; by default the gate runs after the feed and finds the
+file already there.
 Anywhere else each reads the
 stamp the bundle-map plugin writes into `out/bundle-map.json` (`head`:
 HEAD's commit and whether the tracked tree was clean) and builds first
@@ -592,11 +594,11 @@ Findings (`.temp-code/plan-bXciwrVNLfYK.md`) has the rest.
 
 ```
 bun run gate [--tier commit|publish|all] [--since <ref>] [--full]
-             [--only a,b] [--skip a,b] [--verbose]
+             [--only a,b] [--skip a,b] [--after-release <ref>] [--verbose]
 ```
 
 - Steps in one lane run in array order, one at a time; lanes run at once.
-  `commit` has two lanes (typecheck, build), so the two run together, and
+  `commit` has three lanes (typecheck, build, guards), so the three run together, and
   vitest's lane beside them under `--full`; the bundle-size check (scripts/check-bundle-size.ts, which
   reads `out/`) follows the build in its lane. `publish` runs the fence, the hub, the three Swift packages and the
   computer bench in parallel lanes; `ios`, `ios-client` and `computer-swift`
@@ -614,6 +616,7 @@ bun run gate [--tier commit|publish|all] [--since <ref>] [--full]
 - The first failure stops the gate: nothing more starts, the running steps
   are killed (their whole process group), and the report marks them
   `stopped`, the rest `not run`, and prints the failed step's last 60 lines.
+  Under `--after-release` no row stops another ("Proofs after the release").
   Every step's full output is in `<git-dir>/temp-code-gate/logs/<step>.log`
   (`.git/temp-code-gate/` in the main checkout, `.git/worktrees/<name>/
   temp-code-gate/` in a worktree); `last-run.json` beside it has the times.
@@ -665,7 +668,7 @@ these ran, so its numbers moved by up to 40 % between runs.
 
 | step | Mac cold | Mac warm | box | cap | notes |
 | --- | --- | --- | --- | --- | --- |
-| typecheck | 11.2 s | 10.8 s | 25 s | | skipped by the hash when no input changed |
+| typecheck | 11.2 s | 10.8 s | 25 s; 73.8 s with no build info, 5.4 s warm (2026-11-23) | | skipped by the hash when no input changed; incremental since 2026-11-23 |
 | vitest | 18.9 s | 18.6 s | 33 s | | box: gateway.test.ts is the one known Linux failure |
 | build | not measured (link dropped) | | 156 s | | electron-vite build into out/ |
 | bundle-size | | | under 0.1 s | | reads out/bundle-map.json after the build |
@@ -707,6 +710,19 @@ picks the 323 test files that read the tree by path, every
 `lib/*Guard.test.ts` and the CLAUDE.md budget among them, so it would miss
 the very change a guard exists for.
 
+The `guards` row (2026-11-23, the box, load about 13): the 28 files of
+`GUARD_TESTS`, 130 tests, in 10.6 s, beside the build.
+
+`bun run typecheck` (2026-11-23, the box) ran tsc for the main process, then
+the renderer, then the two Swift checks: 128 s and 74 s at load 36 to 39,
+117 s together in the gate's last quiet run. It now runs all four at once
+(scripts/typecheck.ts), each tsc incremental with its build info in
+`<git-dir>/temp-code-tsc`. At load 10: 73.8 s with no build info, 5.4 s with
+nothing changed, 32.7 s with one main-process file changed (the renderer's
+check alone, 5 s). Without build info the two at once took 149 s against
+202 s one after the other at load 45. The Swift checks take 1.2 s. The
+build (electron-vite build alone, 180 s, 277 s at load 13) was not cut.
+
 Before that, with the three commit lanes at once on the box, vitest finished at 42 s
 and typecheck at 43 s while the build was still running, so the commit
 tier's wall time is the build's: about 2.5 minutes on the box, against
@@ -728,6 +744,40 @@ its one run stopped at e2e-addons' fixed process-scan fault, "The sweep of
 2026-11-09" above). The rows' own times add about 3.5 minutes to the `e2e`
 lane and about 70 s before the bench in the `computer` lane, both beside the
 build lane's soaks.
+
+## Proofs after the release
+
+Since 2026-11-23 `release:publish` does not wait for the publish tier. A
+release goes live once it is built, signed, checked (the signature and team,
+tc-computer's presence, the ShipIt-style unzip) and the feed serves it; the
+script prints `phase ✓ total …` there, and only then runs
+`gate --tier publish --after-release <the last v1.0.N before this one>`:
+
+- **Only the rows the release touched.** Each publish row's `paths` (the
+  `TIER_PATHS` entries that name it in `rows`) are diffed against the HEAD
+  it last passed at (`<git-dir>/temp-code-gate/rows-green.json`) or, when it
+  never passed here, against the ref. A row with no changed path is skipped
+  with a note (`proof – <row> …`); a release that touched none prints
+  `proof – no row's paths changed since <ref>` and runs nothing. A red row
+  has no new pass, so it runs again at the next publish until it is green.
+- **One retry.** A failed row does not stop the others; once every row has
+  ended, each failed row runs once more, alone. A row green the second time
+  is `proof ✓ <row> passed on the second try`; a row red twice is
+  `proof ✗ <row> <note>, log <path>`. Nothing runs a third time.
+- **A notice, never a failure.** The script exits 0 whatever the proofs
+  say; the release stays live. The app's publish job writes
+  `== The proofs after v1.0.N are red: …` into its log, and a batch's
+  publish step, which passed at the total line, tells the master
+  (`redProofsNotice`, src/shared/releasePhases.ts). The whole run's output
+  is `<git-dir>/temp-code-gate/proofs.log`.
+- **`--gated`** (or `TEMP_CODE_GATED=1`) brings back the old way: the whole
+  tier beside the build, a red row stopping the upload and deleting the
+  draft. `GATE_SKIP=1` still runs no gate and no proofs.
+
+The app that ran the script fetches the update at the total line and offers
+"Restart to update"; restarting ends a proof run the app's own job started
+(the logs so far stay). Run it again by hand with
+`bun run gate --tier publish --after-release <ref>`.
 
 ## The publish, phase by phase
 
@@ -757,6 +807,47 @@ publish script writes only after a successful install.
 | feed check | 5 s sleep + one fetch | the same | |
 | the installed app noticing | up to 30 min, then a click to download | at once: the script's own app fetches it (`phase ✓ update`), a box deploy pushes `release-available`; the poll is 5 min | GitHub served the 1.0.277 zip at 70 MB/s here: 311 MB in about 5 s |
 | total, trigger to "Restart to update" | about 45 to 70 min | 3m51s to the end of the ShipIt check, plus the upload and the app's own download | the dry run's `phase ✓ total 3m51s`, 2026-10-21 |
+
+**2026-11-23: the proofs off the path.** The same Mac, under the sibling
+threads' builds (each step waited for a 1-minute load under 12), a scratch
+clone at 1.0.363, `GATE_SKIP=1 --dry-run`, before the change and twice
+after it:
+
+| phase | before | after, run 1 | after, run 2 | what changed |
+| --- | --- | --- | --- | --- |
+| install | skipped (bun.lock unchanged) | 2 s | skipped | 17.3 s on a fresh clone (4.2 s to clone) |
+| gate | skipped | skipped | skipped | a real publish no longer waits for it: v1.0.333's ran 4m24s beside a 4m21s build and sign |
+| build | 1m8s | 1m12s | 1m9s | none; it builds tc-computer too |
+| sign (pack, codesign, zip) | 3m59s | 3m55s | 3m53s | none |
+| pack the box tarball | 4 s | 4 s | 4 s | beside the sign |
+| check (ShipIt-style unzip and verify) | inside the total | 9 s | 8 s | its own phase, beside the upload; sqrlcheck compiled once a version (2.6 s), cached; never reads /Applications on a dry run |
+| upload | not run | not run | not run | v1.0.333: 20 s; now beside the check |
+| feed | not run | not run | not run | a fetch each second up to 60, where it slept 5 s first; v1.0.333: 6 s |
+| total | 5m22s | 5m18s | 5m12s | |
+
+A real publish is now install, build, sign, then the longer of the check
+and the upload, then the feed: about 5 minutes on this Mac under load,
+where v1.0.333 took 5m19s with its gate. The floor is the sign: electron-builder's
+pack and codesign of about 37,000 files took 3m30s of it, and only a
+slimmer bundle (fewer files) moves it; the build's 70 s is the next.
+
+Measured and not taken:
+
+- **The zip's level.** electron-builder zips the Mac app with the system
+  `zip -7` and offers only store (`-0`) and maximum besides. Timed on the
+  same app: `-0` 7.7 s and 995 MB, `-1` 10.3 s and 389 MB, `-7` 25.8 s and
+  346 MB; unzipping `-0` 6.5 s, `-7` 7.3 s. At v1.0.333's upload rate
+  (about 15 MB/s) and the 70 MB/s download, store loses 43 s of upload to
+  save 18 s of zipping. `-1` would save about 12 s in all, but electron-builder
+  reaches it only through a `zip` put ahead of it on PATH; not worth a
+  hidden step in the release. The blockmap is made from the finished zip,
+  so any level keeps the differential download.
+- **The box's out/.** Not established: no box build of the same commit was
+  compared by hash. To reuse it the Mac would need the box's out/ for HEAD
+  (with bun.lock's hash and the bundle map's clean `head` stamp) handed
+  over before the build phase, and would still build tc-computer
+  (`TEMP_CODE_REQUIRE_NATIVE=1`, the Swift service lives under
+  resources/native, not out/). It would save at most the build's 70 s.
 
 Three things the dry runs found on the way. The script once signed with
 `--dir` and zipped with `--prepackaged`: electron-builder writes

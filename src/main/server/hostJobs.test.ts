@@ -479,11 +479,12 @@ describe('Publisher: the update phase', () => {
     })
     await publisher.publish('notes')
     children[0].stdout.emit('data', 'phase › gate\nphase ✓ gate 71s\nphase ✓ total 4m12s 1.0.273\n')
-    children[0].emit('exit', 0, null)
+    // The release is live at the total line: the update starts there, before the exit.
     expect(asked).toEqual(['1.0.273'])
+    children[0].emit('exit', 0, null)
     // Still running: the job ends with the update phase.
     expect((await publisher.status()).phase).toBe('running')
-    expect(publisher.log.snapshot().text).toContain('== exited 0\nphase › update\n')
+    expect(publisher.log.snapshot().text).toContain('phase ✓ total 4m12s 1.0.273\nphase › update\n')
     now += 31_000
     settle('ready')
     await new Promise((r) => setTimeout(r, 0))
@@ -495,6 +496,45 @@ describe('Publisher: the update phase', () => {
     children[1].emit('exit', 1, null)
     expect(asked).toEqual(['1.0.273'])
     expect((await publisher.status()).phase).toBe('done')
+  })
+
+  it('starts the update at the total line while the proofs run, keeps whole lines, and names a red row and its log', async () => {
+    const home = join(root, 'home')
+    checkoutAt(join(home, 'IdeaProjects', 'temp-code'), 272)
+    const children: FakeChild[] = []
+    const asked: string[] = []
+    const publisher = new Publisher({
+      store: store(),
+      home,
+      git: fakeGit({ tag: 'v1.0.270', subjects: ['one'] }).git,
+      feedVersion: async () => '1.0.270',
+      spawnScripts: () => {
+        const child = fakeChild()
+        children.push(child)
+        return child as never
+      },
+      selfUpdate: async (version) => {
+        asked.push(version)
+        return 'ready'
+      }
+    })
+    await publisher.publish('notes')
+    // a line cut across two chunks is still one line
+    children[0].stdout.emit('data', 'phase ✓ feed 2s\nphase ✓ total 3m1')
+    expect(asked).toEqual([])
+    children[0].stdout.emit('data', '0s 1.0.273\nphase › pro')
+    expect(asked).toEqual(['1.0.273'])
+    await new Promise((r) => setTimeout(r, 0))
+    expect((await publisher.status()).phase).toBe('running')
+    children[0].stdout.emit('data', 'ofs\nproof ✗ ios failed twice, log /g/logs/ios.log\nproof ✓ hub passed on the second try\nphase ✗ proofs 4m2s')
+    children[0].emit('exit', 0, null)
+    await new Promise((r) => setTimeout(r, 0))
+    const text = publisher.log.snapshot().text
+    expect(text).toContain('phase ✓ total 3m10s 1.0.273\nphase › update\nphase ✓ update')
+    expect(text).toContain('phase › proofs\nproof ✗ ios failed twice, log /g/logs/ios.log\n')
+    expect(text).toContain('phase ✗ proofs 4m2s\n== exited 0\n== The proofs after v1.0.273 are red: ios (failed twice, log /g/logs/ios.log). The release stays live.\n')
+    expect(asked).toEqual(['1.0.273'])
+    expect(await publisher.status()).toMatchObject({ phase: 'done', exit: 0 })
   })
 
   it('without a total line the target version is fetched; a skipped update is said so', async () => {

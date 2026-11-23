@@ -8,7 +8,9 @@ import {
   deployStageOf,
   formatDuration,
   parseDuration,
-  parsePhaseLine
+  parsePhaseLine,
+  parseProofLine,
+  redProofsNotice
 } from './releasePhases'
 
 describe('parseDuration / formatDuration', () => {
@@ -57,40 +59,47 @@ describe('PhaseTracker', () => {
     expect(t.progress()).toEqual({ done: 0, total: PUBLISH_PHASES.length })
     expect(SCRIPT_PHASES[0]).toBe('install')
     t.feed('phase › install')
-    expect(t.progress()).toEqual({ done: 0, total: 8, label: 'install' })
+    expect(t.progress()).toEqual({ done: 0, total: 9, label: 'install' })
     t.feed('phase ✓ install 12s')
     t.feed('phase › gate')
     t.feed('phase › build')
-    expect(t.progress()).toEqual({ done: 1, total: 8, label: 'build' })
+    expect(t.progress()).toEqual({ done: 1, total: 9, label: 'build' })
     t.feed('  • electron-builder  version=26.0.12')
     t.feed('phase ✓ build 84s')
-    expect(t.progress()).toEqual({ done: 2, total: 8 })
+    expect(t.progress()).toEqual({ done: 2, total: 9 })
     t.feed('phase ✓ gate 71s')
     t.feed('phase › pack')
     t.feed('phase › sign')
-    expect(t.progress()).toEqual({ done: 3, total: 8, label: 'sign' })
+    expect(t.progress()).toEqual({ done: 3, total: 9, label: 'sign' })
     t.feed('phase ✓ pack 15s')
     t.feed('phase ✓ sign 2m40s')
     t.feed('phase › upload')
     t.feed('phase ✓ upload 48s')
     t.feed('phase › feed')
     t.feed('phase ✓ feed 6s')
+    expect(t.live).toBe(false)
     t.feed('phase ✓ total 4m12s 1.0.283')
-    expect(t.progress()).toEqual({ done: 7, total: 8 })
+    expect(t.live).toBe(true)
+    expect(t.progress()).toEqual({ done: 7, total: 9 })
     expect(t.version).toBe('1.0.283')
     expect(t.totalMs).toBe(252_000)
     expect(t.summary()).toBe('install 12s · gate 1m11s · build 1m24s · sign 2m40s · pack 15s · upload 48s · feed 6s')
     t.feed('phase › update')
-    expect(t.progress()).toEqual({ done: 7, total: 8, label: 'update' })
+    expect(t.progress()).toEqual({ done: 7, total: 9, label: 'update' })
     t.feed('phase ✓ update 31s')
-    expect(t.progress()).toEqual({ done: 8, total: 8 })
+    expect(t.progress()).toEqual({ done: 8, total: 9 })
+    t.feed('phase › proofs')
+    t.feed('proof ✓ hub passed on the second try')
+    t.feed('phase ✓ proofs 3m2s')
+    expect(t.progress()).toEqual({ done: 9, total: 9 })
+    expect(t.proofs).toEqual([{ row: 'hub', outcome: 'passed', note: 'passed on the second try', log: null }])
     expect(t.times.get('update')).toBe(31_000)
   })
 
   it('counts a skipped install as done without a duration', () => {
     const t = new PhaseTracker(SCRIPT_PHASES)
     t.feed('phase – install skipped (lockfile unchanged)')
-    expect(t.progress()).toEqual({ done: 1, total: 7 })
+    expect(t.progress()).toEqual({ done: 1, total: 8 })
     expect(t.skipped.has('install')).toBe(true)
     expect(t.summary()).toBe('')
   })
@@ -106,6 +115,28 @@ describe('PhaseTracker', () => {
     t.feed('phase ✓ push 3s')
     expect(t.progress().done).toBe(2)
     expect(t.summary()).toBe('build 12s failed · push 3s')
+  })
+})
+
+describe('the proofs after a release', () => {
+  it('reads a red row with its log, a second-try pass and a row left out, and not the line that says none ran', () => {
+    expect(parseProofLine('proof ✗ ios failed twice: exit 1, log /r/.git/temp-code-gate/logs/ios.log')).toEqual({
+      row: 'ios',
+      outcome: 'failed',
+      note: 'failed twice: exit 1',
+      log: '/r/.git/temp-code-gate/logs/ios.log'
+    })
+    expect(parseProofLine('proof ✓ hub passed on the second try')).toEqual({ row: 'hub', outcome: 'passed', note: 'passed on the second try', log: null })
+    expect(parseProofLine('proof – e2e-tc-computer the screen is locked')).toMatchObject({ row: 'e2e-tc-computer', outcome: 'skipped' })
+    expect(parseProofLine("proof – no row's paths changed since v1.0.362")).toBeNull()
+    expect(parseProofLine('phase ✓ proofs 3m2s')).toBeNull()
+  })
+
+  it('says nothing for green proofs, and names each red row and its log', () => {
+    const rows = [parseProofLine('proof ✓ hub passed on the second try')!]
+    expect(redProofsNotice('1.0.364', rows)).toBeNull()
+    rows.push(parseProofLine('proof ✗ ios failed twice, log /l/ios.log')!, parseProofLine('proof ✗ hub exit 2, log /l/hub.log')!)
+    expect(redProofsNotice('1.0.364', rows)).toBe('The proofs after v1.0.364 are red: ios (failed twice, log /l/ios.log); hub (exit 2, log /l/hub.log). The release stays live.')
   })
 })
 

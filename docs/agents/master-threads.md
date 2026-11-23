@@ -240,7 +240,11 @@ this is the short one.
   tag the step is skipped as "nothing to release since release-N" and a
   publish or deploy after it takes that version); `publish` (the Mac's publish job
   for that commit over the peer link, "Releases" above; a person's
-  decision); `deploy` (the box's deploy trigger of docs/box.md "Deploy from
+  decision; it passes at the script's `phase ✓ total` line, when the feed
+  serves the release, and the deploy after it starts then; the proofs that
+  run after it go on in the step's log, and a red one is a `done` notice to
+  the master naming the row and its log, `redProofsNotice` in
+  src/shared/releasePhases.ts, never a failed step); `deploy` (the box's deploy trigger of docs/box.md "Deploy from
   the app": `v1.0.N` when a publish passed, `master` otherwise; skipped as
   "needs a release" when no release step comes before it); `shell`
   (`run` through the login shell in `cwd`, default the project checkout,

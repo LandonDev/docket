@@ -3,7 +3,7 @@ import { execFileSync } from 'node:child_process'
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { STEPS, TIER_PATHS, LANE_AFTER, formatReport, gateDir, matchPath, parseArgs, readStoredHash, runSteps, selectSteps, shouldSkipTypecheck, storeHash, tiersForPaths, typecheckHash, type Step, macOnlySkips, judgeReport, spawnStep, stepArgs, atPublishSkips, fmtCap, SOAK_CAP_MS, BUILD_WAIT_MS, proofCap, STORE_MEASURED_MS, STORE_CAP_MS, COMPUTER_MEASURED_MS, COMPUTER_CAP_MS, buildBarrier, gate, screenOnlySkips, whenAskedSkips } from './gate'
+import { STEPS, TIER_PATHS, LANE_AFTER, formatReport, gateDir, matchPath, parseArgs, readStoredHash, runSteps, selectSteps, shouldSkipTypecheck, storeHash, tiersForPaths, typecheckHash, type Step, macOnlySkips, judgeReport, spawnStep, stepArgs, atPublishSkips, fmtCap, SOAK_CAP_MS, BUILD_WAIT_MS, proofCap, STORE_MEASURED_MS, STORE_CAP_MS, COMPUTER_MEASURED_MS, COMPUTER_CAP_MS, buildBarrier, gate, screenOnlySkips, EVERY_ROW_PATHS, rowTouched, rowBase, rowSkips, readRowsGreen, storeRowsGreen, proofLines, proofsPhaseLine, fmtPhase, SECOND_TRY_PASSED, SECOND_TRY_FAILED, whenAskedSkips, GUARD_TESTS, type Report } from './gate'
 import { BENCH_TIMING } from './lib/computerBench'
 
 describe('the step list', () => {
@@ -43,11 +43,11 @@ describe('the step list', () => {
   })
 
   it('selects by tier, honours --only and --skip, and refuses an unknown name', () => {
-    expect(selectSteps({ tiers: new Set(['commit']) }).map((s) => s.name)).toEqual(['typecheck', 'vitest', 'build', 'bundle-size'])
+    expect(selectSteps({ tiers: new Set(['commit']) }).map((s) => s.name)).toEqual(['typecheck', 'vitest', 'guards', 'build', 'bundle-size'])
     expect(selectSteps({ tiers: new Set(['publish']) }).map((s) => s.name)).toEqual(['renderer-soak', 'renderer-soak-chat', 'renderer-soak-typing', 'renderer-soak-scroll', 'e2e-remote-fence', 'e2e-addons', 'e2e-addon-grants', 'e2e-skills-store', 'e2e-skills-drivers', 'hub', 'ios', 'ios-client', 'computer-swift', 'e2e-tc-computer', 'e2e-computer-bridge', 'e2e-computer-preview', 'computer-bench'])
     expect(selectSteps({ tiers: new Set(['commit', 'publish']) }).length).toBe(STEPS.length)
     expect(selectSteps({ tiers: new Set(['commit']), only: ['vitest'] }).map((s) => s.name)).toEqual(['vitest'])
-    expect(selectSteps({ tiers: new Set(['commit']), skip: ['vitest'] }).map((s) => s.name)).toEqual(['typecheck', 'build', 'bundle-size'])
+    expect(selectSteps({ tiers: new Set(['commit']), skip: ['vitest'] }).map((s) => s.name)).toEqual(['typecheck', 'guards', 'build', 'bundle-size'])
     expect(() => selectSteps({ tiers: new Set(['commit']), only: ['nope'] })).toThrow(/no gate step named nope/)
   })
 
@@ -690,6 +690,236 @@ describe('the whole suite runs only when asked for', () => {
       expect(full.results[0].outcome).toBe('passed')
       expect(existsSync(ran)).toBe(true)
     } finally {
+      rmSync(repo, { recursive: true, force: true })
+    }
+  })
+})
+
+describe('the guards row', () => {
+  it('runs every repo-rule test in its own lane beside the build, and a plain commit tier keeps it', () => {
+    const guards = STEPS.find((s) => s.name === 'guards')!
+    expect(guards).toMatchObject({ tier: 'commit', lane: 'guards', env: { NODE_ENV: 'test' } })
+    expect(guards.whenAsked).toBeUndefined()
+    expect(guards.args).toEqual(['vitest', 'run', ...GUARD_TESTS])
+    expect(whenAskedSkips(selectSteps({ tiers: new Set(['commit']) }), { full: false }).has('guards')).toBe(false)
+  })
+
+  it('names files that exist, and every guard test the tree holds', () => {
+    const root = join(__dirname, '..')
+    for (const f of GUARD_TESTS) expect(existsSync(join(root, f)), f).toBe(true)
+    const tracked = execFileSync('git', ['ls-files', ':(glob)src/renderer/src/lib/*Guard.test.ts', ':(glob)scripts/*guard*.test.ts', ':(glob)scripts/*Guard*.test.ts'], { cwd: root, encoding: 'utf8' })
+      .split('\n')
+      .filter(Boolean)
+    expect(tracked.filter((f) => !(GUARD_TESTS as readonly string[]).includes(f))).toEqual([])
+  })
+})
+
+describe('the proofs after a release', () => {
+  const row = (name: string, paths: string[], lane = 'e2e'): Step => ({ name, tier: 'publish', lane, cmd: 'true', args: [], why: name, paths })
+  const publishRows = STEPS.filter((s) => s.tier === 'publish')
+
+  it('gives every publish row its ground, and every path that pulls the publish tier into a commit lands in some row', () => {
+    for (const s of publishRows) expect(s.paths?.length, s.name).toBeGreaterThan(0)
+    for (const rule of TIER_PATHS.filter((r) => r.tier === 'publish')) {
+      // the rule's own pattern, as a path it names (a glob's literal stem stands for it)
+      const sample = rule.pattern.replace('**', 'x/y.ts').replace('*', 'x')
+      expect(publishRows.some((s) => rowTouched(s, [sample])), rule.pattern).toBe(true)
+    }
+  })
+
+  it('covers every script a row runs: its entry and each scripts/ file it imports, however deep', () => {
+    const root = join(__dirname, '..')
+    const read = (f: string): string => readFileSync(join(root, f), 'utf8')
+    const resolveImport = (from: string, spec: string): string | null => {
+      const base = join(from, '..', spec)
+      for (const c of [base, `${base}.ts`, `${base}.mjs`]) if (existsSync(join(root, c)) && /\.(ts|mjs)$/.test(c)) return c
+      return null
+    }
+    // every script the row's command names, through package.json's runners (bundle-server, proof-bun)
+    const entriesOf = (s: Step): string[] => {
+      const pkg = JSON.parse(read('package.json')) as { scripts: Record<string, string> }
+      const words = s.args.flatMap((a) => (pkg.scripts[a] ?? a).split(/\s+/))
+      return words.filter((w) => /^scripts\/[\w./-]+\.(ts|mjs)$/.test(w) && !w.startsWith('scripts/.out/'))
+    }
+    const missing: string[] = []
+    for (const s of publishRows) {
+      const seen = new Set<string>()
+      const queue = entriesOf(s)
+      while (queue.length) {
+        const f = queue.pop()!
+        if (seen.has(f) || !f.startsWith('scripts/')) continue
+        seen.add(f)
+        for (const m of read(f).matchAll(/(?:from|import)\s*\(?\s*'(\.{1,2}\/[^']+)'/g)) {
+          const r = resolveImport(f, m[1])
+          if (r) queue.push(r)
+        }
+      }
+      missing.push(...[...seen].filter((f) => !rowTouched(s, [f])).map((f) => `${s.name} runs ${f}`))
+    }
+    expect(missing).toEqual([])
+  })
+
+  it('runs a row when its own paths or a path every row reads changed, and leaves it out otherwise', () => {
+    const fence = STEPS.find((s) => s.name === 'e2e-remote-fence')!
+    const soak = STEPS.find((s) => s.name === 'renderer-soak')!
+    expect(rowTouched(fence, ['src/main/server/remote/fence.ts'])).toBe(true)
+    expect(rowTouched(fence, ['src/renderer/src/App.tsx', 'docs/box.md'])).toBe(false)
+    expect(rowTouched(soak, ['src/renderer/src/App.tsx'])).toBe(true)
+    // the version bump every release makes is no row's change
+    for (const s of publishRows) expect(rowTouched(s, ['package.json', 'docs/release-gate.md', 'PROJECT.md']), s.name).toBe(false)
+    for (const p of EVERY_ROW_PATHS) for (const s of publishRows) expect(rowTouched(s, [p]), `${s.name} ${p}`).toBe(true)
+  })
+
+  it('counts a row from its last pass while HEAD holds it, else from the last release', () => {
+    expect(rowBase('abc', 'v1.0.362', () => true)).toBe('abc')
+    expect(rowBase('abc', 'v1.0.362', () => false)).toBe('v1.0.362')
+    expect(rowBase(undefined, 'v1.0.362', () => true)).toBe('v1.0.362')
+  })
+
+  it('selects the rows a release touched, keeps a red row running until it passes, and runs all with no release to count from', () => {
+    const steps = [row('fence', ['src/main/server/remote/**']), row('hub', ['infra/hub/**']), row('ios', ['ios/**']), { ...row('vitest', []), tier: 'commit' as const }]
+    const changed: Record<string, string[]> = {
+      'v1.0.362': ['infra/hub/src/index.ts', 'package.json'],
+      // the fence passed long ago, before the remote change that went red at the last release
+      old: ['src/main/server/remote/fence.ts', 'infra/hub/src/index.ts', 'package.json']
+    }
+    const skips = rowSkips(steps, 'v1.0.362', { fence: 'old', ios: 'gone' }, (sha) => sha === 'old', (ref) => changed[ref] ?? [])
+    expect([...skips]).toEqual([['ios', 'no change to its paths since v1.0.362']])
+    // a ref git cannot read counts as every path changed
+    expect(rowSkips(steps, 'v1.0.362', {}, () => false, () => null).size).toBe(0)
+    expect(rowSkips(steps, '', {}, () => false, () => []).size).toBe(0)
+    // a row's last pass newer than the release, with nothing since, leaves it out
+    expect(rowSkips([row('hub', ['infra/hub/**'])], 'v1.0.362', { hub: 'newer' }, () => true, (ref) => (ref === 'newer' ? [] : ['infra/hub/a.ts'])).get('hub')).toBe(
+      'no change to its paths since its last pass at newer'
+    )
+  })
+
+  it('keeps each publish row’s last pass by HEAD, and never a commit row’s', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'tc-gate-green-'))
+    try {
+      const steps = [row('fence', []), row('hub', []), { ...row('vitest', []), tier: 'commit' as const }]
+      storeRowsGreen(dir, 'aaa', [{ name: 'fence', outcome: 'passed', ms: 1 }, { name: 'hub', outcome: 'failed', ms: 1 }, { name: 'vitest', outcome: 'passed', ms: 1 }], steps)
+      storeRowsGreen(dir, 'bbb', [{ name: 'hub', outcome: 'passed', ms: 1 }], steps)
+      expect(readRowsGreen(dir)).toEqual({ fence: 'aaa', hub: 'bbb' })
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  it('runs every other row after a failure, then the failed row once more alone, and says how its second try went', async () => {
+    const steps = [row('a', [], 'x'), row('b', [], 'y'), row('c', [], 'x'), row('d', [], 'z')]
+    const tries = new Map<string, number>()
+    const log: string[] = []
+    let running = 0
+    let aloneOk = true
+    const retried: string[] = []
+    const report = await runSteps(
+      steps,
+      async (s) => {
+        const n = (tries.get(s.name) ?? 0) + 1
+        tries.set(s.name, n)
+        running++
+        if (n === 2 && running > 1) aloneOk = false
+        await new Promise((r) => setTimeout(r, 5))
+        running--
+        log.push(`${s.name}#${n}`)
+        // a fails once and passes; d fails twice
+        if (s.name === 'a') return { exitCode: n === 1 ? 1 : 0, tail: '' }
+        if (s.name === 'd') return { exitCode: 1, tail: `boom ${n}` }
+        return { exitCode: 0, tail: '' }
+      },
+      { onRetry: (s, first) => retried.push(`${s.name}:${first.outcome}`) },
+      new Map(),
+      { retry: true }
+    )
+    // c ran after a failed in its own lane; both retries came after every first try, alone
+    expect(log.slice(0, 4).sort()).toEqual(['a#1', 'b#1', 'c#1', 'd#1'])
+    expect(log.slice(4)).toEqual(['a#2', 'd#2'])
+    expect(aloneOk).toBe(true)
+    expect(retried).toEqual(['a:failed', 'd:failed'])
+    expect(report.ok).toBe(false)
+    const by = Object.fromEntries(report.results.map((r) => [r.name, r]))
+    expect(by.a).toMatchObject({ outcome: 'passed', note: SECOND_TRY_PASSED })
+    expect(by.c.outcome).toBe('passed')
+    expect(by.d).toMatchObject({ outcome: 'failed', note: SECOND_TRY_FAILED, tail: 'boom 2' })
+    expect(formatReport(report)).toContain(`a  `)
+  })
+
+  it('without retry, a failure still stops the gate and nothing runs twice', async () => {
+    const tries: string[] = []
+    const report = await runSteps([row('a', [], 'x'), row('c', [], 'x')], async (s) => {
+      tries.push(s.name)
+      return { exitCode: 1, tail: '' }
+    })
+    expect(tries).toEqual(['a'])
+    expect(report.results.map((r) => r.outcome)).toEqual(['failed', 'not run'])
+  })
+
+  it('says which rows need a word and how the proofs phase ended', () => {
+    const report = (results: Report['results'], ok = true): Report => ({ ok, ms: 125_000, results })
+    const untouched = new Set(['hub', 'ios'])
+    const mixed = report(
+      [
+        { name: 'fence', outcome: 'passed', ms: 1 },
+        { name: 'addons', outcome: 'passed', ms: 1, note: SECOND_TRY_PASSED },
+        { name: 'skills', outcome: 'failed', ms: 1, exitCode: 1, note: SECOND_TRY_FAILED },
+        { name: 'tc', outcome: 'skipped', ms: 0, note: 'the screen is locked' },
+        { name: 'hub', outcome: 'skipped', ms: 0, note: 'no change to its paths since v1.0.362' }
+      ],
+      false
+    )
+    expect(proofLines(mixed, '/g/logs', 'v1.0.362', untouched)).toEqual([
+      `proof ✓ addons ${SECOND_TRY_PASSED}`,
+      `proof ✗ skills ${SECOND_TRY_FAILED}, log /g/logs/skills.log`,
+      'proof – tc the screen is locked'
+    ])
+    expect(proofsPhaseLine(mixed)).toBe('phase ✗ proofs 2m5s')
+    const none = report([{ name: 'hub', outcome: 'skipped', ms: 0 }, { name: 'ios', outcome: 'skipped', ms: 0 }])
+    expect(proofLines(none, '/g/logs', 'v1.0.362', untouched)).toEqual(["proof – no row's paths changed since v1.0.362"])
+    expect(proofsPhaseLine(none)).toBe('phase – proofs skipped')
+    expect(proofsPhaseLine(report([{ name: 'fence', outcome: 'passed', ms: 1 }]))).toBe('phase ✓ proofs 2m5s')
+    expect(fmtPhase(42_000)).toBe('42s')
+    expect(fmtPhase(71_000)).toBe('1m11s')
+  })
+
+  it('takes --after-release, with an empty ref for every row', () => {
+    expect(parseArgs(['--tier', 'publish', '--after-release', 'v1.0.362']).afterRelease).toBe('v1.0.362')
+    expect(parseArgs(['--after-release=']).afterRelease).toBe('')
+    expect(parseArgs(['--tier', 'publish']).afterRelease).toBeUndefined()
+  })
+
+  it('runs only the touched rows in a real repo and prints the proofs phase', async () => {
+    const repo = mkdtempSync(join(tmpdir(), 'tc-gate-after-'))
+    const out: string[] = []
+    const spy = vi.spyOn(console, 'log').mockImplementation((l: unknown) => void out.push(String(l)))
+    try {
+      const g = (...args: string[]): string => execFileSync('git', args, { cwd: repo, encoding: 'utf8' })
+      g('init', '-q')
+      g('config', 'user.email', 't@t')
+      g('config', 'user.name', 't')
+      mkdirSync(join(repo, 'infra/hub'), { recursive: true })
+      writeFileSync(join(repo, 'infra/hub/a.ts'), '1')
+      g('add', '.')
+      g('commit', '-qm', 'one')
+      g('tag', 'v1.0.1')
+      writeFileSync(join(repo, 'infra/hub/a.ts'), '2')
+      g('commit', '-qam', 'two')
+      const steps: Step[] = [
+        { ...row('hub', ['infra/hub/**']), cmd: process.execPath, args: ['-e', ''] },
+        { ...row('ios', ['ios/**']), cmd: process.execPath, args: ['-e', 'process.exit(1)'] }
+      ]
+      const report = await gate({ repo, tiers: new Set(['publish']), full: false, verbose: false, steps, afterRelease: 'v1.0.1' })
+      expect(report.results.map((r) => [r.name, r.outcome])).toEqual([['hub', 'passed'], ['ios', 'skipped']])
+      expect(out[0]).toBe('phase › proofs')
+      expect(out.at(-1)).toMatch(/^phase ✓ proofs \d+s$/)
+      expect(readRowsGreen(gateDir(repo))).toEqual({ hub: g('rev-parse', 'HEAD').trim() })
+      // the next release, with nothing new, runs no row and says so
+      out.length = 0
+      const again = await gate({ repo, tiers: new Set(['publish']), full: false, verbose: false, steps, afterRelease: 'HEAD' })
+      expect(again.results.every((r) => r.outcome === 'skipped')).toBe(true)
+      expect(out.slice(-2)).toEqual(["proof – no row's paths changed since HEAD", 'phase – proofs skipped'])
+    } finally {
+      spy.mockRestore()
       rmSync(repo, { recursive: true, force: true })
     }
   })

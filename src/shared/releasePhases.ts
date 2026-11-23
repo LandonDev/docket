@@ -7,17 +7,24 @@
  *   phase ✓ gate 71s               it passed, in that long
  *   phase ✗ build 12s              it failed
  *   phase – gate skipped           it was skipped (GATE_SKIP=1)
- *   phase ✓ total 4m12s 1.0.283    the whole run, and the version published
+ *   phase ✓ total 4m12s 1.0.283    the release is live: the feed serves it
  *
  * The script's phases are install, gate, build, sign (one electron-builder call:
  * pack, codesign and zip), pack, upload and feed;
  * the app that ran it adds `update` (its own download of what it just
- * published, update.ts). A box deploy's lines (box-update.sh) name their
+ * published, update.ts), started at the total line. By default the gate
+ * runs after the total line as `proofs` (`phase – gate after the release`
+ * before it); each red or retried row is a proof line, and a red row never
+ * fails the run:
+ *
+ *   proof ✗ ios failed twice, log <path>   red: the row and its log
+ *   proof ✓ hub passed on the second try
+ *   proof – no row's paths changed since v1.0.282 A box deploy's lines (box-update.sh) name their
  * stage with an upper-case word and a colon: SOURCE, MODULES, BUILD, TRIAL,
  * SNAPSHOT, COMMIT, PRUNE; `deployStageOf` maps them onto the same shape.
  */
 
-export const PUBLISH_PHASES = ['install', 'gate', 'build', 'sign', 'pack', 'upload', 'feed', 'update'] as const
+export const PUBLISH_PHASES = ['install', 'gate', 'build', 'sign', 'pack', 'upload', 'feed', 'update', 'proofs'] as const
 export type PublishPhase = (typeof PUBLISH_PHASES)[number]
 
 /** The script's own phases: what a run without the app's update counts. */
@@ -33,6 +40,35 @@ export type PhaseLine =
   | { kind: 'total'; ms: number; version: string | null }
 
 const PHASE_LINE = /^phase ([›✓✗–]) (\S+)(?: (.+))?$/
+const PROOF_LINE = /^proof ([✓✗–]) (\S+)(?: (.+))?$/
+
+/** One row of the proofs after a release, as its proof line names it. */
+export interface ProofRow {
+  row: string
+  outcome: 'passed' | 'failed' | 'skipped'
+  note: string
+  /** A red row's log, on the host that ran it. */
+  log: string | null
+}
+
+/** A `proof` line; null for anything else, and for the line that says no row ran. */
+export function parseProofLine(line: string): ProofRow | null {
+  const m = PROOF_LINE.exec(line.trim())
+  if (!m) return null
+  const [, mark, row, rest = ''] = m
+  if (mark === '–' && row === 'no' && rest.startsWith("row's paths")) return null
+  const outcome = mark === '✓' ? 'passed' : mark === '✗' ? 'failed' : 'skipped'
+  const log = outcome === 'failed' ? (/, log (\S+)$/.exec(rest)?.[1] ?? null) : null
+  return { row, outcome, note: log ? rest.slice(0, rest.lastIndexOf(', log ')) : rest, log }
+}
+
+/** The notice for red proofs: each red row and its log; null when none is red. */
+export function redProofsNotice(version: string | null, rows: readonly ProofRow[]): string | null {
+  const red = rows.filter((r) => r.outcome === 'failed')
+  if (!red.length) return null
+  const what = red.map((r) => `${r.row} (${r.note}${r.log ? `, log ${r.log}` : ''})`).join('; ')
+  return `The proofs after ${version ? `v${version}` : 'the release'} are red: ${what}. The release stays live.`
+}
 
 /** "71s", "4m12s", "4m 12s", "1.2s", "2h3m" → ms; null for anything else. */
 export function parseDuration(text: string): number | null {
@@ -98,6 +134,10 @@ export class PhaseTracker {
   running: string | null = null
   version: string | null = null
   totalMs: number | null = null
+  /** The release is live: the total line came (the proofs may still run). */
+  live = false
+  /** Each row the proofs reported: red, retried or left out for its screen or host. */
+  readonly proofs: ProofRow[] = []
   private readonly expected: readonly string[]
 
   constructor(expected: readonly string[] = PUBLISH_PHASES) {
@@ -107,7 +147,11 @@ export class PhaseTracker {
   /** Feed one line; the parsed event when it was a phase line. */
   feed(line: string): PhaseLine | null {
     const event = parsePhaseLine(line)
-    if (!event) return null
+    if (!event) {
+      const proof = parseProofLine(line)
+      if (proof) this.proofs.push(proof)
+      return null
+    }
     switch (event.kind) {
       case 'start':
         this.running = event.phase
@@ -124,6 +168,7 @@ export class PhaseTracker {
       case 'total':
         this.totalMs = event.ms
         this.version = event.version
+        this.live = true
         this.running = null
         break
     }

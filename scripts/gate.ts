@@ -1,12 +1,13 @@
 /**
  * The release gate: `bun run gate [--tier commit|publish|all] [--since <ref>]
- * [--full] [--only a,b] [--skip a,b] [--verbose]`.
+ * [--full] [--only a,b] [--skip a,b] [--after-release <ref>] [--verbose]`.
  *
  * One implementation for both callers. The post-commit train
  * (scripts/release.ts) runs the `commit` tier, plus the `publish` tier when
  * the commits since the last release touch a path that tier guards
  * (TIER_PATHS below), so a contract change still cannot land stale Swift.
- * scripts/release-publish.sh runs the `publish` tier before signing.
+ * scripts/release-publish.sh runs the `publish` tier once the feed serves
+ * the release (`--after-release`), or beside the build under `--gated`.
  *
  * STEPS is the one list both tiers read; a sibling change adds a row there
  * (the bundle-size check after `build`, say) and nothing else. Steps in one
@@ -19,7 +20,14 @@
  * changed paths alone pulled the tier into a commit's gate (the computer
  * bench's model threads). A step marked `whenAsked` (vitest) runs only under
  * `--full` or an `--only` that names it: the whole suite is the building
- * thread's job before it lands, not every landing's. A run that builds holds the proofs beside the
+ * thread's job before it lands, not every landing's; the `guards` row runs
+ * the tests that hold a repo rule (GUARD_TESTS) in its own lane instead.
+ *
+ * `--after-release <ref>` is the publish tier as release-publish.sh runs it
+ * once the feed serves the release: only the rows whose `paths` changed
+ * since the row last passed (rows-green.json) or since <ref> (rowSkips), a
+ * failed row run once more alone after the rest (no row stops another), and
+ * the result as `phase` and `proof` lines (proofLines). A run that builds holds the proofs beside the
  * build until it is done (buildBarrier: <git-dir>/temp-code-gate/build.done,
  * named to every step as TEMP_CODE_SOAK_BUILD_DONE). Every step's output lands in
  * <git-dir>/temp-code-gate/logs/<step>.log; the last run's times in
@@ -34,7 +42,7 @@
 import { spawn } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import { execFileSync } from 'node:child_process'
-import { appendFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { appendFileSync, existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 
 import { readMacScreen, readyMacScreen, SCREEN_SKIP_NOTE, type MacScreen } from './lib/macScreen'
@@ -75,6 +83,10 @@ export interface Step {
    *  tier run (whenAskedSkips): the whole vitest suite is the building
    *  thread's job before it lands, not every landing's. */
   whenAsked?: boolean
+  /** A publish row's ground: the paths whose change since the row last
+   *  passed makes it run after a release (rowSkips). Every publish row has
+   *  them; EVERY_ROW_PATHS are added to each. */
+  paths?: readonly string[]
 }
 
 /**
@@ -117,6 +129,120 @@ export const COMPUTER_MEASURED_MS = {
 } as const
 export const COMPUTER_CAP_MS = Object.fromEntries(Object.entries(COMPUTER_MEASURED_MS).map(([k, v]) => [k, proofCap(v)])) as Record<keyof typeof COMPUTER_MEASURED_MS, number>
 
+/** Paths that change what every publish row runs on: the dependencies, the build config, the gate itself. */
+export const EVERY_ROW_PATHS = ['bun.lock', 'electron.vite.config.ts', 'scripts/gate.ts'] as const
+
+/** The runners package.json starts the proofs through: bundled for node, or under bun with the Electron stub. */
+const RUNNERS = ['scripts/bundle-server.ts', 'scripts/lib/bundle-node-script.ts', 'scripts/proof-bun.ts', 'scripts/lib/proofBun.ts']
+/** The libraries every proof that waits for the build reads (gateBuild reads the soak judge's stamp). */
+const BUILD_WAIT_LIBS = ['scripts/lib/gateBuild.ts', 'scripts/lib/soak*.ts']
+const SOAK_PATHS = [
+  'src/renderer/**',
+  'src/preload/**',
+  'src/shared/**',
+  'scripts/measure-renderer-soak.ts',
+  'scripts/profile-summary.ts',
+  'scripts/lib/packagedApp.ts',
+  'scripts/lib/heightReport.ts',
+  'scripts/lib/revealReport.ts',
+  ...BUILD_WAIT_LIBS
+]
+const STORE_LIBS = [...BUILD_WAIT_LIBS, 'scripts/lib/appToken.ts', 'scripts/lib/procScan.ts', 'scripts/lib/proofCleanup.ts', 'scripts/lib/proofElectron.ts', 'scripts/lib/gateCli.ts', 'scripts/lib/fake*.ts']
+const ADDON_PATHS = [
+  'src/main/server/addons/**',
+  'src/main/server/addonStore.ts',
+  'src/main/server/storeRpc.ts',
+  'src/shared/addons.ts',
+  'src/shared/addonGrant*.ts',
+  'src/main/addonHost*.ts',
+  'scripts/app-mcp-bridge.mjs',
+  'scripts/e2e-addon*.ts',
+  ...STORE_LIBS
+]
+const SKILL_PATHS = [
+  'src/main/server/skills/**',
+  'src/main/server/skillStore.ts',
+  'src/main/server/skillFiles.ts',
+  'src/main/server/storeRpc.ts',
+  'src/main/server/museConfigDirs.ts',
+  'src/shared/skills.ts',
+  'scripts/app-mcp-bridge.mjs',
+  'scripts/e2e-skills-*.ts',
+  'scripts/lib/skillsDrivers*.ts',
+  'scripts/lib/configDirSpike.ts',
+  'scripts/lib/spikeFakes.ts',
+  'scripts/lib/proofBun.ts',
+  ...STORE_LIBS
+]
+const CONTRACT_PATHS = ['src/shared/wireSchemas.ts', 'src/shared/contract*.ts', 'scripts/gen-swift-contract.ts']
+const IOS_PATHS = ['ios/**', 'scripts/ios-*', 'scripts/lib/ios*', 'src/main/server/remote/**', ...CONTRACT_PATHS, ...RUNNERS]
+const COMPUTER_WIRE_PATHS = ['native/tc-computer/**', 'src/shared/computer/**', 'scripts/gen-swift-computer.ts']
+const COMPUTER_PATHS = [
+  ...COMPUTER_WIRE_PATHS,
+  'src/main/server/computer/**',
+  'src/shared/contract-*computer.ts',
+  'scripts/e2e-computer*.ts',
+  'scripts/e2e-tc-computer.ts',
+  'scripts/lib/computer*.ts',
+  'scripts/lib/bench*.ts',
+  'scripts/lib/field*.ts',
+  'scripts/lib/proof*.ts',
+  'scripts/lib/tc*.ts',
+  'scripts/lib/previewProbeApp.ts',
+  'scripts/lib/chromiumForTests.ts',
+  'scripts/lib/devInstance.ts',
+  'scripts/lib/fewerLeg.ts',
+  'scripts/lib/guardWord.ts',
+  'scripts/lib/legRerun.ts',
+  'scripts/lib/macScreen.ts',
+  'scripts/lib/procScan.ts',
+  'scripts/lib/repoRoot.ts',
+  'scripts/lib/settleFront.ts',
+  'scripts/lib/webProofFixtures.ts',
+  'scripts/lib/windowCover.ts',
+  'scripts/lib/appToken.ts',
+  ...RUNNERS,
+  ...BUILD_WAIT_LIBS
+]
+const BRIDGE_PATHS = [...COMPUTER_PATHS, 'src/main/server/remote/**', 'src/main/server/mac*.ts']
+
+/** The tests that hold a repo rule rather than a behaviour: the renderer's
+ *  guards, the dark theme and the token contrast, the CLAUDE.md budget, the
+ *  work-kit pin, the docs' citations. Cheap, and the plain commit tier runs
+ *  no other test, so the `guards` row runs these beside the build. A new
+ *  `src/renderer/src/lib/*Guard.test.ts` or `scripts/*guard*.test.ts` must
+ *  join the list (gate.test.ts). */
+export const GUARD_TESTS = [
+  'src/renderer/src/lib/busyLabelGuard.test.ts',
+  'src/renderer/src/lib/colourGuard.test.ts',
+  'src/renderer/src/lib/depthGuard.test.ts',
+  'src/renderer/src/lib/dialogShapeGuard.test.ts',
+  'src/renderer/src/lib/disclosureGuard.test.ts',
+  'src/renderer/src/lib/factsGuard.test.ts',
+  'src/renderer/src/lib/focusGuard.test.ts',
+  'src/renderer/src/lib/keysGuard.test.ts',
+  'src/renderer/src/lib/lazyMenuGuard.test.ts',
+  'src/renderer/src/lib/motionGuard.test.ts',
+  'src/renderer/src/lib/pageLineGuard.test.ts',
+  'src/renderer/src/lib/redButtonGuard.test.ts',
+  'src/renderer/src/lib/revealGuard.test.ts',
+  'src/renderer/src/lib/scrollerGuard.test.ts',
+  'src/renderer/src/lib/spaceGuard.test.ts',
+  'src/renderer/src/lib/typeScaleGuard.test.ts',
+  'src/renderer/src/lib/tokenContrast.test.ts',
+  'src/renderer/src/lib/darkHeld.test.ts',
+  'src/renderer/src/lib/scrollbarRule.test.ts',
+  'src/main/server/work/pillarReach.test.ts',
+  'scripts/claudeMdBudget.test.ts',
+  'scripts/workKitPin.test.ts',
+  'scripts/docsGuard.test.ts',
+  'scripts/caseClash.test.ts',
+  'scripts/swiftSwitches.test.ts',
+  'scripts/ios-debug-guard.test.ts',
+  'scripts/ios-literal-guard.test.ts',
+  'scripts/tc-computer-guard.test.ts'
+] as const
+
 export const STEPS: Step[] = [
   {
     name: 'typecheck',
@@ -137,6 +263,16 @@ export const STEPS: Step[] = [
     json: true,
     whenAsked: true,
     why: 'the unit tests (src/**/*.test.ts, scripts/**/*.test.ts); vitest.config.ts bounds the pool, and the JSON report decides when the reporter dies'
+  },
+  {
+    name: 'guards',
+    tier: 'commit',
+    cmd: 'bunx',
+    args: ['vitest', 'run', ...GUARD_TESTS],
+    lane: 'guards',
+    env: { NODE_ENV: 'test' },
+    json: true,
+    why: 'the tests that hold a repo rule (GUARD_TESTS), beside the build; the whole suite is vitest, when asked'
   },
   {
     name: 'build',
@@ -164,7 +300,8 @@ export const STEPS: Step[] = [
     // it never reads an out/ that is being written.
     lane: 'build',
     why: "the production renderer under the synthetic host's load for 50 s, the master's board beside a streaming child: heap and RSS after GC, long tasks and CPU against fixed bounds (scripts/measure-renderer-soak.ts --gate, boots an instance, 90 s at most)",
-    mac: true
+    mac: true,
+    paths: SOAK_PATHS
   },
   {
     name: 'renderer-soak-chat',
@@ -175,7 +312,8 @@ export const STEPS: Step[] = [
     // The same lane, after the board scene: one instance at a time.
     lane: 'build',
     why: "the same 50 s on one plain chat streaming, with its own CPU bound (scripts/measure-renderer-soak.ts --gate --scene chat, 90 s at most)",
-    mac: true
+    mac: true,
+    paths: SOAK_PATHS
   },
   {
     name: 'renderer-soak-typing',
@@ -186,7 +324,8 @@ export const STEPS: Step[] = [
     // The same lane, after the chat scene: one instance at a time.
     lane: 'build',
     why: "the master's composer typed into beside its board under the board's load, the master's churn and a 3,000-edit flood every 10 s: keystroke to frame p95 within 16 ms idle and 33 ms busy, no long task over 100 ms while typing, every character in order (scripts/measure-renderer-soak.ts --gate --scene typing, 90 s at most)",
-    mac: true
+    mac: true,
+    paths: SOAK_PATHS
   },
   {
     name: 'renderer-soak-scroll',
@@ -197,7 +336,8 @@ export const STEPS: Step[] = [
     // The same lane, after the typing scene: one instance at a time.
     lane: 'build',
     why: "the master's transcript, its board, the rail and the workspace column each turned by the wheel at 60 Hz for 4 s and flung under the board's load: every one moves and no long task runs while it does; the frame rate and the longest frame are reported against the target until a run on the Mac sizes them (scripts/measure-renderer-soak.ts --gate --scene scroll, 90 s at most)",
-    mac: true
+    mac: true,
+    paths: SOAK_PATHS
   },
   {
     name: 'e2e-remote-fence',
@@ -205,7 +345,8 @@ export const STEPS: Step[] = [
     cmd: 'bun',
     args: ['run', 'script:e2e-remote-fence'],
     lane: 'e2e',
-    why: 'the remote fence, pairing, webhook and hello rules against a real server (boots an instance)'
+    why: 'the remote fence, pairing, webhook and hello rules against a real server (boots an instance)',
+    paths: ['src/main/server/remote/**', 'scripts/e2e-remote-fence.ts', ...CONTRACT_PATHS, ...RUNNERS]
   },
   // The store proofs: one at a time in the e2e lane after the fence, two
   // headless instances each at most, each waiting for the build (build.done).
@@ -216,7 +357,8 @@ export const STEPS: Step[] = [
     args: ['run', 'script:e2e-addons', '--', '--gate'],
     lane: 'e2e',
     capMs: STORE_CAP_MS['e2e-addons'],
-    why: 'the add-on host, grants, exposure and the codex bridge against fake MCP servers on two paired headless instances; the real-Claude leg skipped (scripts/e2e-addons.ts --gate)'
+    why: 'the add-on host, grants, exposure and the codex bridge against fake MCP servers on two paired headless instances; the real-Claude leg skipped (scripts/e2e-addons.ts --gate)',
+    paths: ADDON_PATHS
   },
   {
     name: 'e2e-addon-grants',
@@ -225,7 +367,8 @@ export const STEPS: Step[] = [
     args: ['run', 'script:e2e-addon-grants', '--', '--gate'],
     lane: 'e2e',
     capMs: STORE_CAP_MS['e2e-addon-grants'],
-    why: 'add-on grants signed in on the "mac", handed to and refreshed on the "box", against a fake OAuth server on two paired headless instances (scripts/e2e-addon-grants.ts --gate)'
+    why: 'add-on grants signed in on the "mac", handed to and refreshed on the "box", against a fake OAuth server on two paired headless instances (scripts/e2e-addon-grants.ts --gate)',
+    paths: ADDON_PATHS
   },
   {
     name: 'e2e-skills-store',
@@ -234,7 +377,8 @@ export const STEPS: Step[] = [
     args: ['run', 'script:e2e-skills-store', '--', '--gate'],
     lane: 'e2e',
     capMs: STORE_CAP_MS['e2e-skills-store'],
-    why: 'the skills store on two paired headless instances: the import, the seed, the views and their path text, a rewrite under a reader, the card, the slash menu, a removal, a restart (scripts/e2e-skills-store.ts --gate)'
+    why: 'the skills store on two paired headless instances: the import, the seed, the views and their path text, a rewrite under a reader, the card, the slash menu, a removal, a restart (scripts/e2e-skills-store.ts --gate)',
+    paths: SKILL_PATHS
   },
   {
     name: 'e2e-skills-drivers',
@@ -243,7 +387,8 @@ export const STEPS: Step[] = [
     args: ['run', 'script:e2e-skills-drivers', '--', '--gate'],
     lane: 'e2e',
     capMs: STORE_CAP_MS['e2e-skills-drivers'],
-    why: "the real Claude, Codex and Muse CLIs of one headless instance against the config-dir spike's fake providers: each reads the store's skill and never a home one, a rewrite reaches the next turn (scripts/e2e-skills-drivers.ts --gate)"
+    why: "the real Claude, Codex and Muse CLIs of one headless instance against the config-dir spike's fake providers: each reads the store's skill and never a home one, a rewrite reaches the next turn (scripts/e2e-skills-drivers.ts --gate)",
+    paths: [...SKILL_PATHS, 'src/main/server/drivers/**']
   },
   {
     name: 'hub',
@@ -252,7 +397,8 @@ export const STEPS: Step[] = [
     args: ['run', 'hub:test'],
     lane: 'hub',
     why: 'the Cloudflare hub worker tests (infra/hub)',
-    mac: true
+    mac: true,
+    paths: ['infra/hub/**']
   },
   {
     name: 'ios',
@@ -261,7 +407,8 @@ export const STEPS: Step[] = [
     args: ['run', 'ios:test'],
     lane: 'swift',
     why: 'the iOS contract package (swift build + test)',
-    mac: true
+    mac: true,
+    paths: IOS_PATHS
   },
   {
     name: 'ios-client',
@@ -270,7 +417,8 @@ export const STEPS: Step[] = [
     args: ['run', 'ios:test:client'],
     lane: 'swift',
     why: 'the iOS client package against a live test server (boots an instance)',
-    mac: true
+    mac: true,
+    paths: IOS_PATHS
   },
   {
     name: 'computer-swift',
@@ -279,7 +427,8 @@ export const STEPS: Step[] = [
     args: ['run', 'computer:test'],
     lane: 'swift',
     why: 'the tc-computer Swift package: the generated wire types against the fixtures (swift build + test)',
-    mac: true
+    mac: true,
+    paths: [...COMPUTER_WIRE_PATHS, 'scripts/computer-test.sh']
   },
   // The Mac's TC Probe proofs, before the bench in its lane, so a cheap
   // failure stops the gate before the models run. Each waits for the build
@@ -293,7 +442,8 @@ export const STEPS: Step[] = [
     capMs: COMPUTER_CAP_MS['e2e-tc-computer'],
     why: 'the shipped tc-computer on TC Probe alone, ungated: launch in the background, list, find, Ping at the ax tier, the forced-miss service, a screenshot, a cancelled wait, a crash and restart (scripts/e2e-tc-computer.ts --gate)',
     mac: true,
-    screen: true
+    screen: true,
+    paths: COMPUTER_PATHS
   },
   {
     name: 'e2e-computer-bridge',
@@ -304,7 +454,8 @@ export const STEPS: Step[] = [
     capMs: COMPUTER_CAP_MS['e2e-computer-bridge'],
     why: "a box thread's computer calls through the Mac bridge with both halves on the Mac (--pair local: the box half a second headless instance seamed linux), on TC Probe, no model (scripts/e2e-computer-bridge.ts --gate)",
     mac: true,
-    screen: true
+    screen: true,
+    paths: BRIDGE_PATHS
   },
   {
     name: 'e2e-computer-preview',
@@ -315,7 +466,8 @@ export const STEPS: Step[] = [
     capMs: COMPUTER_CAP_MS['e2e-computer-preview'],
     why: "the live preview's stream, acks and click marks against TC Probe, no model; the Escape tap's leg skipped, since it takes the person's Escape (scripts/e2e-computer-preview.ts --gate)",
     mac: true,
-    screen: true
+    screen: true,
+    paths: COMPUTER_PATHS
   },
   {
     name: 'computer-bench',
@@ -328,7 +480,8 @@ export const STEPS: Step[] = [
     onlyAtPublish: true,
     why: 'real desktop tasks (TextEdit, Chrome, a dev window, System Settings, a save dialog) through the computer tools and tc-computer on three models side by side, in the background tiers: each end state, median tool calls, and median host time per task and per action step against the baseline in the gate dir (scripts/e2e-computer-bench.ts --gate, about 6 min, 15 min at most)',
     mac: true,
-    screen: true
+    screen: true,
+    paths: COMPUTER_PATHS
   }
 ]
 
@@ -364,6 +517,80 @@ export function atPublishSkips(steps: readonly Step[], pulled: ReadonlySet<Tier>
 }
 
 /** `15m`, `90s`: a cap as the report says it. */
+/** Whether a changed path falls in a publish row's ground (its paths and EVERY_ROW_PATHS). */
+export function rowTouched(step: Step, changed: readonly string[]): boolean {
+  const patterns = [...EVERY_ROW_PATHS, ...(step.paths ?? ['**'])]
+  return changed.some((path) => patterns.some((p) => matchPath(p, path)))
+}
+
+/** Where a row's changes are counted from: the commit it last passed at while HEAD still holds it, else the last release. */
+export function rowBase(lastPass: string | undefined, release: string, holds: (sha: string) => boolean): string {
+  return lastPass && holds(lastPass) ? lastPass : release
+}
+
+/**
+ * The publish rows a release leaves out, with the note the report carries:
+ * a row runs when a path of its own changed since its base (rowBase), so a
+ * row that went red, or was skipped for the screen, runs again at the next
+ * release until it passes. No release to count from runs every row.
+ */
+export function rowSkips(
+  steps: readonly Step[],
+  release: string,
+  lastPass: Readonly<Record<string, string>>,
+  holds: (sha: string) => boolean,
+  changedSince: (ref: string) => readonly string[] | null
+): Map<string, string> {
+  const out = new Map<string, string>()
+  if (!release) return out
+  for (const s of steps) {
+    if (s.tier !== 'publish') continue
+    const base = rowBase(lastPass[s.name], release, holds)
+    const changed = changedSince(base)
+    // a ref git cannot read counts as every path changed
+    if (changed && !rowTouched(s, changed)) out.set(s.name, `no change to its paths since ${base === release ? release : `its last pass at ${base.slice(0, 9)}`}`)
+  }
+  return out
+}
+
+/** Each publish row's last pass, by row: the HEAD it passed at (<gate-dir>/rows-green.json). */
+export function readRowsGreen(dir: string): Record<string, string> {
+  try {
+    return JSON.parse(readFileSync(join(dir, 'rows-green.json'), 'utf8')) as Record<string, string>
+  } catch {
+    return {}
+  }
+}
+
+export function storeRowsGreen(dir: string, head: string, results: readonly StepResult[], steps: readonly Step[]): void {
+  const passed = results.filter((r) => r.outcome === 'passed' && steps.find((s) => s.name === r.name)?.tier === 'publish')
+  if (passed.length === 0) return
+  const green = readRowsGreen(dir)
+  for (const r of passed) green[r.name] = head
+  mkdirSync(dir, { recursive: true })
+  writeFileSync(join(dir, 'rows-green.json'), JSON.stringify(green, null, 2) + '\n')
+}
+
+/**
+ * The lines the proofs after a release add to the publish's output, read by
+ * src/shared/releasePhases.ts: one per row that needs a word (red, passed on
+ * its second try, skipped for the host or the screen), or the one line that
+ * says no row ran.
+ */
+export function proofLines(report: Report, logDir: string, release: string, pathSkipped: ReadonlySet<string>): string[] {
+  const ran = report.results.filter((r) => r.outcome !== 'skipped')
+  if (ran.length === 0 && report.results.every((r) => pathSkipped.has(r.name))) {
+    return [`proof – no row's paths changed since ${release || 'the last release'}`]
+  }
+  const lines: string[] = []
+  for (const r of report.results) {
+    if (r.outcome === 'failed' || r.outcome === 'stopped') lines.push(`proof ✗ ${r.name} ${r.note ?? `exit ${r.exitCode ?? 'by signal'}`}, log ${join(logDir, `${r.name}.log`)}`)
+    else if (r.outcome === 'passed' && r.note?.startsWith(SECOND_TRY_PASSED)) lines.push(`proof ✓ ${r.name} ${r.note}`)
+    else if (r.outcome === 'skipped' && !pathSkipped.has(r.name)) lines.push(`proof – ${r.name} ${r.note ?? 'skipped'}`)
+  }
+  return lines
+}
+
 export const fmtCap = (ms: number): string => (ms % 60_000 === 0 ? `${ms / 60_000}m` : ms % 1000 === 0 ? `${ms / 1000}s` : `${ms}ms`)
 
 /**
@@ -514,6 +741,38 @@ export function gateDir(repo: string): string {
   return join(dir, 'temp-code-gate')
 }
 
+function headOf(repo: string): string | undefined {
+  try {
+    return execFileSync('git', ['rev-parse', '--verify', '-q', 'HEAD'], { cwd: repo, encoding: 'utf8', env: plainEnv(), stdio: ['ignore', 'pipe', 'ignore'] }).trim() || undefined
+  } catch {
+    return undefined
+  }
+}
+
+function isAncestor(repo: string, sha: string): boolean {
+  try {
+    execFileSync('git', ['merge-base', '--is-ancestor', sha, 'HEAD'], { cwd: repo, env: plainEnv(), stdio: 'ignore' })
+    return true
+  } catch {
+    return false
+  }
+}
+
+/** changedPathsSince, once per ref, and null for a ref git cannot read. */
+function changedSinceOrNull(repo: string): (ref: string) => string[] | null {
+  const seen = new Map<string, string[] | null>()
+  return (ref) => {
+    if (!seen.has(ref)) {
+      try {
+        seen.set(ref, changedPathsSince(repo, ref))
+      } catch {
+        seen.set(ref, null)
+      }
+    }
+    return seen.get(ref)!
+  }
+}
+
 /** Paths changed between `since` and the working tree (the commits and any uncommitted edits). */
 export function changedPathsSince(repo: string, since: string): string[] {
   const lines = git(repo, ['diff', '--name-only', since]).split('\n')
@@ -597,25 +856,36 @@ export interface Report {
 export interface RunnerEvents {
   onStart?: (step: Step) => void
   onFinish?: (result: StepResult) => void
+  /** A failed row about to run its second try, alone (`retry`). */
+  onRetry?: (step: Step, first: StepResult) => void
 }
 
 export type RunOne = (step: Step, signal: AbortSignal) => Promise<{ exitCode: number | null; tail: string }>
 
+export const SECOND_TRY_PASSED = 'passed on the second try'
+export const SECOND_TRY_FAILED = 'failed twice'
+
 /**
  * Runs the steps lane by lane: each lane in array order, all lanes at once.
  * The first failure stops the gate: nothing more starts, the running steps
- * are aborted and reported as `stopped`, the rest as `not run`.
+ * are aborted and reported as `stopped`, the rest as `not run`. With
+ * `retry` (the proofs after a release) a failure stops nothing: every
+ * other row runs, then each failed row runs once more, alone and one at a
+ * time, and is reported by its second try ("passed on the second try" or
+ * "failed twice").
  */
 export async function runSteps(
   steps: readonly Step[],
   runOne: RunOne,
   events: RunnerEvents = {},
-  skipped: Map<string, string> = new Map()
+  skipped: Map<string, string> = new Map(),
+  opts: { retry?: boolean } = {}
 ): Promise<Report> {
   const t0 = Date.now()
   const results = new Map<string, StepResult>()
   const controller = new AbortController()
   let failed = false
+  const retries: Step[] = []
   const lanes = new Map<string, Step[]>()
   for (const step of steps) {
     if (skipped.has(step.name)) {
@@ -626,6 +896,36 @@ export async function runSteps(
     }
     lanes.set(step.lane, [...(lanes.get(step.lane) ?? []), step])
   }
+  const runStep = async (step: Step): Promise<StepResult> => {
+    events.onStart?.(step)
+    const start = Date.now()
+    // The cap aborts the step alone, through the same kill a failure uses.
+    const cap = step.capMs ? new AbortController() : null
+    const capTimer = cap ? setTimeout(() => cap.abort(), step.capMs) : undefined
+    const signal = cap ? AbortSignal.any([controller.signal, cap.signal]) : controller.signal
+    try {
+      const { exitCode, tail } = await runOne(step, signal)
+      const ms = Date.now() - start
+      if (cap?.signal.aborted) return { name: step.name, outcome: 'failed', ms, exitCode, tail, note: `passed its ${fmtCap(step.capMs!)} cap` }
+      if (exitCode === 0) {
+        const flakes = flakesInLog(tail)
+        return { name: step.name, outcome: 'passed', ms, ...(flakes.length ? { flakes, note: `${flakes.length} flake${flakes.length === 1 ? '' : 's'}` } : {}) }
+      }
+      if (controller.signal.aborted && failed) return { name: step.name, outcome: 'stopped', ms, exitCode, tail }
+      return { name: step.name, outcome: 'failed', ms, exitCode, tail }
+    } catch (err) {
+      return {
+        name: step.name,
+        outcome: controller.signal.aborted && failed ? 'stopped' : 'failed',
+        ms: Date.now() - start,
+        exitCode: null,
+        tail: err instanceof Error ? err.message : String(err),
+        ...(cap?.signal.aborted ? { note: `passed its ${fmtCap(step.capMs!)} cap` } : {})
+      }
+    } finally {
+      clearTimeout(capTimer)
+    }
+  }
   const done = new Map<string, Promise<void>>()
   const runLane = async (queue: Step[]): Promise<void> => {
     const after = LANE_AFTER[queue[0].lane]
@@ -635,34 +935,11 @@ export async function runSteps(
         results.set(step.name, { name: step.name, outcome: 'not run', ms: 0 })
         continue
       }
-      events.onStart?.(step)
-      const start = Date.now()
-      // The cap aborts the step alone, through the same kill a failure uses.
-      const cap = step.capMs ? new AbortController() : null
-      const capTimer = cap ? setTimeout(() => cap.abort(), step.capMs) : undefined
-      const signal = cap ? AbortSignal.any([controller.signal, cap.signal]) : controller.signal
-      let result: StepResult
-      try {
-        const { exitCode, tail } = await runOne(step, signal)
-        const ms = Date.now() - start
-        if (cap?.signal.aborted) result = { name: step.name, outcome: 'failed', ms, exitCode, tail, note: `passed its ${fmtCap(step.capMs!)} cap` }
-        else if (exitCode === 0) {
-          const flakes = flakesInLog(tail)
-          result = { name: step.name, outcome: 'passed', ms, ...(flakes.length ? { flakes, note: `${flakes.length} flake${flakes.length === 1 ? '' : 's'}` } : {}) }
-        }
-        else if (controller.signal.aborted && failed) result = { name: step.name, outcome: 'stopped', ms, exitCode, tail }
-        else result = { name: step.name, outcome: 'failed', ms, exitCode, tail }
-      } catch (err) {
-        result = {
-          name: step.name,
-          outcome: controller.signal.aborted && failed ? 'stopped' : 'failed',
-          ms: Date.now() - start,
-          exitCode: null,
-          tail: err instanceof Error ? err.message : String(err),
-          ...(cap?.signal.aborted ? { note: `passed its ${fmtCap(step.capMs!)} cap` } : {})
-        }
-      } finally {
-        clearTimeout(capTimer)
+      const result = await runStep(step)
+      if (result.outcome === 'failed' && opts.retry) {
+        retries.push(step)
+        results.set(step.name, result)
+        continue
       }
       if (result.outcome === 'failed' && !failed) {
         failed = true
@@ -678,6 +955,19 @@ export async function runSteps(
   for (const [lane, queue] of lanes) done.set(lane, ready.then(() => runLane(queue)))
   release()
   await Promise.all(done.values())
+  // The second tries, in the order the steps are listed, one at a time.
+  for (const step of steps.filter((s) => retries.includes(s))) {
+    const first = results.get(step.name)!
+    events.onRetry?.(step, first)
+    const second = await runStep(step)
+    const result: StepResult =
+      second.outcome === 'passed'
+        ? { ...second, ms: first.ms + second.ms, note: [SECOND_TRY_PASSED, second.note].filter(Boolean).join(', ') }
+        : { ...second, ms: first.ms + second.ms, note: [SECOND_TRY_FAILED, second.note].filter(Boolean).join(', ') }
+    if (result.outcome === 'failed') failed = true
+    results.set(step.name, result)
+    events.onFinish?.(result)
+  }
   const ordered = steps.map((s) => results.get(s.name)!).filter(Boolean)
   return { ok: !failed, ms: Date.now() - t0, results: ordered }
 }
@@ -866,6 +1156,10 @@ export interface GateOptions {
   only?: string[]
   skip?: string[]
   verbose: boolean
+  /** The proofs after a release (release-publish.sh): the publish rows whose
+   *  paths changed since this ref ('' runs them all), a failed row retried
+   *  once alone, nothing stopped, and the proofs phase's lines. */
+  afterRelease?: string
   /** The step list; STEPS unless a test names its own. */
   steps?: readonly Step[]
   /** Host and screen seams for runner tests. */
@@ -888,11 +1182,13 @@ export function parseArgs(argv: string[]): Omit<GateOptions, 'repo'> {
     else if (a.startsWith('--since=')) opts.since = a.slice(8)
     else if (a === '--full') opts.full = true
     else if (a === '--verbose' || a === '-v') opts.verbose = true
+    else if (a === '--after-release') opts.afterRelease = value()
+    else if (a.startsWith('--after-release=')) opts.afterRelease = a.slice(16)
     else if (a === '--only') opts.only = value().split(',').filter(Boolean)
     else if (a === '--skip') opts.skip = value().split(',').filter(Boolean)
     else if (a === '--help' || a === '-h') {
       console.log(
-        'usage: bun run gate [--tier commit|publish|all] [--since <ref>] [--full] [--only a,b] [--skip a,b] [--verbose]'
+        'usage: bun run gate [--tier commit|publish|all] [--since <ref>] [--after-release <ref>] [--full] [--only a,b] [--skip a,b] [--verbose]'
       )
       process.exit(0)
     } else throw new Error(`unknown argument ${a}`)
@@ -901,6 +1197,18 @@ export function parseArgs(argv: string[]): Omit<GateOptions, 'repo'> {
 }
 
 const stamp = (): string => new Date().toTimeString().slice(0, 8)
+
+/** A phase line's time, as release-publish.sh's `fmt` writes it: 71s, 4m12s. */
+export function fmtPhase(ms: number): string {
+  const s = Math.round(ms / 1000)
+  return s >= 60 ? `${Math.floor(s / 60)}m${s % 60}s` : `${s}s`
+}
+
+/** The proofs phase's closing line: – when no row ran, ✗ when one is red. */
+export function proofsPhaseLine(report: Report): string {
+  const ran = report.results.some((r) => r.outcome !== 'skipped')
+  return ran ? `phase ${report.ok ? '✓' : '✗'} proofs ${fmtPhase(report.ms)}` : 'phase – proofs skipped'
+}
 
 export async function gate(opts: GateOptions): Promise<Report> {
   const tiers = new Set(opts.tiers)
@@ -914,11 +1222,16 @@ export async function gate(opts: GateOptions): Promise<Report> {
       console.log(`${stamp()} + ${tier} tier: ${hits.length === 1 ? hits[0] : `${hits[0]} and ${hits.length - 1} more`} changed since ${opts.since}`)
     }
   }
+  const after = opts.afterRelease !== undefined
+  if (after) console.log('phase › proofs')
   const steps = selectSteps({ tiers, only: opts.only, skip: opts.skip }, opts.steps)
   const dir = gateDir(opts.repo)
+  const head = headOf(opts.repo)
   const barrier = buildBarrier(steps, dir)
   if (barrier) rmSync(barrier.file, { force: true })
-  const skipped = new Map([...macOnlySkips(steps, opts.platform), ...atPublishSkips(steps, pulled), ...whenAskedSkips(steps, opts)])
+  const pathSkipped = after ? rowSkips(steps, opts.afterRelease!, readRowsGreen(dir), (sha) => isAncestor(opts.repo, sha), changedSinceOrNull(opts.repo)) : new Map<string, string>()
+  // a row left out for its paths says so, whatever else would skip it
+  const skipped = new Map([...macOnlySkips(steps, opts.platform), ...atPublishSkips(steps, pulled), ...whenAskedSkips(steps, opts), ...pathSkipped])
   for (const [name, note] of screenOnlySkips(
     steps.filter((s) => !skipped.has(s.name)),
     opts.readScreen ?? (() => readMacScreen(join(dir, 'logs'))),
@@ -933,6 +1246,7 @@ export async function gate(opts: GateOptions): Promise<Report> {
     }
   }
   console.log(`${stamp()} gate: ${[...tiers].join('+')} tier${tiers.size > 1 ? 's' : ''}, ${steps.length} step${steps.length === 1 ? '' : 's'}: ${steps.map((s) => s.name).join(', ')}`)
+  if (after && pathSkipped.size) console.log(`${stamp()} ${steps.length - pathSkipped.size} of ${steps.length} rows touched since ${opts.afterRelease}; untouched: ${[...pathSkipped.keys()].join(', ')}`)
   const tty = Boolean(process.stdout.isTTY) && !opts.verbose
   const running = new Map<string, number>()
   let ticker: NodeJS.Timeout | undefined
@@ -966,9 +1280,16 @@ export async function gate(opts: GateOptions): Promise<Report> {
         console.log(`${stamp()} ${MARK[r.outcome]} ${r.name}${time} ${r.outcome}${r.note ? `: ${r.note}` : ''}`)
         for (const f of r.flakes ?? []) console.log(`  flake: ${f}`)
         draw()
+      },
+      onRetry: (step, first) => {
+        // the first try's log stays beside the second's
+        const log = join(dir, 'logs', `${step.name}.log`)
+        if (existsSync(log)) renameSync(log, join(dir, 'logs', `${step.name}.first.log`))
+        console.log(`${stamp()} ↻ ${step.name} ${first.note ?? 'failed'}: running it once more, alone`)
       }
     },
-    skipped
+    skipped,
+    { retry: after }
   )
   if (ticker) clearInterval(ticker)
   clear()
@@ -978,6 +1299,11 @@ export async function gate(opts: GateOptions): Promise<Report> {
     join(dir, 'last-run.json'),
     JSON.stringify({ at: new Date().toISOString(), tiers: [...tiers], ok: report.ok, ms: report.ms, steps: report.results.map(({ tail: _t, ...r }) => r) }, null, 2) + '\n'
   )
+  if (head) storeRowsGreen(dir, head, report.results, steps)
+  if (after) {
+    for (const line of proofLines(report, join(dir, 'logs'), opts.afterRelease!, new Set(pathSkipped.keys()))) console.log(line)
+    console.log(proofsPhaseLine(report))
+  }
   if (report.ok && hash && hashStep && (report.results.find((r) => r.name === hashStep.name)?.outcome === 'passed')) {
     storeHash(dir, hash)
   }

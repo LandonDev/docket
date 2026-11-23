@@ -19,8 +19,15 @@
 # requirement, so the Developer ID signature is what makes updates install;
 # Gatekeeper reads a notarization ticket only on a quarantined bundle, a
 # browser download, and this app is its owner's alone), a zip and no dmg,
-# the publish tier of the gate running BESIDE the build, and the box's
-# tarball packed from out/ and uploaded while the app is still being signed.
+# the box's tarball packed from out/ and uploaded while the app is still
+# being signed, and the zip uploaded to the draft while it is checked the way
+# ShipIt will. What stands between a commit and the feed is the build, the
+# signature and team checks, the tc-computer check, the ShipIt check and the
+# feed check. The publish tier of the gate (the proofs) runs AFTER the feed
+# serves the release: only the rows whose paths changed since the last
+# published v1.0.N, a red row run once more alone, and a red result is a
+# notice (`proof ✗ <row> …, log <path>`), never a failed or deleted release;
+# the script still exits 0.
 #   --notarize  or TEMP_CODE_NOTARIZE=1  notarize, for a release someone
 #               else will download; needs the notary Keychain profile
 #   --dmg       or TEMP_CODE_DMG=1       build and upload the dmg too, for
@@ -31,10 +38,13 @@
 #               default: without it this script does what it always did
 #   --pack-only [dist-dir]               the box packing step alone, from
 #               the out/ already built: nothing signed or uploaded
-#   --dry-run                            every local phase (install, gate, build, sign,
-#               pack, the zip's validation) with its timing, on any
-#               commit; nothing pushed, no release, no upload, no feed
-#   GATE_SKIP=1                          skip the gate, to retry an upload
+#   --gated     or TEMP_CODE_GATED=1     the publish tier runs BESIDE the
+#               build, whole, and a red row stops the release (the old way)
+#   --dry-run                            every local phase (install, build, sign,
+#               pack, the zip's check, then the proofs) with its timing, on
+#               any commit; nothing pushed, no release, no upload, no feed,
+#               and /Applications is never read
+#   GATE_SKIP=1                          no gate and no proofs, to retry an upload
 #
 # One line per phase with its duration, a fixed prefix the app's publish
 # job reads (src/shared/releasePhases.ts):
@@ -42,7 +52,9 @@
 #   phase ✓ gate 71s      it passed, in that long
 #   phase ✗ build 12s     it failed
 #   phase – gate skipped  it was skipped
-#   phase ✓ total 4m12s 1.0.283   the whole run, and the version published
+#   phase ✓ total 4m12s 1.0.283   the feed serves it: the release is live
+#   proof ✗ soak exit 1, log <path>   a red proof row, after the total line
+#   proof ✓ soak passed on the second try
 #
 # One-time setup this script checks for:
 #   1. A "Developer ID Application" certificate in the Keychain
@@ -58,6 +70,7 @@ export PATH="$HOME/.bun/bin:/opt/homebrew/bin:$PATH"
 NOTARIZE=${TEMP_CODE_NOTARIZE:-0}
 DMG=${TEMP_CODE_DMG:-0}
 WIN=${TEMP_CODE_WIN:-0}
+GATED=${TEMP_CODE_GATED:-0}
 DRY=0
 while [ $# -gt 0 ]; do
   case $1 in
@@ -65,8 +78,9 @@ while [ $# -gt 0 ]; do
     --notarize) NOTARIZE=1 ;;
     --dmg) DMG=1 ;;
     --win) WIN=1 ;;
+    --gated) GATED=1 ;;
     --dry-run) DRY=1 ;;
-    *) echo "usage: $0 [--notarize] [--dmg] [--win] [--dry-run] | --pack-only [dist-dir]" >&2; exit 2 ;;
+    *) echo "usage: $0 [--notarize] [--dmg] [--win] [--gated] [--dry-run] | --pack-only [dist-dir]" >&2; exit 2 ;;
   esac
   shift
 done
@@ -99,11 +113,12 @@ STAGE=$(mktemp -d "${TMPDIR:-/tmp}/tc-publish.XXXXXX")
 DRAFTED=0
 GATE_PID=
 PACK_PID=
+UPLOAD_PID=
 on_exit() {
   status=$1
   if [ "$status" -ne 0 ]; then
     [ -z "$PH" ] || echo "phase ✗ $PH $(fmt $(( $(now) - PH0 )))"
-    for pid in $GATE_PID $PACK_PID; do pkill -P "$pid" 2>/dev/null || true; kill "$pid" 2>/dev/null || true; done
+    for pid in $GATE_PID $PACK_PID $UPLOAD_PID; do pkill -P "$pid" 2>/dev/null || true; kill "$pid" 2>/dev/null || true; done
     # Drop the draft so a fixed build can run again; nothing reached the feed.
     if [ "$DRAFTED" = 1 ]; then
       gh api "repos/$REPO/releases" \
@@ -183,20 +198,37 @@ fi
 # ── install, before the gate and build ──────────────────────────────────
 install_publish_dependencies "$STAGE/install.log" || exit 1
 
-# ── gate, beside the build ──────────────────────────────────────────────
+# ── gate, beside the build only with --gated ────────────────────────────
 # The publish tier of the gate (scripts/gate.ts): the renderer soak, the
 # remote fence proof, the hub tests and the iOS packages. The commit tier
-# already ran in the train; this is what it leaves to publish. It runs beside
-# the build; its verdict is read before anything reaches the feed. The
+# already ran in the train; this is what it leaves to publish. By default it
+# runs after the feed (run_proofs below). With --gated it runs whole beside
+# the build and its verdict is read before anything reaches the feed. The
 # renderer soak is the one step that reads out/: it waits for build.done
-# (touched below once the build and its size check pass), then runs its 90 s
-# while the app signs.
+# (touched below once the build and its size check pass).
 if [ -n "$GATE_SKIP" ]; then
   echo "phase – gate skipped"
-else
+elif [ "$GATED" = 1 ]; then
   bg_phase gate "$STAGE/gate.log" env TEMP_CODE_SOAK_BUILD_DONE="$STAGE/build.done" bun run gate --tier publish &
   GATE_PID=$!
+else
+  echo "phase – gate after the release"
 fi
+
+# The proofs after the release: the publish tier's rows whose paths changed
+# since the last published v1.0.N before this one (gate.ts --after-release),
+# each red row tried once more alone. Their phase and proof lines reach the
+# app; the gate's whole output and each row's log stay under
+# <git-dir>/temp-code-gate. Red proofs never change this script's exit.
+run_proofs() {
+  if [ -n "$GATE_SKIP" ]; then echo "phase – proofs skipped"; return 0; fi
+  if [ "$GATED" = 1 ]; then echo "phase – proofs in the gate"; return 0; fi
+  PREV=$(git tag --merged HEAD --list 'v1.0.*' --sort=-v:refname | grep -vx "v$VERSION" | head -1)
+  PROOFS_LOG="$(git rev-parse --git-dir)/temp-code-gate/proofs.log"
+  mkdir -p "$(dirname "$PROOFS_LOG")"
+  { TEMP_CODE_SOAK_BUILD_DONE="$STAGE/build.done" bun run gate --tier publish --after-release="$PREV" 2>&1 || true; } |
+    tee "$PROOFS_LOG" | grep --line-buffered -E '^(phase|proof) ' || true
+}
 
 # ── build ───────────────────────────────────────────────────────────────
 # electron-vite into out/, then the bundle-size check. The train's gate
@@ -246,7 +278,7 @@ bunx electron-builder --mac $TARGETS --arm64 --publish never \
   -c.mac.identity="${IDENTITY#Developer ID Application: }" \
   -c.mac.notarize="$([ "$NOTARIZE" = 1 ] && echo true || echo false)" \
   >"$STAGE/sign.log" 2>&1 || { tail -40 "$STAGE/sign.log" >&2; exit 1; }
-APP=dist/mac-arm64/TempCode.app
+APP=$PWD/dist/mac-arm64/TempCode.app
 [ -d "$APP" ] || { echo "electron-builder left no $APP" >&2; exit 1; }
 COMPUTER="$APP/Contents/Resources/app/resources/native/tc-computer"
 [ -f "$COMPUTER" ] || { echo "REFUSING TO PUBLISH $VERSION: signed app has no tc-computer" >&2; exit 1; }
@@ -298,63 +330,13 @@ if [ "$WIN" = 1 ]; then
 fi
 end
 
-# Before anything reaches the feed: check the zip the way Squirrel's ShipIt
-# will. ShipIt copies the update out of the zip and validates the copy against
-# the installed app's designated requirement with
-# SecStaticCodeCheckValidityWithErrors (nested code, strict, all
-# architectures); the 1.0.205 install on 2026-10-10 failed exactly there.
-# /Applications/TempCode.app is the reference when it is there (same
-# identity, same identifier, so the same requirement), else the signed app
-# the zip was made from. scripts/sqrlcheck.swift makes the same call; without
-# a Swift toolchain, codesign --verify --deep --strict is the fallback.
-refuse() {
-  echo "REFUSING TO PUBLISH $VERSION: $1" >&2
-  exit 1
-}
-echo "validating the zip the way ShipIt will"
-ditto -x -k "$ZIP" "$STAGE/unzipped" || refuse "the zip does not extract"
-[ -d "$STAGE/unzipped/TempCode.app" ] || refuse "the zip holds no TempCode.app"
-# The feed config electron-updater reads at every check. Without it the
-# installed app can never see another release (1.0.278); with another repo
-# in it, it would update from somewhere else.
-FEED_FILE="$STAGE/unzipped/TempCode.app/Contents/Resources/app-update.yml"
-[ -f "$FEED_FILE" ] || refuse "the app in the zip has no Contents/Resources/app-update.yml (electron-updater's feed config)"
-for want in "provider: github" "owner: LandonDev" "repo: temp-code"; do
-  grep -qx "$want" "$FEED_FILE" || refuse "Contents/Resources/app-update.yml does not say '$want'"
-done
-echo "app-update.yml names github LandonDev/temp-code"
-REFERENCE=$APP
-[ -d /Applications/TempCode.app ] && REFERENCE=/Applications/TempCode.app
-if swiftc -O -o "$STAGE/sqrlcheck" scripts/sqrlcheck.swift 2>"$STAGE/swiftc.log"; then
-  "$STAGE/sqrlcheck" "$REFERENCE" "$STAGE/unzipped/TempCode.app" ||
-    refuse "the extracted zip fails Squirrel's validation against $REFERENCE"
-else
-  echo "swiftc unavailable ($(head -1 "$STAGE/swiftc.log")); falling back to codesign --verify --deep --strict" >&2
-  codesign --verify --deep --strict "$STAGE/unzipped/TempCode.app" ||
-    refuse "the extracted zip fails codesign --verify --deep --strict"
-fi
-echo "zip validates"
-
-# ── the gate's verdict, and the tarball's upload ────────────────────────
-if [ -n "$GATE_PID" ]; then
-  wait "$GATE_PID" || { tail -60 "$STAGE/gate.log" >&2; refuse "the publish gate is red"; }
-  GATE_PID=
-fi
-wait "$PACK_PID" || refuse "the box tarball was not packed and uploaded"
-PACK_PID=
-
-if [ "$DRY" = 1 ]; then
-  echo "phase ✓ total $(fmt $(( $(now) - T0 ))) $VERSION"
-  echo "dry run of $VERSION done: dist/ holds the zip, latest-mac.yml and the box tarball$([ "$WIN" = 1 ] && echo ', and the Windows installer, zip and latest.yml'); nothing left this machine"
-  exit 0
-fi
-
-# ── upload ──────────────────────────────────────────────────────────────
+# ── upload, to the draft, beside the check ──────────────────────────────
 # Only what this run made: the zip (with its blockmap when electron-builder
 # wrote one), latest-mac.yml, and the dmg on --dmg. Without latest-mac.yml
 # the feed exists but no app can ever see an update. The unversioned dmg
-# copy gives the README a download link that never goes stale.
-begin upload
+# copy gives the README a download link that never goes stale. A draft is
+# nobody's feed, so the files go up while the zip is checked; a refusal
+# deletes the draft with them.
 set -- "$ZIP" dist/latest-mac.yml
 [ -f "$ZIP.blockmap" ] && set -- "$@" "$ZIP.blockmap"
 if [ "$DMG" = 1 ]; then
@@ -367,29 +349,90 @@ if [ "$WIN" = 1 ]; then
   set -- "$@" "dist/temp-code-$VERSION-setup.exe" "dist/temp-code-$VERSION-setup.exe.blockmap" \
     "dist/TempCode-$VERSION-win-x64.zip" dist/latest.yml
 fi
-gh release upload "v$VERSION" --repo "$REPO" --clobber "$@" >"$STAGE/upload.log" 2>&1 ||
-  { tail -10 "$STAGE/upload.log" >&2; exit 1; }
-gh release edit "v$VERSION" --repo "$REPO" --draft=false >/dev/null
-DRAFTED=0
-end
+if [ "$DRY" = 0 ]; then
+  bg_phase upload "$STAGE/upload.log" gh release upload "v$VERSION" --repo "$REPO" --clobber "$@" &
+  UPLOAD_PID=$!
+fi
 
-# ── feed ────────────────────────────────────────────────────────────────
-# Verify what the app will actually fetch, rather than trusting the upload.
-begin feed
-sleep 5
-FEED_VERSION=$(curl -sL "https://github.com/$REPO/releases/latest/download/latest-mac.yml" | sed -n 's/^version: //p')
-[ "$FEED_VERSION" = "$VERSION" ] || {
-  echo "feed still serves '$FEED_VERSION', expected '$VERSION'" >&2
+# Before anything reaches the feed: check the zip the way Squirrel's ShipIt
+# will. ShipIt copies the update out of the zip and validates the copy against
+# the installed app's designated requirement with
+# SecStaticCodeCheckValidityWithErrors (nested code, strict, all
+# architectures); the 1.0.205 install on 2026-10-10 failed exactly there.
+# /Applications/TempCode.app is the reference for a real publish when it is
+# there (same identity, same identifier, so the same requirement), else, and
+# always on a dry run, the signed app the zip was made from.
+# scripts/sqrlcheck.swift makes the same call, compiled once per version of
+# the file into ~/Library/Caches/temp-code-release; without a Swift
+# toolchain, codesign --verify --deep --strict is the fallback.
+refuse() {
+  echo "REFUSING TO PUBLISH $VERSION: $1" >&2
   exit 1
 }
-if [ "$WIN" = 1 ]; then
-  WIN_FEED_VERSION=$(curl -sL "https://github.com/$REPO/releases/latest/download/latest.yml" | sed -n 's/^version: //p')
-  [ "$WIN_FEED_VERSION" = "$VERSION" ] || {
-    echo "the Windows feed still serves '$WIN_FEED_VERSION', expected '$VERSION'" >&2
+begin check
+ditto -x -k "$ZIP" "$STAGE/unzipped" || refuse "the zip does not extract"
+[ -d "$STAGE/unzipped/TempCode.app" ] || refuse "the zip holds no TempCode.app"
+# The feed config electron-updater reads at every check. Without it the
+# installed app can never see another release (1.0.278); with another repo
+# in it, it would update from somewhere else.
+FEED_FILE="$STAGE/unzipped/TempCode.app/Contents/Resources/app-update.yml"
+[ -f "$FEED_FILE" ] || refuse "the app in the zip has no Contents/Resources/app-update.yml (electron-updater's feed config)"
+for want in "provider: github" "owner: LandonDev" "repo: temp-code"; do
+  grep -qx "$want" "$FEED_FILE" || refuse "Contents/Resources/app-update.yml does not say '$want'"
+done
+echo "app-update.yml names github LandonDev/temp-code"
+REFERENCE=$APP
+[ "$DRY" = 0 ] && [ -d /Applications/TempCode.app ] && REFERENCE=/Applications/TempCode.app
+SQRL_DIR="$HOME/Library/Caches/temp-code-release"
+SQRL="$SQRL_DIR/sqrlcheck-$(shasum -a 256 scripts/sqrlcheck.swift | cut -c1-16)"
+if [ -x "$SQRL" ] || { mkdir -p "$SQRL_DIR" && swiftc -O -o "$SQRL.$$" scripts/sqrlcheck.swift 2>"$STAGE/swiftc.log" && mv "$SQRL.$$" "$SQRL"; }; then
+  "$SQRL" "$REFERENCE" "$STAGE/unzipped/TempCode.app" ||
+    refuse "the extracted zip fails Squirrel's validation against $REFERENCE"
+else
+  echo "swiftc unavailable ($(head -1 "$STAGE/swiftc.log")); falling back to codesign --verify --deep --strict" >&2
+  codesign --verify --deep --strict "$STAGE/unzipped/TempCode.app" ||
+    refuse "the extracted zip fails codesign --verify --deep --strict"
+fi
+echo "zip validates"
+end
+
+# ── the gate's verdict, and the tarball's upload ────────────────────────
+if [ -n "$GATE_PID" ]; then
+  wait "$GATE_PID" || { tail -60 "$STAGE/gate.log" >&2; refuse "the publish gate is red"; }
+  GATE_PID=
+fi
+wait "$PACK_PID" || refuse "the box tarball was not packed and uploaded"
+PACK_PID=
+
+if [ "$DRY" = 1 ]; then
+  echo "phase ✓ total $(fmt $(( $(now) - T0 ))) $VERSION"
+  echo "dry run of $VERSION done: dist/ holds the zip, latest-mac.yml and the box tarball$([ "$WIN" = 1 ] && echo ', and the Windows installer, zip and latest.yml'); nothing left this machine"
+  run_proofs
+  exit 0
+fi
+
+wait "$UPLOAD_PID" || { tail -10 "$STAGE/upload.log" >&2; exit 1; }
+UPLOAD_PID=
+
+# ── feed ────────────────────────────────────────────────────────────────
+# Out of draft, then what the app will actually fetch, read once a second
+# until it names this version (a minute at most), rather than trusting the
+# upload.
+begin feed
+gh release edit "v$VERSION" --repo "$REPO" --draft=false >/dev/null
+DRAFTED=0
+feed_version() { curl -sL "https://github.com/$REPO/releases/latest/download/$1" | sed -n 's/^version: //p'; }
+tries=0
+until [ "$(feed_version latest-mac.yml)" = "$VERSION" ] && { [ "$WIN" = 0 ] || [ "$(feed_version latest.yml)" = "$VERSION" ]; }; do
+  tries=$((tries + 1))
+  [ "$tries" -lt 60 ] || {
+    echo "the feed still serves '$(feed_version latest-mac.yml)'$([ "$WIN" = 1 ] && echo " (Windows '$(feed_version latest.yml)')"), expected '$VERSION'" >&2
     exit 1
   }
-fi
+  sleep 1
+done
 end
 
 echo "phase ✓ total $(fmt $(( $(now) - T0 ))) $VERSION"
 echo "published $VERSION — feed verified at github.com/$REPO/releases"
+run_proofs

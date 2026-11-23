@@ -4232,7 +4232,7 @@ docs/box.md and a `build-manifest.json` (version, release number, commit,
 contract version, bun.lock's sha256, when and on what it was built) into
 `temp-code-out-1.0.N.tar.gz`, writes a sha256sum line beside it and
 uploads both to the draft of the GitHub release `v1.0.N` (a red gate
-deletes the draft with them). The dry run is
+under `--gated` deletes the draft with them). The dry run is
 `scripts/release-publish.sh --pack-only [dist-dir]` (or `bun run
 release:pack-out`): tar and sha from the `out/` already built, no Keychain,
 nothing uploaded; `--dry-run` runs every local phase with its timing.

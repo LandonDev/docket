@@ -325,7 +325,9 @@ and ios-client steps are `mac: true` (scripts/gate.ts `macOnlySkips`): a
 host off macOS skips them with "needs the Mac; release:publish runs it
 there" instead of failing on a missing swift, so a contract change lands
 through the box's merge gate and the box's release step; the Mac's
-publish gate runs them before anything ships.
+publish runs them once the release is live, and a red one is a notice
+(docs/release-gate.md "Proofs after the release"; `--gated` runs them
+before anything ships).
 `TEMP_CODE_GATE_STUB=<json>` (rules `{ step, branch?, ok, log? }`) decides
 a gate or release step without spawning, for the proofs.
 

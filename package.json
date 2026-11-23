@@ -10,7 +10,7 @@
     "lint": "eslint --cache .",
     "typecheck:node": "tsc --noEmit -p tsconfig.node.json --composite false",
     "typecheck:web": "tsc --noEmit -p tsconfig.web.json --composite false",
-    "typecheck": "npm run typecheck:node && npm run typecheck:web && npm run check:swift-contract && npm run check:swift-computer",
+    "typecheck": "bun scripts/typecheck.ts",
     "gen:swift": "bun scripts/gen-swift-contract.ts",
     "check:swift-contract": "bun scripts/gen-swift-contract.ts --check",
     "gen:swift-computer": "bun scripts/gen-swift-computer.ts",
