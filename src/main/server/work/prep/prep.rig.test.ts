@@ -1,14 +1,21 @@
+import { mkdtempSync, mkdirSync, readdirSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { PREP_TASKS_MAX, PREP_WORKING_MS, type PrepAhead, type PrepPage, type PrepUpcoming } from '@shared/contract-work-prep'
 import { parseSchedule } from '@shared/contract-work-routines'
 import type { WorkspaceMeta } from '@shared/domain'
 import { handled, NOT_HANDLED, type WorkToolResult } from '@shared/work'
 import { WORK_MODULES, type Caller, type WorkModule } from '../modules'
+import { canvas as canvasModule } from '../canvas/index'
 import { outbox as outboxModule } from '../outbox/index'
 import { adminKey, approveKey, makeRig, readKey, type Rig } from '../outbox/rig'
 import { AHEAD_ROUTINE } from './ahead'
 import { prep } from './index'
 import { PrepStore } from './store'
+import { templates as templatesModule } from '../templates/index'
+import { setStartersRoot } from '../templates/shelf'
+import { docx } from '../templates/testkit'
 import { FakeLifeos } from './testLifeos'
 
 /** Prep through the Work router, tools and pushes, with a fake session registry and dummy LifeOS data. */
@@ -46,7 +53,7 @@ function workspace(id: string, sector: string | null): void {
 }
 
 beforeEach(async () => {
-  rig = await makeRig({ modules: [outboxModule, prep] })
+  rig = await makeRig({ modules: [outboxModule, canvasModule, templatesModule, prep] })
   lifeos = new FakeLifeos()
   rig.work.ctx.lifeos = { connected: () => lifeos.connected, owner: () => lifeos, jwt: async () => 'jwt', subscribe: () => () => {} }
   workspace('ws-purdue', 'purdue')
@@ -505,5 +512,151 @@ describe('suggested tasks', () => {
     const add = vi.spyOn(rig.work.ctx.results, 'add')
     expect((await decide('accept', 's1')).page.doc.after?.tasks[0]?.state).toBe('filed')
     expect(add).not.toHaveBeenCalled()
+  })
+})
+
+describe('a recording or a transcript as the notes', () => {
+  const record = (name = 'Staff sync.m4a') => rig.rpc<{ sessionId: string; itemId?: string }>('work.prep.followUp', { ...params, recording: { name } })
+
+  it('needs no typed notes: it opens an empty meeting in the new thread’s own pane and names it on the page', async () => {
+    const starts = fakeStarts()
+    const { sessionId, itemId } = await record()
+    expect(sessionId).toBe('t-meeting-1')
+    const item = rig.work.ctx.canvas.get(itemId!)!
+    // the follow-up thread's pane holds it, with no file yet: the window puts the file there through work.meetings.start
+    expect(item).toMatchObject({ kind: 'meeting', sessionId: 't-meeting-1', source: { at: 'thread' }, title: 'Staff sync.m4a' })
+    expect(rig.work.ctx.canvas.forSession('t-meeting-1').map((i) => i.id)).toEqual([itemId])
+    const got = await page()
+    expect(got.notesFile).toEqual({ kind: 'meeting', itemId, title: 'Staff sync.m4a' })
+    expect(got.doc.notes).toMatchObject({ text: '', meetingItemId: itemId })
+    expect(got).toMatchObject({ state: 'after', followSessionId: 't-meeting-1' })
+    // the thread is told to read the meeting, and to write tasks through prep alone
+    const text = starts.mock.calls[0]![0].text
+    expect(text).toContain('Call prep_read: it names the meeting. Then read it with meeting_read')
+    expect(text).toContain('write no actions with meeting_notes')
+    expect(text).not.toContain('Use his notes.')
+    expect(starts.mock.calls[0]![0]).toMatchObject({ title: 'Follow up: Staff sync', about: { kind: 'event', ref: { at: 'lifeos', table: 'events', id: 'ev1' } } })
+  })
+
+  it('tells the thread which meeting to read through prep_read, and keeps what he typed beside it', async () => {
+    fakeStarts()
+    await note('Dana drives the van.')
+    const { itemId } = await record('sync.vtt')
+    const read = words(await call('prep_read', { event: 'ev1' }, 't-meeting-1'))
+    expect(read).toContain(`open beside this thread as meeting ${itemId}. Read it with meeting_read.`)
+    expect(read).toContain('His notes:\nDana drives the van.')
+  })
+
+  it('answers the thread still at work with its own meeting, and opens no second one', async () => {
+    const starts = fakeStarts()
+    const first = await record()
+    expect(await record('again.m4a')).toEqual(first)
+    expect(starts).toHaveBeenCalledTimes(1)
+    expect(rig.work.ctx.canvas.forSession('t-meeting-1')).toHaveLength(1)
+  })
+
+  it('says nothing of a transcript in any push: a push carries ids and a revision alone', async () => {
+    fakeStarts()
+    await note('The budget is 4,200 dollars.')
+    await record()
+    await call('prep_follow_up', { event: 'ev1', summary: [{ text: 'The budget is settled.' }], tasks: [{ title: 'Send the budget' }] })
+    expect(prepPushes().length).toBeGreaterThan(2)
+    for (const push of prepPushes()) expect(Object.keys(push).sort()).toEqual(['eventId', 'push', 'rev', 'workspaceId'])
+    expect(JSON.stringify(rig.pushes.filter((p) => p.push === 'work.prep'))).not.toContain('budget')
+  })
+
+  it('is his press alone', async () => {
+    await expect(prep.handle!({ id: '1', method: 'work.prep.followUp', params: { ...params, recording: { name: 'x.m4a' } } } as never, rig.work.ctx, asModel)).rejects.toThrow('only the owner changes a meeting’s page')
+  })
+
+  it('names no recording once its meeting is gone', async () => {
+    fakeStarts()
+    const { itemId } = await record()
+    rig.work.ctx.canvas.remove([itemId!])
+    expect((await page()).notesFile).toBeNull()
+  })
+})
+
+describe('notes written in a document', () => {
+  let base: string
+  let folder: string
+  const doc = () => rig.rpc<{ page: PrepPage; source: { at: string; host: string; path: string }; title: string }>('work.prep.notesDoc', { ...params, today: '2026-11-23' })
+  beforeEach(() => {
+    // The workspace's own folder, and a starters folder with the one template prep asks for. Dummy files.
+    base = realpathSync(mkdtempSync(join(tmpdir(), 'tc-prep-doc-')))
+    folder = join(base, 'Purdue')
+    mkdirSync(folder)
+    mkdirSync(join(base, 'starters', 'any'), { recursive: true })
+    writeFileSync(join(base, 'starters', 'any', 'Meeting notes.docx'), docx('{{Meeting}}', '{{Date}}'))
+    setStartersRoot(join(base, 'starters'))
+    rig.work.ctx.db.prepare('UPDATE workspaces SET path = ? WHERE id = ?').run(folder, 'ws-purdue')
+  })
+  afterEach(() => {
+    setStartersRoot(null)
+    rmSync(base, { recursive: true, force: true })
+  })
+
+  it('makes the notes file from the Meeting notes template in the workspace’s own folder, once, and keeps it as the notes', async () => {
+    const made = await doc()
+    expect(made.source).toEqual({ at: 'file', host: 'env_box', path: join(folder, 'Staff sync notes.docx') })
+    expect(made.title).toBe('Staff sync notes.docx')
+    expect(readdirSync(folder)).toEqual(['Staff sync notes.docx'])
+    expect(made.page.notesFile).toEqual({ kind: 'document', title: 'Staff sync notes.docx', source: made.source })
+    expect(made.page.doc.notes).toMatchObject({ text: '', file: made.source })
+    expect(made.page.state).toBe('after')
+    // a second ask answers the same file and makes no other
+    expect((await doc()).source).toEqual(made.source)
+    expect(readdirSync(folder)).toEqual(['Staff sync notes.docx'])
+    // words typed later sit beside it; clearing them keeps the file
+    expect((await note('And one more thing.')).page.doc.notes).toMatchObject({ text: 'And one more thing.', file: made.source })
+    expect((await note('')).page.doc.notes).toMatchObject({ text: '', file: made.source })
+  })
+
+  it('is opened beside the follow-up thread, which is told to read it with doc_read', async () => {
+    const starts = fakeStarts()
+    const made = await doc()
+    const { sessionId } = await follow()
+    const items = rig.work.ctx.canvas.forSession(sessionId)
+    expect(items).toMatchObject([{ kind: 'document', source: made.source, title: 'Staff sync notes.docx' }])
+    expect(starts.mock.calls[0]![0].text).toContain('Read it with doc_read, and change nothing in it.')
+    const read = words(await call('prep_read', { event: 'ev1' }, sessionId))
+    expect(read).toContain(`His notes are the document “Staff sync notes.docx”, open beside this thread as item ${items[0]!.id}. Read it with doc_read.`)
+    expect((await page()).notesFile).toMatchObject({ kind: 'document', itemId: items[0]!.id })
+  })
+
+  it('says so when the host has no Meeting notes template, and keeps the page as it was', async () => {
+    rmSync(join(base, 'starters'), { recursive: true })
+    await expect(doc()).rejects.toThrow()
+    expect(pages()).toBe(0)
+  })
+
+  it('is his press alone', async () => {
+    await expect(prep.handle!({ id: '1', method: 'work.prep.notesDoc', params } as never, rig.work.ctx, asModel)).rejects.toThrow('only the owner changes a meeting’s page')
+    expect(readdirSync(folder)).toEqual([])
+  })
+})
+
+describe('the push', () => {
+  it('fires on every change of a page’s state, so Today and the digest read again: none, working, briefed, after', async () => {
+    fakeStarts()
+    const states: string[] = []
+    const seen = () => prepPushes().length
+    const upcomingState = async () => (await rig.rpc<{ meetings: PrepUpcoming[] }>('work.prep.upcoming', { from: START - 3_600_000, to: START + 3_600_000 })).meetings[0]!.state
+    states.push(await upcomingState())
+    let before = seen()
+    await brief()
+    expect(seen()).toBeGreaterThan(before)
+    states.push(await upcomingState())
+    before = seen()
+    await call('prep_write', { event: 'ev1', matters: [{ text: 'Maya needs the seat list.' }] }, 't-meeting-1')
+    expect(seen()).toBeGreaterThan(before)
+    states.push(await upcomingState())
+    before = seen()
+    await note('Dana drives the van.')
+    expect(seen()).toBeGreaterThan(before)
+    states.push(await upcomingState())
+    expect(states).toEqual(['none', 'working', 'briefed', 'after'])
+    // each push names the page and nothing of it
+    expect(prepPushes().at(-1)).toEqual({ push: 'work.prep', workspaceId: 'ws-purdue', eventId: 'ev1', rev: expect.any(Number) })
   })
 })

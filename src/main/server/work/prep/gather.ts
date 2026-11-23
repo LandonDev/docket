@@ -16,7 +16,7 @@ import {
 } from '@shared/contract-work-prep'
 import { errorText, type SectorKey } from '@shared/work'
 import type { LifeosClient } from '../lifeos/ctx'
-import type { WorkCtx } from '../modules'
+import { WORK_MODULES, type Caller, type WorkCtx } from '../modules'
 import { aheadOf } from './ahead'
 import { lastOf, linksIn, personKey, seriesOf, subjectWords, type SeriesPage } from './series'
 import { PrepStore, type PageEvent, type PageRow } from './store'
@@ -185,6 +185,54 @@ async function draftsOf(client: LifeosClient, sector: SectorKey, threadId: strin
     .map((r) => ({ outboxId: r._id, subject: r.message.subject, to: r.message.to.map((p) => p.name?.trim() || p.address) }))
 }
 
+/** The name a file path shows by. */
+export const fileTitle = (path: string): string => path.split(/[\\/]/).pop() || path
+
+/**
+ * The file that holds the notes: the meeting beside the follow-up thread
+ * while its item still exists, or the document made for the notes, with its
+ * item beside that thread once the follow-up has opened it there.
+ */
+function notesFileOf(ctx: WorkCtx, row: PageRow | null): PrepPage['notesFile'] {
+  const notes = row?.doc.notes
+  if (!row || !notes) return null
+  try {
+    if (notes.meetingItemId) {
+      const item = ctx.canvas.get(notes.meetingItemId)
+      return item && item.kind === 'meeting' ? { kind: 'meeting', itemId: item.id, title: item.title } : null
+    }
+    const file = notes.file
+    if (file?.at !== 'file') return null
+    const held = row.followSessionId ? ctx.canvas.forSession(ctx.canvas.paneOf(row.followSessionId)).find((i) => i.kind === 'document' && i.source.at === 'file' && i.source.path === file.path) : undefined
+    return { kind: 'document', title: fileTitle(file.path), source: file, ...(held ? { itemId: held.id } : {}) }
+  } catch {
+    // A host whose canvas is not running names no file; the notes' words still show.
+    return null
+  }
+}
+
+/** This host's own caller, for a read prep makes of another pillar. */
+const HOST: Caller = { kind: 'local', caps: ['read'] }
+
+/**
+ * When to leave, as the clashes pillar works it out (from where he will be:
+ * the event before, or the job's start place), once that pillar is on this
+ * host; undefined when it is not, has nothing to say or does not answer, and
+ * the event's own leave time stands. Asked only for an event that passed
+ * prep's own sector fence.
+ */
+async function clashLeave(ctx: WorkCtx, eventId: string): Promise<number | undefined> {
+  try {
+    const clashes = WORK_MODULES.find((m) => m.id === 'clashes')
+    if (!clashes?.handle) return undefined
+    const answer = await clashes.handle({ id: 'prep', method: 'work.clashes.leave', params: { eventId } }, ctx, HOST)
+    const leave = answer.handled ? (answer.result as { leaveAt?: unknown } | null) : null
+    return typeof leave?.leaveAt === 'number' ? leave.leaveAt : undefined
+  } catch {
+    return undefined
+  }
+}
+
 export interface Gathered {
   page: PrepPage
   event: LifeEvent
@@ -209,7 +257,7 @@ export async function gather(ctx: WorkCtx, workspaceId: string, eventId: string,
   const problems: PrepProblem[] = []
   const words = subjectWords(event.title)
 
-  const [people, subject, before, drafts, ahead] = await Promise.all([
+  const [people, subject, before, drafts, ahead, leaveAt] = await Promise.all([
     Promise.all(
       drawn.map((p) =>
         personFacts(client, sector, p).catch(() => {
@@ -237,7 +285,8 @@ export async function gather(ctx: WorkCtx, workspaceId: string, eventId: string,
           return []
         })
       : Promise.resolve([]),
-    aheadOf(ctx, workspaceId)
+    aheadOf(ctx, workspaceId),
+    clashLeave(ctx, event._id)
   ])
 
   const tasks: PrepTask[] = []
@@ -255,7 +304,8 @@ export async function gather(ctx: WorkCtx, workspaceId: string, eventId: string,
       ...(event.endsAt !== undefined ? { endsAt: event.endsAt } : {}),
       allDay: event.allDay,
       ...(event.location ? { location: event.location } : {}),
-      ...(event.leaveAt !== undefined ? { leaveAt: event.leaveAt } : {})
+      // One leave time: the clashes pillar's when it has one, else LifeOS's own for the event.
+      ...((leaveAt ?? event.leaveAt) !== undefined ? { leaveAt: leaveAt ?? event.leaveAt } : {})
     },
     people: people.map((p) => p.person),
     morePeople: everyone.length - drawn.length,
@@ -268,6 +318,7 @@ export async function gather(ctx: WorkCtx, workspaceId: string, eventId: string,
     briefSessionId: row?.briefSessionId ?? null,
     followSessionId: row?.followSessionId ?? null,
     drafts,
+    notesFile: notesFileOf(ctx, row),
     aheadOn: ahead.on,
     aheadOffered: ahead.offered,
     problems

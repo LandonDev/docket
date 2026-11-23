@@ -1,9 +1,9 @@
 import { PREP_UPCOMING_MAX_MS, PREP_WORKING_MS, type PrepAddedPerson, type PrepPage } from '@shared/contract-work-prep'
-import { handled, NOT_HANDLED } from '@shared/work'
+import { errorText, handled, NOT_HANDLED, type CanvasSource } from '@shared/work'
 import type { Caller, WorkCtx, WorkModule } from '../modules'
 import { aheadOf, setAhead } from './ahead'
 import { decideTasks } from './after'
-import { eventOf, gather, standing, startDoc, upcoming } from './gather'
+import { eventOf, fileTitle, gather, standing, startDoc, upcoming } from './gather'
 import { pagePushed, writePage } from './page'
 import { briefMessage, briefTitle, followMessage, followTitle } from './prompts'
 import { changeInOrder } from './serial'
@@ -17,6 +17,9 @@ import { workspaceSector } from './workspace'
  * workspace’s host. A Work thread writes the brief or outcome with tools.
  * The pillar declares no act kind.
  */
+
+/** The starter the notes document is made from; his own template saved as "Meeting notes" takes its place (work-templates.md). */
+export const NOTES_TEMPLATE = 'any/meeting-notes'
 
 /** Refuse a thread’s own call to a person’s method. */
 export function mustBePerson(by: Caller): void {
@@ -41,31 +44,77 @@ async function setNotes(ctx: WorkCtx, workspaceId: string, eventId: string, text
   const event = await eventOf(ctx, workspaceSector(ctx, workspaceId), eventId)
   const { row, last } = standing(new PrepStore(ctx.db), workspaceId, event)
   const at = Date.now()
-  const notes = text.trim() ? { text: text.trim(), at } : null
-  writePage(ctx, workspaceId, event, last, { ...(row?.doc ?? startDoc(last)), notes }, at)
+  const doc = row?.doc ?? startDoc(last)
+  const words = text.trim()
+  // A file that holds the notes stays when the words beside it change or go.
+  const notes = words || doc.notes?.file || doc.notes?.meetingItemId ? { ...doc.notes, text: words, at } : null
+  writePage(ctx, workspaceId, event, last, { ...doc, notes }, at)
   return (await gather(ctx, workspaceId, eventId, at)).page
 }
 
-async function startThread(ctx: WorkCtx, workspaceId: string, eventId: string, kind: 'brief' | 'follow'): Promise<{ sessionId: string }> {
+/**
+ * Write in a document: the meeting's notes file, made from the job's Meeting
+ * notes template in the workspace's own folder and kept as the page's notes.
+ * Made once: a second ask answers the same file. His press, so Files' door
+ * judges it as his.
+ */
+async function makeNotesDoc(ctx: WorkCtx, by: Caller, workspaceId: string, eventId: string, today?: string): Promise<{ page: PrepPage; source: CanvasSource; title: string }> {
+  const event = await eventOf(ctx, workspaceSector(ctx, workspaceId), eventId)
+  const { row, last } = standing(new PrepStore(ctx.db), workspaceId, event)
+  const kept = row?.doc.notes?.file
+  if (kept?.at === 'file') return { page: (await gather(ctx, workspaceId, eventId)).page, source: kept, title: fileTitle(kept.path) }
+  // The templates pillar's own door for other pillars; loaded on the press, so prep loads without it.
+  const { makeFromTemplate } = await import('../templates/api')
+  const made = await makeFromTemplate(ctx, { workspaceId, template: NOTES_TEMPLATE, fields: { Meeting: event.title }, title: `${event.title} notes`, ...(today ? { today } : {}) }, by)
+  const now = Date.now()
+  const doc = row?.doc ?? startDoc(last)
+  writePage(ctx, workspaceId, event, last, { ...doc, notes: { text: doc.notes?.text ?? '', at: now, file: made.source } }, now)
+  return { page: (await gather(ctx, workspaceId, eventId, now)).page, source: made.source, title: made.source.at === 'file' ? fileTitle(made.source.path) : made.title }
+}
+
+async function startThread(ctx: WorkCtx, workspaceId: string, eventId: string, kind: 'brief' | 'follow', recording?: { name: string }): Promise<{ sessionId: string; itemId?: string }> {
   const { page, event, row, last } = await gather(ctx, workspaceId, eventId)
   const follow = kind === 'follow'
-  if (follow && !page.doc.notes) throw new Error('Add notes first.')
+  if (follow && !page.doc.notes && !recording) throw new Error('Add notes first.')
   const existing = follow ? row?.followSessionId : row?.briefSessionId
   const startedAt = follow ? row?.followAt : row?.briefAt
   const writtenAt = follow ? page.doc.after?.at : page.doc.brief?.at
   const now = Date.now()
   if (existing && startedAt != null && now - startedAt < PREP_WORKING_MS && (writtenAt === undefined || writtenAt < startedAt)) {
-    return { sessionId: existing }
+    // The thread still at work keeps its own meeting; a second recording is not opened beside it.
+    return { sessionId: existing, ...(follow && page.doc.notes?.meetingItemId ? { itemId: page.doc.notes.meetingItemId } : {}) }
   }
   const title = page.event.title
+  const notesDoc = page.doc.notes?.file
   const sessionId = await ctx.threads.start({
     workspaceId,
     title: follow ? followTitle(title) : briefTitle(title),
     about: { kind: 'event', label: title, ref: { at: 'lifeos', table: 'events', id: eventId } },
-    text: follow ? followMessage(page) : briefMessage(page)
+    text: follow ? followMessage(page, { recording: !!recording, document: !recording && notesDoc?.at === 'file' }) : briefMessage(page)
   })
-  writePage(ctx, workspaceId, event, last, page.doc, now, { [kind]: sessionId })
-  return { sessionId }
+  if (!recording) {
+    writePage(ctx, workspaceId, event, last, page.doc, now, { [kind]: sessionId })
+    if (follow && notesDoc?.at === 'file') {
+      // His notes document, beside the thread that reads it; a host whose canvas cannot open it still has the thread.
+      try {
+        ctx.canvas.open(ctx.canvas.paneOf(sessionId), 'document', notesDoc, fileTitle(notesDoc.path))
+      } catch (err) {
+        ctx.log(`prep: the notes document did not open beside its thread: ${errorText(err)}`)
+      }
+    }
+    return { sessionId }
+  }
+  // An empty meeting in the new thread's own pane: the window puts his file there through the meetings pillar's start,
+  // so the recording lands on this host and nowhere else, and the thread reads it with meeting_read.
+  let itemId: string | undefined
+  try {
+    itemId = ctx.canvas.open(ctx.canvas.paneOf(sessionId), 'meeting', { at: 'thread' }, recording.name).id
+  } finally {
+    // The thread is his either way: the page names it even when the meeting could not be opened.
+    const notes = itemId ? { text: page.doc.notes?.text ?? '', at: now, meetingItemId: itemId } : page.doc.notes
+    writePage(ctx, workspaceId, event, last, { ...page.doc, notes }, now, { follow: sessionId })
+  }
+  return { sessionId, itemId }
 }
 
 export const prep: WorkModule = {
@@ -91,7 +140,13 @@ export const prep: WorkModule = {
         mustBePerson(by)
         const { workspaceId, eventId } = req.params
         const kind = req.method === 'work.prep.brief' ? 'brief' : 'follow'
-        return handled(await changeInOrder(ctx, [workspaceId, eventId], () => startThread(ctx, workspaceId, eventId, kind)))
+        const recording = req.method === 'work.prep.followUp' ? req.params.recording : undefined
+        return handled(await changeInOrder(ctx, [workspaceId, eventId], () => startThread(ctx, workspaceId, eventId, kind, recording)))
+      }
+      case 'work.prep.notesDoc': {
+        mustBePerson(by)
+        const { workspaceId, eventId, today } = req.params
+        return handled(await changeInOrder(ctx, [workspaceId, eventId], () => makeNotesDoc(ctx, by, workspaceId, eventId, today)))
       }
       case 'work.prep.notes': {
         mustBePerson(by)

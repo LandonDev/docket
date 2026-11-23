@@ -25,7 +25,7 @@ import { shared, useShared } from "../tasks/store";
 import { useMinute } from "../tasks/minute";
 import type { WorkViewProps } from "../views/registry";
 import { ViewStateLine } from "../views/ViewStateLine";
-import { briefPrep, decidePrepTasks, followUpPrep, loadPrep, setPrepAhead, usePrep, usePrepHeld } from "./data";
+import { briefPrep, decidePrepTasks, followUpPrep, loadPrep, openWorkspaceFile, setPrepAhead, usePrep, usePrepHeld } from "./data";
 import {
   addTasksLabel,
   briefIsComing,
@@ -37,6 +37,7 @@ import {
   moreWords,
   nobodyOn,
   notesAreLong,
+  notesFileKind,
   pageThread,
   personLine,
   personTrail,
@@ -296,6 +297,12 @@ export function View(props: WorkViewProps) {
         onAddPeople={() => ui.set({ dialog: "people" })}
         onDecide={(ids, decision) => decidePrepTasks(props.env, workspaceId, eventId, ids, decision)}
         onOpenDraft={(draft) => openHeld({ at: "lifeos", table: "outbox", id: draft.outboxId }, props.env)}
+        onOpenNotesFile={() => {
+          const file = page.notesFile;
+          // Beside the thread that reads it, once there is one; a document not yet followed up opens beside a new thread.
+          if (file?.itemId && page.followSessionId) workOpenPort.get()?.(page.followSessionId);
+          else if (file?.kind === "document" && file.source?.at === "file") void openWorkspaceFile(props.env, { path: file.source.path, title: file.title }).catch(said);
+        }}
         onAhead={() => {
           settleOffer(workspaceId);
           void setPrepAhead(props.env, workspaceId, eventId, true).catch(said);
@@ -357,6 +364,8 @@ export interface PrepBodyProps {
   /** his word on suggested tasks; answers the ones LifeOS did not take */
   onDecide?: (taskIds: string[], decision: "accept" | "reject") => Promise<{ id: string; error: string }[]>;
   onOpenDraft?: (draft: PrepDraft) => void;
+  /** opens the file that holds the notes: beside its thread once one reads it, else (a document) beside a new one */
+  onOpenNotesFile?: () => void;
   onAhead?: () => void;
   onDismissOffer?: () => void;
   /** for the preview: a filing that already failed */
@@ -364,7 +373,7 @@ export interface PrepBodyProps {
 }
 
 /** The page over a `PrepPage`, holding no query: the preview and the tests draw it as the app does. */
-export function PrepPageBody({ page, faces, now = Date.now(), verb = null, offer = false, onRetry, onAddPeople, onDecide, onOpenDraft, onAhead, onDismissOffer, failedAtFirst }: PrepBodyProps) {
+export function PrepPageBody({ page, faces, now = Date.now(), verb = null, offer = false, onRetry, onAddPeople, onDecide, onOpenDraft, onOpenNotesFile, onAhead, onDismissOffer, failedAtFirst }: PrepBodyProps) {
   const { event, workspaceId, doc } = page;
   const go = (view: string, target: Record<string, unknown>) => openWorkView({ workspaceId, view, ...target });
   const openLine = (line: PrepLine) => (line.ref ? () => openRef(workspaceId, line.ref!) : undefined);
@@ -401,7 +410,7 @@ export function PrepPageBody({ page, faces, now = Date.now(), verb = null, offer
         </header>
 
         {after?.summary.length ? <Words lines={after.summary} onOpen={openLine} /> : null}
-        {doc.notes ? <Notes text={doc.notes.text} /> : null}
+        {doc.notes ? <Notes text={doc.notes.text} file={page.notesFile} onOpenFile={onOpenNotesFile} /> : null}
         {after ? (
           <>
             <Section label="Decided" show={after.decisions.length > 0}>
@@ -554,14 +563,20 @@ function Words({ lines, onOpen, land = false, bare = false }: { lines: readonly 
   );
 }
 
-/** His notes, as he typed them: six lines, then Show all. */
-function Notes({ text }: { text: string }) {
+/** His notes: the recording or transcript that holds them, which opens beside its thread, and what he typed (six lines, then Show all). */
+function Notes({ text, file, onOpenFile }: { text: string; file: PrepPage["notesFile"]; onOpenFile: (() => void) | undefined }) {
   const [all, setAll] = useState(false);
   const long = notesAreLong(text);
+  if (!text && !file) return null;
   return (
     <section aria-label="Notes" className="mt-6">
       <h2 className="mb-1 text-xs font-medium text-muted-foreground">Notes</h2>
-      <p className={cn("max-w-[65ch] text-sm leading-[22px] whitespace-pre-line text-foreground select-text", long && !all && "line-clamp-6")}>{text}</p>
+      {file ? (
+        <div role="list">
+          <LineRow text={file.title} line={file.kind === "document" ? "Document" : notesFileKind(file.title)} onOpen={onOpenFile} />
+        </div>
+      ) : null}
+      {text ? <p className={cn("max-w-[65ch] text-sm leading-[22px] whitespace-pre-line text-foreground select-text", file && "mt-1", long && !all && "line-clamp-6")}>{text}</p> : null}
       {long ? (
         <Button variant="ghost" size="xs" className="-ms-2 mt-1 text-muted-foreground" aria-expanded={all} onClick={() => setAll((v) => !v)}>
           {all ? "Show less" : "Show all"}

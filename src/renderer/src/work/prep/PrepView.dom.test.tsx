@@ -23,7 +23,24 @@ const host = vi.hoisted(() => ({
   pushes: [] as ((push: Record<string, unknown>) => void)[],
   /** suggestion ids LifeOS will not file */
   refuses: [] as string[],
+  /** what `work.meetings.start` answers */
+  meeting: { status: "transcribing", error: null } as { status: string; error: string | null },
+  /** a follow-up thread is already at work, with no meeting of its own */
+  busyFollow: false,
 }));
+const uploads = vi.hoisted(() => ({ sent: [] as Record<string, unknown>[], maxBytes: 200 * 1024 * 1024 }));
+vi.mock("../../lib/attachmentUpload", async (original) => ({
+  ...(await original<object>()),
+  attachmentSettings: async () => ({ maxBytes: uploads.maxBytes }),
+  blobSource: async (blob: Blob) => ({ size: blob.size, sha256: "0".repeat(64), read: async () => "" }),
+  uploadFile: async (opts: Record<string, unknown> & { onProgress?: (p: { sent: number; total: number }) => void }) => {
+    uploads.sent.push({ threadEnv: opts.threadEnv, sessionId: opts.sessionId, name: opts.name, into: opts.into });
+    opts.onProgress?.({ sent: 1, total: 2 });
+    return { path: `/work/purdue/${String(opts.name)}` };
+  },
+}));
+const outside = vi.hoisted(() => ({ opened: [] as unknown[] }));
+vi.mock("../canvas/openOutside", () => ({ openOutside: async (place: unknown, files: unknown) => void outside.opened.push({ place, files }) }));
 const held = vi.hoisted(() => ({ opened: [] as unknown[] }));
 vi.mock("../canvas/held", async (original) => ({ ...(await original<object>()), openHeld: (ref: unknown, env: string) => void held.opened.push({ ref, env }) }));
 vi.mock("../../lib/connection", async (original) => ({
@@ -38,6 +55,14 @@ vi.mock("../../lib/connection", async (original) => ({
         host.asked.push({ method, params });
         if (host.fails) throw new Error(host.fails);
         if (method === "work.prep.people") host.page = { ...(host.page as PrepPage), rev: (host.page as PrepPage).rev + 1, doc: { ...emptyPrepDoc(), people: params.people } };
+        if (method === "work.prep.followUp" && params.recording) return host.busyFollow ? { sessionId: "t-follow" } : { sessionId: "t-follow", itemId: "it1" };
+        if (method === "work.meetings.start") return { meeting: host.meeting };
+        if (method === "work.prep.notesDoc") {
+          const was = host.page as PrepPage;
+          const source = { at: "file" as const, host: "box", path: "/work/purdue/Staff sync notes.docx" };
+          host.page = { ...was, rev: was.rev + 1, state: "after", doc: { ...was.doc, notes: { text: was.doc.notes?.text ?? "", at: 1, file: source } }, notesFile: { kind: "document", title: "Staff sync notes.docx", source } };
+          return { page: host.page, source, title: "Staff sync notes.docx" };
+        }
         if (method === "work.prep.brief" || method === "work.prep.followUp") return { sessionId: method === "work.prep.brief" ? "t-brief" : "t-follow" };
         if (method === "work.prep.ahead") return { on: params.on, offered: true };
         if (method === "work.prep.notes") {
@@ -105,6 +130,7 @@ const facts = (over: Partial<PrepPage> = {}): PrepPage => ({
   briefSessionId: null,
   followSessionId: null,
   drafts: [],
+  notesFile: null,
   aheadOn: false,
   aheadOffered: true,
   problems: [],
@@ -141,6 +167,11 @@ beforeEach(() => {
   host.page = facts();
   host.pushes = [];
   host.refuses = [];
+  host.meeting = { status: "transcribing", error: null };
+  host.busyFollow = false;
+  uploads.sent = [];
+  outside.opened = [];
+  uploads.maxBytes = 200 * 1024 * 1024;
   held.opened = [];
   lifeos.asked = [];
   localStorage.clear();
@@ -609,5 +640,105 @@ describe("after the meeting", () => {
     expect(notes.getByText(/Line 1/).className).toContain("line-clamp-6");
     fireEvent.click(notes.getByRole("button", { name: "Show all" }));
     expect(notes.getByText(/Line 1/).className).not.toContain("line-clamp-6");
+  });
+});
+
+describe("a recording or a transcript as the notes", () => {
+  beforeEach(() => vi.setSystemTime(OVER));
+  const openNotes = async () => {
+    await mount();
+    await act(async () => fireEvent.click(head().getByRole("button", { name: "Add notes" })));
+    return within(await screen.findByRole("dialog", { name: "Notes" }));
+  };
+  const choose = async (dialog: ReturnType<typeof within>, file: File) => {
+    await act(async () => fireEvent.change(dialog.getByLabelText("A recording or transcript"), { target: { files: [file] } }));
+    await act(async () => {});
+  };
+  const m4a = () => new File(["x".repeat(64)], "Staff sync.m4a", { type: "audio/mp4" });
+
+  it("starts the follow-up with an empty meeting, sends the file to that thread's host, and has the meetings pillar read it there", async () => {
+    const dialog = await openNotes();
+    expect(dialog.getByRole("button", { name: "Use a recording or transcript" })).toBeTruthy();
+    expect(dialog.getByLabelText("A recording or transcript").getAttribute("accept")).toBe("audio/*,video/*,.vtt,.srt,.txt,.docx");
+    await choose(dialog, m4a());
+    expect(host.asked.slice(1).map((a) => a.method)).toEqual(["work.prep.followUp", "work.meetings.start", "work.prep.page", "work.prep.page"]);
+    expect(host.asked[1]!.params).toEqual({ workspaceId: "ws", eventId: "ev1", recording: { name: "Staff sync.m4a" } });
+    // into the workspace's own folder on the thread's host, as a dropped file goes
+    expect(uploads.sent).toEqual([{ threadEnv: "box", sessionId: "t-follow", name: "Staff sync.m4a", into: "workspace" }]);
+    expect(host.asked[2]!.params).toEqual({ itemId: "it1", source: { at: "file", host: "box", path: "/work/purdue/Staff sync.m4a" } });
+    await vi.waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+  });
+
+  it("keeps what he typed beside the file", async () => {
+    const dialog = await openNotes();
+    fireEvent.change(dialog.getByLabelText("Notes"), { target: { value: "Dana drives." } });
+    await choose(dialog, m4a());
+    expect(host.asked.slice(1, 3).map((a) => [a.method, a.params.text])).toEqual([["work.prep.notes", "Dana drives."], ["work.prep.followUp", undefined]]);
+  });
+
+  it("says so in the dialog when the host cannot transcribe, and stays open for typed notes", async () => {
+    host.meeting = { status: "failed", error: "The transcriber is not installed on box." };
+    const dialog = await openNotes();
+    await choose(dialog, m4a());
+    expect(dialog.getByText("The transcriber is not installed on box.")).toBeTruthy();
+    expect(screen.getByRole("dialog", { name: "Notes" })).toBeTruthy();
+    expect((dialog.getByLabelText("Notes") as HTMLTextAreaElement).disabled).toBe(false);
+  });
+
+  it("starts nothing for a file over the host's limit, or while another follow-up is at work", async () => {
+    uploads.maxBytes = 10;
+    const dialog = await openNotes();
+    await choose(dialog, m4a());
+    expect(dialog.getByText(/Staff sync\.m4a is 64 B, over this host’s 10 B limit/)).toBeTruthy();
+    expect(host.asked.some((a) => a.method === "work.prep.followUp")).toBe(false);
+    uploads.maxBytes = 1000;
+    host.busyFollow = true;
+    await choose(dialog, m4a());
+    expect(dialog.getByText("A follow-up is already at work on this meeting. Open its thread from More.")).toBeTruthy();
+    expect(uploads.sent).toEqual([]);
+  });
+
+  it("names the recording on the page, and its row opens the thread it shows beside", async () => {
+    const opened: string[] = [];
+    workOpenPort.set((id) => void opened.push(id));
+    host.page = facts({ rev: 3, state: "after", followSessionId: "t-follow", doc: { ...emptyPrepDoc(), notes: { text: "", at: 1, meetingItemId: "it1" } }, notesFile: { kind: "meeting", itemId: "it1", title: "Staff sync.vtt" } });
+    await mount();
+    expect(rowsOf("Notes")).toEqual(["Staff sync.vttTranscript"]);
+    fireEvent.click(section("Notes").getByRole("button", { name: /Staff sync\.vtt/ }));
+    expect(opened).toEqual(["t-follow"]);
+    workOpenPort.set(null);
+  });
+});
+
+describe("notes written in a document", () => {
+  beforeEach(() => vi.setSystemTime(OVER));
+
+  it("makes the notes document on the host, opens it beside a new thread, and the header's verb becomes Follow up", async () => {
+    await mount();
+    await act(async () => fireEvent.click(head().getByRole("button", { name: "Add notes" })));
+    const dialog = within(await screen.findByRole("dialog", { name: "Notes" }));
+    await act(async () => fireEvent.click(dialog.getByRole("button", { name: "Write in a document" })));
+    await vi.waitFor(() => expect(outside.opened).toHaveLength(1));
+    expect(host.asked.find((a) => a.method === "work.prep.notesDoc")!.params).toEqual({ workspaceId: "ws", eventId: "ev1", today: "2026-11-23" });
+    // as a file dropped on a view opens: a new thread of the workspace, the file in place in its folder
+    expect(outside.opened).toEqual([{ place: { at: "new" }, files: [{ name: "Staff sync notes.docx", path: "/work/purdue/Staff sync notes.docx", origin: "box" }] }]);
+    // no follow-up started: the document is his to write in first
+    expect(host.asked.some((a) => a.method === "work.prep.followUp")).toBe(false);
+    await act(async () => openWorkView({ workspaceId: "ws", view: "prep", event: "ev1" }));
+    await vi.waitFor(() => expect(head().getByRole("button", { name: "Follow up" })).toBeTruthy());
+    expect(rowsOf("Notes")).toEqual(["Staff sync notes.docxDocument"]);
+    // the row opens the document again until a follow-up thread holds it
+    fireEvent.click(section("Notes").getByRole("button", { name: /Staff sync notes/ }));
+    await vi.waitFor(() => expect(outside.opened).toHaveLength(2));
+  });
+
+  it("says why in the dialog when the host has no template for it", async () => {
+    await mount();
+    await act(async () => fireEvent.click(head().getByRole("button", { name: "Add notes" })));
+    const dialog = within(await screen.findByRole("dialog", { name: "Notes" }));
+    host.fails = "“Meeting notes” is not on this host any more";
+    await act(async () => fireEvent.click(dialog.getByRole("button", { name: "Write in a document" })));
+    expect(await dialog.findByText("“Meeting notes” is not on this host any more")).toBeTruthy();
+    expect(outside.opened).toEqual([]);
   });
 });

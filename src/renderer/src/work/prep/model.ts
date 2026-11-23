@@ -1,4 +1,4 @@
-import { prepEndOf, type PrepAddedPerson, type PrepDraft, type PrepEvent, type PrepFileRef, type PrepPage, type PrepPerson, type PrepProblem, type PrepSuggestion, type PrepTask } from "@shared/contract-work-prep";
+import { prepEndOf, type PrepAddedPerson, type PrepDraft, type PrepEvent, type PrepFileRef, type PrepPage, type PrepPerson, type PrepProblem, type PrepSuggestion, type PrepTask, type PrepUpcoming } from "@shared/contract-work-prep";
 import { formatLeave, formatStamp, formatTime } from "work-kit/views/lib/format";
 
 /**
@@ -177,3 +177,25 @@ export function draftLine(draft: Pick<PrepDraft, "to" | "subject">): string {
 export const NOTES_LINES = 6;
 /** Whether notes run past what six lines hold: long by lines or by length. */
 export const notesAreLong = (text: string): boolean => text.split("\n").length > NOTES_LINES || text.length > 480;
+
+/** The files Follow up reads as the notes: a recording, or a transcript Teams, Zoom or a recorder wrote. */
+export const NOTES_FILE_ACCEPT = "audio/*,video/*,.vtt,.srt,.txt,.docx";
+const TRANSCRIPT = /\.(vtt|srt|txt|docx)$/i;
+/** What a notes file is, as its row says under its name. */
+export const notesFileKind = (name: string): "Transcript" | "Recording" => (TRANSCRIPT.test(name.trim()) ? "Transcript" : "Recording");
+
+/** "Uploading Staff sync.m4a, 42%": the dialog's line while a file goes up. */
+export function uploadWords(name: string, progress: { sent: number; total: number } | null): string {
+  if (!progress || progress.total <= 0) return `Uploading ${name}`;
+  return `Uploading ${name}, ${Math.min(100, Math.round((progress.sent / progress.total) * 100))}%`;
+}
+
+/**
+ * What a meeting's row on Today gains from prep (SEAMS, today: a `TodayMark` on
+ * `event:<LifeOS event id>`): a press opens its page, and it says "Prep is
+ * ready" only once a brief stands. Plain data, so Today's source is one map
+ * over `work.prep.upcoming`.
+ */
+export function meetingMark(meeting: Pick<PrepUpcoming, "workspaceId" | "eventId" | "state">): { key: string; note?: string; target: { workspaceId: string; view: "prep"; event: string } } {
+  return { key: `event:${meeting.eventId}`, ...(meeting.state === "briefed" ? { note: "Prep is ready" } : {}), target: { workspaceId: meeting.workspaceId, view: "prep", event: meeting.eventId } };
+}

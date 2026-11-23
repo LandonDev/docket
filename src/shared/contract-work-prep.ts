@@ -183,6 +183,14 @@ export interface PrepDraft {
   to: string[]
 }
 
+export interface PrepNotesFile {
+  kind: 'meeting' | 'document'
+  title: string
+  itemId?: string
+  /** a document's own file, so the window can open it before any thread holds it */
+  source?: CanvasSource
+}
+
 /** A part of the page that did not load; the rest still shows. */
 export type PrepProblem = 'people' | 'tasks' | 'last' | 'drafts'
 
@@ -203,6 +211,12 @@ export interface PrepPage {
   briefSessionId: string | null
   followSessionId: string | null
   drafts: PrepDraft[]
+  /**
+   * The file that holds the notes, when one does: a recording or transcript (a meeting open beside the
+   * follow-up thread) or a document made from the job's Meeting notes template. `itemId` is its item
+   * beside the follow-up thread, once there is one.
+   */
+  notesFile: PrepNotesFile | null
   /** Prepare ahead is on for this workspace */
   aheadOn: boolean
   /** false for a sector Prepare ahead is withheld from */
@@ -247,8 +261,18 @@ export const PrepRequestSchemas = [
   request('work.prep.brief', z.object(page)),
   /** Keeps his notes (empty text takes them back). → { page } */
   request('work.prep.notes', z.object({ ...page, text: z.string().max(PREP_NOTES_MAX) })),
-  /** Starts the follow-up thread from the notes, or answers the one still working. → { sessionId } */
-  request('work.prep.followUp', z.object(page)),
+  /**
+   * Starts the follow-up thread from the notes, or answers the one still working. With `recording`
+   * (a recording or a transcript he picked) the host opens an empty meeting beside the new thread and
+   * answers its item: the window then puts the file there through the meetings pillar's own start, so
+   * nothing of it leaves the thread's host. → { sessionId, itemId? }
+   */
+  request('work.prep.followUp', z.object({ ...page, recording: z.object({ name: z.string().trim().min(1).max(300) }).optional() })),
+  /**
+   * Write in a document: makes the meeting's notes file from the job's Meeting notes template, in the
+   * workspace's own folder, and keeps it as the page's notes; a second ask answers the same file. → { page, source, title }
+   */
+  request('work.prep.notesDoc', z.object({ ...page, today: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional() })),
   /** Accept files suggested tasks in the workspace’s sector. Reject drops them. → { page, failed: { id, error }[] } */
   request('work.prep.decide', z.object({ ...page, taskIds: z.array(z.string().max(32)).min(1).max(PREP_TASKS_MAX), decision: z.enum(['accept', 'reject']) })),
   /** The workspace’s Prepare-ahead routine. A person with admin may set it. → PrepAhead */
@@ -265,6 +289,7 @@ export const PREP_CAPS = {
   'work.prep.brief': 'operate',
   'work.prep.notes': 'operate',
   'work.prep.followUp': 'operate',
+  'work.prep.notesDoc': 'operate',
   'work.prep.decide': 'approve',
   'work.prep.ahead': 'read'
 } satisfies CapsOf<typeof PrepRequestSchemas>

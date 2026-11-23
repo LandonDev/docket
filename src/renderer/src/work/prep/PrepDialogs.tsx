@@ -14,8 +14,8 @@ import { refusalWords } from "../../lib/settingsHome";
 import { Face } from "../mail/face";
 import { findPeople, pictureOf, type DirectoryPerson } from "../people/model";
 import { useLifeosQuery, type LifeosSession } from "../shell/lifeos";
-import { followUpPrep, keepPrepNotes, loadPrep, setPrepPeople } from "./data";
-import { addedKey, pickable } from "./model";
+import { followUpFromFile, followUpPrep, keepPrepNotes, loadPrep, notesDocPrep, openWorkspaceFile, setPrepPeople } from "./data";
+import { addedKey, NOTES_FILE_ACCEPT, pickable, uploadWords } from "./model";
 
 /**
  * The page's dialogs (docs/agents/work-prep.md "Dialogs"), a chunk of their
@@ -135,15 +135,16 @@ function ListBones() {
 }
 
 /**
- * Notes: what he typed or pasted of the meeting. Follow up keeps them and
- * starts the thread that turns them into tasks and a mail draft. Closing the
- * dialog any other way keeps what he typed too, so nothing typed is lost and
- * the header's verb becomes Follow up.
+ * Notes: what he typed or pasted of the meeting, or a recording or transcript
+ * of it. Follow up keeps them and starts the thread that turns them into
+ * tasks and a mail draft. Closing the dialog any other way keeps what he
+ * typed too, so nothing typed is lost and the header's verb becomes Follow up.
  */
 export function NotesDialog({ env, page, onClose }: { env: string; page: PrepPage; onClose: () => void }) {
   const before = page.doc.notes?.text ?? "";
   const [text, setText] = useState(before);
   const [pending, setPending] = useState(false);
+  const [upload, setUpload] = useState<{ name: string; progress: { sent: number; total: number } | null } | null>(null);
   const [error, setError] = useState<string | null>(null);
   // What the host holds, and what he has typed, as the close reads them (it runs after the exit has played).
   const kept = useRef(before);
@@ -157,44 +158,76 @@ export function NotesDialog({ env, page, onClose }: { env: string; page: PrepPag
     }
     onClose();
   };
+  /** Keeps what he typed, then runs the follow-up; its failure is the dialog's own line. */
+  const run = (work: () => Promise<unknown>, done: () => void) => {
+    setError(null);
+    setPending(true);
+    (text.trim() !== kept.current.trim() ? keepPrepNotes(env, workspaceId, eventId, text) : Promise.resolve())
+      .then(() => {
+        kept.current = text;
+        return work();
+      })
+      .then(
+        () => {
+          setPending(false);
+          loadPrep(env, workspaceId, eventId);
+          done();
+        },
+        (err: unknown) => {
+          setPending(false);
+          setUpload(null);
+          setError(refusalWords(err) || "The host did not answer");
+        },
+      );
+  };
   return (
     <Modal onClose={close} title="Notes" size="md" busy={pending} data-prep-dialog="notes">
       <NotesForm
         text={text}
         setText={setText}
         pending={pending}
+        upload={upload}
         error={error}
         onCancel={close}
-        onFollowUp={(done) => {
-          setError(null);
-          setPending(true);
-          keepPrepNotes(env, workspaceId, eventId, text)
-            .then(() => {
-              kept.current = text;
-              return followUpPrep(env, workspaceId, eventId);
-            })
-            .then(
-              () => {
-                setPending(false);
-                loadPrep(env, workspaceId, eventId);
-                done();
-              },
-              (err: unknown) => {
-                setPending(false);
-                setError(refusalWords(err) || "The host did not answer");
-              },
-            );
+        onFollowUp={(done) => run(() => followUpPrep(env, workspaceId, eventId), done)}
+        onFile={(file, done) => {
+          setUpload({ name: file.name, progress: null });
+          run(() => followUpFromFile(env, workspaceId, eventId, file, (progress) => setUpload({ name: file.name, progress })), done);
         }}
+        // The document is his to write in: it opens beside a new thread, and the page keeps it as the notes.
+        onDocument={(done) => run(async () => openWorkspaceFile(env, await notesDocPrep(env, workspaceId, eventId)), done)}
       />
     </Modal>
   );
 }
 
-function NotesForm({ text, setText, pending, error, onCancel, onFollowUp }: { text: string; setText: (text: string) => void; pending: boolean; error: string | null; onCancel: () => void; onFollowUp: (done: () => void) => void }) {
+function NotesForm({
+  text,
+  setText,
+  pending,
+  upload,
+  error,
+  onCancel,
+  onFollowUp,
+  onFile,
+  onDocument,
+}: {
+  text: string;
+  setText: (text: string) => void;
+  pending: boolean;
+  upload: { name: string; progress: { sent: number; total: number } | null } | null;
+  error: string | null;
+  onCancel: () => void;
+  onFollowUp: (done: () => void) => void;
+  onFile: (file: File, done: () => void) => void;
+  onDocument: (done: () => void) => void;
+}) {
   const close = useModalClose();
+  const input = useRef<HTMLInputElement>(null);
   const empty = !text.trim();
+  const done = () => (close ? close(onCancel) : onCancel());
   const submit = () => {
-    if (!empty && !pending) onFollowUp(() => (close ? close(onCancel) : onCancel()));
+    if (!empty && !pending) onFollowUp(done);
   };
   return (
     <form
@@ -210,19 +243,49 @@ function NotesForm({ text, setText, pending, error, onCancel, onFollowUp }: { te
         }
       }}
     >
-      <ModalBody>
+      <ModalBody className="gap-2">
         <Textarea
           autoFocus
           aria-label="Notes"
           placeholder="What was said, what was decided, what is still open"
           value={text}
+          disabled={pending}
           onChange={(e) => setText(e.currentTarget.value)}
           // A fixed height that scrolls: the dialog holds still as he types or pastes a page of notes.
           className="field-sizing-fixed h-72 resize-none overflow-x-hidden overflow-y-auto text-sm leading-[22px]"
         />
+        {/* The other ways in: a recording or the transcript Teams or Zoom wrote, read on the workspace's own host; or a document of the job's Meeting notes template. */}
+        <div className="flex min-h-6 items-center text-xs text-muted-foreground">
+          {upload ? (
+            <span role="status" className="truncate tabular-nums">
+              {uploadWords(upload.name, upload.progress)}
+            </span>
+          ) : (
+            <span className="-ms-2 flex items-center gap-1">
+              <Button variant="ghost" size="xs" className="font-normal text-muted-foreground" disabled={pending} onClick={() => input.current?.click()}>
+                Use a recording or transcript
+              </Button>
+              <Button variant="ghost" size="xs" className="font-normal text-muted-foreground" disabled={pending} onClick={() => onDocument(done)}>
+                Write in a document
+              </Button>
+            </span>
+          )}
+          <input
+            ref={input}
+            type="file"
+            hidden
+            aria-label="A recording or transcript"
+            accept={NOTES_FILE_ACCEPT}
+            onChange={(e) => {
+              const file = e.currentTarget.files?.[0];
+              e.currentTarget.value = "";
+              if (file) onFile(file, done);
+            }}
+          />
+        </div>
         <ErrorLine error={error} />
       </ModalBody>
-      <DialogFooter onCancel={onCancel} confirmLabel="Follow up" pending={pending} disabled={empty} />
+      <DialogFooter onCancel={onCancel} confirmLabel="Follow up" pending={pending && !upload} busy={!!upload} disabled={empty} />
     </form>
   );
 }

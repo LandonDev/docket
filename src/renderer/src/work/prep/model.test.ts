@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { emptyPrepDoc, type PrepEvent, type PrepPage } from "@shared/contract-work-prep";
-import { addedKey, addTasksLabel, briefIsComing, dayWords, draftLine, fileWhere, headVerb, isOver, lastLabel, moreWords, nobodyOn, notesAreLong, pageThread, personLine, personTrail, pickable, problemWords, shownTasks, suggestionLine, taskLine, timeWords, whenLine } from "./model";
+import { addedKey, addTasksLabel, briefIsComing, dayWords, draftLine, fileWhere, headVerb, isOver, lastLabel, meetingMark, moreWords, nobodyOn, notesAreLong, notesFileKind, pageThread, personLine, personTrail, pickable, problemWords, shownTasks, suggestionLine, taskLine, timeWords, uploadWords, whenLine } from "./model";
 
 /** A meeting's page in words (docs/agents/work-prep.md "The page"): the comma line, each row's second line and what trails it. */
 
@@ -169,5 +169,22 @@ describe("the outcome's words", () => {
     expect(notesAreLong("a\nb\nc")).toBe(false);
     expect(notesAreLong("1\n2\n3\n4\n5\n6\n7")).toBe(true);
     expect(notesAreLong("x".repeat(500))).toBe(true);
+  });
+});
+
+describe("a notes file", () => {
+  it("is a transcript by its ending, else a recording, and says how far its upload is", () => {
+    for (const name of ["sync.vtt", "sync.SRT", "notes.txt", "Teams transcript.docx"]) expect(notesFileKind(name), name).toBe("Transcript");
+    for (const name of ["sync.m4a", "call.mp4", "memo"]) expect(notesFileKind(name), name).toBe("Recording");
+    expect(uploadWords("sync.m4a", null)).toBe("Uploading sync.m4a");
+    expect(uploadWords("sync.m4a", { sent: 21, total: 50 })).toBe("Uploading sync.m4a, 42%");
+  });
+});
+
+describe("a meeting's mark on Today", () => {
+  it("opens the page for every state and says Prep is ready only once a brief stands", () => {
+    const mark = (state: "none" | "working" | "briefed" | "after") => meetingMark({ workspaceId: "ws", eventId: "ev1", state });
+    for (const state of ["none", "working", "after"] as const) expect(mark(state)).toEqual({ key: "event:ev1", target: { workspaceId: "ws", view: "prep", event: "ev1" } });
+    expect(mark("briefed")).toEqual({ key: "event:ev1", note: "Prep is ready", target: { workspaceId: "ws", view: "prep", event: "ev1" } });
   });
 });

@@ -12,7 +12,8 @@ import { BackTitle, PageVerbs, PrepPageBody, PrepSkeleton } from "./PrepView";
  * `briefed` (the brief, with the one-time offer under it), `after` (his notes
  * and what came of them, the tasks waiting for his ticks, the mail that
  * waits), `filed` (two of them in LifeOS), `failed` (a filing LifeOS did not
- * take), and `loading` and `partial` (the bones; a part that did not load).
+ * take), `recording` (the notes are a recording its thread is still reading),
+ * and `loading` and `partial` (the bones; a part that did not load).
  * Dummy people. Rendered by nothing in the app.
  */
 
@@ -55,6 +56,7 @@ const FACTS: PrepPage = {
   briefSessionId: null,
   followSessionId: null,
   drafts: [],
+  notesFile: null,
   aheadOn: false,
   aheadOffered: false,
   problems: [],
@@ -109,6 +111,9 @@ const FILED: PrepPage = {
   doc: { ...AFTER.doc, after: { ...AFTER.doc.after!, tasks: AFTER.doc.after!.tasks.map((t, i) => (i < 2 ? { ...t, state: "filed" as const, lifeosTaskId: `task${i}` } : t)) } },
 };
 
+/** The notes are a recording: it is named on the page and opens beside its thread, while the thread still reads it. */
+const RECORDED: PrepPage = { ...FACTS, rev: 3, state: "after", followSessionId: "t-follow", doc: { ...emptyPrepDoc(), notes: { text: "", at: LATER - 300_000, meetingItemId: "it1" } }, notesFile: { kind: "meeting", itemId: "it1", title: "Staff sync 2026-11-23.m4a" } };
+
 const none = () => {};
 const verbs = { thread: false, again: false, notes: false, rest: 0, ahead: null, onBrief: none, onFollowUp: none, onOpenThread: none, onNotes: none, onAddPeople: none, onThread: none, onDismissRest: none, onAhead: none } as const;
 
@@ -133,15 +138,15 @@ export function PrepPreview({ state = "facts" }: { state?: string }) {
         <PrepSkeleton />
       </Frame>
     );
-  const after = state === "after" || state === "filed" || state === "failed";
+  const after = state === "after" || state === "filed" || state === "failed" || state === "recording";
   const page =
-    state === "nobody" ? NOBODY : state === "partial" ? { ...FACTS, tasks: [], problems: ["tasks" as const] } : state === "preparing" ? PREPARING : state === "briefed" ? BRIEFED : state === "filed" ? FILED : after ? AFTER : FACTS;
+    state === "recording" ? RECORDED : state === "nobody" ? NOBODY : state === "partial" ? { ...FACTS, tasks: [], problems: ["tasks" as const] } : state === "preparing" ? PREPARING : state === "briefed" ? BRIEFED : state === "filed" ? FILED : after ? AFTER : FACTS;
   const now = after ? LATER : NOW;
-  const verb = headVerb(page, now, { brief: state === "preparing" ? "running" : "idle", follow: "idle" });
+  const verb = headVerb(page, now, { brief: state === "preparing" ? "running" : "idle", follow: state === "recording" ? "running" : "idle" });
   return (
     <Frame
       title={page.event.title}
-      head={<PageVerbs {...verbs} verb={verb} thread={!!page.briefSessionId} again={state === "briefed"} notes={after} rest={after ? 3 : 0} ahead={page.aheadOffered ? page.aheadOn : null} />}
+      head={<PageVerbs {...verbs} verb={verb} thread={!!page.briefSessionId} again={state === "briefed"} notes={after} rest={page.doc.after ? 3 : 0} ahead={page.aheadOffered ? page.aheadOn : null} />}
     >
       <PrepPageBody
         page={page}

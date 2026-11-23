@@ -1,5 +1,6 @@
 import { useEffect, useSyncExternalStore } from "react";
 import type { PrepAddedPerson, PrepAhead, PrepPage } from "@shared/contract-work-prep";
+import { attachmentSettings, blobSource, formatBytes, uploadFile, type UploadProgress } from "../../lib/attachmentUpload";
 import { registry } from "../../lib/connection";
 import { refusalWords } from "../../lib/settingsHome";
 
@@ -122,6 +123,30 @@ export async function keepPrepNotes(environmentId: string, workspaceId: string, 
 export const followUpPrep = async (environmentId: string, workspaceId: string, eventId: string): Promise<string> =>
   (await ask<{ sessionId: string }>(environmentId, "work.prep.followUp", { workspaceId, eventId })).sessionId;
 
+/**
+ * Follow up from a recording or a transcript he picked. The host starts the
+ * follow-up thread with an empty meeting beside it; the file then goes up to
+ * that thread's host, into the workspace's folder, and the meetings pillar's
+ * own start reads it there (a recording is transcribed on that host). Nothing
+ * of it goes anywhere else. Throws the words to show when the host cannot
+ * read it: a transcriber that is not installed, a file over the host's limit.
+ */
+export async function followUpFromFile(environmentId: string, workspaceId: string, eventId: string, file: File, onProgress?: (progress: UploadProgress) => void): Promise<string> {
+  const [{ maxBytes }, source] = await Promise.all([attachmentSettings(environmentId), blobSource(file)]);
+  // Said before any thread starts: a file the host will not take starts nothing.
+  if (source.size > maxBytes) throw new Error(`${file.name} is ${formatBytes(source.size)}, over this host’s ${formatBytes(maxBytes)} limit`);
+  const { sessionId, itemId } = await ask<{ sessionId: string; itemId?: string }>(environmentId, "work.prep.followUp", { workspaceId, eventId, recording: { name: file.name } });
+  if (!itemId) throw new Error("A follow-up is already at work on this meeting. Open its thread from More.");
+  try {
+    const landed = await uploadFile({ threadEnv: environmentId, sessionId, name: file.name, ...(file.type ? { mime: file.type } : {}), source, into: "workspace", ...(onProgress ? { onProgress } : {}) });
+    const { meeting } = await ask<{ meeting: { status: string; error?: string | null } }>(environmentId, "work.meetings.start", { itemId, source: { at: "file", host: environmentId, path: landed.path } });
+    if (meeting.status === "failed") throw new Error(meeting.error?.trim() || "This host could not read the file.");
+  } finally {
+    loadPrep(environmentId, workspaceId, eventId);
+  }
+  return sessionId;
+}
+
 /** His word on suggested tasks; answers the ones LifeOS did not take, each with why. */
 export async function decidePrepTasks(environmentId: string, workspaceId: string, eventId: string, taskIds: string[], decision: "accept" | "reject"): Promise<{ id: string; error: string }[]> {
   const out = await ask<{ page: PrepPage; failed: { id: string; error: string }[] }>(environmentId, "work.prep.decide", { workspaceId, eventId, taskIds, decision });
@@ -133,4 +158,24 @@ export async function decidePrepTasks(environmentId: string, workspaceId: string
 export async function setPrepAhead(environmentId: string, workspaceId: string, eventId: string, on: boolean): Promise<void> {
   await ask<PrepAhead>(environmentId, "work.prep.ahead", { workspaceId, on, tz: Intl.DateTimeFormat().resolvedOptions().timeZone });
   loadPrep(environmentId, workspaceId, eventId);
+}
+
+/**
+ * Write in a document: the host makes the meeting's notes file from the job's
+ * Meeting notes template and keeps it as the page's notes. Answers the file,
+ * for the window to open.
+ */
+export async function notesDocPrep(environmentId: string, workspaceId: string, eventId: string): Promise<{ path: string; title: string }> {
+  const d = new Date();
+  const today = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  const out = await ask<{ page: PrepPage; source: { at: string; path?: string }; title: string }>(environmentId, "work.prep.notesDoc", { workspaceId, eventId, today });
+  holdPrep(out.page);
+  if (out.source.at !== "file" || !out.source.path) throw new Error("The notes document is not a file this window can open.");
+  return { path: out.source.path, title: out.title };
+}
+
+/** Opens a file of the workspace's folder in a new thread's canvas, as a file dropped on a view opens: nothing runs until he sends. */
+export async function openWorkspaceFile(environmentId: string, file: { path: string; title: string }): Promise<void> {
+  const { openOutside } = await import("../canvas/openOutside");
+  await openOutside({ at: "new" }, [{ name: file.title, path: file.path, origin: environmentId }]);
 }

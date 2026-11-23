@@ -37,6 +37,7 @@ const page: PrepPage = {
   briefSessionId: 'brief-1',
   followSessionId: 'follow-1',
   drafts: [],
+  notesFile: null,
   aheadOn: false,
   aheadOffered: false,
   problems: []

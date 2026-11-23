@@ -1,7 +1,8 @@
 import { DatabaseSync } from 'node:sqlite'
 import { describe, expect, it } from 'vitest'
 import { emptyPrepDoc } from '@shared/contract-work-prep'
-import type { WorkCtx } from '../modules'
+import { handled, NOT_HANDLED } from '@shared/work'
+import { WORK_MODULES, type WorkCtx, type WorkModule } from '../modules'
 import { gather, peopleOf, upcoming } from './gather'
 import { ensurePrepTables, PrepStore } from './store'
 import { FakeLifeos } from './testLifeos'
@@ -302,5 +303,57 @@ describe('a page saved before suggestion numbering', () => {
     ensurePrepTables(db)
     expect(store.get('ws-purdue', 'ev1')).toMatchObject({ rev: 1, suggestionSeq: 0, doc: { notes: { text: 'Maya has the roster.', at: NOW } } })
     db.close()
+  })
+})
+
+describe('when to leave', () => {
+  const clashes = (answer: unknown, asked: unknown[] = []): WorkModule => ({
+    id: 'clashes',
+    ensure() {},
+    async handle(req) {
+      if (req.method !== 'work.clashes.leave') return NOT_HANDLED
+      asked.push(req.params)
+      if (answer instanceof Error) throw answer
+      return handled(answer)
+    }
+  })
+  const withClashes = async (module: WorkModule | null, run: () => Promise<void>) => {
+    const before = [...WORK_MODULES]
+    WORK_MODULES.splice(0, WORK_MODULES.length, ...(module ? [module] : []))
+    try {
+      await run()
+    } finally {
+      WORK_MODULES.splice(0, WORK_MODULES.length, ...before)
+    }
+  }
+  const eventLeave = at('2026-11-23T13:40:00-05:00')
+  const clashLeave = at('2026-11-23T13:10:00-05:00')
+
+  it('is the clashes pillar’s answer when that pillar is on this host', async () => {
+    const { ctx } = world()
+    const asked: unknown[] = []
+    await withClashes(clashes({ leaveAt: clashLeave, from: 'event', measured: true }, asked), async () => {
+      expect((await gather(ctx, 'ws-purdue', 'ev1', NOW)).page.event.leaveAt).toBe(clashLeave)
+    })
+    expect(asked).toEqual([{ eventId: 'ev1' }])
+  })
+
+  it('is the event’s own when clashes is not there, has nothing to say or does not answer', async () => {
+    const { ctx } = world()
+    for (const module of [null, clashes(null), clashes(new Error('LifeOS did not answer'))]) {
+      await withClashes(module, async () => {
+        expect((await gather(ctx, 'ws-purdue', 'ev1', NOW)).page.event.leaveAt).toBe(eventLeave)
+      })
+    }
+  })
+
+  it('never asks clashes about an event the fence refused', async () => {
+    const { ctx, lifeos } = world()
+    lifeos.event({ _id: 'ev-cosmic', sector: 'cosmic' })
+    const asked: unknown[] = []
+    await withClashes(clashes({ leaveAt: clashLeave }, asked), async () => {
+      await expect(gather(ctx, 'ws-purdue', 'ev-cosmic', NOW)).rejects.toThrow('That event is not in Purdue’s sector.')
+    })
+    expect(asked).toEqual([])
   })
 })

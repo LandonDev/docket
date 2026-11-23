@@ -42,7 +42,11 @@ export function pageWords(page: PrepPage): string {
     section('Brief', doc.brief.matters.map(lineWords))
     section('Already agreed', doc.brief.agreed.map(lineWords))
   }
-  if (doc.notes) lines.push('', 'His notes:', doc.notes.text)
+  if (page.notesFile?.kind === 'meeting') lines.push('', `His notes are a recording or a transcript, open beside this thread as meeting ${page.notesFile.itemId}. Read it with meeting_read.`)
+  if (page.notesFile?.kind === 'document') {
+    lines.push('', page.notesFile.itemId ? `His notes are the document “${page.notesFile.title}”, open beside this thread as item ${page.notesFile.itemId}. Read it with doc_read.` : `His notes are the document “${page.notesFile.title}” in the workspace’s folder.`)
+  }
+  if (doc.notes?.text) lines.push('', 'His notes:', doc.notes.text)
   if (doc.after) {
     lines.push('', 'Outcome:')
     section('Summary', doc.after.summary.map(lineWords))
@@ -65,10 +69,14 @@ export function briefMessage(page: PrepPage): string {
   ].join('\n\n')
 }
 
-export function followMessage(page: PrepPage): string {
+export function followMessage(page: PrepPage, opts: { recording?: boolean; document?: boolean } = {}): string {
   return [
     pageWords(page),
-    'Use his notes. Call prep_follow_up for this event with what was decided, what is still open, and the tasks. Never call add_task.',
+    opts.document
+      ? 'His notes are in a document that is being opened beside you. Call prep_read: it names the item. Read it with doc_read, and change nothing in it. Call prep_follow_up for this event with what was decided, what is still open, and the tasks. Never call add_task.'
+      : opts.recording
+      ? 'The meeting’s recording or transcript is being opened beside you as a meeting, and transcribed on this host if it is a recording. Call prep_read: it names the meeting. Then read it with meeting_read, which waits while it is transcribed; if it says there is no recording yet, the file is still on its way, so read again. Call prep_follow_up for this event with what was decided, what is still open, and the tasks. Write the tasks with prep_follow_up alone: write no actions with meeting_notes, or each task would be suggested twice. Never call add_task.'
+      : 'Use his notes. Call prep_follow_up for this event with what was decided, what is still open, and the tasks. Never call add_task.',
     'Draft one follow-up mail to the people with addresses using draft_mail. It waits for his press. Never send it.',
     'End with the outcome as your last message.'
   ].join('\n\n')
