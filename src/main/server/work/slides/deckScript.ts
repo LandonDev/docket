@@ -66,39 +66,91 @@ def ph_type(shape):
     return None if ph is None else ph.get('type', 'obj')
 
 
-def walk(shapes, xf=(0, 0, 1, 1)):
-    """Every shape in z-order with the transform to slide space; a group gives its children, not itself."""
+# A transform is a 2x3 affine (a, b, c, d, e, f): x' = a*x + c*y + e, y' = b*x + d*y + f, in EMU.
+IDENT = (1.0, 0.0, 0.0, 1.0, 0.0, 0.0)
+
+
+def mat(m, n):
+    """m after n: the point goes through n first."""
+    a, b, c, d, e, f = m
+    g, h, i, j, k, l = n
+    return (a * g + c * h, b * g + d * h, a * i + c * j, b * i + d * j, a * k + c * l + e, b * k + d * l + f)
+
+
+def at(m, x, y):
+    return (m[0] * x + m[2] * y + m[4], m[1] * x + m[3] * y + m[5])
+
+
+def about(cx, cy, rot, flip_h, flip_v):
+    """A box's own turn: flipped, then rotated clockwise by rot degrees, about its centre (DrawingML's a:xfrm)."""
+    r = math.radians(rot)
+    co, si = math.cos(r), math.sin(r)
+    fx, fy = (-1.0 if flip_h else 1.0), (-1.0 if flip_v else 1.0)
+    a, b, c, d = co * fx, si * fx, -si * fy, co * fy
+    return (a, b, c, d, cx - a * cx - c * cy, cy - b * cx - d * cy)
+
+
+def xfrm_of(el):
+    """The shape's own a:xfrm (p:xfrm on a graphic frame), or None."""
+    if el.tag == qn('p:graphicFrame'):
+        return el.find(qn('p:xfrm'))
+    pr = el.find(qn('p:grpSpPr')) if el.tag == qn('p:grpSp') else el.find(qn('p:spPr'))
+    return None if pr is None else pr.find(qn('a:xfrm'))
+
+
+def turn_of(x):
+    """rot in degrees, flipH, flipV of an xfrm element."""
+    if x is None:
+        return 0.0, False, False
+    try:
+        rot = int(x.get('rot', 0)) / 60000.0
+    except ValueError:
+        rot = 0.0
+    return rot, x.get('flipH') in ('1', 'true'), x.get('flipV') in ('1', 'true')
+
+
+def walk(shapes, xf=IDENT, group=None):
+    """Every shape in z-order with the transform to slide space and the outermost group it is in; a group gives its children, not itself."""
     for sh in shapes:
         # by the tag alone: shape_type raises on a p:sp with no geometry, which some exporters write
         if sh._element.tag == qn('p:grpSp'):
-            x = sh._element.find(qn('p:grpSpPr') + '/' + qn('a:xfrm'))
+            x = xfrm_of(sh._element)
             inner = xf
             if x is not None:
                 off, ext, choff, chext = (x.find(qn('a:' + n)) for n in ('off', 'ext', 'chOff', 'chExt'))
                 if off is not None and ext is not None and choff is not None and chext is not None:
+                    ox, oy, ex, ey = int(off.get('x', 0)), int(off.get('y', 0)), int(ext.get('cx', 0)), int(ext.get('cy', 0))
                     cx, cy = int(chext.get('cx', 0)), int(chext.get('cy', 0))
-                    sx = int(ext.get('cx', 0)) / cx if cx else 1
-                    sy = int(ext.get('cy', 0)) / cy if cy else 1
-                    # child x -> off.x + (x - chOff.x) * sx, then the outer transform
-                    ox = int(off.get('x', 0)) - int(choff.get('x', 0)) * sx
-                    oy = int(off.get('y', 0)) - int(choff.get('y', 0)) * sy
-                    inner = (xf[0] + ox * xf[2], xf[1] + oy * xf[3], xf[2] * sx, xf[3] * sy)
-            yield from walk(sh.shapes, inner)
+                    sx = ex / cx if cx else 1
+                    sy = ey / cy if cy else 1
+                    # child space into the group's box, then the group's own flip and rotation about that box's centre
+                    fit = (sx, 0.0, 0.0, sy, ox - int(choff.get('x', 0)) * sx, oy - int(choff.get('y', 0)) * sy)
+                    rot, fh, fv = turn_of(x)
+                    inner = mat(xf, mat(about(ox + ex / 2.0, oy + ey / 2.0, rot, fh, fv), fit))
+            yield from walk(sh.shapes, inner, group if group is not None else sh.shape_id)
         else:
-            yield sh, xf
+            yield sh, xf, group
 
 
-def bbox_of(sh, xf, w, h):
+def place_of(sh, xf, w, h):
+    """Where a shape is drawn: its four corners (top-left, top-right, bottom-right, bottom-left of its own box, turned
+    and flipped with it and with every group above it) as shares of the slide, the box around them clamped to the
+    slide, and the angle its top edge makes. None when it has no box."""
     try:
         l, t, cw, ch = sh.left, sh.top, sh.width, sh.height
     except Exception:
         return None
     if None in (l, t, cw, ch) or not w or not h:
         return None
-    x0, y0 = xf[0] + l * xf[2], xf[1] + t * xf[3]
-    x1, y1 = x0 + cw * xf[2], y0 + ch * xf[3]
+    rot, fh, fv = turn_of(xfrm_of(sh._element))
+    own = mat(xf, about(l + cw / 2.0, t + ch / 2.0, rot, fh, fv))
+    pts = [at(own, x, y) for x, y in ((l, t), (l + cw, t), (l + cw, t + ch), (l, t + ch))]
+    quad = [[round(x / w, 5), round(y / h, 5)] for x, y in pts]
     clamp = lambda v: round(min(1.0, max(0.0, v)), 4)
-    return [clamp(x0 / w), clamp(y0 / h), clamp(x1 / w), clamp(y1 / h)]
+    xs, ys = [q[0] for q in quad], [q[1] for q in quad]
+    turned = math.degrees(math.atan2((pts[1][1] - pts[0][1]), (pts[1][0] - pts[0][0])))
+    mirrored = (own[0] * own[3] - own[1] * own[2]) < 0
+    return {'bbox': [clamp(min(xs)), clamp(min(ys)), clamp(max(xs)), clamp(max(ys))], 'quad': quad, 'rot': round(turned, 2), 'flip': mirrored}
 
 
 def text_of(tf):
@@ -118,8 +170,212 @@ def chart_of(chart):
         return None
 
 
-def shape_info(sh, xf, w, h):
-    info = {'id': sh.shape_id, 'name': sh.name, 'kind': 'other', 'bbox': bbox_of(sh, xf, w, h), 'text': ''}
+NS_A = 'http://schemas.openxmlformats.org/drawingml/2006/main'
+ALIGN = {'l': 'left', 'ctr': 'center', 'r': 'right', 'just': 'justify', 'dist': 'justify'}
+ANCHOR = {'t': 'top', 'ctr': 'middle', 'b': 'bottom'}
+INSETS = (('lIns', 91440), ('tIns', 45720), ('rIns', 91440), ('bIns', 45720))
+RUN_CAP = 400
+
+
+def theme_of(prs):
+    """The first master's theme: its twelve colours as hex and its heading and body fonts."""
+    out = {'colors': {}, 'major': '', 'minor': ''}
+    try:
+        master = prs.slide_masters[0]
+        rel = next(r for r in master.part.rels.values() if r.reltype.endswith('/theme'))
+        root = etree.fromstring(rel.target_part.blob, PARSER)
+    except Exception:
+        return out
+    for el in xp(root, './a:themeElements/a:clrScheme/*'):
+        c = el.find('{%s}srgbClr' % NS_A)
+        if c is not None:
+            out['colors'][etree.QName(el).localname] = c.get('val', '').upper()
+        else:
+            c = el.find('{%s}sysClr' % NS_A)
+            if c is not None:
+                out['colors'][etree.QName(el).localname] = c.get('lastClr', '').upper()
+    for key, path in (('major', './a:themeElements/a:fontScheme/a:majorFont/a:latin'), ('minor', './a:themeElements/a:fontScheme/a:minorFont/a:latin')):
+        el = xp(root, path)
+        if el:
+            out[key] = el[0].get('typeface', '')
+    return out
+
+
+# The names a slide's text uses for the theme's colours, as the master's colour map gives them by default.
+CLR_MAP = {'tx1': 'dk1', 'tx2': 'dk2', 'bg1': 'lt1', 'bg2': 'lt2'}
+
+
+def colour_of(fill, theme):
+    """A solid fill's colour as hex, a theme colour resolved by its name; None when it is not a plain colour."""
+    if fill is None:
+        return None
+    c = fill.find('{%s}srgbClr' % NS_A)
+    if c is not None:
+        return c.get('val', '').upper() or None
+    c = fill.find('{%s}schemeClr' % NS_A)
+    if c is not None:
+        name = c.get('val', '')
+        return theme['colors'].get(CLR_MAP.get(name, name))
+    return None
+
+
+def font_of(name, theme):
+    if name in ('+mj-lt', '+mj-ea', '+mj-cs'):
+        return theme['major']
+    if name in ('+mn-lt', '+mn-ea', '+mn-cs'):
+        return theme['minor']
+    return name
+
+
+def level_props(lst, level):
+    """The a:lvlNpPr of a list style for a level (0 based), or None."""
+    return None if lst is None else lst.find('{%s}lvl%dpPr' % (NS_A, level + 1))
+
+
+def style_chain(sh):
+    """The list styles a shape's text takes its look from, nearest first: its own, its layout's and master's
+    placeholder of the same kind, the master's title, body or other style, the presentation's default."""
+    chain = []
+    el = sh._element
+    body = el.find(qn('p:txBody'))
+    if body is not None:
+        chain.append(body.find(qn('a:lstStyle')))
+    kind = None
+    try:
+        slide = sh.part.slide
+        pt = ph_type(sh)
+        if pt is not None:
+            kind = 'title' if pt in ('title', 'ctrTitle') else 'body'
+            idx = el.find('.//' + qn('p:nvPr') + '/' + qn('p:ph')).get('idx')
+            for holder in (slide.slide_layout, slide.slide_layout.slide_master):
+                for cand in holder.placeholders:
+                    cph = cand._element.find('.//' + qn('p:nvPr') + '/' + qn('p:ph'))
+                    same_kind = cph.get('type', 'obj') == pt or (cph.get('type', 'obj') in ('title', 'ctrTitle') and kind == 'title') or (cph.get('type', 'obj') in ('body', 'obj') and pt in ('body', 'obj', 'subTitle'))
+                    if (idx is not None and cph.get('idx') == idx) or (holder is not slide.slide_layout and same_kind) or (idx is None and same_kind):
+                        cb = cand._element.find(qn('p:txBody'))
+                        if cb is not None:
+                            chain.append(cb.find(qn('a:lstStyle')))
+                        break
+        master = slide.slide_layout.slide_master._element
+        styles = master.find(qn('p:txStyles'))
+        if styles is not None:
+            chain.append(styles.find(qn('p:titleStyle' if kind == 'title' else 'p:bodyStyle' if kind == 'body' else 'p:otherStyle')))
+        chain.append(sh.part.package.presentation_part._element.find(qn('p:defaultTextStyle')))
+    except Exception:
+        pass
+    return [c for c in chain if c is not None]
+
+
+def paragraphs_of(sh, theme):
+    """A text shape's paragraphs as runs with the look each is drawn in: what the run says itself, else what its
+    paragraph, shape, layout, master and the deck's defaults say, nearest first."""
+    body = sh._element.find(qn('p:txBody'))
+    if body is None:
+        return None
+    chain = style_chain(sh)
+    bodypr = body.find(qn('a:bodyPr'))
+    scale = 1.0
+    if bodypr is not None:
+        fit = bodypr.find('{%s}normAutofit' % NS_A)
+        if fit is not None and fit.get('fontScale'):
+            try:
+                scale = int(fit.get('fontScale')) / 100000.0
+            except ValueError:
+                scale = 1.0
+    out = []
+    count = 0
+    for p in body.findall(qn('a:p')):
+        ppr = p.find(qn('a:pPr'))
+        try:
+            level = int(ppr.get('lvl', 0)) if ppr is not None else 0
+        except ValueError:
+            level = 0
+        levels = [lp for lp in (level_props(c, level) for c in chain) if lp is not None]
+        defaults = [d for d in (lp.find('{%s}defRPr' % NS_A) for lp in levels) if d is not None]
+
+        def first(attr, own, sources):
+            if own is not None and own.get(attr) is not None:
+                return own.get(attr)
+            for src in sources:
+                if src.get(attr) is not None:
+                    return src.get(attr)
+            return None
+
+        def child(tag, own, sources):
+            for src in ([own] if own is not None else []) + list(sources):
+                got = src.find('{%s}%s' % (NS_A, tag))
+                if got is not None:
+                    return got
+            return None
+
+        align = first('algn', ppr, levels)
+        bullet = 'none'
+        for src in ([ppr] if ppr is not None else []) + levels:
+            if src.find('{%s}buNone' % NS_A) is not None:
+                break
+            if src.find('{%s}buChar' % NS_A) is not None:
+                bullet = 'bullet'
+                break
+            if src.find('{%s}buAutoNum' % NS_A) is not None:
+                bullet = 'number'
+                break
+        runs = []
+        for r in p:
+            tag = etree.QName(r).localname
+            if tag not in ('r', 'br', 'fld'):
+                continue
+            rpr = r.find(qn('a:rPr'))
+            text = '\n' if tag == 'br' else ''.join(t.text or '' for t in r.findall(qn('a:t')))
+            size = first('sz', rpr, defaults)
+            latin = child('latin', rpr, defaults)
+            fill = child('solidFill', rpr, defaults)
+            run = {'text': text[:TEXT_CAP]}
+            if size is not None:
+                try:
+                    run['size'] = round(int(size) / 100.0 * scale, 1)
+                except ValueError:
+                    pass
+            if latin is not None and latin.get('typeface'):
+                run['font'] = font_of(latin.get('typeface'), theme)
+            if first('b', rpr, defaults) in ('1', 'true'):
+                run['bold'] = True
+            if first('i', rpr, defaults) in ('1', 'true'):
+                run['italic'] = True
+            if (first('u', rpr, defaults) or 'none') != 'none':
+                run['underline'] = True
+            colour = colour_of(fill, theme)
+            if colour:
+                run['color'] = colour
+            runs.append(run)
+            count += 1
+            if count >= RUN_CAP:
+                break
+        out.append({'level': level, 'align': ALIGN.get(align or 'l', 'left'), 'list': bullet, 'runs': runs})
+        if count >= RUN_CAP:
+            break
+    frame = {'anchor': 'top', 'insets': [d for _, d in INSETS], 'fit': 'none', 'wrap': True}
+    if bodypr is not None:
+        frame['anchor'] = ANCHOR.get(bodypr.get('anchor', 't'), 'top')
+        ins = []
+        for name, default in INSETS:
+            try:
+                ins.append(int(bodypr.get(name, default)))
+            except ValueError:
+                ins.append(default)
+        frame['insets'] = ins
+        frame['fit'] = 'shrink' if bodypr.find('{%s}normAutofit' % NS_A) is not None else 'grow' if bodypr.find('{%s}spAutoFit' % NS_A) is not None else 'none'
+        frame['wrap'] = bodypr.get('wrap', 'square') != 'none'
+    return {'paragraphs': out, 'frame': frame}
+
+
+def shape_info(sh, xf, w, h, group=None, theme=None):
+    place = place_of(sh, xf, w, h)
+    info = {'id': sh.shape_id, 'name': sh.name, 'kind': 'other', 'bbox': place['bbox'] if place else None, 'text': ''}
+    if place:
+        info['quad'], info['rot'], info['flip'] = place['quad'], place['rot'], place['flip']
+    if group is not None:
+        info['group'] = group
+    el = sh._element
     pt = ph_type(sh)
     if pt is not None:
         info['placeholder'] = PLACEHOLDER.get(pt, pt)
@@ -131,6 +387,17 @@ def shape_info(sh, xf, w, h):
         data = chart_of(sh.chart)
         if data is not None:
             info['chart'] = data
+    elif el.tag == qn('p:graphicFrame'):
+        # a diagram, an embedded object: drawn, kept, and edited in PowerPoint
+        info['kind'] = 'frame'
+    elif el.tag == qn('p:cxnSp'):
+        info['kind'] = 'connector'
+    elif el.tag == qn('p:pic'):
+        nv = el.find('.//' + qn('p:nvPr'))
+        media = nv is not None and (nv.find('{%s}videoFile' % NS_A) is not None or nv.find('{%s}audioFile' % NS_A) is not None)
+        info['kind'] = 'media' if media else 'picture'
+        if media:
+            info['media'] = 'audio' if nv.find('{%s}audioFile' % NS_A) is not None else 'video'
     elif isinstance(sh, Picture):
         info['kind'] = 'picture'
     elif sh.has_text_frame:
@@ -138,7 +405,78 @@ def shape_info(sh, xf, w, h):
         # A decorative shape carries an empty txBody too: only words or a placeholder make it a text shape.
         if info['text'] or pt is not None:
             info['kind'] = 'text'
+            if theme is not None:
+                try:
+                    look = paragraphs_of(sh, theme)
+                except Exception:
+                    look = None
+                if look is not None:
+                    info['paragraphs'], info['frame'] = look['paragraphs'], look['frame']
+    if el.tag == qn('p:sp'):
+        geom = el.find(qn('p:spPr') + '/' + '{%s}prstGeom' % NS_A)
+        drawn = el.find(qn('p:spPr') + '/' + '{%s}custGeom' % NS_A)
+        # a placeholder that names no outline takes its layout's, which is a plain box in every deck we draw
+        info['shape'] = geom.get('prst', 'rect') if geom is not None else 'custom' if drawn is not None else 'rect'
     return info
+
+
+TRANSITION_MS = {'fast': 500, 'med': 750, 'slow': 1000}
+NS_MC = 'http://schemas.openxmlformats.org/markup-compatibility/2006'
+
+
+def transition_of(slide):
+    """The slide's own transition: its kind as the file names it, its direction, how long, and the seconds after
+    which it moves on by itself. None when the slide has none."""
+    el = slide._element.find(qn('p:transition'))
+    if el is None:
+        # PowerPoint 2010 and later wrap it: the choice it would take, else the fallback
+        for path in ('./mc:AlternateContent/mc:Choice/p:transition', './mc:AlternateContent/mc:Fallback/p:transition'):
+            got = etree.XPath(path, namespaces={'mc': NS_MC, 'p': NS_P})(slide._element)
+            if got:
+                el = got[0]
+                break
+    if el is None:
+        return None
+    kind, direction = 'none', None
+    for c in el:
+        name = etree.QName(c).localname
+        if name in ('extLst', 'sndAc'):
+            continue
+        kind = name
+        direction = c.get('dir')
+        break
+    out = {'kind': kind}
+    if direction:
+        out['dir'] = direction
+    dur = el.get('{%s}dur' % NS_P14)
+    try:
+        out['ms'] = int(dur) if dur else TRANSITION_MS.get(el.get('spd', 'fast'), 500)
+    except ValueError:
+        out['ms'] = 500
+    if el.get('advTm') is not None:
+        try:
+            out['after'] = int(el.get('advTm'))
+        except ValueError:
+            pass
+    if el.get('advClick') in ('0', 'false'):
+        out['click'] = False
+    return out
+
+
+def layouts_of(prs):
+    """Each layout a slide can take: its name, its master's place, and the placeholders it holds by kind and index."""
+    out = []
+    for mi, m in enumerate(prs.slide_masters):
+        for l in m.slide_layouts:
+            holds = []
+            for ph in l.placeholders:
+                el = ph._element.find('.//' + qn('p:nvPr') + '/' + qn('p:ph'))
+                if el is None:
+                    continue
+                kind = el.get('type', 'obj')
+                holds.append({'kind': PLACEHOLDER.get(kind, kind), 'idx': int(el.get('idx', 0))})
+            out.append({'name': l.name, 'master': mi, 'holds': holds})
+    return out
 
 
 def sections_of(prs):
@@ -158,6 +496,59 @@ def layout_names(prs):
     return names
 
 
+def deck_draws(raw):
+    """What every slide's picture takes from the deck itself: the presentation's own settings (the slide size, the
+    number slides count from, the default text style, embedded fonts) but not its list of slides, and the table
+    styles and fonts it names. A change here draws every slide again."""
+    h = hashlib.sha256()
+    main = next((target for _, ty, target, mode in rels_of(raw, '') if ty.endswith('/officeDocument') and mode != 'External'), None)
+    if main is None or main not in raw:
+        return h.digest()
+    try:
+        root = etree.fromstring(raw[main], BLANK)
+        h.update(repr(sorted(root.attrib.items())).encode('utf-8'))
+        for tag in ('sldSz', 'defaultTextStyle', 'embeddedFontLst'):
+            for el in root.findall('{%s}%s' % (NS_P, tag)):
+                # exclusive: only the namespaces the element itself uses, so what the root declares says nothing here
+                h.update(etree.tostring(el, method='c14n', exclusive=True))
+    except etree.XMLSyntaxError:
+        h.update(raw[main])
+    # By their bytes alone, in an order a save cannot change.
+    for digest in sorted(hashlib.sha256(raw[target]).digest() for _, ty, target, mode in rels_of(raw, main) if mode != 'External' and (ty.endswith('/tableStyles') or ty.endswith('/font')) and target in raw):
+        h.update(digest)
+    return h.digest()
+
+
+def draws_of(raw, part, number, deck=b''):
+    """One hash of everything a slide's picture is drawn from: its own XML and every part it reaches through
+    relationships (its layout, that layout's master and theme, its pictures, charts and media), but not its notes
+    and not other slides; by their bytes alone, since a save renames parts; and what it takes from the deck itself
+    (deck_draws). Its number in the deck goes in when the slide, its layout or its master prints one. Equal across
+    two versions of a deck means the same picture. None for a slide whose part is not in the file: it has no
+    picture of its own to keep."""
+    if part not in raw:
+        return None
+    seen = []
+    queue = [part]
+    while queue:
+        name = queue.pop()
+        if name in seen or name not in raw:
+            continue
+        seen.append(name)
+        for _, ty, target, mode in rels_of(raw, name):
+            if mode == 'External' or ty.endswith('/notesSlide') or ty.endswith('/slide'):
+                continue
+            queue.append(target)
+    h = hashlib.sha256()
+    h.update(deck)
+    for digest in sorted(hashlib.sha256(raw[name]).digest() for name in seen):
+        h.update(digest)
+    numbered = [n for n in seen if n == part or '/slideLayouts/' in n or '/slideMasters/' in n]
+    if any(b'type="slidenum"' in raw[n] for n in numbered):
+        h.update(b'#%d' % number)
+    return h.hexdigest()
+
+
 def inspect(src, out):
     prs = Presentation(src)
     with zipfile.ZipFile(src) as z:
@@ -166,10 +557,12 @@ def inspect(src, out):
     # time .slides is read, so slide.part.partname is not the part's name in the file.
     parts = {sid: part for sid, (part, _) in slide_parts(raw).items()}
     w, h = prs.slide_width or 0, prs.slide_height or 0
+    theme = theme_of(prs)
+    deck = deck_draws(raw)
     slides = []
     for slide in prs.slides:
         flat = list(walk(slide.shapes))
-        shapes = [shape_info(sh, xf, w, h) for sh, xf in flat]
+        shapes = [shape_info(sh, xf, w, h, group, theme) for sh, xf, group in flat]
         title = ''
         t = next((s for s in shapes if s.get('placeholder') == 'title' and s['kind'] == 'text'), None)
         if t is not None and t['text']:
@@ -187,9 +580,11 @@ def inspect(src, out):
             'title': title[:TEXT_CAP],
             'notes': notes,
             'hash': hashlib.sha256(raw.get(parts.get(slide.slide_id, ''), b'')).hexdigest(),
+            **({'draws': d} if (d := draws_of(raw, parts.get(slide.slide_id, ''), len(slides) + 1, deck)) is not None else {}),
             'shapes': shapes,
+            **({'transition': tr} if (tr := transition_of(slide)) is not None else {}),
         })
-    info = {'width': w, 'height': h, 'slides': slides, 'sections': sections_of(prs), 'layouts': layout_names(prs)}
+    info = {'width': w, 'height': h, 'slides': slides, 'sections': sections_of(prs), 'layouts': layout_names(prs), 'layoutInfo': layouts_of(prs), 'theme': theme}
     with open(out, 'w', encoding='utf-8') as f:
         json.dump(info, f)
 
@@ -266,7 +661,7 @@ def slide_by_id(prs, sid):
 
 
 def shape_on(slide, sid, ref):
-    found = [sh for sh, _ in walk(slide.shapes) if (sh.shape_id == ref if isinstance(ref, int) else sh.name == ref)]
+    found = [sh for sh, _, _ in walk(slide.shapes) if (sh.shape_id == ref if isinstance(ref, int) else sh.name == ref)]
     if not found:
         raise Fail('slide %d has no shape %s' % (sid, ('%d' % ref) if isinstance(ref, int) else 'named ' + ref))
     if len(found) > 1:

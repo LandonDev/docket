@@ -135,12 +135,14 @@ describe('a closed Files tab', () => {
     const [gone, stays] = two(slides, 'slides')
     const store = new SlidesStore(rig.db)
     for (const item of [gone, stays]) {
-      store.setMode(item.id, PANE, 'suggests')
+      // The mode is the tab's own seat on its deck (slides/store.ts).
+      store.seat(item.id, PANE, item.id)
+      store.setMode(item.id, 'writes')
       store.add(item.id, PANE, [{ slide: 1, op: { op: 'delete', slide: 'a' } as never }], 'owner')
     }
     closeTab(slides, gone)
-    expect([count('work_slides_items', gone.id), count('work_slides_ops', gone.id)]).toEqual([0, 0])
-    expect([count('work_slides_items', stays.id), count('work_slides_ops', stays.id)]).toEqual([1, 1])
+    expect([count('work_slides_seats', gone.id), count('work_slides_ops', gone.id)]).toEqual([0, 0])
+    expect([count('work_slides_seats', stays.id), count('work_slides_ops', stays.id)]).toEqual([1, 1])
   })
 
   it('frameio: its row goes', () => {

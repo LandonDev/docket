@@ -1,0 +1,216 @@
+{
+ "width": 1920,
+ "height": 1081,
+ "shapes": [
+  {
+   "shape": 2,
+   "name": "ellipse",
+   "fill": "D34B36",
+   "kind": "other",
+   "found": true,
+   "rot": 0.0,
+   "box": [
+    345.6,
+    201.8
+   ],
+   "drawn": [
+    0.0,
+    -0.1,
+    345.0,
+    200.9
+   ],
+   "px": 0.85
+  },
+  {
+   "shape": 3,
+   "name": "arrow",
+   "fill": "154DC4",
+   "kind": "other",
+   "found": true,
+   "rot": 0.0,
+   "box": [
+    374.4,
+    187.4
+   ],
+   "drawn": [
+    0.4,
+    1.9,
+    373.4,
+    184.9
+   ],
+   "px": 2.44
+  },
+  {
+   "shape": 4,
+   "name": "rounded box",
+   "fill": "2DA459",
+   "kind": "other",
+   "found": true,
+   "rot": 0.0,
+   "box": [
+    345.6,
+    187.4
+   ],
+   "drawn": [
+    -0.0,
+    -0.1,
+    345.0,
+    186.9
+   ],
+   "px": 0.64
+  },
+  {
+   "shape": 5,
+   "name": "ellipse turned 30",
+   "fill": "AD227C",
+   "kind": "other",
+   "found": true,
+   "rot": 30.0,
+   "box": [
+    374.5,
+    172.9
+   ],
+   "drawn": [
+    0.0,
+    0.2,
+    374.3,
+    172.8
+   ],
+   "px": 0.23
+  },
+  {
+   "shape": 6,
+   "name": "triangle",
+   "fill": "E26A20",
+   "kind": "other",
+   "found": true,
+   "rot": 0.0,
+   "box": [
+    288.0,
+    230.6
+   ],
+   "drawn": [
+    1.6,
+    1.2,
+    286.6,
+    229.2
+   ],
+   "px": 1.6
+  },
+  {
+   "shape": 7,
+   "name": "text box",
+   "fill": "2F9C78",
+   "kind": "text",
+   "found": true,
+   "rot": 0.0,
+   "box": [
+    403.2,
+    173.0
+   ],
+   "drawn": [
+    0.4,
+    0.2,
+    402.4,
+    172.2
+   ],
+   "px": 0.82
+  },
+  {
+   "shape": 8,
+   "name": "picture",
+   "fill": "8A295C",
+   "kind": "picture",
+   "found": true,
+   "rot": 0.0,
+   "box": [
+    360.0,
+    216.2
+   ],
+   "drawn": [
+    -0.6,
+    -0.8,
+    360.4,
+    216.2
+   ],
+   "px": 0.75
+  },
+  {
+   "shape": 9,
+   "name": "table",
+   "fill": "492789",
+   "kind": "table",
+   "found": true,
+   "rot": 0.0,
+   "box": [
+    403.2,
+    201.8
+   ],
+   "drawn": [
+    1.0,
+    1.2,
+    402.0,
+    200.2
+   ],
+   "px": 1.53
+  },
+  {
+   "shape": 10,
+   "name": "connector",
+   "fill": "A0461E",
+   "kind": "connector",
+   "found": true,
+   "rot": 0.0,
+   "box": [
+    576.0,
+    201.8
+   ],
+   "drawn": [
+    -1.4,
+    -5.5,
+    577.6,
+    205.5
+   ],
+   "px": 5.49
+  },
+  {
+   "shape": 11,
+   "name": "chart",
+   "fill": "CC3552",
+   "kind": "chart",
+   "found": true,
+   "rot": 0.0,
+   "box": [
+    460.8,
+    345.9
+   ],
+   "drawn": [
+    0.4,
+    -0.0,
+    460.4,
+    344.0
+   ],
+   "px": 1.93
+  },
+  {
+   "shape": 12,
+   "name": "video",
+   "fill": "207EB6",
+   "kind": "media",
+   "found": true,
+   "rot": 0.0,
+   "box": [
+    460.8,
+    259.4
+   ],
+   "drawn": [
+    0.4,
+    -0.4,
+    460.4,
+    258.6
+   ],
+   "px": 0.87
+  }
+ ],
+ "note": "Each shape of kinds.pptx as LibreOffice 26.8.3 drew it at 1920 by 1080: its own box (width and height in pixels, from the outline's corners) and the box around its fill's pixels in the shape's own frame (along its top edge, down its left edge); px is the largest edge difference. Made by the scripts in the fixtures README."
+}

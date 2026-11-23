@@ -10,8 +10,8 @@ import type { ToolCtx, WorkTool } from '../modules'
 import { paneItem, sourcePath } from '../pdf/file'
 import { allocateIds, isNote, slideOfOp, type DeckInfo } from './deck'
 import { writeNewDeck } from './newDeck'
-import { SlidesStore } from './store'
-import { announce, applyTo, deckOf, deckShared, OWN_FILE, renderPath, scratch, serial, withDeck, writeInto } from './view'
+import { rowSession, SlidesStore } from './store'
+import { announce, applyTo, deckKey, deckOf, OWN_FILE, renderPath, scratch, serial, sharedDeck, withDeck, writeInto } from './view'
 
 /**
  * The tools a Work thread reads and revises a deck with
@@ -89,7 +89,7 @@ export const slidesTools: WorkTool[] = [
       const a = args as { item: string }
       try {
         const it = deckItem(ctx, a.item)
-        const deck = await serial(it.id, () => deckOf(ctx, it, ctx.signal))
+        const deck = await serial(ctx, it, () => deckOf(ctx, it, ctx.signal))
         const info = deck.proposed?.info ?? deck.file.info
         const waiting = new Set(deck.pending.map((p) => p.slide)).size
         const head = `${plural(info.slides.length, 'slide')}${waiting ? `, with ${plural(waiting, 'change')} that wait for the person in` : ''}`
@@ -109,12 +109,12 @@ export const slidesTools: WorkTool[] = [
       const a = args as { item: string; slide: number }
       try {
         const it = deckItem(ctx, a.item)
-        const deck = await serial(it.id, () => deckOf(ctx, it, ctx.signal))
+        const deck = await serial(ctx, it, () => deckOf(ctx, it, ctx.signal))
         const which = deck.proposed ? 'proposed' : 'file'
         const count = (deck.proposed ?? deck.file).info.slides.length
         if (a.slide > count) return fail(`The deck has ${plural(count, 'slide')}.`)
         const { path } = await renderPath(ctx, it, which, ctx.signal)
-        const done = await ctx.convert({ from: 'pdf', to: 'png', input: path, options: { page: a.slide }, ...(deckShared(ctx, it) ? { shared: true } : {}), signal: ctx.signal })
+        const done = await ctx.convert({ from: 'pdf', to: 'png', input: path, options: { page: a.slide }, ...(sharedDeck(ctx, it) ? { shared: true } : {}), signal: ctx.signal })
         return { content: [{ type: 'image', data: readFileSync(done.output).toString('base64'), mimeType: 'image/png' }] }
       } catch (err) {
         return fail(errorText(err))
@@ -143,8 +143,9 @@ export const slidesTools: WorkTool[] = [
         const store = new SlidesStore(ctx.db)
         // Others can open it (a deck in PowerPoint, a Teams or OneDrive library, a cloud folder): nothing an agent
         // thought of itself reaches the file, and so their screens, until the person accepts it.
-        const shared = deckShared(ctx, it)
-        const said = await serial(it.id, () => withDeck(ctx, it, ctx.signal, async (deck) => {
+        const shared = sharedDeck(ctx, it)
+        const key = deckKey(it)
+        const said = await serial(ctx, it, () => withDeck(ctx, it, ctx.signal, async (deck) => {
           // Read on the queue: the owner may have switched the mode while this waited behind a render.
           const writes = store.mode(it.id) === 'writes'
           // With suggestions waiting, what the agent reads is the deck with them in: an edit of that deck waits with them.
@@ -155,7 +156,7 @@ export const slidesTools: WorkTool[] = [
           if (direct) {
             const { notes, ...w } = await writeInto(ctx, it, deck.path, fresh, ctx.signal, deck.hash)
             const text = a.summary ?? `Edited ${plural(new Set(fresh.map(slideOfOp)).size, 'slide')}`
-            store.setWritten(it.id, it.sessionId, { id: randomUUID(), text, at: Date.now(), ...w })
+            store.setWritten(key, rowSession(key, it.sessionId), { id: randomUUID(), text, at: Date.now(), ...w, item: it.id })
             return { added, direct, text: `Wrote ${plural(fresh.length, 'edit')} into the deck. The person can undo it from the bar.${noteLines(notes, 0)}` }
           }
           // Checked as the proposed deck will be drawn: every pending edit, then these.
@@ -169,7 +170,7 @@ export const slidesTools: WorkTool[] = [
           // Only the agent's own edits decide: an older suggestion the file has outgrown waits for the person to reject it.
           const own = ownWarnings(warnings.filter((w) => !isNote(w)), deck.pending.length).filter((w) => w.startsWith('edit '))
           if (own.length) throw new Error(`Nothing was kept:\n${own.join('\n')}`)
-          store.add(it.id, it.sessionId, fresh.map((op) => ({ slide: slideOfOp(op), op })), agentPrincipal(ctx.host, ctx.sessionId))
+          store.add(key, rowSession(key, it.sessionId), fresh.map((op) => ({ slide: slideOfOp(op), op })), agentPrincipal(ctx.host, ctx.sessionId))
           const why = !writes ? '' : deck.pending.length ? ' Suggestions already wait on this deck, so this waits with them.' : a.because === 'own' ? ' The deck is shared, so your own idea is a suggestion.' : ' The person\'s words were not found in this thread, so this is a suggestion.'
           return { added, direct: false, text: `Suggested ${plural(new Set(fresh.map(slideOfOp)).size, 'revised slide')}; the person steps through them from the bar.${why}${noteLines(warnings.filter(isNote), deck.pending.length)}` }
         }))

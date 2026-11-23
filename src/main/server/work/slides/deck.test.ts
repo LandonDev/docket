@@ -122,6 +122,111 @@ describe.skipIf(!DATA)('the deck tool on python-pptx', () => {
   }
   const shape = (d: DeckInfo, slide: number, id: number) => d.slides.find((s) => s.id === slide)!.shapes.find((x) => x.id === id)!
 
+  describe('the outline of the feature deck (fixtures/12-feature-probes.pptx)', () => {
+    let d: DeckInfo
+    beforeAll(async () => {
+      d = await inspect(join(__dirname, 'fixtures', '12-feature-probes.pptx'))
+    })
+    const on = (slide: number, id: number) => d.slides[slide - 1].shapes.find((x) => x.id === id)!
+
+    it("places each shape where LibreOffice draws it, within 2 px at 1920: plain, scaled in a group, rotated, and rotated and flipped in a group", () => {
+      const measured = JSON.parse(readFileSync(join(__dirname, 'fixtures', 'feature-pixels.json'), 'utf8')) as { shapes: Array<{ slide: number; shape: number; name: string; width: number; height: number; box: number[] }> }
+      expect(measured.shapes).toHaveLength(8)
+      const off = measured.shapes.map((m) => {
+        const b = on(m.slide, m.shape).bbox!
+        const ours = [b[0] * m.width, b[1] * m.height, b[2] * m.width, b[3] * m.height]
+        return { name: m.name, px: Math.max(...ours.map((v, i) => Math.abs(v - m.box[i]))) }
+      })
+      // Before the whole transform was carried, the two turned shapes were 85 and 89 px out.
+      expect(off.filter((o) => o.px > 2)).toEqual([])
+      expect(off.find((o) => o.name === 'rotated box')!.px).toBeLessThan(2)
+    })
+
+    it('gives a turned shape its four corners, its angle and whether it is mirrored, and a group child its group', () => {
+      const turned = on(3, 10)
+      expect(turned).toMatchObject({ rot: 25, kind: 'other', shape: 'rect' })
+      expect(turned.flip).toBeFalsy()
+      // The corners are its own box's, turned: the top edge runs 25 degrees clockwise and keeps the box's width over height.
+      const [tl, tr, , bl] = turned.quad!
+      const w = Math.hypot((tr[0] - tl[0]) * d.width, (tr[1] - tl[1]) * d.height)
+      const h = Math.hypot((bl[0] - tl[0]) * d.width, (bl[1] - tl[1]) * d.height)
+      expect(w / h).toBeCloseTo(3.2 / 1.1, 2)
+      expect(on(3, 8)).toMatchObject({ group: 7, flip: true, rot: -149 })
+      expect(on(3, 5)).toMatchObject({ group: 4 })
+      expect(on(3, 5).rot).toBe(0)
+      expect(on(3, 3).group).toBeUndefined()
+    })
+
+    it('names what each shape is: text, a drawn shape, a picture, a table, a chart, a video and a sound', () => {
+      expect(d.slides[3].shapes.map((x) => x.kind)).toEqual(['text', 'picture', 'table', 'other'])
+      expect(d.slides[4].shapes.map((x) => x.kind)).toEqual(['text', 'chart', 'chart', 'chart', 'other'])
+      expect(d.slides[5].shapes.map((x) => [x.kind, x.media])).toEqual([['text', undefined], ['media', 'video'], ['media', 'audio']])
+      expect(d.slides[0].shapes.map((x) => [x.kind, x.placeholder])).toEqual([['text', 'title'], ['text', 'body'], ['other', undefined]])
+    })
+
+    it('reads a text shape as runs in the look they are drawn in: the theme’s fonts and the master’s sizes where the run says nothing', () => {
+      // A title is centred by its master's title style.
+      expect(on(1, 2).paragraphs).toEqual([{ level: 0, align: 'center', list: 'none', runs: [{ text: 'Theme and layout inheritance', size: 44, font: 'Cambria', color: '000000' }] }])
+      expect(on(1, 3).paragraphs![0]).toMatchObject({ list: 'bullet', runs: [{ size: 32, font: 'Calibri' }] })
+      expect(on(1, 3).frame).toMatchObject({ anchor: 'top', fit: 'none', wrap: true })
+      // The run's own size, and the frame that shrinks its text.
+      expect(on(2, 3).paragraphs![0].runs[0]).toMatchObject({ size: 30 })
+      expect(on(2, 3).frame).toMatchObject({ fit: 'shrink', insets: [91440, 45720, 91440, 45720] })
+    })
+
+    it('reads each slide’s layout and transition, and the deck’s size, layouts and theme', () => {
+      expect(d.slides.map((x) => x.transition?.kind ?? null)).toEqual([null, null, null, null, null, null, 'fade', 'push', null, null])
+      expect(d.slides[7].transition).toEqual({ kind: 'push', dir: 'l', ms: 1000 })
+      expect(d.slides[8].hidden).toBe(true)
+      expect([d.width, d.height]).toEqual([12192000, 6858000])
+      expect(d.theme).toMatchObject({ major: 'Cambria', minor: 'Calibri', colors: { dk1: '000000', lt1: 'FFFFFF', accent2: 'D34B36' } })
+      expect(Object.keys(d.theme!.colors)).toHaveLength(12)
+      expect(d.layoutInfo!.find((l) => l.name === 'Title and Content')).toEqual({ name: 'Title and Content', master: 0, holds: [{ kind: 'title', idx: 0 }, { kind: 'body', idx: 1 }, { kind: 'date', idx: 10 }, { kind: 'footer', idx: 11 }, { kind: 'number', idx: 12 }] })
+    })
+  })
+
+  it('gives each kind of shape the box its pixels were measured against (fixtures/kinds.pptx, the box test)', async () => {
+    const d = await inspect(join(__dirname, 'fixtures', 'kinds.pptx'))
+    const measured = JSON.parse(readFileSync(join(__dirname, 'fixtures', 'kinds-pixels.json'), 'utf8')) as { width: number; height: number; shapes: Array<{ shape: number; name: string; kind: string; rot: number; box: [number, number] }> }
+    for (const m of measured.shapes) {
+      const sh = d.slides[0].shapes.find((x) => x.id === m.shape)!
+      const [tl, tr, , bl] = sh.quad!
+      const w = Math.hypot((tr[0] - tl[0]) * measured.width, (tr[1] - tl[1]) * measured.height)
+      const h = Math.hypot((bl[0] - tl[0]) * measured.width, (bl[1] - tl[1]) * measured.height)
+      expect([m.name, sh.kind, Math.round(w * 10) / 10, Math.round(h * 10) / 10, sh.rot ?? 0]).toEqual([m.name, m.kind, m.box[0], m.box[1], m.rot])
+    }
+    expect(d.slides[0].shapes.find((x) => x.kind === 'connector')!.shape).toBeUndefined()
+    expect(d.slides[0].shapes.filter((x) => x.kind === 'other').map((x) => x.shape)).toEqual(['ellipse', 'rightArrow', 'roundRect', 'ellipse', 'triangle'])
+  })
+
+  it('gives each slide one hash of what its picture is drawn from: an edit moves its own slide\'s alone, notes move none, a theme or the deck\'s own settings move them all', async () => {
+    const input = file(readFileSync(FIXTURE))
+    const draws = async (path: string): Promise<Array<string | undefined>> => (await inspect(path)).slides.map((s) => s.draws)
+    const before = await draws(input)
+    expect(before.every((d) => /^[0-9a-f]{64}$/.test(d ?? ''))).toBe(true)
+    const worded = await apply(input, [{ op: 'text', slide: 268, shape: 133, paragraphs: ['Changed'] }], true)
+    expect((await draws(worded.output)).map((d, i) => d === before[i])).toEqual([false, true])
+    const noted = await apply(input, [{ op: 'notes', slide: 268, text: 'Say this' }], true)
+    expect(await draws(noted.output)).toEqual(before)
+    // A part every slide reaches (the theme), and the presentation's own settings: every picture is drawn again.
+    const rewrite = async (name: string, change: (xml: string) => string): Promise<string> => {
+      const zip = await JSZip.loadAsync(readFileSync(input))
+      const xml = await zip.file(name)!.async('string')
+      const next = change(xml)
+      expect(next).not.toBe(xml)
+      zip.file(name, next)
+      return file(await zip.generateAsync({ type: 'nodebuffer' }))
+    }
+    const theme = Object.keys((await JSZip.loadAsync(readFileSync(input))).files).find((n) => /^ppt\/theme\/theme\d+\.xml$/.test(n))!
+    const themed = await rewrite(theme, (xml) => xml.replace(/<a:srgbClr val="[0-9A-Fa-f]{6}"/, '<a:srgbClr val="123456"'))
+    expect((await draws(themed)).some((d, i) => d !== before[i])).toBe(true)
+    const numbered = await rewrite('ppt/presentation.xml', (xml) => xml.replace('<p:presentation ', '<p:presentation firstSlideNum="5" '))
+    expect((await draws(numbered)).map((d, i) => d === before[i])).toEqual([false, false])
+    // The list of slides is not a setting: a slide taken out leaves the other's picture as it was.
+    const fewer = await apply(input, [{ op: 'remove', slide: 267 }], true)
+    expect(await draws(fewer.output)).toEqual([before[0]])
+  })
+
   it('inspects a 12-slide pptxgenjs deck: its slides, layouts, table and chart', async () => {
     const d = await inspect(file(await writeNewDeck({ title: 'Showcase', slides: TWELVE })))
     expect(d.slides).toHaveLength(12)

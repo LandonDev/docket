@@ -1,0 +1,117 @@
+{
+ "note": "Where LibreOffice 26.8.3 drew each flat-filled shape of 12-feature-probes.pptx at 1920 by 1080: the box around its pixels of that fill (within 3 levels).",
+ "shapes": [
+  {
+   "slide": 1,
+   "shape": 4,
+   "name": "theme swatch",
+   "fill": "D34B36",
+   "width": 1920,
+   "height": 1080,
+   "box": [
+    116,
+    432,
+    590,
+    647
+   ]
+  },
+  {
+   "slide": 2,
+   "shape": 3,
+   "name": "autofit box",
+   "fill": "D34B36",
+   "width": 1920,
+   "height": 1080,
+   "box": [
+    144,
+    252,
+    791,
+    539
+   ]
+  },
+  {
+   "slide": 3,
+   "shape": 3,
+   "name": "plain box",
+   "fill": "E26A20",
+   "width": 1920,
+   "height": 1080,
+   "box": [
+    130,
+    252,
+    575,
+    431
+   ]
+  },
+  {
+   "slide": 3,
+   "shape": 5,
+   "name": "scaled group child",
+   "fill": "154DC4",
+   "width": 1920,
+   "height": 1080,
+   "box": [
+    720,
+    288,
+    1245,
+    499
+   ]
+  },
+  {
+   "slide": 3,
+   "shape": 8,
+   "name": "rotated and flipped group child",
+   "fill": "2DA459",
+   "width": 1920,
+   "height": 1080,
+   "box": [
+    1315,
+    226,
+    1699,
+    539
+   ]
+  },
+  {
+   "slide": 3,
+   "shape": 10,
+   "name": "rotated box",
+   "fill": "AD227C",
+   "width": 1920,
+   "height": 1080,
+   "box": [
+    162,
+    523,
+    644,
+    859
+   ]
+  },
+  {
+   "slide": 4,
+   "shape": 5,
+   "name": "caption box",
+   "fill": "A0461E",
+   "width": 1920,
+   "height": 1080,
+   "box": [
+    144,
+    778,
+    777,
+    871
+   ]
+  },
+  {
+   "slide": 5,
+   "shape": 6,
+   "name": "footer strip",
+   "fill": "2F9C78",
+   "width": 1920,
+   "height": 1080,
+   "box": [
+    87,
+    886,
+    1785,
+    950
+   ]
+  }
+ ]
+}

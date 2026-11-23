@@ -1,10 +1,15 @@
+import { statSync } from 'node:fs'
+import { join } from 'node:path'
 import { handled, NOT_HANDLED } from '@shared/work'
 import type { WorkModule } from '../modules'
+import { statePath, Toolchain } from '../formats/tools'
 import { fenceItem, itemOf, readRange } from '../pdf/file'
+import { createResident, type Resident } from './resident'
 import { SLIDES_CONVERTERS } from './deck'
 import { ensureSlidesTables, SlidesStore } from './store'
 import { slidesTools } from './tools'
-import { accept, announce, ChangedSinceError, reject, renderPath, showOf, StaleChangesError, undo, viewOf } from './view'
+import { registerFileMoved } from '../files/hooks'
+import { accept, announce, ChangedSinceError, fileMoved, itemsGone, reject, renderPath, seatOf, sessionsGone, setSlideEngine, setSlideRenderer, showOf, slidePath, StaleChangesError, undo, viewOf } from './view'
 
 /**
  * The slides pillar's server module (docs/agents/work-slides.md): a deck
@@ -14,12 +19,50 @@ import { accept, announce, ChangedSinceError, reject, renderPath, showOf, StaleC
  * deck with. The .pptx stays the truth; an edit written into it leaves
  * every part it did not change byte for byte as it was.
  */
-const SLIDES_METHODS: ReadonlySet<string> = new Set(['work.slides.open', 'work.slides.read', 'work.slides.show', 'work.slides.review', 'work.slides.mode', 'work.slides.undo'])
+const SLIDES_METHODS: ReadonlySet<string> = new Set(['work.slides.open', 'work.slides.read', 'work.slides.slide', 'work.slides.show', 'work.slides.review', 'work.slides.mode', 'work.slides.undo'])
+
+// A deck's rows and folder are kept by its file's path: a rename or a move through Files re-keys them in the
+// rename's own savepoint. Registered when the module loads; the files pillar keeps it whenever it starts.
+registerFileMoved((from, to, at) => fileMoved(from, to, at))
+
+// One resident a host for the life of the process: Work turned off and on again takes up the same one, which
+// waits for its old LibreOffice to end before it starts another on the same profile.
+const residents = new Map<string, Resident>()
+function residentOf(dataDir: string, tools: Toolchain, log: (line: string) => void): Resident {
+  let resident = residents.get(dataDir)
+  if (!resident) residents.set(dataDir, (resident = createResident({ soffice: () => tools.bin('libreoffice'), folder: join(dataDir, 'work-slides', '.cache', 'resident'), log })))
+  return resident
+}
 
 export const slides: WorkModule = {
   id: 'slides',
   ensure(db) {
     ensureSlidesTables(db)
+  },
+  // One LibreOffice kept running while Work is on (resident.ts): an edit's slide is drawn in a fraction of a second.
+  // It starts at the first deck drawn, never here, and ends when Work is turned off or after ten idle minutes.
+  start(ctx) {
+    const tools = new Toolchain(ctx.dataDir)
+    const resident = residentOf(ctx.dataDir, tools, (line) => ctx.log(line))
+    setSlideRenderer({
+      here: () => resident.state().phase !== 'unsupported' && tools.bin('libreoffice') !== null,
+      slide: async (input, page, output, signal) => (await resident.slide(input, page, output, signal)).slides,
+      deck: async (input, output, signal) => void (await resident.deck(input, output, signal))
+    })
+    // The toolchain as installed: its state file is rewritten when LibreOffice or a font pack is.
+    setSlideEngine(() => {
+      try {
+        const at = statSync(statePath(ctx.dataDir))
+        return `${at.mtimeMs}:${at.size}`
+      } catch {
+        return ''
+      }
+    })
+    return () => {
+      setSlideRenderer(null)
+      setSlideEngine(null)
+      void resident.stop()
+    }
   },
   async handle(req, ctx, by, signal) {
     // A method the module does not answer (work.slides.list) is not built: it names no item to fence.
@@ -33,6 +76,10 @@ export const slides: WorkModule = {
         return handled(await viewOf(ctx, item, signal))
       case 'work.slides.read': {
         const { path, rev } = await renderPath(ctx, item, req.params.which, signal)
+        return handled({ ...readRange(path, req.params.offset, req.params.length), rev })
+      }
+      case 'work.slides.slide': {
+        const { path, rev } = await slidePath(ctx, item, req.params.which, req.params.slide, signal)
         return handled({ ...readRange(path, req.params.offset, req.params.length), rev })
       }
       case 'work.slides.show':
@@ -53,7 +100,9 @@ export const slides: WorkModule = {
       }
       case 'work.slides.mode': {
         if (by.kind === 'model') throw new Error('Only the owner sets what an agent may do to a deck.')
-        new SlidesStore(ctx.db).setMode(item.id, item.sessionId, req.params.mode)
+        // The mode is this tab's own (store.ts): another seat on the same file keeps its own.
+        seatOf(ctx, item)
+        new SlidesStore(ctx.db).setMode(item.id, req.params.mode)
         return handled(await announce(ctx, item, signal))
       }
       case 'work.slides.undo': {
@@ -68,10 +117,10 @@ export const slides: WorkModule = {
   preamble: () =>
     'A deck in the canvas is a .pptx file. Read it with `slides_read` and look at a slide with `slides_image`. Revise it with `slides_edit`, naming slides and shapes by id: each revised slide is a suggestion the person steps through and accepts. Say `because: "asked"` with the person\'s own words as `quote` when they asked for the edit, and `because: "own"` when it is your idea. Draft a new deck with `slides_new`.',
   sessionsRemoved(ids, ctx) {
-    new SlidesStore(ctx.db).removeSessions(ids)
+    sessionsGone(ctx, ids)
   },
   itemsRemoved(items, ctx) {
-    new SlidesStore(ctx.db).removeItems(items.map((i) => i.id))
+    itemsGone(ctx, items)
   },
   // Nothing: a deleted workspace's threads are removed too, and `sessionsRemoved` clears their rows.
   workspaceRemoved() {}

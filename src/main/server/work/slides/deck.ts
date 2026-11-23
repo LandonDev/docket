@@ -1,7 +1,7 @@
 import { copyFileSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { z } from 'zod'
-import { SlideOpSchema, type SlideOp } from '@shared/contract-work-slides'
+import { SlideOpSchema, type DeckParagraph, type DeckPoint, type DeckShapeKind, type DeckTextFrame, type DeckView, type SlideOp, type SlideTransition } from '@shared/contract-work-slides'
 import type { Converter, ConvertRun } from '../formats/jobs'
 import { tailOf } from '../formats/tools'
 import { DECK_PY } from './deckScript'
@@ -23,6 +23,9 @@ export interface DeckInfo {
   sections: Array<{ name: string; slideIds: number[] }>
   /** the layouts a new slide can be made from, by name, as PowerPoint lists them */
   layouts: string[]
+  /** each layout with its master and the placeholders it holds (an outline kept by an older script has none) */
+  layoutInfo?: NonNullable<DeckView['layouts']>
+  theme?: NonNullable<DeckView['theme']>
 }
 export interface SlideInfo {
   /** p:sldId/@id: kept by every save, so a slide is paired across revisions by it */
@@ -34,17 +37,34 @@ export interface SlideInfo {
   notes: string
   /** sha256 (hex) of the slide part's bytes: equal across two files means the slide's XML is byte-identical */
   hash: string
-  /** in z-order; a group's children flattened in with the group's offset and scale applied to their boxes */
+  /**
+   * sha256 (hex) of everything the slide's picture is drawn from (its XML, its layout, master and theme, its
+   * pictures, charts and media, and its number where one is printed): equal means the same picture, so a picture
+   * is kept by it. An outline kept by an older script has none.
+   */
+  draws?: string
+  /** in z-order; a group's children flattened in, each placed through every group above it */
   shapes: ShapeInfo[]
+  transition?: SlideTransition
 }
 export interface ShapeInfo {
   id: number
   name: string
-  kind: 'text' | 'table' | 'chart' | 'picture' | 'other'
+  kind: DeckShapeKind
   /** for a placeholder: 'title' (also a centred title), 'subtitle', 'body' (also a content placeholder), 'date', 'number', 'footer', … */
   placeholder?: string
-  /** x0,y0,x1,y1 as shares of the slide, origin top-left, clamped to 0..1; inherited from the layout when the shape has none */
+  /** x0,y0,x1,y1 as shares of the slide, origin top-left, clamped to 0..1: the box around the shape as drawn, its rotation, flips and groups applied; inherited from the layout when the shape has none */
   bbox: [number, number, number, number] | null
+  /** its own box's corners as drawn (top-left, top-right, bottom-right, bottom-left), unclamped */
+  quad?: [DeckPoint, DeckPoint, DeckPoint, DeckPoint]
+  rot?: number
+  flip?: boolean
+  /** the outermost group it is in */
+  group?: number
+  shape?: string
+  media?: 'video' | 'audio'
+  paragraphs?: DeckParagraph[]
+  frame?: DeckTextFrame
   /** every paragraph joined by \n; '' for a shape with no text */
   text: string
   /** a table's cells, row by row */

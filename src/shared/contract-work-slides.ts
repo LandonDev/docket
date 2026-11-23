@@ -84,12 +84,79 @@ export type NewDeck = z.infer<typeof NewDeckSchema>
 
 // ── what the canvas draws ────────────────────────────────────────────
 
+/** What a shape is, as the hand editor treats it. `frame`: a diagram or an embedded object, drawn and kept, edited in PowerPoint. `other`: a drawn shape with no words. */
+export type DeckShapeKind = 'text' | 'table' | 'chart' | 'picture' | 'media' | 'connector' | 'frame' | 'other'
+
+/** A point on the slide as shares of its width and height, origin top-left. */
+export type DeckPoint = [x: number, y: number]
+
+/** One run of a paragraph with the look it is drawn in: its own, else what its paragraph, shape, layout, master and the deck's defaults give it. */
+export interface DeckRun {
+  text: string
+  /** a typeface by its Office name ("Calibri"); a theme font is resolved */
+  font?: string
+  /** points, after the shape's shrink-to-fit */
+  size?: number
+  bold?: boolean
+  italic?: boolean
+  underline?: boolean
+  /** hex, no hash; a theme colour is resolved */
+  color?: string
+}
+export interface DeckParagraph {
+  /** list level, from 0 */
+  level: number
+  align: 'left' | 'center' | 'right' | 'justify'
+  list: 'none' | 'bullet' | 'number'
+  runs: DeckRun[]
+}
+/** How a text shape holds its words. */
+export interface DeckTextFrame {
+  anchor: 'top' | 'middle' | 'bottom'
+  /** left, top, right, bottom, in EMU */
+  insets: [number, number, number, number]
+  /** `shrink`: the text shrinks to the shape; `grow`: the shape grows to the text */
+  fit: 'none' | 'shrink' | 'grow'
+  wrap: boolean
+}
+
 /** A shape of a slide the canvas can point at: where it is and what it says. */
 export interface DeckShape {
   id: number
   name: string
+  /** what it is on its slide, in the person's words ("Title", "Text 2", "Picture"): what a screen reader says, never PowerPoint's name for it */
+  label?: string
+  /** the box around the shape as drawn (turned and flipped with it and with every group above it), clamped to the slide */
   bbox: Bbox | null
   text: string
+  kind?: DeckShapeKind
+  /** its own box's four corners as drawn: top-left, top-right, bottom-right, bottom-left. Handles sit on these. */
+  quad?: [DeckPoint, DeckPoint, DeckPoint, DeckPoint]
+  /** the angle its top edge makes, in degrees clockwise */
+  rot?: number
+  /** mirrored (an odd number of flips above and in it) */
+  flip?: boolean
+  /** the outermost group it is in, by that group's shape id */
+  group?: number
+  /** a preset outline's name as the file has it ("rect", "ellipse", "rightArrow"), or `custom` */
+  shape?: string
+  media?: 'video' | 'audio'
+  /** for a text shape: its paragraphs as runs, and its frame */
+  paragraphs?: DeckParagraph[]
+  frame?: DeckTextFrame
+}
+
+/** A slide's own transition, as the file names it. */
+export interface SlideTransition {
+  /** `fade`, `push`, or any other name PowerPoint writes (a cut here) */
+  kind: string
+  /** `l`, `r`, `u`, `d` for a push */
+  dir?: string
+  ms: number
+  /** moves on by itself after this many milliseconds */
+  after?: number
+  /** false: a press does not advance it */
+  click?: boolean
 }
 
 /** One thumbnail of the strip, in the proposed order. */
@@ -111,6 +178,14 @@ export interface DeckSlide {
   /** add: a slide the change adds, rewords or lands. del: the place a slide leaves. */
   tint: 'add' | 'del' | null
   shapes: DeckShape[]
+  /**
+   * Its own picture, a one-page PDF read with `work.slides.slide`: `rev` changes only when this slide's picture
+   * does, so a client keeps it across an edit elsewhere in the deck. Absent where the host has no picture of it.
+   */
+  pic?: { rev: string; size: number }
+  /** the layout it is made from, by name */
+  layout?: string
+  transition?: SlideTransition
   /** the boxes of the shapes the change touched, to tint on the stage */
   changed: Bbox[]
   /** the heading over this slide in the strip: the section it starts */
@@ -160,6 +235,12 @@ export interface DeckView {
   written?: { id: string; text: string; at: number }
   /** Why there is no picture (LibreOffice is not installed on a host this one can reach). The outline still shows. */
   renderError?: string
+  /** the slide's size in EMU (914,400 to an inch) */
+  size?: { width: number; height: number }
+  /** each layout a slide can take: its name and the placeholders it holds */
+  layouts?: Array<{ name: string; master: number; holds: Array<{ kind: string; idx: number }> }>
+  /** the deck's theme: twelve colours as hex by Office's names (dk1, lt1, accent1 …), and its heading and body fonts */
+  theme?: { colors: Record<string, string>; major: string; minor: string }
 }
 
 /**
@@ -197,6 +278,8 @@ export const SlidesRequestSchemas = [
   request('work.slides.open', z.object({ itemId })),
   /** → { data: base64, size, rev }: bytes of one of the deck's renders, a PDF */
   request('work.slides.read', z.object({ itemId, which: z.enum(['file', 'proposed']), offset: z.number().int().min(0), length: z.number().int().positive().max(4 * 1024 * 1024) })),
+  /** → { data: base64, size, rev }: bytes of one slide's own picture (a one-page PDF), by the slide's id in the file or in the proposed deck; `rev` is the slide's `pic.rev` */
+  request('work.slides.slide', z.object({ itemId, which: z.enum(['file', 'proposed']), slide, offset: z.number().int().min(0), length: z.number().int().positive().max(4 * 1024 * 1024) })),
   /** → DeckView: accept writes the changes into the file; reject drops them */
   request(
     'work.slides.review',
@@ -223,6 +306,7 @@ export const SLIDES_CAPS = {
   'work.slides.open': 'read',
   'work.slides.read': 'read',
   'work.slides.show': 'read',
+  'work.slides.slide': 'read',
   'work.slides.review': 'operate',
   'work.slides.mode': 'operate',
   'work.slides.undo': 'operate'

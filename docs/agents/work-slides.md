@@ -25,23 +25,133 @@ drops it. Agents suggest; the owner accepts.
   sentence: a Google deck opens in Google, and the google tools read it and
   revise a copy ([work-google.md](work-google.md)); opening one from
   PowerPoint on the web is not built.
-- **Renders.** Each version of a deck is kept under
-  `canvas/<thread>/<item>/render/<key>.{json,pdf}`: the outline and the PDF.
-  The file's key is the sha256 of its bytes. The proposed deck's key is the
-  sha256 of that hash and the JSON of the pending edits, and its copy is
-  `<key>.pptx`. Both are salted with a hash of the deck script and the
-  filter, so a new script makes them again. Every step reads a copy of the
-  file taken first (in the item's `tmp/` folder), so a save meanwhile never
-  lands under the old key. Each output is written beside its place and
-  moved onto it, so a job cut short leaves nothing half written. So nothing is read or rendered twice. The newest four keys
-  stay. The PDF keeps hidden slides
+- **Kept by the deck, not the item** (`deckKey`, `view.ts`). A file on this
+  host is one deck whichever canvas items show it: a thread's canvas and a
+  Files tab on one file share one list of waiting edits, one last write and
+  one queue. The key is `file:<real path>` for a file (a link and its
+  target are one deck; a file that is not there yet is keyed by its
+  folder's real path and its name) and the item's own id for a deck only
+  that item can hold (one a thread made, a mail's attachment). Each item
+  that shows a deck takes a seat on it (`seatOf`, `work_slides_seats`);
+  rows kept under the item from before this rule move to the deck's key
+  the first time it is opened, and two such items' waiting edits are both
+  kept, in the order they are opened.
+- **The mode is the seat's.** "Agent writes" is a leave he gives an agent
+  in one tab. Kept by the file it would reach every thread that ever opens
+  that file, so each seat has its own mode (`SlidesStore.mode(itemId)`), as
+  each item had before, and a seat that goes takes its mode with it.
+- **Shared is the deck's.** Whether others can open a deck is asked of the
+  deck, not of one item (`sharedDeck`): it is shared when this item's
+  source says so (`deckShared`) or any other seat's on the same file does.
+  So two seats that name one file differently (a path in a library, the
+  same path as a plain file) hold it to the stricter word: its
+  suggestions stay on this host through every seat, every conversion
+  carries `shared: true`, and what an earlier seat kept by the file is
+  removed when a shared seat sits down.
+- **Where a deck keeps its files** (`deckDir`). His own file keeps its
+  versions by the file, under `<data>/work-slides/<sha256 of the key, 32
+  characters>/history/`, and what can be made again (renders, pages,
+  scratch copies) under `<data>/work-slides/.cache/<the same>/`, which the
+  box's backup leaves out. So every seat shares them and its versions
+  outlive a closed tab. A deck only the item holds, and a file others can
+  open, keep them in the item's own folder (`canvas/<thread>/<item>/`) and
+  they go with the item: nothing made from a shared file outlives its tab.
+  On a shared file the Undo of an agent's direct write is offered only in
+  the tab that made it (the copy from before is in that item's folder) and
+  goes with that tab.
+- **When a seat leaves.** A closed Files tab comes through `itemsRemoved`
+  (`itemsGone`); a removed thread's items do not, so `sessionsRemoved`
+  (`sessionsGone`) lets its seats go by the same rules. A deck only that
+  item held goes with it. A file others can open drops its waiting edits
+  and its last write with its last seat. His own file keeps its waiting
+  edits and its versions for the next time it is opened; only its
+  pictures, which can be drawn again, go with the last seat, on the deck's
+  own queue so a render still running is not cut from under. A removed
+  thread's own suggestions on a file go with it (`by` names the thread).
+  An item that never took a seat (never opened since this rule) leaves the
+  deck as its other seats hold it.
+- **A file renamed or moved** (`fileMoved`, registered with
+  `registerFileMoved`): the deck's rows and seats take the new path's key
+  and its folders go with them, so the waiting edits, each seat's mode,
+  Undo and the versions are still the deck's under its new name. A key
+  with nothing kept under it moves nothing. **Nothing calls this yet**:
+  the Files build's rename and move are not built (`work.files.rename`
+  throws), and a rename in Finder leaves the rows under the old key, as
+  before. It runs when Files calls its hooks.
+- **Renders.** Each version of a deck is kept in the deck's `render/` folder
+  as `<key>.{json,pdf}`: the outline and the PDF. The file's key is the
+  sha256 of its bytes. The proposed deck's key is the sha256 of that hash and
+  the JSON of the pending edits, and its copy is `<key>.pptx`. Both are
+  salted with a hash of the deck script and the filter, so a new script
+  makes them again. Every step reads a copy of the file taken first (in the
+  deck's `tmp/` folder), so a save meanwhile never lands under the old key.
+  Each output is written beside its place and moved onto it, so a job cut
+  short leaves nothing half written. So nothing is read or rendered twice.
+  The newest four keys stay. The PDF keeps hidden slides
   (`impress_pdf_Export:{"ExportHiddenSlides":…}`), so page n is slide n. With
   no LibreOffice on this host or one it reaches, the view carries
   `renderError` and the outline alone.
-- **One chain per item.** `serial(itemId, fn)` runs every step that reads or
-  writes an item's files after the one before. Two opens at once render once,
-  and a write never races a render. A step on the chain never waits on another
-  step of the same chain.
+- **A picture that keeps up** (`pictures.ts`, `deckPicture`). The outline
+  gives every slide `draws`: the sha256 of every part the slide is drawn
+  from (the slide, its layout, master and theme, each picture, chart and
+  media file it names; never its notes or another slide), of what it takes
+  from the deck itself (`deck_draws`: the slide size, the number slides
+  count from, the default text style, embedded fonts and table styles; not
+  the list of slides), and of its number when it shows one. Each slide's
+  one-page PDF is kept in the deck's `pages/` folder, named
+  `pageName(salt, draws)`: the salt is the deck script, the filter and the
+  toolchain as installed (its state file's time and size), so a new
+  LibreOffice or font pack draws every slide again. A font put on the host
+  by hand is not seen. To make a version's PDF: when every page
+  is kept, they are put together (pdf-lib; 12 pages 61 ms, 48 pages 165 ms)
+  and nothing is drawn; when up to four are missing (`ONE_AT_A_TIME`) and a
+  LibreOffice is kept running (`setSlideRenderer`), those slides alone are
+  drawn; otherwise the whole deck is exported once and its pages kept one by
+  one. A slide drawn alone is refused when LibreOffice counts other slides
+  than the outline does (page n would be another slide), and a kept page
+  that will not read is dropped and drawn again. A deck past 400 slides (`RESIDENT_MOST`) is never handed to the kept
+  LibreOffice: it opens the whole file for each job and a job has ten
+  seconds. Any failure of the kept LibreOffice falls back to a LibreOffice
+  started for the job, the way a deck was always drawn. A page split from a
+  whole export and put back is the same picture, pixel for pixel
+  (`pictures.test.ts`). The newest 1,200 pages a deck stay (`PAGES_KEPT`).
+- **The LibreOffice kept running** (`resident.ts`, `residentScript.ts`).
+  One per host, started at the first deck drawn while Work is on (the
+  module's `start`), in `<data>/work-slides/.cache/resident/` with a profile
+  of its own. One child: LibreOffice's bundled Python runs `RESIDENT_PY`,
+  which starts soffice with the formats pillar's options and a UNO listener
+  on a pipe, and drives it, one JSON line a job. Each job opens the deck
+  hidden and read-only, with no link refreshed and no macro ever run,
+  exports with `impress_pdf_Export` (hidden slides kept, `PageRange` for one
+  slide), and closes it. One job at a time. A job with no answer in 10 s
+  kills the tree; a crash, a failed start and a stop all reject with
+  `ResidentUnavailable`, and the caller draws the old way. A job cancelled
+  while it runs is answered at once, runs out and has its picture dropped:
+  UNO cannot cancel it, and a kill would cost the next job a start. It
+  stops after ten idle minutes, past 1.5 GiB of memory, and when Work is
+  turned off; a start waits for the old one to end, so two never share the
+  profile. If the app dies, the driver ends soffice whether it reads the
+  end of its stdin or fails to write an answer.
+  The pipe: LibreOffice puts a pipe only under `/tmp/OSL_PIPE_<uid>_<name>`,
+  so the name is random and that path is a link the module makes (never
+  followed if it exists) to a 0700 folder of its own, where the socket
+  lives; its own dangling links are swept at the next start. No TCP port. Linux and macOS; Windows has none and draws the old
+  way. Measured on the box under load: one slide of a 12-slide deck 0.13 to
+  0.21 s, of 50 slides 0.37 to 0.47 s, of 200 slides 1.3 to 1.9 s (opening
+  the file is nearly all of it). One slide drawn alone is the same picture
+  as that page of a whole export, 0 pixels apart in 24 pairs
+  (`resident.test.ts`, behind the gate).
+- **One slide's own picture** (`slidePath`, `work.slides.slide`). A client
+  that wants one slide reads that slide's one-page PDF by range, named by
+  its id in the file or the proposed deck. `DeckSlide.pic` carries its `rev`
+  (the first 16 characters of the page's name) and size, so a client keeps the
+  picture of a slide an edit did not touch and reads only the one that
+  changed. A page not kept yet is split from the deck's PDF.
+- **One chain per deck.** `serial(ctx, item, fn)` runs every step that reads
+  or writes a deck's files after the one before, in the deck's own line
+  (`seatOf`): two opens at once render once, a write never races a render,
+  and two seats on one file wait in the same line. A step on the chain never
+  waits on another step of the same chain.
 - **The strip** (`stripOf`). `DeckView.slides` is the proposed order. A
   removed slide, and the place a moved slide leaves, are ghosts
   (`key: 'ghost:<id>'`, `number: null`, `tint: 'del'`, `from: 'file'`), each
@@ -135,17 +245,26 @@ Tests: `slides.test.ts`, "a deck in a place others can open".
 ### Tables
 
 `store.ts`, made in `ensure` (no `BEGIN` or `COMMIT`: it runs inside the
-host's savepoint), each with a `session_id`, each a move module
-(`slides-items`, `slides-ops`):
+host's savepoint). The first two are move modules (`slides-items`,
+`slides-ops`). Their `item_id` column holds the deck's key (the name is from
+before decks were kept by the file), and `session_id` is the thread for a
+deck only an item holds and empty for a file's, whose rows belong to no
+thread (`rowSession`):
 
-- `work_slides_items`: `item_id`, `session_id`, `mode` (`suggests` or
-  `writes`), `written` (the last direct write, JSON), `updated_at`.
-- `work_slides_ops`: one pending edit a row: `id`, `item_id`, `session_id`,
-  `seq`, `slide` (what the stepper counts it under), `op` (JSON), `by`,
-  `at`. A row that no longer parses is left out.
+- `work_slides_items`: `item_id` (the deck), `session_id`, `written` (the
+  last direct write, JSON, with the item it was made from), `updated_at`.
+  Its `mode` column is from before the mode was the seat's: read once,
+  when an old item takes its seat.
+- `work_slides_ops`: one pending edit a row: `id`, `item_id` (the deck),
+  `session_id`, `seq`, `slide` (what the stepper counts it under), `op`
+  (JSON), `by`, `at`. A row that no longer parses is left out.
+- `work_slides_seats`: `item_id` (the canvas item), `deck`, `session_id`,
+  `mode` (`suggests` or `writes`: what an agent may do from this tab),
+  `shared` (this seat's source is one others can open). Every seat on a
+  deck is pushed its view when the deck changes (`announce`), each as its
+  own item, in its own mode.
 
-`sessionsRemoved` deletes a removed thread's rows. The files go with the
-thread's canvas folder.
+`sessionsRemoved` and `itemsRemoved` are "When a seat leaves" above.
 
 ### Methods
 
@@ -153,6 +272,7 @@ thread's canvas folder.
 |---|---|---|
 | `work.slides.open` | read | → `DeckView`: reads and renders the deck and the proposed deck |
 | `work.slides.read` | read | → `{ data, size, rev }`: bytes of the `file` or `proposed` render by range, at most 4 MB a call |
+| `work.slides.slide` | read | → `{ data, size, rev }`: bytes of one slide's own one-page PDF (`{itemId, which, slide, offset, length}`, the slide by its id in the `file` or the `proposed` deck), at most 4 MB a call; `rev` is the picture's, so it changes only when that slide's picture does |
 | `work.slides.show` | read | → `ShowDeck`: the file's slides in the file's own order (`id`, `number`, `page`, `title`, `notes`, `hidden`), its render and its `rev`, for a show. A waiting suggestion is never in it: a show presents the deck as it is on disk. The render is read with `work.slides.read {which: 'file'}` |
 | `work.slides.review` | operate | accept or reject changes by id, or `all` → `DeckView`; an optional `rev` (the proposed render's, as the view advertised it) binds the press to that preview: when the changes moved on since, nothing is accepted or rejected, every client is told the deck as it is, and the call fails with "The suggestions changed since this preview". The phone always sends it and reads the render's bytes only at that rev; the desktop's strip sends none and is not checked |
 | `work.slides.mode` | operate | `suggests` or `writes` → `DeckView` |
@@ -164,7 +284,7 @@ change pushes `work.slides` with the view. There is no method named `list`.
 The listener's path fence reads only the paths a request names, and these
 methods name an item id. So `handle` fences the item itself, once, before
 any method runs: `fenceItem` (pdf/file.ts) asks the listener's own fence
-(`ctx.reaches`) and refuses a remote key every one of the six methods on a
+(`ctx.reaches`) and refuses a remote key every one of the seven methods on a
 deck whose file it could not name itself, with the fence's own error. The
 key gets nothing of the view and changes nothing. A deck a thread made sits
 in its own folder and passes; this host's own window always passes.
@@ -191,6 +311,37 @@ own window, and a key whose roots hold it, admin or not.
   (`newDeck.ts`). With `save`, an absolute path to a new .pptx (never an
   existing file), it is a file there; else it is the thread's own
   `deck.pptx`. It opens in the canvas and renders while the answer goes back.
+
+### The outline
+
+`DeckInfo` (`deck.ts`, written by `DECK_PY`) is what the host knows of a deck
+without drawing it. Since SLD3 it carries what a hand editor needs:
+
+- **Where each shape is, turned and flipped.** `walk` carries a 2 by 3
+  transform through every group (a group's child space, its rotation and
+  its flips), so a shape's `quad` is its four corners on the slide in
+  points, in the shape's own order, with `rot` and `flip`; `bbox` is the box
+  around them. Measured against LibreOffice's picture of each kind
+  (`fixtures/kinds.pptx`, `boxes.test.ts`, at 1920 wide): a text box 0.8 px,
+  a picture 0.8, a table 1.5, a chart 1.9, a video 0.9, an arrow 2.4, a
+  triangle 1.6, a turned ellipse 0.2. A turned shape was up to 89 px out
+  before. A connector is 5.5 px out: its line is routed by the app that
+  draws it.
+- **What kind a shape is** (`DeckShapeKind`): `text`, `table`, `chart`,
+  `picture`, `media`, `connector`, `frame` (a diagram or an embedded
+  object) or `other`; `shape` names its preset geometry, `media` its video
+  or audio, `group` the group it is in.
+- **Its words as they are set.** `paragraphs`: each paragraph's level,
+  alignment and bullet and each run's words, font, size, weight, slant,
+  underline and colour, resolved through the placeholder, layout, master
+  and theme where the run names none (`style_chain`, `theme_of`); `frame`
+  holds the text box's insets, anchor, wrap and autofit.
+- **Each slide's** `draws` (above), `transition` (its kind, speed and
+  whether it advances on a click or after a time) and layout; the deck's
+  `layoutInfo` (each layout's name and placeholders) and `theme` (its
+  colours and fonts).
+
+A slide's timing tree (builds) is read by SLD6, with the show's builds.
 
 ### Converters
 
@@ -282,7 +433,35 @@ slide's.
   in-memory database and `startWork` with a fake deck tool (a "pptx" that is
   `PK\3\4` and JSON). Behind the gate, a 12-slide pptxgenjs deck renders
   through LibreOffice, one page a slide, a suggestion shows on the proposed
-  render, and `slides_image` returns a PNG.
+  render, and `slides_image` returns a PNG. "A deck kept by its file, drawn
+  slide by slide": two seats on one file share the waiting edits, each in
+  its own mode, and are both told; a closed tab and a removed thread keep
+  his own file's edits and versions and drop its pictures; an item that
+  never sat changes nothing; a deck any seat calls shared is shared for
+  all; a shared deck's Undo stays with the tab that wrote; one edited slide
+  is the only one drawn; `work.slides.slide` by range. Behind the gate, an
+  edit through the module draws one slide with the real LibreOffice kept
+  running, which ends when Work is turned off.
+- `pictures.test.ts`: split and stitch (the same bytes each time), the
+  three ways a version's PDF is made, the same picture twice drawn once,
+  a new engine drawing every slide again, a slide count that does not
+  match, a kept page that will not read, each failure's fallback, an
+  abort, and the pages kept.
+- `resident.test.ts`: the lifecycle against a fake process (one job at a
+  time, the 10 s kill, a crash, a failed start, idle and memory stops, a
+  cancelled job, a start that waits for the old one, the pipe's folder and
+  link); behind the gate, one slide equal to its page of a whole export on
+  12, 50 and 200 slides.
+- `deck.test.ts` "the outline of the feature deck" and the box test (behind
+  the gate): every kind's corners against LibreOffice's picture
+  (`fixtures/kinds.pptx`, `kinds-pixels.json`), runs and their resolved
+  fonts, transitions, layouts, the theme, and `draws`: an edit moves its
+  own slide's alone, notes move none, the theme or the deck's settings
+  move them all.
+- The renderer: `geometry.test.ts` (hit testing through turned and grouped
+  shapes, the selection's handles, reading order), `boxes.test.ts` (the
+  measured corners within their bounds) and the picking cases of
+  `SlidesCanvas.dom.test.tsx`.
 
 ## A mail's attachment
 
@@ -298,6 +477,7 @@ stage".
 |---|---|
 | `canvas.ts` | The kind's def |
 | `SlidesCanvas.tsx` | The chunk: `Body` (the strip and the stage), `Bar` (the line while PowerPoint shows the deck) and `TabEnd` (the TempCode and PowerPoint switch) |
+| `geometry.ts` | Hit testing, the selection's outline and handles, reading order and which kinds can be picked (pure) |
 | `deck.ts` | `DeckHost` (the methods and the push), the per-item store the three parts share (the view, the slide on the stage, which app shows it), and `useRender`, which opens one of the deck's renders in pdf.js |
 | `Present.tsx` | Present, the split button at the end of the deck's bar, its menu, and the keys that start a show while the keyboard is in the deck |
 | `show/` | The show, a chunk of its own loaded when the pointer first reaches Present: `state.ts` (the state and its keys), `timer.ts`, `Show.tsx` (a show running), `places.ts` (the documents it is drawn in), `Audience.tsx` (the slideshow), `Presenter.tsx` (the presenter's view), `pictures.tsx` (a slide painted at a window's size) |
@@ -325,6 +505,24 @@ How it works:
   slide, `--add-bg-paper` on a light one, read from the drawn pixels
   (`toneOf`). A press on a shape with words selects it and feeds Ask
   ("“6,200 stream viewers”, slide 3").
+- **Picking a shape** (`geometry.ts`). A press on the stage picks the top
+  shape under the pointer: `hit` tests the point against each shape's
+  `quad` from the front back, so a turned shape is picked where it is
+  drawn, and a shape with no area takes no press. The selection is drawn over the picture along
+  the quad with eight 8px handles and a turn handle 22px above the top edge
+  (`Selection`, an SVG that takes no pointer); the handles do nothing until
+  SLD5. Each pickable shape is also a button, named for a screen reader by
+  what it is on its slide and its words ("Title: Who comes"; the host's
+  `DeckShape.label`, never PowerPoint's name for it), in a group named
+  "Shapes on this slide". Tab walks the slide from the back to the front,
+  the bare arrows move through it in reading order (`readingOrder`: rows
+  top to bottom, then left to right), focus picks, Escape lets go, and a
+  press by pointer takes the keyboard to the shape it picked. A press on the bare slide lets go
+  too. A picked shape with words still feeds Ask.
+- **Which kinds can be picked** (`PICKABLE`): text, a plain shape, a
+  picture, a table, a chart and a video or audio clip. A connector and a
+  frame cannot: a connector's drawn line is not where its box says, and a
+  frame has nothing a hand can change here.
 - **What changed**, under the stage: each edit's place (a shape, a cell,
   the notes) at 12px muted, then the words before, struck, on `--del-bg`
   and the words after on `--add-bg`. Then Notes, 14/22 under a 12px medium

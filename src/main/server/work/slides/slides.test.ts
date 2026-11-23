@@ -1,8 +1,9 @@
 import type { DatabaseSync } from 'node:sqlite'
 import { createHash } from 'node:crypto'
-import { chmodSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs'
+import { chmodSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, renameSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { PDFDocument } from 'pdf-lib'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { LOCAL_PRINCIPAL } from '@shared/capabilities'
 import { ClientRequestSchema, type ClientRequest } from '@shared/contract'
@@ -42,6 +43,10 @@ const { startWork } = await import('../ctx')
 const { canvas } = await import('../canvas')
 const { slides } = await import('.')
 const { SLIDES_CONVERTERS } = await import('./deck')
+const { deckBase, deckCache, deckKey, fileKey, fileMoved, setSlideRenderer } = await import('./view')
+/** Where a deck keeps its renders and versions: by the file for a file of his own, else in the item's own folder. */
+const folderOf = (item: { id: string; source: CanvasSource }, sub = 'render'): string =>
+  deckKey(item as never).startsWith('file:') && !sharedPaths.size ? (sub === 'history' ? deckBase : deckCache)(dir, deckKey(item as never)) : join(dir, 'canvas', 't1', item.id)
 
 // ── a fake deck tool: a "pptx" is PK\3\4 and the DeckInfo as JSON ─────
 
@@ -232,11 +237,18 @@ describe('the store', () => {
       // A row that no longer parses is left out.
       sdb.prepare(`UPDATE work_slides_ops SET op = '{"op":"paint"}' WHERE id = ?`).run(p[0].id)
       expect(s.pending('i1')).toHaveLength(1)
-      s.setMode('i1', 't1', 'writes')
+      // The mode is the seat's: an item with no seat has none to set.
+      s.setMode('i1', 'writes')
+      expect(s.mode('i1')).toBe('suggests')
+      s.seat('i1', 't1', 'i1')
+      s.setMode('i1', 'writes')
       s.setWritten('i1', 't1', { id: 'w', text: 'x', at: 1, before: 'b.pptx', after: 'h' })
       expect([s.mode('i1'), s.written('i1')?.before]).toEqual(['writes', 'b.pptx'])
-      s.removeSessions(['t1'])
+      expect(s.removeSessions(['t1'])).toEqual([{ deck: 'i1', left: 0, shared: false }])
       expect([s.mode('i1'), s.written('i1'), s.pending('i1'), s.pending('i2').length]).toEqual(['suggests', null, [], 1])
+      // A key with nothing kept under it moves nothing: renaming a link to a deck must not wipe the deck's own rows.
+      s.rekey('file:/a/link.pptx', 'i2')
+      expect(s.pending('i2')).toHaveLength(1)
       // ensure runs at every boot.
       expect(() => ensureSlidesTables(sdb)).not.toThrow()
     } finally {
@@ -277,7 +289,8 @@ describe('the module, on a fake deck tool', () => {
       ['258', 3, 'file', 3, null],
       ['259', 4, 'file', 4, null]
     ])
-    expect(a.slides[0].shapes[0]).toEqual({ id: 2, name: 'Title 1', bbox: [0.05, 0.05, 0.95, 0.2], text: 'One' })
+    expect(a.slides[0].shapes[0]).toEqual({ id: 2, name: 'Title 1', label: 'Title', bbox: [0.05, 0.05, 0.95, 0.2], text: 'One', kind: 'text' })
+    expect([a.slides[0].layout, a.size]).toEqual(['Title and Content', { width: 12192000, height: 6858000 }])
     // Hidden slides are exported, so page n is slide n.
     expect(calls).toEqual(['deckinfo', 'pdf impress_pdf_Export:{"ExportHiddenSlides":{"type":"boolean","value":"true"}}'])
   })
@@ -369,7 +382,7 @@ describe('the module, on a fake deck tool', () => {
     const r = await tool('slides_edit', { item: item.id, because: 'own', ops: [{ op: 'notes', slide: 256, text: 'ok' }, { op: 'text', slide: 258, shape: 2, paragraphs: ['x'] }] })
     expect(r.isError).toBe(true)
     expect(textOf(r)).toBe('Nothing was kept:\nedit 2: there is no slide 258')
-    expect(new SlidesStore(db).pending(item.id)).toHaveLength(1)
+    expect(new SlidesStore(db).pending(deckKey(item))).toHaveLength(1)
   })
 
   it('accept writes the change into the file, keeps the old file in history and drops its rows; an anchor on a slide not yet in the file is moved', async () => {
@@ -387,7 +400,7 @@ describe('the module, on a fake deck tool', () => {
     let view = await call('work.slides.review', { itemId: item.id, changes: ['slide-301'], verdict: 'accept' })
     expect(readFake(path).slides.map((s) => s.id)).toEqual([256, 301, 257, 258, 259])
     expect(view.changes.map((c) => c.id)).toEqual(['slide-300', 'slide-259'])
-    expect(readdirSync(join(dir, 'canvas', 't1', item.id, 'history'))).toHaveLength(1)
+    expect(readdirSync(join(folderOf(item, 'history'), 'history'))).toHaveLength(1)
     view = await call('work.slides.review', { itemId: item.id, changes: 'all', verdict: 'accept' })
     expect(readFake(path).slides.map((s) => s.title)).toEqual(['One', 'A', 'B', 'Two', 'Three', 'Four, renamed'])
     expect(view.changes).toEqual([])
@@ -409,7 +422,7 @@ describe('the module, on a fake deck tool', () => {
       await expect(call('work.slides.review', { itemId: item.id, changes: 'all', verdict, rev: shown })).rejects.toThrow('The suggestions changed since this preview')
     }
     expect(readFake(path)).toEqual(FAKE_DECK)
-    expect(new SlidesStore(db).pending(item.id)).toHaveLength(2)
+    expect(new SlidesStore(db).pending(deckKey(item))).toHaveLength(2)
     // Every client is shown the changes as they are now.
     expect(pushes.length).toBeGreaterThan(before)
     // The fresh preview's rev is taken; a press with none (an older phone build) is not checked.
@@ -433,7 +446,7 @@ describe('the module, on a fake deck tool', () => {
       ]
     })
     const view = await call('work.slides.review', { itemId: item.id, changes: ['slide-300'], verdict: 'reject' })
-    expect(new SlidesStore(db).pending(item.id).map((p) => p.op)).toEqual([{ op: 'move', slide: 256, after: 257 }])
+    expect(new SlidesStore(db).pending(deckKey(item)).map((p) => p.op)).toEqual([{ op: 'move', slide: 256, after: 257 }])
     expect(view.changes.map((c) => c.id)).toEqual(['slide-256'])
     expect(readFake(path)).toEqual(FAKE_DECK)
   })
@@ -464,7 +477,7 @@ describe('the module, on a fake deck tool', () => {
     const r = await tool('slides_edit', { item: item.id, because: 'asked', quote: 'rename the first slide to  welcome', ops: [{ op: 'text', slide: 256, shape: 2, paragraphs: ['Welcome'] }] })
     expect(textOf(r)).toContain('Wrote 1 edit into the deck')
     expect(readFake(path).slides[0].title).toBe('Welcome')
-    expect(new SlidesStore(db).pending(item.id)).toEqual([])
+    expect(new SlidesStore(db).pending(deckKey(item))).toEqual([])
   })
 
   it('in writes mode, "asked" with words the owner did not type stays a suggestion', async () => {
@@ -474,7 +487,7 @@ describe('the module, on a fake deck tool', () => {
     const r = await tool('slides_edit', { item: item.id, because: 'asked', quote: 'rename it', ops: [{ op: 'notes', slide: 256, text: 'x' }] })
     expect(textOf(r)).toContain("The person's words were not found in this thread, so this is a suggestion.")
     expect(readFake(path)).toEqual(FAKE_DECK)
-    expect(new SlidesStore(db).pending(item.id)).toHaveLength(1)
+    expect(new SlidesStore(db).pending(deckKey(item))).toHaveLength(1)
   })
 
   it("a deck in PowerPoint is hosted, and an agent's own idea on it is always a suggestion", async () => {
@@ -509,7 +522,7 @@ describe('the module, on a fake deck tool', () => {
       // Nothing reached the file or its folder: the edits are rows on this host and the proposed deck is under app data.
       expect(readFileSync(deckAt).equals(before)).toBe(true)
       expect(readdirSync(team)).toEqual(['Show.pptx'])
-      expect(new SlidesStore(db).pending(item.id)).toHaveLength(2)
+      expect(new SlidesStore(db).pending(deckKey(item))).toHaveLength(2)
       const view = (pushes.at(-1) as { view: DeckView }).view
       expect(view.changes).toHaveLength(2)
       expect(view.written).toBeUndefined()
@@ -566,8 +579,8 @@ describe('the module, on a fake deck tool', () => {
       ['work.slides.undo', { itemId: item.id, writeId: 'w' }]
     ] as const)
       await expect(call(method, params, remote)).rejects.toThrow(`forbidden: ${method} is outside app-managed roots`)
-    expect(new SlidesStore(db).pending(item.id)).toHaveLength(1)
-    expect(new SlidesStore(db).mode(item.id)).toBe('suggests')
+    expect(new SlidesStore(db).pending(deckKey(item))).toHaveLength(1)
+    expect(new SlidesStore(db).mode(deckKey(item))).toBe('suggests')
     expect(readFake(path)).toEqual(FAKE_DECK)
     // The owner's window heard the edit; the key did not.
     expect(pushes.some((p) => p.push === 'work.slides')).toBe(true)
@@ -620,7 +633,7 @@ describe('the module, on a fake deck tool', () => {
   it('keeps the newest four renders of an item', async () => {
     const item = openDeck(fileSource(path))
     for (let i = 0; i < 6; i++) await tool('slides_edit', { item: item.id, because: 'own', ops: [{ op: 'notes', slide: 256, text: `n${i}` }] })
-    const keys = new Set(readdirSync(join(dir, 'canvas', 't1', item.id, 'render')).map((f) => f.split('.')[0]))
+    const keys = new Set(readdirSync(join(folderOf(item), 'render')).map((f) => f.split('.')[0]))
     expect(keys.size).toBe(4)
   })
 
@@ -642,7 +655,7 @@ describe('the module, on a fake deck tool', () => {
     const item = openDeck(fileSource(path))
     await tool('slides_edit', { item: item.id, because: 'own', ops: [{ op: 'add', after: 258, layout: 'Title and Content', title: 'N', id: 300 }, { op: 'remove', slide: 258 }] })
     await call('work.slides.review', { itemId: item.id, changes: ['slide-258'], verdict: 'accept' })
-    expect(new SlidesStore(db).pending(item.id).map((p) => p.op)).toEqual([{ op: 'add', after: 257, layout: 'Title and Content', title: 'N', id: 300 }])
+    expect(new SlidesStore(db).pending(deckKey(item)).map((p) => p.op)).toEqual([{ op: 'add', after: 257, layout: 'Title and Content', title: 'N', id: 300 }])
     await call('work.slides.review', { itemId: item.id, changes: 'all', verdict: 'accept' })
     expect(readFake(path).slides.map((s) => s.id)).toEqual([256, 257, 300, 259])
   })
@@ -653,7 +666,7 @@ describe('the module, on a fake deck tool', () => {
     writeFileSync(path, fakeBytes({ ...FAKE_DECK, slides: FAKE_DECK.slides.filter((s) => s.id !== 258) }))
     const r = await tool('slides_edit', { item: item.id, because: 'own', ops: [{ op: 'notes', slide: 256, text: 'y' }] })
     expect(r.isError).toBeFalsy()
-    expect(new SlidesStore(db).pending(item.id)).toHaveLength(2)
+    expect(new SlidesStore(db).pending(deckKey(item))).toHaveLength(2)
   })
 
   it('in writes mode, an edit made while suggestions wait waits with them', async () => {
@@ -675,7 +688,7 @@ describe('the module, on a fake deck tool', () => {
     const opening = call('work.slides.open', { itemId: item.id })
     const editing = tool('slides_edit', { item: item.id, because: 'own', ops: [{ op: 'notes', slide: 256, text: 'x' }] })
     await new Promise((res) => setTimeout(res, 20))
-    new SlidesStore(db).setMode(item.id, 't1', 'suggests')
+    new SlidesStore(db).setMode(item.id, 'suggests')
     release()
     await opening
     expect(textOf(await editing)).toContain('Suggested 1 revised slide')
@@ -693,10 +706,11 @@ describe('the module, on a fake deck tool', () => {
     const item = openDeck(fileSource(path))
     await tool('slides_edit', { item: item.id, because: 'own', ops: [{ op: 'notes', slide: 256, text: 'x' }] })
     // history/ cannot be made: a file holds its name.
-    writeFileSync(join(dir, 'canvas', 't1', item.id, 'history'), 'in the way')
+    mkdirSync(folderOf(item, 'history'), { recursive: true })
+    writeFileSync(join(folderOf(item, 'history'), 'history'), 'in the way')
     await expect(call('work.slides.review', { itemId: item.id, changes: 'all', verdict: 'accept' })).rejects.toThrow()
     expect(readFake(path)).toEqual(FAKE_DECK)
-    expect(new SlidesStore(db).pending(item.id)).toHaveLength(1)
+    expect(new SlidesStore(db).pending(deckKey(item))).toHaveLength(1)
   })
 
   it('accepting one change puts a slide where the strip showed it, though its anchor is a waiting add that moves later', async () => {
@@ -750,7 +764,7 @@ describe('the module, on a fake deck tool', () => {
     )
     expect(readFake(path).slides[0].notes).toBe('kept')
     expect(readFake(path).slides[3].notes).toBe('')
-    expect(new SlidesStore(db).pending(item.id).map((p) => p.slide)).toEqual([259, 259, 500])
+    expect(new SlidesStore(db).pending(deckKey(item)).map((p) => p.slide)).toEqual([259, 259, 500])
     // What went in was pushed.
     expect((pushes.at(-1) as { view: DeckView }).view.changes.map((c) => c.id)).toEqual(['slide-259', 'slide-500'])
   })
@@ -762,7 +776,7 @@ describe('the module, on a fake deck tool', () => {
     duringEdit = () => writeFileSync(path, saved)
     await expect(call('work.slides.review', { itemId: item.id, changes: 'all', verdict: 'accept' })).rejects.toThrow('The deck changed while this was being made. Nothing was written')
     expect(readFileSync(path, 'utf8')).toBe(saved)
-    expect(new SlidesStore(db).pending(item.id)).toHaveLength(1)
+    expect(new SlidesStore(db).pending(deckKey(item))).toHaveLength(1)
   })
 
   it('writes through a link to its target, and keeps the file\'s mode', async () => {
@@ -780,7 +794,7 @@ describe('the module, on a fake deck tool', () => {
   it('makes an outline cut short again rather than failing on it', async () => {
     const item = openDeck(fileSource(path))
     await call('work.slides.open', { itemId: item.id })
-    const render = join(dir, 'canvas', 't1', item.id, 'render')
+    const render = join(folderOf(item), 'render')
     for (const f of readdirSync(render)) if (f.endsWith('.json')) writeFileSync(join(render, f), '{"slides":[')
     expect((await call('work.slides.open', { itemId: item.id })).slides).toHaveLength(4)
   })
@@ -789,7 +803,335 @@ describe('the module, on a fake deck tool', () => {
     const item = openDeck(fileSource(path))
     await tool('slides_edit', { item: item.id, because: 'own', ops: [{ op: 'notes', slide: 256, text: 'x' }] })
     slides.sessionsRemoved!(['t1'], work.ctx)
-    expect(new SlidesStore(db).pending(item.id)).toEqual([])
+    expect(new SlidesStore(db).pending(deckKey(item))).toEqual([])
+  })
+})
+
+/** The fake deck tool with real pictures: an outline that hashes what each slide is drawn from, and a PDF of one page a slide whose width is the slide's id. */
+const PICTURED: Converter[] = [
+  {
+    from: 'pptx',
+    to: 'deckinfo',
+    async run(job) {
+      const d = readFake(job.input)
+      const slides = d.slides.map((s) => ({ ...s, draws: createHash('sha256').update(JSON.stringify([s.id, s.title, s.shapes])).digest('hex') }))
+      writeFileSync(job.output, JSON.stringify({ width: 12192000, height: 6858000, sections: [], ...d, slides }))
+      return {}
+    }
+  },
+  FAKE[1],
+  {
+    from: 'pptx',
+    to: 'pdf',
+    async run(job) {
+      calls.push('pdf whole')
+      const doc = await PDFDocument.create()
+      for (const s of readFake(job.input).slides) doc.addPage([s.id, 100])
+      writeFileSync(job.output, await doc.save())
+      return {}
+    }
+  },
+  FAKE[3]
+]
+const pageWidths = async (bytes: Uint8Array): Promise<number[]> => (await PDFDocument.load(bytes)).getPages().map((p) => p.getWidth())
+
+describe('a deck kept by its file, drawn slide by slide', () => {
+  let path: string
+  beforeEach(async () => {
+    await host(PICTURED)
+    path = join(dir, 'Show.pptx')
+    writeFileSync(path, fakeBytes(FAKE_DECK))
+  })
+  afterEach(() => {
+    setSlideRenderer(null)
+    close()
+  })
+  const readAll = async (method: string, params: Record<string, unknown>): Promise<{ bytes: Uint8Array; rev: string }> => {
+    const got = await call<{ data: string; size: number; rev: string }>(method, { ...params, offset: 0, length: 4 * 1024 * 1024 })
+    return { bytes: Buffer.from(got.data, 'base64'), rev: got.rev }
+  }
+
+  it('two items on one file are one deck: one list of waiting edits, each seat its own mode, and both are told of a change as their own item', async () => {
+    sessions.set('t2', { id: 't2', provider: 'claude', workspaceId: 'w1', scope: 'work' } as SessionMeta)
+    const [a, b] = [openDeck(fileSource(path), 'In a thread'), canvasStoreOf(db).open('t2', { kind: 'slides', source: fileSource(path), title: 'In a Files tab' })]
+    expect(a.id).not.toBe(b.id)
+    await call('work.slides.open', { itemId: a.id })
+    await call('work.slides.open', { itemId: b.id })
+    expect(deckKey(a)).toBe(deckKey(b))
+    pushes.length = 0
+    await call('work.slides.mode', { itemId: b.id, mode: 'writes' })
+    // "Agent writes" is a leave given in one tab: the other seat on the same file keeps its own.
+    expect((await call('work.slides.open', { itemId: a.id })).mode).toBe('suggests')
+    // Each seat hears the deck as its own item, in its own mode.
+    expect((pushes as Array<{ view: DeckView }>).map((p) => [p.view.itemId, p.view.sessionId, p.view.mode]).sort()).toEqual([[a.id, 't1', 'suggests'], [b.id, 't2', 'writes']].sort())
+    // An agent's own idea from the seat that suggests waits, whatever the other seat's mode.
+    await tool('slides_edit', { item: a.id, because: 'own', ops: [{ op: 'text', slide: 257, shape: 3, paragraphs: ['New words'] }] })
+    const other = await call('work.slides.open', { itemId: b.id })
+    expect(other.changes.map((c) => c.id)).toEqual(['slide-257'])
+    // The other seat accepts what was suggested through the first.
+    await call('work.slides.review', { itemId: b.id, changes: 'all', verdict: 'accept', rev: other.changesRev })
+    expect((await call('work.slides.open', { itemId: a.id })).changes).toEqual([])
+    expect(readFake(path).slides[1].shapes[1].text).toBe('New words')
+    // Its renders and versions are kept by the file, once, not under either item.
+    expect(readdirSync(join(deckBase(dir, deckKey(a)), 'history'))).toHaveLength(1)
+    expect(existsSync(join(dir, 'canvas', 't1', a.id, 'render'))).toBe(false)
+  })
+
+  it('rows kept under an item from before decks were kept by the file move to the file, once', async () => {
+    const item = openDeck(fileSource(path))
+    const store = new SlidesStore(db)
+    db.prepare(`INSERT INTO work_slides_items (item_id, session_id, mode, updated_at) VALUES (?, 't1', 'writes', 1)`).run(item.id)
+    store.add(item.id, 't1', [{ slide: 256, op: { op: 'notes', slide: 256, text: 'kept' } }], 'agent:env_test:t1')
+    const view = await call('work.slides.open', { itemId: item.id })
+    // Its mode becomes its seat's; its waiting edits become the deck's.
+    expect([view.mode, view.changes.map((c) => c.id)]).toEqual(['writes', ['slide-256']])
+    expect([store.pending(item.id), store.mode(item.id)]).toEqual([[], 'writes'])
+    expect(store.pending(deckKey(item))).toHaveLength(1)
+  })
+
+  it('two items from before on one file both keep their waiting edits, in the order each was opened', async () => {
+    sessions.set('t2', { id: 't2', provider: 'claude', workspaceId: 'w1', scope: 'work' } as SessionMeta)
+    const [a, b] = [openDeck(fileSource(path), 'A'), canvasStoreOf(db).open('t2', { kind: 'slides', source: fileSource(path), title: 'B' })]
+    const store = new SlidesStore(db)
+    store.add(a.id, 't1', [{ slide: 256, op: { op: 'notes', slide: 256, text: 'from a' } }], 'agent:env_test:t1')
+    store.add(b.id, 't2', [{ slide: 257, op: { op: 'notes', slide: 257, text: 'from b' } }], 'agent:env_test:t2')
+    await call('work.slides.open', { itemId: a.id })
+    const view = await call('work.slides.open', { itemId: b.id })
+    expect(view.changes.map((c) => c.id)).toEqual(['slide-256', 'slide-257'])
+    expect(store.pending(deckKey(a)).map((p) => (p.op as { text: string }).text)).toEqual(['from a', 'from b'])
+  })
+
+  it('a deck a thread made is its item\'s own: kept under the item and gone with it', async () => {
+    const r = await tool('slides_new', { title: 'Own', slides: [{ layout: 'title', title: 'Own' }] })
+    const id = (r.structuredContent as { item: string }).item
+    const item = canvasStoreOf(db).get(id)!
+    expect(deckKey(item)).toBe(id)
+  })
+
+  it('a file of his own keeps its waiting edits and its versions when its last seat leaves; only its pictures go', async () => {
+    const item = openDeck(fileSource(path))
+    await call('work.slides.open', { itemId: item.id })
+    await tool('slides_edit', { item: item.id, because: 'own', ops: [{ op: 'notes', slide: 256, text: 'x' }] })
+    const base = deckCache(dir, deckKey(item))
+    expect(existsSync(join(base, 'pages'))).toBe(true)
+    slides.itemsRemoved!([item], work.ctx)
+    expect(new SlidesStore(db).pending(deckKey(item))).toHaveLength(1)
+    expect(new SlidesStore(db).seats(deckKey(item))).toEqual([])
+    // The pictures go on the deck's own queue, after whatever was still drawing them.
+    await vi.waitFor(() => expect(existsSync(base)).toBe(false))
+  })
+
+  it('a removed thread leaves its seats as a closed tab does: a file of his own loses its pictures, a file others can open everything', async () => {
+    const item = openDeck(fileSource(path))
+    await call('work.slides.mode', { itemId: item.id, mode: 'writes' })
+    await call('work.slides.open', { itemId: item.id })
+    new SlidesStore(db).add(deckKey(item), '', [{ slide: 257, op: { op: 'notes', slide: 257, text: 'another thread’s' } }], 'agent:env_test:t9')
+    const base = deckCache(dir, deckKey(item))
+    expect(existsSync(join(base, 'pages'))).toBe(true)
+    slides.sessionsRemoved!(['t1'], work.ctx)
+    expect(new SlidesStore(db).seats(deckKey(item))).toEqual([])
+    expect(new SlidesStore(db).pending(deckKey(item))).toHaveLength(1)
+    await vi.waitFor(() => expect(existsSync(base)).toBe(false))
+    // The leave he gave in that thread went with it: the file opened again elsewhere suggests.
+    sessions.set('t2', { id: 't2', provider: 'claude', workspaceId: 'w1', scope: 'work' } as SessionMeta)
+    const again = canvasStoreOf(db).open('t2', { kind: 'slides', source: fileSource(path), title: 'Again' })
+    expect((await call('work.slides.open', { itemId: again.id })).mode).toBe('suggests')
+
+    const team = join(dir, 'Esports Staff')
+    mkdirSync(team)
+    const shared = join(team, 'Show.pptx')
+    writeFileSync(shared, fakeBytes(FAKE_DECK))
+    sharedPaths.add(team)
+    try {
+      const b = canvasStoreOf(db).open('t2', { kind: 'slides', source: fileSource(shared), title: 'Shared' })
+      await call('work.slides.open', { itemId: b.id })
+      new SlidesStore(db).add(deckKey(b), '', [{ slide: 256, op: { op: 'notes', slide: 256, text: 'waits' } }], 'agent:env_test:t9')
+      slides.sessionsRemoved!(['t2'], work.ctx)
+      expect(new SlidesStore(db).pending(deckKey(b))).toEqual([])
+    } finally {
+      sharedPaths.clear()
+    }
+  })
+
+  it('an item that never took a seat leaves the deck as its other seats hold it', async () => {
+    const team = join(dir, 'Esports Staff')
+    mkdirSync(team)
+    const shared = join(team, 'Show.pptx')
+    writeFileSync(shared, fakeBytes(FAKE_DECK))
+    sharedPaths.add(team)
+    try {
+      sessions.set('t2', { id: 't2', provider: 'claude', workspaceId: 'w1', scope: 'work' } as SessionMeta)
+      const [a, never] = [openDeck(fileSource(shared), 'A'), canvasStoreOf(db).open('t2', { kind: 'slides', source: fileSource(shared), title: 'Never opened' })]
+      await tool('slides_edit', { item: a.id, because: 'own', ops: [{ op: 'notes', slide: 256, text: 'x' }] })
+      // A tab on the same file, from before, closed without ever being opened.
+      slides.itemsRemoved!([never], work.ctx)
+      expect(new SlidesStore(db).pending(deckKey(a))).toHaveLength(1)
+      expect(new SlidesStore(db).seats(deckKey(a)).map((s) => s.itemId)).toEqual([a.id])
+    } finally {
+      sharedPaths.clear()
+    }
+  })
+
+  it('a deck is one others can open when any seat on it says so: its suggestions stay on this host through every seat', async () => {
+    const team = join(dir, 'Esports Staff')
+    mkdirSync(team)
+    const shared = join(team, 'Show.pptx')
+    writeFileSync(shared, fakeBytes(FAKE_DECK))
+    sessions.set('t2', { id: 't2', provider: 'claude', workspaceId: 'w1', scope: 'work' } as SessionMeta)
+    // One seat opened while the folder was not known to be a library keeps its pictures by the file.
+    const plain = canvasStoreOf(db).open('t2', { kind: 'slides', source: fileSource(shared), title: 'Plain' })
+    await call('work.slides.open', { itemId: plain.id })
+    expect(existsSync(deckCache(dir, deckKey(plain)))).toBe(true)
+    sharedPaths.add(team)
+    try {
+      // The same path through a seat that knows it as PowerPoint's: the deck is shared for both from now.
+      const hosted = canvasStoreOf(db).open('t1', { kind: 'slides', source: { at: 'microsoft', host: 'env_test', app: 'powerpoint', name: 'Show.pptx', ref: { kind: 'path', path: shared } }, title: 'Hosted' })
+      await call('work.slides.mode', { itemId: hosted.id, mode: 'writes' })
+      sharedPaths.clear()
+      expect(new SlidesStore(db).sharedDeck(deckKey(plain))).toBe(true)
+      // What the earlier seat kept by the file is gone, and nothing is kept there again.
+      expect([existsSync(deckBase(dir, deckKey(plain))), existsSync(deckCache(dir, deckKey(plain)))]).toEqual([false, false])
+      jobs.length = 0
+      const r = await tool('slides_edit', { item: hosted.id, because: 'own', ops: [{ op: 'notes', slide: 256, text: 'x' }] })
+      expect(textOf(r)).toContain('Suggested 1 revised slide')
+      expect(readFake(shared)).toEqual(FAKE_DECK)
+      // The seat that names it as a plain file draws the same waiting suggestion, marked shared on every job.
+      jobs.length = 0
+      const view = await call('work.slides.open', { itemId: plain.id })
+      expect(view.changes).toHaveLength(1)
+      expect(jobs.length).toBeGreaterThan(0)
+      expect(jobs.every((j) => j.shared === true)).toBe(true)
+      expect([existsSync(deckBase(dir, deckKey(plain))), existsSync(deckCache(dir, deckKey(plain)))]).toEqual([false, false])
+    } finally {
+      sharedPaths.clear()
+    }
+  })
+
+  it('on a file others can open, only the tab that made a direct write offers its Undo, and it goes with that tab', async () => {
+    const team = join(dir, 'Esports Staff')
+    mkdirSync(team)
+    const shared = join(team, 'Show.pptx')
+    writeFileSync(shared, fakeBytes(FAKE_DECK))
+    sharedPaths.add(team)
+    try {
+      typed.set('t1', ['rename slide 1 to First'])
+      sessions.set('t2', { id: 't2', provider: 'claude', workspaceId: 'w1', scope: 'work' } as SessionMeta)
+      const [a, b] = [openDeck(fileSource(shared), 'A'), canvasStoreOf(db).open('t2', { kind: 'slides', source: fileSource(shared), title: 'B' })]
+      await call('work.slides.open', { itemId: b.id })
+      await call('work.slides.mode', { itemId: a.id, mode: 'writes' })
+      const r = await tool('slides_edit', { item: a.id, because: 'asked', quote: 'rename slide 1 to First', ops: [{ op: 'text', slide: 256, shape: 2, paragraphs: ['First'] }] })
+      expect(textOf(r)).toContain('Wrote 1 edit')
+      const [mine, theirs] = [await call('work.slides.open', { itemId: a.id }), await call('work.slides.open', { itemId: b.id })]
+      expect(mine.written).toBeDefined()
+      // The copy from before is in the writing item's folder: the other seat has nothing to put back.
+      expect(theirs.written).toBeUndefined()
+      await expect(call('work.slides.undo', { itemId: b.id, writeId: mine.written!.id })).rejects.toThrow('That write can no longer be taken back.')
+      slides.itemsRemoved!([a], work.ctx)
+      expect(new SlidesStore(db).written(deckKey(b))).toBeNull()
+    } finally {
+      sharedPaths.clear()
+      typed.clear()
+    }
+  })
+
+  it('a file others can open keeps nothing past its last seat, and a seat that stays keeps the deck', async () => {
+    const team = join(dir, 'Esports Staff')
+    mkdirSync(team)
+    const shared = join(team, 'Show.pptx')
+    writeFileSync(shared, fakeBytes(FAKE_DECK))
+    sharedPaths.add(team)
+    try {
+      sessions.set('t2', { id: 't2', provider: 'claude', workspaceId: 'w1', scope: 'work' } as SessionMeta)
+      const [a, b] = [openDeck(fileSource(shared), 'A'), canvasStoreOf(db).open('t2', { kind: 'slides', source: fileSource(shared), title: 'B' })]
+      expect(a.id).not.toBe(b.id)
+      await call('work.slides.open', { itemId: a.id })
+      await call('work.slides.open', { itemId: b.id })
+      await tool('slides_edit', { item: a.id, because: 'own', ops: [{ op: 'notes', slide: 256, text: 'x' }] })
+      // Nothing of a shared file is kept by the file under app data: each seat's renders are in its own item's folder.
+      expect([existsSync(deckBase(dir, deckKey(a))), existsSync(deckCache(dir, deckKey(a)))]).toEqual([false, false])
+      slides.itemsRemoved!([a], work.ctx)
+      expect(new SlidesStore(db).pending(deckKey(b))).toHaveLength(1)
+      slides.itemsRemoved!([b], work.ctx)
+      expect(new SlidesStore(db).pending(deckKey(b))).toEqual([])
+    } finally {
+      sharedPaths.clear()
+    }
+  })
+
+  it('a file renamed under its deck keeps its waiting edits, its mode and its versions under the new name', async () => {
+    const item = openDeck(fileSource(path))
+    await call('work.slides.mode', { itemId: item.id, mode: 'writes' })
+    await tool('slides_edit', { item: item.id, because: 'own', ops: [{ op: 'notes', slide: 256, text: 'x' }] })
+    const was = deckKey(item)
+    const to = join(dir, 'Renamed.pptx')
+    renameSync(path, to)
+    fileMoved(fileSource(path), fileSource(to), { db, dataDir: dir })
+    const now = fileKey(to)
+    expect(now).not.toBe(was)
+    expect(new SlidesStore(db).mode(item.id)).toBe('writes')
+    expect(new SlidesStore(db).written(now)).not.toBeNull()
+    expect(new SlidesStore(db).written(was)).toBeNull()
+    expect(readdirSync(join(deckBase(dir, now), 'history'))).toHaveLength(1)
+    expect([existsSync(deckBase(dir, was)), existsSync(deckCache(dir, was)), existsSync(join(deckCache(dir, now), 'render'))]).toEqual([false, false, true])
+    expect(new SlidesStore(db).seats(now).map((s) => s.itemId)).toEqual([item.id])
+  })
+
+  it('after an edit only the slide whose picture changed is drawn again, alone, and every other slide keeps its picture’s name', async () => {
+    const drawn: string[] = []
+    setSlideRenderer({
+      slide: async (input, page, output) => {
+        drawn.push(`slide ${page}`)
+        const doc = await PDFDocument.create()
+        doc.addPage([readFake(input).slides[page - 1].id, 100])
+        writeFileSync(output, await doc.save())
+        return readFake(input).slides.length
+      },
+      deck: async (input, output) => {
+        drawn.push('deck')
+        const doc = await PDFDocument.create()
+        for (const s of readFake(input).slides) doc.addPage([s.id, 100])
+        writeFileSync(output, await doc.save())
+      }
+    })
+    const item = openDeck(fileSource(path))
+    await call('work.slides.mode', { itemId: item.id, mode: 'writes' })
+    const before = await call('work.slides.open', { itemId: item.id })
+    // Four slides never seen: drawn one at a time by the LibreOffice kept running.
+    expect(drawn).toEqual(['slide 1', 'slide 2', 'slide 3', 'slide 4'])
+    expect(before.slides.every((s) => s.pic && s.pic.size > 0)).toBe(true)
+    drawn.length = 0
+    await tool('slides_edit', { item: item.id, because: 'own', ops: [{ op: 'text', slide: 257, shape: 3, paragraphs: ['New words'] }] })
+    const after = await call('work.slides.open', { itemId: item.id })
+    expect(drawn).toEqual(['slide 2'])
+    expect(calls.filter((c) => c === 'pdf whole')).toEqual([])
+    expect(after.slides.map((s, i) => s.pic!.rev === before.slides[i].pic!.rev)).toEqual([true, false, true, true])
+    // The deck's PDF is those pages in order, and one slide's own picture is read by its id.
+    const deck = await readAll('work.slides.read', { itemId: item.id, which: 'file' })
+    expect(await pageWidths(deck.bytes)).toEqual([256, 257, 258, 259])
+    const one = await readAll('work.slides.slide', { itemId: item.id, which: 'file', slide: 258 })
+    expect(await pageWidths(one.bytes)).toEqual([258])
+    expect(one.rev).toBe(after.slides[2].pic!.rev)
+    await expect(call('work.slides.slide', { itemId: item.id, which: 'file', slide: 999, offset: 0, length: 10 })).rejects.toThrow('The deck has no slide 999.')
+    await expect(call('work.slides.slide', { itemId: item.id, which: 'proposed', slide: 258, offset: 0, length: 10 })).rejects.toThrow('No changes wait on this deck.')
+    const remote = { kind: 'remote', keyId: 'k1', name: 'Bot', audience: 'mcp', caps: ['read', 'operate'] } as never
+    await expect(call('work.slides.slide', { itemId: item.id, which: 'file', slide: 258, offset: 0, length: 10 }, remote)).rejects.toThrow('forbidden: work.slides.slide is outside app-managed roots')
+  })
+
+  it('with no LibreOffice kept running the deck is one whole export, and a slide’s own picture is still there', async () => {
+    const item = openDeck(fileSource(path))
+    const view = await call('work.slides.open', { itemId: item.id })
+    expect(calls.filter((c) => c === 'pdf whole')).toHaveLength(1)
+    expect(view.slides.every((s) => !!s.pic)).toBe(true)
+    const one = await readAll('work.slides.slide', { itemId: item.id, which: 'file', slide: 259 })
+    expect(await pageWidths(one.bytes)).toEqual([259])
+  })
+
+  it('a removed thread’s waiting edits go with it, wherever the deck is', async () => {
+    const item = openDeck(fileSource(path))
+    await tool('slides_edit', { item: item.id, because: 'own', ops: [{ op: 'notes', slide: 256, text: 'x' }] })
+    new SlidesStore(db).add(deckKey(item), '', [{ slide: 257, op: { op: 'notes', slide: 257, text: 'another thread’s' } }], 'agent:env_test:t9')
+    slides.sessionsRemoved!(['t1'], work.ctx)
+    expect(new SlidesStore(db).pending(deckKey(item)).map((p) => p.by)).toEqual(['agent:env_test:t9'])
   })
 })
 
@@ -824,7 +1166,7 @@ describe('the module without LibreOffice in reach', () => {
       await expect(call('work.slides.review', { itemId: item.id, changes: 'all', verdict, rev: shown })).rejects.toThrow('The suggestions changed since this preview')
     }
     expect(readFake(path)).toEqual(FAKE_DECK)
-    expect(new SlidesStore(db).pending(item.id)).toHaveLength(2)
+    expect(new SlidesStore(db).pending(deckKey(item))).toHaveLength(2)
     // The fresh revision is taken.
     const now = (await call('work.slides.open', { itemId: item.id })).changesRev!
     expect(now).not.toBe(shown)
@@ -870,6 +1212,36 @@ describe.skipIf(!DATA)('a real deck, through python-pptx and LibreOffice', () =>
     expect(shot.isError).toBeFalsy()
     const png = Buffer.from((shot.content[0] as { data: string }).data, 'base64')
     expect(png.subarray(1, 4).toString()).toBe('PNG')
+  })
+
+  it('draws an edited slide alone with the LibreOffice kept running, and ends it when Work is turned off', { timeout: 180_000 }, async () => {
+    const path = join(dir, 'Twelve.pptx')
+    writeFileSync(path, await writeNewDeck({ title: 'Twelve', slides: TWELVE }))
+    const item = openDeck(fileSource(path))
+    const view = await call('work.slides.open', { itemId: item.id })
+    expect(view.renders.file).toMatchObject({ pages: 12 })
+    // The module's own resident drew it: its profile is in the pillar's folder.
+    const resident = join(dir, 'work-slides', '.cache', 'resident')
+    expect(existsSync(join(resident, 'profile'))).toBe(true)
+    const pipes = (): string[] => readdirSync(resident).filter((f) => f.startsWith('pipe-'))
+    expect(pipes()).toHaveLength(1)
+    const pages = join(deckCache(dir, deckKey(item)), 'pages')
+    const before = new Set(readdirSync(pages))
+    expect(before.size).toBe(12)
+    const third = view.slides[2]
+    const body = third.shapes.find((s) => s.text.startsWith('First'))!
+    const began = Date.now()
+    await tool('slides_edit', { item: item.id, because: 'own', ops: [{ op: 'text', slide: third.id, shape: body.id, paragraphs: ['Changed'] }] })
+    const took = Date.now() - began
+    const after = (pushes.at(-1) as { view: DeckView }).view
+    expect(after.renders.proposed).toMatchObject({ pages: 12 })
+    // One new page: the edited slide's. Every other slide's picture is the one it had.
+    expect(readdirSync(pages).filter((f) => !before.has(f))).toHaveLength(1)
+    expect(after.slides.filter((s, i) => s.pic?.rev !== view.slides[i].pic?.rev).map((s) => s.number)).toEqual([3])
+    console.log(`slides: an edit to its picture, 12 slides, through the module: ${took} ms`)
+    // Work off: the process and its pipe go.
+    await call('work.set', { enabled: false })
+    await vi.waitFor(() => expect(pipes()).toEqual([]), { timeout: 15_000, interval: 100 })
   })
 })
 
