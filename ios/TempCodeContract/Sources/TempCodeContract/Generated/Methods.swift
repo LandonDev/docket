@@ -5448,6 +5448,74 @@ public enum Methods {
         }
     }
 
+    public enum WorkDigestList: ContractMethod {
+        public static let name = "work.digest.list"
+
+        public struct Params: Codable, Hashable, Sendable {
+            public let day: String?
+            public let since: Double?
+
+            public init(day: String? = nil, since: Double? = nil) {
+                self.day = day
+                self.since = since
+            }
+        }
+
+        public struct Output: Codable, Hashable, Sendable {
+            public let days: [DigestDay]
+            public let rows: [TellRow]
+            public let waiting: Int
+            public let groups: [TellGroup]
+
+            public init(days: [DigestDay], rows: [TellRow], waiting: Int, groups: [TellGroup]) {
+                self.days = days
+                self.rows = rows
+                self.waiting = waiting
+                self.groups = groups
+            }
+        }
+    }
+
+    public enum WorkDigestGet: ContractMethod {
+        public static let name = "work.digest.get"
+
+        public struct Params: Codable, Hashable, Sendable {
+            public init() {}
+        }
+
+        public typealias Output = DigestSettings
+    }
+
+    public enum WorkDigestSet: ContractMethod {
+        public static let name = "work.digest.set"
+
+        public struct Params: Codable, Hashable, Sendable {
+            public let at: String?
+            public let levels: [String: TellLevel]?
+
+            public init(at: String? = nil, levels: [String: TellLevel]? = nil) {
+                self.at = at
+                self.levels = levels
+            }
+        }
+
+        public typealias Output = DigestSettings
+    }
+
+    public enum WorkDigestSeen: ContractMethod {
+        public static let name = "work.digest.seen"
+
+        public struct Params: Codable, Hashable, Sendable {
+            public let day: String
+
+            public init(day: String) {
+                self.day = day
+            }
+        }
+
+        public typealias Output = NoOutput
+    }
+
     public enum AwayGet: ContractMethod {
         public static let name = "away.get"
 

@@ -8060,6 +8060,151 @@ public struct FilesOpened: Codable, Hashable, Sendable {
     }
 }
 
+public struct TellOpen: Codable, Hashable, Sendable {
+    public let thread: String?
+    public let view: String?
+    public let workspaceId: String?
+    public let at: String?
+    public let place: String?
+    public let held: HeldRef?
+    public let settings: String?
+
+    public init(thread: String? = nil, view: String? = nil, workspaceId: String? = nil, at: String? = nil, place: String? = nil, held: HeldRef? = nil, settings: String? = nil) {
+        self.thread = thread
+        self.view = view
+        self.workspaceId = workspaceId
+        self.at = at
+        self.place = place
+        self.held = held
+        self.settings = settings
+    }
+}
+
+public struct TellRow: Codable, Hashable, Sendable {
+    public enum How: RawRepresentable, Codable, Hashable, Sendable {
+        case waiting
+        case digest
+        case now
+        /// A value this build does not know; `rawValue` keeps it.
+        case unknown(String)
+
+        public init(rawValue: String) {
+            switch rawValue {
+            case "waiting": self = .waiting
+            case "digest": self = .digest
+            case "now": self = .now
+            default: self = .unknown(rawValue)
+            }
+        }
+
+        public var rawValue: String {
+            switch self {
+            case .waiting: "waiting"
+            case .digest: "digest"
+            case .now: "now"
+            case .unknown(let value): value
+            }
+        }
+    }
+
+    public let id: String
+    public let host: String
+    public let kind: String
+    public let group: TellGroup
+    public let workspaceId: String?
+    public let sector: String?
+    public let title: String
+    public let detail: String?
+    public let open: TellOpen?
+    public let by: Double?
+    public let key: String?
+    public let at: Double
+    public let how: How
+    public let day: String?
+    public let toldAt: Double?
+
+    public init(id: String, host: String, kind: String, group: TellGroup, workspaceId: String?, sector: String?, title: String, detail: String? = nil, open: TellOpen? = nil, by: Double? = nil, key: String? = nil, at: Double, how: How, day: String?, toldAt: Double?) {
+        self.id = id
+        self.host = host
+        self.kind = kind
+        self.group = group
+        self.workspaceId = workspaceId
+        self.sector = sector
+        self.title = title
+        self.detail = detail
+        self.open = open
+        self.by = by
+        self.key = key
+        self.at = at
+        self.how = how
+        self.day = day
+        self.toldAt = toldAt
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case id, host, kind, group, workspaceId, sector, title, detail, open, by, key, at, how, day, toldAt
+    }
+
+    public func encode(to encoder: any Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(id, forKey: .id)
+        try container.encode(host, forKey: .host)
+        try container.encode(kind, forKey: .kind)
+        try container.encode(group, forKey: .group)
+        try container.encode(workspaceId, forKey: .workspaceId)
+        try container.encode(sector, forKey: .sector)
+        try container.encode(title, forKey: .title)
+        try container.encodeIfPresent(detail, forKey: .detail)
+        try container.encodeIfPresent(open, forKey: .open)
+        try container.encodeIfPresent(by, forKey: .by)
+        try container.encodeIfPresent(key, forKey: .key)
+        try container.encode(at, forKey: .at)
+        try container.encode(how, forKey: .how)
+        try container.encode(day, forKey: .day)
+        try container.encode(toldAt, forKey: .toldAt)
+    }
+}
+
+public struct DigestDay: Codable, Hashable, Sendable {
+    public let day: String
+    public let madeAt: Double
+    public let seenAt: Double?
+    public let count: Int
+
+    public init(day: String, madeAt: Double, seenAt: Double?, count: Int) {
+        self.day = day
+        self.madeAt = madeAt
+        self.seenAt = seenAt
+        self.count = count
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case day, madeAt, seenAt, count
+    }
+
+    public func encode(to encoder: any Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(day, forKey: .day)
+        try container.encode(madeAt, forKey: .madeAt)
+        try container.encode(seenAt, forKey: .seenAt)
+        try container.encode(count, forKey: .count)
+    }
+}
+
+public struct DigestSettings: Codable, Hashable, Sendable {
+    public let at: String
+    public let zone: String
+    public let levels: [String: TellLevel]
+    public let nextAt: Double
+
+    public init(at: String, zone: String, levels: [String: TellLevel], nextAt: Double) {
+        self.at = at
+        self.zone = zone
+        self.levels = levels
+        self.nextAt = nextAt
+    }
+}
+
 public struct VideoOpenAnswer: Codable, Hashable, Sendable {
     public enum Reason: RawRepresentable, Codable, Hashable, Sendable {
         case off
