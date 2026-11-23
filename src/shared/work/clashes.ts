@@ -28,6 +28,8 @@ export interface ClashSide {
   location?: string
   /** the point is a town's centre, or the job's start standing in */
   rough?: 'town' | 'start'
+  /** someone else is on it with an address: a change on its calendar is mailed to them */
+  guests?: boolean
   can: ClashWay[]
 }
 
@@ -74,6 +76,7 @@ export interface LifeosSide {
   location?: string
   place?: string
   rough?: 'town' | 'start'
+  guests?: boolean
   can: ClashWay[]
 }
 export interface LifeosClash {
@@ -116,6 +119,7 @@ const sideFrom = (s: LifeosSide, home: HomeOf | undefined): ClashSide => {
     ...(s.place !== undefined ? { place: s.place } : {}),
     ...(s.location !== undefined ? { location: s.location } : {}),
     ...(s.rough !== undefined ? { rough: s.rough } : {}),
+    ...(s.guests ? { guests: true } : {}),
     can: [...(s.can ?? [])]
   }
 }
@@ -189,9 +193,11 @@ function durationOf(minutes: number): string {
 }
 
 const rough = (clash: Clash): boolean => clash.measured === false
+/** The minutes he is short by; to the nearest five, and never under five, for a drive worked out without the map, as its drive line is. */
+const shortMinutes = (clash: Clash, by: number): number => (rough(clash) ? Math.max(5, Math.round(by / 5) * 5) : Math.max(1, Math.round(by)))
 /** "15 min short", "About 15 min short" for a drive worked out without the map. */
 function shortWords(clash: Clash): string {
-  const short = clash.shortBy !== undefined ? `${Math.max(1, Math.round(clash.shortBy))} min short` : 'Not enough time'
+  const short = clash.shortBy !== undefined ? `${shortMinutes(clash, clash.shortBy)} min short` : 'Not enough time'
   return rough(clash) ? `About ${short.charAt(0).toLowerCase()}${short.slice(1)}` : short
 }
 
@@ -199,13 +205,19 @@ function shortWords(clash: Clash): string {
  * The one line on an event's row, from that event's side (`eventId`; any id
  * but the earlier event's reads as the later one): "Overlaps Varsity
  * Basketball (Ref), 6:00 PM"; "15 min short after Staff meeting (Purdue)"
- * on the later event, "… before …" on the earlier.
+ * on the later event, "… before …" on the earlier. The other event's job is
+ * named only when it is another job than this one's, and its time takes its
+ * weekday when it starts on another day ("Wed 11:00 PM"), since the row sits
+ * under its own day.
  */
 export function clashLine(clash: Clash, eventId: string, opts: ClashWordsOpts = {}): string {
   const earlier = eventId === clash.a.eventId
-  const other = earlier ? clash.b : clash.a
-  const named = `${other.title} (${labelOf(other.sector, opts)})`
-  if (clash.kind === 'overlap') return `Overlaps ${named}, ${clockOf(other.startsAt, opts)}`
+  const [own, other] = earlier ? [clash.a, clash.b] : [clash.b, clash.a]
+  const named = other.sector === own.sector ? other.title : `${other.title} (${labelOf(other.sector, opts)})`
+  if (clash.kind === 'overlap') {
+    const day = dayOf(other.startsAt, opts)
+    return `Overlaps ${named}, ${day === dayOf(own.startsAt, opts) ? '' : `${day} `}${clockOf(other.startsAt, opts)}`
+  }
   return `${shortWords(clash)} ${earlier ? 'before' : 'after'} ${named}`
 }
 
@@ -221,7 +233,7 @@ export function driveLine(clash: Clash): string | null {
 export function clashTitle(clash: Clash): string {
   if (clash.kind === 'overlap') return 'Two things at once'
   if (clash.shortBy === undefined) return 'Not enough time'
-  const n = Math.max(1, Math.round(clash.shortBy))
+  const n = shortMinutes(clash, clash.shortBy)
   return `${rough(clash) ? 'About ' : ''}${n} ${n === 1 ? 'minute' : 'minutes'} short`
 }
 

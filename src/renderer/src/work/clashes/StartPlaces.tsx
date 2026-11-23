@@ -1,5 +1,5 @@
 import { makeFunctionReference } from "convex/server";
-import { useId, useState, type FormEvent, type ReactNode } from "react";
+import { useId, useRef, useState, type FormEvent, type ReactNode } from "react";
 import type { SectorKey } from "@shared/work";
 import { SectorDot } from "../../chrome/WorkspaceGlyph";
 import { DialogFooter, ErrorLine } from "../../chrome/ConfirmDialog";
@@ -90,8 +90,9 @@ function PlaceRow({ title, label = "Home", place, target, onOpen }: { title: Rea
   // The wait turns: LifeOS's worker places a new address within about twenty seconds, and the row changes by itself.
   const description =
     place.state === "looking" ? (
-      <span className="inline-flex items-center gap-1.5">
-        <Spinner className="size-3" />
+      // The words beside it say the wait; the turning mark is for the eye alone.
+      <span className="flex items-center gap-2">
+        <Spinner aria-hidden className="size-3" />
         {words.description}
       </span>
     ) : (
@@ -158,6 +159,7 @@ export function StartPlaceForm({
   const job: SectorKey | null = target === "home" ? null : target;
 
   const linesId = useId();
+  const address = useRef<HTMLInputElement>(null);
   const submit = (event: FormEvent): void => {
     event.preventDefault();
     const patch = savePatch(target, saved, form, settings);
@@ -180,11 +182,11 @@ export function StartPlaceForm({
     <form onSubmit={submit}>
       <ModalBody>
         <Field label="Address">
-          <Input autoFocus value={form.address} onChange={(e) => setForm((f) => ({ ...f, address: e.target.value }))} placeholder={job ? "Home" : undefined} autoComplete="off" spellCheck={false} />
+          <Input ref={address} autoFocus disabled={pending !== null} value={form.address} onChange={(e) => setForm((f) => ({ ...f, address: e.target.value }))} placeholder={job ? "Home" : undefined} autoComplete="off" spellCheck={false} />
         </Field>
         {job ? (
           <FieldRow label="Look up event places on Apple Maps" description={<span id={linesId}>When off, this job's event places never leave your machines.</span>}>
-            <Switch checked={form.lookups} aria-describedby={linesId} onCheckedChange={(on) => setForm((f) => ({ ...f, lookups: on }))} />
+            <Switch checked={form.lookups} disabled={pending !== null} aria-describedby={linesId} onCheckedChange={(on) => setForm((f) => ({ ...f, lookups: on }))} />
           </FieldRow>
         ) : null}
         <div role="alert" className="empty:hidden">
@@ -195,7 +197,16 @@ export function StartPlaceForm({
         start={
           // Empties the field, as typing would: Save sends it with whatever else he changed here.
           job && form.address.trim() ? (
-            <Button type="button" variant="ghost" disabled={pending !== null} onClick={() => setForm((f) => ({ ...f, address: "" }))}>
+            <Button
+              type="button"
+              variant="ghost"
+              disabled={pending !== null}
+              onClick={() => {
+                setForm((f) => ({ ...f, address: "" }));
+                // The verb leaves with the address: the keyboard goes on from the field it emptied.
+                address.current?.focus();
+              }}
+            >
               Use home
             </Button>
           ) : undefined

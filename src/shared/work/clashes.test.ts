@@ -34,6 +34,24 @@ describe('clashLine', () => {
   it('says about for a drive worked out without the map', () => {
     expect(clashLine({ ...drive, measured: false }, 'e_game', ZONE)).toBe('About 15 min short after Staff meeting (Purdue)')
   })
+  it('rounds a shortfall worked out without the map to five minutes, never under five, as its drive line is rounded', () => {
+    expect(clashLine({ ...drive, measured: false, shortBy: 12 }, 'e_game', ZONE)).toBe('About 10 min short after Staff meeting (Purdue)')
+    expect(clashTitle({ ...drive, measured: false, shortBy: 13 })).toBe('About 15 minutes short')
+    expect(clashTitle({ ...drive, measured: false, shortBy: 1 })).toBe('About 5 minutes short')
+    // A measured shortfall is said to the minute.
+    expect(clashTitle({ ...drive, shortBy: 12 })).toBe('12 minutes short')
+  })
+  it('leaves the job out when the other event is the same job, since the page is that job', () => {
+    const jv = side({ eventId: 'e_jv', sector: 'ref', title: 'JV Basketball', startsAt: at(26, 17), endsAt: at(26, 19) })
+    expect(clashLine({ id: 'e_jv-e_game', kind: 'overlap', a: jv, b: game }, 'e_game', ZONE)).toBe('Overlaps JV Basketball, 5:00 PM')
+  })
+  it("names the other event's weekday when it starts on another day than this one", () => {
+    const late = side({ eventId: 'e_late', sector: 'ref', title: 'Late game', startsAt: at(25, 23), endsAt: at(26, 1, 30) })
+    const early = side({ eventId: 'e_early', sector: 'life', title: 'Airport run', startsAt: at(26, 1), endsAt: at(26, 2) })
+    const clash: Clash = { id: 'e_late-e_early', kind: 'overlap', a: late, b: early }
+    expect(clashLine(clash, 'e_early', ZONE)).toBe('Overlaps Late game (Ref), Wed 11:00 PM')
+    expect(clashLine(clash, 'e_late', ZONE)).toBe('Overlaps Airport run (Life), Thu 1:00 AM')
+  })
   it("takes a job's name when given one, and uses ordinary spaces in times", () => {
     const line = clashLine(overlap, 'e_staff', { ...ZONE, label: (s) => (s === 'ref' ? 'Refereeing' : s) })
     expect(line).toBe('Overlaps Varsity Basketball (Refereeing), 6:00 PM')

@@ -1582,10 +1582,13 @@ Around the canvas:
   On an Agenda row it is one more 12px line under the place, in `warning`
   (he is needed), in the words of that event's side: "Overlaps Varsity
   Basketball (Ref), 6:00 PM", "15 min short after Staff meeting (Purdue)",
-  "About 15 min short…" for a drive worked out without the map; an event
-  with several clashes has a line for each, so every one named can be
-  opened. A line is a link `Button` at the line's own height that takes an
-  underline on hover and opens that clash's dialog; the row's menu has
+  "About 15 min short…" for a drive worked out without the map (to the
+  nearest five minutes, as its drive line is). The other event's job is
+  named only when it is another job, and its time takes its weekday when
+  it starts on another day ("Wed 11:00 PM"). An event with several
+  clashes has a line for each, so every one named can be opened. A line
+  is a link `Button` at the line's own 16px that takes an underline on
+  hover and opens that clash's dialog; the row's menu has
   Show clash, or with several "Show clash with Varsity Basketball" for
   each. An event that is over carries none. The line arrives with its
   read and nothing pulses for it. "Leave 4:35" under the time is from
@@ -1609,15 +1612,17 @@ Around the canvas:
   has "This is fine" (ghost) at its start and Close at its end.
   A way out swaps the body for its one step: the event, one 13px muted
   sentence of what goes and to whom (the event stands above it and is not
-  named again), then Day, From and To (New event's fields) for a proposal
+  named again; a move of an event with guests says they are told the new
+  time), then Day, From and To (New event's fields) for a proposal
   or a move, and a Note for a decline or a proposal; the foot is Back and
   Send (Move for a move). The times start filled: the earlier event with
   the latest quarter hour that still ends a drive before the later one,
   the later with the first after the earlier ends. A To earlier on the
   clock than From is the next day's, and says "Next day" under it. Send
-  holds its width and spins; a toast answers the press and the dialog
-  closes; a refusal stays in the step in LifeOS's words, in `destructive`,
-  as an alert. Back puts focus on the way it came from. While the dialog
+  holds its width and spins, and the step's fields are locked while it
+  is out; a toast answers the press and the dialog closes on the clash it
+  showed, though his own press is what ended it; a refusal stays in the
+  step in LifeOS's words, in `destructive`, as an alert. Back puts focus on the way it came from. While the dialog
   reads a clash it was not handed, it draws the two events' bones with the
   hairline between them; a read that failed says why in the body; two
   events that no longer clash are the title "No longer a clash" over the
@@ -1632,7 +1637,7 @@ Around the canvas:
   after Where it runs (`StartPlacesSection`): Home, then the six jobs in
   LifeOS's order, each job's title its sector dot and name. A row's line
   is the place as the map named it; "Home" in muted text where a job has
-  no start of its own; "Not set" for Home with none; a 12px spinner and
+  no start of its own; "Not set" for Home with none; a 12px spinner, 8px,
   "Looking up…" until LifeOS has placed a new address, turning by itself;
   the typed address with "Not found" as the row's red line when the map
   did not find it. Nothing on the row says whether a job's places go to
@@ -1642,7 +1647,8 @@ Around the canvas:
   a job the switch "Look up event places on Apple Maps" with its one
   line, "When off, this job's event places never leave your machines.",
   and Use home at the foot's start while the field holds an address: it
-  empties the field, and Save sends that with whatever else changed.
+  empties the field and leaves focus there, and Save sends that with
+  whatever else changed. The fields are locked while Save is out.
   Save stays off until something changed, spins, and closes; a refusal
   stays in the dialog, as an alert. No toast: the row is the
   answer. Signed out of LifeOS the section is absent; while it reads,

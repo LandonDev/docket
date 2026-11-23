@@ -27,10 +27,10 @@ vi.mock("../../lib/connection", async (original) => ({
 }));
 const marks = vi.hoisted(() => ({ now: null as unknown }));
 vi.mock("./mark", () => ({ useClashes: () => marks.now }));
-const lifeos = vi.hoisted(() => ({ attendees: [] as { address: string }[] }));
+const lifeos = vi.hoisted(() => ({ attendees: [] as { address: string }[], gone: false }));
 vi.mock("../shell/lifeos", async (original) => ({
   ...(await original<object>()),
-  useLifeosSession: () => ({ environmentId: "box", sector: null, state: "connected", client: { query: async () => ({ attendees: lifeos.attendees }) } }),
+  useLifeosSession: () => (lifeos.gone ? { environmentId: "box", sector: null, state: "unreachable", client: null } : { environmentId: "box", sector: null, state: "connected", client: { query: async () => ({ attendees: lifeos.attendees }) } }),
 }));
 const toasts = vi.hoisted(() => ({ said: [] as { words: string; action?: { label: string; onClick: () => void } }[] }));
 vi.mock("../../components/ui/toaster", () => ({
@@ -70,6 +70,7 @@ beforeEach(() => {
   toasts.said.length = 0;
   mail.drafts.length = 0;
   lifeos.attendees = [];
+  lifeos.gone = false;
 });
 afterEach(() => {
   cleanup();
@@ -257,6 +258,54 @@ describe("the Clash dialog", () => {
     expect(wire.calls[1]).toEqual({ method: "work.clashes.waive", params: { id: "ev_a-ev_b", on: false } });
     await settle();
     expect(onClose).toHaveBeenCalled();
+  });
+
+  it("keeps the clash on screen when his own press ends it, and never turns to No longer a clash as it closes", async () => {
+    wire.hold = () => {};
+    const view = (live: ClashMarks) => {
+      marks.now = live;
+      return <ClashDialog ask={{ id: "ev_a-ev_b", environmentId: "box", clash: overlap() }} onClose={() => {}} />;
+    };
+    const { rerender } = render(view(marksOf({ clashes: [overlap()], leaves: [] })));
+    await settle();
+    fireEvent.click(screen.getByRole("button", { name: "This is fine" }));
+    // LifeOS drops the clash from the live read before the host has answered the press.
+    rerender(view(marksOf({ clashes: [], leaves: [] })));
+    await settle();
+    expect(screen.getByRole("dialog", { name: "Two things at once" })).toBeTruthy();
+    await act(async () => wire.hold?.());
+    await settle();
+    expect(screen.queryByRole("dialog", { name: "No longer a clash" })).toBeNull();
+    expect(toasts.said[0]?.words).toBe("Marked as fine");
+  });
+
+  it("locks a step's fields while Send is out, so what goes is what shows", async () => {
+    wire.hold = () => {};
+    show(overlap());
+    await settle();
+    fireEvent.click(screen.getByRole("button", { name: "Propose new time…" }));
+    fireEvent.click(screen.getByRole("button", { name: "Send" }));
+    await settle();
+    for (const label of ["Day", "From", "To", "Note"]) expect((screen.getByLabelText(label) as HTMLInputElement).disabled, label).toBe(true);
+    await act(async () => wire.hold?.());
+  });
+
+  it("says that a move of an event with guests is mailed to them", async () => {
+    show(overlap(meeting([]), game(["move"], { guests: true })));
+    await settle();
+    fireEvent.click(screen.getByRole("button", { name: "Move…" }));
+    expect(document.querySelector("[data-clash-step='b:move']")?.textContent).toContain("It moves on your calendar, and its guests are told the new time.");
+  });
+
+  it("says why Running late cannot open when LifeOS is out of reach", async () => {
+    lifeos.gone = true;
+    const onClose = show(overlap());
+    await settle();
+    fireEvent.click(screen.getByRole("button", { name: "Running late…" }));
+    await settle();
+    expect(screen.getByRole("alert").textContent).toBe("LifeOS did not answer");
+    expect(mail.drafts).toEqual([]);
+    expect(onClose).not.toHaveBeenCalled();
   });
 
   it("reads the clash by its id when the opener did not hand it over: bones, then the clash", async () => {

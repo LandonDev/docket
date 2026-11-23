@@ -46,7 +46,7 @@ export function ClashLines({ clashes, eventId, environmentId }: { clashes: reado
               variant="link"
               size="xs"
               data-clash={clash.id}
-              className="h-5 max-w-full justify-start self-start rounded-sm px-0 font-normal text-warning underline-offset-2"
+              className="h-4 max-w-full justify-start self-start rounded-sm px-0 font-normal text-warning underline-offset-2"
               onClick={() => openClash({ id: clash.id, environmentId, clash })}
             >
               <span className="truncate">{words}</span>

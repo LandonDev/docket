@@ -178,6 +178,8 @@ describe("Start places", () => {
     // Nothing is sent yet: the field is empty, the verb is gone, and Save holds both changes.
     expect(lifeos.sent).toEqual([]);
     expect((within(dialog).getByLabelText("Address") as HTMLInputElement).value).toBe("");
+    // The verb left with the address: the keyboard goes on from the field.
+    expect(document.activeElement).toBe(within(dialog).getByLabelText("Address"));
     expect(within(dialog).queryByRole("button", { name: "Use home" })).toBeNull();
     await save(dialog);
     const { hypixel: _gone, ...rest } = SETTINGS.starts!;
@@ -190,7 +192,8 @@ describe("Start places", () => {
     const { container } = render(<StartPlacesSection environmentId="box" />);
     expect(screen.getByRole("button", { name: "Change Cosmic: Home" })).toBeTruthy();
     expect(screen.getByRole("button", { name: /^Change Ref: 2 Gym Ln.*, Not found$/ })).toBeTruthy();
-    expect(row(container, "hypixel").querySelector("[data-slot=spinner]")).not.toBeNull();
+    // The words say the wait; the turning mark is not read out beside them.
+    expect(row(container, "hypixel").querySelector("[data-slot=spinner]")?.getAttribute("aria-hidden")).toBe("true");
     expect(row(container, "cosmic").querySelector("[data-slot=spinner]")).toBeNull();
   });
 

@@ -68,7 +68,8 @@ function Box({ title, day, children }: { title: string; day?: string; children: 
           <X />
         </Button>
       </header>
-      {children}
+      {/* The Modal's own body rule: a foot with no body keeps the title 16px off its hairline. */}
+      <div className="flex flex-col [&>[data-slot=dialog-footer]:first-child]:mt-4">{children}</div>
     </div>
   );
 }

@@ -87,6 +87,8 @@ describe("the step's words", () => {
     expect(wayWords("decline")).toBe("Its organizer is told you declined.");
     expect(wayWords("propose")).toBe("Its organizer is asked for this time. Nothing moves until they agree.");
     expect(wayWords("move")).toBe("It moves on your calendar.");
+    // A calendar mails a move to the event's guests: the step says so.
+    expect(wayWords("move", true)).toBe("It moves on your calendar, and its guests are told the new time.");
   });
 
   it("answers the press", () => {

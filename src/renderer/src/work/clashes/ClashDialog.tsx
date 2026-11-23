@@ -1,7 +1,7 @@
 import { makeFunctionReference } from "convex/server";
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { clashTitle, driveLine, type Clash, type ClashSide, type ClashWay } from "@shared/work/clashes";
-import { startOfDay } from "work-kit/views/lib/agenda";
+import { addDays, startOfDay } from "work-kit/views/lib/agenda";
 import { formatDayHeading, formatTime } from "work-kit/views/lib/format";
 import { DialogFooter, ErrorLine } from "../../chrome/ConfirmDialog";
 import { Field } from "../../chrome/DialogField";
@@ -18,7 +18,7 @@ import { refusalWords } from "../../lib/settingsHome";
 import { openWorkView } from "../../lib/workSwitch";
 import { writeMail } from "../mail/mailto";
 import { sectorName } from "../shell/actions";
-import { useLifeosSession } from "../shell/lifeos";
+import { sessionFailure, useLifeosSession } from "../shell/lifeos";
 import { useClashes } from "./mark";
 import { doneWords, endsNextDay, formOf, freeAfter, lateDraft, spanOf, WAY_LABEL, wayWords, type TimeForm } from "./model";
 import type { ClashAsk } from "./open";
@@ -32,23 +32,28 @@ import type { ClashAsk } from "./open";
  * own send; "This is fine" quiets the clash until a time or a place moves.
  */
 
-const DAY = 86_400_000;
 type Side = "a" | "b";
 type Step = { side: Side; way: Exclude<ClashWay, "late"> };
 const eventGet = makeFunctionReference<"query">("events:get");
 
 export function ClashDialog({ ask, onClose }: { ask: ClashAsk; onClose: () => void }) {
   // The clash's own day or two when the opener handed it over, else the fortnight every opener reads.
-  const [from, to] = ask.clash ? [startOfDay(ask.clash.a.startsAt), startOfDay(ask.clash.b.startsAt) + DAY] : [startOfDay(Date.now()), startOfDay(Date.now()) + 14 * DAY];
+  // Whole local days (a day is 23 or 25 hours when the clocks change), so no event of the pair falls outside the read.
+  const [from, to] = ask.clash ? [startOfDay(ask.clash.a.startsAt), addDays(startOfDay(ask.clash.b.startsAt), 1)] : [startOfDay(Date.now()), addDays(startOfDay(Date.now()), 14)];
   const marks = useClashes(ask.environmentId, from, to);
   const live = [...marks.clashes.values()].flat().find((c) => c.id === ask.id);
-  const clash = live ?? (marks.ready ? undefined : ask.clash);
   const [pending, setPending] = useState(false);
+  // His own press may be what ends the clash ("This is fine", a decline): the dialog keeps the clash it showed while that press is out and while it closes, and never turns to "No longer a clash" under his hand.
+  const [settled, setSettled] = useState(false);
+  const shown = useRef<Clash | undefined>(undefined);
+  const read = live ?? (marks.ready ? undefined : ask.clash);
+  if (read) shown.current = read;
+  const clash = read ?? (pending || settled ? shown.current : undefined);
   const day = clash ? formatDayHeading(startOfDay(clash.b.startsAt)) : undefined;
   const state = marks.ready ? "gone" : marks.failed !== undefined ? "failed" : "loading";
   return (
     <Modal onClose={onClose} title={clash ? clashTitle(clash) : state === "gone" ? "No longer a clash" : "Clash"} description={day} size="sm" busy={pending} data-clash-dialog={ask.id}>
-      {clash ? <Body clash={clash} environmentId={ask.environmentId} onClose={onClose} pending={pending} setPending={setPending} /> : <Empty state={state} error={marks.failed} onClose={onClose} />}
+      {clash ? <Body clash={clash} environmentId={ask.environmentId} onClose={onClose} pending={pending} setPending={setPending} onSettled={() => setSettled(true)} /> : <Empty state={state} error={marks.failed} onClose={onClose} />}
     </Modal>
   );
 }
@@ -108,7 +113,7 @@ function EventBlock({ side, day, children }: { side: ClashSide; day: number; chi
       </TruncateTip>
       <span className="mt-0.5 flex min-w-0 items-center gap-2 text-xs leading-5 text-muted-foreground">
         <span className="shrink-0 tabular-nums">{span(side, day)}</span>
-        <span className="inline-flex min-w-0 items-center gap-1">
+        <span className="inline-flex min-w-0 items-center gap-1.5">
           <SectorDot sector={side.sector} className="size-3" />
           <span className="truncate">{sectorName(side.sector)}</span>
         </span>
@@ -134,7 +139,22 @@ function Foot({ onClose, start, busy }: { onClose: () => void; start?: React.Rea
   );
 }
 
-function Body({ clash, environmentId, onClose, pending, setPending }: { clash: Clash; environmentId: string; onClose: () => void; pending: boolean; setPending: (p: boolean) => void }) {
+function Body({
+  clash,
+  environmentId,
+  onClose,
+  pending,
+  setPending,
+  onSettled,
+}: {
+  clash: Clash;
+  environmentId: string;
+  onClose: () => void;
+  pending: boolean;
+  setPending: (p: boolean) => void;
+  /** a press of his went through: the dialog is closing on what it shows */
+  onSettled: () => void;
+}) {
   const close = useModalClose();
   const session = useLifeosSession(environmentId, null);
   const [step, setStep] = useState<Step | null>(null);
@@ -144,6 +164,7 @@ function Body({ clash, environmentId, onClose, pending, setPending }: { clash: C
   const [error, setError] = useState<string | null>(null);
   const link = registry.linkOf(environmentId);
   const done = (words: string, undo?: () => void) => {
+    onSettled();
     void loadToast().then((toast) => toast(words, undo ? { action: { label: "Undo", onClick: undo } } : undefined));
     close ? close(onClose) : onClose();
   };
@@ -167,7 +188,6 @@ function Body({ clash, environmentId, onClose, pending, setPending }: { clash: C
     setBusy("fine");
     link.request("work.clashes.waive", { id: clash.id, on: true }, { lane: "ui" }).then(
       () => {
-        setPending(false);
         done("Marked as fine", () => void link.request("work.clashes.waive", { id: clash.id, on: false }, { lane: "ui" }).catch(() => void loadToast().then((toast) => toast.error("Undo did not go through"))));
       },
       (err: unknown) => failed(err, "The host did not answer"),
@@ -177,7 +197,9 @@ function Body({ clash, environmentId, onClose, pending, setPending }: { clash: C
   /** The people on the later event, then Mail's composer in that job's workspace with one line to them. */
   const late = () => {
     const workspaceId = clash.b.workspaceId;
-    if (!session.client || !workspaceId) return;
+    if (!workspaceId) return;
+    // A session that cannot read says so: a press never ends in nothing.
+    if (!session.client) return setError(sessionFailure(session.state));
     setError(null);
     setPending(true);
     setBusy("late");
@@ -211,7 +233,6 @@ function Body({ clash, environmentId, onClose, pending, setPending }: { clash: C
           setPending(true);
           link.request("work.clashes.answer", { eventId: clash[step.side].eventId, way: step.way, ...params }, { lane: "ui" }).then(
             () => {
-              setPending(false);
               done(doneWords(step.way, clash[step.side].title));
             },
             (err: unknown) => {
@@ -331,23 +352,23 @@ export function StepForm({
     <form onSubmit={submit} data-clash-step={`${step.side}:${step.way}`}>
       <ModalBody>
         <EventBlock side={event} day={startOfDay(clash.b.startsAt)} />
-        <p className="text-[13px] leading-5 text-muted-foreground">{wayWords(step.way)}</p>
+        <p className="text-[13px] leading-5 text-muted-foreground">{wayWords(step.way, event.guests)}</p>
         {timed ? (
           <div className="grid grid-cols-[minmax(0,1fr)_112px_112px] gap-2">
             <Field label="Day">
-              <Input autoFocus type="date" value={form.day} onChange={(e) => patch({ day: e.target.value })} />
+              <Input autoFocus type="date" disabled={pending} value={form.day} onChange={(e) => patch({ day: e.target.value })} />
             </Field>
             <Field label="From">
-              <Input type="time" value={form.from} onChange={(e) => patch({ from: e.target.value })} />
+              <Input type="time" disabled={pending} value={form.from} onChange={(e) => patch({ from: e.target.value })} />
             </Field>
             <Field label="To" hint={endsNextDay(form) ? "Next day" : undefined}>
-              <Input type="time" value={form.to} onChange={(e) => patch({ to: e.target.value })} />
+              <Input type="time" disabled={pending} value={form.to} onChange={(e) => patch({ to: e.target.value })} />
             </Field>
           </div>
         ) : null}
         {step.way !== "move" ? (
           <Field label="Note">
-            <Textarea autoFocus={!timed} value={note} maxLength={500} onChange={(e) => setNote(e.target.value)} />
+            <Textarea autoFocus={!timed} disabled={pending} value={note} maxLength={500} onChange={(e) => setNote(e.target.value)} />
           </Field>
         ) : null}
         <div role="alert" className="empty:hidden">

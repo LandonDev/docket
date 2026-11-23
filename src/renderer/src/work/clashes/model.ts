@@ -69,11 +69,11 @@ export function lateDraft(clash: Clash, to: readonly string[]): MailtoDraft {
 /** The verb on a way's button, and what its step says goes. */
 export const WAY_LABEL: Record<ClashWay, string> = { decline: "Decline", propose: "Propose new time…", move: "Move…", late: "Running late…" };
 
-/** What a way out does and who hears of it, under the event it is for (so the event is not named again). */
-export function wayWords(way: Exclude<ClashWay, "late">): string {
+/** What a way out does and who hears of it, under the event it is for (so the event is not named again). A move of an event with guests is mailed to them by its calendar. */
+export function wayWords(way: Exclude<ClashWay, "late">, guests = false): string {
   if (way === "decline") return "Its organizer is told you declined.";
   if (way === "propose") return "Its organizer is asked for this time. Nothing moves until they agree.";
-  return "It moves on your calendar.";
+  return guests ? "It moves on your calendar, and its guests are told the new time." : "It moves on your calendar.";
 }
 
 /** What the toast says once a way out went. */
@@ -106,9 +106,10 @@ export const endsNextDay = (form: TimeForm): boolean => Boolean(form.from && for
  */
 export function spanOf(form: TimeForm): { start: number; end: number } | string {
   const start = new Date(`${form.day}T${form.from}`).getTime();
-  const sameDayEnd = new Date(`${form.day}T${form.to}`);
-  if (endsNextDay(form)) sameDayEnd.setDate(sameDayEnd.getDate() + 1);
-  const end = sameDayEnd.getTime();
+  // The end's day first, then its clock on that day: a clock time read on the wrong day lands an hour off when the clocks change.
+  const endDay = new Date(`${form.day}T12:00`);
+  if (endsNextDay(form)) endDay.setDate(endDay.getDate() + 1);
+  const end = Number.isFinite(endDay.getTime()) ? new Date(`${dayField(endDay.getTime())}T${form.to}`).getTime() : Number.NaN;
   if (!Number.isFinite(start) || !Number.isFinite(end)) return "Pick a day and its times";
   if (end <= start) return "It must end after it starts";
   return { start, end };
