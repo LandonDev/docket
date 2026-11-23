@@ -615,7 +615,8 @@ function ToDo({ tasks, now, onDecide, onOpenTask }: { tasks: readonly PrepSugges
   return (
     <section aria-label="To do" className="mt-6">
       <h2 className="mb-1 text-xs font-medium text-muted-foreground">To do</h2>
-      <div role="list" className="flex flex-col gap-0.5">
+      {/* At the measure the notes and the brief read at (65ch of 14px): a tint the column's whole width would shout. */}
+      <div role="list" className="flex max-w-[65ch] flex-col gap-0.5 text-sm">
         {tasks.map((task) => {
           const line = suggestionLine(task, now);
           const words = (
