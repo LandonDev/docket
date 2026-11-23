@@ -25,6 +25,9 @@
 @source "../../../node_modules/work-kit/src/editor/draft-editor.tsx";
 @source "../../../node_modules/work-kit/src/editor/draft.ts";
 @source "../../../node_modules/work-kit/src/editor/editor-kit.tsx";
+@source "../../../node_modules/work-kit/src/editor/find-bar.tsx";
+@source "../../../node_modules/work-kit/src/editor/find-marks.ts";
+@source "../../../node_modules/work-kit/src/editor/find.ts";
 @source "../../../node_modules/work-kit/src/editor/format-keys.ts";
 @source "../../../node_modules/work-kit/src/editor/format-row.tsx";
 @source "../../../node_modules/work-kit/src/editor/formatting.ts";

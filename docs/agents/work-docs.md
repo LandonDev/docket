@@ -109,6 +109,19 @@ gate"):
   document's own socket (`service/routes/guests.ts`), and the guest's editor
   is told the service's number (`hostSchema`).
 
+**The first copy.** The editor is on the page, under the bones, before the
+document's first copy has come over the socket. Until it comes the editor
+writes nothing: its opening paragraph is the schema's own default, which
+y-prosemirror never writes. work-kit v67 to v71 broke this (an unset
+`para` was hidden after the first document was made, so the opening
+paragraph was no longer the default): the editor wrote its empty paragraph
+first, the document's copy arrived as a second root beside it, the pane and a
+guest's page drew empty, and the next write emptied the document. A guest's
+Edit link at a phone's width found it (`scripts/proof-doc-guest-phone.ts`);
+work-kit v72 hides the attribute before the first document is made and holds
+it with `src/editor/first-copy.test.tsx`. Anything new that touches the
+editor's schema after `BlockNoteEditor.create` must pass that test.
+
 ## Styling: the format row
 
 On a document he may edit, the body's first, unscrolled row is the format
