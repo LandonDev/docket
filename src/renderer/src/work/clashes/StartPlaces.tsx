@@ -1,5 +1,5 @@
 import { makeFunctionReference } from "convex/server";
-import { useId, useRef, useState, type FormEvent, type ReactNode } from "react";
+import { useEffect, useId, useRef, useState, type FormEvent, type ReactNode } from "react";
 import type { SectorKey } from "@shared/work";
 import { SectorDot } from "../../chrome/WorkspaceGlyph";
 import { DialogFooter, ErrorLine } from "../../chrome/ConfirmDialog";
@@ -13,7 +13,7 @@ import { Switch } from "../../components/ui/switch";
 import { refusalWords } from "../../lib/settingsHome";
 import { sectorName } from "../shell/actions";
 import { sessionFailure, sessionWaits, useLifeosQuery, useLifeosSession, type LifeosSession } from "../shell/lifeos";
-import { formChanged, placeWords, rowLabel, savePatch, type JobStart, type StartPatch, type StartPlace, type StartPlaces, type StartTarget } from "./places";
+import { fieldsOf, formChanged, placeWords, rowLabel, sameField, savePatch, type JobStart, type StartPatch, type StartPlace, type StartPlaces, type StartTarget } from "./places";
 import { answered } from "./wait";
 
 /**
@@ -133,6 +133,8 @@ function StartPlaceDialog({
 }
 
 type Pending = "save" | null;
+/** What the dialog says when a Save got no answer in time: it may or may not have landed. */
+const UNSURE = "LifeOS did not answer. Save again to be sure.";
 
 /** The dialog's body and footer: one address, and for a job its lookups switch and "Use home", which empties the address for Save to send with whatever else changed. */
 export function StartPlaceForm({
@@ -165,6 +167,17 @@ export function StartPlaceForm({
   const form = { ...saved, ...edits };
   const [error, setError] = useState<string | null>(shownError);
   const job: SectorKey | null = target === "home" ? null : target;
+  // What a Save whose answer never came sent. Once the reads show those values, it landed: its words go, and its edits are simply what is stored now, so they are dropped and those fields follow the reads again (a change made elsewhere since is not undone by his next Save). An edit he made after it stays.
+  const unsure = useRef<Partial<typeof saved> | null>(null);
+  useEffect(() => {
+    const sent = unsure.current;
+    if (!sent) return;
+    const fields = Object.keys(sent) as (keyof typeof saved)[];
+    if (!fields.every((field) => sameField(saved[field], sent[field]))) return;
+    unsure.current = null;
+    setError(null);
+    setEdits((edits) => Object.fromEntries(Object.entries(edits).filter(([field, value]) => !sameField(value, sent[field as keyof typeof saved]))));
+  }, [saved.address, saved.lookups]);
 
   const linesId = useId();
   const address = useRef<HTMLInputElement>(null);
@@ -174,15 +187,18 @@ export function StartPlaceForm({
     if (!patch || pending || blocked !== null) return;
     setPending("save");
     setError(null);
+    unsure.current = null;
     // The write is given an end: a session that drops under it would leave the dialog locked. One job set alone is the same write twice over, so Save again is safe.
-    answered(send(patch), "LifeOS did not answer. Save again to be sure.").then(
+    answered(send(patch), UNSURE).then(
       () => {
         setPending(null);
         close ? close(onClose) : onClose();
       },
       (err: unknown) => {
         setPending(null);
-        setError(refusalWords(err) || "LifeOS refused it");
+        const words = refusalWords(err) || "LifeOS refused it";
+        if (words === UNSURE) unsure.current = fieldsOf(patch);
+        setError(words);
       },
     );
   };

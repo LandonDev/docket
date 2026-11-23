@@ -70,7 +70,7 @@ export function ClashDialog({ ask, onClose }: { ask: ClashAsk; onClose: () => vo
   const state = gone ? "gone" : marks.failed !== undefined ? "failed" : "loading";
   return (
     <Modal onClose={onClose} title={clash && !cleared ? clashTitle(clash) : gone ? "No longer a clash" : "Clash"} description={day} size="sm" busy={pending} data-clash-dialog={ask.id}>
-      {clash ? <Body clash={clash} environmentId={ask.environmentId} onClose={onClose} pending={pending} setPending={setPending} onSettled={() => setSettled(true)} onStep={setStepping} cleared={cleared} /> : <Empty state={state} error={marks.failed} onClose={onClose} />}
+      {clash ? <Body clash={clash} environmentId={ask.environmentId} onClose={onClose} pending={pending} setPending={setPending} onSettled={() => setSettled(true)} onStep={setStepping} cleared={cleared} gone={gone} /> : <Empty state={state} error={marks.failed} onClose={onClose} />}
     </Modal>
   );
 }
@@ -178,6 +178,7 @@ function Body({
   onSettled,
   onStep,
   cleared,
+  gone,
 }: {
   clash: Clash;
   environmentId: string;
@@ -190,6 +191,8 @@ function Body({
   onStep: (open: boolean) => void;
   /** the two no longer clash, by something other than his press here */
   cleared: boolean;
+  /** the live read says the two no longer clash, though the dialog may still show them while a press of his is out */
+  gone: boolean;
 }) {
   const close = useModalClose();
   const session = useLifeosSession(environmentId, null);
@@ -216,6 +219,8 @@ function Body({
   // The pair as the last render had it, for a press whose answer comes later.
   const latest = useRef(clash);
   latest.current = clash;
+  const left = useRef(gone);
+  left.current = gone;
   // Back puts focus where the step was opened from, so the keyboard never loses its place.
   const from = useRef<string | null>(null);
   const body = useRef<HTMLDivElement>(null);
@@ -252,8 +257,8 @@ function Body({
     answered(session.client.query(eventGet, { id: clash.b.eventId })).then(
       (event: { attendees?: { address: string }[] } | null) => {
         setPending(false);
-        // The pair changed while the people were read: the minutes he pressed for are no longer the minutes. The dialog shows the pair as it is, and the press is his again.
-        if (pairStamp(latest.current) !== pressed) return setBusy(null);
+        // The pair changed while the people were read, or stopped being a clash: the minutes he pressed for are no longer the minutes. The dialog shows the pair as it is, or that it is gone, and the press is his again.
+        if (left.current || pairStamp(latest.current) !== pressed) return setBusy(null);
         const to = (event?.attendees ?? []).map((a) => a.address).filter((a) => a.includes("@"));
         if (!to.length) return failed(null, "Nobody on this event has an address");
         openWorkView({ workspaceId, view: "mail" });

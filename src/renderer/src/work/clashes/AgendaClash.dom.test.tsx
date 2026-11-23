@@ -210,6 +210,30 @@ describe("a clash on the Agenda row", () => {
     expect(drawn.marked.at(-1)).toEqual(["ev_meeting"]);
   });
 
+  it("lets a clash go at the very minute its later event ends, as the dialog calls that event over", async () => {
+    // The clock stands on the minute the game ends; the meeting runs on.
+    const end = Math.ceil(now / 60_000) * 60_000 + 30 * 60_000;
+    vi.useFakeTimers({ now: end, toFake: ["Date"] });
+    try {
+      events.rows = [{ ...meeting, startsAt: end - 2 * HOUR, endsAt: end + HOUR }];
+      const ended = side("ev_game", "ref", "Varsity Basketball", end - HOUR, end);
+      lifeos.range = { clashes: [{ ...overlap.clashes[0]!, a: { ...overlap.clashes[0]!.a, startsAt: end - 2 * HOUR, endsAt: end + HOUR }, b: ended as never }], leaves: [] };
+      render(
+        <>
+          <Head {...props} />
+          <View {...props} />
+        </>,
+      );
+      await act(async () => {});
+      expect(screen.queryByRole("button", { name: /^Overlaps/ })).toBeNull();
+      fireEvent.click(screen.getByRole("button", { name: "Week" }));
+      await act(async () => {});
+      expect(drawn.marked.at(-1)).toEqual([]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("hands the Week and the Month the events that clash, for their dot", async () => {
     events.rows = [meeting];
     lifeos.range = overlap;

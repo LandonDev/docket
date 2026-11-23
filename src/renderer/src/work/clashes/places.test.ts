@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { formChanged, placeWords, rowLabel, savePatch } from "./places";
+import { fieldsOf, formChanged, placeWords, rowLabel, sameField, savePatch, tidyAddress } from "./places";
 
 
 describe("a start place's words", () => {
@@ -49,6 +49,20 @@ describe("what a Save sends", () => {
 
   it("sends an emptied address and a flipped switch in one patch, so Use home never drops the switch", () => {
     expect(savePatch("ref", { address: "4 Gym Way", lookups: true }, { address: "", lookups: false })).toEqual({ startFor: { sector: "ref", address: "" }, lookupsFor: { sector: "ref", on: false } });
+  });
+
+  it("reads an address as LifeOS keeps it: runs of spaces as one, so what comes back is what went", () => {
+    expect(tidyAddress("  9   Oak  St ")).toBe("9 Oak St");
+    expect(formChanged({ address: "9 Oak St", lookups: true }, { address: "9  Oak St", lookups: true })).toBe(false);
+    expect(savePatch("ref", saved, { ...saved, address: "9   Oak  St" })).toEqual({ startFor: { sector: "ref", address: "9 Oak St" } });
+    expect(savePatch("home", { address: "", lookups: false }, { address: " 9  Oak St", lookups: false })).toEqual({ homeAddress: "9 Oak St" });
+  });
+
+  it("knows the fields a patch set, to see in a later read that it landed", () => {
+    expect(fieldsOf({ startFor: { sector: "ref", address: "9 Oak St" }, lookupsFor: { sector: "ref", on: false } })).toEqual({ address: "9 Oak St", lookups: false });
+    expect(fieldsOf({ homeAddress: null })).toEqual({ address: "" });
+    expect(fieldsOf({ lookupsFor: { sector: "purdue", on: true } })).toEqual({ lookups: true });
+    expect([sameField("9  Oak St", "9 Oak St"), sameField(true, true), sameField(true, false), sameField("a", undefined)]).toEqual([true, true, false, false]);
   });
 
   it("names a row's button by its verb, whose place and what the row says", () => {

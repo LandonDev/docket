@@ -318,6 +318,43 @@ describe("Start places", () => {
     expect(lifeos.sent).toEqual([{ name: "settings:update", args: { lookupsFor: { sector: "purdue", on: false } } }]);
   });
 
+  it("drops the edits of a Save that timed out once the reads show it landed, so a later Save never sends them again", async () => {
+    const view = render(<StartPlacesSection environmentId="box" />);
+    const dialog = await open("Change Purdue");
+    vi.useFakeTimers();
+    try {
+      lifeos.silent = true;
+      fireEvent.click(within(dialog).getByRole("switch"));
+      fireEvent.change(within(dialog).getByLabelText("Address"), { target: { value: "12  Oak  Ct" } });
+      fireEvent.click(within(dialog).getByRole("button", { name: "Save" }));
+      await act(async () => {});
+      await act(async () => void vi.advanceTimersByTime(10_000));
+    } finally {
+      vi.useRealTimers();
+    }
+    lifeos.silent = false;
+    const stored = (more: object) => ({ ...PLACES, jobs: PLACES.jobs.map((j) => (j.sector === "purdue" ? { ...j, ...more } : j)) });
+    const alert = () => within(screen.getByRole("dialog")).getByRole("alert").textContent;
+    expect(alert()).toBe("LifeOS did not answer. Save again to be sure.");
+    // It landed: LifeOS keeps the address with single spaces, and the lookups on.
+    lifeos.places = stored({ address: "12 Oak Ct", lookups: true, state: "looking" });
+    view.rerender(<StartPlacesSection environmentId="box" />);
+    await act(async () => {});
+    expect(alert()).toBe("");
+    expect((within(screen.getByRole("dialog")).getByRole("button", { name: "Save" }) as HTMLButtonElement).disabled).toBe(true);
+    // Another window turns Purdue's lookups off again. The switch here follows, since his own change is no longer an edit.
+    lifeos.places = stored({ address: "12 Oak Ct", lookups: false, state: "looking" });
+    view.rerender(<StartPlacesSection environmentId="box" />);
+    await act(async () => {});
+    expect(within(screen.getByRole("dialog")).getByRole("switch").getAttribute("aria-checked")).toBe("false");
+    // He edits the address: the old words do not come back, and Save sends the address alone.
+    fireEvent.change(within(screen.getByRole("dialog")).getByLabelText("Address"), { target: { value: "14 Oak Ct" } });
+    expect(alert()).toBe("");
+    lifeos.sent = [];
+    await save(screen.getByRole("dialog"));
+    expect(lifeos.sent).toEqual([{ name: "settings:update", args: { startFor: { sector: "purdue", address: "14 Oak Ct" } } }]);
+  });
+
   it("lets a field he has not touched follow the reads, and never offers to send it back", async () => {
     const view = render(<StartPlacesSection environmentId="box" />);
     await open("Change Ref");

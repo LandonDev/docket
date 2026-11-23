@@ -1937,7 +1937,9 @@ Around the canvas:
   moved to start first are the same clash. Running late… opens Mail's composer in
   that job's workspace with the people on the event and one line, and
   lets go with LifeOS's words when the read of those people gets no
-  answer in ten seconds; once the time he would have been there by is
+  answer in ten seconds; if the two change or stop clashing while it
+  reads, nothing is drafted and the press is his again on the pair as it
+  is; once the time he would have been there by is
   behind him, its line says "I'm running late." and leaves how late to
   him; "This
   is fine" closes with a toast that carries Undo.
@@ -1963,8 +1965,10 @@ Around the canvas:
   whatever else changed, for that one job alone (another job's start or
   switch, changed elsewhere meanwhile, is kept). The fields are locked
   while Save is out, for ten seconds at most: then the dialog says
-  "LifeOS did not answer. Save again to be sure." and he can; the words
-  go once the reads show the Save landed after all. An open
+  "LifeOS did not answer. Save again to be sure." and he can; once the
+  reads show the Save landed after all, the words go and what it sent is
+  no longer his edit, so those fields follow the reads again. An address
+  is compared and sent as LifeOS keeps it, runs of spaces as one. An open
   dialog keeps what he typed when a read fails or the session drops (a
   field he has not touched follows the reads, and Save is on whenever
   the form differs from what LifeOS holds now): it

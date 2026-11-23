@@ -50,18 +50,33 @@ export function placeWords(place: StartPlace, target: StartTarget): { descriptio
 /** The dialog's fields. */
 export type StartForm = { address: string; lookups: boolean };
 
-/** Whether the form differs from what LifeOS holds; spaces at the ends do not count. */
+/** An address as LifeOS keeps it: runs of spaces as one, none at the ends. Compared and sent this way, so what comes back reads as what went. */
+export const tidyAddress = (address: string): string => address.replace(/\s+/g, " ").trim();
+
+/** Whether the form differs from what LifeOS holds; spaces LifeOS would not keep do not count. */
 export function formChanged(saved: StartForm, form: StartForm): boolean {
-  return form.address.trim() !== saved.address.trim() || form.lookups !== saved.lookups;
+  return tidyAddress(form.address) !== tidyAddress(saved.address) || form.lookups !== saved.lookups;
 }
 
 /** The patch a Save sends, or null when nothing changed: only what he changed, for this one place. */
 export function savePatch(target: StartTarget, saved: StartForm, form: StartForm): StartPatch | null {
   if (!formChanged(saved, form)) return null;
-  const address = form.address.trim();
+  const address = tidyAddress(form.address);
   if (target === "home") return { homeAddress: address || null };
   const patch: StartPatch = {};
-  if (address !== saved.address.trim()) patch.startFor = { sector: target, address };
+  if (address !== tidyAddress(saved.address)) patch.startFor = { sector: target, address };
   if (form.lookups !== saved.lookups) patch.lookupsFor = { sector: target, on: form.lookups };
   return patch;
 }
+
+/** The form's fields a patch set, as the reads will show them once it has landed. */
+export function fieldsOf(patch: StartPatch): Partial<StartForm> {
+  return {
+    ...(patch.homeAddress !== undefined ? { address: patch.homeAddress ?? "" } : {}),
+    ...(patch.startFor ? { address: patch.startFor.address } : {}),
+    ...(patch.lookupsFor ? { lookups: patch.lookupsFor.on } : {}),
+  };
+}
+
+/** Whether a field holds the value a patch sent, spaces aside. */
+export const sameField = (a: string | boolean | undefined, b: string | boolean | undefined): boolean => (typeof a === "string" && typeof b === "string" ? tidyAddress(a) === tidyAddress(b) : a === b);

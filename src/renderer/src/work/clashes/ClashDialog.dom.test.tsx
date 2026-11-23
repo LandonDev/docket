@@ -546,6 +546,28 @@ describe("the Clash dialog", () => {
     expect(mail.drafts).toEqual([expect.objectContaining({ body: "I'm running about 48 minutes late." })]);
   });
 
+  it("drafts nothing when the clash goes away while Running late reads the people, and says it is gone", async () => {
+    let answer: (value: { attendees: { address: string }[] }) => void = () => {};
+    lifeos.held = new Promise((resolve) => (answer = resolve));
+    const view = (live: ClashMarks) => {
+      marks.now = live;
+      return <ClashDialog ask={{ id: "ev_a-ev_b", environmentId: "box", clash: overlap() }} onClose={() => {}} />;
+    };
+    const { rerender } = render(view(marksOf({ clashes: [overlap()], leaves: [] })));
+    await settle();
+    fireEvent.click(screen.getByRole("button", { name: "Running late…" }));
+    await settle();
+    // The meeting moves clear of the game while the people are read. The pair stays on screen for the wait itself.
+    rerender(view(marksOf({ clashes: [], leaves: [] })));
+    await settle();
+    expect(screen.getByRole("dialog", { name: "Two things at once" })).toBeTruthy();
+    await act(async () => answer({ attendees: [{ address: "dana@example.com" }] }));
+    await settle();
+    expect(mail.drafts).toEqual([]);
+    expect(screen.getByRole("dialog", { name: "No longer a clash" })).toBeTruthy();
+    expect(document.activeElement).toBe(document.querySelector("[data-dialog-cancel]"));
+  });
+
   it("puts focus on Close when Back finds the way he came from gone", async () => {
     vi.useFakeTimers({ now: T0 + HOUR, toFake: ["Date"] });
     try {
