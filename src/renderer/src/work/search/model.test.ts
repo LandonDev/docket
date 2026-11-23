@@ -397,6 +397,42 @@ describe("out of one kind", () => {
   });
 });
 
+describe("out of one kind, before its answer", () => {
+  it("keeps the row he came in by under him: Return straight after Escape is not another row's", () => {
+    let m = typed("budget");
+    m = landInstant(m, m.gen, "box", answer([group("person", ["p1"]), group("mail", ["m1", "m2", "m3", "m4"], { more: true })])).model;
+    // Return on "All mail", then Escape before the kind's own answer lands
+    m = begin(m, { text: "budget", kind: "mail", hosts: [box] });
+    m = begin(m, { text: "budget", kind: null, hosts: [box] });
+    const rows = rowsOf(m);
+    expect(shape(rows)).toEqual(["# Person", "p1", "# Mail", "m1", "m2", "m3", "m4", "[All mail for “budget”]"]);
+    expect(activeOf(m, rows)).toBe("all:mail");
+    // the fresh answer decides: with no more mail than is shown, the row goes and the highlight with it
+    m = landInstant(m, m.gen, "box", answer([group("person", ["p1"]), group("mail", ["m1", "m2", "m3", "m4"])])).model;
+    expect(activeOf(m, rowsOf(m))).toBe("hit:p1");
+  });
+});
+
+describe("Recent, by how a row reads", () => {
+  it("lists two things that would read the same once, the newest: two messages of one conversation", () => {
+    const recent = (rows: [string, string, number][]): SearchGroup => ({ source: "search.recent", kind: "recent", label: "Recent", more: false, hits: rows.map(([key, title, openedAt]) => hit(key, { kind: "message", title, openedAt })) });
+    let m = typed("");
+    m = landInstant(m, m.gen, "box", answer([recent([["r2", "#launch-crew", 30], ["m9", "#finance", 20], ["r1", "#launch-crew", 10]])])).model;
+    expect(shape(rowsOf(m))).toEqual(["# Recent", "r2", "m9"]);
+  });
+});
+
+describe("what could not be searched", () => {
+  it("is never the same words twice, and is marked as the list's foot", () => {
+    let m = typed("budget");
+    m = landInstant(m, m.gen, "box", answer([], ["search.file/instant", "search.file/network#2"])).model;
+    m = failed(m, m.gen, "box", { source: "search.file/instant", kind: "file" });
+    m = failed(m, m.gen, "box", { source: "search.file/network#2", kind: "file" });
+    const causes = rowsOf(m).filter((row) => row.type === "note" && row.cause);
+    expect(causes).toEqual([{ type: "note", id: "quiet:source:search.file/instant@box", text: "Files did not answer.", cause: true }]);
+  });
+});
+
 describe("his words", () => {
   it("are asked no longer than the wire takes", () => {
     const m = typed(`${"long ".repeat(60)}`);

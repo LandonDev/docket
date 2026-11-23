@@ -16,11 +16,14 @@ import { useEffect, useRef, type MouseEvent as ReactMouseEvent } from "react";
  */
 export function usePointerHighlight<T extends HTMLElement>({
   active,
+  activeKey,
   items,
   onActive,
 }: {
   /** The highlighted index. */
   active: number;
+  /** The highlighted row's own name, where rows can land above it: the same row at a new index is no move, and is not scrolled to. */
+  activeKey?: string | null;
   /** The rows; a new list waits for the pointer to move again. */
   items: unknown;
   onActive: (index: number) => void;
@@ -40,7 +43,7 @@ export function usePointerHighlight<T extends HTMLElement>({
     }
     pointer.current.allow = false;
     activeRef.current?.scrollIntoView({ block: "nearest" });
-  }, [active]);
+  }, [activeKey === undefined ? active : activeKey]);
 
   const onMouseMove = (event: ReactMouseEvent<HTMLElement>) => {
     if (event.clientX === pointer.current.x && event.clientY === pointer.current.y) return;

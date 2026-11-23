@@ -105,7 +105,8 @@ export async function runSearch(ctx: WorkCtx, o: SearchRun): Promise<SearchAnswe
     // A stable sort: two sources of one kind stay in the order they were listed.
     groups: groups.filter((g): g is SearchGroup => g !== null).sort((a, b) => searchRank(a.kind) - searchRank(b.kind)),
     pending,
-    quiet: quiet.filter((q, i) => quiet.findIndex((other) => other.cause === q.cause) === i),
+    // One line a cause, and never the same words twice (two sources of one kind that both failed).
+    quiet: quiet.filter((q, i) => quiet.findIndex((other) => other.cause === q.cause || other.line === q.line) === i),
     searched: answered.count
   }
 }

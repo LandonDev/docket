@@ -21,7 +21,7 @@ export interface MenuState {
 export const EDITOR_KEY_IDS = ['toggle_sidebar', 'open_search', 'go_to_file', 'find'] as const
 
 /** The rows that are Work's alone (the tree's `workOnly` rows; menuTree.test.ts holds the two equal): a window hides them while no host has Work on. */
-export const WORK_ONLY_IDS = ['open_today'] as const
+export const WORK_ONLY_IDS = ['search_work', 'open_today'] as const
 
 export const EMPTY_MENU_STATE: MenuState = { open: [], disabled: [], checked: {} }
 

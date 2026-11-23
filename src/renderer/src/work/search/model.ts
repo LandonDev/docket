@@ -153,7 +153,8 @@ function withQuiet(model: SearchModel, host: SearchHost, quiet: SearchAnswer["qu
   const out = [...model.quiet];
   for (const q of quiet) {
     const line = quietLine(q.cause, q.line, host, model.hosts.length);
-    if (!out.some((have) => have.key === line.key)) out.push(line);
+    // One line a cause, and never the same words twice (two sources of one kind that both failed).
+    if (!out.some((have) => have.key === line.key || have.line === line.line)) out.push(line);
   }
   return out;
 }
@@ -209,7 +210,7 @@ export function failed(model: SearchModel, gen: number, hostId: string, source: 
   out.delete(outKey(hostId, source?.source ?? "*"));
   const slots = model.slots.filter((slot) => slot.host !== hostId || (source !== null && slot.source !== source.source));
   const said = source ? quietLine(`source:${source.source}`, `${searchLabel(source.kind)} did not answer`, host, model.hosts.length) : { key: `host:${hostId}`, line: `${host.name} did not answer.` };
-  const quiet = model.quiet.some((q) => q.key === said.key) ? model.quiet : [...model.quiet, said];
+  const quiet = model.quiet.some((q) => q.key === said.key || q.line === said.line) ? model.quiet : [...model.quiet, said];
   return settled({ ...model, out, slots, quiet });
 }
 
@@ -223,7 +224,8 @@ export type Row =
   | { type: "all"; id: string; kind: string; label: string }
   /** "Search all jobs", under nothing found in one job */
   | { type: "widen"; id: string; label: string }
-  | { type: "note"; id: string; text: string };
+  /** `cause`: what could not be searched, said at the list's foot outside its scroller, so a long list never hides it */
+  | { type: "note"; id: string; text: string; cause?: true };
 
 /** A row Return can take. */
 export type Option = Extract<Row, { type: "hit" | "all" | "widen" }>;
@@ -262,9 +264,13 @@ function groupsOf(model: SearchModel): Group[] {
     if (kind === RECENT_KIND) {
       // Recent is one list across hosts: what he opened last, wherever he opened it, each thing by its newest opening.
       const all = mine.flatMap((slot) => slot.hits.map((hit) => ({ hit, host: slot.host }))).sort((a, b) => (b.hit.openedAt ?? 0) - (a.hit.openedAt ?? 0));
+      // Recent keeps a title and no more, so two things that would read the same (two messages of one conversation) are one row: the newest.
+      const looks = new Set<string>();
       for (const found of all) {
-        if (taken.has(found.hit.key)) continue;
+        const look = `${found.hit.kind}\n${found.hit.title}\n${found.hit.workspaceId}`;
+        if (taken.has(found.hit.key) || looks.has(look)) continue;
         taken.add(found.hit.key);
+        looks.add(look);
         hits.push(found);
       }
     } else {
@@ -277,7 +283,9 @@ function groupsOf(model: SearchModel): Group[] {
           taken.add(hit.key);
           hits.push({ hit, host: slot.host });
         }
-        more ||= slot.more && !stale;
+        // An older answer's "more" is not said of new words; but the row he stands on ("All mail for …", back out of
+        // that kind) stays under him until the fresh answer lands and decides.
+        more ||= slot.more && (!stale || (model.moved && model.active === `all:${kind}`));
       }
       const stood = model.order[kind];
       if (stood) {
@@ -329,7 +337,7 @@ export function rowsOf(model: SearchModel, o: { scoped?: boolean } = {}): Row[] 
     rows.push({ type: "note", id: "nothing", text: `Nothing for “${model.text}”` });
     if (o.scoped) rows.push({ type: "widen", id: "widen", label: "Search all jobs" });
   }
-  for (const quiet of model.quiet) rows.push({ type: "note", id: `quiet:${quiet.key}`, text: quiet.line });
+  for (const quiet of model.quiet) rows.push({ type: "note", id: `quiet:${quiet.key}`, text: quiet.line, cause: true });
   return rows;
 }
 

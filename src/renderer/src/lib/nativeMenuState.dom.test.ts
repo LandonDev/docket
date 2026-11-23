@@ -64,8 +64,8 @@ describe("menuStateOf", () => {
     expect(menuStateOf(facts({ away: true })).checked).toEqual({ toggle_away: true });
   });
 
-  it("hides Work's own rows (Go → Today) while no host has Work on, and names none hidden while one has", () => {
-    expect(menuStateOf(facts({ workOn: false })).hidden).toEqual(["open_today"]);
+  it("hides Work's own rows (Go → Search Work…, Today) while no host has Work on, and names none hidden while one has", () => {
+    expect(menuStateOf(facts({ workOn: false })).hidden).toEqual(["search_work", "open_today"]);
     expect(menuStateOf(facts({ workOn: true })).hidden).toBeUndefined();
   });
 
@@ -76,8 +76,7 @@ describe("menuStateOf", () => {
 
   it("greys Open File… with no Work thread, draft or view in front", () => {
     expect(menuStateOf(facts({ workFile: false })).disabled).toEqual(["open_file"]);
-    // Search Work… has nothing to search while no host has Work on
-    expect(menuStateOf(facts({ workOn: false })).disabled).toEqual(["search_work", "open_digest"]);
+    expect(menuStateOf(facts({ workOn: false })).disabled).toEqual(["open_digest"]);
   });
 
   it("greys Digest while no host has Work on", () => {

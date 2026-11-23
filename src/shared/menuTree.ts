@@ -165,7 +165,8 @@ export const MENU_TREE: MenuSection[] = [
     label: 'Go',
     items: [
       cmd('open_search', 'Search…', 'CmdOrCtrl+K'),
-      cmd('search_work', 'Search Work…', 'CmdOrCtrl+Shift+K'),
+      // Work search: the page owns the key (a code editor keeps ⌘⇧K for Delete Line), and the row is Work's own.
+      cmd('search_work', 'Search Work…', 'CmdOrCtrl+Shift+K', { pageKey: true, workOnly: true }),
       cmd('go_to_file', 'Go to File…', 'CmdOrCtrl+P'),
       cmd('go_to_symbol', 'Go to Symbol…', 'CmdOrCtrl+Shift+O'),
       cmd('show_hierarchy', 'Type Hierarchy', 'CmdOrCtrl+T'),

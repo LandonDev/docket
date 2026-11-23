@@ -102,7 +102,8 @@ export function PickerFrame({ label, search, query, onQuery, onSearchKey, leadin
       </InputGroup>
       {/* Across the frame's 4px inset to both edges: a full-width
           separator shifted by -mx-1 stopped 8px short of the right. */}
-      {rule ? <Separator data-picker-rule className="-mx-1 mb-1 data-[orientation=horizontal]:w-auto" /> : null}
+      {/* 4px over it as under it: the field's focus ring never sits on the line. */}
+      {rule ? <Separator data-picker-rule className="-mx-1 my-1 data-[orientation=horizontal]:w-auto" /> : null}
       {children}
     </>
   );

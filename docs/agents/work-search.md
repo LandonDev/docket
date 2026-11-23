@@ -255,7 +255,9 @@ method can be given a small source here on `ask.ts`, as Files is.
   within `SAME_PRESS_MS` (80) are one press. ⌥↓ opens the scope's menu.
   While he composes a word (an input method) no key is the picker's. A
   second status line tells a reader what the foot's muted notes say once
-  the search settles. Out of one kind the highlight returns to "All mail
+  the search settles. What could not be searched (`cause` on a note row)
+  is drawn under the list, outside its scroller. Recent lists two things
+  that would read the same (two messages of one conversation) once. Out of one kind the highlight returns to "All mail
   for …" (`begin`). The spinner shows after `SPIN_AFTER_MS` (150) of waiting and stays
   `SPIN_FOR_MS` (300); the truth it steadies is `data-out` on the picker's
   status line, which the live proof waits on. `hold.ts` is the rule that keeps a row he moved to in its place:

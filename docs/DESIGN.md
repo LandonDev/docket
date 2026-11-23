@@ -2605,7 +2605,8 @@ his hands and leaves no trace on what he was searching from.
 
 - **The frame** is `PickerDialog`, the Go to File shell: 560px, the field
   36px with 12px corners (the dialog's 16 less its 4px inset) over a
-  hairline, 28px rows (a 20px line and 4px above and below) at the frame's
+  hairline with 4px over it as under it (the field's ring never sits on
+  the line), 28px rows (a 20px line and 4px above and below) at the frame's
   4px inset, appearing at once. The hairline is drawn only over rows: with
   nothing to list the field stands alone. The dialog's own exit is the
   shell's. Nothing in the list moves or fades: it is read tens of times a
@@ -2615,7 +2616,9 @@ his hands and leaves no trace on what he was searching from.
 - **The field** takes 200 characters, what a host is asked, and leaves
   every key to an input method while he composes a word.
 - **The key** is ⌘⇧K, a command of its own (`search_work`); ⌘K stays the
-  app's Search. The place to click is a ghost search mark on the rail's
+  app's Search. The page owns the key (the menu row only shows it), so a
+  code editor keeps the chord for its own Delete Line; the row is Work's
+  own and is gone from the Go menu while no host has Work on. The place to click is a ghost search mark on the rail's
   **Work** heading, before its +, with the key in its tip. No other screen
   draws a field for everything: a view's own filter stays the view's, and
   a screen that wants this one calls `openWorkSearch`.
@@ -2638,8 +2641,10 @@ his hands and leaves no trace on what he was searching from.
   weight through `MatchText`), the fact or the matched line right after it
   (12px muted, cut first, a matched word marked as in the title), then at
   the row's end the job and the time (12px muted, tabular, each a column
-  of one width, 8px apart). The time column is drawn only when a row in
-  the list has a time: Recent has none and gives the room to its titles.
+  of one width, 8px apart). The time column stands from his first word,
+  whichever rows have landed, so the job column never jumps when a kind
+  with times lands after one without; Recent, with nothing typed, has no
+  times and gives the room to its titles.
   What has passed says how long ago ("2d"); an event says its time today
   and its day otherwise ("Jan 12"), never a year and never on two lines.
   Under 480px (only /ui in a narrow browser: the desktop window is never
@@ -2684,14 +2689,15 @@ his hands and leaves no trace on what he was searching from.
   foot, in LifeOS's or the host's own words: "LifeOS is signed out on
   MacBook.", "The box is offline.", "Mail did not answer." (a source),
   "The box did not answer." (a host's first answer). One line for
-  LifeOS covers every kind it feeds. No button: Settings → Connections has
+  LifeOS covers every kind it feeds. The lines stand under the list,
+  outside its scroller, so a list that fills its box never hides them. No button: Settings → Connections has
   the fix. A source that does not exist on a host says nothing.
 - **Return opens in place**: the picker closes, the window enters the
   thing's job if it is in another, and the thing opens in its own view,
   its thread or a Files tab. ⌘↩ starts a thread about it where the kind can
   be a chip. Right-click gives the same two with their keys ("Open",
-  "New thread about this") and moves the highlight to the row it opened
-  on.
+  "New thread about this"), moves the highlight to the row it opened on,
+  and takes ⌘↩ while it is open.
 
 **The slide editor** (`src/renderer/src/work/slides/SlidesCanvas.tsx`,
 `geometry.ts`, `edit/`). A picked shape is outlined along its own edges, turned with

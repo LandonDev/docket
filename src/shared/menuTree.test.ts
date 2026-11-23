@@ -180,6 +180,11 @@ describe('menu tree', () => {
     expect(item.pageKey).toBe(true)
   })
 
+  it('leaves Search Work… to the page: a code editor keeps the chord for its own Delete Line, and the row only shows the key', () => {
+    const item = MENU_COMMANDS.find((c) => c.id === 'search_work')!
+    expect([item.pageKey, item.accelerator]).toEqual([true, 'CmdOrCtrl+Shift+K'])
+  })
+
   it("draws Work's own rows only while some host has Work on: hidden, a row is gone from the menu and its key with it", () => {
     // The state's own list (the first paint reads it without the tree) is the tree's workOnly rows.
     expect(MENU_COMMANDS.filter((c) => c.workOnly).map((c) => c.id)).toEqual([...WORK_ONLY_IDS])
@@ -188,8 +193,9 @@ describe('menu tree', () => {
     expect(ids(go(EMPTY_MENU_STATE))).toContain('open_today')
     const off = go({ ...EMPTY_MENU_STATE, hidden: [...WORK_ONLY_IDS] })
     expect(ids(off)).not.toContain('open_today')
-    // The rows beside it are untouched.
-    expect(ids(off)).toEqual(ids(go(EMPTY_MENU_STATE)).filter((id) => id !== 'open_today'))
+    expect(ids(off)).not.toContain('search_work')
+    // The rows beside them are untouched.
+    expect(ids(off)).toEqual(ids(go(EMPTY_MENU_STATE)).filter((id) => !(WORK_ONLY_IDS as readonly string[]).includes(id)))
     expect(sameMenuState(EMPTY_MENU_STATE, { ...EMPTY_MENU_STATE, hidden: ['open_today'] })).toBe(false)
     expect(sameMenuState({ ...EMPTY_MENU_STATE, hidden: [] }, EMPTY_MENU_STATE)).toBe(true)
   })

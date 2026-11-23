@@ -79,6 +79,9 @@ const LIST_CAP = 380;
 /** A row the arrows bring into view stops clear of the list's faded edges (32px, `OVERFLOW_FADE_Y`): the highlighted row is never the dimmed one. */
 const CLEAR_OF_FADE = "scroll-my-8";
 
+/** A row of the list itself; what could not be searched stands under the list, outside its scroller. */
+const isListed = (row: Row): boolean => !(row.type === "note" && row.cause);
+
 /** The spinner waits this long for an answer before it shows, and once shown stays this long: an answer in a few frames never flickers it. */
 export const SPIN_AFTER_MS = 150;
 export const SPIN_FOR_MS = 300;
@@ -224,7 +227,7 @@ export function WorkSearch({ seed, onClose }: { seed: WorkSearchSeed; onClose: (
       // Escape steps out of one kind first; a second Escape closes.
       onClose={(reason) => (reason === "escape-key" && kind ? setKind(null) : onClose())}
       leading={kind ? searchLabel(kind) : undefined}
-      listId={rows.length > 0 ? LIST_ID : undefined}
+      listId={rows.some(isListed) ? LIST_ID : undefined}
       activeId={active ? optionId(active) : null}
       rule={rows.length > 0}
       maxLength={SEARCH_TEXT_MAX}
@@ -355,11 +358,30 @@ export function Results({
   useLayoutEffect(() => {
     if (list.current) markOverflowEdges(list.current, "y");
   });
-  // The time column is drawn only when a row has a time: Recent, which has none, gives the room to its titles.
-  const timed = rows.some((row) => row.type === "hit" && timeOf(row.hit, now) !== undefined);
+  // The time column stands whenever he has typed, whichever rows have landed: people and tasks answer first and have no
+  // time, and the job column must not jump when the mail lands. Recent, which has none, gives the room to its titles.
+  const timed = text !== "";
+  const listed = rows.filter(isListed);
+  const causes = rows.filter((row) => !isListed(row));
+  // The row's menu holds the keys it shows: ⌘↩ starts the thread from the menu too, while it is open on a row.
+  const [menuRow, setMenuRow] = useState<string | null>(null);
+  useEffect(() => {
+    if (!menuRow) return;
+    const onKey = (e: KeyboardEvent): void => {
+      const row = options.find((option) => option.id === menuRow);
+      if (e.key !== "Enter" || !modOrCtrl(e) || !row || row.type !== "hit" || !canStartAbout(row.hit)) return;
+      e.preventDefault();
+      e.stopPropagation();
+      onTake(row, { thread: true });
+    };
+    document.addEventListener("keydown", onKey, true);
+    return () => document.removeEventListener("keydown", onKey, true);
+  }, [menuRow, options, onTake]);
   const activeIndex = options.findIndex((option) => option.id === active);
   const { activeRef, onMouseMove, onRowEnter } = usePointerHighlight<HTMLDivElement>({
     active: activeIndex,
+    // By its name: a row he chose that only stands further down, because more landed above, is held where it is and not scrolled to.
+    activeKey: active,
     items: options,
     onActive: (index) => {
       const row = options[index];
@@ -417,7 +439,6 @@ export function Results({
     }
   };
 
-  if (rows.length === 0) return null;
   const menuRows = (id: string | null): MenuRow[] | null => {
     const row = options.find((option) => option.id === id);
     if (!row || row.type !== "hit") return null;
@@ -427,111 +448,128 @@ export function Results({
     ];
   };
 
+  const foot =
+    causes.length > 0 ? (
+      // What could not be searched stands apart from what was found, under the list and outside its scroller: a full list never hides it.
+      <div data-work-search-causes className={listed.length > 0 ? "pt-1" : undefined}>
+        {causes.map((row) => (
+          <PickerNote key={row.id}>
+            <span className="min-w-0 truncate">{row.type === "note" ? row.text : null}</span>
+          </PickerNote>
+        ))}
+      </div>
+    ) : null;
+  if (listed.length === 0) return foot;
+
   return (
-    <RowsContextMenu
-      lazyMount
-      label="Search result"
-      rowsFor={menuRows}
-      // The menu's row is the highlighted one while the menu is open, however the highlight stood before.
-      onOpenChange={(open, id) => (open && id && menuRows(id) ? onPoint(id) : undefined)}
-      onPick={(pick, id) => {
-        const row = options.find((option) => option.id === id);
-        if (row) onTake(row, { thread: pick === "thread" });
-      }}
-    >
-      <div
-        ref={setList}
-        id={LIST_ID}
-        role="listbox"
-        aria-label={label}
-        data-work-search-list
-        onMouseMove={onMouseMove}
-        onScroll={onScroll}
-        // The strip is kept from the start, so the columns do not shift when the list first overflows; it lies in the
-        // frame's own right inset (-mr-1), so a row ends 10px from the frame's edge and not 14. A cut edge fades.
-        className={cn("-mr-1 max-h-[min(380px,50vh)] overflow-x-hidden overflow-y-auto overscroll-none [scrollbar-gutter:stable] [--scrollbar-inset:var(--radius-xl)]", OVERFLOW_FADE_Y)}
+    <>
+      <RowsContextMenu
+        lazyMount
+        label="Search result"
+        rowsFor={menuRows}
+        // The menu's row is the highlighted one while the menu is open, however the highlight stood before.
+        onOpenChange={(open, id) => {
+          const on = open && id && menuRows(id) ? id : null;
+          setMenuRow(on);
+          if (on) onPoint(on);
+        }}
+        onPick={(pick, id) => {
+          const row = options.find((option) => option.id === id);
+          if (row) onTake(row, { thread: pick === "thread" });
+        }}
       >
-        {rows.map((row, index) => {
-          if (row.type === "heading") {
-            return (
-              <div key={row.id} role="presentation" className={cn("px-3 pb-1 text-[11px] leading-4 font-medium text-muted-foreground", index === 0 ? "pt-1" : "pt-2")}>
-                {row.label}
-              </div>
-            );
-          }
-          if (row.type === "note") {
-            return (
-              // What could not be searched stands apart from what was found: one step of the grid above its first line.
-              <div key={row.id} className={index > 0 && rows[index - 1].type !== "note" ? "pt-1" : undefined}>
-                <PickerNote>
+        <div
+          ref={setList}
+          id={LIST_ID}
+          role="listbox"
+          aria-label={label}
+          data-work-search-list
+          onMouseMove={onMouseMove}
+          onScroll={onScroll}
+          // The strip is kept from the start, so the columns do not shift when the list first overflows; it lies in the
+          // frame's own right inset (-mr-1), so a row ends 10px from the frame's edge and not 14. A cut edge fades.
+          className={cn("-mr-1 max-h-[min(380px,50vh)] overflow-x-hidden overflow-y-auto overscroll-none [scrollbar-gutter:stable] [--scrollbar-inset:var(--radius-xl)]", OVERFLOW_FADE_Y)}
+        >
+          {listed.map((row, index) => {
+            if (row.type === "heading") {
+              return (
+                <div key={row.id} role="presentation" className={cn("px-3 pb-1 text-[11px] leading-4 font-medium text-muted-foreground", index === 0 ? "pt-1" : "pt-2")}>
+                  {row.label}
+                </div>
+              );
+            }
+            if (row.type === "note") {
+              return (
+                <PickerNote key={row.id}>
                   {/* One line, whatever he typed: the field holds his words whole. */}
                   <span className="min-w-0 truncate">{row.text}</span>
                 </PickerNote>
-              </div>
-            );
-          }
-          const highlighted = row.id === active;
-          const option = options.indexOf(row);
-          const common = {
-            ref: highlighted ? activeRef : undefined,
-            id: optionId(row.id),
-            role: "option" as const,
-            "aria-selected": highlighted,
-            "data-row": row.id,
-            onMouseDown: (e: { preventDefault(): void }) => e.preventDefault(),
-            onMouseEnter: () => onRowEnter(option),
-            onClick: () => onTake(row),
-          };
-          if (row.type !== "hit") {
+              );
+            }
+            const highlighted = row.id === active;
+            const option = options.indexOf(row);
+            const common = {
+              ref: highlighted ? activeRef : undefined,
+              id: optionId(row.id),
+              role: "option" as const,
+              "aria-selected": highlighted,
+              "data-row": row.id,
+              onMouseDown: (e: { preventDefault(): void }) => e.preventDefault(),
+              onMouseEnter: () => onRowEnter(option),
+              onClick: () => onTake(row),
+            };
+            if (row.type !== "hit") {
+              return (
+                // A quiet row at rest; the one Return will take reads as any highlighted row does.
+                <div key={row.id} {...common} className={cn(pickerRowClass(highlighted), CLEAR_OF_FADE, !highlighted && "text-muted-foreground")}>
+                  {/* "All mail for …" stands under its group's titles; "Search all jobs" under the line it answers. */}
+                  {row.type === "all" ? <span aria-hidden className="size-4 shrink-0" /> : null}
+                  <span className="min-w-0 truncate">{row.label}</span>
+                </div>
+              );
+            }
+            const { hit } = row;
+            const Glyph = GLYPH[hit.kind] ?? Layers;
+            const fact = factOf(hit, now);
+            const time = timeOf(hit, now);
+            const job = mixed ? jobOf(hit) : null;
             return (
-              // A quiet row at rest; the one Return will take reads as any highlighted row does.
-              <div key={row.id} {...common} className={cn(pickerRowClass(highlighted), CLEAR_OF_FADE, !highlighted && "text-muted-foreground")}>
-                {/* "All mail for …" stands under its group's titles; "Search all jobs" under the line it answers. */}
-                {row.type === "all" ? <span aria-hidden className="size-4 shrink-0" /> : null}
-                <span className="min-w-0 truncate">{row.label}</span>
+              <div key={row.id} {...common} data-menu-id={row.id} data-kind={hit.kind} className={cn(pickerRowClass(highlighted), CLEAR_OF_FADE)}>
+                {hit.kind === "file" ? (
+                  <span className="shrink-0">
+                    <FileTypeIcon name={hit.title} isDir={false} />
+                  </span>
+                ) : (
+                  <Glyph className="size-4 shrink-0 text-muted-foreground" />
+                )}
+                {/* The `@` list's own row: the title as wide as its words, then the fact in what is left, cut first. */}
+                <span className="min-w-0 flex-[0_1_auto] truncate">
+                  <MatchText text={hit.title} query={text} active={Boolean(text)} />
+                  {hit.cloud ? <Cloud aria-label="Kept in the cloud" className="ml-1.5 inline size-3.5 align-[-2px] text-muted-foreground" /> : null}
+                </span>
+                {/* In a window too narrow for it the fact goes, rather than stand as a stub. */}
+                <span className={cn("flex-[1_1_0] truncate text-xs text-muted-foreground", fact ? "min-w-[4.5rem] max-[480px]:hidden" : "min-w-0")}>
+                  {fact ? <MatchText text={fact} query={text} active={Boolean(text)} /> : null}
+                </span>
+                {/* The row's end: the job and the time, each a column of one width, at the right whatever stands before them. */}
+                {mixed || timed ? (
+                  <span className="ml-auto flex shrink-0 items-center gap-2">
+                    {mixed ? (
+                      // In a window too narrow for the names the job is its dot alone, and the title keeps its words.
+                      <span data-job className="flex w-20 items-center gap-1 text-xs text-muted-foreground max-[480px]:w-auto">
+                        {job ? <SectorDot sector={job.sector} /> : <span aria-hidden className="size-4 shrink-0" />}
+                        <span className="min-w-0 truncate max-[480px]:sr-only">{job ? job.name : hit.workspaceId === null ? "Work Chats" : ""}</span>
+                      </span>
+                    ) : null}
+                    {timed ? <span data-time className="w-14 text-right text-xs whitespace-nowrap tabular-nums text-muted-foreground">{time}</span> : null}
+                  </span>
+                ) : null}
               </div>
             );
-          }
-          const { hit } = row;
-          const Glyph = GLYPH[hit.kind] ?? Layers;
-          const fact = factOf(hit, now);
-          const time = timeOf(hit, now);
-          const job = mixed ? jobOf(hit) : null;
-          return (
-            <div key={row.id} {...common} data-menu-id={row.id} data-kind={hit.kind} className={cn(pickerRowClass(highlighted), CLEAR_OF_FADE)}>
-              {hit.kind === "file" ? (
-                <span className="shrink-0">
-                  <FileTypeIcon name={hit.title} isDir={false} />
-                </span>
-              ) : (
-                <Glyph className="size-4 shrink-0 text-muted-foreground" />
-              )}
-              {/* The `@` list's own row: the title as wide as its words, then the fact in what is left, cut first. */}
-              <span className="min-w-0 flex-[0_1_auto] truncate">
-                <MatchText text={hit.title} query={text} active={Boolean(text)} />
-                {hit.cloud ? <Cloud aria-label="Kept in the cloud" className="ml-1.5 inline size-3.5 align-[-2px] text-muted-foreground" /> : null}
-              </span>
-              {/* In a window too narrow for it the fact goes, rather than stand as a stub. */}
-              <span className={cn("flex-[1_1_0] truncate text-xs text-muted-foreground", fact ? "min-w-[4.5rem] max-[480px]:hidden" : "min-w-0")}>
-                {fact ? <MatchText text={fact} query={text} active={Boolean(text)} /> : null}
-              </span>
-              {/* The row's end: the job and the time, each a column of one width, at the right whatever stands before them. */}
-              {mixed || timed ? (
-                <span className="ml-auto flex shrink-0 items-center gap-2">
-                  {mixed ? (
-                    // In a window too narrow for the names the job is its dot alone, and the title keeps its words.
-                    <span data-job className="flex w-20 items-center gap-1 text-xs text-muted-foreground max-[480px]:w-auto">
-                      {job ? <SectorDot sector={job.sector} /> : <span aria-hidden className="size-4 shrink-0" />}
-                      <span className="min-w-0 truncate max-[480px]:sr-only">{job ? job.name : hit.workspaceId === null ? "Work Chats" : ""}</span>
-                    </span>
-                  ) : null}
-                  {timed ? <span data-time className="w-14 text-right text-xs whitespace-nowrap tabular-nums text-muted-foreground">{time}</span> : null}
-                </span>
-              ) : null}
-            </div>
-          );
-        })}
-      </div>
-    </RowsContextMenu>
+          })}
+        </div>
+      </RowsContextMenu>
+      {foot}
+    </>
   );
 }

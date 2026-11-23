@@ -310,7 +310,34 @@ describe("Work search", () => {
     await land(asks.length - 1, answer([group("thread", "Threads", [hit("thread:t1", "thread")])], { quiet: [{ cause: "lifeos", line: "This host is not signed in to LifeOS" }] }));
     const notes = [...document.querySelectorAll("[data-picker-note]")].map((el) => el.textContent);
     expect(notes).toEqual(["LifeOS is signed out on The box."]);
-    expect(list().lastElementChild!.textContent).toBe("LifeOS is signed out on The box.");
+    // under the list and outside its scroller: a list that fills its box never hides it
+    const causes = document.querySelector("[data-work-search-causes]")!;
+    expect(causes.textContent).toBe("LifeOS is signed out on The box.");
+    expect(list().contains(causes)).toBe(false);
+    expect(list().nextElementSibling).toBe(causes);
+    expect(list().querySelector("[data-picker-note]")).toBeNull();
+  });
+
+  it("keeps the time column from his first word, whichever rows have landed: the job column never jumps when a timed kind lands", async () => {
+    await mount();
+    await type("dana");
+    await land(asks.length - 1, answer([group("person", "People", [hit("p1", "person"), hit("p2", "person", { workspaceId: "w-cosmic" })])], { pending: [{ source: "search.mail", kind: "mail" }] }));
+    // people carry no time, and the column stands all the same
+    expect([...list().querySelectorAll("[data-time]")].map((el) => el.textContent)).toEqual(["", ""]);
+    expect(list().querySelectorAll("[data-job]")).toHaveLength(2);
+  });
+
+  it("the row's menu holds the key it shows: ⌘↩ starts the thread while the menu is open on a row", async () => {
+    await mount();
+    await type("budget");
+    const chip = { kind: "mail" as const, label: "Budget m2", ref: { at: "lifeos" as const, table: "mailThreads" as const, id: "m2" } };
+    await land(asks.length - 1, answer([group("mail", "Mail", [hit("m1", "mail"), hit("m2", "mail", { chip })])]));
+    await act(async () => void fireEvent.contextMenu(list().querySelector('[data-row="hit:m2"]')!));
+    await screen.findByRole("menu");
+    expect(selected()).toBe("hit:m2");
+    await act(async () => void fireEvent.keyDown(document.activeElement ?? document.body, { key: "Enter", metaKey: true }));
+    expect(opened.threads).toEqual(["m2"]);
+    expect(opened.hits).toEqual([]);
   });
 
   it("⌘↩ starts a thread about the highlighted thing, and Tab stays in the field", async () => {

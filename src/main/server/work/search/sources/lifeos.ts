@@ -268,7 +268,8 @@ export const docAsFile = source<FoundDoc>({
   label: 'Files',
   read: (ctx, ask, all) => readDocs(ctx, ask, all, true),
   sectors: (d) => [d.sector],
-  hit: (d, workspaceId) => ({ key: fileKey(refKey(docRef(d))), kind: 'file', ...docHit(d, workspaceId) })
+  // Its place, as Files' own row for it says: without it the row reads as a file at the top of the job's folder.
+  hit: (d, workspaceId) => ({ key: fileKey(refKey(docRef(d))), kind: 'file', detail: 'LifeOS', ...docHit(d, workspaceId) })
 })
 
 export const project = source<Project>({
