@@ -33,8 +33,12 @@ export const TemplatesRequestSchemas = [
   request('work.templates.rename', z.object({ workspaceId: Workspace, template: TemplateRef, name: Name })),
   /** → Template: one of his own moved between this job's and all jobs'. */
   request('work.templates.move', z.object({ workspaceId: Workspace, template: TemplateRef, everywhere: z.boolean() })),
-  /** → {}: a starter is hidden from this workspace's shelf; one of his own is deleted. */
-  request('work.templates.remove', z.object({ workspaceId: Workspace, template: TemplateRef })),
+  /**
+   * → TemplateRemoved: a starter is hidden from this workspace's shelf. One of his own goes to Files' Trash
+   * (`trashed`: the rows Put back takes); where Files has no Trash yet nothing is deleted until the window has
+   * asked him and says so (`confirmed`): the first call answers `confirm`.
+   */
+  request('work.templates.remove', z.object({ workspaceId: Workspace, template: TemplateRef, confirmed: z.boolean().optional() })),
   /** → {}: every starter he hid in this workspace is shown again. */
   request('work.templates.unhide', z.object({ workspaceId: Workspace }))
 ] as const
@@ -45,6 +49,12 @@ export interface TemplatesList {
   templates: Template[]
   /** starters hidden in this workspace */
   hidden: number
+}
+
+/** What a remove did: nothing yet (`confirm`: ask him, then say `confirmed`), a move to Files' Trash (`trashed`), or it is done. */
+export interface TemplateRemoved {
+  trashed?: string[]
+  confirm?: true
 }
 
 /** The shelf changed on this host: one workspace's, or (null) every workspace's, as when a template for all jobs was saved. */
