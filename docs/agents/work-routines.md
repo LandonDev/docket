@@ -136,7 +136,9 @@ counted. Missed due times fold, a paused one does not fire, Run now fires it
 paused or not, and a firing while its last run still works folds into that run.
 A job no loaded pillar has fails the run: "Failed: its job is not on this
 host". At boot a job run left `starting` or `running` reads "Failed: the host
-stopped before the job finished".
+stopped before the job finished". The window shows a failed run's words
+without "Failed: " (its red mark says it), worded through `workErrorWords`,
+and "Did not finish" for a raw error (`runWords`, routines/model.ts).
 
 Who may make one: only the owner, through `work.routines.save` (`admin`,
 refused for a thread's own call) with `job: '<id>'`, which must be a job some

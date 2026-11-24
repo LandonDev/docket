@@ -317,7 +317,7 @@ function Detail({ env, row, play, tick, narrowShown, onBack, onEdit }: { env: st
                   const press = openRun(run);
                   const cells = (
                     <>
-                      <time className="w-36 shrink-0 text-muted-foreground tabular-nums">{dayTime(run.firedAt)}</time>
+                      <time className="w-28 shrink-0 text-muted-foreground tabular-nums">{dayTime(run.firedAt)}</time>
                       <StatusMark state={runMark(run)} word={false} className="mt-[3px] shrink-0" />
                       <span className={cn("min-w-0 flex-1 [overflow-wrap:anywhere]", run.state === "failed" ? "text-destructive" : run.state === "held" ? "text-foreground" : "text-muted-foreground")}>{runWords(run)}</span>
                     </>

@@ -227,7 +227,7 @@ describe("the Routines view", () => {
       fireEvent.click(screen.getByRole("button", { name: /Review made/ }));
       expect(opened).toEqual([{ place: "review", at: 5 }]);
       expect(screen.queryByRole("button", { name: /its job is not on this host/ })).toBeNull();
-      expect(screen.getByText("Failed: its job is not on this host")).toBeTruthy();
+      expect(screen.getByText("Its job is not on this host")).toBeTruthy();
       off();
       cleanup();
       render(<View {...props} />);

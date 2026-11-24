@@ -10,6 +10,7 @@ import {
 import type { Trigger } from "@shared/work";
 import type { ThreadState } from "../../components/ui/status";
 import { dayTime } from "../../lib/duration";
+import { workErrorWords } from "../../lib/workErrorWords";
 
 /**
  * The Routines view's words and its form, kept apart from React so they
@@ -213,11 +214,10 @@ export function rowLine(r: RoutineRow, now = Date.now()): string {
   return r.words;
 }
 
-/** The status slot: a mark only when there is a state to show. */
+/** The status slot: a mark only when there is a state to show. Paused, like proposed and ended, is said in the line alone. */
 export function rowMark(r: RoutineRow): ThreadState | null {
   if (r.running) return "working";
-  if (r.proposed || r.ended) return null;
-  if (!r.enabled) return "paused";
+  if (r.proposed || r.ended || !r.enabled) return null;
   if (r.lastState === "failed") return "failed";
   if (r.ends.kind !== "never") return "watching";
   return null;
@@ -231,9 +231,13 @@ export function runMark(run: RoutineRun): ThreadState {
   return "done";
 }
 
-/** A run's outcome in words. */
+/**
+ * A run's outcome in words. A failed run's red mark already says Failed, so its words are the cause alone, in his
+ * words (`workErrorWords`): the host stores "Failed: <its error>", and a raw error reads as "Did not finish".
+ */
 export function runWords(run: RoutineRun): string {
   if (run.state === "running" || run.state === "starting") return "Running";
+  if (run.state === "failed") return workErrorWords((run.summary || "").replace(/^Failed:\s*/i, "")) || "Did not finish";
   const folded = run.folded ? `, covers ${run.folded + 1}` : "";
   return `${run.summary || "Done"}${folded}`;
 }

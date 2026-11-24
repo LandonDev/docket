@@ -1451,8 +1451,11 @@ Around the canvas:
   heads (today's foreground medium) and a 6px `run-dot`; past runs use the
   status marks. A trigger is always plain words ("Weekdays at 7:00 AM",
   "When Dana Lee changes it"), never a tag; a watch's row ends "until
-  <day>" or "once". The status slot shows Watching, Paused, Failed or
-  Working, and nothing for an idle routine. Only the list view is built;
+  <day>" or "once". The status slot shows Watching, Failed or Working,
+  and nothing for an idle routine; paused, like proposed and ended, is
+  said in the row's line alone. A failed run's words are its cause in
+  plain words beside the red mark, never "Failed:" again; the Runs list's
+  time column is 112px. Only the list view is built;
   the week grid and "By what starts it" are not.
 - **House rules** is a section of the workspace's own settings page
   (the page's title is the workspace's name), not a page of its own: a

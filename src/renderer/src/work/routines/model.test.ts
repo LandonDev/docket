@@ -43,7 +43,8 @@ describe("a routine's row", () => {
     expect(rowLine(row({ words: "Every 10 minutes", ends: { kind: "once" } }), NOW)).toBe("Every 10 minutes, once");
     expect(rowMark(row())).toBeNull();
     expect(rowMark(row({ running: true }))).toBe("working");
-    expect(rowMark(row({ enabled: false }))).toBe("paused");
+    // Paused is the line's word: the mark would say it twice.
+    expect(rowMark(row({ enabled: false }))).toBeNull();
     expect(rowMark(row({ lastState: "failed" }))).toBe("failed");
     expect(rowMark(row({ ends: { kind: "once" } }))).toBe("watching");
     expect(rowMark(row({ proposed: true, enabled: false }))).toBeNull();
@@ -52,6 +53,11 @@ describe("a routine's row", () => {
   it("a run's words say how many firings it covers", () => {
     expect(runWords({ id: "x", routineId: "r1", sessionId: "t", firedAt: NOW, cause: "", folded: 2, state: "quiet", summary: "Nothing held" })).toBe("Nothing held, covers 3");
     expect(runWords({ id: "x", routineId: "r1", sessionId: "t", firedAt: NOW, cause: "", folded: 0, state: "running", summary: "" })).toBe("Running");
+    // A failed run: the cause alone beside its red mark, in his words.
+    const failed = (summary: string) => runWords({ id: "x", routineId: "r1", sessionId: null, firedAt: NOW, cause: "", folded: 0, state: "failed", summary });
+    expect(failed("Failed: LifeOS did not answer")).toBe("LifeOS did not answer");
+    expect(failed("Failed: its job is not on this host")).toBe("Its job is not on this host");
+    expect(failed("Failed: work.routines.run: socket hung")).toBe("Did not finish");
   });
 });
 
