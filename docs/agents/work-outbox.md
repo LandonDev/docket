@@ -456,6 +456,26 @@ Post 3 messages" with his quote under it, key `request:<id>`, opening the
 thread where the card is; it interrupts (he asked for it and waits on it),
 and is done when the request is answered, declined or void.
 
+**Who cannot answer it**, each held by a test (requests.test.ts,
+outbox.test.ts): a thread (no tool names `decide` or `decline`, and a
+`model` caller is refused whatever it carries), a routine (it runs as a
+thread), a guest or read key, a key made for an MCP client and another host
+over the link (`mustBePerson`), a far parent (`thread.answer` answers cards
+and questions only; a request is neither), Away by any kind and its flips
+(a request never enters the card stream), and computer use or a browser an
+agent drives (the fences: the box browser refuses TempCode's own origins at
+network dispatch, and the computer tools refuse a browser on one).
+
+**What this cannot catch.** A thread's shell runs as the same user as the
+server and can reach the local socket, as it can for every held act; a
+press there is a press. The word rules are a heuristic: they can refuse a
+fair ask ("yes, do it") or let a thread list more than he meant, and both
+are safe, since a refusal tells the thread to ask him in words and an
+over-wide list is still only a card he reads and ticks. A browser the
+computer service cannot recognize, or one at an address this host does not
+know as its own (a new tunnel name before the host learns it), is outside
+the fences.
+
 ## The press, grants, and who may decide
 
 | Method | Needs | |
