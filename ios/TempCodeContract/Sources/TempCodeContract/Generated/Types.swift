@@ -7287,13 +7287,15 @@ public struct HistoryBranchesPhone: Codable, Hashable, Sendable {
         public let authors: [String]
         public let label: String
         public let at: Double
+        public let editedAt: Int?
         public let diff: Diff
 
-        public init(id: String, authors: [String], label: String, at: Double, diff: Diff) {
+        public init(id: String, authors: [String], label: String, at: Double, editedAt: Int? = nil, diff: Diff) {
             self.id = id
             self.authors = authors
             self.label = label
             self.at = at
+            self.editedAt = editedAt
             self.diff = diff
         }
     }

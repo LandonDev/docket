@@ -233,10 +233,13 @@ private let s3 = suggestion("g3", set: "cs2", row: 0, col: 26, base: #"{"v":"Dra
         #expect(review.rows.map(\.reason) == ["Tighter intro", "Tighter intro", nil])
         #expect(review.rows.allSatisfy { $0.group == nil })
         #expect(review.words == "3 changes")
+        // Each row carries its branch as he read it: a decision sends it back (`editedAt`).
+        #expect(review.rows.map(\.revision) == [110, 110, 200])
+        #expect(ReviewBatch.of(review.rows).map(\.editedAt) == [110, 200])
 
         let one = Task { await review.decide(review.rows[0], accept: true) }
         let decide = try #require(await rig.next(fake, "work.history.decide"))
-        #expect(decide.params == .object(["source": docJSON, "branchId": .string("b1"), "which": .array([.string("k1")]), "accept": .bool(true)]))
+        #expect(decide.params == .object(["source": docJSON, "branchId": .string("b1"), "which": .array([.string("k1")]), "accept": .bool(true), "editedAt": .number(110)]))
         fake.answer(id: decide.id, result: #"{"left":1}"#)
         #expect(await one.value)
         #expect(review.rows.map(\.id) == ["b1/k2", "b2/k3"])
@@ -244,10 +247,10 @@ private let s3 = suggestion("g3", set: "cs2", row: 0, col: 26, base: #"{"v":"Dra
         let all = Task { await review.decideAll(accept: false) }
         let first = try #require(await rig.next(fake, "work.history.decide"))
         // Every row he sees, by its own id: never the host's "all", which would take a block added since.
-        #expect(first.params == .object(["source": docJSON, "branchId": .string("b1"), "which": .array([.string("k2")]), "accept": .bool(false)]))
+        #expect(first.params == .object(["source": docJSON, "branchId": .string("b1"), "which": .array([.string("k2")]), "accept": .bool(false), "editedAt": .number(110)]))
         fake.answer(id: first.id, result: #"{"left":0}"#)
         let second = try #require(await rig.next(fake, "work.history.decide"))
-        #expect(second.params == .object(["source": docJSON, "branchId": .string("b2"), "which": .array([.string("k3")]), "accept": .bool(false)]))
+        #expect(second.params == .object(["source": docJSON, "branchId": .string("b2"), "which": .array([.string("k3")]), "accept": .bool(false), "editedAt": .number(200)]))
         fake.refuse(id: second.id, error: "LifeOS is not signed in on this host")
         #expect(await all.value == false)
         #expect(review.rows.map(\.id) == ["b2/k3"])
@@ -265,7 +268,7 @@ private let s3 = suggestion("g3", set: "cs2", row: 0, col: 26, base: #"{"v":"Dra
 
         let all = Task { await review.decideAll(accept: true) }
         let first = try #require(await rig.next(fake, "work.history.decide"))
-        #expect(first.params == .object(["source": docJSON, "branchId": .string("b1"), "which": .array([.string("k1"), .string("k2")]), "accept": .bool(true)]))
+        #expect(first.params == .object(["source": docJSON, "branchId": .string("b1"), "which": .array([.string("k1"), .string("k2")]), "accept": .bool(true), "editedAt": .number(110)]))
         // While the first call waits, a push reads the branches again: the agent added k4 to b2.
         let reload = Task { await review.load() }
         fake.answer(id: try #require(await rig.next(fake, "work.history.branches")).id, result: branchesGrown)
@@ -273,7 +276,7 @@ private let s3 = suggestion("g3", set: "cs2", row: 0, col: 26, base: #"{"v":"Dra
         #expect(review.rows.map(\.id) == ["b1/k1", "b1/k2", "b2/k3", "b2/k4"])
         fake.answer(id: first.id, result: #"{"left":0}"#)
         let second = try #require(await rig.next(fake, "work.history.decide"))
-        #expect(second.params == .object(["source": docJSON, "branchId": .string("b2"), "which": .array([.string("k3")]), "accept": .bool(true)]))
+        #expect(second.params == .object(["source": docJSON, "branchId": .string("b2"), "which": .array([.string("k3")]), "accept": .bool(true), "editedAt": .number(200)]))
         fake.answer(id: second.id, result: #"{"left":1}"#)
         #expect(await all.value)
         #expect(review.rows.map(\.id) == ["b2/k4"], "the block added since waits for him")
@@ -490,6 +493,22 @@ private let s3 = suggestion("g3", set: "cs2", row: 0, col: 26, base: #"{"v":"Dra
         #expect(draw.params == .object(["source": .object(["at": .string("file"), "host": .string("env_box"), "path": .string("/w/Trip 2.tcdoc")]), "itemId": .string("i9"), "format": .string("docx")]))
         fake.refuse(id: draw.id, error: "no LibreOffice here")
         _ = await read.value
+    }
+
+    @Test func `a block an agent rewrote since he read it is refused, and the row keeps the host's words`() async throws {
+        let rig = try ReaderRig()
+        let fake = await rig.open()
+        let review = WorkReview(work: rig.work, subject: .document(doc))
+        let load = Task { await review.load() }
+        let read = try #require(await rig.next(fake, "work.history.branches"))
+        fake.answer(id: read.id, result: branches)
+        await load.value
+        let press = Task { await review.decide(review.rows[0], accept: true) }
+        let decide = try #require(await rig.next(fake, "work.history.decide"))
+        #expect(decide.params == .object(["source": docJSON, "branchId": .string("b1"), "which": .array([.string("k1")]), "accept": .bool(true), "editedAt": .number(110)]))
+        fake.refuse(id: decide.id, error: "The suggestion changed since it was shown: look at it again before deciding.")
+        #expect(await press.value == false)
+        #expect(review.rows[0].refusal == "The suggestion changed since it was shown: look at it again before deciding.")
     }
 
     @Test func `a cell's address reads as Excel writes it`() {

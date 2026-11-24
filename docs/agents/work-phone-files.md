@@ -104,7 +104,10 @@ scripts/gen-swift-contract.ts): `work.docs.open`, `threads`, `thread`,
   the list was read is not decided unseen. The rows are taken, a
   `ReviewBatch` per branch, before the first call, so a push that reads a
   branch again between two calls adds nothing, and a refusal stays on the
-  batch's own rows. One decision runs at a time (`deciding`): `decide` and
+  batch's own rows. A document's decision carries its branch's `editedAt` as
+  the phone read it (`ReviewRow.revision`, `ReviewBatch.editedAt`, read
+  through `HistoryBranchesPhoneSchema`): a block an agent rewrote since is
+  refused by the host, and the row keeps its words. One decision runs at a time (`deciding`): `decide` and
   `decideAll` send nothing while one does, and Review Changes turns its
   swipes and bar off. A document's rows are the blocks of its
   pending branches (old and new words); a sheet's are its open suggestions

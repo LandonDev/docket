@@ -1440,6 +1440,8 @@ export const HistoryBranchesPhoneSchema = z.object({
       authors: z.array(z.string()),
       label: z.string(),
       at: z.number(),
+      /** the branch as it was read: sent back with a decision, so one an agent changed since is refused */
+      editedAt: z.number().int().optional(),
       diff: z.object({
         rows: z.array(z.object({ kind: z.enum(['added', 'removed', 'changed', 'moved']), id: z.string(), left: z.object({ text: z.string() }).optional(), right: z.object({ text: z.string() }).optional() }))
       })

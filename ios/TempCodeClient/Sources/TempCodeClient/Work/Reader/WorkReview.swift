@@ -25,12 +25,15 @@ public struct ReviewRow: Identifiable, Equatable, Sendable {
     /// What the host decides it by: a document's branch and block, or a sheet's suggestion.
     let branch: String?
     let target: String
+    /// A document's branch as he read it (its `editedAt`): sent with the decision, so a block an agent rewrote since
+    /// is refused, never taken with words he did not see.
+    let revision: Int?
 
     public init(id: String, kind: Kind, group: String? = nil, reason: String? = nil, refusal: String? = nil, accepts: Bool = true) {
         self.init(id: id, kind: kind, group: group, reason: reason, refusal: refusal, accepts: accepts, branch: nil, target: id)
     }
 
-    init(id: String, kind: Kind, group: String?, reason: String?, refusal: String?, accepts: Bool = true, branch: String?, target: String) {
+    init(id: String, kind: Kind, group: String?, reason: String?, refusal: String?, accepts: Bool = true, branch: String?, target: String, revision: Int? = nil) {
         self.id = id
         self.kind = kind
         self.group = group
@@ -39,6 +42,7 @@ public struct ReviewRow: Identifiable, Equatable, Sendable {
         self.accepts = accepts
         self.branch = branch
         self.target = target
+        self.revision = revision
     }
 }
 
@@ -136,7 +140,7 @@ public final class WorkReview {
             switch subject {
             case .document(let source):
                 guard let branch = row.branch else { return false }
-                _ = try await work.socket.request(Methods.WorkHistoryDecide.self, .init(source: source, branchId: branch, which: .array([row.target]), accept: accept))
+                _ = try await work.socket.request(Methods.WorkHistoryDecide.self, .init(source: source, branchId: branch, which: .array([row.target]), accept: accept, editedAt: row.revision))
                 rows.removeAll { $0.id == row.id }
             case .sheet(let itemId):
                 take(try await work.socket.request(Methods.WorkSheetsReview.self, .init(itemId: itemId, which: .object(.init(ids: [row.target])), verdict: accept ? .accept : .reject)))
@@ -163,7 +167,7 @@ public final class WorkReview {
             var all = true
             for batch in ReviewBatch.of(rows) {
                 do {
-                    _ = try await work.socket.request(Methods.WorkHistoryDecide.self, .init(source: source, branchId: batch.branch, which: .array(batch.targets), accept: accept))
+                    _ = try await work.socket.request(Methods.WorkHistoryDecide.self, .init(source: source, branchId: batch.branch, which: .array(batch.targets), accept: accept, editedAt: batch.editedAt))
                     rows.removeAll { batch.ids.contains($0.id) }
                 } catch {
                     refuse(batch.ids, ActionError.wrap(error).message)
@@ -213,7 +217,8 @@ public final class WorkReview {
                     reason: branch.label.isEmpty ? nil : branch.label,
                     refusal: nil,
                     branch: branch.id,
-                    target: block.id
+                    target: block.id,
+                    revision: branch.editedAt
                 )
             }
         }
@@ -284,6 +289,8 @@ struct ReviewBatch: Equatable, Sendable {
     let targets: [String]
     /// The rows those blocks are.
     let ids: [String]
+    /// The branch as he read it, sent with the decision (`ReviewRow.revision`).
+    var editedAt: Int? = nil
 
     /// A batch per branch, in the order the branches first show; a row with no branch is in none.
     static func of(_ rows: [ReviewRow]) -> [ReviewBatch] {
@@ -292,9 +299,9 @@ struct ReviewBatch: Equatable, Sendable {
             guard let branch = row.branch else { continue }
             if let index = batches.firstIndex(where: { $0.branch == branch }) {
                 let batch = batches[index]
-                batches[index] = ReviewBatch(branch: branch, targets: batch.targets + [row.target], ids: batch.ids + [row.id])
+                batches[index] = ReviewBatch(branch: branch, targets: batch.targets + [row.target], ids: batch.ids + [row.id], editedAt: batch.editedAt)
             } else {
-                batches.append(ReviewBatch(branch: branch, targets: [row.target], ids: [row.id]))
+                batches.append(ReviewBatch(branch: branch, targets: [row.target], ids: [row.id], editedAt: row.revision))
             }
         }
         return batches
