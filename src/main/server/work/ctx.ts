@@ -49,7 +49,7 @@ import { lifeosPart } from './lifeos/ctx'
 import { callRefusalOf, ensureNarrowMarks, NARROWING_BROKEN } from './narrowing'
 import { WORK_LOAD_FAULTS, WORK_MODULES, workModulesAsked, type Caller, type PushTo, type ToolCtx, type WorkCtx, type WorkModule, type WorkSend, type WorkTool } from './modules'
 import type { HealthReport, WorkDesktop } from '@shared/work'
-import { checkHost, connectionsTool, lapsesOf, type HostHealth } from './health'
+import { checkHost, connectionsTool, HEALTH_KEEP_MS, lapsesOf, type HostHealth } from './health'
 import { heldPart, outboxHostOf } from './outbox/ctx'
 import { reveal, type RevealWindow } from './reveal'
 import { resultsPart } from './outbox/results'
@@ -306,6 +306,9 @@ export function startWork(deps: WorkDeps, modules: WorkModule[] = WORK_MODULES):
    */
   let period = new AbortController()
   period.abort()
+  /** The last health report and the run under way (`checkHere` below); neither outlives the stretch Work is on. */
+  let healthKept: { at: number; report: HealthReport } | null = null
+  let healthRun: Promise<HealthReport> | null = null
   const startModules = (): void => {
     period = new AbortController()
     // The parts first: a module's start may call what they bring up.
@@ -330,6 +333,7 @@ export function startWork(deps: WorkDeps, modules: WorkModule[] = WORK_MODULES):
   const stopModules = (): void => {
     // The calls in flight first: a tool stops before the module and the parts it calls into do.
     period.abort()
+    healthKept = null
     const running = stops
     stops = []
     for (const stop of running.reverse()) {
@@ -448,7 +452,27 @@ export function startWork(deps: WorkDeps, modules: WorkModule[] = WORK_MODULES):
   const running = new Map<string, AbortController>()
   const callKey = (sessionId: string, call: string | number): string => `${sessionId}\0${typeof call}:${call}`
   // ── connections (work/health.ts) ────────────────────────────────────
-  const checkHere = (signal: AbortSignal) => checkHost(ctx, sound, broken, signal)
+  /**
+   * This host's checks, run once however many ask together and kept `HEALTH_KEEP_MS`: a Connections page of two
+   * windows, a toast's look and a thread's tool asked within seconds ran every pillar's check each (9.7 s once, the
+   * live log). `fresh` (his own Check again) runs them anew. The shared run ends with Work, not with one asker's
+   * socket; each asker still stops waiting on its own signal.
+   */
+  const checkHere = (signal: AbortSignal, fresh = false): Promise<HealthReport> => {
+    if (!fresh && healthKept && Date.now() - healthKept.at < HEALTH_KEEP_MS) return Promise.resolve(healthKept.report)
+    const run = (healthRun ??= checkHost(ctx, sound, broken, period.signal)
+      .then((report) => {
+        healthKept = { at: Date.now(), report }
+        return report
+      })
+      .finally(() => (healthRun = null)))
+    if (signal.aborted) return Promise.reject(new Error('cancelled'))
+    return new Promise<HealthReport>((resolve, reject) => {
+      const stop = (): void => reject(new Error('cancelled'))
+      signal.addEventListener('abort', stop, { once: true })
+      run.then(resolve, reject).finally(() => signal.removeEventListener('abort', stop))
+    })
+  }
   /** This host's rows, then every linked host's over the host link: one that is not connected is offline, never broken. */
   const checkEverywhere = async (signal: AbortSignal): Promise<HostHealth[]> => {
     const far = (deps.peers?.all() ?? []).map(async (link): Promise<HostHealth> => {
@@ -535,7 +559,7 @@ export function startWork(deps: WorkDeps, modules: WorkModule[] = WORK_MODULES):
         case 'work.health': {
           if (!settings.enabled()) throw new Error('Work is off on this host')
           const signal = socket?.signal ? AbortSignal.any([socket.signal, period.signal]) : period.signal
-          return handled(await checkHere(signal))
+          return handled(await checkHere(signal, req.params?.fresh === true))
         }
         case 'work.lapses':
           if (!settings.enabled()) throw new Error('Work is off on this host')

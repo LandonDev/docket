@@ -12,7 +12,7 @@ import { openDb, Store } from '../db'
 import type { Peers } from '../remote/peers'
 import type { SessionRegistry } from '../sessions'
 import type { WorkPartDeps } from './ctx'
-import { checkHost, cleanRow, HEALTH_CHECK_MS, healthText, lapsesOf, redactLine } from './health'
+import { checkHost, cleanRow, HEALTH_CHECK_MS, HEALTH_KEEP_MS, healthText, lapsesOf, redactLine } from './health'
 import type { WorkCtx, WorkModule } from './modules'
 
 const scopes = new Map<string, WorkScope>()
@@ -261,6 +261,59 @@ describe('the mount', () => {
     expect(health.handled && (health.result as HealthReport).rows.map((r) => r.id)).toEqual(['office.excel'])
     const lapses = await work.handle(req('work.lapses'), LOCAL_PRINCIPAL)
     expect(lapses.handled && lapses.result).toEqual([{ id: 'office.x', pillar: 'office', title: 'X', until: 5 }])
+  })
+
+  it('runs each check once for asks that come together, answers the next ask from that report, and runs anew for his own Check again and after Work was off', async () => {
+    let checks = 0
+    let release: () => void = () => {}
+    const slow = { id: 'office', ensure: () => {}, health: { check: async () => (checks++, await new Promise<void>((r) => (release = r)), [row({ id: 'office.excel', title: 'Excel' })]), lapses: () => [] } } as unknown as WorkModule
+    work.close()
+    work = startWork({ db, store: new Store(db), registry, environmentId: 'env_box', dataDir: dir, peers, log: () => {} }, [slow])
+    const on = { id: '1', method: 'work.set', params: { enabled: true } } as ClientRequest
+    await work.handle(on, LOCAL_PRINCIPAL)
+    const three = [work.handle(req('work.health'), LOCAL_PRINCIPAL), work.handle(req('work.health'), LOCAL_PRINCIPAL), work.handle(req('work.health'), LOCAL_PRINCIPAL)]
+    await new Promise((r) => setTimeout(r, 0))
+    release()
+    const answers = await Promise.all(three)
+    expect(checks).toBe(1)
+    expect(answers.map((a) => a.handled && (a.result as HealthReport).rows.map((r) => r.id))).toEqual([['office.excel'], ['office.excel'], ['office.excel']])
+    // Within HEALTH_KEEP_MS: the report, no check.
+    await work.handle(req('work.health'), LOCAL_PRINCIPAL)
+    expect(checks).toBe(1)
+    // His own Check again runs them anew.
+    const fresh = work.handle({ id: '1', method: 'work.health', params: { fresh: true } } as ClientRequest, LOCAL_PRINCIPAL)
+    await new Promise((r) => setTimeout(r, 0))
+    release()
+    await fresh
+    expect(checks).toBe(2)
+    // Work off and on again: nothing kept across it.
+    await work.handle({ id: '1', method: 'work.set', params: { enabled: false } } as ClientRequest, LOCAL_PRINCIPAL)
+    await work.handle(on, LOCAL_PRINCIPAL)
+    const again = work.handle(req('work.health'), LOCAL_PRINCIPAL)
+    await new Promise((r) => setTimeout(r, 0))
+    release()
+    await again
+    expect(checks).toBe(3)
+  })
+
+  it('answers no report older than HEALTH_KEEP_MS', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    try {
+      let checks = 0
+      const counted = { id: 'office', ensure: () => {}, health: { check: async () => (checks++, [row({ id: 'office.excel', title: 'Excel' })]), lapses: () => [] } } as unknown as WorkModule
+      work.close()
+      work = startWork({ db, store: new Store(db), registry, environmentId: 'env_box', dataDir: dir, peers, log: () => {} }, [counted])
+      await work.handle({ id: '1', method: 'work.set', params: { enabled: true } } as ClientRequest, LOCAL_PRINCIPAL)
+      await work.handle(req('work.health'), LOCAL_PRINCIPAL)
+      vi.setSystemTime(Date.now() + HEALTH_KEEP_MS - 1)
+      await work.handle(req('work.health'), LOCAL_PRINCIPAL)
+      expect(checks).toBe(1)
+      vi.setSystemTime(Date.now() + 2)
+      await work.handle(req('work.health'), LOCAL_PRINCIPAL)
+      expect(checks).toBe(2)
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it('lists work_connections to every Work thread, read-only, reading this host and each linked one', async () => {

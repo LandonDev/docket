@@ -122,6 +122,11 @@ One optional field on the module, two core reads and one frame tool
   that throws or runs out of time is one broken row ("Did not answer: …"),
   and a pillar that did not load is one too. Each row is cut to one line
   and to its declared fields (`cleanRow`). Refused while Work is off.
+  Asks that come together run each check once, and a report answers the
+  next ask for `HEALTH_KEEP_MS` (10 s) with no check run again (two
+  windows' Connections pages, a toast's look and a thread's tool each ran
+  every check before: 9.7 s once on the live box). `{fresh: true}` is his
+  own Check again and runs them anew; Work turned off drops the report.
 - `work.lapses` (read) answers `Lapse[]`, soonest first, from each
   pillar's `lapses`, which is synchronous and reads only what the host
   holds (no network, no child process).

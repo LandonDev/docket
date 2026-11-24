@@ -360,6 +360,11 @@ export function openDb(path: string): DatabaseSync {
       // column already exists
     }
   }
+  // What Work walks on every thread and every routine run (docs/box.md "Work's indexes"): a thread's children, a
+  // run's thread and Work's own threads were each a scan of every session ever made. After the columns above exist.
+  db.exec(`CREATE INDEX IF NOT EXISTS sessions_parent ON sessions(parent_id)`)
+  db.exec(`CREATE INDEX IF NOT EXISTS sessions_routine_run ON sessions(routine_run_id) WHERE routine_run_id IS NOT NULL`)
+  db.exec(`CREATE INDEX IF NOT EXISTS sessions_work_scope ON sessions(scope) WHERE scope = 'work'`)
   // Master threads (CLAUDE.md "Master threads"): the pin lives on the
   // thread, several per project. A database from the project-pin days
   // carries its one pin over the first time this column is added.
@@ -1657,7 +1662,17 @@ export class Store {
     return r?.value ?? null
   }
 
+  /** Hears every write of one setting, whoever made it: a reader that keeps the value in memory drops it here. */
+  onSettingSet(key: string, fn: () => void): () => void {
+    const heard = this.settingListeners.get(key) ?? new Set<() => void>()
+    this.settingListeners.set(key, heard)
+    heard.add(fn)
+    return () => void heard.delete(fn)
+  }
+  private readonly settingListeners = new Map<string, Set<() => void>>()
+
   setSetting(key: string, value: string | null): void {
+    for (const fn of this.settingListeners.get(key) ?? []) fn()
     if (value === null) this.stmt(`DELETE FROM settings WHERE key = ?`).run(key)
     else
       this

@@ -44,6 +44,7 @@ export function ensureFilesTables(db: DatabaseSync): void {
     place TEXT NOT NULL, was_at TEXT NOT NULL, state TEXT NOT NULL,
     held_at INTEGER, deleted_at INTEGER NOT NULL, by TEXT NOT NULL, provider TEXT)`)
   db.exec(`CREATE INDEX IF NOT EXISTS work_files_trash_by_workspace ON work_files_trash (workspace_id, state, deleted_at)`)
+  db.exec(`CREATE INDEX IF NOT EXISTS work_files_trash_by_was ON work_files_trash (was_at)`)
   db.exec(`CREATE TABLE IF NOT EXISTS work_files_ops (
     id TEXT PRIMARY KEY, workspace_id TEXT NOT NULL, verb TEXT NOT NULL, refs TEXT NOT NULL,
     state TEXT NOT NULL, result TEXT, at INTEGER NOT NULL)`)

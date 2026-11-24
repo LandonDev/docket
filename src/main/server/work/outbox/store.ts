@@ -117,6 +117,8 @@ function ensureTables(db: DatabaseSync): void {
     );
     CREATE INDEX IF NOT EXISTS work_held_acts_state ON ${HELD_TABLE}(state, updated_at);
     CREATE INDEX IF NOT EXISTS work_held_acts_session ON ${HELD_TABLE}(session_id);
+    CREATE INDEX IF NOT EXISTS work_held_acts_decided ON ${HELD_TABLE}(workspace_id, kind, decided_at);
+    CREATE INDEX IF NOT EXISTS work_held_acts_owed ON ${HELD_TABLE}(task) WHERE task = 'owed';
     CREATE TABLE IF NOT EXISTS ${GRANTS_TABLE} (
       id           TEXT PRIMARY KEY,
       workspace_id TEXT NOT NULL,

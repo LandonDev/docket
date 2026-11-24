@@ -13,6 +13,8 @@ import type { WorkCtx, WorkModule, WorkTool } from './modules'
 
 /** How long one pillar's check may take before its row says it did not answer. */
 export const HEALTH_CHECK_MS = 10_000
+/** How long a host's report answers the next ask with no check run again (ctx.ts `checkHere`); his own Check again asks fresh. */
+export const HEALTH_KEEP_MS = 10_000
 const LINE_MAX = 200
 
 /** Whatever looks like a secret in a line, blanked: a JWT, a bearer token, a LifeOS token or key, a token or code in a query. Every row and fault goes through it, whichever pillar wrote it. */

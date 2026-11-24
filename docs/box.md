@@ -3153,6 +3153,25 @@ a call that waited 500 ms or more on the Windows VM's door says
 `bun scripts/perf/stall-report.ts <stalls.log…>` turns a log into the
 table the Work baseline keeps (docs/agents/work-perf.md).
 
+### Work's indexes, and what the host keeps
+
+The tables Work walks grow with every thread, held act and deleted file,
+and six of its queries scanned them whole (the Work performance pass,
+2026-11-24). Each now has an index, made with `IF NOT EXISTS` beside its
+table, so an older build still reads and writes the database:
+`sessions_parent` (a thread's children: a routine's "is anything below
+still busy"), `sessions_routine_run` (a run's thread, where the column is
+set), `sessions_work_scope` (Work's threads, for the weekly review),
+`work_held_acts_decided` (workspace, kind, decided time: what an earned
+grant counts), `work_held_acts_owed` (the tasks a sent act owes),
+`work_files_trash_by_was` (a deleted document by where it was) and, from
+M5, `work_canvas_items_by_workspace`. src/main/server/db-work-indexes.test.ts
+holds each query to `SEARCH`, never `SCAN`, by its own plan.
+
+The Work switch is read on every Work request; `WorkSettingsStore` keeps
+it in memory and drops it on any write of that setting, whoever made it
+(`Store.onSettingSet`), so Work turned off is seen by the very next call.
+
 ## The shape that scales
 
 Hundreds of threads may exist on a host; a bounded number run, and the

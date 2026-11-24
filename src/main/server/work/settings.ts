@@ -17,7 +17,7 @@ import type { Store } from '../db'
  * (`kind === 'work'`, `scope === 'work'`), never on the switch; the switch
  * only decides whether Work things can be made, shown and started.
  */
-export type WorkSettingsStoreDeps = Pick<Store, 'getSetting' | 'setSetting' | 'getWorkspaceWorkSettings' | 'setWorkspaceWorkSettings'> & Partial<Pick<Store, 'listWorkspaces'>>
+export type WorkSettingsStoreDeps = Pick<Store, 'getSetting' | 'setSetting' | 'getWorkspaceWorkSettings' | 'setWorkspaceWorkSettings'> & Partial<Pick<Store, 'listWorkspaces' | 'onSettingSet'>>
 
 export class WorkSettingsStore {
   private readonly listeners = new Set<(settings: WorkSettings) => void>()
@@ -30,10 +30,18 @@ export class WorkSettingsStore {
   constructor(
     private readonly store: WorkSettingsStoreDeps,
     private readonly hostLive: (envId: string) => boolean = () => true
-  ) {}
+  ) {
+    // The switch is read on every Work request. It is kept in memory only where the store says when anyone writes
+    // it (`onSettingSet`), so turning Work off is seen by the very next call; a store that cannot say is read each time.
+    this.store.onSettingSet?.(WORK_SETTING_KEY, () => (this.kept = null))
+  }
+  private kept: WorkSettings | null = null
 
   get(): WorkSettings {
-    return parseWorkSettings(this.store.getSetting(WORK_SETTING_KEY))
+    if (this.kept) return this.kept
+    const read = parseWorkSettings(this.store.getSetting(WORK_SETTING_KEY))
+    if (this.store.onSettingSet) this.kept = Object.freeze(read)
+    return read
   }
 
   enabled(): boolean {

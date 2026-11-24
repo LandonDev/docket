@@ -74,7 +74,8 @@ export const WorkCoreRequestSchemas = [
   /** → RevealAnswer: open a saved destination in this host's window. */
   request('work.reveal', RevealParamsSchema),
   /** → HealthReport: every connection Work leans on, as this host's pillars answer for them now (docs/agents/work-connections.md); checks that change nothing */
-  request('work.health', z.object({}).optional()),
+  // `fresh`: his own Check again; without it the host may answer from a report it made in the last few seconds.
+  request('work.health', z.object({ fresh: z.boolean().optional() }).optional()),
   /** → Lapse[]: what ends on this host and when, read from what it holds, soonest first */
   request('work.lapses', z.object({}).optional()),
   // The codex and Muse bridge (scripts/app-mcp-bridge.mjs): `token` is the

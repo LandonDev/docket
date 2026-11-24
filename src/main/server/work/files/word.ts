@@ -408,7 +408,10 @@ export async function autosaveWords(ctx: WorkCtx, now = Date.now(), found?: (not
     const rows = ctx.db.prepare(`SELECT * FROM work_files_word WHERE doc IS NOT NULL`).all() as unknown as WordRow[]
     for (const r of rows) {
       if (!existsSync(r.doc!)) {
-        const trashed = ctx.db.prepare(`SELECT 1 FROM work_files_trash WHERE was_at = ? OR instr(ref, ?) > 0 LIMIT 1`).get(r.doc, r.doc)
+        // By where it was first (an index answers); only a row that names the document some other way is looked for by a scan.
+        const trashed =
+          ctx.db.prepare(`SELECT 1 FROM work_files_trash WHERE was_at = ? LIMIT 1`).get(r.doc) ??
+          ctx.db.prepare(`SELECT 1 FROM work_files_trash WHERE instr(ref, ?) > 0 LIMIT 1`).get(r.doc)
         if (!trashed) {
           ctx.db.prepare(`DELETE FROM work_files_word WHERE workspace_id = ? AND host = ? AND path = ?`).run(r.workspace_id, r.host, r.path)
           seenRevs.delete(keyOf(r))

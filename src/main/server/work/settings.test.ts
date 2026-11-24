@@ -73,3 +73,43 @@ it('a removed computer leaves every workspace for good: a later binding of the s
   expect(gated.workspace('w1').mayUseDesktop).toEqual(['env_mac'])
   expect(gated.workspace('w2').mayUseDesktop).toEqual([])
 })
+
+it('a hundred reads of the switch read the setting once, and a write by anyone is seen by the very next read', () => {
+  let reads = 0
+  const counted = new WorkSettingsStore({
+    getSetting: (key) => (reads++, store.getSetting(key)),
+    setSetting: (key, value) => store.setSetting(key, value),
+    getWorkspaceWorkSettings: (id) => store.getWorkspaceWorkSettings(id),
+    setWorkspaceWorkSettings: (id, value) => store.setWorkspaceWorkSettings(id, value),
+    onSettingSet: (key, fn) => store.onSettingSet(key, fn)
+  })
+  for (let i = 0; i < 100; i++) expect(counted.enabled()).toBe(false)
+  expect(reads).toBe(1)
+  // Its own set, then a write that never went through this object (another part of the host, a restore).
+  counted.set({ enabled: true })
+  expect(counted.enabled()).toBe(true)
+  store.setSetting('work', '{"enabled":false}')
+  expect(counted.enabled()).toBe(false)
+  store.setSetting('work', null)
+  expect(counted.enabled()).toBe(false)
+  // Another setting's write drops nothing.
+  const before = reads
+  store.setSetting('other', 'x')
+  for (let i = 0; i < 10; i++) counted.enabled()
+  expect(reads).toBe(before)
+})
+
+it('a store that cannot say when the switch is written is read every time: nothing is kept', () => {
+  let reads = 0
+  let value: string | null = null
+  const plain = new WorkSettingsStore({
+    getSetting: () => (reads++, value),
+    setSetting: (_key, next) => void (value = next),
+    getWorkspaceWorkSettings: () => null,
+    setWorkspaceWorkSettings: () => true
+  })
+  expect(plain.enabled()).toBe(false)
+  value = '{"enabled":true}'
+  expect(plain.enabled()).toBe(true)
+  expect(reads).toBe(2)
+})
