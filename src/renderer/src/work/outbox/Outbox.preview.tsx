@@ -55,7 +55,7 @@ const sent = (n: number, subject: string, text: string, when: number): OutboxIte
 const WS2 = { id: "ws2", name: "Refereeing", path: "/home/work/Refereeing", kind: "work", sector: "ref", createdAt: 2 };
 const SENT: OutboxItem[] = [
   sent(5, "Budget lines for the Spring LAN", "Hi Dana,\n\nThe Spring LAN comes to $4,180: $2,600 for the ballroom, $1,100 for prizes and $480 for food. The PO request is attached.\n\nLandon", at(20, 9, 41)),
-  { ...sent(9, "", "", at(20, 8, 15)), ref: { at: "lifeos", table: "outbox", id: "ob_9" }, kind: "calendar.op", workspaceId: "ws2", sector: "ref", summary: "Add Varsity at North on Fri, Nov 27 at 6:00 PM", verb: "Add", payload: { op: "add", title: "Varsity at North", startsAt: at(27, 18), endsAt: at(27, 20) }, result: null },
+  { ...sent(9, "", "", at(20, 8, 15)), ref: { at: "lifeos", table: "outbox", id: "ob_9" }, kind: "calendar.op", workspaceId: "ws2", sector: "ref", summary: "Add Varsity at North on Fri, Nov 27 at 6:00 PM", verb: "Add", payload: { id: "op9", kind: "create", payload: { title: "Varsity at North", startsAt: at(27, 18), endsAt: at(27, 20), location: "North High School" } }, result: null },
   sent(4, "Re: Travel for nationals", "Hi Dana,\n\nSix players and two staff, leaving Thursday at 7 AM. The van is booked through RecWell.\n\nLandon", at(19, 16, 5)),
   sent(3, "Re: Jersey order", "Hi Dana,\n\nThe order is 14 jerseys at $62 each. Invoice attached.\n\nLandon", at(18, 11, 20)),
 ];
@@ -139,7 +139,7 @@ const FAILED: OutboxItem = { ...sent(6, "Re: Ballroom deposit", "Hi Dana,\n\nThe
 const held = (n: number, kind: OutboxItem["kind"], summary: string, verb: string, payload: unknown, minutes: number): OutboxItem => ({ ...sent(n, "", "", at(20, 10, minutes)), kind, summary, verb, state: "held", payload, decidedBy: null, decidedAt: null, why: "pillar", result: null });
 const KINDS: OutboxItem[] = [
   { ...SENT[0]!, state: "held", decidedBy: null, decidedAt: null, result: null, n: 21, createdAt: at(20, 10, 50) },
-  held(22, "calendar.op", "Add Spring LAN walkthrough on Fri, Nov 27 at 1:00 PM", "Add", { op: "add", title: "Spring LAN walkthrough", startsAt: at(27, 13), endsAt: at(27, 14) }, 44),
+  held(22, "calendar.op", "Add Spring LAN walkthrough on Fri, Nov 27 at 1:00 PM", "Add", { id: "op22", kind: "create", payload: { title: "Spring LAN walkthrough", startsAt: at(27, 13), endsAt: at(27, 14), location: "North Ballroom", attendees: [{ address: "dana.lee@purdue.edu", name: "Dana Lee" }] } }, 44),
   held(23, "chat.reply", "Reply to Sam Ortiz in Teams: Thursday at 7 works for varsity", "Reply", { chatId: "c1", text: "Thursday at 7 works for varsity." }, 38),
   held(24, "file.act", "Move Risk assessment.docx to Esports Staff › Events", "Move", { verb: "move", name: "Risk assessment.docx" }, 31),
   held(25, "share.guestLink", "Share Spring LAN run of show with Maya Chen to comment", "Share", { name: "Maya Chen", role: "comment" }, 20),

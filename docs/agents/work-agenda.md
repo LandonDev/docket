@@ -16,7 +16,7 @@ A row whose event clashes with another, in any job, says so under its place and 
 
 The kind is held and sent by the hold (`work/outbox/lifeosHeld.ts`): the watcher reads `calendarOps:held {host}`, and the words come from the act's kind, payload and the event's title (read once per event with `events:get`). At the press the act is read again (`calendarOps:get`): a draft or failed act goes with `calendarOps:send {id, cause}`; one edited since it was shown goes stale; one already queued, sending or done is not sent twice. Edit is `calendarOps:save` with the act's own kind and event (and, for a new Google event, the source of the same account's calendar). A grant (`CalendarOpMatcherSchema`) fits one kind on one account's one calendar: an invitation's answer, or an invite that names its people. A change, a cancel, a proposal, a series or an uninvite is always his press.
 
-Its view (`agenda/CalendarActView.tsx`, chunk `work-calendar-act`) shows every field that goes (`opFields` in `agenda/calendarAct.ts`; a server test holds each `CalendarFieldsSchema` key to a row), then that day's calendar, every sector's, read as the owner, with the act's slot set apart.
+Its view (`agenda/CalendarActView.tsx`, chunk `work-calendar-act`) shows every field that goes (`opFields` in `agenda/calendarAct.ts`; a server test holds each `CalendarFieldsSchema` key to a row), then that day's calendar, every sector's, read as the owner, with the act's slot set apart: its bones while LifeOS reads it, and the day from local midnight to the next (`addDays`, as Agenda's own days), so it is 23 or 25 hours on a day the clocks change.
 
 ## Plain holds
 

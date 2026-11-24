@@ -126,7 +126,8 @@ export function DigestList({
     <>
       {sections.map((section) => (
         <section key={section.id} aria-label={section.title} className="flex flex-col">
-          <h3 className="flex h-7 items-center text-xs font-medium text-muted-foreground">{section.title}</h3>
+          {/* On its rows' title edge, past the dot's box. */}
+          <h3 className="flex h-7 items-center ps-6 text-xs font-medium text-muted-foreground">{section.title}</h3>
           <ul className="flex flex-col">
             {section.rows.map((row) => (
               <li key={`${row.host}:${row.id}`}>

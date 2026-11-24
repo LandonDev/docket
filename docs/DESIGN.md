@@ -1432,7 +1432,8 @@ Around the canvas:
   or calendar act LifeOS holds after the press sits in Sent but is not
   called sent until LifeOS says it went: its row, its detail and its toast
   say "Queued in LifeOS", the row and detail with its age ("for 12m") and
-  the queued mark, its title in the act's own verb; one he took back reads
+  the queued mark, its title in the act's own verb, and no bar under the
+  detail, since nothing there waits for a press; one he took back reads
   "Back in drafts in LifeOS". The
   transcript's held line opens the Outbox page. In the grants sheet, under
   each workspace's heading, a grant's line is "Made today from a held

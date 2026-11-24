@@ -57,6 +57,8 @@ describe("the list", () => {
     await waitFor(() => expect(screen.queryByLabelText("Loading")).toBeNull());
     expect(await screen.findByRole("heading", { name: "Digest" })).toBeTruthy();
     expect(screen.getAllByRole("heading", { level: 3 }).map((h) => h.textContent)).toEqual(["Since the digest", "Today, 8:00 AM", "Yesterday"]);
+    // Each heading starts on its rows' title edge, past the dot's 16px box and its 8px gap.
+    for (const h of screen.getAllByRole("heading", { level: 3 })) expect(h.className).toContain("ps-6");
     const today = within(screen.getByRole("region", { name: "Today, 8:00 AM" }));
     // by job, then newest: Cosmic before Purdue
     // each row names its job to a screen reader: the dot says it to the eye alone

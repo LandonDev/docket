@@ -883,25 +883,28 @@ function SentDetail({
           {offer ? <OfferLine offer={offer} /> : null}
         </div>
       </div>
-      <VerbBar>
-        <span className="flex-1" />
-        {!results.loaded ? null : results.error && !result ? (
-          <>
-            <span className="min-w-0 truncate text-[13px] text-destructive">{workErrorWords(results.error) || "Its way back did not load"}</span>
-            <Button variant="ghost" size="sm" disabled={results.reading} onClick={() => loadResults(item.environmentId, item.sessionId ?? "")}>
-              <BusyLabel busy={results.reading} label="Retry" />
+      {/* A send LifeOS still holds has nothing to take back yet: no bar under it, rather than an empty one. */}
+      {queued && !result && !(results.loaded && results.error) ? null : (
+        <VerbBar>
+          <span className="flex-1" />
+          {!results.loaded ? null : results.error && !result ? (
+            <>
+              <span className="min-w-0 truncate text-[13px] text-destructive">{workErrorWords(results.error) || "Its way back did not load"}</span>
+              <Button variant="ghost" size="sm" disabled={results.reading} onClick={() => loadResults(item.environmentId, item.sessionId ?? "")}>
+                <BusyLabel busy={results.reading} label="Retry" />
+              </Button>
+            </>
+          ) : result?.undoneAt ? (
+            <span className="text-[13px] text-muted-foreground">Taken back at {timeOf(result.undoneAt)}</span>
+          ) : result?.undo ? (
+            <Button variant="secondary" size="sm" disabled={busy} onClick={() => void back()}>
+              <BusyLabel busy={busy} label={result.undo.label ?? "Undo"} />
             </Button>
-          </>
-        ) : result?.undoneAt ? (
-          <span className="text-[13px] text-muted-foreground">Taken back at {timeOf(result.undoneAt)}</span>
-        ) : result?.undo ? (
-          <Button variant="secondary" size="sm" disabled={busy} onClick={() => void back()}>
-            <BusyLabel busy={busy} label={result.undo.label ?? "Undo"} />
-          </Button>
-        ) : queued ? null : (
-          <span className="text-[13px] text-muted-foreground">{item.kind === "mail.send" || item.kind === "office.mail.send" ? "Sent mail cannot be taken back" : "This cannot be taken back"}</span>
-        )}
-      </VerbBar>
+          ) : queued ? null : (
+            <span className="text-[13px] text-muted-foreground">{item.kind === "mail.send" || item.kind === "office.mail.send" ? "Sent mail cannot be taken back" : "This cannot be taken back"}</span>
+          )}
+        </VerbBar>
+      )}
     </>
   );
 }

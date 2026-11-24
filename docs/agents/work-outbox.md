@@ -655,7 +655,7 @@ LifeOS item's Send carries `rev` = its `updatedAt` as shown.
   "Back in drafts in LifeOS" or "No longer in LifeOS"; its
   title keeps the act's own verb ("Send to Dana Lee"), and its detail says
   where, when and who ("Purdue Esports, 9:31 AM, by you") with no line about
-  taking it back. It reads Sent once LifeOS says sent (a calendar act's
+  taking it back and no bar under it. It reads Sent once LifeOS says sent (a calendar act's
   done). The detail's head is the job's dot and name, then when (and, held,
   the thread it came from), at every width, over the act's name; then its
   payload exactly as it goes (`work/acts/ActView.tsx`: the kind's own view

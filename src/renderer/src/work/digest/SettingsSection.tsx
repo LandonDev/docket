@@ -100,8 +100,9 @@ export function SettingsSection() {
     return true;
   };
 
+  // A ghost verb's word ends on the controls' edge, its box overhanging the column by its own padding.
   const open = (
-    <Button variant="ghost" size="sm" onClick={() => openDigestSheet(true)}>
+    <Button variant="ghost" size="sm" className="-me-2.5" onClick={() => openDigestSheet(true)}>
       Open the digest
     </Button>
   );
@@ -114,6 +115,7 @@ export function SettingsSection() {
               <Button
                 variant="ghost"
                 size="sm"
+                className="-me-2.5"
                 disabled={retrying}
                 onClick={() => {
                   setRetrying(true);

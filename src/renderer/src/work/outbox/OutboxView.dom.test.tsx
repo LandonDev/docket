@@ -221,10 +221,13 @@ describe("a mail or calendar act LifeOS holds after his press", () => {
     expect(document.querySelector("[data-outbox-detail]")?.textContent).not.toContain("Sent by you");
     expect(screen.queryByText("Sent mail cannot be taken back")).toBeNull();
     expect(screen.queryByRole("button", { name: "Send" })).toBeNull();
+    // and no empty bar under it: nothing waits there to be pressed
+    expect(document.querySelector("[data-outbox-detail] [data-outbox-verbs]")).toBeNull();
     fireEvent.click(screen.getByText("Sent to Sam Ortiz"));
     await waitFor(() => expect(screen.getByRole("heading", { level: 1 }).textContent).toBe("Sent to Sam Ortiz"));
     expect(document.querySelector("[data-outbox-detail] p[role=status]")).toBeNull();
     expect(screen.getByText("Sent mail cannot be taken back")).toBeTruthy();
+    expect(document.querySelector("[data-outbox-detail] [data-outbox-verbs]")).not.toBeNull();
     expect(sends()).toEqual([]);
   });
 

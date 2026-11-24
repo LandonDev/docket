@@ -263,7 +263,10 @@ describe("Settings → Work → Digest", () => {
       </>,
     );
     expect(screen.getByTestId("sheet").textContent).toBe("shut");
-    fireEvent.click(await screen.findByRole("button", { name: "Open the digest" }));
+    const open = await screen.findByRole("button", { name: "Open the digest" });
+    // Its word ends on the selects' edge: the ghost box overhangs by its own padding.
+    expect(open.className).toContain("-me-2.5");
+    fireEvent.click(open);
     expect(screen.getByTestId("sheet").textContent).toBe("open");
   });
 
@@ -277,6 +280,7 @@ describe("Settings → Work → Digest", () => {
     expect((await screen.findByRole("alert")).textContent).toBe("The box and The Mac did not answer");
     expect(screen.queryByLabelText("Time of the digest")).toBeNull();
     w().down.clear();
+    expect(screen.getByRole("button", { name: "Retry" }).className).toContain("-me-2.5");
     await act(async () => void fireEvent.click(screen.getByRole("button", { name: "Retry" })));
     expect(await screen.findByLabelText("Time of the digest")).toBeTruthy();
   });

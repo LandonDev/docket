@@ -3,12 +3,13 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-const day = vi.hoisted(() => ({ fail: true, asked: 0 }));
+const day = vi.hoisted(() => ({ fail: true, loading: false, asked: 0 }));
 vi.mock("../shell/lifeos", async (original) => ({
   ...(await original<object>()),
   useLifeosSession: () => ({ environmentId: "box", sector: null, client: null, state: "connected" }),
   useLifeosQuery: (_s: unknown, name: string) => {
     if (name !== "events:range") return { status: "ready", value: null };
+    if (day.loading) return { status: "loading" };
     return day.fail ? { status: "failed", error: "Server error" } : { status: "ready", value: [{ _id: "e1", title: "Scrim night", sector: "purdue", startsAt: Date.UTC(2026, 10, 21, 15), allDay: false }] };
   },
 }));
@@ -27,5 +28,15 @@ describe("a held calendar act's day", () => {
     fireEvent.click(screen.getByRole("button", { name: "Retry" }));
     expect(screen.queryByText("Couldn't read that day")).toBeNull();
     expect(screen.getByText("Scrim night")).toBeTruthy();
+  });
+});
+
+describe("a held calendar act's day on its way", () => {
+  it("shows the day's bones under the act while LifeOS reads it, so the clash check is seen to be coming", () => {
+    day.loading = true;
+    render(<View item={{ kind: "calendar.op", payload: op, sector: "purdue" } as never} env="box" />);
+    expect(screen.getByText("Review")).toBeTruthy();
+    expect(screen.getByRole("status", { name: "Reading that day" })).toBeTruthy();
+    day.loading = false;
   });
 });
