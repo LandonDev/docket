@@ -57,15 +57,16 @@ function principalOf(body: Record<string, unknown>): string {
 
 export const docsRoutes: InternalRoute[] = [
   {
-    // The document's live revision: a hash of its state vector as the collab server holds it now, which moves with
-    // every edit whether or not the file has been written (files/word.ts: a Word file's autosave and its header).
+    // The document's live revision: a hash of its state vector and its delete set as the collab server holds them
+    // now, which moves with every edit whether or not the file has been written (files/word.ts: a Word file's autosave
+    // and its header). The delete set too: taking out a letter moves no client's clock, only what is deleted.
     path: '/internal/docs/rev',
     milestone: 20,
     async run(body, ctx) {
       const t = await targetOf(body, ctx)
-      let vector: Uint8Array = new Uint8Array()
-      await ctx.collab.edit(t.name, 'owner', (doc) => void (vector = Y.encodeStateVector(doc)), t.file)
-      return { rev: createHash('sha256').update(vector).digest('hex').slice(0, 32) }
+      let snapshot: Uint8Array = new Uint8Array()
+      await ctx.collab.edit(t.name, 'owner', (doc) => void (snapshot = Y.encodeSnapshot(Y.snapshot(doc))), t.file)
+      return { rev: createHash('sha256').update(snapshot).digest('hex').slice(0, 32) }
     }
   },
   {

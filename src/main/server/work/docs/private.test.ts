@@ -325,6 +325,24 @@ describe("the document kept for a Word file of another computer", () => {
   })
 })
 
+describe("a document's live revision", () => {
+  it('moves with a deletion alone, as with any edit, and stands still while nothing changes', async () => {
+    const r = await rig()
+    const { path } = await r.make(join(r.work, 'Plan.tcdoc'))
+    const rev = async () => (await r.call<{ rev: string }>('/internal/docs/rev', { file: path, shared: false, fence: { sectors: 'all' } })).rev
+    const at = await rev()
+    expect(await rev()).toBe(at)
+    const other = await r.second(path)
+    // The last letter of a line taken out, nothing typed: no client's clock moves, only the delete set.
+    const [first] = [...other.document.getXmlFragment('document-store').createTreeWalker((n) => n instanceof Y.XmlText)] as Y.XmlText[]
+    first!.delete(first!.length - 1, 1)
+    const deadline = Date.now() + 3000
+    let after = await rev()
+    while (after === at && Date.now() < deadline) after = (await new Promise((r2) => setTimeout(r2, 20)), await rev())
+    expect(after).not.toBe(at)
+  })
+})
+
 describe("a document's file before its tab closes", () => {
   it('holds what a window just typed once the host is asked to store it, though the service stores on a pause', async () => {
     const r = await rig()
