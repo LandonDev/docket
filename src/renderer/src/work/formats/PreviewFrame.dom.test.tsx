@@ -226,13 +226,12 @@ describe("the frame", () => {
     expect(second.closed).toHaveBeenCalledTimes(1);
   });
 
-  it("when the format cannot be drawn it says why once, with Retry, and Export still works", async () => {
+  it("names the failed format and its cause in one sentence and keeps Retry and Export live", async () => {
     const f = fake();
     await show(f);
     await f.fail("LibreOffice on tempcode-box did not answer");
     const failed = document.querySelector("[data-preview-failed]")!;
-    expect(within(failed as HTMLElement).getByText("Can't draw this format here")).toBeTruthy();
-    expect(within(failed as HTMLElement).getByText("LibreOffice on tempcode-box did not answer. Exporting still works.")).toBeTruthy();
+    expect(failed.textContent).toBe("Word preview failed (LibreOffice on tempcode-box did not answer).Retry");
     expect(count()).toBeNull();
     expect(column()).toBeNull();
     await act(async () => fireEvent.click(screen.getByRole("button", { name: "Export" })));
@@ -244,6 +243,10 @@ describe("the frame", () => {
     expect(head()).toBe("Drawing the pages");
     await f.answer({ picture: paged("r1"), drops: [] });
     await waitFor(() => expect(count()).toBe("Page 1 of 3"));
+    await act(async () => fireEvent.click(screen.getByRole("tab", { name: "PDF" })));
+    await f.fail("The document’s host could not print the page.");
+    expect(screen.getByText("PDF preview failed (The document’s host could not print the page).")).toBeTruthy();
+    expect(screen.queryByText(/^Word preview failed/)).toBeNull();
   });
 
   it("a render that went under the pages (the document was drawn again elsewhere) is drawn once more by itself; only a second loss is said, with Retry", async () => {
@@ -256,7 +259,7 @@ describe("the frame", () => {
     expect(document.querySelector("[data-preview-failed]")).toBeNull();
     // The same render lost again is a host that cannot keep it: said, with Retry.
     await f.answer({ picture: paged("r1"), drops: [] });
-    expect(await screen.findByText("That preview is gone: draw it again. Exporting still works.")).toBeTruthy();
+    expect(await screen.findByText("Word preview failed (that preview is gone: draw it again).")).toBeTruthy();
     expect(f.asked).toHaveLength(2);
     await act(async () => fireEvent.click(screen.getByRole("button", { name: "Retry" })));
     await waitFor(() => expect(f.asked).toHaveLength(3));

@@ -184,6 +184,8 @@ export interface DocPreviewDeps {
   title: string;
   /** the mounted editor; null while the document is still opening */
   editor(): AnyEditor | null;
+  /** Waits until the host can read the edits this window just made. */
+  sync?(): Promise<void>;
   /** comments (and those with replies) and suggestions as the canvas counts them now */
   review(): Pick<DocFacts, "comments" | "replied" | "suggestions">;
   /** A test hands in its own wire, page writer and save. */
@@ -346,6 +348,7 @@ export function docPreviewSource(deps: DocPreviewDeps): PreviewSource {
   /** The format as pages on the host: a render it already keeps for this very text is answered as it is. */
   const render = async (format: PreviewFormatId, signal: AbortSignal, by?: "word"): Promise<{ env: string; home: boolean; answer: PreviewAnswer; drops: string[] }> => {
     const paper = paperFor(deps.locale ?? globalThis.navigator?.language ?? "en-US");
+    if (format !== "pdf" && deps.sync) await deps.sync();
     const printed = format === "pdf" ? await printPage(paper) : undefined;
     const html = printed?.html;
     if (signal.aborted) throw cancelled();
@@ -378,8 +381,11 @@ export function docPreviewSource(deps: DocPreviewDeps): PreviewSource {
   };
 
   /** The file itself, written by the host from the live text: Word, OpenDocument, Rich Text or Markdown. */
-  const written = async (format: "docx" | "odt" | "rtf" | "md"): Promise<ExportAnswer> =>
-    onHost((env) => request<ExportAnswer>(env, "work.formats.export", { source: deps.source, format }, { timeoutMs: 5 * 60_000 }));
+  const written = async (format: "docx" | "odt" | "rtf" | "md", signal?: AbortSignal): Promise<ExportAnswer> => {
+    if (deps.sync) await deps.sync();
+    if (signal?.aborted) throw cancelled();
+    return onHost((env) => request<ExportAnswer>(env, "work.formats.export", { source: deps.source, format }, { timeoutMs: 5 * 60_000 }));
+  };
 
   /** Every byte of a render's file, a frame at a time. */
   const whole = async (bytes: PreviewBytes): Promise<Uint8Array<ArrayBuffer>> => {
@@ -414,7 +420,7 @@ export function docPreviewSource(deps: DocPreviewDeps): PreviewSource {
         return drawPaged("docx", opts.signal, "word");
       }
       if (format === "md") {
-        const made = await written("md");
+        const made = await written("md", opts.signal);
         if (opts.signal.aborted) throw cancelled();
         const text = new TextDecoder().decode(fromBase64(made.data));
         return { picture: { kind: "text", text }, drops: unique([...docDrops("md", facts()), ...made.warnings.map(asLine)]) };

@@ -3154,8 +3154,8 @@ opening puts the focus on Edit.
   shape on `card` with the hairline (16:9 for a deck). No count and no
   losses; the Page rows stay; the primary button stays live.
 - **When it cannot be drawn**: one `Empty` in a 440px box at least 360px
-  tall on `stage`, "Can't draw this format here", the reason and "Exporting
-  still works." as its line, and Retry. The primary button stays live and
+  tall on `stage`. Its title is one sentence with the format and the reason,
+  followed by Retry. The primary button stays live and
   the Page rows stay beside it; no losses are listed. A render the host no
   longer has is drawn once more with nothing said.
 - **A long file** draws its first pages: the who-drew slot reads "The first

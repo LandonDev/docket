@@ -449,6 +449,14 @@ for as long as the document is the same one:
 | Markdown | the host's text (`work.formats.export`) | the file's own text |
 | Web page | the page written here, in a frame where no script runs and nothing is fetched | the file's own page |
 
+An editable window waits for the document service to apply its edits before
+the host makes a Word, OpenDocument, Rich Text or Markdown preview or
+export. The service reads its live document, so it can answer before its
+next save to disk. The window supplies HTML for Web page, PDF and Print
+from the editor it already has. PDF and Print go to the document’s host
+for printing. A paired window reads the finished pages from that host by
+range, just as a local window does.
+
 - **Export writes the document as it stands when he presses**, never a
   picture kept from an earlier look (he may have gone back to the words
   since). Word, OpenDocument, Rich Text and Markdown go through

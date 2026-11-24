@@ -268,6 +268,30 @@ describe("the document's Preview source", () => {
     expect(drawn.drops).toEqual(["1 suggestion stays out until you accept it"]);
   });
 
+  it.each(["docx", "odt", "rtf", "md"])("waits for the paired window's edits before asking the host for %s", async (format) => {
+    const h = host();
+    let applied!: () => void;
+    const pending = new Promise<void>((resolve) => (applied = resolve));
+    const { source: s } = source(h, { sync: () => pending });
+    const draw = s.draw(format, { signal: signal() });
+    const exportFile = s.export(format);
+    try {
+      await Promise.resolve();
+      expect(h.calls).toEqual([]);
+    } finally {
+      h.state.text = "new edit";
+      applied();
+      await Promise.all([draw, exportFile]);
+    }
+    const { picture } = await draw;
+    if (picture.kind === "paged") expect(new TextDecoder().decode(await picture.pdf.read(0, 32))).toContain("new edit");
+    else expect(picture).toEqual({ kind: "text", text: "# Plan new edit" });
+    expect(h.calls.slice(0, 2)).toEqual([
+      expect.objectContaining({ env: "env_box", method: format === "md" ? "work.formats.export" : "work.formats.preview" }),
+      expect.objectContaining({ env: "env_box", method: "work.formats.export" }),
+    ]);
+  });
+
   it("Word is exported and drawn on the host, under the item, and read by range at its rev", async () => {
     const h = host();
     const { source: s } = source(h);

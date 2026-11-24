@@ -328,10 +328,12 @@ export function Preview({ source, title, kind, initial, readOnly, onClose, pageR
 
   let body: ReactNode;
   if (draw.status === "failed") {
+    const reason = draw.message.trim().replace(/\s+/g, " ").replace(/[.!?]+$/, "");
+    const failure = reason ? ` (${reason})` : "";
     body = (
       <div data-preview-failed className="flex min-h-0 min-w-0 flex-1 justify-center gap-4 overflow-auto bg-(--stage) px-6 pt-4 pb-6">
         <div className="flex min-h-[360px] w-[440px] max-w-full">
-          <EmptyState title="Can't draw this format here" line={`${sentence(draw.message)} Exporting still works.`} action={{ label: "Retry", onClick: () => setRun((n) => n + 1) }} />
+          <EmptyState title={`${current?.label ?? "File"} preview failed${failure}.`} action={{ label: "Retry", onClick: () => setRun((n) => n + 1) }} />
         </div>
         {/* The page set-up is still his to change; what the format drops is not known without a picture. */}
         {settings && !folded ? (
@@ -478,16 +480,10 @@ export function Preview({ source, title, kind, initial, readOnly, onClose, pageR
   );
 }
 
-/** A reason as one sentence: capital first, one full stop. */
 /** A paper's shape as its width over its height, for the loading shape. */
 const paperAspect = (setup: CommonSetup): number => {
   const { width: w, height: h } = PAPER_POINTS[setup.paper];
   return setup.orientation === "landscape" ? h / w : w / h;
-};
-
-const sentence = (text: string): string => {
-  const t = text.trim().replace(/\.+$/, "");
-  return t ? `${t[0]!.toUpperCase()}${t.slice(1)}.` : "";
 };
 
 /**

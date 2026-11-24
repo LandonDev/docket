@@ -226,6 +226,24 @@ describe("the relayed socket", () => {
     expect(h.calls).toEqual(["state", "update 1", "stored"]);
   });
 
+  it("export waits for the window's edits to reach the service without asking it to store the file", async () => {
+    const h = fakeHost();
+    const host = docHost("env_box", { at: "lifeos", table: "docs", id: "d1" });
+    const ws = await opened(host.socket);
+    ws.send(state());
+    ws.send(update(1));
+    const caughtUp = vi.fn();
+    const waiting = host.sync().then(caughtUp);
+    h.down(applied());
+    await vi.waitFor(() => expect(h.calls).toEqual(["state", "update 1"]));
+    expect(caughtUp).not.toHaveBeenCalled();
+    h.down(applied());
+    await waiting;
+    expect(caughtUp).toHaveBeenCalledOnce();
+    expect(h.calls).toEqual(["state", "update 1"]);
+    ws.close();
+  });
+
   it("a close sends what waits behind a send in flight before the host's socket closes", async () => {
     const h = fakeHost();
     const Socket = relaySocket("env_box", { at: "lifeos", table: "docs", id: "d1" });

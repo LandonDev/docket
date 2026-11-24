@@ -126,6 +126,8 @@ interface PreviewSource {
 - **`PreviewBytes`** is one finished render read by range: `rev` names it and
   every read is of that render. A kind keeps its renders by content hash on
   the host that holds the file and reads them from that host.
+- A failed draw shows one sentence with the selected format and the error
+  that reached the frame. Retry draws again.
 - **`drops`** are what the format cannot hold, one plain line each, counted
   from the item ("3 comments stay behind"), never a fixed list and never "not
   supported". Empty when nothing is lost.

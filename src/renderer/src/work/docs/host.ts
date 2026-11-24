@@ -34,6 +34,8 @@ export interface DocHost {
    * as he left it. No socket open: nothing waits.
    */
   flush(): Promise<void>;
+  /** Wait for the service to apply this window’s edits before it reads the document for export. */
+  sync(): Promise<void>;
 }
 
 /** The host that serves a LifeOS document, from the refusal of one that does not ("served elsewhere: env_box"). */
@@ -67,6 +69,7 @@ export function docHost(env: string, source: CanvasSource): DocHost {
       }),
     socket,
     flush: () => storedAll(socket),
+    sync: () => settleAll(socket, false),
   };
 }
 
@@ -118,7 +121,7 @@ export const NOT_TAKEN = "The host did not take the last edits to this document"
 
 /** The sockets each relayed class has open, and the last frames one lost (a failed send, a close with frames unsent). */
 type Relayed = {
-  open: Set<{ stored(): Promise<void> }>;
+  open: Set<{ settled(store: boolean): Promise<void> }>;
   lost: Error | null;
   /** The last socket was dropped (by the host, a failure), not closed by its own side: the provider makes another. */
   dropped: boolean;
@@ -135,7 +138,11 @@ export const NOT_SENT = "The document is not connected, so its last edits have n
  * store fails, when a socket is not connected, and when frames were lost since the last store it confirmed: what the
  * editor holds then is in this window alone, and the close is told so.
  */
-export async function storedAll(socket: new (url: string) => WebSocket): Promise<void> {
+export function storedAll(socket: new (url: string) => WebSocket): Promise<void> {
+  return settleAll(socket, true);
+}
+
+async function settleAll(socket: new (url: string) => WebSocket, store: boolean): Promise<void> {
   const relayed = relayedOf.get(socket);
   if (!relayed) return;
   const lost = relayed.lost;
@@ -152,7 +159,7 @@ export async function storedAll(socket: new (url: string) => WebSocket): Promise
     });
     if (!relayed.open.size) throw lost ?? new Error(NOT_SENT);
   }
-  await Promise.all([...relayed.open].map((s) => s.stored()));
+  await Promise.all([...relayed.open].map((s) => s.settled(store)));
   if (lost && relayed.lost === lost) relayed.lost = null;
   relayed.dropped = false;
 }
@@ -273,17 +280,18 @@ export function relaySocket(env: string, source: CanvasSource): new (url: string
     }
 
     /**
-     * What waits goes up, and the service applies it, then the host stores the document and answers. A socket still
+     * What waits goes up, and the service applies it. A closing tab also asks the host to store the document. A socket still
      * connecting, or one that has not yet sent its own state, is waited for; one that does not get there in time, or
      * closes, fails the flush: what the window holds has then not reached the host.
      */
-    async stored(): Promise<void> {
+    async settled(store: boolean): Promise<void> {
       const deadline = Date.now() + relayTiming.syncWaitMs;
       for (;;) {
         await this.flush();
         if (this.failed) throw this.failed;
         if (this.readyState === READY.CLOSED || this.readyState === READY.CLOSING) throw new Error(NOT_SENT);
         if (this.applied()) {
+          if (!store) return;
           const at = this.sentCount;
           await link().request("work.docs.send", { socket: this.id, frames: [], stored: true });
           // An update sent while the host stored may not be in what it stored: it is applied and stored in its turn.

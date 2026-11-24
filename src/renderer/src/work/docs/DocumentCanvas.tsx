@@ -661,6 +661,7 @@ function Opened({
         itemId,
         title: open.title,
         editor: () => live.current.editor,
+        ...(canSet ? { sync: host.sync } : {}),
         styled: () => live.current.page,
         pages: () => {
           const handle = pagesHandle.current;
