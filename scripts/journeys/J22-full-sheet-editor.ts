@@ -28,12 +28,14 @@ export default journey({
       await page.press('tab', 'Full editor')
       const editor = await Window.attach(pair.win.debug!, pair.abort.signal, (url) => /^http:\/\/127\.0\.0\.1:\d+\/w\/full\/[a-f\d]{64}\/$/.test(url))
       try {
+        // The field is drawn before the workbook loads; it names a cell only once the workbook is in (keys sent
+        // before that reach nothing, as on 2026-11-24 tPHGt3).
         let point: { x: number; y: number } | null = null
-        await editor.until('the Full editor cell-name field', 95_000, async () => (point = await editor.eval(`(() => {
+        await editor.until('the workbook loaded in the Full editor', 95_000, async () => (point = await editor.eval(`(() => {
           const frame = document.querySelector(${JSON.stringify(PICK_CELL)});
           const field = frame?.contentDocument?.querySelector('#ce-cell-name');
           const inside = field?.getBoundingClientRect();
-          if (!inside?.width) return null;
+          if (!inside?.width || !/^[A-Z]+\\d+$/.test(field.value ?? '')) return null;
           const outside = frame.getBoundingClientRect();
           return { x: outside.x + inside.x + inside.width / 2, y: outside.y + inside.y + inside.height / 2 };
         })()`)))
@@ -43,6 +45,15 @@ export default journey({
         await editor.key('Enter')
         await editor.typeKeys(VALUE)
         await editor.key('Enter')
+        // Enter took the value: the selection is on A2. Then the editor sends its change to its server before the window
+        // goes (the live proof, fullEditor/live.test.ts, gives it 3 s; the editor's own word is used where it has one).
+        const typed = Date.now()
+        await editor.until('the edit taken and sent by the Full editor', 30_000, () => editor.eval<boolean>(`(() => {
+          const frame = document.querySelector(${JSON.stringify(PICK_CELL)});
+          if (frame?.contentDocument?.querySelector('#ce-cell-name')?.value !== 'A2') return false;
+          const api = frame.contentWindow?.Asc?.editor;
+          return typeof api?.asc_isDocumentModified === 'function' ? !api.asc_isDocumentModified() : Date.now() - ${typed} > 3000;
+        })()`))
         await editor.shot(join(folder, 'full-editor.png'))
       } finally {
         try {
