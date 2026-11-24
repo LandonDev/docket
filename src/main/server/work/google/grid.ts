@@ -196,20 +196,36 @@ interface CellWrite {
  */
 export function targetOf(grid: Grid, ids: ReadonlyMap<string, number>, sheet: string, row: number, col: number, version?: string): string {
   const cells = grid.get(sheet) ?? new Map<string, SheetCell>()
-  const line: [number, unknown][] = []
+  // Every row's other cells (all but this column), to tell this row from the rest of its tab.
+  const rows = new Map<number, [number, unknown][]>()
   for (const [name, cell] of cells) {
     const at = parseA1(name)
-    if (at && at.startRow === row && at.startColumn !== col) line.push([at.startColumn, cell])
+    if (!at || at.startColumn === col) continue
+    const line = rows.get(at.startRow) ?? []
+    line.push([at.startColumn, cell])
+    rows.set(at.startRow, line)
   }
-  line.sort((a, b) => a[0] - b[0])
+  const lineOf = (r: number): [number, unknown][] => (rows.get(r) ?? []).sort((a, b) => a[0] - b[0])
+  const said = (r: number): string => JSON.stringify(lineOf(r))
+  const line = said(row)
   const header = row === 0 ? null : (cells.get(cellName(0, col)) ?? null)
-  const hash = createHash('sha256').update(JSON.stringify([ids.get(sheet) ?? null, line, header])).digest('hex').slice(0, 32)
-  return !line.length && version !== undefined ? `${hash}@${version}` : hash
+  // (the same form as round 3's, so a target kept then is read as it was)
+  const hash = createHash('sha256').update(JSON.stringify([ids.get(sheet) ?? null, lineOf(row), header])).digest('hex').slice(0, 32)
+  // Ambiguous: a row with nothing else in it, or one that reads as another row of the tab does (round 4), since one
+  // moved above the other leaves the address holding a row that reads alike.
+  const ambiguous = line === '[]' || [...rows.keys()].some((r) => r !== row && said(r) === line)
+  return ambiguous && version !== undefined ? `${hash}@${version}` : hash
 }
-/** Whether a kept target still names the cell: the same place, and for an ambiguous one a sheet that has not changed. */
+/**
+ * Whether a kept target still names the cell: the same place, and for an ambiguous one a sheet that has not changed.
+ * A target kept with no version whose cell is ambiguous now (kept before round 4 told repeated rows apart) cannot
+ * be told so, and is asked for again.
+ */
 const sameTarget = (kept: string, now: string, version: string): boolean => {
   const [hash, at] = kept.split('@')
-  return hash === now.split('@')[0] && (at === undefined || at === version)
+  const [nowHash, nowAmbiguous] = now.split('@')
+  if (hash !== nowHash) return false
+  return at === undefined ? nowAmbiguous === undefined : at === version
 }
 
 /**
@@ -221,10 +237,11 @@ async function compareAndWrite(ctx: WorkCtx, ref: GoogleSheetRef, cells: readonl
   const { grid, capped, ids } = gridOf(await api.sheet(ref.fileId))
   // Past the cap some cells were never read, so a compare there would pass over what they hold.
   if (capped) throw new Error(`${ref.name} holds more than ${GOOGLE_MAX_CELLS.toLocaleString('en-US')} cells: change it in Google.`)
-  const asOf = cells.some((c) => c.target?.includes('@')) ? (await api.file(ref.fileId)).version : ''
+  // The version read after the grid: a change landing between the two makes it newer than any kept, never older.
+  const asOf = cells.some((c) => c.target) ? (await api.file(ref.fileId)).version : ''
   // Its value, and where it stands: a new blank at the old address of an approved blank is another cell. A
   // suggestion made before where it stood was kept (`target: null`) cannot be told so, and is asked for again.
-  const moved = cells.filter((c) => !same(grid.get(c.sheet)?.get(cellName(c.row, c.col)) ?? null, c.base) || (c.target !== undefined && (c.target === null || !sameTarget(c.target, targetOf(grid, ids, c.sheet, c.row, c.col), asOf))))
+  const moved = cells.filter((c) => !same(grid.get(c.sheet)?.get(cellName(c.row, c.col)) ?? null, c.base) || (c.target !== undefined && (c.target === null || !sameTarget(c.target, targetOf(grid, ids, c.sheet, c.row, c.col, asOf), asOf))))
   if (moved.length) return { written: 0, moved }
   if (!cells.length) return { written: 0, moved: [] }
   await api.sheetWrite(
@@ -292,8 +309,10 @@ export async function review(ctx: WorkCtx, ref: GoogleSheetRef, which: Which, ve
 /** An agent's cells over the spreadsheet, as one change set of suggestions, each with what it saw there. */
 export async function suggest(ctx: WorkCtx, ref: GoogleSheetRef, by: Principal, reason: string | undefined, cells: { sheet: string; row: number; col: number; value: SheetCell | null }[]): Promise<{ changeSet: string; count: number }> {
   const api = googleOf(ctx).api(ref.account)
-  const { grid, order, ids } = gridOf(await api.sheet(ref.fileId))
+  // The version read before the grid: a change landing between the two makes it older than the grid it keeps, so a
+  // review sees the sheet changed since and asks again; never newer, which would hide that change.
   const version = (await api.file(ref.fileId)).version
+  const { grid, order, ids } = gridOf(await api.sheet(ref.fileId))
   for (const c of cells) if (!grid.has(c.sheet)) throw new Error(`There is no sheet "${c.sheet}": the sheets are ${order.map((s) => `"${s}"`).join(', ')}.`)
   // Its own id each time: two suggestions in one millisecond never share one, so an id he was shown means one value.
   const changeSet = `cs-${Date.now().toString(36)}${randomBytes(4).toString('hex')}`

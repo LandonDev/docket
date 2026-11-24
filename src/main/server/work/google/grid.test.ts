@@ -8,8 +8,8 @@ import { ensureSuggestionTables, SuggestionStore } from '../sheets/suggestions'
 import { oneReview } from '../sheets/index'
 import { GOOGLE_MIME } from './client'
 import { FakeGoogle, FAKE_TOKEN_URL } from './fake'
-import { ensureGoogleTables, resetGoogle, setGoogleDeps } from './google'
-import { edit, googleSource, revOf, review, snapshot, suggest, unfollowAll, type GoogleSheetRef } from './grid'
+import { ensureGoogleTables, googleOf, resetGoogle, setGoogleDeps } from './google'
+import { edit, googleSource, gridOf, revOf, review, snapshot, suggest, targetOf, unfollowAll, type GoogleSheetRef } from './grid'
 
 /** A Google Sheet in our grid: read, his edits compared and written, an agent's suggestions accepted as one write. */
 const ME = 'landon@example.com'
@@ -138,6 +138,45 @@ describe('a Google Sheet in the grid', () => {
     store.add('google:sh1', 'cs-old', 'agent:env_box:t1', 'tidy', [{ sheet: 'Q1', row: 1, col: 1, base: { v: 1200 }, proposed: { v: 1300 } }])
     expect(await review(ctx, ref, { changeSet: 'cs-old' }, 'accept')).toEqual({ written: 0, conflicts: 1 })
     expect(cells()[1]![1]).toBe(1200)
+  })
+
+  it('asks again for a cell whose row reads as another row does, once the sheet changed, and for such a target kept with no version', async () => {
+    cells().push(['Misc', null], ['Misc', null])
+    // Misc's cost in the first of two rows that read alike: on the unchanged sheet it is written.
+    const asIs = await suggest(ctx, ref, 'agent:env_box:t1', 'tidy', [{ sheet: 'Q1', row: 4, col: 1, value: { v: 80 } }])
+    expect(await review(ctx, ref, { changeSet: asIs.changeSet }, 'accept')).toEqual({ written: 1, conflicts: 0 })
+    // The second, then a third "Misc" row inserted above it: the address holds a row that reads alike, so it is asked again.
+    const { changeSet } = await suggest(ctx, ref, 'agent:env_box:t1', 'tidy', [{ sheet: 'Q1', row: 5, col: 1, value: { v: 90 } }])
+    cells().splice(5, 0, ['Misc', null])
+    ;(fake as unknown as { bump(f: unknown): void }).bump(fake.files.get('sh1')!)
+    expect(await review(ctx, ref, { changeSet }, 'accept')).toEqual({ written: 0, conflicts: 1 })
+    // A target kept with no version (before repeated rows were told apart) for such a cell: asked again, never written.
+    const store = new SuggestionStore(ctx.db)
+    const { grid, ids } = gridOf(await googleOf(ctx).api(ME).sheet('sh1'))
+    store.add('google:sh1', 'cs-old', 'agent:env_box:t1', 'tidy', [{ sheet: 'Q1', row: 6, col: 1, base: null, proposed: { v: 5 }, target: targetOf(grid, ids, 'Q1', 6, 1) }])
+    expect(await review(ctx, ref, { changeSet: 'cs-old' }, 'accept')).toEqual({ written: 0, conflicts: 1 })
+    expect(writes()).toBe(1)
+  })
+
+  it("keeps a version no newer than the grid it read: a row inserted between the two reads is asked for again", async () => {
+    // A co-author's blank row lands just after the grid is read: a version read after it would be newer than that grid.
+    let armed = true
+    setGoogleDeps({
+      fetch: async (url: string | URL | Request, init?: RequestInit) => {
+        const answer = await fake.fetch(url as never, init)
+        if (armed && String(url).includes('sheets.googleapis.com') && (init?.method ?? 'GET') === 'GET') {
+          armed = false
+          cells().splice(4, 0, [])
+          ;(fake as unknown as { bump(f: unknown): void }).bump(fake.files.get('sh1')!)
+        }
+        return answer
+      },
+      tokenUrl: FAKE_TOKEN_URL
+    })
+    const { changeSet } = await suggest(ctx, ref, 'agent:env_box:t1', 'tidy', [{ sheet: 'Q1', row: 6, col: 1, value: { v: 'Note' } }])
+    expect(armed).toBe(false)
+    expect(await review(ctx, ref, { changeSet }, 'accept')).toEqual({ written: 0, conflicts: 1 })
+    expect(writes()).toBe(0)
   })
 
   it('gives each suggestion its own id, two in the same millisecond on the same cell included', async () => {

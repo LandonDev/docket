@@ -142,10 +142,13 @@ the cell cap refuses writes. An agent's cells are suggestions in
 an accepted set is written as one update, a cell changed since stays a
 conflict. Each suggestion keeps where its cell stood (`target`, `targetOf`:
 the tab's numeric id, the other cells of its row, its column's header); one
-whose place moved is a conflict. A cell in a row with nothing else in it is
-ambiguous (blank rows read alike), so its target also keeps the sheet's Drive
-version, and once the sheet changed anywhere it is a conflict to be asked for
-again; on the unchanged sheet it is written. A suggestion made before targets
+whose place moved is a conflict. A cell in a row with nothing else in it, or
+in a row that reads as another row of its tab does (round 4), is ambiguous, so
+its target also keeps the sheet's Drive version, read before the grid so it is
+never newer than what it read; once the sheet changed anywhere it is a
+conflict to be asked for again; on the unchanged sheet it is written. A target
+kept with no version whose cell is ambiguous now is asked for again too. A
+review reads the version after the grid. A suggestion made before targets
 were kept is a conflict too, never written by its value alone. `googleSource` is the spreadsheet as work-kit's `SheetSource`
 (`formulas: 'store'`, `live: false`). History, structural edits and export
 are Google's: the sheets pillar says so. The switch (`reach.to: 'google'`)
