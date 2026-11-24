@@ -1,5 +1,5 @@
 {
-  "n": 371,
-  "notes": "A Word file, deck or workbook in a Teams library keeps saving by itself after its first upload; the header says uploading, then \"In Teams\" once OneDrive has it; every new chat and thread starts in your default access; account rules for many computers; the test suite is green again; council fixes across documents, sheets, slides, Files and held changes.",
-  "ts": 1795512773086
+  "n": 372,
+  "notes": "The box sees a linked PC's folders: a thread on the box reads your J: folder through the laptop, and Files lists it from the Mac; a new document in a Teams library keeps saving; Files loads on the box again and a release can no longer ship with it dead; Save As… for documents, linked; Word export keeps its spacing; export previews draw; set up a computer with one link (first landing).",
+  "ts": 1795516246867
 }
