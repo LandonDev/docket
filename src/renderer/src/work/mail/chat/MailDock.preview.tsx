@@ -129,3 +129,17 @@ export function ChatSessionFailed() {
     </div>
   );
 }
+
+/** Rows to archive while two of them still read their mail: their bones, and the press's verb with no count yet. */
+export function ChatRowsReading() {
+  sessionStore.adopt({ id: "s1", environmentId: "local", status: "idle", archived: false, workspaceId: ID, projectId: null, scope: "work", createdAt: now, updatedAt: now } as SessionMeta, { created: true });
+  return (
+    <TranscriptSessionContext.Provider value="s1">
+      <MailClientProvider client={answered}>
+        <div className="flex w-[560px] flex-col gap-4 p-6">
+          <OfferCard offer={{ rows: { act: "archive", title: "Archive 3 notices", threadIds: ["n1", "reading-1", "reading-2"] } }} at={{ sessionId: "s1", workspaceId: ID, sector: "unify" }} />
+        </div>
+      </MailClientProvider>
+    </TranscriptSessionContext.Provider>
+  );
+}

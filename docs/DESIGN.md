@@ -2087,7 +2087,9 @@ Around the canvas:
   composer when the card had to tell, and Discard, a ghost trash glyph); a rewrite of his reply (words taken out and put in, the review
   tints; Take and Leave); rows to act on (36px rows: a tick, the subject
   at 13px, the sender and the date at 12px muted; one press in the foot
-  names the count, "Archive 3"); a task or an event (one 44px row: a 14px
+  names the count, "Archive 3"; a row still reading its mail draws a tick,
+  subject and date bone, and the press says its verb alone, inactive,
+  until every row has answered); a task or an event (one 44px row: a 14px
   glyph, the title at 13px medium, one 12px muted line, Add…). A mail or a
   person named in an answer is a 20px chip on `muted` at radius 6 with a
   12px glyph.

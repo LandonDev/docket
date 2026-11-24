@@ -624,7 +624,8 @@ docs/DESIGN.md "The Mail view"):
   Mail's own `write`, and a refusal gives the rows back with why, said on
   the card alone, no toast; the toast's Undo, once LifeOS took it, gives the
   rows back too (`undone` on the answer); a row the
-  job's mail does not hold has no tick), a task (New task filled in, filed by Mail's Make task
+  job's mail does not hold has no tick; a row still reading draws its bones,
+  and the press waits with no count until every row has answered), a task (New task filled in, filed by Mail's Make task
   when it names a mail) and an event (New event filled in,
   `NewEventDialog.initial`). Nothing sends, schedules or archives but his
   press. A card whose LifeOS session failed is one line with the press

@@ -75,7 +75,7 @@ const client = {
       return "d2";
     },
   }),
-  useMailThread: (id: string | null) => (id === "t1" ? { thread: thread("t1", "Lunch on Friday"), messages: [{ from: { name: "Dana Lee", address: "dana@example.com" }, to: [{ address: "me@example.com" }], cc: [] }] } : id === "t2" ? { thread: thread("t2", "Gym hours"), messages: [] } : id ? null : undefined),
+  useMailThread: (id: string | null) => (id === "t1" ? { thread: thread("t1", "Lunch on Friday"), messages: [{ from: { name: "Dana Lee", address: "dana@example.com" }, to: [{ address: "me@example.com" }], cc: [] }] } : id === "t2" ? { thread: thread("t2", "Gym hours"), messages: [] } : id && id !== "t-pending" ? null : undefined),
   useMailActions: () => ({
     batch: (threads: readonly ThreadSummary[], act: unknown) => {
       batches.push({ ids: threads.map((t) => t.id), act });
@@ -276,6 +276,18 @@ describe("rows to act on", () => {
     fireEvent.click(screen.getByRole("button", { name: "Archive 1" }));
     expect(batches).toEqual([{ ids: ["t1"], act: { kind: "archive", archived: true } }]);
     await waitFor(() => expect(document.body.textContent).toMatch(/Archived 1, \d/));
+  });
+
+  it("draw a pending row's bones and keep the press's count until every row has read its mail", async () => {
+    draw({ rows: { act: "archive", title: "Archive 2 notices", threadIds: ["t1", "t-pending"] } });
+    // The mail still on its way: a tick, a subject and a date in bones, never a blank row.
+    const bones = document.querySelector('[data-row="t-pending"][data-row-bones]')!;
+    expect(bones.querySelectorAll('[data-slot="skeleton"]').length).toBeGreaterThanOrEqual(2);
+    await waitFor(() => expect(screen.getAllByRole("checkbox")).toHaveLength(1));
+    // The count is not known yet: the press says its verb alone and waits, never "Archive 1" of 2 or "Archive 0".
+    const press = screen.getByRole("button", { name: "Archive" });
+    expect(press.hasAttribute("disabled") || press.getAttribute("aria-disabled") === "true").toBe(true);
+    expect(document.querySelector("ul")!.getAttribute("aria-busy")).toBe("true");
   });
 
   it("say the past tense only once LifeOS took the write, and give the rows back with the reason when it refused", async () => {

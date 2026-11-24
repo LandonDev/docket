@@ -3,6 +3,7 @@ import { useMailClient, type BatchAct, type ThreadSummary } from "work-kit/mail"
 import { TRIAGE_TICKED, type MailOffer } from "@shared/work/mailChat";
 import { BusyLabel, Button } from "../../../components/ui/button";
 import { Checkbox } from "../../../components/ui/checkbox";
+import { Skeleton } from "../../../components/ui/skeleton";
 import { workErrorWords } from "../../../lib/workErrorWords";
 import { answerOf } from "../writeAnswer";
 import { localOf } from "./AddRow";
@@ -60,6 +61,8 @@ export function RowsCard({ rows }: { rows: Rows }) {
   const elsewhere = rows.threadIds.filter((id) => threads[id] === null).length;
   const [verb, past] = VERB[rows.act];
   const busy = state?.at === "busy";
+  // Until every row has read its mail, the count is not known: the press says its verb alone, never "Archive 0".
+  const known = rows.threadIds.every((id) => id in threads);
   const run = (): void => {
     if (!act || ticked.length === 0 || busy) return;
     const n = ticked.length;
@@ -82,7 +85,7 @@ export function RowsCard({ rows }: { rows: Rows }) {
       <div className={HEAD}>
         <h4 className="min-w-0 flex-1 truncate text-[13px] leading-5 font-medium text-foreground">{rows.title}</h4>
       </div>
-      <ul className="flex flex-col pb-1">
+      <ul aria-busy={!known || undefined} className="flex flex-col pb-1">
         {rows.threadIds.map((id) => (
           <RowOf
             key={id}
@@ -113,8 +116,8 @@ export function RowsCard({ rows }: { rows: Rows }) {
             {past} {state.n}, {clock(state.when)}
           </span>
         ) : (
-          <Button variant="secondary" size="sm" disabled={!act || ticked.length === 0 || busy} onClick={run}>
-            <BusyLabel busy={busy} label={`${verb} ${ticked.length}`} />
+          <Button variant="secondary" size="sm" disabled={!act || !known || ticked.length === 0 || busy} onClick={run}>
+            <BusyLabel busy={busy} label={known ? `${verb} ${ticked.length}` : verb} />
           </Button>
         )}
       </div>
@@ -134,12 +137,23 @@ function RowOf({ id, ticked, locked, onThread, onTick }: { id: string; ticked: b
   const sender = thread?.senders[0] ?? "";
   // A mail the job's mail does not hold is said once, under the rows (`elsewhereLine`).
   if (loaded && !thread) return null;
+  // Still reading: the row's bones in its own shape (a tick, a subject, a date), never a blank 36px.
+  if (!loaded)
+    return (
+      <li data-row={id} data-row-bones="" className="flex h-9 items-center gap-2.5 px-3">
+        <Skeleton className="size-4 shrink-0 rounded-[4px]" />
+        <span className="flex min-w-0 flex-1">
+          <Skeleton className="h-3 w-2/5" />
+        </span>
+        <Skeleton className="h-3 w-10 shrink-0" />
+      </li>
+    );
   return (
     <li data-row={id} className="flex h-9 items-center gap-2.5 px-3">
-      {thread ? <Checkbox checked={ticked} disabled={locked} aria-label={thread.subject} onCheckedChange={(on) => onTick(!!on)} /> : <span className="size-3.5 shrink-0" />}
-      <span className="min-w-0 flex-1 truncate text-[13px] text-foreground">{thread?.subject ?? ""}</span>
+      <Checkbox checked={ticked} disabled={locked} aria-label={thread!.subject} onCheckedChange={(on) => onTick(!!on)} />
+      <span className="min-w-0 flex-1 truncate text-[13px] text-foreground">{thread!.subject}</span>
       {sender ? <span className="max-w-[35%] shrink-0 truncate text-xs text-muted-foreground">{sender}</span> : null}
-      {thread ? <span className="shrink-0 text-xs text-muted-foreground tabular-nums">{day(thread.lastMessageAt)}</span> : null}
+      <span className="shrink-0 text-xs text-muted-foreground tabular-nums">{day(thread!.lastMessageAt)}</span>
     </li>
   );
 }
