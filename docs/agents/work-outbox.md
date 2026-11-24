@@ -91,11 +91,13 @@ idea on a file others can open is kept on his host and shown only to him.
   gets no tracked change, Google no suggestion and no copy, and no comment
   is made anywhere.
 - **His press** makes it a plain edit through the tool that reaches the
-  file: on the host that holds it, in a file still open there. When the file
-  moved since, it says so: written when the words still stand as they did
-  (the result line says the file had changed), else stale with the reason
-  ("the words stand in 2 places now, not the 1 this was suggested for"),
-  nothing written. A Google write is bound to the revision just read.
+  file: on the host that holds it, in a file still open there. It is written
+  only while the words stand where they did: the same number of places, the
+  same slides, and the same paragraphs or boxes holding them (`spots`; a hold
+  from before `spots` needs the whole text as it was, `base`); else stale
+  with the reason ("the words stand in 2 places now, not the 1 this was
+  suggested for"), nothing written. A Google write is bound to the revision
+  just read.
 - **No grant, no edit.** Neither kind has a matcher, so the Send menu offers
   no grant and `work.outbox.grant` refuses one; neither is in
   `EDITABLE_KINDS`. Send N on a workspace's group approves every one there;
@@ -104,11 +106,15 @@ idea on a file others can open is kept on his host and shown only to him.
   "asked"` with the quote, Office tools only; a Google change always waits),
   and a file only he can open.
 - **Where the other builds stand** (the audit is
-  `.temp-code/plans/landed/F-private-suggestions.md`): a `.tcdoc`'s
-  branches and a `.tcsheet`'s suggestions are kept inside the file, so a
-  shared one carries them to whoever syncs it; the slides kind judges a deck
-  "hosted" only by a Microsoft URL; a LifeOS bot's comment on a document a
-  guest link shows reaches the guest. Each is its build's to close.
+  `.temp-code/plans/landed/F-private-suggestions.md`): an agent's `.tcdoc`
+  branch is kept under this host's data (history/privateBranches.ts) and a
+  `.tcsheet`'s suggestions in the service's side folder, never in the file;
+  the slides kind holds a synced deck's agent edits as suggestions
+  (slides/view.ts `sharedDeck`); a LifeOS bot's comment on a guest-shown
+  document is refused (service/routes/internal.ts). Still open: a LifeOS
+  document's agent branch and a LifeOS sheet's proposed cells are written to
+  his own LifeOS deployment before his press
+  (`.temp-code/plans/landed/COUNCIL-everything/held/r1-answers.md`).
 
 ### Who stands for his press on a shared file
 
