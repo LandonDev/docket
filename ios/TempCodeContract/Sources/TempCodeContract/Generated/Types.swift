@@ -7932,20 +7932,60 @@ public struct MsFormPhoneRow: Codable, Hashable, Sendable {
 }
 
 public struct CaptureState: Codable, Hashable, Sendable {
+    public enum Lifeos: RawRepresentable, Codable, Hashable, Sendable {
+        case off
+        case signedOut
+        case pairing
+        case connecting
+        case connected
+        case unreachable
+        case refused
+        /// A value this build does not know; `rawValue` keeps it.
+        case unknown(String)
+
+        public init(rawValue: String) {
+            switch rawValue {
+            case "off": self = .off
+            case "signed-out": self = .signedOut
+            case "pairing": self = .pairing
+            case "connecting": self = .connecting
+            case "connected": self = .connected
+            case "unreachable": self = .unreachable
+            case "refused": self = .refused
+            default: self = .unknown(rawValue)
+            }
+        }
+
+        public var rawValue: String {
+            switch self {
+            case .off: "off"
+            case .signedOut: "signed-out"
+            case .pairing: "pairing"
+            case .connecting: "connecting"
+            case .connected: "connected"
+            case .unreachable: "unreachable"
+            case .refused: "refused"
+            case .unknown(let value): value
+            }
+        }
+    }
+
     public let host: String
     public let last: String?
     public let homes: [String]
     public let connected: Bool
+    public let lifeos: Lifeos?
 
-    public init(host: String, last: String?, homes: [String], connected: Bool) {
+    public init(host: String, last: String?, homes: [String], connected: Bool, lifeos: Lifeos? = nil) {
         self.host = host
         self.last = last
         self.homes = homes
         self.connected = connected
+        self.lifeos = lifeos
     }
 
     private enum CodingKeys: String, CodingKey {
-        case host, last, homes, connected
+        case host, last, homes, connected, lifeos
     }
 
     public func encode(to encoder: any Encoder) throws {
@@ -7954,6 +7994,7 @@ public struct CaptureState: Codable, Hashable, Sendable {
         try container.encode(last, forKey: .last)
         try container.encode(homes, forKey: .homes)
         try container.encode(connected, forKey: .connected)
+        try container.encodeIfPresent(lifeos, forKey: .lifeos)
     }
 }
 
