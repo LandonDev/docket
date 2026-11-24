@@ -15,10 +15,10 @@ import type { Caller, WorkCtx } from '../modules'
 import { copyIn, threadsHolding } from '../office/files/handle'
 import { copyAllowed, fetchFile, whoOf } from '../office/files/library'
 import { copyWaits } from './copyKept'
-import { isWordFile, keptDoc, recordWord, wordAuto, wordBacksOf, wordSave } from './word'
+import { isWordFile, keptDoc, recordWord, wordAuto, wordBacksOf, wordRow, wordSave } from './word'
 import { admitOwner, backsOf, copyAt, copyBack, copyClosing, copyKeep, copyRecord, copyReload, recordCopy, reopened, writeBack } from './copies'
 import { isGuestPath, vmFetch, vmList, vmStat, vmVerbs } from '../office/vm/files'
-import { fileMakerFor } from './hooks'
+import { chooseSeat, fileMakerFor } from './hooks'
 import { MarkStore, type Mark, type Marked } from './marks'
 import { feedListing, forgetGonePlaces, listedLibraries, namesAnswer, placeOf, whereOf } from './names'
 import { dropSearch, savedSearches, saveSearch, searchFiles } from './search'
@@ -324,8 +324,7 @@ type OpenAsk = { workspaceId: string; ref: CanvasSource; name?: string; as?: Can
  */
 async function openCopy(ctx: WorkCtx, by: Caller, workspace: WorkspaceRow, p: OpenAsk, file: { host: string; path: string }, signal?: AbortSignal): Promise<FilesOpened> {
   const state = filesState(ctx)
-  const vm = file.host === ctx.host
-  const name = p.name ?? file.path.slice(Math.max(file.path.lastIndexOf('/'), file.path.lastIndexOf('\\')) + 1)
+  const name = p.name ?? nameOfPath(file.path)
   const key = p.key ?? refKey({ at: 'file', ...file })
   const cut = (item: CanvasItem): CanvasItem => fencedItem(item, (path) => reaches(ctx, by, path))
   const was = state.tabs.tabOf(workspace.id, key)
@@ -334,39 +333,41 @@ async function openCopy(ctx: WorkCtx, by: Caller, workspace: WorkspaceRow, p: Op
   if (was && (was.copyOf?.host !== file.host || was.copyOf.path !== file.path)) throw new Error(KEY_TAKEN)
   const shown = was?.itemId ? ctx.canvas.get(was.itemId) : null
   if (was && shown) return { ...tabsFor(ctx, by, workspace.id), tabId: was.id, item: cut(shown) }
+  const seat = await copySeat(ctx, workspace.id, file, name, p.as, signal)
+  const { tabId, item } = state.tabs.openFile(workspace.id, { key, name, ...seat }, p.opener)
+  state.marks.seen(workspace.id, key, { file: { at: 'file', ...file } }, name)
+  return { ...tabsFor(ctx, by, workspace.id), tabId, item: cut(item) }
+}
+const nameOfPath = (path: string): string => path.slice(Math.max(path.lastIndexOf('/'), path.lastIndexOf('\\')) + 1)
+
+/** What a copy's tab shows: the Word file's kept document, the copy that waits, or a copy made now. */
+async function copySeat(ctx: WorkCtx, workspaceId: string, file: { host: string; path: string }, name: string, as: CanvasKind | undefined, signal?: AbortSignal): Promise<{ kind: CanvasKind; source: CanvasSource; copyOf: { host: string; path: string; vm?: boolean } }> {
+  const vm = file.host === ctx.host
+  const copyOf = { host: file.host, path: file.path, ...(vm ? { vm: true } : {}) }
   // A copy is the file it is, with no app behind it; a copy of a library's sound is played, not transcribed.
-  const kind = p.as ?? (kindOfEntry(name).kind === 'audio' ? 'file' : seatOf(name))
+  const kind = as ?? (kindOfEntry(name).kind === 'audio' ? 'file' : seatOf(name))
   const back = copySavesBack(kind, name)
   // A Word file opened as a document before: the document his edits are kept in opens again, and nothing is read
   // over it (word.ts). Its tab still names the Word file, which Save as Word writes.
   const word = kind === 'document' && isWordFile(name)
-  const kept = word ? keptDoc(ctx, workspace.id, file.host, file.path) : null
-  if (kept && copyAllowed(ctx.db, workspace.id)) {
-    const { tabId, item } = state.tabs.openFile(workspace.id, { key, name, kind, source: { at: 'file', host: ctx.host, path: kept.doc! }, copyOf: { host: file.host, path: file.path, ...(vm ? { vm: true } : {}) } }, p.opener)
-    state.marks.seen(workspace.id, key, { file: { at: 'file', ...file } }, name)
-    return { ...tabsFor(ctx, by, workspace.id), tabId, item: cut(item) }
-  }
+  const kept = word ? keptDoc(ctx, workspaceId, file.host, file.path) : null
+  if (kept && copyAllowed(ctx.db, workspaceId)) return { kind, source: { at: 'file', host: ctx.host, path: kept.doc! }, copyOf }
   // A copy whose changes have not reached its file (its tab closed, its computer did not answer, or its bytes are not
   // what the file holds) is opened again as it is: it is never read over from the file while they wait.
-  const waiting = back ? copyRecord(ctx, workspace.id, file.host, file.path) : null
-  let source: CanvasSource
-  if (waiting && copyWaits(waiting) && existsSync(waiting.copy) && copyAllowed(ctx.db, workspace.id)) {
-    source = { at: 'file', host: ctx.host, path: waiting.copy }
+  const waiting = back ? copyRecord(ctx, workspaceId, file.host, file.path) : null
+  if (waiting && copyWaits(waiting) && existsSync(waiting.copy) && copyAllowed(ctx.db, workspaceId)) {
     reopened(ctx, waiting)
-  } else {
-    // A copy is a file of its own: its marks are its own, so a thread that holds the original never takes its open.
-    const copy = await copyIn(ctx, filesPaneOf(workspace.id), { at: 'file', ...file }, signal)
-    source = copy.source
-    // A kind that edits the copy's own bytes saves back to the file: the record holds where it lies and what it held.
-    const path = (copy.source as { path: string }).path
-    if (back && copy.version) recordCopy(ctx, { workspaceId: workspace.id, host: file.host, path: file.path, vm, copy: path, name, kind, version: copy.version, sha256: createHash('sha256').update(await readBytes(path)).digest('hex') })
-    else if (waiting) ctx.db.prepare(`DELETE FROM work_files_copies WHERE id = ?`).run(waiting.id)
-    // A Word file: the version it was read at, which Save as Word writes over, and the document made of it is kept.
-    if (word && copy.version) recordWord(ctx, { workspaceId: workspace.id, host: file.host, path: file.path, vm, name, version: copy.version, sha: createHash('sha256').update(await readBytes((copy.source as { path: string }).path)).digest('hex') })
+    return { kind, source: { at: 'file', host: ctx.host, path: waiting.copy }, copyOf }
   }
-  const { tabId, item } = state.tabs.openFile(workspace.id, { key, name, kind, source, copyOf: { host: file.host, path: file.path, ...(vm ? { vm: true } : {}) } }, p.opener)
-  state.marks.seen(workspace.id, key, { file: { at: 'file', ...file } }, name)
-  return { ...tabsFor(ctx, by, workspace.id), tabId, item: cut(item) }
+  // A copy is a file of its own: its marks are its own, so a thread that holds the original never takes its open.
+  const copy = await copyIn(ctx, filesPaneOf(workspaceId), { at: 'file', ...file }, signal)
+  // A kind that edits the copy's own bytes saves back to the file: the record holds where it lies and what it held.
+  const path = (copy.source as { path: string }).path
+  if (back && copy.version) recordCopy(ctx, { workspaceId, host: file.host, path: file.path, vm, copy: path, name, kind, version: copy.version, sha256: createHash('sha256').update(await readBytes(path)).digest('hex') })
+  else if (waiting) ctx.db.prepare(`DELETE FROM work_files_copies WHERE id = ?`).run(waiting.id)
+  // A Word file: the version it was read at, which Save as Word writes over, and the document made of it is kept.
+  if (word && copy.version) recordWord(ctx, { workspaceId, host: file.host, path: file.path, vm, name, version: copy.version, sha: createHash('sha256').update(await readBytes(path)).digest('hex') })
+  return { kind, source: copy.source, copyOf }
 }
 const KEY_TAKEN = 'That key names another file that is open.'
 
@@ -379,6 +380,13 @@ async function open(ctx: WorkCtx, by: Caller, p: OpenAsk, method: string, signal
     const { tabId, item } = state.tabs.openFile(workspace.id, { key: made.key, name: made.name, kind: p.as ?? made.kind, source: made.source }, p.opener)
     state.marks.seen(workspace.id, made.key, { file: made.source }, made.name)
     return { ...tabsFor(ctx, by, workspace.id), tabId, item }
+  }
+  // A pillar may seat the file its own way first (hooks.ts `registerSeatChooser`: a shared Office file remembered as Live).
+  const chosen = await chooseSeat(ctx, by, p, signal)
+  if (chosen) {
+    const { tabId, item } = state.tabs.openFile(workspace.id, chosen, p.opener)
+    state.marks.seen(workspace.id, chosen.key, { file: { at: 'file', ...chosen.file } }, chosen.name)
+    return { ...tabsFor(ctx, by, workspace.id), tabId, item: fencedItem(item, (path) => reaches(ctx, by, path)) }
   }
   const named = canvasSourcePath(p.ref)
   if (named !== null && ((p.ref as { host: string }).host !== ctx.host || (isGuestPath(named) && process.platform !== 'win32'))) {
@@ -410,6 +418,33 @@ async function open(ctx: WorkCtx, by: Caller, p: OpenAsk, method: string, signal
   return { ...tabsFor(ctx, by, workspace.id), tabId, item: fencedItem(item, (path) => reaches(ctx, by, path)) }
 }
 export const BESIDE_HERE = 'A file on another computer opens in a tab of its own.'
+
+/** His window: what a reseat runs as when no caller is named. */
+const HIS: Caller = { kind: 'local', caps: ['read', 'operate', 'approve'] }
+
+/**
+ * A Files tab's file opened fresh in its own tab, as `open` seats it when no pillar has a word (a live tab back to Edit
+ * here): a copy for a file of another computer or the VM, else its kind on this host. The tab and its key stay; its
+ * item is replaced. Answers the new item.
+ */
+export async function reseat(ctx: WorkCtx, workspaceId: string, tabId: string, by: Caller = HIS, signal?: AbortSignal): Promise<CanvasItem> {
+  ownRows(ctx, by, workspaceId)
+  const state = filesState(ctx)
+  const tab = state.tabs.list(workspaceId).tabs.find((t) => t.id === tabId && t.kind === 'file')
+  const item = tab?.itemId ? ctx.canvas.get(tab.itemId) : null
+  if (!tab || !item) throw new Error('That tab is closed.')
+  // The file he opened: the other computer's the tab stands for, else the one its key was marked with.
+  const marked = tab.key ? state.marks.of(workspaceId, [tab.key]).get(tab.key)?.at : undefined
+  const file = tab.copyOf ?? (marked && 'file' in marked && marked.file.at === 'file' ? marked.file : null)
+  if (!file) throw new Error('That tab names no file to open here.')
+  const name = nameOfPath(file.path)
+  const seat = tab.copyOf ? await copySeat(ctx, workspaceId, tab.copyOf, name, undefined, signal) : openAs(ctx, locate(ctx, by, workspaceId, { at: 'file', host: file.host, path: file.path }, 'work.files.open'), name)
+  const word = tab.copyOf ? wordRow(ctx, workspaceId, file.host, file.path) : null
+  const next = ctx.canvas.replace(item.sessionId, item.id, seat.kind, seat.source, name)
+  // word.ts `wordFollowed` takes the first document to replace a Word copy's item for the one made of it: a fresh copy is not.
+  if (word && !word.doc && wordRow(ctx, workspaceId, file.host, file.path)?.doc) recordWord(ctx, { workspaceId, host: word.host, path: word.path, vm: !!word.vm, name: word.name, version: word.version })
+  return next
+}
 
 /**
  * A Google file in a Files tab: its kind's item on the workspace's Files pane, with no thread, and never twice

@@ -469,12 +469,32 @@ a saved folder address.
 | `work.office.live.of {workspaceId, tabId}` | operate | `{mode, address, why?, app, tenant, desktops}` for the tab's original file. Each desktop gives a source to pass to `filesOpen` and carries `vm: true` for a VM. |
 | `work.office.live.libraryDefault {libraryId}` | operate | `{mode}` from the host that holds the library. The workspace's host can read it over the bridge for a copied file. |
 | `work.office.live.setLibraryDefault {libraryId, mode}` | operate | Writes and returns `{mode}` on the host that holds the library. |
+| `work.office.live.set {workspaceId, tabId, mode, typed?, choice?}` | operate | Switches the tab between Edit here and Live and remembers the mode. Answers `{is: 'done'}` or `{is: 'ask', why, words}`. A thread is refused. |
 
 The workspace's host stores each file's choice in `work_office_live` by workspace and stable Files key.
 That choice wins over the library's `live:<libraryId>` row in `work_office_files`. Libraries start in
 `here` mode. Desktop choices use the Office apps reported on each machine, including the VM's last
-status. The live address and mode are metadata for the Files control. This milestone leaves opening
-and switching to the Files tab integration.
+status.
+
+**Opening.** Files asks `office/live/switch.ts` `liveSeat` before it seats a file (`registerSeatChooser` in
+files/hooks.ts). A file whose mode is Live and that has an address opens as its app's kind (`APP_CANVAS`) with
+`{at: 'microsoft', app, host: <the workspace's host>, name, ref: {kind: 'url', url}}`; `isLiveSource` in
+src/shared/work/officeLive.ts tells the window so. The key is the one Files would give the tab. No copy is made and
+the VM is not woken; a tab of another host's file or the VM's keeps `copyOf`, so Edit here knows the file. Files
+seats the file itself when a tab holds it, when the open names a kind or a seat beside, when a copy of it holds
+changes that have not reached it, or when a Word file's document holds edits the file has not.
+
+**Switching** swaps the tab's item with `CanvasStore.replace`; the tab and its key stay.
+- To Live: the copy's send goes first, waited for 30 s at most. A copy whose file changed there, went, did not
+  answer or refused asks (`changed`, `gone`, `away`, `refused`); asked again with `choice: 'keep-both'`, the
+  copies' own Keep Both runs (`copyKeep`) and the file it made beside is the one shown live. Over `away` nothing can
+  go beside the file: the copy stays and is sent once its computer answers. A Word file's document with edits the
+  file has not asks `word`; the window runs Save to Teams as Word and asks again. Once Live, a document whose edits
+  are all in the Word file goes (its record's `doc` is cleared and the file removed), so Edit here reads the Word
+  file again.
+- To Edit here: `reseat` in files/handle.ts opens the file fresh, as `open` would. With `typed > 0` the host first
+  waits up to 60 s for the file's size or time on its computer to move (a local stat, the VM's `files.stat`, or the
+  other host's `work.files.stat`); a file that changed after the live view opened needs no wait.
 
 ## Host ids
 

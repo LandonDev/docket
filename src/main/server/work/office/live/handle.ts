@@ -1,6 +1,7 @@
 import type { ClientRequest } from '@shared/contract'
+import type { FileTab } from '@shared/contract-work-files'
 import type { OfficeLiveApp, OfficeLiveDesktop, OfficeLiveLibraryDefault, OfficeLiveMode, OfficeLiveOf, OfficeStatus, TeamsLibrariesAnswer, TeamsLibrary, VmOfficeStatus } from '@shared/contract-work-office'
-import { canvasSourcePath, filesPaneOf, handled, NOT_HANDLED, type Handled } from '@shared/work'
+import { canvasSourcePath, filesPaneOf, handled, NOT_HANDLED, type CanvasItem, type Handled } from '@shared/work'
 import { FenceError } from '../../../remote/fence'
 import { filesState, ownRows } from '../../files/handle'
 import { reachesPath } from '../../files/names'
@@ -86,12 +87,13 @@ function twinFiles(ctx: WorkCtx, by: Caller, at: FileAt, file: string, libraries
   return targets
 }
 
-async function liveOf(ctx: WorkCtx, by: Caller, workspaceId: string, tabId: string, carrier: () => OfficeCarrier | null, signal?: AbortSignal): Promise<OfficeLiveOf> {
+/** A Files tab of the workspace, its item, and the file it is of: the other computer's it stands for, the original its key marked, or its own. */
+export function tabFile(ctx: WorkCtx, by: Caller, workspaceId: string, tabId: string): { tab: FileTab; item: CanvasItem | null; ref: { host: string; path: string } | null } {
   ownRows(ctx, by, workspaceId)
   const state = filesState(ctx)
   const tab = state.tabs.list(workspaceId).tabs.find((t) => t.id === tabId)
   if (!tab) throw new Error(NO_FILE)
-  if (tab.kind !== 'file') return EMPTY
+  if (tab.kind !== 'file') return { tab, item: null, ref: null }
   const item = tab.itemId ? ctx.canvas.get(tab.itemId) : null
   if (!item || item.sessionId !== filesPaneOf(workspaceId)) throw new Error(NO_FILE)
   const path = canvasSourcePath(item.source)
@@ -100,8 +102,21 @@ async function liveOf(ctx: WorkCtx, by: Caller, workspaceId: string, tabId: stri
   const refKey = tab.key ?? ''
   const marked = refKey ? state.marks.of(workspaceId, [refKey]).get(refKey)?.at : undefined
   const original = marked && 'file' in marked && marked.file.at === 'file' ? marked.file : null
-  const ref = tab.copyOf ?? original ?? (path !== null && 'host' in item.source ? { host: item.source.host, path } : null)
-  if (!ref) return EMPTY
+  return { tab, item, ref: tab.copyOf ?? original ?? (path !== null && 'host' in item.source ? { host: item.source.host, path } : null) }
+}
+
+async function liveOf(ctx: WorkCtx, by: Caller, workspaceId: string, tabId: string, carrier: () => OfficeCarrier | null, signal?: AbortSignal): Promise<OfficeLiveOf> {
+  const { tab, ref } = tabFile(ctx, by, workspaceId, tabId)
+  if (tab.kind !== 'file' || !ref) return EMPTY
+  return liveFileOf(ctx, by, workspaceId, ref, tab.key ?? '', { carrier, signal })
+}
+
+/**
+ * How a file of a Files tab opens live, by the key its tab has or will have: its remembered mode, its address on the
+ * web, and with `carrier` the desktops that could open it. Never wakes the Windows VM: its libraries come from the
+ * cache. A file of another host is read from that host, four seconds at most.
+ */
+export async function liveFileOf(ctx: WorkCtx, by: Caller, workspaceId: string, ref: { host: string; path: string }, refKey: string, o: { carrier?: () => OfficeCarrier | null; signal?: AbortSignal } = {}): Promise<OfficeLiveOf> {
   const app = appOf(ref.path)
   if (!app) return EMPTY
 
@@ -109,7 +124,7 @@ async function liveOf(ctx: WorkCtx, by: Caller, workspaceId: string, tabId: stri
   if (here && here.in !== 'library') return EMPTY
   const own = localLibraries(ctx)
   const deadline = AbortSignal.timeout(PEER_READ_MS)
-  const readSignal = signal ? AbortSignal.any([signal, deadline]) : deadline
+  const readSignal = o.signal ? AbortSignal.any([o.signal, deadline]) : deadline
   const read: PeerRead = (host, verb, args) => ctx.peer.call({ scope: { sessionId: filesPaneOf(workspaceId), workspaceId }, signal: readSignal }, host).call('office', verb, args)
   const peers = ctx.settings.workspace(workspaceId).mayUseDesktop
   // A remote key can see the origin of a copy it can reach, and only the mounts it could name on this host.
@@ -121,9 +136,10 @@ async function liveOf(ctx: WorkCtx, by: Caller, workspaceId: string, tabId: stri
   const libraries = [...own.filter((l) => reachesPath(ctx, by, l.path)), ...far]
   const result = liveAddress(at.library, at.path, { libraries })
   const file = relativeLivePath(at.library, at.path)
-  const targets = file === null ? [] : twinFiles(ctx, by, at, file, libraries)
+  const carrier = o.carrier
+  const targets = file === null || !carrier ? [] : twinFiles(ctx, by, at, file, libraries)
   const [desktops, fallback] = await Promise.all([
-    Promise.all(targets.map((target) => desktopOf(ctx, app, target, read, carrier))),
+    Promise.all(targets.map((target) => desktopOf(ctx, app, target, read, carrier!))),
     at.library.host === ctx.host ? undefined : remoteDefault(read, at.library)
   ])
   return {

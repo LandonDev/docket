@@ -28,6 +28,8 @@ import { officeConverters, type RenderDeps, type RenderPlace } from './render'
 import { liveRows } from './live/health'
 import { liveHandle } from './live/handle'
 import { dropWorkspaceModes, ensureLiveTables } from './live/memory'
+import { liveSeat, liveSet } from './live/switch'
+import { registerSeatChooser } from '../files/hooks'
 import { canPresent, presentDeck, type PresentDeps } from './present'
 
 /**
@@ -160,6 +162,9 @@ function watchVm(ctx: WorkCtx): () => void {
   }
 }
 
+// A shared Office file remembered as Live opens in its Files tab on the web (live/switch.ts); kept whether or not the module has started.
+registerSeatChooser(liveSeat)
+
 export const office: WorkModule = {
   id: 'office',
   ensure(db) {
@@ -173,6 +178,7 @@ export const office: WorkModule = {
   async handle(req, ctx, by, signal) {
     if (!req.method.startsWith('work.office.')) return NOT_HANDLED
     if (req.method.startsWith('work.office.addin.')) return addinHandle(req, ctx, by)
+    if (req.method === 'work.office.live.set') return handled(await liveSet(ctx, by, req.params, signal))
     if (req.method.startsWith('work.office.live.')) return liveHandle(req, ctx, by, desktopOnce, signal)
     if (req.method.startsWith('work.office.files') || req.method.startsWith('work.office.vm')) return filesHandle(req, ctx, by, filesDeps(ctx), signal)
     const here = hereOf(ctx)

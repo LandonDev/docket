@@ -1,11 +1,12 @@
 import type { DatabaseSync } from 'node:sqlite'
 import type { CanvasKind, CanvasSource } from '@shared/work'
 import type { FileForm } from '@shared/work/fileForms'
+import type { Caller, WorkCtx } from '../modules'
 
 /**
  * What a canvas kind's own pillar tells Files (docs/agents/work-files.md "The seam with the editors"): how to
  * make a new file of its kind, how to draw a file's page as a picture, what to re-key when a file is
- * renamed or moved, and how many of an agent's suggestions wait in a file. Four registries, each empty until something registers. They are this file's own state
+ * renamed or moved, and how many of an agent's suggestions wait in a file; and one pillar's word on how a file is seated (`registerSeatChooser`). Four registries, each empty until something registers. They are this file's own state
  * and no module's `start` touches them, so a pillar may register when it loads, before or after the files
  * module starts, and is kept either way.
  *
@@ -58,8 +59,37 @@ export interface FileWaiting {
  */
 export type ImportPlace = (original: string, itemId: string | undefined) => string | null
 
+/** A file `work.files.open` names, as it names it. */
+export interface SeatAsk {
+  workspaceId: string
+  ref: CanvasSource
+  name?: string
+  key?: string
+  as?: CanvasKind
+  beside?: string
+  side?: string
+}
+
+/** A file seated another way than Files' own: its tab's key and name, its item, the file it is of, and the other computer's file it stands for. */
+export interface Seat {
+  key: string
+  name: string
+  kind: CanvasKind
+  source: CanvasSource
+  file: { host: string; path: string }
+  copyOf?: { host: string; path: string; vm?: boolean }
+}
+
+/**
+ * A pillar's word on how a file opens in a Files tab, asked once an open before Files seats it its own way (office/live:
+ * a shared Office file remembered as Live opens as Word, Excel or PowerPoint on the web, with no copy made); null:
+ * Files seats it as it would. A throw is the open's.
+ */
+export type SeatChooser = (ctx: WorkCtx, by: Caller, ask: SeatAsk, signal?: AbortSignal) => Promise<Seat | null>
+
 const makers = new Map<CanvasKind, FileMaker>()
 let importPlace: ImportPlace | null = null
+let seatChooser: SeatChooser | null = null
 const previewers = new Map<CanvasKind, FilePreviewer>()
 const moved = new Set<FileMoved>()
 const waiting = new Set<FileWaiting>()
@@ -94,6 +124,13 @@ export function registerImportPlace(fn: ImportPlace): () => void {
   return () => void (importPlace === fn && (importPlace = null))
 }
 export const importPlaceFor = (original: string, itemId: string | undefined): string | null => importPlace?.(original, itemId) ?? null
+
+/** The one pillar that may seat a file before Files does (a later one replaces the earlier). Returns its off. */
+export function registerSeatChooser(fn: SeatChooser): () => void {
+  seatChooser = fn
+  return () => void (seatChooser === fn && (seatChooser = null))
+}
+export const chooseSeat = (ctx: WorkCtx, by: Caller, ask: SeatAsk, signal?: AbortSignal): Promise<Seat | null> => seatChooser?.(ctx, by, ask, signal) ?? Promise.resolve(null)
 
 /** The registered maker of a kind that writes this form, or null: Files then falls back to its own blank file, if it ships one. */
 export const fileMakerFor = (kind: CanvasKind, form: FileForm): FileMaker | null => {

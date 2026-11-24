@@ -1906,6 +1906,10 @@ pillar calls, all landed:
   `registerFileWaiting` (`files/hooks.ts`): four registries of their own, which no module's
   start touches, so a registration made before or after the files module
   starts is kept.
+- `registerSeatChooser` (`files/hooks.ts`): one pillar's word on how a file opens, asked once at the start of
+  `open` before any copy is made; null leaves it to Files. The office pillar's live module answers it for a shared
+  Office file remembered as Live (work-teams-files.md "Live Office addresses and memory"). `reseat` in handle.ts
+  opens a tab's file again as `open` would, in the same tab, for Live → Edit here.
 
 One change was made in the slides build's folder beyond the three the seam
 names: `slides/index.ts` and its store take `itemsRemoved`, so a deck's rows

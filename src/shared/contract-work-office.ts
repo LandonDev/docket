@@ -196,7 +196,8 @@ export function teamsCanvasOf(entry: Pick<TeamsEntry, 'name' | 'path' | 'kind'>,
   if (!canvas || canvas === 'file' || what === 'audio') return null
   return { kind: canvas, source: { at: 'file', host, path: entry.path } }
 }
-const APP_CANVAS = { excel: 'sheet', word: 'document', powerpoint: 'slides' } as const
+/** The canvas kind each Office app's file opens as, in its app or live on the web. */
+export const APP_CANVAS = { excel: 'sheet', word: 'document', powerpoint: 'slides' } as const
 
 export const OfficeLiveModeSchema = z.enum(['here', 'live'])
 export type OfficeLiveMode = z.infer<typeof OfficeLiveModeSchema>
@@ -216,6 +217,14 @@ export interface OfficeLiveOf {
   tenant: string | null
   desktops: OfficeLiveDesktop[]
 }
+
+/**
+ * What switching a Files tab answers: done, or a question first. `changed`, `gone`, `away`, `refused`: the tab's copy
+ * holds changes that have not reached its file (files/copies.ts); asked again with `choice: 'keep-both'`, Keep Both
+ * runs first (over `away` there is nothing to keep beside: the copy waits and is sent when its computer answers).
+ * `word`: the document a Word file became holds edits the Word file has not; Save to Teams as Word, then ask again.
+ */
+export type OfficeLiveSet = { is: 'done' } | { is: 'ask'; why: 'changed' | 'gone' | 'away' | 'refused' | 'word'; words: string }
 
 const LiveLibrary = z.object({ libraryId: z.string().min(1).max(200) })
 export interface OfficeLiveLibraryDefault {
@@ -258,6 +267,12 @@ export const OfficeRequestSchemas = [
   request('work.office.filesOpen', z.object({ source: CanvasSourceSchema })),
   /** A Files tab's remembered mode and where its shared Office file can open. */
   request('work.office.live.of', z.object({ workspaceId: z.string().max(200), tabId: z.string().max(100) })),
+  /**
+   * → OfficeLiveSet: a Files tab between Edit here and Live, its item swapped in place (the tab and its key stay), the
+   * mode remembered for the file. `typed`: what he typed in the live view; above 0, Edit here first waits up to 60 s for
+   * the file's version on its computer to move. His press alone: a thread is refused.
+   */
+  request('work.office.live.set', z.object({ workspaceId: z.string().max(200), tabId: z.string().max(100), mode: OfficeLiveModeSchema, typed: z.number().int().min(0).max(1e9).optional(), choice: z.literal('keep-both').optional() })),
   request('work.office.live.libraryDefault', LiveLibrary),
   request('work.office.live.setLibraryDefault', LiveLibrary.extend({ mode: OfficeLiveModeSchema })),
   /** Signs this computer out of one tenant's Office for the web (Settings → Connections); a window of this computer alone. */
@@ -321,6 +336,7 @@ export const OFFICE_CAPS = {
   'work.office.filesRead': 'read',
   'work.office.filesOpen': 'operate',
   'work.office.live.of': 'operate',
+  'work.office.live.set': 'operate',
   'work.office.live.libraryDefault': 'operate',
   'work.office.live.setLibraryDefault': 'operate',
   'work.office.live.signOut': 'operate',
