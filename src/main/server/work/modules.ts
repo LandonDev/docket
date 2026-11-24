@@ -206,6 +206,8 @@ export interface Caller {
   peer?: string
   /** a remote key's id: what binds an upload it began to the key that sends its chunks (`attachment.*` answers its owner alone) */
   keyId?: string
+  /** whom a remote key was made for: a client of his (`client`: the phone, a paired desktop) or an MCP client (`mcp`); only a client's press decides a held act (outbox/person.ts) */
+  audience?: 'client' | 'mcp'
 }
 
 /**

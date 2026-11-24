@@ -431,14 +431,14 @@ export class HeldStore {
    * get null and send nothing. A row whose last send may have gone is taken
    * only with `again`: he chose Send again.
    */
-  claim(id: string, decidedBy: string, grantId: string | null = null, opts: { again?: boolean; via?: Via | null } = {}): HeldRow | null {
+  claim(id: string, decidedBy: string, grantId: string | null = null, opts: { again?: boolean; via?: Via | null; /** the revision he saw: a row that moved since is not taken */ rev?: number } = {}): HeldRow | null {
     const at = this.now()
     const done = this.db
       .prepare(
         `UPDATE ${HELD_TABLE} SET state = 'sending', decided_by = ?, decided_at = ?, grant_id = ?, via = ?, error = NULL, outcome_unknown = 0, attempts = attempts + 1, updated_at = MAX(updated_at + 1, ?)
-         WHERE id = ? AND state IN (${marks(PRESSABLE)}) AND (outcome_unknown = 0 OR ? = 1)`
+         WHERE id = ? AND state IN (${marks(PRESSABLE)}) AND (outcome_unknown = 0 OR ? = 1) AND (? IS NULL OR updated_at = ?)`
       )
-      .run(decidedBy, at, grantId, opts.via ?? null, at, id, ...PRESSABLE, opts.again ? 1 : 0)
+      .run(decidedBy, at, grantId, opts.via ?? null, at, id, ...PRESSABLE, opts.again ? 1 : 0, opts.rev ?? null, opts.rev ?? null)
     return Number(done.changes) === 1 ? this.told(id) : null
   }
 
@@ -454,16 +454,17 @@ export class HeldStore {
    * The act will never go. Only a row that waits is discarded; one being sent is not. A stale row stays stale, put
    * away: Done says it went out of date, with his reason.
    */
-  discard(id: string, decidedBy: string, opts: { reason?: string | null; via?: Via | null } = {}): HeldRow | null {
+  discard(id: string, decidedBy: string, opts: { reason?: string | null; via?: Via | null; rev?: number } = {}): HeldRow | null {
     const at = this.now()
     const reason = opts.reason?.trim().slice(0, REASON_MAX) || null
+    const rev = opts.rev ?? null
     const done = this.db
-      .prepare(`UPDATE ${HELD_TABLE} SET state = 'discarded', decided_by = ?, decided_at = ?, reason = ?, via = ?, updated_at = MAX(updated_at + 1, ?) WHERE id = ? AND state IN (${marks(PRESSABLE)})`)
-      .run(decidedBy, at, reason, opts.via ?? null, at, id, ...PRESSABLE)
+      .prepare(`UPDATE ${HELD_TABLE} SET state = 'discarded', decided_by = ?, decided_at = ?, reason = ?, via = ?, updated_at = MAX(updated_at + 1, ?) WHERE id = ? AND state IN (${marks(PRESSABLE)}) AND (? IS NULL OR updated_at = ?)`)
+      .run(decidedBy, at, reason, opts.via ?? null, at, id, ...PRESSABLE, rev, rev)
     if (Number(done.changes) === 1) return this.told(id)
     const put = this.db
-      .prepare(`UPDATE ${HELD_TABLE} SET dismissed_by = ?, dismissed_at = ?, reason = ?, via = ?, updated_at = MAX(updated_at + 1, ?) WHERE id = ? AND state = 'stale' AND dismissed_at IS NULL`)
-      .run(decidedBy, at, reason, opts.via ?? null, at, id)
+      .prepare(`UPDATE ${HELD_TABLE} SET dismissed_by = ?, dismissed_at = ?, reason = ?, via = ?, updated_at = MAX(updated_at + 1, ?) WHERE id = ? AND state = 'stale' AND dismissed_at IS NULL AND (? IS NULL OR updated_at = ?)`)
+      .run(decidedBy, at, reason, opts.via ?? null, at, id, rev, rev)
     return Number(put.changes) === 1 ? this.told(id) : null
   }
 

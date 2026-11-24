@@ -8,6 +8,7 @@ import { chatCallRefusal, chatHarnessDenied, chatPreambleOf, dropChats, ensureCh
 import { mailAttachmentFetcher } from './attachment'
 import { outgoingHtml } from './outgoing'
 import { withWaited } from './waited'
+import { mustBePerson } from '../outbox/person'
 import { ensureWaitingTables, reportDrops, setWaiting, startNudge, waitingOf, waitingTool, type DropRow } from './waiting'
 
 /**
@@ -28,7 +29,6 @@ export interface MailRow {
   origin?: { app?: string; threadId?: string; host?: string }
 }
 
-const NOT_A_PERSON = 'only a person can send mail'
 export const ELSEWHERE = 'A thread on another host made this draft. Send it from that host.'
 export const NOT_QUEUED = 'This mail did not go: the Outbox had already recorded an earlier send of it. Open the Outbox and send it from there.'
 export const CHANGED = 'The draft changed after you pressed Send. Look at it again, then send.'
@@ -70,9 +70,8 @@ const sender = (from: unknown): string => {
   return f?.address ? `${String(f.name ?? '').trim()}|${String(f.address).trim().toLowerCase()}` : ''
 }
 
-function mustApprove(by: Caller): void {
-  if (by.kind === 'model' || !by.caps.includes('approve')) throw new Error(NOT_A_PERSON)
-}
+/** The Outbox's own gate: a held draft's send, schedule, cancel and send-now are his press, as the Outbox's are. */
+const mustApprove = (by: Caller): void => mustBePerson(by, 'approve')
 
 /**
  * Sends a draft as LifeOS holds it now. A draft one of this host's threads

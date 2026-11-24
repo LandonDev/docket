@@ -204,6 +204,25 @@ export interface WorkResult {
 /** Where a press was made, as the client says it (Done's words); a thread's request is the host's own to record. */
 export const PressViaSchema = z.enum(['outbox', 'today', 'phone', 'mail'])
 
+/** One item of one press: what to do with it, and the revision he saw (`updatedAt` as his screen read it). `later` takes the time it goes (`at`) and the zone he picked it in. `reason` rides a discard. */
+export const DecisionSchema = z.object({
+  ref: HeldRefSchema,
+  do: z.enum(['send', 'discard', 'later']),
+  rev: z.number().int().optional(),
+  at: z.number().int().optional(),
+  zone: z.string().max(80).optional(),
+  again: z.boolean().optional(),
+  reason: z.string().max(500).optional()
+})
+export type Decision = z.infer<typeof DecisionSchema>
+/** What became of one item of a press: `item` as it stands after, or why it did not go. */
+export interface DecisionResult {
+  ref: HeldRef
+  ok: boolean
+  item?: OutboxItem
+  error?: string
+}
+
 const ListParams = z
   .object({
     /** `waiting` (the default): held, live, sending, failed, and stale until he discards it. `done` (or `decided`): sent, discarded, and stale he put away, newest first. */
@@ -224,6 +243,8 @@ export const OutboxRequestSchemas = [
   request('work.outbox.send', z.object({ ref: HeldRefSchema, rev: z.number().int().optional(), /** he checked Sent and chose Send again on an item whose last send may have gone */ again: z.boolean().optional(), /** one of several sent by one press (a group's Send N, ticked rows): it earns no offered grant */ many: z.boolean().optional(), via: PressViaSchema.optional() })),
   /** → OutboxItem: the act will never go. `reason`: his words for the thread. An item that went out of date is put away the same way. */
   request('work.outbox.discard', z.object({ ref: HeldRefSchema, reason: z.string().max(500).optional(), via: PressViaSchema.optional() })),
+  /** → { results: DecisionResult[] }: one press on one or many items of this host, each run as its own press would be, four at a time, each answering its own result in the order asked. More than one item earns no offered grant. A desktop press across hosts sends one of these to each host. */
+  request('work.outbox.decide', z.object({ items: z.array(DecisionSchema).min(1).max(100), via: PressViaSchema.optional() })),
   /** → OutboxItem: an item that went out of date, put away with "out of date", and its thread asked to draft it again from what is true now */
   request('work.outbox.askAgain', z.object({ ref: HeldRefSchema })),
   /** → OutboxItem: change exactly what will go, while it waits. `payload` is the kind's own shape. */
@@ -268,6 +289,7 @@ export const OUTBOX_CAPS = {
   'work.outbox.send': 'approve',
   'work.outbox.discard': 'approve',
   'work.outbox.askAgain': 'approve',
+  'work.outbox.decide': 'approve',
   'work.outbox.edit': 'approve',
   'work.outbox.grant': 'admin',
   'work.outbox.grants': 'read',

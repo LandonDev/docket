@@ -182,7 +182,8 @@ describe("the owner's press", () => {
       rig.rpc<OutboxItem>('work.outbox.send', { ref: item!.ref }, adminKey)
     ])
     expect(rig.downstream.filter((d) => d.tool === 'slow')).toHaveLength(1)
-    expect(presses.map((p) => p.state).sort()).toEqual(['sending', 'sending', 'sent'])
+    // one after another on the one item (`serial`): the presses that waited find it sent and run nothing
+    expect(presses.map((p) => p.state).sort()).toEqual(['sent', 'sent', 'sent'])
     expect((await rig.rpc<OutboxItem>('work.outbox.get', { ref: item!.ref })).state).toBe('sent')
   })
 
@@ -863,5 +864,78 @@ describe('Outbox 2: what he reads before he presses', () => {
     expect(got.changed).toMatchObject({ by: 'you', first: { arguments: { text: 'first words' } } })
     rig.host.store.edit((item.ref as { id: string }).id, { payload: { ...(mine.payload as object), arguments: { text: 'the thread again' } }, summary: mine.summary, verb: mine.verb })
     expect((await rig.waiting())[0]!.changed).toMatchObject({ by: 'thread' })
+  })
+})
+
+describe('Outbox 2: one press, many items', () => {
+  const holdEchoes = async (...texts: string[]): Promise<OutboxItem[]> => {
+    const slack = await rig.addon('slack', 'ws-purdue')
+    await setRules(slack.id, { echo: 'held' })
+    for (const t of texts) await rig.claudeCall('t-work', slack.id, 'echo', { text: t })
+    return rig.waiting()
+  }
+  type Results = { results: { ref: unknown; ok: boolean; item?: OutboxItem; error?: string }[] }
+
+  it('runs each item as its own press would, answers each result in order, and earns no offer', async () => {
+    const [a, b, c] = await holdEchoes('a', 'b', 'c')
+    const { results } = await rig.rpc<Results>('work.outbox.decide', { items: [{ ref: a!.ref, do: 'send', rev: a!.updatedAt }, { ref: b!.ref, do: 'discard', reason: 'not now' }, { ref: c!.ref, do: 'send', rev: c!.updatedAt }], via: 'outbox' })
+    expect(results.map((r) => [r.ok, r.item?.state])).toEqual([[true, 'sent'], [true, 'discarded'], [true, 'sent']])
+    expect(rig.downstream.map((d) => d.arguments.text)).toEqual(['a', 'c'])
+    expect(results[0]!.item).toMatchObject({ via: 'outbox', decidedBy: 'owner' })
+    expect(rig.host.earned.first(`host:${(a!.ref as { id: string }).id}`)).not.toBeNull()
+    expect((rig.host.earned as unknown as { db: import('node:sqlite').DatabaseSync }).db.prepare(`SELECT batch FROM work_held_first WHERE run_key = ?`).get(`host:${(a!.ref as { id: string }).id}`)).toEqual({ batch: 1 })
+  })
+
+  it('refuses an item that changed since he saw it, and sends it on the revision he saw again', async () => {
+    const [a] = await holdEchoes('a')
+    rig.host.store.edit((a!.ref as { id: string }).id, { payload: { ...(a!.payload as object), arguments: { text: 'moved' } }, summary: a!.summary, verb: a!.verb })
+    const { results } = await rig.rpc<Results>('work.outbox.decide', { items: [{ ref: a!.ref, do: 'send', rev: a!.updatedAt }] })
+    expect(results[0]).toMatchObject({ ok: false, error: expect.stringMatching(/changed since you opened it/) })
+    expect(rig.downstream).toEqual([])
+    const [now] = await rig.waiting()
+    const again = await rig.rpc<Results>('work.outbox.decide', { items: [{ ref: now!.ref, do: 'send', rev: now!.updatedAt }] })
+    expect(again.results[0]).toMatchObject({ ok: true })
+    expect(rig.downstream.map((d) => d.arguments.text)).toEqual(['moved'])
+  })
+
+  it('two presses at once send once', async () => {
+    const [a] = await holdEchoes('a')
+    const press = () => rig.rpc<Results>('work.outbox.decide', { items: [{ ref: a!.ref, do: 'send', rev: a!.updatedAt }] })
+    const [one, two] = await Promise.all([press(), press()])
+    expect(rig.downstream).toHaveLength(1)
+    expect([one.results[0]!.item?.state, two.results[0]!.item?.state].sort()).toEqual(['sent', 'sent'])
+  })
+
+  it('an item out of date is Discard or Ask again only; a computer act or a live screen goes only from its own page', async () => {
+    const [a, b] = await holdEchoes('a', 'b')
+    rig.host.store.stale((a!.ref as { id: string }).id, 'moved')
+    const { results } = await rig.rpc<Results>('work.outbox.decide', { items: [{ ref: a!.ref, do: 'send' }, { ref: b!.ref, do: 'send', rev: b!.updatedAt }] })
+    expect(results[0]).toMatchObject({ ok: false, error: 'This went out of date: discard it, or ask the thread again.' })
+    expect(results[1]).toMatchObject({ ok: true })
+    const live = rig.host.outbox.hold({ kind: 'computer.act', sessionId: 't-work', state: 'live', payload: { tool: 'computer_click', args: {}, app: { name: 'Mail', bundleId: null }, window: null, why: 'screen', label: 'Send', title: 'Click Send in Mail', read: null, picture: null, mark: 'm', targets: [] } })
+    const [c] = await holdEchoes('c')
+    const two = await rig.rpc<Results>('work.outbox.decide', { items: [{ ref: { at: 'host', id: live.row.id }, do: 'send' }, { ref: c!.ref, do: 'send' }] })
+    expect(two.results[0]).toMatchObject({ ok: false, error: 'Open to send: this one is sent from its own page, alone.' })
+  })
+
+  it('names one item once, by its one name', async () => {
+    const [a] = await holdEchoes('a')
+    const { results } = await rig.rpc<Results>('work.outbox.decide', { items: [{ ref: a!.ref, do: 'send' }, { ref: a!.ref, do: 'discard' }] })
+    expect(results.map((r) => r.ok)).toEqual([true, false])
+    expect(results[1]!.error).toBe('This item is named twice in one press.')
+  })
+
+  it('only his press: a thread, another host over the link and an MCP key are refused, a client key with approve is not', async () => {
+    const [a] = await holdEchoes('a')
+    const req = { id: '1', method: 'work.outbox.decide', params: { items: [{ ref: a!.ref, do: 'discard' }] } } as never
+    for (const by of [
+      { kind: 'model', caps: ['approve'], sessionId: 't-work' },
+      { kind: 'remote', caps: ['read', 'operate', 'approve', 'admin'], peer: 'mac' },
+      { kind: 'remote', caps: ['read', 'operate', 'approve'], audience: 'mcp', keyId: 'k9' },
+      { kind: 'remote', caps: ['read', 'operate'], audience: 'client', keyId: 'k1' }
+    ])
+      await expect(outboxModule.handle!(req, rig.work.ctx, by as never), JSON.stringify(by)).rejects.toThrow(NOT_A_PERSON)
+    const ok = await rig.rpc<Results>('work.outbox.decide', { items: [{ ref: a!.ref, do: 'discard' }] }, approveKey)
+    expect(ok.results[0]!.item).toMatchObject({ state: 'discarded', decidedBy: 'owner:remote' })
   })
 })

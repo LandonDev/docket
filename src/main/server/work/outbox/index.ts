@@ -4,6 +4,7 @@ import type { FileAct } from '@shared/contract-work-files'
 import type { OutboxItem, ToolRulesCard } from '@shared/contract-work-outbox'
 import { handled, NOT_HANDLED } from '@shared/work'
 import type { Caller, WorkCtx, WorkModule } from '../modules'
+import { mustBePerson, person } from './person'
 import { outboxHostOf, type OutboxHost } from './ctx'
 import { OUTBOX_TELLS } from './tells'
 import { ensureResults, resultsOf } from './results'
@@ -27,15 +28,7 @@ import { outboxMentions } from './mentions'
  * No tool of any thread reaches these methods.
  */
 
-export const NOT_A_PERSON = "forbidden: only the owner decides a held act, a grant or a tool's rule; a thread cannot"
-
-/** Who a decision is recorded as: the owner at this host, or the owner through a paired device. */
-const person = (by: Caller): string => (by.kind === 'local' ? 'owner' : 'owner:remote')
-
-function mustBePerson(by: Caller, cap: 'approve' | 'admin'): void {
-  if (by.kind === 'model') throw new Error(NOT_A_PERSON)
-  if (!by.caps.includes(cap)) throw new Error(NOT_A_PERSON)
-}
+export { NOT_A_PERSON } from './person'
 
 /** The add-ons a Work thread can reach: a Work workspace's own, Work Chats', and the global ones (marked for Work or not, so he can mark one). */
 function workAddons(host: OutboxHost, q: { addonId?: string; workspaceId?: string } = {}): AddonRow[] {
@@ -147,6 +140,9 @@ export const outbox: WorkModule = {
       case 'work.outbox.discard':
         mustBePerson(by, 'approve')
         return handled(await box.discard(req.params.ref, person(by), { ...(req.params.reason ? { reason: req.params.reason } : {}), ...(req.params.via ? { via: req.params.via } : {}) }))
+      case 'work.outbox.decide':
+        mustBePerson(by, 'approve')
+        return handled({ results: (await box.decide(req.params.items, { by: person(by), ...(req.params.via ? { via: req.params.via } : {}) })).map((r) => (r.item ? { ...r, item: seenBy(by, r.item) } : r)) })
       case 'work.outbox.askAgain':
         mustBePerson(by, 'approve')
         return handled(await box.askAgain(req.params.ref, person(by)))

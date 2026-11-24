@@ -249,7 +249,8 @@ export interface Work extends WorkAdmission {
   close(): void
 }
 
-const callerOf = (principal: SocketPrincipal): Caller => (principal.kind === 'local' ? { kind: 'local', caps: LOCAL_CAPS } : { kind: 'remote', caps: principal.caps, keyId: principal.keyId })
+const callerOf = (principal: SocketPrincipal): Caller =>
+  principal.kind === 'local' ? { kind: 'local', caps: LOCAL_CAPS } : { kind: 'remote', caps: principal.caps, keyId: principal.keyId, audience: principal.audience }
 
 export function startWork(deps: WorkDeps, modules: WorkModule[] = WORK_MODULES): Work {
   // The registry is filled by a load, never by importing it: without one the default list would be silently empty.

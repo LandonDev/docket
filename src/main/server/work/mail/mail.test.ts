@@ -283,7 +283,7 @@ describe('Send from TempCode', () => {
       { method: 'work.mail.cancel', params: { id } },
       { method: 'work.mail.send', params: { id, seen: seenOf(id), sendAt: later } }
     ]) {
-      await expect(mail.handle!({ id: '1', ...req } as never, rig.work.ctx, model as never)).rejects.toThrow('only a person can send mail')
+      await expect(mail.handle!({ id: '1', ...req } as never, rig.work.ctx, model as never)).rejects.toThrow('only the owner decides a held act')
     }
     await expect(rig.rpc('work.mail.sendNow', { id }, reader)).rejects.toThrow()
     expect(rig.lifeos.calls.length).toBe(before)

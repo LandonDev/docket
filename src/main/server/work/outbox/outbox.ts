@@ -1,4 +1,4 @@
-import type { GrantOffer, HeldWhy, OutboxChanged, OutboxGrant, OutboxItem, OutboxReplied } from '@shared/contract-work-outbox'
+import type { Decision, DecisionResult, GrantOffer, HeldWhy, OutboxChanged, OutboxGrant, OutboxItem, OutboxReplied } from '@shared/contract-work-outbox'
 import { hasFormLink, payloadText } from '@shared/work/msforms'
 import { ACT_PILLAR, errorText, needsHim, NotBuilt, PILLAR_MILESTONE, type ActKind, type ActResult, type HeldItem, type HeldRef } from '@shared/work'
 import type { ActCtx, ActKindDef, WorkCtx } from '../modules'
@@ -7,7 +7,7 @@ import { EARN_DAYS, earn, sameWords, wireOffer, wordsOf, type EarnedStore, type 
 import { effectOf } from './effects'
 import type { SentFact } from './confirmed'
 import { ActNotSent, ActStale, type ActKinds } from './kinds'
-import { itemOfRow, lifeosRunKey, PRESSABLE, type HeldRow, type HeldStore, type Via } from './store'
+import { itemOfRow, lifeosRunKey, PRESSABLE, refOfRow, type HeldRow, type HeldStore, type Via } from './store'
 import { askAgainNote, discardedNote, failedNote, OUT_OF_DATE, queuedNote, sentNote, staleNote } from './words'
 
 /**
@@ -129,6 +129,30 @@ export const MAY_HAVE_GONE = 'This may have gone already: the last send did not 
 export const NO_SUCH_OFFER = 'There is no such offer on this host, or it was already decided.'
 export const REV_NEEDED = 'refused: a press on an item LifeOS holds names what was read (`rev`), so what goes is what was shown'
 export const NOT_OUT_OF_DATE = 'Only an item that went out of date can be asked for again.'
+export const OUT_OF_DATE_SEND = 'This went out of date: discard it, or ask the thread again.'
+export const OPEN_TO_SEND = 'Open to send: this one is sent from its own page, alone.'
+export const NOT_LATER = 'This cannot be sent later.'
+export const TWICE = 'This item is named twice in one press.'
+/** How many items of one press run at once. */
+export const DECIDE_AT_ONCE = 4
+
+
+/** A LifeOS reply that carries the mail it answers under its body: read whole before it goes, never from a row. */
+const quotesItsMail = (item: Pick<OutboxItem, 'kind' | 'payload'>): boolean => item.kind === 'mail.send' && !!(item.payload as { quote?: unknown } | null)?.quote
+
+/** `fn` over the list, at most `n` at once, the answers in the list's order. */
+async function mapLimit<T, R>(list: readonly T[], n: number, fn: (t: T) => Promise<R>): Promise<R[]> {
+  const out: R[] = new Array(list.length)
+  let next = 0
+  const worker = async (): Promise<void> => {
+    while (next < list.length) {
+      const i = next++
+      out[i] = await fn(list[i]!)
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(n, list.length) }, worker))
+  return out
+}
 
 /** The run key an item's decision would carry: a host row's own, a LifeOS item's by its table and id. */
 const runKeyOfRef = (ref: HeldRef): string => (ref.at === 'lifeos' ? lifeosRunKey(ref.table, ref.id) : `host:${ref.id}`)
@@ -157,6 +181,8 @@ export class Outbox {
   readonly seals = new Map<ActKind, (matcher: never, payload: never) => unknown>()
   private readonly decidedListeners = new Set<(item: HeldItem, asHeld: unknown) => void>()
   private readonly changeListeners = new Set<(item: OutboxItem | null) => void>()
+  /** the press under way on each item, by run key (`serial`) */
+  private readonly locks = new Map<string, Promise<unknown>>()
 
   constructor(private readonly deps: OutboxDeps) {
     deps.store.onChange((row) => this.changed(this.wire(row)))
@@ -238,6 +264,11 @@ export class Outbox {
    * stands and runs nothing.
    */
   async send(ref: HeldRef, opts: { rev?: number; by?: string; again?: boolean; /** one of several sent by one press */ many?: boolean; via?: Via } = {}): Promise<OutboxItem> {
+    ref = this.canonical(ref)
+    return this.serial(ref, () => this.sendNow(ref, opts))
+  }
+
+  private async sendNow(ref: HeldRef, opts: { rev?: number; by?: string; again?: boolean; many?: boolean; via?: Via }): Promise<OutboxItem> {
     let row = this.store.byRef(ref)
     if (ref.at === 'lifeos' && (!row || PRESSABLE.includes(row.state))) {
       // What goes is what LifeOS holds now, and only if that is what he was shown.
@@ -261,8 +292,14 @@ export class Outbox {
     const def = this.def(row.kind)
     // A send that may have gone is sent again only when he chose that, after checking.
     if (row.state === 'failed' && row.outcomeUnknown && !opts.again) throw new Error(MAY_HAVE_GONE)
-    const claimed = this.store.claim(row.id, opts.by ?? 'owner', null, { again: opts.again === true, via: opts.via ?? null })
-    if (!claimed) return this.wire(this.store.get(row.id)!)
+    // The revision he saw is part of the claim itself: a host row that moved since is never taken on this press.
+    const rev = ref.at === 'host' ? opts.rev : row.updatedAt
+    const claimed = this.store.claim(row.id, opts.by ?? 'owner', null, { again: opts.again === true, via: opts.via ?? null, ...(rev !== undefined ? { rev } : {}) })
+    if (!claimed) {
+      const now = this.store.get(row.id)!
+      if (rev !== undefined && PRESSABLE.includes(now.state) && now.updatedAt !== rev) throw new Error(CHANGED_SINCE)
+      return this.wire(now)
+    }
     if (opts.many) this.markBatch(claimed.runKey)
     return this.wire(await this.run(claimed, def))
   }
@@ -271,18 +308,26 @@ export class Outbox {
    * The act will never go. For a LifeOS-held item the draft is deleted there, and a row here records who decided. An
    * item that went out of date is put away: it stops waiting, and its thread, which heard it went stale, hears nothing more.
    */
-  async discard(ref: HeldRef, by = 'owner', opts: { reason?: string; via?: Via } = {}): Promise<OutboxItem> {
+  async discard(ref: HeldRef, by = 'owner', opts: { reason?: string; via?: Via; rev?: number } = {}): Promise<OutboxItem> {
+    ref = this.canonical(ref)
+    return this.serial(ref, () => this.discardNow(ref, by, opts))
+  }
+
+  private async discardNow(ref: HeldRef, by: string, opts: { reason?: string; via?: Via; rev?: number }): Promise<OutboxItem> {
     let row = this.store.byRef(ref)
     if (ref.at === 'lifeos' && (!row || PRESSABLE.includes(row.state))) {
       const live = await this.readLifeos(ref)
       if (live.scheduledFor !== undefined) throw new Error(SCHEDULED_BY_HIM)
+      if (opts.rev !== undefined && live.updatedAt !== opts.rev) throw new Error(CHANGED_SINCE)
       // The log records what was discarded as LifeOS holds it now, not as an earlier decision left it.
       if (row && PRESSABLE.includes(row.state)) row = this.store.edit(row.id, { payload: live.payload, summary: live.summary, verb: live.verb, account: live.account }) ?? row
       row ??= this.adopt(live)
       if (row && PRESSABLE.includes(row.state)) await this.lifeos!.discard(ref)
     }
     if (!row) throw new Error(NO_SUCH_ITEM)
-    const gone = this.store.discard(row.id, by, { reason: opts.reason ?? null, via: opts.via ?? null })
+    const hostRev = ref.at === 'host' ? opts.rev : undefined
+    if (hostRev !== undefined && row.updatedAt !== hostRev && (PRESSABLE.includes(row.state) || row.state === 'stale')) throw new Error(CHANGED_SINCE)
+    const gone = this.store.discard(row.id, by, { reason: opts.reason ?? null, via: opts.via ?? null, ...(hostRev !== undefined ? { rev: hostRev } : {}) })
     if (gone?.state === 'discarded') this.settled(gone)
     return this.wire(gone ?? this.store.get(row.id)!)
   }
@@ -292,6 +337,11 @@ export class Outbox {
    * what is true now. It may start a turn: he asked for it.
    */
   async askAgain(ref: HeldRef, by = 'owner', opts: { via?: Via } = {}): Promise<OutboxItem> {
+    ref = this.canonical(ref)
+    return this.serial(ref, async () => this.askAgainNow(ref, by, opts))
+  }
+
+  private askAgainNow(ref: HeldRef, by: string, opts: { via?: Via }): OutboxItem {
     const row = this.store.byRef(ref)
     if (!row) throw new Error(NO_SUCH_ITEM)
     if (row.state !== 'stale' || row.dismissedAt !== null) throw new Error(NOT_OUT_OF_DATE)
@@ -303,6 +353,65 @@ export class Outbox {
       void this.deps.ctx.threads.resume(sessionId, note).catch(() => this.deps.whisper(sessionId, note))
     }
     return this.wire(gone)
+  }
+
+  /**
+   * The one decision service (docs/agents/work-outbox.md "One press, many items"): each item runs through the same
+   * send, discard or schedule a single press does, four at a time, and answers its own result. Whether the press is
+   * "many" is the host's call: more than one item, or `many` from the caller (a thread's request always is). Some
+   * items are judged here, not by the screen: an item out of date is Discard and Ask again only; a live screen's act,
+   * a computer act and a LifeOS reply that quotes the mail it answers go only from their own detail, alone.
+   */
+  async decide(items: readonly Decision[], opts: { by: string; via?: Via; many?: boolean }): Promise<DecisionResult[]> {
+    const many = opts.many === true || items.length > 1
+    const seen = new Set<string>()
+    const run = async (d: Decision): Promise<DecisionResult> => {
+      try {
+        const ref = this.canonical(d.ref)
+        const key = runKeyOfRef(ref)
+        if (seen.has(key)) throw new Error(TWICE)
+        seen.add(key)
+        if (d.do === 'discard') return { ref, ok: true, item: await this.discard(ref, opts.by, { ...(d.reason ? { reason: d.reason } : {}), ...(opts.via ? { via: opts.via } : {}), ...(d.rev !== undefined ? { rev: d.rev } : {}) }) }
+        if (d.do === 'later') throw new Error(NOT_LATER)
+        const refusal = this.sendRefusal(ref, many)
+        if (refusal) throw new Error(refusal)
+        const item = await this.send(ref, { ...(d.rev !== undefined ? { rev: d.rev } : {}), ...(d.again ? { again: true } : {}), ...(many ? { many: true } : {}), ...(opts.via ? { via: opts.via } : {}), by: opts.by })
+        return { ref, ok: item.state === 'sent' || item.state === 'sending', item, ...(item.state === 'failed' || item.state === 'stale' ? { error: item.error ?? 'It was not sent.' } : {}) }
+      } catch (err) {
+        return { ref: d.ref, ok: false, error: errorText(err) }
+      }
+    }
+    return mapLimit(items, DECIDE_AT_ONCE, run)
+  }
+
+  /** Why an item may not be sent on this press, or null. */
+  private sendRefusal(ref: HeldRef, many: boolean): string | null {
+    const row = this.store.byRef(ref)
+    const item = row ? itemOfRow(row) : this.lifeos?.items().find((i) => runKeyOfRef(i.ref) === runKeyOfRef(ref))
+    if (!item) return null
+    if (item.state === 'stale') return OUT_OF_DATE_SEND
+    if (many && (item.state === 'live' || item.kind === 'computer.act' || quotesItsMail(item))) return OPEN_TO_SEND
+    return null
+  }
+
+  /** One name for one item: a host ref to a row that records a LifeOS item is that item's LifeOS ref, so no alias skips its checks. */
+  canonical(ref: HeldRef): HeldRef {
+    if (ref.at !== 'host') return ref
+    const row = this.store.get(ref.id)
+    return row ? refOfRow(row) : ref
+  }
+
+  /** Presses on one item run one after another, each from what the last left, before any outside call. */
+  private serial<T>(ref: HeldRef, fn: () => Promise<T>): Promise<T> {
+    const key = runKeyOfRef(ref)
+    const before = this.locks.get(key) ?? Promise.resolve()
+    const mine = before.catch(() => undefined).then(fn)
+    const tail = mine.catch(() => undefined)
+    this.locks.set(key, tail)
+    void tail.then(() => {
+      if (this.locks.get(key) === tail) this.locks.delete(key)
+    })
+    return mine
   }
 
   /** Change exactly what will go, while it waits. */

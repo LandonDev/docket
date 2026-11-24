@@ -361,16 +361,43 @@ The act's own result, which a thread's Results list keeps, says the same: "Queue
 | Method | Needs | |
 |---|---|---|
 | `work.outbox.list`, `get`, `grants`, `rules` | read | `get` adds a computer act's picture |
-| `work.outbox.send`, `discard`, `edit`, `askAgain` | approve | `discard` takes his `reason`; `askAgain` puts an out-of-date item away and wakes its thread to draft it again |
+| `work.outbox.send`, `discard`, `edit`, `askAgain`, `decide` | approve | `discard` takes his `reason`; `askAgain` puts an out-of-date item away and wakes its thread to draft it again |
 | `work.outbox.grant`, `ungrant`, `setRules`, `setForWork` | admin | |
 
 A window whose key may not make grants on that host (`linkMay`, docs/agents/work.md
 "The switch") is offered none: no Send menu's grant, no offer under a sent
 item, no Remove in Grants. Approve and Send stay.
 
-The socket's gate checks the capability; the module checks again and
-refuses a thread's own call (`kind: 'model'`) whatever it carries. No tool
-of any thread reaches these methods. The push (`work.outbox`: how many
+The socket's gate checks the capability; the module checks again with one
+gate, `mustBePerson` (work/outbox/person.ts), in front of every Outbox
+press and Mail's held-draft verbs (send, reschedule, cancel, send now): his
+window on this host, or a client key (`audience: 'client'`, carried
+through Work dispatch as `Caller.audience`) that holds the capability.
+Refused whatever it carries: a thread's own call (`kind: 'model'`),
+another host of his over the link (`peer`), and a key made for an MCP
+client. No tool of any thread reaches these methods.
+
+**One press, many items.** `work.outbox.decide({items: [{ref, do, rev,
+reason?, again?}], via?})` is the one decision service: each item runs
+through the same `send` or `discard` a single press does, four at a time,
+and answers its own result (`{ref, ok, item?, error?}`) in the order
+asked. The host decides whether the press is many (more than one item):
+many earns no offered grant and breaks a run. An item out of date is
+Discard or Ask again only ("This went out of date: discard it, or ask the
+thread again."); a live screen's act, a computer act and a LifeOS reply
+that quotes the mail it answers go only from their own page, alone ("Open
+to send"). One item named twice in a press is refused the second time. A
+desktop press across hosts sends one `decide` to each host.
+
+**What he saw is what goes.** Every name is made canonical first: a host
+ref to a row that records a LifeOS item is that item's LifeOS ref, so no
+alias skips LifeOS's revision check. Presses on one item run one after
+another (`serial`, one lock per run key), each from what the last left,
+before any outside call; a press that waited finds the item as the first
+left it and runs nothing. The revision he saw (`rev`, the item's
+`updatedAt` as his screen read it) is part of the claim's own `UPDATE`
+for a send and a discard, so a row that moved since is never taken on
+that press (`CHANGED_SINCE`). The push (`work.outbox`: how many
 wait, how many tools are unreviewed, the item that changed) goes only to
 keys with approve.
 
