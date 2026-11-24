@@ -1,8 +1,9 @@
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import type { Duplex } from 'node:stream'
-import type { CollabServer, ConvexCall, History } from 'work-kit/collab-server'
+import type { CollabServer, ConvexCall } from 'work-kit/collab-server'
 import type { WebSocketServer } from 'ws'
 import type { ServiceConfig, ServiceLink, ServiceProject } from '../wire'
+import type { QueuedHistory } from '../../history/hostQueue'
 
 /**
  * What a route of the Work service gets (docs/agents/work-service.md). The
@@ -13,7 +14,7 @@ export interface RouteCtx {
   config(): ServiceConfig
   collab: CollabServer
   /** versions, compare, restore and branches of the live documents (milestone 19) */
-  history: History
+  history: QueuedHistory
   /** LifeOS as the owner (an unfenced device JWT main hands over) */
   convex: ConvexCall
   /** guest links by id, as main last pushed them */

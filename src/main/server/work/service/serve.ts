@@ -24,6 +24,7 @@ import { refuseUpgrade, RouteError, sendJson, sendText, type RouteCtx } from './
 // By its path, as every module this process reaches: the service's bundle and its boundary test follow relative imports.
 import { projectionLists } from '../../../../shared/work/guestProjection'
 import type { ServiceConfig, ServiceLink, ServiceProject } from './wire'
+import { queuedHistory } from '../history/hostQueue'
 
 /**
  * The Work service itself (docs/agents/work-service.md), as its utility
@@ -166,12 +167,13 @@ export async function startWorkService(initial: ServiceConfig, io: ServiceIo): P
   // but an agent's branch of a .tcdoc on this host's own disk, never in the file (history/privateBranches.ts).
   const lifeosVersions = new ConvexVersionStore(convex)
   const fileVersions = new PrivateBranchStore(new FileVersionStore(), join(config.dataDir, 'private-branches'))
-  const history = createHistory({
+  // One turn per document on this host around the history's acts: a check and its take run together (history/hostQueue.ts).
+  const history = queuedHistory(createHistory({
     collab,
     versionsFor: (name) => (name.startsWith('file:') ? fileVersions : (notServed ?? lifeosVersions)),
     storeFor: (name) => (name.startsWith('file:') ? fileStore : (notServed ?? lifeosStore)),
     log: io.log
-  })
+  }))
   // Yjs updates are small; an import's bulk comes through the internal routes, never a socket.
   const wss = new WebSocketServer({ noServer: true, maxPayload: 4 * 1024 * 1024 })
   const ctx: RouteCtx = { config: () => config, collab, history, convex, links: () => links, projects: () => projects, claimLive, wss, log: io.log }

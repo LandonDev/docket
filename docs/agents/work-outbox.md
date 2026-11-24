@@ -136,8 +136,11 @@ open, every way an agent's change is seen or taken asks it:
   document and history canvases send it): a branch an agent changed since
   is refused (`BRANCH_MOVED`, history/serviceRoutes.ts) rather than taken.
   A client that sends none (the phone, until its own build does) is not
-  bound, and an agent's write landing between the host's check and the take
-  is not caught.
+  bound. The check runs in the same turn of the document as the take
+  (round 2): every write, format, restore, accept and reject on the service's
+  history goes through one queue per document on the host
+  (history/hostQueue.ts), so an agent's write asked before his Accept lands
+  first and is seen.
 - Docs: the token is view-only for a key that is not his press, and
   `work.docs.thread` and `work.docs.rename` are refused there.
 - Google: `work.google.write`, the mirror sent to Google.
