@@ -171,9 +171,16 @@ nothing.
   reads through): "LifeOS did not answer", or "The box did not answer" when
   the host's own status ask went unanswered (`unanswered`), with Retry; "Not
   signed in to LifeOS" or "LifeOS refused the box's sign-in" with Sign in
-  (Settings → Connections); a sign-in that waits for his approval, "Work is
-  off on the box", and a computer the host keeps LifeOS from ("This computer
-  cannot read LifeOS through the box") with no press, since none can help.
+  and a sign-in that waits for his approval with Show the code (both
+  Settings → Connections), where this window may sign the host in; "Work is
+  off on the box" with Open Settings where this window may turn Work on;
+  else no press and who can ("Changed from a computer that manages the
+  box"); a computer the host keeps LifeOS from ("This computer cannot read
+  LifeOS through the box") with no press, since none can help. A job read
+  through a narrowed session on another host that is down (`Lost.down`)
+  says that session's state by the same rule in the section it feeds,
+  "<Job>'s tasks left out" after it (`LostLine`); a computer kept from
+  LifeOS there has no Retry, and the jobs that read stay.
   A held calendar act's details use the same helper. A muted line with no
   press wraps across the job and time columns; one with Sign in wraps in
   the titles' column.

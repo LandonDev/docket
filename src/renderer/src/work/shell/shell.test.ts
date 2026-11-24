@@ -68,6 +68,18 @@ describe("the Work heading's + menu", () => {
     expect(note.kind).toBe("note");
     expect(ids(addMenuRows("off", [], undefined, "Work is off on the box", "Changed from a computer that manages the box"))).toEqual(["work:off", "—", "work:add-unlinked"]);
   });
+
+  /** Council round 6: a sign-in is offered only where this window may sign the host in, as every reader offers it. */
+  it("offers Sign in and Approve only where this window may sign the host in; else the state and who can", () => {
+    const elsewhere = "Changed from a computer that manages the box";
+    expect(addMenuRows("signed-out", [], undefined, "Not signed in to LifeOS")[0]).toMatchObject({ kind: "item", id: "work:signin", label: "Sign in to LifeOS…" });
+    expect(addMenuRows("pairing", [], undefined, "The LifeOS sign-in waits for your approval")[0]).toMatchObject({ kind: "item", id: "work:signin", label: "Approve the LifeOS sign-in…" });
+    for (const state of ["signed-out", "refused", "pairing"] as const) {
+      const rows = addMenuRows(state, [], undefined, "Said", elsewhere);
+      expect(rows[0]).toMatchObject({ kind: "note", id: "work:signin-elsewhere" });
+      expect(rows.some((row) => row.kind === "item" && row.id === "work:signin")).toBe(false);
+    }
+  });
 });
 
 describe("a code workspace's LifeOS sector submenu", () => {

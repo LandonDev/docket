@@ -275,6 +275,20 @@ describe("while LifeOS cannot be reached", () => {
     expect((screen.getByRole("button", { name: "Edit" }) as HTMLButtonElement).disabled).toBe(false);
   });
 
+  /** Council round 6 (Sol P1): Sign in led a window that may not sign the box in to a Connections page with no sign-in. */
+  it("signed out on a window that may not sign the host in: who can, and no Sign in", async () => {
+    vi.spyOn(registry, "environment").mockReturnValue({ id: BOX, name: "The box" } as never);
+    const given = { ...IDLE_STATUS, transport: "open", lastHello: { environmentId: BOX, contract: 1, caps: ["operate", "approve", "device"], key: { id: "laptop" }, build: { release: 1, version: "1.0.1", sha: null, platform: "linux" } } };
+    vi.spyOn(registry, "statusOf").mockReturnValue(given as never);
+    setLifeosStatus(BOX, { lifeos: { state: "signed-out" }, keys: [] });
+    render(<ProjectSettingsDialog project={MIRROR} workspace={WORK} onClose={() => {}} />);
+    const root = await sheet();
+    const line = root.querySelector("[data-lifeos-line]") as HTMLElement;
+    expect(line.textContent).toContain("Not signed in to LifeOS");
+    expect(line.textContent).toContain("Changed from a computer that manages the box");
+    expect(within(line).queryByRole("button")).toBeNull();
+  });
+
   it("unreachable: Retry asks the host for its LifeOS status again", async () => {
     setLifeosStatus(BOX, { lifeos: { state: "unreachable", since: 1, error: "timeout" }, keys: [] });
     render(<ProjectSettingsDialog project={MIRROR} workspace={WORK} onClose={() => {}} />);

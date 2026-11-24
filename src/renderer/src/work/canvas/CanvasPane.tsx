@@ -96,6 +96,7 @@ function LoudLine({ line }: { line: StatusLine }) {
       <StatusMark
         state={line.tone === "failed" ? "failed" : "waiting"}
         word={line.word}
+        wrap={line.wrap}
         detail={
           detail ? <CutDetail text={detail} /> : null
         }

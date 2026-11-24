@@ -1697,17 +1697,20 @@ Around the canvas:
   A section that needs LifeOS with no session says the state the host
   answered in the views' words (`LifeosLine`), never disabled controls:
   bones while the answer is out; "Not signed in to LifeOS" (or the refused
-  sign-in) with Sign in at its end opening Settings → Connections only when
-  the host says so; "LifeOS did not answer" in red with Retry; a host never
+  sign-in) with Sign in, and a sign-in that waits with Show the code, each
+  opening Settings → Connections where this window may sign the host in,
+  else who can; "LifeOS did not answer" in red with Retry; a host never
   heard from by name with Retry; a host whose link is open but whose
   status ask went unanswered, "<Host> did not answer" in red with Retry
   (bones are for an ask still out, never one that timed out); a computer
-  kept from LifeOS and a sign-in that waits with no press; Work off with
-  Open Settings where this window may turn it on, else who can. A
+  kept from LifeOS with no press; Work off with a press named Work, the
+  section it opens, where this window may turn it on, else who can, and on
+  Settings → Work itself, where the switch is, neither. A
   workspace's Waiting on words its days' failed read from the cause the
   host sent, in the same words ("Not signed in to LifeOS"; "LifeOS did not
   answer" for a wait alone), with Retry at the row's end; the routine's
-  switch under it stays usable.
+  switch under it stays usable. A Retry of it that the host does not
+  answer says so with the host named ("The box did not answer").
 - **The Files place** (`work/files/`, the Files row): the finder with
   tabs, under the app's strip in the view's own frame. Three regions.
   The **sidebar** is 200px on `sidebar` with a hairline at its right, 8px
@@ -2798,10 +2801,14 @@ own selected fill is a card's fill at rest in light.
   in the session's true state, the computer it reads through named: "LifeOS
   did not answer", or "The box did not answer" for a host whose status ask
   went unanswered, in red with Retry; the plain muted "Not signed in to
-  LifeOS" (or "LifeOS refused the box's sign-in") with Sign in; "Work is off
-  on the box" muted with Open Settings where this window may turn it on,
-  else with who can under it; a sign-in that waits and "This computer cannot
-  read LifeOS through the box", muted with no press. A muted line with no press
+  LifeOS" (or "LifeOS refused the box's sign-in") with Sign in, and a sign-in
+  that waits with Show the code, where this window may sign the host in;
+  "Work is off on the box" muted with Open Settings where this window may
+  turn it on; else with who can under it; "This computer cannot read LifeOS
+  through the box", muted with no press. A job read through another host's
+  session that is down says that session's state the same way in its
+  section, its press by the same rule, with "<Job>'s tasks left out" after
+  it; the other jobs' rows stay. A muted line with no press
   wraps across the columns the press would take, never cut. A cut detail is a Tab stop with its
   whole words in a tip.
 - **Keys.** Every row and every fold line is one list and one tab stop: ↑ ↓
@@ -3962,15 +3969,20 @@ words with the computer named (`sessionWords`), and never again by a line
 of the body under it. Its one press is `downPress`'s (work/shell/lifeosDown.ts):
 Retry only where LifeOS or the host did not answer, and that Retry asks the
 host again (`reopenLifeos`), never a remount that reads the same session;
-Sign in where it is signed out or refused; Open Settings (Settings, Work,
-where the switch is) for Work off where this window may turn Work on for
-that host (`useDownPress`, `work.set`), else no press and who can
-(`managedElsewhere`); none for a computer the host keeps LifeOS from or a
-sign-in that waits. A part that stands in
-for what it could not read (a held act's details, a chat card) draws
+Sign in where it is signed out or refused, and Show the code where a sign-in
+waits for his approval, each only where this window may sign that host in
+(`work.lifeos.pairStart`); Open Settings (Settings, Work, where the switch
+is) for Work off only where this window may turn Work on for that host
+(`work.set`); where it may not, no press and who can (`managedElsewhere`);
+none for a computer the host keeps LifeOS from. `useDownPress` decides it,
+`downAction` names it; every reader takes it from there, the rail's + menu
+too. A part that stands in
+for what it could not read (a held act's details, a chat card, Running
+late's place in a clash, the Start places dialog) draws
 `DownLine`. While the session is down, no press whose dialog needs it is
-offered (a view's New task, New event, Add people), and a press made while
-it was on its way is dropped, never opened later by itself. A failed Retry
+offered (a view's New task, New event, Add people, a clash's Running late),
+and a press made while it was on its way is dropped, never opened later by
+itself. A failed Retry
 is said once, by the line. A long computer name wraps; the red word is
 never cut (`StatusMark`'s `wrap`).
 

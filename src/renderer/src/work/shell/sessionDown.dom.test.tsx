@@ -1,9 +1,10 @@
 // @vitest-environment jsdom
 /**
- * Council round 5, the sweep: every reader of a LifeOS session that is down holds to one rule (lifeosDown.ts). It says
- * the state once, in the session's words with the computer named; its one press is `downPress`'s (Retry only for
- * silence, Sign in for signed out or refused, Open Settings for Work off where this window may turn it on, else who
- * can; none for a computer kept from LifeOS or a sign-in waiting);
+ * Council rounds 5 and 6, the sweep: every reader of a LifeOS session that is down holds to one rule (lifeosDown.ts).
+ * It says the state once, in the session's words with the computer named; its one press is `downPress`'s, made only
+ * where this window may (`useDownPress`): Retry for silence; Sign in for signed out or refused and Show the code for a
+ * sign-in that waits, where this window may sign the host in; Open Settings for Work off where it may turn Work on;
+ * else who can; none for a computer kept from LifeOS;
  * and no header press whose dialog needs the session is offered while it is down. Each reader is mounted on a real
  * session, the host faked through the registry, in each down state.
  */
@@ -59,7 +60,9 @@ const WORDS: Record<LifeosDown, string> = {
   pairing: "The LifeOS sign-in waits for your approval",
   off: "Work is off on the box",
 };
-const PRESS = { retry: "Retry", "sign-in": "Sign in", settings: "Open Settings" } as const;
+const PRESS = { retry: "Retry", "sign-in": "Sign in", code: "Show the code", settings: "Open Settings" } as const;
+/** Inside Settings the switch's press is named for the section it opens. */
+const IN_SETTINGS = { ...PRESS, settings: "Work" } as const;
 const DOWN = Object.keys(STATES) as LifeosDown[];
 
 let asked: string[] = [];
@@ -142,7 +145,7 @@ describe.each(DOWN)("a session %s", (down) => {
     render(<OnSession sector={null}>{(session) => <LifeosLine session={session} waiting={<span data-waiting />} />}</OnSession>);
     await waitFor(() => expect(document.querySelector("[data-waiting]")).toBeNull());
     await waitFor(() => expect(times(words)).toBe(1));
-    expect(presses()).toEqual(press ? [PRESS[press]] : []);
+    expect(presses()).toEqual(press ? [IN_SETTINGS[press]] : []);
   });
 
   it.each(["tasks", "agenda", "people", "mail"] as const)("in the view frame (%s): said once, no second line under it, and no header press that needs the session", async (view) => {
@@ -153,14 +156,13 @@ describe.each(DOWN)("a session %s", (down) => {
     await waitFor(() => expect(document.querySelector("[data-view-heading]")).toBeTruthy(), { timeout: 5000 });
     await settle();
     const region = screen.getByRole("region");
-    // The frame's own bodies: the sign-in's title and the kept computer's account are the frame's words for those states.
-    const said: Record<LifeosDown, string> = { ...WORDS, "signed-out": "Sign in to LifeOS", withheld: "This computer cannot read LifeOS here" };
+    // The frame's own sign-in body has its title; every other state is the session's words, the kept computer's too.
+    const said: Record<LifeosDown, string> = { ...WORDS, "signed-out": "Sign in to LifeOS" };
     expect(times(said[down])).toBe(1);
     expect(document.querySelectorAll("[data-view-state=failed]").length).toBe(down === "unreachable" || down === "unanswered" ? 1 : 0);
     expect(region.textContent).not.toMatch(/did not load/);
-    // The frame's sign-in shows the code of a sign-in that waits (its own dialog, unchanged); else downPress's press.
-    const frame = down === "pairing" ? ["Show the code"] : press ? [PRESS[press]] : [];
-    expect(presses(region).filter((label) => label === "Retry" || label === "Sign in" || label === "Show the code" || label === "Open Settings")).toEqual(frame);
+    // downPress's press, as every reader has it (the frame's sign-in and code open the sign-in dialog in place).
+    expect(presses(region).filter((label) => label === "Retry" || label === "Sign in" || label === "Show the code" || label === "Open Settings")).toEqual(press ? [PRESS[press]] : []);
     // Nothing in the header opens a dialog the body cannot draw now, nor searches a list it cannot show.
     expect(screen.queryByRole("button", { name: /New task|New event/ })).toBeNull();
     expect(region.querySelector('[role="search"]')).toBeNull();
@@ -216,6 +218,60 @@ describe("Work off where this window may not turn it on", () => {
     await waitFor(() => expect(times(WORDS.off)).toBe(1));
     expect(times(ELSEWHERE)).toBe(1);
     expect(screen.queryByRole("button", { name: "Open Settings" })).toBeNull();
+  });
+});
+
+/**
+ * Council round 6: a sign-in missing, refused or waiting, on a window that may sign the host in (no key: the owner's
+ * own) and on one that may not (a given computer, whose key may not start the pairing, `work.lifeos.pairStart`):
+ * Sign in or Show the code where it may, else who can and no press, in every reader alike.
+ */
+describe.each(["signed-out", "refused", "pairing"] as const)("a sign-in %s", (down) => {
+  const ELSEWHERE = "Changed from a computer that manages the box";
+  const reply = { kind: "chat.reply", sector: "purdue", payload: { chatId: "c1", source: "slack", chat: "Starboard Games", text: "On it" } };
+  const op = { id: "op1", kind: "update", eventId: "ev1", payload: { title: "Review", startsAt: NOW, endsAt: NOW + 3_600_000 } };
+  const parts = () => [
+    <OnSession key="line" sector="purdue">{(session) => <DownLine session={session} />}</OnSession>,
+    <ChatReply key="reply" item={reply as never} env="env_box" />,
+    <CalendarAct key="act" item={{ kind: "calendar.op", payload: op, sector: "purdue" } as never} env="env_box" />,
+  ];
+  const label = PRESS[downPress(down)!];
+
+  it.each([
+    ["may", { transport: "open" }],
+    ["may not", GIVEN],
+  ] as const)("in a part's place, a held chat reply and a held calendar act, on a window that %s", async (may, status) => {
+    host(down, status);
+    for (const part of parts()) {
+      const view = render(part);
+      await waitFor(() => expect(document.querySelector(`[data-session-down="${down}"]`)).toBeTruthy());
+      expect(times(WORDS[down])).toBe(1);
+      expect(presses()).toEqual(may === "may" ? [label] : []);
+      expect(times(ELSEWHERE)).toBe(may === "may" ? 0 : 1);
+      view.unmount();
+    }
+  });
+
+  it.each([
+    ["may", { transport: "open" }],
+    ["may not", GIVEN],
+  ] as const)("in a settings section, the view frame and Today, on a window that %s", async (may, status) => {
+    host(down, status);
+    const line = render(<OnSession sector={null}>{(session) => <LifeosLine session={session} waiting={<span data-waiting />} />}</OnSession>);
+    await waitFor(() => expect(times(WORDS[down])).toBe(1));
+    expect(presses()).toEqual(may === "may" ? [label] : []);
+    expect(times(ELSEWHERE)).toBe(may === "may" ? 0 : 1);
+    line.unmount();
+    const frame = render(<ViewFrame view="tasks" environmentId="env_box" workspaceId="ws" sector="purdue" />);
+    // The frame's sign-in body: its own title for signed out, the session's words for the others.
+    await waitFor(() => expect(times(down === "signed-out" ? "Sign in to LifeOS" : WORDS[down])).toBe(1));
+    expect(presses(screen.getByRole("region")).filter((p) => p === label)).toEqual(may === "may" ? [label] : []);
+    expect(times(ELSEWHERE)).toBe(may === "may" ? 0 : 1);
+    frame.unmount();
+    render(<TodayPageView model={{ kind: "day", blocks: [{ kind: "lifeos", reach: down }], offline: [], keys: [] }} hostName={() => "The box"} lifeosHost="The box" lifeosEnv="env_box" onRetryLifeos={vi.fn()} />);
+    expect(times(WORDS[down])).toBe(1);
+    expect(presses()).toEqual(may === "may" ? [label] : []);
+    expect(times(ELSEWHERE)).toBe(may === "may" ? 0 : 1);
   });
 });
 

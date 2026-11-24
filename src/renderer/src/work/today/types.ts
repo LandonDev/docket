@@ -1,6 +1,7 @@
 import type { ComponentType } from "react";
 import type { SectorKey } from "@shared/work";
 import type { LifeosSession } from "../shell/lifeos";
+import type { LifeosDown } from "../shell/lifeosDown";
 
 /**
  * Today's seam (docs/agents/work-today.md "Adding to Today"): types only.
@@ -102,7 +103,11 @@ export type TodaySection = {
  * `said` is the whole line in its place, for a read the host is not at fault
  * for ("LifeOS could not read tasks").
  */
-export type TodayFailure = { environmentId: string; error: string; said?: string; retry?(): void | Promise<void> };
+/**
+ * A read that did not come back. `down`: the read went through a LifeOS session on `environmentId` that is down (a
+ * job's narrowed session on another host), said by the rule (`downWords`) with `said` after it and the rule's press.
+ */
+export type TodayFailure = { environmentId: string; error: string; said?: string; down?: LifeosDown; retry?(): void | Promise<void> };
 
 export type TodayAnswer = {
   rows?: TodayRow[];

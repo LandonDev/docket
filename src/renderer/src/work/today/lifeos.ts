@@ -3,7 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { SectorKey } from "@shared/work";
 import { loadToast } from "../../components/ui/toaster";
 import { reopenLifeos, sessionWaits, useLifeosQuery, useLifeosSession, type LifeosQuery, type LifeosSession } from "../shell/lifeos";
-import { downOf } from "../shell/lifeosDown";
+import { downOf, type LifeosDown } from "../shell/lifeosDown";
 import type { LifeosReach } from "./model";
 import { toastUp } from "./store";
 import type { TodayAnswer, TodayEnv, TodayFailure, TodayRow, TodayWorkspace } from "./types";
@@ -79,7 +79,7 @@ function useSlot<V>(sector: SectorKey, lacking: ReadonlyMap<SectorKey, string>, 
 }
 
 /** A read some job needs that did not come back: the session's cover (`sector` null), one sector's narrowed read, or a sector no open host's session can read at all. */
-export type Lost = { environmentId: string; sector: SectorKey | null; error: string };
+export type Lost = { environmentId: string; sector: SectorKey | null; error: string; down?: LifeosDown | null };
 
 /** What a sector no session covers fails with. */
 export const NOT_COVERED = "No signed-in host can read this job";
@@ -166,7 +166,9 @@ export function useLifeosRows<V, T>(env: TodayEnv, name: string, args: Record<st
     each.forEach((slot, at) => {
       const sector = SLOTS[at]!;
       if (slot?.status === "loading") pending = true;
-      if (slot?.status === "failed") lost.push({ environmentId: lacking.get(sector) ?? host, sector, error: slot.error });
+      // A narrowed session that is down keeps its true state, so the line says it by the rule and asks again only where that can help.
+      const narrowed = [a, b, c, d, e, f][at]?.session;
+      if (slot?.status === "failed") lost.push({ environmentId: lacking.get(sector) ?? host, sector, error: slot.error, down: narrowed ? downOf(narrowed) : null });
     });
     // A job whose sector no open host's session covers: its rows are missing, and nothing is on its way.
     for (const sector of uncovered) lost.push({ environmentId: host, sector, error: NOT_COVERED });
@@ -198,11 +200,14 @@ export function answerOf(
   note?: string,
   jobName?: (sector: SectorKey) => string | undefined,
 ): TodayAnswer {
-  const failure = (environmentId: string, error: string, sector?: SectorKey | null): TodayFailure => {
+  const failure = (environmentId: string, error: string, sector?: SectorKey | null, down?: LifeosDown | null): TodayFailure => {
     const of = `${sector && jobName?.(sector) ? `${jobName(sector)}'s ` : ""}${what}`;
     // No session covers the job: asking again reads with the same cover, so the line says the cause and offers no Retry.
     // It goes by itself when a host that can read the job is back.
     if (error === NOT_COVERED) return { environmentId, error, said: `No signed-in host can read ${of}` };
+    // The job's own session, on another host, is down: its state by the rule, with the rows it left out after it; its
+    // press is the rule's (`downPress`), Retry only for silence.
+    if (down) return { environmentId, error, down, said: `${of.charAt(0).toUpperCase()}${of.slice(1)} left out`, retry: read.retry };
     return { environmentId, error, said: `LifeOS could not read ${of}`, retry: read.retry };
   };
   // A session that is down is the page's one line (model.ts `page`), never each section's.
@@ -211,7 +216,7 @@ export function answerOf(
   return {
     rows,
     ...(read.pending ? { loading: true } : {}),
-    ...(read.lost.length ? { failed: read.lost.map((lost) => failure(lost.environmentId, lost.error, lost.sector)) } : {}),
+    ...(read.lost.length ? { failed: read.lost.map((lost) => failure(lost.environmentId, lost.error, lost.sector, lost.down)) } : {}),
     ...(note ? { note } : {}),
   };
 }

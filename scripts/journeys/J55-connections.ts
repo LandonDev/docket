@@ -27,7 +27,7 @@ async function signedOutView({ pair }: Context, view: string): Promise<void> {
 }
 
 export function withheldWords(line: string): boolean {
-  return line.includes('This computer cannot read LifeOS here') && !/did not answer/i.test(line)
+  return line.includes('This computer cannot read LifeOS through ') && !/did not answer/i.test(line)
 }
 
 type DrawnRow = { title: string; state?: string; detail?: string; words: string }

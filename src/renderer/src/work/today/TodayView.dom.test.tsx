@@ -320,10 +320,10 @@ describe("Today", () => {
     line = lineOf("withheld");
     expect(line.textContent).toBe("This computer cannot read LifeOS through this host");
     expect(presses(line)).toEqual([]);
-    // A sign-in that waits for his approval is not "Not signed in".
+    // A sign-in that waits for his approval is not "Not signed in"; its press shows the code (council round 6).
     line = lineOf("pairing");
-    expect(line.textContent).toBe("The LifeOS sign-in waits for your approval");
-    expect(presses(line)).toEqual([]);
+    expect(line.textContent).toBe("The LifeOS sign-in waits for your approval" + "Show the code");
+    expect(presses(line)).toEqual(["Show the code"]);
     // Work off: Open Settings, where the switch is, for a window that may turn it on.
     expect(lineOf("off").textContent).toBe("Work is off on this host" + "Open Settings");
     line = lineOf("refused");
@@ -340,7 +340,7 @@ describe("Today", () => {
       render(<TodayPageView model={{ kind: "day", blocks: [{ kind: "lifeos", reach }], offline: [], keys: [] }} hostName={() => "The box"} lifeosHost="The box" onRetryLifeos={vi.fn()} />);
       return document.querySelector<HTMLElement>(`[data-today-lifeos="${reach}"] [data-page-line-words]`)!;
     };
-    for (const reach of ["withheld", "pairing"] as const) {
+    for (const reach of ["withheld"] as const) {
       const words = wordsOf(reach);
       expect(words.className, reach).not.toContain("truncate");
       expect(words.className, reach).toContain("col-span-3");
@@ -421,6 +421,30 @@ describe("Today", () => {
     expect(refused!.textContent).toBe("LifeOS could not read tasksRetry");
     for (const cls of ROW_GRID.split(" ")) expect(late!.className).toContain(cls);
     fireEvent.click(within(refused!).getByRole("button", { name: "Retry" }));
+    expect(retry).toHaveBeenCalledTimes(1);
+  });
+
+  /** Council round 6 (Sol P1): a job's narrowed session on another host, down, is said by the rule with its press, never a Retry that asks it again for nothing. */
+  it("says a job's read through a down session by the rule: no press for a computer kept from LifeOS, Retry for silence", async () => {
+    await loadOutbox();
+    const retry = vi.fn();
+    const failing: TodaySource = {
+      id: "money",
+      section: { id: "money", title: "Money", order: 60, empty: "Nothing owed" },
+      use: () => ({
+        rows: [],
+        failed: [
+          { environmentId: "mac", error: "forbidden", down: "withheld" as const, said: "Refereeing's tasks left out", retry },
+          { environmentId: "box", error: "timed out", down: "unanswered" as const, said: "Hypixel's tasks left out", retry },
+        ],
+      }),
+    };
+    resetToday([held, failing]);
+    render(<View onClose={() => {}} />);
+    const lines = [...section("money").querySelectorAll<HTMLElement>("[data-view-state]")];
+    expect(lines.map((line) => line.textContent)).toEqual(["This computer cannot read LifeOS through MacRefereeing's tasks left out", "The box did not answerHypixel's tasks left outRetry"]);
+    expect(within(lines[0]!).queryByRole("button")).toBeNull();
+    fireEvent.click(within(lines[1]!).getByRole("button", { name: "Retry" }));
     expect(retry).toHaveBeenCalledTimes(1);
   });
 

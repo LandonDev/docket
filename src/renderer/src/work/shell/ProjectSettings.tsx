@@ -23,8 +23,7 @@ import { useAccounts } from "../../stores/accounts";
 import { dialogsChunk } from "../../surfaces/chunks";
 import { ProjectSharing } from "../guests/Share";
 import { reopenLifeos, sessionWaits, sessionWords, useLifeosQuery, useLifeosSession } from "./lifeos";
-import { downOf, useDownPress } from "./lifeosDown";
-import { openConnections, openWorkSettings } from "./open";
+import { downAction, downOf, useDownPress } from "./lifeosDown";
 
 // The rules dialog rides the dialogs chunk, as it does for a code project: asked for at the press on Edit.
 const PreambleDialog = dialogsChunk.surface("PreambleDialog");
@@ -56,7 +55,7 @@ export type LifeosReach =
   /** on its way: the field holds the mirror's name and what he types; Save waits */
   | { status: "loading" }
   /** the two stand as plain words, never as disabled controls, and one line under them says why, with the press that can help: Retry where asking again can, Sign in where LifeOS is signed out */
-  | { status: "failed"; line: string; note?: string; press?: { label: "Retry" | "Sign in" | "Open Settings"; run: () => void } }
+  | { status: "failed"; line: string; note?: string; press?: { label: string; run: () => void | Promise<void> } }
   /** a project of the workspace that mirrors nothing: its name is this host's */
   | { status: "local" };
 
@@ -201,22 +200,12 @@ export function WorkProjectSettings({ project: opened, workspace, onClose }: { p
         .finally(() => setRetrying(false));
     };
     if (session.client) return { status: "failed", line: listed.status === "failed" ? listed.error : sessionWords(session), press: { label: "Retry", run: retry } };
-    // A session that is down says its state once, with the press `downPress` gives: Retry only where LifeOS or the host
-    // did not answer, never for a computer the host keeps LifeOS from; Sign in, in Connections, where it is signed out;
-    // Open Settings where Work is off and this window may turn it on, else who can.
+    // A session that is down says its state once, with the press `useDownPress` gives: Retry only where LifeOS or the
+    // host did not answer, never for a computer the host keeps LifeOS from; Sign in or Show the code, in Connections,
+    // where this window may sign the host in; Open Settings where Work is off and it may turn it on; else who can.
     const { press, elsewhere } = down;
-    return {
-      status: "failed",
-      line: sessionWords(session),
-      ...(elsewhere ? { note: elsewhere } : {}),
-      ...(press === "retry"
-        ? { press: { label: "Retry", run: retry } }
-        : press === "sign-in"
-          ? { press: { label: "Sign in", run: openConnections } }
-          : press === "settings"
-            ? { press: { label: "Open Settings", run: openWorkSettings } }
-            : {}),
-    };
+    const action = downAction(press, retry);
+    return { status: "failed", line: sessionWords(session), ...(elsewhere ? { note: elsewhere } : {}), ...(action ? { press: action } : {}) };
   }, [lifeosId, row, listed, session, retrying, workspace.environmentId, sector, down]);
 
   // null follows what is saved, so a rename that lands from elsewhere shows until he types.

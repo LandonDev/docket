@@ -415,9 +415,9 @@ describe("a card whose LifeOS session failed", () => {
     expect(pressOf({ state: "signed-out" })).toEqual(["Not signed in to LifeOS", "Sign in"]);
     expect(pressOf({ state: "refused" })).toEqual(["LifeOS refused this host's sign-in", "Sign in"]);
     expect(pressOf({ state: "unreachable" })).toEqual(["LifeOS did not answer", "Retry"]);
-    // Work off: Open Settings, where the switch is; a sign-in that waits has none, nothing here mends it.
+    // Work off: Open Settings, where the switch is; a sign-in that waits, Show the code (council round 6).
     expect(pressOf({ state: "off" })).toEqual(["Work is off on this host", "Open Settings"]);
-    expect(pressOf({ state: "pairing" })).toEqual(["The LifeOS sign-in waits for your approval"]);
+    expect(pressOf({ state: "pairing" })).toEqual(["The LifeOS sign-in waits for your approval", "Show the code"]);
     // A computer kept from LifeOS has nothing to press that would mend it.
     expect(pressOf({ state: "unreachable", withheld: true })).toEqual(["This computer cannot read LifeOS through this host"]);
     // Council round 4 (Sol P1): a host whose status went unanswered is down, named by the registry, with Retry.

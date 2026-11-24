@@ -16,7 +16,7 @@ import { tempcodeMailKit } from "./kit";
  */
 export function Section({ environmentId }: { environmentId: string }) {
   const lifeos = useLifeosSession(environmentId, null);
-  if (!lifeos.client) return <PageSection title="Mail"><LifeosLine session={lifeos} waiting={<PageRowsSkeleton rows={3} />} /></PageSection>;
+  if (!lifeos.client) return <PageSection title="Mail"><LifeosLine session={lifeos} onWorkPage waiting={<PageRowsSkeleton rows={3} />} /></PageSection>;
   return (
     <ConvexProvider client={lifeos.client}>
       <MailClientProvider client={mailClientFor(environmentId, lifeos.client.url, "all")}>

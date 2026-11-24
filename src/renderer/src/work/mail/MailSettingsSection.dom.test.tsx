@@ -113,7 +113,15 @@ describe("Mail's settings on the Work settings page", () => {
     expect(lifeos.refresh).toHaveBeenCalledWith("local");
   });
 
-  it("say a refused sign-in as refused, with Sign in, and a sign-in that waits with no press", () => {
+  /** Council round 6 (Opus P3): on Settings → Work the switch is on the page; a press to the same page moved nothing. */
+  it("say Work off with no press on the Work page, where the switch is", () => {
+    at("off", "off");
+    render(<Section environmentId="local" />);
+    expect(screen.getByText(/^Work is off on /)).toBeTruthy();
+    expect(screen.queryByRole("button")).toBeNull();
+  });
+
+  it("say a refused sign-in as refused, with Sign in, and a sign-in that waits with Show the code", () => {
     at("refused", "refused");
     const first = render(<Section environmentId="local" />);
     expect(screen.getByText("LifeOS refused the box's sign-in")).toBeTruthy();
@@ -122,6 +130,6 @@ describe("Mail's settings on the Work settings page", () => {
     at("pairing", "pairing");
     render(<Section environmentId="local" />);
     expect(screen.getByText("The LifeOS sign-in waits for your approval")).toBeTruthy();
-    expect(screen.queryByRole("button")).toBeNull();
+    expect(screen.getByRole("button", { name: "Show the code" })).toBeTruthy();
   });
 });

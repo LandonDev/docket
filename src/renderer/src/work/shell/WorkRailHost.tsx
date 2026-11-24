@@ -55,19 +55,25 @@ export function freeSectors(workspaces: readonly Pick<WorkspaceMeta, "kind" | "s
  * box"), so the menu names the computer as every view does.
  */
 export function addMenuRows(state: LifeosStateName | null, free: readonly string[], names?: ReadonlyMap<string, string>, said?: string, elsewhere?: string | null): MenuRow[] {
+  // A sign-in or the switch this window may not reach on that host (`useDownPress`): the state and who can, as a note.
+  const kept = (id: string, fallback: string): MenuRow[] => [{ kind: "note", id, content: <span className="text-muted-foreground">{said ?? fallback}<span className="block">{elsewhere}</span></span> }];
   const top: MenuRow[] =
     state === "connected"
       ? free.map((sector) => ({ kind: "item", id: `work:add:${sector}`, label: sectorName(sector, names), icon: dotIcon(sector) }))
       : state === "signed-out" || state === "refused"
-        ? [{ kind: "item", id: "work:signin", label: "Sign in to LifeOS…", icon: LogIn }]
+        ? elsewhere
+          ? kept("work:signin-elsewhere", "Not signed in to LifeOS")
+          : [{ kind: "item", id: "work:signin", label: "Sign in to LifeOS…", icon: LogIn }]
         : state === "pairing"
-          ? [{ kind: "item", id: "work:signin", label: "Approve the LifeOS sign-in…", icon: LogIn }]
+          ? elsewhere
+            ? kept("work:signin-elsewhere", "The LifeOS sign-in waits for your approval")
+            : [{ kind: "item", id: "work:signin", label: "Approve the LifeOS sign-in…", icon: LogIn }]
           : state === "unreachable"
             ? [{ kind: "item", id: "work:retry", label: "Retry", description: said ?? "LifeOS did not answer" }]
             : state === "off"
               ? // Open Settings, where the switch is, for a key that may turn Work on there; else who can (`useDownPress`).
                 elsewhere
-                ? [{ kind: "note", id: "work:off", content: <span className="text-muted-foreground">{said ?? "Work is off on this host"}<span className="block">{elsewhere}</span></span> }]
+                ? kept("work:off", "Work is off on this host")
                 : [{ kind: "item", id: "work:settings", label: "Open Settings", description: said ?? "Work is off on this host" }]
               : [{ kind: "note", id: "work:connecting", content: <span className="text-muted-foreground">Connecting to LifeOS…</span> }];
   return [...top, ...(top.length ? [{ kind: "sep" } as const] : []), { kind: "item", id: "work:add-unlinked", label: "Without a sector…", icon: dotIcon(null) }];
@@ -132,7 +138,8 @@ export function WorkRailHost({ onOpenWorkspace }: { onOpenWorkspace: (path: stri
   const session = useLifeosSession(home ?? "", null);
   const state = addMenuState(status, session);
   const said = sessionWords(session);
-  const offPress = useDownPress("off", home ?? "");
+  // The rule's press for the home host's sign-in and switch: offered only where this window may make it, else who can.
+  const menuPress = useDownPress(state === "off" || state === "signed-out" || state === "refused" || state === "pairing" ? state : null, home ?? "");
   const listed = useLifeosQuery<{ key: string; label: string; order: number }[]>(session, "sectors:list", {});
   const names = useMemo(
     () => new Map(listed.status === "ready" ? listed.value.map((s) => [s.key, s.label] as const) : []),
@@ -149,7 +156,7 @@ export function WorkRailHost({ onOpenWorkspace }: { onOpenWorkspace: (path: stri
     const fail = (error: unknown): void => void loadToast().then((toast) => toast.error(errorText(error)));
     const workspaceAt = (path: string | null): WorkspaceMeta | undefined => (path ? workspaceByPath(workspaces, path) : undefined);
     workRailPort.set({
-      addRows: () => addMenuRows(state, freeSectors(workspaces, order), names, said, offPress.elsewhere),
+      addRows: () => addMenuRows(state, freeSectors(workspaces, order), names, said, menuPress.elsewhere),
       sectorRows(path) {
         const workspace = workspaceAt(path);
         if (!workspace || !sectorMenuShown(workspace, hosts)) return [];
@@ -179,7 +186,7 @@ export function WorkRailHost({ onOpenWorkspace }: { onOpenWorkspace: (path: stri
       },
     });
     return () => workRailPort.set(null);
-  }, [home, hosts, names, onOpenWorkspace, order, state, said, offPress.elsewhere, session.unanswered, workspaces]);
+  }, [home, hosts, names, onOpenWorkspace, order, state, said, menuPress.elsewhere, session.unanswered, workspaces]);
 
   return (
     <>

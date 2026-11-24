@@ -137,8 +137,9 @@ describe("a key the host never hands its LifeOS session", () => {
     render(<ViewFrame view="tasks" environmentId="env_box" workspaceId="ws" sector="purdue" />);
     await flush();
     await flush();
-    expect(screen.getByText("This computer cannot read LifeOS here")).toBeTruthy();
-    expect(screen.getByText("The box keeps its LifeOS sign-in to itself. Open Tasks from a computer that manages the box.")).toBeTruthy();
+    // Council round 6 (Opus P3): the title is the session's words, as every reader says it, and the line does not say it again.
+    expect(screen.getByText("This computer cannot read LifeOS through the box")).toBeTruthy();
+    expect(screen.getByText("Open Tasks from a computer that manages the box.")).toBeTruthy();
     expect(document.querySelector("[data-view-state=failed]")).toBeNull();
     expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
     expect(asked).not.toContain("work.lifeos.jwt");

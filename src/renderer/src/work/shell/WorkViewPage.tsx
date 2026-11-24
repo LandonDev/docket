@@ -11,11 +11,10 @@ import { useSelectedWorkspaceIds } from "../../stores/project";
 import { StatusMark } from "../../components/ui/status";
 import { WORK_VIEWS, type WorkViewId, type WorkViewModule, type WorkViewProps } from "../views/registry";
 import { registry, useEnvironmentStatus } from "../../lib/connection";
-import { managedElsewhere, useLinkMay } from "../../lib/linkMay";
 import { lifeosHostName, reopenLifeos, sessionFailure, sessionWords, useLifeosSession, useLifeosStatus } from "./lifeos";
 import { startThreadAbout } from "./WorkColumn";
 import { openWorkSettings } from "./open";
-import { useDownPress } from "./lifeosDown";
+import { DOWN_PRESS_LABEL, useDownPress } from "./lifeosDown";
 import { clockTime } from "../../lib/duration";
 import { workErrorWords } from "../../lib/workErrorWords";
 
@@ -108,13 +107,15 @@ export function ViewFrame({ view, environmentId, workspaceId, sector }: { view: 
   // A sign-in he started and has not approved yet, and a host whose Work is off: each says so, with its own press.
   const pairing = gated && state === "pairing";
   const off = gated && state === "off";
+  const refused = state === "refused" || session.state === "refused";
+  // Each takes the rule's press (`useDownPress`): Sign in and Show the code where this window may sign the host in, Open
+  // Settings where it may turn Work on; else who can.
   const offPress = useDownPress("off", environmentId);
+  const signPress = useDownPress(pairing ? "pairing" : refused ? "refused" : "signed-out", environmentId);
   // A host never heard from (asleep, offline): its name and Retry, never bones that pulse for ever.
   const link = useEnvironmentStatus(environmentId);
   const away = gated && state === null && link.transport !== "open" && link.transport !== "connecting" && link.transport !== "reconnecting";
   const [signingIn, setSigningIn] = useState(false);
-  // Pairing a host with LifeOS is its admin rule: a key that may not start it is told who can, never offered the press.
-  const maySignIn = useLinkMay(environmentId, "work.lifeos.pairStart");
   const host = registry.environment(environmentId)?.name ?? "This host";
   // A view with its own head (Mail) has no header over it, but the sign-in has no head and keeps the header, as does the
   // line of a session that did not answer: the view draws nothing under it then, its head included.
@@ -193,11 +194,12 @@ export function ViewFrame({ view, environmentId, workspaceId, sector }: { view: 
             {...(offPress.press ? { action: { label: "Open Settings", onClick: openWorkSettings } } : offPress.elsewhere ? { line: offPress.elsewhere } : {})}
           />
         ) : withheld ? (
-          <EmptyState title="This computer cannot read LifeOS here" line={`${host} keeps its LifeOS sign-in to itself. Open ${def.label} from a computer that manages ${nameInLine(host)}.`} />
+          <EmptyState title={silence} line={`Open ${def.label} from a computer that manages ${nameInLine(host)}.`} />
         ) : signedOut || pairing ? (
           <EmptyState
-            title={pairing ? "The LifeOS sign-in waits for your approval" : state === "refused" || session.state === "refused" ? sessionFailure("refused", false, lifeosHostName(environmentId)) : "Sign in to LifeOS"}
-            {...(maySignIn ? { action: { label: pairing ? "Show the code" : "Sign in", onClick: () => setSigningIn(true) } } : { line: managedElsewhere(host) })}
+            title={pairing ? sessionFailure("pairing") : refused ? sessionFailure("refused", false, lifeosHostName(environmentId)) : "Sign in to LifeOS"}
+            // The frame opens the sign-in dialog in place, the one Connections opens, for its sign-in and its code alike.
+            {...(signPress.press ? { action: { label: DOWN_PRESS_LABEL[signPress.press], onClick: () => setSigningIn(true) } } : signPress.elsewhere ? { line: signPress.elsewhere } : {})}
           />
         ) : (
           <ViewBoundary label={def.label} onRetry={() => setAttempt((n) => n + 1)}>

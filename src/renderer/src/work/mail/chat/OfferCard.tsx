@@ -72,9 +72,9 @@ function OfferSession({ sessionId, env, children }: { sessionId: string; env: st
 }
 
 /**
- * Why the card cannot draw, said as every reader of a down session says it (`DownLine`): Retry when LifeOS or the host
- * did not answer, Sign in when LifeOS is signed out or refused it; none for a computer kept from LifeOS, a sign-in that
- * waits or Work off.
+ * Why the card cannot draw, said as every reader of a down session says it (`DownLine`, the rule in lifeosDown.ts):
+ * Retry when LifeOS or the host did not answer; Sign in, Show the code or Open Settings where this window may make
+ * them, else who can; none for a computer kept from LifeOS.
  */
 export function SessionLine({ session, env, sector }: { session: Pick<LifeosSession, "state" | "withheld" | "unanswered">; env: string; sector: SectorKey }) {
   return <DownLine data-offer-session session={{ ...session, environmentId: env, sector, client: null }} className="text-xs" />;

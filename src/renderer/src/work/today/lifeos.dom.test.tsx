@@ -6,7 +6,9 @@
  */
 import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { resetLifeos } from "../shell/lifeos";
+import { registry } from "../../lib/connection";
+import { resetLifeos, setLifeosStatus } from "../shell/lifeos";
+import { downPress } from "../shell/lifeosDown";
 import { FakeConvex, fakeSession } from "./fakeLifeos";
 import { act as rowAct, answerOf, mutate, NOT_COVERED, uncoveredOf, useLifeosRows } from "./lifeos";
 import type { TodayEnv, TodayWorkspace } from "./types";
@@ -27,6 +29,7 @@ const idOf = (task: Task) => task._id;
 afterEach(() => {
   cleanup();
   resetLifeos();
+  vi.restoreAllMocks();
   toasts.said.length = 0;
 });
 
@@ -95,7 +98,7 @@ describe("useLifeosRows", () => {
     fakeSession("mac", mac, "ref");
     const env = envOf(lifeos, [job("box", "purdue"), job("mac", "ref")]);
     const { result } = renderHook(() => useLifeosRows<Task[], Task>(env, "tasks:list", {}, pick, idOf));
-    await waitFor(() => expect(result.current.lost).toEqual([{ environmentId: "mac", sector: "ref", error: "tasks:list is gone" }]));
+    await waitFor(() => expect(result.current.lost).toEqual([{ environmentId: "mac", sector: "ref", error: "tasks:list is gone", down: null }]));
     expect(result.current).toMatchObject({ rows: [{ _id: "t1" }], pending: false });
     const asked = { box: box.reads.length, mac: mac.reads.length };
     mac.answer("tasks:list", [{ _id: "t9", title: "Ref's", sector: "ref" }]);
@@ -107,6 +110,32 @@ describe("useLifeosRows", () => {
     // Every read was made again, the first one's too.
     expect(box.reads.length).toBeGreaterThan(asked.box);
     expect(mac.reads.length).toBeGreaterThan(asked.mac);
+  });
+
+  /** Council round 6 (Sol P1): a second host that keeps its session from this computer was said as a failed read with a Retry that asked it again. */
+  it("says a job's narrowed session that is down by its true state, with no Retry for a computer kept from LifeOS, the working jobs' rows kept", async () => {
+    const box = new FakeConvex().answer("auth:caller", { sectors: ["purdue"] }).answer("tasks:list", [{ _id: "t1", title: "One", sector: "purdue" }]);
+    const lifeos = fakeSession("box", box);
+    // The laptop answers, but keeps its LifeOS session from this computer's key.
+    vi.spyOn(registry, "linkOf").mockReturnValue({
+      environmentId: "mac",
+      connected: true,
+      onPush: () => () => {},
+      onOpen: () => () => {},
+      request: async (method: string) => {
+        if (method === "work.lifeos.status") return { lifeos: { state: "connected", ownerId: "owner", since: 0 }, keys: [] };
+        throw new Error("forbidden: work.lifeos.jwt is not for a given computer");
+      },
+    } as never);
+    setLifeosStatus("mac", { lifeos: { state: "connected", ownerId: "owner", since: 0 }, keys: [] });
+    const env = envOf(lifeos, [job("box", "purdue"), job("mac", "ref")]);
+    const { result } = renderHook(() => useLifeosRows<Task[], Task>(env, "tasks:list", {}, pick, idOf));
+    await waitFor(() => expect(result.current.lost).toMatchObject([{ environmentId: "mac", sector: "ref", down: "withheld" }]));
+    expect(result.current.rows?.map(idOf)).toEqual(["t1"]);
+    const [failure] = answerOf(result.current, [], env.lifeos, "tasks", undefined, (sector) => (sector === "ref" ? "Refereeing" : undefined)).failed!;
+    expect(failure).toMatchObject({ environmentId: "mac", down: "withheld", said: "Refereeing's tasks left out" });
+    // The line takes its press from the rule, which has none for a computer kept from LifeOS (TodayView's LostLine).
+    expect(downPress(failure!.down!)).toBeNull();
   });
 
   it("names a job no signed-in host can read: its rows are missing, and the read is not whole", async () => {

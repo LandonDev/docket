@@ -12,10 +12,9 @@ import { useSessionMeta } from "../../lib/tcserver/store";
 import { useWorkspaces } from "../../lib/tcserver/workspaces";
 import { EmptyState, SurfaceSkeleton } from "../../surfaces/SurfaceSkeleton";
 import type { CanvasBodyProps, CanvasShell } from "../canvas/kind";
-import { openConnections, openWorkSettings } from "../shell/open";
 import { sentState } from "./sentState";
 import { reopenLifeos, sessionWaits, sessionWords, useLifeosSession } from "../shell/lifeos";
-import { downIsSilence, downOf, useDownPress } from "../shell/lifeosDown";
+import { downAction, downIsSilence, downOf, useDownPress } from "../shell/lifeosDown";
 import { RuleLine } from "../rules/RuleLine";
 import { mailClientFor } from "./client";
 import { placedKit } from "./files";
@@ -46,11 +45,12 @@ export function Body({ item, source, env, shell }: CanvasBodyProps) {
   const silent = !!down && downIsSilence(down);
   const words = sessionWords(lifeos);
   const { press, elsewhere } = useDownPress(down, env);
+  const action = downAction(press);
   useEffect(() => {
     // Retry asks the host's status afresh and, once it says connected, this sector's session again: watching a host already
     // watched starts nothing. A retry that fails leaves the line as it is; the spinner stopping is the answer.
     const retry = (): Promise<void> => reopenLifeos(env, sector).catch(() => undefined);
-    shell.statusLine(silent ? { tone: "failed", word: words, detail: "The draft is kept in LifeOS", action: { label: "Retry", run: retry } } : null);
+    shell.statusLine(silent ? { tone: "failed", word: words, wrap: true, detail: "The draft is kept in LifeOS", action: { label: "Retry", run: retry } } : null);
   }, [shell, silent, words, env, sector]);
   // A file of the mail it answers opens as another item of this pane (files.ts).
   const kit = useMemo(() => placedKit(tempcodeMailKit, { env, pane: item.sessionId }), [env, item.sessionId]);
@@ -60,7 +60,7 @@ export function Body({ item, source, env, shell }: CanvasBodyProps) {
     return (
       <EmptyState
         title={words}
-        {...(press === "sign-in" ? { action: { label: "Sign in", onClick: openConnections } } : press === "settings" ? { action: { label: "Open Settings", onClick: openWorkSettings } } : {})}
+        {...(action ? { action: { label: action.label, onClick: action.run } } : {})}
         {...(elsewhere ? { line: elsewhere } : {})}
       />
     );

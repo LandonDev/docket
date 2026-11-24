@@ -13,11 +13,10 @@ import { registerToastAnchor } from "../../lib/toastAnchor";
 import { EmptyState } from "../../surfaces/SurfaceSkeleton";
 import type { WorkPlaceProps } from "../places/registry";
 import { sectorName } from "../shell/actions";
-import { openConnections, openWorkSettings } from "../shell/open";
 import { useMinute } from "../tasks/minute";
 import { CutDetail } from "../canvas/QuietLine";
 import { useTodayEnv } from "./env";
-import { downIsSilence, downWords, useDownPress, type LifeosDown } from "../shell/lifeosDown";
+import { downAction, downIsSilence, downWords, useDownPress, type LifeosDown } from "../shell/lifeosDown";
 import { HeldSheet } from "./HeldSheet";
 import { foldKey, foldOf, page, type ShownSection, type TodayPage } from "./model";
 import { openAddWorkspace } from "./open";
@@ -382,20 +381,14 @@ function Bones({ label, shape, rows = 3 }: { label: string; shape?: TodaySection
 
 /**
  * The page's one line while the LifeOS session is down, in its true state's shared words and with the one press that
- * can help (`downPress`): silence, LifeOS's or the host's, is the failed line with Retry; a sign-in missing or refused is muted with Sign in;
- * Work off is muted with Open Settings where this window may turn it on, else who can; a sign-in that waits for his
- * approval and a computer the host keeps LifeOS from are muted, with none.
+ * can help (`downPress`): silence, LifeOS's or the host's, is the failed line with Retry; a sign-in missing or refused is
+ * muted with Sign in, and one that waits for his approval with Show the code, where this window may sign the host in;
+ * Work off is muted with Open Settings where this window may turn it on; else who can. A computer the host keeps LifeOS
+ * from is muted, with none.
  */
 function LifeosLine({ down, environmentId, host, retry }: { down: LifeosDown; environmentId: string; host: string | null; retry: (() => void | Promise<void>) | undefined }) {
   const { press, elsewhere } = useDownPress(down, environmentId);
-  const action =
-    press === "sign-in"
-      ? { label: "Sign in", run: openConnections }
-      : press === "settings"
-        ? { label: "Open Settings", run: openWorkSettings }
-        : press === "retry" && retry
-          ? { label: "Retry", run: retry }
-          : undefined;
+  const action = downAction(press, retry);
   return <PageLine failed={downIsSilence(down)} word={downWords(down, host)} note={elsewhere ?? undefined} action={action} />;
 }
 
@@ -405,9 +398,23 @@ function LifeosLine({ down, environmentId, host, retry }: { down: LifeosDown; en
  * read the host is not at fault for has its own words (`said`).
  */
 function HostLine({ failure, name }: { failure: TodayFailure; name: string }) {
+  if (failure.down) return <LostLine down={failure.down} failure={failure} name={name} />;
   // The state is the word, whole; what to do about it is the muted detail, which gives way first on a narrow page.
   const [word, detail] = failure.said ? [failure.said] : splitFirst(hostFailureWords(failure.error, name));
   return <PageLine failed word={word!} detail={detail} action={failure.retry ? { label: "Retry", run: failure.retry } : undefined} />;
+}
+
+/**
+ * A job's rows read through a session on another host that is down: the session's state by the rule (`downWords`, the
+ * computer named) and its press (`useDownPress`), then the rows it left out. Retry asks that host again; a computer the
+ * host keeps LifeOS from has no press. The working jobs' rows stay above it.
+ */
+function LostLine({ down, failure, name }: { down: LifeosDown; failure: TodayFailure; name: string }) {
+  const { press, elsewhere } = useDownPress(down, failure.environmentId);
+  const word = downWords(down, name);
+  const action = downAction(press, failure.retry);
+  if (downIsSilence(down)) return <PageLine failed word={word} detail={failure.said} action={action} />;
+  return <PageLine word={word} note={[failure.said, elsewhere]} action={action} />;
 }
 
 /** "Work is off on the box. Turn it on in Settings, Work." as its first sentence and the rest. */
@@ -433,7 +440,7 @@ export function hostFailureWords(error: string, name: string): string {
  * ends on the facts' edge. A fault leads with the mark; a sign-in that is
  * only missing is plain muted words.
  */
-function PageLine({ word, detail, note, failed = false, action }: { word: string; detail?: string; note?: string; failed?: boolean; action?: { label: string; run: () => void | Promise<void> } }) {
+function PageLine({ word, detail, note, failed = false, action }: { word: string; detail?: string; note?: string | readonly (string | null | undefined)[]; failed?: boolean; action?: { label: string; run: () => void | Promise<void> } }) {
   const [running, setRunning] = useState(false);
   return (
     <div data-view-state={failed ? "failed" : "needs"} role="status" className={cn("min-h-8 items-center px-3 py-1 leading-5", ROW_GRID)}>
@@ -447,7 +454,7 @@ function PageLine({ word, detail, note, failed = false, action }: { word: string
         <span data-page-line-words className={cn("min-w-0 text-xs text-pretty text-muted-foreground", !action && "col-span-3")}>
           {word}
           {/* Who can, where this window may not: its own line under the state. */}
-          {note ? <span className="block">{note}</span> : null}
+          {[note ?? []].flat().map((line) => (line ? <span key={line} className="block">{line}</span> : null))}
         </span>
       )}
       <span className={cn("col-span-2 flex justify-end", !failed && !action && "hidden")}>

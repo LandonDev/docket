@@ -158,8 +158,8 @@ describe("a held reply whose LifeOS session is down", () => {
     unmount();
     day.session = { state: "pairing", withheld: false };
     const pairing = draw();
-    expect(pairing.container.querySelector("[data-session-down=pairing]")!.textContent).toBe("The LifeOS sign-in waits for your approval");
-    expect(screen.queryByRole("button")).toBeNull();
+    // Council round 6: the code ends the wait, where this window may sign the host in.
+    expect(pairing.container.querySelector("[data-session-down=pairing]")!.textContent).toBe("The LifeOS sign-in waits for your approvalShow the code");
     pairing.unmount();
     day.session = { state: "signed-out", withheld: false };
     const out = draw();

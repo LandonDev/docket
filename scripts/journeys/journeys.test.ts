@@ -214,8 +214,8 @@ it('reads the backend’s compose row and detects false journey wording', async 
   expect(scheduledWords('Scheduled for 9:00 AM Eastern · 7:00 AM Central', eightCentral)).toBe(false)
   expect(honestAdding(['Adding Sort the spare adapters'], 'queued')).toBe(true)
   expect(honestAdding(['Added Sort the spare adapters'], 'queued')).toBe(false)
-  expect(withheldWords('This computer cannot read LifeOS here')).toBe(true)
-  expect(withheldWords('This computer cannot read LifeOS here\nLifeOS did not answer')).toBe(false)
+  expect(withheldWords('This computer cannot read LifeOS through the box')).toBe(true)
+  expect(withheldWords('This computer cannot read LifeOS through the box\nLifeOS did not answer')).toBe(false)
 })
 
 it('keeps an owner’s cancelled reply as the same draft with its original time and zone', () => {

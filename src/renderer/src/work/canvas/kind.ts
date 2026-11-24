@@ -188,6 +188,8 @@ export interface StatusLine {
   /** "Read only, as of 2:04 PM" */
   detail?: string;
   action?: { label: string; run(): void | Promise<void> };
+  /** The word wraps beside the press, never cut: a word that is the whole fact and may be long (a computer's name). */
+  wrap?: boolean;
 }
 
 export interface WrittenLine {
