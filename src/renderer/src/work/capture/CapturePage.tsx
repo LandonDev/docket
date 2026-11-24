@@ -87,17 +87,28 @@ export function CapturePage({ host, bridge }: { host: CaptureHost; bridge: Captu
     if (inFlight.current === 0) host.idle();
   }, [host]);
 
+  // While the window shows, a change of this host's LifeOS state (a sign-in made elsewhere, a drop) reads the state
+  // again, so the line goes by itself and Return files; the draft stays as he left it.
+  const shown = useRef(false);
   useEffect(() => {
     const offShown = bridge.onShown(() => {
+      shown.current = true;
       field.current?.focus();
       refresh();
     });
-    const offHidden = bridge.onHidden(settle);
+    const offHidden = bridge.onHidden(() => {
+      shown.current = false;
+      settle();
+    });
+    const offLifeos = host.onLifeos(() => {
+      if (shown.current) refresh();
+    });
     return () => {
       offShown();
       offHidden();
+      offLifeos();
     };
-  }, [bridge, refresh, settle]);
+  }, [bridge, host, refresh, settle]);
 
   // The window is as tall as the page: main sets its height, with no motion.
   useLayoutEffect(() => {

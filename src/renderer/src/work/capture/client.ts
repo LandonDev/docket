@@ -14,11 +14,17 @@ export interface CaptureHost {
   file(params: CaptureFileParams): Promise<CaptureFiled>;
   /** the window hid: close the socket once it has been idle a while */
   idle(): void;
+  /**
+   * This host's LifeOS status changed (its `work.lifeos` push, which goes to every client socket): heard while the
+   * socket is open, that is while the window shows and a minute after. Returns the unsubscribe.
+   */
+  onLifeos(fn: () => void): () => void;
 }
 
 export function captureHost(port: () => Promise<number | null>, make = (url: string) => new Transport(url, "local")): CaptureHost {
   let open: Promise<Transport> | null = null;
   let timer: ReturnType<typeof setTimeout> | null = null;
+  const lifeos = new Set<() => void>();
 
   const link = (): Promise<Transport> => {
     if (timer) clearTimeout(timer);
@@ -29,6 +35,9 @@ export function captureHost(port: () => Promise<number | null>, make = (url: str
       const t = make(`ws://127.0.0.1:${p}`);
       t.onClose(() => {
         open = null;
+      });
+      t.onPush((push) => {
+        if (push.push === "work.lifeos") for (const fn of lifeos) fn();
       });
       await t.open();
       return t;
@@ -42,6 +51,10 @@ export function captureHost(port: () => Promise<number | null>, make = (url: str
   return {
     state: async () => (await link()).request<CaptureState>("work.capture.state", {}),
     file: async (params) => (await link()).request<CaptureFiled>("work.capture.file", params, { lane: "ui" }),
+    onLifeos(fn) {
+      lifeos.add(fn);
+      return () => void lifeos.delete(fn);
+    },
     idle() {
       if (timer) clearTimeout(timer);
       timer = setTimeout(() => {

@@ -20,6 +20,9 @@ let filed: CaptureFileParams[];
 let answer: () => Promise<unknown>;
 let state: CaptureState;
 let shown: () => void = () => {};
+let hidden: () => void = () => {};
+/** The host's `work.lifeos` push, as the capture socket hears it. */
+let lifeosPush: () => void = () => {};
 let bridge: CaptureBridge & { hide: ReturnType<typeof vi.fn>; failed: ReturnType<typeof vi.fn> };
 
 const flush = () => act(async () => {
@@ -34,6 +37,10 @@ function host(): CaptureHost {
       return answer() as never;
     },
     idle: () => {},
+    onLifeos: (fn) => {
+      lifeosPush = fn;
+      return () => {};
+    },
   };
 }
 
@@ -53,7 +60,10 @@ beforeEach(() => {
       shown = fn;
       return () => {};
     },
-    onHidden: () => () => {},
+    onHidden: (fn: () => void) => {
+      hidden = fn;
+      return () => {};
+    },
   };
 });
 afterEach(() => {
@@ -248,6 +258,48 @@ describe("the capture window", () => {
   });
 });
 
+describe("a sign-in made elsewhere while the window shows (council round 9)", () => {
+  it("reads the state again on the host's LifeOS push, so the line goes by itself and the draft stays", async () => {
+    state = { ...state, connected: false, lifeos: "signed-out" } as CaptureState;
+    let asks = 0;
+    const counting: CaptureHost = { ...host(), state: () => (++asks, Promise.resolve(state)) };
+    render(<CapturePage host={counting} bridge={bridge} />);
+    act(() => shown());
+    await flush();
+    fireEvent.change(field(), { target: { value: "Book the arena" } });
+    expect(screen.getByText(/^Not signed in to LifeOS on this (Mac|PC)$/)).toBeTruthy();
+    state = { ...state, connected: true, lifeos: "connected" } as CaptureState;
+    act(() => lifeosPush());
+    await flush();
+    expect(asks).toBe(2);
+    expect(screen.queryByText(/Not signed in/)).toBeNull();
+    expect(field().value).toBe("Book the arena");
+    expect((screen.getByText("Start thread").closest("button") as HTMLButtonElement).disabled).toBe(false);
+    // Hidden, a push asks nothing: the next show reads afresh.
+    act(() => hidden());
+    act(() => lifeosPush());
+    await flush();
+    expect(asks).toBe(2);
+  });
+
+  it("hands the socket's work.lifeos push to its listeners, and no other push", async () => {
+    let push: (p: unknown) => void = () => {};
+    const make = () =>
+      ({ onClose: () => () => {}, onPush: (fn: (p: unknown) => void) => ((push = fn), () => {}), open: async () => ({}), request: async () => state, close() {} }) as never;
+    const h = captureHost(async () => 4000, make);
+    const heard = vi.fn();
+    const off = h.onLifeos(heard);
+    await h.state();
+    push({ push: "work.outbox" });
+    expect(heard).not.toHaveBeenCalled();
+    push({ push: "work.lifeos", status: { lifeos: { state: "connected" }, keys: [] } });
+    expect(heard).toHaveBeenCalledTimes(1);
+    off();
+    push({ push: "work.lifeos", status: { lifeos: { state: "connected" }, keys: [] } });
+    expect(heard).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe("the draft", () => {
   it("steps round, reads digits, and needs words or a file", () => {
     expect(stepChoice("life", 1)).toBe("unsorted");
@@ -267,6 +319,7 @@ describe("the socket", () => {
       const t = {
         closed: false,
         onClose: () => () => {},
+        onPush: () => () => {},
         open: async () => ({}),
         request: async (method: string) => (method === "work.capture.state" ? state : { taskId: "t" }),
         close() {

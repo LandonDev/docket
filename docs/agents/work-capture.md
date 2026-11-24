@@ -111,7 +111,11 @@ A frame change in the main process, kept small:
   (the fix is on Connections); "LifeOS is still connecting" while it
   connects; "LifeOS did not answer this Mac" in red with Retry. The presses
   are off and the draft stays in each. A host that names no state keeps "Not
-  signed in to LifeOS". It wears Work's theme.
+  signed in to LifeOS". While the window shows, the host's `work.lifeos` push
+  (it goes to every client socket, the capture socket too: `onLifeos` in
+  capture/client.ts) reads the state again, so a sign-in made elsewhere takes
+  the line away with no press and the draft stays; hidden, a push asks
+  nothing. It wears Work's theme.
 
 ## The phone: a voice note
 
