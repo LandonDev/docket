@@ -83,6 +83,8 @@ const LIST_CAP = 380;
 
 /** A row the arrows bring into view stops clear of the list's faded edges (32px, `OVERFLOW_FADE_Y`): the highlighted row is never the dimmed one. */
 const CLEAR_OF_FADE = "scroll-my-8";
+/** The same 32px for a row already wholly in view, which the browser's own scroll leaves where it is (`usePointerHighlight`'s `clear`). */
+const FADE_PX = 32;
 
 /** A fact of this many characters or fewer is narrower than the 72px a long one keeps. */
 const SHORT_FACT = 10;
@@ -415,6 +417,7 @@ export function Results({
       const row = options[index];
       if (row) onPoint(row.id);
     },
+    clear: FADE_PX,
   });
 
   // Holding still: the highlighted row's place in the box, as it was last drawn or scrolled to.

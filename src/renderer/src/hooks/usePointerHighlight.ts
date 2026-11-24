@@ -14,11 +14,27 @@ import { useEffect, useRef, type MouseEvent as ReactMouseEvent } from "react";
  * Spread `onMouseMove` on the list, put `activeRef` on the highlighted row
  * and call `onRowEnter(index)` from each row's `onMouseEnter`.
  */
+/**
+ * How far a list must scroll for a row to stand `clear` px inside its box's edges, where there is more list
+ * past that edge: positive is down. `scrollIntoView({ block: "nearest" })` leaves a row that is already wholly
+ * in view where it is, whatever its scroll margin, so the row one arrow below a row that stood clear would end
+ * in the list's faded edge. Both boxes are as drawn on screen; a box with no height (nothing laid out) asks nothing.
+ */
+export function clearBy(row: { top: number; bottom: number }, box: { top: number; bottom: number }, clear: number, more: { above: boolean; below: boolean }): number {
+  if (box.bottom - box.top <= 0) return 0;
+  const under = row.bottom - (box.bottom - clear);
+  if (under > 0 && more.below) return under;
+  const over = box.top + clear - row.top;
+  if (over > 0 && more.above) return -over;
+  return 0;
+}
+
 export function usePointerHighlight<T extends HTMLElement>({
   active,
   activeKey,
   items,
   onActive,
+  clear,
 }: {
   /** The highlighted index. */
   active: number;
@@ -27,6 +43,8 @@ export function usePointerHighlight<T extends HTMLElement>({
   /** The rows; a new list waits for the pointer to move again. */
   items: unknown;
   onActive: (index: number) => void;
+  /** A list whose cut edges fade: a row the arrows move to stops this many px clear of them (its listbox is the scroller). */
+  clear?: number;
 }) {
   const activeRef = useRef<T>(null);
   const pointer = useRef({ x: Number.NaN, y: Number.NaN, allow: false });
@@ -42,7 +60,12 @@ export function usePointerHighlight<T extends HTMLElement>({
       return;
     }
     pointer.current.allow = false;
-    activeRef.current?.scrollIntoView({ block: "nearest" });
+    const row = activeRef.current;
+    row?.scrollIntoView({ block: "nearest" });
+    const box = clear ? row?.closest<HTMLElement>('[role="listbox"]') : null;
+    if (!row || !box || !clear) return;
+    const by = clearBy(row.getBoundingClientRect(), box.getBoundingClientRect(), clear, { above: box.scrollTop > 0, below: box.scrollTop + box.clientHeight < box.scrollHeight - 1 });
+    if (by) box.scrollTop += by;
   }, [activeKey === undefined ? active : activeKey]);
 
   const onMouseMove = (event: ReactMouseEvent<HTMLElement>) => {
