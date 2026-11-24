@@ -64,7 +64,7 @@ const RESPONSES: MsFormResponses = {
 
 function hostOf(view: MsFormView, over: Partial<MsFormHost> = {}): MsFormHost {
   const same = () => vi.fn(async () => view);
-  return { get: same(), collect: same(), close: same(), mode: same(), check: same(), review: same(), responses: vi.fn(async () => RESPONSES), refresh: same(), seen: same(), watch: () => () => undefined, ...over };
+  return { get: same(), collect: same(), close: same(), mode: same(), check: same(), review: same(), responses: vi.fn(async () => RESPONSES), refresh: same(), seen: same(), prefill: vi.fn(async () => ({ link: LINK })), watch: () => () => undefined, ...over };
 }
 const shell = (): CanvasShell => ({ review: vi.fn(), selection: vi.fn(), presence: vi.fn(), mode: vi.fn(), statusLine: vi.fn(), written: vi.fn(), detail: vi.fn(), openHistory: vi.fn(), held: vi.fn(), more: vi.fn(), ready: vi.fn() });
 let n = 0;

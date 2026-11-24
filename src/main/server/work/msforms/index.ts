@@ -3,7 +3,7 @@ import { MSFORMS_OWNER_ONLY, MsformsRequestSchemas } from '@shared/contract-work
 import { handled, NOT_HANDLED, type Handled } from '@shared/work'
 import type { ActKindDef, Caller, WorkCtx, WorkModule } from '../modules'
 import { msformMakeKind, msformPublishKind, settled } from './acts'
-import { get, history, holdPublish, list, make, markSeen, page, review, setCheck, setMode, setOpen } from './forms'
+import { authFor, carrierOrRefuse, get, history, holdPublish, list, make, markSeen, page, review, setCheck, setMode, setOpen } from './forms'
 import { forgetWorkspaceAnswers } from './answers/cache'
 import { refreshAnswers, responsesOf, startAnswersPoller } from './answers/read'
 import { formReach, MsformsError } from './reach'
@@ -14,6 +14,7 @@ import { refKey } from '@shared/work/files'
 import { ensureWorkbookIndex } from './workbook'
 import { refuseWithheld } from './withhold'
 import { MSFORMS_PREAMBLE, msformsTools } from './tools'
+import { msformMentions, msformSearch } from './search'
 
 // A form opens in a Files tab by its own source, after the one reach check (files/hooks.ts `registerRefSeat`).
 registerRefSeat('msform', async (ctx, by, ask) => {
@@ -90,6 +91,12 @@ async function route(req: ClientRequest, ctx: WorkCtx, by: Caller): Promise<Hand
     }
     case 'work.msforms.refresh':
       return handled(await refreshAnswers(ctx, formReach(ctx, by, paramsOf('work.msforms.refresh', req))))
+    case 'work.msforms.prefill': {
+      const p = paramsOf('work.msforms.prefill', req)
+      const at = formReach(ctx, by, p)
+      const carrier = carrierOrRefuse()
+      return handled(await carrier.prefill(authFor(ctx, at.row, 'prefill', 'owner', p.values), at.row.formId, p.values))
+    }
     case 'work.msforms.seen':
       return handled(markSeen(ctx, formReach(ctx, by, paramsOf('work.msforms.seen', req))))
   }
@@ -112,6 +119,8 @@ export const msforms: WorkModule = {
   },
   acts: [msformPublishKind as ActKindDef, msformMakeKind as ActKindDef],
   tools: () => msformsTools,
+  search: [msformSearch],
+  mentions: [msformMentions],
   preamble: () => MSFORMS_PREAMBLE,
   // "When someone answers <form>" (routine.ts): armed by the routines engine on the answers read's event
   triggers: [msformTrigger],

@@ -11,6 +11,7 @@ import DashboardSquare01Icon from "@hugeicons/core-free-icons/DashboardSquare01I
 import Doc01Icon from "@hugeicons/core-free-icons/Doc01Icon";
 import Image01Icon from "@hugeicons/core-free-icons/Image01Icon";
 import Mail01Icon from "@hugeicons/core-free-icons/Mail01Icon";
+import QrCode01Icon from "@hugeicons/core-free-icons/QrCode01Icon";
 import Message01Icon from "@hugeicons/core-free-icons/Message01Icon";
 import News01Icon from "@hugeicons/core-free-icons/News01Icon";
 import Mic01Icon from "@hugeicons/core-free-icons/Mic01Icon";
@@ -79,6 +80,8 @@ const LifeosMark = [
 ] as const;
 
 export const Mail = wrap(Mail01Icon, "Mail");
+/** A form's link as a QR code (a Microsoft form's bar). */
+export const QrCode = wrap(QrCode01Icon, "QrCode");
 /** A sender that is a mailing list or a program, where a face would go (Mail). */
 export const News = wrap(News01Icon, "News");
 /** A chat conversation (Messages): a chip, an `@` row. Not Work Chats' bubbles, which are threads. */

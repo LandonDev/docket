@@ -164,7 +164,7 @@ export const CanvasItemSchema = z.object({
  * person, a LifeOS document, a canvas item, a held act, a routine, a
  * project's card, a file of the workspace's places). The phone decodes a kind it does not know.
  */
-export const CHIP_KINDS = ['task', 'mail', 'event', 'selection', 'project', 'person', 'doc', 'item', 'held', 'routine', 'card', 'chat', 'file'] as const
+export const CHIP_KINDS = ['task', 'mail', 'event', 'selection', 'project', 'person', 'doc', 'item', 'held', 'routine', 'card', 'chat', 'file', 'msform'] as const
 export type ChipKind = (typeof CHIP_KINDS)[number]
 /** The LifeOS rows a chip may name directly (a LifeOS document is a `CanvasSource`). */
 export const CHIP_LIFEOS_TABLES = ['tasks', 'mailThreads', 'events', 'projects', 'people', 'chats'] as const
@@ -208,7 +208,8 @@ export const CHIP_NOUN: Record<ChipKind, string> = {
   routine: 'routine',
   card: 'card',
   chat: 'conversation',
-  file: 'file'
+  file: 'file',
+  msform: 'Microsoft form'
 }
 export const ContextChipSchema = z.object({
   kind: z.enum(CHIP_KINDS),
@@ -231,7 +232,8 @@ export const ContextChipSchema = z.object({
  */
 export function chipRefWords(chip: Pick<ContextChip, 'kind' | 'ref'>): string {
   const ref = chip.ref
-  if (chip.kind === 'file') return JSON.stringify(ref).replaceAll('(', '\\u0028').replaceAll(')', '\\u0029')
+  // A Microsoft form is opened by its source, as a file is.
+  if (chip.kind === 'file' || chip.kind === 'msform') return JSON.stringify(ref).replaceAll('(', '\\u0028').replaceAll(')', '\\u0029')
   if (ref.at === 'lifeos') return `LifeOS ${ref.table} ${ref.id}`
   if (ref.at === 'file') return ref.path
   if (ref.at === 'item') return `canvas item ${ref.id}`

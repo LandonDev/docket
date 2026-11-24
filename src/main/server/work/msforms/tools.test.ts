@@ -226,3 +226,48 @@ describe('a dashboard reading a form', () => {
     await expect(msformSeries(work.ctx, { kind: 'model', caps: [], sessionId: 't2' }, { workspaceId: 'w1', formId: view.formId, range: 'count' })).rejects.toThrow("form's own job")
   })
 })
+
+describe('Work search and @', () => {
+  const ask = (by: { kind: 'model' | 'local'; sessionId?: string }, text: string, workspaces = [{ id: 'w1', sector: 'purdue', name: 'Esports' }]) => {
+    const notes: string[] = []
+    return {
+      notes,
+      ask: { text, reach: { workspaces, chats: by.kind === 'local', sessionId: by.sessionId ?? null }, limit: 10, by: { ...by, caps: [] }, signal: new AbortController().signal, note: (q: { line: string }) => void notes.push(q.line) }
+    }
+  }
+
+  it('finds forms by title and answers by a word, from memory alone, and says what is not read yet', async () => {
+    const { msformSearch } = await import('./search')
+    const view = await aForm({ state: 'collecting' })
+    carrier.forms.get(view.formId)!.count = 2
+    const before = ask({ kind: 'local' }, 'snacks')
+    expect(await msformSearch.search(before.ask as never, work.ctx)).toEqual([])
+    expect(before.notes).toEqual(['Answers to 1 form are not read yet.'])
+    carrier.pullBytes = formsWorkbook(['Which night?', 'Anything else?'], madeUpAnswers(2, (i) => [i ? 'Tuesday' : 'Monday', i ? 'Bring snacks' : '']))
+    await tool('msform_answers', { form: view.formId })
+    const hits = await msformSearch.search(ask({ kind: 'local' }, 'snacks').ask as never, work.ctx)
+    expect(hits).toHaveLength(1)
+    expect(hits[0]).toMatchObject({ title: 'Spring sign-up', snippet: 'Anything else?: Bring snacks', workspaceId: 'w1', open: { to: 'file', ref: { at: 'msform', formId: view.formId } } })
+    expect((await msformSearch.search(ask({ kind: 'local' }, 'spring').ask as never, work.ctx)).map((h) => h.key)).toEqual([`msform:w1:${view.formId}`])
+  })
+
+  it('a Work Chat gets titles and no answers; another job’s thread gets nothing of this job', async () => {
+    const { msformSearch } = await import('./search')
+    const view = await aForm({ state: 'collecting' })
+    carrier.forms.get(view.formId)!.count = 1
+    carrier.pullBytes = formsWorkbook(['Which night?', 'Anything else?'], madeUpAnswers(1, () => ['Monday', 'Spring snacks']))
+    await tool('msform_answers', { form: view.formId })
+    const chat = await msformSearch.search(ask({ kind: 'model', sessionId: 'chat' }, 'spring').ask as never, work.ctx)
+    expect(chat.map((h) => h.snippet ?? 'title')).toEqual(['title'])
+    const other = await msformSearch.search(ask({ kind: 'model', sessionId: 't2' }, 'spring', [{ id: 'w1', sector: 'purdue', name: 'Esports' }]).ask as never, work.ctx)
+    expect(other).toEqual([])
+  })
+
+  it('@ offers the job’s forms by title as chips of their own source, and none to a Work Chat', async () => {
+    const { msformMentions } = await import('./search')
+    const view = await aForm()
+    const hits = await msformMentions.search('spring', { work: true, workspaceId: 'w1', sectors: ['purdue'], sessionId: 't1' }, work.ctx)
+    expect(hits).toEqual([expect.objectContaining({ chip: { kind: 'msform', label: 'Spring sign-up', ref: { at: 'msform', host: 'env_test', workspaceId: 'w1', formId: view.formId, tenant: 'purdue0' } } })])
+    expect(await msformMentions.search('spring', { work: true, workspaceId: null, sectors: 'all', sessionId: 'chat' }, work.ctx)).toEqual([])
+  })
+})

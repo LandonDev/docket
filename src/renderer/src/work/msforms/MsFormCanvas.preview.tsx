@@ -84,6 +84,7 @@ function hostOf(state: State): MsFormHost {
     responses: () => Promise.resolve(RESPONSES),
     refresh: same,
     seen: same,
+    prefill: async () => ({ link: `https://forms.cloud.microsoft/Pages/ResponsePage.aspx?id=${FORM}` }),
     watch: () => () => undefined,
   };
 }

@@ -521,6 +521,7 @@ public struct ContextChip: Codable, Hashable, Sendable {
         case card
         case chat
         case file
+        case msform
         /// A value this build does not know; `rawValue` keeps it.
         case unknown(String)
 
@@ -539,6 +540,7 @@ public struct ContextChip: Codable, Hashable, Sendable {
             case "card": self = .card
             case "chat": self = .chat
             case "file": self = .file
+            case "msform": self = .msform
             default: self = .unknown(rawValue)
             }
         }
@@ -558,6 +560,7 @@ public struct ContextChip: Codable, Hashable, Sendable {
             case .card: "card"
             case .chat: "chat"
             case .file: "file"
+            case .msform: "msform"
             case .unknown(let value): value
             }
         }

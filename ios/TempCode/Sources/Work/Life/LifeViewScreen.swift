@@ -196,6 +196,7 @@ struct ItemChip: View {
         case .person: "person"
         case .doc: "doc.text"
         case .file: "doc"
+        case .msform: "list.bullet.rectangle"
         case .item: "square.stack"
         case .held: "tray.and.arrow.up"
         case .routine: "clock"

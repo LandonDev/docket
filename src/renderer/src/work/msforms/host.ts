@@ -22,6 +22,8 @@ export interface MsFormHost {
   responses(): Promise<MsFormResponses>;
   refresh(): Promise<MsFormView>;
   seen(): Promise<MsFormView>;
+  /** Forms' own prefilled link for these answers, read by the carrier from Get Pre-filled URL. */
+  prefill(values: Record<string, string>): Promise<{ link: string }>;
   watch(on: (view: MsFormView | null) => void): () => void;
 }
 
@@ -47,6 +49,7 @@ export function linkMsFormHost(env: string, at: { workspaceId: string; formId: s
     responses: () => ask("work.msforms.responses", {}, SLOW),
     refresh: () => ask("work.msforms.refresh", {}, SLOW),
     seen: () => ask("work.msforms.seen"),
+    prefill: (values) => ask("work.msforms.prefill", { values }, SLOW),
     watch(on) {
       const offPush = link().onPush((push) => {
         if (push.push === "work.msforms" && push.workspaceId === at.workspaceId && push.formId === at.formId) on(push.view);

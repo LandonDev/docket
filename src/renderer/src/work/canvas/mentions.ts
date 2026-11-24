@@ -47,6 +47,7 @@ const GROUP: Record<ChipKind, string> = {
   selection: "Selections",
   chat: "Messages",
   file: "Files",
+  msform: "Microsoft forms",
 };
 const LIFEOS_KINDS: readonly ChipKind[] = ["task", "mail", "event", "project", "card", "person", "doc", "chat"];
 

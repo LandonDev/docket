@@ -17,6 +17,10 @@ import { LiveBody } from "../office/live/LiveBody";
 import { LiveCover } from "../office/live/cover";
 import { liveAskUrl, liveLayer } from "../office/live/layer";
 import { linkMsFormHost, type MsFormHost } from "./host";
+import { PrefillDialog, QrDialog } from "./Share";
+import { Mail, QrCode } from "../icons";
+import { writeMail } from "../mail/mailto";
+import { openWorkView } from "../../lib/workSwitch";
 import { answerBarsOf, chartOf, timeColumnOf } from "./model";
 
 /**
@@ -42,12 +46,14 @@ interface Slot {
   busy: "collect" | "close" | "reopen" | null;
   /** the guest changed under him: the agent wrote while he was typing */
   changed: boolean;
+  /** a dialog More opened */
+  dialog: "prefill" | null;
 }
 class Store {
   private slot: Slot;
   private readonly listeners = new Set<() => void>();
   constructor(half: Half) {
-    this.slot = { view: null, error: null, half, busy: null, changed: false };
+    this.slot = { view: null, error: null, half, busy: null, changed: false, dialog: null };
   }
   get = (): Slot => this.slot;
   set = (patch: Partial<Slot>): void => {
@@ -208,6 +214,9 @@ function useChrome(shell: CanvasShell, host: MsFormHost, store: Store, view: MsF
   const check = view?.check;
   const formId = view?.formId;
   const tenant = view?.tenant;
+  const link = view?.link ?? null;
+  const title = view?.title;
+  const workspaceId = view?.workspaceId;
   useEffect(() => {
     if (!formId || !tenant) return shell.more?.(null);
     const entries: MoreEntry[] = [
@@ -221,10 +230,25 @@ function useChrome(shell: CanvasShell, host: MsFormHost, store: Store, view: MsF
             run: () => void host.check(every as MsFormCheck).then((v) => store.set({ view: v })),
           }))
         : []),
+      ...(state === "collecting" && link
+        ? [
+            { id: "prefill", label: "Get a Prefilled Link…", icon: Copy, run: () => store.set({ dialog: "prefill" }) },
+            {
+              id: "mail",
+              label: "Mail the Link…",
+              icon: Mail,
+              // Mail's composer opens with the link in it; the send is his, held as every mail is.
+              run: () => {
+                writeMail({ to: [], cc: [], bcc: [], subject: title ?? "", body: `${title ?? "A form"}: ${link}` }, workspaceId);
+                if (workspaceId) openWorkView({ workspaceId, view: "mail" });
+              },
+            } satisfies MoreEntry,
+          ]
+        : []),
     ];
     shell.more?.(entries);
     return () => shell.more?.(null);
-  }, [shell, host, store, formId, tenant, state, check]);
+  }, [shell, host, store, formId, tenant, state, check, link, title, workspaceId]);
 }
 
 // ── the bar ──────────────────────────────────────────────────────────
@@ -232,7 +256,7 @@ function useChrome(shell: CanvasShell, host: MsFormHost, store: Store, view: MsF
 export function Bar(props: Props) {
   const host = hostFor(props);
   const store = storeOf(props.item.id, props.state?.half);
-  const { view, error, half, busy } = useSlot(store);
+  const { view, error, half, busy, dialog } = useSlot(store);
   // While the form loads the bar holds one bone where the switch will be, so the body never moves under it.
   if (!view) return error ? null : <Skeleton data-msform-bar-bone className="h-3 w-30" />;
   const press = (which: "collect" | "close" | "reopen", run: () => Promise<MsFormView>, failed: string): void => {
@@ -265,7 +289,7 @@ export function Bar(props: Props) {
           <BusyLabel busy={busy === "collect"} label="Collect responses" />
         </Button>
       ) : view.state === "collecting" && view.link ? (
-        <Link link={view.link} closing={busy === "close"} close={() => press("close", () => host.close(false), "Couldn't close the form")} />
+        <Link link={view.link} title={view.title} closing={busy === "close"} close={() => press("close", () => host.close(false), "Couldn't close the form")} />
       ) : view.state === "closed" ? (
         <span data-msform-closed className="ms-auto flex min-w-0 items-center gap-1">
           <span className="min-w-0 truncate text-xs text-muted-foreground">{view.closedAt ? `Closed ${dayTime(view.closedAt)}` : "Closed"}</span>
@@ -274,13 +298,15 @@ export function Bar(props: Props) {
           </Button>
         </span>
       ) : null}
+      {dialog === "prefill" ? <PrefillDialog view={view} make={(values) => host.prefill(values)} onClose={() => store.set({ dialog: null })} /> : null}
     </>
   );
 }
 
 /** The response link in `link` blue with Copy and Close form, as our form's live link; the address gives way to a worded Copy link in a narrow bar. */
-function Link({ link, closing, close }: { link: string; closing: boolean; close(): void }) {
+function Link({ link, title, closing, close }: { link: string; title: string; closing: boolean; close(): void }) {
   const [copied, setCopied] = useState(false);
+  const [qr, setQr] = useState(false);
   useEffect(() => {
     if (!copied) return;
     const t = setTimeout(() => setCopied(false), 1500);
@@ -308,9 +334,15 @@ function Link({ link, closing, close }: { link: string; closing: boolean; close(
         {copied ? <Check /> : <Copy />}
         {copied ? "Copied" : "Copy link"}
       </Button>
+      <Tip label="QR code">
+        <Button variant="ghost" size="icon-xs" aria-label="QR code" onClick={() => setQr(true)} className="text-muted-foreground">
+          <QrCode />
+        </Button>
+      </Tip>
       <Button variant="ghost" size="xs" disabled={closing} onClick={close}>
         <BusyLabel busy={closing} label="Close form" />
       </Button>
+      {qr ? <QrDialog link={link} title={title} onClose={() => setQr(false)} /> : null}
     </span>
   );
 }

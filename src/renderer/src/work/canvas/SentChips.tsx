@@ -27,7 +27,8 @@ const VIEW_OF_TABLE: Record<string, string> = { tasks: "tasks", mailThreads: "ma
 /** What a chip's reference opens, or null for one with nothing to open here. */
 export function openerOf(chip: SentChip, at: { environmentId: string; sessionId: string; workspaceId: string | null }): (() => Promise<unknown> | void) | null {
   // A file opens in a Files tab of the thread's workspace; its reference is the source `canvas_open` takes, as JSON.
-  if (KIND_OF_NOUN.get(chip.noun) === "file") {
+  // A Microsoft form opens the same way, by its own source.
+  if (KIND_OF_NOUN.get(chip.noun) === "file" || KIND_OF_NOUN.get(chip.noun) === "msform") {
     const source = fileSourceOf(chip.ref);
     const workspaceId = at.workspaceId;
     if (!source || !workspaceId) return null;
