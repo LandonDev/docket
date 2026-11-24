@@ -72,8 +72,8 @@ export const GOOGLE_TOOLS: WorkTool[] = [
     readOnly: false,
     async run(a, ctx) {
       const item = itemOf(ctx, a.item, GOOGLE_MIME.doc, 'Doc')
-      const { revisionId, within } = await checkEdits(googleOf(ctx), item.source, a.edits)
-      return held(ctx, { app: 'doc', account: item.source.account, fileId: item.source.fileId, name: item.title, edits: a.edits.map((e, i) => ({ ...e, within: within[i] })), revisionId })
+      const { revisionId, within, tabs } = await checkEdits(googleOf(ctx), item.source, a.edits)
+      return held(ctx, { app: 'doc', account: item.source.account, fileId: item.source.fileId, name: item.title, edits: a.edits.map((e, i) => ({ ...e, within: within[i], tab: tabs[i] })), revisionId })
     }
   }),
   tool({

@@ -130,6 +130,18 @@ describe('a Google Doc in the document canvas', () => {
     expect(fake.docText('doc1')).toBe(now)
   })
 
+  it("goes stale when the paragraph he was shown now stands in another tab, its words alike", async () => {
+    const edits = [{ find: 'tight', replace: 'fine' }]
+    const judged = await checkEdits(googleOf(ctx), src, edits)
+    expect(judged.tabs).toEqual(['t.0'])
+    fake.editDoc('doc1', 1, 'Note: ')
+    const now = fake.docText('doc1')
+    // Held on the paragraph of another tab: the same words in this one are not the passage he approved.
+    await expect(writeEdits(googleOf(ctx), src, edits.map((e, i) => ({ ...e, within: judged.within[i], tab: 't.1' })), judged.revisionId)).resolves.toEqual({ stale: '"tight" now stands in another passage than the one shown' })
+    expect(fake.docText('doc1')).toBe(now)
+    await expect(writeEdits(googleOf(ctx), src, edits.map((e, i) => ({ ...e, within: judged.within[i], tab: judged.tabs[i] })), judged.revisionId)).resolves.toEqual({ moved: true })
+  })
+
   it('keeps his unwritten edits when the Doc moved, and marks it behind', async () => {
     const mirror = await docMirror(ctx, googleOf(ctx), src)
     live = await fresh()

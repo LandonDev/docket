@@ -112,8 +112,9 @@ them as a `google.edit` with the revision it read. Nothing goes to Google:
 no suggestion, no comment. His press in the Outbox reads the Doc again and
 writes them as plain edits in one `batchUpdate` bound to the revision just
 read (`writeEdits`); a `find` no longer standing once, or standing in a
-paragraph other than the one it was suggested in (`within`, kept with the
-hold), leaves the act stale, and a Doc that moved while every `find` still
+paragraph other than the one it was suggested in (`within` and its tab,
+`tab`, kept with the hold, so the same words in another tab are another
+passage), leaves the act stale, and a Doc that moved while every `find` still
 stands where it did is written and said.
 The docs tools refuse a Google item and name the google tools.
 
@@ -151,7 +152,9 @@ made: Drive puts a copy in the deck's own folders, where everyone who shares
 them would see it. His press makes the edits in the deck itself, in one
 `batchUpdate` bound to the revision just read (`writeDeckEdits`); words gone,
 words replaced everywhere now standing in more or fewer boxes than he was
-shown (`boxes`), or a shape holding other words than it did, leave the act
+shown (`boxes`), in boxes whose words are not all as they were (`spots`, each
+box's words whole, so a match moved to another bullet of the same box is
+seen), or a shape holding other words than it did, leave the act
 stale. A replace-all names the slides the card counted (`pageObjectIds`, the
 ids of the deck just read for the act's `on`): without them Google matches
 every page, a slide's speaker notes, layouts and masters included, which the

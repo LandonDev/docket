@@ -73,8 +73,9 @@ function judge(d: { slides: TextShape[][] }, edits: readonly DeckEdit[]): { held
       // how many times the words stand in all, so a second match inside a box already counted is seen too
       const count = state.flat().reduce((n, x) => n + x.text.split(e.find).length - 1, 0)
       if (!boxes) return { error: `"${e.find}" is on no slide.`, owner: `${quoted(e.find)} is on no slide now` }
-      // which boxes hold the words and how often each, as one short digest: totals alike but moved are told apart
-      const spots = createHash('sha256').update(state.flat().map((x) => `${x.objectId}:${x.text.split(e.find).length - 1}`).filter((t) => !t.endsWith(':0')).join(',')).digest('hex').slice(0, 16)
+      // which boxes hold the words, with each one's words whole, as one short digest: totals alike but moved, to
+      // another box or to another bullet of the same box, are told apart
+      const spots = createHash('sha256').update(JSON.stringify(state.flat().filter((x) => x.text.includes(e.find)).map((x) => [x.objectId, x.text]))).digest('hex').slice(0, 16)
       held.push({ find: e.find, replace: e.replace, boxes, on, count, spots })
       for (const x of state.flat()) x.text = x.text.split(e.find).join(e.replace)
       continue

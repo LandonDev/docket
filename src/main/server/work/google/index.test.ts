@@ -370,6 +370,16 @@ describe('the google tools', () => {
     ])
   })
 
+  it('leaves a deck stale when its only match moved to another bullet of the same box', async () => {
+    fake.addDeck(ME, 'deck8', 'Plan', [{ objectId: 's1', texts: [{ objectId: 't1', text: 'Q1 goals\nBudget' }] }])
+    const { itemId } = await call<{ itemId: string }>('work.google.open', { sessionId: 's1', account: ME, fileId: 'deck8' })
+    await run('google_slides_revise', { item: itemId, edits: [{ find: 'Q1', replace: 'Q2' }] })
+    fake.files.get('deck8')!.deck!.slides[0]!.texts[0]!.text = 'Goals\nQ1 budget'
+    fake.files.get('deck8')!.deck!.rev++
+    await expect(googleEdit.execute(googleEdit.payload.parse(held[0].payload), { ...ctx, item: { sessionId: 's1' } } as never)).rejects.toThrow('other boxes')
+    expect(fake.files.get('deck8')!.deck!.slides[0]!.texts[0]!.text).toBe('Goals\nQ1 budget')
+  })
+
   it('leaves a deck stale, writing nothing, when the words it replaces everywhere now stand in more boxes than he was shown', async () => {
     fake.addDeck(ME, 'deck2', 'Plan', [{ objectId: 's1', texts: [{ objectId: 't1', text: 'Q1 goals' }, { objectId: 't2', text: 'Budget' }] }])
     const { itemId } = await call<{ itemId: string }>('work.google.open', { sessionId: 's1', account: ME, fileId: 'deck2' })
@@ -446,7 +456,7 @@ describe('the google tools', () => {
     expect(text(got)).toMatch(/^Held for the owner: .*Nothing went to Google and nobody else sees it/)
     expect(JSON.stringify([...fake.files])).toBe(before)
     expect(fake.docSuggestions('doc2')).toEqual([])
-    expect(held).toEqual([expect.objectContaining({ kind: 'google.edit', payload: expect.objectContaining({ app: 'doc', fileId: 'doc2', edits: [{ find: 'March', replace: 'May', within: 'We ship in March.' }] }) })])
+    expect(held).toEqual([expect.objectContaining({ kind: 'google.edit', payload: expect.objectContaining({ app: 'doc', fileId: 'doc2', edits: [{ find: 'March', replace: 'May', within: 'We ship in March.', tab: 't.0' }] }) })])
     const payload = googleEdit.payload.parse(held[0].payload)
     expect(googleEdit.words(payload)).toEqual({ summary: 'Make the change in Brief: "March" to "May"', verb: 'Make the change' })
     await expect(googleEdit.execute(payload, { ...ctx, item: { sessionId: 's1' } } as never)).resolves.toMatchObject({ summary: 'Made the change in Brief' })

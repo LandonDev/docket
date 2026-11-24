@@ -70,7 +70,7 @@ export const googleShare: ActKindDef<GoogleShare, GoogleShareMatcher> = {
 const FileId = z.string().regex(/^[A-Za-z0-9_-]{1,200}$/)
 const Replace = z.object({ find: z.string().min(1).max(5_000), replace: z.string().max(20_000) })
 /** A Doc's replace, with the paragraph that held the words when it was suggested. */
-const DocReplace = Replace.extend({ within: z.string().max(200_000).optional() })
+const DocReplace = Replace.extend({ within: z.string().max(200_000).optional(), tab: z.string().max(200).optional() })
 /** A deck's replace-all, with how many boxes held the words then. */
 const DeckReplace = Replace.extend({ boxes: z.number().int().min(1).optional(), on: z.array(z.number().int().min(1)).max(500).optional(), count: z.number().int().min(1).optional(), spots: z.string().max(100).optional() })
 
