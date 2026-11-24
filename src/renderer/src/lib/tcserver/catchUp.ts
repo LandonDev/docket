@@ -56,7 +56,7 @@ export class CatchUpLane {
       // Settles when the fetch does, whichever way; started once, by the pump or `promote`.
       const start = (): Promise<void> => (running ??= fetch().then(resolve, reject));
       this.waiting.push({ id, start });
-      void this.pump();
+      this.kick();
     });
   }
 
@@ -78,6 +78,21 @@ export class CatchUpLane {
     return run;
   }
 
+  /** The pump starts a few microtasks later: a window that is opening names
+   *  its shown pane in the same turn as its loads, and FocusSignal settles
+   *  that in a microtask of its own. */
+  private kick(): void {
+    if (this.busy || this.kicked) return;
+    this.kicked = true;
+    void Promise.resolve()
+      .then(() => undefined)
+      .then(() => {
+        this.kicked = false;
+        void this.pump();
+      });
+  }
+  private kicked = false;
+
   private async pump(): Promise<void> {
     if (this.busy) return;
     this.busy = true;
@@ -85,7 +100,10 @@ export class CatchUpLane {
       for (;;) {
         // The shown thread's page is never queued behind a background one on the socket.
         while (this.front.size > 0) await Promise.all(this.front);
-        const w = this.waiting.shift();
+        // The shown thread first, if it was asked for before the window named it.
+        const shown = this.options.shown();
+        const at = this.waiting.findIndex((x) => x.id === shown);
+        const w = at >= 0 ? this.waiting.splice(at, 1)[0] : this.waiting.shift();
         if (!w) break;
         const before = this.options.bytesIn();
         const startedAt = this.now();

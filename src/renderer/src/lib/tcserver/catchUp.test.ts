@@ -57,7 +57,8 @@ describe("CatchUpLane", () => {
     for (const id of ["a", "b"]) void h.lane.run(id, h.fetch(id));
     void h.lane.run("focused", h.fetch("focused"));
     await flush();
-    expect(h.started).toEqual(["a", "focused"]);
+    // The others wait while its fetch is out.
+    expect(h.started).toEqual(["focused"]);
   });
 
   it("starts no background transcript while the shown thread's fetch is out", async () => {
@@ -69,6 +70,17 @@ describe("CatchUpLane", () => {
     h.answers.get("focused")!.resolve();
     await flush();
     expect(h.started).toEqual(["focused", "a"]);
+  });
+
+  it("takes the shown thread first when the window names it after asking for it", async () => {
+    const h = harness();
+    for (const id of ["a", "b", "c"]) void h.lane.run(id, h.fetch(id));
+    // The window's focus lands in a microtask of the same turn, after its loads.
+    queueMicrotask(() => (h.state.shown = "c"));
+    await flush();
+    expect(h.started).toEqual(["c"]);
+    await h.answer("c");
+    expect(h.started).toEqual(["c", "a"]);
   });
 
   it("starts a waiting transcript at once when it becomes the shown one", async () => {
