@@ -14,7 +14,7 @@ import { project } from "../../stores/project";
 import { shell } from "../../stores/shell";
 import { wantOutboxItem } from "../outbox/store";
 import { DigestSheet } from "./DigestSheet";
-import { carryLegacy, DIGEST_TOAST, digestNotice, forgetGone, marked, nowToasts, onlyToday, openInterrupts, systemNotices, tellingOf, type NowToast } from "./notice";
+import { carryLegacy, DIGEST_TOAST, digestNotice, forgetGone, keepClock, marked, nowToasts, onlyToday, openInterrupts, systemNotices, tellingOf, type NowToast } from "./notice";
 import { go, routeOf, type Routes } from "./open";
 import { todayShowsAll } from "./today";
 import { markSeen, openDigestSheet, setTellOpener, useDigest, useDigestSheetOpen } from "./store";
@@ -227,26 +227,7 @@ export function DigestHost() {
   live.current = { toasts, digest, openToast, openDigest };
   // A toast this code takes away is not one he closed.
   const taken = useRef(new Set<string>());
-  useToastSync(
-    toasts,
-    (toast) => toast.id,
-    (api, toast, id) => {
-      // Shown again in place (its words changed): nothing was taken away, so his next close is his own.
-      taken.current.delete(id);
-      api.warning(toast.title, {
-        id,
-        description: toast.detail,
-        duration: Infinity,
-        closeButton: true,
-        action: { label: "Open", onClick: () => live.current.openToast(live.current.toasts.find((t) => t.id === id) ?? toast) },
-        onDismiss: () => {
-          if (!taken.current.delete(id)) dismiss((live.current.toasts.find((t) => t.id === id) ?? toast).rows);
-        },
-      });
-      return () => void taken.current.add(id);
-    },
-    (toast) => `${toast.title}\0${toast.detail ?? ""}\0${toast.rows.length}`,
-  );
+  // The digest's toast is asked first, so a thing that cannot wait, asked after it, stands in front of it in the stack.
   const digestItems = useMemo(() => (digest ? [digest] : []), [digest]);
   useToastSync(
     digestItems,
@@ -268,6 +249,26 @@ export function DigestHost() {
     (notice) => notice.line,
   );
 
+  useToastSync(
+    toasts,
+    (toast) => toast.id,
+    (api, toast, id) => {
+      // Shown again in place (its words changed): nothing was taken away, so his next close is his own.
+      taken.current.delete(id);
+      api.warning(keepClock(toast.title), {
+        id,
+        description: toast.detail === undefined ? undefined : keepClock(toast.detail),
+        duration: Infinity,
+        closeButton: true,
+        action: { label: "Open", onClick: () => live.current.openToast(live.current.toasts.find((t) => t.id === id) ?? toast) },
+        onDismiss: () => {
+          if (!taken.current.delete(id)) dismiss((live.current.toasts.find((t) => t.id === id) ?? toast).rows);
+        },
+      });
+      return () => void taken.current.add(id);
+    },
+    (toast) => `${toast.title}\0${toast.detail ?? ""}\0${toast.rows.length}`,
+  );
   // The same two things as system notifications, for a person looking at another app (src/main/notice.ts).
   // A telling sounds once, when its notice is first asked; what was told before this window opened is not news to
   // the ear. So a fold that loses a thing, or breaks up into its things, is shown again without a sound.

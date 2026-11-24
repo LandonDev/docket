@@ -102,6 +102,12 @@ describe("the digest's toast", () => {
     w().rows.set("mac", [tell({ host: "mac", day: "2026-11-24", how: "digest", sector: "ref" })]);
   });
 
+  it("is asked before a thing that cannot wait, so that thing stands in front of it in the stack", async () => {
+    w().rows.set("box", [...w().rows.get("box")!, tell({ key: "prep:ev9", title: "Budget review starts at 2:00 PM", how: "now", toldAt: at(24, 10), by: at(24, 14) })]);
+    await mount();
+    expect(shown().map((t) => t.id)).toEqual(["work-digest", "work-now:k:prep:ev9"]);
+  });
+
   it("is one toast for two hosts' same day, sticky, with Open", async () => {
     await mount();
     expect(shown()).toMatchObject([{ id: "work-digest", kind: "plain", text: "Digest: 3 things in Cosmic, Purdue and Ref", sticky: true, label: "Open" }]);
@@ -406,7 +412,7 @@ describe("an interrupt's toast", () => {
     w().rows.set("box", [meeting()]);
     w().rows.set("mac", [{ ...meeting(), host: "mac" }]);
     await mount();
-    expect(shown()).toMatchObject([{ id: "work-now:k:prep:ev1", kind: "warning", text: "Budget review starts at 2:00 PM", description: "With Dana Reyes", sticky: true, label: "Open" }]);
+    expect(shown()).toMatchObject([{ id: "work-now:k:prep:ev1", kind: "warning", text: "Budget review starts at 2:00\u00a0PM", description: "With Dana Reyes", sticky: true, label: "Open" }]);
     expect(bridge.show).toHaveBeenCalledWith({ key: "work-now:k:prep:ev1", title: "Purdue", body: "Budget review starts at 2:00 PM\nWith Dana Reyes", telling: expect.any(String) });
   });
 

@@ -7,7 +7,7 @@ import { mergeDays, mergeRows, resetDigestStore, seedDigestHost } from "./store"
 import { SettingsSection } from "./SettingsSection";
 import { useEffect, useState } from "react";
 import { loadToast, Toaster } from "../../components/ui/toaster";
-import { digestNotice, nowToasts } from "./notice";
+import { digestNotice, keepClock, nowToasts } from "./notice";
 import { Unsettled } from "../kit.preview";
 
 // The toast stack rides its own chunk: landed before the first render.
@@ -125,8 +125,9 @@ export function DigestToastsPreview({ fold = false, only }: { fold?: boolean; on
     const now = nowToasts(fold ? [...interrupts, ...[1, 2, 3].map((i) => ({ ...interrupts[0]!, id: `n${i}`, key: `k${i}`, title: `Interrupt ${i}` }))] : interrupts);
     const notice = digestNotice({ days: [{ day: "2026-11-24", madeAt: at(24, 8), seenAt: null, hosts: ["box"] }], rows: ROWS });
     void loadToast().then((toast) => {
-      if (only !== "digest") for (const t of now) toast.warning(t.title, { id: t.id, description: t.detail, duration: Infinity, closeButton: true, action: { label: "Open", onClick: () => {} } });
+      // In DigestHost's order: the digest first, so what cannot wait stands in front of it.
       if (notice && only !== "now") toast(notice.line, { id: "work-digest", duration: Infinity, closeButton: true, action: { label: "Open", onClick: () => {} } });
+      if (only !== "digest") for (const t of now) toast.warning(keepClock(t.title), { id: t.id, description: t.detail === undefined ? undefined : keepClock(t.detail), duration: Infinity, closeButton: true, action: { label: "Open", onClick: () => {} } });
     });
   }, [fold, only]);
   return (

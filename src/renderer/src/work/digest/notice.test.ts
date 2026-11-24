@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { TellRow } from "@shared/work/tell";
-import { carryLegacy, digestNotice, emptyLine, FOLD_PAST, forgetGone, listSections, marked, nameOf, nowToasts, onlyToday, openInterrupts, refusedLine, rowWhen, systemNotices, tellingOf, tellingsOf, unansweredLine } from "./notice";
+import { carryLegacy, digestNotice, emptyLine, FOLD_PAST, forgetGone, keepClock, listSections, marked, nameOf, nowToasts, onlyToday, openInterrupts, refusedLine, rowWhen, systemNotices, tellingOf, tellingsOf, unansweredLine } from "./notice";
 import type { MergedDay } from "./store";
 
 /** What the desktop shows of the digest, as rules over made-up rows. */
@@ -241,5 +241,13 @@ describe("the list", () => {
     expect(unansweredLine(["The box", "The Mac", "The PC"])).toBe("The box, The Mac and The PC did not answer");
     expect(refusedLine([])).toBe("");
     expect(refusedLine(["The box", "The Mac"])).toBe("The box and The Mac did not take it");
+  });
+});
+
+describe("a toast's clock", () => {
+  it("keeps the time and its AM or PM on one line", () => {
+    expect(keepClock("Budget review starts at 2:00 PM")).toBe("Budget review starts at 2:00\u00a0PM");
+    expect(keepClock("By 9 AM, then 4:30 PM")).toBe("By 9\u00a0AM, then 4:30\u00a0PM");
+    expect(keepClock("PM review at noon")).toBe("PM review at noon");
   });
 });

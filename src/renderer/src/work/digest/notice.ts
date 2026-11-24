@@ -141,6 +141,9 @@ export interface NowToast {
   rows: TellRow[];
 }
 
+/** A clock is never broken from its AM or PM: a narrow toast wraps "2:00 PM" whole ("Budget review starts at 2:00 PM"). */
+export const keepClock = (words: string): string => words.replace(/(\d) ([AP]M)\b/g, "$1\u00a0$2");
+
 /** One toast a row; past three, one toast for them all, which opens the list. */
 export function nowToasts(rows: readonly TellRow[]): NowToast[] {
   if (rows.length > FOLD_PAST) return [{ id: NOW_FOLD_TOAST, title: `${rows.length} things need you now`, rows: [...rows] }];
