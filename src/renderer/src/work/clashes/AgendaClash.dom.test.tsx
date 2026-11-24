@@ -1,11 +1,13 @@
 // @vitest-environment jsdom
 /** A clash on its event's Agenda row: the line in that event's words, its press, Show clash, and Leave from the rule. */
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { LifeosRange } from "@shared/work/clashes";
 
 const HOUR = 3_600_000;
-const now = Date.now();
+// A fixed morning, and the clock held on it: the events below stand two to five hours ahead, and a run late in the
+// evening carried the meeting over midnight, where the list draws it on both of its days and every row was found twice.
+const now = new Date(2026, 10, 23, 9, 0).getTime();
 const lifeos = vi.hoisted(() => ({ asked: [] as { name: string; args: unknown }[], range: null as unknown, ready: true }));
 vi.mock("../shell/lifeos", async (original) => ({
   ...(await original<object>()),
@@ -33,8 +35,10 @@ const { Head, View } = await import("../agenda/AgendaView");
 const { clashAsk } = await import("./open");
 const { clockOf } = await import("@shared/work/clashes");
 
+beforeEach(() => void vi.useFakeTimers({ now, toFake: ["Date"] }));
 afterEach(() => {
   cleanup();
+  vi.useRealTimers();
   clashAsk.set(null);
   lifeos.asked.length = 0;
   lifeos.ready = true;
@@ -213,7 +217,7 @@ describe("a clash on the Agenda row", () => {
   it("lets a clash go at the very minute its later event ends, as the dialog calls that event over", async () => {
     // The clock stands on the minute the game ends; the meeting runs on.
     const end = Math.ceil(now / 60_000) * 60_000 + 30 * 60_000;
-    vi.useFakeTimers({ now: end, toFake: ["Date"] });
+    vi.setSystemTime(end);
     try {
       events.rows = [{ ...meeting, startsAt: end - 2 * HOUR, endsAt: end + HOUR }];
       const ended = side("ev_game", "ref", "Varsity Basketball", end - HOUR, end);
@@ -230,7 +234,7 @@ describe("a clash on the Agenda row", () => {
       await act(async () => {});
       expect(drawn.marked.at(-1)).toEqual([]);
     } finally {
-      vi.useRealTimers();
+      vi.setSystemTime(now);
     }
   });
 

@@ -74,7 +74,12 @@ describe('METHOD_CAPABILITY', () => {
         'computer.settings.set',
         'computer.verdicts.forget',
         'computer.permissions',
-        'computer.service.retry'
+        'computer.service.retry',
+        // Code-only updates (contract-code.ts): the pack script's word that a pack is ready, and where this Mac
+        // takes code from. Code that will run here is this machine's own to name and to choose: no key may.
+        'code.announce',
+        'code.settings.get',
+        'code.settings.set'
       ].sort()
     )
   })
@@ -178,7 +183,11 @@ describe('METHOD_CAPABILITY', () => {
         'addons.grant.refresh',
         // The Work switch on this host (contract-work.ts): a settings write.
         'work.set',
-        'work.workspace.set'
+        'work.workspace.set',
+        // Code-only updates (contract-code.ts): a host hands its packed code only to a link that holds admin,
+        // the same key that may deploy it (`host.deploy`).
+        'code.latest',
+        'code.chunk'
       ].sort()
     )
   })
