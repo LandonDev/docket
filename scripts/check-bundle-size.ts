@@ -119,7 +119,9 @@ export const NEVER_IN_ENTRY = [
   'src/renderer/src/surfaces/setup/setupFlow.ts',
   'src/renderer/src/surfaces/setup/UseSetupLink.tsx',
   'src/renderer/src/surfaces/settings/hosts/computersText.ts',
-  'src/renderer/src/lib/devicesClient.ts'
+  'src/renderer/src/lib/devicesClient.ts',
+  // The transcript reads a computer call's lines from computer/stepLines.ts, not the tools' schemas.
+  'src/shared/computer/tools.ts'
 ]
 
 /**

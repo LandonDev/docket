@@ -9,7 +9,8 @@ import { COMPUTER_RESULT_TOOL } from './heldCalls'
 import { parseElementLine, parseKeyCombo, type Modifier } from './observation'
 import { confirmInput, confirmTitle, type Confirm, type ConfirmNeed, type HostConfirmKind } from './policy'
 import { COMPUTER_ACTION_NAMES, NO_INPUT_ACTIONS, type ComputerAction, type ComputerActionName, type ElementBrief } from './protocol'
-import { menuPathSegments, parseStepLine, type ComputerToolName, type TierVerdict } from './tools'
+import { menuPathSegments, parseStepLine } from './stepLines'
+import type { ComputerToolName, TierVerdict } from './tools'
 
 /**
  * A tool's own name: `mcp__app__computer_act` and `computer_act` alike, a

@@ -121,7 +121,7 @@ passes 5 MiB + 16 KiB, 5,136.0 kB (measured 5,000.1 kB after A26's sweep, from
 5,287.9 kB over budget before it; UI-13's build took it to 5,140.8 kB, and
 the select leaving the first paint brought it to 5,062.2 kB; the Away row
 and master's growth took it to 5,136.9 kB until the return from Away took a chunk of its own, 5,134.4 kB, and Base UI's menu
-and popover leaving it brought it from 5,135.3 kB to 4,891.7 kB; the budget leaves room for the
+and popover leaving it brought it from 5,135.3 kB to 4,891.7 kB; at 5,136.4 kB the transcript's computer lines leaving the tools' schemas (computer/stepLines.ts) brought it to 5,108.4 kB; the budget leaves room for the
 surfaces that belong in the first paint, not a chunk's worth: xterm alone is
 0.3 MiB, CodeMirror 0.8, recharts 0.9) or when any module of
 `NEVER_IN_ENTRY` (the packages and surfaces above) is in that closure — a

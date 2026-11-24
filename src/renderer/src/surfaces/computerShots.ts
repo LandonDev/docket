@@ -1,4 +1,4 @@
-import { parseShotLine } from "@shared/computer/tools";
+import { parseShotLine } from "@shared/computer/stepLines";
 import { computerToolOf } from "@shared/computer/words";
 import type { Block } from "../lib/session";
 import { inputOf } from "../lib/toolDetails";
