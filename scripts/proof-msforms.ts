@@ -29,7 +29,7 @@
  *   /state                              the tells, pushes and log lines so far, and the form rows
  *   /quit                               stops the browser and the frame
  */
-import { copyFileSync, mkdirSync } from 'node:fs'
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
 import { LOCAL_PRINCIPAL } from '../src/shared/capabilities'
@@ -123,8 +123,25 @@ const routes: Record<string, (body: Record<string, unknown>) => Promise<unknown>
   svc: async (b) => host.service.request(String(b.method) as never, { ...(b.params as object), session: looks } as never, { timeoutMs: 120_000 } as never),
   threadOpen: async (b) => host.sessions.run({ threadId: 't-proof-thread', permission: () => 'auto', approve: async () => true }, 'computer_apps', { launch: 'Chromium', open: [String(b.url)] }),
   shot: async (b) => {
-    const shot = (await host.service.request('capture.screenshot', { session: looks, app: { app: 'Chromium' }, window: { id: Number(b.window) }, format: 'png' } as never)) as { path: string }
-    copyFileSync(shot.path, String(b.file))
+    // The proof's own pictures, straight from Chromium's DevTools by the page's address: the carrier's sessions take
+    // none (review 21). `region` [x0, y0, x1, y1] in the page's pixels crops out what must not be kept.
+    const port = Number(readFileSync(join(dir, 'work-browser/box/profile/DevToolsActivePort'), 'utf8').split('\n')[0])
+    const list = (await (await fetch(`http://127.0.0.1:${port}/json/list`)).json()) as { type: string; url: string; webSocketDebuggerUrl: string }[]
+    const target = list.filter((t) => t.type === 'page' && t.url.includes(String(b.match))).at(-1)
+    if (!target) throw new Error('no page with that address')
+    const ws = new WebSocket(target.webSocketDebuggerUrl)
+    await new Promise((r, j) => ((ws.onopen = r), (ws.onerror = j)))
+    const r = b.region as number[] | undefined
+    const clip = r ? { x: r[0], y: r[1], width: r[2]! - r[0]!, height: r[3]! - r[1]!, scale: 1 } : undefined
+    const data = await new Promise<string>((res, rej) => {
+      ws.onmessage = (m) => {
+        const msg = JSON.parse(String(m.data)) as { id?: number; result?: { data: string }; error?: { message: string } }
+        if (msg.id === 1) (msg.result ? res(msg.result.data) : rej(new Error(msg.error?.message)))
+      }
+      ws.send(JSON.stringify({ id: 1, method: 'Page.captureScreenshot', params: { format: 'png', ...(clip ? { clip } : {}) } }))
+    })
+    ws.close()
+    writeFileSync(String(b.file), Buffer.from(data, 'base64'))
     return { file: b.file }
   },
   fetch: async (b) => {
@@ -174,7 +191,7 @@ const routes: Record<string, (body: Record<string, unknown>) => Promise<unknown>
     const made: unknown[] = []
     // LifeOS stood in: no test session of his LifeOS exists on the box, so the task's write is recorded, not made.
     const lifeos = { connected: () => true, owner: () => ({ mutation: async (name: string, args: unknown) => (made.push({ name, args }), `task-${made.length}`) }) }
-    const out = await fileAnswerTasks({ db, lifeos } as never, { workspaceId: WORKSPACE, trigger: { on: 'file', source: { at: 'msform', workspaceId: WORKSPACE, formId: String(b.formId) }, by: 'someone-else' }, range: { formId: String(b.formId), fromId: Number(b.fromId), toId: Number(b.toId) } } as never)
+    const out = await fileAnswerTasks({ ...work.ctx, lifeos } as never, { workspaceId: WORKSPACE, trigger: { on: 'file', source: { at: 'msform', workspaceId: WORKSPACE, formId: String(b.formId) }, by: 'someone-else' }, range: { formId: String(b.formId), fromId: Number(b.fromId), toId: Number(b.toId) } } as never)
     return { out, made }
   },
   isWorkbook: async (b) => ({ named: isFormsWorkbook(work.ctx, { libraryId: String(b.libraryId), path: String(b.path) } as never) }),

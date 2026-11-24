@@ -217,6 +217,8 @@ export class BoxComputerService {
   private dataDir = ''
   private readonly startedAt: number
   private readonly running = new Map<number, AbortController>()
+  /** the browser's pid at the last connection: a new one is told as `apps/changed` */
+  private lastPid: number | null = null
 
   constructor(private readonly opts: BoxServiceOptions) {
     this.startedAt = this.now()
@@ -460,6 +462,11 @@ export class BoxComputerService {
           .catch(() => {})
       })
       this.cdp = cdp
+      // A browser started again has a new pid: the host's sessions cached the old one by name, and would find no
+      // "Chromium" until told (P2: every carrier call after a restart missed the app).
+      const pid = this.pid()
+      if (this.lastPid !== null && this.lastPid !== pid) this.notify('apps/changed', { pid, bundleId: BOX_BROWSER_APP.bundleId, name: BOX_BROWSER_APP.name, change: 'launched' })
+      this.lastPid = pid
       // the stage's own connection failing is not this one failing: the page is still read and acted on
       await this.opts.browser.ready?.().catch((err) => this.opts.log?.(`box browser: its windows were not placed: ${(err as Error).message}`))
       return cdp

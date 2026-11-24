@@ -117,7 +117,8 @@ const PREFILL: Control[] = [
   { roles: BUTTON, name: /^More form settings$/i },
   { roles: ITEM, name: /^Get Pre-?filled URL$/i },
   { roles: BUTTON, name: /^Start Now$/i },
-  { roles: [...FIELD, 'radio', 'checkbox'], name: /.+/, under: /Pre-?filled|Question title|^\d+\./i },
+  // the page it opens says "<title> (Prefill)" (P2, 2026-11-24)
+  { roles: [...FIELD, 'radio', 'checkbox'], name: /.+/, under: /Pre-?fill(ed)?\b|Question title|^\d+\./i },
   { roles: BUTTON, name: /^Get Prefilled Link$/i }
 ]
 
