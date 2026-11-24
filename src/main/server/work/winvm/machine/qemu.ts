@@ -6,6 +6,8 @@ export interface Machine {
   install?: InstallMedia
   /** QEMU's own window on an X display (the standing machine's picture); none by default */
   window?: VmWindow
+  /** the display device the guest runs on; std VGA by default */
+  device?: DisplayDevice
   /** Guest-to-box forwards for one run (`up.sh --guestfwd`): a connection to `guest` reaches 127.0.0.1:`port` on the box. */
   guestfwd?: GuestFwd[]
 }
@@ -45,7 +47,32 @@ export const VGA_DEFAULT = { width: 1280, height: 800 } as const
  */
 export function windowArgs(w: VmWindow): string[] {
   const size = w.width === VGA_DEFAULT.width && w.height === VGA_DEFAULT.height ? [] : ['-global', `VGA.xres=${w.width}`, '-global', `VGA.yres=${w.height}`]
-  return ['-display', 'gtk,show-menubar=off,show-tabs=off,zoom-to-fit=off,window-close=off', ...size]
+  return ['-display', GTK, ...size]
+}
+const GTK = 'gtk,show-menubar=off,show-tabs=off,zoom-to-fit=off,window-close=off'
+
+/**
+ * The guest's display device. `vga` is QEMU's std VGA under Windows' Basic Display Driver: one size, the
+ * firmware's, kept until a cold boot. `virtio` is virtio-vga under Red Hat's viogpudo: any size, set from inside
+ * the guest while it runs (docs/agents/work-winvm.md "The picture").
+ */
+export type DisplayDevice = 'vga' | 'virtio'
+
+/** std VGA's 16 MB of video memory holds 2560×1600 at four bytes a pixel and nothing larger. */
+const VGA_MEMORY_PIXELS = 2560 * 1600
+
+/**
+ * The device and its display. On virtio the size is the EDID's preferred mode, which viogpudo takes at a cold
+ * boot; OVMF draws on either with a driver of its own, so no option ROM is measured into the TPM.
+ */
+export function displayArgs(device: DisplayDevice, window?: VmWindow): string[] {
+  if (device === 'virtio') {
+    const size = window ? `,xres=${window.width},yres=${window.height}` : ''
+    return ['-vga', 'none', '-device', `virtio-vga,edid=on${size}`, '-display', window ? GTK : 'none']
+  }
+  if (!window) return ['-vga', 'std', '-display', 'none']
+  const memory = window.width * window.height > VGA_MEMORY_PIXELS ? ['-global', 'VGA.vgamem_mb=64'] : []
+  return ['-vga', 'std', ...windowArgs(window), ...memory]
 }
 
 export interface InstallMedia {
@@ -60,7 +87,7 @@ export interface InstallMedia {
  * pointer input, user-mode networking with forwards bound to 127.0.0.1 only, no display (QMP takes screenshots) unless
  * it is given a window.
  */
-export function qemuArgs(c: RigConfig, p: RigPaths, { disk, vars, install, window, guestfwd = [] }: Machine): string[] {
+export function qemuArgs(c: RigConfig, p: RigPaths, { disk, vars, install, window, device = 'vga', guestfwd = [] }: Machine): string[] {
   const fwd = [`hostfwd=tcp:127.0.0.1:${c.sshPort}-:22`, ...(c.cdpPort === null ? [] : [`hostfwd=tcp:127.0.0.1:${c.cdpPort}-:${c.cdpPort}`]), ...guestfwd.map(guestFwdArg)]
   const args = [
     '-name', `${c.process},process=${c.process}`,
@@ -81,8 +108,7 @@ export function qemuArgs(c: RigConfig, p: RigPaths, { disk, vars, install, windo
     '-device', 'e1000e,netdev=n0',
     '-device', 'qemu-xhci,id=xhci',
     '-device', 'usb-tablet,bus=xhci.0',
-    '-vga', 'std',
-    ...(window ? windowArgs(window) : ['-display', 'none']),
+    ...displayArgs(device, window),
     '-monitor', 'none',
     '-qmp', `unix:${p.qmp},server=on,wait=off`,
     '-pidfile', p.pid,

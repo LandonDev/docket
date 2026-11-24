@@ -1,7 +1,7 @@
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import type { WinvmState } from '@shared/contract-work-winvm'
-import type { VmWindow } from './machine/qemu'
+import type { DisplayDevice, VmWindow } from './machine/qemu'
 
 /**
  * The size Windows itself draws at, kept beside the standing disk. The guest's display driver (Microsoft
@@ -38,6 +38,26 @@ export function readGuestScreen(run: string): VmWindow | null {
 export function writeGuestScreen(run: string, size: VmWindow): void {
   mkdirSync(dirname(guestScreenFile(run)), { recursive: true })
   writeFileSync(guestScreenFile(run), JSON.stringify(size) + '\n')
+}
+
+/**
+ * The display device the guest last ran on, beside its size. It is written BEFORE QEMU starts on a device and
+ * never after, and every start reads it: a Windows hibernated on one device is never resumed on the other. A
+ * machine with no file is `vga` (every disk from before the file existed).
+ */
+export const machineFile = (run: string): string => join(run, 'machine.json')
+
+export function readMachineDevice(run: string): DisplayDevice {
+  try {
+    return (JSON.parse(readFileSync(machineFile(run), 'utf8')) as { device?: unknown }).device === 'virtio' ? 'virtio' : 'vga'
+  } catch {
+    return 'vga'
+  }
+}
+
+export function writeMachineDevice(run: string, device: DisplayDevice): void {
+  mkdirSync(run, { recursive: true })
+  writeFileSync(machineFile(run), JSON.stringify({ device }) + '\n')
 }
 
 const same = (a: VmWindow | null, b: VmWindow | null): boolean => !!a && !!b && a.width === b.width && a.height === b.height

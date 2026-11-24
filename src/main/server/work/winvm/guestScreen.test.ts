@@ -1,9 +1,9 @@
-import { mkdtempSync, rmSync } from 'node:fs'
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import type { WinvmState } from '@shared/contract-work-winvm'
-import { GUEST_SCREEN_SCRIPT, parseGuestScreen, readGuestScreen, watchGuestScreen, writeGuestScreen } from './guestScreen'
+import { GUEST_SCREEN_SCRIPT, machineFile, parseGuestScreen, readGuestScreen, readMachineDevice, watchGuestScreen, writeGuestScreen, writeMachineDevice } from './guestScreen'
 import type { VmWindow } from './machine/qemu'
 
 /** The size a resumed Windows keeps: read after each wake, kept beside the disk, and the display put right once. */
@@ -34,6 +34,17 @@ describe("the guest's own screen", () => {
     expect(readGuestScreen(run)).toBeNull()
     writeGuestScreen(run, { width: 1920, height: 1200 })
     expect(readGuestScreen(run)).toEqual({ width: 1920, height: 1200 })
+  })
+
+  it('runs on std VGA with no machine file, and on the device the file names', () => {
+    expect(readMachineDevice(run)).toBe('vga')
+    writeMachineDevice(run, 'virtio')
+    expect(readMachineDevice(run)).toBe('virtio')
+    writeMachineDevice(run, 'vga')
+    expect(readMachineDevice(run)).toBe('vga')
+    // a file that cannot be read names nothing: the device every old disk has
+    writeFileSync(machineFile(run), '{"device":')
+    expect(readMachineDevice(run)).toBe('vga')
   })
 
   it('is learned at a wake; a display that matches it is left alone', async () => {

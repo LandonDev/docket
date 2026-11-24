@@ -10,7 +10,7 @@ import { startWatcher } from './watcher'
 import type { VmMachine } from './keeper'
 import { QcowPoints, type PointStore } from './points'
 import type { VmScreen } from './window'
-import { readGuestScreen } from './guestScreen'
+import { readGuestScreen, readMachineDevice } from './guestScreen'
 
 const run = promisify(execFile)
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
@@ -68,9 +68,11 @@ export class StandingMachine implements VmMachine {
     if (this.running()) return
     // a crash or the guest's own stop left the TPM newer than the run's copy: keep it, never roll it back
     await keepLiveTpm(this.c, this.p)
+    // the device the guest last ran on, whatever the code's default is now
+    const device = readMachineDevice(this.p.run)
     const boot = async (shown: Awaited<ReturnType<VmScreen['up']>>): Promise<number | null> => {
       await startTpm(this.c, this.p, existsSync(this.p.runTpm) ? this.p.runTpm : this.p.baseTpm, { blockStop: true })
-      const machine = { disk: this.p.runDisk, vars: this.p.runVars, ...(shown ? { window: shown.window } : {}) }
+      const machine = { disk: this.p.runDisk, vars: this.p.runVars, device, ...(shown ? { window: shown.window } : {}) }
       return startQemu(this.c, this.p, machine, { blockStop: true, ...(shown ? { env: shown.env } : {}) })
     }
     // the window's display first: QEMU opens its window as it starts

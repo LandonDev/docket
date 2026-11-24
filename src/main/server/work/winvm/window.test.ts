@@ -4,7 +4,7 @@ import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { rigConfig, rigPaths } from './machine/config'
 import { qemuCommand } from './machine/daemons'
-import { qemuArgs, windowArgs } from './machine/qemu'
+import { displayArgs, qemuArgs, windowArgs } from './machine/qemu'
 import { pictureToolsAt, VmScreen, windowEnv, WINDOW_TOOL, type PictureTools } from './window'
 
 /** QEMU's window on the VM's own display: its arguments, its environment, and when the machine runs with none. */
@@ -30,6 +30,22 @@ describe("QEMU's window", () => {
 
   it('tells the same VGA its EDID mode for another size', () => {
     expect(windowArgs({ width: 1920, height: 1200 })).toEqual(['-display', 'gtk,show-menubar=off,show-tabs=off,zoom-to-fit=off,window-close=off', '-global', 'VGA.xres=1920', '-global', 'VGA.yres=1200'])
+  })
+
+  it('is the std VGA unless the machine is named virtio, with more video memory past 2560×1600', () => {
+    expect(displayArgs('vga')).toEqual(['-vga', 'std', '-display', 'none'])
+    expect(displayArgs('vga', { width: 2560, height: 1600 }).join(' ')).not.toContain('vgamem_mb')
+    expect(displayArgs('vga', { width: 3456, height: 2234 }).slice(-2)).toEqual(['-global', 'VGA.vgamem_mb=64'])
+    // a machine with no device named starts exactly as before
+    expect(qemuArgs(cfg, paths, m)).toEqual(qemuArgs(cfg, paths, { ...m, device: 'vga' }))
+  })
+
+  it('on virtio is virtio-vga alone, its EDID offering the window\'s size', () => {
+    expect(displayArgs('virtio')).toEqual(['-vga', 'none', '-device', 'virtio-vga,edid=on', '-display', 'none'])
+    const a = qemuArgs(cfg, paths, { ...m, device: 'virtio', window: { width: 3456, height: 2234 } }).join(' ')
+    expect(a).toContain('-vga none -device virtio-vga,edid=on,xres=3456,yres=2234 -display gtk,show-menubar=off,show-tabs=off,zoom-to-fit=off,window-close=off')
+    expect(a).not.toContain('-vga std')
+    expect(a).not.toContain('VGA.')
   })
 
   it('reaches QEMU through env, with the stop signals blocked, inside sg where the group is missing', () => {
