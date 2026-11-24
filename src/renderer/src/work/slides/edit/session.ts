@@ -10,6 +10,7 @@ import {
   formatOp,
   insertText,
   modelOf,
+  modelText,
   pasteText,
   rebase,
   renumber,
@@ -114,6 +115,8 @@ const MOVED = /changed while this was being made/i;
 export const CONFLICT_WORD = "The deck changed while you typed";
 /** Why a slide an agent's suggestion changes takes no hand edit. */
 export const SUGGESTED = "Accept or reject the suggestion on this slide first";
+/** A conflict whose shape another save took off the slide: the box cannot be drawn, so its words wait to be copied. */
+export const SHAPE_GONE = "The shape is no longer on the slide";
 /** Words in a box not saved yet, when another box would open over them. */
 export const UNSAVED = "The words in the open box are not saved yet";
 /** A close that waited this long for words still in this window keeps its tab (canvas/flush.ts closes it at FLUSH_WAIT_MS). */
@@ -143,8 +146,6 @@ export class HandSession {
   private keepTimer: ReturnType<typeof setTimeout> | null = null;
   /** The box's words on their way to the host (a keep or a commit): one at a time, each sent over what the last wrote. */
   private sending: Promise<void> | null = null;
-  /** The box whose commit has handed its words to the host: past that, the host lands them whatever the window does. */
-  private handed: number | null = null;
 
   constructor(
     private host: DeckHost,
@@ -398,6 +399,11 @@ export class HandSession {
     });
   }
 
+  /** The words of the open box, as plain text: what a box whose shape is gone hands his clipboard (`SHAPE_GONE`). */
+  draftWords(): string {
+    return this.state.box ? modelText(this.state.box.model) : "";
+  }
+
   /** Escape: the words go back as they were when last written; nothing is sent. */
   cancel(): void {
     if (this.keepTimer) clearTimeout(this.keepTimer);
@@ -448,7 +454,6 @@ export class HandSession {
     }
     this.set({ busy: this.state.busy + 1, failure: null });
     try {
-      this.handed = box.id;
       const next = await this.host.edit([runsOp(box.model, box.slideId, box.shape.id, wordsOf(box.shape))]);
       this.store.view(next);
       const slide = next.slides.find((s) => s.id === box.slideId && s.tint !== "del");
@@ -482,9 +487,9 @@ export class HandSession {
     ]);
     clearTimeout(timer);
     const { box, failure } = this.state;
-    // Before the close's own wait runs out: words the commit has not yet handed to the host (still behind a slow keep)
-    // would be lost with the item, so the tab stays with them; words on their way the host lands.
-    if (late && box && (box.phase === "typing" || (box.phase === "saving" && this.handed !== box.id)) && !unchanged(box.model, box.initial)) throw new CloseRefused(UNSAVED);
+    // Before the close's own wait runs out: words the host has not said it holds (still behind a slow keep, or a write
+    // on its way that may yet be refused, whatever an earlier try did) would be lost with the item, so the tab stays.
+    if (late && box && (box.phase === "typing" || box.phase === "saving") && !unchanged(box.model, box.initial)) throw new CloseRefused(UNSAVED);
     if (box?.phase === "typing" && !unchanged(box.model, box.initial)) throw new CloseRefused(failure?.message ?? "Your words in the box are not in the file yet");
   }
 
@@ -498,7 +503,7 @@ export class HandSession {
     if (!box) return this.set({ failure: null });
     const shape = this.shapeNow(box);
     if (!shape || !typable(shape)) {
-      this.set({ failure: { conflict: true, message: "The shape is no longer on the slide" } });
+      this.set({ failure: { conflict: true, message: SHAPE_GONE } });
       return;
     }
     const model = rebase(box.model, box.shape, shape);
@@ -607,8 +612,9 @@ export class HandSession {
   }
 
   /** What saved means now, for a file's save line (FILES-SEAM.md "Save state"). */
-  saved(reload: () => void): { state: "saved" | "saving" | "conflict"; at?: number; detail?: string; actions?: Array<{ id: string; label: string; run(): void }> } {
+  saved(reload: () => void, copy?: () => void): { state: "saved" | "saving" | "conflict"; at?: number; detail?: string; actions?: Array<{ id: string; label: string; run(): void }> } {
     const { busy, savedAt, failure, box } = this.state;
+    if (failure?.message === SHAPE_GONE && copy) return { state: "conflict", detail: failure.message, actions: [{ id: "copy", label: "Copy words", run: copy }] };
     if (failure?.conflict) return { state: "conflict", detail: failure.message, actions: [{ id: "reload", label: "Reload", run: reload }] };
     // Words in an open box that are not in the file yet are on their way (`keep`, within seconds): never saved.
     if (busy > 0 || (box?.phase === "typing" && !box.conflict && !unchanged(box.model, box.initial))) return { state: "saving" };

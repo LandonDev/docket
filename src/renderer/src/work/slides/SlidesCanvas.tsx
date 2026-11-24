@@ -23,7 +23,7 @@ import { HistoryButton } from "./edit/History";
 import { typable, type Sel } from "./edit/model";
 import { unitFor } from "./edit/drag";
 import { Manipulate, movable, turnable, type ManipulateHandle, type Movable } from "./edit/Manipulate";
-import { CONFLICT_WORD, HandSession, type HandState, type Start } from "./edit/session";
+import { CONFLICT_WORD, HandSession, SHAPE_GONE, type HandState, type Start } from "./edit/session";
 import { TypingBox } from "./edit/TypingBox";
 import { askAnchor, groundOf, HANDLE, HANDLE_EDGE, hit, KIND_WORDS, pickable, ROTATE_HANDLE, selectionOf, shapeLabel, textFrameOf, type Quad } from "./geometry";
 import { SectionName } from "./edit/SectionName";
@@ -285,6 +285,15 @@ export function SlidesBody({
   const picked = shownSlide && pickedShape ? { slide: shownSlide, shape: pickedShape } : null;
   const slideSize = view?.size ?? { width: 12_192_000, height: 6_858_000 };
   const reload = useCallback(() => void session.reload(), [session]);
+  // Words over a shape another save took away: the box cannot be drawn, so they go to his clipboard, and then the box.
+  const copyDraft = useCallback(
+    () =>
+      void navigator.clipboard?.writeText(session.draftWords()).then(
+        () => session.cancel(),
+        () => undefined,
+      ),
+    [session],
+  );
   // Each render's pages by slide, as the view that came with it had them: until a new render has opened, the one on
   // screen is drawn with its own pages, so a slide moved, added or taken out never shows another slide's picture.
   const pagesAt = useRef(new Map<string, Map<string, number>>());
@@ -304,7 +313,7 @@ export function SlidesBody({
   const [naming, setNaming] = useState<NameAsk | null>(null);
   const editable = !!view?.hand;
   const slideHand = useMemo<SlideHand | null>(() => (editable ? { session, store, askName: setNaming } : null), [editable, session, store]);
-  useFeeds(shell, view, error, renderError, current, side, select, host, run, retry, retryRender, reviewRev, held, store, hand, session, reload);
+  useFeeds(shell, view, error, renderError, current, side, select, host, run, retry, retryRender, reviewRev, held, store, hand, session, reload, copyDraft);
   const file = useSlideFileActions({ env, item, shell, refresh: retry, view: error ? null : view });
 
   // A deck the host could not open is the pane's state line alone, with Retry: no bones under it.
@@ -460,6 +469,7 @@ function useFeeds(
   hand: HandState,
   session: HandSession,
   reload: () => void,
+  copyDraft: () => void,
 ): void {
   const inPowerPoint = side === "powerpoint";
   // A read-only deck carries no mode: there is nothing an agent may do to it.
@@ -479,7 +489,7 @@ function useFeeds(
           ? { tone: "failed", word: error }
           : { tone: "failed", word: "Couldn't open this deck", detail: error, action: { label: "Retry", run: retry } }
         : failure?.conflict
-          ? { tone: "failed", word: failure.message, detail: "Your words are still in the box", action: failure.message === CONFLICT_WORD ? { label: "Reload", run: reload } : undefined }
+          ? { tone: "failed", word: failure.message, detail: "Your words are still in the box", action: failure.message === CONFLICT_WORD ? { label: "Reload", run: reload } : failure.message === SHAPE_GONE ? { label: "Copy words", run: copyDraft } : undefined }
           : failure
             ? { tone: "failed", word: "Couldn't save your words", detail: failure.message, action: { label: "Retry", run: () => session.commit() } }
             : renderError
@@ -487,11 +497,11 @@ function useFeeds(
               : null,
     );
     return () => shell.statusLine(null);
-  }, [shell, error, renderError, retry, retryRender, failure, reload, session]);
+  }, [shell, error, renderError, retry, retryRender, failure, reload, copyDraft, session]);
 
   // What saved means for the file, where he can edit it by hand (FILES-SEAM.md "Save state").
   const editable = !!view?.hand && !inPowerPoint;
-  const saved = editable ? session.saved(reload) : null;
+  const saved = editable ? session.saved(reload, copyDraft) : null;
   const savedKey = saved ? `${saved.state}:${saved.at ?? ""}:${saved.detail ?? ""}` : "";
   useEffect(() => {
     shell.saved?.(saved);

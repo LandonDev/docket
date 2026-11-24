@@ -391,6 +391,54 @@ describe("a close while the box's words are on their way", () => {
     }
   });
 
+  it("a close keeps the tab until the host says it holds the words: after a refused try, and with a write still on its way", async () => {
+    vi.useFakeTimers();
+    try {
+      const { host, session, slide: s, shape } = deck();
+      const { gates } = held(host);
+      session.open(s, shape, "end");
+      type(session, " today");
+      // His first try is refused.
+      host.refuse = "The disk is full";
+      const first = session.commit();
+      await vi.waitFor(() => expect(gates).toHaveLength(1));
+      gates.shift()!();
+      await first;
+      host.refuse = null;
+      // He closes; the retry is on its way and the host has not answered when the close's wait runs out.
+      const closing = session.flush();
+      const refused = expect(closing).rejects.toThrow("The words in the open box are not saved yet");
+      await vi.waitFor(() => expect(gates).toHaveLength(1));
+      await vi.advanceTimersByTimeAsync(7600);
+      await refused;
+      // The host refuses it after all: the words are still in the box, the tab still open.
+      host.refuse = "The disk is full";
+      gates.shift()!();
+      await vi.waitFor(() => expect(session.get().failure?.message).toBe("The disk is full"));
+      expect(session.get().box!.model[0].runs.map((r) => r.text).join("")).toBe("Who comes today");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("a draft whose shape another save took away stays to be copied: its words, and the save line's Copy words", async () => {
+    const { host, session, slide: s, shape, store } = deck();
+    session.open(s, shape, "end");
+    type(session, " today");
+    // Another save takes the shape off the slide.
+    host.view = { ...host.view, slides: [{ ...s, shapes: [] }] };
+    store.view(host.view);
+    await session.commit();
+    await session.reload();
+    expect(session.get().failure).toEqual({ conflict: true, message: "The shape is no longer on the slide" });
+    expect(session.draftWords()).toBe("Who comes today");
+    const copied: string[] = [];
+    const line = session.saved(() => undefined, () => void copied.push(session.draftWords()));
+    expect(line).toMatchObject({ state: "conflict", actions: [{ id: "copy", label: "Copy words" }] });
+    line.actions![0].run();
+    expect(copied).toEqual(["Who comes today"]);
+  });
+
   it("no box opens over words not saved yet: a conflict that waits for Reload keeps its box", async () => {
     const { host, session, slide: s, shape, store } = deck();
     session.open(s, shape, "end");
