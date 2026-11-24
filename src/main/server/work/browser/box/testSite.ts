@@ -77,6 +77,8 @@ export function serveTestSite(pages: Record<string, string> = SITE_PAGES): Promi
     const path = (req.url ?? '/').split('?')[0]!
     asked.push(path)
     if (req.method === 'POST') posts.push(path)
+    // a hop elsewhere, for a request that must not follow one
+    if (path === '/hop') return void (res.writeHead(302, { location: '/' }), res.end())
     const html = pages[path]?.replace('{{OTHER}}', `http://localhost:${(server.address() as { port: number }).port}`)
     res.writeHead(html ? 200 : 404, { 'content-type': 'text/html; charset=utf-8' })
     res.end(html ?? 'not found')

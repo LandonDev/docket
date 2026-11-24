@@ -167,10 +167,9 @@ export function guardStep(op: CarrierOp, screen: Screen, step: ComputerAction): 
   if (index === null) return refuse('it names no element')
   const e = screen.elements.get(index)
   if (!e) return refuse('it names nothing the page shows')
-  const label = `${e.role} "${e.name ?? ''}"`
-  if (NEVER.some((c) => matches(screen, e, { ...c, only: undefined }))) refuse(`${label} is never pressed`)
-  if (action === 'type' && !['input', 'text area', 'date', 'combo box'].includes(e.role)) refuse(`${label} takes no typing`)
-  if (!ALLOWED[op].some((c) => matches(screen, e, c))) refuse(`${label} is not one ${op} presses`)
+  if (NEVER.some((c) => matches(screen, e, { ...c, only: undefined }))) refuse('that control is one no carrier operation presses')
+  if (action === 'type' && !['input', 'text area', 'date', 'combo box'].includes(e.role)) refuse('that control takes no typing')
+  if (!ALLOWED[op].some((c) => matches(screen, e, c))) refuse(`that control is not one ${op} presses`)
 }
 
 /** Guards every step of a batch against the one screen it was read against. */

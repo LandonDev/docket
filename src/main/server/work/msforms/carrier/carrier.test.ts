@@ -84,6 +84,30 @@ describe('the guard', () => {
     }
   })
 
+  it("takes the rev and the job a grant must name from the form's row as it stands, never from the grant (review 15)", async () => {
+    const { page, carrier, auth } = rig()
+    page.add(form())
+    await expect(carrier.close(auth('close', { open: false }, { rev: 2 }), 'FakeFormId00000000000001', false)).rejects.toThrow('the form changed since it was authorized')
+    const gone = rig(new FakeForms(), null)
+    gone.page.add(form())
+    await expect(gone.carrier.close(gone.auth('close', { open: false }), 'FakeFormId00000000000001', false)).rejects.toThrow('not one this computer keeps')
+    const elsewhere = rig(new FakeForms(), { workspaceId: 'w-other', rev: 3 })
+    elsewhere.page.add(form())
+    await expect(elsewhere.carrier.close(elsewhere.auth('close', { open: false }), 'FakeFormId00000000000001', false)).rejects.toThrow('authorized for another job')
+  })
+
+  it("words a refusal without the page's own words (review 21)", () => {
+    const err = (() => {
+      try {
+        guardStep('collect', COLLECT, click(6))
+      } catch (e) {
+        return e as Error
+      }
+      return null
+    })()
+    expect(err?.message).toBe('The carrier refused a step: that control is one no carrier operation presses. Nothing more was done in Forms.')
+  })
+
   it('keeps each outward toggle to the operation that is that act', () => {
     // Accept responses on, and Anyone can respond, only where collecting or who-can-answer is the act.
     const off = screen('[1] checkbox "Accept responses" unchecked')
@@ -117,8 +141,8 @@ const form = (over: Partial<FakeFormState> = {}): FakeFormState => ({
   ...over
 })
 
-function rig(page = new FakeForms()) {
-  const carrier = opsCarrier({ computer: page, host: 'env_box', exclusive: (fn) => fn(), workspaceOf: () => WS, patience: { mount: 0, made: 0 } })
+function rig(page = new FakeForms(), row: { workspaceId: string; rev: number } | null = { workspaceId: WS, rev: 3 }) {
+  const carrier = opsCarrier({ computer: page, host: 'env_box', exclusive: (fn) => fn(), workspaceOf: () => row, patience: { mount: 0, made: 0 } })
   const auth = (op: CarrierOp, payload: unknown, o: { formId?: string; rev?: number; by?: 'owner' | 'pillar' } = {}) =>
     authorize({ host: 'env_box', workspaceId: WS, target: { formId: o.formId ?? 'FakeFormId00000000000001' }, op, rev: o.rev ?? 3, by: o.by ?? 'owner', payload })
   return { page, carrier, auth }

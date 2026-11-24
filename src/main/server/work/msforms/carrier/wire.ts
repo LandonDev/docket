@@ -19,10 +19,12 @@ const APP = BOX_BROWSER_APP.name
 /** The box browser's carrier session as the carrier's computer. */
 export function formsComputerOn(c: CarrierComputer): FormsComputer {
   const read = async (window: string): Promise<Screen> => {
-    const o = await c.run('computer_observe', { app: APP, window, full: true })
+    // no picture of any page the carrier drives (review 21): the read is words alone
+    const o = await c.run('computer_observe', { app: APP, window, full: true, screenshot: false })
     if (o.isError) {
       if ((o.body ?? '').includes(BOX_OWNER_DRIVES)) throw new CarrierBusy(BOX_OWNER_DRIVES)
-      throw new Error(`The box browser could not read the page${o.body ? `: ${o.body}` : '.'}`)
+      // a fixed sentence: the body may quote the page
+      throw new Error('The box browser could not read the page.')
     }
     const screen = screenOfObservation(o.body ?? '', { bundleId: BOX_BROWSER_APP.bundleId, name: APP })
     if (!screen) throw new Error('The box browser\'s read of the page did not parse.')
@@ -33,7 +35,7 @@ export function formsComputerOn(c: CarrierComputer): FormsComputer {
     async open(url) {
       const before = new Map((await c.pages()).map((p) => [p.window, p.url]))
       const o = await c.run('computer_apps', { launch: APP, open: [url] })
-      if (o.isError) throw new Error(`The box browser did not open the page${o.body ? `: ${o.body}` : '.'}`)
+      if (o.isError) throw new Error('The box browser did not open the page.')
       // A new window, or the blank page the launch used for it (the box browser starts with one, P1): its address
       // moves off about:blank once the navigation commits, so it is looked for a few times.
       for (let tries = 0; tries < 20; tries++) {
@@ -46,9 +48,10 @@ export function formsComputerOn(c: CarrierComputer): FormsComputer {
     },
     read,
     async act(window, _screen: Screen, steps: readonly ComputerAction[]) {
-      const o = steps.length === 1 ? await c.run('computer_act', { app: APP, window, ...steps[0] }) : await c.run('computer_batch', { app: APP, window, actions: steps })
+      const o = steps.length === 1 ? await c.run('computer_act', { app: APP, window, screenshot: false, ...steps[0] }) : await c.run('computer_batch', { app: APP, window, screenshot: false, actions: steps })
       if (o.isError && (o.body ?? '').includes(BOX_OWNER_DRIVES)) throw new CarrierBusy(BOX_OWNER_DRIVES)
-      return o.isError ? { ok: false, words: o.body ?? undefined } : { ok: true }
+      // the page's own words stay out of what a stop says (review 21)
+      return o.isError ? { ok: false } : { ok: true }
     },
     async windows() {
       return (await c.pages()).map((p) => ({ id: `#${p.window}`, url: p.url }))
@@ -81,9 +84,10 @@ export function exclusiveOn(make: () => CarrierComputer | null) {
 
 /** The workspace each form or folder page belongs to, from the pillar's own rows: what an authorization must name. */
 function workspaceOfRows(db: DatabaseSync) {
-  return (at: { formId: string }): string | null => {
-    const row = db.prepare('SELECT workspace_id FROM work_msforms WHERE form_id = ? LIMIT 1').get(at.formId) as { workspace_id: string } | undefined
-    return row?.workspace_id ?? null
+  return (at: { formId: string }): { workspaceId: string; rev: number } | null => {
+    // one row a form id: two jobs keeping the same form is no form the carrier can be sure of
+    const rows = db.prepare('SELECT workspace_id, rev FROM work_msforms WHERE form_id = ? LIMIT 2').all(at.formId) as { workspace_id: string; rev: number }[]
+    return rows.length === 1 ? { workspaceId: rows[0]!.workspace_id, rev: Number(rows[0]!.rev) } : null
   }
 }
 

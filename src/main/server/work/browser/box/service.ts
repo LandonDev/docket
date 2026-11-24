@@ -135,6 +135,8 @@ export function carrierOnly(url: string): boolean {
   return carrierHostsForTest ? carrierHostsForTest.some((h) => host === h || host.endsWith(`.${h}`)) : isFormsHost(host)
 }
 const FORMS_OPEN = 'refused: Microsoft Forms pages are reached only through the msform tools; nothing was opened.'
+/** What a picture asked on a carrier session answers (review 21): no image of a page the carrier drives is made. */
+const CARRIER_NO_PICTURE = 'the carrier takes no pictures of the pages it drives'
 const FORMS_SEEN = 'refused: Microsoft Forms pages are reached only through the msform tools; nothing on that page was read or done.'
 
 /** Service sessions the host made for the carrier. Only host code adds one: a tool call never names its session. */
@@ -380,6 +382,7 @@ export class BoxComputerService {
   private async startStream(q: ComputerParams<'capture.stream.start'>): Promise<{ stream: string; width: number; height: number }> {
     this.appOf(q.app)
     await this.stopStream(q.stream)
+    if (isCarrierSession(q.session)) refuse('capture_failed', CARRIER_NO_PICTURE)
     const page = await this.pageOf(q.window, q.session)
     this.fence(page.url, q.session, FORMS_SEEN)
     const { cdp, sid } = await this.on(page)
@@ -494,7 +497,7 @@ export class BoxComputerService {
     const target = new URL(url)
     if (isFormsHost(target.hostname) || new URL(page.url).origin !== target.origin) throw new Error('the carrier asks only the page\'s own origin')
     const { cdp, sid } = await this.on(page)
-    const expression = `fetch(${JSON.stringify(url)}, { method: ${JSON.stringify(o.method ?? 'GET')}, credentials: 'include', headers: ${JSON.stringify(o.headers ?? {})} }).then(async (r) => {
+    const expression = `fetch(${JSON.stringify(url)}, { method: ${JSON.stringify(o.method ?? 'GET')}, credentials: 'include', redirect: 'error', headers: ${JSON.stringify(o.headers ?? {})} }).then(async (r) => {
       if (!${o.bytes ? 'true' : 'false'}) return { status: r.status, text: await r.text() }
       const b = new Uint8Array(await r.arrayBuffer()); let s = ''; for (let i = 0; i < b.length; i += 0x8000) s += String.fromCharCode.apply(null, b.subarray(i, i + 0x8000))
       return { status: r.status, base64: btoa(s) }
@@ -785,7 +788,8 @@ export class BoxComputerService {
     const width = Math.max(1, Math.round(metrics.cssVisualViewport.clientWidth))
     const height = Math.max(1, Math.round(metrics.cssVisualViewport.clientHeight))
     const pre = observationText({ app: BOX_BROWSER_APP.name, window: facts.title, width, height, loading: facts.ready !== 'complete', others: [] }, tree, null, o.budget)
-    const picture = o.screenshot === 'always' || (o.screenshot === 'auto' && pre.thin)
+    // a carrier's page is never pictured, asked for or not (review 21): Forms answers may be all a thin read leaves
+    const picture = !isCarrierSession(sessionId) && (o.screenshot === 'always' || (o.screenshot === 'auto' && pre.thin))
     const frames = o.geometry || picture ? await this.frames(cdp, inPage, tree, width, height) : null
     const pages = this.seenBy(await this.pages(), sessionId)
     const others = pages.filter((p) => p.targetId !== page.targetId).map((p) => p.title || p.url)
@@ -881,6 +885,7 @@ export class BoxComputerService {
   }
 
   private async shot(sessionId: string, page: Page, o: { maxEdge?: number; region?: number[]; format?: 'jpeg' | 'png' }): Promise<Shot> {
+    if (isCarrierSession(sessionId)) refuse('capture_failed', CARRIER_NO_PICTURE)
     const { cdp, sid } = await this.on(page)
     // A tab behind another is never drawn: its capture would wait for a frame that does not come.
     await this.toFront(cdp, sid)

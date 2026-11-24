@@ -321,6 +321,10 @@ d('the box computer service speaks the wire', () => {
         const r = await ok('action.batch', { session: carrier, app, epoch, tiers: ['process'], actions: [{ action: 'left_click', element: q }, { action: 'type', text: 'Which night?' }], wait: quiet })
         expect(r.steps.map((s) => s.status)).toEqual(['ok', 'ok'])
         expect(r.observation!.text).toContain(`[${q}] input "Question title" = "Which night?"`)
+        // the carrier takes no picture of what it drives, asked or not (review 21), and follows no redirect (review 24)
+        expect((await no('capture.screenshot', { session: carrier, app, window: { id: read.window.id } })).data?.kind).toBe('capture_failed')
+        expect((await ok('state.get', { session: carrier, app, screenshot: 'always' })).shot).toBeUndefined()
+        expect(await svc.carrierFetch(read.window.id, `${site.url.replace('127.0.0.1', 'localhost')}/hop`)).toMatchObject({ status: 0 })
         // the carrier's window is no thread's, by id or as its last page
         expect((await no('state.get', { session: 's1', app, window: { id: read.window.id } })).data?.kind).toBe('open_refused')
       } finally {

@@ -28,7 +28,7 @@ export interface OpsDeps {
   /** runs one operation with the box browser held: the queue, `useBoxBrowser`, his driving (session.ts) */
   exclusive<T>(fn: () => Promise<T>): Promise<T>
   /** the workspace an authorization must name for a form (`formId`) or a folder page (`folderUrl`), from the host's own rows */
-  workspaceOf(at: { formId: string }): string | null
+  workspaceOf(at: { formId: string }): { workspaceId: string; rev: number } | null
   /** what the page needs before its controls show (a test's page answers at once) */
   patience?: { mount?: number; made?: number }
 }
@@ -45,8 +45,10 @@ export function opsCarrier(deps: OpsDeps): MsCarrier {
 
   /** The authorization for a form, checked against the host's own rows. */
   const authorized = (auth: CarrierAuth, op: CarrierOp, formId: string, payload: unknown): void => {
-    const workspaceId = deps.workspaceOf({ formId }) ?? ''
-    checkAuth(auth, { host: deps.host, workspaceId, target: { formId }, op, payload, rev: auth.rev })
+    // the job and the rev expected are the form's row as it stands now, read inside the queue (review 15), never the grant's own
+    const row = deps.workspaceOf({ formId })
+    if (!row) throw new CarrierRefused('The carrier refused: that form is not one this computer keeps. Nothing was done in Forms.')
+    checkAuth(auth, { host: deps.host, workspaceId: row.workspaceId, target: { formId }, op, payload, rev: row.rev })
   }
 
   /** Opens the form's builder in a window of its own, read once its title shows. */
