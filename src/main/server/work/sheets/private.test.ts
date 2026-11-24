@@ -56,7 +56,7 @@ vi.mock('../files/policy', async (original) => {
 })
 const { startWork } = await import('../ctx')
 const { canvas } = await import('../canvas/index')
-const { sheets } = await import('./index')
+const { sheets, NEEDS_APPROVE } = await import('./index')
 const { setJobs, sharedCopies } = await import('./held')
 const { localJobs } = await import('./workerClient')
 const { SheetHost } = await import('./host/host')
@@ -150,7 +150,7 @@ describe('an agent\'s suggestion on an Excel file others can open', () => {
     expect(view.shared).toBe(true)
     expect(view.rev).toBe(0)
     expect(view.suggestions).toHaveLength(1)
-    expect(view.suggestions[0].proposed).toEqual({ v: SECRET })
+    expect(view.suggestions[0].proposed).toEqual({ v: SECRET, t: 1 })
     expect((db.prepare('SELECT COUNT(*) AS n FROM work_sheets_suggestions').get() as { n: number }).n).toBe(1)
     expect(folder()).toEqual(before)
   })
@@ -792,6 +792,10 @@ describe('a .csv and an export in a folder others can open', () => {
     expect(view.rev).toBe(first.rev + 1)
     expect(filesUnder(join(dir, 'sheets', 'csv'))).toHaveLength(1)
     expect(filesUnder(join(scratch(), 'csv'))).toEqual([])
+    // Saving it back over the shared file is a change there: a remote key needs `approve`, as Files' door asks (council r1, Opus).
+    const operate = { kind: 'remote', keyId: 'k1', name: 'Phone', audience: 'client', caps: ['read', 'operate'] } as never
+    await expect(call('work.sheets.export', { itemId, format: 'csv' }, operate)).rejects.toThrow(NEEDS_APPROVE)
+    expect(readFileSync(csv, 'utf8')).toBe('a,b\n1,2\n')
     const out = await call<{ path: string }>('work.sheets.export', { itemId, format: 'csv' })
     expect(out.path).toBe(csv)
     expect(readFileSync(csv, 'utf8')).toContain('his edit')

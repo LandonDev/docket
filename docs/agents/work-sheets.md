@@ -97,8 +97,17 @@ A workbook from a mail (`{at: 'mail'}`: .xlsx, .xlsm or .csv) is held as the fil
   mutations, who, when, a label) and a copy of the package under
   `<userData>/sheets/files/<hash of the path>/<rev>.xlsx`; the copy as first
   opened is kept for good and the newest 30 after it. A change on disk we did
-  not make is a revision of its own (`by: 'file'`), and the grids reload.
-  Restore puts a kept copy back byte for byte as a new revision.
+  not make is a revision of its own (`by: 'file'`), seen when something
+  asks the host (an edit, a push, a reopen): an open grid shows the older
+  workbook until then, and reloads when it asks. Restore puts a kept copy
+  back byte for byte as a new revision.
+- **A whole list made over another one is refused** (`listSince`): an edit
+  carrying a tab's chart or picture list, a rule list or the names, made on a
+  revision after which another edit replaced the same list, answers a
+  conflict and writes nothing, so a second window's chart list never takes
+  out the first's chart. Each row keeps which lists it replaced, by kind and
+  tab alone (`work_sheets_ops.lists`), so a shared workbook, whose log keeps
+  nothing typed, is judged the same.
 - **A workbook others can open keeps nothing here past its tab or thread**
   (the editors plan, "University files"; `library.test.ts`, `private.test.ts`).
   For a file where `sharedOf` is true (a Teams library's, a shared OneDrive
@@ -152,11 +161,13 @@ A workbook from a mail (`{at: 'mail'}`: .xlsx, .xlsm or .csv) is held as the fil
   already edited here before this rule keeps its sheet among the app's
   files, editable as before (`csvEdited`; a sheet that cannot be read just
   now counts as edited, so only a read that says revision 0 lets one go),
-  saved back through Files' door, and that sheet follows the file when it
+  saved back through Files' door (a remote key needs `approve` for it,
+  `exportSheet`), and that sheet follows the file when it
   is renamed or moved. An open tab is not told when a co-author changes the
   file: its next edit meets the newer file's sheet at an earlier revision
-  (a conflict), so the grid reads the newer file and sends the edit again
-  on top of it. **What he writes out of a
+  (a conflict), so the grid reads the newer file, and the edit is not sent
+  again: its cells named the older sheet (canvas, "A conflict that reads
+  the file again"). **What he writes out of a
   sheet others can open** (a sheet as .csv, a .csv as .xlsx) is a copy he
   takes: it lands in his own workspace's folder (`ownFolderOf`), never
   beside the file, where a library would sync it to the team, and never
@@ -168,7 +179,17 @@ A workbook from a mail (`{at: 'mail'}`: .xlsx, .xlsm or .csv) is held as the fil
   row's height he set, a merge) and structural edits (below). One edit may
   carry all three; it is one revision, labelled "Formatting" when no cell's
   contents changed. A cell that only takes a style keeps what it held, so a
-  suggestion waiting on it still stands.
+  suggestion waiting on it still stands. A cell held as text (Univer's
+  STRING or FORCE_STRING type), a rich cell's words and every string the app
+  writes (`mutationsOf` types it text: an agent's, a suggestion taken, a cell
+  put back) are written as they stand (`EditSpec.literal`): `007` stays
+  `007`, `=x` is no formula; a value he typed with no type is read as Excel
+  reads typing. A formula with a function that can spill (`SPILLING`,
+  `spillingIn` in shared/work/sheets.ts) is refused at his press and at the
+  host in the same words ("A formula with SEQUENCE is not saved in an Excel
+  file yet. Make it in Excel"): the writer cannot make Excel's dynamic-array
+  metadata, and a plain formula Excel would read another way. A workbook
+  desktop Excel or Google holds takes a spill as its own.
 - **Tables are saved a list at a time too** (`patch/tables.ts`,
   `patchTables`, `readTables`; proven in real Excel on 26 workbooks, no
   repair, 2,411 checks: `.temp-code/plans/landed/E-sheets/SHT4-excel-tables-proof.md`).
@@ -285,9 +306,12 @@ A workbook from a mail (`{at: 'mail'}`: .xlsx, .xlsm or .csv) is held as the fil
   (`SaveAnswer.report.ids`, through `PackageStore.edit` and
   `work.sheets.edit` as `ids`, `ObjectIds`: a new chart becomes its part's
   name, pictures after one added or removed are numbered again, a new
-  picture's part), and the canvas lays them on the grid as from elsewhere
-  (`rekeyed`, `handle.objects.apply`), so the next save names the same
-  parts. A revision is labelled "Chart" or "Picture". The writers' refusals
+  picture's part). The grid keeps its own ids, the ones its Undo and Redo
+  name each object by; the canvas keeps the file's names beside them
+  (objects.ts `FileIds`), sends every list under the file's names and lays a
+  list from elsewhere under the grid's, so the next save names the same
+  parts and Undo of an inserted chart after Saved takes it out of the file
+  (the grid renamed it until 2026-11-24, and that Undo left the chart). A revision is labelled "Chart" or "Picture". The writers' refusals
   (`ObjectsRefused`: a protected sheet, a range in another workbook, a kind
   this editor cannot make, a chart in a group) are said once as a toast,
   and the canvas reads the file again, so the object is as it was. A
@@ -395,7 +419,9 @@ A workbook from a mail (`{at: 'mail'}`: .xlsx, .xlsm or .csv) is held as the fil
   with the time of his last edit, a refusal in the host's words with its
   press (Reload on an opened Excel file, whose grid no longer matches it;
   Retry elsewhere, where the edits wait), and why a file cannot be changed
-  here. Edits are sent as he makes them and flushed when the body goes.
+  here. Edits are sent as he makes them and flushed when the body goes. An
+  opened Excel file's refused batch keeps its line after a later edit lands
+  (the refused one is still not in the file) until Reload.
 
 ## Other formats in
 
@@ -449,7 +475,15 @@ the file's own name.
   LibreOffice keeps the results it finds in an .xlsx, and an edit saved
   without the calc engine leaves those as they were before it. A .tsv is
   patched with the first sheet's values (`patchCsv` with a tab): a field
-  nobody changed keeps its bytes, and a formula goes back as its value.
+  nobody changed keeps its bytes, and a formula goes back as its value. A
+  formula with no value worked out (typed where no engine ran, or the copy
+  asks Excel to calculate again on load) is refused (`packageCsv`: "The
+  formula in B2 has no value worked out yet, so the sheet cannot be written
+  as text. Save as Excel to keep your edits."), and the file keeps its bytes;
+  Export → CSV of a package refuses the same. The copy's saves are held
+  while it converts and is stamped (`PackageStore.holding`), so the stamp
+  names the copy that went back, and the window sends his last edit first
+  (sync.ts `written`).
   A file that changed since is not written; else it is refused ("…changed since this copy was
   made. Save as Excel to keep your edits."), and a file that is gone is not
   made again. The answer's `drops` says what the format left behind of
@@ -600,7 +634,24 @@ or onto another), and whole rows or columns dragged (`move-rows`,
   (registered with canvas/flush.ts like the deck's and the text's), so the
   host has his last edit before the item goes. Before 2026-11-23 a cell
   typed and the tab closed by × at once was sent after the item was gone,
-  refused, and never reached the file.
+  refused, and never reached the file. A cell still open in the editor is
+  ended first, keeping what he typed (`GridLink.commit`: Univer's
+  `endEditingAsync(true)`). A body unmounted by another tab picked still
+  sends only what was committed.
+- **A reload holds the grid.** While catch-up reads the file again (a rule's
+  list landed, a shared workbook's edit, a change from outside), the grid is
+  `reloading` and takes no edit: what he typed before it is sent first, and
+  nothing is typed into a book about to be replaced.
+- **A conflict that reads the file again** (the file changed outside
+  TempCode, a restore, rows moved elsewhere, a list replaced) sends the
+  refused batch no more, nor what waited behind it: its cells named the
+  older sheet. It is said once as a toast, cell by cell with what he put
+  there ("The file changed before this was saved: B4 1200, C5 Hotel and 2
+  more. Make it again.", `notSavedWords`), and the grid shows the file.
+- **What reads the file waits for his last edit.** Preview's draws and
+  exports, Save back and Save as Excel await `SheetSync.written`, which
+  ends the open cell, sends what waits and rejects in words when an edit of
+  his did not save.
 - **Not proven.** None of this was opened in real Excel: the proof files
   (each case's file before and after, with the cells and values Excel
   should show, `manifest.json`) wait for a live proof; the first thing to
@@ -967,7 +1018,8 @@ lands in his own Drive, shared with nobody. Threads have no upload tool.
   { rules: true })`: conditional formatting, validation, filter, table,
   sort), so a rule made in the grid applies, stays in the snapshot's
   `resources` and survives a cold load; a restore writes back the cells'
-  diff and, through `host/rules.ts` `ruleMutations`, the conditional
+  diff, each cell whose text runs differ whole with its runs (or none over a
+  cell that has them, `richWrites`), and, through `host/rules.ts` `ruleMutations`, the conditional
   formats, validations, filters and defined names of the revision (not
   tables). The mutation ids and payloads are in the editors plan's SHT3
   report, held by `host/rules.test.ts` and work-kit's
@@ -1086,7 +1138,11 @@ after he looked is not taken; past 5,000 ids (the wire's limit) it sends them
 in batches of that many (`reviewBatches`), never all. One review of a sheet runs at a time (`oneReview`, sheets/index.ts):
 each picks what waits only once the last settled, so an Accept waiting on
 Google or Excel never writes what a Reject in another window dropped, and two
-Accepts never write the same rows. A Google Sheet suggestion keeps its own
+Accepts never write the same rows. Over an opened Excel file the cells are
+checked and written in one turn of the file's saves (`PackageStore.edit`'s
+`under`, index.ts `reviewPackage`): the check reads the file the save then
+writes over, and a save from Excel or a co-author after that read refuses the
+write ("The file changed while accepting: try again."), never written over. A Google Sheet suggestion keeps its own
 change set id (the millisecond and four random bytes, so two never share one)
 and where its cell stood (`target`, google/grid.ts `targetOf`: the tab's
 numeric id, the other cells of its row and its column's header), so a row
@@ -1661,13 +1717,14 @@ The harness corpus also keeps the workbooks the editors plan measured with
 - A new note or a removed note in an opened Excel file: a new note needs
   Excel's comments and drawing parts, which no writer here makes. Moves are
   saved where the file allows ("Structural edits").
-- The model writer leaves out notes and our charts.
+- The model writer leaves out notes (`left` says so); it writes charts and
+  pictures as real parts, and says one it could not (`left`).
 - No tool changes a cell's runs (text in more than one style).
-- An agent adds rules and formats (`sheet_rule`, `sheet_format`); it does
-  not change or remove a rule, merge cells or sort. The plan promised
-  agents no more than those two tools, and SHT9 added none: a thread has
-  no tool for a table, a chart, page set-up, Preview, Check in Excel or
-  Save to Google Sheets.
+- An agent adds rules and formats (`sheet_rule`, `sheet_format`) and has
+  `sheet_table`, `sheet_page`, `sheet_note` and `sheet_chart` (tools.ts),
+  under the same hold; it does not change or remove a rule, merge cells or
+  sort, and has no tool for Preview, Check in Excel or Save to Google
+  Sheets.
 - Check in Excel on his Mac or a Windows PC: the office pillar offers the
   pair on no carrier but the box's VM until its own proof passes there.
   Check in Excel for a macro workbook, and for a workbook others can open.

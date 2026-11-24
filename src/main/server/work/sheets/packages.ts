@@ -46,6 +46,13 @@ export function ensurePackageTables(db: DatabaseSync): void {
     undo TEXT,
     PRIMARY KEY (path, rev)
   )`)
+  // Which whole lists an edit replaced (a tab's charts, its rules, the names), by kind and tab alone: what a list made
+  // on an earlier revision is held to (`listSince`), kept even where what was typed is not. Null for a row made before.
+  try {
+    db.exec('ALTER TABLE work_sheets_ops ADD COLUMN lists TEXT')
+  } catch {
+    // the column is there already
+  }
   // Who holds a workbook others can open: its tab, or a thread that read it by its path. Names and ids only.
   db.exec(`CREATE TABLE IF NOT EXISTS work_sheets_shared (
     path TEXT NOT NULL,
@@ -326,8 +333,8 @@ export class PackageStore {
       // A rule's op keeps its own (the whole list its change left), which `since` answers as a reload: no other grid
       // can apply a list as it is, but no cell moved, so an edit made before it still lands.
       this.db
-        .prepare('INSERT INTO work_sheets_ops (path, rev, by, at, label, mutations, write_id, undo) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
-        .run(path, rev, by, this.now(), extra.label ?? (ops.length ? labelOfOps(ops) : rules.length && !edits.length ? labelOfRules(rules) : labelOf(edits)), ops.length ? 'null' : unkept ? UNKEPT : JSON.stringify(mutations.map(withoutBytes)), extra.writeId ?? null, extra.undo && !ops.length && !unkept ? JSON.stringify(extra.undo) : null)
+        .prepare('INSERT INTO work_sheets_ops (path, rev, by, at, label, mutations, write_id, undo, lists) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)')
+        .run(path, rev, by, this.now(), extra.label ?? (ops.length ? labelOfOps(ops) : rules.length && !edits.length ? labelOfRules(rules) : labelOf(edits)), ops.length ? 'null' : unkept ? UNKEPT : JSON.stringify(mutations.map(withoutBytes)), extra.writeId ?? null, extra.undo && !ops.length && !unkept ? JSON.stringify(extra.undo) : null, rules.length ? JSON.stringify([...new Set(rules.map(listKey))]) : null)
       const named = Object.keys(ids).length ? { ids } : {}
       return ops.length ? { rev, moved: { ops, before }, ...named } : { rev, ...named }
     })
@@ -372,13 +379,16 @@ export class PackageStore {
   /**
    * Whether a list this edit replaces whole (a tab's charts or pictures, its conditional formats, the names) was
    * replaced after `rev` by another edit: the list sent was made without that one's change, and would take it out of
-   * the file. A shared workbook's log keeps no lists, so any edit after `rev` there counts.
+   * the file. Read from each row's `lists` (a shared workbook's too, whose log keeps nothing typed), or for a row made
+   * before that column, from its mutations.
    */
   private listSince(path: string, rev: number, mutations: readonly SheetMutationJson[]): boolean {
     const lists = new Set(mutations.filter((m) => m.id === RULES_SET).map(listKey))
     if (!lists.size) return false
-    const later = this.db.prepare('SELECT mutations FROM work_sheets_ops WHERE path = ? AND rev > ?').all(path, rev) as { mutations: string }[]
-    return later.some((o) => o.mutations === UNKEPT || (o.mutations !== 'null' && (JSON.parse(o.mutations) as SheetMutationJson[]).some((m) => m.id === RULES_SET && lists.has(listKey(m)))))
+    const later = this.db.prepare('SELECT mutations, lists FROM work_sheets_ops WHERE path = ? AND rev > ?').all(path, rev) as { mutations: string; lists: string | null }[]
+    const keysOf = (o: { mutations: string; lists: string | null }): string[] =>
+      o.lists !== null ? (JSON.parse(o.lists) as string[]) : o.mutations === 'null' || o.mutations === UNKEPT ? [] : (JSON.parse(o.mutations) as SheetMutationJson[]).filter((m) => m.id === RULES_SET).map(listKey)
+    return later.some((o) => keysOf(o).some((k) => lists.has(k)))
   }
 
   /** Whether a change from outside or a restore landed after `rev`: the cells may have moved. */

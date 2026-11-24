@@ -4,6 +4,7 @@ import { join } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
 import { afterAll, beforeEach, describe, expect, it } from 'vitest'
 import { importXlsx } from 'work-kit/sheet/xlsx'
+import { RULES_SET } from '@shared/work/sheets'
 import { SET_RANGE_VALUES } from './mutations'
 import { ensurePackageTables, PackageStore, PACKAGE_UNIT } from './packages'
 import { localJobs } from './workerClient'
@@ -88,6 +89,23 @@ describe('an opened package', () => {
     expect(again).toEqual({ rev: 2 })
     expect(valueAt(path, 'Data', 1, 0)).toBe(6)
     expect(store.history(path)[0]).toMatchObject({ rev: 2, label: 'Accepted 1 change' })
+  })
+
+  it('refuses a whole list made over another edit of that list, in a workbook others can open too; a cell edit between is no reason', async () => {
+    // Council r1 (Sol 12): the second of two lists made on one revision took the first one's change out of the file.
+    const db = new DatabaseSync(':memory:')
+    ensurePackageTables(db)
+    const shared = new PackageStore(db, await localJobs(), join(scratch, `copies-${n}`), () => engine, Date.now, () => {}, null, undefined, { root: join(scratch, `shared-${n}`), is: () => true })
+    const data = (await shared.open(path)).inspected.sheets[0].id
+    const list = (subUnitId: string) => ({ id: RULES_SET, params: { kind: 'conditional', subUnitId, list: [] } })
+    expect(await shared.edit(path, 0, [set(data, 1, 0, { v: 2 })], 'owner')).toEqual({ rev: 1 })
+    expect(await shared.edit(path, 0, [list(data)], 'owner')).toEqual({ rev: 2 })
+    expect(await shared.edit(path, 1, [list(data)], 'owner')).toEqual({ conflict: true, rev: 2 })
+    // (what was typed is kept nowhere here; which list changed is, by kind and tab)
+    expect(db.prepare('SELECT mutations, lists FROM work_sheets_ops ORDER BY rev').all()).toEqual([
+      { mutations: '"unkept"', lists: null },
+      { mutations: '"unkept"', lists: JSON.stringify([`conditional\u0000${data}`]) }
+    ])
   })
 
   it('holds its saves while a reader of the file acts on what it read: an edit asked meanwhile lands after', async () => {

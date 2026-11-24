@@ -245,7 +245,7 @@ export const sheets: WorkModule = {
         return handled({ opened: true as const })
       }
       case 'work.sheets.export':
-        return handled(await exportSheet(s, item!, req.params.format, req.params.sheet))
+        return handled(await exportSheet(s, item!, req.params.format, req.params.sheet, by))
       // Preview and export (preview.ts): a sheet he can only read still previews; nothing here changes the file.
       case 'work.sheets.preview':
         // "Check in Excel" is his press alone (checkExcel.ts): Excel's own picture, or why none came.
@@ -453,7 +453,7 @@ export async function workbookOf(ctx: WorkCtx, ref: SheetRef, at?: number): Prom
  * gives .csv beside itself; anything else lands among the item's own files. `left`: the lists of rules
  * the .xlsx could not hold, in words.
  */
-export async function exportSheet(s: Sheets, item: CanvasItem, format: 'xlsx' | 'csv', sheet?: string): Promise<{ path: string; left?: string[] }> {
+export async function exportSheet(s: Sheets, item: CanvasItem, format: 'xlsx' | 'csv', sheet?: string, by?: Caller): Promise<{ path: string; left?: string[] }> {
   const held = heldOf(item, s.ctx.dataDir)
   const base = item.title.replace(/\.(xlsx|xlsm|tcsheet|csv|xls|ods|tsv)$/i, '').replace(/[\\/:*?"<>|\u0000-\u001f]/g, ' ').trim() || 'Sheet'
   // What he writes out of a sheet others can open is a copy he takes: it lands in his own workspace's folder, never
@@ -481,6 +481,8 @@ export async function exportSheet(s: Sheets, item: CanvasItem, format: 'xlsx' | 
     const path = back ?? (shared ? free(join(own(), `${base}.csv`)) : join(own(), `${base}.csv`))
     const text = writeCsv(wb, sheet)
     // Saved back over a file others can open: through Files' one door for replacing a file where it lies (its lock, one whole replace), as an Excel file's save is.
+    // A remote key changes it only with `approve`, as any change there (`pressesFor`).
+    if (back && shared && by?.kind === 'remote' && !pressesFor(by)) throw new Error(NEEDS_APPROVE)
     if (back && shared) {
       const { saveFile, versionWord } = await import('../files/save')
       const { versionOf } = await import('../files/write')
