@@ -285,6 +285,23 @@ describe('an opened package', () => {
     await expect(store.undo(path, 'w1')).rejects.toThrow(/no longer/)
   })
 
+  it('takes back no write over a save from outside, and puts back what the cells held just before it, a write that landed first included', async () => {
+    // Council r2 (Sol 9): Undo checked the log, a co-author saved, and the old value went over the co-author's file.
+    await store.open(path)
+    await store.writeCells(path, [{ at: 'A2', v: 7 }], 'agent:h:t', 'Wrote A2', 'w1')
+    writeFileSync(path, readFileSync(path))
+    utimesSync(path, new Date(), new Date(Date.now() + 9_000))
+    const theirs = readFileSync(path)
+    await expect(store.undo(path, 'w1')).rejects.toThrow('The file was restored or changed since: that write can no longer be taken back.')
+    expect(readFileSync(path).equals(theirs)).toBe(true)
+    // two writes to one cell asked at once: the second's Undo puts back the first's value, read in its own turn
+    const a = store.writeCells(path, [{ at: 'A3', v: 5 }], 'agent:h:t', 'Wrote A3', 'w2')
+    const b = store.writeCells(path, [{ at: 'A3', v: 6 }], 'agent:h:t', 'Wrote A3', 'w3')
+    await Promise.all([a, b])
+    await store.undo(path, 'w3')
+    expect(valueAt(path, 'Data', 2, 0)).toBe(5)
+  })
+
   it('writes a string as the text it is, a formula only from `f`, and refuses a formula that can spill', async () => {
     // Council r1 (Sol 6, Sol 7): "007" read back as 7, "=1+1" went in as a formula, and =SEQUENCE(3) was written plain.
     await store.writeCells(path, [{ at: 'Data!A2', v: '007' }, { at: 'Data!A3', v: '=1+1' }, { at: 'Data!A4', f: '=1+1' }, { at: 'Data!A5', v: 12 }], 'agent:h:t1', 'Wrote')

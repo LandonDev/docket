@@ -306,7 +306,7 @@ export class PackageStore {
     baseRev: number,
     mutations: SheetMutationJson[],
     by: string,
-    extra: { label?: string; writeId?: string; undo?: SheetMutationJson[]; under?: () => Promise<{ mutations: SheetMutationJson[]; label: string }> } = {}
+    extra: { label?: string; writeId?: string; undo?: SheetMutationJson[]; under?: () => Promise<{ mutations: SheetMutationJson[]; label: string; undo?: SheetMutationJson[] }> } = {}
   ): Promise<{ rev: number; moved?: Moved; ids?: ObjectIds } | { conflict: true; rev: number }> {
     return this.serial(path, async () => {
       // A file moved or deleted since it was opened takes no edit: said, not thrown as a raw error.
@@ -317,7 +317,11 @@ export class PackageStore {
       // An edit that is worked out from the cells (an accepted suggestion, written only over what the agent saw) reads
       // them here, under the save's own turn, from the file this save then checks it writes over: what was checked is
       // what is written, and a change from outside after the read is refused by the save as any other.
-      if (extra.under) ({ mutations, label: extra.label } = await extra.under())
+      if (extra.under) {
+        const made = await extra.under()
+        mutations = made.mutations
+        extra = { ...extra, label: made.label, ...(made.undo ? { undo: made.undo } : {}) }
+      }
       const before = new Map(this.inspected.get(path)!.value.sheets.map((s) => [s.id, s.name]))
       const steps = planOf(mutations, new Map(before))
       if (!steps.length) return { rev: row.rev }
@@ -507,24 +511,34 @@ export class PackageStore {
       const f = c.f === undefined ? undefined : c.f.startsWith('=') ? c.f : `=${c.f}`
       return { sheet: this.sheetId(path, r.sheet), row: r.startRow, col: r.startColumn, cell: f ? { f } : c.v === undefined || c.v === null || c.v === '' ? null : { v: c.v } }
     })
-    const before = await this.cellsAt(path, writes)
     const mutations = mutationsOf(PACKAGE_UNIT, writes)
-    const got = await this.edit(path, state.rev, mutations, by, { label, writeId, undo: mutationsOf(PACKAGE_UNIT, before) })
+    // What the cells held is read in the save's own turn, from the file it writes over: a write that lands just before is
+    // what an Undo of this one puts back, never what stood before both.
+    const under = async () => ({ mutations, label, undo: mutationsOf(PACKAGE_UNIT, await this.cellsAt(path, writes)) })
+    const got = await this.edit(path, state.rev, [], by, { label, writeId, under })
     if ('conflict' in got) throw new Error('The file changed while writing: try again.')
     return { rev: got.rev, mutations }
   }
 
-  /** Takes back an agent's direct write, when no later edit touched those cells. */
+  /**
+   * Takes back an agent's direct write, when no later edit touched those cells. Checked in the save's own turn, after its
+   * look at the file: a save from outside that came before it is a later revision there, and refuses the Undo.
+   */
   async undo(path: string, writeId: string): Promise<WriteResult> {
-    const op = this.db.prepare('SELECT rev, undo, mutations FROM work_sheets_ops WHERE path = ? AND write_id = ?').get(path, writeId) as { rev: number; undo: string | null; mutations: string } | undefined
-    if (!op?.undo) throw new Error('That write can no longer be taken back.')
-    const touched = cellsOfMutations(JSON.parse(op.mutations) as SheetMutationJson[])
-    const later = this.db.prepare('SELECT mutations FROM work_sheets_ops WHERE path = ? AND rev > ?').all(path, op.rev) as { mutations: string }[]
-    if (later.some((l) => l.mutations === 'null' || l.mutations === '[]' || l.mutations === UNKEPT)) throw new Error('The file was restored or changed since: that write can no longer be taken back.')
-    for (const l of later) for (const k of cellsOfMutations(JSON.parse(l.mutations) as SheetMutationJson[])) if (touched.has(k)) throw new Error('Those cells were edited since: that write can no longer be taken back.')
+    const label = 'Took back a write'
+    let mutations: SheetMutationJson[] = []
+    const under = async () => {
+      const op = this.db.prepare('SELECT rev, undo, mutations FROM work_sheets_ops WHERE path = ? AND write_id = ?').get(path, writeId) as { rev: number; undo: string | null; mutations: string } | undefined
+      if (!op?.undo) throw new Error('That write can no longer be taken back.')
+      const touched = cellsOfMutations(JSON.parse(op.mutations) as SheetMutationJson[])
+      const later = this.db.prepare('SELECT mutations FROM work_sheets_ops WHERE path = ? AND rev > ?').all(path, op.rev) as { mutations: string }[]
+      if (later.some((l) => l.mutations === 'null' || l.mutations === '[]' || l.mutations === UNKEPT)) throw new Error('The file was restored or changed since: that write can no longer be taken back.')
+      for (const l of later) for (const k of cellsOfMutations(JSON.parse(l.mutations) as SheetMutationJson[])) if (touched.has(k)) throw new Error('Those cells were edited since: that write can no longer be taken back.')
+      mutations = JSON.parse(op.undo) as SheetMutationJson[]
+      return { mutations, label }
+    }
     const state = await this.open(path)
-    const mutations = JSON.parse(op.undo) as SheetMutationJson[]
-    const got = await this.edit(path, state.rev, mutations, 'owner', { label: 'Took back a write' })
+    const got = await this.edit(path, state.rev, [], 'owner', { label, under })
     if ('conflict' in got) throw new Error('The file changed while taking it back: try again.')
     this.db.prepare('UPDATE work_sheets_ops SET undo = NULL WHERE path = ? AND write_id = ?').run(path, writeId)
     return { rev: got.rev, mutations }

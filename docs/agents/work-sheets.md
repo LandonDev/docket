@@ -1323,7 +1323,11 @@ does not list those). The sheet's rules are read for the check from the file
 failure that is not about the sheet (the sheet worker, a read of the file)
 leaves the change waiting. A format or a rule written at once on the
 agent's own idea is said in the bar's written line with no Undo on it
-(`SheetWritten.undo: false`): History takes it back.
+(`SheetWritten.undo: false`): History takes it back. Over an opened Excel
+file an agent's cell write keeps what the cells held as read in its own
+save's turn (`writeCells`, `under`), and its line's Undo checks the log in
+the Undo's own save's turn (`PackageStore.undo`): a save from outside, a
+restore or an edit of those cells since refuses it, never written over.
 
 **A suggestion stays his until he approves it** (the owner's ruling,
 2026-11-23; `private.test.ts`, and the guest's page in
