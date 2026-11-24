@@ -78,6 +78,9 @@ export function ensureFilesTables(db: DatabaseSync): void {
   // Autosave (word.ts): his choice for the file (`auto`: null not asked yet, 1 save automatically, 0 ask each time), and
   // when an autosave met a change made there (`stopped`): autosave waits for his press until then.
   for (const column of ['auto', 'stopped']) if (!have.has(column)) db.exec(`ALTER TABLE work_files_word ADD COLUMN ${column} INTEGER`)
+  // The document's live revision (the Work service's, never the file's time) last written to the Word file
+  // (`saved_rev`), and as it stood when it was made of the file (`base_rev`): word.ts.
+  for (const column of ['saved_rev', 'base_rev']) if (!have.has(column)) db.exec(`ALTER TABLE work_files_word ADD COLUMN ${column} TEXT`)
 }
 
 export const FILES_TABLES = ['work_files_tabs', 'work_files_revs', 'work_files_marks', 'work_files_trash', 'work_files_ops', 'work_files_names', 'work_files_kept', 'work_files_copies', 'work_files_word'] as const

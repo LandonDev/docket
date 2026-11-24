@@ -19,7 +19,7 @@
  *   env -u ELECTRON_RUN_AS_NODE bun scripts/e2e-box-vm-edit.ts --app <built tree> --out <dir>
  */
 import { spawn, spawnSync, type ChildProcess } from 'node:child_process'
-import { appendFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { appendFileSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { connect, createServer } from 'node:net'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
@@ -200,7 +200,7 @@ async function closeTabByX(name: string): Promise<void> {
   await ev(`document.querySelector('[data-files-tab-close][aria-label=${JSON.stringify(`Close ${name}`)}]')?.click()`)
 }
 /** New → kind in the shown folder, named in place: answers whether the file is in the VM under its name. */
-async function make(kind: 'Deck' | 'Sheet', stem: string, ext: string): Promise<boolean> {
+async function make(kind: 'Deck' | 'Sheet' | 'Document', stem: string, ext: string): Promise<boolean> {
   if (!(await press('button', 'New'))) return false
   if (!(await press('[role="menuitem"]', kind))) return false
   await until('the name field', 60_000, () => ev<boolean>(`document.activeElement?.tagName === 'INPUT'`))
@@ -262,69 +262,91 @@ async function openForward(): Promise<boolean> {
 async function wordCase(): Promise<void> {
   const name = `${WORD}.docx`
   if (!check("this run's forward to the VM's helper opens (the VM is awake)", await openForward())) return
-  await guestCall('files.write', { dir: oneDrive!.root.path, name, data: readFileSync(join(import.meta.dir, '..', 'resources', 'work-files', 'blank', 'blank.docx')).toString('base64'), op: crypto.randomUUID() })
+  // A dummy Word file of someone's (a starter template, not our blank): it asks once before saving by itself.
+  const sample = readFileSync(join(import.meta.dir, '..', 'resources', 'work-templates', 'ref', 'Incident report.docx'))
+  await guestCall('files.write', { dir: oneDrive!.root.path, name, data: sample.toString('base64'), op: crypto.randomUUID() })
   check('a dummy Word file lies in My OneDrive in the VM', inVm(name))
   await sleep(6000)
-  // The folder read again: away to Home and back, as he would.
   await press('button, a, [role="button"], [role="link"], div', 'Home')
   await sleep(1500)
   await press('button, a, [role="button"], [role="link"], div', 'My OneDrive')
   if (!check('it opens from its row', await pressRow(name))) return
   const editor = await until('the document', 180_000, async () => !!(await centre('[data-files-file] [contenteditable="true"]')))
-  await until('the line', 20_000, async () => (await saveLine()).includes('Word file'))
+  await until('the Word line', 30_000, async () => (await saveLine()).includes('Word file'))
   const opened = await saveLine()
   await shot('8-word-opened')
-  check('it opens as a document, and the header says the Word file has not changed', editor && opened.includes('The Word file in OneDrive has not changed'), opened)
-  const where = (): { path?: string } | undefined => {
-    const tab = box<{ tabs: { name: string; itemId?: string; key?: string }[] }>('work.files.tabs', { workspaceId: WS }).tabs.find((t) => t.key?.endsWith(name))
-    return box<{ items: { id: string; source: { path?: string } }[] }>('work.canvas.list', { sessionId: `filespane_${WS}` }).items.find((i) => i.id === tab?.itemId)?.source
+  check('it opens as a document; the header says the Word file has not changed and offers Save to OneDrive as Word', editor && opened.includes('The Word file in OneDrive has not changed') && !!(await centre('button', 'Save to OneDrive as Word')), opened)
+  const where = (n: string): string => {
+    const tab = box<{ tabs: { itemId?: string; key?: string }[] }>('work.files.tabs', { workspaceId: WS }).tabs.find((t) => t.key?.endsWith(n))
+    return box<{ items: { id: string; source: { path?: string } }[] }>('work.canvas.list', { sessionId: `filespane_${WS}` }).items.find((i) => i.id === tab?.itemId)?.source.path ?? ''
   }
-  log(`document: ${JSON.stringify(where())}`)
-  const ed = (await centre('[data-files-file] [contenteditable="true"]'))!
-  await click(ed.x, ed.y)
-  const words = `Agenda ${STAMP.slice(-4)} doors open`
-  await typeKeys(words)
-  await sleep(4000)
-  await shot('9-word-typed')
-  const kept = where()?.path ?? ''
-  await closeTabByX(name)
-  await until('the tab goes', 15_000, async () => !(await centre(`[data-files-tab-close][aria-label=${JSON.stringify(`Close ${name}`)}]`)))
-  await sleep(4000)
-  check('closed, the document he edited is kept in the workspace folder', kept.startsWith('/srv/agents/work/Work/Purdue/') && box<{ entries: { name: string }[] }>('work.files.list', { workspaceId: WS, at: { at: 'file', host: boxId, path: '/srv/agents/work/Work/Purdue' } }).entries.some((e) => kept.endsWith(`/${e.name}`)), kept)
-  check('it opens from its row again', await pressRow(name))
-  const again = await until('the same document with his words', 120_000, async () => (await docText()).includes(words))
-  check('opened again: the same document, with his words', again && where()?.path === kept, `${where()?.path}`)
-  // Save to OneDrive as Word: the question, then Replace.
-  check('the header offers Save to OneDrive as Word', await press('button', 'Save to OneDrive as Word'))
-  const asked = await until('the question', 10_000, () => ev<boolean>(`!!document.querySelector('[role="alertdialog"]')`))
+  keptDocs.push(where(name))
+  const typeIn = async (words: string): Promise<void> => {
+    const ed = (await centre('[data-files-file] [contenteditable="true"]'))!
+    await click(ed.x, ed.y)
+    await ev(`(() => { const e = document.querySelector('[data-files-file] [contenteditable="true"]'); const r = document.createRange(); r.selectNodeContents(e); r.collapse(false); const s = getSelection(); s.removeAllRanges(); s.addRange(r); })()`)
+    await typeKeys(words)
+  }
+  const wordsIn = (n: string): string => partOf(bytesInVm(n), 'word/document.xml')
+  const one = `Agenda ${STAMP.slice(-4)} doors`
+  // One letter, then the notice the first change brings; his words after it is answered.
+  await typeIn('A')
+  const asked = await until('the notice', 60_000, () => ev<boolean>(`!!document.querySelector('[role="alertdialog"]')`))
   const said = asked ? await ev<string>(`document.querySelector('[role="alertdialog"]').textContent`) : ''
-  await shot('10-word-save-question')
-  check('it asks first, naming what Word may change', asked && said.includes(`Replace ${name} in OneDrive?`) && said.includes('nested tables'), said)
-  await press('[role="alertdialog"] button', 'Replace')
-  const written = await until('the Word file in the VM holds his words', 120_000, () => partOf(bytesInVm(name), 'word/document.xml').includes(words.split(' ')[0]!) && partOf(bytesInVm(name), 'word/document.xml').includes('doors'))
-  await until('saved as Word', 20_000, async () => (await saveLine()).includes('Saved to OneDrive as Word'))
+  await shot('9-word-first-notice')
+  check('the first time, one notice names what Word may change, with Save automatically and Ask me each time', asked && said.includes('Save automatically') && said.includes('Ask me each time') && said.includes('nested tables'), said)
+  await press('[role="alertdialog"] button', 'Save automatically', { starts: true })
+  await until('the notice goes', 10_000, async () => !(await ev<boolean>(`!!document.querySelector('[role="alertdialog"]')`)))
+  await typeIn(` ${one}`)
+  const saving = await until('Saving to OneDrive…', 20_000, async () => (await saveLine()).includes('Saving to OneDrive'))
+  await shot('10-word-saving')
+  const landed = await until('the words in the VM', 120_000, () => wordsIn(name).includes('doors'))
+  if (!landed) log(`the Word file in the VM: ${bytesInVm(name)?.length ?? 'not read'} bytes; its text holds: ${JSON.stringify(wordsIn(name).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').slice(-200))}`)
+  await until('Saved to OneDrive', 30_000, async () => (await saveLine()).includes('Saved to OneDrive'))
   await shot('11-word-saved')
-  check('Replace writes the Word file in the VM: its bytes hold his words, the header says saved as Word', written, await saveLine())
-  // The file changed behind his back, then more words and Save again: never over it, Keep Both beside it.
+  check('with no press the header says Saving to OneDrive… then Saved to OneDrive with the time, and the Word file in the VM holds his words', saving && landed && (await saveLine()).includes('Saved to OneDrive'), await saveLine())
+  await closeTabByX(name)
+  await sleep(3000)
+  check('closed and opened again: the same document, with his words', (await pressRow(name)) && (await until('his words', 120_000, async () => (await docText()).includes(one))))
+  // The file changed in the VM behind his back: his next words stop there, never over it.
   const now = (await guestCall('files.read', { path: guest(name), offset: 0, length: 1, version: true })) as { version: string }
-  await guestCall('files.write', { path: guest(name), data: readFileSync(join(import.meta.dir, '..', 'resources', 'work-files', 'blank', 'blank.docx')).toString('base64'), expect: now.version, op: crypto.randomUUID() })
-  const ed2 = (await centre('[data-files-file] [contenteditable="true"]'))!
-  await click(ed2.x, ed2.y)
-  await typeKeys(' again')
-  await sleep(4000)
-  await press('button', 'Save to OneDrive as Word', { ms: 20_000 })
-  await until('the question', 10_000, () => ev<boolean>(`!!document.querySelector('[role="alertdialog"]')`))
-  await press('[role="alertdialog"] button', 'Replace')
-  const clash = await until('the second question', 60_000, async () => (await ev<string>(`document.querySelector('[role="alertdialog"]')?.textContent ?? ''`)).includes('changed in OneDrive'))
-  await shot('12-word-changed-there')
-  check('over a file that changed there it never writes, and offers Keep Both', clash && !partOf(bytesInVm(name), 'word/document.xml').includes('doors'))
-  await press('[role="alertdialog"] button', 'Keep Both')
-  const mine = `${WORD} (mine).docx`
-  const both = await until('his version beside it', 120_000, () => inVm(mine) && partOf(bytesInVm(mine), 'word/document.xml').includes('doors'))
-  check(`Keep Both puts his version beside it as "${mine}"`, both)
+  await guestCall('files.write', { path: guest(name), data: sample.toString('base64'), expect: now.version, op: crypto.randomUUID() })
+  await sleep(2000)
+  const two = ` kickoff ${STAMP.slice(-3)}`
+  await typeIn(two)
+  const stopped = await until('the stop', 90_000, async () => (await saveLine()).includes('This file changed in OneDrive'))
+  await shot('12-word-stopped')
+  check('a change made there stops autosave: the header says so with Keep Both and Replace, and nothing is written over it', stopped && !!(await centre('button', 'Keep Both')) && !!(await centre('button', 'Replace')) && !wordsIn(name).includes('kickoff'), await saveLine())
+  await press('button', 'Replace')
+  const replaced = await until('the Word file holds his words again', 120_000, () => wordsIn(name).includes('kickoff'))
+  await until('Saved to OneDrive', 30_000, async () => (await saveLine()).includes('Saved to OneDrive'))
+  await shot('13-word-replaced')
+  check('Replace on his press writes his document over it: the VM file holds his newest words', replaced, await saveLine())
   await closeTabByX(name)
   await sleep(2000)
-  keptDocs.push(kept)
+}
+
+async function newDocumentCase(): Promise<void> {
+  const name = `${WORD} new.docx`
+  if (!check('New → Document makes a Word file in My OneDrive in the VM', await make('Document', `${WORD} new`, '.docx'))) return
+  if (!check('it opens from its row', await pressRow(name))) return
+  const editor = await until('the document', 180_000, async () => !!(await centre('[data-files-file] [contenteditable="true"]')))
+  check('it opens as the Word-backed document', editor, await saveLine())
+  const where = box<{ tabs: { itemId?: string; key?: string }[] }>('work.files.tabs', { workspaceId: WS }).tabs.find((t) => t.key?.endsWith(name))
+  keptDocs.push(box<{ items: { id: string; source: { path?: string } }[] }>('work.canvas.list', { sessionId: `filespane_${WS}` }).items.find((i) => i.id === where?.itemId)?.source.path ?? '')
+  const ed = (await centre('[data-files-file] [contenteditable="true"]'))!
+  await click(ed.x, ed.y)
+  const three = `Roster ${STAMP.slice(-4)} night`
+  await typeKeys(three)
+  const landed = await until('the words in the VM', 120_000, () => partOf(bytesInVm(name), 'word/document.xml').includes('night'))
+  const asked = await ev<boolean>(`!!document.querySelector('[role="alertdialog"]')`)
+  await until('Saved to OneDrive', 30_000, async () => (await saveLine()).includes('Saved to OneDrive'))
+  await shot('14-new-document-saved')
+  check('typed into it, its words reach the .docx in the VM by themselves, with no notice', landed && !asked, await saveLine())
+  await closeTabByX(name)
+  await sleep(3000)
+  check('closed and opened again: the same document, with his words', (await pressRow(name)) && (await until('his words', 120_000, async () => (await docText()).includes(three))))
+  await closeTabByX(name)
 }
 const keptDocs: string[] = []
 
@@ -341,10 +363,18 @@ const cleanup = async (): Promise<void> => {
       // The run's own document, removed outright: nothing of it is left in his workspace's folder or its Trash.
       if (doc.startsWith('/srv/agents/work/Work/Purdue/TempCode proof ')) rmSync(doc, { force: true })
     } catch (err) {
+      log(`could not remove ${doc}: ${String(err).slice(0, 200)}`)
+    }
+  }
+  // The Word file as it was, kept before the first write over it: the run's own, removed too.
+  for (const n of readdirSync('/srv/agents/work/Work/Purdue')) {
+    try {
+      if (n.startsWith(`TempCode proof ${STAMP}`)) rmSync(join('/srv/agents/work/Work/Purdue', n), { force: true })
+    } catch (err) {
       log(`could not delete ${doc}: ${String(err).slice(0, 200)}`)
     }
   }
-  for (const name of [`${DECK}.pptx`, `${SHEET}.xlsx`, `${WORD}.docx`, `${WORD} (mine).docx`]) {
+  for (const name of failures && process.env.KEEP_ON_FAIL === '1' ? [] : [`${DECK}.pptx`, `${SHEET}.xlsx`, `${WORD}.docx`, `${WORD} (mine).docx`, `${WORD} new.docx`]) {
     try {
       if (inVm(name)) box('work.files.trash', { workspaceId: WS, refs: [{ at: 'file', host: boxId, path: guest(name) }], op: crypto.randomUUID(), asked: true })
     } catch (err) {
@@ -413,7 +443,9 @@ try {
   await shot('0-my-onedrive')
 
   // 1. A deck made there, words typed into a box, 3 s with the box open.
-  if (process.env.SKIP_DECK_TYPING === '1') {
+  if (process.env.SKIP_DECK === '1') {
+    // (the deck is proven on 367)
+  } else if (process.env.SKIP_DECK_TYPING === '1') {
     check(`New → Deck named "${DECK}" lies in the VM`, await make('Deck', DECK, '.pptx'))
   } else if (check(`New → Deck named "${DECK}" lies in the VM`, await make('Deck', DECK, '.pptx'))) {
     check('it opens from its row', await pressRow(`${DECK}.pptx`))
@@ -444,7 +476,7 @@ try {
 
   // 2. A workbook made there, A1 typed.
   await until('the folder', 20_000, async () => !!(await centre('[data-files-row]')))
-  if (check(`New → Sheet named "${SHEET}" lies in the VM`, await make('Sheet', SHEET, '.xlsx'))) {
+  if (process.env.SKIP_SHEET !== '1' && check(`New → Sheet named "${SHEET}" lies in the VM`, await make('Sheet', SHEET, '.xlsx'))) {
     check('it opens from its row', await pressRow(`${SHEET}.xlsx`))
     const a1 = async (): Promise<{ x: number; y: number } | null> =>
       ev(`(() => { const c = [...document.querySelectorAll('[data-sheet-item] canvas')].find((e) => e.getBoundingClientRect().width > 100); if (!c) return null; const r = c.getBoundingClientRect(); return { x: Math.round(r.x + 78), y: Math.round(r.y + 30) }; })()`)
@@ -502,7 +534,10 @@ try {
   }
 
   // 4. A Word file: a dummy .docx put in the folder by the guest's own helper (New offers no Word file in the VM).
-  if (process.env.WORD !== '0') await wordCase()
+  if (process.env.WORD !== '0') {
+    await wordCase()
+    await newDocumentCase()
+  }
 
   // 3. Delete on the deck: the question, Cancel focused; confirmed, Trash; Undo puts it back.
   if (process.env.SKIP_DELETE !== '1') {

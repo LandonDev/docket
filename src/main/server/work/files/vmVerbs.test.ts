@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { ClientRequestSchema } from '@shared/contract'
 import type { FileDone, FilesPlaces } from '@shared/contract-work-files'
@@ -176,7 +178,7 @@ describe.skipIf(process.platform === 'win32')('the Windows VM changed through it
       const general = got.places.find((p) => p.vm && p.name === 'General')!
       expect(general.can).toEqual(vmCanOf(VERBS))
       // A folder and a text file always; an Office file only where a maker writes it (none is registered here).
-      expect(general.makes).toEqual(['text', 'folder'])
+      expect(general.makes).toEqual(['document', 'text', 'folder'])
       expect(calls).toEqual([])
       status()
       const old = (await call<FilesPlaces>('work.files.places', {})).places.find((p) => p.vm && p.name === 'General')!
@@ -208,8 +210,14 @@ describe.skipIf(process.platform === 'win32')('the Windows VM changed through it
       expect(rig.pushes.filter((p) => (p.p as { at?: string }).at === 'lib:esportsstaffgeneral:')).toHaveLength(2)
     })
 
-    it('refuses an Office file where nothing makes one, a template, and a name NTFS would not take, before the guest is asked', async () => {
-      await expect(call('work.files.make', { at: at(GENERAL), kind: 'document', op: op() })).rejects.toThrow("A document cannot be made in General yet. Make it in Word, or in your workspace's folder.")
+    it("makes a Word file from Files' own blank where no maker writes one (New → Document in a Teams library in the VM)", async () => {
+      const made = await call<FileDone>('work.files.make', { at: at(GENERAL), kind: 'document', name: 'Minutes', op: op() })
+      const blank = readFileSync(join(process.cwd(), 'resources', 'work-files', 'blank', 'blank.docx')).toString('base64')
+      expect(changes().at(-1)).toMatchObject({ verb: 'files.write', args: { dir: GENERAL, name: 'Minutes.docx', data: blank } })
+      expect(made.entries[0]).toMatchObject({ name: 'Minutes.docx', kind: 'document' })
+    })
+
+    it('refuses a template and a name NTFS would not take, before the guest is asked', async () => {
       await expect(call('work.files.make', { at: at(GENERAL), kind: 'text', from: at(`${GENERAL}\\Plan.txt`), op: op() })).rejects.toThrow('made blank')
       await expect(call('work.files.make', { at: at(GENERAL), kind: 'folder', name: 'CON', op: op() })).rejects.toThrow('Windows keeps that name for itself.')
       expect(changes()).toEqual([])

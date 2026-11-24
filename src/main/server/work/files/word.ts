@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto'
 import { existsSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import type { FileTab, WordBack, WordSaved } from '@shared/contract-work-files'
-import { filesPaneWorkspace, type CanvasItem } from '@shared/work'
+import { filesPaneOf, filesPaneWorkspace, type CanvasItem } from '@shared/work'
 import { extOf, freeName, splitName } from '@shared/work/files'
 import type { Caller, WorkCtx } from '../modules'
 import { blankOf } from './make'
@@ -37,6 +37,30 @@ export interface WordRow {
   original: string | null
   auto: number | null
   stopped: number | null
+  /** the document's live revision last written to the Word file, and as it stood when made of the file */
+  saved_rev: string | null
+  base_rev: string | null
+}
+
+/**
+ * The document's live revision as the Work service holds it now (its `/internal/docs/rev`): it moves with every edit
+ * he types, while the `.tcdoc` file on disk is written only now and then. Autosave and the header follow it.
+ */
+async function liveRev(ctx: WorkCtx, doc: string): Promise<string> {
+  const { serviceTarget } = await import('../docs/target')
+  const target = { at: 'file' as const, doc, path: doc, source: { at: 'file' as const, host: ctx.host, path: doc } }
+  return ((await ctx.service.internal('/internal/docs/rev', serviceTarget(target, false, 'all'))) as { rev: string }).rev
+}
+/** The live revision each kept document was last seen at, and since when, by its record's key. */
+const seenRevs = new Map<string, { rev: string; at: number }>()
+const keyOf = (r: Pick<WordRow, 'workspace_id' | 'host' | 'path'>): string => `${r.workspace_id}\0${r.host}\0${r.path}`
+/** Whether the document holds edits the Word file has not: by its live revision once seen, never by the file's time. */
+function editsSince(r: WordRow): boolean {
+  const seen = seenRevs.get(keyOf(r))?.rev
+  const written = r.saved_rev ?? r.base_rev
+  // A document an older build made (no base) holds his edits until its first save; one not yet seen is not called changed.
+  if (written === null) return r.doc_at === null
+  return seen !== undefined && seen !== written
 }
 
 /** The sha256 of our own blank Word file (resources/work-files/blank/blank.docx): a file still exactly that was born here. */
@@ -153,19 +177,32 @@ export function adoptWordCopies(ctx: Pick<WorkCtx, 'db' | 'canvas'>, tabs: (work
   return adopted
 }
 
+/**
+ * The Word record a tab shows: by the Word file the tab names (`copyOf`), else by the document its item shows, so a
+ * tab whose address and record were written by different builds still finds its file. Refused in words that say why.
+ */
+function recordOfWordTab(ctx: WorkCtx, workspaceId: string, tabId: string): WordRow {
+  const tab = filesState(ctx).tabs.list(workspaceId).tabs.find((t) => t.id === tabId)
+  if (!tab) throw new Error('That tab is closed.')
+  const byFile = tab.copyOf ? keptDoc(ctx, workspaceId, tab.copyOf.host, tab.copyOf.path) : null
+  if (byFile) return byFile
+  const item = tab.itemId ? ctx.canvas.get(tab.itemId) : null
+  const path = item?.source.at === 'file' ? item.source.path : null
+  const byDoc = path ? ((ctx.db.prepare(`SELECT * FROM work_files_word WHERE workspace_id = ? AND doc = ?`).get(workspaceId, path) as WordRow | undefined) ?? null) : null
+  if (byDoc && mtime(byDoc.doc!) !== null) return byDoc
+  throw new Error(NOT_SAVING)
+}
+
 /** How the Word file stands, as its tab says it. */
 export function wordBackOf(r: WordRow): WordBack | null {
   if (!r.doc) return null
-  const now = mtime(r.doc)
-  const since = r.saved_at === null || (now !== null && now !== r.saved_doc_at)
+  const since = editsSince(r)
   return { ...(r.saved_at ? { at: r.saved_at } : {}), since, ...(r.auto === null ? {} : { auto: r.auto === 1 }), ...(r.stopped ? { stopped: r.stopped } : {}) }
 }
 
 /** `work.files.wordAuto`: his choice for the file, kept on its record: save by itself, or ask each time. */
 export function wordAuto(ctx: WorkCtx, by: Caller, p: { workspaceId: string; tabId: string; on: boolean }): void {
-  const tab = filesState(ctx).tabs.list(p.workspaceId).tabs.find((t) => t.id === p.tabId)
-  const r = tab?.copyOf ? keptDoc(ctx, p.workspaceId, tab.copyOf.host, tab.copyOf.path) : null
-  if (!tab || !r) throw new Error(NOT_SAVING)
+  const r = recordOfWordTab(ctx, p.workspaceId, p.tabId)
   admitOwner(by, r)
   ctx.db.prepare(`UPDATE work_files_word SET auto = ? WHERE workspace_id = ? AND host = ? AND path = ?`).run(p.on ? 1 : 0, r.workspace_id, r.host, r.path)
   filesState(ctx).tabs.touch(p.workspaceId)
@@ -219,9 +256,7 @@ function keepOriginal(ctx: WorkCtx, r: WordRow, data: Buffer): void {
  * version beside the file instead.
  */
 export async function wordSave(ctx: WorkCtx, by: Caller, p: { workspaceId: string; tabId: string; keep?: boolean; replace?: boolean; auto?: boolean }): Promise<WordSaved> {
-  const tab = filesState(ctx).tabs.list(p.workspaceId).tabs.find((t) => t.id === p.tabId)
-  const r = tab?.copyOf ? keptDoc(ctx, p.workspaceId, tab.copyOf.host, tab.copyOf.path) : null
-  if (!tab || !r) throw new Error(NOT_SAVING)
+  const r = recordOfWordTab(ctx, p.workspaceId, p.tabId)
   admitOwner(by, r)
   return saveRow(ctx, r, p)
 }
@@ -257,11 +292,13 @@ async function saveRow(ctx: WorkCtx, r: WordRow, p: { workspaceId: string; keep?
   const out = await exportDoc(ctx, LOCAL, { source: { at: 'file', host: ctx.host, path: r.doc! }, format: 'docx' })
   const data = Buffer.from(out.data, 'base64')
   const docAt = mtime(r.doc!)
+  // The revision written is the one read before the export: an edit after it keeps the file behind, and is saved next.
+  const writtenRev = await liveRev(ctx, r.doc!).catch(() => null)
   const got = await deliver(ctx, { ...row, version }, data, !!p.keep)
   if ('conflict' in got) return { conflict: 'gone' in got.conflict ? { gone: true } : { changed: got.conflict.changed } }
   if ('copy' in got) return { copy: { name: got.copy.name } }
   const at = Date.now()
-  ctx.db.prepare(`UPDATE work_files_word SET version = ?, sha = ?, saved_at = ?, saved_doc_at = ?, stopped = NULL WHERE workspace_id = ? AND host = ? AND path = ?`).run(got.version, shaOf(data), at, docAt, r.workspace_id, r.host, r.path)
+  ctx.db.prepare(`UPDATE work_files_word SET version = ?, sha = ?, saved_at = ?, saved_doc_at = ?, saved_rev = ?, stopped = NULL WHERE workspace_id = ? AND host = ? AND path = ?`).run(got.version, shaOf(data), at, docAt, writtenRev, r.workspace_id, r.host, r.path)
   filesState(ctx).tabs.touch(p.workspaceId)
   return { at }
 }
@@ -277,13 +314,31 @@ const saving = new Set<string>()
  * Only his own document's live text is written: an agent's change to it waits as a suggestion until his press.
  */
 export async function autosaveWords(ctx: WorkCtx, now = Date.now()): Promise<void> {
-  const rows = ctx.db.prepare(`SELECT * FROM work_files_word WHERE auto = 1 AND stopped IS NULL AND doc IS NOT NULL`).all() as unknown as WordRow[]
+  const rows = ctx.db.prepare(`SELECT * FROM work_files_word WHERE doc IS NOT NULL`).all() as unknown as WordRow[]
   for (const r of rows) {
-    const at = mtime(r.doc!)
-    const key = `${r.workspace_id}\0${r.host}\0${r.path}`
-    if (at === null || saving.has(key) || now - at < wordTiming.pause) continue
-    const changed = r.saved_at === null ? at !== r.doc_at : at !== r.saved_doc_at
-    if (!changed) continue
+    // Only a document a tab shows, or one that saves by itself, is looked at: each look reads the service.
+    const shown = ctx.canvas.forSession(filesPaneOf(r.workspace_id)).some((i) => i.source.at === 'file' && i.source.path === r.doc)
+    if (!shown && r.auto !== 1) continue
+    const key = keyOf(r)
+    let rev: string
+    try {
+      rev = await liveRev(ctx, r.doc!)
+    } catch {
+      continue
+    }
+    const was = seenRevs.get(key)
+    if (was?.rev !== rev) {
+      seenRevs.set(key, { rev, at: now })
+      // A document made of the Word file: what it held when first seen is what the file holds.
+      if (r.base_rev === null && r.saved_rev === null && r.doc_at !== null && !was) {
+        ctx.db.prepare(`UPDATE work_files_word SET base_rev = ? WHERE workspace_id = ? AND host = ? AND path = ?`).run(rev, r.workspace_id, r.host, r.path)
+        r.base_rev = rev
+      }
+      filesState(ctx).tabs.touch(r.workspace_id)
+    }
+    if (r.auto !== 1 || r.stopped || saving.has(key) || !editsSince(r)) continue
+    // His typing has paused: the revision on screen has held still for the pause.
+    if (now - seenRevs.get(key)!.at < wordTiming.pause) continue
     saving.add(key)
     try {
       await saveRow(ctx, r, { workspaceId: r.workspace_id, auto: true })

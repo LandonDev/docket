@@ -1,4 +1,6 @@
+import { createHash } from 'node:crypto'
 import { isAbsolute } from 'node:path'
+import * as Y from 'yjs'
 import { DOCUMENT_FRAGMENT, findQuote, setThreadMark } from 'work-kit/collab'
 import { fileDocName, readDocument, type CollabContext, type CollabFile } from 'work-kit/collab-server'
 import { docIn, fenceOf, servingHere, str } from '../service/routes/internal'
@@ -54,6 +56,18 @@ function principalOf(body: Record<string, unknown>): string {
 }
 
 export const docsRoutes: InternalRoute[] = [
+  {
+    // The document's live revision: a hash of its state vector as the collab server holds it now, which moves with
+    // every edit whether or not the file has been written (files/word.ts: a Word file's autosave and its header).
+    path: '/internal/docs/rev',
+    milestone: 20,
+    async run(body, ctx) {
+      const t = await targetOf(body, ctx)
+      let vector: Uint8Array = new Uint8Array()
+      await ctx.collab.edit(t.name, 'owner', (doc) => void (vector = Y.encodeStateVector(doc)), t.file)
+      return { rev: createHash('sha256').update(vector).digest('hex').slice(0, 32) }
+    }
+  },
   {
     path: '/internal/docs/read',
     milestone: 20,

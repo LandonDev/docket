@@ -1757,8 +1757,13 @@ over a colleague's Word file but his own press.
   thread and a read key are refused, as for a copy.
 - **Saving by itself** (the owner's order of 2026-11-23). The record keeps his choice for the file (`auto`: not asked,
   save by itself, ask each time). The host saves each Word file he chose, or one born here (its bytes still exactly
-  our blank, `bornHere`: New → Document), once its document has been still for 3 s (`autosaveWords`, every second
-  from the module's start, `wordTiming.pause`): the same save as his press, by version, never over a change made
+  our blank, `bornHere`: New → Document), once its document's live revision has held still for 3 s (`autosaveWords`,
+  every second from the module's start, `wordTiming.pause`). The revision is the Work service's own
+  (`/internal/docs/rev`, a hash of the document's state vector), never the `.tcdoc` file's time: the file is written
+  only now and then while the words he types live in the service, and the export reads the live text, so a save
+  writes what is on screen. The header's `since` is the same rule (`editsSince`: the live revision against the one
+  last written, `saved_rev`, or the one it was made at, `base_rev`), so Saved is said only of the revision on
+  screen. The save is the same as his press, by version, never over a change made
   there. Such a change stops autosave for that file (`stopped`, said on the tab's `word`) until his Replace or Keep
   Both. The header says "Saving to Teams…" while his newest words are not in the file, "Saved to Teams 9:12 PM" once
   they are, and "This file changed in Teams 9:12 PM" with Keep Both and Replace when stopped. The first time a Word

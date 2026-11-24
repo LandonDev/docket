@@ -1,4 +1,4 @@
-import { existsSync, readdirSync, readFileSync, utimesSync, writeFileSync } from 'node:fs'
+import { existsSync, readdirSync, readFileSync, statSync, utimesSync, writeFileSync } from 'node:fs'
 import { basename, dirname, join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ClientRequestSchema, type ClientRequest } from '@shared/contract'
@@ -570,7 +570,8 @@ describe('a Word file of another computer', () => {
     const { folder, doc, tabId, path } = await imported('Plan.docx', 'word bytes')
     expect(folder).toBe(box.folder)
     expect(wordRow(box.ctx, WS, MAC, path)).toMatchObject({ doc })
-    expect((await tabOf(tabId))?.word).toEqual({ since: true })
+    // No edit of his yet: nothing to save, and the line says the Word file has not changed.
+    expect((await tabOf(tabId))?.word).toEqual({ since: false })
   })
 
   it('Save as Word writes the export over the file by its version; later edits say they are not in it yet', async () => {
@@ -581,7 +582,8 @@ describe('a Word file of another computer', () => {
     expect((await tabOf(tabId))?.word).toEqual({ at: saved.at, since: false })
     writeFileSync(doc, '{"doc":2}')
     utimesSync(doc, new Date(), new Date(Date.now() + 5000))
-    expect((await tabOf(tabId))?.word).toEqual({ at: saved.at, since: true })
+    // A document file's time alone is no edit: the live revision says what is unsaved.
+    expect((await tabOf(tabId))?.word).toEqual({ at: saved.at, since: false })
   })
 
   it('keeps his edited document when the tab closes, and opens it again for the Word file, reading nothing over it', async () => {
@@ -650,69 +652,97 @@ describe('a Word file of another computer', () => {
 describe('a Word file saved by itself', () => {
   const BLANK = readFileSync(join(process.cwd(), 'resources', 'work-files', 'blank', 'blank.docx'))
   let off: () => void = () => {}
+  // The Work service's live revision of each document: what he types moves it; the .tcdoc file on disk never changes here.
+  let rev = 'r0'
   beforeEach(() => {
     off = box.ctx.canvas.onReplaced((old, next) => wordFollowed(box.ctx, old, next))
+    rev = 'r0'
+    ;(box.ctx as { service: unknown }).service = { internal: async (path: string) => (path === '/internal/docs/rev' ? { rev } : {}) }
   })
   afterEach(() => off())
   async function opened(name: string, bytes: Buffer | string) {
     const path = join(mac.team, 'General', name)
     writeFileSync(path, bytes)
     const got = await call<FilesOpened>('work.files.open', { ref: { at: 'file', host: MAC, path }, name })
-    const copy = canvasSourcePath(got.item!.source)!
     const doc = join(box.folder, name.replace(/\.docx$/, '.tcdoc'))
     writeFileSync(doc, '{"doc":1}')
     box.ctx.canvas.replace(filesPaneOf(WS), got.item!.id, 'document', { at: 'file', host: HOST, path: doc }, 'x')
-    return { path, copy, doc, tabId: got.tabId! }
-  }
-  const typed = (doc: string, words: string, ago = 10_000): void => {
-    writeFileSync(doc, JSON.stringify({ words }))
-    utimesSync(doc, new Date(Date.now() - ago), new Date(Date.now() - ago))
+    return { path, doc, tabId: got.tabId! }
   }
   const tabOf = async (tabId: string) => (await call<FilesTabs>('work.files.tabs', {})).tabs.find((t) => t.id === tabId)
+  /** The host's look each second: a typed revision first seen, then still for the pause. */
+  const looks = async (t: number): Promise<void> => {
+    await autosaveWords(box.ctx, t)
+    await autosaveWords(box.ctx, t + 5000)
+  }
 
-  it('a document born here (our blank) saves by itself after a pause, unasked, with no copy of a blank kept', async () => {
+  it('typed words save with the .tcdoc file unchanged: autosave follows the live revision, never the file time', async () => {
     const { path, doc, tabId } = await opened('Notes.docx', BLANK)
-    expect((await tabOf(tabId))?.word).toMatchObject({ auto: true, since: true })
-    // Still typing: nothing goes.
-    typed(doc, 'one', 0)
-    await autosaveWords(box.ctx)
+    const fileTime = statSync(doc).mtimeMs
+    await looks(1_000_000)
+    expect((await tabOf(tabId))?.word).toMatchObject({ auto: true })
+    rev = 'r1'
+    // Seen once: still typing, nothing goes yet.
+    await autosaveWords(box.ctx, 2_000_000)
     expect(readFileSync(path).equals(BLANK)).toBe(true)
-    typed(doc, 'one')
-    await autosaveWords(box.ctx)
+    expect((await tabOf(tabId))?.word).toMatchObject({ since: true })
+    await autosaveWords(box.ctx, 2_005_000)
     expect(readFileSync(path, 'utf8')).toBe('word export')
+    expect(statSync(doc).mtimeMs).toBe(fileTime)
     expect((await tabOf(tabId))?.word).toMatchObject({ auto: true, since: false })
-    expect(readdirSync(box.folder).filter((n) => n.includes('before TempCode'))).toHaveLength(0)
+  })
+
+  it('never says saved for a revision the Word file was not written from', async () => {
+    const { tabId } = await opened('Notes.docx', BLANK)
+    await looks(1_000_000)
+    rev = 'r1'
+    await looks(2_000_000)
+    expect((await tabOf(tabId))?.word).toMatchObject({ since: false })
+    // He types again: until that revision is written the tab is not saved.
+    rev = 'r2'
+    await autosaveWords(box.ctx, 3_000_000)
+    expect((await tabOf(tabId))?.word).toMatchObject({ since: true })
   })
 
   it("a Word file of someone's saves by itself only once he chose it, and stops at a change made there until his press", async () => {
-    const { path, doc, tabId } = await opened('Plan.docx', 'word bytes')
-    typed(doc, 'his edit')
-    await autosaveWords(box.ctx)
+    const { path, tabId } = await opened('Plan.docx', 'word bytes')
+    await looks(1_000_000)
+    rev = 'r1'
+    await looks(2_000_000)
     expect(readFileSync(path, 'utf8')).toBe('word bytes')
     expect((await tabOf(tabId))?.word?.auto).toBeUndefined()
+    expect((await tabOf(tabId))?.word?.since).toBe(true)
     await call('work.files.wordAuto', { tabId, on: true })
-    await autosaveWords(box.ctx)
+    await looks(3_000_000)
     expect(readFileSync(path, 'utf8')).toBe('word export')
-    // A colleague saves there; his next edit's autosave stops and writes nothing.
     writeFileSync(path, 'a colleague saved')
-    typed(doc, 'his next edit')
-    await autosaveWords(box.ctx)
+    rev = 'r2'
+    await looks(4_000_000)
     expect(readFileSync(path, 'utf8')).toBe('a colleague saved')
     expect((await tabOf(tabId))?.word?.stopped).toBeGreaterThan(0)
-    typed(doc, 'and more')
-    await autosaveWords(box.ctx)
+    rev = 'r3'
+    await looks(5_000_000)
     expect(readFileSync(path, 'utf8')).toBe('a colleague saved')
-    // His Replace writes over it and autosave goes on.
     await call('work.files.wordSave', { tabId, replace: true })
     expect(readFileSync(path, 'utf8')).toBe('word export')
     expect((await tabOf(tabId))?.word?.stopped).toBeUndefined()
   })
 
-  it('a thread and a read key cannot set it', async () => {
+  it("finds the record by the document the tab shows when the tab's address and the record were written apart", async () => {
+    const { tabId, doc } = await opened('Plan.docx', 'word bytes')
+    const page = JSON.parse((box.db.prepare(`SELECT page FROM work_files_tabs WHERE id = ?`).get(tabId) as { page: string }).page)
+    box.db.prepare(`UPDATE work_files_tabs SET page = ? WHERE id = ?`).run(JSON.stringify({ ...page, copyOf: { ...page.copyOf, path: `${page.copyOf.path}.old` } }), tabId)
+    await call('work.files.wordAuto', { tabId, on: true })
+    expect((box.db.prepare(`SELECT auto FROM work_files_word WHERE doc = ?`).get(doc) as { auto: number }).auto).toBe(1)
+  })
+
+  it('his choice is kept on the host from his window on another computer (a key that may approve); a thread and a read key cannot set it', async () => {
     const { tabId } = await opened('Plan.docx', 'word bytes')
-    await expect(call('work.files.wordAuto', { tabId, on: true }, thread('t1'))).rejects.toThrow()
-    await expect(call('work.files.wordAuto', { tabId, on: true }, reader)).rejects.toThrow()
-    expect((await tabOf(tabId))?.word?.auto).toBeUndefined()
+    await call('work.files.wordAuto', { tabId, on: true }, approver)
+    expect((await tabOf(tabId))?.word?.auto).toBe(true)
+    await expect(call('work.files.wordAuto', { tabId, on: false }, thread('t1'))).rejects.toThrow()
+    await expect(call('work.files.wordAuto', { tabId, on: false }, reader)).rejects.toThrow()
+    expect((await tabOf(tabId))?.word?.auto).toBe(true)
   })
 })
 
@@ -729,7 +759,7 @@ describe('a Word file opened, whichever hears the replace first', () => {
         writeFileSync(doc, '{"doc":1}')
         box.ctx.canvas.replace(filesPaneOf(WS), opened.item.id, 'document', { at: 'file', host: HOST, path: doc }, 'Agenda')
         expect(wordRow(box.ctx, WS, MAC, opened.path)).toMatchObject({ doc })
-        expect((await call<FilesTabs>('work.files.tabs', {})).tabs.find((t) => t.id === opened.tabId)?.word).toEqual({ since: true })
+        expect((await call<FilesTabs>('work.files.tabs', {})).tabs.find((t) => t.id === opened.tabId)?.word).toEqual({ since: false })
       } finally {
         off()
       }

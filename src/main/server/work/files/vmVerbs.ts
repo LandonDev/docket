@@ -8,7 +8,7 @@ import { entryOfGuest, vmList, vmVerbs, type GuestEntry } from '../office/vm/fil
 import { vmCall, VmUnreachable } from '../office/vm/link'
 import { filesState, withMarks } from './handle'
 import { fileMakerFor } from './hooks'
-import { formIn, MAKER_KIND } from './make'
+import { blankOf, formIn, MAKER_KIND } from './make'
 import { fileMoved } from './moved'
 import { forgetVmList, libraryEntry, libraryKey, rowOfGuest, teamsPlaces, type LibraryPlace } from './places/teams'
 import { closeTabsOn } from './trash'
@@ -114,7 +114,12 @@ export async function vmMake(ctx: WorkCtx, workspaceId: string, folder: VmWhere,
 async function makerBytes(ctx: WorkCtx, kind: Exclude<FileMakeKind, 'folder' | 'text'>, form: NonNullable<ReturnType<typeof formIn>>, title: string): Promise<Buffer> {
   const canvasKind = MAKER_KIND[kind]
   const maker = canvasKind ? fileMakerFor(canvasKind, form) : null
-  if (!maker) throw new Error(`Nothing here makes a .${form} file for the Windows VM.`)
+  // No maker of its own (a Word file): Files' own blank of the form, as New makes one anywhere else.
+  if (!maker) {
+    const blank = blankOf(form)
+    if ('from' in blank) return readFileSync(blank.from)
+    return Buffer.from(blank)
+  }
   const stage = join(ctx.dataDir, 'work-files', 'staging', randomUUID())
   mkdirSync(stage, { recursive: true })
   try {
