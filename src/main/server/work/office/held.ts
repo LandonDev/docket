@@ -292,6 +292,8 @@ export function officeActs(deps: HeldDeps): ActKindDef[] {
         else throw new ActStale('PowerPoint takes only a find and replace')
       } catch (err) {
         if (err instanceof OfficeError && err.code === 'refused') throw new ActStale(`${p.name} changed as it was written: ${err.message} Nothing was changed.`)
+        // A carrier that cannot check what he was shown (the Windows helper) refused it before writing: not sent.
+        if (err instanceof OfficeError && err.code === 'not-allowed') throw new ActNotSent(err.message)
         throw err
       }
       // What the app says it changed, when that is not what he was shown: Word counts places, PowerPoint boxes.

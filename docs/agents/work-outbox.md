@@ -101,9 +101,11 @@ idea on a file others can open is kept on his host and shown only to him.
   by its place and its words), through every wrapper (`withAddin` included, as
   his Mac runs it). The Mac's scripts and the add-in read the file again in the
   same step that writes and write nothing on another count or another place
-  (stale). The Windows helper is sent it and does not check it yet (native
-  code, built in the guest), so a match a co-author adds or moves between the
-  host's read and its own is still replaced there. A short write is said in the
+  (stale). The Windows helper cannot check it yet (native code, built in the
+  guest), so the COM carrier refuses a bound press before the helper is asked
+  (round 4, `UNCHECKED_WRITE`): a held Word or PowerPoint change in the
+  Windows VM or on a PC is not sent, and he makes it in the file himself. His
+  own edits and asked writes carry no binding and go as before. A short write is said in the
   result line and settles Sent, never offered again; the Mac counts a box as
   changed only once none of the words is left in it. Else stale
   with the reason ("the words stand in 2 places now, not the 1 this was

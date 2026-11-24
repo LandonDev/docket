@@ -270,10 +270,11 @@ describe.skipIf(!RIG)('tc-office.exe over the recorded COM surface (the rig)', (
       expect(docs[1]).toEqual({ key: NOTES, text: 'Mine. More.\r', tracked: [] })
       expect(held).toMatchObject([{ kind: 'office.edit', payload: { app: 'word', key: BRIEF, places: 2 } }])
       const edit = officeActs({ carrier: () => carrier }).find((a) => a.kind === 'office.edit')!
-      await edit.execute(OfficeEditSchema.parse(held[0]!.payload), actCtx)
+      // The helper cannot check, as it writes, what his press was shown (round 4): the press is refused before Word
+      // is asked, and the document is as it was. The helper's own check is the owner's to build (work-office.md).
+      await expect(edit.execute(OfficeEditSchema.parse(held[0]!.payload), actCtx)).rejects.toThrow('Office on Windows cannot yet check')
       docs = (await state()).docs
-      expect(docs[0]).toEqual({ key: BRIEF, text: 'Draft two.\rSecond two.\r', tracked: [] })
-      expect(await carrier.readDocument(BRIEF)).toEqual(['Draft two.', 'Second two.', ''])
+      expect(docs[0]).toEqual({ key: BRIEF, text: 'Draft one.\rSecond one.\r', tracked: [] })
     })
 
     it("finds a caret as itself, not as one of Word's special codes", async () => {

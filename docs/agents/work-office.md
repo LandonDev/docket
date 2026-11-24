@@ -824,6 +824,13 @@ waiting on it holds every write back. Node gives the helper two pipes.
 
 ## Not proven
 
+**The Windows helper and a held change** (round 4): `TcOffice.cs` does not check a press's `WriteBound` (the count
+and each holding paragraph or box), so the COM carrier refuses a bound `editDocument` or `replaceSlideText` before
+the helper is asked, and the press is not sent. For the owner: the helper's change is to read the document's
+paragraphs (Word) or each slide's text boxes (PowerPoint) in the same step, compare the count and each
+`[place, words]` (PowerPoint: `[slide, box, words]`) with the binding, and answer `refused` on any difference before
+it replaces; then the carrier can send the binding again.
+
 **A held change pressed on a Mac** (office/mac.ts): Word's find and replace now sets every flag of his last Find
 (case on; whole word, wildcards, sounds like, all word forms and format off), clears its formatting, doubles each
 `^` in what it finds and what it writes so `^c`, `^&` and `^p` are words, not codes, and reads back the text to
