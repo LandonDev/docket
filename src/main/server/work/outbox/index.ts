@@ -202,7 +202,7 @@ export const outbox: WorkModule = {
       const waiting = host.outbox.waiting()
       const unreviewed = unreviewedCount(host)
       const failed = host.outbox.failed()
-      const key = JSON.stringify([waiting, unreviewed, failed, item?.ref ?? null, item?.state ?? null, item?.updatedAt ?? null, item?.lifeos ?? null, item?.queuedAsOf ?? null])
+      const key = JSON.stringify([waiting, unreviewed, failed, item?.ref ?? null, item?.state ?? null, item?.updatedAt ?? null, item?.lifeos ?? null])
       if (key === last) return
       last = key
       ctx.push({ push: 'work.outbox', waiting, unreviewed, failed, ...(item ? { item: light(item) } : {}) }, { need: 'approve' })

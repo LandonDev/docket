@@ -31,6 +31,7 @@ import { Calendar, Chat, File, Mail } from "../icons";
 import { EditDialog } from "./EditDialog";
 import { GrantsSheet } from "./GrantsSheet";
 import { byWords, byWorkspace, dayOf, decidedWords, EDITABLE, grantFor, lifeosLine, lifeosWords, offerLine, pastOf, payloadView, timeOf, WORK_CHATS_KEY } from "./model";
+import { useSlowClock } from "../../lib/turnClock";
 import { heldWhen } from "./when";
 import { loadResults, undoResult, useResults } from "./results";
 import { OfferLine } from "./OfferLine";
@@ -265,12 +266,18 @@ export function OutboxView({ besideRail = false, onClose, onToggleSidebar, onOpe
   };
 
   const sendSeveral = async (items: readonly HostItem[], where?: string): Promise<void> => {
-    const { sent, queued, failed, waiting } = await sendMany(items);
+    const { sent, answers, failed, waiting } = await sendMany(items);
     setTicked(new Set());
-    // What waits for its own look is said plainly, beside what went: never as a failure. What LifeOS holds queued is
-    // said as queued there, as its row says, never as sent.
+    // What waits for its own look is said plainly, beside what went: never as a failure. What LifeOS holds, or has back,
+    // is said as its row says it (lifeosWords), never as sent.
     const left = waiting.length ? `${waiting.length} ${waiting.length === 1 ? "waits" : "wait"} for you to open ${waiting.length === 1 ? "it" : "them"}` : null;
-    const went = [sent > queued ? `${batchVerb(items)} ${sent - queued}` : null, queued ? `${queued} queued in LifeOS` : null].filter(Boolean).join(" and ");
+    const said = new Map<string, number>();
+    for (const answer of answers) {
+      const words = lifeosWords(answer);
+      if (words) said.set(words.word, (said.get(words.word) ?? 0) + 1);
+    }
+    const notSent = [...said.values()].reduce((a, b) => a + b, 0);
+    const went = [sent > notSent ? `${batchVerb(items)} ${sent - notSent}` : null, ...[...said].map(([word, n]) => `${n} ${word[0]!.toLowerCase()}${word.slice(1)}`)].filter(Boolean).join(", ");
     if (went || left) toast([went ? `${went}${where ? ` from ${where}` : ""}` : null, left].filter(Boolean).join(". "));
     if (failed.length) toastError(`${failed.length} could not go: ${failed[0]!.error}`);
   };
@@ -511,6 +518,8 @@ function SentList({
   nameOf: (environmentId: string, workspaceId: string | null) => string;
   onSelect: (item: HostItem) => void;
 }) {
+  // A queued row's age grows on screen, from his press.
+  const now = useSlowClock(items.some((item) => item.state === "sent" && item.lifeos === "queued")) || Date.now();
   const days = new Map<string, HostItem[]>();
   for (const item of items) {
     const day = dayOf(item.decidedAt ?? item.updatedAt);
@@ -527,7 +536,7 @@ function SentList({
               const active = current !== null && keyOf(current) === keyOf(item);
               const at = item.decidedAt ?? item.updatedAt;
               // One LifeOS has not said went is named as it waits there, not as sent.
-              const queued = lifeosLine(item);
+              const queued = lifeosLine(item, now);
               return (
                 <li key={keyOf(item)}>
                   <ItemButton
@@ -829,8 +838,9 @@ function SentDetail({
   });
   const [busy, setBusy] = useState(false);
   const at = item.decidedAt ?? item.updatedAt;
-  // Stored sent, but LifeOS has not said it went: said as it waits there, with nothing about taking it back.
-  const queued = lifeosWords(item);
+  // Stored sent, but LifeOS has not said it went: said as it waits there, its age growing, with nothing about taking it back.
+  const now = useSlowClock(item.state === "sent" && item.lifeos === "queued") || Date.now();
+  const queued = lifeosWords(item, now);
   const back = async () => {
     if (!result) return;
     setBusy(true);

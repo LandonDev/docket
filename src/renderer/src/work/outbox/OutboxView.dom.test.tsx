@@ -22,8 +22,8 @@ const world = vi.hoisted(() => ({
   getFails: false,
   // a send the host has not answered yet: it answers when the test lets it
   sendHeld: null as Promise<void> | null,
-  // a press LifeOS takes and holds queued: the host stores it sent and says what LifeOS said
-  sendQueued: false,
+  // a press LifeOS takes: the host stores it sent and says what LifeOS said of each (by item id; "*" for all)
+  sendSaid: {} as Record<string, "queued" | "confirmed" | "drafts" | "gone">,
 }));
 
 vi.mock("../../lib/connection", async (original) => {
@@ -50,7 +50,8 @@ vi.mock("../../lib/connection", async (original) => {
           if (world.sendHeld) await world.sendHeld;
           // as the host: a row another press decided first is answered as it stands, and nothing runs
           if (!["held", "live", "failed"].includes(find().state)) return find();
-          Object.assign(find(), { state: "sent", decidedBy: "owner", decidedAt: now, updatedAt: now, ...(world.sendQueued ? { lifeos: "queued", queuedAsOf: now } : {}) });
+          const said = world.sendSaid[find().ref.id] ?? world.sendSaid["*"];
+          Object.assign(find(), { state: "sent", decidedBy: "owner", decidedAt: now, updatedAt: now, ...(said ? { lifeos: said } : {}) });
           return find();
         case "work.outbox.discard":
           Object.assign(find(), { state: "discarded", decidedBy: "owner", decidedAt: now });
@@ -163,7 +164,7 @@ beforeEach(() => {
   world.resultsDown = false;
   world.listDown.clear();
   world.sendHeld = null;
-  world.sendQueued = false;
+  world.sendSaid = {};
   workSwitch.reset();
   setWorkOn("box", true);
   setWorkOn("mac", true);
@@ -188,11 +189,12 @@ describe("a mail or calendar act LifeOS holds after his press", () => {
 
   it("reads Queued in LifeOS with its age in Sent until LifeOS says it went, then Sent; back in drafts or gone says so; none takes a press", async () => {
     world.items.set("box", [
-      mail("o1", "Dana Lee", "Budget", { state: "sent", decidedBy: "owner", decidedAt: 10 * MIN, lifeos: "queued", queuedAsOf: 22 * MIN, n: 1 }),
-      mail("o2", "Sam Ortiz", "Scrims", { state: "sent", decidedBy: "owner", decidedAt: 9 * MIN, lifeos: "confirmed", n: 2 }),
-      mail("o3", "Events booking", "Ballroom", { state: "sent", decidedBy: "owner", decidedAt: 8 * MIN, lifeos: "drafts", n: 3 }),
-      mail("o4", "Ana Ruiz", "Roster", { state: "sent", decidedBy: "owner", decidedAt: 7 * MIN, lifeos: "gone", n: 4 }),
-      mail("o5", "Kim Park", "Kits", { state: "sent", decidedBy: "owner", decidedAt: 6 * MIN, n: 5 }),
+      // pressed twelve minutes ago (and a little), LifeOS still holds it: its age is from the press
+      mail("o1", "Dana Lee", "Budget", { state: "sent", decidedBy: "owner", decidedAt: Date.now() - 12 * MIN - 5_000, lifeos: "queued", n: 1 }),
+      mail("o2", "Sam Ortiz", "Scrims", { state: "sent", decidedBy: "owner", decidedAt: Date.now() - 13 * MIN, lifeos: "confirmed", n: 2 }),
+      mail("o3", "Events booking", "Ballroom", { state: "sent", decidedBy: "owner", decidedAt: Date.now() - 14 * MIN, lifeos: "drafts", n: 3 }),
+      mail("o4", "Ana Ruiz", "Roster", { state: "sent", decidedBy: "owner", decidedAt: Date.now() - 15 * MIN, lifeos: "gone", n: 4 }),
+      mail("o5", "Kim Park", "Kits", { state: "sent", decidedBy: "owner", decidedAt: Date.now() - 16 * MIN, n: 5 }),
     ]);
     rememberOutboxTab("sent");
     render(<OutboxView besideRail onClose={() => undefined} />);
@@ -220,7 +222,7 @@ describe("a mail or calendar act LifeOS holds after his press", () => {
   });
 
   it("a press LifeOS took says Queued in LifeOS in its toast, never Sent", async () => {
-    world.sendQueued = true;
+    world.sendSaid = { "*": "queued" };
     const { Toaster } = await import("../../components/ui/toaster");
     render(<Toaster />);
     await open();
@@ -231,14 +233,23 @@ describe("a mail or calendar act LifeOS holds after his press", () => {
     expect(document.body.textContent).not.toContain("Sent: Budget");
   });
 
-  it("a group's Send that LifeOS holds says how many it queued", async () => {
-    world.sendQueued = true;
+  it("a group's Send says of each what LifeOS said, as its row would: queued, back in drafts, gone; never Sent", async () => {
+    world.sendSaid = { o1: "queued", o2: "drafts", o3: "gone" };
     const { Toaster } = await import("../../components/ui/toaster");
     render(<Toaster />);
     await open();
     await act(async () => fireEvent.click(screen.getByRole("button", { name: "Send 3" })));
-    await waitFor(() => expect(document.body.textContent).toMatch(/3 queued in LifeOS from /), { timeout: 5000 });
-    expect(document.body.textContent).not.toMatch(/Sent 3/);
+    await waitFor(() => expect(document.body.textContent).toContain("1 queued in LifeOS, 1 back in drafts in LifeOS, 1 no longer in LifeOS from "), { timeout: 5000 });
+    expect(document.body.textContent).not.toMatch(/Sent \d/);
+  });
+
+  it("a group's Send that LifeOS confirmed at once, beside one it holds, says Sent for that one alone", async () => {
+    world.sendSaid = { o1: "confirmed", o2: "queued" };
+    const { Toaster } = await import("../../components/ui/toaster");
+    render(<Toaster />);
+    await open();
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "Send 3" })));
+    await waitFor(() => expect(document.body.textContent).toContain("Sent 2, 1 queued in LifeOS from "), { timeout: 5000 });
   });
 });
 

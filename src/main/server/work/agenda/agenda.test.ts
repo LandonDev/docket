@@ -58,7 +58,7 @@ describe('a held calendar act', () => {
     // stored sent, as always; queued in LifeOS until the calendar takes it, and Sent once LifeOS says done
     const sentOne = async () => (await rig.rpc<{ items: OutboxItem[] }>('work.outbox.list', { show: 'decided' })).items.find((i) => i.ref.id === id)
     expect(await sentOne()).toMatchObject({ state: 'sent', lifeos: 'queued' })
-    expect(rig.whispers.map((w) => w.text)).toEqual(['The owner queued held item 1 (Accept "Big Ten league call") in LifeOS. It is made once the calendar takes it; if LifeOS cannot carry it out, you will be told.'])
+    expect(rig.whispers.map((w) => w.text)).toEqual(['The owner queued held item 1 (Accept "Big Ten league call") in LifeOS: it is made once the calendar takes it. It is his now; do not send, draft or schedule it again.'])
     rig.lifeos.deliver(id)
     await (rig.host.outbox.lifeos as LifeosHeldItems).readSent()
     expect(await sentOne()).toMatchObject({ state: 'sent', lifeos: 'confirmed' })

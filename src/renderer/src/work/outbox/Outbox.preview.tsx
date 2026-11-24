@@ -118,7 +118,7 @@ const EDITS = [
 ];
 
 /** What LifeOS said of each sent mail, for `queued`: the newest still queued twelve minutes on, one sent, one taken back. */
-const SAID: Partial<OutboxItem>[] = [{ lifeos: "queued", queuedAsOf: at(20, 9, 53) }, { lifeos: "confirmed" }, { lifeos: "drafts" }];
+const SAID: Partial<OutboxItem>[] = [{ lifeos: "queued", decidedAt: Date.now() - 12 * 60_000 }, { lifeos: "confirmed" }, { lifeos: "drafts" }];
 const sentList = (): OutboxItem[] => (state === "queued" ? SENT.map((item, i) => ({ ...item, ...SAID[i] })) : SENT);
 
 const OFFER: GrantOffer = { id: "go_1", workspaceId: "ws", kind: "mail.send", label: "Mail to dana.lee@purdue.edu from landon@purdue.edu", routineId: null, from: SENT[0]!.ref, count: 5, createdAt: at(20, 9, 41) };

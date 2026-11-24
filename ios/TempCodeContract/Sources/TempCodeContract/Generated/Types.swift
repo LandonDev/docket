@@ -5020,10 +5020,9 @@ public struct OutboxItem: Codable, Hashable, Sendable {
     public let scheduledFor: Int?
     public let scheduledZone: String?
     public let lifeos: Lifeos?
-    public let queuedAsOf: Int?
     public let updatedAt: Int
 
-    public init(ref: HeldRef, kind: Kind, workspaceId: String?, sessionId: String?, sector: String?, summary: String, verb: String, account: String?, state: State, payload: JSONValue? = nil, createdAt: Int, decidedBy: String?, decidedAt: Int?, n: Int?, why: Why, grantId: String?, error: String?, result: Result?, routineRunId: String?, proposed: Bool? = nil, outcomeUnknown: Bool? = nil, scheduledFor: Int? = nil, scheduledZone: String? = nil, lifeos: Lifeos? = nil, queuedAsOf: Int? = nil, updatedAt: Int) {
+    public init(ref: HeldRef, kind: Kind, workspaceId: String?, sessionId: String?, sector: String?, summary: String, verb: String, account: String?, state: State, payload: JSONValue? = nil, createdAt: Int, decidedBy: String?, decidedAt: Int?, n: Int?, why: Why, grantId: String?, error: String?, result: Result?, routineRunId: String?, proposed: Bool? = nil, outcomeUnknown: Bool? = nil, scheduledFor: Int? = nil, scheduledZone: String? = nil, lifeos: Lifeos? = nil, updatedAt: Int) {
         self.ref = ref
         self.kind = kind
         self.workspaceId = workspaceId
@@ -5048,12 +5047,11 @@ public struct OutboxItem: Codable, Hashable, Sendable {
         self.scheduledFor = scheduledFor
         self.scheduledZone = scheduledZone
         self.lifeos = lifeos
-        self.queuedAsOf = queuedAsOf
         self.updatedAt = updatedAt
     }
 
     private enum CodingKeys: String, CodingKey {
-        case ref, kind, workspaceId, sessionId, sector, summary, verb, account, state, payload, createdAt, decidedBy, decidedAt, n, why, grantId, error, result, routineRunId, proposed, outcomeUnknown, scheduledFor, scheduledZone, lifeos, queuedAsOf, updatedAt
+        case ref, kind, workspaceId, sessionId, sector, summary, verb, account, state, payload, createdAt, decidedBy, decidedAt, n, why, grantId, error, result, routineRunId, proposed, outcomeUnknown, scheduledFor, scheduledZone, lifeos, updatedAt
     }
 
     public func encode(to encoder: any Encoder) throws {
@@ -5082,7 +5080,6 @@ public struct OutboxItem: Codable, Hashable, Sendable {
         try container.encodeIfPresent(scheduledFor, forKey: .scheduledFor)
         try container.encodeIfPresent(scheduledZone, forKey: .scheduledZone)
         try container.encodeIfPresent(lifeos, forKey: .lifeos)
-        try container.encodeIfPresent(queuedAsOf, forKey: .queuedAsOf)
         try container.encode(updatedAt, forKey: .updatedAt)
     }
 }

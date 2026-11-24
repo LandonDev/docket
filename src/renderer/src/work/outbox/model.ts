@@ -58,19 +58,19 @@ export function byWords(item: Pick<OutboxItem, "decidedBy">, grantLabel?: string
 
 /**
  * A mail or calendar act the host stored sent, in the one wording the Sent row, its detail and a press's toast share,
- * while LifeOS has not said it went: "Queued in LifeOS" with its age as of LifeOS's last word, or that it is back in
- * LifeOS's drafts, or gone from LifeOS. Null once LifeOS says it went, and for every other act: those read Sent.
+ * while LifeOS has not said it went: "Queued in LifeOS" with its age since the press, or that it is back in LifeOS's
+ * drafts, or gone from LifeOS. Null once LifeOS says it went, and for every other act: those read Sent.
  */
-export function lifeosWords(item: Pick<OutboxItem, "state" | "lifeos" | "queuedAsOf" | "decidedAt">): { state: Extract<ThreadState, "queued" | "stopped">; word: string; detail: string | null } | null {
+export function lifeosWords(item: Pick<OutboxItem, "state" | "lifeos" | "decidedAt">, now = Date.now()): { state: Extract<ThreadState, "queued" | "stopped">; word: string; detail: string | null } | null {
   if (item.state !== "sent") return null;
-  if (item.lifeos === "queued") return { state: "queued", word: "Queued in LifeOS", detail: `for ${minuteAge((item.queuedAsOf ?? 0) - (item.decidedAt ?? item.queuedAsOf ?? 0))}` };
+  if (item.lifeos === "queued") return { state: "queued", word: "Queued in LifeOS", detail: `for ${minuteAge(now - (item.decidedAt ?? now))}` };
   if (item.lifeos === "drafts") return { state: "stopped", word: "Back in drafts in LifeOS", detail: null };
   if (item.lifeos === "gone") return { state: "stopped", word: "No longer in LifeOS", detail: null };
   return null;
 }
 /** The same, as one line: "Queued in LifeOS for 12m". */
-export function lifeosLine(item: Parameters<typeof lifeosWords>[0]): string | null {
-  const words = lifeosWords(item);
+export function lifeosLine(item: Parameters<typeof lifeosWords>[0], now = Date.now()): string | null {
+  const words = lifeosWords(item, now);
   return words ? (words.detail ? `${words.word} ${words.detail}` : words.word) : null;
 }
 

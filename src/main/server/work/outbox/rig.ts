@@ -74,6 +74,10 @@ export class FakeOutboxLifeos implements LifeosClient {
   failNext = new Map<string, string>()
   /** reads of these ids never answer, as a query on a socket that hangs */
   hang = new Set<string>()
+  /** reads of these ids throw, as LifeOS refusing them */
+  reject = new Set<string>()
+  /** reads of these ids answer only once the promise settles, with the row as it is then */
+  holdReads = new Map<string, Promise<void>>()
   completed: { sessionId: string; reason: string }[] = []
   private n = 0
 
@@ -165,7 +169,12 @@ export class FakeOutboxLifeos implements LifeosClient {
       this.failNext.delete(fn)
       throw new Error(fail)
     }
-    if (typeof args.id === 'string' && this.hang.has(args.id) && fn.endsWith(':get')) return new Promise<T>(() => {})
+    if (typeof args.id === 'string' && fn.endsWith(':get')) {
+      if (this.hang.has(args.id)) return new Promise<T>(() => {})
+      if (this.reject.has(args.id)) throw new Error(`refused: ${args.id}`)
+      const hold = this.holdReads.get(args.id)
+      if (hold) await hold
+    }
     const row = typeof args.id === 'string' ? this.rows.get(args.id) : undefined
     switch (fn) {
       case 'compose:get':

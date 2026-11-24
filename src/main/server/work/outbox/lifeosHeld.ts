@@ -449,12 +449,8 @@ export class LifeosHeldItems implements LifeosHeld {
         const row = outbox.store.byRef(item.ref)
         // A row stored sent that LifeOS lists again (a draft he took back, a failed send) is asked about now.
         if (row?.state === 'sent') ask = true
-        // A send this host recorded as gone came back failed in LifeOS's own lane: it waits on him again, and its thread,
-        // told the act was queued, hears that it failed.
-        if (row?.state === 'sent' && item.state === 'failed') {
-          const back = outbox.store.failSent(row.id, item.error ?? 'LifeOS could not send it')
-          if (back) outbox.toldFailed(back)
-        }
+        // A send this host recorded as gone came back failed in LifeOS's own lane: it waits on him again.
+        if (row?.state === 'sent' && item.state === 'failed') outbox.store.failSent(row.id, item.error ?? 'LifeOS could not send it')
         if (this.seen.has(key)) continue
         this.seen.add(key)
         // A draft made while a fitting grant stood goes at once; any other is told as held. What was already

@@ -280,7 +280,7 @@ export async function removeGrant(grant: HostGrant): Promise<void> {
  * (the hold review's findings 28 and 33). A mail whose whole read failed is a
  * failure, in its own words.
  */
-export async function sendMany(items: readonly HostItem[]): Promise<{ sent: number; queued: number; failed: { item: HostItem; error: string }[]; waiting: HostItem[] }> {
+export async function sendMany(items: readonly HostItem[]): Promise<{ sent: number; answers: OutboxItem[]; failed: { item: HostItem; error: string }[]; waiting: HostItem[] }> {
   const waiting = new Set<HostItem>(items.filter((item) => item.kind === "computer.act"));
   const unread = new Set<HostItem>();
   await Promise.all(
@@ -301,9 +301,9 @@ export async function sendMany(items: readonly HostItem[]): Promise<{ sent: numb
     // A press the host answered with anything but a send (it failed, or another press or device decided it first) is not one.
     ...outcomes.flatMap((o, i) => (o.status === "fulfilled" && !wentOut(o.value) ? [{ item: pressed[i]!, error: notSentWords(o.value) }] : [])),
   ];
-  // Of those that went, the ones LifeOS holds queued (its undo time, or until the calendar takes them): not yet sent.
-  const queued = outcomes.filter((o) => o.status === "fulfilled" && o.value.state === "sent" && o.value.lifeos === "queued").length;
-  return { sent: pressed.length - (failed.length - unread.size), queued, failed, waiting: [...waiting] };
+  // What the host answered for each that went: the screen says of each what LifeOS says (lifeosWords), not "sent" alone.
+  const answers = outcomes.flatMap((o) => (o.status === "fulfilled" && wentOut(o.value) ? [o.value] : []));
+  return { sent: pressed.length - (failed.length - unread.size), answers, failed, waiting: [...waiting] };
 }
 
 // ── an item asked for from outside ───────────────────────────────────────

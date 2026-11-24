@@ -47,15 +47,13 @@ export function sentNote(row: Told & Pick<HeldRow, 'decidedBy'>, detail?: string
 
 /**
  * What the thread hears when the owner (or a grant) released a mail or calendar act LifeOS holds: LifeOS took it and
- * holds it (a mail for his undo time, a calendar act until the calendar takes it), so it is queued, not yet sent.
+ * holds it (a mail for his undo time, a calendar act until the calendar takes it). Only what is known, and no promise:
+ * the act is his from here.
  */
 export function queuedNote(row: Told & Pick<HeldRow, 'decidedBy'>): string {
   const who = row.decidedBy?.startsWith('grant:') ? "A standing grant of the owner's queued" : 'The owner queued'
-  const then =
-    row.kind === 'calendar.op'
-      ? 'It is made once the calendar takes it; if LifeOS cannot carry it out, you will be told.'
-      : 'It goes after his undo time unless he takes it back; if LifeOS cannot send it, you will be told.'
-  return `${who} held item ${row.n} (${toldAs(row)}) in LifeOS. ${then}`
+  const when = row.kind === 'calendar.op' ? 'it is made once the calendar takes it' : 'it goes after his undo time unless he takes it back'
+  return `${who} held item ${row.n} (${toldAs(row)}) in LifeOS: ${when}. It is his now; do not send, draft or schedule it again.`
 }
 
 export const failedNote = (row: Told & Pick<HeldRow, 'error'>): string =>

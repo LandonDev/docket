@@ -663,21 +663,13 @@ export class Outbox {
     }
   }
 
-  /**
-   * A LifeOS act stored sent came back failed in LifeOS's own lane (lifeosHeld.ts `failSent`): its thread hears so, as
-   * it was told it would. Called once, by the caller whose `failSent` moved the row.
-   */
-  toldFailed(row: HeldRow): void {
-    if (row.state === 'failed' && row.sessionId) this.tell(row, null)
-  }
-
   /** The thread hears how its act ended, as the app's own note. */
   private tell(row: HeldRow, result: ActResult | null): void {
     const sessionId = row.sessionId!
     try {
       if (row.state === 'sent') {
         const detail = WAKES.includes(row.kind) ? textOf(result) : undefined
-        // A mail or calendar act LifeOS took is queued there, not yet sent: the thread hears that, and is told if it fails.
+        // A mail or calendar act LifeOS took is queued there, not yet sent: the thread hears that, and that it is his now.
         const note = this.deps.kinds.get(row.kind)?.store === 'lifeos' ? queuedNote(row) : sentNote(row, detail)
         if (WAKES.includes(row.kind)) void this.deps.ctx.threads.resume(sessionId, note).catch(() => this.deps.whisper(sessionId, note))
         else this.deps.whisper(sessionId, note)

@@ -48,10 +48,8 @@ export interface OutboxItem extends HeldItem {
   /** a mail he scheduled (state `sending` until it goes): when it goes, and the IANA zone he picked the time in */
   scheduledFor?: number
   scheduledZone?: string
-  /** a mail or calendar act stored `sent`: what LifeOS last said of it (absent: an act LifeOS does not hold, or one sent before this was asked) */
+  /** a mail or calendar act stored `sent`: what LifeOS last said of it for this attempt, `queued` short of its word (absent: an act LifeOS does not hold, or one sent before this host asked) */
   lifeos?: LifeosSaid
-  /** while `lifeos` is `queued`: when LifeOS last said so (the press, before it was first read); its age is this less `decidedAt` */
-  queuedAsOf?: number
   updatedAt: number
 }
 export const OutboxItemSchema = HeldItemSchema.extend({
@@ -67,7 +65,6 @@ export const OutboxItemSchema = HeldItemSchema.extend({
   scheduledFor: z.number().int().optional(),
   scheduledZone: z.string().optional(),
   lifeos: z.enum(LIFEOS_SAID).optional(),
-  queuedAsOf: z.number().int().optional(),
   updatedAt: z.number().int()
 })
 

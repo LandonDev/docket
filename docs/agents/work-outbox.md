@@ -258,30 +258,41 @@ host does with it:
 - **Sent, and what LifeOS says of it.** The host stores the row `sent` once
   LifeOS took the act (mail's composer checks LifeOS has the row queued,
   sending or sent, `NOT_QUEUED` otherwise), as it always has: no state,
-  claim or press changed. But LifeOS then holds a mail for his undo time and
-  a calendar act until the calendar takes it, so the screens and the thread
-  say so. `confirmed.ts` reads LifeOS's own row (`compose:get`,
-  `calendarOps:get`) for each LifeOS row stored `sent` within a day and not
-  yet confirmed: at most 20 a pass (those never read first, newest first,
-  then the least lately read, so none starves), each read under a 10 s
-  deadline, one pass at a time (a row whose read has not come back is not
-  asked again; a read that fails is no answer), right after a row is stored
-  sent, when the watch lists a sent row again, then every 5 s while one is
-  under two minutes old and every 30 s after. It keeps the answer in `work_outbox_lifeos_said` and
-  never calls a send, `execute`, a claim or a settle. The wire item carries
-  it as `lifeos` (`queued`, `confirmed`, `drafts`, `gone`) and, while
-  queued, `queuedAsOf` (when LifeOS last said so; the press, before the
-  first read). A row never read and decided over a day ago carries neither
-  and reads as it always did; one last read queued a day ago is asked no
-  more and keeps reading queued, its age as of that read. If LifeOS's own
-  lane then fails, the item comes back `failed` (`failSent`) and its thread
-  is told so (`Outbox.toldFailed`).
+  claim or press changed. LifeOS then holds a mail for his undo time and a
+  calendar act until the calendar takes it, so the screens say so.
+  `confirmed.ts` reads LifeOS's own row (`compose:get`, `calendarOps:get`)
+  and never calls a send, `execute`, a claim, a settle or a tell. It keeps
+  what it read in `work_outbox_lifeos_reads`, per row and per attempt (the
+  row's `attempts`, one more for each claim): a fact read for an earlier
+  attempt is not shown and is written over, and an answer that comes back
+  for an attempt that is no longer the row's is dropped. A pass asks rows
+  stored `sent` within a day, since this host first asked (the table's
+  `~since` row), and not confirmed for their attempt, leaving out any whose
+  read is still out; those never read come first, newest first, then the
+  least lately read. A pass asks at most 20, with at most 100 reads out at
+  once; each read counts only inside its 10 s deadline, and every outcome
+  (a word, an error, an unknown status, a timeout) marks the row read, so
+  the order moves on. A row whose read never comes back is not asked again
+  until it does. One pass runs at a time; a call during a pass asks for one
+  more pass after it, no more. Passes run right after a row is stored sent,
+  when the watch lists a sent row again, then every 5 s while one is under
+  two minutes old and every 30 s after. Work going off makes any answer
+  still out write nothing. The wire item carries `lifeos`: `confirmed`
+  (LifeOS's row reads sent, a calendar act's done), `drafts`, `gone`, and
+  `queued` for anything short of LifeOS's word (no answer yet, past the
+  day's asking, a table that cannot be read). A row decided before this
+  host first asked carries none and reads as it always did. If LifeOS's own
+  lane fails it, the watch turns the row `failed` (`failSent`) as before:
+  it waits in his Outbox with LifeOS's reason, and the thread hears nothing
+  of it.
 - **What the thread is told.** For `mail.send` and `calendar.op` the tell
-  at the press is `queuedNote` (words.ts): queued in LifeOS, goes after his
-  undo time unless he takes it back (a calendar act: once the calendar
-  takes it), and told if LifeOS cannot send it. The linked task completes at
-  the same moment as before, with "Queued to send: …" in place of "Sent:
-  …".
+  at the press is `queuedNote` (words.ts), fixed words and no promise:
+  "The owner queued held item N (…) in LifeOS: it goes after his undo time
+  unless he takes it back. It is his now; do not send, draft or schedule it
+  again." (a calendar act: "it is made once the calendar takes it"; a
+  grant's: "A standing grant of the owner's queued …"). The linked task
+  completes at the same moment as before, with "Queued to send: …" in
+  place of "Sent: …".
 - **A press from Mail's composer** on a held draft has already waited out
   the undo time in the window (work-mail.md "Undo for a held draft"): that
   one call carries `waited`, and only then does the hold ask LifeOS to send
@@ -614,8 +625,9 @@ LifeOS item's Send carries `rev` = its `updatedAt` as shown.
   about, its kind's glyph giving way to a tick on hover; ticked rows send
   together. A mail or calendar act LifeOS has not yet said went sits in Sent,
   as every sent row does, in one wording (`lifeosWords` in model.ts) on its
-  row, its detail and the press's toast: "Queued in LifeOS for 12m" with the
-  queued mark, "Back in drafts in LifeOS" or "No longer in LifeOS"; its
+  row, its detail and the toasts: "Queued in LifeOS for 12m" (its age from
+  his press, kept current on a half-minute clock) with the queued mark,
+  "Back in drafts in LifeOS" or "No longer in LifeOS"; its
   title keeps the act's own verb ("Send to Dana Lee"), and its detail says
   who and when ("by you at 9:31 AM") with no line about taking it back. It
   reads Sent once LifeOS says sent (a calendar act's done). The detail is
