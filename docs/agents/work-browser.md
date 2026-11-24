@@ -176,6 +176,45 @@ awake. The code is `src/main/server/work/browser/box/`; the protocol's
   mailbox (`AGENT_CLOSED_HOSTS`: the imported sign-in serves every tab, and
   Outlook on the web acts on bare keys no hold reads). While he drives any
   page, no thread acts in the browser.
+- **Covered, by the page's own hit test** (`landsOn`): DevTools' hit test at
+  the click point, in the target's frame, answers as `elementFromPoint` does.
+  A layer with `pointer-events: none` is clicked through, a node in a
+  user-agent shadow tree belongs to its control, and a pseudo-element belongs
+  to its element. The click lands when the node hit is the target, is inside
+  it, or holds it: Forms lays a question's card over its own title input, and
+  the card is what is hit. A control laid over the centre from beside the
+  target (the test site's `/tricks` Send over Cancel) is still refused, and
+  so are frames the read has not reached and plugins. This ended the trial's
+  false "covers" refusals (`/cards` in testSite.ts stands in for them).
+- **Windows by id**: a page's window id is fixed for the life of its page,
+  whatever its title becomes (a Forms builder's title follows the form's
+  name). Every answer names it (an observation's and a picture's `window`,
+  a launch's `window`, `apps.list`), and a call takes it as `window: {id}`,
+  or as `#<id>` in the tools' `window` words when no window has that title.
+  A call that names no window stays on its session's own page by id.
+- **Forms is the carrier's alone** (`CARRIER_ONLY_HOSTS`: the Forms hosts of
+  src/shared/work/msforms.ts and their subdomains; work-msforms.md). A session
+  the host did not mark with `carrierSession()` is refused an open or an
+  address-bar navigation there before the request leaves ("refused: Microsoft
+  Forms pages are reached only through the msform tools; nothing was
+  opened."). It is refused a read, an act, a picture or a stream of a page
+  that is on one now, and a batch's later step once an earlier step took the
+  page there. It is never shown such a window: `apps.list` leaves it out, an
+  observation's other windows leave it out, a title never matches it, and its
+  id is refused. A link the page follows itself does reach the host (as with
+  Outlook's hosts); the step after it is refused. A Forms frame inside another
+  site's page is not fenced.
+- **The carrier's session**: `carrierSession()` (service.ts) mints a service
+  session id and marks it; only host code calls it, and a thread's session
+  id is its own thread id, which no model chooses. `carrierComputer()`
+  (index.ts) is what the msforms carrier uses: `run(tool, args, signal?)`
+  runs `computer_apps`, `computer_observe`, `computer_act` or
+  `computer_batch` through the box's computer sessions with no card (a call
+  that would need one is refused), and refuses while he drives;
+  `window()` is the window its last read was of, by id; `end()` closes the
+  session and drops the mark. Its session is listed in no row and is no
+  pane's page. Tests swap in their own host list with
+  `setCarrierOnlyHostsForTest`.
 - **The hold** is run.ts's, unchanged: the host reads a Work thread's step
   on the screen (`readOutward`, with `org.chromium.Chromium` in
   `BROWSER_BUNDLES` so a mail or chat page's Return counts), keeps it as a

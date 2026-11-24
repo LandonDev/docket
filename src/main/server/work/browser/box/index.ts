@@ -5,6 +5,7 @@ import { computerToolSpecs, type ComputerToolName } from '@shared/computer/tools
 import { workText, type WorkToolResult } from '@shared/work'
 import { computerContent } from '../../../computer/mcp'
 import type { ComputerRegistry } from '../../../computer/run'
+import { refusal, type ComputerToolOutcome } from '../../../computer/result'
 import { ComputerService } from '../../../computer/service'
 import type { PreviewSessions, PreviewTarget } from '../../../computer/preview'
 import { ComputerSessions } from '../../../computer/sessions'
@@ -17,7 +18,7 @@ import type { VideoRpc } from '../../../video/rpc'
 import { BoxChromium } from './chromium'
 import { BoxEngines } from './engine'
 import { takeImports } from './logins'
-import { BOX_BROWSER_APP, BoxComputerService, closedToAgents, inProcessSpawn } from './service'
+import { BOX_BROWSER_APP, BoxComputerService, carrierSession, closedToAgents, endCarrierSession, inProcessSpawn, isCarrierSession } from './service'
 import { BoxStage } from './stage'
 import { BoxVideo } from './video'
 import { videoToolsAt } from './videoSetting'
@@ -121,8 +122,8 @@ export function wireBoxBrowser(o: BoxWiring): BoxBrowserHost | null {
         scale: () => browser.scale
       },
       onPage: (session, targetId) => {
-        // his own look at a page he drives is no thread's use of it
-        if (session.startsWith(OWNER_SESSION)) return
+        // his own look at a page he drives is no thread's use of it, and the carrier's pages are no pane's
+        if (session.startsWith(OWNER_SESSION) || isCarrierSession(session)) return
         const thread = sessions.threadOfServiceSession(session) ?? session
         lastPage.set(thread, targetId)
         lastPage.set(paneOf(thread), targetId)
@@ -236,7 +237,8 @@ export function wireBoxBrowser(o: BoxWiring): BoxBrowserHost | null {
     idleTimer?.unref?.()
   }
   const allRows = (): ComputerSessionRow[] => {
-    const live = sessions.rows()
+    // the carrier's session is the host's own work, no thread's: it is not listed
+    const live = sessions.rows().filter((r) => !isCarrierSession(r.threadId))
     // a session still live in a pane he has just taken is his page already: its row says so until the session is stopped
     const rows = [...live.map((r) => (drives(paneOf(r.threadId)) ? { ...r, driver: 'owner' as const } : r)), ...ownerRows(live), ...idleRows(live)]
     return rows.map((r) => ({ ...r, computer: `browser:${paneOf(r.threadId)}` }))
@@ -249,6 +251,7 @@ export function wireBoxBrowser(o: BoxWiring): BoxBrowserHost | null {
   sessions.onRows((live) => {
     // a session's last act is its pane's: the page is listed idle from when that session ends
     for (const r of live) {
+      if (isCarrierSession(r.threadId)) continue
       const pane = paneOf(r.threadId)
       const was = lastAct.get(pane)
       lastAct.set(pane, { since: was && was.at >= r.since ? was.since : r.since, at: Math.max(was?.at ?? 0, r.lastCallAt) })
@@ -365,6 +368,42 @@ export function useBoxBrowser(): () => void {
     done = true
     inUse--
     host?.browser.touch()
+  }
+}
+
+/** The msforms carrier's hands on the box browser: one session of its own, the only one Forms pages open to. */
+export interface CarrierComputer {
+  /** its session's id: the thread id `run` uses and the service session it drives */
+  readonly session: string
+  /** A computer tool, as a thread's call runs it (run.ts), with no card: a call that would need one (a password field, a flag) is refused. */
+  run(tool: 'computer_apps' | 'computer_observe' | 'computer_act' | 'computer_batch', args: Record<string, unknown>, signal?: AbortSignal): Promise<ComputerToolOutcome>
+  /** The window its last read was of, by id (a window keeps its id when its title changes: name it as `window: "#<id>"`); null before a read. */
+  window(): { id: number; title: string | null } | null
+  /** Closes the session and drops its mark. */
+  end(): Promise<void>
+}
+
+/**
+ * A session marked as the carrier's (`carrierSession`), on this host's box browser; null where there is none. Made
+ * only by host code: no tool reaches this. Refused while he drives the browser, as a thread is.
+ */
+export function carrierComputer(): CarrierComputer | null {
+  const h = host
+  if (!h) return null
+  const session = carrierSession()
+  const release = useBoxBrowser()
+  return {
+    session,
+    run: (tool, args, signal) => {
+      if (started && ownerDrives(started.db)) return Promise.resolve(refusal(BOX_OWNER_DRIVES))
+      return h.sessions.run({ threadId: session, permission: () => 'auto', approve: async () => false, ...(signal ? { signal } : {}) }, tool, args)
+    },
+    window: () => h.sessions.previewTarget(session)?.window ?? null,
+    end: async () => {
+      await h.sessions.end([session])
+      endCarrierSession(session)
+      release()
+    }
   }
 }
 

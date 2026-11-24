@@ -23,6 +23,7 @@ import {
   type WaitReport
 } from '@shared/computer/protocol'
 import { hasRoleDefault, parseKeyCombo, parseModifiers, type LineFrame, type Modifier } from '@shared/computer/observation'
+import { isFormsHost } from '@shared/work/msforms'
 import { ADDRESS_NAME, IndexBook, observationText, readTree, withChrome, type AxNode, type ReadTree } from './ax'
 import { Cdp } from './cdp'
 import { PAGE_HEIGHT, PAGE_WIDTH } from './display'
@@ -108,6 +109,49 @@ export function closedToAgents(url: string): boolean {
   return AGENT_CLOSED_HOSTS.some((h) => host === h || host.endsWith(`.${h}`))
 }
 const CLOSED = 'his mailbox is not driven in the browser: use the office_* tools for his mail and calendar'
+
+const hostOf = (url: string): string | null => {
+  try {
+    return new URL(url).hostname.toLowerCase().replace(/\.$/, '')
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Microsoft Forms is driven only by the msforms carrier (docs/agents/work-msforms.md), through sessions the host
+ * marks with `carrierSession()`: every other session is refused an open, a navigation, a read and an act on these
+ * hosts (and their subdomains) before the request leaves, and is never shown a window whose page is on one.
+ */
+export const CARRIER_ONLY_HOSTS = ['forms.office.com', 'forms.cloud.microsoft', 'forms.microsoft.com'] as const
+/** A test's own list in place of Forms' (the local test site stands in for the host); null is Forms' again. */
+let carrierHostsForTest: readonly string[] | null = null
+export function setCarrierOnlyHostsForTest(hosts: readonly string[] | null): void {
+  carrierHostsForTest = hosts
+}
+export function carrierOnly(url: string): boolean {
+  const host = hostOf(url)
+  if (!host) return false
+  return carrierHostsForTest ? carrierHostsForTest.some((h) => host === h || host.endsWith(`.${h}`)) : isFormsHost(host)
+}
+const FORMS_OPEN = 'refused: Microsoft Forms pages are reached only through the msform tools; nothing was opened.'
+const FORMS_SEEN = 'refused: Microsoft Forms pages are reached only through the msform tools; nothing on that page was read or done.'
+
+/** Service sessions the host made for the carrier. Only host code adds one: a tool call never names its session. */
+const CARRIER_SESSIONS = new Set<string>()
+/**
+ * A new service session id marked as the carrier's, until `endCarrierSession`. Its id passes `serviceSessionId`
+ * unchanged, so a thread id of this name is the service session of the same name.
+ */
+export function carrierSession(): string {
+  const id = `tc-carrier-${randomUUID()}`
+  CARRIER_SESSIONS.add(id)
+  return id
+}
+export function endCarrierSession(id: string): void {
+  CARRIER_SESSIONS.delete(id)
+}
+export const isCarrierSession = (session: string | undefined): boolean => session !== undefined && CARRIER_SESSIONS.has(session)
 
 export const MODIFIER_BITS: Record<Modifier, number> = { alt: 1, ctrl: 2, super: 4, shift: 8 }
 
@@ -288,7 +332,8 @@ export class BoxComputerService {
       case 'capture.stream.start':
         return (await this.startStream(params as ComputerParams<'capture.stream.start'>)) as ComputerResult<M>
       case 'apps.list': {
-        const pages = await this.pages()
+        // no session names this call: a carrier-only page is listed to no one
+        const pages = this.seenBy(await this.pages(), undefined)
         return { apps: [this.appInfo(pages, (params as ComputerParams<'apps.list'>).windows === true)] } as ComputerResult<M>
       }
       case 'apps.launch':
@@ -336,7 +381,7 @@ export class BoxComputerService {
     this.appOf(q.app)
     await this.stopStream(q.stream)
     const page = await this.pageOf(q.window, q.session)
-    if (closedToAgents(page.url)) refuse('open_refused', CLOSED)
+    this.fence(page.url, q.session, FORMS_SEEN)
     const { cdp, sid } = await this.on(page)
     const edge = q.maxEdge ?? 960
     const gap = 1000 / (q.fps ?? 4)
@@ -441,6 +486,17 @@ export class BoxComputerService {
     return this.opts.browser.pid() ?? 1
   }
 
+  /** An address this session may not open: his mailbox for every session, Forms for all but the carrier's. */
+  private fence(url: string, session: string | undefined, line = FORMS_OPEN): void {
+    if (closedToAgents(url)) refuse('open_refused', CLOSED)
+    if (!isCarrierSession(session) && carrierOnly(url)) refuse('open_refused', line)
+  }
+
+  /** The pages a session sees: a carrier-only page is the carrier's alone. */
+  private seenBy(pages: Page[], session: string | undefined): Page[] {
+    return isCarrierSession(session) ? pages : pages.filter((p) => !carrierOnly(p.url))
+  }
+
   private async pages(): Promise<Page[]> {
     const cdp = await this.browser()
     const { targetInfos } = await cdp.send<{ targetInfos: { targetId: string; type: string; title: string; url: string }[] }>('Target.getTargets')
@@ -484,9 +540,11 @@ export class BoxComputerService {
     }
   }
 
+  /** The session's own page, even one it may no longer see (pageOf refuses it); else the last page used, if it sees it. */
   private mainOf(pages: Page[], session?: string): Page | undefined {
     const mine = session ? this.sessions.get(session)?.main : null
-    return pages.find((p) => p.targetId === mine) ?? pages.find((p) => p.targetId === this.mainTarget) ?? pages[0]
+    const seen = this.seenBy(pages, session)
+    return pages.find((p) => p.targetId === mine) ?? seen.find((p) => p.targetId === this.mainTarget) ?? seen[0]
   }
 
   /** Only the box's Chromium answers, by its name, its bundle id, a prefix of its name or its pid. */
@@ -500,18 +558,26 @@ export class BoxComputerService {
     if (!q || !(names.includes(q) || BOX_BROWSER_APP.name.toLowerCase().startsWith(q))) refuse('app_not_found', `the box has one app, its browser: "${BOX_BROWSER_APP.name}"`, { candidates: [BOX_BROWSER_APP.name] })
   }
 
+  /**
+   * A window by its id, by its title (`#<id>` is its id: the tools' `window` is words), or the session's own. A window
+   * keeps its id for as long as its page lives, whatever its title becomes.
+   */
   private async pageOf(ref: { id?: number; title?: string } | undefined, session?: string): Promise<Page> {
-    let pages = await this.pages()
-    if (!pages.length) {
+    let all = await this.pages()
+    if (!this.seenBy(all, session).length) {
       await this.newPage('about:blank')
-      pages = await this.pages()
+      all = await this.pages()
     }
+    const pages = this.seenBy(all, session)
+    const id = ref?.id ?? (ref?.title !== undefined && !pages.some((p) => p.title === ref.title) && /^#\d+$/.test(ref.title) ? Number(ref.title.slice(1)) : undefined)
     let page: Page | undefined
-    if (ref?.id !== undefined) page = pages.find((p) => p.window === ref.id)
+    if (id !== undefined) page = all.find((p) => p.window === id)
     else if (ref?.title !== undefined) page = pages.find((p) => p.title === ref.title) ?? pages.find((p) => p.title.includes(ref.title!))
-    else page = this.mainOf(pages, session)
+    else page = this.mainOf(all, session)
     if (!page) return refuse('window_not_found', 'no such window in the box browser', { candidates: pages.map((p) => p.title) })
-    this.mainTarget = page.targetId
+    this.fence(page.url, session, FORMS_SEEN)
+    // the carrier's page is no one else's "last used"
+    if (!isCarrierSession(session)) this.mainTarget = page.targetId
     if (session) {
       this.session(session).main = page.targetId
       this.opts.onPage?.(session, page.targetId)
@@ -543,27 +609,31 @@ export class BoxComputerService {
    * served (a frame of the page's process through the page's session, one
    * of another site through its own), which element owns it, and where its
    * pixels sit on the page (an out-of-process frame's boxes are its own
-   * viewport's). Password fields of every frame, keyed `<frame>:<backend>`.
+   * viewport's). Password fields of every frame, keyed `<frame>:<backend>`,
+   * and each node's parent in its frame by the same key (a shadow root's is
+   * its host, a pseudo-element's its element).
    */
-  private async pageFrames(page: Page): Promise<{ frames: FrameCtx[]; passwords: Set<string> }> {
+  private async pageFrames(page: Page): Promise<{ frames: FrameCtx[]; passwords: Set<string>; parents: Map<string, number> }> {
     const { cdp, sid } = await this.on(page)
     const frames: FrameCtx[] = []
     const passwords = new Set<string>()
+    const parents = new Map<string, number>()
     const visit = async (session: string, key: string, parent: string | null, owner: number | null, offset: [number, number], depth: number): Promise<void> => {
       frames.push({ key, sid: session, parent, owner, offset })
       const { root } = await cdp.send<{ root: DomNode }>('DOM.getDocument', { depth: -1, pierce: true }, session)
       const remote: { frame: string; owner: number; parent: string }[] = []
-      const walk = (n: DomNode, at: string) => {
+      const walk = (n: DomNode, at: string, up: number | null) => {
+        if (up !== null) parents.set(`${at}:${n.backendNodeId}`, up)
         if (n.nodeName === 'INPUT' && attr(n, 'type')?.toLowerCase() === 'password') passwords.add(`${at}:${n.backendNodeId}`)
         if (n.frameId && (n.nodeName === 'IFRAME' || n.nodeName === 'FRAME')) {
           if (n.contentDocument) {
             frames.push({ key: n.frameId, sid: session, axFrame: n.frameId, parent: at, owner: n.backendNodeId, offset })
-            walk(n.contentDocument, n.frameId)
+            walk(n.contentDocument, n.frameId, null)
           } else if (this.oopifs.has(n.frameId)) remote.push({ frame: n.frameId, owner: n.backendNodeId, parent: at })
         }
-        for (const c of [...(n.children ?? []), ...(n.shadowRoots ?? [])]) walk(c, at)
+        for (const c of [...(n.children ?? []), ...(n.shadowRoots ?? []), ...(n.pseudoElements ?? [])]) walk(c, at, n.backendNodeId)
       }
-      walk(root, key)
+      walk(root, key, null)
       if (depth >= 3) return
       for (const r of remote) {
         const box = await cdp.send<{ model: { content: number[] } }>('DOM.getBoxModel', { backendNodeId: r.owner }, session).catch(() => null)
@@ -571,7 +641,7 @@ export class BoxComputerService {
       }
     }
     await visit(sid, '', null, null, [0, 0], 0)
-    return { frames, passwords }
+    return { frames, passwords, parents }
   }
 
   /** The page's tree with each frame's own read in under the element that owns it. */
@@ -603,12 +673,12 @@ export class BoxComputerService {
   private async launch(q: ComputerParams<'apps.launch'>): Promise<ComputerResult<'apps.launch'>> {
     this.appOf({ app: q.app })
     if (q.refuse?.includes(BOX_BROWSER_APP.bundleId)) refuse('open_refused', 'that app is off limits to this call')
-    const before = await this.pages()
+    const before = this.seenBy(await this.pages(), q.session)
     const launched = !this.opts.browser.pid()
     const open = q.open ?? []
     const bad = open.find((u) => !SAFE_URL.test(u))
     if (bad) refuse('open_refused', 'the box browser opens only http and https pages', { reason: 'scheme' })
-    if (open.some(closedToAgents)) refuse('open_refused', CLOSED)
+    for (const url of open) this.fence(url, q.session)
     await this.browser()
     let window: { id: number; title: string } | undefined
     for (const url of open) {
@@ -625,8 +695,9 @@ export class BoxComputerService {
       }
     }
     if (window) {
-      this.mainTarget = [...this.windows].find(([, w]) => w === window!.id)?.[0] ?? this.mainTarget
-      if (q.session) this.session(q.session).main = this.mainTarget
+      const opened = [...this.windows].find(([, w]) => w === window!.id)?.[0] ?? null
+      if (!isCarrierSession(q.session) && opened) this.mainTarget = opened
+      if (q.session && opened) this.session(q.session).main = opened
     }
     return { pid: this.pid(), launched, ...(window ? { window } : {}) }
   }
@@ -644,6 +715,7 @@ export class BoxComputerService {
       cdp.send<{ result: { value?: { ready: string; title: string; url: string } } }>('Runtime.evaluate', { expression: '({ready: document.readyState, title: document.title, url: location.href})', returnByValue: true }, sid)
     ])
     const facts = state.result.value ?? { ready: 'complete', title: page.title, url: page.url }
+    this.fence(facts.url, sessionId, FORMS_SEEN)
     const addressHere = s.address.focused && s.address.page === page.targetId
     let tree: ReadTree = readTree(nodes, s.book, { page: page.targetId, passwords, ...(o.root !== undefined ? { root: o.root } : {}) })
     const subtree = o.root !== undefined
@@ -661,7 +733,7 @@ export class BoxComputerService {
     const pre = observationText({ app: BOX_BROWSER_APP.name, window: facts.title, width, height, loading: facts.ready !== 'complete', others: [] }, tree, null, o.budget)
     const picture = o.screenshot === 'always' || (o.screenshot === 'auto' && pre.thin)
     const frames = o.geometry || picture ? await this.frames(cdp, inPage, tree, width, height) : null
-    const pages = await this.pages()
+    const pages = this.seenBy(await this.pages(), sessionId)
     const others = pages.filter((p) => p.targetId !== page.targetId).map((p) => p.title || p.url)
     const t = observationText({ app: BOX_BROWSER_APP.name, window: facts.title, width, height, loading: facts.ready !== 'complete', others }, tree, frames, o.budget)
     let shot: Shot | undefined
@@ -721,7 +793,6 @@ export class BoxComputerService {
     this.appOf(q.app)
     this.checkEpoch(q.epoch, q.element !== undefined ? [q.element] : [])
     const page = await this.pageOf(q.window, q.session)
-    if (closedToAgents(page.url)) refuse('open_refused', CLOSED)
     if (q.wait) await this.settle(page, q.wait, signal)
     return this.read(q.session, page, { ...(q.element !== undefined ? { root: q.element } : {}), geometry: q.geometry === true, screenshot: q.screenshot ?? 'auto', maxEdge: q.maxEdge, budget: q.budget?.bytes, full: true })
   }
@@ -808,7 +879,6 @@ export class BoxComputerService {
     const named = actions.flatMap((a) => [a.element, a.start_element].filter((e): e is number => e !== undefined))
     this.checkEpoch(q.epoch, named)
     const page = await this.pageOf(q.window, q.session)
-    if (closedToAgents(page.url)) refuse('open_refused', CLOSED)
     const s = this.session(q.session)
     for (const i of named) if (!s.book.nodes.has(i)) refuse('no_such_element', `there is no element ${i}; read the window`, { element: i })
     // Keys and text reach only the tab in front: another's capture may have left this one behind.
@@ -830,6 +900,8 @@ export class BoxComputerService {
       try {
         // The focus the host judged the call's keys by must be where they go (§25.9).
         if (index === 0 && q.expectFocus !== undefined && actions.some(sendsKeys)) await this.checkFocus(s, page, q.expectFocus)
+        // a step before it may have taken the page somewhere this session may not act
+        if (index > 0) await this.stillOpen(page, q.session)
         const extra = await this.step(q.session, page, a, signal)
         const input = ['ax', 'process', 'session'].includes(tier) && !['screenshot', 'zoom', 'cursor_position', 'wait'].includes(a.action)
         steps.push({ index, action: a.action, status: 'ok', tier: input ? tier : null, effect: 'unknown', ...extra })
@@ -882,27 +954,32 @@ export class BoxComputerService {
   }
 
   /**
-   * What a click at this point would land on must be what the hold judged:
-   * the element itself (or something inside it), never a control laid over
-   * its centre. The hit test follows the point into each frame the read
-   * shows; a frame it cannot follow (a plugin, one not attached yet) is
-   * refused.
+   * What a click at this point would land on must be what the hold judged.
+   * The page's own hit test is the truth (as `elementFromPoint` answers it:
+   * a layer that takes no pointer events is clicked through, and a node in a
+   * user-agent shadow tree is its control's): the node hit must be the
+   * element, inside it, or an element that holds it (a card laid over its
+   * own input), never a control laid over its centre from beside it. The
+   * hit test follows the point into each frame the read shows; a frame it
+   * cannot follow (a plugin, one not attached yet) is refused.
    */
   private async landsOn(page: Page, [x, y]: [number, number], node: { backend: number | null; frame: string } | null, index?: number): Promise<void> {
     const { cdp } = await this.on(page)
-    const { frames: inPage } = await this.pageFrames(page)
+    const { frames: inPage, parents } = await this.pageFrames(page)
     let at = inPage[0]!
     let hit: { backendNodeId: number; frameId?: string } | null = null
     let where = at
+    let pseudo = false
     for (let depth = 0; depth < 4; depth++) {
       try {
-        hit = await cdp.send<{ backendNodeId: number; frameId?: string }>('DOM.getNodeForLocation', { x: Math.round(x - at.offset[0]), y: Math.round(y - at.offset[1]), includeUserAgentShadowDOM: false, ignorePointerEventsNone: true }, at.sid)
+        hit = await cdp.send<{ backendNodeId: number; frameId?: string }>('DOM.getNodeForLocation', { x: Math.round(x - at.offset[0]), y: Math.round(y - at.offset[1]), includeUserAgentShadowDOM: true, ignorePointerEventsNone: false }, at.sid)
       } catch {
         return refuse('out_of_bounds', `nothing on the page is at ${x},${y}`, { coordinate: [x, y] })
       }
       // a frame of this session's process is reached by the hit test itself; its nodes say which
       where = inPage.find((c) => c.sid === at.sid && c.axFrame !== undefined && c.axFrame === hit!.frameId) ?? at
-      const { node: under } = await cdp.send<{ node: { nodeName: string } }>('DOM.describeNode', { backendNodeId: hit.backendNodeId }, at.sid)
+      const { node: under } = await cdp.send<{ node: { nodeName: string; pseudoType?: string } }>('DOM.describeNode', { backendNodeId: hit.backendNodeId }, at.sid)
+      pseudo = under.pseudoType !== undefined
       if (['OBJECT', 'EMBED'].includes(under.nodeName)) refuse('action_unsupported', 'that point is on an embedded plugin, which the box browser does not read')
       if (under.nodeName !== 'IFRAME' && under.nodeName !== 'FRAME') break
       const next = inPage.find((c) => c.owner === hit!.backendNodeId && c.parent === where.key && c.sid !== at.sid)
@@ -910,10 +987,15 @@ export class BoxComputerService {
       at = next!
     }
     if (!node || node.backend === null || !hit) return
-    const inside = (n: DomNode): boolean => n.backendNodeId === hit!.backendNodeId || [...(n.children ?? []), ...(n.shadowRoots ?? []), ...(n.contentDocument ? [n.contentDocument] : [])].some(inside)
-    const own = inPage.find((c) => c.key === node.frame)
-    const tree = own && where.key === node.frame ? (await cdp.send<{ node: DomNode }>('DOM.describeNode', { backendNodeId: node.backend, depth: -1, pierce: true }, own.sid)).node : null
-    if (!tree || !inside(tree)) refuse('action_unsupported', `something else covers ${index !== undefined ? `[${index}]` : 'that element'} at its centre; read the window again`, index !== undefined ? { element: index } : {})
+    // a pseudo-element (a card's ::after laid over its input) is its element's own box, as elementFromPoint answers
+    const struck = pseudo ? parents.get(`${where.key}:${hit.backendNodeId}`) : hit.backendNodeId
+    /** whether `b` is `a` or holds it, in the target's frame */
+    const holds = (b: number, a: number): boolean => {
+      for (let n: number | undefined = a, hops = 0; n !== undefined && hops < 4096; n = parents.get(`${node.frame}:${n}`), hops++) if (n === b) return true
+      return false
+    }
+    const linked = where.key === node.frame && struck !== undefined && (holds(node.backend, struck) || holds(struck, node.backend))
+    if (!linked) refuse('action_unsupported', `something else covers ${index !== undefined ? `[${index}]` : 'that element'} at its centre; read the window again`, index !== undefined ? { element: index } : {})
   }
 
   /** The focus is still on the element the host judged a call's keys by, or nothing runs. */
@@ -1013,7 +1095,7 @@ export class BoxComputerService {
     const key = async (name: string, modifiers: Modifier[]) => {
       // The address bar takes Return, BackSpace and Escape; any other key would reach the page, which the hold judged as not focused.
       if (inAddress()) {
-        if (!modifiers.length && name === 'Return') return this.navigate(s, page)
+        if (!modifiers.length && name === 'Return') return this.navigate(sessionId, s, page)
         if (!modifiers.length && name === 'BackSpace') return void (s.address.draft = (s.address.draft ?? '').slice(0, -1))
         if (!modifiers.length && name === 'Escape') return void (s.address = { focused: false, draft: null, page: null })
         const bar = s.book.indexOf(`${page.targetId}:address`, null)
@@ -1041,7 +1123,7 @@ export class BoxComputerService {
       if (inAddress()) {
         const [line, ...rest] = text.split('\n')
         s.address.draft = (s.address.draft ?? '') + line
-        if (rest.length) await this.navigate(s, page)
+        if (rest.length) await this.navigate(sessionId, s, page)
         return
       }
       const parts = text.split('\n')
@@ -1176,14 +1258,21 @@ export class BoxComputerService {
     return { ...(s.pointer ? { cursor: [...s.pointer] } : {}), ...(resolved ? { resolved } : {}) }
   }
 
+  /** The page, where it is now, is still one the session may act on. */
+  private async stillOpen(page: Page, session: string): Promise<void> {
+    const cdp = await this.browser()
+    const info = await cdp.send<{ targetInfo: { url: string } }>('Target.getTargetInfo', { targetId: page.targetId }).catch(() => null)
+    if (info) this.fence(info.targetInfo.url, session, FORMS_SEEN)
+  }
+
   /** Return in the address bar: the page goes where it says, if that is a web page. */
-  private async navigate(s: SessionState, page: Page): Promise<void> {
+  private async navigate(sessionId: string, s: SessionState, page: Page): Promise<void> {
     const draft = (s.address.draft ?? '').trim()
     s.address = { focused: false, draft: null, page: null }
     if (!draft) return
     const url = /^[a-z][a-z0-9+.-]*:/i.test(draft) ? draft : `https://${draft}`
     if (!SAFE_URL.test(url)) refuse('open_refused', 'the box browser opens only http and https pages')
-    if (closedToAgents(url)) refuse('open_refused', CLOSED)
+    this.fence(url, sessionId)
     const { cdp, sid } = await this.on(page)
     await cdp.send('Page.navigate', { url }, sid)
   }
@@ -1210,6 +1299,7 @@ interface DomNode {
   attributes?: string[]
   children?: DomNode[]
   shadowRoots?: DomNode[]
+  pseudoElements?: DomNode[]
   contentDocument?: DomNode
 }
 const attr = (n: DomNode, name: string): string | undefined => {

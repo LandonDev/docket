@@ -7,7 +7,8 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { parseObservation } from '@shared/computer/observation'
 import { COMPUTER_PROTOCOL, ComputerNotificationSchema, resultFrameSchema, type ComputerNotification, RpcErrorResponseSchema, type ComputerMethod, type ComputerResult, type Observation } from '@shared/computer/protocol'
 import { type BoxChromium, findChromium } from './chromium'
-import { BoxComputerService, inProcessSpawn } from './service'
+import { FORMS_HOSTS } from '@shared/work/msforms'
+import { BoxComputerService, CARRIER_ONLY_HOSTS, carrierOnly, carrierSession, endCarrierSession, inProcessSpawn, isCarrierSession, setCarrierOnlyHostsForTest } from './service'
 import { serveTestSite, type TestSite } from './testSite'
 import { testBrowser } from './testTools'
 
@@ -18,6 +19,34 @@ import { testBrowser } from './testTools'
  * every observation's text through the grammar's own parser, against the
  * box's real Chromium on a local test site. Skipped where no Chromium is.
  */
+
+describe('the carrier-only hosts', () => {
+  it('are Forms hosts and their subdomains, whatever the case; nothing else', () => {
+    expect([...CARRIER_ONLY_HOSTS]).toEqual([...FORMS_HOSTS])
+    for (const url of ['https://forms.office.com/Pages/DesignPageV2.aspx?id=x', 'https://FORMS.cloud.microsoft/', 'https://eu.forms.microsoft.com/r/abc', 'http://forms.office.com./x'])
+      expect(carrierOnly(url), url).toBe(true)
+    for (const url of ['https://office.com/', 'https://notforms.office.com/', 'https://forms.office.com.evil.test/', 'not a url', 'about:blank'])
+      expect(carrierOnly(url), url).toBe(false)
+  })
+
+  it('take a test list in place of Forms, and drop it', () => {
+    setCarrierOnlyHostsForTest(['localhost'])
+    expect(carrierOnly('http://localhost:9/forms')).toBe(true)
+    expect(carrierOnly('https://forms.office.com/')).toBe(false)
+    setCarrierOnlyHostsForTest(null)
+    expect(carrierOnly('http://localhost:9/forms')).toBe(false)
+  })
+
+  it('open to a session only while the host has it marked', () => {
+    const id = carrierSession()
+    expect(id).toMatch(/^[A-Za-z0-9_-]{1,64}$/)
+    expect(isCarrierSession(id)).toBe(true)
+    expect(isCarrierSession('s1')).toBe(false)
+    expect(isCarrierSession(undefined)).toBe(false)
+    endCarrierSession(id)
+    expect(isCarrierSession(id)).toBe(false)
+  })
+})
 
 const bin = findChromium()
 const d = bin && process.platform === 'linux' ? describe : describe.skip
@@ -204,6 +233,99 @@ d('the box computer service speaks the wire', () => {
       const r = await ok('action.run', { session: 's1', app: { app: 'Chromium' }, epoch, tiers: ['process'], action: { action: 'left_click', element: lineOf(read.text, field) }, observe: { mode: 'full' } })
       expect(r.step, JSON.stringify(r.step)).toMatchObject({ status: 'ok' })
       expect(r.observation!.text).toMatch(new RegExp(`${field.source} focused`))
+    }
+  })
+
+  const quiet = { minMs: 0, quietMs: 150, maxMs: 3000, busyMaxMs: 3000 }
+  const app = { app: 'Chromium' }
+
+  it('clicks an input laid under its own card, and a button under a layer that takes no pointer events', async () => {
+    await ok('apps.launch', { app: 'Chromium', open: [site.url + '/cards'], session: 's1' })
+    const read = await ok('state.get', { session: 's1', app, wait: quiet })
+    const title = lineOf(read.text, /input "Question title"/)
+    const tile = lineOf(read.text, /button "RecWell Total"/)
+    const r = await ok('action.batch', {
+      session: 's1',
+      app,
+      epoch,
+      tiers: ['process'],
+      actions: [{ action: 'left_click', element: title }, { action: 'type', text: 'Pick a night' }, { action: 'left_click', element: tile }],
+      wait: quiet
+    })
+    expect(r.steps.map((s) => s.status), JSON.stringify(r.steps)).toEqual(['ok', 'ok', 'ok'])
+    expect(r.observation!.text).toContain(`[${title}] input "Question title" = "Pick a night"`)
+    expect(r.observation!.text).toMatch(/button "Opened"/)
+  })
+
+  it('keeps a window by its id when its title changes, and takes the id as words', async () => {
+    const before = await ok('state.get', { session: 's1', app })
+    expect(before.window.title).toBe('Pick a night')
+    const id = before.window.id
+    const title = lineOf(before.text, /input "Question title"/)
+    const r = await ok('action.run', { session: 's1', app, epoch, tiers: ['process'], action: { action: 'set_value', element: title, value: 'Which night?' }, observe: { mode: 'none' } })
+    expect(r.step.status).toBe('ok')
+    expect((await ok('state.get', { session: 's1', app, window: { id } })).window).toMatchObject({ id, title: 'Which night?' })
+    expect((await ok('state.get', { session: 's1', app, window: { title: `#${id}` } })).window).toMatchObject({ id, title: 'Which night?' })
+    expect((await no('state.get', { session: 's1', app, window: { title: 'Pick a night' } })).data?.kind).toBe('window_not_found')
+    const listed = await ok('apps.list', { windows: true })
+    expect(listed.apps[0]!.windows!.find((w) => w.id === id)?.title).toBe('Which night?')
+  })
+
+  it("refuses a thread Forms pages before the request leaves and at a batch's later step; the carrier's session goes in", async () => {
+    // the test site's other name stands in for Forms
+    setCarrierOnlyHostsForTest(['localhost'])
+    try {
+      const forms = `${site.url.replace('127.0.0.1', 'localhost')}/forms`
+      expect((await no('apps.launch', { app: 'Chromium', open: [forms], session: 's1' })).data).toMatchObject({
+        kind: 'open_refused',
+        message: 'refused: Microsoft Forms pages are reached only through the msform tools; nothing was opened.'
+      })
+      const here = await ok('state.get', { session: 's1', app })
+      const address = lineOf(here.text, /input "Address and search bar"/)
+      const typed = await ok('action.batch', {
+        session: 's1',
+        app,
+        epoch,
+        tiers: ['process'],
+        actions: [{ action: 'set_value', element: address, value: forms }, { action: 'key', text: 'Return' }, { action: 'type', text: 'x' }]
+      })
+      expect(typed.steps.map((s) => s.status)).toEqual(['ok', 'failed', 'not-run'])
+      expect(typed.steps[1]!.status === 'failed' && typed.steps[1]!.error.kind).toBe('open_refused')
+      expect(site.asked).not.toContain('/forms')
+      // a link the page follows itself: the step after it is refused, and so is the closing read
+      const followed = await ok('action.batch', {
+        session: 's1',
+        app,
+        epoch,
+        tiers: ['process'],
+        actions: [{ action: 'left_click', element: lineOf(here.text, /link "Open the form"/) }, { action: 'type', text: 'x' }],
+        stepWait: quiet
+      })
+      expect(followed.steps.map((s) => s.status), JSON.stringify(followed.steps)).toEqual(['ok', 'failed'])
+      expect(followed.steps[1]!.status === 'failed' && followed.steps[1]!.error.message).toMatch(/^refused: Microsoft Forms pages .*nothing on that page was read or done\.$/)
+      expect(followed.observationError?.kind).toBe('open_refused')
+      // the thread is shown no window on Forms, and its own page there is not read
+      const shown = await ok('apps.list', { windows: true })
+      expect(shown.apps[0]!.windows!.some((w) => w.title === 'Microsoft Forms')).toBe(false)
+      expect((await no('state.get', { session: 's1', app })).data?.kind).toBe('open_refused')
+
+      const carrier = carrierSession()
+      try {
+        const opened = await ok('apps.launch', { app: 'Chromium', open: [forms], session: carrier })
+        expect(opened.window).toBeTruthy()
+        const read = await ok('state.get', { session: carrier, app, wait: quiet })
+        expect(read.window).toMatchObject({ id: opened.window!.id, title: 'Microsoft Forms' })
+        const q = lineOf(read.text, /input "Question title"/)
+        const r = await ok('action.batch', { session: carrier, app, epoch, tiers: ['process'], actions: [{ action: 'left_click', element: q }, { action: 'type', text: 'Which night?' }], wait: quiet })
+        expect(r.steps.map((s) => s.status)).toEqual(['ok', 'ok'])
+        expect(r.observation!.text).toContain(`[${q}] input "Question title" = "Which night?"`)
+        // the carrier's window is no thread's, by id or as its last page
+        expect((await no('state.get', { session: 's1', app, window: { id: read.window.id } })).data?.kind).toBe('open_refused')
+      } finally {
+        endCarrierSession(carrier)
+      }
+    } finally {
+      setCarrierOnlyHostsForTest(null)
     }
   })
 

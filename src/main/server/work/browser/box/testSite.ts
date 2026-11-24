@@ -48,6 +48,16 @@ export const SITE_PAGES: Record<string, string> = {
      <iframe title="Payment" style="width:360px;height:90px" src="{{OTHER}}/inner"></iframe>`
   ),
   '/inner': page('Card', `<form action="/paid" method="post" target="_top"><input aria-label="Card name" name="n"><input aria-label="Card PIN" name="p" type="password"><button>Pay now</button></form>`),
+  // A Forms-like card: its question's input laid under the card that holds it (the card takes the click and focuses
+  // it), a tile under a layer that takes no pointer events, and a page whose title follows what is typed.
+  '/cards': page(
+    'Untitled form',
+    `<style>.card{position:relative;width:300px;padding:8px}.card::after{content:'';position:absolute;inset:0}.tile{position:relative;width:200px;height:40px}.tile .shade{position:absolute;inset:0;pointer-events:none;background:rgba(0,0,0,0.05)}</style>
+     <div class="card" onclick="this.querySelector('input').focus()"><input aria-label="Question title" oninput="document.title = this.value || 'Untitled form'"></div>
+     <div class="tile"><button type="button" style="width:200px;height:40px" onclick="this.textContent = 'Opened'">RecWell Total</button><div class="shade"></div></div>
+     <a href="{{OTHER}}/forms">Open the form</a>`
+  ),
+  '/forms': page('Microsoft Forms', '<input aria-label="Question title">'),
   '/done': page('Expense submitted', '<h1>Submitted</h1><p>Your expense was submitted.</p>')
 }
 
@@ -55,13 +65,17 @@ export interface TestSite {
   url: string
   /** every POST the site took: a submit that went through */
   posts: string[]
+  /** every path the site was asked for, in order */
+  asked: string[]
   close(): Promise<void>
 }
 
 export function serveTestSite(pages: Record<string, string> = SITE_PAGES): Promise<TestSite> {
   const posts: string[] = []
+  const asked: string[] = []
   const server: Server = createServer((req, res) => {
     const path = (req.url ?? '/').split('?')[0]!
+    asked.push(path)
     if (req.method === 'POST') posts.push(path)
     const html = pages[path]?.replace('{{OTHER}}', `http://localhost:${(server.address() as { port: number }).port}`)
     res.writeHead(html ? 200 : 404, { 'content-type': 'text/html; charset=utf-8' })
@@ -70,7 +84,7 @@ export function serveTestSite(pages: Record<string, string> = SITE_PAGES): Promi
   return new Promise((resolve) =>
     server.listen(0, '127.0.0.1', () => {
       const { port } = server.address() as { port: number }
-      resolve({ url: `http://127.0.0.1:${port}`, posts, close: () => new Promise((r) => server.close(() => r())) })
+      resolve({ url: `http://127.0.0.1:${port}`, posts, asked, close: () => new Promise((r) => server.close(() => r())) })
     })
   )
 }
