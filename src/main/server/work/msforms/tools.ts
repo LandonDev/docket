@@ -133,8 +133,13 @@ async function fromMaker(ctx: ToolCtx, from: unknown): Promise<{ title?: string;
   return { title: row.body.title, description: row.body.description, questions: row.body.questions.map(fromOurQuestion) }
 }
 
+/** One tool, its arguments typed by its input (the mount has parsed them against it). */
+function defineTool<S extends z.ZodTypeAny>(t: { name: string; description: string; input: S; readOnly: boolean; run(args: z.infer<S>, ctx: ToolCtx): Promise<WorkToolResult> }): WorkTool {
+  return { ...t, run: (args, ctx) => t.run(args as z.infer<S>, ctx) }
+}
+
 export const msformsTools: WorkTool[] = [
-  {
+  defineTool({
     name: 'msform_list',
     description: "The job's Microsoft forms: each one's id, title, state, how many answered, the last answer, and its folder.",
     input: z.object({}),
@@ -145,8 +150,8 @@ export const msformsTools: WorkTool[] = [
         if (!rows.length) return workText('This job has no Microsoft forms yet.')
         return workText(rows.map((r) => `${r.formId}: ${r.title}, ${stateWords(r)}, ${r.count} response(s)${r.lastAnswerAt ? `, the last ${new Date(r.lastAnswerAt).toISOString()}` : ''}, in ${r.folder.label ?? r.folder.path}`).join('\n'))
       })
-  },
-  {
+  }),
+  defineTool({
     name: 'msform_read',
     description: 'Reads a Microsoft form from its page now: title, every question numbered, who can answer, its state and link, where its answers are kept, and what waits for the owner. Question numbers are what msform_edit takes.',
     input: z.object({ form }),
@@ -160,8 +165,8 @@ export const msformsTools: WorkTool[] = [
         announce(ctx, row)
         return workText(outline(row, { link: read.link }))
       })
-  },
-  {
+  }),
+  defineTool({
     name: 'msform_answers',
     description: "A Microsoft form's answers, read from the workbook Forms keeps (read again first when older than two minutes): newest first, at most 200, as tab-separated rows under a header.",
     input: z.object({ form, since: z.string().max(40).optional().describe('Only answers completed after this time (ISO 8601).'), limit: z.number().int().min(1).max(200).optional() }),
@@ -177,8 +182,8 @@ export const msformsTools: WorkTool[] = [
         const rows = got.rows.filter((r) => after === null || time < 0 || Date.parse((r[time] ?? '').replace(' ', 'T')) > after).slice(0, args.limit ?? 200)
         return workText(answersText(at.row.title, got, rows))
       })
-  },
-  {
+  }),
+  defineTool({
     name: 'msform_find',
     description: 'Finds what people said: the answers in the job\'s Microsoft forms (or one form) whose text holds all the words, each with its form, question and who answered.',
     input: z.object({ text: z.string().trim().min(1).max(200), form: form.optional() }),
@@ -204,8 +209,8 @@ export const msformsTools: WorkTool[] = [
         }
         return workText(hits.length ? hits.join('\n') : `No answer holds "${args.text}".`)
       })
-  },
-  {
+  }),
+  defineTool({
     name: 'msform_create',
     description:
       "Makes a real Microsoft form in a Teams or OneDrive folder of this job: a title, a line about it, its questions (or `from` one of ours, a document, a sheet's header row or a template) and who can answer. It is held for the owner's press, since a form made in a Team shows to its members at once; with `collect: true` his one press also starts collecting responses. Nothing is made before he presses.",
@@ -231,8 +236,8 @@ export const msformsTools: WorkTool[] = [
         const item = ctx.held.create({ kind: 'msform.make', sessionId: ctx.sessionId, payload })
         return workText(heldReceipt(item, `Nothing was made in Forms yet: the form is made${args.collect ? ' and starts collecting responses' : ''} when he presses.`))
       })
-  },
-  {
+  }),
+  defineTool({
     name: 'msform_edit',
     description:
       "Changes a Microsoft form's questions: add, change, remove or move, by question number from msform_read. On a draft in Agent writes the change is written in Forms now; otherwise, and always on a form taking answers, each change waits for the owner's Accept.",
@@ -250,8 +255,8 @@ export const msformsTools: WorkTool[] = [
           throw err
         }
       })
-  },
-  {
+  }),
+  defineTool({
     name: 'msform_settings',
     description:
       "Changes who can answer and when: org only, record names, one answer each, start and end dates. On a draft in Agent writes the narrowing and the dates are set now; who can answer on a form taking answers, a wider audience anywhere, and a start date that would reopen it are held for the owner's press. An end date that closes it is set now.",
@@ -282,8 +287,8 @@ export const msformsTools: WorkTool[] = [
           throw err
         }
       })
-  },
-  {
+  }),
+  defineTool({
     name: 'msform_publish',
     description: 'Holds Collect responses for the owner\'s press: the form starts taking answers, with who can answer as it stands. Nothing is sent: the link reaches people only on his own press.',
     input: z.object({ form }),
@@ -294,8 +299,8 @@ export const msformsTools: WorkTool[] = [
         const { held } = holdPublish(ctx, at, 'collect', { ...at.row.settings, accepting: true }, ctx.sessionId)
         return workText(held ? heldReceipt(held, 'No one can answer yet: the form takes answers when he presses.') : 'Collect responses already waits for the owner.')
       })
-  },
-  {
+  }),
+  defineTool({
     name: 'msform_close',
     description: 'Closes a Microsoft form (open: false): it stops taking answers now. A reopen (open: true) is held for the owner\'s press.',
     input: z.object({ form, open: z.boolean() }),
@@ -310,7 +315,7 @@ export const msformsTools: WorkTool[] = [
         const view = await setOpen(ctx, at, false, 'pillar', agentPrincipal(ctx.host, ctx.sessionId))
         return workText(`${view.title} is closed: it takes no more answers.`)
       })
-  }
+  })
 ]
 
 export const MSFORMS_PREAMBLE =
