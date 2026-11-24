@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { DeckStore } from "../deck";
 import { deckView, fakeDeckHost, slide, textShape } from "../testkit";
 import { insertText } from "./model";
-import { HandSession } from "./session";
+import { HandSession, TYPING_SAVE_MS } from "./session";
 
 vi.mock("../../canvas/frame", () => ({ sayError: () => undefined }));
 
@@ -101,5 +101,51 @@ describe("his hand on a deck", () => {
     expect(session.get().box!.model[0].runs.map((r) => r.text).join("")).toBe("Who comesab");
     session.cancel();
     expect(session.get().box).toBeNull();
+  });
+});
+
+describe("words in an open box reach the file while he types", () => {
+  it("sends them after a pause with the box left open, and never says saved while they wait", async () => {
+    vi.useFakeTimers();
+    try {
+      const { host, session, slide, shape } = setUp();
+      session.open(slide, shape, "end");
+      expect(session.saved(() => undefined).state).toBe("saved");
+      type(session, " today");
+      expect(session.saved(() => undefined).state).toBe("saving");
+      expect(host.calls.filter(([name]) => name === "edit")).toHaveLength(0);
+      await vi.advanceTimersByTimeAsync(TYPING_SAVE_MS);
+      expect(host.calls.filter(([name]) => name === "edit")).toHaveLength(1);
+      expect(session.get().box?.phase).toBe("typing");
+      expect(session.saved(() => undefined)).toMatchObject({ state: "saved" });
+      // Nothing more typed: leaving the box sends nothing again.
+      await session.commit();
+      expect(host.calls.filter(([name]) => name === "edit")).toHaveLength(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("each new word moves the pause on, and Escape puts back only what was typed since the last send", async () => {
+    vi.useFakeTimers();
+    try {
+      const { host, session, slide, shape } = setUp();
+      session.open(slide, shape, "end");
+      type(session, " to");
+      await vi.advanceTimersByTimeAsync(TYPING_SAVE_MS - 500);
+      type(session, "day");
+      await vi.advanceTimersByTimeAsync(TYPING_SAVE_MS - 500);
+      expect(host.calls.filter(([name]) => name === "edit")).toHaveLength(0);
+      await vi.advanceTimersByTimeAsync(500);
+      const edits = host.calls.filter(([name]) => name === "edit");
+      expect(edits).toHaveLength(1);
+      expect(JSON.stringify(edits[0]![1])).toContain("Who comes today");
+      type(session, "!");
+      session.cancel();
+      await vi.advanceTimersByTimeAsync(TYPING_SAVE_MS);
+      expect(host.calls.filter(([name]) => name === "edit")).toHaveLength(1);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

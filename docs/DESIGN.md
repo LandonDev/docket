@@ -3525,7 +3525,7 @@ other picked shape is the outline alone.
   | --- | --- |
   | Type into a picked text shape | a second press, Return (words selected), F2 (caret at the end) |
   | Commit the box | a press outside it and the row, ⌘↩, Tab out of it, closing the tab |
-  | Put the words back | Escape in the box |
+  | Put back the words typed since they were last kept (a 2 s pause keeps them, the box left open) | Escape in the box |
   | Up to the row with the box open, and back | Shift-Tab in the box; Escape on the row |
   | New paragraph, line break | Return, Shift-Return |
   | A list item in and out | Tab and Shift-Tab at its start |

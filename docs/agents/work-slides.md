@@ -417,7 +417,8 @@ the file.
 - **His words in an open box are sent before the tab closes.** The box
   commits when the body unmounts, and the tab's close awaits that commit
   (`registerFlush`, canvas/flush.ts), so the edit reaches the host while
-  the item still stands. Escape still puts the words back, by his press.
+  the item still stands. A pause in his typing sends them sooner, the box
+  left open (`keep`, below).
 - **A rename carries the line** (`handMoved`, with `fileMoved`).
 
 ### Shapes, slides and the deck
@@ -1448,7 +1449,15 @@ once (`work.slides.edit`), whole or not at all.
   paragraph's first look). Nothing is sent when the op equals the shape's
   own (`unchanged`). A press anywhere but the box, the row and the row's
   layers commits, as does ⌘↩, Tab out of it, the tab closing (the body's
-  unmount) and a show started from it.
+  unmount, which the close awaits) and a show started from it.
+- **His words are kept while he types** (`keep`): a pause of 2 s
+  (`TYPING_SAVE_MS`) sends the box's words as the same `runs` edit with
+  the box left open and his caret in it; the words written become what the
+  box opened on, so a commit with nothing typed since sends nothing, and
+  Escape puts back only the words typed since the last send. While words in
+  the box are not in the file the deck's saved line says saving, never
+  saved. Words over a shape that changed are not kept: the commit calls
+  them a conflict, as before.
 - **Until the picture lands** the box stays (`landing`), drawn and taking
   no pointer, and goes once the stage paints the slide from a render other
   than the one it was opened over (`painted`), or at once where there is no

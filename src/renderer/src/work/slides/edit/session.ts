@@ -113,6 +113,8 @@ export const CONFLICT_WORD = "The deck changed while you typed";
 export const SUGGESTED = "Accept or reject the suggestion on this slide first";
 /** A typing pause longer than this starts a new step of the box's own undo. */
 const TYPING_STEP_MS = 1000;
+/** A typing pause this long sends the box's words to the file, the box left open (`keep`). */
+export const TYPING_SAVE_MS = 2000;
 
 interface Snapshot {
   model: Model;
@@ -131,6 +133,7 @@ export class HandSession {
   private past: Snapshot[] = [];
   private future: Snapshot[] = [];
   private typedAt = 0;
+  private keepTimer: ReturnType<typeof setTimeout> | null = null;
 
   constructor(
     private host: DeckHost,
@@ -228,6 +231,7 @@ export class HandSession {
     if (!box || box.phase !== "typing") return;
     this.remember("type");
     this.setBox({ model, ...(sel ? { sel } : {}), pending: {} });
+    this.keepLater();
   }
 
   select(sel: Sel): void {
@@ -242,6 +246,7 @@ export class HandSession {
     if (!box || box.phase !== "typing") return;
     this.remember("act");
     this.setBox({ model, drawn: model, sel, pending, paint: box.paint + 1 });
+    this.keepLater();
   }
 
   look(look: RunLook): void {
@@ -310,8 +315,50 @@ export class HandSession {
     if (box) this.setBox({ drawn: box.model, paint: box.paint + 1 });
   }
 
-  /** Escape: the words go back as they were; nothing is sent. */
+  /** A pause in his typing sends the box's words; each new word moves the pause on. */
+  private keepLater(): void {
+    if (this.keepTimer) clearTimeout(this.keepTimer);
+    this.keepTimer = setTimeout(() => {
+      this.keepTimer = null;
+      void this.keep();
+    }, TYPING_SAVE_MS);
+  }
+
+  /**
+   * Sends the box's words as they stand, the box left open with his caret in it: what is typed in a box reaches the
+   * file within seconds, as everything else he does to a deck does, and never waits on the box being left. Escape after
+   * it puts back only the words typed since. Words over a shape that changed are left for the commit to call a conflict.
+   */
+  async keep(): Promise<void> {
+    if (this.keepTimer) clearTimeout(this.keepTimer);
+    this.keepTimer = null;
+    const box = this.state.box;
+    if (!box || box.phase !== "typing" || box.conflict || unchanged(box.model, box.initial)) return;
+    if (!sameWords(this.shapeNow(box), box.shape)) return;
+    const sent = box.model;
+    this.set({ busy: this.state.busy + 1, failure: null });
+    try {
+      const next = await this.host.edit([runsOp(sent, box.slideId, box.shape.id)]);
+      this.store.view(next);
+      const now = this.state.box;
+      // Still this box: what it opened on is now the words just written, so a later commit sends only over them.
+      if (now && now.id === box.id) {
+        const shape = this.shapeNow(now, next);
+        this.setBox({ initial: sent, ...(shape ? { shape } : {}) });
+      }
+      this.set({ busy: this.state.busy - 1, savedAt: Date.now() });
+    } catch (error) {
+      const said = message(error, "The host did not answer");
+      const conflict = MOVED.test(said);
+      this.set({ busy: this.state.busy - 1, failure: { conflict, message: conflict ? CONFLICT_WORD : said } });
+      if (conflict) this.setBox({ conflict: true });
+    }
+  }
+
+  /** Escape: the words go back as they were when last written; nothing is sent. */
   cancel(): void {
+    if (this.keepTimer) clearTimeout(this.keepTimer);
+    this.keepTimer = null;
     if (!this.state.box || this.state.box.phase !== "typing") return;
     this.past = [];
     this.future = [];
@@ -329,6 +376,8 @@ export class HandSession {
    * sent: that is a conflict, and the box keeps them.
    */
   async commit(): Promise<void> {
+    if (this.keepTimer) clearTimeout(this.keepTimer);
+    this.keepTimer = null;
     const box = this.state.box;
     if (!box || box.phase !== "typing") return;
     if (box.conflict) return;
@@ -483,9 +532,10 @@ export class HandSession {
 
   /** What saved means now, for a file's save line (FILES-SEAM.md "Save state"). */
   saved(reload: () => void): { state: "saved" | "saving" | "conflict"; at?: number; detail?: string; actions?: Array<{ id: string; label: string; run(): void }> } {
-    const { busy, savedAt, failure } = this.state;
+    const { busy, savedAt, failure, box } = this.state;
     if (failure?.conflict) return { state: "conflict", detail: failure.message, actions: [{ id: "reload", label: "Reload", run: reload }] };
-    if (busy > 0) return { state: "saving" };
+    // Words in an open box that are not in the file yet are on their way (`keep`, within seconds): never saved.
+    if (busy > 0 || (box?.phase === "typing" && !box.conflict && !unchanged(box.model, box.initial))) return { state: "saving" };
     return savedAt ? { state: "saved", at: savedAt } : { state: "saved" };
   }
 }
