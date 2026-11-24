@@ -1,5 +1,5 @@
-import { constants, existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
-import { copyFile, link, mkdir, rename, rm, writeFile } from 'node:fs/promises'
+import { constants, existsSync, readdirSync, readFileSync, statSync, type Stats } from 'node:fs'
+import { copyFile, link, mkdir, rename, rm, stat, writeFile } from 'node:fs/promises'
 import { basename, dirname, join } from 'node:path'
 import type { ClientRequest } from '@shared/contract'
 import type { FileDone } from '@shared/contract-work-files'
@@ -11,8 +11,8 @@ import { askedFields, fileStem, parseTemplateId, templateFormOf, type Template, 
 import { sharedOf } from '../files/policy'
 import { WORK_MODULES, type Caller, type WorkCtx } from '../modules'
 import { isOfficeForm, scanOffice } from './ooxml'
-import { askFilesVerb, copyNoReplace, folderCan, OUT_OF_REACH, type Pillars } from './place'
-import { jobDir, resolveTemplate, sharedDir, shelfOf, tcdocEveryField, tcdocFields, toTemplate, workspaceOf, type ShelfEntry, type WorkspaceRow } from './shelf'
+import { admitDirect, askFilesVerb, copyNoReplace, folderCan, OUT_OF_REACH, type Pillars } from './place'
+import { jobDir, reachesFile, resolveTemplate, sharedDir, shelfOf, tcdocEveryField, tcdocFields, toTemplate, workspaceOf, type ShelfEntry, type WorkspaceRow } from './shelf'
 import { TemplatesStore } from './store'
 
 /**
@@ -39,6 +39,9 @@ export interface SaveDeps {
 export const NOT_A_TEMPLATE = 'Only a Word, Excel or PowerPoint file, or a document or sheet kept as a file, can be a template.'
 export const ELSEWHERE = 'That file is on another computer: save it as a template from a window on that one.'
 export const STARTER_FIXED = "One of TempCode's own templates cannot be changed: use Edit a copy."
+export const CHANGED = 'That template changed while it was asked about: nothing was deleted.'
+export const MOVED_UNDER = 'That template changed while it moved: it was left where it was.'
+export const PEER_CONFIRM = 'Another host of his cannot delete a template: delete it from a window.'
 
 const registry: Pillars = () => WORK_MODULES
 
@@ -75,15 +78,25 @@ function exportableSheet(ctx: WorkCtx, workspace: WorkspaceRow, source: CanvasSo
  * form it is kept in; `drop` is a file an export made that goes once it is
  * copied.
  */
+/** Our own document as Word, through the formats pillar's export, written to `to`. */
+export async function exportWord(ctx: WorkCtx, by: Caller, source: CanvasSource, to: string, deps: SaveDeps = {}): Promise<void> {
+  const out = await ask<ExportAnswer>(ctx, by, deps.pillars ?? registry, 'work.formats.export', { source, format: 'docx' }, deps.signal)
+  await writeFile(to, Buffer.from(out.data, 'base64'))
+}
+
 async function shelfFile(ctx: WorkCtx, by: Caller, workspace: WorkspaceRow, source: CanvasSource, path: string, form: TemplateForm, deps: SaveDeps): Promise<{ from: string; form: TemplateForm; drop?: string }> {
   const pillars = deps.pillars ?? registry
   if (form === 'tcdoc' && tcdocEveryField(path).length) {
     // Our document with any field, one filled without asking among them, is kept as Word: the fill reads and writes Word.
-    const out = await ask<ExportAnswer>(ctx, by, pillars, 'work.formats.export', { source, format: 'docx' }, deps.signal)
     const dir = join(ctx.dataDir, 'work-templates', 'scratch')
     await mkdir(dir, { recursive: true })
     const made = join(dir, `export-${Date.now()}-${Math.random().toString(36).slice(2)}.docx`)
-    await writeFile(made, Buffer.from(out.data, 'base64'))
+    try {
+      await exportWord(ctx, by, source, made, deps)
+    } catch (err) {
+      await rm(made, { force: true })
+      throw err
+    }
     return { from: made, form: 'docx', drop: made }
   }
   const item = form === 'tcsheet' ? exportableSheet(ctx, workspace, source, path) : null
@@ -113,7 +126,7 @@ function shelved(ctx: WorkCtx, workspaceId: string, path: string): boolean {
 export async function saveTemplate(ctx: WorkCtx, by: Caller, ask_: SaveAsk, deps: SaveDeps = {}): Promise<Template> {
   const workspace = workspaceOf(ctx, ask_.workspaceId)
   const path = pathOf(ctx, ask_.source)
-  if (by.kind === 'remote' && !by.peer && (!ctx.reaches(by, workspace.path) || (!ctx.reaches(by, path) && !shelved(ctx, workspace.id, path)))) throw new Error(OUT_OF_REACH)
+  if (by.kind === 'remote' && !by.peer && (!ctx.reaches(by, workspace.path) || (!reachesFile(ctx, by, path) && !shelved(ctx, workspace.id, path)))) throw new Error(OUT_OF_REACH)
   const formed = templateFormOf(path)
   let info
   try {
@@ -124,8 +137,10 @@ export async function saveTemplate(ctx: WorkCtx, by: Caller, ask_: SaveAsk, deps
   if (!formed || !info?.isFile()) throw new Error(NOT_A_TEMPLATE)
   const stem = fileStem(ask_.name ?? splitName(basename(path)).stem)
   if (!stem) throw new Error('A template needs a name.')
-  const kept = await shelfFile(ctx, by, workspace, ask_.source, path, formed.form, deps)
   const dir = ask_.everywhere ? sharedDir(ctx) : jobDir(workspace)
+  // Before anything is exported: a folder others can open takes a thread's file only on his press.
+  admitDirect(ctx, by, dir, 'make')
+  const kept = await shelfFile(ctx, by, workspace, ask_.source, path, formed.form, deps)
   let name: string
   try {
     name = await copyNoReplace(kept.from, dir, `${stem}.${kept.form}`)
@@ -147,8 +162,31 @@ function found(ctx: WorkCtx, workspaceId: string, where: 'job' | 'all', fileName
 function ownOf(ctx: WorkCtx, by: Caller, workspaceId: string, ref: string): { workspace: WorkspaceRow; entry: ShelfEntry } {
   const { shelf, entry } = resolveTemplate(ctx, workspaceId, ref)
   if (entry.where === 'starter') throw new Error(STARTER_FIXED)
-  if (by.kind === 'remote' && !by.peer && (!ctx.reaches(by, shelf.workspace.path) || (entry.where === 'job' && !ctx.reaches(by, entry.path)))) throw new Error(OUT_OF_REACH)
+  if (by.kind === 'remote' && !by.peer && (!ctx.reaches(by, shelf.workspace.path) || (entry.where === 'job' && !reachesFile(ctx, by, entry.path)))) throw new Error(OUT_OF_REACH)
   return { workspace: shelf.workspace, entry }
+}
+
+/** The files an entry is: its own, and the Word file its `.tcdoc` was made of. */
+const filesOf = (entry: ShelfEntry): string[] => (entry.twin ? [entry.path, entry.twin] : [entry.path])
+/** A file's new path under a new stem, in its own folder, keeping its extension. */
+const renamed = (path: string, stem: string): string => join(dirname(path), `${stem}${splitName(basename(path)).ext}`)
+/** Whether two looks at a path saw the same file, as it was: a link keeps the file whatever is written in it; a copy only what it read. */
+const same = (a: Stats, b: Stats, linked: boolean): boolean => a.dev === b.dev && a.ino === b.ino && (linked || (a.size === b.size && a.mtimeMs === b.mtimeMs))
+const statOrNull = async (path: string): Promise<Stats | null> => {
+  try {
+    return await stat(path)
+  } catch {
+    return null
+  }
+}
+
+/** The first of `stem`, `stem 2`, … under which no file of `files` would take a name already in `dir`. */
+function freeStem(dir: string, files: readonly string[], stem: string): string {
+  for (let n = 1; n < 1000; n++) {
+    const next = n === 1 ? stem : `${stem} ${n}`
+    if (!files.some((f) => taken(dir, basename(renamed(f, next))))) return next
+  }
+  throw new Error(`No free name for ${stem} there.`)
 }
 
 /** A name taken in a folder, as a disk that reads names case-blind would say. */
@@ -160,25 +198,43 @@ const taken = (dir: string, name: string, but?: string): boolean => {
   }
 }
 
-/** Moves a file to a path nothing holds; over a disk's edge, a copy and then the old one goes. */
+/**
+ * Moves a file to a path nothing holds, and gives the file back as it was found when that cannot be done whole:
+ * a link and then the old name goes; over a disk's edge, or on a disk with no hard links, an exclusive copy.
+ * Before the old name goes it is looked at again: a file that an editor saved anew there meanwhile stays, and
+ * the move is undone, so no edit is lost to it. A change of case alone, on a disk that reads both names as one
+ * file, is one rename of that file.
+ */
 async function moveNoReplace(from: string, to: string): Promise<void> {
   await mkdir(dirname(to), { recursive: true })
+  const taken = (): Error => new Error(`A template named ${splitName(basename(to)).stem} is already there.`)
+  const before = await stat(from)
+  let linked = true
   try {
     await link(from, to)
-    await rm(from, { force: true })
   } catch (err) {
     const code = (err as NodeJS.ErrnoException).code
-    if (code === 'EEXIST') throw new Error(`A template named ${splitName(basename(to)).stem} is already there.`)
+    if (code === 'EEXIST') {
+      // The new name is the old file itself: the disk reads names without case. Anything else holds the name.
+      const there = await statOrNull(to)
+      if (there && same(there, before, true) && from.toLowerCase() === to.toLowerCase()) return rename(from, to)
+      throw taken()
+    }
     if (code !== 'EXDEV' && code !== 'EPERM' && code !== 'ENOTSUP' && code !== 'EOPNOTSUPP' && code !== 'ENOSYS') throw err
-    // No hard links on this disk: an exclusive copy, which also never replaces a file that took the name meanwhile.
+    linked = false
     try {
       await copyFile(from, to, constants.COPYFILE_EXCL)
     } catch (again) {
-      if ((again as NodeJS.ErrnoException).code === 'EEXIST') throw new Error(`A template named ${splitName(basename(to)).stem} is already there.`)
+      if ((again as NodeJS.ErrnoException).code === 'EEXIST') throw taken()
       throw again
     }
-    await rm(from, { force: true })
   }
+  const now = await statOrNull(from)
+  if (!now || !same(now, before, linked)) {
+    await rm(to, { force: true })
+    throw new Error(MOVED_UNDER)
+  }
+  await rm(from, { force: true })
 }
 
 export async function renameTemplate(ctx: WorkCtx, by: Caller, workspaceId: string, ref: string, name: string): Promise<Template> {
@@ -188,10 +244,19 @@ export async function renameTemplate(ctx: WorkCtx, by: Caller, workspaceId: stri
   const dir = dirname(entry.path)
   const next = `${stem}.${entry.form}`
   if (next === basename(entry.path)) return toTemplate(entry)
-  if (taken(dir, next, basename(entry.path))) throw new Error(`A template named ${stem} is already there.`)
-  // A change of case alone is one rename: the disk may read both names as one file.
-  if (next.toLowerCase() === basename(entry.path).toLowerCase()) await rename(entry.path, join(dir, next))
-  else await moveNoReplace(entry.path, join(dir, next))
+  for (const file of filesOf(entry)) if (taken(dirname(file), basename(renamed(file, stem)), basename(file))) throw new Error(`A template named ${stem} is already there.`)
+  admitDirect(ctx, by, dir, 'rename')
+  const done: string[] = []
+  try {
+    for (const file of filesOf(entry)) {
+      await moveNoReplace(file, renamed(file, stem))
+      done.push(file)
+    }
+  } catch (err) {
+    // The document and the Word file it was made of keep one name: a half-done rename is taken back.
+    for (const file of done.reverse()) await moveNoReplace(renamed(file, stem), file).catch(() => undefined)
+    throw err
+  }
   ctx.push({ push: 'work.templates', workspaceId: entry.where === 'all' ? null : workspace.id })
   return found(ctx, workspace.id, entry.where as 'job' | 'all', next)
 }
@@ -201,8 +266,21 @@ export async function moveTemplate(ctx: WorkCtx, by: Caller, workspaceId: string
   const where = everywhere ? 'all' : 'job'
   if (entry.where === where) return toTemplate(entry)
   const dir = everywhere ? sharedDir(ctx) : jobDir(workspace)
-  const name = await copyNoReplace(entry.path, dir, basename(entry.path))
-  await rm(entry.path, { force: true })
+  admitDirect(ctx, by, dir, 'make')
+  admitDirect(ctx, by, dirname(entry.path), 'trash')
+  // Every file of the entry under one free name: the document and its Word file stay together.
+  const stem = freeStem(dir, filesOf(entry), entry.name)
+  const done: string[] = []
+  try {
+    for (const file of filesOf(entry)) {
+      await moveNoReplace(file, join(dir, basename(renamed(file, stem))))
+      done.push(file)
+    }
+  } catch (err) {
+    for (const file of done.reverse()) await moveNoReplace(join(dir, basename(renamed(file, stem))), file).catch(() => undefined)
+    throw err
+  }
+  const name = `${stem}.${entry.form}`
   // Every workspace's shelf changed: one lost or gained a template for all jobs.
   ctx.push({ push: 'work.templates', workspaceId: null })
   return found(ctx, workspace.id, where, name)
@@ -213,7 +291,10 @@ export async function moveTemplate(ctx: WorkCtx, by: Caller, workspaceId: string
  * One of his own goes to Files' Trash where Files has one; where it has
  * none yet, nothing is deleted until the caller says he was asked.
  */
-export async function removeTemplate(ctx: WorkCtx, by: Caller, workspaceId: string, ref: string, confirmed: boolean, deps: SaveDeps = {}): Promise<TemplateRemoved> {
+export async function removeTemplate(ctx: WorkCtx, by: Caller, workspaceId: string, ref: string, confirmed: string | null, deps: SaveDeps = {}): Promise<TemplateRemoved> {
+  // The fence first: a key that may not reach the workspace changes nothing of its shelf, a Hide neither.
+  const workspace = workspaceOf(ctx, workspaceId)
+  if (by.kind === 'remote' && !by.peer && !ctx.reaches(by, workspace.path)) throw new Error(OUT_OF_REACH)
   const { shelf, entry } = resolveTemplate(ctx, workspaceId, ref)
   if (entry.where === 'starter') {
     new TemplatesStore(ctx.db).hide(workspaceId, parseTemplateId(entry.id)!.key)
@@ -222,19 +303,39 @@ export async function removeTemplate(ctx: WorkCtx, by: Caller, workspaceId: stri
   }
   ownOf(ctx, by, workspaceId, ref)
   const everyone = entry.where === 'all'
+  const refs: CanvasSource[] = filesOf(entry).map((path) => ({ at: 'file', host: ctx.host, path }))
   // Trash is the workspace folder's: a template for all jobs lies in the app's own data, which Files does not list.
-  if (!everyone && by.kind !== 'model' && (await folderCan(ctx, by, workspaceId, 'trash', deps.pillars, deps.signal))) {
-    const done = await askFilesVerb<FileDone>(ctx, by, 'trash', { workspaceId, refs: [entry.source] }, deps.pillars, deps.signal)
+  if (!everyone && by.kind !== 'model' && !by.peer && (await folderCan(ctx, by, workspaceId, 'trash', deps.pillars, deps.signal))) {
+    const done = await askFilesVerb<FileDone>(ctx, by, 'trash', { workspaceId, refs }, deps.pillars, deps.signal)
     if (done) {
       if (done.refused.length && !done.trashed?.length) throw new Error(done.refused[0]!.text)
       ctx.push({ push: 'work.templates', workspaceId: shelf.workspace.id })
       return { trashed: done.trashed ?? [] }
     }
   }
-  if (!confirmed) return { confirm: true }
-  await rm(entry.path, { force: true })
+  if (by.peer) throw new Error(PEER_CONFIRM)
+  // What he was asked about is the file as it was then: its version rides the question, and a file that is not that one any more is left.
+  const version = versionOf(filesOf(entry))
+  if (confirmed === null) return { confirm: true, version }
+  if (confirmed !== version) throw new Error(CHANGED)
+  admitDirect(ctx, by, dirname(entry.path), 'trash')
+  for (const file of filesOf(entry)) await rm(file, { force: true })
   ctx.push({ push: 'work.templates', workspaceId: everyone ? null : shelf.workspace.id })
   return {}
+}
+
+/** The files as they are now, in one string: which file each name holds, and what it last held. */
+function versionOf(files: readonly string[]): string {
+  return files
+    .map((file) => {
+      try {
+        const info = statSync(file)
+        return `${info.dev}:${info.ino}:${info.size}:${Math.floor(info.mtimeMs)}`
+      } catch {
+        return 'gone'
+      }
+    })
+    .join('/')
 }
 
 /** Shows the workspace's hidden starters again: every one, or the one named (the undo of one Hide). */
@@ -259,7 +360,7 @@ export function unhideTemplates(ctx: WorkCtx, by: Caller, workspaceId: string, r
 export function fieldsOfSource(ctx: WorkCtx, by: Caller, workspaceId: string, source: CanvasSource): TemplateFields {
   const workspace = workspaceOf(ctx, workspaceId)
   const path = pathOf(ctx, source)
-  if (by.kind === 'remote' && !by.peer && (!ctx.reaches(by, workspace.path) || (!ctx.reaches(by, path) && !shelved(ctx, workspace.id, path)))) throw new Error(OUT_OF_REACH)
+  if (by.kind === 'remote' && !by.peer && (!ctx.reaches(by, workspace.path) || (!reachesFile(ctx, by, path) && !shelved(ctx, workspace.id, path)))) throw new Error(OUT_OF_REACH)
   const formed = templateFormOf(path)
   if (!formed) throw new Error(NOT_A_TEMPLATE)
   if (formed.form === 'tcdoc') return { fields: tcdocFields(path) }

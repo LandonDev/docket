@@ -71,6 +71,8 @@ export function FieldsForm({
               autoFocus={i === 0}
               readOnly={fixed}
               value={values[name] ?? ""}
+              // The wire's own most for one value (TemplateFieldsSchema): past it the host would refuse the make in zod's words.
+              maxLength={2000}
               spellCheck={false}
               onChange={(event) => setValues((v) => ({ ...v, [name]: event.target.value }))}
               onKeyDown={onKey(i)}

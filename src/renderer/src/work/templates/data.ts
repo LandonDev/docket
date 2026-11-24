@@ -76,8 +76,9 @@ export const renameTemplate = (env: string, workspaceId: string, template: strin
 export const moveTemplate = (env: string, workspaceId: string, template: string, everywhere: boolean): Promise<Template> =>
   ask(env, "work.templates.move", { workspaceId, template, everywhere }, "The host did not move it");
 
-export const removeTemplate = (env: string, workspaceId: string, template: string, confirmed?: boolean): Promise<TemplateRemoved> =>
-  ask(env, "work.templates.remove", { workspaceId, template, ...(confirmed ? { confirmed: true } : {}) }, "The host did not remove it");
+/** Takes a template off the shelf; `confirmed` is the version the host answered `confirm` with, once he said yes. */
+export const removeTemplate = (env: string, workspaceId: string, template: string, confirmed?: string): Promise<TemplateRemoved> =>
+  ask(env, "work.templates.remove", { workspaceId, template, ...(confirmed !== undefined ? { confirmed: true, version: confirmed } : {}) }, "The host did not remove it");
 
 /** Every starter hidden in this workspace shown again, or (`template`) that one alone: the undo of one Hide. */
 export const unhideStarters = (env: string, workspaceId: string, template?: string): Promise<object> =>

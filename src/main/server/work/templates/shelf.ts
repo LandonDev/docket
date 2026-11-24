@@ -1,4 +1,4 @@
-import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
+import { existsSync, readdirSync, readFileSync, realpathSync, statSync } from 'node:fs'
 import { join } from 'node:path'
 import type { TemplatesList } from '@shared/contract-work-templates'
 import type { HostId } from '@shared/work'
@@ -20,7 +20,8 @@ import {
   type TemplateWhere
 } from '@shared/work/templates'
 import { appRoot } from '../../appRoot'
-import type { WorkCtx } from '../modules'
+import { locate, within } from '../files/policy'
+import type { Caller, WorkCtx } from '../modules'
 import { isOfficeForm, scanOffice, tcdocPreview } from './ooxml'
 import { TemplatesStore } from './store'
 
@@ -109,6 +110,12 @@ export function registerStarterTemplates(kind: TemplateKind, entries: readonly S
 /** A template with where its file is. */
 export interface ShelfEntry extends Template {
   path: string
+  /**
+   * The Word file a `.tcdoc` was made of, beside it under the same name: the document kind edits a `.tcdoc` made
+   * of a Word file, never the file, so Edit on a Word template leaves the two. The `.tcdoc` holds his edits and
+   * stands for both; a rename, a move or a remove takes the Word file with it.
+   */
+  twin?: string
 }
 
 /** The asked fields of a template file: read from the file when it changed, else from what was kept. */
@@ -116,8 +123,9 @@ function fieldsOfFile(store: TemplatesStore, path: string, form: TemplateForm, s
   const kept = store.fields(path, size, mtime)
   if (kept) return kept
   let fields: string[] = []
-  // Our own kinds are plain copies: a field in one is words, and its state is not opened.
-  if (isOfficeForm(form)) {
+  // Our own document is read from the markdown preview it carries; our own sheet is a plain copy, its state not opened.
+  if (form === 'tcdoc') fields = tcdocFields(path)
+  else if (isOfficeForm(form)) {
     try {
       fields = askedFields(scanOffice(form, new Uint8Array(readFileSync(path))))
     } catch {
@@ -145,7 +153,46 @@ function entryOf(ctx: ShelfCtx, store: TemplatesStore, where: TemplateWhere, key
 const hiddenName = (name: string): boolean => name.startsWith('.') || name.startsWith('~$')
 const byName = (a: Template, b: Template): number => a.name.localeCompare(b.name, undefined, { sensitivity: 'base', numeric: true })
 
-function readDir(ctx: ShelfCtx, store: TemplatesStore, where: TemplateWhere, dir: string, keyOf: (fileName: string, stem: string) => string): ShelfEntry[] {
+const realOr = (path: string): string | null => {
+  try {
+    return realpathSync(path)
+  } catch {
+    return null
+  }
+}
+/** The caller for Files' door on what the shelf may read: his window's row, which asks the ctx nothing but the database and the host. */
+const SHELF_READ: Caller = { kind: 'local', caps: ['read'] }
+
+/**
+ * Whether a file of the job's Templates folder lies, by its real path, where Files' door lets the workspace reach:
+ * its own folder or a library of this host (`locate`). A link to a file elsewhere on the disk is no template.
+ */
+function inJob(ctx: ShelfCtx, workspaceId: string, path: string): boolean {
+  try {
+    locate({ ...ctx, reaches: () => true, scopeOf: () => null, settings: null } as unknown as Parameters<typeof locate>[0], SHELF_READ, workspaceId, { at: 'file', host: ctx.host as HostId, path }, 'work.templates.list')
+    return true
+  } catch {
+    return false
+  }
+}
+
+/** Whether a file lies, by its real path, inside a folder by its real path: a link out of the app's own folder is no template. */
+const inDir = (dir: string, path: string): boolean => {
+  const at = realOr(path)
+  const root = realOr(dir)
+  return !!at && !!root && within(at, root)
+}
+
+/**
+ * Whether a remote key could name a template's file itself, by the path the shelf reads and by the file a link
+ * there leads to. This host's window, a thread and another host of his always could (`ctx.reaches`).
+ */
+export function reachesFile(ctx: Pick<WorkCtx, 'reaches'>, by: Caller, path: string): boolean {
+  if (by.kind !== 'remote' || by.peer) return true
+  return ctx.reaches(by, path) && ctx.reaches(by, realOr(path) ?? path)
+}
+
+function readDir(ctx: ShelfCtx, store: TemplatesStore, where: TemplateWhere, dir: string, keyOf: (fileName: string, stem: string) => string, admit: (path: string) => boolean = () => true): ShelfEntry[] {
   let names: string[]
   try {
     names = readdirSync(dir)
@@ -157,13 +204,27 @@ function readDir(ctx: ShelfCtx, store: TemplatesStore, where: TemplateWhere, dir
   for (const fileName of names) {
     if (hiddenName(fileName)) continue
     const path = join(dir, fileName)
+    // Asked before the file is opened: a link out of where the shelf may read names no fields either.
+    if (!templateFormOf(fileName) || !admit(path)) continue
     const entry = entryOf(ctx, store, where, keyOf(fileName, splitName(fileName).stem), splitName(fileName).stem, path)
     if (!entry) continue
     present.add(path)
     out.push(entry)
   }
   if (where !== 'starter') store.prune(dir, present)
-  return out.sort(byName)
+  return withTwins(out).sort(byName)
+}
+
+/** A `.tcdoc` beside a Word file of the same name stands for both (`ShelfEntry.twin`): one tile, the one with his edits. */
+function withTwins(entries: ShelfEntry[]): ShelfEntry[] {
+  const docs = new Map(entries.filter((e) => e.form === 'tcdoc').map((e) => [e.name, e]))
+  const out: ShelfEntry[] = []
+  for (const e of entries) {
+    const doc = e.form === 'docx' ? docs.get(e.name) : undefined
+    if (doc) doc.twin = e.path
+    else out.push(e)
+  }
+  return out
 }
 
 const starterKey = (sector: string, stem: string): string => `${sector}/${starterSlug(stem)}`
@@ -211,8 +272,8 @@ export function shelfOf(ctx: ShelfCtx, workspaceId: string): Shelf {
   const hidden = store.hidden(workspaceId)
   const sector = workspace.sector && workspace.sector !== ANY_SECTOR ? workspace.sector : null
   const isHidden = (e: ShelfEntry): boolean => hidden.has(parseTemplateId(e.id)!.key)
-  const own = readDir(ctx, store, 'job', jobDir(workspace), (file) => file)
-  const all = readDir(ctx, store, 'all', sharedDir(ctx), (file) => file)
+  const own = readDir(ctx, store, 'job', jobDir(workspace), (file) => file, (path) => inJob(ctx, workspaceId, path))
+  const all = readDir(ctx, store, 'all', sharedDir(ctx), (file) => file, (path) => inDir(sharedDir(ctx), path))
   const jobStarters = sector ? startersOf(ctx, store, sector) : []
   // An editor's own of a name one of the job's starters has is shown once, in the job's group.
   const taken = new Set(jobStarters.map((e) => e.id.slice(e.id.indexOf('/') + 1)))
@@ -230,7 +291,7 @@ export function shelfOf(ctx: ShelfCtx, workspaceId: string): Shelf {
   }
 }
 
-const bare = ({ path: _path, ...template }: ShelfEntry): Template => template
+const bare = ({ path: _path, twin: _twin, ...template }: ShelfEntry): Template => template
 
 /** The shelf as the wire answers it. */
 export function listTemplates(ctx: ShelfCtx, workspaceId: string): TemplatesList {

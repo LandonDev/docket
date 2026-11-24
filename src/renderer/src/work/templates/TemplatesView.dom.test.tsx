@@ -87,7 +87,7 @@ beforeEach(() => {
     if (method === "work.templates.list") return list;
     if (method === "work.templates.make") return { source: { at: "file", host: "box", path: "/w/Dummy Esports/Crew memo.docx" }, kind: "document", title: "Crew memo", unfilled: [] };
     if (method === "work.templates.save") return { ...MEMO, id: "job:Season log.xlsx", source: { at: "file", host: "box", path: "/w/Dummy Esports/Templates/Season log.docx" } };
-    if (method === "work.templates.remove") return params.template === MEMO.id && !params.confirmed ? { confirm: true } : {};
+    if (method === "work.templates.remove") return params.template === MEMO.id && !params.confirmed ? { confirm: true, version: "v1" } : {};
     return {};
   };
 });
@@ -216,7 +216,8 @@ describe("the Templates view", () => {
     expect(confirm.querySelector('[data-slot="alert-dialog-description"], [data-slot="dialog-description"]')).toBeNull();
     fireEvent.click(within(confirm).getByRole("button", { name: "Delete" }));
     await settle();
-    expect(asked("work.templates.remove").slice(1)).toEqual([{ workspaceId: "ws", template: MEMO.id }, { workspaceId: "ws", template: MEMO.id, confirmed: true }]);
+    // The yes names the file as it was asked about: the host deletes nothing that has taken its place since.
+    expect(asked("work.templates.remove").slice(1)).toEqual([{ workspaceId: "ws", template: MEMO.id }, { workspaceId: "ws", template: MEMO.id, confirmed: true, version: "v1" }]);
   });
 
   it("says a template of All jobs goes from every job on its host before it is deleted", async () => {
@@ -406,6 +407,29 @@ describe("the Templates view", () => {
     // Add… is the header's last control; the ⋯ arrives before it, so Add… never shifts.
     expect(head.lastElementChild).toBe(screen.getByRole("button", { name: "Add…" }));
     expect(screen.getByRole("button", { name: "More" }).compareDocumentPosition(screen.getByRole("button", { name: "Add…" })) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it("says the fields still in a made file once it opens, and only then", async () => {
+    let opens = 0;
+    host.answer = (method) => {
+      if (method === "work.templates.list") return list;
+      if (method === "work.templates.make") return { source: { at: "file", host: "box", path: "/w/Dummy Esports/Crew memo.docx" }, kind: "document", title: "Crew memo", unfilled: ["Name", "Crew"] };
+      if (method === "work.files.open" && opens++ === 0) throw new Error("refused: the Files view is busy");
+      return {};
+    };
+    render(<View {...props} />);
+    await settle();
+    fireEvent.click(screen.getByRole("button", { name: "Crew memo" }));
+    await settle();
+    await settle();
+    expect(toasts.map((t) => t.title)).toEqual(["Crew memo was made but did not open"]);
+    toasts[0]!.options!.action!.onClick();
+    await settle();
+    await settle();
+    expect(toasts.map((t) => [t.kind, t.title])).toEqual([
+      ["error", "Crew memo was made but did not open"],
+      ["plain", "Still to fill: Name and Crew"],
+    ]);
   });
 
   it("opens a made file again when its open failed, and never makes a second", async () => {

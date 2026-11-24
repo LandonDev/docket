@@ -5,10 +5,11 @@ import type { Template } from "@shared/work/templates";
 import { DialogFooter, ErrorLine } from "../../chrome/ConfirmDialog";
 import { Modal, ModalBody, useModalClose } from "../../chrome/Modal";
 import { useWorkspaces } from "../../lib/tcserver/workspaces";
+import { loadToast } from "../../components/ui/toaster";
 import { EmptyState } from "../../surfaces/SurfaceSkeleton";
 import { makeFrom, unhideStarters, useTemplates } from "./data";
 import { FieldsForm } from "./FieldsForm";
-import { folderName, hiddenLine, sentence, shelfGroups } from "./model";
+import { folderName, hiddenLine, sentence, shelfGroups, unfilledLine } from "./model";
 import { openMade } from "./open";
 import { Shelf, ShelfSkeleton } from "./Shelf";
 
@@ -84,7 +85,7 @@ const unmoved = (el: Element | null): boolean => !el || el === document.body || 
 const scrollerOf = (el: Element | null): HTMLElement | null => el?.closest<HTMLElement>(".overflow-y-auto") ?? null;
 
 /** A file made whose open failed: what a press on its template, or Open in its fields, opens again. */
-type Made = { source: CanvasSource; title: string; values?: Record<string, string>; reason?: string };
+type Made = { source: CanvasSource; title: string; unfilled: readonly string[]; values?: Record<string, string>; reason?: string };
 
 export function TemplateSteps({
   env,
@@ -151,6 +152,9 @@ export function TemplateSteps({
       const { [id]: _, ...rest } = m;
       return rest;
     });
+    // Once it is open, the fields still in it as written, said once: the dialog is going.
+    const line = unfilledLine(file.unfilled);
+    if (line) void loadToast().then((toast) => toast(line));
     if (close) close(onClose);
     else onClose();
   };
@@ -165,7 +169,7 @@ export function TemplateSteps({
       let file: Made;
       try {
         const answer = await makeFrom(env, workspaceId, template.id, { ...(into ? { into } : {}), ...(fields ? { fields } : {}) });
-        file = { source: answer.source, title: answer.title, ...(fields ? { values: fields } : {}) };
+        file = { source: answer.source, title: answer.title, unfilled: answer.unfilled, ...(fields ? { values: fields } : {}) };
       } catch (err) {
         setError(words(err));
         return;

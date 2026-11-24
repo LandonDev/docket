@@ -10,6 +10,7 @@ import { convertersOf, JobRunner, type ConvertJob, type ConvertResult } from '..
 import { SLIDES_CONVERTERS } from '../slides/deck'
 import { deckOps, fillDeck, type DeckRead } from './deckFill'
 import { scanOffice } from './ooxml'
+import { partText, readZip } from './zip'
 
 /*
  * A deck's fill: the edits it asks of the slides pillar, with a converter
@@ -56,6 +57,33 @@ describe('deckOps', () => {
 
   it('keeps a value in its paragraph', () => {
     expect(deckOps({ slides: [{ id: 1, shapes: [{ id: 1, text: 'A {{X}} B\nnext' }] }] }, fieldValues({ X: 'one\ntwo\r\n three' }))).toEqual([{ op: 'text', slide: 1, shape: 1, paragraphs: ['A one two three B', 'next'] }])
+  })
+
+  it('names every run of a shape read with its runs by where it was read, so each keeps its look and link; only a field\'s runs change', () => {
+    // A field over two runs in the first paragraph, a link alone in the second, a line break, a field beside a link.
+    const shape = {
+      id: 9,
+      text: 'Pitch for {{Client}}\nRead the report\nBy {{Name}}\n{{Job}}',
+      paragraphs: [{ runs: [{ text: 'Pitch for {{Cli' }, { text: 'ent}}' }] }, { runs: [{ text: 'Read the report' }] }, { runs: [{ text: 'By {{Name}}' }, { text: '\n' }, { text: '{{Job}}' }, { text: ' (link)' }] }]
+    }
+    expect(deckOps({ slides: [{ id: 1, shapes: [shape] }] }, VALUES)).toEqual<SlideOp[]>([
+      {
+        op: 'runs',
+        slide: 1,
+        shape: 9,
+        paragraphs: [
+          { from: 0, runs: [{ text: 'Pitch for Acme & Co', from: [0, 0] }, { text: '', from: [0, 1] }] },
+          { from: 1, runs: [{ text: 'Read the report', from: [1, 0] }] },
+          { from: 2, runs: [{ text: 'By Sam Dummy', from: [2, 0] }, { text: '\n', from: [2, 1] }, { text: 'Dummy Esports', from: [2, 2] }, { text: ' (link)', from: [2, 3] }] }
+        ]
+      }
+    ])
+  })
+
+  it('fills no field across a line break in a shape, and leaves a shape read at the run cap', () => {
+    const across = { id: 1, text: '{{Cli\nent}}', paragraphs: [{ runs: [{ text: '{{Cli' }, { text: '\n' }, { text: 'ent}}' }] }] }
+    const capped = { id: 2, text: '{{Client}}', paragraphs: [{ runs: [{ text: '{{Client}}' }, ...Array.from({ length: 399 }, () => ({ text: 'x' }))] }] }
+    expect(deckOps({ slides: [{ id: 1, shapes: [across, capped] }] }, VALUES)).toEqual([])
   })
 
   it('leaves a shape whose text was read at the cap, since its end may be cut', () => {
@@ -140,5 +168,17 @@ describe.skipIf(!DATA)('fillDeck on python-pptx', () => {
     const deck = JSON.parse(readFileSync(read, 'utf8')) as DeckRead
     const texts = deck.slides.flatMap((s) => s.shapes.map((x) => x.text)).filter(Boolean)
     expect(texts).toEqual(expect.arrayContaining(['Pitch for Acme & Co', 'Dummy Esports · November 23, 2026', 'Why Acme & Co', 'Presented by Sam Dummy\nNo field here\nLeft alone: {{Budget}}']))
+  })
+
+  it('keeps every link of a shape it fills, the one beside a field and the one in a paragraph with none', async () => {
+    // fixtures/link.pptx, made once with python-pptx: "Pitch for {{Client}}", a linked "Read the report", then "{{Client}} site: " and a linked "link".
+    const input = join(dir, 'link.pptx')
+    copyFileSync(join(dirname(fileURLToPath(import.meta.url)), 'fixtures', 'link.pptx'), input)
+    const output = join(dir, 'link-filled.pptx')
+    expect(await fillDeck({ convert: (job) => runner.convert(job) }, input, output, VALUES)).toEqual({ filled: true, warnings: [] })
+    const slide = partText(readZip(new Uint8Array(readFileSync(output))).find((p) => p.name === 'ppt/slides/slide1.xml')!)
+    expect(slide.match(/<a:hlinkClick\b/g)).toHaveLength(2)
+    const texts = [...slide.matchAll(/<a:t>([^<]*)<\/a:t>/g)].map((m) => m[1])
+    expect(texts).toEqual(['Pitch for Acme &amp; Co', 'Read the report', 'Acme &amp; Co site: ', 'link'])
   })
 })

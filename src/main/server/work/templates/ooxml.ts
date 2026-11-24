@@ -46,10 +46,12 @@ interface Run {
 /**
  * The text runs of a part, grouped by the paragraph that holds them. A run
  * belongs to the innermost paragraph open around it (a text box inside a
- * paragraph is its own); one outside every paragraph stands alone.
+ * paragraph is its own); one outside every paragraph stands alone. A tab or
+ * a line break (`breaks`) ends a group: the text he sees has a gap there,
+ * so no field is read, or filled, across it.
  */
-export function paragraphsOf(xml: string, paraTags: readonly string[], textTag: string): Run[][] {
-  const names = [...paraTags, textTag].map((t) => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|')
+export function paragraphsOf(xml: string, paraTags: readonly string[], textTag: string, breaks: readonly string[] = []): Run[][] {
+  const names = [...paraTags, textTag, ...breaks].map((t) => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|')
   const token = new RegExp(`<(/?)(${names})(?=[\\s/>])([^>]*)>`, 'g')
   const out: Run[][] = []
   const stack: Run[][] = []
@@ -67,6 +69,13 @@ export function paragraphsOf(xml: string, paraTags: readonly string[], textTag: 
           open = null
         }
       } else if (!selfClosed) open = { at: m.index, end: m.index + m[0].length }
+    } else if (breaks.includes(m[2]!)) {
+      if (closing) continue
+      const para = stack[stack.length - 1]
+      if (para?.length) {
+        out.push(para)
+        stack[stack.length - 1] = []
+      }
     } else if (closing) {
       const para = stack.pop()
       if (para?.length) out.push(para)
@@ -95,13 +104,16 @@ const applyEdits = (xml: string, edits: Edit[]): string => {
 /** Whether a text tag must say its spaces count: Word and Excel drop a run's outer spaces without it. */
 const needsPreserve = (textTag: string): boolean => textTag === 'w:t' || textTag === 't'
 
-/** The edits that fill one paragraph's fields; none when it holds no field with a value. */
-function fillParagraph(xml: string, runs: Run[], values: ReadonlyMap<string, string>, textTag: string): Edit[] {
-  const texts = runs.map((r) => unescapeXml(xml.slice(r.start, r.end)))
+/**
+ * One stretch of runs' texts with each field that has a value filled: the value goes into the run where its field
+ * starts, the rest of that field's runs are emptied, and every other run keeps its text. Null when no field there
+ * has a value. `touched` names the runs whose text changed.
+ */
+export function fillRuns(texts: readonly string[], values: ReadonlyMap<string, string>): { next: string[]; touched: Set<number> } | null {
   const joined = texts.join('')
-  if (!joined.includes('{{')) return []
+  if (!joined.includes('{{')) return null
   const matches = fieldMatches(joined).filter((m) => values.has(m.key))
-  if (!matches.length) return []
+  if (!matches.length) return null
   const offsets: number[] = []
   let total = 0
   for (const t of texts) {
@@ -129,10 +141,17 @@ function fillParagraph(xml: string, runs: Run[], values: ReadonlyMap<string, str
     }
     for (let i = first; i <= last; i++) touched.add(i)
   }
+  return { next, touched }
+}
+
+/** The edits that fill one paragraph's fields; none when it holds no field with a value. */
+function fillParagraph(xml: string, runs: Run[], values: ReadonlyMap<string, string>, textTag: string): Edit[] {
+  const filled = fillRuns(runs.map((r) => unescapeXml(xml.slice(r.start, r.end))), values)
+  if (!filled) return []
   const edits: Edit[] = []
-  for (const i of touched) {
+  for (const i of filled.touched) {
     const run = runs[i]!
-    const text = next[i]!
+    const text = filled.next[i]!
     edits.push({ start: run.start, end: run.end, text: escapeXml(text) })
     const tag = xml.slice(run.open, run.openEnd)
     if (needsPreserve(textTag) && /^\s|\s$/.test(text) && !/xml:space\s*=/.test(tag)) edits.push({ start: run.openEnd - 1, end: run.openEnd - 1, text: ' xml:space="preserve"' })
@@ -141,18 +160,24 @@ function fillParagraph(xml: string, runs: Run[], values: ReadonlyMap<string, str
 }
 
 /** A part's joined paragraph texts, in order. */
-const paragraphTexts = (xml: string, paraTags: readonly string[], textTag: string): string[] =>
-  paragraphsOf(xml, paraTags, textTag).map((runs) => runs.map((r) => unescapeXml(xml.slice(r.start, r.end))).join(''))
+const paragraphTexts = (xml: string, paraTags: readonly string[], textTag: string, breaks: readonly string[] = []): string[] =>
+  paragraphsOf(xml, paraTags, textTag, breaks).map((runs) => runs.map((r) => unescapeXml(xml.slice(r.start, r.end))).join(''))
 
-function fillPart(xml: string, paraTags: readonly string[], textTag: string, values: ReadonlyMap<string, string>): string {
-  if (!xml.includes('{')) return xml
-  const edits = paragraphsOf(xml, paraTags, textTag).flatMap((runs) => fillParagraph(xml, runs, values, textTag))
+/** Whether a part may hold a brace, typed or written as a character reference (`&#123;`, `&#x7B;`). */
+const mayHoldBrace = (xml: string): boolean => xml.includes('{') || /&#(?:0*123|x0*7b);/i.test(xml)
+
+function fillPart(xml: string, paraTags: readonly string[], textTag: string, values: ReadonlyMap<string, string>, breaks: readonly string[] = []): string {
+  if (!mayHoldBrace(xml)) return xml
+  const edits = paragraphsOf(xml, paraTags, textTag, breaks).flatMap((runs) => fillParagraph(xml, runs, values, textTag))
   return edits.length ? applyEdits(xml, edits) : xml
 }
 
 // ── the parts of each form ────────────────────────────────────────────
 
 const WORD_PARTS = /^word\/(document|header\d*|footer\d*|footnotes|endnotes)\.xml$/
+/** Where Word's and PowerPoint's text has a gap no run holds: a tab, a line or page break. */
+const WORD_BREAKS = ['w:tab', 'w:br', 'w:cr']
+const DECK_BREAKS = ['a:br']
 const wordRank = (name: string): number => (name === 'word/document.xml' ? 0 : name.includes('header') ? 1 : name.includes('footer') ? 2 : 3)
 const SLIDE_PART = /^ppt\/slides\/slide(\d+)\.xml$/
 const SHEET_PART = /^xl\/worksheets\/sheet(\d+)\.xml$/
@@ -225,9 +250,9 @@ export function scanOffice(form: OfficeForm, bytes: Uint8Array): string[] {
     if (text.includes('{{')) for (const m of fieldMatches(text)) names.push(m.name)
   }
   if (form === 'docx') {
-    for (const part of parts.filter((p) => WORD_PARTS.test(p.name)).sort((a, b) => wordRank(a.name) - wordRank(b.name) || a.name.localeCompare(b.name))) paragraphTexts(partText(part), ['w:p'], 'w:t').forEach(take)
+    for (const part of parts.filter((p) => WORD_PARTS.test(p.name)).sort((a, b) => wordRank(a.name) - wordRank(b.name) || a.name.localeCompare(b.name))) paragraphTexts(partText(part), ['w:p'], 'w:t', WORD_BREAKS).forEach(take)
   } else if (form === 'pptx') {
-    for (const part of slideParts(parts)) paragraphTexts(partText(part), ['a:p'], 'a:t').forEach(take)
+    for (const part of slideParts(parts)) paragraphTexts(partText(part), ['a:p'], 'a:t', DECK_BREAKS).forEach(take)
   } else {
     const strings = parts.find((p) => p.name === STRINGS_PART)
     const shared = strings ? sharedStrings(partText(strings)) : []
@@ -322,7 +347,7 @@ export function fillOffice(form: 'docx' | 'xlsx', bytes: Uint8Array, values: Rea
   if (form === 'docx') {
     for (const part of parts.filter((p) => WORD_PARTS.test(p.name))) {
       const xml = partText(part)
-      put(part, xml, fillPart(xml, ['w:p'], 'w:t', values))
+      put(part, xml, fillPart(xml, ['w:p'], 'w:t', values, WORD_BREAKS))
     }
   } else {
     const strings = parts.find((p) => p.name === STRINGS_PART)

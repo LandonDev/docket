@@ -14,7 +14,7 @@ import { EmptyState } from "../../surfaces/SurfaceSkeleton";
 import type { WorkViewProps } from "../views/registry";
 import { ViewStateLine } from "../views/ViewStateLine";
 import { makeFrom, moveTemplate, removeTemplate, restoreFiles, saveTemplate, unhideStarters, useTemplates } from "./data";
-import { baseName, editsACopy, hiddenLine, refusedLine, shelfGroups, tileMenu, type TileAction, type TileRow } from "./model";
+import { baseName, editsACopy, hiddenLine, refusedLine, shelfGroups, tileMenu, unfilledLine, type TileAction, type TileRow } from "./model";
 import { askTemplateFields, openMade } from "./open";
 import { RenameDialog } from "./RenameDialog";
 import { Shelf, ShelfSkeleton } from "./Shelf";
@@ -50,6 +50,9 @@ function useHead(workspaceId: string): HeadState {
     () => NONE,
   );
 }
+
+/** A file made, with the fields still in it as written. */
+type MadeFile = { source: CanvasSource; title: string; unfilled: readonly string[] };
 
 const words = (err: unknown): string => (err instanceof Error ? err.message : String(err));
 /** One toast shape for every failed press on this page: what failed as its title, then why, in the host's words. */
@@ -156,11 +159,12 @@ export function View({ env, workspace }: WorkViewProps) {
   const [load, retry] = useTemplates(env, workspace.id);
   const [making, setMaking] = useState<string | null>(null);
   const [renaming, setRenaming] = useState<Template | null>(null);
-  const [removing, setRemoving] = useState<Template | null>(null);
+  // What he is asked to delete, with the file's version as the host saw it then: a file put in its place since is not deleted.
+  const [removing, setRemoving] = useState<{ template: Template; version: string } | null>(null);
   const [over, setOver] = useState(0);
   const { adding } = useHead(workspace.id);
   // A file made whose open failed, by template: a press again opens it and never makes a second.
-  const made = useRef(new Map<string, { source: CanvasSource; title: string }>());
+  const made = useRef(new Map<string, MadeFile>());
   // The header's ⋯ offers Show hidden over a shelf with tiles; an empty one offers it in its own state, once.
   const hidden = load.status === "ready" ? (load.value.templates.length ? load.value.hidden : 0) : null;
   const down = load.status === "error";
@@ -168,9 +172,14 @@ export function View({ env, workspace }: WorkViewProps) {
     setHead(workspace.id, { failed: down, ...(hidden !== null ? { hidden } : {}) });
   }, [workspace.id, hidden, down]);
 
-  const open = (templateId: string, file: { source: CanvasSource; title: string }) =>
+  const open = (templateId: string, file: MadeFile) =>
     openMade({ workspaceId: workspace.id, source: file.source }).then(
-      () => void made.current.delete(templateId),
+      () => {
+        made.current.delete(templateId);
+        // Once it is open, the fields still in it as written, said once.
+        const line = unfilledLine(file.unfilled);
+        if (line) void loadToast().then((toast) => toast(line));
+      },
       (err: unknown) => {
         made.current.set(templateId, file);
         void loadToast().then((toast) =>
@@ -206,7 +215,7 @@ export function View({ env, workspace }: WorkViewProps) {
     // A starter is hidden: one press brings that one back.
     if (t.where === "starter") return void toast("Hidden", { action: { label: "Undo", onClick: () => void unhideStarters(env, workspace.id, t.id).catch(failed(`${t.name} was not shown`)) } });
     // No Trash yet: nothing was deleted, and the host asks first.
-    if (answer.confirm) return setRemoving(t);
+    if (answer.confirm) return setRemoving({ template: t, version: answer.version ?? "" });
     const trashed = answer.trashed;
     // Undo puts the file back through Files, then asks for the shelf again; a refusal says it in Files' words.
     if (trashed?.length)
@@ -303,12 +312,12 @@ export function View({ env, workspace }: WorkViewProps) {
       {renaming ? <RenameDialog key={renaming.id} env={env} workspaceId={workspace.id} template={renaming} onClose={() => setRenaming(null)} /> : null}
       {removing ? (
         <ConfirmDialog
-          title={`Delete “${removing.name}”?`}
-          body={deleteLine(removing, env)}
+          title={`Delete “${removing.template.name}”?`}
+          body={deleteLine(removing.template, env)}
           confirmLabel="Delete"
           danger
           onCancel={() => setRemoving(null)}
-          onConfirm={async () => void (await removeTemplate(env, workspace.id, removing.id, true))}
+          onConfirm={async () => void (await removeTemplate(env, workspace.id, removing.template.id, removing.version))}
           onDone={() => setRemoving(null)}
         />
       ) : null}

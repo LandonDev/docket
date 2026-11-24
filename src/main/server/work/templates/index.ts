@@ -6,7 +6,7 @@ import type { Caller, WorkCtx, WorkModule } from '../modules'
 import { makeFromShelf } from './make'
 import { OUT_OF_REACH } from './place'
 import { fieldsOfSource, moveTemplate, removeTemplate, renameTemplate, saveTemplate, unhideTemplates } from './save'
-import { jobDir, listTemplates, workspaceOf } from './shelf'
+import { jobDir, listTemplates, reachesFile, workspaceOf } from './shelf'
 import { ensureTemplatesTables, TemplatesStore } from './store'
 import { templateTools } from './tools'
 
@@ -33,7 +33,9 @@ export async function templatesHandle(req: ClientRequest, ctx: WorkCtx, by: Call
     case 'work.templates.list': {
       const p = params(req, 'work.templates.list')
       reach(ctx, by, p.workspaceId)
-      return handled(listTemplates(ctx, p.workspaceId))
+      const list = listTemplates(ctx, p.workspaceId)
+      // A key is told of no file it could not name itself: one of the job's own reached by a link into a library it may not.
+      return handled(by.kind === 'remote' && !by.peer ? { ...list, templates: list.templates.filter((t) => t.where !== 'job' || t.source.at !== 'file' || reachesFile(ctx, by, t.source.path)) } : list)
     }
     case 'work.templates.make': {
       const p = params(req, 'work.templates.make')
@@ -53,7 +55,7 @@ export async function templatesHandle(req: ClientRequest, ctx: WorkCtx, by: Call
     }
     case 'work.templates.remove': {
       const p = params(req, 'work.templates.remove')
-      return handled(await removeTemplate(ctx, by, p.workspaceId, p.template, p.confirmed === true, { ...(signal ? { signal } : {}) }))
+      return handled(await removeTemplate(ctx, by, p.workspaceId, p.template, p.confirmed === true ? (p.version ?? '') : null, { ...(signal ? { signal } : {}) }))
     }
     case 'work.templates.unhide': {
       const p = params(req, 'work.templates.unhide')

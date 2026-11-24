@@ -222,3 +222,50 @@ describe('our own document', () => {
     expect(tcdocPreview(new TextEncoder().encode('{}'))).toBeNull()
   })
 })
+
+describe('a field the text he sees does not hold', () => {
+  const W = 'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"'
+  const word = (body: string): Uint8Array => makeZip({ 'word/document.xml': `<w:document ${W}><w:body><w:p>${body}</w:p></w:body></w:document>` })
+
+  it('is no field across a tab or a line break: the scan names none and the fill changes nothing', () => {
+    for (const gap of ['<w:tab/>', '<w:br/>', '<w:cr/>']) {
+      const bytes = word(`<w:r><w:t>{{Cli</w:t></w:r><w:r>${gap}<w:t>ent}}</w:t></w:r>`)
+      expect(scanOffice('docx', bytes)).toEqual([])
+      expect(fillOffice('docx', bytes, VALUES).changed).toEqual([])
+    }
+  })
+
+  it('still is one field split over runs with no gap between, and one on either side of a gap', () => {
+    const bytes = word('<w:r><w:t>{{Cli</w:t></w:r><w:r><w:t>ent}}</w:t></w:r><w:r><w:tab/><w:t>{{Crew}}</w:t></w:r>')
+    expect(scanOffice('docx', bytes)).toEqual(['Client', 'Crew'])
+    expect(words(part(fillOffice('docx', bytes, VALUES).bytes, 'word/document.xml'))).toEqual(['A<B & "C" \'D\'R, U1, U2'])
+  })
+
+  it('in a deck, is none across a line break', () => {
+    const A = 'xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"'
+    const deck = makeZip({ 'ppt/slides/slide1.xml': `<p:sld ${A}><p:sp><p:txBody><a:p><a:r><a:t>{{Cli</a:t></a:r><a:br/><a:r><a:t>ent}}</a:t></a:r></a:p></p:txBody></p:sp></p:sld>` })
+    expect(scanOffice('pptx', deck)).toEqual([])
+  })
+})
+
+describe('a field written with character references', () => {
+  it('is filled as it is listed, in Word and in a sheet', () => {
+    const W = 'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"'
+    const doc = makeZip({ 'word/document.xml': `<w:document ${W}><w:body><w:p><w:r><w:t>&#123;&#x7B;Client&#125;&#125;</w:t></w:r></w:p></w:body></w:document>` })
+    expect(scanOffice('docx', doc)).toEqual(['Client'])
+    const filled = fillOffice('docx', doc, VALUES)
+    expect(filled.changed).toEqual(['word/document.xml'])
+    expect(scanOffice('docx', filled.bytes)).toEqual([])
+    const S = 'xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"'
+    const book = makeZip({ 'xl/worksheets/sheet1.xml': `<worksheet ${S}><sheetData><row r="1"><c r="A1" t="inlineStr"><is><t>&#123;&#123;Crew&#125;&#125;</t></is></c></row></sheetData></worksheet>` })
+    expect(scanOffice('xlsx', book)).toEqual(['Crew'])
+    expect(scanOffice('xlsx', fillOffice('xlsx', book, VALUES).bytes)).toEqual([])
+  })
+})
+
+describe('a part that claims more than any Office text holds', () => {
+  it('is not unpacked: the file is read as a plain copy', () => {
+    const zip = readZip(makeZip({ 'word/document.xml': '<w:document/>' }))
+    expect(() => partText({ ...zip[0]!, size: 65 * 1024 * 1024 })).toThrow(NotZipError)
+  })
+})

@@ -14,7 +14,10 @@ import { makeZip, partText, readZip, writeZip } from '../zip'
  * `split.docx` and `fields.xlsx` are written part by part, as small as Word
  * and Excel still open. `split.pptx` is a deck the slides pillar's own
  * `slides_new` makes, with one field then split over three runs the way
- * PowerPoint leaves a typed `{{Client}}`. Dummy names only.
+ * PowerPoint leaves a typed `{{Client}}`. `link.pptx` is not made here: it
+ * was written once with python-pptx (a text box of three paragraphs, two
+ * runs with links, `{{Client}}` beside one), for the fill's link test.
+ * Dummy names only.
  */
 
 const here = dirname(fileURLToPath(import.meta.url))

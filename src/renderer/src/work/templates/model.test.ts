@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Template } from "@shared/work/templates";
-import { asksLine, editsACopy, folderName, hiddenLine, inJob, namesTemplatesFolder, refusedLine, sentence, shelfGroups, sourceStem, stemOf, tileMenu } from "./model";
+import { asksLine, editsACopy, folderName, hiddenLine, inJob, namesTemplatesFolder, refusedLine, sentence, shelfGroups, sourceStem, stemOf, tileMenu, unfilledLine } from "./model";
 
 const tpl = (id: string, name: string, over: Partial<Template> = {}): Template => ({
   id,
@@ -31,6 +31,11 @@ describe("the shelf's groups", () => {
       ["Dummy Esports", ["Crew memo", "Zone report", "Game report", "Season log"]],
       ["All jobs", ["agenda", "Weekly", "Meeting notes"]],
     ]);
+  });
+
+  it("sorts numbers by their worth, as the host does", () => {
+    const groups = shelfGroups([tpl("job:Report 10.docx", "Report 10"), tpl("job:Report 2.docx", "Report 2")], "Dummy Esports");
+    expect(groups[0]!.templates.map((t) => t.name)).toEqual(["Report 2", "Report 10"]);
   });
 
   it("draws no group that has nothing in it", () => {
@@ -122,5 +127,13 @@ describe("the words", () => {
     expect(sentence("The Files view is busy")).toBe("The Files view is busy.");
     expect(sentence("The Files view is busy.")).toBe("The Files view is busy.");
     expect(sentence("Is it there?")).toBe("Is it there?");
+  });
+});
+
+describe("what a made file still holds", () => {
+  it("is one line naming the fields, and nothing for none", () => {
+    expect(unfilledLine(["Client"])).toBe("Still to fill: Client");
+    expect(unfilledLine(["Name", "Client", "Site"])).toBe("Still to fill: Name, Client and Site");
+    expect(unfilledLine([])).toBeNull();
   });
 });

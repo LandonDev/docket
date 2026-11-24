@@ -77,7 +77,13 @@ export function partBytes(entry: ZipEntry): Uint8Array {
 }
 
 const decoder = new TextDecoder()
-export const partText = (entry: ZipEntry): string => decoder.decode(partBytes(entry))
+/** The most a part read as text may claim: an Office file's XML is far smaller, and a larger one is read on the host's own thread. */
+export const TEXT_PART_MAX = 64 * 1024 * 1024
+/** A part's text. A part that claims more than `TEXT_PART_MAX` is refused before it is unpacked: the file is then a plain copy. */
+export const partText = (entry: ZipEntry): string => {
+  if (entry.size > TEXT_PART_MAX) throw new NotZipError('A part of this file is too large to read.')
+  return decoder.decode(partBytes(entry))
+}
 
 /** The zip again, with the named parts' bytes replaced. A name it does not hold is not added. */
 export function writeZip(entries: readonly ZipEntry[], changed: ReadonlyMap<string, Uint8Array> = new Map()): Uint8Array {

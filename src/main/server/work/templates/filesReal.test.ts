@@ -78,7 +78,7 @@ describe('with the real files module', () => {
   })
 
   it('a remove of his own is never a delete he was not asked about: Trash, or the confirm', async () => {
-    const answer = await removeTemplate(rig.ctx, window, WS, 'job:Crew report.docx', false, { pillars: real })
+    const answer = await removeTemplate(rig.ctx, window, WS, 'job:Crew report.docx', null, { pillars: real })
     if (answer.confirm) expect(readdirSync(join(rig.folder, 'Templates'))).toEqual(['Crew report.docx'])
     else {
       // Files' Trash took it: it is off the shelf, and Put back returns it.

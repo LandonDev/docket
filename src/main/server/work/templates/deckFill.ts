@@ -2,26 +2,60 @@ import { readFileSync, rmSync } from 'node:fs'
 import type { SlideOp } from '@shared/contract-work-slides'
 import { fieldMatches, fillText } from '@shared/work/templates'
 import type { WorkCtx } from '../modules'
+import { fillRuns } from './ooxml'
 
 /**
  * A deck's fields, filled by the slides pillar's own edit
  * (docs/agents/work-templates.md "The fill"). Nothing here writes a
  * `.pptx`: the deck is read through `pptx → deckinfo`, which names each
  * slide and shape as `slides_read` does, and written through `pptx →
- * pptxedit` with one `text` op for each shape that holds a field (a
- * table's cell: one `cell` op). The edit replaces a paragraph's runs, so a
- * filled paragraph takes its first run's look.
+ * pptxedit` with one `runs` op for each shape that holds a field: every
+ * run of the shape is named by where it was read, so each keeps its own
+ * look and link, and only the runs a field lay in change their words (as
+ * Word's fill does, ooxml.ts `fillRuns`). A shape read without its runs
+ * takes a `text` op, which gives a filled paragraph its first run's look;
+ * a table's cell, one `cell` op.
  */
 
-/** A deck as `pptx → deckinfo` answers it: only what the fill reads. */
+/** A deck as `pptx → deckinfo` answers it: only what the fill reads. A line break is a run of its own, `\n`. */
 export interface DeckRead {
-  slides: Array<{ id: number; shapes: Array<{ id: number; text: string; cells?: string[][] }> }>
+  slides: Array<{ id: number; shapes: Array<{ id: number; text: string; cells?: string[][]; paragraphs?: Array<{ runs: Array<{ text: string }> }> }> }>
 }
 
 /** What the slides pillar's read and edit carry at most: a shape past these is left as it is. */
 const TEXT_MAX = 20_000
 const PARAGRAPHS_MAX = 200
 const OPS_MAX = 500
+/** The read stops at this many runs in a shape (deckScript.ts `RUN_CAP`): a shape read at it may be cut short. */
+const RUNS_MAX = 400
+
+type Paragraphs = NonNullable<DeckRead['slides'][number]['shapes'][number]['paragraphs']>
+
+/**
+ * A shape's paragraphs with its fields filled run by run, each run `from` the one it was read as; null when no
+ * field there has a value, or when the read may be cut short and writing it back would lose its end.
+ */
+function filledRuns(paragraphs: Paragraphs, values: ReadonlyMap<string, string>): Extract<SlideOp, { op: 'runs' }>['paragraphs'] | null {
+  const runs = paragraphs.reduce((n, p) => n + p.runs.length, 0)
+  if (runs >= RUNS_MAX || paragraphs.length > PARAGRAPHS_MAX || paragraphs.some((p) => p.runs.some((r) => r.text.length >= TEXT_MAX))) return null
+  let changed = false
+  const out = paragraphs.map((p, i) => {
+    const texts = p.runs.map((r) => r.text)
+    // A line break is a gap he sees: no field is filled across one.
+    let at = 0
+    for (let j = 0; j <= texts.length; j++) {
+      if (j < texts.length && texts[j] !== '\n') continue
+      const filled = fillRuns(texts.slice(at, j), values)
+      if (filled) {
+        texts.splice(at, j - at, ...filled.next)
+        changed = true
+      }
+      at = j + 1
+    }
+    return { from: i, runs: texts.map((text, j) => ({ text, from: [i, j] as [number, number] })) }
+  })
+  return changed ? out : null
+}
 
 const holds = (text: string, values: ReadonlyMap<string, string>): boolean => text.includes('{{') && fieldMatches(text).some((m) => values.has(m.key))
 /** A value in a deck stays in its paragraph: a line break in it would make a second one. */
@@ -43,6 +77,11 @@ export function deckOps(deck: DeckRead, values: ReadonlyMap<string, string>): Sl
         continue
       }
       if (shape.text.length >= TEXT_MAX || !holds(shape.text, flat)) continue
+      if (shape.paragraphs) {
+        const paragraphs = filledRuns(shape.paragraphs, flat)
+        if (paragraphs) ops.push({ op: 'runs', slide: slide.id, shape: shape.id, paragraphs })
+        continue
+      }
       const paragraphs = fillText(shape.text, flat).split('\n')
       if (paragraphs.length <= PARAGRAPHS_MAX && paragraphs.every((p) => p.length <= TEXT_MAX)) ops.push({ op: 'text', slide: slide.id, shape: shape.id, paragraphs })
     }

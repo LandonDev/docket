@@ -173,11 +173,15 @@ export function filledValues(o: { today: string; ownerName?: string | null; job?
 
 export const MADE_NAME_MAX = 120
 
-/** A title as a file's stem: no character a disk or OneDrive refuses, no dots or spaces at its ends, cut to `MADE_NAME_MAX`. */
+/**
+ * A title as a file's stem: no character a disk or OneDrive refuses, no dots or spaces at its ends, cut to
+ * `MADE_NAME_MAX`. Nor a start that names no file a person made, which the shelf and Files never show: a dot, or
+ * `~$`, Office's lock file beside an open document.
+ */
 export function fileStem(title: string): string {
   // eslint-disable-next-line no-control-regex
   const clean = title.replace(/[\u0000-\u001f\u007f<>:"/\\|?*]/g, ' ').replace(/\s+/g, ' ').trim()
-  return clean.slice(0, MADE_NAME_MAX).replace(/[. ]+$/, '').replace(/^[. ]+/, '')
+  return clean.slice(0, MADE_NAME_MAX).replace(/[. ]+$/, '').replace(/^(?:[. ]|~\$)+/, '')
 }
 
 /**

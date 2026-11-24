@@ -36,9 +36,10 @@ export const TemplatesRequestSchemas = [
   /**
    * → TemplateRemoved: a starter is hidden from this workspace's shelf. One of his own goes to Files' Trash
    * (`trashed`: the rows Put back takes); where Files has no Trash yet nothing is deleted until the window has
-   * asked him and says so (`confirmed`): the first call answers `confirm`.
+   * asked him and says so (`confirmed`, with the `version` the first call answered `confirm` with: a file that is
+   * not the one he was asked about any more is left).
    */
-  request('work.templates.remove', z.object({ workspaceId: Workspace, template: TemplateRef, confirmed: z.boolean().optional() })),
+  request('work.templates.remove', z.object({ workspaceId: Workspace, template: TemplateRef, confirmed: z.boolean().optional(), version: z.string().max(400).optional() })),
   /** → {}: every starter he hid in this workspace is shown again; with `template`, that one alone (the undo of one Hide). */
   request('work.templates.unhide', z.object({ workspaceId: Workspace, template: TemplateRef.optional() })),
   /** → TemplateFields: the fields a file would ask for as a template, read before it is saved; nothing is copied. */
@@ -60,10 +61,12 @@ export interface TemplateFields {
   later?: true
 }
 
-/** What a remove did: nothing yet (`confirm`: ask him, then say `confirmed`), a move to Files' Trash (`trashed`), or it is done. */
+/** What a remove did: nothing yet (`confirm`: ask him, then say `confirmed` with this `version`), a move to Files' Trash (`trashed`), or it is done. */
 export interface TemplateRemoved {
   trashed?: string[]
   confirm?: true
+  /** the file as he is asked about it */
+  version?: string
 }
 
 /** The shelf changed on this host: one workspace's, or (null) every workspace's, as when a template for all jobs was saved. */

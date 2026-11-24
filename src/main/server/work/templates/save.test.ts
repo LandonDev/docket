@@ -1,4 +1,4 @@
-import { existsSync, readdirSync, readFileSync } from 'node:fs'
+import { existsSync, readdirSync, readFileSync, renameSync } from 'node:fs'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import type { ClientRequest } from '@shared/contract'
@@ -6,7 +6,7 @@ import type { CanvasItem } from '@shared/work'
 import { handled } from '@shared/work'
 import type { WorkModule } from '../modules'
 import { OUT_OF_REACH } from './place'
-import { ELSEWHERE, fieldsOfSource, moveTemplate, NOT_A_TEMPLATE, removeTemplate, renameTemplate, saveTemplate, STARTER_FIXED, unhideTemplates } from './save'
+import { CHANGED, ELSEWHERE, fieldsOfSource, moveTemplate, NOT_A_TEMPLATE, PEER_CONFIRM, removeTemplate, renameTemplate, saveTemplate, STARTER_FIXED, unhideTemplates } from './save'
 import { listTemplates, sharedDir } from './shelf'
 import { docx, HOST, makeRig, OTHER, phone, window, WS, xlsx, type Rig } from './testkit'
 import { makeZip } from './zip'
@@ -214,7 +214,7 @@ describe('move', () => {
 
 describe('remove', () => {
   it('hides a starter in this workspace alone, and unhide shows every one again', async () => {
-    expect(await removeTemplate(rig.ctx, window, WS, 'starter:any/meeting-notes', false, { pillars: none })).toEqual({})
+    expect(await removeTemplate(rig.ctx, window, WS, 'starter:any/meeting-notes', null, { pillars: none })).toEqual({})
     expect(listTemplates(rig.ctx, WS)).toMatchObject({ hidden: 1 })
     expect(listTemplates(rig.ctx, WS).templates.map((t) => t.id)).not.toContain('starter:any/meeting-notes')
     expect(listTemplates(rig.ctx, OTHER).templates.map((t) => t.id)).toContain('starter:any/meeting-notes')
@@ -228,10 +228,11 @@ describe('remove', () => {
     rig.put(join(rig.folder, 'Templates', 'Letter.docx'), docx('a'))
     // Files as master's is today: the folder can do nothing.
     const notYet: WorkModule = { id: 'files', ensure() {}, handle: async (req) => (req.method === 'work.files.places' ? handled({ places: [{ id: 'folder', can: [] }] }) : Promise.reject(new Error('Nothing can be deleted in Dummy Officials from here.'))) }
-    expect(await removeTemplate(rig.ctx, window, WS, 'job:Letter.docx', false, { pillars: () => [notYet] })).toEqual({ confirm: true })
+    const asked = await removeTemplate(rig.ctx, window, WS, 'job:Letter.docx', null, { pillars: () => [notYet] })
+    expect(asked).toEqual({ confirm: true, version: expect.any(String) })
     expect(shelfFiles()).toEqual(['Letter.docx'])
     expect(rig.pushes).toEqual([])
-    expect(await removeTemplate(rig.ctx, window, WS, 'job:Letter.docx', true, { pillars: () => [notYet] })).toEqual({})
+    expect(await removeTemplate(rig.ctx, window, WS, 'job:Letter.docx', asked.version!, { pillars: () => [notYet] })).toEqual({})
     expect(shelfFiles()).toEqual([])
     expect(pushed()).toEqual([WS])
   })
@@ -240,7 +241,7 @@ describe('remove', () => {
     const path = rig.put(join(rig.folder, 'Templates', 'Letter.docx'), docx('a'))
     const seen: ClientRequest[] = []
     const files: WorkModule = { id: 'files', ensure() {}, handle: async (req) => (req.method === 'work.files.places' ? handled({ places: [{ id: 'folder', can: ['trash'] }] }) : (seen.push(req), handled({ entries: [], refused: [], trashed: ['trash_1'], op: 'op' }))) }
-    expect(await removeTemplate(rig.ctx, window, WS, 'Letter', false, { pillars: () => [files] })).toEqual({ trashed: ['trash_1'] })
+    expect(await removeTemplate(rig.ctx, window, WS, 'Letter', null, { pillars: () => [files] })).toEqual({ trashed: ['trash_1'] })
     expect(seen[0]!.method).toBe('work.files.trash')
     expect((seen[0] as { params: Record<string, unknown> }).params).toMatchObject({ workspaceId: WS, refs: [file(path)] })
     // Files moved it (the stand-in did not): this pillar deleted nothing.
@@ -250,15 +251,16 @@ describe('remove', () => {
   it("says Files' own refusal, and deletes nothing", async () => {
     rig.put(join(rig.folder, 'Templates', 'Letter.docx'), docx('a'))
     const files: WorkModule = { id: 'files', ensure() {}, handle: async (req) => (req.method === 'work.files.places' ? handled({ places: [{ id: 'folder', can: ['trash'] }] }) : handled({ entries: [], refused: [{ name: 'Letter.docx', text: 'That file is open in Word.' }], op: 'op' })) }
-    await expect(removeTemplate(rig.ctx, window, WS, 'Letter', true, { pillars: () => [files] })).rejects.toThrow('That file is open in Word.')
+    await expect(removeTemplate(rig.ctx, window, WS, 'Letter', null, { pillars: () => [files] })).rejects.toThrow('That file is open in Word.')
     expect(shelfFiles()).toEqual(['Letter.docx'])
   })
 
   it('deletes one for all jobs only once confirmed: it lies in the app\'s own data, which has no Trash', async () => {
     rig.put(join(sharedDir(rig.ctx), 'Letter.docx'), docx('a'))
     const files: WorkModule = { id: 'files', ensure() {}, handle: async () => Promise.reject(new Error('never asked')) }
-    expect(await removeTemplate(rig.ctx, window, WS, 'all:Letter.docx', false, { pillars: () => [files] })).toEqual({ confirm: true })
-    expect(await removeTemplate(rig.ctx, window, WS, 'all:Letter.docx', true, { pillars: () => [files] })).toEqual({})
+    const asked = await removeTemplate(rig.ctx, window, WS, 'all:Letter.docx', null, { pillars: () => [files] })
+    expect(asked).toMatchObject({ confirm: true })
+    expect(await removeTemplate(rig.ctx, window, WS, 'all:Letter.docx', asked.version!, { pillars: () => [files] })).toEqual({})
     expect(readdirSync(sharedDir(rig.ctx))).toEqual([])
     expect(pushed()).toEqual([null])
   })
@@ -266,9 +268,92 @@ describe('remove', () => {
   it('refuses a key that may not reach the workspace', async () => {
     rig.put(join(rig.folder, 'Templates', 'Letter.docx'), docx('a'))
     rig.roots = []
-    await expect(removeTemplate(rig.ctx, phone, WS, 'Letter', true, { pillars: none })).rejects.toThrow(OUT_OF_REACH)
+    await expect(removeTemplate(rig.ctx, phone, WS, 'Letter', null, { pillars: none })).rejects.toThrow(OUT_OF_REACH)
+    // A Hide is a change of the shelf too: a key outside the fence hides nothing.
+    await expect(removeTemplate(rig.ctx, phone, WS, 'Game report', null, { pillars: none })).rejects.toThrow(OUT_OF_REACH)
+    expect(listTemplates(rig.ctx, WS).hidden).toBe(0)
     await expect(renameTemplate(rig.ctx, phone, WS, 'Letter', 'X')).rejects.toThrow(OUT_OF_REACH)
     expect(() => unhideTemplates(rig.ctx, phone, WS)).toThrow(OUT_OF_REACH)
     expect(shelfFiles()).toEqual(['Letter.docx'])
+  })
+})
+
+describe('remove, bound to the file he was asked about', () => {
+  const sharedDirOf = () => sharedDir(rig.ctx)
+  it('deletes nothing when the name holds another file by the time he says yes', async () => {
+    const path = rig.put(join(sharedDirOf(), 'Letter.docx'), docx('the one he saw'))
+    const asked = await removeTemplate(rig.ctx, window, WS, 'all:Letter.docx', null, { pillars: none })
+    // Another window renames it, and a new Letter.docx is saved under the old name.
+    renameSync(path, join(sharedDirOf(), 'Letter old.docx'))
+    rig.put(path, docx('a new one'))
+    await expect(removeTemplate(rig.ctx, window, WS, 'all:Letter.docx', asked.version!, { pillars: none })).rejects.toThrow(CHANGED)
+    expect(readdirSync(sharedDirOf()).sort()).toEqual(['Letter old.docx', 'Letter.docx'])
+  })
+
+  it('deletes nothing on a yes that names no version, as an older window sends', async () => {
+    rig.put(join(sharedDirOf(), 'Letter.docx'), docx('a'))
+    await expect(removeTemplate(rig.ctx, window, WS, 'all:Letter.docx', '', { pillars: none })).rejects.toThrow(CHANGED)
+    expect(readdirSync(sharedDirOf())).toEqual(['Letter.docx'])
+  })
+
+  it('takes no yes from another host of his', async () => {
+    rig.put(join(sharedDirOf(), 'Letter.docx'), docx('a'))
+    const peer = { kind: 'remote' as const, caps: ['read' as const, 'operate' as const], peer: true }
+    await expect(removeTemplate(rig.ctx, peer as never, WS, 'all:Letter.docx', null, { pillars: none })).rejects.toThrow(PEER_CONFIRM)
+    expect(readdirSync(sharedDirOf())).toEqual(['Letter.docx'])
+  })
+})
+
+describe('a name the shelf would never show', () => {
+  it("is given without Office's lock prefix, so the template stays on the shelf", async () => {
+    rig.put(join(rig.folder, 'Templates', 'Report.docx'), docx('{{To}}'))
+    expect(await renameTemplate(rig.ctx, window, WS, 'job:Report.docx', '~$Report 2')).toMatchObject({ id: 'job:Report 2.docx' })
+    await expect(renameTemplate(rig.ctx, window, WS, 'job:Report 2.docx', '~$')).rejects.toThrow('A template needs a name.')
+    expect(shelfFiles()).toEqual(['Report 2.docx'])
+    const source = rig.put(join(rig.folder, 'Week.docx'), docx('a'))
+    expect(await saveTemplate(rig.ctx, window, { workspaceId: WS, source: file(source), name: '~$Week' }, { pillars: none })).toMatchObject({ id: 'job:Week.docx' })
+  })
+})
+
+describe('a Word template and the document made of it', () => {
+  const pair = () => {
+    rig.put(join(rig.folder, 'Templates', 'Game report.docx'), docx('Old {{Home}}'))
+    rig.put(join(rig.folder, 'Templates', 'Game report.tcdoc'), makeZip({ 'preview.md': 'Edited {{Home}}' }))
+  }
+
+  it('are renamed together', async () => {
+    pair()
+    expect(await renameTemplate(rig.ctx, window, WS, 'Game report', 'Match report')).toMatchObject({ id: 'job:Match report.tcdoc' })
+    expect(shelfFiles()).toEqual(['Match report.docx', 'Match report.tcdoc'])
+  })
+
+  it('refuse a rename to a name the Word file could not take, and keep both', async () => {
+    pair()
+    rig.put(join(rig.folder, 'Templates', 'Match report.docx'), docx('another'))
+    await expect(renameTemplate(rig.ctx, window, WS, 'Game report', 'Match report')).rejects.toThrow('already there')
+    expect(shelfFiles()).toEqual(['Game report.docx', 'Game report.tcdoc', 'Match report.docx'])
+  })
+
+  it('move to all jobs together, under one free name', async () => {
+    pair()
+    rig.put(join(sharedDir(rig.ctx), 'Game report.docx'), docx('another'))
+    expect(await moveTemplate(rig.ctx, window, WS, 'Game report', true)).toMatchObject({ id: 'all:Game report 2.tcdoc' })
+    expect(shelfFiles()).toEqual([])
+    expect(readdirSync(sharedDir(rig.ctx)).sort()).toEqual(['Game report 2.docx', 'Game report 2.tcdoc', 'Game report.docx'])
+  })
+
+  it("go to Files' Trash together", async () => {
+    pair()
+    const seen: ClientRequest[] = []
+    const files: WorkModule = { id: 'files', ensure() {}, handle: async (req) => (req.method === 'work.files.places' ? handled({ places: [{ id: 'folder', can: ['trash'] }] }) : (seen.push(req), handled({ entries: [], refused: [], trashed: ['t1', 't2'], op: 'op' }))) }
+    await removeTemplate(rig.ctx, window, WS, 'Game report', null, { pillars: () => [files] })
+    expect((seen[0] as { params: { refs: unknown[] } }).params.refs).toEqual([file(join(rig.folder, 'Templates', 'Game report.tcdoc')), file(join(rig.folder, 'Templates', 'Game report.docx'))])
+  })
+
+  it('are deleted together once he said yes', async () => {
+    pair()
+    const asked = await removeTemplate(rig.ctx, window, WS, 'Game report', null, { pillars: none })
+    expect(await removeTemplate(rig.ctx, window, WS, 'Game report', asked.version!, { pillars: none })).toEqual({})
+    expect(shelfFiles()).toEqual([])
   })
 })

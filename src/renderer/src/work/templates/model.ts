@@ -29,7 +29,8 @@ export function inJob(template: Template): boolean {
   return sector !== null && sector !== ANY_SECTOR;
 }
 
-const byName = (a: Template, b: Template): number => a.name.localeCompare(b.name, undefined, { sensitivity: "base" }) || a.id.localeCompare(b.id);
+// Numbers by their worth, as the host and Files sort: "Report 2" before "Report 10".
+const byName = (a: Template, b: Template): number => a.name.localeCompare(b.name, undefined, { sensitivity: "base", numeric: true }) || a.id.localeCompare(b.id);
 const ownFirst = (list: Template[]): Template[] => [...list.filter((t) => t.where !== "starter").sort(byName), ...list.filter((t) => t.where === "starter").sort(byName)];
 
 export function shelfGroups(templates: readonly Template[], jobName: string): ShelfGroup[] {
@@ -130,6 +131,9 @@ export function namesTemplatesFolder(at: string | undefined): boolean {
 }
 
 /** A host's words as a sentence: a full stop at the end when they have no stop of their own. */
+/** "Still to fill: Client and Budget": the fields a made file still holds as written, said once it opens; null for none. */
+export const unfilledLine = (unfilled: readonly string[]): string | null => (unfilled.length ? `Still to fill: ${fieldList(unfilled)}` : null);
+
 export const sentence = (words: string): string => (/[.!?…]$/.test(words.trim()) ? words.trim() : `${words.trim()}.`);
 
 /** What a kind is called to someone who cannot see its glyph or tint. */

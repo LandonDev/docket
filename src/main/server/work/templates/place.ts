@@ -7,6 +7,7 @@ import type { FileDone, FilesPlaces } from '@shared/contract-work-files'
 import type { CanvasSource, HostId } from '@shared/work'
 import { freeName, PLACE, splitName, type FileVerb, type FolderRef } from '@shared/work/files'
 import type { TemplateForm, TemplateKind } from '@shared/work/templates'
+import { admitWrite, sharedOf } from '../files/policy'
 import { WORK_MODULES, type Caller, type WorkCtx, type WorkModule } from '../modules'
 import type { WorkspaceRow } from './shelf'
 
@@ -45,6 +46,7 @@ const registry: Pillars = () => WORK_MODULES
 
 export const OWN_FOLDER_ONLY = 'A file from a template is made in this workspace\'s own folder: move it to a shared place in Files.'
 export const OUT_OF_REACH = "That workspace's folder is outside what this key may reach."
+export const SHARED_HELD = 'Others can open that folder (Teams, OneDrive), so a thread cannot put a file there: he can, from the Templates view.'
 
 /** Files' own words for a verb it has not built (files/handle.ts): the one refusal that means "not yet", and not "no". */
 const NOT_YET = /^Files cannot .+ yet\b/
@@ -99,7 +101,7 @@ export async function askFiles(ctx: WorkCtx, by: Caller, ask: PlaceAsk, pillars:
   return { source: made.ref, title: splitName(made.name).stem }
 }
 
-const real = (path: string): string => {
+export const real = (path: string): string => {
   // The nearest folder that exists, by its real path, with the rest as written: a folder not made yet has no real path.
   let at = resolve(path)
   const tail: string[] = []
@@ -171,20 +173,37 @@ export async function copyNoReplace(from: string, dir: string, wanted: string): 
   }
 }
 
+/**
+ * Files' door (files/policy.ts) on a change this pillar makes itself, by path, in a folder of his: whether others
+ * can open the folder is `sharedOf`'s to say, by its real path (a workspace kept in OneDrive, a Templates folder
+ * linked into a library), and who may change it there is `admitWrite`'s. A thread's change there would be a held
+ * act, which only Files makes: here it is refused. His own press in a Templates dialog is the question asked.
+ */
+export function admitDirect(ctx: Pick<WorkCtx, 'db' | 'host' | 'dataDir'>, by: Caller, dir: string, verb: FileVerb): void {
+  const path = real(dir)
+  if (!sharedOf(ctx, { at: 'file', host: ctx.host as HostId, path })) return
+  // Another host of his is held to the thread's row: a change it carries names no press of his.
+  const as: Caller = by.peer ? { kind: 'model', caps: [] } : by
+  const verdict = admitWrite(as, { verb, from: { id: PLACE.folder, kind: 'folder', name: basename(path), host: '', env: ctx.host, shared: true, can: [verb], state: { state: 'ok' } }, asked: as.kind !== 'model' })
+  if (verdict === 'hold') throw new Error(SHARED_HELD)
+}
+
 /** Copies the scratch file into the workspace's own folder under a free name, never over another file. */
 export async function copyIntoOwn(ctx: PlaceCtx, by: Caller, ask: PlaceAsk): Promise<Placed> {
   const dir = ownTarget(ctx, ask.workspace, ask.into)
   if (by.kind === 'remote' && !by.peer && !ctx.reaches(by, dir)) throw new Error(OUT_OF_REACH)
+  admitDirect(ctx, by, dir, 'make')
   const name = await copyNoReplace(ask.scratch, dir, `${ask.title}.${ask.form}`)
   return { source: { at: 'file', host: ctx.host as HostId, path: join(dir, name) }, title: splitName(name).stem }
 }
 
 /**
  * Puts the filled file in its place. His own press (a window, a paired
- * device) asks Files first; a thread and another pillar never do.
+ * device) asks Files first; a thread, another pillar and another host's
+ * hop never do.
  */
 export async function placeFile(ctx: WorkCtx, by: Caller, ask: PlaceAsk, pillars: Pillars = registry, signal?: AbortSignal): Promise<Placed> {
-  if (by.kind !== 'model') {
+  if (by.kind !== 'model' && !by.peer) {
     const placed = await askFiles(ctx, by, ask, pillars, signal)
     if (placed) return placed
   }

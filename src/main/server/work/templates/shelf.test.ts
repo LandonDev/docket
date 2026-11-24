@@ -47,13 +47,13 @@ describe('the three groups', () => {
     expect(report.fields).toEqual(['Home', 'Away', 'Site'])
   })
 
-  it('lists a .tcdoc or a .tcsheet placed by hand with no fields, and does not open it', () => {
-    own('Notes.tcdoc', makeZip({ 'preview.md': '# {{Client}}' }))
+  it("lists a .tcdoc placed by hand with the fields its preview holds, and a .tcsheet with none, unopened", () => {
+    own('Notes.tcdoc', makeZip({ 'preview.md': '# {{Client}} on {{Date}}' }))
     own('Log.tcsheet', 'not even a zip')
     const mine = listTemplates(rig.ctx, WS).templates.filter((t) => t.where === 'job')
     expect(mine.map((t) => [t.name, t.kind, t.form, t.fields])).toEqual([
       ['Log', 'sheet', 'tcsheet', []],
-      ['Notes', 'document', 'tcdoc', []]
+      ['Notes', 'document', 'tcdoc', ['Client']]
     ])
   })
 
@@ -227,5 +227,26 @@ describe('our own document', () => {
     expect(tcdocFields(path)).toEqual(['Client', 'Project'])
     expect(tcdocFields(join(rig.folder, 'missing.tcdoc'))).toEqual([])
     expect(jobDir(workspaceOf(rig.ctx, WS))).toBe(join(rig.folder, 'Templates'))
+  })
+})
+
+describe('a Word template and the document made of it', () => {
+  it('stand as one tile, the document, which asks what his edits ask', () => {
+    own('Game report.docx', docx('Old {{Home}}'))
+    own('Game report.tcdoc', makeZip({ 'preview.md': 'Edited {{Home}} v {{Away}} at {{Site}}' }))
+    all('Letter.docx', docx('{{To}}'))
+    all('Letter.tcdoc', makeZip({ 'preview.md': 'Dear {{To}} and {{Cc}}' }))
+    const list = listTemplates(rig.ctx, WS).templates
+    expect(list.filter((t) => t.name === 'Game report')).toEqual([expect.objectContaining({ id: 'job:Game report.tcdoc', where: 'job', fields: ['Home', 'Away', 'Site'] })])
+    expect(list.filter((t) => t.name === 'Letter')).toEqual([expect.objectContaining({ id: 'all:Letter.tcdoc', fields: ['To', 'Cc'] })])
+    // The shelf's own entry knows the Word file it stands for; the wire never says it.
+    expect(shelfOf(rig.ctx, WS).entries.find((e) => e.id === 'job:Game report.tcdoc')?.twin).toBe(join(rig.folder, 'Templates', 'Game report.docx'))
+    expect(Object.keys(list.find((t) => t.name === 'Letter')!)).not.toContain('twin')
+  })
+
+  it('is found by name as the document', () => {
+    own('Game report.docx', docx('Old {{Home}}'))
+    own('Game report.tcdoc', makeZip({ 'preview.md': 'Edited {{Home}}' }))
+    expect(resolveTemplate(rig.ctx, WS, 'Game report').entry.id).toBe('job:Game report.tcdoc')
   })
 })

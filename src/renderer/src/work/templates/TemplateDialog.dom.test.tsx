@@ -33,6 +33,8 @@ vi.mock("../../lib/tcserver/workspaces", async (original) => {
   const workspaces = [{ id: "ws", environmentId: "box", name: "Dummy Esports", path: "/w/Dummy Esports" }];
   return { ...(await original<object>()), useWorkspaces: () => workspaces, workspaceStore: { getSnapshot: () => ({ workspaces }) } };
 });
+const toasted: string[] = [];
+vi.mock("../../components/ui/toaster", async (original) => ({ ...(await original<object>()), loadToast: async () => (title: string) => toasted.push(title) }));
 const opened = vi.fn();
 vi.mock("../../lib/workSwitch", async (original) => ({ ...(await original<object>()), openWorkView: (v: unknown) => opened(v) }));
 
@@ -59,6 +61,7 @@ const asked = (method: string) => host.asked.filter((a) => a.method === method).
 
 beforeEach(() => {
   host.asked.length = 0;
+  toasted.length = 0;
   opened.mockReset();
   host.answer = (method) => (method === "work.templates.list" ? { templates: [MEMO, REPORT], hidden: 0 } : method === "work.templates.make" ? MADE : method === "work.files.open" ? { tabs: [] } : null);
 });
@@ -113,6 +116,31 @@ describe("New from a template", () => {
     expect(create.hasAttribute("disabled")).toBe(false);
     // The swap is a fade of the arriving step, and none under reduced motion.
     expect(fields[0]!.closest("[class*='starting:opacity-0']")!.className).toContain("motion-reduce:transition-none");
+  });
+
+  it("says the fields still in the made file once it opens: those he left empty", async () => {
+    host.answer = (method) => (method === "work.templates.list" ? { templates: [MEMO, REPORT], hidden: 0 } : method === "work.templates.make" ? { ...MADE, unfilled: ["Away", "Site"] } : method === "work.files.open" ? { tabs: [] } : null);
+    const closed = vi.fn();
+    render(<TemplateDialog env="box" workspaceId="ws" onClose={closed} />);
+    await settle();
+    fireEvent.click(screen.getByRole("button", { name: "Game report" }));
+    await settle();
+    const [home, , site] = screen.getAllByRole("textbox");
+    fireEvent.change(home!, { target: { value: "North" } });
+    fireEvent.keyDown(site!, { key: "Enter" });
+    await settle();
+    await settle();
+    await waitFor(() => expect(toasted).toEqual(["Still to fill: Away and Site"]));
+  });
+
+  it("says nothing more when the made file holds no field", async () => {
+    render(<TemplateDialog env="box" workspaceId="ws" onClose={() => {}} />);
+    await settle();
+    fireEvent.click(screen.getByRole("button", { name: "Crew memo" }));
+    await settle();
+    await settle();
+    await waitFor(() => expect(asked("work.files.open")).toHaveLength(1));
+    expect(toasted).toEqual([]);
   });
 
   it("moves on with Return and makes from the last field, sending only what he typed", async () => {

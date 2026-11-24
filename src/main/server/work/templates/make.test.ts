@@ -76,15 +76,49 @@ describe('a make', () => {
     expect(sheet).toContain('<t>Invoice 0042</t>')
   })
 
-  it('makes a plain copy of a file that is no zip, and of our own kinds', async () => {
+  it('makes a plain copy of a file that is no zip, and of our own document where its Word export does not answer, naming its fields', async () => {
     rig.put(join(rig.folder, 'Templates', 'Broken.docx'), 'not a zip {{Client}}')
     rig.put(join(rig.folder, 'Templates', 'Notes.tcdoc'), makeZip({ 'preview.md': '{{Client}}' }))
     const broken = await make({ template: 'Broken', fields: { Client: 'x' } })
     expect(readFileSync(pathOf(broken.source), 'utf8')).toBe('not a zip {{Client}}')
     expect(broken.unfilled).toEqual([])
     const notes = await make({ template: 'Notes' })
-    expect(notes).toMatchObject({ kind: 'document', title: 'Notes', unfilled: [] })
+    expect(notes).toMatchObject({ kind: 'document', title: 'Notes', unfilled: ['Client'] })
     expect(pathOf(notes.source)).toBe(join(rig.folder, 'Notes.tcdoc'))
+  })
+
+  it('makes a plain copy of our own document with no field', async () => {
+    rig.put(join(rig.folder, 'Templates', 'Plain.tcdoc'), makeZip({ 'preview.md': 'No field here' }))
+    const plain = await make({ template: 'Plain' })
+    expect(plain).toMatchObject({ kind: 'document', unfilled: [] })
+    expect(pathOf(plain.source)).toBe(join(rig.folder, 'Plain.tcdoc'))
+  })
+})
+
+describe('a Word template he edited', () => {
+  // Edit opened Game report.docx; the document kind kept his edits in Game report.tcdoc beside it.
+  const edited = () => {
+    rig.put(join(rig.folder, 'Templates', 'Game report.docx'), docx('Old: {{Home}} v {{Away}} at {{Site}}'))
+    rig.put(join(rig.folder, 'Templates', 'Game report.tcdoc'), makeZip({ 'preview.md': 'Edited: {{Home}} v {{Away}} at {{Site}} by {{Name}}' }))
+  }
+  const exported: string[] = []
+  const formats: WorkModule = {
+    id: 'formats',
+    ensure() {},
+    handle: async (req) => {
+      exported.push(JSON.stringify((req as { params: unknown }).params))
+      return handled({ name: 'x.docx', data: Buffer.from(docx('Edited: {{Home}} v {{Away}} at {{Site}} by {{Name}}')).toString('base64'), warnings: [] })
+    }
+  }
+
+  it('makes Word from his edits, with the fields filled, and names what is left', async () => {
+    edited()
+    exported.length = 0
+    const made = await make({ template: 'Game report', fields: { Home: 'Central', Away: 'North' } }, window, { pillars: () => [formats] })
+    expect(exported).toEqual([JSON.stringify({ source: { at: 'file', host: HOST, path: join(rig.folder, 'Templates', 'Game report.tcdoc') }, format: 'docx' })])
+    expect(pathOf(made.source)).toBe(join(rig.folder, 'Game report - Central.docx'))
+    expect(words(pathOf(made.source))).toEqual(['Edited: Central v North at {{Site}} by Sam Dummy'])
+    expect(made.unfilled).toEqual(['Site'])
   })
 })
 

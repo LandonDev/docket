@@ -70,8 +70,11 @@ describe('the handlers', () => {
     expect(await call('work.templates.rename', { workspaceId: WS, template: 'job:Letter.docx', name: 'Note' })).toMatchObject({ id: 'job:Note.docx' })
     expect(await call('work.templates.move', { workspaceId: WS, template: 'Note', everywhere: true })).toMatchObject({ id: 'all:Note.docx' })
     expect(await call('work.templates.make', { workspaceId: WS, template: 'Note', fields: { To: 'Crew' }, today: '2026-11-23' })).toEqual({ source: { at: 'file', host: HOST, path: join(rig.folder, 'Note - Crew.docx') }, kind: 'document', title: 'Note - Crew', unfilled: [] })
-    expect(await call('work.templates.remove', { workspaceId: WS, template: 'all:Note.docx' })).toEqual({ confirm: true })
-    expect(await call('work.templates.remove', { workspaceId: WS, template: 'all:Note.docx', confirmed: true })).toEqual({})
+    const asked = (await call('work.templates.remove', { workspaceId: WS, template: 'all:Note.docx' })) as { confirm: true; version: string }
+    expect(asked).toEqual({ confirm: true, version: expect.any(String) })
+    // A yes without the version it was asked with deletes nothing.
+    await expect(call('work.templates.remove', { workspaceId: WS, template: 'all:Note.docx', confirmed: true })).rejects.toThrow('nothing was deleted')
+    expect(await call('work.templates.remove', { workspaceId: WS, template: 'all:Note.docx', confirmed: true, version: asked.version })).toEqual({})
     expect(await call('work.templates.remove', { workspaceId: WS, template: 'Season log' })).toEqual({})
     expect(await call('work.templates.list', { workspaceId: WS })).toMatchObject({ hidden: 1 })
     expect(await call('work.templates.remove', { workspaceId: WS, template: 'Game report' })).toEqual({})
