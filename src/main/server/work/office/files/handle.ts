@@ -14,6 +14,7 @@ import { workspaceHere } from '../../files/policy'
 import { readWhole } from '../../files/save'
 import type { OfficeCarrier } from '../carrier'
 import { BYTES_MAX, copyAllowed, entryOf, fetchFile, foldersPlace, librariesOf, libraryOf, listFolder, offFolders, readText, rootsOf, searchLibraries, SEARCH_MAX, setCopyAllowed, setRoots } from './library'
+import { zipEntries } from './zip'
 import { NOT_SET_UP } from '../../winvm/keeper'
 import { isGuestPath, lastReadFailure, missingLibraries, readVmBehind, refreshVm, resetSyncAsks, setWantedLibraries, storedStatus, vmBytes, vmFetch, vmLibraries, vmLibraryOf, vmList, vmOfficeStatus, vmOpen, vmPlace, vmSearch, vmStat, vmText, wantedLibraries } from '../vm/files'
 import { vmAllowed, vmKey, vmState } from '../vm/office'
@@ -211,7 +212,9 @@ const realOr = (path: string): string => {
 
 /**
  * `Name.tcdoc` or `Name 2.tcdoc` in the folder of `Name.docx`, or in the folder under this host's data the importer
- * keeps for a file others can open (files/imports.ts): the document an import made of it (formats/importer.ts `freePath`).
+ * keeps for a file others can open (files/imports.ts): the document an import made of it (formats/importer.ts `freePath`),
+ * and only one whose own record says so: the importer writes the file it came from into the document's sidecar
+ * (`source.name`). A document of his that merely shares the name is another file, and Ask never picks its thread.
  */
 const madeOf = (ctx: Pick<WorkCtx, 'dataDir' | 'host'>, path: string, file: string): boolean => {
   if (extname(path) !== '.tcdoc' || !IMPORTED.test(file)) return false
@@ -219,7 +222,19 @@ const madeOf = (ctx: Pick<WorkCtx, 'dataDir' | 'host'>, path: string, file: stri
   if (realFolder(path) !== realFolder(file) && dirname(path) !== imports) return false
   const stem = importName(basename(file, extname(file)))
   const name = basename(path, '.tcdoc')
-  return name === stem || (name.startsWith(`${stem} `) && /^ \d+$/.test(name.slice(stem.length)))
+  if (name !== stem && !(name.startsWith(`${stem} `) && /^ \d+$/.test(name.slice(stem.length)))) return false
+  return importedFrom(path) === basename(file)
+}
+
+/** The name of the file a `.tcdoc` was imported from, as its sidecar records it; null for one made any other way. */
+function importedFrom(path: string): string | null {
+  try {
+    const raw = zipEntries(path, ['sidecar.json'], 4 * 1024 * 1024).get('sidecar.json')
+    const name = raw ? (JSON.parse(raw) as { source?: { name?: unknown } }).source?.name : null
+    return typeof name === 'string' ? name : null
+  } catch {
+    return null
+  }
 }
 
 /**

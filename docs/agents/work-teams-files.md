@@ -534,7 +534,10 @@ files/handle.ts), the threads whose open items show that file, newest first:
 the file in place, its Office app's file, the copy he allowed (by its
 folder, the hash of the source), or the `.tcdoc` a Word, OpenDocument,
 RTF, markdown or text file became beside it (`Name.tcdoc`, `Name 2.tcdoc`,
-the importer's spelling, the folder read through its links). Only open items
+the importer's spelling, the folder read through its links), and only one
+whose sidecar records that file as its source (`source.name`, written by the
+importer): a document of his that merely shares the name is another file, and
+its thread is never picked for Ask. Only open items
 count, however many closed ones changed since. A file in the Windows VM is
 named by the guest's path, so the method is one of the listener fence's
 Teams files verbs (`GUEST_METHODS`, remote/fence.ts). Reusing a thread whose

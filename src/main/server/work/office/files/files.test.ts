@@ -1,5 +1,6 @@
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, statSync, symlinkSync, truncateSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
+import { strToU8, zipSync } from 'fflate'
 import { dirname, join } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
 import { deflateRawSync } from 'node:zlib'
@@ -470,6 +471,9 @@ describe('the thread that already holds a file', () => {
     mkdirSync(folder, { recursive: true })
     const plan = join(folder, 'Plan  review.docx')
     const at = (name: string) => ({ at: 'file', host: 'env_mac', path: join(folder, name) })
+    // Each records, as the importer writes it, the file it came from.
+    for (const [name, from] of [['Plan review.tcdoc', 'Plan  review.docx'], ['Plan review 2.tcdoc', 'Plan  review.docx'], ['Plan review (2).tcdoc', 'Plan review (2).docx'], ['Report.tcdoc', 'Report.docx']])
+      writeFileSync(join(folder, name), zipSync({ 'sidecar.json': strToU8(JSON.stringify({ source: { name: from, format: 'docx', importedAt: 1 } })) }))
     expect(await holding([item('made', 's1', at('Plan review.tcdoc'))], 'env_mac', plan)).toEqual([['s1', 'made']])
     expect(await holding([item('second', 's2', at('Plan review 2.tcdoc'))], 'env_mac', plan)).toEqual([['s2', 'second']])
     // Another file's document: "Plan review (2).docx" beside it, or a PDF of the same name.

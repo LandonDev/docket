@@ -1,6 +1,7 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { strToU8, zipSync } from 'fflate'
 import type { ClientRequest } from '@shared/contract'
 import { filesPaneOf } from '@shared/work'
 import type { Caller } from '../../modules'
@@ -131,12 +132,33 @@ describe('a Files tab\'s copies are dropped', () => {
 })
 
 describe('the thread that holds a Teams file', () => {
+  /** A `.tcdoc` whose sidecar says what it was imported from, as the importer writes it; `from: null` records nothing. */
+  const tcdoc = (path: string, from: string | null) => {
+    mkdirSync(dirname(path), { recursive: true })
+    writeFileSync(path, zipSync({ 'sidecar.json': strToU8(JSON.stringify(from ? { source: { name: from, format: 'docx', importedAt: 1 } } : {})) }))
+  }
+
   it('is found by the document an import made of it under this host\'s data', () => {
     const plan = join(rig.team, 'General', 'Plan.docx')
     const made = join(importFolderOf(rig.dataDir, { host: HOST, path: plan }), 'Plan 2.tcdoc')
+    tcdoc(made, 'Plan.docx')
     const item = rig.canvas.open('t1', { kind: 'document', source: at(made), title: 'Plan 2' })
     expect(threadsHolding(rig.ctx, WS, at(plan)).map((t) => [t.sessionId, t.itemId])).toEqual([['t1', item.id]])
     // Another file's import folder is not this file's.
     expect(threadsHolding(rig.ctx, WS, at(join(rig.team, 'Events', 'Plan.docx')))).toEqual([])
+  })
+
+  it('is never a thread holding a document of his that only shares the name: the import must say it came from the file', () => {
+    const trip = join(rig.folder, 'Trip.docx')
+    writeFileSync(trip, 'word')
+    const mine = join(rig.folder, 'Trip.tcdoc')
+    tcdoc(mine, null)
+    rig.canvas.open('t1', { kind: 'document', source: at(mine), title: 'Trip' })
+    expect(threadsHolding(rig.ctx, WS, at(trip))).toEqual([])
+    // One imported from another file of that name elsewhere is not this one's either.
+    tcdoc(mine, 'Trip.pdf')
+    expect(threadsHolding(rig.ctx, WS, at(trip))).toEqual([])
+    tcdoc(mine, 'Trip.docx')
+    expect(threadsHolding(rig.ctx, WS, at(trip)).map((t) => t.sessionId)).toEqual(['t1'])
   })
 })
