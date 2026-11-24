@@ -309,8 +309,12 @@ const ListParams = z
 export const OutboxRequestSchemas = [
   /** → { items: OutboxItem[], waiting: number }: this host's held rows and its LifeOS-held items, as one list. A computer act's picture is left out here. */
   request('work.outbox.list', ListParams),
-  /** → OutboxItem with its whole payload, a computer act's picture included (`payload.picture.data`, base64) */
-  request('work.outbox.get', z.object({ ref: HeldRefSchema })),
+  /**
+   * → OutboxItem with its whole payload, a computer act's picture included (`payload.picture.data`, base64). `results`:
+   * the answer carries the act's thread's Results too (`results: WorkResult[]`, as `work.outbox.results {sessionId}`
+   * lists them), so an Outbox detail is one ask; an act with no thread, or a host with no Results, carries none.
+   */
+  request('work.outbox.get', z.object({ ref: HeldRefSchema, results: z.boolean().optional() })),
   /** → OutboxItem: the owner's press. Runs the act once: a second press, another client's press and a restart never run it again. */
   /** `rev`: the item's `updatedAt` as the screen read it. Required for an item LifeOS holds, so what goes is what was shown; for a host row a press on a stale view is refused when given. */
   request('work.outbox.send', z.object({ ref: HeldRefSchema, rev: z.number().int().optional(), /** he checked Sent and chose Send again on an item whose last send may have gone */ again: z.boolean().optional(), /** one of several sent by one press (a group's Send N, ticked rows): it earns no offered grant */ many: z.boolean().optional(), via: PressViaSchema.optional() })),

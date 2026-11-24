@@ -8,7 +8,7 @@ import { registerToastAnchor } from "../../lib/toastAnchor";
 import { kindHeading } from "../acts/kindRows";
 import { Calendar, Chat, File, Link, Mail, Share, Task, Video } from "../icons";
 import { EDITABLE, pastOf, payloadView } from "./model";
-import { fetchItem, loadHost, type HostItem } from "./store";
+import { fetchDetail, loadHost, type HostItem } from "./store";
 
 /**
  * The Outbox's small shared parts (docs/DESIGN.md "The Outbox"): the words a
@@ -203,7 +203,7 @@ export function usePicture(item: HostItem): Picture {
     let live = true;
     setSrc(undefined);
     setLoaded(false);
-    fetchItem(item.environmentId, item.ref).then(
+    fetchDetail(item).then(
       (whole) => {
         const picture = (whole.payload as { picture?: { data?: string; mimeType?: string } | null } | null)?.picture;
         // A picture the act kept but whose bytes did not come is a failure, never "none kept".

@@ -13,7 +13,7 @@ import { OfferLine } from "./OfferLine";
 import { DetailColumn, itemTitle, KeptPicture, splitSummary, usePicture, VerbBar } from "./parts";
 import { pressFailWords } from "./failWords";
 import { loadResults, undoResult, useResults } from "./results";
-import type { HostItem, HostOffer } from "./store";
+import { readDetailResults, type HostItem, type HostOffer } from "./store";
 import { decidedAt, whoWords } from "./waiting";
 
 const toast = (line: string) => void loadToast().then((t) => t(line));
@@ -46,7 +46,11 @@ export function DoneDetail({
   }, [listed]);
   const went = item.state === "sent";
   // The act's Result carries its way back (work_results); a mail has none.
-  const results = useResults(item.environmentId, item.sessionId ?? "", went && !!item.sessionId);
+  // Its way back comes with the detail's one ask (store.ts `fetchDetail`), or from the Results already held.
+  useEffect(() => {
+    if (went) readDetailResults(item);
+  }, [went, item]);
+  const results = useResults(item.environmentId, item.sessionId ?? "", false);
   const result = results.rows.find((r) => {
     const held = (r.ref as { held?: { at: string; id: string } } | null)?.held;
     return held?.at === item.ref.at && held.id === item.ref.id;

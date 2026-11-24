@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { memo, type ReactNode } from "react";
 import { Button } from "../../components/ui/button";
 import { Checkbox } from "../../components/ui/checkbox";
 import { ItemButton } from "../../components/ui/item";
@@ -190,48 +190,8 @@ export function WaitingList({
                 const key = itemKey(item);
                 const { act, about } = rowWords(item);
                 const side = rowSide(item, section.kind, now);
-                const can = tickable(item);
-                const glyph =
-                  item.state === "failed" ? (
-                    <StatusMark state="failed" word={false} />
-                  ) : item.state === "sending" && item.scheduledFor == null ? (
-                    <StatusMark state="working" word={false} still />
-                  ) : (
-                    <KindGlyph kind={item.kind} />
-                  );
                 return (
-                  <Row
-                    key={key}
-                    rowKey={key}
-                    stop={stop === key}
-                    current={current === key}
-                    act={act}
-                    about={about}
-                    side={side.text}
-                    strong={side.strong}
-                    snippet={(actCount.get(act) ?? 0) > 1 && !!about}
-                    onPick={() => onPick(item)}
-                    lead={<span className={cn("grid size-4 place-items-center", can && (ticking ? "opacity-0" : yields("row")))}>{glyph}</span>}
-                    tick={
-                      can ? (
-                        <span className={cn("absolute start-2 top-2 grid size-4 place-items-center", !ticking && reveal("row", { row: true, overlay: true }))}>
-                          <Checkbox
-                            tabIndex={-1}
-                            aria-label={`Tick ${act}`}
-                            checked={ticked.has(key)}
-                            onClick={(e) => {
-                              // Shift-click ticks the range from the last tick; the checkbox's own change is the plain one.
-                              if (e.shiftKey) {
-                                e.preventDefault();
-                                onTick(item, true, true);
-                              }
-                            }}
-                            onCheckedChange={(on) => onTick(item, on, false)}
-                          />
-                        </span>
-                      ) : undefined
-                    }
-                  />
+                  <HeldRow key={key} item={item} stop={stop === key} current={current === key} ticking={ticking} ticked={ticked.has(key)} side={side.text} strong={side.strong} snippet={(actCount.get(act) ?? 0) > 1 && !!about} onPick={onPick} onTick={onTick} />
                 );
               })}
               {fold ? (
@@ -257,6 +217,80 @@ export function WaitingList({
   );
 }
 
+/**
+ * One waiting row. Memoised on the item, which the store keeps as the same object while nothing it shows moved, and on
+ * plain values: a read that changed one item draws that row alone (the perf pass's M2).
+ */
+const HeldRow = memo(function HeldRow({
+  item,
+  stop,
+  current,
+  ticking,
+  ticked,
+  side,
+  strong,
+  snippet,
+  onPick,
+  onTick,
+}: {
+  item: HostItem;
+  stop: boolean;
+  current: boolean;
+  ticking: boolean;
+  ticked: boolean;
+  side: string;
+  strong: boolean;
+  /** Master's: the row shows its snippet when another row of the section says the same act. */
+  snippet: boolean;
+  onPick: (item: HostItem) => void;
+  onTick: (item: HostItem, on: boolean, range: boolean) => void;
+}) {
+  const key = itemKey(item);
+  const { act, about } = rowWords(item);
+  const can = tickable(item);
+  const glyph =
+    item.state === "failed" ? (
+      <StatusMark state="failed" word={false} />
+    ) : item.state === "sending" && item.scheduledFor == null ? (
+      <StatusMark state="working" word={false} still />
+    ) : (
+      <KindGlyph kind={item.kind} />
+    );
+  return (
+    <Row
+      rowKey={key}
+      stop={stop}
+      current={current}
+      act={act}
+      about={about}
+      side={side}
+      strong={strong}
+      snippet={snippet}
+      onPick={() => onPick(item)}
+      lead={<span className={cn("grid size-4 place-items-center", can && (ticking ? "opacity-0" : yields("row")))}>{glyph}</span>}
+      tick={
+        can ? (
+          <span className={cn("absolute start-2 top-2 grid size-4 place-items-center", !ticking && reveal("row", { row: true, overlay: true }))}>
+            <Checkbox
+              tabIndex={-1}
+              aria-label={`Tick ${act}`}
+              checked={ticked}
+              onClick={(e) => {
+                // Shift-click ticks the range from the last tick; the checkbox's own change is the plain one.
+                if (e.shiftKey) {
+                  e.preventDefault();
+                  onTick(item, true, true);
+                }
+              }}
+              onCheckedChange={(on) => onTick(item, on, false)}
+            />
+          </span>
+        ) : undefined
+      }
+    />
+  );
+});
+
 /** Done by day, newest first: what went, what he discarded, what went out of date that he put away. */
 export function DoneList({ days, current, stop, now, onPick }: { days: { label: string; items: HostItem[] }[]; current: string | null; stop: string | null; now: number; onPick: (item: HostItem) => void }) {
   return (
@@ -267,21 +301,7 @@ export function DoneList({ days, current, stop, now, onPick }: { days: { label: 
           <ul className="flex flex-col gap-0.5">
             {day.items.map((item) => {
               const key = itemKey(item);
-              const { act, about, outcome } = doneLine(item, rowWords(item), now);
-              const queued = item.state === "sent" && item.lifeos === "queued";
-              return (
-                <Row
-                  key={key}
-                  rowKey={key}
-                  stop={stop === key}
-                  current={current === key}
-                  act={act}
-                  about={about}
-                  side={outcome ?? clockTime(decidedAt(item))}
-                  onPick={() => onPick(item)}
-                  lead={queued ? <StatusMark state="queued" word={false} /> : <KindGlyph kind={item.kind} />}
-                />
-              );
+              return <DoneRow key={key} item={item} stop={stop === key} current={current === key} now={now} onPick={onPick} />;
             })}
           </ul>
         </section>
@@ -289,3 +309,21 @@ export function DoneList({ days, current, stop, now, onPick }: { days: { label: 
     </div>
   );
 }
+
+/** One Done row, memoised as a waiting row is. */
+const DoneRow = memo(function DoneRow({ item, stop, current, now, onPick }: { item: HostItem; stop: boolean; current: boolean; now: number; onPick: (item: HostItem) => void }) {
+  const { act, about, outcome } = doneLine(item, rowWords(item), now);
+  const queued = item.state === "sent" && item.lifeos === "queued";
+  return (
+    <Row
+      rowKey={itemKey(item)}
+      stop={stop}
+      current={current}
+      act={act}
+      about={about}
+      side={outcome ?? clockTime(decidedAt(item))}
+      onPick={() => onPick(item)}
+      lead={queued ? <StatusMark state="queued" word={false} /> : <KindGlyph kind={item.kind} />}
+    />
+  );
+});

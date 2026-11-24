@@ -6,7 +6,7 @@ import { shortcutFor } from "../../lib/settings";
 import { ownZone } from "work-kit/mail/lib/zones";
 import { DiscardButton, PickTime, SendSplit, useKeyVerbs, type DetailCommands } from "./HeldDetail";
 import { DetailColumn, VerbBar } from "./parts";
-import { decideMany, fetchItem, type DecideDo, type HostItem } from "./store";
+import { decideMany, fetchDetail, type DecideDo, type HostItem } from "./store";
 import { SummaryList } from "./SummaryList";
 import { doneWords, itemKey, openOnly, resultsHead, summaryHead, type RowResult } from "./waiting";
 
@@ -29,7 +29,7 @@ function useQuoted(items: readonly HostItem[]): ReadonlySet<string> {
   const [quoted, setQuoted] = useState<ReadonlySet<string>>(new Set());
   useEffect(() => {
     let live = true;
-    void Promise.all(mails.map((i) => fetchItem(i.environmentId, i.ref).then((whole) => ((whole.payload as { quote?: string } | null)?.quote ? itemKey(i) : null), () => null))).then(
+    void Promise.all(mails.map((i) => fetchDetail(i).then((whole) => ((whole.payload as { quote?: string } | null)?.quote ? itemKey(i) : null), () => null))).then(
       (keys) => live && setQuoted(new Set(keys.filter((k): k is string => k !== null))),
     );
     return () => {

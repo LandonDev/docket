@@ -35,7 +35,7 @@ import {
   decideMany,
   discardItem,
   editItem,
-  fetchItem,
+  fetchDetail,
   grantAndSend,
   mayUndoSend,
   notSentWords,
@@ -145,7 +145,7 @@ function useWhole(item: HostItem): { shown: HostItem; ready: boolean; failed: bo
   useEffect(() => {
     let live = true;
     setRead(null);
-    fetchItem(item.environmentId, item.ref).then(
+    fetchDetail(item).then(
       (whole) => live && setRead({ key, item: { ...item, ...whole, environmentId: item.environmentId } as HostItem }),
       (error: unknown) => live && setRead({ key, item: null, error }),
     );

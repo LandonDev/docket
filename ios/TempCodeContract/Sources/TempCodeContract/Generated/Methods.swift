@@ -2637,9 +2637,11 @@ public enum Methods {
 
         public struct Params: Codable, Hashable, Sendable {
             public let ref: HeldRef
+            public let results: Bool?
 
-            public init(ref: HeldRef) {
+            public init(ref: HeldRef, results: Bool? = nil) {
                 self.ref = ref
+                self.results = results
             }
         }
 

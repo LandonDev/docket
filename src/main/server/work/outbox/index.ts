@@ -141,8 +141,12 @@ export const outbox: WorkModule = {
         const listed = box.list(req.params ?? {})
         return handled({ ...listed, items: listed.items.map((item) => seenBy(by, item)) })
       }
-      case 'work.outbox.get':
-        return handled(seenBy(by, await withPicture(host, await box.get(req.params.ref))))
+      case 'work.outbox.get': {
+        const item = seenBy(by, await withPicture(host, await box.get(req.params.ref)))
+        // The detail's one ask: its thread's Results ride with the act (`results: true`), where this host keeps them.
+        const results = req.params.results && item.sessionId ? resultsOf(ctx)?.list({ sessionId: item.sessionId }) : undefined
+        return handled(results ? { ...item, results } : item)
+      }
       case 'work.outbox.send':
         mustBePerson(by, 'approve')
         return handled(await box.send(req.params.ref, { ...(req.params.rev !== undefined ? { rev: req.params.rev } : {}), ...(req.params.again ? { again: true } : {}), ...(req.params.many ? { many: true } : {}), ...(req.params.via ? { via: req.params.via } : {}), by: person(by) }))

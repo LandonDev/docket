@@ -157,13 +157,18 @@ vi.mock("../../lib/connection", async (original) => {
 });
 
 vi.mock("../../chrome/WindowControls", () => ({ WindowControls: () => null }));
+// A row's words are read once a draw: the count of draws a row had (M2: one read changing one item draws one row).
+vi.mock("./parts", async (original) => {
+  const parts = await original<typeof import("./parts")>();
+  return { ...parts, rowWords: vi.fn(parts.rowWords) };
+});
 vi.mock("../../lib/linkMay", async (original) => (await import("../../lib/linkMay.testkit")).linkMayMock(await original()));
 
 import { GIVEN_KEY, resetTestKey, testKey } from "../../lib/linkMay.testkit";
 import { toastAnchor } from "../../lib/toastAnchor";
 import { setWorkOn, workSwitch } from "../../lib/workSwitch";
 import { batchVerb, canEdit, OutboxView, rememberOutboxTab, rowWords } from "./OutboxView";
-import { loadOutbox, resetOutboxStore, wantOutboxItem } from "./store";
+import { loadHost, loadOutbox, resetOutboxStore, wantOutboxItem } from "./store";
 
 const mail = (id: string, to: string, subject: string, extra: Partial<OutboxItem> = {}): OutboxItem => ({
   ref: { at: "lifeos", table: "outbox", id },
@@ -239,8 +244,22 @@ async function open() {
   // the page keeps the tab it was left on; each test starts on Waiting
   fireEvent.click(screen.getByRole("tab", { name: "Waiting" }));
   await waitFor(() => expect(screen.getAllByText("Send to Dana Lee").length).toBeGreaterThan(0), { timeout: 5000 });
+  // The detail's act view is a chunk of its own: Send waits for its payload on screen.
+  await waitFor(() => expect(document.querySelector('[data-outbox-detail] [data-slot="act-payload"]')).not.toBeNull(), { timeout: 5000 });
 }
 const sends = () => world.calls.filter((c) => c.method === "work.outbox.send");
+
+describe("the list's draws", () => {
+  it("a read that changed one item draws that row alone", async () => {
+    const { rowWords } = await import("./parts");
+    await open();
+    const draws = (id: string) => vi.mocked(rowWords).mock.calls.filter(([item]) => (item as { ref?: { id: string } }).ref?.id === id).length;
+    const [o2, o3] = [draws("o2"), draws("o3")];
+    Object.assign(world.items.get("box")![1]!, { summary: "Send to Sam Ortiz: Scrims moved", updatedAt: Date.now() + 1 });
+    await act(async () => void (await loadHost("box")));
+    await waitFor(() => expect(draws("o2")).toBeGreaterThan(o2));
+    expect([draws("o2") - o2, draws("o3") - o3]).toEqual([1, 0]);
+  });});
 
 describe("a mail or calendar act LifeOS holds after his press", () => {
   const MIN = 60_000;
@@ -360,6 +379,8 @@ describe("the Outbox", () => {
     await waitFor(() => expect(document.querySelector("[aria-current=true]")?.textContent).toContain("Send to Dana Lee"), { timeout: 5000 });
     view.unmount();
     world.items.get("box")!.push(mail("nothing", "Late Arrival", "Later"));
+    // Reopened more than 30 s later (a reopen sooner is answered from what the store holds, kept current by the pushes).
+    vi.setSystemTime(Date.now() + 31_000);
     render(<OutboxView besideRail onClose={() => undefined} />);
     await waitFor(() => expect(screen.getAllByText("Send to Late Arrival").length).toBeGreaterThan(0), { timeout: 5000 });
     expect(document.querySelector("[aria-current=true]")?.textContent).toContain("Send to Dana Lee");
@@ -1133,6 +1154,8 @@ describe("the Outbox, rebuilt around how he decides", () => {
   it("a scheduled item goes in Scheduled, says when, and its bar is Cancel send and Send now", async () => {
     world.items.set("box", [mail("o1", "Dana Lee", "Budget", { state: "scheduled", scheduledFor: Date.now() + 86_400_000, scheduledZone: "America/Chicago" })]);
     await open();
+    // The first row to land is picked by itself; which host answers first is not the test's.
+    fireEvent.click(screen.getAllByText("Send to Dana Lee").find((el) => el.closest("li"))!);
     await waitFor(() => expect(detail().textContent).toMatch(/Goes /));
     await act(async () => fireEvent.click(within(detail()).getByRole("button", { name: "Send now" })));
     expect(world.calls.some((c) => c.method === "work.outbox.sendNow")).toBe(true);
@@ -1141,6 +1164,8 @@ describe("the Outbox, rebuilt around how he decides", () => {
   it("Cancel send puts a scheduled item back as held", async () => {
     world.items.set("box", [mail("o1", "Dana Lee", "Budget", { state: "scheduled", scheduledFor: Date.now() + 86_400_000 })]);
     await open();
+    // The first row to land is picked by itself; which host answers first is not the test's.
+    fireEvent.click(screen.getAllByText("Send to Dana Lee").find((el) => el.closest("li"))!);
     await act(async () => fireEvent.click(within(detail()).getByRole("button", { name: "Cancel send" })));
     expect(world.calls.filter((c) => c.method === "work.outbox.cancelSend")).toHaveLength(1);
     expect(world.calls.some((c) => c.method === "work.mail.cancel")).toBe(false);

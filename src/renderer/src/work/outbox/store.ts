@@ -1,9 +1,9 @@
-import { useSyncExternalStore } from "react";
+import { useEffect, useSyncExternalStore } from "react";
 import type { Decision, DecisionResult, GrantOffer, OutboxGrant, OutboxItem, WorkResult } from "@shared/contract-work-outbox";
 import type { HeldRef } from "@shared/work";
 import { registry } from "../../lib/connection";
 import { setOutboxFailed, setOutboxWaiting, workSwitch } from "../../lib/workSwitch";
-import { applyResult, reloadResults, resetResults } from "./results";
+import { applyResult, loadResults as reloadResultsOf, reloadResults, resetResults, resultsHeld, seedResults } from "./results";
 import { workErrorWords } from "../../lib/workErrorWords";
 import { itemFailWords } from "./failWords";
 import { subscribeOutboxWant, wantOutbox, wantedOutbox, type OutboxWant } from "../../lib/outboxWant";
@@ -37,6 +37,9 @@ type HostState = {
   failed: number;
   loaded: boolean;
   error: string | null;
+  /** When its last read answered, and whether that read was the page's whole one (Done, grants and offers too). */
+  readAt: number;
+  whole: boolean;
 };
 
 const hosts = new Map<string, HostState>();
@@ -58,10 +61,26 @@ export type OutboxView = {
   errors: { environmentId: string; error: string }[];
 };
 
-const emptyHost = (): HostState => ({ waiting: [], done: [], grants: [], offers: [], count: 0, failed: 0, loaded: false, error: null });
+const emptyHost = (): HostState => ({ waiting: [], done: [], grants: [], offers: [], count: 0, failed: 0, loaded: false, error: null, readAt: 0, whole: false });
+
+/**
+ * The Outbox page mounted: only it reads Done, the grants and the offers. Today, Messages and Away read what waits,
+ * so a push while they are open costs one ask a host, not four (docs/agents/work-outbox.md "What the store asks").
+ */
+let pages = 0;
+/** A mount reads again only what is older than this; a push, a press and a reconnect read at once regardless. */
+export const FRESH_MS = 30_000;
+/** Pushes this close together are one read and one notify. */
+export const JOIN_MS = 500;
 
 function changed(): void {
   snapshot = null;
+  recount();
+  for (const listener of listeners) listener();
+}
+
+/** The rail's count and failed mark, from each host with Work on. The lists' readers are not told: no list moved. */
+function recount(): void {
   let count = 0;
   let failed = 0;
   for (const [id, state] of hosts)
@@ -71,7 +90,6 @@ function changed(): void {
     }
   setOutboxWaiting(count);
   setOutboxFailed(failed);
-  for (const listener of listeners) listener();
 }
 
 function view(): OutboxView {
@@ -90,71 +108,121 @@ function view(): OutboxView {
 }
 
 const tag = <T,>(environmentId: string, rows: T[]): (T & { environmentId: string })[] => rows.map((row) => ({ ...row, environmentId }));
+const rowKey = (item: Pick<OutboxItem, "ref">): string => `${item.ref.at}:${item.ref.id}`;
+/** The host's rows, each the same object as before when nothing it shows moved: a memoised row draws only when it changed. */
+function keep(environmentId: string, rows: OutboxItem[], before: readonly HostItem[]): HostItem[] {
+  const was = new Map(before.map((item) => [rowKey(item), item]));
+  return rows.map((row) => {
+    const old = was.get(rowKey(row));
+    return old && old.updatedAt === row.updatedAt && old.state === row.state && old.decidedAt === row.decidedAt && old.dismissedAt === row.dismissedAt ? old : { ...row, environmentId };
+  });
+}
 const errorText = (err: unknown): string => (err instanceof Error ? err.message : String(err));
 
 const loading = new Map<string, Promise<void>>();
 /** Hosts asked for again while a load ran: what changed during it is read by one more load after it. */
 const again = new Set<string>();
+const joining = new Map<string, ReturnType<typeof setTimeout>>();
+/** Bumped by a reset: a read that answers after it is dropped. */
+let epoch = 0;
 
-/** One host's whole Outbox: what waits, what was decided, the standing grants. */
-export function loadHost(environmentId: string): Promise<void> {
+/**
+ * One host's Outbox read now: what waits, and, while the Outbox page is open (or `whole`), Done, the standing grants
+ * and the offers. One notify when it lands.
+ */
+export function loadHost(environmentId: string, opts: { whole?: boolean } = {}): Promise<void> {
   const inFlight = loading.get(environmentId);
   if (inFlight) {
     again.add(environmentId);
     return inFlight;
   }
+  clearTimeout(joining.get(environmentId));
+  joining.delete(environmentId);
+  const whole = !!opts.whole || pages > 0;
   const link = registry.linkOf(environmentId);
+  const asked = epoch;
   const load = Promise.all([
     link.request<{ items: OutboxItem[]; waiting: number }>("work.outbox.list", { show: "waiting" }),
-    link.request<{ items: OutboxItem[] }>("work.outbox.list", { show: "done", limit: 100 }),
-    link.request<{ grants: OutboxGrant[] }>("work.outbox.grants", {}),
+    whole ? link.request<{ items: OutboxItem[] }>("work.outbox.list", { show: "done", limit: 100 }) : null,
+    whole ? link.request<{ grants: OutboxGrant[] }>("work.outbox.grants", {}) : null,
+    // The offers are read beside the list and never in its way: a key without approve, or a host from before offers, has none.
+    whole ? link.request<{ offers: GrantOffer[] }>("work.outbox.offers", {}).catch(() => ({ offers: [] as GrantOffer[] })) : null,
   ])
-    .then(([waiting, decided, grants]) => {
+    .then(([waiting, decided, grants, offers]) => {
+      if (asked !== epoch) return;
+      const was = hosts.get(environmentId) ?? emptyHost();
       hosts.set(environmentId, {
-        waiting: tag(environmentId, waiting.items),
-        done: tag(environmentId, decided.items.filter((item) => item.state === "sent" || item.state === "discarded" || item.state === "stale")),
-        grants: tag(environmentId, grants.grants),
-        offers: hosts.get(environmentId)?.offers ?? [],
+        waiting: keep(environmentId, waiting.items, was.waiting),
+        // A read of what waits alone keeps the page's lists as they were: they are read again when the page opens.
+        done: decided ? keep(environmentId, decided.items.filter((item) => item.state === "sent" || item.state === "discarded" || item.state === "stale"), was.done) : was.done,
+        grants: grants ? tag(environmentId, grants.grants) : was.grants,
+        // A host that answers with no list (one a release behind) offers nothing.
+        offers: offers ? tag(environmentId, offers.offers ?? []) : was.offers,
         count: waiting.waiting,
         failed: waiting.items.filter((item) => item.state === "failed").length,
         loaded: true,
         error: null,
+        readAt: Date.now(),
+        whole: whole || (was.whole && Date.now() - was.readAt < FRESH_MS),
       });
     })
     .catch((err: unknown) => {
-      hosts.set(environmentId, { ...(hosts.get(environmentId) ?? emptyHost()), loaded: true, error: errorText(err) });
+      if (asked !== epoch) return;
+      hosts.set(environmentId, { ...(hosts.get(environmentId) ?? emptyHost()), loaded: true, error: errorText(err), readAt: 0 });
     })
     .finally(() => {
+      if (asked !== epoch) return;
       loading.delete(environmentId);
       changed();
       if (again.delete(environmentId)) void loadHost(environmentId);
     });
   loading.set(environmentId, load);
-  loadOffers(environmentId);
   // A thread's requests are read with its list: Asked in threads leads Waiting.
   void loadRequests(environmentId);
   return load;
 }
 
-/**
- * The grants a host offers, read beside its list and never in its way: a key
- * without approve, or a host from before offers, has none to show.
- */
-function loadOffers(environmentId: string): void {
-  void registry
-    .linkOf(environmentId)
-    .request<{ offers: GrantOffer[] }>("work.outbox.offers", {})
-    .catch(() => ({ offers: [] as GrantOffer[] }))
-    .then(({ offers }) => {
-      // A host that answers with no list (one a release behind) offers nothing.
-      hosts.set(environmentId, { ...(hosts.get(environmentId) ?? emptyHost()), offers: tag(environmentId, offers ?? []) });
-      changed();
-    });
+/** A push said something moved: one read after JOIN_MS, however many pushes come in it. */
+function loadSoon(environmentId: string): void {
+  if (joining.has(environmentId)) return;
+  joining.set(
+    environmentId,
+    setTimeout(() => {
+      joining.delete(environmentId);
+      void loadHost(environmentId);
+    }, JOIN_MS),
+  );
 }
 
-/** Every host with Work on, asked again. */
-export function loadOutbox(): Promise<void> {
-  return Promise.all([...workSwitch.hosts()].map(loadHost)).then(() => undefined);
+/** When the last reader of the lists left: from then until one comes back, the lists are kept current by no read. */
+let quietSince = 0;
+
+/**
+ * Whether a host's last read is current and deep enough that a mount need not ask again: no push said it moved since
+ * (a push with no reader marks it, `readAt: 0`; a reconnect reads it at once), and it was read in the last FRESH_MS or
+ * a reader has listened, reading on each push, ever since.
+ */
+const fresh = (environmentId: string, whole: boolean): boolean => {
+  const state = hosts.get(environmentId);
+  if (!state || !state.loaded || state.error || !state.readAt || (whole && !state.whole)) return false;
+  return Date.now() - state.readAt < FRESH_MS || state.readAt > quietSince;
+};
+
+/**
+ * Every host with Work on, asked again. `ifStale`: a mount's read, which skips a host read in the last FRESH_MS (to the
+ * depth the page needs), since the pushes keep what it holds current.
+ */
+export function loadOutbox(opts: { ifStale?: boolean } = {}): Promise<void> {
+  return Promise.all([...workSwitch.hosts()].filter((id) => !opts.ifStale || !fresh(id, pages > 0)).map((id) => loadHost(id))).then(() => undefined);
+}
+
+/** The Outbox page's own read: mounted, the store reads Done, the grants and the offers too. */
+export function useOutboxPage(): void {
+  useEffect(() => {
+    pages++;
+    void loadOutbox({ ifStale: true });
+    return () => void pages--;
+  }, []);
 }
 
 /** The merged Outbox as it stands, outside React. */
@@ -166,7 +234,10 @@ export function useOutbox(): OutboxView {
 
 function subscribe(listener: () => void): () => void {
   listeners.add(listener);
-  return () => listeners.delete(listener);
+  return () => {
+    listeners.delete(listener);
+    if (listeners.size === 0) quietSince = Date.now();
+  };
 }
 
 // ── presses: each goes to the host that holds the item ───────────────────
@@ -293,6 +364,53 @@ export function fetchItem(environmentId: string, ref: HeldRef): Promise<OutboxIt
   return registry.linkOf(environmentId).request<OutboxItem>("work.outbox.get", { ref });
 }
 
+/** An item's whole read as its detail asks it: the act, and a decided act's Results with it. */
+type Detail = OutboxItem & { results?: WorkResult[] };
+const details = new Map<string, Promise<Detail>>();
+const DETAILS_AT_MOST = 16;
+
+/** Whether a detail's read carries the act's Results: a decided act with a thread, whose way back the detail shows. */
+const wantsResults = (item: Pick<HostItem, "sessionId" | "decidedAt">): boolean => !!item.sessionId && item.decidedAt != null;
+
+/**
+ * One item's detail in one ask: `work.outbox.get`, which carries a decided act's Results too (`results: true`), shared
+ * by every part of the detail that needs the whole act (a mail's quote, a computer act's picture, the way back) for as
+ * long as the item's `updatedAt` stands. A host from before that answer gives no `results`: they are asked on their own.
+ */
+export function fetchDetail(item: HostItem): Promise<Detail> {
+  const key = `${item.environmentId}|${item.ref.at}|${item.ref.id}|${item.updatedAt}`;
+  const out = details.get(key);
+  if (out) return out;
+  const withResults = wantsResults(item);
+  const read = registry
+    .linkOf(item.environmentId)
+    .request<Detail>("work.outbox.get", { ref: item.ref, ...(withResults ? { results: true } : {}) })
+    .then((whole) => {
+      if (withResults && item.sessionId && Array.isArray(whole.results)) seedResults(item.environmentId, item.sessionId, whole.results);
+      return whole;
+    });
+  // A failed read is asked again by its Retry, never answered from here.
+  read.catch(() => details.get(key) === read && details.delete(key));
+  details.set(key, read);
+  while (details.size > DETAILS_AT_MOST) details.delete(details.keys().next().value!);
+  return read;
+}
+
+/**
+ * A decided act's Results for its detail: held already (the right panel read them), else read by the detail's one ask.
+ * A host whose answer carried none is asked for them on their own.
+ */
+export function readDetailResults(item: HostItem): void {
+  if (!item.sessionId || resultsHeld(item.environmentId, item.sessionId)) return;
+  const sessionId = item.sessionId;
+  void fetchDetail(item).then(
+    (whole) => {
+      if (!Array.isArray(whole.results)) reloadResultsOf(item.environmentId, sessionId);
+    },
+    () => reloadResultsOf(item.environmentId, sessionId),
+  );
+}
+
 /** Let later acts like this one go, then send this one: the grant is made from the item, never on its own. */
 export async function grantAndSend(item: HostItem, grant: { matcher: unknown; label: string }): Promise<OutboxItem> {
   await registry.linkOf(item.environmentId).request<OutboxGrant>("work.outbox.grant", { from: item.ref, matcher: grant.matcher, label: grant.label });
@@ -407,6 +525,12 @@ export function resetOutboxStore(): void {
   hosts.clear();
   loading.clear();
   again.clear();
+  details.clear();
+  quietSince = 0;
+  epoch++;
+  for (const timer of joining.values()) clearTimeout(timer);
+  joining.clear();
+  pages = 0;
   resetResults();
   changed();
 }
@@ -422,10 +546,15 @@ registry.onLink((link, event) => {
   link.onPush((push) => {
     if (push.push === "work.outbox") {
       const state = hosts.get(link.environmentId) ?? emptyHost();
-      hosts.set(link.environmentId, { ...state, count: push.waiting, failed: push.failed ?? state.failed });
-      changed();
-      // Something moved: an open page asks again; with none open the count is enough, and the page loads when it opens.
-      if (listeners.size > 0) void loadHost(link.environmentId);
+      // The count is the push's own: patched in place, with no ask.
+      if (state.count !== push.waiting || state.failed !== (push.failed ?? state.failed)) {
+        hosts.set(link.environmentId, { ...state, count: push.waiting, failed: push.failed ?? state.failed });
+        recount();
+      }
+      // Something moved: a reader that shows the lists reads them again, once for every push within JOIN_MS; with none
+      // the count is enough, and a mount reads what is stale.
+      if (listeners.size > 0) loadSoon(link.environmentId);
+      else if (hosts.has(link.environmentId)) hosts.set(link.environmentId, { ...hosts.get(link.environmentId)!, readAt: 0 });
     } else if (push.push === "work.outbox.result") {
       applyResult(link.environmentId, push.result);
     }

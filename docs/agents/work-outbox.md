@@ -1021,6 +1021,26 @@ keys E (Edit), D (Discard) and Esc (clear the ticks) are rows of the Work
 group in Settings → Keybindings, "In the Outbox"; its tips read them with
 `shortcutFor`, never a typed key (lib/menuShortcuts.test.ts).
 
+What the store asks (the perf pass's M2; `outbox/store.dom.test.tsx`):
+
+- A `work.outbox` push patches the rail's count with no ask. While a reader
+  shows the lists (the page, Today, Messages, Away), one read follows every
+  push within 500 ms (`JOIN_MS`), with one notify; with none, the host's
+  lists are marked stale for the next mount.
+- Only the Outbox page (`useOutboxPage`) reads what was decided, the
+  grants and the offers; every other reader reads what waits alone.
+- A mount reads only a host that is stale (`loadOutbox({ifStale: true})`):
+  marked by a push, failed, not as deep as the page needs, or read more than
+  30 s ago with no reader listening since. A press, a reconnect and Retry
+  read at once.
+- A row keeps its object while its `updatedAt`, state and `decidedAt`
+  stand, and `HeldRow` and `SentRow` are memoised: a read that changed one
+  item draws that row alone.
+- A detail is one ask (`fetchDetail`): `work.outbox.get {ref, results:
+  true}` answers a decided act's Results with it, shared by the mail's
+  quote, the computer act's picture and the way back; a host whose answer
+  carries none is asked `work.outbox.results` on its own.
+
 - **The rail's Outbox row** (M8's) shows whenever a host has Work on, with
   the plain muted count; it opens the Outbox page (`shell.openOutbox`,
   `outboxViewOpen` in stores/shell.ts, a page like the Inbox).

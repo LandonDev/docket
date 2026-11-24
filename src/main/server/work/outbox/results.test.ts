@@ -150,3 +150,16 @@ describe('a send that left', () => {
     expect((await rig.rpc<{ results: WorkResult[] }>('work.outbox.results', { sessionId: 't-work' })).results).toEqual([])
   })
 })
+
+describe("an Outbox detail's one ask", () => {
+  it("work.outbox.get carries the act's Results when asked, and nothing more when not", async () => {
+    await boot()
+    const item = rig.work.ctx.held.create({ kind: 'teams.post', sessionId: 't-work', payload: { to: 'Esports staff' } })
+    await rig.rpc('work.outbox.send', { ref: item.ref })
+    const whole = await rig.rpc<{ ref: unknown; results?: WorkResult[] }>('work.outbox.get', { ref: item.ref, results: true }, readKey)
+    expect(whole.ref).toEqual(item.ref)
+    expect(whole.results?.map((r) => r.summary)).toEqual(['Posted in Esports staff'])
+    const plain = await rig.rpc<{ results?: WorkResult[] }>('work.outbox.get', { ref: item.ref }, readKey)
+    expect(plain.results).toBeUndefined()
+  })
+})

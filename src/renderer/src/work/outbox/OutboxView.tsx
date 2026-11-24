@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import { Button } from "../../components/ui/button";
 import { StatusMark } from "../../components/ui/status";
 import { Tabs, TabsIndicator, TabsList, TabsTrigger, TABS_PILL_TRIGGER } from "../../components/ui/tabs";
@@ -24,7 +24,7 @@ import { HeldDetail, type DetailCommands } from "./HeldDetail";
 import { DoneList, ListSkeleton, ROW_ATTR, WaitingList } from "./Lists";
 import { WORK_CHATS_KEY } from "./model";
 import { DetailSkeleton, HostRetry } from "./parts";
-import { loadOutbox, offerFrom, useOutbox, useWantedOutboxItem, wantOutboxItem, type HostItem } from "./store";
+import { offerFrom, useOutbox, useOutboxPage, useWantedOutboxItem, wantOutboxItem, type HostItem } from "./store";
 import { pressMany, TickedDetail, type Batch } from "./Ticked";
 import { RequestCard } from "./RequestCard";
 import { askedItemKeys, requestKey, useOpenRequests } from "./requests";
@@ -102,9 +102,8 @@ export function OutboxView({ besideRail = false, onClose, onToggleSidebar, onOpe
     },
     { fields: "blur" },
   );
-  useEffect(() => {
-    void loadOutbox();
-  }, []);
+  // The page reads Done, the grants and the offers too, and asks again only what is stale (store.ts `useOutboxPage`).
+  useOutboxPage();
   useEffect(() => {
     rememberedTab = tab;
   }, [tab]);
@@ -232,6 +231,11 @@ export function OutboxView({ besideRail = false, onClose, onToggleSidebar, onOpe
     setOpened(true);
     clearTicks();
   };
+  // The lists get one function each for the page's life, calling the newest: a memoised row is drawn only when it changed.
+  const latest = useRef({ pick, tick });
+  latest.current = { pick, tick };
+  const onPick = useCallback((item: HostItem) => latest.current.pick(item), []);
+  const onTick = useCallback((item: HostItem, on: boolean, range?: boolean) => latest.current.tick(item, on, range), []);
 
   // After a press the item leaves Waiting: the next one down takes the pick, but only while that item is still what
   // he has on screen in Waiting. A reply that lands after he picked another item, or went to Done, moves nothing.
@@ -398,8 +402,8 @@ export function OutboxView({ besideRail = false, onClose, onToggleSidebar, onOpe
                 ticked={ticked}
                 expanded={expanded}
                 now={now}
-                onPick={pick}
-                onTick={tick}
+                onPick={onPick}
+                onTick={onTick}
                 onSelectGroup={(items) => {
                   setBatch(null);
                   setTicked((prev) => new Set([...prev, ...items.map(itemKey)]));
@@ -407,7 +411,7 @@ export function OutboxView({ besideRail = false, onClose, onToggleSidebar, onOpe
                 onExpand={(key) => setExpanded((prev) => new Set(prev).add(key))}
               />
             ) : (
-              <DoneList days={days} current={selected} stop={stop} now={now} onPick={pick} />
+              <DoneList days={days} current={selected} stop={stop} now={now} onPick={onPick} />
             )}
           </div>
           <div

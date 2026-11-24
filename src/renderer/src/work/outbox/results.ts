@@ -60,6 +60,16 @@ export function loadResults(environmentId: string, sessionId: string): void {
     });
 }
 
+/** Whether a thread's Results are held from its host, read or on their way: nothing more need be asked. */
+export const resultsHeld = (environmentId: string, sessionId: string): boolean => results.get(sessionId)?.environmentId === environmentId || loading.has(sessionId);
+
+/** A thread's Results as another answer carried them (an Outbox detail's `work.outbox.get`): held as a read of its own. */
+export function seedResults(environmentId: string, sessionId: string, rows: WorkResult[]): void {
+  if (loading.has(sessionId)) return;
+  results.set(sessionId, { environmentId, rows: tag(environmentId, rows), loaded: true, error: null, reading: false });
+  changed();
+}
+
 /** A Work thread's Results, live; asked of its host once it is shown. A subagent's own thread gets its own. */
 export function useResults(environmentId: string, sessionId: string, enabled: boolean): Omit<Entry, "environmentId"> {
   const read = () => results.get(sessionId) ?? EMPTY;
