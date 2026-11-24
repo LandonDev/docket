@@ -473,7 +473,8 @@ export function packageCsv(path: string, sheet?: string): string {
   const { workbook } = importPackage(path)
   const id = sheet === undefined ? workbook.sheetOrder[0] : workbook.sheetOrder.find((s) => workbook.sheets[s]?.name === sheet)
   let later: boolean | undefined
-  for (const [r, cols] of Object.entries((id && workbook.sheets[id]?.cellData) || {}))
+  const cells = ((id && workbook.sheets[id]?.cellData) || {}) as Record<string, Record<string, ICellData | null | undefined>>
+  for (const [r, cols] of Object.entries(cells))
     for (const [c, cell] of Object.entries(cols ?? {})) {
       if (!cell?.f && !cell?.si) continue
       later ??= CALC_ON_LOAD.test(workbookMap(readZip(new Uint8Array(readFileSync(path)))).wbXml)
