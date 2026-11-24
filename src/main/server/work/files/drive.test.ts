@@ -339,7 +339,7 @@ describe("a thread's change", () => {
     expect(fake.files.get('dBrief')!.trashed).toBe(false)
   })
 
-  it('to a file others can open, or into a folder they can, is held for his press; a delete there is refused', async () => {
+  it('to a file others can open, or into a folder they can, is held for his press, a delete there too, which his press sends to Drive\'s bin alone', async () => {
     const held = await tool('files_move', { place: PLACE_ID, paths: ['Open letter'], name: 'Letter' })
     expect(held.text).toMatch(/^Held as item 1\. It waits for the owner's press: Rename Open letter to Letter in landon@example\.com\. Whoever landon@example\.com is shared with can open it\./)
     expect(fake.files.get('dOpen')!.name).toBe('Open letter')
@@ -349,8 +349,8 @@ describe("a thread's change", () => {
     expect(inside.text).toMatch(/^Held as item 3\. .*Make Roster in landon@example\.com, Staff\./)
     expect(fake.files.get('sBudget')!.parents).toEqual([FAKE_ROOT])
     expect(results).toEqual([])
-    const refused = await tool('files_trash', { place: PLACE_ID, paths: ['Staff/Plan'] })
-    expect(refused).toMatchObject({ isError: true })
+    const deleted = await tool('files_trash', { place: PLACE_ID, paths: ['Staff/Plan'] })
+    expect(deleted.text).toMatch(/^Held as item 4\. .*Delete Plan from landon@example\.com, Staff\./)
     expect(fake.files.get('dPlan')!.trashed).toBe(false)
     // His press runs each as his window's change.
     const rows = outbox.store.list({})
@@ -360,6 +360,12 @@ describe("a thread's change", () => {
     expect(fake.files.get('sBudget')!.parents).toEqual(['fStaff'])
     expect(await outbox.send({ at: 'host', id: rows[2]!.id })).toMatchObject({ state: 'sent' })
     expect([...fake.files.values()].find((f) => f.name === 'Roster')).toMatchObject({ mimeType: GOOGLE_MIME.sheet, parents: ['fStaff'] })
+    // The delete: to Drive's own bin, and nothing else there goes.
+    const before = [...fake.files.values()].filter((f) => f.trashed).map((f) => f.id)
+    expect(await outbox.send({ at: 'host', id: rows[3]!.id })).toMatchObject({ state: 'sent', result: { summary: 'Deleted: Plan.' } })
+    expect(fake.files.get('dPlan')).toMatchObject({ trashed: true, parents: ['fStaff'] })
+    expect([...fake.files.values()].filter((f) => f.trashed).map((f) => f.id).sort()).toEqual([...before, 'dPlan'].sort())
+    expect(await outbox.send({ at: 'host', id: rows[3]!.id })).toMatchObject({ state: 'sent' })
   })
 
   it('to a file in a folder this client cannot see is held: unknown sharing counts as shared, My Drive\'s top as his', async () => {

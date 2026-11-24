@@ -872,7 +872,8 @@ asked for.
   to the place's top, a made thing to the bin, a delete put back); to a
   shared thing, or into a shared folder, it is a held `file.act`, which runs
   on his press as his window's change once the press finds each thing's key
-  and version (`size:changed:`) as they were; a delete there is refused.
+  and version (`size:changed:`) as they were; a delete there is held too,
+  and his press sends it to Drive's own bin alone.
   Another host of his: never ("Another host reaches only this host's
   libraries.").
 - **A Google file in a tab.** `work.files.open {ref: {at: 'google', …}}`
