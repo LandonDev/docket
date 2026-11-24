@@ -72,8 +72,10 @@
   `CatchUpLane`, one per remote host): each transcript resumes from the last
   seq it folded (`afterSeq`; the host answers the gap, or a fresh 1 MiB tail
   past RESUME_ROWS or RESUME_BYTES); the thread the focused pane shows
-  (`FocusSignal.shown`, `sessionStore.followShown`) goes at once and jumps
-  the queue when it changes, and no other starts while its fetch is out
+  (`FocusSignal.shown`, `sessionStore.followShown`) goes at once, jumps
+  the queue when it changes, and is the lane's first pick when a window
+  opening names it a microtask after asking (the pick waits a few
+  microtasks); no other starts while its fetch is out
   (so its page never queues behind another on the socket); the panes on
   the page, then the kept ones, go one at a time, each followed by a pause
   of its bytes at
