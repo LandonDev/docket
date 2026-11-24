@@ -69,11 +69,17 @@ file after the close (a Word file's document he only looked at, files/word.ts
 `wordsLeft`) reads its change time as he left it. The route stores that
 document alone, in its save turn, and reads its store's own answer
 (docs/storeBook.ts wraps the service's stores): a write that fails is a 503
-with the reason, never an ok. In the window the flush fails on a failed
-send, on a socket not connected, and while frames lost since the last
-confirmed store wait (`storedAll`); the document says "Couldn't save your
-last edits to Plan" and the flush's failure reaches the close (what the
-close does then is Files'). The live revision (`/internal/docs/rev`, the
+with the reason, never an ok. In the window the flush asks for the store
+only once the service has applied every update the socket sent: the relayed
+socket counts each update it sends (Hocuspocus sync steps 2 and 3, read from
+the frame's head, `frameHead`) and each SyncStatus the service answers once
+it has applied one, and a new socket must first have sent its own state (its
+step 2) before it counts as caught up. A socket still connecting is waited
+for (`relayTiming.syncWaitMs`). The flush fails on a failed send, an update
+the host refused, a socket that closes or never catches up in time, and
+while frames lost since the last confirmed store wait (`storedAll`); the
+document says "Couldn't save your last edits to Plan" and the flush's
+failure reaches the close (what the close does then is Files'). The live revision (`/internal/docs/rev`, the
 Word file's autosave and header) hashes the Yjs snapshot, the delete set with
 the state vector, so a deletion alone moves it.
 
@@ -351,16 +357,25 @@ place for a LifeOS document). What it tells the pane:
 - **The state line**: the editor's own sentence when it is offline, waiting,
   read only or did not open.
 - **The agent's last write**: "Wrote 1 section, 2:04 PM" with Undo, which
-  is `work.docs.dismiss {undo: true}`: the host restores the version before
-  the write only while the document is as the agent left it. The line
-  carries the version cut just after the write (`DocWritten.after`), and the
-  service compares it with the live document and restores in one turn of
-  the document (`/internal/docs/undo`, `history.inTurn`), so no other
-  window's edit lands between the check and the restore. Changed since by
+  is `work.docs.dismiss {undo: true, after}`: the host restores the version
+  before the write only while the document is as the agent left it. The line
+  carries the version cut just after the write (`DocWritten.after`); the
+  press names it, and the host acts on, and clears, only the line of that
+  write (a newer write's line stays, and an Undo naming none restores
+  nothing). The service compares it with the live document and restores in
+  one turn of the document (`/internal/docs/undo`, `history.inTurn`), so no
+  other window's edit lands between the check and the restore. `after` is
+  given only for the write's own state: a direct rewrite takes its post-edit
+  state in the tick of the edit and the version cut after it must still be
+  it (`undoable`); a direct format's after-version must hold formatting
+  alone over its before-version (`formattingAlone`). Else the line has no
+  Undo. Changed since by
   anyone, nothing is restored (his words would go too): the line goes and a
   toast says "Not undone: the document has changed since. Restore an
   earlier version from History." (`undoWritten`). A line with no `after` (an
-  older host) offers no Undo. Kept in memory on the host: after a restart
+  older host, or a write whose after-version took in someone's edit) offers
+  no Undo; a host a release behind that cannot undo says "Not undone here.
+  Restore an earlier version from History." Kept in memory on the host: after a restart
   the line is gone and History still has the version.
 - **Opened once per source**: the open keys on the source's value, so a
   canvas push, which hands every item afresh, never reopens the editor
@@ -436,8 +451,10 @@ for as long as the document is the same one:
   and a press before it lands makes the print anew. The host keeps the
   render before a format's newest one too, for another window still showing
   it; when the shown pages are gone anyway, nothing goes out unseen: Print
-  and Export say "These pages are no longer kept. Open Preview again to
-  check the current ones." until Preview draws again. The system's save
+  and Export say "These pages are no longer kept. Close Preview and open it
+  again to check the current ones." until Preview draws again. The pages
+  shown when he pressed decide: a draw that starts while their bytes are
+  read never puts its pages in their place. The system's save
   dialog is the answer.
 - **Check in Word** is offered on Word when the app is ready or this host's
   Windows VM can wake on his press. The Word picture has a rev of its own.
@@ -589,9 +606,12 @@ The rule (architecture §6.7, §8.4): `because: "asked"` writes at once only
 when its `quote` is in one of the owner's own messages in the thread
 (`ctx.threads.ownerSaid`), else it is the agent's own idea and the reply
 says so. On a document others share, the message must also point at this
-document by what identifies it alone: its path or its LifeOS id, as the head
-of a chip Ask put in writes them, or typed (`ownerSaid` with `about`,
-work/threads.ts), whole and never inside a longer path or id. A title does
+document by what identifies it alone, exactly as written (no case or
+spacing folded): its path, its LifeOS id or the canvas item it was named
+by, as the reference of a chip Ask put in (a file chip's JSON read as
+JSON), or in the words he typed himself, whole and never inside a longer
+path or id (`ownerSaid` with `about`, work/threads.ts `pointsAt`). A chip's
+label and the words it quotes never count. A title does
 not count (two documents may share one, and "Plan" stands inside "Travel
 Plan"); his words about another document, or naming this one by its title
 alone, wait as suggestions here; `"routine"` only in a routine's run, and on his own document; `"own"` on a shared document,
