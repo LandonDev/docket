@@ -165,7 +165,7 @@ export function doorPlace(ctx: WorkCtx, by: Caller, at: Located): { place: DoorP
 }
 
 /** A mark as a row of a lens, when the caller could name what it points at. */
-function markEntry(ctx: WorkCtx, by: Caller, m: Mark, workspace: WorkspaceRow): FileEntry | null {
+function markEntry(ctx: WorkCtx, by: Caller, m: Mark, workspace: WorkspaceRow, libraries: readonly LibraryPlace[]): FileEntry | null {
   const at = 'file' in m.at ? m.at.file : m.at.folder
   // A Drive's things carry no path: a key hears of them only where it reaches their place, the workspace's folder.
   if ((at.at === 'google' || at.at === 'drive') && !reaches(ctx, by, workspace.path)) return null
@@ -179,9 +179,33 @@ function markEntry(ctx: WorkCtx, by: Caller, m: Mark, workspace: WorkspaceRow): 
     folder: folder ? (at as FolderRef) : null,
     name: m.name,
     kind: folder ? 'folder' : at.at === 'lifeos' ? (at.table === 'sheets' ? 'sheet' : 'document') : kindOfEntry(m.name, at.at === 'mail' ? at.contentType : undefined).kind,
+    ...homeOf(ctx, by, workspace, at, libraries),
     ...(m.openedAt ? { changed: m.openedAt } : {}),
     ...(m.starred ? { starred: true } : {}),
     ...(m.madeBy ? { madeBy: m.madeBy, fresh: m.seenAt === null } : {})
+  }
+}
+
+/**
+ * A lens row's home and sharing, as its folder's listing would give them (round 2): a file of this host is located
+ * for the caller and said where it lies (`whereOf`), shared where its place is or the host's one answer says so
+ * (`locatedShared`, for any caller but his window, as the folder's own rows); a Google file is in its account's
+ * Drive, always shared. Nothing for a file of another host or one the caller may no longer name.
+ */
+function homeOf(ctx: WorkCtx, by: Caller, workspace: WorkspaceRow, at: CanvasSource | FolderRef, libraries: readonly LibraryPlace[]): Pick<FileEntry, 'where' | 'shared'> {
+  if (at.at === 'google' || at.at === 'drive') {
+    const place = drivePlace(ctx.host, at.account)
+    return { where: { place: place.id, name: place.name, trail: [] }, shared: true }
+  }
+  const path = at.at === 'file' ? at.path : at.at === 'microsoft' && at.ref.kind === 'path' ? at.ref.path : null
+  if (path === null || (at as { host: string }).host !== ctx.host) return {}
+  try {
+    const located = locate(ctx, by, workspace.id, { at: 'file', host: ctx.host, path }, 'work.files.list')
+    const where = whereOf(ctx, located, placeOf(located, libraries))
+    const shared = located.in === 'library' || (by.kind !== 'local' && locatedShared(ctx, located))
+    return { ...(where ? { where } : {}), ...(shared ? { shared: true } : {}) }
+  } catch {
+    return {}
   }
 }
 
@@ -207,7 +231,8 @@ async function list(ctx: WorkCtx, by: Caller, p: { workspaceId: string; at: Fold
     if (at.id === PLACE.recent || at.id === PLACE.starred || at.id === PLACE.made) {
       const workspace = ownRows(ctx, by, p.workspaceId)
       const marks = at.id === PLACE.recent ? state.marks.recent(p.workspaceId) : at.id === PLACE.starred ? state.marks.starred(p.workspaceId) : state.marks.made(p.workspaceId)
-      const entries = marks.flatMap((m) => markEntry(ctx, by, m, workspace) ?? [])
+      const libraries = listedLibraries(ctx, by)
+      const entries = marks.flatMap((m) => markEntry(ctx, by, m, workspace, libraries) ?? [])
       return { entries: p.foldersOnly ? entries.filter((e) => e.kind === 'folder') : entries, place: at.id, trail: [{ name: at.id === PLACE.recent ? 'Recent' : at.id === PLACE.starred ? 'Starred' : 'Made by threads', at: { at: 'place', id: at.id } }] }
     }
     if (at.id === PLACE.trash) {

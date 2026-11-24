@@ -488,7 +488,11 @@ policy.ts): `work.files.read` and every `work.pdf.*` method on such a file are
 refused to any caller but his window. Save to TempCode sends `own: true` with
 `work.files.upload`: a folder others can open is then refused at begin and at
 commit (`OWN_ONLY`), whoever presses; a Files upload without it is held to the
-door's rule (`approve`).
+door's rule (`approve`). A Recent or Starred row carries its home and its
+sharing as its folder's listing would (`homeOf` in handle.ts: `where` from
+`locate` and `whereOf`, `shared` from its place or `locatedShared`; a Google
+file's Drive, always shared), so the phone opens a Drive or VM file from a
+lens as it would from its place.
 
 **What the door does not catch.** The shell and general computer use are
 outside it, as they are outside the hold. The Work preamble's line on files

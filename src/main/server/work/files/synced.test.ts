@@ -53,4 +53,20 @@ describe('a workspace kept in OneDrive', () => {
     for (const by of [phone, approver]) await expect(call(by, 'work.files.read', { ref: at(join(synced, 'Scan.pdf')), offset: 0, length: 100 })).rejects.toThrow(SHARED_BYTES)
     expect(await call<{ data: string }>(window, 'work.files.read', { ref: at(join(synced, 'Scan.pdf')), offset: 0, length: 100 })).toMatchObject({ data: Buffer.from('%PDF-1.4 dummy').toString('base64') })
   })
+
+  it("gives a Recent or Starred row its home and its sharing, as its folder's listing does", async () => {
+    const lens = async (by: Caller, id: string) => (await call<{ entries: FileEntry[] }>(by, 'work.files.list', { at: { at: 'place', id } })).entries
+    await call(window, 'work.files.star', { ref: at(join(synced, 'Scan.pdf')), name: 'Scan.pdf', on: true })
+    await call(window, 'work.files.star', { ref: at(join(rig.team, 'General', 'Plan.docx')), name: 'Plan.docx', on: true })
+    rig.roots.push(join(rig.team, 'General'))
+    for (const by of [phone, approver]) {
+      const rows = await lens(by, 'starred')
+      expect(rows.find((e) => e.name === 'Scan.pdf')).toMatchObject({ shared: true, where: { place: 'folder', name: 'Dummy Esports', trail: [] } })
+      expect(rows.find((e) => e.name === 'Plan.docx')).toMatchObject({ shared: true, where: { name: expect.stringContaining('General') } })
+    }
+    // His window here keeps its own folder as it always has: home given, not marked shared.
+    const mine = (await lens(window, 'starred')).find((e) => e.name === 'Scan.pdf')!
+    expect(mine.where).toMatchObject({ place: 'folder' })
+    expect(mine.shared).toBeUndefined()
+  })
 })
