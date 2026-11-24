@@ -138,7 +138,7 @@ export function Body({ item, source, env, state, shell }: CanvasBodyProps<MediaS
   }, [shell, view?.lastWrite, actions]);
   useEffect(() => {
     // A failure that leaves the body empty says so there (`OpenFailed`); the line is for one that leaves content shown.
-    const failed = [shown, other].find((v) => unshowable(v) !== undefined && !(v === shown && blank(v)));
+    const failed = [shown, other].find((v) => unshowable(v) !== undefined && !(v !== undefined && v === shown && blank(v)));
     shell.statusLine(
       failed
         ? { tone: "failed", word: `${failed.name} could not be shown`, detail: unshowable(failed), action: { label: "Retry", run: () => loadMedia(env, item.id, { retry: true }) } }
