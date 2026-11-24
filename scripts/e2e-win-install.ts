@@ -11,7 +11,7 @@
  * What it checks: the installer runs silently with no admin and lands in %LOCALAPPDATA%\Programs\TempCode
  * (nothing under Program Files), with the Start menu shortcut; the app carries the win32 claude.exe (it
  * answers --version), node-pty's x64 prebuild with ConPTY, and tc-computer.exe (it answers `version`); the
- * app starts on the desktop, its data under %LOCALAPPDATA%\TempCode, its feed config naming GitHub; its
+ * app starts on the desktop, its data under %LOCALAPPDATA%\temp-code, its feed config naming GitHub; its
  * updater checks the real feed without an error; the computer-use service starts (`computer.service.retry`,
  * a tc-computer.exe process); and a Claude thread runs one turn and answers.
  *
@@ -47,7 +47,8 @@ const GUEST_HOME = `C:\\Users\\${STANDARD_USER}`
 const GUEST_LOCAL = `${GUEST_HOME}\\AppData\\Local`
 const APP_DIR = `${GUEST_LOCAL}\\Programs\\TempCode`
 const APP_RES = `${APP_DIR}\\resources\\app`
-const DATA_DIR = `${GUEST_LOCAL}\\TempCode`
+/** Electron's own name for the app's folder, the package's name, moved under %LOCALAPPDATA% (windowFrame.ts `localUserData`). */
+const DATA_DIR = `${GUEST_LOCAL}\\temp-code`
 const GUEST_CDP = 9333
 const CDP = 9338
 const SERVER_LOCAL = 9339
@@ -106,6 +107,7 @@ async function rpc<T = unknown>(method: string, params: unknown = {}, timeoutMs 
 }
 
 let tunnel: ReturnType<typeof Bun.spawn> | null = null
+const extraTunnels: ReturnType<typeof Bun.spawn>[] = []
 let startedRig = false
 let lentCredentials = false
 
@@ -171,36 +173,30 @@ async function run(): Promise<void> {
   await ps(`[Environment]::SetEnvironmentVariable('TEMP_CODE_DEBUG_PORT', '${GUEST_CDP}', 'User')`)
   const started = await guest([vm('run-in-session'), `${APP_DIR}\\TempCode.exe`], 120_000)
   check("the app starts on the standard user's desktop", started.code === 0, started.out.slice(0, 200))
-  const serverJson = async (): Promise<number | null> => {
-    const r = await ps(`Get-Content -Raw '${DATA_DIR}\\server.json'`)
-    try {
-      return (JSON.parse(r.out) as { port: number }).port
-    } catch {
-      return null
-    }
-  }
-  let port: number | null = null
-  check('its data folder is %LOCALAPPDATA%\\TempCode and its server is up', await waitFor('server.json', 240_000, async () => (port = await serverJson()) !== null), String(port))
-  tunnel = Bun.spawn(
-    [
-      'ssh', '-N',
-      '-L', `${CDP}:127.0.0.1:${GUEST_CDP}`,
-      '-L', `${SERVER_LOCAL}:127.0.0.1:${port}`,
-      '-i', paths.key, '-p', String(rig.sshPort),
-      '-o', 'IdentitiesOnly=yes', '-o', 'BatchMode=yes', '-o', 'ExitOnForwardFailure=yes', '-o', 'ServerAliveInterval=15',
-      '-o', 'StrictHostKeyChecking=accept-new', '-o', `UserKnownHostsFile=${paths.knownHosts}`,
-      `${STANDARD_USER}@127.0.0.1`
-    ],
-    { stdout: 'ignore', stderr: 'inherit', stdin: 'ignore' }
-  )
+  const openTunnel = (forwards: string[]): ReturnType<typeof Bun.spawn> =>
+    Bun.spawn(
+      [
+        'ssh', '-N', ...forwards.flatMap((f) => ['-L', f]),
+        '-i', paths.key, '-p', String(rig.sshPort),
+        '-o', 'IdentitiesOnly=yes', '-o', 'BatchMode=yes', '-o', 'ExitOnForwardFailure=yes', '-o', 'ServerAliveInterval=15',
+        '-o', 'StrictHostKeyChecking=accept-new', '-o', `UserKnownHostsFile=${paths.knownHosts}`,
+        `${STANDARD_USER}@127.0.0.1`
+      ],
+      { stdout: 'ignore', stderr: 'inherit', stdin: 'ignore' }
+    )
+  tunnel = openTunnel([`${CDP}:127.0.0.1:${GUEST_CDP}`])
   await sleep(3000)
   const cdp = await attach(CDP, 180_000)
   await sleep(5000)
   await shot('started')
   const platform = await cdp.eval<string>('window.api.platform')
   check('the window is the Windows build', platform === 'win32', platform)
-  const db = await ps(`Test-Path '${DATA_DIR}\\temp-code.db'`)
-  check('its database is under %LOCALAPPDATA%\\TempCode', db.out.trim() === 'True', db.out)
+  const db = await ps(`Test-Path '${DATA_DIR}\\temp-code.db'; Test-Path "$env:APPDATA\\temp-code\\temp-code.db"`)
+  check('its database is under %LOCALAPPDATA%\\temp-code, not the roaming profile', db.out.trim().split(/\s+/).join(' ') === 'True False', db.out.replace(/\s+/g, ' '))
+  const port = await cdp.eval<number | null>('window.api.getServerPort()')
+  check("the app's server is up", typeof port === 'number' && port > 0, String(port))
+  extraTunnels.push(openTunnel([`${SERVER_LOCAL}:127.0.0.1:${port}`]))
+  await sleep(3000)
 
   // ── the updater reads the real feed ──
   type Status = { current: string; latest: string | null; phase: string; error?: string }
@@ -208,7 +204,7 @@ async function run(): Promise<void> {
   let status: Status | null = null
   await waitFor('the update check', 90_000, async () => {
     status = await cdp.eval<Status>('window.api.updates.get()')
-    return status.phase !== 'checking' && status.latest !== null
+    return status.phase !== 'checking' && (status.latest !== null || status.phase === 'error')
   })
   const s = status as Status | null
   // A build of ours before its release has Windows files reads a feed with no latest.yml yet: only the
@@ -250,6 +246,7 @@ try {
   }
   await ps(`[Environment]::SetEnvironmentVariable('TEMP_CODE_DEBUG_PORT', $null, 'User')`).catch(() => null)
   tunnel?.kill()
+  for (const t of extraTunnels) t.kill()
   if (startedRig) await guest([vm('down')], 300_000)
 }
 console.log(failures === 0 ? 'E2E WIN INSTALL: PASS' : `E2E WIN INSTALL: ${failures} FAILED`)

@@ -170,7 +170,7 @@ section's text as it was when CLAUDE.md was split (2026-11-11).
   threads across hosts, the relay, devices, restart resume, backups.
   [docs/agents/linux-agent-host.md](docs/agents/linux-agent-host.md)
 - **The Windows build** — an NSIS installer and a zip for x64, unsigned, per user with no admin
-  (`%LOCALAPPDATA%\Programs\TempCode`, data in `%LOCALAPPDATA%\TempCode`); every Windows build
+  (`%LOCALAPPDATA%\Programs\TempCode`, data in `%LOCALAPPDATA%\temp-code`, the package's name); every Windows build
   passes `--config build/electron-builder.win.yml` and stages the win32 Claude CLI first
   (scripts/win-stage.ts); every `release:publish` adds them once the Mac's release is live, never failing it (scripts/release-publish-win.sh, `--no-win`); the frame (src/main/windowFrame.ts), the
   updater's Windows path (only "Restart to update" installs there), one key map (`modKey`,

@@ -133,8 +133,8 @@ Silent: `temp-code-1.0.N-setup.exe /S`. The Start menu and the desktop get a sho
 shortcut's AppUserModelId is the app id (`dev.landon.tempcode`), which the app sets too
 (`APP_USER_MODEL_ID` in src/main/windowFrame.ts) so toasts and the taskbar group find it.
 
-The data (the database, checkpoints, logs) is `%LOCALAPPDATA%\TempCode`, not Electron's default
-`%APPDATA%`: a managed PC copies the roaming profile at sign-out and this folder runs to gigabytes
+The data (the database, checkpoints, logs) is `%LOCALAPPDATA%\temp-code` (the package's name, as the
+Mac's `~/Library/Application Support/temp-code`), not Electron's default `%APPDATA%`: a managed PC copies the roaming profile at sign-out and this folder runs to gigabytes
 (`localUserData`, set in src/main/index.ts before anything reads the path). electron-updater's
 downloads are `%LOCALAPPDATA%\temp-code-updater`.
 

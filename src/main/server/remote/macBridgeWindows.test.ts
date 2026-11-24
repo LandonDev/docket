@@ -160,6 +160,9 @@ describe('what the review of milestone 41 found', () => {
   it("full access on Windows still asks for Windows' credential stores and the app's data, in any case", () => {
     expect(macDenied('C:\\Users\\tc\\AppData\\Roaming\\Microsoft\\Protect\\S-1\\key', HOME, W)).toBe(true)
     expect(macDenied('c:\\users\\tc\\appdata\\local\\tempcode\\temp-code.db', HOME, W)).toBe(true)
+    // the installed app's own folder, which the 1.0.366 installer wrote in the rig
+    expect(macDenied('C:\\Users\\tc\\AppData\\Local\\temp-code\\temp-code.db', HOME, W)).toBe(true)
+    expect(macDenied('C:\\Users\\tc\\AppData\\Local\\temp-code-updater\\x', HOME, W)).toBe(false)
     expect(macDenied('C:\\Users\\tc\\.ssh\\config', HOME, W)).toBe(true)
     expect(macDenied('C:\\', HOME, W)).toBe(true)
     expect(macDenied('C:\\Users\\tc\\src\\app\\a.ts', HOME, W)).toBe(false)
