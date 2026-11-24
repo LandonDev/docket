@@ -28,7 +28,7 @@ import { liveLayer, STAGE_SHARE, useLiveState } from "../office/live/layer";
 import { LiveBody } from "../office/live/LiveBody";
 import { leaveLive } from "../office/live/leave";
 import { LiveControl, useLiveOf, type LiveDesktop } from "../office/live/LiveControl";
-import { APP_NAME, liveSourceOf, switchTo, type LiveSetAnswer } from "../office/live/liveSwitch";
+import { APP_NAME, liveSourceOf, offersLive, switchTo, type LiveSetAnswer } from "../office/live/liveSwitch";
 import { Ask, History } from "../icons";
 import { saveAsTemplate, workTemplatePort } from "../templates/open";
 import { KindGlyph } from "./KindGlyph";
@@ -419,8 +419,8 @@ export function FileTabView({
   const liveState = useLiveState(live && item ? item.id : null);
   const link = workspace.environmentId;
   // Only the four forms Office for the web edits are asked about (the host's `LIVE_FORMS`).
-  const offersLive = /\.(docx|xlsx|xlsm|pptx)$/i.test(tab.name) || !!live;
-  const liveOf = useLiveOf(() => registry.linkOf(link).request<OfficeLiveOf>("work.office.live.of", { workspaceId: workspace.id, tabId: tab.id }), offersLive ? (item?.id ?? null) : null);
+  const asksLive = offersLive(tab, !!live);
+  const liveOf = useLiveOf(() => registry.linkOf(link).request<OfficeLiveOf>("work.office.live.of", { workspaceId: workspace.id, tabId: tab.id }), asksLive ? (item?.id ?? null) : null);
   // The kind's own switch in the header, as beside a thread (CanvasSeat): the sheet's Excel or Full editor, a deck's PowerPoint.
   const module = useKindModule(kindDefOf(kinds ?? CANVAS, item?.kind ?? "document").chunk);
   const KindEnd = item && !live ? module?.TabEnd : undefined;
@@ -512,7 +512,7 @@ export function FileTabView({
         end={
           <>
             {KindEnd && item ? <KindEnd item={item} source={item.source} env={link} state={kindState} setState={setKindState} shell={shell} /> : null}
-            {offersLive && registry.has(link) ? (
+            {asksLive && registry.has(link) ? (
               <LiveControl
                 inTab={liveLayer.can()}
                 of={liveOf}

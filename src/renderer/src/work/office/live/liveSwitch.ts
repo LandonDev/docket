@@ -79,3 +79,13 @@ export function liveSourceOf(item: { source: { at: string } } | null | undefined
   if (source?.at !== "microsoft" || source.ref?.kind !== "url" || !source.ref.url) return null;
   return source.app === "word" || source.app === "excel" || source.app === "powerpoint" ? { url: source.ref.url, app: source.app } : null;
 }
+
+const LIVE_NAME = /\.(docx|xlsx|xlsm|pptx)$/i;
+/**
+ * Whether a Files tab is asked about Office on the web: only the four forms it edits (the host's `LIVE_FORMS`), by the
+ * tab's name or, for a Word file opened as the document made of it (the tab then carries the document's name), by the
+ * file it is a copy of. A tab that is live now always is.
+ */
+export function offersLive(tab: { name: string; copyOf?: { path: string } }, live: boolean): boolean {
+  return live || LIVE_NAME.test(tab.name) || LIVE_NAME.test(tab.copyOf?.path ?? "");
+}

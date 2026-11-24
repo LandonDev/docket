@@ -109,3 +109,16 @@ describe("liveSourceOf", () => {
     expect(liveSourceOf(null)).toBeNull();
   });
 });
+
+describe("which Files tab is asked about Office on the web", () => {
+  it("asks for the four forms by name, and for a Word file opened as the document made of it by the file it copies", async () => {
+    const { offersLive } = await import("./liveSwitch");
+    expect(offersLive({ name: "Plan.docx" }, false)).toBe(true);
+    expect(offersLive({ name: "Budget.XLSX" }, false)).toBe(true);
+    // The tab wears the document's name once the Word file has opened; the switch stays.
+    expect(offersLive({ name: "Plan", copyOf: { path: "/Users/him/Teams/General/Plan.docx" } }, false)).toBe(true);
+    expect(offersLive({ name: "Notes.md" }, false)).toBe(false);
+    expect(offersLive({ name: "Notes", copyOf: { path: "/Users/him/Teams/General/Notes.pdf" } }, false)).toBe(false);
+    expect(offersLive({ name: "Anything" }, true)).toBe(true);
+  });
+});
