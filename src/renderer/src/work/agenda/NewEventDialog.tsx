@@ -1,4 +1,4 @@
-import { useMutation, useQuery } from "convex/react";
+import { useConvex, useMutation, useQuery } from "convex/react";
 import { makeFunctionReference } from "convex/server";
 import { useState } from "react";
 import type { SectorKey } from "@shared/work";
@@ -9,6 +9,7 @@ import { ChoiceSelect } from "../../components/choice-select";
 import { Input } from "../../components/ui/input";
 import { loadToast } from "../../components/ui/toaster";
 import { refusalWords } from "../../lib/settingsHome";
+import { tellAdded } from "./added";
 import { eventPayload, type EventForm, pad } from "./newEvent";
 
 /**
@@ -78,6 +79,7 @@ function Body({
   const calendars = (sources ?? []).filter((s) => s.kind === "gcal" && s.enabled && s.sector === sector);
   const saveOp = useMutation(save);
   const sendOp = useMutation(send);
+  const convex = useConvex();
   // A slot picked in the week, else the next whole hour.
   const start = startsAt ?? Math.ceil(Date.now() / 3_600_000) * 3_600_000;
   const [form, setForm] = useState<EventForm>({ title: "", day: dayOf(start), from: timeOf(start), to: timeOf(start + 3_600_000), where: "", invite: "", ...initial });
@@ -94,12 +96,13 @@ function Body({
     setError(null);
     setPending(true);
     saveOp({ kind: "create", sourceId, payload: made })
-      .then((id) => sendOp({ id, cause: "press" }))
+      .then((id: string) => sendOp({ id, cause: "press" }).then(() => id))
       .then(
-        () => {
+        (id) => {
           setPending(false);
           onAdded?.();
-          void loadToast().then((toast) => toast(asks ? `Invites sent: ${made.title}` : `Added ${made.title}`));
+          // LifeOS has it queued: the toast says Adding, and Added (or why not) only once LifeOS's own row says so.
+          void loadToast().then((toast) => tellAdded(convex, toast, { id, title: made.title, invites: asks }));
           close ? close(onClose) : onClose();
         },
         (err: unknown) => {
