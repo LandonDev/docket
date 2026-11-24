@@ -25,7 +25,6 @@ import { PortsRequestSchemas } from './contract-ports'
 import { DevServerRequestSchemas } from './contract-devservers'
 import { AdmissionRequestSchemas } from './contract-admission'
 import { AwayRequestSchemas } from './contract-away'
-import { DevicesRequestSchemas } from './contract-devices'
 import { AddonAddArgsSchema, AddonCallArgsSchema, AddonFindArgsSchema, AddonRemoveArgsSchema, AddonRequestSchemas } from './contract-addons'
 import { SkillRemoveArgsSchema, SkillRequestSchemas, SkillWriteArgsSchema } from './contract-skills'
 import { AddonGrantRequestSchemas } from './contract-addonGrants'
@@ -185,8 +184,6 @@ export const ClientRequestSchema = z.discriminatedUnion('method', [
   ...AdmissionRequestSchemas,
   // Away from computer (contract-away.ts): the switch, its tally and the peer leg.
   ...AwayRequestSchemas,
-  // Computers set up from the giver (contract-devices.ts): the giver's claim and its record.
-  ...DevicesRequestSchemas,
   // The add-on registry and the skills store (contract-addons.ts, contract-skills.ts): one copy, on the box.
   ...AddonRequestSchemas,
   ...AddonGrantRequestSchemas,
@@ -1512,8 +1509,6 @@ export type ServerPush =
   | { push: 'live-work'; from: string; live: boolean }
   // Away from computer (contract-away.ts): the state and the stretch's tally, to every client socket.
   | import('./contract-away').AwayPush
-  // Computers set up from the giver (contract-devices.ts): a letter waiting, a computer's news.
-  | import('./contract-devices').DevicesPush
   // The add-on registry and the skills store (contract-addons.ts, contract-skills.ts): every row
   // after any change, and this host's add-on status, to every client socket; the Mac's
   // link hears the box's and follows (remote/storeSync.ts).

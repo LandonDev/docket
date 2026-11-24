@@ -1,27 +1,14 @@
 import type { ClientRequest } from './contract'
 import { WORK_CAPS } from './contract-work'
-import { DEVICES_CAPS } from './contract-devices'
 
 /**
  * What a remote caller may do. `read` is implied for every key; `admin`
- * implies read, operate and approve and every admin row. Two caps it never
- * implies (docs/agents/pc-setup.md):
- * - `give`: credential control over other computers (introducing or
- *   withdrawing an account, a handoff, a takeover). One key holds it, the
- *   giver's (the Mac whose Accounts page signs in), claimed once
- *   (`devices.claimGiver`) or moved on the box itself (`devices.setGiver`).
- * - `device`: a given computer's key. Its admin-tier calls are the
- *   allowlist `DEVICE_METHODS` (its peer link, the sync followers' reads,
- *   its own letters), never more, and `DEVICE_REFUSED` is refused whatever
- *   else the key holds.
- * A method marked `local` never runs for a remote connection at all: the
- * loopback socket the desktop renderer uses is the only caller that gets it
- * (src/main/server/index.ts `LOCAL_PRINCIPAL`).
+ * implies everything. A method marked `local` never runs for a remote
+ * connection at all: the loopback socket the desktop renderer uses is the
+ * only caller that gets it (src/main/server/index.ts `LOCAL_PRINCIPAL`).
  */
-export type Capability = 'read' | 'operate' | 'approve' | 'admin' | 'give' | 'device'
-export const CAPABILITIES: readonly Capability[] = ['read', 'operate', 'approve', 'admin', 'give', 'device']
-/** What the loopback socket holds: everything but `device`, which only narrows. */
-export const LOCAL_CAPS: readonly Capability[] = ['read', 'operate', 'approve', 'admin', 'give']
+export type Capability = 'read' | 'operate' | 'approve' | 'admin'
+export const CAPABILITIES: readonly Capability[] = ['read', 'operate', 'approve', 'admin']
 export type MethodCapability = Capability | 'local'
 
 /** Bumped by hand when a client must know the contract moved under it. */
@@ -344,13 +331,11 @@ export const METHOD_CAPABILITY: Record<ClientRequest['method'], MethodCapability
   'remote.settings.set': 'admin',
   'page.read': 'admin',
   'media.read': 'admin',
-  // Introducing, handing off and withdrawing an account is the giver's alone (pc-setup.md); a pull is any admin
-  // link's or a device's, a pull that takes a grant over is the giver's (requiredCapability).
-  'accounts.push': 'give',
+  'accounts.push': 'admin',
   'accounts.pull': 'admin',
-  'accounts.confirm': 'give',
-  'accounts.released': 'give',
-  'accounts.removed': 'give',
+  'accounts.confirm': 'admin',
+  'accounts.released': 'admin',
+  'accounts.removed': 'admin',
   'accounts.headroom': 'admin',
   'accounts.refreshLocal': 'admin',
   // Harness config sync (remote/harnessSync.ts): another host's main process mirrors its config here; the pane's status and Sync now.
@@ -537,9 +522,7 @@ export const METHOD_CAPABILITY: Record<ClientRequest['method'], MethodCapability
   'remote.environments.pair': 'local',
   // Work (contract-work.ts): the switch (read, and admin to set), the bridge's
   // two tool methods (local), and each pillar's own rows from its contract file.
-  ...WORK_CAPS,
-  // Computers set up from the giver (contract-devices.ts): the claim is an old admin key's, the move is the box's own.
-  ...DEVICES_CAPS
+  ...WORK_CAPS
 }
 
 /** The capability one request needs: the table row, plus the param-level
@@ -550,85 +533,15 @@ export function requiredCapability(req: { method: ClientRequest['method']; param
     const params = req.params as { permission?: string } | undefined
     if (params?.permission === 'auto') return 'approve'
   }
-  // A pull that takes the grant over moves its refresher: the giver's alone.
-  if (req.method === 'accounts.pull' && (req.params as { takeOver?: unknown } | undefined)?.takeOver) return 'give'
   return METHOD_CAPABILITY[req.method]
 }
 
-/** `read` is implied; `admin` covers everything but `give` and `device`. */
+/** `read` is implied, `admin` covers everything. */
 export function allows(caps: Iterable<Capability>, need: Capability): boolean {
   if (need === 'read') return true
-  for (const cap of caps) if (cap === need || (cap === 'admin' && need !== 'give' && need !== 'device')) return true
+  for (const cap of caps) if (cap === need || cap === 'admin') return true
   return false
 }
-
-/**
- * The admin-tier methods a given computer's key may call: its peer link
- * (register, answers to the box's calls, presence, relayed lanes, forwarded
- * ports, cross-host reports), the account pull (the box hands it only what
- * its manifest admits) and headroom, the sync followers (rules, the store,
- * project settings, links, Away read through `read` rows), and its own
- * letters. Nothing that mints, pairs, changes policy, writes add-ons,
- * moves credentials or reads an owner session.
- */
-export const DEVICE_METHODS: ReadonlySet<string> = new Set([
-  'peer.register',
-  'peer.reply',
-  'peer.chunk',
-  'peer.progress',
-  'peer.pull',
-  'peer.presence',
-  'relay.frames',
-  'relay.closed',
-  'relay.notice',
-  'ports.bound',
-  'ports.open',
-  'ports.data',
-  'ports.close',
-  'crossHost.settled',
-  'crossHost.landing',
-  'accounts.pull',
-  'accounts.headroom',
-  'catalog.exchange',
-  'devices.challenge',
-  'devices.mail',
-  'devices.ack'
-])
-
-/** Refused to a given computer's key whatever else it holds: LifeOS tokens and the methods that carry a credential. */
-export const DEVICE_REFUSED: ReadonlySet<string> = new Set([
-  'work.lifeos.setToken',
-  'work.lifeos.jwt',
-  'work.lifeos.pairStart',
-  'work.lifeos.pairCancel',
-  'work.lifeos.signOut',
-  'work.lifeos.link',
-  'linear.setToken',
-  'addons.grant.setFields',
-  'addons.grant.clear',
-  'addons.grant.refresh',
-  'accounts.refreshLocal'
-])
-
-/**
- * Whether a remote principal may make this request: the one check every
- * ingress runs (the listener's sockets, relayed lanes, the HTTP routes).
- * Null when it may; otherwise the refusal's words.
- */
-export function capabilityRefusal(caps: readonly Capability[], req: { method: ClientRequest['method']; params?: unknown }): string | null {
-  const need = requiredCapability(req)
-  if (need === 'local') return `forbidden: ${req.method} is local-only`
-  if (caps.includes('device')) {
-    if (DEVICE_REFUSED.has(req.method)) return `forbidden: ${req.method} is not for a given computer`
-    if (need === 'admin') return DEVICE_METHODS.has(req.method) ? null : `forbidden: ${req.method} needs admin`
-    if (need === 'give') return `forbidden: ${req.method} needs give`
-    return allows(caps.filter((c) => c !== 'admin'), need) ? null : `forbidden: ${req.method} needs ${need}`
-  }
-  return allows(caps, need) ? null : `forbidden: ${req.method} needs ${need}`
-}
-
-/** Whether a saved environment's key opens a peer link: an admin key, or a given computer's device key. */
-export const opensPeerLink = (caps: readonly Capability[]): boolean => caps.includes('device') || allows(caps, 'admin')
 
 /** Parse a stored or requested cap list; unknown names are dropped, `read` is always present, sorted. */
 export function normalizeCaps(input: Iterable<string>): Capability[] {
@@ -652,13 +565,11 @@ export type Principal =
       caps: Capability[]
       /** The browser session behind a cookie-authenticated caller, if any. */
       sessionId?: string
-      /** A relayed lane's carrier (the box's env id): its caps are the carrier's word, so this host checks the method against RELAY_METHODS itself. */
-      via?: string
     }
 
 export const LOCAL_PRINCIPAL: Principal = { kind: 'local' }
 
 /** The caps a hello frame reports for a principal. */
 export function principalCaps(principal: Principal): Capability[] {
-  return principal.kind === 'local' ? [...LOCAL_CAPS] : principal.caps
+  return principal.kind === 'local' ? [...CAPABILITIES] : principal.caps
 }

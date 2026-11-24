@@ -77,11 +77,9 @@ public struct PairedEnvironment: Sendable, Hashable, Codable, Identifiable {
         return parts.url ?? origin
     }
 
-    /// `read` is implied; `admin` covers everything but `give` and `device` (src/shared/capabilities.ts `allows`).
     public func allows(_ capability: Capability) -> Bool {
         if capability == .read { return true }
-        if caps.contains(capability) { return true }
-        return caps.contains(.admin) && capability != .give && capability != .device
+        return caps.contains(capability) || caps.contains(.admin)
     }
 }
 

@@ -2,7 +2,7 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { adapter, configure, vault } from 'aliax-core'
+import { configure, vault } from 'aliax-core'
 import { accessExpiry, hasRefresh, refreshFingerprint, type ApplyOutcome, type Transfer } from 'aliax-core/sync'
 import type { ServerPush } from '@shared/contract'
 import type { SessionMeta } from '@shared/events'
@@ -131,50 +131,22 @@ describe('AccountSync as a host', () => {
     const { sync, nudge } = host('env_box', [], { activate })
     const later = Date.now() + 2 * HOUR
     const sent = transfer('handoff', 'env_box', claudeBlob(later))
-    // A handoff that names no id is refused: its release could not be told from a stale one.
-    expect(await sync.handlePush('env_mac', sent)).toEqual({ ok: false, reason: 'stale' })
-    expect(await sync.handlePush('env_mac', sent, 'H1')).toEqual(landedOk(sent, 'env_mac'))
+    expect(await sync.handlePush('env_mac', sent)).toEqual(landedOk(sent, 'env_mac'))
     await new Promise((r) => setTimeout(r, 10))
     // The row still names the sender: nothing here refreshes or uses the grant until the sender says it stripped its copy.
     expect(activate).not.toHaveBeenCalled()
     expect(vault.profiles('claude-code')[0]).toMatchObject({ owner: 'env_mac', static: false })
     expect(hasRefresh('claude-code', vault.readSecret('claude-code', 'a@x')!)).toBe(true)
-    const released = { service: 'claude-code' as const, accountId: 'u1', handoffId: 'H1', refreshFingerprint: fpOf(sent)! }
-    expect(sync.handleReleased('env_other', released)).toEqual({ ok: false, reason: 'stale' })
-    expect(sync.handleReleased('env_mac', { ...released, accountId: 'u9' })).toEqual({ ok: false, reason: 'unknown-account' })
-    // A release that names another handoff, or another grant, is stale and changes nothing.
-    expect(sync.handleReleased('env_mac', { ...released, handoffId: 'H0' })).toEqual({ ok: false, reason: 'stale' })
-    expect(sync.handleReleased('env_mac', { ...released, refreshFingerprint: 'deadbeef' })).toEqual({ ok: false, reason: 'stale' })
-    expect(sync.handleReleased('env_mac', { service: 'claude-code', accountId: 'u1' })).toEqual({ ok: false, reason: 'stale' })
-    expect(vault.profiles('claude-code')[0]).toMatchObject({ owner: 'env_mac' })
-    expect(sync.handleReleased('env_mac', released)).toEqual({ ok: true })
+    expect(sync.handleReleased('env_other', { service: 'claude-code', accountId: 'u1' })).toEqual({ ok: false, reason: 'not-held' })
+    expect(sync.handleReleased('env_mac', { service: 'claude-code', accountId: 'u9' })).toEqual({ ok: false, reason: 'unknown-account' })
+    expect(sync.handleReleased('env_mac', { service: 'claude-code', accountId: 'u1' })).toEqual({ ok: true })
     await vi.waitFor(() => expect(activate).toHaveBeenCalledWith('claude-code', 'a@x', expect.any(String)), { timeout: 10_000, interval: 10 })
     expect(vault.profiles('claude-code')[0]).toMatchObject({ owner: 'env_box', static: false })
-    expect(sync.handleReleased('env_mac', released)).toEqual({ ok: true })
-    expect(nudge).toHaveBeenCalled()
-    expect(await sync.handlePush('env_other', transfer('handoff', 'env_someone', claudeBlob(later)), 'H2')).toEqual({ ok: false, reason: 'not-for-us' })
-    // An access copy that carries a refresh token is refused outright (admission.ts), never quietly stripped.
-    expect(await sync.handlePush('env_mac', transfer('access', 'env_mac', claudeBlob(later + 1, 'R2'), { name: 'b@x', accountId: 'u2', email: 'b@x' }))).toEqual({ ok: false, reason: 'unknown-account' })
-    expect(vault.profiles('claude-code').some((p) => p.name === 'b@x')).toBe(false)
-    expect(await sync.handlePush('env_mac', transfer('access', 'env_mac', claudeBlob(later + 1, null), { name: 'b@x', accountId: 'u2', email: 'b@x' }))).toMatchObject({ ok: true, saved: true, owner: 'env_mac', refreshFingerprint: null })
-    expect(hasRefresh('claude-code', vault.readSecret('claude-code', 'b@x')!)).toBe(false)
-  })
-
-  it('in the legacy stretch a Mac one release behind hands off and releases with no id, as before', async () => {
-    const { sync } = host('env_box', [], { handoffIdRequired: () => false })
-    const sent = transfer('handoff', 'env_box', claudeBlob(Date.now() + 2 * HOUR))
-    expect(await sync.handlePush('env_mac', sent)).toMatchObject({ ok: true, saved: true })
     expect(sync.handleReleased('env_mac', { service: 'claude-code', accountId: 'u1' })).toEqual({ ok: true })
-    expect(vault.profiles('claude-code')[0]).toMatchObject({ owner: 'env_box' })
-  })
-
-  it('in the legacy stretch an old Mac\'s takeover confirm names no id and still settles', async () => {
-    const { sync } = host('env_box', [], { releaseTimeoutMs: 60_000, handoffIdRequired: () => false })
-    vault.upsertProfile('claude-code', { name: 'mine', accountId: 'u1', createdAt: 1, owner: 'env_box' })
-    vault.saveSecret('claude-code', 'mine', claudeBlob(Date.now() + 2 * HOUR))
-    const [t] = (await sync.handlePull('env_mac', { service: 'claude-code', name: 'mine', takeOver: true })).transfers
-    expect(sync.handleConfirm('env_mac', { service: 'claude-code', accountId: 'u1', refreshFingerprint: fpOf(t)! })).toEqual({ ok: true })
-    expect(sync.handleConfirm('env_mac', { service: 'claude-code', accountId: 'u1', refreshFingerprint: fpOf(t)!, handoffId: 'x' })).toEqual({ ok: true })
+    expect(nudge).toHaveBeenCalled()
+    expect(await sync.handlePush('env_other', transfer('handoff', 'env_someone', claudeBlob(later)))).toEqual({ ok: false, reason: 'not-for-us' })
+    expect(await sync.handlePush('env_mac', transfer('access', 'env_mac', claudeBlob(later + 1, 'R2'), { name: 'b@x', accountId: 'u2', email: 'b@x' }))).toMatchObject({ ok: true, saved: true, owner: 'env_mac', refreshFingerprint: null })
+    expect(hasRefresh('claude-code', vault.readSecret('claude-code', 'b@x')!)).toBe(false)
   })
 
   it('an older handoff onto an access-only copy is refused as stale and changes nothing', async () => {
@@ -182,10 +154,10 @@ describe('AccountSync as a host', () => {
     const later = Date.now() + 2 * HOUR
     vault.upsertProfile('claude-code', { name: 'a@x', accountId: 'u1', createdAt: 1, owner: 'env_mac' })
     vault.saveSecret('claude-code', 'a@x', claudeBlob(later, null))
-    expect(await sync.handlePush('env_mac', transfer('handoff', 'env_box', claudeBlob(later - HOUR)), 'H1')).toEqual({ ok: false, reason: 'stale' })
+    expect(await sync.handlePush('env_mac', transfer('handoff', 'env_box', claudeBlob(later - HOUR)))).toEqual({ ok: false, reason: 'stale' })
     expect(vault.profiles('claude-code')[0]).toMatchObject({ owner: 'env_mac' })
     expect(hasRefresh('claude-code', vault.readSecret('claude-code', 'a@x')!)).toBe(false)
-    expect(sync.handleReleased('env_mac', { service: 'claude-code', accountId: 'u1', handoffId: 'H1' })).toEqual({ ok: false, reason: 'stale' })
+    expect(sync.handleReleased('env_mac', { service: 'claude-code', accountId: 'u1' })).toEqual({ ok: false, reason: 'not-held' })
   })
 
   it('a pull answers access copies of what this host owns or holds statically; takeOver hands the grant out and strips only on the taker\'s confirm', async () => {
@@ -202,10 +174,7 @@ describe('AccountSync as a host', () => {
       ['mine', 'access', 'env_box', false],
       ['stat', 'access', null, false]
     ])
-    const pulled = await sync.handlePull('env_mac', { service: 'claude-code', name: 'mine', takeOver: true })
-    const taken = pulled.transfers
-    const handoffId = pulled.handoffId!
-    expect(handoffId).toMatch(/^[\w-]{16}$/)
+    const taken = (await sync.handlePull('env_mac', { service: 'claude-code', name: 'mine', takeOver: true })).transfers
     expect(taken).toHaveLength(1)
     expect(taken[0]).toMatchObject({ mode: 'handoff', profile: { owner: 'env_mac' } })
     expect(hasRefresh('claude-code', taken[0].blob)).toBe(true)
@@ -213,39 +182,16 @@ describe('AccountSync as a host', () => {
     expect(vault.profiles('claude-code').find((p) => p.name === 'mine')).toMatchObject({ owner: 'env_box' })
     expect(hasRefresh('claude-code', vault.readSecret('claude-code', 'mine')!)).toBe(true)
     expect(sync.handleConfirm('env_other', { service: 'claude-code', accountId: 'u1', refreshFingerprint: fpOf(taken[0])! })).toEqual({ ok: false, reason: 'not-released' })
-    expect(sync.handleConfirm('env_mac', { service: 'claude-code', accountId: 'u1', refreshFingerprint: fpOf(taken[0])! })).toEqual({ ok: false, reason: 'stale' })
-    expect(sync.handleConfirm('env_mac', { service: 'claude-code', accountId: 'u1', refreshFingerprint: fpOf(taken[0])!, handoffId: 'another' })).toEqual({ ok: false, reason: 'stale' })
-    expect(sync.handleConfirm('env_mac', { service: 'claude-code', accountId: 'u1', refreshFingerprint: 'deadbeefdeadbeef', handoffId })).toEqual({ ok: false, reason: 'fingerprint' })
+    expect(sync.handleConfirm('env_mac', { service: 'claude-code', accountId: 'u1', refreshFingerprint: 'deadbeefdeadbeef' })).toEqual({ ok: false, reason: 'fingerprint' })
     expect(sync.handleConfirm('env_mac', { service: 'claude-code', accountId: 'u9', refreshFingerprint: 'x' })).toEqual({ ok: false, reason: 'unknown-account' })
     expect(hasRefresh('claude-code', vault.readSecret('claude-code', 'mine')!)).toBe(true)
-    expect(sync.handleConfirm('env_mac', { service: 'claude-code', accountId: 'u1', refreshFingerprint: fpOf(taken[0])!, handoffId })).toEqual({ ok: true })
+    expect(sync.handleConfirm('env_mac', { service: 'claude-code', accountId: 'u1', refreshFingerprint: fpOf(taken[0])! })).toEqual({ ok: true })
     expect(vault.profiles('claude-code').find((p) => p.name === 'mine')).toMatchObject({ owner: 'env_mac' })
     expect(hasRefresh('claude-code', vault.readSecret('claude-code', 'mine')!)).toBe(false)
     expect(vault.profiles('claude-code').find((p) => p.name === 'mine')?.releasedAt).toBeUndefined()
     // The same confirm again (its answer was lost) is still ok; nothing to take over twice.
     expect(sync.handleConfirm('env_mac', { service: 'claude-code', accountId: 'u1', refreshFingerprint: fpOf(taken[0])! })).toEqual({ ok: true })
     expect((await sync.handlePull('env_mac', { service: 'claude-code', name: 'mine', takeOver: true })).transfers).toEqual([])
-  })
-
-  it('the live-CLI guard holds for a takeover too: the grant the CLI here is signed in with is never handed out', async () => {
-    const later = Date.now() + 2 * HOUR
-    const blob = claudeBlob(later)
-    const { sync } = host('env_box', [], { releaseTimeoutMs: 60_000, liveFingerprint: async () => adapter('claude-code').fingerprintOf!(blob) })
-    vault.upsertProfile('claude-code', { name: 'mine', accountId: 'u1', createdAt: 1, owner: 'env_box' })
-    vault.saveSecret('claude-code', 'mine', blob)
-    const answer = await sync.handlePull('env_mac', { service: 'claude-code', name: 'mine', takeOver: true })
-    expect(answer.transfers).toEqual([])
-    expect(answer.handoffId).toBeUndefined()
-    expect(hasRefresh('claude-code', vault.readSecret('claude-code', 'mine')!)).toBe(true)
-  })
-
-  it('a lineage check that fails counts as unknown: nothing is handed off on a guess', async () => {
-    const blob = claudeBlob(Date.now() + 2 * HOUR)
-    const failing = host('env_box', [], { liveFingerprint: async () => { throw new Error('keychain busy') } })
-    expect(await failing.sync.liveLineage('claude-code', blob)).toBe(true)
-    const signedOut = host('env_box', [], { liveFingerprint: async () => null })
-    expect(await signedOut.sync.liveLineage('claude-code', blob)).toBe(false)
-    expect(await signedOut.sync.liveLineage('claude-code', 'not json')).toBe(true)
   })
 
   it('a takeOver with no confirm in time keeps the grant here, and a late confirm is refused', async () => {
@@ -261,9 +207,8 @@ describe('AccountSync as a host', () => {
     expect(hasRefresh('claude-code', vault.readSecret('claude-code', 'mine')!)).toBe(true)
     expect(sync.handleConfirm('env_mac', { service: 'claude-code', accountId: 'u1', refreshFingerprint: fpOf(t)! })).toEqual({ ok: false, reason: 'not-released' })
     // Handed out again: a fresh pending release replaces nothing stale.
-    const second = await sync.handlePull('env_mac', { service: 'claude-code', name: 'mine', takeOver: true })
-    const [again] = second.transfers
-    expect(sync.handleConfirm('env_mac', { service: 'claude-code', accountId: 'u1', refreshFingerprint: fpOf(again)!, handoffId: second.handoffId })).toEqual({ ok: true })
+    const [again] = (await sync.handlePull('env_mac', { service: 'claude-code', name: 'mine', takeOver: true })).transfers
+    expect(sync.handleConfirm('env_mac', { service: 'claude-code', accountId: 'u1', refreshFingerprint: fpOf(again)! })).toEqual({ ok: true })
     expect(hasRefresh('claude-code', vault.readSecret('claude-code', 'mine')!)).toBe(false)
   })
 })
@@ -458,8 +403,8 @@ describe('AccountSync as a client', () => {
     sync.onPeerPush('env_box', { push: 'account', from: 'env_box', transfer: transfer('access', 'env_third', claudeBlob(later + 2 * HOUR, null)) })
     expect(vault.profiles('claude-code').map((p) => p.name)).toEqual(['a@x'])
     expect(tokensOf(vault.readSecret('claude-code', 'a@x')!)).toMatchObject({ accessToken: `T${later + HOUR}` })
-    expect(lines.filter((l) => /refused|not admitted/.test(l))).toEqual([
-      'claude-code planted from env_box: not admitted (unknown-account)',
+    expect(lines.filter((l) => /refused/.test(l))).toEqual([
+      'claude-code planted: env_box pushed an account this host never had; refused',
       'claude-code a@x: rotation from env_box refused (not-owner)'
     ])
   })

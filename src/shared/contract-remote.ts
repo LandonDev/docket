@@ -26,7 +26,7 @@ export interface RemoteStatus {
 const request = <M extends string, P extends z.ZodType>(method: M, params: P) =>
   z.object({ id: z.string(), method: z.literal(method), params })
 
-export const CapabilitySchema = z.enum(['read', 'operate', 'approve', 'admin', 'give', 'device'])
+export const CapabilitySchema = z.enum(['read', 'operate', 'approve', 'admin'])
 export const AudienceSchema = z.enum(['client', 'mcp'])
 const Id = z.object({ id: z.string().min(1) })
 /** The notices a key's webhook may subscribe to (remote/notifier.ts). */

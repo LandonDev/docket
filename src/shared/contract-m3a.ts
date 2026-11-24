@@ -209,12 +209,7 @@ export const M3aRequestSchemas = [
   z.object({
     id: z.string(),
     method: z.literal('accounts.push'),
-    params: z.object({
-      from: z.string(),
-      transfer: AccountTransferSchema,
-      /** A handoff's own id: the release that follows names it, so a stale or another release is refused. */
-      handoffId: z.string().max(64).optional()
-    })
+    params: z.object({ from: z.string(), transfer: AccountTransferSchema })
   }),
   z.object({
     id: z.string(),
@@ -235,14 +230,14 @@ export const M3aRequestSchemas = [
   z.object({
     id: z.string(),
     method: z.literal('accounts.confirm'),
-    params: z.object({ from: z.string(), service: ServiceIdSchema, accountId: z.string(), refreshFingerprint: z.string(), handoffId: z.string().max(64).optional() })
+    params: z.object({ from: z.string(), service: ServiceIdSchema, accountId: z.string(), refreshFingerprint: z.string() })
   }),
   // The sender of a handoff stripped its copy: the receiver, holding the
   // grant provisionally, makes itself the owner.
   z.object({
     id: z.string(),
     method: z.literal('accounts.released'),
-    params: z.object({ from: z.string(), service: ServiceIdSchema, accountId: z.string(), handoffId: z.string().max(64).optional(), refreshFingerprint: z.string().optional() })
+    params: z.object({ from: z.string(), service: ServiceIdSchema, accountId: z.string() })
   }),
   // A host deleted profiles (remote/accountSync.ts): the peer drops its
   // access-only copies of what the sender refreshed, and a static token only

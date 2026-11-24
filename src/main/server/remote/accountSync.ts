@@ -1,4 +1,3 @@
-import { randomBytes } from 'node:crypto'
 import { accounts as coreAccounts, adapter, pinProfile, vault, withLock, type Hooks, type ServiceId } from 'aliax-core'
 import type { SaveOrigin } from 'aliax-core/config'
 import { liveKeychain } from 'aliax-core/adapters/claude'
@@ -24,8 +23,6 @@ import { ACCOUNT_PROVIDERS, PROVIDER_OF, SERVICE_OF, type AccountProvider, type 
 import type { ServerPush } from '@shared/contract'
 import type { PeerLink, Peers } from './peers'
 import type { HeadroomSnapshot, HeadroomStore } from '../headroom'
-import { admit, type ReceivePath } from '../devices/admission'
-import type { Grant } from '@shared/devices/envelope'
 
 /**
  * Accounts shared between this host and the ones it holds admin keys for
@@ -98,24 +95,6 @@ const HEADROOM_DEBOUNCE_MS = 1_000
 export const RELEASE_TIMEOUT_MS = 30_000
 /** Settings row holding this host's tombstones (AccountRemoval[]). */
 export const TOMBSTONES_KEY = 'accounts.tombstones'
-/**
- * Every handoff has an id, and its release or confirm names it with the
- * grant's refresh fingerprint; anything else is refused as stale
- * (pc-setup.md, M2). Each side keeps its half in a settings row by
- * `service:accountId` until the exchange ends, so a restart settles it:
- * the receiver's `accounts.handoff.` (a grant held provisionally, waiting
- * for the release), the sender's `accounts.released.` (stripped here, the
- * receiver not yet told) and a taker's `accounts.taking.` (a takeover
- * landed here, its confirm not yet answered).
- */
-const HANDOFF_KEYS = { held: 'accounts.handoff.', released: 'accounts.released.', taking: 'accounts.taking.' } as const
-type HandoffSide = keyof typeof HANDOFF_KEYS
-interface HandoffRecord {
-  id: string
-  peer: string
-  fingerprint: string
-}
-const newHandoffId = (): string => randomBytes(12).toString('base64url')
 /** How long a tombstone is kept and sent. */
 export const TOMBSTONE_TTL_MS = 30 * 86_400_000
 
@@ -139,14 +118,6 @@ export interface AccountSyncDeps {
   liveAccountId?: (service: ServiceId) => Promise<string | null>
   liveExpiry?: (service: ServiceId) => Promise<number | null>
   activate?: (service: ServiceId, name: string, blob: string) => Promise<void>
-  /** On a given computer, the grants its manifest admits (devices/); undefined on the giver and the box. */
-  admitted?: () => readonly Grant[] | undefined
-  /** Whether a handoff must name its id: false only in the box's legacy stretch (devices/giver.ts), for a Mac one release behind. */
-  handoffIdRequired?: () => boolean
-  /** Proof seam (TEMP_CODE_E2E_OLD_WIRE, isolated only): speak the wire of a Mac one release behind, with no handoff ids. */
-  omitHandoffIds?: boolean
-  /** Test seam: the fingerprint of the grant the CLI here is signed in with (the adapter's liveFingerprint). */
-  liveFingerprint?: (service: ServiceId) => Promise<string | null>
   /** Test seam: the release timeout. */
   releaseTimeoutMs?: number
   /**
@@ -174,8 +145,6 @@ export interface AccountSyncDeps {
 
 export interface PullAnswer {
   transfers: Transfer[]
-  /** A takeover's handoff id, which its confirm must name. */
-  handoffId?: string
   /** The sender's whole file for the services asked (absent from a host too old to send it). */
   listed?: ListedAccount[]
   /** The sender's tombstones (absent from a host too old to send them). */
@@ -192,14 +161,12 @@ export interface ConfirmParams {
   service: ServiceId
   accountId: string
   refreshFingerprint: string
-  /** The takeover's handoff id (PullAnswer.handoffId); a confirm naming another is stale. */
-  handoffId?: string
 }
 
-export type ConfirmAnswer = { ok: true } | { ok: false; reason: 'unknown-account' | 'not-released' | 'fingerprint' | 'stale' }
-export type ReleasedAnswer = { ok: true } | { ok: false; reason: 'unknown-account' | 'not-held' | 'stale' }
+export type ConfirmAnswer = { ok: true } | { ok: false; reason: 'unknown-account' | 'not-released' | 'fingerprint' }
+export type ReleasedAnswer = { ok: true } | { ok: false; reason: 'unknown-account' | 'not-held' }
 
-type PendingRelease = { handoff: Handoff; to: string; name: string; timer: NodeJS.Timeout; id: string }
+type PendingRelease = { handoff: Handoff; to: string; name: string; timer: NodeJS.Timeout }
 
 export class AccountSync {
   /** Sockets that pulled, each with the host it pulled as (accounts.pull's `from`). */
@@ -229,32 +196,6 @@ export class AccountSync {
 
   private now(): number {
     return this.deps.now?.() ?? Date.now()
-  }
-
-  /** The one admission check (devices/admission.ts) on a transfer arriving by `path`; a refusal is logged by service and name only. */
-  private admits(t: Transfer, path: ReceivePath, from: string): boolean {
-    const out = admit(t, { path, policy: path === 'push' ? 'admin' : this.policyFor(t), admitted: this.deps.admitted?.() }, vault.profiles(t.service))
-    if (!out.ok) this.log(`${t.service} ${t.profile.name} ${path === 'export' ? 'to' : 'from'} ${from}: not admitted (${out.reason})`)
-    return out.ok
-  }
-
-  private idRequired(): boolean {
-    return this.deps.handoffIdRequired?.() ?? true
-  }
-
-  private handoffRecord(side: HandoffSide, service: ServiceId, accountId: string): HandoffRecord | null {
-    const raw = this.deps.store.getSetting(`${HANDOFF_KEYS[side]}${service}:${accountId}`)
-    if (!raw) return null
-    try {
-      const r = JSON.parse(raw) as HandoffRecord
-      return typeof r.id === 'string' && typeof r.peer === 'string' && typeof r.fingerprint === 'string' ? r : null
-    } catch {
-      return null
-    }
-  }
-
-  private setHandoffRecord(side: HandoffSide, service: ServiceId, accountId: string, record: HandoffRecord | null): void {
-    this.deps.store.setSetting(`${HANDOFF_KEYS[side]}${service}:${accountId}`, record ? JSON.stringify(record) : null)
   }
 
   /** Per provider, the environment new sign-ins are handed to; absent means this machine. */
@@ -297,13 +238,7 @@ export class AccountSync {
     return match?.name ?? profile.name
   }
 
-  async handlePush(from: string, t: Transfer, handoffId?: string): Promise<ApplyOutcome> {
-    // A handoff names its id, or it is refused: its release must name the same one.
-    if (t.mode === 'handoff' && !handoffId && this.idRequired()) {
-      this.log(`${t.service} ${t.profile.name}: handoff from ${from} refused (it names no handoff id)`)
-      return { ok: false, reason: 'stale' }
-    }
-    if (!this.admits(t, 'push', from)) return { ok: false, reason: 'unknown-account' }
+  async handlePush(from: string, t: Transfer): Promise<ApplyOutcome> {
     const land = () => {
       const before = PROVIDER_OF[t.service] ? vault.profiles(t.service) : null
       const out = applyTransfer(t, from)
@@ -315,9 +250,6 @@ export class AccountSync {
     if (!out.ok) {
       this.log(`${t.service} ${t.profile.name}: ${t.mode} from ${from} refused (${out.reason})`)
       return out
-    }
-    if (t.mode === 'handoff' && handoffId && out.refreshFingerprint) {
-      this.setHandoffRecord('held', t.service, t.profile.accountId, { id: handoffId, peer: from, fingerprint: out.refreshFingerprint })
     }
     if (out.saved) {
       this.forgetTombstone(t.service, t.profile.accountId)
@@ -396,27 +328,23 @@ export class AccountSync {
 
   async handlePull(from: string, params: { service?: ServiceId; name?: string; takeOver?: boolean }): Promise<PullAnswer> {
     const transfers: Transfer[] = []
-    let handoffId: string | undefined
     for (const service of params.service ? [params.service] : SERVICES) {
       for (const p of vault.profiles(service)) {
         if (params.name && p.name !== params.name) continue
         try {
           if (params.takeOver && params.name) {
             if (p.static || !ownsProfile(p)) continue
-            const out = await this.handOut(service, p.name, p.accountId, from)
-            transfers.push(out.transfer)
-            handoffId = out.id
+            transfers.push(await this.handOut(service, p.name, p.accountId, from))
             this.log(`${service} ${p.name}: handed out to ${from}, waiting for its word`)
           } else if ((p.static || ownsProfile(p)) && this.mayReceive(service, p.name, from)) {
-            const t = exportAccount(service, p.name, 'access')
-            if (this.admits(t, 'export', from)) transfers.push(t)
+            transfers.push(exportAccount(service, p.name, 'access'))
           }
         } catch (err) {
           this.log(`${service} ${p.name}: not shared (${(err as Error).message})`)
         }
       }
     }
-    return { transfers, ...(handoffId ? { handoffId } : {}), listed: this.listed(params.service ? [params.service] : SERVICES), tombstones: this.tombstones() }
+    return { transfers, listed: this.listed(params.service ? [params.service] : SERVICES), tombstones: this.tombstones() }
   }
 
   /** Every profile on file here for the services, with its owner: what a peer prunes against. */
@@ -554,19 +482,11 @@ export class AccountSync {
     return dropped
   }
 
-  /**
-   * Export the full grant for `to` under the profile's lock and keep it
-   * pending until `to` confirms with this handoff's id, or the timeout. The
-   * grant the CLI here is signed in with is never handed out (the live-CLI
-   * guard, the same as a push's), nor one whose lineage cannot be told.
-   */
-  private async handOut(service: ServiceId, name: string, accountId: string, to: string): Promise<{ transfer: Transfer; id: string }> {
+  /** Export the full grant for `to` under the profile's lock and keep it pending until `to` confirms or the timeout. */
+  private async handOut(service: ServiceId, name: string, accountId: string, to: string): Promise<Transfer> {
     const key = `${service}:${accountId}`
     this.dropPending(key, 'handed out again')
-    const stored = vault.readSecret(service, name)
-    if (!stored || (await this.liveLineage(service, stored))) throw new Error('the sign-in here, or one that cannot be told apart; it stays here')
     const handoff = await beginHandoff(service, name, to)
-    const id = newHandoffId()
     const timer = setTimeout(() => {
       if (this.pending.get(key)?.handoff !== handoff) return
       this.pending.delete(key)
@@ -575,8 +495,8 @@ export class AccountSync {
       this.deps.nudge()
     }, this.deps.releaseTimeoutMs ?? RELEASE_TIMEOUT_MS)
     timer.unref()
-    this.pending.set(key, { handoff, to, name, timer, id })
-    return { transfer: handoff.transfer, id }
+    this.pending.set(key, { handoff, to, name, timer })
+    return handoff.transfer
   }
 
   private dropPending(key: string, why: string): void {
@@ -593,10 +513,6 @@ export class AccountSync {
     const key = `${params.service}:${params.accountId}`
     const pending = this.pending.get(key)
     if (pending && pending.to === from) {
-      if (params.handoffId !== pending.id && (params.handoffId !== undefined || this.idRequired())) {
-        this.log(`${params.service} ${pending.name}: ${from} confirmed another handoff than the one handed out; still waiting`)
-        return { ok: false, reason: 'stale' }
-      }
       if (pending.handoff.fingerprint !== params.refreshFingerprint) {
         this.log(`${params.service} ${pending.name}: ${from} confirmed another grant than the one handed out; still waiting`)
         return { ok: false, reason: 'fingerprint' }
@@ -620,24 +536,11 @@ export class AccountSync {
   }
 
   /** The sender of a handoff stripped its copy: the grant held here provisionally is this host's to refresh. */
-  handleReleased(from: string, params: { service: ServiceId; accountId: string; handoffId?: string; refreshFingerprint?: string }): ReleasedAnswer {
+  handleReleased(from: string, params: { service: ServiceId; accountId: string }): ReleasedAnswer {
     const p = vault.profiles(params.service).find((x) => x.accountId === params.accountId)
     if (!p) return { ok: false, reason: 'unknown-account' }
     const was = ownsProfile(p)
-    if (!was) {
-      // The release names the handoff that landed here and the grant it carried, or it is stale.
-      const held = this.handoffRecord('held', params.service, params.accountId)
-      const stored = this.storedOrNull(params.service, p.name)
-      const now = stored ? refreshFingerprint(params.service, stored) : null
-      // A Mac one release behind names neither (the legacy stretch): its handoff left no record either.
-      const legacyRelease = !this.idRequired() && params.handoffId === undefined && !held
-      if (!legacyRelease && (!held || held.peer !== from || held.id !== params.handoffId || held.fingerprint !== params.refreshFingerprint || now !== held.fingerprint)) {
-        this.log(`${params.service} ${p.name}: a release from ${from} named another handoff or grant; refused`)
-        return { ok: false, reason: 'stale' }
-      }
-    }
     if (!claimHandoff(params.service, p.name, from)) return { ok: false, reason: 'not-held' }
-    this.setHandoffRecord('held', params.service, params.accountId, null)
     if (!was) {
       this.deps.onClaimed?.(params.service, p.name)
       this.log(`${params.service} ${p.name}: ${from} released it; refreshed here now`)
@@ -645,14 +548,6 @@ export class AccountSync {
       this.deps.nudge()
     }
     return { ok: true }
-  }
-
-  private storedOrNull(service: ServiceId, name: string): string | null {
-    try {
-      return vault.readSecret(service, name)
-    } catch {
-      return null
-    }
   }
 
   private holdsRefresh(service: ServiceId, name: string): boolean {
@@ -715,7 +610,6 @@ export class AccountSync {
       const { transfers, listed, tombstones } = await link.request<PullAnswer>('accounts.pull', { from: this.me })
       let landed = 0
       for (const t of transfers) {
-        if (!this.admits(t, 'pull', link.id)) continue
         const out = applyTransfer(t, link.id, this.policyFor(t))
         if (out.ok && out.saved) landed++
         else if (!out.ok) this.log(`${t.service} ${t.profile.name} from ${link.env.name}: refused (${out.reason})`)
@@ -764,10 +658,7 @@ export class AccountSync {
     const stored = vault.readSecret(service, name)
     const fingerprint = stored ? refreshFingerprint(service, stored) : null
     if (!stored || !fingerprint) return false
-    const taking = this.handoffRecord('taking', service, accountId)
-    const handoffId = taking && taking.peer === link.id && taking.fingerprint === fingerprint ? taking.id : undefined
-    const word = await link.request<ConfirmAnswer>('accounts.confirm', { from: this.me, service, accountId, refreshFingerprint: fingerprint, ...(this.deps.omitHandoffIds ? {} : { handoffId }) })
-    this.setHandoffRecord('taking', service, accountId, null)
+    const word = await link.request<ConfirmAnswer>('accounts.confirm', { from: this.me, service, accountId, refreshFingerprint: fingerprint })
     if (word.ok) {
       claimHandoff(service, name, link.id)
       this.deps.onClaimed?.(service, name)
@@ -786,10 +677,7 @@ export class AccountSync {
 
   /** The sender's last word after a handoff: the peer makes itself the owner. */
   private async tellReleased(link: PeerLink, service: ServiceId, name: string, accountId: string): Promise<void> {
-    const record = this.handoffRecord('released', service, accountId)
-    const mine = record && record.peer === link.id ? record : null
-    const word = await link.request<ReleasedAnswer>('accounts.released', this.deps.omitHandoffIds ? { from: this.me, service, accountId } : { from: this.me, service, accountId, handoffId: mine?.id, refreshFingerprint: mine?.fingerprint })
-    this.setHandoffRecord('released', service, accountId, null)
+    const word = await link.request<ReleasedAnswer>('accounts.released', { from: this.me, service, accountId })
     if (word.ok) {
       clearReleased(service, name)
       return
@@ -833,10 +721,9 @@ export class AccountSync {
     }
     // The lock is held from the export to commit or abort: no refresh rotates the token meanwhile.
     const h = await beginHandoff(service, name, link.id)
-    const handoffId = newHandoffId()
     let out: ApplyOutcome
     try {
-      out = await link.request<ApplyOutcome>('accounts.push', { from: this.me, transfer: h.transfer, ...(this.deps.omitHandoffIds ? {} : { handoffId }) })
+      out = await link.request<ApplyOutcome>('accounts.push', { from: this.me, transfer: h.transfer })
     } catch (err) {
       h.abort()
       throw err
@@ -852,7 +739,6 @@ export class AccountSync {
       return false
     }
     h.commit()
-    this.setHandoffRecord('released', service, p.accountId, { id: handoffId, peer: link.id, fingerprint: h.fingerprint })
     this.log(`${service} ${name}: now refreshed by ${link.env.name}`)
     await this.tellReleased(link, service, name, p.accountId).catch((err) => this.log(`${service} ${name}: ${link.env.name} did not hear the release (${(err as Error).message}); told again on the next sync`))
     return true
@@ -868,20 +754,9 @@ export class AccountSync {
   async liveLineage(service: ServiceId, stored: string): Promise<boolean> {
     const a = adapter(service)
     if (!a.fingerprintOf || !a.liveFingerprint) return true
-    // A lineage that cannot be read counts as unknown, so as the live one: nothing is handed off on a guess.
-    let mine: string | null
-    try {
-      mine = a.fingerprintOf(stored)
-    } catch {
-      return true
-    }
-    if (mine === null) return true
-    let live: string | null
-    try {
-      live = await (this.deps.liveFingerprint ? this.deps.liveFingerprint(service) : a.liveFingerprint())
-    } catch {
-      return true
-    }
+    const mine = a.fingerprintOf(stored)
+    if (mine === null) return false
+    const live = await a.liveFingerprint().catch(() => null)
     return live !== null && mine === live
   }
 
@@ -924,7 +799,6 @@ export class AccountSync {
       return
     }
     if (push.push !== 'account') return
-    if (!this.admits(push.transfer, 'rotation', from)) return
     const out = applyTransfer(push.transfer, from, this.policyFor(push.transfer))
     if (out.ok && out.saved) {
       this.log(`${push.transfer.service} ${out.name}: rotation from ${from} landed`)
@@ -955,7 +829,6 @@ export class AccountSync {
       const { transfers } = await link.request<PullAnswer>('accounts.pull', { from: this.me, service: serviceId, name })
       let landed: string | null = null
       for (const t of transfers) {
-        if (!this.admits(t, 'askOwner', owner)) continue
         const out = applyTransfer(t, owner, this.policyFor(t))
         if (out.ok && t.service === serviceId) landed = out.name
       }
@@ -978,10 +851,9 @@ export class AccountSync {
     const link = this.deps.peers.get(from)
     if (!link?.connected) return null
     return withLock(service, name, async () => {
-      const { transfers, handoffId } = await link.request<PullAnswer>('accounts.pull', { from: this.me, service, name, takeOver: true })
+      const { transfers } = await link.request<PullAnswer>('accounts.pull', { from: this.me, service, name, takeOver: true })
       const t = transfers[0]
       if (!t) return null
-      if (!this.admits(t, 'takeover', from)) return null
       const out = applyTransfer(t, from, 'peer')
       this.deps.nudge()
       if (!out.ok) {
@@ -989,7 +861,6 @@ export class AccountSync {
         return out
       }
       if (!out.refreshFingerprint) return out
-      if (handoffId) this.setHandoffRecord('taking', service, t.profile.accountId, { id: handoffId, peer: from, fingerprint: out.refreshFingerprint })
       try {
         await this.confirmWith(link, service, out.name, t.profile.accountId)
       } catch (err) {
