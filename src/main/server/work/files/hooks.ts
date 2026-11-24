@@ -87,7 +87,14 @@ export interface Seat {
  */
 export type SeatChooser = (ctx: WorkCtx, by: Caller, ask: SeatAsk, signal?: AbortSignal) => Promise<Seat | null>
 
+/**
+ * A source that is no file (a Microsoft form, `{ at: 'msform' }`) seated in a tab by the pillar that owns it: its tab's
+ * key, name, kind and source, after the pillar's own reach check. A throw is the open's.
+ */
+export type RefSeat = (ctx: WorkCtx, by: Caller, ask: SeatAsk) => Promise<Omit<Seat, 'file' | 'copyOf'>>
+
 const makers = new Map<CanvasKind, FileMaker>()
+const refSeats = new Map<CanvasSource['at'], RefSeat>()
 let importPlace: ImportPlace | null = null
 let seatChooser: SeatChooser | null = null
 const previewers = new Map<CanvasKind, FilePreviewer>()
@@ -124,6 +131,13 @@ export function registerImportPlace(fn: ImportPlace): () => void {
   return () => void (importPlace === fn && (importPlace = null))
 }
 export const importPlaceFor = (original: string, itemId: string | undefined): string | null => importPlace?.(original, itemId) ?? null
+
+/** The pillar that seats a source of this `at` in a tab (msforms: `msform`). Returns its off. */
+export function registerRefSeat(at: CanvasSource['at'], fn: RefSeat): () => void {
+  refSeats.set(at, fn)
+  return () => void (refSeats.get(at) === fn && refSeats.delete(at))
+}
+export const refSeatFor = (at: CanvasSource['at']): RefSeat | null => refSeats.get(at) ?? null
 
 /** The one pillar that may seat a file before Files does (a later one replaces the earlier). Returns its off. */
 export function registerSeatChooser(fn: SeatChooser): () => void {

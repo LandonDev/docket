@@ -5983,6 +5983,7 @@ public struct CanvasItem: Codable, Hashable, Sendable {
         case form
         case dashboard
         case file
+        case msform
         /// A value this build does not know; `rawValue` keeps it.
         case unknown(String)
 
@@ -6000,6 +6001,7 @@ public struct CanvasItem: Codable, Hashable, Sendable {
             case "form": self = .form
             case "dashboard": self = .dashboard
             case "file": self = .file
+            case "msform": self = .msform
             default: self = .unknown(rawValue)
             }
         }
@@ -6018,6 +6020,7 @@ public struct CanvasItem: Codable, Hashable, Sendable {
             case .form: "form"
             case .dashboard: "dashboard"
             case .file: "file"
+            case .msform: "msform"
             case .unknown(let value): value
             }
         }

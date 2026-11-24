@@ -199,6 +199,20 @@ public struct MailSource: Codable, Hashable, Sendable {
     }
 }
 
+public struct MsformSource: Codable, Hashable, Sendable {
+    public let host: String
+    public let workspaceId: String
+    public let formId: String
+    public let tenant: String
+
+    public init(host: String, workspaceId: String, formId: String, tenant: String) {
+        self.host = host
+        self.workspaceId = workspaceId
+        self.formId = formId
+        self.tenant = tenant
+    }
+}
+
 public enum CanvasSource: Codable, Hashable, Sendable {
     case lifeos(LifeosSource)
     case file(FileSource)
@@ -208,6 +222,7 @@ public enum CanvasSource: Codable, Hashable, Sendable {
     case browser(BrowserSource)
     case thread(ThreadSource)
     case mail(MailSource)
+    case msform(MsformSource)
     /// A `at` this build does not know: the whole object, untouched.
     case unknown(JSONValue)
 
@@ -226,6 +241,7 @@ public enum CanvasSource: Codable, Hashable, Sendable {
         case "browser": self = .browser(try BrowserSource(from: decoder))
         case "thread": self = .thread(try ThreadSource(from: decoder))
         case "mail": self = .mail(try MailSource(from: decoder))
+        case "msform": self = .msform(try MsformSource(from: decoder))
         default: self = .unknown(try JSONValue(from: decoder))
         }
     }
@@ -240,6 +256,7 @@ public enum CanvasSource: Codable, Hashable, Sendable {
         case .browser(let value): try Self.encode(tag: "browser", value, to: encoder)
         case .thread(let value): try Self.encode(tag: "thread", value, to: encoder)
         case .mail(let value): try Self.encode(tag: "mail", value, to: encoder)
+        case .msform(let value): try Self.encode(tag: "msform", value, to: encoder)
         case .unknown(let value): try value.encode(to: encoder)
         }
     }

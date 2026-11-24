@@ -1,8 +1,12 @@
+import { randomBytes } from 'node:crypto'
 import { rmSync } from 'node:fs'
+import type { FormListRow } from '@shared/contract-work-msforms'
+import type { FilesTabs } from '@shared/contract-work-files'
+import { admitCaller } from '../files/policy'
 import { join } from 'node:path'
 import { FormPublishSchema, FormsRequestSchemas, type FormPublish } from '@shared/contract-work-forms'
 import { handled, NOT_HANDLED } from '@shared/work'
-import type { ActKindDef, WorkCtx, WorkModule } from '../modules'
+import type { ActKindDef, Caller, WorkCtx, WorkModule } from '../modules'
 import { announce, dropCopy, formItem, hold, publish, responses, review, rowOf, save, setOpen, settled, viewOf, writeCopy } from './forms'
 import { ensureFormsTables, FormsStore, type FormRow } from './store'
 import { formsTools } from './tools'
@@ -34,7 +38,30 @@ export const formPublishKind: ActKindDef<FormPublish, never> = {
 }
 
 const FORMS_METHODS: ReadonlySet<string> = new Set(FormsRequestSchemas.map((s) => s.shape.method.value))
-const OWNER_ONLY = new Set(['work.forms.save', 'work.forms.review', 'work.forms.mode', 'work.forms.publish', 'work.forms.close'])
+const OWNER_ONLY = new Set(['work.forms.save', 'work.forms.review', 'work.forms.mode', 'work.forms.publish', 'work.forms.close', 'work.forms.make'])
+
+/** The job's forms, ours, newest change first: the Forms view's half of its list. A thread lists its own job's alone. */
+function listForms(ctx: WorkCtx, by: Caller, workspaceId: string): FormListRow[] {
+  admitCaller(ctx, by, workspaceId)
+  const store = new FormsStore(ctx.db)
+  return ctx.canvas
+    .forWorkspace(workspaceId, { panes: true })
+    .filter((i) => i.kind === 'form')
+    .flatMap((i): FormListRow[] => {
+      const row = store.get(i.id)
+      return row ? [{ kind: 'ours', id: i.id, title: row.body.title, state: row.state, count: null, lastAnswerAt: null, updatedAt: i.updatedAt }] : []
+    })
+    .sort((a, b) => b.updatedAt - a.updatedAt)
+}
+
+/** His New → TempCode form: an empty draft in the workspace's Files pane, opened in a tab of its own. */
+async function makeInFiles(ctx: WorkCtx, by: Caller, workspaceId: string, title = 'Untitled form'): Promise<FilesTabs & { tabId: string; itemId: string }> {
+  admitCaller(ctx, by, workspaceId)
+  const { openInTab, tabsAnswer } = await import('../files/handle')
+  const { tabId, item } = openInTab(ctx, workspaceId, { key: `form:${randomBytes(9).toString('base64url')}`, name: title, kind: 'form', source: { at: 'thread' } })
+  new FormsStore(ctx.db).create(item.id, item.sessionId, { title, description: '', questions: [] })
+  return { ...tabsAnswer(ctx, workspaceId), tabId, itemId: item.id }
+}
 
 export const forms: WorkModule = {
   id: 'forms',
@@ -46,6 +73,8 @@ export const forms: WorkModule = {
     if (!FORMS_METHODS.has(req.method)) return NOT_HANDLED
     // The canvas's methods are his: a thread's own call goes through the tools, where the hold and the mode apply.
     if (by.kind === 'model' && OWNER_ONLY.has(req.method)) throw new Error('Only the owner changes a form from the canvas.')
+    if (req.method === 'work.forms.list') return handled(listForms(ctx, by, req.params.workspaceId))
+    if (req.method === 'work.forms.make') return handled(await makeInFiles(ctx, by, req.params.workspaceId, req.params.title))
     const item = formItem(ctx, (req as { params: { itemId: string } }).params.itemId)
     switch (req.method) {
       case 'work.forms.open':

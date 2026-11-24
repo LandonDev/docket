@@ -127,7 +127,11 @@ export const FormsRequestSchemas = [
   /** Close (open: false) or reopen the published form. Not held: it stops or restarts answers on his own form. */
   request('work.forms.close', z.object({ itemId, open: z.boolean() })),
   /** The answers, read from the sheet; `{ same: true }` when the sheet is still at `rev`. */
-  request('work.forms.responses', z.object({ itemId, rev: z.number().int().min(0).optional() }))
+  request('work.forms.responses', z.object({ itemId, rev: z.number().int().min(0).optional() })),
+  /** The job's forms in its Files pane and its threads, newest first (the Forms view). */
+  request('work.forms.list', z.object({ workspaceId: z.string().min(1).max(100) })),
+  /** His New → TempCode form: a draft in the Files pane, opened in a Files tab (→ `{ tabId, itemId }`). */
+  request('work.forms.make', z.object({ workspaceId: z.string().min(1).max(100), title: z.string().trim().min(1).max(200).optional() }))
 ] as const
 
 export type FormsPush = { push: 'work.forms'; sessionId: string; itemId: string; view: FormView }
@@ -139,7 +143,9 @@ export const FORMS_CAPS = {
   'work.forms.mode': 'operate',
   'work.forms.publish': 'operate',
   'work.forms.close': 'operate',
-  'work.forms.responses': 'read'
+  'work.forms.responses': 'read',
+  'work.forms.list': 'read',
+  'work.forms.make': 'operate'
 } satisfies CapsOf<typeof FormsRequestSchemas>
 export const FORMS_RELAY = {} satisfies RelayOf<typeof FormsRequestSchemas>
 

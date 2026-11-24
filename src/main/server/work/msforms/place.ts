@@ -70,3 +70,17 @@ export function folderPageOf(folder: MsFormFolder, libraryWeb: string | null): s
   const origin = new URL(site.siteUrl).origin
   return `${origin}${encodeURI(`${site.libraryPath}/Forms/AllItems.aspx`)}?id=${encodeURIComponent(server)}`
 }
+
+/** The library a folder of this host lies in, and the folder's path inside it; null when it lies in none. */
+export function libraryAt(libraries: readonly TeamsLibrary[], path: string): { library: TeamsLibrary; inside: string } | null {
+  const norm = (p: string): string => p.replace(/[\\/]+$/, '')
+  for (const library of libraries) {
+    const top = norm(library.path)
+    const guest = library.vm || /^[a-zA-Z]:\\/.test(top)
+    const a = guest ? norm(path).toLowerCase() : norm(path)
+    const b = guest ? top.toLowerCase() : top
+    if (a === b) return { library, inside: '' }
+    if (a.startsWith(`${b}\\`) || a.startsWith(`${b}/`)) return { library, inside: norm(path).slice(top.length + 1).replace(/\\/g, '/') }
+  }
+  return null
+}

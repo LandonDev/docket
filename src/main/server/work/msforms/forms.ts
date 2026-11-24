@@ -5,7 +5,7 @@ import type { Principal } from '@shared/work/ids'
 import { applyChange, changeWords, diffQuestions, isOther, questionWords, respondOf, settingsWords, type MsAnyQuestion, type MsChange, type MsFormCheck, type MsFormSettings } from '@shared/work/msforms'
 import type { Caller, WorkCtx } from '../modules'
 import { authorize, CarrierRefused, CarrierStop, msCarrier, NO_CARRIER, type CarrierBy, type CarrierOp, type FormRead, type MsCarrier } from './carrier/types'
-import { folderOf, folderPageOf } from './place'
+import { folderOf, folderPageOf, libraryAt } from './place'
 import { formReach, formsReached, jobOf, librariesFor, MsformsError, type Reached } from './reach'
 import { MsformsStore, type MsFormRow } from './store'
 
@@ -144,13 +144,16 @@ export const MAY_TAKE_ANSWERS = 'The form was made but may take answers: no one 
 export async function make(
   ctx: MsCtx,
   by: Caller,
-  ask: { workspaceId: string; folder: { libraryId: string; path: string }; title: string; description?: string; questions?: MsFormMake['questions']; settings?: Partial<MsFormSettings> },
+  ask: { workspaceId: string; folder: { libraryId: string; path: string } | { at: 'file'; host: string; path: string }; title: string; description?: string; questions?: MsFormMake['questions']; settings?: Partial<MsFormSettings> },
   grant: { by: 'owner' | 'act'; madeBy: Principal }
 ): Promise<MsFormView> {
   const carrier = carrierOrRefuse()
   const workspace = jobOf(ctx, by, ask.workspaceId)
-  const library = librariesFor(ctx, by).find((l) => l.id === ask.folder.libraryId)
-  const folder = library ? folderOf(library, ask.folder.path) : null
+  const libraries = librariesFor(ctx, by)
+  const asked = ask.folder
+  const found = 'at' in asked ? (asked.host === ctx.host ? libraryAt(libraries, asked.path) : null) : ((l) => (l ? { library: l, inside: asked.path } : null))(libraries.find((l) => l.id === asked.libraryId))
+  const library = found?.library
+  const folder = found ? folderOf(found.library, found.inside) : null
   if (!library || !folder) throw new MsformsError('Microsoft forms are made in a Teams or OneDrive folder this computer reaches.')
   const folderUrl = folderPageOf(folder, library.web)
   if (!folderUrl) throw new MsformsError('Microsoft forms are made in a Teams or OneDrive folder this computer reaches.')

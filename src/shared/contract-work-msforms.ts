@@ -115,7 +115,8 @@ export interface FormListRow {
   id: string
   title: string
   state: string
-  count: number
+  /** answers read so far; null where the host keeps no count (our forms' answers live in their sheet) */
+  count: number | null
   lastAnswerAt: number | null
   updatedAt: number
 }
@@ -146,7 +147,7 @@ export const MsformsRequestSchemas = [
   /** What the window asks a Forms ticket with: the tenant and id, never an address. */
   request('work.msforms.page', z.object(both)),
   /** His New → Microsoft form in a Teams folder: the carrier makes it at once. */
-  request('work.msforms.make', z.object({ workspaceId, folder: MsFormFolderSchema, title: z.string().trim().min(1).max(90) })),
+  request('work.msforms.make', z.object({ workspaceId, folder: z.union([MsFormFolderSchema, z.object({ at: z.literal('file'), host: z.string().max(200), path: z.string().min(1).max(2000) })]), title: z.string().trim().min(1).max(90) })),
   /** Holds Collect responses (`msform.publish`); the press is `work.outbox.send` on the answer's `ref`. */
   request('work.msforms.publish', z.object(both)),
   /** His close (open: false) or reopen. Not held: his own form. */

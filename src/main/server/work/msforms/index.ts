@@ -6,6 +6,16 @@ import { msformMakeKind, msformPublishKind, settled } from './acts'
 import { get, history, holdPublish, list, make, markSeen, page, review, setCheck, setMode, setOpen } from './forms'
 import { formReach, MsformsError } from './reach'
 import { ensureMsformsTables, MsformsStore } from './store'
+import { registerRefSeat } from '../files/hooks'
+import { refKey } from '@shared/work/files'
+
+// A form opens in a Files tab by its own source, after the one reach check (files/hooks.ts `registerRefSeat`).
+registerRefSeat('msform', async (ctx, by, ask) => {
+  const ref = ask.ref as Extract<typeof ask.ref, { at: 'msform' }>
+  const { row } = formReach(ctx, by, { workspaceId: ask.workspaceId, formId: ref.formId })
+  const source = { at: 'msform' as const, host: ctx.host, workspaceId: row.workspaceId, formId: row.formId, tenant: row.tenant }
+  return { key: refKey(source), name: row.title, kind: 'msform', source }
+})
 
 /**
  * The Microsoft Forms pillar's server module (docs/agents/work-msforms.md):

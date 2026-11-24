@@ -2,7 +2,8 @@ import { useEffect, useMemo, useRef, useState, type DragEvent, type KeyboardEven
 import type { FileCrumb, FilePage, FileTab } from "@shared/contract-work-files";
 import { matchesName, nameWords } from "@shared/work/fileSearch";
 import { canDo, DEFAULT_SORT, MAKE_WORDS, refusal, type FileEntry, type FilePlace, type FileSort, type FileSortBy, type FolderRef, type MakeKind } from "@shared/work/files";
-import { ChevronDown, ChevronLeft, ChevronRight, ChevronUp, CornerDownRight, FileText, Layers, MoreHorizontal, Plus, Search, type IconComponent } from "../../chrome/icons";
+import { ChevronDown, ChevronLeft, ChevronRight, ChevronUp, CornerDownRight, FileText, Layers, ListChecks, MoreHorizontal, Plus, Search, type IconComponent } from "../../chrome/icons";
+import { FORM_KIND_WORDS, type FormKind } from "../msforms/newForm";
 import { RowsContextMenu, RowsMenu, type MenuRow } from "../../chrome/menuRows";
 import { VirtualRows } from "../../chrome/railVirtualRows";
 import { Tip, TruncateTip } from "../../components/tip";
@@ -484,6 +485,8 @@ export interface PageActs {
   far?: { computer: string; via: string };
   /** New: makes a thing of the kind here; answers it, to select and name */
   make(kind: MakeKind): Promise<FileEntry | null>;
+  /** New → Form: the kinds this place offers and the make, which opens the form in a tab (work/msforms/newForm.ts) */
+  forms?: { kinds: readonly FormKind[]; make(kind: FormKind): Promise<void>; /** a Microsoft form is being made in Forms: about a minute */ making: boolean };
   rename(entry: FileEntry, name: string): Promise<FileEntry | null>;
   /** Move to… and Copy to…: the dialog that picks the folder */
   carry(verb: "move" | "copy", entries: readonly FileEntry[]): void;
@@ -533,8 +536,17 @@ function NewMenu({ acts, name, onMade }: { acts: PageActs; name: string; onMade(
   const [busy, setBusy] = useState(false);
   const makes = acts.place.makes ?? [];
   const upload = canDo(acts.place, "upload");
+  const forms = acts.forms?.kinds ?? [];
+  // Two kinds of form are one Form row with a line each; one kind is the row itself.
+  const formRow: MenuRow[] =
+    forms.length > 1
+      ? [{ kind: "sub", id: "form", label: "Form", icon: ListChecks, items: forms.map((f): MenuRow => ({ kind: "item", id: `form:${f}`, label: FORM_KIND_WORDS[f].label, description: FORM_KIND_WORDS[f].line })) }]
+      : forms.length === 1
+        ? [{ kind: "item", id: `form:${forms[0]}`, label: "Form", icon: ListChecks }]
+        : [];
   const rows: MenuRow[] = [
     ...makes.map((kind): MenuRow => ({ kind: "item", id: `make:${kind}`, label: MAKE_WORDS[kind], icon: MAKE_GLYPH[kind] })),
+    ...formRow,
     ...(acts.fromTemplate || acts.addFromDrive || upload ? ([{ kind: "sep" }] satisfies MenuRow[]) : []),
     ...(acts.fromTemplate ? ([{ kind: "item", id: "template", label: "From a Template…", icon: Layers }] satisfies MenuRow[]) : []),
     ...(acts.addFromDrive ? ([{ kind: "item", id: "drive", label: "Add from Drive…" }] satisfies MenuRow[]) : []),
@@ -544,7 +556,7 @@ function NewMenu({ acts, name, onMade }: { acts: PageActs; name: string; onMade(
     { kind: "note", id: "where", content: <span className="min-w-0 truncate">Kept in {name}</span> },
   ];
   // A place that makes nothing and takes no upload offers no New: its rows' own menus say why.
-  if (!makes.length && !upload && !acts.addFromDrive) return null;
+  if (!makes.length && !forms.length && !upload && !acts.addFromDrive) return null;
   return (
     <RowsMenu
       label="New"
@@ -554,6 +566,12 @@ function NewMenu({ acts, name, onMade }: { acts: PageActs; name: string; onMade(
         if (id === "upload") return acts.pickUpload();
         if (id === "template") return acts.fromTemplate?.();
         if (id === "drive") return acts.addFromDrive?.();
+        const form = forms.find((f) => id === `form:${f}`);
+        if (form && acts.forms && !busy) {
+          setBusy(true);
+          void acts.forms.make(form).finally(() => setBusy(false));
+          return;
+        }
         const kind = makes.find((k) => id === `make:${k}`);
         if (!kind || busy) return;
         setBusy(true);
@@ -600,6 +618,16 @@ function BulkBar({ count, rows, onAsk, onAct, onClear }: { count: number; rows: 
           Clear
         </Button>
       </div>
+    </div>
+  );
+}
+
+/** A Microsoft form being made in Forms on the box browser, in the state line's place: it takes about a minute. */
+function MakingLine() {
+  return (
+    <div data-files-making role="status" className="flex min-h-8 min-w-0 shrink-0 items-center gap-2 border-b border-border bg-background px-3 py-1 text-[13px] leading-5">
+      <Spinner className="size-3 shrink-0" />
+      <span className="min-w-0 truncate text-foreground">Making the form in Forms…</span>
     </div>
   );
 }
@@ -963,6 +991,8 @@ export function PageView({
   // One line over the list at most: an upload under way, the folder that did not load on a machine that is away, else what its place says.
   const line = acts?.uploading ? (
     <UploadLine progress={acts.uploading} onCancel={acts.cancelUpload} />
+  ) : acts?.forms?.making ? (
+    <MakingLine />
   ) : listing?.error && listing.away ? (
     // The word says it did not answer; the detail says what is still shown, as the asleep line does, never the same again.
     <ViewStateLine word={`${copy?.host ?? "The host"} did not answer`} {...(entries.length && listing.asOf ? { detail: `This is the list from ${clockTime(listing.asOf)}.` } : {})} onRetry={listing.lostPage ? listing.loadMore : listing.retry} />

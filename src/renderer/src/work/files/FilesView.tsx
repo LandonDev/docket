@@ -39,6 +39,8 @@ import { closeOf, FILES_KEYS, landFocus } from "./chords";
 import { historyBeside } from "./SideFile";
 import { fetchHere, fileOf, openEntry, openInApp, opensInApp, type Busy } from "./open";
 import { BarBones, ListBones, PageBar, PageView, type NoteFixes, type PageActs, type PageFind } from "./Page";
+import { formKindsFor } from "../msforms/newForm";
+import { useFormMaking } from "../msforms/useFormMaking";
 import { useSideOpen, hasClosed, openAtSide, closeSide, openFileTab, rememberClosed, takeClosed, dropSearch, saveSearch, useHome, useSavedSearches, useSearchFilter, closeTab, firstPage, goTo, historyOf, keepBothCopy, moveTabs, openPageTab, reloadCopy, selectTab, sendCopyBack, tabsNow, teamRows, useDock, useListing, usePageLook, useReach, useSidebarFolded, useTabs, type DeskSearch, type ListFrom, type Reach } from "./store";
 import { farName } from "./farLink";
 import { closeCopyTab } from "./copyClose";
@@ -832,6 +834,7 @@ function FolderPage({
   const [look] = usePageLook(page.at);
   const listing = useListing(from, page.at, look.sort ?? DEFAULT_SORT);
   const may = useLinksMay();
+  const { offered: msOffered, making: makingForm, make: makeAForm } = useFormMaking(workspace);
   const noTeams = page.at.at === "place" && page.at.id === "teams";
   const lost = !from && !team && !noTeams && !reach.waiting;
   const trail = team ? [{ name: page.name, at: page.at }] : trailOf(found?.row ?? null, listing?.trail ?? []);
@@ -847,6 +850,11 @@ function FolderPage({
           tabs: reach.tabs,
           ...farOf(copy, workspace.environmentId),
           make: (kind) => makeIn(of, copy, page.at, kind),
+          forms: {
+            kinds: formKindsFor(copy.place, { sameHost: copy.link === workspace.environmentId, offered: msOffered }),
+            making: makingForm,
+            make: (kind) => makeAForm(kind, page.at.at === "file" ? page.at : copy.place.root),
+          },
           rename: (entry, name) => renameTo(of, copy, entry, name),
           carry: (verb, entries) => verbs.carry({ verb, entries, from: copy, start: { at: page.at, name: page.name } }),
           trash: (entries) => void trash(of, copy, entries),

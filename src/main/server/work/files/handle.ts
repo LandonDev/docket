@@ -23,7 +23,7 @@ import { admitOwner, backsOf, copiesMoved, copyAt, copyBack, copyClosing, copyKe
 import { cloudOf, seedUpload, uploadedHere } from './uploads'
 import { keepBody } from './body'
 import { isGuestPath, vmFetch, vmList, vmStat, vmVerbs } from '../office/vm/files'
-import { chooseSeat, fileMakerFor } from './hooks'
+import { chooseSeat, fileMakerFor, refSeatFor } from './hooks'
 import { MarkStore, type Mark, type Marked } from './marks'
 import { feedListing, forgetGonePlaces, listedLibraries, namesAnswer, placeOf, whereOf } from './names'
 import { dropSearch, savedSearches, saveSearch, searchFiles } from './search'
@@ -474,6 +474,13 @@ async function oneCopyAtATime<T>(workspaceId: string, file: { host: string; path
 async function open(ctx: WorkCtx, by: Caller, p: OpenAsk, method: string, signal?: AbortSignal): Promise<FilesOpened> {
   const workspace = ownRows(ctx, by, p.workspaceId)
   const state = filesState(ctx)
+  // A source that is no file (a Microsoft form) is seated by its own pillar, after that pillar's reach check.
+  const refSeat = refSeatFor(p.ref.at)
+  if (refSeat) {
+    if (p.beside || p.side) throw new Error(BESIDE_HERE)
+    const seat = await refSeat(ctx, by, p)
+    return { ...tabsFor(ctx, by, workspace.id), ...openInTab(ctx, workspace.id, seat, p.opener) }
+  }
   if (isLifeosRef(p.ref)) {
     // A LifeOS document or sheet, or a mail's file: seated in its kind with its own source (places/lifeos.ts).
     const made = await openLifeos(ctx, by, p.workspaceId, p.ref)
@@ -521,6 +528,17 @@ async function open(ctx: WorkCtx, by: Caller, p: OpenAsk, method: string, signal
   return { ...tabsFor(ctx, by, workspace.id), tabId, item: fencedItem(item, (path) => reaches(ctx, by, path)) }
 }
 export const BESIDE_HERE = 'A file on another computer opens in a tab of its own.'
+
+/**
+ * A pillar's own item opened in a tab of the workspace's Files place, keyed by `key` (opening it again answers its
+ * tab): a Microsoft form, our own form's draft. The caller has checked its reach. Answers the tab and its item.
+ */
+export function openInTab(ctx: WorkCtx, workspaceId: string, file: { key: string; name: string; kind: CanvasKind; source: CanvasSource }, opener?: string): { tabId: string; item: CanvasItem } {
+  return filesState(ctx).tabs.openFile(workspaceId, file, opener)
+}
+
+/** The workspace's tabs as his window reads them, for a pillar that answered a tab it made (`openInTab`). */
+export const tabsAnswer = (ctx: WorkCtx, workspaceId: string): FilesTabs => tabsFor(ctx, HIS, workspaceId)
 
 /** His window: what a reseat runs as when no caller is named. */
 const HIS: Caller = { kind: 'local', caps: ['read', 'operate', 'approve'] }

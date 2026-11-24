@@ -342,7 +342,7 @@ describe("New", () => {
     await mount();
     fireEvent.click(screen.getByRole("button", { name: "New" }));
     const menu = await screen.findByRole("menu");
-    expect(within(menu).getAllByRole("menuitem").map((i) => i.textContent)).toEqual(["Document", "Sheet", "Deck", "Text File", "Folder", "Upload Files…"]);
+    expect(within(menu).getAllByRole("menuitem").map((i) => i.textContent)).toEqual(["Document", "Sheet", "Deck", "Text File", "Folder", "Form", "Upload Files…"]);
     expect(menu.textContent).toContain("Kept in Dummy Esports");
     fireEvent.click(within(menu).getByRole("menuitem", { name: "Folder" }));
     await waitFor(() => expect(calls("work.files.make")).toHaveLength(1));
@@ -363,7 +363,10 @@ describe("New", () => {
     fireEvent.click(within(screen.getByRole("navigation", { name: "Places" })).getByRole("button", { name: "General" }));
     await waitFor(() => expect(rows()).toEqual(["Agenda.docx"]));
     fireEvent.click(screen.getByRole("button", { name: "New" }));
-    expect(within(await screen.findByRole("menu")).getAllByRole("menuitem").map((i) => i.textContent)).toEqual(["Text File", "Folder"]);
+    // A library of a host with no box browser offers our form alone, as the one Form row.
+    expect(within(await screen.findByRole("menu")).getAllByRole("menuitem").map((i) => i.textContent)).toEqual(["Text File", "Folder", "Form"]);
+    fireEvent.click(within(screen.getByRole("menu")).getByRole("menuitem", { name: "Form" }));
+    await waitFor(() => expect(calls("work.forms.make")).toHaveLength(1));
   });
 });
 

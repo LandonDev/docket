@@ -619,6 +619,13 @@ export async function openFileTab(
   return answer;
 }
 
+/** A pillar's own new item in a tab (`work.forms.make`): the host answers the tabs with it, and its tab is shown. */
+export async function openMadeTab(link: string, workspaceId: string, method: string, params: Record<string, unknown>): Promise<FilesTabs & { tabId: string }> {
+  const answer = await ask<FilesTabs & { tabId: string }>(link, method, { workspaceId, ...params });
+  putTabs(link, workspaceId, answer, answer.tabId);
+  return answer;
+}
+
 /** Open to the Side: the file goes at the side of a file tab, in the same tab, and that tab is shown. A file a tab of its own holds moves there. */
 export async function openAtSide(link: string, workspaceId: string, file: { ref: CanvasSource; name: string }, tabId: string): Promise<FilesOpened> {
   const answer = await ask<FilesOpened>(link, "work.files.open", { workspaceId, ref: file.ref, name: file.name, side: tabId });

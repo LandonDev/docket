@@ -44,6 +44,9 @@ public enum ItemBody: Equatable, Sendable {
         case .file:
             // A thread's canvas seats no `file` item until it has the tools for them (F5); the Files place opens it in Quick Look.
             return .unavailable("This file opens in Files.")
+        case .msform:
+            // The Forms builder is Microsoft's page: the phone opens it in Safari from Work's forms list.
+            return .unavailable("This Microsoft form opens in Microsoft Forms.")
         case .unknown:
             return .unavailable("This item opens on the computer.")
         }

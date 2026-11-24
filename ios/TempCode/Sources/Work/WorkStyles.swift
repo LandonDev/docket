@@ -50,7 +50,7 @@ enum WorkGlyph {
         case .chatReply: "bubble.left"
         case .shareGuestLink: "link"
         case .shareGoogle: "person.2"
-        case .formPublish: "list.bullet.rectangle"
+        case .formPublish, .msformMake, .msformPublish: "list.bullet.rectangle"
         case .frameioPost: "film"
         case .portalSubmit: "globe"
         case .computerAct: "macwindow"
