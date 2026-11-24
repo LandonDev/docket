@@ -925,6 +925,32 @@ describe("the sheet kind", () => {
     await waitFor(() => expect(document.querySelectorAll("[data-mark]").length).toBeLessThan(5));
   });
 
+  it("lets the grid go after a conflict's reload drops a move that waited behind the refused edit, and names the move", async () => {
+    // Council r4 (Opus 1, Sol 4): the dropped move's lock was never let go, and the grid took no edit until the tab reopened.
+    open(sheetView({ store: "package", rev: 3, row: ROW_ALL, moves: true }));
+    await gridUp();
+    const range = (r1: number, c1: number, r2: number, c2: number) => ({ startRow: r1, startColumn: c1, endRow: r2, endColumn: c2 });
+    const rows: SheetMutationJson = { id: "sheet.mutation.move-rows", params: { unitId: "book", subUnitId: "budget", sourceRange: range(6, 0, 6, 9), targetRange: range(2, 0, 2, 9) } };
+    let answer!: () => void;
+    const held = new Promise<void>((done) => (answer = done));
+    sheetHost.edit = async (baseRev, mutations) => {
+      sheetHost.calls.push(["edit", { baseRev, mutations }]);
+      await held;
+      return { conflict: true as const, rev: 4 };
+    };
+    sheetHost.since = async () => ({ rev: 4, reload: true as const });
+    act(() => grid.edit(set(3, 1, 1200)));
+    await waitFor(() => expect(edits()).toHaveLength(1), { timeout: EDIT_WAIT * 10 });
+    act(() => grid.edit(rows));
+    await waitFor(() => expect(grid.readOnly).toBe(true));
+    answer();
+    await waitFor(() => expect(toasts.said).toEqual(["The file changed before this was saved: B4 1200, and a move. Make it again."]));
+    await waitFor(() => expect(sheetHost.calls.some((c) => c[0] === "load" && (c[1] as { rev: number }).rev === 4)).toBe(true));
+    await gridUp();
+    await waitFor(() => expect(grid.readOnly).toBe(false));
+    expect(edits()).toHaveLength(1);
+  });
+
   it("names the grid's own workbook in an op it brings in", async () => {
     open(sheetView({ rev: 3 }));
     await gridUp();

@@ -126,6 +126,11 @@ describe("what a dropped edit held, in his words", () => {
     );
     expect(notSavedWords([cellsAt("s1", { 0: { 0: { v: 1 } } }), cellsAt("s2", { 0: { 0: { v: 2 } } })], names)).toBe("The file changed before this was saved: Budget!A1 1, Quotes!A1 2. Make it again.");
   });
+  it("names a move dropped with the cells, and one dropped alone", () => {
+    const move = { id: "sheet.mutation.move-rows", params: {} };
+    expect(notSavedWords([cellsAt("s1", { 3: { 1: { v: 1200 } } }), move], names)).toBe("The file changed before this was saved: B4 1200, and a move. Make it again.");
+    expect(notSavedWords([move], names)).toBe("The file changed before your move was saved, so it was not made. Make it again.");
+  });
   it("says a change with no cell's contents (a style, a rule) as one", () => {
     expect(notSavedWords([cellsAt("s1", { 0: { 0: { s: { bl: 1 } } } }), { id: "tempcode.sheet.rules", params: {} }], names)).toBe("The file changed before your last change was saved, so it was not made. Make it again.");
   });

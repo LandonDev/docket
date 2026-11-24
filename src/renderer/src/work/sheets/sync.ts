@@ -125,11 +125,13 @@ export function notSavedWords(batch: readonly SheetMutationJson[], sheetName: (i
         cells.push({ sheet: p.subUnitId ?? "", at: `${columnName(Number(c))}${Number(r) + 1}`, put });
       }
   }
-  if (!cells.length) return "The file changed before your last change was saved, so it was not made. Make it again.";
+  const moves = batch.filter((m) => SHEET_MOVES.has(m.id)).length;
+  const moved = moves === 1 ? "a move" : moves > 1 ? `${moves} moves` : "";
+  if (!cells.length) return moved ? `The file changed before ${moved === "a move" ? "your move was" : "your moves were"} saved, so ${moves === 1 ? "it was" : "they were"} not made. Make ${moves === 1 ? "it" : "them"} again.` : "The file changed before your last change was saved, so it was not made. Make it again.";
   const many = new Set(cells.map((x) => x.sheet)).size > 1;
   const named = cells.slice(0, NAMED_MOST).map((x) => `${many ? `${sheetName(x.sheet) ?? x.sheet}!` : ""}${x.at} ${x.put}`);
   const more = cells.length - named.length;
-  return `The file changed before this was saved: ${named.join(", ")}${more ? ` and ${more} more` : ""}. Make it again.`;
+  return `The file changed before this was saved: ${named.join(", ")}${more ? ` and ${more} more` : ""}${moved ? `, and ${moved}` : ""}. Make it again.`;
 }
 
 interface Laid {
@@ -246,7 +248,7 @@ export class SheetSync {
     const book = await this.decode(whole, format);
     this.rev = stood;
     this.mine.clear();
-    this.queue = [];
+    this.dropQueue();
     this.detach();
     this.made = new MadePictures();
     this.sentMedia = new Set();
@@ -435,6 +437,17 @@ export class SheetSync {
     if (this.locks > 0 && --this.locks === 0) this.set({ reloading: false });
   }
 
+  /**
+   * Empties the queue without sending it, and answers what it held. A move waiting in it held the grid still until its
+   * send (`lock`): dropped unsent, its lock is let go here, so the grid never stays still for a move that will not go.
+   */
+  private dropQueue(): SheetMutationJson[] {
+    const dropped = this.queue;
+    this.queue = [];
+    for (const m of dropped) if (SHEET_MOVES.has(m.id)) this.unlock();
+    return dropped;
+  }
+
   /** An edit of his that will not reach the file: counted for what waits on `written`. */
   private drop(why: string): void {
     this.lost = { n: this.lost.n + 1, why };
@@ -508,7 +521,7 @@ export class SheetSync {
   retry(): void {
     this.set({ sendError: null });
     if (this.state.view?.store === "package") {
-      this.queue = [];
+      this.dropQueue();
       this.run(() => this.open());
     } else if (this.queue.length > 0) this.flush();
     else this.run(async () => this.view(await this.host.open()));
@@ -592,7 +605,7 @@ export class SheetSync {
       if (move) {
         // A move the file did not take: the grid shows cells where the file has none, so the canvas takes it back itself.
         // The words are said once, as for a change stopped at the press, and the book is read again from its file.
-        this.queue = [];
+        this.dropQueue();
         this.set({ saving: false, stopped: { why: message(error, "The host did not answer"), n: (this.state.stopped?.n ?? 0) + 1 } });
         this.drop(message(error, "The host did not answer"));
         // (the grid is let go whether or not the book could be read again: a host that is gone must not leave it locked)
@@ -642,8 +655,7 @@ export class SheetSync {
         const books = this.books;
         if (refused) {
           // After a conflict, what waits was made on the same sheet the refused batch was: none of it is sent.
-          const lost = [...refused, ...this.queue];
-          this.queue = [];
+          const lost = [...refused, ...this.dropQueue()];
           this.set({ saving: false, stopped: { why: notSavedWords(lost, (id) => grid.objects?.sheetName(id) ?? this.state.book?.workbook.sheets?.[id]?.name), n: (this.state.stopped?.n ?? 0) + 1 } });
           this.drop("the file changed before it was saved");
         } else {

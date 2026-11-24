@@ -691,7 +691,10 @@ or onto another), and whole rows or columns dragged (`move-rows`,
   the reload is owed until Retry lands it. Each holder of the grid (a
   reload, a move on its way, Save as Excel's hand-over) takes its own lock
   (`lock`, `unlock`), so one that ends first never frees the grid under
-  another.
+  another. A move waiting in the queue holds its lock until it is sent;
+  wherever the queue is emptied unsent (a conflict's reload, Reload, a
+  refused move, a load: `dropQueue`) its lock is let go, and a conflict's
+  words name it ("…, and a move").
 - **A conflict that reads the file again** (the file changed outside
   TempCode, a restore, rows moved elsewhere, a list replaced) sends the
   refused batch no more, nor what waited behind it: its cells named the
