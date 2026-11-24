@@ -67,6 +67,23 @@
   `session.events` reads on the reader worker in 4 MiB pages
   (`registry.eventsAsync`), so the renderer's head walk ends on an empty
   page or at the tail's first row, never on a page shorter than it asked for.
+- A reconnect to another host (its deploy, an app update, a blip, a wake)
+  catches up in turns, never all at once (lib/tcserver/catchUp.ts
+  `CatchUpLane`, one per remote host): each transcript resumes from the last
+  seq it folded (`afterSeq`; the host answers the gap, or a fresh 1 MiB tail
+  past RESUME_ROWS or RESUME_BYTES); the thread the focused pane shows
+  (`FocusSignal.shown`, `sessionStore.followShown`) goes at once and jumps
+  the queue when it changes; the panes on the page, then the kept ones, go
+  one at a time, each followed by a pause of its bytes at
+  CATCH_UP_BYTES_PER_SEC (2 MiB/s) and at least one macrotask. A page folds
+  in slices of FOLD_SLICE_MS (8 ms) with the window given back between
+  them; pushes stay held until the last slice. A cold load at launch takes
+  the same lane. The supervisor's probe fails on 5 s of silence, not on a
+  late answer: while frames still arrive it waits, up to PROBE_LIMIT_MS
+  (30 s). Before (2026-11-23, 9:46 PM): six `session.events` at once, 8+ MiB
+  unsent on the box's socket, long tasks of 1.2 to 2.6 s, and a probe
+  behind the queue closing the socket so the next one asked for all six
+  again; .temp-code/plans/landed/F-reconnect-catchup.md has the numbers.
 - The scroll engine's frame loop rests once its glide, runway and follow
   spring have settled, running thread or not; new rows, the content
   growing, a resize and the reader's input start it again

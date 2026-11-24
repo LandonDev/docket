@@ -51,6 +51,8 @@ export type Link = {
   readonly connected: boolean;
   /** The wire profile the live socket opened with. */
   readonly profile: WireProfile;
+  /** Characters received over every socket this link has had; a catch-up paces by it. */
+  readonly bytesIn?: number;
   request<T>(method: string, params?: unknown, options?: LinkRequestOptions): Promise<T>;
   onPush(listener: (push: ServerPush) => void): () => void;
   onOpen(listener: () => void): () => void;
@@ -65,6 +67,8 @@ export class EnvLink implements Link {
   private closeListeners = new Set<() => void>();
   private healthListeners = new Set<() => void>();
   private healthState: LinkHealth = { slowSince: null, lastAnswerMs: null };
+  /** What the sockets before the live one received. */
+  private bytesBefore = 0;
 
   constructor(
     readonly environmentId: string,
@@ -77,6 +81,10 @@ export class EnvLink implements Link {
 
   get profile(): WireProfile {
     return this.session?.profile ?? this.defaultProfile;
+  }
+
+  get bytesIn(): number {
+    return this.bytesBefore + (this.session?.bytesIn ?? 0);
   }
 
   /** The transport behind the link, for the stall log and devtools. */
@@ -158,6 +166,7 @@ export class EnvLink implements Link {
     if (session === this.session) return;
     for (const off of this.detach) off();
     this.detach = [];
+    this.bytesBefore += this.session?.bytesIn ?? 0;
     const had = this.session !== null;
     this.session = session;
     if (!session) {
@@ -171,6 +180,7 @@ export class EnvLink implements Link {
       session.onAnswer((ms, timedOut, timeoutMs) => this.noteAnswer(ms, timedOut, timeoutMs)),
       session.onClose(() => {
         if (this.session !== session) return;
+        this.bytesBefore += session.bytesIn ?? 0;
         this.session = null;
         this.detach = [];
         for (const l of this.closeListeners) l();

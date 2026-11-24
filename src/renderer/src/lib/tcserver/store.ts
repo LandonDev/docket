@@ -23,6 +23,7 @@ import type { MirrorCursor, MirrorHost } from "@server/shared/launchMirror";
 import { HISTORY_PAGE_ROWS } from "@server/shared/wireBudgets";
 import type { ContextUsage } from "../contextUsage";
 import { emptyThread } from "./todos";
+import { CatchUpLane } from "./catchUp";
 import type { EventRow, QueuedMessage, ServerPush, SessionMeta, SessionStatus, WireSessionMeta } from "./types";
 
 /**
@@ -139,6 +140,8 @@ function scopeEnvironment(scope: string): string {
 type Attached = {
   link: Link;
   subs: Subscriptions;
+  /** A remote host's transcript fetches, the shown thread first (catchUp.ts). */
+  catchUp: CatchUpLane;
   detach: (() => void)[];
   listed: Promise<void> | null;
 };
@@ -210,6 +213,10 @@ const TAIL_ROWS = 300;
  *  (the remote pager caps a page). The server answers the second request
  *  whole or as a fresh tail, so one is the norm; the bound is a guard. */
 const MORE_AFTER_PAGES = 8;
+/** How long one slice of a page's fold may hold the main thread. */
+export const FOLD_SLICE_MS = 8;
+/** One macrotask: the window paints and takes input before the fold goes on. */
+const yieldToWindow = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 0));
 /** Rows folded per slice while the head of a long log folds in the background. */
 const HEAD_CHUNK = 2000;
 /** Rows per `session.events` call while a long head loads: the server reads
@@ -476,6 +483,20 @@ class SessionStore {
     primaryEnvironmentId?: string;
   } | null = null;
 
+  private shownNow: () => string | null = () => null;
+  private offShown: (() => void) | null = null;
+
+  /** The thread the window's focused pane shows (FocusSignal.shown): its
+   *  fetches never wait behind another transcript's catch-up. */
+  followShown(source: { shown(): string | null; onChange(listener: () => void): () => void }): void {
+    this.offShown?.();
+    this.shownNow = () => source.shown();
+    this.offShown = source.onChange(() => {
+      const id = source.shown();
+      for (const attached of this.attached.values()) attached.catchUp.promote(id);
+    });
+  }
+
   /** Follow the registry: every environment's link attaches as it is added
    *  and its data goes when the environment is removed. */
   connect(registry: {
@@ -504,7 +525,8 @@ class SessionStore {
       });
     }
     const subs = new Subscriptions(link);
-    const entry: Attached = { link, subs, detach: [], listed: null };
+    const catchUp = new CatchUpLane({ shown: () => this.shownNow(), bytesIn: () => link.bytesIn ?? 0 });
+    const entry: Attached = { link, subs, catchUp, detach: [], listed: null };
     const list = (): void => {
       // Transcripts asked for while the host was away load now, beside the list.
       this.kickWanted(link.environmentId);
@@ -602,6 +624,9 @@ class SessionStore {
   reset(): void {
     this.offRegistry?.();
     this.offRegistry = null;
+    this.offShown?.();
+    this.offShown = null;
+    this.shownNow = () => null;
     for (const a of this.attached.values()) {
       for (const off of a.detach) off();
       a.subs.dispose();
@@ -1204,6 +1229,11 @@ class SessionStore {
       // must never release past the rows the host shed.
       else if (!this.unload(entry)) replay.push(entry);
     }
+    // On a remote host they take turns (catchUp.ts): the shown one, then the
+    // panes on the page, then the transcripts only kept.
+    const shown = this.shownNow();
+    const onPage = (entry: Entry): number => (entry.session.id === shown ? 0 : this.mounted?.has(entry.session.id) ? 1 : 2);
+    replay.sort((a, b) => onPage(a) - onPage(b));
     // A pane restored from a saved layout is a loaded draft until its host
     // claims it; its first fetch is a load with a phase like any other.
     await Promise.all(
@@ -1600,7 +1630,7 @@ class SessionStore {
         entry.held ??= [];
         entry.resyncHold = false;
       },
-      page: (page: EventsPage) => {
+      page: async (page: EventsPage) => {
         if (this.entries.get(id) !== entry) return;
         entry.answered = true;
         const coldOpen = entry.coldOpen;
@@ -1613,7 +1643,7 @@ class SessionStore {
         if ((coldOpen || page.reset) && page.moreBefore && page.rows.length > 0) {
           entry.head = { beforeSeq: page.rows[0].seq, since: [], previews: new Map(), fetching: false, waiters: [], page: null };
         }
-        for (const row of page.rows) this.foldRow(entry, row);
+        await this.foldSliced(entry, page.rows);
       },
       end: () => {
         const held = entry.held;
@@ -1622,6 +1652,22 @@ class SessionStore {
         for (const row of held ?? []) this.applyPush(entry, row);
       },
     };
+  }
+
+  /** A page's rows folded in order, giving the window back every
+   *  FOLD_SLICE_MS: a 300-row tail folded in one piece held the main thread
+   *  for seconds when six landed together. Pushes stay held (`begin`) until
+   *  the last slice, so nothing folds between two of a page's rows. */
+  private async foldSliced(entry: Entry, rows: EventRow[]): Promise<void> {
+    let sliceAt = performance.now();
+    for (let i = 0; i < rows.length; i++) {
+      this.foldRow(entry, rows[i]);
+      if (i + 1 < rows.length && performance.now() - sliceAt > FOLD_SLICE_MS) {
+        await yieldToWindow();
+        if (this.entries.get(entry.session.id) !== entry) return;
+        sliceAt = performance.now();
+      }
+    }
   }
 
   /** A transcript still held from a resync push whose replay never came (the host dropped, the entry left the kept set): its rows fold now. */
@@ -1652,15 +1698,21 @@ class SessionStore {
     const tailFirst = entry.lastSeq === 0 && !entry.head;
     entry.coldOpen = tailFirst;
     subs.add(id, this.handlersFor(entry));
-    await Promise.all([
-      this.resumeThrough(entry, subs, tailFirst),
-      // The queue lives in server memory: a restart empties it, so the
-      // strip refills from the list rather than keeping stale rows.
-      link
-        .request<QueuedMessage[]>("queue.list", { sessionId: id })
-        .then((items) => this.setQueue(id, items ?? []))
-        .catch(() => undefined),
-    ]);
+    const fetch = (): Promise<unknown> =>
+      Promise.all([
+        this.resumeThrough(entry, subs, tailFirst),
+        // The queue lives in server memory: a restart empties it, so the
+        // strip refills from the list rather than keeping stale rows.
+        link
+          .request<QueuedMessage[]>("queue.list", { sessionId: id })
+          .then((items) => this.setQueue(id, items ?? []))
+          .catch(() => undefined),
+      ]);
+    // Another host's transcripts take turns, the shown one first: a reconnect
+    // once asked for six at once, 8 MiB deep on the socket (catchUp.ts).
+    const lane = link.profile === "remote" ? this.attached.get(entry.meta?.environmentId ?? entry.session.environmentId)?.catchUp : undefined;
+    // A transcript unloaded while it waited its turn has nobody to fold for.
+    await (lane ? lane.run(id, () => (subs.has(id) ? fetch() : Promise.resolve())) : fetch());
     // A local socket folds the whole head behind the tail; a remote one
     // pages it in on demand (loadOlder), oldest page last.
     if (entry.head && !entry.head.fetching && !entry.rows) void this.fetchHead(entry);

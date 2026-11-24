@@ -10,6 +10,7 @@ const Toaster = lazy(() => import("./components/ui/toaster").then((m) => ({ defa
 import { initAppearance } from "./lib/appearance";
 import { initPlaceScheme } from "./lib/placeScheme";
 import { initSounds } from "./lib/sounds";
+import { focusSignal } from "./lib/tcserver/commands";
 import { initServerLink } from "./lib/tcserver/link";
 import { hydrateFromLaunchMirror, installLaunchMirror } from "./lib/tcserver/launchMirror";
 import { registry } from "./lib/connection";
@@ -41,6 +42,8 @@ initSounds();
 // The stores follow the registry: one link per environment, attached as
 // each is added; then boot registers environment zero.
 sessionStore.connect(registry);
+// Another host's thread on screen loads first; the rest take turns (lib/tcserver/catchUp.ts).
+sessionStore.followShown(focusSignal);
 workspaceStore.connect(registry);
 inboxStore.connect(registry);
 rulesStore.connect(registry);

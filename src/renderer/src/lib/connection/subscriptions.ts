@@ -13,7 +13,8 @@ export type SubscriptionHandlers = {
   cursor(): number;
   /** A fetch is in flight: hold live pushes until `end`. */
   begin?(): void;
-  page(page: EventsPage): void;
+  /** May fold in slices across tasks; `end` waits for it. */
+  page(page: EventsPage): void | Promise<void>;
   end?(): void;
   /** `session.subscribe` was refused: the session is gone from the host. */
   gone?(reason: string): void;
@@ -162,7 +163,7 @@ export class Subscriptions {
           throw err;
         }
         const page = asPage(result, tailFirst);
-        if (this.handlers.get(sessionId) === handlers) handlers.page(page);
+        if (this.handlers.get(sessionId) === handlers) await handlers.page(page);
         if (together) {
           if (page.subscribed) {
             this.live.add(sessionId);
@@ -177,7 +178,7 @@ export class Subscriptions {
               { sessionId, afterSeq: handlers.cursor() },
               { retry: false },
             );
-            if (this.handlers.get(sessionId) === handlers) handlers.page(asPage(gap, false));
+            if (this.handlers.get(sessionId) === handlers) await handlers.page(asPage(gap, false));
           }
         }
         return page;

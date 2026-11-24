@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { BACKOFF, Supervisor, backoffDelay, type SupervisorOptions } from "./supervisor";
+import { BACKOFF, PROBE_LIMIT_MS, Supervisor, backoffDelay, type SupervisorOptions } from "./supervisor";
 import { FakeClock, FakeTransport, HELLO, flush } from "./testing";
 import type { Environment, EnvironmentStatus } from "./types";
 
@@ -180,6 +180,36 @@ describe("Supervisor", () => {
     h.transports[2].answerHello();
     await flush();
     expect(h.supervisor.status).toMatchObject({ transport: "open", route: 0 });
+  });
+
+  it("a probe behind a long answer waits while frames still arrive, up to the limit", async () => {
+    const h = harness();
+    const live = await openOnTunnel(h);
+    void h.supervisor.probe("foreground");
+    await flush();
+    // The host is still sending a catch-up ahead of the probe's answer.
+    for (let t = 0; t < 4; t++) {
+      live.bytesIn += 1_000_000;
+      await h.clock.advance(5_000);
+      expect(live.state).toBe("open");
+    }
+    live.requests[0].resolve([]);
+    await flush();
+    expect(h.supervisor.session).toBe(live.asTransport());
+    expect(h.transports).toHaveLength(2);
+  });
+
+  it("a probe whose socket keeps delivering but never answers fails at the limit", async () => {
+    const h = harness();
+    const live = await openOnTunnel(h);
+    void h.supervisor.probe("foreground");
+    await flush();
+    for (let t = 0; t < PROBE_LIMIT_MS / 5_000; t++) {
+      live.bytesIn += 1_000;
+      await h.clock.advance(5_000);
+    }
+    expect(live.state).toBe("closed");
+    expect(live.closeReason?.message).toContain("probe on foreground failed");
   });
 
   it("with no session, a probe fires the pending retry now", async () => {

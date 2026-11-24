@@ -50,6 +50,7 @@ export class FakeTransport {
   state: "opening" | "open" | "closed" = "opening";
   hello: Hello | null = null;
   closeReason: CloseReason | null = null;
+  bytesIn = 0;
   requests: { method: string; params: unknown; resolve: (v: unknown) => void; reject: (e: Error) => void }[] = [];
   private closeListeners = new Set<(r: CloseReason) => void>();
   private opened: Promise<Hello>;

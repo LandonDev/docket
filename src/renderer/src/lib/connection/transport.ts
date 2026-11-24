@@ -108,6 +108,10 @@ export class Transport {
   state: "opening" | "open" | "closed" = "opening";
   hello: Hello | null = null;
   closeReason: CloseReason | null = null;
+  /** Characters of every frame received, answers and pushes: what a catch-up paces by. */
+  bytesIn = 0;
+  /** When the last frame arrived (Date.now()); a probe waiting behind a long answer reads it. */
+  lastFrameAt = 0;
   private ws: SocketLike | null = null;
   private nextId = 1;
   private pending = new Map<
@@ -212,6 +216,8 @@ export class Transport {
   }
 
   private onMessage(data: string): void {
+    this.bytesIn += data.length;
+    this.lastFrameAt = Date.now();
     let frame: ServerFrame;
     try {
       frame = JSON.parse(data) as ServerFrame;

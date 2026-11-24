@@ -384,6 +384,72 @@ describe("remote profile: history", () => {
   });
 });
 
+describe("remote profile: the catch-up after a reconnect", () => {
+  it("replays each transcript in turn, the shown one at once, and every row of the gap lands once, in order", async () => {
+    link.pages = [[wireMeta({ id: "a" }), wireMeta({ id: "b" }), wireMeta({ id: "c" })]];
+    for (const id of ["a", "b", "c"]) link.events.set(id, turns(id, 2));
+    await boot(link);
+    let shown: string | null = "c";
+    const shownListeners = new Set<() => void>();
+    sessionStore.followShown({ shown: () => shown, onChange: (l) => (shownListeners.add(l), () => shownListeners.delete(l)) });
+    sessionStore.setMounted(["a", "b", "c"]);
+    for (const id of ["a", "b", "c"]) await sessionStore.ensureLoaded(id);
+    // The link drops; while it is down each thread gains a turn.
+    for (const id of ["a", "b", "c"]) link.events.set(id, [...turns(id, 2), ...turns(id, 1, 5).map((r, i) => ({ ...r, event: { ...r.event, text: `late ${i}` } as EventRow["event"] }))]);
+    link.holdEvents = [];
+    const before = link.count("session.events");
+    link.open();
+    await new Promise((r) => setTimeout(r, 0));
+    const asked = (): string[] =>
+      link.calls.filter((c) => c.method === "session.events").slice(before).map((c) => (c.params as { sessionId: string }).sessionId);
+    // The shown thread and one other, never all three at once.
+    expect(asked()).toEqual(["c", "a"]);
+    // A row of the shown thread pushed while its page is out folds once, after it.
+    link.push({ push: "event", row: link.events.get("c")!.at(-1)! });
+    const held = link.holdEvents;
+    // b becomes the shown one while it waits: it goes at once.
+    shown = "b";
+    for (const l of shownListeners) l();
+    await new Promise((r) => setTimeout(r, 0));
+    expect(asked()).toEqual(["c", "a", "b"]);
+    link.holdEvents = null;
+    for (const release of held) release();
+    for (let i = 0; i < 5; i++) await new Promise((r) => setTimeout(r, 0));
+    for (const id of ["a", "b", "c"]) {
+      expect(sessionStore.get(id)!.blocks.map((b) => b.text)).toEqual(["prompt 1", "answer 1", "prompt 2", "answer 2", "late 0", "late 1"]);
+    }
+  });
+
+  it("a page longer than a slice folds across tasks, whole and in order", async () => {
+    link.pages = [[wireMeta({ id: "s1" })]];
+    link.pageRows = 2_000;
+    link.events.set("s1", turns("s1", 1_000));
+    await boot(link);
+    const realNow = performance.now.bind(performance);
+    let tick = 0;
+    // Every row "takes" 1 ms, so the fold yields every FOLD_SLICE_MS rows.
+    const spy = vi.spyOn(performance, "now").mockImplementation(() => (tick += 1));
+    let yields = 0;
+    const realSetTimeout = globalThis.setTimeout;
+    const timeoutSpy = vi.spyOn(globalThis, "setTimeout").mockImplementation(((fn: () => void, ms?: number) => {
+      if (!ms) yields++;
+      return realSetTimeout(fn, ms);
+    }) as typeof setTimeout);
+    try {
+      await sessionStore.ensureLoaded("s1");
+    } finally {
+      spy.mockRestore();
+      timeoutSpy.mockRestore();
+      void realNow;
+    }
+    const blocks = sessionStore.get("s1")!.blocks;
+    expect(blocks).toHaveLength(2_000);
+    expect(blocks[0].text).toBe("prompt 1");
+    expect(blocks.at(-1)!.text).toBe("answer 1000");
+    expect(yields).toBeGreaterThan(100);
+  });
+});
+
 describe("remote profile: bodies off the wire", () => {
   it("a tool row shows the first line, fetches the body when asked, and is whole after", async () => {
     const output = "first line\nsecond line\nthird line";

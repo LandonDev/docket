@@ -32,7 +32,10 @@ export type Backoff = { baseMs: number; capMs: number; resetAfterMs: number; jit
 export const BACKOFF: Backoff = { baseMs: 1_000, capMs: 300_000, resetAfterMs: 30_000, jitter: 0.25 };
 /** How often a session on a later route tries the earlier (better) ones. */
 export const PREFLIGHT_MS = 2 * 60_000;
+/** A probe fails after this long with nothing at all arriving on the socket. */
 export const PROBE_TIMEOUT_MS = 5_000;
+/** A socket still delivering (its answer queued behind others) is given this long in all. */
+export const PROBE_LIMIT_MS = 30_000;
 /** A cheap read the probe sends over the live session. */
 export const PROBE_METHOD = "workspace.list";
 
@@ -339,6 +342,7 @@ export class Supervisor {
     if (this.probing) return this.probing;
     this.probing = (async () => {
       const ok = await this.withTimeout(
+        session,
         session.request(this.options.probeMethod ?? PROBE_METHOD, undefined),
         this.options.probeTimeoutMs ?? PROBE_TIMEOUT_MS,
       );
@@ -355,9 +359,30 @@ export class Supervisor {
     return this.probing;
   }
 
-  private withTimeout(request: Promise<unknown>, ms: number): Promise<boolean> {
+  /**
+   * Whether the probe's answer came. Its deadline is silence, not the
+   * answer's lateness: the host answers a socket's frames in order, so a
+   * probe behind a long answer waits while those bytes still arrive. Every
+   * `ms` with frames received gives it another `ms`, up to PROBE_LIMIT_MS;
+   * a socket that took nothing for `ms` is dead. Closing a socket that was
+   * delivering a catch-up made the window ask for it all again on the next
+   * one (2026-11-23: six sockets in two minutes, each 8 MiB deep).
+   */
+  private withTimeout(session: Transport, request: Promise<unknown>, ms: number): Promise<boolean> {
     return new Promise<boolean>((resolve) => {
-      const timer = this.clock.setTimeout(() => resolve(false), ms);
+      const startedAt = this.clock.now();
+      let seen = session.bytesIn ?? 0;
+      let timer: unknown = null;
+      const arm = (): void => {
+        timer = this.clock.setTimeout(() => {
+          const now = session.bytesIn ?? 0;
+          if (now > seen && this.clock.now() - startedAt + ms <= PROBE_LIMIT_MS) {
+            seen = now;
+            arm();
+          } else resolve(false);
+        }, ms);
+      };
+      arm();
       request.then(
         () => {
           this.clock.clearTimeout(timer);
