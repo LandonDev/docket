@@ -255,6 +255,15 @@ declined, with why, is `review-built-answer.md` beside it):
 
 **The canary**, by hand, never scheduled: `bun --preload ./scripts/lib/electron-stub.ts scripts/proof-msforms-canary.ts` through `.temp-code/bin/heavy`, on a copy of the box browser's profile (refused while the live Work browser runs). It makes "TempCode proof canary <time>" in his OneDrive, adds and renames a question, reads it back, counts and deletes it (only our item from the Forms recycle bin), and prints `CANARY OK` with each step's time or `CANARY BROKE AT <step>: …`; the dummy is deleted on every way out (the rig is `scripts/lib/msformsRig.ts`, shared with `scripts/proof-msforms.ts`).
 
+**P5 job 2, from a window paired to the deployed box (release 381), 2026-11-24.** A New → Folder in Team RecWell
+(the VM, 35 s, woke it) worked. New → Form stopped with "Forms showed another form than the one asked", and so did
+every carrier read after it. The check that each read shows the asked form (review 16, steps.ts) took the id from the
+observation's address bar, whose value is cut at 160 characters (`cutValue`). A builder's address for an id of 88
+characters is 160 exactly, so the Responses view (`&analysis=true`) and a new form's window came back ending
+"…(+14 chars)", and their ids were no ids. The carrier's read now puts the page's whole address, as Chromium lists
+the target, in the bar (`withAddress`, wire.ts). The make's form had been made, and its row kept it with Accept
+responses on. A draft's Accept responses can be turned off only in Forms itself: `work.msforms.close` refuses a draft.
+
 **P5 job 1, live, 2026-11-24** (`scripts/proof-msforms.ts` with `TC_PROOF_HOST` the box's id, `TC_CARRIER_DEBUG=1`
 timing each call to the page, `/mem` reading the browser's VmRSS and Pss sums; `TC_PROOF_COUNT=rss` caps as the
 deployed host did before the Pss fix). Dummies in a "TempCode proof" folder of RecWell's library and of his OneDrive,
