@@ -1,7 +1,7 @@
 import { statSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { handled, NOT_HANDLED, type CanvasItem } from '@shared/work'
-import type { Caller, WorkCtx, WorkModule } from '../modules'
+import { handled, NOT_HANDLED } from '@shared/work'
+import type { WorkModule } from '../modules'
 import { statePath, Toolchain } from '../formats/tools'
 import { fenceItem, itemOf, readRange } from '../pdf/file'
 import { openSlidesMirror } from '../google/deckMirror'
@@ -20,8 +20,7 @@ import { setDeckToolHome, slideAlone, stopDeckResident } from './deckResident'
 import { ensureSlidesTables, SlidesStore } from './store'
 import { slidesTools } from './tools'
 import { registerFileMaker, registerFileMoved, registerFilePreviewer } from '../files/hooks'
-import { accept, announce, ChangedSinceError, sharedDeck, deckDir, fileMoved, itemsGone, onDeckOpened, readOnlyWhy, reject, renderPath, serial, sessionsGone, setSlideEngine, setSlideRenderer, slidePath, StaleChangesError, sweepClosedCopies, undo, viewOf } from './view'
-import { madeFromShared } from '../formats/exporter'
+import { accept, announce, ChangedSinceError, othersOpen, deckDir, fileMoved, itemsGone, onDeckOpened, readOnlyWhy, reject, renderPath, serial, sessionsGone, setSlideEngine, setSlideRenderer, slidePath, StaleChangesError, sweepClosedCopies, undo, viewOf } from './view'
 import { NEEDS_PRESS, pressesFor } from '../files/policy'
 import { mediaPath, prepareShow, showOf, stepPath, stopShows } from './show'
 import { STEPS_CONVERTERS } from './steps'
@@ -87,11 +86,6 @@ function residentOf(dataDir: string, tools: Toolchain, log: (line: string) => vo
   return resident
 }
 
-/** A picture of a deck others open with an agent's changes in it is shown to his press alone, as the Outbox shows what waits. */
-function proposedFor(ctx: WorkCtx, by: Caller, item: CanvasItem): void {
-  if (!pressesFor(by) && (sharedDeck(ctx, item) || madeFromShared(ctx, item.source))) throw new Error(NEEDS_PRESS)
-}
-
 export const slides: WorkModule = {
   id: 'slides',
   ensure(db) {
@@ -146,19 +140,24 @@ export const slides: WorkModule = {
     fenceItem(ctx, by, item, req.method)
     const readOnly = WRITE_METHODS.has(req.method) ? readOnlyWhy(item) : null
     if (readOnly) throw new Error(readOnly)
+    // On a deck others can open, a caller that is not his press (his window, a key with `approve`) is a viewer, as
+    // in Docs and Sheets: it changes nothing there and is shown the file alone, never what waits on it, as the
+    // Outbox shows what waits to his press alone.
+    const viewer = !pressesFor(by) && othersOpen(ctx, item)
+    if (viewer && WRITE_METHODS.has(req.method)) throw new Error(NEEDS_PRESS)
     switch (req.method) {
       case 'work.slides.open':
         if (item.source.at === 'google') await openSlidesMirror(ctx, item.id, item.title, item.source)
-        return handled(await viewOf(ctx, item, signal))
+        return handled(await viewOf(ctx, item, signal, viewer))
       case 'work.slides.copyToEdit':
         return handled({ itemId: (await copyToEdit(ctx, by, item)).id })
       case 'work.slides.read': {
-        if (req.params.which === 'proposed') proposedFor(ctx, by, item)
+        if (req.params.which === 'proposed' && viewer) throw new Error(NEEDS_PRESS)
         const { path, rev } = await renderPath(ctx, item, req.params.which, signal)
         return handled({ ...readRange(path, req.params.offset, req.params.length), rev })
       }
       case 'work.slides.slide': {
-        if (req.params.which === 'proposed') proposedFor(ctx, by, item)
+        if (req.params.which === 'proposed' && viewer) throw new Error(NEEDS_PRESS)
         const { path, rev } = await slidePath(ctx, item, req.params.which, req.params.slide, signal)
         return handled({ ...readRange(path, req.params.offset, req.params.length), rev })
       }
@@ -175,8 +174,6 @@ export const slides: WorkModule = {
       case 'work.slides.review': {
         // An agent suggests and the owner accepts: a thread's own call settles nothing.
         if (by.kind === 'model') throw new Error('Only the owner accepts or rejects a suggestion.')
-        // Taken into a deck others open, a change reaches them: his window or a key that may approve, as every Outbox press.
-        proposedFor(ctx, by, item)
         try {
           if (req.params.verdict === 'reject') await reject(ctx, item, req.params.changes, req.params.rev, signal)
           else await accept(ctx, item, req.params.changes, signal, req.params.rev)

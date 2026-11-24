@@ -58,6 +58,8 @@ export type ActKindDef<P = unknown, M = unknown> = ActKindDefOf<P, M, ActCtx>
 export interface PushTo {
   /** only the sockets whose key holds that capability (this host's own window holds them all) */
   need?: Capability
+  /** only the sockets whose key does not hold that capability (never this host's own window): with `need`, one push in two shapes */
+  lacks?: Capability
   /** only the sockets whose caller could name this file itself, or every one of these files (`ctx.reaches`): a push about an item whose file is outside a remote key's roots never reaches that key */
   path?: string | readonly string[]
   /** only this host's own window, or only remote keys: one push in two shapes, as the canvas list is with paths a key may not see cut to file names */

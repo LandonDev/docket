@@ -661,7 +661,8 @@ describe('the module, on a fake deck tool', () => {
         await expect(asCaller('work.slides.read', { itemId: item.id, which: 'proposed', offset: 0, length: 10 }, by as never)).rejects.toThrow(NEEDS_PRESS)
       }
       expect(new SlidesStore(db).pending(deckKey(item))).toHaveLength(1)
-      await asCaller('work.slides.review', { itemId: item.id, changes: 'all', verdict: 'reject' }, { kind: 'remote', caps: ['read', 'operate', 'approve'] })
+      const rev = (await call('work.slides.open', { itemId: item.id })).changesRev
+      await asCaller('work.slides.review', { itemId: item.id, changes: 'all', verdict: 'reject', rev }, { kind: 'remote', caps: ['read', 'operate', 'approve'] })
       expect(new SlidesStore(db).pending(deckKey(item))).toEqual([])
     } finally {
       sharedPaths.clear()
@@ -963,6 +964,81 @@ describe('the module, on a fake deck tool', () => {
       const before = readFileSync(deckAt)
       const r = await tool('slides_edit', { item: item.id, because: 'asked', quote: 'retitle the second slide to New words', ops: [{ op: 'text', slide: 257, shape: 3, paragraphs: ['New words'] }] })
       expect(r.structuredContent).toMatchObject({ direct: true })
+      expect(readFileSync(deckAt).equals(before)).toBe(false)
+    })
+
+    it('his words write at once only the slides they name: a batch that also changes another slide waits for his press', async () => {
+      typed.set('t1', ['Please retitle the second slide to New words for the staff meeting'])
+      const item = openDeck(fileSource(deckAt))
+      await call('work.slides.mode', { itemId: item.id, mode: 'writes' })
+      const before = readFileSync(deckAt)
+      const quote = 'retitle the second slide to New words'
+      const r = await tool('slides_edit', { item: item.id, because: 'asked', quote, ops: [{ op: 'text', slide: 257, shape: 3, paragraphs: ['New words'] }, { op: 'remove', slide: 258 }] })
+      expect(r.structuredContent).toMatchObject({ direct: false })
+      expect(textOf(r)).toContain("the person's words do not name every slide this changes")
+      expect(readFileSync(deckAt).equals(before)).toBe(true)
+      expect(new SlidesStore(db).pending(deckKey(item))).toHaveLength(2)
+      // An edit of the deck as a whole is named by no slide.
+      const { quoteNames } = await import('./tools')
+      expect(quoteNames(FAKE_DECK, quote, [{ op: 'theme', fonts: { major: 'Arial' } } as SlideOp])).toBe(false)
+      expect(quoteNames(FAKE_DECK, 'fix slides 2-3 and the last slide', [257, 258, 259].map((slide) => ({ op: 'notes', slide, text: 'x' }) as SlideOp))).toBe(true)
+      expect(quoteNames(FAKE_DECK, 'add a slide after Three, then title it', [{ op: 'add', after: 258, layout: 'L', id: 300 }, { op: 'notes', slide: 300, text: 'x' }])).toBe(true)
+      expect(quoteNames(FAKE_DECK, 'fix slide 1', [{ op: 'notes', slide: 257, text: 'x' }])).toBe(false)
+    })
+
+    it('a key that may not approve is a viewer: shown and told the file alone, it changes nothing', async () => {
+      db.prepare(`INSERT INTO workspaces (id, name, path, created_at) VALUES ('w9', 'Job', ?, 1)`).run(dir)
+      const reader = { kind: 'remote', keyId: 'k1', name: 'Bot', audience: 'mcp', caps: ['read', 'operate'] } as never
+      const approver = { kind: 'remote', keyId: 'k2', name: 'Phone', audience: 'client', caps: ['read', 'operate', 'approve'] } as never
+      const heard = { reader: [] as WorkPush[], approver: [] as WorkPush[] }
+      work.pushes.onPush((p) => heard.reader.push(p), reader)
+      work.pushes.onPush((p) => heard.approver.push(p), approver)
+      const item = openDeck(fileSource(deckAt))
+      await tool('slides_edit', { item: item.id, because: 'own', ops: [{ op: 'text', slide: 257, shape: 3, paragraphs: ['Waiting words'] }] })
+      const seen = await call('work.slides.open', { itemId: item.id }, reader)
+      expect([seen.changes, seen.changesRev, seen.renders.proposed, seen.hand, seen.mode, seen.written]).toEqual([[], undefined, null, undefined, undefined, undefined])
+      expect(seen.slides.map((s) => [s.key, s.from, s.tint])).toEqual(FAKE_DECK.slides.map((s) => [String(s.id), 'file', null]))
+      expect(JSON.stringify(seen)).not.toContain('Waiting words')
+      // His window and a key that may approve see what waits, and hear it.
+      expect((await call('work.slides.open', { itemId: item.id }, approver)).changes).toHaveLength(1)
+      const told = (ps: WorkPush[]): DeckView[] => ps.flatMap((p) => (p.push === 'work.slides' ? [p.view] : []))
+      expect(told(heard.reader).length).toBeGreaterThan(0)
+      expect(JSON.stringify(heard.reader)).not.toContain('Waiting words')
+      expect(told(heard.reader).every((v) => v.changes.length === 0 && !v.hand && !v.mode)).toBe(true)
+      expect(told(heard.approver).at(-1)?.changes).toHaveLength(1)
+      expect(told(pushes).at(-1)?.changes).toHaveLength(1)
+      // Nothing it asks changes the file, its mode or what waits.
+      const before = readFileSync(deckAt)
+      const writes: Array<[string, Record<string, unknown>]> = [
+        ['work.slides.edit', { ops: [{ op: 'delete', slide: 256, shape: 3 }] }],
+        ['work.slides.mode', { mode: 'writes' }],
+        ['work.slides.review', { changes: 'all', verdict: 'accept', rev: seen.rev }],
+        ['work.slides.review', { changes: 'all', verdict: 'reject' }],
+        ['work.slides.undo', { writeId: 'w' }],
+        ['work.slides.step', { dir: 'undo' }],
+        ['work.slides.restore', { version: 'v' }],
+        ['work.slides.attach', { name: 'a.png', data: '' }]
+      ]
+      for (const [method, params] of writes) await expect(call(method, { itemId: item.id, ...params }, reader), method).rejects.toThrow(NEEDS_PRESS)
+      await expect(call('work.slides.slide', { itemId: item.id, which: 'proposed', slide: 257, offset: 0, length: 10 }, reader)).rejects.toThrow(NEEDS_PRESS)
+      expect(readFileSync(deckAt).equals(before)).toBe(true)
+      expect(new SlidesStore(db).mode(item.id)).toBe('suggests')
+      expect(new SlidesStore(db).pending(deckKey(item))).toHaveLength(1)
+      // A show's step reader serves the steps its show named alone, never a page kept beside them.
+      const proposedPage = join(folderOf(item, 'pages'), 'pages', `${'ab'.repeat(32)}.pdf`)
+      writeFileSync(proposedPage, '%PDF-1.7 proposed')
+      for (const by of [reader, LOCAL_PRINCIPAL]) await expect(call('work.slides.build', { itemId: item.id, rev: 'ab'.repeat(8), offset: 0, length: 10 }, by)).rejects.toThrow('not ready, or is gone')
+    })
+
+    it('a press on a deck others can open must say what he saw: one with no revision is refused', async () => {
+      const item = openDeck(fileSource(deckAt))
+      await tool('slides_edit', { item: item.id, because: 'own', ops: [{ op: 'notes', slide: 256, text: 'Waits' }] })
+      const before = readFileSync(deckAt)
+      for (const verdict of ['accept', 'reject'] as const) await expect(call('work.slides.review', { itemId: item.id, changes: 'all', verdict })).rejects.toThrow('did not say which suggestions it was made on')
+      expect(readFileSync(deckAt).equals(before)).toBe(true)
+      expect(new SlidesStore(db).pending(deckKey(item))).toHaveLength(1)
+      const rev = (await call('work.slides.open', { itemId: item.id })).changesRev
+      await call('work.slides.review', { itemId: item.id, changes: 'all', verdict: 'accept', rev })
       expect(readFileSync(deckAt).equals(before)).toBe(false)
     })
 

@@ -132,6 +132,7 @@ export function deckFolder(ctx: Pick<WorkCtx, 'db' | 'host' | 'dataDir'>, item: 
 
 // ── one chain per deck ───────────────────────────────────────────────
 
+const noop = (): void => {}
 const chains = new Map<string, Promise<unknown>>()
 /** Runs `fn` after every earlier step for the deck: two opens never render twice, and a write never races a render. */
 function chained<T>(key: string, fn: () => Promise<T>): Promise<T> {
@@ -146,9 +147,11 @@ function chained<T>(key: string, fn: () => Promise<T>): Promise<T> {
 /** The item's deck's one queue: every seat on a file waits in the same line. */
 export function serial<T>(ctx: Pick<WorkCtx, 'db' | 'host' | 'dataDir'>, item: CanvasItem, fn: () => Promise<T>): Promise<T> {
   const run = chained(seatOf(ctx, item), fn)
-  // Files waits for it before it judges a closed tab's copy clean (files/save.ts `workingOn`).
+  // Files waits for it before it judges a closed tab's copy clean (files/save.ts `workingOn`). It is handed the step's
+  // end alone: a refusal is the caller's to hear, and a second promise of it would reject with no one to hear it.
   const path = filePathOf(item.source)
-  return path === null ? run : workingOn(path, run)
+  if (path !== null) workingOn(path, run.then(noop, noop))
+  return run
 }
 
 /** The LibreOffice kept running, where the host has one (set by the module when Work starts; null: every render starts its own). */
@@ -215,6 +218,12 @@ export const deckShared = (ctx: Pick<WorkCtx, 'db' | 'host' | 'dataDir'>, item: 
  * path in a library and the same path as a plain file) must not disagree: the stricter word holds for both.
  */
 export const sharedDeck = (ctx: Pick<WorkCtx, 'db' | 'host' | 'dataDir'>, item: CanvasItem): boolean => deckShared(ctx, item) || new SlidesStore(ctx.db).sharedDeck(deckKey(item))
+/**
+ * Whether others can open the deck as the hold reads it: its file lies where they can, or it is a copy made from such
+ * a file. On it a caller that is not his press (files/policy.ts `pressesFor`) is a viewer: it changes nothing and is
+ * shown the file alone (`viewFrom`), never what waits on it.
+ */
+export const othersOpen = (ctx: Pick<WorkCtx, 'db' | 'host' | 'dataDir'>, item: CanvasItem): boolean => sharedDeck(ctx, item) || madeFromShared(ctx, item.source)
 /** The mark a conversion of a shared deck's copy carries: the copy lies under app data, so the runner cannot tell by its path. */
 export const sharedJob = (ctx: Pick<WorkCtx, 'db' | 'host' | 'dataDir'>, item: CanvasItem): { shared?: true } => (sharedDeck(ctx, item) ? { shared: true } : {})
 
@@ -838,9 +847,10 @@ function readOnlyOf(item: CanvasItem): Pick<DeckView, 'readOnly'> {
   return from ? { readOnly: { from } } : {}
 }
 
-/** What differs seat by seat in one deck's view: whose item it is, its mode, and the Undo it may offer. */
-function seatFields(ctx: Pick<WorkCtx, 'db' | 'host' | 'dataDir'>, item: CanvasItem): Pick<DeckView, 'itemId' | 'sessionId' | 'mode' | 'hosted'> & { written?: DeckView['written'] } {
+/** What differs seat by seat in one deck's view: whose item it is, its mode, and the Undo it may offer (none to a viewer). */
+function seatFields(ctx: Pick<WorkCtx, 'db' | 'host' | 'dataDir'>, item: CanvasItem, viewer = false): Pick<DeckView, 'itemId' | 'sessionId' | 'mode' | 'hosted'> & { written?: DeckView['written'] } {
   if (readOnlyWhy(item)) return { itemId: item.id, sessionId: item.sessionId, hosted: false }
+  if (viewer) return { itemId: item.id, sessionId: item.sessionId, hosted: item.source.at === 'microsoft' }
   const written = writtenFor(ctx, item)
   return {
     itemId: item.id,
@@ -851,13 +861,18 @@ function seatFields(ctx: Pick<WorkCtx, 'db' | 'host' | 'dataDir'>, item: CanvasI
   }
 }
 
-export function viewFrom(ctx: Pick<WorkCtx, 'db' | 'host' | 'dataDir'>, item: CanvasItem, deck: Deck, picOf?: PicOf): DeckView {
+/**
+ * The deck's view. `viewer`: as a caller that is not his press sees a deck others can open (`othersOpen`): the file
+ * as it is, with no change that waits, no picture of them, no mode and no Undo.
+ */
+export function viewFrom(ctx: Pick<WorkCtx, 'db' | 'host' | 'dataDir'>, item: CanvasItem, deck: Deck, picOf?: PicOf, viewer = false): DeckView {
+  if (viewer) deck = { ...deck, proposed: null, pending: [] }
   const changes = changesOf(deck.file.info, deck.proposed?.info ?? null, deck.pending)
   const renderError = deck.file.renderError ?? deck.proposed?.renderError
   const changesRev = proposedRev(deck)
   const shownInfo = deck.proposed?.info ?? deck.file.info
   return {
-    ...seatFields(ctx, item),
+    ...seatFields(ctx, item, viewer),
     ...((item.source.at === 'file' || item.source.at === 'thread') && !sharedDeck(ctx, item) && !madeFromShared(ctx, item.source) ? { canUpload: true } : {}),
     ...readOnlyOf(item),
     name: nameOf(item, deck.path),
@@ -872,7 +887,7 @@ export function viewFrom(ctx: Pick<WorkCtx, 'db' | 'host' | 'dataDir'>, item: Ca
     size: { width: shownInfo.width, height: shownInfo.height },
     ...(shownInfo.layoutInfo ? { layouts: shownInfo.layoutInfo } : {}),
     ...(shownInfo.theme ? { theme: shownInfo.theme } : {}),
-    ...(readOnlyWhy(item) ? {} : { hand: handState(deckKey(item), deck.hash) })
+    ...(readOnlyWhy(item) || viewer ? {} : { hand: handState(deckKey(item), deck.hash) })
   }
 }
 
@@ -888,7 +903,8 @@ function pageOf(pages: string, built: Built | null, s: SlideInfo): { path: strin
   }
 }
 
-export async function viewOf(ctx: Ctx, item: CanvasItem, signal?: AbortSignal): Promise<DeckView> {
+/** The deck's view as his press sees it, and as a viewer would (`viewFrom`), from one read of the deck. */
+async function viewsOf(ctx: Ctx, item: CanvasItem, signal?: AbortSignal): Promise<{ full: DeckView; viewer: () => DeckView }> {
   // Off the way: a closed tab's snapshot waits on its own file's queue, never on this deck's.
   void sweepClosedCopies(ctx).catch((err: unknown) => console.warn(`slides: could not clear closed copies: ${errorText(err)}`))
   await drawAhead(ctx, item, signal)
@@ -896,14 +912,21 @@ export async function viewOf(ctx: Ctx, item: CanvasItem, signal?: AbortSignal): 
     const deck = await deckOf(ctx, item, signal)
     opened?.(ctx, item, deck)
     const pages = await deckDir(ctx, item, 'pages')
-    const view = viewFrom(ctx, item, deck, (from, s) => {
+    const picOf: PicOf = (from, s) => {
       const page = pageOf(pages, from === 'file' ? deck.file : deck.proposed, s)
       return page ? { rev: page.rev, size: page.size } : undefined
-    })
+    }
     // The file's own layouts: a suggested theme shows on the slides it would change, not in the picker.
     const looks = readOnlyWhy(item) ? undefined : layoutsPic(await deckDir(ctx, item, 'render'), deck.file.info)
-    return looks ? { ...view, layoutsPic: looks } : view
+    const seen = (view: DeckView): DeckView => (looks ? { ...view, layoutsPic: looks } : view)
+    return { full: seen(viewFrom(ctx, item, deck, picOf)), viewer: () => seen(viewFrom(ctx, item, deck, picOf, true)) }
   })
+}
+
+/** The deck's view; `viewer`: as a caller that is not his press is shown a deck others can open. */
+export async function viewOf(ctx: Ctx, item: CanvasItem, signal?: AbortSignal, viewer = false): Promise<DeckView> {
+  const views = await viewsOf(ctx, item, signal)
+  return viewer ? views.viewer() : views.full
 }
 
 /**
@@ -929,22 +952,35 @@ export async function slidePath(ctx: Ctx, item: CanvasItem, which: 'file' | 'pro
   })
 }
 
-/** Tells every client what the deck is now, and answers it. */
+/**
+ * Tells every client what the deck is now, and answers it (the view his press sees). On a deck others can open the
+ * push goes in two shapes: the whole view to the sockets that stand for his press (his window, a key with `approve`),
+ * the file alone to every other (`viewFrom`), so what waits there reaches no one before his press.
+ */
 export async function announce(ctx: Ctx, item: CanvasItem, signal?: AbortSignal): Promise<DeckView> {
-  const view = await viewOf(ctx, item, signal)
+  const views = await viewsOf(ctx, item, signal)
+  const view = views.full
   // After any change: the files no waiting edit names any more go (an hour after they came, so one he is adding now stays).
   const attach = deckFolder(ctx, item, 'attach')
   if (existsSync(attach)) sweepAttached(attach, new SlidesStore(ctx.db).pending(deckKey(item)).map((p) => p.op))
-  // A deck outside the remote roots: only a socket holding admin (this host's own window holds every capability)
-  // hears of it. The push API narrows by capability alone, so an admin key still does; see work-slides.md.
-  ctx.push({ push: 'work.slides', sessionId: item.sessionId, view }, pushFor(item))
+  const held = othersOpen(ctx, item)
+  const viewer = held ? views.viewer() : null
+  // A deck outside a key's roots: that key hears nothing of it (`pushFor` names its file).
+  const tell = (to: CanvasItem, full: DeckView, seen: DeckView | null): void => {
+    const at = pushFor(to)
+    if (!seen) return ctx.push({ push: 'work.slides', sessionId: to.sessionId, view: full }, at)
+    ctx.push({ push: 'work.slides', sessionId: to.sessionId, view: full }, { ...at, need: 'approve' })
+    ctx.push({ push: 'work.slides', sessionId: to.sessionId, view: seen }, { ...at, lacks: 'approve' })
+  }
+  tell(item, view, viewer)
   // Every other seat on the same deck (a Files tab beside a thread's canvas) is told the same deck as its own item.
   for (const seat of new SlidesStore(ctx.db).seats(deckKey(item))) {
     if (seat.itemId === item.id) continue
     const other = ctx.canvas.get(seat.itemId)
     if (!other) continue
     const { written: _mine, ...rest } = view
-    ctx.push({ push: 'work.slides', sessionId: other.sessionId, view: { ...rest, name: nameOf(other, filePathOf(other.source)), ...seatFields(ctx, other) } }, pushFor(other))
+    const name = nameOf(other, filePathOf(other.source))
+    tell(other, { ...rest, name, ...seatFields(ctx, other) }, viewer && { ...viewer, name, ...seatFields(ctx, other, true) })
   }
   return view
 }
@@ -1064,9 +1100,17 @@ export const CHANGED_SINCE = 'The suggestions changed since this preview. Nothin
  */
 const proposedRev = (deck: Deck): string | null => (deck.proposed ? deck.proposed.key.slice(0, 16) : null)
 
-/** Refuses a press whose `rev` is not the changes' revision now; a press with none (an older phone build) is not checked. */
-function checkRev(deck: Deck, rev: string | undefined): void {
-  if (rev !== undefined && proposedRev(deck) !== rev) throw new ChangedSinceError(CHANGED_SINCE)
+/** A press with no revision on a deck others can open: an older client, which cannot say what he saw. */
+export const NAME_THE_REV = 'Others can open this deck, and this press did not say which suggestions it was made on. Nothing was accepted or rejected; update TempCode and look at them again.'
+
+/**
+ * Refuses a press whose `rev` is not the changes' revision now. A press with none (an older client) is taken on a
+ * deck of his own alone: where others can open it, what reaches them is only what he saw (`othersOpen`).
+ */
+function checkRev(ctx: Pick<WorkCtx, 'db' | 'host' | 'dataDir'>, item: CanvasItem, deck: Deck | null, rev: string | undefined): void {
+  if (rev === undefined) {
+    if (othersOpen(ctx, item)) throw new ChangedSinceError(NAME_THE_REV)
+  } else if (deck && proposedRev(deck) !== rev) throw new ChangedSinceError(CHANGED_SINCE)
 }
 
 /**
@@ -1081,7 +1125,7 @@ function checkRev(deck: Deck, rev: string | undefined): void {
 export async function accept(ctx: Ctx, item: CanvasItem, ids: readonly string[] | 'all', signal?: AbortSignal, rev?: string): Promise<void> {
   const stale = await serial(ctx, item, () =>
     withDeck(ctx, item, signal, async (deck) => {
-      checkRev(deck, rev)
+      checkRev(ctx, item, deck, rev)
       let chosen = deck.pending.filter((p) => ids === 'all' || ids.includes(changeIdOf(p.slide)))
       if (!chosen.length) return []
       const whole = chosen.length === deck.pending.length
@@ -1197,7 +1241,7 @@ export async function accept(ctx: Ctx, item: CanvasItem, ids: readonly string[] 
 export async function reject(ctx: Ctx, item: CanvasItem, ids: readonly string[] | 'all', rev?: string, signal?: AbortSignal): Promise<void> {
   await serial(ctx, item, async () => {
     // Checked on the deck's queue, against the deck as it is now, so no edit lands between the check and the drop.
-    if (rev !== undefined) checkRev(await deckOf(ctx, item, signal), rev)
+    checkRev(ctx, item, rev === undefined ? null : await deckOf(ctx, item, signal), rev)
     const store = new SlidesStore(ctx.db)
     const pending = store.pending(deckKey(item))
     const chosen = pending.filter((p) => ids === 'all' || ids.includes(changeIdOf(p.slide)))

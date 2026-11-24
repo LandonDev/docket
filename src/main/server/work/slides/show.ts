@@ -42,6 +42,8 @@ export async function showOf(ctx: Ctx, item: CanvasItem, signal?: AbortSignal): 
         ...(played ? { media: played } : {})
       }
     })
+    // What `work.slides.build` serves of this deck from now on: these steps, never another page kept beside them.
+    told.set(showKey(ctx, item), new Set(slides.flatMap((s) => (s.steps ?? []).flatMap((step) => (step.pic ? [step.pic.rev] : [])))))
     return {
       itemId: item.id,
       name: nameOf(item, path),
@@ -61,7 +63,17 @@ async function byRev(ctx: Ctx, item: CanvasItem, folder: 'pages' | 'media', rev:
   if (!name) throw new ItemFileError('That picture or clip is not ready, or is gone.', 'missing')
   return join(dir, name)
 }
-export const stepPath = (ctx: Ctx, item: CanvasItem, rev: string): Promise<string> => byRev(ctx, item, 'pages', rev, '.pdf')
+/**
+ * The step pictures each deck's show was last told of (`showOf`), by `showKey`. The pages folder also keeps the
+ * proposed deck's slides, which only his press may see: a step is read only by a rev the file's own show named.
+ */
+const told = new Map<string, Set<string>>()
+/** One show a deck, or a tab for a shared import, whose pictures are its own. */
+const showKey = (ctx: Ctx, item: CanvasItem): string => (tabCopyOf(ctx, item) ? item.id : deckKey(item))
+export async function stepPath(ctx: Ctx, item: CanvasItem, rev: string): Promise<string> {
+  if (!told.get(showKey(ctx, item))?.has(rev)) throw new ItemFileError('That picture or clip is not ready, or is gone.', 'missing')
+  return byRev(ctx, item, 'pages', rev, '.pdf')
+}
 export const mediaPath = (ctx: Ctx, item: CanvasItem, rev: string): Promise<string> => byRev(ctx, item, 'media', rev, '.play')
 
 // ── made in the background ───────────────────────────────────────────
@@ -94,7 +106,7 @@ function tellReady(ctx: Ctx, item: CanvasItem, hash: string): void {
  */
 export function prepareShow(ctx: Ctx, item: CanvasItem, deck: Pick<Deck, 'hash' | 'file' | 'path'>): void {
   // One job a deck, or a tab for a shared import, whose pictures are its own.
-  const key = tabCopyOf(ctx, item) ? item.id : deckKey(item)
+  const key = showKey(ctx, item)
   const was = running.get(key)
   if (was?.hash === deck.hash) return
   const stop = new AbortController()
@@ -153,10 +165,12 @@ export function prepareShow(ctx: Ctx, item: CanvasItem, deck: Pick<Deck, 'hash' 
 export function stopShow(key: string): void {
   running.get(key)?.stop.abort()
   running.delete(key)
+  told.delete(key)
 }
 
 /** Stops every background job (Work turned off). */
 export function stopShows(): void {
   for (const job of running.values()) job.stop.abort()
   running.clear()
+  told.clear()
 }

@@ -273,6 +273,7 @@ export function startWork(deps: WorkDeps, modules: WorkModule[] = WORK_MODULES):
     const remoteOk = to?.path === undefined || remoteReaches(to.path)
     for (const [send, principal] of [...sinks]) {
       if (to?.need && !allows(principalCaps(principal), to.need)) continue
+      if (to?.lacks && allows(principalCaps(principal), to.lacks)) continue
       if (!remoteOk && principal.kind !== 'local') continue
       if (to?.only && (to.only === 'local') !== (principal.kind === 'local')) continue
       send(p)

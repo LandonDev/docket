@@ -651,7 +651,7 @@ export const SlidesRequestSchemas = [
       itemId,
       changes: z.union([z.array(z.string()).max(1000), z.literal('all')]),
       verdict: z.enum(['accept', 'reject']),
-      /** the changes the press was made on (`DeckView.changesRev`, which is `renders.proposed.rev` when there is a picture): with it, a press on changes that moved on since is refused, never applied to what he did not see; an older client that sends none is not checked */
+      /** the changes the press was made on (`DeckView.changesRev`, which is `renders.proposed.rev` when there is a picture): with it, a press on changes that moved on since is refused, never applied to what he did not see; an older client that sends none is not checked on a deck of his own, and refused on one others can open */
       rev: z.string().max(64).optional()
     })
   ),

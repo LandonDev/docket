@@ -280,6 +280,13 @@ describe('with Work on', () => {
     expect(got.reader).toEqual([count])
     expect(got.approver).toEqual([held, count])
     expect(got.admin).toEqual([held, count])
+    // One push in two shapes: each socket hears exactly one, his window the one that needs the capability.
+    const full = { push: 'work.slides', shape: 'full' } as unknown as WorkPush
+    const viewer = { push: 'work.slides', shape: 'viewer' } as unknown as WorkPush
+    seen.send!(full, { need: 'approve' })
+    seen.send!(viewer, { lacks: 'approve' })
+    expect([got.window.at(-1), got.reader.at(-1), got.approver.at(-1), got.admin.at(-1)]).toEqual([full, viewer, full, full])
+    expect([got.window, got.reader, got.approver, got.admin].map((g) => g.length)).toEqual([3, 2, 3, 3])
     for (const off of offs) off()
   })
 

@@ -85,6 +85,46 @@ function ownerSaid(ctx: ToolCtx, quote: string | undefined): boolean {
   }
 }
 
+const ORDINALS = ['first', 'second', 'third', 'fourth', 'fifth', 'sixth', 'seventh', 'eighth', 'ninth', 'tenth', 'eleventh', 'twelfth']
+/** Words as letters and digits alone, one space between: a title is found whole, never inside another word. */
+const wordsOf = (text: string): string => ` ${text.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim()} `
+
+/**
+ * The slides, by id, a person's words name: by number ("slide 3", "slides 2 and 4", "slides 2-5"), by place ("the
+ * third slide", "the 2nd slide", "the last slide"), or by a title of three letters or more said whole.
+ */
+export function slidesNamed(info: Pick<DeckInfo, 'slides'>, quote: string): Set<number> {
+  const q = quote.toLowerCase()
+  const count = info.slides.length
+  const places = new Set<number>()
+  for (const m of q.matchAll(/\bslides?\s+(?:no\.?\s*|number\s+)?(\d+(?:\s*(?:,|and|&|or|-|–|to|through)\s*\d+)*)/g)) {
+    const parts = m[1].split(/\s*(,|and|&|or|-|–|to|through)\s*/)
+    for (let i = 0; i < parts.length; i += 2) {
+      const n = Number(parts[i])
+      const from = i > 0 && /^(-|–|to|through)$/.test(parts[i - 1]) ? Number(parts[i - 2]) : n
+      for (let k = Math.min(from, n); k <= Math.min(n, count); k++) places.add(k)
+    }
+  }
+  for (const m of q.matchAll(new RegExp(`\\b(${ORDINALS.join('|')}|last|(\\d+)(?:st|nd|rd|th))\\s+slide\\b`, 'g'))) places.add(m[2] ? Number(m[2]) : m[1] === 'last' ? count : ORDINALS.indexOf(m[1]) + 1)
+  const said = wordsOf(quote)
+  return new Set(info.slides.flatMap((s, i) => (places.has(i + 1) || (wordsOf(s.title).trim().length >= 3 && said.includes(wordsOf(s.title))) ? [s.id] : [])))
+}
+
+/**
+ * Whether the person's words name every slide a batch changes (`slidesNamed`): an add by the slide it goes after, a
+ * copy by the slide it copies, and an edit of a slide the batch adds by that add. An edit of the deck as a whole (its
+ * theme, a section taken away or renamed) is named by no slide.
+ */
+export function quoteNames(info: Pick<DeckInfo, 'slides'>, quote: string, ops: readonly SlideOp[]): boolean {
+  const named = slidesNamed(info, quote)
+  for (const op of ops) {
+    const on = op.op === 'add' ? op.after : op.op === 'theme' ? null : op.op === 'section' ? (op.act === 'add' ? op.at : null) : op.slide
+    if (on === null || !named.has(on)) return false
+    if ((op.op === 'add' || op.op === 'duplicate') && op.id !== undefined) named.add(op.id)
+  }
+  return true
+}
+
 /** The sentences for edits that do not go in, numbered as the agent's own list. */
 function ownWarnings(warnings: string[], before: number): string[] {
   return warnings.map((w) => {
@@ -191,10 +231,13 @@ export const slidesTools: WorkTool[] = [
         const said = await serial(ctx, it, () => withDeck(ctx, it, ctx.signal, async (deck) => {
           // Read on the queue: the owner may have switched the mode while this waited behind a render.
           const writes = store.mode(it.id) === 'writes'
-          // With suggestions waiting, what the agent reads is the deck with them in: an edit of that deck waits with them.
-          const direct = writes && !deck.pending.length && (a.because === 'own' ? !shared : ownerSaid(ctx, a.quote))
           const all = allocateIds([...deck.pending.map((p) => p.op), ...a.ops], deck.file.info)
           const fresh = all.slice(deck.pending.length)
+          // His words write at once; on a deck others can open, only what they name (`quoteNames`), the rest waits for his press.
+          const asked = a.because === 'asked' && ownerSaid(ctx, a.quote)
+          const named = asked && (!shared || quoteNames(deck.file.info, a.quote!, fresh))
+          // With suggestions waiting, what the agent reads is the deck with them in: an edit of that deck waits with them.
+          const direct = writes && !deck.pending.length && (a.because === 'own' ? !shared : named)
           const added = fresh.flatMap((o) => (o.op === 'add' ? [o.id!] : []))
           if (direct) {
             const { notes, ...w } = await writeInto(ctx, it, deck.path, fresh, ctx.signal, deck.hash)
@@ -214,7 +257,15 @@ export const slidesTools: WorkTool[] = [
           const own = ownWarnings(warnings.filter((w) => !isNote(w)), deck.pending.length).filter((w) => w.startsWith('edit '))
           if (own.length) throw new Error(`Nothing was kept:\n${own.join('\n')}`)
           store.add(key, rowSession(key, it.sessionId), fresh.map((op) => ({ slide: slideOfOp(op), op })), agentPrincipal(ctx.host, ctx.sessionId))
-          const why = !writes ? '' : deck.pending.length ? ' Suggestions already wait on this deck, so this waits with them.' : a.because === 'own' ? ' The deck is shared, so your own idea is a suggestion.' : ' The person\'s words were not found in this thread, so this is a suggestion.'
+          const why = !writes
+            ? ''
+            : deck.pending.length
+              ? ' Suggestions already wait on this deck, so this waits with them.'
+              : a.because === 'own'
+                ? ' The deck is shared, so your own idea is a suggestion.'
+                : asked
+                  ? ' The deck is shared, and the person\'s words do not name every slide this changes, so this is a suggestion.'
+                  : ' The person\'s words were not found in this thread, so this is a suggestion.'
           return { added, direct: false, text: `Suggested ${plural(new Set(fresh.map(slideOfOp)).size, 'revised slide')}; the person steps through them from the bar.${why}${noteLines(warnings.filter(isNote), deck.pending.length)}` }
         }))
         await announce(ctx, it, ctx.signal)
