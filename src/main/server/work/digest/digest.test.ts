@@ -409,6 +409,7 @@ describe('the day', () => {
     rig.digest.deliverer = { ...rig.deliverer, digest: (day) => (offered.push(day.day), false) }
     rig.clock.now = at(24, '08:00')
     rig.digest.tick()
+    await new Promise((r) => setTimeout(r, 0))
     rig.digest.seen('2026-11-24')
     rig.clock.now += 30_000
     rig.digest.tick()

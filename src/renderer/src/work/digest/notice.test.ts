@@ -104,11 +104,12 @@ describe("the system notifications", () => {
     expect(systemNotices(digest, nowToasts([a]))).toEqual([
       { key: "digest:2026-11-24", title: "Work", body: "Digest: 1 thing in Cosmic", silent: true },
       // the detail on a line of its own: a title that holds a colon is never joined to it by another
-      { key: "work-now:k:prep:1", title: "Purdue", body: "Budget review starts at 2:00 PM\nWith Dana Reyes" },
+      // its telling: the same thing told again in the same words is a new notice (src/main/notice.ts)
+      { key: "work-now:k:prep:1", title: "Purdue", body: "Budget review starts at 2:00 PM\nWith Dana Reyes", telling: "k:prep:1@1" },
     ]);
     const many = Array.from({ length: 4 }, (_, i) => row({ key: `k${i}`, how: "now", toldAt: i + 1 }));
     // folded: every open one by name, newest first, as the phone's banner says it
-    expect(systemNotices(null, nowToasts(many))).toEqual([{ key: "work-now", title: "Work", body: "4 things need you: Morning summary; Morning summary; Morning summary; Morning summary" }]);
+    expect(systemNotices(null, nowToasts(many))).toEqual([{ key: "work-now", title: "Work", body: "4 things need you: Morning summary; Morning summary; Morning summary; Morning summary", telling: "k:k0@1 k:k1@2 k:k2@3 k:k3@4" }]);
   });
   it("sound only for a telling not heard before: a thing that joins sounds, a fold that loses one or breaks up does not", () => {
     const many = Array.from({ length: 5 }, (_, i) => row({ key: `k${i}`, how: "now", toldAt: i + 1 }));

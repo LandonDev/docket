@@ -259,7 +259,7 @@ describe("an interrupt's toast", () => {
     w().rows.set("mac", [{ ...meeting(), host: "mac" }]);
     await mount();
     expect(shown()).toMatchObject([{ id: "work-now:k:prep:ev1", kind: "warning", text: "Budget review starts at 2:00 PM", description: "With Dana Reyes", sticky: true, label: "Open" }]);
-    expect(bridge.show).toHaveBeenCalledWith({ key: "work-now:k:prep:ev1", title: "Purdue", body: "Budget review starts at 2:00 PM\nWith Dana Reyes" });
+    expect(bridge.show).toHaveBeenCalledWith({ key: "work-now:k:prep:ev1", title: "Purdue", body: "Budget review starts at 2:00 PM\nWith Dana Reyes", telling: expect.any(String) });
   });
 
   it("its press moves the window to the job and opens the view on the thing, and the toast is gone for good", async () => {
@@ -288,7 +288,7 @@ describe("an interrupt's toast", () => {
     expect(workViewNow()).toEqual({ workspaceId: "ws-purdue", view: "agenda", event: "ev1" });
   });
 
-  it("a job this window does not list opens nothing, so the row is not taken as dealt with: the list opens", async () => {
+  it("a job this window does not list opens nothing there: the list opens in its place", async () => {
     w().rows.set("box", [meeting()]);
     workspaces.list = [];
     await mount();
@@ -331,16 +331,16 @@ describe("an interrupt's toast", () => {
     const rows = Array.from({ length: 4 }, (_, i) => tell({ key: `k${i}`, title: `Thing ${i}`, how: "now", toldAt: at(24, 10, 0) + i }));
     w().rows.set("box", rows);
     await mount();
-    expect(bridge.show).toHaveBeenLastCalledWith({ key: "work-now", title: "Work", body: "4 things need you: Thing 3; Thing 2; Thing 1; Thing 0" });
+    expect(bridge.show).toHaveBeenLastCalledWith({ key: "work-now", title: "Work", body: "4 things need you: Thing 3; Thing 2; Thing 1; Thing 0", telling: expect.any(String) });
     // A fifth joins: asked again in the new words, and it sounds.
     const fifth = tell({ key: "k4", title: "Thing 4", how: "now", toldAt: at(24, 10, 0) + 9 });
     await act(async () => push(w(), "box", { row: fifth }));
     await settle();
-    expect(bridge.show).toHaveBeenLastCalledWith({ key: "work-now", title: "Work", body: "5 things need you: Thing 4; Thing 3; Thing 2; Thing 1; Thing 0" });
+    expect(bridge.show).toHaveBeenLastCalledWith({ key: "work-now", title: "Work", body: "5 things need you: Thing 4; Thing 3; Thing 2; Thing 1; Thing 0", telling: expect.any(String) });
     // The newest is done: four he heard remain, said quietly.
     await act(async () => push(w(), "box", { gone: fifth.id }));
     await settle();
-    expect(bridge.show).toHaveBeenLastCalledWith({ key: "work-now", title: "Work", body: "4 things need you: Thing 3; Thing 2; Thing 1; Thing 0", silent: true });
+    expect(bridge.show).toHaveBeenLastCalledWith({ key: "work-now", title: "Work", body: "4 things need you: Thing 3; Thing 2; Thing 1; Thing 0", silent: true, telling: expect.any(String) });
     // One more is done: the fold breaks up into three he heard, each quiet.
     bridge.show.mockClear();
     await act(async () => push(w(), "box", { gone: rows[3]!.id }));
@@ -356,7 +356,7 @@ describe("an interrupt's toast", () => {
   it("a thing told before the window opened is shown without a sound: it is not news to the ear", async () => {
     w().rows.set("box", [tell({ key: "old", title: "Told an hour ago", how: "now", toldAt: at(24, 9) })]);
     await mount();
-    expect(bridge.show).toHaveBeenLastCalledWith({ key: "work-now:k:old", title: "Cosmic", body: "Told an hour ago", silent: true });
+    expect(bridge.show).toHaveBeenLastCalledWith({ key: "work-now:k:old", title: "Cosmic", body: "Told an hour ago", silent: true, telling: expect.any(String) });
   });
 
   it("past three at once they are one toast that opens the list", async () => {
@@ -392,13 +392,13 @@ describe("an interrupt's toast", () => {
     const row = tell({ key: "prep:ev1", sector: "purdue", title: "Budget review starts at 2:00 PM", how: "now", toldAt: at(24, 10) });
     w().rows.set("box", [row]);
     await mount();
-    expect(bridge.show).toHaveBeenLastCalledWith({ key: "work-now:k:prep:ev1", title: "Purdue", body: "Budget review starts at 2:00 PM" });
+    expect(bridge.show).toHaveBeenLastCalledWith({ key: "work-now:k:prep:ev1", title: "Purdue", body: "Budget review starts at 2:00 PM", telling: expect.any(String) });
     bridge.show.mockClear();
     // The same thing, now about another job: only the title changes.
     await act(async () => push(w(), "box", { row: { ...row, sector: "ref" } }));
     await settle();
     // the same telling, heard already: the new words come without a second sound
-    expect(bridge.show).toHaveBeenCalledWith({ key: "work-now:k:prep:ev1", title: "Ref", body: "Budget review starts at 2:00 PM", silent: true });
+    expect(bridge.show).toHaveBeenCalledWith({ key: "work-now:k:prep:ev1", title: "Ref", body: "Budget review starts at 2:00 PM", silent: true, telling: expect.any(String) });
   });
 
   it("a day after it was told it leaves the window on its own", async () => {

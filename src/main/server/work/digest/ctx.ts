@@ -371,7 +371,13 @@ export class Digest {
       answer = false
       this.o.log(`digest: the day's notice was not sent: ${errorText(err)}`)
     }
-    void Promise.resolve(answer)
+    // An answer given at once settles at once; one still being sent holds off a second offer until it answers.
+    if (!(answer instanceof Promise)) {
+      this.offering = false
+      if (answer !== false) settle()
+      return
+    }
+    void answer
       .then((sent) => {
         if (sent !== false) settle()
       })
