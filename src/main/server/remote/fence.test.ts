@@ -482,6 +482,27 @@ describe("a file another host of his holds, named by a remote key (F-files-refus
   })
 })
 
+describe('a Microsoft form made in a folder another computer holds', () => {
+  const MAC = 'env_MacMacMacMacMacMacMacM'
+  const BOX = 'env_BoxBoxBoxBoxBoxBoxBoxB'
+  const vm = 'C:\\Users\\tcuser\\Purdue University\\RecWell - Documents\\Forms'
+  const mac = '/Users/l/Library/CloudStorage/OneDrive-purdue.edu-RecWell/Forms'
+  const make = (folder: object, method = 'work.msforms.make') =>
+    ({ id: '1', method, params: { workspaceId: 'w', folder, title: 'Sign-up' } }) as unknown as ClientRequest
+
+  it("passes work.msforms.make with a folder in the Windows VM or of another host: the handler matches it to a library by its words, never opening it", () => {
+    expect(() => fenceRequest(make({ at: 'file', host: BOX, path: vm }), ['/srv/work'], [], [], BOX)).not.toThrow()
+    expect(() => fenceRequest(make({ at: 'file', host: MAC, path: mac }), ['/srv/work'], [], [], BOX)).not.toThrow()
+  })
+
+  it("keeps this host's own path outside the roots fenced, and every msforms verb not listed", () => {
+    expect(() => fenceRequest(make({ at: 'file', host: BOX, path: '/etc' }), ['/srv/work'], [], [], BOX)).toThrow(FenceError)
+    expect(() => fenceRequest(make({ at: 'file', path: '/etc' }), ['/srv/work'], [], [], BOX)).toThrow(FenceError)
+    for (const folder of [{ at: 'file', host: BOX, path: vm }, { at: 'file', host: MAC, path: mac }])
+      expect(() => fenceRequest(make(folder, 'work.msforms.survey'), ['/srv/work'], [], [], BOX)).toThrow(FenceError)
+  })
+})
+
 describe('the fence on a Windows host', () => {
   it('takes a drive path, a relative one and ~', () => {
     for (const p of ['C:\\Users\\u\\work\\a.ts', 'c:/Users/u/work', 'work\\a.ts', '~\\work', '~']) expect(plainWindowsPath(p)).toBe(true)
