@@ -653,6 +653,56 @@ describe('one review from every host’s part', () => {
     expect(r2.slipped.filter((x) => x.ref.kind === 'task').map((x) => [x.key, x.open, !!x.unchecked])).toEqual([['task:late', false, false]])
   })
 
+  it('sends a press on a kept row to the host whose read says it is open, not to the one that could not check it', () => {
+    const friday = WEEK.from + 4 * 24 * HOUR + 16 * HOUR
+    const monday = WEEK.to + 9 * HOUR
+    const late = slip('task:late')
+    // The box kept Friday's list; on Monday its LifeOS is down. The Mac reads the week first and finds the task open.
+    const boxPart = { environmentId: 'env-box', body: { ...box, over: true, madeAt: monday, lifeos: null, left: [LEFT.lifeosKept], read: {}, slipped: { at: friday, rows: [late] } } }
+    const macPart = { environmentId: 'env-mac', body: { ...mac, over: true, madeAt: monday, read: { events: monday, sent: monday, answered: monday, done: monday, due: monday, waits: monday, meetings: monday }, slipped: { at: monday, rows: [late] } } }
+    const r = mergeReview([boxPart, macPart], monday, { home: 'env-box' })!
+    expect(r.slipped.filter((x) => x.ref.kind === 'task').map((x) => [x.key, x.open, !!x.unchecked, x.environmentId])).toEqual([['task:late', true, false, 'env-mac']])
+  })
+
+  it('keeps the newest list kept inside the week, and lets an older one check only the rows it held', () => {
+    const thursday = WEEK.from + 3 * 24 * HOUR + 16 * HOUR
+    const friday = thursday + 24 * HOUR
+    const monday = WEEK.to + 9 * HOUR
+    const old = slip('task:old')
+    const fridays = slip('task:friday', { at: friday - 7 * HOUR })
+    // The box kept Friday's list, its tasks read failing on Monday; the Mac kept Thursday's and read its tasks now.
+    const boxPart = { environmentId: 'env-box', body: { ...box, over: true, madeAt: monday, left: [LEFT.tasks], read: { events: monday, sent: monday, answered: monday, waits: monday, meetings: monday }, slipped: { at: friday, rows: [old, fridays] } } }
+    const macPart = { environmentId: 'env-mac', body: { ...mac, over: true, madeAt: monday, read: { events: monday, sent: monday, answered: monday, done: monday, due: monday, waits: monday, meetings: monday }, slipped: { at: thursday, rows: [{ ...old, open: false }] } } }
+    const r = mergeReview([boxPart, macPart], monday, { home: 'env-box' })!
+    expect(r.slippedAt).toBe(friday)
+    // Thursday's list says the old task was dealt with; it never held Friday's, which stands as last known.
+    expect(r.slipped.filter((x) => x.ref.kind === 'task').map((x) => [x.key, x.open, !!x.unchecked]).sort()).toEqual([
+      ['task:friday', true, true],
+      ['task:old', false, false]
+    ])
+  })
+
+  it('keeps a meeting as last known while a host asked has not answered: it may hold the notes', () => {
+    const meeting = slip('meeting:e1', { ref: { kind: 'meeting', eventId: 'e1' } })
+    const made = MON + 4 * 24 * HOUR
+    const boxPart = { environmentId: 'env-box', body: { ...box, madeAt: made, read: { events: made, sent: made, answered: made, done: made, due: made, waits: made, meetings: made }, slipped: { at: made, rows: [meeting] } } }
+    // The Mac is linked but timed out on its first ask: no part of it is here.
+    const r = mergeReview([boxPart], made, { home: 'env-box', fresh: false })!
+    expect(r.slipped.filter((x) => x.ref.kind === 'meeting').map((x) => !!x.unchecked)).toEqual([true])
+    expect(mergeReview([boxPart], made, { home: 'env-box' })!.slipped.filter((x) => x.ref.kind === 'meeting').map((x) => !!x.unchecked)).toEqual([false])
+  })
+
+  it('takes the calendar from its newest whole read, the home’s or not', () => {
+    const noon = MON + 3 * 24 * HOUR + 12 * HOUR
+    const meet = { id: 'pm', sector: 'purdue' as const, title: 'pm', startsAt: noon + 2 * HOUR, endsAt: noon + 3 * HOUR, allDay: false, declined: false, hidden: false, people: [], others: 0, addresses: [] }
+    const reads = (at: number) => ({ events: at, sent: at, answered: at, done: at, due: at, waits: at, meetings: at })
+    const boxPart = { environmentId: 'env-box', body: { ...box, madeAt: noon, lifeos: { ...lifeos, events: [] }, read: reads(noon) } }
+    const macPart = { environmentId: 'env-mac', body: { ...mac, madeAt: noon + 5 * HOUR, lifeos: { ...lifeos, events: [meet] }, read: reads(noon + 5 * HOUR) } }
+    const r = mergeReview([boxPart, macPart], noon + 5 * HOUR, { home: 'env-box' })!
+    expect(r.hours.find((h) => h.job === 'purdue')!.calendarMs).toBe(HOUR)
+    expect(r.known.calendar).toBe(true)
+  })
+
   it('files a held row by its own sector when its workspace is another job’s', () => {
     const cosmicJob = { workspaceId: 'w-cosmic', sector: 'cosmic' as const, name: 'Cosmic' }
     const moved = slip('held:host:h3', { ref: { kind: 'held', ref: { at: 'host', id: 'h3' } }, workspaceId: 'w-purdue', sector: 'cosmic', title: 'Post the patch notes' })

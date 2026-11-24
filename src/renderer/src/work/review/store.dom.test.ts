@@ -380,6 +380,22 @@ describe("a press goes to the host that owns the row", () => {
     expect(links["env-box"]!.calls.filter((c) => c.method === "work.review.week").length).toBeGreaterThan(1);
   });
 
+  it("sends a press on a kept task to the host whose read found it open, when the host that kept it cannot reach LifeOS", async () => {
+    const task = bodies.box!.slipped.rows.find((r) => r.key === "task:k1")!;
+    const all = { events: AFTER, sent: AFTER, answered: AFTER, done: AFTER, due: AFTER, waits: AFTER, meetings: AFTER };
+    // The box kept the week's list inside it; its LifeOS is down now. The Mac reads the week for the first time.
+    bodies.box = { ...bodies.box!, lifeos: null, left: [LEFT.lifeosKept], read: {}, slipped: { at: WEEK.from + 3_600_000, rows: [task] } };
+    bodies.mac = { ...bodies.mac!, read: all, slipped: { at: AFTER, rows: [task] } };
+    links["env-mac"]!.answer = (method) => (method === "work.review.week" ? bodies.mac : method === "work.review.settle" ? { undo: "mac-tok" } : method === "work.review.list" ? { weeks: [], tz: TZ } : { ok: true });
+    await loadZone();
+    await loadWeek(WEEK);
+    const review = reviewNow(WEEK).review!;
+    const row = review.slipped.find((r) => r.key === "task:k1")!;
+    expect([row.open, !!row.unchecked]).toEqual([true, false]);
+    expect(await settleRow(review, row, "now")).toEqual({ undo: "mac-tok", environmentId: "env-mac" });
+    expect(links["env-box"]!.calls.some((c) => c.method === "work.review.settle")).toBe(false);
+  });
+
   it("sends a nudge for a job the home has no workspace of to a host that has one", async () => {
     bodies.box = { ...bodies.box!, jobs: bodies.box!.jobs.filter((j) => j.sector !== "cosmic") };
     await loadWeek(WEEK);

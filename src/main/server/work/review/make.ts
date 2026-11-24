@@ -140,6 +140,8 @@ export async function makeWeek(ctx: WorkCtx, a: MakeAsk): Promise<Made> {
   const files = await ask(ctx, left, LEFT.files, 'document history', () => fileFacts(ctx, asked, jobs))
   // A list read in part counts what it read and says the rest: nothing past it is settled or called empty.
   if (held?.part) left.push(LEFT.heldPart)
+  // A turn whose end lay past the scan's bound: its run time is not counted, and the page says threads were not read whole.
+  if (threads?.part && !left.includes(LEFT.threads)) left.push(LEFT.threads)
   if (files?.part) left.push(LEFT.filesPart)
   slipped.push(...(held?.slipped ?? []))
 

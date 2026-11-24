@@ -42,6 +42,8 @@ const STATUS_MOST = 400
 const LOOK_BACK = 400
 /** How far on, in rows, the read looks past the span's end for the status that closed a turn still open there. */
 const LOOK_AHEAD = 400
+/** How far on, in rows, that search goes at most, a batch of `LOOK_AHEAD` at a time with the loop handed back between. */
+const AHEAD_MOST = 20_000
 
 type SessionRow = { id: string; parent_id: string | null; workspace_id: string | null; cold: number | null; routine_run_id: string | null; master_id: string | null; started_by: string | null; status: string; created_at: number; updated_at: number }
 type Statement = ReturnType<DatabaseSync['prepare']>
@@ -58,6 +60,8 @@ export type ThreadFacts = {
   ran: [job: number, ms: number][]
   /** how the read went, for the bench: slices run, the longest in ms, threads opened, rows read */
   cost: { slices: number; longestMs: number; threads: number; rows: number }
+  /** a turn open at the span's end whose closing status lay past the search's bound: its run time is not whole */
+  part?: true
 }
 
 /** `every`: for the bench alone (scripts/bench-review.ts), every thread of the host read as one job, so the read is timed at the size of the whole database. */
@@ -168,9 +172,19 @@ export async function scanThreads(db: DatabaseSync, week: Span, before: Span | n
      * the span, of any kind (a host that stopped mid-turn never wrote the status that ends it, and a tool's output
      * is still the turn at work).
      */
-    const openEnd = (): number => {
-      const next = st.next.get(s.id, last, last + LOOK_AHEAD) as { ts: number; st: string | null } | undefined
-      if (next) return next.ts
+    const openEnd = async (): Promise<number> => {
+      // A batch of rows at a time, paced, as far as the thread's rows go or `AHEAD_MOST`: a turn that wrote hundreds
+      // of tool rows after midnight before it closed still ends at its closing status, never at Sunday's last row.
+      for (let from = last; from <= ends.b!; from += LOOK_AHEAD) {
+        if (from - last >= AHEAD_MOST) {
+          // Past the bound with rows still to come: the turn's end is not known, and the figure says so.
+          facts.part = true
+          return lo
+        }
+        const next = st.next.get(s.id, from, from + LOOK_AHEAD) as { ts: number; st: string | null } | undefined
+        if (next) return next.ts
+        await pace()
+      }
       if (WORKING.has(s.status)) return week.to
       return (st.lastBefore.get(s.id, last) as { ts: number } | undefined)?.ts ?? lo
     }
@@ -226,7 +240,7 @@ export async function scanThreads(db: DatabaseSync, week: Span, before: Span | n
     }
     // Still working when the rows ran out (`openEnd` says to when), each read bounded.
     if (since !== null) {
-      worked(since, openEnd())
+      worked(since, await openEnd())
       await pace()
     }
   }

@@ -136,8 +136,9 @@ A turn still open at the span's end is closed by the first status in the 400
 short rows after it that is not a working one (`starting` then `running`, as
 a host's start writes them, is one open turn, as inside the span): one that
 came after the cut runs to the cut (Sunday
-11:40 PM to Monday 12:20 AM counts its 20 minutes in the old week); with none,
-it runs to the end while the thread works now, else to its last row of any
+11:40 PM to Monday 12:20 AM counts its 20 minutes in the old week). The
+search goes on 400 rows at a time, paced, up to 20,000 (a turn past that says
+threads were not read whole, never a silent zero); with none found, it runs to the end while the thread works now, else to its last row of any
 kind, a tool's output too (a host that stopped mid-turn never wrote the
 status that ends it).
 
@@ -343,7 +344,8 @@ under the `work-places` frame.
   its own moment; `readsOf` reads a body from before by its lines). The
   window takes each list only from a part that read it: one that read it
   this time before one kept from an earlier answer, its own read before a
-  kept one standing in, then the home, then the newest. So the box's sent
+  kept one standing in, then the home, then the newest (the calendar, which
+  carries no marks, the newest before the home). So the box's sent
   mail and the Mac's answers both stand when each failed the other, each row
   keeps the host it was read on (its press goes there), and a LifeOS line
   stays while a list it speaks of went unread. The meetings are listed from
@@ -351,10 +353,13 @@ under the `work-places` frame.
   there, so another host's rows would bring back one he dismissed and lose
   one he put off; a home that could not judge them lists them as last known,
   and `LEFT.meetings` says so where no other line does. Once a week is over,
-  its tasks and waits come from a part that kept the week's own list (made
-  inside it) before one that looks it up for the first time and knows only
-  what is open now; another part's whole read of the same list checks the
-  kept rows that part could not. "Nothing" on the calendar (`known.calendar`)
+  its tasks and waits come from the newest list kept inside the week, whoever
+  read now, before one that looks the week up for the first time and knows
+  only what is open now; another part's whole read of the same list checks
+  the kept rows that part could not (one that kept its own list says only of
+  the rows in it), and a press on a row it found open goes to that part's
+  host. While a host asked has not answered, every meeting stands as last
+  known: it may hold the notes. "Nothing" on the calendar (`known.calendar`)
   stands only on a calendar read this time to the end of the span counted; a
   calendar counted for less (a kept read, or one a later host's answer moved
   the span past) still shows its fact and the bar's key

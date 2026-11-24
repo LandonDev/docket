@@ -759,7 +759,12 @@ export function mergeReview(
   // known, and its line stays.
   const reads = new Map(parts.map((p) => [p, readsOf(p.body)]))
   const own = (p: ReviewPart, k: ListKey): boolean => reads.get(p)![k] === p.body.madeAt
-  const rank = (k: ListKey) => (p: ReviewPart): number[] => [p.stale ? 1 : 0, own(p, k) ? 0 : 1, p.environmentId === opts.home ? 0 : 1, -(reads.get(p)![k] ?? 0)]
+  // The calendar carries no marks, so its newest whole read comes before the home's: a peer that read it later
+  // counts the meetings since.
+  const rank = (k: ListKey) => (p: ReviewPart): number[] =>
+    k === 'events'
+      ? [p.stale ? 1 : 0, own(p, k) ? 0 : 1, -(reads.get(p)![k] ?? 0), p.environmentId === opts.home ? 0 : 1]
+      : [p.stale ? 1 : 0, own(p, k) ? 0 : 1, p.environmentId === opts.home ? 0 : 1, -(reads.get(p)![k] ?? 0)]
   const before = (a: number[], b: number[]): boolean => {
     for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return a[i]! < b[i]!
     return false
@@ -815,16 +820,30 @@ export function mergeReview(
     const k = ROW_LIST[kind]
     if (kind === 'meeting' && homePart) return homePart
     if (kind !== 'meeting' && over) {
-      const baseline = bestBy(parts.filter(keptIn), (p) => [p.stale ? 1 : 0, own(p, k) ? 0 : 1, p.environmentId === opts.home ? 0 : 1])
+      // The newest list kept inside the week stands, whoever read now: Thursday's list on one host never takes the
+      // place of Friday's on another, which holds what fell due since. Current reads only check its rows.
+      const baseline = bestBy(parts.filter(keptIn), (p) => [-p.body.slipped.at, p.stale ? 1 : 0, own(p, k) ? 0 : 1, p.environmentId === opts.home ? 0 : 1])
       if (baseline) return baseline
     }
     return at[k] ?? parts.find((p) => p.environmentId === opts.home && ofKind(kind)(p)) ?? parts.find(ofKind(kind)) ?? null
   }
   const rowsFrom: Record<Exclude<SlippedKind, 'held'>, ReviewPart | null> = { task: rowsOf('task'), mail: rowsOf('mail'), meeting: rowsOf('meeting') }
   const slippedFrom = (part: ReviewPart): SlippedRow[] => part.body.slipped.rows.filter((r) => (r.ref.kind === 'held' ? true : part === rowsFrom[r.ref.kind]))
-  /** A part that read a kind's list whole this time, other than the rows' own: its open rows check the kept ones. */
+  /** A part that read a kind's list whole this time, other than the rows' own: its rows check the kept ones. */
   const checker = (kind: 'task' | 'mail'): ReviewPart | null => parts.find((p) => p !== rowsFrom[kind] && !p.stale && own(p, ROW_LIST[kind])) ?? null
-  const openIn = (p: ReviewPart): Set<string> => new Set(p.body.slipped.rows.map(rowId))
+  /**
+   * What a checking part says of a row: open or not, or nothing. A part whose rows are what is open now (it first
+   * read the week after it ended) says a row it lacks is not open; a part that kept its own list says only of the
+   * rows in it, which its read checked: one that fell due after its list was made is not in it, and is no news.
+   */
+  const verdictOf = (p: ReviewPart): ((r: SlippedRow) => boolean | undefined) => {
+    const rows = new Map(p.body.slipped.rows.map((r) => [rowId(r), r]))
+    const openNow = !keptIn(p)
+    return (r) => {
+      const there = rows.get(rowId(r))
+      return there ? there.open : openNow ? false : undefined
+    }
+  }
   for (const part of parts) for (const r of slippedFrom(part)) if (r.sector) seen(r.sector)
   for (const j of opts.jobs ?? []) if (!jobs.has(j.key)) jobs.set(j.key, { ...j, at: [] })
 
@@ -919,7 +938,7 @@ export function mergeReview(
   // whose rows are listed. In a week still running it is gone; in one that is over it reads as dealt with since.
   const prepped = new Set(parts.flatMap((p) => p.body.prepped ?? []))
   const checks = { task: checker('task'), mail: checker('mail') }
-  const checkedOpen = { task: checks.task ? openIn(checks.task) : null, mail: checks.mail ? openIn(checks.mail) : null }
+  const verdicts = { task: checks.task ? verdictOf(checks.task) : null, mail: checks.mail ? verdictOf(checks.mail) : null }
   for (const part of parts) {
     for (const r of part.body.shipped) {
       const job = rowJob(part.body, r)
@@ -934,13 +953,17 @@ export function mergeReview(
       if (followed && !over) continue
       // A meeting is judged on one host's read, but followed up in Prep on any: one whose host could not read Prep
       // stands as last known, as does any meeting while another host's Prep did not answer.
-      const prepUnread = r.ref.kind === 'meeting' && parts.some((p) => p.body.left.includes(LEFT.prep))
+      // A host asked that has not answered this time (`fresh: false`) may hold the meeting's notes too.
+      const prepUnread = r.ref.kind === 'meeting' && (opts.fresh === false || parts.some((p) => p.body.left.includes(LEFT.prep)))
       const unchecked = part.stale || uncheckedIn(part.body, r) || prepUnread
       // A kept task or wait its own host could not check, read whole this time on another host: that read says
       // whether it is still open (in a week that is over, the open list is what had slipped and is open now).
-      const by = r.ref.kind === 'task' || r.ref.kind === 'mail' ? checkedOpen[r.ref.kind] : null
-      if (unchecked && by && over) {
-        slipped.push({ ...r, key, job, environmentId: part.environmentId, open: by.has(rowId(r)) })
+      // The row keeps its snapshot's host as its source, but a press goes to the host whose read said it is open:
+      // the one that could not check it may not reach LifeOS at all.
+      const kind = r.ref.kind === 'task' || r.ref.kind === 'mail' ? r.ref.kind : null
+      const said = kind && unchecked && over ? verdicts[kind]?.(r) : undefined
+      if (kind && said !== undefined) {
+        slipped.push({ ...r, key, job, environmentId: checks[kind]!.environmentId, open: said })
         continue
       }
       slipped.push({ ...r, key, job, environmentId: part.environmentId, ...(followed ? { open: false } : unchecked ? { unchecked: true } : {}) })

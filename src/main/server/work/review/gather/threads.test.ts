@@ -190,6 +190,25 @@ describe('how long the threads worked', () => {
     expect((await scan()).ran).toEqual([[0, 2 * MIN]])
   })
 
+  it('finds a turn’s closing status past hundreds of tool rows after the week’s end, a batch at a time', async () => {
+    // Sunday 11:40 PM, then 450 tool rows after midnight before it closes at 12:20 AM.
+    rig.session('long', { status: 'idle' })
+    rig.status('long', WEEK.to - 20 * MIN, 'running')
+    for (let i = 0; i < 450; i++) rig.event('long', WEEK.to + i * 1000, { type: 'tool-result', callId: `c${i}`, output: 'made-up output' })
+    rig.status('long', WEEK.to + 20 * MIN, 'idle')
+    const got = await scan()
+    expect(got.ran).toEqual([[0, 20 * MIN]])
+    expect(got.part).toBeUndefined()
+  })
+
+  it('says a turn not whole when its closing status lies past the search’s bound, never a silent zero', async () => {
+    rig.session('endless', { status: 'idle' })
+    rig.status('endless', WEEK.to - 20 * MIN, 'running')
+    for (let i = 0; i < 20_500; i++) rig.event('endless', WEEK.to + i, { type: 'tool-result', callId: 'c', output: '' })
+    rig.status('endless', WEEK.to + HOUR, 'idle')
+    expect((await scan()).part).toBe(true)
+  })
+
   it('counts a quiet week whole for a turn open across it: no row of its own in the span', async () => {
     rig.session('quiet', { status: 'idle' })
     rig.status('quiet', WEEK.from - HOUR, 'running')
