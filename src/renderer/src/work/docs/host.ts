@@ -18,6 +18,8 @@ export interface DocHost {
   thread<T = unknown>(change: DocThreadOp): Promise<T>;
   mode(mode: DocMode): Promise<DocOpen>;
   dismiss(): Promise<void>;
+  /** The agent's write line's Undo: whether the host put the version before it back (it does only while the document is as the agent left it). */
+  undo(): Promise<boolean>;
   rename(title: string): Promise<void>;
   /** A pushed change to this document (named by the service's name for it). */
   onPush(doc: string, listener: (push: DocsPush) => void): () => void;
@@ -51,6 +53,7 @@ export function docHost(env: string, source: CanvasSource): DocHost {
     thread: (change) => call("work.docs.thread", { change }),
     mode: (mode) => call("work.docs.mode", { mode }),
     dismiss: async () => void (await call("work.docs.dismiss")),
+    undo: async () => (await call<{ undone?: boolean }>("work.docs.dismiss", { undo: true })).undone === true,
     rename: async (title) => void (await call("work.docs.rename", { title })),
     onPush: (doc, listener) =>
       link().onPush((push) => {

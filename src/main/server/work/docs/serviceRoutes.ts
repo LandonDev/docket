@@ -195,6 +195,28 @@ export const docsRoutes: InternalRoute[] = [
     }
   },
   {
+    path: '/internal/docs/undo',
+    milestone: 20,
+    /**
+     * The bar's Undo of an agent's write (work.docs.dismiss with `undo`): the version before it is restored only while
+     * the live document is still the write's own version (`after`), the check and the restore in the document's turn,
+     * so no restore, accept or write lands between them. Anyone's change since: nothing is restored.
+     */
+    async run(body, ctx) {
+      const t = await targetOf(body, ctx)
+      const versionId = str(body, 'versionId', 64)
+      const after = str(body, 'after', 64)
+      const file = t.file ? { file: t.file } : {}
+      return ctx.history.inTurn(t.name, async (raw) => {
+        const diff = await raw.compare(t.name, after, 'live', t.file)
+        const { added, removed, changed, moved } = diff.stats
+        if (added + removed + changed + moved > 0 || diff.page?.length) return { undone: false }
+        await raw.restore(t.name, versionId, { principal: 'owner', shared: t.shared, ...file })
+        return { undone: true }
+      })
+    }
+  },
+  {
     path: '/internal/docs/mark',
     milestone: 20,
     /** A comment thread's mark on the first place the words stand (a table's cell included). */

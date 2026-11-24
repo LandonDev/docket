@@ -16,9 +16,9 @@ const said = vi.fn();
 vi.mock("../../components/ui/toaster", () => ({ loadToast: async () => ({ message: said }) }));
 
 const { changeId, decided, reviewOf } = await import("./review");
-const { NOT_SENT, relaySocket, servedBy, storedAll } = await import("./host");
+const { NOT_SENT, docHost, relaySocket, servedBy, storedAll } = await import("./host");
 const { docThreads } = await import("./threads");
-const { presenceOf, undoWritten, CHANGED_SINCE } = await import("./DocumentCanvas");
+const { presenceOf, undoWritten, writtenLine, CHANGED_SINCE } = await import("./DocumentCanvas");
 
 afterEach(() => {
   link.request.mockReset();
@@ -249,27 +249,35 @@ describe("the relayed socket", () => {
 describe("Undo of an agent's write", () => {
   const source = { at: "file", host: "env_box", path: "/w/Plan.tcdoc" } as const;
   const written = { text: "Wrote 1 section", at: 1, versionId: "v-before", after: "v-after" };
-  const stats = (n: number) => ({ same: 4, added: n, removed: 0, changed: 0, moved: 0 });
 
-  it("goes back to the version before it while the document is as the agent left it", async () => {
-    link.request.mockImplementation(async (method) => (method === "work.history.compare" ? { diff: { stats: stats(0), rows: [], lines: [] }, names: {} } : { ok: true }));
-    const dismiss = vi.fn(async () => undefined);
-    await undoWritten({ env: "env_box", dismiss }, source, written);
-    expect(link.request.mock.calls.map(([m, p]) => [m, (p as { from?: string; versionId?: string }).from ?? (p as { versionId?: string }).versionId])).toEqual([
-      ["work.history.compare", "v-after"],
-      ["work.history.restore", "v-before"],
-    ]);
-    expect(dismiss).toHaveBeenCalled();
+  it("asks the host alone, which checks and restores in one turn: the window compares nothing and restores nothing itself", async () => {
+    said.mockReset();
+    link.request.mockImplementation(async () => ({ ok: true }));
+    const undo = vi.fn(async () => true);
+    await writtenLine({ env: "env_box", undo }, source, written).undo!();
+    expect(undo).toHaveBeenCalledTimes(1);
+    expect(link.request.mock.calls.map(([m]) => m).filter((m) => m === "work.history.compare" || m === "work.history.restore")).toEqual([]);
+    expect(said).not.toHaveBeenCalled();
   });
 
-  it("restores nothing once anyone has changed it since: the line goes and says why", async () => {
+  it("says why when the host restored nothing: the document changed since", async () => {
     said.mockReset();
-    link.request.mockImplementation(async (method) => (method === "work.history.compare" ? { diff: { stats: stats(2), rows: [], lines: [] }, names: {} } : { ok: true }));
-    const dismiss = vi.fn(async () => undefined);
-    await undoWritten({ env: "env_box", dismiss }, source, written);
-    expect(link.request.mock.calls.map(([m]) => m)).toEqual(["work.history.compare"]);
-    expect(dismiss).toHaveBeenCalled();
+    link.request.mockImplementation(async () => ({ ok: true }));
+    await undoWritten({ env: "env_box", undo: async () => false }, source);
     expect(said).toHaveBeenCalledWith(CHANGED_SINCE);
+  });
+
+  it("offers no Undo on a line that names no version after the write (an older host)", () => {
+    const { after: _after, ...older } = written;
+    const line = writtenLine({ env: "env_box", undo: async () => true }, source, older);
+    expect(line.undo).toBeUndefined();
+    expect(line.text).toMatch(/^Wrote 1 section, /);
+  });
+
+  it("the host's undo is the dismiss with undo, and reads whether it was undone", async () => {
+    link.request.mockImplementation(async (method, params) => (method === "work.docs.dismiss" && params.undo ? { ok: true, undone: true } : { ok: true }));
+    expect(await docHost("env_box", source).undo()).toBe(true);
+    expect(link.request).toHaveBeenLastCalledWith("work.docs.dismiss", { source, undo: true }, undefined);
   });
 });
 

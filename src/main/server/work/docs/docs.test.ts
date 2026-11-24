@@ -144,12 +144,24 @@ describe('an agent writing a document', () => {
     expect(since.diff.stats.added).toBe(1)
     await r.service.collab.writeMarkdown(r.name, 'owner', md('# Week 1', 'Meet the team at 9:30 AM', '# Week 2', 'Shadow the front desk'), { path: r.path })
     expect((await r.ask<DocOpen>('work.docs.open', { source: r.source })).written).toEqual(written)
-    // Undo restores the version cut just before the write.
-    await r.post('/internal/history/restore', { file: r.path, versionId: written.versionId, fence: { sectors: 'all' } })
+    // Undo: the host puts back the version cut just before the write, while the document is as the agent left it.
+    expect(await r.ask('work.docs.dismiss', { source: r.source, undo: true })).toEqual({ ok: true, undone: true })
     expect(await r.text()).toContain('9:00 AM')
     expect(await r.text()).not.toContain('9:30 AM')
-    await r.ask('work.docs.dismiss', { source: r.source })
     expect((await r.ask<DocOpen>('work.docs.open', { source: r.source })).written).toBeNull()
+  })
+
+  it("Undo restores nothing once anyone changed the document after the agent's write: the check and the restore are the host's, in one turn", async () => {
+    const r = await rig()
+    await r.tool('doc_write', { item: 'i1', markdown: md('# Week 1', 'Meet the team at 9:30 AM', '# Week 2', 'Shadow the front desk'), because: 'own' })
+    // His line, typed after the write and before his press (another window).
+    await r.service.collab.writeMarkdown(r.name, 'owner', md('# Week 1', 'Meet the team at 9:30 AM', 'Bring the keys', '# Week 2', 'Shadow the front desk'), { path: r.path })
+    expect(await r.ask('work.docs.dismiss', { source: r.source, undo: true })).toEqual({ ok: true, undone: false })
+    expect(await r.text()).toContain('Bring the keys')
+    expect(await r.text()).toContain('9:30 AM')
+    // The line is gone either way; a second press has nothing to undo.
+    expect((await r.ask<DocOpen>('work.docs.open', { source: r.source })).written).toBeNull()
+    expect(await r.ask('work.docs.dismiss', { source: r.source, undo: true })).toEqual({ ok: true, undone: false })
   })
 
   it('set to suggest, its own idea waits as a branch and the text stays; asked in his own words, it is written', async () => {

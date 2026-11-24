@@ -161,7 +161,11 @@ export const DocsRequestSchemas = [
   /** → { ok: true }: a LifeOS document's new title (a .tcdoc is named by its file) */
   request('work.docs.rename', z.object({ source: CanvasSourceSchema, title: z.string().trim().min(1).max(200) })),
   /** → { ok: true }: the agent's last write is settled; the bar stops offering its Undo */
-  request('work.docs.dismiss', z.object({ source: CanvasSourceSchema })),
+  /**
+   * → { ok: true, undone? }: the agent's write line goes. `undo`: first the version before the write is restored, only
+   * while the document is still as the agent left it (`undone` says whether it was), in one turn of the document.
+   */
+  request('work.docs.dismiss', z.object({ source: CanvasSourceSchema, undo: z.literal(true).optional() })),
   /** → { source, title }: a new LifeOS document in the sector, or in a project */
   request('work.docs.create', z.object({ sector: z.string().min(1).max(32), projectId: z.string().min(1).max(64).optional(), title: z.string().min(1).max(200) })),
   /** → FindAnswer (main/server/work/docs/find.ts): what a Work workspace lists, and with `query` the text matches; `refresh` reads LifeOS's catalog afresh */

@@ -5,7 +5,7 @@ import { WORK_OWNER_NAME_SETTING } from '../preamble'
 import { ServedElsewhere, TOKEN_SECONDS } from '../service/ctx'
 import { DOCUMENT_SCHEMA, SCHEMA_PARAM } from 'work-kit/collab-server'
 import { dismissWritten, docsOf, ensureModeTable, modeOf, setMode, stopDocs } from './state'
-import { lifeosRow, othersOpen, pathOf, targetOf, titleOf, type DocTarget } from './target'
+import { lifeosRow, othersOpen, pathOf, serviceTarget, targetOf, titleOf, type DocTarget } from './target'
 import { changeThread, ensureThreadTables, readThreads } from './threads'
 import { dropView, dropWorkspaceViews, ensureViewsTable, findDocs, listViews, saveView, workspaceOf } from './find'
 import { docTools } from './tools'
@@ -159,8 +159,18 @@ export const docs: WorkModule = {
       }
       case 'work.docs.dismiss': {
         const t = await targetOf(ctx, by, req.method, req.params.source)
+        let undone = false
+        if (req.params.undo) {
+          // The bar's Undo: the write the line names, put back by the service only while the document is as the agent
+          // left it (its `after` version), the check and the restore in one turn. A line with no `after` offers none.
+          const row = await lifeosRow(ctx, t)
+          const shared = othersOpen(ctx, t, row)
+          await pressOn(ctx, by, t)
+          const w = s.written.get(t.doc)
+          if (w?.after) undone = ((await ctx.service.internal('/internal/docs/undo', { ...serviceTarget(t, shared), versionId: w.versionId, after: w.after })) as { undone: boolean }).undone
+        }
         dismissWritten(ctx, t.doc, pathOf(t))
-        return handled({ ok: true as const })
+        return handled({ ok: true as const, ...(req.params.undo ? { undone } : {}) })
       }
       case 'work.docs.create': {
         const { sector, projectId, title } = req.params
