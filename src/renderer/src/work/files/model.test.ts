@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { sideWidth } from "./SideFile";
 import type { FileSearchFilter, FilesPlaces, FileTab } from "@shared/contract-work-files";
 import type { MenuRow } from "../../chrome/menuRows";
-import type { TeamsLibrariesAnswer, TeamsLibrary } from "@shared/contract-work-office";
+import type { TeamsEntry, TeamsLibrariesAnswer, TeamsLibrary } from "@shared/contract-work-office";
 import type { FileEntry, FilePlace } from "@shared/work/files";
 import {
   appVerb,
@@ -53,7 +53,11 @@ import {
   isSearchPage,
   savedIdOf,
   savedSearchPage,
-  searchPage
+  searchPage,
+  deskPlace,
+  deskRows,
+  desksJoin,
+  mergeFound
 } from "./model";
 import { goToRows } from "./GoTo";
 import { filterChoices, kindsWords, moreCount, moreRows, pickMore, whenOf, whenWords } from "./Home";
@@ -677,6 +681,48 @@ describe("the list's rules of round 1", () => {
     expect(searchGap({ asleep: ["The Windows VM"] })).toEqual({ title: "The Windows VM is asleep", line: "Its files were not searched.", fix: { kind: "retry" } });
     expect(searchGap({ asleep: ["A", "B", "C"], incomplete: true })).toEqual({ title: "A, B and C are asleep", line: "Not every place was searched.", fix: { kind: "retry" } });
     expect(searchGap({ incomplete: true })).toEqual({ title: "Not every place was searched", fix: { kind: "retry" } });
+  });
+
+  it("names in the same note the desktops whose folders were not searched, with Retry only where asking again can help", async () => {
+    const { searchGap } = await import("./model");
+    expect(searchGap({ unsearched: ["Purdue laptop"] })).toEqual({ title: "Folders on Purdue laptop were not searched" });
+    expect(searchGap({ unsearched: ["MacBook", "Purdue laptop"], incomplete: true })).toEqual({ title: "Folders on MacBook and Purdue laptop were not searched", fix: { kind: "retry" } });
+    expect(searchGap({ asleep: ["The Windows VM"], unsearched: ["Purdue laptop"] })).toEqual({ title: "The Windows VM is asleep", line: "Its files and folders on Purdue laptop were not searched.", fix: { kind: "retry" } });
+  });
+});
+
+describe("a desktop's own search in a search of every place", () => {
+  const sidebar = sidebarOf([BOX, MAC], "box");
+  const hit = (path: string, over: Partial<TeamsEntry> = {}): TeamsEntry => ({ name: path.split("/").pop()!, path, library: "mac~1", kind: "document", size: 9, modified: 5, local: true, by: null, ...over });
+  const placeOf = (path: string) => deskPlace(sidebar, "local", path);
+
+  it("finds the desktop's own copy of the library a path lies in, and none outside its places", async () => {
+    expect(placeOf("/Users/l/Cloud/Esports Staff - Documents/General/Plan.docx")?.place.id).toBe("m1");
+    expect(placeOf("/Users/l/Desktop/Plan.docx")).toBeNull();
+    expect(deskPlace(sidebar, "elsewhere", "/Users/l/Cloud/Esports Staff - Documents/General/Plan.docx")).toBeNull();
+  });
+
+  it("keys a hit as its library keys it, says where it lies, holds it to the filter, and leaves out a hit in no place listed", () => {
+    const rows = deskRows([hit("/Users/l/Cloud/Esports Staff - Documents/General/Budgets/Plan.docx", { modified: 7 }), hit("/Users/l/Desktop/Other.docx"), hit("/Users/l/Cloud/Esports Staff - Documents/General/Roster.xlsx", { kind: "sheet" })], placeOf, {});
+    expect(rows.map((e) => [e.key, e.where])).toEqual([
+      ["lib:esportsstaffgeneral:Budgets/Plan.docx", { place: "m1", name: "General", trail: ["Budgets"] }],
+      ["lib:esportsstaffgeneral:Roster.xlsx", { place: "m1", name: "General", trail: [] }],
+    ]);
+    expect(rows[0]!.ref).toEqual({ at: "file", host: "env_mac", path: "/Users/l/Cloud/Esports Staff - Documents/General/Budgets/Plan.docx" });
+    expect(deskRows([hit("/Users/l/Cloud/Esports Staff - Documents/General/Roster.xlsx")], placeOf, { kinds: ["sheet"] }).map((e) => e.name)).toEqual(["Roster.xlsx"]);
+    expect(deskRows([hit("/Users/l/Cloud/Esports Staff - Documents/General/Plan.docx")], placeOf, { kinds: ["sheet"] })).toEqual([]);
+  });
+
+  it("joins only a filter its rows can answer", () => {
+    expect(desksJoin({})).toBe(true);
+    expect(desksJoin({ kinds: ["sheet"], within: "week", shared: true })).toBe(true);
+    for (const f of [{ places: ["folder"] }, { who: "me" }, { review: true }, { project: "p1" }] satisfies FileSearchFilter[]) expect(desksJoin(f)).toBe(false);
+  });
+
+  it("merges a desktop's rows with the host's: one row a file whichever side found it, the host's first, newest change first", () => {
+    const row = (key: string, changed: number, name = key): FileEntry => ({ key, ref: null, folder: null, name, kind: "document", changed });
+    const merged = mergeFound([row("a", 9, "host a"), row("b", 3)], [row("a", 9, "desk a"), row("c", 5)]);
+    expect(merged.map((e) => e.name)).toEqual(["host a", "c", "b"]);
   });
 });
 

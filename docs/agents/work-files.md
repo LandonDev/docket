@@ -1619,6 +1619,26 @@ host of his). A search from his window or a remote key never wakes it: the
 answer says `more` and names the VM's places in `asleep`, for the window's
 line and its Wake press.
 
+**His desktops' folders** are theirs to walk: a host cannot walk another
+computer's folders. So on a search of every place (his Return, or a saved
+search opened) the window asks, itself, each desktop the workspace may use
+that it holds a direct link to (`desktopsFor`, work/shell/desktops.ts, shared
+with Work search), with the search Files already has there
+(`work.office.filesSearch`: names alone, its own caps; a deadline of 20 s).
+Never as he types, and never on a later page or a push that lists the page
+again. The host's rows are drawn first; a desktop's join them in the list's
+order when they land (`searchDesks` in files/store.ts, `deskRows` and
+`mergeFound` in files/model.ts): each keyed as its library keys it, so a file
+both sides found is one row, saying where it lies, held to the filter, and
+opening from its place as any file of that computer does. A desktop joins
+only a filter its rows can answer (no place, project, who or review:
+`desksJoin`). A desktop the workspace may use that the window has no link to
+(a PC only the box reaches), or whose link is down or did not answer, is
+named in the page's one note: "Folders on Purdue laptop were not searched"
+(`searchGap`), with Retry only where asking again could help. No new reach:
+the window lists those folders by the same link. The words inside a file on
+another computer are never searched.
+
 **The filter**: `kinds` (entry kinds), `places` (place ids; a library's id
 takes all its channels), `within` (changed in a span before now: `day`,
 `week`, `month`, `quarter`, `year`, the Docs view's spans, kept as the word

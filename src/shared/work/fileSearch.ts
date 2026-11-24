@@ -1,6 +1,6 @@
 import type { FileSearchFilter, SavedFileSearch } from '../contract-work-files'
-import { DEFAULT_SPEC, queryTerms, type FindBy, type FindKind, type FindSpec, type FindWhere, type SavedFindView } from './docFind'
-import type { EntryKind } from './files'
+import { DEFAULT_SPEC, queryTerms, WITHIN_MS, type FindBy, type FindKind, type FindSpec, type FindWhere, type SavedFindView } from './docFind'
+import type { EntryKind, FileEntry } from './files'
 
 /**
  * Go to and search in the Files place (docs/agents/work-files.md "Search and Go to"): the rules both sides and
@@ -11,6 +11,38 @@ import type { EntryKind } from './files'
 /** The most rows Go to lists, and the most a page of search results holds. */
 export const NAMES_MOST = 20
 export const SEARCH_PAGE = 100
+
+/** Who last changed a LifeOS row, as LifeOS says it: an agent or a guest by these words, and he by his Work name, or `you` without one. */
+export const LIFEOS_BY = { agent: 'An agent', guest: 'A guest', you: 'You' } as const
+
+export const wants = (filter: FileSearchFilter, place: string): boolean => !filter.places?.length || filter.places.includes(place) || filter.places.includes(place.split('/')[0]!)
+export const kindOk = (filter: FileSearchFilter, kind: EntryKind): boolean => !filter.kinds?.length || filter.kinds.includes(kind)
+
+/**
+ * Whether a row passes the filter. `within` is the change time against a span before `now`. `who` is matched
+ * against who last changed it and the thread that made it, where the row says (a LifeOS row says an agent and
+ * he in LifeOS's words, `LIFEOS_BY`); a row that cannot say is left out. `review`: suggestions wait in it (LifeOS's rows say);
+ * `project`: it is in that project (a LifeOS row's own, or a file linked to it). The host holds its rows to it, and
+ * the window the rows a desktop's own search found (files/model.ts `deskRows`).
+ */
+export function passesFilter(e: FileEntry, place: string, f: FileSearchFilter, owner: string | null, now = Date.now()): boolean {
+  if (!kindOk(f, e.kind) || !wants(f, place)) return false
+  if (f.within && (e.changed ?? 0) < now - WITHIN_MS[f.within]) return false
+  if (f.after !== undefined && (e.changed ?? 0) < f.after) return false
+  if (f.before !== undefined && (e.changed ?? 0) >= f.before) return false
+  if (f.shared !== undefined && !!e.shared !== f.shared) return false
+  if (f.review && e.state?.is !== 'suggestions') return false
+  if (f.project && e.project?.id !== f.project) return false
+  if (f.who) {
+    const who = f.who.trim().toLowerCase()
+    if (who === 'agent') return !!e.madeBy || e.by === LIFEOS_BY.agent
+    if (e.madeBy) return false
+    if (!e.by) return false
+    if (who === 'me') return e.by === LIFEOS_BY.you || (!!owner && e.by.toLowerCase() === owner.toLowerCase())
+    return e.by.toLowerCase().includes(who)
+  }
+  return true
+}
 
 /** A query's words, lower case, with quotes and stops at a word's ends dropped (the Docs finder's own rule). */
 export const nameWords = (text: string): string[] => queryTerms(text)

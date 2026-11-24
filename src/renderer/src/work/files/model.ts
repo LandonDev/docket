@@ -1,9 +1,10 @@
-import type { FileCrumb, FilePage, FilesPlaces, FileTab } from "@shared/contract-work-files";
+import type { FileCrumb, FilePage, FileSearchFilter, FilesPlaces, FileTab } from "@shared/contract-work-files";
 import { clampDock as clampDockIn, DOCK_FOLD_AT, DOCK_SIZE, dockMost as dockMostIn, dockShape as dockShapeIn, sidebarFolds } from "../dock/shapes";
 import { canvasSourcePath, type CanvasSource } from "@shared/work/canvas";
 import type { TeamsEntry, TeamsLibrariesAnswer, TeamsPlace } from "@shared/contract-work-office";
 import { kindOfEntry, PLACE, refKey, refusal, type FileEntry, type FilePlace, type FileSort, type FileVerb, type FolderRef, type PlaceKind } from "@shared/work/files";
 import { placesIn, type LibraryPlace } from "@shared/work/filePlaces";
+import { passesFilter } from "@shared/work/fileSearch";
 
 /**
  * The Files place's own rules in the window (docs/agents/work-files.md), kept apart from the screen so they are
@@ -664,11 +665,61 @@ export function homeLists<T extends { key: string }>(home: { waiting: readonly T
 
 const andList = (names: readonly string[]): string => (names.length < 2 ? (names[0] ?? "") : `${names.slice(0, -1).join(", ")} and ${names.at(-1)}`);
 
-/** What a search left out, as one note over its results: places whose machine sleeps, or a search that stopped before it looked everywhere. Null when it read every place. */
-export function searchGap(found: { incomplete?: boolean; asleep?: readonly string[] }): FilesNote | null {
+/**
+ * What a search left out, as one note over its results: places whose machine sleeps, desktops whose folders were
+ * not searched (none of the window's links reaches them, or theirs is down), or a search that stopped before it
+ * looked everywhere. Retry only where asking again could help. Null when it read every place.
+ */
+export function searchGap(found: { incomplete?: boolean; asleep?: readonly string[]; unsearched?: readonly string[] }): FilesNote | null {
   const asleep = found.asleep ?? [];
-  if (asleep.length) return { title: `${andList(asleep)} ${asleep.length === 1 ? "is" : "are"} asleep`, line: found.incomplete ? "Not every place was searched." : asleep.length === 1 ? "Its files were not searched." : "Their files were not searched.", fix: { kind: "retry" } };
+  const desks = found.unsearched ?? [];
+  if (asleep.length) {
+    const its = asleep.length === 1 ? "Its" : "Their";
+    return { title: `${andList(asleep)} ${asleep.length === 1 ? "is" : "are"} asleep`, line: desks.length ? `${its} files and folders on ${andList(desks)} were not searched.` : found.incomplete ? "Not every place was searched." : `${its} files were not searched.`, fix: { kind: "retry" } };
+  }
+  if (desks.length) return { title: `Folders on ${andList(desks)} were not searched`, ...(found.incomplete ? { fix: { kind: "retry" as const } } : {}) };
   return found.incomplete ? { title: "Not every place was searched", fix: { kind: "retry" } } : null;
+}
+
+// ── a desktop's own search ────────────────────────────────────────────
+
+/**
+ * Whether his desktops' own search can join a search of every place under this filter: their rows say a file's
+ * kind, change time and that others can open it, never who changed it, a project or a review, and the place
+ * choices are the workspace host's alone.
+ */
+export const desksJoin = (filter: FileSearchFilter): boolean => !filter.places?.length && !filter.project && !filter.who && !filter.review;
+
+/** The copy of a library on `link` that a path of that desktop lies in, as the sidebar lists it now. */
+export function deskPlace(sidebar: Sidebar, link: string, path: string): PlaceCopy | null {
+  const mine = sidebar.rows.flatMap((row) => row.copies).find((c) => c.link === link && c.place.root.at === "file");
+  if (mine?.place.root.at !== "file") return null;
+  return placeOfRef(sidebar, { at: "file", host: mine.place.root.host, path })?.row?.copies.find((c) => c.link === link) ?? null;
+}
+
+/**
+ * What a desktop's own search found (`work.office.filesSearch`), as Files rows: each keyed as its library keys it
+ * (so a file the host found too is one row), saying where it lies, held to the filter. A hit in no place listed now
+ * cannot open, and is left out.
+ */
+export function deskRows(found: readonly TeamsEntry[], placeOf: (path: string) => PlaceCopy | null, filter: FileSearchFilter): FileEntry[] {
+  return found.flatMap((hit) => {
+    const copy = placeOf(hit.path);
+    if (copy?.place.root.at !== "file") return [];
+    const host = copy.place.root.host;
+    const entry = entryFromOld(hit, copy.place, host);
+    const parent = { at: "file" as const, host, path: hit.path.replace(/[\\/]+[^\\/]*$/, "") };
+    const where = { place: copy.place.id, name: copy.place.name, trail: trailFromOld(copy.place, parent).slice(1).map((c) => c.name) };
+    return passesFilter(entry, copy.place.id, filter, null) ? [{ ...entry, where }] : [];
+  });
+}
+
+const newestFirst = (a: FileEntry, b: FileEntry): number => (b.changed ?? 0) - (a.changed ?? 0) || (a.key < b.key ? -1 : a.key > b.key ? 1 : 0);
+
+/** A search's rows with more joined: one row a file whichever side found it (the first said wins), in the search's own order, newest change first. */
+export function mergeFound(rows: readonly FileEntry[], more: readonly FileEntry[]): FileEntry[] {
+  const keys = new Set(rows.map((e) => e.key));
+  return [...rows, ...more.filter((e) => !keys.has(e.key))].sort(newestFirst);
 }
 
 /** Where a lens's row lives, in words: the place and the folders down to it ("Dummy Esports › Events"). */

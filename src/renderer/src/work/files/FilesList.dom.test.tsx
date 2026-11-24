@@ -244,4 +244,44 @@ describe("a folder's pages", () => {
       delete listingSeams.fetch;
     }
   });
+
+  it("joins his desktops' rows to a search once the host's are drawn: one row a file, in the list's order, and names the desktops not searched", async () => {
+    const { useListing, listingSeams } = await import("./store");
+    const { renderHook } = await import("@testing-library/react");
+    const LIB = { ...PLACE, id: "m1", kind: "teams", name: "General", key: "general", env: "env_mac", root: { at: "file", host: "env_mac", path: "/T/General" } } as unknown as FilePlace;
+    const LIB_COPY = { place: LIB, link: "local", host: "MacBook", wire: "files" as const };
+    const mine = (name: string, changed: number): FileEntry => ({ key: `lib:general:${name}`, ref: { at: "file", host: "env_mac", path: `/T/General/${name}` }, folder: null, name, kind: "document", changed, shared: true });
+    const hit = (name: string, modified: number) => ({ name, path: `/T/General/${name}`, library: "mac~1", kind: "document" as const, size: 1, modified, local: true, by: null });
+    const asked: string[] = [];
+    let land: () => void = () => undefined;
+    listingSeams.fetch = async () => ({ entries: [file("Budget.xlsx"), mine("Plan.docx", 1_600_000_000_000)] });
+    listingSeams.desk = (link, query) => {
+      asked.push(`${link} ${query}`);
+      if (link === "pc") return Promise.reject(new Error("not connected"));
+      return new Promise((done) => (land = () => done({ entries: [hit("Plan.docx", 1_600_000_000_000), hit("Roster.docx", 1_650_000_000_000)] })));
+    };
+    const desks = {
+      find: async () => ({ linked: [{ link: "local", host: "env_mac", name: "MacBook", workspaceId: "w1" }, { link: "pc", host: "env_pc", name: "Desk PC", workspaceId: "w1" }], far: ["Purdue laptop"] }),
+      placeOf: (link: string) => (link === "local" ? LIB_COPY : null),
+    };
+    try {
+      // A folder's page asks no desktop.
+      const folder = renderHook(() => useListing({ workspaceId: "w1", copy: COPY }, PAGE.at));
+      await waitFor(() => expect(folder.result.current.loaded).toBe(true));
+      expect(asked).toEqual([]);
+      const { result } = renderHook(() => useListing({ workspaceId: "w1", copy: COPY, search: { query: "o", desks } }, { at: "place", id: "search" }));
+      // The host's rows first, while the desktops still walk.
+      await waitFor(() => expect(result.current).toMatchObject({ loaded: true, searching: true }));
+      expect(result.current.entries.map((e) => e.name)).toEqual(["Budget.xlsx", "Plan.docx"]);
+      await act(async () => land());
+      await waitFor(() => expect(result.current.searching).toBe(false));
+      expect(result.current.entries.map((e) => e.name)).toEqual(["Budget.xlsx", "Roster.docx", "Plan.docx"]);
+      expect(result.current.entries.find((e) => e.name === "Roster.docx")?.where).toEqual({ place: "m1", name: "General", trail: [] });
+      expect(result.current).toMatchObject({ unsearched: ["Purdue laptop", "Desk PC"], incomplete: true });
+      expect(asked.sort()).toEqual(["local o", "pc o"]);
+    } finally {
+      delete listingSeams.fetch;
+      delete listingSeams.desk;
+    }
+  });
 });

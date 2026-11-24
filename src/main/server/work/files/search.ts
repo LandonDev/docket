@@ -4,8 +4,7 @@ import { lstat, opendir, readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import type { FileSearchFilter, FilesListing, SavedFileSearch } from '@shared/contract-work-files'
 import type { TeamsEntry, TeamsLibrary } from '@shared/contract-work-office'
-import { WITHIN_MS } from '@shared/work/docFind'
-import { matchesName, nameWords, SEARCH_PAGE, searchOfView, viewOfSearch } from '@shared/work/fileSearch'
+import { kindOk, matchesName, nameWords, passesFilter, SEARCH_PAGE, searchOfView, viewOfSearch, wants } from '@shared/work/fileSearch'
 import { kindOfEntry, PLACE, type FileEntry } from '@shared/work/files'
 import { dropView, keepText, listViews, saveView } from '../docs/find'
 import type { Caller, WorkCtx } from '../modules'
@@ -16,9 +15,11 @@ import { WORK_OWNER_NAME_SETTING } from '../preamble'
 import type { MarkStore } from './marks'
 import { checkRow, feedNames, listedLibraries, nameRows, placeOf, reachesPath, whereOf, type NameRow } from './names'
 import { bytesHere, entryOfRow, hiddenName, type DiskRow } from './places/disk'
-import { LIFEOS_BY, searchLifeos, withProjects } from './places/lifeos'
+import { searchLifeos, withProjects } from './places/lifeos'
 import { libraryKey, type LibraryPlace } from './places/teams'
 import { admitCaller, workspaceHere, type WorkspaceRow } from './policy'
+
+export { passesFilter }
 
 /**
  * Search in the Files place (`work.files.search`, docs/agents/work-files.md "Search and Go to"): names in
@@ -87,8 +88,6 @@ export interface SearchScope {
 /** A place's search: one per kind of place. LifeOS, Google Drive and mail each add one here when they become places. */
 export type PlaceSource = (scope: SearchScope) => Promise<SourceAnswer>
 
-const wants = (filter: FileSearchFilter, place: string): boolean => !filter.places?.length || filter.places.includes(place) || filter.places.includes(place.split('/')[0]!)
-const kindOk = (filter: FileSearchFilter, kind: FileEntry['kind']): boolean => !filter.kinds?.length || filter.kinds.includes(kind)
 const turn = (): Promise<void> => new Promise((next) => setImmediate(next))
 const stop = (signal?: AbortSignal): void => {
   if (signal?.aborted) throw new Error(CANCELLED)
@@ -371,31 +370,6 @@ function ownerName(ctx: Pick<WorkCtx, 'db'>): string | null {
   } catch {
     return null
   }
-}
-
-/**
- * Whether a row passes the filter. `within` is the change time against a span before `now`. `who` is matched
- * against who last changed it and the thread that made it, where the row says (a LifeOS row says an agent and
- * he in LifeOS's words, `LIFEOS_BY`); a row that cannot say is left out. `review`: suggestions wait in it (LifeOS's rows say);
- * `project`: it is in that project (a LifeOS row's own, or a file linked to it).
- */
-export function passesFilter(e: FileEntry, place: string, f: FileSearchFilter, owner: string | null, now = Date.now()): boolean {
-  if (!kindOk(f, e.kind) || !wants(f, place)) return false
-  if (f.within && (e.changed ?? 0) < now - WITHIN_MS[f.within]) return false
-  if (f.after !== undefined && (e.changed ?? 0) < f.after) return false
-  if (f.before !== undefined && (e.changed ?? 0) >= f.before) return false
-  if (f.shared !== undefined && !!e.shared !== f.shared) return false
-  if (f.review && e.state?.is !== 'suggestions') return false
-  if (f.project && e.project?.id !== f.project) return false
-  if (f.who) {
-    const who = f.who.trim().toLowerCase()
-    if (who === 'agent') return !!e.madeBy || e.by === LIFEOS_BY.agent
-    if (e.madeBy) return false
-    if (!e.by) return false
-    if (who === 'me') return e.by === LIFEOS_BY.you || (!!owner && e.by.toLowerCase() === owner.toLowerCase())
-    return e.by.toLowerCase().includes(who)
-  }
-  return true
 }
 
 async function run(s: SearchScope, marks: MarkStore | null): Promise<Result> {

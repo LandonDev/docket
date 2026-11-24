@@ -35,3 +35,31 @@ export async function workReading(page: Window): Promise<SearchReading> {
 export function explainsMissingContent(lines: string[]): boolean {
   return lines.some((line) => /(?:contents?|text|words inside|library|libraries|teams|onedrive).*(?:not searched|not included|names only|only search)|(?:not searched|not included|names only|only search).*(?:contents?|text|words inside|library|libraries|teams|onedrive)/i.test(line))
 }
+
+export type SearchOutcome = { surface: 'Files' | 'Work'; query: 'name' | 'content'; found: boolean; opened: boolean; openedAsTyped?: boolean; lines: string[]; error?: string }
+
+/** A line that names a computer whose folders a search left out ("Folders on Purdue laptop were not searched."). */
+export function namesUnsearched(lines: string[]): boolean {
+  return lines.some((line) => /folders on .+ (?:was|were) not searched/i.test(line))
+}
+
+/**
+ * J18's end check. A name opens everywhere, except that a file on a computer the window reaches only through
+ * another host (B2) may instead be named as not searched. Words inside a file on another computer (B1, B2) are
+ * never searched, as the owner has been told: a miss there is kept as a note, never a failure.
+ */
+export function searchVerdict(shape: string, results: SearchOutcome[]): { failures: string[]; notes: string[] } {
+  const failures: string[] = []
+  const notes: string[] = []
+  for (const { surface, query, found, opened, lines, error } of results) {
+    const label = `${surface} by ${query}`
+    const said = lines.join(' / ') || 'no search line'
+    if (error) failures.push(`${label}: ${error}`)
+    else if (opened) continue
+    else if (query === 'content' && shape !== 'A') notes.push(`${label}: not found; words inside a file on another computer are not searched (${said})`)
+    else if (query === 'name' && shape === 'B2' && !found && namesUnsearched(lines)) notes.push(`${label}: named as not searched (${said})`)
+    else failures.push(`${label}: no open file (${said})`)
+  }
+  return { failures, notes }
+}
+

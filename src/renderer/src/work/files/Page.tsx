@@ -841,7 +841,8 @@ export function PageView({
     busy,
     // A page that failed waits for Retry on its line, rather than being asked again on every scroll.
     more: !!listing?.more && !listing.error,
-    loadingMore: !!listing && listing.loading && entries.length > 0 && listing.more,
+    // A later page on its way, or his desktops still searching their folders under the rows already in.
+    loadingMore: !!listing && entries.length > 0 && ((listing.loading && listing.more) || !!listing.searching),
     renaming,
     onPick,
     onOpen: open,
@@ -862,10 +863,10 @@ export function PageView({
   const way = gone && parent ? { label: `Open ${parent.name}`, onClick: toParent! } : gone && canBack ? { label: "Back", onClick: onBack } : { label: "Retry", onClick: () => listing?.retry() };
   let body: ReactNode;
   if (note) body = <NoteEmpty note={note} fixes={fixes} />;
-  else if (!listing || !listing.loaded) body = <ListBones compact={compact} />;
+  else if (!listing || !listing.loaded || (!entries.length && listing.searching)) body = <ListBones compact={compact} />;
   else if (listing.error && !entries.length) body = listing.away ? null : <EmptyState title="This folder did not load" line={listing.error} action={way} />;
   else if (!entries.length && filter) body = <EmptyState title="Nothing here by that name" line="Return searches every place." />;
-  else if (!entries.length && results) body = <EmptyState title="Nothing found" line={gap ? `${gap.title}.` : listing.more ? "Some places are still being searched." : undefined} {...(gap ? { action: { label: "Retry", onClick: listing.retry } } : {})} />;
+  else if (!entries.length && results) body = <EmptyState title="Nothing found" line={gap ? `${gap.title}.` : listing.more ? "Some places are still being searched." : undefined} {...(gap?.fix ? { action: { label: "Retry", onClick: listing.retry } } : {})} />;
   else if (!entries.length)
     body =
       down && down.fix?.kind !== "wake" ? (

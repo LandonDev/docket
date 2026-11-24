@@ -8,11 +8,15 @@ import { LOCAL_ENVIRONMENT_ID, registry } from "../../lib/connection";
 import { workErrorWords } from "../../lib/workErrorWords";
 import type { WorkspaceMeta } from "../../lib/tcserver/types";
 import { linkIdOfHost, localHostId, windowDesktops, workspaceSettings } from "../shell/actions";
+import type { Desktops } from "../shell/desktops";
 import { farName, filesLink, keepFarName, reachThrough } from "./farLink";
 import {
   clampDock,
+  deskRows,
+  desksJoin,
   DOCK,
   entryFromOld,
+  mergeFound,
   NO_HISTORY,
   pageKey,
   placesFromOld,
@@ -661,11 +665,23 @@ export interface Listing {
   incomplete?: boolean;
   /** a search left these places out because their machine sleeps */
   asleep?: string[];
+  /** a search did not search the folders on these desktops: no link of this window reaches them, or theirs is down */
+  unsearched?: string[];
+  /** a search's rows are in, and his desktops are still searching their folders */
+  searching?: boolean;
+}
+
+/** What his desktops' own search found for a search page: their rows, the ones not searched, and whether a walk stopped short. */
+interface DeskFound {
+  rows: FileEntry[];
+  unsearched: string[];
+  more: boolean;
 }
 
 interface ListingEntry extends Listing {
   next?: string;
   round: number;
+  desk?: DeskFound;
 }
 
 const listings = new Map<string, ListingEntry>();
@@ -685,16 +701,52 @@ export interface ListFrom {
   old?: readonly LibraryPlace[];
   /** a team's own page: its channels, which no host is asked for */
   team?: readonly FileEntry[];
-  /** a page of search results: every place of the host is searched for these words, under this filter */
-  search?: { query: string; filter?: FileSearchFilter };
+  /** a page of search results: every place of the host is searched for these words, under this filter, and the folders on his desktops by `desks` */
+  search?: { query: string; filter?: FileSearchFilter; desks?: DeskSearch };
   /** the folders alone (Move to… and Copy to…, which pick a folder): the host leaves the files out of every page */
   foldersOnly?: boolean;
 }
 
+/** His desktops for a search of every place: which ones the window may ask itself, and the place a file of one lies in. */
+export interface DeskSearch {
+  find(): Promise<Desktops>;
+  placeOf(link: string, path: string): PlaceCopy | null;
+}
+
+/** A desktop's walk keeps its own cap of 15 s. */
+const DESK_MS = 20_000;
+
 const readMs = (copy: PlaceCopy): { timeoutMs?: number } => (copy.place.vm ? { timeoutMs: 120_000 } : {});
 
 /** A seam for a preview page and tests, which have no host: set, it answers a folder's page in the host's place. */
-export const listingSeams: { fetch?: (from: ListFrom, at: FolderRef, sort: FileSort, cursor?: string) => Promise<FilesListing> } = {};
+export const listingSeams: { fetch?: (from: ListFrom, at: FolderRef, sort: FileSort, cursor?: string) => Promise<FilesListing>; desk?: (link: string, query: string) => Promise<{ entries: TeamsEntry[]; more?: boolean }> } = {};
+
+/**
+ * The folders on his desktops for a search of every place (docs/agents/work-files.md "Search and Go to"): the
+ * workspace's host cannot walk another computer's folders, so the window asks each desktop it holds a link to
+ * with the search Files already has there (names alone), and names the rest. Never rejects.
+ */
+async function searchDesks(desks: DeskSearch, query: string, filter: FileSearchFilter): Promise<DeskFound> {
+  const { linked, far } = await desks.find().catch((): Desktops => ({ linked: [], far: [] }));
+  const found: DeskFound = { rows: [], unsearched: [...far], more: false };
+  await Promise.all(
+    linked.map(async (desk) => {
+      try {
+        const got = await (listingSeams.desk?.(desk.link, query) ?? ask<{ entries: TeamsEntry[]; more?: boolean }>(desk.link, "work.office.filesSearch", { query }, { timeoutMs: DESK_MS }));
+        found.rows.push(...deskRows(got.entries, (path) => desks.placeOf(desk.link, path), filter));
+        if (got.more) found.more = true;
+      } catch {
+        // Its link went down, or its walk did not answer in time: named, with Retry.
+        found.unsearched.push(desk.name);
+        found.more = true;
+      }
+    }),
+  );
+  return found;
+}
+
+/** A desktop's part of a search, as the listing says it. */
+const deskSays = (desk: DeskFound | undefined): Partial<Listing> => (desk ? { ...(desk.more ? { incomplete: true } : {}), ...(desk.unsearched.length ? { unsearched: desk.unsearched } : {}) } : {});
 
 async function fetchPage(from: ListFrom, at: FolderRef, sort: FileSort, cursor?: string): Promise<FilesListing> {
   if (listingSeams.fetch) return listingSeams.fetch(from, at, sort, cursor);
@@ -721,11 +773,15 @@ async function fillWho(key: string, from: ListFrom, round: number): Promise<void
   if (who.size) putListing(key, { ...now, entries: now.entries.map((e) => (who.has(e.key) ? { ...e, by: who.get(e.key)! } : e)) });
 }
 
-async function load(key: string, from: ListFrom, at: FolderRef, sort: FileSort, more: boolean): Promise<void> {
+/** `again`: a host's push lists the page again; a search keeps what his desktops found rather than walking their folders again. */
+async function load(key: string, from: ListFrom, at: FolderRef, sort: FileSort, more: boolean, again = false): Promise<void> {
   const was = listings.get(key);
   if (more && (!was?.next || was.loading)) return;
   const round = more ? was!.round : (was?.round ?? 0) + 1;
   putListing(key, { ...(was ?? { ...EMPTY_LISTING }), loading: true, error: null, lostPage: false, round });
+  const search = from.search;
+  // A search's desktops are asked once a search, beside its host, and only for its first page.
+  const desks = !more && search?.desks && desksJoin(search.filter ?? {}) ? (again && was?.desk ? Promise.resolve(was.desk) : searchDesks(search.desks, search.query, search.filter ?? {})) : null;
   try {
     if (from.team) return putListing(key, { ...EMPTY_LISTING, entries: sortEntries(from.team, sort), trail: [], loaded: true, loading: false, round });
     let first = !more;
@@ -737,8 +793,9 @@ async function load(key: string, from: ListFrom, at: FolderRef, sort: FileSort, 
     }
     const now = listings.get(key);
     if (!now || now.round !== round) return;
+    const desk = more ? now.desk : undefined;
     putListing(key, {
-      entries: first ? page.entries : [...now.entries, ...page.entries],
+      entries: first ? page.entries : desk ? mergeFound(now.entries, page.entries) : [...now.entries, ...page.entries],
       trail: first ? (page.trail ?? []) : now.trail,
       loaded: true,
       more: !!page.next,
@@ -750,13 +807,23 @@ async function load(key: string, from: ListFrom, at: FolderRef, sort: FileSort, 
       // What a search left out is said by every page of it alike.
       ...(page.more ? { incomplete: true } : {}),
       ...(page.asleep?.length ? { asleep: page.asleep } : {}),
+      ...deskSays(desk),
+      ...(desks || (more && now.searching) ? { searching: true } : {}),
+      ...(desk ? { desk } : {}),
       round,
     });
     void fillWho(key, from, round);
+    if (!desks) return;
+    // The host's rows are drawn first; the desktops' join them in the list's order when they come.
+    const found = await desks;
+    const then = listings.get(key);
+    if (!then || then.round !== round) return;
+    const said = deskSays(found);
+    putListing(key, { ...then, entries: mergeFound(then.entries, found.rows), searching: false, desk: found, ...said, ...(said.incomplete || then.incomplete ? { incomplete: true } : {}) });
   } catch (err) {
     const now = listings.get(key);
     if (!now || now.round !== round) return;
-    putListing(key, { ...now, loaded: true, loading: false, error: workErrorWords(err, { host: registry.environment(from.copy.link)?.name }) || "The host did not answer.", away: unreachable(err), lostPage: more });
+    putListing(key, { ...now, loaded: true, loading: false, searching: false, error: workErrorWords(err, { host: registry.environment(from.copy.link)?.name }) || "The host did not answer.", away: unreachable(err), lostPage: more });
   }
 }
 
@@ -798,7 +865,7 @@ export function useListing(from: ListFrom | null, at: FolderRef, sort: FileSort 
     const off = filesLink(from.copy.link).onPush((push) => {
       if (push.push !== "work.files" || push.workspaceId !== from.workspaceId) return;
       // A lens follows his marks, which change with the tabs he opens.
-      if ((watched && push.at === watched) || (lens && push.tabs !== undefined)) void load(key, from, at, sort, false);
+      if ((watched && push.at === watched) || (lens && push.tabs !== undefined)) void load(key, from, at, sort, false, true);
     });
     return off;
     // The key names the host, the folder and the order; a team's rows are its own input.

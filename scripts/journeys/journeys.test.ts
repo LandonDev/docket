@@ -8,7 +8,7 @@ import { wordBodyLayout } from './J05-document-export'
 import { AppOpenProof } from './lib/appOpen'
 import { dummyLibrary, dummyPdf, fixtures, gioStub, holds } from './lib/files'
 import { holderFolder } from './lib/place'
-import { explainsMissingContent } from './lib/search'
+import { explainsMissingContent, searchVerdict } from './lib/search'
 import { cellValue, falseSaveLine } from './lib/sheet'
 import { mainCheckout, step, walk, type Context } from './lib/record'
 import { isolatedEnvironment, SHAPES, type Pair } from './lib/shape'
@@ -238,6 +238,15 @@ it('requires a search scope line about the omitted content', () => {
   expect(explainsMissingContent(['Nothing found', 'LifeOS is signed out on This Mac.'])).toBe(false)
   expect(explainsMissingContent(['Names only for Teams files.'])).toBe(true)
   expect(explainsMissingContent(['The contents of this library were not searched.'])).toBe(true)
+})
+
+it('J18: a name opens, or on a far computer is named as not searched; words on another computer are a note', () => {
+  const r = (surface: 'Files' | 'Work', query: 'name' | 'content', over: { opened?: boolean; found?: boolean; lines?: string[] } = {}) => ({ surface, query, found: false, opened: false, lines: [], ...over })
+  const far = ['Folders on Purdue laptop were not searched.']
+  expect(searchVerdict('B1', [r('Files', 'name', { opened: true, found: true }), r('Work', 'name', { opened: true, found: true }), r('Files', 'content')])).toEqual({ failures: [], notes: [expect.stringMatching(/^Files by content: not found/)] })
+  expect(searchVerdict('B1', [r('Files', 'name', { lines: far })]).failures).toHaveLength(1)
+  expect(searchVerdict('B2', [r('Files', 'name', { lines: far }), r('Work', 'name', { lines: ['Nothing found'] })]).failures).toEqual(['Work by name: no open file (Nothing found)'])
+  expect(searchVerdict('A', [r('Files', 'content')]).failures).toHaveLength(1)
 })
 
 it('tracks a native open answer for the file and the socket that asked', () => {

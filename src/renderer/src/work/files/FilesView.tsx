@@ -22,6 +22,7 @@ import { openHeld } from "../canvas/held";
 import { useCanvas } from "../canvas/store";
 import { Ask, Cloud, Home, Lifeos, Mail, Project } from "../icons";
 import { allowComputers } from "../shell/actions";
+import { desktopsFor } from "../shell/desktops";
 import { openTemplates, workTemplatePort } from "../templates/open";
 import type { WorkViewProps } from "../views/registry";
 import { openVm, signInOnVm } from "../winvm/signIn";
@@ -30,12 +31,13 @@ import { FileTabView, type FileManage } from "./FileTabView";
 import type { GoToRow } from "./GoTo";
 import { filterChoices, HomePage, SaveSearchDialog, SearchFilters } from "./Home";
 import { MoveDialog, type MoveTarget } from "./MoveDialog";
-import { samePage, sitsAtSide, HOME_PAGE, isHomePage, isSearchPage, savedIdOf, savedSearchPage, searchPage, actsFor, placeDown, placeOfRef, placePage, readCopy, sidebarFolds, teamOfPage, teamPage, trailOf, type FilesNote, type PlaceCopy, type PlaceRow, type Sidebar as SidebarModel, type SidebarRow } from "./model";
+import { samePage, sitsAtSide, HOME_PAGE, isHomePage, isSearchPage, savedIdOf, savedSearchPage, searchPage, actsFor, placeDown, placeOfRef, placePage, readCopy, deskPlace, sidebarFolds, teamOfPage, teamPage, trailOf, type FilesNote, type PlaceCopy, type PlaceRow, type Sidebar as SidebarModel, type SidebarRow } from "./model";
 import "./bindings";
 import { FILES_KEYS } from "./chords";
 import { fetchHere, fileOf, openEntry, openInApp, type Busy } from "./open";
 import { ListBones, PageBar, PageView, type NoteFixes, type PageActs, type PageFind } from "./Page";
-import { useSideOpen, hasClosed, openAtSide, closeSide, openFileTab, rememberClosed, takeClosed, dropSearch, saveSearch, useHome, useSavedSearches, useSearchFilter, closeTab, firstPage, goTo, historyOf, keepBothCopy, moveTabs, openPageTab, reloadCopy, selectTab, sendCopyBack, tabsNow, teamRows, useDock, useListing, usePageLook, useReach, useSidebarFolded, useTabs, type ListFrom, type Reach } from "./store";
+import { useSideOpen, hasClosed, openAtSide, closeSide, openFileTab, rememberClosed, takeClosed, dropSearch, saveSearch, useHome, useSavedSearches, useSearchFilter, closeTab, firstPage, goTo, historyOf, keepBothCopy, moveTabs, openPageTab, reloadCopy, selectTab, sendCopyBack, tabsNow, teamRows, useDock, useListing, usePageLook, useReach, useSidebarFolded, useTabs, type DeskSearch, type ListFrom, type Reach } from "./store";
+import { farName } from "./farLink";
 import { closeCopyTab } from "./copyClose";
 import { DragLabelLayer, dragging, dropVerb, ROWS_MIME, setDragging, setDragLabel } from "./rowParts";
 import { filesPanelId, TabRow } from "./TabRow";
@@ -891,9 +893,16 @@ function SearchTab({
   const [filter, setFilter] = useSearchFilter(tab.id, page, saved?.filter);
   const [saving, setSaving] = useState(false);
   const query = page.query ?? saved?.query ?? "";
-  // The search is the workspace's own host's: it knows every place it lists.
+  // The search is the workspace's own host's: it knows every place it lists. The folders on his desktops are
+  // theirs to walk: the window asks each one it holds a link to itself, and a file found there opens from its place.
   const host = reach.sidebar.folder ?? reach.sidebar.home ?? reach.sidebar.marks[0] ?? null;
-  const from: ListFrom | null = host ? { workspaceId: workspace.id, copy: host, search: { query, filter } } : null;
+  const sidebar = useRef(reach.sidebar);
+  useEffect(() => void (sidebar.current = reach.sidebar));
+  const desks: DeskSearch = {
+    find: () => desktopsFor([workspace], { nameOf: (id) => registry.environment(id)?.name ?? farName(id) }),
+    placeOf: (desk, path) => deskPlace(sidebar.current, desk, path),
+  };
+  const from: ListFrom | null = host ? { workspaceId: workspace.id, copy: host, search: { query, filter, desks } } : null;
   const listing = useListing(from, page.at, DEFAULT_SORT);
   return (
     <>

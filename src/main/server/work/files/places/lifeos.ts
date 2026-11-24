@@ -4,7 +4,7 @@ import { basename, join } from 'node:path'
 import { projectOrder } from 'work-kit/projects/order'
 import type { FileCrumb, FileDone, FileRef, FilesListing } from '@shared/contract-work-files'
 import { filesPaneOf, type CanvasKind, type CanvasSource } from '@shared/work'
-import { matchesName } from '@shared/work/fileSearch'
+import { LIFEOS_BY, matchesName } from '@shared/work/fileSearch'
 import { freeName, kindOfEntry, PLACE, refKey, sortEntries, threadCanvasOf, UNTITLED, type FileEntry, type FilePlace, type FileSort, type FileVerb, type FolderRef } from '@shared/work/files'
 import { lifeosCatalog, type CatalogRow } from '../../docs/find'
 import { ensureFetched, fetchedPath } from '../../canvas/fetch'
@@ -457,8 +457,7 @@ export async function waitingRows(ctx: WorkCtx, by: Caller, workspace: Workspace
 
 // ── search ────────────────────────────────────────────────────────────
 
-/** Who last changed a LifeOS row, as LifeOS says it: an agent or a guest by these words, and he by his Work name, or `you` without one. */
-export const LIFEOS_BY = { agent: 'An agent', guest: 'A guest', you: 'You' } as const
+export { LIFEOS_BY }
 
 /**
  * LifeOS rows for a search: titles that hold every word, and documents whose text holds them (`catalog:search`).

@@ -356,7 +356,7 @@ synced on his Mac is the Mac's to search: the host cannot walk it, and to
 search a far computer through the host is a reach nobody has ruled on. So
 for "All files for …" (files asked alone) the window asks, itself, each
 desktop the jobs in scope may use that it holds a link to
-(`search/desktops.ts`): `desktopsFor` reads each workspace's `mayUseDesktop`
+(`search/desktops.ts`): `desktopsFor` (work/shell/desktops.ts, which Files' own search shares) reads each workspace's `mayUseDesktop`
 and sorts those hosts into `linked` and `far`; a linked one joins the search
 as one more host (`desk:<link>`, `deskHosts`), asked `work.office.filesSearch`
 on that link, the walk Files' old wire uses there (names, never a file's

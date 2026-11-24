@@ -4,13 +4,13 @@ import { TEXT_EDITOR } from './lib/edit'
 import { closeTab, openRow, rowAt } from './lib/files'
 import { fileAt, goPlace, showPlace } from './lib/place'
 import { journey, step, type Context } from './lib/record'
-import { explainsMissingContent, filesReading, FILES_FIELD, typeQuery, workReading, WORK_FIELD, WORK_HIT } from './lib/search'
+import { filesReading, FILES_FIELD, searchVerdict, typeQuery, workReading, WORK_FIELD, WORK_HIT, type SearchOutcome } from './lib/search'
 import { words } from './lib/shape'
 
 const nameOf = ({ workspace }: Context): string => `Lantern ${workspace.name}.txt`
 const contentOf = ({ workspace }: Context): string => 'quartz' + workspace.name.replace(/\W/g, '').toLowerCase()
 
-type SearchResult = { surface: 'Files' | 'Work'; query: 'name' | 'content'; found: boolean; opened: boolean; openedAsTyped?: boolean; lines: string[]; error?: string }
+type SearchResult = SearchOutcome
 
 async function checkOpened(context: Context): Promise<void> {
   const { page } = context.pair
@@ -121,13 +121,8 @@ export default journey({
     step('end: name hits open and content hits open or their scope is stated', ({ shape, folder }) => {
       const results = readFileSync(join(folder, 'search-outcomes.jsonl'), 'utf8').trim().split('\n')
         .map((line) => JSON.parse(line) as SearchResult)
-      const failures = results.flatMap(({ surface, query, found, opened, lines, error }) => {
-        const label = `${surface} by ${query}`
-        if (error) return [`${label}: ${error}`]
-        if (opened) return []
-        if (found || query === 'name' || shape === 'A') return [`${label}: no open file (${lines.join(' / ') || 'no search line'})`]
-        return explainsMissingContent(lines) ? [] : [`${label}: no hit or line about content scope (${lines.join(' / ') || 'no search line'})`]
-      })
+      const { failures, notes } = searchVerdict(shape, results)
+      if (notes.length) writeFileSync(join(folder, 'search-notes.txt'), notes.join('\n') + '\n')
       if (failures.length) throw new Error(failures.join(' | '))
     })
   ]

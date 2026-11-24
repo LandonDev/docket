@@ -21,7 +21,7 @@ type Push = Record<string, unknown>;
 interface Host {
   calls: { method: string; params: Record<string, unknown> }[];
   pushes: Set<(push: Push) => void>;
-  answer(method: string, params: Record<string, unknown>): unknown;
+  answer(method: string, params: Record<string, unknown>, link?: string): unknown;
 }
 const world = vi.hoisted(() => ({
   host: null as unknown,
@@ -31,6 +31,9 @@ const world = vi.hoisted(() => ({
   bodies: [] as (string | undefined)[],
   yes: true,
   started: [] as { chips: { kind: string; label: string; where?: { place: string } }[]; at: unknown }[],
+  /** the desktops the workspace may use, and the window's link to each it holds one to */
+  mayUse: [] as string[],
+  links: {} as Record<string, string>,
 }));
 
 vi.mock("../../lib/connection", async (original) => {
@@ -41,7 +44,7 @@ vi.mock("../../lib/connection", async (original) => {
       connected: true,
       request: async (method: string, params: Record<string, unknown> = {}) => {
         host.calls.push({ method, params });
-        return host.answer(method, params);
+        return host.answer(method, params, id);
       },
       onPush: (listener: (push: Push) => void) => (host.pushes.add(listener), () => host.pushes.delete(listener)),
       onOpen: () => () => undefined,
@@ -50,10 +53,17 @@ vi.mock("../../lib/connection", async (original) => {
   };
   return {
     ...(await original<typeof import("../../lib/connection")>()),
-    registry: { linkOf, link: linkOf, has: () => true, environment: (id: string) => ({ id, name: "The box", platform: "linux" }), environments: () => [{ id: "box", name: "The box", platform: "linux" }], onLink: () => () => undefined },
+    registry: { linkOf, link: linkOf, has: (id: string) => !id.startsWith("env_"), statusOf: () => ({ lastHello: null }), environment: (id: string) => (id.startsWith("env_") ? undefined : { id, name: id === "mac" ? "MacBook" : "The box", platform: "linux" }), environments: () => [{ id: "box", name: "The box", platform: "linux" }], onLink: () => () => undefined },
   };
 });
-vi.mock("../shell/actions", () => ({ workspaceSettings: async () => ({ mayUseDesktop: [], windowsVm: false, voice: false }), localHostId: async () => null, windowDesktops: async () => [], linkIdOfHost: () => "box", allowComputers: vi.fn() }));
+vi.mock("../shell/actions", () => ({
+  workspaceSettings: async () => ({ mayUseDesktop: world.mayUse, windowsVm: false, voice: false }),
+  localHostId: async () => null,
+  windowDesktops: async () => [],
+  linkIdOfHost: (id: string) => (world.mayUse.includes(id) ? (world.links[id] ?? null) : "box"),
+  hostIdOfLink: (link: string) => Object.keys(world.links).find((id) => world.links[id] === link) ?? link,
+  allowComputers: vi.fn(),
+}));
 vi.mock("../winvm/signIn", () => ({ openVm: vi.fn(), signInOnVm: vi.fn(async () => undefined) }));
 vi.mock("../canvas/CanvasPane", () => ({ CanvasPane: () => <div data-testid="pane" /> }));
 // What a change says is one toast: here each is kept, with its Undo.
@@ -299,6 +309,8 @@ beforeEach(async () => {
   world.bodies.length = 0;
   world.started.length = 0;
   world.yes = true;
+  world.mayUse = [];
+  world.links = {};
   localStorage.clear();
   sessionStorage.clear();
   resetFilesStore();
@@ -857,6 +869,34 @@ describe("Search", () => {
     // The saved search, opened in that tab again, is read under its own filter.
     fireEvent.click(within(places).getByRole("button", { name: "Docs" }));
     await waitFor(() => expect(calls("work.files.search").at(-1)).toMatchObject({ query: "a", filter: { kinds: ["document"] } }));
+  });
+
+  it("searches the folders on his own computer on Return alone, opens a file found there from its place, and names a computer no link of the window reaches", async () => {
+    world.mayUse = ["env_mac", "env_pc"];
+    world.links = { env_mac: "mac" };
+    const box = host.answer;
+    const MAC_LIB: FilePlace = { ...lens("m1", "teams", "Esports", ["make", "rename", "move", "copy", "edit"]), env: "env_mac", shared: true, group: "Esports", key: "esports", root: { at: "file", host: "env_mac", path: "/Users/l/Esports" } };
+    host.answer = (method, params, link) => {
+      if (method === "work.office.filesCopyGet") return { on: true };
+      // The PC answers only through the box, for its places alone.
+      if (method === "work.files.across") return { host: "env_pc", name: "Purdue laptop", places: [], rev: 0, sources: [] } satisfies FilesPlaces;
+      if (link !== "mac") return box(method, params);
+      if (method === "work.files.places") return { host: "env_mac", places: [MAC_LIB], rev: 0, sources: [] } satisfies FilesPlaces;
+      if (method === "work.office.filesSearch") return { entries: [{ name: "Practice handout.txt", path: "/Users/l/Esports/Handouts/Practice handout.txt", library: "mac~1", kind: "text", size: 1, modified: 1_800_000_000_000, local: true, by: null }] };
+      throw new Error(`unknown method: ${method}`);
+    };
+    await mount();
+    fireEvent.click(screen.getByRole("button", { name: "Search" }));
+    const field = await screen.findByRole("searchbox", { name: "Search" });
+    fireEvent.change(field, { target: { value: "practice" } });
+    expect(calls("work.office.filesSearch")).toEqual([]);
+    fireEvent.keyDown(field, { key: "Enter" });
+    await waitFor(() => expect(rows()).toEqual(["Practice handout.txt"]));
+    expect(calls("work.office.filesSearch")).toEqual([{ query: "practice" }]);
+    expect(row("Practice handout.txt").textContent).toContain("Esports › Handouts");
+    expect(document.querySelector("[data-files-note]")?.textContent).toBe("Folders on Purdue laptop were not searched");
+    fireEvent.doubleClick(row("Practice handout.txt"));
+    await waitFor(() => expect(calls("work.files.open")).toEqual([expect.objectContaining({ ref: { at: "file", host: "env_mac", path: "/Users/l/Esports/Handouts/Practice handout.txt" } })]));
   });
 
   it("opens with / in the page, and Escape gives the whole folder back", async () => {
