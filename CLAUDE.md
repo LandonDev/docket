@@ -172,7 +172,8 @@ section's text as it was when CLAUDE.md was split (2026-11-11).
   threads across hosts, the relay, devices, restart resume, backups; children
   start below the server through `spawnLowered` (childPriority.ts); what a
   window asks on connect and focus waits on no child or queue (heldAnswer.ts,
-  box.md "Answers under load").
+  box.md "Answers under load"); file trees cost a watch per folder, under a
+  ceiling (treewatch.ts, `watches` in doctor.get).
   [docs/agents/linux-agent-host.md](docs/agents/linux-agent-host.md)
 - **The Windows build** — an NSIS installer and a zip for x64, unsigned, per user with no admin
   (`%LOCALAPPDATA%\Programs\TempCode`, data in `%LOCALAPPDATA%\temp-code`, the package's name); every Windows build

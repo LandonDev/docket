@@ -1387,6 +1387,8 @@ export type DoctorGetResult = Record<z.infer<typeof providerEnum>, DoctorReport>
   execBroker?: { mode: 'child' | 'in-process'; pid: number; restarts: number }
   /** The add-on host's utility process (addons/addonHost.ts): its pid while one serves, how often it was respawned, and whether it is down after three exits in a minute. */
   addonHost?: { pid: number | null; restarts: number; down: boolean }
+  /** Folder watches the host holds for file trees (treewatch.ts; one inotify watch each on Linux), its ceiling, and each tree's share. */
+  watches?: { held: number; ceiling: number; roots: { root: string; held: number; partial: boolean }[] }
 }
 
 export type ServerResponse =

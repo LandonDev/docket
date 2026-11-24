@@ -77,6 +77,19 @@ MemoryMin protects allocated memory under pressure; it does not preallocate
 instances 8192, file-max 4194304, max_map_count 1048576, and somaxconn 4096.
 PAM limits live in `/etc/security/limits.d/60-box-fleet.conf`.
 
+The server holds itself well under the watch limit (treewatch.ts): on Linux
+a file tree costs one inotify watch per folder, never per file, it never
+enters `node_modules`, `.git`, `out`, `dist` and the other build folders,
+`.claude/worktrees`, a folder that is a repository of its own or a symlink,
+and all its trees together stop at 20,000 folder watches with one
+`[treewatch] ceiling … reached` line. `doctor.get` shows `watches` (held,
+ceiling, each tree's share). On 2026-11-23 the old watcher (chokidar, a
+watch per file) held 1,030,566 of the 1,048,576 with the main checkout
+open, nearly all of them files in 198 worktrees under `.claude/worktrees`,
+and every new watch on the box failed with ENOSPC. Counted on the same
+checkout, the new rules take 369 watches; on a copy with two worktrees,
+2,066 before and 20 after.
+
 UFW denies incoming and routed traffic, allows outgoing, and permits only
 22/tcp in both IP families. fail2ban monitors sshd through the systemd journal
 (5 failures in 10 minutes, 1 hour ban). All app origins must bind loopback and

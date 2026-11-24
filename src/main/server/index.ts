@@ -157,6 +157,7 @@ import { setSearchDenied } from './search'
 import { CheckpointStore, inHeadMany, listTracked } from './checkpoint'
 import { handleCheckpoint } from './checkpointRpc'
 import { CheckpointTurns } from './checkpointTurns'
+import { watchStats } from './treewatch'
 import { Linear, handleLinear } from './linear'
 import { GithubInbox, handleGithubInbox } from './githubInbox'
 import { SessionRegistry } from './sessions'
@@ -2562,7 +2563,8 @@ export async function startServer(
                 inFlight: inFlightRequests(),
                 gateway: { ...gateway.status().process, port: gateway.status().port },
                 execBroker: execBroker.status(),
-                addonHost: addonHost.status()
+                addonHost: addonHost.status(),
+                watches: watchStats()
               } satisfies DoctorGetResult
             })
             break
