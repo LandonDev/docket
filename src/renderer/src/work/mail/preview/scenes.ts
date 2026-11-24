@@ -77,6 +77,16 @@ function pressText(selector: string, text: string) {
     await page.click(at.x, at.y);
   };
 }
+/** A real click on the first element under `selector` whose words start with `text` (a menu row with its time after). */
+function pressLead(selector: string, text: string) {
+  const find = `[...document.querySelectorAll(${JSON.stringify(selector)})].find((el) => el.textContent.trim().startsWith(${JSON.stringify(text)}))`;
+  return async (page: Page) => {
+    await page.until(find, `${text} in ${selector}`);
+    await page.wait(400);
+    const at = await page.eval<{ x: number; y: number }>(`(() => { const r = ${find}.getBoundingClientRect(); return { x: r.x + r.width / 2, y: r.y + r.height / 2 } })()`);
+    await page.click(at.x, at.y);
+  };
+}
 /** A real key, once the page's key listener is there. */
 function keyed(key: string, modifiers: { shift?: boolean } = {}) {
   return async (page: Page) => {
@@ -88,6 +98,9 @@ const opened = (id: string) => async (page: Page) => {
   await page.eval(`window.__mail.open(${JSON.stringify(id)})`);
   await page.until(`document.querySelector("[data-mail-pane] h2")`, "the thread's subject");
 };
+
+/** The preset the Send later scenes press: tomorrow morning is offered at every hour of the day. */
+const SCHEDULE_PRESET = "Tomorrow morning";
 
 export const SCENES: Scene[] = [
   { name: "reader-designed", set: opened("c-receipt"), ready: FRAMES_READY },
@@ -135,6 +148,36 @@ export const SCENES: Scene[] = [
   { name: "new-mail-remind", set: then(async (page) => void (await page.eval(`window.__mail.compose({ open: { kind: "new" }, full: true })`)), press("[aria-label='Remind me if there is no reply']")), ready: `document.querySelector("[role=menu]")` },
   { name: "list-drafts", query: "box=drafts", ready: `document.querySelector("[data-mail-list] li")` },
   { name: "list-empty", query: "box=scheduled", ready: `document.querySelector("[data-mail-list]").textContent.includes("Nothing scheduled")` },
+  // Send later, by real clicks: the menu, the picker with its zone, a reply scheduled for tomorrow morning in its
+  // thread's foot, moving it, and the Scheduled list it lands in.
+  { name: "send-later-menu", set: then(opened("c-invoice"), press("[data-mail-pane] button.mail-reply-row"), press("[aria-label='More ways to send']")), ready: `document.querySelector("[role=menu]")?.textContent.includes("Pick date and time")` },
+  {
+    name: "send-later-picker",
+    set: then(opened("c-invoice"), press("[data-mail-pane] button.mail-reply-row"), press("[aria-label='More ways to send']"), pressText("[role=menuitem]", "Pick date and time…")),
+    ready: `document.querySelector("[data-slot=popover-content] [aria-label='Time zone']") && document.querySelector("[data-slot=popover-content]").textContent.includes("Cancel if they reply first")`,
+  },
+  {
+    name: "scheduled-reply",
+    set: then(opened("c-invoice"), press("[data-mail-pane] button.mail-reply-row"), press("[aria-label='More ways to send']"), pressLead("[role=menuitem]", SCHEDULE_PRESET)),
+    ready: `[...document.querySelectorAll("[data-mail-pane] button")].some((b) => b.textContent.trim() === "Cancel send") && [...document.querySelectorAll("[data-mail-pane] button")].some((b) => b.textContent.trim() === "Send now")`,
+  },
+  {
+    name: "scheduled-move",
+    set: then(opened("c-invoice"), press("[data-mail-pane] button.mail-reply-row"), press("[aria-label='More ways to send']"), pressLead("[role=menuitem]", SCHEDULE_PRESET), press("[data-mail-pane] button[aria-label^='Scheduled for']")),
+    ready: `[...document.querySelectorAll("[data-slot=popover-content] button")].some((b) => b.textContent.trim() === "Move")`,
+  },
+  {
+    name: "scheduled-list",
+    set: then(
+      opened("c-invoice"),
+      press("[data-mail-pane] button.mail-reply-row"),
+      press("[aria-label='More ways to send']"),
+      pressLead("[role=menuitem]", SCHEDULE_PRESET),
+      press("[data-mail-list] button[aria-haspopup=menu]"),
+      pressLead("[role=menuitem]", "Scheduled"),
+    ),
+    ready: `document.querySelector("[data-mail-list] ul[aria-label=Scheduled] li")`,
+  },
   { name: "keys", set: keyed("?", { shift: true }), ready: `document.querySelector("[role=dialog]")?.textContent.includes("Keyboard shortcuts")` },
   { name: "snooze", set: then(opened("c-invoice"), keyed("b")), ready: `document.querySelector("[role=dialog]")?.textContent.includes("Snooze until")` },
   { name: "loading", query: "late=1" },
