@@ -4,8 +4,8 @@ import { z } from 'zod'
 import { DASH_AGGS, DASH_BLOCKS_MAX, DASH_FORMATS, type DashFigure, type DashSheet } from '@shared/contract-work-dashboards'
 import { agentPrincipal, workText, type CanvasItem, type WorkToolResult } from '@shared/work'
 import { errorText } from '@shared/work/ids'
-import type { ToolCtx, WorkTool } from '../modules'
-import { announce, DashError, dashItem, dashRow, DashStore, refresh, sheetInfo, type DashRow, type StoredBlock } from './dash'
+import type { Caller, ToolCtx, WorkTool } from '../modules'
+import { admitForms, announce, DashError, dashItem, dashRow, DashStore, refresh, sheetInfo, type DashRow, type StoredBlock } from './dash'
 import { dayOf, hisZone, timeIn } from '../clock'
 
 /**
@@ -45,6 +45,9 @@ const Block = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('table'), title: z.string().min(1).max(120), sheet, range, counts })
 ])
 
+/** The calling thread, as every read and refresh of a page's Microsoft forms is admitted (dash.ts `admitForms`). */
+const threadOf = (ctx: ToolCtx): Caller => ({ kind: 'model', caps: [], sessionId: ctx.sessionId }) as Caller
+
 function paneDash(ctx: ToolCtx, id: string): CanvasItem {
   const it = dashItem(ctx, id)
   if (it.sessionId !== ctx.canvas.paneOf(ctx.sessionId)) throw new DashError(`This thread has no dashboard ${id}.`)
@@ -59,7 +62,7 @@ async function sheetOf(ctx: ToolCtx, name: string): Promise<{ sheet: DashSheet; 
     // A Microsoft form of the thread's own job, through its one reach check and Purdue's withhold.
     const { formReach } = await import('../msforms/reach')
     const { refuseWithheld } = await import('../msforms/withhold')
-    const by = { kind: 'model' as const, caps: [], sessionId: ctx.sessionId }
+    const by = threadOf(ctx)
     const { row } = formReach(ctx, by, { formId: name.slice('msform:'.length) })
     refuseWithheld(ctx, by, row.sector)
     s = { at: 'msform', host: ctx.host, workspaceId: row.workspaceId, formId: row.formId, tenant: row.tenant }
@@ -72,7 +75,7 @@ async function sheetOf(ctx: ToolCtx, name: string): Promise<{ sheet: DashSheet; 
     else if (it.source.at === 'file') s = { at: 'file', host: it.source.host, path: it.source.path }
     else throw new DashError(`${it.title} is not a sheet a dashboard can read.`)
   }
-  return { sheet: s, title: (await sheetInfo(ctx, s)).title }
+  return { sheet: s, title: (await sheetInfo(ctx, s, threadOf(ctx))).title }
 }
 
 async function blockOf(ctx: ToolCtx, b: z.infer<typeof Block>, proposed: StoredBlock['proposed']): Promise<StoredBlock> {
@@ -134,7 +137,11 @@ export const dashboardsTools: WorkTool[] = [
     readOnly: true,
     run: async (args, ctx) => {
       try {
-        return workText(outline(dashRow(ctx, paneDash(ctx, (args as { item: string }).item)), hisZone(ctx)))
+        const it = paneDash(ctx, (args as { item: string }).item)
+        const row = dashRow(ctx, it)
+        // its Microsoft form figures, cached or not, only as this thread may read them now
+        await admitForms(ctx, threadOf(ctx), it, row.blocks)
+        return workText(outline(row, hisZone(ctx)))
       } catch (err) {
         return fail(errorText(err))
       }
@@ -156,8 +163,8 @@ export const dashboardsTools: WorkTool[] = [
         const block = await blockOf(ctx, a.block, { by: agentPrincipal(ctx.host, ctx.sessionId), reason: a.reason, at: Date.now() })
         const at = a.after ? row.blocks.findIndex((b) => b.id === a.after) + 1 : row.blocks.length
         const blocks = [...row.blocks.slice(0, at || row.blocks.length), block, ...row.blocks.slice(at || row.blocks.length)]
-        const next = await refresh(ctx, it, blocks, 'list')
-        await announce(ctx, next)
+        const next = await refresh(ctx, it, blocks, 'list', threadOf(ctx))
+        await announce(ctx, next, threadOf(ctx))
         if (next.failed) return fail(`The block was added, but the page could not be read: ${next.failed}`)
         return workText(`Suggested in the dashboard: 1 block. Tell the owner it waits there for him to accept.\n\n${outline(next, hisZone(ctx))}`)
       } catch (err) {
@@ -180,8 +187,8 @@ export const dashboardsTools: WorkTool[] = [
         const blocks = row.blocks.map((b) =>
           b.kind === 'figures' ? { ...b, figures: b.figures.map((f) => ('service' in f.from && given.has(f.id) ? { ...f, value: given.get(f.id)! } : f)) } : b
         )
-        const next = await refresh(ctx, it, blocks)
-        await announce(ctx, next)
+        const next = await refresh(ctx, it, blocks, 'row', threadOf(ctx))
+        await announce(ctx, next, threadOf(ctx))
         return next.failed ? fail(`The page could not be read: ${next.failed}`) : workText(outline(next, hisZone(ctx)))
       } catch (err) {
         return fail(errorText(err))

@@ -27,13 +27,13 @@ export const dashboards: WorkModule = {
     fenceDash(ctx, by, dashRow(ctx, item), req.method)
     switch (req.method) {
       case 'work.dashboards.open':
-        return handled(await viewOf(ctx, dashRow(ctx, item)))
+        return handled(await viewOf(ctx, dashRow(ctx, item), by))
       case 'work.dashboards.refresh':
-        return handled(await announce(ctx, await refresh(ctx, item)))
+        return handled(await announce(ctx, await refresh(ctx, item, undefined, 'row', by), by))
       case 'work.dashboards.review':
-        return handled(await announce(ctx, review(ctx, item, req.params.which, req.params.verdict)))
+        return handled(await announce(ctx, review(ctx, item, req.params.which, req.params.verdict), by))
       case 'work.dashboards.remove':
-        return handled(await announce(ctx, removeBlock(ctx, item, req.params.blockId)))
+        return handled(await announce(ctx, removeBlock(ctx, item, req.params.blockId), by))
     }
     return NOT_HANDLED
   },

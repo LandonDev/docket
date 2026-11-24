@@ -2,6 +2,7 @@ import type { DatabaseSync } from 'node:sqlite'
 import type { DashBlock, DashboardView, DashFrom, DashProposal, DashSheet } from '@shared/contract-work-dashboards'
 import type { CanvasItem } from '@shared/work'
 import { FenceError } from '../../remote/fence'
+import { workspaceHere } from '../files/policy'
 import type { Caller, WorkCtx } from '../modules'
 import { aggregate, barsOf, formatValue, tableOf, type Cells } from './read'
 
@@ -108,23 +109,44 @@ function refOf(ctx: Pick<WorkCtx, 'host'>, s: DashSheet): { lifeos: string } | {
   return { tcsheet: s.path }
 }
 
-/** The dashboard's own job, as the host reads a form for it: the one reach check names the form's job. */
-const FORMS_READER: Caller = { kind: 'local', caps: [] }
+/** The host's own read for his window: a form is still read only through its job's reach (`admitForms`). */
+export const DASH_OWNER: Caller = { kind: 'local', caps: [] }
 
-export async function sheetInfo(ctx: Ctx, s: DashSheet): Promise<{ title: string; rev: number }> {
+export const FORM_NOT_THIS_JOB = "refused: that Microsoft form is not this dashboard's job's; nothing was read."
+
+/**
+ * Whether `by` may read, refresh or be shown a dashboard's Microsoft form figures: each form must be of the dashboard
+ * item's own job, reached through the form's one reach check as that caller (a library still reached, the sector it
+ * was made in, a thread's own job, a key's fence), and not withheld from a routine's thread (Purdue). Checked before
+ * any read, any refresh and any cached figure goes back.
+ */
+export async function admitForms(ctx: Ctx, by: Caller, item: Pick<CanvasItem, 'workspaceId'> | null, blocks: readonly StoredBlock[]): Promise<void> {
+  const forms = blocks.flatMap(sourcesOf).flatMap((f) => (f.sheet.at === 'msform' ? [f.sheet] : []))
+  if (!forms.length) return
+  const { formReach } = await import('../msforms/reach')
+  const { refuseWithheld } = await import('../msforms/withhold')
+  for (const s of forms) {
+    if (s.host !== ctx.host) throw new DashError('That form is on another host; open the dashboard there.')
+    if (!item || s.workspaceId !== item.workspaceId) throw new DashError(FORM_NOT_THIS_JOB)
+    const { row } = formReach(ctx as WorkCtx, by, { workspaceId: s.workspaceId, formId: s.formId })
+    refuseWithheld(ctx as WorkCtx, by, row.sector)
+  }
+}
+
+export async function sheetInfo(ctx: Ctx, s: DashSheet, by: Caller = DASH_OWNER): Promise<{ title: string; rev: number }> {
   if (s.at === 'msform') {
     if (s.host !== ctx.host) throw new DashError('That form is on another host; open the dashboard there.')
     const { msformSeries } = await import('../msforms/series')
-    const { title, rev } = await msformSeries(ctx as WorkCtx, FORMS_READER, { workspaceId: s.workspaceId, formId: s.formId })
+    const { title, rev } = await msformSeries(ctx as WorkCtx, by, { workspaceId: s.workspaceId, formId: s.formId })
     return { title, rev }
   }
   return (await ctx.service.internal('/internal/sheet/open', { sheet: refOf(ctx, s) })) as { title: string; rev: number }
 }
 
-async function readRange(ctx: Ctx, s: DashSheet, range: string): Promise<Cells> {
+async function readRange(ctx: Ctx, s: DashSheet, range: string, by: Caller): Promise<Cells> {
   if (s.at === 'msform') {
     const { msformSeries } = await import('../msforms/series')
-    return (await msformSeries(ctx as WorkCtx, FORMS_READER, { workspaceId: s.workspaceId, formId: s.formId, range })).cells
+    return (await msformSeries(ctx as WorkCtx, by, { workspaceId: s.workspaceId, formId: s.formId, range })).cells
   }
   const got = (await ctx.service.internal('/internal/sheet/range', { sheet: refOf(ctx, s), range })) as { cells: Cells }
   return got.cells
@@ -134,17 +156,17 @@ const sourcesOf = (b: DashBlock): DashFrom[] =>
   b.kind === 'chart' || b.kind === 'table' ? [b.from] : b.kind === 'figures' ? b.figures.flatMap((f) => ('sheet' in f.from ? [f.from] : [])) : []
 
 /** A block with what its ranges hold now. */
-async function readBlock(ctx: Ctx, b: StoredBlock): Promise<StoredBlock> {
+async function readBlock(ctx: Ctx, b: StoredBlock, by: Caller): Promise<StoredBlock> {
   if (b.kind === 'figures')
     return {
       ...b,
-      figures: await Promise.all(b.figures.map(async (f) => ('sheet' in f.from ? { ...f, value: formatValue(aggregate(await readRange(ctx, f.from.sheet, f.from.range), f.from.agg), f.format) } : f)))
+      figures: await Promise.all(b.figures.map(async (f) => ('sheet' in f.from ? { ...f, value: formatValue(aggregate(await readRange(ctx, f.from.sheet, f.from.range, by), f.from.agg), f.format) } : f)))
     }
   if (b.kind === 'chart') {
-    const [labels, values] = await Promise.all([readRange(ctx, b.from.sheet, b.from.labels), readRange(ctx, b.from.sheet, b.from.range)])
+    const [labels, values] = await Promise.all([readRange(ctx, b.from.sheet, b.from.labels, by), readRange(ctx, b.from.sheet, b.from.range, by)])
     return { ...b, bars: barsOf(labels, values) }
   }
-  if (b.kind === 'table') return { ...b, ...tableOf(await readRange(ctx, b.from.sheet, b.from.range)) }
+  if (b.kind === 'table') return { ...b, ...tableOf(await readRange(ctx, b.from.sheet, b.from.range, by)) }
   return b
 }
 
@@ -154,16 +176,18 @@ async function readBlock(ctx: Ctx, b: StoredBlock): Promise<StoredBlock> {
  * an "as of" it was not read at; `keep: 'list'` keeps `blocks` instead (a
  * block just proposed stays, unread).
  */
-export async function refresh(ctx: Ctx, item: CanvasItem, blocks?: StoredBlock[], keep: 'row' | 'list' = 'row'): Promise<DashRow> {
+export async function refresh(ctx: Ctx, item: CanvasItem, blocks?: StoredBlock[], keep: 'row' | 'list' = 'row', by: Caller = DASH_OWNER): Promise<DashRow> {
   const store = new DashStore(ctx.db)
   const row = dashRow(ctx, item)
   const list = blocks ?? row.blocks
+  // A form not this caller's to read is refused before anything is read or written: the cached page stays as it was.
+  await admitForms(ctx, by, item, list)
   try {
     const sheets = new Map<string, DashSheet>()
     for (const b of list) for (const f of sourcesOf(b)) sheets.set(sheetKey(f.sheet), f.sheet)
     const revs: Record<string, number> = {}
-    for (const [key, s] of sheets) revs[key] = (await sheetInfo(ctx, s)).rev
-    const read = await Promise.all(list.map((b) => readBlock(ctx, b)))
+    for (const [key, s] of sheets) revs[key] = (await sheetInfo(ctx, s, by)).rev
+    const read = await Promise.all(list.map((b) => readBlock(ctx, b, by)))
     return store.update(item.id, { blocks: read, asOf: Date.now(), revs, failed: null })
   } catch (err) {
     const failed = err instanceof Error ? err.message : String(err)
@@ -172,12 +196,12 @@ export async function refresh(ctx: Ctx, item: CanvasItem, blocks?: StoredBlock[]
 }
 
 /** Whether a sheet the page reads has moved since it was read. A sheet that cannot be asked counts as moved. */
-async function staleOf(ctx: Ctx, row: DashRow): Promise<boolean> {
+async function staleOf(ctx: Ctx, row: DashRow, by: Caller): Promise<boolean> {
   for (const [key, rev] of Object.entries(row.revs)) {
     const s = row.blocks.flatMap(sourcesOf).find((f) => sheetKey(f.sheet) === key)?.sheet
     if (!s) continue
     try {
-      if ((await sheetInfo(ctx, s)).rev !== rev) return true
+      if ((await sheetInfo(ctx, s, by)).rev !== rev) return true
     } catch {
       return true
     }
@@ -185,23 +209,29 @@ async function staleOf(ctx: Ctx, row: DashRow): Promise<boolean> {
   return false
 }
 
-export async function viewOf(ctx: Ctx, row: DashRow): Promise<DashboardView> {
-  return { itemId: row.itemId, rev: row.rev, title: row.title, blocks: row.blocks, asOf: row.asOf, stale: row.asOf !== null && (await staleOf(ctx, row)), failed: row.failed }
+/** The page as `by` is shown it: its Microsoft form figures only after the same admission a read takes (`admitForms`). */
+export async function viewOf(ctx: Ctx, row: DashRow, by: Caller = DASH_OWNER): Promise<DashboardView> {
+  await admitForms(ctx, by, ctx.canvas.get(row.itemId), row.blocks)
+  return { itemId: row.itemId, rev: row.rev, title: row.title, blocks: row.blocks, asOf: row.asOf, stale: row.asOf !== null && (await staleOf(ctx, row, by)), failed: row.failed }
 }
 
-/** The files a page reads: a push about it reaches only the sockets whose caller could name every one (`PushTo.path`). */
-export const filesOf = (row: DashRow): string[] => row.blocks.flatMap(sourcesOf).flatMap((f) => (f.sheet.at === 'file' ? [f.sheet.path] : []))
+/**
+ * The paths a push about a page is fenced by: a push reaches only the sockets whose caller could name every one
+ * (`PushTo.path`). Each file it reads, and the folder of the job of each Microsoft form it reads.
+ */
+export const filesOf = (row: DashRow, db?: Pick<WorkCtx, 'db'>['db']): string[] =>
+  row.blocks.flatMap(sourcesOf).flatMap((f) => (f.sheet.at === 'file' ? [f.sheet.path] : f.sheet.at === 'msform' && db ? [workspaceHere(db, f.sheet.workspaceId)?.path ?? `/no-such-job/${f.sheet.workspaceId}`] : []))
 
-export async function announce(ctx: Ctx, row: DashRow): Promise<DashboardView> {
-  const view = await viewOf(ctx, row)
-  const files = filesOf(row)
+export async function announce(ctx: Ctx, row: DashRow, by: Caller = DASH_OWNER): Promise<DashboardView> {
+  const view = await viewOf(ctx, row, by)
+  const files = filesOf(row, ctx.db)
   ctx.push({ push: 'work.dashboards', sessionId: row.sessionId, itemId: row.itemId, view }, files.length ? { path: files } : undefined)
   return view
 }
 
 /** A remote key sees a dashboard only when it could name every file the page reads itself. */
-export function fenceDash(ctx: Pick<WorkCtx, 'reaches'>, by: Caller, row: DashRow, method: string): void {
-  for (const path of filesOf(row)) if (!ctx.reaches(by, path)) throw new FenceError(method)
+export function fenceDash(ctx: Pick<WorkCtx, 'reaches' | 'db'>, by: Caller, row: DashRow, method: string): void {
+  for (const path of filesOf(row, ctx.db)) if (!ctx.reaches(by, path)) throw new FenceError(method)
 }
 
 // ── what the owner decides ───────────────────────────────────────────
