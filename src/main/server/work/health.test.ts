@@ -104,6 +104,11 @@ describe('checkHost', () => {
 describe('cleanRow', () => {
   it('passes on only an allowed fix: never a send, a grant or the switch, nor a page it does not know', () => {
     expect(cleanRow(row({ fix: { kind: 'run', label: 'Sign out', method: 'work.lifeos.signOut' } }), 'lifeos').fix).toEqual({ kind: 'run', label: 'Sign out', method: 'work.lifeos.signOut' })
+    // A run fix keeps the few short words it names (a tenant): Office's Sign out lost its tenant here and failed on every host.
+    expect(cleanRow(row({ fix: { kind: 'run', label: 'Sign out', method: 'work.office.live.signOut', params: { tenant: 'purdue0' } } }), 'office').fix).toEqual({ kind: 'run', label: 'Sign out', method: 'work.office.live.signOut', params: { tenant: 'purdue0' } })
+    // Nothing nested and nothing long rides a fix.
+    expect(cleanRow(row({ fix: { kind: 'run', label: 'Sign out', method: 'work.office.live.signOut', params: { tenant: { $ne: '' } } } }), 'office').fix).toEqual({ kind: 'run', label: 'Sign out', method: 'work.office.live.signOut' })
+    expect(cleanRow(row({ fix: { kind: 'run', label: 'Sign out', method: 'work.office.live.signOut', params: { tenant: 'x'.repeat(121) } } }), 'office').fix).toEqual({ kind: 'run', label: 'Sign out', method: 'work.office.live.signOut' })
     for (const method of ['work.outbox.send', 'work.outbox.grant', 'work.set'] as const) expect(cleanRow(row({ fix: { kind: 'run', label: 'Fix', method } }), 'mail').fix).toBeUndefined()
     expect(cleanRow(row({ fix: { kind: 'open', label: 'Open', url: 'javascript:alert(1)' } }), 'mail').fix).toBeUndefined()
     expect(cleanRow(row({ fix: { kind: 'page', label: 'Go', page: 'settings:anything' } }), 'mail').fix).toBeUndefined()

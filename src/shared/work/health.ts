@@ -69,6 +69,18 @@ export interface Lapse {
 export const HEALTH_RUN_METHODS: readonly string[] = ['work.lifeos.signOut', 'work.office.live.signOut']
 
 /**
+ * `run` fixes only a window on the row's own computer can carry out: the host refuses them to a remote key
+ * and to another host (his Office sign-in lives in that computer's windows). The page offers one there alone.
+ */
+export const HEALTH_OWN_COMPUTER: readonly string[] = ['work.office.live.signOut']
+
+/** A `run` fix's params as the wire carries them: a few short words (a tenant's name), nothing nested. */
+export function fixParams(params: Record<string, unknown> | undefined): Record<string, string> | undefined {
+  const pairs = Object.entries(params ?? {}).filter((pair): pair is [string, string] => typeof pair[1] === 'string' && pair[1].length <= 120 && pair[0].length <= 40)
+  return pairs.length && pairs.length <= 4 && pairs.length === Object.keys(params ?? {}).length ? Object.fromEntries(pairs) : undefined
+}
+
+/**
  * The places a `page` fix may open: the LifeOS sign-in dialog, OneDrive's sign-in on the Windows VM the row's host
  * keeps (`work.office.vmSignIn`, then the Computers page on the VM), or one of these Settings pages.
  */

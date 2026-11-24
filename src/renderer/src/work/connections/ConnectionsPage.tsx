@@ -147,7 +147,7 @@ function ConnectionRow({ placed, now, onDone }: { placed: PlacedRow; now: number
 function FixRow({ placed, now, onDone }: { placed: PlacedRow; now: number; onDone: () => void }) {
   const { row, hostId } = placed;
   const mark = markOf(row.state);
-  const fix = usableFix(row.fix);
+  const fix = usableFix(row.fix, registry.primary().environmentId === hostId);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [signingIn, setSigningIn] = useState(false);

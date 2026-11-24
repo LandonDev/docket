@@ -1,4 +1,4 @@
-import { fixAllowed, type HealthFix, type HealthReport, type HealthRow, type HealthState } from "@shared/work/health";
+import { fixAllowed, HEALTH_OWN_COMPUTER, type HealthFix, type HealthReport, type HealthRow, type HealthState } from "@shared/work/health";
 import type { ThreadState } from "../../components/ui/status";
 
 /**
@@ -86,7 +86,11 @@ export function fixVariant(state: HealthState): "secondary" | "ghost" {
   return state === "working" ? "ghost" : "secondary";
 }
 
-/** A fix the page can carry out: only the allowed few (`fixAllowed`), whatever a host sent. */
-export function usableFix(fix: HealthFix | undefined): HealthFix | null {
-  return fix && fixAllowed(fix) ? fix : null;
+/**
+ * A fix the page can carry out: only the allowed few (`fixAllowed`), whatever a host sent, and one that only a
+ * window on the row's own computer may run (`HEALTH_OWN_COMPUTER`) only there (`own`): elsewhere the host refuses it.
+ */
+export function usableFix(fix: HealthFix | undefined, own = true): HealthFix | null {
+  if (!fix || !fixAllowed(fix)) return null;
+  return fix.kind === "run" && HEALTH_OWN_COMPUTER.includes(fix.method) && !own ? null : fix;
 }

@@ -67,7 +67,11 @@ One optional field on the module, two core reads and one frame tool
   token or code in a query), whichever pillar wrote it.
 - `HealthFix`: `run`, `open` (an https page in his browser) or `page`, and
   only from short lists (`fixAllowed`): a `run` names one of
-  `HEALTH_RUN_METHODS` (today only `work.lifeos.signOut`), a `page` one of
+  `HEALTH_RUN_METHODS` (`work.lifeos.signOut`, `work.office.live.signOut`)
+  and keeps a few short words as its params (`fixParams`: Office's Sign out
+  names its tenant; nothing nested or long rides a fix), and one in
+  `HEALTH_OWN_COMPUTER` is offered only in a window on the row's own
+  computer, where alone the host runs it (`usableFix(fix, own)`); a `page` one of
   `HEALTH_PAGES` (`lifeos-sign-in`, the LifeOS sign-in dialog for that
   host; `windows-vm-sign-in`, OneDrive's sign-in brought up on the Windows
   VM that host keeps, `work.office.vmSignIn`, then the Computers page on

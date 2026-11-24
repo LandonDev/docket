@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { errorText, fixAllowed, HEALTH_ORDER, lapseLine, rowsForSector, workText, type HealthReport, type HealthRow, type Lapse, type PillarId, type SectorKey } from '@shared/work'
+import { errorText, fixAllowed, fixParams, HEALTH_ORDER, lapseLine, rowsForSector, workText, type HealthReport, type HealthRow, type Lapse, type PillarId, type SectorKey } from '@shared/work'
 import type { WorkCtx, WorkModule, WorkTool } from './modules'
 
 /**
@@ -27,11 +27,17 @@ const oneLine = (text: string | undefined, max = LINE_MAX): string | undefined =
   return flat.length > max ? `${flat.slice(0, max - 1)}…` : flat
 }
 
-/** A fix as the wire carries it: only one `fixAllowed` admits, its label one short line. */
+/**
+ * A fix as the wire carries it: only one `fixAllowed` admits, its label one short line. A `run` fix keeps its
+ * params: Sign out of Office for the web names its tenant, and without it the press failed on every host.
+ */
 function cleanFix(fix: HealthRow['fix']): HealthRow['fix'] | undefined {
   if (!fix || !fixAllowed(fix)) return undefined
   const label = oneLine(fix.label, 30)!
-  if (fix.kind === 'run') return { kind: 'run', label, method: fix.method }
+  if (fix.kind === 'run') {
+    const params = fixParams(fix.params)
+    return { kind: 'run', label, method: fix.method, ...(params ? { params } : {}) }
+  }
   if (fix.kind === 'open') return { kind: 'open', label, url: fix.url.slice(0, 500) }
   return { kind: 'page', label, page: fix.page }
 }

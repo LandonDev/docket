@@ -66,5 +66,10 @@ describe("the rest of the page's words", () => {
     expect(usableFix({ kind: "open", label: "Grant…", url: "javascript:alert(1)" })).toBeNull();
     expect(usableFix({ kind: "open", label: "Grant…", url: "https://accounts.google.com/" })).not.toBeNull();
     expect(usableFix(undefined)).toBeNull();
+    // His Office sign-in lives in one computer's windows: Sign out is offered there, never from another computer's window.
+    const signOut = { kind: "run", label: "Sign out", method: "work.office.live.signOut", params: { tenant: "purdue0" } } as const;
+    expect(usableFix(signOut, true)).toEqual(signOut);
+    expect(usableFix(signOut, false)).toBeNull();
+    expect(usableFix({ kind: "run", label: "Sign out", method: "work.lifeos.signOut" }, false)).not.toBeNull();
   });
 });
