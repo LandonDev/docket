@@ -2988,7 +2988,9 @@ the room sees, and the presenter's view. One state moves both.
   was disconnected", in 12px muted. The same line says "Reconnecting to the
   deck…" while a read of the deck is asked again; the slide stays up. It
   says "This build could not be drawn here. The room keeps the picture
-  before it." while the show is at a build whose picture could not be made.
+  before it." while the show is at a build whose picture could not be made,
+  and "This slide could not be drawn here. The room keeps the picture before
+  it." while the picture the room should see could not be painted.
 - **Return and Space on a control he tabbed to** press that control; after
   a press made with the pointer the keyboard is the show's again.
 - **Keys**, in either window (shared with PowerPoint and with a clicker,

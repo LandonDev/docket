@@ -257,6 +257,12 @@ The owner's ruling (2026-11-23), for every kind of file: nothing an agent
 suggests may be seen by anyone else on the team until he approves it and
 the file is really edited. For a deck:
 
+- **The word stays while the deck is open.** A seat that knew the deck as
+  one others can open (a PowerPoint tab) passes that word to every seat
+  still on it when it leaves (store.ts `keepShared`), and a seat's own
+  plain source never takes it back; the word goes with the deck's last
+  seat. So closing the PowerPoint tab never lifts the hold off the plain
+  tab and the changes that wait there.
 - **Which decks.** `deckShared(ctx, item)` (`view.ts`): a deck that lives in
   PowerPoint (`{at: 'microsoft'}`), and any file `sharedOf` (the files
   pillar's `policy.ts`) says others can open: a Teams or OneDrive library,
@@ -271,11 +277,14 @@ the file is really edited. For a deck:
   writes" an agent's own idea on such a deck is still a suggestion, and the
   agent is told so. What he asked for in so many words (`asked` with his
   quote) is written at once, as the ruling allows, but only in a message
-  of his that names this deck by its path (as the canvas writes it and a
-  file chip carries it: threads.ts `ownerSaid` with `about`, as Documents
-  does), so a slide number in words about another deck is never this
-  deck's; and only what his words name without doubt (`quoteNames`,
-  `slidesNamed`, tools.ts): every slide the batch changes must be named in
+  of his that names this deck by its path and no other file (as the canvas
+  writes it and a file chip carries it: threads.ts `ownerSaid` with `about`
+  and `only`; a message about two decks says neither surely), so a slide
+  number in words about another deck is never this deck's; and only what
+  his words name without doubt as slides to change (`quoteNames`,
+  `slidesIn`, tools.ts): a slide named after "after", "before", "to",
+  "behind" and the like is a place, where a move or an add may go but no
+  edit may change; every slide the batch changes must be named in
   the quote by number ("slide 3"; "slides 2-4", "slides 2 to 4"; after
   "slide" one number alone, so "move slide 2 to 5" names slide 2; "or" is
   no list), by place ("the second slide", "the last slide") or by a title
@@ -468,12 +477,15 @@ the file.
   on; any other kind's failed send still lets its tab go): the tab stays
   open with the box, its words and the state line's Retry or Reload, and
   Files says the tab did not close. Just before the close's 8 s wait runs
-  out, words the commit has not yet handed to the host (still behind a
-  slow keep in this window) refuse the close too ("The words in the open
-  box are not saved yet"), so they are never lost with the item; words on
-  their way the host lands. No box opens over words not saved yet (a
-  conflict that waits for Reload, a refused send): the press says so, and
-  Escape puts them back. A pause in his
+  out, any words of the box the host has not yet said it holds (behind a
+  slow keep in this window, or a write still on its way that may yet be
+  refused, whatever an earlier try did) refuse the close too ("The words
+  in the open box are not saved yet"), so they are never lost with the
+  item. No box opens over words not saved yet (a conflict that waits for
+  Reload, a refused send): the press says so, and Escape puts them back. A
+  conflict whose shape another save took off the slide cannot draw its
+  box: the line offers Copy words, which puts them on his clipboard and
+  then lets the box go. A pause in his
   typing sends them sooner, the box left open (`keep`, below).
 - **A box's edit names the words it was opened on** (`runs`' `was`: the
   shape's runs' words, a paragraph each, as the box's `from`s read them;
@@ -860,7 +872,12 @@ and makes every step picture and clip the revision lacks, pushing
 deck's pictures' folder (`showKey`: the deck's for his own file, each
 tab's own on a file others can open), gone with that folder's pictures;
 a newer revision stops the older; a revision is made once while the app
-runs (one that failed is tried again at its next change). A write never
+runs (one that failed is tried again at its next change). The job keeps
+what it could not make (`left`); a show read that finds anything else of
+its revision missing (a step picture let go to make room among the pages,
+`prunePages`) starts it again, so what was let go is made again and never
+called failed. Making room among clips never lets go of one the revision
+names (`pruneMedia`'s spare). A write never
 waits on it; an edit's own picture waits at most for the one page the kept
 LibreOffice is drawing. A step with no picture says why (`ShowStep.missing`):
 `making` while the revision's job runs, `failed` once it has ended without
@@ -1539,13 +1556,21 @@ once (`work.slides.edit`), whole or not at all.
   one (`op_runs`). Once a keep lands, every `from` the box, its undo and
   its redo hold is moved onto those: a run by the run it came from and what
   he set on it (two runs alike in both are written alike); a paragraph
-  likewise. One the edit did not write that way (words taken out, then
-  brought back with the box's Undo) names no run of the file any more: it
-  keeps its look by setting it all as it is drawn, a paragraph its level,
-  alignment and list. So a Return and more typing keeps "Budget" its level
-  and bullet, words typed into the plain half of a run made half bold stay
-  plain, and a bold word deleted, kept, then undone comes back bold. Reload
-  after a conflict (`rebase`) does the same for what loses its place.
+  likewise. One whose run or paragraph of the file was written with
+  another look on top (his box's Undo took back a look the keep wrote)
+  still names it, so it keeps all its own held (a link, a raised letter, a
+  custom mark, margins), and sets over it only what differs from what the
+  keep wrote there (`lookOver`, `paraOver`: bold off, the alignment back).
+  One whose source was not written at all (words taken out, then brought
+  back) names nothing: it sets its whole look as drawn, a paragraph its
+  level, alignment and list. So a Return and more typing keeps "Budget" its
+  level and bullet, words typed into the plain half of a run made half bold
+  stay plain, a bold word deleted, kept, then undone comes back bold, and a
+  linked word made bold then undone stays linked. Reload after a conflict
+  (`rebase`) follows each run and paragraph to the same one in the new
+  words (its words and look; a paragraph by a run of it still there),
+  never to what now stands at its old place, and sets the look of what has
+  none.
 - **One send of the box at a time.** A keep waits for one on its way; a
   commit stops the box (`saving`) and waits for the keep on its way, then
   sends over what it wrote, so a commit, or a close, never sends `from`s of
@@ -1679,7 +1704,11 @@ key a clicker sends.
 - **Advance after.** `autoAfter` is the slide's time, counted again at each
   of its steps from when that step's picture is painted where the room sees
   it (the slideshow's, or the presenter's view when it runs alone, told by
-  `SlidePicture`'s `onShown`; a held step holds the clock too), and null on
+  `SlidePicture`'s `onShown` with the picture it painted, so a picture of
+  the same place drawn again after the file changed counts from its own
+  paint; a held step holds the clock too; a picture whose paint failed is
+  said by `onFailed`, "This slide could not be drawn here. The room keeps
+  the picture before it.", and holds it too), and null on
   a black screen, with the picker open or at the end. A notice that more of
   the show is ready, come while the show was still reading that revision,
   is counted and read once more when the read is done. One timer in the show's root dispatches `{t: 'auto', at, step}`; the
@@ -1826,7 +1855,10 @@ through the app's own wire; the show runs in one window, whose state
   or ended says nothing: the state it answers with is told as the push
   would tell it (`withPressAnswers`), so a clicker that missed a push while
   its socket was down catches up with its next press; the live shows are
-  read again when the wire comes back (`ShowRemote.onOpen`).
+  read again when the wire comes back (`ShowRemote.onOpen`). A word older
+  than the one held changes nothing, and a list read whole gives way to
+  every push heard while it was read. A press the window took but did not
+  answer in time is answered with the show as it still runs.
 - **Who may.** His own window and his keys that could name the deck's
   file (`fenceItem`); a key whose caps lack `operate` is refused a press
   ("Only his own devices drive a show."), and the wire's own gate refuses it
