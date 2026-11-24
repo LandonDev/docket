@@ -471,6 +471,9 @@ new group. Every menu, context menu and
 select row takes its box from `MENU_ROW` (components/ui/menu-row.ts,
 exported by dropdown-menu.tsx). Between groups in a panel or page: 16px; between sections: 24px.
 A panel's inset is 12px; a dialog's 20px. Never a value off the grid.
+As a bar narrows, the least fact gives way first, and whole: a name the
+place already says elsewhere goes rather than stand cut to a stub ("Age…"),
+and a press that goes keeps its way in (an icon with its tip, or the menu).
 
 ### Radius ladder
 

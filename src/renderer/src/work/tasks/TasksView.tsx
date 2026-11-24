@@ -224,7 +224,8 @@ function Lead({
             {task.dueAt !== undefined ? <span className={cn("shrink-0 tabular-nums", overdue ? "text-destructive" : "text-foreground")}>{meta ? ", " : ""}Due {dueMidLine(task.dueAt, now)}</span> : null}
           </p>
         ) : null}
-        <div className="mt-3 flex items-center gap-2">
+        {/* The presses keep to the column the rows end on: under 22rem Open gives way first, since the task's menu holds it. */}
+        <div data-lead-presses className="@container/leadpresses mt-3 flex items-center gap-2">
           {thread && marksAtRest(thread.state) ? (
             // Beside the button, not on its fill: the mark's tone must read on the page.
             <span data-lead-thread={thread.state} className="flex size-4 shrink-0 items-center justify-center">
@@ -256,7 +257,7 @@ function Lead({
               ))}
             </DropdownMenuContent>
           </DropdownMenu>
-          <Button size="sm" variant="ghost" onClick={() => onOpen(task)}>
+          <Button size="sm" variant="ghost" className="@max-[22rem]/leadpresses:hidden" onClick={() => onOpen(task)}>
             Open
           </Button>
         </div>

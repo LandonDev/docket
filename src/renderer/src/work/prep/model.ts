@@ -43,7 +43,8 @@ export function whenLine(event: PrepEvent, now: number): string {
   const place = event.location?.trim();
   // A place that is only a link is the call's own, and Files already offers it ("Join the call"): never the same link twice, nor a long URL in the line.
   if (place && !/^https?:\/\/\S+$/i.test(place)) parts.push(place);
-  if (event.leaveAt !== undefined && !event.allDay && now < event.startsAt) parts.push(`leave ${clockTime(event.leaveAt)}`);
+  // One fact, kept on one line: "leave 1:40 PM" never ends a line on "leave 1:40" with PM under it.
+  if (event.leaveAt !== undefined && !event.allDay && now < event.startsAt) parts.push(`leave ${clockTime(event.leaveAt)}`.replace(/\s/g, "\u00a0"));
   return parts.join(", ");
 }
 

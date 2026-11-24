@@ -13,6 +13,11 @@ vi.mock("../../lib/tcserver/workspaces", async (original) => ({
 vi.mock("convex/react", async (original) => ({ ...(await original<object>()), ConvexReactClient: class {} }));
 vi.mock("../../stores/project", async (original) => ({ ...(await original<object>()), useSelectedWorkspaceIds: () => ["ws"] }));
 const files = vi.hoisted(() => ({ opened: [] as unknown[][] }));
+const toasts = vi.hoisted(() => [] as { message: string; description?: string }[]);
+vi.mock("../../components/ui/toaster", () => {
+  const toast = Object.assign(() => undefined, { error: (message: string, opts?: { description?: string }) => void toasts.push({ message, ...(opts?.description ? { description: opts.description } : {}) }) });
+  return { loadToast: async () => toast, toast };
+});
 vi.mock("../files/openFrom", async (original) => ({ ...(await original<object>()), openInFiles: async (...args: unknown[]) => void files.opened.push(args) }));
 
 const { ViewBoundary, ViewFrame, WorkViewSurface } = await import("./WorkViewPage");
@@ -57,6 +62,32 @@ describe("the view frame's line", () => {
     await flush();
     expect(asked).toContain("work.lifeos.status");
     expect(asked.filter((m) => m === "work.lifeos.jwt").length).toBe(before + 1);
+  });
+});
+
+describe("the view frame's Retry", () => {
+  it("says a failed Retry in the host's words, never its raw text", async () => {
+    toasts.length = 0;
+    let fail = false;
+    vi.spyOn(registry, "environment").mockReturnValue({ name: "The box" } as never);
+    vi.spyOn(registry, "linkOf").mockReturnValue({
+      environmentId: "env_box",
+      connected: true,
+      onPush: () => () => {},
+      onOpen: () => () => {},
+      request: vi.fn(async (method: string) => {
+        if (method === "work.lifeos.status" && !fail) return { lifeos: { state: "connected", ownerId: "landon", since: 1 }, keys: [] };
+        throw new Error(method === "work.lifeos.status" ? "No answer in 30 s" : "socket closed");
+      }),
+    } as never);
+    setLifeosStatus("env_box", { lifeos: { state: "connected", ownerId: "landon", since: 1 }, keys: [] });
+    render(<ViewFrame view="tasks" environmentId="env_box" workspaceId="ws" sector="purdue" />);
+    await flush();
+    await flush();
+    fail = true;
+    fireEvent.click(await screen.findByRole("button", { name: "Retry" }));
+    await vi.waitFor(() => expect(toasts).toHaveLength(1));
+    expect(toasts[0]).toEqual({ message: "LifeOS did not answer", description: "The box did not answer. Try again once it is connected." });
   });
 });
 
@@ -156,6 +187,20 @@ describe("a view's boundary", () => {
     fail = false;
     fireEvent.click(screen.getByRole("button", { name: "Retry" }));
     expect(screen.getByText("The tasks")).toBeTruthy();
+  });
+
+  it("drops a raw error from its line: the title says what failed", () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    function Tasks(): never {
+      throw new Error("work.tasks.list refused: /srv/agents/data/work/ws/tasks.json");
+    }
+    const { container } = render(
+      <ViewBoundary label="Tasks">
+        <Tasks />
+      </ViewBoundary>,
+    );
+    expect(screen.getByText("Tasks did not load")).toBeTruthy();
+    expect(container.textContent).not.toContain("work.tasks.list");
   });
 });
 

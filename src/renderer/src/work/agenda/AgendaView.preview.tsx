@@ -1,14 +1,15 @@
 // A preview page for `bun run ui:preview src/renderer/src/work/agenda/AgendaView.preview.tsx#AgendaPreview --props '{"state":"list"}'`:
 // the Agenda view under its header, over a LifeOS that answers from made-up events. States: `list` (the next days),
 // `week`, `month`, `new` (New event over the list), `new-none` (New event where no calendar of the job takes events),
-// `empty`, `loading` and `loading-week` (the Week kept, its grid's bones). Rendered by nothing in the app.
+// `empty`, `loading`, `loading-week` (the Week kept, its grid's bones) and `week-ahead` (the Week two weeks on: off today's
+// period, the narrow header keeps its Today press). Rendered by nothing in the app.
 import { useEffect } from "react";
 import { startOfDay } from "work-kit/views/lib/agenda";
 import { keepPlace } from "../shell/place";
 import { JOB, standUpView, ViewAt } from "../kit.preview";
 import { agendaPlace, type AgendaShow } from "./place";
 
-type State = AgendaShow | "new" | "new-none" | "empty" | "loading" | "loading-week";
+type State = AgendaShow | "new" | "new-none" | "empty" | "loading" | "loading-week" | "week-ahead";
 
 const TODAY = startOfDay(Date.now());
 const HOUR = 3_600_000;
@@ -33,7 +34,7 @@ export function AgendaPreview({ state = "list" }: { state?: State }) {
   if (!ready) {
     ready = true;
     // The visit opens on the view the workspace kept: the state's own, on today.
-    keepPlace(JOB.id, "agenda", { view: state === "week" || state === "month" ? state : state === "loading-week" ? "week" : "list", day: TODAY, on: TODAY });
+    keepPlace(JOB.id, "agenda", { view: state === "week" || state === "month" ? state : state === "loading-week" || state === "week-ahead" ? "week" : "list", day: state === "week-ahead" ? TODAY + 14 * DAY : TODAY, on: TODAY });
     standUpView("agenda", { "events:range": state === "loading" || state === "loading-week" ? undefined : state === "empty" ? [] : EVENTS, "people:directory": [], "sources:list": state === "new-none" ? [] : [{ _id: "s1", kind: "gcal", account: "landon@purdue.edu", label: "landon@purdue.edu", sector: "purdue", enabled: true }] });
   }
   // New event is the header's own press: here the place it sets, once the visit has opened.
@@ -42,5 +43,5 @@ export function AgendaPreview({ state = "list" }: { state?: State }) {
     const t = setTimeout(() => agendaPlace.set({ ...agendaPlace.get(), adding: "now" }), 40);
     return () => clearTimeout(t);
   }, [state]);
-  return <ViewAt view="agenda" height={state === "month" || state === "week" || state === "loading-week" || state === "new" || state === "new-none" ? 700 : 560} />;
+  return <ViewAt view="agenda" height={state === "month" || state === "week" || state === "week-ahead" || state === "loading-week" || state === "new" || state === "new-none" ? 700 : 560} />;
 }

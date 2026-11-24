@@ -92,6 +92,16 @@ describe("the Tasks view", () => {
     expect(dueMidLine(due(0, 15, 0), now)).toBe(formatDue(due(0, 15, 0), now));
   });
 
+  it("keeps the lead's presses on the rows' column when narrow: Open gives way first, the task's menu holds it", () => {
+    render(<Tasks client={fakeTasksClient(rows)} startThread={() => {}} />);
+    const presses = document.querySelector<HTMLElement>("[data-lead-presses]")!;
+    expect(presses.className).toContain("@container/leadpresses");
+    const open = [...presses.querySelectorAll("button")].find((b) => b.textContent === "Open")!;
+    expect(open.className).toContain("@max-[22rem]/leadpresses:hidden");
+    // Start thread, Done and Snooze never give way.
+    for (const name of ["Start thread", "Done", "Snooze"]) expect([...presses.querySelectorAll("button")].find((b) => b.textContent === name)!.className).not.toContain("hidden");
+  });
+
   it("draws a one-line row at 32px, so it sits centred among the two-line rows", () => {
     render(<Tasks client={fakeTasksClient(rows)} startThread={() => {}} />);
     const row = screen.getByRole("button", { name: "Open Send Dana the budget" }).closest<HTMLElement>("[role=listitem]")!;

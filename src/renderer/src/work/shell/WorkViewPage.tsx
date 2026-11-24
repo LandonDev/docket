@@ -3,7 +3,6 @@ import type { SectorKey } from "@shared/work";
 import type { LifeosStateName } from "@shared/contract-work-lifeos";
 import { BusyLabel, Button } from "../../components/ui/button";
 import { EmptyState, SurfaceSkeleton } from "../../surfaces/SurfaceSkeleton";
-import { errorText } from "../../chrome/ConfirmDialog";
 import { loadToast } from "../../components/ui/toaster";
 import { useWorkspaces } from "../../lib/tcserver/workspaces";
 import { nameInLine } from "../../lib/hostWords";
@@ -17,6 +16,7 @@ import { openWorkSettings } from "./open";
 import { reopenLifeos, useLifeosSession, useLifeosStatus } from "./lifeos";
 import { startThreadAbout } from "./WorkColumn";
 import { clockTime } from "../../lib/duration";
+import { workErrorWords } from "../../lib/workErrorWords";
 
 // The sign-in dialog Connections uses, loaded on the press: a view's sign-in opens it in place, never a page without it.
 const SignInDialog = lazy(() => import("./settings").then((m) => ({ default: m.SignInDialog })));
@@ -49,7 +49,8 @@ export function WorkViewSurface() {
     void import("../files/openFrom").then(({ filesOfDocs, openInFiles }) =>
       openInFiles(at, filesOfDocs(docs.doc)).catch((err: unknown) => {
         openWorkView({ workspaceId: at.id, view: "files" });
-        void loadToast().then((toast) => toast.error("It did not open", { description: errorText(err) }));
+        const name = registry.environment(at.environmentId)?.name;
+        void loadToast().then((toast) => toast.error("It did not open", { description: workErrorWords(err, name ? { host: nameInLine(name) } : {}) || undefined }));
       }),
     );
     // Taken once per way in: the view it names changes as soon as Files shows.
@@ -128,7 +129,7 @@ export function ViewFrame({ view, environmentId, workspaceId, sector }: { view: 
   const retry = (): void => {
     setRetrying(true);
     reopenLifeos(environmentId, sector)
-      .catch((err: unknown) => void loadToast().then((toast) => toast.error("LifeOS did not answer", { description: errorText(err) })))
+      .catch((err: unknown) => void loadToast().then((toast) => toast.error("LifeOS did not answer", { description: workErrorWords(err, { host: nameInLine(host) }) || undefined })))
       .finally(() => setRetrying(false));
   };
   return (
@@ -212,14 +213,14 @@ function ViewSkeleton({ label }: { label: string }) {
 export class ViewBoundary extends Component<{ label: string; children: ReactNode; onRetry?: () => void }, { error: string | null; attempt: number }> {
   override state = { error: null as string | null, attempt: 0 };
   static getDerivedStateFromError(error: unknown): { error: string } {
-    return { error: errorText(error) };
+    return { error: workErrorWords(error) };
   }
   override render(): ReactNode {
     if (this.state.error !== null)
       return (
         <EmptyState
           title={`${this.props.label} did not load`}
-          line={this.state.error}
+          line={this.state.error || undefined}
           action={{
             label: "Retry",
             onClick: () => {

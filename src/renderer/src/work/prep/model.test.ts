@@ -10,7 +10,7 @@ const event = (over: Partial<PrepEvent> = {}): PrepEvent => ({ id: "ev1", title:
 
 describe("the line under the title", () => {
   it("says the day, the time, the place and when to leave, as one comma sentence", () => {
-    expect(whenLine(event({ location: "RecWell 204", leaveAt: at(13, 40) }), NOW)).toBe("Today, 2:00 to 2:45 PM, RecWell 204, leave 1:40 PM");
+    expect(whenLine(event({ location: "RecWell 204", leaveAt: at(13, 40) }), NOW)).toBe("Today, 2:00 to 2:45 PM, RecWell 204, leave\u00a01:40\u00a0PM");
   });
 
   it("keeps both halves of the day when a meeting crosses noon, and says a time alone when it has no end", () => {

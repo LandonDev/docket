@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const NOW = new Date(2026, 10, 23, 12);
 
 const { resetAgendaPlace } = await import("./place");
-const { Head, View, shortMonth, shortWeek } = await import("./AgendaView");
+const { Head, Title, View, holdsToday, shortMonth, shortWeek } = await import("./AgendaView");
 const { keepPlace } = await import("../shell/place");
 
 beforeEach(() => {
@@ -33,14 +33,49 @@ describe("the Agenda's header", () => {
     expect(container.querySelector("[data-agenda-short-period]")!.textContent).toBe(shortMonth(next.getTime()));
     // The week view keeps a short period too.
     fireEvent.click(screen.getByRole("button", { name: "Week" }));
-    fireEvent.click(screen.getByRole("button", { name: "Today" }));
+    fireEvent.click(screen.getAllByRole("button", { name: "Today" })[0]!);
     expect(container.querySelector("[data-agenda-short-period]")!.textContent).toBe(shortWeek(NOW.getTime()));
+  });
+
+  it("keeps a way back to today when narrow: an icon press with its tip, only off today's period", () => {
+    const { container } = render(<Head {...({ workspace: { id: "ws" } } as never)} />);
+    fireEvent.click(screen.getByRole("button", { name: "Week" }));
+    // On this week there is nowhere to go back to.
+    expect(container.querySelector('[data-agenda-today="icon"]')).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Next week" }));
+    fireEvent.click(screen.getByRole("button", { name: "Next week" }));
+    const icon = container.querySelector<HTMLElement>('[data-agenda-today="icon"]')!;
+    // Drawn only where the word gives way.
+    expect(icon.className).toContain("@min-[26rem]/viewhead:hidden");
+    expect(icon.getAttribute("aria-label")).toBe("Today");
+    fireEvent.click(icon);
+    expect(container.querySelector("[data-agenda-short-period]")!.textContent).toBe(shortWeek(NOW.getTime()));
+    expect(container.querySelector('[data-agenda-today="icon"]')).toBeNull();
+  });
+
+  it("knows the period that holds today", () => {
+    const monday = 1;
+    const now = NOW.getTime();
+    expect(holdsToday("week", new Date(2026, 10, 18).getTime(), now, monday)).toBe(false);
+    expect(holdsToday("week", new Date(2026, 10, 25).getTime(), now, monday)).toBe(true);
+    expect(holdsToday("month", new Date(2026, 10, 2).getTime(), now, monday)).toBe(true);
+    expect(holdsToday("month", new Date(2026, 11, 2).getTime(), now, monday)).toBe(false);
+  });
+
+  it("lets the view's name give way whole in a narrow Week or Month, never cut to a stub; the List keeps it", () => {
+    render(<Head {...({ workspace: { id: "ws" } } as never)} />);
+    const { container } = render(<Title {...({ workspace: { id: "ws" } } as never)} />);
+    const name = (): HTMLElement => container.querySelector("span")!;
+    expect(name().textContent).toBe("Agenda");
+    expect(name().className).not.toContain("sr-only");
+    fireEvent.click(screen.getByRole("button", { name: "Month" }));
+    expect(name().className).toContain("@max-[26rem]/viewhead:sr-only");
   });
 
   it("gives way at narrow widths: Today under 26rem of header, the three views as one select under 40rem", () => {
     const { container } = render(<Head {...({ workspace: { id: "ws" } } as never)} />);
     fireEvent.click(screen.getByRole("button", { name: "Week" }));
-    expect(screen.getByRole("button", { name: "Today" }).className).toContain("@max-[26rem]/viewhead:hidden");
+    expect(screen.getAllByRole("button", { name: "Today" })[0]!.className).toContain("@max-[26rem]/viewhead:hidden");
     // The short period is never cut: the view's name gives way before it.
     expect(container.querySelector("[data-agenda-short-period]")!.className).toContain("shrink-0");
     expect(container.querySelector('[data-agenda-views="toggle"]')!.className).toContain("hidden @min-[40rem]/viewhead:flex");

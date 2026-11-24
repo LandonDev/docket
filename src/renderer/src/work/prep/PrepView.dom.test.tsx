@@ -215,7 +215,8 @@ describe("the page of facts", () => {
     await mount();
     expect(host.asked).toEqual([{ method: "work.prep.page", params: { workspaceId: "ws", eventId: "ev1" } }]);
     expect(screen.getByRole("heading", { level: 1 }).textContent).toBe("Staff sync");
-    expect(screen.getByText("Today, 2:00 to 2:45 PM, RecWell 204, leave 1:40 PM")).toBeTruthy();
+    // "leave 1:40 PM" is one fact on one line: no space in it the line may break at.
+    expect(screen.getByText("Today, 2:00 to 2:45 PM, RecWell 204, leave 1:40 PM").textContent).toContain("leave\u00a01:40\u00a0PM");
   });
 
   it("draws each section that has something, in the page's order, and none that has nothing", async () => {

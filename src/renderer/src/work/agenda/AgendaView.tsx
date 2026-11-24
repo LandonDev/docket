@@ -7,6 +7,8 @@ import { formatDayHeading, formatTime } from "work-kit/views/lib/format";
 import { ChevronLeft, ChevronRight, Plus } from "../../chrome/icons";
 import { ChoiceSelect } from "../../components/choice-select";
 import { ChoiceToggle } from "../../components/choice-toggle";
+import { Tip } from "../../components/tip";
+import { Calendar } from "../icons";
 import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuTrigger } from "../../components/ui/context-menu";
 import { Button } from "../../components/ui/button";
 import { reveal } from "../../components/ui/reveal";
@@ -70,6 +72,21 @@ export function shortWeek(day: number, start = weekStart): string {
   return first.getMonth() === last.getMonth() ? `${monthDay(first)} – ${last.getDate()}` : `${monthDay(first)} – ${monthDay(last)}`;
 }
 
+/** Whether `day`'s period (its week or month) holds today: off it, the compact header keeps a press back. */
+export function holdsToday(view: "week" | "month", day: number, now = Date.now(), start = weekStart): boolean {
+  const { from, to } = viewRange(view, day, start);
+  return now >= from && now < to;
+}
+
+/**
+ * The view's name in the header. Narrow, a Week or a Month needs every pixel for its period and its presses: under 26rem
+ * the name gives way whole (still read aloud, still the heading's focus), never cut to "Age…", since the column names it.
+ */
+export function Title(_props: WorkViewProps) {
+  const { view } = useShared(state);
+  return <span className={cn("truncate font-medium text-foreground", view !== "list" && "@max-[26rem]/viewhead:sr-only")}>Agenda</span>;
+}
+
 export function Head({ workspace }: WorkViewProps) {
   // The header mounts before the view's chunk lands: the visit's place is the workspace's from its first frame.
   useLayoutEffect(() => restoreAgendaPlace(workspace.id), [workspace.id]);
@@ -84,10 +101,18 @@ export function Head({ workspace }: WorkViewProps) {
           <span data-agenda-short-period className="shrink-0 text-[13px] whitespace-nowrap text-muted-foreground tabular-nums @min-[40rem]/viewhead:hidden">
             {view === "month" ? shortMonth(day) : shortWeek(day)}
           </span>
-          {/* Under 26rem of header, Today gives way so the short period keeps its room: Previous and Next stay. */}
+          {/* Under 26rem of header, Today's word gives way so the short period keeps its room; off today's period an
+              icon press with its tip stays, so the way back is one press. */}
           <Button variant="ghost" size="sm" className="@max-[26rem]/viewhead:hidden" onClick={() => go({ day: startOfDay(Date.now()) })}>
             Today
           </Button>
+          {holdsToday(view, day) ? null : (
+            <Tip label="Today">
+              <Button variant="ghost" size="icon-sm" aria-label="Today" data-agenda-today="icon" className="@min-[26rem]/viewhead:hidden" onClick={() => go({ day: startOfDay(Date.now()) })}>
+                <Calendar />
+              </Button>
+            </Tip>
+          )}
           <Button variant="ghost" size="icon-sm" aria-label={`Previous ${view}`} onClick={() => go({ day: shiftPeriod(view, day, -1) })}>
             <ChevronLeft />
           </Button>
