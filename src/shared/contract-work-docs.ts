@@ -13,7 +13,9 @@ import { request, type CapsOf, type RelayOf } from './work/wire'
  * A source is a LifeOS document (`{ at: 'lifeos', table: 'docs' }`), a
  * LifeOS project note that is a document (`table: 'projectDocs'`), or a
  * `.tcdoc` on this host. Every method names the source, not a canvas item, so
- * the Docs view opens a document with no thread.
+ * the Docs view opens a document with no thread. A mail's or a chat's
+ * attachment read as a document is the one exception: the window names the
+ * attachment's own source with the item that shows it (`itemId`).
  */
 
 /** How the agent's own ideas land: written with Undo, or waiting as suggestions. A shared document always suggests. */
@@ -134,15 +136,21 @@ export const FindSpecSchema = z.object({
 /** One relayed socket's frames, each a Hocuspocus message in base64. */
 const frames = z.array(z.string().max(6_000_000)).max(200)
 const socketId = z.string().regex(/^[A-Za-z0-9_-]{16,64}$/)
+/**
+ * The canvas item that shows a mail's or a chat's attachment, when `source` names that attachment: the host finds the
+ * document it read the file into by the item (work/docs/target.ts `attachmentPathOf`), so no path of its data
+ * directory crosses the wire.
+ */
+const itemId = z.string().min(1).max(80).optional()
 
 export const DocsRequestSchemas = [
   /** → DocOpen */
-  request('work.docs.open', z.object({ source: CanvasSourceSchema })),
+  request('work.docs.open', z.object({ source: CanvasSourceSchema, itemId })),
   /** → DocToken: a collaboration token for the document, as this caller (edit, or view for a read-only key) */
-  request('work.docs.token', z.object({ source: CanvasSourceSchema })),
+  request('work.docs.token', z.object({ source: CanvasSourceSchema, itemId })),
   /** → { socket }: a socket to the document on the host that serves it, relayed over this link */
   /** `schema`: the highest document schema the window's editor knows; the host says it to the service for it */
-  request('work.docs.connect', z.object({ source: CanvasSourceSchema, schema: z.number().int().min(0).max(1000).optional() })),
+  request('work.docs.connect', z.object({ source: CanvasSourceSchema, itemId, schema: z.number().int().min(0).max(1000).optional() })),
   /**
    * → { ok: true }: frames for the relayed socket, in order. `stored`: answered once the service has applied every
    * frame the socket sent and stored the document (a tab's close awaits it before anything judges the file).
@@ -153,7 +161,7 @@ export const DocsRequestSchemas = [
   /** → { ok: true } */
   request('work.docs.close', z.object({ socket: socketId })),
   /** → { rows: DocThreadRow[]; names }: names for each author a row holds */
-  request('work.docs.threads', z.object({ source: CanvasSourceSchema })),
+  request('work.docs.threads', z.object({ source: CanvasSourceSchema, itemId })),
   /** → the row made (create), the comment made (reply), or { ok: true } */
   request('work.docs.thread', z.object({ source: CanvasSourceSchema, change: DocThreadOpSchema })),
   /** → DocOpen: how the agent's own ideas land on this document */

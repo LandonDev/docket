@@ -181,8 +181,10 @@ export async function importFile(ctx: WorkCtx, by: Caller, params: ImportParams)
     const pane = ctx.canvas.paneOf(params.sessionId)
     const old = params.itemId ? ctx.canvas.get(params.itemId) : null
     // Overtaken while it was read: the item closed, or it names another file now (renamed or moved, and imported
-    // again from there). This document is dropped, so one Word file never opens as two editable documents.
-    if (from.at === 'source' && old && old.sessionId === pane && (old.state === 'closed' || (old.source && !namesFile(old.source, original!)))) {
+    // again from there). This document is dropped, so one Word file never opens as two editable documents. A mail's
+    // attachment names no file of his: Keep as document imports the copy saved to the workspace into its place.
+    const kept = old?.source?.at === 'mail'
+    if (from.at === 'source' && old && old.sessionId === pane && (old.state === 'closed' || (old.source && !kept && !namesFile(old.source, original!)))) {
       rmSync(target, { force: true })
       ctx.db.prepare('DELETE FROM work_docs_threads WHERE doc = ?').run(fileDocName(target))
       throw new Error(IMPORT_OVERTAKEN)
@@ -195,7 +197,7 @@ export async function importFile(ctx: WorkCtx, by: Caller, params: ImportParams)
 
 /**
  * A mail's attachment read as a document (work-mail.md "Attachments"): the fetched copy in the item's own folder
- * becomes `<name>.tcdoc` beside it, once, and the item stays the attachment, which the document kind shows read only
+ * becomes `<name>.tcdoc` beside it, once, and the item stays the attachment (the answer's `source`), which the document kind shows read only
  * (docs/index.ts `roleOf`). Nothing opens or closes here: keeping it as his own is an import of the copy saved to the
  * workspace (`work.canvas.keep`, then an import from that file).
  */
@@ -206,7 +208,9 @@ async function importAttachment(ctx: WorkCtx, params: ImportParams): Promise<Imp
   await ensureFetched(ctx, item)
   const original = fetchedPath(ctx.dataDir, item)
   const target = attachmentDocPathOf(ctx.dataDir, item)
-  const made: CanvasSource = { at: 'file', host: ctx.host, path: target }
+  // The window names the document by the attachment and its item from here on (docs/target.ts `attachmentPathOf`):
+  // no path of this host's data directory crosses the wire.
+  const made: CanvasSource = item.source
   const title = basename(target, '.tcdoc')
   if (existsSync(target)) return { source: made, title, warnings: [], outsiders: false }
   const name = basename(original)

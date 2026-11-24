@@ -10,9 +10,9 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { CanvasItem } from "@shared/work";
 import type { CanvasShell, StatusLine } from "../canvas/kind";
 
-const opening = vi.hoisted(() => ({ fail: (_: Error) => {}, made: 0 }));
+const opening = vi.hoisted(() => ({ fail: (_: Error) => {}, made: 0, named: [] as unknown[][] }));
 vi.mock("./host", () => ({
-  docHost: (env: string) => (opening.made++, { env, open: () => new Promise((_, reject) => (opening.fail = reject)) }),
+  docHost: (env: string, ...named: unknown[]) => (opening.made++, opening.named.push(named), { env, open: () => new Promise((_, reject) => (opening.fail = reject)) }),
   servedBy: () => null,
 }));
 const conn = vi.hoisted(() => ({ asked: [] as Array<{ method: string; params: unknown }>, answer: (_method: string): Promise<unknown> => Promise.resolve([]) }));
@@ -205,11 +205,11 @@ describe("a mail's attachment as a document", () => {
   const MAIL = { at: "mail", threadId: "mt1", messageId: "mm1", partId: "2", name: "Brief.docx" } as const;
   const ATT = { ...ITEM, id: "a1", sessionId: "mailpane_w1", title: "Brief.docx", source: MAIL } as CanvasItem;
 
-  it("is read once into a document beside the host's copy and opened from there; a failed read says so with Retry", async () => {
+  it("is read once into a document beside the host's copy and opened by its item; a failed read says so with Retry", async () => {
     conn.asked.length = 0;
     let fail = true;
     conn.answer = (method) =>
-      method !== "work.formats.import" ? Promise.resolve([]) : fail ? Promise.reject(new Error("LibreOffice is not installed here")) : Promise.resolve({ source: { at: "file", host: "box", path: "/data/canvas/mailpane_w1/a1/file/Brief.tcdoc" }, title: "Brief", warnings: [], outsiders: false });
+      method !== "work.formats.import" ? Promise.resolve([]) : fail ? Promise.reject(new Error("LibreOffice is not installed here")) : Promise.resolve({ source: MAIL, title: "Brief", warnings: [], outsiders: false });
     const lines: (StatusLine | null)[] = [];
     const shell = { statusLine: (line: StatusLine | null) => void lines.push(line), ready: () => {}, more: () => {} } as unknown as CanvasShell;
     render(<Body item={ATT} source={MAIL} env="box" state={undefined} setState={() => {}} shell={shell} />);
@@ -222,6 +222,8 @@ describe("a mail's attachment as a document", () => {
     expect(conn.asked.filter((a) => a.method === "work.formats.import")).toHaveLength(2);
     // The document it became opens (here the host's open waits): its bones, under the attachment's name.
     expect(screen.getByRole("heading", { name: "Brief.docx" })).toBeTruthy();
+    // Named by the attachment and its item, never by the host's copy's path: a key's fence would refuse that.
+    await waitFor(() => expect(opening.named.at(-1)).toEqual([MAIL, "a1"]));
   });
 
   it("offers no Share in the bar", () => {

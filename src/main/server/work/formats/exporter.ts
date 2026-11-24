@@ -52,8 +52,8 @@ export async function serviceExport(
   }
 }
 
-export async function exportDoc(ctx: WorkCtx, by: Caller, params: { source: CanvasSource; format: ExportFormat }): Promise<ExportAnswer> {
-  const t = await targetOf(ctx, by, METHOD, params.source)
+export async function exportDoc(ctx: WorkCtx, by: Caller, params: { source: CanvasSource; itemId?: string; format: ExportFormat }): Promise<ExportAnswer> {
+  const t = await targetOf(ctx, by, METHOD, params.source, params.itemId)
   const kind = params.format === 'md' ? 'md' : 'docx'
   const got = await serviceExport(ctx, t, kind)
   const title = got.title

@@ -19,10 +19,10 @@ import { approver, HOST, makeRig, phone, reader, thread, window, WS, type Rig } 
  * it is now, and its live revision moves with each edit. Dummy files only.
  */
 
-const doc = vi.hoisted(() => ({ text: 'one', rev: 'r1' }))
+const doc = vi.hoisted(() => ({ text: 'one', rev: 'r1', exported: [] as unknown[] }))
 vi.mock('../formats/exporter', () => ({
   EXPORT_FORMATS: ['docx', 'odt', 'rtf', 'md'],
-  exportDoc: async (_ctx: unknown, _by: unknown, p: { format: string }) => ({ name: `Plan.${p.format}`, data: Buffer.from(`${p.format} ${doc.text}`).toString('base64'), warnings: [] })
+  exportDoc: async (_ctx: unknown, _by: unknown, p: { format: string; source: unknown }) => (doc.exported.push(p.source), { name: `Plan.${p.format}`, data: Buffer.from(`${p.format} ${doc.text}`).toString('base64'), warnings: [] })
 }))
 vi.mock('../formats/preview', () => ({ fileDocumentPdf: async () => Buffer.from(`pdf ${doc.text}`) }))
 vi.mock('./word', async (real) => ({ ...(await real<typeof import('./word')>()), liveRev: async () => doc.rev }))
@@ -135,6 +135,20 @@ describe('Save As… into the workspace folder', () => {
     expect(await links()).toEqual([])
     await edit('two')
     expect(readFileSync(join(box.folder, 'Plan.docx'), 'utf8')).toBe('docx one')
+  })
+})
+
+describe("a mail's attachment read as a document", () => {
+  it('is saved as by its own source: the host exports the document its open item read it into', async () => {
+    const MAIL = { at: 'mail' as const, threadId: 'mt1', messageId: 'mm1', partId: '2', name: 'Brief.docx' }
+    const item = box.ctx.canvas.open('t1', 'document', MAIL, 'Brief.docx')
+    doc.exported.length = 0
+    const got = await call<SavedAs>('work.files.saveAs', { source: MAIL, format: 'docx', op: op(), at: { at: 'place', id: 'folder' }, link: false })
+    expect(got).toMatchObject({ saved: { name: 'Plan.docx' } })
+    const { attachmentDocPathOf } = await vi.importActual<typeof import('../docs/target')>('../docs/target')
+    expect(doc.exported).toEqual([{ at: 'file', host: HOST, path: attachmentDocPathOf(box.ctx.dataDir, item) }])
+    // One no item of the workspace shows is refused, as any document not open here is.
+    await expect(call('work.files.saveAs', { source: { ...MAIL, partId: '3' }, format: 'docx', op: op(), at: { at: 'place', id: 'folder' } })).rejects.toThrow()
   })
 })
 

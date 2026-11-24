@@ -171,7 +171,7 @@ const sharedSource = (ctx: WorkCtx, t: DocTarget, source: CanvasSource) =>
   madeFromShared(ctx, t.source) || madeFromShared(ctx, source)
 
 export async function previewOffice(ctx: WorkCtx, by: Caller, params: OfficeParams): Promise<PreviewOfficeAnswer> {
-  const t = await targetOf(ctx, by, 'work.formats.previewOffice', params.source)
+  const t = await targetOf(ctx, by, 'work.formats.previewOffice', params.source, params.itemId)
   if (params.itemId !== undefined) folderOf(ctx, t, params.itemId, params.source)
   if (t.at === 'lifeos') await ctx.service.internal('/internal/formats/previewOffice', serviceTarget(t, false))
   const runner = await runnerOf(ctx)
@@ -211,7 +211,7 @@ export async function previewDoc(ctx: WorkCtx, by: Caller, params: PreviewParams
   if (params.by !== undefined && (params.by !== 'word' || format !== 'docx')) throw new Error('Word only draws the Word preview')
   const press = params.by === 'word' ? pressOf(by) : undefined
   if (params.by === 'word' && !press) throw new Error('Check in Word needs your own press')
-  const t = await targetOf(ctx, by, 'work.formats.preview', params.source)
+  const t = await targetOf(ctx, by, 'work.formats.preview', params.source, params.itemId)
   const dir = folderOf(ctx, t, params.itemId, params.source)
   if (format === 'pdf') {
     if (params.html === undefined) throw new Error('a PDF preview needs its print page')
@@ -285,7 +285,7 @@ export async function fileDocumentPdf(ctx: WorkCtx, t: DocTarget, shared: boolea
 }
 
 export async function readPreview(ctx: WorkCtx, by: Caller, params: ReadParams): Promise<{ data: string }> {
-  const t = await targetOf(ctx, by, 'work.formats.previewRead', params.source)
+  const t = await targetOf(ctx, by, 'work.formats.previewRead', params.source, params.itemId)
   const dir = folderOf(ctx, t, params.itemId, params.source)
   if (!/^[a-f0-9]{32}$/.test(params.rev)) throw new Error(GONE)
   const picture = existsSync(dir) ? readdirSync(dir).find((f) => f.endsWith(`.${params.rev}.pdf`) && FORMATS.has(f.split('.')[0])) : undefined

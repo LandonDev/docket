@@ -444,7 +444,8 @@ describe("the document's Preview source", () => {
     await expect(s.draw("docx", { signal: signal() })).rejects.toThrow("libreoffice is not installed on env_box");
     expect(await s.export("docx")).toEqual({ name: "Plan.docx" });
     await flush();
-    expect(h.calls.at(-1)).toEqual({ env: "env_box", method: "work.formats.export", params: { source: SOURCE, format: "docx" } });
+    expect(h.calls.at(-1)).toEqual({ env: "env_box", method: "work.formats.export", params: { source: SOURCE, itemId: "i1", format: "docx" } });
+    // Named with its item, as Preview names it: an attachment's document is found by the item on the host.
     expect(saved).toEqual([{ name: "Plan.docx", bytes: h.fileBytes, type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document" }]);
     // OpenDocument is that Word file through LibreOffice: without it the refusal is the host's own.
     await expect(s.export("odt")).rejects.toThrow("libreoffice is not installed on env_box");

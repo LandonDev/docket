@@ -12,6 +12,8 @@ import { registry } from "../../lib/connection";
 
 export interface DocHost {
   env: string;
+  /** The item a mail's attachment is named by, alongside its source (`namedBy`); absent for every other document. */
+  itemId?: string;
   open(): Promise<DocOpen>;
   token(): Promise<DocToken>;
   threads(): Promise<{ rows: DocThreadRow[]; names: Record<string, string> }>;
@@ -45,13 +47,22 @@ export function servedBy(err: unknown): string | null {
   return m ? m[1]! : null;
 }
 
-export function docHost(env: string, source: CanvasSource): DocHost {
+/**
+ * What every call names: the source, and for a mail's or a chat's attachment the item that shows it, so the host finds
+ * the document it read the file into by the item (work/docs/target.ts `attachmentPathOf`) and no path of its data
+ * directory crosses the wire.
+ */
+export const namedBy = (source: CanvasSource, itemId?: string): { source: CanvasSource; itemId?: string } => (source.at === "mail" && itemId ? { source, itemId } : { source });
+
+export function docHost(env: string, source: CanvasSource, itemId?: string): DocHost {
   const link = () => registry.linkOf(env);
+  const named = namedBy(source, itemId);
   const call = <T>(method: string, params: Record<string, unknown> = {}, timeoutMs?: number): Promise<T> =>
-    link().request<T>(method, { source, ...params }, timeoutMs ? { timeoutMs } : undefined);
-  const socket = relaySocket(env, source);
+    link().request<T>(method, { ...named, ...params }, timeoutMs ? { timeoutMs } : undefined);
+  const socket = relaySocket(env, source, itemId);
   return {
     env,
+    ...(named.itemId ? { itemId: named.itemId } : {}),
     open: () => call("work.docs.open"),
     token: () => call("work.docs.token"),
     threads: () => call("work.docs.threads"),
@@ -170,7 +181,7 @@ async function settleAll(socket: new (url: string) => WebSocket, store: boolean)
  * provider sees an ordinary socket: open, message, close, error. A close sends what still waits
  * first, then closes the host's socket behind it: the last words typed are never dropped.
  */
-export function relaySocket(env: string, source: CanvasSource): new (url: string) => WebSocket {
+export function relaySocket(env: string, source: CanvasSource, itemId?: string): new (url: string) => WebSocket {
   const link = () => registry.linkOf(env);
   const relayed: Relayed = { open: new Set(), lost: null, dropped: false, arrived: new Set() };
   const open = relayed.open;
@@ -215,7 +226,7 @@ export function relaySocket(env: string, source: CanvasSource): new (url: string
       try {
         // The provider says the schema it knows in its socket's address; the relay carries it to the host's own socket.
         const schema = Number(new URL(this.url, "ws://relay").searchParams.get("schema")) || 0;
-        const { socket } = await link().request<{ socket: string }>("work.docs.connect", { source, ...(schema > 0 ? { schema } : {}) });
+        const { socket } = await link().request<{ socket: string }>("work.docs.connect", { ...namedBy(source, itemId), ...(schema > 0 ? { schema } : {}) });
         if (this.readyState !== READY.CONNECTING) return void link().request("work.docs.close", { socket }).catch(() => undefined);
         this.id = socket;
         this.readyState = READY.OPEN;

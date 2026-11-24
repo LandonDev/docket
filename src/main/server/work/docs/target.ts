@@ -7,7 +7,7 @@ import type { Caller, WorkCtx } from '../modules'
 import { canonicalPath } from '../service/ctx'
 import { fetchedFile } from '../canvas/fetch'
 import { importsRoot } from '../files/imports'
-import { sharedOf } from '../files/policy'
+import { MAIL_NEEDS_APPROVE, sharedOf } from '../files/policy'
 
 /**
  * What a source names, as the Work service and LifeOS know it
@@ -19,7 +19,7 @@ import { sharedOf } from '../files/policy'
  */
 export type DocTarget =
   | { at: 'lifeos'; doc: string; docId: string; source: Extract<CanvasSource, { at: 'lifeos' }> }
-  | { at: 'file'; doc: string; path: string; source: Extract<CanvasSource, { at: 'file' }> }
+  | { at: 'file'; doc: string; path: string; source: Extract<CanvasSource, { at: 'file' }>; shown?: Extract<CanvasSource, { at: 'mail' }> }
 
 /** A LifeOS document's row as `docs:get` answers the owner (M17). */
 export interface LifeosDocRow {
@@ -31,7 +31,33 @@ export interface LifeosDocRow {
   editedAt?: number
 }
 
-export async function targetOf(ctx: WorkCtx, by: Caller, method: string, source: CanvasSource): Promise<DocTarget> {
+/**
+ * The document a mail's or a chat's attachment was read into (`attachmentDoc`), found by its ITEM: the window names
+ * the attachment's own source and the item that shows it, and this host finds the file itself, so no path of its data
+ * directory crosses the wire (a remote key could not name one past the fence, and must not). The item must be open
+ * here, fetched, and show this very source, as `importAttachment` asks; the document must have been read already.
+ */
+export function attachmentPathOf(ctx: Pick<WorkCtx, 'dataDir' | 'canvas'>, by: Caller, source: Extract<CanvasSource, { at: 'mail' }>, itemId: string | undefined): string {
+  // His mail's bytes are read by a key that may approve, as fetching them is (`work.canvas.fetch`, files/policy.ts).
+  if (by.kind === 'remote' && !by.caps.includes('approve')) throw new Error(MAIL_NEEDS_APPROVE)
+  const item = itemId ? ctx.canvas.get(itemId) : null
+  if (item?.source?.at !== 'mail' || JSON.stringify(item.source) !== JSON.stringify(source)) throw new Error("that attachment is not this item's")
+  // A thread reads an attachment of its own canvas alone.
+  if (by.kind === 'model' && by.sessionId !== item.sessionId) throw new Error("that attachment is not this item's")
+  const path = attachmentDoc(ctx, item)
+  if (!path) throw new Error(`${item.title} has not been read as a document yet.`)
+  return canonicalPath(path)
+}
+
+/**
+ * `itemId`: the canvas item that shows a mail's attachment, when `source` is that attachment (`attachmentPathOf`).
+ * The target then keeps the attachment as its `shown` source: what the window names in later calls.
+ */
+export async function targetOf(ctx: WorkCtx, by: Caller, method: string, source: CanvasSource, itemId?: string): Promise<DocTarget> {
+  if (source.at === 'mail') {
+    const path = attachmentPathOf(ctx, by, source, itemId)
+    return { at: 'file', doc: fileDocName(path), path, source: { at: 'file', host: ctx.host, path }, shown: source }
+  }
   if (source.at === 'lifeos' && source.table === 'docs') return { at: 'lifeos', doc: source.id, docId: source.id, source }
   if (source.at === 'lifeos' && source.table === 'projectDocs') {
     const docId = await ctx.lifeos.owner().mutation<string | null>('projectDocs:open', { id: source.id })
@@ -138,6 +164,9 @@ export const titleOf = (t: DocTarget, row: LifeosDocRow | null): string => row?.
  */
 export const serviceTarget = (t: DocTarget, shared: boolean, sectors: readonly string[] | 'all' = 'all'): Record<string, unknown> =>
   t.at === 'lifeos' ? { docId: t.docId, fence: { sectors } } : { file: t.path, shared, fence: { sectors: 'all' } }
+
+/** The source the window names this document by: a mail's attachment by its own, never the copy's path here. */
+export const shownSource = (t: DocTarget): CanvasSource => (t.at === 'file' && t.shown ? t.shown : t.source)
 
 /** A file document's path, for a push only callers who could name it receive. */
 export const pathOf = (t: DocTarget): string | undefined => (t.at === 'file' ? t.path : undefined)

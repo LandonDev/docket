@@ -74,7 +74,9 @@ export const useVersions = (env: string, source: CanvasSource) => useAsked<Histo
 export const useCompare = (env: string, source: CanvasSource, from: string | null, to: string | null) =>
   useAsked<HistoryCompare>(env, source, from && to ? `compare|${from}|${to}` : null, "work.history.compare", { from, to });
 
-export const useBranches = (env: string, source: CanvasSource) => useAsked<HistoryBranches>(env, source, "branches", "work.history.branches", {});
+/** `itemId`: the item a mail's attachment is named by (docs/host.ts `namedBy`); its branches are shown, never decided. */
+export const useBranches = (env: string, source: CanvasSource, itemId?: string) =>
+  useAsked<HistoryBranches>(env, source, "branches", "work.history.branches", source.at === "mail" && itemId ? { itemId } : {});
 
 /** Everything kept for a document is stale after an act: asked again now, the old answer shown until the new one lands. */
 export function refreshHistory(env: string, source: CanvasSource): void {

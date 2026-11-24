@@ -5,7 +5,7 @@ import { WORK_OWNER_NAME_SETTING } from '../preamble'
 import { ServedElsewhere, TOKEN_SECONDS } from '../service/ctx'
 import { DOCUMENT_SCHEMA, SCHEMA_PARAM } from 'work-kit/collab-server'
 import { dismissWritten, docsOf, ensureModeTable, modeOf, setMode, stopDocs } from './state'
-import { lifeosRow, othersOpen, pathOf, serviceTarget, targetOf, titleOf, type DocTarget } from './target'
+import { lifeosRow, othersOpen, pathOf, serviceTarget, shownSource, targetOf, titleOf, type DocTarget } from './target'
 import { changeThread, ensureThreadTables, readThreads } from './threads'
 import { dropView, dropWorkspaceViews, ensureViewsTable, findDocs, listViews, saveView, workspaceOf } from './find'
 import { docTools } from './tools'
@@ -72,7 +72,7 @@ async function opened(ctx: WorkCtx, by: Caller, t: DocTarget): Promise<DocOpen> 
   const shared = othersOpen(ctx, t, row)
   return {
     doc: t.doc,
-    source: t.source,
+    source: shownSource(t),
     title: titleOf(t, row),
     role: roleOf(by, ctx, t, shared),
     shared,
@@ -109,11 +109,11 @@ export const docs: WorkModule = {
     const s = docsOf(ctx)
     switch (req.method) {
       case 'work.docs.open':
-        return handled(await opened(ctx, by, await targetOf(ctx, by, req.method, req.params.source)))
+        return handled(await opened(ctx, by, await targetOf(ctx, by, req.method, req.params.source, req.params.itemId)))
       case 'work.docs.token':
-        return handled(await tokenFor(ctx, by, await targetOf(ctx, by, req.method, req.params.source)))
+        return handled(await tokenFor(ctx, by, await targetOf(ctx, by, req.method, req.params.source, req.params.itemId)))
       case 'work.docs.connect': {
-        const t = await targetOf(ctx, by, req.method, req.params.source)
+        const t = await targetOf(ctx, by, req.method, req.params.source, req.params.itemId)
         // Asked first, so a document another host serves says so before a socket is made.
         await tokenFor(ctx, by, t)
         // The window's editor says what schema it knows; this socket says it for it (work-kit's schema gate).
@@ -133,7 +133,7 @@ export const docs: WorkModule = {
         s.relay.close(req.params.socket)
         return handled({ ok: true as const })
       case 'work.docs.threads': {
-        const t = await targetOf(ctx, by, req.method, req.params.source)
+        const t = await targetOf(ctx, by, req.method, req.params.source, req.params.itemId)
         const rows = await readThreads(ctx, t)
         return handled({ rows, names: namesFor(ctx, rows.flatMap((r) => r.comments.map((c) => c.authorMemberId))) })
       }

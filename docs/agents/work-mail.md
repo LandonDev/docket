@@ -335,7 +335,17 @@ type, the mail thread, the message and the part):
 - **A document is read only.** The document kind reads the attachment with
   `work.formats.import` naming the mail source and its item: the host writes
   `<name>.tcdoc` beside the fetched copy, once, and opens and closes nothing,
-  so the item stays the attachment (Download in its bar). The docs pillar
+  so the item stays the attachment (Download in its bar). The import answers
+  the attachment's own source, never the copy's path: from then on every ask
+  the document makes (`work.docs.open`, `token`, `connect`, `threads`,
+  `work.history.branches`, `work.formats.preview`, `previewRead`,
+  `previewOffice`, `export`) names that source with the item (`itemId`,
+  renderer docs/host.ts `namedBy`), and the host finds the `.tcdoc` itself
+  (docs/target.ts `attachmentPathOf`): the item must be open, fetched and show
+  that very source, a key must hold `approve` (as `work.canvas.fetch` asks),
+  and a thread reads only its own canvas's. The fetched folder is no managed
+  root and never becomes one, so a window paired by a key opens it this way
+  and no other (W-47). The docs pillar
   answers that document with the `view` role for every caller (docs/index.ts
   `roleOf`, `fetchedItemOfPath`): no mode, no Share, the editor not editable,
   and a Word file's tracked changes tinted in the text with no stepper, Reject
@@ -345,7 +355,8 @@ type, the mail thread, the message and the part):
   `doc_suggest` and `doc_comment`. **Keep as document**, in More, saves the
   attachment to the workspace (below) and imports that copy into the pane,
   where the document it becomes is his to edit and takes the attachment's
-  place.
+  place (the importer's "overtaken" guard, which drops a document whose item
+  names another file now, passes a mail item: it names no file of his).
 - **Read only, every kind.** Until he keeps it, a mail's file has no mode menu, no stepper, no written line and no History in its bar, whatever its kind would say (work-canvas.md "Fetched sources").
 - **Save to workspace**, in the bar beside Download for an attachment in a
   workspace's pane (a thread's or the Mail view's; a Work Chat has no

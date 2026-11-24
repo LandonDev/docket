@@ -122,6 +122,34 @@ describe("suggestions as the editor's review", () => {
   });
 });
 
+describe("a mail's attachment read as a document", () => {
+  it("names its item on every ask, the socket's too, and another document only by its source", async () => {
+    const MAIL = { at: "mail", threadId: "mt1", messageId: "mm1", partId: "2", name: "Brief.docx" } as const;
+    const file = { at: "file", host: "box", path: "/Cosmic/Plan.tcdoc" } as const;
+    link.request.mockImplementation(async (method) => (method === "work.docs.connect" ? { socket: "s".repeat(24) } : method === "work.docs.recv" ? { frames: [], closed: { code: 1000, reason: "" } } : []));
+    for (const [source, itemId] of [[MAIL, "a1"], [file, "i9"]] as const) {
+      const h = docHost("box", source, itemId);
+      expect(h.itemId).toBe(source.at === "mail" ? "a1" : undefined);
+      await h.open();
+      await h.token();
+      await h.threads();
+      const ws = new h.socket("ws://x/w/doc/d1");
+      await new Promise((resolve) => ws.addEventListener("close", resolve));
+    }
+    const asked = link.request.mock.calls.filter(([m]) => m !== "work.docs.recv" && m !== "work.docs.close").map(([m, p]) => [m, p]);
+    expect(asked).toEqual([
+      ["work.docs.open", { source: MAIL, itemId: "a1" }],
+      ["work.docs.token", { source: MAIL, itemId: "a1" }],
+      ["work.docs.threads", { source: MAIL, itemId: "a1" }],
+      ["work.docs.connect", { source: MAIL, itemId: "a1" }],
+      ["work.docs.open", { source: file }],
+      ["work.docs.token", { source: file }],
+      ["work.docs.threads", { source: file }],
+      ["work.docs.connect", { source: file }],
+    ]);
+  });
+});
+
 describe("the relayed socket", () => {
   it("opens once the host made its socket, sends frames in order, hands down what the host received, and closes when the host says", async () => {
     let recvs = 0;

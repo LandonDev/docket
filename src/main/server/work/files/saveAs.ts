@@ -73,6 +73,17 @@ function openIn(ctx: WorkCtx, workspaceId: string, source: CanvasSource): boolea
   return ctx.canvas.forWorkspace(workspaceId, { open: true, panes: true }).some((item) => refKey(item.source) === key || (path !== null && item.source.at === 'mail' && attachmentDocPathOf(ctx.dataDir, item) === path))
 }
 
+/**
+ * A mail's attachment, named by its own source as the window names its document (work-mail.md "Attachments"): the
+ * `.tcdoc` an open item of the workspace read it into, as a file of this host. Null for any other source.
+ */
+function attachmentFileIn(ctx: WorkCtx, workspaceId: string, source: CanvasSource): CanvasSource | null {
+  if (source.at !== 'mail') return null
+  const key = refKey(source)
+  const item = ctx.canvas.forWorkspace(workspaceId, { open: true, panes: true }).find((i) => i.source.at === 'mail' && refKey(i.source) === key)
+  return item ? { at: 'file', host: ctx.host, path: attachmentDocPathOf(ctx.dataDir, item) } : null
+}
+
 /** The document's file on this host, which a link follows by its live revision; null for a LifeOS or Google document. */
 const linkableDoc = (ctx: WorkCtx, source: CanvasSource): string | null => (source.at === 'file' && source.host === ctx.host && source.path.endsWith('.tcdoc') ? source.path : null)
 
@@ -162,6 +173,7 @@ export async function saveAs(
   if (by.kind === 'remote' && !by.caps.includes('operate')) throw new Error('This key may not change files.')
   if (p.source.at === 'file' && p.source.host !== ctx.host) throw new Error(DOC_ELSEWHERE)
   if (!openIn(ctx, p.workspaceId, p.source)) throw new Error(NOT_OPEN_HERE)
+  const source = attachmentFileIn(ctx, p.workspaceId, p.source) ?? p.source
   const made0 = makeFolderRef(ctx, by, p.at)
   // The workspace's own folder is a place by name: its path on this host.
   const home = made0.at === 'place' && made0.id === 'folder' ? workspaceHere(ctx.db, p.workspaceId)?.path : undefined
@@ -173,10 +185,10 @@ export async function saveAs(
   // The door before anything is exported: a folder here as New's, one on another computer as his own edit there.
   if (far) admitOwner(by, { name: 'that folder', host: at.host })
   else if (admitChange(ctx, by, 'make', { workspaceId: p.workspaceId, refs: [at] }, method) === 'hold') throw new Error(HELD_BY_TOOLS)
-  const doc = p.link === false ? null : linkableDoc(ctx, p.source)
+  const doc = p.link === false ? null : linkableDoc(ctx, source)
   // The revision written is the one read before the export: an edit after it is written next.
   const rev = doc ? await liveRev(ctx, doc).catch(() => null) : null
-  const out = await exportBytes(ctx, p.source, p.format)
+  const out = await exportBytes(ctx, source, p.format)
   const name = saveAsName(p.name?.trim() || out.name, p.format)
   const there: Spot = { workspace_id: p.workspaceId, host: at.host, path: join2(at.path, name, vm), vm: vm ? 1 : 0, name }
   const linkTo = (made: { path: string; name: string; version: string }): void => {
@@ -237,7 +249,7 @@ function viewOf(r: LinkRow): DocLink {
 /** `work.files.links`: the files a document is linked to, oldest first, as the header shows them. */
 export function linksOf(ctx: WorkCtx, by: Caller, p: { workspaceId: string; source: CanvasSource }): DocLink[] {
   admitCaller(ctx, by, p.workspaceId)
-  const doc = linkableDoc(ctx, p.source)
+  const doc = linkableDoc(ctx, attachmentFileIn(ctx, p.workspaceId, p.source) ?? p.source)
   if (!doc) return []
   const rows = ctx.db.prepare(`SELECT * FROM work_files_links WHERE workspace_id = ? AND doc = ? ORDER BY made_at`).all(p.workspaceId, doc) as unknown as LinkRow[]
   return rows.map(viewOf)

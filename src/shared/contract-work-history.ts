@@ -70,7 +70,7 @@ export const HistoryRequestSchemas = [
   /** → HistoryWrite: the document back to a version, as a forward edit; on a shared document a branch of suggestions */
   request('work.history.restore', z.object({ source: CanvasSourceSchema, versionId: z.string().min(1).max(64) })),
   /** → { branches: HistoryBranch[]; names }: the pending branches, each with what it suggests */
-  request('work.history.branches', z.object({ source: CanvasSourceSchema })),
+  request('work.history.branches', z.object({ source: CanvasSourceSchema, itemId: z.string().min(1).max(80).optional() })),
   /** → { left: number }: Accept or Reject rows of a branch (block ids), or all of it */
   request(
     'work.history.decide',

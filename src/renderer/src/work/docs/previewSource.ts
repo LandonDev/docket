@@ -419,7 +419,7 @@ export function docPreviewSource(deps: DocPreviewDeps): PreviewSource {
   const written = async (format: "docx" | "odt" | "rtf" | "md", signal?: AbortSignal): Promise<ExportAnswer> => {
     if (deps.sync) await deps.sync();
     if (signal?.aborted) throw cancelled();
-    return onHost((env) => request<ExportAnswer>(env, "work.formats.export", { source: deps.source, format }, { timeoutMs: 5 * 60_000 }));
+    return onHost((env, home) => request<ExportAnswer>(env, "work.formats.export", { ...target(home), format }, { timeoutMs: 5 * 60_000 }));
   };
 
   /** Every byte of a render's file, a frame at a time. */

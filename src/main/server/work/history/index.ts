@@ -6,7 +6,7 @@ import { FenceError } from '../../remote/fence'
 import type { Caller, WorkCtx, WorkModule } from '../modules'
 import { canonicalPath } from '../service/ctx'
 import { guestNameOf } from '../guests/store'
-import { madeFromShared } from '../docs/target'
+import { attachmentPathOf, madeFromShared } from '../docs/target'
 import { NEEDS_PRESS, pressesFor } from '../files/policy'
 
 /**
@@ -21,8 +21,10 @@ import { NEEDS_PRESS, pressesFor } from '../files/policy'
 type Target = { docId: string } | { file: string; shared: boolean }
 
 /** A source history serves: a LifeOS document, or a `.tcdoc` on this host the caller could name. */
-export function targetOf(ctx: WorkCtx, by: Caller, method: string, source: CanvasSource): Target {
+export function targetOf(ctx: WorkCtx, by: Caller, method: string, source: CanvasSource, itemId?: string): Target {
   if (source.at === 'lifeos' && source.table === 'docs') return { docId: source.id }
+  // A mail's attachment read as a document: found by the item that shows it, never by a path the window names.
+  if (source.at === 'mail') return { file: attachmentPathOf(ctx, by, source, itemId), shared: false }
   if (source.at === 'file' && source.path.toLowerCase().endsWith('.tcdoc')) {
     // A source names its host by environment id, or as this host saw it when it was opened (pdf/file.ts reads it the same way).
     if (source.host !== ctx.host && !existsSync(source.path)) throw new Error('that document is on another host; open its history there')
@@ -82,8 +84,11 @@ export const history: WorkModule = {
   ensure() {},
   async handle(req, ctx, by) {
     if (!(req.method in HISTORY_CAPS)) return NOT_HANDLED
-    const at = (source: CanvasSource) => targetOf(ctx, by, req.method, source)
+    // Only the branches of a mail's attachment are read by its item: it is read only, and its History is not offered.
+    const itemId = req.method === 'work.history.branches' ? req.params.itemId : undefined
+    const at = (source: CanvasSource) => targetOf(ctx, by, req.method, source, itemId)
     // A mail's attachment read as a document is read only (work-mail.md "Attachments"): its versions and changes show, and none is cut, restored or decided.
+    if ((req.method === 'work.history.decide' || req.method === 'work.history.restore' || req.method === 'work.history.cut') && req.params.source.at === 'mail') throw new Error(READ_ONLY)
     if ((req.method === 'work.history.decide' || req.method === 'work.history.restore' || req.method === 'work.history.cut') && 'file' in at(req.params.source)) {
       const target = at(req.params.source) as { file: string }
       if (fetchedItemOfPath(ctx, target.file)) throw new Error(READ_ONLY)

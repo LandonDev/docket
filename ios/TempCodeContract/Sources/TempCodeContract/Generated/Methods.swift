@@ -4362,9 +4362,11 @@ public enum Methods {
 
         public struct Params: Codable, Hashable, Sendable {
             public let source: CanvasSource
+            public let itemId: String?
 
-            public init(source: CanvasSource) {
+            public init(source: CanvasSource, itemId: String? = nil) {
                 self.source = source
+                self.itemId = itemId
             }
         }
 
@@ -4376,9 +4378,11 @@ public enum Methods {
 
         public struct Params: Codable, Hashable, Sendable {
             public let source: CanvasSource
+            public let itemId: String?
 
-            public init(source: CanvasSource) {
+            public init(source: CanvasSource, itemId: String? = nil) {
                 self.source = source
+                self.itemId = itemId
             }
         }
 
@@ -4517,9 +4521,11 @@ public enum Methods {
 
         public struct Params: Codable, Hashable, Sendable {
             public let source: CanvasSource
+            public let itemId: String?
 
-            public init(source: CanvasSource) {
+            public init(source: CanvasSource, itemId: String? = nil) {
                 self.source = source
+                self.itemId = itemId
             }
         }
 

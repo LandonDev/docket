@@ -127,7 +127,8 @@ function statusLineOf(status: DocumentStatus | null): Parameters<CanvasShell["st
 type Opened = { host: DocHost; open: DocOpen } | { error: string } | null;
 
 /** Opens the document on the host the item lives on, or on the host that serves it when that is another. */
-export function useOpened(env: string, source: CanvasSource, attempt: number): Opened {
+/** `itemId`: the item that shows a mail's attachment, which the host finds the document by (host.ts `namedBy`). */
+export function useOpened(env: string, source: CanvasSource, attempt: number, itemId?: string): Opened {
   const [opened, setOpened] = useState<Opened>(null);
   // Every canvas push hands a new copy of the item: the source's value, not its object, says it is another document,
   // so a push never reopens the editor under his hands (its caret, find, Preview and the frames it has yet to send).
@@ -138,7 +139,7 @@ export function useOpened(env: string, source: CanvasSource, attempt: number): O
     let live = true;
     setOpened(null);
     const tryOn = async (on: string, again: boolean): Promise<void> => {
-      const host = docHost(on, latest.current);
+      const host = docHost(on, latest.current, itemId);
       try {
         const open = await host.open();
         if (live) setOpened({ host, open });
@@ -152,7 +153,7 @@ export function useOpened(env: string, source: CanvasSource, attempt: number): O
     return () => {
       live = false;
     };
-  }, [env, key, attempt]);
+  }, [env, key, attempt, itemId]);
   return opened;
 }
 
@@ -356,7 +357,7 @@ function AttachmentBody(props: CanvasBodyProps<DocState>) {
 
 function DocBody({ item, source, env, state, setState, shell, more: own = NO_MORE }: CanvasBodyProps<DocState> & { more?: MoreEntry[] }) {
   const [attempt, setAttempt] = useState(0);
-  const opened = useOpened(env, source, attempt);
+  const opened = useOpened(env, source, attempt, item.id);
   // A Google Doc's own verbs (work/google): Write to Google, Read again, Open in Google.
   const reopen = useCallback(() => setAttempt((n) => n + 1), []);
   const googleMore = useGoogleDoc(env, item, reopen);
@@ -834,7 +835,7 @@ export function useDocument(host: DocHost, open: DocOpen): DocumentHandle {
 
 /** Pending suggestions, drawn in the text and stepped from the pane's bar. */
 export function useDocReview(host: DocHost, open: DocOpen, shell: CanvasShell, editor: AnyEditor | null) {
-  const branches = useBranches(host.env, open.source);
+  const branches = useBranches(host.env, open.source, host.itemId);
   const value = branches.value;
   const { changes, groups } = useMemo(() => reviewOf(value?.branches ?? [], value?.names ?? {}), [value]);
   const actions = useMemo(() => historyActions(host.env, open.source), [host.env, open.source]);

@@ -63,7 +63,7 @@ export const FormatsRequestSchemas = [
     })
   ),
   /** A document out as a file (→ ExportAnswer): Word with its comments and pending changes, OpenDocument, RTF or markdown. */
-  request('work.formats.export', z.object({ source: CanvasSourceSchema, format: z.enum(['docx', 'odt', 'rtf', 'md']) })),
+  request('work.formats.export', z.object({ source: CanvasSourceSchema, itemId: z.string().min(1).max(80).optional(), format: z.enum(['docx', 'odt', 'rtf', 'md']) })),
   /** A page the window wrote (`work-kit/formats/html`'s print page) printed to PDF on this host (→ ExportAnswer). */
   request(
     'work.formats.print',

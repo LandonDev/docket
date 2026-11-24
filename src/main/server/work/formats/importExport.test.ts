@@ -17,6 +17,7 @@ import { startWorkService, type RunningService } from '../service/serve'
 import type { ServiceConfig } from '../service/wire'
 import { ensureThreadTables } from '../docs/threads'
 import { importFolderOf } from '../files/imports'
+import { MAIL_NEEDS_APPROVE } from '../files/policy'
 import { madeFromShared } from './exporter'
 import { formats } from './index'
 import { droppedWords, freePath, IMPORT_OVERTAKEN, safeName } from './importer'
@@ -181,7 +182,9 @@ describe('a Word file opened in the canvas', () => {
     mkdirSync(dirname(copy), { recursive: true })
     copyFileSync(join(CORPUS, 'review.docx'), copy)
     const got = await r.ask<ImportAnswer>('work.formats.import', { itemId: 'm1', from: { at: 'source', source } })
-    expect(got.source).toEqual({ at: 'file', host: 'env_box', path: join(dirname(copy), 'review.tcdoc') })
+    // Named by the attachment and its item from here on: no path of the host's data directory crosses the wire.
+    expect(got.source).toEqual(source)
+    expect(JSON.stringify(got)).not.toContain(r.ctx.dataDir)
     expect(existsSync(join(dirname(copy), 'review.tcdoc'))).toBe(true)
     expect(r.opened).toEqual([])
     expect(r.closed).toEqual([])
@@ -193,7 +196,22 @@ describe('a Word file opened in the canvas', () => {
     await expect(r.ask('work.formats.import', { itemId: 'i0', from: { at: 'source', source } })).rejects.toThrow("not this item's")
     // Read only for every caller, this window too; a document of his edits as before.
     const local = { kind: 'local', caps: [] } as Caller
-    expect(roleOf(local, r.ctx, await targetOf(r.ctx, local, 'work.docs.open', got.source))).toBe('view')
+    expect(roleOf(local, r.ctx, await targetOf(r.ctx, local, 'work.docs.open', got.source, 'm1'))).toBe('view')
+    // The host finds the document by the item; an item that does not show this attachment, or none, is refused.
+    expect(await targetOf(r.ctx, local, 'work.docs.open', got.source, 'm1')).toMatchObject({ at: 'file', path: join(dirname(copy), 'review.tcdoc'), shown: source })
+    await expect(targetOf(r.ctx, local, 'work.docs.open', got.source)).rejects.toThrow("not this item's")
+    await expect(targetOf(r.ctx, local, 'work.docs.open', got.source, 'i0')).rejects.toThrow("not this item's")
+    await expect(targetOf(r.ctx, local, 'work.docs.open', { ...source, partId: '3' }, 'm1')).rejects.toThrow("not this item's")
+    // A key reads his mail's file as it fetches one, with approve; a thread only its own canvas's.
+    await expect(targetOf(r.ctx, { kind: 'remote', caps: ['read', 'operate'] } as Caller, 'work.docs.open', got.source, 'm1')).rejects.toThrow(MAIL_NEEDS_APPROVE)
+    await expect(targetOf(r.ctx, { kind: 'model', caps: [], sessionId: 't2' } as Caller, 'work.docs.open', got.source, 'm1')).rejects.toThrow("not this item's")
+    // A key that may approve opens it, though the copy lies outside every root it could name: the answer names the attachment, not the path.
+    const key = { kind: 'remote', caps: ['read', 'operate', 'approve'] } as Caller
+    const { docs } = await import('../docs/index')
+    docs.ensure!(r.ctx.db)
+    const opened = await docs.handle!({ id: '1', method: 'work.docs.open', params: { source: got.source, itemId: 'm1' } } as ClientRequest, r.ctx, key)
+    expect(opened).toMatchObject({ handled: true, result: { source, role: 'view', title: 'review' } })
+    expect(JSON.stringify(opened)).not.toContain(r.ctx.dataDir)
     const his = await r.ask<ImportAnswer>('work.formats.import', { from: { at: 'source', source: { at: 'file', host: 'env_box', path: word(r) } } })
     expect(roleOf(local, r.ctx, await targetOf(r.ctx, local, 'work.docs.open', his.source))).toBe('edit')
     // Its tracked changes are shown and never decided, its versions never restored or cut.
@@ -202,7 +220,16 @@ describe('a Word file opened in the canvas', () => {
     await expect(hist('work.history.decide', { source: got.source, branchId: 'b1', which: ['x'], accept: true })).rejects.toThrow(READ_ONLY)
     await expect(hist('work.history.restore', { source: got.source, versionId: 'v1' })).rejects.toThrow(READ_ONLY)
     await expect(hist('work.history.cut', { source: got.source })).rejects.toThrow(READ_ONLY)
-    expect((await hist('work.history.branches', { source: got.source })).handled).toBe(true)
+    expect((await hist('work.history.branches', { source: got.source, itemId: 'm1' })).handled).toBe(true)
+    await expect(hist('work.history.branches', { source: got.source })).rejects.toThrow("not this item's")
+    // Keep as document: the copy saved to the workspace is imported into the attachment's place, an editable document of his.
+    const keptCopy = join(r.work, 'review (kept).docx')
+    copyFileSync(join(CORPUS, 'review.docx'), keptCopy)
+    const mine = await r.ask<ImportAnswer>('work.formats.import', { sessionId: 't1', itemId: 'm1', from: { at: 'source', source: { at: 'file', host: 'env_box', path: keptCopy } } })
+    expect(mine.source).toEqual({ at: 'file', host: 'env_box', path: join(r.work, 'review (kept).tcdoc') })
+    expect(r.opened).toEqual([{ pane: 't1', source: mine.source, title: 'review (kept)' }])
+    expect(r.closed).toEqual(['m1'])
+    expect(roleOf(local, r.ctx, await targetOf(r.ctx, local, 'work.docs.open', mine.source))).toBe('edit')
   })
 
   it('a remote key reaches only files inside its roots', async () => {

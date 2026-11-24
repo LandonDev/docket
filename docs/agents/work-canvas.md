@@ -128,7 +128,12 @@ read). A kind's host side opens the copy as it opens a file of his:
 cache, which the media host serves), the meetings service's start (the
 recording) and formats/importer.ts (a document read into `<name>.tcdoc`
 beside the copy, which the docs pillar holds read only: `fetchedItemOfPath`
-knows any file in an attachment's folder). `work.canvas.keep {itemId}`
+knows any file in an attachment's folder; the window names that document by
+the attachment's source and its item, never the copy's path, and the host finds
+it with `attachmentPathOf`, docs/target.ts). No path of the canvas folder
+crosses the wire: every kind names a fetched item by its id, which is how a
+window paired by a key reads it past the fence, and the folder is no managed
+root. `work.canvas.keep {itemId}`
 copies the file into the item's workspace folder (`keepFetched`: Save to
 workspace, and the first half of Keep as document). The window's list of those kinds is
 `FETCHED_KINDS` (work/canvas/fetched.ts); a kind added there must read the

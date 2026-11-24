@@ -35,7 +35,7 @@ of its own, read from Google when it is opened ([work-google.md](work-google.md)
 "Docs"); its ⋯ adds Write to Google, Read again from Google and Open in
 Google, and the doc tools refuse it for the google tools.
 
-A mail's attachment (`{at: 'mail'}`) of these types is read once into `<name>.tcdoc` beside the host's fetched copy and opens there read only: the role is `view` for every caller, an agent may `doc_read` it by its item and nothing may write or comment on it, until Keep as document makes a copy his (work-mail.md "Attachments").
+A mail's attachment (`{at: 'mail'}`) of these types is read once into `<name>.tcdoc` beside the host's fetched copy and opens there read only: the role is `view` for every caller, an agent may `doc_read` it by its item and nothing may write or comment on it, until Keep as document makes a copy his (work-mail.md "Attachments"). The window names that document by the attachment's source and its item (`itemId` on `work.docs.open`, `token`, `connect` and `threads`), never by the copy's path; the host finds the file (`attachmentPathOf`).
 
 A LifeOS document is served by the host that serves LifeOS's documents (the
 box). Asked on another host, `work.docs.open` and `token` answer "served
