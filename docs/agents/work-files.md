@@ -1695,11 +1695,16 @@ over a colleague's Word file but his own press.
   says it plainly: "The Word file in Teams has not changed" ("OneDrive" for his own), "Changes since 9:12 PM are not in
   the Word file", "Saved to Teams as Word 9:12 PM".
 - **Save to Teams as Word** (`work.files.wordSave`, the header's one press while the Word file lacks his edits): one
-  confirm, "Replace Plan.docx in Teams?", saying everyone who opens it sees his version and what Word formatting the
-  editor does not keep may change (`WORD_LOSSES`, renderer files/wordSave.ts), with Replace and Keep Both. Replace
-  writes our Word export (`exportDoc`) over the file by its version, through the same door and the same send as a
-  copy's (`deliver`); a file that changed there, or went, is never written over: the window offers Keep Both alone,
-  which puts his version beside it under the keep-both name. His own edit: his window, or a key that may approve; a
+  confirm, "Replace Plan.docx in Teams?", saying everyone who opens it sees his version, that Teams keeps its own
+  version history and the file as it is now is kept in the workspace's folder, and what Word formatting the editor
+  does not keep may change (`WORD_LOSSES`, renderer files/wordSave.ts), with Replace and Keep Both. The file as it is
+  there now is read first (`freshBytes`): unchanged since it was read, by its version or, when only the version moved
+  (a sync's touch, a copy an older build left with no version on record), by its bytes' sha256 against the bytes it
+  was read with (`sha`, or the copy beside the document: `knownSha`), it is written over by that version. Changed
+  there, the window says when in one line ("Plan.docx changed in Teams 9:12 PM, after you opened it.") with Keep Both
+  holding the focus, and Replace on his press writes over it (`replace`). Before the first write over a file its bytes
+  are kept once as "Plan (before TempCode saved it).docx" in the workspace's folder (`keepOriginal`, the record's
+  `original`). A file gone there offers Keep Both alone. His own edit: his window, or a key that may approve; a
   thread and a read key are refused, as for a copy.
 - **A document he only looked at** goes with its tab: one whose change time is still the one it was made with is
   deleted with its record (`wordsLeft`); one he changed is kept, in the workspace's folder, for the Word file's next

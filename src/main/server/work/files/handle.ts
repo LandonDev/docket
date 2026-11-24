@@ -362,7 +362,7 @@ async function openCopy(ctx: WorkCtx, by: Caller, workspace: WorkspaceRow, p: Op
     if (back && copy.version) recordCopy(ctx, { workspaceId: workspace.id, host: file.host, path: file.path, vm, copy: path, name, kind, version: copy.version, sha256: createHash('sha256').update(await readBytes(path)).digest('hex') })
     else if (waiting) ctx.db.prepare(`DELETE FROM work_files_copies WHERE id = ?`).run(waiting.id)
     // A Word file: the version it was read at, which Save as Word writes over, and the document made of it is kept.
-    if (word && copy.version) recordWord(ctx, { workspaceId: workspace.id, host: file.host, path: file.path, vm, name, version: copy.version })
+    if (word && copy.version) recordWord(ctx, { workspaceId: workspace.id, host: file.host, path: file.path, vm, name, version: copy.version, sha: createHash('sha256').update(await readBytes((copy.source as { path: string }).path)).digest('hex') })
   }
   const { tabId, item } = state.tabs.openFile(workspace.id, { key, name, kind, source, copyOf: { host: file.host, path: file.path, ...(vm ? { vm: true } : {}) } }, p.opener)
   state.marks.seen(workspace.id, key, { file: { at: 'file', ...file } }, name)

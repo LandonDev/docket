@@ -279,7 +279,7 @@ export function FileTabView({
     saveAsWord(tab, {
       choose: confirmChoice,
       confirm: confirmAction,
-      save: (keep) => saveWordFile(workspace.environmentId, workspace.id, tab.id, keep),
+      save: (keep, replace) => saveWordFile(workspace.environmentId, workspace.id, tab.id, keep, replace),
       said: (text) => void loadToast().then((toast) => toast.message(text)),
     }).then(() => undefined);
   const line: HeaderLine | null =

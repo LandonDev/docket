@@ -24,34 +24,45 @@ export function wordLine(word: WordBack, service: string, now = Date.now()): Hea
   return { state: "copy", words: `The Word file in ${service} has not changed` };
 }
 
-/** Save as Word: one confirm with what Word may lose and Keep Both beside Replace; over a file that changed there, Keep Both alone. Answers what was done. */
+/**
+ * Save as Word: one confirm with what Word may lose, Replace and Keep Both. Over a file that changed there since he
+ * opened it, one plain line says when, Keep Both holds the focus, and Replace still writes over it on his press. Answers
+ * what was done.
+ */
 export async function saveAsWord(
   tab: Pick<FileTab, "copyOf" | "name" | "key">,
-  deps: { choose: typeof confirmChoice; confirm: typeof confirmAction; save(keep: boolean): Promise<WordSaved>; said(text: string): void },
+  deps: { choose: typeof confirmChoice; confirm: typeof confirmAction; save(keep: boolean, replace?: boolean): Promise<WordSaved>; said(text: string): void },
+  now = Date.now(),
 ): Promise<"saved" | "kept" | null> {
   const name = wordName(tab);
   const service = serviceOf(tab);
+  const kept = (got: WordSaved): "kept" | null => {
+    if (!("copy" in got)) return null;
+    deps.said(`Saved beside it as ${got.copy.name}`);
+    return "kept";
+  };
   const choice = await deps.choose({
     title: `Replace ${name} in ${service}?`,
-    body: `Everyone who opens it sees your version. Word formatting this editor does not keep may change: ${WORD_LOSSES}.`,
+    body: `Everyone who opens it sees your version. ${service} keeps its own version history, and the Word file as it is now is kept in your workspace's folder. Word formatting this editor does not keep may change: ${WORD_LOSSES}.`,
     action: "Replace",
     other: "Keep Both",
   });
   if (choice === null) return null;
   const got = await deps.save(choice === "other");
   if ("at" in got) return "saved";
-  if ("copy" in got) {
-    deps.said(`Saved beside it as ${got.copy.name}`);
-    return "kept";
+  if ("copy" in got) return kept(got);
+  if ("gone" in got.conflict) {
+    const keep = await deps.confirm({ title: `${name} was moved or deleted in ${service}.`, body: "Keep Both puts your version where it was.", action: "Keep Both" });
+    return keep ? kept(await deps.save(true)) : null;
   }
-  const gone = "gone" in got.conflict;
-  const keep = await deps.confirm({
-    title: gone ? `${name} was moved or deleted in ${service}.` : `${name} changed in ${service} since you opened it.`,
-    body: "Nothing was written over it. Keep Both puts your version beside it.",
-    action: "Keep Both",
+  const again = await deps.choose({
+    title: `${name} changed in ${service} ${whenWords(got.conflict.changed, now)}, after you opened it.`,
+    body: `Replace puts your version over that change; ${service} keeps its own version history. Keep Both puts yours beside it.`,
+    action: "Replace",
+    other: "Keep Both",
+    focusOther: true,
   });
-  if (!keep) return null;
-  const kept = await deps.save(true);
-  if ("copy" in kept) deps.said(`Saved beside it as ${kept.copy.name}`);
-  return "copy" in kept ? "kept" : null;
+  if (again === null) return null;
+  if (again === "other") return kept(await deps.save(true));
+  return "at" in (await deps.save(false, true)) ? "saved" : null;
 }

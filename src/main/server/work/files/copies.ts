@@ -330,7 +330,7 @@ export async function copyBack(ctx: WorkCtx, by: Caller, p: { workspaceId: strin
 }
 
 /** The file's bytes and its version as its own computer has them now, from one look; nothing is written here. */
-async function freshBytes(ctx: WorkCtx, r: CopyRow, signal?: AbortSignal): Promise<{ data: Buffer; version: string }> {
+export async function freshBytes(ctx: WorkCtx, r: Pick<CopyRow, 'workspace_id' | 'host' | 'path' | 'vm' | 'name'>, signal?: AbortSignal): Promise<{ data: Buffer; version: string }> {
   if (!copyAllowed(ctx.db, r.workspace_id)) throw new Error('This workspace keeps Teams files where they are: turn on Copy Teams files in its settings to open one here.')
   const ref: CanvasSource = { at: 'file', host: r.host, path: r.path }
   if (r.vm) {

@@ -519,8 +519,8 @@ export async function closeTab(link: string, workspaceId: string, tabId: string,
 export const sendCopyBack = (link: string, workspaceId: string, tabId: string): Promise<CopyBack> => ask<CopyBack>(link, "work.files.copyBack", { workspaceId, tabId });
 
 /** Save as Word: the document a Word file of another computer became, written over that file by its version, or beside it with `keep` (files/word.ts). */
-export const saveWordFile = (link: string, workspaceId: string, tabId: string, keep: boolean): Promise<WordSaved> =>
-  ask<WordSaved>(link, "work.files.wordSave", { workspaceId, tabId, ...(keep ? { keep: true } : {}) }, { timeoutMs: 180_000 });
+export const saveWordFile = (link: string, workspaceId: string, tabId: string, keep: boolean, replace = false): Promise<WordSaved> =>
+  ask<WordSaved>(link, "work.files.wordSave", { workspaceId, tabId, ...(keep ? { keep: true } : {}), ...(replace ? { replace: true } : {}) }, { timeoutMs: 180_000 });
 
 /** Reload: the file as it is on its computer now, in the copy's place; what was not sent is dropped. */
 export async function reloadCopy(link: string, workspaceId: string, tabId: string): Promise<void> {

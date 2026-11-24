@@ -1,11 +1,12 @@
-import { rmSync, statSync } from 'node:fs'
-import { dirname } from 'node:path'
+import { createHash } from 'node:crypto'
+import { existsSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
+import { dirname, join } from 'node:path'
 import type { FileTab, WordBack, WordSaved } from '@shared/contract-work-files'
 import { filesPaneWorkspace, type CanvasItem } from '@shared/work'
-import { extOf } from '@shared/work/files'
+import { extOf, freeName, splitName } from '@shared/work/files'
 import type { Caller, WorkCtx } from '../modules'
 import { workspaceHere } from './policy'
-import { admitOwner, deliver, NOT_SAVING } from './copies'
+import { admitOwner, deliver, freshBytes, NOT_SAVING } from './copies'
 import { filesState } from './handle'
 
 /**
@@ -29,6 +30,10 @@ export interface WordRow {
   saved_at: number | null
   saved_doc_at: number | null
   at: number
+  /** the sha256 of the bytes the copy was read with; null for a document an older build made (`adoptWordCopies`) */
+  sha: string | null
+  /** the Word file as it was before TempCode's first write over it, kept in the workspace's folder */
+  original: string | null
 }
 
 /** His window: what the workspace's host itself sends as when the press was his. */
@@ -53,13 +58,13 @@ export function keptDoc(ctx: Pick<WorkCtx, 'db'>, workspaceId: string, host: str
 }
 
 /** A Word file read into a copy at `version`: what Save as Word will write over, until it is made again. */
-export function recordWord(ctx: Pick<WorkCtx, 'db'>, w: { workspaceId: string; host: string; path: string; vm: boolean; name: string; version: string }): void {
+export function recordWord(ctx: Pick<WorkCtx, 'db'>, w: { workspaceId: string; host: string; path: string; vm: boolean; name: string; version: string; sha: string }): void {
   ctx.db
     .prepare(
-      `INSERT INTO work_files_word (workspace_id, host, path, vm, name, version, doc, doc_at, saved_at, saved_doc_at, at) VALUES (?, ?, ?, ?, ?, ?, NULL, NULL, NULL, NULL, ?)
-       ON CONFLICT (workspace_id, host, path) DO UPDATE SET vm = excluded.vm, name = excluded.name, version = excluded.version, doc = NULL, doc_at = NULL, saved_at = NULL, saved_doc_at = NULL, at = excluded.at`
+      `INSERT INTO work_files_word (workspace_id, host, path, vm, name, version, sha, doc, doc_at, saved_at, saved_doc_at, at) VALUES (?, ?, ?, ?, ?, ?, ?, NULL, NULL, NULL, NULL, ?)
+       ON CONFLICT (workspace_id, host, path) DO UPDATE SET vm = excluded.vm, name = excluded.name, version = excluded.version, sha = excluded.sha, doc = NULL, doc_at = NULL, saved_at = NULL, saved_doc_at = NULL, at = excluded.at`
     )
-    .run(w.workspaceId, w.host, w.path, w.vm ? 1 : 0, w.name, w.version, Date.now())
+    .run(w.workspaceId, w.host, w.path, w.vm ? 1 : 0, w.name, w.version, w.sha, Date.now())
 }
 
 /** The Files tab whose item is this one, if it shows a Word file's copy. */
@@ -153,20 +158,66 @@ export function wordsLeft(ctx: Pick<WorkCtx, 'db' | 'canvas'>, items: readonly C
   }
 }
 
-/** `work.files.wordSave`: Save as Word, over the file by its version, or beside it with `keep`. */
-export async function wordSave(ctx: WorkCtx, by: Caller, p: { workspaceId: string; tabId: string; keep?: boolean }): Promise<WordSaved> {
+/** The sha256 of the bytes the Word file was read with: recorded at its open, or the copy an older build left beside the document. */
+function knownSha(r: WordRow): string | null {
+  if (r.sha) return r.sha
+  if (!r.doc) return null
+  try {
+    return createHash('sha256').update(readFileSync(join(dirname(r.doc), r.name))).digest('hex')
+  } catch {
+    return null
+  }
+}
+const shaOf = (data: Buffer): string => createHash('sha256').update(data).digest('hex')
+/** When a version word (`size:mtime:sha`, the helper's and the door's alike) says the file last changed. */
+const changedOf = (version: string): number => Number(version.split(':')[1]) || Date.now()
+
+/** The Word file as it was before TempCode's first write over it, kept once in the workspace's folder beside his document. */
+function keepOriginal(ctx: WorkCtx, r: WordRow, data: Buffer): void {
+  const folder = workspaceHere(ctx.db, r.workspace_id)?.path
+  if (r.original || !folder) return
+  const { stem, ext } = splitName(r.name)
+  const name = freeName(`${stem} (before TempCode saved it)${ext}`, (n) => existsSync(join(folder, n)))
+  writeFileSync(join(folder, name), data, { flag: 'wx' })
+  ctx.db.prepare(`UPDATE work_files_word SET original = ? WHERE workspace_id = ? AND host = ? AND path = ?`).run(join(folder, name), r.workspace_id, r.host, r.path)
+}
+
+/**
+ * `work.files.wordSave`: Save as Word. The file as it is there now is read first: unchanged since it was read (by
+ * version, or when only its version moved, by its bytes' hash: a sync's touch, an older build's copy with no version
+ * on record), it is written over; changed there, the answer says when, and only `replace` (his press on Replace) writes
+ * over it. Before the first write over the file its bytes are kept in the workspace's folder. `keep` puts his
+ * version beside the file instead.
+ */
+export async function wordSave(ctx: WorkCtx, by: Caller, p: { workspaceId: string; tabId: string; keep?: boolean; replace?: boolean }): Promise<WordSaved> {
   const tab = filesState(ctx).tabs.list(p.workspaceId).tabs.find((t) => t.id === p.tabId)
   const r = tab?.copyOf ? keptDoc(ctx, p.workspaceId, tab.copyOf.host, tab.copyOf.path) : null
   if (!tab || !r) throw new Error(NOT_SAVING)
   admitOwner(by, r)
+  const row = { workspace_id: r.workspace_id, host: r.host, path: r.path, vm: r.vm, name: r.name, version: r.version }
+  let version = r.version
+  if (!p.keep) {
+    let now: { data: Buffer; version: string }
+    try {
+      now = await freshBytes(ctx, row)
+    } catch (err) {
+      if (/not there any more|gone|not found|No file/i.test(err instanceof Error ? err.message : String(err))) return { conflict: { gone: true } }
+      throw err
+    }
+    const same = now.version === r.version || (knownSha(r) !== null && shaOf(now.data) === knownSha(r))
+    if (!same && !p.replace) return { conflict: { changed: changedOf(now.version) } }
+    version = now.version
+    keepOriginal(ctx, r, now.data)
+  }
   const { exportDoc } = await import('../formats/exporter')
   const out = await exportDoc(ctx, LOCAL, { source: { at: 'file', host: ctx.host, path: r.doc! }, format: 'docx' })
+  const data = Buffer.from(out.data, 'base64')
   const docAt = mtime(r.doc!)
-  const got = await deliver(ctx, { workspace_id: r.workspace_id, host: r.host, path: r.path, vm: r.vm, name: r.name, version: r.version }, Buffer.from(out.data, 'base64'), !!p.keep)
+  const got = await deliver(ctx, { ...row, version }, data, !!p.keep)
   if ('conflict' in got) return { conflict: 'gone' in got.conflict ? { gone: true } : { changed: got.conflict.changed } }
   if ('copy' in got) return { copy: { name: got.copy.name } }
   const at = Date.now()
-  ctx.db.prepare(`UPDATE work_files_word SET version = ?, saved_at = ?, saved_doc_at = ? WHERE workspace_id = ? AND host = ? AND path = ?`).run(got.version, at, docAt, r.workspace_id, r.host, r.path)
+  ctx.db.prepare(`UPDATE work_files_word SET version = ?, sha = ?, saved_at = ?, saved_doc_at = ? WHERE workspace_id = ? AND host = ? AND path = ?`).run(got.version, shaOf(data), at, docAt, r.workspace_id, r.host, r.path)
   filesState(ctx).tabs.touch(p.workspaceId)
   return { at }
 }

@@ -208,7 +208,7 @@ export const FilesRequestSchemas = [
    * file by the version it was read at, never over a file that changed there; `keep` puts it beside the file under
    * the keep-both name instead. His own edit of that file: his window, or a key that may approve.
    */
-  request('work.files.wordSave', z.object({ workspaceId: Workspace, tabId: z.string().max(100), keep: z.boolean().optional() })),
+  request('work.files.wordSave', z.object({ workspaceId: Workspace, tabId: z.string().max(100), keep: z.boolean().optional(), /** his press on Replace over a file that changed there */ replace: z.boolean().optional() })),
   /**
    * → WrittenBack: a copy's bytes, sent by the workspace's host to the file's own host (its peer verb, never a
    * window's or a key's): written over the file by `version` alone, through the same door as his own save there,

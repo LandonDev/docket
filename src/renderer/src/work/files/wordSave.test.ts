@@ -43,13 +43,20 @@ describe("Save as Word", () => {
     expect(none.save).not.toHaveBeenCalled();
   });
 
-  it("never writes over a file that changed there: it offers Keep Both alone", async () => {
-    const d = deps("action", [{ conflict: { changed: AT } }, { copy: { name: "AD Screening 9-2 (mine).docx" } }]);
-    expect(await saveAsWord(TAB, d)).toBe("kept");
-    expect(d.confirm).toHaveBeenCalledWith(expect.objectContaining({ title: "AD Screening 9-2.docx changed in Teams since you opened it.", action: "Keep Both" }));
-    expect(d.save.mock.calls).toEqual([[false], [true]]);
-    const declined = deps("action", [{ conflict: { gone: true } }], false);
-    expect(await saveAsWord(TAB, declined)).toBeNull();
-    expect(declined.save).toHaveBeenCalledTimes(1);
+  it("over a file that changed there says when, holds Keep Both in focus, and Replace on his press writes over it", async () => {
+    const d = deps("action", [{ conflict: { changed: AT } }, { at: NOW }]);
+    d.choose.mockResolvedValueOnce("action").mockResolvedValueOnce("action");
+    expect(await saveAsWord(TAB, d, NOW)).toBe("saved");
+    expect(d.choose.mock.calls[1]![0]).toMatchObject({ title: "AD Screening 9-2.docx changed in Teams 9:12 PM, after you opened it.", action: "Replace", other: "Keep Both", focusOther: true });
+    expect(d.choose.mock.calls[1]![0].body).toContain("version history");
+    expect(d.save.mock.calls).toEqual([[false], [false, true]]);
+    const both = deps("action", [{ conflict: { changed: AT } }, { copy: { name: "AD Screening 9-2 (mine).docx" } }]);
+    both.choose.mockResolvedValueOnce("action").mockResolvedValueOnce("other");
+    expect(await saveAsWord(TAB, both, NOW)).toBe("kept");
+    expect(both.save.mock.calls).toEqual([[false], [true]]);
+    const gone = deps("action", [{ conflict: { gone: true } }], false);
+    expect(await saveAsWord(TAB, gone, NOW)).toBeNull();
+    expect(gone.save).toHaveBeenCalledTimes(1);
   });
+
 });

@@ -581,6 +581,30 @@ describe('a Word file of another computer', () => {
     expect(readFileSync(join(dirname(path), 'Plan (mine).docx'), 'utf8')).toBe('word export')
   })
 
+  it('is never called changed when only its version moved (a sync touched it, its bytes the same)', async () => {
+    const { tabId, path } = await imported('Plan.docx', 'word bytes')
+    utimesSync(path, new Date(), new Date(Date.now() + 60_000))
+    const got = await call<{ at?: number }>('work.files.wordSave', { tabId })
+    expect(got.at).toBeGreaterThan(0)
+    expect(readFileSync(path, 'utf8')).toBe('word export')
+  })
+
+  it('Replace on his press writes over a file that changed there, the file as it was kept first in the workspace folder', async () => {
+    const { tabId, path } = await imported('Plan.docx', 'word bytes')
+    writeFileSync(path, 'a colleague saved')
+    const clash = await call<{ conflict?: { changed: number } }>('work.files.wordSave', { tabId })
+    expect(clash.conflict?.changed).toBeGreaterThan(0)
+    const got = await call<{ at?: number }>('work.files.wordSave', { tabId, replace: true })
+    expect(got.at).toBeGreaterThan(0)
+    expect(readFileSync(path, 'utf8')).toBe('word export')
+    const original = join(box.folder, 'Plan (before TempCode saved it).docx')
+    expect(readFileSync(original, 'utf8')).toBe('a colleague saved')
+    expect(wordRow(box.ctx, WS, MAC, path)).toMatchObject({ original })
+    // Kept once: a later save writes no second copy.
+    await call('work.files.wordSave', { tabId, replace: true })
+    expect(readdirSync(box.folder).filter((n) => n.includes('before TempCode'))).toHaveLength(1)
+  })
+
   it('refuses a thread, a read key and a key that may not approve', async () => {
     const { tabId, path } = await imported('Plan.docx', 'word bytes')
     await expect(call('work.files.wordSave', { tabId }, thread('t1'))).rejects.toThrow('files_* tools')
@@ -638,15 +662,21 @@ describe('a Word file an older build opened, its document beside the copy with h
     expect(existsSync(doc)).toBe(true)
   })
 
-  it('Save as Word meets the file as changed (its read version is not known) and never writes over it', async () => {
+  it("Save as Word knows the file unchanged by the copy's own bytes beside it, with no version on record, and writes", async () => {
     const opened = await openFar('Screening.docx', 'word bytes')
     box.db.prepare(`DELETE FROM work_files_word`).run()
     const doc = join(dirname(opened.copy), 'Screening.tcdoc')
     writeFileSync(doc, '{"his":"edits"}')
     box.ctx.canvas.replace(filesPaneOf(WS), opened.item.id, 'document', { at: 'file', host: HOST, path: doc }, 'Screening')
     adoptWordCopies(box.ctx, (id) => filesState(box.ctx).tabs.list(id).tabs)
-    const got = await call<{ conflict?: unknown }>('work.files.wordSave', { tabId: opened.tabId })
-    expect(got.conflict).toBeTruthy()
-    expect(readFileSync(opened.path, 'utf8')).toBe('word bytes')
+    const got = await call<{ at?: number }>('work.files.wordSave', { tabId: opened.tabId })
+    expect(got.at).toBeGreaterThan(0)
+    expect(readFileSync(opened.path, 'utf8')).toBe('word export')
+    // A colleague's save after that is a change: never written over without his Replace.
+    writeFileSync(opened.path, 'a colleague saved')
+    writeFileSync(doc, '{"his":"more"}')
+    const clash = await call<{ conflict?: { changed: number } }>('work.files.wordSave', { tabId: opened.tabId })
+    expect(clash.conflict?.changed).toBeGreaterThan(0)
+    expect(readFileSync(opened.path, 'utf8')).toBe('a colleague saved')
   })
 })

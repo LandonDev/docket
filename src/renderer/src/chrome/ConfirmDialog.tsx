@@ -1,4 +1,4 @@
-import { useState, useSyncExternalStore, type ReactNode } from "react";
+import { useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import { BusyLabel, Button } from "@renderer/components/ui/button";
 import {
   AlertDialog,
@@ -104,6 +104,7 @@ export function ConfirmDialog({
   danger,
   otherLabel,
   onOther,
+  focusOther,
   onCancel,
   onConfirm,
   onDone,
@@ -117,6 +118,8 @@ export function ConfirmDialog({
   /** A second answer beside the verb (Discard beside Keep trying): secondary, between Cancel and the verb. */
   otherLabel?: string;
   onOther?: () => void;
+  /** the second answer holds the focus when the dialog opens */
+  focusOther?: boolean;
   onCancel: () => void;
   onConfirm: () => void | Promise<void>;
   /** The confirm landed: the dialog plays its exit, then this runs. The
@@ -126,6 +129,7 @@ export function ConfirmDialog({
 }) {
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const otherRef = useRef<HTMLButtonElement>(null);
   const { root, closeThen } = useClosingDialog(onCancel, pending);
   const confirm = async () => {
     setPending(true);
@@ -142,7 +146,7 @@ export function ConfirmDialog({
   };
   return (
     <AlertDialog {...root}>
-      <AlertDialogContent aria-busy={pending || undefined}>
+      <AlertDialogContent aria-busy={pending || undefined} {...(focusOther ? { initialFocus: otherRef } : {})}>
         <AlertDialogHeader>
           <AlertDialogTitle>{title}</AlertDialogTitle>
           {body ? <AlertDialogDescription>{body}</AlertDialogDescription> : null}
@@ -157,6 +161,7 @@ export function ConfirmDialog({
           <AlertDialogCancel disabled={pending}>Cancel</AlertDialogCancel>
           {otherLabel ? (
             <Button
+              ref={otherRef}
               data-confirm-other
               variant="secondary"
               disabled={pending}
@@ -177,7 +182,7 @@ export function ConfirmDialog({
   );
 }
 
-export type ConfirmRequest = { title: string; body?: string; action: string; danger?: boolean };
+export type ConfirmRequest = { title: string; body?: string; action: string; danger?: boolean; /** the second answer takes the first focus (Keep Both over Replace) */ focusOther?: boolean };
 
 type Pending = ConfirmRequest & { id: number; other?: string; resolve: (answer: boolean | "other") => void };
 
@@ -224,7 +229,7 @@ export function ConfirmHost() {
       body={head.body}
       confirmLabel={head.action}
       danger={head.danger}
-      {...(head.other ? { otherLabel: head.other, onOther: () => head.resolve("other") } : {})}
+      {...(head.other ? { otherLabel: head.other, onOther: () => head.resolve("other"), focusOther: head.focusOther } : {})}
       onCancel={() => {
         drop();
         head.resolve(false);
