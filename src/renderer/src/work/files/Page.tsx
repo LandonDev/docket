@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type DragEvent, type KeyboardEvent, type ReactNode } from "react";
+import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState, type DragEvent, type KeyboardEvent, type ReactNode, type RefObject } from "react";
 import type { FileCrumb, FilePage, FileTab } from "@shared/contract-work-files";
 import { matchesName, nameWords } from "@shared/work/fileSearch";
 import { canDo, DEFAULT_SORT, MAKE_WORDS, refusal, type FileEntry, type FilePlace, type FileSort, type FileSortBy, type FolderRef, type MakeKind } from "@shared/work/files";
@@ -242,6 +242,100 @@ function Head({ sort, second, onSort }: { sort: FileSort; second: string; onSort
   );
 }
 
+/** What a row calls when pressed, as the list has it now. */
+interface RowLive {
+  onPick: ShapeProps["onPick"];
+  onOpen: ShapeProps["onOpen"];
+  onRenamed: ShapeProps["onRenamed"];
+  drag?: RowDrag;
+}
+
+/**
+ * One row of the list: its kind's glyph, the name with its one state, who changed it, when. Drawn again only when its
+ * entry (kept as the same object while it says the same), its selection, the drag over it, its progress or its
+ * rename changes: a push that changed one file draws one row, a press that moves the selection draws two.
+ */
+const FileRow = memo(function FileRow({
+  entry,
+  index,
+  on,
+  over,
+  height,
+  busyWord,
+  renaming,
+  head,
+  drag,
+  dragFrom,
+  live,
+}: {
+  entry: FileEntry;
+  index: number;
+  on: boolean;
+  over: boolean;
+  height: number;
+  busyWord: string | null;
+  renaming: boolean;
+  head: string | undefined;
+  drag: RowDrag | undefined;
+  /** whether rows may be dragged now: only so the row draws again when it changes */
+  dragFrom: boolean;
+  live: RefObject<RowLive>;
+}) {
+  const line = (
+    <div
+      key={entry.key}
+      id={`files-row-${index}`}
+      role="option"
+      aria-selected={on}
+      data-files-row={entry.key}
+      data-menu-id={entry.key}
+      data-kind={entry.kind}
+      data-drop-over={over || undefined}
+      style={{ height }}
+      className={`flex cursor-default items-center gap-2 rounded-md px-2 text-[13px] select-none ${on || over ? "bg-muted" : ROW_PRESS}`}
+      onClick={(event) => live.current.onPick(entry.key, howOf(event), onNameOf(event))}
+      onDoubleClick={() => live.current.onOpen(entry)}
+      {...dragProps(drag, entry)}
+      // Whether it may be dragged is this render's, not the handlers' (which are the list's after it commits).
+      {...(drag ? { draggable: dragFrom && entry.kind !== "form" } : {})}
+    >
+      <KindGlyph kind={entry.kind} />
+      {/* The state is a detail of the name: 4px after it, on its baseline (a glyph keeps the centre line). */}
+      <span className="flex min-w-0 flex-1 items-baseline gap-1">
+        {renaming ? (
+          <NameField name={entry.name} onDone={(next) => live.current.onRenamed(entry, next)} />
+        ) : (
+          <TruncateTip text={entry.name}>
+            <span data-files-name className={`min-w-0 truncate text-foreground ${entry.fresh ? "font-semibold" : ""}`}>
+              {entry.name}
+            </span>
+          </TruncateTip>
+        )}
+        {busyWord !== null ? (
+          // The name has first claim on the row: the progress gives way first, its words cut at the width of the By
+          // column, and under 360px of list they go from sight (still read out) as Changed does, the spinner staying.
+          // The whole of it on hover.
+          <RowWords data-files-busy="" busy words={busyWord} cut="max-w-0 @[360px]/files-list:max-w-40" />
+        ) : (
+          <RowState entry={entry} />
+        )}
+      </span>
+      <span className={`${COL_BY} truncate text-xs text-muted-foreground`}>{entry.where ? whereWords(entry.where) : entry.answersTo ? answersWords(entry.answersTo) : (entry.madeBy ?? entry.by ?? "")}</span>
+      <span className={`${COL_CHANGED} text-xs text-muted-foreground tabular-nums`}>{entry.changed ? dayTime(entry.changed) : ""}</span>
+    </div>
+  );
+  if (head === undefined) return line;
+  // A group's heading stands over its first row on its rows' title edge, and scrolls with it.
+  return (
+    <div role="presentation">
+      <div role="presentation" data-files-group={head} className={`flex h-7 items-end ps-8 pe-2 pb-1 text-xs font-medium text-muted-foreground ${index ? "mt-2" : ""}`}>
+        {head}
+      </div>
+      {line}
+    </div>
+  );
+});
+
 export function FileList({
   entries,
   picked,
@@ -298,62 +392,44 @@ export function FileList({
     if (event.key === "Enter" && at >= 0) return void (event.preventDefault(), onOpen(entries[at]!));
     if (event.key === "Escape" && picked.keys.size) return void (event.preventDefault(), onPick(null));
   };
+  // The handlers a row calls, read when it is pressed: a row draws again only when what it shows changes.
+  const live = useRef<RowLive>({ onPick, onOpen, onRenamed, drag });
+  useLayoutEffect(() => {
+    live.current = { onPick, onOpen, onRenamed, drag };
+  });
+  const liveDrag = useMemo<RowDrag>(
+    () => ({
+      get from() {
+        return live.current.drag?.from ?? false;
+      },
+      get over() {
+        return live.current.drag?.over ?? null;
+      },
+      onStart: (entry, event) => live.current.drag?.onStart(entry, event),
+      onEnd: () => live.current.drag?.onEnd(),
+      onOver: (entry, event) => live.current.drag?.onOver(entry, event) ?? false,
+      onLeave: (entry) => live.current.drag?.onLeave(entry),
+      onDrop: (entry, event) => live.current.drag?.onDrop(entry, event),
+    }),
+    [],
+  );
   const row = (index: number): ReactNode => {
     const entry = entries[index]!;
-    const on = picked.keys.has(entry.key);
-    const mine = busy?.key === entry.key;
-    const over = drag?.over === entry.key;
-    const head = heads?.get(index);
-    const line = (
-      <div
-        key={entry.key}
-        id={`files-row-${index}`}
-        role="option"
-        aria-selected={on}
-        data-files-row={entry.key}
-        data-menu-id={entry.key}
-        data-kind={entry.kind}
-        data-drop-over={over || undefined}
-        style={{ height }}
-        className={`flex cursor-default items-center gap-2 rounded-md px-2 text-[13px] select-none ${on || over ? "bg-muted" : ROW_PRESS}`}
-        onClick={(event) => onPick(entry.key, howOf(event), onNameOf(event))}
-        onDoubleClick={() => onOpen(entry)}
-        {...dragProps(drag, entry)}
-      >
-        <KindGlyph kind={entry.kind} />
-        {/* The state is a detail of the name: 4px after it, on its baseline (a glyph keeps the centre line). */}
-        <span className="flex min-w-0 flex-1 items-baseline gap-1">
-          {renaming === entry.key ? (
-            <NameField name={entry.name} onDone={(next) => onRenamed(entry, next)} />
-          ) : (
-            <TruncateTip text={entry.name}>
-              <span data-files-name className={`min-w-0 truncate text-foreground ${entry.fresh ? "font-semibold" : ""}`}>
-                {entry.name}
-              </span>
-            </TruncateTip>
-          )}
-          {mine ? (
-            // The name has first claim on the row: the progress gives way first, its words cut at the width of the By
-            // column, and under 360px of list they go from sight (still read out) as Changed does, the spinner staying.
-            // The whole of it on hover.
-            <RowWords data-files-busy="" busy words={busy!.word} cut="max-w-0 @[360px]/files-list:max-w-40" />
-          ) : (
-            <RowState entry={entry} />
-          )}
-        </span>
-        <span className={`${COL_BY} truncate text-xs text-muted-foreground`}>{entry.where ? whereWords(entry.where) : entry.answersTo ? answersWords(entry.answersTo) : (entry.madeBy ?? entry.by ?? "")}</span>
-        <span className={`${COL_CHANGED} text-xs text-muted-foreground tabular-nums`}>{entry.changed ? dayTime(entry.changed) : ""}</span>
-      </div>
-    );
-    if (head === undefined) return line;
-    // A group's heading stands over its first row on its rows' title edge, and scrolls with it.
     return (
-      <div key={entry.key} role="presentation">
-        <div role="presentation" data-files-group={head} className={`flex h-7 items-end ps-8 pe-2 pb-1 text-xs font-medium text-muted-foreground ${index ? "mt-2" : ""}`}>
-          {head}
-        </div>
-        {line}
-      </div>
+      <FileRow
+        key={entry.key}
+        entry={entry}
+        index={index}
+        on={picked.keys.has(entry.key)}
+        over={drag?.over === entry.key}
+        height={height}
+        busyWord={busy?.key === entry.key ? busy.word : null}
+        renaming={renaming === entry.key}
+        head={heads?.get(index)}
+        drag={drag ? liveDrag : undefined}
+        dragFrom={!!drag?.from}
+        live={live}
+      />
     );
   };
   return (
