@@ -10,11 +10,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { MailWaiting } from "@shared/contract-work-mail";
 
 const calls: { method: string; params: Record<string, unknown> }[] = [];
-const state: { waiting: MailWaiting; fail: Set<string>; hold: Map<string, Promise<void>> } = { waiting: { days: 3, routine: false }, fail: new Set(), hold: new Map() };
+const state: { waiting: MailWaiting; fail: Set<string>; timeout: Set<string>; hold: Map<string, Promise<void>> } = { waiting: { days: 3, routine: false }, fail: new Set(), timeout: new Set(), hold: new Map() };
 
+const { TimeoutError } = await vi.importActual<typeof import("../../lib/connection")>("../../lib/connection");
 vi.mock("../../lib/connection", async (original) => ({
   ...(await original<object>()),
   registry: {
+    environment: () => ({ name: "The box" }),
     linkOf: () => ({
       onPush: () => () => {},
       request: async (method: string, params: Record<string, unknown> = {}) => {
@@ -23,6 +25,7 @@ vi.mock("../../lib/connection", async (original) => ({
         const routine = state.waiting.routine;
         const hold = state.hold.get(method);
         if (hold) await hold;
+        if (state.timeout.has(method)) throw new TimeoutError(method, 15_000);
         if (state.fail.has(method)) throw new Error("The box did not answer");
         if (method === "work.mail.waiting") return { ...state.waiting, routine };
         if (method === "work.mail.nudge") return { sessionId: "nudge-thread" };
@@ -64,6 +67,7 @@ beforeEach(() => {
   opened.length = 0;
   state.waiting = { days: 3, routine: false };
   state.fail.clear();
+  state.timeout.clear();
 });
 afterEach(() => {
   cleanup();
@@ -175,6 +179,19 @@ describe("the workspace's Waiting on", () => {
     await settle();
     expect(screen.getByLabelText("Count as waiting after").textContent).toContain("5 working days");
     expect(screen.queryByText("The box did not answer")).toBeNull();
+  });
+
+  /** Council round 6 (Opus P3): a Retry that timed out names the workspace's host, never "That computer". */
+  it("names the workspace's host when the days' Retry times out", async () => {
+    state.waiting = { days: null, routine: true, error: "LifeOS did not answer: LifeOS is unreachable" };
+    render(<WaitingSection workspace={WORKSPACE} />);
+    await settle();
+    state.timeout.add("work.mail.waiting");
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    await settle();
+    expect(screen.getByText("The box did not answer")).toBeTruthy();
+    expect(screen.queryByText(/That computer/)).toBeNull();
+    state.timeout.clear();
   });
 
   it("lays an answer over what is shown half by half, by when its ask started", async () => {

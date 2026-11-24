@@ -5,11 +5,12 @@ import { PageError, PageRow, PageRowsSkeleton, PageSection } from "../../compone
 import { SettingSwitch } from "../../components/setting-switch";
 import { BusyLabel, Button } from "../../components/ui/button";
 import { loadToast } from "../../components/ui/toaster";
-import { registry } from "../../lib/connection";
+import { registry, TimeoutError } from "../../lib/connection";
+import { nameInLine } from "../../lib/hostWords";
 import { useLinkMay } from "../../lib/linkMay";
 import { workErrorWords } from "../../lib/workErrorWords";
 import type { WorkspaceMeta } from "../../lib/tcserver/types";
-import { lifeosStateOf, sessionFailure } from "../shell/lifeos";
+import { lifeosHostName, lifeosStateOf, sessionFailure } from "../shell/lifeos";
 
 /**
  * A Work workspace's Waiting on (docs/agents/work-mail.md "Waiting on"), on its
@@ -98,7 +99,10 @@ function Waiting({ workspace }: { workspace: WorkspaceMeta }) {
       (err: unknown) => {
         // A read that failed after a newer save answered leaves the section as that save left it.
         if (!live || (shown.current && shown.current.routine > n)) return;
-        const error = workErrorWords(err) || "The host did not answer";
+        // The workspace's host is known and its link open: its silence is said with the computer named, as the session's
+        // line says it; any other cause in Work's words, the computer named in them.
+        const host = lifeosHostName(env);
+        const error = err instanceof TimeoutError ? sessionFailure("unanswered", false, host) : workErrorWords(err, host ? { host: nameInLine(host) } : {}) || sessionFailure("unanswered", false, host);
         // A Retry that failed keeps what was known, the routine's switch with it: the failure and Retry stay on the days'
         // row. Only a first read with nothing known is the whole section's error.
         setLoad(shown.current ? { status: "ready", value: shown.current.value, failed: error } : { status: "error", error });
