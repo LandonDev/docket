@@ -131,6 +131,7 @@ beforeEach(async () => {
     addKey: vi.fn(async () => ({ ok: true, name: 'Meta key …LJYq' })),
     updateProfile: vi.fn(async () => ({ ok: true })),
     openExternal: vi.fn(async () => {}),
+    startFresh: vi.fn(async () => ({ ok: true })),
     onAccountsChanged: vi.fn(() => () => {}),
     stats: vi.fn(async () => emptyBundle()),
     statsStatus: vi.fn(async () => ({ indexing: false, filesDone: 0, filesTotal: 0, rows: 0 })),
@@ -154,6 +155,23 @@ afterEach(() => {
 })
 
 describe('AccountsPage', () => {
+  it('a vault that does not open says so in one line, and Start fresh asks once before it runs', async () => {
+    const link = registry.primary() as unknown as FakeLink
+    render(<AccountsPage />)
+    await act(flush)
+    expect(screen.queryByText('The vault on this computer does not open.')).toBeNull()
+    const locked = snapshot()
+    locked.updatedAt = 2
+    locked.vaultLock = 'unwrap'
+    await act(async () => { link.push({ push: 'accounts', snapshot: locked }) })
+    expect(screen.getByText('The vault on this computer does not open.')).toBeTruthy()
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Start fresh' })) })
+    expect(aliax.startFresh).not.toHaveBeenCalled()
+    const dialog = await screen.findByRole('alertdialog')
+    await act(async () => { fireEvent.click(within(dialog).getByRole('button', { name: 'Start fresh' })); await flush() })
+    expect(aliax.startFresh).toHaveBeenCalledTimes(1)
+  })
+
   it('the existing refresh reports each failed host once and leaves the control usable', async () => {
     const refresh = vi.spyOn(accountsStore, 'refresh').mockRejectedValue(new Error('Box: key revoked\nMac: timeout\nBox: key revoked'))
     render(<AccountsPage />)

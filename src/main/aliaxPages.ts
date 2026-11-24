@@ -12,6 +12,11 @@ import type { AccountSync } from './server/remote/accountSync'
 import { statsHost } from './aliax/stats/statsService'
 import { ACCOUNT_PROVIDERS, SERVICE_OF, type AccountsSnapshot, type KeyProfileView, type MintProgress } from '@shared/accounts'
 import { ADDON_GRANT_MANAGED } from '@shared/addonGrantWords'
+import { setVaultAside } from './aliax/vaultMode'
+import { ALIAX_DATA_DIR } from './aliax'
+
+/** Run after Start fresh made a new vault: a given computer retires its identity there (devices). */
+export const vaultStartFreshHooks: Array<() => void> = []
 
 /**
  * The main-process half of the embedded Aliax pages (Accounts, Stats): the
@@ -253,6 +258,18 @@ export function registerAliaxPages(server: { accounts: AliaxPagesHost; accountSy
   }
 
   handle('aliax:services:list', async () => withKeyIds(await accounts.listServices()))
+  // Start fresh: only for a key-file vault that does not open; the old one is kept aside, never deleted.
+  handle('aliax:vault:startFresh', () =>
+    asResult(async () => {
+      if (!vault.vaultLockReason() || vault.vaultLockReason() === 'keychain') return { ok: false, error: 'The vault opens; nothing to start fresh from' }
+      setVaultAside(ALIAX_DATA_DIR, Date.now())
+      vault.resetKeyCache()
+      for (const hook of vaultStartFreshHooks) hook()
+      notifyAccountsChanged()
+      nudge?.()
+      return { ok: true }
+    })
+  )
   // An API key (Meta): checked for its shape, presented to the provider once,
   // saved only when it answers; the error is the dialog's one red line.
   handle('aliax:profiles:addKey', (_e, input: { serviceId: ServiceId; name?: string; key: string }) =>

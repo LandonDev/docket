@@ -39,6 +39,8 @@ export const aliaxApi = {
     patch: { nickname?: string; color?: string }
   ): Promise<ActionResult> => ipcRenderer.invoke('aliax:profiles:update', serviceId, name, patch),
   openExternal: (url: string): Promise<void> => ipcRenderer.invoke('aliax:open:external', url),
+  /** A vault that will not open, moved aside whole so a new one is made (main/aliax/vaultMode.ts setVaultAside). */
+  startFresh: (): Promise<ActionResult> => ipcRenderer.invoke('aliax:vault:startFresh'),
   /** Fires when accounts change outside the page (a switch, a failover, Aliax's own writes). */
   onAccountsChanged: (cb: () => void): (() => void) => {
     const listener = (): void => cb()

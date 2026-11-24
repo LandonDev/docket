@@ -138,9 +138,56 @@ Mac's `~/Library/Application Support/temp-code`), not Electron's default `%APPDA
 (`localUserData`, set in src/main/index.ts before anything reads the path). electron-updater's
 downloads are `%LOCALAPPDATA%\temp-code-updater`.
 
-**The vault stays on a key file.** aliax-core has a Keychain mode (macOS) and a key-file mode;
-it has no DPAPI mode, so on Windows the vault's key is a file in the data folder, protected by
-the profile's own access rules and nothing more, as on the box.
+## The vault
+
+**Where it lives.** The account vault is Aliax's folder under the ROAMING profile,
+`%APPDATA%\aliax` (`ALIAX_DATA_DIR`, src/main/aliax.ts): `profiles.json`, `secrets\*.bin` and the
+key file `vault.key`. A managed PC may copy that folder to a server at sign-out.
+
+**What seals it.** aliax-core's key-file mode with a wrap (src/main/aliax/vaultMode.ts
+`secretsModeFor`): `vault.key` holds the vault's password sealed by Electron's `safeStorage`,
+`aliax-wrap:v1:<base64>`. On Windows `safeStorage` is DPAPI for the current user: Chromium keeps
+its key in `%LOCALAPPDATA%\temp-code\Local State`, sealed by DPAPI, and seals our password with it.
+There is no PowerShell (a Purdue PC may hold PowerShell to Constrained Language) and no native
+addon. Only the main process opens the vault, after `whenReady`; a read before then is a lock that
+lifts on a later read, never a new key. The Mac (the Keychain) and the box (a plain 0600 key file)
+are unchanged.
+
+**The reader** (aliax-core vault.ts `fileKeyPassword`) tells four states apart:
+- no key and no sealed secret: a new vault, sealed from the start, so on a fresh install a plain
+  key never exists;
+- an exact 64-hex key (a vault from before this release): migrated once, under a lock file, to a
+  NEW password: every secret re-sealed into `secrets.next`, read back, the sealed key written to
+  `vault.key.next`, then both moved into place. A crash at any step leaves the old set or the new
+  one whole, and the next open finishes or undoes it. A plain copy of the old key, in a roaming
+  profile or a backup, opens nothing afterwards;
+- an exact wrapped key: opened;
+- anything else, or no key beside sealed secrets: `VaultLocked`, nothing made or rewritten (the old
+  reader made a new key in silence, which stranded every secret). The Accounts page shows one line,
+  "The vault on this computer does not open.", with **Start fresh**, which moves the vault aside
+  whole into `%APPDATA%\aliax\locked-<time>` and starts an empty one.
+
+**What it stops.** A copied `%APPDATA%\aliax` (with or without `%LOCALAPPDATA%\temp-code`), read by
+another Windows user or on another PC: the key does not open for them.
+
+**What it does not stop:**
+- an administrator of that PC acting as him, or installing something that runs as him;
+- anything that already runs as him;
+- on a domain-joined PC (Purdue's), the domain's DPAPI backup key, which lets the domain's
+  administrators recover his DPAPI secrets.
+
+**Downgrade locks it.** A release from before this one reads `aliax-wrap:v1:` as a plain key and
+cannot open the vault. Going back means Start fresh (and, on a given computer, a new setup link).
+Deleting `%LOCALAPPDATA%\temp-code` loses Chromium's key and locks the vault the same way.
+
+**CLI files that hold a secret on Windows**, outside the vault and not sealed by it:
+- `%USERPROFILE%\.claude\.credentials.json`: Claude Code's live sign-in (Windows has no Keychain
+  for it);
+- `%USERPROFILE%\.codex\auth.json`: Codex's live sign-in;
+- `%USERPROFILE%\.config\muse\auth.json`: Muse's own login, and the per-account copies under
+  `%LOCALAPPDATA%\temp-code\muse-accounts\` (museConfigDirs.ts);
+- the Claude config roots TempCode makes (skills/claudeRoots.ts) keep a copy of
+  `.credentials.json` on Windows, where they copy rather than link (`CLAUDE_COPIED_FILES`).
 
 ## Update
 

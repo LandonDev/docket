@@ -32,6 +32,7 @@ import {
   type AccountRoute,
   type AccountsSnapshot,
   type PeerState,
+  type VaultLockReason,
   type ProviderAccounts, type MintProgress } from '@shared/accounts'
 import type { SessionMeta } from '@shared/events'
 import { chooseAccount, eligible, type ResolvedPin, type RouteOptions } from './accountRouting'
@@ -47,6 +48,8 @@ export interface AccountsDeps {
   owner: () => Owner | null
   vaultPresent: () => boolean
   locked: () => boolean
+  /** Why the vault is locked: a key-file reason (aliax-core VaultLocked), 'keychain', or null. */
+  lockReason?: () => VaultLockReason | 'keychain' | null
   /** The live sign-in of a service, for a machine without an Aliax vault. */
   live: (id: ServiceId, force: boolean) => Promise<{ profile: ProfileView; report: UsageReport } | null>
   /** Forced poll of one account, for choosing a failover target. */
@@ -220,6 +223,7 @@ const defaults = (): AccountsDeps => ({
   },
   vaultPresent: () => existsSync(join(dataDir(), 'profiles.json')),
   locked: vault.vaultLocked,
+  lockReason: vault.vaultLockReason,
   live: liveAccount,
   usageOf: (id, name) => accounts.usageOf(id, name, true),
   markStale: accounts.markUsageStale,
@@ -690,7 +694,9 @@ export class AccountsService {
     const owner = d.owner()
     const providers = {} as Record<AccountProvider, ProviderAccounts>
     if (!d.vaultPresent() || d.locked()) {
-      const note = d.vaultPresent() ? 'Aliax vault locked: allow temp-code in Keychain' : undefined
+      const reason = d.vaultPresent() ? (d.lockReason?.() ?? 'keychain') : null
+      const vaultLock = reason && reason !== 'keychain' ? reason : undefined
+      const note = reason === 'keychain' ? 'Aliax vault locked: allow temp-code in Keychain' : reason ? 'Vault locked on this computer' : undefined
       for (const p of ACCOUNT_PROVIDERS) {
         const live = await d.live(SERVICE_OF[p], force && (!only || only === p)).catch(() => null)
         providers[p] = {
@@ -701,7 +707,7 @@ export class AccountsService {
           note
         }
       }
-      return { updatedAt: Date.now(), providers, homes: d.homes(), peers: d.peers() }
+      return { updatedAt: Date.now(), providers, homes: d.homes(), peers: d.peers(), ...(vaultLock ? { vaultLock } : {}) }
     }
     const services = await d.listServices().catch(() => [] as ServiceView[])
     for (const p of ACCOUNT_PROVIDERS) {

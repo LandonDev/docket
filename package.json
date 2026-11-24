@@ -212,7 +212,7 @@
     "@types/ws": "^8.18.1",
     "@vitejs/plugin-react": "^5.1.1",
     "@xterm/xterm": "^6.0.0",
-    "aliax-core": "github:LandonDev/aliax-core#eca7a3f7ed5227ec8782ce099377eadcd7b07c0c",
+    "aliax-core": "github:LandonDev/aliax-core#faba0c1f8bd4ad5dc29eaeaa415bf2b768adc501",
     "babel-plugin-react-compiler": "1.0.0",
     "class-variance-authority": "0.7.1",
     "clsx": "^2.1.1",

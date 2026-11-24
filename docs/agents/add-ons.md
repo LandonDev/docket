@@ -85,8 +85,8 @@ plan-8YMm3ynnFZYs.md (grants) and plan-vJP8mPAPorvc.md (pages).
   he sets the rules; they decide nothing.
   [work-outbox.md](work-outbox.md)
 - **Grants.** One aliax-core profile of the `addon` service per add-on
-  (aliax-core/src/adapters/addon.ts at the commit package.json pins,
-  80345ae), `internal`, so no account page lists it. Static when its blob
+  (aliax-core/src/adapters/addon.ts, landed in 80345ae;
+  package.json pins the commit in use), `internal`, so no account page lists it. Static when its blob
   has no `oauth` section: typed values reach every host and leave by
   tombstone. An OAuth grant is signed in on the Mac (a host with a
   window), handed to the box by accountSync's two-phase handoff and

@@ -148,7 +148,12 @@ export interface AccountsSnapshot {
   homes?: Partial<Record<AccountProvider, string>>
   /** The account-sync links this host holds to other hosts, by environment id. */
   peers?: Record<string, PeerState>
+  /** Why this host's key-file vault does not open (aliax-core VaultLocked), when it does not; a Keychain lock is the providers' note. */
+  vaultLock?: VaultLockReason
 }
+
+/** aliax-core's VaultLocked reasons: no key beside sealed secrets, a key that is not one, sealed for someone else, or held by another process. */
+export type VaultLockReason = 'missing' | 'malformed' | 'unwrap' | 'busy'
 
 export const emptyAccounts = (): AccountsSnapshot => ({
   updatedAt: 0,

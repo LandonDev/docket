@@ -7,6 +7,7 @@ import type { StatsBundle, StatsStatus } from "@shared/aliaxStats";
 import { CANCELLED, SIGN_IN_REFRESHED } from "@shared/signInWords";
 import { RefreshCw } from "@renderer/chrome/icons";
 import { Page } from "@renderer/components/page";
+import { Alert, AlertAction, AlertDescription } from "@renderer/components/ui/alert";
 import { BusyLabel, Button } from "@renderer/components/ui/button";
 import { Dialog } from "@renderer/components/ui/dialog";
 import { ConfirmDialog, DialogFooter, ErrorLine } from "@renderer/chrome/ConfirmDialog";
@@ -39,6 +40,8 @@ export function AccountsPage(): React.JSX.Element {
   // The page, not the row, holds the Remove confirm: the refreshed list drops
   // the row before the confirm's exit plays.
   const [removing, setRemoving] = useState<Removing | null>(null);
+  /** Start fresh's confirm, for a vault that will not open. */
+  const [freshing, setFreshing] = useState(false);
   // Each sign-in attempt's number: an answer for an attempt the person cancelled says nothing.
   const attempt = useRef(0);
   // The hosts this machine shares accounts with: the snapshot's peers, named by the registry.
@@ -158,6 +161,30 @@ export function AccountsPage(): React.JSX.Element {
         </Tooltip>
       }
     >
+      {snapshot.vaultLock ? (
+        <Alert variant="warning" className="mb-6">
+          <AlertDescription>The vault on this computer does not open.</AlertDescription>
+          <AlertAction>
+            <Button size="xs" variant="outline" onClick={() => setFreshing(true)}>
+              Start fresh
+            </Button>
+          </AlertAction>
+        </Alert>
+      ) : null}
+      {freshing ? (
+        <ConfirmDialog
+          title="Start fresh?"
+          body="The old vault is set aside, not deleted, and you sign in to each account again."
+          confirmLabel="Start fresh"
+          onCancel={() => setFreshing(false)}
+          onConfirm={async () => {
+            const result: Result = await window.aliax.startFresh();
+            if (!result.ok) throw new Error(result.error ?? "Something went wrong");
+            await refresh(true);
+          }}
+          onDone={() => setFreshing(false)}
+        />
+      ) : null}
       {views === null ? (
         <AccountsSkeleton />
       ) : (

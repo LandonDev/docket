@@ -5284,8 +5284,8 @@ port 58702. The instance log's trace lines name hosts and statuses only.
 #### The code, by name
 
 - **Add-on grants** (plan .temp-code/plan-8YMm3ynnFZYs.md). A grant is an
-  aliax-core profile of the `addon` service (aliax-core/src/adapters/addon.ts, at the commit
-  package.json pins, 80345ae): one per add-on, named by its id, `internal`, so no account
+  aliax-core profile of the `addon` service (aliax-core/src/adapters/addon.ts, landed in
+  80345ae; package.json pins the commit in use): one per add-on, named by its id, `internal`, so no account
   page lists it and `PROVIDER_OF` (now partial) maps it to no provider; the
   Aliax pages refuse to capture, sign in, key or delete one. It is static
   exactly when its blob has no `oauth` section: typed values (an API key) go

@@ -1,4 +1,4 @@
-import { app, net, session } from 'electron'
+import { app, net, safeStorage, session } from 'electron'
 import { existsSync } from 'node:fs'
 import { join } from 'node:path'
 import { configure, isLive, readMarker, type Role } from 'aliax-core'
@@ -11,6 +11,7 @@ import { ADDON_SERVICE } from '@shared/addonGrant'
 import { usageSamples } from './server/usageSamples'
 import { accountSyncHooks } from './server/remote/accountSync'
 import { fakeProviderRewrite, Upstream } from './server/upstream'
+import { secretsModeFor } from './aliax/vaultMode'
 
 /** An isolated instance (TEMP_CODE_USER_DATA) may keep its own vault, so a test never reads the real one. */
 const ISOLATED_VAULT = process.env.TEMP_CODE_USER_DATA ? process.env.TEMP_CODE_ALIAX_DATA_DIR : undefined
@@ -68,16 +69,15 @@ export function upstream(): Upstream {
  * locked, never broken. A Linux host has no Keychain and no Aliax app, and
  * an isolated vault has no Keychain item: both seal with their own key file
  * (<dataDir>/vault.key, mode 0600), the same bytes under a different lock.
+ * On Windows that key file's password is sealed by safeStorage (DPAPI, this
+ * user alone), and a plain key from before is migrated once (aliax/vaultMode.ts).
  * `environmentId` is what every profile's owner is compared to (sync.ts).
  */
 export function configureAliax(environmentId?: string): void {
   configure({
     dataDir: ALIAX_DATA_DIR,
     fetch: (input, init) => upstream().fetch(input, init),
-    secrets:
-      process.platform === 'darwin' && !ISOLATED_VAULT
-        ? { mode: 'chromiumKey', keychainItem: 'aliax Safe Storage' }
-        : { mode: 'fileKey' },
+    secrets: secretsModeFor(process.platform, !!ISOLATED_VAULT, safeStorage),
     appName: 'temp-code',
     environmentId,
     // The embedded Stats page reads what Aliax's would: every fresh usage
