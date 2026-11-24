@@ -2,7 +2,7 @@ import type { DatabaseSync } from 'node:sqlite'
 import { createHash } from 'node:crypto'
 import { chmodSync, copyFileSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, renameSync, rmSync, statSync, symlinkSync, utimesSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { basename, join } from 'node:path'
 import { PDFDocument } from 'pdf-lib'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { LOCAL_PRINCIPAL } from '@shared/capabilities'
@@ -10,7 +10,7 @@ import { ClientRequestSchema, type ClientRequest } from '@shared/contract'
 import type { WorkPush } from '@shared/contract-work'
 import type { DeckVersion, DeckView, ShowDeck, SlideOp } from '@shared/contract-work-slides'
 import type { SessionMeta } from '@shared/events'
-import { filesPaneOf, type CanvasSource, type WorkScope } from '@shared/work'
+import { chipRefWords, filesPaneOf, type CanvasSource, type WorkScope } from '@shared/work'
 import { importReadOnly, KEYNOTE_EXPORT, SLIDE_IMPORT_EXTS } from '@shared/work/slideFormats'
 import { openDb, Store } from '../../db'
 import type { SessionRegistry } from '../../sessions'
@@ -319,6 +319,8 @@ function close(): void {
   rmSync(dir, { recursive: true, force: true })
 }
 const fileSource = (path: string): CanvasSource => ({ at: 'file', host: 'env_test', path })
+/** A file chip's head line as the composer writes it (renderer work/canvas/chips.ts `chipLine`): it names the file by its ref alone. */
+const fileChip = (path: string): string => `About this file: ${basename(path)} (${chipRefWords({ kind: 'file', ref: { at: 'file', host: 'env_test', path } })})`
 const openDeck = (source: CanvasSource, title = 'Deck') => canvasStoreOf(db).open('t1', { kind: 'slides', source, title })
 
 describe('the store', () => {
@@ -958,7 +960,7 @@ describe('the module, on a fake deck tool', () => {
     })
 
     it('what he asked for in so many words, in a message that names the deck, is still written at once', async () => {
-      typed.set('t1', [`About this file: ${deckAt}\nPlease retitle the second slide to New words for the staff meeting`])
+      typed.set('t1', [`${fileChip(deckAt)}\nPlease retitle the second slide to New words for the staff meeting`])
       const item = openDeck(fileSource(deckAt))
       await call('work.slides.mode', { itemId: item.id, mode: 'writes' })
       const before = readFileSync(deckAt)
@@ -968,7 +970,7 @@ describe('the module, on a fake deck tool', () => {
     })
 
     it('his words write at once only the slides they name: a batch that also changes another slide waits for his press', async () => {
-      typed.set('t1', [`About this file: ${deckAt}\nPlease retitle the second slide to New words for the staff meeting`])
+      typed.set('t1', [`${fileChip(deckAt)}\nPlease retitle the second slide to New words for the staff meeting`])
       const item = openDeck(fileSource(deckAt))
       await call('work.slides.mode', { itemId: item.id, mode: 'writes' })
       const before = readFileSync(deckAt)
@@ -991,7 +993,7 @@ describe('the module, on a fake deck tool', () => {
       const other = join(team, 'Other.pptx')
       copyFileSync(deckAt, other)
       // His words were about another deck: its slide 2 is not this deck's.
-      typed.set('t1', [`About this file: ${other}\nPlease retitle the second slide to New words for the staff meeting`])
+      typed.set('t1', [`${fileChip(other)}\nPlease retitle the second slide to New words for the staff meeting`])
       const item = openDeck(fileSource(deckAt))
       await call('work.slides.mode', { itemId: item.id, mode: 'writes' })
       const before = readFileSync(deckAt)
@@ -1607,7 +1609,7 @@ describe('a deck kept by its file, drawn slide by slide', () => {
     writeFileSync(shared, fakeBytes(FAKE_DECK))
     sharedPaths.add(team)
     try {
-      typed.set('t1', [`About this file: ${shared}\nrename slide 1 to First`])
+      typed.set('t1', [`${fileChip(shared)}\nrename slide 1 to First`])
       sessions.set('t2', { id: 't2', provider: 'claude', workspaceId: 'w1', scope: 'work' } as SessionMeta)
       const [a, b] = [openDeck(fileSource(shared), 'A'), canvasStoreOf(db).open('t2', { kind: 'slides', source: fileSource(shared), title: 'B' })]
       await call('work.slides.open', { itemId: b.id })
