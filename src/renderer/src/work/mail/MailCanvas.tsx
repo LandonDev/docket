@@ -49,7 +49,7 @@ export function Body({ item, source, env, shell }: CanvasBodyProps) {
   const kit = useMemo(() => placedKit(tempcodeMailKit, { env, pane: item.sessionId }), [env, item.sessionId]);
   if (source.at !== "lifeos" || source.table !== "outbox") return <EmptyState title="This mail could not be shown" />;
   if (lifeos.state === "off") return <EmptyState title="Work is off on this host" action={{ label: "Open Settings", onClick: openWorkSettings }} />;
-  if (lifeos.state === "signed-out" || lifeos.state === "pairing" || lifeos.state === "refused") return <EmptyState title={sessionFailure(lifeos.state)} action={{ label: "Sign in", onClick: openConnections }} />;
+  if (lifeos.state === "signed-out" || lifeos.state === "pairing" || lifeos.state === "refused") return <EmptyState title={sessionFailure(lifeos.state, lifeos.withheld)} action={{ label: "Sign in", onClick: openConnections }} />;
   // LifeOS did not answer: the state line says so once, and the draft last read stays, read only; with none read, nothing pulses under the line.
   if (!lifeos.client) {
     if (sessionWaits(lifeos)) return <SurfaceSkeleton kind="column" label="Loading the mail" />;

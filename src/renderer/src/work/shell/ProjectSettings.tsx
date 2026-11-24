@@ -190,10 +190,10 @@ export function WorkProjectSettings({ project: opened, workspace, onClose }: { p
         .catch(() => {})
         .finally(() => setRetrying(false));
     };
-    if (session.client) return { status: "failed", line: listed.status === "failed" ? listed.error : sessionFailure(session.state), retry };
+    if (session.client) return { status: "failed", line: listed.status === "failed" ? listed.error : sessionFailure(session.state, session.withheld), retry };
     // Asking again helps only when LifeOS did not answer. Signed out is mended in Settings, Work, and the line names the sign-in.
-    if (session.state === "unreachable") return { status: "failed", line: sessionFailure(session.state), retry };
-    return { status: "failed", line: session.state === "refused" ? sessionFailure(session.state) : "Sign in to LifeOS to change its name or state" };
+    if (session.state === "unreachable") return { status: "failed", line: sessionFailure(session.state, session.withheld), retry };
+    return { status: "failed", line: session.state === "refused" ? sessionFailure(session.state, session.withheld) : "Sign in to LifeOS to change its name or state" };
   }, [lifeosId, row, listed, session, retrying, workspace.environmentId, sector]);
 
   // null follows what is saved, so a rename that lands from elsewhere shows until he types.
@@ -233,7 +233,7 @@ export function WorkProjectSettings({ project: opened, workspace, onClose }: { p
     setError(null);
     try {
       if (lifeosId && (nameDirty || stateDirty)) {
-        if (!session.client) throw new Error(sessionFailure(session.state));
+        if (!session.client) throw new Error(sessionFailure(session.state, session.withheld));
         await session.client.mutation(makeFunctionReference<"mutation">("projects:update"), {
           id: lifeosId,
           patch: { ...(nameDirty ? { name: name.trim() } : {}), ...(stateDirty ? { status: state } : {}) },
@@ -254,7 +254,7 @@ export function WorkProjectSettings({ project: opened, workspace, onClose }: { p
   };
 
   const remove = async () => {
-    if (!session.client || !lifeosId) throw new Error(sessionFailure(session.state));
+    if (!session.client || !lifeosId) throw new Error(sessionFailure(session.state, session.withheld));
     // The host archives the mirror once LifeOS's list no longer holds the project and none of its threads works.
     await session.client.mutation(makeFunctionReference<"mutation">("projects:remove"), { id: lifeosId });
   };

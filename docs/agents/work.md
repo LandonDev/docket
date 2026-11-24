@@ -263,7 +263,12 @@ Settings → Work.
   reached (signed out, unreachable, refused) Name and State stand as plain
   words, never as disabled controls (State only if LifeOS told it
   earlier), Delete is not drawn, and one line under them says why: the
-  sign-in named when signed out, Retry when LifeOS did not answer. The
+  sign-in named when signed out, Retry when LifeOS did not answer. A window
+  whose key the host never hands its LifeOS session (a given computer's:
+  `work.lifeos.jwt` is in `DEVICE_REFUSED`) reads neither: the session is
+  `withheld` (work/shell/lifeos.ts asks `linkMay` first and reads a
+  "forbidden" answer the same way), and the frame says "This computer cannot
+  read LifeOS here" and where the view opens, with no Retry. The
   rules and accounts are the host's and stay editable, and Save sends
   them; but a name or state he changed and LifeOS cannot take holds Save,
   so nothing he typed is dropped behind a save of the rest. A project

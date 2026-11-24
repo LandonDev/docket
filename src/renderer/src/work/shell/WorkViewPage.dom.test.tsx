@@ -57,6 +57,35 @@ describe("the view frame's line", () => {
   });
 });
 
+describe("a key the host never hands its LifeOS session", () => {
+  it("says the true cause and where the view opens, never \"did not answer\", and asks the host for no JWT", async () => {
+    const asked: string[] = [];
+    vi.spyOn(registry, "linkOf").mockReturnValue({
+      environmentId: "env_box",
+      connected: true,
+      onPush: () => () => {},
+      onOpen: () => () => {},
+      request: vi.fn(async (method: string) => {
+        asked.push(method);
+        if (method === "work.lifeos.status") return { lifeos: { state: "connected", ownerId: "landon", since: 1 }, keys: [] };
+        throw new Error("forbidden: work.lifeos.jwt is not for a given computer");
+      }),
+    } as never);
+    // His laptop after a setup link: operate and approve, as a given computer.
+    vi.spyOn(registry, "statusOf").mockReturnValue({ transport: "open", lastHello: { environmentId: "env_box", contract: 1, caps: ["operate", "approve", "device"], key: { id: "k", name: "Purdue laptop" } } } as never);
+    vi.spyOn(registry, "environment").mockReturnValue({ id: "env_box", name: "The box" } as never);
+    setLifeosStatus("env_box", { lifeos: { state: "connected", ownerId: "landon", since: 1 }, keys: [] });
+    render(<ViewFrame view="tasks" environmentId="env_box" workspaceId="ws" sector="purdue" />);
+    await flush();
+    await flush();
+    expect(screen.getByText("This computer cannot read LifeOS here")).toBeTruthy();
+    expect(screen.getByText("The box keeps its LifeOS sign-in to itself. Open Tasks from a computer that manages The box.")).toBeTruthy();
+    expect(document.querySelector("[data-view-state=failed]")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
+    expect(asked).not.toContain("work.lifeos.jwt");
+  });
+});
+
 describe("what stands between a view and LifeOS", () => {
   const quiet = () =>
     vi.spyOn(registry, "linkOf").mockReturnValue({ environmentId: "env_box", connected: true, onPush: () => () => {}, onOpen: () => () => {}, request: vi.fn(async () => new Promise(() => {})) } as never);

@@ -59,7 +59,7 @@ function OfferSession({ sessionId, env, children }: { sessionId: string; env: st
   if (!workspace || !sector) return null;
   if (!lifeos.client) {
     if (sessionWaits(lifeos)) return <CardBones />;
-    return <p className="text-xs text-muted-foreground">{sessionFailure(lifeos.state) || "LifeOS did not answer"}</p>;
+    return <p className="text-xs text-muted-foreground">{sessionFailure(lifeos.state, lifeos.withheld) || "LifeOS did not answer"}</p>;
   }
   return (
     <ConvexProvider client={lifeos.client}>

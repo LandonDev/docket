@@ -1,9 +1,10 @@
 import { useEffect, useState, useSyncExternalStore } from "react";
 import { ConvexReactClient } from "convex/react";
 import { makeFunctionReference } from "convex/server";
-import type { SectorKey } from "@shared/work";
+import { errorText, type SectorKey } from "@shared/work";
 import type { LifeosJwtAnswer, LifeosStateName, LifeosStatus } from "@shared/contract-work-lifeos";
 import { registry } from "../../lib/connection";
+import { linkMay } from "../../lib/linkMay";
 import { workSwitch } from "../../lib/workSwitch";
 
 /**
@@ -91,6 +92,11 @@ export interface LifeosSession {
   client: ConvexReactClient | null;
   /** Why there is no client yet, or `connected`. */
   state: LifeosStateName;
+  /**
+   * The host answers, but this window's key is never handed its LifeOS session (a given computer's:
+   * `work.lifeos.jwt` is in `DEVICE_REFUSED`). Not silence: Retry cannot help, and the frame says so.
+   */
+  withheld?: true;
 }
 
 const sessions = new Map<string, LifeosSession>();
@@ -152,11 +158,16 @@ async function openSession(environmentId: string, sector: SectorKey | null): Pro
   const generation = generations.get(key) ?? 0;
   // A close (a sign-out, Work off, the last screen gone) while the JWT was asked for wins over its answer.
   const stale = (): boolean => (generations.get(key) ?? 0) !== generation || statuses.get(environmentId)?.lifeos.state !== "connected";
+  // A key the host never hands its session to is not asked: the answer is a refusal, which is not silence.
+  if (!linkMay(environmentId, "work.lifeos.jwt")) {
+    putSession({ environmentId, sector, client: null, state: "unreachable", withheld: true });
+    return;
+  }
   let first: LifeosJwtAnswer;
   try {
     first = await jwtOf(environmentId, sector);
-  } catch {
-    if (!stale()) putSession({ environmentId, sector, client: null, state: "unreachable" });
+  } catch (err) {
+    if (!stale()) putSession({ environmentId, sector, client: null, state: "unreachable", ...(/^forbidden\b/.test(errorText(err)) ? { withheld: true as const } : {}) });
     return;
   }
   if (stale() || sessions.get(key)?.client) return;
@@ -215,7 +226,8 @@ export function sessionWaits(session: Pick<LifeosSession, "client" | "state">): 
 }
 
 /** What a session that cannot read says, in words: a query's error and the frame's line read it. */
-export function sessionFailure(state: LifeosStateName): string {
+export function sessionFailure(state: LifeosStateName, withheld?: boolean): string {
+  if (withheld) return "This computer cannot read LifeOS through this host";
   if (state === "unreachable") return "LifeOS did not answer";
   if (state === "refused") return "LifeOS refused this host's sign-in";
   if (state === "off") return "Work is off on this host";
@@ -253,7 +265,7 @@ export function useLifeosQuery<T>(session: LifeosSession, name: string, args: Re
   useEffect(() => {
     const client = session.client;
     if (!client) {
-      setResult(waits ? { status: "loading" } : { status: "failed", error: sessionFailure(session.state) });
+      setResult(waits ? { status: "loading" } : { status: "failed", error: sessionFailure(session.state, session.withheld) });
       return;
     }
     const watch = client.watchQuery(makeFunctionReference<"query">(name), JSON.parse(argsKey) as Record<string, unknown>);

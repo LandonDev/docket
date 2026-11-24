@@ -97,6 +97,8 @@ export function ViewFrame({ view, environmentId, workspaceId, sector }: { view: 
   // The session's own state counts too: its JWT can be refused or go unanswered while the host says connected.
   const signedOut = gated && (state === "signed-out" || state === "refused" || session.state === "signed-out" || session.state === "refused");
   const unreachable = gated && (state === "unreachable" || session.state === "unreachable");
+  // The host answers, but this computer's key is never handed its LifeOS session (a given computer's): not silence, and Retry cannot help.
+  const withheld = gated && !!session.withheld;
   // A sign-in he started and has not approved yet, and a host whose Work is off: each says so, with its own press.
   const pairing = gated && state === "pairing";
   const off = gated && state === "off";
@@ -106,7 +108,7 @@ export function ViewFrame({ view, environmentId, workspaceId, sector }: { view: 
   const [signingIn, setSigningIn] = useState(false);
   const host = registry.environment(environmentId)?.name ?? "This host";
   // A view with its own head (Mail) has no header over it, but the sign-in has no head and keeps the header.
-  const blocked = signedOut || pairing || off || away;
+  const blocked = signedOut || pairing || off || away || withheld;
   const headless = !!def.ownHead && !blocked;
   // The view covers the thread's pane, which goes inert under it (App.tsx): focus that was in the pane, or fell to the
   // page with it, lands on the view's heading, never on a composer or canvas control no one can see.
@@ -167,6 +169,8 @@ export function ViewFrame({ view, environmentId, workspaceId, sector }: { view: 
           <EmptyState title={`${host} is not connected`} action={{ label: "Retry", onClick: () => registry.retry(environmentId) }} />
         ) : off ? (
           <EmptyState title={`Work is off on ${host}`} action={{ label: "Open Settings", onClick: openWorkSettings }} />
+        ) : withheld ? (
+          <EmptyState title="This computer cannot read LifeOS here" line={`${host} keeps its LifeOS sign-in to itself. Open ${def.label} from a computer that manages ${host}.`} />
         ) : signedOut || pairing ? (
           <EmptyState
             title={pairing ? "The LifeOS sign-in waits for your approval" : state === "refused" || session.state === "refused" ? "LifeOS refused this host's sign-in" : "Sign in to LifeOS"}
