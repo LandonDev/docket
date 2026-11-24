@@ -284,7 +284,12 @@ the file is really edited. For a deck:
   his words name without doubt as slides to change (`quoteNames`,
   `slidesIn`, tools.ts): a slide named after "after", "before", "to",
   "behind" and the like is a place, where a move or an add may go but no
-  edit may change; every slide the batch changes must be named in
+  edit may change, and only on the side the words say (after a slide named
+  after "after", "behind", "following", "below" or "past"; just before one
+  named after "before", "above" or "ahead of", the moved slide aside; "to",
+  "into" and "between" say no side and clear nothing; the start only by
+  "start", "beginning", "front" or "top", never in words that leave
+  something out); every slide the batch changes must be named in
   the quote by number ("slide 3"; "slides 2-4", "slides 2 to 4"; after
   "slide" one number alone, so "move slide 2 to 5" names slide 2; "or" is
   no list), by place ("the second slide", "the last slide") or by a title
@@ -481,11 +486,13 @@ the file.
   slow keep in this window, or a write still on its way that may yet be
   refused, whatever an earlier try did) refuse the close too ("The words
   in the open box are not saved yet"), so they are never lost with the
-  item. No box opens over words not saved yet (a conflict that waits for
-  Reload, a refused send): the press says so, and Escape puts them back. A
-  conflict whose shape another save took off the slide cannot draw its
-  box: the line offers Copy words, which puts them on his clipboard and
-  then lets the box go. A pause in his
+  item; so does a send still unanswered while the box matches its old
+  words (his Undo back to them waits behind it). No box opens over words
+  not saved yet (a conflict that waits for Reload, a refused send): the
+  press says so, and Escape puts them back. A conflict whose shape another
+  save took off the slide cannot draw its box: the line offers Copy words,
+  which puts them on his clipboard and then lets the box go; a copy that
+  fails says so and keeps them. A pause in his
   typing sends them sooner, the box left open (`keep`, below).
 - **A box's edit names the words it was opened on** (`runs`' `was`: the
   shape's runs' words, a paragraph each, as the box's `from`s read them;
@@ -876,7 +883,9 @@ runs (one that failed is tried again at its next change). The job keeps
 what it could not make (`left`); a show read that finds anything else of
 its revision missing (a step picture let go to make room among the pages,
 `prunePages`) starts it again, so what was let go is made again and never
-called failed. Making room among clips never lets go of one the revision
+called failed; so does a running show's read of a step it was told of
+that finds it gone (`stepPath`), and the window tries a failed step read
+again at each new read of the show. Making room among clips never lets go of one the revision
 names (`pruneMedia`'s spare). A write never
 waits on it; an edit's own picture waits at most for the one page the kept
 LibreOffice is drawing. A step with no picture says why (`ShowStep.missing`):
@@ -1570,7 +1579,10 @@ once (`work.slides.edit`), whole or not at all.
   (`rebase`) follows each run and paragraph to the same one in the new
   words (its words and look; a paragraph by a run of it still there),
   never to what now stands at its old place, and sets the look of what has
-  none.
+  none; the box's Undo and Redo move with it. Not kept: a run the keep took
+  out whole, then brought back by the box's Undo, sets its look as drawn,
+  but what the outline does not carry (a link, a raised letter) is gone
+  with the run it lay in.
 - **One send of the box at a time.** A keep waits for one on its way; a
   commit stops the box (`saving`) and waits for the keep on its way, then
   sends over what it wrote, so a commit, or a close, never sends `from`s of
@@ -1855,9 +1867,11 @@ through the app's own wire; the show runs in one window, whose state
   or ended says nothing: the state it answers with is told as the push
   would tell it (`withPressAnswers`), so a clicker that missed a push while
   its socket was down catches up with its next press; the live shows are
-  read again when the wire comes back (`ShowRemote.onOpen`). A word older
-  than the one held changes nothing, and a list read whole gives way to
-  every push heard while it was read. A press the window took but did not
+  read again when the wire comes back (`ShowRemote.onOpen`). One check for
+  every word, a push, a press's answer and a list read whole alike: a show
+  told ended never comes back, a word older than the newest heard changes
+  nothing, a list read whole gives way to what was heard while it was read
+  and only the newest read counts. A press the window took but did not
   answer in time is answered with the show as it still runs.
 - **Who may.** His own window and his keys that could name the deck's
   file (`fenceItem`); a key whose caps lack `operate` is refused a press
