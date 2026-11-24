@@ -13,8 +13,9 @@
  *  4. The dummy goes to the VM's Recycle Bin, and OneDrive takes it to his OneDrive's recycle bin.
  *
  * Not here: the plan's Chromium copy of the live page (it needs his Microsoft cookies copied from the box browser's
- * profile); step 3's synced copy stands for the cloud. Word keeps the deleted file's window open: the helper has no
- * verb that closes a document.
+ * profile); step 3's synced copy stands for the cloud. Word keeps the dummy open, and while it does Windows refuses
+ * step 4 ("Windows stopped before … reached the Recycle Bin", 2026-11-24): the helper has no verb that closes a
+ * document, so the dummy stays in his OneDrive until Word lets it go; the probe prints its path.
  *
  * The helper is reached through a forward of its own (`--socket`, made by the caller as the admin over the standing
  * machine's SSH: `ssh -N -L <sock>:127.0.0.1:47801 tcadmin@127.0.0.1 -p 22230`) with the box's token, so the box's
@@ -120,11 +121,12 @@ const tools = addinTools(() => null, { offered: () => true, awake: async () => {
 const tool = (name: string, args: unknown): Promise<WorkToolResult> => tools.find((t) => t.name === name)!.run(args, ctx)
 const text = (r: WorkToolResult): string => r.content.map((c) => ('text' in c ? c.text : '')).join('')
 
-/** The words of the synced copy in the VM, from its own bytes. */
+/** The words of the synced copy in the VM, from its own bytes: a paragraph's runs joined as Word shows them (Word
+ *  splits one typed line into runs at will), one line a paragraph. */
 async function syncedWords(path: string): Promise<string> {
   const got = (await helper('files.read', { path })) as { data: string }
   const xml = strFromU8(unzipSync(Buffer.from(got.data, 'base64'), { filter: (f) => f.name === 'word/document.xml' })['word/document.xml']!)
-  return [...xml.matchAll(/<w:t(?:\s[^>]*)?>([^<]*)<\/w:t>/g)].map((m) => m[1]).join(' ')
+  return xml.split('</w:p>').map((p) => [...p.matchAll(/<w:t(?:\s[^>]*)?>([^<]*)<\/w:t>/g)].map((m) => m[1]).join('')).join('\n')
 }
 
 const stamp = `${new Date().toISOString().slice(0, 19).replace(/[-:T]/g, '')}-${Math.random().toString(36).slice(2, 6)}`
