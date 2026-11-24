@@ -132,6 +132,16 @@ describe('the job', () => {
     expect(rig.toldDone.sort()).toEqual([`review:${WEEK.from}`, `review:${WEEK.to}`].sort())
   })
 
+  it('a week opened in a window of another zone is seen on the host that made it', async () => {
+    await job().run(rig.ctx, { workspaceId: 'w-purdue', firedAt: FRIDAY })
+    // A Tokyo window names the week by its Monday in Tokyo, which is before this host's Monday in Chicago.
+    const tokyo = Date.parse('2026-11-16T00:00:00+09:00')
+    expect(tokyo).toBeLessThan(WEEK.from)
+    await call('work.review.seen', { from: tokyo })
+    expect(await call('work.review.ready', {})).toEqual({ handled: true, result: null })
+    expect(rig.toldDone).toEqual([`review:${WEEK.from}`])
+  })
+
   it('ready answers null once he has seen it', async () => {
     await job().run(rig.ctx, { workspaceId: 'w-purdue', firedAt: FRIDAY })
     expect(await call('work.review.ready', {})).toEqual({ handled: true, result: { from: WEEK.from, madeAt: FRIDAY } })

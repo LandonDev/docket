@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { WEEK_OF, weekWords } from "@shared/work/review";
+import { WEEK_OF, weekNamed, weekWords } from "@shared/work/review";
 import { ChevronLeft, ChevronRight, MoreHorizontal } from "../../chrome/icons";
 import { RowsMenu, type MenuRow } from "../../chrome/menuRows";
 import { Tip } from "../../components/tip";
@@ -11,7 +11,7 @@ import { workspaceStore } from "../../lib/tcserver/workspaces";
 import { project } from "../../stores/project";
 import { shell } from "../../stores/shell";
 import { showWeekAt, shownWeek, stepShown, useShownFrom, useWeekTurn } from "./shown";
-import { loadRoutine, makeAgain, thisWeek, useReview, weekAt } from "./store";
+import { loadRoutine, makeAgain, reviewZone, thisWeek, useReview } from "./store";
 
 /** The routine as a host last named it: the menu draws it at once the next time the page opens. */
 let kept: Awaited<ReturnType<typeof loadRoutine>> = null;
@@ -28,7 +28,8 @@ export function Head() {
   useWeekTurn();
   // A week the page was opened at and has not moved to yet (ReviewPage): the head names it, never the week on its way out.
   const wanted = useWorkPlaceAt("review");
-  const week = wanted === null ? shownWeek(from) : weekAt(wanted);
+  // A host names a week by its first moment in its own zone (`weekNamed`): never the week before it here.
+  const week = wanted === null ? shownWeek(from) : weekNamed(wanted, reviewZone());
   // Read so the label follows the zone once a host has said it.
   const view = useReview(week);
   const [routine, setRoutine] = useState<Awaited<ReturnType<typeof loadRoutine>>>(kept);

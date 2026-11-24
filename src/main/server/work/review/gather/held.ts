@@ -37,9 +37,9 @@ export async function heldFacts(ctx: WorkCtx, asked: Asked, jobs: Jobs, hidden: 
   const waiting = (await outboxCall<{ items: OutboxItem[] }>(ctx, 'work.outbox.list', { show: 'waiting', limit: MOST })).items
   const decided = (await outboxCall<{ items: OutboxItem[] }>(ctx, 'work.outbox.list', { show: 'decided', limit: MOST })).items
   const since = Math.min(asked.from, asked.before.from)
-  // The Outbox's list has no cursor for decided items: a full one that does not reach back past the span's start may
-  // have left some of the span's out.
-  const reaches = decided.some((i) => Math.min(i.updatedAt, i.decidedAt ?? i.updatedAt) < since)
+  // The Outbox's list has no cursor for decided items and is ordered by `updatedAt`: a full one whose oldest update is
+  // not before the span's start may have left some of the span's out. An old decision touched since is no proof.
+  const reaches = decided.some((i) => i.updatedAt < since)
   const part = waiting.length >= MOST || (decided.length >= MOST && !reaches)
   const out: HeldFacts = { slipped: [], shipped: [], points: [], before: [], part }
   const jobOf = (i: OutboxItem): number | null => jobIndex(jobs, i.workspaceId, i.sector)

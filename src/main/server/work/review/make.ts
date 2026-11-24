@@ -72,8 +72,9 @@ export async function makeWeek(ctx: WorkCtx, a: MakeAsk): Promise<Made> {
   else {
     const owner = ctx.lifeos.owner()
     const lifeosLeft: string[] = []
-    // Without his own addresses he would be "someone else" on every event: no meeting is judged on that read.
-    const own = await ask(ctx, lifeosLeft, LEFT.mail, 'his mail addresses', () => ownAddresses(owner))
+    // Without his own addresses he would be "someone else" on every event: no meeting is judged on that read, and the
+    // line says so alone (mail itself answered).
+    const own = await ask(ctx, lifeosLeft, LEFT.self, 'his mail addresses', () => ownAddresses(owner))
     const self = own ?? new Set<string>()
     const [events, eventsBefore, sent, sentAfter, sentBefore, done, answered, due, waits] = await Promise.all([
       ask(ctx, lifeosLeft, LEFT.calendar, 'the calendar', () => eventsBetween(owner, a.from, a.to, self, asked)),
@@ -88,6 +89,12 @@ export async function makeWeek(ctx: WorkCtx, a: MakeAsk): Promise<Made> {
       ask(ctx, lifeosLeft, LEFT.tasks, 'tasks past due', () => pastDue(owner, cut, asked)),
       ask(ctx, lifeosLeft, LEFT.mail, 'waiting mail', () => waitingPast(owner, cut, asked))
     ])
+    // Prep is read over one fixed span ending at the cut, the most it answers (`PREP_UPCOMING_MAX_MS`), whatever the
+    // calendar or the mail said: a meeting put off on another host, followed up in this host's Prep, is named in this
+    // host's part though nothing here carries it. One that fails says so, and keeps every meeting as last known.
+    const inPrep = await preppedAfter(ctx, cut - PREP_UPCOMING_MAX_MS, cut)
+    if (inPrep === null) left.push(LEFT.prep)
+    else prepped = [...inPrep]
     if (!events && !sent && !done && !answered && !due && !waits) left.push(LEFT.lifeos)
     else {
       if (waits?.part) lifeosLeft.push(LEFT.mailPart)
@@ -107,12 +114,7 @@ export async function makeWeek(ctx: WorkCtx, a: MakeAsk): Promise<Made> {
         // leaves keeps a kept one as it last stood.
         const sentEarlier = back.length ? await ask(ctx, left, LEFT.mail, 'mail sent since a put-off meeting', () => sentBetween(owner, earliest, a.from, asked)) : []
         const judged = sentEarlier ? [...events, ...back] : events
-        // Prep lists meetings by when they start: it is asked from the first start judged (a meeting that began
-        // before the week, or a put-off one), within the span it answers at most, which ends at the cut.
-        const starts = Math.max(Math.min(a.from, ...judged.map((e) => e.startsAt)), cut - PREP_UPCOMING_MAX_MS)
-        const inPrep = await preppedAfter(ctx, starts, cut)
-        prepped = [...inPrep]
-        slipped.push(...meetingsSlipped(judged, [...(sentEarlier ?? []), ...sent, ...sentAfter], { from: a.from, cut }, hidden, inPrep, new Set(back.map((e) => e.id))))
+        slipped.push(...meetingsSlipped(judged, [...(sentEarlier ?? []), ...sent, ...sentAfter], { from: a.from, cut }, hidden, inPrep ?? new Set(), new Set(back.map((e) => e.id))))
       }
       // Both or neither: half of last week's facts would turn a failed read into a change in his hours.
       if (eventsBefore && sentBefore) beforeLifeos = { events: spansOf(eventsBefore, asked.before), sent: sentBefore.map((m: ReviewSent) => ({ at: m.at, sector: m.sector })) }

@@ -71,11 +71,19 @@ export function readyWeek(db: DatabaseSync): { from: number; madeAt: number } | 
   return row ? { from: row.from_at, madeAt: row.routine_at! } : null
 }
 
-/** He opened the week: the weeks that changed. Every older week the routine made is seen with it. */
+/**
+ * He opened the week: the weeks that changed. Every older week the routine made is seen with it. `from` is the
+ * week's first moment in the window's zone, which may be another than this host's: a week of this host is the one
+ * named when it begins before the named week's middle (`weekNamed`), so a Tokyo window's Monday still sees a New
+ * York host's week.
+ */
 export function seeWeek(db: DatabaseSync, from: number, now: number): number[] {
-  const rows = db.prepare('UPDATE work_review_weeks SET seen_at = ? WHERE from_at <= ? AND routine_at IS NOT NULL AND seen_at IS NULL RETURNING from_at').all(now, from) as { from_at: number }[]
+  const rows = db.prepare('UPDATE work_review_weeks SET seen_at = ? WHERE from_at < ? AND routine_at IS NOT NULL AND seen_at IS NULL RETURNING from_at').all(now, from + HALF_WEEK_MS) as { from_at: number }[]
   return rows.map((r) => r.from_at)
 }
+
+/** Half a week: a moment that far past a week's first moment in any zone lies inside that week in every zone. */
+const HALF_WEEK_MS = 3.5 * 24 * 60 * 60_000
 
 export type Mark = { key: string; how: 'later' | 'drop'; until: number | null }
 

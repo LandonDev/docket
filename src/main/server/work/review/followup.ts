@@ -16,10 +16,11 @@ export function followedUp(event: Pick<ReviewEvent, 'id' | 'endsAt' | 'addresses
 
 /**
  * The meetings Prep says he has dealt with: the events of the span whose page on this host holds notes or an
- * outcome (`work.prep.upcoming`, state `after`), asked through Prep's own `handle`. A host with no Prep, or one
- * that does not answer, has none: the mail rule stands alone.
+ * outcome (`work.prep.upcoming`, state `after`), asked through Prep's own `handle`. A host with no Prep has none:
+ * the mail rule stands alone. A Prep that does not answer is null, which the caller says: an empty set there would
+ * list a meeting he followed up as not.
  */
-export async function preppedAfter(ctx: WorkCtx, from: number, to: number): Promise<Set<string>> {
+export async function preppedAfter(ctx: WorkCtx, from: number, to: number): Promise<Set<string> | null> {
   const prep = WORK_MODULES.find((m) => (m.id as string) === 'prep')
   if (!prep?.handle || to <= from) return new Set()
   try {
@@ -27,8 +28,9 @@ export async function preppedAfter(ctx: WorkCtx, from: number, to: number): Prom
     if (!answer.handled) return new Set()
     const meetings = (answer.result as { meetings?: { eventId: string; state: string }[] }).meetings ?? []
     return new Set(meetings.filter((m) => m.state === 'after').map((m) => m.eventId))
-  } catch {
-    return new Set()
+  } catch (err) {
+    ctx.log(`review: Prep did not answer: ${err instanceof Error ? err.message : String(err)}`)
+    return null
   }
 }
 

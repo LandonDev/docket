@@ -169,7 +169,10 @@ describe('held items', () => {
     // The newest 500 decided, all after the span began: older ones of the span may be past the cut.
     rig.outbox.decided = many(500, { state: 'sent', decidedBy: 'owner', decidedAt: MON + HOUR, updatedAt: MON + HOUR })
     expect((await heldFacts(rig.ctx, asked(), jobsOf(rig.db), new Set())).part).toBe(true)
-    // One of them reaches back before the span: the list holds the whole span.
+    // An old decision touched this week sits among the newest by update: no proof the list reaches back.
+    rig.outbox.decided[499] = held('touched', { state: 'sent', decidedBy: 'owner', decidedAt: MON - 30 * DAY, updatedAt: MON + 2 * HOUR })
+    expect((await heldFacts(rig.ctx, asked(), jobsOf(rig.db), new Set())).part).toBe(true)
+    // One last updated before the span: the list, newest update first, holds the whole span.
     rig.outbox.decided.push(held('old', { state: 'sent', decidedBy: 'owner', decidedAt: MON - 30 * DAY, updatedAt: MON - 30 * DAY }))
     expect((await heldFacts(rig.ctx, asked(), jobsOf(rig.db), new Set())).part).toBe(false)
   })
@@ -247,8 +250,9 @@ describe('a meeting that was not followed up', () => {
     expect(await preppedAfter(rig.ctx, WEEK.from, WEEK.to)).toEqual(new Set(['e1']))
     expect(asked).toEqual([['work.prep.upcoming', { from: WEEK.from, to: WEEK.to }]])
     WORK_MODULES.pop()
+    // A Prep that does not answer is no "none": the caller says it, and keeps every meeting as last known.
     WORK_MODULES.push({ id: 'prep' as never, ensure() {}, async handle() { throw new Error('down') } })
-    expect(await preppedAfter(rig.ctx, WEEK.from, WEEK.to)).toEqual(new Set())
+    expect(await preppedAfter(rig.ctx, WEEK.from, WEEK.to)).toBeNull()
   })
 
   it('is never one he was alone at, declined, hid, that has not ended, or that he marked', () => {

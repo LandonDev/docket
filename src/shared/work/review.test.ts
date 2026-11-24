@@ -27,6 +27,7 @@ import {
   weekOf,
   weekOfDay,
   weekWords,
+  type HostPoint,
   type HourFacts,
   type JobHours,
   type Point,
@@ -341,6 +342,16 @@ describe('what is kept', () => {
     expect(got.left).toEqual([LEFT.heldPart])
   })
 
+  it('takes a finished task back when the fresh read no longer lists it: a tick can be undone', () => {
+    const friday = WEEK.from + 4 * 24 * HOUR + 16 * HOUR
+    const done = { id: 'k1', title: 'Order the new jerseys', at: MON + HOUR, sector: 'purdue' as const }
+    const kept = body({ madeAt: friday, lifeos: { events: [], sent: [], done: [done], answered: [], answeredSince: MON } })
+    const fresh = body({ madeAt: friday + HOUR, lifeos: { events: [], sent: [], done: [], answered: [], answeredSince: MON } })
+    expect(mergeKept(kept, fresh, friday + HOUR).lifeos!.done).toEqual([])
+    // With tasks unread, the kept list stands.
+    expect(mergeKept(kept, { ...fresh, left: [LEFT.tasks] }, friday + HOUR).lifeos!.done).toEqual([done])
+  })
+
   it('a kept calendar stands in for one that failed, cut to the moment it was read', () => {
     const friday = WEEK.from + 4 * 24 * HOUR + 16 * HOUR
     const event = (id: string, startsAt: number, endsAt: number) => ({ id, sector: 'purdue' as const, title: id, startsAt, endsAt, allDay: false, declined: false, hidden: false, people: [], others: 0, addresses: [] })
@@ -470,6 +481,39 @@ describe('one review from every host’s part', () => {
     expect(old.known.calendar).toBe(false)
   })
 
+  it('takes each LifeOS source from a part that answered it: the box’s tasks and the Mac’s calendar both stand', () => {
+    const task = slip('task:k9')
+    const meeting = slip('meeting:e1', { ref: { kind: 'meeting', eventId: 'e1' } })
+    // The box's calendar failed while it read its tasks; the Mac's tasks failed while it read the calendar.
+    const boxPart = { environmentId: 'env-box', body: { ...box, lifeos: { ...lifeos, events: [] }, left: [LEFT.calendar], slipped: { at: MON, rows: [task] } } }
+    const macPart = { environmentId: 'env-mac', body: { ...mac, lifeos: { ...lifeos, done: [] }, left: [LEFT.tasks], slipped: { at: MON, rows: [meeting] } } }
+    const r = mergeReview([boxPart, macPart], now, { home: 'env-box' })!
+    expect(r.hours.find((h) => h.job === 'purdue')!.calendarMs).toBe(HOUR)
+    expect(r.shipped.filter((x) => x.kind === 'finished').map((x) => [x.key, x.environmentId])).toEqual([['done:k1', 'env-box']])
+    expect(r.left).toEqual([])
+    // Each row is the part's that read it, and its press goes there.
+    expect(r.slipped.filter((x) => x.ref.kind !== 'held').map((x) => [x.key, x.environmentId]).sort()).toEqual([
+      ['meeting:e1', 'env-mac'],
+      ['task:k9', 'env-box']
+    ])
+    expect(r.known.calendar).toBe(true)
+  })
+
+  it('counts a peer’s later desk points, and compares only the span both weeks and every part cover', () => {
+    // The box read at Wednesday noon, the Mac at 5 PM; the Mac saw him at the desk all afternoon.
+    const noon = MON + 2 * 24 * HOUR + 12 * HOUR
+    const quiet = { ...lifeos, events: [], sent: [] }
+    const before = (to: number) => ({ from: WEEK.from - 7 * 24 * HOUR, to, lifeos: { events: [], sent: [] }, points: [] as HostPoint[] })
+    const afternoon = Array.from({ length: 20 }, (_, i) => [noon + (i + 1) * 15 * MIN, 0, 'said'] as HostPoint)
+    const boxPart = { environmentId: 'env-box', body: { ...box, lifeos: quiet, madeAt: noon, points: [] as HostPoint[], ran: [], before: before(noon - 7 * 24 * HOUR) } }
+    const macPart = { environmentId: 'env-mac', body: { ...mac, lifeos: quiet, madeAt: noon + 5 * HOUR, points: afternoon, ran: [], shipped: [], before: before(noon + 5 * HOUR - 7 * 24 * HOUR) } }
+    const r = mergeReview([boxPart, macPart], noon + 6 * HOUR, { home: 'env-box' })!
+    expect(r.hours.find((h) => h.job === 'purdue')!.deskMs).toBeGreaterThan(4 * HOUR)
+    // Up to the box's read neither week has anything: "nothing by this point last week" would compare the Mac's
+    // afternoon with a week cut at noon.
+    expect(r.compare).toEqual([])
+  })
+
   it('files a held row by its own sector when its workspace is another job’s', () => {
     const cosmicJob = { workspaceId: 'w-cosmic', sector: 'cosmic' as const, name: 'Cosmic' }
     const moved = slip('held:host:h3', { ref: { kind: 'held', ref: { at: 'host', id: 'h3' } }, workspaceId: 'w-purdue', sector: 'cosmic', title: 'Post the patch notes' })
@@ -577,9 +621,13 @@ describe('one review from every host’s part', () => {
     const at = (t: number): number => mergeReview([part], t)!.hours.find((h) => h.job === 'purdue')!.calendarMs
     expect(at(MON + 14 * HOUR + 2 * MIN)).toBe(2 * MIN)
     expect(at(MON + 15 * HOUR)).toBe(2 * MIN)
-    // The page's "So far, made" names that same moment, though another host's part was read later.
-    const later = { environmentId: 'env-mac', body: { ...mac, lifeos: null, madeAt: MON + 14 * HOUR + 8 * MIN } }
-    expect(mergeReview([part, later], MON + 15 * HOUR, { home: 'env-box' })!.madeAt).toBe(MON + 14 * HOUR + 2 * MIN)
+    // Another host read later: the page is made as of that read, and its later desk points count, while the
+    // calendar still counts only to the read of the part it came from.
+    const later = { environmentId: 'env-mac', body: { ...mac, lifeos: null, madeAt: MON + 14 * HOUR + 8 * MIN, points: [[MON + 14 * HOUR + 7 * MIN, 0, 'said']] as HostPoint[] } }
+    const both = mergeReview([part, later], MON + 15 * HOUR, { home: 'env-box' })!
+    expect(both.madeAt).toBe(MON + 14 * HOUR + 8 * MIN)
+    expect(both.hours.find((h) => h.job === 'purdue')!.calendarMs).toBe(2 * MIN)
+    expect(both.hours.find((h) => h.job === 'purdue')!.stands.said).toBe(2)
     // Read back on Monday, before Monday's answer lands, the week's end is no new read: the meeting still counts
     // to 2:02 PM, and the weekend's plans are not measured time.
     expect(at(WEEK.to + HOUR)).toBe(2 * MIN)
