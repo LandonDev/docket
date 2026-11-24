@@ -146,7 +146,9 @@ section's text as it was when CLAUDE.md was split (2026-11-11).
   database (src/main/server/launchMirror.ts) and reconciles with
   `session.changes`. [docs/agents/launch-mirror.md](docs/agents/launch-mirror.md)
 - **Provider traffic** — every Claude and Codex child goes through the loopback
-  gateway (gateway.ts, gatewayCore.ts, its own utility process); routing by
+  gateway (gateway.ts, gatewayCore.ts, its own utility process). A sync push
+  that adds a profile rebuilds routing and updates the gateway before the reply.
+  The guide covers routing by
   headroom, usage-reset recovery across hosts, Meta keys, failure kinds (`failureKind.ts`, `FailureCard`), the
   turn's wait words, warm harnesses, GPT-6.2 Sol and Astra in the shared
   Codex catalog (defaults unchanged), the request shape trace and the codex

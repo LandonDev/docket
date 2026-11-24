@@ -210,8 +210,12 @@ routed to (aliax-core's `forward`). Two listeners:
   has an owner environment (absent = this machine) and only the owner ever
   presents a refresh token; other hosts hold access-only copies kept fresh
   over the main process's own peer links (`src/main/server/remote/peers.ts`,
-  `accountSync.ts`; RPCs `accounts.push`/`accounts.pull`, admin only). The
-  wire's `ServiceIdSchema` (src/shared/contract-m3a.ts) names every
+  `accountSync.ts`; RPCs `accounts.push`/`accounts.pull`, admin only).
+  When `accounts.push` adds a profile, the host rebuilds the routing snapshot
+  and sends the pending profile update to the gateway child before it answers.
+  The vault's save hook drops cached credentials before the profile row is
+  written, so the rebuild runs after the transfer lands.
+  The wire's `ServiceIdSchema` (src/shared/contract-m3a.ts) names every
   aliax-core service: claude-code, codex, cursor, meta, muse-code and addon
   (until 2026-11-08 it named the first three, so a Meta key or a Muse login
   sent to another host was refused at parse; contract-m3a.test.ts). A

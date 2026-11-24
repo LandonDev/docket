@@ -788,7 +788,10 @@ export async function startServer(
     store,
     peers,
     nudge: () => accounts.nudge(),
-    refreshNow: () => accounts.rebuildNow(),
+    refreshNow: async () => {
+      await accounts.rebuildNow()
+      await runningGateway()?.flushAccountsChanged()
+    },
     refreshUsage: (provider) => accounts.refresh(provider),
     headroom,
     addonHome: (id) => addonGrantsRef?.homeOf(id) ?? null,

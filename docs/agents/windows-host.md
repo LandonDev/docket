@@ -193,8 +193,9 @@ desktop it is, with that platform's rules. The tool names stay `mac_*`.
   (`x86_windows`), but its launcher refuses Windows: Muse is offered on a Windows host only when
   `muse.exe` is on the PATH or in `~\.local\bin`, and was not tried.
 - **Accounts.** aliax-core's process probes (`procs.ts`: `ps`, `pgrep`, `lsof`) find nothing on
-  Windows, so an account switch there does not find or restart the person's own terminal CLIs. The
-  app's threads go through the gateway and are not affected.
+  Windows, so an account switch there does not find or restart the person's own terminal CLIs.
+  When a sync push adds a profile, TempCode rebuilds its routing snapshot and sends the new
+  profile list to the gateway before it answers. Threads can use the new account without a restart.
 
 ## Proof
 

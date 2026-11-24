@@ -5,6 +5,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { configure, vault } from 'aliax-core'
 import { accessExpiry, hasRefresh, refreshFingerprint, type ApplyOutcome, type Transfer } from 'aliax-core/sync'
 import type { ServerPush } from '@shared/contract'
+import type { SessionMeta } from '@shared/events'
+import { AccountsService } from '../accounts'
 import { AccountSync, HOME_PREFIX, TOMBSTONES_KEY, TOMBSTONE_TTL_MS, type ConfirmAnswer, type PullAnswer } from './accountSync'
 
 // No Keychain in tests: the adapters' live reads say "not signed in".
@@ -97,6 +99,33 @@ const transfer = (mode: Transfer['mode'], owner: string | null, blob: string, pr
 })
 
 describe('AccountSync as a host', () => {
+  it('routes a new synced account before acknowledging the push', async () => {
+    const accounts = new AccountsService({ usage: async () => [], live: async () => null, owner: () => null })
+    const refreshNow = vi.fn(() => accounts.rebuildNow())
+    const { sync } = host('env_pc', [], { refreshNow })
+    const pickable = vi.fn()
+    accounts.onPickable(pickable)
+    const meta = { provider: 'claude', model: 'claude-opus-5-5' } as SessionMeta
+    const expiresAt = Date.now() + 2 * HOUR
+    const copy = transfer('access', null, claudeBlob(expiresAt, null), { static: true })
+    try {
+      await accounts.list()
+      expect(accounts.routeFor(meta, null).route).toBeNull()
+      pickable.mockClear()
+
+      expect(await sync.handlePush('env_mac', copy)).toMatchObject({ ok: true, saved: true })
+      expect(accounts.routeFor(meta, null).route).toEqual({ account: 'a@x', pin: false })
+      expect(pickable).toHaveBeenCalledOnce()
+
+      const renewal = { ...copy, blob: claudeBlob(expiresAt + HOUR, null) }
+      expect(await sync.handlePush('env_mac', renewal)).toMatchObject({ ok: true, saved: true })
+      expect(refreshNow).toHaveBeenCalledOnce()
+    } finally {
+      accounts.stop()
+      sync.close()
+    }
+  })
+
   it('a handoff lands provisionally with the fingerprint of what it saved, becomes the live sign-in on the release; an access copy lands stripped', async () => {
     const activate = vi.fn(async () => {})
     const { sync, nudge } = host('env_box', [], { activate })

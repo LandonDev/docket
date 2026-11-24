@@ -649,7 +649,7 @@ export class AccountsService {
     return this.snap
   }
 
-  /** A profile was deleted: rebuild now, no debounce, so nothing routes to it meanwhile. */
+  /** Rebuild immediately after a profile is added or removed. */
   rebuildNow(): Promise<void> {
     if (this.debounce) clearTimeout(this.debounce)
     this.debounce = null

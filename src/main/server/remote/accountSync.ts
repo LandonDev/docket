@@ -104,7 +104,7 @@ export interface AccountSyncDeps {
   peers: Pick<Peers, 'get' | 'all'>
   /** The accounts snapshot changed under us: rebuild and push it. */
   nudge: () => void
-  /** A profile is gone: rebuild the snapshot now, before anything else routes to it. Falls back to nudge. */
+  /** A profile was added or removed: rebuild the routing snapshot now. Falls back to nudge. */
   refreshNow?: () => Promise<void> | void
   /** The gateway's rate-limit picture (headroom.ts); shared with every peer so both hosts route from the same one. */
   headroom?: Pick<HeadroomStore, 'own' | 'merge'>
@@ -239,8 +239,14 @@ export class AccountSync {
   }
 
   async handlePush(from: string, t: Transfer): Promise<ApplyOutcome> {
+    const land = () => {
+      const before = PROVIDER_OF[t.service] ? vault.profiles(t.service) : null
+      const out = applyTransfer(t, from)
+      const added = before !== null && out.ok && out.saved && !before.some((p) => p.name === out.name)
+      return { out, added }
+    }
     // A handoff waits for any refresh in flight here (a copy asking its owner) before it lands.
-    const out = t.mode === 'handoff' ? await withLock(t.service, this.storedNameFor(t.service, t.profile), async () => applyTransfer(t, from)) : applyTransfer(t, from)
+    const { out, added } = t.mode === 'handoff' ? await withLock(t.service, this.storedNameFor(t.service, t.profile), async () => land()) : land()
     if (!out.ok) {
       this.log(`${t.service} ${t.profile.name}: ${t.mode} from ${from} refused (${out.reason})`)
       return out
@@ -251,7 +257,9 @@ export class AccountSync {
       // A grant handed over becomes the live sign-in once the sender has stripped its copy (handleReleased).
       if (t.mode !== 'handoff') void this.activateIfNothingLive(t.service, out.name, t.profile.static)
     }
-    this.deps.nudge()
+    // The vault's save hook fires before applyTransfer writes the profile row.
+    if (added) await this.refreshNow()
+    else this.deps.nudge()
     return out
   }
 

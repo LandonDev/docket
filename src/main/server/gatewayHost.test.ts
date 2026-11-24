@@ -152,6 +152,23 @@ async function startHost(options: Partial<ConstructorParameters<typeof GatewayHo
 const post = (url: string): Promise<Response> => fetch(url, { method: 'POST', headers: { authorization: 'Bearer CLI' }, body: '{"model":"claude-opus-5-5"}' })
 
 describe('GatewayHost with its own process', () => {
+  it('can send a new profile to the child before the account update timer fires', async () => {
+    const t = testControl({ marks: [] })
+    const host = await startHost({ control: t.control, spawnChild: realChildren().spawn })
+    const profilesKnown = vi.spyOn(t.control, 'profilesKnown')
+      .mockImplementation(async (serviceId) => serviceId === 'claude-code' ? ['A', 'B', 'new'] : ['C'])
+
+    host.accountsChanged()
+    expect(profilesKnown).not.toHaveBeenCalled()
+    await host.flushAccountsChanged()
+    expect(profilesKnown).toHaveBeenCalledWith('claude-code')
+
+    const response = await post(`${host.url('claude')}/~t=T1;a=new/v1/messages`)
+    expect(response.status).toBe(200)
+    await response.text()
+    expect(seen.at(-1)?.auth).toBe('Bearer TOK-new')
+  })
+
   it('asks a credential once and keeps it, reads the accounts locally, and reports each answer with its limit headers', async () => {
     const out = { marks: [] as OutMark[] }
     const t = testControl(out)

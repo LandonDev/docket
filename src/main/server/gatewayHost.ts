@@ -275,17 +275,21 @@ export class GatewayHost {
   /** Aliax's accounts changed (a save, a pin, a usage report): the child's copy follows. */
   accountsChanged(): void {
     if (!this.child?.sent || this.accountsTimer) return
-    this.accountsTimer = setTimeout(() => {
-      this.accountsTimer = null
-      const child = this.child
-      if (!child?.sent) return
-      void this.accountsState().then((state) => {
-        if (this.child !== child) return
-        this.lastOut = JSON.stringify(state.out)
-        child.link.wire.post({ t: 'accounts', state })
-      })
-    }, 100)
+    this.accountsTimer = setTimeout(() => void this.flushAccountsChanged(), 100)
     this.accountsTimer.unref?.()
+  }
+
+  /** Send a pending profile update before a sync push is acknowledged. */
+  async flushAccountsChanged(): Promise<void> {
+    if (!this.accountsTimer) return
+    clearTimeout(this.accountsTimer)
+    this.accountsTimer = null
+    const child = this.child
+    if (!child?.sent) return
+    const state = await this.accountsState()
+    if (this.child !== child) return
+    this.lastOut = JSON.stringify(state.out)
+    child.link.wire.post({ t: 'accounts', state })
   }
 
   /** A secret landed in the vault: the child asks again for that service's credentials. */
