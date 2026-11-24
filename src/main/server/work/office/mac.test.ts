@@ -348,6 +348,23 @@ describe('PowerPoint decks', () => {
     expect(asked.map((o) => [o.after, o.matchCase, o.wholeWords])).toEqual([[0, true, false], [2, true, false], [11, true, false], [0, true, false], [6, true, false]])
   })
 
+  it('refuses, writing nothing, when a slide was inserted before the match: the boxes alike, the slide not', () => {
+    // Shown: "Q1 plan" on slide 2, after a slide of its own text.
+    const bound = { places: 1, at: [[1, 'Q1 plan']], slides: [2] }
+    const shown = deck([[shape('Intro')], [shape('Q1 plan')]])
+    const asIs = ppt(shown)['Microsoft PowerPoint'] as Record<string, unknown>
+    let wrote = 0
+    asIs.replace = () => (wrote++, null)
+    expect(runScript('replaceSlideText', { pres: 'deck-test.pptx', find: 'Q1', replace: 'Q2', bound }, { 'Microsoft PowerPoint': asIs })).toBe(0)
+    // A blank slide put in before it: the boxes, their words and the count read the same; the slide is 3 now.
+    const moved = deck([[shape('Intro')], [], [shape('Q1 plan')]])
+    const app = ppt(moved)['Microsoft PowerPoint'] as Record<string, unknown>
+    app.replace = () => (wrote++, null)
+    const before = wrote
+    expect(runScript('replaceSlideText', { pres: 'deck-test.pptx', find: 'Q1', replace: 'Q2', bound }, { 'Microsoft PowerPoint': app })).toEqual({ refused: 'The words stand in other boxes now than the ones shown.' })
+    expect(wrote).toBe(before)
+  })
+
   it('counts a box as changed only once none of the words is left in it, so a loop stopped short is a short write', () => {
     const a = shape('Q1 Q1')
     const d = deck([[a]])

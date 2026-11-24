@@ -120,10 +120,10 @@ export async function fileText(c: OfficeCarrier, app: OfficeEdit['app'], key: st
 }
 
 /** A file's text and, for a deck, the slides that hold some words: from one read, so the count and the slides agree. */
-export async function fileRead(c: OfficeCarrier, app: OfficeEdit['app'], key: string): Promise<{ texts: string[]; on: (find: string) => number[] | undefined }> {
+export async function fileRead(c: OfficeCarrier, app: OfficeEdit['app'], key: string): Promise<{ texts: string[]; on: (find: string) => number[] | undefined; slideOf?: number[] }> {
   if (app === 'word') return { texts: await c.readDocument(key), on: () => undefined }
   const slides = await c.readSlides(key)
-  return { texts: slides.flatMap((s) => s.texts), on: (find) => slides.filter((s) => s.texts.some((t) => t.includes(find))).map((s) => s.index) }
+  return { texts: slides.flatMap((s) => s.texts), on: (find) => slides.filter((s) => s.texts.some((t) => t.includes(find))).map((s) => s.index), slideOf: slides.flatMap((s) => s.texts.map(() => s.index)) }
 }
 export const textHash = (texts: readonly string[]): string => createHash('sha256').update(JSON.stringify(texts)).digest('hex')
 /**
@@ -271,7 +271,7 @@ export function officeActs(deps: HeldDeps): ActKindDef[] {
       const app = p.app === 'word' ? 'Word' : 'PowerPoint'
       const key = await fileKey({ carrier: c }, p.app === 'word' ? 'document' : 'deck', p.key)
       if (key === null) throw new ActNotSent(`${p.name} is not open in ${app} on this computer: open it, then press again. Nothing was changed.`)
-      const { texts, on: slidesOf } = await fileRead(c, p.app, key)
+      const { texts, on: slidesOf, slideOf } = await fileRead(c, p.app, key)
       if ('find' in p.edit && p.on && JSON.stringify(slidesOf(p.edit.find)) !== JSON.stringify(p.on))
         throw new ActStale(`${p.name} changed since: ${elsewhereWords(p.edit.find, 'slides')}. Nothing was changed.`)
       if ('find' in p.edit) {
@@ -285,7 +285,9 @@ export function officeActs(deps: HeldDeps): ActKindDef[] {
       let n: number
       // The carrier is told what his press was shown, as this read found it: one that checks (the Mac's scripts, the
       // add-in) reads again in its own write and writes nothing when a co-author added, took or moved a match since.
-      const bound: WriteBound | undefined = 'find' in p.edit ? { places: p.places, at: boundOf(texts, p.edit.find) } : undefined
+      const at = 'find' in p.edit ? boundOf(texts, p.edit.find) : []
+      // A deck's hits are bound to their slides too: a slide inserted before one moves it, the boxes' order alike.
+      const bound: WriteBound | undefined = 'find' in p.edit ? { places: p.places, at, ...(slideOf ? { slides: at.map(([i]) => slideOf[i]!) } : {}) } : undefined
       try {
         if (p.app === 'word') n = await c.editDocument(key, p.edit, false, bound)
         else if ('find' in p.edit) n = await c.replaceSlideText(key, p.edit.find, p.edit.replace, bound)

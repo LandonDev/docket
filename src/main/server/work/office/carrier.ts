@@ -239,6 +239,8 @@ export interface OfficeCarrier {
 export interface WriteBound {
   places: number
   at: [number, string][]
+  /** PowerPoint: the slide (from 1) each entry of `at` is on, so a slide inserted before it is seen (round 4) */
+  slides?: number[]
 }
 
 export class OfficeError extends Error {

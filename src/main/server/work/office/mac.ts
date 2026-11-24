@@ -134,9 +134,12 @@ export const SCRIPTS = {
     // What his press was shown, read again in this same call: as many places, in the same boxes at the same places in
     // the deck. Else nothing is written.
     if (a.bound) {
-      var texts = []; eachText(p, function(i, t){ var c = String(t.content()); texts.push(c); found += c.split(a.find).length - 1 });
+      var texts = [], on = []; eachText(p, function(i, t){ var c = String(t.content()); texts.push(c); on.push(i + 1); found += c.split(a.find).length - 1 });
       if (found !== a.bound.places) return JSON.stringify({ refused: 'The words stand in ' + found + ' places now, not the ' + a.bound.places + ' shown.' });
-      if (JSON.stringify(spotsIn(texts, a.find)) !== JSON.stringify(a.bound.at)) return JSON.stringify({ refused: 'The words stand in other boxes now than the ones shown.' });
+      var spots = spotsIn(texts, a.find);
+      // each hit's box and the slide it is on: a slide inserted before one moves it, the boxes' order alike
+      var slides = spots.map(function(s){ return on[s[0]] });
+      if (JSON.stringify(spots) !== JSON.stringify(a.bound.at) || (a.bound.slides && JSON.stringify(slides) !== JSON.stringify(a.bound.slides))) return JSON.stringify({ refused: 'The words stand in other boxes now than the ones shown.' });
     }
     eachText(p, function(i, t){
       if (String(t.content()).indexOf(a.find) < 0) return;

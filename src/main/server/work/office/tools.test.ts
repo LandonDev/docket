@@ -488,6 +488,16 @@ describe("an agent's change to a shared document or deck, held (the owner's ruli
     expect(office.docs.get(DOC)!.paragraphs).toEqual(['Draft one.'])
   })
 
+  it("binds a deck's hits to their slides as well as their boxes", async () => {
+    office.decks.set(DECK, [['Intro'], ['Q1 plan', 'Close']])
+    await run('office_slides_replace', { deck: DECK, find: 'Q1', replace: 'Q2', because: 'own' })
+    const asked: unknown[] = []
+    const watching = Object.assign(Object.create(office), { replaceSlideText: async (_p: string, _f: string, _r: string, bound?: unknown) => (asked.push(bound), 1) })
+    const def = officeActs({ carrier: () => watching }).find((a) => a.kind === 'office.edit')!
+    await def.execute(OfficeEditSchema.parse(held[0]!.payload), { host: 'env_mac' } as ActCtx)
+    expect(asked).toEqual([{ places: 1, at: [[1, 'Q1 plan']], slides: [2] }])
+  })
+
   it('is not sent, nothing written, where the carrier cannot check what the press was shown (the Windows helper)', async () => {
     await run('office_doc_edit', { document: DOC, find: 'one', replace: 'two', because: 'own' })
     const windows = Object.assign(Object.create(office), { editDocument: async () => Promise.reject(new OfficeError('Office on Windows cannot yet check.', 'not-allowed')) })

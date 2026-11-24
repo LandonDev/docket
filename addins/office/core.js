@@ -201,14 +201,23 @@
             // places. Else nothing is written.
             if (a.bound) {
               var texts = []
+              var on = []
               var found = 0
               slides.forEach(function (s) {
                 s.ranges.forEach(function (r) {
                   texts.push(r.text)
+                  on.push(s.index)
                   found += r.text.split(a.find).length - 1
                 })
               })
               var refused = boundRefusal(texts, found, a.find, a.bound, 'boxes')
+              // each hit's slide too: a slide inserted before one moves it, the boxes' order alike
+              if (!refused && a.bound.slides) {
+                var hit = spotsIn(texts, a.find).map(function (s) {
+                  return on[s[0]]
+                })
+                if (JSON.stringify(hit) !== JSON.stringify(a.bound.slides)) refused = 'The words stand in other boxes now than the ones shown.'
+              }
               if (refused) return { refused: refused }
             }
             slides.forEach(function (s) {

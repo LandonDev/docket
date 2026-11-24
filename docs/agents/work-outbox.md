@@ -98,7 +98,8 @@ idea on a file others can open is kept on his host and shown only to him.
   words of those paragraphs alone, `spots`, and one from before that by the
   whole text, `base`). The carrier is handed what the press was shown
   (`WriteBound`, office/carrier.ts: the count and each holding paragraph or box
-  by its place and its words), through every wrapper (`withAddin` included, as
+  by its place and its words, and for a deck the slide each is on, round 4),
+  through every wrapper (`withAddin` included, as
   his Mac runs it). The Mac's scripts and the add-in read the file again in the
   same step that writes and write nothing on another count or another place
   (stale). The Windows helper cannot check it yet (native code, built in the

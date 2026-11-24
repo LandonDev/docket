@@ -91,3 +91,38 @@ describe("the add-in's own write", () => {
     expect(shown.writes).toEqual(['Q4'])
   })
 })
+
+/** The add-in's own PowerPoint write, on a stand-in of PowerPoint's slides and text boxes. */
+function deck(slides: string[][]) {
+  const writes: string[] = []
+  const box = (text: string) => {
+    const range = { text, load: () => {} }
+    Object.defineProperty(range, 'text', { get: () => text, set: (v: string) => void writes.push(v), enumerable: true })
+    return { type: 'TextBox', textFrame: { hasText: true, load: () => {}, textRange: range } }
+  }
+  const presentation = { slides: { load: () => {}, items: slides.map((texts) => ({ shapes: { load: () => {}, items: texts.map(box) } })) } }
+  const Office = { HostType: { Excel: 'Excel', Word: 'Word', PowerPoint: 'PowerPoint' }, context: { host: 'PowerPoint', document: { url: 'https://x.sharepoint.com/Deck.pptx' }, diagnostics: { platform: 'Mac' } } }
+  const PowerPoint = { run: (fn: (c: unknown) => Promise<unknown>) => fn({ presentation, sync: () => Promise.resolve() }) }
+  const sandbox: Record<string, unknown> = { setTimeout, clearTimeout }
+  runInNewContext(String(ADDIN_ASSETS['core.js']!.body), sandbox)
+  const made = (sandbox.TempCodeAddin as { createAddin(env: unknown): { run(verb: string, a: unknown): Promise<unknown> } }).createAddin({
+    Office,
+    PowerPoint,
+    storage: { getItem: () => null, setItem: () => {}, removeItem: () => {} },
+    url: 'ws://127.0.0.1:1/w/office',
+    onState: () => {}
+  })
+  return { run: made.run, writes }
+}
+
+describe("the add-in's own PowerPoint write", () => {
+  it('refuses, writing nothing, when a slide was inserted before the match, and writes on the deck as shown', async () => {
+    const bound = { places: 1, at: [[1, 'Q1 plan']], slides: [2] }
+    const moved = deck([['Intro'], [], ['Q1 plan']])
+    await expect(moved.run('slides.replace', { find: 'Q1', replace: 'Q2', bound })).resolves.toEqual({ refused: 'The words stand in other boxes now than the ones shown.' })
+    expect(moved.writes).toEqual([])
+    const shown = deck([['Intro'], ['Q1 plan']])
+    await expect(shown.run('slides.replace', { find: 'Q1', replace: 'Q2', bound })).resolves.toBe(1)
+    expect(shown.writes).toEqual(['Q2 plan'])
+  })
+})
