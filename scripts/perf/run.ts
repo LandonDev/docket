@@ -207,6 +207,8 @@ async function main(): Promise<number> {
         spent += measured(result.samples)
         const m = result.middle
         console.log(`ROW ${row.id}: ${m?.usable == null ? 'never usable' : Math.round(m.usable) + ' ms'}, T ${m?.counts.tAll ?? '-'}, C ${m?.counts.c ?? '-'}${m?.error ? ' (' + m.error + ')' : ''}`)
+        // What the window showed when a press never became usable: the picture says which wait was wrong.
+        if (result.samples.some((sample) => sample.usable === null)) await pair.page.shot(join(out, row.id + '.png')).catch(() => undefined)
       } catch (error) {
         result.notRun = words(error)
         console.error(`ROW ${row.id} did not run: ${result.notRun}`)

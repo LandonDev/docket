@@ -4,7 +4,7 @@ import { DOC_EDITOR, TEXT_EDITOR } from '../../journeys/lib/edit'
 import { closeSelectedFile, dummyPdf, openRow, rowAt } from '../../journeys/lib/files'
 import { fixtureTool } from '../../journeys/lib/fixtures'
 import { INPUT } from '../../journeys/lib/lifeosJourney'
-import { fileAt, holderFolder, selectFolderTab, showPlace } from '../../journeys/lib/place'
+import { fileAt, goPlace, holderFolder, selectFolderTab, showPlace } from '../../journeys/lib/place'
 import { FILES_FIELD } from '../../journeys/lib/search'
 import type { Shape } from '../../journeys/lib/shape'
 import { thrice, type PerfCtx, type Row } from '../lib/row'
@@ -25,9 +25,20 @@ function bench(ctx: PerfCtx, shape: Shape): void {
   for (let i = 1; i <= BENCH_ENTRIES; i++) writeFileSync(join(folder, `practice-${String(i).padStart(3, '0')}.txt`), 'A dummy line.\n')
 }
 
+/**
+ * The shape's holder folder shown. The rail is pressed only when the job's Files view is not already up: a job with a
+ * thread at work says so in its rail row, and the journeys' press looks for the bare name.
+ */
+async function shown(ctx: PerfCtx, shape: Shape): Promise<void> {
+  const context = ctx.at(shape)
+  await ctx.page.dismissPopups()
+  if (await ctx.page.centre('[data-files-sidebar] button', ctx.workspace.name)) await goPlace(context)
+  else await showPlace(context)
+}
+
 async function place(ctx: PerfCtx, shape: Shape): Promise<void> {
   bench(ctx, shape)
-  await showPlace(ctx.at(shape))
+  await shown(ctx, shape)
   await ctx.page.until('the bench folder row', 40_000, () => rowAt(ctx.page, BENCH))
 }
 
@@ -62,25 +73,37 @@ const back = (shape: Shape): Row => ({
 
 const search = (shape: Shape): Row => ({
   id: 'search-' + shape,
-  title: `Search the place for a file by name: the first key to its row (${shape})`,
+  title: `Search every place for a file by name: Return to its row among the results (${shape})`,
   needs: needs(shape),
   run: (ctx) => thrice(ctx, async (i) => {
     const name = `practice-${150 + i}`
+    // The field opens from the bar's Search. Typing narrows the folder shown; Return asks every place.
+    if (!await ctx.page.centre(FILES_FIELD)) await ctx.page.clickOn('[data-files-bar] button', 'Search')
     await ctx.page.clickOn(FILES_FIELD)
     await ctx.page.key('Control+a')
+    await ctx.page.typeKeys(name)
     return {
-      region: '[data-files-body]',
-      usable: `[...document.querySelectorAll('[data-files-body] [data-files-row]')].some((row) => row.innerText.includes(${JSON.stringify(name)}))`,
-      press: () => ctx.page.typeKeys(name)
+      region: '[data-files-page]',
+      usable: `(() => {
+        const panel = document.querySelector('[data-files-page]');
+        // The row, or the page's own word that nothing was found (a third machine's folders are named as not searched).
+        return !!panel?.querySelector('[data-files-filters]') && !panel.querySelector('[aria-label="Loading"][aria-busy="true"]') &&
+          ([...panel.querySelectorAll('[data-files-body] [data-files-row]')].some((row) => row.innerText.includes(${JSON.stringify(name)})) ||
+            (panel.querySelector('[data-files-body]')?.innerText ?? '').includes('Nothing found'));
+      })()`,
+      press: () => ctx.page.key('Enter')
     }
-  }, () => place(ctx, shape))
+  }, async () => {
+    if (await ctx.page.centre(FILES_FIELD)) await ctx.page.key('Escape')
+    await place(ctx, shape)
+  }).finally(async () => { if (await ctx.page.centre(FILES_FIELD).catch(() => null)) await ctx.page.key('Escape').catch(() => undefined) })
 })
 
 /** The kinds a file opens as, each with a dummy and what "he can use it" means for it. */
 const KINDS = {
   document: { name: 'Practice plan.tcdoc', usable: `!!document.querySelector(${JSON.stringify(DOC_EDITOR)})?.getClientRects().length` },
   word: { name: 'Practice letter.docx', usable: `!!document.querySelector(${JSON.stringify(DOC_EDITOR)})?.getClientRects().length` },
-  workbook: { name: 'Practice sums.xlsx', usable: `[...document.querySelectorAll('[data-sheet-item] canvas')].some((c) => c.getBoundingClientRect().width > 100) && !document.querySelector('[data-files-file] [data-slot="skeleton"], [data-files-file] [data-canvas-skeleton]')` },
+  workbook: { name: 'Practice sums.xlsx', usable: `[...document.querySelectorAll('[data-sheet-item] canvas')].some((c) => c.getBoundingClientRect().width > 100) && !document.querySelector('[data-files-file] [aria-busy="true"][aria-label="Loading"]')` },
   deck: { name: 'Practice briefing.pptx', usable: `!!document.querySelector('[data-slides-stage] [data-slide-picture]')?.childElementCount` },
   pdf: { name: 'Practice sheet.pdf', usable: `!!document.querySelector('[data-pdf-page="1"] canvas')?.width` },
   image: { name: 'Practice picture.png', usable: `[...document.querySelectorAll('[data-media-body] img')].some((img) => img.naturalWidth > 0)` },
@@ -104,7 +127,7 @@ async function dummy(ctx: PerfCtx, shape: Shape, kind: Kind): Promise<string> {
   else if (kind === 'text') writeFileSync(file, 'Original practice notes')
   else {
     // New → Document, named in the list as he would.
-    await showPlace(ctx.at(shape))
+    await shown(ctx, shape)
     await ctx.page.press('button', 'New')
     await ctx.page.press('menuitem', 'Document')
     await ctx.page.until('the new document name field', 20_000, () => ctx.page.eval('document.activeElement?.matches("[data-files-row] input")'))
@@ -125,7 +148,7 @@ const open = (kind: Kind, shape: Shape): Row => ({
       return { region: '[data-files-file], [data-files-main]', usable: KINDS[kind].usable, press: () => ctx.page.click(at, 2), wait: 90_000 }
     }, async (i) => {
       if (i > 0) await closeSelectedFile(ctx.page)
-      await showPlace(ctx.at(shape))
+      await shown(ctx, shape)
     }).finally(() => closeSelectedFile(ctx.page).catch(() => undefined))
   }
 })
@@ -136,7 +159,7 @@ const tab = (kind: Kind): Row => ({
   needs: needs('A'),
   run: async (ctx) => {
     const name = await dummy(ctx, 'A', kind)
-    await showPlace(ctx.at('A'))
+    await shown(ctx, 'A')
     await openRow(ctx.page, name)
     await ctx.page.until(`the ${kind} open`, 90_000, () => ctx.page.eval(KINDS[kind].usable))
     return thrice(ctx, () => ({
@@ -156,7 +179,7 @@ const saved = (shape: Shape): Row => ({
   needs: needs(shape),
   run: async (ctx) => {
     const name = await dummy(ctx, shape, 'text')
-    await showPlace(ctx.at(shape))
+    await shown(ctx, shape)
     await openRow(ctx.page, name)
     await ctx.page.until('the text editor', 60_000, () => ctx.page.centre(TEXT_EDITOR))
     return thrice(ctx, async (i) => {
@@ -196,7 +219,7 @@ const askBox: Row = {
     const file = fileAt(ctx.at('A'), `Practice ask ${i + 1}.txt`)
     writeFileSync(file, 'A dummy agenda for the park')
     if (i > 0) await closeSelectedFile(ctx.page)
-    await showPlace(ctx.at('A'))
+    await shown(ctx, 'A')
     await openRow(ctx.page, `Practice ask ${i + 1}.txt`)
     await ctx.page.until('the file open', 40_000, () => ctx.page.centre('[data-files-header] button', 'Ask'))
   }).finally(() => closeSelectedFile(ctx.page).catch(() => undefined))
@@ -219,7 +242,7 @@ const askFirst: Row = {
     const name = `Practice chat ${i + 1}.txt`
     writeFileSync(fileAt(ctx.at('A'), name), 'A dummy agenda for the park')
     if (i > 0) await closeSelectedFile(ctx.page)
-    await showPlace(ctx.at('A'))
+    await shown(ctx, 'A')
     await openRow(ctx.page, name)
     await ctx.page.clickOn('[data-files-header] button', 'Ask')
     await ctx.page.until('the chat box', 40_000, () => ctx.page.centre('[data-files-dock] ' + INPUT))
@@ -244,7 +267,7 @@ const reconnect: Row = {
       },
       wait: 60_000
     }), async () => {
-      await showPlace(ctx.at('A'))
+      await shown(ctx, 'A')
       ctx.pair.cutWindowLink(true)
       await ctx.page.until('the window to lose the link', 30_000, () => ctx.page.eval(`!(${open})`))
       await new Promise((resolve) => setTimeout(resolve, 5000))

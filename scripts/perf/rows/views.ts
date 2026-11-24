@@ -1,5 +1,5 @@
 import { thrice, type PerfCtx, type Row } from '../lib/row'
-import { BONES, settled } from '../lib/probe'
+import { BONES, settled, type Sample } from '../lib/probe'
 
 const RAIL = 'nav [data-rail-path] button'
 const VIEW = '[data-rail-row] > button > span.truncate'
@@ -100,10 +100,12 @@ const launch: Row = {
       };
       requestAnimationFrame(look);
     })()`
+    // A script for new documents is put in only while the Page domain is on.
+    await ctx.page.send('Page.enable')
     const { identifier } = await ctx.page.send('Page.addScriptToEvaluateOnNewDocument', { source: watch }) as { identifier: string }
     try {
-      const samples = []
-      for (let i = 0; i < 3; i++) {
+      const samples: Sample[] = []
+      for (let i = 0; i < 3 && !samples.some((sample) => sample.usable === null); i++) {
         ctx.counter.take()
         ctx.pair.windowLink?.reset()
         await ctx.page.reload()
@@ -122,4 +124,4 @@ const launch: Row = {
   }
 }
 
-export const VIEW_ROWS: Row[] = [launch, returned, switchWorkspace, ...VIEWS.map(view), ...PLACES.map(place)]
+export const VIEW_ROWS: Row[] = [...VIEWS.map(view), ...PLACES.map(place), switchWorkspace, returned, launch]

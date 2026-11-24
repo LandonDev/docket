@@ -50,7 +50,10 @@ export async function thrice(ctx: PerfCtx, press: (i: number) => MeasureOptions 
   const samples: Sample[] = []
   for (let i = 0; i < PRESSES; i++) {
     if (between) await between(i)
-    samples.push(await ctx.time(await press(i)))
+    const sample = await ctx.time(await press(i))
+    samples.push(sample)
+    // A press that never got there says so once: two more would only spend the run's measured seconds.
+    if (sample.usable === null) break
   }
   return samples
 }
