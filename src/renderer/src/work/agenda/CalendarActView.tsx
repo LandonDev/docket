@@ -22,27 +22,81 @@ export function View({ item, env }: ActViewProps) {
 
 type Props = { op: CalendarOp; session: LifeosSession; sector: string | null };
 
-/** A reply or a change names its event: its title, time and place fill what the act leaves out. */
+/** Where the read of the act's event stands: none for an act that names no event. */
+type EventRead = "none" | "loading" | "failed" | "gone" | "ready";
+
+/** A reply or a change names its event: its title, time and place fill what the act leaves out. Retry reads it again. */
 function WithEvent({ id, ...props }: Props & { id: string }) {
-  const read = useLifeosQuery<DayEvent | null>(props.session, "events:get", { id });
-  return <Body {...props} event={read.status === "ready" ? read.value : null} />;
+  const [attempt, setAttempt] = useState(0);
+  return <EventOf key={attempt} id={id} {...props} onRetry={() => setAttempt((n) => n + 1)} />;
 }
 
-function Body({ op, event, session, sector }: Props & { event: DayEvent | null }) {
+function EventOf({ id, onRetry, ...props }: Props & { id: string; onRetry: () => void }) {
+  const read = useLifeosQuery<DayEvent | null>(props.session, "events:get", { id });
+  const value = read.status === "ready" ? read.value : null;
+  const state: EventRead = read.status === "ready" ? (value ? "ready" : "gone") : read.status;
+  return <Body {...props} event={value} read={state} onRetry={onRetry} />;
+}
+
+function Body({ op, event, session, sector, read = "none", onRetry }: Props & { event: DayEvent | null; read?: EventRead; onRetry?: () => void }) {
   const start = opStart(op, event);
   const from = start === null ? null : startOfDay(start);
+  const fields = opFields(op, event);
+  // The facts only the event can give: while it is read, their bones; once the read failed or found nothing, a line says so.
+  const missing = (["Event", "When"] as const).filter((label) => !fields.some((f) => f.label === label));
   return (
     <div data-slot="act-payload" className="flex min-w-0 flex-col gap-5">
       <dl className="grid grid-cols-[72px_minmax(0,1fr)] gap-x-3 gap-y-1.5 text-[13px] leading-5">
-        {opFields(op, event).map((field) => (
+        {read === "loading"
+          ? missing.map((label) => (
+              <div key={label} data-field-bones="" className="contents">
+                <dt className="truncate text-muted-foreground">{label}</dt>
+                <dd className="flex h-5 items-center">
+                  <Skeleton className={cn("h-3", label === "Event" ? "w-40" : "w-32")} />
+                </dd>
+              </div>
+            ))
+          : null}
+        {fields.map((field) => (
           <div key={field.label} className="contents">
             <dt className="truncate text-muted-foreground">{field.label}</dt>
-            <dd className="min-w-0 break-words text-foreground">{field.value}</dd>
+            <dd className="min-w-0 break-words text-foreground">{field.people ? <People people={field.people} /> : field.value}</dd>
           </div>
         ))}
       </dl>
+      {read === "loading" && missing.length ? <span role="status" className="sr-only">Reading the event</span> : null}
+      {(read === "failed" || read === "gone") && missing.length ? (
+        <p data-event-read={read} className="flex min-h-7 items-center gap-2 text-[13px] text-muted-foreground">
+          {read === "failed" ? "Couldn't read the event" : "The event is no longer in LifeOS"}
+          {read === "failed" && onRetry ? (
+            <Button variant="ghost" size="xs" onClick={onRetry}>
+              Retry
+            </Button>
+          ) : null}
+        </p>
+      ) : null}
       {from !== null ? <DayRead op={op} event={event} session={session} sector={sector} from={from} /> : null}
     </div>
+  );
+}
+
+/** Guests as Mail's cards name a recipient: the name he knows, then the address it goes to, muted 4px after it. */
+function People({ people }: { people: { address: string; name?: string }[] }) {
+  return (
+    <>
+      {people.map((who, i) => {
+        const name = who.name?.trim();
+        return (
+          <span key={who.address}>
+            {i ? ", " : null}
+            <span className="whitespace-nowrap">
+              {name && name !== who.address ? <span className="me-1">{name}</span> : null}
+              <span className={name && name !== who.address ? "text-muted-foreground" : undefined}>{who.address}</span>
+            </span>
+          </span>
+        );
+      })}
+    </>
   );
 }
 

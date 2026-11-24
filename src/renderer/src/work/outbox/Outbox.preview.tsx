@@ -17,7 +17,7 @@ import { resetOutboxStore } from "./store";
  * mail LifeOS has not yet said went (`queued`: queued twelve minutes on, sent,
  * back in drafts). Also: `empty` (nothing waits), `failed` (Waiting with a send that failed, its reason in
  * the row and the detail), `grants` (the grants sheet over Sent), `kinds` (Waiting with a held item of six kinds; `pick` 0 is the
- * mail, 5 a payload that could not be read), `given` (Sent from a computer whose key may not grant) and `loadingAct` (Sent while the mail's own view loads).
+ * mail, 1 an invite, 5 a payload that could not be read, 6 a reply whose event LifeOS did not read), `given` (Sent from a computer whose key may not grant) and `loadingAct` (Sent while the mail's own view loads).
  * Rendered by nothing in the app.
  */
 
@@ -144,6 +144,7 @@ const KINDS: OutboxItem[] = [
   held(24, "file.act", "Move Risk assessment.docx to Esports Staff › Events", "Move", { verb: "move", name: "Risk assessment.docx" }, 31),
   held(25, "share.guestLink", "Share Spring LAN run of show with Maya Chen to comment", "Share", { name: "Maya Chen", role: "comment" }, 20),
   held(26, "teams.post", "Post in Esports Staff › General: the bus leaves at 6:30 AM", "Post", "not a payload", 12),
+  held(27, "calendar.op", "Answer Kickoff call with Northside PT: Yes", "Send", { id: "op27", kind: "accept", eventId: "ev_call", account: "landon@purdue.edu" }, 6),
 ];
 const GRANTS: OutboxGrant[] = [
   { id: "g1", workspaceId: "ws", kind: "mail.send", matcher: {}, label: "Mail to dana.lee@purdue.edu from landon@purdue.edu", madeFrom: SENT[0]!.ref, routineId: null, createdAt: at(12, 9), removedAt: null },

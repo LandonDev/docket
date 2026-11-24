@@ -77,9 +77,11 @@ export function whenWords(startsAt: number, endsAt: number | undefined, allDay =
  * leaves out. Everything that goes is shown: the server's `CalendarFieldsSchema` keys each have a
  * row here (agenda.test.ts holds it).
  */
-export function opFields(op: CalendarOp, event: DayEvent | null): { label: string; value: string }[] {
+export type OpField = { label: string; value: string; /** guests, for the view to draw each as a name with its address muted after it */ people?: { address: string; name?: string }[] };
+
+export function opFields(op: CalendarOp, event: DayEvent | null): OpField[] {
   const p = op.payload ?? {};
-  const rows: { label: string; value: string }[] = [];
+  const rows: OpField[] = [];
   const title = p.title ?? op.eventTitle ?? event?.title;
   if (title) rows.push({ label: "Event", value: title });
   const startsAt = p.startsAt ?? op.eventStartsAt ?? event?.startsAt;
@@ -87,7 +89,7 @@ export function opFields(op: CalendarOp, event: DayEvent | null): { label: strin
   if (op.kind === "propose" && p.proposedStart !== undefined) rows.push({ label: "Instead", value: whenWords(p.proposedStart, p.proposedEnd) });
   const where = p.location ?? op.eventLocation ?? event?.location;
   if (where) rows.push({ label: "Where", value: where });
-  if (p.attendees?.length) rows.push({ label: "Invites", value: p.attendees.map((a) => (a.name ? `${a.name} <${a.address}>` : a.address)).join(", ") });
+  if (p.attendees?.length) rows.push({ label: "Invites", value: p.attendees.map((a) => (a.name ? `${a.name} ${a.address}` : a.address)).join(", "), people: p.attendees });
   if (p.uninvite?.length) rows.push({ label: "Uninvites", value: p.uninvite.join(", ") });
   if (p.series) rows.push({ label: "Applies to", value: "Every occurrence" });
   const reply = op.kind ? REPLY[op.kind] : undefined;
