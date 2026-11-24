@@ -56,7 +56,8 @@ export function sourceTitle(s: Pick<LifeosSource, 'kind' | 'label' | 'accountNam
   return !word || name.toLowerCase().includes(word) ? name : `${name} ${word}`
 }
 
-const SIGN_IN = { kind: 'page', label: 'Sign in…', page: 'lifeos-sign-in' } as const
+// The presses' names as every reader of a down session gives them (DOWN_PRESS_LABEL): buttons, so no ellipsis.
+const SIGN_IN = { kind: 'page', label: 'Sign in', page: 'lifeos-sign-in' } as const
 const SIGN_OUT = { kind: 'run', label: 'Sign out', method: 'work.lifeos.signOut' } as const
 
 /**
@@ -71,12 +72,13 @@ export function signInRow(state: LifeosStatus['lifeos']): HealthRow | null {
     case 'connected':
       return { ...row, state: 'working', line: 'Signed in', fix: SIGN_OUT }
     case 'pairing':
-      return { ...row, state: 'needs-you', line: 'The LifeOS sign-in waits for your approval', fix: { kind: 'page', label: 'Show the code…', page: 'lifeos-sign-in' } }
+      return { ...row, state: 'needs-you', line: 'The LifeOS sign-in waits for your approval', fix: { kind: 'page', label: 'Show the code', page: 'lifeos-sign-in' } }
     case 'signed-out':
       return { ...row, state: 'needs-you', line: 'Not signed in to LifeOS', fix: SIGN_IN }
     case 'refused':
       return { ...row, state: 'needs-you', line: 'LifeOS refused the sign-in. Sign in again.', fix: SIGN_IN }
-    // Signed in but not answering: Sign out stays, so a host stuck on a wrong address can sign in again. No retry method: the session tries again on its own steps.
+    // Signed in but not answering: Sign out stays, so a host stuck on a wrong address can sign in again. No retry method: the
+    // session tries again on its own steps; the window draws Retry beside Sign out on an unreachable row, which checks again.
     case 'connecting':
       return { ...row, state: 'broken', line: 'Still connecting to LifeOS', fix: SIGN_OUT }
     case 'unreachable':

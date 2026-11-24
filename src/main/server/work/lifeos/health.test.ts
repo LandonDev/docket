@@ -27,9 +27,9 @@ const status = (lifeos: LifeosState, keys: LifeosStatus['keys'] = []): LifeosSta
 describe('the LifeOS sign-in row', () => {
   it('carries the button the Settings row had, in each state', () => {
     expect(signInRow({ state: 'connected', ownerId: 'landon', since: NOW })).toMatchObject({ id: 'lifeos.signin', group: 'LifeOS', title: 'LifeOS', state: 'working', line: 'Signed in', fix: { kind: 'run', label: 'Sign out', method: 'work.lifeos.signOut' } })
-    expect(signInRow({ state: 'pairing', code: 'ABCD-1234', expiresAt: NOW + 60_000 })).toMatchObject({ state: 'needs-you', lifeos: 'pairing', line: 'The LifeOS sign-in waits for your approval', fix: { kind: 'page', label: 'Show the code…', page: 'lifeos-sign-in' } })
-    expect(signInRow({ state: 'signed-out' })).toMatchObject({ state: 'needs-you', lifeos: 'signed-out', line: 'Not signed in to LifeOS', fix: { kind: 'page', label: 'Sign in…', page: 'lifeos-sign-in' } })
-    expect(signInRow({ state: 'refused', error: 'revoked' })).toMatchObject({ state: 'needs-you', lifeos: 'refused', line: 'LifeOS refused the sign-in. Sign in again.', fix: { label: 'Sign in…', page: 'lifeos-sign-in' } })
+    expect(signInRow({ state: 'pairing', code: 'ABCD-1234', expiresAt: NOW + 60_000 })).toMatchObject({ state: 'needs-you', lifeos: 'pairing', line: 'The LifeOS sign-in waits for your approval', fix: { kind: 'page', label: 'Show the code', page: 'lifeos-sign-in' } })
+    expect(signInRow({ state: 'signed-out' })).toMatchObject({ state: 'needs-you', lifeos: 'signed-out', line: 'Not signed in to LifeOS', fix: { kind: 'page', label: 'Sign in', page: 'lifeos-sign-in' } })
+    expect(signInRow({ state: 'refused', error: 'revoked' })).toMatchObject({ state: 'needs-you', lifeos: 'refused', line: 'LifeOS refused the sign-in. Sign in again.', fix: { label: 'Sign in', page: 'lifeos-sign-in' } })
     const down = signInRow({ state: 'unreachable', since: NOW - 3_600_000, error: 'fetch failed' })!
     // Signed in but not answering keeps Sign out, so a host stuck on a wrong address can sign in again.
     expect(down).toMatchObject({ state: 'broken', lifeos: 'unreachable', line: 'LifeOS did not answer. Still trying since', at: NOW - 3_600_000, fix: { kind: 'run', label: 'Sign out', method: 'work.lifeos.signOut' } })

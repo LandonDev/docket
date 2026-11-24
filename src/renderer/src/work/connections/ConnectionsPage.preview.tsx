@@ -32,7 +32,7 @@ const BOX: HealthRow[] = [
 ];
 
 const MAC: HealthRow[] = [
-  r({ id: "lifeos.signin", group: "LifeOS", title: "LifeOS", state: "needs-you", lifeos: "signed-out", line: "Not signed in to LifeOS", fix: { kind: "page", label: "Sign in…", page: "lifeos-sign-in" } }),
+  r({ id: "lifeos.signin", group: "LifeOS", title: "LifeOS", state: "needs-you", lifeos: "signed-out", line: "Not signed in to LifeOS", fix: { kind: "page", label: "Sign in", page: "lifeos-sign-in" } }),
   r({ id: "lifeos.source:1", group: "Mail and calendar", title: "Purdue mail", state: "working", line: "Synced 3 min ago", sector: "purdue" }),
   r({ id: "formats.tools", pillar: "formats", group: "Tools", title: "Conversion tools", state: "broken", line: "LibreOffice did not install", fix: { kind: "run", label: "Install", method: "work.formats.install" } }),
   r({ id: "office.excel", pillar: "office", group: "Office", title: "Excel", state: "working", line: "Running, signed in as lhale@purdue.edu" }),
@@ -71,7 +71,7 @@ const HOSTS: Record<string, HostView[]> = {
   ],
   /** Seen from his laptop as a given computer: the box signed out of LifeOS (no Sign in, who can), and LifeOS silent on the Mac. */
   given: [
-    { id: "box", name: "the box", status: "ready", report: { host: "env_box", at: NOW, rows: [r({ id: "lifeos.signin", group: "LifeOS", title: "LifeOS", state: "needs-you", lifeos: "signed-out", line: "Not signed in to LifeOS", fix: { kind: "page", label: "Sign in…", page: "lifeos-sign-in" } })] } },
+    { id: "box", name: "the box", status: "ready", report: { host: "env_box", at: NOW, rows: [r({ id: "lifeos.signin", group: "LifeOS", title: "LifeOS", state: "needs-you", lifeos: "signed-out", line: "Not signed in to LifeOS", fix: { kind: "page", label: "Sign in", page: "lifeos-sign-in" } })] } },
     {
       id: "mac",
       name: "Mac",
@@ -88,11 +88,32 @@ const HOSTS: Record<string, HostView[]> = {
   ],
   /** LifeOS down on both, seen from a window that may sign each in: the box's sign-in waits, LifeOS silent on the Mac with Retry. */
   lifeosDown: [
-    { id: "box", name: "the box", status: "ready", report: { host: "env_box", at: NOW, rows: [r({ id: "lifeos.signin", group: "LifeOS", title: "LifeOS", state: "needs-you", lifeos: "pairing", line: "The LifeOS sign-in waits for your approval", fix: { kind: "page", label: "Show the code…", page: "lifeos-sign-in" } })] } },
+    { id: "box", name: "the box", status: "ready", report: { host: "env_box", at: NOW, rows: [r({ id: "lifeos.signin", group: "LifeOS", title: "LifeOS", state: "needs-you", lifeos: "pairing", line: "The LifeOS sign-in waits for your approval", fix: { kind: "page", label: "Show the code", page: "lifeos-sign-in" } })] } },
     {
       id: "mac",
       name: "Mac",
       status: "ready",
+      report: {
+        host: "env_mac",
+        at: NOW,
+        rows: [
+          r({ id: "lifeos.signin", group: "LifeOS", title: "LifeOS", state: "working", lifeos: "connected", line: "Signed in", fix: { kind: "run", label: "Sign out", method: "work.lifeos.signOut" } }),
+          r({ id: "lifeos.answers", group: "LifeOS", title: "LifeOS answers", state: "broken", lifeos: "unreachable", line: "LifeOS did not answer" }),
+        ],
+      },
+    },
+  ],
+  /**
+   * The box says LifeOS has not answered it for an hour: its Retry beside Sign out. The Mac, whose LifeOS did not answer,
+   * did not answer his Retry either: said once, in Hosts, its old LifeOS row gone.
+   */
+  unreachable: [
+    { id: "box", name: "the box", status: "ready", report: { host: "env_box", at: NOW, rows: [r({ id: "lifeos.signin", group: "LifeOS", title: "LifeOS", state: "broken", lifeos: "unreachable", line: "LifeOS did not answer. Still trying since", at: NOW - 3_600_000, fix: { kind: "run", label: "Sign out", method: "work.lifeos.signOut" } }), ...BOX.slice(1)] } },
+    {
+      id: "mac",
+      name: "Mac",
+      status: "failed",
+      silent: true,
       report: {
         host: "env_mac",
         at: NOW,

@@ -90,7 +90,7 @@ export default journey({
       }
       await check('Work', () => settings(page, 'Work'), 'Work for box is changed from a computer that manages it',
         ['Set up', 'Screen size', 'Go back…', 'Delete'])
-      await check('Connections', () => settings(page, 'Connections'), 'Not signed in to LifeOS on box', ['Sign out', 'Sign in…', 'Or a device token'], 'Not signed in to LifeOS on box')
+      await check('Connections', () => settings(page, 'Connections'), 'Not signed in to LifeOS on box', ['Sign out', 'Sign in', 'Or a device token'], 'Not signed in to LifeOS on box')
       await check('Workspace', () => settings(page, context.workspace.name), 'Computer use is changed from a computer that manages box',
         ['Voice', 'Waiting on', 'Computer use', 'Copy Teams files', 'Thread defaults'])
       if (await settingsOpen(page)) await page.press('button', 'Back')

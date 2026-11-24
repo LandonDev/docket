@@ -75,6 +75,30 @@ describe("sectionsOf", () => {
     expect(sectionsOf([checking])[0]!.rows).toHaveLength(1);
     expect(sectionsOf([{ id: "mac", name: "Mac", status: "checking" }])).toEqual([]);
   });
+
+  /** Council round 9 (Sol, Settings 2): the Mac did not answer a Retry, and its old row still blamed LifeOS. */
+  it("draws no old cause of LifeOS's silence for a host that did not answer, asked again or not; its other rows and Sign out stay", () => {
+    const lifeos = (over: Partial<HealthRow>): HealthRow => row({ pillar: "lifeos", group: "LifeOS", title: "LifeOS", ...over });
+    const report = {
+      host: "mac",
+      at: 0,
+      rows: [
+        lifeos({ id: "lifeos.signin", state: "broken", lifeos: "unreachable", line: "LifeOS did not answer. Still trying since", at: 1, fix: { kind: "run", label: "Sign out", method: "work.lifeos.signOut" } }),
+        lifeos({ id: "lifeos.answers", title: "LifeOS answers", state: "broken", lifeos: "unreachable", line: "LifeOS did not answer" }),
+        row({ id: "excel" }),
+      ],
+    };
+    for (const silent of [{ id: "mac", name: "Mac", status: "failed", silent: true, report }, { id: "mac", name: "Mac", status: "checking", silent: true, report }] as HostView[]) {
+      const rows = sectionsOf([silent]).flatMap((s) => s.rows);
+      expect(rows.map((r) => r.row.id)).toEqual(["lifeos.signin", "excel"]);
+      expect(rows[0]).toMatchObject({ hushed: true, row: { fix: { label: "Sign out" } } });
+      expect(rows[0]!.line).toBeUndefined();
+    }
+    // A host that refused did answer: its rows say what they said.
+    const refused = sectionsOf([{ id: "mac", name: "Mac", status: "failed", silent: false, error: "x", report }]).flatMap((s) => s.rows);
+    expect(refused.map((r) => r.row.id)).toEqual(["lifeos.signin", "lifeos.answers", "excel"]);
+    expect(refused.some((r) => r.hushed)).toBe(false);
+  });
 });
 
 describe("the rest of the page's words", () => {

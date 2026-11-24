@@ -10,9 +10,9 @@ import { atHead, lifeosDownWords } from "../shell/lifeosWords";
  * its preview and its test read the same thing.
  */
 
-/** One host as the page knows it: still checking, its rows, not linked now, or its refusal. */
+/** One host as the page knows it: still checking (`silent`: after a check it did not answer), its rows, not linked now, or its refusal. */
 export type HostView =
-  | { id: string; name: string; status: "checking"; report?: HealthReport }
+  | { id: string; name: string; status: "checking"; report?: HealthReport; silent?: boolean }
   | { id: string; name: string; status: "ready"; report: HealthReport }
   | { id: string; name: string; status: "offline" }
   | { id: string; name: string; status: "failed"; error?: string; silent?: boolean; report?: HealthReport };
@@ -24,6 +24,11 @@ export interface PlacedRow {
   title: string;
   /** the line the page draws in place of the host's, where the page words it (`lifeosLine`) */
   line?: string;
+  /**
+   * The row's host did not answer its last check, and the row is LifeOS's silence from the check before: its line and
+   * Retry are not drawn, since the Hosts row says the host's silence and asks it again. Its account control stays.
+   */
+  hushed?: true;
   row: HealthRow;
 }
 
@@ -50,17 +55,22 @@ const rank = (group: string): number => {
  * host ("LifeOS on Mac"), and only then. A LifeOS row names its computer whenever the page lists more than one host:
  * in its line where the page words it in the rule's words ("Not signed in to LifeOS on the box", `lifeosLine`), else
  * in its title ("LifeOS answers on Mac"), never in both. A host still checking keeps the rows it had, so Check again
- * moves nothing.
+ * moves nothing. A host that did not answer keeps them too, but not an old cause beside its own: its row of LifeOS's
+ * silence goes (LifeOS answers), or loses its line and Retry where it holds a control (the sign-in row's Sign out).
  */
 export function sectionsOf(hosts: readonly HostView[]): Section[] {
   const placed: (PlacedRow & { hostName: string })[] = [];
   for (const host of hosts) {
     if (!("report" in host) || !host.report) continue;
+    // Asked again after its silence, it stays hushed until it answers: the old cause never comes back for the ask.
+    const silent = (host.status === "failed" || host.status === "checking") && !!host.silent;
     for (const row of host.report.rows) {
+      const hushed = silent && row.pillar === "lifeos" && row.lifeos === "unreachable";
+      if (hushed && !row.fix) continue;
       const twin = row.shared && !row.fix && placed.find((p) => p.row.shared && p.row.id === row.id && p.row.state === row.state && p.row.line === row.line && p.row.group === row.group);
       if (twin) continue;
-      const line = lifeosLine(row, host.name);
-      placed.push({ key: `${host.id}\0${row.id}`, hostId: host.id, hostName: host.name, title: row.title, ...(line ? { line } : {}), row });
+      const line = hushed ? null : lifeosLine(row, host.name);
+      placed.push({ key: `${host.id}\0${row.id}`, hostId: host.id, hostName: host.name, title: row.title, ...(line ? { line } : {}), ...(hushed ? { hushed: true as const } : {}), row });
     }
   }
   const byGroup = new Map<string, PlacedRow[]>();
@@ -68,7 +78,7 @@ export function sectionsOf(hosts: readonly HostView[]): Section[] {
     const shared = placed.some((p) => p !== one && p.row.group === one.row.group && p.row.title === one.row.title && p.hostId !== one.hostId);
     const named = !one.line && (shared || (one.row.group === "LifeOS" && hosts.length > 1));
     const list = byGroup.get(one.row.group) ?? [];
-    list.push({ key: one.key, hostId: one.hostId, title: named ? `${one.row.title} on ${nameInLine(one.hostName)}` : one.row.title, ...(one.line ? { line: one.line } : {}), row: one.row });
+    list.push({ key: one.key, hostId: one.hostId, title: named ? `${one.row.title} on ${nameInLine(one.hostName)}` : one.row.title, ...(one.line ? { line: one.line } : {}), ...(one.hushed ? { hushed: true as const } : {}), row: one.row });
     byGroup.set(one.row.group, list);
   }
   return [...byGroup.entries()].map(([group, rows], order) => ({ group, rows, order })).sort((a, b) => rank(a.group) - rank(b.group) || a.order - b.order).map(({ group, rows }) => ({ group, titled: !(rows.length === 1 && rows[0]!.title === group), rows }));

@@ -40,7 +40,7 @@ export function ConnectionsPage() {
   const [views, setViews] = useState<Record<string, HostView>>({});
 
   const checkHost = useCallback(async (id: string, name: string): Promise<void> => {
-    setViews((all) => ({ ...all, [id]: { id, name, status: "checking", report: viewReport(all[id]) } }));
+    setViews((all) => ({ ...all, [id]: { id, name, status: "checking", report: viewReport(all[id]), ...(wasSilent(all[id]) ? { silent: true } : {}) } }));
     let next: HostView;
     try {
       const report = await withDeadline(registry.linkOf(id).request<HealthReport>("work.health", {}), CHECK_DEADLINE_MS);
@@ -108,6 +108,8 @@ function LifeosWatch({ environmentId, onChange }: { environmentId: string; onCha
 }
 
 const viewReport = (view: HostView | undefined): HealthReport | undefined => (view && "report" in view ? view.report : undefined);
+/** A host whose last check went unanswered, or that is asked again after one. */
+const wasSilent = (view: HostView | undefined): boolean => (view?.status === "failed" || view?.status === "checking") && !!view.silent;
 
 function withDeadline<T>(promise: Promise<T>, ms: number): Promise<T> {
   return new Promise<T>((resolve, reject) => {
@@ -190,8 +192,9 @@ function FixRow({ placed, now, checking, onDone }: { placed: PlacedRow; now: num
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [signingIn, setSigningIn] = useState(false);
-  // LifeOS's silence with no fix of its own: Retry asks the row's host again, that host alone, as Check again would.
-  const retry = !fix && row.lifeos === "unreachable";
+  // LifeOS's silence: Retry asks the row's host again, that host alone, as Check again would, beside the row's account
+  // control (the sign-in row's Sign out), which stays as it is. A row its silent host left (`hushed`) has none.
+  const retry = !placed.hushed && row.lifeos === "unreachable";
   const line = placed.line ?? row.line;
   const press = async (fix: HealthFix): Promise<void> => {
     setError(null);
@@ -220,20 +223,21 @@ function FixRow({ placed, now, checking, onDone }: { placed: PlacedRow; now: num
         title={placed.title}
         description={
           <>
-            <StatusMark className={STATE_LINE} state={mark.state} word={mark.word} detail={row.at === undefined ? line : [line, syncWhen(row.at, now)].filter(Boolean).join(" ")} />
+            <StatusMark className={STATE_LINE} state={mark.state} word={mark.word} detail={placed.hushed ? undefined : row.at === undefined ? line : [line, syncWhen(row.at, now)].filter(Boolean).join(" ")} />
             {whoCan ? <span data-who-can className="block">{whoCan}</span> : null}
           </>
         }
         error={error ?? undefined}
       >
         {row.until ? <span className="text-xs tabular-nums text-muted-foreground">{lapseLine(row.until, now)}</span> : null}
+        {retry ? (
+          <Button variant={fixVariant(row.state)} size="sm" disabled={checking} onClick={onDone}>
+            <BusyLabel busy={checking} label="Retry" />
+          </Button>
+        ) : null}
         {fix ? (
           <Button variant={fixVariant(row.state)} size="sm" disabled={busy} onClick={() => void press(fix)}>
             <BusyLabel busy={busy} label={fix.label} />
-          </Button>
-        ) : retry ? (
-          <Button variant={fixVariant(row.state)} size="sm" disabled={checking} onClick={onDone}>
-            <BusyLabel busy={checking} label="Retry" />
           </Button>
         ) : null}
       </PageRow>

@@ -4059,12 +4059,14 @@ switch); none for a computer the host keeps LifeOS from. Every state names
 the computer: "Not signed in to LifeOS on the box", "The LifeOS sign-in on
 the box waits for your approval", "LifeOS did not answer the box", and "The
 box did not answer" for its own silence, the session's ask as well as the
-status ask. `useDownPress` decides it, `downAction` names it; every reader
+status ask. `useDownPress` decides it, `downAction` names it, one name a press on every reader, a button with no ellipsis ("Sign in", "Show the code"), a menu row with the menu's ("Sign in…"); every reader
 takes it from there, the view frame's title, Connections' rows that need him,
 Waiting on's days and the rail's + menu too, and Connections' LifeOS rows,
 worded by the window from the state the host names, each naming its
 computer once (in its line, else in its title) and LifeOS answers with Retry
-for that host alone. On Today a job's session on another host that is down
+for that host alone, as the sign-in row of a host that says LifeOS is unreachable has beside its Sign out; while that
+host does not answer its own check, the Hosts row says so with the one Retry, and its old LifeOS silence is not
+drawn. On Today a job's session on another host that is down
 is one line for the page a host and state, naming what every section left
 out ("Refereeing's meetings, tasks and mail left out"), its Retry asking
 that host alone. A read that failed is never said
@@ -4084,8 +4086,9 @@ answer says "The box did not answer" in the place of LifeOS's silence, until
 the host's next answer. When the session comes back every reader reads again
 and drops its line with no press: a fresh answer or push that says connected
 asks again for a session that is down, and Waiting on and Connections read
-again. The sign-in dialog's code ask that fails says so in the code's place
-with Retry, which asks the same computer again; bones are for an ask still
+again; a status that goes down while Waiting on is open takes its days' row down at once, its switch kept. The sign-in dialog's code ask that fails says so in the code's place
+with Retry, which asks the same computer again, and a code past its life gives
+its timer's place to New code, which does the same; bones are for an ask still
 out. A long computer name wraps; the red word is
 never cut (`StatusMark`'s `wrap`).
 

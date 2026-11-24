@@ -85,7 +85,7 @@ export default journey({
       await page.clickOn(PAGE_ROW + ' button', 'Sign out')
       await page.until('box signed out', 8000, async () => await status(context) === 'signed-out')
       await page.until('the Connections sign-in row', 8000, () => page.eval(`[...document.querySelectorAll(${JSON.stringify(PAGE_ROW)})]
-        .some((row) => row.querySelector('[data-slot="item-title"]')?.innerText === 'LifeOS' && row.innerText.includes('Not signed in to LifeOS on box') && [...row.querySelectorAll('button')].some((button) => button.innerText === 'Sign in…'))`))
+        .some((row) => row.querySelector('[data-slot="item-title"]')?.innerText === 'LifeOS' && row.innerText.includes('Not signed in to LifeOS on box') && [...row.querySelectorAll('button')].some((button) => button.innerText === 'Sign in'))`))
       await page.key('Escape')
       await signedOutView(context, 'Meeting')
       for (const view of VIEWS) {

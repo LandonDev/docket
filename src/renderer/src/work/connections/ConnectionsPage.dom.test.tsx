@@ -91,7 +91,7 @@ describe("Connections", () => {
       at: 1,
       rows: [
         { id: "lifeos.signin", pillar: "lifeos", group: "LifeOS", title: "LifeOS", state: "working", line: "Signed in", fix: { kind: "run", label: "Sign out", method: "work.lifeos.signOut" } },
-        { id: "lifeos.pair", pillar: "lifeos", group: "LifeOS", title: "LifeOS on the Mac", state: "needs-you", line: "Not signed in", fix: { kind: "page", label: "Sign in…", page: "lifeos-sign-in" } },
+        { id: "lifeos.pair", pillar: "lifeos", group: "LifeOS", title: "LifeOS on the Mac", state: "needs-you", line: "Not signed in", fix: { kind: "page", label: "Sign in", page: "lifeos-sign-in" } },
         { id: "office.onedrive:vm", pillar: "office", group: "Teams files", title: "OneDrive on the Windows VM", state: "needs-you", line: "Signed out", fix: { kind: "page", label: "Sign in to OneDrive", page: "windows-vm-sign-in" } },
       ],
     }));
@@ -100,7 +100,7 @@ describe("Connections", () => {
     await settle();
     expect(screen.getByText("Signed in")).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Sign out" })).toBeNull();
-    expect(screen.queryByRole("button", { name: "Sign in…" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Sign in" })).toBeNull();
     expect(screen.getByRole("button", { name: "Sign in to OneDrive" })).toBeTruthy();
   });
 
@@ -112,14 +112,14 @@ describe("Connections", () => {
       host: "env_box",
       at: 1,
       rows: [
-        { id: "lifeos.signin", pillar: "lifeos", group: "LifeOS", title: "LifeOS", state: "needs-you", lifeos: "signed-out", line: "Not signed in to LifeOS", fix: { kind: "page", label: "Sign in…", page: "lifeos-sign-in" } },
+        { id: "lifeos.signin", pillar: "lifeos", group: "LifeOS", title: "LifeOS", state: "needs-you", lifeos: "signed-out", line: "Not signed in to LifeOS", fix: { kind: "page", label: "Sign in", page: "lifeos-sign-in" } },
         { id: "lifeos.other", pillar: "lifeos", group: "LifeOS", title: "LifeOS on the Mac", state: "working", line: "Signed in", fix: { kind: "run", label: "Sign out", method: "work.lifeos.signOut" } },
       ],
     }));
     vi.spyOn(registry, "linkOf").mockReturnValue({ request } as never);
     render(<ConnectionsPage />);
     await settle();
-    expect(screen.queryByRole("button", { name: "Sign in…" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Sign in" })).toBeNull();
     expect(document.querySelectorAll("[data-who-can]").length).toBe(1);
     expect(screen.getByText("Sign in from a computer that manages the box")).toBeTruthy();
   });
@@ -161,6 +161,58 @@ describe("Connections", () => {
     await act(async () => release());
     await settle();
     expect((screen.getByRole("button", { name: "Retry" }) as HTMLButtonElement).disabled).toBe(false);
+  });
+
+  /** Council round 9 (Sol, Settings 1): the box itself said LifeOS was unreachable, and its row offered Sign out alone. */
+  it("gives the sign-in row of a host that says LifeOS is unreachable that host's Retry, beside its Sign out, as it was", async () => {
+    vi.spyOn(Date, "now").mockReturnValue(2 * 3_600_000);
+    const request = vi.fn(async (method: string): Promise<HealthReport | null> =>
+      method === "work.health"
+        ? { host: "env_box", at: 1, rows: [{ id: "lifeos.signin", pillar: "lifeos", group: "LifeOS", title: "LifeOS", state: "broken", lifeos: "unreachable", line: "LifeOS did not answer. Still trying since", at: 3_600_000, fix: { kind: "run", label: "Sign out", method: "work.lifeos.signOut" } }] }
+        : null,
+    );
+    const linkOf = vi.spyOn(registry, "linkOf").mockReturnValue({ request } as never);
+    render(<ConnectionsPage />);
+    await settle();
+    expect(screen.getByText(/^LifeOS did not answer the box\. Still trying since/)).toBeTruthy();
+    const buttons = [...screen.getByText(/^LifeOS did not answer the box/).closest("[data-slot=page-row]")!.querySelectorAll("button")].map((b) => b.textContent);
+    expect(buttons).toEqual(["Retry", "Sign out"]);
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    await settle();
+    // Retry asks that host's checks again, that host alone; Sign out is not pressed.
+    expect(request.mock.calls.map((c) => c[0])).toEqual(["work.health", "work.health"]);
+    expect(linkOf.mock.calls.map(([id]) => id).filter((id) => id !== "local")).toEqual(["box", "box"]);
+  });
+
+  /** Council round 9 (Sol, Settings 2): Retry on LifeOS's silence, the host silent too: two rows, two causes, two Retries. */
+  it("says a host's silence on its Retry once, in the Hosts row, the old LifeOS row gone, and the row back when it answers", async () => {
+    let silent = false;
+    const report: HealthReport = {
+      host: "env_box",
+      at: 1,
+      rows: [
+        { id: "lifeos.signin", pillar: "lifeos", group: "LifeOS", title: "LifeOS", state: "working", lifeos: "connected", line: "Signed in", fix: { kind: "run", label: "Sign out", method: "work.lifeos.signOut" } },
+        { id: "lifeos.answers", pillar: "lifeos", group: "LifeOS", title: "LifeOS answers", state: "broken", lifeos: "unreachable", line: "LifeOS did not answer" },
+      ],
+    };
+    const request = vi.fn(async () => (silent ? Promise.reject(new Error("No answer in 4 s")) : report));
+    vi.spyOn(registry, "linkOf").mockReturnValue({ request } as never);
+    render(<ConnectionsPage />);
+    await settle();
+    expect(screen.getByText("LifeOS did not answer the box")).toBeTruthy();
+    silent = true;
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    await settle();
+    expect(screen.getByText("Did not answer")).toBeTruthy();
+    expect(screen.queryByText("LifeOS did not answer the box")).toBeNull();
+    expect(screen.getAllByRole("button", { name: "Retry" })).toHaveLength(1);
+    // Its other rows stay as the last check left them, Sign out with them.
+    expect(screen.getByRole("button", { name: "Sign out" })).toBeTruthy();
+    silent = false;
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    await settle();
+    expect(screen.queryByText("Did not answer")).toBeNull();
+    expect(screen.getByText("LifeOS did not answer the box")).toBeTruthy();
   });
 
   it("a row whose fix is OneDrive's sign-in on the Windows VM brings it up on the row's host, spinning meanwhile, then checks again", async () => {
