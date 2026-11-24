@@ -1,5 +1,6 @@
 import type { HeldRef } from './acts'
 import type { SectorKey } from './ids'
+import { durationOf } from './duration'
 
 /**
  * The weekly review's rules (docs/agents/work-review.md): what a week is, how
@@ -391,20 +392,15 @@ export const totalMs = (h: Pick<JobHours, 'calendarMs' | 'deskMs'>): number => h
 
 // --- the words for hours --------------------------------------------------------------------
 
-const hm = (minutes: number): string => {
-  const h = Math.floor(minutes / 60)
-  const m = minutes % 60
-  if (h === 0) return `${m} m`
-  return m === 0 ? `${h} h` : `${h} h ${m} m`
-}
+const hm = durationOf
 
 /** An estimate to the quarter hour; anything seen at all is at least one quarter. */
 export const toQuarter = (ms: number): number => (ms <= 0 ? 0 : Math.max(QUARTER_MS, Math.round(ms / QUARTER_MS) * QUARTER_MS))
 
 /**
- * A length of time in words. A measure reads to the minute ("6 h 30 m"); an
- * estimate reads to the quarter hour and always says "about" ("about 4 h 30
- * m"). The two are told apart by this argument alone, so no caller can drop
+ * A length of time in words, Work's one form (`durationOf`). A measure reads to
+ * the minute ("6 hr 30 min"); an estimate reads to the quarter hour and always
+ * says "about" ("about 4 hr 30 min"). The two are told apart by this argument alone, so no caller can drop
  * the "about".
  */
 export function hoursWords(ms: number, kind: 'measured' | 'estimate'): string {

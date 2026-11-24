@@ -1,5 +1,6 @@
 import { useMemo } from "react";
 import { clashLine, leaveLine, listFrom, type LifeosRange } from "@shared/work/clashes";
+import { sectorName } from "../shell/actions";
 import { useLifeosQuery } from "../shell/lifeos";
 import { sessionDown } from "../today/lifeos";
 import { useMinute } from "../tasks/minute";
@@ -33,7 +34,7 @@ export function clashMarks(range: LifeosRange | undefined, env: Pick<TodayEnv, "
     const more = of.length - 1;
     marks.set(eventId, {
       key: `event:${eventId}`,
-      note: `${clashLine(first, eventId, { on: env.day.from })}${more > 0 ? `, and ${more} more` : ""}`,
+      note: `${clashLine(first, eventId, { on: env.day.from, label: (sector) => env.workspaces.find((w) => w.sector === sector)?.name ?? sectorName(sector) })}${more > 0 ? `, and ${more} more` : ""}`,
       late: true,
       act: { label: "Resolve", run: () => openClash({ id: first.id, environmentId: env.lifeos.environmentId, clash: first }) },
     });

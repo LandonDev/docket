@@ -8,7 +8,7 @@ import { bytesOfBase64, decodeText, encodeText, triedAsText, whenWords, type Tex
  * One file open in the `file` kind (docs/agents/work-files.md "The file kind"): read once, shown as text to edit
  * or as its facts, and saved as he types. There is no save press. A change waits `SAVE_AFTER_MS` for the next
  * one, then goes to the host with the version this window read; the host writes it only over that version, so a
- * second writer is never written over: the line says the file changed, with Reload and Keep mine as a copy. A
+ * second writer is never written over: the line says the file changed, with Reload and Keep Both. A
  * save that cannot reach the host waits here and says how many changes wait, and goes again on Retry or when the
  * link to the host opens again. Closing the tab sends what waits.
  */
@@ -126,7 +126,7 @@ export class FileSession {
   private line(failed?: string): void {
     if (this.view.is !== "text" || this.disposed) return;
     if (this.conflicted) {
-      const actions = [...(this.gone ? [] : [{ id: "reload", label: "Reload", run: () => this.reload() }]), ...(this.draft !== null ? [{ id: "keep", label: "Keep mine as a copy", run: () => this.keepMine() }] : [])];
+      const actions = [...(this.gone ? [] : [{ id: "reload", label: "Reload", run: () => this.reload() }]), ...(this.draft !== null ? [{ id: "keep", label: "Keep Both", run: () => this.keepMine() }] : [])];
       return this.host.saved({ state: "conflict", detail: this.gone ? "This file was moved or deleted" : `This file changed at ${whenWords(this.changed, this.now())}`, actions });
     }
     // A copy says nothing of its own: the frame names the computer the file is on.

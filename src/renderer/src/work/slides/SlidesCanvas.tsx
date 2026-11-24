@@ -11,6 +11,7 @@ import { dayTime } from "../../lib/duration";
 import { bareKey, chordKey, modKey } from "../../lib/keys";
 import { IS_MAC } from "../../lib/platform";
 import { useLinkMay } from "../../lib/linkMay";
+import { workErrorWords } from "../../lib/workErrorWords";
 import { sayError } from "../canvas/frame";
 import { registerFlush } from "../canvas/flush";
 import type { CanvasBodyProps, CanvasShell, ReviewAdapter } from "../canvas/kind";
@@ -130,7 +131,7 @@ export function changeIndex(view: DeckView, key: string | null): number {
  */
 export function renderDetail(error: string): string {
   const rest = error.replace(/^There is no picture of the slides:\s*/, "");
-  return rest.charAt(0).toUpperCase() + rest.slice(1);
+  return workErrorWords(rest.charAt(0).toUpperCase() + rest.slice(1));
 }
 
 /** The slide to show for a change: where it lands, else the place it leaves. */

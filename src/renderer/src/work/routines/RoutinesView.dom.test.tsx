@@ -104,9 +104,9 @@ describe("the Routines view", () => {
     host.list = async () => ({ routines: [row({ proposed: true })] });
     render(<View {...props} />);
     await settle();
-    expect(screen.queryByRole("button", { name: "Create…" })).toBeNull();
-    expect(screen.queryByRole("button", { name: "Not now" })).toBeNull();
-    expect(screen.getByText("Changed from a computer that manages The box")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Add…" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Dismiss" })).toBeNull();
+    expect(screen.getByText("Changed from a computer that manages the box")).toBeTruthy();
     expect(host.asked.filter((m) => m === "work.routines.save" || m === "work.routines.remove")).toEqual([]);
   });
 

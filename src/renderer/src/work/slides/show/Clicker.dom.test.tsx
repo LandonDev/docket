@@ -77,7 +77,7 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe("the clicker at 390px", () => {
-  it("draws the prototype: End, the deck, Blank; the time against the target and 4 / 12; the notes; Previous; Next as the lower part", () => {
+  it("draws the prototype: End, the deck, Blank; the time against the target and 4/12; the notes; Previous; Next as the lower part", () => {
     const { remote } = fakeRemote();
     render(<Clicker live={live()} remote={remote} />);
     const root = document.querySelector<HTMLElement>("[data-clicker]")!;
@@ -92,7 +92,7 @@ describe("the clicker at 390px", () => {
     expect(screen.getByRole("button", { name: "Blank" }).getAttribute("aria-pressed")).toBe("false");
     expect(document.querySelector("[data-clicker-elapsed]")!.textContent).toBe("12:40");
     expect(screen.getByText("of 20:00")).toBeTruthy();
-    expect(document.querySelector("[data-clicker-place]")!.textContent).toBe("4 / 12");
+    expect(document.querySelector("[data-clicker-place]")!.textContent).toBe("4/12");
     // The notes scroll inside themselves, never the page.
     const notes = document.querySelector<HTMLElement>("[data-clicker-notes]")!;
     expect(notes.textContent).toBe("Start with the gold package.\nSay the price last.");
@@ -116,7 +116,7 @@ describe("the clicker at 390px", () => {
     render(<Clicker live={live()} remote={remote} mayPress={false} />);
     expect(screen.getByRole("heading", { name: "Sponsor deck" })).toBeTruthy();
     expect(document.querySelector("[data-clicker-elapsed]")!.textContent).toBe("12:40");
-    expect(document.querySelector("[data-clicker-place]")!.textContent).toBe("4 / 12");
+    expect(document.querySelector("[data-clicker-place]")!.textContent).toBe("4/12");
     expect(document.querySelector("[data-clicker-notes]")!.textContent).toBe("Start with the gold package.\nSay the price last.");
     expect(screen.queryAllByRole("button")).toEqual([]);
     expect(document.querySelector("[data-clicker-prev]")).toBeNull();
@@ -230,7 +230,7 @@ describe("the deck's item at phone width", () => {
     render(<Seat remote={wire.remote} />);
     expect(await screen.findByRole("region", { name: "Clicker: Sponsor deck" })).toBeTruthy();
     act(() => wire.push("show-abc12345", live({ slide: 5, rev: 8 })));
-    expect(document.querySelector("[data-clicker-place]")!.textContent).toBe("5 / 12");
+    expect(document.querySelector("[data-clicker-place]")!.textContent).toBe("5/12");
     act(() => wire.push("show-abc12345", null));
     expect(document.querySelector("[data-clicker]")).toBeNull();
     expect(document.querySelector("[data-canvas]")).toBeTruthy();
@@ -246,7 +246,7 @@ describe("the deck's item at phone width", () => {
     expect(await screen.findByRole("region", { name: "Clicker: Sponsor deck" })).toBeTruthy();
     // The show moved on while his socket was down: his press is dropped, and its answer brings him there.
     await act(async () => void fireEvent.click(document.querySelector("[data-clicker-next]")!));
-    expect(document.querySelector("[data-clicker-place]")!.textContent).toBe("6 / 12");
+    expect(document.querySelector("[data-clicker-place]")!.textContent).toBe("6/12");
     // It ended meanwhile: the next press's answer takes the clicker away.
     answer = { dropped: "ended", live: null };
     await act(async () => void fireEvent.click(document.querySelector("[data-clicker-next]")!));
@@ -254,7 +254,7 @@ describe("the deck's item at phone width", () => {
     // A show begun while the wire was cut (a show of its own id) is read once it comes back.
     wire.set([live({ showId: "show-new00001", slide: 2, rev: 11 })]);
     await act(async () => wire.reopen());
-    expect(document.querySelector("[data-clicker-place]")!.textContent).toBe("2 / 12");
+    expect(document.querySelector("[data-clicker-place]")!.textContent).toBe("2/12");
   });
 
   it("a list read whole gives way to what was heard while it was read, and an older word changes nothing", async () => {
@@ -268,10 +268,10 @@ describe("the deck's item at phone width", () => {
     act(() => wire.reopen());
     act(() => wire.push("show-abc12345", live({ slide: 6, rev: 9 })));
     await act(async () => answer([live({ slide: 5, rev: 8 })]));
-    expect(document.querySelector("[data-clicker-place]")!.textContent).toBe("6 / 12");
+    expect(document.querySelector("[data-clicker-place]")!.textContent).toBe("6/12");
     // A late word about an older state changes nothing.
     act(() => wire.push("show-abc12345", live({ slide: 5, rev: 8 })));
-    expect(document.querySelector("[data-clicker-place]")!.textContent).toBe("6 / 12");
+    expect(document.querySelector("[data-clicker-place]")!.textContent).toBe("6/12");
     // A show that ended while the list was read is not put back.
     act(() => wire.reopen());
     act(() => wire.push("show-abc12345", null));
@@ -296,7 +296,7 @@ describe("the deck's item at phone width", () => {
     act(() => wire.push("show-abc12345", live({ slide: 6, rev: 9 })));
     await act(async () => void fireEvent.click(document.querySelector("[data-clicker-next]")!));
     await act(async () => listed([live({ slide: 5, rev: 8 })]));
-    expect(document.querySelector("[data-clicker-place]")!.textContent).toBe("6 / 12");
+    expect(document.querySelector("[data-clicker-place]")!.textContent).toBe("6/12");
     // The show ends; a press answer still on its way with the show as it was never brings it back.
     act(() => wire.push("show-abc12345", null));
     answer = { dropped: "ended", live: live({ slide: 6, rev: 9 }) };

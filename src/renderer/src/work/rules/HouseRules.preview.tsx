@@ -122,7 +122,7 @@ export function HouseRulesPreview({ state: s = "page" }: { state?: State }) {
       </div>
     );
   return (
-    <Page title="Purdue Esports" description="/home/work/Purdue Esports">
+    <Page title="Purdue Esports">
       <HouseRules workspace={workspace} />
     </Page>
   );

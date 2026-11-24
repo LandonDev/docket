@@ -312,7 +312,7 @@ describe("nothing found, and what could not be searched", () => {
     m = landInstant(m, m.gen, "box", answer([group("thread", ["t1"])], ["search.mail"], [{ cause: "lifeos", line: "This host is not signed in to LifeOS" }])).model;
     m = landSource(m, m.gen, "box", "search.mail", answer([], [], [{ cause: "lifeos", line: "This host is not signed in to LifeOS" }, { cause: "source:search.mail", line: "Mail did not answer." }]));
     m = failed(m, m.gen, "mac", null);
-    expect(shape(rowsOf(m))).toEqual(["# Thread", "t1", "(Studio is offline.)", "(LifeOS is signed out on The box.)", "(Mail did not answer on The box.)", "(MacBook did not answer.)"]);
+    expect(shape(rowsOf(m))).toEqual(["# Thread", "t1", "(Studio is offline.)", "(Not signed in to LifeOS on The box.)", "(Mail did not answer on The box.)", "(MacBook did not answer.)"]);
     // the window's own failed ask of that source says the same one line, not a second
     m = failed(m, m.gen, "box", { source: "search.mail", kind: "mail" });
     expect(shape(rowsOf(m)).filter((r) => r.includes("Mail did not answer"))).toHaveLength(1);
@@ -350,11 +350,11 @@ describe("nothing could be asked", () => {
     const signedOut = { ...answer([], [], [{ cause: "lifeos", line: "This host is not signed in to LifeOS" }]), searched: 0 };
     let m = typed("budget", [box], emptyModel(), "mail");
     m = landInstant(m, m.gen, "box", signedOut).model;
-    expect(shape(rowsOf(m, { scoped: true }))).toEqual(["(LifeOS is signed out on The box.)"]);
+    expect(shape(rowsOf(m, { scoped: true }))).toEqual(["(Not signed in to LifeOS on The box.)"]);
     // a source that searched and found nothing is worth saying, beside what could not be searched
     let some = typed("budget");
     some = landInstant(some, some.gen, "box", { ...signedOut, searched: 2 }).model;
-    expect(shape(rowsOf(some))).toEqual(["(Nothing for “budget”)", "(LifeOS is signed out on The box.)"]);
+    expect(shape(rowsOf(some))).toEqual(["(Nothing for “budget”)", "(Not signed in to LifeOS on The box.)"]);
     // a network source's own answer counts
     let later = typed("budget");
     later = landInstant(later, later.gen, "box", { ...answer([], ["search.mail"]), searched: 0 }).model;

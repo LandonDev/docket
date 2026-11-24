@@ -88,7 +88,7 @@ describe("a workspace page for a key that may not change it", () => {
     await act(async () => void (await new Promise((r) => setTimeout(r, 0))));
     expect(screen.queryAllByRole("switch")).toEqual([]);
     expect(document.querySelector("[data-defaults]")).toBeNull();
-    expect(screen.getAllByText("Changed from a computer that manages The box")).toHaveLength(1);
+    expect(screen.getAllByText("Changed from a computer that manages the box")).toHaveLength(1);
     expect(request.mock.calls.map((c: unknown[]) => c[0]).filter((m) => m === "work.workspace.set" || m === "work.mail.waiting")).toEqual([]);
   });
 });

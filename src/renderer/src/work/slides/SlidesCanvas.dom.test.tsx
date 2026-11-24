@@ -560,7 +560,7 @@ describe("the slides kind", () => {
     open(deckView({ changes: [change("c1", 1, { edits: [{ where: "Title", before: "Hello", after: "Welcome" }] })], slides: deckView().slides.map((s) => (s.id === 1 ? { ...s, change: "c1" } : s)) }));
     const line = await found('[data-canvas-state="failed"]');
     expect(line.textContent).toContain("Can't draw the slides");
-    expect(line.textContent).toContain("The socket closed");
+    expect(line.textContent).toContain("The connection to that computer dropped");
     // The strip and the text diff stay drawn under the line.
     expect(thumbs()).toHaveLength(12);
     expect((await found("[data-slide-edits]")).textContent).toContain("Welcome");
@@ -578,7 +578,7 @@ describe("the slides kind", () => {
     refuseAt = 2;
     open(revised());
     const line = await found('[data-canvas-state="failed"]');
-    expect(line.textContent).toContain("The socket closed");
+    expect(line.textContent).toContain("The connection to that computer dropped");
     // The place slide 6 left is the file's picture: on the stage, drawn while the proposed render has failed.
     fireEvent.click(thumbs().find((t) => t.dataset.slide === "ghost:6")!);
     const left = () => document.querySelector("[data-slides-stage]")!;
@@ -888,10 +888,15 @@ describe("the slides kind", () => {
   it("says why with the host's reason alone, not the line's own word twice", async () => {
     open(deckView({ renders: { file: null, proposed: null }, renderError: "There is no picture of the slides: LibreOffice is not installed on this host or on one it reaches." }));
     const line = await found('[data-canvas-state="failed"]');
-    expect(line.textContent).toContain("LibreOffice is not installed on this host or on one it reaches.");
+    expect(line.textContent).toContain("Install them under Settings, Connections, Conversion tools.");
     expect(line.textContent).not.toContain("no picture");
+    expect(line.textContent).not.toContain("LibreOffice");
     expect(renderDetail("There is no picture of the slides: the converter stopped.")).toBe("The converter stopped.");
     expect(renderDetail("Something else")).toBe("Something else");
+    // A program's name never reaches the screen: what he can do instead.
+    expect(renderDetail("There is no picture of the slides: LibreOffice is not installed on this host or on one it reaches.")).toBe(
+      "The computer that draws this file is missing the tools for it. Install them under Settings, Connections, Conversion tools.",
+    );
   });
 
   it("holds the bar's bone and the deck's shape while it loads, the strip under the stage in a narrow canvas", async () => {

@@ -1,5 +1,6 @@
 import { prepEndOf, prepFold, type PrepAddedPerson, type PrepDraft, type PrepEvent, type PrepFileRef, type PrepPage, type PrepPerson, type PrepProblem, type PrepSuggestion, type PrepTask, type PrepUpcoming } from "@shared/contract-work-prep";
 import { formatLeave, formatStamp, formatTime } from "work-kit/views/lib/format";
+import { clockTime } from "../../lib/duration";
 
 /**
  * A meeting's page in words (docs/agents/work-prep.md "The page"): the one
@@ -35,14 +36,14 @@ export function timeWords(event: Pick<PrepEvent, "startsAt" | "endsAt" | "allDay
 
 /**
  * The one muted line under the title: when it is, where, and when to leave
- * while that is still ahead. "Today, 2:00 to 2:45 PM, RecWell 204, leave 1:40".
+ * while that is still ahead. "Today, 2:00 to 2:45 PM, RecWell 204, leave 1:40 PM".
  */
 export function whenLine(event: PrepEvent, now: number): string {
   const parts = [dayWords(event.startsAt, now), timeWords(event)];
   const place = event.location?.trim();
   // A place that is only a link is the call's own, and Files already offers it ("Join the call"): never the same link twice, nor a long URL in the line.
   if (place && !/^https?:\/\/\S+$/i.test(place)) parts.push(place);
-  if (event.leaveAt !== undefined && !event.allDay && now < event.startsAt) parts.push(`leave ${formatLeave(event.leaveAt, event.startsAt)}`);
+  if (event.leaveAt !== undefined && !event.allDay && now < event.startsAt) parts.push(`leave ${clockTime(event.leaveAt)}`);
   return parts.join(", ");
 }
 

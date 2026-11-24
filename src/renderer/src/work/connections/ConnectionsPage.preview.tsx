@@ -24,7 +24,7 @@ const BOX: HealthRow[] = [
   r({ id: "browser.running", pillar: "browser", group: "Browser", title: "The box's browser", state: "working", line: "Running, headed" }),
   r({ id: "browser.site:owa", pillar: "browser", group: "Browser", title: "Outlook on the web", state: "needs-you", line: "Not signed in. Sign in from the live browser" }),
   r({ id: "browser.vm", pillar: "browser", group: "Windows VM", title: "Windows VM", state: "working", line: "Stopped, its disk is ready", until: Date.UTC(2027, 1, 18, 4, 59) }),
-  r({ id: "guests.service", pillar: "guests", group: "Work service", title: "Work service", state: "working", line: "Answering on port 7695" }),
+  r({ id: "guests.service", pillar: "guests", group: "Work service", title: "Work service", state: "working" }),
   r({ id: "guests.tunnel", pillar: "guests", group: "Work service", title: "Hosted pages", state: "broken", line: "tempcode.landonhale.com did not answer from outside" }),
   r({ id: "formats.tools", pillar: "formats", group: "Tools", title: "Conversion tools", state: "working", line: "LibreOffice 26.8, Python 3.12, ffmpeg 9.0 and IronCalc 0.9" }),
   r({ id: "formats.tool:screen-relay", pillar: "formats", group: "Tools", title: "Screen relay", state: "working", line: "Installed" }),

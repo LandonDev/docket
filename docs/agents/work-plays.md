@@ -134,7 +134,7 @@ no review round.
   add them; a read key's rows are words, never presses.
 - **The play dialog** (`PlayDialog`): Name, Instructions, Takes (a toggle
   for each of the six). Save; Delete (asks first) at the foot for his play,
-  Not now (asks nothing) for a proposal, Add for a proposal or a starter;
+  Dismiss (asks nothing) for a proposal, Add for a proposal or a starter;
   Draft from the thread at the foot when saving from a thread.
 - **The run dialog** (`RunDialog`): from a thing, the plays of the
   workspace that take it ("No play takes a mail yet." when none), each with

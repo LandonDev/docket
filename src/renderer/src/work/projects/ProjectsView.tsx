@@ -88,7 +88,7 @@ export function View(props: WorkViewProps) {
       settings: setSettingsFor,
       // LifeOS makes the sheet in the project's own sector; it shows in Documents as the page's live read lands.
       newSheet: async (project) => {
-        if (!convex) throw new Error("LifeOS is not connected");
+        if (!convex) throw new Error("Not signed in to LifeOS");
         await convex.mutation(makeFunctionReference<"mutation">("sheets:create"), { projectId: project.id, title: "Untitled" });
       },
     });

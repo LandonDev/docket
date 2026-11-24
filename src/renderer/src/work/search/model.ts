@@ -158,7 +158,7 @@ const slotOf = (host: string, group: SearchGroup, tier: Slot["tier"], model: Sea
 export function quietLine(cause: string, line: string, host: SearchHost, hosts: number): { key: string; line: string } {
   if (cause === "lifeos") {
     const words: Record<string, string> = {
-      "This host is not signed in to LifeOS": `LifeOS is signed out on ${host.name}.`,
+      "This host is not signed in to LifeOS": `Not signed in to LifeOS on ${host.name}.`,
       "This host's LifeOS sign-in waits for approval": `LifeOS sign-in on ${host.name} waits for approval.`,
       "LifeOS is still connecting": `LifeOS is still connecting on ${host.name}.`,
       "LifeOS is unreachable": `${host.name} cannot reach LifeOS.`,

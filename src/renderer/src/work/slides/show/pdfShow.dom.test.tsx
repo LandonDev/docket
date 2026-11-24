@@ -52,16 +52,16 @@ describe("a PDF presented", () => {
       handle = await presentPdf({ pdf, title: "Handbook", from: 3, mode: "windowed", engine: fakeEngine(() => pages(5)), native: null, open: (surface) => (places[surface] = place(surface)) });
     });
     const presenter = places.presenter!;
-    await waitFor(() => expect(text(presenter, "[data-show-place]")).toBe("3 / 5"));
+    await waitFor(() => expect(text(presenter, "[data-show-place]")).toBe("3/5"));
     fireEvent.keyDown(presenter.body, { key: "ArrowRight" });
-    expect(text(places.audience!, "[data-show-place]")).toBe("4 / 5");
+    expect(text(places.audience!, "[data-show-place]")).toBe("4/5");
     await act(async () => handle.end());
     await handle.done;
     // A page past the end starts on the last.
     await act(async () => {
       handle = await presentPdf({ pdf, title: "Handbook", from: 99, mode: "windowed", engine: fakeEngine(() => pages(5)), native: null, open: (surface) => (places[surface] = place(surface)) });
     });
-    await waitFor(() => expect(text(places.presenter!, "[data-show-place]")).toBe("5 / 5"));
+    await waitFor(() => expect(text(places.presenter!, "[data-show-place]")).toBe("5/5"));
     await act(async () => handle.end());
   });
 });

@@ -15,7 +15,7 @@ while Work is on for some host).
   Work service, Tools, Frame.io (`GROUP_ORDER`, model.ts). A group the page
   does not know follows, in the order it came.
 - Each row: what it is, then its state as a `StatusMark` with this page's
-  word (Working: the muted check; Needs you: amber; Broken: red) and one
+  word (Ready: the muted check, since "Working" is a running thread; Needs you: amber; Broken: red) and one
   line after it, then when it lapses ("Ends Feb 17, 2027, 1:22 AM": US
   words, local time, "today" and "tomorrow" by the calendar) and the fix.
   The window also words a sync or a lost connection's time from the row's

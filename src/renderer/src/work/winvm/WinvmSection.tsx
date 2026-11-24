@@ -9,6 +9,7 @@ import { PageEmpty, PageError, PageRow, PageRowsSkeleton, PageSection } from "..
 import { BusyLabel, Button } from "../../components/ui/button";
 import { Dialog } from "../../components/ui/dialog";
 import { registry } from "../../lib/connection";
+import { hostName } from "../../lib/threadResources";
 import { dayTime } from "../../lib/duration";
 import { useLinkMay } from "../../lib/linkMay";
 import { signInOnVm } from "./signIn";
@@ -172,7 +173,7 @@ function WinvmHost({ env, named }: { env: string; named: boolean }) {
 
   // a host that cannot have it shows nothing; one whose read failed says so with Retry
   if (state?.cannot) return null;
-  const title = named ? `Windows VM on ${env}` : "Windows VM";
+  const title = named ? `Windows VM on ${hostName(env)}` : "Windows VM";
   if (!state)
     return (
       <PageSection title={title}>

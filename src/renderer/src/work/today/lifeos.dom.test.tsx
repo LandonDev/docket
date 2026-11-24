@@ -170,6 +170,6 @@ describe("a row's act", () => {
     const session = fakeSession("box", box);
     await expect(rowAct({ run: () => mutate(session, "tasks:snooze", { id: "t1", until: 5 }), message: "Snoozed until tomorrow", failed: "snooze" })).rejects.toThrow("no such task");
     expect(toasts.said).toEqual([{ line: "Couldn't snooze", error: true }]);
-    await expect(mutate({ environmentId: "box", sector: null, client: null, state: "signed-out" }, "tasks:snooze", {})).rejects.toThrow("LifeOS is not connected");
+    await expect(mutate({ environmentId: "box", sector: null, client: null, state: "signed-out" }, "tasks:snooze", {})).rejects.toThrow("Not signed in to LifeOS");
   });
 });

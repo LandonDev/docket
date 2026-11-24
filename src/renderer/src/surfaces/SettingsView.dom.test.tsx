@@ -49,6 +49,13 @@ describe("SettingsView", () => {
     expect(screen.getByText("How the app behaves, and the release you run.")).toBeTruthy();
   });
 
+  it("puts a code workspace's folder under its title, and no path under a Work workspace's", async () => {
+    const { workspaceLine } = await import("./SettingsView");
+    expect(workspaceLine({ kind: "work", path: "/home/work/Purdue Esports" })).toBeUndefined();
+    expect(workspaceLine({ kind: "code", path: "/tmp/temp-code" })).toContain("temp-code");
+    expect(workspaceLine(undefined)).toBe("This workspace was removed.");
+  });
+
   it("shows the desktop-only line for a stored Appshots route at /ui, and the page on the desktop", () => {
     act(() => shell.openSettings("appshots"));
     render(view());

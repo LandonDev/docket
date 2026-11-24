@@ -6,6 +6,7 @@ import { EmptyState, SurfaceSkeleton } from "../../surfaces/SurfaceSkeleton";
 import { errorText } from "../../chrome/ConfirmDialog";
 import { loadToast } from "../../components/ui/toaster";
 import { useWorkspaces } from "../../lib/tcserver/workspaces";
+import { nameInLine } from "../../lib/hostWords";
 import { openWorkView, useWorkView } from "../../lib/workSwitch";
 import { useSelectedWorkspaceIds } from "../../stores/project";
 import { StatusMark } from "../../components/ui/status";
@@ -173,7 +174,7 @@ export function ViewFrame({ view, environmentId, workspaceId, sector }: { view: 
         ) : off ? (
           <EmptyState title={`Work is off on ${host}`} action={{ label: "Open Settings", onClick: openWorkSettings }} />
         ) : withheld ? (
-          <EmptyState title="This computer cannot read LifeOS here" line={`${host} keeps its LifeOS sign-in to itself. Open ${def.label} from a computer that manages ${host}.`} />
+          <EmptyState title="This computer cannot read LifeOS here" line={`${host} keeps its LifeOS sign-in to itself. Open ${def.label} from a computer that manages ${nameInLine(host)}.`} />
         ) : signedOut || pairing ? (
           <EmptyState
             title={pairing ? "The LifeOS sign-in waits for your approval" : state === "refused" || session.state === "refused" ? "LifeOS refused this host's sign-in" : "Sign in to LifeOS"}

@@ -137,7 +137,7 @@ describe("a text file in a tab", () => {
     expect(kept("/w/Events/Notes.md").text).toBe("first line\nsecond\n");
   });
 
-  it("never writes over a second writer: the line takes the foreground with Reload and Keep mine as a copy", async () => {
+  it("never writes over a second writer: the line takes the foreground with Reload and Keep Both", async () => {
     show("/w/Events/Notes.md");
     const field = await screen.findByRole("textbox", { name: "Notes.md" });
     await waitFor(() => expect(line()).toContain("Saved"));
@@ -147,7 +147,7 @@ describe("a text file in a tab", () => {
     expect(document.querySelector("[data-files-save-line]")).toMatchObject({ className: expect.stringContaining("text-foreground") });
     expect(document.querySelector("[data-files-save-line]")!.getAttribute("role")).toBe("status");
     expect(kept("/w/Events/Notes.md").text).toBe("theirs\n");
-    expect(screen.getByRole("button", { name: "Keep mine as a copy" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Keep Both" })).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Reload" }));
     await waitFor(() => expect((screen.getByRole("textbox", { name: "Notes.md" }) as HTMLTextAreaElement).value).toBe("theirs\n"));
     await waitFor(() => expect(line()).toBe("Saved 2:04 PM in Events"));
@@ -159,7 +159,7 @@ describe("a text file in a tab", () => {
     await waitFor(() => expect(line()).toContain("Saved"));
     Object.assign(kept("/w/Events/Notes.md"), { text: "theirs\n", version: 2, changed: AT + 720_000 });
     fireEvent.change(field, { target: { value: "mine\n" } });
-    fireEvent.click(await screen.findByRole("button", { name: "Keep mine as a copy" }, { timeout: SAVE_AFTER_MS + 1500 }));
+    fireEvent.click(await screen.findByRole("button", { name: "Keep Both" }, { timeout: SAVE_AFTER_MS + 1500 }));
     await waitFor(() => expect(writes().at(-1)).toMatchObject({ copy: true, text: "mine\n" }));
     expect(kept("/w/Events/Notes.md").text).toBe("theirs\n");
   });

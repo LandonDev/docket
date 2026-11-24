@@ -82,7 +82,7 @@ describe("a key the host never hands its LifeOS session", () => {
     await flush();
     await flush();
     expect(screen.getByText("This computer cannot read LifeOS here")).toBeTruthy();
-    expect(screen.getByText("The box keeps its LifeOS sign-in to itself. Open Tasks from a computer that manages The box.")).toBeTruthy();
+    expect(screen.getByText("The box keeps its LifeOS sign-in to itself. Open Tasks from a computer that manages the box.")).toBeTruthy();
     expect(document.querySelector("[data-view-state=failed]")).toBeNull();
     expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
     expect(asked).not.toContain("work.lifeos.jwt");
@@ -123,7 +123,7 @@ describe("what stands between a view and LifeOS", () => {
     render(<ViewFrame view="tasks" environmentId="env_box" workspaceId="ws" sector="purdue" />);
     await flush();
     expect(screen.getByText("Sign in to LifeOS")).toBeTruthy();
-    expect(screen.getByText("Changed from a computer that manages The box")).toBeTruthy();
+    expect(screen.getByText("Changed from a computer that manages the box")).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Sign in" })).toBeNull();
   });
   it("a host never heard from and not connected is named with Retry, not bones for ever", async () => {

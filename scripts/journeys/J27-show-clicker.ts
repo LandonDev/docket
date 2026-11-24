@@ -43,7 +43,7 @@ async function press(context: Context, name: string, slide: number, blank = fals
     const show = document.querySelector('[data-show="audience"]');
     const place = show?.querySelector('[data-show-place]')?.textContent?.trim();
     const picture = show?.querySelector('[data-show-picture]');
-    return !!show && place?.startsWith(${JSON.stringify(slide + ' /')}) && Boolean(picture) === ${!blank};
+    return !!show && place?.startsWith(${JSON.stringify(slide + '/')}) && Boolean(picture) === ${!blank};
   })()`))
 }
 
@@ -79,7 +79,7 @@ export default journey({
       await page.until('the watch-only line and slide one', 15_000, () => page.eval(`(() => {
         const root = document.querySelector('[data-clicker]');
         return root?.textContent.includes('This device can only watch the show.') &&
-          root.querySelector('[data-clicker-place]')?.textContent.trim().startsWith('1 /') &&
+          root.querySelector('[data-clicker-place]')?.textContent.trim().startsWith('1/') &&
           !root.querySelector('button, [role="button"]');
       })()`))
       await page.shot(join(context.folder, 'read-clicker.png'))

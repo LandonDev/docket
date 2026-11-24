@@ -837,7 +837,7 @@ describe("Search", () => {
     expect(calls("work.files.search")[0]).toMatchObject({ workspaceId: "w1", query: "a" });
     await waitFor(() => expect(rows()).toContain("Agenda.docx"));
     expect(screen.getByRole("columnheader", { name: "Where" })).toBeTruthy();
-    expect(screen.getByRole("tab", { name: /Search: a/ })).toBeTruthy();
+    expect(screen.getByRole("tab", { name: /Results for “a”/ })).toBeTruthy();
     // A result opens in its own place: a folder in this tab, a file in a tab of its own.
     fireEvent.doubleClick(row("Plan.docx"));
     await waitFor(() => expect(calls("work.files.open")).toEqual([expect.objectContaining({ ref: at("/w/Plan.docx") })]));

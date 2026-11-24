@@ -60,8 +60,9 @@ export async function guestsRows(ctx: Pick<WorkCtx, 'enabled'>, signal: AbortSig
     return [{ ...row, state: 'broken', line }]
   }
   const local = await get(fetcher, `http://127.0.0.1:${port}/w/hosted/`, signal, false)
-  if (local !== true) return [{ ...row, state: 'broken', line: `Does not answer on port ${port}` }]
-  const rows: HealthRow[] = [{ ...row, state: 'working', line: `Answers on port ${port}` }]
+  // A port is never on screen: the row's state says it answers; a fault says what is wrong in his words.
+  if (local !== true) return [{ ...row, state: 'broken', line: 'Running, but it does not answer on this computer' }]
+  const rows: HealthRow[] = [{ ...row, state: 'working' }]
   const origin = guestOrigin(d.env, d.platform)
   if (!origin) return rows
   const where = new URL(origin).host

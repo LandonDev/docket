@@ -1,5 +1,4 @@
 import { useEffect, useState } from "react";
-import { sectorName } from "@shared/work/digest";
 import type { TellRow } from "@shared/work/tell";
 import { SectorDot } from "../../chrome/WorkspaceGlyph";
 import { BusyLabel, Button } from "../../components/ui/button";
@@ -11,6 +10,7 @@ import { Skeleton } from "../../components/ui/skeleton";
 import { useEnvironments } from "../../lib/connection";
 import { cn } from "../../lib/cn";
 import { emptyLine, listSections, rowWhen, unansweredLine } from "./notice";
+import { useJobName } from "../jobName";
 import { routeOf } from "./open";
 import { loadDigest, type DigestView } from "./store";
 
@@ -24,6 +24,7 @@ import { loadDigest, type DigestView } from "./store";
 const ROW = "-mx-2 w-[calc(100%+1rem)] flex-nowrap items-start gap-2 rounded-md px-2 py-1.5";
 
 function RowBody({ row, now, day }: { row: TellRow; now: number; day: string }) {
+  const jobName = useJobName();
   return (
     <>
       {/* On the title's line: a 16px box on a 20px line. */}
@@ -32,7 +33,7 @@ function RowBody({ row, now, day }: { row: TellRow; now: number; day: string }) 
       <span className="flex min-w-0 flex-1 flex-col wrap-anywhere">
         <span className="text-[13px] font-medium leading-5 text-foreground">
           {/* The dot is the job to the eye alone: a screen reader hears its name. */}
-          {row.sector ? <span className="sr-only">{sectorName(row.sector)}: </span> : null}
+          {row.sector ? <span className="sr-only">{jobName(row.sector)}: </span> : null}
           {row.title}
         </span>
         {row.detail ? <span className="text-xs leading-4 text-muted-foreground">{row.detail}</span> : null}

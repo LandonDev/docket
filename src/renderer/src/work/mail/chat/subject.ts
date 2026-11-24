@@ -49,7 +49,7 @@ export function mailChatSubject(workspaceId: string, view: MailInView): MailChat
   }
   const query = view.query?.trim();
   if (query) {
-    const title = `Search: ${query}`;
+    const title = `Results for “${query}”`;
     return { kind: "box", key: `${at}/search:${query}`, title, chip: listChip("box", title, title) };
   }
   const title = MAIL_BOX_LABELS[view.box] ?? "Mail";

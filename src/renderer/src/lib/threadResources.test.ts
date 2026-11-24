@@ -2,7 +2,8 @@ import { describe, expect, it, vi } from 'vitest'
 import { registry } from './connection/registry'
 import type { EnvLink } from './connection/link'
 import type { ThreadResource } from '@server/shared/contract-resources'
-import { startThreadResources, KIND_LABEL, countHeldBy, removalClause, rowState, threadResourcesStore } from './threadResources'
+import { startThreadResources, KIND_LABEL, countHeldBy, hostName, removalClause, rowState, threadResourcesStore } from './threadResources'
+import { nameInLine } from './hostWords'
 
 const row = (over: Partial<ThreadResource>): ThreadResource => ({
   id: 'r1',
@@ -20,6 +21,15 @@ const row = (over: Partial<ThreadResource>): ThreadResource => ({
 })
 const names: Record<string, string> = { env_mac: 'the Mac', env_box: 'the box' }
 const nameOf = (id: string) => names[id] ?? id
+
+describe('a host named mid-line', () => {
+  it('writes the box in lower case and keeps a proper name, and never a raw id', () => {
+    expect(nameInLine('The box')).toBe('the box')
+    expect(nameInLine('MacBook Pro')).toBe('MacBook Pro')
+    expect(nameInLine('The Studio')).toBe('The Studio')
+    expect(hostName('env_not_linked_here')).toBe('a host not linked here')
+  })
+})
 
 describe('removalClause', () => {
   it('counts the rows and names their hosts', () => {

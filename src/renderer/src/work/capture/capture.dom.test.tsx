@@ -62,7 +62,7 @@ afterEach(() => {
 });
 
 const field = () => screen.getByRole("textbox", { name: "Capture" }) as HTMLTextAreaElement;
-const pressed = () => within(screen.getByRole("group", { name: "Sector" })).getAllByRole("button").find((b) => b.getAttribute("aria-pressed") === "true")?.textContent;
+const pressed = () => within(screen.getByRole("group", { name: "Job" })).getAllByRole("button").find((b) => b.getAttribute("aria-pressed") === "true")?.textContent;
 
 async function open() {
   render(<CapturePage host={host()} bridge={bridge} />);
@@ -147,7 +147,7 @@ describe("the capture window", () => {
     await flush();
     expect(bridge.failed).toHaveBeenCalled();
     expect(field().value).toBe("Keep me\nTyped since");
-    expect(screen.getByRole("alert").textContent).toBe("LifeOS is not connected on this computer.");
+    expect(screen.getByRole("alert").textContent).toBe("Not signed in to LifeOS on this computer. Sign in under Settings, Connections.");
   });
 
   it("files a second capture while the first is on its way, each with its own key", async () => {
@@ -191,7 +191,7 @@ describe("the capture window", () => {
     fireEvent.change(field(), { target: { value: "x" } });
     fireEvent.keyDown(field(), { key: "Enter" });
     expect(filed).toEqual([]);
-    expect(screen.getByText("LifeOS is not connected")).toBeTruthy();
+    expect(screen.getByText("Not signed in to LifeOS")).toBeTruthy();
     expect((screen.getByText("Start thread").closest("button") as HTMLButtonElement).disabled).toBe(true);
   });
 });

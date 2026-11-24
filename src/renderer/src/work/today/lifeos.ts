@@ -214,7 +214,7 @@ export function answerOf(
 
 /** A write to LifeOS as the session's owner; rejects when the session cannot write. */
 export function mutate<T>(session: LifeosSession, name: string, args: Record<string, unknown>): Promise<T> {
-  if (!session.client) return Promise.reject(new Error("LifeOS is not connected"));
+  if (!session.client) return Promise.reject(new Error("Not signed in to LifeOS"));
   return session.client.mutation(makeFunctionReference<"mutation">(name), args) as Promise<T>;
 }
 

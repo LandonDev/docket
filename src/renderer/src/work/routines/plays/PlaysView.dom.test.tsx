@@ -86,12 +86,12 @@ describe("the Plays view", () => {
     expect(asked("work.routines.playSave")).toEqual([expect.objectContaining({ workspaceId: "ws", name: "Month’s pay", takes: ["date"], starter: "ref.month" })]);
   });
 
-  it("lets a proposal go with Not now, asking nothing", async () => {
+  it("lets a proposal go with Dismiss, as every proposal does, asking nothing", async () => {
     host.plays = [play({ id: "b", name: "From a thread", proposed: true })];
     render(<View {...props} />);
     await settle();
     fireEvent.click(screen.getByRole("button", { name: /From a thread/ }));
-    fireEvent.click(screen.getByRole("button", { name: "Not now" }));
+    fireEvent.click(screen.getByRole("button", { name: "Dismiss" }));
     await settle();
     expect(asked("work.routines.playRemove")).toEqual([{ id: "b" }]);
   });

@@ -50,7 +50,7 @@ describe("what the chat is about", () => {
   });
 
   it("is the search in view, else the mailbox", () => {
-    expect(mailChatSubject("w1", { ...view, query: "from:dana" })).toMatchObject({ kind: "box", title: "Search: from:dana", key: "mail/w1/search:from:dana" });
+    expect(mailChatSubject("w1", { ...view, query: "from:dana" })).toMatchObject({ kind: "box", title: "Results for “from:dana”", key: "mail/w1/search:from:dana" });
     const box = mailChatSubject("w1", { ...view, box: "waiting", picked: ["a"] });
     expect(box).toMatchObject({ kind: "box", title: "Waiting on", key: "mail/w1/box:waiting" });
     expect(box.chip.quote).toBe("Mailbox: waiting");

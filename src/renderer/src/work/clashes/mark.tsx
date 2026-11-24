@@ -5,6 +5,7 @@ import { TruncateTip } from "../../components/tip";
 import { Button } from "../../components/ui/button";
 import { registry } from "../../lib/connection";
 import { useWorkspaces } from "../../lib/tcserver/workspaces";
+import { useJobName } from "../jobName";
 import { useLifeosQuery, useLifeosSession } from "../shell/lifeos";
 import { marksOf, NO_MARKS, type ClashMarks } from "./model";
 import { openClash } from "./open";
@@ -36,7 +37,9 @@ export function useClashes(environmentId: string, from: number, to: number): Cla
  * clash's dialog, so each one named can be reached from the row.
  */
 export function ClashLines({ clashes, eventId, environmentId, day }: { clashes: readonly Clash[]; eventId: string; environmentId: string; /** the day the row sits under in its list */ day?: number }) {
-  const lines = clashLines(clashes, eventId, day === undefined ? {} : { on: day });
+  // A job is named by its workspace, never the sector's word.
+  const label = useJobName(environmentId);
+  const lines = clashLines(clashes, eventId, day === undefined ? { label } : { on: day, label });
   return (
     <>
       {clashes.map((clash, i) => {

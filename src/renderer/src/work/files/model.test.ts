@@ -501,7 +501,7 @@ describe("Go to, search pages and Home", () => {
 
   it("names a search's page by its words, a saved one by its id, and tells them from a folder", () => {
     const found = searchPage("spring budget");
-    expect(found).toEqual({ at: { at: "place", id: "search" }, name: "Search: spring budget", query: "spring budget" });
+    expect(found).toEqual({ at: { at: "place", id: "search" }, name: "Results for “spring budget”", query: "spring budget" });
     const kept = savedSearchPage({ id: "s1", name: "Budgets", query: "budget" });
     expect(kept.at).toEqual({ at: "place", id: "search:s1" });
     expect([isSearchPage(found.at), isSearchPage(kept.at), isSearchPage({ at: "place", id: "folder" }), isSearchPage({ at: "file", host: "h", path: "/search" })]).toEqual([true, true, false, false]);

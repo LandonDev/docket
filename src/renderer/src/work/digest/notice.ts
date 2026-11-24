@@ -1,6 +1,7 @@
-import { digestLine, nowLine, sectorName } from "@shared/work/digest";
+import { digestLine, nowLine } from "@shared/work/digest";
 import type { TellRow } from "@shared/work/tell";
 import { clockTime, dayTime } from "../../lib/duration";
+import { jobNameNow } from "../jobName";
 import type { DigestView, MergedDay } from "./store";
 
 /**
@@ -22,7 +23,7 @@ export const NOW_KEEP_MS = 24 * 3_600_000;
 /** A row's name across hosts: its key, else its own id on its host. */
 export const nameOf = (row: Pick<TellRow, "key" | "host" | "id">): string => (row.key ? `k:${row.key}` : `i:${row.host}:${row.id}`);
 
-const jobsOf = (rows: readonly TellRow[]): string[] => rows.flatMap((r) => (r.sector ? [sectorName(r.sector)] : []));
+const jobsOf = (rows: readonly TellRow[]): string[] => rows.flatMap((r) => (r.sector ? [jobNameNow(r.sector)] : []));
 
 export interface DigestNotice {
   /** every day he has not opened, newest first */
@@ -168,7 +169,7 @@ export function systemNotices(digest: DigestNotice | null, toasts: readonly NowT
     const one = toast.rows.length === 1 ? toast.rows[0]! : null;
     // Folded: every open one by name, newest first, as the phone's banner says it (`nowLine`); the toast keeps its short count.
     const body = one ? (toast.detail ? `${toast.title}\n${toast.detail}` : toast.title) : nowLine([...toast.rows].reverse().map((r) => r.title));
-    out.push({ key: toast.id, title: one?.sector ? sectorName(one.sector) : "Work", body, telling: tellingsOf(toast.rows), ...(toast.rows.every(heard) ? { silent: true } : {}) });
+    out.push({ key: toast.id, title: one?.sector ? jobNameNow(one.sector) : "Work", body, telling: tellingsOf(toast.rows), ...(toast.rows.every(heard) ? { silent: true } : {}) });
   }
   return out;
 }

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState, type Clipboa
 import type { CaptureFiled, CaptureState } from "@shared/contract-work-capture";
 import type { SectorKey } from "@shared/work";
 import { bareKey, chordKey, modKey } from "../../lib/keys";
+import { workErrorWords } from "../../lib/workErrorWords";
 import type { CaptureHost } from "./client";
 import { CaptureView } from "./CaptureView";
 import { captureKey, choiceOfDigit, draftRefusal, stepChoice, type DraftFile, type SectorChoice } from "./draft";
@@ -140,7 +141,7 @@ export function CapturePage({ host, bridge }: { host: CaptureHost; bridge: Captu
             bridge.failed();
           }
         },
-        (err: unknown) => comeBack(sent, err instanceof Error ? err.message : String(err)),
+        (err: unknown) => comeBack(sent, workErrorWords(err, { host: "this computer", write: true }) || "Nothing was filed. Try again."),
       )
       .finally(() => {
         inFlight.current -= 1;

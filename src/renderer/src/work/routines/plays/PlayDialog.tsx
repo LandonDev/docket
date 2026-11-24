@@ -83,7 +83,7 @@ function Body({ env, workspaceId, source, onClose, onSaved, pending, setPending 
     );
   };
 
-  // Delete asks first; Not now on a proposal is his answer to it, and asks nothing.
+  // Delete asks first; Dismiss on a proposal is his answer to it, and asks nothing.
   const remove = async () => {
     if (!row) return;
     if (!row.proposed && !(await confirmAction({ title: `Delete “${row.name}”?`, body: "The threads it started stay.", action: "Delete", danger: true }))) return;
@@ -153,7 +153,7 @@ function Body({ env, workspaceId, source, onClose, onSaved, pending, setPending 
         start={
           row ? (
             <Button type="button" variant="ghost" size="sm" disabled={pending || other !== null} onClick={() => void remove()}>
-              <BusyLabel busy={other === "remove"} label={row.proposed ? "Not now" : "Delete"} />
+              <BusyLabel busy={other === "remove"} label={row.proposed ? "Dismiss" : "Delete"} />
             </Button>
           ) : source.kind === "thread" && source.mayDraft ? (
             <Button type="button" variant="ghost" size="sm" disabled={pending || other !== null} onClick={draft}>

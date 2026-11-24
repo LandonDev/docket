@@ -55,7 +55,7 @@ describe("the slideshow", () => {
     // A press on the slide is a next press, and the picture painted ahead is there at once.
     fireEvent.click(root.querySelector("[data-show-slide]")!);
     await waitFor(() => expect(shownPage(root)).toBe("2"));
-    expect(within(root).getByText("2 / 12")).toBeTruthy();
+    expect(within(root).getByText("2/12")).toBeTruthy();
   });
 
   it("calls its bar for a real move of the pointer alone, and lets it go two seconds after the last", () => {
@@ -94,9 +94,9 @@ describe("the slideshow", () => {
     const { root } = mount(startShowState(deck(12), "start"));
     const bar = within(root.querySelector<HTMLElement>("[data-show-bar]")!);
     fireEvent.click(bar.getByRole("button", { name: "Next" }));
-    expect(bar.getByText("2 / 12")).toBeTruthy();
+    expect(bar.getByText("2/12")).toBeTruthy();
     fireEvent.click(bar.getByRole("button", { name: "Previous" }));
-    expect(bar.getByText("1 / 12")).toBeTruthy();
+    expect(bar.getByText("1/12")).toBeTruthy();
     fireEvent.click(bar.getByRole("button", { name: "Slides" }));
     const picker = root.querySelector<HTMLElement>("[data-show-picker]")!;
     expect(root.querySelector("[data-show-bar]")!.hasAttribute("data-on")).toBe(true);
@@ -107,7 +107,7 @@ describe("the slideshow", () => {
     expect(document.activeElement).toBe(within(picker).getByRole("option", { name: "Slide 5: Slide 5" }));
     fireEvent.click(within(picker).getByRole("option", { name: "Slide 7: Slide 7" }));
     expect(root.querySelector("[data-show-picker]")).toBeNull();
-    expect(bar.getByText("7 / 12")).toBeTruthy();
+    expect(bar.getByText("7/12")).toBeTruthy();
     fireEvent.click(bar.getByRole("button", { name: "Blank" }));
     expect(root.querySelector("[data-show-picture]")).toBeNull();
     expect(bar.getByRole("button", { name: "Blank" }).getAttribute("aria-pressed")).toBe("true");
@@ -199,7 +199,7 @@ describe("the presenter's view", () => {
     await waitFor(() => expect(shownPage(root.querySelector("[data-show-next]")!)).toBe("2"));
     expect(root.querySelector("[data-show-elapsed]")!.textContent).toBe("4:07");
     expect(within(root).getByRole("button", { name: "of 20:00" })).toBeTruthy();
-    expect(root.querySelector("[data-show-place]")!.textContent).toBe("1 / 12");
+    expect(root.querySelector("[data-show-place]")!.textContent).toBe("1/12");
     const notes = root.querySelector<HTMLElement>("[data-show-notes]")!;
     expect(notes.textContent).toBe("Open with the turnout.");
     expect([notes.style.fontSize, notes.style.lineHeight]).toEqual(["20px", "30px"]);
@@ -211,14 +211,14 @@ describe("the presenter's view", () => {
   it("a press on the slide or on the next picture advances; the strip jumps; Blank and End show do as they say", async () => {
     const { root } = mount(startShowState(deck(12), "start"));
     fireEvent.click(root.querySelector("[data-show-now]")!);
-    expect(root.querySelector("[data-show-place]")!.textContent).toBe("2 / 12");
+    expect(root.querySelector("[data-show-place]")!.textContent).toBe("2/12");
     fireEvent.click(root.querySelector("[data-show-next]")!);
-    expect(root.querySelector("[data-show-place]")!.textContent).toBe("3 / 12");
+    expect(root.querySelector("[data-show-place]")!.textContent).toBe("3/12");
     const strip = within(root.querySelector<HTMLElement>("[data-show-strip]")!);
     expect(strip.getAllByRole("option")).toHaveLength(12);
     expect(strip.getByRole("option", { name: "Slide 3: Slide 3" }).getAttribute("aria-selected")).toBe("true");
     fireEvent.click(strip.getByRole("option", { name: "Slide 9: Slide 9" }));
-    expect(root.querySelector("[data-show-place]")!.textContent).toBe("9 / 12");
+    expect(root.querySelector("[data-show-place]")!.textContent).toBe("9/12");
     fireEvent.click(within(root).getByRole("button", { name: "Blank" }));
     expect(within(root).getByRole("button", { name: "Blank" }).getAttribute("aria-pressed")).toBe("true");
     // The presenter still sees the slide under the black, dimmed.
@@ -372,22 +372,22 @@ describe("a show", () => {
   it("is one state in two places: a key in either window moves both", async () => {
     const { places, handle } = await start();
     const { audience, presenter } = places;
-    await waitFor(() => expect(text(presenter, "[data-show-place]")).toBe("1 / 12"));
+    await waitFor(() => expect(text(presenter, "[data-show-place]")).toBe("1/12"));
     fireEvent.keyDown(audience.body, { key: "PageDown" });
-    expect(text(audience, "[data-show-place]")).toBe("2 / 12");
-    expect(text(presenter, "[data-show-place]")).toBe("2 / 12");
+    expect(text(audience, "[data-show-place]")).toBe("2/12");
+    expect(text(presenter, "[data-show-place]")).toBe("2/12");
     fireEvent.keyDown(presenter.body, { key: "7" });
     fireEvent.keyDown(presenter.body, { key: "Enter" });
-    expect(text(audience, "[data-show-place]")).toBe("7 / 12");
+    expect(text(audience, "[data-show-place]")).toBe("7/12");
     // With a presenter's view the picker is its strip: G hands it the keyboard, the arrows move along it, Return jumps.
     expect(within(audience.body).queryByRole("button", { name: "Slides" })).toBeNull();
     fireEvent.keyDown(presenter.body, { key: "g" });
     const strip = presenter.body.querySelector<HTMLElement>("[data-show-strip]")!;
     expect(document.activeElement).toBe(within(strip).getByRole("option", { name: "Slide 7: Slide 7" }));
     fireEvent.keyDown(document.activeElement!, { key: "ArrowRight" });
-    expect(text(presenter, "[data-show-place]")).toBe("7 / 12");
+    expect(text(presenter, "[data-show-place]")).toBe("7/12");
     fireEvent.click(document.activeElement!);
-    expect(text(presenter, "[data-show-place]")).toBe("8 / 12");
+    expect(text(presenter, "[data-show-place]")).toBe("8/12");
     expect(document.activeElement).toBe(presenter.body.querySelector('[data-show="presenter"]'));
     await act(async () => handle.end());
   });
@@ -402,7 +402,7 @@ describe("a show", () => {
     expect(text(places.presenter, "[data-show-notes-size]")).toBe("18");
     const untouched = fireEvent.keyDown(places.audience.body, { key: "ArrowRight", metaKey: true });
     expect(untouched).toBe(true);
-    expect(text(places.audience, "[data-show-place]")).toBe("1 / 12");
+    expect(text(places.audience, "[data-show-place]")).toBe("1/12");
     // A clicker's F5 is taken, so a browser never reloads on it.
     expect(fireEvent.keyDown(places.audience.body, { key: "F5" })).toBe(false);
     await act(async () => handle.end());
@@ -414,22 +414,22 @@ describe("a show", () => {
   it("Return and Space on a control he tabbed to press that control; after a press with the pointer they are the show's again", async () => {
     const { places, handle } = await start();
     const { presenter } = places;
-    await waitFor(() => expect(text(presenter, "[data-show-place]")).toBe("1 / 12"));
+    await waitFor(() => expect(text(presenter, "[data-show-place]")).toBe("1/12"));
     const blank = within(presenter.body).getByRole("button", { name: "Blank" });
     blank.focus();
     // The key is left to the button: the show neither takes it nor moves.
     expect(fireEvent.keyDown(blank, { key: " " })).toBe(true);
     expect(fireEvent.keyDown(blank, { key: "Enter" })).toBe(true);
-    expect(text(presenter, "[data-show-place]")).toBe("1 / 12");
+    expect(text(presenter, "[data-show-place]")).toBe("1/12");
     // An arrow on a focused button is still the show's.
     fireEvent.keyDown(blank, { key: "ArrowRight" });
-    expect(text(presenter, "[data-show-place]")).toBe("2 / 12");
+    expect(text(presenter, "[data-show-place]")).toBe("2/12");
     // A press with the pointer hands the keyboard back to the view, so Space is the next slide.
     fireEvent.click(blank, { detail: 1 });
     expect(document.activeElement).toBe(presenter.body.querySelector('[data-show="presenter"]'));
     fireEvent.click(blank, { detail: 1 });
     fireEvent.keyDown(document.activeElement!, { key: " " });
-    expect(text(presenter, "[data-show-place]")).toBe("3 / 12");
+    expect(text(presenter, "[data-show-place]")).toBe("3/12");
     // The target's button opens its menu from the keyboard, and the menu keeps the keyboard.
     const target = within(presenter.body).getByRole("button", { name: "Set a target" });
     target.focus();
@@ -441,11 +441,11 @@ describe("a show", () => {
 
   it("G in the slideshow's window does nothing while a presenter's view holds the picker", async () => {
     const { places, handle } = await start();
-    await waitFor(() => expect(text(places.presenter, "[data-show-place]")).toBe("1 / 12"));
+    await waitFor(() => expect(text(places.presenter, "[data-show-place]")).toBe("1/12"));
     // The stand-in places share one document, so the listener sees the presenter's: a show with no presenter's view opens its own picker.
     await act(async () => handle.end());
     const alone = await start({ mode: "full" });
-    await waitFor(() => expect(text(alone.places.audience, "[data-show-place]")).toBe("1 / 12"));
+    await waitFor(() => expect(text(alone.places.audience, "[data-show-place]")).toBe("1/12"));
     fireEvent.keyDown(alone.places.audience.body, { key: "g" });
     expect(alone.places.audience.body.querySelector("[data-show-picker]")).not.toBeNull();
     await act(async () => alone.handle.end());
@@ -454,7 +454,7 @@ describe("a show", () => {
   it("starts from the slide he is on, and each way of presenting opens its own windows", async () => {
     const here = await start({ from: 260, mode: "full" });
     expect(Object.keys(here.places)).toEqual(["audience"]);
-    await waitFor(() => expect(text(here.places.audience, "[data-show-place]")).toBe("5 / 12"));
+    await waitFor(() => expect(text(here.places.audience, "[data-show-place]")).toBe("5/12"));
     // With no presenter's view the slideshow's own bar holds the picker.
     expect(within(here.places.audience.body).getByRole("button", { name: "Slides", hidden: true })).toBeTruthy();
     await act(async () => here.handle.end());
@@ -470,7 +470,7 @@ describe("a show", () => {
     await first.handle.done;
     expect(first.places.audience.closed && first.places.presenter.closed).toBe(true);
     expect(showRunning()).toBe(true);
-    await waitFor(() => expect(text(second.places.presenter, "[data-show-place]")).toBe("1 / 12"));
+    await waitFor(() => expect(text(second.places.presenter, "[data-show-place]")).toBe("1/12"));
     fireEvent.keyDown(second.places.presenter.body, { key: "Escape" });
     await act(async () => second.handle.done);
     expect(second.places.audience.closed && second.places.presenter.closed).toBe(true);
@@ -506,15 +506,15 @@ describe("a show", () => {
 
   it("reads the deck again when its file changes, keeping the slide by its id; a push that changed no byte reads nothing", async () => {
     const { host, places, handle } = await start();
-    await waitFor(() => expect(text(places.presenter, "[data-show-place]")).toBe("1 / 12"));
+    await waitFor(() => expect(text(places.presenter, "[data-show-place]")).toBe("1/12"));
     fireEvent.keyDown(places.presenter.body, { key: "End" });
-    expect(text(places.presenter, "[data-show-place]")).toBe("12 / 12");
+    expect(text(places.presenter, "[data-show-place]")).toBe("12/12");
     act(() => host.tell("r1"));
     expect(host.shows).toBe(1);
     // A slide was added at the front: the show is still on the same slide, now the thirteenth.
     const slides = [slide(13, { id: 999, number: 1, page: 1 }), ...deck(12).map((s) => ({ ...s, number: s.number + 1, page: s.page + 1 }))];
     await act(async () => host.change(showDeck(13, { rev: "r2", render: { rev: "f2", size: 1100, pages: 13 }, slides })));
-    await waitFor(() => expect(text(places.presenter, "[data-show-place]")).toBe("13 / 13"));
+    await waitFor(() => expect(text(places.presenter, "[data-show-place]")).toBe("13/13"));
     expect(host.shows).toBe(2);
     await act(async () => handle.end());
   });
@@ -534,7 +534,7 @@ describe("a show", () => {
     // The file is back: the show reads it again after its first wait, with no press.
     fail = false;
     await act(async () => void vi.advanceTimersByTime(RETRY_FIRST_MS));
-    await waitFor(() => expect(text(places.presenter, "[data-show-place]")).toBe("1 / 3"));
+    await waitFor(() => expect(text(places.presenter, "[data-show-place]")).toBe("1/3"));
     expect(places.audience.body.querySelector("[data-show-error]")).toBeNull();
     fireEvent.keyDown(places.audience.body, { key: "Escape" });
     await act(async () => handle.done);
@@ -553,7 +553,7 @@ describe("a show", () => {
       return open(file);
     };
     const { places, handle } = await start({ host, engine });
-    await waitFor(() => expect(text(places.presenter, "[data-show-place]")).toBe("1 / 3"));
+    await waitFor(() => expect(text(places.presenter, "[data-show-place]")).toBe("1/3"));
     expect(host.shows).toBe(2);
     expect(places.presenter.body.querySelector("[data-show-error]")).toBeNull();
     await act(async () => handle.end());
@@ -562,14 +562,14 @@ describe("a show", () => {
   it("with a deck already up, a read that fails keeps it up and says it is reconnecting", async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     const { host, places, handle } = await start();
-    await waitFor(() => expect(text(places.presenter, "[data-show-place]")).toBe("1 / 12"));
+    await waitFor(() => expect(text(places.presenter, "[data-show-place]")).toBe("1/12"));
     const real = host.show;
     host.show = async () => {
       throw new Error("The socket closed");
     };
     await act(async () => host.tell("r2"));
     await waitFor(() => expect(within(places.presenter.body).getByRole("status").textContent).toBe("Reconnecting to the deck…"));
-    expect(text(places.presenter, "[data-show-place]")).toBe("1 / 12");
+    expect(text(places.presenter, "[data-show-place]")).toBe("1/12");
     expect(places.audience.body.querySelector("[data-show-error]")).toBeNull();
     host.show = real;
     await act(async () => void vi.advanceTimersByTime(RETRY_FIRST_MS));
@@ -587,7 +587,7 @@ describe("a show", () => {
   it("the slideshow's display leaving closes that window alone: the presenter's view goes on and says so", async () => {
     const native = nativeShow();
     const { places, handle } = await start({ native, mode: "windowed" });
-    await waitFor(() => expect(text(places.presenter, "[data-show-place]")).toBe("1 / 12"));
+    await waitFor(() => expect(text(places.presenter, "[data-show-place]")).toBe("1/12"));
     act(() => native.displayGone());
     expect(places.audience.closed).toBe(true);
     expect(places.presenter.closed).toBe(false);
@@ -595,7 +595,7 @@ describe("a show", () => {
     // The window main closes in its stead says it left; the show goes on.
     act(() => places.audience.leave());
     fireEvent.keyDown(places.presenter.body, { key: "ArrowRight" });
-    expect(text(places.presenter, "[data-show-place]")).toBe("2 / 12");
+    expect(text(places.presenter, "[data-show-place]")).toBe("2/12");
     await act(async () => handle.end());
     await handle.done;
     expect(native.calls.at(-1)).toBe("end");
@@ -743,7 +743,7 @@ describe("a show's builds, its own clock and its clips", () => {
     fireEvent.keyDown(places.audience.body, { key: "ArrowRight" });
     // slide 3's first step has no picture yet: the room keeps the picture before it, never the slide whole with what
     // its build hides, and there is still a press before the end
-    await waitFor(() => expect(text(places.presenter, "[data-show-place]")).toBe("3 / 3"));
+    await waitFor(() => expect(text(places.presenter, "[data-show-place]")).toBe("3/3"));
     expect(seen(places.audience)).toBe("Slide 2");
     expect(text(places.presenter, "[data-show-build]")).toBe("Build 1 of 1");
     // More is ready on the host: the deck is read again and its render kept open.
@@ -778,10 +778,10 @@ describe("a show's builds, its own clock and its clips", () => {
     expect(seen(places.audience)).not.toBe("Slide 1");
     expect(places.audience.body.textContent).not.toContain("could not be drawn");
     await new Promise((r) => setTimeout(r, 80));
-    expect(text(places.presenter, "[data-show-place]")).toBe("1 / 3");
+    expect(text(places.presenter, "[data-show-place]")).toBe("1/3");
     // His press goes on to the last step, which hides nothing: once it is up, the slide's time runs.
     fireEvent.keyDown(places.audience.body, { key: "ArrowRight" });
-    await waitFor(() => expect(text(places.presenter, "[data-show-place]")).toBe("2 / 3"));
+    await waitFor(() => expect(text(places.presenter, "[data-show-place]")).toBe("2/3"));
     expect(within(places.presenter.body).queryByRole("status")).toBeNull();
     await act(async () => handle.end());
   });
@@ -797,7 +797,7 @@ describe("a show's builds, its own clock and its clips", () => {
     });
     await waitFor(() => expect(seen(places.audience)).toBe("Slide 1"));
     fireEvent.keyDown(places.audience.body, { key: "ArrowRight" });
-    await waitFor(() => expect(text(places.presenter, "[data-show-place]")).toBe("2 / 2"));
+    await waitFor(() => expect(text(places.presenter, "[data-show-place]")).toBe("2/2"));
     await waitFor(() => expect(within(places.presenter.body).getByRole("status").textContent).toBe("This build could not be drawn here. The room keeps the picture before it."));
     expect(seen(places.audience)).toBe("Slide 1");
     await act(async () => handle.end());
@@ -816,9 +816,9 @@ describe("a show's builds, its own clock and its clips", () => {
       handle = await startShow({ host, title: "Deck", from: "start", mode: "windowed", engine: { open: async () => slow }, native: null, open: (surface) => (places[surface] = place(surface)) });
     });
     await new Promise((r) => setTimeout(r, 120));
-    expect(text(places.presenter, "[data-show-place]")).toBe("1 / 3");
+    expect(text(places.presenter, "[data-show-place]")).toBe("1/3");
     await act(async () => paint());
-    await waitFor(() => expect(text(places.presenter, "[data-show-place]")).toBe("2 / 3"));
+    await waitFor(() => expect(text(places.presenter, "[data-show-place]")).toBe("2/3"));
     await act(async () => handle.end());
   });
 
@@ -858,7 +858,7 @@ describe("a show's builds, its own clock and its clips", () => {
     });
     await waitFor(() => expect(within(places.presenter.body).getByRole("status").textContent).toBe("This slide could not be drawn here. The room keeps the picture before it."));
     await new Promise((r) => setTimeout(r, 80));
-    expect(text(places.presenter, "[data-show-place]")).toBe("1 / 2");
+    expect(text(places.presenter, "[data-show-place]")).toBe("1/2");
     await act(async () => handle.end());
   });
 
@@ -879,16 +879,16 @@ describe("a show's builds, its own clock and its clips", () => {
     // The file changes: the same place, a new picture still painting.
     act(() => host.change(showDeck(3, { slides, rev: "r2", render: { rev: "f2", size: 2000, pages: 3 } })));
     await new Promise((r) => setTimeout(r, 300));
-    expect(text(places.presenter, "[data-show-place]")).toBe("1 / 3");
+    expect(text(places.presenter, "[data-show-place]")).toBe("1/3");
     await act(async () => paint());
-    await waitFor(() => expect(text(places.presenter, "[data-show-place]")).toBe("2 / 3"));
+    await waitFor(() => expect(text(places.presenter, "[data-show-place]")).toBe("2/3"));
     await act(async () => handle.end());
   });
 
   it("moves on by itself after a slide's time, in both windows", async () => {
     const { places, handle } = await start(deck(3, { 1: { transition: { kind: "fade", ms: 500, after: 30 } } }));
-    await waitFor(() => expect(text(places.presenter, "[data-show-place]")).toBe("2 / 3"));
-    expect(text(places.audience, "[data-show-place]")).toBe("2 / 3");
+    await waitFor(() => expect(text(places.presenter, "[data-show-place]")).toBe("2/3"));
+    expect(text(places.audience, "[data-show-place]")).toBe("2/3");
     await act(async () => handle.end());
   });
 
@@ -950,7 +950,7 @@ describe("a show's builds, its own clock and its clips", () => {
     const press = await within(places.audience.body).findByRole("button", { name: "Play the sound" });
     fireEvent.click(press);
     // the press was the clip's, not the next slide's
-    expect(text(places.audience, "[data-show-place]")).toBe("1 / 2");
+    expect(text(places.audience, "[data-show-place]")).toBe("1/2");
     await waitFor(() => expect(within(places.audience.body).getByRole("button", { name: "Pause the sound" })).toBeTruthy());
     expect(places.audience.body.querySelector<HTMLAudioElement>("audio")!.muted).toBe(false);
     await act(async () => handle.end());

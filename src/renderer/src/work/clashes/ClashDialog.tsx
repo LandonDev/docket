@@ -19,7 +19,7 @@ import { workspaceStore } from "../../lib/tcserver/workspaces";
 import type { MailtoDraft } from "work-kit/mail";
 import { writeMail } from "../mail/mailto";
 import { goTo } from "../today/open";
-import { sectorName } from "../shell/actions";
+import { useJobName } from "../jobName";
 import { useMinute } from "../tasks/minute";
 import { sessionFailure, sessionWaits, useLifeosSession } from "../shell/lifeos";
 import { useClashes } from "./mark";
@@ -144,13 +144,20 @@ export function Empty({ state, error, onClose }: { state: "loading" | "failed" |
 }
 
 /** An event's times: its start said beside the day the dialog names (bare on that day, its weekday within three days, else its date, in the row's line's words), and its end beside its own start, so a day before a range is never read to cover both ends. */
-const span = (side: ClashSide, day: number) => `${timeNear(side.startsAt, day)} – ${timeNear(side.endsAt, side.startsAt)}`;
+/** Work's one range form, "4:00 to 6:00 PM": the first time drops its AM or PM when the second, on the same day, says the same. */
+export function span(side: Pick<ClashSide, "startsAt" | "endsAt">, day: number): string {
+  const from = timeNear(side.startsAt, day);
+  const to = timeNear(side.endsAt, side.startsAt);
+  const period = / (AM|PM)$/.exec(from)?.[0];
+  return `${period && /^\d/.test(to) && to.endsWith(period) ? from.slice(0, -period.length) : from} to ${to}`;
+}
 /** His calendar's own words for a place the map only has roughly; else the place as the map names it, less the country every one of them ends in. */
 const placeOf = (side: ClashSide) => ((side.rough ? side.location : side.place) ?? side.location)?.replace(/, United States$/, "");
 
 /** One event: its title, then its time and job on one muted line, then where it is. A group named for the event, so "Decline" under it says whose. */
 function EventBlock({ side, day, children }: { side: ClashSide; day: number; children?: React.ReactNode }) {
   const place = placeOf(side);
+  const jobName = useJobName();
   return (
     <div role="group" aria-label={side.title} className="flex min-w-0 flex-col">
       {/* A long title or place wraps, whole: a tip on a cut line is out of the keyboard's reach. */}
@@ -160,7 +167,7 @@ function EventBlock({ side, day, children }: { side: ClashSide; day: number; chi
         {/* The dot's box is the dot, so it sits 8px from the time and 8px from its job's name. */}
         <span className="inline-flex min-w-0 items-center gap-2">
           <SectorDot sector={side.sector} className="size-2" />
-          <span className="truncate">{sectorName(side.sector)}</span>
+          <span className="truncate">{jobName(side.sector)}</span>
         </span>
       </span>
       {place ? <span className="break-words text-xs leading-5 text-muted-foreground">{place}</span> : null}

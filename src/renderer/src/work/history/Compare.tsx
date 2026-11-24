@@ -197,7 +197,7 @@ function OneLine({ line, rows, current, number }: { line: DiffLine; rows: readon
 function FormatWords({ row }: { row: DiffRow | null }) {
   const words = row ? changeWords(row) : [];
   if (words.length === 0) return null;
-  return <div data-format-words className="-mt-0.5 mb-1 text-xs leading-4 text-muted-foreground">{words.join(" · ")}</div>;
+  return <div data-format-words className="-mt-0.5 mb-1 text-xs leading-4 text-muted-foreground">{words.join(", ")}</div>;
 }
 
 const Gap = () => <div aria-hidden className="mt-1 h-[calc(100%-4px)] min-h-[22px] rounded-[4px] bg-(--diff-gap)" />;

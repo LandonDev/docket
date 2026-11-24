@@ -73,7 +73,7 @@ export function unchecked(hosts: readonly HostView[]): HostView[] {
 export function markOf(state: HealthState): { state: ThreadState; word: string } {
   switch (state) {
     case "working":
-      return { state: "done", word: "Working" };
+      return { state: "done", word: "Ready" };
     case "needs-you":
       return { state: "waiting", word: "Needs you" };
     case "broken":

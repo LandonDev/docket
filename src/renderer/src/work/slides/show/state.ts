@@ -164,10 +164,10 @@ export function nextPress(state: ShowState): NextPress {
   return to < 0 ? { kind: "end" } : { kind: "slide", at: to };
 }
 
-/** "4 / 12": the slide's number in the deck over the deck's count, hidden slides counted. */
+/** "4/12": the slide's number in the deck over the deck's count, hidden slides counted. */
 export function placeText(state: ShowState): string {
   const slide = state.slides[state.at];
-  return slide ? `${slide.number} / ${state.slides.length}` : "";
+  return slide ? `${slide.number}/${state.slides.length}` : "";
 }
 
 /** The place as a screen reader says it: "Slide 4 of 12, Packages", "End of show", "The screen is black". */

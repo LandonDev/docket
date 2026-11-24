@@ -238,10 +238,10 @@ function Detail({ env, row, play, tick, narrowShown, onBack, onEdit }: { env: st
             ) : row.proposed ? (
               <>
                 <Button variant="ghost" size="sm" disabled={busy !== null} onClick={() => act("drop", "work.routines.remove", { id: row.id })}>
-                  <BusyLabel busy={busy === "drop"} label="Not now" />
+                  <BusyLabel busy={busy === "drop"} label="Dismiss" />
                 </Button>
                 <Button size="sm" onClick={onEdit}>
-                  Create…
+                  Add…
                 </Button>
               </>
             ) : (

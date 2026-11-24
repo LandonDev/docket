@@ -117,7 +117,7 @@ function savingCopyLine(kind: SavedLine | null, tab: FileTab, back: CopyBack, co
  */
 function frameLine(copy: CopyWords | null, item: CanvasItem | null, env: string): SavedLine | null {
   if (copy) return { state: "copy", detail: copy.host, ...(copy.openThere ? { actions: [{ id: "there", label: `Open on ${copy.host}`, run: copy.openThere }] } : {}) };
-  if (item?.source.at === "mail") return { state: "readonly", detail: "a mail's file", ...(item.workspaceId ? { actions: [{ id: "keep", label: "Keep", run: () => keepItem(env, item.id).then(() => undefined) }] } : {}) };
+  if (item?.source.at === "mail") return { state: "readonly", detail: "a mail's file", ...(item.workspaceId ? { actions: [{ id: "keep", label: "Save to workspace", run: () => keepItem(env, item.id).then(() => undefined) }] } : {}) };
   return null;
 }
 

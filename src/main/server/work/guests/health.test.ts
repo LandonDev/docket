@@ -26,7 +26,7 @@ describe('the Work service connections', () => {
   it('a Mac: the service answers on its port, and no public rows', async () => {
     const seen: string[] = []
     const rows = await guestsRows(on, signal, { service: service('running'), fetch: fetcher({ 'http://127.0.0.1:7695/w/hosted/': 404 }, seen), ...MAC })
-    expect(rows).toEqual([{ id: 'guests.service', pillar: 'guests', group: 'Work service', title: 'Work service', state: 'working', line: 'Answers on port 7695' }])
+    expect(rows).toEqual([{ id: 'guests.service', pillar: 'guests', group: 'Work service', title: 'Work service', state: 'working' }])
     expect(seen).toEqual(['http://127.0.0.1:7695/w/hosted/'])
   })
 
@@ -38,7 +38,7 @@ describe('the Work service connections', () => {
       ...BOX
     })
     expect(rows.map((r) => [r.id, r.state, r.line])).toEqual([
-      ['guests.service', 'working', 'Answers on port 7695'],
+      ['guests.service', 'working', undefined],
       ['guests.hosted', 'working', 'Reached at tempcode.landonhale.com'],
       ['guests.links', 'working', 'Reached at tempcode.landonhale.com']
     ])
@@ -59,7 +59,7 @@ describe('the Work service connections', () => {
     expect(await guestsRows(on, signal, { service: service('starting'), fetch: fetcher({}, seen), ...BOX })).toMatchObject([{ state: 'broken', line: 'Still starting' }])
     expect(await guestsRows(on, signal, { service: service('off'), fetch: fetcher({}, seen), canFork: true, ...BOX })).toMatchObject([{ state: 'broken', line: 'Not running' }])
     expect(seen).toEqual([])
-    expect(await guestsRows(on, signal, { service: service('running'), fetch: fetcher({}), ...BOX })).toMatchObject([{ state: 'broken', line: 'Does not answer on port 7695' }])
+    expect(await guestsRows(on, signal, { service: service('running'), fetch: fetcher({}), ...BOX })).toMatchObject([{ state: 'broken', line: 'Running, but it does not answer on this computer' }])
   })
 
   it('leaves out what this host does not have: Work off, no service, or no Electron to run it', async () => {

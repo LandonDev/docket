@@ -169,11 +169,11 @@ describe('calendar time is measured', () => {
 
 describe('the words for hours', () => {
   it('an estimate always says "about" and a measure never does', () => {
-    expect(hoursWords(6.5 * HOUR, 'measured')).toBe('6 h 30 m')
-    expect(hoursWords(6 * HOUR, 'measured')).toBe('6 h')
-    expect(hoursWords(42 * MIN, 'measured')).toBe('42 m')
-    expect(hoursWords(4.5 * HOUR + 4 * MIN, 'estimate')).toBe('about 4 h 30 m')
-    expect(hoursWords(5 * MIN, 'estimate')).toBe('about 15 m')
+    expect(hoursWords(6.5 * HOUR, 'measured')).toBe('6 hr 30 min')
+    expect(hoursWords(6 * HOUR, 'measured')).toBe('6 hr')
+    expect(hoursWords(42 * MIN, 'measured')).toBe('42 min')
+    expect(hoursWords(4.5 * HOUR + 4 * MIN, 'estimate')).toBe('about 4 hr 30 min')
+    expect(hoursWords(5 * MIN, 'estimate')).toBe('about 15 min')
     for (const ms of [1, 5 * MIN, HOUR, 13.3 * HOUR]) {
       expect(hoursWords(ms, 'estimate').startsWith('about ')).toBe(true)
       expect(hoursWords(ms, 'measured')).not.toContain('about')
@@ -181,9 +181,9 @@ describe('the words for hours', () => {
   })
 
   it('a total is an estimate as soon as any of it is', () => {
-    expect(totalWords(hours('ref', 6.5 * HOUR))).toBe('6 h 30 m')
-    expect(totalWords(hours('cosmic', 5.5 * HOUR, 11.5 * HOUR))).toBe('about 17 h')
-    expect(totalWords(hours('life', 0, 2.75 * HOUR))).toBe('about 2 h 45 m')
+    expect(totalWords(hours('ref', 6.5 * HOUR))).toBe('6 hr 30 min')
+    expect(totalWords(hours('cosmic', 5.5 * HOUR, 11.5 * HOUR))).toBe('about 17 hr')
+    expect(totalWords(hours('life', 0, 2.75 * HOUR))).toBe('about 2 hr 45 min')
     expect(totalWords(hours('unify', 0))).toBeNull()
   })
 
@@ -198,20 +198,20 @@ describe('the week before', () => {
   it('shows only where the hours moved by a quarter and by two hours', () => {
     const now = [hours('a', 6 * HOUR), hours('b', 10 * HOUR), hours('c', 20 * HOUR), hours('d', 3 * HOUR, HOUR)]
     const before = [hours('a', 7.5 * HOUR), hours('b', 13 * HOUR), hours('c', 23 * HOUR), hours('d', 9 * HOUR)]
-    // a: moved 1.5 h (under two hours). b: 3 h and 23%  (under a quarter). c: 3 h of 23 (13%). d: 5 h of 9.
-    expect(compareWeeks(now, before, false)).toEqual([{ job: 'd', words: 'down from 9 h' }])
-    expect(compareWeeks([hours('e', 12 * HOUR)], [hours('e', 4 * HOUR, 2 * HOUR)], false)).toEqual([{ job: 'e', words: 'up from about 6 h' }])
+    // a: moved 1.5 hr (under two hours). b: 3 h and 23%  (under a quarter). c: 3 h of 23 (13%). d: 5 h of 9.
+    expect(compareWeeks(now, before, false)).toEqual([{ job: 'd', words: 'down from 9 hr' }])
+    expect(compareWeeks([hours('e', 12 * HOUR)], [hours('e', 4 * HOUR, 2 * HOUR)], false)).toEqual([{ job: 'e', words: 'up from about 6 hr' }])
   })
 
   it('names a job with two hours or more the week before and nothing now, in words that hold for any week shown', () => {
-    expect(compareWeeks([hours('unify', 0)], [hours('unify', 0, 6 * HOUR)], false)).toEqual([{ job: 'unify', words: 'about 6 h the week before' }])
+    expect(compareWeeks([hours('unify', 0)], [hours('unify', 0, 6 * HOUR)], false)).toEqual([{ job: 'unify', words: 'about 6 hr the week before' }])
     expect(compareWeeks([hours('unify', 0)], [hours('unify', 1.5 * HOUR)], false)).toEqual([])
     expect(compareWeeks([hours('new', 5 * HOUR)], [hours('new', 0)], false)).toEqual([{ job: 'new', words: 'nothing the week before' }])
   })
 
   it('says a running week is compared with the same span', () => {
-    expect(compareWeeks([hours('d', 3 * HOUR)], [hours('d', 9 * HOUR)], true)).toEqual([{ job: 'd', words: 'down from 9 h by this point last week' }])
-    expect(compareWeeks([hours('u', 0)], [hours('u', 4 * HOUR)], true)).toEqual([{ job: 'u', words: '4 h by this point last week' }])
+    expect(compareWeeks([hours('d', 3 * HOUR)], [hours('d', 9 * HOUR)], true)).toEqual([{ job: 'd', words: 'down from 9 hr by this point last week' }])
+    expect(compareWeeks([hours('u', 0)], [hours('u', 4 * HOUR)], true)).toEqual([{ job: 'u', words: '4 hr by this point last week' }])
   })
 })
 
@@ -632,7 +632,7 @@ describe('one review from every host’s part', () => {
     }
     const r = mergeReview([part], read)!
     expect(r.hours.find((h) => h.job === 'purdue')!.calendarMs).toBe(6.25 * HOUR)
-    // Over the 167 hours both cover, 5 h 45 m against 4 h moves less than two hours: no line.
+    // Over the 167 hours both cover, 5 hr 45 min against 4 h moves less than two hours: no line.
     expect(r.compare).toEqual([])
   })
 
@@ -753,7 +753,7 @@ describe('one review from every host’s part', () => {
     }
     const done = { ...box, over: true }
     const r = mergeReview([{ environmentId: 'env-box', body: { ...done, before } }], now)!
-    expect(r.compare).toEqual([{ job: 'purdue', words: 'down from 8 h' }])
+    expect(r.compare).toEqual([{ job: 'purdue', words: 'down from 8 hr' }])
     // With anything unread, in either week, a comparison would describe the failure: none is drawn. Sent mail, held
     // decisions and document edits feed desk time as threads do, and a list read in part is unread past its cut.
     for (const left of [LEFT.threads, LEFT.calendar, LEFT.mail, LEFT.held, LEFT.files, LEFT.heldPart, LEFT.filesPart, LEFT.mailPart]) expect(mergeReview([{ environmentId: 'env-box', body: { ...done, before, left: [left] } }], now)!.compare).toEqual([])

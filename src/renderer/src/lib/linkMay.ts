@@ -1,6 +1,7 @@
 import { capabilityRefusal, type Capability } from "@shared/capabilities";
 import type { ClientRequest } from "@shared/contract";
 import { registry, useEnvironmentStatus, useEnvironmentStatuses } from "./connection";
+import { nameInLine } from "./hostWords";
 
 type Method = ClientRequest["method"];
 
@@ -36,4 +37,4 @@ export function useLinksMay(): (environmentId: string, method: Method, params?: 
  * The one line Work shows in place of a section this window's key may not change: who can. Settings → Work's
  * switch says the same of several hosts (`elsewhereLine`).
  */
-export const managedElsewhere = (host: string): string => `Changed from a computer that manages ${host}`;
+export const managedElsewhere = (host: string): string => `Changed from a computer that manages ${nameInLine(host)}`;

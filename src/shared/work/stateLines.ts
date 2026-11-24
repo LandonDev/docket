@@ -18,6 +18,9 @@ export const STATE_LINES: Readonly<Record<string, readonly Line[]>> = {
   [`${R}/clashes/model.ts`]: [
     ["`Moved ${title}`", "answer"],
   ],
+  [`${R}/connections/model.ts`]: [
+    ["Ready", "answer"],
+  ],
   [`${R}/files/SaveAs.tsx`]: [
     ["`Saved a copy of ${got.saved.name} in ${folder.name}`", "answer"],
   ],
@@ -119,7 +122,7 @@ export const STATE_LINES: Readonly<Record<string, readonly Line[]>> = {
     ["Queued in LifeOS", "queued"],
   ],
   [`${R}/pdf/PdfCanvas.tsx`]: [
-    ["Moved", "read"],
+    ["`Moved, as of ${dayTime(view.missing.asOf)}`", "read"],
   ],
   [`${R}/routines/model.ts`]: [
     ["Done", "read"],
@@ -144,7 +147,7 @@ export const STATE_LINES: Readonly<Record<string, readonly Line[]>> = {
     ["Signed in", "live session"],
   ],
   [`${R}/tasks/NewTaskDialog.tsx`]: [
-    ["`Added to ${SECTOR_NAMES[sector]}`", "answer"],
+    ["`Added to ${jobNameNow(sector)}`", "answer"],
   ],
   [`${R}/tasks/TaskSheet.tsx`]: [
     ["Done", "local"],

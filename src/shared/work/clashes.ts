@@ -1,4 +1,5 @@
 import type { SectorKey } from './ids'
+import { durationOf } from './duration'
 
 /**
  * Clashes across jobs (docs/agents/work-clashes.md): the shapes both sides
@@ -253,12 +254,6 @@ export function timeNear(at: number, on: number, opts: ClashWordsOpts = {}): str
 /** Whether an instant is the second time its clock shows, where the clocks go back (an hour in most zones, half an hour in a few): said as "second 1:30 AM", since the clock alone names two instants. */
 export const isSecond = (at: number, opts: ClashWordsOpts = {}): boolean => [3_600_000, 1_800_000].some((back) => clockOf(at - back, opts) === clockOf(at, opts))
 
-/** "38 min", "1 hr", "1 hr 10 min". */
-function durationOf(minutes: number): string {
-  const m = Math.max(0, Math.round(minutes))
-  if (m < 60) return `${m} min`
-  return m % 60 ? `${Math.floor(m / 60)} hr ${m % 60} min` : `${m / 60} hr`
-}
 
 const rough = (clash: Clash): boolean => clash.measured === false
 /** The minutes he is short by; to the nearest five, and never under five, for a drive worked out without the map, as its drive line is. */

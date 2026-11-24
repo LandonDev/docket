@@ -80,6 +80,6 @@ describe("the Work controls a key cannot use", () => {
   });
 
   it("names who can in one wording", () => {
-    expect(managedElsewhere("The box")).toBe("Changed from a computer that manages The box");
+    expect(managedElsewhere("The box")).toBe("Changed from a computer that manages the box");
   });
 });

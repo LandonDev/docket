@@ -52,7 +52,7 @@ describe("the rest of the page's words", () => {
   });
 
   it("says each state in the vocabulary's glyph and tone, with this page's word", () => {
-    expect(markOf("working")).toEqual({ state: "done", word: "Working" });
+    expect(markOf("working")).toEqual({ state: "done", word: "Ready" });
     expect(markOf("needs-you")).toEqual({ state: "waiting", word: "Needs you" });
     expect(markOf("broken")).toEqual({ state: "failed", word: "Broken" });
     expect(fixVariant("working")).toBe("ghost");

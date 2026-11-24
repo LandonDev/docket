@@ -153,7 +153,7 @@ place a passed-over proposal waits.
   foot of the mail item once LifeOS says `sent`): one muted 13px line, the
   pen glyph, "You cut the greeting to one line again. Make it a rule for
   Purdue Esports?", the chevron opening the edits in one hairline frame, Not
-  now and Add rule… (the dialog). Not now leaves it on the page as `later`.
+  now and Add… (the dialog). Not now leaves it on the page as `later`.
   Once added: the check, "Added to <workspace>'s rules", Undo.
 
 Differences from the prototype, on purpose: the rules are sections of the

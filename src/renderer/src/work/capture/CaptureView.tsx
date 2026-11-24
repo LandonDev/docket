@@ -11,7 +11,7 @@ import { choiceLabel, SECTOR_CHOICES, type DraftFile, type SectorChoice } from "
 /**
  * The capture window's page as data (docs/DESIGN.md "The capture window"):
  * the field, the files he added, a line when something is wrong, and one
- * row under a hairline with the sector and the two ways to file. The
+ * row under a hairline with the job and the two ways to file. The
  * window is the surface: no card inside it. Stateless, for ui:preview and
  * the tests; page.tsx holds the draft.
  */
@@ -59,7 +59,7 @@ export const CaptureView = forwardRef<HTMLTextAreaElement, CaptureViewProps>(fun
         onChange={(e) => p.onText(e.target.value)}
         onKeyDown={p.onKeyDown}
         onPaste={p.onPaste}
-        className="field-sizing-content max-h-66 min-h-[3.75rem] w-full resize-none overflow-x-hidden overflow-y-auto bg-transparent px-4 pt-3.5 pb-2 text-[14px] leading-[22px] text-foreground outline-none placeholder:text-faint-foreground"
+        className="field-sizing-content max-h-66 min-h-[3.75rem] w-full resize-none overflow-x-hidden overflow-y-auto bg-transparent px-4 pt-3.5 pb-2 text-sm leading-[22px] text-foreground outline-none placeholder:text-faint-foreground"
       />
       {p.files.length ? (
         <ul aria-label="Files" className="flex flex-col px-2 pb-2">
@@ -79,10 +79,10 @@ export const CaptureView = forwardRef<HTMLTextAreaElement, CaptureViewProps>(fun
           <ErrorLine error={p.error} />
         </div>
       ) : p.status === "offline" ? (
-        <p className="px-4 pb-2 text-xs text-muted-foreground">LifeOS is not connected</p>
+        <p className="px-4 pb-2 text-xs text-muted-foreground">Not signed in to LifeOS</p>
       ) : null}
       <div className="flex h-12 items-center gap-2 border-t border-border px-3">
-        <ChoiceToggle label="Sector" value={p.sector} options={OPTIONS} onChange={p.onSector} />
+        <ChoiceToggle label="Job" value={p.sector} options={OPTIONS} onChange={p.onSector} />
         <span className="flex-1" />
         <Button variant="secondary" size="sm" disabled={off} onClick={() => p.onFile(true)}>
           Start thread

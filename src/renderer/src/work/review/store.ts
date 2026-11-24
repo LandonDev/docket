@@ -21,7 +21,8 @@ import { registry, TimeoutError } from "../../lib/connection";
 import { loadPinnedProjects, loadProjectRailOrder, normalizeProjectPath, subscribeRailOrder } from "../../lib/recents";
 import { workspaceStore } from "../../lib/tcserver/workspaces";
 import { workSwitch } from "../../lib/workSwitch";
-import { sectorName, workHome } from "../shell/actions";
+import { jobNameNow } from "../jobName";
+import { workHome } from "../shell/actions";
 
 /**
  * The weekly review as the page reads it (docs/agents/work-review.md "The
@@ -299,7 +300,7 @@ function view(week: ReviewWeek): ReviewView {
     tz: reviewZone(),
     // Fresh only when every linked host's newest ask was answered (one still loading, or answering from before,
     // leaves the week before uncompared); whole only when no host is off besides: until then "nothing" is not known.
-    review: mergeReview(parts, now(), { home: home(), names: (sector) => sectorName(sector), order: jobOrder(parts), jobs: knownJobs(parts), fresh: live.every((id) => hosts?.get(id)?.loaded && !hosts.get(id)?.error), whole: live.length === on.length }),
+    review: mergeReview(parts, now(), { home: home(), names: (sector) => jobNameNow(sector, home()), order: jobOrder(parts), jobs: knownJobs(parts), fresh: live.every((id) => hosts?.get(id)?.loaded && !hosts.get(id)?.error), whole: live.length === on.length }),
     settled: live.every((id) => hosts?.get(id)?.loaded),
     making: making.has(week.from),
     off: on.filter((id) => !linked(id)).map((id) => hostOffWords(hostName(id))),

@@ -75,7 +75,7 @@ function Line({ env, proposal, workspace, onGone }: { env: string; proposal: Rul
                 <BusyLabel busy={busy} label="Not now" />
               </Button>
               <Button variant="secondary" size="xs" disabled={busy} onClick={() => setAdding(true)}>
-                Add rule…
+                Add…
               </Button>
             </span>
           </div>

@@ -762,7 +762,7 @@ export const isHomePage = (at: FolderRef): boolean => at.at === "place" && at.id
 
 /** A page of search results: his words searched in every place (`search`), or a saved search's own page (`search:<id>`). */
 export const SEARCH_ID = "search";
-export const searchPage = (query: string): FilePage => ({ at: { at: "place", id: SEARCH_ID }, name: `Search: ${query}`, query });
+export const searchPage = (query: string): FilePage => ({ at: { at: "place", id: SEARCH_ID }, name: `Results for “${query}”`, query });
 export const savedSearchPage = (search: { id: string; name: string; query: string }): FilePage => ({ at: { at: "place", id: `${SEARCH_ID}:${search.id}` }, name: search.name, query: search.query });
 export const isSearchPage = (at: FolderRef): boolean => at.at === "place" && (at.id === SEARCH_ID || at.id.startsWith(`${SEARCH_ID}:`));
 /** The saved search a page stands on; null for a search he has not saved. */

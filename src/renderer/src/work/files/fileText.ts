@@ -81,8 +81,8 @@ export function savedWords(line: SavedLine, where: string | null, now = Date.now
     case "conflict":
       return line.detail ?? "This file changed somewhere else";
     case "readonly":
-      // A whole sentence stands beside the words; a few words follow them.
-      return !line.detail ? "Read only" : line.detail.endsWith(".") ? `Read only. ${line.detail.slice(0, -1)}` : `Read only: ${line.detail}`;
+      // A whole sentence stands beside the words; a few words follow them after a comma, never a label's colon.
+      return !line.detail ? "Read only" : line.detail.endsWith(".") ? `Read only. ${line.detail.slice(0, -1)}` : `Read only, ${line.detail}`;
     case "copy":
       return line.detail ? `A copy from ${line.detail}. Changes stay here` : "A copy. Changes stay here";
     case "downloading":

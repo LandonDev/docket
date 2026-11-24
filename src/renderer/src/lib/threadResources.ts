@@ -1,4 +1,5 @@
 import { useStore } from 'zustand'
+import { nameInLine } from './hostWords'
 import { createStore } from 'zustand/vanilla'
 import type { ThreadResource, ThreadResourceKind, ThreadResourceRemoval } from '@server/shared/contract-resources'
 import { registry } from './connection/registry'
@@ -120,10 +121,11 @@ export const KIND_LABEL: Record<ThreadResourceKind, string> = {
   computer: 'computer use'
 }
 
-/** The host a resource lives on, by name: "this Mac" or "this PC" for this machine, the saved host's name otherwise. */
+/** The host a resource lives on, by name, mid-line: "this Mac" or "this PC" for this machine, the saved host's name otherwise. */
 export function hostName(environmentId: string): string {
   if (environmentId === macBridgeStore.getState().localId) return thisDesktopInLine()
-  return registry.environment(environmentId)?.name ?? environmentId.replace(/^env_/, '').slice(0, 6)
+  const name = registry.environment(environmentId)?.name
+  return name ? nameInLine(name) : 'a host not linked here'
 }
 
 /** The clause after "Archive": "and remove 2 resources on the Mac", "and remove 3 resources on the Mac and the box". */

@@ -66,6 +66,15 @@ describe("the Windows VM in Settings → Work", () => {
     expect(evaluationLine("2027-02-17")).toMatch(/^Windows 11 Enterprise evaluation, ends about .*2027$/);
   });
 
+  it("names each host by its name mid-line when two have one, never by its link's id", async () => {
+    vi.spyOn(registry, "environment").mockImplementation((id: string) => (id === "env_box1" ? ({ id, name: "The box" } as never) : undefined));
+    render(<WinvmSection hosts={["env_box1", "env_gone"]} />);
+    await flush();
+    expect(screen.getByText("Windows VM on the box")).not.toBeNull();
+    expect(screen.getByText("Windows VM on a host not linked here")).not.toBeNull();
+    expect(document.body.textContent).not.toContain("env_");
+  });
+
   it("shows nothing on a host that cannot have it", async () => {
     h.state = at({ state: "none", cannot: "The Windows VM runs on the box." });
     const { container } = render(<WinvmSection hosts={["mac"]} />);

@@ -39,13 +39,13 @@ describe("a full week, looked at the Monday after", () => {
     const rows = [...hours.querySelectorAll("[data-review-job]")].map((row) => text(row));
     expect(rows.map((r) => r.split(" ")[0])).toEqual(["Cosmic", "Hypixel", "Purdue", "Ref", "Unify", "Life"]);
     // Calendar alone is a measure; anything with desk time says "about".
-    expect(rows.find((r) => r.startsWith("Ref"))).toBe("Ref 6 h 30 m");
+    expect(rows.find((r) => r.startsWith("Ref"))).toBe("Ref 6 hr 30 min");
     for (const name of ["Cosmic", "Hypixel", "Purdue", "Life"]) expect(rows.find((r) => r.startsWith(name))).toContain("about ");
     // Words that hold for any week shown: the page may show this one long after.
-    expect(rows.find((r) => r.startsWith("Unify"))).toBe("Unify Nothing seen about 6 h 15 m the week before");
+    expect(rows.find((r) => r.startsWith("Unify"))).toBe("Unify Nothing seen about 6 hr 15 min the week before");
     // The week before is said only where it says something: Purdue rose by hours, the others moved little.
     expect(rows.filter((r) => r.includes("the week before") || r.includes(" from "))).toHaveLength(2);
-    expect(rows.find((r) => r.startsWith("Purdue"))).toMatch(/^Purdue about \d+ h( \d+ m)? up from about \d+ h( \d+ m)?$/);
+    expect(rows.find((r) => r.startsWith("Purdue"))).toMatch(/^Purdue about \d+ hr( \d+ min)? up from about \d+ hr( \d+ min)?$/);
     expect(hours.querySelector("[data-starved] [data-review-bar]")).toBeNull();
     // The closing line is the bar's key: each shape, for the eye alone, before the sentence that says what it is.
     expect(text(hours)).toContain(HOURS_NOTE);
@@ -86,9 +86,9 @@ describe("a full week, looked at the Monday after", () => {
     fireEvent.click(within(cosmic as HTMLElement).getByRole("button"));
     const facts = text(cosmic.querySelector("dl")!);
     // Each fact is its own run (`Facts`: the commas are drawn, and a line breaks only between facts).
-    expect(facts).toMatch(/On the calendar 5 h 30 m 6 events/);
-    expect(facts).toMatch(/At the desk about \d+ h( \d+ m)? from \d+ messages 12 mails sent \d+ document edits/);
-    expect(facts).toMatch(/Threads ran 34 h 10 m not counted in your hours/);
+    expect(facts).toMatch(/On the calendar 5 hr 30 min 6 events/);
+    expect(facts).toMatch(/At the desk about \d+ hr( \d+ min)? from \d+ messages 12 mails sent \d+ document edits/);
+    expect(facts).toMatch(/Threads ran 34 hr 10 min not counted in your hours/);
     // Money's own sums for the same days, in its own figures, both in the foreground; a job with no ledger has no such line.
     expect(facts).toMatch(/Money \$2,400\.00 in \$312\.50 out$/);
     const sums = [...cosmic.querySelectorAll("dd")].at(-1)!;
@@ -169,10 +169,10 @@ describe("a full week, looked at the Monday after", () => {
     const hours = view.review!.hours.map((h) => (h.job === "unify" ? { ...h, ranMs: 3_600_000 } : h));
     draw("full", { view: { ...view, review: { ...view.review!, hours } }, now });
     const unify = section("Hours").querySelector('[data-review-job="unify"]') as HTMLElement;
-    expect(text(unify)).toBe("Unify Nothing seen about 6 h 15 m the week before");
+    expect(text(unify)).toBe("Unify Nothing seen about 6 hr 15 min the week before");
     expect(unify.querySelector("[data-review-bar]")).toBeNull();
     fireEvent.click(within(unify).getByRole("button"));
-    expect(text(unify.querySelector("dl")!)).toBe("Threads ran 1 h not counted in your hours");
+    expect(text(unify.querySelector("dl")!)).toBe("Threads ran 1 hr not counted in your hours");
   });
 
   it("keeps the verbs in sight while the host works, wherever the pointer and the focus went", () => {
@@ -328,7 +328,7 @@ describe("the other states", () => {
     expect(section("Hours").querySelectorAll("[data-review-job]")).toHaveLength(6);
     // Its threads were not read, so a job with no hours is known only to have nothing on the calendar. It is out of
     // both weeks alike, so the week before is still compared.
-    expect(text(section("Hours").querySelector('[data-review-job="unify"]')!)).toBe("Unify Nothing on the calendar about 6 h 15 m the week before");
+    expect(text(section("Hours").querySelector('[data-review-job="unify"]')!)).toBe("Unify Nothing on the calendar about 6 hr 15 min the week before");
   });
 
   it("with LifeOS not answering it says so once, claims no empty list, and still shows what the hosts hold", () => {
@@ -437,7 +437,7 @@ describe("the other states", () => {
     const { rerender, props, container } = draw("clear", { view: partial, now });
     expect(text(section("Slipped"))).toBe("Slipped");
     expect(section("Slipped").querySelector("[data-review-pending]")).not.toBeNull();
-    expect(text(section("Hours").querySelector('[data-review-job="unify"]')!)).toBe("Unify about 6 h 15 m the week before");
+    expect(text(section("Hours").querySelector('[data-review-job="unify"]')!)).toBe("Unify about 6 hr 15 min the week before");
     expect(section("Hours").querySelector('[data-review-job="unify"] [data-review-pending]')).not.toBeNull();
     expect(text(container)).not.toContain("could not be read");
     rerender(<ReviewPageView {...props} view={view} />);

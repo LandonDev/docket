@@ -436,7 +436,10 @@ type. work-kit's two named steps map here: `text-lead` is 15/24,
 `text-sheet-title` the 16/24 title.
 
 `text-xs` is the one class for 12px; `lib/typeScaleGuard.test.ts` refuses
-the literal `text-[12px]` throughout renderer source.
+the literal `text-[12px]` throughout renderer source, and under
+src/renderer/src/work any literal size but 11, 13 and 15 and anything above
+`text-lg` ("Work's sizes are on the scale"; the clicker, a phone page, is
+its one exception).
 
 Weight and colour make the hierarchy, not size jumps: a title is `font-medium`
 foreground, its detail `muted-foreground` at the next size down. Code is the
@@ -594,6 +597,22 @@ Other rules: nothing is said twice (a count in the title is not repeated in
 the body); nothing is explained that the layout already shows; labels are
 nouns, buttons are verbs; a chip or badge exists only when it carries a
 state the row cannot otherwise show, and never beside a title.
+
+One name a thing, in every view of Work. A job is its workspace's name
+("Purdue Esports"), never the sector's word (`jobNameOf`, work/jobName.ts;
+the sector's word only where no workspace holds it); a picker of jobs is
+"Job". A length of time is `durationOf` ("12 min", "1 hr 10 min",
+src/shared/work/duration.ts); a span of time "4:00 to 6:00 PM"; a leave
+time "Leave 4:22 PM"; where you are in a bar "1/8", "Page 1 of 14" where
+there is room. A host mid-line is lower case where its name is a common
+noun ("the box", `nameInLine`, lib/hostWords.ts). LifeOS signed out is
+"Not signed in to LifeOS" with Sign in. A conflict's second press is Keep
+Both; a mail's file is kept with Save to workspace; a proposal is Dismiss
+and Add (Add… when a dialog follows), and Not now only for a one-line
+offer it puts off. Connections' healthy word is Ready, since Working is a
+running thread. A path, a port, an id or a program's name is never on
+screen: a host's error is worded once, in `workErrorWords`
+(lib/workErrorWords.ts).
 
 ## Status vocabulary
 
@@ -1194,17 +1213,23 @@ thread; nothing answers inside the canvas.
   place"). Where the workspace's host is a release
   behind and keeps no tabs, it opens as it did before: the item in a new
   thread's canvas with the thread folded away, and the thread that already
-  holds it shows it again. An item whose viewer fails says so on the state
-  line with Retry ("Couldn't open this document", why), never a blank pane.
+  holds it shows it again. An item whose viewer fails, with nothing to
+  show, is the centred `Empty` in the body's place: "Couldn't open this
+  document", the reason in his words (`workErrorWords`) when there is one,
+  and Retry (`OpenFailed`, work/canvas/FetchState.tsx); never a red line
+  over a blank pane.
 - **The tab row** is 36px on `sidebar`, as the title bar's strip: tabs
   28px on the strip's chip shape (6px radius, 2px apart, 6px from the
   row's ends), the kind's 14px glyph, the name, no dirty dot; the selected
-  tab is `muted` with foreground text. One item alone is its glyph, its
+  tab is `sidebar-group-selected` with foreground text, as the Files row's
+  (`muted` on `sidebar` can barely be seen in light; dark sets the token to
+  `muted`). One item alone is its glyph, its
   name as the split view's 14px semibold title and one 12px muted fact.
   Each closes by its own ×, the Files tab's (a 24px ghost glyph in
   `muted-foreground`): on the selected tab and on the tab under the
   pointer, lying over the tab's end, and always right after a lone
-  item's name.
+  item's name. Every tab keeps the close's room, shown or not, so a name
+  is cut at one point and nothing moves under the pointer.
 - **The kind's bar** is 32px on `background` (the editor's `FileHeader`
   row), 12px muted, in a fixed order: other people as 20px avatars, the
   mode ("Agent suggests" or "Agent writes", a quiet menu button), the
@@ -1233,8 +1258,13 @@ thread; nothing answers inside the canvas.
   the reader's half holds the items at the left and the mail at the right,
   the toggle a Mail glyph named Mail.
 - **The state line** is one line across the surface for a source that
-  cannot be reached: glyph, a medium word in its tone, a muted detail, one
-  action, 32px, a hairline under it. Never a second banner.
+  cannot be reached while its content stays: glyph, a medium word in its
+  tone, a muted detail, one action, 32px, a hairline under it. Never a
+  second banner. Amber is for a line that needs him; how an item is, with
+  nothing asked ("Read only" and why, on a sheet, a deck, a moved PDF, a
+  document he may not change), is the quiet line: 12px muted, the word
+  medium, its one press a link, a hairline under (`QuietLine`, tone
+  `quiet`).
 - **The selection bar** floats over any selection in any kind, on the
   transcript's selection menu recipe (surfaces/TranscriptSelectionMenu.tsx):
   the popover fill at its 12px radius, a 4px inset and 24px ghost buttons
@@ -1254,8 +1284,11 @@ thread; nothing answers inside the canvas.
   never text. The sent bubble draws its chips the same way over his words,
   4px apart and 8px above them; one that opens something takes the hover
   fill and presses to 0.96, one that does not is a label.
-- **Avatars** are initials on `muted` on `image-outline`, 20px in the bar,
-  24px in lists, overlapping 6px with a 2px `background` ring.
+- **Avatars** are Work's one face (`Face`, work/mail/face.tsx): initials
+  on `muted` on `image-outline`, 11px medium, one letter under 24px and two
+  from 24px, 20px in the bar, 24px in lists, overlapping 6px with a 2px
+  `background` ring. The canvas bar, media notes, History, Share and the
+  projects kit draw the same part.
 - **Share** is a 320px popover from the bar (rows 28px or more, Revoke
   shown on hover); **History** opens the item's history as a tab of its own
   (in a Files tab, at the file's side, where a second file sits; "Compare
@@ -1774,7 +1807,7 @@ Around the canvas:
   MacBook. Changes stay here", with Open on MacBook) or, for a kind that
   saves, where saving stands ("Saved 1:52 PM in Events"; it takes
   `foreground` only when it needs him, with at most two presses beside
-  it: Reload, Keep mine as a copy). A copy that saves back to its file on
+  it: Reload and Keep Both, the one conflict press everywhere). A copy that saves back to its file on
   another computer names that computer as its tab does: "On MacBook" until
   a change goes, "Saving to MacBook…", "Saved to MacBook 1:52 PM", all
   muted; in the foreground "This file changed on MacBook" with Reload
@@ -1952,7 +1985,7 @@ Around the canvas:
   lies over the whole view, its head and Close where they were, the mail
   under it inert. Its head is 44px, level with the list's head and the
   reader's toolbar: what it is about at 13px medium (the open mail's
-  subject, "6 mails" for ticked rows, the mailbox or "Search: …"), then
+  subject, "6 mails" for ticked rows, the mailbox or "Results for “…”"), then
   Open in its own tab once it is a thread and Close, 24px ghost glyphs. No
   chip sits in its composer: the head names the subject once. A fresh
   draft shows at most three starters over the composer, 32px rows at 13px
@@ -2125,12 +2158,12 @@ Around the canvas:
   hover and opens that clash's dialog; the row's menu has
   Show clash, or with several "Show clash with Varsity Basketball" for
   each (two of one name take their job and time, the time as the line
-  says it: "Show clash with Stand-up (Ref, Fri 9:00 AM)"). An event that is over carries none, and a clash goes from the
+  says it: "Show clash with Stand-up (Refereeing, Fri 9:00 AM)"). An event that is over carries none, and a clash goes from the
   row, its menu and its dot once its later event is over (Running late
   is for the time after the earlier one ends). Over is by the end LifeOS
   gave the clash, so an event with no end keeps its line for the hour
   the rule runs it. The line arrives with its
-  read and nothing pulses for it. "Leave 4:35" under the time is from
+  read and nothing pulses for it. "Leave 4:35 PM" under the time is from
   where he will be: the event before when that ends within three hours,
   else the day's start.
   The Clash dialog is the `sm` Modal. Its title is the fact ("Two things
@@ -2960,7 +2993,7 @@ the room sees, and the presenter's view. One state moves both.
   tall, radius 10, 12px off the foot, centred, on `present-bar` (the dark
   popover at 94%, one value in both themes) with a `border` ring and the
   overlay shadow; 28px quiet buttons 2px apart, 4px from its ends:
-  Previous, "4 / 12" (12px tabular, at least 44px wide), Next, a 1 by 16
+  Previous, "4/12" (12px tabular, at least 44px wide), Next, a 1 by 16
   rule, then Slides, Blank and End. It and the pointer go together 2000ms
   after the last move (`PRESENT_IDLE_MS`), and it stays while the pointer
   rests on it or its picker is open. Slides opens the picker upward, 8px
@@ -3038,7 +3071,7 @@ the room sees, and the presenter's view. One state moves both.
   deck's name 17/22 semibold in the middle, Blank at the trailing edge (a
   toggle, `foreground` fill and `background` text while on). A 44px line,
   16px in: one press target holding the Pause or Play glyph, the time talked 17/22 semibold tabular (`warning`
-  past his target) and "of 20:00" 15/20 muted (no target: nothing); "4 / 12"
+  past his target) and "of 20:00" 15/20 muted (no target: nothing); "4/12"
   15/20 muted tabular at the end ("End" at the end of the show). The notes
   at 16/24, scrolling inside themselves ("No notes" muted). Previous: 56px
   tall, 12px in from the sides, radius 16, on `muted`, an 18px chevron and
@@ -3908,12 +3941,12 @@ corners and shadow and no card inside it: the field (14/22 on 22px lines,
 16px inset, `faint-foreground` placeholder "Capture…", growing to twelve
 lines), the files he added as 28px rows (the file's glyph, its name, a
 ghost Remove), a red 12px line when something stops it, then a 48px row
-under a hairline: the sector as a `ChoiceToggle` (Unsorted first, then the
-six sectors), and at the end Start thread (secondary, its key cap in
+under a hairline: the job as a `ChoiceToggle` named "Job" (Unsorted first,
+then the six), and at the end Start thread (secondary, its key cap in
 muted ink: the one key not plain) and File (primary): a capture on
 its way shows nothing, since the window is already gone and the next draft
-starts empty. While LifeOS does not answer, "LifeOS is not
-connected" sits muted in the red line's place and both buttons are off. A drag of
+starts empty. While LifeOS does not answer, "Not signed in to
+LifeOS" sits muted in the red line's place and both buttons are off. A drag of
 a file over it shows the drop wash of the document surface ("Drop to
 add"). It wears Work's theme and follows it.
 

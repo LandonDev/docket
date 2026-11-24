@@ -185,7 +185,7 @@ the proposal names a time of day, the reply names its zone. The row keeps its zo
   routine changed; a screen asks `list` again.
 - `routine_propose` (tool): writes a proposed row (`proposed = 1`, not
   enabled, no due time). It runs nothing; the Routines view lists it first
-  with Not now and Create…, which opens the form filled, and his Save makes
+  with Dismiss and Add…, which opens the form filled, and his Save makes
   it a routine.
 - `watch_create` (tool): only a tool he set to Runs and its server calls
   read-only, in the thread's workspace or a global add-on allowed in Work;
@@ -208,7 +208,7 @@ proposals first, on the left at 280px, each its name, a status mark only for
 Working, Paused, Failed or Watching, and one muted line ("Weekdays at 7:00
 AM, next Thu", "Every 10 minutes, once", "…, waiting on LifeOS"); on the
 right the one picked: its name with Edit, Pause or Resume and Run now (a
-proposal: Not now and Create…), what it does, Starts, Ends, Model, Runs on,
+proposal: Dismiss and Add…), what it does, Starts, Ends, Model, Runs on,
 the thread it was made in or wakes, then every run as a 32px row (time,
 mark, outcome) that opens its thread (`workOpenPort`, registered by App).
 A key that may not save routines on the host (`work.routines.save`, admin)

@@ -88,7 +88,7 @@ describe("a text file open", () => {
     expect(h.file.text).toBe("again\n");
   });
 
-  it("never writes over a second writer: the line says the file changed, with Reload and Keep mine as a copy", async () => {
+  it("never writes over a second writer: the line says the file changed, with Reload and Keep Both", async () => {
     const h = standIn("first\n");
     await h.session.load();
     h.theirs("theirs\n");
@@ -97,7 +97,7 @@ describe("a text file open", () => {
     expect(h.file.text).toBe("theirs\n");
     const line = h.lines.at(-1)!;
     expect(savedWords(line, "Events", NOW)).toBe("This file changed at 2:04 PM");
-    expect(line.actions?.map((a) => a.label)).toEqual(["Reload", "Keep mine as a copy"]);
+    expect(line.actions?.map((a) => a.label)).toEqual(["Reload", "Keep Both"]);
     // More typing while it stands sends nothing.
     const writes = h.calls.filter((c) => c.method === "work.files.write").length;
     h.session.edit("mine, more\n");
@@ -130,7 +130,7 @@ describe("a text file open", () => {
     await h.fire();
     const line = h.lines.at(-1)!;
     expect(savedWords(line, "Events", NOW)).toBe("This file was moved or deleted");
-    expect(line.actions?.map((a) => a.label)).toEqual(["Keep mine as a copy"]);
+    expect(line.actions?.map((a) => a.label)).toEqual(["Keep Both"]);
   });
 
   it("follows a rename: what is typed after it goes to the renamed file, by the version it read", async () => {
@@ -297,7 +297,7 @@ describe("the words", () => {
     expect(say({ state: "offline", pending: 3 })).toBe("Offline. 3 changes wait here");
     expect(say({ state: "offline", pending: 1 })).toBe("Offline. 1 change waits here");
     expect(say({ state: "conflict", detail: "Dana changed this at 2:04 PM" })).toBe("Dana changed this at 2:04 PM");
-    expect(say({ state: "readonly", detail: "a mail's file" })).toBe("Read only: a mail's file");
+    expect(say({ state: "readonly", detail: "a mail's file" })).toBe("Read only, a mail's file");
     expect(say({ state: "copy", detail: "MacBook" })).toBe("A copy from MacBook. Changes stay here");
     expect(say({ state: "downloading", detail: "2.1 of 8.4 MB" })).toBe("Downloading 2.1 of 8.4 MB");
     expect(say({ state: "asleep", detail: "The Windows VM", at: AT(13, 40) })).toBe("The Windows VM is asleep. This is the copy from 1:40 PM");

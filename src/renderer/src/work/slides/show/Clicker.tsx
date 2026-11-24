@@ -159,7 +159,7 @@ export function Clicker({ live, remote, contained = false, mayPress = true }: { 
           </span>
         )}
         <span data-clicker-place aria-live="polite" className="ml-auto text-[15px] leading-5 text-muted-foreground tabular-nums">
-          {live.ended ? "End" : `${live.slide} / ${live.count}`}
+          {live.ended ? "End" : `${live.slide}/${live.count}`}
         </span>
       </div>
 

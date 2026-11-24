@@ -71,8 +71,8 @@ the tool and the tests all call it. Per job, three facts, never mixed:
 
 | Fact | From | Said as |
 |---|---|---|
-| On the calendar | LifeOS `events:range`: the job's events he did not decline or hide, that are not all day and have an end (`countedSpan`), cut to the week and to now; read from a week before the span, so a timed event of a few days that began before Monday counts for its part (one longer than a week is not seen); overlaps inside a job counted once | a measure: "6 h 30 m" |
-| At the desk | the points. Points less than 20 minutes apart (`SITTING_GAP_MS`), whatever their jobs, are one sitting; each gap goes to the job of its later point; 5 minutes (`LEAD_MS`) lead the first. Desk time under a counted event of any job is dropped, so no hour counts twice | an estimate: "about 4 h 30 m", to the quarter hour, always with "about" |
+| On the calendar | LifeOS `events:range`: the job's events he did not decline or hide, that are not all day and have an end (`countedSpan`), cut to the week and to now; read from a week before the span, so a timed event of a few days that began before Monday counts for its part (one longer than a week is not seen); overlaps inside a job counted once | a measure: "6 hr 30 min" (`durationOf`, Work's one form) |
+| At the desk | the points. Points less than 20 minutes apart (`SITTING_GAP_MS`), whatever their jobs, are one sitting; each gap goes to the job of its later point; 5 minutes (`LEAD_MS`) lead the first. Desk time under a counted event of any job is dropped, so no hour counts twice | an estimate: "about 4 hr 30 min", to the quarter hour, always with "about" |
 | Threads ran | the job's threads' `status` rows, running to settled, cut to the week | a measure of its own, never added to his hours |
 
 A job's total is calendar plus desk (`totalWords`) and reads "about 11 h"

@@ -218,7 +218,7 @@ export function liveData(session: LifeosSession, sector: SectorKey, env: string,
     },
     requestFiles: async (messageId) => {
       const client = session.client;
-      if (!client) throw new Error("LifeOS is not connected");
+      if (!client) throw new Error("Not signed in to LifeOS");
       await client.mutation(makeFunctionReference<"mutation">("chats:requestFiles"), { messageId });
     },
     // One file by its id, on the workspace's sector session: LifeOS's `chats:file` row (status and address).

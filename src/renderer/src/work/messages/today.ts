@@ -86,7 +86,7 @@ export async function markChatRead(client: LifeosSession["client"], chatId: stri
   const key = chatKey(chatId, at);
   leave(key);
   try {
-    if (!client) throw new Error("LifeOS is not connected");
+    if (!client) throw new Error("Not signed in to LifeOS");
     await client.mutation(makeFunctionReference<"mutation">("chats:markRead"), { id: chatId });
     readTo.set(chatId, Math.max(at, readTo.get(chatId) ?? -Infinity));
   } catch {

@@ -51,6 +51,10 @@ type Props = {
   onOpenWhatsNew: (version: string, markdown?: string) => void;
 };
 
+/** The line under a workspace page's title: a code workspace's folder; none for a Work workspace, which names a job, not a folder (its host is under Where it runs). */
+export const workspaceLine = (workspace: { kind?: string | null; path: string } | undefined): string | undefined =>
+  !workspace ? "This workspace was removed." : workspace.kind === "work" ? undefined : prettyCwd(workspace.path);
+
 export function SettingsView({
   onOpenSession,
   onArchiveSession,
@@ -96,11 +100,7 @@ export function SettingsView({
         <Page
           title={title}
           description={
-            workspaceId
-              ? workspace
-                ? prettyCwd(workspace.path)
-                : "This workspace was removed."
-              : settingsSectionDescription(section)
+            workspaceId ? workspaceLine(workspace) : settingsSectionDescription(section)
           }
         >
           {/* A page not yet built on PageSection renders inside one block, so the

@@ -253,7 +253,8 @@ describe("the line under a sent mail", () => {
     render(<RuleLine env="box" draftId="d3" />);
     await settle();
     expect(screen.getByText(/You took out “I hope this email finds you well” again\. Make it a rule for Purdue Esports\?/)).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Add rule…" })).toBeTruthy();
+    // A proposal's verb is Add…, as on every proposal; Not now defers this one-line offer to the rules page.
+    expect(screen.getByRole("button", { name: "Add…" })).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Not now" }));
     await settle();
     expect(calls.find((c) => c.method === "work.rules.decide")?.params).toEqual({ id: "p1", to: "later" });

@@ -8,6 +8,7 @@ import { Modal, ModalBody, useModalClose } from "../../chrome/Modal";
 import { Input } from "../../components/ui/input";
 import { loadToast } from "../../components/ui/toaster";
 import { workErrorWords } from "../../lib/workErrorWords";
+import { jobNameNow } from "../jobName";
 
 /**
  * New task (prototype workspace.html, the Tasks header's verb): a plain write
@@ -16,7 +17,6 @@ import { workErrorWords } from "../../lib/workErrorWords";
  * writes himself goes at once.
  */
 
-const SECTOR_NAMES: Record<SectorKey, string> = { cosmic: "Cosmic", hypixel: "Hypixel", purdue: "Purdue", ref: "Ref", unify: "Unify", life: "Life" };
 const create = makeFunctionReference<"mutation">("tasks:create");
 const takeBack = makeFunctionReference<"mutation">("tasks:takeBack");
 
@@ -98,7 +98,7 @@ function Body({
       () => {
         setPending(false);
         onAdded?.();
-        void loadToast().then((toast) => toast(`Added to ${SECTOR_NAMES[sector]}`, { action: { label: "Undo", onClick: () => void undo({ key }).catch(() => toast.error("Couldn't undo")) } }));
+        void loadToast().then((toast) => toast(`Added to ${jobNameNow(sector)}`, { action: { label: "Undo", onClick: () => void undo({ key }).catch(() => toast.error("Couldn't undo")) } }));
         close ? close(onClose) : onClose();
       },
       (err: unknown) => {
