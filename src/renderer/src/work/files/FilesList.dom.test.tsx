@@ -290,11 +290,31 @@ describe("Home", () => {
     expect(opening.querySelector("span.truncate")!.className).toContain("flex-auto");
     const heldWords = [...document.querySelector(`[data-files-home-row="${held.key}"]`)!.querySelectorAll("span")].find((el) => el.textContent === "Rename waits for you")!;
     expect(heldWords.closest(".shrink-\\[999\\]")).not.toBeNull();
-    // A row that says a state gives its date up first in a narrow page; a plain row keeps it.
-    const date = (row: Element): string => [...row.querySelectorAll("span")].at(-1)!.className;
-    expect(date(opening)).toContain("hidden @[400px]/files-home:block");
-    expect(date(document.querySelector(`[data-files-home-row="${held.key}"]`)!)).toContain("hidden @[400px]/files-home:block");
-    expect(date(document.querySelector(`[data-files-home-row="${starred.key}"]`)!)).not.toContain("hidden");
+    // A row that says a state gives its date up first in a narrow page (under 400px of Home); every row's date goes
+    // whole under 360px, as Changed does in the folder's list (council round 8, both seats, Files 1).
+    const date = (row: Element): string[] => [...row.querySelectorAll("span")].at(-1)!.className.split(" ");
+    const heldRow = document.querySelector(`[data-files-home-row="${held.key}"]`)!;
+    const plainRow = document.querySelector(`[data-files-home-row="${starred.key}"]`)!;
+    expect(date(opening)).toEqual(expect.arrayContaining(["hidden", "@[400px]/files-home:block"]));
+    expect(date(heldRow)).toEqual(expect.arrayContaining(["hidden", "@[400px]/files-home:block"]));
+    expect(date(plainRow)).toEqual(expect.arrayContaining(["hidden", "@[360px]/files-home:block"]));
+    expect(date(plainRow)).not.toContain("@[400px]/files-home:block");
+    // Under 360px of Home a state's words go whole, no stub; they stay in the row's text (Files 2).
+    for (const [row, words] of [[opening, "Opening…"], [heldRow, "Rename waits for you"]] as const) {
+      const cut = [...row.querySelectorAll("span.truncate")].find((el) => el.textContent === words)!;
+      expect(cut.className.split(" ")).toEqual(expect.arrayContaining(["max-w-0", "@[360px]/files-home:max-w-40"]));
+    }
+  });
+});
+
+describe("Home, a row's state", () => {
+  it("goes from sight whole under 360px of Home, as the folder's list does its progress", async () => {
+    const { HomePage } = await import("./Home");
+    const suggested = { ...file("Budget.xlsx"), state: { is: "suggestions" as const, count: 3 } };
+    render(<HomePage panelId="p1" home={{ waiting: [], starred: [], recent: [suggested] }} error={null} busy={null} bar={null} onRetry={() => undefined} onOpen={() => undefined} />);
+    const row = document.querySelector(`[data-files-home-row="${suggested.key}"]`)!;
+    const words = [...row.querySelectorAll("span.truncate")].find((el) => el.textContent === "3 suggestions")!;
+    expect(words.className.split(" ")).toEqual(expect.arrayContaining(["max-w-0", "@[360px]/files-home:max-w-40"]));
   });
 });
 

@@ -24,6 +24,8 @@ import { RowState, RowWords } from "./rowParts";
 
 /** A held file act's verb, as its row says it. */
 const HELD_WORDS: Record<string, string> = { make: "New", rename: "Rename", move: "Move", copy: "Copy", trash: "Delete" };
+/** Under 360px of Home a state's words go from sight whole (still in the tip and read out), as the folder's list does its progress. */
+const CUT = "max-w-0 @[360px]/files-home:max-w-40";
 
 function HomeList({ title, entries, busy, onOpen }: { title: string; entries: readonly FileEntry[]; busy: Busy; onOpen(entry: FileEntry): void }) {
   if (!entries.length) return null;
@@ -33,7 +35,8 @@ function HomeList({ title, entries, busy, onOpen }: { title: string; entries: re
       <h2 className="ps-8 pe-2 pb-1 text-xs font-medium text-muted-foreground">{title}</h2>
       {entries.map((entry) => {
         const opening = busy?.key === entry.key;
-        // A row that says a state gives its date up first in a narrow page, so the name keeps its room.
+        // Every row's date goes under 360px of Home, as Changed does in the folder's list; a row that says a state
+        // gives it up first, under 400px, so the name keeps its room.
         const stated = opening || !!entry.held || !!entry.state;
         return (
           <Button key={entry.key} variant="ghost" data-files-home-row={entry.key} disabled={opening} className="h-9 w-full min-w-0 justify-start gap-2 rounded-md px-2 text-[13px] font-normal" onClick={() => onOpen(entry)}>
@@ -43,14 +46,14 @@ function HomeList({ title, entries, busy, onOpen }: { title: string; entries: re
             {/* A change a thread holds for his press says its verb; the row opens the held item, not the file. */}
             {/* A state gives way before the name, cut, whole on hover (`RowWords`), as in the folder's list. */}
             {opening ? (
-              <RowWords data-files-busy="" busy words={busy!.word} />
+              <RowWords data-files-busy="" busy words={busy!.word} cut={CUT} />
             ) : entry.held ? (
-              <RowWords tone="warning" words={`${HELD_WORDS[entry.held.verb] ?? "A change"} waits for you`} />
+              <RowWords tone="warning" words={`${HELD_WORDS[entry.held.verb] ?? "A change"} waits for you`} cut={CUT} />
             ) : (
-              <RowState entry={entry} />
+              <RowState entry={entry} cut={CUT} />
             )}
             {entry.where ? <span className="hidden max-w-[30%] shrink-0 truncate text-xs text-muted-foreground @[480px]/files-home:block">{whereWords(entry.where)}</span> : null}
-            {entry.changed ? <span className={`w-28 shrink-0 text-end text-xs text-muted-foreground tabular-nums ${stated ? "hidden @[400px]/files-home:block" : ""}`}>{dayTime(entry.changed)}</span> : null}
+            {entry.changed ? <span className={`w-28 shrink-0 text-end text-xs text-muted-foreground tabular-nums hidden ${stated ? "@[400px]/files-home:block" : "@[360px]/files-home:block"}`}>{dayTime(entry.changed)}</span> : null}
           </Button>
         );
       })}

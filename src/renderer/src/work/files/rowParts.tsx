@@ -47,7 +47,7 @@ export const stepHow = (event: Pick<KeyboardEvent, "shiftKey">): PickHow => (eve
  * A row's state in words, beside its name (opening from another computer, suggestions waiting, someone in it, a held
  * change): the name has first claim on the row, so the words give way first (`shrink-[999]`), cut, with the whole of
  * them on hover and in the row's text for a reader. `busy` leads them with the 12px spinner, which stays when the words
- * have no room; `cut` narrows the words further where a list says how (Page.tsx, by its width).
+ * have no room; `cut` narrows the words further where a list says how (Page.tsx and Home.tsx, by their width).
  */
 export function RowWords({ words, tone = "muted", busy = false, cut, ...data }: { words: string; tone?: "muted" | "warning"; busy?: boolean; cut?: string; [data: `data-${string}`]: string | undefined }) {
   return (
@@ -63,13 +63,13 @@ export function RowWords({ words, tone = "muted", busy = false, cut, ...data }: 
   );
 }
 
-/** The one state a row shows, at most: a cloud mark, suggestions waiting, someone in it, a thread writing it. */
-export function RowState({ entry }: { entry: FileEntry }) {
+/** The one state a row shows, at most: a cloud mark, suggestions waiting, someone in it, a thread writing it. `cut` as `RowWords`'. */
+export function RowState({ entry, cut }: { entry: FileEntry; cut?: string }) {
   const state = entry.state;
   if (!state) return null;
   if (state.is === "cloud") return <Cloud aria-label="In the cloud" className="size-3 shrink-0 self-center text-muted-foreground" />;
-  if (state.is === "suggestions") return <RowWords tone="warning" words={state.count === 1 ? "1 suggestion" : `${state.count} suggestions`} />;
-  if (state.is === "present") return <RowWords words={`${state.who} is in it`} />;
+  if (state.is === "suggestions") return <RowWords tone="warning" words={state.count === 1 ? "1 suggestion" : `${state.count} suggestions`} cut={cut} />;
+  if (state.is === "present") return <RowWords words={`${state.who} is in it`} cut={cut} />;
   return <Spinner aria-label="A thread is writing in it" className="size-3 shrink-0 self-center" />;
 }
 
