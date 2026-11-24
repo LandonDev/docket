@@ -356,16 +356,6 @@ function ShowRoot({ ask, places: opened, native, onOver }: { ask: ShowAsk; place
   const audience = places.find((p) => p.surface === "audience");
   const presenter = places.find((p) => p.surface === "presenter");
 
-  // "Advance after": one clock for both windows, counted again at each place the show reaches.
-  const wait = state ? autoAfter(state) : null;
-  const atNow = state?.at;
-  const stepNow = state?.step;
-  useEffect(() => {
-    if (wait === null || atNow === undefined || stepNow === undefined) return;
-    const timer = setTimeout(() => dispatch({ t: "auto", at: atNow, step: stepNow }), wait);
-    return () => clearTimeout(timer);
-  }, [wait, atNow, stepNow, dispatch]);
-
   // How the picture now shown came in, decided once each time the place changes.
   const placeKey = state ? `${state.slides[state.at]?.id ?? ""}:${state.step}:${state.blank ? "b" : ""}${state.ended ? "e" : ""}` : "";
   const [moved, setMoved] = useState<{ key: string; state: ShowState | null; motion: ShowMotion }>({ key: placeKey, state, motion: null });
@@ -401,11 +391,13 @@ function ShowRoot({ ask, places: opened, native, onOver }: { ask: ShowAsk; place
   const stage = useMemo<ShowStage>(
     () => ({
       pictureOf: (slide, step): Picture => {
-        const pic = slide.steps?.[step]?.pic;
+        const at = slide.steps?.[step];
+        const pic = at?.pic;
         const opened = pic ? stepDocs.get(pic.rev) : undefined;
         if (opened && typeof opened === "object") return { doc: opened, page: 1, waiting: false };
-        // A step's picture on its way is waited for; one not made yet (or that failed) is the slide's final page.
-        if (opened === "opening" || (pic && !opened && host.step)) return { doc, page: slide.page, waiting: true };
+        // A step's picture on its way, not made yet or that could not be made holds the picture before it: the slide's
+        // final page would show the room what its builds still hide.
+        if (opened === "opening" || (pic && !opened && host.step) || at?.missing) return { doc, page: slide.page, waiting: true };
         return { doc, page: slide.page, waiting: false };
       },
       motion: moved.motion,
@@ -414,6 +406,21 @@ function ShowRoot({ ask, places: opened, native, onOver }: { ask: ShowAsk; place
     }),
     [stepDocs, doc, moved.motion, moved.key, media, host.step],
   );
+
+  // "Advance after": one clock for both windows, counted again at each place the show reaches, from when its picture
+  // is there to be seen: a step still waiting for its picture holds the clock too.
+  const here = state ? shown.slides[shown.at] : undefined;
+  const painted = !!here && !stage.pictureOf(here, shown.step).waiting;
+  const wait = state && painted ? autoAfter(state) : null;
+  const atNow = state?.at;
+  const stepNow = state?.step;
+  useEffect(() => {
+    if (wait === null || atNow === undefined || stepNow === undefined) return;
+    const timer = setTimeout(() => dispatch({ t: "auto", at: atNow, step: stepNow }), wait);
+    return () => clearTimeout(timer);
+  }, [wait, atNow, stepNow, dispatch]);
+  // A step whose picture could not be made is held for the room; the presenter is told why.
+  const undrawn = here?.steps?.[shown.step]?.missing === "failed" ? "This build could not be drawn here. The room sees the step before it." : null;
 
   return (
     <StageContext.Provider value={stage}>
@@ -427,7 +434,7 @@ function ShowRoot({ ask, places: opened, native, onOver }: { ask: ShowAsk; place
                 doc={doc}
                 loading={!state && !error}
                 error={error}
-                notice={notice ?? (lost ? "Reconnecting to the deck…" : null)}
+                notice={notice ?? (lost ? "Reconnecting to the deck…" : undrawn)}
                 ratio={ratios.get(presenter) ?? 1}
                 timer={timer}
                 target={target}

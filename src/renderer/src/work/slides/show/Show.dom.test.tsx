@@ -721,11 +721,11 @@ describe("a show's builds, its own clock and its clips", () => {
     return { host, places, handle, opened };
   }
 
-  it("shows each step's own picture in both windows, and the slide's own page for a step whose picture is not made yet", async () => {
+  it("shows each step's own picture in both windows, and holds the picture before a step whose picture is not made yet", async () => {
     const { host, places, handle, opened } = await start(
       deck(3, {
         2: { steps: [{ hides: [4, 5], pic: { rev: "0123456789abcdef", size: 101 } }, { hides: [5], pic: { rev: "1123456789abcdef", size: 102 } }, { hides: [] }] },
-        3: { steps: [{ hides: [4] }, { hides: [] }] },
+        3: { steps: [{ hides: [4], missing: "making" }, { hides: [] }] },
       }),
     );
     await waitFor(() => expect(seen(places.audience)).toBe("Slide 1"));
@@ -741,14 +741,30 @@ describe("a show's builds, its own clock and its clips", () => {
     // the last step hides nothing: the slide's page
     await waitFor(() => expect(seen(places.audience)).toBe("Slide 2"));
     fireEvent.keyDown(places.audience.body, { key: "ArrowRight" });
-    // slide 3's first step has no picture yet: the slide as it ends, and still a press before the end
-    await waitFor(() => expect(seen(places.audience)).toBe("Slide 3"));
+    // slide 3's first step has no picture yet: the room keeps the picture before it, never the slide whole with what
+    // its build hides, and there is still a press before the end
+    await waitFor(() => expect(text(places.presenter, "[data-show-place]")).toBe("3 / 3"));
+    expect(seen(places.audience)).toBe("Slide 2");
     expect(text(places.presenter, "[data-show-build]")).toBe("Build 1 of 1");
     // More is ready on the host: the deck is read again and its render kept open.
     const shows = host.shows;
     await act(async () => host.ready("r1"));
     await waitFor(() => expect(host.shows).toBe(shows + 1));
     expect(opened.filter((size) => size === 1000)).toHaveLength(1);
+    await act(async () => handle.end());
+  });
+
+  it("holds a step whose picture could not be made, says why to the presenter alone, and starts no clock on it", async () => {
+    const { places, handle } = await start(deck(3, { 1: { steps: [{ hides: [4], missing: "failed" }, { hides: [] }], transition: { kind: "fade", ms: 500, after: 30 } } }));
+    await waitFor(() => expect(within(places.presenter.body).getByRole("status").textContent).toBe("This build could not be drawn here. The room sees the step before it."));
+    expect(seen(places.audience)).not.toBe("Slide 1");
+    expect(places.audience.body.textContent).not.toContain("could not be drawn");
+    await new Promise((r) => setTimeout(r, 80));
+    expect(text(places.presenter, "[data-show-place]")).toBe("1 / 3");
+    // His press goes on to the last step, which hides nothing: once it is up, the slide's time runs.
+    fireEvent.keyDown(places.audience.body, { key: "ArrowRight" });
+    await waitFor(() => expect(text(places.presenter, "[data-show-place]")).toBe("2 / 3"));
+    expect(within(places.presenter.body).queryByRole("status")).toBeNull();
     await act(async () => handle.end());
   });
 

@@ -1,6 +1,6 @@
 import { useEffect, useState, useSyncExternalStore } from "react";
 import { createPortal } from "react-dom";
-import type { ShowLive, ShowPressAct } from "@shared/contract-work-slides";
+import type { ShowLive, ShowPressAct, ShowPressAnswer } from "@shared/contract-work-slides";
 import { Button } from "../../../components/ui/button";
 import { Toggle } from "../../../components/ui/toggle";
 import { ChevronLeft, ChevronRight, Pause, Play } from "../../../chrome/icons";
@@ -60,6 +60,15 @@ export function pressFailure(e: unknown): string {
   return message || "Couldn't reach the show";
 }
 
+/**
+ * Why a press the host answered did not move the show, in his words, with the state it was dropped on; null when it
+ * went in, or when the show moved on or ended under it (the state says so itself). A show still running that took no
+ * press in time answers `ended` with its state (clicker.ts `pressShow`).
+ */
+export function pressDropped(answer: ShowPressAnswer): { rev: number; why: string } | null {
+  return "dropped" in answer && answer.dropped === "ended" && answer.live ? { rev: answer.live.rev, why: "The show didn't take that press. Press again." } : null;
+}
+
 /** `contained`: a preview's, drawn in its own box rather than over the page. */
 export function Clicker({ live, remote, contained = false }: { live: ShowLive; remote: ShowRemote; contained?: boolean }) {
   const elapsed = useElapsed(live);
@@ -71,7 +80,7 @@ export function Clicker({ live, remote, contained = false }: { live: ShowLive; r
     // A press on a state that moved on is dropped by the host; the state as it is now arrives by the push.
     const rev = live.rev;
     remote.press(live.showId, act, rev).then(
-      () => setFailed(null),
+      (answer) => setFailed(pressDropped(answer)),
       (e: unknown) => setFailed({ rev, why: pressFailure(e) }),
     );
   };

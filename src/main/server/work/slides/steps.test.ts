@@ -147,11 +147,14 @@ describe('the pictures of the steps', () => {
     await expect(makeSteps(deps, input, deck, stop.signal)).rejects.toThrow()
   })
 
-  it('tells a show where each step is read from: its own picture once made, the slide\'s page where it hides nothing', async () => {
+  it('tells a show where each step is read from: its own picture once made, the slide\'s page where it hides nothing, and why one has none yet', async () => {
     const { deps, input } = rig()
     expect(showSteps(deps.dir, deck[0])).toBeUndefined()
-    expect(showSteps(deps.dir, deck[1])).toEqual([{ hides: [] }, { hides: [] }, { hides: [] }, { hides: [] }])
-    expect(showSteps(deps.dir, deck[2])).toEqual([{ hides: [] }, { hides: [5, 9] }])
+    // Not made yet: the show holds the picture before it, never the slide whole.
+    expect(showSteps(deps.dir, deck[1])).toEqual([{ hides: [], missing: 'making' }, { hides: [], missing: 'making' }, { hides: [], missing: 'making' }, { hides: [] }])
+    expect(showSteps(deps.dir, deck[2])).toEqual([{ hides: [] }, { hides: [5, 9], missing: 'making' }])
+    // The job ended without it: it could not be made.
+    expect(showSteps(deps.dir, deck[2], false)).toEqual([{ hides: [] }, { hides: [5, 9], missing: 'failed' }])
     await makeSteps(deps, input, deck)
     const [s0, , , last] = showSteps(deps.dir, deck[1])!
     expect(s0.pic?.rev).toBe(stepKey(draws(2), 0, deck[1].builds!.steps[0]).slice(0, 16))

@@ -9,7 +9,7 @@
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { useState } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { ShowLive, ShowPress, ShowPressAct } from "@shared/contract-work-slides";
+import type { ShowLive, ShowPress, ShowPressAct, ShowPressAnswer } from "@shared/contract-work-slides";
 import { Clicker, CLICKER_WIDTH, useClickerShow } from "./Clicker";
 import { actOf, liveOf, usePublish, type LiveState, type ShowRemote } from "./remote";
 import { showReducer, startShowState, type ShowState, type Slide } from "./state";
@@ -143,6 +143,28 @@ describe("the clicker at 390px", () => {
     refusal = new Error("The show did not answer.");
     await act(async () => void fireEvent.click(screen.getByRole("button", { name: "Blank" })));
     expect(document.querySelector("[data-clicker-failed]")!.textContent).toBe("The show did not answer.");
+    rerender(<Clicker live={live({ rev: 8, slide: 5 })} remote={remote} />);
+    expect(document.querySelector("[data-clicker-failed]")).toBeNull();
+  });
+
+  it("says a press the running show did not take, in the same line, until the show moves on; one dropped as the show moved or ended says nothing", async () => {
+    const { remote } = fakeRemote();
+    let answer: ShowPressAnswer = { dropped: "ended", live: live() };
+    remote.press = async () => answer;
+    const { rerender } = render(<Clicker live={live()} remote={remote} />);
+    await act(async () => void fireEvent.click(document.querySelector("[data-clicker-next]")!));
+    expect(document.querySelector("[data-clicker-failed]")!.textContent).toBe("The show didn't take that press. Press again.");
+    // Pressed again and taken: the line goes.
+    answer = { applied: true, live: live() };
+    await act(async () => void fireEvent.click(document.querySelector("[data-clicker-next]")!));
+    expect(document.querySelector("[data-clicker-failed]")).toBeNull();
+    for (const dropped of [{ dropped: "moved", live: live({ rev: 8 }) }, { dropped: "ended", live: null }] as ShowPressAnswer[]) {
+      answer = dropped;
+      await act(async () => void fireEvent.click(document.querySelector("[data-clicker-next]")!));
+      expect(document.querySelector("[data-clicker-failed]")).toBeNull();
+    }
+    answer = { dropped: "ended", live: live() };
+    await act(async () => void fireEvent.click(document.querySelector("[data-clicker-next]")!));
     rerender(<Clicker live={live({ rev: 8, slide: 5 })} remote={remote} />);
     expect(document.querySelector("[data-clicker-failed]")).toBeNull();
   });

@@ -25,10 +25,13 @@ export async function showOf(ctx: Ctx, item: CanvasItem, signal?: AbortSignal): 
     const pages = await deckDir(ctx, item, 'pages')
     const media = await deckDir(ctx, item, 'media')
     prepareShow(ctx, item, deck)
+    // A step picture not kept yet is still being made while this revision's job runs; once it has ended, it failed.
+    const job = running.get(showKey(ctx, item))
+    const making = job?.hash === hash && !job.done
     let changed = 0
     const slides = file.info.slides.map((s, i): ShowSlide => {
       changed += (s.builds?.changed ?? 0) + transitionChanged(s.transition)
-      const steps = file.pdf ? showSteps(pages, s) : undefined
+      const steps = file.pdf ? showSteps(pages, s, making) : undefined
       const played = showMedia(media, s)
       return {
         id: s.id,
@@ -82,7 +85,7 @@ export const mediaPath = (ctx: Ctx, item: CanvasItem, rev: string): Promise<stri
  * The background job of each deck, for one revision of its file: a newer revision stops the older's. It stays once
  * done, so a revision is made once while the app runs; one that failed is tried again at its next change.
  */
-const running = new Map<string, { hash: string; stop: AbortController }>()
+const running = new Map<string, { hash: string; stop: AbortController; done: boolean }>()
 
 /** Whether a deck still lacks a step picture or a playable media file. */
 function lacks(pages: string, media: string, file: Built): boolean {
@@ -110,13 +113,15 @@ export function prepareShow(ctx: Ctx, item: CanvasItem, deck: Pick<Deck, 'hash' 
   const was = running.get(key)
   if (was?.hash === deck.hash) return
   const stop = new AbortController()
-  const job = { hash: deck.hash, stop }
+  const job = { hash: deck.hash, stop, done: false }
   was?.stop.abort()
   running.set(key, job)
+  let worked = false
   void (async () => {
     const pages = await deckDir(ctx, item, 'pages')
     const media = await deckDir(ctx, item, 'media')
     if (!lacks(pages, media, deck.file)) return
+    worked = true
     const copy = await scratch(ctx, item, 'show')
     try {
       stop.signal.throwIfAborted()
@@ -159,6 +164,11 @@ export function prepareShow(ctx: Ctx, item: CanvasItem, deck: Pick<Deck, 'hash' 
   })()
     .catch((err: unknown) => {
       if (!stop.signal.aborted) console.warn(`slides: the show's pictures were not made: ${err instanceof Error ? err.message : String(err)}`)
+    })
+    .finally(() => {
+      job.done = true
+      // A show still waiting on a step that was not made is told, so it says so rather than wait on it.
+      if (worked && !stop.signal.aborted) tellReady(ctx, item, deck.hash)
     })
 }
 

@@ -2986,7 +2986,9 @@ the room sees, and the presenter's view. One state moves both.
 - **A second display leaving** closes the slideshow that was on it; the
   presenter's view goes on under one 28px line, "The slideshow's display
   was disconnected", in 12px muted. The same line says "Reconnecting to the
-  deck…" while a read of the deck is asked again; the slide stays up.
+  deck…" while a read of the deck is asked again; the slide stays up. It
+  says "This build could not be drawn here. The room sees the step before
+  it." while the show is at a build whose picture could not be made.
 - **Return and Space on a control he tabbed to** press that control; after
   a press made with the pointer the keyboard is the show's again.
 - **Keys**, in either window (shared with PowerPoint and with a clicker,
@@ -3007,9 +3009,11 @@ the room sees, and the presenter's view. One state moves both.
   A key held with ⌘, Ctrl or Alt is the window's own.
 - **Builds, transitions and the clock.** A press that shows a build fades
   its picture in; a slide's own fade or push plays on a press on to it
-  ("Motion values"). A slide whose file says it moves on after a time does,
-  in both windows, at each of its steps; a black screen or the open picker
-  holds it.
+  ("Motion values"). A build whose picture is not ready keeps the picture
+  before it up (the matte, at a show's first step), never the slide whole.
+  A slide whose file says it moves on after a time does, in both windows,
+  at each of its steps, counted from when the step's picture is up; a black
+  screen or the open picker holds it.
 - **The clicker** (`show/Clicker.tsx`; the approved page's "The phone, as
   a clicker"): the app's own page at phone width (640px or less), while a
   show of the deck runs on another device of his, draws it over the whole
@@ -3036,7 +3040,8 @@ the room sees, and the presenter's view. One state moves both.
   the clicker itself, which lies over the page's toasts: one 15/20
   `destructive` line between the notes and Previous, so Previous and Next
   never move ("This device can only watch the show." for a key that may
-  only read), gone once the show moves on. When the show ends the deck
+  only read; "The show didn't take that press. Press again." for one the
+  running show did not take), gone once the show moves on. When the show ends the deck
   comes back.
 - **Video and sound** play over their shapes in both windows: the room
   hears the slideshow's copy. The transport is in the presenter's view

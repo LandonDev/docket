@@ -148,8 +148,11 @@ function hiddenShapes(hides: StepHides, shapes: StepSlide['shapes']): number[] {
   return [...out].sort((a, b) => a - b)
 }
 
-/** A slide's steps as a show reads them, each with its picture where one is kept; undefined for a slide of one press that hides nothing. */
-export function showSteps(dir: string, s: StepSlide): ShowStep[] | undefined {
+/**
+ * A slide's steps as a show reads them, each with its picture where one is kept, else what keeps it (`making`: the
+ * background job is still at work on this revision); undefined for a slide of one press that hides nothing.
+ */
+export function showSteps(dir: string, s: StepSlide, making = true): ShowStep[] | undefined {
   const steps = s.builds && !s.builds.whole ? s.builds.steps : null
   if (!steps || (steps.length === 1 && nothingHidden(steps[0]))) return undefined
   return steps.map((hides, step) => {
@@ -158,7 +161,7 @@ export function showSteps(dir: string, s: StepSlide): ShowStep[] | undefined {
     try {
       return { hides: hiddenShapes(hides, s.shapes), pic: { rev: key.slice(0, 16), size: statSync(pageFile(dir, key)).size } }
     } catch {
-      return { hides: hiddenShapes(hides, s.shapes) }
+      return { hides: hiddenShapes(hides, s.shapes), missing: making ? 'making' : 'failed' }
     }
   })
 }

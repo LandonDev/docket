@@ -473,6 +473,11 @@ export interface ShowSlide {
 export interface ShowStep {
   /** its own picture (a one-page PDF read with `work.slides.build`); absent while it is being made, or where it is the slide's own page */
   pic?: { rev: string; size: number }
+  /**
+   * Its own picture is still being made, or could not be: the show holds the picture before it, never the slide
+   * whole, which would show what the builds hide. Absent where it has its picture or is the slide's own page.
+   */
+  missing?: 'making' | 'failed'
   /** the shapes not seen at this step, a video's among them */
   hides: number[]
 }

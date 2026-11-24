@@ -72,10 +72,9 @@ drops it. Agents suggest; the owner accepts.
   `registerFileMoved`): the deck's rows and seats take the new path's key
   and its folders go with them, so the waiting edits, each seat's mode,
   Undo and the versions are still the deck's under its new name. A key
-  with nothing kept under it moves nothing. **Nothing calls this yet**:
-  the Files build's rename and move are not built (`work.files.rename`
-  throws), and a rename in Finder leaves the rows under the old key, as
-  before. It runs when Files calls its hooks.
+  with nothing kept under it moves nothing. Files' rename and move call
+  every hook (`files/moved.ts` `fileMoved`); a rename in Finder leaves the
+  rows under the old key.
 - **Renders.** Each version of a deck is kept in the deck's `render/` folder
   as `<key>.{json,pdf}`: the outline and the PDF. The file's key is the
   sha256 of its bytes. The proposed deck's key is the sha256 of that hash and
@@ -269,7 +268,14 @@ the file is really edited. For a deck:
 - **`own` never writes a shared deck**, whatever the mode says: in "Agent
   writes" an agent's own idea on such a deck is still a suggestion, and the
   agent is told so. What he asked for in so many words (`asked` with his
-  quote) is written at once, as the ruling allows.
+  quote) is written at once, as the ruling allows, but only what his words
+  name (`quoteNames`, tools.ts): every slide the batch changes must be named
+  in the quote by number ("slide 3", "slides 2-4"), by place ("the second
+  slide", "the last slide") or by its title said whole; an add by the slide
+  it goes after, a copy by the slide it copies, an edit of a slide the batch
+  adds by that add. An edit of the deck as a whole (the theme, a section
+  taken away or renamed) is named by no slide. A batch that reaches further
+  than the quote waits whole as a suggestion, and the agent is told why.
 - **No copy leaves the host.** Every conversion of a shared deck's copy
   (the outline, the picture, a checked edit, `slides_image`'s PNG) is
   marked `shared: true`, so the runner runs it here or fails and never
@@ -279,7 +285,20 @@ the file is really edited. For a deck:
   thread and he moves it.
 - **Who sees the review.** `work.slides.open`, `read` and the `work.slides`
   push reach only a caller who could name the file itself (`fenceItem`,
-  `pushFor`): his own window and his own keys. A deck is not guestable, the
+  `pushFor`): his own window and his own keys. On a deck others can open
+  (`othersOpen`: `sharedDeck`, or a copy made from such a file), a caller
+  that is not his press (`pressesFor`: his window, a key with `approve`;
+  never another host's call or a thread) is a viewer, as in Docs and
+  Sheets: every write method answers `NEEDS_PRESS`, and `open` answers the
+  file alone (`viewFrom(…, viewer)`: no change that waits, no
+  `changesRev`, no proposed picture, no `mode`, no `written`, no `hand`).
+  The push goes in two shapes: the whole view to the sockets that hold
+  `approve` (`PushTo.need`), the file alone to every other
+  (`PushTo.lacks`). `work.slides.build` serves only the step pictures the
+  file's own show named (`showOf`), never another page of the `pages/`
+  folder, where the proposed slides lie too. A verdict on such a deck must
+  carry the revision he saw (`rev`): one with none, from an older client,
+  is refused (`NAME_THE_REV`) and changes nothing. A deck is not guestable, the
   PowerPoint side of the switch opens his file in his own PowerPoint (no
   suggestion goes with it). Save to Google Slides sends the saved bytes of a
   deck of his own on his press.
@@ -398,7 +417,11 @@ the file.
   that. The packs are files in the deck's `undo/` folder (under `.cache`
   for his own file, in the item's folder for a shared one); which comes
   next is kept in memory (`hands`), so his undo ends when the app does, as
-  it does in PowerPoint. The last 100 edits can be taken back.
+  it does in PowerPoint. The last 100 edits can be taken back. The line is
+  kept where its packs are (`handKey`): the deck's own for his file, so
+  every tab on it walks one line; each tab's own on a file others can open,
+  so a second tab on the same Teams file offers no Undo whose pack it
+  cannot find, and an edit from one tab ends the other's line.
 - **The line holds only while the file is what it left.** It is checked by
   the file's hash: an accepted suggestion, an agent's write, a restored
   version or a save from another program ends it, and `DeckView.hand` then
@@ -416,9 +439,21 @@ the file.
   tab's copy is judged only once it has ended.
 - **His words in an open box are sent before the tab closes.** The box
   commits when the body unmounts, and the tab's close awaits that commit
-  (`registerFlush`, canvas/flush.ts), so the edit reaches the host while
-  the item still stands. A pause in his typing sends them sooner, the box
-  left open (`keep`, below).
+  (`registerFlush`, canvas/flush.ts, `HandSession.flush`), so the edit
+  reaches the host while the item still stands; a send already on its way
+  is waited for, not passed over. When the host refuses the words the
+  close is refused too: the tab stays open with the box, its words and the
+  state line's Retry or Reload, and Files says the tab did not close. Past
+  8 s the tab closes and the send on its way still lands. A pause in his
+  typing sends them sooner, the box left open (`keep`, below).
+- **A box's edit names the words it was opened on** (`runs`' `was`: the
+  shape's words, a paragraph each, as the box's `from`s read them).
+  `handEdit` reads the outline of the file as it is (kept by its hash, read
+  only when it is not) and refuses the edit with `CHANGED_WHILE` when the
+  shape's words are no longer those: a save from PowerPoint, another
+  window's edit or an agent's write since never has his stale box written
+  over it. His window calls it a conflict, and Reload puts his words over
+  the shape as it is now.
 - **A rename carries the line** (`handMoved`, with `fileMoved`).
 
 ### Shapes, slides and the deck
@@ -441,7 +476,7 @@ and the deck"); every other part keeps its bytes.
 | `fill`, `line` | a colour or none; the outline's weight in points and its dash | the slide |
 | `grid` | a table's row or column put in before a place, or taken out; the table grows and shrinks by it | the slide |
 | `hide` | a slide left out of the show | the slide |
-| `duplicate` | a copy right after its slide, with its own copy of each chart and workbook; pictures and media are shared, as PowerPoint shares them | the new slide and what it holds for itself, the presentation, the content types |
+| `duplicate` | a copy right after its slide, with its own copy of each chart and workbook; pictures and media are shared, as PowerPoint shares them; its notes page copied whole (looks, pictures and what they hold) onto the copy's own (`copy_notes`) | the new slide and what it holds for itself, the presentation, the content types |
 | `section` | one started at a slide, one renamed, one taken away (its slides join the one before; the first one's, the next) | the presentation |
 | `layout` | another of the deck's layouts for a slide | the slide's relationship to its layout |
 | `theme` | twelve colours and two fonts, into the theme of every slide master | the theme parts |
@@ -565,8 +600,9 @@ read-backs in `landed/SLD45-proof/`): 29 decks, 340 checks, none failed.
 - `work.slides.versions` lists them newest first; `work.slides.restore`
   puts one in the file's place, through the queue and `replaceKeeping`,
   keeping the deck as it is now first, so a restore can itself be taken
-  back from the list. A version is named by its file's name and nothing
-  else, never a path.
+  back from the list; the copy he picked is spared while room is made
+  (`keepHistory`'s `spare`), so the oldest of thirty can still be put back.
+  A version is named by its file's name and nothing else, never a path.
 - His own file's versions live by the file and outlive a closed tab; a
   shared file's live in the item's folder and go with it.
 
@@ -793,8 +829,13 @@ and makes every step picture and clip the revision lacks, pushing
 a newer revision stops the older; a revision is made once while the app
 runs (one that failed is tried again at its next change). A write never
 waits on it; an edit's own picture waits at most for the one page the kept
-LibreOffice is drawing. A step whose picture is not made yet is shown as the
-slide's final picture. Everything goes under `deckDir`, so a shared
+LibreOffice is drawing. A step with no picture says why (`ShowStep.missing`):
+`making` while the revision's job runs, `failed` once it has ended without
+it; the job's end is told too (`work.slides.ready`), so a show waiting on a
+step learns it failed. The show holds the picture before such a step,
+never the slide's final picture, which would show the room what the builds
+hide. `work.slides.build` serves only the step pictures the file's own
+show named (`showOf`). Everything goes under `deckDir`, so a shared
 library's file keeps its step pictures and clips in the item's own folder,
 and every job is marked `shared` and never leaves the host.
 
@@ -1417,8 +1458,8 @@ once as a toast; `saving` and `saved` on the save line follow it.
 - **An agent's shape edits** read on the stage as the host says them: its
   boxes (`changed`) tint a moved or added shape where it now lies, and the
   stepper's words come from `editsOf` ("Moved or resized", "Added",
-  "Removed", "fill #FF0000"). A removed shape's place is not tinted: the
-  host gives no box for it (an ask in the landing note).
+  "Removed", "fill #FF0000"). A removed shape's place is tinted as removed,
+  at the box it lay in before (`removed`).
 
 ### Typing on a slide
 
@@ -1454,10 +1495,24 @@ once (`work.slides.edit`), whole or not at all.
   (`TYPING_SAVE_MS`) sends the box's words as the same `runs` edit with
   the box left open and his caret in it; the words written become what the
   box opened on, so a commit with nothing typed since sends nothing, and
-  Escape puts back only the words typed since the last send. While words in
-  the box are not in the file the deck's saved line says saving, never
+  Escape puts back only the words typed since the last send. An undo or a
+  redo in the box is a change too, sent after the same pause. While words
+  in the box are not in the file the deck's saved line says saving, never
   saved. Words over a shape that changed are not kept: the commit calls
   them a conflict, as before.
+- **A keep moves the box onto what it wrote** (`renumber`, edit/model.ts).
+  The host writes paragraph i of the edit as the shape's paragraph i, and
+  a run as one of the file's runs a piece between line breaks, each break
+  one (`op_runs`). Once a keep lands, every `from` the box, its undo and
+  its redo hold is moved onto those: a run by the run it came from and what
+  he set on it (two runs alike in both are written alike), else by the run
+  alone; a paragraph likewise; a `from` the edit did not write goes. So a
+  Return and more typing keeps "Budget" its level and bullet, and words
+  typed into the plain half of a run made half bold stay plain.
+- **One send of the box at a time.** A keep waits for one on its way; a
+  commit stops the box (`saving`) and waits for the keep on its way, then
+  sends over what it wrote, so a commit, or a close, never sends `from`s of
+  the file before that keep.
 - **Until the picture lands** the box stays (`landing`), drawn and taking
   no pointer, and goes once the stage paints the slide from a render other
   than the one it was opened over (`painted`), or at once where there is no
@@ -1510,10 +1565,9 @@ once (`work.slides.edit`), whole or not at all.
   the last one after, `conflict` with Reload as above; nothing without
   `hand`. The frame draws it nowhere beside a thread.
 - **Fonts.** A run is set in `fontStack(name)` (work-kit/fonts): the font
-  itself, then its free twin. The faces are registered by the documents
-  build's `ensureFonts` (work/formats/fonts.ts) on master; this branch's
-  base had no such file, so until it is called here the box draws with the
-  machine's fonts where the twin is not loaded.
+  itself, then its free twin. The box does not call `ensureFonts`
+  (work/formats/fonts.ts) yet, so it draws with the machine's fonts where
+  the twin is not loaded.
 
 What it does not know yet, from the outline: a paragraph's indents and
 spacing (the box hangs a list's mark a quarter inch in and sets lines at
@@ -1566,7 +1620,14 @@ key a clicker sends.
   that has its own picture is read from the host by its `rev`
   (`work.slides.build`) and opened as a one-page render while the show is on
   its slide or the next press reaches it (`useStepDocs`); one still being
-  read holds the picture shown, one not made yet is the slide's own page.
+  read, not made yet or that could not be made (`missing`) holds the
+  picture shown (nothing but the matte at a show's first step), and a
+  failed one puts one line in the presenter's view, "This build could not
+  be drawn here. The room sees the step before it.". His next press goes on
+  as ever, so the last step, which hides nothing, shows the slide whole.
+  When the show ends, a picture still opening is let go as it lands and no
+  more of it is read; a clip on its way stops asking for chunks and makes
+  no object URL.
   `motionBetween` decides how a picture comes in: a step of the same slide
   fades, either way; a press on to the next slide plays that slide's
   transition when it is a fade or a push (a push fades under reduced
@@ -1576,7 +1637,8 @@ key a clicker sends.
   during it ends it at once. The values are in docs/DESIGN.md "Motion
   values".
 - **Advance after.** `autoAfter` is the slide's time, counted again at each
-  of its steps, and null on a black screen, with the picker open or at the
+  of its steps from when that step's picture is up (a held step holds the
+  clock too), and null on a black screen, with the picker open or at the
   end. One timer in the show's root dispatches `{t: 'auto', at, step}`; the
   reducer moves on only if the show is still at that place, so both windows
   move together and a press meanwhile wins. A slide that does not advance on
@@ -1714,7 +1776,11 @@ through the app's own wire; the show runs in one window, whose state
   not the state's (checked by the host, and again by the window, which may
   have moved on by a key in between), one no window takes within 5 s, one
   for a show that ended. The answer says `applied` or `dropped: 'ended' |
-  'moved'` with the state as it is now.
+  'moved'` with the state as it is now. A press no window took in time
+  answers `ended` with the running show's state; the web clicker says it
+  in its failure line ("The show didn't take that press. Press again.",
+  `pressDropped`) until the show moves on. One dropped as the show moved
+  or ended says nothing: the state says it.
 - **Who may.** His own window and his keys that could name the deck's
   file (`fenceItem`); a key whose caps lack `operate` is refused a press
   ("Only his own devices drive a show."), and the wire's own gate refuses it

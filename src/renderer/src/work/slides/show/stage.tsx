@@ -50,14 +50,24 @@ export function useStepDocs(engine: PdfEngine, read: ((rev: string, offset: numb
   const [docs, setDocs] = useState<ReadonlyMap<string, Opened>>(new Map());
   const live = useRef(docs);
   live.current = docs;
+  // The show has ended: a picture that opens after it is let go at once, and nothing more of one is read.
+  const ended = useRef(false);
+  // First among the hook's effects, so a remount (StrictMode's) clears the mark before anything is read again.
+  useEffect(() => {
+    ended.current = false;
+    return () => {
+      ended.current = true;
+      for (const d of live.current.values()) if (typeof d === "object") d.destroy();
+    };
+  }, []);
   const wanted = near.map((p) => p.rev).join(",");
   useEffect(() => {
     if (!read) return;
     for (const pic of near) {
       if (live.current.has(pic.rev)) continue;
       setDocs((was) => new Map(was).set(pic.rev, "opening"));
-      engine.open({ size: pic.size, read: (offset, length) => read(pic.rev, offset, length) }).then(
-        (doc) => setDocs((was) => (was.get(pic.rev) === "opening" ? new Map(was).set(pic.rev, doc) : (doc.destroy(), was))),
+      engine.open({ size: pic.size, read: (offset, length) => (ended.current ? Promise.reject(new Error("The show has ended")) : read(pic.rev, offset, length)) }).then(
+        (doc) => (ended.current ? doc.destroy() : setDocs((was) => (was.get(pic.rev) === "opening" ? new Map(was).set(pic.rev, doc) : (doc.destroy(), was)))),
         () => setDocs((was) => new Map(was).set(pic.rev, "failed")),
       );
     }
@@ -77,12 +87,6 @@ export function useStepDocs(engine: PdfEngine, read: ((rev: string, offset: numb
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- `near` is read by its revisions
   }, [engine, read, wanted]);
-  useEffect(
-    () => () => {
-      for (const d of live.current.values()) if (typeof d === "object") d.destroy();
-    },
-    [],
-  );
   return docs;
 }
 
@@ -99,6 +103,16 @@ export function useMediaUrls(read: ((rev: string, offset: number, length: number
   const [urls, setUrls] = useState<ReadonlyMap<string, string | "loading" | "failed">>(new Map());
   const live = useRef(urls);
   live.current = urls;
+  // The show has ended: the rest of a clip on its way is not asked for, and no object URL is made of it.
+  const ended = useRef(false);
+  // First among the hook's effects, so a remount (StrictMode's) clears the mark before anything is read again.
+  useEffect(() => {
+    ended.current = false;
+    return () => {
+      ended.current = true;
+      for (const url of live.current.values()) if (url.startsWith("blob:")) URL.revokeObjectURL(url);
+    };
+  }, []);
   const wanted = near.map((f) => f.rev).join(",");
   useEffect(() => {
     if (!read) return;
@@ -107,21 +121,22 @@ export function useMediaUrls(read: ((rev: string, offset: number, length: number
       setUrls((was) => new Map(was).set(file.rev, "loading"));
       void (async () => {
         const parts: Uint8Array[] = [];
-        for (let at = 0; at < file.size; at += CHUNK) parts.push(await read(file.rev, at, Math.min(CHUNK, file.size - at)));
-        return URL.createObjectURL(new Blob(parts as BlobPart[], { type: file.type }));
+        for (let at = 0; at < file.size; at += CHUNK) {
+          if (ended.current) return null;
+          parts.push(await read(file.rev, at, Math.min(CHUNK, file.size - at)));
+        }
+        return ended.current ? null : URL.createObjectURL(new Blob(parts as BlobPart[], { type: file.type }));
       })().then(
-        (url) => setUrls((was) => new Map(was).set(file.rev, url)),
+        (url) => {
+          if (url === null) return;
+          if (ended.current) return URL.revokeObjectURL(url);
+          setUrls((was) => new Map(was).set(file.rev, url));
+        },
         () => setUrls((was) => new Map(was).set(file.rev, "failed")),
       );
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- `near` is read by its revisions
   }, [read, wanted]);
-  useEffect(
-    () => () => {
-      for (const url of live.current.values()) if (url.startsWith("blob:")) URL.revokeObjectURL(url);
-    },
-    [],
-  );
   return urls;
 }
 
