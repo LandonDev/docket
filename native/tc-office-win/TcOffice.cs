@@ -1502,6 +1502,8 @@ public static class Guest {
   [DllImport("kernel32.dll")] static extern bool FindClose(IntPtr h);
   [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)] static extern uint GetFileAttributesW(string path);
   [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)] static extern bool SetFileAttributesW(string path, uint attrs);
+  // The cloud filter's own reading of a listed entry: placeholder (0x1) and in sync with the cloud (0x8), from what the listing holds.
+  [DllImport("cldapi.dll")] static extern uint CfGetPlaceholderStateFromFindData(ref FindData data);
   [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
   static extern Microsoft.Win32.SafeHandles.SafeFileHandle CreateFileW(string path, uint access, uint share, IntPtr security, uint disposition, uint flags, IntPtr template);
 
@@ -1515,8 +1517,18 @@ public static class Guest {
     var isDir = (d.attrs & DIRECTORY) != 0;
     var link = (d.attrs & REPARSE) != 0 && (d.reserved0 == TAG_SYMLINK || d.reserved0 == TAG_MOUNT_POINT);
     var cloud = (d.attrs & (OFFLINE | RECALL_ON_OPEN | RECALL_ON_DATA_ACCESS)) != 0;
-    return Office.Obj("name", d.name, "path", dir.TrimEnd('\\') + "\\" + d.name, "dir", isDir, "size", isDir ? 0L : ((long)d.sizeHigh << 32) | d.sizeLow,
+    var entry = Office.Obj("name", d.name, "path", dir.TrimEnd('\\') + "\\" + d.name, "dir", isDir, "size", isDir ? 0L : ((long)d.sizeHigh << 32) | d.sizeLow,
       "modified", Ms(((long)d.writtenHigh << 32) | d.writtenLow), "local", isDir || !cloud, "link", link, "pinned", (d.attrs & PINNED) != 0);
+    if (!isDir) { var sync = Sync(ref d); if (sync != null) entry["sync"] = sync; }
+    return entry;
+  }
+
+  // Whether OneDrive has the file's bytes as they lie here: "in" once it marks the placeholder in sync (it has
+  // uploaded them), else "pending" (changed since, or new and not taken in yet). Null where Windows has no cloud filter.
+  static string Sync(ref FindData d) {
+    try { return (CfGetPlaceholderStateFromFindData(ref d) & 0x9) == 0x9 ? "in" : "pending"; }
+    catch (DllNotFoundException) { return null; }
+    catch (EntryPointNotFoundException) { return null; }
   }
 
   // One folder's entries as the disk lists them: nothing is opened, so nothing downloads.

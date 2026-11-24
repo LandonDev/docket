@@ -33,7 +33,7 @@ import { dockShape, type ActRow, type EntryAct } from "./model";
 import { saveWordFile, sendCopyBack, setWordAuto, useDock, useDockWidth } from "./store";
 import { askAutosave, saveAsWord, serviceOf, wordLine } from "./wordSave";
 import { NameField, useSideOver } from "./rowParts";
-import { copyBackDue, copyLine, isCopyBack, newestBack, type CopyAsk, type HeaderLine } from "./fileText";
+import { cloudLine, copyBackDue, copyLine, isCopyBack, newestBack, type CopyAsk, type HeaderLine } from "./fileText";
 import { SaveActions, SaveLine } from "./SaveLine";
 import { SidePane, SideSash, sideWidth } from "./SideFile";
 import { SaveAsWordDialog } from "./SaveAsWordDialog";
@@ -334,7 +334,7 @@ export function FileTabView({
     if (w.stopped) return [{ id: "keep", label: "Keep Both", run: () => save(true) }, { id: "replace", label: "Replace", run: () => save(false, true) }];
     return w.auto || !w.since ? [] : [{ id: "word", label: `Save to ${service} as Word`, run: saveWord }];
   };
-  const line: HeaderLine | null =
+  const said: HeaderLine | null =
     copy && word && (!kindLine || kindLine.state === "saved" || kindLine.state === "saving")
       ? { ...wordLine(word, serviceOf(tab)), ...(wordActions(word).length ? { actions: wordActions(word) } : {}) }
       : copy && back
@@ -344,6 +344,8 @@ export function FileTabView({
           ? kindLine
           : frameLine(copy, item, workspace.environmentId)
         : (kindLine ?? frameLine(null, item, workspace.environmentId));
+  // A save into a Teams or OneDrive library says what OneDrive has done with it, never Saved to Teams before it uploads.
+  const line = said && copy ? cloudLine(said, tab.cloud, serviceOf(tab), copy.host) : said;
   // Once a copy's kind has saved, the host sends the copy to its file (one send at a time there, the newest bytes).
   const saving = !!(copy && tab.back);
   const lastLine = useRef<SavedLine | null>(null);

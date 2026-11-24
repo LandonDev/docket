@@ -243,6 +243,8 @@ export const FilesRequestSchemas = [
    * window's or a key's): written over the file by `version` alone, through the same door as his own save there,
    * or with `copy` beside it under the keep-both name. `origin` is his window's press on the workspace's host.
    */
+  /** → FileUploaded: whether OneDrive here has uploaded a file of a library here as it lies; the workspace's host asks after its write (files/uploads.ts). */
+  request('work.files.uploaded', z.object({ workspaceId: Workspace, ref: CanvasSourceSchema })),
   request('work.files.writeBack', z.object({ workspaceId: Workspace, ref: CanvasSourceSchema, data: z.string().max(COPY_DATA_MAX), version: z.string().max(200), copy: z.boolean().optional(), /** Save as Word to… a folder there: `ref` names the new file, made under a free name, never over anything */ into: z.boolean().optional(), origin: FileOriginSchema })),
   /**
    * → SavedAsWord: Save as Word to…: the document `source` (a .tcdoc, a LifeOS document, a Google Doc) exported as
@@ -363,6 +365,8 @@ export interface FileTab {
   back?: CopyBack
   /** a Word file of another computer opened as the document made of it, kept in the workspace's folder: how that file stands */
   word?: WordBack
+  /** a file in a folder OneDrive syncs (a Teams or OneDrive library), once a save of ours wrote it: whether OneDrive has uploaded it */
+  cloud?: CloudBack
   /** a file tab with a second file at its side (Open to the Side): that file's item, key and name. It is in no tab of its own. */
   side?: { itemId: string; key: string; name: string }
 }
@@ -385,6 +389,20 @@ export interface CopyBack {
   held?: number
 }
 /**
+ * What OneDrive has done with a file our save wrote into a folder it syncs (docs/agents/work-files.md "Saved is not
+ * uploaded"): the computer holding the bytes is not the file in Teams.
+ *  - `uploading`: the computer holds them; OneDrive has not uploaded them yet. `at`: when they were written
+ *  - `uploaded`: OneDrive marked the file in sync with the cloud; `at`: when that was seen
+ *  - `late`: still not uploaded a while after the write; `why`: what is known of it (the VM asleep, OneDrive not running
+ *    or signed out; absent: OneDrive may be paused). `at`: when they were written
+ *  - `unknown`: the computer cannot say (a Mac, an older VM helper); `at`: when they were written
+ */
+export interface CloudBack {
+  is: 'uploading' | 'uploaded' | 'late' | 'unknown'
+  at: number
+  why?: 'asleep' | 'stopped' | 'signed-out'
+}
+/**
  * A Word file opened as a document (docs/agents/work-files.md "A Word file from another computer"): his edits are
  * kept in the document; the Word file changes only by his Save as Word. `at`: when that last went; `since`: the
  * document holds edits the Word file has not (always, before the first save).
@@ -404,6 +422,14 @@ export type WordSaved = { at: number } | { conflict: { changed: number } | { gon
 export interface SavedAsWord {
   name: string
   ref: CanvasSource
+}
+/**
+ * `uploaded`: OneDrive here has the file as it lies (true), not yet (false), or cannot say on this computer (null).
+ * `outside`: the file lies in no folder OneDrive syncs here; there is no upload to tell of.
+ */
+export interface FileUploaded {
+  uploaded: boolean | null
+  outside?: boolean
 }
 export type WrittenBack = { version: string; changed: number } | { conflict: { version: string; changed: number } | { gone: true } } | { copy: { path: string; name: string; version: string; changed: number } }
 
@@ -519,6 +545,8 @@ export const FILES_CAPS = {
   'work.files.wordAuto': 'operate',
   // Another host of his only: the workspace's host sending a copy back (its origin says his window's press).
   'work.files.writeBack': 'operate',
+  // Another host of his only: whether OneDrive here uploaded what that write left.
+  'work.files.uploaded': 'read',
   'work.files.saveAsWord': 'operate',
   'work.files.tabMove': 'operate',
   'work.files.tabSet': 'operate',

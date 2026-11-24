@@ -85,6 +85,8 @@ export interface KeeperDeps {
   pushPoints?(points: WinvmPoint[]): void
   log(line: string): void
   now?: () => number
+  /** a save of ours there that OneDrive has not uploaded yet (files/uploads.ts): idle, the machine still stays awake for it */
+  owed?(): boolean
   /** how long a wake waits for Windows; default 5 min, setup's first boot and restart 10 min */
   timeouts?: Partial<Timeouts>
 }
@@ -407,6 +409,8 @@ export class Keeper {
     const after = SLEEP_AFTER_MS[this.d.sleepAfter()]
     if (this.name !== 'awake' || after === null || this.viewers > 0 || this.driving) return
     if (this.now() - this.lastUse < after) return
+    // Asleep, OneDrive there uploads nothing: a write of ours still on its way to Teams holds the machine awake.
+    if (this.d.owed?.()) return
     this.d.log('winvm: idle; hibernating')
     this.sleep().catch((e) => this.d.log(`winvm: idle hibernate failed: ${words(e)}`))
   }

@@ -1,4 +1,4 @@
-import type { CopyBack } from "@shared/contract-work-files";
+import type { CloudBack, CopyBack } from "@shared/contract-work-files";
 import { extOf, FILE_TEXT_MAX, kindOfEntry, PROSE_EXTS } from "@shared/work/files";
 import type { SavedLine } from "../canvas/kind";
 
@@ -149,6 +149,33 @@ export function copyLine(kind: SavedLine | null, back: CopyBack, host: string, n
         if (ask.base !== undefined && back.writes <= ask.base) return { state: "saved", words: `On ${host}` };
       }
       return { state: "saved", words: back.at ? `Saved to ${host} ${whenWords(back.at, now)}` : `On ${host}` };
+  }
+}
+
+/** Why an upload is late, as the line says it, with what he can do about it. */
+const LATE_WHY: Record<NonNullable<CloudBack["why"]> | "paused", (computer: string) => string> = {
+  asleep: (computer) => `${computer[0]!.toUpperCase()}${computer.slice(1)} is asleep. It uploads when it wakes`,
+  stopped: (computer) => `OneDrive is not running on ${computer}. Start it there`,
+  "signed-out": (computer) => `OneDrive is signed out on ${computer}. Sign in there`,
+  paused: (computer) => `OneDrive on ${computer} may be paused. Resume it there`,
+};
+
+/**
+ * A saved line of a file in a Teams or OneDrive library, told by what OneDrive has done with our save (docs/DESIGN.md
+ * "The Files place"): the computer holding the bytes is not yet the file in Teams. `service` is Teams or OneDrive,
+ * `computer` the one that holds the file ("the Windows VM"). Any other line stands as it is.
+ */
+export function cloudLine(line: HeaderLine, cloud: CloudBack | undefined, service: string, computer: string, now = Date.now()): HeaderLine {
+  if (line.state !== "saved" || !cloud) return line;
+  switch (cloud.is) {
+    case "uploading":
+      return { ...line, state: "saving", words: `Saved, uploading to ${service}…` };
+    case "uploaded":
+      return { ...line, state: "saved", words: `In ${service} ${whenWords(cloud.at, now)}` };
+    case "late":
+      return { ...line, state: "offline", words: `Not uploaded to ${service} yet. ${LATE_WHY[cloud.why ?? "paused"](computer)}`, needs: true };
+    default:
+      return { ...line, state: "saved", words: `Saved on ${computer}; OneDrive uploads it` };
   }
 }
 

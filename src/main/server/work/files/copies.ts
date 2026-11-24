@@ -15,6 +15,8 @@ import { admitChange, doorPlace, filesState, vmWhere } from './handle'
 import { forgetVmList, libraryKey } from './places/teams'
 import { admitCaller, admitWrite, locate, type DoorPlace } from './policy'
 import { saveCopy, saveFile, versionWord, workDone } from './save'
+import { uploadWrote } from './uploads'
+import { keepBody, sameBody } from './body'
 import { makeBytes } from './verbs'
 import { guestChange, guestOp, vmReadVersioned, vmSave } from './vmVerbs'
 import { FileRefused, OpLost, versionOf } from './write'
@@ -146,6 +148,25 @@ export const unreachable = (err: unknown): boolean =>
 
 /** The copy's bytes sent to the file's own host, over it by version, or beside it under the keep-both name. */
 export async function deliver(ctx: WorkCtx, r: Pick<CopyRow, 'workspace_id' | 'host' | 'path' | 'vm' | 'name' | 'version'>, data: Buffer, keep: boolean): Promise<WrittenBack> {
+  let got = await deliverOnce(ctx, r, data, keep)
+  // SharePoint's own rewrite of an Office file in a Teams library, seconds after its upload, is no one's edit
+  // (body.ts): found changed with its body as we last read or wrote it, the file is written over by its new version.
+  if (!keep && 'conflict' in got && !('gone' in got.conflict)) {
+    const now = await freshBytes(ctx, r).catch(() => null)
+    if (now && sameBody(ctx, r, now.data)) got = await deliverOnce(ctx, { ...r, version: now.version }, data, keep)
+  }
+  // What that computer holds now is not yet the file in Teams: OneDrive's upload is followed from here (uploads.ts).
+  if ('version' in got) {
+    keepBody(ctx, r, data)
+    uploadWrote(ctx, r)
+  } else if ('copy' in got) {
+    keepBody(ctx, { ...r, path: got.copy.path }, data)
+    uploadWrote(ctx, { ...r, path: got.copy.path })
+  }
+  return got
+}
+
+async function deliverOnce(ctx: WorkCtx, r: Pick<CopyRow, 'workspace_id' | 'host' | 'path' | 'vm' | 'name' | 'version'>, data: Buffer, keep: boolean): Promise<WrittenBack> {
   const ref: CanvasSource = { at: 'file', host: r.host, path: r.path }
   if (r.vm) {
     // The Windows VM's file: through this host's own door for his edit of that library, then the guest's versioned write.
@@ -386,6 +407,7 @@ export async function copyReload(ctx: WorkCtx, by: Caller, p: { workspaceId: str
     await out.close()
   }
   recordCopy(ctx, { workspaceId: p.workspaceId, host: r.host, path: r.path, vm: !!r.vm, copy: r.copy, name: tab.name, kind: r.kind as CanvasKind, version: fresh.version, sha256: sha(fresh.data) })
+  keepBody(ctx, r, fresh.data)
   said(ctx, p.workspaceId)
 }
 

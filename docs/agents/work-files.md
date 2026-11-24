@@ -1934,8 +1934,8 @@ over a colleague's Word file but his own press.
   last written, `saved_rev`, or the one it was made at, `base_rev`), so Saved is said only of the revision on
   screen. The save is the same as his press, by version, never over a change made
   there. Such a change stops autosave for that file (`stopped`, said on the tab's `word`) until his Replace or Keep
-  Both. The header says "Saving to Teams…" while his newest words are not in the file, "Saved to Teams 9:12 PM" once
-  they are, and "This file changed in Teams 9:12 PM" with Keep Both and Replace when stopped. The first time a Word
+  Both. The header says "Saving to Teams…" while his newest words are not in the file, then what OneDrive did with them
+  ("Saved, uploading to Teams…", "In Teams 9:12 PM": "Saved is not uploaded" below), and "This file changed in Teams 9:12 PM" with Keep Both and Replace when stopped. The first time a Word
   file holds edits not in it, the window asks once: "Save Plan.docx to Teams as you work?", with what Word may change,
   Save automatically and Ask me each time (`askAutosave`, `work.files.wordAuto`); the file's menu changes it after.
   Only his document's live text is written: a thread's change to it waits as a suggestion, and a thread or a read
@@ -1948,6 +1948,49 @@ over a colleague's Word file but his own press.
   never saved, with its file's time unchanged, is deleted with its record (`wordsLeft`). Anything else is kept, in the
   workspace's folder, for the Word file's next open: one he typed into (his words live in the Work service before the
   `.tcdoc` file is written), and one the host never looked at.
+
+## Saved is not uploaded
+
+A save of ours into a folder OneDrive syncs (every place in the Windows VM, a Teams or OneDrive library on a Mac)
+puts the bytes on that computer; the file others open in Teams or on the web changes only once OneDrive uploads
+them, seconds later or, with OneDrive paused, signed out or its computer asleep, not at all. On 1.0.370 the header
+said "Saved to Teams" at the first and the owner read it as a lie. One piece now tells the true stage for decks,
+workbooks, text and Word alike (files/uploads.ts):
+
+- **Where it is followed.** Every write through `deliver` (copies.ts: a copy's send, a Word file's save, Keep Both's
+  file beside) records the file on the workspace's host (`uploadWrote`), looked at every 2 s until OneDrive has it
+  (`lookAll`), for at most 30 minutes. A tab whose save went before the host started is looked at again when its
+  tabs are read (`seedUpload`). The tab carries what is known as `cloud` (`CloudBack`): `uploading`, `uploaded`,
+  `late` with `why`, or `unknown`.
+- **The Windows VM.** The helper's file entries carry `sync`: the cloud filter's own reading of the listing
+  (`CfGetPlaceholderStateFromFindData`, placeholder and in-sync bits, 0x9), so no file is opened and nothing
+  downloads (TcOffice.cs `Guest.Sync`; `vmSynced`). OneDrive clears the in-sync bit when the file changes and sets it
+  once its upload is done: the green tick Explorer shows. A file OneDrive has not taken in at all is no placeholder
+  and reads `pending` too. A helper from before says nothing: `unknown`. A sleeping VM is never woken to be asked;
+  while a write of ours is still owed, the keeper does not put the VM to sleep (`KeeperDeps.owed`, `uploadsOwed`).
+- **A Mac.** `work.files.uploaded {ref}`, asked of the file's own host by the workspace's host 2 s after its write
+  (a Mac says the old version is uploaded for about 0.6 s after a write): the File Provider item's
+  `NSURLUbiquitousItemIsUploadedKey` and `IsUploadingKey`, read by JXA through osascript with no prompt
+  (`MAC_UPLOAD_STATE`, about 60 ms a read). A file in no library there answers `outside` and nothing is told; a
+  computer that cannot read them (a PC, an older build) answers null: "Saved on <computer>; OneDrive uploads it".
+- **Late.** Not uploaded a minute after the write: in the VM, asleep, OneDrive not running, or signed out (the
+  guest's stored status), else maybe paused, each with what he can do.
+- **The line** (renderer files/fileText.ts `cloudLine`): applied to any saved line of a copy that saves back or a
+  Word file's document, words in docs/DESIGN.md "The Files place".
+
+- **SharePoint's own rewrite.** An Office file OneDrive uploads into a Teams library comes back about half a second
+  later written again by SharePoint: its columns as `customXml/*`, `docProps/custom.xml` and `core.xml`, a `[trash]/`
+  of its own, and the relationships and `[Content_Types].xml` naming them; its document part byte for byte the same
+  (a .docx of 12,524 bytes came back as 21,001). By version or by its bytes' hash that read as a change made there:
+  on 1.0.370 a Word file's autosave stopped on its own upload ("This file changed in Teams"), and a deck's or a
+  workbook's copy in a Teams library would have stopped at its next send. Each file's body (every part but those,
+  files/body.ts `bodyOf`) is kept at open and after each write (`work_files_bodies`); a file found changed with the
+  same body is written over by its new version (`deliver`, Word's own check in `saveRow`). An edit by anyone touches
+  a part outside them and still stops the save. My OneDrive and a file that is no package are not rewritten.
+- **Measured** on 2026-11-24 with dummies: OneDrive in the VM marked a new or changed file in sync 1.3 to 1.8 s after
+  the write (eight writes: .docx and .txt, My OneDrive and Team RecWell); on his Mac 0.8 to 2.9 s. Late is a minute.
+  A file Word holds open in the VM is never uploaded (an earlier proof's dummy sat unsynced for hours): late, maybe
+  paused.
 
 ## What a pane owner changes for every kind
 

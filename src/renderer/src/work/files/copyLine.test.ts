@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { closeCopyTab } from "./copyClose";
-import { copyBackDue, copyLine, isCopyBack, newestBack } from "./fileText";
+import { cloudLine, copyBackDue, copyLine, isCopyBack, newestBack } from "./fileText";
+import { wordLine } from "./wordSave";
 
 /** A copy that saves back to its file on another computer: the header's words per state, when its tab sends, and its close. */
 
@@ -115,5 +116,35 @@ describe("closing a copy's tab", () => {
     await closeCopyTab({ name: "Roster.xlsx", back: { is: "refused", detail: "no" } }, "MacBook", refused);
     expect(refused.confirm).toHaveBeenCalledWith({ title: "Changes to Roster.xlsx have not reached MacBook.", action: "Discard", danger: true });
     expect(refused.close).toHaveBeenCalledWith(true);
+  });
+});
+
+describe("the line of a save into a Teams or OneDrive library: saved is not uploaded", () => {
+  const saved = copyLine({ state: "saved" }, { is: "ok", at: AT }, "the Windows VM", NOW);
+  const told = (cloud: Parameters<typeof cloudLine>[1]) => cloudLine(saved, cloud, "Teams", "the Windows VM", NOW);
+
+  it("says uploading until OneDrive has it, then in Teams with when OneDrive marked it", () => {
+    expect(saved.words).toBe("Saved to the Windows VM 1:52 PM");
+    expect(told({ is: "uploading", at: AT })).toMatchObject({ state: "saving", words: "Saved, uploading to Teams…" });
+    expect(told({ is: "uploaded", at: AT + 60_000 })).toMatchObject({ state: "saved", words: "In Teams 1:53 PM" });
+  });
+
+  it("says where the bytes are when the computer cannot tell", () => {
+    expect(told({ is: "unknown", at: AT })).toMatchObject({ state: "saved", words: "Saved on the Windows VM; OneDrive uploads it" });
+  });
+
+  it("says not uploaded yet past the wait, with what he can do", () => {
+    expect(told({ is: "late", at: AT, why: "asleep" })).toMatchObject({ state: "offline", needs: true, words: "Not uploaded to Teams yet. The Windows VM is asleep. It uploads when it wakes" });
+    expect(told({ is: "late", at: AT, why: "stopped" }).words).toBe("Not uploaded to Teams yet. OneDrive is not running on the Windows VM. Start it there");
+    expect(told({ is: "late", at: AT, why: "signed-out" }).words).toBe("Not uploaded to Teams yet. OneDrive is signed out on the Windows VM. Sign in there");
+    expect(told({ is: "late", at: AT }).words).toBe("Not uploaded to Teams yet. OneDrive on the Windows VM may be paused. Resume it there");
+  });
+
+  it("is the same rule for a Word file's line, and leaves a line that is not saved as it is", () => {
+    const word = wordLine({ since: false, at: AT, auto: true }, "OneDrive", NOW);
+    expect(cloudLine(word, { is: "uploading", at: AT }, "OneDrive", "the Windows VM", NOW).words).toBe("Saved, uploading to OneDrive…");
+    const saving = wordLine({ since: true, at: AT, auto: true }, "Teams", NOW);
+    expect(cloudLine(saving, { is: "uploaded", at: AT }, "Teams", "the Windows VM", NOW)).toBe(saving);
+    expect(cloudLine(saved, undefined, "Teams", "the Windows VM", NOW)).toBe(saved);
   });
 });

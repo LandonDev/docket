@@ -19,6 +19,8 @@ import { copyWaits } from './copyKept'
 import { saveAsWord } from './saveAsWord'
 import { isWordFile, keptDoc, recordWord, wordAuto, wordBacksOf, wordRow, wordSave } from './word'
 import { admitOwner, backsOf, copyAt, copyBack, copyClosing, copyKeep, copyRecord, copyReload, recordCopy, reopened, writeBack } from './copies'
+import { cloudOf, seedUpload, uploadedHere } from './uploads'
+import { keepBody } from './body'
 import { isGuestPath, vmFetch, vmList, vmStat, vmVerbs } from '../office/vm/files'
 import { chooseSeat, fileMakerFor } from './hooks'
 import { MarkStore, type Mark, type Marked } from './marks'
@@ -441,6 +443,8 @@ async function copySeat(ctx: WorkCtx, workspaceId: string, file: { host: string;
   const copy = await copyIn(ctx, filesPaneOf(workspaceId), { at: 'file', ...file }, signal)
   // A kind that edits the copy's own bytes saves back to the file: the record holds where it lies and what it held.
   const path = (copy.source as { path: string }).path
+  // the body as read, for SharePoint's own rewrite of it to be told from an edit (body.ts)
+  if ((back || word) && copy.version) keepBody(ctx, { workspace_id: workspaceId, host: file.host, path: file.path }, await readBytes(path))
   if (back && copy.version) recordCopy(ctx, { workspaceId, host: file.host, path: file.path, vm, copy: path, name, kind, version: copy.version, sha256: createHash('sha256').update(await readBytes(path)).digest('hex') })
   else if (waiting) ctx.db.prepare(`DELETE FROM work_files_copies WHERE id = ?`).run(waiting.id)
   // A Word file: the version it was read at, which Save as Word writes over, and the document made of it is kept.
@@ -565,6 +569,17 @@ async function openGoogle(ctx: WorkCtx, by: Caller, workspace: WorkspaceRow, at:
 }
 
 /** The tabs as a caller may see them: a remote key hears of none that stands on, or holds, a file of this host it could not name. */
+/**
+ * A tab of a file in a Teams or OneDrive library that a save of ours wrote: what OneDrive has done with it (uploads.ts).
+ * One whose save went before this host started is looked at again.
+ */
+function withCloud(ctx: WorkCtx, workspaceId: string, tab: FileTab): FileTab {
+  if (!tab.copyOf) return tab
+  seedUpload(ctx, workspaceId, tab, tab.back?.at ?? tab.word?.at)
+  const cloud = cloudOf(workspaceId, tab.copyOf.host, tab.copyOf.path)
+  return cloud ? { ...tab, cloud } : tab
+}
+
 function tabsFor(ctx: WorkCtx, by: Caller, workspaceId: string): FilesTabs {
   const state = filesState(ctx)
   const listed = state.tabs.list(workspaceId)
@@ -578,7 +593,8 @@ function tabsFor(ctx: WorkCtx, by: Caller, workspaceId: string): FilesTabs {
           rev: listed.rev,
           tabs: listed.tabs.map((t) => {
             const at = t.copyOf ? `${t.copyOf.host}\0${t.copyOf.path}` : ''
-            return backs.has(at) ? { ...t, back: backs.get(at)! } : words.has(at) ? { ...t, word: words.get(at)! } : t
+            const tab = backs.has(at) ? { ...t, back: backs.get(at)! } : words.has(at) ? { ...t, word: words.get(at)! } : t
+            return withCloud(ctx, workspaceId, tab)
           })
         }
       : listed
@@ -1102,6 +1118,8 @@ export async function filesHandle(req: ClientRequest, ctx: WorkCtx, by: Caller, 
       return handled(tabsFor(ctx, by, p.workspaceId))
     case 'work.files.writeBack':
       return handled(await writeBack(ctx, by, p as never, m))
+    case 'work.files.uploaded':
+      return handled(await uploadedHere(ctx, by, p as never, m))
     case 'work.files.saveAsWord':
       return handled(await saveAsWord(ctx, by, p as never, m))
     case 'work.files.star': {

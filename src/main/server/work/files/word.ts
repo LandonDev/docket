@@ -9,6 +9,7 @@ import { blankOf } from './make'
 import { workspaceHere } from './policy'
 import { admitOwner, deliver, freshBytes, NOT_SAVING } from './copies'
 import { filesState } from './handle'
+import { sameBody } from './body'
 
 /**
  * A Word file from another computer (docs/agents/work-files.md "A Word file from another computer"; the owner's ruling
@@ -297,7 +298,8 @@ async function saveRow(ctx: WorkCtx, r: WordRow, p: { workspaceId: string; keep?
       if (/not there any more|gone|not found|No file/i.test(err instanceof Error ? err.message : String(err))) return { conflict: { gone: true } }
       throw err
     }
-    const same = now.version === r.version || (knownSha(r) !== null && shaOf(now.data) === knownSha(r))
+    // the same version, the same bytes, or only SharePoint's own rewrite of them after an upload (body.ts)
+    const same = now.version === r.version || (knownSha(r) !== null && shaOf(now.data) === knownSha(r)) || sameBody(ctx, r, now.data)
     if (!same && !p.replace) {
       // An autosave that meets a change made there stops for this file until his press: never a silent overwrite.
       if (p.auto) {

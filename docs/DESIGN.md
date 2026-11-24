@@ -1788,7 +1788,13 @@ Around the canvas:
   Save to Teams as Word, asked in the house confirm ("Replace Plan.docx in
   Teams?", what Word formatting may change, Replace and Keep Both; over a
   file that changed there, one line says when, Keep Both holds the focus and
-  Replace stays his press; over one gone, Keep Both alone). Closing such a tab sends what the kind still holds (a deck's
+  Replace stays his press; over one gone, Keep Both alone). A save into a Teams or OneDrive library never says it is
+  in Teams before OneDrive has uploaded it: "Saved, uploading to Teams…" while that computer holds the bytes and OneDrive
+  has not, "In Teams 1:52 PM" once it has (OneDrive in place of Teams for his own), "Saved on MacBook; OneDrive uploads
+  it" where that computer cannot say, all muted; past a minute, in the foreground, "Not uploaded to Teams yet." with
+  what he can do ("The Windows VM is asleep. It uploads when it wakes", "OneDrive is not running on the Windows VM.
+  Start it there", "OneDrive is signed out on the Windows VM. Sign in there", "OneDrive on the Windows VM may be
+  paused. Resume it there"). Closing such a tab sends what the kind still holds (a deck's
   open box) first; closing it while changes have not
   reached the file asks once in the house confirm: "Changes to Roster.xlsx
   have not reached MacBook.", Cancel, Discard and Keep trying (Keep Both in

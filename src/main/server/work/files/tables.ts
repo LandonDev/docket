@@ -67,6 +67,10 @@ export function ensureFilesTables(db: DatabaseSync): void {
   const copyCols = new Set((db.prepare(`SELECT name FROM pragma_table_info('work_files_copies')`).all() as { name: string }[]).map((c) => c.name))
   if (!copyCols.has('writes')) db.exec(`ALTER TABLE work_files_copies ADD COLUMN writes INTEGER NOT NULL DEFAULT 0`)
   if (!copyCols.has('held')) db.exec(`ALTER TABLE work_files_copies ADD COLUMN held INTEGER NOT NULL DEFAULT 0`)
+  // The body of a file of another computer as we last read or wrote it (files/body.ts): what SharePoint's own rewrite
+  // of an Office file in a Teams library leaves as it was.
+  db.exec(`CREATE TABLE IF NOT EXISTS work_files_bodies (
+    workspace_id TEXT NOT NULL, host TEXT NOT NULL, path TEXT NOT NULL, body TEXT NOT NULL, PRIMARY KEY (workspace_id, host, path))`)
   db.exec(`CREATE TABLE IF NOT EXISTS work_files_word (
     workspace_id TEXT NOT NULL, host TEXT NOT NULL, path TEXT NOT NULL, vm INTEGER NOT NULL DEFAULT 0, name TEXT NOT NULL,
     version TEXT NOT NULL, doc TEXT, doc_at INTEGER, saved_at INTEGER, saved_doc_at INTEGER, at INTEGER NOT NULL,
@@ -83,4 +87,4 @@ export function ensureFilesTables(db: DatabaseSync): void {
   for (const column of ['saved_rev', 'base_rev']) if (!have.has(column)) db.exec(`ALTER TABLE work_files_word ADD COLUMN ${column} TEXT`)
 }
 
-export const FILES_TABLES = ['work_files_tabs', 'work_files_revs', 'work_files_marks', 'work_files_trash', 'work_files_ops', 'work_files_names', 'work_files_kept', 'work_files_copies', 'work_files_word'] as const
+export const FILES_TABLES = ['work_files_tabs', 'work_files_revs', 'work_files_marks', 'work_files_trash', 'work_files_ops', 'work_files_names', 'work_files_kept', 'work_files_copies', 'work_files_bodies', 'work_files_word'] as const

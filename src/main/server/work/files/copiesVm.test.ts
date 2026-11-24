@@ -1,5 +1,6 @@
 import { readFileSync, writeFileSync } from 'node:fs'
 import { dirname } from 'node:path'
+import { strToU8, zipSync } from 'fflate'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import type { CopyBack, FilesOpened, FilesTabs } from '@shared/contract-work-files'
 import { canvasSourcePath } from '@shared/work'
@@ -10,6 +11,7 @@ import { setVmState } from '../office/vm/office'
 import { copiesInFlight, copyRecord, copySaved } from './copies'
 import { closeFilesState, filesHandle } from './handle'
 import { forgetVmLists } from './places/teams'
+import { forgetUploads, lookAll, uploadsOwed, uploadTiming } from './uploads'
 import { setThreadsMayWrite, sharedOf } from './policy'
 import { onFileSaved, saveFile, versionWord } from './save'
 import { HOST, makeRig, thread, window, WS, type Rig } from './testkit'
@@ -31,6 +33,9 @@ describe.skipIf(process.platform === 'win32')('a copy of a file in the Windows V
   let disk: Map<string, { path: string; data: string; modified: number }>
   let writes: Record<string, unknown>[]
   let offSaved: () => void
+  /** what the helper says of OneDrive's upload of the file (absent: a helper built before it could say) */
+  let sync: 'in' | 'pending' | undefined
+  let stats: number
 
   const versionIn = (path: string): string => {
     const f = disk.get(path.toLowerCase())!
@@ -40,7 +45,8 @@ describe.skipIf(process.platform === 'win32')('a copy of a file in the Windows V
     const f = disk.get(String(args.path ?? '').toLowerCase())
     switch (verb) {
       case 'files.stat':
-        return { name: f!.path.slice(f!.path.lastIndexOf('\\') + 1), path: f!.path, dir: false, size: Buffer.from(f!.data, 'base64').length, modified: f!.modified, local: true, link: false }
+        stats++
+        return { name: f!.path.slice(f!.path.lastIndexOf('\\') + 1), path: f!.path, dir: false, size: Buffer.from(f!.data, 'base64').length, modified: f!.modified, local: true, link: false, ...(sync ? { sync } : {}) }
       case 'files.read':
         return { data: f!.data, size: Buffer.from(f!.data, 'base64').length, eof: true, ...(args.version ? { version: versionIn(f!.path), changed: f!.modified } : {}) }
       case 'files.list':
@@ -66,6 +72,9 @@ describe.skipIf(process.platform === 'win32')('a copy of a file in the Windows V
     rig = makeRig()
     disk = new Map([[ROSTER.toLowerCase(), { path: ROSTER, data: Buffer.from('vm workbook').toString('base64'), modified: 1000 }]])
     writes = []
+    sync = 'pending'
+    stats = 0
+    forgetUploads()
     forgetVmLists()
     setVmState(() => ({ state: 'awake', cannot: null }))
     rig.db.prepare(`INSERT OR REPLACE INTO work_office_files (key, value) VALUES ('vm:status', ?)`).run(
@@ -81,6 +90,7 @@ describe.skipIf(process.platform === 'win32')('a copy of a file in the Windows V
     offSaved = onFileSaved((path) => copySaved(rig.ctx, path))
   })
   afterEach(() => {
+    forgetUploads()
     offSaved()
     setVmCall(null)
     setThreadsMayWrite(false)
@@ -101,6 +111,10 @@ describe.skipIf(process.platform === 'win32')('a copy of a file in the Windows V
   }
   const save = async (copy: string, text: string): Promise<void> => {
     await saveFile({ roots: [dirname(copy)] }, `file::${copy}`, copy, Buffer.from(text), versionWord(await versionOf(copy)))
+    await settled()
+  }
+  const saveBytes = async (copy: string, data: string): Promise<void> => {
+    await saveFile({ roots: [dirname(copy)] }, `file::${copy}`, copy, Buffer.from(data, 'base64'), versionWord(await versionOf(copy)))
     await settled()
   }
   const back = async (tabId: string): Promise<CopyBack | undefined> => (await call<FilesTabs>('work.files.tabs', {})).tabs.find((t) => t.id === tabId)?.back
@@ -152,4 +166,101 @@ describe.skipIf(process.platform === 'win32')('a copy of a file in the Windows V
     expect(await call<CopyBack>('work.files.copyBack', { tabId })).toMatchObject({ is: 'away', held: 0 })
     await expect(call('work.files.copyBack', { tabId }, thread('t1'))).rejects.toThrow('files_* tools')
   })
+
+  describe('saved is not uploaded: what OneDrive did with the save', () => {
+    const cloud = async (tabId: string) => (await call<FilesTabs>('work.files.tabs', {})).tabs.find((t) => t.id === tabId)?.cloud
+    const status = (onedrive: { running: boolean; account: string | null }): void =>
+      void rig.db.prepare(`INSERT OR REPLACE INTO work_office_files (key, value) VALUES ('vm:status', ?)`).run(
+        JSON.stringify({ at: Date.now(), status: { onedrive: { installed: true, ...onedrive }, mounts: [{ path: TOP, type: 'team', web: null }], office: { installed: true, version: null, apps: [], account: null, licensed: null }, verbs: VERBS }, tops: { [TOP]: ['Events', 'General'] } })
+      )
+
+    it('is uploading once written, and uploaded when OneDrive marks the file in sync; the VM is held awake only meanwhile', async () => {
+      const { copy, tabId } = await open()
+      expect(await cloud(tabId)).toBeUndefined()
+      await save(copy, 'edited here')
+      expect(await cloud(tabId)).toMatchObject({ is: 'uploading' })
+      expect(uploadsOwed()).toBe(true)
+      sync = 'in'
+      await lookAll(rig.ctx)
+      expect(await cloud(tabId)).toMatchObject({ is: 'uploaded' })
+      expect(uploadsOwed()).toBe(false)
+      // the next save is on its way again
+      sync = 'pending'
+      await save(copy, 'edited again')
+      expect(await cloud(tabId)).toMatchObject({ is: 'uploading' })
+    })
+
+    it('is late past the wait, with what is known: OneDrive stopped, signed out, or else maybe paused', async () => {
+      const { copy, tabId } = await open()
+      await save(copy, 'edited here')
+      const later = (): number => Date.now() + uploadTiming.late
+      await lookAll(rig.ctx, later)
+      expect(await cloud(tabId)).toMatchObject({ is: 'late' })
+      expect((await cloud(tabId))?.why).toBeUndefined()
+      status({ running: false, account: 'a@dummy.edu' })
+      await lookAll(rig.ctx, later)
+      expect(await cloud(tabId)).toMatchObject({ is: 'late', why: 'stopped' })
+      status({ running: true, account: null })
+      await lookAll(rig.ctx, later)
+      expect(await cloud(tabId)).toMatchObject({ is: 'late', why: 'signed-out' })
+      // and looked at no more once it gives up: the VM may sleep
+      expect(uploadsOwed(Date.now() + uploadTiming.give)).toBe(false)
+    })
+
+    it('never wakes a sleeping VM to ask: late as asleep past the wait', async () => {
+      const { copy, tabId } = await open()
+      await save(copy, 'edited here')
+      setVmState(() => ({ state: 'asleep', cannot: null }))
+      stats = 0
+      await lookAll(rig.ctx)
+      expect(await cloud(tabId)).toMatchObject({ is: 'uploading' })
+      await lookAll(rig.ctx, () => Date.now() + uploadTiming.late)
+      expect(await cloud(tabId)).toMatchObject({ is: 'late', why: 'asleep' })
+      expect(stats).toBe(0)
+    })
+
+    it('is unknown from a helper that cannot say', async () => {
+      const { copy, tabId } = await open()
+      sync = undefined
+      await save(copy, 'edited here')
+      await lookAll(rig.ctx)
+      expect(await cloud(tabId)).toMatchObject({ is: 'unknown' })
+    })
+  })
+
+
+  describe("SharePoint's own rewrite after an upload (body.ts)", () => {
+    const BOOK = (cell: string, extra: Record<string, string> = {}): string =>
+      Buffer.from(zipSync({ 'xl/worksheets/sheet1.xml': strToU8(`<c>${cell}</c>`), 'docProps/core.xml': strToU8('<p/>'), ...Object.fromEntries(Object.entries(extra).map(([k, v]) => [k, strToU8(v)])) })).toString('base64')
+    const rewrite = (data: string, modified: number): void => {
+      const f = disk.get(ROSTER.toLowerCase())!
+      f.data = data
+      f.modified = modified
+    }
+
+    it('is no change made there: the next save goes over it', async () => {
+      disk.get(ROSTER.toLowerCase())!.data = BOOK('1')
+      const { copy, tabId } = await open()
+      await saveBytes(copy, BOOK('2'))
+      expect((await back(tabId))?.is).toBe('ok')
+      // seconds later SharePoint writes its columns into the file, and OneDrive brings it down
+      const sent = disk.get(ROSTER.toLowerCase())!.data
+      rewrite(BOOK('2', { 'customXml/item1.xml': '<ct/>', 'docProps/custom.xml': '<c/>' }), 2500)
+      expect(sent).not.toBe(disk.get(ROSTER.toLowerCase())!.data)
+      await saveBytes(copy, BOOK('3'))
+      expect((await back(tabId))?.is).toBe('ok')
+      expect(disk.get(ROSTER.toLowerCase())!.data).toBe(BOOK('3'))
+    })
+
+    it('is still a change made there when anyone edited its body: nothing is written over it', async () => {
+      disk.get(ROSTER.toLowerCase())!.data = BOOK('1')
+      const { copy, tabId } = await open()
+      await saveBytes(copy, BOOK('2'))
+      rewrite(BOOK('someone else', { 'customXml/item1.xml': '<ct/>' }), 2500)
+      await saveBytes(copy, BOOK('3'))
+      expect((await back(tabId))?.is).toBe('changed')
+      expect(disk.get(ROSTER.toLowerCase())!.data).toBe(BOOK('someone else', { 'customXml/item1.xml': '<ct/>' }))
+    })
+  })
+
 })

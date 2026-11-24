@@ -1,5 +1,6 @@
 import { existsSync, readdirSync, readFileSync, realpathSync, statSync, utimesSync, writeFileSync } from 'node:fs'
 import { basename, dirname, join } from 'node:path'
+import { strToU8, zipSync } from 'fflate'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ClientRequestSchema, type ClientRequest } from '@shared/contract'
 import type { CopyBack, FilesOpened, FilesTabs } from '@shared/contract-work-files'
@@ -16,9 +17,11 @@ import { fileWritten, onFileSaved, saveFile, versionWord, workingOn } from './sa
 import { approver, HOST, makeRig, phone, reader, thread, window, WS, type Rig } from './testkit'
 import { versionOf } from './write'
 import { adoptWordCopies, autosaveWords, wordFollowed, wordImportPlace, wordRow, wordsLeft } from './word'
+import { forgetUploads, lookAll, setUploadReader } from './uploads'
 
 // Save as Word writes the Work service's Word export; here a stand-in's bytes.
-vi.mock('../formats/exporter', () => ({ exportDoc: async () => ({ name: 'Plan.docx', data: Buffer.from('word export').toString('base64'), warnings: [] }) }))
+const exported = vi.hoisted(() => ({ data: null as Buffer | null }))
+vi.mock('../formats/exporter', () => ({ exportDoc: async () => ({ name: 'Plan.docx', data: (exported.data ?? Buffer.from('word export')).toString('base64'), warnings: [] }) }))
 
 /**
  * A copy saves back (copies.ts): two hosts, the workspace's (`env_box`) and his Mac (`env_mac`) with a dummy Teams
@@ -75,6 +78,8 @@ beforeEach(() => {
   offSaved = onFileSaved((path) => copySaved(box.ctx, path))
 })
 afterEach(() => {
+  forgetUploads()
+  setUploadReader(null)
   offSaved()
   setThreadsMayWrite(false)
   copyTiming.grace = 3000
@@ -754,6 +759,29 @@ describe('a Word file of another computer', () => {
     expect(readFileSync(join(dirname(path), 'Plan (mine).docx'), 'utf8')).toBe('word export')
   })
 
+  it("is never called changed when SharePoint only wrote its columns into it after the upload (body.ts)", async () => {
+    const part = (words: string, extra: Record<string, string> = {}): Buffer =>
+      Buffer.from(zipSync({ 'word/document.xml': strToU8(`<w:t>${words}</w:t>`), 'docProps/core.xml': strToU8('<p/>'), ...Object.fromEntries(Object.entries(extra).map(([k, v]) => [k, strToU8(v)])) }))
+    try {
+      exported.data = part('Agenda doors')
+      const { tabId, path } = await imported('Plan.docx', 'word bytes')
+      expect((await call<{ at?: number }>('work.files.wordSave', { tabId })).at).toBeGreaterThan(0)
+      // half a second after OneDrive's upload, the file comes back with SharePoint's parts in it
+      writeFileSync(path, part('Agenda doors', { 'customXml/item1.xml': '<ct/>', 'docProps/custom.xml': '<c/>' }))
+      utimesSync(path, new Date(), new Date(Date.now() + 2000))
+      exported.data = part('Agenda doors kickoff')
+      expect((await call<{ at?: number }>('work.files.wordSave', { tabId })).at).toBeGreaterThan(0)
+      expect(readFileSync(path).equals(part('Agenda doors kickoff'))).toBe(true)
+      // a colleague's words in it are a change made there, SharePoint's parts or not
+      writeFileSync(path, part('a colleague saved', { 'customXml/item1.xml': '<ct/>' }))
+      utimesSync(path, new Date(), new Date(Date.now() + 4000))
+      exported.data = part('Agenda doors kickoff late')
+      expect((await call<{ conflict?: unknown }>('work.files.wordSave', { tabId })).conflict).toBeTruthy()
+    } finally {
+      exported.data = null
+    }
+  })
+
   it('is never called changed when only its version moved (a sync touched it, its bytes the same)', async () => {
     const { tabId, path } = await imported('Plan.docx', 'word bytes')
     utimesSync(path, new Date(), new Date(Date.now() + 60_000))
@@ -1010,3 +1038,42 @@ describe('Save as Word to a folder he picks', () => {
     expect((await call<{ name: string }>('work.files.saveAsWord', { source: doc(), at: here, op: op() }, approver)).name).toBe('Plan 2.docx')
   })
 })
+
+describe("saved is not uploaded: a Mac's OneDrive says when it has the file", () => {
+  const cloudOfTab = async (tabId: string) => (await call<FilesTabs>('work.files.tabs', {})).tabs.find((t) => t.id === tabId)?.cloud
+
+  it('says nothing until the Mac answers, then uploading, then uploaded once its OneDrive item is, as the Mac reads it', async () => {
+    let uploaded: boolean | null = false
+    const asked: string[] = []
+    setUploadReader(async (path) => (asked.push(path), uploaded))
+    const { path, copy, tabId } = await openFar('Roster.xlsx', 'workbook one')
+    await editorSaves(copy, 'workbook two')
+    await settled()
+    // the Mac alone knows whether the file lies in a folder OneDrive syncs
+    expect(await cloudOfTab(tabId)).toBeUndefined()
+    await lookAll(box.ctx)
+    expect(asked).toEqual([path])
+    expect(await cloudOfTab(tabId)).toMatchObject({ is: 'uploading' })
+    uploaded = true
+    await lookAll(box.ctx)
+    expect(await cloudOfTab(tabId)).toMatchObject({ is: 'uploaded' })
+  })
+
+  it('is unknown where the Mac cannot read it, and asked no more', async () => {
+    let asks = 0
+    setUploadReader(async () => (asks++, null))
+    const { copy, tabId } = await openFar('Roster.xlsx', 'workbook one')
+    await editorSaves(copy, 'workbook two')
+    await settled()
+    await lookAll(box.ctx)
+    await lookAll(box.ctx)
+    expect(await cloudOfTab(tabId)).toMatchObject({ is: 'unknown' })
+    expect(asks).toBe(1)
+  })
+
+  it("is the workspace's host's question alone", async () => {
+    const out = filesHandle({ id: '1', method: 'work.files.uploaded', params: { workspaceId: WS, ref: { at: 'file', host: MAC, path: join(mac.team, 'General', 'x.xlsx') } } } as never, mac.ctx, window)
+    await expect(out).rejects.toThrow("Only the workspace's own host asks this.")
+  })
+})
+

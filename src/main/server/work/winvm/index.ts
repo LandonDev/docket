@@ -19,6 +19,7 @@ import { ensurePuts } from './files'
 import { HELPER_PORT, HelperDoor } from './helperDoor'
 import { rigConfig, rigPaths } from './machine/config'
 import { TC_OFFICE_CS } from '../office/com/source'
+import { uploadsOwed } from '../files/uploads'
 
 /**
  * The Windows VM pillar's server module (docs/agents/work-winvm.md): the
@@ -132,7 +133,8 @@ function keeperOf(ctx: WorkCtx): Keeper {
       ctx.push({ push: 'work.winvm', state })
       told(state)
     },
-    pushPoints: (points) => ctx.push({ push: 'work.winvm.points', points })
+    pushPoints: (points) => ctx.push({ push: 'work.winvm.points', points }),
+    owed: () => uploadsOwed()
   })
   return keeper
 }

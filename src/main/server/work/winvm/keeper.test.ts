@@ -126,7 +126,7 @@ class FakeGuest implements VmGuest {
   }
 }
 
-function make(o: { disk?: boolean; up?: boolean; exe?: string | null; token?: string | null } = {}) {
+function make(o: { disk?: boolean; up?: boolean; exe?: string | null; token?: string | null; owed?: () => boolean } = {}) {
   let token: string | null = o.token === undefined ? 'T'.repeat(64) : o.token
   const machine = new FakeMachine()
   machine.disk = o.disk ?? true
@@ -152,7 +152,8 @@ function make(o: { disk?: boolean; up?: boolean; exe?: string | null; token?: st
     pushPoints: (p) => pointPushes.push(p),
     log: () => {},
     now: () => now,
-    timeouts: { knock: 0, knockEvery: 1 }
+    timeouts: { knock: 0, knockEvery: 1 },
+    ...(o.owed ? { owed: o.owed } : {})
   }
   const keeper = new Keeper(deps)
   return {
@@ -301,6 +302,20 @@ describe('the idle hibernate', () => {
     await r.keeper.sleep() // queued behind the idle one: resolves once it is done
     expect(r.guest.log.filter((l) => l === 'hibernate')).toHaveLength(1)
     expect(r.keeper.state().state).toBe('asleep')
+  })
+
+  it('stays awake while a save of ours is still owed to the cloud, and sleeps once it is not (files/uploads.ts)', async () => {
+    let owed = true
+    const r = make({ owed: () => owed })
+    await r.keeper.wake()
+    r.advance(31 * 60_000)
+    r.keeper.tick()
+    for (let i = 0; i < 20; i++) await new Promise((done) => setTimeout(done, 0))
+    expect(r.guest.log).not.toContain('hibernate')
+    owed = false
+    r.keeper.tick()
+    await r.keeper.sleep()
+    expect(r.guest.log.filter((l) => l === 'hibernate')).toHaveLength(1)
   })
 
   it('counts its idle time from when it came awake, not from the keeper\'s start hours before, a failed setup too (1.0.356 hibernated a minute after setup)', async () => {

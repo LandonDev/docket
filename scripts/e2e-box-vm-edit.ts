@@ -196,11 +196,22 @@ const saveLine = (): Promise<string> => ev(`(() => { const p = [...document.quer
 const toasts = (): Promise<string[]> => ev(`[...document.querySelectorAll('[data-sonner-toast], li[role="status"], [role="status"]')].map((t) => t.textContent.trim()).filter(Boolean)`)
 const tabsOfWs = (): { id: string; name: string; kind: string }[] => box<{ tabs: { id: string; name: string; kind: string }[] }>('work.files.tabs', { workspaceId: WS }).tabs
 const before = new Set(tabsOfWs().map((t) => t.id))
-async function closeTabByX(name: string): Promise<void> {
-  await ev(`document.querySelector('[data-files-tab-close][aria-label=${JSON.stringify(`Close ${name}`)}]')?.click()`)
+/** The tab's ×, by its own name: a Word file's tab is named for its document, with no .docx. Answers whether one was pressed. */
+async function closeTabByX(name: string): Promise<boolean> {
+  const labels = [`Close ${name}`, `Close ${name.replace(/\.docx$/, '')}`]
+  return ev<boolean>(`(() => { const b = ${JSON.stringify(labels)}.map((l) => document.querySelector('[data-files-tab-close][aria-label="' + l + '"]')).find(Boolean); b?.click(); return !!b })()`)
 }
+/** Back to My OneDrive's list: a closed tab leaves the view on a neighbour. */
+async function toOneDrive(): Promise<void> {
+  await press('button, a, [role="button"], [role="link"], div', 'Home')
+  await sleep(1500)
+  await press('button, a, [role="button"], [role="link"], div', 'My OneDrive')
+  await sleep(1500)
+}
+/** Whether the file shown is this run's own: nothing is typed into any other. */
+const oursShown = (): Promise<boolean> => ev<boolean>(`[...document.querySelectorAll('[data-files-file]')].some((e) => e.getClientRects().length && e.textContent.includes(${JSON.stringify(STAMP)}))`)
 /** New → kind in the shown folder, named in place: answers whether the file is in the VM under its name. */
-async function make(kind: 'Deck' | 'Sheet' | 'Document', stem: string, ext: string): Promise<boolean> {
+async function make(kind: 'Deck' | 'Sheet' | 'Document' | 'Folder', stem: string, ext: string): Promise<boolean> {
   if (!(await press('button', 'New'))) return false
   if (!(await press('[role="menuitem"]', kind))) return false
   await until('the name field', 60_000, () => ev<boolean>(`document.activeElement?.tagName === 'INPUT'`))
@@ -259,13 +270,53 @@ async function openForward(): Promise<boolean> {
   forward = spawn('ssh', ['-i', '/srv/agents/win-vm/keys/id_ed25519', '-p', '22230', '-o', 'IdentitiesOnly=yes', '-o', 'BatchMode=yes', '-o', 'LogLevel=ERROR', '-o', 'UserKnownHostsFile=/srv/agents/win-vm/standing/known_hosts', '-o', 'ExitOnForwardFailure=yes', '-N', '-L', `${SOCKET}:127.0.0.1:47801`, 'tcadmin@127.0.0.1'], { stdio: 'ignore' })
   return until('the forward', 30_000, () => spawnSync('test', ['-S', SOCKET]).status === 0)
 }
+/** A saved line, as 1.0.370 says it or as a build that tells the upload says it ("Saved, uploading…", "In OneDrive 4:10 AM"). */
+const savedLine = (line: string): boolean => /Saved to OneDrive|In OneDrive \d|Saved, uploading to OneDrive/.test(line)
+
+/**
+ * OneDrive's own record of the file in the VM, as the sync client last heard it from the server: its eTag
+ * ("{id},N", N the server's version) and the server's size (SyncEngineDatabase.db, copied out as the admin; the
+ * dummy's row alone is read). Null where it is not there yet.
+ */
+function webSide(name: string): { etag: string; version: number; size: number } | null {
+  const db = join(scratch, `se-${Date.now()}.db`)
+  const got = spawnSync('scp', ['-q', '-i', '/srv/agents/win-vm/keys/id_ed25519', '-P', '22230', '-o', 'IdentitiesOnly=yes', '-o', 'BatchMode=yes', '-o', 'UserKnownHostsFile=/srv/agents/win-vm/standing/known_hosts', 'tcadmin@127.0.0.1:C:/Users/tcuser/AppData/Local/Microsoft/OneDrive/settings/Business1/SyncEngineDatabase.db', db], { timeout: 60_000 })
+  if (got.status !== 0) return null
+  const row = spawnSync('sqlite3', ['-separator', '|', db, `SELECT eTag, serverSize FROM od_ClientFile_Records WHERE fileName = '${name.replaceAll("'", "''")}'`], { encoding: 'utf8' }).stdout.trim()
+  rmSync(db, { force: true })
+  const [etag, size] = row.split('|')
+  return etag ? { etag, version: Number(/,(\d+)"?$/.exec(etag)?.[1] ?? 0), size: Number(size) } : null
+}
+
+/**
+ * Saved is not uploaded (work-files.md): on a build that tells it, the header goes from "Saved, uploading to OneDrive…" to
+ * "In OneDrive <time>" once OneDrive in the VM has the file, the tab's `cloud` says uploaded, and the web side holds the
+ * bytes written: the server's version moved and its size is the file's.
+ */
+async function uploadCase(name: string): Promise<void> {
+  const tab = (): { cloud?: { is: string } } | undefined => box<{ tabs: { key?: string; cloud?: { is: string } }[] }>('work.files.tabs', { workspaceId: WS }).tabs.find((t) => t.key?.endsWith(name.replace(/\.docx$/, '')) || t.key?.endsWith(name))
+  if (!tab()?.cloud && !(await saveLine()).includes('uploading') && !/In OneDrive \d/.test(await saveLine())) return log('this build does not tell the upload: skipped')
+  const before = webSide(name)
+  const local = bytesInVm(name)?.length ?? 0
+  const t0 = Date.now()
+  const told = await until('In OneDrive', 120_000, async () => /In OneDrive \d/.test(await saveLine()))
+  const took = Date.now() - t0
+  await shot('11b-word-in-onedrive')
+  check(`the header says In OneDrive once OneDrive in the VM has uploaded it (${(took / 1000).toFixed(1)} s after Saved)`, told && tab()?.cloud?.is === 'uploaded', `${await saveLine()} | cloud ${JSON.stringify(tab()?.cloud)}`)
+  const web = await until('the web side', 60_000, () => {
+    const now = webSide(name)
+    return !!now && (!before || now.version > before.version) && now.size === local
+  })
+  check('the web side holds the bytes written: the server\'s version moved and its size is the file\'s', web, JSON.stringify({ before, after: webSide(name), local }))
+}
+
 async function wordCase(): Promise<void> {
   const name = `${WORD}.docx`
   if (!check("this run's forward to the VM's helper opens (the VM is awake)", await openForward())) return
   // A dummy Word file of someone's (a starter template, not our blank): it asks once before saving by itself.
   const sample = readFileSync(join(import.meta.dir, '..', 'resources', 'work-templates', 'ref', 'Incident report.docx'))
   await guestCall('files.write', { dir: oneDrive!.root.path, name, data: sample.toString('base64'), op: crypto.randomUUID() })
-  check('a dummy Word file lies in My OneDrive in the VM', inVm(name))
+  check('a dummy Word file lies in My OneDrive in the VM', await until('the dummy listed', 30_000, () => inVm(name)))
   await sleep(6000)
   await press('button, a, [role="button"], [role="link"], div', 'Home')
   await sleep(1500)
@@ -275,13 +326,14 @@ async function wordCase(): Promise<void> {
   await until('the Word line', 30_000, async () => (await saveLine()).includes('Word file'))
   const opened = await saveLine()
   await shot('8-word-opened')
-  check('it opens as a document; the header says the Word file has not changed and offers Save to OneDrive as Word', editor && opened.includes('The Word file in OneDrive has not changed') && !!(await centre('button', 'Save to OneDrive as Word')), opened)
+  check('it opens as a document; the header says the Word file has not changed', editor && opened.includes('The Word file in OneDrive has not changed'), opened)
   const where = (n: string): string => {
     const tab = box<{ tabs: { itemId?: string; key?: string }[] }>('work.files.tabs', { workspaceId: WS }).tabs.find((t) => t.key?.endsWith(n))
     return box<{ items: { id: string; source: { path?: string } }[] }>('work.canvas.list', { sessionId: `filespane_${WS}` }).items.find((i) => i.id === tab?.itemId)?.source.path ?? ''
   }
   keptDocs.push(where(name))
   const typeIn = async (words: string): Promise<void> => {
+    if (!(await oursShown())) throw new Error('the file shown is not this run\'s dummy: nothing typed')
     const ed = (await centre('[data-files-file] [contenteditable="true"]'))!
     await click(ed.x, ed.y)
     await ev(`(() => { const e = document.querySelector('[data-files-file] [contenteditable="true"]'); const r = document.createRange(); r.selectNodeContents(e); r.collapse(false); const s = getSelection(); s.removeAllRanges(); s.addRange(r); })()`)
@@ -302,12 +354,19 @@ async function wordCase(): Promise<void> {
   await shot('10-word-saving')
   const landed = await until('the words in the VM', 120_000, () => wordsIn(name).includes('doors'))
   if (!landed) log(`the Word file in the VM: ${bytesInVm(name)?.length ?? 'not read'} bytes; its text holds: ${JSON.stringify(wordsIn(name).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').slice(-200))}`)
-  await until('Saved to OneDrive', 30_000, async () => (await saveLine()).includes('Saved to OneDrive'))
+  await until('Saved to OneDrive', 30_000, async () => savedLine(await saveLine()))
   await shot('11-word-saved')
-  check('with no press the header says Saving to OneDrive… then Saved to OneDrive with the time, and the Word file in the VM holds his words', saving && landed && (await saveLine()).includes('Saved to OneDrive'), await saveLine())
-  await closeTabByX(name)
+  check('with no press the header says Saving to OneDrive… then saved, and the Word file in the VM holds his words', saving && landed && savedLine(await saveLine()), await saveLine())
+  await uploadCase(name)
+  check('its tab closes by its ×', await closeTabByX(name))
   await sleep(3000)
+  await toOneDrive()
   check('closed and opened again: the same document, with his words', (await pressRow(name)) && (await until('his words', 120_000, async () => (await docText()).includes(one))))
+  // The notice was asked once: his answer is kept on the host, and more words ask nothing.
+  await typeIn(' again')
+  const twice = await until('a second notice', 10_000, () => ev<boolean>(`!!document.querySelector('[role="alertdialog"]')`))
+  check('the notice is asked once per file: opened again and typed into, it does not come back', !twice)
+  await until('saved again', 60_000, () => wordsIn(name).includes('again'))
   // The file changed in the VM behind his back: his next words stop there, never over it.
   const now = (await guestCall('files.read', { path: guest(name), offset: 0, length: 1, version: true })) as { version: string }
   await guestCall('files.write', { path: guest(name), data: sample.toString('base64'), expect: now.version, op: crypto.randomUUID() })
@@ -319,32 +378,118 @@ async function wordCase(): Promise<void> {
   check('a change made there stops autosave: the header says so with Keep Both and Replace, and nothing is written over it', stopped && !!(await centre('button', 'Keep Both')) && !!(await centre('button', 'Replace')) && !wordsIn(name).includes('kickoff'), await saveLine())
   await press('button', 'Replace')
   const replaced = await until('the Word file holds his words again', 120_000, () => wordsIn(name).includes('kickoff'))
-  await until('Saved to OneDrive', 30_000, async () => (await saveLine()).includes('Saved to OneDrive'))
+  await until('Saved to OneDrive', 30_000, async () => savedLine(await saveLine()))
   await shot('13-word-replaced')
-  check('Replace on his press writes his document over it: the VM file holds his newest words', replaced, await saveLine())
+  check('Replace on his press writes his document over it: the VM file holds his newest words', replaced && savedLine(await saveLine()), await saveLine())
+  // Words typed and the tab closed at once: they reach the file, and the document opens again with them (2b0c7f9d6).
+  const late = ` late ${STAMP.slice(-3)}`
+  await typeIn(late)
+  const shut = await closeTabByX(name)
+  const kept = await until('the late words in the VM', 120_000, () => wordsIn(name).includes('late'))
+  check('typed and closed at once: the words reach the Word file in the VM', shut && kept)
+  await sleep(2000)
+  await toOneDrive()
+  check('opened again: the document holds them', (await pressRow(name)) && (await until('late words', 120_000, async () => (await docText()).includes(late.trim()))))
+  // Save as Word to… a folder he picks: a new Word file there, never over anything.
+  await press(`button[aria-label=${JSON.stringify(`More for ${name.replace(/\.docx$/, '')}`)}], button[aria-label=${JSON.stringify(`More for ${name}`)}]`, undefined)
+  const offered = await press('[role="menuitem"]', 'Save as Word to…', { ms: 5_000 })
+  await shot('15-save-as-word-picker')
+  if (check('the file menu offers Save as Word to…', offered)) {
+    await press('[role="dialog"] button, [role="dialog"] [role="button"], [role="dialog"] div', 'My OneDrive', { ms: 15_000 })
+    await sleep(1500)
+    const saved = await press('[role="dialog"] button', 'Save Here', { ms: 15_000 })
+    const told = await until('the toast', 60_000, async () => (await ev<string>('document.body.textContent')).includes('Saved as Word in'))
+    await shot('16-saved-as-word')
+    const made = box<{ entries: { name: string }[] }>('work.files.list', { workspaceId: WS, at: { at: 'file', host: boxId, path: oneDrive!.root.path } }).entries.map((e) => e.name).filter((n) => n.startsWith(WORD) && n !== name && !n.includes(' new') && !n.includes('(mine)'))
+    keptExtra.push(...made)
+    check('Save Here writes a new Word file in the folder with his words, and says so', saved && told && made.length === 1 && wordsIn(made[0]!).includes('late'), made.join(', '))
+  }
+  await closeTabByX(name)
+  await sleep(2000)
+  await toOneDrive()
+}
+const keptExtra: string[] = []
+
+/** New → Document in a Teams library: in a "TempCode proof" folder made for the run and removed after. */
+async function teamsDocumentCase(): Promise<void> {
+  const channel = places.find((p) => p.kind === 'teams' && p.vm && p.name === 'Team RecWell')
+  if (!check('a Teams library place in the VM is listed (Team RecWell)', !!channel)) return
+  await press('button, a, [role="button"], [role="link"], div', 'RecWell')
+  await sleep(1500)
+  if (!check('its channel opens', await pressRow('Team RecWell'))) return
+  await until('the channel', 60_000, async () => !!(await centre('button', 'New')))
+  const folder = `TempCode proof ${STAMP} folder`
+  await press('button', 'New')
+  await press('[role="menuitem"]', 'Folder')
+  await until('the name field', 30_000, () => ev<boolean>(`document.activeElement?.tagName === 'INPUT'`))
+  await sleep(500)
+  await typeKeys(folder)
+  await key('Enter')
+  const dir = `${channel!.root.path}\\${folder}`
+  proofFolder = dir
+  const listed = (path: string): string[] => box<{ entries: { name: string }[] }>('work.files.list', { workspaceId: WS, at: { at: 'file', host: boxId, path } }).entries.map((e) => e.name)
+  if (!check('a "TempCode proof" folder is made in the Teams library', await until('the folder', 60_000, () => listed(channel!.root.path).includes(folder)))) return
+  if (!check('it opens', await pressRow(folder))) return
+  await until('the folder page', 30_000, async () => !!(await centre('button', 'New')))
+  const stem = `${WORD} teams`
+  await press('button', 'New')
+  const offered = await press('[role="menuitem"]', 'Document', { ms: 5_000 })
+  await shot('17-teams-new')
+  if (!check('New offers a Document in the Teams library', offered)) return
+  await until('the name field', 30_000, () => ev<boolean>(`document.activeElement?.tagName === 'INPUT'`))
+  await sleep(500)
+  await typeKeys(stem)
+  await key('Enter')
+  const name = `${stem}.docx`
+  if (!check('a Word file is made there', await until('the Word file', 60_000, () => listed(dir).includes(name)))) return
+  if (!check('it opens from its row', await pressRow(name))) return
+  await until('the document', 180_000, async () => !!(await centre('[data-files-file] [contenteditable="true"]')))
+  const tab = box<{ tabs: { itemId?: string; key?: string }[] }>('work.files.tabs', { workspaceId: WS }).tabs.find((t) => t.key?.endsWith(name))
+  keptDocs.push(box<{ items: { id: string; source: { path?: string } }[] }>('work.canvas.list', { sessionId: `filespane_${WS}` }).items.find((i) => i.id === tab?.itemId)?.source.path ?? '')
+  if (!check('the shown file is the Teams document', await oursShown())) return
+  const ed = (await centre('[data-files-file] [contenteditable="true"]'))!
+  await click(ed.x, ed.y)
+  await typeKeys(`Bracket ${STAMP.slice(-4)} finals`)
+  const read = (): string => {
+    try {
+      const parts: Buffer[] = []
+      const got = box<{ data: string }>('work.files.read', { workspaceId: WS, ref: { at: 'file', host: boxId, path: `${dir}\\${name}` }, offset: 0, length: 4 * 1024 * 1024 })
+      parts.push(Buffer.from(got.data, 'base64'))
+      return partOf(Buffer.concat(parts), 'word/document.xml')
+    } catch {
+      return ''
+    }
+  }
+  const landed = await until('the words in the Teams file', 120_000, () => read().includes('finals'))
+  await shot('18-teams-document-saved')
+  check('typed into it, its words reach the .docx in the Teams library by themselves', landed, await saveLine())
   await closeTabByX(name)
   await sleep(2000)
 }
+let proofFolder: string | null = null
 
 async function newDocumentCase(): Promise<void> {
   const name = `${WORD} new.docx`
+  await toOneDrive()
   if (!check('New → Document makes a Word file in My OneDrive in the VM', await make('Document', `${WORD} new`, '.docx'))) return
   if (!check('it opens from its row', await pressRow(name))) return
   const editor = await until('the document', 180_000, async () => !!(await centre('[data-files-file] [contenteditable="true"]')))
   check('it opens as the Word-backed document', editor, await saveLine())
   const where = box<{ tabs: { itemId?: string; key?: string }[] }>('work.files.tabs', { workspaceId: WS }).tabs.find((t) => t.key?.endsWith(name))
   keptDocs.push(box<{ items: { id: string; source: { path?: string } }[] }>('work.canvas.list', { sessionId: `filespane_${WS}` }).items.find((i) => i.id === where?.itemId)?.source.path ?? '')
+  if (!check('the shown file is the new document', await oursShown())) return
   const ed = (await centre('[data-files-file] [contenteditable="true"]'))!
   await click(ed.x, ed.y)
   const three = `Roster ${STAMP.slice(-4)} night`
   await typeKeys(three)
   const landed = await until('the words in the VM', 120_000, () => partOf(bytesInVm(name), 'word/document.xml').includes('night'))
   const asked = await ev<boolean>(`!!document.querySelector('[role="alertdialog"]')`)
-  await until('Saved to OneDrive', 30_000, async () => (await saveLine()).includes('Saved to OneDrive'))
+  await until('Saved to OneDrive', 30_000, async () => savedLine(await saveLine()))
   await shot('14-new-document-saved')
   check('typed into it, its words reach the .docx in the VM by themselves, with no notice', landed && !asked, await saveLine())
-  await closeTabByX(name)
+  check('its tab closes by its ×', await closeTabByX(name))
   await sleep(3000)
+  await toOneDrive()
   check('closed and opened again: the same document, with his words', (await pressRow(name)) && (await until('his words', 120_000, async () => (await docText()).includes(three))))
   await closeTabByX(name)
 }
@@ -372,6 +517,22 @@ const cleanup = async (): Promise<void> => {
       if (n.startsWith(`TempCode proof ${STAMP}`)) rmSync(join('/srv/agents/work/Work/Purdue', n), { force: true })
     } catch (err) {
       log(`could not delete ${doc}: ${String(err).slice(0, 200)}`)
+    }
+  }
+  // Save as Word's new file, and the Teams proof folder with what is in it.
+  for (const name of keptExtra) {
+    try {
+      box('work.files.trash', { workspaceId: WS, refs: [{ at: 'file', host: boxId, path: guest(name) }], op: crypto.randomUUID(), asked: true })
+    } catch (err) {
+      log(`could not delete ${name}: ${String(err).slice(0, 200)}`)
+    }
+  }
+  if (proofFolder) {
+    try {
+      box('work.files.trash', { workspaceId: WS, refs: [{ at: 'file', host: boxId, path: proofFolder }], op: crypto.randomUUID(), asked: true })
+      log('the Teams proof folder is in the Recycle Bin')
+    } catch (err) {
+      log(`could not delete the Teams proof folder: ${String(err).slice(0, 200)}`)
     }
   }
   for (const name of failures && process.env.KEEP_ON_FAIL === '1' ? [] : [`${DECK}.pptx`, `${SHEET}.xlsx`, `${WORD}.docx`, `${WORD} (mine).docx`, `${WORD} new.docx`]) {
@@ -537,6 +698,7 @@ try {
   if (process.env.WORD !== '0') {
     await wordCase()
     await newDocumentCase()
+    if (process.env.SKIP_TEAMS !== '1') await teamsDocumentCase()
   }
 
   // 3. Delete on the deck: the question, Cancel focused; confirmed, Trash; Undo puts it back.
