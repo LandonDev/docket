@@ -11,6 +11,7 @@ import { Dialog } from "../../components/ui/dialog";
 import { Input } from "../../components/ui/input";
 import { loadToast } from "../../components/ui/toaster";
 import { useEnvironments } from "../../lib/connection";
+import { linkMay } from "../../lib/linkMay";
 import type { WorkspaceMeta } from "../../lib/tcserver/types";
 import { useWorkspaces, workspaceByPath } from "../../lib/tcserver/workspaces";
 import { workRailPort, useWorkHosts } from "../../lib/workSwitch";
@@ -65,6 +66,14 @@ export function addMenuRows(state: LifeosStateName | null, free: readonly string
 }
 
 /** A code workspace's "LifeOS sector" submenu: None, then each sector, the linked one ticked. */
+/**
+ * Whether a workspace's rail row offers the LifeOS sector menu: a code workspace on a host with Work on, and a key that
+ * may link it there (`work.lifeos.link` needs admin), so a given computer's rail never offers a pick the host refuses.
+ */
+export function sectorMenuShown(workspace: Pick<WorkspaceMeta, "kind" | "environmentId">, hosts: ReadonlySet<string>): boolean {
+  return workspace.kind !== "work" && hosts.has(workspace.environmentId) && linkMay(workspace.environmentId, "work.lifeos.link");
+}
+
 export function sectorMenuRows(current: string | null | undefined, state: LifeosStateName | null, names?: ReadonlyMap<string, string>, order: readonly string[] = SECTORS): MenuRow[] {
   const choice = (id: string, label: string, sector: string | null): MenuRow => ({
     kind: "item",
@@ -126,7 +135,7 @@ export function WorkRailHost({ onOpenWorkspace }: { onOpenWorkspace: (path: stri
       addRows: () => addMenuRows(state, freeSectors(workspaces, order), names),
       sectorRows(path) {
         const workspace = workspaceAt(path);
-        if (!workspace || workspace.kind === "work" || !hosts.has(workspace.environmentId)) return [];
+        if (!workspace || !sectorMenuShown(workspace, hosts)) return [];
         // A code workspace links on its own host, whose LifeOS session mints its key.
         const there = workspace.environmentId === home ? state : null;
         return sectorMenuRows(workspace.sector, there ?? "connected", names, order);

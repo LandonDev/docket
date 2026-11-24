@@ -28,6 +28,7 @@ import { ReviewFields, saveReviewSettings, useReviewScope } from "./ReviewFields
 import { DEFAULT_REVIEW_SETTINGS, type ReviewSettings } from "@server/shared/review";
 import { AccountPinFields, projectInheritLabel } from "./AccountPinFields";
 import { registry } from "../lib/connection";
+import { useLinkMay } from "../lib/linkMay";
 import { useAccounts } from "../stores/accounts";
 import { ROUTED_PROVIDERS, type AccountPins } from "@server/shared/accounts";
 import type { BuildConfig } from "@server/shared/build";
@@ -476,6 +477,8 @@ function ProjectSettingsBody({
   }, [homeWorkspace.id, home.id, home.cwd, home.environmentId]);
   const [pins, setPins] = useState<AccountPins>(home.accountPins ?? {});
   const { snapshot } = useAccounts(home.environmentId);
+  // A key that may not pin accounts (a given computer's) is not drawn them: the host would refuse the save.
+  const mayPin = useLinkMay(home.environmentId, "project.setAccounts");
   const { pass, setPass, inherited } = useTurnPass(homeWorkspace.id, home.id);
   const reviewLoad = useReviewScope(home.environmentId, home.id);
   const reviewScope = reviewLoad.scope;
@@ -625,14 +628,16 @@ function ProjectSettingsBody({
                 )}
                 {review ? linkButton("Use global setting", () => setReview(null)) : null}
               </Section>
-              <Section label="Accounts">
-                <AccountPinFields
-                  environmentId={home.environmentId}
-                  value={pins}
-                  onChange={setPins}
-                  inheritLabel={projectInheritLabel(homeWorkspace, [...snapshot.providers.claude.profiles, ...snapshot.providers.codex.profiles])}
-                />
-              </Section>
+              {mayPin ? (
+                <Section label="Accounts">
+                  <AccountPinFields
+                    environmentId={home.environmentId}
+                    value={pins}
+                    onChange={setPins}
+                    inheritLabel={projectInheritLabel(homeWorkspace, [...snapshot.providers.claude.profiles, ...snapshot.providers.codex.profiles])}
+                  />
+                </Section>
+              ) : null}
               <Section label="Plans">
                 {/* Editable only once the project's own scope answered: a
                     change made on the inherited set alone would never save. */}

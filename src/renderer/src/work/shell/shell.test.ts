@@ -1,12 +1,34 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { MenuRow } from "../../chrome/menuRows";
 import type { WorkspaceMeta } from "../../lib/tcserver/types";
 import { switchLine } from "../../surfaces/settings/Work";
 import { sectorName } from "./actions";
 import { columnProjects } from "./WorkColumn";
 import { keyLine, lifeosLine } from "./settings";
-import { addMenuRows, freeSectors, sectorMenuRows } from "./WorkRailHost";
+import { addMenuRows, freeSectors, sectorMenuRows, sectorMenuShown } from "./WorkRailHost";
 import { rowOfView, TEMPLATES_ROW, WORK_VIEWS, workViewList, workViewRows } from "../views/registry";
+
+vi.mock("../../lib/linkMay", async (original) => (await import("../../lib/linkMay.testkit")).linkMayMock(await original()));
+const { GIVEN_KEY, OWNER_KEY, resetTestKey, testKey } = await import("../../lib/linkMay.testkit");
+afterEach(resetTestKey);
+
+describe("a code workspace's sector menu on the rail", () => {
+  const code = { kind: "code", environmentId: "env_box" } as Pick<WorkspaceMeta, "kind" | "environmentId">;
+  const on = new Set(["env_box"]);
+
+  it("is offered to a key that may link a sector there, and never to a given computer's, which the host would refuse", () => {
+    expect(sectorMenuShown(code, on)).toBe(true);
+    testKey.current = OWNER_KEY;
+    expect(sectorMenuShown(code, on)).toBe(true);
+    testKey.current = GIVEN_KEY;
+    expect(sectorMenuShown(code, on)).toBe(false);
+  });
+
+  it("is offered on a code workspace alone, on a host with Work on", () => {
+    expect(sectorMenuShown({ ...code, kind: "work" }, on)).toBe(false);
+    expect(sectorMenuShown(code, new Set())).toBe(false);
+  });
+});
 
 const ids = (rows: MenuRow[]): string[] => rows.map((r) => (r.kind === "sep" ? "—" : r.kind === "label" ? r.label : r.id));
 
@@ -58,6 +80,8 @@ describe("Settings → Work's lines", () => {
     expect(switchLine(envs, new Set())).toBe("On adds the Outbox, Work Chats and your Work workspaces to the rail");
     expect(switchLine(envs, new Set(["local", "env_box"]))).toBeUndefined();
     expect(switchLine(envs, new Set(["env_box"]))).toBe("On for tempcode-box, off for This Mac");
+    // "the box" mid-line, as every Work line names it.
+    expect(switchLine([{ id: "env_box", name: "The box" }, { id: "local", name: "This Mac" }], new Set(["env_box"]))).toBe("On for the box, off for This Mac");
   });
 
   it("draws every LifeOS state a screen must draw", () => {

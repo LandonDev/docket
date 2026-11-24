@@ -13,6 +13,7 @@ import { Field, FieldRow } from "../../chrome/DialogField";
 import { useClosingDialog } from "../../chrome/Modal";
 import { AccountPinFields, projectInheritLabel } from "../../chrome/AccountPinFields";
 import { renameProject, setProjectAccounts } from "../../lib/tcserver/projects";
+import { useLinkMay } from "../../lib/linkMay";
 import type { ProjectMeta, WorkspaceMeta } from "../../lib/tcserver/types";
 import { useProjects } from "../../lib/tcserver/workspaces";
 import { useAccounts } from "../../stores/accounts";
@@ -259,7 +260,9 @@ export function WorkProjectSettings({ project: opened, workspace, onClose }: { p
     await session.client.mutation(makeFunctionReference<"mutation">("projects:remove"), { id: lifeosId });
   };
 
-  const accountRows = ROUTED_PROVIDERS.some((p) => snapshot.providers[p].profiles.length > 0 || !!pins[p]) ? (
+  // A key that may not pin accounts (a given computer's) is not drawn the rows: the host would refuse the save.
+  const mayPin = useLinkMay(project.environmentId, "project.setAccounts");
+  const accountRows = mayPin && ROUTED_PROVIDERS.some((p) => snapshot.providers[p].profiles.length > 0 || !!pins[p]) ? (
     <AccountPinFields
       environmentId={project.environmentId}
       value={pins}

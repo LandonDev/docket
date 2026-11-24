@@ -16,6 +16,8 @@ import { setWorkspaceAccounts } from "../../lib/tcserver/projects";
 import { useAccounts } from "../../stores/accounts";
 import { pinRowShown, shortName } from "../../lib/accountScope";
 import { ROUTED_PROVIDERS, type AccountPins } from "@server/shared/accounts";
+import { useEnvironments } from "../../lib/connection";
+import { managedElsewhere, useLinkMay } from "../../lib/linkMay";
 
 /**
  * One workspace's page: its overrides (anything untouched inherits the
@@ -59,39 +61,46 @@ function AccountsSection({ workspace }: { workspace: WorkspaceMeta }) {
   const { snapshot } = useAccounts(workspace.environmentId);
   const pins = workspace.accountPins ?? {};
   const [error, setError] = useState<{ provider: string; message: string } | null>(null);
+  // A key that may not pin accounts here sees what is pinned, as words, and who can change it.
+  const may = useLinkMay(workspace.environmentId, "workspace.setAccounts");
+  const host = useEnvironments().find((e) => e.id === workspace.environmentId)?.name ?? "this host";
   return (
-    <PageSection title="Accounts" description="Auto picks by model and moves a thread when its account runs out.">
+    <PageSection title="Accounts" description={may ? "Auto picks by model and moves a thread when its account runs out." : managedElsewhere(host)}>
       {ROUTED_PROVIDERS.map((provider) => {
         const profiles = snapshot.providers[provider].profiles;
         const current = pins[provider] ?? "";
-        const known = current === "" || profiles.some((p) => p.name === current);
+        const pinned = profiles.find((p) => p.name === current);
+        const known = current === "" || !!pinned;
         if (!pinRowShown(provider, profiles, current)) return null;
         return (
           <PageRow
             key={provider}
             media={<HarnessIcon harness={provider} className="size-4 shrink-0" />}
             title={PROVIDER_NAME[provider]}
+            description={may ? undefined : pinned ? shortName(pinned) : current || "Auto"}
             error={error?.provider === provider ? error.message : undefined}
           >
-            <ChoiceSelect
-              label={`${PROVIDER_NAME[provider]} account`}
-              value={current}
-              disabled={profiles.length === 0 && current === ""}
-              onChange={(next) => {
-                const updated = { ...pins };
-                if (next) updated[provider] = next;
-                else delete updated[provider];
-                setError(null);
-                void setWorkspaceAccounts(workspace.id, updated).catch((err) =>
-                  setError({ provider, message: err instanceof Error ? err.message : String(err) }),
-                );
-              }}
-              options={[
-                { value: "", label: "Auto" },
-                ...profiles.map((p) => ({ value: p.name, label: shortName(p) })),
-                ...(known ? [] : [{ value: current, label: `${current} (not in Aliax)` }]),
-              ]}
-            />
+            {may ? (
+              <ChoiceSelect
+                label={`${PROVIDER_NAME[provider]} account`}
+                value={current}
+                disabled={profiles.length === 0 && current === ""}
+                onChange={(next) => {
+                  const updated = { ...pins };
+                  if (next) updated[provider] = next;
+                  else delete updated[provider];
+                  setError(null);
+                  void setWorkspaceAccounts(workspace.id, updated).catch((err) =>
+                    setError({ provider, message: err instanceof Error ? err.message : String(err) }),
+                  );
+                }}
+                options={[
+                  { value: "", label: "Auto" },
+                  ...profiles.map((p) => ({ value: p.name, label: shortName(p) })),
+                  ...(known ? [] : [{ value: current, label: `${current} (not in Aliax)` }]),
+                ]}
+              />
+            ) : null}
           </PageRow>
         );
       })}

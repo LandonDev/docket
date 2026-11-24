@@ -16,7 +16,8 @@ const profile = (name: string) => ({ name, email: `${name}@example.com` });
 
 vi.mock("../../components/choice-select", async () => await import("../../components/choice-select-body"));
 vi.mock("../../lib/sounds", () => ({ playCue: () => {} }));
-vi.mock("../../lib/connection", () => ({ registry: { primary: () => ({ environmentId: "local" }) } }));
+vi.mock("../../lib/connection", () => ({ registry: { primary: () => ({ environmentId: "local" }) }, useEnvironments: () => [{ id: "local", name: "The box" }] }));
+vi.mock("../../lib/linkMay", async (original) => (await import("../../lib/linkMay.testkit")).linkMayMock(await original()));
 vi.mock("../../chrome/ThreadDefaultsDialog", () => ({ ThreadDefaultsEditor: () => <h2>New threads</h2> }));
 vi.mock("../../chrome/TurnPassFields", () => ({ TurnPassEditor: () => <h2>Completed turn</h2> }));
 vi.mock("../../chrome/ProjectDialogs", () => ({
@@ -65,6 +66,7 @@ vi.mock("../../stores/accounts", () => ({
 }));
 
 const { WorkspacePage } = await import("./Workspace");
+const { GIVEN_KEY, resetTestKey, testKey } = await import("../../lib/linkMay.testkit");
 
 const projectRows = () =>
   [...document.querySelectorAll<HTMLElement>("[data-slot=page-row]")].filter((row) => row.querySelector("[aria-label$=' settings']"));
@@ -89,7 +91,10 @@ beforeEach(() => {
   state.setAccounts.mockClear();
   state.metaKeys = [];
 });
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  resetTestKey();
+});
 
 describe("Workspace page", () => {
   it("orders its sections", () => {
@@ -114,6 +119,20 @@ describe("Workspace page", () => {
     render(<WorkspacePage workspaceId="w1" />);
     await choose(screen.getByRole("combobox", { name: "Claude account" }), "Auto");
     expect(state.setAccounts).toHaveBeenLastCalledWith("w1", { codex: "carol" });
+  });
+
+  it("shows a given computer the pins as words and who changes them, with no select to refuse", () => {
+    // workspace.setAccounts needs admin: a given computer's key would be refused on the press (W-37).
+    testKey.current = GIVEN_KEY;
+    state.workspace = { ...state.workspace, accountPins: { claude: "bob" } };
+    render(<WorkspacePage workspaceId="w1" />);
+    expect(screen.queryByRole("combobox", { name: "Claude account" })).toBeNull();
+    expect(screen.queryByRole("combobox", { name: "Codex account" })).toBeNull();
+    const section = screen.getByRole("heading", { name: "Accounts" }).closest("section")!;
+    expect(section.textContent).toContain("Changed from a computer that manages the box");
+    expect(section.textContent).toContain("bob");
+    expect(section.textContent).toContain("Auto");
+    expect(section.textContent).not.toContain("Auto picks by model");
   });
 
   it("names a pin Aliax does not know", () => {

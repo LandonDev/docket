@@ -10,6 +10,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { getFunctionName } from "convex/server";
 import type { ConvexReactClient } from "convex/react";
 import { registry } from "../../lib/connection";
+import { IDLE_STATUS } from "../../lib/connection/types";
 import type { ProjectMeta, WorkspaceMeta } from "../../lib/tcserver/types";
 import { workspaceStore } from "../../lib/tcserver/workspaces";
 import { workSwitch } from "../../lib/workSwitch";
@@ -132,6 +133,16 @@ describe("which sheet a project gets", () => {
     expect(root.querySelector("[data-project-mode]")?.textContent).toBe("Worktree");
     expect(within(root).getByLabelText("Branch")).toBeTruthy();
     expect(root.querySelector("[data-work-project-settings]")).toBeNull();
+  });
+
+  it("a given computer's window is not drawn Accounts, which its key may not save (W-37)", async () => {
+    // project.setAccounts needs admin: the host would refuse the sheet's save. One status object, as the registry keeps it.
+    const given = { ...IDLE_STATUS, transport: "open", lastHello: { environmentId: BOX, contract: 1, caps: ["operate", "approve", "device"], key: { id: "laptop" }, build: { release: 1, version: "1.0.1", sha: null, platform: "linux" } } };
+    vi.spyOn(registry, "statusOf").mockReturnValue(given as never);
+    render(<ProjectSettingsDialog project={CODE_PROJECT} workspace={CODE} onClose={() => {}} />);
+    const root = await sheet();
+    expect(headings(root)).not.toContain("Accounts");
+    expect(headings(root)).toContain("Completed turn");
   });
 });
 

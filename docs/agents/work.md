@@ -47,7 +47,12 @@ with its six views, linking a workspace to a sector, and Settings → Work
   the VM's Set up, Sleeps after, Screen size, Go back and Delete (Wake, Sleep
   and Save a point stay); LifeOS's Sign in and Sign out on Connections and on
   a view; Files' Allow said as who can, and no "Open copies here"; a new
-  workspace skips the allowed-computers write it would be refused. The token
+  workspace skips the allowed-computers write it would be refused; a
+  workspace's and a project's Accounts (admin) are not offered: the
+  workspace page shows the pins as words under the one line, a project's
+  sheet has no Accounts; a code workspace's LifeOS sector (`work.lifeos.link`,
+  admin) shows the sector and the line in place of its select, and its rail
+  row offers no sector menu (`sectorMenuShown`). The token
   field of the LifeOS sign-in asks the rule too, so /ui (a key's link) never
   shows it. A read key also loses Put Back, Delete for Good and Empty Trash,
   a play's run, and the clicker's presses (it keeps the show's state, with one

@@ -71,7 +71,17 @@ let projectReviewFail = false
 // Every write refused, for a failed save.
 let writeFail = false
 
+// One object a state, as the registry keeps it: a hook that subscribes (useEnvironmentStatus) reads it on every render.
+const statuses = new Map<string, EnvironmentStatus>()
 const status = (slot: string): EnvironmentStatus => {
+  const key = `${slot}:${boxOpen}`
+  const kept = statuses.get(key)
+  if (kept) return kept
+  const made = statusFor(slot)
+  statuses.set(key, made)
+  return made
+}
+const statusFor = (slot: string): EnvironmentStatus => {
   const box = slot === BOX
   return {
     ...IDLE_STATUS,

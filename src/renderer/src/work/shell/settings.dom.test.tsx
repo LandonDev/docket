@@ -17,14 +17,17 @@ vi.mock("../rules/HouseRules", () => ({ HouseRules: () => null }));
 vi.mock("../../chrome/ThreadDefaultsDialog", async (original) => ({ ...(await original<object>()), ThreadDefaultsEditor: () => <div data-defaults /> }));
 vi.mock("../../lib/tcserver/workspaces", async (original) => ({
   ...(await original<object>()),
-  useWorkspaces: () => [{ id: "ws", name: "Purdue Esports", environmentId: "env_box", sector: "purdue", kind: "work", path: "/w" }],
+  useWorkspaces: () => [
+    { id: "ws", name: "Purdue Esports", environmentId: "env_box", sector: "purdue", kind: "work", path: "/w" },
+    { id: "code", name: "temp-code", environmentId: "env_box", sector: "purdue", kind: "code", path: "/c" },
+  ],
 }));
-const reads = vi.hoisted(() => ({ fail: true, asked: 0 }));
+const reads = vi.hoisted(() => ({ fail: true, asked: 0, error: "The host did not answer" }));
 vi.mock("./actions", async (original) => ({
   ...(await original<object>()),
   workspaceSettings: async () => {
     reads.asked++;
-    if (reads.fail) throw new Error("The host did not answer");
+    if (reads.fail) throw new Error(reads.error);
     return { mayUseDesktop: [], model: null, reasoning: null, voice: false };
   },
   // The box knows the PC paired to it alone; this window (the Mac's) has no link to it.
@@ -34,7 +37,7 @@ vi.mock("./actions", async (original) => ({
 
 vi.mock("../../lib/linkMay", async (original) => (await import("../../lib/linkMay.testkit")).linkMayMock(await original()));
 const { GIVEN_KEY, OWNER_KEY, resetTestKey, testKey } = await import("../../lib/linkMay.testkit");
-const { SignInDialog, WorkSettingsBody, WorkWorkspacePage } = await import("./settings");
+const { CodeWorkspaceSector, SignInDialog, WorkSettingsBody, WorkWorkspacePage } = await import("./settings");
 
 afterEach(() => {
   cleanup();
@@ -69,6 +72,18 @@ describe("Settings → Work", () => {
     expect(screen.queryByText("The host did not answer")).toBeNull();
   });
 
+  it("says a read that failed in his words and names the computer, never the link's own text", async () => {
+    reads.fail = true;
+    reads.error = "work.workspace.get failed at /srv/agents/work/x.json";
+    vi.spyOn(registry, "environment").mockReturnValue({ id: "env_box", name: "The box", routes: [], credentialRef: "env_box" } as never);
+    vi.spyOn(registry, "linkOf").mockReturnValue({ environmentId: "env_box", connected: true, request: vi.fn(async () => ({ lifeos: { state: "signed-out" }, keys: [] })), onPush: () => () => {}, onOpen: () => () => {} } as never);
+    render(<WorkWorkspacePage workspaceId="ws" />);
+    await act(async () => void (await new Promise((r) => setTimeout(r, 0))));
+    expect(screen.getByText("The box did not send this workspace's settings.")).toBeTruthy();
+    expect(screen.queryByText(/srv\/agents/)).toBeNull();
+    reads.error = "The host did not answer";
+  });
+
   it("draws Computer use on a PC the workspace's host knows, though this window has no link to it", async () => {
     reads.fail = false;
     vi.spyOn(registry, "linkOf").mockReturnValue({ environmentId: "env_box", connected: true, request: vi.fn(async () => ({ lifeos: { state: "signed-out" }, keys: [] })), onPush: () => () => {}, onOpen: () => () => {} } as never);
@@ -90,6 +105,31 @@ describe("a workspace page for a key that may not change it", () => {
     expect(document.querySelector("[data-defaults]")).toBeNull();
     expect(screen.getAllByText("Changed from a computer that manages the box")).toHaveLength(1);
     expect(request.mock.calls.map((c: unknown[]) => c[0]).filter((m) => m === "work.workspace.set" || m === "work.mail.waiting")).toEqual([]);
+  });
+});
+
+describe("a code workspace's LifeOS sector", () => {
+  const box = () => {
+    setWorkOn("env_box", true);
+    vi.spyOn(registry, "linkOf").mockReturnValue({ environmentId: "env_box", connected: true, request: vi.fn(async () => ({ lifeos: { state: "signed-out" }, keys: [] })), onPush: () => () => {}, onOpen: () => () => {} } as never);
+  };
+
+  it("offers the sector's select to a key that may link it", async () => {
+    box();
+    render(<CodeWorkspaceSector workspaceId="code" />);
+    await act(async () => void (await new Promise((r) => setTimeout(r, 0))));
+    expect(screen.getByRole("combobox", { name: "LifeOS sector" })).toBeTruthy();
+  });
+
+  it("shows a given computer the sector and who changes it, with no select the host would refuse", async () => {
+    // work.lifeos.link needs admin (W-37).
+    testKey.current = GIVEN_KEY;
+    box();
+    render(<CodeWorkspaceSector workspaceId="code" />);
+    await act(async () => void (await new Promise((r) => setTimeout(r, 0))));
+    expect(screen.queryByRole("combobox", { name: "LifeOS sector" })).toBeNull();
+    expect(screen.getByText("Purdue")).toBeTruthy();
+    expect(screen.getByText("Changed from a computer that manages the box")).toBeTruthy();
   });
 });
 

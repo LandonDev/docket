@@ -5,7 +5,7 @@ import { SectorDot } from "../../chrome/WorkspaceGlyph";
 import { ThreadDefaultsEditor } from "../../chrome/ThreadDefaultsDialog";
 import { ModalBody, ModalPanel, useClosingDialog } from "../../chrome/Modal";
 import { Field } from "../../chrome/DialogField";
-import { DialogFooter, ErrorLine, errorText } from "../../chrome/ConfirmDialog";
+import { DialogFooter, ErrorLine } from "../../chrome/ConfirmDialog";
 import { ChoiceSelect } from "../../components/choice-select";
 import { PageEmpty, PageError, PageRow, PageRowsSkeleton, PageSection } from "../../components/page";
 import { SettingSwitch } from "../../components/setting-switch";
@@ -14,11 +14,13 @@ import { Dialog } from "../../components/ui/dialog";
 import { Input } from "../../components/ui/input";
 import { LOCAL_ENVIRONMENT_ID, registry, useEnvironments } from "../../lib/connection";
 import { clockTime } from "../../lib/duration";
+import { nameInLine } from "../../lib/hostWords";
 import { defineChunk } from "../../lib/lazyChunk";
 import { managedElsewhere, useLinkMay } from "../../lib/linkMay";
 import { requestSettings } from "../../lib/monaco/debugTab";
 import type { WorkspaceMeta } from "../../lib/tcserver/types";
 import { useWorkspaces } from "../../lib/tcserver/workspaces";
+import { workErrorWords } from "../../lib/workErrorWords";
 import { useWorkHosts } from "../../lib/workSwitch";
 import { workDigestChunk } from "../../surfaces/chunks";
 import { TeamsCopyRow } from "../office/TeamsCopyRow";
@@ -31,6 +33,19 @@ import { WaitingSection } from "../mail/WaitingSection";
 import { StartPlacesSection } from "../clashes/StartPlaces";
 import { desktopRows, hostDesktops, hostIdOfLink, isDesktop, linkIdOfHost, linkSector, localHostId, sectorName, SECTORS, setWorkHome, setWorkspaceSettings, workHome, workspaceSettings } from "./actions";
 import { useLifeosQuery, useLifeosSession, useLifeosStatus } from "./lifeos";
+
+/**
+ * A failure on these pages in his words, naming the computer: `workErrorWords` for a known fault, else the
+ * page's own line for the act ("The box did not save the change."), never the link's text.
+ */
+function failureWords(err: unknown, host: string | undefined, act: string, write = false): string {
+  const name = host ? nameInLine(host) : undefined;
+  const Host = name ? name.charAt(0).toUpperCase() + name.slice(1) : "The host";
+  return workErrorWords(err, { host: name, write }) || `${Host} ${act}.`;
+}
+
+/** A link's name as the rail gives it, or nothing for a host this window does not know. */
+const hostOf = (environmentId: string): string | undefined => registry.environment(environmentId)?.name;
 
 /**
  * Settings → Work while Work is on (prototype settings.html, "One Work
@@ -98,7 +113,7 @@ export function WorkSettingsBody() {
         {hosts
           .filter((host) => isDesktop(host.platform) || host.id === LOCAL_ENVIRONMENT_ID)
           .map((host) => (
-            <TeamsFilesRow key={host.id} link={registry.linkOf(host.id)} title={hosts.length > 1 ? `Folders on ${host.name}` : "Folders"} editable={host.id === LOCAL_ENVIRONMENT_ID} />
+            <TeamsFilesRow key={host.id} link={registry.linkOf(host.id)} title={hosts.length > 1 ? `Folders on ${nameInLine(host.name)}` : "Folders"} editable={host.id === LOCAL_ENVIRONMENT_ID} />
           ))}
       </PageSection>
       {home ? <StartPlacesSection environmentId={home} /> : null}
@@ -125,7 +140,7 @@ function SectorsSection({ environmentId }: { environmentId: string }) {
   const session = useLifeosSession(environmentId, null);
   const listed = useLifeosQuery<{ key: string; label: string; order: number }[]>(session, "sectors:list", {});
   if (session.state !== "connected") return null;
-  return <PageSection title="LifeOS">{listed.status === "loading" ? <PageRowsSkeleton rows={1} description control="none" /> : listed.status === "failed" ? <PageError>{listed.error}</PageError> : <SectorsRow sectors={listed.value} />}</PageSection>;
+  return <PageSection title="LifeOS">{listed.status === "loading" ? <PageRowsSkeleton rows={1} description control="none" /> : listed.status === "failed" ? <PageError>LifeOS did not answer</PageError> : <SectorsRow sectors={listed.value} />}</PageSection>;
 }
 
 function SectorsRow({ sectors }: { sectors: { key: string; label: string; order: number }[] }) {
@@ -173,7 +188,7 @@ export function SignInDialog({ environmentId, state, onClose }: { environmentId:
     let live = true;
     link
       .request<{ code: string; expiresAt: number }>("work.lifeos.pairStart", {})
-      .then((answer) => live && setCode(answer), (err: unknown) => live && setError(errorText(err)));
+      .then((answer) => live && setCode(answer), (err: unknown) => live && setError(failureWords(err, hostOf(environmentId), "did not start the sign-in")));
     return () => {
       live = false;
     };
@@ -201,7 +216,7 @@ export function SignInDialog({ environmentId, state, onClose }: { environmentId:
       setPending(false);
       closeThen(onClose);
     } catch (err) {
-      setError(errorText(err));
+      setError(failureWords(err, hostOf(environmentId), "did not take the token", true));
       setPending(false);
     }
   };
@@ -281,7 +296,7 @@ export function WorkWorkspacePage({ workspaceId }: { workspaceId: string }) {
         setFar(known);
         setError(null);
       },
-      (err: unknown) => live && setError(errorText(err)),
+      (err: unknown) => live && setError(failureWords(err, hostOf(workspace.environmentId), "did not send this workspace's settings")),
     );
     return () => {
       live = false;
@@ -304,7 +319,7 @@ export function WorkWorkspacePage({ workspaceId }: { workspaceId: string }) {
       setError(null);
       return true;
     } catch (err) {
-      setError(errorText(err));
+      setError(failureWords(err, hostOf(workspace.environmentId), "did not save the change", true));
       return false;
     }
   };
@@ -323,13 +338,13 @@ export function WorkWorkspacePage({ workspaceId }: { workspaceId: string }) {
         )}
       </PageSection>
       <PageSection title="Where it runs">
-        <PageRow title="Threads run on" description={host?.name ?? workspace.environmentId} />
+        <PageRow title="Threads run on" description={host?.name ?? "A host not linked here"} />
         {!mayWrite ? (
           <PageEmpty>{managedElsewhere(host?.name ?? "it")}</PageEmpty>
         ) : settings ? (
           desktops.map((desktop) => (
-            <PageRow key={desktop.host} title={`Computer use on ${desktop.name}`}>
-              <SettingSwitch label={`Computer use on ${desktop.name}`} on={settings.mayUseDesktop.includes(desktop.host) || settings.mayUseDesktop.includes(desktop.link)} onChange={(next) => allow(desktop.link, next)} />
+            <PageRow key={desktop.host} title={`Computer use on ${nameInLine(desktop.name)}`}>
+              <SettingSwitch label={`Computer use on ${nameInLine(desktop.name)}`} on={settings.mayUseDesktop.includes(desktop.host) || settings.mayUseDesktop.includes(desktop.link)} onChange={(next) => allow(desktop.link, next)} />
             </PageRow>
           ))
         ) : error ? null : (
@@ -345,14 +360,14 @@ export function WorkWorkspacePage({ workspaceId }: { workspaceId: string }) {
                 setError(null);
                 return true;
               } catch (err) {
-                setError(errorText(err));
+                setError(failureWords(err, hostOf(workspace.environmentId), "did not save the change", true));
                 return false;
               }
             }}
           />
         ) : null}
         {settings && mayWrite && host && otherDesktops(settings.mayUseDesktop).length ? (
-          <TeamsCopyRow workspace={workspace} hostName={host.name} desktops={otherDesktops(settings.mayUseDesktop).map((id) => environments.find((e) => e.id === (linkIdOfHost(id, localHost) ?? id))?.name ?? far.find((d) => d.id === id)?.name ?? id)} />
+          <TeamsCopyRow workspace={workspace} hostName={nameInLine(host.name)} desktops={otherDesktops(settings.mayUseDesktop).map((id) => environments.find((e) => e.id === (linkIdOfHost(id, localHost) ?? id))?.name ?? far.find((d) => d.id === id)?.name ?? id)} />
         ) : null}
         {error ? (
           <PageError
@@ -391,8 +406,19 @@ export function CodeWorkspaceSector({ workspaceId }: { workspaceId: string }) {
   const listed = useLifeosQuery<{ key: string; label: string }[]>(session, "sectors:list", {});
   const names = useMemo(() => new Map(listed.status === "ready" ? listed.value.map((s) => [s.key, s.label] as const) : []), [listed]);
   const [error, setError] = useState<string | null>(null);
+  // Linking needs a key that manages the host: a given computer's window sees the sector, and who can change it.
+  const mayLink = useLinkMay(workspace?.environmentId ?? "", "work.lifeos.link");
+  const host = useEnvironments().find((e) => e.id === workspace?.environmentId)?.name ?? "this host";
   if (!workspace || workspace.kind === "work" || !on.has(workspace.environmentId)) return null;
   const connected = status?.lifeos.state === "connected";
+  if (!mayLink) {
+    return (
+      <PageSection title="LifeOS">
+        {workspace.sector ? <PageRow title="Sector" description={sectorName(workspace.sector, names)} media={<SectorDot sector={workspace.sector} />} /> : null}
+        <PageEmpty>{managedElsewhere(host)}</PageEmpty>
+      </PageSection>
+    );
+  }
   const key = workspace.sector ? keyLine(status?.keys.find((k) => k.workspaceId === workspace.id)) : null;
   return (
     <PageSection title="LifeOS">
@@ -410,7 +436,7 @@ export function CodeWorkspaceSector({ workspaceId }: { workspaceId: string }) {
             options={[{ value: "none", label: "None" }, ...SECTORS.map((sector) => ({ value: sector, label: sectorName(sector, names) }))]}
             onChange={(next) => {
               setError(null);
-              void linkSector(workspace as WorkspaceMeta, next === "none" ? null : (next as SectorKey)).catch((err: unknown) => setError(errorText(err)));
+              void linkSector(workspace as WorkspaceMeta, next === "none" ? null : (next as SectorKey)).catch((err: unknown) => setError(failureWords(err, host, "did not link the sector", true)));
             }}
           />
         </PageRow>

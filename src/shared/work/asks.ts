@@ -54,7 +54,7 @@ export const WORK_ASKS: readonly Ask[] = [
   ["power.settings.set", "admin", ok, hidden("surfaces/settings/hosts/rpc.ts"), hidden("surfaces/settings/hosts/rpc.ts"), hidden("surfaces/settings/hosts/HostsPage.tsx")],
   ["power.status", "read", ok, ok, ok, ok],
   ["project.rename", "operate", ok, ok, refused, refused],
-  ["project.setAccounts", "admin", ok, refused, refused, refused],
+  ["project.setAccounts", "admin", ok, hidden("work/shell/ProjectSettings.tsx"), hidden("work/shell/ProjectSettings.tsx"), hidden("work/shell/ProjectSettings.tsx")],
   ["remote.environments.add", "local", hidden("surfaces/settings/hosts/HostsPage.tsx"), hidden("surfaces/settings/hosts/HostsPage.tsx"), hidden("surfaces/settings/hosts/HostsPage.tsx"), hidden("surfaces/settings/hosts/HostsPage.tsx")],
   ["remote.environments.list", "local", hidden("surfaces/settings/hosts/HostsPage.tsx"), hidden("surfaces/settings/hosts/HostsPage.tsx"), hidden("surfaces/settings/hosts/HostsPage.tsx"), hidden("surfaces/settings/hosts/HostsPage.tsx")],
   ["remote.environments.pair", "local", hidden("surfaces/settings/hosts/HostsPage.tsx"), hidden("surfaces/settings/hosts/HostsPage.tsx"), hidden("surfaces/settings/hosts/HostsPage.tsx"), hidden("surfaces/settings/hosts/HostsPage.tsx")],
@@ -189,7 +189,7 @@ export const WORK_ASKS: readonly Ask[] = [
   ["work.history.restore", "operate", ok, ok, refused, refused, [ok, refused, refused]],
   ["work.history.versions", "read", ok, ok, ok, ok, [ok, refused, refused]],
   ["work.lifeos.jwt", "approve", ok, hidden("work/shell/lifeos.ts"), hidden("work/shell/lifeos.ts"), hidden("work/shell/lifeos.ts")],
-  ["work.lifeos.link", "admin", ok, refused, refused, refused],
+  ["work.lifeos.link", "admin", ok, hidden("work/shell/settings.tsx"), hidden("work/shell/settings.tsx"), hidden("work/shell/settings.tsx")],
   ["work.lifeos.pairCancel", "admin", ok, hidden("work/shell/WorkViewPage.tsx"), hidden("work/shell/WorkViewPage.tsx"), hidden("work/shell/WorkViewPage.tsx")],
   ["work.lifeos.pairStart", "admin", ok, hidden("work/shell/WorkViewPage.tsx"), hidden("work/shell/WorkViewPage.tsx"), hidden("work/shell/WorkViewPage.tsx")],
   ["work.lifeos.setToken", "local", hidden("work/shell/settings.tsx"), hidden("work/shell/settings.tsx"), hidden("work/shell/settings.tsx"), hidden("work/shell/settings.tsx")],
@@ -390,7 +390,7 @@ export const WORK_ASKS: readonly Ask[] = [
   ["work.workspace.get", "read", ok, ok, ok, ok],
   ["work.workspace.set", "admin", ok, hidden("work/shell/settings.tsx"), hidden("work/shell/settings.tsx"), hidden("work/shell/settings.tsx")],
   ["workspace.create", "operate", ok, ok, refused, refused],
-  ["workspace.setAccounts", "admin", ok, refused, refused, refused],
+  ["workspace.setAccounts", "admin", ok, hidden("surfaces/settings/Workspace.tsx"), hidden("surfaces/settings/Workspace.tsx"), hidden("surfaces/settings/Workspace.tsx")],
 ];
 
 // The literal is still in the dormant Today source. Registering its wire schema calls for a real row.

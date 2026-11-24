@@ -6,6 +6,7 @@ import { registry, useEnvironments } from "../../lib/connection";
 import { linkMay } from "../../lib/linkMay";
 import { setWorkOn, useWorkHosts } from "../../lib/workSwitch";
 import { workShellChunk } from "../chunks";
+import { nameInLine } from "../../lib/hostWords";
 
 const WorkSettingsBody = workShellChunk.surface("WorkSettingsBody", <PageRowsSkeleton rows={4} description control="button" />);
 
@@ -14,14 +15,14 @@ export function switchLine(environments: readonly { id: string; name: string }[]
   if (on.size === 0) return "On adds the Outbox, Work Chats and your Work workspaces to the rail";
   const off = environments.filter((e) => !on.has(e.id));
   if (off.length === 0) return undefined;
-  const names = (list: readonly { name: string }[]): string => list.map((e) => e.name).join(", ");
+  const names = (list: readonly { name: string }[]): string => list.map((e) => nameInLine(e.name)).join(", ");
   return `On for ${names(environments.filter((e) => on.has(e.id)))}, off for ${names(off)}`;
 }
 
 /** The hosts this window's key cannot switch, named: a press here never asks them, so none ends in a refusal. */
 export function elsewhereLine(names: readonly string[]): string | undefined {
   if (names.length === 0) return undefined;
-  return `Work for ${names.join(", ")} is changed from a computer that manages ${names.length > 1 ? "them" : "it"}`;
+  return `Work for ${names.map(nameInLine).join(", ")} is changed from a computer that manages ${names.length > 1 ? "them" : "it"}`;
 }
 
 /**
