@@ -19,6 +19,7 @@ import {
 import { WebSocketServer } from 'ws'
 import { PrivateBranchStore } from '../history/privateBranches'
 import { notServedWords } from './config'
+import { storeBook } from '../docs/storeBook'
 import { INTERNAL_ROUTES, routeFor } from './routes'
 import { refuseUpgrade, RouteError, sendJson, sendText, type RouteCtx } from './routes/route'
 // By its path, as every module this process reaches: the service's bundle and its boundary test follow relative imports.
@@ -141,6 +142,10 @@ export async function startWorkService(initial: ServiceConfig, io: ServiceIo): P
     if (!shown) return false
     return !!claims.sheet && projectionLists(shown, 'sheets', claims.sheet)
   }
+  // The live documents' stores, each outcome written down: a tab's close is told the document is on disk only when it is.
+  const stores = storeBook()
+  const liveFiles = stores.wrap(fileStore)
+  const liveLifeos = stores.wrap(lifeosStore)
   const verifier = createCollabVerifier(() => trusted)
   const collab = createCollabServer({
     // No client is given a document newer than it knows, and a document's schema rises only by this service's hand.
@@ -156,7 +161,7 @@ export async function startWorkService(initial: ServiceConfig, io: ServiceIo): P
         return claims
       }
     },
-    storeFor: (name) => (name.startsWith('file:') ? fileStore : (notServed ?? lifeosStore)),
+    storeFor: (name) => (name.startsWith('file:') ? liveFiles : (notServed ?? liveLifeos)),
     journalDir: join(config.dataDir, 'journal'),
     linkLive,
     // A guest's caret carries the name the owner gave the link, whatever the page claims (work-kit guardPresence).
@@ -176,7 +181,7 @@ export async function startWorkService(initial: ServiceConfig, io: ServiceIo): P
   }))
   // Yjs updates are small; an import's bulk comes through the internal routes, never a socket.
   const wss = new WebSocketServer({ noServer: true, maxPayload: 4 * 1024 * 1024 })
-  const ctx: RouteCtx = { config: () => config, collab, history, convex, links: () => links, projects: () => projects, claimLive, wss, log: io.log }
+  const ctx: RouteCtx = { config: () => config, collab, history, convex, links: () => links, projects: () => projects, claimLive, wss, stores, log: io.log }
 
   // ── public ────────────────────────────────────────────────────────────
   const pathOf = (req: IncomingMessage): string | null => {

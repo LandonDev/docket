@@ -135,7 +135,7 @@ export const docsRoutes: InternalRoute[] = [
     milestone: 20,
     /**
      * A tab's close (work.docs.send with `stored`): every frame a window's socket sent this document is applied, then
-     * every document with an unstored change is stored, so the file says what he left before anything judges it.
+     * the document is stored, so the file says what he left before anything judges it; a store that fails is said.
      */
     async run(body, ctx) {
       const fence = fenceOf(body)
@@ -144,9 +144,24 @@ export const docsRoutes: InternalRoute[] = [
       // The relay wrote its frames before this was asked: one turn of the loop reads them into each socket's queue.
       await new Promise((resolve) => setImmediate(resolve))
       const document = ctx.collab.hocuspocus.documents.get(name)
-      if (document) await Promise.all(document.getConnections().map((c) => c.waitForPendingMessages()))
-      await ctx.collab.flush()
-      return { ok: true }
+      // Not in memory: an unload stores first, so nothing it held waits to be stored.
+      if (!document) return { ok: true }
+      await Promise.all(document.getConnections().map((c) => c.waitForPendingMessages()))
+      // This document alone, in its own save turn, its store's answer read back (docs/storeBook.ts): ok only once its
+      // state is on disk. A store that merged another writer's first is stored again.
+      const payload = { clientsCount: document.getConnectionsCount(), document, documentName: name, instance: ctx.collab.hocuspocus, lastContext: {}, lastTransactionOrigin: { source: 'local', context: {} } }
+      for (let tries = 0; tries < 3; tries++) {
+        ctx.stores?.take(name)
+        try {
+          await document.saveMutex.runExclusive(() => ctx.collab.hocuspocus.hooks('onStoreDocument', payload as never))
+        } catch (err) {
+          throw new RouteError(503, `the document was not stored: ${err instanceof Error ? err.message : String(err)}`)
+        }
+        const got = ctx.stores?.take(name)
+        if (!got || 'ok' in got) return { ok: true }
+        if ('failed' in got) throw new RouteError(503, `the document was not stored: ${got.failed}`)
+      }
+      throw new RouteError(503, 'the document was not stored: another writer kept storing first')
     }
   },
   {

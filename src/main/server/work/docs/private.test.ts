@@ -1,4 +1,4 @@
-import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs'
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, symlinkSync, writeFileSync, chmodSync } from 'node:fs'
 import { request } from 'node:http'
 import { homedir, tmpdir } from 'node:os'
 import { createRequire } from 'node:module'
@@ -144,7 +144,8 @@ async function rig(o: { ownerSaid?: string[]; routineRunId?: string } = {}) {
       paneOf: (id: string) => id,
       get: (id: string) => (id === 'i0' ? { id: 'i0', sessionId: 't1', kind: 'document', source: null } : null),
       replace: () => ({ id: 'i9' }),
-      onReplaced: () => () => {}
+      onReplaced: () => () => {},
+      forSession: () => []
     },
     threads: { ownerSaid: (_: string, quote: string, about?: readonly string[]) => (o.ownerSaid ?? []).some((said) => said.includes(quote) && (!about || about.some((name) => said.toLowerCase().includes(name.toLowerCase())))) },
     lifeos: { connected: () => false, owner: () => ({ query: async () => null, mutation: async () => null }) },
@@ -285,10 +286,13 @@ describe("the document kept for a Word file of another computer", () => {
       .run(source.path, Math.round(statSync(source.path).mtimeMs), Date.now())
     return source
   }
-  /** The autosave, run as if the document had been still for its pause. */
+  /** The autosave, run as if the document had been still for its pause: it sees the live revision, then a pause later saves. */
+  let clock = Date.now()
   const autosave = async (r: Awaited<ReturnType<typeof rig>>) => {
     await r.service.collab.flush()
-    await autosaveWords(r.ctx, Date.now() + 10_000)
+    clock += 60_000
+    await autosaveWords(r.ctx, clock)
+    await autosaveWords(r.ctx, clock + 10_000)
   }
   const sentText = (): string[] => wordFile.sent.map((data) => docxXml(new Uint8Array(data)))
 
@@ -359,6 +363,26 @@ describe("a document's file before its tab closes", () => {
     expect(await r.text(path)).toContain('Bring the keys')
     // A bot key is never let in.
     await expect(r.call('/internal/docs/stored', { name: fileDocName(path), fence: { sectors: 'all', botId: 'b1' } })).rejects.toThrow(/main's/)
+  })
+
+  it('says a store that failed: the close is never told the file holds what it does not', async () => {
+    const r = await rig()
+    const folder = join(r.work, 'Locked')
+    mkdirSync(folder)
+    const { path } = await r.make(join(folder, 'Plan.tcdoc'))
+    const other = await r.second(path)
+    const [first] = [...other.document.getXmlFragment('document-store').createTreeWalker((n) => n instanceof Y.XmlText)] as Y.XmlText[]
+    // The folder takes no new file: the store's write fails.
+    chmodSync(folder, 0o500)
+    try {
+      first!.insert(0, 'Bring the keys ')
+      await expect(r.call('/internal/docs/stored', { name: fileDocName(path), fence: { sectors: 'all' } })).rejects.toThrow(/not stored/)
+    } finally {
+      chmodSync(folder, 0o700)
+    }
+    // Once it can, the same ask stores it and says so.
+    await r.call('/internal/docs/stored', { name: fileDocName(path), fence: { sectors: 'all' } })
+    expect(Object.values(zipText(path)).some((body) => body.includes('Bring the keys'))).toBe(true)
   })
 })
 

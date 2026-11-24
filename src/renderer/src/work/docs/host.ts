@@ -76,12 +76,25 @@ function fromBase64(data: string): ArrayBuffer {
   return bytes.buffer;
 }
 
-/** The sockets each relayed class has open, for its document's flush. */
-const openOf = new WeakMap<object, Set<{ stored(): Promise<void> }>>();
+/** The sockets each relayed class has open, and the last frames one lost (a failed send, a close with frames unsent). */
+type Relayed = { open: Set<{ stored(): Promise<void> }>; lost: Error | null };
+const relayedOf = new WeakMap<object, Relayed>();
 
-/** Each open socket of the class sends what waits and has the host store the document. */
+/** Said when the window has no connection to tell the host what it typed: the flush fails, never passes. */
+export const NOT_SENT = "The document is not connected, so its last edits have not reached the host";
+
+/**
+ * Each open socket of the class sends what waits and has the host store the document. It fails when a send or the
+ * store fails, when a socket is not connected, and when frames were lost since the last store it confirmed: what the
+ * editor holds then is in this window alone, and the close is told so.
+ */
 export async function storedAll(socket: new (url: string) => WebSocket): Promise<void> {
-  await Promise.all([...(openOf.get(socket) ?? [])].map((s) => s.stored()));
+  const relayed = relayedOf.get(socket);
+  if (!relayed) return;
+  const lost = relayed.lost;
+  if (!relayed.open.size && lost) throw lost;
+  await Promise.all([...relayed.open].map((s) => s.stored()));
+  if (lost && relayed.lost === lost) relayed.lost = null;
 }
 
 /**
@@ -92,7 +105,8 @@ export async function storedAll(socket: new (url: string) => WebSocket): Promise
  */
 export function relaySocket(env: string, source: CanvasSource): new (url: string) => WebSocket {
   const link = () => registry.linkOf(env);
-  const open = new Set<{ stored(): Promise<void> }>();
+  const relayed: Relayed = { open: new Set(), lost: null };
+  const open = relayed.open;
   class RelaySocket extends EventTarget {
     static readonly CONNECTING = READY.CONNECTING;
     static readonly OPEN = READY.OPEN;
@@ -106,6 +120,8 @@ export function relaySocket(env: string, source: CanvasSource): new (url: string
     private sending: Promise<void> | null = null;
     /** Closed by its own side: what waits still goes up before the host's socket closes. */
     private closing = false;
+    /** A send the host did not take: the frames it carried are lost to this socket. */
+    private failed: Error | null = null;
 
     constructor(url: string) {
       super();
@@ -156,16 +172,20 @@ export function relaySocket(env: string, source: CanvasSource): new (url: string
           await link().request("work.docs.send", { socket: this.id, frames });
         }
       } catch (err) {
+        this.failed = err instanceof Error ? err : new Error(String(err));
+        relayed.lost = this.failed;
         if (this.readyState === READY.CLOSED) return;
         this.dispatchEvent(new Event("error"));
-        this.finish(1006, err instanceof Error ? err.message : String(err));
+        this.finish(1006, this.failed.message);
       }
     }
 
     /** What waits goes up, then the host answers once its service has applied every frame and stored the document. */
     async stored(): Promise<void> {
       await this.flush();
-      if (this.id && this.readyState === READY.OPEN) await link().request("work.docs.send", { socket: this.id, frames: [], stored: true });
+      if (this.failed) throw this.failed;
+      if (!this.id || this.readyState !== READY.OPEN) throw new Error(NOT_SENT);
+      await link().request("work.docs.send", { socket: this.id, frames: [], stored: true });
     }
 
     send(data: ArrayBufferLike | ArrayBufferView): void {
@@ -192,10 +212,12 @@ export function relaySocket(env: string, source: CanvasSource): new (url: string
       if (this.readyState === READY.CLOSED) return;
       this.readyState = READY.CLOSED;
       open.delete(this);
+      // Closed by the host or a failure with frames still waiting: they never reach it from this socket.
+      if (this.outbox.length > 0 && !this.closing) relayed.lost ??= new Error(NOT_SENT);
       // A plain event with a close's fields: what the provider reads, wherever CloseEvent is missing.
       this.dispatchEvent(Object.assign(new Event("close"), { code, reason, wasClean: code === 1000 }));
     }
   }
-  openOf.set(RelaySocket, open);
+  relayedOf.set(RelaySocket, relayed);
   return RelaySocket as unknown as new (url: string) => WebSocket;
 }

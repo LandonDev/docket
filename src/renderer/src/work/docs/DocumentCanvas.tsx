@@ -576,7 +576,19 @@ function Opened({
   const doc = useDocument(host, open);
   const margin = width >= MARGIN_FROM;
   // A tab's close waits until the host has stored what he typed (canvas/flush.ts): a Word file's document is judged by its file next.
-  useEffect(() => registerFlush(itemId, () => host.flush()), [itemId, host]);
+  // A send or a store that fails is said, and fails the flush: the close is never told the file holds it.
+  const title = open.title;
+  useEffect(
+    () =>
+      registerFlush(itemId, () =>
+        host.flush().catch(async (err: unknown) => {
+          const toast = await loadToast();
+          toast.error(`Couldn't save your last edits to ${title}`);
+          throw err;
+        }),
+      ),
+    [itemId, host, title],
+  );
   // The editor's handle on a styled document's pages: print writes them, Preview's Page section sets them.
   const pagesHandle = useRef<PagesHandle | null>(null);
   const onDocumentHandle = useCallback((handle: PagesHandle | null) => void (pagesHandle.current = handle), []);

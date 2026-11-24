@@ -16,7 +16,7 @@ const said = vi.fn();
 vi.mock("../../components/ui/toaster", () => ({ loadToast: async () => ({ message: said }) }));
 
 const { changeId, decided, reviewOf } = await import("./review");
-const { relaySocket, servedBy, storedAll } = await import("./host");
+const { NOT_SENT, relaySocket, servedBy, storedAll } = await import("./host");
 const { docThreads } = await import("./threads");
 const { presenceOf, undoWritten, CHANGED_SINCE } = await import("./DocumentCanvas");
 
@@ -204,6 +204,40 @@ describe("the relayed socket", () => {
     // A closed socket has nothing left to store.
     await storedAll(Socket);
     expect(calls).toHaveLength(3);
+  });
+
+  it("the flush fails when a send fails or nothing is connected, and passes again once a later store is confirmed", async () => {
+    let refuse = true;
+    link.request.mockImplementation(async (method, params) => {
+      if (method === "work.docs.connect") return { socket: "s".repeat(24) };
+      if (method === "work.docs.recv") return new Promise(() => undefined);
+      if (method === "work.docs.send" && refuse && (params.frames as string[]).length) throw new Error("host offline");
+      return { ok: true };
+    });
+    const Socket = relaySocket("env_box", { at: "lifeos", table: "docs", id: "d1" });
+    const ws = new Socket("ws://x/w/doc/d1");
+    await new Promise((resolve) => ws.addEventListener("open", resolve));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    ws.send(new TextEncoder().encode("a"));
+    // The send fails, the socket closes, and what it carried never reached the host: the flush says so.
+    await expect(storedAll(Socket)).rejects.toThrow("host offline");
+    expect(ws.readyState).toBe(3);
+    await expect(storedAll(Socket)).rejects.toThrow("host offline");
+    // The provider's next socket, not connected yet: still not stored.
+    refuse = false;
+    let connect: (v: { socket: string }) => void = () => undefined;
+    link.request.mockImplementation(async (method) => {
+      if (method === "work.docs.connect") return new Promise((resolve) => (connect = resolve));
+      if (method === "work.docs.recv") return new Promise(() => undefined);
+      return { ok: true };
+    });
+    const again = new Socket("ws://x/w/doc/d1");
+    await expect(storedAll(Socket)).rejects.toThrow(NOT_SENT);
+    connect({ socket: "t".repeat(24) });
+    await new Promise((resolve) => again.addEventListener("open", resolve));
+    // Connected and stored: the loss is behind it.
+    await expect(storedAll(Socket)).resolves.toBeUndefined();
+    await expect(storedAll(Socket)).resolves.toBeUndefined();
   });
 
   it("a document another host serves names that host", () => {

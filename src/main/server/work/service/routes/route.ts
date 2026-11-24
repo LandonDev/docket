@@ -4,6 +4,7 @@ import type { CollabServer, ConvexCall } from 'work-kit/collab-server'
 import type { WebSocketServer } from 'ws'
 import type { ServiceConfig, ServiceLink, ServiceProject } from '../wire'
 import type { QueuedHistory } from '../../history/hostQueue'
+import type { StoreBook } from '../../docs/storeBook'
 
 /**
  * What a route of the Work service gets (docs/agents/work-service.md). The
@@ -24,6 +25,8 @@ export interface RouteCtx {
   /** whether a token's link still stands and, for a project's link, still lists the token's document or sheet */
   claimLive(claims: { link?: string; doc?: string; sheet?: string; iat?: number }): boolean
   wss: WebSocketServer
+  /** what each live document's last store came to (docs/storeBook.ts); absent in a test's context */
+  stores?: StoreBook
   log(line: string): void
 }
 
