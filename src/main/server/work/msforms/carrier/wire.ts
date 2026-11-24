@@ -31,13 +31,18 @@ export function formsComputerOn(c: CarrierComputer): FormsComputer {
   const windowOf = (ref: string): number => Number(ref.replace(/^#/, ''))
   return {
     async open(url) {
-      const before = new Set((await c.pages()).map((p) => p.window))
+      const before = new Map((await c.pages()).map((p) => [p.window, p.url]))
       const o = await c.run('computer_apps', { launch: APP, open: [url] })
       if (o.isError) throw new Error(`The box browser did not open the page${o.body ? `: ${o.body}` : '.'}`)
-      const made = (await c.pages()).filter((p) => !before.has(p.window))
-      const page = made.at(-1) ?? (await c.pages()).find((p) => p.url === url)
-      if (!page) throw new Error('The box browser opened no window for the page.')
-      return `#${page.window}`
+      // A new window, or the blank page the launch used for it (the box browser starts with one, P1): its address
+      // moves off about:blank once the navigation commits, so it is looked for a few times.
+      for (let tries = 0; tries < 20; tries++) {
+        const now = await c.pages()
+        const page = now.filter((p) => !before.has(p.window)).at(-1) ?? now.find((p) => before.get(p.window) === 'about:blank' && p.url !== 'about:blank')
+        if (page) return `#${page.window}`
+        await new Promise((r) => setTimeout(r, 250))
+      }
+      throw new Error('The box browser opened no window for the page.')
     },
     read,
     async act(window, _screen: Screen, steps: readonly ComputerAction[]) {

@@ -48,6 +48,12 @@ export class FakeForms implements FormsComputer {
   made = 0
   /** the next Forms survey opens Forms' welcome page instead */
   welcome = false
+  /** the form's own title button is drawn twice (a page whose layout moved): which to press is not known, so a make stops at its title */
+  twoTitles = false
+  /** how many more reads show the last change still saving ("… Saving...") */
+  saving = 0
+  /** the page never says the change is saved */
+  neverSaves = false
   files = new Map<string, { UniqueId: string; Name: string; ServerRelativeUrl: string; TimeLastModified: string; bytes: Uint8Array }>()
 
   add(form: FakeFormState): void {
@@ -110,7 +116,7 @@ export class FakeForms implements FormsComputer {
       if (page.menu) {
         el(1, 'menu "Create or upload"')
         el(2, 'menu item "Word document"', { what: 'Word document', run: () => {} })
-        el(2, 'menu item "Forms survey"', {
+        el(2, 'menu item "xlsx Forms survey"', {
           what: 'Forms survey',
           run: () => {
             const formId = `FakeFormId${String(++this.made).padStart(14, '0')}`
@@ -140,12 +146,15 @@ export class FakeForms implements FormsComputer {
       if (f.count) el(1, 'button "Open results in Excel"', { what: 'Open results in Excel', run: () => {} })
       el(1, 'button "Delete all responses"', { what: 'Delete all responses', run: () => (f.count = 0) })
     }
+    // the real page draws the title twice: in its top bar with the save state, and on the form (P1)
+    el(1, `button ${q(`Form title ${f.title} ${this.neverSaves || this.saving > 0 ? (this.saving--, 'Saving...') : 'Saved'}`)}`, { what: 'top bar title', run: () => {} })
     if (ui.titleEdit) el(1, `text area "Form title" = ${q(f.title)} focused`, { what: 'title field', run: (t) => t !== undefined && (f.title = t) })
-    else el(1, `button ${q(`Form title ${f.title} Saved`)}`, { what: 'Form title', run: () => void (ui.titleEdit = true) })
+    else for (let n = this.twoTitles ? 2 : 1; n > 0; n--) el(1, `button ${q(`Form title ${f.title}`)}`, { what: 'Form title', run: () => void (ui.titleEdit = true) })
     el(1, `input "Form description" = ${q(f.description)}`, { what: 'description', run: (t) => t !== undefined && (f.description = t) })
     f.questions.forEach((question, i) => {
       if (ui.editing?.at === i) return this.drawEdit(el, f, ui, i)
-      const kind = question.type === 'other' ? question.kind : TYPE_WORD[question.type]
+      // at rest the real page says "Single choice" / "Multiple choice" (P1), where the add buttons say "Choice"
+      const kind = question.type === 'other' ? question.kind : question.type === 'choice' ? (question.multiple ? 'Multiple choice' : 'Single choice') : question.type === 'text' ? (question.long ? 'Multi line text' : 'Single line text') : TYPE_WORD[question.type]
       const req = question.type !== 'other' && question.type !== 'section' && question.required ? ' Required to answer' : ''
       const b = el(1, `button ${q(`${i + 1}. Question title ${question.title} ${kind}${req}`)}`, { what: `question ${i + 1}`, run: () => (ui.editing = { at: i, draft: structuredClone(question) as MsQuestion }) })
       void b
@@ -173,10 +182,11 @@ export class FakeForms implements FormsComputer {
       t('Only people in purdue.edu can respond', f.settings.orgOnly, () => (f.settings.orgOnly = true), 'radio')
       t('Record name', f.settings.recordName, () => (f.settings.recordName = !f.settings.recordName))
       t('One response per person', f.settings.onePerPerson, () => (f.settings.onePerPerson = !f.settings.onePerPerson))
-      t('Accept responses', f.settings.accepting, () => (f.settings.accepting = !f.settings.accepting))
+      // the real panel names it after its section too (P1)
+      t('Options for responses Accept responses', f.settings.accepting, () => (f.settings.accepting = !f.settings.accepting))
       t('Start date', Boolean(f.settings.startDate), () => (f.settings.startDate = f.settings.startDate ? undefined : '1/1/2027'))
       t('End date', Boolean(f.settings.endDate), () => (f.settings.endDate = f.settings.endDate ? undefined : '1/1/2027'))
-      el(2, 'button "Close"', { what: 'Close settings', run: () => void (ui.panel = false) })
+      el(2, 'button "Settings Close"', { what: 'Close settings', run: () => void (ui.panel = false) })
     }
     if (ui.dialog) {
       const d = el(1, 'dialog "Send and collect responses"')

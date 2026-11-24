@@ -69,7 +69,9 @@ export class Page {
   constructor(
     readonly computer: FormsComputer,
     readonly window: string,
-    readonly op: CarrierOp
+    readonly op: CarrierOp,
+    /** the form this page is of, once known: every stop names it, so a form made before the stop is kept (P1) */
+    readonly formId: string | null = null
   ) {}
 
   /** A fresh read. Microsoft's sign-in stops the operation and says so. */
@@ -119,7 +121,7 @@ export class Page {
   /** Stops the operation, saying what it had done. */
   stop(why: string, read: FormRead | null = null): never {
     const head = this.done.length ? `${this.done.join('; ')}; then ${why}` : `${why[0].toUpperCase()}${why.slice(1)}`
-    throw new CarrierStop(`${head}.`, read)
+    throw new CarrierStop(`${head}.`, read, read?.formId ?? this.formId)
   }
 
   get last(): Screen | null {

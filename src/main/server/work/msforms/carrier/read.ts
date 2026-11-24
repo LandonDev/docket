@@ -42,8 +42,10 @@ export const under = (screen: Screen, index: number): ScreenElement[] => all(scr
 
 /** The words Forms ends a question's name with, for each type it offers. */
 const TYPE_WORD: { word: RegExp; type: MsQuestion['type'] | 'other'; kind?: string }[] = [
-  { word: /Choice$/i, type: 'choice' },
-  { word: /Text$/i, type: 'text' },
+  // the real page says "Single choice" (P1, 2026-11-24); "Multiple choice" with Multiple answers on
+  { word: /(?:Single |Multiple )?Choice$/i, type: 'choice' },
+  // "Single line text" / "Multi line text" on the real page (P1); bare "Text" in the trial's words
+  { word: /(?:Single line |Multi ?line )?Text$/i, type: 'text' },
   { word: /Rating$/i, type: 'rating' },
   { word: /Date$/i, type: 'date' },
   { word: /Section$/i, type: 'section' },
@@ -82,7 +84,7 @@ export function questionAtRest(screen: Screen, button: ScreenElement): MsAnyQues
       q.options = (radios.length ? radios : boxes).map((e) => e.name!)
     }
   }
-  if (typed.type === 'text' && inner.some((e) => e.role === 'text area')) q.long = true
+  if (typed.type === 'text' && (/Multi ?line Text$/i.test(rest) || inner.some((e) => e.role === 'text area'))) q.long = true
   if (typed.type === 'rating') {
     const stars = inner.filter((e) => (e.role === 'radio' || e.role === 'button') && /^\d+/.test(e.name ?? '')).length
     q.scale = stars >= 10 ? 10 : 5
@@ -92,7 +94,8 @@ export function questionAtRest(screen: Screen, button: ScreenElement): MsAnyQues
 
 /** The question in edit, if one is: its title text area, its option inputs and its switches. */
 export function questionInEdit(screen: Screen): { title: ScreenElement; options: ScreenElement[]; required: ScreenElement | null; multiple: ScreenElement | null; long: ScreenElement | null; addOption: ScreenElement | null } | null {
-  const title = all(screen).find((e) => e.role === 'text area' && /^Question title\b/i.test(e.name ?? ''))
+  // an input while it holds nothing new, a text area once typed in (P1, 2026-11-24)
+  const title = all(screen).find((e) => (e.role === 'text area' || e.role === 'input') && /^Question title\b/i.test(e.name ?? ''))
   if (!title) return null
   const sw = (name: string) => all(screen).find((e) => (e.role === 'switch' || e.role === 'checkbox') && e.name === name) ?? null
   return {
@@ -104,6 +107,19 @@ export function questionInEdit(screen: Screen): { title: ScreenElement; options:
     addOption: all(screen).find((e) => e.role === 'button' && e.name === 'Add option') ?? null
   }
 }
+
+/**
+ * The form's own title button, the one that opens the title for typing. The real page also draws the title in its
+ * top bar with the save state ("Form title Untitled form Saved"); that one is not pressed (P1, 2026-11-24).
+ */
+export function formTitleButton(screen: Screen): ScreenElement | null {
+  const buttons = all(screen).filter((e) => e.role === 'button' && /^Form title\b/.test(e.name ?? ''))
+  const own = buttons.filter((e) => !SAVE_STATE.test(e.name ?? ''))
+  return own.length === 1 ? own[0] : buttons.length === 1 ? buttons[0] : null
+}
+const SAVE_STATE = /\s+(Saved|Saving\.\.\.|Saving…|Not saved)$/i
+/** Whether the page still says it is saving a change (its top bar's title, "… Saving..."). */
+export const savingOf = (screen: Screen): boolean => all(screen).some((e) => e.role === 'button' && /^Form title\b.*\sSaving(\.\.\.|…)$/i.test(e.name ?? ''))
 
 /** The form's title: its button at rest (save state cut away), or the text area while typed. */
 export function titleOf(screen: Screen): string {
@@ -117,6 +133,11 @@ export function titleOf(screen: Screen): string {
     .trim()
 }
 
+/** Settings' Accept responses: the real panel names it after its section's heading too ("Options for responses Accept responses", P1 2026-11-24). */
+export const ACCEPT_RESPONSES = /^(?:Options for responses\s+)?Accept responses$/i
+/** The Settings panel's close: "Settings Close" on the real page. */
+export const SETTINGS_CLOSE = /^(?:Settings\s+)?Close(?: settings)?$/i
+
 /** Whether the page shows its edits saved. */
 export const savedOf = (screen: Screen): boolean => all(screen).some((e) => e.role === 'button' && /^Form title\s.*\sSaved$/i.test(e.name ?? ''))
 
@@ -128,7 +149,7 @@ export function settingsOf(screen: Screen, was: MsFormSettings = MSFORM_NEW_SETT
   const org = named(['radio'], /^Only people in .+ can respond/i)
   const orgOnly = org && on(org) ? true : anyone && on(anyone) ? false : was.orgOnly
   const out: MsFormSettings = {
-    accepting: flag(named(['checkbox', 'switch'], /^Accept responses$/i), was.accepting),
+    accepting: flag(named(['checkbox', 'switch'], ACCEPT_RESPONSES), was.accepting),
     orgOnly,
     recordName: flag(named(['checkbox', 'switch'], /^Record name$/i), was.recordName),
     onePerPerson: flag(named(['checkbox', 'switch'], /^One response per person$/i), was.onePerPerson)

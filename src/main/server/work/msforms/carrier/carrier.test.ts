@@ -191,10 +191,10 @@ describe('the operations', () => {
     expect(read).toMatchObject({ title: 'TempCode proof make', settings: { accepting: false, orgOnly: true, recordName: true, onePerPerson: true } })
     expect(read.questions).toEqual([{ title: 'Name', type: 'text', required: true }])
     const steps = page.log.filter((l) => l.startsWith('click') || l.startsWith('type'))
-    expect(steps.slice(0, 4)).toEqual(['click Create or upload', 'click Forms survey', 'click Settings', 'click Accept responses'])
+    expect(steps.slice(0, 4)).toEqual(['click Create or upload', 'click Forms survey', 'click Settings', 'click Options for responses Accept responses'])
 
     const stuck = new FakeForms()
-    stuck.stuck.add('Accept responses')
+    stuck.stuck.add('Options for responses Accept responses')
     const err = await rig(stuck).carrier.make(makeAuth(payload), ask).catch((e) => e)
     expect(err).toBeInstanceOf(CarrierStop)
     expect(err.message).toContain('may take answers')
@@ -202,6 +202,26 @@ describe('the operations', () => {
     expect(err.formId).toMatch(/^FakeFormId/)
     // Nothing after the failed first step: no title, no question.
     expect(stuck.log.some((l) => l.startsWith('type'))).toBe(false)
+
+    // a make that stops after the form exists names the form, so its row is kept (P1: the title step)
+    const moved = new FakeForms()
+    moved.twoTitles = true
+    const late = await rig(moved).carrier.make(makeAuth(payload), ask).catch((e) => e)
+    expect(late).toBeInstanceOf(CarrierStop)
+    expect(late.message, late.message).toContain("the form title was not on the page")
+    expect(late.formId).toMatch(/^FakeFormId/)
+
+    // its window is not closed while Forms still says it is saving (P1: a made form's title was lost that way)
+    const slow = new FakeForms()
+    slow.saving = 2
+    await rig(slow).carrier.make(makeAuth(payload), ask)
+    expect(slow.saving).toBeLessThanOrEqual(0)
+    const stuckSaving = new FakeForms()
+    stuckSaving.neverSaves = true
+    const unsaved = await rig(stuckSaving).carrier.make(makeAuth(payload), ask).catch((e) => e)
+    expect(unsaved).toBeInstanceOf(CarrierStop)
+    expect(unsaved.message).toContain('Forms did not finish saving the last change')
+    expect(unsaved.formId).toMatch(/^FakeFormId/)
   })
 
   it('collects: Accept responses on, the link read from the dialog, nothing sent or copied', async () => {

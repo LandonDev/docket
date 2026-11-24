@@ -1,5 +1,5 @@
 import { countOf } from './read'
-import { click, one, type FormsComputer, type Page } from './steps'
+import { click, first, one, type FormsComputer, type Page } from './steps'
 import { CarrierStop, type PullAsk, type PulledWorkbook } from './types'
 
 /**
@@ -18,6 +18,19 @@ import { CarrierStop, type PullAsk, type PulledWorkbook } from './types'
 export const PULL_STILL_MS = 15_000
 export const PULL_NO_MOVE_MS = 90_000
 export const PULL_EVERY_MS = 5_000
+
+/** How long the Responses view may take to show its count (P1: about 20 s). */
+export const RESPONSES_VIEW_MS = 60_000
+const OPEN_IN_EXCEL = /^Open results in Excel$/i
+
+/** Forms' tip over the Responses view ("Everything you need to manage responses…"): its Got it, when it shows. */
+export async function dismissTip(page: Page): Promise<void> {
+  const tip = one(page.last ?? (await page.read()), ['button'], /^Got it$/i)
+  if (tip) await page.act((x) => {
+    const g = one(x, ['button'], /^Got it$/i)
+    return g ? [click(g)] : []
+  }, 'the tip')
+}
 
 const JSON_HEADERS = { Accept: 'application/json;odata=nometadata' }
 const q = (s: string): string => s.replace(/'/g, "''")
@@ -47,12 +60,14 @@ export async function pullWorkbook(deps: PullDeps, formId: string, ask: PullAsk)
     // 1. Open results in Excel: Forms keeps writing rows while this window holds the workbook open.
     const results = await deps.openResponses()
     opened.push(results.window)
-    const { got } = await results.until((x) => (countOf(x) === 0 ? 'none' : one(x, ['button', 'link'], /^Open results in Excel$/i) ? 'open' : null), deps.mount)
+    // The Responses view loads for 20 s and more (P1), and draws "Open results in Excel" twice: the first is pressed.
+    const { got } = await results.until((x) => (countOf(x) === 0 ? 'none' : first(x, ['button', 'link'], OPEN_IN_EXCEL) ? 'open' : null), Math.max(deps.mount, RESPONSES_VIEW_MS))
     if (got === 'none') return { unchanged: true }
     if (!got) results.stop('"Open results in Excel" was not on the Responses view')
+    await dismissTip(results)
     const before = new Set((await computer.windows()).map((w) => w.id))
     await results.act((x) => {
-      const b = one(x, ['button', 'link'], /^Open results in Excel$/i)
+      const b = first(x, ['button', 'link'], OPEN_IN_EXCEL)
       return b ? [click(b)] : null
     }, 'Open results in Excel')
     // The first press asks once: View your responses in Excel for the web … Continue.

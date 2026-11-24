@@ -58,6 +58,8 @@ d('the box computer service speaks the wire', () => {
   let browser: BoxChromium
   let site: TestSite
   let child: { stdin: PassThrough; stdout: PassThrough; kill(): boolean }
+  /** the service behind the stdio pair, for the carrier's own calls (not on the wire) */
+  let svc: BoxComputerService
   const answers = new Map<number, (f: Frame) => void>()
   /** the service's notifications, each held to the wire's schema */
   const notes: ComputerNotification[] = []
@@ -86,7 +88,7 @@ d('the box computer service speaks the wire', () => {
     const rig = testBrowser(root, bin!, { pid: false })
     browser = rig.browser
     site = await serveTestSite()
-    const spawn = inProcessSpawn(() => new BoxComputerService({ browser: rig.link }))
+    const spawn = inProcessSpawn(() => (svc = new BoxComputerService({ browser: rig.link })))
     child = spawn('box', ['serve']) as never
     createInterface({ input: child.stdout }).on('line', (line) => {
       const f = JSON.parse(line) as Frame
@@ -354,6 +356,18 @@ d('the box computer service speaks the wire', () => {
     expect(frame?.params).toMatchObject({ stream: 'pv_1', seq: 1, format: 'jpeg' })
     child.stdin.write(`${JSON.stringify({ jsonrpc: '2.0', method: 'capture.stream.ack', params: { stream: 'pv_1', seq: 1 } })}\n`)
     await ok('capture.stream.stop', { stream: 'pv_1' })
+  })
+
+  it("empties the browser's last page rather than close it, so a headed browser does not quit with it (P1)", async () => {
+    for (const p of (await svc.carrierPages()).slice(1)) await svc.carrierClose(p.window)
+    const [last] = await svc.carrierPages()
+    await svc.carrierClose(last!.window)
+    let after = await svc.carrierPages()
+    for (let i = 0; i < 30 && after[0]?.url !== 'about:blank'; i++) {
+      await new Promise((r) => setTimeout(r, 100))
+      after = await svc.carrierPages()
+    }
+    expect(after).toEqual([{ window: last!.window, url: 'about:blank' }])
     await ok('shutdown')
   })
 })

@@ -471,10 +471,17 @@ export class BoxComputerService {
     return (await this.pages()).map((p) => ({ window: p.window, url: p.url }))
   }
 
-  /** Closes one page by its window id. */
+  /**
+   * Closes one page by its window id. The browser's last page is emptied instead: a headed Chromium quits with its
+   * last window, and the next request would meet a browser that is gone (P1, 2026-11-24).
+   */
   async carrierClose(window: number): Promise<void> {
-    const page = (await this.pages()).find((p) => p.window === window)
-    if (page) await (await this.browser()).send('Target.closeTarget', { targetId: page.targetId })
+    const pages = await this.pages()
+    const page = pages.find((p) => p.window === window)
+    if (!page) return
+    if (pages.length > 1) return void (await (await this.browser()).send('Target.closeTarget', { targetId: page.targetId }))
+    const { cdp, sid } = await this.on(page)
+    await cdp.send('Page.navigate', { url: 'about:blank' }, sid)
   }
 
   /**

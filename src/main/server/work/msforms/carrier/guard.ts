@@ -1,5 +1,6 @@
 import type { Screen, ScreenElement } from '@shared/computer/outward'
 import type { ComputerAction } from '@shared/computer/protocol'
+import { ACCEPT_RESPONSES, SETTINGS_CLOSE } from './read'
 import { CarrierRefused, type CarrierOp } from './types'
 
 /**
@@ -71,7 +72,7 @@ const QUESTIONS: Control[] = [
 
 const SETTINGS_PANEL: Control[] = [
   { roles: BUTTON, name: /^Settings$/i },
-  { roles: BUTTON, name: /^(Close|Close settings)$/i }
+  { roles: BUTTON, name: SETTINGS_CLOSE }
 ]
 /** Who answers, narrowed only: Only people in the org, names kept, one answer each. */
 const NARROW: Control[] = [
@@ -84,20 +85,24 @@ const DATES: Control[] = [
   { roles: TOGGLE, name: /^(Start date|End date)$/i },
   { roles: FIELD, name: /(start|end) (date|time)/i }
 ]
-const ACCEPT_OFF: Control[] = [{ roles: TOGGLE, name: /^Accept responses$/i, only: 'off' }]
-const ACCEPT_ON: Control[] = [{ roles: TOGGLE, name: /^Accept responses$/i, only: 'on' }]
+const ACCEPT_OFF: Control[] = [{ roles: TOGGLE, name: ACCEPT_RESPONSES, only: 'off' }]
+const ACCEPT_ON: Control[] = [{ roles: TOGGLE, name: ACCEPT_RESPONSES, only: 'on' }]
 const COLLECT: Control[] = [
   { roles: BUTTON, name: /^Collect responses$/i },
   { roles: BUTTON, name: /^Close$/i, under: /Send and collect responses/i }
 ]
-const RESPONSES: Control[] = [{ roles: [...BUTTON, 'tab'], name: /^(View responses|Responses)$/i }]
+const RESPONSES: Control[] = [
+  { roles: [...BUTTON, 'tab'], name: /^(View responses|Responses)$/i },
+  // the tip Forms lays over the Responses view (P1): its Got it only dismisses it
+  { roles: BUTTON, name: /^Got it$/i }
+]
 const PULL: Control[] = [
   { roles: BUTTON, name: /^Open results in Excel$/i },
   { roles: BUTTON, name: /^Continue$/i, under: /Excel/i }
 ]
 const MAKE: Control[] = [
   { roles: BUTTON, name: /^(Create or upload|New)$/i },
-  { roles: ITEM, name: /^Forms survey$/i }
+  { roles: ITEM, name: /^(?:xlsx\s+)?Forms survey$/i }
 ]
 const PREFILL: Control[] = [
   { roles: BUTTON, name: /^More form settings$/i },

@@ -1,8 +1,9 @@
 import type { Screen } from '@shared/computer/outward'
 import type { ComputerAction } from '@shared/computer/protocol'
 import { builderOf, diffQuestions, formIdOf, isFormsUrl, isOther, MSFORM_NEW_SETTINGS, respondOf, type MsAnyQuestion, type MsChange, type MsFormSettings, type MsQuestion } from '@shared/work/msforms'
-import { countOf, formOf, linkOf, questionInEdit, questionsOf, settingsOf, titleOf } from './read'
+import { ACCEPT_RESPONSES, countOf, formOf, formTitleButton, linkOf, questionInEdit, questionsOf, savingOf, settingsOf, SETTINGS_CLOSE, titleOf } from './read'
 import { click, first, isOn, one, Page, tab, typeInto, type FormsComputer } from './steps'
+import { RESPONSES_VIEW_MS } from './pull'
 import { CarrierRefused, CarrierStop, checkAuth, type CarrierAuth, type CarrierOp, type FormRead, type MakeAsk, type MsCarrier, type PullAsk } from './types'
 
 /**
@@ -16,6 +17,8 @@ import { CarrierRefused, CarrierStop, checkAuth, type CarrierAuth, type CarrierO
 
 const BUTTON = ['button', 'link', 'menu button']
 const ITEM = ['menu item', 'button', 'link', 'option']
+/** The library's New menu item that makes a form, with or without the file type SharePoint puts before it. */
+export const FORMS_SURVEY = /^(?:xlsx\s+)?Forms survey$/i
 const TOGGLE = ['checkbox', 'switch']
 const TYPE_BUTTON: Record<MsQuestion['type'], RegExp> = { choice: /^Choice$/, text: /^Text$/, rating: /^Rating$/, date: /^Date$/, section: /^Section$/ }
 
@@ -49,7 +52,7 @@ export function opsCarrier(deps: OpsDeps): MsCarrier {
   /** Opens the form's builder in a window of its own, read once its title shows. */
   const openBuilder = async (formId: string, op: CarrierOp, suffix = ''): Promise<Page> => {
     const window = await computer.open(`${builderOf(formId)}${suffix}`)
-    const page = new Page(computer, window, op)
+    const page = new Page(computer, window, op, formId)
     const { screen, got } = await page.until((s) => titleOf(s) !== '' || countOf(s) !== null, mount)
     if (!got) page.stop('the form did not open in Forms')
     const shown = formOf(screen).formId
@@ -59,7 +62,13 @@ export function opsCarrier(deps: OpsDeps): MsCarrier {
 
   const closing = async <T>(page: Page | null, fn: () => Promise<T>): Promise<T> => {
     try {
-      return await fn()
+      const out = await fn()
+      // A change Forms is still saving is lost when its window closes (P1: a made form's title came back "Untitled form").
+      if (page) {
+        const { got } = await page.until((s) => !savingOf(s), mount)
+        if (!got) page.stop('Forms did not finish saving the last change')
+      }
+      return out
     } finally {
       if (page) await computer.close(page.window).catch(() => {})
     }
@@ -68,12 +77,12 @@ export function opsCarrier(deps: OpsDeps): MsCarrier {
   /** The Settings panel, open. */
   const openSettings = async (page: Page): Promise<Screen> => {
     const s = page.last ?? (await page.read())
-    if (one(s, TOGGLE, /^Accept responses$/i)) return s
+    if (one(s, TOGGLE, ACCEPT_RESPONSES)) return s
     await page.act((x) => {
       const b = one(x, BUTTON, /^Settings$/i)
       return b ? [click(b)] : null
     }, 'Settings')
-    const { screen, got } = await page.until((x) => one(x, TOGGLE, /^Accept responses$/i), mount)
+    const { screen, got } = await page.until((x) => one(x, TOGGLE, ACCEPT_RESPONSES), mount)
     if (!got) page.stop('the Settings panel did not open')
     return screen
   }
@@ -155,16 +164,17 @@ export function opsCarrier(deps: OpsDeps): MsCarrier {
           return field ? [typeInto(field, want[i]), tab(field)] : null
         }, `the option "${short(want[i])}"`)
       }
-      // Options Forms put there that were not asked for go.
+      // Options Forms put there that were not asked for go, each read afresh (P1: an "Option 4" was left behind). An
+      // option's Delete is the first Delete after its field, whatever its words.
       for (let guard = 0; guard < 20; guard++) {
-        edit = questionInEdit(page.last!)
+        edit = questionInEdit(await page.read())
         const extra = edit?.options[want.length]
         if (!extra) break
         await page.act((x) => {
-          const e = questionInEdit(x)
-          const field = e?.options[want.length]
-          const del = field ? one(x, ['button'], new RegExp(`^Delete ${escape(field.value ?? '')}$`)) : null
-          return del ? [click(del)] : null
+          const field = questionInEdit(x)?.options[want.length]
+          const del = field ? [...x.elements.values()].filter((e) => e.role === 'button' && e.index > field.index && /^Delete\b/.test(e.name ?? '') && !/^Delete question\b/.test(e.name ?? '')).sort((a, b) => a.index - b.index)[0] : null
+          // an option's Delete is drawn only while its row is under the pointer (P1): the field is hovered first
+          return del && field ? [{ action: 'mouse_move', element: field.index } as ComputerAction, click(del)] : null
         }, 'removing an option Forms added')
       }
       await toggleIn(page, 'multiple', Boolean(q.multiple), 'Multiple answers')
@@ -319,7 +329,8 @@ export function opsCarrier(deps: OpsDeps): MsCarrier {
             return b ? [click(b)] : null
           }, 'Create or upload')
           await folder.act((x) => {
-            const item = one(x, ITEM, /^Forms survey$/i)
+            // SharePoint names it with its file type first: "xlsx Forms survey" (P1, 2026-11-24)
+            const item = one(x, ITEM, FORMS_SURVEY)
             return item ? [click(item)] : null
           }, 'Forms survey')
           // The new form opens in a window of its own; its id is in the address once Forms has made it.
@@ -338,7 +349,7 @@ export function opsCarrier(deps: OpsDeps): MsCarrier {
           await computer.close(folderWindow).catch(() => {})
         }
         if (!formId || !window) throw new CarrierStop('Forms did not show the new form in time. It may have made one in the folder: look in Forms before trying again.', null, null)
-        const page = new Page(computer, window, 'make')
+        const page = new Page(computer, window, 'make', formId)
         return closing(page, async () => {
           const { got } = await page.until((s) => titleOf(s) !== '', mount)
           // The welcome page has no title: nothing is pressed on it.
@@ -346,8 +357,10 @@ export function opsCarrier(deps: OpsDeps): MsCarrier {
           // The first step on the new form: Accept responses off, read back.
           try {
             await openSettings(page)
-            await setToggle(page, /^Accept responses$/i, false, 'Accept responses')
-          } catch {
+            await setToggle(page, ACCEPT_RESPONSES, false, 'Accept responses')
+          } catch (err) {
+            // the stop says a fixed sentence; what failed is for a proof's own log (TC_CARRIER_DEBUG)
+            if (process.env.TC_CARRIER_DEBUG) console.error('[carrier] make: Accept responses off failed:', err)
             const read = formOf(page.last ?? (await page.read()), { formId: formId! })
             throw new CarrierStop('The form was made but may take answers until Accept responses is off. Open it and turn that off, or delete it.', { ...read, formId: formId!, settings: { ...read.settings, accepting: true } })
           }
@@ -357,12 +370,12 @@ export function opsCarrier(deps: OpsDeps): MsCarrier {
           await setDate(page, 'End date', ask.settings.endDate)
           page.done.push('set who can answer')
           await page.act((x) => {
-            const close = one(x, BUTTON, /^(Close|Close settings)$/i)
+            const close = one(x, BUTTON, SETTINGS_CLOSE)
             return close ? [click(close)] : []
           }, 'closing Settings')
           // The title first, so the workbook takes it.
           await page.act((x) => {
-            const b = one(x, BUTTON, /^Form title\b/)
+            const b = formTitleButton(x)
             return b ? [click(b)] : null
           }, 'the form title')
           const { got: field } = await page.until((x) => one(x, ['text area', 'input'], /^Form title$/), mount)
@@ -440,7 +453,7 @@ export function opsCarrier(deps: OpsDeps): MsCarrier {
           if (patch.orgOnly !== undefined || patch.recordName !== undefined || patch.onePerPerson !== undefined) await setAudience(page, { ...now, ...patch })
           if ('startDate' in patch) await setDate(page, 'Start date', patch.startDate)
           if ('endDate' in patch) await setDate(page, 'End date', patch.endDate)
-          if (patch.accepting === false) await setToggle(page, /^Accept responses$/i, false, 'Accept responses')
+          if (patch.accepting === false) await setToggle(page, ACCEPT_RESPONSES, false, 'Accept responses')
           return { read: await finalRead(page, formId) }
         })
       })
@@ -455,7 +468,7 @@ export function opsCarrier(deps: OpsDeps): MsCarrier {
           await setAudience(page, settings)
           await setDate(page, 'Start date', settings.startDate)
           await setDate(page, 'End date', settings.endDate)
-          await setToggle(page, /^Accept responses$/i, true, 'Accept responses')
+          await setToggle(page, ACCEPT_RESPONSES, true, 'Accept responses')
           page.done.push('turned Accept responses on')
           await page.act((x) => {
             const b = one(x, BUTTON, /^Collect responses$/i)
@@ -493,7 +506,7 @@ export function opsCarrier(deps: OpsDeps): MsCarrier {
         const page = await openBuilder(formId, 'close')
         return closing(page, async () => {
           await openSettings(page)
-          await setToggle(page, /^Accept responses$/i, open, 'Accept responses')
+          await setToggle(page, ACCEPT_RESPONSES, open, 'Accept responses')
           return { read: await finalRead(page, formId) }
         })
       })
@@ -505,7 +518,7 @@ export function opsCarrier(deps: OpsDeps): MsCarrier {
       return deps.exclusive(async () => {
         const page = await openBuilder(formId, 'count', '&analysis=true')
         return closing(page, async () => {
-          const { screen, got } = await page.until((x) => countOf(x) !== null, mount)
+          const { screen, got } = await page.until((x) => countOf(x) !== null, Math.max(mount, RESPONSES_VIEW_MS))
           if (got === null) page.stop('the Responses view showed no count')
           return { count: countOf(screen) ?? 0, read: formOf(screen, { formId }) }
         })
@@ -539,7 +552,6 @@ export function shortens(now: string | undefined, next: string | undefined): boo
   return !Number.isNaN(c) && n < c
 }
 
-const escape = (s: string): string => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 
 const emptyRead = (formId: string): FormRead => ({ formId, title: '', description: '', questions: [], settings: MSFORM_NEW_SETTINGS, count: null, signedInAs: null, link: null })
 
