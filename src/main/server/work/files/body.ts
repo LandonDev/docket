@@ -11,8 +11,11 @@ import type { WorkCtx } from '../modules'
  * file whose body is as we last read or wrote it was changed by no one, and our save goes over it.
  */
 
-/** The parts SharePoint writes into an Office file it takes in; anything anyone edits lies outside them. */
-const SERVICE_PARTS = /^(\[Content_Types\]\.xml|docProps\/.*|customXml\/.*|\[trash\]\/.*|(.*\/)?_rels\/[^/]+\.rels)$/
+/**
+ * The parts SharePoint writes into an Office file it takes in; anything anyone edits lies outside them. The package's
+ * own `_rels/.rels` is one: a file with no properties of its own gets a link to SharePoint's there (1.0.371's blank).
+ */
+const SERVICE_PARTS = /^(\[Content_Types\]\.xml|docProps\/.*|customXml\/.*|\[trash\]\/.*|(.*\/)?_rels\/[^/]*\.rels)$/
 
 /** A hash of a file's body: an Office file's parts but SharePoint's, sorted by name; any other file's every byte. */
 export function bodyOf(data: Uint8Array): string {

@@ -39,6 +39,21 @@ describe("a file's body", () => {
     expect(bodyOf(back)).toBe(bodyOf(sent))
   })
 
+  it("is the same for a file with no properties of its own: SharePoint links its own from the package's _rels/.rels (1.0.371)", () => {
+    // Files' own blank: three parts, no docProps, no document relationships
+    const blank = zipSync({ '[Content_Types].xml': strToU8('<Types/>'), '_rels/.rels': strToU8('<Relationships><Relationship Target="word/document.xml"/></Relationships>'), 'word/document.xml': strToU8(DOC) })
+    const back = zipSync({
+      '[Content_Types].xml': strToU8('<Types><Override PartName="/docProps/custom.xml"/></Types>'),
+      '_rels/.rels': strToU8('<Relationships><Relationship Target="word/document.xml"/><Relationship Target="docProps/custom.xml"/></Relationships>'),
+      'word/document.xml': strToU8(DOC),
+      'word/_rels/document.xml.rels': strToU8('<Relationships><Relationship Target="../customXml/item1.xml"/></Relationships>'),
+      'docProps/custom.xml': strToU8('<Properties/>'),
+      'customXml/item1.xml': strToU8('<ct/>'),
+      '[trash]/0000.dat': strToU8('x')
+    })
+    expect(bodyOf(back)).toBe(bodyOf(blank))
+  })
+
   it('differs for any edit of the document, a picture added, or a style changed', () => {
     const sent = bodyOf(docx(DOC))
     expect(bodyOf(docx(DOC.replace('doors', 'gates')))).not.toBe(sent)
