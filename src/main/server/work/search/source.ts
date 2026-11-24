@@ -1,4 +1,4 @@
-import type { SearchHit, SearchKind, SearchReach } from '@shared/work/search'
+import type { SearchHit, SearchKind, SearchQuiet, SearchReach } from '@shared/work/search'
 import type { Caller, WorkCtx } from '../modules'
 
 /**

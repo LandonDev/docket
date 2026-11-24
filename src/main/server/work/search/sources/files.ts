@@ -2,7 +2,7 @@ import { fileChipOf, PLACE, type FileEntry } from '@shared/work/files'
 import { fileKey, type SearchHit } from '@shared/work/search'
 import { WORK_MODULES, type Caller, type WorkCtx, type WorkModule } from '../../modules'
 import { askPillar } from '../ask'
-import type { SearchSource } from '../source'
+import type { SearchAsk, SearchSource } from '../source'
 
 /**
  * Files, which are Files' to find (docs/agents/work-search.md "Files and
