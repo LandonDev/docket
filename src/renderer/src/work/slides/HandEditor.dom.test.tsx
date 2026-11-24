@@ -306,6 +306,32 @@ describe("typing on a slide", () => {
     await waitFor(() => expect(stateLine()).toBe(""));
   });
 
+  it("words over a shape another save took away are offered to copy; a copy that fails says so and keeps them", async () => {
+    const { words } = await typing();
+    (words.querySelector('[data-r="0:0"]')!.firstChild as Text).data = "Who now ";
+    fireEvent.input(words);
+    const moved = textShape(2, [{ level: 0, align: "left", list: "none", runs: [{ text: "Who goes", size: 40 }] }], [0.1, 0.1, 0.9, 0.3], { label: "Title" });
+    act(() => deckHost.push({ ...deckHost.view, rev: "r2", slides: [slide(3, { number: 1, page: 1, shapes: [moved, PICTURE] }), slide(5, { number: 2, page: 2 })] }));
+    fireEvent.pointerDown(document.body);
+    await waitFor(() => expect(stateLine()).toContain("The deck changed while you typed"));
+    // Before he reloads, another save takes the shape off the slide.
+    deckHost.view = { ...deckHost.view, rev: "r3", slides: [slide(3, { number: 1, page: 1, shapes: [PICTURE] }), slide(5, { number: 2, page: 2 })] };
+    fireEvent.click(within(document.querySelector<HTMLElement>("[data-canvas-state]")!).getByRole("button", { name: "Reload" }));
+    await waitFor(() => expect(stateLine()).toContain("The shape is no longer on the slide"));
+    const clipboard = Object.getOwnPropertyDescriptor(navigator, "clipboard");
+    Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText: () => Promise.reject(new Error("Clipboard access was denied.")) } });
+    try {
+      fireEvent.click(within(document.querySelector<HTMLElement>("[data-canvas-state]")!).getByRole("button", { name: "Copy words" }));
+      await waitFor(() => expect(host.toasts).toContain("error: Clipboard access was denied."));
+      // The words stay, and so does the way to copy them.
+      expect(stateLine()).toContain("The shape is no longer on the slide");
+      expect(within(document.querySelector<HTMLElement>("[data-canvas-state]")!).getByRole("button", { name: "Copy words" })).toBeTruthy();
+    } finally {
+      if (clipboard) Object.defineProperty(navigator, "clipboard", clipboard);
+      else delete (navigator as { clipboard?: unknown }).clipboard;
+    }
+  });
+
   it("words over a shape that changed under him are a conflict: kept in the box, the line offers Reload, which keeps them over the new words", async () => {
     const { words, layer } = await typing();
     (words.querySelector('[data-r="0:0"]')!.firstChild as Text).data = "Who now ";

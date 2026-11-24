@@ -489,7 +489,9 @@ export class HandSession {
     const { box, failure } = this.state;
     // Before the close's own wait runs out: words the host has not said it holds (still behind a slow keep, or a write
     // on its way that may yet be refused, whatever an earlier try did) would be lost with the item, so the tab stays.
-    if (late && box && (box.phase === "typing" || box.phase === "saving") && !unchanged(box.model, box.initial)) throw new CloseRefused(UNSAVED);
+    // So does a send still unanswered while the box matches what it was opened on: his Undo back to those words waits
+    // behind it, and is sent only once it lands.
+    if (late && box && (box.phase === "typing" || box.phase === "saving") && (this.sending !== null || !unchanged(box.model, box.initial))) throw new CloseRefused(UNSAVED);
     if (box?.phase === "typing" && !unchanged(box.model, box.initial)) throw new CloseRefused(failure?.message ?? "Your words in the box are not in the file yet");
   }
 
@@ -507,6 +509,10 @@ export class HandSession {
       return;
     }
     const model = rebase(box.model, box.shape, shape);
+    // The box's own Undo and Redo hold words read from the same old runs: they move onto the new words the same way.
+    const moved = (snap: Snapshot): Snapshot => ({ ...snap, model: rebase(snap.model, box.shape, shape) });
+    this.past = this.past.map(moved);
+    this.future = this.future.map(moved);
     this.setBox({ shape, initial: modelOf(shape, this.fallback()), model, drawn: model, conflict: false, paint: box.paint + 1, before: this.store.get().view?.renders.file?.rev ?? box.before });
     this.set({ failure: null });
   }

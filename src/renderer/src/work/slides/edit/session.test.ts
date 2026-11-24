@@ -439,6 +439,51 @@ describe("a close while the box's words are on their way", () => {
     expect(copied).toEqual(["Who comes today"]);
   });
 
+  it("a close past its wait keeps the tab while a send is unanswered, even when his Undo made the box match its old words", async () => {
+    vi.useFakeTimers();
+    try {
+      const { host, session, slide: s, shape } = deck();
+      const { gates } = held(host);
+      session.open(s, shape, "end");
+      type(session, " today");
+      await vi.advanceTimersByTimeAsync(TYPING_SAVE_MS);
+      expect(gates).toHaveLength(1);
+      // The keep is slow; his Undo takes the box back to the words it was opened on.
+      session.undo();
+      const closing = session.flush();
+      const refused = expect(closing).rejects.toThrow("The words in the open box are not saved yet");
+      await vi.advanceTimersByTimeAsync(7600);
+      await refused;
+      // The keep lands; his Undo goes after it, and the file ends with the words he went back to.
+      gates.shift()!();
+      await vi.waitFor(() => expect(gates).toHaveLength(1));
+      gates.shift()!();
+      await vi.waitFor(() => expect(host.view.slides[0].shapes[0].paragraphs![0].runs.map((r) => r.text).join("")).toBe("Who comes"));
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("Reload moves the box's Undo and Redo onto the new words too, never onto what now stands at their old place", async () => {
+    const { host, session, slide: s, store } = deck();
+    const mixed = textShape(2, [{ level: 0, align: "left", list: "none", runs: [{ text: "Who ", size: 40 }, { text: "comes", size: 40, bold: true }] }]);
+    host.view = { ...host.view, slides: [{ ...s, shapes: [mixed] }] };
+    store.view(host.view);
+    session.open(store.get().view!.slides[0], mixed, "end");
+    type(session, "!");
+    type(session, "?");
+    // Another save puts a run in before "comes"; his commit is a conflict, and Reload keeps his words.
+    const inserted = textShape(2, [{ level: 0, align: "left", list: "none", runs: [{ text: "Who ", size: 40 }, { text: "now ", size: 12, italic: true }, { text: "comes", size: 40, bold: true }] }]);
+    host.view = { ...host.view, slides: [{ ...s, shapes: [inserted] }] };
+    store.view(host.view);
+    await session.commit();
+    await session.reload();
+    // His Undo brings back words read from the old runs: "comes" follows its run to its new place.
+    session.undo();
+    const runs = session.get().box!.model[0].runs;
+    expect(runs.map((r) => [r.text, r.from])).toEqual([["Who ", [0, 0]], ["comes", [0, 2]]]);
+  });
+
   it("no box opens over words not saved yet: a conflict that waits for Reload keeps its box", async () => {
     const { host, session, slide: s, shape, store } = deck();
     session.open(s, shape, "end");

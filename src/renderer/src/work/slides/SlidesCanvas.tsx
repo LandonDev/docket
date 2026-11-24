@@ -286,14 +286,14 @@ export function SlidesBody({
   const slideSize = view?.size ?? { width: 12_192_000, height: 6_858_000 };
   const reload = useCallback(() => void session.reload(), [session]);
   // Words over a shape another save took away: the box cannot be drawn, so they go to his clipboard, and then the box.
-  const copyDraft = useCallback(
-    () =>
-      void navigator.clipboard?.writeText(session.draftWords()).then(
-        () => session.cancel(),
-        () => undefined,
-      ),
-    [session],
-  );
+  // A copy that fails says so, and the words stay for another try.
+  const copyDraft = useCallback(() => {
+    const copied = navigator.clipboard?.writeText(session.draftWords()) ?? Promise.reject(new Error("There is no clipboard here."));
+    void copied.then(
+      () => session.cancel(),
+      (e: unknown) => sayError(e, "Couldn't copy your words"),
+    );
+  }, [session]);
   // Each render's pages by slide, as the view that came with it had them: until a new render has opened, the one on
   // screen is drawn with its own pages, so a slide moved, added or taken out never shows another slide's picture.
   const pagesAt = useRef(new Map<string, Map<string, number>>());
@@ -489,7 +489,9 @@ function useFeeds(
           ? { tone: "failed", word: error }
           : { tone: "failed", word: "Couldn't open this deck", detail: error, action: { label: "Retry", run: retry } }
         : failure?.conflict
-          ? { tone: "failed", word: failure.message, detail: "Your words are still in the box", action: failure.message === CONFLICT_WORD ? { label: "Reload", run: reload } : failure.message === SHAPE_GONE ? { label: "Copy words", run: copyDraft } : undefined }
+          ? failure.message === SHAPE_GONE
+            ? { tone: "failed", word: failure.message, detail: "Copy your words before you go on", action: { label: "Copy words", run: copyDraft } }
+            : { tone: "failed", word: failure.message, detail: "Your words are still in the box", action: failure.message === CONFLICT_WORD ? { label: "Reload", run: reload } : undefined }
           : failure
             ? { tone: "failed", word: "Couldn't save your words", detail: failure.message, action: { label: "Retry", run: () => session.commit() } }
             : renderError
