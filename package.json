@@ -11,6 +11,7 @@
     "typecheck:node": "tsc --noEmit -p tsconfig.node.json --composite false",
     "typecheck:web": "tsc --noEmit -p tsconfig.web.json --composite false",
     "typecheck": "bun scripts/typecheck.ts",
+    "journeys": "bun scripts/journeys/run.ts",
     "gen:swift": "bun scripts/gen-swift-contract.ts",
     "check:swift-contract": "bun scripts/gen-swift-contract.ts --check",
     "gen:swift-computer": "bun scripts/gen-swift-computer.ts",

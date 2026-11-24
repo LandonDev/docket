@@ -5,6 +5,49 @@ of the built app against the owner's real LifeOS with dummy data; what each
 proved, with pictures; and every line the build still has not proven, with
 why and the steps that would prove it.
 
+## Journeys
+
+A journey walks Work as a person would. It ends by checking the file, a row
+on its host, or what the window shows. The run uses dummy files, a fresh
+workspace for each walk, and a provider address that cannot answer.
+Each instance has its own home, app data, CLI config, and empty VM path.
+The box reads the shared work tools through a read-only mount.
+
+One pair serves the whole run. `win` is the window under xvfb. It holds
+the dummy Teams library L1 and reaches the Work workspace on the headless
+`box` through a key made for the run. `--desk` adds a third instance
+with library L2. It has its own window under xvfb and no debug port.
+It links to `box` so the workspace can use its files.
+
+- **A** opens a file in the workspace's own folder on `box`.
+- **B1** opens a file from L1 on `win`.
+- **B2** is for L2 on `desk`.
+- **V**, **S**, **K**, and **U** are for the Windows VM, sandbox LifeOS,
+  a given computer's key, and a browser or guest page, in that order.
+  The first two journeys use A and B1.
+
+Build the worktree with `heavy bunx electron-vite build`, then run this
+from that worktree:
+
+```sh
+HEAVY_MAX_MIN=40 /srv/agents/work/temp-code/.temp-code/bin/heavy bun run journeys --only J05,J10
+```
+
+Use `--list` to see the walks, `--shape A,B1` to pick file locations,
+or `--tier 1` to pick a tier. A failed step ends that walk, and the run
+moves on to the next one. Any failure gives the command a non-zero exit.
+The run revokes its keys and stops its instances. `--keep` keeps their
+scratch data for a closer look.
+
+Find `results.json`, the instance logs and each failed step's picture
+under `.temp-code/journeys/<run>/` in the main checkout. The runner
+also updates the Journeys table in `.temp-code/plans/landed/POLISH-work.md`.
+
+To add one, make a `scripts/journeys/JNN-<slug>.ts` file, export
+`journey({ id, title, tier, shapes, steps })`, and add it to `JOURNEYS`
+in `run.ts`. Give the last step a name that starts with `end:` and check
+the thing the walk changed.
+
 ## Running them
 
 Build once (`electron-vite build`), then from the repo root, one at a time:

@@ -1,0 +1,205 @@
+import { execFileSync } from 'node:child_process'
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, utimesSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { dirname, join } from 'node:path'
+import { fileURLToPath } from 'node:url'
+import { expect, it, vi } from 'vitest'
+import { wordBodyLayout } from './J05-document-export'
+import { dummyLibrary, dummyPdf, fixtures, gioStub, holds } from './lib/files'
+import { mainCheckout, step, walk } from './lib/record'
+import { isolatedEnvironment, SHAPES, type Pair } from './lib/shape'
+import { until } from './lib/window'
+import { JOURNEYS, options, requireBuild } from './run'
+import { updateJourneysTable } from './table'
+
+const HERE = dirname(fileURLToPath(import.meta.url))
+const REPO = join(HERE, '../..')
+
+it('registers every journey once with its file id, a shape and an end check', async () => {
+  const files = readdirSync(HERE).filter((file) => /^J\d{2}-.+\.ts$/.test(file))
+  expect(files.length).toBeGreaterThan(0)
+  const modules = await Promise.all(files.map((file) => import('./' + file) as Promise<{ default: typeof JOURNEYS[number] }>))
+  expect(JOURNEYS.map((j) => j.id)).toEqual(files.map((file) => file.slice(0, 3)))
+  for (const { default: journey } of modules) {
+    expect(JOURNEYS.filter((j) => j === journey)).toHaveLength(1)
+    expect(journey.shapes.length).toBeGreaterThan(0)
+    expect(journey.shapes.every((shape) => SHAPES.includes(shape))).toBe(true)
+    expect(journey.steps.at(-1)?.name).toMatch(/^end:/)
+  }
+})
+
+it('never spreads the launch shell environment before filtering it', () => {
+  const source = readFileSync(join(HERE, 'lib/shape.ts'), 'utf8')
+  expect(source).not.toMatch(/\.\.\.\s*(?:\(\s*)?process\.env/)
+  expect(source.match(/process\.env\b/g)).toHaveLength(1)
+  expect(source).toMatch(/const inherited = isolatedEnvironment\(process\.env\)[\s\S]+\.\.\.inherited/)
+  expect(isolatedEnvironment({
+    PATH: '/bin', LANG: 'C', LC_ALL: 'C',
+    TEMP_CODE_USER_DATA: '/real', CLAUDE_CONFIG_DIR: '/real', ANTHROPIC_API_KEY: 'real',
+    OPENAI_API_KEY: 'real', CODEX_HOME: '/real', ELECTRON_RUN_AS_NODE: '1', GITHUB_TOKEN: 'real'
+  })).toEqual({ PATH: '/bin', LANG: 'C', LC_ALL: 'C' })
+})
+
+it('filters by id, shape and tier and only adds desk when asked or needed', () => {
+  const picks = options(['--only', 'J05,J10', '--shape', 'A,B1', '--tier', '1'])
+  expect(picks.jobs.map(({ spec, shape }) => [spec.id, shape])).toEqual([['J05', 'A'], ['J10', 'A'], ['J10', 'B1']])
+  expect(picks.desk).toBe(false)
+  expect(options(['--only', 'J10', '--shape', 'B1', '--list', '--keep', '--desk'])).toMatchObject({ list: true, keep: true, desk: true })
+  expect(() => options(['--only', 'J05', '--shape', 'B1'])).toThrow('No journeys match')
+  expect(() => options(['--shape', 'wrong'])).toThrow('Unknown shape')
+  expect(() => options(['--only', 'J00'])).toThrow('Unknown journey')
+  expect(() => options(['--tier', '0'])).toThrow('positive integer')
+})
+
+it('refuses a missing or stale build and checks the worktree sources', () => {
+  const root = mkdtempSync(join(tmpdir(), 'journeys-build-'))
+  try {
+    expect(() => requireBuild(root)).toThrow('heavy bunx electron-vite build')
+    const files = ['src/nested/code.ts', 'out/main/boot.js', 'out/main/index.js', 'out/preload/index.js', 'out/renderer/index.html']
+    for (const file of files) {
+      const path = join(root, file)
+      mkdirSync(dirname(path), { recursive: true })
+      writeFileSync(path, '')
+      utimesSync(path, 100, file.startsWith('src/') ? 100 : 200)
+    }
+    expect(() => requireBuild(root)).not.toThrow()
+    utimesSync(join(root, files[0]!), 100, 300)
+    expect(() => requireBuild(root)).toThrow('older than src/')
+    expect(existsSync(join(mainCheckout(REPO), '.git'))).toBe(true)
+  } finally {
+    rmSync(root, { recursive: true, force: true })
+  }
+})
+
+it('keeps each Fix and rows outside the run when it updates the table', () => {
+  const before = [
+    '# Record', '', '## Journeys', '', '| Journey | Shape | Result | Fix |', '| --- | --- | --- | --- |',
+    '| J10 | B1 | PASS | link \\| note |', '| J11 | A | PASS | old |', '', '## Walls', '| untouched |'
+  ].join('\n')
+  const after = updateJourneysTable(before, { journeys: [
+    { id: 'J10', shape: 'B1', title: '', steps: [{ name: 'end: open | send', error: 'No row' }] },
+    { id: 'J05', shape: 'A', title: '', steps: [{ name: 'end: export' }] }
+  ] })
+  expect(after).toContain('| J05 | A | PASS |  |\n| J10 | B1 | FAIL · end: open &#124; send | link \\| note |')
+  expect(after).toContain('| J11 | A | PASS | old |\n\n## Walls\n| untouched |')
+})
+
+it('records a failed step with evidence and skips the rest of that walk', async () => {
+  const folder = mkdtempSync(join(tmpdir(), 'journeys-walk-'))
+  try {
+    const hostErrors: string[] = ['old']
+    const pair = {
+      abort: new AbortController(),
+      hostErrors,
+      page: { shot: vi.fn(async (file: string) => writeFileSync(file, 'picture')), toasts: async () => ['Toast'], saveLine: async () => 'Saved' }
+    } as unknown as Pair
+    const next = vi.fn()
+    const result = await walk({
+      id: 'J00', title: 'test', tier: 1, shapes: ['A'], steps: [
+        step('Try it', () => { hostErrors.push('Host refused'); throw new Error('No row') }),
+        step('end: next step', next)
+      ]
+    }, { pair, shape: 'A', folder, workspace: { id: 'a', name: 'a', path: folder } }, new Promise<never>(() => undefined))
+    expect(result.steps).toEqual([{
+      name: 'Try it', error: 'No row', picture: 'J00-A/01-try-it.png',
+      toasts: ['Toast'], saveLine: 'Saved', hostErrors: ['Host refused']
+    }])
+    expect(readFileSync(join(folder, '01-try-it.png'), 'utf8')).toBe('picture')
+    expect(next).not.toHaveBeenCalled()
+  } finally {
+    rmSync(folder, { recursive: true, force: true })
+  }
+})
+
+it('seeds dummy bytes and bins only files in the run folder', () => {
+  const root = mkdtempSync(join(tmpdir(), 'journeys-fixtures-'))
+  const outside = mkdtempSync(join(tmpdir(), 'journeys-outside-'))
+  try {
+    const l1 = dummyLibrary(join(root, 'home'), 'Test')
+    expect(l1).toContain('OneDrive-SharedLibraries-Dummy U/Test - Documents/General')
+    const { pdf, deck, sheet } = fixtures(REPO, l1, 'Practice')
+    expect(existsSync(deck) && existsSync(sheet)).toBe(true)
+    expect(readFileSync(pdf, 'utf8')).toContain('/Count 3')
+    const bytes = dummyPdf()
+    expect(bytes.slice(Number(bytes.match(/startxref\n(\d+)/)?.[1]), -1)).toMatch(/^xref/)
+    const text = join(l1, 'Note.txt')
+    writeFileSync(text, '<w:t>Help</w:t><w:t>ful</w:t>')
+    expect(holds(text, 'Helpful')).toBe(true)
+    const gio = join(gioStub(root), 'gio')
+    execFileSync(gio, ['trash', '--', text])
+    expect(existsSync(text)).toBe(false)
+    const trash = readdirSync(root).find((file) => file.startsWith('trash.'))!
+    expect(existsSync(join(root, trash, 'Note.txt'))).toBe(true)
+    const unsafe = join(outside, 'outside.txt')
+    writeFileSync(unsafe, 'outside')
+    expect(() => execFileSync(gio, ['trash', unsafe])).toThrow()
+    expect(existsSync(unsafe)).toBe(true)
+  } finally {
+    rmSync(root, { recursive: true, force: true })
+    rmSync(outside, { recursive: true, force: true })
+  }
+})
+
+it('bounds a poll and stops it when the run aborts', async () => {
+  await expect(until('the stopper', 1, () => false)).rejects.toThrow('Timed out waiting for the stopper')
+  const check = vi.fn()
+  await expect(until('the window', 100, check, AbortSignal.abort(new Error('Child exited')))).rejects.toThrow('Child exited')
+  expect(check).not.toHaveBeenCalled()
+})
+
+it('attaches to the app page, retries a dead handshake and rejects a closed socket', async () => {
+  const sockets: DebugSocket[] = []
+  class DebugSocket {
+    static OPEN = 1
+    readyState = 0
+    onopen?: () => void
+    onclose?: () => void
+    onerror?: () => void
+    onmessage?: (event: { data: string }) => void
+
+    constructor(readonly url: string) {
+      sockets.push(this)
+      queueMicrotask(() => {
+        if (sockets.length === 1) return this.onerror?.()
+        this.readyState = DebugSocket.OPEN
+        this.onopen?.()
+      })
+    }
+
+    send(text: string): void {
+      const { id, method } = JSON.parse(text) as { id: number; method: string }
+      if (method === 'Runtime.evaluate') this.onmessage?.({ data: JSON.stringify({ id, result: { result: { value: 'ready' } } }) })
+    }
+
+    close(): void {
+      this.readyState = 3
+      this.onclose?.()
+    }
+  }
+  const fetch = vi.fn(async () => Response.json([
+    { type: 'page', url: 'about:blank', webSocketDebuggerUrl: 'ws://unused' },
+    { type: 'page', url: 'file:///out/index.html', webSocketDebuggerUrl: 'ws://app' }
+  ]))
+  vi.stubGlobal('fetch', fetch)
+  vi.stubGlobal('WebSocket', DebugSocket)
+  try {
+    const { attach } = await import('../e2e-work-lib')
+    const cdp = await attach(12345, 1500)
+    expect(sockets.map((socket) => socket.url)).toEqual(['ws://app', 'ws://app'])
+    expect(sockets[0]?.readyState).toBe(3)
+    await expect(cdp.eval('window.api')).resolves.toBe('ready')
+    const pending = cdp.send('Page.captureScreenshot')
+    cdp.close()
+    await expect(pending).rejects.toThrow('debug socket closed')
+  } finally {
+    vi.unstubAllGlobals()
+  }
+})
+
+it('requires a body font and space between paragraphs in the Word styles', () => {
+  const old = '<w:docDefaults><w:rPrDefault/><w:pPrDefault/></w:docDefaults><w:style w:styleId="Heading1"><w:rFonts w:ascii="Calibri"/><w:spacing w:after="160"/></w:style>'
+  const fixed = '<w:docDefaults><w:rFonts w:ascii="Calibri"/><w:spacing w:after="176"/></w:docDefaults>'
+  expect(wordBodyLayout(old)).toEqual({ font: false, spacing: false })
+  expect(wordBodyLayout(fixed)).toEqual({ font: true, spacing: true })
+  expect(wordBodyLayout(fixed.replace('w:after="176"', 'w:line="384"'))).toEqual({ font: true, spacing: false })
+})

@@ -4,6 +4,7 @@ import { appendFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readd
 import { createServer } from 'node:net'
 import { homedir } from 'node:os'
 import { join, resolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { ConvexHttpClient } from 'convex/browser'
 import { makeFunctionReference } from 'convex/server'
 
@@ -22,7 +23,7 @@ import { makeFunctionReference } from 'convex/server'
  *   env -u ELECTRON_RUN_AS_NODE bun scripts/e2e-work-<job>.ts [--out <dir>]
  */
 
-export const REPO = resolve(import.meta.dir, '..')
+export const REPO = fileURLToPath(new URL('..', import.meta.url)).replace(/\/$/, '')
 export const LIFEOS = 'https://lifeos.landonhale.com'
 export const LIFEOS_CHECKOUT = process.env.E2E_LIFEOS_CHECKOUT ?? '/srv/agents/work/lifeos'
 /** The host's installed conversion and meeting tools, linked read-only into each run's own work-tools. */
@@ -41,7 +42,12 @@ export interface Tool {
 }
 export const textOf = (r: Tool): string => (r.content ?? []).map((c) => c.text ?? `[${c.type}]`).join('\n')
 
-type Cdp = { eval<T>(e: string): Promise<T>; send(m: string, p?: Record<string, unknown>): Promise<unknown>; close(): void }
+export type Cdp = {
+  eval<T>(expression: string): Promise<T>
+  send(method: string, params?: Record<string, unknown>): Promise<unknown>
+  close(): void
+  onEvent(listener: (method: string, params: unknown) => void): void
+}
 
 export const freePort = (): Promise<number> =>
   new Promise((ok) => {
@@ -66,6 +72,18 @@ export function mint(name: string): string {
   }
   if (typeof token !== 'string' || token.length < 20) throw new Error('auth:mint answered no token')
   return token
+}
+
+/** The box's tools, each folder linked; the run keeps its own jobs, run and downloads folders. */
+export function linkTools(data: string): void {
+  if (!existsSync(join(TOOLS, 'state.json'))) return
+  const mine = join(data, 'work-tools')
+  mkdirSync(mine, { recursive: true })
+  for (const name of readdirSync(TOOLS)) {
+    if (['jobs', 'run', 'downloads'].includes(name)) mkdirSync(join(mine, name), { recursive: true })
+    else if (name === 'state.json') writeFileSync(join(mine, name), readFileSync(join(TOOLS, name)))
+    else symlinkSync(join(TOOLS, name), join(mine, name))
+  }
 }
 
 export class Run {
@@ -146,7 +164,7 @@ export class Run {
     this.workPort = await freePort()
     if (await fetch(`http://127.0.0.1:${this.port}/json/version`, { signal: AbortSignal.timeout(3000) }).then(() => true, () => false)) throw new Error(`debug port ${this.port} is in use`)
     for (const d of [this.data, this.home, this.work, join(this.root, 'tmp'), join(this.home, '.claude'), this.out]) mkdirSync(d, { recursive: true })
-    this.linkTools()
+    linkTools(this.data)
     const env: Record<string, string> = {
       ...Object.fromEntries(Object.entries(process.env as Record<string, string>).filter(([k]) => !/^(TEMP_CODE_|CLAUDE|ANTHROPIC_)/.test(k) && k !== 'ELECTRON_RUN_AS_NODE')),
       HOME: this.home,
@@ -205,18 +223,6 @@ export class Run {
     if (opts.work !== false) await this.call('work.set', { enabled: true })
     await this.until('environment.json', 30_000, () => existsSync(join(this.data, 'environment.json')))
     this.host = (JSON.parse(readFileSync(join(this.data, 'environment.json'), 'utf8')) as { id: string }).id
-  }
-
-  /** The box's tools, each folder linked; the run keeps its own jobs, run and downloads folders. */
-  private linkTools(): void {
-    if (!existsSync(join(TOOLS, 'state.json'))) return
-    const mine = join(this.data, 'work-tools')
-    mkdirSync(mine, { recursive: true })
-    for (const name of readdirSync(TOOLS)) {
-      if (['jobs', 'run', 'downloads'].includes(name)) mkdirSync(join(mine, name), { recursive: true })
-      else if (name === 'state.json') writeFileSync(join(mine, name), readFileSync(join(TOOLS, name)))
-      else symlinkSync(join(TOOLS, name), join(mine, name))
-    }
   }
 
   /** Signs in with a session minted for this run, and keeps the owner's client for checks and cleanup. */
@@ -448,48 +454,75 @@ const EVAL_TIMEOUT_MS = 60_000
  * `…/index.html`; others come and go while it boots (the capture window, a page that is replaced), and a
  * socket to one of those fails or drives the wrong page. A socket that fails is tried again until the time is up.
  */
-async function attach(port: number, ms: number): Promise<Cdp> {
+export async function attach(port: number, ms: number, signal?: AbortSignal): Promise<Cdp> {
   const end = Date.now() + ms
   let found: WebSocket | null = null
   while (!found && Date.now() < end) {
-    // Bounded: a debug port that takes the connection while the app is still starting may never answer it.
-    const list = (await fetch(`http://127.0.0.1:${port}/json/list`, { signal: AbortSignal.timeout(3000) }).then((r) => r.json(), () => [])) as { type: string; url: string; webSocketDebuggerUrl?: string }[]
+    signal?.throwIfAborted()
+    const deadline = AbortSignal.timeout(Math.min(3000, end - Date.now()))
+    const list = await fetch(`http://127.0.0.1:${port}/json/list`, {
+      signal: signal ? AbortSignal.any([deadline, signal]) : deadline
+    }).then((r) => r.json()).catch(() => []) as { type: string; url: string; webSocketDebuggerUrl?: string }[]
     const url = list.find((t) => t.type === 'page' && /\/index\.html(\?|#|$)/.test(t.url))?.webSocketDebuggerUrl
     if (url) {
       const socket = new WebSocket(url)
-      const open = await new Promise<boolean>((ok) => ((socket.onopen = () => ok(true)), (socket.onerror = () => ok(false)), setTimeout(() => ok(false), 30_000)))
+      const open = await new Promise<boolean>((ok) => {
+        const done = (opened: boolean): void => {
+          clearTimeout(timer)
+          signal?.removeEventListener('abort', abort)
+          ok(opened)
+        }
+        const abort = (): void => done(false)
+        const timer = setTimeout(abort, Math.min(3000, end - Date.now()))
+        signal?.addEventListener('abort', abort, { once: true })
+        socket.onopen = () => done(true)
+        socket.onerror = socket.onclose = abort
+      })
       if (open) found = socket
+      else socket.close()
     }
-    if (!found) await sleep(500)
+    if (!found) await sleep(250)
   }
   if (!found) throw new Error('no page on the debug port')
   const ws = found
   let n = 0
-  const waiting = new Map<number, { ok: (v: unknown) => void; fail: (e: Error) => void }>()
+  const waiting = new Map<number, (error: Error | null, value?: unknown) => void>()
+  let onEvent: ((method: string, params: unknown) => void) | undefined
   ws.onmessage = (ev) => {
-    const m = JSON.parse(String(ev.data)) as { id?: number; result?: unknown; error?: { message: string } }
-    const w = m.id !== undefined ? waiting.get(m.id) : undefined
-    if (!w) return
-    waiting.delete(m.id!)
-    if (m.error) w.fail(new Error(m.error.message))
-    else w.ok(m.result)
+    const m = JSON.parse(String(ev.data)) as { id?: number; result?: unknown; error?: { message: string }; method?: string; params?: unknown }
+    if (m.id !== undefined) waiting.get(m.id)?.(m.error ? new Error(m.error.message) : null, m.result)
+    else if (m.method) onEvent?.(m.method, m.params)
+  }
+  ws.onclose = ws.onerror = () => {
+    for (const finish of waiting.values()) finish(new Error('the debug socket closed'))
   }
   const send = (method: string, params: Record<string, unknown> = {}) =>
     new Promise<unknown>((ok, fail) => {
+      if (ws.readyState !== WebSocket.OPEN) return fail(new Error('the debug socket is closed'))
       const id = ++n
-      waiting.set(id, { ok, fail })
-      ws.send(JSON.stringify({ id, method, params }))
+      const finish = (error: Error | null, value?: unknown): void => {
+        waiting.delete(id)
+        clearTimeout(timer)
+        if (error) fail(error)
+        else ok(value)
+      }
+      const timer = setTimeout(() => finish(new Error(`the page did not answer ${method}`)), EVAL_TIMEOUT_MS)
+      waiting.set(id, finish)
+      try {
+        ws.send(JSON.stringify({ id, method, params }))
+      } catch (error) {
+        finish(error as Error)
+      }
     })
   return {
     send,
     async eval<T>(expression: string): Promise<T> {
-      // Bounded: an evaluate sent while the page is still loading (its context is replaced under it) is never answered.
-      const late = new Promise<never>((_, fail) => setTimeout(() => fail(new Error('the page did not answer')), EVAL_TIMEOUT_MS))
-      const r = (await Promise.race([send('Runtime.evaluate', { expression, awaitPromise: true, returnByValue: true }), late])) as { result: { value?: T }; exceptionDetails?: { text: string; exception?: { description?: string } } }
+      const r = (await send('Runtime.evaluate', { expression, awaitPromise: true, returnByValue: true })) as { result: { value?: T }; exceptionDetails?: { text: string; exception?: { description: string } } }
       if (r.exceptionDetails) throw new Error(r.exceptionDetails.exception?.description ?? r.exceptionDetails.text)
       return r.result.value as T
     },
-    close: () => ws.close()
+    close: () => ws.close(),
+    onEvent: (listener) => { onEvent = listener }
   }
 }
 
