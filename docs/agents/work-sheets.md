@@ -1186,8 +1186,12 @@ in batches of that many (`reviewBatches`), never all. Accept all and a
 group's Accept leave out what can only be dropped (a conflict, an orphaned
 cell, format or rule); of what they send, what can be taken is written and
 the rest marked, and the answer is the view: a press is refused in words
-only when it took nothing, so a press that changed the file never answers
-as if it had failed. One review of a sheet runs at a time (`oneReview`, sheets/index.ts):
+only when it took nothing (a press that laid a format or a rule settles
+its cells from what they are, refusing none), so a press that changed the
+file never answers as if it had failed. A batch that fails after others
+landed lays the last view answered before its words. With nothing on
+screen that can be accepted, Accept all says "Nothing here can be accepted:
+reject these". One review of a sheet runs at a time (`oneReview`, sheets/index.ts):
 each picks what waits only once the last settled, so an Accept waiting on
 Google or Excel never writes what a Reject in another window dropped, and two
 Accepts never write the same rows. Over an opened Excel file the cells are

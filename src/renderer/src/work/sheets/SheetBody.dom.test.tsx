@@ -907,6 +907,24 @@ describe("the sheet kind", () => {
     await waitFor(() => expect(grid.readOnly).toBe(false));
   });
 
+  it("lays what a large Accept took when a later batch fails, and says the failure", async () => {
+    // Council r3 (Sol 4): the first batch's view was dropped when the second was refused.
+    const many = Array.from({ length: 5001 }, (_, i) => suggestion(`s${i}`, i, 0));
+    open(sheetView({ rev: 3, suggestions: many }));
+    await gridUp();
+    let n = 0;
+    sheetHost.review = async (which) => {
+      if (++n === 2) throw new Error("The host did not answer");
+      const ids = new Set((which as { ids: string[] }).ids);
+      sheetHost.view = { ...sheetHost.view, suggestions: sheetHost.view.suggestions.filter((x) => !ids.has(x.id)) };
+      return sheetHost.view;
+    };
+    fireEvent.click(await screen.findByRole("button", { name: "More" }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Accept all" }));
+    await waitFor(() => expect(toasts.said).toContain("The host did not answer"));
+    await waitFor(() => expect(document.querySelectorAll("[data-mark]").length).toBeLessThan(5));
+  });
+
   it("names the grid's own workbook in an op it brings in", async () => {
     open(sheetView({ rev: 3 }));
     await gridUp();

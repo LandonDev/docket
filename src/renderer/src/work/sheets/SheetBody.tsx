@@ -501,10 +501,16 @@ function useFeeds(
       if (at) handle?.reveal(at);
     };
     // Each batch of the ids on screen in turn; the view the last one answers is the sheet as it stands.
+    // A batch that fails after others landed still shows what they took: the last view answered is laid before the words.
     const decide = async (w: number | { group: string } | "all", verdict: "accept" | "reject"): Promise<SheetView> => {
       let view: SheetView | null = null;
-      for (const which of reviewBatches(list, w, verdict)) view = await host.review(which, verdict);
-      return view ?? Promise.reject(new Error("Nothing on screen to decide."));
+      try {
+        for (const which of reviewBatches(list, w, verdict)) view = await host.review(which, verdict);
+      } catch (error) {
+        if (view) sync.view(view);
+        throw error;
+      }
+      return view ?? Promise.reject(new Error(verdict === "accept" ? "Nothing here can be accepted: reject these" : "Nothing on screen to decide."));
     };
     const review: ReviewAdapter = {
       groups: changes.groups,

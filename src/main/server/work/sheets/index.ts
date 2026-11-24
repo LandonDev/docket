@@ -173,13 +173,23 @@ export const sheets: WorkModule = {
         await oneReview(key, async () => {
           // A format or a rule the agent proposed is this host's own row: taken, it is laid as his edit; dropped, it is gone.
           const mine = held.at === 'package' || held.at === 'service' ? await reviewChanges(s, held, key, req.params.which, req.params.verdict, principalOf(ctx, by)) : false
+          // A press that took a format or a rule settles its cells from what they are: one changed since is marked, never
+          // a failure after the rule landed. One of cells alone that can take none is refused in words.
+          const alone = mine === false
           if (mine === 'only') {
             // (the ids named no cell suggestion)
-          } else if (held.at === 'package') await reviewPackage(s, held.path, key, req.params.which, req.params.verdict, principalOf(ctx, by))
+          } else if (held.at === 'package') await reviewPackage(s, held.path, key, req.params.which, req.params.verdict, principalOf(ctx, by), alone)
           else if (held.at === 'excel') await (await import('../office/grid')).review(ctx, held.ref, req.params.which, req.params.verdict, principalOf(ctx, by))
           // An accepted set goes to Google as one write (google/grid.ts).
           else if (held.at === 'google') await (await import('../google/grid')).review(ctx, held.ref, req.params.which, req.params.verdict)
-          else await host(ctx, 'review', { sheet: held.ref, which: req.params.which, verdict: req.params.verdict })
+          else {
+            let which = req.params.which
+            if (!alone && req.params.verdict === 'accept' && which !== 'all' && 'ids' in which) {
+              const pending = new Set((await host(ctx, 'open', { sheet: held.ref })).suggestions.filter((x) => x.state === 'pending').map((x) => x.id))
+              which = { ids: which.ids.filter((id) => pending.has(id)) }
+            }
+            if (which === 'all' || !('ids' in which) || which.ids.length) await host(ctx, 'review', { sheet: held.ref, which, verdict: req.params.verdict })
+          }
         })
         await announce(s, item!)
         const after = await viewOf(s, item!)
@@ -399,7 +409,7 @@ const MOVED_SINCE = 'Rows or columns changed since the agent suggested this: rej
  * what the agent saw (a cell changed since, here or in Excel, turns `conflict`), and is marked
  * accepted only once the file has it: a save that fails leaves it waiting.
  */
-async function reviewPackage(s: Sheets, path: string, key: string, which: Which, verdict: 'accept' | 'reject', by: Principal): Promise<void> {
+async function reviewPackage(s: Sheets, path: string, key: string, which: Which, verdict: 'accept' | 'reject', by: Principal, alone = true): Promise<void> {
   const picked = s.suggestions.pick(key, which)
   if (verdict === 'reject') return s.suggestions.mark(key, picked.map((p) => p.id), 'rejected')
   const one = which !== 'all' && 'ids' in which
@@ -424,7 +434,7 @@ async function reviewPackage(s: Sheets, path: string, key: string, which: Which,
   }
   if (ok.length) s.suggestions.mark(key, ok.map((p) => p.id), 'accepted')
   // (what was written stands and the view says what was not: refused in words only when the press took nothing)
-  if (one && ok.length === 0 && picked.length > 0) throw new Error('That cell changed since the agent saw it: reject it, or edit the cell yourself.')
+  if (one && alone && ok.length === 0 && picked.length > 0) throw new Error('That cell changed since the agent saw it: reject it, or edit the cell yourself.')
 }
 
 const sameCell = (a: SheetCellJson | null, b: SheetCellJson | null): boolean => (a?.f ?? null) === (b?.f ?? null) && (a?.f ? true : (a?.v ?? null) === (b?.v ?? null))

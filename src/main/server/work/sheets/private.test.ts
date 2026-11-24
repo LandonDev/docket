@@ -385,6 +385,19 @@ describe('a format or a rule an agent proposes on an Excel file others can open'
     expect(rulesOf(book(), 'SHEET_CONDITIONAL_FORMATTING_PLUGIN')).toHaveLength(2)
   })
 
+  it('a press that takes a rule and names a cell changed since answers the view: the rule stands, the cell is left marked', async () => {
+    // Council r3 (Sol 4): the rule landed, then the cell pass threw, and the press read as failed with no fresh view.
+    await tool('sheet_rule', { item: itemId, rule: { kind: 'highlight', range: 'Data!A2:A9', when: 'greater', value: 100, look: { colour: '#C00000' } }, because: 'own' })
+    await tool('sheet_suggest', { item: itemId, cells: [{ at: 'Data!B2', v: 5 }] })
+    let view = await call<SheetView>('work.sheets.open', { itemId })
+    await call('work.sheets.edit', { itemId, baseRev: view.rev, mutations: [{ id: 'sheet.mutation.set-range-values', params: { unitId: 'workbook', subUnitId: data(book()), cellValue: { 1: { 1: { v: 77 } } } } }] })
+    view = await call<SheetView>('work.sheets.open', { itemId })
+    view = await call<SheetView>('work.sheets.review', { itemId, which: { ids: [...view.changes!.map((c) => c.id), ...view.suggestions.map((x) => x.id)] }, verdict: 'accept' })
+    expect(rulesOf(book(), 'SHEET_CONDITIONAL_FORMATTING_PLUGIN')).toHaveLength(1)
+    expect(view.changes).toBeUndefined()
+    expect(view.suggestions.map((x) => x.state)).toEqual(['conflict'])
+  })
+
   it('his accept lays each as his own ordinary edit; a reject leaves nothing anywhere', async () => {
     await tool('sheet_format', { item: itemId, range: 'Data!A2:B3', format: { bold: true, fill: '#FFF2CC' }, because: 'own' })
     await tool('sheet_rule', { item: itemId, rule: { kind: 'highlight', range: 'Data!A2:A9', when: 'greater', value: 100, look: { colour: '#C00000' } }, because: 'own' })
