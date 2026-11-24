@@ -323,7 +323,8 @@ Trash or whose item was closed another way, is kept through the boot
 check, and a remote key is told of no side it could not name. Each half
 keeps at least 320px (`sideWidth`); where the body has no room for two the
 side lies over the tab's own file. A file on another computer is refused
-at the side as in the seat.
+at the side as in the seat. A document's History takes the same seat while
+it is open (work-history.md "The canvas").
 
 **Drag out.** Rows that are all files lying on this computer (the window's
 own machine, never the Windows VM; a file others can open only where the

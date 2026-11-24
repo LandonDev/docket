@@ -59,6 +59,9 @@ vi.mock("../../lib/connection", async (original) => {
       if (method === "work.files.copyBack") return { is: "ok" };
       if (method === "work.files.archive") return { entries: [{ name: "art/", size: 0, dir: true }, { name: "art/poster.png", size: 2048, dir: false }], more: true };
       if (method === "work.canvas.keep") return { path: "/w/kept.pdf", name: "kept.pdf" };
+      // A document's History, as the host keeps it.
+      if (method === "work.history.versions") return { versions: [{ id: "v2", at: AT, cause: "idle", by: ["owner"], kept: "snapshot" }, { id: "v1", at: AT - 3_600_000, cause: "named", label: "Practice is on Tuesday", by: ["owner"], kept: "snapshot" }], shared: false, names: { owner: "You" } };
+      if (method === "work.history.branches") return { branches: [], names: {} };
       throw new Error(`unexpected ${method}`);
     },
     onPush: (listener: (push: Record<string, unknown>) => void) => (disk.pushes.add(listener), () => disk.pushes.delete(listener)),
@@ -357,5 +360,18 @@ describe("a copy that saves back to its file", () => {
     show(COPY, { tab: { copyOf }, copy: { host: "MacBook" } });
     await screen.findByRole("textbox", { name: "Agenda.md" });
     await waitFor(() => expect(line()).toBe("A copy from MacBook. Changes stay here"));
+  });
+});
+
+describe("a document's History in its Files tab", () => {
+  it("shows the versions list at the file's side, under its own head", async () => {
+    const path = "/w/Events/Notes.md";
+    const history = { ...item(path), id: "h1", kind: "history" } as CanvasItem;
+    render(<FileTabView tab={tab("Notes.md")} item={item(path)} historyItem={history} panelId="p" workspace={workspace} where="Events" copy={null} onClose={() => undefined} />);
+    const side = document.querySelector<HTMLElement>('[data-files-side][aria-label="History"]')!;
+    expect(side).toBeTruthy();
+    await waitFor(() => expect(side.textContent).toContain("Practice is on Tuesday"));
+    expect(side.querySelectorAll('[role="checkbox"]').length).toBe(2);
+    expect(disk.calls.find((c) => c.method === "work.history.versions")?.params).toMatchObject({ source: { at: "file", path } });
   });
 });

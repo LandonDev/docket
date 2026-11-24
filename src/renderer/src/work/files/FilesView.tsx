@@ -19,7 +19,7 @@ import { invoke } from "../../lib/native";
 import type { WorkspaceMeta } from "../../lib/tcserver/types";
 import { shell } from "../../stores/shell";
 import { openHeld } from "../canvas/held";
-import { useCanvas } from "../canvas/store";
+import { closeItem, useCanvas } from "../canvas/store";
 import { Ask, Cloud, Home, Lifeos, Mail, Project } from "../icons";
 import { allowComputers } from "../shell/actions";
 import { desktopsFor } from "../shell/desktops";
@@ -34,6 +34,7 @@ import { MoveDialog, type MoveTarget } from "./MoveDialog";
 import { carryRefusal, samePage, sitsAtSide, HOME_PAGE, isHomePage, isSearchPage, savedIdOf, savedSearchPage, searchPage, actsFor, placeDown, placeOfRef, placePage, readCopy, deskPlace, sidebarFolds, teamOfPage, teamPage, trailOf, type FilesNote, type PlaceCopy, type PlaceRow, type Sidebar as SidebarModel, type SidebarRow } from "./model";
 import "./bindings";
 import { closeOf, FILES_KEYS, landFocus } from "./chords";
+import { historyBeside } from "./SideFile";
 import { fetchHere, fileOf, openEntry, openInApp, opensInApp, type Busy } from "./open";
 import { ListBones, PageBar, PageView, type NoteFixes, type PageActs, type PageFind } from "./Page";
 import { useSideOpen, hasClosed, openAtSide, closeSide, openFileTab, rememberClosed, takeClosed, dropSearch, saveSearch, useHome, useSavedSearches, useSearchFilter, closeTab, firstPage, goTo, historyOf, keepBothCopy, moveTabs, openPageTab, reloadCopy, selectTab, sendCopyBack, tabsNow, teamRows, useDock, useListing, usePageLook, useReach, useSidebarFolded, useTabs, type DeskSearch, type ListFrom, type Reach } from "./store";
@@ -393,9 +394,12 @@ function Place({ workspace, reach, again, startThread }: WorkViewProps & { reach
     if (pressed?.side && !(await readyToClose(pressed.side.itemId, pressed.side.name))) return;
     // The send may have changed how its copy stands (ok to away): the ask reads the tab as the host says it now.
     const gone = tabsNow(link, workspace.id).find((t) => t.id === tabId) ?? pressed;
-    const done = (discard: boolean): Promise<void> => {
+    const done = async (discard: boolean): Promise<void> => {
       remember(tabId);
-      return closeTab(link, workspace.id, tabId, first, discard);
+      // The file's History goes with its tab: it showed at the file's side, and nowhere else.
+      const history = historyBeside(canvas.items, canvas.items.find((i) => i.id === pressed?.itemId) ?? null);
+      await closeTab(link, workspace.id, tabId, first, discard);
+      if (history) void closeItem(link, pane, history.id).catch(() => undefined);
     };
     if (!gone?.copyOf || !gone.back) return done(false);
     await closeCopyTab(gone, copyHostOf(gone, reach), { choose: confirmChoice, confirm: confirmAction, close: done, keepBoth: () => keepBothCopy(link, workspace.id, tabId) });
@@ -413,6 +417,12 @@ function Place({ workspace, reach, again, startThread }: WorkViewProps & { reach
     await closeSide(link, workspace.id, tab.id);
   };
   const closeAtSide = (tab: FileTab): void => void closeSideOf(tab).catch((err: unknown) => say("The file did not close", err));
+  // A file's History, at its side: closed as a pane item, since it is in no tab.
+  const closeHistory = (itemId: string): void => {
+    landing.current = true;
+    void closeItem(link, pane, itemId).catch((err: unknown) => say("History did not close", err));
+  };
+  const shownHistory = tab?.kind === "file" ? historyBeside(canvas.items, canvas.items.find((i) => i.id === tab.itemId) ?? null) : null;
   const closeMany = async (tabIds: readonly string[]): Promise<void> => {
     for (const id of tabIds) await closeOne(id).catch((err: unknown) => say("The tab did not close", err));
   };
@@ -440,7 +450,12 @@ function Place({ workspace, reach, again, startThread }: WorkViewProps & { reach
       return newTab();
     }
     if (!tab) return;
-    if (command === "close-tab") return tab.side && closeOf(document.activeElement) === "side" ? closeAtSide(tab) : close(tab.id);
+    if (command === "close-tab") {
+      if (closeOf(document.activeElement) !== "side") return close(tab.id);
+      // The side's seat holds History while it is open, else the second file.
+      if (shownHistory) return closeHistory(shownHistory.id);
+      return tab.side ? closeAtSide(tab) : close(tab.id);
+    }
     if (command === "next-tab" || command === "prev-tab") return ids.length > 1 ? selectTab(link, workspace.id, ids[(at + (command === "next-tab" ? 1 : ids.length - 1)) % ids.length]!) : undefined;
     if (tab.kind !== "page" || !tab.page) return;
     void goTo(link, workspace.id, tab.id, tab.page, command === "back" ? "back" : "forward").catch(() => undefined);
@@ -455,7 +470,7 @@ function Place({ workspace, reach, again, startThread }: WorkViewProps & { reach
     if (at && at !== document.body && root.current.contains(at)) return;
     landing.current = false;
     landFocus(root.current);
-  }, [tab?.id, tab?.side?.key]);
+  }, [tab?.id, tab?.side?.key, shownHistory?.id]);
 
   // Go to and Search stand in the trail's place of one tab at a time, where the workspace's host keeps the names.
   const canFind = reach.tabs && !view.local;
@@ -636,6 +651,7 @@ function Place({ workspace, reach, again, startThread }: WorkViewProps & { reach
         verbs={verbs}
         onClose={() => close(tab.id)}
         onCloseSide={() => closeAtSide(tab)}
+        onCloseHistory={closeHistory}
         onShowFolder={newTab}
       />
     );
@@ -973,6 +989,7 @@ function OpenFile({
   verbs,
   onClose,
   onCloseSide,
+  onCloseHistory,
   onShowFolder,
 }: {
   tab: FileTab;
@@ -982,10 +999,13 @@ function OpenFile({
   verbs: Verbs;
   onClose(): void;
   onCloseSide(): void;
+  /** closes the file's History, open at its side */
+  onCloseHistory(itemId: string): void;
   onShowFolder(page: FilePage): void;
 }) {
   const item = items.find((i) => i.id === tab.itemId) ?? null;
   const sideItem = tab.side ? (items.find((i) => i.id === tab.side!.itemId) ?? null) : null;
+  const historyItem = historyBeside(items, item);
   // Where the file is kept: the folder it lies in, by its place's own words where the place is known.
   const path = tab.copyOf?.path ?? (item ? canvasSourcePath(item.source) : null);
   const where = path ? (path.replace(/[\\/]+$/, "").split(/[\\/]/).slice(-2, -1)[0] ?? null) : null;
@@ -1044,6 +1064,8 @@ function OpenFile({
       copy={copy}
       sideItem={sideItem}
       onCloseSide={onCloseSide}
+      historyItem={historyItem}
+      onCloseHistory={() => historyItem && onCloseHistory(historyItem.id)}
       onClose={onClose}
       {...(manage ? { manage } : {})}
       {...(folder ? { onShowFolder: () => onShowFolder(folder) } : {})}

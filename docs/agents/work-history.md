@@ -166,7 +166,13 @@ canvas's (M20).
 ## The canvas
 
 The `history` kind (`opens: {}`: the pane opens it by name on a document's
-source, `shell.openHistory`). Three views, kept in the item's state:
+source, `shell.openHistory`). Beside a thread it is a tab of its own in the
+canvas. In a Files tab, where the pane's items are not tabs, it shows at
+the file's side in the side file's seat (`historyBeside`, SideFile.tsx:
+"History" with its glyph in the 32px head and its close; a second file
+there comes back when it closes), the file's own History is not drawn
+while it is open, the close key in it closes it alone, and it goes with
+its tab. Three views, kept in the item's state:
 
 - **The list**: pending branches first ("Waiting for you"), then versions,
   newest first, each row who and why (the label, else the cause in words)

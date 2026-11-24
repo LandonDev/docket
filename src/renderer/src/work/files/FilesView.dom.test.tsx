@@ -75,9 +75,15 @@ vi.mock("../../chrome/ConfirmDialog", async (original) => ({
 vi.mock("../winvm/signIn", () => ({ openVm: vi.fn(), signInOnVm: vi.fn(async () => undefined) }));
 // A file's own viewer is each kind's business: here the pane says only which item it was handed.
 vi.mock("../canvas/CanvasPane", () => ({
-  CanvasPane: ({ item, onAsk }: { item: { title: string; kind: string }; onAsk?(selection: unknown): void }) => (
+  CanvasPane: ({ item, onAsk, shell, historyOpen }: { item: { title: string; kind: string }; onAsk?(selection: unknown): void; shell?: { openHistory(): void }; historyOpen?: boolean }) => (
     <>
       <div data-testid="pane">{`${item.kind}: ${item.title}`}</div>
+      {/* The bar's History, as the real pane draws it: a document's, while its History is not open beside it. */}
+      {item.kind === "document" && !historyOpen ? (
+        <button type="button" onClick={() => shell?.openHistory()}>
+          History
+        </button>
+      ) : null}
       <button type="button" onClick={() => onAsk?.({ chip: { kind: "selection", label: "B2:C4", ref: { at: "item", id: "i1" }, quote: "42" } })}>
         Ask about the selection
       </button>
@@ -253,6 +259,8 @@ function newHost(over: { places?: FilePlace[]; sources?: FilesPlaces["sources"];
           return { id: params.id, title: "Budget questions", status: "idle", provider: params.provider, model: params.model, cwd: params.cwd, workspaceId: params.workspaceId, projectId: null, archived: false, createdAt: 1, updatedAt: 1 };
         case "work.canvas.open":
           return { id: `i${++ids}`, sessionId: params.sessionId, workspaceId: "w1", kind: params.kind, title: params.title, source: params.source, state: "open", position: 0, rev: 0, createdAt: 1, updatedAt: 1 };
+        case "work.canvas.close":
+          return {};
         case "session.send":
           return {};
       }
@@ -606,6 +614,39 @@ describe("tabs", () => {
     fireEvent.click(screen.getByRole("button", { name: "Close Dummy Esports" }));
     await waitFor(() => expect(calls(host, "work.files.tabClose")).toHaveLength(2));
     await waitFor(() => expect(tabNames()).toEqual(["Dummy Esports"]));
+  });
+
+  it("shows a document's History at its side when he presses History, and closes it alone by its ×, the close key or with its tab", async () => {
+    const { host } = await mount();
+    await waitFor(() => expect(rows()).toContain("notes.txt"));
+    fireEvent.doubleClick(row("notes.txt"));
+    await waitFor(() => expect(screen.getByTestId("pane").textContent).toBe("document: notes.txt"));
+    const tabId = host.tabs().find((t) => t.kind === "file")!.id;
+    fireEvent.click(screen.getByRole("button", { name: "History" }));
+    const side = await waitFor(() => {
+      const el = document.querySelector<HTMLElement>('[data-files-side][aria-label="History"]');
+      expect(el).toBeTruthy();
+      return el!;
+    });
+    expect(within(side).getByTestId("pane").textContent).toBe("history: notes.txt");
+    expect(calls(host, "work.canvas.open")).toMatchObject([{ params: { sessionId: "filespane_w1", kind: "history", title: "notes.txt" } }]);
+    // The document's own History is not offered twice.
+    expect(screen.queryByRole("button", { name: "History" })).toBeNull();
+    fireEvent.click(within(side).getByRole("button", { name: "Close History" }));
+    await waitFor(() => expect(document.querySelector("[data-files-side]")).toBeNull());
+    expect(calls(host, "work.canvas.close")).toHaveLength(1);
+    expect(document.activeElement).toBe(document.querySelector("[data-files-main]"));
+    // The close key in it closes History alone; the tab stays.
+    fireEvent.click(screen.getByRole("button", { name: "History" }));
+    (await screen.findByRole("button", { name: "Close History" })).focus();
+    await act(async () => void filesPort.run("close-tab"));
+    await waitFor(() => expect(calls(host, "work.canvas.close")).toHaveLength(2));
+    expect(host.tabs().some((t) => t.id === tabId)).toBe(true);
+    // Open as the tab closes: it goes with the tab.
+    fireEvent.click(await screen.findByRole("button", { name: "History" }));
+    await screen.findByRole("button", { name: "Close History" });
+    fireEvent.click(screen.getByRole("button", { name: "Close notes.txt" }));
+    await waitFor(() => expect(calls(host, "work.canvas.close")).toHaveLength(3));
   });
 
   it("draws the kind's own switch in a file tab's header, as beside a thread", async () => {

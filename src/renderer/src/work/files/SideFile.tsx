@@ -1,4 +1,4 @@
-import { useState, type PointerEvent as ReactPointerEvent } from "react";
+import { useState, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 import { filesPaneOf, type CanvasItem, type CanvasKind } from "@shared/work";
 import { kindOfEntry } from "@shared/work/files";
 import { X } from "../../chrome/icons";
@@ -21,6 +21,16 @@ import { SaveActions, SaveLine } from "./SaveLine";
  * its own, and closing it leaves the tab as it was.
  */
 
+/**
+ * The History item open on a tab's file in the Files pane, if any (docs/DESIGN.md "Compare and History"): it takes
+ * the side's seat while it is open, over any second file, which comes back when History closes.
+ */
+export function historyBeside(items: readonly CanvasItem[], item: CanvasItem | null): CanvasItem | null {
+  if (!item || item.kind === "history") return null;
+  const of = JSON.stringify(item.source);
+  return items.find((i) => i.kind === "history" && JSON.stringify(i.source) === of) ?? null;
+}
+
 /** Each half keeps at least this much. */
 export const SIDE_MIN = 320;
 
@@ -37,6 +47,7 @@ export function SidePane({
   item,
   width,
   kinds,
+  glyph,
   onClose,
   onAsk,
 }: {
@@ -47,6 +58,8 @@ export function SidePane({
   /** its width beside the tab's own file; 0: there is no room for two, and it takes the body alone */
   width: number;
   kinds?: Record<CanvasKind, CanvasKindDef>;
+  /** what the head shows before the name, where the side is no file (History); else the file's kind */
+  glyph?: ReactNode;
   onClose(): void;
   /** Ask on a selection in it: the chat docks beside the tab */
   onAsk?(selection: CanvasSelection): void;
@@ -65,7 +78,7 @@ export function SidePane({
   return (
     <section data-files-side={side.key} aria-label={name} className={`flex min-h-0 min-w-0 flex-col bg-background ${width ? "shrink-0" : "flex-1"}`} style={width ? { width } : undefined}>
       <header className="flex h-8 shrink-0 items-center gap-2 border-b border-border ps-3 pe-1">
-        <KindGlyph kind={kindOfEntry(name).kind} />
+        {glyph ?? <KindGlyph kind={kindOfEntry(name).kind} />}
         <TruncateTip text={name}>
           <h3 className="min-w-0 shrink truncate text-[13px] leading-5 font-medium text-foreground">{name}</h3>
         </TruncateTip>

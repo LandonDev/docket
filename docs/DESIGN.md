@@ -1258,7 +1258,8 @@ thread; nothing answers inside the canvas.
   24px in lists, overlapping 6px with a 2px `background` ring.
 - **Share** is a 320px popover from the bar (rows 28px or more, Revoke
   shown on hover); **History** opens the item's history as a tab of its own
-  ("Compare and History" below);
+  (in a Files tab, at the file's side, where a second file sits; "Compare
+  and History" below);
   Export is a dialog with one choice (the format, a `FieldRow` with its
   select; one muted line under it only when comments or suggestions stay
   behind or go with it). A file dragged over a document's surface draws a

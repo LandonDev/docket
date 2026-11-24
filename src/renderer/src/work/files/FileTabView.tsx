@@ -27,7 +27,7 @@ import { LiveBody } from "../office/live/LiveBody";
 import { leaveLive } from "../office/live/leave";
 import { LiveControl, useLiveOf, type LiveDesktop } from "../office/live/LiveControl";
 import { APP_NAME, liveSourceOf, switchTo, type LiveSetAnswer } from "../office/live/liveSwitch";
-import { Ask } from "../icons";
+import { Ask, History } from "../icons";
 import { KindGlyph } from "./KindGlyph";
 import { Dock, DockSash } from "./Dock";
 import type { DockThread } from "./dockThread";
@@ -229,6 +229,8 @@ export function FileTabView({
   manage,
   sideItem = null,
   onCloseSide,
+  historyItem = null,
+  onCloseHistory,
   onClose,
   onShowFolder,
   kinds,
@@ -250,6 +252,9 @@ export function FileTabView({
   sideItem?: CanvasItem | null;
   /** closes the file at the side alone */
   onCloseSide?(): void;
+  /** the file's History, open in the pane (`historyBeside`): it shows at the side, over any second file */
+  historyItem?: CanvasItem | null;
+  onCloseHistory?(): void;
   onClose(): void;
   /** shows the folder the file is kept in, in a page tab */
   onShowFolder?(): void;
@@ -285,8 +290,14 @@ export function FileTabView({
   // A second file at the side shares what the dock leaves, half each to start; with no room for two it lies over the tab's own.
   const [sideKept, setSideKept] = useState<number | null>(null);
   const filesRoom = room - (docked && !shape.over ? shape.width + 1 : 0);
-  const sideW = tab.side ? sideWidth(filesRoom, sideKept) : 0;
-  const sideOver = !!tab.side && sideW === 0 && room > 0;
+  // History takes the side's seat while it is open; the second file comes back when it closes.
+  const beside = historyItem
+    ? { side: { itemId: historyItem.id, key: `history:${historyItem.id}`, name: "History" }, item: historyItem, close: () => onCloseHistory?.(), glyph: <History aria-hidden className="size-4 shrink-0 text-muted-foreground" /> }
+    : tab.side
+      ? { side: tab.side, item: sideItem, close: () => onCloseSide?.(), glyph: undefined }
+      : null;
+  const sideW = beside ? sideWidth(filesRoom, sideKept) : 0;
+  const sideOver = !!beside && sideW === 0 && room > 0;
   const dropSide = useSideOver() === tab.id;
   const name = tab.name || item?.title || "File";
   // Reload read the file into the copy: the kind draws it again from the start.
@@ -521,6 +532,7 @@ export function FileTabView({
               feeds={feeds}
               shell={shell}
               {...(kinds ? { kinds } : {})}
+              historyOpen={!!historyItem}
               onAsk={(selection: CanvasSelection) => {
                 shell.selection(null);
                 window.getSelection()?.removeAllRanges();
@@ -533,15 +545,15 @@ export function FileTabView({
         </div>
         {/* A tab dragged down onto the right half goes to the side: the half takes the fill until the drop. */}
         {dropSide ? <div data-files-side-drop aria-hidden className="pointer-events-none absolute inset-y-0 end-0 z-30 w-1/2 bg-muted/80" /> : null}
-        {tab.side ? (
+        {beside ? (
           sideOver ? (
             <div inert={(docked && shape.over) || undefined} className="absolute inset-0 z-10 flex">
-              <SidePane workspace={workspace} side={tab.side} item={sideItem} width={0} onClose={() => onCloseSide?.()} onAsk={(selection) => askWith(selection.chip)} {...(kinds ? { kinds } : {})} />
+              <SidePane key={beside.side.key} workspace={workspace} side={beside.side} item={beside.item} width={0} glyph={beside.glyph} onClose={beside.close} onAsk={(selection) => askWith(selection.chip)} {...(kinds ? { kinds } : {})} />
             </div>
           ) : (
             <>
               <SideSash width={sideW} body={filesRoom} onWidth={setSideKept} />
-              <SidePane workspace={workspace} side={tab.side} item={sideItem} width={sideW} onClose={() => onCloseSide?.()} onAsk={(selection) => askWith(selection.chip)} {...(kinds ? { kinds } : {})} />
+              <SidePane key={beside.side.key} workspace={workspace} side={beside.side} item={beside.item} width={sideW} glyph={beside.glyph} onClose={beside.close} onAsk={(selection) => askWith(selection.chip)} {...(kinds ? { kinds } : {})} />
             </>
           )
         ) : null}
