@@ -12,7 +12,7 @@ import { workErrorWords } from "../../lib/workErrorWords";
 import type { WorkspaceMeta } from "../../lib/tcserver/types";
 import type { LifeosStateName } from "@shared/contract-work-lifeos";
 import { lifeosHostName, lifeosStateOf, sessionFailure, useLifeosStatus } from "../shell/lifeos";
-import { downIsSilence, useDownPress, type LifeosDown } from "../shell/lifeosDown";
+import { downIsSilence, downWords, useDownPress, type LifeosDown } from "../shell/lifeosDown";
 import { useDownAction } from "../shell/DownSignIn";
 
 /**
@@ -127,10 +127,19 @@ function Waiting({ workspace }: { workspace: WorkspaceMeta }) {
   // that says connected counts; a row that reads asks nothing.
   const status = useLifeosStatus(env);
   const back = status?.lifeos.state === "connected" ? status : null;
+  // The host's status, heard live: a sign-out (or any state that is down) while the page is open takes the days' row
+  // down at once, the last value with it, so no change is offered that would fail; the switch keeps its own way.
+  // Until it reads again, a row the status took down stays down (`dropped`), "LifeOS is still connecting" on the way back.
+  const liveDown = downOfDays(status?.lifeos.state ?? null);
+  const dropped = useRef(false);
+  if (liveDown) dropped.current = true;
+  const connecting = dropped.current && status?.lifeos.state === "connecting";
   const isDown = useRef(false);
-  isDown.current = load.status === "error" || (load.status === "ready" && (!!load.failed || !!load.value.error));
+  isDown.current = dropped.current || load.status === "error" || (load.status === "ready" && (!!load.failed || !!load.value.error));
   useEffect(() => {
-    if (back && isDown.current) setAttempt((n) => n + 1);
+    if (!back || !isDown.current) return;
+    dropped.current = false;
+    setAttempt((n) => n + 1);
   }, [back]);
 
   const change = async (patch: { days?: number; routine?: boolean }, failed: string): Promise<boolean> => {
@@ -152,11 +161,16 @@ function Waiting({ workspace }: { workspace: WorkspaceMeta }) {
   // A LifeOS that is signed out, refused, waiting for a sign-in or off is a state, said muted with the rule's press
   // (`useDownPress`: Sign in, Show the code, Open Settings, else who can); only silence, or a cause with no state, is
   // the red line with Retry. The switch below keeps its own way.
-  const down = failed ? null : downOfDays(value?.error ? daysState(value.error) : null);
+  // A Retry that failed says its own, newest cause; else the live status's state, then the last read's.
+  const down = failed ? null : (liveDown ?? downOfDays(value?.error ? daysState(value.error) : null));
   const stated = !!down && !downIsSilence(down);
   const { press, elsewhere } = useDownPress(stated ? down : null, env);
   const { action, dialog } = useDownAction(press, env);
-  const daysWords = failed ?? (value?.error ? daysFailure(value.error, host) : undefined);
+  const daysWords = failed ?? (liveDown ? downWords(liveDown, host) : connecting ? "LifeOS is still connecting" : value?.error ? daysFailure(value.error, host) : undefined);
+  // Said muted: a state, or LifeOS on its way back; silence and a failed Retry are the red line.
+  const muted = stated || (!failed && connecting);
+  // The row has no value to change: none was read, or the host's LifeOS is down now, or on its way back.
+  const noDays = value?.days === null || !!liveDown || connecting;
   const retry = (
     <Button
       variant="ghost"
@@ -181,25 +195,25 @@ function Waiting({ workspace }: { workspace: WorkspaceMeta }) {
           <PageRow
             title="Count as waiting after"
             description={
-              stated ? (
+              muted ? (
                 <>
                   {daysWords}
                   {elsewhere ? <span className="block">{elsewhere}</span> : null}
                 </>
               ) : undefined
             }
-            error={stated ? undefined : daysWords}
+            error={muted ? undefined : daysWords}
           >
-            {value.days === null && stated ? (
+            {noDays && stated ? (
               action ? (
                 <Button variant="ghost" size="sm" onClick={action.run}>
                   {action.label}
                 </Button>
               ) : null
-            ) : value.days === null && (value.error || failed) ? (
+            ) : noDays && (value.error || failed || liveDown) ? (
               // Asks the whole section again; the switch below stays as it was while it is out.
               retry
-            ) : value.days !== null ? (
+            ) : value.days !== null && !noDays ? (
               <ChoiceSelect
                 label="Count as waiting after"
                 size="sm"
