@@ -2,7 +2,7 @@ import { z } from 'zod'
 import { MsQuestionSchema, type MsFormMake, type MsFormResponses } from '@shared/contract-work-msforms'
 import { agentPrincipal, workText, type WorkToolResult } from '@shared/work'
 import { errorText } from '@shared/work/ids'
-import { fromOurQuestion, isOther, MSFORM_NEW_SETTINGS, questionWords, settingsWords, widens, type MsChange, type MsFormSettings, type MsQuestion } from '@shared/work/msforms'
+import { isOther, MSFORM_NEW_SETTINGS, questionWords, settingsWords, widens, type MsChange, type MsFormSettings, type MsQuestion } from '@shared/work/msforms'
 import type { Caller, ToolCtx, WorkTool } from '../modules'
 import { heldReceipt } from '../outbox/words'
 import { responsesOf } from './answers/read'
@@ -12,6 +12,7 @@ import { folderOf, libraryAt } from './place'
 import { formReach, formsReached, jobOf, librariesFor, MsformsError, type Reached } from './reach'
 import { MsformsStore, type MsFormRow } from './store'
 import { refuseWithheld } from './withhold'
+import { MakerFromSchema, questionsFrom, type MakerFrom } from './makers'
 
 /**
  * The tools a Work thread uses on Microsoft forms (docs/agents/work-msforms.md
@@ -120,17 +121,9 @@ const SettingsIn = z.object({
   endDate: z.string().max(40).optional().describe('When it stops taking answers.')
 })
 
-/** The `from` makers: our own form for now (makers/index.ts adds documents, sheets and templates). */
-async function fromMaker(ctx: ToolCtx, from: unknown): Promise<{ title?: string; description?: string; questions: MsQuestion[] }> {
-  const f = from as { form?: unknown }
-  if (typeof f?.form !== 'string') throw new MsformsError('refused: make a Microsoft form from one of our forms ({form: <item>}), or give the questions; nothing was held.')
-  const { formItem } = await import('../forms/forms')
-  const { FormsStore } = await import('../forms/store')
-  const item = formItem(ctx, f.form)
-  if (ctx.scopeOf(item.sessionId)?.workspaceId !== ctx.scopeOf(ctx.sessionId)?.workspaceId && item.sessionId !== ctx.canvas.paneOf(ctx.sessionId)) throw new MsformsError("refused: that form is not this job's; nothing was held.")
-  const row = new FormsStore(ctx.db).get(item.id)
-  if (!row) throw new MsformsError('That form has no questions to make from.')
-  return { title: row.body.title, description: row.body.description, questions: row.body.questions.map(fromOurQuestion) }
+/** The `from` makers (makers/index.ts): our own form, a document, a sheet's header row or a template, each read within the thread's own job. */
+async function fromMaker(ctx: ToolCtx, from: MakerFrom): Promise<{ title?: string; description?: string; questions: MsQuestion[] }> {
+  return questionsFrom(ctx, callerOf(ctx), from)
 }
 
 /** One tool, its arguments typed by its input (the mount has parsed them against it). */
@@ -219,7 +212,7 @@ export const msformsTools: WorkTool[] = [
       description: z.string().max(1000).optional(),
       questions: z.array(Question).max(100).optional(),
       folder: Folder,
-      from: z.unknown().optional().describe('Instead of questions: {form: <our form item>}, {document: <file ref>}, {sheet: <file ref>, row?}, or {template: <id>, fields?}.'),
+      from: MakerFromSchema.optional().describe('Instead of questions: {form: <our form item>}, {document: <file ref>}, {sheet: <file ref>, row?}, or {template: <id>, fields?}.'),
       settings: SettingsIn.optional(),
       collect: z.boolean().optional()
     }),
