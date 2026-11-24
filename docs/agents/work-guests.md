@@ -25,7 +25,7 @@ with a test.
   replies; the service makes the comment and marks the words. `edit` writes
   the document or the sheet's cells live. A sheet's link is `view` or `edit`
   (sheets keep no comments); a project's is `view`. Files are not shared:
-  Share on a `.tcdoc` or an opened file says "Move it to LifeOS to share it."
+  a `.tcdoc` or an opened file draws no Share (`ShareButton`, guests/Share.tsx).
 - **Ends** thirty days out unless he picks (1, 7, 30 or 90 days in the
   dialog; an hour to a year on the wire). An ended or revoked link stays in
   the lists a week, muted.
