@@ -326,10 +326,15 @@ export function FileList({
             </TruncateTip>
           )}
           {mine ? (
-            <span className="flex shrink-0 items-center gap-1.5 self-center text-xs text-muted-foreground">
-              <Spinner className="size-3" />
-              {busy!.word}
-            </span>
+            // The name has first claim on the row: the progress gives way first, its words cut at the width of the By
+            // column, and under 360px of list they go from sight (still read out) as Changed does, the spinner staying.
+            // The whole of it on hover.
+            <Tip label={busy!.word}>
+              <span data-files-busy className="flex min-w-3 shrink-[999] items-center gap-1.5 self-center overflow-hidden text-xs text-muted-foreground">
+                <Spinner className="size-3 shrink-0" />
+                <span className="max-w-0 truncate @[360px]/files-list:max-w-40">{busy!.word}</span>
+              </span>
+            </Tip>
           ) : (
             <RowState entry={entry} />
           )}

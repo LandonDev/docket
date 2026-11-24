@@ -16,13 +16,13 @@ function fakeHost() {
   let roots: TeamsRoot[] = [];
   const calls: { method: string; params: unknown }[] = [];
   // A folder he added himself is a library the host did not find.
-  const added = (): TeamsLibrary[] => roots.filter((r) => r.folder !== FOUND.path && !r.off).map((r) => ({ ...FOUND, id: `h~${r.folder}`, path: r.folder, team: r.folder.split("/").pop()!, found: false }));
+  const added = (): TeamsLibrary[] => roots.filter((r) => r.folder !== FOUND.path && !r.off).map((r) => ({ ...FOUND, id: `h~${r.folder}`, path: r.folder, team: r.folder.split("/").pop()!, found: false, ...(host.slow ? { slow: host.slow } : {}) }));
   const state = () => ({
     libraries: [...(roots.some((r) => r.folder === FOUND.path && r.off) ? [] : [{ ...FOUND, web: roots.find((r) => r.folder === FOUND.path)?.web ?? null }]), ...added()],
     roots,
     off: roots.filter((r) => r.off).map((r) => r.folder),
   });
-  const host = { refuse: null as string | null, opensIn: "here" as "here" | "live" };
+  const host = { refuse: null as string | null, opensIn: "here" as "here" | "live", slow: null as string | null };
   const link = {
     connected: true,
     onOpen: () => () => {},
@@ -69,6 +69,21 @@ describe("Folders in Settings", () => {
     fireEvent.change(screen.getByLabelText("Folder"), { target: { value: "/c/S/RecWell - Site Policies" } });
     await act(async () => fireEvent.click(screen.getByRole("button", { name: "Add" })));
     expect(await screen.findByText("/c/S/RecWell - Site Policies")).toBeTruthy();
+  });
+
+  /** Council round 6 (Sol P3): the slow reader's reason was joined to the path with a middle dot. */
+  it("says a slow folder's reason on its own line under the path", async () => {
+    const { link, host } = fakeHost();
+    host.slow = "Read without the folder reader, so it lists slowly";
+    await act(async () => void render(<TeamsFilesRow link={link} title="Folders" editable />));
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "Add folder…" })));
+    fireEvent.change(screen.getByLabelText("Folder"), { target: { value: "J:/Shared/Esports" } });
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "Add" })));
+    const path = await screen.findByText("J:/Shared/Esports");
+    expect(path.className).toContain("block");
+    expect(path.nextElementSibling?.textContent).toBe(host.slow);
+    expect(path.nextElementSibling?.className).toContain("block");
+    expect(document.body.textContent).not.toContain(" · ");
   });
 
   it("keeps what is shown when a dialog closes: no skeleton, a fresh read after Cancel, none after a save", async () => {

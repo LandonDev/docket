@@ -149,6 +149,22 @@ export function FilesBrowse() {
   );
 }
 
+/** A file opened from another computer, its row saying how far it has got: wide, then narrow with the sidebar open. */
+export function FilesOpening() {
+  const file = entries.find((e) => e.kind !== "folder")!;
+  const busy = { key: file.key, word: "Opening… 8.0 of 20 MB" };
+  return (
+    <div className="flex flex-col gap-8 p-6">
+      <Window width={800} height={300}>
+        <PageView {...common} busy={busy} listing={listing()} />
+      </Window>
+      <Window width={400} height={300}>
+        <PageView {...common} busy={busy} listing={listing()} />
+      </Window>
+    </div>
+  );
+}
+
 // Columns asks a host for each folder on the way down: here a stand-in answers, since a preview page has none.
 const inFolder = (dir: string, names: [string, FileEntry["kind"]][]): FileEntry[] =>
   names.map(([name, kind], i) =>

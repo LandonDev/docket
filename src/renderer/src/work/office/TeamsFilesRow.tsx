@@ -126,7 +126,17 @@ export function TeamsFilesRow({ link, title, host, editable }: { link: Link | nu
               </Tooltip>
             )
           }
-          description={row.library?.slow ? (added(row.library) ? `${row.folder} · ${row.library.slow}` : row.library.slow) : added(row.library) ? row.folder : undefined}
+          // A slow folder's reason is a fact of its own: a line under the path, never joined to it.
+          description={
+            row.library?.slow && added(row.library) ? (
+              <>
+                <span className="block">{row.folder}</span>
+                <span className="block">{row.library.slow}</span>
+              </>
+            ) : (
+              (row.library?.slow ?? (added(row.library) ? row.folder : undefined))
+            )
+          }
         >
           {editable ? (
             <div className="flex items-center gap-2">
