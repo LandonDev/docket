@@ -1,4 +1,4 @@
-import { z } from 'zod'
+import { z, type ZodType } from 'zod'
 import { BatchStepSpecSchema } from '@shared/contract-batch'
 import { NOTE_DECISION_DESCRIPTION, NOTE_DECISION_MAX_CHARS, NOTE_DECISION_PARAMS, NOTE_DECISION_TOOL_NAME } from '@shared/away'
 import {
@@ -18,7 +18,7 @@ import type { SessionMeta } from '@shared/events'
 import { WORK_TOOL_SERVER, workToolId } from '@shared/work/tools'
 import { sessionScopeOf } from '@shared/work/ids'
 import type { WorkToolMount } from './work/ctx'
-import { inputShapeOf } from './work/toolInput'
+import { claudeInputOf } from './work/toolInput'
 import {
   HTML_PREVIEW_TOOL_DESCRIPTION,
   HTML_PREVIEW_TOOL_NAME,
@@ -195,7 +195,8 @@ export function withWorkTools(options: Options, session: SessionMeta): Options {
       tool(
         t.name,
         t.description,
-        inputShapeOf(t.input) ?? {},
+        // A loose object drawn as the tool's schema: the mount, not the SDK, answers a bad input (toolInput.ts).
+        claudeInputOf(t.input) as unknown as Record<string, ZodType>,
         async (args, extra) => {
           const live = registry?.get(session.id) ?? session
           const signal = (extra as { signal?: AbortSignal } | undefined)?.signal ?? new AbortController().signal
@@ -405,7 +406,7 @@ export async function appReadThread(
   const meta = reg.get(threadId)
   if (!meta) return null
   // A Work thread reads the threads of its own workspace and no other.
-  if (caller && sessionScopeOf(caller) === 'work' && !withinFence(scopeFactsOf(reg), caller, meta)) return `refused: thread "${threadId}" ${OUTSIDE_FENCE}.`
+  if (caller && sessionScopeOf(caller) === 'work' && !withinFence(scopeFactsOf(reg), caller, meta)) return `refused: thread "${threadId}" ${OUTSIDE_FENCE}. app_list_threads lists the threads it may read.`
   let digest = threadDigest(reg, meta)
   if (digest.length > INLINE_DIGEST_MAX_CHARS) {
     digest = `_[earlier turns trimmed]_\n\n…${digest.slice(-INLINE_DIGEST_MAX_CHARS)}`
@@ -577,7 +578,7 @@ export async function appStartThread(
     return `refused: seedThreadIds contains an unknown thread id. app_list_threads shows valid ids.`
   }
   const outside = work ? seeds.find((s) => !withinFence(work, reg.get(caller.id) ?? caller, s!)) : null
-  if (outside) return `refused: seed thread "${outside.id}" ${OUTSIDE_FENCE}.`
+  if (outside) return `refused: seed thread "${outside.id}" ${OUTSIDE_FENCE}. Nothing was started; seed it with threads app_list_threads lists.`
   // "Start implementation from this plan" is zero-config: the caller's own
   // plan file is the default for the types that execute one.
   const planPath =

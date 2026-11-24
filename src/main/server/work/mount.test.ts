@@ -370,9 +370,18 @@ describe('with Work on', () => {
     expect(await work.tools.call(thread, 'mail_fake_search', { query: 'budget' }, signal)).toEqual({ content: [{ type: 'text', text: 'found for budget on env_test' }] })
     expect(seen.ran).toEqual([{ args: { query: 'budget' }, sessionId: 't-work', workspaceId: 'w1', aborted: false }])
     const bad = await work.tools.call(thread, 'mail_fake_search', { limit: 'ten' }, signal)
-    expect(bad.isError).toBe(true)
+    expect(bad).toEqual({
+      content: [{ type: 'text', text: 'Nothing ran: the input does not fit mail_fake_search. query is missing (what to look for). limit must be a number. For example: limit: 1. Fix the input and call mail_fake_search again.' }],
+      isError: true
+    })
     expect(seen.ran).toHaveLength(1)
-    await expect(work.tools.call(thread, 'mail_other', {}, signal)).rejects.toThrow('unknown tool: mail_other')
+    // a slip of a Work thread is answered in words with the nearest of its own tools; nothing runs
+    expect(await work.tools.call(thread, 'mail_fake_serch', { query: 'x' }, signal)).toEqual({
+      content: [{ type: 'text', text: "Nothing ran: mail_fake_serch is not in this thread's tool list. A Work thread's tools depend on its workspace. Read the tool list again and call a tool it names; the nearest is mail_fake_search." }],
+      isError: true
+    })
+    expect((await work.tools.call(thread, 'mail_other', {}, signal)).content).toEqual([{ type: 'text', text: expect.not.stringContaining('nearest') }])
+    expect(seen.ran).toHaveLength(1)
     await expect(work.tools.call(session('t-code'), 'mail_fake_search', { query: 'x' }, signal)).rejects.toThrow('unknown tool: mail_fake_search')
   })
 
@@ -430,6 +439,11 @@ describe('with Work on', () => {
     expect(await claude).toEqual({ content: [{ type: 'text', text: 'cancelled' }], isError: true })
     expect(await bridge).toEqual({ handled: true, result: { content: [{ type: 'text', text: 'cancelled' }], isError: true } })
     expect(seen.stopped).toBe(1)
+    // a call while off is told so in words, and runs nothing
+    expect(await work.tools.call(thread, 'mail_fake_search', { query: 'q' }, new AbortController().signal)).toEqual({
+      content: [{ type: 'text', text: 'Nothing ran: Work is off on this host, so this thread has no Work tools now. Tell the owner; he can turn Work on in Settings → Work.' }],
+      isError: true
+    })
 
     // on again: a new call runs under a fresh period, and the caller's own signal still stops it alone
     await work.handle(req('work.set', { enabled: true }), LOCAL_PRINCIPAL)

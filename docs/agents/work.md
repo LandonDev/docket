@@ -741,19 +741,30 @@ input that is not a `z.object` is left out and logged.
 
 - **Claude**: `withWorkTools` adds an MCP server named `work` and allows
   `mcp__work__<name>`. A thread with no Work tools gets its options back
-  untouched, so its spawn is what it was.
+  untouched, so its spawn is what it was. The SDK is handed a loose object
+  drawn as the tool's own JSON schema (`claudeInputOf`, work/toolInput.ts),
+  so it checks nothing and the mount's words below answer a bad input.
 - **Codex and Muse**: `bridgeMcpConfig` gives the bridge
   `TEMP_CODE_WORK_TOKEN` only for a thread that has Work tools at spawn. The
   bridge lists them once from `app.workTools` (a list that failed is asked
   again), runs one through `app.workCall` and passes the harness's cancel on
   as `app.workCancel`; each checks that the token is that thread's own.
-  Without the token the bridge asks the app nothing new.
+  Without the token the bridge asks the app nothing new. With it, a name the
+  bridge does not know goes to `app.workCall` too, so the mount answers it.
 - `run(args, ctx)` gets a `ToolCtx`: the context, the thread's `scope`, its
   `sessionId` and a `signal` that aborts when the harness cancels the call,
   when its socket goes, or when Work is turned off: every call in flight,
   from any harness, is aborted before the modules stop. A tool that waits or
   loops must heed it. Arguments that do not fit the input come back as the
-  tool's error.
+  tool's error in words (work/inputWords.ts `inputProblemWords`): each field
+  that failed (three at most), what it must be, its `.describe()` help and
+  one value that passes (the schema's example, default, first choice or a
+  typed value), never zod's issue JSON: "Nothing ran: the input does not fit
+  sheet_read. range is missing (One A1 range, such as 'Q1'!B4:D9). Fix the
+  input and call sheet_read again." A Work thread's call of a tool it does
+  not have says it is not in the thread's list, to read the list again, and
+  names the nearest of its own tools (`unknownToolWords`); while Work is off
+  it says so (`WORK_OFF_WORDS`).
 
 ### Narrowing a thread
 

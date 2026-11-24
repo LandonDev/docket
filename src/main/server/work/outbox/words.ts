@@ -24,7 +24,7 @@ export const grantedLine = (row: Pick<HeldRow, 'n' | 'summary'>, label: string):
   `Item ${row.n} (${row.summary}) went at once under the owner's standing grant "${label}".`
 
 export const REFUSED_OFF = 'The owner turned this tool off for Work threads. It was not called. Carry on without it.'
-export const REFUSED_NO_HOLD = 'refused: nothing on this host can hold this act for the owner, so it was not carried out'
+export const REFUSED_NO_HOLD = 'refused: the Outbox on this host could not hold this act for the owner, so nothing was carried out and nothing waits. Tell the owner the hold failed; do not try another way.'
 
 const cut = (text: string, max: number): string => (text.length <= max ? text : `${text.slice(0, max - 1)}…`)
 

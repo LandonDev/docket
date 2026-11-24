@@ -58,6 +58,7 @@ import { searchHostPart } from './search/host'
 import { servicePart } from './service/ctx'
 import { WorkSettingsStore } from './settings'
 import { inputShapeOf } from './toolInput'
+import { inputProblemWords, unknownToolWords, WORK_OFF_WORDS } from './inputWords'
 import { threadsPart } from './threads'
 import { shortHostName } from '@shared/hostNames'
 import { hostLabel } from '../../hostLabel'
@@ -228,7 +229,7 @@ export interface WorkToolMount {
   of(session: Pick<SessionMeta, 'id' | 'scope'>): { scope: WorkScope; tools: WorkTool[] } | null
   /** The same tools as the bridge lists them. */
   listing(session: Pick<SessionMeta, 'id' | 'scope'>): WorkToolListing[]
-  /** Runs one tool for the thread. Arguments that do not fit its input come back as the tool's error, never a throw. The tool's signal aborts on the caller's `signal` or when Work turns off. */
+  /** Runs one tool for the thread. Arguments that do not fit its input, and a Work thread's call of a tool it does not have, come back as the tool's error in words (inputWords.ts), never a throw. The tool's signal aborts on the caller's `signal` or when Work turns off. */
   call(session: Pick<SessionMeta, 'id' | 'scope'>, name: string, args: unknown, signal: AbortSignal): Promise<WorkToolResult>
   /** The thread's own bridge token: one thread's bridge never lists or calls as another. */
   tokenFor(sessionId: string): string
@@ -393,12 +394,17 @@ export function startWork(deps: WorkDeps, modules: WorkModule[] = WORK_MODULES):
     async call(session, name, args, signal) {
       const mounted = tools.of(session)
       const tool = mounted?.tools.find((t) => t.name === name)
-      if (!mounted || !tool) throw new Error(`unknown tool: ${name}`)
+      if (!mounted || !tool) {
+        // A code thread never holds a Work token or server, so it never gets here by its bridge; a direct caller is told plainly.
+        if (session.scope !== 'work') throw new Error(`unknown tool: ${name}`)
+        const words = !settings.enabled() ? WORK_OFF_WORDS : unknownToolWords(name, mounted?.tools.map((t) => t.name) ?? [])
+        return { content: [{ type: 'text', text: words }], isError: true }
+      }
       // A pillar may narrow one thread (a mail chat): asked before the arguments are read, whichever harness called.
       const refusal = callRefusalOf(sound, ctx, { sessionId: session.id, via: 'work', server: WORK_TOOL_SERVER, tool: name })
       if (refusal) return { content: [{ type: 'text', text: refusal }], isError: true }
       const parsed = tool.input.safeParse(args ?? {})
-      if (!parsed.success) return { content: [{ type: 'text', text: `invalid arguments: ${parsed.error.message}` }], isError: true }
+      if (!parsed.success) return { content: [{ type: 'text', text: inputProblemWords(name, tool.input, args ?? {}, parsed.error.issues) }], isError: true }
       // The caller's signal (the harness's cancel, the bridge's socket) or Work turning off, whichever comes first.
       const toolCtx: ToolCtx = { ...ctx, scope: mounted.scope, sessionId: session.id, signal: AbortSignal.any([signal, period.signal]) }
       return tool.run(parsed.data, toolCtx)

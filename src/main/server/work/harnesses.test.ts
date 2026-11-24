@@ -90,6 +90,20 @@ describe('Claude', () => {
     expect(ran).toEqual([{ session: 't-work', name: 'mail_fake_search', args: { query: 'budget' } }])
     await client.close()
   })
+  it("shows the tool's own schema, and a bad input reaches the mount, not the SDK's issue dump", async () => {
+    mounted()
+    const options = withWorkTools(baseOptions(), sessions['t-work'])
+    const [a, b] = InMemoryTransport.createLinkedPair()
+    const client = new Client({ name: 'test', version: '1' })
+    await (options.mcpServers!.work as McpSdkServerConfigWithInstance).instance.connect(a)
+    await client.connect(b)
+    const { tools } = await client.listTools()
+    expect(tools[0].inputSchema).toEqual(expect.objectContaining({ type: 'object', properties: { query: { type: 'string', description: 'what to look for' } }, required: ['query'] }))
+    // the mount stands in for work/ctx.ts here: what matters is that the call reached it with the raw arguments
+    await client.callTool({ name: 'mail_fake_search', arguments: { query: 7, extra: true } })
+    expect(ran).toEqual([{ session: 't-work', name: 'mail_fake_search', args: { query: 7, extra: true } }])
+    await client.close()
+  })
 })
 
 describe('Codex and Muse', () => {
@@ -209,6 +223,9 @@ describe('Codex and Muse', () => {
     expect(answer.result.isError).toBeUndefined()
     expect(bridge.requests.at(-1)).toMatchObject({ method: 'app.workCall', params: { sessionId: 't-work', token: 'token-of-t-work', call: 3, tool: 'mail_fake_search', args: { query: 'budget' } } })
     expect(ran).toEqual([{ session: 't-work', name: 'mail_fake_search', args: { query: 'budget' } }])
+    // a name the thread does not have goes to the app too, which answers it in words (work/inputWords.ts)
+    await bridge.request(4, 'tools/call', { name: 'mail_fake_serch', arguments: { query: 'q' } })
+    expect(bridge.requests.at(-1)).toMatchObject({ method: 'app.workCall', params: { sessionId: 't-work', call: 4, tool: 'mail_fake_serch' } })
   })
 
   it('a list that failed is asked again, so one bad moment does not hide the tools for the thread\'s life', async () => {

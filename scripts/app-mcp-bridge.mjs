@@ -1105,6 +1105,8 @@ async function callTool(name, args, id) {
     return { content: toolContent(name, await appRequest(MAC_METHOD_FOR[name], { ...(args ?? {}), token: MAC_TOKEN }, 0)) }
   }
   const method = METHOD_FOR[name]
+  // A Work thread's slip goes to the app, which answers it in words with the nearest of the thread's own tools.
+  if (!method && WORK_TOKEN) return workResult(await appRequest('app.workCall', { call: id, tool: name, args: args ?? {}, token: WORK_TOKEN }, 0))
   if (!method) throw new Error(`unknown tool: ${name}`)
   // wait_for_agent sleeps until the agent settles (0 = no deadline); an
   // explicit timeoutSeconds gets a small buffer on top.
