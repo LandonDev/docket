@@ -61,8 +61,9 @@ export function GoToField({
   const [names, setNames] = useState<{ text: string | null; entries: readonly FileEntry[]; failed?: boolean }>({ text: null, entries: [] });
   const [tries, setTries] = useState(0);
   const [at, setAt] = useState(0);
-  // Return pressed before the names for his words came: it takes the first row once they do.
-  const [waiting, setWaiting] = useState(false);
+  // Return pressed before the names for his words came: the words it was pressed for, and it takes the first row once
+  // their names do. New words drop it: Return is bound to the query that got it, never to words typed after.
+  const [waiting, setWaiting] = useState<string | null>(null);
   const field = useRef<HTMLInputElement>(null);
   useEffect(() => field.current?.focus(), []);
   // The names for his words, asked as he types; an older answer never replaces a newer one.
@@ -105,19 +106,19 @@ export function GoToField({
     onClose();
   };
   useEffect(() => {
-    if (!waiting || !fresh) return;
-    setWaiting(false);
-    take(rows[on]);
+    if (waiting === null || !fresh) return;
+    setWaiting(null);
+    if (waiting === text) take(rows[on]);
     // Run once the names for his words have come; `take` and the rows are this render's.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [waiting, fresh]);
+  }, [waiting, fresh, text]);
   const onKeyDown = (event: KeyboardEvent<HTMLInputElement>): void => {
     // The page's own keys (the arrows, Return, Delete) are the field's while it is open.
     event.stopPropagation();
     if (event.key === "ArrowDown") return void (event.preventDefault(), setAt(Math.min(rows.length - 1, on + 1)));
     if (event.key === "ArrowUp") return void (event.preventDefault(), setAt(Math.max(0, on - 1)));
     // Return takes a row of the names for the words in the field, never of words he has since typed over.
-    if (event.key === "Enter") return void (event.preventDefault(), fresh ? take(rows[on]) : setWaiting(true));
+    if (event.key === "Enter") return void (event.preventDefault(), fresh ? take(rows[on]) : setWaiting(text));
     if (event.key === "Escape") return void (event.preventDefault(), onClose());
   };
   const line = (row: GoToRow): { glyph: ReactNode; name: string; fact: string } => {
@@ -153,6 +154,7 @@ export function GoToField({
         onChange={(event) => {
           setText(event.target.value);
           setAt(0);
+          setWaiting(null);
         }}
         onKeyDown={onKeyDown}
       />

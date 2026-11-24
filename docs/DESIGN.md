@@ -1732,7 +1732,9 @@ Around the canvas:
   "Couldn't load names" in `destructive` with Retry when the host refused
   (Tab from the field reaches Retry; Retry gives the field the keys back).
   The names of older words stay drawn but cannot be taken while his new
-  words are asked, and give way to "Loading…" once that is slow.
+  words are asked, and give way to "Loading…" once that is slow. A Return
+  pressed while the names are out takes the first row once they come, and
+  only for the words it was pressed on: a change to the field drops it.
   **Search** (`/`
   or ⌘F) is a field in the trail's place that filters the folder shown as
   he types (a filter that leaves nothing says "Nothing here by that name"

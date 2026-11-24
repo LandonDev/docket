@@ -118,4 +118,46 @@ describe("Go to by keyboard", () => {
     fireEvent.mouseDown(screen.getByRole("option", { name: /Budget/ }));
     expect(onPick).toHaveBeenCalledWith({ is: "entry", entry: expect.objectContaining({ name: "Budget.xlsx" }) });
   });
+
+  it("takes the first row once the names come for a Return pressed while they were out", async () => {
+    const onPick = vi.fn();
+    const answers: Record<string, (v: { entries: unknown[] }) => void> = {};
+    host.answer = (text) => new Promise((resolve) => (answers[text] = resolve));
+    draw({ onPick });
+    fireEvent.change(field(), { target: { value: "budget" } });
+    fireEvent.keyDown(field(), { key: "Enter" });
+    expect(onPick).not.toHaveBeenCalled();
+    await act(async () => answers.budget!({ entries: [entry("Budget.xlsx")] }));
+    expect(onPick).toHaveBeenCalledWith({ is: "entry", entry: expect.objectContaining({ name: "Budget.xlsx" }) });
+  });
+
+  it("drops a waiting Return when the words change: new words' names are not taken", async () => {
+    const onPick = vi.fn();
+    const onClose = vi.fn();
+    const answers: Record<string, (v: { entries: unknown[] }) => void> = {};
+    host.answer = (text) => new Promise((resolve) => (answers[text] = resolve));
+    draw({ onPick, onClose });
+    fireEvent.change(field(), { target: { value: "run" } });
+    fireEvent.keyDown(field(), { key: "Enter" });
+    fireEvent.change(field(), { target: { value: "budget" } });
+    await act(async () => answers.budget!({ entries: [entry("Budget.xlsx")] }));
+    await act(async () => answers.run!({ entries: [entry("Run of show.docx")] }));
+    expect(screen.getByRole("option", { name: /Budget/ })).toBeTruthy();
+    expect(onPick).not.toHaveBeenCalled();
+    expect(onClose).not.toHaveBeenCalled();
+  });
+
+  it("drops a waiting Return when the words become a New command: the command waits for its own Return", async () => {
+    const onPick = vi.fn();
+    host.answer = () => new Promise(() => undefined);
+    draw({ onPick });
+    fireEvent.change(field(), { target: { value: "run" } });
+    fireEvent.keyDown(field(), { key: "Enter" });
+    fireEvent.change(field(), { target: { value: "new sheet called Budget" } });
+    await settle();
+    expect(screen.getByRole("option", { name: /New sheet called Budget/ })).toBeTruthy();
+    expect(onPick).not.toHaveBeenCalled();
+    fireEvent.keyDown(field(), { key: "Enter" });
+    expect(onPick).toHaveBeenCalledWith({ is: "new", what: "sheet", name: "Budget" });
+  });
 });
