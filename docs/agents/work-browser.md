@@ -128,7 +128,12 @@ The approved page is `.temp-code/prototypes/work-workspaces-2/browser.html`,
   otherwise. A click on it opens the full view; at a held submit the values under it
   (label, value, source; the values are the host's read of the page's
   fields from the held row's `mark`, password fields never in it, and only
-  the source is the agent's word).
+  the source is the agent's word). With nothing held and no picture this
+  window may draw, the body is one muted line: on a window that draws no
+  computer pictures (a Linux window, the browser /ui: `drawsSessions` in
+  lib/computerSessions.ts) while the thread drives a computer, "Shown on
+  <machine> only", the Computers page's words (docs/DESIGN.md); with no
+  session at all, "The agent is not driving the browser now".
 - `bun run ui:preview src/renderer/src/work/browser/BrowserCanvas.preview.tsx#BrowserPreview --width 864`
   draws the six moments in both themes.
 

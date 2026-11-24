@@ -22,7 +22,7 @@ const browserState = ({ pair }: Context, sessionId: string) =>
 
 export default journey({
   id: 'J60',
-  title: 'Watch and drive the box browser beside a chat',
+  title: 'Open the box browser beside a chat, take it over and hand it back',
   tier: 3,
   shapes: ['A'],
   steps: [
@@ -81,28 +81,27 @@ export default journey({
         await shown(page, 'body', BROWSER_PROMPT) && (await browserState(context, id)).site?.url === url)
       if (existsSync(pressed)) throw new Error('The dummy page received a press before Take over')
     }),
-    step('Take over and open the picture for his pointer', async context => {
+    // A Linux window draws no picture of a computer (src/renderer/src/lib/computerSessions.ts `drawsSessions`: a Mac's and
+    // a PC's desktop only), so from the box's own windows the walk cannot drive the page from the picture. It ends on what
+    // a Linux window promises: Take over and Hand back move the driver on the host, and the canvas says in words where
+    // the picture shows. On a Mac's or a PC's window the walk drives the page through the picture instead.
+    step('Take over: the host gives him the browser, and the canvas says where its picture shows or draws it', async context => {
       const { page } = context.pair
       const { id, pressed } = visits.get(context)!
       await page.press('button', 'Take over')
       await page.until('Hand back and the owner driver on box', 20_000, async () =>
         !!await page.centre('button', 'Hand back') && (await browserState(context, id)).driver === 'owner')
-      try {
-        await page.clickOn(VIEW + ' button[data-viewport-open]')
-      } catch (error) {
-        const platform = await page.eval<string>('window.api.platform')
-        const hasPicture = await page.eval<boolean>(`!!document.querySelector(${JSON.stringify(VIEW + ' [data-face="live"] canvas')})`)
-        const computer = await context.pair.rpc(context.pair.box, 'computer.sessions')
-        json(context, 'take-over', { platform, hasPicture, state: await browserState(context, id), computer })
-        if (platform === 'linux' && !hasPicture) throw new Error('Box is headed and Take over reached box, but the Linux desktop draws no browser picture')
-        throw error
+      const platform = await page.eval<string>('window.api.platform')
+      if (platform === 'linux') {
+        let line: string | null = null
+        await page.until('the canvas line naming where the picture shows', 12_000, async () => !!(line = await page.eval<string | null>(
+          `[...document.querySelectorAll(${JSON.stringify(VIEW + ' *')})].map((e) => e.textContent.trim()).find((t) => /^Shown on .+ only$/.test(t)) ?? null`)))
+        json(context, 'take-over', { platform, line, state: await browserState(context, id) })
+        if (existsSync(pressed)) throw new Error('Take over pressed the dummy page')
+        return
       }
+      await page.clickOn(VIEW + ' button[data-viewport-open]')
       await page.until('the picture taking input', 22_000, () => page.centre('[data-full-window] [data-driving]'))
-      if (existsSync(pressed)) throw new Error('Opening the picture pressed the dummy page')
-    }),
-    step('end: click Count cones through the live picture and see the page’s reply', async context => {
-      const { page } = context.pair
-      const { id, pressed } = visits.get(context)!
       const sample = await page.eval<{ x: number; y: number }>(`(() => {
         const rect = document.querySelector('[data-full-window] canvas').getBoundingClientRect();
         return { x: rect.x + rect.width / 5, y: rect.y + rect.height / 5 };
@@ -112,9 +111,15 @@ export default journey({
       await page.clickOn('[data-full-window] [data-driving]')
       await page.until('the dummy page to receive the click through Work', 20_000, () => existsSync(pressed))
       await page.until('the updated background in the live picture', 12_000, async () => await page.pixelAt(sample) !== before)
-      if ((await browserState(context, id)).driver !== 'owner' || readFileSync(pressed, 'utf8').trim() !== 'Count cones was pressed') {
-        throw new Error('The click did not reach the page while the owner was driving')
-      }
+      if (readFileSync(pressed, 'utf8').trim() !== 'Count cones was pressed') throw new Error('The click did not reach the page while the owner was driving')
+      await page.key('Escape')
+    }),
+    step('end: Hand back gives the browser to the agent on box', async context => {
+      const { page } = context.pair
+      const { id } = visits.get(context)!
+      await page.press('button', 'Hand back')
+      await page.until('Take over and the agent driver on box', 20_000, async () =>
+        !!await page.centre('button', 'Take over') && (await browserState(context, id)).driver === 'agent')
     })
   ]
 })

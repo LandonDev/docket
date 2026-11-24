@@ -28,6 +28,8 @@ const host = vi.hoisted(() => ({
   pictureGate: null as Promise<void> | null,
   /** the windows this desktop can draw live */
   drawn: [] as unknown[],
+  /** the thread's sessions on its host, drawn here or not; none while no computer is driven */
+  live: [] as unknown[],
   /** the live view's stream, as the viewport would report it; null for the real one (jsdom draws no frame) */
   stream: null as null | { status: "starting" } | { status: "live"; app: string; window: null; width: number; height: number; drawn: boolean } | { status: "ended"; reason: "window-closed" },
   streamRetries: 0,
@@ -67,7 +69,7 @@ vi.mock("../../lib/computerSection", async (original) => ({
 // A session this desktop cannot draw (the box, the browser /ui): Take over leaves stopping it to the host.
 vi.mock("../../lib/computerSessions", async (original) => ({
   ...(await original<typeof import("../../lib/computerSessions")>()),
-  useComputerEntries: () => LIVE_ENTRIES,
+  useComputerEntries: () => host.live,
   stopComputer: async (entry: { row: { threadId: string } }) => void host.stopped.push(entry.row.threadId),
 }));
 
@@ -129,6 +131,7 @@ beforeEach(() => {
   host.picture = "bytes";
   host.pictureGate = null;
   host.drawn = [];
+  host.live = LIVE_ENTRIES;
   host.stream = null;
   host.streamRetries = 0;
   host.drive = null;
@@ -511,6 +514,7 @@ describe("the browser's body", () => {
 
   it("a first read that failed says so on the state line with Retry, and the body stops loading; Retry reads again", async () => {
     host.stateDown = true;
+    host.live = [];
     const p = props();
     const { container } = render(<Body {...p} />);
     await waitFor(() => expect(p.shell.statusLine).toHaveBeenLastCalledWith(expect.objectContaining({ tone: "failed", word: "Couldn't open this browser", detail: "not connected" })));
@@ -524,6 +528,7 @@ describe("the browser's body", () => {
   });
 
   it("the page fills the body inside its inset, with no cap on its width", async () => {
+    host.live = [];
     const { container } = render(<Body {...props()} />);
     await screen.findByText("The agent is not driving the browser now");
     expect(container.innerHTML).not.toContain("max-w-[720px]");
@@ -607,6 +612,24 @@ describe("the browser's body", () => {
   });
 
   it("with nothing held and no window to draw, says so in one line", async () => {
+    host.live = [];
+    render(<Body {...props()} />);
+    await screen.findByText("The agent is not driving the browser now");
+  });
+
+  it("a session this window may not draw (a Linux window, the /ui) says where it is shown, never that no one drives it", async () => {
+    // The box's own browser seen from a Linux window: its row is on the host, and lib/computerSessions.ts `drawsSessions` draws none here.
+    render(<Body {...props()} />);
+    await screen.findByText("Shown on Landon's MacBook only");
+    expect(screen.queryByText("The agent is not driving the browser now")).toBeNull();
+    // He takes over: the line stays, for the picture is still not drawn here.
+    host.state = { ...host.state, driver: "owner" };
+    act(() => host.pushes.forEach((p) => p({ push: "work.browser", state: host.state })));
+    expect(await screen.findByText("Shown on Landon's MacBook only")).toBeTruthy();
+  });
+
+  it("an idle session row is no driven browser: the line says no one drives it", async () => {
+    host.live = [{ ...LIVE_ENTRIES[0], row: { ...LIVE_ENTRIES[0]!.row, idle: true } }];
     render(<Body {...props()} />);
     await screen.findByText("The agent is not driving the browser now");
   });

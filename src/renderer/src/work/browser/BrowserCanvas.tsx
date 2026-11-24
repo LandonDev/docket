@@ -288,6 +288,10 @@ export function Body(props: CanvasBodyProps & BrowserSeam) {
     return () => shell.statusLine(null);
   }, [shell, error, retry]);
 
+  // A session this window may not draw (a Linux window, the browser /ui: lib/computerSessions.ts `drawsSessions`) says
+  // where it is shown, as the Computers page does (docs/DESIGN.md "Shown on Studio only"), never that no one drives it.
+  const shownOn = !entry && live.some((e) => !e.previewable && !e.row.idle) ? where : null;
+
   const values = useMemo<PortalValue[]>(() => (waiting ? portalValues((waiting.payload as HeldSubmitPayload).mark ?? "", state?.sources ?? []) : []), [waiting, state?.sources]);
 
   return (
@@ -300,7 +304,7 @@ export function Body(props: CanvasBodyProps & BrowserSeam) {
           ) : entry ? (
             <LiveView stream={stream} box={box} label={liveLabel(entry)} onOpen={() => openFullWindow({ host: entry.host, threadId: entry.row.threadId, name: liveLabel(entry) })} />
           ) : state ? (
-            <StillView env={env} held={waiting} />
+            <StillView env={env} held={waiting} shownOn={shownOn} />
           ) : (
             <Skeleton className="aspect-[16/10] w-full rounded-lg" />
           ))}
@@ -373,10 +377,10 @@ export function LiveView({ stream, box, label, onOpen }: { stream: ReturnType<ty
 }
 
 /** A waiting submit's page, live window or not, and where none can be drawn (the box, the browser /ui): the held page's picture, or one line. The bar's primary waits on the same read. */
-function StillView({ env, held }: { env: string; held: OutboxItem | null }) {
+function StillView({ env, held, shownOn = null }: { env: string; held: OutboxItem | null; shownOn?: string | null }) {
   const picture = useHeldPicture(env, held?.ref ?? null);
   const { src } = picture;
-  if (!held) return <ViewportLine words="The agent is not driving the browser now" />;
+  if (!held) return <ViewportLine words={shownOn ? `Shown on ${shownOn} only` : "The agent is not driving the browser now"} />;
   const payload = held.payload as HeldSubmitPayload | null;
   const shape = payload?.picture ? `${payload.picture.width} / ${payload.picture.height}` : "16 / 10";
   if (src === undefined) return <Skeleton className="w-full rounded-lg" style={{ aspectRatio: shape }} />;
