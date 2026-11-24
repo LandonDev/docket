@@ -607,7 +607,7 @@ export interface ActRow {
 export function actsFor(
   entries: readonly FileEntry[],
   place: FilePlace | null,
-  o: { tabs: boolean; /** a file tab he was last in can take a file at its side */ side?: boolean; /** the page can show the folder a row lives in (a lens, a search's results) */ reveal?: boolean; /** the sector has projects a file can be added to */ projects?: boolean; /** Put Back may be offered */ restore?: boolean; /** Delete for Good may be offered */ purge?: boolean; /** false: the place's computer cannot open the file in its app for this window (`appOpens`) */ app?: boolean } = { tabs: true },
+  o: { tabs: boolean; /** a file tab he was last in can take a file at its side */ side?: boolean; /** the page can show the folder a row lives in (a lens, a search's results) */ reveal?: boolean; /** the sector has projects a file can be added to */ projects?: boolean; /** Put Back may be offered */ restore?: boolean; /** Delete for Good may be offered */ purge?: boolean; /** false: the place's computer cannot open the file in its app for this window (`appOpens`) */ app?: boolean; /** the place's computer is reached only through another host (`farWhy`): a refused verb says so */ far?: { computer: string; via: string } } = { tabs: true },
 ): ActRow[] {
   if (!entries.length) return [];
   const one = entries.length === 1 ? entries[0]! : null;
@@ -619,7 +619,11 @@ export function actsFor(
     if (o.purge !== false) rows.push({ act: "purge", label: "Delete for Good", danger: true, rule: rows.length > 0 });
     return rows;
   }
-  const no = (verb: FileVerb, entry?: FileEntry): string | undefined => (place ? (refusal(place, verb, entry ?? one) ?? undefined)?.text : "Its place is not listed now.");
+  const no = (verb: FileVerb, entry?: FileEntry): string | undefined => {
+    const why = place ? (refusal(place, verb, entry ?? one) ?? undefined)?.text : "Its place is not listed now.";
+    // The rule is the place's; on a computer reached through another host the true reason is that road, said in his words.
+    return why && o.far ? farWhy(o.far) : why;
+  };
   const each = (verb: FileVerb): string | undefined => entries.map((e) => no(verb, e)).find((text) => text !== undefined);
   const rows: ActRow[] = [];
   if (one) {
@@ -643,6 +647,17 @@ export function actsFor(
   rows.push({ act: "delete", label: "Delete", refused: each("trash"), danger: true, rule: true });
   return rows;
 }
+
+/**
+ * How readily a Files tab gives up width past what fits (TabRow.tsx). The selected tab keeps its whole name (up to the
+ * tab's 240px) while any other has room to give; the others give in step with their name's share of the tab, so each
+ * loses the same part of its name. Flex takes from each tab in step with its whole width, the glyph and the close's
+ * room (about 9 letters) included, which cut a short name ("Events") to a letter while long ones kept most.
+ */
+export const tabShrink = (name: string, selected = false): number => (selected ? 0 : name.length / (name.length + 9));
+
+/** Why a verb is greyed for a file on a computer this window reaches only through another host: where it can be done. */
+export const farWhy = (far: { computer: string; via: string }): string => `${far.computer} is reached through ${far.via}. Change its files on ${far.computer} itself.`;
 
 /** What a delete said, for its one toast: "Deleted Budget.xlsx", "Deleted 3 things". */
 export function doneWords(verb: "Deleted" | "Moved" | "Copied" | "Put back", names: readonly string[], to?: string): string {

@@ -1808,7 +1808,12 @@ index.ts by devices/binding.ts `mayRoute`: a given computer stopped or removed
 answers "That computer's link to this host is stopped or removed."). Places come back read only (`can` empty) and named as the box names
 that desktop (`name`). Opening a file there is the copy a Mac-held file gets
 from a box workspace (`work.files.open`, `copyIn`), which reads it through
-the bridge: the PC's Access for the box must be **Read** or more. A desktop
+the bridge: the PC's Access for the box must be **Read** or more. A row's
+and a file tab's Rename, Move to…, Copy to… and Delete stay listed and
+greyed, as the place refuses them; their tooltip names the road, not the
+place's general sentence: "Purdue PC is reached through the box. Change
+its files on Purdue PC itself." (`farWhy`, model.ts; `far` on `actsFor`,
+set by FilesView.tsx `farOf` where the window has no link of its own). A desktop
 asleep, off its VPN or with TempCode closed answers nothing, and its places
 read as not reachable with one line. No push crosses: the desktop's places
 are asked again with the workspace's own.
@@ -2208,7 +2213,7 @@ workbooks, text and Word alike (files/uploads.ts):
   placeholders disguised as plain files; it reads with them shown to its thread for that one look
   (`RtlSetThreadPlaceholderCompatibilityMode`) and puts the thread back. 1.0.372's helper read them disguised and said
   `sync: pending` of every file, so after a minute every save read "Not uploaded to Teams yet": the box believes only
-  `synced`, and any older helper's answer is `unknown` ("Saved on the Windows VM; OneDrive uploads it"). OneDrive
+  `synced`, and any older helper's answer is `unknown` ("Saved to the Windows VM. OneDrive uploads it"). OneDrive
   clears the in-sync bit when the file changes and sets it once its upload is done: the green tick Explorer shows. A
   file OneDrive has not taken in at all is no placeholder and reads not synced too. A sleeping VM is never woken to be
   asked; while a write of ours is still owed, the keeper does not put the VM to sleep (`KeeperDeps.owed`,
@@ -2217,7 +2222,7 @@ workbooks, text and Word alike (files/uploads.ts):
   (a Mac says the old version is uploaded for about 0.6 s after a write): the File Provider item's
   `NSURLUbiquitousItemIsUploadedKey` and `IsUploadingKey`, read by JXA through osascript with no prompt
   (`MAC_UPLOAD_STATE`, about 60 ms a read). A file in no library there answers `outside` and nothing is told; a
-  computer that cannot read them (a PC, an older build) answers null: "Saved on <computer>; OneDrive uploads it".
+  computer that cannot read them (a PC, an older build) answers null: "Saved to <computer>. OneDrive uploads it".
 - **Late.** Not uploaded a minute after the write: in the VM, asleep, OneDrive not running, or signed out (the
   guest's stored status), else maybe paused, each with what he can do.
 - **The line** (renderer files/fileText.ts `cloudLine`): applied to any saved line of a copy that saves back or a

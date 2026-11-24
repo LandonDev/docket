@@ -46,10 +46,10 @@ export const stepHow = (event: Pick<KeyboardEvent, "shiftKey">): PickHow => (eve
 export function RowState({ entry }: { entry: FileEntry }) {
   const state = entry.state;
   if (!state) return null;
-  if (state.is === "cloud") return <Cloud aria-label="In the cloud" className="size-3 shrink-0 text-muted-foreground" />;
+  if (state.is === "cloud") return <Cloud aria-label="In the cloud" className="size-3 shrink-0 self-center text-muted-foreground" />;
   if (state.is === "suggestions") return <span className="shrink-0 text-xs text-warning tabular-nums">{state.count === 1 ? "1 suggestion" : `${state.count} suggestions`}</span>;
   if (state.is === "present") return <span className="shrink-0 truncate text-xs text-muted-foreground">{state.who} is in it</span>;
-  return <Spinner aria-label="A thread is writing in it" className="size-3 shrink-0" />;
+  return <Spinner aria-label="A thread is writing in it" className="size-3 shrink-0 self-center" />;
 }
 
 /**

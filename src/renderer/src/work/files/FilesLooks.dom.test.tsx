@@ -186,7 +186,7 @@ describe("Quick Look", () => {
     draw();
     fireEvent.click(row("art.zip"));
     fireEvent.keyDown(list(), { key: " " });
-    await waitFor(() => expect(screen.getByRole("list", { name: "In this archive" }).textContent).toContain("art/poster.png"));
+    await waitFor(() => expect(screen.getByRole("list", { name: "In this archive" }).textContent).toContain("poster.png"));
     fireEvent.keyDown(list(), { key: "ArrowDown" });
     const layer = screen.getByRole("dialog", { name: "Quick Look: theme.mp3" });
     expect(layer.querySelector("[data-files-play]")).not.toBeNull();
@@ -562,6 +562,18 @@ describe("after the council's first round", () => {
     } finally {
       undo();
     }
+  });
+
+  it("says a thread's writing in words under the name, and centres a row that has no second line", () => {
+    keepPageLook(PAGE.at, { shape: "beside" });
+    const writing = file("Run of show.md", "text", { state: { is: "writing" } });
+    draw({ listing: { entries: [FOLDER, writing], trail: [{ name: "Dummy Esports", at: at("/w") }], loaded: true, more: false, loading: false, error: null, away: false, loadMore: () => undefined, retry: () => undefined } });
+    expect(row("Run of show.md").textContent).toContain("A thread is writing");
+    expect(row("Run of show.md").className).toContain("items-start");
+    // A folder no one is named for has one line: it stands on the row's centre, not at its top.
+    const folder = document.querySelector<HTMLElement>('[data-files-row="file:env_box:/w/Events"]')!;
+    expect(folder.className).toContain("items-center");
+    expect(folder.textContent).not.toContain("A thread");
   });
 
   it("narrows Beside's list before the file gets tight", async () => {

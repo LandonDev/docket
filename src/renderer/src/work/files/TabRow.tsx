@@ -10,6 +10,7 @@ import { OVERFLOW_FADE, useOverflowEdges } from "../../hooks/useOverflowEdges";
 import { useSortable } from "../../hooks/useSortable";
 import { shortcutFor } from "../../lib/settings";
 import { KindGlyph } from "./KindGlyph";
+import { tabShrink } from "./model";
 import { setDragLabel, setSideOver } from "./rowParts";
 
 /**
@@ -189,7 +190,8 @@ export function TabRow({
               ref={(el) => sortable.setItemRef(tab.id, el)}
               data-menu-id={tab.id}
               data-drop-over={drop?.at === `tab:${tab.id}` || undefined}
-              className={`group/dock-tab relative flex max-w-60 min-w-9 shrink rounded-md ${dragging ? "z-10" : ""} ${drop?.at === `tab:${tab.id}` ? "bg-sidebar-group-selected" : ""}`}
+              className={`group/dock-tab relative flex max-w-60 min-w-9 rounded-md ${dragging ? "z-10" : ""} ${drop?.at === `tab:${tab.id}` ? "bg-sidebar-group-selected" : ""}`}
+              style={{ flexShrink: tabShrink(name, active) }}
               {...(drop && tab.kind === "page"
                 ? {
                     onDragOver: (event: DragEvent) => {

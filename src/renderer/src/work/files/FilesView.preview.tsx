@@ -10,14 +10,15 @@ import type { WorkspaceMeta } from "../../lib/tcserver/types";
 import type { SavedLine } from "../canvas/kind";
 import { Facts } from "./FileKind";
 import { answerAs, OverFrame, usePress, useTyped } from "../kit.preview";
-import { copyLine, type CopyAsk, type HeaderLine } from "./fileText";
+import { cloudLine, copyLine, type CopyAsk, type HeaderLine } from "./fileText";
+import { wordLine } from "./wordSave";
 import { FileHeader } from "./FileTabView";
 import { FileTextEditor } from "./FileTextEditor";
 import { SidebarView } from "./FilesView";
 import { HomePage, SearchFilters } from "./Home";
 import { MoveDialog } from "./MoveDialog";
 import { sidebarOf, type FilesNote, type HostRead, type Sidebar } from "./model";
-import { ListBones, NoteEmpty, PageBar, PageView, type NoteFixes, type PageActs, type PageFind } from "./Page";
+import { BarBones, ListBones, NoteEmpty, PageBar, PageView, type NoteFixes, type PageActs, type PageFind } from "./Page";
 import { previewSeams } from "./previews";
 import { listingSeams, type Listing } from "./store";
 import { TabRow } from "./TabRow";
@@ -291,7 +292,7 @@ export function FilesHome() {
 /** A search's results from every place, under its filters. */
 export function FilesSearch() {
   const found = entries.filter((e) => !e.folder).slice(0, 7).map((e, i) => ({ ...e, where: i % 2 ? { place: "folder", name: "Dummy Esports", trail: ["Events"] } : { place: "b1/Events", name: "Esports Staff", trail: ["Events"] } }));
-  const searchPage: FilePage = { at: { at: "place", id: "search" }, name: "Search: sponsor", query: "sponsor" };
+  const searchPage: FilePage = { at: { at: "place", id: "search" }, name: "Results for “sponsor”", query: "sponsor" };
   return (
     <div className="p-6">
       <Window width={900} height={560}>
@@ -347,7 +348,7 @@ export function FilesStates() {
     <div className="flex flex-col gap-8 p-6">
       <Window width={720} height={300}>
         <div className="flex min-h-0 flex-1 flex-col">
-          <div className="h-11 shrink-0 border-b border-border" />
+          <BarBones />
           <ListBones />
         </div>
       </Window>
@@ -379,7 +380,7 @@ const saveLines: { name: string; line: SavedLine | null }[] = [
   { name: "Run of show.md", line: { state: "saved", at: NOW - 13 * 60_000 } },
   { name: "Run of show.md", line: { state: "saving" } },
   { name: "Run of show.md", line: { state: "offline", pending: 3, actions: [{ id: "retry", label: "Retry", run: noop }] } },
-  { name: "Run of show.md", line: { state: "conflict", detail: "This file changed at 2:04 PM", actions: [{ id: "reload", label: "Reload", run: noop }, { id: "keep", label: "Keep mine as a copy", run: noop }] } },
+  { name: "Run of show.md", line: { state: "conflict", detail: "This file changed at 2:04 PM", actions: [{ id: "reload", label: "Reload", run: noop }, { id: "keep", label: "Keep Both", run: noop }] } },
   { name: "Vendor contacts.xlsx", line: { state: "copy", detail: "MacBook", actions: [{ id: "there", label: "Open on MacBook", run: noop }] } },
   { name: "Ballroom contract.pdf", line: { state: "readonly", detail: "a mail's file", actions: [{ id: "keep", label: "Save to workspace", run: noop }] } },
   { name: "Stage plot.pdf", line: { state: "downloading", detail: "2.1 of 8.4 MB" } },
@@ -522,7 +523,7 @@ export function FilesSearchAcross() {
     file("Sponsor thank-you letter.docx", "document", 2 * day, { ref: { at: "file", host: "env_mac", path: "/Users/l/Esports/Sponsors/Sponsor thank-you letter.docx" }, where: { place: "m1", name: "Esports on MacBook", trail: ["Sponsors"] } }),
     file("Sponsor logos.zip", "archive", 11 * day, { ref: { at: "file", host: "env_mac", path: "/Users/l/Esports/Sponsors/Sponsor logos.zip" }, where: { place: "m1", name: "Esports on MacBook", trail: ["Sponsors"] } }),
   ];
-  const searchPage: FilePage = { at: { at: "place", id: "search" }, name: "Search: sponsor", query: "sponsor" };
+  const searchPage: FilePage = { at: { at: "place", id: "search" }, name: "Results for “sponsor”", query: "sponsor" };
   return (
     <div className="p-6">
       <Window width={900} height={460}>
@@ -546,15 +547,32 @@ const copyLines: { name: string; line: HeaderLine }[] = (
   ] as [CopyBack, CopyAsk, string[]][]
 ).map(([b, ask, presses]) => ({ name: "Vendor contacts.xlsx", line: { ...copyLine({ state: "saved", at: NOW - 4 * 60_000 }, b, "MacBook Pro", NOW, ask), actions: presses.map((label) => ({ id: label, label, run: noop })) } }));
 
-/** A copy's header in each of its lines: saved to the computer, saving, not saved, changed there, gone, away, refused. */
+// A Word file of a library opened as its document (wordSave.ts), then what OneDrive did with a save (`cloudLine`): the
+// same family of lines, by the computer that holds the file, and Teams only once OneDrive has it.
+const wordLines: { name: string; line: HeaderLine }[] = [
+  [wordLine({ since: true, auto: true }, "Teams", "MacBook Pro", NOW), []],
+  [wordLine({ since: false, auto: true, at: NOW - 3 * 60_000 }, "Teams", "MacBook Pro", NOW), []],
+  [wordLine({ since: false, at: NOW - 3 * 60_000 }, "Teams", "MacBook Pro", NOW), []],
+  [wordLine({ since: true, at: NOW - 3 * 60_000 }, "Teams", "MacBook Pro", NOW), ["Save to Teams as Word"]],
+  [wordLine({ since: true }, "Teams", "MacBook Pro", NOW), ["Save to Teams as Word"]],
+  [wordLine({ since: true, auto: true, stopped: NOW - 60_000 }, "Teams", "MacBook Pro", NOW), ["Replace", "Keep Both"]],
+  [cloudLine({ state: "saved", at: NOW }, { is: "uploading", at: NOW }, "Teams", "the Windows VM", NOW), []],
+  [cloudLine({ state: "saved", at: NOW }, { is: "uploaded", at: NOW - 60_000 }, "Teams", "the Windows VM", NOW), []],
+  [cloudLine({ state: "saved", at: NOW }, { is: "unknown", at: NOW }, "Teams", "the Windows VM", NOW), []],
+  [cloudLine({ state: "saved", at: NOW }, { is: "late", at: NOW - 120_000, why: "asleep" }, "Teams", "the Windows VM", NOW), []],
+].map(([line, presses]) => ({ name: "Plan.docx", line: { ...(line as HeaderLine), actions: (presses as string[]).map((label) => ({ id: label, label, run: noop })) } }));
+
+/** A copy's header in each of its lines: saved to the computer, saving, not saved, changed there, gone, away, refused; then a Word file's and OneDrive's. */
 export function FilesCopyLines() {
   return (
-    <div className="p-6">
-      <div style={{ maxWidth: 720 }} className="flex w-full flex-col overflow-hidden rounded-lg border border-border bg-background">
-        {copyLines.map((s, i) => (
-          <FileHeader key={i} name={s.name} line={s.line} where="Events" running={null} onRun={noop} onShowFolder={noop} rows={menu} onPick={noop} ask={idle} />
-        ))}
-      </div>
+    <div className="flex flex-col gap-6 p-6">
+      {[copyLines, wordLines].map((lines, n) => (
+        <div key={n} style={{ maxWidth: 720 }} className="flex w-full flex-col overflow-hidden rounded-lg border border-border bg-background">
+          {lines.map((s, i) => (
+            <FileHeader key={i} name={s.name} line={s.line} where="Events" running={null} onRun={noop} onShowFolder={noop} rows={menu} onPick={noop} ask={idle} />
+          ))}
+        </div>
+      ))}
     </div>
   );
 }

@@ -109,9 +109,11 @@ function NoteLine({ note, fixes }: { note: FilesNote; fixes: NoteFixes }) {
   if (note.away && note.fix?.kind === "retry") return <ViewStateLine word={note.title} detail={note.line} onRetry={() => fixes.run({ kind: "retry" })} />;
   const elsewhere = note.fix ? (fixes.elsewhere?.(note.fix) ?? null) : null;
   const line = elsewhere ?? note.line;
+  // A note with nothing to do and nothing more to say is a fact about the list, muted, never a heading over it.
+  const quiet = !line && !(note.fix && !elsewhere);
   return (
     <div data-files-note role="status" className="flex min-h-8 min-w-0 shrink-0 items-center gap-2 border-b border-border bg-background px-3 py-1 text-[13px] leading-5">
-      <span className="min-w-0 truncate font-medium text-foreground">{note.title}</span>
+      <span className={`min-w-0 truncate ${quiet ? "text-muted-foreground" : "font-medium text-foreground"}`}>{note.title}</span>
       {line ? <span className="min-w-0 flex-1 truncate text-muted-foreground">{line}</span> : <span className="flex-1" />}
       {note.fix && !elsewhere ? (
         <Button variant="ghost" size="xs" disabled={fixes.busy} onClick={() => fixes.run(note.fix!)}>
@@ -133,6 +135,24 @@ export function ListBones({ compact = false }: { compact?: boolean }) {
           <Skeleton className={`h-3 ${width}`} />
         </div>
       ))}
+    </div>
+  );
+}
+
+/**
+ * The page bar's bones while a place loads: Back and Forward where the bar draws them and a bone where the trail
+ * will name the folder, 44px like the bar, so the list under it does not move when the bar lands.
+ */
+export function BarBones() {
+  return (
+    <div aria-hidden data-files-bar-bones className="flex h-11 shrink-0 items-center gap-1 border-b border-border px-2">
+      <Button variant="ghost" size="icon-sm" disabled tabIndex={-1} className="shrink-0 text-muted-foreground">
+        <ChevronLeft />
+      </Button>
+      <Button variant="ghost" size="icon-sm" disabled tabIndex={-1} className="shrink-0 text-muted-foreground">
+        <ChevronRight />
+      </Button>
+      <Skeleton className="ms-2 h-3 w-24" />
     </div>
   );
 }
@@ -200,7 +220,8 @@ function SortHead({ by, label, sort, onSort, className }: { by: FileSortBy; labe
 /** The list's heads. "Last change by" is a fact of each file, not an order the host keeps: its head only names the column. */
 function Head({ sort, second, onSort }: { sort: FileSort; second: string; onSort(next: FileSort): void }) {
   return (
-    <div role="row" className="flex h-7 shrink-0 items-center gap-2 border-b border-border px-4 text-xs text-muted-foreground">
+    // The head keeps the room the list's bar takes (`scrollbar-gutter`), so Changed ends on its dates' edge.
+    <div role="row" className="flex h-7 shrink-0 items-center gap-2 overflow-hidden border-b border-border px-4 text-xs text-muted-foreground [scrollbar-gutter:stable]">
       <span aria-hidden className="w-4 shrink-0" />
       <SortHead by="name" label="Name" sort={sort} onSort={onSort} className="min-w-0 flex-1" />
       <span role="columnheader" className={COL_BY}>
@@ -290,7 +311,8 @@ export function FileList({
         {...dragProps(drag, entry)}
       >
         <KindGlyph kind={entry.kind} />
-        <span className="flex min-w-0 flex-1 items-center gap-2">
+        {/* The state is a detail of the name: 4px after it, on its baseline (a glyph keeps the centre line). */}
+        <span className="flex min-w-0 flex-1 items-baseline gap-1">
           {renaming === entry.key ? (
             <NameField name={entry.name} onDone={(next) => onRenamed(entry, next)} />
           ) : (
@@ -301,7 +323,7 @@ export function FileList({
             </TruncateTip>
           )}
           {mine ? (
-            <span className="flex shrink-0 items-center gap-1.5 text-xs text-muted-foreground">
+            <span className="flex shrink-0 items-center gap-1.5 self-center text-xs text-muted-foreground">
               <Spinner className="size-3" />
               {busy!.word}
             </span>
@@ -314,10 +336,10 @@ export function FileList({
       </div>
     );
     if (head === undefined) return line;
-    // A group's heading stands over its first row, and scrolls with it.
+    // A group's heading stands over its first row on its rows' title edge, and scrolls with it.
     return (
       <div key={entry.key} role="presentation">
-        <div role="presentation" data-files-group={head} className={`flex h-7 items-end px-2 pb-1 text-xs font-medium text-muted-foreground ${index ? "mt-2" : ""}`}>
+        <div role="presentation" data-files-group={head} className={`flex h-7 items-end ps-8 pe-2 pb-1 text-xs font-medium text-muted-foreground ${index ? "mt-2" : ""}`}>
           {head}
         </div>
         {line}
@@ -333,7 +355,7 @@ export function FileList({
       aria-activedescendant={at >= 0 ? `files-row-${at}` : undefined}
       tabIndex={0}
       data-files-list
-      className={`focus-ring min-h-0 flex-1 overflow-x-hidden overflow-y-auto px-2 pt-1 outline-none ${bulk ? "pb-14" : "pb-2"}`}
+      className={`focus-ring min-h-0 flex-1 overflow-x-hidden overflow-y-auto px-2 pt-1 outline-none [scrollbar-gutter:stable] ${bulk ? "pb-14" : "pb-2"}`}
       onKeyDown={onKeyDown}
       onClick={(event) => {
         // A press on the list's own ground lets go of the selection.
@@ -458,6 +480,8 @@ export interface PageActs {
   from: PlaceCopy;
   /** the workspace's host keeps tabs and his marks */
   tabs: boolean;
+  /** the place's computer is reached only through another host: its greyed verbs say so (`farWhy`) */
+  far?: { computer: string; via: string };
   /** New: makes a thing of the kind here; answers it, to select and name */
   make(kind: MakeKind): Promise<FileEntry | null>;
   rename(entry: FileEntry, name: string): Promise<FileEntry | null>;
@@ -516,7 +540,8 @@ function NewMenu({ acts, name, onMade }: { acts: PageActs; name: string; onMade(
     ...(acts.addFromDrive ? ([{ kind: "item", id: "drive", label: "Add from Drive…" }] satisfies MenuRow[]) : []),
     ...(upload ? ([{ kind: "item", id: "upload", label: "Upload Files…", icon: Upload }] satisfies MenuRow[]) : []),
     { kind: "sep" },
-    { kind: "note", id: "where", content: <span className="px-2 py-1 text-xs text-muted-foreground">Kept in {name}</span> },
+    // On the rows' own leading edge, as the menu's note row draws it: no inset of its own.
+    { kind: "note", id: "where", content: <span className="min-w-0 truncate">Kept in {name}</span> },
   ];
   // A place that makes nothing and takes no upload offers no New: its rows' own menus say why.
   if (!makes.length && !upload && !acts.addFromDrive) return null;
@@ -787,7 +812,7 @@ export function PageView({
   // The verbs for what is selected: one table for a row's menu, the bar and the keys.
   // A page that only shows (a search's results) still opens a row and shows the folder it lives in.
   const plain = (on: readonly FileEntry[]): ActRow[] => (on.length === 1 ? [{ act: "open", label: "Open" }, ...(onReveal && on[0]!.where ? ([{ act: "reveal", label: "Show in Its Folder" }] satisfies ActRow[]) : [])] : []);
-  const verbs = acts ? actsFor(chosen, acts.place, { tabs: acts.tabs, side: !!acts.openSide, reveal: !!onReveal, projects: !!acts.projects?.length, restore: !!acts.restore, purge: !!acts.purge, app: !!acts.openApp }) : plain(chosen);
+  const verbs = acts ? actsFor(chosen, acts.place, { tabs: acts.tabs, side: !!acts.openSide, reveal: !!onReveal, projects: !!acts.projects?.length, restore: !!acts.restore, purge: !!acts.purge, app: !!acts.openApp, ...(acts.far ? { far: acts.far } : {}) }) : plain(chosen);
   const run = (act: EntryAct, on: readonly FileEntry[] = chosen): void => {
     const one = on[0];
     if (!one) return;
@@ -808,7 +833,7 @@ export function PageView({
   };
   const menuFor = (id: string | null): MenuRow[] | null => {
     const on = id !== null && !picked.keys.has(id) ? entries.filter((e) => e.key === id) : chosen;
-    const list = acts ? actsFor(on, acts.place, { tabs: acts.tabs, side: !!acts.openSide, reveal: !!onReveal, projects: !!acts.projects?.length, restore: !!acts.restore, purge: !!acts.purge, app: !!acts.openApp }) : plain(on);
+    const list = acts ? actsFor(on, acts.place, { tabs: acts.tabs, side: !!acts.openSide, reveal: !!onReveal, projects: !!acts.projects?.length, restore: !!acts.restore, purge: !!acts.purge, app: !!acts.openApp, ...(acts.far ? { far: acts.far } : {}) }) : plain(on);
     if (!list.length) return null;
     // Add to a Project lists the sector's projects, less the one the file is in, before Delete.
     const one = on.length === 1 && !on[0]!.folder ? on[0]! : null;
@@ -926,7 +951,8 @@ export function PageView({
   const line = acts?.uploading ? (
     <UploadLine progress={acts.uploading} onCancel={acts.cancelUpload} />
   ) : listing?.error && listing.away ? (
-    <ViewStateLine word={`${copy?.host ?? "The host"} did not answer`} detail={listing.error} onRetry={listing.lostPage ? listing.loadMore : listing.retry} />
+    // The word says it did not answer; the detail says what is still shown, as the asleep line does, never the same again.
+    <ViewStateLine word={`${copy?.host ?? "The host"} did not answer`} {...(entries.length && listing.asOf ? { detail: `This is the list from ${clockTime(listing.asOf)}.` } : {})} onRetry={listing.lostPage ? listing.loadMore : listing.retry} />
   ) : listing?.error && entries.length ? (
     // The rows it has stay; a later page that failed is asked again from where it stopped.
     <ViewStateLine word={listing.lostPage ? "The rest did not load" : "This folder did not load"} detail={listing.error} onRetry={listing.lostPage ? listing.loadMore : listing.retry} />
@@ -993,7 +1019,8 @@ export function PageView({
           }
         />
         {inTrash && acts?.purge && entries.length ? (
-          <Button variant="ghost" size="sm" data-files-empty-trash className="ms-1 shrink-0 text-destructive" onClick={() => acts.purge?.()}>
+          // Quiet in the bar beside its glyphs, red only under the pointer: the confirm it asks is the red verb.
+          <Button variant="ghost" size="sm" data-files-empty-trash className="ms-1 shrink-0 text-muted-foreground hover:text-destructive" onClick={() => acts.purge?.()}>
             Empty Trash
           </Button>
         ) : null}

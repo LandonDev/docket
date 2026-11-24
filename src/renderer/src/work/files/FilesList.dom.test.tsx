@@ -117,6 +117,23 @@ describe("the line over the list", () => {
     expect(top).not.toHaveBeenCalled();
   });
 
+  it("says a machine did not answer once, and what is still shown, never the same words again", () => {
+    const asOf = new Date(2026, 10, 24, 13, 40).getTime();
+    draw({ listing: listing({ error: "The box did not answer. Try again once it is connected.", away: true, asOf }) });
+    const line = document.querySelector<HTMLElement>("[data-view-state]")!;
+    expect(line.textContent).toContain("did not answer");
+    expect(line.textContent).toContain("This is the list from 1:40 PM.");
+    expect(line.textContent!.match(/did not answer/g)).toHaveLength(1);
+    expect(screen.getByText("Budget.xlsx")).toBeTruthy();
+  });
+
+  it("draws a note with nothing to do muted, as a fact about the list, not a heading", () => {
+    draw({ results: true, copy: null, acts: null, listing: listing({ unsearched: ["Purdue laptop"] }) });
+    const title = screen.getByText("Folders on Purdue laptop were not searched");
+    expect(title.className).toContain("text-muted-foreground");
+    expect(title.className).not.toContain("font-medium");
+  });
+
   it("says what a search left out with Retry, whether or not anything came back", () => {
     const retry = vi.fn();
     draw({ results: true, copy: null, acts: null, listing: listing({ asleep: ["The Windows VM"], retry }) });

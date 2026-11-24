@@ -29,7 +29,8 @@ function HomeList({ title, entries, busy, onOpen }: { title: string; entries: re
   if (!entries.length) return null;
   return (
     <section aria-label={title} className="flex flex-col">
-      <h2 className="px-2 pb-1 text-xs font-medium text-muted-foreground">{title}</h2>
+      {/* On the rows' title edge: the row's 8px inset, its 16px glyph and 8px gap. */}
+      <h2 className="ps-8 pe-2 pb-1 text-xs font-medium text-muted-foreground">{title}</h2>
       {entries.map((entry) => {
         const opening = busy?.key === entry.key;
         // A row that says a state gives its date up first in a narrow page, so the name keeps its room.

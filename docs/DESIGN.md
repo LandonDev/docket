@@ -1673,15 +1673,21 @@ Around the canvas:
   a quiet +. A tab is a folder he is browsing or a file open as itself. A
   folder opens in the tab he is in; a file opens in a tab of its own beside
   the tab it came from, never twice, and closing it returns there. No dirty
-  dot: nothing is saved by hand. Past what fits the tabs shrink to their
-  glyph and then scroll under a faded edge.
+  dot: nothing is saved by hand. Past what fits the selected tab keeps its
+  name and every other gives up the same part of its own (a short name is
+  not cut first), down to its glyph; then the tabs scroll under a faded
+  edge.
+  While a place loads, the bar's bones stand where it will: Back and
+  Forward greyed and a bone for the trail, over the list's bones, so
+  nothing moves when the page lands.
   A **page's bar** is 44px: Back and Forward for this tab (28px ghost
   glyphs), then the trail, each step above the folder a ghost press in
   `muted-foreground` and the folder itself in medium `foreground` (its
   whole name in a tooltip where the bar cuts it), 14px chevrons between; then Go to and Search (28px ghost glyphs), the view
   switch, the page's options (⋯) and the one primary button, New. A press
   on the trail's empty part, or ⌘P, turns the trail into **Go to**'s
-  field: a panel under it (the popover's own depth, 32px rows) lists the
+  field: a panel under it (the popover's own depth, 32px rows, at least
+  360px wide where the bar has room) lists the
   open tabs and recent files first, then names from every place, then
   "New sheet called …" when his words start with new; Return takes the
   first row, the arrows walk, Escape puts the trail back. **Search** (`/`
@@ -1712,13 +1718,16 @@ Around the canvas:
   rows at radius 6 (28px compact), only the rows on screen mounted past
   80: the kind's 16px glyph in its tint ("File kind tints"), the 13px name
   (semibold while a thread made it and he has not opened it), then one
-  state at most (a 12px cloud mark, an amber count of suggestions, "Dana
-  is in it", a spinner while a thread writes), then who last changed it
-  (160px) and when (128px, right aligned, tabular), both 12px muted; a
+  state at most, 4px after the name on its baseline (a 12px cloud mark, an
+  amber count of suggestions, "Dana is in it", a spinner while a thread
+  writes; a glyph keeps the centre line), then who last changed it
+  (160px) and when (128px, right aligned, tabular), both 12px muted. The
+  head keeps the room the list's scroll bar takes, so Changed ends on its
+  dates' edge; a
   name the list cuts has its whole text in a tooltip. Who goes first as
   the list narrows (under 560px of the list itself, a details pane beside
   it not counted), then when (under 360px). Folders come first. Grouped, each group's first row carries a
-  28px heading over it (12px medium muted), 8px clear of the group above.
+  28px heading over it (12px medium muted) on the rows' title edge, 8px clear of the group above.
   With Show Details on, a 288px pane at the list's right (past 640px of
   the folder's body) shows the one selected file's picture in a 160px box on `stage`,
   its name, its facts as a two-column list and Open.
@@ -1739,7 +1748,9 @@ Around the canvas:
   selected ones held in `muted`, the one shown where none is); the arrows
   walk, Return opens. **Beside** is the list at 280px (down to 200px as
   the page narrows) in two-line 44px rows (the name and when; under it
-  the one state in words, else who changed it) and the selected file at
+  the one state in words, a thread's writing as its spinner and "A thread
+  is writing", else who changed it; a row with neither, a folder, is its
+  one line centred) and the selected file at
   its right, the right half empty on `stage` while nothing is selected;
   under 520px the two take turns, a press on a file showing it under a
   32px line led by Back:
@@ -1764,7 +1775,7 @@ Around the canvas:
   and Look: nothing downloads without that press.
   **New** is the bar's one primary button: a menu of what the place
   makes (Document, Sheet, Deck, Text File, Folder), Upload Files…, and a
-  last muted line that says where it is kept. The new thing is selected
+  last muted line on the rows' leading edge that says where it is kept. The new thing is selected
   with its name ready to type. A name is typed in place (F2, a slow
   second press on the selected name, Rename in the menu): the field
   stands where the name was with the part before the extension selected.
@@ -1782,7 +1793,8 @@ Around the canvas:
   went in one toast with Undo, back to the folder it came from. Delete
   goes to Trash and says so in one toast with Undo;
   Trash is a lens whose rows have Put Back and Delete for Good, with
-  Empty Trash in its bar. **Drag**: nothing moves while a thing is
+  Empty Trash in its bar, a ghost in muted ink that turns red under the
+  pointer (the confirm it asks holds the red verb). **Drag**: nothing moves while a thing is
   dragged; the target (a folder row, a place or folder of the sidebar, a
   folder's tab, which comes forward after 600 ms) takes `muted`, and the
   pointer carries a small label with the verb ("Move to Events", "Copy to
@@ -1828,7 +1840,7 @@ Around the canvas:
   file that changed there, one line says when, Keep Both holds the focus and
   Replace stays his press; over one gone, Keep Both alone). A save into a Teams or OneDrive library never says it is
   in Teams before OneDrive has uploaded it: "Saved, uploading to Teams…" while that computer holds the bytes and OneDrive
-  has not, "In Teams 1:52 PM" once it has (OneDrive in place of Teams for his own), "Saved on MacBook; OneDrive uploads
+  has not, "In Teams 1:52 PM" once it has (OneDrive in place of Teams for his own), "Saved to MacBook. OneDrive uploads
   it" where that computer cannot say, all muted; past a minute, in the foreground, "Not uploaded to Teams yet." with
   what he can do ("The Windows VM is asleep. It uploads when it wakes", "OneDrive is not running on the Windows VM.
   Start it there", "OneDrive is signed out on the Windows VM. Sign in there", "OneDrive on the Windows VM may be
@@ -1838,13 +1850,17 @@ Around the canvas:
   have not reached MacBook.", Cancel, Discard and Keep trying (Keep Both in
   its place over a file that changed there; Discard alone where it was
   refused); at the right ⋯ and Ask (secondary,
-  the Ask glyph; flat on `muted` while its chat is open). The name is a press that renames it in place. ⋯ holds
-  its row's verbs, Download, Full Window and Close Tab. Full Window fills
+  the Ask glyph; flat on `muted` while its chat is open; its glyph alone under 480px of header, so the name and
+  its line keep room beside two presses). The name is a press that renames it in place. ⋯ holds
+  its row's verbs (one greyed says why in its tooltip: on a computer this window reaches only through another host,
+  "Purdue PC is reached through the box. Change its files on Purdue PC itself."), then Download, Save As… (a
+  document) and Save as Template… (a file the template shelf keeps), then Full Window and Close Tab. Full Window fills
   the app's window with the file, its way back in the header and on
   Escape. Under the header the kind's own bar and body, exactly as beside
   a thread; the `file` kind shows a text or code file in an editor that
   saves as he types, a sound with Play, a zip as its facts over the list
-  of what it holds, and anything else as its facts (one comma sentence;
+  of what it holds (each entry by its last name, 16px a level under its
+  folder, so a folder is named once), and anything else as its facts (one comma sentence;
   the header already names it) with Download and Open in its app; a Drive
   file no editor here reads (a picked PDF or workbook) has Open in Drive
   alone. Opening a file makes no thread, and the thread is never the
@@ -1888,10 +1904,14 @@ Around the canvas:
   that did not load is the state line over the rows it kept ("The rest
   did not load", Retry asks that page again); a search that left a place
   out says so in one line over its results, or under "Nothing found",
-  with Retry; a machine asleep is one
+  with Retry (with nothing to press, "Folders on Purdue laptop were not
+  searched" is muted, a fact about the list and no heading); a machine
+  asleep is one
   line over the list it kept ("The Windows VM is asleep", "This is the
   list from 1:40 PM.", Wake it) in the state line's shape with no failed
-  glyph; a machine that did not answer is the state line with Retry; a
+  glyph; a machine that did not answer is the state line with Retry, its
+  detail what is still shown ("This is the list from 1:40 PM.") and never
+  its word again; a
   host a release behind is one 12px muted line under the tab row ("Update
   the box to keep tabs here"). Nothing moves between pages: a tab switched
   by a key changes at once.

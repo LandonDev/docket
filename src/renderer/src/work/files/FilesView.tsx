@@ -10,6 +10,7 @@ import { ItemButton } from "../../components/ui/item";
 import { ROW_PRESS } from "../../components/ui/press";
 import { loadToast } from "../../components/ui/toaster";
 import { registry, LOCAL_ENVIRONMENT_ID } from "../../lib/connection";
+import { hostName } from "../../lib/threadResources";
 import { linkMay, managedElsewhere, useLinksMay } from "../../lib/linkMay";
 import { readyToClose } from "../canvas/closeDoor";
 import { liveSourceOf } from "../office/live/liveSwitch";
@@ -36,7 +37,7 @@ import "./bindings";
 import { closeOf, FILES_KEYS, landFocus } from "./chords";
 import { historyBeside } from "./SideFile";
 import { fetchHere, fileOf, openEntry, openInApp, opensInApp, type Busy } from "./open";
-import { ListBones, PageBar, PageView, type NoteFixes, type PageActs, type PageFind } from "./Page";
+import { BarBones, ListBones, PageBar, PageView, type NoteFixes, type PageActs, type PageFind } from "./Page";
 import { useSideOpen, hasClosed, openAtSide, closeSide, openFileTab, rememberClosed, takeClosed, dropSearch, saveSearch, useHome, useSavedSearches, useSearchFilter, closeTab, firstPage, goTo, historyOf, keepBothCopy, moveTabs, openPageTab, reloadCopy, selectTab, sendCopyBack, tabsNow, teamRows, useDock, useListing, usePageLook, useReach, useSidebarFolded, useTabs, type DeskSearch, type ListFrom, type Reach } from "./store";
 import { farName } from "./farLink";
 import { closeCopyTab } from "./copyClose";
@@ -307,6 +308,9 @@ function useFixes(workspace: WorkspaceMeta, again: () => void): NoteFixes {
   };
 }
 
+/** A place whose computer this window reaches only through the workspace's host: its greyed verbs name that road. */
+const farOf = (copy: PlaceCopy, via: string): { far?: { computer: string; via: string } } => (registry.has(copy.link) ? {} : { far: { computer: copy.host, via: hostName(via) } });
+
 export function View(props: WorkViewProps) {
   const { workspace } = props;
   const [attempt, setAttempt] = useState(0);
@@ -323,7 +327,7 @@ function Frame() {
       <div className="hidden w-[200px] shrink-0 border-r border-border bg-sidebar @[640px]/files:block" />
       <div className="flex min-w-0 flex-1 flex-col">
         <div className="h-9 shrink-0 border-b border-border bg-sidebar" />
-        <div className="h-11 shrink-0 border-b border-border" />
+        <BarBones />
         <ListBones />
       </div>
     </div>
@@ -640,7 +644,14 @@ function Place({ workspace, reach, again, startThread }: WorkViewProps & { reach
   };
 
   let body: ReactNode;
-  if (!view.loaded || !tab) body = <ListBones />;
+  // Until the tabs come the page is its bones, the bar's with the list's, so nothing moves when the page lands.
+  if (!view.loaded || !tab)
+    body = (
+      <>
+        <BarBones />
+        <ListBones />
+      </>
+    );
   else if (tab.kind === "file")
     body = (
       <OpenFile
@@ -830,6 +841,7 @@ function FolderPage({
           place: copy.place,
           from: copy,
           tabs: reach.tabs,
+          ...farOf(copy, workspace.environmentId),
           make: (kind) => makeIn(of, copy, page.at, kind),
           rename: (entry, name) => renameTo(of, copy, entry, name),
           carry: (verb, entries) => verbs.carry({ verb, entries, from: copy, start: { at: page.at, name: page.name } }),
@@ -1036,7 +1048,7 @@ function OpenFile({
   const manage: FileManage | undefined =
     entry && place && file?.at === "file"
       ? {
-          rows: actsFor([entry], place.place, { tabs: reach.tabs, app: opensInApp(place) }),
+          rows: actsFor([entry], place.place, { tabs: reach.tabs, app: opensInApp(place), ...farOf(place, workspace.environmentId) }),
           run: (act) => {
             const at: FolderRef = { at: "file", host: file.host, path: file.path.replace(/[\\/]+[^\\/]*$/, "") };
             if (act === "move" || act === "copy") return verbs.carry({ verb: act, entries: [entry], from: place, start: { at, name: where ?? place.place.name } });

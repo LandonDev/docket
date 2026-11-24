@@ -42,6 +42,8 @@ import {
   groupHeads,
   tilesAcross,
   actsFor,
+  farWhy,
+  tabShrink,
   doneWords,
   NOTHING_PICKED,
   pick,
@@ -426,6 +428,30 @@ describe("the verbs for what is selected", () => {
     expect(shown({ far: false, platform: "linux" }, { vm: true })).toBe(true);
     expect(appOpens({ place: own }, { far: false, platform: "darwin" })).toBe(false);
     expect(labels(actsFor([file("Plan.docx", { kind: "document", shared: true })], team, { tabs: true, app: false }))).not.toContain("Open in Word");
+  });
+
+  it("says why on a computer reached only through another host, the same verbs greyed as the place greys them", () => {
+    // The box hands on a far desktop's library with nothing it may change there (main work/files/across.ts).
+    const far = place({ id: "b2", kind: "teams", name: "Esports Staff", host: "Purdue PC", can: [] });
+    const via = { computer: "Purdue PC", via: "the box" };
+    const rows = actsFor([file("Plan.docx", { kind: "document", shared: true })], far, { tabs: true, app: false, far: via });
+    expect(rows.filter((r) => r.refused).map((r) => r.act)).toEqual(actsFor([file("Plan.docx", { kind: "document", shared: true })], far, { tabs: true, app: false }).filter((r) => r.refused).map((r) => r.act));
+    expect(rows.filter((r) => r.refused).map((r) => r.act)).toEqual(["rename", "move", "copy", "delete"]);
+    for (const row of rows.filter((r) => r.refused)) expect(row.refused).toBe("Purdue PC is reached through the box. Change its files on Purdue PC itself.");
+    expect(farWhy(via)).toBe("Purdue PC is reached through the box. Change its files on Purdue PC itself.");
+    // Nothing refused is said to be refused: Open and Star stay his.
+    expect(rows.find((r) => r.act === "star")!.refused).toBeUndefined();
+  });
+
+  it("keeps the selected tab's name and lets every other give up the same part of itself past what fits", () => {
+    // Flex takes width in step with shrink × width; a tab is its name plus about 9 letters of glyph and close's room.
+    const loss = (name: string): number => tabShrink(name) * (name.length + 9);
+    const short = "Events";
+    const long = "Nationals travel.xlsx";
+    expect(loss(short) / short.length).toBeCloseTo(loss(long) / long.length, 10);
+    expect(tabShrink(short)).toBeLessThan(tabShrink(long));
+    // The tab he is in keeps its name while the others give way.
+    expect(tabShrink(short, true)).toBe(0);
   });
 
   it("offers Put Back and Delete for Good in Trash, and no star where no marks are kept", () => {

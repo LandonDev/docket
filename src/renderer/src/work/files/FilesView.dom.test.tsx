@@ -351,7 +351,11 @@ describe("the window", () => {
     hosts.set("box", host);
     const { container } = render(<View {...props} />);
     expect(container.querySelector("[data-files-view][data-loading]")).not.toBeNull();
+    // The page bar's bones stand where the bar will, 44px over the list's, so the list does not move when the bar lands.
+    expect(container.querySelector("[data-files-bar-bones]")?.className).toContain("h-11");
     await waitFor(() => expect(rows()).toEqual(["Events", "Budget.xlsx", "notes.txt", "bundle.zip"]));
+    expect(container.querySelector("[data-files-bar-bones]")).toBeNull();
+    expect(container.querySelector("[data-files-bar]")?.className).toContain("h-11");
     // The first tab was made once, on the workspace's folder.
     expect(calls(host, "work.files.tabOpen")).toMatchObject([{ params: { first: true, page: { at: { at: "place", id: "folder" }, name: "Dummy Esports" } } }]);
     await waitFor(() => expect(tabNames()).toEqual(["Dummy Esports"]));

@@ -180,11 +180,12 @@ export function DetailsPane({ from, entry, onOpen, className }: { from: PictureF
           {text ? <TextThumb key={entry.key} from={from!} entry={entry} /> : <Thumb from={from} entry={entry} tile={208} glyph="size-10" />}
         </div>
         <h3 className="max-w-64 text-center text-sm leading-5 font-semibold break-words text-foreground">{entry.name}</h3>
-        <dl className="grid w-full max-w-64 grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-xs">
+        {/* Each value 8px after the widest label, so a label and its value read as one pair. */}
+        <dl className="grid w-full max-w-64 grid-cols-[auto_1fr] gap-x-2 gap-y-1 text-xs">
           {factRows(entry).map(([label, value]) => (
             <div key={label} className="contents">
               <dt className="text-muted-foreground">{label}</dt>
-              <dd className="min-w-0 truncate text-end text-foreground tabular-nums">{value}</dd>
+              <dd className="min-w-0 truncate text-foreground tabular-nums">{value}</dd>
             </div>
           ))}
         </dl>
@@ -408,6 +409,22 @@ export function FileBeside({
     const on = picked.keys.has(entry.key);
     const mine = busy?.key === entry.key;
     const over = drag?.over === entry.key;
+    // Under the name: the one state in words, else who changed it; a row with neither is one line, centred.
+    const who = entry.madeBy ?? entry.by;
+    const second: ReactNode = mine ? (
+      busy!.word
+    ) : entry.state?.is === "writing" ? (
+      <>
+        <Spinner className="size-3 shrink-0" />
+        <span className="truncate">{factOf(entry, dayTime)}</span>
+      </>
+    ) : entry.state?.is === "cloud" ? (
+      <span className="truncate">In the cloud</span>
+    ) : entry.state ? (
+      <RowState entry={entry} />
+    ) : who ? (
+      <span className="truncate">{who}</span>
+    ) : null;
     return (
       <div
         key={entry.key}
@@ -418,7 +435,7 @@ export function FileBeside({
         data-menu-id={entry.key}
         data-kind={entry.kind}
         style={{ height: BESIDE_ROW_PX }}
-        className={`flex cursor-default items-start gap-2 rounded-md px-2 py-1.5 text-[13px] select-none ${on || over ? "bg-muted" : "hover:bg-foreground/5"}`}
+        className={`flex cursor-default gap-2 rounded-md px-2 py-1.5 text-[13px] select-none ${second ? "items-start" : "items-center"} ${on || over ? "bg-muted" : "hover:bg-foreground/5"}`}
         onClick={(event) => {
           const how = howOf(event);
           onPick(entry.key, how, onNameOf(event));
@@ -428,7 +445,7 @@ export function FileBeside({
         onDoubleClick={() => onOpen(entry)}
         {...dragProps(drag, entry)}
       >
-        <KindGlyph kind={entry.kind} className="mt-0.5 size-4 shrink-0" />
+        <KindGlyph kind={entry.kind} className={`size-4 shrink-0 ${second ? "mt-0.5" : ""}`} />
         <span className="flex min-w-0 flex-1 flex-col">
           <span className="flex min-w-0 items-baseline gap-2">
             {renaming === entry.key ? (
@@ -440,10 +457,7 @@ export function FileBeside({
             )}
             {entry.changed ? <span className="shrink-0 text-xs leading-4 text-muted-foreground tabular-nums">{dayTime(entry.changed)}</span> : null}
           </span>
-          {/* Under the name: the one state, else who changed it. */}
-          <span className="flex h-4 min-w-0 items-center gap-1.5 text-xs leading-4 text-muted-foreground">
-            {mine ? busy!.word : entry.state?.is === "cloud" ? <span className="truncate">In the cloud</span> : entry.state ? <RowState entry={entry} /> : <span className="truncate">{entry.madeBy ?? entry.by ?? ""}</span>}
-          </span>
+          {second ? <span className="flex h-4 min-w-0 items-center gap-1.5 text-xs leading-4 text-muted-foreground">{second}</span> : null}
         </span>
       </div>
     );

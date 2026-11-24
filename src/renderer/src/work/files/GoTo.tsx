@@ -119,7 +119,8 @@ export function GoToField({
         onBlur={onClose}
       />
       {rows.length ? (
-        <div id="files-goto-list" role="listbox" aria-label="Go to" className="absolute inset-x-0 top-9 z-30 flex max-h-80 flex-col overflow-x-hidden overflow-y-auto rounded-xl bg-popover p-1 text-popover-foreground shadow-overlay ring-1 ring-border">
+        // At least 360px where the bar has room, so a name is not cut to a word beside where it lives.
+        <div id="files-goto-list" role="listbox" aria-label="Go to" className="absolute start-0 top-9 z-30 flex max-h-80 w-full min-w-[min(22.5rem,calc(100cqw-5rem))] flex-col overflow-x-hidden overflow-y-auto rounded-xl bg-popover p-1 text-popover-foreground shadow-overlay ring-1 ring-border">
           {rows.map((row, index) => {
             const { glyph, name, fact } = line(row);
             return (
