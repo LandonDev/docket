@@ -2312,13 +2312,13 @@ every host:
   show the command as written (`unwrapBashCommand` strips the prelude with
   the marks). Every harness itself, and every other long-lived or heavy
   child, starts lower too ("Child priority" below), so what a harness runs
-  without a per-call hook (a codex app-server's commands) inherits it. The unit (`temp-code.service`) stays as
-  it is; the server's own threads should sit at `Nice=-5` so they also win
-  against anything at nice 0 (a user's own shell on the box, a build the
-  Mac bridge runs), which the admin sets with `systemctl edit
-  temp-code.service` → `[Service]` `Nice=-5` and a restart at the next
-  deploy. The hand relief of 2026-11-04 (`renice 19` on every java, `-10`
-  on the server's threads) is what these make permanent.
+  without a per-call hook (a codex app-server's commands) inherits it. What
+  needs root is one drop-in on the unit that puts the server and its jobs
+  in two groups, weighted ten to one, with the memory line on the jobs
+  (.temp-code/plans/landed/F-box-slow/root-change.md, waiting for the
+  owner; it replaces the earlier `Nice=-5` advice). The hand relief of
+  2026-11-04 (`renice 19` on every java, `-10` on the server's threads) is
+  what these make permanent.
 - **The orphan sweep.** Every 10 s the host reads one process table:
   `/proc` directly on Linux (procScan.ts: `stat` and `cmdline` of each pid
   in the server's own cgroup tree, `temp-code.service` on the box, else of
@@ -3039,6 +3039,74 @@ after the second start resumed from the saved cursor over
 `session.changes`: the renamed row read its new title in place, the deleted
 one left, the archived one archived, the new one appeared, and the mirror
 was rewritten with the new cursor.
+
+## Answers under load
+
+On 2026-11-23 at about 7:45 p.m. Central, load 27 to 35 on 32 cores, the
+Mac timed out on six connects (its hello waits 4 s) and the box answered
+`checkpoint.status` in 108 s and `commands.list` in 104 s. What held them:
+
+- **The process guard's scan** (procScan.ts) read every process on the
+  host at once, a 64 KB buffer per /proc file, every 2 s while calls
+  ended. It queued thousands of jobs on libuv's four threads ahead of
+  every other file read in the server (`commands.list` reads a hundred
+  SKILL.md files and nothing else) and made 140 MB of garbage a scan. A
+  profile of the live server (`doctor.profile`, 10 s at 30 threads) spent
+  3.7 s in readFile, 1.3 s of it making buffers, and 0.8 s in GC; the loop
+  stalled for a second every two seconds. Now it reads the server's own
+  cgroup tree, two reads at a time into reused buffers. Measured under
+  Node on the box at load 14: a `stat` beside the scan waited 57 ms
+  before, 0.4 ms after; fifty small reads 122 ms before, 4 ms after.
+- **Queues in front of a 30 ms answer.** `checkpoint.status` costs 30 ms
+  and five git children at rest (measured on a real 500-path manifest).
+  Under load it waited in the bulk gate (held while the loop lagged, up
+  to 20 s), behind the thread's own checkpoint writes, for a status-budget
+  slot, and for git children running at nice 0 among 54 runnable tasks.
+  Now it and `commands.list` answer what the host last read at once and
+  read again behind it (heldAnswer.ts, "The interactive lane").
+- **The server shared the CPU equally with what it starts.** Now its
+  children start at nice 10 ("Child priority" below); a root change for
+  two cgroups waits for the owner.
+
+`src/main/server/connectUnderLoad.server.test.ts` holds it in the suite:
+with every child budget held, a write stuck on a thread's checkpoint
+chain, the loop's lag forced high and the bulk gate full, each request a
+window sends on connect and focus (`session.list`, the master's board,
+`commands.list`, `checkpoint.status` focused and not, the transcript tail,
+a socket's open, `/api/hello`) answers in 500 ms. On the code before this
+change `checkpoint.status` and `commands.list` missed it.
+`scripts/proof-box-load.ts` runs the same probe on an isolated server
+under a CPU burner, both pinned with `taskset` to the last `--cores` cores
+(8 by default) with twice that many burners, so the proof's server sees the
+overload and the live service does not. A run burns 60 s at most, and
+times `tc-local admission.get` against the live host before and every 5 s
+during it: past 800 ms it kills the burners and exits 2. Only through
+`.temp-code/bin/heavy`, only when the box is quiet. Its runs on
+2026-11-23 at 10:15 and 10:20 p.m. Central, `--starve`, 64 burners, load
+54 to 62 on 32 cores, the most any one request took, in ms (before: 2
+rounds in 20 s, each held 2 s by the three that never answered; after: 80):
+
+| request | before | after |
+| --- | --- | --- |
+| socket open + `session.list` | 3 | 40 |
+| `/api/hello` | 10 | 31 |
+| ticket + open + `session.list` | 11 | 46 |
+| `session.events` (tail) | 7 | 61 |
+| `checkpoint.status`, focused | no answer in 2 s | 13 |
+| `checkpoint.status`, unfocused | no answer in 2 s | 26 |
+| `commands.list` | no answer in 2 s | 21 |
+| `batch.board`, `batch.get` | 2 | 14 |
+
+Those two loaded the whole box and slowed the owner's live app to 2.2 s,
+which is why the proof now pins itself. Pinned (10:27 p.m., `--starve`, 16
+burners on 8 cores), the new code's worst answer was 11 ms and the live
+host's 581 ms. CPU load alone did not bring the fault back: the probe
+without `--starve` on the old code stayed under 170 ms.
+
+The stall log names the next queue itself: a slow-request line carries
+`lane=` and, in bulk, `gate=<ms>` or `gate=joined`, and every line ends
+`pool=<ms>`, a one-a-second `stat` through the thread pool (`<age>ms+`
+while it is still out).
 
 ## The shape that scales
 

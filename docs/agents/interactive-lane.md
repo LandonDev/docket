@@ -61,6 +61,14 @@
   every 250 ms while the loop lags.
   Server close stops that registry's thread mirror timers and awaits its writes before closing the reader and database (`mirror.ts`, `stopMirrors`).
   `SessionRegistry.close()` marks the registry closed first, clears pending titles and timers, and keeps late title, fold, driver and report callbacks from using the store; `disposeAll()` puts down the harnesses and leaves the registry usable.
+- Guard: `src/main/server/connectUnderLoad.server.test.ts` starves every
+  queue agents' work can fill (the helper budgets, a thread's checkpoint
+  chain, the loop-lag reading, the bulk gate) and holds each request a
+  window sends on connect and focus, a socket's open and `/api/hello` to
+  500 ms; `scripts/proof-box-load.ts` (shared set-up in
+  scripts/lib/connectProbe.ts) runs the same probe on an isolated server
+  under a CPU burner of twice the cores, `--starve` adding the guard's
+  queues (docs/box.md "Answers under load").
 - Proof: `bun run script:e2e-interactive-lane` (200 git.diffStats against a
   scratch repo beside a focused socket reading a 2,000-row thread; on the
   Mac: focused p95 3 ms, 15 git children where 200 runs would spawn 600).
