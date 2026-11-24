@@ -5,11 +5,12 @@
  * drawn and ⋯ holds only the file's own rows. The line's words and the order of its presses do not change.
  */
 import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
+import { tooltipChunk, warmTooltips } from "../../components/ui/tooltip";
 import type { SavedAction } from "../canvas/kind";
 
 const { FileHeader } = await import("./FileTabView");
-const { tuckedRows, TUCKED } = await import("./SaveLine");
+const { SaveActions, SaveLine, tuckedRows, TUCKED } = await import("./SaveLine");
 
 let width = 400;
 class Measured {
@@ -21,9 +22,16 @@ class Measured {
   disconnect(): void {}
 }
 
+beforeAll(async () => {
+  await act(async () => {
+    await tooltipChunk.load();
+    warmTooltips();
+  });
+});
 afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
+  vi.restoreAllMocks();
 });
 
 const ran: string[] = [];
@@ -79,5 +87,45 @@ describe("a narrow file header", () => {
     expect(tuckedRows([], actions, true, "reload")[0]).toMatchObject({ id: TUCKED, disabled: true });
     expect(tuckedRows([], actions.slice(0, 1), true, null)).toEqual([]);
     expect(tuckedRows([], actions, false, null)).toEqual([]);
+  });
+});
+
+describe("a save line outside a file's header", () => {
+  it("draws both presses where no ⋯ holds the second (a side file, the Beside seat)", () => {
+    render(<SaveActions actions={actions} busy={null} onRun={() => undefined} />);
+    for (const name of ["Reload", "Keep Both"]) expect(screen.getByRole("button", { name }).className.split(" ")).not.toContain("hidden");
+  });
+});
+
+describe("a cut save line", () => {
+  const words = "This file changed on MacBook Pro at 2:14 PM while you had changes here";
+  // jsdom lays nothing out: the line reads as cut where the test says so.
+  const cut = () => {
+    vi.spyOn(HTMLElement.prototype, "scrollWidth", "get").mockImplementation(function (this: HTMLElement) {
+      return this.hasAttribute("data-files-save-line") ? 900 : 0;
+    });
+    vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockImplementation(function (this: HTMLElement) {
+      return this.hasAttribute("data-files-save-line") ? 200 : 0;
+    });
+  };
+
+  it("is a Tab stop with its whole words in a tooltip", () => {
+    cut();
+    render(<SaveLine line={{ state: "conflict", words }} where={null} />);
+    const line = screen.getByText(words);
+    expect(line.getAttribute("tabindex")).toBe("0");
+    expect(line.getAttribute("data-slot")).toBe("tooltip-trigger");
+  });
+
+  it("is no Tab stop whole, and leaves its folder the one stop when cut", () => {
+    render(<SaveLine line={{ state: "conflict", words }} where={null} />);
+    expect(screen.getByText(words).hasAttribute("tabindex")).toBe(false);
+    cleanup();
+    vi.restoreAllMocks();
+    cut();
+    render(<SaveLine line={{ state: "saved", at: Date.now() }} where="Esports Staff › Events › Spring LAN 2027" onShowFolder={() => undefined} />);
+    const line = document.querySelector<HTMLElement>("[data-files-save-line]")!;
+    expect(line.hasAttribute("tabindex")).toBe(false);
+    expect(within(line).getByRole("button")).toBeTruthy();
   });
 });

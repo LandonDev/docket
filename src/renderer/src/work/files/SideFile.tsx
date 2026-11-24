@@ -85,7 +85,7 @@ export function SidePane({
         <h3 className="min-w-0 shrink truncate text-[13px] leading-5 font-medium text-foreground">{name}</h3>
       </TruncateTip>
       {feeds.saved ? <SaveLine line={feeds.saved} where={null} /> : null}
-      {feeds.saved?.actions?.length ? <SaveActions actions={feeds.saved.actions} busy={running} onRun={run} tuck={false} /> : null}
+      {feeds.saved?.actions?.length ? <SaveActions actions={feeds.saved.actions} busy={running} onRun={run} /> : null}
     </>
   );
   const close = (

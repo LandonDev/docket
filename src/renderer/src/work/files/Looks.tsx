@@ -22,6 +22,7 @@ import { factOf } from "./model";
 import { FilePreviewPane } from "./Preview";
 import { mayReadText, useTextHead, useThumb, type PictureFrom } from "./previews";
 import { dragProps, howOf, NameField, onNameOf, RowState, stepHow, type ShapeProps } from "./rowParts";
+import type { HeaderLine } from "./fileText";
 import { SaveActions, SaveLine } from "./SaveLine";
 import { thisWindow } from "./store";
 
@@ -270,14 +271,7 @@ function Seat({ seat, entry, lead, onTab }: { seat: BesideSeatOf; entry: FileEnt
     );
   return (
     <div data-files-seat={entry.key} className="flex min-h-0 min-w-0 flex-1 flex-col bg-background">
-      <div className={`flex h-8 shrink-0 items-center gap-2 border-b border-border pe-2 ${lead ? "ps-1" : "ps-3"}`}>
-        {lead}
-        <div className="min-w-0 flex-1">{feeds.saved ? <SaveLine line={feeds.saved} where={null} /> : null}</div>
-        {feeds.saved?.actions?.length ? <SaveActions actions={feeds.saved.actions} busy={running} onRun={run} /> : null}
-        <Button variant="ghost" size="xs" className="shrink-0 text-muted-foreground" onClick={() => onTab(entry)}>
-          Open in a Tab
-        </Button>
-      </div>
+      <SeatBar lead={lead} saved={feeds.saved} running={running} onRun={run} onTab={() => onTab(entry)} />
       {item ? (
         <CanvasPane
           key={item.id}
@@ -294,6 +288,23 @@ function Seat({ seat, entry, lead, onTab }: { seat: BesideSeatOf; entry: FileEnt
       ) : (
         <ItemSkeleton />
       )}
+    </div>
+  );
+}
+
+/**
+ * The seat's one bar: the way back, where saving stands, the line's presses and Open in a Tab. The bar has no ⋯, so
+ * both of the line's presses are always drawn (a conflict's Keep Both beside Reload).
+ */
+export function SeatBar({ lead, saved, running, onRun, onTab }: { lead?: ReactNode; saved: HeaderLine | null | undefined; running: string | null; onRun(action: SavedAction): void; onTab(): void }) {
+  return (
+    <div className={`flex h-8 shrink-0 items-center gap-2 border-b border-border pe-2 ${lead ? "ps-1" : "ps-3"}`}>
+      {lead}
+      <div className="min-w-0 flex-1">{saved ? <SaveLine line={saved} where={null} /> : null}</div>
+      {saved?.actions?.length ? <SaveActions actions={saved.actions} busy={running} onRun={onRun} /> : null}
+      <Button variant="ghost" size="xs" className="shrink-0 text-muted-foreground" onClick={onTab}>
+        Open in a Tab
+      </Button>
     </div>
   );
 }

@@ -1,7 +1,8 @@
 import type { ReactNode } from "react";
 import type { MenuRow } from "../../chrome/menuRows";
-import { TruncateTip } from "../../components/tip";
+import { useTruncated } from "../../components/tip";
 import { BusyLabel, Button } from "../../components/ui/button";
+import { Tooltip, TooltipContent, TooltipTrigger } from "../../components/ui/tooltip";
 import type { SavedAction } from "../canvas/kind";
 import { savedNeedsHim, savedWords, type HeaderLine } from "./fileText";
 
@@ -27,13 +28,29 @@ export function SaveLine({ line, where, onShowFolder }: { line: HeaderLine; wher
       </>
     );
   }
+  const { ref, cut } = useTruncated(words);
   // Cut in a narrow header, the whole line is in its tooltip: the line that needs him is never lost to an ellipsis.
+  // Cut, it is a Tab stop too (the canvas's `CutDetail`), unless its folder is a press: that stays the line's one stop.
+  const own = text === words;
+  const p = (
+    <p
+      ref={ref}
+      data-files-save-line={line.state}
+      {...(needs ? { role: "status" } : {})}
+      tabIndex={cut && own ? 0 : undefined}
+      className={`focus-ring min-w-0 truncate rounded-sm text-xs leading-4 ${needs ? "text-foreground" : "text-muted-foreground"}`}
+    >
+      {text}
+    </p>
+  );
+  if (!cut) return p;
   return (
-    <TruncateTip text={words}>
-      <p data-files-save-line={line.state} {...(needs ? { role: "status" } : {})} className={`min-w-0 truncate text-xs leading-4 ${needs ? "text-foreground" : "text-muted-foreground"}`}>
-        {text}
-      </p>
-    </TruncateTip>
+    <Tooltip>
+      <TooltipTrigger render={p} />
+      <TooltipContent>
+        <span className="min-w-0 break-words">{words}</span>
+      </TooltipContent>
+    </Tooltip>
   );
 }
 
@@ -42,9 +59,11 @@ export const HEAD_NARROW = 480;
 
 /**
  * The line's presses, at the header's end before the file's menu: at most two, the first the one he most likely
- * wants. Under 480px of header the second is drawn in ⋯ instead, so the name and the line keep room to be read.
+ * wants. In a file's header (`tuck`) under 480px the second is drawn in ⋯ instead, so the name and the line keep room
+ * to be read. Anywhere else (a side file's bar, the Files place's Beside seat) there is no ⋯ to hold it, so both are
+ * always drawn: a conflict's Keep Both is never hidden where Reload alone would drop his edits.
  */
-export function SaveActions({ actions, busy, onRun, tuck = true }: { actions: readonly SavedAction[]; busy: string | null; onRun(action: SavedAction): void; /** false where no file header holds them (a side file's bar): both presses always drawn */ tuck?: boolean }) {
+export function SaveActions({ actions, busy, onRun, tuck = false }: { actions: readonly SavedAction[]; busy: string | null; onRun(action: SavedAction): void; /** true only in a file's header, whose ⋯ holds the second press (`tuckedRows`) */ tuck?: boolean }) {
   return (
     <>
       {actions.slice(0, 2).map((action, index) => (

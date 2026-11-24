@@ -1898,7 +1898,8 @@ Around the canvas:
   refused); at the right ⋯ and Ask (secondary,
   the Ask glyph; flat on `muted` while its chat is open; its glyph alone under 480px of header, and there the line's second
   press is the first row of ⋯, so the name and its line keep room beside the first; a line cut even so has its whole
-  words in a tooltip). The name is a press that renames it in place. ⋯ holds
+  words in a tooltip, and is a Tab stop unless its folder is a press. A bar with no ⋯, a side file's or the Beside
+  seat's, always draws both presses: Reload alone would drop his edits). The name is a press that renames it in place. ⋯ holds
   its row's verbs (one greyed says why in its tooltip: on a computer this window reaches only through another host,
   "Purdue PC is reached through the box. Change its files on Purdue PC itself."), then Download, Save As… (a
   document) and Save as Template… (a file the template shelf keeps), then Full Window and Close Tab. Full Window fills

@@ -1,7 +1,7 @@
 // A preview page for `bun run ui:preview src/renderer/src/work/files/FilesView.preview.tsx#FilesBrowse` (and
 // #FilesStates, #FilesGrid, #FilesColumns, #FilesGallery, #FilesBeside, #FilesDetails, #FilesSelection, #FilesHome,
 // #FilesSearch, #FilesQuickLook, #FilesQuickLookText, #FilesFile, #FilesMove, #FilesSaveAsWord, #FilesGoTo, #FilesNew,
-// #FilesNewLibrary, #FilesTrash, #FilesSearchAcross, #FilesCopyLines, #FilesLongNames): the Files place's window with
+// #FilesNewLibrary, #FilesTrash, #FilesSearchAcross, #FilesCopyLines, #FilesLongNames, #FilesBesideConflict): the Files place's window with
 // stand-in places and rows, and its states. Rendered by nothing in the app.
 import type { CopyBack, FilePage, FilesHome, FileTab } from "@shared/contract-work-files";
 import type { FileEntry, FilePlace } from "@shared/work/files";
@@ -15,6 +15,10 @@ import { wordLine } from "./wordSave";
 import { FileHeader } from "./FileTabView";
 import { FileTextEditor } from "./FileTextEditor";
 import { SidebarView } from "./FilesView";
+import { SeatBar } from "./Looks";
+import { ItemSkeleton } from "../canvas/ItemBones";
+import { ChevronLeft } from "../../chrome/icons";
+import { Button } from "../../components/ui/button";
 import { HomePage, SearchFilters } from "./Home";
 import { MoveDialog } from "./MoveDialog";
 import { sidebarOf, type FilesNote, type HostRead, type Sidebar } from "./model";
@@ -598,6 +602,34 @@ export function FilesLongNames() {
         <FileHeader name={LONG_FILE} line={{ state: "saved", at: NOW - 13 * 60_000 }} where={LONG_JOB} running={null} onRun={noop} onShowFolder={noop} rows={menu} onPick={noop} ask={idle} />
         <FileHeader name={LONG_FILE} line={{ ...copyLine(null, { is: "changed" }, "MacBook Pro", NOW), actions: [{ id: "reload", label: "Reload", run: noop }, { id: "keep", label: "Keep Both", run: noop }] }} where={LONG_JOB} running={null} onRun={noop} onShowFolder={noop} rows={menu} onPick={noop} ask={idle} />
       </div>
+    </div>
+  );
+}
+
+/**
+ * The Beside seat's bar on a text file he edited that changed on disk: Reload and Keep Both are both drawn, since the
+ * seat has no ⋯ to hold the second. At 480, at 320 (the narrowest seat beside the list: there the line is cut, whole
+ * in its tooltip and a Tab stop), and at 400 where the list and the file take turns, with the way back.
+ */
+export function FilesBesideConflict() {
+  const conflict = { state: "conflict" as const, detail: "This file changed at 2:14 PM", actions: [{ id: "reload", label: "Reload", run: noop }, { id: "keep", label: "Keep Both", run: noop }] };
+  const back = (
+    <Button variant="ghost" size="icon-xs" aria-label="Back to the list" className="shrink-0 text-muted-foreground">
+      <ChevronLeft />
+    </Button>
+  );
+  return (
+    <div className="flex flex-col gap-8 p-6">
+      {[
+        { width: 480, turns: false },
+        { width: 320, turns: false },
+        { width: 400, turns: true },
+      ].map(({ width, turns }) => (
+        <div key={width} style={{ maxWidth: width, height: 160 }} className="flex w-full flex-col overflow-hidden rounded-lg border border-border bg-background">
+          <SeatBar {...(turns ? { lead: back } : {})} saved={conflict} running={null} onRun={noop} onTab={noop} />
+          <ItemSkeleton />
+        </div>
+      ))}
     </div>
   );
 }

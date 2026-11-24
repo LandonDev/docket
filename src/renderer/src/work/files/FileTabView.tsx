@@ -207,7 +207,7 @@ export function FileHeader({
           <p className="min-w-0 truncate text-xs leading-4 text-muted-foreground">In {where}</p>
         ) : null}
       </div>
-      {actions ? <SaveActions actions={actions} busy={running} onRun={onRun} /> : null}
+      {actions ? <SaveActions actions={actions} busy={running} onRun={onRun} tuck /> : null}
       {end}
       <RowsMenu
         label="File"
