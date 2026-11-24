@@ -21,7 +21,7 @@ import { writeMail } from "../mail/mailto";
 import { goTo } from "../today/open";
 import { useJobName } from "../jobName";
 import { useMinute } from "../tasks/minute";
-import { sessionWaits, sessionWords, useLifeosSession } from "../shell/lifeos";
+import { sessionWaits, sessionWords, useLifeosSession, useLifeosStatusHeard, useLifeosUnanswered, type LifeosSession } from "../shell/lifeos";
 import { downOf } from "../shell/lifeosDown";
 import { DownLine } from "../shell/DownLine";
 import { useClashes } from "./mark";
@@ -224,6 +224,7 @@ function Body({
 }) {
   const close = useModalClose();
   const session = useLifeosSession(environmentId, null);
+  const hostDown = useHostDown(environmentId);
   const [step, setStepState] = useState<Step | null>(null);
   const setStep = (next: Step | null) => {
     setStepState(next);
@@ -326,6 +327,7 @@ function Body({
         refused={refused}
         cleared={cleared}
         lost={lost}
+        down={hostDown ? <DownLine data-host-down session={hostDown} className="text-xs" /> : null}
         onBack={() => {
           from.current = `${side}:${step.way}`;
           setRefused(null);
@@ -357,9 +359,26 @@ function Body({
     );
   }
 
-  // A session that is down: Running late, which reads it, is not offered, and the session's line stands in its place.
-  const lateDown = downOf(session) ? <DownLine data-late-down session={session} className="text-xs" /> : null;
-  return <Events clash={clash} pending={pending} busy={busy} error={error} lateDown={lateDown} onClose={onClose} onFine={fine} onWay={(side, way) => (setError(null), way === "late" ? late() : setStep({ eventId: clash[side].eventId, way }))} bodyRef={body} />;
+  // The host's LifeOS is down: every way out it runs (Decline, a time, This is fine) gives way to one line, which also
+  // says Running late's. Else a session of this window's that is down: Running late, which reads it, is not offered,
+  // and the session's line stands in its place.
+  const lateDown = !hostDown && downOf(session) ? <DownLine data-late-down session={session} className="text-xs" /> : null;
+  const down = hostDown ? <DownLine data-host-down session={hostDown} className="text-xs" /> : null;
+  return <Events clash={clash} pending={pending} busy={busy} error={error} lateDown={lateDown} hostDown={down} onClose={onClose} onFine={fine} onWay={(side, way) => (setError(null), way === "late" ? late() : setStep({ eventId: clash[side].eventId, way }))} bodyRef={body} />;
+}
+
+/**
+ * The host's own LifeOS session as a session that is down, or null while it reads or is on its way. The clash's
+ * writes (a decline, a time, a move, This is fine) run on the host through its own session, whatever this window's
+ * may do: they are offered by the host's state, said with its computer named.
+ */
+export function useHostDown(environmentId: string): LifeosSession | null {
+  // Heard, never asked: the dialog's own session (`useLifeosSession`) already watches the host.
+  const status = useLifeosStatusHeard(environmentId);
+  const silent = useLifeosUnanswered(environmentId) && status?.lifeos.state !== "connected";
+  if (!status && !silent) return null;
+  const host: LifeosSession = { environmentId, sector: null, client: null, state: silent ? "unreachable" : status!.lifeos.state, ...(silent ? { unanswered: true as const } : {}) };
+  return downOf(host) ? host : null;
 }
 
 /** The two events in time order with the drive between them, the ways out under each, and the foot. */
@@ -369,6 +388,7 @@ export function Events({
   busy,
   error,
   lateDown = null,
+  hostDown = null,
   onClose,
   onFine,
   onWay,
@@ -380,6 +400,8 @@ export function Events({
   error: string | null;
   /** The LifeOS session is down: Running late's place holds its line (`DownLine`), and the other ways stay. */
   lateDown?: ReactNode;
+  /** The host's LifeOS is down: no way out and no This is fine; its line (`DownLine`) once, under the events. */
+  hostDown?: ReactNode;
   onClose: () => void;
   onFine: () => void;
   onWay: (side: Side, way: ClashWay) => void;
@@ -391,7 +413,7 @@ export function Events({
   const ways = (side: Side) => {
     const event = clash[side];
     // An event that is over allows none: a decline of a game he has just refereed helps no one. Running late is the later event's, which is not over while its clash shows.
-    if (event.endsAt <= now) return null;
+    if (event.endsAt <= now || hostDown) return null;
     // Running late needs Mail in that job's workspace on this host.
     const offered = event.can.filter((way) => way !== "late" || (side === "b" && Boolean(event.workspaceId)));
     const held = lateDown && offered.includes("late") ? lateDown : null;
@@ -423,6 +445,7 @@ export function Events({
         <EventBlock side={clash.b} day={day}>
           {ways("b")}
         </EventBlock>
+        {hostDown}
         <div role="alert" className="empty:hidden">
           <ErrorLine error={error} />
         </div>
@@ -431,9 +454,11 @@ export function Events({
         onClose={onClose}
         busy={pending}
         start={
-          <Button data-clash-fine variant="ghost" disabled={pending} onClick={onFine}>
-            <BusyLabel busy={busy === "fine"} label="This is fine" />
-          </Button>
+          hostDown ? undefined : (
+            <Button data-clash-fine variant="ghost" disabled={pending} onClick={onFine}>
+              <BusyLabel busy={busy === "fine"} label="This is fine" />
+            </Button>
+          )
         }
       />
     </>
@@ -448,6 +473,7 @@ export function StepForm({
   refused = null,
   cleared = false,
   lost = false,
+  down = null,
   onBack,
   onSend,
 }: {
@@ -460,6 +486,8 @@ export function StepForm({
   cleared?: boolean;
   /** the last Send left and got no answer: it may have gone, so Send is off; Back gives the step afresh once he has looked */
   lost?: boolean;
+  /** the host's LifeOS went down while the step was open: its line (`DownLine`), what he typed kept, Send held until it is back */
+  down?: ReactNode;
   onBack: () => void;
   onSend: (params: { comment?: string; start?: number; end?: number }) => void;
 }) {
@@ -490,7 +518,7 @@ export function StepForm({
     e.preventDefault();
     if (pending) return;
     // Asked of the clock again at the press, since the minute's tick may be behind it.
-    if (held || lost || event.endsAt <= Date.now()) return;
+    if (held || lost || down || event.endsAt <= Date.now()) return;
     const when = timed ? whenOf(form, offered) : null;
     if (typeof when === "string") return setError(when);
     // A proposal goes to another person and a move has no Undo: neither goes to a time already gone.
@@ -508,16 +536,19 @@ export function StepForm({
           {held ? <span className="col-start-1 row-start-1">{held}</span> : null}
         </p>
         {timed ? (
-          <div className="grid grid-cols-[minmax(0,1fr)_112px_112px] gap-2">
-            <Field label="Day">
-              <Input autoFocus type="date" disabled={pending} value={form.day} onChange={(e) => patch({ day: e.target.value })} />
-            </Field>
-            <Field label="From" hint={hints.from}>
-              <Input type="time" disabled={pending} aria-invalid={bad === "from" || undefined} value={form.from} onChange={(e) => patch({ from: e.target.value })} />
-            </Field>
-            <Field label="To" hint={hints.to}>
-              <Input type="time" disabled={pending} aria-invalid={bad === "to" || undefined} value={form.to} onChange={(e) => patch({ to: e.target.value })} />
-            </Field>
+          /* As New event's: one row where Day keeps room for its date, else Day over the two times. */
+          <div data-step-when className="@container/when">
+            <div className="grid grid-cols-2 gap-2 @[400px]/when:grid-cols-[minmax(0,1fr)_112px_112px]">
+              <Field label="Day" className="col-span-2 @[400px]/when:col-span-1">
+                <Input autoFocus type="date" disabled={pending} value={form.day} onChange={(e) => patch({ day: e.target.value })} />
+              </Field>
+              <Field label="From" hint={hints.from}>
+                <Input type="time" disabled={pending} aria-invalid={bad === "from" || undefined} value={form.from} onChange={(e) => patch({ from: e.target.value })} />
+              </Field>
+              <Field label="To" hint={hints.to}>
+                <Input type="time" disabled={pending} aria-invalid={bad === "to" || undefined} value={form.to} onChange={(e) => patch({ to: e.target.value })} />
+              </Field>
+            </div>
           </div>
         ) : null}
         {step.way !== "move" ? (
@@ -525,11 +556,12 @@ export function StepForm({
             <Textarea autoFocus={!timed} disabled={pending} value={note} maxLength={500} onChange={(e) => setNote(e.target.value)} />
           </Field>
         ) : null}
+        {down}
         <div role="alert" className="empty:hidden">
           <ErrorLine error={error ?? refused} />
         </div>
       </ModalBody>
-      <DialogFooter confirmLabel={step.way === "move" ? "Move" : "Send"} pending={pending} disabled={held !== null || lost}>
+      <DialogFooter confirmLabel={step.way === "move" ? "Move" : "Send"} pending={pending} disabled={held !== null || lost || !!down}>
         <Button data-clash-back variant="secondary" disabled={pending} onClick={onBack}>
           Back
         </Button>

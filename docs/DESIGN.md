@@ -2363,12 +2363,18 @@ Around the canvas:
   event, 8px down, are the ways out it allows and no others, as outline
   `sm` buttons: Decline, Propose new time…, Move…, Running late…; an
   event that is over allows none. The foot
-  has "This is fine" (ghost) at its start and Close at its end.
+  has "This is fine" (ghost) at its start and Close at its end. The host
+  runs Decline, a time, a move and This is fine through its own LifeOS
+  session: while that is down, none of them is offered and one `DownLine`
+  under the two events says the host's state, its computer named (it also
+  stands for Running late's); a step already open keeps its note or times,
+  says the line and holds Send until the host is back.
   A way out swaps the body for its one step: the event, one 13px muted
   sentence of what goes and to whom (the event stands above it and is not
   named again; a proposal says his reply turns to Maybe, as the calendar
   makes it; a move of an event with guests says they are told the new
-  time), then Day, From and To (New event's fields) for a proposal
+  time), then Day, From and To (New event's fields, on one row from 400px
+  of the dialog, else Day over the two times) for a proposal
   or a move, and a Note for a decline or a proposal; the foot is Back and
   Send (Move for a move). The times start filled: the earlier event with
   the latest quarter hour that still ends a drive before the later one

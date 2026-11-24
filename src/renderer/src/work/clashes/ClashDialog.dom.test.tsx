@@ -50,6 +50,7 @@ const mail = vi.hoisted(() => ({ drafts: [] as unknown[], to: [] as (string | un
 vi.mock("../mail/mailto", () => ({ writeMail: (draft: unknown, workspaceId?: string) => void (mail.drafts.push(draft), mail.to.push(workspaceId)) }));
 
 const { ClashDialog } = await import("./ClashDialog");
+const { resetLifeos, setLifeosStatus } = await import("../shell/lifeos");
 const { openWorkView, workViewNow, workEnterPort } = await import("../../lib/workSwitch");
 const { workspaceStore } = await import("../../lib/tcserver/workspaces");
 // The later event's job, as the window's catalog holds it: Running late enters it as its rail row would.
@@ -100,6 +101,7 @@ beforeEach(() => {
 });
 afterEach(() => {
   cleanup();
+  resetLifeos();
   openWorkView(null);
 });
 
@@ -805,6 +807,43 @@ describe("the Clash dialog", () => {
     expect(screen.queryByRole("button", { name: "Running late…" })).toBeNull();
     expect(document.querySelector("[data-late-down]")?.textContent).toContain("The box did not answer");
     lifeos.unanswered = false;
+  });
+
+  it("offers none of the host's writes while the host's LifeOS is down: one line with the computer named in their place", async () => {
+    // Council round 9 (Sol Tasks 1, P1): Decline, a time, a move and This is fine all run on the host through its own session.
+    setLifeosStatus("box", { lifeos: { state: "signed-out" }, keys: [] } as never);
+    show(overlap());
+    await settle();
+    for (const name of ["Decline", "Propose new time…", "Move…", "Running late…", "This is fine"]) expect(screen.queryByRole("button", { name })).toBeNull();
+    const lines = document.querySelectorAll("[data-session-down]");
+    expect(lines).toHaveLength(1);
+    expect(lines[0].hasAttribute("data-host-down")).toBe(true);
+    expect(lines[0].textContent).toContain("Not signed in to LifeOS on the box");
+    // Back: the ways out are his again, with no press.
+    act(() => setLifeosStatus("box", { lifeos: { state: "connected" }, keys: [] } as never));
+    expect(screen.getByRole("button", { name: "Decline" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "This is fine" })).toBeTruthy();
+    expect(document.querySelector("[data-host-down]")).toBeNull();
+  });
+
+  it("keeps an open step's note when the host's LifeOS drops, says the line and holds Send until it is back", async () => {
+    show(overlap());
+    await settle();
+    fireEvent.click(screen.getByRole("button", { name: "Decline" }));
+    fireEvent.change(screen.getByLabelText("Note"), { target: { value: "At a game then" } });
+    act(() => setLifeosStatus("box", { lifeos: { state: "unreachable" }, keys: [] } as never));
+    expect((screen.getByLabelText("Note") as HTMLTextAreaElement).value).toBe("At a game then");
+    expect(document.querySelector("[data-clash-step] [data-host-down]")?.textContent).toContain("LifeOS did not answer the box");
+    const send = screen.getByRole("button", { name: "Send" }) as HTMLButtonElement;
+    expect(send.disabled).toBe(true);
+    fireEvent.submit(send.closest("form")!);
+    await settle();
+    expect(wire.calls.filter((c) => c.method === "work.clashes.answer")).toEqual([]);
+    act(() => setLifeosStatus("box", { lifeos: { state: "connected" }, keys: [] } as never));
+    expect(send.disabled).toBe(false);
+    fireEvent.click(send);
+    await settle();
+    expect(wire.calls).toContainEqual({ method: "work.clashes.answer", params: { eventId: "ev_a", way: "decline", comment: "At a game then" } });
   });
 
   it("lets go of Running late when LifeOS never answers: ten seconds on it says so and Close works again", async () => {
