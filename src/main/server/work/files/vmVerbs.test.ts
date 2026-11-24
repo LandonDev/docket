@@ -215,9 +215,20 @@ describe.skipIf(process.platform === 'win32')('the Windows VM changed through it
     })
 
     it("makes a held act's New under the name its card showed or not at all, read case-blind as the guest names", async () => {
+      // As a press sends it: the folder bound by its key (the act's things), never read from this host's disk.
+      const folderKey = 'lib:esportsstaffgeneral:'
+      const held = (name: string) => ({ at: at(GENERAL), kind: 'text', name, op: op(), origin: { from: 'act', id: 'h1', digest: 'd'.repeat(64), things: [{ key: folderKey, version: '0:1:' }] } })
       const before = changes().length
-      await expect(call('work.files.make', { at: at(GENERAL), kind: 'text', name: 'Notes', op: op(), origin: { from: 'act', id: 'h1', digest: 'd'.repeat(64) } })).rejects.toThrow(NAME_TAKEN('Notes.txt'))
+      await expect(call('work.files.make', held('Notes'))).rejects.toThrow(NAME_TAKEN('Notes.txt'))
       expect(changes()).toHaveLength(before)
+      // The same folder, a name free there: made, though the guest's folder is no path of this disk.
+      await call('work.files.make', held('Agenda'))
+      expect(changes().at(-1)).toMatchObject({ verb: 'files.write', args: { dir: GENERAL, name: 'Agenda.txt' } })
+      // Another folder than the one it was held for: refused before the guest is asked.
+      const other = { ...held('Other'), origin: { from: 'act', id: 'h1', digest: 'd'.repeat(64), things: [{ key: 'lib:elsewhere:', version: '0:1:' }] } }
+      const count = changes().length
+      await expect(call('work.files.make', other)).rejects.toThrow('is not as it was when this was held')
+      expect(changes()).toHaveLength(count)
       // His own New takes the next free name, as before.
       await call('work.files.make', { at: at(GENERAL), kind: 'text', name: 'Notes', op: op() })
       expect(changes().at(-1)).toMatchObject({ args: { name: 'Notes 2.txt' } })

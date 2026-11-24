@@ -140,6 +140,10 @@ function boundThing(p: { origin?: FileOrigin }, i: number, w: Where, o: { versio
   if (p.origin?.from !== 'act' || !p.origin.things) return
   const t = p.origin.things[i]
   if (!t) return
+  if (t.key !== w.key) throw new Error(HELD_MOVED(basename(w.path)))
+  // A thing in the Windows VM is a guest path, no path of this disk: its key is checked here, and the guest's own
+  // helper answers whether it is there when the verb reaches it (vmVerbs.ts).
+  if (w.vm) return
   let now: string | null = null
   try {
     const st = statSync(w.path)
@@ -147,7 +151,7 @@ function boundThing(p: { origin?: FileOrigin }, i: number, w: Where, o: { versio
   } catch {
     now = null
   }
-  if (t.key !== w.key || now === null || (o.version && now !== t.version)) throw new Error(HELD_MOVED(basename(w.path)))
+  if (now === null || (o.version && now !== t.version)) throw new Error(HELD_MOVED(basename(w.path)))
 }
 /** The folder a held act's move or copy was held to go to, by its key, as this host finds it at the write. */
 function boundInto(p: { origin?: FileOrigin }, to: Where): void {
