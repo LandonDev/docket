@@ -18,7 +18,7 @@ import { taskMatches } from './J40-task-today'
 import { honestAdding } from './J41-agenda-clash'
 import { ledgerHasReceipt } from './J45-receipt'
 import { routineThreadMatches } from './J47-routine'
-import { wearsLight } from './J59-light-windows'
+import { broken, expected, wearsDark, wearsLight } from './J59-light-windows'
 import { changed, notOffered } from './lib/far'
 import { headedResult } from './J60-browser-canvas'
 import { ownedDisplay } from './lib/capture'
@@ -736,6 +736,21 @@ it('compares all four defaults and the workspace and scope of the routine’s ow
   }
   expect(routineThreadMatches({ ...row, scope: 'code' }, 'w', defaults)).toBe(false)
   expect(routineThreadMatches(row, 'wrong', defaults)).toBe(false)
+})
+
+it('checks the audience window dark and every other surface light, and lets U leave Capture and the Full editor unwalked', () => {
+  const black = { marker: null, className: 'ready bg-(--matte)', backgrounds: ['rgb(0, 0, 0)'], rgba: [0, 0, 0, 255] }
+  expect(wearsDark(black)).toBe(true)
+  expect(wearsDark({ ...black, className: 'theme-light' })).toBe(false)
+  expect(wearsDark({ ...black, rgba: [250, 250, 250, 255] })).toBe(false)
+  expect(expected('slideshow', 'A')).toBe('dark')
+  expect(expected('presenter', 'A')).toBe('light')
+  expect(expected('capture', 'U')).toBe('not walked')
+  expect(expected('capture', 'A')).toBe('light')
+  const row = (surface: string, result: 'PASS' | 'FAIL' | 'not walked') => ({ surface, result, picture: surface + '.png' })
+  expect(broken([row('slideshow', 'PASS'), row('capture', 'not walked'), row('full-editor', 'not walked'), row('print', 'PASS')], 'U')).toEqual([])
+  expect(broken([row('capture', 'not walked')], 'A').map((r) => r.surface)).toEqual(['capture'])
+  expect(broken([row('capture', 'FAIL')], 'U').map((r) => r.surface)).toEqual(['capture'])
 })
 
 it('names the far library’s holder changes and refuses a verb it should not offer', () => {

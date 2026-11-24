@@ -26,6 +26,30 @@ export function wearsLight(theme: Theme): boolean {
     alpha === 255 && (0.2126 * red + 0.7152 * green + 0.0722 * blue) > 190
 }
 
+/** Dark pixels with no light marker: the slideshow's audience window, pinned dark on purpose. */
+export function wearsDark(theme: Theme): boolean {
+  const [red = 0, green = 0, blue = 0, alpha = 0] = theme.rgba
+  return theme.marker !== 'light' && !theme.className.split(/\s+/).includes('theme-light') &&
+    alpha === 255 && (0.2126 * red + 0.7152 * green + 0.0722 * blue) < 64
+}
+
+/**
+ * What each surface promises under Work's Light. The audience window stays dark whatever the theme
+ * (work/slides/show/places.ts `themeOf`: the room sees the slides on black), so it is checked dark. In shape U the
+ * phone's /ui has no Capture window and no Full editor (it cannot carry the editor's own loopback origin): those two
+ * are expected "not walked", with the reason in surfaces.json.
+ */
+export function expected(surface: string, shape: string): 'light' | 'dark' | 'not walked' {
+  if (surface === 'slideshow') return 'dark'
+  if (shape === 'U' && (surface === 'capture' || surface === 'full-editor')) return 'not walked'
+  return 'light'
+}
+
+/** The checks that broke a promise: a surface not as `expected` says. */
+export function broken(results: readonly Check[], shape: string): Check[] {
+  return results.filter(({ surface, result }) => (expected(surface, shape) === 'not walked' ? result !== 'not walked' && result !== 'PASS' : result !== 'PASS'))
+}
+
 async function readTheme(page: Window, selector: string, frame?: string): Promise<Theme> {
   return page.eval(`(() => {
     const doc = ${frame ? `document.querySelector(${JSON.stringify(frame)})?.contentDocument` : 'document'};
@@ -151,8 +175,9 @@ async function check(context: Context, page: Window, surface: string, open: () =
     if (visit.ready) await target.until('the workbook loaded in its editor', 95_000, visit.ready)
     const theme = await readTheme(target, selector, frame)
     await target.shot(join(context.folder, picture))
-    if (wearsLight(theme)) return { surface, result: 'PASS', picture, theme }
-    const reason = 'This surface does not wear light'
+    const want = expected(surface, context.shape)
+    if (want === 'dark' ? wearsDark(theme) : wearsLight(theme)) return { surface, result: 'PASS', picture, theme }
+    const reason = want === 'dark' ? 'This surface does not stay dark' : 'This surface does not wear light'
     json(context, surface + '-failure', { reason, theme, toasts: await target.toasts(), saveLine: await target.saveLine(),
       hostErrors: [...context.pair.hostErrors.slice(hostStart), ...target.hostErrors] })
     return { surface, result: 'FAIL', reason, picture, theme }
@@ -173,7 +198,7 @@ const checks = new WeakMap<Context, Check[]>()
 
 export default journey({
   id: 'J59',
-  title: 'Set Work to Light and check the surfaces it opens',
+  title: 'Set Work to Light and check the surfaces it opens, the audience window dark',
   tier: 3,
   shapes: ['A', 'U'],
   steps: [
@@ -214,9 +239,9 @@ export default journey({
       }
       checks.set(context, results)
     }),
-    step('end: every requested surface has light pixels and its own light marker', async context => {
+    step('end: the audience window stays dark and every other surface wears light', async context => {
       const results = checks.get(context)!
-      const failures = results.filter(({ result }) => result !== 'PASS')
+      const failures = broken(results, context.shape)
       if (failures.length) throw new Error(failures.map(row => row.surface + ' ' + row.result + ' (' + row.reason + ')').join(' | '))
       if (results.length !== 6 || !readFileSync(fileAt(context, DECK)).length) throw new Error('The themed walk lacks a surface or source file')
     })

@@ -185,7 +185,7 @@ sessions, pairings and keys before stopping the instances.
 | J47 | A | A weekday morning routine uses America/New_York. Run now creates a Work thread on box with the chosen Thread defaults. Pause turns the routine off. |
 | J48 | A | Save as a play keeps a Work thread's instructions with a File input. Start uses a dummy LifeOS document. |
 | J49 | A | Capture uses win's global shortcut on its private X display and files through sandbox LifeOS. `landed.json` records which host holds the file and which holds the thread. |
-| J59 | A, U | Appearance sets Work to Light. Pictures and `surfaces.json` show the theme marker and computed background of each surface. A surface the harness cannot open is marked “not walked”. |
+| J59 | A, U | Appearance sets Work to Light. Pictures and `surfaces.json` show the theme marker and computed background of each surface. The slideshow’s audience window stays dark on purpose; every other surface wears light. In U, Capture and the Full editor are “not walked”, with the reason. |
 | J60 | A | A box thread opens a private loopback page in headed Chromium. The owner drives it through the canvas picture. The walk fails if headed Chromium cannot start or the desktop will not draw its picture. |
 
 Run these IDs with `--only J43,J45,J46,J47,J48,J49,J59,J60 --no-table` in a built worktree.
