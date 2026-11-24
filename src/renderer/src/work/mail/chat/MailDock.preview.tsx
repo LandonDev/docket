@@ -1,5 +1,5 @@
 // A preview page for `bun run ui:preview src/renderer/src/work/mail/chat/MailDock.preview.tsx#ChatFirstAsk` (and
-// #ChatPicked, #ChatAnswered): the chat beside the mail on work-kit's fixture mail, a fresh draft about the open mail,
+// #ChatPicked, #ChatAnswered, #ChatNewMail, #ChatSessionFailed): the chat beside the mail on work-kit's fixture mail, a fresh draft about the open mail,
 // the same about ticked rows, and a mail chat's answers as cards. Rendered by nothing in the app; no host, no LifeOS.
 import type { ReactNode } from "react";
 import { MailClientProvider, MailKitProvider, type MailClient, type ThreadSummary } from "work-kit/mail";
@@ -15,7 +15,7 @@ import { AgentMarkdown } from "../../../surfaces/AgentMarkdown";
 import { SessionActionsContext, type SessionActions } from "../../../surfaces/threadChat";
 import { tempcodeMailKit } from "../kit";
 import { MailScreen, mailChatChunk, patch } from "../MailView";
-import { OfferCard } from "./OfferCard";
+import { OfferCard, SessionLine } from "./OfferCard";
 
 void mailChatChunk.load();
 void workCanvasChunk.load();
@@ -77,7 +77,8 @@ const rows: Record<string, ThreadSummary> = {
   n3: summary("n3", "Your order has shipped", "Parts Supply", 19),
 };
 const answered = {
-  useComposeDoc: (id: string | undefined) => (id === "d1" ? { id: "d1", status: "draft", message, version: 1, editedAt: 0, urls: {} } : undefined),
+  useComposeDoc: (id: string | undefined) =>
+    id === "d1" ? { id: "d1", status: "draft", message, version: 1, editedAt: 0, urls: {} } : id === "d-new" ? { id: "d-new", status: "draft", message: { ...message, mode: "new", threadId: undefined, subject: "Billing contact" }, version: 1, editedAt: 0, urls: {} } : undefined,
   useOutboxActions: () => ({}),
   useMailThread: (id: string | null) => (id && rows[id] ? { thread: rows[id], messages: [] } : id === "gone" ? null : undefined),
   useMailActions: () => ({}),
@@ -102,5 +103,29 @@ export function ChatAnswered() {
         </div>
       </MailClientProvider>
     </TranscriptSessionContext.Provider>
+  );
+}
+
+/** A new mail the chat drafted: its press opens Mail's composer, so it reads Open in Mail. */
+export function ChatNewMail() {
+  sessionStore.adopt({ id: "s1", environmentId: "local", status: "idle", archived: false, workspaceId: ID, projectId: null, scope: "work", createdAt: now, updatedAt: now } as SessionMeta, { created: true });
+  return (
+    <TranscriptSessionContext.Provider value="s1">
+      <MailClientProvider client={answered}>
+        <div className="flex w-[560px] flex-col gap-4 p-6">
+          <OfferCard offer={{ draft: { draftId: "d-new" } }} at={{ sessionId: "s1", workspaceId: ID, sector: "unify" }} />
+        </div>
+      </MailClientProvider>
+    </TranscriptSessionContext.Provider>
+  );
+}
+
+/** A card whose LifeOS session failed: why, with the press that mends it. */
+export function ChatSessionFailed() {
+  return (
+    <div className="flex w-[560px] flex-col gap-4 p-6">
+      <SessionLine session={{ state: "signed-out" }} env="local" sector="unify" />
+      <SessionLine session={{ state: "unreachable" }} env="local" sector="unify" />
+    </div>
   );
 }
