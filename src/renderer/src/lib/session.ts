@@ -12,9 +12,11 @@ import {
   resolveModel,
 } from "./models";
 import type { ThreadRules } from "@server/shared/rules";
-import type { AgentType, SessionStatus, ThreadType } from "./tcserver/types";
+import type { AgentType, PermissionPolicy, SessionStatus, ThreadType } from "./tcserver/types";
 import type { BackgroundWork, Failure } from "@server/shared/events";
 import type { ThreadState } from "./tcserver/todos";
+import { modeForPolicy, policyForMode } from "./tcserver/access";
+import { DEFAULT_THREAD_DEFAULTS } from "@server/shared/defaults";
 
 export type HarnessId =
   "claude" | "codex" | "cursor" | "grok" | "opencode" | "pi" | "omp" | "fx" | "muse";
@@ -278,7 +280,27 @@ export const RUNTIME_MODES: RuntimeMode[] = [
   "full-access",
 ];
 
-export const DEFAULT_RUNTIME_MODE: RuntimeMode = "supervised";
+/**
+ * The access a NEW thread starts with, from one place: his Thread defaults for
+ * the thread's host and workspace (Settings → Thread defaults), else the app's
+ * one built-in default (the host's, `DEFAULT_THREAD_DEFAULTS`). The workspace
+ * store answers through `setNewThreadAccess` (it loads the defaults); until it
+ * has, a draft shows the built-in. A draft whose access he never picked sends
+ * none with `session.create` (`accessParams`), so the host decides from its
+ * own copy of his defaults, whatever the window had loaded.
+ */
+type AccessResolver = (environmentId: string, workspaceId: string | null, projectId: string | null) => RuntimeMode | undefined;
+let accessResolver: AccessResolver = () => undefined;
+export function setNewThreadAccess(resolver: AccessResolver): void {
+  accessResolver = resolver;
+}
+export function newThreadAccess(environmentId: string, context: Pick<SessionContext, "projectId" | "workspaceId"> = {}): RuntimeMode {
+  return accessResolver(environmentId, context.workspaceId ?? null, context.projectId ?? null) ?? modeForPolicy(DEFAULT_THREAD_DEFAULTS.permission);
+}
+/** The access `session.create` carries for a draft: his own pick, else none, so the host's defaults decide. */
+export function accessParams(draft: Pick<Session, "runtimeMode" | "accessPicked">): { permission?: PermissionPolicy } {
+  return draft.accessPicked ? { permission: policyForMode(draft.runtimeMode) } : {};
+}
 
 /** The modes the permission picker offers: one per server policy
  *  (tcserver/access.ts). `auto` is the edits policy on this server, so it
@@ -316,6 +338,8 @@ export type Session = {
   model: string;
   modelSettings: Record<string, string>;
   runtimeMode: RuntimeMode;
+  /** An unsent draft's access that he picked himself: only then does `session.create` carry it (`accessParams`). */
+  accessPicked?: true;
   title: string;
   /** Project / working directory for this session. */
   cwd: string;
@@ -488,7 +512,6 @@ export function newSession(
   harness: HarnessId = "claude",
   cwd = "~",
   model?: string,
-  runtimeMode: RuntimeMode = DEFAULT_RUNTIME_MODE,
   modelSettings?: Record<string, string>,
   context: SessionContext = {},
 ): Session {
@@ -499,7 +522,7 @@ export function newSession(
     harness,
     model: resolved.id,
     modelSettings: preferredModelSettings(resolved, modelSettings),
-    runtimeMode,
+    runtimeMode: newThreadAccess(environmentId, context),
     title: HARNESS_LABEL[harness],
     cwd,
     projectId: context.projectId ?? null,
@@ -516,11 +539,10 @@ export function newSession(
 export function newDefaultSession(
   environmentId: string,
   cwd = "~",
-  runtimeMode: RuntimeMode = DEFAULT_RUNTIME_MODE,
   context: SessionContext = {},
 ): Session {
   const choice = defaultSessionChoice();
-  return newSession(environmentId, choice.harness, cwd, choice.model, runtimeMode, undefined, context);
+  return newSession(environmentId, choice.harness, cwd, choice.model, undefined, context);
 }
 
 /** First line of a prompt, truncated for the tab strip. */
@@ -633,6 +655,7 @@ export const COMPOSER_FIELDS = [
   "model",
   "modelSettings",
   "runtimeMode",
+  "accessPicked",
   "cwd",
   "worktreeCwd",
   "projectId",

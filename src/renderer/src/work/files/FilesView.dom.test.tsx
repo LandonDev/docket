@@ -762,7 +762,7 @@ describe("the chat docked beside a file", () => {
     widths.body = 1200;
     // The draft as App seeds one: the workspace's, placed nowhere.
     workDockPort.set({
-      draft: (ws, id) => ({ ...newSession("box", "claude", ws.path, undefined, undefined, undefined, { projectId: null, workspaceId: ws.id }), ...(id ? { id } : {}) }),
+      draft: (ws, id) => ({ ...newSession("box", "claude", ws.path, undefined, undefined, { projectId: null, workspaceId: ws.id }), ...(id ? { id } : {}) }),
       openFile: () => undefined,
       openDiff: () => undefined,
     });

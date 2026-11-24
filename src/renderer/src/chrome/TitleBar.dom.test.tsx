@@ -360,7 +360,7 @@ describe("TitleBar with no project selected", () => {
 
 describe("TitleBar and an unsent draft", () => {
   const catalog = { workspaces: [{ id: "w1", path: "/w1" }], projects: [] } as unknown as Catalog;
-  const draft = { ...newSession("env_local", "claude", "/w1", undefined, undefined, undefined, { workspaceId: "w1" }), id: "draft-1" };
+  const draft = { ...newSession("env_local", "claude", "/w1", undefined, undefined, { workspaceId: "w1" }), id: "draft-1" };
   const modelFor = (sessions: ReturnType<typeof newSession>[], activeIds: string[]) =>
     orderModel(
       buildHeaderModel({

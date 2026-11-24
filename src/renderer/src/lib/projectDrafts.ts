@@ -2,7 +2,7 @@ import { createStore } from "zustand/vanilla";
 import { WORK_CHATS } from "./tcserver/workspaces";
 import type { ThreadRules } from "@server/shared/rules";
 import type { ComposerSegment } from "./composerText";
-import { HARNESS_LABEL, type Attachment, type HarnessId, type RuntimeMode, type Session } from "./session";
+import { HARNESS_LABEL, newThreadAccess, type Attachment, type HarnessId, type RuntimeMode, type Session } from "./session";
 import { stripScopeKey } from "./threadHeaderModel";
 import type { ProjectMeta, ThreadType } from "./tcserver/types";
 
@@ -31,6 +31,8 @@ export type DraftRecord = DraftPlace & {
   model: string;
   modelSettings: Record<string, string>;
   runtimeMode: RuntimeMode;
+  /** He picked the access himself (Session.accessPicked); without it the rebuilt draft takes his defaults as they are now. */
+  accessPicked?: true;
   threadType: ThreadType;
   threadRules: ThreadRules | null;
   /** A chat draft's "Master thread" pick (Session.draftMaster). */
@@ -210,6 +212,7 @@ export function draftPicks(session: Session): DraftPatch {
     model: session.model,
     modelSettings: session.modelSettings,
     runtimeMode: session.runtimeMode,
+    ...(session.accessPicked ? { accessPicked: true as const } : {}),
     threadType: session.threadType ?? "chat",
     threadRules: session.threadRules ?? null,
     master: !!session.draftMaster,
@@ -230,7 +233,10 @@ export function sessionFromDraft(record: DraftRecord, place: DraftPlace | null, 
     harness: record.harness,
     model: record.model,
     modelSettings: record.modelSettings,
-    runtimeMode: record.runtimeMode,
+    // A mode seeded once is no pick: the draft shows his defaults as they are now.
+    ...(record.accessPicked
+      ? { runtimeMode: record.runtimeMode, accessPicked: true as const }
+      : { runtimeMode: newThreadAccess(where.environmentId, where) }),
     title: HARNESS_LABEL[record.harness],
     cwd: where.projectId || where.workspaceId ? where.cwd : "~",
     projectId: where.projectId,

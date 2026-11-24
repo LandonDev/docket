@@ -199,7 +199,7 @@ describe("sessionFromMeta / applyMeta", () => {
   it("a draft adopts the thread fields the server minted", async () => {
     sessionStore.attach(link);
     await sessionStore.ready();
-    const draft = newSession("local", "claude", "/repo", undefined, undefined, undefined, { threadType: "planning" });
+    const draft = newSession("local", "claude", "/repo", undefined, undefined, { threadType: "planning" });
     sessionStore.mutate([draft]);
     expect(sessionStore.get(draft.id)?.threadType).toBe("planning");
     sessionStore.adopt(meta({ id: draft.id, threadType: "planning", planPath: "/repo/.temp-code/plan-x.md" }), { created: true });

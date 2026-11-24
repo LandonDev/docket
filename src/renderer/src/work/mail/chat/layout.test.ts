@@ -61,7 +61,7 @@ describe("a mail chat's harness", () => {
   it("starts on Claude where the default is Muse, which cannot be kept from its shell, and is left alone otherwise", async () => {
     const { onClaude } = await import("./MailDock");
     const { newSession } = await import("../../../lib/session");
-    const muse = { ...newSession("box", "muse", "/w", undefined, undefined, undefined, { projectId: null, workspaceId: "w1" }), id: "d1" };
+    const muse = { ...newSession("box", "muse", "/w", undefined, undefined, { projectId: null, workspaceId: "w1" }), id: "d1" };
     const moved = onClaude(muse);
     expect(moved).toMatchObject({ id: "d1", harness: "claude", workspaceId: "w1" });
     const codex = newSession("box", "codex", "/w");

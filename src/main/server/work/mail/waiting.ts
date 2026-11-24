@@ -95,7 +95,7 @@ export async function startNudge(ctx: WorkCtx, by: Caller, workspaceId: string, 
   const people = wait?.to ?? (mine ? [...(mine.to ?? []), ...(mine.cc ?? [])] : [])
   const addresses = people.map((a) => (a.name?.trim() ? `${a.name.trim()} <${a.address}>` : a.address)).join(', ')
   const text = nudgePrompt({ id: threadId, subject: got.thread.subject, to: people.length ? who(people) : 'them', addresses: addresses || 'the people his last mail went to', since: wait?.since ?? mine?.sentAt ?? Date.now() })
-  const sessionId = await ctx.threads.start({ workspaceId, text, about: { kind: 'mail', label: got.thread.subject || '(no subject)', ref: { at: 'lifeos', table: 'mailThreads', id: threadId } } })
+  const sessionId = await ctx.threads.start({ workspaceId, text, by, about: { kind: 'mail', label: got.thread.subject || '(no subject)', ref: { at: 'lifeos', table: 'mailThreads', id: threadId } } })
   return { sessionId }
 }
 

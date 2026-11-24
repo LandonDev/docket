@@ -11,8 +11,7 @@ import { Dialog } from "../../components/ui/dialog";
 import { Input } from "../../components/ui/input";
 import { ToggleGroup, ToggleGroupItem } from "../../components/ui/toggle-group";
 import { mergeModelSettings, nativeModelId, resolveModel } from "../../lib/models";
-import type { HarnessId, RuntimeMode, Session } from "../../lib/session";
-import { policyForMode } from "../../lib/tcserver/access";
+import { accessParams, newThreadAccess, type HarnessId, type RuntimeMode, type Session } from "../../lib/session";
 import { implementPlan } from "../../lib/tcserver/plans";
 
 type BuildType = "implementation" | "orchestration";
@@ -56,7 +55,10 @@ export function StartBuildDialog({
     model: session.model,
   });
   const [settings, setSettings] = useState<Record<string, string>>(session.modelSettings);
-  const [mode, setMode] = useState<RuntimeMode>(session.runtimeMode);
+  // A build is a new thread: it starts at his default access, and carries a mode only when he picks one here.
+  const [access, setAccess] = useState<{ runtimeMode: RuntimeMode; accessPicked?: true }>(() => ({
+    runtimeMode: newThreadAccess(session.environmentId, session),
+  }));
   // Empty starts the thread with no goal.
   const [goal, setGoal] = useState(() => defaultGoal(tasks));
   const [tune, setTune] = useState<ThreadRules>({});
@@ -68,6 +70,7 @@ export function StartBuildDialog({
     setWasOpen(open);
     if (open) {
       setGoal(defaultGoal(tasks));
+      setAccess({ runtimeMode: newThreadAccess(session.environmentId, session) });
       setError(null);
     }
   }
@@ -84,7 +87,7 @@ export function StartBuildDialog({
         model: nativeModelId(choice.model),
         reasoning: settings.effort,
         context1m: settings.context === "1m",
-        permission: policyForMode(mode),
+        ...accessParams(access),
         goal: goal.trim() || undefined,
         ...(type === "orchestration" && rules ? { threadRules: rules } : {}),
       });
@@ -154,7 +157,7 @@ export function StartBuildDialog({
             </FieldRow>
             <FieldRow label="Access">
               <span className="flex items-center">
-                <AccessPicker value={mode} onChange={setMode} />
+                <AccessPicker value={access.runtimeMode} onChange={(runtimeMode) => setAccess({ runtimeMode, accessPicked: true })} />
               </span>
             </FieldRow>
           </div>

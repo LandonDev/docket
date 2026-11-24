@@ -54,7 +54,7 @@ beforeEach(() => {
   sessionStore.reset();
   resetContextChips();
   toasts.length = 0;
-  const draft = newSession("box", "claude", "/w", undefined, undefined, undefined, { projectId: null, workspaceId: "w1" });
+  const draft = newSession("box", "claude", "/w", undefined, undefined, { projectId: null, workspaceId: "w1" });
   draftId = draft.id;
   sessionStore.mutate((prev) => [...prev, draft]);
 });

@@ -10,7 +10,6 @@ import {
 } from "@server/shared/projectPlan";
 import { nativeModelId } from "./models";
 import { sessionDisplayTitle, type Session } from "./session";
-import { policyForMode } from "./tcserver/access";
 import { send, startThread } from "./tcserver/commands";
 import { linkOfProject } from "./tcserver/projects";
 import { sessionStore } from "./tcserver/store";
@@ -92,7 +91,7 @@ export function linkMilestone(sessionId: string, link: MilestoneLink): Promise<v
   return linkOfProject(link.projectId).request<void>("projectPlan.link", { sessionId, ...link });
 }
 
-/** The build knobs a thread started from the plan inherits from the plan thread. */
+/** The build knobs a thread started from the plan inherits from the plan thread; its access is his default (none sent). */
 function inherited(plan: Session) {
   return {
     environmentId: plan.environmentId,
@@ -100,7 +99,6 @@ function inherited(plan: Session) {
     model: nativeModelId(plan.model),
     reasoning: plan.modelSettings.effort,
     context1m: plan.modelSettings.context === "1m",
-    permission: policyForMode(plan.runtimeMode),
     projectId: plan.projectId ?? null,
     workspaceId: plan.workspaceId ?? null,
     cwd: plan.cwd,

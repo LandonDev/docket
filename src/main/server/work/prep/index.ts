@@ -179,7 +179,7 @@ function openBeside(ctx: WorkCtx, sessionId: string, notesFile: CanvasSource | u
   }
 }
 
-async function startThread(ctx: WorkCtx, workspaceId: string, eventId: string, kind: 'brief' | 'follow', opts: { recording?: { name: string }; restart?: boolean } = {}): Promise<{ sessionId: string; itemId?: string }> {
+async function startThread(ctx: WorkCtx, workspaceId: string, eventId: string, kind: 'brief' | 'follow', opts: { recording?: { name: string }; restart?: boolean; by?: Caller } = {}): Promise<{ sessionId: string; itemId?: string }> {
   const gathered = await gather(ctx, workspaceId, eventId)
   const { event, row, last } = gathered
   let { page } = gathered
@@ -253,6 +253,7 @@ async function startThread(ctx: WorkCtx, workspaceId: string, eventId: string, k
   if (docWords && 'error' in docWords && !page.doc.notes?.text.trim() && !(held && heldIs === 'reads')) throw new Error(`The notes document could not be read: ${docWords.error}.`)
   const sessionId = await ctx.threads.start({
     workspaceId,
+    ...(opts.by ? { by: opts.by } : {}),
     title: follow ? followTitle(title) : briefTitle(title),
     about: { kind: 'event', label: title, ref: { at: 'lifeos', table: 'events', id: eventId } },
     // A new recording gets a meeting of its own beside the new thread, which `prep_read` names: the one it takes the place of is not said to be there.
@@ -319,7 +320,7 @@ export const prep: WorkModule = {
         const kind = req.method === 'work.prep.brief' ? 'brief' : 'follow'
         const recording = req.method === 'work.prep.followUp' ? req.params.recording : undefined
         const restart = req.params.restart === true
-        return handled(await changeInOrder(ctx, [workspaceId, eventId], () => startThread(ctx, workspaceId, eventId, kind, { ...(recording ? { recording } : {}), restart })))
+        return handled(await changeInOrder(ctx, [workspaceId, eventId], () => startThread(ctx, workspaceId, eventId, kind, { ...(recording ? { recording } : {}), restart, by })))
       }
       case 'work.prep.notesDoc': {
         mustBePerson(by)

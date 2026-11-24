@@ -1,7 +1,7 @@
 # Work scope: what a Work thread is, its fence and its preamble
 
 A Work thread reads mail, pages and files that other people wrote, and it
-has full access to the machine. So three things hold for it that do not
+runs at his default access (full access, as he sets it; new-thread-access.md). So three things hold for it that do not
 hold for a code thread, and all three follow any thread it starts:
 
 1. It loads no MCP server but the app's own. The owner's own servers, a
@@ -172,7 +172,8 @@ the loaded list, as work/threads.ts does for the preamble parts.
 ### `ctx.threads`
 
 - `start({workspaceId, projectId?, text, model?, routineRunId?, about?})`
-  starts a Work chat at full access (nobody is there to answer a card) with
+  starts a Work chat at his default access for the workspace (no access of
+  its own: new-thread-access.md; a lower default means a card can wait) with
   the workspace's own model and reasoning unless one is named. `workspaceId:
   WORK_HOME` starts a Work Chat. `routineRunId` is stamped on the row; it is
   never a client's to say.
@@ -411,7 +412,7 @@ only if it ran there.
 
 ### What the fence does not do
 
-- It does not fence the shell. A Work thread has full access; `curl`, a
+- It does not fence the shell. A Work thread at full access (his default); `curl`, a
   script, or a program the agent starts itself are outside it. The owner
   chose that (§6.8); the preamble is the rule in its place.
 - A file the agent writes into the owner's real `~/.claude` or `~/.codex`

@@ -50,3 +50,26 @@ export function parseDefaults(raw: string | null): ThreadDefaults | null {
     return null
   }
 }
+
+const RANK = { safe: 0, edits: 1, auto: 2 } as const satisfies Record<ThreadDefaults['permission'], number>
+
+/**
+ * The one rule for a new thread's access on a host (`SessionRegistry.create`):
+ * what was asked (his own pick, or the grant of the thread that starts it),
+ * else his Thread defaults for the thread's workspace, never above `ceiling`
+ * (a paired key without approve holds no more than `edits`, whatever the
+ * default). No start path carries a fallback of its own; the window's draft
+ * asks for nothing unless he picked (lib/session.ts `accessParams`).
+ */
+export function newThreadPermission(o: {
+  asked?: ThreadDefaults['permission']
+  defaults: ThreadDefaults
+  ceiling?: ThreadDefaults['permission']
+}): ThreadDefaults['permission'] {
+  const want = o.asked ?? o.defaults.permission
+  return o.ceiling && RANK[want] > RANK[o.ceiling] ? o.ceiling : want
+}
+
+/** The lesser of two accesses. */
+export const lowerPermission = (a: ThreadDefaults['permission'], b: ThreadDefaults['permission']): ThreadDefaults['permission'] =>
+  RANK[a] <= RANK[b] ? a : b

@@ -163,7 +163,8 @@ describe('his presses', () => {
       workspaceId: params.workspaceId,
       title: 'Prepare: Staff sync',
       about: { kind: 'event', label: 'Staff sync', ref: { at: 'lifeos', table: 'events', id: 'ev1' } },
-      text: expect.stringContaining('Maya Chen <maya@x.test>')
+      text: expect.stringContaining('Maya Chen <maya@x.test>'),
+      by: expect.objectContaining({ kind: 'local' })
     })
     expect(start.mock.calls[0]?.[0].text).toContain('prep_write')
     expect(await page()).toMatchObject({ briefSessionId: first.sessionId, state: 'working' })
@@ -231,7 +232,8 @@ describe('his presses', () => {
       workspaceId: params.workspaceId,
       title: 'Follow up: Staff sync',
       about: { kind: 'event', label: 'Staff sync', ref: { at: 'lifeos', table: 'events', id: 'ev1' } },
-      text: expect.stringContaining('Dana will check the roster.')
+      text: expect.stringContaining('Dana will check the roster.'),
+      by: expect.objectContaining({ kind: 'local' })
     })
     expect(await page()).toMatchObject({ followSessionId: first.sessionId, rev: 2 })
     expect(prepPushes()).toEqual([1, 2].map((rev) => ({ push: 'work.prep', ...params, rev })))

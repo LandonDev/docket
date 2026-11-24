@@ -1,6 +1,6 @@
 import { registry } from "../connection";
 import type { HarnessAdapter } from "../harness/registry";
-import type { HarnessId, Session } from "../session";
+import { newThreadAccess, type HarnessId, type Session } from "../session";
 import { refreshCatalog } from "./catalog";
 import * as commands from "./commands";
 import { sessionStore } from "./store";
@@ -31,7 +31,7 @@ export function serverAdapter(id: HarnessId): HarnessAdapter {
       harness: id,
       model: input.model,
       modelSettings: input.modelSettings ?? {},
-      runtimeMode: input.runtimeMode ?? "supervised",
+      runtimeMode: input.runtimeMode ?? newThreadAccess(registry.primary().environmentId),
       title: id,
       cwd: input.cwd,
       blocks: [],

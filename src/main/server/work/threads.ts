@@ -1,6 +1,7 @@
 import { harnessDeniedOf, unloadedRefusal } from './narrowing'
 import { CATALOG, resolveModel, type ProviderId } from '@shared/catalog'
 import { writtenByOwner, type SessionMeta, type UserTextBy } from '@shared/events'
+import { accessCeiling, type Capability } from '@shared/capabilities'
 import { sessionScopeOf, WORK_HOME } from '@shared/work'
 import { OWNER_PREFIX } from '../remote/crossHostThreads'
 import type { CtxPart } from './ctx'
@@ -191,13 +192,16 @@ export const threadsPart: CtxPart<'threads'> = (ctx, deps) => {
             ...(o.projectId ? { projectId: o.projectId } : { workspaceId: chat ? null : o.workspaceId }),
             ...(asked && provider ? { provider, model: asked } : {}),
             ...(reasoning && (!provider || CATALOG[provider]) ? { reasoning } : {}),
-            // Nobody is there to answer a card: a Work thread has full access, and what leaves is held by the Outbox.
-            permission: 'auto',
+            // Its access is his default for the workspace (sessions.ts create); what leaves is held by the Outbox at any access.
             ...(o.about ? { about: o.about } : {}),
             ...(o.title ? { title: o.title } : {})
           },
           o.text,
-          o.routineRunId ? { routineRunId: o.routineRunId } : {}
+          {
+            ...(o.routineRunId ? { routineRunId: o.routineRunId } : {}),
+            // A start a remote key pressed for holds to that key's ceiling (shared/capabilities.ts accessCeiling).
+            ...(o.by?.kind === 'remote' ? { ceiling: accessCeiling(o.by.caps as Capability[]) } : {})
+          }
         )
         if (sessionScopeOf(thread) !== 'work') throw new Error(`thread ${thread.id} was not made a Work thread`)
         return thread.id

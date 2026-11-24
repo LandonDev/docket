@@ -33,6 +33,7 @@ import type { RecentProject } from "../lib/recents";
 import type { OpenFileFn } from "../lib/search";
 import {
   sameComposerChrome,
+  newThreadAccess,
   sameSessionChrome,
   sessionDisplayTitle,
   sessionWorkCwd,
@@ -45,6 +46,7 @@ import {
 } from "../lib/session";
 import * as serverCommands from "../lib/tcserver/commands";
 import { sessionStore, useQueue } from "../lib/tcserver/store";
+import { useWorkspaceCatalog } from "../lib/tcserver/workspaces";
 import type { ThreadType } from "../lib/tcserver/types";
 import { AgentTranscript } from "./AgentTranscript";
 import { DeferredMount } from "./DeferredMount";
@@ -147,6 +149,13 @@ type ThreadComposerProps = {
  *  review strip. Memoized: handed the session as `useThreadChat` keeps it
  *  (`sameComposerChrome`), it skips every streamed delta and every meta push
  *  that moves only what it does not draw. */
+/** The access a composer shows: an unsent draft he did not pick shows his defaults as they load (lib/session.ts `newThreadAccess`). */
+function useShownAccess(session: Session): RuntimeMode {
+  useWorkspaceCatalog();
+  const unpicked = !session.accessPicked && sessionStore.isDraft(session.id) && !sessionStore.isProvisional(session.id);
+  return unpicked ? newThreadAccess(session.environmentId, session) : session.runtimeMode;
+}
+
 export const ThreadComposer = memo(function ThreadComposer({
   session,
   actions,
@@ -166,6 +175,7 @@ export const ThreadComposer = memo(function ThreadComposer({
   onSent,
 }: ThreadComposerProps) {
   const workCwd = sessionWorkCwd(session);
+  const access = useShownAccess(session);
   const work = useWorkSession(session);
   const block = useEnvironmentBlock(session.environmentId);
   const macRequests = useMacBridgeRequests(session.environmentId, session.id);
@@ -202,7 +212,7 @@ export const ThreadComposer = memo(function ThreadComposer({
       harness={session.harness}
       model={session.model}
       modelSettings={session.modelSettings}
-      runtimeMode={session.runtimeMode}
+      runtimeMode={access}
       cwd={session.cwd}
       executionCwd={workCwd}
       sessionId={id}

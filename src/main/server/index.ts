@@ -29,6 +29,7 @@ import {
   capabilityRefusal,
   CONTRACT_VERSION,
   LOCAL_PRINCIPAL,
+  accessCeiling,
   allows,
   principalCaps,
   type Principal
@@ -3036,7 +3037,9 @@ export async function startServer(
             break
           case 'plan.implement': {
             const { sessionId, ...opts } = req.params
-            sendFrame({ id: req.id, ok: true, result: await registry.implementPlan(sessionId, opts) })
+            // A build a key starts holds to the key's ceiling, its default included.
+            const ceiling = principal.kind === 'remote' ? accessCeiling(principal.caps) : undefined
+            sendFrame({ id: req.id, ok: true, result: await registry.implementPlan(sessionId, { ...opts, ...(ceiling ? { ceiling } : {}) }) })
             break
           }
           case 'turnpass.get':
@@ -3209,7 +3212,9 @@ export async function startServer(
           case 'session.create': {
             // A create that asks for Work is admitted or refused by work/scope.ts; one that does not never reaches Work's code.
             if (req.params.scope === 'work' || req.params.about) work.admitSession(req.params, workCaller(principal))
-            const session = await registry.createSession(req.params, userTextByOf(principal))
+            // A key that may not approve may not hold full access, asked or by default (capabilities.ts requiredCapability).
+            const ceiling = principal.kind === 'remote' ? accessCeiling(principal.caps) : undefined
+            const session = await registry.createSession(req.params, userTextByOf(principal), { ceiling })
             sendFrame({ id: req.id, ok: true, result: session })
             break
           }

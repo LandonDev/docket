@@ -25,7 +25,7 @@ class Fake implements PlanFlowRegistry {
   sessions = new Map<string, SessionMeta>()
   settings = new Map<string, string>()
   rows: { id: string; event: AgentEvent }[] = []
-  sends: { id: string; text: string; attachments?: Attachment[] }[] = []
+  sends: { id: string; text: string; attachments?: Attachment[]; ceiling?: SessionMeta['permission'] }[] = []
   reports: { to: string; agentId: string; status: string; text: string }[] = []
   archived: string[] = []
   created: CreateSessionInput[] = []
@@ -110,14 +110,14 @@ class Fake implements PlanFlowRegistry {
   }
   /** The registry's startWith: the thread, then its first row, then the
    *  handoff; a refused send removes the thread before any of it. */
-  async startWith(input: CreateSessionInput, text: string, opts?: { attachments?: Attachment[] }): Promise<SessionMeta> {
+  async startWith(input: CreateSessionInput, text: string, opts?: { attachments?: Attachment[]; ceiling?: SessionMeta['permission'] }): Promise<SessionMeta> {
     const meta = this.make(input)
     const id = meta.id
     if (this.refuse) {
       this.sessions.delete(id)
       throw new Error(this.refuse)
     }
-    this.sends.push({ id, text, attachments: opts?.attachments })
+    this.sends.push({ id, text, attachments: opts?.attachments, ...(opts?.ceiling ? { ceiling: opts.ceiling } : {}) })
     linkPlanHandoff(this, meta)
     return this.get(id) ?? meta
   }
@@ -242,7 +242,6 @@ describe('implementPlan (inheritance and overrides)', () => {
       model: 'claude-haiku-5-5',
       reasoning: 'high',
       context1m: true,
-      permission: 'auto',
       threadType: 'implementation',
       planPath: reg.get('p')!.planPath,
       title: 'Ship the widget',
@@ -253,6 +252,28 @@ describe('implementPlan (inheritance and overrides)', () => {
     expect(reg.sends[0].attachments).toEqual([{ path: 'thread:p', name: 'Plan: p', kind: 'thread', sessionId: 'p' }])
     expect(reg.get('p')).toMatchObject({ implementationId: built.id })
     expect(reg.get(built.id)).toMatchObject({ planThreadId: 'p' })
+  })
+  it("takes no access from the plan thread: his default decides, his pick in Start build wins", async () => {
+    reg.add('p', { planPath: planFile(), status: 'idle', permission: 'edits' })
+    await implementPlan(reg, 'p')
+    expect(reg.created[0]).not.toHaveProperty('permission')
+    reg.add('q', { planPath: planFile(), status: 'idle', permission: 'auto' })
+    await implementPlan(reg, 'q', { permission: 'safe' })
+    expect(reg.created[1]).toMatchObject({ permission: 'safe' })
+  })
+  it("holds a build to its starter: the host's own start to the plan thread's access, a key's to the key's ceiling", async () => {
+    reg.add('p', { planPath: planFile(), status: 'idle', permission: 'edits' })
+    await implementPlan(reg, 'p', {}, 'auto')
+    expect(reg.sends[0]).toMatchObject({ ceiling: 'edits' })
+    reg.add('q', { planPath: planFile(), status: 'idle', permission: 'auto' })
+    await implementPlan(reg, 'q', { ceiling: 'edits' })
+    expect(reg.sends[1]).toMatchObject({ ceiling: 'edits' })
+    reg.add('s', { planPath: planFile(), status: 'idle', permission: 'safe' })
+    await implementPlan(reg, 's', { ceiling: 'edits' })
+    expect(reg.sends[2]).toMatchObject({ ceiling: 'safe' })
+    reg.add('r', { planPath: planFile(), status: 'idle', permission: 'edits' })
+    await implementPlan(reg, 'r')
+    expect(reg.sends[3]).not.toHaveProperty('ceiling')
   })
   it("a plan child's build stays in the batch: masterId, after and the master as startedBy travel", async () => {
     reg.add('p', { planPath: planFile(), status: 'idle', masterId: 'master', after: 'sib', startedBy: 'master' })

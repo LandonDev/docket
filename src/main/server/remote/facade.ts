@@ -1,7 +1,7 @@
 import { hostLabel } from '../../hostLabel'
 import { basename } from 'node:path'
 import { z } from 'zod'
-import { allows, type Capability, type Principal } from '@shared/capabilities'
+import { accessCeiling, allows, type Capability, type Principal } from '@shared/capabilities'
 import { ADDON_APPROVE_REFUSAL, mayAllow } from '@shared/addons'
 import { relayState, type HostPresence, type PowerState, type RelayState, type ScreenState } from '@shared/contract-relay'
 import { CATALOG, modelInfo, resolveModel, visibleCatalog, type ProviderId } from '@shared/catalog'
@@ -802,25 +802,22 @@ export async function startSession(
   const project = await placeFor(reg, repo, input)
   const d = reg.resolveThreadDefaults(repo.id)
   const { provider, model, reasoning } = pickModel(input, d)
-  const permission = input.permission ?? d.permission
-  if (permission === 'auto' && !allows(capsOf(ctx.principal), 'approve')) {
-    if (input.permission)
-      throw new FacadeError(
-        'forbidden',
-        'permission "auto" lets a thread act without any prompt, which needs the approve capability this key lacks. Use "edits" or "safe".'
-      )
-  }
+  const ceiling = accessCeiling(capsOf(ctx.principal))
+  if (input.permission === 'auto' && ceiling)
+    throw new FacadeError(
+      'forbidden',
+      'permission "auto" lets a thread act without any prompt, which needs the approve capability this key lacks. Use "edits" or "safe".'
+    )
   const meta = await reg.create({
     provider,
     model,
     reasoning,
-    permission:
-      permission === 'auto' && !allows(capsOf(ctx.principal), 'approve') ? 'edits' : permission,
+    ...(input.permission ? { permission: input.permission } : {}),
     projectId: project?.id ?? null,
     workspaceId: project ? null : repo.id,
     threadType: input.type ?? 'implementation',
     title: input.title
-  })
+  }, { ceiling })
   await reg.send(meta.id, input.prompt, { by: userTextByOf(ctx.principal) })
   const now = reg.get(meta.id) ?? meta
   return { ...rowOf(ctx, now, []), cwd: now.cwd }

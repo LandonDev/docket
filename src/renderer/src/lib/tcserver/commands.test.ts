@@ -127,7 +127,8 @@ afterEach(() => {
 
 describe("send", () => {
   it("creates a draft with its own id, then sends, then waits for idle", async () => {
-    const draft = { ...newSession("local", "claude", "/repo", "claude:sonnet-5.5", "supervised"), modelSettings: { effort: "high" } };
+    // He picked Supervised on the draft: the create carries his pick.
+    const draft = { ...newSession("local", "claude", "/repo", "claude:sonnet-5.5"), runtimeMode: "supervised" as const, accessPicked: true as const, modelSettings: { effort: "high" } };
     sessionStore.mutate([draft]);
     await send(draft, "hello", [], undefined, undefined);
     expect(link.of("session.create")[0]).toMatchObject({ id: draft.id, provider: "claude", model: "claude-sonnet-5-5", reasoning: "high", cwd: "/repo", permission: "safe", context1m: false });
@@ -135,6 +136,13 @@ describe("send", () => {
     expect(sessionStore.isDraft(draft.id)).toBe(false);
     expect(sessionStore.get(draft.id)!.busy).toBe(false);
     expect(sessionStore.get(draft.id)!.blocks[0]).toMatchObject({ role: "user", text: "hello" });
+  });
+
+  it("a draft whose access he never picked asks for none: the host's defaults decide", async () => {
+    const draft = { ...newSession("local", "claude", "/repo"), runtimeMode: "supervised" as const };
+    sessionStore.mutate([draft]);
+    await send(draft, "hello", [], undefined, undefined);
+    expect(link.of("session.create")[0]).not.toHaveProperty("permission");
   });
 
   it("a provisional entry is never created: a send into it fails instead of minting a second thread", async () => {
@@ -167,7 +175,7 @@ describe("send", () => {
       { id: "ws-repo", environmentId: "local", name: "repo", path: "/repo", git: true, githubRepo: null, githubRepoCheckedAt: null, createdAt: 1 },
     ]);
     const loose = newSession("local", "claude", "/repo");
-    const inside = newSession("local", "claude", "/repo", undefined, undefined, undefined, { workspaceId: "ws-repo" });
+    const inside = newSession("local", "claude", "/repo", undefined, undefined, { workspaceId: "ws-repo" });
     sessionStore.mutate([loose, inside]);
     await send(loose, "outside", [], undefined, undefined);
     await send(inside, "inside", [], undefined, undefined);
@@ -191,7 +199,7 @@ describe("thread commands", () => {
     sessionStore.mutate([chat]);
     await send(chat, "run the batch", [], undefined, undefined);
     expect(link.of("session.create")[0]).toMatchObject({ threadType: "chat", master: true });
-    const plan = { ...newSession("local", "claude", "/repo", undefined, undefined, undefined, { threadType: "planning" }), draftMaster: true };
+    const plan = { ...newSession("local", "claude", "/repo", undefined, undefined, { threadType: "planning" }), draftMaster: true };
     const plain = newSession("local", "claude", "/repo");
     sessionStore.mutate([plan, plain]);
     await send(plan, "plan it", [], undefined, undefined);
@@ -224,7 +232,7 @@ describe("thread commands", () => {
   });
 
   it("create carries the thread type and its agent type", async () => {
-    const draft = newSession("local", "claude", "/repo", undefined, undefined, undefined, { threadType: "orchestration" });
+    const draft = newSession("local", "claude", "/repo", undefined, undefined, { threadType: "orchestration" });
     sessionStore.mutate([draft]);
     await send(draft, "go", [], undefined, undefined);
     expect(link.of("session.create")[0]).toMatchObject({ threadType: "orchestration", agentType: "orchestrator" });
@@ -236,7 +244,7 @@ describe("thread commands", () => {
 
   it("a New plan draft reaches the host only with its first message, rules aboard", async () => {
     const rules = { maxAgents: 2 } as never;
-    const draft = newSession("local", "claude", "/repo", undefined, undefined, undefined, { threadType: "planning" });
+    const draft = newSession("local", "claude", "/repo", undefined, undefined, { threadType: "planning" });
     sessionStore.mutate([draft]);
     await setThreadRules(draft.id, rules);
     expect(link.of("session.create")).toHaveLength(0);

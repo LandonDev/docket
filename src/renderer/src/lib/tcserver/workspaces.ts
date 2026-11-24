@@ -5,6 +5,8 @@ import type { Link } from "../connection";
 import { whenOpen, withDeadline } from "../connection/openRead";
 import type { ProjectMeta, ServerPush, ThreadDefaults, WireProjectMeta, WireWorkspaceMeta, WorkspaceIcon, WorkspaceMeta } from "./types";
 import { BUILT_IN_SCOPE, parseDefaultsScope, type DefaultsScope } from "./defaults";
+import { modeForPolicy } from "./access";
+import { setNewThreadAccess } from "../session";
 
 /**
  * The server's workspace and project lists, beside `sessionStore`. Both
@@ -401,6 +403,12 @@ class WorkspaceStore {
 }
 
 export const workspaceStore = new WorkspaceStore();
+
+// A new thread's access is his defaults for its host and workspace (lib/session.ts `newThreadAccess`).
+setNewThreadAccess((environmentId, workspaceId, projectId) => {
+  const d = workspaceStore.defaultsFor(environmentId, workspaceId ?? workspaceStore.project(projectId)?.workspaceId);
+  return d ? modeForPolicy(d.permission) : undefined;
+});
 
 export function useWorkspaceCatalog(): WorkspaceCatalog {
   // The same snapshot serves a static render (bun run ui:preview).

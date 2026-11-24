@@ -3,6 +3,7 @@ import { modelInfo, resolveModel, supportsContext1m, type ProviderId, type Reaso
 import type { CreateSessionInput } from '@shared/contract'
 import type { AgentEvent, Attachment, SessionMeta } from '@shared/events'
 import type { ThreadRules } from '@shared/rules'
+import { lowerPermission } from '@shared/defaults'
 import {
   buildSpecFor,
   buildTitleFor,
@@ -51,7 +52,7 @@ export interface PlanFlowRegistry {
   getSetting(key: string): string | null
   setSetting(key: string, value: string | null): void
   /** The thread and its first message as one step (SessionRegistry.startWith). */
-  startWith(input: CreateSessionInput, text: string, opts?: { attachments?: Attachment[] }): Promise<SessionMeta>
+  startWith(input: CreateSessionInput, text: string, opts?: { attachments?: Attachment[]; ceiling?: SessionMeta['permission'] }): Promise<SessionMeta>
   patch(
     sessionId: string,
     patch: Partial<Pick<SessionMeta, 'planCompletedAt' | 'implementationId' | 'planThreadId'>>
@@ -70,6 +71,8 @@ export interface ImplementOptions {
   reasoning?: Reasoning
   context1m?: boolean
   permission?: SessionMeta['permission']
+  /** The most access the build may get (newThreadPermission): the asking key's. The host's own (auto) start holds to the plan thread's. */
+  ceiling?: SessionMeta['permission']
   threadType?: 'implementation' | 'orchestration'
   goal?: string
   threadRules?: ThreadRules
@@ -318,7 +321,8 @@ export async function implementPlan(
         model: routed.model,
         reasoning,
         ...(context1m ? { context1m: true } : {}),
-        permission: opts.permission ?? plan.permission,
+        // A build is a new thread: his pick in Start build, else his default for the workspace (sessions.ts create).
+        ...(opts.permission ? { permission: opts.permission } : {}),
         projectId: plan.projectId,
         workspaceId: plan.workspaceId,
         ...(plan.projectId ? {} : { cwd: plan.cwd }),
@@ -336,7 +340,12 @@ export async function implementPlan(
         parentId: null
       },
       threadType === 'orchestration' ? ORCHESTRATE_BRIEF : IMPLEMENT_BRIEF(title),
-      { attachments: [{ path: `thread:${plan.id}`, name: plan.title, kind: 'thread', sessionId: plan.id }] }
+      {
+        attachments: [{ path: `thread:${plan.id}`, name: plan.title, kind: 'thread', sessionId: plan.id }],
+        // Started by the host on the plan's own completion, the build never has more than the plan thread had.
+        // A key's build holds to the key's ceiling and, unpicked, to the plan thread's access too.
+        ...(how === 'auto' ? { ceiling: plan.permission } : opts.ceiling ? { ceiling: lowerPermission(opts.ceiling, plan.permission) } : {})
+      }
     )
     return reg.get(built.id) ?? built
   } finally {

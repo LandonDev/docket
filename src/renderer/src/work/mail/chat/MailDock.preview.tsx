@@ -30,7 +30,7 @@ const actions = new Proxy({}, { get: () => () => undefined }) as SessionActions;
 // No host here: the dock finds no chat from before, and a draft is made in the window.
 (registry as unknown as { linkOf: (env: string) => unknown }).linkOf = (env: string) => ({ environmentId: env, connected: true, request: async () => ({ sessionIds: [] }), onPush: () => () => undefined });
 let n = 0;
-workDockPort.set({ draft: (_ws, id) => ({ ...newSession("local", "claude", "/w", undefined, undefined, undefined, { projectId: null, workspaceId: ID }), id: id ?? `draft-${++n}` }), openFile: () => undefined, openDiff: () => undefined });
+workDockPort.set({ draft: (_ws, id) => ({ ...newSession("local", "claude", "/w", undefined, undefined, { projectId: null, workspaceId: ID }), id: id ?? `draft-${++n}` }), openFile: () => undefined, openDiff: () => undefined });
 
 function Page({ children }: { children: ReactNode }) {
   return (

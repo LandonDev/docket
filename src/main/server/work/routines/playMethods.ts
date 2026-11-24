@@ -141,7 +141,7 @@ export async function handlePlays(req: ClientRequest, ctx: WorkCtx, by: Caller, 
       // The thing it is about leads, so the thread is linked to it as a thread started from that thing is.
       const about = inputs.chips.find((c) => c.ref.at === 'lifeos')
       // Named here, so no model is asked for a title: the first message may be a Purdue mail.
-      const sessionId = await ctx.threads.start({ workspaceId: p.workspaceId, text: playMessage(p, inputs), title: playTitle(p, inputs), ...(about ? { about } : {}) })
+      const sessionId = await ctx.threads.start({ workspaceId: p.workspaceId, text: playMessage(p, inputs), title: playTitle(p, inputs), ...(about ? { about } : {}), by })
       return handled({ sessionId })
     }
     case 'work.routines.playDraft': {

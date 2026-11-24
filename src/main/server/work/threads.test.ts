@@ -82,7 +82,8 @@ afterEach(async () => {
 })
 
 describe('ctx.threads.start', () => {
-  it('starts a Work thread of the workspace, stamped with the routine run, at full access, with the modules\' part in its preamble', async () => {
+  it('starts a Work thread of the workspace, stamped with the routine run, at his default access, with the modules\' part in its preamble', async () => {
+    registry.setThreadDefaults(null, { provider: 'claude', model: '', reasoning: 'medium', permission: 'auto' })
     const purdue = await workWorkspace('purdue')
     const id = await work.ctx.threads.start({ workspaceId: purdue, text: 'Check the inbox for anything due today.', routineRunId: 'run-7' })
     expect(registry.get(id)).toMatchObject({ scope: 'work', workspaceId: purdue, routineRunId: 'run-7', threadType: 'chat', permission: 'auto', parentId: null })
@@ -94,6 +95,23 @@ describe('ctx.threads.start', () => {
     expect(first).toContain('Check the inbox for anything due today.')
     // the head first, the module's part after it
     expect(first.indexOf('You work for one person')).toBeLessThan(first.indexOf('House rules for purdue'))
+  })
+
+  it('takes no access of its own: a lower default is his, and the Work thread follows it', async () => {
+    registry.setThreadDefaults(null, { provider: 'claude', model: '', reasoning: 'medium', permission: 'safe' })
+    const purdue = await workWorkspace('purdue')
+    registry.setThreadDefaults(purdue, { provider: 'claude', model: '', reasoning: 'medium', permission: 'edits' })
+    const id = await work.ctx.threads.start({ workspaceId: purdue, text: 'Draft the weekly note.' })
+    expect(registry.get(id)?.permission).toBe('edits')
+  })
+
+  it('a start a remote key pressed for holds to its ceiling: no full access without approve', async () => {
+    registry.setThreadDefaults(null, { provider: 'claude', model: '', reasoning: 'medium', permission: 'auto' })
+    const purdue = await workWorkspace('purdue')
+    const operate = await work.ctx.threads.start({ workspaceId: purdue, text: 'Run the weekly play.', by: { kind: 'remote', caps: ['read', 'operate'] } })
+    expect(registry.get(operate)?.permission).toBe('edits')
+    const approve = await work.ctx.threads.start({ workspaceId: purdue, text: 'Run the weekly play.', by: { kind: 'remote', caps: ['read', 'operate', 'approve'] } })
+    expect(registry.get(approve)?.permission).toBe('auto')
   })
 
   it("takes the workspace's own model and reasoning unless the caller names a model, starts in a project, and starts a Work Chat", async () => {

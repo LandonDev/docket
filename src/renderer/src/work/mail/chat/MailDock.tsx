@@ -99,7 +99,7 @@ export function mailDockSubject(workspace: DockWorkspace, subject: MailChatSubje
  */
 export function onClaude(draft: Session): Session {
   if (draft.harness !== "muse") return draft;
-  const claude = newSession(draft.environmentId, "claude", draft.cwd, undefined, draft.runtimeMode, undefined, { projectId: draft.projectId, workspaceId: draft.workspaceId });
+  const claude = newSession(draft.environmentId, "claude", draft.cwd, undefined, undefined, { projectId: draft.projectId, workspaceId: draft.workspaceId });
   return { ...draft, harness: claude.harness, model: claude.model, modelSettings: claude.modelSettings, title: claude.title };
 }
 

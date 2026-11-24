@@ -117,7 +117,7 @@ import {
 import { gitConfigMtime, githubRepoFromRemote, originRemoteUrl } from './gitRemote'
 import { stopProjectLsp } from './lsp'
 import { explicitModels, parseRules, type OrchestrationRules } from '@shared/rules'
-import { DEFAULT_THREAD_DEFAULTS, parseDefaults, type StartOn, type ThreadDefaults } from '@shared/defaults'
+import { DEFAULT_THREAD_DEFAULTS, newThreadPermission, parseDefaults, type StartOn, type ThreadDefaults } from '@shared/defaults'
 import type { PlanSettings } from '@shared/plans'
 import {
   completePlan,
@@ -298,6 +298,8 @@ export type StartWithOpts = RunSettings & {
   routineRunId?: string
   /** Work: a Work thread on another host starts this one (remote/crossHostThreads.ts, which checked the caller's scope): its preamble reads as a child's, and a master this host does not hold may own it. */
   farWork?: boolean
+  /** The most access the asker may give the thread (`newThreadPermission`): a paired key without approve. */
+  ceiling?: SessionMeta['permission']
   /** Who wrote the first message; its user row carries it (events.ts UserTextBySchema). Absent: the app. */
   by?: UserTextBy
 }
@@ -2830,8 +2832,8 @@ export class SessionRegistry {
    *  handoff (link, handoff row, archive) waits for that row too. */
   async startWith(raw: CreateSessionInput, text: string, opts: StartWithOpts = {}): Promise<SessionMeta> {
     if (this.closed) throw new BootStopped()
-    const { routineRunId, farWork, ...sendOpts } = opts
-    const created = await this.create(raw, { handoff: false, routineRunId, farWork })
+    const { routineRunId, farWork, ceiling, ...sendOpts } = opts
+    const created = await this.create(raw, { handoff: false, routineRunId, farWork, ceiling })
     if (this.closed) throw new BootStopped()
     let stored = false
     try {
@@ -2852,12 +2854,12 @@ export class SessionRegistry {
   }
 
   /** `session.create`: with a first message, the one-step start. `by` is who sent it: the owner's own first message counts as his words (`ownerSaid`). */
-  async createSession(raw: CreateSessionInput, by?: UserTextBy): Promise<SessionMeta> {
+  async createSession(raw: CreateSessionInput, by?: UserTextBy, limits: { ceiling?: SessionMeta['permission'] } = {}): Promise<SessionMeta> {
     const { firstMessage, ...spec } = raw
-    return firstMessage ? this.startWith(spec, firstMessage, by ? { by } : {}) : this.create(spec)
+    return firstMessage ? this.startWith(spec, firstMessage, { ...(by ? { by } : {}), ...limits }) : this.create(spec, limits)
   }
 
-  async create(raw: CreateSessionInput, internal: { handoff?: boolean; routineRunId?: string; farWork?: boolean } = {}): Promise<SessionMeta> {
+  async create(raw: CreateSessionInput, internal: { handoff?: boolean; routineRunId?: string; farWork?: boolean; ceiling?: SessionMeta['permission'] } = {}): Promise<SessionMeta> {
     const params = CreateSessionParams.parse(raw)
     const now = Date.now()
     if (params.id && this.store.getSession(params.id)) throw new Error(`session id already taken: ${params.id}`)
@@ -2945,7 +2947,7 @@ export class SessionRegistry {
       status: 'idle',
       archived: false,
       pinned: false,
-      permission: params.permission ?? d.permission,
+      permission: newThreadPermission({ asked: params.permission, defaults: d, ceiling: internal.ceiling }),
       fast: false,
       ultrafast: false,
       context1m: params.context1m ?? false,

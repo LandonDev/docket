@@ -148,7 +148,9 @@ describe('filing', () => {
     expect(started[0]).toEqual({
       workspaceId: 'ws-purdue',
       text: `Read the venue plan\n\nFiles:\n- ${join(root, 'Purdue', 'plan.pdf')}`,
-      about: { kind: 'task', label: 'Read the venue plan', ref: { at: 'lifeos', table: 'tasks', id: 'task_1' } }
+      about: { kind: 'task', label: 'Read the venue plan', ref: { at: 'lifeos', table: 'tasks', id: 'task_1' } },
+      // who pressed: a remote key's thread holds to its ceiling (work/threads.ts)
+      by: LOCAL
     })
     await file({ text: 'Think about this', start: true, key: 'k-unsorted1' })
     await file({ text: 'Loot ideas', sector: 'cosmic', start: true, key: 'k-cosmic-01' })

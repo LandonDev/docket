@@ -67,7 +67,7 @@ beforeEach(() => {
   resetDocks();
   patch(ID(), { threadId: null, box: "inbox", chat: false, chatAt: null, compose: null });
   workDockPort.set({
-    draft: (_ws, id) => ({ ...newSession("box", "claude", "/w", undefined, undefined, undefined, { projectId: null, workspaceId: "w1" }), ...(id ? { id } : { id: `draft-${++n}` }) }),
+    draft: (_ws, id) => ({ ...newSession("box", "claude", "/w", undefined, undefined, { projectId: null, workspaceId: "w1" }), ...(id ? { id } : { id: `draft-${++n}` }) }),
     openFile: () => undefined,
     openDiff: () => undefined,
   });

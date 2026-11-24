@@ -1,7 +1,7 @@
 import { REASONING_LEVELS } from "@server/shared/catalog";
 import { nativeModelId } from "../models";
 import { bridgeNewThread, bridgesNewThreads } from "../macBridge";
-import { DRAFT_TITLE_MAX, type Attachment, type Block, type RuntimeMode, type Session } from "../session";
+import { DRAFT_TITLE_MAX, accessParams, type Attachment, type Block, type RuntimeMode, type Session } from "../session";
 import { policyForMode } from "./access";
 import { needsUpload, uploadAttachment } from "../attachmentUpload";
 import { registry, type Link } from "../connection";
@@ -177,7 +177,8 @@ export async function ensureCreated(session: Session): Promise<SessionMeta> {
     model: nativeModelId(session.model),
     reasoning: reasoningOf(session),
     cwd: serverCwd(session.worktreeCwd || session.cwd),
-    permission: policyForMode(session.runtimeMode),
+    // His pick on the draft, else none: the host's own defaults decide (lib/session.ts `newThreadAccess`).
+    ...accessParams(session),
     context1m: session.modelSettings.context === "1m",
     threadType: session.threadType ?? "chat",
     agentType: agentTypeFor(session.threadType),

@@ -57,7 +57,7 @@ describe("the Work Chats", () => {
 
 describe("a Work Chat's draft kept and brought back", () => {
   it("is still a Work Chat: same key, and it still asks for Work", () => {
-    const draft = newSession("env_box", "claude", "~", undefined, undefined, undefined, { scope: "work" });
+    const draft = newSession("env_box", "claude", "~", undefined, undefined, { scope: "work" });
     const record = { ...draftPicks(draft), segments: [], attachments: [], seenAt: 1 } as DraftRecord;
     const back = sessionFromDraft(record, null);
     expect(back.scope).toBe("work");

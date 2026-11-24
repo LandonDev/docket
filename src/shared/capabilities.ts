@@ -627,6 +627,17 @@ export function capabilityRefusal(caps: readonly Capability[], req: { method: Cl
   return allows(caps, need) ? null : `forbidden: ${req.method} needs ${need}`
 }
 
+/**
+ * The most access a key may give a thread it starts: none above `edits`
+ * unless it may approve, judged as the door judges an asked `auto` (a
+ * device key's admin counts for nothing). Undefined: no ceiling. Every start
+ * a key reaches holds to it, its default included (shared/defaults.ts
+ * `newThreadPermission`).
+ */
+export function accessCeiling(caps: readonly Capability[]): 'edits' | undefined {
+  return capabilityRefusal(caps, { method: 'session.create', params: { permission: 'auto' } }) ? 'edits' : undefined
+}
+
 /** Whether a saved environment's key opens a peer link: an admin key, or a given computer's device key. */
 export const opensPeerLink = (caps: readonly Capability[]): boolean => caps.includes('device') || allows(caps, 'admin')
 

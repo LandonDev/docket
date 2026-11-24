@@ -410,14 +410,9 @@ function retypedDraft(session: Session, retype: DraftRetype): Session {
   return withHarnessChoice(next, "claude", resolved.id, preferredModelSettings(resolved, session.modelSettings));
 }
 
-/** The session new chats copy their runtime mode from: the one on screen, else the first open. */
 /** The host a file tab reads from: decided once at open when a thread named the path (lib/pathHost.ts). */
 function fileHost(path: string, options?: OpenFileOptions): string | undefined {
   return options?.environmentId ? hostOfPath(path, options.environmentId) : undefined;
-}
-
-function currentSessionDefaults(): Session | undefined {
-  return currentActivePane().active ?? sessionStore.getSnapshot()[0];
 }
 
 function environmentForContext(ctx: ResolvedContext): string {
@@ -625,7 +620,7 @@ export default function App() {
     (
       ctx: ResolvedContext,
       cwd: string,
-      fallback: Pick<Session, "harness" | "model" | "runtimeMode" | "modelSettings"> | undefined,
+      fallback: Pick<Session, "harness" | "model" | "modelSettings"> | undefined,
       threadType: ThreadType = "chat",
       threadRules: ThreadRules | null = null,
     ) => {
@@ -637,11 +632,11 @@ export default function App() {
           ? draftFromDefaults(defaults, threadType)
           : fallback;
       const draft = seed
-        ? newSession(environmentId, seed.harness, cwd, seed.model, seed.runtimeMode, seed.modelSettings, context)
-        : newDefaultSession(environmentId, cwd, currentSessionDefaults()?.runtimeMode, context);
+        ? newSession(environmentId, seed.harness, cwd, seed.model, seed.modelSettings, context)
+        : newDefaultSession(environmentId, cwd, context);
       // Research runs on claude whatever the fallback chose (see draftFromDefaults).
       return threadType === "research" && draft.harness !== "claude"
-        ? newSession(environmentId, "claude", cwd, undefined, draft.runtimeMode, undefined, context)
+        ? newSession(environmentId, "claude", cwd, undefined, undefined, context)
         : draft;
     },
     [],
@@ -916,7 +911,7 @@ export default function App() {
             ? item.identifier?.trim() || `#${item.number}`
             : `#${item.number}`;
         const session = {
-          ...newDefaultSession(environmentForContext(ctx), cwd, sessionDefaults?.runtimeMode, ctx),
+          ...newDefaultSession(environmentForContext(ctx), cwd, ctx),
           title: `${ref} ${item.title}`,
           inboxCard: inboxComposerCard(item, description),
         };
@@ -951,7 +946,6 @@ export default function App() {
       active?.cwd,
       appendTab,
       sessionDefaults?.cwd,
-      sessionDefaults?.runtimeMode,
       projectCwd,
     ],
   );
@@ -967,7 +961,7 @@ export default function App() {
       const cwd = ctx.cwd;
       const title = card.title.trim();
       const session = {
-        ...newDefaultSession(environmentForContext(ctx), cwd, sessionDefaults?.runtimeMode, ctx),
+        ...newDefaultSession(environmentForContext(ctx), cwd, ctx),
         ...(title ? { title } : {}),
         noteCard: card,
       };
@@ -981,7 +975,6 @@ export default function App() {
       active?.cwd,
       appendTab,
       sessionDefaults?.cwd,
-      sessionDefaults?.runtimeMode,
       projectCwd,
     ],
   );
@@ -2014,7 +2007,6 @@ export default function App() {
           current.harness,
           normalized,
           current.model,
-          current.runtimeMode,
           current.modelSettings,
           cwdContext(normalized),
         );
@@ -2039,7 +2031,8 @@ export default function App() {
                       environmentId: fresh.environmentId,
                       harness: fresh.harness,
                       model: fresh.model,
-                      runtimeMode: fresh.runtimeMode,
+                      // His own pick moves with the draft; a seeded mode takes the new workspace's defaults.
+                      ...(s.accessPicked ? {} : { runtimeMode: fresh.runtimeMode }),
                       modelSettings: fresh.modelSettings,
                     }
                   : {}),
@@ -2276,9 +2269,8 @@ export default function App() {
       let nextActiveTabId = workspaceTabsStore.getState().activeTabId;
 
       if (nextTabs.length === 0) {
-        const fallback = nextSessions[0];
         // The empty window opens a loose chat on this machine.
-        const session = newDefaultSession(registry.primary().environmentId, "~", fallback?.runtimeMode);
+        const session = newDefaultSession(registry.primary().environmentId, "~");
         const tab = newTab(session.id);
         nextSessions = [...nextSessions, session];
         nextTabs = [tab];
@@ -2526,7 +2518,8 @@ export default function App() {
   const onRuntimeModeChange = useCallback(
     (sessionId: string, runtimeMode: RuntimeMode) => {
       setSessions((prev) =>
-        prev.map((s) => (s.id === sessionId ? { ...s, runtimeMode } : s)),
+        // On an unsent draft it is his pick, which the first send carries (lib/session.ts `accessParams`).
+        prev.map((s) => (s.id === sessionId ? { ...s, runtimeMode, accessPicked: true } : s)),
       );
       void serverCommands.permission(sessionId, runtimeMode).catch(() => undefined);
     },
@@ -2839,7 +2832,6 @@ export default function App() {
           harness,
           cwd,
           model,
-          source.runtimeMode,
           undefined,
           contextOfSession(source, workspaceStore.getSnapshot()),
         ),
@@ -2876,7 +2868,6 @@ export default function App() {
           harness,
           cwd,
           model,
-          source.runtimeMode,
           undefined,
           contextOfSession(source, workspaceStore.getSnapshot()),
         ),
@@ -3162,7 +3153,7 @@ export default function App() {
         return;
       }
       shell.closeViews();
-      const session = newDefaultSession(id, "~", currentSessionDefaults()?.runtimeMode);
+      const session = newDefaultSession(id, "~");
       const tab = newTab(session.id);
       setSessions((prev) => [...prev, session]);
       appendTab(tab, session.cwd);

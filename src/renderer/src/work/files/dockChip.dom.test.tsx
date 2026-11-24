@@ -52,7 +52,7 @@ beforeEach(() => {
   resetDocks();
   opened.length = 0;
   workDockPort.set({
-    draft: (_ws, id) => ({ ...newSession("box", "claude", "/w", undefined, undefined, undefined, { projectId: null, workspaceId: "w1" }), ...(id ? { id } : {}) }),
+    draft: (_ws, id) => ({ ...newSession("box", "claude", "/w", undefined, undefined, { projectId: null, workspaceId: "w1" }), ...(id ? { id } : {}) }),
     openFile: () => undefined,
     openDiff: () => undefined,
   });

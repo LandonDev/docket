@@ -61,7 +61,7 @@ export function prepareChat(): true {
   });
   let n = 0;
   workDockPort.set({
-    draft: (_ws, id) => ({ ...newSession(CHAT_WORKSPACE.environmentId, "claude", "/preview", undefined, undefined, undefined, { projectId: null, workspaceId: CHAT_WORKSPACE.id }), id: id ?? `chat-draft-${++n}` }),
+    draft: (_ws, id) => ({ ...newSession(CHAT_WORKSPACE.environmentId, "claude", "/preview", undefined, undefined, { projectId: null, workspaceId: CHAT_WORKSPACE.id }), id: id ?? `chat-draft-${++n}` }),
     openFile: () => undefined,
     openDiff: () => undefined,
   });

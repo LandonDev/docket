@@ -13,7 +13,7 @@ import {
 import { errorText, type Trigger, type TriggerSource } from '@shared/work'
 import type { SessionMeta } from '@shared/events'
 import type { AddonCallResult } from '../../addons/addonWire'
-import type { WorkCtx } from '../modules'
+import type { Caller, WorkCtx } from '../modules'
 import type { LifeosHeld } from '../outbox/outbox'
 import { BUSY, type RoutinesHost } from './host'
 import { dueCount, nextAt } from './schedule'
@@ -326,7 +326,7 @@ export class RoutinesEngine {
    * The routine is read afresh: one paused, changed or removed since the
    * pass looked fires nothing. `force` (Run now) fires a paused one.
    */
-  async fire(seen: Routine, cause: string, folded = 0, o: { nextAt?: number | null; detail?: string; force?: boolean } = {}): Promise<RoutineRun | null> {
+  async fire(seen: Routine, cause: string, folded = 0, o: { nextAt?: number | null; detail?: string; force?: boolean; by?: Caller } = {}): Promise<RoutineRun | null> {
     const r = this.store.get(seen.id)
     if (!r || r.proposed || r.ended || (!r.enabled && !o.force) || JSON.stringify(r.trigger) !== JSON.stringify(seen.trigger)) return null
     const now = this.now()
@@ -360,7 +360,8 @@ export class RoutinesEngine {
         ...(r.projectId ? { projectId: r.projectId } : {}),
         text,
         ...(r.model ? { model: r.model } : {}),
-        routineRunId: run.id
+        routineRunId: run.id,
+        ...(o.by ? { by: o.by } : {})
       })
       this.store.started(run.id, sessionId)
       // A thread can settle before its id comes back (a refusal, a queue): look once now.
@@ -429,8 +430,9 @@ export class RoutinesEngine {
   }
 
   /** Run now, whatever the trigger. */
-  runNow(r: Routine): Promise<RoutineRun | null> {
-    return this.fire(r, 'Run now', 0, { force: true })
+  /** `by`: who pressed Run now; a remote key's run holds to its ceiling (threads.start). */
+  runNow(r: Routine, by?: Caller): Promise<RoutineRun | null> {
+    return this.fire(r, 'Run now', 0, { force: true, ...(by ? { by } : {}) })
   }
 
   // ── settling ──────────────────────────────────────────────────────────

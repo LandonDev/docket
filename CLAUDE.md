@@ -117,6 +117,9 @@ section's text as it was when CLAUDE.md was split (2026-11-11).
   through `appRoot()`, never `app.getAppPath()`, and every `app.relaunch` names its arguments
   (codePaths.test.ts). A base that differs needs a full release.
   [docs/agents/code-only-updates.md](docs/agents/code-only-updates.md)
+- **A new thread's access** — his Thread defaults on every start path, one rule a side:
+  `newThreadPermission` (src/shared/defaults.ts) and `newThreadAccess` (lib/session.ts); the guard
+  lib/accessGuard.test.ts. [docs/agents/new-thread-access.md](docs/agents/new-thread-access.md)
 - **Project preambles** — the house rules as markdown on the project row
   (`projects.preamble`), added to a thread's first message on every start
   path by `decidePreamble` (src/main/server/projectPreamble.ts).
@@ -265,11 +268,7 @@ section's text as it was when CLAUDE.md was split (2026-11-11).
 - **The renderer over time** — React 19.3.1, the renderer soak and its gate
   rows, the rules that keep a push re-rendering only what it changed.
   [docs/agents/renderer-over-time.md](docs/agents/renderer-over-time.md)
-  The synthetic `--scene reconnect` pairs six long transcripts over a
-  remote key, measures a six-second socket cut and a saved-layout reload,
-  and checks row order and continued streaming. `--gate` enforces 100 ms
-  for long tasks, under 2 MiB unsent per socket, and one accepted connection
-  in each window.
+  (its `--scene reconnect` and `--gate` are described there).
 - **The shape that scales** — profiling, checkpoints, the running cap and the
   stats worker. [docs/agents/shape-that-scales.md](docs/agents/shape-that-scales.md)
 - **The iOS contract** — `ios/TempCodeContract` is generated from zod by

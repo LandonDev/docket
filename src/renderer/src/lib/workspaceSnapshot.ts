@@ -26,6 +26,7 @@ import {
   HARNESSES,
   RUNTIME_MODES,
   newSession,
+  newThreadAccess,
   type HarnessId,
   type RuntimeMode,
   type Session,
@@ -181,7 +182,7 @@ export function hydrateWorkspaceSnapshot(
           harness: "cursor",
           model: "",
           modelSettings: {},
-          runtimeMode: "supervised",
+          runtimeMode: newThreadAccess(LOCAL_ENVIRONMENT_ID),
           title: "",
         }),
       );
@@ -286,7 +287,11 @@ function dropUnsentDrafts(
   // one (its text comes back), else the stub on screen, now its record.
   if (kept && active) {
     const record = projectDrafts.get(drafts.keyOf(kept))!;
-    const draft = record.id === kept.id ? kept : sessionFromDraft(record, null);
+    // The stub knows no pick: the record's comes back with it.
+    const draft =
+      record.id === kept.id
+        ? { ...kept, ...(record.accessPicked ? { runtimeMode: record.runtimeMode, accessPicked: true as const } : {}) }
+        : sessionFromDraft(record, null);
     sessions.set(draft.id, draft);
     shownId = draft.id;
     if (draft.id !== kept.id) {
@@ -334,13 +339,14 @@ function sessionFromStub(stub: WorkspaceSessionStub): Session {
     stub.harness,
     stub.cwd,
     stub.model,
-    stub.runtimeMode,
     stub.modelSettings,
     { projectId: stub.projectId ?? null, workspaceId: stub.workspaceId ?? null },
   );
   return {
     ...session,
     id: stub.id,
+    // A saved thread's own mode; the meta, when it lands, says it again.
+    runtimeMode: stub.runtimeMode,
     title: stub.title,
     ...(stub.providerSessionId
       ? { providerSessionId: stub.providerSessionId }

@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { beforeEach, describe, expect, it } from "vitest";
-import { projectDrafts } from "./projectDrafts";
+import { draftPicks, projectDrafts } from "./projectDrafts";
 import { INTERRUPT_MESSAGE } from "./inFlight";
 import {
   leaf,
@@ -400,7 +400,7 @@ describe("restoring unsent drafts", () => {
   });
 
   const draft = (id: string, projectId: string, over: Partial<Session> = {}): Session => ({
-    ...newSession("local", "claude", `/repo/${projectId}`, undefined, undefined, undefined, { projectId }),
+    ...newSession("local", "claude", `/repo/${projectId}`, undefined, undefined, { projectId }),
     id,
     ...over,
   });
@@ -451,6 +451,15 @@ describe("restoring unsent drafts", () => {
     expect(workspace.tabs[0]!.focusedId).toBe("remembered");
     expect(workspace.sessions.map((s) => s.id)).toEqual(["remembered"]);
     expect(projectDrafts.get("p1")!.segments).toEqual([{ text: "half a thought" }]);
+  });
+
+  it("the draft on screen keeps the access he picked on it: the stub knows no pick, its record does", () => {
+    const picked = draft("d", "p1", { runtimeMode: "supervised", accessPicked: true });
+    // The draft writer (stores/subscriptions.ts) has filed its picks as he made them.
+    projectDrafts.put("p1", { ...draftPicks(picked), segments: [], attachments: [] });
+    const snapshot = collectWorkspaceSnapshot([{ ...newTab("d"), id: "tab" }], [picked], "tab", "/repo/p1");
+    const workspace = hydrateWorkspaceSnapshot(snapshot, new Map(), undefined, drafts)!;
+    expect(workspace.sessions.find((s) => s.id === "d")).toMatchObject({ runtimeMode: "supervised", accessPicked: true });
   });
 
   it("leaves a persisted stub (a thread the host knew) and a titled one alone", () => {

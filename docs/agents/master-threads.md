@@ -15,7 +15,8 @@ this is the short one.
   box from the select chunk, kept on the draft's record as `master`), and
   its first send passes `session.create { master: true }` (operate, like
   any create; only `permission: 'auto'` raises it to approve through
-  `requiredCapability`; a subagent refused), which sets the flag before
+  `requiredCapability`, and a create that names none is held to `edits` for
+  a key without approve, new-thread-access.md; a subagent refused), which sets the flag before
   the eager boot, so the first spawn is a master's; the phone's draft row
   offers the same pick to any key that can send. Several threads of one project may be, each with
   its own batch keyed by its id. `projects.master_thread_id` is read once

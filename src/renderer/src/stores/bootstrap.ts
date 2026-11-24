@@ -63,7 +63,7 @@ export function newBootSeed(cwd: string = lastProjectPath() ?? "~"): BootSeed {
   const session =
     record && !sessionStore.metaOf(record.id)
       ? sessionFromDraft(record, null)
-      : newDefaultSession(environmentId, seedCwd, undefined, ctx.projectId ? ctx : { workspaceId: ctx.workspaceId });
+      : newDefaultSession(environmentId, seedCwd, ctx.projectId ? ctx : { workspaceId: ctx.workspaceId });
   if (session.id !== record?.id) projectDrafts.put(key, { ...draftPicks(session), segments: [], attachments: [] });
   return { session, tab: newTab(session.id) };
 }

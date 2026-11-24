@@ -444,7 +444,7 @@ describe("New chat on a project card", () => {
     const project = { environmentId: "local", id: "p1", workspaceId: "w-mac", name: "Alpha", mode: "local", branch: "main", cwd: MAC_PATH, archived: false, createdAt: 1 } as ProjectMeta;
     // App's onNewChat: the project's draft, a session with no meta.
     const onNewChat = vi.fn((projectId: string) =>
-      sessionStore.mutate((prev) => [...prev, { ...newSession("local", "claude", MAC_PATH, undefined, undefined, undefined, { projectId, workspaceId: "w-mac" }), id: "draft-1" }]),
+      sessionStore.mutate((prev) => [...prev, { ...newSession("local", "claude", MAC_PATH, undefined, undefined, { projectId, workspaceId: "w-mac" }), id: "draft-1" }]),
     );
     resetMenus();
     probe = mountProbe(

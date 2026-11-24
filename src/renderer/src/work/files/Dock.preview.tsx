@@ -72,7 +72,7 @@ const now = Date.now();
 const turn = (id: string, role: Block["role"], text: string, ago: number): Block => ({ id, role, text, ts: now - ago }) as Block;
 
 function seed(id: string, meta: Partial<SessionMeta> | null, blocks: Block[]): void {
-  const session: Session = { ...newSession("local", "claude", "/w", undefined, undefined, undefined, { projectId: null, workspaceId: "w" }), id, status: "idle", blocks, ...(meta?.title ? { title: meta.title } : {}) };
+  const session: Session = { ...newSession("local", "claude", "/w", undefined, undefined, { projectId: null, workspaceId: "w" }), id, status: "idle", blocks, ...(meta?.title ? { title: meta.title } : {}) };
   sessionStore.mutate((prev) => [...prev.filter((s) => s.id !== id), session]);
   if (meta) sessionStore.adopt({ id, environmentId: "local", status: "idle", archived: false, workspaceId: "w", projectId: null, scope: "work", createdAt: now, updatedAt: now, ...meta } as SessionMeta, { created: true });
 }

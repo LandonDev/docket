@@ -279,7 +279,8 @@ export interface WorkCtx {
   /** milestone 6, over SessionRegistry */
   threads: {
     /** `title` names the thread, and no model is asked for one. */
-    start(o: { workspaceId: string; projectId?: string; text: string; model?: string; routineRunId?: string; about?: ContextChip; title?: string }): Promise<string>
+    /** `by`: who pressed for it; a remote key's thread holds to the key's ceiling (no full access without approve). */
+    start(o: { workspaceId: string; projectId?: string; text: string; model?: string; routineRunId?: string; about?: ContextChip; title?: string; by?: Caller }): Promise<string>
     resume(sessionId: string, notice: string): Promise<void>
     /** whether the owner typed this quote in the thread; with `about`, in a message that also names one of those (work/threads.ts) */
     ownerSaid(sessionId: string, quote: string, about?: readonly string[]): boolean

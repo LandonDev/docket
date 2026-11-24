@@ -127,7 +127,7 @@ async function fileOnce(ctx: WorkCtx, p: CaptureFileParams, by: Caller, now: num
   // A sorted capture starts in its sector's workspace; an unsorted one, or one with no workspace here, in Work Chats.
   // The task is filed whatever the thread does: a start that fails says so beside it, and his next try files nothing twice.
   try {
-    const threadId = await ctx.threads.start({ workspaceId: p.sector && home ? home.id : WORK_HOME, text: threadText(p.text, keptPaths), about })
+    const threadId = await ctx.threads.start({ workspaceId: p.sector && home ? home.id : WORK_HOME, text: threadText(p.text, keptPaths), about, by })
     return { taskId, kept, threadId }
   } catch (err) {
     return { taskId, kept, threadError: err instanceof Error ? err.message : String(err) }

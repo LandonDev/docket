@@ -154,7 +154,7 @@ async function handle(req: ClientRequest, ctx: WorkCtx, by: Caller): Promise<Ret
       person(by)
       const r = mine(p.id)
       if (r.proposed) refuse('a proposal runs nothing until the owner creates it')
-      const run = await e.runNow(r)
+      const run = await e.runNow(r, by)
       return handled(run ?? store.inFlight(r.id))
     }
     case 'work.routines.remove': {
