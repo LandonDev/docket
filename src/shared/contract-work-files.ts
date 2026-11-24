@@ -549,7 +549,8 @@ export interface FileDone {
  */
 /** How far a copy of another computer's file has got, for the row that opened it: `of` is that row's key as `openingTag` makes it, never its path. */
 export type FilesOpening = { of: string; done: number; total: number }
-export type FilesPush = { push: 'work.files'; workspaceId: string; at?: string; tabs?: number; places?: true; opening?: FilesOpening }
+/** `marks`: his stars, recents or what threads made changed (Home reads again on it alone). */
+export type FilesPush = { push: 'work.files'; workspaceId: string; at?: string; tabs?: number; places?: true; marks?: true; opening?: FilesOpening }
 
 export const FILES_CAPS = {
   'work.files.places': 'read',

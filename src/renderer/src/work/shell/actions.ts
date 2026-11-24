@@ -98,7 +98,8 @@ export async function windowDesktops(environments: readonly Environment[] = regi
  * what it already may use. Writes only when something is missing; answers the settings as they are now.
  */
 export async function allowComputers(workspace: Pick<WorkspaceMeta, "id" | "environmentId">, opts: { vm?: boolean } = {}): Promise<WorkspaceWorkSettings> {
-  const [settings, desktops] = await Promise.all([workspaceSettings(workspace), windowDesktops()]);
+  // Read fresh: what is written is made from it, and another window may have added a computer since.
+  const [settings, desktops] = await Promise.all([workspaceSettings(workspace, { fresh: true }), windowDesktops()]);
   const missing = desktops.map((d) => d.host).filter((id) => !settings.mayUseDesktop.includes(id));
   if (!missing.length && (!opts.vm || settings.windowsVm)) return settings;
   return setWorkspaceSettings(workspace, { mayUseDesktop: [...settings.mayUseDesktop, ...missing], ...(opts.vm ? { windowsVm: true } : {}) });
@@ -127,13 +128,45 @@ export function desktopRows(environments: readonly Pick<Environment, "id" | "nam
   return [...mine, ...far.filter((d) => !drawn.has(d.id)).map((d) => ({ link: d.id, host: d.id, name: d.name }))];
 }
 
-export function workspaceSettings(workspace: Pick<WorkspaceMeta, "id" | "environmentId">): Promise<WorkspaceWorkSettings> {
-  return registry.linkOf(workspace.environmentId).request<WorkspaceWorkSettings>("work.workspace.get", { workspaceId: workspace.id });
+/**
+ * A workspace's Work settings as this window last heard them, by host and workspace: asked once, the same ask joined
+ * while it is out, and kept until this window sets them, its host's link comes back (another window may have set them
+ * meanwhile), or `SETTINGS_KEEP_MS` passes. They name no file: the host holds every gate again on every call.
+ */
+export const SETTINGS_KEEP_MS = 5 * 60_000;
+const settingsKept = new Map<string, { at: number; value: Promise<WorkspaceWorkSettings> }>();
+const settingsWatched = new Set<string>();
+const settingsKey = (workspace: Pick<WorkspaceMeta, "id" | "environmentId">): string => `${workspace.environmentId}\u0000${workspace.id}`;
+function keepSettings(workspace: Pick<WorkspaceMeta, "id" | "environmentId">, value: Promise<WorkspaceWorkSettings>): Promise<WorkspaceWorkSettings> {
+  const key = settingsKey(workspace);
+  const entry = { at: Date.now(), value };
+  settingsKept.set(key, entry);
+  // A refusal or a lost link is never kept.
+  value.catch(() => settingsKept.get(key) === entry && settingsKept.delete(key));
+  if (!settingsWatched.has(workspace.environmentId)) {
+    settingsWatched.add(workspace.environmentId);
+    registry.linkOf(workspace.environmentId).onOpen?.(() => {
+      for (const k of [...settingsKept.keys()]) if (k.startsWith(`${workspace.environmentId}\u0000`)) settingsKept.delete(k);
+    });
+  }
+  return value;
+}
+
+/** `fresh`: asked of the host now (a screen that writes from what it read, Settings). */
+export function workspaceSettings(workspace: Pick<WorkspaceMeta, "id" | "environmentId">, o: { fresh?: boolean } = {}): Promise<WorkspaceWorkSettings> {
+  const kept = settingsKept.get(settingsKey(workspace));
+  if (kept && !o.fresh && Date.now() - kept.at <= SETTINGS_KEEP_MS) return kept.value;
+  return keepSettings(workspace, registry.linkOf(workspace.environmentId).request<WorkspaceWorkSettings>("work.workspace.get", { workspaceId: workspace.id }));
 }
 
 export function setWorkspaceSettings(
   workspace: Pick<WorkspaceMeta, "id" | "environmentId">,
   patch: { mayUseDesktop?: string[]; model?: string | null; reasoning?: string | null; voice?: boolean; windowsVm?: boolean },
 ): Promise<WorkspaceWorkSettings> {
-  return registry.linkOf(workspace.environmentId).request<WorkspaceWorkSettings>("work.workspace.set", { workspaceId: workspace.id, patch });
+  settingsKept.delete(settingsKey(workspace));
+  // The host answers the settings as they are now: that answer is what is kept.
+  return keepSettings(workspace, registry.linkOf(workspace.environmentId).request<WorkspaceWorkSettings>("work.workspace.set", { workspaceId: workspace.id, patch }));
 }
+
+/** Test seam: nothing kept. */
+export const forgetWorkspaceSettings = (): void => settingsKept.clear();

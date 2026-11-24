@@ -78,7 +78,15 @@ export function filesState(ctx: Pick<WorkCtx, 'db' | 'push' | 'log' | 'canvas'>)
       ctx.log(`files: the tabs push failed: ${err instanceof Error ? err.message : String(err)}`)
     }
   })
-  state = { lister: new DiskLister(), tabs, marks: new MarkStore(ctx.db), off: [ctx.canvas.onReplaced((old, next) => tabs.follow(old, next))] }
+  // His stars and recents, and what threads made: Home hears that they changed, and asks again.
+  const marks = new MarkStore(ctx.db, Date.now, (workspaceId) => {
+    try {
+      ctx.push({ push: 'work.files', workspaceId, marks: true }, { need: 'read' })
+    } catch (err) {
+      ctx.log(`files: the marks push failed: ${err instanceof Error ? err.message : String(err)}`)
+    }
+  })
+  state = { lister: new DiskLister(), tabs, marks, off: [ctx.canvas.onReplaced((old, next) => tabs.follow(old, next))] }
   states.set(ctx.db, state)
   return state
 }

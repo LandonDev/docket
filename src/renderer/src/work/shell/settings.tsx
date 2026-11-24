@@ -314,7 +314,7 @@ export function WorkWorkspacePage({ workspaceId }: { workspaceId: string }) {
   useEffect(() => {
     if (!workspace) return;
     let live = true;
-    Promise.all([workspaceSettings(workspace), hostDesktops(workspace)]).then(
+    Promise.all([workspaceSettings(workspace, { fresh: true }), hostDesktops(workspace)]).then(
       ([value, known]) => {
         if (!live) return;
         setSettings(value);

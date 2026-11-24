@@ -53,7 +53,9 @@ export const RECENT_MOST = 200
 export class MarkStore {
   constructor(
     private readonly db: DatabaseSync,
-    private readonly now: () => number = Date.now
+    private readonly now: () => number = Date.now,
+    /** a workspace's stars, recents or made-by marks changed: Home reads again (`marks` on the `work.files` push) */
+    private readonly changed: (workspaceId: string) => void = () => {}
   ) {}
 
   private upsert(workspaceId: string, key: string, at: Marked, name: string): void {
@@ -71,6 +73,7 @@ export class MarkStore {
     this.upsert(workspaceId, key, at, name)
     this.db.prepare(`UPDATE work_files_marks SET starred = ? WHERE workspace_id = ? AND ref_key = ?`).run(on ? 1 : 0, workspaceId, key)
     this.tidy(workspaceId, key)
+    this.changed(workspaceId)
     return on
   }
 
@@ -85,12 +88,14 @@ export class MarkStore {
       this.db.prepare(`UPDATE work_files_marks SET opened_at = NULL WHERE workspace_id = ? AND opened_at <= ?`).run(workspaceId, cut.opened_at)
       this.db.prepare(`DELETE FROM work_files_marks WHERE workspace_id = ? AND starred = 0 AND opened_at IS NULL AND made_by IS NULL`).run(workspaceId)
     }
+    this.changed(workspaceId)
   }
 
   /** A thread made it: its row leads with the thread's name and reads new until he opens it (`seen`). */
   madeBy(workspaceId: string, key: string, at: Marked, name: string, thread: string): void {
     this.upsert(workspaceId, key, at, name)
     this.db.prepare(`UPDATE work_files_marks SET made_by = ?, made_at = ?, seen_at = NULL WHERE workspace_id = ? AND ref_key = ?`).run(thread, this.now(), workspaceId, key)
+    this.changed(workspaceId)
   }
 
   /** What threads made, newest first: the Made by threads lens. */

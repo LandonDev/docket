@@ -459,13 +459,15 @@ public struct WorkFilesPush: Codable, Hashable, Sendable {
     public let at: String?
     public let tabs: Double?
     public let places: Bool?
+    public let marks: Bool?
     public let opening: Opening?
 
-    public init(workspaceId: String, at: String? = nil, tabs: Double? = nil, places: Bool? = nil, opening: Opening? = nil) {
+    public init(workspaceId: String, at: String? = nil, tabs: Double? = nil, places: Bool? = nil, marks: Bool? = nil, opening: Opening? = nil) {
         self.workspaceId = workspaceId
         self.at = at
         self.tabs = tabs
         self.places = places
+        self.marks = marks
         self.opening = opening
     }
 }

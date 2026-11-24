@@ -1615,7 +1615,7 @@ export const FilesStarredSchema = z.object({ starred: z.boolean() })
 /** `work.office.live.address`: a shared Office file's web address and its app, for the phone's Open in Word. */
 export const OfficeLiveAddressSchema = z.object({ address: z.string().nullable(), app: z.enum(['word', 'excel', 'powerpoint']).nullable() })
 /** Something of a workspace's Files changed on its host: a folder (`at`, its key), the tabs, or the places. */
-export const WorkFilesPushSchema = push('work.files', { workspaceId: z.string(), at: z.string().optional(), tabs: z.number().optional(), places: z.literal(true).optional(), opening: z.object({ of: z.string(), done: z.number(), total: z.number() }).optional() })
+export const WorkFilesPushSchema = push('work.files', { workspaceId: z.string(), at: z.string().optional(), tabs: z.number().optional(), places: z.literal(true).optional(), marks: z.literal(true).optional(), opening: z.object({ of: z.string(), done: z.number(), total: z.number() }).optional() })
 /**
  * The digest (contract-work-digest.ts, docs/agents/work-digest.md "The phone"): the ledger a host keeps of what
  * Work told him, the days it made a digest of, and the time and levels he set. A tell's target is one flat object

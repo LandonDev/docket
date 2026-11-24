@@ -308,6 +308,18 @@ describe('the Windows VM', () => {
 })
 
 describe('Home', () => {
+  it('hears his stars and recents change: one `marks` push for each, never one for a list', async () => {
+    const marks = () => rig.pushes.filter((x) => x.p.push === 'work.files' && (x.p as { marks?: true }).marks)
+    await call('work.files.list', { at: at(rig.folder) })
+    expect(marks()).toEqual([])
+    await call('work.files.star', { ref: at(join(rig.folder, 'Budget.xlsx')), name: 'Budget.xlsx', on: true })
+    await call('work.files.seen', { ref: at(join(rig.folder, 'notes.txt')), name: 'notes.txt' })
+    expect(marks().map((x) => [x.p, x.to])).toEqual([
+      [{ push: 'work.files', workspaceId: WS, marks: true }, { need: 'read' }],
+      [{ push: 'work.files', workspaceId: WS, marks: true }, { need: 'read' }]
+    ])
+  })
+
   it('lists what he starred and opened, and nothing waiting yet', async () => {
     await call('work.files.star', { ref: at(join(rig.folder, 'Budget.xlsx')), name: 'Budget.xlsx', on: true })
     await call('work.files.seen', { ref: at(join(rig.folder, 'notes.txt')), name: 'notes.txt' })

@@ -84,125 +84,180 @@ export interface Reach {
 const reading = (answer: FilesPlaces | undefined): boolean => !!answer?.sources.some((p) => p.kind === "vm" && p.state === "reading");
 
 /**
- * The hosts this workspace's files are on (its own, then each desktop it may use), and what each said. Each host
- * paints as it answers; one past its deadline is said not to answer. A host that pushes a change to its places is
- * asked again, its last answer kept on screen until the new one lands. A host that does not know `work.files.*`
- * (a release behind) is read through `work.office.filesLibraries` instead.
+ * Each workspace's reach as last painted, by link and workspace (`REACH_KEEP_MOST` of them): a return to Files paints
+ * it in its first frame and asks every host again behind it, each answer taking its host's place as it lands. Names
+ * of places and their states only; each host holds its own gates again on every call that reads a file.
+ */
+const REACH_KEEP_MOST = 24;
+interface KeptReach {
+  reach: Reach;
+  /** each host's own answer, before the VM switch hides the VM's places */
+  reads: Map<string, HostRead>;
+  copy: boolean;
+  old: Map<string, LibraryPlace[]>;
+}
+const reachKept = new Map<string, KeptReach>();
+const reachKey = (workspace: Pick<WorkspaceMeta, "id" | "environmentId">): string => `${workspace.environmentId}\u0000${workspace.id}`;
+function keepReach(key: string, kept: KeptReach): void {
+  reachKept.delete(key);
+  reachKept.set(key, kept);
+  while (reachKept.size > REACH_KEEP_MOST) reachKept.delete(reachKept.keys().next().value!);
+}
+/** A workspace switched off, or gone: what was painted of it goes. */
+export const forgetReach = (workspace: Pick<WorkspaceMeta, "id" | "environmentId">): void => void reachKept.delete(reachKey(workspace));
+
+/**
+ * The hosts this workspace's files are on (its own, then each desktop it may use), and what each said. A workspace
+ * seen before paints what it last said at once. The workspace's own host is asked at once, beside its settings; the
+ * desktops its settings name are asked once they are known; the sidebar is painted once the settings say whether the
+ * Windows VM is the workspace's. Each host paints as it answers; one past its deadline is said not to answer. A host
+ * that pushes a change to its places is asked again, its last answer kept on screen until the new one lands. A host
+ * that does not know `work.files.*` (a release behind) is read through `work.office.filesLibraries` instead.
  */
 export function useReach(workspace: WorkspaceMeta, attempt: number): Reach | null {
-  const [reach, setReach] = useState<Reach | null>(null);
+  const key = reachKey(workspace);
+  const [shown, setShown] = useState<{ key: string; reach: Reach | null }>(() => ({ key, reach: reachKept.get(key)?.reach ?? null }));
+  // Another workspace: what was painted of it, at once, in the same render.
+  const reach = shown.key === key ? shown.reach : (reachKept.get(key)?.reach ?? null);
+  if (shown.key !== key) setShown({ key, reach });
   useEffect(() => {
     let live = true;
     const offs: (() => void)[] = [];
     const timers = new Set<ReturnType<typeof setTimeout>>();
-    setReach(null);
+    const kept = reachKept.get(key);
+    const own = workspace.environmentId;
+    const reads = new Map<string, HostRead>(kept?.reads ?? []);
+    const old = new Map<string, LibraryPlace[]>(kept?.old ?? []);
+    let copy = kept?.copy ?? false;
+    // Known once the settings answer: until then the own host's answer is held, never painted.
+    let ready = false;
+    let hosts: string[] = [own];
+    let far: string[] = [];
+    let windowsVm = false;
+    let notAllowed: string[] = [];
+    let desktops: Awaited<ReturnType<typeof windowDesktops>> = [];
+    const paint = (): void => {
+      if (!live || !ready) return;
+      const got = hosts.flatMap((link) => {
+        const r = reads.get(link);
+        return r ? [{ ...r, desktop: far.includes(link) || desktops.some((d) => d.link === link) }] : [];
+      });
+      // A library in the Windows VM is this workspace's only while its VM switch is on.
+      const shownReads = got.map((r) => (r.answer ? { ...r, answer: { ...r.answer, places: r.answer.places.filter((p) => windowsVm || !p.vm) } } : r));
+      const sidebar = sidebarOf(shownReads, own);
+      const waiting = got.length < hosts.length || (windowsVm && reading(reads.get(own)?.answer));
+      const mine = reads.get(own);
+      const next: Reach = {
+        reads: shownReads,
+        sidebar,
+        copy,
+        windowsVm,
+        waiting,
+        note: teamsNote({ workspaceLink: own, reads: shownReads, windowsVm, notAllowed, rows: sidebar.rows }),
+        // Its host keeps tabs unless it is known to be a release behind: a host that is slow to say its places, or
+        // has not yet, is still asked for its tabs, and a file there opens in one, never in a thread.
+        tabs: mine?.wire !== "office",
+        behind: got.filter((r) => r.wire === "office" && r.answer).map((r) => r.name),
+        old,
+      };
+      keepReach(key, { reach: next, reads: new Map(reads), copy, old: new Map(old) });
+      setShown({ key, reach: next });
+    };
+    // Only the newest ask of a host lands.
+    const asked = new Map<string, number>();
+    const ask = (link: string): void => {
+      const mine = (asked.get(link) ?? 0) + 1;
+      asked.set(link, mine);
+      let name = registry.environment(link)?.name ?? farName(link) ?? link;
+      const current = (): boolean => live && asked.get(link) === mine;
+      const failed = (err: unknown): void => {
+        if (!current()) return;
+        reads.set(link, { link, name, desktop: false, wire: reads.get(link)?.wire ?? "files", failed: { words: workErrorWords(err, { host: name }) || "No answer.", unreachable: unreachable(err) } });
+        paint();
+      };
+      // Past the deadline the host shows as not answering; an answer that comes later still takes its place.
+      const late = setTimeout(() => (timers.delete(late), failed(deadlineError(HOST_DEADLINE_MS))), HOST_DEADLINE_MS);
+      timers.add(late);
+      const settle = (): void => void (clearTimeout(late), timers.delete(late));
+      const landed = (answer: FilesPlaces, wire: "files" | "office"): void => {
+        settle();
+        if (!current()) return;
+        name = answer.name ?? name;
+        keepFarName(link, answer.name);
+        reads.set(link, { link, name, desktop: false, wire, answer });
+        paint();
+        if (!reading(answer)) return;
+        const timer = setTimeout(() => (timers.delete(timer), ask(link)), READING_AGAIN_MS);
+        timers.add(timer);
+      };
+      const host = filesLink(link);
+      void host.request<FilesPlaces>("work.files.places", { workspaceId: workspace.id }).then(
+        (answer) => landed(answer, "files"),
+        (err: unknown) => {
+          if (!unknownMethod(err)) return void (settle(), failed(err));
+          // A host a release behind: its libraries through the old wire, as the places the new one would say.
+          void host.request<TeamsLibrariesAnswer>("work.office.filesLibraries", {}).then(
+            (answer) => {
+              const made = placesFromOld(answer);
+              old.set(link, made.libraries);
+              landed(made.places, "office");
+            },
+            (again: unknown) => (settle(), failed(again)),
+          );
+        },
+      );
+    };
+    const listen = (link: string): void =>
+      void offs.push(
+        filesLink(link).onPush((push) => {
+          if (push.push === "work.office.files") ask(link);
+          if (push.push === "work.files" && push.workspaceId === workspace.id && push.places) ask(link);
+        }),
+      );
+    // The workspace's own host is asked now, beside its settings: a cold open waits on the two together, not one after the other.
+    if (registry.has(own)) {
+      ask(own);
+      listen(own);
+    }
     void (async () => {
-      const [settings, local, desktops] = await Promise.all([workspaceSettings(workspace).catch(() => null), localHostId(), windowDesktops()]);
+      const [settings, local, mineDesktops] = await Promise.all([workspaceSettings(workspace).catch(() => null), localHostId(), windowDesktops()]);
+      if (!live) return;
+      desktops = mineDesktops;
       const mayUse = settings?.mayUseDesktop ?? [];
       const allowed = mayUse.map((id) => linkIdOfHost(id, local)).filter((id): id is string => id !== null);
       // A desktop this window has no link to (a PC linked only to the box) is asked through the workspace's own host.
-      const far = workspace.environmentId === LOCAL_ENVIRONMENT_ID ? [] : mayUse.filter((id) => linkIdOfHost(id, local) === null && id !== workspace.environmentId);
-      for (const id of far) reachThrough(id, workspace.environmentId, workspace.id);
-      const hosts = [...new Set([workspace.environmentId, ...allowed])].filter((id) => registry.has(id)).concat(far);
-      if (!live) return;
-      const windowsVm = !!settings?.windowsVm;
-      const own = desktops.find((d) => d.link === workspace.environmentId);
-      const notAllowed = desktops.filter((d) => d !== own && !hosts.includes(d.link)).map((d) => d.name);
-      const reads = new Map<string, HostRead>();
-      const old = new Map<string, LibraryPlace[]>();
-      let copy = false;
-      const paint = (): void => {
-        if (!live) return;
-        const got = hosts.flatMap((link) => reads.get(link) ?? []);
-        // A library in the Windows VM is this workspace's only while its VM switch is on.
-        const shown = got.map((r) => (r.answer ? { ...r, answer: { ...r.answer, places: r.answer.places.filter((p) => windowsVm || !p.vm) } } : r));
-        const sidebar = sidebarOf(shown, workspace.environmentId);
-        const waiting = got.length < hosts.length || (windowsVm && reading(reads.get(workspace.environmentId)?.answer));
-        const mine = reads.get(workspace.environmentId);
-        setReach({
-          reads: shown,
-          sidebar,
-          copy,
-          windowsVm,
-          waiting,
-          note: teamsNote({ workspaceLink: workspace.environmentId, reads: shown, windowsVm, notAllowed, rows: sidebar.rows }),
-          // Its host keeps tabs unless it is known to be a release behind: a host that is slow to say its places, or
-          // has not yet, is still asked for its tabs, and a file there opens in one, never in a thread.
-          tabs: mine?.wire !== "office",
-          behind: got.filter((r) => r.wire === "office" && r.answer).map((r) => r.name),
-          old,
-        });
-      };
-      // Only the newest ask of a host lands.
-      const asked = new Map<string, number>();
-      const ask = (link: string): void => {
-        const mine = (asked.get(link) ?? 0) + 1;
-        asked.set(link, mine);
-        let name = registry.environment(link)?.name ?? farName(link) ?? link;
-        const desktop = far.includes(link) || desktops.some((d) => d.link === link);
-        const current = (): boolean => live && asked.get(link) === mine;
-        const failed = (err: unknown): void => {
-          if (!current()) return;
-          reads.set(link, { link, name, desktop, wire: reads.get(link)?.wire ?? "files", failed: { words: workErrorWords(err, { host: name }) || "No answer.", unreachable: unreachable(err) } });
-          paint();
-        };
-        // Past the deadline the host shows as not answering; an answer that comes later still takes its place.
-        const late = setTimeout(() => (timers.delete(late), failed(deadlineError(HOST_DEADLINE_MS))), HOST_DEADLINE_MS);
-        timers.add(late);
-        const settle = (): void => void (clearTimeout(late), timers.delete(late));
-        const landed = (answer: FilesPlaces, wire: "files" | "office"): void => {
-          settle();
-          if (!current()) return;
-          name = answer.name ?? name;
-          keepFarName(link, answer.name);
-          reads.set(link, { link, name, desktop, wire, answer });
-          paint();
-          if (!reading(answer)) return;
-          const timer = setTimeout(() => (timers.delete(timer), ask(link)), READING_AGAIN_MS);
-          timers.add(timer);
-        };
-        const host = filesLink(link);
-        void host.request<FilesPlaces>("work.files.places", { workspaceId: workspace.id }).then(
-          (answer) => landed(answer, "files"),
-          (err: unknown) => {
-            if (!unknownMethod(err)) return void (settle(), failed(err));
-            // A host a release behind: its libraries through the old wire, as the places the new one would say.
-            void host.request<TeamsLibrariesAnswer>("work.office.filesLibraries", {}).then(
-              (answer) => {
-                const made = placesFromOld(answer);
-                old.set(link, made.libraries);
-                landed(made.places, "office");
-              },
-              (again: unknown) => (settle(), failed(again)),
-            );
-          },
-        );
-      };
+      far = own === LOCAL_ENVIRONMENT_ID ? [] : mayUse.filter((id) => linkIdOfHost(id, local) === null && id !== own);
+      for (const id of far) reachThrough(id, own, workspace.id);
+      hosts = [...new Set([own, ...allowed])].filter((id) => registry.has(id)).concat(far);
+      windowsVm = !!settings?.windowsVm;
+      const ownDesktop = desktops.find((d) => d.link === own);
+      notAllowed = desktops.filter((d) => d !== ownDesktop && !hosts.includes(d.link)).map((d) => d.name);
+      // A host no longer the workspace's says nothing of it.
+      for (const link of [...reads.keys()]) if (!hosts.includes(link)) reads.delete(link);
+      ready = true;
       for (const link of hosts) {
+        if (link === own && asked.has(own)) continue;
         ask(link);
-        offs.push(
-          filesLink(link).onPush((push) => {
-            if (push.push === "work.office.files") ask(link);
-            if (push.push === "work.files" && push.workspaceId === workspace.id && push.places) ask(link);
-          }),
-        );
+        listen(link);
       }
       paint();
       copy = await registry
-        .linkOf(workspace.environmentId)
+        .linkOf(own)
         .request<{ on: boolean }>("work.office.filesCopyGet", { workspaceId: workspace.id })
         .then(
           (a) => a.on,
           () => false,
         );
-      if (copy) paint();
+      paint();
     })();
     return () => {
       live = false;
       for (const off of offs) off();
       for (const timer of timers) clearTimeout(timer);
     };
-  }, [workspace.id, workspace.environmentId, attempt]);
+    // The key names the workspace and its host.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [key, attempt]);
   return reach;
 }
 
@@ -664,6 +719,8 @@ export function resetFilesStore(): void {
   pageFilters.clear();
   closedTabs.clear();
   pressed.clear();
+  reachKept.clear();
+  homes.clear();
   look = null;
   windowId = null;
 }
@@ -943,27 +1000,68 @@ export const firstPage = (workspace: Pick<WorkspaceMeta, "name">): FilePage => s
 
 // ── Home and saved searches ───────────────────────────────────────────
 
-/** Home's three lists from the workspace's own host: what waits on him, his stars, what he opened last. Read on mount and when his tabs or marks change. */
+/**
+ * Home's three lists from the workspace's own host, kept per link and workspace: a return paints what was kept at
+ * once and reads once behind it; after that only a push that names his marks (`marks`: a star, a recent, what a
+ * thread made) or the link coming back reads again, and pushes that come while a read is out make one more read
+ * after it, never one each.
+ */
+interface HomeKept {
+  home: FilesHome | null;
+  error: string | null;
+  reading: boolean;
+  again: boolean;
+}
+const homes = new Map<string, HomeKept>();
+const homeListeners = new Map<string, Set<() => void>>();
+const NO_HOME: HomeKept = { home: null, error: null, reading: false, again: false };
+const homeKey = (link: string, workspaceId: string): string => `${link}\u0000${workspaceId}`;
+function putHome(key: string, next: HomeKept): void {
+  homes.set(key, next);
+  for (const listener of homeListeners.get(key) ?? []) listener();
+}
+function readHome(link: string, workspaceId: string): void {
+  const key = homeKey(link, workspaceId);
+  const was = homes.get(key) ?? NO_HOME;
+  if (was.reading) return void putHome(key, { ...was, again: true });
+  putHome(key, { ...was, reading: true, again: false });
+  void ask<FilesHome>(link, "work.files.home", { workspaceId }).then(
+    (home) => ({ home, error: null }),
+    (err: unknown) => ({ home: (homes.get(key) ?? NO_HOME).home, error: workErrorWords(err) || "The host did not answer." }),
+  ).then((got) => {
+    const now = homes.get(key) ?? NO_HOME;
+    putHome(key, { ...got, reading: false, again: false });
+    if (now.again) readHome(link, workspaceId);
+  });
+}
+
 export function useHome(link: string, workspaceId: string): { home: FilesHome | null; error: string | null; retry(): void } {
-  const [state, setState] = useState<{ home: FilesHome | null; error: string | null }>({ home: null, error: null });
-  const [attempt, setAttempt] = useState(0);
+  const key = homeKey(link, workspaceId);
+  const state = useSyncExternalStore(
+    (listener) => {
+      const set = homeListeners.get(key) ?? new Set();
+      homeListeners.set(key, set);
+      set.add(listener);
+      return () => {
+        set.delete(listener);
+        if (!set.size) homeListeners.delete(key);
+      };
+    },
+    () => homes.get(key) ?? NO_HOME,
+  );
   useEffect(() => {
-    let live = true;
-    const read = (): void =>
-      void ask<FilesHome>(link, "work.files.home", { workspaceId }).then(
-        (home) => live && setState({ home, error: null }),
-        (err: unknown) => live && setState((was) => ({ home: was.home, error: workErrorWords(err) || "The host did not answer." })),
-      );
-    read();
-    const off = registry.linkOf(link).onPush((push) => {
-      if (push.push === "work.files" && push.workspaceId === workspaceId && push.tabs !== undefined) read();
+    readHome(link, workspaceId);
+    const host = registry.linkOf(link);
+    const offPush = host.onPush((push) => {
+      if (push.push === "work.files" && push.workspaceId === workspaceId && push.marks) readHome(link, workspaceId);
     });
+    const offOpen = host.onOpen(() => readHome(link, workspaceId));
     return () => {
-      live = false;
-      off();
+      offPush();
+      offOpen();
     };
-  }, [link, workspaceId, attempt]);
-  return { ...state, retry: () => setAttempt((n) => n + 1) };
+  }, [link, workspaceId]);
+  return { home: state.home, error: state.error, retry: () => readHome(link, workspaceId) };
 }
 
 const savedSearches = new Map<string, readonly SavedFileSearch[]>();
