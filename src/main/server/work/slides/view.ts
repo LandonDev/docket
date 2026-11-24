@@ -224,6 +224,11 @@ export const sharedDeck = (ctx: Pick<WorkCtx, 'db' | 'host' | 'dataDir'>, item: 
  * shown the file alone (`viewFrom`), never what waits on it.
  */
 export const othersOpen = (ctx: Pick<WorkCtx, 'db' | 'host' | 'dataDir'>, item: CanvasItem): boolean => sharedDeck(ctx, item) || madeFromShared(ctx, item.source)
+/**
+ * Whose line of his edits a seat walks (hand.ts): the deck's, whose packs are kept by the file, so every seat walks
+ * one line; on a deck others can open the packs lie in the item's own folder (`deckFolder`), so each seat its own.
+ */
+export const handKey = (ctx: Pick<WorkCtx, 'db' | 'host' | 'dataDir'>, item: CanvasItem): string => (sharedDeck(ctx, item) ? item.id : deckKey(item))
 /** The mark a conversion of a shared deck's copy carries: the copy lies under app data, so the runner cannot tell by its path. */
 export const sharedJob = (ctx: Pick<WorkCtx, 'db' | 'host' | 'dataDir'>, item: CanvasItem): { shared?: true } => (sharedDeck(ctx, item) ? { shared: true } : {})
 
@@ -338,6 +343,11 @@ async function build(ctx: Ctx, item: CanvasItem, key: string, input: string, sig
   if (existsSync(pdf)) touch(pdf)
   prune(dir)
   return { key, info, pdf: existsSync(pdf) ? pdf : null, ...(renderError ? { renderError } : {}) }
+}
+
+/** The outline of the deck at `input`, whose bytes hash to `hash`: the one kept for it, else read (never drawn). Call on the item's chain. */
+export async function outlineAt(ctx: Ctx, item: CanvasItem, input: string, hash: string, signal?: AbortSignal): Promise<DeckInfo> {
+  return (await build(ctx, item, sha(RENDER_V() + hash), input, signal, false)).info
 }
 
 /**
@@ -847,8 +857,11 @@ function readOnlyOf(item: CanvasItem): Pick<DeckView, 'readOnly'> {
   return from ? { readOnly: { from } } : {}
 }
 
-/** What differs seat by seat in one deck's view: whose item it is, its mode, and the Undo it may offer (none to a viewer). */
-function seatFields(ctx: Pick<WorkCtx, 'db' | 'host' | 'dataDir'>, item: CanvasItem, viewer = false): Pick<DeckView, 'itemId' | 'sessionId' | 'mode' | 'hosted'> & { written?: DeckView['written'] } {
+/**
+ * What differs seat by seat in one deck's view, for a file whose bytes hash to `hash`: whose item it is, its mode, the
+ * Undo of an agent's write it may offer and the Undo and Redo of his own edits (`handKey`); none of them to a viewer.
+ */
+function seatFields(ctx: Pick<WorkCtx, 'db' | 'host' | 'dataDir'>, item: CanvasItem, hash: string, viewer = false): Pick<DeckView, 'itemId' | 'sessionId' | 'mode' | 'hosted' | 'hand'> & { written?: DeckView['written'] } {
   if (readOnlyWhy(item)) return { itemId: item.id, sessionId: item.sessionId, hosted: false }
   if (viewer) return { itemId: item.id, sessionId: item.sessionId, hosted: item.source.at === 'microsoft' }
   const written = writtenFor(ctx, item)
@@ -857,7 +870,8 @@ function seatFields(ctx: Pick<WorkCtx, 'db' | 'host' | 'dataDir'>, item: CanvasI
     sessionId: item.sessionId,
     mode: new SlidesStore(ctx.db).mode(item.id),
     hosted: item.source.at === 'microsoft',
-    ...(written ? { written: { id: written.id, text: written.text, at: written.at } } : {})
+    ...(written ? { written: { id: written.id, text: written.text, at: written.at } } : {}),
+    hand: handState(handKey(ctx, item), hash)
   }
 }
 
@@ -872,7 +886,7 @@ export function viewFrom(ctx: Pick<WorkCtx, 'db' | 'host' | 'dataDir'>, item: Ca
   const changesRev = proposedRev(deck)
   const shownInfo = deck.proposed?.info ?? deck.file.info
   return {
-    ...seatFields(ctx, item, viewer),
+    ...seatFields(ctx, item, deck.hash, viewer),
     ...((item.source.at === 'file' || item.source.at === 'thread') && !sharedDeck(ctx, item) && !madeFromShared(ctx, item.source) ? { canUpload: true } : {}),
     ...readOnlyOf(item),
     name: nameOf(item, deck.path),
@@ -886,8 +900,7 @@ export function viewFrom(ctx: Pick<WorkCtx, 'db' | 'host' | 'dataDir'>, item: Ca
     // The deck as it would be with the changes in, when some wait: its size, layouts and theme.
     size: { width: shownInfo.width, height: shownInfo.height },
     ...(shownInfo.layoutInfo ? { layouts: shownInfo.layoutInfo } : {}),
-    ...(shownInfo.theme ? { theme: shownInfo.theme } : {}),
-    ...(readOnlyWhy(item) || viewer ? {} : { hand: handState(deckKey(item), deck.hash) })
+    ...(shownInfo.theme ? { theme: shownInfo.theme } : {})
   }
 }
 
@@ -904,7 +917,7 @@ function pageOf(pages: string, built: Built | null, s: SlideInfo): { path: strin
 }
 
 /** The deck's view as his press sees it, and as a viewer would (`viewFrom`), from one read of the deck. */
-async function viewsOf(ctx: Ctx, item: CanvasItem, signal?: AbortSignal): Promise<{ full: DeckView; viewer: () => DeckView }> {
+async function viewsOf(ctx: Ctx, item: CanvasItem, signal?: AbortSignal): Promise<{ full: DeckView; viewer: () => DeckView; hash: string }> {
   // Off the way: a closed tab's snapshot waits on its own file's queue, never on this deck's.
   void sweepClosedCopies(ctx).catch((err: unknown) => console.warn(`slides: could not clear closed copies: ${errorText(err)}`))
   await drawAhead(ctx, item, signal)
@@ -919,7 +932,7 @@ async function viewsOf(ctx: Ctx, item: CanvasItem, signal?: AbortSignal): Promis
     // The file's own layouts: a suggested theme shows on the slides it would change, not in the picker.
     const looks = readOnlyWhy(item) ? undefined : layoutsPic(await deckDir(ctx, item, 'render'), deck.file.info)
     const seen = (view: DeckView): DeckView => (looks ? { ...view, layoutsPic: looks } : view)
-    return { full: seen(viewFrom(ctx, item, deck, picOf)), viewer: () => seen(viewFrom(ctx, item, deck, picOf, true)) }
+    return { full: seen(viewFrom(ctx, item, deck, picOf)), viewer: () => seen(viewFrom(ctx, item, deck, picOf, true)), hash: deck.hash }
   })
 }
 
@@ -978,9 +991,9 @@ export async function announce(ctx: Ctx, item: CanvasItem, signal?: AbortSignal)
     if (seat.itemId === item.id) continue
     const other = ctx.canvas.get(seat.itemId)
     if (!other) continue
-    const { written: _mine, ...rest } = view
+    const { written: _mine, hand: _line, ...rest } = view
     const name = nameOf(other, filePathOf(other.source))
-    tell(other, { ...rest, name, ...seatFields(ctx, other) }, viewer && { ...viewer, name, ...seatFields(ctx, other, true) })
+    tell(other, { ...rest, name, ...seatFields(ctx, other, views.hash) }, viewer && { ...viewer, name, ...seatFields(ctx, other, views.hash, true) })
   }
   return view
 }
@@ -1029,20 +1042,23 @@ export const VERSION_EVERY_MS = 60_000
 /**
  * Keeps the file as it is before a write, in `history/` (docs/agents/work-slides.md "Versions"): the newest
  * thirty, the first ever for good, and never the one an agent's Undo still points at. `hand`: one of his own
- * edits, which keeps a copy only when the newest is a minute old. Answers the copy's name, or null when none
- * was kept.
+ * edits, which keeps a copy only when the newest is a minute old. `spare`: a copy not let go now (the one a
+ * restore is about to read). Answers the copy's name, or null when none was kept.
  */
-export async function keepHistory(ctx: Ctx, item: CanvasItem, path: string, hand = false): Promise<string | null> {
+export async function keepHistory(ctx: Ctx, item: CanvasItem, path: string, hand = false, spare?: string): Promise<string | null> {
   const dir = await deckDir(ctx, item, 'history')
   const all = readdirSync(dir).filter((f) => f.endsWith('.pptx')).sort()
   if (hand && all.length && Date.now() - versionAt(all[all.length - 1]) < VERSION_EVERY_MS) return null
   const name = versionName(all.length === 0)
   copyWhole(path, join(dir, name))
   const held = new SlidesStore(ctx.db).written(deckKey(item))?.before
-  const loose = [...all, name].filter((f) => !isFirstVersion(f) && f !== held)
+  const loose = [...all, name].filter((f) => !isFirstVersion(f) && f !== held && f !== spare)
   for (const old of loose.slice(0, Math.max(0, loose.length - HISTORY_KEPT))) rmSync(join(dir, old), { force: true })
   return name
 }
+
+/** The file moved on between the read and the write: nothing was written (his window calls it a conflict, which Reload settles). */
+export const CHANGED_WHILE = 'The deck changed while this was being made. Nothing was written; look at it again.'
 
 /** Writes edits into the file: checked under strict on a copy first, the file before kept in history. Call on the item's chain. */
 export async function writeInto(ctx: Ctx, item: CanvasItem, path: string, ops: SlideOp[], signal?: AbortSignal, expect?: string): Promise<{ before: string; after: string; notes: string[] }> {
@@ -1051,7 +1067,7 @@ export async function writeInto(ctx: Ctx, item: CanvasItem, path: string, ops: S
   try {
     copyWhole(path, base)
     const was = hashFile(base)
-    if (expect && was !== expect) throw new Error('The deck changed while this was being made. Nothing was written; look at it again.')
+    if (expect && was !== expect) throw new Error(CHANGED_WHILE)
     const notes = (await applyTo(ctx, item, base, ops, out, true, signal)).filter(isNote)
     // The copy from before is kept first: a write that fails after it leaves the file as it was and no stray copy.
     const before = (await keepHistory(ctx, item, base))!
@@ -1076,7 +1092,7 @@ export async function writeInto(ctx: Ctx, item: CanvasItem, path: string, ops: S
  */
 export function replaceKeeping(path: string, from: string, was: string): void {
   const real = realpathSync(path)
-  if (hashFile(real) !== was) throw new Error('The deck changed while this was being made. Nothing was written; look at it again.')
+  if (hashFile(real) !== was) throw new Error(CHANGED_WHILE)
   chmodSync(from, statSync(real).mode & 0o7777)
   copyWhole(from, real)
   // A Files tab's copy of another computer's deck is sent to its file now, with no ask of his window (files/copies.ts).
@@ -1306,8 +1322,10 @@ export function itemsGone(ctx: Pick<WorkCtx, 'db' | 'host' | 'dataDir'>, items: 
     // An item that never took a seat (never opened since decks were kept by the file) leaves the deck's other seats as they are.
     const left = store.unseat(item.id) ?? { deck: deckKey(item), left: store.seats(deckKey(item)).length, shared: shared || store.sharedDeck(deckKey(item)) }
     const key = left.deck
-    // Rows still under the item's own id (kept from before decks were kept by the file, and never opened since) go with it.
+    // Rows still under the item's own id (kept from before decks were kept by the file, and never opened since) go with it,
+    // and so does its own line of his edits on a deck others can open (`handKey`).
     store.removeDeck(item.id)
+    hands.delete(item.id)
     void dropTabCopy(ctx, item.id, key, () => false)
     if (!key.startsWith('file:')) {
       store.removeDeck(key)
@@ -1361,7 +1379,10 @@ export function sessionsGone(ctx: Pick<WorkCtx, 'db' | 'dataDir'>, sessionIds: r
   const store = new SlidesStore(ctx.db)
   const seats = ctx.db.prepare(`SELECT item_id, deck FROM work_slides_seats WHERE session_id IN (${sessionIds.map(() => '?').join(',') || "''"})`).all(...sessionIds) as unknown as Array<{ item_id: string; deck: string }>
   const items = new Set(seats.map((r) => r.item_id))
-  for (const seat of seats) void dropTabCopy(ctx, seat.item_id, seat.deck, () => false)
+  for (const seat of seats) {
+    void dropTabCopy(ctx, seat.item_id, seat.deck, () => false)
+    hands.delete(seat.item_id)
+  }
   for (const lost of store.removeSessions(sessionIds)) {
     const w = store.written(lost.deck)
     if (w?.item && items.has(w.item) && lost.shared) store.setWritten(lost.deck, '', null)

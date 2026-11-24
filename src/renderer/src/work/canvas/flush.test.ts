@@ -16,9 +16,9 @@ describe("what an item holds is sent before its tab closes", () => {
     expect(sent).toBe(false);
   });
 
-  it("never keeps the tab for a failed send, and waits no longer than its limit", async () => {
+  it("keeps the tab for a send its kind refuses, and waits no longer than its limit", async () => {
     const off = registerFlush("item-2", () => Promise.reject(new Error("refused")));
-    await expect(flushItem("item-2")).resolves.toBeUndefined();
+    await expect(flushItem("item-2")).rejects.toThrow("refused");
     off();
     vi.useFakeTimers();
     const offSlow = registerFlush("item-3", () => new Promise(() => undefined));

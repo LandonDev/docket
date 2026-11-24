@@ -1877,6 +1877,44 @@ describe('his own edits to a deck', () => {
     }
   })
 
+  it('restores the oldest of thirty kept copies: making room for the deck as it is never lets go of the one he picked', async () => {
+    vi.useFakeTimers({ toFake: ['Date'], now: new Date('2026-11-23T10:00:00Z') })
+    try {
+      const item = openDeck(fileSource(path))
+      for (let i = 0; i < 31; i++) {
+        vi.setSystemTime(new Date(Date.parse('2026-11-23T10:02:00Z') + i * 61_000))
+        await retitle(item, 256, `T${i}`)
+      }
+      const loose = (await call<DeckVersion[]>('work.slides.versions', { itemId: item.id })).filter((v) => !v.first)
+      expect(loose).toHaveLength(30)
+      vi.setSystemTime(new Date('2026-11-23T11:00:00Z'))
+      await call('work.slides.restore', { itemId: item.id, version: loose.at(-1)!.id })
+      expect(titles()[0]).toBe('T0')
+      // The deck as it was before the restore is kept too.
+      const after = await call<DeckVersion[]>('work.slides.versions', { itemId: item.id })
+      await call('work.slides.restore', { itemId: item.id, version: after[0].id })
+      expect(titles()[0]).toBe('T30')
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('writes a box\'s words only over the words it was opened on: a save from PowerPoint since refuses it, and the file keeps that save', async () => {
+    const said = (text: string): SlideInfo => slide(256, 'One', { shapes: [{ id: 3, name: 'Body 2', kind: 'text', placeholder: 'body', bbox: [0.05, 0.25, 0.95, 0.9], text, paragraphs: [{ level: 0, align: 'left', list: 'none', runs: [{ text }] }] }] })
+    writeFileSync(path, fakeBytes({ ...FAKE_DECK, slides: [said('About One'), ...FAKE_DECK.slides.slice(1)] }))
+    const item = openDeck(fileSource(path))
+    await call('work.slides.open', { itemId: item.id })
+    // Saved in PowerPoint while the box was open.
+    const saved = fakeBytes({ ...FAKE_DECK, slides: [said('Changed in PowerPoint'), ...FAKE_DECK.slides.slice(1)] })
+    writeFileSync(path, saved)
+    const box = (was: string[]): SlideOp => ({ op: 'runs', slide: 256, shape: 3, was, paragraphs: [{ from: 0, runs: [{ text: 'About One, typed', from: [0, 0] }] }] })
+    await expect(call('work.slides.edit', { itemId: item.id, ops: [box(['About One'])] })).rejects.toThrow('The deck changed while this was being made')
+    expect(readFileSync(path, 'utf8')).toBe(saved)
+    // Reload: the box is on the words as they are now, and goes in.
+    await call('work.slides.edit', { itemId: item.id, ops: [box(['Changed in PowerPoint'])] })
+    expect(calls.filter((c) => c === 'pptxstep')).toHaveLength(1)
+  })
+
   it('a file renamed under its deck keeps his line of edits', async () => {
     const item = openDeck(fileSource(path))
     await retitle(item, 256, 'A')
@@ -1886,6 +1924,33 @@ describe('his own edits to a deck', () => {
     const moved = canvasStoreOf(db).open('t1', { kind: 'slides', source: fileSource(to), title: 'Renamed' })
     expect((await call('work.slides.step', { itemId: moved.id, dir: 'undo' })).hand).toEqual({ undo: false, redo: true })
     expect(readFake(to)).toEqual(FAKE_DECK)
+  })
+
+  it('on a file others can open each tab walks its own edits: Undo is offered only where its pack is kept', async () => {
+    const team = join(dir, 'Esports Staff')
+    mkdirSync(team)
+    const shared = join(team, 'Show.pptx')
+    writeFileSync(shared, fakeBytes(FAKE_DECK))
+    sharedPaths.add(team)
+    try {
+      sessions.set('t2', { id: 't2', provider: 'claude', workspaceId: 'w1', scope: 'work' } as SessionMeta)
+      const [a, b] = [openDeck(fileSource(shared), 'A'), canvasStoreOf(db).open('t2', { kind: 'slides', source: fileSource(shared), title: 'B' })]
+      await call('work.slides.open', { itemId: b.id })
+      const edit = (item: { id: string }, title: string) => call('work.slides.edit', { itemId: item.id, ops: [{ op: 'text', slide: 256, shape: 2, paragraphs: [title] }] })
+      expect((await edit(a, 'A1')).hand).toEqual({ undo: true, redo: false })
+      // B is told the deck with its own line, which has nothing in it.
+      const told = pushes.flatMap((p) => (p.push === 'work.slides' && p.view.itemId === b.id ? [p.view] : [])).at(-1)!
+      expect(told.hand).toEqual({ undo: false, redo: false })
+      expect((await call('work.slides.open', { itemId: b.id })).hand).toEqual({ undo: false, redo: false })
+      await expect(call('work.slides.step', { itemId: b.id, dir: 'undo' })).rejects.toThrow('nothing to undo')
+      // B's own edit is B's to take back, and ends A's line: the file is no longer what A's edit left.
+      await edit(b, 'B1')
+      expect((await call('work.slides.open', { itemId: a.id })).hand).toEqual({ undo: false, redo: false })
+      await call('work.slides.step', { itemId: b.id, dir: 'undo' })
+      expect(readFake(shared).slides[0].title).toBe('A1')
+    } finally {
+      sharedPaths.clear()
+    }
   })
 
   it('on a file others can open his edit still writes at once, on this host alone, and its copies go with the tab', async () => {

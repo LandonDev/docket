@@ -700,6 +700,40 @@ describe.skipIf(!DATA)('the deck tool on python-pptx', () => {
       expect(both.slides.find((x) => x.id === 9000)!.shapes.find((x) => x.kind === 'chart')!.chart).toEqual({ categories: ['x'], series: [{ name: 's', values: [9] }] })
     })
 
+    it("duplicate: the copy's notes are the slide's own page, its looks and its pictures, and the slide's page stays", async () => {
+      const pptx = new PptxGenJS()
+      const slide = pptx.addSlide()
+      slide.addText('Title', { x: 1, y: 1, w: 4, h: 1 })
+      slide.addImage({ data: 'image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', x: 1, y: 2, w: 1, h: 1 })
+      slide.addNotes('Say this')
+      const zip = await JSZip.loadAsync((await pptx.write({ outputType: 'nodebuffer' })) as Buffer)
+      const media = Object.keys(zip.files).find((n) => /^ppt\/media\/.+\.png$/.test(n))!
+      // His notes page: bold words and a picture, as PowerPoint keeps them.
+      const notes = 'ppt/notesSlides/notesSlide1.xml'
+      const pic = `<p:pic><p:nvPicPr><p:cNvPr id="9" name="Sketch"/><p:cNvPicPr/><p:nvPr/></p:nvPicPr><p:blipFill><a:blip r:embed="rIdSketch"/><a:stretch><a:fillRect/></a:stretch></p:blipFill><p:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="914400" cy="914400"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></p:spPr></p:pic>`
+      zip.file(notes, (await zip.file(notes)!.async('string')).replace('<a:rPr lang="en-US" dirty="0"/><a:t>Say this', '<a:rPr lang="en-US" b="1" dirty="0"/><a:t>Say this').replace('</p:spTree>', `${pic}</p:spTree>`))
+      const rels = 'ppt/notesSlides/_rels/notesSlide1.xml.rels'
+      zip.file(rels, (await zip.file(rels)!.async('string')).replace('</Relationships>', `<Relationship Id="rIdSketch" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="../${media.slice('ppt/'.length)}"/></Relationships>`))
+      const input = file(await zip.generateAsync({ type: 'nodebuffer' }))
+      const [first] = (await inspect(input)).slides
+      const { output } = await apply(input, [{ op: 'duplicate', slide: first.id, id: 9000 }], true)
+      const out = await JSZip.loadAsync(readFileSync(output))
+      const notesOf = async (id: number): Promise<{ xml: string; rels: string }> => {
+        const part = await slidePart(output, id)
+        const own = await out.file(part.replace('slides/', 'slides/_rels/') + '.rels')!.async('string')
+        const target = /Target="\.\.\/notesSlides\/([^"]+)"/.exec(own)![1]
+        return { xml: await out.file(`ppt/notesSlides/${target}`)!.async('string'), rels: (await out.file(`ppt/notesSlides/_rels/${target}.rels`)?.async('string')) ?? '' }
+      }
+      const [was, copy] = [await notesOf(first.id), await notesOf(9000)]
+      expect(copy.xml).toContain('b="1"')
+      const embed = /<a:blip r:embed="([^"]+)"/.exec(copy.xml)![1]
+      expect(copy.rels.split('<Relationship ').find((r) => r.includes(`Id="${embed}"`))).toContain(`Target="../${media.slice('ppt/'.length)}"`)
+      // The copy's page belongs to the copy; the slide's own page is as it was.
+      expect(copy.rels).toContain(`Target="../slides/${(await slidePart(output, 9000)).split('/').pop()}"`)
+      expect([was.xml.includes('b="1"'), was.xml.includes('r:embed="rIdSketch"')]).toEqual([true, true])
+      expect((await inspect(output)).slides.find((s) => s.id === 9000)!.notes).toBe('Say this')
+    })
+
     it('section and theme change the presentation and the theme alone', async () => {
       const input = file(readFileSync(FEATURE))
       const before = await inspect(input)

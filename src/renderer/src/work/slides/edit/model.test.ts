@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { DeckShape } from "@shared/contract-work-slides";
-import { allOf, applyLook, applyPara, deleteRange, endOf, insertText, modelOf, modelText, normalize, pasteText, rebase, runsOp, sameWords, showing, showingAll, splitParagraph, typable, unchanged, wordAt, type Sel, wireLook, formatOp } from "./model";
+import { allOf, applyLook, applyPara, deleteRange, endOf, insertText, modelOf, modelText, normalize, pasteText, rebase, renumber, runsOp, sameWords, showing, showingAll, splitParagraph, typable, unchanged, wordAt, type Sel, wireLook, formatOp } from "./model";
 
 const FALLBACK = { font: "Calibri", size: 18, color: "000000" };
 
@@ -204,3 +204,36 @@ describe("the typing box's model", () => {
 });
 
 const paraWords = (p: { runs: Array<{ text: string }> }): string => p.runs.map((r) => r.text).join("");
+
+describe("a box's words once the host wrote them", () => {
+  it("moves every run and paragraph onto where the edit wrote it: a run one file run a piece, each line break one", () => {
+    const words = modelOf(shape(), FALLBACK);
+    // Return after "Who ", then a line break typed into the second paragraph, and half of "Students" made italic.
+    const split = splitParagraph(words, at(0, 4));
+    const broke = insertText(split.model, at(2, 3), "\n").model;
+    const sent = applyLook(broke, at(2, 5, 2, 9), { italic: true }).model;
+    expect(sent.map((p) => [p.from, p.runs.map((r) => [r.text, r.from])])).toEqual([
+      [0, [["Who ", [0, 0]]]],
+      [0, [["comes", [0, 1]], ["\n", [0, 2]]]],
+      [1, [["Stu\nd", [1, 0]], ["ents", [1, 0]]]],
+    ]);
+    const moved = renumber(sent)(sent);
+    expect(moved.map((p) => [p.from, p.runs.map((r) => [r.text, r.from])])).toEqual([
+      [0, [["Who ", [0, 0]]]],
+      [0, [["comes", [1, 0]], ["\n", [1, 1]]]],
+      // "Stu", a break and "d" are three runs of the file: "ents" is its fourth.
+      [2, [["Stu\nd", [2, 0]], ["ents", [2, 3]]]],
+    ]);
+    // What the edit sends next names those, and nothing changed reads as nothing changed.
+    expect(unchanged(moved, renumber(sent)(sent))).toBe(true);
+    expect(runsOp(moved, 3, 2).paragraphs[2]).toEqual({ from: 2, runs: [{ text: "Stu\nd", from: [2, 0] }, { text: "ents", from: [2, 3], italic: true }] });
+  });
+
+  it("lets go of a run the edit did not write", () => {
+    const words = modelOf(shape(), FALLBACK);
+    const sent = deleteRange(words, at(0, 0, 0, 4)).model;
+    const before = renumber(sent)(words);
+    // "Who " was taken out before the send: an undo that brings it back has no run of the file to name.
+    expect(before[0].runs.map((r) => [r.text, r.from])).toEqual([["Who ", undefined], ["comes", [0, 0]], ["\n", [0, 1]]]);
+  });
+});

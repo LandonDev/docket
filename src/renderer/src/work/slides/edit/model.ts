@@ -341,18 +341,64 @@ export function showing(model: Model, sel: Sel, pending: RunLook = {}): Showing 
 /** The look of every run in it: what the row shows for a shape picked whole. */
 export const showingAll = (model: Model): Showing => showing(model, allOf(model));
 
-/** One `runs` edit: each paragraph and run with the one it came from, and only what he set. */
-export function runsOp(model: Model, slide: number, shape: number): Extract<SlideOp, { op: "runs" }> {
+/** A shape's words, a paragraph each: what a box's edit says it was made on (`runsOp`'s `was`). */
+export const wordsOf = (shape: DeckShape): string[] => (shape.paragraphs ?? []).map((p) => p.runs.map((r) => r.text).join(""));
+
+/**
+ * One `runs` edit: each paragraph and run with the one it came from, and only what he set. `was`: the shape's words
+ * its `from`s name, so the host writes nothing over words that changed since (saved in PowerPoint, another window).
+ */
+export function runsOp(model: Model, slide: number, shape: number, was?: readonly string[]): Extract<SlideOp, { op: "runs" }> {
   return {
     op: "runs",
     slide,
     shape,
+    ...(was ? { was: [...was] } : {}),
     paragraphs: model.map((para) => ({
       ...(para.from !== undefined ? { from: para.from } : {}),
       ...Object.fromEntries(PARA_KEYS.filter((k) => para.set[k] !== undefined).map((k) => [k, para.set[k]])),
       runs: para.runs.map((run) => ({ text: run.text, ...(run.from ? { from: run.from } : {}), ...wireLook(run.set) })),
     })),
   };
+}
+
+/**
+ * Where a box's paragraphs and runs lie in the file once the host wrote `sent` (deckScript.ts `op_runs`): paragraph
+ * i is the edit's paragraph i, and a run is as many of the file's runs as it has pieces between line breaks, each
+ * break one of them. Answers what moves every `from` a model of the box holds onto them, so the next send names the
+ * runs its words now lie in: a run by the run it came from and what he set on it (two runs alike in both are written
+ * alike), else by the run alone; a paragraph likewise. A `from` the edit did not write goes.
+ */
+export function renumber(sent: Model): (model: Model) => Model {
+  const runs = new Map<string, [number, number]>();
+  const paras = new Map<string, number>();
+  const runKey = (from: unknown, set: RunLook | null): string => JSON.stringify([from, set && wireLook(set)]);
+  const paraKey = (from: unknown, set: ParaLook | null): string => JSON.stringify([from, set && PARA_KEYS.map((k) => set[k] ?? null)]);
+  const first = <V>(map: Map<string, V>, key: string, value: V): void => void (map.has(key) || map.set(key, value));
+  sent.forEach((para, p) => {
+    if (para.from !== undefined) for (const set of [para.set, null]) first(paras, paraKey(para.from, set), p);
+    let at = 0;
+    for (const run of para.runs) {
+      if (run.from) for (const set of [run.set, null]) first(runs, runKey(run.from, set), [p, at] as [number, number]);
+      const pieces = run.text.split(/[\n\v]/);
+      at += pieces.length - 1 + pieces.filter(Boolean).length;
+    }
+  });
+  const run = (from: [number, number] | undefined, set: RunLook): [number, number] | undefined => (from ? (runs.get(runKey(from, set)) ?? runs.get(runKey(from, null))) : undefined);
+  return (model) =>
+    model.map(({ from, carry, ...para }) => {
+      const to = from === undefined ? undefined : (paras.get(paraKey(from, para.set)) ?? paras.get(paraKey(from, null)));
+      const carried = carry && run(carry.from, carry.set);
+      return {
+        ...para,
+        ...(to !== undefined ? { from: to } : {}),
+        ...(carry ? { carry: { set: carry.set, ...(carried ? { from: carried } : {}) } } : {}),
+        runs: para.runs.map(({ from: was, ...r }) => {
+          const now = run(was, r.set);
+          return { ...r, ...(now ? { from: now } : {}) };
+        }),
+      };
+    });
 }
 
 /** Whether the box holds what the shape held: then nothing is sent. */

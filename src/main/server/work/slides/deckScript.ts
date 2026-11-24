@@ -1738,6 +1738,34 @@ def rename_rids(root, ids):
                 e.set(k, ids[v])
 
 
+def copy_notes(src, dst):
+    """A notes page copied whole onto a copy's new one: its words as they look, its pictures and every part it holds;
+    the copy's own notes page keeps its link to the copy and to the notes master."""
+    own = dict((rel.reltype, rid) for rid, rel in dst.rels.items())
+    ids = {}
+    for rid, rel in src.rels.items():
+        if rel.reltype.endswith('/slide') or rel.reltype.endswith('/notesMaster'):
+            if rel.reltype in own:
+                ids[rid] = own[rel.reltype]
+        elif rel.is_external:
+            ids[rid] = dst.relate_to(rel.target_ref, rel.reltype, is_external=True)
+        elif rel.reltype.endswith(OWN_PARTS):
+            ids[rid] = dst.relate_to(clone_part(rel.target_part), rel.reltype)
+        else:
+            ids[rid] = dst.relate_to(rel.target_part, rel.reltype)
+    body = copy.deepcopy(src._element)
+    rename_rids(body, ids)
+    el = dst._element
+    for child in list(el):
+        el.remove(child)
+    for k in list(el.attrib):
+        del el.attrib[k]
+    for k, v in body.attrib.items():
+        el.set(k, v)
+    for child in list(body):
+        el.append(child)
+
+
 def op_duplicate(prs, op):
     """A copy of a slide, right after it: its shapes, pictures, charts, effects and notes."""
     slide, _ = slide_by_id(prs, op['slide'])
@@ -1780,10 +1808,8 @@ def op_duplicate(prs, op):
         el.set(k, v)
     for child in list(body):
         el.append(child)
-    if slide.has_notes_slide and slide.notes_slide.notes_text_frame is not None:
-        said = text_of(slide.notes_slide.notes_text_frame)
-        if said and new.notes_slide.notes_text_frame is not None:
-            set_paragraphs(new.notes_slide.notes_text_frame._txBody, said.split('\n'))
+    if slide.has_notes_slide:
+        copy_notes(slide.notes_slide.part, new.notes_slide.part)
     place_after(prs, nel, op['slide'])
     section_place(prs, nel.id, op['slide'])
 

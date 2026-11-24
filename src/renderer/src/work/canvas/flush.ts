@@ -17,13 +17,20 @@ export function registerFlush(itemId: string, flush: () => Promise<unknown>): ()
 /** The longest a close waits: past it the tab closes, and the host keeps the copy until the edit has landed. */
 export const FLUSH_WAIT_MS = 8000;
 
-/** Sends what the item holds, if its kind holds anything; a send that fails is the kind's to say, never a reason to keep the tab. */
+/**
+ * Sends what the item holds, if its kind holds anything. A kind says a failed send itself; one that refuses (a deck's
+ * words the host would not write) refuses the close too, so the tab stays open with what it holds. Past `waitMs` the
+ * tab closes, and the send still on its way lands.
+ */
 export async function flushItem(itemId: string | null | undefined, waitMs = FLUSH_WAIT_MS): Promise<void> {
   const flush = itemId ? flushers.get(itemId) : undefined;
   if (!flush) return;
   let timer: ReturnType<typeof setTimeout> | undefined;
-  await Promise.race([flush().catch(() => undefined), new Promise<void>((resolve) => (timer = setTimeout(resolve, waitMs)))]);
-  clearTimeout(timer);
+  try {
+    await Promise.race([flush(), new Promise<void>((resolve) => (timer = setTimeout(resolve, waitMs)))]);
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 /** The same send, answered: true once the kind sent what it held (or held nothing), false when its send failed or ran past `waitMs`. A switch that would replace the item stops on false. */

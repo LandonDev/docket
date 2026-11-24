@@ -5,10 +5,10 @@ import type { CanvasItem } from '@shared/work'
 import type { DeckVersion, SlideOp } from '@shared/contract-work-slides'
 import { copyWhole } from '../pdf/file'
 import { sweepAttached, withAttached } from './attach'
-import { joinStep, splitStep } from './deck'
+import { joinStep, splitStep, type DeckInfo } from './deck'
 import { HAND_STEPS, hands, lineOf } from './handLine'
 import { SlidesStore } from './store'
-import { deckDir, deckKey, deckPath, hashFile, isFirstVersion, keepHistory, keepOutline, replaceKeeping, scratch, serial, sharedJob, versionAt, type Ctx } from './view'
+import { CHANGED_WHILE, deckDir, deckKey, deckPath, handKey, hashFile, isFirstVersion, keepHistory, keepOutline, outlineAt, replaceKeeping, scratch, serial, sharedJob, versionAt, type Ctx } from './view'
 
 /**
  * His own edits to a deck (docs/agents/work-slides.md "Edits by hand"). An
@@ -30,6 +30,12 @@ const drop = (dir: string, names: ReadonlyArray<string | null>): void => {
 }
 const packName = (): string => `${Date.now().toString().padStart(15, '0')}-${randomUUID().slice(0, 8)}.pack`
 
+/** Whether the shape a box's edit names still holds the words its `from`s were read from (`was`). */
+function sameWords(info: DeckInfo, op: Extract<SlideOp, { op: 'runs' }>): boolean {
+  const shape = info.slides.find((s) => s.id === op.slide)?.shapes.find((s) => s.id === op.shape)
+  return !!shape && JSON.stringify((shape.paragraphs ?? []).map((p) => p.runs.map((r) => r.text).join(''))) === JSON.stringify(op.was)
+}
+
 /**
  * Writes his edits into the file, whole or not at all, and keeps the pack that takes them back. The file is
  * replaced only while it is still what was read; a copy from before is kept once a minute (`keepHistory`).
@@ -43,7 +49,14 @@ export async function handEdit(ctx: Ctx, item: CanvasItem, ops: SlideOp[], signa
     try {
       copyWhole(path, base)
       const was = hashFile(base)
-      const hand = lineOf(deckKey(item), dir, was)
+      // A box's words go only over the words it was opened on: saved over since (in PowerPoint, from another window),
+      // the edit is refused before it is made, and his window keeps the words for Reload.
+      const boxes = ops.filter((op): op is Extract<SlideOp, { op: 'runs' }> => op.op === 'runs' && op.was !== undefined && op.row === undefined)
+      if (boxes.length) {
+        const info = await outlineAt(ctx, item, base, was, signal)
+        if (!boxes.every((op) => sameWords(info, op))) throw new Error(CHANGED_WHILE)
+      }
+      const hand = lineOf(handKey(ctx, item), dir, was)
       // The files his edit brings (a picture, a video) ride with the deck as one input, and go once they are in the file.
       const attach = await deckDir(ctx, item, 'attach')
       const job = withAttached(attach, await scratch(ctx, item, 'plus'), base, ops)
@@ -87,7 +100,7 @@ export async function handStep(ctx: Ctx, item: CanvasItem, dir: 'undo' | 'redo',
     try {
       copyWhole(path, base)
       const was = hashFile(base)
-      const hand = hands.get(deckKey(item))
+      const hand = hands.get(handKey(ctx, item))
       const step = hand && hand.hash === was ? (dir === 'undo' ? hand.steps[hand.at - 1] : hand.steps[hand.at]) : undefined
       const pack = dir === 'undo' ? step?.undo : step?.redo
       if (!hand || !step || !pack || !existsSync(join(folder, pack))) throw new Error(dir === 'undo' ? 'There is nothing to undo: the deck has changed since your last edit.' : 'There is nothing to redo.')
@@ -142,7 +155,8 @@ export async function restoreVersion(ctx: Ctx, item: CanvasItem, version: string
       copyWhole(path, base)
       const was = hashFile(base)
       if (hashFile(join(dir, version)) === was) return
-      await keepHistory(ctx, item, base)
+      // The deck as it is now joins the list; the copy he picked is not let go to make room, even the oldest of thirty.
+      await keepHistory(ctx, item, base, false, version)
       replaceKeeping(path, join(dir, version), was)
     } finally {
       rmSync(base, { force: true })

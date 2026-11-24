@@ -149,3 +149,94 @@ describe("words in an open box reach the file while he types", () => {
     }
   });
 });
+
+describe("each send of a box names the runs its words lie in now", () => {
+  const AGENDA = textShape(2, [
+    { level: 0, align: "left", list: "none", runs: [{ text: "Agenda", size: 28 }] },
+    { level: 1, align: "left", list: "bullet", runs: [{ text: "Budget", size: 20 }] },
+  ]);
+  function deck(shape = AGENDA) {
+    const view = deckView({ slides: [slide(3, { shapes: [shape] })], hand: { undo: false, redo: false } });
+    const host = fakeDeckHost(view);
+    const store = new DeckStore();
+    store.view(view);
+    return { host, store, session: new HandSession(host, store), slide: view.slides[0], shape };
+  }
+  /** He types at a place in the words. */
+  function typeAt(session: HandSession, at: [number, number], text: string): void {
+    const { model, at: end } = insertText(session.get().box!.model, { from: at, to: at }, text);
+    session.typed(model, { from: end, to: end });
+  }
+  const lastRuns = (host: ReturnType<typeof deck>["host"]) => {
+    const ops = host.calls.filter(([name]) => name === "edit").at(-1)![1] as Array<{ op: string; paragraphs: Array<{ from?: number; runs: Array<{ text: string; from?: [number, number]; bold?: boolean }> }>; was?: string[] }>;
+    return ops[0];
+  };
+
+  it("a paragraph made with Return and kept moves the ones after it: the next send names them where they are now", async () => {
+    vi.useFakeTimers();
+    try {
+      const { host, session, slide: s, shape } = deck();
+      session.open(s, shape, "end");
+      session.select({ from: [0, 6], to: [0, 6] });
+      session.enter();
+      typeAt(session, [1, 0], "Hiring");
+      await vi.advanceTimersByTimeAsync(TYPING_SAVE_MS);
+      expect(host.view.slides[0].shapes[0].paragraphs!.map((p) => p.runs.map((r) => r.text).join(""))).toEqual(["Agenda", "Hiring", "Budget"]);
+      typeAt(session, [2, 6], " review");
+      await session.commit();
+      const op = lastRuns(host);
+      // "Budget" is the file's third paragraph now: its level, bullet and look come from there, never from "Hiring".
+      expect(op.paragraphs[2]).toMatchObject({ from: 2, runs: [{ text: "Budget review", from: [2, 0] }] });
+      expect(op.was).toEqual(["Agenda", "Hiring", "Budget"]);
+      expect(host.view.slides[0].shapes[0].paragraphs![2]).toMatchObject({ level: 1, list: "bullet", runs: [{ text: "Budget review", size: 20 }] });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("half a run made bold and kept: words typed in the plain half stay plain", async () => {
+    vi.useFakeTimers();
+    try {
+      const plain = textShape(2, [{ level: 0, align: "left", list: "none", runs: [{ text: "Hello world", size: 24 }] }]);
+      const { host, session, slide: s } = deck(plain);
+      session.open(s, plain, "end");
+      session.select({ from: [0, 0], to: [0, 5] });
+      session.look({ bold: true });
+      await vi.advanceTimersByTimeAsync(TYPING_SAVE_MS);
+      expect(host.view.slides[0].shapes[0].paragraphs![0].runs.map((r) => [r.text, !!r.bold])).toEqual([["Hello", true], [" world", false]]);
+      typeAt(session, [0, 11], "!");
+      // Undo after a send is a change of its own, sent after its pause too.
+      session.undo();
+      await vi.advanceTimersByTimeAsync(TYPING_SAVE_MS);
+      expect(host.calls.filter(([name]) => name === "edit")).toHaveLength(1);
+      session.redo();
+      await vi.advanceTimersByTimeAsync(TYPING_SAVE_MS);
+      const op = lastRuns(host);
+      expect(op.paragraphs[0].runs).toEqual([{ text: "Hello", from: [0, 0], bold: true }, { text: " world!", from: [0, 1] }]);
+      expect(host.view.slides[0].shapes[0].paragraphs![0].runs.map((r) => [r.text, !!r.bold])).toEqual([["Hello", true], [" world!", false]]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("a close waits for the send on its way, and is refused with the host's word when the words did not go in", async () => {
+    const { host, session, slide: s, shape } = deck();
+    session.open(s, shape, "end");
+    typeAt(session, [1, 6], "!");
+    let release!: () => void;
+    host.hold = new Promise<void>((done) => (release = done));
+    host.refuse = "The disk is full";
+    const leaving = session.commit();
+    const closing = session.flush();
+    release();
+    await leaving;
+    await expect(closing).rejects.toThrow("The disk is full");
+    expect(session.get().box).toMatchObject({ phase: "typing" });
+    expect(session.get().box!.model[1].runs.map((r) => r.text).join("")).toBe("Budget!");
+    // Once the host takes them, the close goes ahead.
+    host.hold = null;
+    host.refuse = null;
+    await expect(session.flush()).resolves.toBeUndefined();
+    expect(session.get().box?.phase ?? null).not.toBe("typing");
+  });
+});

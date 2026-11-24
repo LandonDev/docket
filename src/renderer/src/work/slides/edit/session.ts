@@ -11,11 +11,13 @@ import {
   modelOf,
   pasteText,
   rebase,
+  renumber,
   runsOp,
   sameWords,
   splitParagraph,
   typable,
   unchanged,
+  wordsOf,
   type Model,
   type ParaLook,
   type RunLook,
@@ -134,6 +136,8 @@ export class HandSession {
   private future: Snapshot[] = [];
   private typedAt = 0;
   private keepTimer: ReturnType<typeof setTimeout> | null = null;
+  /** The box's words on their way to the host (a keep or a commit): one at a time, each sent over what the last wrote. */
+  private sending: Promise<void> | null = null;
 
   constructor(
     private host: DeckHost,
@@ -292,6 +296,7 @@ export class HandSession {
     this.future.push({ model: box.model, sel: box.sel, pending: box.pending });
     this.typedAt = 0;
     this.setBox({ model: back.model, drawn: back.model, sel: back.sel, pending: back.pending, paint: box.paint + 1 });
+    this.keepLater();
   }
 
   redo(): void {
@@ -301,6 +306,7 @@ export class HandSession {
     this.past.push({ model: box.model, sel: box.sel, pending: box.pending });
     this.typedAt = 0;
     this.setBox({ model: ahead.model, drawn: ahead.model, sel: ahead.sel, pending: ahead.pending, paint: box.paint + 1 });
+    this.keepLater();
   }
 
   /** The keyboard goes back into the box, his selection with it (Escape in the row). */
@@ -324,6 +330,23 @@ export class HandSession {
     }, TYPING_SAVE_MS);
   }
 
+  /** Runs one send of the box's words, after any still on its way. */
+  private async sendBox(work: () => Promise<void>): Promise<void> {
+    await this.settled();
+    const run = work();
+    this.sending = run;
+    try {
+      await run;
+    } finally {
+      if (this.sending === run) this.sending = null;
+    }
+  }
+
+  /** Settles once no words of the box are on their way. */
+  private async settled(): Promise<void> {
+    while (this.sending) await this.sending.catch(() => undefined);
+  }
+
   /**
    * Sends the box's words as they stand, the box left open with his caret in it: what is typed in a box reaches the
    * file within seconds, as everything else he does to a deck does, and never waits on the box being left. Escape after
@@ -332,27 +355,34 @@ export class HandSession {
   async keep(): Promise<void> {
     if (this.keepTimer) clearTimeout(this.keepTimer);
     this.keepTimer = null;
-    const box = this.state.box;
-    if (!box || box.phase !== "typing" || box.conflict || unchanged(box.model, box.initial)) return;
-    if (!sameWords(this.shapeNow(box), box.shape)) return;
-    const sent = box.model;
-    this.set({ busy: this.state.busy + 1, failure: null });
-    try {
-      const next = await this.host.edit([runsOp(sent, box.slideId, box.shape.id)]);
-      this.store.view(next);
-      const now = this.state.box;
-      // Still this box: what it opened on is now the words just written, so a later commit sends only over them.
-      if (now && now.id === box.id) {
-        const shape = this.shapeNow(now, next);
-        this.setBox({ initial: sent, ...(shape ? { shape } : {}) });
+    await this.sendBox(async () => {
+      const box = this.state.box;
+      if (!box || box.phase !== "typing" || box.conflict || unchanged(box.model, box.initial)) return;
+      if (!sameWords(this.shapeNow(box), box.shape)) return;
+      const sent = box.model;
+      this.set({ busy: this.state.busy + 1, failure: null });
+      try {
+        const next = await this.host.edit([runsOp(sent, box.slideId, box.shape.id, wordsOf(box.shape))]);
+        this.store.view(next);
+        const now = this.state.box;
+        // Still this box: the file's paragraphs and runs are now the ones just written, so every `from` the box, its
+        // undo and its redo hold moves onto them, and what it opened on is the words just written.
+        if (now && now.id === box.id) {
+          const shape = this.shapeNow(now, next);
+          const move = renumber(sent);
+          const moved = (s: Snapshot): Snapshot => ({ ...s, model: move(s.model) });
+          this.past = this.past.map(moved);
+          this.future = this.future.map(moved);
+          this.setBox({ initial: move(sent), model: move(now.model), drawn: move(now.drawn), ...(shape ? { shape } : {}) });
+        }
+        this.set({ busy: this.state.busy - 1, savedAt: Date.now() });
+      } catch (error) {
+        const said = message(error, "The host did not answer");
+        const conflict = MOVED.test(said);
+        this.set({ busy: this.state.busy - 1, failure: { conflict, message: conflict ? CONFLICT_WORD : said } });
+        if (conflict) this.setBox({ conflict: true });
       }
-      this.set({ busy: this.state.busy - 1, savedAt: Date.now() });
-    } catch (error) {
-      const said = message(error, "The host did not answer");
-      const conflict = MOVED.test(said);
-      this.set({ busy: this.state.busy - 1, failure: { conflict, message: conflict ? CONFLICT_WORD : said } });
-      if (conflict) this.setBox({ conflict: true });
-    }
+    });
   }
 
   /** Escape: the words go back as they were when last written; nothing is sent. */
@@ -378,9 +408,20 @@ export class HandSession {
   async commit(): Promise<void> {
     if (this.keepTimer) clearTimeout(this.keepTimer);
     this.keepTimer = null;
+    const first = this.state.box;
+    // A commit already on its way: this one waits for it.
+    if (first?.phase === "saving") return this.settled();
+    if (!first || first.phase !== "typing" || first.conflict) return;
+    // The box takes no more words and no other box opens while a keep on its way lands: this sends over what it wrote.
+    this.setBox({ phase: "saving" });
+    await this.sendBox(() => this.write(first.id));
+  }
+
+  /** The commit's own send, once nothing else of the box is on its way. */
+  private async write(id: number): Promise<void> {
     const box = this.state.box;
-    if (!box || box.phase !== "typing") return;
-    if (box.conflict) return;
+    if (!box || box.id !== id) return;
+    if (box.conflict) return this.setBox({ phase: "typing" });
     if (unchanged(box.model, box.initial)) {
       this.past = [];
       this.future = [];
@@ -388,14 +429,13 @@ export class HandSession {
       return;
     }
     if (!sameWords(this.shapeNow(box), box.shape)) {
-      this.setBox({ conflict: true });
+      this.setBox({ phase: "typing", conflict: true });
       this.set({ failure: { conflict: true, message: CONFLICT_WORD } });
       return;
     }
-    this.setBox({ phase: "saving" });
     this.set({ busy: this.state.busy + 1, failure: null });
     try {
-      const next = await this.host.edit([runsOp(box.model, box.slideId, box.shape.id)]);
+      const next = await this.host.edit([runsOp(box.model, box.slideId, box.shape.id, wordsOf(box.shape))]);
       this.store.view(next);
       const slide = next.slides.find((s) => s.id === box.slideId && s.tint !== "del");
       const rev = slide && !next.renderError ? (next.renders[slide.from]?.rev ?? null) : null;
@@ -410,6 +450,17 @@ export class HandSession {
       this.set({ busy: this.state.busy - 1, failure: { conflict, message: conflict ? CONFLICT_WORD : said } });
       this.setBox({ phase: "typing", conflict });
     }
+  }
+
+  /**
+   * For a tab's close (canvas/flush.ts): the box's words sent, after any send on its way. Refused with the host's word
+   * when they are still not in the file, so the tab stays open with them and the line's Retry or Reload.
+   */
+  async flush(): Promise<void> {
+    await this.commit();
+    await this.settled();
+    const { box, failure } = this.state;
+    if (box?.phase === "typing" && !unchanged(box.model, box.initial)) throw new Error(failure?.message ?? "Your words in the box are not in the file yet");
   }
 
   /**

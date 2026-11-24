@@ -197,9 +197,10 @@ export function SlidesBody({
   useOpenShow(env, item.id, canPresent(view) && !error, () => startPresenting(host, store, { from: "start", mode: "full" }, engine));
   const session = handOf(item.id, host, store);
   const hand = useSyncExternalStore(session.subscribe, session.get, session.get);
-  // A box open when the tab closes, or the item leaves, commits; a tab's close waits for it (canvas/flush.ts).
+  // A box open when the tab closes, or the item leaves, commits; a tab's close waits for it, and stays open when the
+  // words did not go in (canvas/flush.ts).
   useEffect(() => {
-    const off = registerFlush(item.id, () => session.commit());
+    const off = registerFlush(item.id, () => session.flush());
     return () => {
       off();
       void session.commit();

@@ -94,6 +94,8 @@ export const SlideOpSchema = z.discriminatedUnion('op', [
     slide,
     shape,
     ...cellAt,
+    /** his typing box's: the shape's words, a paragraph each, that its `from`s name; words that changed since are not written over */
+    was: z.array(z.string().max(100_000)).max(2000).optional(),
     paragraphs: z
       .array(z.object({ from: z.number().int().min(0).optional(), ...paraLook, runs: z.array(z.object({ text, from: z.tuple([z.number().int().min(0), z.number().int().min(0)]).optional(), ...runLook })).max(400) }))
       .min(1)
