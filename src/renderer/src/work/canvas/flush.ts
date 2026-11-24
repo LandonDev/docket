@@ -18,16 +18,25 @@ export function registerFlush(itemId: string, flush: () => Promise<unknown>): ()
 export const FLUSH_WAIT_MS = 8000;
 
 /**
- * Sends what the item holds, if its kind holds anything. A kind says a failed send itself; one that refuses (a deck's
- * words the host would not write) refuses the close too, so the tab stays open with what it holds. Past `waitMs` the
- * tab closes, and the send still on its way lands.
+ * A kind's refusal of its tab's close: what the item holds did not go in and would be lost with the tab (a deck's
+ * words the host would not write). Any other failed send is the kind's to say, never a reason to keep the tab.
+ */
+export class CloseRefused extends Error {}
+
+/**
+ * Sends what the item holds, if its kind holds anything. A send that fails is the kind's to say; one the kind refuses
+ * the close for (`CloseRefused`) is thrown on, so the tab stays open with what it holds. Past `waitMs` the tab closes,
+ * and the send still on its way lands.
  */
 export async function flushItem(itemId: string | null | undefined, waitMs = FLUSH_WAIT_MS): Promise<void> {
   const flush = itemId ? flushers.get(itemId) : undefined;
   if (!flush) return;
   let timer: ReturnType<typeof setTimeout> | undefined;
+  const sent = flush().catch((err: unknown) => {
+    if (err instanceof CloseRefused) throw err;
+  });
   try {
-    await Promise.race([flush(), new Promise<void>((resolve) => (timer = setTimeout(resolve, waitMs)))]);
+    await Promise.race([sent, new Promise<void>((resolve) => (timer = setTimeout(resolve, waitMs)))]);
   } finally {
     clearTimeout(timer);
   }

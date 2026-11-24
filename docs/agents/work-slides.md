@@ -442,8 +442,10 @@ the file.
   (`registerFlush`, canvas/flush.ts, `HandSession.flush`), so the edit
   reaches the host while the item still stands; a send already on its way
   is waited for, not passed over. When the host refuses the words the
-  close is refused too: the tab stays open with the box, its words and the
-  state line's Retry or Reload, and Files says the tab did not close. Past
+  close is refused too (`CloseRefused`, the one failure `flushItem` passes
+  on; any other kind's failed send still lets its tab go): the tab stays
+  open with the box, its words and the state line's Retry or Reload, and
+  Files says the tab did not close. Past
   8 s the tab closes and the send on its way still lands. A pause in his
   typing sends them sooner, the box left open (`keep`, below).
 - **A box's edit names the words it was opened on** (`runs`' `was`: the

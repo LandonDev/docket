@@ -1,4 +1,5 @@
 import type { DeckShape, DeckSlide, DeckView, SlideOp } from "@shared/contract-work-slides";
+import { CloseRefused } from "../../canvas/flush";
 import { sayError } from "../../canvas/frame";
 import { openDeck, type DeckHost, type DeckStore } from "../deck";
 import type { Quad } from "../geometry";
@@ -460,7 +461,7 @@ export class HandSession {
     await this.commit();
     await this.settled();
     const { box, failure } = this.state;
-    if (box?.phase === "typing" && !unchanged(box.model, box.initial)) throw new Error(failure?.message ?? "Your words in the box are not in the file yet");
+    if (box?.phase === "typing" && !unchanged(box.model, box.initial)) throw new CloseRefused(failure?.message ?? "Your words in the box are not in the file yet");
   }
 
   /**

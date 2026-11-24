@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { flushedItem, flushItem, registerFlush } from "./flush";
+import { CloseRefused, flushedItem, flushItem, registerFlush } from "./flush";
 
 describe("what an item holds is sent before its tab closes", () => {
   it("awaits the kind's own send, once registered, and nothing after it is let go", async () => {
@@ -16,10 +16,13 @@ describe("what an item holds is sent before its tab closes", () => {
     expect(sent).toBe(false);
   });
 
-  it("keeps the tab for a send its kind refuses, and waits no longer than its limit", async () => {
-    const off = registerFlush("item-2", () => Promise.reject(new Error("refused")));
-    await expect(flushItem("item-2")).rejects.toThrow("refused");
+  it("never keeps the tab for a failed send, keeps it for one its kind refuses, and waits no longer than its limit", async () => {
+    const off = registerFlush("item-2", () => Promise.reject(new Error("failed")));
+    await expect(flushItem("item-2")).resolves.toBeUndefined();
     off();
+    const offRefused = registerFlush("item-2", () => Promise.reject(new CloseRefused("refused")));
+    await expect(flushItem("item-2")).rejects.toThrow("refused");
+    offRefused();
     vi.useFakeTimers();
     const offSlow = registerFlush("item-3", () => new Promise(() => undefined));
     const done = flushItem("item-3", 100);
