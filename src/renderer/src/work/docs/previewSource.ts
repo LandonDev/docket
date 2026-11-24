@@ -274,7 +274,7 @@ export const PRINT_UNMARKED =
 export const withoutEditorMarks = (html: string): string => (html.includes("</head>") ? html.replace("</head>", `${PRINT_UNMARKED}</head>`) : html.replace("<body>", `<body>${PRINT_UNMARKED}`));
 
 /** Print or Export as PDF once the pages Preview shows are no longer kept on the host. */
-export const PAGES_GONE = "These pages are no longer kept. Open Preview again to check the current ones.";
+export const PAGES_GONE = "These pages are no longer kept. Close Preview and open it again to check the current ones.";
 
 const cancelled = (): DOMException => new DOMException("The draw was cancelled", "AbortError");
 const unique = (lines: readonly string[]): string[] => [...new Set(lines.filter((line) => line.trim()))];
@@ -447,13 +447,16 @@ export function docPreviewSource(deps: DocPreviewDeps): PreviewSource {
       // changed the text since. With none shown the print is made now. Its render gone (drawn over in other windows),
       // nothing goes out unseen: he opens Preview again and looks at the new pages first.
       if (gone) throw new Error(PAGES_GONE);
-      let made = shown ?? (await render("pdf", new AbortController().signal));
+      // What Preview showed when he pressed decides, whatever is drawn while the bytes are read: those pages go out,
+      // or nothing does.
+      const pressed = shown;
+      let made = pressed ?? (await render("pdf", new AbortController().signal));
       let bytes: Uint8Array<ArrayBuffer>;
       try {
         bytes = await whole(bytesOf(made.env, made.home, made.answer));
       } catch {
-        if (made === shown) {
-          gone = true;
+        if (pressed) {
+          if (shown === pressed) gone = true;
           throw new Error(PAGES_GONE);
         }
         // A print made for this very press, gone between the two calls: once more.

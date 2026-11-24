@@ -128,7 +128,7 @@ function host() {
   const fileBytes = new Uint8Array([80, 75, 3, 4, 9, 9, 9, 9, 9, 9]);
   const renders = new Map<string, Uint8Array>();
   let n = 0;
-  const state = { servedBy: null as string | null, gone: false, warnings: [] as string[], drawable: true, text: "v1", held: 0, office: "ready" as "ready" | "asleep" | "not open" | "none", declined: null as "asleep" | null };
+  const state = { readHold: null as Promise<void> | null, servedBy: null as string | null, gone: false, warnings: [] as string[], drawable: true, text: "v1", held: 0, office: "ready" as "ready" | "asleep" | "not open" | "none", declined: null as "asleep" | null };
   const request = async <T,>(env: string, method: string, params: unknown): Promise<T> => {
     const p = params as Record<string, unknown>;
     calls.push({ env, method, params: p });
@@ -147,6 +147,7 @@ function host() {
       return { rev, size: renders.get(rev)!.length, pages: 3, drawnBy: p.by === "word" ? "word" : p.format === "pdf" ? "tempcode" : "libreoffice", name: `Plan.${String(p.format)}`, warnings: state.warnings, ...(state.held ? { heldSuggestions: state.held } : {}) } as T;
     }
     if (method === "work.formats.previewRead") {
+      if (state.readHold) await state.readHold;
       const got = state.gone ? undefined : renders.get(String(p.rev));
       if (!got) {
         state.gone = false;
@@ -406,6 +407,31 @@ describe("the document's Preview source", () => {
     expect(h.calls.filter((c) => c.method === "work.formats.preview")).toHaveLength(1);
     // Drawn again, he sees the new pages; those are what print.
     await s.draw("print", { signal: signal() });
+    await s.export("print");
+    await flush();
+    expect(new TextDecoder().decode(printed[0]!.bytes)).toContain("%PDF-1.7 v2");
+  });
+
+  it("a draw that starts while the shown pages are read never puts its pages in their place", async () => {
+    const h = host();
+    const { source: s, printed } = source(h);
+    await s.draw("print", { signal: signal() });
+    // He presses Print; the bytes are on their way when the page set-up changes and Preview draws again.
+    let release: () => void = () => undefined;
+    h.state.readHold = new Promise<void>((resolve) => (release = resolve));
+    const press = s.export("print");
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    h.state.text = "v2";
+    const redraw = s.draw("print", { signal: signal() });
+    // The read of the pages he pressed on fails.
+    h.state.gone = true;
+    h.state.readHold = null;
+    release();
+    await expect(press).rejects.toThrow(PAGES_GONE);
+    await redraw;
+    await flush();
+    expect(printed).toEqual([]);
+    // The new draw is what Preview shows now: a press on it prints it.
     await s.export("print");
     await flush();
     expect(new TextDecoder().decode(printed[0]!.bytes)).toContain("%PDF-1.7 v2");
