@@ -65,8 +65,8 @@ describe("menuStateOf", () => {
     expect(menuStateOf(facts({ away: true })).checked).toEqual({ toggle_away: true });
   });
 
-  it("a Work thread in front draws no Terminal row; a code thread keeps both", () => {
-    expect(menuStateOf(facts({ workOn: true, workThread: true })).hidden).toEqual(["new_terminal", "toggle_terminal"]);
+  it("a Work thread in front draws no Terminal row and neither of Go's symbol rows; a code thread keeps them all", () => {
+    expect(menuStateOf(facts({ workOn: true, workThread: true })).hidden).toEqual(["new_terminal", "toggle_terminal", "go_to_symbol", "show_hierarchy"]);
     expect(menuStateOf(facts({ workOn: true, workThread: false })).hidden).toBeUndefined();
   });
 

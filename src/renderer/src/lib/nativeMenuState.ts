@@ -59,8 +59,11 @@ export type MenuFacts = {
   workThread?: boolean;
 };
 
-/** The menu bar's rows that belong to code alone: a Work thread in front draws none of them. */
-export const CODE_ONLY_IDS = ["new_terminal", "toggle_terminal"] as const;
+/**
+ * The menu bar's rows that belong to code alone: a Work thread in front draws none of them. The terminal's two, and
+ * Go's symbol rows, which open the code symbol picker on some project a Work thread does not have.
+ */
+export const CODE_ONLY_IDS = ["new_terminal", "toggle_terminal", "go_to_symbol", "show_hierarchy"] as const;
 
 const FLEET_IDS: Record<BatchAction, string> = {
   pause: "pause_all_threads",

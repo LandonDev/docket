@@ -94,14 +94,7 @@ type Surface = keyof typeof WORK;
  * Code-only controls that DO reach a Work thread today: walls for the build to fix (not here: this guard changes no
  * product code). Each says why it is code's and what it does with a Work thread in front.
  */
-const KNOWN: Partial<Record<Surface, Record<string, string>>> = {
-  nativeMenu: {
-    go_to_symbol:
-      "Go → Go to Symbol… (⌘⇧O) is drawn and enabled with a Work thread in front, and opens the code symbol picker (App.tsx SymbolPicker: the project of the thread's folder, else the project selected in the rail); CODE_ONLY_IDS hides only the terminal rows",
-    show_hierarchy:
-      "Go → Type Hierarchy (⌘T) is drawn and enabled with a Work thread in front; outside a Monaco editor it opens the same symbol picker (App.tsx onShowHierarchy). The Files view takes the key for New Tab only while it has the focus (work/files/chords.ts)",
-  },
-};
+const KNOWN: Partial<Record<Surface, Record<string, string>>> = {};
 
 const WORKSPACE = { work: "w-job", code: "w-code" };
 const ROWS = {

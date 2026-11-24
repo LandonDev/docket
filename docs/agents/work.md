@@ -75,7 +75,9 @@ with its six views, linking a workspace to a sector, and Settings → Work
   title bar has no terminal row or project plan chip; the thread menu no
   Dev server, and Resources… only when there is one; research options no
   Worktree isolation; the move confirm no branch line; the menu bar no
-  Terminal rows (`CODE_ONLY_IDS`, lib/nativeMenuState.ts); the rail asks git
+  Terminal rows and no Go to Symbol… or Type Hierarchy (`CODE_ONLY_IDS`,
+  lib/nativeMenuState.ts; `lib/workControlsGuard.test.ts` holds every code
+  control out of a Work thread); the rail asks git
   for no change counts (`railRowAsksGit`); the workspace menu draws no New
   project; a Work project card no branch line. What its agent is told is
   in [work-scope.md](work-scope.md) "No code words in a Work thread's
