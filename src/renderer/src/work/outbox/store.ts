@@ -140,7 +140,8 @@ function loadOffers(environmentId: string): void {
     .request<{ offers: GrantOffer[] }>("work.outbox.offers", {})
     .catch(() => ({ offers: [] as GrantOffer[] }))
     .then(({ offers }) => {
-      hosts.set(environmentId, { ...(hosts.get(environmentId) ?? emptyHost()), offers: tag(environmentId, offers) });
+      // A host that answers with no list (one a release behind) offers nothing.
+      hosts.set(environmentId, { ...(hosts.get(environmentId) ?? emptyHost()), offers: tag(environmentId, offers ?? []) });
       changed();
     });
 }
