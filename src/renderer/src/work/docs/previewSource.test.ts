@@ -199,6 +199,53 @@ describe("the document's Preview source", () => {
     expect(await previewProblems(source(h).source)).toEqual([]);
   });
 
+  it("draws every format when review counts fail and keeps the block counts", async () => {
+    const error = new Error("review counts failed");
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    try {
+      const { source: s } = source(host(), { review: () => { throw error; } });
+      expect(await previewProblems(s)).toEqual([]);
+      expect(await s.draw("html", { signal: signal() })).toMatchObject({
+        picture: { kind: "html" },
+        drops: ["1 footnote moves to the end"],
+      });
+      expect(warn).toHaveBeenCalledExactlyOnceWith(expect.any(String), error);
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
+  it("draws every format with malformed blocks and keeps the counts it can read", async () => {
+    const error = new Error("paragraph props failed");
+    const document = [
+      null,
+      "plain block",
+      {
+        props: { get para() { throw error; } },
+        content: [null, "plain text", { type: "text", styles: { underline: true } }],
+      },
+      { props: { backgroundColor: "yellow" } },
+      { content: { rows: [null, { cells: [null, { content: [{ type: "footnote" }] }] }] } },
+    ];
+    const odd = { document } as unknown as AnyEditor;
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    try {
+      const { source: s } = source(host(), { editor: () => odd });
+      expect(await previewProblems(s)).toEqual([]);
+      expect(await s.draw("md", { signal: signal() })).toMatchObject({
+        picture: { kind: "text", text: "# Plan v1" },
+        drops: expect.arrayContaining(["2 comments stay behind", "Colours stay behind", "Underlines stay behind"]),
+      });
+      expect(await s.draw("pdf", { signal: signal() })).toMatchObject({
+        picture: { kind: "paged" },
+        drops: expect.arrayContaining(["1 footnote moves to the end"]),
+      });
+      expect(warn).toHaveBeenCalledExactlyOnceWith(expect.any(String), error);
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
   it.each(["ready", "asleep", "not open", "none"] as const)("keeps the contract when Word is %s", async (state) => {
     const h = host();
     h.state.office = state;

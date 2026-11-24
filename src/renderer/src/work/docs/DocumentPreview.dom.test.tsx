@@ -10,9 +10,10 @@ import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { CanvasItem } from "@shared/work";
 import type { CanvasShell, MoreEntry } from "../canvas/kind";
+import type { PreviewSource } from "../formats/preview";
 
 const FILE = { at: "file", host: "box", path: "/w/Run of show.tcdoc" } as const;
-const opened = vi.hoisted(() => ({ role: "edit" as "edit" | "view", focused: 0, editors: 0, schema: 1 as number | undefined, props: [] as Record<string, unknown>[], lead: "" }));
+const opened = vi.hoisted(() => ({ role: "edit" as "edit" | "view", focused: 0, editors: 0, schema: 1 as number | undefined, props: [] as Record<string, unknown>[], lead: "", rows: [] as unknown[] }));
 
 vi.mock("./host", () => ({
   docHost: (env: string) => ({
@@ -25,8 +26,19 @@ vi.mock("./host", () => ({
   }),
   servedBy: () => null,
 }));
+vi.mock("./threads", () => ({
+  docThreads: () => ({ adapter: { rows: () => opened.rows }, names: () => ({}), refresh: () => undefined }),
+}));
 vi.mock("../../lib/connection", () => ({
-  registry: { onLink: () => () => undefined, linkOf: () => ({ request: async () => ({ branches: [], names: {} }), onPush: () => () => undefined }) },
+  registry: {
+    onLink: () => () => undefined,
+    linkOf: () => ({
+      request: async (method: string) => method === "work.formats.preview"
+        ? { rev: "preview", size: 8, pages: 1, drawnBy: "libreoffice", warnings: [] }
+        : { branches: [], names: {} },
+      onPush: () => () => undefined,
+    }),
+  },
 }));
 vi.mock("../../components/ui/toaster", () => ({ loadToast: async () => ({ error: () => undefined }) }));
 vi.mock("work-kit/editor", async (original) => {
@@ -74,6 +86,7 @@ afterEach(() => {
   opened.focused = 0;
   opened.editors = 0;
   opened.lead = "";
+  opened.rows = [];
 });
 
 const ITEM = { id: "d1", sessionId: "t1", kind: "document", title: "Run of show", source: FILE } as CanvasItem;
@@ -108,6 +121,17 @@ describe("Preview, a state of the document", () => {
     expect(previews.at(-1)).toMatchObject({ kind: "document", title: "Run of show", readOnly: false, formats: ["docx", "pdf", "print", "md", "html", "odt", "rtf"] });
     // Export… opens on the format he last used, not on one it names.
     expect(previews.at(-1)!.initial).toBeUndefined();
+  });
+
+  it("keeps the reply count from rows that have comments when other rows are missing them", async () => {
+    opened.rows = [null, {}, { comments: [{}] }, { comments: [{}, {}] }];
+    await mount();
+    await act(async () => void workCommands.run("export"));
+    const source = previews.at(-1)!.source as PreviewSource;
+    expect(await source.draw("rtf", { signal: new AbortController().signal })).toMatchObject({
+      picture: { kind: "paged" },
+      drops: ["Replies to 1 comment become separate comments"],
+    });
   });
 
   it("File → Export… and ⇧⌘E open it too, and Edit puts him back in the words", async () => {

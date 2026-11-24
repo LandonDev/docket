@@ -455,7 +455,9 @@ export. The service reads its live document, so it can answer before its
 next save to disk. The window supplies HTML for Web page, PDF and Print
 from the editor it already has. PDF and Print go to the document’s host
 for printing. A paired window reads the finished pages from that host by
-range, just as a local window does.
+range, just as a local window does. If a loss count fails, Preview keeps
+the picture and any counts it could read, and logs the first error for
+the document’s preview source.
 
 - **Export writes the document as it stands when he presses**, never a
   picture kept from an earlier look (he may have gone back to the words

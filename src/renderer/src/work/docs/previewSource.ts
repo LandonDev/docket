@@ -72,42 +72,73 @@ export interface DocFacts {
   styles?: number;
 }
 
-type Loose = { type?: unknown; props?: Record<string, unknown>; content?: unknown; children?: unknown; styles?: Record<string, unknown> };
+type Loose = { type?: unknown; props?: Record<string, unknown>; content?: unknown; children?: unknown; styles?: Record<string, unknown>; rows?: unknown; cells?: unknown };
+type Count = <T>(read: () => T, fallback: T) => T;
 
+const NO_BLOCK_FACTS = { footnotes: 0, colours: 0, themeColours: 0, underlines: 0, fonts: 0, spacing: 0, styles: 0 };
+const NO_REVIEW_FACTS = { comments: 0, replied: 0, suggestions: 0 };
+const isLoose = (value: unknown): value is Loose => value !== null && typeof value === "object" && !Array.isArray(value);
 const coloured = (value: unknown): boolean => typeof value === "string" && value !== "" && value !== "default";
 
-/** What the editor's blocks hold that a format may drop: colours, underlines, footnotes, fonts and sizes, a paragraph's own formatting. */
-export function blockFacts(blocks: readonly unknown[]): Required<Pick<DocFacts, "footnotes" | "colours" | "themeColours" | "underlines" | "fonts" | "spacing" | "styles">> {
-  const facts = { footnotes: 0, colours: 0, themeColours: 0, underlines: 0, fonts: 0, spacing: 0, styles: 0 };
+/** Loss counts are optional. Report the first error for this source and keep counting what can be read. */
+function previewCounting(): Count {
+  let warned = false;
+  return (read, fallback) => {
+    try {
+      return read();
+    } catch (error) {
+      if (!warned) {
+        warned = true;
+        console.warn("[work] Could not count all document preview losses", error);
+      }
+      return fallback;
+    }
+  };
+}
+
+/** What the editor's blocks hold that a format may drop. */
+export function blockFacts(blocks: readonly unknown[], count = previewCounting()): typeof NO_BLOCK_FACTS {
+  const facts = { ...NO_BLOCK_FACTS };
   const inline = (content: unknown): void => {
     if (!Array.isArray(content)) {
       // A table's content: rows of cells, each holding inline content.
-      const rows = (content as { rows?: { cells?: unknown[] }[] } | null)?.rows;
-      if (Array.isArray(rows)) for (const row of rows) for (const cell of row.cells ?? []) inline(Array.isArray(cell) ? cell : (cell as Loose | null)?.content);
+      const rows = isLoose(content) ? count(() => content.rows, undefined) : undefined;
+      if (Array.isArray(rows)) for (const row of rows) {
+        const cells = isLoose(row) ? count(() => row.cells, undefined) : undefined;
+        if (Array.isArray(cells)) for (const cell of cells) count(() => inline(isLoose(cell) ? cell.content : cell), undefined);
+      }
       return;
     }
-    for (const piece of content as Loose[]) {
-      if (piece.type === "footnote") facts.footnotes++;
-      const styles = piece.styles ?? {};
-      if (coloured(styles.textColor) || coloured(styles.backgroundColor) || coloured(styles.color) || coloured(styles.highlight)) facts.colours++;
-      if (typeof styles.color === "string" && styles.color.startsWith("theme:")) facts.themeColours++;
-      if (coloured(styles.fontFamily) || coloured(styles.fontSize)) facts.fonts++;
-      if (styles.underline === true) facts.underlines++;
+    for (const piece of content) {
+      if (!isLoose(piece)) continue;
+      count(() => {
+        if (piece.type === "footnote") facts.footnotes++;
+        const styles = piece.styles ?? {};
+        if (coloured(styles.textColor) || coloured(styles.backgroundColor) || coloured(styles.color) || coloured(styles.highlight)) facts.colours++;
+        if (typeof styles.color === "string" && styles.color.startsWith("theme:")) facts.themeColours++;
+        if (coloured(styles.fontFamily) || coloured(styles.fontSize)) facts.fonts++;
+        if (styles.underline === true) facts.underlines++;
+      }, undefined);
       // A link holds its own runs.
-      if (Array.isArray(piece.content)) inline(piece.content);
+      const inner = count(() => piece.content, undefined);
+      if (Array.isArray(inner)) inline(inner);
     }
   };
   const walk = (list: readonly unknown[]): void => {
-    for (const block of list as Loose[]) {
-      if (coloured(block.props?.textColor) || coloured(block.props?.backgroundColor)) facts.colours++;
-      const { style, ...rest } = paraOf(block as { props?: object });
-      if (style) facts.styles++;
-      if (Object.keys(rest).length > 0) facts.spacing++;
-      inline(block.content);
-      if (Array.isArray(block.children)) walk(block.children);
+    for (const block of list) {
+      if (!isLoose(block)) continue;
+      count(() => {
+        if (coloured(block.props?.textColor) || coloured(block.props?.backgroundColor)) facts.colours++;
+        const { style, ...rest } = paraOf(block);
+        if (style) facts.styles++;
+        if (Object.keys(rest).length > 0) facts.spacing++;
+      }, undefined);
+      count(() => inline(block.content), undefined);
+      const children = count(() => block.children, undefined);
+      if (Array.isArray(children)) walk(children);
     }
   };
-  walk(blocks);
+  count(() => walk(blocks), undefined);
   return facts;
 }
 
@@ -187,7 +218,7 @@ export interface DocPreviewDeps {
   /** Waits until the host can read the edits this window just made. */
   sync?(): Promise<void>;
   /** comments (and those with replies) and suggestions as the canvas counts them now */
-  review(): Pick<DocFacts, "comments" | "replied" | "suggestions">;
+  review(count: Count): Pick<DocFacts, "comments" | "replied" | "suggestions">;
   /** A test hands in its own wire, page writer and save. */
   request?: Request;
   /** the document's styles, theme and page set-up as they stand; null for a classic document */
@@ -310,7 +341,11 @@ export function docPreviewSource(deps: DocPreviewDeps): PreviewSource {
     }
   };
 
-  const facts = (): DocFacts => ({ ...blockFacts((deps.editor()?.document ?? []) as readonly unknown[]), ...deps.review() });
+  const count = previewCounting();
+  const facts = (): DocFacts => ({
+    ...count(() => blockFacts(deps.editor()?.document ?? [], count), NO_BLOCK_FACTS),
+    ...count(() => ({ ...NO_REVIEW_FACTS, ...deps.review(count) }), NO_REVIEW_FACTS),
+  });
 
   const bytesOf = (env: string, home: boolean, answer: PreviewAnswer): PreviewBytes => ({
     rev: answer.rev,

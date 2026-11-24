@@ -670,9 +670,9 @@ function Opened({
           return { pagesHtml: (options) => handle.pagesHtml(options), settled: () => pagesSettled(root.current), ...(canSet ? { setSetup: (patch) => handle.setSetup(patch) } : {}) };
         },
         // Threads, not marks: a thread over three lines is one comment. One with a second comment has a reply.
-        review: () => ({
-          comments: new Set(Array.from(live.current.editor?.domElement?.querySelectorAll(".bn-thread-mark") ?? [], (m) => m.getAttribute("data-bn-thread-id") ?? m.textContent)).size,
-          replied: (live.current.threads.adapter.rows(open.doc) ?? []).filter((row) => row.comments.length > 1).length,
+        review: (count) => ({
+          comments: count(() => new Set(Array.from(live.current.editor?.domElement?.querySelectorAll(".bn-thread-mark") ?? [], (m) => m.getAttribute("data-bn-thread-id") ?? m.textContent)).size, 0),
+          replied: count(() => (live.current.threads.adapter.rows(open.doc) ?? []).filter((row) => count(() => Array.isArray(row?.comments) && row.comments.length > 1, false)).length, 0),
           suggestions: live.current.suggestions,
         }),
       }),
