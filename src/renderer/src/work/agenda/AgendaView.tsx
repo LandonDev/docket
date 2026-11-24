@@ -91,6 +91,8 @@ export function Head({ workspace }: WorkViewProps) {
   // The header mounts before the view's chunk lands: the visit's place is the workspace's from its first frame.
   useLayoutEffect(() => restoreAgendaPlace(workspace.id), [workspace.id]);
   const { view, day } = useShared(state);
+  // The body's minute tick: a header left open across its period's end offers the way back within the minute.
+  const now = useMinute();
   return (
     <>
       {view !== "list" ? (
@@ -106,7 +108,7 @@ export function Head({ workspace }: WorkViewProps) {
           <Button variant="ghost" size="sm" className="@max-[26rem]/viewhead:hidden" onClick={() => go({ day: startOfDay(Date.now()) })}>
             Today
           </Button>
-          {holdsToday(view, day) ? null : (
+          {holdsToday(view, day, now) ? null : (
             <Tip label="Today">
               <Button variant="ghost" size="icon-sm" aria-label="Today" data-agenda-today="icon" className="@min-[26rem]/viewhead:hidden" onClick={() => go({ day: startOfDay(Date.now()) })}>
                 <Calendar />

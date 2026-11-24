@@ -1,7 +1,8 @@
 // @vitest-environment jsdom
 /** The Agenda's header: in a narrow Week or Month view, the period stays in TempCode's own header, short. */
-import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { localeWeekStart, viewRange } from "work-kit/views/lib/agenda";
 const NOW = new Date(2026, 10, 23, 12);
 
 const { resetAgendaPlace } = await import("./place");
@@ -51,6 +52,19 @@ describe("the Agenda's header", () => {
     fireEvent.click(icon);
     expect(container.querySelector("[data-agenda-short-period]")!.textContent).toBe(shortWeek(NOW.getTime()));
     expect(container.querySelector('[data-agenda-today="icon"]')).toBeNull();
+  });
+
+  it("offers the way back within the minute its period ends, though nothing else draws the header again", () => {
+    // Half a minute before this week's end: the header shows this week, with no Today icon.
+    const end = viewRange("week", NOW.getTime(), localeWeekStart()).to;
+    vi.useRealTimers();
+    vi.useFakeTimers({ now: end - 30_000 });
+    const { container } = render(<Head {...({ workspace: { id: "ws" } } as never)} />);
+    fireEvent.click(screen.getByRole("button", { name: "Week" }));
+    expect(container.querySelector('[data-agenda-today="icon"]')).toBeNull();
+    // The week turns: the header's own minute tick sees it.
+    act(() => void vi.advanceTimersByTime(60_000));
+    expect(container.querySelector('[data-agenda-today="icon"]')).not.toBeNull();
   });
 
   it("knows the period that holds today", () => {
