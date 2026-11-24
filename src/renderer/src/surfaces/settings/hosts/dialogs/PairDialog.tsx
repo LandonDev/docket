@@ -70,8 +70,7 @@ function Code({ made, host, onClose, onChanged }: Props & { made: Made }) {
             />
           </div>
         </div>
-        <Secret label="Link" value={made.url} />
-        {loopbackLink(made.url) ? <p className="text-xs text-muted-foreground">{host ? host.name : "This computer"} has no public address, so this link opens only there.</p> : null}
+        <Secret label="Link" value={made.url} hint={loopbackLink(made.url) ? `${host ? host.name : "This computer"} has no public address, so this link opens only there.` : undefined} />
       </div>
       <DialogFooter onCancel={() => void cancel()} confirmLabel="Done" onConfirm={() => (close ? close(onClose) : onClose())} />
     </>

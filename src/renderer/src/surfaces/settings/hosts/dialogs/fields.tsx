@@ -80,9 +80,10 @@ export function CapsPicker({
 
 /** A value shown once (a key, a link): a labelled field, read-only in the
  *  mono face, the copy button beside it. */
-export function Secret({ label, value }: { label: string; value: string }) {
+/** `hint`: one line under the value, Field's own (the pairing link that opens only on this computer). */
+export function Secret({ label, value, hint }: { label: string; value: string; hint?: string }) {
   return (
-    <Field label={label}>
+    <Field label={label} hint={hint}>
       <SecretValue label={label} value={value} />
     </Field>
   );
