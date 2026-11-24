@@ -293,6 +293,15 @@ export const STEPS: Step[] = [
     why: "the renderer's index chunk against its budget, after the build (scripts/check-bundle-size.ts)"
   },
   {
+    name: 'boot-built',
+    tier: 'commit',
+    cmd: 'bun',
+    args: ['scripts/boot-built-probe.ts'],
+    lane: 'build',
+    capMs: 3 * 60_000,
+    why: "the built app booted headless on a scratch home, then one read of every Work pillar, as a deploy's trial asks (scripts/boot-built-probe.ts): an import cycle only the bundle's order trips is invisible to vitest"
+  },
+  {
     name: 'renderer-soak',
     tier: 'publish',
     cmd: 'bun',

@@ -2,6 +2,7 @@
 // Prints only public hello metadata and counts; credentials stay in memory.
 import { readFileSync } from 'node:fs'
 import { execFileSync } from 'node:child_process'
+import { localCaller, probeWork } from './probe-work.mjs'
 const [port, version, contractRaw] = process.argv.slice(2)
 const contract = Number(contractRaw)
 const data = process.env.TEMP_CODE_USER_DATA || '/srv/agents/temp-code-data'
@@ -100,6 +101,15 @@ try {
   if (keyId) local('remote.keys.revoke', { id: keyId })
   local('remote.pairings.revoke', { id: pairing.pairing.id })
 }
+// The Work pillars, only in a deploy's trial (box-update sets TEMP_CODE_PROBE_WORK=1 there): Work is
+// turned on and a workspace made, which the live data must never see (probe-work.mjs).
+let workLine = 'work=not asked'
+if (process.env.TEMP_CODE_PROBE_WORK === '1' && data !== '/srv/agents/temp-code-data') {
+  const work = await probeWork(localCaller(marker.port))
+  for (const note of work.notes) console.log(`PROBE NOTE: ${note}`)
+  if (work.failures.length) throw Error(`a Work pillar did not load: ${work.failures.join('; ')}`)
+  workLine = `work=ok in ${work.ms} ms`
+}
 console.log(
-  `PROBE PASS: hello=${JSON.stringify(hello)} version=${known.version} socket.contract=${contract} tc-local.session.list=${sessions.length} remote.ticket.session.list=ok`
+  `PROBE PASS: hello=${JSON.stringify(hello)} version=${known.version} socket.contract=${contract} tc-local.session.list=${sessions.length} remote.ticket.session.list=ok ${workLine}`
 )

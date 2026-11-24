@@ -36,7 +36,10 @@ expected() { lib_as_agents expected_of "$1"; }
 probe() {
   local build=$1 user_data=$2 port=$3 version contract
   read -r version contract < <(expected "$build")
-  as_agents env TEMP_CODE_USER_DATA="$user_data" TC_LOCAL_TIMEOUT_MS=10000 \
+  # The trial's probe also reads every Work pillar (probe-work.mjs); never the live data's.
+  local work=0
+  [[ $user_data == "$data" ]] || work=1
+  as_agents env TEMP_CODE_USER_DATA="$user_data" TC_LOCAL_TIMEOUT_MS=10000 TEMP_CODE_PROBE_WORK="$work" \
     node /usr/local/lib/temp-code/box-probe.mjs "$port" "$version" "$contract"
 }
 # A failure says which step failed, what the probe said and the unit's last
@@ -215,6 +218,7 @@ systemd-run --quiet --collect --unit="$trial" \
   --setenv="HOME=$scratch/home" --setenv="PATH=$path" --setenv="TMPDIR=$scratch/tmp" \
   --setenv="TEMP_CODE_USER_DATA=$scratch/data" --setenv=TEMP_CODE_HEADLESS=1 \
   --setenv=TEMP_CODE_CLAIM_SHIM=0 --setenv=AGENT_CLI_CREDENTIAL_STORE=file \
+  --setenv="WINVM_DIR=$scratch/no-vm" \
   --setenv="TEMP_CODE_REMOTE_PORT=$port" --setenv=NODE_ENV=production --setenv=SHELL=/bin/bash \
   /usr/local/lib/temp-code/run "$candidate"
 wait_ready "$candidate" "$scratch/data" "$port" "$trial.service"

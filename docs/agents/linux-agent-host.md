@@ -24,7 +24,11 @@
   forces the install); the build's `build-manifest.json` and the deploy log
   say which path ran (scripts/box/box-update-lib.sh, docs/box.md "Build
   once"); stage 85 installs the launcher and its library without
-  restarting. Proof from the Mac is `bun scripts/e2e-box-remote.ts`.
+  restarting. The trial's probe also turns Work on in its scratch home and
+  reads every pillar (scripts/box/probe-work.mjs): a pillar that did not load
+  fails the deploy, named with its error, before the switch; the commit tier's
+  `boot-built` row asks the same of the built app with no box. Proof from the
+  Mac is `bun scripts/e2e-box-remote.ts`.
 - Live video of the box's browser needs the `screen-relay` tool installed
   once into the box's data, as the `agents` user and with no root:
   `bun scripts/work-tools/install.ts --data /srv/agents/temp-code-data --only screen-relay`.

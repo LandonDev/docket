@@ -43,11 +43,11 @@ describe('the step list', () => {
   })
 
   it('selects by tier, honours --only and --skip, and refuses an unknown name', () => {
-    expect(selectSteps({ tiers: new Set(['commit']) }).map((s) => s.name)).toEqual(['typecheck', 'vitest', 'guards', 'build', 'bundle-size'])
+    expect(selectSteps({ tiers: new Set(['commit']) }).map((s) => s.name)).toEqual(['typecheck', 'vitest', 'guards', 'build', 'bundle-size', 'boot-built'])
     expect(selectSteps({ tiers: new Set(['publish']) }).map((s) => s.name)).toEqual(['renderer-soak', 'renderer-soak-chat', 'renderer-soak-typing', 'renderer-soak-scroll', 'renderer-soak-reconnect', 'e2e-remote-fence', 'e2e-addons', 'e2e-addon-grants', 'e2e-skills-store', 'e2e-skills-drivers', 'hub', 'ios', 'ios-client', 'computer-swift', 'e2e-tc-computer', 'e2e-computer-bridge', 'e2e-computer-preview', 'computer-bench'])
     expect(selectSteps({ tiers: new Set(['commit', 'publish']) }).length).toBe(STEPS.length)
     expect(selectSteps({ tiers: new Set(['commit']), only: ['vitest'] }).map((s) => s.name)).toEqual(['vitest'])
-    expect(selectSteps({ tiers: new Set(['commit']), skip: ['vitest'] }).map((s) => s.name)).toEqual(['typecheck', 'guards', 'build', 'bundle-size'])
+    expect(selectSteps({ tiers: new Set(['commit']), skip: ['vitest'] }).map((s) => s.name)).toEqual(['typecheck', 'guards', 'build', 'bundle-size', 'boot-built'])
     expect(() => selectSteps({ tiers: new Set(['commit']), only: ['nope'] })).toThrow(/no gate step named nope/)
   })
 

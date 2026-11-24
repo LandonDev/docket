@@ -4229,6 +4229,20 @@ A failed check says in the deploy log which step failed (`/healthz` never
 answered, no `server.json`: the boot stopped before its end, or what the probe
 said) and the unit's last 40 journal lines, which only root can read
 (`wait_ready`, scripts/box/waitReady.test.ts).
+In the trial alone (`TEMP_CODE_PROBE_WORK=1`, never on the live data) the
+probe then turns Work on, makes a Work workspace and reads `work.get`,
+`work.files.places` and `work.health` (scripts/box/probe-work.mjs): an answer
+or a health row that reads as a load failure ("did not load", a
+ReferenceError or TypeError, "before initialization", a missing export) fails
+the trial with the pillar and its error; "not signed in", "off" and
+"needs you" pass. It adds about 50 ms to the trial. The trial unit names its own
+`WINVM_DIR`, so Work on there never reaches the standing VM. 1.0.371 passed
+its trial with every Files method answering "files did not load: Cannot
+access 'SHARED_BYTES' before initialization" (an import cycle that only the
+built bundle's order trips); the commit tier's `boot-built` row
+(scripts/boot-built-probe.ts) boots the built app headless after the build
+and asks the same, in about 2 s, and failed that build naming Files and
+thirteen pillars that import it.
 The launcher also refuses an older version after trial: a stale GitHub master
 cannot silently replace a newer local deployment. Publish the green master
 through the project's normal flow, or use the bundle commands below.
