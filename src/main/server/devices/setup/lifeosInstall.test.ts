@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto'
 import { win32 } from 'node:path'
 import { beforeEach, describe, expect, it } from 'vitest'
-import { findLifeos, installLifeos, lifeosReaderOff, LIFEOS_FEED, parseFeed, parseRegQuery, RESULT_WAIT_MS, UNINSTALL_KEY, type InstallDeps, type StepReport } from './lifeosInstall'
+import { enrollFolderName, findLifeos, installLifeos, lifeosReaderOff, LIFEOS_FEED, parseFeed, parseRegQuery, RESULT_WAIT_MS, UNINSTALL_KEY, windowsInstallDeps, type InstallDeps, type StepReport } from './lifeosInstall'
 
 const LOCAL = 'C:\\Users\\landon\\AppData\\Local'
 const FOLDER = `${LOCAL}\\Programs\\lifeos-desktop`
@@ -76,7 +76,7 @@ const deps = (): InstallDeps => ({
   },
   launch: (file) => {
     launches.push(file)
-    const name = [...files.keys()].find((k) => /\\lifeos\\enroll-[^.]+\.json$/.test(k))
+    const name = [...files.keys()].find((k) => /\\lifeos[^\\]*\\enroll-[^.]+\.json$/.test(k))
     if (name) lifeos(/enroll-([^.]+)\.json$/.exec(name)![1]!)
   },
   regQuery: async () => {
@@ -309,5 +309,53 @@ describe('the pieces', () => {
     files.set(EXE, 'exe')
     expect(await findLifeos(deps())).toEqual({ state: 'found', exe: EXE, version: '0.1.10' })
     expect(win32.dirname(EXE)).toBe(FOLDER)
+  })
+})
+
+describe('a stand-in LifeOS (the rig proof)', () => {
+  const STAND_IN = 'http://10.0.2.2:3311'
+  const FEED = 'http://10.0.2.2:3312/feed/'
+  const standInDir = `${LOCAL}\\lifeos-10.0.2.2-3311`
+
+  it('names the enroll folder as LifeOS does: lifeos for the real backend, lifeos-<host> for another', () => {
+    expect(enrollFolderName('https://lifeos.landonhale.com')).toBe('lifeos')
+    expect(enrollFolderName('https://lifeos.landonhale.com/')).toBe('lifeos')
+    expect(enrollFolderName(STAND_IN)).toBe('lifeos-10.0.2.2-3311')
+  })
+
+  it('leaves the code for a LifeOS built for another backend in that backend’s folder, naming it', async () => {
+    entries = [lifeosEntry()]
+    files.set(EXE, 'exe')
+    let enroll: { backend?: string } | undefined
+    lifeos = (attempt) => {
+      const file = `${standInDir}\\enroll-${attempt}.json`
+      enroll = JSON.parse(files.get(file) as string)
+      files.delete(file)
+      files.set(`${standInDir}\\enroll-${attempt}.result.json`, JSON.stringify({ attempt, ok: true }))
+    }
+    expect(await run({ backend: STAND_IN })).toEqual({ ok: true })
+    expect(enroll?.backend).toBe(STAND_IN)
+    expect(renames).toEqual([[`${standInDir}\\.enroll-try1.json.tmp`, `${standInDir}\\enroll-try1.json`]])
+  })
+
+  it('a stand-in feed is read only under the harness marker, and every hop stays on its origin', async () => {
+    const plain = windowsInstallDeps({ LOCALAPPDATA: LOCAL, TEMP_CODE_LIFEOS_FEED: FEED })
+    expect(plain.feed).toBeUndefined()
+    expect(windowsInstallDeps({ LOCALAPPDATA: LOCAL, TEMP_CODE_USER_DATA: 'C:\\data', TEMP_CODE_LIFEOS_FEED: 'http://10.0.2.2:3312/feed' }).feed).toBe(FEED)
+
+    const withFeed = (): InstallDeps => ({ ...deps(), feed: FEED })
+    routes = new Map([
+      [`${FEED}latest.yml`, () => new Response(feed())],
+      [`${FEED}LifeOS-Setup-0.1.9.exe`, () => new Response(INSTALLER)]
+    ])
+    expect(await installLifeos({ code: CODE, owner: 'landon', reader: false, attempt: 'try2' }, withFeed(), () => {})).toEqual({ ok: true })
+    expect(fetched).toEqual([`${FEED}latest.yml`, `${FEED}LifeOS-Setup-0.1.9.exe`])
+
+    // A hop away from the stand-in's origin, GitHub's included, is refused.
+    entries = []
+    files.delete(EXE)
+    routes.set(`${FEED}LifeOS-Setup-0.1.9.exe`, redirect(ASSET))
+    expect(await installLifeos({ code: CODE, owner: 'landon', reader: false, attempt: 'try3' }, withFeed(), () => {})).toMatchObject({ ok: false, step: 'download' })
+    expect(fetched).not.toContain(ASSET)
   })
 })

@@ -21,6 +21,7 @@ import { HeadroomStore } from './headroom'
 import { WebSocketServer, type WebSocket } from 'ws'
 import { createServer } from 'node:http'
 import { visibleCatalog } from '@shared/catalog'
+import { lifeosAddress } from '@shared/pagePolicy'
 import { networkRefusalOf, refusalCodeOf } from './failureKind'
 import { ClientRequestSchema, type ClientRequest, type ServerFrame, type ServerPush, type ServerResponse } from '@shared/contract'
 import type { SessionChanges, SessionPage } from '@shared/wire'
@@ -1789,7 +1790,8 @@ export async function startServer(
     codes: vaultSecret(CODES_NAME),
     installLifeos: async (input, onStep) => {
       const { installLifeos, windowsInstallDeps } = await import('./devices/setup/lifeosInstall')
-      return installLifeos(input, windowsInstallDeps(), onStep)
+      // The backend this host's Work talks to: LifeOS must be on the same one, and reads its enroll file from that backend's folder.
+      return installLifeos({ ...input, backend: lifeosAddress().url }, windowsInstallDeps(), onStep)
     },
     signInWork: async (input) => {
       const { signInWork, workSignInDepsOf } = await import('./devices/setup/workSignIn')

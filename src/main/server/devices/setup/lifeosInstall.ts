@@ -58,6 +58,8 @@ export interface InstallDeps {
   /** What `reg.exe query <key> /s` prints; rejects when the key is missing. */
   regQuery(key: string): Promise<string>
   env: Record<string, string | undefined>
+  /** A stand-in feed for the rig proof (TEMP_CODE_LIFEOS_FEED, under the harness marker alone): every hop stays on its one origin. */
+  feed?: string
   now(): number
   sleep(ms: number): Promise<void>
 }
@@ -106,12 +108,19 @@ export function parseFeed(text: string): { path: string; sha512: string } {
   return { path, sha512 }
 }
 
+/** Whether a hop may be fetched: https on GitHub's release hosts, or the stand-in feed's one origin. */
+function allowedHop(at: URL, feed: string | undefined): boolean {
+  if (at.username || at.password) return false
+  if (feed) return at.origin === new URL(feed).origin
+  return at.protocol === 'https:' && !at.port && RELEASE_HOSTS.has(at.hostname)
+}
+
 /** A GET that follows redirects only over https on GitHub's release hosts. */
 async function fetchFromGitHub(url: string, deps: InstallDeps, timeoutMs: number): Promise<Response> {
   const signal = AbortSignal.timeout(timeoutMs)
   let at = new URL(url)
   for (let hop = 0; hop <= MAX_HOPS; hop++) {
-    if (at.protocol !== 'https:' || at.port || at.username || !RELEASE_HOSTS.has(at.hostname)) throw new StepFailed(`The download was sent to ${at.host || at.protocol}, which is not GitHub's`)
+    if (!allowedHop(at, deps.feed)) throw new StepFailed(`The download was sent to ${at.host || at.protocol}, which is not GitHub's`)
     const res = await deps.fetch(at.href, { redirect: 'manual', signal })
     if (res.status >= 300 && res.status < 400) {
       const location = res.headers.get('location')
@@ -127,8 +136,9 @@ async function fetchFromGitHub(url: string, deps: InstallDeps, timeoutMs: number
 
 /** The installer, checked against the feed, written to `file`. */
 async function download(file: string, deps: InstallDeps): Promise<void> {
-  const feed = parseFeed(await (await fetchFromGitHub(`${LIFEOS_FEED}latest.yml`, deps, 30_000)).text())
-  const res = await fetchFromGitHub(`${LIFEOS_FEED}${encodeURIComponent(feed.path)}`, deps, 15 * 60_000)
+  const base = deps.feed ?? LIFEOS_FEED
+  const feed = parseFeed(await (await fetchFromGitHub(`${base}latest.yml`, deps, 30_000)).text())
+  const res = await fetchFromGitHub(`${base}${encodeURIComponent(feed.path)}`, deps, 15 * 60_000)
   if (Number(res.headers.get('content-length') ?? 0) > MAX_BYTES) throw new StepFailed("The installer is too large to be LifeOS's")
   const bytes = new Uint8Array(await res.arrayBuffer())
   if (bytes.length > MAX_BYTES) throw new StepFailed("The installer is too large to be LifeOS's")
@@ -199,6 +209,16 @@ export async function findLifeos(deps: Pick<InstallDeps, 'regQuery' | 'env' | 'f
 
 // ── the step ──────────────────────────────────────────────────────────────
 
+/**
+ * The folder LifeOS reads its enroll file from, by the backend it was built
+ * for: `lifeos` for the real one, else `lifeos-<host>`, as LifeOS's own
+ * `enrollDir` names it (apps/desktop/src/main/enroll.ts).
+ */
+export function enrollFolderName(backend: string): string {
+  const bare = (u: string): string => u.replace(/\/+$/, '')
+  return bare(backend) === bare(LIFEOS_URL) ? 'lifeos' : `lifeos-${new URL(backend).host.replace(/[^\w.-]/g, '-')}`
+}
+
 export interface InstallInput {
   /** the one-time `desktop` code */
   code: string
@@ -254,12 +274,13 @@ export async function installLifeos(input: InstallInput, deps: InstallDeps, onSt
 
   report('sign-in', 'working')
   if (input.reader) report('reader', 'working')
-  const dir = win32.join(local, 'lifeos')
+  const backend = input.backend ?? LIFEOS_URL
+  const dir = win32.join(local, enrollFolderName(backend))
   const enrollFile = win32.join(dir, `enroll-${attempt}.json`)
   try {
     await deps.fs.mkdir(dir)
     const temp = win32.join(dir, `.enroll-${attempt}.json.tmp`)
-    await deps.fs.writeFile(temp, JSON.stringify({ attempt, code: input.code, backend: input.backend ?? LIFEOS_URL, owner: input.owner, reader: input.reader }))
+    await deps.fs.writeFile(temp, JSON.stringify({ attempt, code: input.code, backend, owner: input.owner, reader: input.reader }))
     await deps.fs.rename(temp, enrollFile)
   } catch {
     return fail('sign-in', 'The sign-in could not be left for LifeOS')
@@ -370,6 +391,7 @@ export function windowsInstallDeps(env: Record<string, string | undefined> = pro
     regQuery: (key) =>
       new Promise((resolve, reject) => execFile(reg, ['query', key, '/s'], { windowsHide: true, timeout: 30_000, maxBuffer: 8 * 1024 * 1024 }, (err, stdout) => (err ? reject(err) : resolve(stdout)))),
     env,
+    ...(env.TEMP_CODE_USER_DATA && env.TEMP_CODE_LIFEOS_FEED ? { feed: env.TEMP_CODE_LIFEOS_FEED.replace(/\/*$/, '/') } : {}),
     now: () => Date.now(),
     sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms))
   }
