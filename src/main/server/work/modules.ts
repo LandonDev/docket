@@ -403,17 +403,19 @@ export function loadWorkModules(loaders?: PillarLoaders): Promise<Map<PillarId, 
   if (loaded && !loaders) return loaded
   const run = (async () => {
     const use = loaders ?? PILLAR_LOADERS
-    const got = await Promise.all(
-      PILLAR_IDS.map(async (id): Promise<WorkModule | string> => {
-        try {
-          const module = await use[id]()
-          if (!module || module.id !== id || typeof module.ensure !== 'function') return `work: ${id} did not load: its module is not the ${id} pillar's`
-          return module
-        } catch (err) {
-          return `work: ${id} did not load: ${errorText(err)}`
-        }
-      })
-    )
+    // One pillar at a time: pillars import one another's files in cycles, and two
+    // loads of one cycle at once wait on each other forever under vitest's module
+    // runner (office and files did on 2026-11-24). The app's main is CommonJS, where
+    // each import() is a require that runs at once, so in order costs nothing there.
+    const got: (WorkModule | string)[] = []
+    for (const id of PILLAR_IDS) {
+      try {
+        const module = await use[id]()
+        got.push(!module || module.id !== id || typeof module.ensure !== 'function' ? `work: ${id} did not load: its module is not the ${id} pillar's` : module)
+      } catch (err) {
+        got.push(`work: ${id} did not load: ${errorText(err)}`)
+      }
+    }
     WORK_LOAD_FAULTS.clear()
     const modules: WorkModule[] = []
     got.forEach((result, i) => {

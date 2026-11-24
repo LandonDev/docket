@@ -91,6 +91,25 @@ describe('the registry', () => {
     })
     expect(WORK_MODULES.map((m) => m.id)).toEqual(PILLAR_IDS.filter((id) => !['tasks', 'agenda', 'docs'].includes(id)))
   })
+
+  it('loads one pillar at a time, so two pillars that import each other never wait on each other', async () => {
+    const { loadWorkModules } = await import('./modules')
+    let open = 0
+    let most = 0
+    const loaders = Object.fromEntries(
+      PILLAR_IDS.map((id) => [
+        id,
+        async () => {
+          most = Math.max(most, ++open)
+          await new Promise((r) => setTimeout(r, 1))
+          open--
+          return { id, ensure() {} } as WorkModule
+        }
+      ])
+    ) as Parameters<typeof loadWorkModules>[0]
+    expect((await loadWorkModules(loaders)).size).toBe(0)
+    expect(most).toBe(1)
+  })
 })
 
 describe('the host code around Work', () => {

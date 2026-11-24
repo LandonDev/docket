@@ -483,6 +483,11 @@ the host exists, and that is the one door:
   or whose dependency, throws while it loads (a native library this machine
   lacks) is left out and named in `WORK_LOAD_FAULTS`; its methods answer
   `work: <pillar> did not load: …` and the others run.
+  Pillars load one after another, never at once: they import one another's
+  files in cycles, and two loads of one cycle at the same time waited on each
+  other forever under vitest (office and files, 2026-11-24, when
+  files/handle.ts began to import saveAsWord.ts); main is CommonJS, so the
+  order costs the app nothing.
 - **`WORK_MODULES` is empty until that load has run** and is one array for
   the life of the process, so a reader that holds it sees it filled.
   `startWork(deps)` with no list throws before a load, since an empty
