@@ -1,7 +1,8 @@
-import { existsSync, readFileSync } from 'node:fs'
+import { existsSync, readFileSync, readdirSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { citations, expandBraces, sectionOf } from './lib/docsCitations'
+import { ClientRequestSchema } from '../src/shared/contract'
+import { citations, expandBraces, sectionOf, wireNames } from './lib/docsCitations'
 
 const REPO = resolve(__dirname, '..')
 
@@ -65,6 +66,78 @@ describe("the guarded docs/agents files cite what exists", () => {
       ]
       expect(missing, `"${heading}" cites what is missing:\n  ${missing.join('\n  ')}`).toEqual([])
       expect(cited.paths.length + cited.scripts.length).toBeGreaterThan(0)
+    })
+  }
+})
+
+describe('the wire-name extractor', () => {
+  it('finds work.<pillar>.<method> names in code spans, braces expanded, and leaves out code calls, globs and placeholders', () => {
+    const md = [
+      'Ask `work.files.threads {workspaceId, ref}` and `work.docs.{open, close}`; the push `work.files`.',
+      'Not `work.tools.of(session)`, `work.test.ts`, `work.office.files*`, `work.<pillar>.<verb>` or work.files.plain outside a span.',
+      'Two in one span: `work.capture.add` then `work.pdf.open`.'
+    ].join('\n')
+    expect(wireNames(md)).toEqual(['work.files.threads', 'work.docs.open', 'work.docs.close', 'work.capture.add', 'work.pdf.open'])
+  })
+})
+
+/**
+ * Names a Work doc writes that are no wire name at all: a key the code keeps under the same spelling. Each says where;
+ * the test holds the key to its file, so a key that goes leaves this list too.
+ */
+const NOT_WIRE: Record<string, string> = {
+  'work.canvas.view.v1': 'src/renderer/src/work/canvas/store.ts', // localStorage
+  'work.files.view.v1': 'src/renderer/src/work/files/store.ts', // localStorage
+  'work.projects.place.v1': 'src/renderer/src/work/projects/place.ts', // localStorage
+  'work.return.v1': 'src/renderer/src/lib/workReturn.ts', // localStorage
+  'work.digest.closed': 'src/renderer/src/work/digest/DigestHost.tsx', // localStorage
+  'work.digest.dismissed': 'src/renderer/src/work/digest/DigestHost.tsx', // localStorage
+  'work.digest.seen.pending': 'src/renderer/src/work/digest/store.ts', // localStorage
+  'work.prep.aheadOffer': 'src/renderer/src/work/prep/PrepView.tsx', // localStorage
+  'work.today.opened.v1': 'src/renderer/src/work/today/warm.tsx', // localStorage
+  'work.capture.draft': 'ios/TempCodeClient/Sources/TempCodeClient/Work/Capture/VoiceNote.swift', // the phone's defaults
+  'work.lifeos.jwks': 'src/main/server/work/service/ctx.ts', // a host setting
+  'work.google.clientId': 'src/main/server/work/google/picker.ts', // a host setting
+  'work.winvm.sleepAfter': 'src/main/server/work/winvm/index.ts', // a host setting
+  'work.winvm.screen': 'src/main/server/work/winvm/index.ts', // a host setting
+  'work.ownerName': 'src/main/server/work/preamble.ts', // a host setting
+  'work.office.rangeWrite': 'src/main/server/work/peer.ts' // a peer call between hosts (`ctx.peer`), not a client request
+}
+
+/** Wire names a doc itself says are gone, never built or only sketched. Each carries the doc's words. */
+const NOT_A_REQUEST: Record<string, string> = {
+  'work.sheets.chart': 'work-sheets.md: "The old bars, `work.sheets.chart` and `SheetChart` are gone"',
+  'work.collab.token': 'work-service.md: "There is no `work.collab.token` wire method" (the plan\'s sketch)',
+  'work.pdf.list': 'work-pdf.md: "There is no `work.pdf.list`"',
+  'work.fullEditor.origin': 'work-sheets.md: a setting removed on 2026-11-24',
+  'work.files.changed': 'work-today.md: "Files has not built `work.files.changed`"'
+}
+
+describe('the Work docs name only wire methods that exist', () => {
+  const methods = new Set((ClientRequestSchema.options as { shape: { method: { value: string } } }[]).map((o) => o.shape.method.value))
+  const shared = join(REPO, 'src/shared')
+  const pushes = new Set(
+    readdirSync(shared)
+      .filter((f) => /^contract.*\.ts$/.test(f) && !f.includes('.test.'))
+      .flatMap((f) => [...readFileSync(join(shared, f), 'utf8').matchAll(/push: '(work[^']*)'/g)].map((m) => m[1]))
+  )
+  const docs = readdirSync(join(REPO, 'docs/agents')).filter((f) => /^work.*\.md$/.test(f))
+
+  it('reads the contract and the docs', () => {
+    expect(methods.size).toBeGreaterThan(500)
+    expect(pushes.has('work.office.files')).toBe(true)
+    expect(docs.length).toBeGreaterThan(30)
+  })
+
+  it('keeps each name that is no wire method where the list says', () => {
+    for (const [key, file] of Object.entries(NOT_WIRE)) expect(readFileSync(join(REPO, file), 'utf8'), `${key} in ${file}`).toMatch(new RegExp(`['"\`]${key.replace(/\./g, '\\.')}['"\`]`))
+    for (const name of Object.keys(NOT_A_REQUEST)) expect(methods.has(name), `${name} is a request now: take it off NOT_A_REQUEST`).toBe(false)
+  })
+
+  for (const doc of docs) {
+    it(doc, () => {
+      const unknown = wireNames(readFileSync(join(REPO, 'docs/agents', doc), 'utf8')).filter((n) => !methods.has(n) && !pushes.has(n) && !(n in NOT_WIRE) && !(n in NOT_A_REQUEST))
+      expect(unknown, `${doc} names a work.* method no contract has. Fix the doc, or, if the doc says it is gone or a sketch, add it to NOT_A_REQUEST with those words:\n  ${unknown.join('\n  ')}`).toEqual([])
     })
   }
 })

@@ -2,7 +2,8 @@
  * What a CLAUDE.md section cites: the `script:` entries and `bun run` names
  * (each must be a key of package.json's `scripts`) and the repository paths
  * under src/, scripts/, native/, docs/, ios/ and infra/ (each must exist).
- * scripts/docsGuard.test.ts runs it over the sections the docs sweep wrote.
+ * scripts/docsGuard.test.ts runs it over the sections the docs sweep wrote,
+ * and `wireNames` over the Work docs (docs/agents/work*.md).
  */
 
 /** The text of the `## <heading>` section, up to the next `## `, or null. */
@@ -46,4 +47,25 @@ export function citations(text: string): Citations {
     for (const path of expandBraces(token)) paths.add(path.replace(/[.:]+$/, ''))
   }
   return { scripts: [...scripts], paths: [...paths] }
+}
+
+const CODE_SPAN = /`([^`\n]+)`/g
+const WIRE = /(?<![\w.$/])work(?:\.[A-Za-z]\w*)+(?:\.\{[^}]*\})?(?=([^\w.]|$))/g
+
+/**
+ * The `work.<pillar>.<method>` names a doc writes inside backticks, each once, braces expanded
+ * (`work.docs.{open, close}` is two names). Two parts (`work.files`, a push or the router) are left out, and so are a
+ * name called as code (`work.tools.of(session)`), a file (`work.test.ts`), a glob (`work.office.files*`) and a placeholder
+ * (`work.<pillar>.<verb>`). scripts/docsGuard.test.ts holds the Work docs' names to the contract.
+ */
+export function wireNames(text: string): string[] {
+  const out = new Set<string>()
+  for (const span of text.matchAll(CODE_SPAN)) {
+    for (const m of span[1].matchAll(WIRE)) {
+      const after = span[1][m.index + m[0].length]
+      if (after === '(' || after === '*' || after === '<' || /\.(ts|tsx|js|mjs|md|json|swift)$/.test(m[0])) continue
+      for (const name of expandBraces(m[0].replace(/\s+/g, ''))) if (name.split('.').length >= 3) out.add(name)
+    }
+  }
+  return [...out]
 }

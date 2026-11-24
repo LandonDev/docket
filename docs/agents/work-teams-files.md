@@ -364,29 +364,21 @@ refused the same way, but the view swallows that error and reads it as "no
 thread holds it". A place the box's Windows VM also holds opened from the VM's
 copy, whose guest path the fence let by (`guestPath`). That is the likely
 reason the first open worked and the next ones failed, the same file too: the
-view opens a place from its first copy, and `placeGroups` ranks the VM's copy
-below the Mac's while the VM's place is not `ok`.
+view opens a place from its first copy, and the view of that day (its
+`placeGroups`, since gone) ranked the VM's copy below the Mac's while the VM's
+place was not `ok`. Today `sidebarOf` and `readCopy` (work/files/model.ts) rank
+the copies.
 
 The rule now (`elsewherePath`, remote/fence.ts): a path in a source whose
 `host` is another host's id is that host's to fence, in the verbs
-`ELSEWHERE_METHODS` lists, one at a time: `work.office.filesCopy` (the box
-asks the named host for the bytes over the host link, `copyIn`, only a host the
-workspace may use; that host holds the path to a library it syncs,
-`admitted`), and `work.office.filesThreads`, `work.files.threads`, `tabOpen`,
-`tabSet`, `star`, `seen` (each matches or keeps the source as words and
-reads nothing), and `work.office.live.address` (matched to that host's list of
-libraries, never opened here). The listener passes its own id (`fenceRequest`'s `self`, the
-id Work calls `ctx.host`), and a claimed host must be spelled as a host's id
-is (`ENVIRONMENT_ID`, `env_` and 22 characters): no other word and no `:`, so a
-mark kept as `<host>:<path>` never meets one of this host's. A copy lands
+`ELSEWHERE_METHODS` lists. The list, what each verb does with such a path, and
+what stays fenced are in one place:
+[remote-access.md](remote-access.md#the-work-fence-by-the-host-a-source-names).
+What is Teams' own here: `work.office.filesCopy` asks the named host for the
+bytes over the host link (`copyIn`), only a host the workspace may use, and
+that host holds the path to a library it syncs (`admitted`). A copy lands
 through no link: the owner's folder and the source's must be folders and the
-file opens without following one (`writeCopy`). Every other path stays fenced: one with this host's
-id, one with no host, one with no `self` given, and one in any other verb
-(`work.canvas.*`, `filesList`, `filesRead`, `filesFetch`, `filesOpen`,
-`work.files.list`, `stat`, `fetch`, `open`, every change), whatever host it
-claims. Each path is judged alone, so a request that also names a path of
-this host outside the roots is refused whole. Proven by fence.test.ts, the
-"his window on the box" tests in files.test.ts, and live by
+file opens without following one (`writeCopy`). Proven live by
 `scripts/e2e-files-open-remote.ts` (two instances under xvfb, a deck, a PDF
 and a picture, then the deck again).
 
@@ -534,98 +526,27 @@ its place in it (`General/Budget.xlsx`), never by a path of the host.
 
 ## The Files view
 
-`src/renderer/src/work/office/` (`view.ts`, `FilesView.tsx`, the rules in
-`files.ts`): the Files row after Docs in a Work workspace's column. It asks the
-workspace's host and each desktop it may use (`filesLibraries`) and shows:
+The libraries are drawn by the Files place, not by this pillar: its view,
+sidebar, empty states, search and opening are
+[work-files.md](work-files.md) ("The screen", "Opening a file",
+"Search and Go to"; `src/renderer/src/work/files/`: `view.ts`,
+`FilesView.tsx`, `model.ts`, `store.ts`). What this pillar still gives it:
 
-- the libraries as teams with their channels, his own files and added folders
-  last (`libraryGroups`);
-- a folder with crumbs (Files, the team, each folder), one 32px row per entry:
-  its kind's glyph, name, a cloud mark while it is not downloaded, who last
-  saved it (once the column is 560px wide), when it changed; on hover its
-  menu: Open and Open in Excel (or Word, PowerPoint, the file's app);
-- the header's search over every library, each hit with its place.
+- the places each host answers (`work.office.files`, `filesLibraries`),
+  one key a place however many machines hold it (`teamsPlaceKey` in the
+  contract, office/files/twins.ts), which the sidebar merges into one row
+  (`sidebarOf`); a library in the VM (`vm`) is listed only while the
+  workspace's `windowsVm` is on;
+- the threads that hold a file (`threadsHolding`, office/files/handle.ts),
+  asked as `work.files.threads` and, from an older window,
+  `work.office.filesThreads`;
+- the sign-in to OneDrive in the VM (`work.office.vmSignIn`, then the
+  Computers page on `vm:windows`, work/winvm/signIn.ts).
 
-**One place, once.** A row is a place (a team's channel, a library, his own
-files, a folder he added), and the same place on two machines is one row:
-`teamsPlaceKey(team, label)` in the contract ("RecWell-TeamRecWell", a
-folder of the RecWell site's Documents a Mac syncs by itself, is "RecWell" +
-"Team RecWell" in the VM's whole library; his own files on two machines are
-`mine`; a folder he added is never merged). A merged row is drawn under the
-team of a copy that names team and folder apart (the VM's library), so a
-Mac's one-word folders read as that team's channels; a Mac-only layout looks
-as before. Its copies (`{library, folder}`, the folder that is the place's
-top on that machine) are read in order: the workspace's own host first while
-its place answers (a VM library there needs no Mac), then a desktop's. A
-folder is carried across copies as its parts below the row's top (split on
-either separator, joined with the copy's own: `pathIn`). A read that fails
-because the machine is out of reach (`unreachable`: the link is down, a
-time-out, "could not wake") goes to the next copy at the same place; a
-refusal about the folder itself is shown at once. One listing is always one
-copy's. A search asks each host once and keeps each place's hits from its
-first copy whose host answered, so no file is listed twice. A library in the
-VM (`vm`) is listed only while the workspace's `windowsVm` is on.
-
-**When nothing is listed** (`filesNote`, files.ts), the view says the one
-most useful thing, checked in this order, with its press:
-
-| Cause | It says | Press |
-|---|---|---|
-| the workspace's host refused, nothing else answered | "Files did not load", the refusal's words | Retry |
-| it may use no desktop and no VM, and one could help | "This workspace can't use your computers yet" / "Allow <MacBook> and the Windows VM to list your Teams files." | Allow: his desktops this window knows (`allowComputers`, work/shell/actions.ts) and the VM where the host has one, then lists |
-| a machine it may use did not answer | "<MacBook> did not answer", on the state line | Retry |
-| OneDrive in the VM is signed out | "OneDrive on the Windows VM is signed out" | Sign in to OneDrive: `work.office.vmSignIn`, then the Computers page on `vm:windows` (work/winvm/signIn.ts) |
-| the VM is the only place and is not set up | "The Windows VM is not set up" | Open Settings (Settings → Work) |
-| a place answers with no Teams library | "No Teams files on <MacBook>" / "Sync a channel from Teams with OneDrive there." ("OneDrive is not signed in on <MacBook>" where it has none; for the VM, Open the Windows VM) | — |
-| a place could not be read | "Teams files on <machine> did not load", its detail | Retry |
-| an older host that says nothing of its places | "No Teams files" | — |
-
-With rows listed, a machine that did not answer is the state line over them,
-unless the VM holds copies (then it goes unsaid); OneDrive signed out in the
-VM is one quiet line under the rows with Sign in to OneDrive; and a VM whose
-helper did not answer its last read is the state line, "The Windows VM did
-not answer" with the failure's words, over the libraries it kept.
-
-**Each host paints as it answers** (`useReach`). Every host is asked at once,
-each with its own deadline (`HOST_DEADLINE_MS`, 4 s, `byDeadline` in
-files.ts); one past it is a machine that did not answer (the state line, with
-the view's Retry). While nothing is listed and a host is still to answer, or
-the VM's first read is under way (`vmReading`), the view holds its bones, so
-the empty state never shows first; with rows listed, two bones under them
-stand for what is still coming. A host's `work.office.files` push asks that
-host again, its last answer kept on screen until the new one lands; while its
-VM is `reading` it is also asked again every 5 s, in case the push is missed.
-The search asks every host at once too and shows each one's hits as they
-come, with bones under them for the rest, under a 20 s deadline
-(`SEARCH_DEADLINE_MS`: the VM walks its disk for up to 15 s); it fails only
-when no host answered.
-
-Opening a file (`openWay`, docs/agents/work-files.md "Opening a file"): a
-cloud-only file shows Downloading… in its row first, then Opening…. **The
-file takes the pane**: it opens in a Files tab of its own, with no thread;
-Ask docks a chat beside it, and a thread is made only once he sends. **One
-file, one thread**: Ask first asks the workspace's host
-`work.files.threads {workspaceId, ref}` (`threadsHolding`,
-office/files/handle.ts; `work.office.filesThreads {workspaceId, source}` on
-the old wire), the threads whose open items show that file, newest first:
-the file in place, its Office app's file, the copy he allowed (by its
-folder, the hash of the source), or the `.tcdoc` a Word, OpenDocument,
-RTF, markdown or text file became beside it (`Name.tcdoc`, `Name 2.tcdoc`,
-the importer's spelling, the folder read through its links), and only one
-whose sidecar records that file as its source (`source.name`, written by the
-importer): a document of his that merely shares the name is another file, and
-its thread is never picked for Ask. Only open items
-count, however many closed ones changed since. A file in the Windows VM is
-named by the guest's path, so the method is one of the listener fence's
-Teams files verbs (`GUEST_METHODS`, remote/fence.ts). Reusing a thread whose
-item is Excel's, Word's or PowerPoint's brings that app forward again. The first of them this window knows and that is not archived is
-the dock's thread; a host from before the method answers none. A file of
-another computer opens as a copy he allowed, else in its app where it lies,
-which downloads it itself; so does every file where the workspace's host is
-a release behind and keeps no tabs (no thread is made for it). A file in the
-Windows VM never opens in the canvas on its own host: as a copy he allowed,
-else in its app in the VM (seen on the Computers page); a read of one may
-wake the VM, so its reads wait up to two minutes. A failure is one toast.
+The Files view of before (`src/renderer/src/work/office/view.ts`,
+`FilesView.tsx`, `files.ts`, a row after Docs) is gone, and so are its
+`libraryGroups`, `filesNote`, `byDeadline`, `vmReading` and
+`SEARCH_DEADLINE_MS`.
 
 ## Settings
 

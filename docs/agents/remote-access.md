@@ -68,8 +68,9 @@
   `app.work*`) has no path param of its own: a file reaches it inside a
   `CanvasSource` (`{ at: 'file', path }`, or a Microsoft file's `ref:
   { kind: 'path', path }`), anywhere in its params, and `session.create`
-  carries one in `about`; `workSourcePaths` reads them and the same roots
-  apply, whatever host the source names (docs/agents/work.md). A Work
+  carries one in `about`. Which roots judge such a file turns on the host
+  its source names: [The Work fence, by the host a source
+  names](#the-work-fence-by-the-host-a-source-names) below. A Work
   workspace names no folder, so `workspace.create` fences only a path it
   is given. Inside the roots one directory
   is denied to every remote file method: the computer history
@@ -152,3 +153,51 @@
   hello and the pair page CSP) and `bun scripts/e2e-remote-ui.ts` (an
   isolated preview instance plus a real Chrome profile over CDP through
   `/pair`, `/ui`, a thread, a reply, the cookie and the CSP rewrite).
+
+## The Work fence, by the host a source names
+
+This is the one account of it; work.md, work-teams-files.md and CLAUDE.md link
+here. The code is `fenceRequest` in src/main/server/remote/fence.ts, called
+by the listener with this host's own id as `self` (server/index.ts, the id
+Work calls `ctx.host`).
+
+- **What is read.** `workSources` collects every `CanvasSource` in a Work
+  request's params (`session.create`: in `about`), each path with the
+  `host` its source names (null when it names none); `workSourcePaths` is
+  the same list, paths alone. It reads `SOURCE_DEPTH_MAX` (64) levels deep;
+  a deeper request is refused whole, never passed unread. A sheet's edit of
+  a rich-text cell goes past 12, which once refused every such edit from
+  his Mac's window. fence.test.ts holds both: the rich
+  cell passes, the deeper request fails.
+- **Each path is judged alone**, and passes one of three ways; one that
+  fails refuses the whole request.
+  1. *In this host's Windows VM* (`guestPath`): a guest path (`C:\…`, no
+     `/`) in a verb `GUEST_METHODS` lists, on a host that is not Windows.
+     The handler holds it to a library OneDrive syncs in the guest
+     (work/files/policy.ts `locate`, office/files/handle.ts `admitted`).
+  2. *On another host* (`elsewherePath`): the source's `host` is a host's
+     id (`ENVIRONMENT_ID`: no other word, no `:`) and not `self`, in a verb
+     `ELSEWHERE_METHODS` lists. No path of this host's disk is opened. The
+     verbs, one at a time:
+     - sent to the host it names: `work.office.filesCopy` (the bytes come
+       over the host link, `copyIn`; that host holds the path to a library
+       it syncs), `work.files.open` (the same copy, `openCopy`),
+       `work.files.across` (a listing from that desktop; refused for this
+       host), and `work.files.saveAs` and `saveAsWord` (that host makes
+       the file in its own folder through its own door);
+     - kept or matched as words alone: `work.office.filesThreads` and
+       `work.files.threads` (matched against the canvas's items),
+       `work.files.tabOpen`, `tabSet`, `star` and `seen` (a tab or a mark
+       keeps its address), `work.office.live.address` (matched to that
+       host's list of libraries), and `work.files.copiesMoved` (re-points
+       the workspace's records of that host's file; refuses this host's).
+  3. *Otherwise* by the roots and the denied directories, as any path
+     param: a source with this host's id, with no host, with no `self`
+     given, or in any verb not listed (`work.canvas.*`, `filesList`,
+     `filesRead`, `filesFetch`, `filesOpen`, `work.files.list`, `stat`,
+     `fetch`, every change), whatever host it claims.
+- A verb that reads or changes a file here is never on either list; moving
+  the depth, a list or a root is a rule change, not a fix. Proven by
+  fence.test.ts, the "his window on the box" tests in
+  work/office/files/files.test.ts, and live by
+  `scripts/e2e-files-open-remote.ts`.

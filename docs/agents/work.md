@@ -183,11 +183,15 @@ Settings → Work.
   `ensureCreated` sends on `session.create`.
 - **The column** (chrome/Sidebar.tsx, WorkspaceSessions.tsx): a Work
   workspace offers no New project and no Orchestration; a linked one shows
-  `WorkColumnHead` (work/shell/WorkColumn.tsx): Mail, Tasks, Projects
-  (the project screens, [work-projects.md](work-projects.md)), Agenda,
-  People ([work-people.md](work-people.md)), Files (the Files place, [work-files.md](work-files.md); the Docs view folded into it, [work-docs.md](work-docs.md) "Where the Docs view went"), then
-  Templates (the job's shelf, written but held out of the column by `TEMPLATES_ROW` in views/registry.ts until
-  Files' F1b lands; work-templates.md "The row") from `WORK_VIEWS`, then the project cards. A view may stand inside another
+  `WorkColumnHead` (work/shell/WorkColumn.tsx): from `WORK_VIEWS`, in
+  each view's `order`, Mail, Messages, Tasks, Projects (the project
+  screens, [work-projects.md](work-projects.md)), Agenda, People
+  ([work-people.md](work-people.md)), Money, Files (the Files place,
+  [work-files.md](work-files.md); the Docs view folded into it,
+  [work-docs.md](work-docs.md) "Where the Docs view went"), then the
+  Templates shelf (on: `TEMPLATES_ROW` in views/registry.ts,
+  [work-templates.md](work-templates.md) "The row"), Plays and Routines;
+  then the project cards. A view may stand inside another
   and have no row of its own: `WorkViewDef.inside` names its parent (a
   meeting's page stands inside Agenda, [work-prep.md](work-prep.md)); the
   column draws no row for it (`workViewRows`), its parent's row reads as
@@ -494,7 +498,7 @@ edits none of these.
 | Modules | `PILLAR_LOADERS` and `WORK_MODULES` (work/modules.ts) | `src/main/server/work/<pillar>/index.ts` |
 | Search | `runSearch` (work/search/run.ts) reads every module's `search`, and its `mentions` where it has no `search` of a kind | `search: [source]` on its module ([work-search.md](work-search.md)) |
 | Tools | `withWorkTools(options, session)` beside `withMacTools` for Claude; `app.workTools`, `app.workCall` and `app.workCancel` on the bridge for Codex and Muse | `tools` of its module |
-| Path fence | `workSourcePaths` in `fenceRequest` (remote/fence.ts) | none: it names files inside a `CanvasSource` |
+| Path fence | `workSources` in `fenceRequest` (remote/fence.ts; [by the host a source names](remote-access.md#the-work-fence-by-the-host-a-source-names)) | none: it names files inside a `CanvasSource` |
 | Moves between hosts | `registerMoveModule(db, module)` and `tableMoveModule` (src/main/server/sessionMove.ts), called from a part at boot | the part's own file (the canvas: work/canvas/move.ts) |
 | Canvas kinds | `CANVAS` (src/renderer/src/work/canvas/registry.ts) | `src/renderer/src/work/<pillar>/canvas.ts` |
 | Act views | `ACT_VIEWS` (src/renderer/src/work/acts/registry.ts) | `src/renderer/src/work/<pillar>/act.ts` |
@@ -537,10 +541,15 @@ map to pillars once (`CANVAS_PILLAR`), act kinds too (`ACT_PILLAR`).
   `destParent`, `sourcePath` or `projectPath`. A file is named inside a
   `CanvasSource` (`{ at: 'file', path }`, or a Microsoft file's `ref:
   { kind: 'path', path }`), which the fence reads wherever it sits in the
-  params, and in `session.create`'s `about`. A remote key may name only a
-  file under the app-managed roots, whatever host the source names.
+  params, and in `session.create`'s `about`. Which roots judge it turns
+  on the host the source names and the verb:
+  [remote-access.md](remote-access.md#the-work-fence-by-the-host-a-source-names).
 - contract-work.test.ts, fence.test.ts and work/ctx.test.ts hold every
-  pillar to these; a broken name fails a test, not a person.
+  pillar to these; a broken name fails a test, not a person. A doc is held
+  too: scripts/docsGuard.test.ts fails on a backticked `work.<pillar>.<verb>`
+  in a docs/agents/work*.md file that is no request or push of the
+  contract, unless its list says it is a key the code keeps or a name the
+  doc itself calls gone or a sketch.
 - The bulk lane's method list (src/main/server/lane.ts) is not mounted: a
   Work method runs in the normal lane. A pillar whose read is heavy enough
   to need the bulk lane asks for a follow-up.

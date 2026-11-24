@@ -441,8 +441,9 @@ control, takes it away.
 - The dock's parts that know nothing of files live in `work/dock/` (the shell, the sash, the sizes, the draft and thread
   choice behind `DockSubject`); Files' `Dock.tsx` and `dockThread.ts` are a file tab as one subject of it, and Mail's
   chat is another (work-mail.md "The chat beside the mail").
-- The old wire (a workspace whose host keeps no tabs) still opens a file in
-  a thread as before (`openInThread`); that is not Ask.
+- The old wire (a workspace whose host keeps no tabs) opens a file in its
+  app where it lies (`openWay` answers `app`, `openEntry` calls
+  `openInApp`, work/files/model.ts and open.ts); no thread is made.
 
 **Keys.** The view's root carries `data-files-view` and fills `filesPort`
 (`lib/filesKeys.ts`) while it is mounted, giving it its keys (`FILES_KEYS`
@@ -1970,7 +1971,8 @@ over a file that changed there.
   key by its capability, a thread by `THREADS_BY_TOOLS`. The same key that may approve reads a text copy's words
   (`readCopy`): his Mac's window on the box edits a library's text file as his window there does.
 - **The states**, on the tab (`FileTab.back`, `CopyBack`; every change bumps the tabs' revision, so each window
-  asks the list again): `ok` (`at` when a send last landed), `sending`, `changed` (the file changed there: nothing
+  asks the list again): `ok` (`at`: when the host last found the file holds these bytes, by a send or by a look;
+  the tab says Saved only for the newest write, as above), `sending`, `changed` (the file changed there: nothing
   is sent over it until he chooses), `gone`, `away` (its computer did not answer: the changes wait here), `refused`
   (`detail`, its sentence). An `away` copy is sent again when its computer answers: another host once its link is
   up, the VM once it is awake (looked at every 30 s while any copy waits; a send never wakes the VM from there), and
@@ -2342,16 +2344,13 @@ system.
 | a thread (`model`) | its own workspace's places (a Work Chat none); the VM only where its workspace turns it on; never the tabs, the marks, `open`, or a picture from `preview` or `thumbs`; a change only through the `files_*` tools |
 | another host of his (`peer`) | the libraries alone, under this host's bridge policy; no tab, no mark, no Google Drive; a change only with its origin, a copy sent back (`writeBack`) among them, which needs the policy's read+run |
 | his window or a key, through this host (`work.files.across`) | the listing of a desktop the workspace may use, run there as this host's peer, for a live binding only; never a thread's or a peer's |
-| a remote key | what the listener's fence lets it name (`ctx.reaches`, by the real path): the workspace's folder, and the VM's libraries by the guest-path rule. A Mac's own libraries stay out of a key's reach. A Google Drive of the workspace only for a key that may name the workspace's folder |
+| a remote key | what the listener's fence lets it name ([remote-access.md](remote-access.md#the-work-fence-by-the-host-a-source-names)), checked again by the real path (`ctx.reaches`): the workspace's folder, the VM's libraries by the guest-path rule, and another host's file only in the verbs that send it there or keep it as words. A Mac's own libraries stay out of a key's reach. A Google Drive of the workspace only for a key that may name the workspace's folder |
 
-The listener passes a guest path (`C:\Users\…`) only to the verbs
-`GUEST_METHODS` lists (`remote/fence.ts`): `list`, `stat`, `fetch`, `open`,
-`threads`, `tabOpen`, `tabSet`, `star`, `seen`, and the four that change a
-file there, `make`, `rename`, `move` and `trash` (F8), one verb at a time;
-never an editor's `read` or `write`, a `copy` or an `upload`. Each path is
-judged alone: in one request a guest path passes and a path of this host
-outside the roots still fails; the handler then holds the guest path to a
-mount OneDrive names, and a change to the door.
+The listener's rule for a guest path (`GUEST_METHODS`) and for another host's
+path (`ELSEWHERE_METHODS`), verb by verb, is
+[remote-access.md](remote-access.md#the-work-fence-by-the-host-a-source-names).
+Never an editor's `read` or `write`, a `copy` or an `upload`. The handler then
+holds a guest path to a mount OneDrive names, and a change to the door.
 
 An answer to a remote key is cut to what it could name: a tab that stands
 on, or holds, a file of this host out of its reach is left out; so is such a

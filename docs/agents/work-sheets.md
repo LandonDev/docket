@@ -1210,10 +1210,10 @@ Our own canvas does not use the socket: it calls the pillar's methods.
 ## Agents: the tools and the rule
 
 **His press on what waits.** The window names the ids it shows for Accept all
-and for a group (`reviewWhich`, renderer sheets/model.ts), never `all` or a
-change set the host would pick from what waits now, so a suggestion that came
-after he looked is not taken; past 5,000 ids (the wire's limit) it sends them
-in batches of that many (`reviewBatches`), never all. Accept all and a
+and for a group (`reviewBatches`, renderer sheets/model.ts), never `all` or
+a change set the host would pick from what waits now, so a suggestion that
+came after he looked is not taken; past 5,000 ids (the wire's limit) it sends
+them in batches of that many, never all. Accept all and a
 group's Accept leave out what can only be dropped (a conflict, an orphaned
 cell, format or rule); of what they send, what can be taken is written and
 the rest marked, and the answer is the view: a press is refused in words
@@ -1519,7 +1519,7 @@ conflict caught up with `since`, pushes), `grid.ts` (work-kit's
   with the slot and tint packed into the colour's `th` (work-kit
   `sheet/colour.ts`, `themeTag`), and the model writer writes it back as
   `theme="n" tint="t"` beside `xl/theme/theme1.xml`. Tints are Excel's own
-  integer maths (`tintExcel`).
+  integer maths (`tintExcel`, work-kit `format/theme.ts`).
 - Keys. The Body's root is marked `data-editor-keys`: `sheet` where the
   row is drawn, `read` where it is not (a locked sheet, and a store that
   keeps no formatting), so ⌘B is the grid's only where bold is kept
