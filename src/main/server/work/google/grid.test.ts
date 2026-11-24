@@ -5,6 +5,7 @@ import type { SheetMutationJson } from '@shared/contract-work-sheets'
 import type { WorkCtx } from '../modules'
 import { heldOf, storeKey } from '../sheets/held'
 import { ensureSuggestionTables, SuggestionStore } from '../sheets/suggestions'
+import { oneReview } from '../sheets/index'
 import { GOOGLE_MIME } from './client'
 import { FakeGoogle, FAKE_TOKEN_URL } from './fake'
 import { ensureGoogleTables, resetGoogle, setGoogleDeps } from './google'
@@ -78,6 +79,28 @@ describe('a Google Sheet in the grid', () => {
     expect(cells()[1][1]).toBe(1250)
     expect(cells()[4][0]).toBe('Note')
     expect(new SuggestionStore(ctx.db).open('google:sh1').map((s) => [s.row, s.state])).toEqual([[2, 'conflict']])
+  })
+
+  it('settles one review of a sheet at a time: a Reject sent while an Accept waits on Google is never undone by its write', async () => {
+    const key = 'google:sh1'
+    const { changeSet } = await suggest(ctx, ref, 'agent:env_box:t1', 'tidy', [{ sheet: 'Q1', row: 1, col: 1, value: { v: 1250 } }])
+    // Accept, then Reject from another window before Google answers: the Reject waits for the Accept, and finds it settled.
+    const accept = oneReview(key, () => review(ctx, ref, { changeSet }, 'accept'))
+    const reject = oneReview(key, () => review(ctx, ref, { changeSet }, 'reject'))
+    await Promise.all([accept, reject])
+    expect(writes()).toBe(1)
+    // Written and so accepted: never a row marked rejected whose words are in Google.
+    expect(ctx.db.prepare('SELECT state FROM work_sheets_suggestions WHERE store = ? AND change_set = ?').all(key, changeSet)).toEqual([{ state: 'accepted' }])
+    // Reject first, then Accept: the Accept picks after the Reject settled, and writes nothing.
+    const again = await suggest(ctx, ref, 'agent:env_box:t1', 'tidy', [{ sheet: 'Q1', row: 2, col: 1, value: { v: 999 } }])
+    await Promise.all([oneReview(key, () => review(ctx, ref, { changeSet: again.changeSet }, 'reject')), oneReview(key, () => review(ctx, ref, { changeSet: again.changeSet }, 'accept'))])
+    expect(writes()).toBe(1)
+    expect(cells()[2][1]).toBe(300)
+    // Two Accepts at once write the rows once.
+    const twice = await suggest(ctx, ref, 'agent:env_box:t1', 'tidy', [{ sheet: 'Q1', row: 4, col: 0, value: { v: 'Note' } }])
+    const both = await Promise.all([oneReview(key, () => review(ctx, ref, { changeSet: twice.changeSet }, 'accept')), oneReview(key, () => review(ctx, ref, { changeSet: twice.changeSet }, 'accept'))])
+    expect(both.map((b) => b.written)).toEqual([1, 0])
+    expect(writes()).toBe(2)
   })
 
   it('is a SheetSource: reads with a hash, writes against it, refuses a stale base', async () => {

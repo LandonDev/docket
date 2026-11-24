@@ -1069,6 +1069,18 @@ Our own canvas does not use the socket: it calls the pillar's methods.
 
 ## Agents: the tools and the rule
 
+**His press on what waits.** The window names the ids it shows for Accept all
+and for a group (`reviewWhich`, renderer sheets/model.ts), never `all` or a
+change set the host would pick from what waits now, so a suggestion that came
+after he looked is not taken (past 5,000 ids it names the set or all, as
+before). One review of a sheet runs at a time (`oneReview`, sheets/index.ts):
+each picks what waits only once the last settled, so an Accept waiting on
+Google or Excel never writes what a Reject in another window dropped, and two
+Accepts never write the same rows. Not yet bound: the values he saw (a thread's
+same change set suggesting the same cell again keeps its id), and the target
+under a co-author's row insert or tab change, where a new blank at the old
+cell passes as the old blank (`compareAndWrite` compares values alone).
+
 `sheet_read`, `sheet_write`, `sheet_suggest`, `sheet_format`, `sheet_rule`,
 `sheet_table`, `sheet_page`, `sheet_note`, `sheet_chart`, `sheet_create` (tools.ts), cells in A1 (`a1.ts`), at most 10,000 cells a
 read and 1,000 a write. A read of an opened Excel file ends with one line

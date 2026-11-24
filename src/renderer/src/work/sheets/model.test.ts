@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { cellText, holds, sheetChanges, savedLine } from "./model";
+import { cellText, holds, REVIEW_IDS_MOST, reviewWhich, sheetChanges, savedLine } from "./model";
 import { suggestion } from "./testkit";
 
 describe("the sheet canvas's model", () => {
@@ -51,5 +51,21 @@ describe("the saved line", () => {
   it("says why a file cannot be changed here, before anything else", () => {
     expect(savedLine({ ...view, readOnly: "Saved as .xlsb, which opens here only to read" }, "x", true, 5)).toEqual({ state: "readonly", detail: "Saved as .xlsb, which opens here only to read" });
     expect(savedLine({ ...view, missing: true }, null, false, null)).toEqual({ state: "readonly", detail: "Budget.xlsx moved" });
+  });
+});
+
+describe("what a press of Accept or Reject names", () => {
+  const said = (changeSet: string, ids: string[]) => ({ kind: "orphaned" as const, changeSet, ids });
+  const list = [said("cs1", ["cs1:A1", "cs1:A2"]), said("cs2", ["cs2:B1"])];
+  it("names the ids on screen, for all and for a group, so what came after he looked is not taken", () => {
+    expect(reviewWhich(list, "all")).toEqual({ ids: ["cs1:A1", "cs1:A2", "cs2:B1"] });
+    expect(reviewWhich(list, { group: "cs2" })).toEqual({ ids: ["cs2:B1"] });
+    expect(reviewWhich(list, 0)).toEqual({ ids: ["cs1:A1", "cs1:A2"] });
+  });
+  it("names the set, or all, past the wire's own limit or with nothing on screen", () => {
+    const many = [said("cs9", Array.from({ length: REVIEW_IDS_MOST + 1 }, (_, i) => `cs9:${i}`))];
+    expect(reviewWhich(many, "all")).toBe("all");
+    expect(reviewWhich(many, { group: "cs9" })).toEqual({ changeSet: "cs9" });
+    expect(reviewWhich([], "all")).toBe("all");
   });
 });

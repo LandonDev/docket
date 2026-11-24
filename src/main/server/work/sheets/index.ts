@@ -167,15 +167,19 @@ export const sheets: WorkModule = {
         // Taking one writes it: a remote key changes a sheet others can open only with `approve`. Dropping
         // one there is his too: a key that may not see what waits (`viewFor`) decides none of it.
         await approves(s, item!, by)
-        // A format or a rule the agent proposed is this host's own row: taken, it is laid as his edit; dropped, it is gone.
-        const mine = held.at === 'package' || held.at === 'service' ? await reviewChanges(s, held, key, req.params.which, req.params.verdict, principalOf(ctx, by)) : false
-        if (mine === 'only') {
-          // (the ids named no cell suggestion)
-        } else if (held.at === 'package') await reviewPackage(s, held.path, key, req.params.which, req.params.verdict, principalOf(ctx, by))
-        else if (held.at === 'excel') await (await import('../office/grid')).review(ctx, held.ref, req.params.which, req.params.verdict, principalOf(ctx, by))
-        // An accepted set goes to Google as one write (google/grid.ts).
-        else if (held.at === 'google') await (await import('../google/grid')).review(ctx, held.ref, req.params.which, req.params.verdict)
-        else await host(ctx, 'review', { sheet: held.ref, which: req.params.which, verdict: req.params.verdict })
+        // One review of a sheet at a time: each picks what waits only once the last one settled, so an Accept waiting on
+        // Google or Excel never writes what a Reject in another window dropped meanwhile, nor two Accepts the same rows.
+        await oneReview(key, async () => {
+          // A format or a rule the agent proposed is this host's own row: taken, it is laid as his edit; dropped, it is gone.
+          const mine = held.at === 'package' || held.at === 'service' ? await reviewChanges(s, held, key, req.params.which, req.params.verdict, principalOf(ctx, by)) : false
+          if (mine === 'only') {
+            // (the ids named no cell suggestion)
+          } else if (held.at === 'package') await reviewPackage(s, held.path, key, req.params.which, req.params.verdict, principalOf(ctx, by))
+          else if (held.at === 'excel') await (await import('../office/grid')).review(ctx, held.ref, req.params.which, req.params.verdict, principalOf(ctx, by))
+          // An accepted set goes to Google as one write (google/grid.ts).
+          else if (held.at === 'google') await (await import('../google/grid')).review(ctx, held.ref, req.params.which, req.params.verdict)
+          else await host(ctx, 'review', { sheet: held.ref, which: req.params.which, verdict: req.params.verdict })
+        })
         await announce(s, item!)
         const after = await viewOf(s, item!)
         // A sheet others can open: what he decided leaves this host's database with his press (what still waits stays, as he ruled).
@@ -323,6 +327,19 @@ export const SHEET_MAKER: FileMaker = {
     wb.custom = { ...(wb.custom ?? {}), defaults: { family: 'Calibri', size: 11 } }
     writeFileSync(target.path, writeXlsx(wb))
   }
+}
+
+const reviewing = new Map<string, Promise<unknown>>()
+/** Runs one review of a sheet's suggestions after any other still running on the same store. */
+export function oneReview<T>(key: string, run: () => Promise<T>): Promise<T> {
+  const before = reviewing.get(key) ?? Promise.resolve()
+  const next = before.catch(() => {}).then(run)
+  const tail = next.catch(() => {})
+  reviewing.set(key, tail)
+  void tail.then(() => {
+    if (reviewing.get(key) === tail) reviewing.delete(key)
+  })
+  return next
 }
 
 /**

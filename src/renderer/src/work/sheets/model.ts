@@ -13,6 +13,19 @@ export type SheetChange =
   | { kind: "orphaned"; changeSet: string; ids: string[] }
   | { kind: "said"; said: ProposedChange; changeSet: string; ids: string[] };
 
+/** The most ids one review names (the wire's own limit): past it the window names the set, or all, as before. */
+export const REVIEW_IDS_MOST = 5000;
+
+/**
+ * What a press of Accept or Reject names: the ids on screen, never the host's own pick of what waits, so a suggestion
+ * that came after he looked is not taken by his press. `w` is one change by its place in the list, a group, or all.
+ */
+export function reviewWhich(list: readonly SheetChange[], w: number | { group: string } | "all"): { ids: string[] } | { changeSet: string } | "all" {
+  if (typeof w === "number") return { ids: list[w]?.ids ?? [] };
+  const shown = (w === "all" ? list : list.filter((c) => c.changeSet === w.group)).flatMap((c) => c.ids);
+  return shown.length > 0 && shown.length <= REVIEW_IDS_MOST ? { ids: shown } : w === "all" ? "all" : { changeSet: w.group };
+}
+
 export interface SheetChanges {
   changes: SheetChange[];
   /** the runs alone, for the marks */

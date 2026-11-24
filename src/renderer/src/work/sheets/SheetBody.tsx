@@ -22,7 +22,7 @@ import { univerGrid, type SheetGrid } from "./grid";
 import { linkSheetHost, type ReviewWhich, type SheetHost } from "./host";
 import { ImportLine } from "./ImportLine";
 import { importRows, runImport } from "./imported";
-import { saidLine, savedLine, sheetChanges } from "./model";
+import { reviewWhich, saidLine, savedLine, sheetChanges } from "./model";
 import { SheetSync, syncOf, useSheetSync } from "./sync";
 import { guestSource } from "../guests/api";
 import { useWorkCommands } from "../formats/command";
@@ -484,7 +484,7 @@ function useFeeds(
       const at = whereOf(next);
       if (at) handle?.reveal(at);
     };
-    const which = (w: number | { group: string } | "all"): ReviewWhich => (w === "all" ? "all" : typeof w === "number" ? { ids: list[w]?.ids ?? [] } : { changeSet: w.group });
+    const which = (w: number | { group: string } | "all"): ReviewWhich => reviewWhich(list, w);
     const review: ReviewAdapter = {
       groups: changes.groups,
       index: current,
