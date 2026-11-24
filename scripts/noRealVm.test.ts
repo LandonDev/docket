@@ -11,6 +11,7 @@ const ALLOWED: Record<string, string> = {
   'e2e-winvm-work.ts': 'the VM keeper\'s own proof: it is meant to hold the standing machine',
   'e2e-updater.ts': 'a packaged copy on the Mac, or in the Windows guest: no keeper there',
   'e2e-updater-win.ts': 'runs inside the Windows guest',
+  'e2e-pc-setup-rig.ts': 'sets it in the Windows guest\'s own environment; its stand-in box (lib/pcRig.ts) names WINVM_DIR',
   'e2e-code-update.ts': 'a packaged copy on the Mac: its harness block takes HARNESS_KEYS alone'
 }
 
