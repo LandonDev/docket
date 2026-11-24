@@ -8,6 +8,7 @@ import { SettingSwitch } from "../../components/setting-switch";
 import { PageEmpty, PageError, PageRow, PageRowsSkeleton, PageSection } from "../../components/page";
 import { BusyLabel, Button } from "../../components/ui/button";
 import { Dialog } from "../../components/ui/dialog";
+import { Skeleton } from "../../components/ui/skeleton";
 import { registry } from "../../lib/connection";
 import { hostFailure } from "../../lib/hostFailure";
 import { hostName } from "../../lib/threadResources";
@@ -347,7 +348,18 @@ export function WinvmView({ title, state, points, pointsError, onRetryPoints, sc
           ) : (
             <PageRow
               title="Restore points"
-              description={points === null ? undefined : points.length === 0 ? "None yet" : `${points.length} kept, the last ${dayTime(Math.max(...points.map((p) => p.at)))}`}
+              description={
+                points === null ? (
+                  // The count's own 16px line, a bone in its place while the read is out: nothing moves when it lands.
+                  <span role="status" aria-label="Reading restore points" data-points-bone className="flex h-4 items-center">
+                    <Skeleton className="h-3 w-36" />
+                  </span>
+                ) : points.length === 0 ? (
+                  "None yet"
+                ) : (
+                  `${points.length} kept, the last ${dayTime(Math.max(...points.map((p) => p.at)))}`
+                )
+              }
               {...(may.admin || may.operate ? { onOpen: onPoints, openLabel: "Restore points", openDisabled: points === null } : {})}
             />
           )}

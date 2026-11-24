@@ -8,12 +8,15 @@ import { Input } from "@renderer/components/ui/input";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@renderer/components/ui/sheet";
 import { Skeleton } from "@renderer/components/ui/skeleton";
 import { ChoiceSelect } from "../../components/choice-select";
-import { ConfirmDialog, DialogFooter as Footer, ErrorLine, errorText } from "../../chrome/ConfirmDialog";
+import { ConfirmDialog, DialogFooter as Footer, ErrorLine } from "../../chrome/ConfirmDialog";
 import { Field, FieldRow } from "../../chrome/DialogField";
 import { useClosingDialog } from "../../chrome/Modal";
 import { AccountPinFields, projectInheritLabel } from "../../chrome/AccountPinFields";
 import { renameProject, setProjectAccounts } from "../../lib/tcserver/projects";
 import { useLinkMay } from "../../lib/linkMay";
+import { registry } from "../../lib/connection";
+import { nameInLine } from "../../lib/hostWords";
+import { workErrorWords } from "../../lib/workErrorWords";
 import type { ProjectMeta, WorkspaceMeta } from "../../lib/tcserver/types";
 import { useProjects } from "../../lib/tcserver/workspaces";
 import { useAccounts } from "../../stores/accounts";
@@ -245,7 +248,8 @@ export function WorkProjectSettings({ project: opened, workspace, onClose }: { p
       closeThen(onClose);
     } catch (err) {
       // What landed stays landed: the drafts are compared with what is saved, so Retry sends only the rest.
-      setError(errorText(err));
+      const host = registry.environment(project.environmentId)?.name;
+      setError(workErrorWords(err, { host: host ? nameInLine(host) : undefined, write: true }) || "The project did not save.");
       setPending(false);
     }
   };

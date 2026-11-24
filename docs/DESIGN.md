@@ -1168,7 +1168,8 @@ Every computer being driven now, on every connected host, in one place
   since Windows keeps the size it was set up at through every sleep),
   "Restore points" (a row that opens a dialog of the points, newest first,
   each with Go back… after a confirm naming what is lost, and Delete; Save
-  a point at its foot; saving and going back only while it sleeps), the
+  a point at its foot; saving and going back only while it sleeps; a bone
+  holds its count's line while the points are read), the
   edition with its end date, and Office. A Work workspace's own page has
   "Computer use on the Windows VM" under Where it runs, a switch shown only
   where its host has the VM set up.
@@ -2382,7 +2383,8 @@ Around the canvas:
   Category becomes a 12px muted line under Who and Date narrows to 64px,
   By category and Entries
   end their amounts 48px in (the paperclip's room), Owed and To confirm
-  keep their 120px for their presses, and Month or Year moves to two
+  keep their 120px for their presses, Owed's who and what wrap as one run
+  of words rather than cut beside Paid (whose name says both), and Month or Year moves to two
   ticked rows at the head of More, so Add and More stay in the header. To confirm leads the column while anything waits: a
   row each, a 32px picture (6px corners on the image outline, the receipt
   glyph where there is none), who or the file's name in foreground with

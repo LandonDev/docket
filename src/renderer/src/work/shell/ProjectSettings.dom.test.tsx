@@ -219,6 +219,19 @@ describe("Name and State", () => {
     expect(sent[1].args).toEqual({ id: "lp_1", patch: { name: "Fall LAN" } });
   });
 
+  it("a save refused in words never written for him says the project did not save, not the raw text", async () => {
+    connected();
+    failWrites = "work.lifeos.write refused at /srv/lifeos/projects.ts";
+    render(<ProjectSettingsDialog project={MIRROR} workspace={WORK} onClose={() => {}} />);
+    await sheet();
+    fireEvent.change(screen.getByLabelText("Name"), { target: { value: "Fall LAN" } });
+    await act(async () => {
+      fireEvent.click(saveButton());
+    });
+    await waitFor(() => expect(document.querySelector("[data-project-settings-error]")).not.toBeNull());
+    expect(document.querySelector("[data-project-settings-error]")!.textContent).toBe("The project did not save.");
+  });
+
   it("Save after a save that landed with its answer lost sends nothing more and closes the sheet", async () => {
     const rows = [{ _id: "lp_1", name: "Spring LAN", status: "active" }];
     connected(lifeosClient(rows));
@@ -230,7 +243,7 @@ describe("Name and State", () => {
     await act(async () => {
       fireEvent.click(saveButton());
     });
-    await waitFor(() => expect(screen.getByText("the connection dropped")).toBeTruthy());
+    await waitFor(() => expect(screen.getByText("The connection dropped")).toBeTruthy());
     // The write had landed: the live list now says so.
     rows[0] = { ...rows[0], name: "Fall LAN" };
     act(() => listUpdates.forEach((fn) => fn()));

@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { WinvmPoint, WinvmState } from "@shared/contract-work-winvm";
 import { registry } from "../../lib/connection";
@@ -12,7 +12,7 @@ vi.mock("../../lib/linkMay", async (original) => (await import("../../lib/linkMa
 const signInOnVm = vi.hoisted(() => vi.fn(async (_env: string) => ({ computer: "vm:windows", account: null, line: "" })));
 vi.mock("./signIn", () => ({ signInOnVm }));
 
-const h = vi.hoisted(() => ({ office: null as unknown, screen: "1280x800", state: null as unknown, points: [] as unknown[], pointsFail: null as string | null, fail: {} as Record<string, string>, calls: [] as { method: string; params: unknown }[], pushes: [] as ((p: unknown) => void)[], confirm: true }));
+const h = vi.hoisted(() => ({ office: null as unknown, screen: "1280x800", state: null as unknown, points: [] as unknown[], pointsFail: null as string | null, pointsHold: null as Promise<unknown> | null, fail: {} as Record<string, string>, calls: [] as { method: string; params: unknown }[], pushes: [] as ((p: unknown) => void)[], confirm: true }));
 vi.mock("../../chrome/ConfirmDialog", async (original) => ({ ...(await original<typeof import("../../chrome/ConfirmDialog")>()), confirmAction: async () => h.confirm }));
 
 const at = (s: Partial<WinvmState>): WinvmState => ({ state: "asleep", step: null, error: null, cannot: null, sleepAfter: "30m", since: 1, ...s });
@@ -23,6 +23,7 @@ beforeEach(() => {
   h.state = at({});
   h.points = [];
   h.pointsFail = null;
+  h.pointsHold = null;
   h.fail = {};
   h.calls = [];
   h.pushes = [];
@@ -35,6 +36,7 @@ beforeEach(() => {
         request: async (method: string, params: unknown) => {
           h.calls.push({ method, params });
           if (method === "work.winvm.state") return h.state;
+          if (method === "work.winvm.points" && h.pointsHold) return h.pointsHold;
           if (method === "work.winvm.points") return h.pointsFail ? Promise.reject(new Error(h.pointsFail)) : { points: h.points };
           if (h.fail[method]) throw new Error(h.fail[method]);
           if (method === "work.office.vmStatus") return h.office ?? Promise.reject(new Error("not handled"));
@@ -235,6 +237,18 @@ describe("the Windows VM in Settings → Work", () => {
     await flush();
     expect(screen.getByText("None yet")).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
+  });
+
+  it("holds the count's line with a bone while the points are read, then the count in its place", async () => {
+    let land!: (v: unknown) => void;
+    h.pointsHold = new Promise((r) => (land = r));
+    render(<WinvmSection hosts={["box"]} />);
+    await flush();
+    const row = screen.getByText("Restore points").closest("[data-slot=page-row]") as HTMLElement;
+    expect(within(row).getByRole("status", { name: "Reading restore points" }).className).toContain("h-4");
+    await act(async () => land({ points: [] }));
+    expect(within(row).queryByRole("status", { name: "Reading restore points" })).toBeNull();
+    expect(within(row).getByText("None yet")).toBeTruthy();
   });
 
   it("says a refused press in his words, naming the computer, never the link's text", async () => {

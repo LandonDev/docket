@@ -170,6 +170,14 @@ describe("Owed's verbs", () => {
     expect(second.className).toContain("@max-[520px]/money:block");
     expect(second.textContent).toBe(days.textContent);
   });
+  it("under 520px let who and what wrap as one run of words, never cut beside Paid, and Paid name both", async () => {
+    mount();
+    await settle();
+    const paid = screen.getByRole("button", { name: "Paid: State Officials Assn, Second-half dues" });
+    const line = paid.closest("li")!.firstElementChild!.firstElementChild as HTMLElement;
+    expect(line.className).toContain("@max-[520px]/money:block");
+    for (const fact of Array.from(line.children)) expect(fact.className).toContain("@max-[520px]/money:whitespace-normal");
+  });
 });
 
 describe("the loading bones", () => {

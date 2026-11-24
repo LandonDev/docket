@@ -215,7 +215,7 @@ export function fixtureView(state: FixtureState): { view: ReviewView; now: numbe
       // The box could read neither its threads nor its held items: no message is counted, and nothing held shows.
       const b = friday();
       const noHeld = { ...b, points: b.points.filter((p) => p[2] !== "said"), ran: [], shipped: [], slipped: { at: FRIDAY, rows: b.slipped.rows.filter((r) => r.ref.kind !== "held") }, left: [LEFT.threads, LEFT.held] };
-      return { now, view: { ...base, errors: [{ environmentId: "env-mac", name: "The Mac", error: "it timed out", kept: false }], review: merged([{ environmentId: "env-box", body: noHeld }], { fresh: false }) } };
+      return { now, view: { ...base, errors: [{ environmentId: "env-mac", name: "The Mac", error: "The Mac did not answer.", kept: false }], review: merged([{ environmentId: "env-box", body: noHeld }], { fresh: false }) } };
     }
     default:
       return { now, view: { ...base, review: merged(both(friday())) } };

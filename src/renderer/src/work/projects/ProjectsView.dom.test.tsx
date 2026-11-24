@@ -386,7 +386,7 @@ describe("Documents", () => {
       fireEvent.click(option);
     });
     expect(hostCalls.find((c) => c.method === "work.projects.link")?.params.source).toEqual({ at: "file", host: BOX, path: "/w/budget.xlsx" });
-    await waitFor(() => expect(within(picker).getByText("forbidden: work.projects.link is outside app-managed roots")).toBeTruthy());
+    await waitFor(() => expect(within(picker).getByText(/does not let this window reach that file where it lies\. Open it from Files on the computer that holds it\./)).toBeTruthy());
     expect(within(picker).getByRole("option", { name: /budget\.xlsx/ })).toBeTruthy();
   });
 

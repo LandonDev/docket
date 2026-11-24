@@ -16,6 +16,7 @@ const states: { name: string; state: WinvmState; points: { id: string; name: str
   { name: "Awake, the larger screen picked", state: at({ state: "awake", sleepAfter: "2h" }), points: [], screen: "1920x1200" },
   { name: "Office and OneDrive signed in", state: at({ state: "asleep" }), points: [], office: { status: signedIn, libraries: 1 } },
   { name: "OneDrive signed out: the one sign-in", state: at({ state: "asleep" }), points: [], office: { status: signedOut, libraries: null } },
+  { name: "Restore points being read: a bone on the count's line", state: at({ state: "asleep" }), points: null },
   { name: "Restore points that could not be read: Retry, never None yet", state: at({ state: "asleep" }), points: null, pointsError: "The box could not read the restore points." },
   { name: "A wake that failed", state: at({ state: "asleep", error: "Windows did not answer in time; try again" }), points: [] },
 ];

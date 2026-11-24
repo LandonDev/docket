@@ -5,7 +5,9 @@ import { FIND_KIND_WORDS, FIND_WHERE_WORDS, type FindEntry } from "@shared/work/
 import { mentionMatches } from "@shared/work/mentions";
 import { PickerDialog, PickerNote, pickerRowClass } from "../../chrome/PickerDialog";
 import { usePointerHighlight } from "../../hooks/usePointerHighlight";
+import { Button } from "../../components/ui/button";
 import { registry } from "../../lib/connection";
+import { hostFailure } from "../../lib/hostFailure";
 
 /**
  * Link a document, or a file or item, to a project (docs/agents/work-projects.md
@@ -13,7 +15,8 @@ import { registry } from "../../lib/connection";
  * (`work.docs.find`, the docs pillar's catalog), narrowed to what this row
  * links. A pick writes `work.projects.link` on the workspace's host, which
  * checks the sector and fences a file's path; a refusal stays in the picker
- * as its one line.
+ * as its one line. A list that did not come is a red line with Retry (Enter
+ * in the field presses it), and what he typed stays.
  */
 
 /** What a picker lists: LifeOS's own documents and sheets, or everything else a project can list. */
@@ -38,6 +41,8 @@ export function LinkPicker({ env, workspaceId, project, kind, onClose }: { env: 
   const [active, setActive] = useState(0);
   const [found, setFound] = useState<FindEntry[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [listError, setListError] = useState<string | null>(null);
+  const [attempt, setAttempt] = useState(0);
   const [linking, setLinking] = useState<string | null>(null);
 
   useEffect(() => {
@@ -46,11 +51,16 @@ export function LinkPicker({ env, workspaceId, project, kind, onClose }: { env: 
       .linkOf(env)
       .request<FindAnswer>("work.docs.find", { workspaceId, refresh: true })
       .then((answer) => live && setFound(answer.entries))
-      .catch((err: unknown) => live && setError(err instanceof Error ? err.message : String(err)));
+      .catch((err: unknown) => live && setListError(hostFailure(env, err, "could not list what to link")));
     return () => {
       live = false;
     };
-  }, [env, workspaceId]);
+  }, [env, workspaceId, attempt]);
+  // The query stays as he typed it: the list comes back narrowed by it.
+  const retry = (): void => {
+    setListError(null);
+    setAttempt((n) => n + 1);
+  };
 
   const rows = useMemo(() => linkable(found ?? [], kind, project.id).filter((e) => mentionMatches(query, e.title)), [found, kind, project.id, query]);
   useEffect(() => setActive((i) => (rows.length === 0 ? 0 : Math.min(i, rows.length - 1))), [rows.length]);
@@ -65,7 +75,7 @@ export function LinkPicker({ env, workspaceId, project, kind, onClose }: { env: 
       .request<ProjectLinked>("work.projects.link", { workspaceId, lifeosProjectId: project.id, source: entry.source, title: entry.title.slice(0, 500) })
       .then(onClose, (err: unknown) => {
         setLinking(null);
-        setError(err instanceof Error ? err.message : String(err));
+        setError(hostFailure(env, err, "did not link it", true));
       });
   };
 
@@ -75,6 +85,7 @@ export function LinkPicker({ env, workspaceId, project, kind, onClose }: { env: 
       if (rows.length) setActive((i) => (i + (e.key === "ArrowDown" ? 1 : rows.length - 1)) % rows.length);
     } else if (e.key === "Enter") {
       e.preventDefault();
+      if (listError) return retry();
       const entry = rows[active];
       if (entry) pick(entry);
     } else if (e.key === "Tab") e.preventDefault();
@@ -83,7 +94,7 @@ export function LinkPicker({ env, workspaceId, project, kind, onClose }: { env: 
   // Every LifeOS document and sheet the workspace lists, this project's own included: whether "all are here already" is true.
   const any = useMemo(() => (found ?? []).some((e) => e.source.at === "lifeos" && (e.source.table === "docs" || e.source.table === "sheets")), [found]);
   const none = kind === "item" ? "No file or item to link" : any ? "Every document and sheet here is in this project already" : "No document or sheet to link";
-  const note = error ?? (found === null ? "Loading…" : rows.length === 0 ? (query.trim() ? "No match" : none) : null);
+  const note = listError ? null : (error ?? (found === null ? "Loading…" : rows.length === 0 ? (query.trim() ? "No match" : none) : null));
   return (
     <PickerDialog
       label={`${LABEL[kind]} to ${project.name}`}
@@ -97,7 +108,17 @@ export function LinkPicker({ env, workspaceId, project, kind, onClose }: { env: 
       onSearchKey={onSearchKey}
       onClose={onClose}
     >
-      {note ? <PickerNote>{note}</PickerNote> : null}
+      {listError ? (
+        // A note's 28px line, in red, with its way back at the end.
+        <div role="alert" data-link-picker-failed className="flex min-h-7 items-center gap-2 pr-1 pl-3 text-[13px]">
+          <span className="min-w-0 flex-1 text-destructive">{listError}</span>
+          <Button variant="ghost" size="xs" onClick={retry}>
+            Retry
+          </Button>
+        </div>
+      ) : note ? (
+        <PickerNote>{note}</PickerNote>
+      ) : null}
       {rows.length ? (
         <div role="listbox" aria-label={LABEL[kind]} className="flex max-h-[320px] flex-col overflow-x-hidden overflow-y-auto" onMouseMove={onMouseMove}>
           {rows.map((entry, i) => (

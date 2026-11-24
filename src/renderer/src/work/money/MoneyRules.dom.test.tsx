@@ -86,7 +86,7 @@ describe("Owed", () => {
     const diner = NOVEMBER.find((r) => r.who === "Diner on 9th")!;
     const row = within(screen.getByRole("region", { name: "Owed to you" })).getByText("Crew meal before the game").closest("li")!;
     expect(row.getAttribute("data-owed-row")).toBe(String(diner.row));
-    expect(row.textContent).toMatch(/^Crew meal before the gameDiner on 9th/);
+    expect(row.textContent).toMatch(/^Crew meal before the game Diner on 9th/);
   });
 });
 

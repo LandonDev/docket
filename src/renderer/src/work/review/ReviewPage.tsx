@@ -5,14 +5,17 @@ import { BusyLabel, Button } from "../../components/ui/button";
 import { Skeleton } from "../../components/ui/skeleton";
 import { Spinner } from "../../components/ui/spinner";
 import { loadToast } from "../../components/ui/toaster";
+import { registry } from "../../lib/connection";
+import { nameInLine } from "../../lib/hostWords";
 import { takeWorkPlaceAt, useWorkPlaceAt } from "../../lib/workPlaceAt";
+import { workErrorWords } from "../../lib/workErrorWords";
 import type { WorkPlaceProps } from "../places/registry";
 import { canOpen, followUp, openTarget, openThread, type Target } from "./go";
 import { Hours, HoursSkeleton } from "./Hours";
 import { RowsSkeleton, Shipped } from "./Shipped";
 import { showWeekNamed, shownWeek, useShownFrom, useWeekTurn } from "./shown";
 import { Slipped } from "./Slipped";
-import { hostError, loadWeek, loadZone, markSeen, sentence, settleRow, undoSettle, useReview, type ReviewView } from "./store";
+import { loadWeek, loadZone, markSeen, settleRow, undoSettle, useReview, type ReviewView } from "./store";
 
 /**
  * Review: one page above the workspaces that shows a week across every job
@@ -115,7 +118,9 @@ export function View(_props: WorkPlaceProps) {
             : undefined,
         );
       } catch (err) {
-        toast.error("That did not go through", { description: sentence(hostError(err)) });
+        // Its cause in his words, naming the computer; a raw refusal leaves the title alone.
+        const name = registry.environment(row.environmentId)?.name;
+        toast.error("That did not go through", { description: workErrorWords(err, { host: name ? nameInLine(name) : undefined, write: true }) || undefined });
       }
     },
     [review, leave],
@@ -183,7 +188,7 @@ export function ReviewPageView({
   // and Slipped's meetings, a held item Shipped's approvals, Slipped's rows and desk time. Threads and document
   // history feed Hours alone and are said there. The first red line on the page carries the one Retry.
   // A host that did not answer says whether what it answered before still stands in the numbers.
-  const over = [...view.errors.map((e) => `${e.name} did not answer: ${e.error.replace(/\.$/, "")}.${e.kept ? " Its last answer is shown." : ""}`), ...of(LEFT.lifeos, LEFT.lifeosKept, LEFT.calendar, LEFT.calendarKept, LEFT.tasks, LEFT.tasksKept, LEFT.mail, LEFT.mailKept, LEFT.self, LEFT.carried, LEFT.meetings, LEFT.prep, LEFT.held)];
+  const over = [...view.errors.map((e) => `${e.error}${e.kept ? " Its last answer is shown." : ""}`), ...of(LEFT.lifeos, LEFT.lifeosKept, LEFT.calendar, LEFT.calendarKept, LEFT.tasks, LEFT.tasksKept, LEFT.mail, LEFT.mailKept, LEFT.self, LEFT.carried, LEFT.meetings, LEFT.prep, LEFT.held)];
   // A list read in part is a fact of the week, as a host that is off is: one muted line each, with no Retry, since
   // asking again reads the same cut list. It still keeps every "nothing" and comparison off.
   const part = of(LEFT.mailPart, LEFT.heldPart, LEFT.filesPart);

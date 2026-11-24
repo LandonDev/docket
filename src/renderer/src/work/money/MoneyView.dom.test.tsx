@@ -196,7 +196,7 @@ describe("the Money view", () => {
     mount();
     await settle();
     const owed = within(screen.getByRole("region", { name: "You owe" }));
-    fireEvent.click(owed.getByRole("button", { name: "Paid: State Officials Assn" }));
+    fireEvent.click(owed.getByRole("button", { name: "Paid: State Officials Assn, Second-half dues" }));
     await settle();
     const dues = NOVEMBER.find((r) => r.who === "State Officials Assn")!;
     expect(asked("work.money.paid")).toEqual([{ workspaceId: "ws", at: { ref: dues.ref, row: dues.row, sig: sigOf(dues) } }]);

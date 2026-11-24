@@ -353,12 +353,12 @@ describe("the other states", () => {
     const { container, props } = draw("failed");
     const alerts = [...container.querySelectorAll('[role="alert"]')].map(text);
     // Held items are Shipped's approvals, Slipped's rows and desk time: said once, over the sections, as a host is.
-    expect(alerts).toEqual(["The Mac did not answer: it timed out.", LEFT.held, LEFT.threads]);
+    expect(alerts).toEqual(["The Mac did not answer.", LEFT.held, LEFT.threads]);
     expect(within(section("Hours")).getByRole("alert").textContent).toBe(LEFT.threads);
     expect(within(section("Slipped")).queryByRole("alert")).toBeNull();
     // One Retry on the page, on its first red line; it asks every host again and spins while they answer.
     const retry = screen.getByRole("button", { name: "Retry" }) as HTMLButtonElement;
-    expect(retry.closest("div")!.querySelector('[role="alert"]')!.textContent).toBe("The Mac did not answer: it timed out.");
+    expect(retry.closest("div")!.querySelector('[role="alert"]')!.textContent).toBe("The Mac did not answer.");
     fireEvent.click(retry);
     expect(props.onRetry).toHaveBeenCalledWith();
     expect(retry.disabled).toBe(true);
@@ -448,8 +448,8 @@ describe("the other states", () => {
   it("says a host's last answer is shown when it is, and holds the presses of rows nobody could check", () => {
     const { view, now } = fixtureView("full");
     const rows = view.review!.slipped.map((r) => (r.ref.kind === "task" ? { ...r, unchecked: true } : r));
-    const { container } = draw("full", { view: { ...view, errors: [{ environmentId: "env-mac", name: "The Mac", error: "it timed out", kept: true }], review: { ...view.review!, slipped: rows } }, now });
-    expect(text(container.querySelector('[role="alert"]')!)).toBe("The Mac did not answer: it timed out. Its last answer is shown.");
+    const { container } = draw("full", { view: { ...view, errors: [{ environmentId: "env-mac", name: "The Mac", error: "The Mac did not answer.", kept: true }], review: { ...view.review!, slipped: rows } }, now });
+    expect(text(container.querySelector('[role="alert"]')!)).toBe("The Mac did not answer. Its last answer is shown.");
     expect(text(container.querySelector("[data-review-last-known]")!)).toBe("Slipped shows what was last known.");
     const off = (key: string) => within(section("Slipped").querySelector(`[data-review-row="${key}"]`) as HTMLElement).getAllByRole("button").slice(1).map((b) => (b as HTMLButtonElement).disabled);
     expect(off("task:k1")).toEqual([true, true, true]);
@@ -462,7 +462,7 @@ describe("the other states", () => {
     // A host whose own line says its last answer is shown says it once: no second line for its rows.
     cleanup();
     const macs = view.review!.slipped.map((r) => (r.ref.kind === "held" ? { ...r, environmentId: "env-mac", unchecked: true } : r));
-    const once = draw("full", { view: { ...view, errors: [{ environmentId: "env-mac", name: "The Mac", error: "it timed out", kept: true }], review: { ...view.review!, slipped: macs } }, now });
+    const once = draw("full", { view: { ...view, errors: [{ environmentId: "env-mac", name: "The Mac", error: "The Mac did not answer.", kept: true }], review: { ...view.review!, slipped: macs } }, now });
     expect(once.container.querySelector("[data-review-last-known]")).toBeNull();
   });
 

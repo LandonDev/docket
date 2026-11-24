@@ -289,6 +289,13 @@ mail pillar reaches routines.
   LifeOS down, says "LifeOS did not answer, so what it said when last read is
   shown." and "The calendar did not answer."
 
+A host whose week did not come is one red line over the sections, a whole
+sentence through `workErrorWords` (`hostLine` in review/store.ts): "The Mac
+did not answer." for a wait that ran out, a refusal in its own words ("Work
+is off on The Mac. Turn it on in Settings, Work."), or "The Mac could not
+read the week." where its words were never written for him; "Its last
+answer is shown." follows where it applies.
+
 Two windows asking for one week at once share one read.
 
 ## Friday

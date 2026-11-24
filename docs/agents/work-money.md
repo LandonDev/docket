@@ -535,7 +535,9 @@ the `work.money` push.
   line. `model.ts` is its pure half. Under 520px (the view's `money`
   container, `layout.ts`) Entries' Category gives way to a 12px muted second
   line under Who and its Date column narrows to 64px, By category and Entries end their amounts 48px in (the
-  paperclip's room) so the names keep theirs, and Month or Year leaves the
+  paperclip's room) so the names keep theirs, Owed's who and what wrap as
+  one run of words (`OWED_LINE`), never cut beside a live Paid, whose name
+  carries both, and Month or Year leaves the
   header for two ticked rows at the head of More, so Add and More stay in
   sight.
 - Open ledger and a row's paperclip open the file in a Files tab

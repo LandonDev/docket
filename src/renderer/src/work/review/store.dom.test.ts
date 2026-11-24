@@ -119,7 +119,7 @@ describe("the week across hosts", () => {
     await loadWeek(WEEK);
     const view = reviewNow(WEEK);
     // What it answered before still stands in the numbers, and the line can say so.
-    expect(view.errors).toEqual([{ environmentId: "env-mac", name: "The Mac", error: "the request timed out", kept: true }]);
+    expect(view.errors).toEqual([{ environmentId: "env-mac", name: "The Mac", error: "The Mac did not answer.", kept: true }]);
     expect(view.review!.hours.find((h) => h.job === "cosmic")!.ranMs).toBe(3_600_000 + 1_800_000);
     // Its rows stand as last known: nobody checked them this time.
     expect(view.review!.slipped.filter((r) => r.unchecked).map((r) => r.key)).toEqual(["env-mac:held:host:h1"]);
@@ -128,7 +128,16 @@ describe("the week across hosts", () => {
   it("says a host timed out in his words, never the wire method's, and that nothing of it is shown when it never answered", async () => {
     links["env-mac"]!.answer = (method) => (method === "work.review.week" ? new TimeoutError("work.review.week", 30_000) : { ok: true });
     await loadWeek(WEEK);
-    expect(reviewNow(WEEK).errors).toEqual([{ environmentId: "env-mac", name: "The Mac", error: "it timed out", kept: false }]);
+    expect(reviewNow(WEEK).errors).toEqual([{ environmentId: "env-mac", name: "The Mac", error: "The Mac did not answer.", kept: false }]);
+  });
+
+  it("says a host that refused what it refused, never that it did not answer, and never the link's raw text", async () => {
+    links["env-mac"]!.answer = (method) => (method === "work.review.week" ? new Error("Work is off on this host") : { ok: true });
+    await loadWeek(WEEK);
+    expect(reviewNow(WEEK).errors[0]!.error).toBe("Work is off on The Mac. Turn it on in Settings, Work.");
+    links["env-mac"]!.answer = (method) => (method === "work.review.week" ? new Error("work.review.week: EIO at /Users/landon/.tc/review") : { ok: true });
+    await loadWeek(WEEK);
+    expect(reviewNow(WEEK).errors[0]!.error).toBe("The Mac could not read the week.");
   });
 
   it("lists jobs in the order he dragged the rail into, a job on two hosts at its first row's place", async () => {

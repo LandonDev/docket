@@ -23,7 +23,7 @@ import type { WorkViewProps } from "../views/registry";
 import { atOf, heard, markPaid, openBook, openBooks, openReceipt, useMoney, withToast } from "./api";
 import { ConfirmFlow } from "./ConfirmFlow";
 import { EntryDialog } from "./EntryDialog";
-import { CATEGORY_GRID, ENTRIES_TAIL, NARROW_HEAD, NARROW_ONLY, OWED_GRID, WIDE_HEAD, WIDE_ONLY } from "./layout";
+import { CATEGORY_GRID, ENTRIES_TAIL, NARROW_HEAD, NARROW_ONLY, OWED_FACT, OWED_GRID, OWED_LINE, WIDE_HEAD, WIDE_ONLY } from "./layout";
 import { filingToast, receiveFiles, sortFiles } from "./receive";
 import { ExportDialog } from "./ExportDialog";
 import { InvoiceDialog, invoiceTitle, type InvoiceKind } from "./InvoiceDialog";
@@ -643,12 +643,16 @@ function Owed({ env, workspaceId, owed, reload }: { env: string; workspaceId: st
             {g.rows.map((r) => {
               const key = `${r.row}:${r.way}`;
               const words = owedWords(r);
+              // A press names both facts of its row, so it says which of two like rows it settles.
+              const named = words.after ? `${words.lead}, ${words.after}` : words.lead;
               return (
-                <li key={key} data-owed-row={r.row} className={cn("grid min-h-10 items-center gap-4 border-b border-border text-[13px] last:border-0", OWED_GRID)}>
+                // 4px over and under: a narrow row whose words wrap keeps them off its hairlines; a one-line row stays 40px.
+                <li key={key} data-owed-row={r.row} className={cn("grid min-h-10 items-center gap-4 border-b border-border py-1 text-[13px] last:border-0", OWED_GRID)}>
                   <span className="min-w-0">
-                    <span className="flex min-w-0 items-baseline gap-1">
-                      <span className="max-w-full shrink-0 truncate text-foreground">{words.lead}</span>
-                      {words.after ? <span className="min-w-0 truncate text-muted-foreground">{words.after}</span> : null}
+                    <span className={OWED_LINE}>
+                      <span className={cn("max-w-full shrink-0 text-foreground", OWED_FACT)}>{words.lead}</span>
+                      {/* A space for the narrow run of words; the flex line's gap holds them apart wide. */}
+                      {words.after ? <span className={cn("min-w-0 text-muted-foreground", OWED_FACT)}>{` ${words.after}`}</span> : null}
                     </span>
                     <span className={cn("text-xs leading-4 text-muted-foreground tabular-nums", NARROW_ONLY)}>{sinceWords(r.since)}</span>
                   </span>
@@ -656,11 +660,11 @@ function Owed({ env, workspaceId, owed, reload }: { env: string; workspaceId: st
                   <span className="text-end tabular-nums">{formatMoney(r.amount)}</span>
                   {r.both ? (
                     // One status covers both sides of this row: Paid here would settle the other too, so it is settled in the sheet.
-                    <Button variant="ghost" size="sm" className="justify-self-end" onClick={() => withToast(() => openBook(env, workspaceId, "ledger"))} aria-label={`Open ledger: ${words.lead}`}>
+                    <Button variant="ghost" size="sm" className="justify-self-end" onClick={() => withToast(() => openBook(env, workspaceId, "ledger"))} aria-label={`Open ledger: ${named}`}>
                       Open ledger
                     </Button>
                   ) : (
-                    <Button variant="ghost" size="sm" className="justify-self-end" disabled={paying !== null} onClick={() => pay(r)} aria-label={`Paid: ${words.lead}`}>
+                    <Button variant="ghost" size="sm" className="justify-self-end" disabled={paying !== null} onClick={() => pay(r)} aria-label={`Paid: ${named}`}>
                       <BusyLabel align="end" busy={paying === key} label="Paid" />
                     </Button>
                   )}

@@ -22,6 +22,13 @@ export const ENTRIES_TAIL = "w-[116px] @max-[520px]/money:w-[44px]";
  */
 export const OWED_GRID = "grid-cols-[minmax(0,1fr)_5rem_6rem_104px] @max-[520px]/money:grid-cols-[minmax(0,1fr)_5rem_104px]";
 
+/**
+ * Owed's who and what: one line cut at the end, and under 520px one run of words that wraps, so a long first fact
+ * never cuts the second beside a live Paid. `OWED_LINE` on the pair, `OWED_FACT` on each fact.
+ */
+export const OWED_LINE = "flex min-w-0 items-baseline gap-1 @max-[520px]/money:block";
+export const OWED_FACT = "truncate @max-[520px]/money:inline @max-[520px]/money:whitespace-normal";
+
 /** To confirm: the picture, the words, the amount, then the verb and the menu in 108px (+12px gap = 120). */
 export const TO_CONFIRM_GRID = "grid-cols-[2rem_minmax(0,1fr)_6rem_108px]";
 

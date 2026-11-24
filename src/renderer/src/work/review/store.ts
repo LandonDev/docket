@@ -18,6 +18,8 @@ import {
   type SlippedRow,
 } from "@shared/work/review";
 import { registry, TimeoutError } from "../../lib/connection";
+import { nameInLine } from "../../lib/hostWords";
+import { workErrorWords } from "../../lib/workErrorWords";
 import { loadPinnedProjects, loadProjectRailOrder, normalizeProjectPath, subscribeRailOrder } from "../../lib/recents";
 import { workspaceStore } from "../../lib/tcserver/workspaces";
 import { workSwitch } from "../../lib/workSwitch";
@@ -71,7 +73,7 @@ export type ReviewView = {
   making: boolean;
   /** hosts with Work on that are not linked now, each as its one line */
   off: string[];
-  /** hosts that were asked and did not answer, with why; `kept`: what it answered before still stands in the page's numbers */
+  /** hosts that were asked and did not answer, with why as a whole sentence (`hostLine`); `kept`: what it answered before still stands in the page's numbers */
   errors: { environmentId: string; name: string; error: string; kept: boolean }[];
   /** Money's sums for the week, a job at a time, in cents: only the jobs whose ledger moved */
   money: ReadonlyMap<JobKey, JobMoney>;
@@ -80,11 +82,19 @@ export type ReviewView = {
 /** What a job's ledger took in and paid out in the week, as Money sums it. */
 export type JobMoney = { in: number; out: number };
 
-const errorText = (err: unknown): string => (err instanceof Error ? err.message : String(err));
-/** Why a host did not answer, in his words: the transport's own message names the wire method. */
-export const hostError = (err: unknown): string => (err instanceof TimeoutError ? "it timed out" : errorText(err));
-/** The same as a sentence of its own (a toast's second line). */
-export const sentence = (words: string): string => words.charAt(0).toUpperCase() + words.slice(1);
+/**
+ * Why a host's week did not come, as the page's own sentence (`workErrorWords`, never the link's text): a wait that
+ * ran out is "<Host> did not answer.", a host that refused says what it refused, and a refusal with no plain words
+ * says the week was not read.
+ */
+export function hostLine(err: unknown, name: string): string {
+  const host = nameInLine(name);
+  const Host = host.charAt(0).toUpperCase() + host.slice(1);
+  const words = err instanceof TimeoutError ? `${Host} did not answer.` : workErrorWords(err, { host });
+  if (!words) return `${Host} could not read the week.`;
+  if (/\bdid not answer\b/i.test(words)) return `${Host} did not answer.`;
+  return /[.!?]$/.test(words) ? words : `${words}.`;
+}
 const localZone = (): string => Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
 const hostName = (id: string): string => registry.environment(id)?.name ?? "A host";
 const linked = (id: string): boolean => registry.statusOf(id).transport === "open";
@@ -154,7 +164,7 @@ export function loadHostWeek(environmentId: string, week: ReviewWeek, after = fa
     .then(
       (body) => put(week.from, environmentId, { body, error: null, loaded: true }),
       // A host that fails keeps what it last answered: the page says so and still stands on it.
-      (err: unknown) => put(week.from, environmentId, { body: weeks.get(week.from)?.get(environmentId)?.body ?? null, error: hostError(err), loaded: true }),
+      (err: unknown) => put(week.from, environmentId, { body: weeks.get(week.from)?.get(environmentId)?.body ?? null, error: hostLine(err, hostName(environmentId)), loaded: true }),
     )
     .finally(() => loading.delete(key));
   loading.set(key, load);
