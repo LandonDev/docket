@@ -322,6 +322,10 @@ describe("nothing found, and what could not be searched", () => {
     expect(quietLine("lifeos", "LifeOS is unreachable", box, 1).line).toBe("LifeOS did not answer the box.");
     expect(quietLine("lifeos", "This host's LifeOS sign-in waits for approval", box, 1).line).toBe("The LifeOS sign-in on the box waits for your approval.");
     expect(quietLine("lifeos", "Something new", box, 1).line).toBe("Something new.");
+    // Council round 9's walk: Work off and a refused sign-in in the rule's words, the computer named, as every reader says them.
+    expect(quietLine("lifeos", "Work is off on this host", box, 1).line).toBe("Work is off on the box.");
+    expect(quietLine("lifeos", "LifeOS refused this host's sign-in; sign in again", box, 1).line).toBe("LifeOS refused the box's sign-in.");
+    expect(quietLine("lifeos", "LifeOS is still connecting", box, 1).line).toBe("LifeOS is still connecting on the box.");
     expect(quietLine("source:search.mail", "Mail did not answer.", box, 1).line).toBe("Mail did not answer.");
   });
   it("a source that failed loses its rows and leaves the host's others", () => {

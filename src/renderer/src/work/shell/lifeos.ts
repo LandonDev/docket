@@ -496,24 +496,8 @@ export function sessionWords(session: Pick<LifeosSession, "environmentId" | "sta
   return sessionFailure(session.unanswered ? "unanswered" : session.state, session.withheld, lifeosHostName(session.environmentId));
 }
 
-/**
- * The LifeOS state a host's failure text names, or null for any other cause: the host's own sentences for a LifeOS it
- * could not ask (`UNAVAILABLE_WORDS` in src/main/server/work/lifeos/session.ts) and an answer that never came. A host
- * that sends such a reason inside an answer (Waiting on's days) is worded by `sessionFailure` from it, never verbatim.
- */
-export function lifeosStateOf(reason: string): LifeosStateName | null {
-  for (const [form, state] of STATE_WORDS) if (form.test(reason)) return state;
-  return null;
-}
-
-const STATE_WORDS: [RegExp, LifeosStateName][] = [
-  [/work is off on this host/i, "off"],
-  [/not signed in to lifeos/i, "signed-out"],
-  [/lifeos sign-in waits for approval/i, "pairing"],
-  [/lifeos is still connecting/i, "connecting"],
-  [/lifeos refused this host's sign-in/i, "refused"],
-  [/lifeos is unreachable|\btimed out\b|^timeout\b|no answer in \d|fetch failed|\b(ECONNREFUSED|ECONNRESET|EHOSTUNREACH|ENETUNREACH|ETIMEDOUT)\b/i, "unreachable"],
-];
+/** The LifeOS state a host's failure text names (lifeosWords.ts, where the words live). */
+export { lifeosStateOf } from "./lifeosWords";
 
 /**
  * Retry on the view frame's line: the host's status asked afresh, then, if

@@ -1,5 +1,6 @@
 import { mentionMatches } from "@shared/work/mentions";
 import { nameInLine } from "../../lib/hostWords";
+import { lifeosDownWords, lifeosStateOf } from "../shell/lifeosWords";
 import {
   RECENT_KIND,
   SEARCH_ALL,
@@ -160,15 +161,11 @@ export function quietLine(cause: string, line: string, at: SearchHost, hosts: nu
   // "the box" mid-line, as every Work line names it (lib/hostWords.ts).
   const host = { ...at, name: nameInLine(at.name) };
   if (cause === "lifeos") {
-    // The words every reader of a down session says (`sessionFailure` in work/shell/lifeos.ts), the computer named.
-    const words: Record<string, string> = {
-      "This host is not signed in to LifeOS": `Not signed in to LifeOS on ${host.name}.`,
-      "This host's LifeOS sign-in waits for approval": `The LifeOS sign-in on ${host.name} waits for your approval.`,
-      "LifeOS is still connecting": `LifeOS is still connecting on ${host.name}.`,
-      "LifeOS is unreachable": `LifeOS did not answer ${host.name}.`,
-      "LifeOS refused this host's sign-in; sign in again": `LifeOS refused ${host.name}'s sign-in.`,
-    };
-    return { key: "lifeos", line: words[line] ?? `${line.replace(/\.$/, "")}.` };
+    // The words every reader of a down session says (`lifeosDownWords`), the computer named, from the state the host's
+    // own words name (`lifeosStateOf`); a cause it names no state of stays the host's.
+    const state = lifeosStateOf(line);
+    const words = state === "connecting" ? `LifeOS is still connecting on ${host.name}` : state && state !== "connected" ? lifeosDownWords(state, false, at.name) : line.replace(/\.$/, "");
+    return { key: "lifeos", line: `${words}.` };
   }
   const said = `${line.replace(/\.$/, "")}`;
   return { key: `${cause}@${host.id}`, line: hosts > 1 ? `${said} on ${host.name}.` : `${said}.` };

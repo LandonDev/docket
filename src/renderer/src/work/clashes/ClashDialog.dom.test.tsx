@@ -858,7 +858,7 @@ describe("the Clash dialog", () => {
       const closes = () => screen.getAllByRole("button", { name: "Close" }).map((b) => (b as HTMLButtonElement).disabled);
       expect(closes()).toEqual([true, true]);
       await act(async () => void vi.advanceTimersByTime(10_000));
-      expect(screen.getByRole("alert").textContent).toBe("LifeOS did not answer");
+      expect(screen.getByRole("alert").textContent).toBe("LifeOS did not answer the box");
       // The header's and the foot's both work again.
       expect(closes()).toEqual([false, false]);
       expect(mail.drafts).toEqual([]);
@@ -1060,6 +1060,15 @@ describe("the Clash dialog", () => {
     const dialog = screen.getByRole("dialog", { name: "Clash" });
     expect(within(dialog).getByRole("alert").textContent).toBe("LifeOS did not answer");
     expect(dialog.querySelector("[data-slot=skeleton]")).toBeNull();
+  });
+
+  it("says a read the session's drop failed as the session's line, the computer named, with its press (council round 9's walk)", async () => {
+    lifeos.gone = true;
+    show(null, { ...NO_MARKS, failed: "LifeOS did not answer the box" });
+    await settle();
+    const line = screen.getByRole("dialog", { name: "Clash" }).querySelector("[data-read-down]")!;
+    expect(line.textContent).toContain("LifeOS did not answer the box");
+    expect(line.querySelector("button")?.textContent).toBe("Retry");
   });
 
   it("names the weekday of a time that is not on the day the dialog names", async () => {

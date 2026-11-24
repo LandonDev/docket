@@ -21,7 +21,7 @@ import { writeMail } from "../mail/mailto";
 import { goTo } from "../today/open";
 import { useJobName } from "../jobName";
 import { useMinute } from "../tasks/minute";
-import { sessionWaits, sessionWords, useLifeosSession, useLifeosStatusHeard, useLifeosUnanswered, type LifeosSession } from "../shell/lifeos";
+import { lifeosHostName, sessionFailure, sessionWaits, sessionWords, useLifeosSession, useLifeosStatusHeard, useLifeosUnanswered, type LifeosSession } from "../shell/lifeos";
 import { downOf } from "../shell/lifeosDown";
 import { DownLine } from "../shell/DownLine";
 import { useClashes } from "./mark";
@@ -94,9 +94,12 @@ export function ClashDialog({ ask, onClose }: { ask: ClashAsk; onClose: () => vo
   // The day stays while a clash is on screen, so nothing under the title moves when the read lands.
   const day = clash ? formatDayHeading(startOfDay(clash.b.startsAt)) : undefined;
   const state = gone ? "gone" : marks.failed !== undefined ? "failed" : "loading";
+  // A read that failed because the session is down says the session's line, with the rule's press, not its words in red.
+  const session = useLifeosSession(ask.environmentId, null);
+  const down = state === "failed" && downOf(session) ? session : null;
   return (
     <Modal onClose={onClose} title={clash && !cleared ? clashTitle(clash) : gone ? "No longer a clash" : "Clash"} description={day} size="sm" busy={pending} data-clash-dialog={ask.id}>
-      {clash ? <Body clash={clash} environmentId={ask.environmentId} onClose={onClose} pending={pending} setPending={setPending} onSettled={() => setSettled(true)} onStep={setStepping} cleared={cleared} gone={gone} /> : <Empty state={state} error={marks.failed} onClose={onClose} />}
+      {clash ? <Body clash={clash} environmentId={ask.environmentId} onClose={onClose} pending={pending} setPending={setPending} onSettled={() => setSettled(true)} onStep={setStepping} cleared={cleared} gone={gone} /> : <Empty state={state} error={marks.failed} down={down} onClose={onClose} />}
     </Modal>
   );
 }
@@ -117,7 +120,7 @@ function EventBones() {
  * between them while it is read; why, in words, when the read failed; and
  * nothing under the title once the two no longer clash, since the title says so.
  */
-export function Empty({ state, error, onClose }: { state: "loading" | "failed" | "gone"; error?: string | undefined; onClose: () => void }) {
+export function Empty({ state, error, down = null, onClose }: { state: "loading" | "failed" | "gone"; error?: string | undefined; /** the session is down: its line in the error's place */ down?: LifeosSession | null; onClose: () => void }) {
   return (
     <>
       {state === "loading" ? (
@@ -135,9 +138,7 @@ export function Empty({ state, error, onClose }: { state: "loading" | "failed" |
       ) : null}
       {state === "failed" ? (
         <ModalBody>
-          <div role="alert">
-            <ErrorLine error={error || "LifeOS did not answer"} />
-          </div>
+          <div role="alert">{down ? <DownLine data-read-down session={down} /> : <ErrorLine error={error || "LifeOS did not answer"} />}</div>
         </ModalBody>
       ) : null}
       <Foot onClose={onClose} landing={state === "gone"} />
@@ -291,7 +292,9 @@ function Body({
     const pressed = stampOf(clash);
     // Both events are read again: the line is built from the later event's title and people, and its minutes from both events' times and places (the drive is between them).
     type Row = { sector?: string; title?: string; startsAt?: number; endsAt?: number; location?: string; allDay?: boolean; hidden?: boolean; myResponse?: string; attendees?: { address: string }[] } | null;
-    const read = (id: string) => answered(session.client!.query(eventGet, { id })) as Promise<Row>;
+    // LifeOS's silence names the computer the session reads through, as every reader's line does.
+    const silence = sessionFailure("unreachable", false, lifeosHostName(environmentId));
+    const read = (id: string) => answered(session.client!.query(eventGet, { id }), silence) as Promise<Row>;
     Promise.all([read(clash.b.eventId), read(clash.a.eventId)]).then(
       ([event, earlier]) => {
         setPending(false);
@@ -313,7 +316,7 @@ function Body({
         if (!lateMail(environmentId, workspaceId, lateDraft({ ...now, b: { ...now.b, title } }, to, Date.now()))) return failed(null, "This job's workspace is not on this host");
         close ? close(onClose) : onClose();
       },
-      (err: unknown) => failed(err, "LifeOS did not answer"),
+      (err: unknown) => failed(err, silence),
     );
   };
 
