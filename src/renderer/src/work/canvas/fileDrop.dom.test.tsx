@@ -67,7 +67,7 @@ describe("where a drop opens", () => {
     expect(dropPlaceOf(at("d1-composer"), look)).toBeNull();
     expect(dropPlaceOf(at("d2-transcript"), look)).toBeNull();
     // A Work view starts a new thread.
-    expect(dropPlaceOf(at("docs-row"), look)).toEqual({ place: { at: "new" }, zone: view });
+    expect(dropPlaceOf(at("docs-row"), look)).toEqual({ place: { at: "files" }, zone: view });
   });
 });
 

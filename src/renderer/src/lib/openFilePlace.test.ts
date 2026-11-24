@@ -11,7 +11,7 @@ const look: FileLook = {
 
 describe("where Open File… opens", () => {
   it("a Work view in front starts a new thread, whatever is focused", () => {
-    expect(filePlaceOf("c1", true, look)).toEqual({ at: "new" });
+    expect(filePlaceOf("c1", true, look)).toEqual({ at: "files" });
   });
 
   it("else the focused Work thread or Work draft; never a code thread, a code draft or a tab still loading", () => {

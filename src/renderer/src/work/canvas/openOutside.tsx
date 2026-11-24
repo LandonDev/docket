@@ -7,9 +7,11 @@ import { registry } from "../../lib/connection";
 import { ensureCreated } from "../../lib/tcserver/commands";
 import { sessionStore } from "../../lib/tcserver/store";
 import { workspaceStore } from "../../lib/tcserver/workspaces";
-import { openWorkView, workStartPort } from "../../lib/workSwitch";
+import { filesPaneOf } from "@shared/work";
+import { workViewNow } from "../../lib/workSwitch";
+import { openInFiles } from "../files/openFrom";
 import { setOpening } from "./fileDrop";
-import { openFiles, sortFiles, type OutsideFile } from "./fileOpen";
+import { landFile, openFiles, sortFiles, type OutsideFile } from "./fileOpen";
 
 /** One line for files no kind shows. */
 export const noViewerLine = (files: readonly OutsideFile[]): string =>
@@ -20,12 +22,26 @@ export function outsideOf(file: File, path: string | undefined): OutsideFile {
   return { name: file.name, ...(file.type ? { type: file.type } : {}), file, ...(path ? { path, origin: registry.primary().environmentId } : {}) };
 }
 
-/** The draft a new thread starts from, in the window's workspace (a view of it is in front). */
-function startDraft(): string | null {
-  const start = workStartPort.get();
-  if (!start) return null;
-  openWorkView(null);
-  return start(null);
+/**
+ * From a Work view, files end where a double-click on their rows in Files ends (docs/agents/work-files.md: every
+ * file opens in a tab): each is kept in the view's workspace's folder, under the Files pane's upload, and opens in a
+ * Files tab of its own with Files shown, in the kind the host picks. A file no kind of ours shows opens there too.
+ */
+async function openInFilesTabs(files: readonly OutsideFile[]): Promise<void> {
+  const toast = await loadToast();
+  const view = workViewNow();
+  const workspace = view ? workspaceStore.getSnapshot().workspaces.find((w) => w.id === view.workspaceId) : undefined;
+  if (!workspace) return void toast.error("That workspace is not in this window");
+  for (const file of files) {
+    const id = toast.loading(`Opening ${file.name}…`);
+    try {
+      const path = await landFile({ env: workspace.environmentId, sessionId: filesPaneOf(workspace.id), folder: workspace.path }, file);
+      await openInFiles(workspace, { ref: { at: "file", host: workspace.environmentId, path }, name: file.name });
+      toast.dismiss(id);
+    } catch (error) {
+      toast.error(`Couldn't open ${file.name}`, { id, description: errorText(error) });
+    }
+  }
 }
 
 /** The thread whose canvas takes the files: made now for a draft. */
@@ -56,18 +72,15 @@ async function addAsFiles(sessionId: string, files: readonly OutsideFile[]): Pro
  */
 export async function openOutside(place: FilePlace, files: readonly OutsideFile[]): Promise<void> {
   if (files.length === 0) return;
+  if (place.at === "files") return openInFilesTabs(files);
   const toast = await loadToast();
   const { shows, unknown } = sortFiles(files);
-  // A new thread is started only for something to show, or when he asks for the files as attachments.
-  const id = place.at !== "new" ? place.sessionId : shows.length > 0 ? startDraft() : null;
+  const id = place.sessionId;
   if (unknown.length > 0) {
-    const add = (): void => {
-      const to = id ?? startDraft();
-      if (to) void addAsFiles(to, unknown).catch((error: unknown) => toast.error(errorText(error)));
-    };
+    const add = (): void => void addAsFiles(id, unknown).catch((error: unknown) => toast.error(errorText(error)));
     toast(noViewerLine(unknown), { action: { label: "Add to the thread as a file", onClick: add } });
   }
-  if (!id || shows.length === 0) return;
+  if (shows.length === 0) return;
 
   const controller = new AbortController();
   const cancel = (): void => controller.abort();

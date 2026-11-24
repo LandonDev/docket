@@ -62,39 +62,48 @@ function sourceOf(file: OutsideFile): Promise<Source> {
   return Promise.reject(new Error(`${file.name} has nothing to read`));
 }
 
+/** Where a file from outside lands: the host, the owner the upload is under (a thread, or a Files pane), and the workspace's folder there. */
+export interface Landing {
+  env: string;
+  sessionId: string;
+  /** The workspace's folder on that host; null for a thread with none (a Work Chat). */
+  folder: string | null;
+  signal?: AbortSignal;
+  onProgress?: (file: OutsideFile, progress: UploadProgress) => void;
+}
+
+/**
+ * Where a file from outside lies on the host once it is kept: in place when it is inside the workspace's folder
+ * there already, else uploaded into that folder under its real name (`into: 'workspace'`).
+ */
+export async function landFile(to: Landing, file: OutsideFile): Promise<string> {
+  const path = inPlace(file, to.env, to.folder);
+  if (path) return path;
+  const [{ maxBytes }, source] = await Promise.all([attachmentSettings(to.env), sourceOf(file)]);
+  if (source.size > maxBytes) throw new Error(`${file.name} is ${formatBytes(source.size)}, over this host's ${formatBytes(maxBytes)} limit`);
+  const landed = await uploadFile({
+    threadEnv: to.env,
+    sessionId: to.sessionId,
+    name: file.name,
+    ...(file.type ? { mime: file.type } : {}),
+    source,
+    into: "workspace",
+    ...(to.signal ? { signal: to.signal } : {}),
+    onProgress: (progress) => to.onProgress?.(file, progress),
+  });
+  return landed.path;
+}
+
 /**
  * Opens each file in the thread's canvas, one after another: the first is shown, the
  * rest are its tabs. A cancel (`signal`) stops before the next chunk; the host drops
  * the partial file, and files opened before it stay.
  */
-export async function openFiles(opts: {
-  env: string;
-  sessionId: string;
-  files: readonly { file: OutsideFile; kind: CanvasKind }[];
-  /** The workspace's folder on the thread's host; null for a thread with none (a Work Chat). */
-  folder: string | null;
-  signal?: AbortSignal;
-  onProgress?: (file: OutsideFile, progress: UploadProgress) => void;
-}): Promise<CanvasItem[]> {
+export async function openFiles(opts: Landing & { files: readonly { file: OutsideFile; kind: CanvasKind }[] }): Promise<CanvasItem[]> {
   const opened: CanvasItem[] = [];
   for (const { file, kind } of opts.files) {
     opts.signal?.throwIfAborted();
-    let path = inPlace(file, opts.env, opts.folder);
-    if (!path) {
-      const [{ maxBytes }, source] = await Promise.all([attachmentSettings(opts.env), sourceOf(file)]);
-      if (source.size > maxBytes) throw new Error(`${file.name} is ${formatBytes(source.size)}, over this host's ${formatBytes(maxBytes)} limit`);
-      const landed = await uploadFile({
-        threadEnv: opts.env,
-        sessionId: opts.sessionId,
-        name: file.name,
-        ...(file.type ? { mime: file.type } : {}),
-        source,
-        into: "workspace",
-        ...(opts.signal ? { signal: opts.signal } : {}),
-        onProgress: (progress) => opts.onProgress?.(file, progress),
-      });
-      path = landed.path;
-    }
+    const path = await landFile(opts, file);
     // A cancel pressed as the last chunk landed still opens nothing.
     opts.signal?.throwIfAborted();
     opened.push(await openItem(opts.env, opts.sessionId, { kind, source: { at: "file", host: opts.env, path }, title: file.name }));

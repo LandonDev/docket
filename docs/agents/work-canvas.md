@@ -414,7 +414,7 @@ bubble phase, and only when no surface inside took the file first
 |---|---|
 | a Work thread's pane, anywhere but the composer's box | that thread's canvas; the wash covers the canvas when it has items, else the pane |
 | a Work draft's pane (a Work workspace's or a Work Chat's draft), anywhere but its composer | the draft, made a thread first (`ensureCreated`) |
-| a Work view (`[data-file-opens]` on its region: Docs, Tasks, Mail and the rest) | a new thread of the workspace |
+| a Work view (`[data-file-opens]` on its region: Files, Tasks, Mail and the rest) | a Files tab of the view's workspace, as a double-click on its row in Files: the file kept in the workspace's folder under the Files pane's upload (`landFile` with `filesPaneOf`), then `openInFiles`, one tab a file with Files shown, a file no kind of ours shows too; no thread starts (openOutside.tsx `openInFilesTabs`) |
 | the composer's box | attached to the message, as before |
 | a surface that takes files itself: a document (makes a document of a Word, markdown, HTML or PDF file), an empty meeting (its recording), Mail's composer (an attachment) | that surface, as before |
 
@@ -429,7 +429,8 @@ in the File menu is greyed unless a Work thread, draft or view is in front
 another, the first shown and the rest as its tabs. Files no kind shows are
 one toast, "No viewer for <name>", whose action, Add to the thread as a
 file, puts them in the thread's composer as attachments (`giveComposerFiles`,
-lib/composerDrafts.ts); from a view, the thread is started only then.
+lib/composerDrafts.ts). From a view every file opens in Files instead
+(above).
 
 **Where the bytes go** (work/canvas/fileOpen.ts, `openFiles`). A file a kind
 shows is uploaded to the thread's host with `attachment.begin {into:

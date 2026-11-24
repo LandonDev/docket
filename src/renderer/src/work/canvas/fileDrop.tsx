@@ -56,7 +56,7 @@ const carriesFiles = (data: DataTransfer | null): boolean => !!data && Array.fro
 export function dropPlaceOf(target: Element | null, look: FileLook): { place: FilePlace; zone: HTMLElement } | null {
   if (!target || target.closest("[data-composer-box]")) return null;
   const view = target.closest<HTMLElement>("[data-file-opens]");
-  if (view) return { place: { at: "new" }, zone: view };
+  if (view) return { place: { at: "files" }, zone: view };
   const pane = target.closest<HTMLElement>("[data-session-drop]");
   const id = pane?.dataset.sessionDrop;
   const place = pane && id ? sessionFilePlace(id, look) : null;
