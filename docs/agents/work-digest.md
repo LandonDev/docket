@@ -129,6 +129,11 @@ is taken as now. Until one has said, the host's own zone.
 | `work.digest.here {zone, at?}` | operate | null |
 | `work.digest.seen {day}` | operate | null |
 
+Settings → Work → Digest writes `set` only to the hosts this window's key
+may set (`linkMay`, docs/agents/work.md "The switch"), and so does the
+window bringing a host to the newest setting; with none, the time and the
+levels stand as words.
+
 Push `{push: 'work.digest', day?, row?, gone?, settings?}` to sockets that
 hold `read`, but a row about a held item (group `held`, or a target in the
 Outbox) only to sockets that hold `approve`, as the Outbox's own push goes

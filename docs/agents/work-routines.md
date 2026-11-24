@@ -211,6 +211,10 @@ right the one picked: its name with Edit, Pause or Resume and Run now (a
 proposal: Not now and Create…), what it does, Starts, Ends, Model, Runs on,
 the thread it was made in or wakes, then every run as a 32px row (time,
 mark, outcome) that opens its thread (`workOpenPort`, registered by App).
+A key that may not save routines on the host (`work.routines.save`, admin)
+has no New routine or Edit; a proposal says "Changed from a computer that
+manages <host>" in its presses' place; Pause and Run now show where it may
+operate (`linkMay`, docs/agents/work.md "The switch").
 The header's New routine and Edit open the form ("A form"): Name, What to
 do, Starts (Schedule, LifeOS, Read, File, each swapping its fields), Ends
 (Never, On a day, After one run), and Runs (a play that takes nothing, when

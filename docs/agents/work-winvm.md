@@ -45,6 +45,10 @@ and opens the door at the next call.
 | `work.winvm.point.restore` | admin | `{ id }`: back to a point; the machine stays asleep |
 | `work.winvm.point.delete` | admin | `{ id }` |
 
+Settings → Work draws a press only where this window's key may make it (`linkMay`, docs/agents/work.md
+"The switch"): a given computer's key wakes, sleeps and saves a point; Set up, Go back and Delete are not
+drawn, Sleeps after stands as words and the screen size is not read. A read key gets no press.
+
 A model caller (a thread's `app.work*` call) may read and wake, never set up, sleep, change the settings or
 touch a restore point. Every change of state pushes `{ push: 'work.winvm', state }` to every client socket,
 and every change to the points `{ push: 'work.winvm.points', points }`. The methods answer

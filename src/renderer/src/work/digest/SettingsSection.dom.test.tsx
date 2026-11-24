@@ -14,6 +14,8 @@ vi.mock("../../lib/connection", async (original) => {
   world.current = kit.makeWorld();
   return kit.connectionMock(world.current as import("./world.testkit").World, await original<object>());
 });
+vi.mock("../../lib/linkMay", async (original) => (await import("../../lib/linkMay.testkit")).linkMayMock(await original()));
+import { GIVEN_KEY, resetTestKey, testKey } from "../../lib/linkMay.testkit";
 // The select's own chunk: the section is tested through its cold trigger's words and the body once it lands.
 import { setWorkOn, workSwitch } from "../../lib/workSwitch";
 import { SETTING_GROUPS, SettingsSection } from "./SettingsSection";
@@ -36,6 +38,7 @@ beforeEach(() => {
 afterEach(() => {
   cleanup();
   workSwitch.reset();
+  resetTestKey();
 });
 
 describe("Settings → Work → Digest", () => {
@@ -75,6 +78,26 @@ describe("Settings → Work → Digest", () => {
     fireEvent.change(time, { target: { value: "" } });
     fireEvent.blur(time);
     expect(sets()).toHaveLength(4);
+  });
+
+  it("never writes to a host this window's key may not set, and with none it may, says the settings as words", async () => {
+    // His laptop with the box's given key: the laptop's own Work takes the change, the box is never asked.
+    testKey.of = { box: GIVEN_KEY };
+    render(<SettingsSection />);
+    const time = await screen.findByLabelText("Time of the digest");
+    fireEvent.change(time, { target: { value: "09:00" } });
+    fireEvent.blur(time);
+    await waitFor(() => expect(sets()).toHaveLength(1));
+    expect(sets()[0]!.env).toBe("mac");
+    expect(screen.queryByText(/did not take it/)).toBeNull();
+    cleanup();
+    testKey.current = GIVEN_KEY;
+    render(<SettingsSection />);
+    await screen.findByText("Held items");
+    expect(screen.queryByLabelText("Time of the digest")).toBeNull();
+    expect(screen.queryAllByRole("combobox")).toEqual([]);
+    expect(screen.getAllByText("When it can't wait")).toHaveLength(4);
+    expect(sets()).toHaveLength(1);
   });
 
   it("shows what he set: a group he made quieter reads so", async () => {

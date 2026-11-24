@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import type { ContextChip } from "@shared/work";
 import { defineChunk } from "../../../lib/lazyChunk";
+import { linkMay } from "../../../lib/linkMay";
 import { workPlayPort } from "../../../lib/workSwitch";
 
 const dialogs = defineChunk("work-plays", () => import("./PlaysDialogs"));
@@ -12,7 +13,7 @@ type Ask = { kind: "run"; environmentId: string; workspaceId: string; chip: Cont
 /**
  * Fills `workPlayPort` while Work's shell is up (docs/agents/work-plays.md):
  * Run a play… on a mail, task, event or file, and Save as a play… on a
- * thread, each opening its dialog from the `work-plays` chunk. One at a time;
+ * thread (offered only where this window's key may save one), each opening its dialog from the `work-plays` chunk. One at a time;
  * a second ask takes the first one's place.
  */
 export function PlaysHost() {
@@ -21,6 +22,7 @@ export function PlaysHost() {
     workPlayPort.set({
       run: (a) => setAsk({ kind: "run", environmentId: a.environmentId, workspaceId: a.workspaceId, chip: a.chip as ContextChip }),
       save: (a) => setAsk({ kind: "save", ...a }),
+      maySave: (environmentId) => linkMay(environmentId, "work.routines.playSave"),
     });
     return () => workPlayPort.set(null);
   }, []);

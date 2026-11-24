@@ -8,6 +8,8 @@ import { BusyLabel, Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
 import { cn } from "../../lib/cn";
 import { useEnvironments } from "../../lib/connection";
+import { useLinksMay } from "../../lib/linkMay";
+import { useWorkHosts } from "../../lib/workSwitch";
 import { refusedLine, unansweredLine } from "./notice";
 import { hostsHold, loadDigest, openDigestSheet, setDigest, useDigest } from "./store";
 
@@ -16,7 +18,9 @@ import { hostsHold, loadDigest, openDigestSheet, setDigest, useDigest } from "./
  * day's one notice, and how loud four groups are. Every select starts at
  * "When it can't wait"; louder and quieter are one step each way. A change
  * is written to every host with Work on; the hosts that refused are named on
- * the row's red line, which stays until that row is written everywhere.
+ * the row's red line, which stays until that row is written everywhere. A
+ * host this window's key may not set (the host's admin rule) is never
+ * written; with none it may, the time and levels stand as plain words.
  */
 
 /** The groups he sets, in the section's order. The rest stay at their clock and have no row. */
@@ -36,6 +40,8 @@ const AT_REST_MS = 600;
 export function SettingsSection() {
   const view = useDigest();
   const environments = useEnvironments();
+  const may = useLinksMay();
+  const writable = [...useWorkHosts()].some((id) => may(id, "work.digest.set"));
   const nameOf = (environmentId: string): string => environments.find((e) => e.id === environmentId)?.name ?? "A host";
   // A row's red line: who refused its last write, and the value he asked for. It outlives edits to other rows, and
   // goes once each host that refused is known to hold that value, whoever wrote it there (his next write, or the
@@ -126,6 +132,16 @@ export function SettingsSection() {
           // Each control at the width its row lands with, so nothing moves.
           <PageRowsSkeleton rows={[{ control: "number", controlClassName: AT_WIDTH }, ...SETTING_GROUPS.map(() => ({ control: "select" as const, controlClassName: LEVEL_BONE }))]} />
         )}
+      </PageSection>
+    );
+  }
+  if (!writable) {
+    return (
+      <PageSection title="Digest" action={open}>
+        <PageRow title="Time" description={new Date(`2000-01-01T${settings.at}`).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })} />
+        {SETTING_GROUPS.map((group) => (
+          <PageRow key={group} title={GROUP_NAMES[group]} description={LEVEL_NAMES[settings.levels[group] ?? DEFAULT_LEVEL]} />
+        ))}
       </PageSection>
     );
   }

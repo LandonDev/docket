@@ -27,7 +27,9 @@ vi.mock("../../../lib/connection", async (original) => ({
   },
 }));
 
-const { View } = await import("./PlaysView");
+vi.mock("../../../lib/linkMay", async (original) => (await import("../../../lib/linkMay.testkit")).linkMayMock(await original()));
+const { GIVEN_KEY, READ_KEY, resetTestKey, testKey } = await import("../../../lib/linkMay.testkit");
+const { Head, View } = await import("./PlaysView");
 const { RunDialog } = await import("./RunDialog");
 const { PlayDialog } = await import("./PlayDialog");
 
@@ -42,7 +44,10 @@ beforeEach(() => {
   host.plays = [];
   host.answer = (method) => (method === "work.routines.playStart" ? { sessionId: "t-new" } : null);
 });
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  resetTestKey();
+});
 
 describe("the Plays view", () => {
   it("lists his plays, then proposals, then the starters he has not added", async () => {
@@ -96,6 +101,47 @@ describe("the Plays view", () => {
     await settle();
     expect(screen.getByText("No plays yet")).toBeTruthy();
     expect(screen.getByRole("button", { name: "New play" })).toBeTruthy();
+  });
+});
+
+describe("the Plays view for a key that may not save plays", () => {
+  it("a given computer's key runs his plays, and is offered no New, Edit, proposal or starter", async () => {
+    testKey.current = GIVEN_KEY;
+    host.plays = [play({ id: "a", name: "Weekly sweep", takes: [] }), play({ id: "b", name: "From a thread", proposed: true, createdBy: "model" })];
+    render(<Head {...(props as object as Parameters<typeof Head>[0])} />);
+    expect(screen.queryByRole("button", { name: "New play" })).toBeNull();
+    render(<View {...props} />);
+    await settle();
+    expect(screen.queryAllByRole("heading", { level: 2 })).toEqual([]);
+    expect(screen.queryByRole("button", { name: "Edit Weekly sweep" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: /^Weekly sweep/ }));
+    await settle();
+    expect(asked("work.routines.playStart")).toEqual([{ id: "a", inputs: {} }]);
+    expect(asked("work.routines.playSave")).toEqual([]);
+  });
+
+  it("the thread menu's Save as a play… is offered only where this window's key may save one", async () => {
+    const { PlaysHost } = await import("./PlaysHost");
+    const { workPlayPort } = await import("../../../lib/workSwitch");
+    render(<PlaysHost />);
+    expect(workPlayPort.get()!.maySave("box")).toBe(true);
+    testKey.current = GIVEN_KEY;
+    expect(workPlayPort.get()!.maySave("box")).toBe(false);
+  });
+
+  it("with none, says who can add them; a read key's rows are words, never presses", async () => {
+    testKey.current = GIVEN_KEY;
+    render(<View {...props} />);
+    await settle();
+    expect(screen.getByText("Changed from a computer that manages this host")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "New play" })).toBeNull();
+    cleanup();
+    testKey.current = READ_KEY;
+    host.plays = [play({ id: "a", name: "Weekly sweep", takes: [] })];
+    render(<View {...props} />);
+    await settle();
+    expect(screen.getByText("Weekly sweep")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /^Weekly sweep/ })).toBeNull();
   });
 });
 

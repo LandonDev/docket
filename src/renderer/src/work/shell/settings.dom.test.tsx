@@ -14,7 +14,7 @@ vi.mock("../../lib/connection", async (original) => ({
 vi.mock("../office/AddinRow", () => ({ AddinRow: () => null }));
 vi.mock("../guests/GuestLinksSection", () => ({ GuestLinksSection: () => null }));
 vi.mock("../rules/HouseRules", () => ({ HouseRules: () => null }));
-vi.mock("../../chrome/ThreadDefaultsDialog", async (original) => ({ ...(await original<object>()), ThreadDefaultsEditor: () => null }));
+vi.mock("../../chrome/ThreadDefaultsDialog", async (original) => ({ ...(await original<object>()), ThreadDefaultsEditor: () => <div data-defaults /> }));
 vi.mock("../../lib/tcserver/workspaces", async (original) => ({
   ...(await original<object>()),
   useWorkspaces: () => [{ id: "ws", name: "Purdue Esports", environmentId: "env_box", sector: "purdue", kind: "work", path: "/w" }],
@@ -32,6 +32,8 @@ vi.mock("./actions", async (original) => ({
   localHostId: async () => "env_mac",
 }));
 
+vi.mock("../../lib/linkMay", async (original) => (await import("../../lib/linkMay.testkit")).linkMayMock(await original()));
+const { GIVEN_KEY, OWNER_KEY, resetTestKey, testKey } = await import("../../lib/linkMay.testkit");
 const { SignInDialog, WorkSettingsBody, WorkWorkspacePage } = await import("./settings");
 
 afterEach(() => {
@@ -39,6 +41,7 @@ afterEach(() => {
   resetLifeos();
   workSwitch.reset();
   vi.restoreAllMocks();
+  resetTestKey();
 });
 
 describe("Settings → Work", () => {
@@ -75,6 +78,21 @@ describe("Settings → Work", () => {
   });
 });
 
+describe("a workspace page for a key that may not change it", () => {
+  it("a given computer's key sees one line where the switches were, and writes nothing", async () => {
+    reads.fail = false;
+    testKey.current = GIVEN_KEY;
+    const request = vi.fn(async () => ({ lifeos: { state: "signed-out" }, keys: [] }));
+    vi.spyOn(registry, "linkOf").mockReturnValue({ environmentId: "env_box", connected: true, request, onPush: () => () => {}, onOpen: () => () => {} } as never);
+    render(<WorkWorkspacePage workspaceId="ws" />);
+    await act(async () => void (await new Promise((r) => setTimeout(r, 0))));
+    expect(screen.queryAllByRole("switch")).toEqual([]);
+    expect(document.querySelector("[data-defaults]")).toBeNull();
+    expect(screen.getAllByText("Changed from a computer that manages The box")).toHaveLength(1);
+    expect(request.mock.calls.map((c: unknown[]) => c[0]).filter((m) => m === "work.workspace.set" || m === "work.mail.waiting")).toEqual([]);
+  });
+});
+
 describe("Sign in to LifeOS", () => {
   const host = (id: string) =>
     vi.spyOn(registry, "linkOf").mockReturnValue({
@@ -97,6 +115,15 @@ describe("Sign in to LifeOS", () => {
     await act(() => Promise.resolve());
     expect(screen.queryByPlaceholderText("lo_…")).toBeNull();
     expect(screen.queryByRole("button", { name: "Sign in" })).toBeNull();
+    expect(screen.queryByText("ABCD-1234")).not.toBeNull();
+  });
+
+  it("offers no token at /ui, where this window's own link is a key's and the token is local-only", async () => {
+    testKey.current = OWNER_KEY;
+    host(registry.primaryEnvironmentId);
+    render(<SignInDialog environmentId={registry.primaryEnvironmentId} state={{ state: "signed-out" } as never} onClose={() => {}} />);
+    await act(() => Promise.resolve());
+    expect(screen.queryByPlaceholderText("lo_…")).toBeNull();
     expect(screen.queryByText("ABCD-1234")).not.toBeNull();
   });
 });

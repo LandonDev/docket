@@ -20,6 +20,8 @@ vi.mock("../../lib/workSwitch", async (original) => ({ ...(await original<object
 const signInOnVm = vi.hoisted(() => vi.fn(async (_env: string) => ({ computer: "vm:windows", account: null, line: "" })));
 vi.mock("../winvm/signIn", () => ({ signInOnVm }));
 
+vi.mock("../../lib/linkMay", async (original) => (await import("../../lib/linkMay.testkit")).linkMayMock(await original()));
+const { GIVEN_KEY, resetTestKey, testKey } = await import("../../lib/linkMay.testkit");
 const { ConnectionsPage } = await import("./ConnectionsPage");
 
 const settle = () => act(async () => void (await new Promise((r) => setTimeout(r, 0))));
@@ -28,6 +30,7 @@ afterEach(() => {
   links.box = "open";
   cleanup();
   vi.restoreAllMocks();
+  resetTestKey();
 });
 
 describe("Connections", () => {
@@ -74,6 +77,26 @@ describe("Connections", () => {
     expect(request.mock.calls.map((c) => c[0])).toEqual(["work.health", "work.lifeos.signOut", "work.health"]);
     expect(screen.getByText("Needs you")).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Sign out" })).toBeNull();
+  });
+
+  it("offers a given computer's key no LifeOS sign-in or sign-out, and keeps the fixes it may run", async () => {
+    testKey.current = GIVEN_KEY;
+    const request = vi.fn(async () => ({
+      host: "env_box",
+      at: 1,
+      rows: [
+        { id: "lifeos.signin", pillar: "lifeos", group: "LifeOS", title: "LifeOS", state: "working", line: "Signed in", fix: { kind: "run", label: "Sign out", method: "work.lifeos.signOut" } },
+        { id: "lifeos.pair", pillar: "lifeos", group: "LifeOS", title: "LifeOS on the Mac", state: "needs-you", line: "Not signed in", fix: { kind: "page", label: "Sign in…", page: "lifeos-sign-in" } },
+        { id: "office.onedrive:vm", pillar: "office", group: "Teams files", title: "OneDrive on the Windows VM", state: "needs-you", line: "Signed out", fix: { kind: "page", label: "Sign in to OneDrive", page: "windows-vm-sign-in" } },
+      ],
+    }));
+    vi.spyOn(registry, "linkOf").mockReturnValue({ request } as never);
+    render(<ConnectionsPage />);
+    await settle();
+    expect(screen.getByText("Signed in")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Sign out" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Sign in…" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Sign in to OneDrive" })).toBeTruthy();
   });
 
   it("a row whose fix is OneDrive's sign-in on the Windows VM brings it up on the row's host, spinning meanwhile, then checks again", async () => {

@@ -36,7 +36,9 @@ while Work is on for some host).
   on a timer. While a host checks again its rows stay where they are.
 - The fix is the button at the row's end: raised on a row that needs a
   press, ghost on a row that works (Sign out). What he must do by hand is
-  said in the line, with no button.
+  said in the line, with no button. A fix this window's key may not run on
+  that host (`fixMethod` and `linkMay`: LifeOS's Sign in and Sign out on a
+  given computer) is not drawn.
 
 **What left Settings → Work.** "Where it runs" gave way to Connections: each
 host's LifeOS sign-in, the conversion tools (ToolchainRow, removed) and the

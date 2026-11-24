@@ -10,6 +10,7 @@ import { ItemButton } from "../../components/ui/item";
 import { ROW_PRESS } from "../../components/ui/press";
 import { loadToast } from "../../components/ui/toaster";
 import { registry, LOCAL_ENVIRONMENT_ID } from "../../lib/connection";
+import { linkMay, managedElsewhere, useLinksMay } from "../../lib/linkMay";
 import { readyToClose } from "../canvas/closeDoor";
 import { liveSourceOf } from "../office/live/liveSwitch";
 import { filesPort, type FilesCommand } from "../../lib/filesKeys";
@@ -269,11 +270,18 @@ export function SidebarView({
 
 const say = (title: string, err?: unknown): void => void loadToast().then((toast) => (err === undefined ? toast.message(title) : toast.error(title, { description: workErrorWords(err) || undefined })));
 
-/** A note's press: it spins until done; a refusal is one toast. */
+/** A note's press: it spins until done; a refusal is one toast. One this window's key may not make says who can instead. */
 function useFixes(workspace: WorkspaceMeta, again: () => void): NoteFixes {
   const [busy, setBusy] = useState(false);
+  const may = useLinksMay();
   return {
     busy,
+    elsewhere(fix) {
+      const host = registry.environment(workspace.environmentId)?.name ?? "it";
+      if (fix.kind === "allow") return may(workspace.environmentId, "work.workspace.set") ? null : managedElsewhere(host);
+      if (fix.kind === "sign-in") return may(fix.link, "work.office.vmSignIn") ? null : managedElsewhere(registry.environment(fix.link)?.name ?? host);
+      return null;
+    },
     run(fix) {
       if (fix.kind === "retry") return again();
       if (fix.kind === "settings") return shell.openSettings("work");
@@ -443,7 +451,8 @@ function Place({ workspace, reach, again, startThread }: WorkViewProps & { reach
   const searches = useSavedSearches(link, workspace.id, canFind);
 
   const open = (entry: FileEntry, copy: PlaceCopy): void =>
-    void openEntry(entry, copy, { workspace, tabs: reach.tabs && !view.local, copy: copyOn, opener: tab?.id, busy: setBusy, allowed: () => setCopyOn(true) });
+    // "Open copies here" turns the workspace's copy on, the host's admin rule: a key that may not is never offered it.
+    void openEntry(entry, copy, { workspace, tabs: reach.tabs && !view.local, copy: copyOn, opener: tab?.id, busy: setBusy, ...(linkMay(workspace.environmentId, "work.office.filesCopySet") ? { allowed: () => setCopyOn(true) } : {}) });
   // Open to the Side: a file goes at the side of the file tab he was last in, in that tab. Where he has been in none, it is not offered.
   const [lastFile, setLastFile] = useState<string | null>(null);
   const shownFile = tab?.kind === "file" ? tab.id : null;
@@ -773,6 +782,7 @@ function FolderPage({
   // The host is asked in the order this window keeps for the page, so its pages come in the order the list shows.
   const [look] = usePageLook(page.at);
   const listing = useListing(from, page.at, look.sort ?? DEFAULT_SORT);
+  const may = useLinksMay();
   const noTeams = page.at.at === "place" && page.at.id === "teams";
   const lost = !from && !team && !noTeams && !reach.waiting;
   const trail = team ? [{ name: page.name, at: page.at }] : trailOf(found?.row ?? null, listing?.trail ?? []);
@@ -790,8 +800,9 @@ function FolderPage({
           rename: (entry, name) => renameTo(of, copy, entry, name),
           carry: (verb, entries) => verbs.carry({ verb, entries, from: copy, start: { at: page.at, name: page.name } }),
           trash: (entries) => void trash(of, copy, entries),
-          restore: (entries) => void restore(of, copy.link, trashIds(entries)),
-          purge: (entries) => void purge(of, copy.link, entries ? { ids: trashIds(entries), names: entries.map((e) => e.name) } : {}),
+          // Put Back and Delete for Good as this window's key may on the Trash's host: one it may not is not offered.
+          ...(may(copy.link, "work.files.restore") ? { restore: (entries: readonly FileEntry[]) => void restore(of, copy.link, trashIds(entries)) } : {}),
+          ...(may(copy.link, "work.files.purge") ? { purge: (entries?: readonly FileEntry[]) => void purge(of, copy.link, entries ? { ids: trashIds(entries), names: entries.map((e) => e.name) } : {}) } : {}),
           star: (entries, on) => void star(of, entries, on).then(() => listing.retry()),
           openTab: (entry) => entry.folder && verbs.newTab({ at: entry.folder, name: entry.name }),
           ...(verbs.openSide && copy.link === workspace.environmentId && !copy.place.vm ? { openSide: (entry: FileEntry) => verbs.openSide!(entry, copy) } : {}),

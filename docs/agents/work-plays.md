@@ -127,7 +127,11 @@ no review round.
   says Starting… and the thread opens); one that takes something opens the
   run dialog. Edit (a pencil on hover) and a proposal's or a starter's press
   open the play dialog. The header's New play opens it empty. With no plays
-  and no starters, one line: No plays yet, with New play.
+  and no starters, one line: No plays yet, with New play. A key that may not
+  save plays on the host (`work.routines.playSave`, admin; `linkMay`) runs
+  them alone: no New play, Edit, Proposed or Starters, no Save as a play… in
+  the thread menu (`WorkPlayPort.maySave`), and an empty list says who can
+  add them; a read key's rows are words, never presses.
 - **The play dialog** (`PlayDialog`): Name, Instructions, Takes (a toggle
   for each of the six). Save; Delete (asks first) at the foot for his play,
   Not now (asks nothing) for a proposal, Add for a proposal or a starter;

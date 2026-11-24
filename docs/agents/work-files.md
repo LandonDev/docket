@@ -738,6 +738,13 @@ library's delete goes to the computer's own bin and Trash keeps only its row
   `purging` the same way, removes their bytes, then the rows; with no `ids`,
   every held row of the workspace. A restore and a purge racing for one row
   never both win and never both lose.
+- **Who sees the presses.** Put Back, Delete for Good and Empty Trash are
+  offered only where this window's key may call `restore` and `purge` on the
+  Trash's host (`linkMay`, docs/agents/work.md "The switch"; `actsFor`'s
+  `restore` and `purge`). Files' Allow note says "Changed from a computer
+  that manages <host>" in its press's place for a key that may not write the
+  workspace's settings, and "Open copies here" is not offered to one that
+  may not turn the copy on.
 - **The boot check** (`settleTrash`, at the module's start) puts right what
   a dead process left: a `moving` row whose bytes are in Trash becomes
   `held`; one whose bytes are still in place is dropped with whatever part

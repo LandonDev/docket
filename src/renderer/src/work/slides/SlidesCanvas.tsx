@@ -10,6 +10,7 @@ import { Tabs, TabsIndicator, TabsList, TabsTrigger, TABS_PILL_TRIGGER } from ".
 import { dayTime } from "../../lib/duration";
 import { bareKey, chordKey, modKey } from "../../lib/keys";
 import { IS_MAC } from "../../lib/platform";
+import { useLinkMay } from "../../lib/linkMay";
 import { sayError } from "../canvas/frame";
 import { registerFlush } from "../canvas/flush";
 import type { CanvasBodyProps, CanvasShell, ReviewAdapter } from "../canvas/kind";
@@ -164,9 +165,11 @@ export function Body(props: CanvasBodyProps<SlidesState> & SlidesDeps) {
   useDeckView(host, store);
   // At phone width, a show of this deck running on another of his devices makes the item its clicker.
   const show = useClickerShow(host.remote);
+  // A read key may watch the show; its presses need operate (the host's rule).
+  const mayPress = useLinkMay(props.env, "work.slides.show.press");
   // The Present menu ends with "In PowerPoint" where the deck's computer can present it.
   const inPowerPoint = useInPowerPoint(useDeck(store).view, props.source, props.env);
-  if (show && host.remote) return <Clicker live={show} remote={host.remote} />;
+  if (show && host.remote) return <Clicker live={show} remote={host.remote} mayPress={mayPress} />;
   // Preview (preview/DeckPreview.tsx) is a state of the item over the deck, which stays mounted under it.
   return (
     <InPowerPointRow.Provider value={inPowerPoint}>

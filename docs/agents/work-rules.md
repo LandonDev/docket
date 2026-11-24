@@ -121,7 +121,9 @@ instructions. Only mail LifeOS sent is there: mail he sent from Outlook or
 Gmail directly is not. `work.rules.voice` answers the page's line: the
 count, the oldest date and the From addresses, and `on` from the host's own
 row whatever LifeOS answers: unreachable, `count` is null and `error` says
-why, so the switch still shows and he can turn it off.
+why, so the switch still shows and he can turn it off. A window whose key
+may not write the workspace's settings (`linkMay`, [work.md](work.md) "The
+switch") is not shown the Voice section, nor asked for its line.
 
 ## The screens
 

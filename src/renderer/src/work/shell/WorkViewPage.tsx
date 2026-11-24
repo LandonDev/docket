@@ -11,6 +11,7 @@ import { useSelectedWorkspaceIds } from "../../stores/project";
 import { StatusMark } from "../../components/ui/status";
 import { WORK_VIEWS, type WorkViewId, type WorkViewModule, type WorkViewProps } from "../views/registry";
 import { registry, useEnvironmentStatus } from "../../lib/connection";
+import { managedElsewhere, useLinkMay } from "../../lib/linkMay";
 import { openWorkSettings } from "./open";
 import { reopenLifeos, useLifeosSession, useLifeosStatus } from "./lifeos";
 import { startThreadAbout } from "./WorkColumn";
@@ -106,6 +107,8 @@ export function ViewFrame({ view, environmentId, workspaceId, sector }: { view: 
   const link = useEnvironmentStatus(environmentId);
   const away = gated && state === null && link.transport !== "open" && link.transport !== "connecting" && link.transport !== "reconnecting";
   const [signingIn, setSigningIn] = useState(false);
+  // Pairing a host with LifeOS is its admin rule: a key that may not start it is told who can, never offered the press.
+  const maySignIn = useLinkMay(environmentId, "work.lifeos.pairStart");
   const host = registry.environment(environmentId)?.name ?? "This host";
   // A view with its own head (Mail) has no header over it, but the sign-in has no head and keeps the header.
   const blocked = signedOut || pairing || off || away || withheld;
@@ -174,7 +177,7 @@ export function ViewFrame({ view, environmentId, workspaceId, sector }: { view: 
         ) : signedOut || pairing ? (
           <EmptyState
             title={pairing ? "The LifeOS sign-in waits for your approval" : state === "refused" || session.state === "refused" ? "LifeOS refused this host's sign-in" : "Sign in to LifeOS"}
-            action={{ label: pairing ? "Show the code" : "Sign in", onClick: () => setSigningIn(true) }}
+            {...(maySignIn ? { action: { label: pairing ? "Show the code" : "Sign in", onClick: () => setSigningIn(true) } } : { line: managedElsewhere(host) })}
           />
         ) : (
           <ViewBoundary label={def.label} onRetry={() => setAttempt((n) => n + 1)}>

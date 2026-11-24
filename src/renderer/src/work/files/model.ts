@@ -590,22 +590,23 @@ export interface ActRow {
 /**
  * The verbs for what is selected, in menu order, each off with its one sentence where the place refuses it
  * (`refusal`, the same rule the host holds). The same rows serve one thing or many: a verb that only one thing
- * takes (Open, Rename) is left out for many. In Trash the verbs are Put back and Delete for good.
+ * takes (Open, Rename) is left out for many. In Trash the verbs are Put back and Delete for good, each left out
+ * where this window's key may not (`restore`, `purge` false).
  */
 export function actsFor(
   entries: readonly FileEntry[],
   place: FilePlace | null,
-  o: { tabs: boolean; /** a file tab he was last in can take a file at its side */ side?: boolean; /** the page can show the folder a row lives in (a lens, a search's results) */ reveal?: boolean; /** the sector has projects a file can be added to */ projects?: boolean } = { tabs: true },
+  o: { tabs: boolean; /** a file tab he was last in can take a file at its side */ side?: boolean; /** the page can show the folder a row lives in (a lens, a search's results) */ reveal?: boolean; /** the sector has projects a file can be added to */ projects?: boolean; /** Put Back may be offered */ restore?: boolean; /** Delete for Good may be offered */ purge?: boolean } = { tabs: true },
 ): ActRow[] {
   if (!entries.length) return [];
   const one = entries.length === 1 ? entries[0]! : null;
   // A mail's file is no file of his yet: it opens, and Keep copies it into the workspace's folder.
   if (place?.kind === "mail") return [...(one ? ([{ act: "open", label: "Open" }] satisfies ActRow[]) : []), { act: "keep", label: "Keep in the Workspace", rule: !!one }];
   if (place?.kind === "trash") {
-    return [
-      { act: "restore", label: "Put Back" },
-      { act: "purge", label: "Delete for Good", danger: true, rule: true },
-    ];
+    const rows: ActRow[] = [];
+    if (o.restore !== false) rows.push({ act: "restore", label: "Put Back" });
+    if (o.purge !== false) rows.push({ act: "purge", label: "Delete for Good", danger: true, rule: rows.length > 0 });
+    return rows;
   }
   const no = (verb: FileVerb, entry?: FileEntry): string | undefined => (place ? (refusal(place, verb, entry ?? one) ?? undefined)?.text : "Its place is not listed now.");
   const each = (verb: FileVerb): string | undefined => entries.map((e) => no(verb, e)).find((text) => text !== undefined);

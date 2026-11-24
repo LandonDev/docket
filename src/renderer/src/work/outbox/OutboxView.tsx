@@ -19,6 +19,7 @@ import { usePageEscape } from "../../lib/pageEscape";
 import { IS_MAC } from "../../lib/platform";
 import { storeTitleOf } from "../../lib/threadMentions";
 import { useEnvironments } from "../../lib/connection";
+import { useLinkMay } from "../../lib/linkMay";
 import { useWorkspaces } from "../../lib/tcserver/workspaces";
 import { registerToastAnchor } from "../../lib/toastAnchor";
 import { EmptyState, PAGE_LIST_WIDTH, SurfaceSkeleton } from "../../surfaces/SurfaceSkeleton";
@@ -671,7 +672,9 @@ export function HeldDetail({
   useEffect(() => {
     if (refused) refusedLine.current?.scrollIntoView?.({ block: "nearest" });
   }, [refused]);
-  const grant = grantFor(item);
+  // A grant is made on the host's admin rule: a key that may only approve sends, and is never offered "stop holding".
+  const grant = useLinkMay(item.environmentId, "work.outbox.grant") ? grantFor(item) : null;
+  const mayTakeOffer = useLinkMay(item.environmentId, "work.outbox.takeOffer");
   const { about } = splitSummary(item.summary);
   const press = async (which: "send" | "again" | "discard" | "grant") => {
     setBusy(which === "again" ? "send" : which);
@@ -683,7 +686,7 @@ export function HeldDetail({
       // A held file change names its file ("Changed Brief.docx"): its summary's first ": " may be in the file's own name.
       const done = which === "discard" ? "Discarded" : (changeKind(item.kind) ? kindHeading(item.kind, item.payload, true) : null) ?? `${pastOf(item.verb, item.kind)}${about ? `: ${about}` : ""}`;
       // A plain press may have completed a run: the host makes the offer before it answers.
-      const earned = which === "send" || which === "again" ? await offerAfterPress(item) : null;
+      const earned = mayTakeOffer && (which === "send" || which === "again") ? await offerAfterPress(item) : null;
       if (earned) toastEarned(done, earned, () => onReview(item));
       else toast(done);
       if (which === "grant") toast(`Grant made: ${grant!.label}`);

@@ -29,6 +29,32 @@ with its six views, linking a workspace to a sector, and Settings → Work
   caps its hello named), writes only where it can, and names the hosts a
   given computer's key cannot switch ("Work for the box is changed from a
   computer that manages it") in place of a refusal.
+- **A control a key cannot use is not drawn.** Every Work control whose
+  method this window's key may not call on its host asks `linkMay` first
+  (`useLinkMay` and `useLinksMay` in the same file read the link's status, so
+  a hello that lands later shows or hides it): it is not drawn, or where its
+  absence would leave a section or a page with no way on, one muted line in
+  its place says who can, `managedElsewhere(host)`: "Changed from a computer
+  that manages the box", once on a page. Never a disabled control or a lock.
+  The host's own check stays the judge. On a given computer's key that means:
+  no grant made, taken, dismissed or removed in the Outbox (Approve and Send
+  stay); no New, Edit, Delete or proposal's press in Routines and Plays, nor
+  the thread menu's Save as a play… (Run now, Pause and a play's run stay); the
+  Digest's time and levels as words when no host it is on may take them, and
+  never written to one that may not; a workspace page's switches (Computer
+  use, the VM, Copy Teams files, Voice, Waiting on, the model) replaced by
+  the one line;
+  the VM's Set up, Sleeps after, Screen size, Go back and Delete (Wake, Sleep
+  and Save a point stay); LifeOS's Sign in and Sign out on Connections and on
+  a view; Files' Allow said as who can, and no "Open copies here"; a new
+  workspace skips the allowed-computers write it would be refused. The token
+  field of the LifeOS sign-in asks the rule too, so /ui (a key's link) never
+  shows it. A read key also loses Put Back, Delete for Good and Empty Trash,
+  a play's run, and the clicker's presses (it keeps the show's state, with one
+  line: "This device can only watch the show."). The table in
+  src/renderer/src/lib/linkMay.test.ts holds each method's verdict for an
+  owner's, a given computer's and a read key; a surface's DOM test swaps keys
+  through src/renderer/src/lib/linkMay.testkit.ts.
   A change pushes `{ push: 'work', settings }` to every client socket.
 - **Code branches on a row, never on the switch**: `workspace.kind ===
   'work'`, `session.scope === 'work'`. The switch only decides whether Work

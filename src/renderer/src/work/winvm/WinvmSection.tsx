@@ -10,6 +10,7 @@ import { BusyLabel, Button } from "../../components/ui/button";
 import { Dialog } from "../../components/ui/dialog";
 import { registry } from "../../lib/connection";
 import { dayTime } from "../../lib/duration";
+import { useLinkMay } from "../../lib/linkMay";
 import { signInOnVm } from "./signIn";
 
 /**
@@ -20,7 +21,10 @@ import { signInOnVm } from "./signIn";
  * restore points (a dialog), the edition, and Office and OneDrive as last read
  * in it (`work.office.vmStatus`, which never wakes it), with OneDrive's
  * sign-in where it needs his. A host that cannot have it (a Mac, a box with
- * no base image) shows nothing.
+ * no base image) shows nothing. Set up, the settings and going back to or
+ * deleting a point are the host's admin rule; Wake, Sleep, Save a point and
+ * the sign-in need operate: a press this window's key may not make is not
+ * drawn, and the setting it would change stands as plain words.
  */
 
 /** The machine's row: its state in a few words, and the one press that fits it. */
@@ -121,6 +125,8 @@ function WinvmHost({ env, named }: { env: string; named: boolean }) {
   const [signingIn, setSigningIn] = useState(false);
   const [signInError, setSignInError] = useState<string | null>(null);
   const link = useMemo(() => registry.linkOf(env), [env]);
+  const admin = useLinkMay(env, "work.winvm.settings");
+  const operate = useLinkMay(env, "work.winvm.wake");
   const load = useCallback((): void => {
     void link.request<WinvmState>("work.winvm.state", {}).then(
       (s) => {
@@ -133,10 +139,12 @@ function WinvmHost({ env, named }: { env: string; named: boolean }) {
       (p) => setPoints(p.points),
       () => setPoints([]),
     );
-    void link.request<WinvmSettings>("work.winvm.settings", {}).then(
-      (v) => setScreen(v.screen),
-      () => setScreen(null),
-    );
+    // The screen size is read with the settings, the admin rule: a key that may not change it never asks.
+    if (admin)
+      void link.request<WinvmSettings>("work.winvm.settings", {}).then(
+        (v) => setScreen(v.screen),
+        () => setScreen(null),
+      );
     // A host on an older build has no status to give: then the rows are not drawn.
     void Promise.all([
       link.request<VmOfficeStatus>("work.office.vmStatus", {}),
@@ -148,7 +156,7 @@ function WinvmHost({ env, named }: { env: string; named: boolean }) {
       ([status, libraries]) => setOffice({ status, libraries }),
       () => setOffice(null),
     );
-  }, [link]);
+  }, [link, admin]);
   useEffect(() => {
     load();
     const offPush = link.onPush((push) => {
@@ -239,9 +247,10 @@ function WinvmHost({ env, named }: { env: string; named: boolean }) {
         onScreen={(v) => void pickScreen(v)}
         onPoints={() => setShowPoints(true)}
         office={office}
-        signIn={{ busy: signingIn, error: signInError, onPress: () => void signIn() }}
+        signIn={operate ? { busy: signingIn, error: signInError, onPress: () => void signIn() } : undefined}
+        may={{ admin, operate }}
       />
-      {showPoints ? <PointsDialog env={env} state={state} points={points ?? []} onClose={() => setShowPoints(false)} /> : null}
+      {showPoints ? <PointsDialog env={env} state={state} points={points ?? []} admin={admin} onClose={() => setShowPoints(false)} /> : null}
     </>
   );
 }
@@ -261,11 +270,14 @@ export interface WinvmViewProps {
   /** Office and OneDrive in it as last read, and his Teams libraries there; null: not known */
   office?: { status: VmOfficeStatus; libraries: number | null } | null;
   signIn?: { busy: boolean; error: string | null; onPress: () => void };
+  /** What this window's key may do on the host (`linkMay`): `admin` sets it up and changes its settings, `operate` wakes and sleeps it. */
+  may?: { admin: boolean; operate: boolean };
 }
 
 /** The section, pure: the machine's row and, once it is set up, when it sleeps, its points, the edition and Office. */
-export function WinvmView({ title, state, points, screen, error, pressing, onPress, onSleepAfter, onScreen, onPoints, office, signIn }: WinvmViewProps) {
+export function WinvmView({ title, state, points, screen, error, pressing, onPress, onSleepAfter, onScreen, onPoints, office, signIn, may = { admin: true, operate: true } }: WinvmViewProps) {
   const row = winvmRow(state);
+  const press = row.press && (row.press === "setup" ? may.admin : may.operate) ? row.press : null;
   const officeRow = office ? officeLine(office.status) : null;
   const onedriveRow = office ? onedriveLine(office.status, office.libraries) : null;
   // One sign-in serves both rows: OneDrive's account is Office's. Its press sits on the first row that needs it.
@@ -278,11 +290,11 @@ export function WinvmView({ title, state, points, screen, error, pressing, onPre
   return (
     <PageSection title={title}>
       <PageRow title="Windows" description={row.words} error={state.error ?? error ?? undefined}>
-        {row.press ? (
+        {press ? (
           <Button variant="secondary" size="sm" disabled={pressing} onClick={onPress}>
-            <BusyLabel busy={pressing} label={PRESS_WORDS[row.press]} />
+            <BusyLabel busy={pressing} label={PRESS_WORDS[press]} />
           </Button>
-        ) : (
+        ) : row.press ? null : (
           <Button variant="secondary" size="sm" disabled>
             <BusyLabel busy label={state.state === "setting-up" ? "Set up" : state.state === "waking" ? "Wake" : "Sleep"} />
           </Button>
@@ -290,10 +302,14 @@ export function WinvmView({ title, state, points, screen, error, pressing, onPre
       </PageRow>
       {state.state !== "none" ? (
         <>
-          <PageRow title="Sleeps after">
-            <ChoiceSelect size="sm" label="Sleeps after" value={state.sleepAfter} options={SLEEP_AFTER} onChange={(v) => onSleepAfter(v as WinvmSleepAfter)} />
-          </PageRow>
-          {screen ? (
+          {may.admin ? (
+            <PageRow title="Sleeps after">
+              <ChoiceSelect size="sm" label="Sleeps after" value={state.sleepAfter} options={SLEEP_AFTER} onChange={(v) => onSleepAfter(v as WinvmSleepAfter)} />
+            </PageRow>
+          ) : (
+            <PageRow title="Sleeps after" description={SLEEP_AFTER.find((o) => o.value === state.sleepAfter)?.label} />
+          )}
+          {screen && may.admin ? (
             // Windows keeps the size it was set up at through every sleep (guestScreen.ts): the choice is a new Set up's
             <PageRow title="Screen size" description="Used when the VM is set up again">
               <ChoiceSelect size="sm" label="Screen size" value={screen} options={SCREENS} onChange={(v) => onScreen(v as WinvmScreen)} />
@@ -302,8 +318,7 @@ export function WinvmView({ title, state, points, screen, error, pressing, onPre
           <PageRow
             title="Restore points"
             description={points === null ? undefined : points.length === 0 ? "None yet" : `${points.length} kept, the last ${dayTime(Math.max(...points.map((p) => p.at)))}`}
-            onOpen={onPoints}
-            openLabel="Restore points"
+            {...(may.admin || may.operate ? { onOpen: onPoints, openLabel: "Restore points" } : {})}
           />
           <PageRow title="Edition" description={evaluationLine(WINVM_EVALUATION_ENDS)} />
           {officeRow ? (
@@ -327,7 +342,7 @@ export function WinvmView({ title, state, points, screen, error, pressing, onPre
 }
 
 /** Restore points: saved while it sleeps, three kept; going back after a confirm that says what is lost. */
-function PointsDialog({ env, state, points, onClose }: { env: string; state: WinvmState; points: readonly WinvmPoint[]; onClose: () => void }) {
+function PointsDialog({ env, state, points, admin, onClose }: { env: string; state: WinvmState; points: readonly WinvmPoint[]; admin: boolean; onClose: () => void }) {
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const asleep = state.state === "asleep";
@@ -360,14 +375,17 @@ function PointsDialog({ env, state, points, onClose }: { env: string; state: Win
           {sorted.length === 0 ? <PageEmpty>None yet</PageEmpty> : null}
           {sorted.map((point) => (
             <PageRow key={point.id} title={point.name} description={dayTime(point.at)}>
-              <div className="flex shrink-0 items-center gap-1">
-                <Button variant="ghost" size="sm" disabled={!asleep || busy !== null} onClick={() => void goBack(point)}>
-                  <BusyLabel busy={busy === `back:${point.id}`} label="Go back…" />
-                </Button>
-                <Button variant="ghost" size="sm" disabled={busy !== null} onClick={() => void run(`delete:${point.id}`, "work.winvm.point.delete", { id: point.id })}>
-                  <BusyLabel busy={busy === `delete:${point.id}`} label="Delete" />
-                </Button>
-              </div>
+              {/* Going back and deleting are the host's admin rule: a key that may only save points is not offered them. */}
+              {admin ? (
+                <div className="flex shrink-0 items-center gap-1">
+                  <Button variant="ghost" size="sm" disabled={!asleep || busy !== null} onClick={() => void goBack(point)}>
+                    <BusyLabel busy={busy === `back:${point.id}`} label="Go back…" />
+                  </Button>
+                  <Button variant="ghost" size="sm" disabled={busy !== null} onClick={() => void run(`delete:${point.id}`, "work.winvm.point.delete", { id: point.id })}>
+                    <BusyLabel busy={busy === `delete:${point.id}`} label="Delete" />
+                  </Button>
+                </div>
+              ) : null}
             </PageRow>
           ))}
           {error ? <PageError>{error}</PageError> : null}

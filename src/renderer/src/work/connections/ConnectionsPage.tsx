@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import type { ClientRequest } from "@shared/contract";
 import type { HealthFix, HealthReport } from "@shared/work/health";
 import { lapseLine } from "@shared/work/health";
 import { syncWhen } from "@shared/work/messages";
@@ -7,6 +8,7 @@ import { PageActions, PageRow, PageRowsSkeleton, PageSection } from "../../compo
 import { BusyLabel, Button } from "../../components/ui/button";
 import { StatusMark } from "../../components/ui/status";
 import { registry, useEnvironments, useEnvironmentStatuses } from "../../lib/connection";
+import { useLinkMay } from "../../lib/linkMay";
 import { requestSettings } from "../../lib/monaco/debugTab";
 import { openUrl } from "../../lib/native";
 import { useWorkHosts } from "../../lib/workSwitch";
@@ -148,7 +150,9 @@ function ConnectionRow({ placed, now, onDone }: { placed: PlacedRow; now: number
 function FixRow({ placed, now, onDone }: { placed: PlacedRow; now: number; onDone: () => void }) {
   const { row, hostId } = placed;
   const mark = markOf(row.state);
-  const fix = usableFix(row.fix, registry.primary().environmentId === hostId);
+  const usable = usableFix(row.fix, registry.primary().environmentId === hostId);
+  // A fix this window's key may not run on that host (LifeOS's sign-in and sign-out on a given computer) is not drawn.
+  const fix = useLinkMay(hostId, fixMethod(usable) ?? "work.health") ? usable : null;
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [signingIn, setSigningIn] = useState(false);
@@ -184,6 +188,14 @@ function FixRow({ placed, now, onDone }: { placed: PlacedRow; now: number; onDon
       {signingIn ? <LifeosSignIn environmentId={hostId} onClose={() => (setSigningIn(false), onDone())} /> : null}
     </>
   );
+}
+
+/** The host method a fix's press ends in, if any: what `linkMay` asks before it is drawn. */
+export function fixMethod(fix: HealthFix | null): ClientRequest["method"] | null {
+  if (fix?.kind === "run") return fix.method as ClientRequest["method"];
+  if (fix?.kind === "page" && fix.page === "lifeos-sign-in") return "work.lifeos.pairStart";
+  if (fix?.kind === "page" && fix.page === "windows-vm-sign-in") return "work.office.vmSignIn";
+  return null;
 }
 
 /** The LifeOS sign-in dialog Settings → Work has always used, for this host. */

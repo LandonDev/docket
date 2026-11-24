@@ -439,7 +439,9 @@ pillar (`work.routines.save`: "Nudge mail with no reply", a LifeOS trigger
 on `mail.waiting`, never ending), kept in `work_mail_nudge_routines`; off
 pauses it, so its runs stay readable in Routines; on again resumes it, and
 makes a new one if he deleted it there. No grant is made: each draft it
-writes is held ([work-routines.md](work-routines.md)).
+writes is held ([work-routines.md](work-routines.md)). Both are
+`work.mail.setWaiting`, admin: a window whose key may not call it
+(`linkMay`, [work.md](work.md) "The switch") is not shown the section.
 
 **A reply drops an unsent nudge.** When someone else's message ends a wait,
 LifeOS deletes, in the same write, every draft an agent made in that mail

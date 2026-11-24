@@ -79,18 +79,22 @@ const SHAPE_GLYPH = { list: ListShape, grid: GridShape, columns: ColumnsShape, g
 export interface NoteFixes {
   busy: boolean;
   run(fix: NonNullable<FilesNote["fix"]>): void;
+  /** Who can, for a fix this window's key may not make (`managedElsewhere`): said in the press's place. */
+  elsewhere?(fix: NonNullable<FilesNote["fix"]>): string | null;
 }
 const FIX_LABEL = { allow: "Allow", retry: "Retry", "sign-in": "Sign in to OneDrive", "open-vm": "Open the Windows VM", settings: "Open Settings", wake: "Wake it" } as const;
 
 /** A note with nothing listed under it: the one cause and its press, centred where the list would be. */
 export function NoteEmpty({ note, fixes }: { note: FilesNote; fixes: NoteFixes }) {
+  const elsewhere = note.fix ? (fixes.elsewhere?.(note.fix) ?? null) : null;
+  const line = elsewhere ?? note.line;
   return (
     <Empty>
       <EmptyHeader>
         <EmptyTitle>{note.title}</EmptyTitle>
-        {note.line ? <EmptyDescription>{note.line}</EmptyDescription> : null}
+        {line ? <EmptyDescription>{line}</EmptyDescription> : null}
       </EmptyHeader>
-      {note.fix ? (
+      {note.fix && !elsewhere ? (
         <Button size="sm" variant="secondary" disabled={fixes.busy} onClick={() => fixes.run(note.fix!)}>
           <BusyLabel busy={fixes.busy} label={FIX_LABEL[note.fix.kind]} />
         </Button>
@@ -102,11 +106,13 @@ export function NoteEmpty({ note, fixes }: { note: FilesNote; fixes: NoteFixes }
 /** A note over a list that is still shown: the state line's shape, in the note's own tone, with its one press. */
 function NoteLine({ note, fixes }: { note: FilesNote; fixes: NoteFixes }) {
   if (note.away && note.fix?.kind === "retry") return <ViewStateLine word={note.title} detail={note.line} onRetry={() => fixes.run({ kind: "retry" })} />;
+  const elsewhere = note.fix ? (fixes.elsewhere?.(note.fix) ?? null) : null;
+  const line = elsewhere ?? note.line;
   return (
     <div data-files-note role="status" className="flex min-h-8 min-w-0 shrink-0 items-center gap-2 border-b border-border bg-background px-3 py-1 text-[13px] leading-5">
       <span className="min-w-0 truncate font-medium text-foreground">{note.title}</span>
-      {note.line ? <span className="min-w-0 flex-1 truncate text-muted-foreground">{note.line}</span> : <span className="flex-1" />}
-      {note.fix ? (
+      {line ? <span className="min-w-0 flex-1 truncate text-muted-foreground">{line}</span> : <span className="flex-1" />}
+      {note.fix && !elsewhere ? (
         <Button variant="ghost" size="xs" disabled={fixes.busy} onClick={() => fixes.run(note.fix!)}>
           <BusyLabel busy={fixes.busy} label={FIX_LABEL[note.fix.kind]} />
         </Button>
@@ -457,9 +463,10 @@ export interface PageActs {
   /** Move to… and Copy to…: the dialog that picks the folder */
   carry(verb: "move" | "copy", entries: readonly FileEntry[]): void;
   trash(entries: readonly FileEntry[]): void;
-  restore(entries: readonly FileEntry[]): void;
-  /** Delete for good: these rows of Trash, or with none given all of it */
-  purge(entries?: readonly FileEntry[]): void;
+  /** Put Back; absent where this window's key may not */
+  restore?(entries: readonly FileEntry[]): void;
+  /** Delete for good: these rows of Trash, or with none given all of it; absent where this window's key may not */
+  purge?(entries?: readonly FileEntry[]): void;
   star(entries: readonly FileEntry[], on: boolean): void;
   openTab(entry: FileEntry): void;
   /** Ask about what is selected: a new chat whose first message holds the files, eight at most; absent where a thread cannot start here */
@@ -778,7 +785,7 @@ export function PageView({
   // The verbs for what is selected: one table for a row's menu, the bar and the keys.
   // A page that only shows (a search's results) still opens a row and shows the folder it lives in.
   const plain = (on: readonly FileEntry[]): ActRow[] => (on.length === 1 ? [{ act: "open", label: "Open" }, ...(onReveal && on[0]!.where ? ([{ act: "reveal", label: "Show in Its Folder" }] satisfies ActRow[]) : [])] : []);
-  const verbs = acts ? actsFor(chosen, acts.place, { tabs: acts.tabs, side: !!acts.openSide, reveal: !!onReveal, projects: !!acts.projects?.length }) : plain(chosen);
+  const verbs = acts ? actsFor(chosen, acts.place, { tabs: acts.tabs, side: !!acts.openSide, reveal: !!onReveal, projects: !!acts.projects?.length, restore: !!acts.restore, purge: !!acts.purge }) : plain(chosen);
   const run = (act: EntryAct, on: readonly FileEntry[] = chosen): void => {
     const one = on[0];
     if (!one) return;
@@ -794,12 +801,12 @@ export function PageView({
     if (act === "move" || act === "copy") return acts.carry(act, on);
     if (act === "star" || act === "unstar") return acts.star(on, act === "star");
     if (act === "delete") return acts.trash(on);
-    if (act === "restore") return acts.restore(on);
-    if (act === "purge") return acts.purge(on);
+    if (act === "restore") return acts.restore?.(on);
+    if (act === "purge") return acts.purge?.(on);
   };
   const menuFor = (id: string | null): MenuRow[] | null => {
     const on = id !== null && !picked.keys.has(id) ? entries.filter((e) => e.key === id) : chosen;
-    const list = acts ? actsFor(on, acts.place, { tabs: acts.tabs, side: !!acts.openSide, reveal: !!onReveal, projects: !!acts.projects?.length }) : plain(on);
+    const list = acts ? actsFor(on, acts.place, { tabs: acts.tabs, side: !!acts.openSide, reveal: !!onReveal, projects: !!acts.projects?.length, restore: !!acts.restore, purge: !!acts.purge }) : plain(on);
     if (!list.length) return null;
     // Add to a Project lists the sector's projects, less the one the file is in, before Delete.
     const one = on.length === 1 && !on[0]!.folder ? on[0]! : null;
@@ -982,8 +989,8 @@ export function PageView({
             </Button>
           }
         />
-        {inTrash && acts && entries.length ? (
-          <Button variant="ghost" size="sm" data-files-empty-trash className="ms-1 shrink-0 text-destructive" onClick={() => acts.purge()}>
+        {inTrash && acts?.purge && entries.length ? (
+          <Button variant="ghost" size="sm" data-files-empty-trash className="ms-1 shrink-0 text-destructive" onClick={() => acts.purge?.()}>
             Empty Trash
           </Button>
         ) : null}

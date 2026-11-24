@@ -10,7 +10,7 @@ import { act, cleanup, fireEvent, render, screen } from "@testing-library/react"
 import { useState } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ShowLive, ShowPress, ShowPressAct, ShowPressAnswer } from "@shared/contract-work-slides";
-import { Clicker, CLICKER_WIDTH, useClickerShow } from "./Clicker";
+import { Clicker, CLICKER_WIDTH, useClickerShow, WATCH_ONLY } from "./Clicker";
 import { actOf, liveOf, usePublish, withPressAnswers, type LiveState, type ShowRemote } from "./remote";
 import { showReducer, startShowState, type ShowState, type Slide } from "./state";
 import { startTimer } from "./timer";
@@ -109,6 +109,20 @@ describe("the clicker at 390px", () => {
     expect(next.textContent).toContain("Packages");
     // No control waits on a hover.
     expect(root.innerHTML).not.toMatch(/group-hover|hover:opacity|opacity-0/);
+  });
+
+  it("for a key that may only read, shows the show's state and draws no press, one line in their place", () => {
+    const { remote, presses } = fakeRemote();
+    render(<Clicker live={live()} remote={remote} mayPress={false} />);
+    expect(screen.getByRole("heading", { name: "Sponsor deck" })).toBeTruthy();
+    expect(document.querySelector("[data-clicker-elapsed]")!.textContent).toBe("12:40");
+    expect(document.querySelector("[data-clicker-place]")!.textContent).toBe("4 / 12");
+    expect(document.querySelector("[data-clicker-notes]")!.textContent).toBe("Start with the gold package.\nSay the price last.");
+    expect(screen.queryAllByRole("button")).toEqual([]);
+    expect(document.querySelector("[data-clicker-prev]")).toBeNull();
+    expect(document.querySelector("[data-clicker-next]")).toBeNull();
+    expect(screen.getByText(WATCH_ONLY)).toBeTruthy();
+    expect(presses).toEqual([]);
   });
 
   it("sends each press with the state it was made on", () => {

@@ -42,6 +42,9 @@ vi.mock("../../components/ui/toaster", async (original) => {
   return { ...(await original<object>()), loadToast: async () => toast };
 });
 
+vi.mock("../../lib/linkMay", async (original) => (await import("../../lib/linkMay.testkit")).linkMayMock(await original()));
+const { GIVEN_KEY, resetTestKey, testKey } = await import("../../lib/linkMay.testkit");
+
 const WORKSPACE = { id: "ws", name: "Purdue Esports", environmentId: "box", sector: "purdue", kind: "work", path: "/w" } as never;
 const { HouseRules } = await import("./HouseRules");
 const { RuleLine } = await import("./RuleLine");
@@ -82,7 +85,10 @@ beforeEach(() => {
   state.fail = new Set();
   state.gate = null;
 });
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  resetTestKey();
+});
 
 describe("the rules page", () => {
   it("lists the rules with a switch each, and a proposal that opens to its three edits", async () => {
@@ -188,6 +194,15 @@ describe("the rule dialog", () => {
     fireEvent.click(screen.getByRole("button", { name: "Add rule" }));
     await settle();
     expect(calls.find((c) => c.method === "work.rules.add")?.params).toEqual({ workspaceId: "ws", text: "Sign as Landon" });
+  });
+
+  it("a given computer's key, which may not write the workspace's settings, has no voice section and keeps the rules", async () => {
+    testKey.current = GIVEN_KEY;
+    render(<HouseRules workspace={WORKSPACE} />);
+    await settle();
+    expect(screen.getByRole("button", { name: "Edit rule: Sign Purdue mail as Landon Hale" })).toBeTruthy();
+    expect(screen.queryByRole("switch", { name: "Read my sent mail for how I write" })).toBeNull();
+    expect(calls.some((c) => c.method === "work.rules.voice")).toBe(false);
   });
 
   it("a workspace with no sector has no voice section", async () => {

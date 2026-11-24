@@ -2,12 +2,14 @@ import { useEffect, useState, useSyncExternalStore } from "react";
 import type { PlayRow, StarterPlay } from "@shared/contract-work-routines";
 import { Pencil, Plus } from "../../../chrome/icons";
 import { Button } from "../../../components/ui/button";
-import { ItemButton } from "../../../components/ui/item";
+import { Item, ItemButton } from "../../../components/ui/item";
 import { reveal } from "../../../components/ui/reveal";
 import { Skeleton } from "../../../components/ui/skeleton";
 import { Spinner } from "../../../components/ui/spinner";
 import { loadToast } from "../../../components/ui/toaster";
 import { cn } from "../../../lib/cn";
+import { useEnvironments } from "../../../lib/connection";
+import { managedElsewhere, useLinkMay } from "../../../lib/linkMay";
 import { EmptyState } from "../../../surfaces/SurfaceSkeleton";
 import type { WorkViewProps } from "../../views/registry";
 import { startPlay, usePlays } from "./data";
@@ -20,7 +22,9 @@ import { startersLeft, takesLine } from "./model";
  * in this job, each one press from a thread. A play that takes nothing
  * starts on its row's press; one that takes something asks for it first.
  * An agent's proposals follow, for him to add or let go, then the sector's
- * starters he has not added, offered and never added by themselves.
+ * starters he has not added, offered and never added by themselves. A key
+ * that may not save plays on the host (its admin rule) sees the plays and
+ * runs them; New, Edit, the proposals and the starters are not drawn.
  */
 
 // The header's New play asks the view to open the dialog.
@@ -31,7 +35,8 @@ const askNew = () => {
   for (const fn of newAsks) fn();
 };
 
-export function Head(_props: WorkViewProps) {
+export function Head({ env }: WorkViewProps) {
+  if (!useLinkMay(env, "work.routines.playSave")) return null;
   return (
     <Button variant="ghost" size="sm" onClick={askNew}>
       <Plus />
@@ -45,6 +50,9 @@ export function View({ env, workspace, sector }: WorkViewProps) {
   const [dialog, setDialog] = useState<PlaySource | null>(null);
   const [run, setRun] = useState<PlayRow | null>(null);
   const [starting, setStarting] = useState<string | null>(null);
+  const maySave = useLinkMay(env, "work.routines.playSave");
+  const mayStart = useLinkMay(env, "work.routines.playStart");
+  const host = useEnvironments().find((e) => e.id === env)?.name ?? "this host";
   const asked = useSyncExternalStore(
     (fn) => (newAsks.add(fn), () => newAsks.delete(fn)),
     () => newAsked,
@@ -59,9 +67,9 @@ export function View({ env, workspace, sector }: WorkViewProps) {
 
   if (load.status === "loading") return <PlaysSkeleton />;
   if (load.status === "error") return <EmptyState title="Plays did not load" line={load.error} action={{ label: "Retry", onClick: retry }} />;
-  const proposed = load.value.filter((p) => p.proposed);
+  const proposed = maySave ? load.value.filter((p) => p.proposed) : [];
   const plays = load.value.filter((p) => !p.proposed);
-  const starters = startersLeft(sector, load.value);
+  const starters = maySave ? startersLeft(sector, load.value) : [];
 
   const start = (play: PlayRow) => {
     if (play.takes.length) return setRun(play);
@@ -77,8 +85,12 @@ export function View({ env, workspace, sector }: WorkViewProps) {
 
   return (
     <>
-      {load.value.length === 0 && starters.length === 0 ? (
-        <EmptyState title="No plays yet" action={{ label: "New play", onClick: () => setDialog({ kind: "new" }) }} />
+      {plays.length + proposed.length + starters.length === 0 ? (
+        maySave ? (
+          <EmptyState title="No plays yet" action={{ label: "New play", onClick: () => setDialog({ kind: "new" }) }} />
+        ) : (
+          <EmptyState title="No plays yet" line={managedElsewhere(host)} />
+        )
       ) : (
         <div className="h-full min-h-0 overflow-x-hidden overflow-y-auto">
           <div className="mx-auto flex max-w-[672px] flex-col gap-6 px-4 py-4">
@@ -91,8 +103,8 @@ export function View({ env, workspace, sector }: WorkViewProps) {
                     line={takesLine(p.takes)}
                     busy={starting === p.id}
                     disabled={starting !== null}
-                    onPress={() => start(p)}
-                    onEdit={() => setDialog({ kind: "edit", row: p })}
+                    onPress={mayStart ? () => start(p) : undefined}
+                    onEdit={maySave ? () => setDialog({ kind: "edit", row: p }) : undefined}
                   />
                 ))}
               </Section>
@@ -129,13 +141,23 @@ function Section({ title, children }: { title?: string; children: React.ReactNod
   );
 }
 
-function Row({ name, line, busy, disabled, onPress, onEdit }: { name: string; line: string; busy?: boolean; disabled?: boolean; onPress: () => void; onEdit?: () => void }) {
+/** A play's row; with no press (a key that may not start it) its words alone. */
+function Row({ name, line, busy, disabled, onPress, onEdit }: { name: string; line: string; busy?: boolean; disabled?: boolean; onPress?: () => void; onEdit?: () => void }) {
+  const words = (
+    <>
+      <span className="truncate text-[13px] font-medium text-foreground">{name}</span>
+      <span className="truncate text-xs text-muted-foreground">{line}</span>
+    </>
+  );
   return (
     <li className="group/row relative flex flex-col">
-      <ItemButton disabled={disabled} onClick={onPress} className={cn("flex-col items-stretch gap-0.5 px-2 py-1.5", onEdit && "pr-20")}>
-        <span className="truncate text-[13px] font-medium text-foreground">{name}</span>
-        <span className="truncate text-xs text-muted-foreground">{line}</span>
-      </ItemButton>
+      {onPress ? (
+        <ItemButton disabled={disabled} onClick={onPress} className={cn("flex-col items-stretch gap-0.5 px-2 py-1.5", onEdit && "pr-20")}>
+          {words}
+        </ItemButton>
+      ) : (
+        <Item className={cn("flex-col items-stretch gap-0.5 px-2 py-1.5", onEdit && "pr-20")}>{words}</Item>
+      )}
       {busy ? (
         <span className="absolute top-1/2 right-2 flex -translate-y-1/2 items-center gap-1.5 text-xs text-muted-foreground">
           <Spinner aria-hidden className="size-3" />

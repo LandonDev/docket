@@ -112,6 +112,17 @@ describe("what stands between a view and LifeOS", () => {
     expect(screen.getByText("The LifeOS sign-in waits for your approval")).toBeTruthy();
     expect(screen.getByRole("button", { name: "Show the code" })).toBeTruthy();
   });
+  it("signed out, a key that may read LifeOS but not pair the host is told who can sign it in, with no press", async () => {
+    quiet();
+    vi.spyOn(registry, "statusOf").mockReturnValue({ transport: "open", lastHello: { environmentId: "env_box", contract: 1, caps: ["read", "operate", "approve"], key: { id: "k", name: "A paired browser" } } } as never);
+    vi.spyOn(registry, "environment").mockReturnValue({ id: "env_box", name: "The box" } as never);
+    setLifeosStatus("env_box", { lifeos: { state: "signed-out" }, keys: [] });
+    render(<ViewFrame view="tasks" environmentId="env_box" workspaceId="ws" sector="purdue" />);
+    await flush();
+    expect(screen.getByText("Sign in to LifeOS")).toBeTruthy();
+    expect(screen.getByText("Changed from a computer that manages The box")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Sign in" })).toBeNull();
+  });
   it("a host never heard from and not connected is named with Retry, not bones for ever", async () => {
     quiet();
     vi.spyOn(registry, "statusOf").mockReturnValue({ transport: "offline", fresh: false, lastHello: null, lastError: null, nextRetryAt: null, route: null } as never);

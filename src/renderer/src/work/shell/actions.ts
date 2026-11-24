@@ -2,6 +2,7 @@ import type { ProjectMeta, WorkspaceMeta as WireWorkspaceMeta } from "@shared/do
 import type { SectorKey, WorkDesktop, WorkspaceWorkSettings } from "@shared/work";
 import type { LifeosStatus } from "@shared/contract-work-lifeos";
 import { LOCAL_ENVIRONMENT_ID, registry } from "../../lib/connection";
+import { linkMay } from "../../lib/linkMay";
 import type { Environment } from "../../lib/connection/types";
 import type { WorkspaceMeta } from "../../lib/tcserver/types";
 import { workspaceStore } from "../../lib/tcserver/workspaces";
@@ -30,13 +31,14 @@ export { setWorkHome };
 /**
  * A Work workspace on `environmentId`, named for its sector unless named; the host makes its folder. It starts with
  * things on (the host stores his desktops it knows, the Windows VM and the Teams copy); the window adds the desktops
- * only it knows, as a box knows a Mac only while the Mac is linked to it.
+ * only it knows, as a box knows a Mac only while the Mac is linked to it. A key that may not write a workspace's
+ * settings (the host's admin rule, a given computer's) skips that write: the Files view then says who can allow them.
  */
 export async function createWorkWorkspace(environmentId: string, opts: { sector: SectorKey | null; name: string }): Promise<WorkspaceMeta> {
   const link = registry.linkOf(environmentId);
   const meta = await link.request<WireWorkspaceMeta>("workspace.create", { kind: "work", name: opts.name, sector: opts.sector });
   const workspace = { ...meta, environmentId };
-  await allowComputers(workspace).catch(() => null);
+  if (linkMay(environmentId, "work.workspace.set")) await allowComputers(workspace).catch(() => null);
   await workspaceStore.refresh(link);
   return workspace;
 }

@@ -111,6 +111,8 @@ vi.mock("../../surfaces/threads/ThreadView", async () => {
 });
 vi.mock("../../surfaces/SessionPane", () => ({ LoadLine: () => null }));
 
+vi.mock("../../lib/linkMay", async (original) => (await import("../../lib/linkMay.testkit")).linkMayMock(await original()));
+const { GIVEN_KEY, resetTestKey, testKey } = await import("../../lib/linkMay.testkit");
 const { View } = await import("./FilesView");
 const { resetFilesStore, tabsNow } = await import("./store");
 const { applyCanvasPush, resetCanvasStore } = await import("../canvas/store");
@@ -301,7 +303,10 @@ beforeEach(async () => {
   HTMLElement.prototype.releasePointerCapture ??= () => undefined;
   await new Promise<void>((done) => openMenus(done));
 });
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  resetTestKey();
+});
 
 const tabNames = (): string[] => within(screen.getByRole("tablist", { name: "Open tabs" })).getAllByRole("tab").map((t) => t.textContent ?? "");
 const rows = (): string[] => [...document.querySelectorAll("[data-files-row]")].map((r) => r.querySelector("span span")?.textContent ?? "");
@@ -760,6 +765,16 @@ describe("the states", () => {
     await waitFor(() => expect(screen.getByText("This workspace can't use your computers yet")).toBeTruthy());
     expect(screen.getByText("Allow the Windows VM to list your Teams files.")).toBeTruthy();
     expect(screen.getByRole("button", { name: "Allow" })).toBeTruthy();
+    // A given computer's key may not write the workspace's settings: who can, in Allow's place.
+    cleanup();
+    resetFilesStore();
+    testKey.current = GIVEN_KEY;
+    await mount(newHost({ places: PLACES.filter((p) => p.kind !== "teams"), sources: [{ kind: "vm", state: "ok", account: "a@dummy.edu" }] }));
+    fireEvent.click(await placeRow("Teams files"));
+    await waitFor(() => expect(screen.getByText("This workspace can't use your computers yet")).toBeTruthy());
+    expect(screen.getByText(/^Changed from a computer that manages /)).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Allow" })).toBeNull();
+    testKey.current = null;
     cleanup();
     resetFilesStore();
     await mount(newHost({ places: PLACES.filter((p) => p.kind !== "teams") }));

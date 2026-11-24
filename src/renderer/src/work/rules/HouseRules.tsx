@@ -10,6 +10,7 @@ import { reveal } from "../../components/ui/reveal";
 import { loadToast } from "../../components/ui/toaster";
 import { useSortable } from "../../hooks/useSortable";
 import { cn } from "../../lib/cn";
+import { useLinkMay } from "../../lib/linkMay";
 import { workErrorWords } from "../../lib/workErrorWords";
 import type { WorkspaceMeta } from "../../lib/tcserver/types";
 import { setWorkspaceSettings } from "../shell/actions";
@@ -59,6 +60,8 @@ export function HouseRules({ workspace }: { workspace: WorkspaceMeta }) {
   const [load, put, again] = useRulesPage(env, workspace.id);
   const [dialog, setDialog] = useState<RuleDialogOf | null>(null);
   const page = load.status === "ready" ? load.value : null;
+  // The voice switch is a workspace setting, the host's admin rule: a key that may not write it is not shown it.
+  const mayVoice = useLinkMay(env, "work.workspace.set");
 
   // The edit dialog's Move up and Move down, written with its Save through the grip's reorder; a refusal stays in the dialog.
   const moves: RuleMoves | null = page
@@ -94,7 +97,7 @@ export function HouseRules({ workspace }: { workspace: WorkspaceMeta }) {
           ))}
         </PageSection>
       ) : null}
-      {workspace.sector ? <Voice workspace={workspace} /> : null}
+      {workspace.sector && mayVoice ? <Voice workspace={workspace} /> : null}
       {dialog ? <RuleDialog env={env} workspaceId={workspace.id} of={dialog} onClose={() => setDialog(null)} onAdded={dialog.kind === "proposal" ? added : undefined} moves={moves} /> : null}
     </>
   );

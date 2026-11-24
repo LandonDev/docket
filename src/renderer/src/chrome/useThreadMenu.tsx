@@ -161,7 +161,7 @@ export function useThreadMenu(handlers: ThreadMenuHandlers = {}): ThreadMenuApi 
         close: actions?.onCloseTab ? closeFact(id) : undefined,
         dev: own ? dev : null,
         draft: sessionStore.isDraft(id),
-        play: t.scope === "work" && !!t.workspaceId && !t.parentId && !!workPlayPort.get(),
+        play: t.scope === "work" && !!t.workspaceId && !t.parentId && !!workPlayPort.get()?.maySave(environmentId),
         work: isWorkSession(t, workspaces),
       },
       extra,

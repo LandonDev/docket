@@ -25,7 +25,9 @@ vi.mock("../../lib/connection", async (original) => ({
   },
 }));
 
-const { View } = await import("./RoutinesView");
+vi.mock("../../lib/linkMay", async (original) => (await import("../../lib/linkMay.testkit")).linkMayMock(await original()));
+const { GIVEN_KEY, resetTestKey, testKey } = await import("../../lib/linkMay.testkit");
+const { Head, View } = await import("./RoutinesView");
 const { routineJobOpenPort } = await import("./jobOpen");
 
 const row = (over: Partial<RoutineRow> = {}): RoutineRow => ({
@@ -67,7 +69,10 @@ beforeEach(() => {
   host.runs = async () => ({ runs: [] });
   host.plays = async () => ({ plays: [] });
 });
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  resetTestKey();
+});
 
 describe("the Routines view", () => {
   it("keeps a failed read of the runs apart from a routine that never ran, with Retry", async () => {
@@ -81,6 +86,28 @@ describe("the Routines view", () => {
     await settle();
     expect(host.asked.filter((m) => m === "work.routines.runs")).toHaveLength(2);
     expect(screen.getByText("None yet")).toBeTruthy();
+  });
+
+  it("offers a given computer's key Pause and Run now, and no New, Edit or a proposal's presses: the proposal says who can", async () => {
+    render(<Head {...(props as object as Parameters<typeof Head>[0])} />);
+    expect(screen.getByRole("button", { name: "New routine" })).toBeTruthy();
+    cleanup();
+    testKey.current = GIVEN_KEY;
+    render(<Head {...(props as object as Parameters<typeof Head>[0])} />);
+    expect(screen.queryByRole("button", { name: "New routine" })).toBeNull();
+    render(<View {...props} />);
+    await settle();
+    expect(screen.queryByRole("button", { name: "Edit" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Pause" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Run now" })).toBeTruthy();
+    cleanup();
+    host.list = async () => ({ routines: [row({ proposed: true })] });
+    render(<View {...props} />);
+    await settle();
+    expect(screen.queryByRole("button", { name: "Create…" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Not now" })).toBeNull();
+    expect(screen.getByText("Changed from a computer that manages The box")).toBeTruthy();
+    expect(host.asked.filter((m) => m === "work.routines.save" || m === "work.routines.remove")).toEqual([]);
   });
 
   it("offers Retry when the list does not load", async () => {

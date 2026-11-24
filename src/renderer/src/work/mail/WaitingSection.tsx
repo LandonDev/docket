@@ -6,6 +6,7 @@ import { SettingSwitch } from "../../components/setting-switch";
 import { BusyLabel, Button } from "../../components/ui/button";
 import { loadToast } from "../../components/ui/toaster";
 import { registry } from "../../lib/connection";
+import { useLinkMay } from "../../lib/linkMay";
 import { workErrorWords } from "../../lib/workErrorWords";
 import type { WorkspaceMeta } from "../../lib/tcserver/types";
 
@@ -14,7 +15,9 @@ import type { WorkspaceMeta } from "../../lib/tcserver/types";
  * settings page: how many working days a sent question waits before Waiting on
  * lists it (LifeOS keeps it for the sector, so LifeOS desktop reads the same),
  * and the switch for the routine that drafts nudges by itself. The switch is
- * off until he turns it on, since each nudge it drafts is a model run.
+ * off until he turns it on, since each nudge it drafts is a model run. Both are
+ * the host's admin rule: a key that may not change them is not shown the
+ * section (the page says once who can).
  */
 
 export const WAIT_DAYS = ["1", "2", "3", "5", "7", "10"] as const;
@@ -25,6 +28,11 @@ type Load = { status: "loading" } | { status: "ready"; value: MailWaiting } | { 
 const ask = (env: string, method: string, params: Record<string, unknown>): Promise<MailWaiting> => registry.linkOf(env).request<MailWaiting>(method, params);
 
 export function WaitingSection({ workspace }: { workspace: WorkspaceMeta }) {
+  if (!useLinkMay(workspace.environmentId, "work.mail.setWaiting")) return null;
+  return <Waiting workspace={workspace} />;
+}
+
+function Waiting({ workspace }: { workspace: WorkspaceMeta }) {
   const env = workspace.environmentId;
   const [load, setLoad] = useState<Load>({ status: "loading" });
   const [attempt, setAttempt] = useState(0);

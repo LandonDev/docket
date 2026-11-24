@@ -2,6 +2,7 @@ import { useState } from "react";
 import { BusyLabel, Button } from "../../components/ui/button";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "../../components/ui/sheet";
 import { loadToast } from "../../components/ui/toaster";
+import { useLinksMay } from "../../lib/linkMay";
 import { SectorDot } from "../../chrome/WorkspaceGlyph";
 import { byWorkspace, grantLine } from "./model";
 import { removeGrant, type HostGrant } from "./store";
@@ -9,7 +10,7 @@ import { removeGrant, type HostGrant } from "./store";
 /**
  * The standing grants, by workspace (docs/DESIGN.md "Settings for Work", a
  * grant row): its name, where and when it was made, and Remove with no
- * confirm. A grant is made only from a held item (its Send menu, or the offer
+ * confirm (drawn only where this window's key may forget it). A grant is made only from a held item (its Send menu, or the offer
  * under a sent item that earned one); here it can only go. Each workspace's heading leads with its sector's dot, since the
  * groups mix sectors; groups sit 16px apart.
  */
@@ -27,6 +28,7 @@ export function GrantsSheet({
   sectorOf: (environmentId: string, workspaceId: string | null) => string | null;
 }) {
   const [busy, setBusy] = useState<string | null>(null);
+  const may = useLinksMay();
   const groups = byWorkspace(grants.map((g) => ({ ...g, sector: sectorOf(g.environmentId, g.workspaceId) })));
   const remove = async (grant: HostGrant) => {
     setBusy(grant.id);
@@ -63,9 +65,11 @@ export function GrantsSheet({
                           <span className="truncate text-[13px] leading-5">{grant.label}</span>
                           <span className="truncate text-xs leading-4 text-muted-foreground">{grantLine(grant.kind, grant.createdAt)}</span>
                         </span>
-                        <Button variant="ghost" size="xs" className="text-muted-foreground hover:text-destructive" disabled={busy !== null} onClick={() => void remove(grant)}>
-                          <BusyLabel busy={busy === grant.id} label="Remove" />
-                        </Button>
+                        {may(grant.environmentId, "work.outbox.ungrant") ? (
+                          <Button variant="ghost" size="xs" className="text-muted-foreground hover:text-destructive" disabled={busy !== null} onClick={() => void remove(grant)}>
+                            <BusyLabel busy={busy === grant.id} label="Remove" />
+                          </Button>
+                        ) : null}
                       </li>
                     ))}
                   </ul>

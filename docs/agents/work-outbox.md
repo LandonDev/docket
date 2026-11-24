@@ -277,6 +277,10 @@ host does with it:
 | `work.outbox.send`, `discard`, `edit` | approve | |
 | `work.outbox.grant`, `ungrant`, `setRules`, `setForWork` | admin | |
 
+A window whose key may not make grants on that host (`linkMay`, docs/agents/work.md
+"The switch") is offered none: no Send menu's grant, no offer under a sent
+item, no Remove in Grants. Approve and Send stay.
+
 The socket's gate checks the capability; the module checks again and
 refuses a thread's own call (`kind: 'model'`) whatever it carries. No tool
 of any thread reaches these methods. The push (`work.outbox`: how many

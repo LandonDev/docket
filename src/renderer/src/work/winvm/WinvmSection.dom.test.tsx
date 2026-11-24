@@ -4,7 +4,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { WinvmPoint, WinvmState } from "@shared/contract-work-winvm";
 import { registry } from "../../lib/connection";
 import type { VmOfficeStatus } from "@shared/contract-work-office";
+import { GIVEN_KEY, READ_KEY, resetTestKey, testKey } from "../../lib/linkMay.testkit";
 import { WinvmSection, WinvmWorkspaceRow, evaluationLine, officeLine, onedriveLine, winvmRow } from "./WinvmSection";
+
+vi.mock("../../lib/linkMay", async (original) => (await import("../../lib/linkMay.testkit")).linkMayMock(await original()));
 
 const signInOnVm = vi.hoisted(() => vi.fn(async (_env: string) => ({ computer: "vm:windows", account: null, line: "" })));
 vi.mock("./signIn", () => ({ signInOnVm }));
@@ -48,6 +51,7 @@ beforeEach(() => {
 afterEach(() => {
   cleanup();
   vi.restoreAllMocks();
+  resetTestKey();
 });
 const pressed = () => h.calls.filter((c) => !["work.winvm.state", "work.winvm.points", "work.winvm.settings", "work.office.vmStatus", "work.office.filesLibraries"].includes(c.method)).map((c) => c.method);
 const status = (over: Partial<VmOfficeStatus> = {}): VmOfficeStatus => ({ office: null, onedrive: { kind: "vm", state: "ok", account: "landon@purdue.edu" }, at: 1, ...over });
@@ -103,6 +107,40 @@ describe("the Windows VM in Settings → Work", () => {
     fireEvent.click(screen.getByRole("button", { name: "Save a point" }));
     await flush();
     expect(h.calls.at(-1)?.method).toBe("work.winvm.point.save");
+  });
+
+  it("a given computer's key wakes it and saves a point; Set up, the settings, Go back and Delete are not drawn", async () => {
+    testKey.current = GIVEN_KEY;
+    h.state = at({ state: "none" });
+    const v = render(<WinvmSection hosts={["box"]} />);
+    await flush();
+    expect(screen.getByText("Not set up")).not.toBeNull();
+    expect(screen.queryByRole("button", { name: "Set up" })).toBeNull();
+    v.unmount();
+    h.state = at({ state: "asleep" });
+    h.points = [{ id: "p1", name: "Before setup", at: Date.now() - 60_000, by: "keeper" } satisfies WinvmPoint];
+    render(<WinvmSection hosts={["box"]} />);
+    await flush();
+    // the setting stands as words; the admin read of the settings is never asked
+    expect(screen.queryByRole("combobox")).toBeNull();
+    expect(screen.getByText("30 minutes")).not.toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Wake" }));
+    fireEvent.click(screen.getByRole("button", { name: "Restore points" }));
+    await flush();
+    expect(screen.queryByRole("button", { name: "Go back…" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Delete" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Save a point" }));
+    await flush();
+    expect(pressed()).toEqual(["work.winvm.wake", "work.winvm.point.save"]);
+    expect(h.calls.some((c) => c.method === "work.winvm.settings")).toBe(false);
+  });
+
+  it("a read key watches it: no press at all", async () => {
+    testKey.current = READ_KEY;
+    render(<WinvmSection hosts={["box"]} />);
+    await flush();
+    expect(screen.getByText("Asleep")).not.toBeNull();
+    expect(screen.queryAllByRole("button")).toEqual([]);
   });
 
   it("sets the screen size from the two offered, used by a new Set up", async () => {

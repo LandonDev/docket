@@ -398,6 +398,8 @@ export function setWorkHome(environmentId: string): void {
 export interface WorkPlayPort {
   run(ask: { environmentId: string; workspaceId: string; chip: { kind: string; label: string } }): void;
   save(ask: { environmentId: string; sessionId: string }): void;
+  /** Whether this window's key may save a play there (`linkMay`). */
+  maySave(environmentId: string): boolean;
 }
 let playPort: WorkPlayPort | null = null;
 export const workPlayPort = {

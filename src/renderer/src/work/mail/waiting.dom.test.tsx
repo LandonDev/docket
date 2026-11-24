@@ -45,6 +45,8 @@ vi.mock("../../lib/workSwitch", async (original) => ({
 }));
 
 const WORKSPACE = { id: "ws", name: "Purdue Esports", environmentId: "box", sector: "purdue", kind: "work", path: "/w" } as never;
+vi.mock("../../lib/linkMay", async (original) => (await import("../../lib/linkMay.testkit")).linkMayMock(await original()));
+const { GIVEN_KEY, resetTestKey, testKey } = await import("../../lib/linkMay.testkit");
 const { WaitingSection } = await import("./WaitingSection");
 const { startNudge } = await import("./client");
 
@@ -57,7 +59,10 @@ beforeEach(() => {
   state.waiting = { days: 3, routine: false };
   state.fail.clear();
 });
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  resetTestKey();
+});
 
 describe("the workspace's Waiting on", () => {
   it("waits in its shape, then shows the days and the routine's switch, off", async () => {
@@ -87,6 +92,14 @@ describe("the workspace's Waiting on", () => {
     expect(screen.getByText("LifeOS did not answer: down")).toBeTruthy();
     expect(screen.queryByLabelText("Working days a question waits")).toBeNull();
     expect(screen.getByRole("switch", { name: "Draft nudges by themselves" }).getAttribute("aria-checked")).toBe("true");
+  });
+
+  it("is not drawn for a given computer's key, which may not change it, and asks nothing", async () => {
+    testKey.current = GIVEN_KEY;
+    render(<WaitingSection workspace={WORKSPACE} />);
+    await settle();
+    expect(screen.queryByText("Waiting on")).toBeNull();
+    expect(calls).toEqual([]);
   });
 
   it("says the host did not answer, with Retry", async () => {

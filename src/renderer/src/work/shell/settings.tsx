@@ -15,6 +15,7 @@ import { Input } from "../../components/ui/input";
 import { LOCAL_ENVIRONMENT_ID, registry, useEnvironments } from "../../lib/connection";
 import { clockTime } from "../../lib/duration";
 import { defineChunk } from "../../lib/lazyChunk";
+import { managedElsewhere, useLinkMay } from "../../lib/linkMay";
 import { requestSettings } from "../../lib/monaco/debugTab";
 import type { WorkspaceMeta } from "../../lib/tcserver/types";
 import { useWorkspaces } from "../../lib/tcserver/workspaces";
@@ -150,8 +151,10 @@ function SectorsRow({ sectors }: { sectors: { key: string; label: string; order:
  */
 export function SignInDialog({ environmentId, state, onClose }: { environmentId: string; state: LifeosState; onClose: () => void }) {
   const link = registry.linkOf(environmentId);
-  // A token is pasted only into this window's own host: another host takes it over a remote link never.
-  const local = environmentId === registry.primaryEnvironmentId;
+  // A token is pasted only into this window's own host: another host takes it over a remote link never, and /ui's
+  // own link is a key's (`work.lifeos.setToken` is local-only), so the host's rule is asked too.
+  const mayToken = useLinkMay(environmentId, "work.lifeos.setToken");
+  const local = environmentId === registry.primaryEnvironmentId && mayToken;
   const [code, setCode] = useState<{ code: string; expiresAt: number } | null>(
     state.state === "pairing" && state.code ? { code: state.code, expiresAt: state.expiresAt } : null,
   );
@@ -245,7 +248,10 @@ export function keyLine(key: LifeosKeyState | undefined): { line: string; failed
  * A Work workspace's own page (`ws:<id>`): its sector (set when it was
  * made), where its threads run and whose desktop they may use, its house
  * rules and voice (work/rules), and the model they start on (the
- * workspace's thread defaults).
+ * workspace's thread defaults). Its switches are the host's admin rule
+ * (`work.workspace.set`): a key that may not write them sees one line in
+ * their place, said once on the page; Voice, Waiting on and the model, the
+ * same rule, are then not drawn.
  */
 export function WorkWorkspacePage({ workspaceId }: { workspaceId: string }) {
   const workspace = useWorkspaces().find((w) => w.id === workspaceId);
@@ -258,6 +264,8 @@ export function WorkWorkspacePage({ workspaceId }: { workspaceId: string }) {
   const [localHost, setLocalHost] = useState<string | null>(null);
   // The desktops the workspace's host knows that this window may have no link to (a PC registered with the box).
   const [far, setFar] = useState<WorkDesktop[]>([]);
+  const mayWrite = useLinkMay(workspace?.environmentId ?? "", "work.workspace.set");
+  const mayDefaults = useLinkMay(workspace?.environmentId ?? "", "defaults.set");
   useEffect(() => void localHostId().then(setLocalHost), []);
   useEffect(() => {
     if (!workspace) return;
@@ -312,7 +320,9 @@ export function WorkWorkspacePage({ workspaceId }: { workspaceId: string }) {
       </PageSection>
       <PageSection title="Where it runs">
         <PageRow title="Threads run on" description={host?.name ?? workspace.environmentId} />
-        {settings ? (
+        {!mayWrite ? (
+          <PageEmpty>{managedElsewhere(host?.name ?? "it")}</PageEmpty>
+        ) : settings ? (
           desktops.map((desktop) => (
             <PageRow key={desktop.host} title={`Computer use on ${desktop.name}`}>
               <SettingSwitch label={`Computer use on ${desktop.name}`} on={settings.mayUseDesktop.includes(desktop.host) || settings.mayUseDesktop.includes(desktop.link)} onChange={(next) => allow(desktop.link, next)} />
@@ -321,7 +331,7 @@ export function WorkWorkspacePage({ workspaceId }: { workspaceId: string }) {
         ) : error ? null : (
           <PageRowsSkeleton rows={Math.max(1, desktops.length)} description control="switch" />
         )}
-        {settings ? (
+        {settings && mayWrite ? (
           <WinvmWorkspaceRow
             env={workspace.environmentId}
             on={!!settings.windowsVm}
@@ -337,7 +347,7 @@ export function WorkWorkspacePage({ workspaceId }: { workspaceId: string }) {
             }}
           />
         ) : null}
-        {settings && host && otherDesktops(settings.mayUseDesktop).length ? (
+        {settings && mayWrite && host && otherDesktops(settings.mayUseDesktop).length ? (
           <TeamsCopyRow workspace={workspace} hostName={host.name} desktops={otherDesktops(settings.mayUseDesktop).map((id) => environments.find((e) => e.id === (linkIdOfHost(id, localHost) ?? id))?.name ?? far.find((d) => d.id === id)?.name ?? id)} />
         ) : null}
         {error ? (
@@ -363,7 +373,7 @@ export function WorkWorkspacePage({ workspaceId }: { workspaceId: string }) {
       </PageSection>
       <HouseRules workspace={workspace} />
       {workspace.sector ? <WaitingSection workspace={workspace} /> : null}
-      <ThreadDefaultsEditor workspaceId={workspace.id} />
+      {mayDefaults ? <ThreadDefaultsEditor workspaceId={workspace.id} /> : null}
     </>
   );
 }

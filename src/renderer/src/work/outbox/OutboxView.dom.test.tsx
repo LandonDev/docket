@@ -105,7 +105,9 @@ vi.mock("../../lib/connection", async (original) => {
 });
 
 vi.mock("../../chrome/WindowControls", () => ({ WindowControls: () => null }));
+vi.mock("../../lib/linkMay", async (original) => (await import("../../lib/linkMay.testkit")).linkMayMock(await original()));
 
+import { GIVEN_KEY, resetTestKey, testKey } from "../../lib/linkMay.testkit";
 import { toastAnchor } from "../../lib/toastAnchor";
 import { setWorkOn, workSwitch } from "../../lib/workSwitch";
 import { batchVerb, canEdit, OutboxView, rememberOutboxTab, rowWords } from "./OutboxView";
@@ -164,7 +166,10 @@ beforeEach(() => {
   setWorkOn("mac", true);
   resetOutboxStore();
 });
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  resetTestKey();
+});
 
 async function open() {
   render(<OutboxView besideRail onClose={() => undefined} />);
@@ -346,6 +351,20 @@ describe("the Outbox", () => {
     await act(async () => fireEvent.click(within(sheet).getByRole("button", { name: "Remove" })));
     expect(world.calls.filter((c) => c.method === "work.outbox.ungrant")).toHaveLength(1);
     await waitFor(() => expect(within(sheet).getByText("No grants. Every act waits for your press.")).toBeTruthy());
+  });
+
+  it("a given computer's key sends, and is offered no grant: no Send menu, no Remove", async () => {
+    testKey.current = GIVEN_KEY;
+    world.grants.set("box", [{ id: "g1", workspaceId: "ws1", kind: "mail.send", matcher: {}, label: "Mail to Dana Lee", madeFrom: null, routineId: null, createdAt: 1, removedAt: null } as unknown as OutboxGrant]);
+    await open();
+    expect(screen.queryByRole("button", { name: "More ways to send" })).toBeNull();
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "Send" })));
+    expect(sends()).toHaveLength(1);
+    fireEvent.click(screen.getByRole("button", { name: "Grants" }));
+    const sheet = await screen.findByRole("dialog");
+    await waitFor(() => expect(within(sheet).getByText("Mail to Dana Lee")).toBeTruthy());
+    expect(within(sheet).queryByRole("button", { name: "Remove" })).toBeNull();
+    expect(world.calls.some((c) => /^work\.outbox\.(grant|ungrant|takeOffer|dismissOffer)$/.test(c.method))).toBe(false);
   });
 
   it("puts what left under Sent, with who pressed and when", async () => {
@@ -678,6 +697,16 @@ describe("a grant he has earned", () => {
     await act(async () => fireEvent.click(within(document.querySelector("[data-offer-line]") as HTMLElement).getByRole("button", { name: "Undo" })));
     expect(world.calls.filter((c) => c.method === "work.outbox.ungrant")).toHaveLength(1);
     await waitFor(() => expect(document.querySelector("[data-offer-line]")).toBeNull());
+  });
+
+  it("is not shown to a given computer's key, which may not make grants", async () => {
+    testKey.current = GIVEN_KEY;
+    world.offers.set("box", [offer(sentDana())]);
+    await openSent();
+    // the offers are read with the list: by now an owner's window shows the line (the test above)
+    await waitFor(() => expect(world.calls.some((c) => c.method === "work.outbox.offers")).toBe(true));
+    await act(async () => undefined);
+    expect(document.querySelector("[data-offer-line]")).toBeNull();
   });
 
   it("Dismiss is for good, and an item that completed no run shows no line", async () => {

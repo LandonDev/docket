@@ -414,6 +414,9 @@ describe("the verbs for what is selected", () => {
   it("offers Put Back and Delete for Good in Trash, and no star where no marks are kept", () => {
     const bin = place({ id: "trash", kind: "trash", name: "Trash", can: ["restore", "purge"] });
     expect(labels(actsFor([file("old.xlsx")], bin))).toEqual(["Put Back", "Delete for Good"]);
+    // each left out where this window's key may not
+    expect(labels(actsFor([file("old.xlsx")], bin, { tabs: true, purge: false }))).toEqual(["Put Back"]);
+    expect(actsFor([file("old.xlsx")], bin, { tabs: true, restore: false })).toEqual([{ act: "purge", label: "Delete for Good", danger: true, rule: false }]);
     expect(labels(actsFor([file("a.xlsx")], own, { tabs: false }))).not.toContain("Star");
   });
 

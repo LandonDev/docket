@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Check, LockOpen } from "../../chrome/icons";
 import { BusyLabel, Button } from "../../components/ui/button";
 import { loadToast } from "../../components/ui/toaster";
+import { useLinkMay } from "../../lib/linkMay";
 import { offerLine } from "./model";
 import { dismissOffer, removeGrant, takeOffer, type HostGrant, type HostOffer } from "./store";
 
@@ -11,12 +12,14 @@ import { dismissOffer, removeGrant, takeOffer, type HostGrant, type HostOffer } 
  * under a sent mail: past a hairline, one muted 13px line, the open lock, the
  * grant's name and why it is offered, Dismiss and Stop holding. Taken, the
  * line says so with Undo, which removes the grant; the offer does not come
- * back either way.
+ * back either way. A key that may not make grants on that host (the host's
+ * admin rule) is never shown it.
  */
 export function OfferLine({ offer }: { offer: HostOffer }) {
   const [busy, setBusy] = useState<"take" | "dismiss" | "undo" | null>(null);
   const [made, setMade] = useState<HostGrant | null>(null);
   const [gone, setGone] = useState(false);
+  const may = useLinkMay(offer.environmentId, "work.outbox.takeOffer");
   const failed = (err: unknown) => void loadToast().then((t) => t.error(err instanceof Error ? err.message : String(err)));
   const run = (which: "take" | "dismiss" | "undo", job: () => Promise<void>) => {
     setBusy(which);
@@ -24,7 +27,7 @@ export function OfferLine({ offer }: { offer: HostOffer }) {
       .catch(failed)
       .finally(() => setBusy(null));
   };
-  if (gone) return null;
+  if (gone || !may) return null;
   return (
     <div data-offer-line={offer.id} className="flex flex-wrap items-start gap-x-2 gap-y-1 border-t border-border pt-3 text-[13px] leading-5 text-muted-foreground">
         {made ? (

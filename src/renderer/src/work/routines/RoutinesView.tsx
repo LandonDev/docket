@@ -9,6 +9,7 @@ import { StatusMark } from "../../components/ui/status";
 import { registry, useEnvironments } from "../../lib/connection";
 import { dayTime } from "../../lib/duration";
 import { hostKind, platformOf } from "../../lib/hostPlatform";
+import { managedElsewhere, useLinkMay } from "../../lib/linkMay";
 import { workErrorWords } from "../../lib/workErrorWords";
 import { loadToast } from "../../components/ui/toaster";
 import { workOpenPort } from "../../lib/workSwitch";
@@ -27,7 +28,9 @@ import { noRunsLine, rowLine, rowMark, runMark, runWords } from "./model";
  * thread one click away. New routine and Edit open the form; a proposal's
  * Create opens it filled, and nothing an agent proposed runs until then.
  * Under 640px of pane the list and the detail take turns: a pick opens the
- * detail, and its Routines row goes back.
+ * detail, and its Routines row goes back. A key that may not save routines on
+ * the host (its admin rule) is offered no New, Edit or proposal's press; a
+ * proposal says who can take it. Pause and Run now stay where it may operate.
  */
 
 // The header's New routine asks the view to open the form.
@@ -38,7 +41,8 @@ const askForm = () => {
   for (const fn of formAsks) fn();
 };
 
-export function Head(_props: WorkViewProps) {
+export function Head({ env }: WorkViewProps) {
+  if (!useLinkMay(env, "work.routines.save")) return null;
   return (
     <Button variant="ghost" size="sm" onClick={askForm}>
       <Plus />
@@ -186,6 +190,8 @@ function Detail({ env, row, play, tick, narrowShown, onBack, onEdit }: { env: st
   const [runs, retryRuns] = useRuns(env, row.id, tick);
   const [busy, setBusy] = useState<"pause" | "run" | "drop" | null>(null);
   const hostName = useEnvironments().find((e) => e.id === env)?.name ?? "this host";
+  const maySave = useLinkMay(env, "work.routines.save");
+  const mayOperate = useLinkMay(env, "work.routines.runNow");
   const mac = hostKind(platformOf(env)) === "mac";
   const act = useCallback(
     (what: "pause" | "run" | "drop", method: string, params: Record<string, unknown>) => {
@@ -227,7 +233,9 @@ function Detail({ env, row, play, tick, narrowShown, onBack, onEdit }: { env: st
         <div className="flex min-w-0 flex-wrap items-start gap-x-3 gap-y-2">
           <h1 className="min-w-0 flex-1 text-base leading-6 font-semibold tracking-[-0.01em] text-foreground">{row.name}</h1>
           <div className="flex shrink-0 items-center gap-1">
-            {row.proposed ? (
+            {row.proposed && !maySave ? (
+              <span className="text-[13px] leading-6 text-muted-foreground">{managedElsewhere(hostName)}</span>
+            ) : row.proposed ? (
               <>
                 <Button variant="ghost" size="sm" disabled={busy !== null} onClick={() => act("drop", "work.routines.remove", { id: row.id })}>
                   <BusyLabel busy={busy === "drop"} label="Not now" />
@@ -238,17 +246,21 @@ function Detail({ env, row, play, tick, narrowShown, onBack, onEdit }: { env: st
               </>
             ) : (
               <>
-                <Button variant="ghost" size="sm" onClick={onEdit}>
-                  Edit
-                </Button>
-                {row.ended ? null : (
+                {maySave ? (
+                  <Button variant="ghost" size="sm" onClick={onEdit}>
+                    Edit
+                  </Button>
+                ) : null}
+                {row.ended || !mayOperate ? null : (
                   <Button variant="ghost" size="sm" disabled={busy !== null} onClick={() => act("pause", "work.routines.pause", { id: row.id, paused: row.enabled })}>
                     <BusyLabel busy={busy === "pause"} label={row.enabled ? "Pause" : "Resume"} />
                   </Button>
                 )}
-                <Button variant="secondary" size="sm" disabled={busy !== null || row.running || row.resumeSessionId !== null} onClick={() => act("run", "work.routines.runNow", { id: row.id })}>
-                  <BusyLabel busy={busy === "run" || row.running} label="Run now" />
-                </Button>
+                {mayOperate ? (
+                  <Button variant="secondary" size="sm" disabled={busy !== null || row.running || row.resumeSessionId !== null} onClick={() => act("run", "work.routines.runNow", { id: row.id })}>
+                    <BusyLabel busy={busy === "run" || row.running} label="Run now" />
+                  </Button>
+                ) : null}
               </>
             )}
           </div>

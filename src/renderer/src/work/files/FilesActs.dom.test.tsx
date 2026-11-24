@@ -67,6 +67,8 @@ vi.mock("../../chrome/ConfirmDialog", async (original) => ({
   confirmAction: async (request: { title: string; body?: string; action: string }) => (world.asked.push({ title: request.title, action: request.action }), world.bodies.push(request.body), world.yes),
 }));
 
+vi.mock("../../lib/linkMay", async (original) => (await import("../../lib/linkMay.testkit")).linkMayMock(await original()));
+const { GIVEN_KEY, resetTestKey, testKey } = await import("../../lib/linkMay.testkit");
 const { View } = await import("./FilesView");
 const { resetFilesStore } = await import("./store");
 const { applyCanvasPush, resetCanvasStore } = await import("../canvas/store");
@@ -303,7 +305,10 @@ beforeEach(async () => {
   resetCanvasStore();
   await new Promise<void>((done) => openMenus(done));
 });
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  resetTestKey();
+});
 
 const rows = (): string[] => [...document.querySelectorAll<HTMLElement>("[data-files-list] [data-files-row]")].map((r) => r.querySelector("span span")?.textContent ?? r.querySelector("input")?.value ?? "");
 const row = (name: string): HTMLElement => [...document.querySelectorAll<HTMLElement>("[data-files-row]")].find((r) => r.textContent?.startsWith(name))!;
@@ -603,6 +608,29 @@ describe("Trash", () => {
     await waitFor(() => expect(calls("work.files.purge")).toHaveLength(1));
     expect(world.asked.at(-1)).toEqual({ title: "Empty Trash?", action: "Empty Trash" });
     expect(host.trashed).toEqual([]);
+  });
+
+  it("offers Put Back and Delete for Good as this window's key may: a key that may operate but not approve puts back alone", async () => {
+    await mount();
+    fireEvent.click(row("notes.txt"));
+    fireEvent.keyDown(list(), { key: "Delete" });
+    await waitFor(() => expect(rows()).not.toContain("notes.txt"));
+    testKey.current = { caps: ["read", "operate"], key: { id: "operator" } };
+    fireEvent.click(within(screen.getByRole("navigation", { name: "Places" })).getByRole("button", { name: "Trash" }));
+    await waitFor(() => expect(rows()).toEqual(["notes.txt"]));
+    expect(screen.queryByRole("button", { name: "Empty Trash" })).toBeNull();
+    fireEvent.contextMenu(row("notes.txt"));
+    const menu = await screen.findByRole("menu");
+    expect(within(menu).getAllByRole("menuitem").map((i) => i.textContent)).toEqual(["Put Back"]);
+    fireEvent.keyDown(list(), { key: "Escape" });
+    expect(calls("work.files.purge")).toEqual([]);
+    // A given computer's key may approve: both, as for the box's own window.
+    cleanup();
+    testKey.current = GIVEN_KEY;
+    // the page opens where he left it: Trash
+    render(<View {...props} />);
+    await waitFor(() => expect(rows()).toEqual(["notes.txt"]));
+    expect(screen.getByRole("button", { name: "Empty Trash" })).toBeTruthy();
   });
 
   it("empties nothing when he says no", async () => {

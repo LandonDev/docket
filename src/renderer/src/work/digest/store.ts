@@ -3,6 +3,7 @@ import { DIGEST_FIELDS, type DigestDay, type DigestField, type DigestList, type 
 import { DEFAULT_LEVEL } from "@shared/work/digest";
 import type { TellGroup, TellLevel, TellRow } from "@shared/work/tell";
 import { registry } from "../../lib/connection";
+import { linkMay } from "../../lib/linkMay";
 import { workSwitch } from "../../lib/workSwitch";
 
 /**
@@ -148,7 +149,8 @@ async function align(): Promise<void> {
     const settings = hosts.get(environmentId)?.settings;
     return settings ? [{ environmentId, settings }] : [];
   });
-  const stale = staleSettings(on);
+  // A host this window's key may not set (the host's admin rule) is left as it is, never asked.
+  const stale = staleSettings(on).filter((s) => linkMay(s.environmentId, "work.digest.set"));
   if (stale.length === 0) return;
   aligning = true;
   try {
@@ -294,9 +296,9 @@ export function markSeen(days: readonly MergedDay[]): void {
   changed();
 }
 
-/** The time and the levels are written to every host with Work on; answers the hosts that refused, with why. */
+/** The time and the levels are written to every host with Work on that this window's key may set; answers the hosts that refused, with why. */
 export async function setDigest(patch: { at?: string; levels?: Partial<Record<TellGroup, TellLevel>> }): Promise<{ environmentId: string; error: string }[]> {
-  const on = [...workSwitch.hosts()];
+  const on = [...workSwitch.hosts()].filter((id) => linkMay(id, "work.digest.set"));
   writing += 1;
   const answers = await Promise.allSettled(on.map((id) => registry.linkOf(id).request<DigestSettings>("work.digest.set", patch))).finally(() => (writing -= 1));
   const refused: { environmentId: string; error: string }[] = [];
