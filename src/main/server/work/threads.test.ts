@@ -184,23 +184,38 @@ describe('ctx.threads.ownerSaid: a quote the owner typed', () => {
     expect(said('Please approve the overtime for the build crew')).toBe(false)
   })
 
-  it('with what it is about, only in a message that names it whole: a path or an id, never inside a longer one', async () => {
+  it('with what it is about, only in a message that points at it exactly: a path or an id he typed, or an Ask chip\'s reference', async () => {
     const purdue = await workWorkspace('purdue')
+    const send = async (id: string, text: string) => {
+      await settle(id)
+      await registry.send(id, text, { by: { kind: 'owner' } })
+    }
     const thread = await registry.startWith(
       { threadType: 'chat', workspaceId: purdue },
       'About this selection: “Keynote at 1”, Travel Plan (/w/Travel Plan.tcdoc)\n> Keynote at 1\n\nmove the keynote to 2:00 PM please.',
       { by: { kind: 'owner' } }
     )
-    await settle(thread.id)
-    await registry.send(thread.id, 'About this selection: “Doors at 6”, Budget (LifeOS docs kd7q2x)\n> Doors at 6\n\nchange doors to 6:30 PM for everyone', { by: { kind: 'owner' } })
-    await settle(thread.id)
-    await registry.send(thread.id, 'About this selection: “Lunch”, Plan (/archive/w/Plan.tcdoc)\n> Lunch\n\nmove lunch to noon for the whole team', { by: { kind: 'owner' } })
+    await send(thread.id, 'About this selection: “Doors at 6”, Budget (LifeOS docs kd7q2x)\n> Doors at 6\n\nchange doors to 6:30 PM for everyone')
+    await send(thread.id, 'About this selection: “Lunch”, Plan (/archive/w/Plan.tcdoc)\n> Lunch\n\nmove lunch to noon for the whole team')
+    // A selection's words that name another file, and a label that names it: neither is the chip's reference.
+    await send(thread.id, 'About this selection: “see /w/Plan.tcdoc”, Notes (/w/Notes.tcdoc)\n> see /w/Plan.tcdoc\n\nadd the parking map at the end')
+    // A file chip's reference is its JSON, its parentheses written as \u0028 and \u0029.
+    await send(thread.id, 'About this file: Budget (2).tcdoc ({"at":"file","host":"env_box","path":"/w/Budget \\u00282\\u0029.tcdoc"})\n\nput the totals in bold please')
+    await send(thread.id, 'In /w/Run of show.tcdoc please move the doors to seven')
     const said = (quote: string, about: string[]): boolean => work.ctx.threads.ownerSaid(thread.id, quote, about)
     expect(said('move the keynote to 2:00 PM', ['/w/Travel Plan.tcdoc'])).toBe(true)
     // "Plan" stands inside "Travel Plan", and a path inside a longer one: neither names this document.
     expect(said('move the keynote to 2:00 PM', ['/w/Plan.tcdoc'])).toBe(false)
     expect(said('move lunch to noon for the whole team', ['/w/Plan.tcdoc'])).toBe(false)
     expect(said('move lunch to noon for the whole team', ['/archive/w/Plan.tcdoc'])).toBe(true)
+    // Exactly as written: another case or other spacing is another file.
+    expect(said('move lunch to noon for the whole team', ['/archive/w/plan.tcdoc'])).toBe(false)
+    expect(said('move the keynote to 2:00 PM', ['/w/Travel  Plan.tcdoc'])).toBe(false)
+    expect(said('add the parking map at the end', ['/w/Notes.tcdoc'])).toBe(true)
+    expect(said('add the parking map at the end', ['/w/Plan.tcdoc'])).toBe(false)
+    expect(said('put the totals in bold please', ['/w/Budget (2).tcdoc'])).toBe(true)
+    expect(said('please move the doors to seven', ['/w/Run of show.tcdoc'])).toBe(true)
+    expect(said('please move the doors to seven', ['/w/run of show.tcdoc'])).toBe(false)
     expect(said('change doors to 6:30 PM for everyone', ['kd7q2x'])).toBe(true)
     expect(said('change doors to 6:30 PM for everyone', ['kd7q2'])).toBe(false)
     // a name too short to say which document was meant binds nothing

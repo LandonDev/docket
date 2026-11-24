@@ -89,14 +89,14 @@ function ownerSaid(ctx: ToolCtx, quote: string | undefined, about?: readonly str
 }
 
 /**
- * What a message of his must name for his words to stand for a change to this document: what identifies it alone, its
- * path (as the canvas and the host write it, and as a file chip's JSON writes it) or its LifeOS id. A title does not:
- * two documents may share it, and one may stand inside another's.
+ * What a message of his must point at, exactly, for his words to stand for a change to this document
+ * (work/threads.ts `ownerSaid`): what identifies it alone, its path (as the host and as the canvas write it) or its
+ * LifeOS id, and the canvas item it was named by. A title does not: two documents may share it, and one may stand
+ * inside another's.
  */
-const namesOf = (t: DocTarget, asked: CanvasSource): string[] => {
-  if (t.at === 'lifeos') return [t.docId]
-  const paths = [...new Set([t.path, canvasSourcePath(asked) ?? t.path])]
-  return [...new Set(paths.flatMap((path) => [path, JSON.stringify(path).slice(1, -1)]))]
+const namesOf = (t: DocTarget, asked: CanvasSource, item?: string): string[] => {
+  const ids = t.at === 'lifeos' ? [t.docId] : [t.path, canvasSourcePath(asked) ?? t.path]
+  return [...new Set([...ids, ...(item ? [`item:${item}`] : [])])]
 }
 
 type ServiceWrite = { mode: 'direct'; versionId?: string; beforeVersionId?: string } | { mode: 'branch'; branchId: string; versionId: string }
@@ -124,11 +124,12 @@ const READ_FIRST = 'Read the document with doc_read first and pass its `revision
 const CHANGED = 'The document changed since you read it (the owner or someone else edited it), so your rewrite would undo their words. Read it again with doc_read and write your change over the text as it is now.'
 
 
-function writeRule(ctx: ToolCtx, a: WhyWrite, t: DocTarget, shared: boolean, title: string, source: CanvasSource) {
+function writeRule(ctx: ToolCtx, a: WhyWrite & { item?: string }, t: DocTarget, shared: boolean, title: string, source: CanvasSource) {
+  const item = a.item
   const said = a.because === 'asked' && ownerSaid(ctx, a.quote)
   // On a document others read, his words write at once only in a message that names this document: a request about
   // another document, quoted here, is not his ask for this one.
-  const asked = said && (!shared || ownerSaid(ctx, a.quote, namesOf(t, source)))
+  const asked = said && (!shared || ownerSaid(ctx, a.quote, namesOf(t, source, item)))
   // A routine's run writes directly only where nobody else reads: on a shared document no grant covers it, so it suggests (milestone 50's hold review, finding 6).
   const routine = a.because === 'routine' && !!ctx.scope.routineRunId && !shared
   const verdict = asked ? 'asked' : routine ? 'routine' : 'own'

@@ -104,17 +104,52 @@ const namedIn = (text: string, name: string): boolean => {
 }
 
 /**
+ * What the head line of a chip Ask put in a message names as its reference (renderer work/canvas/chips.ts `chipLine`,
+ * @shared/work `chipRefWords`): the words in the head's last parentheses. A file chip's are its ref as JSON, its own
+ * parentheses written `\u0028` and `\u0029`; a LifeOS thing's "LifeOS <table> <id>"; a canvas item's "canvas item <id>"
+ * (answered as `item:<id>`); a file's path as it is, which `pointsAt` matches by the line's end.
+ */
+function chipRefs(line: string): string[] {
+  const refs: string[] = []
+  const json = /\((\{[^()]*\})\)$/.exec(line)
+  if (json) {
+    try {
+      const ref = JSON.parse(json[1]!) as { path?: unknown; id?: unknown }
+      for (const v of [ref.path, ref.id]) if (typeof v === 'string') refs.push(v)
+    } catch {
+      // not a ref of ours
+    }
+  }
+  const lifeos = /\(LifeOS \S+ (\S+)\)$/.exec(line)
+  if (lifeos) refs.push(lifeos[1]!)
+  const item = /\(canvas item (\S+)\)$/.exec(line)
+  if (item) refs.push(`item:${item[1]}`)
+  return refs
+}
+
+/**
+ * Whether one message of his points at a thing by one of `ids`, exactly as written: in the words he typed himself
+ * (whole, never inside a longer path or id), or as the reference of a chip Ask put in it, never its label or the words
+ * it quotes. An identity is not prose: no case or spacing is folded, since on a case-sensitive disk /w/plan.tcdoc is
+ * another file than /w/Plan.tcdoc.
+ */
+function pointsAt(text: string, ids: readonly string[]): boolean {
+  if (ids.some((id) => namedIn(typedWords(text), id))) return true
+  return text.split('\n').some((line) => CHIP_HEAD.test(line) && (ids.some((id) => line.endsWith(` (${id})`)) || chipRefs(line).some((ref) => ids.includes(ref))))
+}
+
+/**
  * Whether the owner typed `quote` in the thread: found whole in one of the owner's messages, letter case and spacing
- * aside. With `about`, the same message must also name one of those, whole: for a document, what identifies it alone
- * (its path or its LifeOS id, as the head of a chip Ask put in carries them), never a title two documents may share or
- * one inside another's ("Plan" in "Travel Plan"). Words he wrote about one document never stand for a change to another.
+ * aside. With `about`, the same message must also point at one of those exactly (`pointsAt`): for a document, what
+ * identifies it alone (its path, its LifeOS id, the canvas item it is), never a title two documents may share or one
+ * inside another's ("Plan" in "Travel Plan"). Words he wrote about one document never stand for a change to another.
  */
 export function ownerSaid(words: OwnerWords, sessionId: string, quote: string, about?: readonly string[]): boolean {
   const want = plain(quote)
   if (want.length < OWNER_QUOTE_MIN) return false
-  const names = about?.map(plain).filter((name) => name.length >= OWNER_NAME_MIN)
-  if (names && !names.length) return false
-  return ownerMessages(words, sessionId).some((text) => plain(typedWords(text)).includes(want) && (!names || names.some((name) => namedIn(plain(text), name))))
+  const ids = about?.filter((id) => id.length >= OWNER_NAME_MIN)
+  if (ids && !ids.length) return false
+  return ownerMessages(words, sessionId).some((text) => plain(typedWords(text)).includes(want) && (!ids || pointsAt(text, ids)))
 }
 
 export const threadsPart: CtxPart<'threads'> = (ctx, deps) => {
