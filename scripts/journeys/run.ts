@@ -3,21 +3,32 @@ import { join, resolve } from 'node:path'
 import { parseArgs } from 'node:util'
 import j01 from './J01-deck-title'
 import j02 from './J02-workbook-close'
+import j03 from './J03-library-chart'
+import j04 from './J04-library-word'
 import j05 from './J05-document-export'
 import j06 from './J06-new-deck'
 import j07 from './J07-library-text'
 import j08 from './J08-pdf-marks'
+import j09 from './J09-library-media'
 import j10 from './J10-ask-a-pdf'
+import j11 from './J11-dock-and-side-files'
+import j12 from './J12-row-and-chip'
 import j13 from './J13-rename-open-file'
+import j14 from './J14-move-open-file'
 import j15 from './J15-trash-and-restore'
+import j16 from './J16-outside-files'
 import j17 from './J17-file-actions'
 import j18 from './J18-file-search'
 import j19 from './J19-starred-recent'
+import j22 from './J22-full-sheet-editor'
+import j23 from './J23-legacy-copies'
+import j25 from './J25-document-history'
+import j26 from './J26-print-editors'
 import { mainCheckout, saveResults, walk, type Results } from './lib/record'
 import { Pair, SHAPES, words } from './lib/shape'
 import { writeJourneysTable } from './table'
 
-export const JOURNEYS = [j01, j02, j05, j06, j07, j08, j10, j13, j15, j17, j18, j19]
+export const JOURNEYS = [j01, j02, j03, j04, j05, j06, j07, j08, j09, j10, j11, j12, j13, j14, j15, j16, j17, j18, j19, j22, j23, j25, j26]
 
 export function options(args: string[]) {
   const { values } = parseArgs({
@@ -80,10 +91,14 @@ async function main(): Promise<number> {
   process.on('SIGTERM', onSignal)
   console.log(`Journey run ${root}`)
   try {
+    const setup = {
+      fake: flags.jobs.some(({ spec }) => spec.id === 'J12'),
+      fullEditor: flags.jobs.some(({ spec }) => spec.id === 'J22')
+    }
     for (const [i, { spec, shape }] of flags.jobs.entries()) {
       pair.abort.signal.throwIfAborted()
       const name = `${spec.id} ${shape} ${root.slice(-6)}`
-      const workspace = i === 0 ? await pair.open(!!flags.desk, name) : await pair.workspace(name)
+      const workspace = i === 0 ? await pair.open(!!flags.desk, name, setup) : await pair.workspace(name)
       const folder = join(root, `${spec.id}-${shape}`)
       results.journeys.push(await walk(spec, { pair, shape, workspace, folder }, stop))
       saveResults(root, results)

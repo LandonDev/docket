@@ -5,9 +5,14 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { expect, it, vi } from 'vitest'
 import { wordBodyLayout } from './J05-document-export'
+import { desktopDrop, rowDrop } from './lib/drop'
+import { documentHas } from './lib/edit'
+import { fakeMessage, seedFakeAccount } from './lib/fakeProvider'
+import { pdfFacts } from './lib/preview'
+import { letterPaper, printViewer } from './lib/print'
 import { AppOpenProof } from './lib/appOpen'
-import { dummyLibrary, dummyPdf, fixtures, gioStub, holds } from './lib/files'
-import { holderFolder } from './lib/place'
+import { closeSelectedFile, dummyLibrary, dummyPdf, fixtures, gioStub, holds } from './lib/files'
+import { holderFolder, selectFolderTab } from './lib/place'
 import { explainsMissingContent, searchVerdict } from './lib/search'
 import { cellValue, falseSaveLine } from './lib/sheet'
 import { mainCheckout, step, walk, type Context } from './lib/record'
@@ -182,7 +187,8 @@ it('attaches to the app page, retries a dead handshake and rejects a closed sock
   }
   const fetch = vi.fn(async () => Response.json([
     { type: 'page', url: 'about:blank', webSocketDebuggerUrl: 'ws://unused' },
-    { type: 'page', url: 'file:///out/index.html', webSocketDebuggerUrl: 'ws://app' }
+    { type: 'page', url: 'file:///out/index.html', webSocketDebuggerUrl: 'ws://app' },
+    { type: 'page', url: 'http://127.0.0.1:3000/w/full/practice/', webSocketDebuggerUrl: 'ws://full' }
   ]))
   vi.stubGlobal('fetch', fetch)
   vi.stubGlobal('WebSocket', DebugSocket)
@@ -195,6 +201,9 @@ it('attaches to the app page, retries a dead handshake and rejects a closed sock
     const pending = cdp.send('Page.captureScreenshot')
     cdp.close()
     await expect(pending).rejects.toThrow('debug socket closed')
+    const extra = await attach(12345, 1500, undefined, (url) => url.includes('/w/full/'))
+    expect(sockets.at(-1)?.url).toBe('ws://full')
+    extra.close()
   } finally {
     vi.unstubAllGlobals()
   }
@@ -304,4 +313,108 @@ it('keeps a new toast with the same words as an older toast', async () => {
   nodes = [old, fresh]
   await expect(page.toasts(true)).resolves.toEqual(['Did not open'])
   await expect(page.toasts()).resolves.toEqual(['Did not open', 'Did not open'])
+})
+
+it('selects the current folder tab while the dock has folded the sidebar', async () => {
+  const clickOn = vi.fn()
+  await selectFolderTab({ pair: { page: { clickOn } }, workspace: { name: 'Practice' } } as unknown as Context)
+  expect(clickOn).toHaveBeenCalledWith('[data-files-tab][data-tab-kind="page"]', 'Practice')
+})
+
+it('reads document words across their rendered editor regions', async () => {
+  const doc = { querySelectorAll: () => [{ innerText: 'Practice on Tuesday' }, { innerText: 'Bring a notebook' }] }
+  const page = { eval: (expression: string) => Promise.resolve(new Function('document', 'return ' + expression)(doc)) } as Window
+  await expect(documentHas(page, 'Tuesday', 'notebook')).resolves.toBe(true)
+  await expect(documentHas(page, 'Thursday')).resolves.toBe(false)
+})
+
+it('counts PDF streams and pages and checks Letter in either orientation', async () => {
+  const bytes = Buffer.from(dummyPdf())
+  const facts = await pdfFacts(bytes)
+  expect(facts).toEqual({ size: bytes.length, streams: 3, pages: Array(3).fill({ width: 612, height: 792 }) })
+  expect(letterPaper(facts.pages)).toBe(true)
+  expect(letterPaper([{ width: 792, height: 612 }])).toBe(true)
+  expect(letterPaper([{ width: 595, height: 842 }])).toBe(false)
+  expect(letterPaper([])).toBe(false)
+  await expect(pdfFacts(Buffer.from('Not a PDF'))).rejects.toThrow('no PDF header')
+})
+
+it('records only local Electron print files in the viewer stand-in', () => {
+  const root = mkdtempSync(join(tmpdir(), 'journeys-print-'))
+  try {
+    const bin = join(root, 'bin')
+    const printed = join(root, 'win-tmp', 'TempCode-print', 'practice', 'Print.pdf')
+    mkdirSync(bin)
+    mkdirSync(dirname(printed), { recursive: true })
+    writeFileSync(printed, dummyPdf())
+    printViewer(bin)
+    const viewer = join(bin, 'xdg-open')
+    expect(() => execFileSync(viewer, [join(root, 'Print.pdf')])).toThrow()
+    execFileSync(viewer, [printed])
+    expect(readFileSync(join(root, 'print-viewer.log'), 'utf8')).toBe(printed + '\n')
+  } finally {
+    rmSync(root, { recursive: true, force: true })
+  }
+})
+
+it('serves a fixed fake provider stream with one text block and no tool calls', () => {
+  const events = fakeMessage('dummy-model').trim().split('\n\n').map((block) => JSON.parse(block.split('\ndata: ')[1]!))
+  expect(events.map((event) => event.type)).toEqual([
+    'message_start', 'content_block_start', 'content_block_delta', 'content_block_stop', 'message_delta', 'message_stop'
+  ])
+  expect(events[0].message.model).toBe('dummy-model')
+  expect(events[2].delta).toEqual({ type: 'text_delta', text: 'I have the practice list.' })
+})
+
+it('carries one transfer through the row drag and dispatches the desktop File bytes', async () => {
+  class Transfer {
+    files: File[] = []
+    items = { add: (file: File) => this.files.push(file) }
+  }
+  class Event {
+    constructor(readonly type: string, readonly init: { dataTransfer: Transfer }) {}
+  }
+  const caught: Event[] = []
+  const target = { dispatchEvent: (event: Event) => caught.push(event), closest: () => target }
+  const doc = { querySelector: () => target, elementFromPoint: () => target }
+  const page = {
+    eval: (expression: string) => Promise.resolve(
+      new Function('document', 'DataTransfer', 'DragEvent', 'return ' + expression)(doc, Transfer, Event)
+    )
+  } as Window
+  await rowDrop(page, { x: 1, y: 3 }, { x: 4, y: 5 })
+  expect(caught.map(({ type }) => type)).toEqual(['dragstart', 'dragenter', 'dragover', 'drop', 'dragend'])
+  expect(new Set(caught.map(({ init }) => init.dataTransfer)).size).toBe(1)
+  caught.length = 0
+  await desktopDrop(page, '.folder', 'Practice.txt', 'text/plain', Buffer.from('Blue'))
+  expect(caught.map(({ type }) => type)).toEqual(['dragenter', 'dragover', 'drop'])
+  const file = caught[2]?.init.dataTransfer.files[0]
+  expect(file?.name).toBe('Practice.txt')
+  await expect(file?.text()).resolves.toBe('Blue')
+})
+
+it('closes the selected file by id even if its title changed on import', async () => {
+  const evalInPage = vi.fn().mockResolvedValueOnce('imported-doc').mockResolvedValueOnce(true)
+  const clickOn = vi.fn()
+  const page = {
+    eval: evalInPage, clickOn,
+    until: async (_label: string, _ms: number, test: () => Promise<unknown>) => { expect(await test()).toBeTruthy() }
+  } as unknown as Window
+  await closeSelectedFile(page)
+  expect(clickOn).toHaveBeenCalledWith('[data-menu-id="imported-doc"] [data-files-tab-close]')
+  expect(evalInPage.mock.calls[1]?.[0]).toContain('imported-doc')
+})
+
+it('puts the fake profile and its sealed credential in the run vault', () => {
+  const root = mkdtempSync(join(tmpdir(), 'journeys-provider-'))
+  try {
+    seedFakeAccount(root)
+    expect(JSON.parse(readFileSync(join(root, 'profiles.json'), 'utf8'))).toMatchObject({
+      'claude-code': [{ email: 'practice@example.test', accountId: 'journey-practice' }]
+    })
+    const credential = readFileSync(join(root, 'secrets', 'claude-code__practice%40example.test.bin'))
+    expect(credential.includes(Buffer.from('JOURNEY-LOOPBACK'))).toBe(false)
+  } finally {
+    rmSync(root, { recursive: true, force: true })
+  }
 })

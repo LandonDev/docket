@@ -40,8 +40,8 @@ export class Window {
 
   private constructor(private readonly cdp: Cdp, private readonly signal: AbortSignal) {}
 
-  static async attach(port: number, signal: AbortSignal): Promise<Window> {
-    const cdp = await attach(port, 120_000, signal)
+  static async attach(port: number, signal: AbortSignal, matchesPage?: (url: string) => boolean): Promise<Window> {
+    const cdp = await attach(port, 120_000, signal, matchesPage)
     const window = new Window(cdp, signal)
     try {
       cdp.onEvent((method, params) => {
@@ -152,6 +152,10 @@ export class Window {
     const visible = `[...document.querySelectorAll('[role="menu"], [role="dialog"], [role="alertdialog"]')].some((el) =>
       el.getClientRects().length && !el.closest('[inert], [aria-hidden="true"]') && !el.hasAttribute('data-ending-style'))`
     for (let tries = 0; tries < 3 && await this.eval(visible); tries++) await this.key('Escape')
+  }
+
+  async closePage(): Promise<void> {
+    await this.cdp.send('Page.close')
   }
 
   async reload(): Promise<void> {

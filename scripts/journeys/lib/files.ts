@@ -98,3 +98,16 @@ export function holds(file: string, word: string): boolean {
   return (parts.length ? parts.map((part) => unzip(file, part)) : [readFileSync(file, 'utf8')])
     .some((text) => text.replace(/<[^>]+>/g, '').includes(word))
 }
+
+export async function closeSelectedFile(page: Window): Promise<void> {
+  const selected = '[data-files-tab][data-tab-kind="file"][aria-selected="true"]'
+  let id: string | null = null
+  await page.until('the selected file tab', 10_000, async () => (id = await page.eval(
+    `document.querySelector(${JSON.stringify(selected)})?.getAttribute('data-files-tab') ?? null`
+  )))
+  const tab = `[data-menu-id=${JSON.stringify(id)}]`
+  await page.clickOn(tab + ' [data-files-tab-close]')
+  await page.until('the selected file tab to close', 12_000, () =>
+    page.eval(`!document.querySelector(${JSON.stringify(tab)})`)
+  )
+}

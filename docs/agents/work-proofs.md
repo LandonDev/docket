@@ -9,7 +9,8 @@ why and the steps that would prove it.
 
 A journey walks Work as a person would. It ends by checking the file, a row
 on its host, or what the window shows. The run uses dummy files, a fresh
-workspace for each walk, and a provider address that cannot answer.
+workspace for each walk, and loopback provider addresses. J12 uses a local
+stand-in that answers with fixed words. The other walks do not need a reply.
 Each instance has its own home, app data, CLI config, and empty VM path.
 The box reads the shared work tools through a read-only mount.
 
@@ -24,7 +25,7 @@ It links to `box` so the workspace can use its files.
 - **B2** is for L2 on `desk`.
 - **V**, **S**, **K**, and **U** are for the Windows VM, sandbox LifeOS,
   a given computer's key, and a browser or guest page, in that order.
-  The tier-1 Files journeys use A, B1 and B2.
+  The tier-1 Files and editor journeys use A, B1 and B2.
 
 Build the worktree with `heavy bunx electron-vite build`, then run this
 from that worktree:
@@ -69,6 +70,32 @@ desk through box. J02 writes `save-lines.jsonl`, J17 writes `actions.jsonl`,
 and J18 writes `search.jsonl` and `search-outcomes.jsonl` beside the pictures.
 The Linux stand-ins can show a native Open in its app refusal. The journey
 records the refusal as a failure when the window offers that action.
+
+### Tier-1 editor journeys
+
+| Journey | Shapes | What it checks at the end |
+| --- | --- | --- |
+| J03 | B1, B2 | The holder's workbook has a chart part and the PDF has pages and more than one stream. Both shapes start with a blank workbook on the holder. |
+| J04 | B1 | The new Word file and reopened editor have both paragraphs. An untouched Word file leaves both folders as they were after close. |
+| J09 | A, B1 | The picture has a natural size, the players load, and the reopened video shows the comment at its stored frame. |
+| J11 | A, B1 | Closing the side files returns the space to the chat and keeps the first file and draft visible. |
+| J12 | B1 | A sent file chip opens the same tab as the Files row. The workspace and library together have one copy. |
+| J14 | A, B1 | The original tab edits the file after two moves. An offered cross-computer copy holds those edits. |
+| J16 | A | The desktop drop and File → Open File… both open in their kind and put their bytes in the workspace folder. |
+| J22 | A | A Full editor change survives its window closing and appears in the TempCode grid and the workbook on box. |
+| J23 | A, B1 | The copies take an edit and the four originals keep their SHA-256 hashes. |
+| J25 | A | Compare marks the changed words. Restore changes the live document and History keeps the newer version. |
+| J26 | A | The document, sheet and deck previews show the expected page counts, and the PDFs handed to Electron's viewer have Letter pages. |
+
+Use `--only J03,J04,J09,J11,J12,J14,J16,J22,J23,J25,J26 --shape A,B1` for the
+first run and `--only J03 --shape B2 --desk` for the far library. Run the
+commands through `heavy`. LibreOffice and ffmpeg prepare dummy fixtures
+inside the run. J16 uses the dev picker hook for the native menu and a
+`DataTransfer` carrying a `File` for the desktop drop. J26 uses a run-local
+PDF viewer stand-in so the real Electron print call can finish without a
+printer. The evidence folder holds the Word save readings, the Legacy
+copy hashes, the chart PDF and the three print PDFs when those steps reach
+their files.
 
 ## Running them
 

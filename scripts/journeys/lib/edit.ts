@@ -32,3 +32,21 @@ export async function replaceText(page: Window, text: string): Promise<void> {
     return (field?.value ?? field?.textContent)?.trim() === ${JSON.stringify(text)};
   })()`))
 }
+
+export const DOC_EDITOR = '[data-doc-scroller] [contenteditable="true"]'
+
+export async function focusDocument(page: Window): Promise<void> {
+  await page.until('the document to take focus', 35_000, async () => {
+    const at = await page.centre(DOC_EDITOR)
+    if (!at) return false
+    await page.click(at)
+    return page.eval(`!!document.activeElement?.closest(${JSON.stringify(DOC_EDITOR)})`)
+  })
+}
+
+export function documentHas(page: Window, ...lines: string[]): Promise<boolean> {
+  return page.eval(`(() => {
+    const text = [...document.querySelectorAll(${JSON.stringify(DOC_EDITOR)})].map((editor) => editor.innerText).join('\\n');
+    return ${JSON.stringify(lines)}.every((line) => text.includes(line));
+  })()`)
+}

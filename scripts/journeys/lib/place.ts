@@ -38,3 +38,7 @@ export async function goPlace(context: Context): Promise<void> {
   await openRow(page, 'General')
   await openRow(page, context.workspace.name)
 }
+
+export async function selectFolderTab(context: Context): Promise<void> {
+  await context.pair.page.clickOn('[data-files-tab][data-tab-kind="page"]', context.workspace.name)
+}

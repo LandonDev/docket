@@ -454,7 +454,10 @@ const EVAL_TIMEOUT_MS = 60_000
  * `…/index.html`; others come and go while it boots (the capture window, a page that is replaced), and a
  * socket to one of those fails or drives the wrong page. A socket that fails is tried again until the time is up.
  */
-export async function attach(port: number, ms: number, signal?: AbortSignal): Promise<Cdp> {
+export async function attach(
+  port: number, ms: number, signal?: AbortSignal,
+  matchesPage: (url: string) => boolean = (url) => /\/index\.html(\?|#|$)/.test(url)
+): Promise<Cdp> {
   const end = Date.now() + ms
   let found: WebSocket | null = null
   while (!found && Date.now() < end) {
@@ -463,7 +466,7 @@ export async function attach(port: number, ms: number, signal?: AbortSignal): Pr
     const list = await fetch(`http://127.0.0.1:${port}/json/list`, {
       signal: signal ? AbortSignal.any([deadline, signal]) : deadline
     }).then((r) => r.json()).catch(() => []) as { type: string; url: string; webSocketDebuggerUrl?: string }[]
-    const url = list.find((t) => t.type === 'page' && /\/index\.html(\?|#|$)/.test(t.url))?.webSocketDebuggerUrl
+    const url = list.find((t) => t.type === 'page' && matchesPage(t.url))?.webSocketDebuggerUrl
     if (url) {
       const socket = new WebSocket(url)
       const open = await new Promise<boolean>((ok) => {

@@ -6,6 +6,7 @@ import { DEFAULT_THREAD_DEFAULTS } from '../../../src/shared/defaults'
 import { freePort, linkTools, sleep, TOOLS } from '../../e2e-work-lib'
 import { withAppToken } from '../../lib/appToken'
 import { dummyLibrary, gioStub } from './files'
+import { seedFakeAccount, startFakeProvider } from './fakeProvider'
 import { until, Window } from './window'
 
 export const SHAPES = ['A', 'B1', 'B2', 'V', 'S', 'K', 'U'] as const
@@ -60,7 +61,9 @@ async function instance(root: string, name: Seat): Promise<Instance> {
 }
 
 /** xvfb also gives the headless host a display for its hidden preview windows. */
-function launch(repo: string, inst: Instance, seed: string, bin: string, tools?: string): ChildProcess {
+type LaunchOptions = { fakeOrigin?: string; fullEditor?: boolean }
+
+function launch(repo: string, inst: Instance, seed: string, bin: string, options: LaunchOptions, tools?: string): ChildProcess {
   const inherited = isolatedEnvironment(process.env)
   const env = {
     ...inherited,
@@ -76,9 +79,10 @@ function launch(repo: string, inst: Instance, seed: string, bin: string, tools?:
     ...(inst.debug ? { TEMP_CODE_DEBUG_PORT: String(inst.debug) } : {}),
     TEMP_CODE_ALIAX_DATA_DIR: join(inst.data, 'aliax'),
     TEMP_CODE_CLAIM_SHIM: '0',
-    TEMP_CODE_FAKE_PROVIDERS: 'http://127.0.0.1:9',
+    TEMP_CODE_FAKE_PROVIDERS: options.fakeOrigin ?? 'http://127.0.0.1:9',
     TEMP_CODE_WORK_ROOT: inst.work,
     TEMP_CODE_WORK_PORT: String(inst.workPort),
+    ...(inst.name === 'box' && options.fullEditor ? { TEMP_CODE_WORK_PUBLIC_ORIGIN: `http://127.0.0.1:${inst.workPort}` } : {}),
     TEMP_CODE_APP_TOKEN_SEED: seed,
     TEMP_CODE_WORK_TOKEN_SEED: seed,
     AGENT_CLI_CREDENTIAL_STORE: 'file',
@@ -175,6 +179,8 @@ export class Pair {
   private readonly keys: string[] = []
   private readonly instances: Instance[] = []
   private window?: Window
+  private fakeProvider?: ReturnType<typeof startFakeProvider>
+  fakeMessages = 0
   private stopping = false
   win!: Instance
   box!: Instance
@@ -193,8 +199,8 @@ export class Pair {
     return this.window?.hostErrors ?? []
   }
 
-  private start(inst: Instance, bin: string, tools?: string): void {
-    const proc = launch(this.repo, inst, this.seed, bin, tools)
+  private start(inst: Instance, bin: string, options: LaunchOptions, tools?: string): void {
+    const proc = launch(this.repo, inst, this.seed, bin, options, tools)
     inst.proc = proc
     const early = (detail: string): void => {
       if (!this.stopping) this.abort.abort(new Error(`${inst.name} exited early (${detail}). See ${inst.log}`))
@@ -224,7 +230,7 @@ export class Pair {
     }
   }
 
-  async open(withDesk: boolean, name: string): Promise<Workspace> {
+  async open(withDesk: boolean, name: string, options: { fake?: boolean; fullEditor?: boolean } = {}): Promise<Workspace> {
     this.win = await instance(this.root, 'win')
     this.box = await instance(this.root, 'box')
     this.desk = withDesk ? await instance(this.root, 'desk') : undefined
@@ -235,7 +241,12 @@ export class Pair {
     linkTools(this.box.data)
     const bin = gioStub(this.root)
     this.abort.signal.throwIfAborted()
-    for (const inst of this.instances) this.start(inst, bin, inst === this.box ? tools : undefined)
+    if (options.fake) {
+      seedFakeAccount(join(this.box.data, 'aliax'))
+      this.fakeProvider = startFakeProvider(() => { this.fakeMessages++ })
+    }
+    const fakeOrigin = this.fakeProvider?.url.origin
+    for (const inst of this.instances) this.start(inst, bin, { fullEditor: options.fullEditor, fakeOrigin }, inst === this.box ? tools : undefined)
     this.window = await Window.attach(this.win.debug!, this.abort.signal)
     const wait = (label: string, test: () => unknown | Promise<unknown>) => until(label, 90_000, test, this.abort.signal)
     await wait('local ports', async () => {
@@ -310,6 +321,7 @@ export class Pair {
         }
       }
     } finally {
+      await this.fakeProvider?.stop(true)
       this.window?.close()
       for (const inst of this.instances) if (inst.proc?.pid) kill(-inst.proc.pid, 'SIGTERM')
       await sleep(750)
