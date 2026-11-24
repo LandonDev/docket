@@ -242,7 +242,20 @@ export const FilesRequestSchemas = [
   /** → FileDone: puts Trash rows back where they were. */
   request('work.files.restore', z.object({ workspaceId: Workspace, ids: z.array(z.string().max(100)).min(1).max(100), op: Op })),
   /** → { uploadId }: a file from a desktop or a phone into a folder; its bytes then go as `attachment.chunk`, `attachment.commit` or `attachment.abort` on that id. */
-  request('work.files.upload', z.object({ workspaceId: Workspace, at: FolderRefSchema, name: Name, size: z.number().int().nonnegative(), sha256: z.string().regex(/^[0-9a-f]{64}$/), op: Op, asked: z.boolean().optional() })),
+  request(
+    'work.files.upload',
+    z.object({
+      workspaceId: Workspace,
+      at: FolderRefSchema,
+      name: Name,
+      size: z.number().int().nonnegative(),
+      sha256: z.string().regex(/^[0-9a-f]{64}$/),
+      op: Op,
+      asked: z.boolean().optional(),
+      /** Save to TempCode: a place of his own alone; a folder others can open is refused at begin and at commit */
+      own: z.boolean().optional()
+    })
+  ),
   /**
    * → FileSaved: replaces a text file's bytes where it lies, when it is still `version` (a read's); a file that
    * changed since is answered as the conflict and left as it is, and one that is gone is never made again.

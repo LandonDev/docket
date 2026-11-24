@@ -25,7 +25,7 @@ import { dropSearch, savedSearches, saveSearch, searchFiles } from './search'
 import { DiskLister, entryOfRow, type DiskPage, type DiskRow } from './places/disk'
 import { folderEntry, folderName, folderPlace, folderTrail } from './places/folder'
 import { forgetVmList, libraryEntry, libraryKey, libraryTrail, placeOfPath, placesIn, teamsPlaces, vmPage, type LibraryPlace } from './places/teams'
-import { admitCaller, admitWrite, changeDigest, isLifeosRef, locate, locatedShared, NO_WORKSPACE, PEER_LIBRARIES, workspaceHere, type DoorPlace, type Located, type WorkspaceRow } from './policy'
+import { admitCaller, admitWrite, changeDigest, isLifeosRef, locate, locatedShared, NO_WORKSPACE, OWN_ONLY, SHARED_BYTES, sharedOf, PEER_LIBRARIES, workspaceHere, type DoorPlace, type Located, type WorkspaceRow } from './policy'
 import { keepMail, lifeosPlace, lifeosPlaces, lifeosTrash, listLifeos, makeLifeos, moveLifeos, openLifeos, renameLifeos, restoreLifeos, setProject, statLifeos, trashLifeos, waitingRows, withProjects } from './places/lifeos'
 import { READ_MAX, readFile, saveCopy, saveFile } from './save'
 import { guestChange, guestOp, vmReadVersioned, vmSave, type VmWhere } from './vmVerbs'
@@ -131,7 +131,7 @@ function placesAnswer(ctx: WorkCtx, by: Caller, workspaceId: string): FilesPlace
   const state = filesState(ctx)
   const workspace = by.peer ? null : workspaceHere(ctx.db, workspaceId)
   const own: FilePlace[] = []
-  if (workspace && reaches(ctx, by, workspace.path)) own.push(folderPlace(ctx.host, workspace))
+  if (workspace && reaches(ctx, by, workspace.path)) own.push(folderOf(ctx, by, workspace))
   const { places, sources } = libraryPlaces(ctx, by)
   // His marks are the workspace's own rows: listed where it lives, and never to a thread.
   const marks = workspace && by.kind !== 'model' ? [lens(PLACE.home, 'home', 'Home', ctx.host), lens(PLACE.recent, 'recent', 'Recent', ctx.host), lens(PLACE.starred, 'starred', 'Starred', ctx.host), lens(PLACE.made, 'made', 'Made by threads', ctx.host), { ...lens(PLACE.trash, 'trash', 'Trash', ctx.host), can: ['restore', 'purge'] as FileVerb[] }] : []
@@ -139,6 +139,18 @@ function placesAnswer(ctx: WorkCtx, by: Caller, workspaceId: string): FilesPlace
   const offered = (place: FilePlace): FilePlace => (place.can.includes('make') && !place.makes ? { ...place, makes: offeredIn(place) } : place)
   return { host: ctx.host, places: [...marks, ...own.map(offered), ...places.map((p) => offered(p.place))], rev: workspace ? state.tabs.rev(workspaceId) : 0, sources }
 }
+
+/**
+ * The workspace's own folder as a caller is shown it. His window here keeps `shared: false`, which is what its questions
+ * read (the door reads the real paths itself, `locatedShared`); any other caller (a phone, a far window, a thread) is
+ * told the host's one answer, so a workspace kept in OneDrive reads as a place others can open there, facts only.
+ */
+function folderOf(ctx: WorkCtx, by: Caller, workspace: WorkspaceRow): FilePlace {
+  const place = folderPlace(ctx.host, workspace)
+  return by.kind !== 'local' && sharedOf(ctx, { at: 'file', host: ctx.host, path: workspace.path }) ? { ...place, shared: true } : place
+}
+/** A row of the workspace's folder as a caller is shown it: marked shared where the host calls its folder so, for a caller that is not his window here. */
+const sharedFor = (ctx: WorkCtx, by: Caller, at: Located, entry: FileEntry): FileEntry => (by.kind !== 'local' && locatedShared(ctx, at) ? { ...entry, shared: true } : entry)
 
 /** The door's view of where a located thing lies. A file at a team library's own top, outside every channel, is in the library taken as one place. */
 export function doorPlace(ctx: WorkCtx, by: Caller, at: Located): { place: DoorPlace; library?: LibraryPlace } {
@@ -219,7 +231,9 @@ async function list(ctx: WorkCtx, by: Caller, p: { workspaceId: string; at: Fold
         }
       })
     }
-    return listing(page, withMarks(state, workspace.id, page.rows.map((row) => folderEntry(ctx.host, path, row))), first ? { place: PLACE.folder, trail: folderTrail(ctx.host, workspace, root, path) } : {})
+    const rows = page.rows.map((row) => folderEntry(ctx.host, path, row))
+    const shown = by.kind !== 'local' && locatedShared(ctx, at) ? rows.map((e) => ({ ...e, shared: true })) : rows
+    return listing(page, withMarks(state, workspace.id, shown), first ? { place: PLACE.folder, trail: folderTrail(ctx.host, workspace, root, path) } : {})
   }
   if (at.in === 'drive') {
     if (at.mime) throw new Error('That is a file, not a folder.')
@@ -259,7 +273,7 @@ async function statOne(ctx: WorkCtx, by: Caller, workspaceId: string, ref: FileR
   if (at.in === 'folder') {
     const row = await state.lister.row(at.path)
     if (!row) return null
-    const entry = entryOfRow(row, ctx.host, at.path, refKey({ at: 'file', host: ctx.host, path: at.path }))
+    const entry = sharedFor(ctx, by, at, entryOfRow(row, ctx.host, at.path, refKey({ at: 'file', host: ctx.host, path: at.path })))
     return o.who === false ? entry : withWho(entry, at.path, row)
   }
   if (at.in !== 'library') return null
@@ -570,12 +584,16 @@ export function placeRoot(ctx: WorkCtx, by: Caller, workspaceId: string, id: str
   return found.place.root
 }
 
-const LIBRARY_BYTES = "A file in a place others can open is read in his own window. Open it on its computer."
+const LIBRARY_BYTES = SHARED_BYTES
 const VM_BYTES = 'A file in the Windows VM is read as its copy. Open it first.'
 
 /** The roots a file's bytes are read or replaced within: the folder or the library it was located in. A file in the VM is no file of this disk. */
-function bytesFence(by: Caller, at: Located): { roots: string[]; path: string } {
-  if (at.in === 'folder') return { roots: [at.root], path: at.path }
+function bytesFence(ctx: WorkCtx, by: Caller, at: Located): { roots: string[]; path: string } {
+  // The workspace's own folder kept where others open it (OneDrive, a network share) is read as a library is.
+  if (at.in === 'folder') {
+    if (by.kind !== 'local' && locatedShared(ctx, at)) throw new Error(LIBRARY_BYTES)
+    return { roots: [at.root], path: at.path }
+  }
   if (at.in === 'drive') throw new Error('A Google file is read in its own tab, from Google.')
   if (at.in !== 'library') throw new Error('A place is listed, not read.')
   if (at.library.vm) throw new Error(VM_BYTES)
@@ -630,7 +648,7 @@ async function write(ctx: WorkCtx, by: Caller, p: { workspaceId: string; ref: Ca
       if (!entry) throw new Error('The copy was made and could not be read back.')
       return { copy: entry }
     }
-    const dir = bytesFence(by, inDir)
+    const dir = bytesFence(ctx, by, inDir)
     const made = await saveCopy({ roots: dir.roots }, join(dir.path, basename(named)), data)
     const entry = await statOne(ctx, by, p.workspaceId, { at: 'file', host: ctx.host, path: made }, method, signal)
     if (!entry) throw new Error('The copy was made and could not be read back.')
@@ -649,7 +667,7 @@ async function write(ctx: WorkCtx, by: Caller, p: { workspaceId: string; ref: Ca
     if (by.kind !== 'local') throw new Error(LIBRARY_BYTES)
     return vmSave(ctx, p.workspaceId, vmWhere(ctx, by, at), data, p.version, randomUUID())
   }
-  const { roots, path } = bytesFence(by, at)
+  const { roots, path } = bytesFence(ctx, by, at)
   const { library } = doorPlace(ctx, by, at)
   const key = library ? libraryKey(library, path) : refKey({ at: 'file', host: ctx.host, path })
   return saveFile({ roots }, key, path, data, p.version)
@@ -897,7 +915,7 @@ export async function filesHandle(req: ClientRequest, ctx: WorkCtx, by: Caller, 
         if (!e.local) throw new Error('This file is kept in the cloud. Download it first.')
         bytes = await vmReadVersioned(at.path, p.offset as number, Math.min(p.length as number, READ_MAX), p.version as string | undefined, signal)
       } else {
-        const { roots, path } = bytesFence(by, at)
+        const { roots, path } = bytesFence(ctx, by, at)
         bytes = await readFile({ roots }, path, p.offset as number, p.length as number, p.version as string | undefined)
       }
       // Whether a save would be taken is asked of the door now, so an editor never offers what the host will refuse.
@@ -916,7 +934,7 @@ export async function filesHandle(req: ClientRequest, ctx: WorkCtx, by: Caller, 
     case 'work.files.thumbs':
       return handled(await thumbsOf(ctx, by, p as never, m, signal))
     case 'work.files.archive': {
-      const { roots, path } = bytesFence(by, locate(ctx, by, p.workspaceId, p.ref as CanvasSource, m))
+      const { roots, path } = bytesFence(ctx, by, locate(ctx, by, p.workspaceId, p.ref as CanvasSource, m))
       return handled(await archiveListing({ roots }, path))
     }
     case 'work.files.write':
@@ -996,7 +1014,10 @@ export async function filesHandle(req: ClientRequest, ctx: WorkCtx, by: Caller, 
       // The door, at begin and again at commit, for this same caller.
       const into = (): Located => {
         admitChange(ctx, by, 'upload', { ...p, refs: [to] } as never, m)
-        return locate(ctx, by, p.workspaceId, to.at === 'place' ? placeRoot(ctx, by, p.workspaceId, to.id) : to, m)
+        const at = locate(ctx, by, p.workspaceId, to.at === 'place' ? placeRoot(ctx, by, p.workspaceId, to.id) : to, m)
+        // Save to TempCode keeps a file in a place of his own: a workspace kept in OneDrive is none, whoever presses.
+        if (p.own === true && locatedShared(ctx, at)) throw new Error(OWN_ONLY)
+        return at
       }
       return handled(await beginUpload(ctx, by, p as never, { into, entryOf: (path) => statOne(ctx, by, p.workspaceId, { at: 'file', host: ctx.host, path }, m) }))
     }

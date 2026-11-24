@@ -3,6 +3,7 @@ import { moveFileKeys } from '../canvas/fileKey'
 import { registerFileMoved } from '../files/hooks'
 import type { WorkModule } from '../modules'
 import { PDF_CONVERTERS } from './extract'
+import { bytesRefusal } from '../files/policy'
 import { fenceItem, itemDir, ItemFileError, itemOf, readRange } from './file'
 import type { FormRead } from './form'
 import { ensurePdfTables, PDF_KEYED, PdfStore } from './store'
@@ -36,7 +37,13 @@ export const pdf: WorkModule = {
     const store = new PdfStore(ctx.db)
     // Every method that names an item: a remote key gets nothing of an item outside its fence, and writes nothing into it.
     const named = ((req as { params?: { itemId?: unknown } }).params)?.itemId
-    if (req.method.startsWith('work.pdf.') && typeof named === 'string') fenceItem(ctx, by, itemOf(ctx, named, 'pdf'), req.method)
+    if (req.method.startsWith('work.pdf.') && typeof named === 'string') {
+      const item = itemOf(ctx, named, 'pdf')
+      fenceItem(ctx, by, item, req.method)
+      // A PDF in a place others can open (a library, a workspace kept in OneDrive) is read in his own window: a key gets its facts in Files, never its pages.
+      const refused = bytesRefusal(ctx, by, item.source)
+      if (refused) throw new Error(refused)
+    }
     switch (req.method) {
       case 'work.pdf.open': {
         const item = itemOf(ctx, req.params.itemId, 'pdf')

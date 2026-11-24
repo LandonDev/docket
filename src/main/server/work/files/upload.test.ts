@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto'
-import { existsSync, readdirSync, readFileSync, renameSync, symlinkSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, symlinkSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { ClientRequestSchema } from '@shared/contract'
@@ -9,7 +9,7 @@ import { FenceError } from '../../remote/fence'
 import type { Caller, WorkCtx } from '../modules'
 import { closeFilesState, THREADS_BY_TOOLS } from './handle'
 import { files } from './index'
-import { NEEDS_APPROVE } from './policy'
+import { NEEDS_APPROVE, OWN_ONLY } from './policy'
 import { approver, at, HOST, makeRig, phone, thread, window, WS, type Rig } from './testkit'
 import { stagingRoot, type UploadLanded } from './upload'
 import { amendOp, writeSeams } from './write'
@@ -46,11 +46,11 @@ const sha = (text: string): string => createHash('sha256').update(text).digest('
 const ownerOf = (by: Caller): string => (by.kind === 'local' ? 'local' : `key:${by.keyId}`)
 
 /** `work.files.upload` as a socket sends it; answers the upload's id. */
-async function begin(name: string, text: string, o: { at?: unknown; by?: Caller; op?: string; size?: number; asked?: boolean } = {}): Promise<string> {
+async function begin(name: string, text: string, o: { at?: unknown; by?: Caller; op?: string; size?: number; asked?: boolean; own?: boolean } = {}): Promise<string> {
   const req = ClientRequestSchema.parse({
     id: '1',
     method: 'work.files.upload',
-    params: { workspaceId: WS, at: o.at ?? { at: 'place', id: 'folder' }, name, size: o.size ?? Buffer.byteLength(text), sha256: sha(text), op: o.op ?? `op-upload-${++ops}`, ...(o.asked ? { asked: true } : {}) }
+    params: { workspaceId: WS, at: o.at ?? { at: 'place', id: 'folder' }, name, size: o.size ?? Buffer.byteLength(text), sha256: sha(text), op: o.op ?? `op-upload-${++ops}`, ...(o.asked ? { asked: true } : {}), ...(o.own ? { own: true } : {}) }
   })
   const out = await files.handle!(req, rig.ctx, o.by ?? window)
   if (!out.handled) throw new Error('not handled')
@@ -62,6 +62,24 @@ async function send(uploadId: string, text: string, by: Caller = window): Promis
   return (await uploads.commit(ownerOf(by), uploadId)) as UploadLanded
 }
 const staged = (): string[] => (existsSync(stagingRoot(rig.dataDir)) ? readdirSync(stagingRoot(rig.dataDir)) : [])
+
+describe('Save to TempCode', () => {
+  it('keeps a file in a place of his own: a workspace kept in OneDrive is refused at begin and at commit, whoever presses', async () => {
+    const synced = join(rig.mine, 'Esports Ops')
+    mkdirSync(synced, { recursive: true })
+    // Begun while the workspace was his own, committed once it lies in his OneDrive: refused, nothing lands.
+    const id = await begin('Receipt.txt', 'receipt', { by: approving, own: true })
+    rig.db.prepare('UPDATE workspaces SET path = ? WHERE id = ?').run(synced, WS)
+    rig.roots.splice(0, rig.roots.length, synced)
+    await expect(send(id, 'receipt', approving)).rejects.toThrow(OWN_ONLY)
+    await expect(begin('Receipt 2.txt', 'receipt', { by: approving, own: true })).rejects.toThrow(OWN_ONLY)
+    expect(readdirSync(synced)).toEqual([])
+    // A Files upload of a key that may approve is his press there, as into a library; one that may not is refused.
+    await expect(begin('Plan.txt', 'plan', { by: key })).rejects.toThrow(NEEDS_APPROVE)
+    await send(await begin('Plan.txt', 'plan', { by: approving }), 'plan', approving)
+    expect(readdirSync(synced)).toEqual(['Plan.txt'])
+  })
+})
 
 describe('an upload into his own folder', () => {
   it('lands under a free name, never over the file there, and says so to the windows that show the folder', async () => {

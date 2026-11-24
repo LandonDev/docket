@@ -1,4 +1,5 @@
 import type { DatabaseSync } from 'node:sqlite'
+import { SHARED_BYTES } from '../files/policy'
 import { appendFileSync, copyFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, renameSync, rmSync, unlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -523,6 +524,24 @@ describe('the review\'s holes, through the module', () => {
     const made = canvasStoreOf(db).open('t1', { kind: 'pdf', source: { at: 'thread' }, title: 'Made' })
     copyFileSync(join(import.meta.dirname, 'fixtures/fw9.pdf'), join(canvasItemDir(dir, 't1', made.id), 'file.pdf'))
     expect((await call<PdfView>('work.pdf.open', { itemId: made.id }, remote)).name).toBe('Made.pdf')
+  })
+
+  it('gives a key no page of a PDF in a place others can open, only his window: a workspace kept in OneDrive is read as a library is', async () => {
+    const synced = join(dir, 'OneDrive - Dummy U', 'Job')
+    mkdirSync(synced, { recursive: true })
+    db.prepare(`INSERT INTO workspaces (id, name, path, created_at) VALUES ('w8', 'Synced job', ?, 1)`).run(synced)
+    copyFileSync(join(import.meta.dirname, 'fixtures/fw9.pdf'), join(synced, 'fw9.pdf'))
+    const item = openItem(join(synced, 'fw9.pdf'), 'Synced')
+    for (const caps of [['read', 'operate'], ['read', 'operate', 'approve']]) {
+      const key: Principal = { kind: 'remote', keyId: 'k1', name: 'Phone', audience: 'client', caps: caps as never }
+      for (const [method, params] of [
+        ['work.pdf.open', { itemId: item }],
+        ['work.pdf.read', { itemId: item, offset: 0, length: 10 }],
+        ['work.pdf.export', { itemId: item }]
+      ] as const)
+        await expect(call(method, params, key), `${method} ${caps}`).rejects.toThrow(SHARED_BYTES)
+    }
+    expect((await call<PdfView>('work.pdf.open', { itemId: item })).name).toBe('fw9.pdf')
   })
 
   it('a thread-made file.pdf that is not a PDF is never served', async () => {

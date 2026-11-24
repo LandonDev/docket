@@ -265,6 +265,17 @@ export function locatedShared(ctx: Pick<WorkCtx, 'db' | 'host' | 'dataDir'>, at:
 export const pressesFor = (by: Caller): boolean => by.kind === 'local' || (by.kind === 'remote' && !by.peer && by.caps.includes('approve'))
 export const NEEDS_PRESS = 'Others can open this file: only his own window, or a key that may approve, does that.'
 
+/**
+ * A file in a place others can open is read in his own window alone: no key, no other host and no thread gets its
+ * bytes or a reader of them (a library's file, and one in a workspace kept in OneDrive, alike), only its facts.
+ */
+export const SHARED_BYTES = 'A file in a place others can open is read in his own window. Open it on its computer.'
+export function bytesRefusal(ctx: Pick<WorkCtx, 'db' | 'host' | 'dataDir'>, by: Caller, source: CanvasSource): string | null {
+  return by.kind !== 'local' && sharedOf(ctx, source) ? SHARED_BYTES : null
+}
+/** Save to TempCode asks for a place of his own alone (`own`): one others can open is refused, at begin and at commit. */
+export const OWN_ONLY = 'Others can open that folder: Save to TempCode keeps files in a place of his own. Pick another folder.'
+
 /** What the door needs to know of one end of a change. */
 export type DoorPlace = Pick<FilePlace, 'id' | 'kind' | 'name' | 'host' | 'env' | 'shared' | 'can' | 'state' | 'vm' | 'group'>
 

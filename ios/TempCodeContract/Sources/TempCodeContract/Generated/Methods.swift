@@ -5892,8 +5892,9 @@ public enum Methods {
             public let sha256: String
             public let op: String
             public let asked: Bool?
+            public let own: Bool?
 
-            public init(workspaceId: String, at: FolderRef, name: String, size: Int, sha256: String, op: String, asked: Bool? = nil) {
+            public init(workspaceId: String, at: FolderRef, name: String, size: Int, sha256: String, op: String, asked: Bool? = nil, own: Bool? = nil) {
                 self.workspaceId = workspaceId
                 self.at = at
                 self.name = name
@@ -5901,6 +5902,7 @@ public enum Methods {
                 self.sha256 = sha256
                 self.op = op
                 self.asked = asked
+                self.own = own
             }
         }
 

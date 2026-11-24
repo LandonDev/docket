@@ -479,6 +479,17 @@ refused to a key without `approve`, at an upload's begin and again at its
 commit (Save to TempCode included), exactly as a library is. His own window
 runs at once, asked nothing new, and so does his press on the held act.
 
+Every caller but his window here is told the same answer (round 2): the folder
+place says `shared: true` to a key, another host and a thread where `sharedOf`
+says so of the workspace's folder, and its rows (`list`, `stat`) are marked
+shared, so the phone shows their facts alone. His window keeps the place it
+always had. Bytes follow the library's rule (`SHARED_BYTES`, `bytesRefusal` in
+policy.ts): `work.files.read` and every `work.pdf.*` method on such a file are
+refused to any caller but his window. Save to TempCode sends `own: true` with
+`work.files.upload`: a folder others can open is then refused at begin and at
+commit (`OWN_ONLY`), whoever presses; a Files upload without it is held to the
+door's rule (`approve`).
+
 **What the door does not catch.** The shell and general computer use are
 outside it, as they are outside the hold. The Work preamble's line on files
 in shared places (`filesPreamble`, "Agents") is a rule, not a fence.
