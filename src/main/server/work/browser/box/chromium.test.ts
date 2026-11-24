@@ -327,4 +327,29 @@ describe('the box browser', () => {
       await b.stop()
     }
   }, 30_000)
+
+  it.runIf(!!bin && process.platform === 'linux')('waits out an operation that holds it, up to its ceiling, then stops (P5)', async () => {
+    let holding = true
+    let mb = 12
+    const b = new BoxChromium({ root: tmp(), bin: () => bin, capMb: 10, rssMb: () => mb, watchMs: 50, holding: () => holding })
+    const stops: string[] = []
+    b.onStop((why) => void stops.push(why))
+    try {
+      await b.endpoint()
+      await new Promise((r) => setTimeout(r, 400))
+      expect(stops).toEqual([])
+      expect(b.running).toBe(true)
+      holding = false
+      await new Promise((r) => setTimeout(r, 400))
+      expect(stops).toEqual(['memory'])
+      // past the ceiling an operation does not hold it
+      holding = true
+      mb = 16
+      await b.endpoint()
+      await new Promise((r) => setTimeout(r, 400))
+      expect(stops).toEqual(['memory', 'memory'])
+    } finally {
+      await b.stop()
+    }
+  }, 30_000)
 })

@@ -25,6 +25,8 @@ export const IDLE_STOP_MS = 10 * 60_000
 /** the whole tree's resident memory, browser and renderers together */
 export const MEMORY_CAP_MB = 2048
 const WATCH_MS = 15_000
+/** how far past its cap the browser may go while an operation holds it */
+export const HOLD_CEILING = 1.5
 const START_MS = 20_000
 
 /** The newest Chromium this host has: TEMP_CODE_BOX_CHROMIUM, one on PATH, else Playwright's download. Null when none. */
@@ -260,6 +262,12 @@ export interface BoxChromiumOptions {
   watchMs?: number
   /** something waits on a page (a held step): the idle stop waits too */
   busy?: () => boolean
+  /**
+   * An operation runs on its pages now (the Forms carrier's make, a call in flight): over the cap, the memory stop
+   * waits for it to end, up to HOLD_CEILING times the cap, so a make is not cut part way (P5: a stop at its title step
+   * left a form in Forms with no row).
+   */
+  holding?: () => boolean
   /** The video tools, when they are installed and the setting is on: the browser then starts headed. Asked at every start. */
   video?: () => VideoTools | null
   /** a Chrome for Testing build gets the switch that hides its bar; `isChromeForTesting` by default */
@@ -417,6 +425,7 @@ export class BoxChromium {
     this.watch = setInterval(() => {
       const mb = this.child?.pid ? (this.opts.rssMb ?? treeRssMb)(this.child.pid) : 0
       if (mb > cap) {
+        if (mb <= cap * HOLD_CEILING && this.opts.holding?.()) return
         this.opts.log?.(`box browser: ${mb} MB is over its ${cap} MB cap; stopped`)
         void this.stop('memory')
       }
