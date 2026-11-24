@@ -2798,7 +2798,9 @@ cannot act reads the threads and has no field.
 row a change. A document's row is the block's old words struck through in
 `Tint.destructiveText` and its new ones underlined in `Tint.successText`
 (`ChangeText`, which the history compare draws with too); a sheet's row leads
-with the cell ("C4", meta semibold, tabular) over the same two lines. The
+with the cell ("C4", meta semibold, tabular) over the same two lines; a
+format or a rule an agent proposed on a sheet is its words alone, drawn as a
+document's added words ("Bold, yellow fill on B2:B9"). The
 agent's reason heads the cells it changed together, once, as a group header;
 the host's own "Suggestions" label is no reason and heads nothing. Swipe
 trailing: Accept, a full swipe too; leading: Reject, never by a full swipe, as

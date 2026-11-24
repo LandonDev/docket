@@ -375,6 +375,27 @@ private let s3 = suggestion("g3", set: "cs2", row: 0, col: 26, base: #"{"v":"Dra
         #expect(fake.sentRequests.count == sent)
     }
 
+    @Test func `a sheet with only a proposed format and rule has rows for them, decided by their own ids`() async throws {
+        let rig = try ReaderRig()
+        let fake = await rig.open()
+        let review = WorkReview(work: rig.work, subject: .sheet(itemId: "i1"))
+        let load = Task { await review.load() }
+        let read = try #require(await rig.next(fake, "work.sheets.open"))
+        let changes = #"[{"id":"c1","changeSet":"cs9","by":"agent:h1:s1","kind":"format","sheet":"sheet1","range":{"startRow":1,"endRow":8,"startColumn":1,"endColumn":1},"words":"Bold, yellow fill on B2:B9","state":"pending","reason":"Mark the totals"},{"id":"c2","changeSet":"cs9","by":"agent:h1:s1","kind":"rule","sheet":"sheet1","range":null,"words":"Red text where C2:C9 is below 0","state":"orphaned"}]"#
+        fake.answer(id: read.id, result: sheet([]).replacingOccurrences(of: #""charts":[]"#, with: #""charts":[],"changes":\#(changes)"#))
+        await load.value
+        #expect(review.count == 2)
+        #expect(review.rows.map(\.kind) == [.block(old: "", new: "Bold, yellow fill on B2:B9"), .block(old: "", new: "Red text where C2:C9 is below 0")])
+        #expect(review.rows.map(\.accepts) == [true, false])
+        #expect(review.rows[1].refusal == WorkReview.orphanedChangeWords)
+        let all = Task { await review.decideAll(accept: true) }
+        let press = try #require(await rig.next(fake, "work.sheets.review"))
+        #expect(press.params == .object(["itemId": .string("i1"), "which": .object(["ids": .array([.string("c1")])]), "verdict": .string("accept")]))
+        fake.answer(id: press.id, result: sheet([]))
+        #expect(await all.value)
+        #expect(review.rows.isEmpty)
+    }
+
     @Test func `a host from before review on the phone has no rows and is asked once a socket`() async throws {
         let rig = try ReaderRig()
         let fake = await rig.open()

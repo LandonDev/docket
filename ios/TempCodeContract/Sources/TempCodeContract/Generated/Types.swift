@@ -7441,6 +7441,80 @@ public struct SheetPhoneView: Codable, Hashable, Sendable {
             try container.encodeIfPresent(reason, forKey: .reason)
         }
     }
+    public struct Change: Codable, Hashable, Sendable {
+        public enum Kind: RawRepresentable, Codable, Hashable, Sendable {
+            case format
+            case rule
+            case table
+            case page
+            case note
+            case chart
+            /// A value this build does not know; `rawValue` keeps it.
+            case unknown(String)
+
+            public init(rawValue: String) {
+                switch rawValue {
+                case "format": self = .format
+                case "rule": self = .rule
+                case "table": self = .table
+                case "page": self = .page
+                case "note": self = .note
+                case "chart": self = .chart
+                default: self = .unknown(rawValue)
+                }
+            }
+
+            public var rawValue: String {
+                switch self {
+                case .format: "format"
+                case .rule: "rule"
+                case .table: "table"
+                case .page: "page"
+                case .note: "note"
+                case .chart: "chart"
+                case .unknown(let value): value
+                }
+            }
+        }
+        public enum State: RawRepresentable, Codable, Hashable, Sendable {
+            case pending
+            case orphaned
+            /// A value this build does not know; `rawValue` keeps it.
+            case unknown(String)
+
+            public init(rawValue: String) {
+                switch rawValue {
+                case "pending": self = .pending
+                case "orphaned": self = .orphaned
+                default: self = .unknown(rawValue)
+                }
+            }
+
+            public var rawValue: String {
+                switch self {
+                case .pending: "pending"
+                case .orphaned: "orphaned"
+                case .unknown(let value): value
+                }
+            }
+        }
+
+        public let id: String
+        public let changeSet: String
+        public let kind: Kind
+        public let words: String
+        public let state: State
+        public let reason: String?
+
+        public init(id: String, changeSet: String, kind: Kind, words: String, state: State, reason: String? = nil) {
+            self.id = id
+            self.changeSet = changeSet
+            self.kind = kind
+            self.words = words
+            self.state = state
+            self.reason = reason
+        }
+    }
 
     public let itemId: String
     public let name: String
@@ -7449,8 +7523,9 @@ public struct SheetPhoneView: Codable, Hashable, Sendable {
     public let mode: Mode
     public let readOnly: String?
     public let suggestions: [Suggestion]
+    public let changes: [Change]?
 
-    public init(itemId: String, name: String, rev: Int, shared: Bool, mode: Mode, readOnly: String? = nil, suggestions: [Suggestion]) {
+    public init(itemId: String, name: String, rev: Int, shared: Bool, mode: Mode, readOnly: String? = nil, suggestions: [Suggestion], changes: [Change]? = nil) {
         self.itemId = itemId
         self.name = name
         self.rev = rev
@@ -7458,6 +7533,7 @@ public struct SheetPhoneView: Codable, Hashable, Sendable {
         self.mode = mode
         self.readOnly = readOnly
         self.suggestions = suggestions
+        self.changes = changes
     }
 }
 

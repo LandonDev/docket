@@ -114,7 +114,11 @@ scripts/gen-swift-contract.ts): `work.docs.open`, `threads`, `thread`,
   changed since (`conflict`) or moved (`orphaned`) says so on its row from the
   first read, and only Reject takes it (`ReviewRow.accepts`): Accept All on a
   sheet sends only the rows Accept can take, and when the host refuses part of
-  it the sheet is read again, so its words stay only on rows still open. The
+  it the sheet is read again, so its words stay only on rows still open. A
+  format or a rule an agent proposed (`SheetView.changes`, carried by
+  `SheetPhoneViewSchema`) is a row too: its words drawn as a document's added
+  words, under its change set's reason, decided by its own id through
+  `work.sheets.review` as a cell is; an `orphaned` one only Reject takes. The
   sheet view names a sheet by Univer's id, not its tab, so an address reads
   "C4".
 - It works for LifeOS's documents, for documents kept as `.tcdoc` files and

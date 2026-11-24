@@ -1470,7 +1470,20 @@ export const SheetPhoneViewSchema = z.object({
       state: z.enum(['pending', 'conflict', 'orphaned', 'accepted', 'rejected']),
       reason: z.string().optional()
     })
-  )
+  ),
+  /** formats and rules an agent proposed, said in words, decided by their ids through `work.sheets.review` as a cell is */
+  changes: z
+    .array(
+      z.object({
+        id: z.string(),
+        changeSet: z.string(),
+        kind: z.enum(['format', 'rule', 'table', 'page', 'note', 'chart']),
+        words: z.string(),
+        state: z.enum(['pending', 'orphaned']),
+        reason: z.string().optional()
+      })
+    )
+    .optional()
 })
 export const BrowserStateSchema = z.object({
   sessionId: z.string(),
