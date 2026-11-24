@@ -10,7 +10,7 @@ import { doorPlace, filesState, reseat } from '../../files/handle'
 import type { Seat, SeatAsk } from '../../files/hooks'
 import { libraryKey } from '../../files/places/teams'
 import { locate } from '../../files/policy'
-import { keptDoc, recordWord, wordBackOf, type WordRow } from '../../files/word'
+import { keptDoc, recordWord, wordsAllInFile, type WordRow } from '../../files/word'
 import type { Caller, WorkCtx } from '../../modules'
 import { isGuestPath, vmStat } from '../vm/files'
 import { appOf } from './address'
@@ -39,20 +39,9 @@ const pause = (ms: number): Promise<void> =>
     const timer = setTimeout(done, Math.max(0, ms))
     ;(timer as { unref?: () => void }).unref?.()
   })
-const mtime = (path: string): number | null => {
-  try {
-    return Math.round(statSync(path).mtimeMs)
-  } catch {
-    return null
-  }
-}
 
-/** A Word file's document holds edits the Word file has not: changed since it was made, and not saved as Word since. */
-function unsaved(r: WordRow): boolean {
-  if (!wordBackOf(r)?.since) return false
-  // Made of the file and never touched: word.ts `wordsLeft` lets it go, and nothing in it is lost.
-  return !(r.saved_at === null && r.doc_at !== null && mtime(r.doc!) === r.doc_at)
-}
+/** A Word file's document holds edits the Word file has not, asked now (word.ts `wordsAllInFile`): never what the autosave saw last. */
+const unsaved = async (ctx: WorkCtx, r: WordRow): Promise<boolean> => !(await wordsAllInFile(ctx, r))
 
 // ── opening ───────────────────────────────────────────────────────────
 
@@ -89,13 +78,13 @@ export async function liveSeat(ctx: WorkCtx, by: Caller, ask: SeatAsk, signal?: 
     if (far) {
       const copy = copyRecord(ctx, ask.workspaceId, host, path)
       const word = keptDoc(ctx, ask.workspaceId, host, path)
-      if ((copy && copyWaits(copy)) || (word && unsaved(word))) return null
+      if ((copy && copyWaits(copy)) || (word && (await unsaved(ctx, word)))) return null
     }
     const of = await liveFileOf(ctx, by, ask.workspaceId, { host, path }, key, { signal })
     if (of.mode !== 'live' || !of.address) return null
     const copyOf = far ? { copyOf: { host, path, ...(host === ctx.host ? { vm: true } : {}) } } : {}
     // Opened live, a saved document made of the Word file goes, as on a switch: a later Edit here reads the file afresh.
-    if (far) forgetKept(ctx, ask.workspaceId, { copyOf: { host, path } } as FileTab)
+    if (far) await forgetKept(ctx, ask.workspaceId, { copyOf: { host, path } } as FileTab)
     return { key, name, kind: APP_CANVAS[app], source: liveSource(ctx, app, name, of.address), file: { host, path }, ...copyOf }
   } catch {
     // Files' own open says what is wrong with it.
@@ -130,7 +119,7 @@ async function waiting(ctx: WorkCtx, by: Caller, workspaceId: string, tab: FileT
     if (why && why !== 'away') await copyKeep(ctx, by, { workspaceId, tabId: tab.id })
   }
   const word = keptDoc(ctx, workspaceId, of.host, of.path)
-  if (word && unsaved(word)) return { is: 'ask', why: 'word', words: `Your edits to ${word.name} are not in the Word file yet.` }
+  if (word && (await unsaved(ctx, word))) return { is: 'ask', why: 'word', words: `Your edits to ${word.name} are not in the Word file yet.` }
   return null
 }
 
@@ -138,9 +127,9 @@ async function waiting(ctx: WorkCtx, by: Caller, workspaceId: string, tab: FileT
  * A Word file's document whose edits are all in the Word file goes once the tab is Live: a later Edit here reads the
  * Word file again, never this document over a newer file. One he changed since (`unsaved`) stays.
  */
-function forgetKept(ctx: WorkCtx, workspaceId: string, tab: FileTab): void {
+async function forgetKept(ctx: WorkCtx, workspaceId: string, tab: FileTab): Promise<void> {
   const r = tab.copyOf ? keptDoc(ctx, workspaceId, tab.copyOf.host, tab.copyOf.path) : null
-  if (!r || unsaved(r)) return
+  if (!r || (await unsaved(ctx, r))) return
   recordWord(ctx, { workspaceId, host: r.host, path: r.path, vm: !!r.vm, name: r.name, version: r.version, sha: r.sha as string })
   rmSync(r.doc!, { force: true })
 }
@@ -207,7 +196,7 @@ export async function liveSet(ctx: WorkCtx, by: Caller, p: { workspaceId: string
     if (!of.address || !of.app) throw new Error(of.why ?? 'This file has no address on the web.')
     const name = nameOf(now.ref.path)
     ctx.canvas.replace(now.item.sessionId, now.item.id, APP_CANVAS[of.app], liveSource(ctx, of.app, name, of.address), name)
-    forgetKept(ctx, p.workspaceId, now.tab)
+    await forgetKept(ctx, p.workspaceId, now.tab)
     setMode(ctx.db, p.workspaceId, now.tab.key ?? '', 'live')
     return DONE
   }

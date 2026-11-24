@@ -74,7 +74,10 @@ every form of one file, so an add-in's `document.url`, Word's `FullName` and the
 stay. It answers `{is: 'done'}` or `{is: 'ask', why, words}`.
 - To Live: the window flushes the kind; the host waits up to 30 s for a copy still sending; a copy whose file
   changed, went, did not answer or refused asks Keep Both or Cancel; a Word document whose edits are not in the Word
-  file asks Save to Teams as Word… or Cancel. Nothing is dropped quietly.
+  file asks Save to Teams as Word… or Cancel. Nothing is dropped quietly. Whether the document holds edits is asked at
+  the switch (files/word.ts `wordsAllInFile`): the Work service's live revision against the one last written to or
+  read from the Word file, else the document's file time; never what the autosave saw last, which missed words typed
+  since its last look and let the switch delete the document (master only, 2026-11-24, never released).
 - To Edit here: the window reads how much he typed (main counts keys on the guest), then unloads the guest; Word may
   hold the unload while saving (`will-prevent-unload`), so the layer waits up to 10 s, then asks "Close Anyway". The
   host waits up to 60 s for the file's version on its computer to move when he typed, then `reseat`s it fresh. Every

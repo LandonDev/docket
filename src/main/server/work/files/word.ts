@@ -51,6 +51,26 @@ async function liveRev(ctx: WorkCtx, doc: string): Promise<string> {
   const target = { at: 'file' as const, doc, path: doc, source: { at: 'file' as const, host: ctx.host, path: doc } }
   return ((await ctx.service.internal('/internal/docs/rev', serviceTarget(target, false, 'all'))) as { rev: string }).rev
 }
+/**
+ * Whether every word of a Word file's document is in the Word file, asked now and never from what the autosave saw last
+ * (it looks once a second, and only at a document a tab shows): the Work service's live revision, where his words are
+ * as he types, against the one last written to the Word file or read from it. With no revision to compare, or no
+ * service that answers, the document's file is all there is: unchanged since it was made, or since its last save.
+ * A caller that deletes the document asks this first (office/live/switch.ts).
+ */
+export async function wordsAllInFile(ctx: WorkCtx, r: WordRow): Promise<boolean> {
+  if (!r.doc) return true
+  const written = r.saved_rev ?? r.base_rev
+  if (written !== null) {
+    try {
+      return (await liveRev(ctx, r.doc)) === written
+    } catch {
+      // The service does not answer: whatever it held is gone with it, and the file says the rest.
+    }
+  }
+  const at = r.saved_at !== null ? r.saved_doc_at : r.doc_at
+  return at !== null && mtime(r.doc) === at
+}
 /** The live revision each kept document was last seen at, and since when, by its record's key. */
 const seenRevs = new Map<string, { rev: string; at: number }>()
 const keyOf = (r: Pick<WordRow, 'workspace_id' | 'host' | 'path'>): string => `${r.workspace_id}\0${r.host}\0${r.path}`

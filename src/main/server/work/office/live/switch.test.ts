@@ -309,6 +309,20 @@ describe('Edit here → Live', () => {
       expect(readFileSync(doc, 'utf8')).toBe('{"doc":"his edit"}')
     })
 
+    it('asks while his words are in the service and not in the Word file, whatever the autosave last saw, and keeps the document', async () => {
+      const { doc, tabId } = await imported()
+      // The autosave saw the document at r1, as made of the Word file; he typed since (r2), and the .tcdoc is not written yet.
+      box.db.prepare(`UPDATE work_files_word SET base_rev = 'r1' WHERE doc = ?`).run(doc)
+      let rev = 'r2'
+      ;(box.ctx as { service: unknown }).service = { internal: async (route: string) => (route === '/internal/docs/rev' ? { rev } : null) }
+      expect(await set(tabId)).toEqual({ is: 'ask', why: 'word', words: 'Your edits to Plan.docx are not in the Word file yet.' })
+      expect(existsSync(doc)).toBe(true)
+      // Back at what the Word file holds: nothing of his is lost, and the switch goes.
+      rev = 'r1'
+      expect(await set(tabId)).toEqual({ is: 'done' })
+      expect(existsSync(doc)).toBe(false)
+    })
+
     it('switches once they are saved as Word, and leaves no document for a later Edit here to show', async () => {
       const { doc, tabId, path } = await imported()
       touch(doc, '{"doc":"his edit"}', 5000)
