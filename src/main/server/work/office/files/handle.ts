@@ -341,6 +341,8 @@ export async function copyIn(ctx: WorkCtx, sessionId: string, source: CanvasSour
 export type FarPiece = { name: string; data: string; version?: string; size?: number; end?: boolean }
 /** How much a piece of another host's file carries, and how many are asked at once: the link's round trip is paid once a piece, two pieces overlap it. */
 export const FAR_PIECE = 4 * 1024 * 1024
+/** The first piece is small: the row says how far the copy has got after one round trip, not after 4 MB. */
+export const FAR_FIRST = 256 * 1024
 const FAR_AHEAD = 2
 
 /**
@@ -350,13 +352,13 @@ const FAR_AHEAD = 2
  */
 export async function farBytes(ask: (params: { offset: number; length: number }) => Promise<FarPiece>, progress?: (done: number, total: number) => void): Promise<{ name: string; bytes: Buffer; version?: string }> {
   // Each ask's failure is the caller's to see when it waits for it, never an unhandled one when a piece is let go.
-  const piece = (offset: number): Promise<FarPiece> => {
-    const got = ask({ offset, length: FAR_PIECE })
+  const piece = (offset: number, length = FAR_PIECE): Promise<FarPiece> => {
+    const got = ask({ offset, length })
     got.catch(() => undefined)
     return got
   }
   for (let tries = 0; ; tries++) {
-    const head = await piece(0)
+    const head = await piece(0, FAR_FIRST)
     if (typeof head.size !== 'number' || typeof head.version !== 'string') return { name: head.name, bytes: Buffer.from(head.data, 'base64'), ...(typeof head.version === 'string' ? { version: head.version } : {}) }
     const parts = [Buffer.from(head.data, 'base64')]
     let done = parts[0]!.length

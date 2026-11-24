@@ -11,6 +11,12 @@ vi.mock('node:fs', async (original) => {
   return { ...fs, createReadStream: (path: string, ...rest: unknown[]) => (reads.push(path), (fs.createReadStream as (...a: unknown[]) => unknown)(path, ...rest)) }
 })
 
+const opens = vi.hoisted(() => [] as string[])
+vi.mock('node:fs/promises', async (original) => {
+  const fs = await original<typeof import('node:fs/promises')>()
+  return { ...fs, open: (path: string, ...rest: unknown[]) => (opens.push(path), (fs.open as (...a: unknown[]) => unknown)(path, ...rest)) }
+})
+
 const { versionOf } = await import('./write')
 
 let dir: string
@@ -51,8 +57,11 @@ describe('a piece of a file for a copy elsewhere', () => {
     expect([Buffer.from(head.data, 'base64').toString(), head.size, head.end]).toEqual(['0123', 10, false])
     expect([Buffer.from(tail.data, 'base64').toString(), tail.end]).toEqual(['89', true])
     expect(tail.version).toBe(head.version)
-    // Read in pieces, the file is hashed once.
+    // Read in pieces, the file is hashed once and opened once: one handle serves every piece of a copy.
     expect(reads.filter((p) => p === file)).toHaveLength(1)
+    expect(opens.filter((p) => p === file)).toHaveLength(1)
+    const { closeHeldFiles } = await import('./save')
+    await closeHeldFiles()
     expect(sameWord(head.version, head.version)).toBe(true)
   })
 

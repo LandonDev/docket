@@ -2473,9 +2473,11 @@ share, listing a folder of 300 entries did not answer in 30 s and opening a 5 MB
   its size and times stand (`versionOf`, write.ts): a file read in 4 MB pieces was hashed whole for each.
 
 - **A file opened from another computer crosses once, a piece at a time.** The workspace's host (the box,
-  for his laptop's R:) asks for the file in 4 MB pieces, two at once (`farBytes`, office/files/handle.ts;
+  for his laptop's R:) asks for the file in 4 MB pieces after a first one of 256 KB, two at once (`farBytes`, office/files/handle.ts;
   `work.office.filesRead` with `offset` and `length`, `readPiece` in save.ts), each naming the version it
-  was read at: a file that changed while it was read is read once more, then refused. After each piece it
+  was read at: a file that changed while it was read is read once more, then refused. The computer keeps one
+  handle on the file for all of a copy's pieces, closed 5 s after the last (a share may read the whole file
+  again on each fresh open: the rig's moved 19 MB to read 4 MB of a deck so). After each piece it
   pushes how far it has got (`FilesPush.opening`, by a tag of the row's key, `openingTag`: never the path),
   and the row that was pressed reads "Opening… 3.0 of 20 MB". The name keeps first claim on the row: the
   progress gives way first, its words cut at the By column's width and gone from sight under 360px of list

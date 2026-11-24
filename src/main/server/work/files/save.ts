@@ -1,6 +1,6 @@
 import { createHash, randomBytes } from 'node:crypto'
 import { realpathSync } from 'node:fs'
-import { chmod, lstat, open, readdir, readFile as readBytes, rename, stat, unlink } from 'node:fs/promises'
+import { chmod, lstat, open, readdir, readFile as readBytes, rename, stat, unlink, type FileHandle } from 'node:fs/promises'
 import { basename, dirname, join } from 'node:path'
 import { freeName, splitName } from '@shared/work/files'
 import { bytesHere } from './places/disk'
@@ -92,22 +92,67 @@ export async function readWhole(path: string, max: number): Promise<{ data: Buff
  */
 export async function readPiece(path: string, offset: number, length: number): Promise<{ data: string; size: number; version: string; end: boolean }> {
   const v = await versionOf(path)
+  const version = versionWord(v)
   const want = Math.max(0, Math.min(length, v.size - offset))
   const buf = Buffer.alloc(want)
   let got = 0
   if (want) {
-    const file = await open(path, 'r')
+    const kept = await heldFile(path, version)
     try {
       while (got < want) {
-        const { bytesRead } = await file.read(buf, got, want - got, offset + got)
+        const { bytesRead } = await kept.file.read(buf, got, want - got, offset + got)
         if (!bytesRead) break
         got += bytesRead
       }
     } finally {
-      await file.close()
+      letGo(path, kept)
     }
   }
-  return { data: buf.subarray(0, got).toString('base64'), size: v.size, version: versionWord(v), end: offset + got >= v.size }
+  return { data: buf.subarray(0, got).toString('base64'), size: v.size, version, end: offset + got >= v.size }
+}
+
+/** How long a file read in pieces keeps its one handle after its last piece. */
+export const PIECE_HOLD_MS = 5_000
+type Held = { file: FileHandle; version: string; users: number; closed: boolean; timer?: ReturnType<typeof setTimeout> }
+/**
+ * One handle a file for the pieces of one copy: a share may read the whole file again on each fresh open (the rig's
+ * moved 19 MB to read 4 MB of a deck that way). A handle is kept only for the version it opened, and closed a few
+ * seconds after its last piece.
+ */
+const held = new Map<string, Promise<Held>>()
+async function heldFile(path: string, version: string): Promise<Held> {
+  const was = held.get(path)
+  const h = was ? await was.catch(() => null) : null
+  if (h && !h.closed && h.version === version && held.get(path) === was) {
+    h.users++
+    if (h.timer) clearTimeout(h.timer)
+    return h
+  }
+  const made = open(path, 'r').then((file): Held => ({ file, version, users: 1, closed: false }))
+  held.set(path, made)
+  made.catch(() => held.get(path) === made && held.delete(path))
+  return made
+}
+function letGo(path: string, h: Held): void {
+  if (--h.users > 0) return
+  h.timer = setTimeout(() => {
+    if (h.users > 0) return
+    h.closed = true
+    void held.get(path)?.then((now) => now === h && held.delete(path), () => undefined)
+    void h.file.close().catch(() => undefined)
+  }, PIECE_HOLD_MS)
+  h.timer.unref?.()
+}
+/** Every handle kept for pieces is closed now (a test, or the host going). */
+export async function closeHeldFiles(): Promise<void> {
+  const all = [...held.values()]
+  held.clear()
+  for (const h of await Promise.all(all.map((p) => p.catch(() => null)))) {
+    if (!h || h.closed) continue
+    h.closed = true
+    if (h.timer) clearTimeout(h.timer)
+    await h.file.close().catch(() => undefined)
+  }
 }
 
 /** The most one read answers. */

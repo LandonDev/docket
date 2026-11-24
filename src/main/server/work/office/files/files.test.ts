@@ -584,7 +584,7 @@ describe("his window on the box opens the Mac's files one after another (F-files
     const secret = join(base, 'outside', 'secret.txt')
     await expect(fromWindow('work.office.filesCopy', { sessionId: 's1', source: { at: 'file', host: MAC, path: secret } })).rejects.toThrow('Teams')
     // The first piece of it is asked (`farBytes`): the claimed host decides whether the path is its to send.
-    expect(asked).toEqual([{ host: MAC, verb: 'filesRead', args: { source: { at: 'file', host: MAC, path: secret }, as: 'bytes', offset: 0, length: 4 * 1024 * 1024 } }])
+    expect(asked).toEqual([{ host: MAC, verb: 'filesRead', args: { source: { at: 'file', host: MAC, path: secret }, as: 'bytes', offset: 0, length: 256 * 1024 } }])
     // A host the workspace may not use is never asked at all.
     await expect(fromWindow('work.office.filesCopy', { sessionId: 's1', source: { at: 'file', host: 'env_OtherOtherOtherOtherOt', path: secret } })).rejects.toThrow('may not use')
     expect(asked).toHaveLength(1)

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { FAR_PIECE, farBytes, type FarPiece } from './handle'
+import { FAR_FIRST, FAR_PIECE, farBytes, type FarPiece } from './handle'
 
 /** Another host's file copied here a piece at a time (handle.ts `farBytes`): once over the link, its progress said. */
 
@@ -31,9 +31,10 @@ describe('a copy of another computer’s file', () => {
     const got = await farBytes(h.ask, (done, total) => (expect(total).toBe(file.length), said.push(done)))
     expect(got.bytes.equals(file)).toBe(true)
     expect(got.version).toBe('9:1:')
-    expect(h.asked).toEqual([0, FAR_PIECE, 2 * FAR_PIECE])
+    // A small first piece, so the row says how far it has got after one round trip.
+    expect(h.asked).toEqual([0, FAR_FIRST, FAR_FIRST + FAR_PIECE, FAR_FIRST + 2 * FAR_PIECE])
     expect(h.most()).toBeLessThanOrEqual(2)
-    expect(said).toEqual([FAR_PIECE, 2 * FAR_PIECE, file.length])
+    expect(said).toEqual([FAR_FIRST, FAR_FIRST + FAR_PIECE, FAR_FIRST + 2 * FAR_PIECE, file.length])
   })
 
   it('is read once more when the file changed while it was read, then refused', async () => {
@@ -55,6 +56,6 @@ describe('a copy of another computer’s file', () => {
   })
 
   it("says a piece's failure", async () => {
-    await expect(farBytes(async ({ offset }) => (offset ? Promise.reject(new Error('TC-WIN11 is not reachable now.')) : { name: 'x', data: fileOf(FAR_PIECE).toString('base64'), size: 3 * FAR_PIECE, version: 'v' }))).rejects.toThrow('not reachable')
+    await expect(farBytes(async ({ offset }) => (offset ? Promise.reject(new Error('TC-WIN11 is not reachable now.')) : { name: 'x', data: fileOf(FAR_FIRST).toString('base64'), size: 3 * FAR_PIECE, version: 'v' }))).rejects.toThrow('not reachable')
   })
 })
