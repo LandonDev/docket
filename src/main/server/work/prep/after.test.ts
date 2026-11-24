@@ -14,4 +14,10 @@ describe('a rewrite and the filing keys LifeOS never answered', () => {
     const back = rewriteTasks([{ title: 'Book bus' }], out.tasks, out.suggestionSeq, [], out.unanswered)
     expect(back.tasks[0]!.id).toBe(fresh.id)
   })
+
+  it('collapses a suggestion said twice word for word into one, which keeps an unanswered filing’s id', () => {
+    const tried: PrepSuggestion = { id: 's4', title: 'Book bus', who: 'Dana', state: 'proposed', tried: true }
+    const out = rewriteTasks([{ title: 'Book bus', who: 'Dana' }, { title: 'Book bus', who: 'Dana' }, { title: 'Book bus', who: 'Tom' }], [], 4, [], [tried])
+    expect(out.tasks.map((t) => [t.title, t.who, t.id])).toEqual([['Book bus', 'Dana', 's4'], ['Book bus', 'Tom', 's5']])
+  })
 })

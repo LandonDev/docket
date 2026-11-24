@@ -1563,3 +1563,73 @@ describe('round 3: the document he edits, the version owed, the filing key', () 
     expect([...lifeos.tasks.values()].filter((t) => t.title === 'Book bus')).toHaveLength(1)
   })
 })
+
+describe('round 4: one task once, and the import the page stands for', () => {
+  it('files a suggestion the thread said twice word for word once, though Tick all then Add', async () => {
+    fakeStarts()
+    await note('Dana drives the van.')
+    const { sessionId } = await follow()
+    const bus = { title: 'Book bus', who: 'Dana', due: '2026-11-24', quote: 'Dana books the bus.' }
+    await call('prep_follow_up', { event: 'ev1', summary: [{ text: 'x' }], tasks: [bus, bus] }, sessionId)
+    const tasks = (await page()).doc.after!.tasks
+    expect(tasks).toHaveLength(1)
+    // Tick all, then Add: every suggestion the page shows
+    expect((await decide('accept', ...tasks.map((t) => t.id))).failed).toEqual([])
+    expect([...lifeos.tasks.values()].filter((t) => t.title === 'Book bus')).toHaveLength(1)
+  })
+
+  describe('a page that still names the Word file, with two imports of it', () => {
+    let base: string
+    let folder: string
+    let modules: WorkModule[]
+    beforeEach(() => {
+      base = realpathSync(mkdtempSync(join(tmpdir(), 'tc-prep-doc5-')))
+      folder = join(base, 'Purdue')
+      mkdirSync(folder)
+      rig.work.ctx.db.prepare('UPDATE workspaces SET path = ? WHERE id = ?').run(folder, 'ws-purdue')
+      modules = [...WORK_MODULES]
+      WORK_MODULES.push(formatsModule)
+    })
+    afterEach(() => {
+      WORK_MODULES.splice(0, WORK_MODULES.length, ...modules)
+      rmSync(base, { recursive: true, force: true })
+    })
+    const setUp = async () => {
+      const word = join(folder, 'Staff sync notes.docx')
+      copyFileSync(join(process.cwd(), 'resources', 'work-templates', 'any', 'Meeting notes.docx'), word)
+      const source = { at: 'file' as const, host: rig.work.ctx.host, path: word }
+      new PrepStore(rig.work.ctx.db).write('ws-purdue', { id: 'ev1', series: 'series1', title: 'Staff sync', startsAt: START, endsAt: null, peopleKeys: [] }, () => ({ people: [], brief: null, notes: null, after: null }), (d) => ({ ...d, notes: { text: '', at: 1, file: source } }), Date.now())
+      const importIt = async () => ((await formatsModule.handle!({ id: 'editor', method: 'work.formats.import', params: { from: { at: 'source', source } } } as never, rig.work.ctx, { kind: 'local', caps: ['read', 'operate'] })) as { result: { source: { at: 'file'; host: string; path: string } } }).result.source
+      // opened in two seats: two imports; his notes saved in the newer one
+      const older = await importIt()
+      const newer = await importIt()
+      const t = Date.now()
+      utimesSync(older.path, new Date(t - 120_000), new Date(t - 120_000))
+      const entries = unzipSync(new Uint8Array(readFileSync(newer.path)))
+      entries['preview.md'] = strToU8('Tom owns the venue form.')
+      writeFileSync(newer.path, zipSync(entries))
+      utimesSync(newer.path, new Date(t), new Date(t))
+      return { older, newer }
+    }
+    const move = (from: { at: 'file'; host: string; path: string }, path: string) => {
+      renameSync(from.path, path)
+      notesDocMoved(from, { ...from, path }, { db: rig.work.ctx.db, dataDir: rig.work.ctx.dataDir, host: rig.work.ctx.host })
+    }
+
+    it('stays on the newer, saved import when the older one is renamed', async () => {
+      const starts = fakeStarts()
+      const { older, newer } = await setUp()
+      move(older, join(folder, 'Old copy.tcdoc'))
+      expect((await page()).notesFile).toMatchObject({ source: { path: newer.path } })
+      await follow()
+      expect(starts.mock.calls[0]![0].text).toContain('Tom owns the venue form.')
+    })
+
+    it('follows the import it stood for when that one is renamed', async () => {
+      const { newer } = await setUp()
+      const moved = join(folder, 'Kept notes.tcdoc')
+      move(newer, moved)
+      expect((await page()).doc.notes?.file).toMatchObject({ path: moved })
+    })
+  })
+})

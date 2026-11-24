@@ -18,10 +18,23 @@ import { importFolderOf } from '../files/imports'
  */
 export function editableNotes(ctx: Pick<WorkCtx, 'host' | 'dataDir'>, file: CanvasSource | undefined): CanvasSource | undefined {
   if (file?.at !== 'file' || file.host !== ctx.host || !/\.docx$/i.test(file.path)) return file
-  const name = basename(file.path)
+  const best = newestOf(notesCandidates(ctx, file.path))
+  return best ? { at: 'file', host: file.host, path: best } : file
+}
+
+/** The newest of the documents made of a Word file, by save time; the first listed wins a tie. The one choice for every reader. */
+export function newestOf(candidates: readonly { path: string; at: number }[]): string | undefined {
+  let best: { path: string; at: number } | undefined
+  for (const c of candidates) if (!best || c.at > best.at) best = c
+  return best?.path
+}
+
+/** Every document the editor made of this Word file, with its save time: beside it, or under this host's data. */
+export function notesCandidates(ctx: Pick<WorkCtx, 'host' | 'dataDir'>, wordPath: string): { path: string; at: number }[] {
+  const name = basename(wordPath)
   const stem = basename(name, extname(name))
-  let best: { path: string; at: number } | null = null
-  for (const dir of [dirname(file.path), importFolderOf(ctx.dataDir, file)]) {
+  const out: { path: string; at: number }[] = []
+  for (const dir of [dirname(wordPath), importFolderOf(ctx.dataDir, { host: ctx.host, path: wordPath })]) {
     let entries: string[]
     try {
       entries = readdirSync(dir)
@@ -33,14 +46,13 @@ export function editableNotes(ctx: Pick<WorkCtx, 'host' | 'dataDir'>, file: Canv
       const path = join(dir, entry)
       try {
         if (tcdocEntry(path, 'sidecar.json', (text) => (JSON.parse(text) as { source?: { name?: string } }).source?.name) !== name) continue
-        const at = statSync(path).mtimeMs
-        if (!best || at > best.at) best = { path, at }
+        out.push({ path, at: statSync(path).mtimeMs })
       } catch {
         // A file that is not a document of his notes is no candidate.
       }
     }
   }
-  return best ? { at: 'file', host: file.host, path: best.path } : file
+  return out
 }
 
 /** One entry of a `.tcdoc` (a zip), read without the rest. */

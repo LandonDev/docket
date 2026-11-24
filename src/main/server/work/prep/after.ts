@@ -20,8 +20,9 @@ type Suggested = Omit<PrepSuggestion, 'id' | 'state' | 'lifeosTaskId' | 'tried'>
 
 const titleKey = (title: string) => foldTitle(title) || title.normalize('NFKC').trim().toLowerCase()
 
-const sameSuggestion = (a: Suggested, b: PrepSuggestion): boolean =>
+const sameWords = (a: Suggested, b: Suggested): boolean =>
   a.title === b.title && (a.who ?? '') === (b.who ?? '') && a.due === b.due && (a.quote ?? '') === (b.quote ?? '')
+const sameSuggestion = (a: Suggested, b: PrepSuggestion): boolean => sameWords(a, b)
 
 /**
  * Take the thread’s new suggestions and keep any decisions the owner already made. A suggestion he dismissed stays
@@ -38,7 +39,10 @@ export function rewriteTasks(input: Suggested[], prior: PrepSuggestion[], sequen
   const dismissed = new Set(dismissedBefore)
   const kept = new Set<string>()
   const tasks: PrepSuggestion[] = []
-  for (const task of input) {
+  // A suggestion said twice word for word is one task: two ids would be two filing keys, and one Add would make it twice
+  // in LifeOS. It collapses before any id is given, so the one left keeps a key an earlier filing used.
+  const once = input.filter((task, i) => input.findIndex((other) => sameWords(other, task)) === i)
+  for (const task of once) {
     const before = settled.find((item) => titleKey(item.title) === titleKey(task.title))
     if (before) {
       if (kept.has(before.id)) continue
