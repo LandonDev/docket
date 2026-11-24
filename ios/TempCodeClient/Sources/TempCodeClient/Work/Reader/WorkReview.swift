@@ -17,22 +17,26 @@ public struct ReviewRow: Identifiable, Equatable, Sendable {
     public let group: String?
     /// The agent's reason, the same for every row of its change.
     public let reason: String?
-    /// The host's words when it refused this row's decision; the row stays.
+    /// The host's words when it refused this row's decision, or why it can only be rejected; the row stays.
     public internal(set) var refusal: String?
+    /// Accept can take it: false for a sheet's cell the host found changed since (`conflict`) or moved (`orphaned`),
+    /// which only Reject decides. Accept All never sends it.
+    public let accepts: Bool
     /// What the host decides it by: a document's branch and block, or a sheet's suggestion.
     let branch: String?
     let target: String
 
-    public init(id: String, kind: Kind, group: String? = nil, reason: String? = nil, refusal: String? = nil) {
-        self.init(id: id, kind: kind, group: group, reason: reason, refusal: refusal, branch: nil, target: id)
+    public init(id: String, kind: Kind, group: String? = nil, reason: String? = nil, refusal: String? = nil, accepts: Bool = true) {
+        self.init(id: id, kind: kind, group: group, reason: reason, refusal: refusal, accepts: accepts, branch: nil, target: id)
     }
 
-    init(id: String, kind: Kind, group: String?, reason: String?, refusal: String?, branch: String?, target: String) {
+    init(id: String, kind: Kind, group: String?, reason: String?, refusal: String?, accepts: Bool = true, branch: String?, target: String) {
         self.id = id
         self.kind = kind
         self.group = group
         self.reason = reason
         self.refusal = refusal
+        self.accepts = accepts
         self.branch = branch
         self.target = target
     }
@@ -143,8 +147,9 @@ public final class WorkReview {
 
     /// Accept or reject every row he sees, and nothing else: the rows on screen are taken before the first call,
     /// and the host is sent their own ids, branch by branch for a document. A change an agent added since, or a
-    /// push that reads a branch again between two calls, is never decided unseen. False when the host refused any
-    /// (those rows stay with its words), or another decision was still running.
+    /// push that reads a branch again between two calls, is never decided unseen. Accept All on a sheet sends only
+    /// the rows Accept can take (`accepts`). False when the host refused any (those rows stay with its words), or
+    /// another decision was still running.
     @discardableResult
     public func decideAll(accept: Bool) async -> Bool {
         guard !deciding else { return false }
@@ -164,12 +169,16 @@ public final class WorkReview {
             }
             return all
         case .sheet(let itemId):
-            let seen = rows
+            let seen = accept ? rows.filter(\.accepts) : rows
+            guard !seen.isEmpty else { return false }
             do {
                 take(try await work.socket.request(Methods.WorkSheetsReview.self, .init(itemId: itemId, which: .object(.init(ids: seen.map(\.target))), verdict: accept ? .accept : .reject)))
                 return true
             } catch {
                 refuse(seen.map(\.id), ActionError.wrap(error).message)
+                // The host may have taken some of them before it refused the rest: the sheet as it is now keeps the
+                // words only on rows still open.
+                if let view = try? await work.socket.request(Methods.WorkSheetsOpen.self, .init(itemId: itemId)) { take(view) }
                 return false
             }
         }
@@ -180,7 +189,7 @@ public final class WorkReview {
         let refusals = Dictionary(rows.compactMap { row in row.refusal.map { (row.id, $0) } }, uniquingKeysWith: { first, _ in first })
         rows = Self.rows(view).map { row in
             var row = row
-            row.refusal = refusals[row.id]
+            row.refusal = refusals[row.id] ?? row.refusal
             return row
         }
     }
@@ -206,8 +215,12 @@ public final class WorkReview {
         }
     }
 
-    /// A row per open suggestion (pending, or one the host found in conflict or orphaned: it refuses an Accept of those
-    /// in its own words). The view names a sheet by Univer's id, not its tab's name, so an address is the cell alone.
+    /// Why a cell the host found changed since, or moved, can only be rejected: said on its row before any press.
+    static let conflictWords = "That cell changed since the agent saw it: reject it, or edit the cell yourself."
+    static let orphanedWords = "The sheet changed around this cell since the agent saw it: reject it."
+
+    /// A row per open suggestion: pending, or one the host found in conflict or orphaned, which says so and only
+    /// Reject takes. The view names a sheet by Univer's id, not its tab's name, so an address is the cell alone.
     static func rows(_ view: SheetPhoneView) -> [ReviewRow] {
         view.suggestions
             .filter { $0.state == .pending || $0.state == .conflict || $0.state == .orphaned }
@@ -217,7 +230,8 @@ public final class WorkReview {
                     kind: .cell(address: CellAddress.of(sheet: nil, row: suggestion.row, col: suggestion.col), old: cellWords(suggestion.base), new: cellWords(suggestion.proposed)),
                     group: suggestion.changeSet,
                     reason: suggestion.reason,
-                    refusal: nil,
+                    refusal: suggestion.state == .conflict ? conflictWords : suggestion.state == .orphaned ? orphanedWords : nil,
+                    accepts: suggestion.state == .pending,
                     branch: nil,
                     target: suggestion.id
                 )

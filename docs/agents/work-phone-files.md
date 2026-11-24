@@ -99,8 +99,13 @@ scripts/gen-swift-contract.ts): `work.docs.open`, `threads`, `thread`,
   pending branches (old and new words); a sheet's are its open suggestions
   (the cell, its value and the proposed one, the agent's reason once per
   change set, `ReviewGroup`). A decision the host takes drops the row; one it
-  refuses keeps the row with the host's words. The sheet view names a sheet by
-  Univer's id, not its tab, so an address reads "C4".
+  refuses keeps the row with the host's words. A sheet's cell the host found
+  changed since (`conflict`) or moved (`orphaned`) says so on its row from the
+  first read, and only Reject takes it (`ReviewRow.accepts`): Accept All on a
+  sheet sends only the rows Accept can take, and when the host refuses part of
+  it the sheet is read again, so its words stay only on rows still open. The
+  sheet view names a sheet by Univer's id, not its tab, so an address reads
+  "C4".
 - It works for LifeOS's documents and for documents and sheets kept as files
   (`ReaderFile.parts`): the docs pillar keeps threads and branches for both.
 - The page's review row over a document or a sheet only counts and opens

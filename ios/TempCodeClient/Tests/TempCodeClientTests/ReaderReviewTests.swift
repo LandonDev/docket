@@ -315,6 +315,9 @@ private let s3 = suggestion("g3", set: "cs2", row: 0, col: 26, base: #"{"v":"Dra
         #expect(review.rows.map(\.kind) == [.cell(address: "C4", old: "100", new: "120"), .cell(address: "C5", old: "", new: "=SUM(C1:C4)"), .cell(address: "AA1", old: "Draft", new: "TRUE")])
         #expect(review.rows.map(\.group) == ["cs1", "cs1", "cs2"])
         #expect(review.rows.map(\.reason) == ["Q3 grew", "Q3 grew", nil])
+        // A cell the host found changed since says so before any press, and only Reject takes it.
+        #expect(review.rows.map(\.accepts) == [true, true, false])
+        #expect(review.rows[2].refusal == WorkReview.conflictWords)
 
         // The host refuses an Accept of a cell that changed since: the row stays with its words.
         let refused = Task { await review.decide(review.rows[2], accept: true) }
@@ -336,14 +339,40 @@ private let s3 = suggestion("g3", set: "cs2", row: 0, col: 26, base: #"{"v":"Dra
 
         let all = Task { await review.decideAll(accept: true) }
         let third = try #require(await rig.next(fake, "work.sheets.review"))
-        // The cells on his screen, by id. A change set the agent added since stays open, and shows next.
-        #expect(third.params == .object(["itemId": .string("i1"), "which": .object(["ids": .array([.string("g2"), .string("g3")])]), "verdict": .string("accept")]))
-        fake.answer(id: third.id, result: sheet([suggestion("g9", set: "cs3", row: 7, col: 0, base: "null", proposed: #"{"v":"Added since"}"#, state: "pending")]))
+        // The cells on his screen that Accept can take, by id: the conflicted one is not sent. A change set the
+        // agent added since stays open, and shows next.
+        #expect(third.params == .object(["itemId": .string("i1"), "which": .object(["ids": .array([.string("g2")])]), "verdict": .string("accept")]))
+        fake.answer(id: third.id, result: sheet([s3, suggestion("g9", set: "cs3", row: 7, col: 0, base: "null", proposed: #"{"v":"Added since"}"#, state: "pending")]))
         #expect(await all.value)
-        #expect(review.rows.map(\.id) == ["g9"])
+        #expect(review.rows.map(\.id) == ["g3", "g9"])
 
         fake.deliver(#"{"push":"work.sheets","sessionId":"s1","itemId":"i1","rev":8}"#)
         #expect(await rig.until { review.rev == 1 })
+    }
+
+    @Test func `Accept All on a sheet that the host refuses part of reads the sheet again: the words stay only on rows still open`() async throws {
+        let rig = try ReaderRig()
+        let fake = await rig.open()
+        let review = WorkReview(work: rig.work, subject: .sheet(itemId: "i1"))
+        let load = Task { await review.load() }
+        let read = try #require(await rig.next(fake, "work.sheets.open"))
+        fake.answer(id: read.id, result: sheet([s1, s2]))
+        await load.value
+        let all = Task { await review.decideAll(accept: true) }
+        let press = try #require(await rig.next(fake, "work.sheets.review"))
+        #expect(press.params == .object(["itemId": .string("i1"), "which": .object(["ids": .array([.string("g1"), .string("g2")])]), "verdict": .string("accept")]))
+        // The host wrote g1, found g2 changed, and refused.
+        fake.refuse(id: press.id, error: "That cell changed since the agent saw it: reject it, or edit the cell yourself.")
+        let again = try #require(await rig.next(fake, "work.sheets.open"))
+        fake.answer(id: again.id, result: sheet([suggestion("g2", set: "cs1", row: 4, col: 2, base: "null", proposed: #"{"f":"=SUM(C1:C4)"}"#, state: "conflict")]))
+        #expect(await all.value == false)
+        #expect(review.rows.map(\.id) == ["g2"])
+        #expect(review.rows[0].refusal == "That cell changed since the agent saw it: reject it, or edit the cell yourself.")
+        #expect(!review.rows[0].accepts)
+        // With only a conflicted row left, Accept All sends nothing.
+        let sent = fake.sentRequests.count
+        #expect(await review.decideAll(accept: true) == false)
+        #expect(fake.sentRequests.count == sent)
     }
 
     @Test func `a host from before review on the phone has no rows and is asked once a socket`() async throws {
