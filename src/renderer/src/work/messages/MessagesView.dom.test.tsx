@@ -129,6 +129,17 @@ describe("the list's empty and loading states", () => {
     expect(opened.connections).toBe(1);
   });
 
+  it("keeps the empty line alone at the middle, the action hung under it, so it sits level with the pane's line", () => {
+    mount({ noSource: true });
+    const header = screen.getByText(`No chat is linked to ${JOB}`).closest("[data-slot=empty-header]")!;
+    // The empty part centres its one child, the line; the button is placed under the line out of the flow.
+    expect(header.parentElement!.children).toHaveLength(1);
+    const hung = screen.getByRole("button", { name: "Open Connections" }).parentElement!;
+    expect(hung.parentElement).toBe(header);
+    expect(hung.className).toContain("absolute");
+    expect(hung.className).toContain("top-full");
+  });
+
   it("says the job has no messages yet when its chat is linked", () => {
     mount({ empty: true });
     expect(screen.getByText(`No messages in ${JOB} yet`)).toBeTruthy();

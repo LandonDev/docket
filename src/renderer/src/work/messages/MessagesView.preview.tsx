@@ -41,6 +41,8 @@ const SCENES: Record<string, () => Scene> = {
   search: () => ({ page: { query: "controller" } }),
   "narrow-list": () => ({ data: { stale: true }, narrow: true }),
   "narrow-open": () => ({ data: { stale: true }, page: { chatId: "c_playtest" }, narrow: true }),
+  // The narrow open conversation with a thread's held draft over its composer.
+  "narrow-held-draft": () => ({ data: { stale: true, drafts: { c_dana: [HELD_DRAFT] } }, page: { chatId: "c_dana" }, narrow: true }),
   sending: () => ({ data: { messages: { ...MESSAGES, c_dana: withReply("c_dana", "queued", "Thursday is tight, but yes. I'll get it in by Wednesday night.") } }, page: { chatId: "c_dana" } }),
   "not-sent": () => ({ data: { messages: { ...MESSAGES, c_dana: withReply("c_dana", "failed", "Thursday is tight, but yes. I'll get it in by Wednesday night.", "Slack says this conversation is archived") } }, page: { chatId: "c_dana" } }),
   "no-route": () => ({ page: { chatId: "c_playtest" } }),

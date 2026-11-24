@@ -557,15 +557,18 @@ function ListEmpty({
     button.current?.focus();
   }, [ws, shown, keep, takesKeys]);
   return (
+    // The line itself sits at the column's middle, level with the pane's "No conversation open"; the action hangs under it.
     <Empty className={LIST_EMPTY}>
-      <EmptyHeader>
+      <EmptyHeader className="relative">
         <EmptyTitle>{title}</EmptyTitle>
+        {action ? (
+          <div className="absolute inset-x-0 top-full mt-4 flex justify-center">
+            <Button ref={button} size="sm" variant="secondary" className="pointer-events-auto" onClick={action.onClick}>
+              {action.label}
+            </Button>
+          </div>
+        ) : null}
       </EmptyHeader>
-      {action ? (
-        <Button ref={button} size="sm" variant="secondary" className="pointer-events-auto" onClick={action.onClick}>
-          {action.label}
-        </Button>
-      ) : null}
     </Empty>
   );
 }

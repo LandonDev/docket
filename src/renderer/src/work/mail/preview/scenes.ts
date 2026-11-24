@@ -192,14 +192,21 @@ export async function shoot(browser: Chromium, url: string, scene: Scene, dir: s
   for (const theme of ["dark", "light"] as const) {
     for (const [width, height] of SIZES) {
       const page = await browser.page(width, height);
-      await page.goto(`${url}?theme=${theme}${scene.query ? `&${scene.query}` : ""}`);
-      if (scene.name !== "loading" && !scene.query?.includes("page=") && !scene.query?.includes("box=")) await page.until(`document.querySelector(${JSON.stringify(ROW)})`, "the list");
-      await scene.set?.(page);
-      if (scene.ready) await page.until(scene.ready, `${scene.name} to settle`);
-      // Pictures land a turn after their frame; a shot waits for them.
-      await page.wait(scene.name === "loading" ? 60 : 500);
-      await page.shot(join(dir, `${scene.name}.${theme}.${width}.png`));
-      await page.send("Page.close").catch(() => {});
+      const name = `${scene.name}.${theme}.${width}`;
+      try {
+        await page.goto(`${url}?theme=${theme}${scene.query ? `&${scene.query}` : ""}`);
+        if (scene.name !== "loading" && !scene.query?.includes("page=") && !scene.query?.includes("box=")) await page.until(`document.querySelector(${JSON.stringify(ROW)})`, "the list");
+        await scene.set?.(page);
+        if (scene.ready) await page.until(scene.ready, `${scene.name} to settle`);
+        // Pictures land a turn after their frame; a shot waits for them.
+        await page.wait(scene.name === "loading" ? 60 : 500);
+        await page.shot(join(dir, `${name}.png`));
+      } catch (error) {
+        // One scene that does not settle costs its own picture, never the rest of the run.
+        console.error(`no shot of ${name}: ${error instanceof Error ? error.message : String(error)}`);
+      } finally {
+        await page.send("Page.close").catch(() => {});
+      }
     }
   }
 }
