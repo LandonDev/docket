@@ -1818,7 +1818,7 @@ over a colleague's Word file but his own press.
   save by itself, ask each time). The host saves each Word file he chose, or one born here (its bytes still exactly
   our blank, `bornHere`: New → Document), once its document's live revision has held still for 3 s (`autosaveWords`,
   every second from the module's start, `wordTiming.pause`). The revision is the Work service's own
-  (`/internal/docs/rev`, a hash of the document's state vector), never the `.tcdoc` file's time: the file is written
+  (`/internal/docs/rev`, a hash of the document's Yjs snapshot: its state vector and delete set, so a deletion alone moves it), never the `.tcdoc` file's time: the file is written
   only now and then while the words he types live in the service, and the export reads the live text, so a save
   writes what is on screen. The header's `since` is the same rule (`editsSince`: the live revision against the one
   last written, `saved_rev`, or the one it was made at, `base_rev`), so Saved is said only of the revision on

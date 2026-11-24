@@ -66,7 +66,16 @@ every frame the editor has handed the socket and then `work.docs.send` with
 `stored: true`, answered once the service has applied what that socket sent
 and stored the document (`/internal/docs/stored`). So whatever judges the
 file after the close (a Word file's document he only looked at, files/word.ts
-`wordsLeft`) reads its change time as he left it.
+`wordsLeft`) reads its change time as he left it. The route stores that
+document alone, in its save turn, and reads its store's own answer
+(docs/storeBook.ts wraps the service's stores): a write that fails is a 503
+with the reason, never an ok. In the window the flush fails on a failed
+send, on a socket not connected, and while frames lost since the last
+confirmed store wait (`storedAll`); the document says "Couldn't save your
+last edits to Plan" and the flush's failure reaches the close (what the
+close does then is Files'). The live revision (`/internal/docs/rev`, the
+Word file's autosave and header) hashes the Yjs snapshot, the delete set with
+the state vector, so a deletion alone moves it.
 
 While a LifeOS document has a socket open here, main watches its threads
 in LifeOS and pushes `work.docs {threads: true}` when they change, so a
@@ -342,15 +351,17 @@ place for a LifeOS document). What it tells the pane:
 - **The state line**: the editor's own sentence when it is offline, waiting,
   read only or did not open.
 - **The agent's last write**: "Wrote 1 section, 2:04 PM" with Undo, which
-  restores the version the write answered (`work.history.restore`) and
-  clears the line (`work.docs.dismiss`). Undo goes back only while the
-  document is as the agent left it: the line carries the version cut just
-  after the write (`DocWritten.after`), and Undo first compares it with the
-  live text (`work.history.compare`). Changed since by anyone, nothing is
-  restored (his words would go too): the line goes and a toast says "Not
-  undone: the document has changed since. Restore an earlier version from
-  History." (`undoWritten`). Kept in memory on the host: after a restart the
-  line is gone and History still has the version.
+  is `work.docs.dismiss {undo: true}`: the host restores the version before
+  the write only while the document is as the agent left it. The line
+  carries the version cut just after the write (`DocWritten.after`), and the
+  service compares it with the live document and restores in one turn of
+  the document (`/internal/docs/undo`, `history.inTurn`), so no other
+  window's edit lands between the check and the restore. Changed since by
+  anyone, nothing is restored (his words would go too): the line goes and a
+  toast says "Not undone: the document has changed since. Restore an
+  earlier version from History." (`undoWritten`). A line with no `after` (an
+  older host) offers no Undo. Kept in memory on the host: after a restart
+  the line is gone and History still has the version.
 - **Opened once per source**: the open keys on the source's value, so a
   canvas push, which hands every item afresh, never reopens the editor
   under his hands.
@@ -422,7 +433,11 @@ for as long as the document is the same one:
   goes out on a host that cannot draw it. A PDF is the pages Preview shows,
   read from the render the host keeps, even when another window changed the
   text since: what he checked is what he saves. A new draw takes its place,
-  and a press before it lands makes the print anew. The system's save
+  and a press before it lands makes the print anew. The host keeps the
+  render before a format's newest one too, for another window still showing
+  it; when the shown pages are gone anyway, nothing goes out unseen: Print
+  and Export say "These pages are no longer kept. Open Preview again to
+  check the current ones." until Preview draws again. The system's save
   dialog is the answer.
 - **Check in Word** is offered on Word when the app is ready or this host's
   Windows VM can wake on his press. The Word picture has a rev of its own.
@@ -551,10 +566,15 @@ LifeOS document.
 `item` (a document in the thread's canvas), `doc` (a LifeOS document id) or
 `file` (a `.tcdoc` path). `doc_write` takes the whole new text as markdown;
 blocks left as they were keep their ids and comments. `doc_read` ends with
-the text's revision (`revisionOf`, a hash of the live markdown); `doc_write`
-needs it and is refused when the text changed since ("read it again"), so a
-rewrite drafted from an older read never erases what he typed in between.
-`doc_suggest` takes it too, optional. `doc_read` with
+the text's revision (docs/revision.ts `revisionOf`, a hash of the markdown),
+which the service answers with the very text it read, styled reads too;
+`doc_write` needs it and is refused when the text changed since ("read it
+again"), so a rewrite drafted from an older read never erases what he typed
+in between. The service checks it where it writes, in the document's turn:
+a direct rewrite on the live text in the same tick it is made of it
+(`collab.edit`'s copy), a suggestion just before its branch is made (a word
+landing inside work-kit's own write then shows in the suggestion, never in
+the text). `doc_suggest` takes it too, optional. `doc_read` with
 `with: "styles"` adds the named styles, theme, page setup and the blocks
 with formatting of their own after the text.
 
@@ -568,10 +588,13 @@ keeps other page settings he has changed since the suggestion.
 The rule (architecture §6.7, §8.4): `because: "asked"` writes at once only
 when its `quote` is in one of the owner's own messages in the thread
 (`ctx.threads.ownerSaid`), else it is the agent's own idea and the reply
-says so. On a document others share, the message must also name this
-document: its title, path or LifeOS id, typed or in the head of a chip Ask
-put in (`ownerSaid` with `about`, work/threads.ts; names under 3 letters
-bind nothing); his words about another document wait as suggestions here; `"routine"` only in a routine's run, and on his own document; `"own"` on a shared document,
+says so. On a document others share, the message must also point at this
+document by what identifies it alone: its path or its LifeOS id, as the head
+of a chip Ask put in writes them, or typed (`ownerSaid` with `about`,
+work/threads.ts), whole and never inside a longer path or id. A title does
+not count (two documents may share one, and "Plan" stands inside "Travel
+Plan"); his words about another document, or naming this one by its title
+alone, wait as suggestions here; `"routine"` only in a routine's run, and on his own document; `"own"` on a shared document,
 or one set to suggest, waits as a branch; on his own document it is
 written as one version and the bar shows it with Undo. The verdict is
 this host's: the service is told `asked`, `routine` or `own` after the
