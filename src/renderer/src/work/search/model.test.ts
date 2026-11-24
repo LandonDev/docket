@@ -319,8 +319,8 @@ describe("nothing found, and what could not be searched", () => {
     expect(busy(m)).toBe(false);
   });
   it("words LifeOS's states for the host that asked it, and a source's line with no host when one host is searched", () => {
-    expect(quietLine("lifeos", "LifeOS is unreachable", box, 1).line).toBe("The box cannot reach LifeOS.");
-    expect(quietLine("lifeos", "This host's LifeOS sign-in waits for approval", box, 1).line).toBe("LifeOS sign-in on the box waits for approval.");
+    expect(quietLine("lifeos", "LifeOS is unreachable", box, 1).line).toBe("LifeOS did not answer the box.");
+    expect(quietLine("lifeos", "This host's LifeOS sign-in waits for approval", box, 1).line).toBe("The LifeOS sign-in on the box waits for your approval.");
     expect(quietLine("lifeos", "Something new", box, 1).line).toBe("Something new.");
     expect(quietLine("source:search.mail", "Mail did not answer.", box, 1).line).toBe("Mail did not answer.");
   });

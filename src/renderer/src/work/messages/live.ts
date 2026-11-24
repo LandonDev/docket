@@ -12,7 +12,7 @@ import { sessionStore } from "../../lib/tcserver/store";
 import { shell } from "../../stores/shell";
 import { openItem } from "../canvas/store";
 import { discardItem, editItem, fetchItem, notSentWords, outboxNow, sendItem, useOutbox, wantOutboxItem, wentOut, type HostItem } from "../outbox/store";
-import { useLifeosQuery, type LifeosQuery, type LifeosSession } from "../shell/lifeos";
+import { sessionWaits, sessionWords, useLifeosQuery, type LifeosQuery, type LifeosSession } from "../shell/lifeos";
 import type { MessagesData, Paged, ThreadDraft } from "./data";
 import { discardRefusal } from "./drafts";
 import { chatFileSource, fileVerb, viewKind } from "./files";
@@ -218,7 +218,8 @@ export function liveData(session: LifeosSession, sector: SectorKey, env: string,
     },
     requestFiles: async (messageId) => {
       const client = session.client;
-      if (!client) throw new Error("Not signed in to LifeOS");
+      // A session with no client says its true state (`sessionWords`, the computer named), never a sign-out it is not.
+      if (!client) throw new Error(sessionWaits(session) ? "LifeOS is still connecting" : sessionWords(session));
       await client.mutation(makeFunctionReference<"mutation">("chats:requestFiles"), { messageId });
     },
     // One file by its id, on the workspace's sector session: LifeOS's `chats:file` row (status and address).

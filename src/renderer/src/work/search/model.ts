@@ -159,14 +159,14 @@ const slotOf = (host: string, group: SearchGroup, tier: Slot["tier"], model: Sea
 export function quietLine(cause: string, line: string, at: SearchHost, hosts: number): { key: string; line: string } {
   // "the box" mid-line, as every Work line names it (lib/hostWords.ts).
   const host = { ...at, name: nameInLine(at.name) };
-  const Host = host.name.charAt(0).toUpperCase() + host.name.slice(1);
   if (cause === "lifeos") {
+    // The words every reader of a down session says (`sessionFailure` in work/shell/lifeos.ts), the computer named.
     const words: Record<string, string> = {
       "This host is not signed in to LifeOS": `Not signed in to LifeOS on ${host.name}.`,
-      "This host's LifeOS sign-in waits for approval": `LifeOS sign-in on ${host.name} waits for approval.`,
+      "This host's LifeOS sign-in waits for approval": `The LifeOS sign-in on ${host.name} waits for your approval.`,
       "LifeOS is still connecting": `LifeOS is still connecting on ${host.name}.`,
-      "LifeOS is unreachable": `${Host} cannot reach LifeOS.`,
-      "LifeOS refused this host's sign-in; sign in again": `LifeOS refused the sign-in on ${host.name}.`,
+      "LifeOS is unreachable": `LifeOS did not answer ${host.name}.`,
+      "LifeOS refused this host's sign-in; sign in again": `LifeOS refused ${host.name}'s sign-in.`,
     };
     return { key: "lifeos", line: words[line] ?? `${line.replace(/\.$/, "")}.` };
   }

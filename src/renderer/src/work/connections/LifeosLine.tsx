@@ -2,23 +2,24 @@ import { useState, type ReactNode } from "react";
 import { PageEmpty, PageError } from "../../components/page";
 import { BusyLabel, Button } from "../../components/ui/button";
 import { registry, useEnvironmentStatus } from "../../lib/connection";
-import { downAction, useDownPress } from "../shell/lifeosDown";
+import { useDownPress } from "../shell/lifeosDown";
+import { useDownAction } from "../shell/DownSignIn";
 import { lifeosHostName, refreshLifeos, reopenLifeos, sessionFailure, useLifeosStatus, useLifeosUnanswered, type LifeosSession } from "../shell/lifeos";
 
 /**
  * A settings section that needs LifeOS while it has no session (docs/DESIGN.md "One name a thing"): the bones while
  * the host's status or the session's first JWT is on its way, else one line that says the state the host answered,
  * in the view frame's words (`sessionFailure`), with the press that can help at its end (`useDownPress`). "Not signed
- * in to LifeOS" (or the refused sign-in) with Sign in, and a sign-in that waits with Show the code, each opening
- * Settings → Connections where this window may sign the host in, else who can; "LifeOS did not answer" in red with
- * Retry; a host never heard from with its name and Retry; a host whose link is open but whose status ask went
- * unanswered, "<host> did not answer" in red with Retry; a computer the host keeps LifeOS from with no press; Work off
+ * in to LifeOS on the box" (or the refused sign-in) with Sign in, and a sign-in that waits with Show the code, each
+ * opening the sign-in dialog in place where this window may sign the host in, else who can; "LifeOS did not answer the
+ * box" in red with Retry; a host never heard from with its name and Retry; a host whose link is open but whose status
+ * or session ask went unanswered, "<host> did not answer" in red with Retry; a computer the host keeps LifeOS from with no press; Work off
  * with a press to Settings → Work, the switch, where this window may turn it on (named "Work", the section it opens:
  * the line is in Settings already), else who can. `onWorkPage`: the line is on Settings → Work, the switch is on the
  * page, and Work off has no press.
  * The line in `PageError`'s shape, so the 28px press overhangs the 16px line evenly.
  */
-export function LifeosLine({ session, waiting, onWorkPage = false }: { session: Pick<LifeosSession, "environmentId" | "sector" | "state" | "withheld">; waiting: ReactNode; onWorkPage?: boolean }) {
+export function LifeosLine({ session, waiting, onWorkPage = false }: { session: Pick<LifeosSession, "environmentId" | "sector" | "state" | "withheld" | "unanswered">; waiting: ReactNode; onWorkPage?: boolean }) {
   const { environmentId, sector } = session;
   const status = useLifeosStatus(environmentId);
   const link = useEnvironmentStatus(environmentId);
@@ -35,7 +36,7 @@ export function LifeosLine({ session, waiting, onWorkPage = false }: { session: 
   // The rule's press for Work off and a sign-in (`useDownPress`): made only where this window may, else who can.
   const down = state === "off" ? "off" : state === "pairing" ? "pairing" : (signedOut ?? null);
   const { press, elsewhere } = useDownPress(down, environmentId);
-  const action = downAction(press);
+  const { action, dialog } = useDownAction(press, environmentId);
   // A Retry that is not answered either leaves the line as it is: it says so already.
   const retryWith = (ask: () => Promise<void>) => (): void => {
     setBusy(true);
@@ -52,9 +53,15 @@ export function LifeosLine({ session, waiting, onWorkPage = false }: { session: 
   if (state === "off") return <Line words={sessionFailure("off", false, named)} note={elsewhere} press={action ? { label: "Work", onClick: action.run } : undefined} />;
   if (session.withheld) return <Line words={sessionFailure(session.state, true, named)} />;
   if (signedOut || state === "pairing")
-    return <Line words={sessionFailure(signedOut ?? "pairing", false, named)} note={elsewhere} press={action ? { label: action.label, onClick: action.run } : undefined} />;
+    return (
+      <>
+        <Line words={sessionFailure(signedOut ?? "pairing", false, named)} note={elsewhere} press={action ? { label: action.label, onClick: action.run } : undefined} />
+        {dialog}
+      </>
+    );
+  // The host's own silence on the session's ask is said by its name, as on the status ask; LifeOS's, with the host named.
   if (state === "unreachable" || session.state === "unreachable")
-    return <Failed words={sessionFailure("unreachable")} busy={busy} onRetry={retryWith(() => reopenLifeos(environmentId, sector))} />;
+    return <Failed words={session.unanswered ? `${host} did not answer` : sessionFailure("unreachable", false, named)} busy={busy} onRetry={retryWith(() => reopenLifeos(environmentId, sector))} />;
   return waiting;
 }
 

@@ -1,7 +1,7 @@
 import { ConvexProvider } from "convex/react";
 import { makeFunctionReference } from "convex/server";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useState } from "react";
-import { sessionWaits } from "../shell/lifeos";
+import { sessionWaits, sessionWords } from "../shell/lifeos";
 import { createLifeosProjectsClient, type SectorKey as KitSector } from "work-kit/lifeos";
 import { projectPlace, Projects, ProjectsClientProvider, ProjectsKitProvider, type Project, type ProjectsPlace, type ProjectTask } from "work-kit/projects";
 import "work-kit/projects/styles.css";
@@ -88,7 +88,8 @@ export function View(props: WorkViewProps) {
       settings: setSettingsFor,
       // LifeOS makes the sheet in the project's own sector; it shows in Documents as the page's live read lands.
       newSheet: async (project) => {
-        if (!convex) throw new Error("Not signed in to LifeOS");
+        // A session with no client says its true state, the computer named (`sessionWords`), never a sign-out it is not.
+        if (!convex) throw new Error(sessionWaits(lifeos) ? "LifeOS is still connecting" : sessionWords(lifeos));
         await convex.mutation(makeFunctionReference<"mutation">("sheets:create"), { projectId: project.id, title: "Untitled" });
       },
     });

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { ClientRequest } from "@shared/contract";
-import { capsMay, managedElsewhere } from "./linkMay";
+import { capsMay, managedElsewhere, signInElsewhere } from "./linkMay";
 
 const key = { id: "k1", name: "a key" };
 const owner = { caps: ["read", "operate", "approve", "admin"] as const, key };
@@ -84,5 +84,9 @@ describe("the Work controls a key cannot use", () => {
 
   it("names who can in one wording", () => {
     expect(managedElsewhere("The box")).toBe("Changed from a computer that manages the box");
+  });
+
+  it("names who can sign a host in to LifeOS by the act", () => {
+    expect(signInElsewhere("The box")).toBe("Sign in from a computer that manages the box");
   });
 });

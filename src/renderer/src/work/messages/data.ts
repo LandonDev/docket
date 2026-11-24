@@ -106,6 +106,9 @@ const NONE: ReadonlySet<string> = new Set();
 const NO_DRAFTS: readonly ThreadDraft[] = [];
 const LOADING = { status: "loading" } as const;
 
+/** A write asked while the session is still on its way (the view draws its bones then): its true words. */
+const STILL_CONNECTING = "LifeOS is still connecting";
+
 /** Every answer still on its way: the frame the view lands in while its session opens. */
 export const WAITING: MessagesData = {
   useChats: () => LOADING,
@@ -118,16 +121,16 @@ export const WAITING: MessagesData = {
   useNow: () => Date.now(),
   markRead: () => {},
   markUnread: () => {},
-  send: () => Promise.reject(new Error("Not signed in to LifeOS")),
-  undo: () => Promise.reject(new Error("Not signed in to LifeOS")),
-  retry: () => Promise.reject(new Error("Not signed in to LifeOS")),
+  send: () => Promise.reject(new Error(STILL_CONNECTING)),
+  undo: () => Promise.reject(new Error(STILL_CONNECTING)),
+  retry: () => Promise.reject(new Error(STILL_CONNECTING)),
   useDrafts: () => NO_DRAFTS,
-  sendDraft: () => Promise.reject(new Error("Not signed in to LifeOS")),
-  saveDraft: () => Promise.reject(new Error("Not signed in to LifeOS")),
+  sendDraft: () => Promise.reject(new Error(STILL_CONNECTING)),
+  saveDraft: () => Promise.reject(new Error(STILL_CONNECTING)),
   openOutbox: () => {},
   dropDraft: () => Promise.resolve(),
   draftState: () => Promise.resolve("unknown"),
-  requestFiles: () => Promise.reject(new Error("Not signed in to LifeOS")),
+  requestFiles: () => Promise.reject(new Error(STILL_CONNECTING)),
   fileVerb: () => "save",
   openFile: () => {},
   useFile: () => LOADING,

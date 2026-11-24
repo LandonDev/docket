@@ -268,11 +268,14 @@ describe("while LifeOS cannot be reached", () => {
     expect(root.querySelector("[data-readonly-state]")).toBeNull();
     expect(root.querySelectorAll("[data-lifeos-line]")).toHaveLength(1);
     // Asking again would not sign him in: the line has Sign in, never Retry.
-    expect(root.querySelector("[data-lifeos-line]")!.textContent).toBe("Not signed in to LifeOSSign in");
+    expect(root.querySelector("[data-lifeos-line]")!.textContent).toMatch(/^Not signed in to LifeOS.*Sign in$/);
     expect(screen.queryByRole("button", { name: "Delete project" })).toBeNull();
     expect(saveButton().disabled).toBe(true);
     // The rules are this host's: they can still be edited.
     expect((screen.getByRole("button", { name: "Edit" }) as HTMLButtonElement).disabled).toBe(false);
+    // Council round 7: Sign in opens the sign-in dialog over the sheet, never a page where he presses again.
+    fireEvent.click(within(root.querySelector("[data-lifeos-line]") as HTMLElement).getByRole("button", { name: "Sign in" }));
+    await waitFor(() => expect(screen.getByRole("dialog", { name: "Sign in to LifeOS" })).toBeTruthy(), { timeout: 5000 });
   });
 
   /** Council round 6 (Sol P1): Sign in led a window that may not sign the box in to a Connections page with no sign-in. */
@@ -285,7 +288,8 @@ describe("while LifeOS cannot be reached", () => {
     const root = await sheet();
     const line = root.querySelector("[data-lifeos-line]") as HTMLElement;
     expect(line.textContent).toContain("Not signed in to LifeOS");
-    expect(line.textContent).toContain("Changed from a computer that manages the box");
+    expect(line.textContent).toContain("Not signed in to LifeOS on the box");
+    expect(line.textContent).toContain("Sign in from a computer that manages the box");
     expect(within(line).queryByRole("button")).toBeNull();
   });
 

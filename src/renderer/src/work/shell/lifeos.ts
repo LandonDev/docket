@@ -141,8 +141,8 @@ export interface LifeosSession {
    */
   withheld?: true;
   /**
-   * The host itself did not answer its status ask while its link stayed open (`useLifeosUnanswered`): the session is
-   * down as `unreachable`, never waiting, and its words name the computer ("The box did not answer"), not LifeOS.
+   * The host itself did not answer its status ask while its link stayed open (`useLifeosUnanswered`), or its session
+   * ask (`work.lifeos.jwt`) ran out of time: the session is down as `unreachable`, never waiting, and its words name the computer ("The box did not answer"), not LifeOS.
    */
   unanswered?: true;
 }
@@ -233,8 +233,15 @@ async function askSession(environmentId: string, sector: SectorKey | null, key: 
     first = await jwtOf(environmentId, sector);
   } catch (err) {
     // A failure never takes the place of a client that reads.
+    // An ask the host itself did not answer is its silence, said by its name (`unanswered`), the same test the status ask uses.
     if (!stale() && !sessions.get(key)?.client)
-      putSession({ environmentId, sector, client: null, state: "unreachable", ...(/^forbidden\b/.test(errorText(err)) ? { withheld: true as const } : {}) });
+      putSession({
+        environmentId,
+        sector,
+        client: null,
+        state: "unreachable",
+        ...(/^forbidden\b/.test(errorText(err)) ? { withheld: true as const } : isSilence(err) ? { unanswered: true as const } : {}),
+      });
     return;
   }
   if (stale() || sessions.get(key)?.client) return;
@@ -307,11 +314,13 @@ export function sessionFailure(state: LifeosStateName | "unanswered", withheld?:
   const at = host ? nameInLine(host) : "this host";
   if (withheld) return `This computer cannot read LifeOS through ${at}`;
   if (state === "unanswered") return `${host ?? "The host"} did not answer`;
-  if (state === "unreachable") return "LifeOS did not answer";
+  // LifeOS's own silence, signed out and a sign-in that waits name the computer too where it is known; "Not signed in
+  // to LifeOS" and "LifeOS did not answer" stay at the head, the words the host's own text and `STATE_WORDS` share.
+  if (state === "unreachable") return host ? `LifeOS did not answer ${at}` : "LifeOS did not answer";
   if (state === "refused") return `LifeOS refused ${at}'s sign-in`;
   if (state === "off") return `Work is off on ${at}`;
-  if (state === "pairing") return "The LifeOS sign-in waits for your approval";
-  return "Not signed in to LifeOS";
+  if (state === "pairing") return host ? `The LifeOS sign-in on ${at} waits for your approval` : "The LifeOS sign-in waits for your approval";
+  return host ? `Not signed in to LifeOS on ${at}` : "Not signed in to LifeOS";
 }
 
 /** A host's name as the registry knows it ("The box"), or null for one it does not. */

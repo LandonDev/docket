@@ -1,13 +1,13 @@
 import type { ClientRequest } from "@shared/contract";
 import { useEnvironmentStatus } from "../../lib/connection";
-import { capsMay, managedElsewhere } from "../../lib/linkMay";
+import { capsMay, managedElsewhere, signInElsewhere } from "../../lib/linkMay";
 import { lifeosHostName, sessionFailure, sessionWaits, type LifeosSession } from "./lifeos";
-import { openConnections, openWorkSettings } from "./open";
+import { openWorkSettings } from "./open";
 
 /**
  * A LifeOS session that cannot read and is not on its way, by its true state, with the words and the one press every
- * reader gives it (the view frame, a part's `DownLine`, Mail's canvas, Today, the settings line, the project sheet, the
- * rail's menu). Retry only where asking again can help (LifeOS or the host did not answer); Sign in where the host is
+ * reader gives it (the view frame, a part's `DownLine`, Mail's canvas, Today, the settings line, Connections' sign-in
+ * row, the project sheet, the rail's menu, Waiting on). Retry only where asking again can help (LifeOS or the host did not answer); Sign in where the host is
  * signed out or its sign-in was refused, and Show the code where a sign-in waits for his approval, each only where this
  * window may sign that host in; Open Settings where Work is off and this window may turn it on; none for a computer the
  * host keeps its LifeOS session from.
@@ -58,25 +58,30 @@ const PRESS_ASK: Partial<Record<DownPress, { method: ClientRequest["method"]; pa
 
 /**
  * `downPress` as this window may make it: Sign in and Show the code only where its key may sign that host in, Open
- * Settings only where it may turn Work on there; where it may not, no press, and `elsewhere` says who can
- * (`managedElsewhere`).
+ * Settings only where it may turn Work on there; where it may not, no press, and `elsewhere` says who can, by the act:
+ * "Sign in from a computer that manages the box" (`signInElsewhere`) for a sign-in or its code, "Changed from…"
+ * (`managedElsewhere`) for the switch.
  */
 export function useDownPress(down: LifeosDown | null, environmentId: string): { press: DownPress | null; elsewhere: string | null } {
   // `useLinkMay`, read through a status that may not be there yet (a page drawn before its host is known).
   const hello = useEnvironmentStatus(environmentId)?.lastHello;
   const press = down ? downPress(down) : null;
   const ask = press ? PRESS_ASK[press] : undefined;
-  if (ask && !capsMay(hello, ask.method, ask.params)) return { press: null, elsewhere: managedElsewhere(lifeosHostName(environmentId) ?? "this host") };
+  if (ask && !capsMay(hello, ask.method, ask.params)) {
+    const host = lifeosHostName(environmentId) ?? "this host";
+    return { press: null, elsewhere: press === "settings" ? managedElsewhere(host) : signInElsewhere(host) };
+  }
   return { press, elsewhere: null };
 }
 
 /**
- * A press as a reader draws it: its name and what it does. Sign in and Show the code open Settings → Connections, where
- * the host's sign-in row opens the sign-in dialog; Open Settings opens Settings → Work. Retry is the reader's own ask
- * (`reopenLifeos` for the session); with none given, Retry is not drawn.
+ * A press as a reader draws it: its name and what it does. Sign in and Show the code open the sign-in dialog in place
+ * (`signIn`: `useDownAction` in DownSignIn.tsx hands it, with the dialog), the one the view frame and Connections open;
+ * Open Settings opens Settings → Work. Retry is the reader's own ask (`reopenLifeos` for the session); with none given,
+ * Retry is not drawn, nor Sign in or Show the code with no `signIn`.
  */
-export function downAction(press: DownPress | null, retry?: () => void | Promise<void>): { label: string; run: () => void | Promise<void> } | undefined {
+export function downAction(press: DownPress | null, retry?: () => void | Promise<void>, signIn?: () => void): { label: string; run: () => void | Promise<void> } | undefined {
   if (!press) return undefined;
-  const run = press === "retry" ? retry : press === "settings" ? openWorkSettings : openConnections;
+  const run = press === "retry" ? retry : press === "settings" ? openWorkSettings : signIn;
   return run ? { label: DOWN_PRESS_LABEL[press], run } : undefined;
 }

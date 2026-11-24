@@ -26,6 +26,8 @@ vi.mock("../../lib/connection", () => ({ useEnvironmentStatus: () => link, regis
 
 const requestSettings = vi.hoisted(() => vi.fn());
 vi.mock("../../lib/monaco/debugTab", () => ({ requestSettings }));
+// The sign-in dialog the line's press opens in place (its own chunk, DownSignIn.tsx).
+vi.mock("../shell/settings", () => ({ SignInDialog: () => <div role="dialog" aria-label="Sign in to LifeOS" /> }));
 
 const { MailSettingsBody, Section } = await import("./MailSettingsSection");
 
@@ -48,12 +50,13 @@ describe("Mail's settings on the Work settings page", () => {
     for (const group of ["Writing", "Reading", "Signatures", "Accounts"]) expect(section.contains(screen.getByText(group))).toBe(true);
   });
 
-  it("say signed out under the same heading, with Sign in opening Settings → Connections", () => {
+  it("say signed out under the same heading, the computer named, with Sign in opening the sign-in dialog in place", async () => {
     render(<Section environmentId="local" />);
     const section = screen.getByRole("region", { name: "Mail" });
-    expect(screen.getByText("Not signed in to LifeOS").textContent).toBe("Not signed in to LifeOS");
+    expect(screen.getByText("Not signed in to LifeOS on the box").textContent).toBe("Not signed in to LifeOS on the box");
     fireEvent.click(within(section).getByRole("button", { name: "Sign in" }));
-    expect(requestSettings).toHaveBeenCalledWith("connections");
+    await waitFor(() => expect(screen.getByRole("dialog", { name: "Sign in to LifeOS" })).toBeTruthy());
+    expect(requestSettings).not.toHaveBeenCalled();
   });
 
   /** Sol round 2 P1: the signed-out line is for a host that says so; every other ended session says its own state. */
@@ -70,8 +73,8 @@ describe("Mail's settings on the Work settings page", () => {
   it("say LifeOS did not answer in red with Retry, never signed out, when the host cannot reach it", () => {
     at("unreachable", "unreachable");
     render(<Section environmentId="local" />);
-    expect(screen.queryByText("Not signed in to LifeOS")).toBeNull();
-    expect(screen.getByRole("alert").textContent).toBe("LifeOS did not answer");
+    expect(screen.queryByText(/^Not signed in to LifeOS/)).toBeNull();
+    expect(screen.getByRole("alert").textContent).toBe("LifeOS did not answer the box");
     fireEvent.click(screen.getByRole("button", { name: "Retry" }));
     expect(lifeos.reopen).toHaveBeenCalledWith("local", null);
   });
@@ -79,7 +82,7 @@ describe("Mail's settings on the Work settings page", () => {
   it("say a JWT that went unanswered while the host says connected did not answer", () => {
     at("unreachable", "connected");
     render(<Section environmentId="local" />);
-    expect(screen.getByRole("alert").textContent).toBe("LifeOS did not answer");
+    expect(screen.getByRole("alert").textContent).toBe("LifeOS did not answer the box");
   });
 
   it("tell a computer the host keeps LifeOS from so, with no Sign in", () => {
@@ -94,7 +97,7 @@ describe("Mail's settings on the Work settings page", () => {
     link.transport = "connecting";
     const first = render(<Section environmentId="local" />);
     expect(screen.getByLabelText("Loading")).toBeTruthy();
-    expect(screen.queryByText("Not signed in to LifeOS")).toBeNull();
+    expect(screen.queryByText(/^Not signed in to LifeOS/)).toBeNull();
     first.unmount();
     link.transport = "offline";
     render(<Section environmentId="local" />);
@@ -129,7 +132,7 @@ describe("Mail's settings on the Work settings page", () => {
     first.unmount();
     at("pairing", "pairing");
     render(<Section environmentId="local" />);
-    expect(screen.getByText("The LifeOS sign-in waits for your approval")).toBeTruthy();
+    expect(screen.getByText("The LifeOS sign-in on the box waits for your approval")).toBeTruthy();
     expect(screen.getByRole("button", { name: "Show the code" })).toBeTruthy();
   });
 });

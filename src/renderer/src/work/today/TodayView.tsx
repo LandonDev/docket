@@ -16,7 +16,8 @@ import { sectorName } from "../shell/actions";
 import { useMinute } from "../tasks/minute";
 import { CutDetail } from "../canvas/QuietLine";
 import { useTodayEnv } from "./env";
-import { downAction, downIsSilence, downWords, useDownPress, type LifeosDown } from "../shell/lifeosDown";
+import { downIsSilence, downWords, useDownPress, type LifeosDown } from "../shell/lifeosDown";
+import { useDownAction } from "../shell/DownSignIn";
 import { HeldSheet } from "./HeldSheet";
 import { foldKey, foldOf, page, type ShownSection, type TodayPage } from "./model";
 import { openAddWorkspace } from "./open";
@@ -388,8 +389,13 @@ function Bones({ label, shape, rows = 3 }: { label: string; shape?: TodaySection
  */
 function LifeosLine({ down, environmentId, host, retry }: { down: LifeosDown; environmentId: string; host: string | null; retry: (() => void | Promise<void>) | undefined }) {
   const { press, elsewhere } = useDownPress(down, environmentId);
-  const action = downAction(press, retry);
-  return <PageLine failed={downIsSilence(down)} word={downWords(down, host)} note={elsewhere ?? undefined} action={action} />;
+  const { action, dialog } = useDownAction(press, environmentId, retry);
+  return (
+    <>
+      <PageLine failed={downIsSilence(down)} word={downWords(down, host)} note={elsewhere ?? undefined} action={action} />
+      {dialog}
+    </>
+  );
 }
 
 /**
@@ -412,9 +418,13 @@ function HostLine({ failure, name }: { failure: TodayFailure; name: string }) {
 function LostLine({ down, failure, name }: { down: LifeosDown; failure: TodayFailure; name: string }) {
   const { press, elsewhere } = useDownPress(down, failure.environmentId);
   const word = downWords(down, name);
-  const action = downAction(press, failure.retry);
-  if (downIsSilence(down)) return <PageLine failed word={word} detail={failure.said} action={action} />;
-  return <PageLine word={word} note={[failure.said, elsewhere]} action={action} />;
+  const { action, dialog } = useDownAction(press, failure.environmentId, failure.retry);
+  return (
+    <>
+      {downIsSilence(down) ? <PageLine failed word={word} detail={failure.said} action={action} /> : <PageLine word={word} note={[failure.said, elsewhere]} action={action} />}
+      {dialog}
+    </>
+  );
 }
 
 /** "Work is off on the box. Turn it on in Settings, Work." as its first sentence and the rest. */

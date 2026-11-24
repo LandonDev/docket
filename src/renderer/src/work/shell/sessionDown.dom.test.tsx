@@ -40,7 +40,7 @@ const connected = { lifeos: { state: "connected", ownerId: "landon", since: 1 },
 const timeout = () => Object.assign(new Error("No answer in 15 s"), { name: "TimeoutError" });
 
 /** The host's status and the JWT's answer, for each down state. */
-const STATES: Record<LifeosDown, { status: () => Promise<unknown>; jwt?: () => Promise<unknown> }> = {
+const STATES: Record<LifeosDown | "jwt-unanswered", { status: () => Promise<unknown>; jwt?: () => Promise<unknown> }> = {
   unreachable: { status: async () => connected, jwt: () => Promise.reject(new Error("socket closed")) },
   unanswered: { status: () => Promise.reject(timeout()) },
   withheld: { status: async () => connected, jwt: () => Promise.reject(new Error("forbidden: work.lifeos.jwt is not for a given computer")) },
@@ -48,27 +48,29 @@ const STATES: Record<LifeosDown, { status: () => Promise<unknown>; jwt?: () => P
   refused: { status: async () => ({ lifeos: { state: "refused", error: "revoked" }, keys: [] }) },
   pairing: { status: async () => ({ lifeos: { state: "pairing", expiresAt: NOW + 600_000 }, keys: [] }) },
   off: { status: async () => ({ lifeos: { state: "off" }, keys: [] }) },
+  // Council round 7 (Sol, Mail 1): the status answers, then the session ask runs out of time: the host's silence.
+  "jwt-unanswered": { status: async () => connected, jwt: () => Promise.reject(timeout()) },
 };
 
 /** What each state says, the box named. */
 const WORDS: Record<LifeosDown, string> = {
-  unreachable: "LifeOS did not answer",
+  unreachable: "LifeOS did not answer the box",
   unanswered: "The box did not answer",
   withheld: "This computer cannot read LifeOS through the box",
-  "signed-out": "Not signed in to LifeOS",
+  "signed-out": "Not signed in to LifeOS on the box",
   refused: "LifeOS refused the box's sign-in",
-  pairing: "The LifeOS sign-in waits for your approval",
+  pairing: "The LifeOS sign-in on the box waits for your approval",
   off: "Work is off on the box",
 };
 const PRESS = { retry: "Retry", "sign-in": "Sign in", code: "Show the code", settings: "Open Settings" } as const;
 /** Inside Settings the switch's press is named for the section it opens. */
 const IN_SETTINGS = { ...PRESS, settings: "Work" } as const;
-const DOWN = Object.keys(STATES) as LifeosDown[];
+const DOWN = (Object.keys(STATES) as (LifeosDown | "jwt-unanswered")[]).filter((d): d is LifeosDown => d !== "jwt-unanswered");
 
 let asked: string[] = [];
 /** His laptop as a given computer (operate, approve, device): it may not turn Work on for the box. */
 const GIVEN = { transport: "open", lastHello: { environmentId: "env_box", contract: 1, caps: ["operate", "approve", "device"], key: { id: "laptop" } } };
-function host(down: LifeosDown, status: object = { transport: "open" }): void {
+function host(down: LifeosDown | "jwt-unanswered", status: object = { transport: "open" }): void {
   asked = [];
   vi.spyOn(registry, "environment").mockReturnValue({ id: "env_box", name: "The box" } as never);
   vi.spyOn(registry, "statusOf").mockReturnValue(status as never);
@@ -156,9 +158,8 @@ describe.each(DOWN)("a session %s", (down) => {
     await waitFor(() => expect(document.querySelector("[data-view-heading]")).toBeTruthy(), { timeout: 5000 });
     await settle();
     const region = screen.getByRole("region");
-    // The frame's own sign-in body has its title; every other state is the session's words, the kept computer's too.
-    const said: Record<LifeosDown, string> = { ...WORDS, "signed-out": "Sign in to LifeOS" };
-    expect(times(said[down])).toBe(1);
+    // Every state is the session's words, the computer named: the frame's sign-in body too (council round 7).
+    expect(times(words)).toBe(1);
     expect(document.querySelectorAll("[data-view-state=failed]").length).toBe(down === "unreachable" || down === "unanswered" ? 1 : 0);
     expect(region.textContent).not.toMatch(/did not load/);
     // downPress's press, as every reader has it (the frame's sign-in and code open the sign-in dialog in place).
@@ -227,7 +228,8 @@ describe("Work off where this window may not turn it on", () => {
  * Sign in or Show the code where it may, else who can and no press, in every reader alike.
  */
 describe.each(["signed-out", "refused", "pairing"] as const)("a sign-in %s", (down) => {
-  const ELSEWHERE = "Changed from a computer that manages the box";
+  // Who can, said by the act (council round 7): nothing was changed.
+  const ELSEWHERE = "Sign in from a computer that manages the box";
   const reply = { kind: "chat.reply", sector: "purdue", payload: { chatId: "c1", source: "slack", chat: "Starboard Games", text: "On it" } };
   const op = { id: "op1", kind: "update", eventId: "ev1", payload: { title: "Review", startsAt: NOW, endsAt: NOW + 3_600_000 } };
   const parts = () => [
@@ -263,8 +265,7 @@ describe.each(["signed-out", "refused", "pairing"] as const)("a sign-in %s", (do
     expect(times(ELSEWHERE)).toBe(may === "may" ? 0 : 1);
     line.unmount();
     const frame = render(<ViewFrame view="tasks" environmentId="env_box" workspaceId="ws" sector="purdue" />);
-    // The frame's sign-in body: its own title for signed out, the session's words for the others.
-    await waitFor(() => expect(times(down === "signed-out" ? "Sign in to LifeOS" : WORDS[down])).toBe(1));
+    await waitFor(() => expect(times(WORDS[down])).toBe(1));
     expect(presses(screen.getByRole("region")).filter((p) => p === label)).toEqual(may === "may" ? [label] : []);
     expect(times(ELSEWHERE)).toBe(may === "may" ? 0 : 1);
     frame.unmount();
@@ -272,6 +273,36 @@ describe.each(["signed-out", "refused", "pairing"] as const)("a sign-in %s", (do
     expect(times(WORDS[down])).toBe(1);
     expect(presses()).toEqual(may === "may" ? [label] : []);
     expect(times(ELSEWHERE)).toBe(may === "may" ? 0 : 1);
+  });
+});
+
+/** Council round 7 (Opus, Today 2): Show the code and Sign in outside the frame opened Settings, where he pressed again. */
+describe("a sign-in's press, outside the frame", () => {
+  it.each(["signed-out", "pairing"] as const)("opens the sign-in dialog in place (%s)", async (down) => {
+    host(down);
+    render(<OnSession sector="purdue">{(session) => <DownLine session={session} />}</OnSession>);
+    await waitFor(() => expect(document.querySelector(`[data-session-down="${down}"]`)).toBeTruthy());
+    expect(screen.queryByRole("dialog")).toBeNull();
+    await act(async () => screen.getByRole("button", { name: PRESS[downPress(down)!] }).click());
+    // The dialog's chunk lands, and it asks the host for the code itself.
+    await waitFor(() => expect(screen.getByRole("dialog")).toBeTruthy(), { timeout: 5000 });
+    if (down === "signed-out") await waitFor(() => expect(asked).toContain("work.lifeos.pairStart"));
+  });
+});
+
+/** Council round 7 (Sol, Mail 1): the host answered its status, then not the session's ask: that is its silence, by its name. */
+describe("a session ask the host did not answer", () => {
+  it("says the host did not answer, never LifeOS, with Retry, in a part's place and the settings line", async () => {
+    host("jwt-unanswered");
+    const part = render(<OnSession sector="purdue">{(session) => <DownLine session={session} />}</OnSession>);
+    await waitFor(() => expect(document.querySelector('[data-session-down="unanswered"]')).toBeTruthy());
+    expect(times("The box did not answer")).toBe(1);
+    expect(document.body.textContent).not.toMatch(/LifeOS did not answer/);
+    expect(presses()).toEqual(["Retry"]);
+    part.unmount();
+    render(<OnSession sector={null}>{(session) => <LifeosLine session={session} waiting={<span data-waiting />} />}</OnSession>);
+    await waitFor(() => expect(times("The box did not answer")).toBe(1));
+    expect(presses()).toEqual(["Retry"]);
   });
 });
 

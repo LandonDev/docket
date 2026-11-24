@@ -168,14 +168,17 @@ nothing.
 - While no host can read LifeOS, its sections give way to one line where the
   first stood, in the session's true state (`reachOf`, `shell/lifeosDown.ts`)
   and the view frame's words (`sessionFailure`, naming the host the session
-  reads through): "LifeOS did not answer", or "The box did not answer" when
-  the host's own status ask went unanswered (`unanswered`), with Retry; "Not
-  signed in to LifeOS" or "LifeOS refused the box's sign-in" with Sign in
-  and a sign-in that waits for his approval with Show the code (both
-  Settings → Connections), where this window may sign the host in; "Work is
-  off on the box" with Open Settings where this window may turn Work on;
-  else no press and who can ("Changed from a computer that manages the
-  box"); a computer the host keeps LifeOS from ("This computer cannot read
+  reads through): "LifeOS did not answer the box", or "The box did not
+  answer" when the host's own status or session ask went unanswered
+  (`unanswered`), with Retry, which asks the computer the line names and
+  keeps the page on it while the ask is out (`env.ts`); "Not signed in to
+  LifeOS on the box" or "LifeOS refused the box's sign-in" with Sign in, and
+  "The LifeOS sign-in on the box waits for your approval" with Show the code
+  (both open the sign-in dialog in place), where this window may sign the
+  host in; "Work is off on the box" with Open Settings where this window may
+  turn Work on; else no press and who can ("Sign in from a computer that
+  manages the box" for a sign-in, "Changed from a computer that manages the
+  box" for the switch); a computer the host keeps LifeOS from ("This computer cannot read
   LifeOS through the box") with no press, since none can help. A job read
   through a narrowed session on another host that is down (`Lost.down`)
   says that session's state by the same rule in the section it feeds,

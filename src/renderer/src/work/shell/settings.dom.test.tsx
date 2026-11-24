@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 /** Settings → Work: each host's LifeOS sign-in lives on Connections now, and a workspace page's failed read offers Retry. */
-import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { registry } from "../../lib/connection";
 import { setWorkOn, workSwitch } from "../../lib/workSwitch";
@@ -146,15 +146,16 @@ describe("a code workspace's LifeOS sector", () => {
 });
 
 describe("a code workspace with no sector, LifeOS signed out", () => {
-  it("says Not signed in to LifeOS with Sign in, which opens Settings → Connections", async () => {
+  it("says Not signed in to LifeOS with Sign in, which opens the sign-in dialog in place", async () => {
     setWorkOn("env_box", true);
     vi.spyOn(registry, "linkOf").mockReturnValue({ environmentId: "env_box", connected: true, request: vi.fn(async () => ({ lifeos: { state: "signed-out" }, keys: [] })), onPush: () => () => {}, onOpen: () => () => {} } as never);
     setLifeosStatus("env_box", { lifeos: { state: "signed-out" }, keys: [] });
     render(<CodeWorkspaceSector workspaceId="bare" />);
     await act(async () => void (await new Promise((r) => setTimeout(r, 0))));
-    expect(screen.getByText("Not signed in to LifeOS")).toBeTruthy();
+    expect(screen.getByText(/^Not signed in to LifeOS/)).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Sign in" }));
-    expect(requestSettings).toHaveBeenCalledWith("connections");
+    await waitFor(() => expect(screen.getByRole("dialog")).toBeTruthy(), { timeout: 5000 });
+    expect(requestSettings).not.toHaveBeenCalledWith("connections");
   });
 });
 
@@ -171,7 +172,7 @@ describe("a code workspace with no sector, LifeOS not signed out (Sol round 2 P1
     try {
       render(<CodeWorkspaceSector workspaceId="bare" />);
       await act(async () => void (await new Promise((r) => setTimeout(r, 0))));
-      expect(screen.queryByText("Not signed in to LifeOS")).toBeNull();
+      expect(screen.queryByText(/^Not signed in to LifeOS/)).toBeNull();
       expect(screen.getByLabelText("Loading")).toBeTruthy();
     } finally {
       transport.now = null;
@@ -208,8 +209,8 @@ describe("a code workspace with no sector, LifeOS not signed out (Sol round 2 P1
     setLifeosStatus("env_box", { lifeos: { state: "unreachable", since: 1, error: "x" }, keys: [] });
     render(<CodeWorkspaceSector workspaceId="bare" />);
     await act(async () => void (await new Promise((r) => setTimeout(r, 0))));
-    expect(screen.queryByText("Not signed in to LifeOS")).toBeNull();
-    expect(screen.getByRole("alert").textContent).toBe("LifeOS did not answer");
+    expect(screen.queryByText(/^Not signed in to LifeOS/)).toBeNull();
+    expect(screen.getByRole("alert").textContent).toMatch(/^LifeOS did not answer/);
     expect(screen.getByRole("button", { name: "Retry" })).toBeTruthy();
   });
 });

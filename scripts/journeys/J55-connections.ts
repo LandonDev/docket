@@ -22,7 +22,8 @@ async function signedOutView({ pair }: Context, view: string): Promise<void> {
   const region = `[role="region"][aria-label=${JSON.stringify(view)}]`
   await pair.page.until(view + ' to say how to sign in', 7000, async () => {
     const words = await pair.page.eval<string>(`document.querySelector(${JSON.stringify(region)})?.innerText ?? ''`)
-    return words.includes('Sign in to LifeOS') && await pair.page.centre(region + ' button', 'Sign in')
+    // The frame says the state, the computer named ("Not signed in to LifeOS on box"), with Sign in.
+    return words.includes('Not signed in to LifeOS') && await pair.page.centre(region + ' button', 'Sign in')
   })
 }
 

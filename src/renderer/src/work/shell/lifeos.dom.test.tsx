@@ -223,7 +223,12 @@ describe("a host's status that could not be read", () => {
     expect(sessionFailure("unreachable", true, "The box")).toBe("This computer cannot read LifeOS through the box");
     expect(sessionFailure("refused", false, "MacBook")).toBe("LifeOS refused MacBook's sign-in");
     expect(sessionFailure("unanswered", false, "MacBook")).toBe("MacBook did not answer");
-    expect(sessionFailure("unreachable", false, "The box")).toBe("LifeOS did not answer");
+    // Council round 7: LifeOS's silence, signed out and a sign-in that waits name the computer too.
+    expect(sessionFailure("unreachable", false, "The box")).toBe("LifeOS did not answer the box");
+    expect(sessionFailure("signed-out", false, "The box")).toBe("Not signed in to LifeOS on the box");
+    expect(sessionFailure("pairing", false, "MacBook")).toBe("The LifeOS sign-in on MacBook waits for your approval");
+    expect(sessionFailure("unreachable")).toBe("LifeOS did not answer");
+    expect(sessionFailure("signed-out")).toBe("Not signed in to LifeOS");
     expect(sessionFailure("off")).toBe("Work is off on this host");
     expect(sessionFailure("unanswered")).toBe("The host did not answer");
   });

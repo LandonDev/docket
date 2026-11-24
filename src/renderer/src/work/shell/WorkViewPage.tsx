@@ -15,11 +15,10 @@ import { lifeosHostName, reopenLifeos, sessionFailure, sessionWords, useLifeosSe
 import { startThreadAbout } from "./WorkColumn";
 import { openWorkSettings } from "./open";
 import { DOWN_PRESS_LABEL, useDownPress } from "./lifeosDown";
+// The sign-in dialog Connections uses, loaded on the press: a view's sign-in opens it in place, never a page without it.
+import { SignInFor } from "./DownSignIn";
 import { clockTime } from "../../lib/duration";
 import { workErrorWords } from "../../lib/workErrorWords";
-
-// The sign-in dialog Connections uses, loaded on the press: a view's sign-in opens it in place, never a page without it.
-const SignInDialog = lazy(() => import("./settings").then((m) => ({ default: m.SignInDialog })));
 
 /**
  * The main pane while one of a Work workspace's views is open (App mounts it
@@ -197,7 +196,7 @@ export function ViewFrame({ view, environmentId, workspaceId, sector }: { view: 
           <EmptyState title={silence} line={`Open ${def.label} from a computer that manages ${nameInLine(host)}.`} />
         ) : signedOut || pairing ? (
           <EmptyState
-            title={pairing ? sessionFailure("pairing") : refused ? sessionFailure("refused", false, lifeosHostName(environmentId)) : "Sign in to LifeOS"}
+            title={sessionFailure(pairing ? "pairing" : refused ? "refused" : "signed-out", false, lifeosHostName(environmentId))}
             // The frame opens the sign-in dialog in place, the one Connections opens, for its sign-in and its code alike.
             {...(signPress.press ? { action: { label: DOWN_PRESS_LABEL[signPress.press], onClick: () => setSigningIn(true) } } : signPress.elsewhere ? { line: signPress.elsewhere } : {})}
           />
@@ -209,11 +208,7 @@ export function ViewFrame({ view, environmentId, workspaceId, sector }: { view: 
           </ViewBoundary>
         )}
       </div>
-      {signingIn && status ? (
-        <Suspense fallback={null}>
-          <SignInDialog environmentId={environmentId} state={status.lifeos} onClose={() => setSigningIn(false)} />
-        </Suspense>
-      ) : null}
+      {signingIn ? <SignInFor environmentId={environmentId} onClose={() => setSigningIn(false)} /> : null}
     </div>
   );
 }

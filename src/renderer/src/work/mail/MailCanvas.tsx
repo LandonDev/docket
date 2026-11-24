@@ -14,7 +14,8 @@ import { EmptyState, SurfaceSkeleton } from "../../surfaces/SurfaceSkeleton";
 import type { CanvasBodyProps, CanvasShell } from "../canvas/kind";
 import { sentState } from "./sentState";
 import { reopenLifeos, sessionWaits, sessionWords, useLifeosSession } from "../shell/lifeos";
-import { downAction, downIsSilence, downOf, useDownPress } from "../shell/lifeosDown";
+import { downIsSilence, downOf, useDownPress } from "../shell/lifeosDown";
+import { useDownAction } from "../shell/DownSignIn";
 import { RuleLine } from "../rules/RuleLine";
 import { mailClientFor } from "./client";
 import { placedKit } from "./files";
@@ -45,7 +46,7 @@ export function Body({ item, source, env, shell }: CanvasBodyProps) {
   const silent = !!down && downIsSilence(down);
   const words = sessionWords(lifeos);
   const { press, elsewhere } = useDownPress(down, env);
-  const action = downAction(press);
+  const { action, dialog } = useDownAction(press, env);
   useEffect(() => {
     // Retry asks the host's status afresh and, once it says connected, this sector's session again: watching a host already
     // watched starts nothing. A retry that fails leaves the line as it is; the spinner stopping is the answer.
@@ -58,11 +59,14 @@ export function Body({ item, source, env, shell }: CanvasBodyProps) {
   // Any other down state is said once, with the press that can help, if any (`downPress`), or who can.
   if (down && !silent)
     return (
-      <EmptyState
-        title={words}
-        {...(action ? { action: { label: action.label, onClick: action.run } } : {})}
-        {...(elsewhere ? { line: elsewhere } : {})}
-      />
+      <>
+        <EmptyState
+          title={words}
+          {...(action ? { action: { label: action.label, onClick: action.run } } : {})}
+          {...(elsewhere ? { line: elsewhere } : {})}
+        />
+        {dialog}
+      </>
     );
   // LifeOS did not answer: the state line says so once, and the draft last read stays, read only; with none read, nothing pulses under the line.
   if (!lifeos.client) {

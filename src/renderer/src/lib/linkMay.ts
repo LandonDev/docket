@@ -38,3 +38,9 @@ export function useLinksMay(): (environmentId: string, method: Method, params?: 
  * switch says the same of several hosts (`elsewhereLine`).
  */
 export const managedElsewhere = (host: string): string => `Changed from a computer that manages ${nameInLine(host)}`;
+
+/**
+ * Who can, for a LifeOS sign-in this window's key may not make on a host (its pairing, `work.lifeos.pairStart`, needs
+ * admin): said by the act, since nothing was changed. A setting this window may not change keeps `managedElsewhere`.
+ */
+export const signInElsewhere = (host: string): string => `Sign in from a computer that manages ${nameInLine(host)}`;

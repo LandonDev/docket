@@ -84,7 +84,7 @@ describe("a host that did not answer its status", () => {
     await vi.waitFor(() => expect(document.querySelector("[aria-busy], [data-slot=skeleton]")).toBeNull(), { timeout: 5000 });
     status = async () => ({ lifeos: { state: "signed-out" }, keys: [] });
     fireEvent.click(screen.getByRole("button", { name: "Retry" }));
-    await vi.waitFor(() => expect(screen.getByText("Sign in to LifeOS")).toBeTruthy());
+    await vi.waitFor(() => expect(screen.getByText("Not signed in to LifeOS on the box")).toBeTruthy());
     expect(document.querySelector("[data-view-state=failed]")).toBeNull();
   });
 });
@@ -157,7 +157,7 @@ describe("what stands between a view and LifeOS", () => {
     await flush();
     expect(screen.getByText("Work is off on the box")).toBeTruthy();
     expect(screen.getByRole("button", { name: "Open Settings" })).toBeTruthy();
-    expect(screen.queryByText("Sign in to LifeOS")).toBeNull();
+    expect(screen.queryByText(/^Not signed in to LifeOS/)).toBeNull();
   });
   it("signed out, Sign in opens the sign-in dialog in place; a sign-in waiting says so and shows its code", async () => {
     quiet();
@@ -180,8 +180,8 @@ describe("what stands between a view and LifeOS", () => {
     setLifeosStatus("env_box", { lifeos: { state: "signed-out" }, keys: [] });
     render(<ViewFrame view="tasks" environmentId="env_box" workspaceId="ws" sector="purdue" />);
     await flush();
-    expect(screen.getByText("Sign in to LifeOS")).toBeTruthy();
-    expect(screen.getByText("Changed from a computer that manages the box")).toBeTruthy();
+    expect(screen.getByText("Not signed in to LifeOS on the box")).toBeTruthy();
+    expect(screen.getByText("Sign in from a computer that manages the box")).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Sign in" })).toBeNull();
   });
   it("a host never heard from and not connected is named with Retry, not bones for ever", async () => {
@@ -313,7 +313,7 @@ describe("views outside LifeOS's gate, and a view that did not import", () => {
     setLifeosStatus("env_box", { lifeos: { state: "signed-out" }, keys: [] });
     render(<ViewFrame view="routines" environmentId="env_box" workspaceId="ws" sector="purdue" />);
     await vi.waitFor(() => expect(screen.getByText("No routines yet")).toBeTruthy(), { timeout: 5000 });
-    expect(screen.queryByText("Sign in to LifeOS")).toBeNull();
+    expect(screen.queryByText(/^Not signed in to LifeOS/)).toBeNull();
     expect(screen.getByRole("button", { name: "New routine" })).toBeTruthy();
   });
 
@@ -362,7 +362,7 @@ describe("a view that draws its own head", () => {
       expect(region.querySelector(".h-10")).toBeNull();
       expect(document.activeElement).toBe(region);
       act(() => setLifeosStatus("env_box", { lifeos: { state: "signed-out" }, keys: [] }));
-      expect(screen.getByText("Sign in to LifeOS")).toBeTruthy();
+      expect(screen.getByText(/^Not signed in to LifeOS/)).toBeTruthy();
       expect(region.querySelector("[data-view-heading]")!.textContent).toBe("Mail");
     } finally {
       WORK_VIEWS.mail.chunk = was;

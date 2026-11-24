@@ -16,6 +16,7 @@ vi.mock("../shell/lifeos", async (original) => ({
   ...(await original<object>()),
   useLifeosSession: () => ({ environmentId: "box", sector: null, client: null, state: day.session.state, ...(day.session.withheld ? { withheld: true } : {}), ...(day.session.unanswered ? { unanswered: true } : {}) }),
   reopenLifeos: async (env: string) => void day.reopened.push(env),
+  useLifeosStatus: () => ({ lifeos: { state: day.session.state }, keys: [] }),
   useLifeosQuery: (_s: unknown, name: string) => {
     if (name === "events:get") {
       if (day.event === "loading") return { status: "loading" };
@@ -28,6 +29,8 @@ vi.mock("../shell/lifeos", async (original) => ({
   },
 }));
 vi.mock("../shell/open", () => ({ openConnections: vi.fn(), openWorkSettings: vi.fn() }));
+// The sign-in dialog the line's press opens in place (its own chunk, DownSignIn.tsx).
+vi.mock("../shell/settings", () => ({ SignInDialog: () => <div role="dialog" aria-label="Sign in to LifeOS" /> }));
 const { View } = await import("./CalendarActView");
 const { openConnections } = await import("../shell/open");
 
@@ -149,7 +152,7 @@ describe("a held reply whose LifeOS session is down", () => {
     named.mockRestore();
   });
 
-  it("offers no Retry where asking again cannot help, and Sign in where a sign-in is missing", () => {
+  it("offers no Retry where asking again cannot help, and Sign in where a sign-in is missing", async () => {
     day.event = "failed";
     day.session = { state: "unreachable", withheld: true };
     const { container, unmount } = draw();
@@ -164,7 +167,9 @@ describe("a held reply whose LifeOS session is down", () => {
     day.session = { state: "signed-out", withheld: false };
     const out = draw();
     expect(out.container.querySelector("[data-session-down=signed-out]")!.textContent).toBe("Not signed in to LifeOSSign in");
+    // Council round 7: the press opens the sign-in dialog in place, never Settings where he must press again.
     fireEvent.click(screen.getByRole("button", { name: "Sign in" }));
-    expect(openConnections).toHaveBeenCalledTimes(1);
+    expect(await screen.findByRole("dialog", { name: "Sign in to LifeOS" })).toBeTruthy();
+    expect(openConnections).not.toHaveBeenCalled();
   });
 });

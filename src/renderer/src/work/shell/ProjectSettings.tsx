@@ -24,6 +24,7 @@ import { dialogsChunk } from "../../surfaces/chunks";
 import { ProjectSharing } from "../guests/Share";
 import { reopenLifeos, sessionWaits, sessionWords, useLifeosQuery, useLifeosSession } from "./lifeos";
 import { downAction, downOf, useDownPress } from "./lifeosDown";
+import { SignInFor } from "./DownSignIn";
 
 // The rules dialog rides the dialogs chunk, as it does for a code project: asked for at the press on Edit.
 const PreambleDialog = dialogsChunk.surface("PreambleDialog");
@@ -188,6 +189,8 @@ export function WorkProjectSettings({ project: opened, workspace, onClose }: { p
 
   const [retrying, setRetrying] = useState(false);
   const down = useDownPress(downOf(session), workspace.environmentId);
+  // Sign in and Show the code open the sign-in dialog over the sheet, as its child.
+  const [signingIn, setSigningIn] = useState(false);
   const reach = useMemo((): LifeosReach => {
     if (!lifeosId) return { status: "local" };
     if (row) return { status: "ready" };
@@ -201,10 +204,10 @@ export function WorkProjectSettings({ project: opened, workspace, onClose }: { p
     };
     if (session.client) return { status: "failed", line: listed.status === "failed" ? listed.error : sessionWords(session), press: { label: "Retry", run: retry } };
     // A session that is down says its state once, with the press `useDownPress` gives: Retry only where LifeOS or the
-    // host did not answer, never for a computer the host keeps LifeOS from; Sign in or Show the code, in Connections,
+    // host did not answer, never for a computer the host keeps LifeOS from; Sign in or Show the code, the sign-in dialog,
     // where this window may sign the host in; Open Settings where Work is off and it may turn it on; else who can.
     const { press, elsewhere } = down;
-    const action = downAction(press, retry);
+    const action = downAction(press, retry, () => setSigningIn(true));
     return { status: "failed", line: sessionWords(session), ...(elsewhere ? { note: elsewhere } : {}), ...(action ? { press: action } : {}) };
   }, [lifeosId, row, listed, session, retrying, workspace.environmentId, sector, down]);
 
@@ -327,6 +330,7 @@ export function WorkProjectSettings({ project: opened, workspace, onClose }: { p
           />
         </form>
         {/* Inside the sheet's own tree, so each opens over it as its child and a press in one never closes the sheet. */}
+        {signingIn ? <SignInFor environmentId={workspace.environmentId} onClose={() => setSigningIn(false)} /> : null}
         {editingRules ? <PreambleDialog scope={{ kind: "project", project, workspace }} onClose={() => setEditingRules(false)} /> : null}
         {deleting ? (
           <ConfirmDialog

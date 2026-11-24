@@ -34,7 +34,7 @@ import { captureKeyApi, CaptureKeyRow } from "../capture/CaptureKeyRow";
 import { WaitingSection } from "../mail/WaitingSection";
 import { StartPlacesSection } from "../clashes/StartPlaces";
 import { desktopRows, hostDesktops, hostIdOfLink, isDesktop, linkIdOfHost, linkSector, localHostId, sectorName, SECTORS, setWorkHome, setWorkspaceSettings, workHome, workspaceSettings } from "./actions";
-import { useLifeosQuery, useLifeosSession, useLifeosStatus } from "./lifeos";
+import { lifeosHostName, sessionFailure, useLifeosQuery, useLifeosSession, useLifeosStatus } from "./lifeos";
 
 /**
  * A failure on these pages in his words, naming the computer: `workErrorWords` for a known fault, else the
@@ -143,7 +143,7 @@ function SectorsSection({ environmentId }: { environmentId: string }) {
   const session = useLifeosSession(environmentId, null);
   const listed = useLifeosQuery<{ key: string; label: string; order: number }[]>(session, "sectors:list", {});
   if (session.state !== "connected") return null;
-  return <PageSection title="LifeOS">{listed.status === "loading" ? <PageRowsSkeleton rows={1} description control="none" /> : listed.status === "failed" ? <PageError>LifeOS did not answer</PageError> : <SectorsRow sectors={listed.value} />}</PageSection>;
+  return <PageSection title="LifeOS">{listed.status === "loading" ? <PageRowsSkeleton rows={1} description control="none" /> : listed.status === "failed" ? <PageError>{sessionFailure("unreachable", false, lifeosHostName(environmentId))}</PageError> : <SectorsRow sectors={listed.value} />}</PageSection>;
 }
 
 function SectorsRow({ sectors }: { sectors: { key: string; label: string; order: number }[] }) {
