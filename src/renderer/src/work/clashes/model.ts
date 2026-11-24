@@ -25,6 +25,20 @@ export function marksOf(list: ClashList): ClashMarks {
   return { ready: true, clashes, leaves: new Map(list.leaves.map((l) => [l.eventId, l])), marked: new Set(clashes.keys()) };
 }
 
+/**
+ * The clashes still his to settle, by event, at `now`: a clash is his until its later event is over (Running late
+ * is for the time after the earlier one ends), and an event that is over drops its own line. Over is by the end
+ * LifeOS gave the clash's side, strictly after the clock, as the dialog reads it. The Agenda and Today both read it.
+ */
+export function liveClashes(clashes: ReadonlyMap<string, readonly Clash[]>, now: number): Map<string, readonly Clash[]> {
+  const live = new Map<string, readonly Clash[]>();
+  for (const [id, list] of clashes) {
+    const kept = list.filter((c) => c.b.endsAt > now && (c.a.eventId === id ? c.a : c.b).endsAt > now);
+    if (kept.length) live.set(id, kept.length === list.length ? list : kept);
+  }
+  return live;
+}
+
 const MINUTE = 60_000;
 /** Times he is offered land on the quarter hour. */
 const STEP = 15 * MINUTE;

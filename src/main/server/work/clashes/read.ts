@@ -108,7 +108,12 @@ export interface Answer {
   comment?: string
   start?: number
   end?: number
+  /** a time's: the pair as the step showed it when the time was offered */
+  seen?: readonly ClashSeen[] | undefined
 }
+
+/** A time offered from a pair that has changed since: the step keeps its form and says to look again. */
+export const PAIR_CHANGED = 'These events changed. Go back for a new time.'
 
 export const NOT_HIS = 'Only the owner answers a clash, from the Clash dialog. Draft the act with draft_calendar_op instead; it waits in the Outbox for his press.'
 
@@ -132,8 +137,18 @@ export async function answer(ctx: WorkCtx, a: Answer, by: Caller): Promise<Clash
   const { start, end } = a
   if (start === undefined || end === undefined) throw new Error(a.way === 'propose' ? 'A new time needs a start and an end.' : 'A move needs a start and an end.')
   if (end <= start) throw new Error('The end must come after the start.')
+  // The time was offered from the pair as the step showed it: a calendar that moved either event since (and has
+  // not reached the window yet) may have made it clash anew, so the pair is read again here before anything goes.
+  type Event = { source?: string; startsAt?: number; endsAt?: number; arriveByAt?: number; leaveByAt?: number }
+  const read = new Map<string, Event | null>()
+  for (const s of a.seen ?? []) {
+    const now = await asked(() => owner.query<Event | null>('events:get', { id: s.eventId }))
+    read.set(s.eventId, now)
+    if (!now) throw new Error('That event is no longer in LifeOS.')
+    if (now.startsAt !== s.startsAt || (typeof now.endsAt === 'number' && now.endsAt !== s.endsAt)) throw new Error(PAIR_CHANGED)
+  }
   if (a.way === 'propose') return send('propose', { proposedStart: start, proposedEnd: end, ...comment })
-  const event = await asked(() => owner.query<{ source?: string; startsAt?: number; arriveByAt?: number; leaveByAt?: number } | null>('events:get', { id: a.eventId }))
+  const event = read.has(a.eventId) ? read.get(a.eventId) : await asked(() => owner.query<Event | null>('events:get', { id: a.eventId }))
   if (!event) throw new Error('That event is no longer in LifeOS.')
   // A calendar's own event moves on its calendar; one that lives only in LifeOS moves there, with nothing sent.
   if (event.source === 'gcal' || event.source === 'ics') return send('update', { startsAt: start, endsAt: end })

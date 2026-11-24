@@ -15,8 +15,10 @@ import { loadToast } from "../../components/ui/toaster";
 import { cn } from "../../lib/cn";
 import { ConnectionLostError, registry, TimeoutError } from "../../lib/connection";
 import { refusalWords } from "../../lib/settingsHome";
-import { openWorkView } from "../../lib/workSwitch";
+import { workspaceStore } from "../../lib/tcserver/workspaces";
+import type { MailtoDraft } from "work-kit/mail";
 import { writeMail } from "../mail/mailto";
+import { goTo } from "../today/open";
 import { sectorName } from "../shell/actions";
 import { useMinute } from "../tasks/minute";
 import { sessionFailure, sessionWaits, useLifeosSession } from "../shell/lifeos";
@@ -41,12 +43,26 @@ type Step = { eventId: string; way: Exclude<ClashWay, "late"> };
 const flipped = (id: string) => id.split("-").reverse().join("-");
 const eventGet = makeFunctionReference<"query">("events:get");
 
+/**
+ * The draft in Mail's composer of the later event's job: the window enters that job's workspace first, as a
+ * Today row's press does (today/open.ts `goTo`), and the draft is bound to that workspace's mailbox, so it is
+ * never written into the Mail of the job he pressed from. Sending stays the composer's own press. False when
+ * the workspace is not in this window's catalog.
+ */
+function lateMail(environmentId: string, workspaceId: string, draft: MailtoDraft): boolean {
+  const workspace = workspaceStore.getSnapshot().workspaces.find((w) => w.id === workspaceId && w.environmentId === environmentId);
+  if (!workspace) return false;
+  goTo({ path: workspace.path, workspaceId }, { view: "mail" });
+  writeMail(draft, workspaceId);
+  return true;
+}
+
 export function ClashDialog({ ask, onClose }: { ask: ClashAsk; onClose: () => void }) {
   // The fortnight from the earlier event's day when the opener handed the clash over, else from today, as every opener reads.
   // Whole local days (a day is 23 or 25 hours when the clocks change). A fortnight, not the pair's own day or two: an event of the pair that moves to another day and still clashes must stay in the read, or the dialog would call the clash gone.
   const first = startOfDay(ask.clash ? ask.clash.a.startsAt : Date.now());
-  // And through the later event's own day when that lies past the fortnight (a block of weeks, and something in its third): the read must hold the pair the opener showed.
-  const [from, to] = [first, Math.max(addDays(first, 14), ask.clash ? addDays(startOfDay(ask.clash.b.startsAt), 1) : 0)];
+  // And through the later event's own day and the earlier one's last when those lie past the fortnight (a block of weeks, and something in its third): the read must hold the pair the opener showed, and the pair still, while the later one moves anywhere inside the block.
+  const [from, to] = [first, Math.max(addDays(first, 14), ask.clash ? addDays(startOfDay(Math.max(ask.clash.b.startsAt, ask.clash.a.endsAt)), 1) : 0)];
   const marks = useClashes(ask.environmentId, from, to);
   // The pair in either order: when one of the two moves to start first and they still clash, it is the same clash under a flipped id.
   const live = [...marks.clashes.values()].flat().find((c) => c.id === ask.id || c.id === flipped(ask.id));
@@ -256,17 +272,17 @@ function Body({
     const stampOf = (c: Clash) => `${pairStamp(c)}|${c.b.eventId}|${c.b.sector}|${c.b.workspaceId ?? ""}`;
     const pressed = stampOf(clash);
     answered(session.client.query(eventGet, { id: clash.b.eventId })).then(
-      (event: { sector?: string; attendees?: { address: string }[] } | null) => {
+      (event: { sector?: string; startsAt?: number; endsAt?: number; attendees?: { address: string }[] } | null) => {
         setPending(false);
-        // The reply may know of a change the screen has not drawn yet: the event's job is read from it too.
-        if (event?.sector !== undefined && event.sector !== clash.b.sector) return setBusy(null);
+        // The reply may know of a change the screen has not drawn yet: the event's job and times are read from it too, so a move the live read has yet to bring drafts no old minutes.
+        const b = latest.current.b;
+        if ((event?.sector !== undefined && event.sector !== clash.b.sector) || (event?.startsAt !== undefined && event.startsAt !== b.startsAt) || (event?.endsAt !== undefined && event.endsAt !== b.endsAt)) return setBusy(null);
         // The pair changed while the people were read (its times, its drive, or the later event's job), or stopped being a clash: the minutes he pressed for are no longer the minutes, or the Mail no longer the job's. The dialog shows the pair as it is, or that it is gone, and the press is his again.
         // Nor is a line drafted for an event that ended in the wait: its Running late is gone from the dialog by then.
         if (left.current || latest.current.b.endsAt <= Date.now() || stampOf(latest.current) !== pressed) return setBusy(null);
         const to = (event?.attendees ?? []).map((a) => a.address).filter((a) => a.includes("@"));
         if (!to.length) return failed(null, "Nobody on this event has an address");
-        openWorkView({ workspaceId, view: "mail" });
-        writeMail(lateDraft(latest.current, to, Date.now()));
+        if (!lateMail(environmentId, workspaceId, lateDraft(latest.current, to, Date.now()))) return failed(null, "This job's workspace is not on this host");
         close ? close(onClose) : onClose();
       },
       (err: unknown) => failed(err, "LifeOS did not answer"),
@@ -292,7 +308,9 @@ function Body({
         onSend={(params) => {
           setRefused(null);
           setPending(true);
-          link.request("work.clashes.answer", { eventId: step.eventId, way: step.way, ...params }, { lane: "ui" }).then(
+          // A time goes with the pair it was offered from (the step holds Send once the pair on screen changes): the host reads both again and refuses a pair a calendar changed that has not reached the window yet.
+          const seen = params.start !== undefined ? { seen: [clash.a, clash.b].map(({ eventId, startsAt, endsAt }) => ({ eventId, startsAt, endsAt })) } : {};
+          link.request("work.clashes.answer", { eventId: step.eventId, way: step.way, ...params, ...seen }, { lane: "ui" }).then(
             (reply: unknown) => {
               done(doneWords(step.way, clash[side].title, (reply as ClashAnswered | null)?.queued ?? true));
             },

@@ -209,6 +209,10 @@ A sender, and each known person in a message's Details, opens their page
 in People when the address is one of the sector's people (work-kit's
 `MailKit.openPerson`; [work-people.md](work-people.md)). People's Write
 opens a new mail here through the kit's `onMailto` (`work/mail/mailto.ts`).
+A draft asked for one job's workspace (`writeMail(draft, workspaceId)`, the
+Clash dialog's Running late) goes only to that workspace's Mail: the view
+binds its mailbox to the workspace, and another job's mailbox that mounts
+first drops the draft rather than take it.
 The face Mail draws is `work/mail/face.tsx`, which People draws too.
 
 The list is 296px beside the reader and its edge takes a drag from 260 to

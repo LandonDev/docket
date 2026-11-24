@@ -183,6 +183,7 @@ const SHAPES = {
   time: { hour: 'numeric', minute: '2-digit' },
   day: { weekday: 'short' },
   date: { month: 'short', day: 'numeric' },
+  dayDate: { weekday: 'short', month: 'short', day: 'numeric' },
   ymd: { year: 'numeric', month: 'numeric', day: 'numeric' },
 } as const
 function format(kind: keyof typeof SHAPES, timeZone: string | undefined): Intl.DateTimeFormat {
@@ -288,14 +289,16 @@ export function clashTitle(clash: Clash): string {
 /**
  * The digest's row: "Varsity Basketball overlaps Staff meeting" (the later
  * first) or "15 min short between Staff meeting and Varsity Basketball",
- * then "Thu 6:00 PM, Ref and Purdue": the later event's day and start and
- * the jobs, one name when both are one job.
+ * then "Thu, Nov 26, 6:00 PM, Ref and Purdue": the later event's date and
+ * start and the jobs, one name when both are one job. Always the date: a
+ * clash is told up to two weeks ahead and read hours later, when a weekday
+ * alone reads as this week's.
  */
 export function tellWords(clash: Clash, opts: ClashWordsOpts = {}): { title: string; detail: string } {
   const { a, b } = clash
   const title = clash.kind === 'overlap' ? `${b.title} overlaps ${a.title}` : `${shortWords(clash)} between ${a.title} and ${b.title}`
   const jobs = a.sector === b.sector ? labelOf(b.sector, opts) : `${labelOf(b.sector, opts)} and ${labelOf(a.sector, opts)}`
-  return { title, detail: `${dayOf(b.startsAt, opts)} ${clockOf(b.startsAt, opts)}, ${jobs}` }
+  return { title, detail: `${format('dayDate', opts.timeZone).format(b.startsAt)}, ${isSecond(b.startsAt, opts) ? 'second ' : ''}${clockOf(b.startsAt, opts)}, ${jobs}` }
 }
 
 /** "Leave 4:35 PM". */

@@ -60,14 +60,20 @@ Every call runs on the owner session, so it reads every job.
   press (each id, start, end and calendar's place words); LifeOS refuses the
   waive in words when they are no longer so. A place's words go whole,
   with no cap: the list that showed the pair never capped them.
-- `work.clashes.answer {eventId, way, comment?, start?, end?}` (approve): his
+- `work.clashes.answer {eventId, way, comment?, start?, end?, seen?}` (approve): his
   own press, sent at once, as New event sends (agenda/NewEventDialog.tsx):
   `calendarOps:save` with no origin, then `calendarOps:send {id, cause:
   'press'}`. A decline carries his note; a proposal `proposedStart` and
   `proposedEnd`; a move is an `update` with `startsAt` and `endsAt` for an
   event from a calendar (`source` `gcal` or `ics`), and `events:update {id,
   patch: {startsAt, endsAt}}` with nothing sent for one that lives only in
-  LifeOS. Refused for a thread's call whatever its key holds, and for any key
+  LifeOS. A time (a proposal, a move) carries `seen`, the pair as the step
+  showed it when it offered the time: the host reads both events again
+  (`events:get`) and refuses with "These events changed. Go back for a new
+  time." when either's start or end moved, so an offer a calendar made
+  stale before the window heard is never sent (the step keeps its form). The
+  place is not compared: LifeOS's waive does that, and a false refusal here
+  would leave him no way to move. Refused for a thread's call whatever its key holds, and for any key
   without approve. A LifeOS refusal comes back in its own words. It answers
   `{queued}` (`ClashAnswered`): true when the act was handed to LifeOS's
   sender for a calendar, which has not reached the calendar yet, false when
@@ -99,11 +105,17 @@ holds its own send.
 
 Read only; 7 days from the start of his today by default, 14 at most. It lists
 the clashes where either event is the thread's job (`ctx.scope.sector`; a
-Work Chat names one with `sector`, a workspace with no job is refused). The
+Work Chat names one with `sector`, a workspace with no job is refused, and so
+is a thread with no Work home, whose row names a workspace or project that is
+not Work's: it reaches no job). The
 other job's event is masked: its job's name and its times only, never its
-title, people, place or event id, and the drive is left out unless both
-events are the thread's job, since minutes and miles say where the other one
-is. Plain text, one clash a line, in his time zone. Its description tells the
+title, people, place or event id. The drive and the minutes short are left
+out unless both events are the thread's job ("not enough time to drive"),
+since minutes and miles say where the other one is, and so do the minutes
+short beside the two times. Plain text, one clash a line under the later
+event's day, in his time zone: each start said beside that day and each end
+beside its own start (`timeNear`: bare that day, a weekday within three
+days, else the date; "second 1:30 AM" where the clocks go back). Its description tells the
 thread that its way out is `draft_calendar_op` or a mail draft, held in the
 Outbox.
 
@@ -123,8 +135,14 @@ events' starts, ends and place text, so a moved event tells again):
 - `workspaceId` and `open: {view: 'agenda', workspaceId, at: <earlier event>}`
   name this host's Work workspace for the earlier event's job. A host with no
   such workspace says nothing.
-- `title` and `detail` are `tellWords`. `by` is the later event's start when
-  that falls on his today (it cannot wait for the next digest), else absent.
+- `title` and `detail` are `tellWords`; the detail always has the date
+  ("Mon, Nov 30, 6:00 PM, Ref and Purdue"), since a clash is told up to two
+  weeks ahead and read hours later. `by` is always the later event's start:
+  the digest's rule (`decide`, and its 30-second look at rows whatever
+  digest they are in) holds a later day's clash for the digest and
+  interrupts once that start comes before the next digest plus two hours,
+  so one early tomorrow found the evening before is heard that night, and
+  one found days ahead is heard again on its day.
 - A told clash no longer in the answer (passed, moved apart, or fine by him)
   is taken back with `ctx.tell.done(key)` and its row dropped.
 
@@ -155,11 +173,18 @@ The pillar has no view of its own and no row in the column.
   has no end, and the dialog is locked while it is out; a Start place Save
   is given the same; if the two change or stop clashing while it reads, or
   the later event ends or changes job (Mail would open under the old one),
-  nothing is drafted and the press is his again on the pair as it is)
-  and opens Mail's composer in that job's workspace (`mail/mailto.ts`), so it
-  is offered only where this host has that workspace. The dialog reads the
+  or the people's reply has the later event at other times than the screen,
+  nothing is drafted and the press is his again on the pair as it is).
+  Then the window enters that job's workspace as a Today row's press does
+  (`today/open.ts` `goTo`), opens its Mail, and hands the draft to Mail's
+  door bound to that workspace (`writeMail(draft, workspaceId)`,
+  `mail/mailto.ts`): only that workspace's mailbox takes it, and another
+  job's mailbox that mounts first drops it, so another job's people never
+  land in the Mail of the job he pressed from. It is offered only where
+  this host has that workspace. The dialog reads the
   fortnight from the earlier event's day, and through the later event's
-  own day when that lies past it (whole local days; not the pair's own day
+  own day and the earlier one's last when those lie past it, so a meeting
+  that moves inside a block of weeks stays in the read (whole local days; not the pair's own day
   or two, so an event that moves to another day and still clashes stays in
   the read); an event that is over gets no way out; a clash that is gone says so in
   its title, and a read that failed with nothing handed over says why. It
@@ -197,8 +222,10 @@ The pillar has no view of its own and no row in the column.
   how late he is, the words.
 - `today.ts` is the pillar's `TodaySource`, one line in `TODAY_SOURCES`: no
   row of its own, a mark on each event's `event:<id>` row (the clash in that
-  event's words, drawn as a fault, with Resolve), and the leave-by as the
-  row's live line until the drive would have him there.
+  event's words under Today's own day, drawn as a fault, with Resolve), and the leave-by as the
+  row's live line until the drive would have him there. A clash drops from
+  Today once its later event is over, by the Agenda's rule
+  (`liveClashes` in `model.ts`, which both read).
 - `Clash.preview.tsx` draws the dialog's states and a day of rows for
   `bun run ui:preview`.
 

@@ -3,7 +3,7 @@ import { tellWords } from '@shared/work/clashes'
 import { errorText } from '@shared/work/ids'
 import type { WorkCtx } from '../modules'
 import { clashOf, homesOf, type LifeosClash, type LifeosRange } from './read'
-import { hostZone, sameDay, startOfDay, zoneOf } from './zone'
+import { hostZone, startOfDay, zoneOf } from './zone'
 
 /**
  * The watcher: the next fourteen days of clashes, live from LifeOS. Each
@@ -49,8 +49,10 @@ export function tellClashes(ctx: WorkCtx, clashes: readonly LifeosClash[], zone:
         workspaceId,
         ...words,
         open: { view: 'agenda', workspaceId, at: c.a.eventId },
-        // Today's clash cannot wait for the next digest; a later day's can.
-        ...(sameDay(c.b.startsAt, now, zone) ? { by: c.b.startsAt } : {}),
+        // Too late once the later event starts. The digest's rule holds a later day's clash for the digest and
+        // interrupts once its start comes before the next digest (work-digest.md): on its day, or the night before
+        // for one early in the morning, however many days ahead it was found.
+        by: c.b.startsAt,
         key
       })
     } catch (err) {

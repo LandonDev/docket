@@ -131,13 +131,13 @@ describe('clashTitle', () => {
 
 describe('tellWords', () => {
   it("puts the later event first for an overlap, then its day, start and both jobs", () => {
-    expect(tellWords(overlap, ZONE)).toEqual({ title: 'Varsity Basketball overlaps Staff meeting', detail: 'Thu 6:00 PM, Ref and Purdue' })
+    expect(tellWords(overlap, ZONE)).toEqual({ title: 'Varsity Basketball overlaps Staff meeting', detail: 'Thu, Nov 26, 6:00 PM, Ref and Purdue' })
   })
   it('says a drive clash between the two in time order', () => {
-    expect(tellWords(drive, ZONE)).toEqual({ title: '15 min short between Staff meeting and Varsity Basketball', detail: 'Thu 6:00 PM, Ref and Purdue' })
+    expect(tellWords(drive, ZONE)).toEqual({ title: '15 min short between Staff meeting and Varsity Basketball', detail: 'Thu, Nov 26, 6:00 PM, Ref and Purdue' })
   })
   it('names one job once when both events are its', () => {
-    expect(tellWords({ ...overlap, a: { ...staff, sector: 'ref' } }, ZONE).detail).toBe('Thu 6:00 PM, Ref')
+    expect(tellWords({ ...overlap, a: { ...staff, sector: 'ref' } }, ZONE).detail).toBe('Thu, Nov 26, 6:00 PM, Ref')
   })
 })
 

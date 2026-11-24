@@ -85,6 +85,20 @@ describe("clashes on Today", () => {
     expect(answer.marks?.find((m) => m.key === "event:ev_dinner")?.note).toBe("28 min short after Varsity Basketball (Ref)");
   });
 
+  it("drops a clash once its later event is over, as the Agenda does: no fault and no Resolve on a pair that is done", () => {
+    // A 6:00 to 7:00 AM overlap with a 6:30 to 8:00 AM one, read at 9:00 AM.
+    const early = { id: "ev_a-ev_b", kind: "overlap" as const, a: side("ev_a", "purdue", "Stand-up", -3, 1) as never, b: side("ev_b", "ref", "Film review", -2.5, 1.5) as never };
+    const answer = answerOf({ status: "ready", value: range({ clashes: [early, ...range().clashes] }) });
+    expect(answer.marks?.map((m) => m.key)).toEqual(["event:ev_meeting", "event:ev_game"]);
+  });
+
+  it("words a pair that began last night under today, so the other event's time keeps its weekday", () => {
+    // Both began last night (Sunday) and run into this morning.
+    const night = { id: "ev_n1-ev_n2", kind: "overlap" as const, a: side("ev_n1", "purdue", "Server move", -10, 12) as never, b: side("ev_n2", "ref", "Night shift", -9.5, 12) as never };
+    const answer = answerOf({ status: "ready", value: range({ clashes: [night] }) });
+    expect(answer.marks?.find((m) => m.key === "event:ev_n1")?.note).toBe(`Overlaps Night shift (Ref), Sun ${clockOf(now - 9.5 * HOUR)}`);
+  });
+
   it("gives an event he has to drive to its leave-by as the row's live line, on the same mark as its clash", () => {
     const leaveAt = now + 2 * HOUR;
     const answer = answerOf({

@@ -26,6 +26,7 @@ import { knownAttendees, type DirectoryPerson } from "../people/model";
 import { clashTime, type Clash } from "@shared/work/clashes";
 import { ClashLines, useClashes } from "../clashes/mark";
 import { openClash } from "../clashes/open";
+import { liveClashes } from "../clashes/model";
 import { sectorName } from "../shell/actions";
 import "./agenda.css";
 import type { WorkViewProps } from "../views/registry";
@@ -163,16 +164,8 @@ function Agenda({ client, people = NO_PEOPLE, workspaceId, environmentId }: { cl
   const marks = useClashes(environmentId, from, to);
   // When to leave is the rule's once it has answered (from the event before, when that is where he will be); LifeOS's own until then.
   // The dot in the Week and the Month is for what is still his to settle, as the list's line is: an event that is over wears none.
-  // A clash is his to settle until its later event is over: Running late is for the time after the earlier one ends. An event that is over drops its own line. Over is by the end LifeOS gave the clash's side, which runs an event with no end for an hour, as the rule that found the clash does.
-  const clashesOf = useMemo(() => {
-    const live = new Map<string, readonly Clash[]>();
-    for (const [id, list] of marks.clashes) {
-      // Strictly after the clock: at its last minute's end an event is over, as the dialog reads it.
-      const kept = list.filter((c) => c.b.endsAt > now && (c.a.eventId === id ? c.a : c.b).endsAt > now);
-      if (kept.length) live.set(id, kept.length === list.length ? list : kept);
-    }
-    return live;
-  }, [marks.clashes, now]);
+  // A clash is his to settle until its later event is over (clashes/model.ts `liveClashes`, which Today reads too). Over is by the end LifeOS gave the clash's side, which runs an event with no end for an hour, as the rule that found the clash does.
+  const clashesOf = useMemo(() => liveClashes(marks.clashes, now), [marks.clashes, now]);
   const marked = useMemo(() => new Set((events ?? []).filter((e) => clashesOf.has(e._id)).map((e) => e._id)), [events, clashesOf]);
   const leaveOf = (event: AgendaEvent) => {
     if (!marks.ready) return leaveAt(event, now);

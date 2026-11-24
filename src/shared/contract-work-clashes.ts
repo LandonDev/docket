@@ -13,6 +13,9 @@ const id = z.string().min(1).max(200)
 
 export const ClashStopSchema = z.union([z.object({ event: id }), z.object({ place: z.string().min(1).max(500) }), z.object({ start: z.literal(true) })])
 
+/** The two events as the dialog showed them at his press. */
+const seenSchema = z.array(z.object({ eventId: id, startsAt: at, endsAt: at, location: z.string().optional() })).max(2)
+
 export const ClashesRequestSchemas = [
   /** → ClashList: every job's clashes over the span, and when to leave for each event in it */
   request('work.clashes.list', z.object({ from: at, to: at })),
@@ -28,16 +31,17 @@ export const ClashesRequestSchemas = [
    */
   request(
     'work.clashes.waive',
-    z.object({ id, on: z.boolean(), seen: z.array(z.object({ eventId: id, startsAt: at, endsAt: at, location: z.string().optional() })).max(2).optional() })
+    z.object({ id, on: z.boolean(), seen: seenSchema.optional() })
   ),
   /**
    * → ClashAnswered (`{queued}`): his own answer to one event of a clash, sent at once as his press: a decline, a proposed time, or a move.
    * `queued` says a calendar's act is with LifeOS's sender and not yet on the calendar; a move of an event that lives in LifeOS is written and done.
+   * `seen`, with a time: the pair as the step showed it when it offered the time; the host reads both events again and refuses one that changed.
    * Never a thread's: an agent drafts the same act with its held tools and it waits in the Outbox.
    */
   request(
     'work.clashes.answer',
-    z.object({ eventId: id, way: z.enum(['decline', 'propose', 'move']), comment: z.string().max(2000).optional(), start: at.optional(), end: at.optional() })
+    z.object({ eventId: id, way: z.enum(['decline', 'propose', 'move']), comment: z.string().max(2000).optional(), start: at.optional(), end: at.optional(), seen: seenSchema.optional() })
   )
 ] as const
 

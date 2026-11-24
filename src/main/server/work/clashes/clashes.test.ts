@@ -11,6 +11,7 @@ import type { LifeosClash, LifeosRange, LifeosSide } from './read'
 import type { Tell } from '@shared/work/tell'
 import { clashesListTool } from './tool'
 import { SPAN_DAYS, watchClashes } from './watch'
+import { decide } from '../digest/rule'
 
 /*
  * The clashes pillar on a LifeOS that stands in: the wire, the tool and its
@@ -237,6 +238,22 @@ describe('his answer', () => {
     expect(calls.at(-1)).toEqual({ fn: 'events:update', args: { id: 'e_game', patch: { startsAt: at(15, 30), endsAt: at(16, 30), leaveByAt: at(15, 15) } } })
   })
 
+  it('reads the pair the time was offered from again, and sends nothing when a calendar changed it since', async () => {
+    const seen = [
+      { eventId: 'e_staff', startsAt: at(16), endsAt: at(17) },
+      { eventId: 'e_game', startsAt: at(17, 30), endsAt: at(19, 30) }
+    ]
+    const events: Record<string, unknown> = { e_staff: { startsAt: at(16), endsAt: at(17) }, e_game: { source: 'gcal', startsAt: at(17, 30), endsAt: at(19, 30) } }
+    answers['events:get'] = (args) => events[args.id as string] ?? null
+    await call('work.clashes.answer', { eventId: 'e_staff', way: 'propose', start: at(14), end: at(15), seen })
+    expect(calls.map((c) => c.fn)).toEqual(['events:get', 'events:get', 'calendarOps:save', 'calendarOps:send'])
+    // The meeting now runs to 7:00 PM: the offer was made against 5:00.
+    calls.length = 0
+    events.e_staff = { startsAt: at(16), endsAt: at(19) }
+    await expect(call('work.clashes.answer', { eventId: 'e_game', way: 'move', start: at(18), end: at(20), seen })).rejects.toThrow(/^These events changed\. Go back for a new time\.$/)
+    expect(calls.map((c) => c.fn)).toEqual(['events:get'])
+  })
+
   it("refuses a thread's call whatever its key holds, and a key without approve, before LifeOS is asked", async () => {
     await expect(call('work.clashes.answer', { eventId: 'e_staff', way: 'decline' }, MODEL)).rejects.toThrow('Only the owner answers a clash')
     await expect(call('work.clashes.answer', { eventId: 'e_staff', way: 'decline' }, REMOTE)).rejects.toThrow('Only the owner answers a clash')
@@ -265,10 +282,12 @@ describe('clashes_list', () => {
     expect(error).toBe(false)
     expect(text).toContain("Purdue's clashes over the next 7 days, times in America/Indiana/Indianapolis:")
     expect(text).toContain('Staff meeting (Purdue, 4:00 PM to 5:00 PM, at Room 210, Elm Hall, event e_staff, can decline, propose)')
-    expect(text).toContain('15 min short to drive from')
+    expect(text).toContain('- Thu, Nov 26: not enough time to drive from')
     expect(text).toContain('a Ref event (5:30 PM to 7:30 PM)')
-    // the other job's title, place and drive never reach the thread
-    for (const hidden of ['Varsity Basketball', 'Maple Ridge', 'Cedar Falls', 'e_game', '24 mi', '45 min']) expect(text).not.toContain(hidden)
+    // the other job's title, place and drive never reach the thread; nor do the minutes short, which with the
+    // two times give the drive (15 short of a 30 minute gap: 45 minutes from Room 210)
+    for (const hidden of ['Varsity Basketball', 'Maple Ridge', 'Cedar Falls', 'e_game', '24 mi', '45 min', '15 min', 'about'])
+      expect(text).not.toContain(hidden)
     // a clash of two other jobs is not this thread's
     expect(text).not.toContain('Build review')
     expect(text).not.toContain('Lunch with Sam')
@@ -283,6 +302,46 @@ describe('clashes_list', () => {
     const range = calls.filter((c) => c.fn === 'clashes:range').at(-1)!.args as { from: number; to: number }
     expect(range.to - range.from).toBe(14 * 86_400_000)
     expect((await run(scope('purdue', 'ws-purdue'), { sector: 'ref' })).text).toBe("This thread reads only the purdue job's clashes.")
+  })
+
+  it('gives the minutes short and the drive when both events are the thread\'s job', async () => {
+    const lab = side({ eventId: 'e_lab', sector: 'purdue', title: 'Lab tour', startsAt: at(17, 30), endsAt: at(18, 30), location: 'West Campus' })
+    answers['clashes:range'] = () => ({ clashes: [{ ...driveClash, id: 'e_staff-e_lab', b: lab }], leaves: [] })
+    const { text } = await run(scope('purdue', 'ws-purdue'))
+    expect(text).toContain('- Thu, Nov 26: 15 min short to drive from Staff meeting')
+    expect(text).toContain('to Lab tour (Purdue, 5:30 PM to 6:30 PM, at West Campus, event e_lab) (45 min drive, 24 mi).')
+  })
+
+  it("says each event's own day: a block of weeks, an event the night before, and the second 1:30 AM", async () => {
+    const block = side({ eventId: 'e_block', sector: 'purdue', title: 'Block', startsAt: at(9, 0, 2), endsAt: at(17, 0, 22) })
+    const late = side({ eventId: 'e_late', sector: 'purdue', title: 'Late call', startsAt: at(23, 0, 23), endsAt: at(23, 45, 23) })
+    const early = side({ eventId: 'e_early', sector: 'ref', startsAt: at(0, 15, 24), endsAt: at(2, 0, 24) })
+    answers['clashes:range'] = () => ({
+      clashes: [
+        { id: 'e_block-e_game', kind: 'overlap', a: block, b: side({ eventId: 'e_g', sector: 'ref', startsAt: at(18, 0, 20), endsAt: at(20, 0, 20) }) },
+        { id: 'e_late-e_early', kind: 'drive', a: late, b: early, minutes: 40, measured: true, shortBy: 10 },
+        // Nov 1 2026, the clocks go back at 2:00 AM: 1:30 EST is the second 1:30 AM
+        { id: 'e_x-e_y', kind: 'overlap', a: side({ eventId: 'e_x', sector: 'purdue', title: 'Night shift', startsAt: at(0, 0, 1), endsAt: at(3, 0, 1) }), b: side({ eventId: 'e_y', sector: 'ref', startsAt: at(1, 30, 1), endsAt: at(2, 30, 1) }) }
+      ],
+      leaves: []
+    })
+    const { text } = await run(scope('purdue', 'ws-purdue'))
+    // under the game's day, not the block's first one
+    expect(text).toContain('- Fri, Nov 20: Block (Purdue, Nov 2, 9:00 AM to Nov 22, 5:00 PM, event e_block) overlaps a Ref event (6:00 PM to 8:00 PM).')
+    // under the later event's day, the earlier one's start with its own weekday
+    expect(text).toContain('- Tue, Nov 24: not enough time to drive from Late call (Purdue, Mon 11:00 PM to 11:45 PM, event e_late) to a Ref event (12:15 AM to 2:00 AM).')
+    expect(text).toContain('overlaps a Ref event (second 1:30 AM to 2:30 AM).')
+  })
+
+  it('refuses a Work thread with no Work home: it reads no job, as a Work Chat would every one', async () => {
+    db.exec('CREATE TABLE sessions (id TEXT PRIMARY KEY, workspace_id TEXT, project_id TEXT)')
+    db.prepare('INSERT INTO sessions VALUES (?, ?, ?)').run('t1', 'repo', null)
+    const out = await run(scope(null, null), { sector: 'purdue' })
+    expect(out).toEqual({ text: 'This thread belongs to no Work workspace, so it reads no job.', error: true })
+    expect(calls.filter((c) => c.fn === 'clashes:range')).toEqual([])
+    // A Work Chat (its row names no workspace) still reads the job it names.
+    db.prepare("UPDATE sessions SET workspace_id = NULL WHERE id = 't1'").run()
+    expect((await run(scope(null, null), { sector: 'purdue' })).error).toBe(false)
   })
 
   it('says so when there are none', async () => {
@@ -333,7 +392,7 @@ describe('the tell', () => {
         kind: 'clashes.new',
         workspaceId: 'ws-purdue',
         title: '15 min short between Staff meeting and Varsity Basketball',
-        detail: 'Thu 5:30 PM, Ref and Purdue',
+        detail: 'Thu, Nov 26, 5:30 PM, Ref and Purdue',
         open: { view: 'agenda', workspaceId: 'ws-purdue', at: 'e_staff' },
         // today's clash: by its start
         by: at(17, 30),
@@ -344,8 +403,8 @@ describe('the tell', () => {
     subs.at(-1)!.on(range(driveClash, overlapClash))
     await flush()
     expect(told.map((t) => t.key)).toEqual(['clash:e_staff-e_game', 'clash:e_lunch-e_call'])
-    // a later day's clash may wait for the digest
-    expect(told[1]?.by).toBeUndefined()
+    // a later day's clash carries its start too: the digest holds it until that comes near
+    expect(told[1]?.by).toBe(at(12, 30, 28))
     expect(told[1]?.workspaceId).toBe('ws-life')
     // the game moved: told again under the same key
     const moved = { ...driveClash, b: { ...game, startsAt: at(17, 45) } }
@@ -357,6 +416,19 @@ describe('the tell', () => {
     await flush()
     expect(done).toEqual(['clash:e_staff-e_game'])
     expect(rows()).toEqual([{ key: 'clash:e_lunch-e_call' }])
+    stop()
+  })
+
+  it('gives a clash early tomorrow, found the evening before, a clock that interrupts before the 8:00 AM digest', async () => {
+    const stop = watchClashes(ctx, () => at(21))
+    await flush()
+    const dawn = { ...driveClash, a: { ...staff, startsAt: at(6, 30, 27), endsAt: at(7, 0, 27) }, b: { ...game, startsAt: at(7, 0, 27), endsAt: at(9, 0, 27) } }
+    subs.at(-1)!.on(range(dawn))
+    await flush()
+    expect(told[0]?.by).toBe(at(7, 0, 27))
+    expect(decide(told[0]!, 'clock', at(8, 0, 27))).toBe('now')
+    // one two weeks out waits for the digest that comes before it
+    expect(decide({ by: at(18, 0, 30) }, 'clock', at(8, 0, 27))).toBe('wait')
     stop()
   })
 

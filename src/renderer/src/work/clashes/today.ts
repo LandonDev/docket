@@ -1,9 +1,10 @@
+import { useMemo } from "react";
 import { clashLine, leaveLine, listFrom, type LifeosRange } from "@shared/work/clashes";
 import { useLifeosQuery } from "../shell/lifeos";
 import { sessionDown } from "../today/lifeos";
 import { useMinute } from "../tasks/minute";
-import type { TodayMark, TodaySource } from "../today/types";
-import { marksOf } from "./model";
+import type { TodayAnswer, TodayEnv, TodayMark, TodaySource } from "../today/types";
+import { liveClashes, marksOf } from "./model";
 import { openClash } from "./open";
 
 /**
@@ -16,36 +17,45 @@ import { openClash } from "./open";
  */
 const MINUTE = 60_000;
 
-export const source: TodaySource = {
-  id: "clashes",
-  use(env) {
-    const read = useLifeosQuery<LifeosRange>(env.lifeos, "clashes:range", { from: env.day.from, to: env.day.to });
-    const now = useMinute();
-    if (read.status === "loading") return { loading: true };
-    if (read.status === "failed") {
-      // A session that is down is the page's one line ("Not signed in to LifeOS"), never a second one under Also.
-      if (sessionDown(env.lifeos)) return {};
-      // LifeOS refused the read: no host is at fault, and its own words are not his.
-      return { failed: [{ environmentId: env.lifeos.environmentId, error: read.error, said: "LifeOS could not read clashes" }] };
-    }
-    const { clashes, leaves } = marksOf(listFrom(read.value, (sector) => env.workspaceOf(sector)?.workspaceId));
-    const marks = new Map<string, TodayMark>();
-    for (const [eventId, of] of clashes) {
-      const first = of[0];
-      if (!first) continue;
-      const more = of.length - 1;
-      marks.set(eventId, {
-        key: `event:${eventId}`,
-        note: `${clashLine(first, eventId)}${more > 0 ? `, and ${more} more` : ""}`,
-        late: true,
-        act: { label: "Resolve", run: () => openClash({ id: first.id, environmentId: env.lifeos.environmentId, clash: first }) },
-      });
-    }
-    for (const [eventId, leave] of leaves) {
-      // Once the drive would have him there, the row's own line ("in 5 min", "Now") says more.
-      if (now >= leave.leaveAt + (leave.minutes ?? 0) * MINUTE) continue;
-      marks.set(eventId, { key: `event:${eventId}`, ...marks.get(eventId), whenLine: leaveLine(leave) });
-    }
-    return { marks: [...marks.values()] };
-  },
-};
+/**
+ * The marks at `now`: a clash only while it is his to settle (`liveClashes`, as the Agenda drops it), worded
+ * under the day Today shows, so the other event's time takes its weekday when it began on another day.
+ */
+export function clashMarks(range: LifeosRange | undefined, env: Pick<TodayEnv, "day" | "workspaceOf" | "lifeos">, now: number): TodayMark[] {
+  const list = marksOf(listFrom(range, (sector) => env.workspaceOf(sector)?.workspaceId));
+  const marks = new Map<string, TodayMark>();
+  for (const [eventId, of] of liveClashes(list.clashes, now)) {
+    const first = of[0];
+    if (!first) continue;
+    const more = of.length - 1;
+    marks.set(eventId, {
+      key: `event:${eventId}`,
+      note: `${clashLine(first, eventId, { on: env.day.from })}${more > 0 ? `, and ${more} more` : ""}`,
+      late: true,
+      act: { label: "Resolve", run: () => openClash({ id: first.id, environmentId: env.lifeos.environmentId, clash: first }) },
+    });
+  }
+  for (const [eventId, leave] of list.leaves) {
+    // Once the drive would have him there, the row's own line ("in 5 min", "Now") says more.
+    if (now >= leave.leaveAt + (leave.minutes ?? 0) * MINUTE) continue;
+    marks.set(eventId, { key: `event:${eventId}`, ...marks.get(eventId), whenLine: leaveLine(leave) });
+  }
+  return [...marks.values()];
+}
+
+function useClashMarks(env: TodayEnv): TodayAnswer {
+  const read = useLifeosQuery<LifeosRange>(env.lifeos, "clashes:range", { from: env.day.from, to: env.day.to });
+  const now = useMinute();
+  const value = read.status === "ready" ? read.value : undefined;
+  const marks = useMemo(() => (value === undefined ? null : clashMarks(value, env, now)), [value, env, now]);
+  if (read.status === "loading") return { loading: true };
+  if (read.status === "failed") {
+    // A session that is down is the page's one line ("Not signed in to LifeOS"), never a second one under Also.
+    if (sessionDown(env.lifeos)) return {};
+    // LifeOS refused the read: no host is at fault, and its own words are not his.
+    return { failed: [{ environmentId: env.lifeos.environmentId, error: read.error, said: "LifeOS could not read clashes" }] };
+  }
+  return { marks: marks ?? [] };
+}
+
+export const source: TodaySource = { id: "clashes", use: useClashMarks };

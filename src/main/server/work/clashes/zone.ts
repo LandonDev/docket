@@ -38,9 +38,6 @@ export function startOfDay(at: number, zone: string): number {
   return midnight - offsetAt(zone, guess)
 }
 
-/** Whether two instants fall on one day of his. */
-export const sameDay = (x: number, y: number, zone: string): boolean => startOfDay(x, zone) === startOfDay(y, zone)
-
 /** His zone from LifeOS's settings; this host's when LifeOS does not say or does not answer. */
 export async function zoneOf(ctx: WorkCtx): Promise<string> {
   try {

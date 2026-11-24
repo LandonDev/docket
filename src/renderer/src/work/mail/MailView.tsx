@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from "react";
 import { ConvexProvider } from "convex/react";
-import { Mailbox, MailClientProvider, MailKitProvider, useMailClient, useMailKit, type ComposeState, type MailNav, type MailTaskRequest } from "work-kit/mail";
+import { Mailbox, MailClientProvider, MailKitProvider, useMailClient, useMailKit, type ComposeState, type MailNav, type MailTaskRequest, type MailtoDraft } from "work-kit/mail";
 import "work-kit/mail/styles.css";
 import "./mail.css";
 import { Skeleton } from "../../components/ui/skeleton";
@@ -14,6 +14,7 @@ import { mailPaneOf, type ContextChip } from "@shared/work";
 import { CanvasSeat } from "../canvas/CanvasSeat";
 import { Mail as MailGlyph } from "../icons";
 import { placedKit } from "./files";
+import { onMailto } from "./mailto";
 import { mailChip } from "./model";
 import { defineChunk } from "../../lib/lazyChunk";
 import { Button } from "../../components/ui/button";
@@ -128,7 +129,8 @@ export function MailScreen({
   const env = files?.env;
   const toggleChat = useCallback(() => patch(id, { chat: !(pages.get(id) ?? BLANK).chat, chatAt: null }), [id]);
   const placed = useMemo(() => {
-    let base = env ? placedKit(kit, { env, pane }) : kit;
+    // A draft asked for this workspace's Mail (`writeMail(draft, id)`) is heard here and in no other job's.
+    let base = env ? { ...placedKit(kit, { env, pane }), onMailto: (hear: (draft: MailtoDraft) => void) => onMailto(hear, id) } : kit;
     if (onNudge) base = { ...base, nudge: onNudge };
     if (chat) base = { ...base, paneEnd: () => <AskButton pressed={page.chat} onPress={toggleChat} />, bulkEnd: (ids: string[]) => <AskButton glyph pressed={page.chat} onPress={() => patch(id, { chat: true, chatAt: { box: page.box, threadId: null, subject: null, query: null, picked: ids } })} /> };
     return base === kit ? null : base;
