@@ -2,7 +2,7 @@ import { spawn } from 'node:child_process'
 import { existsSync, mkdirSync, statSync, writeFileSync } from 'node:fs'
 import { basename, dirname, extname, join } from 'node:path'
 import type { IWorkbookData } from '@univerjs/core'
-import { SHEET_COMPARE_MAX, SHEET_LOAD_MAX, type SheetCellJson, type SheetMutationJson } from '@shared/contract-work-sheets'
+import { SHEET_COMPARE_MAX, SHEET_LOAD_MAX, type SheetCellJson, type SheetMutationJson, type SheetSuggestion } from '@shared/contract-work-sheets'
 import { isObjectList, type ObjectIds, type RulesSetParams } from '@shared/work/sheets'
 import { filesPaneWorkspace, handled, NOT_HANDLED, type CanvasItem, type Principal } from '@shared/work'
 import { canvasItemDir } from '../canvas/store'
@@ -400,14 +400,25 @@ async function reviewPackage(s: Sheets, path: string, key: string, which: Which,
   if (verdict === 'reject') return s.suggestions.mark(key, picked.map((p) => p.id), 'rejected')
   const one = which !== 'all' && 'ids' in which
   const pending = picked.filter((p) => p.state === 'pending')
-  const now = await s.packages.cellsAt(path, pending)
-  const stale = pending.filter((p, i) => !sameCell(now[i].cell, p.base))
-  s.suggestions.mark(key, stale.map((p) => p.id), 'conflict')
-  const ok = pending.filter((p) => !stale.includes(p))
-  if (ok.length) {
-    await writeAccepted(s, path, ok, by)
-    s.suggestions.mark(key, ok.map((p) => p.id), 'accepted')
+  let stale: SheetSuggestion[] = []
+  let ok: SheetSuggestion[] = []
+  // Checked and written in one turn of the file's saves, on the same version of it: a save from Excel or a co-author
+  // that lands between the check and the write is either read by the check or refuses the write, never written over.
+  try {
+    if (pending.length)
+      await writeAccepted(s, path, async () => {
+        // (a change from outside that the save's own look found has orphaned what waits: none of it is written)
+        const still = new Set(s.suggestions.pick(key, which).filter((p) => p.state === 'pending').map((p) => p.id))
+        const live = pending.filter((p) => still.has(p.id))
+        const now = await s.packages.cellsAt(path, live)
+        stale = live.filter((p, i) => !sameCell(now[i].cell, p.base))
+        ok = live.filter((p) => !stale.includes(p))
+        return ok
+      }, by)
+  } finally {
+    s.suggestions.mark(key, stale.map((p) => p.id), 'conflict')
   }
+  if (ok.length) s.suggestions.mark(key, ok.map((p) => p.id), 'accepted')
   if (one && ok.length < picked.length) throw new Error('That cell changed since the agent saw it: reject it, or edit the cell yourself.')
 }
 

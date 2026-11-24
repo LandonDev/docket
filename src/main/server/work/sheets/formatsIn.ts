@@ -297,7 +297,8 @@ export async function importAct(s: Sheets, by: Caller, item: CanvasItem, held: {
   }
   // A file only touched or synced again since is still the one the copy was made from.
   await ensureImported(ctx, held)
-  if (act === 'back') return serial(copy, () => saveBack(s, copy, from))
+  // No edit of his lands in the copy while it is converted and stamped: the stamp says which copy went back.
+  if (act === 'back') return serial(copy, () => s.packages.holding(copy, () => saveBack(s, copy, from)))
   const done = await saveAsExcel(ctx, item, copy, from)
   // A Files tab that became the .xlsx no longer holds the copy of a file others can open: what the package store kept of it goes too.
   if (done.itemId !== item.id && isSharedImport(ctx.dataDir, copy) && !existsSync(copy)) s.packages.release({ items: [item.id] })

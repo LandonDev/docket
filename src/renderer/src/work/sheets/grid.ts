@@ -46,6 +46,8 @@ export const univerGrid: SheetGrid = {
     read: (sheet, row, col) => (sheetOf(handle, sheet)?.getRange(row, col).getCellData() ?? null) as SheetCellJson | null,
     formula: (sheet, row, col) => sheetOf(handle, sheet)?.getRange(row, col).getFormula() || null,
     undo: () => handle.api.undo(),
+    // Univer's own end of the cell editor, keeping what he typed (as Return does): a tab's close sends it with the rest.
+    commit: async () => handle.api.getActiveWorkbook()?.endEditingAsync(true),
     onCommand: (listener) => handle.onCommand(listener),
     style: (id) => (handle.api.getActiveWorkbook()?.getWorkbook().getStyles().get(id) as Record<string, unknown> | null | undefined) ?? null,
     // A list as it stands: what an opened Excel file is sent after a rule changes (sync.ts `forPackage`).

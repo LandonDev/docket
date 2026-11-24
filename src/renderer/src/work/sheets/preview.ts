@@ -76,6 +76,8 @@ export interface SheetPreviewDeps {
   save?(name: string, blob: Blob): void;
   /** hands a PDF to this computer to print (work/formats/printOut.ts) */
   print?(name: string, bytes: Uint8Array): Promise<void>;
+  /** settles once his last edit is in the file (sync.ts `written`): every draw and export waits on it, so none reads the workbook from before it */
+  written?(): Promise<void>;
 }
 
 const cancelled = (): DOMException => new DOMException("The draw was cancelled", "AbortError");
@@ -129,6 +131,7 @@ export function sheetPreviewSource(deps: SheetPreviewDeps): PreviewSource {
     formats: sheetFormats(deps),
     office,
     async draw(format, opts) {
+      await deps.written?.();
       if (opts.signal.aborted) throw cancelled();
       if (opts.by === "office") {
         // Asked afresh at the press: Excel may have been shut, or the machine put to sleep, since the look.
@@ -157,6 +160,7 @@ export function sheetPreviewSource(deps: SheetPreviewDeps): PreviewSource {
       return drawn;
     },
     async export(format) {
+      await deps.written?.();
       const id = host(format as SheetFormat);
       // The workbook as it stands now: the host makes the file afresh, or answers the one it made of these same bytes.
       const sheet = sheetOf.get(id);

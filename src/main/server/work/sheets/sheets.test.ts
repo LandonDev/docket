@@ -209,6 +209,27 @@ describe('a package in the canvas', () => {
     await expect(call('work.sheets.review', { itemId, which: { ids: [view.suggestions[0].id] }, verdict: 'accept' })).rejects.toThrow(/changed since/)
   })
 
+  it('accepts over the file it checked: a co-author\'s save that lands after the check refuses the write, and his file stands', async () => {
+    // Council r1 (Sol 4): the check read A2, Excel saved rows put in, and the checked A2 went into the new file.
+    await tool('sheet_suggest', { item: itemId, cells: [{ at: 'A2', v: 5 }] })
+    const view = await call<SheetView>('work.sheets.open', { itemId })
+    const { PackageStore } = await import('./packages')
+    const real = PackageStore.prototype.cellsAt
+    const spy = vi.spyOn(PackageStore.prototype, 'cellsAt').mockImplementationOnce(async function (this: InstanceType<typeof PackageStore>, ...args: Parameters<typeof real>) {
+      const got = await real.apply(this, args)
+      copyFileSync(join(CORPUS, 'formats.xlsx'), path)
+      utimesSync(path, new Date(), new Date(Date.now() + 5_000))
+      return got
+    })
+    try {
+      await expect(call('work.sheets.review', { itemId, which: { ids: [view.suggestions[0].id] }, verdict: 'accept' })).rejects.toThrow(/changed while accepting/)
+    } finally {
+      spy.mockRestore()
+    }
+    expect(readFileSync(path).equals(readFileSync(join(CORPUS, 'formats.xlsx')))).toBe(true)
+    expect((await call<SheetView>('work.sheets.open', { itemId })).suggestions.map((s) => s.state)).toEqual(['orphaned'])
+  })
+
   it('lists history and compares two revisions', async () => {
     await tool('sheet_write', { item: itemId, cells: [{ at: 'A2', v: 3 }], because: 'own' })
     const { revisions } = await call<{ revisions: { rev: number; label: string }[] }>('work.sheets.history', { itemId })

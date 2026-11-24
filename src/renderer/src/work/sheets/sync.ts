@@ -31,6 +31,8 @@ export interface GridLink {
   formula(sheet: string, row: number, col: number): string | null;
   /** takes back the grid's last command: how a change its store cannot keep is stopped as he makes it */
   undo(): void | Promise<unknown>;
+  /** ends the cell editor, keeping what he typed in it: an open cell is his edit too; absent in a grid with no editor */
+  commit?(): Promise<unknown>;
   /** every command he runs in the grid, as it ends; absent in a grid that cannot say (each turn is then taken for one) */
   onCommand?(listener: (id: string) => void): () => void;
   /** a style the grid names by its own id, as the style itself; null when it knows none by that id */
@@ -95,6 +97,39 @@ export const ofUnit = (mutation: SheetMutationJson, unitId: string): boolean => 
 };
 
 const message = (error: unknown, fallback: string): string => (error instanceof Error && error.message ? error.message : fallback);
+
+const columnName = (col: number): string => {
+  let name = "";
+  for (let n = col + 1; n > 0; n = Math.floor((n - 1) / 26)) name = String.fromCharCode(65 + ((n - 1) % 26)) + name;
+  return name;
+};
+/** The most cells the words name; past it they are counted. */
+const NAMED_MOST = 3;
+
+/**
+ * What a batch the file no longer takes held, said once as it is dropped: each cell he wrote and what he put in it,
+ * so he can make it again on the sheet as it is now. A sheet is named only when the cells lie on more than one.
+ */
+export function notSavedWords(batch: readonly SheetMutationJson[], sheetName: (id: string) => string | undefined): string {
+  const cells: { sheet: string; at: string; put: string }[] = [];
+  for (const m of batch) {
+    if (m.id !== SET_RANGE_VALUES) continue;
+    const p = m.params as { subUnitId?: string; cellValue?: Record<string, Record<string, (SheetCellJson & { p?: { body?: { dataStream?: string } } }) | null>> };
+    for (const [r, cols] of Object.entries(p.cellValue ?? {}))
+      for (const [c, cell] of Object.entries(cols ?? {})) {
+        // (a style alone keeps what the cell held)
+        if (cell && !("v" in cell) && !("f" in cell) && !("p" in cell)) continue;
+        const text = cell?.f ?? cell?.p?.body?.dataStream?.replace(/[\r\n]+$/, "") ?? (cell?.v === null || cell?.v === undefined ? "" : String(cell.v));
+        const put = text === "" ? "cleared" : text.length > 40 ? `${text.slice(0, 39)}…` : text;
+        cells.push({ sheet: p.subUnitId ?? "", at: `${columnName(Number(c))}${Number(r) + 1}`, put });
+      }
+  }
+  if (!cells.length) return "The file changed before your last change was saved, so it was not made. Make it again.";
+  const many = new Set(cells.map((x) => x.sheet)).size > 1;
+  const named = cells.slice(0, NAMED_MOST).map((x) => `${many ? `${sheetName(x.sheet) ?? x.sheet}!` : ""}${x.at} ${x.put}`);
+  const more = cells.length - named.length;
+  return `The file changed before this was saved: ${named.join(", ")}${more ? ` and ${more} more` : ""}. Make it again.`;
+}
 
 interface Laid {
   sheet: string;
@@ -220,7 +255,7 @@ export class SheetSync {
     if (push.view) this.view(push.view);
     // A sheet others can open: the host sends no view, and answers each caller its own.
     else if (push.stale) this.run(async () => this.view(await this.host.open()));
-    if (push.rev > this.rev) this.run(() => this.catchUp());
+    if (push.rev > this.rev) this.run(async () => void (await this.catchUp()));
   }
 
   /** The grid is up: edits go out from it and what landed comes in. What it returns lets go. */
@@ -324,7 +359,7 @@ export class SheetSync {
       if (this.grid === grid) this.grid = null;
     };
     this.lay();
-    if (this.behind) this.run(() => this.catchUp());
+    if (this.behind) this.run(async () => void (await this.catchUp()));
     return () => {
       settle();
       this.flush();
@@ -387,10 +422,26 @@ export class SheetSync {
   /**
    * Sends what has gathered and settles once the host has answered every send under way: a tab's close awaits it
    * (canvas/flush.ts), so his last edit is in the file before the item goes, never sent after it to a sheet that is gone.
+   * A cell still open in the grid's editor is ended first, keeping what he typed: it is an edit he made.
    */
-  flushed(): Promise<void> {
+  async flushed(): Promise<void> {
+    try {
+      await this.grid?.commit?.();
+    } catch {
+      // (a grid that cannot end its editor still sends what it has)
+    }
     this.flush();
     return this.chain;
+  }
+
+  /**
+   * Settles once every edit of his is in the file, or rejects in his words when one is not: what reads the file
+   * (Preview, Save back, Save as Excel) waits on it, so it never reads the workbook from before his last edit.
+   */
+  async written(): Promise<void> {
+    await this.flushed();
+    const error = this.state.sendError;
+    if (error) throw new Error(`Your last edit is not saved: ${error}`);
   }
 
   /**
@@ -441,9 +492,12 @@ export class SheetSync {
         if (tries + 1 >= CONFLICT_TRIES) throw new Error("Others kept changing the sheet; your edits did not save");
         // A move is made on the sheet as he saw it: once the sheet changed under it, its rows and columns name other cells. It is not sent again.
         if (move) throw new Error("The sheet changed under that move. Make it again");
-        await this.catchUp();
+        // A conflict the grid can only answer by reading the file again (it changed outside TempCode, was restored, or
+        // its rows moved): the batch names cells of a sheet that is gone, so it is not sent again. He is told what it held.
+        if (await this.catchUp(batch)) return;
       }
-      if (this.state.sendError) this.set({ sendError: null });
+      // (an opened Excel file's refused batch is still not in the file: its line stays until Reload makes the grid the file again)
+      if (this.state.sendError && this.state.view?.store !== "package") this.set({ sendError: null });
       if (this.queue.length === 0) this.set({ saving: false, savedAt: Date.now() });
     } catch (error) {
       // An opened Excel file refuses a batch for good: it is not sent again, and the edits after it go on. Reload makes the grid the file again.
@@ -492,22 +546,42 @@ export class SheetSync {
     if (this.queue.length > 0) await this.send();
   }
 
-  /** Brings in what landed after the revision the grid stands at, but not the ops this canvas sent. */
-  private async catchUp(): Promise<void> {
+  /**
+   * Brings in what landed after the revision the grid stands at, but not the ops this canvas sent. Answers whether the
+   * grid read the file again. `refused`: the batch the host just answered with a conflict.
+   */
+  private async catchUp(refused?: SheetMutationJson[]): Promise<boolean> {
     const grid = this.grid;
     if (!grid) {
       this.behind = true;
-      return;
+      return false;
     }
     this.behind = false;
     const answer = await this.host.since(this.rev);
     if ("reload" in answer) {
-      // What waits goes first: the host moves an edit through what it missed.
-      if (this.timer) clearTimeout(this.timer);
-      this.timer = null;
-      await this.send();
-      await this.load(answer.rev);
-      return;
+      // The grid takes no edit until the file is drawn again: one made meanwhile would be in neither.
+      this.set({ reloading: true });
+      try {
+        this.settle?.();
+        if (this.timer) clearTimeout(this.timer);
+        this.timer = null;
+        const books = this.books;
+        if (refused) {
+          // After a conflict, what waits was made on the same sheet the refused batch was: none of it is sent.
+          const lost = [...refused, ...this.queue];
+          this.queue = [];
+          this.set({ saving: false, stopped: { why: notSavedWords(lost, (id) => grid.objects?.sheetName(id) ?? this.state.book?.workbook.sheets?.[id]?.name), n: (this.state.stopped?.n ?? 0) + 1 } });
+        } else {
+          // What waits goes first: the host moves an edit through what it missed (a rule's list, a shared workbook's
+          // edit), and refuses one the file can no longer take, which is then said (above).
+          await this.send();
+        }
+        // (a send that met a conflict has read the file again already)
+        if (this.books === books) await this.load(answer.rev);
+      } finally {
+        this.set({ reloading: false });
+      }
+      return true;
     }
     for (const op of answer.ops) {
       if (op.rev <= this.rev) continue;
@@ -516,6 +590,7 @@ export class SheetSync {
     }
     this.rev = Math.max(this.rev, answer.rev);
     this.set({ tick: this.state.tick + 1 });
+    return false;
   }
 
   /**

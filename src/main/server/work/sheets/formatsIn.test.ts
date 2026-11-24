@@ -270,6 +270,45 @@ describe('Save back: the copy written as the format it was', () => {
     expect(importedOf(held)!.stale).toBeUndefined()
   })
 
+  it('an edit sent while the copy goes back lands after it: the copy stamped as gone back is the one converted, so the edit is kept', async () => {
+    // Council r1 (Sol 8): an edit landed in the copy mid-conversion and the newer copy was stamped clean; the next change
+    // of the file then read the copy again from it, and the edit was gone.
+    let release!: () => void
+    let started!: () => void
+    const converting = new Promise<void>((done) => (started = done))
+    Object.assign(rig.ctx, {
+      convert: async (job: ConvertJob) => {
+        if (job.to === 'xlsx') return convert(job)
+        jobs.push(job)
+        // LibreOffice has read the copy, and is still writing
+        const read = readFileSync(job.input)
+        started()
+        await new Promise<void>((done) => (release = done))
+        writeFileSync(job.output!, Buffer.concat([Buffer.from(`${job.to}:`), read]))
+        return { output: job.output!, ranOn: 'env_box', warnings: [] }
+      }
+    })
+    const path = dummy(join(rig.folder, 'Ledger.xls'))
+    const item = openIn('t1', path)
+    const held = heldOf(item)
+    await ensureImported(rig.ctx, held)
+    await edit(held, 'first')
+    const back = importAct(s, window, item, held, 'back')
+    await converting
+    const next = edit(held, 'later')
+    await new Promise((done) => setTimeout(done, 50))
+    release()
+    await back
+    await next
+    expect(valueIn(written(path, 'xls'))).toBe('first')
+    // the file changes again outside: the copy holds an edit that never went back, so it is kept, not read again
+    writeFileSync(path, 'their newer workbook')
+    utimesSync(path, new Date(), new Date(Date.now() + 9_000))
+    await ensureImported(rig.ctx, held)
+    expect(valueIn(new Uint8Array(readFileSync(held.path)))).toBe('later')
+    expect(importedOf(held)!.stale).toBe(true)
+  })
+
   it('says what this workbook lost to the format, counted from the copy', async () => {
     Object.assign(rig.ctx, { convert: async (job: ConvertJob) => (job.to === 'xlsx' ? copyFileSync(join(CORPUS, 'tables.xlsx'), job.output!) : writeFileSync(job.output!, 'xls'), { output: job.output!, ranOn: 'env_box', warnings: [] }) })
     const item = openIn('t1', dummy(join(rig.folder, 'Tables.xls')))

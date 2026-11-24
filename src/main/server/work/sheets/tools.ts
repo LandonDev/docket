@@ -289,14 +289,21 @@ async function announceItem(s: Sheets, item: CanvasItem | null): Promise<void> {
   await announce(s, item)
 }
 
-/** Writes accepted suggestions over a package: what each proposed, as the owner's own edit. */
-export async function writeAccepted(s: Sheets, path: string, decided: readonly SheetSuggestion[], by: Principal): Promise<void> {
+/**
+ * Writes accepted suggestions over a package: what each proposed, as the owner's own edit. `pick` answers which of
+ * them to write, from the cells as the save finds them; it runs under the file's one lock (packages.ts `under`).
+ */
+export async function writeAccepted(s: Sheets, path: string, pick: () => Promise<readonly SheetSuggestion[]>, by: Principal): Promise<void> {
   const state = await s.packages.open(path)
-  const mutations = mutationsOf(
-    PACKAGE_UNIT,
-    decided.map((d) => ({ sheet: d.sheet, row: d.row, col: d.col, cell: d.proposed }))
-  )
-  const got = await s.packages.edit(path, state.rev, mutations, by, { label: `Accepted ${decided.length === 1 ? '1 change' : `${decided.length} changes`}` })
+  const under = async (): Promise<{ mutations: SheetMutationJson[]; label: string }> => {
+    const decided = await pick()
+    const mutations = mutationsOf(
+      PACKAGE_UNIT,
+      decided.map((d) => ({ sheet: d.sheet, row: d.row, col: d.col, cell: d.proposed }))
+    )
+    return { mutations, label: `Accepted ${decided.length === 1 ? '1 change' : `${decided.length} changes`}` }
+  }
+  const got = await s.packages.edit(path, state.rev, [], by, { under })
   if ('conflict' in got) throw new Error('The file changed while accepting: try again.')
 }
 

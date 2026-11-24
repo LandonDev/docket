@@ -231,6 +231,8 @@ export interface FakeGrid extends SheetGrid {
   noteControls: SheetCanvasProps["noteControls"];
   /** formula text the grid holds, by `sheet!row:col`, for a fill's cells */
   formulas: Map<string, string>;
+  /** a cell still open in the cell editor: ending it (`commit`) makes it his edit, as the real grid's Return does */
+  typing: SheetMutationJson | null;
   /** The person selects a range, A1. */
   select(a1: string): void;
   /** Whether something listens for the person's edits: the body has attached. */
@@ -582,6 +584,7 @@ export function fakeGrid(options: { selection?: string; rows?: number; columns?:
     objectsGiven: null,
     onApply: null,
     formulas: new Map(),
+    typing: null,
     Canvas: FakeCanvas,
     fonts: async (workbook) => void grid.fontsAsked.push(workbook),
     font: async () => undefined,
@@ -593,6 +596,11 @@ export function fakeGrid(options: { selection?: string; rows?: number; columns?:
       read: (sheet, row, col) => live?.cells.get(at(sheet, row, col)) ?? null,
       formula: (sheet, row, col) => grid.formulas.get(at(sheet, row, col)) ?? null,
       undo: () => void grid.undone++,
+      commit: async () => {
+        const open = grid.typing;
+        grid.typing = null;
+        if (open) grid.edit(open);
+      },
       ...(options.commands ? { onCommand: (listener: (id: string) => void) => (commandListeners.add(listener), () => commandListeners.delete(listener)) } : {}),
       style: (id) => grid.styles.get(id) ?? null,
       // (the fake keeps no tables: a test of a table's save drives the store itself)

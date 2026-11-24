@@ -182,6 +182,14 @@ export class PackageStore {
     return this.db.prepare('SELECT * FROM work_sheets_files WHERE path = ?').get(path) as FileRow | undefined
   }
 
+  /**
+   * Runs `fn` while no save of the file runs: edits asked meanwhile wait until it ends. What reads the file and acts on
+   * what it read (Save back converting a copy, then stamping it) holds it, so no edit lands between the read and the act.
+   */
+  holding<T>(path: string, fn: () => Promise<T>): Promise<T> {
+    return this.serial(path, fn)
+  }
+
   private serial<T>(path: string, fn: () => Promise<T>): Promise<T> {
     const prev = this.chains.get(path) ?? Promise.resolve()
     const run = prev.then(fn, fn)
@@ -281,7 +289,7 @@ export class PackageStore {
     baseRev: number,
     mutations: SheetMutationJson[],
     by: string,
-    extra: { label?: string; writeId?: string; undo?: SheetMutationJson[] } = {}
+    extra: { label?: string; writeId?: string; undo?: SheetMutationJson[]; under?: () => Promise<{ mutations: SheetMutationJson[]; label: string }> } = {}
   ): Promise<{ rev: number; moved?: Moved; ids?: ObjectIds } | { conflict: true; rev: number }> {
     return this.serial(path, async () => {
       // A file moved or deleted since it was opened takes no edit: said, not thrown as a raw error.
@@ -289,6 +297,10 @@ export class PackageStore {
       const row = this.sync(path)
       if (baseRev > row.rev || (baseRev < row.rev && this.reloadSince(path, baseRev))) return { conflict: true as const, rev: row.rev }
       if (!this.inspected.has(path)) await this.open(path)
+      // An edit that is worked out from the cells (an accepted suggestion, written only over what the agent saw) reads
+      // them here, under the save's own turn, from the file this save then checks it writes over: what was checked is
+      // what is written, and a change from outside after the read is refused by the save as any other.
+      if (extra.under) ({ mutations, label: extra.label } = await extra.under())
       const before = new Map(this.inspected.get(path)!.value.sheets.map((s) => [s.id, s.name]))
       const steps = planOf(mutations, new Map(before))
       if (!steps.length) return { rev: row.rev }

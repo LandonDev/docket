@@ -636,6 +636,91 @@ describe("the sheet kind", () => {
     expect(edits()[0].mutations).toEqual([set(1, 1, 15)]);
   });
 
+  it("holds the grid still while a reload reads the file again, after what he typed before it is sent", async () => {
+    // Council r1 (Opus 1): a thread's rule landed, the push read the file again, and a cell typed while it loaded was lost.
+    open(sheetView({ store: "package", rev: 3, row: ROW_ALL }));
+    await gridUp();
+    let release!: () => void;
+    const gate = new Promise<void>((done) => (release = done));
+    const load = sheetHost.load;
+    sheetHost.load = async (rev, offset, length) => {
+      if (rev === 9) await gate;
+      return load(rev, offset, length);
+    };
+    sheetHost.since = async () => ({ rev: 9, reload: true as const });
+    act(() => grid.edit(set(1, 1, 15)));
+    act(() => sheetHost.push({ rev: 9 }));
+    await waitFor(() => expect(grid.readOnly).toBe(true));
+    expect(edits().map((e) => e.mutations)).toEqual([[set(1, 1, 15)]]);
+    release();
+    await waitFor(() => expect(grid.readOnly).toBe(false));
+  });
+
+  it("never sends an edit again after a conflict that reads the file again: what it held is said once, and nothing of it reaches the new file", async () => {
+    // Council r1 (Opus 2, Sol 1): a co-author's save synced down; his B4 was sent again at its old address on the new file.
+    open(sheetView({ store: "package", rev: 3, row: ROW_ALL }));
+    await gridUp();
+    let release!: () => void;
+    const gate = new Promise<void>((done) => (release = done));
+    sheetHost.edit = async (baseRev, mutations) => {
+      sheetHost.calls.push(["edit", { baseRev, mutations }]);
+      await gate;
+      return { conflict: true as const, rev: 4 };
+    };
+    sheetHost.since = async () => ({ rev: 4, reload: true as const });
+    act(() => grid.edit(set(3, 1, 1200)));
+    await waitFor(() => expect(edits()).toHaveLength(1), { timeout: EDIT_WAIT * 10 });
+    // typed while the first is on its way: made on the same sheet, so it goes with it
+    act(() => grid.edit(set(4, 2, "Hotel")));
+    await new Promise((done) => setTimeout(done, EDIT_WAIT * 2));
+    release();
+    await waitFor(() => expect(toasts.said).toEqual(["The file changed before this was saved: B4 1200, C5 Hotel. Make it again."]));
+    await waitFor(() => expect(sheetHost.calls.some((c) => c[0] === "load" && (c[1] as { rev: number }).rev === 4)).toBe(true));
+    await waitFor(() => expect(grid.readOnly).toBe(false));
+    expect(edits()).toHaveLength(1);
+    expect(screen.queryByText("Saved")).toBeNull();
+  });
+
+  it("ends a cell still open in the editor when its tab closes, and sends it before the close goes on", async () => {
+    // Council r1 (Opus 3, Sol 5): typed into B4 and closed the tab with no Return.
+    open(sheetView({ rev: 3 }));
+    await gridUp();
+    grid.typing = set(3, 1, 1200);
+    await act(() => flushItem(ITEM.id));
+    expect(edits()).toEqual([{ baseRev: 3, mutations: [set(3, 1, 1200)] }]);
+  });
+
+  it("keeps an opened Excel file's Couldn't save after a later edit lands: the refused one is still not in the file", async () => {
+    open(sheetView({ store: "package", rev: 3, row: ROW_ALL }));
+    await gridUp();
+    sheetHost.nextEdit = { refuse: "That cell is locked" };
+    act(() => grid.edit(set(1, 1, 15)));
+    expect(await screen.findByText("Couldn't save")).toBeTruthy();
+    act(() => grid.edit(set(2, 1, 8)));
+    await waitFor(() => expect(sheetHost.rev).toBe(4), { timeout: EDIT_WAIT * 10 });
+    await act(async () => undefined);
+    expect(screen.getByText("Couldn't save")).toBeTruthy();
+  });
+
+  it("Save back sends his last edit first, and an edit that did not save stops the press in words", async () => {
+    // Council r1 (Sol 8): a cell committed and Save back pressed at once went back without it.
+    open(sheetView({ store: "package", name: "Ledger.xls", imported: { format: "xls", name: "Ledger.xls" } }));
+    await gridUp();
+    const line = document.querySelector<HTMLElement>("[data-sheet-import]")!;
+    act(() => grid.edit(set(1, 1, 15)));
+    fireEvent.click(within(line).getByRole("button", { name: "Save back" }));
+    await waitFor(() => expect(sheetHost.calls.some((c) => c[0] === "imported")).toBe(true));
+    const sent = sheetHost.calls.findIndex((c) => c[0] === "edit");
+    expect(sent).toBeGreaterThan(-1);
+    expect(sent).toBeLessThan(sheetHost.calls.findIndex((c) => c[0] === "imported"));
+    sheetHost.nextEdit = { refuse: "That cell is locked" };
+    act(() => grid.edit(set(2, 1, 8)));
+    const asked = sheetHost.calls.filter((c) => c[0] === "imported").length;
+    fireEvent.click(within(line).getByRole("button", { name: "Save back" }));
+    await waitFor(() => expect(toasts.said).toContain("Your last edit is not saved: That cell is locked"));
+    expect(sheetHost.calls.filter((c) => c[0] === "imported")).toHaveLength(asked);
+  });
+
   it("names the grid's own workbook in an op it brings in", async () => {
     open(sheetView({ rev: 3 }));
     await gridUp();

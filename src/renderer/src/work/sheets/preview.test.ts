@@ -134,6 +134,31 @@ describe("the sheet's PreviewSource", () => {
     expect(h.saved).toEqual([]);
   });
 
+  it("draws and exports only once his last edit is in the file, and not at all when it is not", async () => {
+    // Council r1 (Sol 8): Print drew the cell from before the edit that still waited to be sent.
+    const h = host();
+    const order: string[] = [];
+    let refused: string | null = null;
+    const source = sheetPreviewSource({
+      env: "local",
+      itemId: "item1",
+      store: "package",
+      name: "Budget.xlsx",
+      request: async (env, method, params) => (order.push(method), h.request(env, method, params)),
+      save: () => undefined,
+      written: async () => {
+        order.push("written");
+        if (refused) throw new Error(refused);
+      },
+    });
+    await source.draw("pdf", { signal: new AbortController().signal });
+    await source.export("pdf");
+    expect(order).toEqual(["written", "work.sheets.preview", "written", "work.sheets.previewExport", "work.sheets.previewRead"]);
+    refused = "Your last edit is not saved: That cell is locked";
+    await expect(source.draw("pdf", { signal: new AbortController().signal })).rejects.toThrow(refused);
+    expect(order.filter((m) => m === "work.sheets.preview")).toHaveLength(1);
+  });
+
   it("reads a render in frames no larger than the host answers", () => {
     expect(READ_MAX).toBe(SHEET_PREVIEW_READ_MAX);
   });

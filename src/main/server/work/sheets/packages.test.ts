@@ -67,6 +67,46 @@ describe('an opened package', () => {
     expect(readFileSync(path).equals(before)).toBe(true)
   })
 
+  it('works out an edit from the cells in its own save\'s turn: a save from outside after that read is refused, never written over', async () => {
+    // Council r1 (Sol 4): Accept checked A2, a co-author saved, and the check's A2 was written into the new file.
+    const data = (await store.open(path)).inspected.sheets[0].id
+    const seen: unknown[] = []
+    const got = await store.edit(path, 0, [], 'owner', {
+      under: async () => {
+        seen.push((await store.cellsAt(path, [{ sheet: data, row: 1, col: 0 }]))[0].cell?.v)
+        // the co-author's save lands just after the check
+        writeFileSync(path, readFileSync(path))
+        utimesSync(path, new Date(), new Date(Date.now() + 9_000))
+        return { mutations: [set(data, 1, 0, { v: 5 })], label: 'Accepted 1 change' }
+      }
+    })
+    expect(seen).toEqual([1])
+    expect(got).toEqual({ conflict: true, rev: 1 })
+    expect(valueAt(path, 'Data', 1, 0)).toBe(1)
+    // and a save that comes before the check is the file the check reads, and the edit lands on it with its label
+    const again = await store.edit(path, 1, [], 'owner', { under: async () => ({ mutations: [set(data, 1, 0, { v: 6 })], label: 'Accepted 1 change' }) })
+    expect(again).toEqual({ rev: 2 })
+    expect(valueAt(path, 'Data', 1, 0)).toBe(6)
+    expect(store.history(path)[0]).toMatchObject({ rev: 2, label: 'Accepted 1 change' })
+  })
+
+  it('holds its saves while a reader of the file acts on what it read: an edit asked meanwhile lands after', async () => {
+    const data = (await store.open(path)).inspected.sheets[0].id
+    let release!: () => void
+    const order: string[] = []
+    const held = store.holding(path, async () => {
+      order.push('read')
+      await new Promise<void>((done) => (release = done))
+      order.push('acted')
+    })
+    const edit = store.edit(path, 0, [set(data, 1, 0, { v: 7 })], 'owner').then(() => order.push('edit'))
+    await new Promise((done) => setTimeout(done, 50))
+    expect(order).toEqual(['read'])
+    release()
+    await Promise.all([held, edit])
+    expect(order).toEqual(['read', 'acted', 'edit'])
+  })
+
   it('never overwrites a save made outside while it patched: that save stands as a revision, and the edit answers a conflict', async () => {
     const jobs = await localJobs()
     const db = new DatabaseSync(':memory:')

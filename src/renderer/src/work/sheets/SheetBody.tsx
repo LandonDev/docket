@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import type { SheetView } from "@shared/contract-work-sheets";
+import type { SheetImportAct, SheetImportDone } from "@shared/work/sheetFormats";
 import { patternProblem, reviewMarks, RulesSheet, SheetToolbar, type ChartSpec, type GridSelection, type RuleKind, type RulesView, type SheetControl, type SheetHandle, type SheetMark } from "work-kit/sheet";
 import { ChartBar } from "../../chrome/icons";
 import { loadToast } from "../../components/ui/toaster";
@@ -149,7 +150,7 @@ export function Body(props: Props) {
   // What Preview draws: one source for as long as the item shows the same workbook.
   const previewStore = view?.store;
   const previewName = view?.name;
-  const source = useMemo(() => (previewStore && previewName !== undefined ? sheetPreviewSource({ env: props.env, itemId: item.id, store: previewStore, name: previewName }) : null), [props.env, item.id, previewStore, previewName]);
+  const source = useMemo(() => (previewStore && previewName !== undefined ? sheetPreviewSource({ env: props.env, itemId: item.id, store: previewStore, name: previewName, written: () => sync.written() }) : null), [props.env, item.id, previewStore, previewName, sync]);
   const [box, setBox] = useState<HTMLDivElement | null>(null);
   const width = useWidth(box);
   const frameRef = useCallback((node: HTMLDivElement | null) => {
@@ -229,7 +230,7 @@ export function Body(props: Props) {
         />
       ) : null}
       {/* A sheet that is the Excel copy of an .xls, .ods or .tsv says so in one quiet line, with its one press. */}
-      {view.imported ? <ImportLine imported={view.imported} shared={view.shared} run={(act) => runImport((a) => sync.host.imported(a), view.imported!, act)} /> : null}
+      {view.imported ? <ImportLine imported={view.imported} shared={view.shared} run={(act) => runImport(importAsk(sync), view.imported!, act)} /> : null}
       {handle && controls.includes("picture") ? <PictureInput ref={pictureInput} handle={handle} /> : null}
       {handle && customFormat !== null ? <CustomFormat current={customFormat} onClose={() => setCustomFormat(null)} onApply={(pattern) => handle.format({ pattern })} /> : null}
       {google.dialog}
@@ -278,6 +279,14 @@ export function Body(props: Props) {
     </div>
   );
 }
+
+/** A press on a copy's way out: his last edit reaches the copy first (Discard edits and read again drops them, so it waits on none). */
+const importAsk =
+  (sync: SheetSync) =>
+  async (act: SheetImportAct): Promise<SheetImportDone> => {
+    if (act !== "again") await sync.written();
+    return sync.host.imported(act);
+  };
 
 const LABELS = { failed: "Couldn't draw this sheet." };
 const NO_OBJECTS = { charts: [], pictures: [], warnings: [] };
@@ -578,7 +587,7 @@ function useSelectionFeed(
       ...(store === "csv" ? [{ id: "save-csv", label: "Save as CSV", icon: Export, run: () => saveAs(sync.host, "csv", activeName()) }] : []),
       ...(googleRow ? [googleRow] : []),
       // The copy of an .xls, .ods or .tsv: saved back as the format it was, or out as Excel.
-      ...importRows(imported, (act) => (imported ? runImport((a) => sync.host.imported(a), imported, act) : Promise.resolve())),
+      ...importRows(imported, (act) => (imported ? runImport(importAsk(sync), imported, act) : Promise.resolve())),
       ...(shareGone ? [{ id: "share", label: "Share", icon: Share, run: () => way.ask() }] : []),
     ]);
     return () => shell.more?.(null);
