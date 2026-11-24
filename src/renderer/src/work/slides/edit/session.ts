@@ -1,5 +1,5 @@
 import type { DeckShape, DeckSlide, DeckView, SlideOp } from "@shared/contract-work-slides";
-import { CloseRefused } from "../../canvas/flush";
+import { CloseRefused, FLUSH_WAIT_MS } from "../../canvas/flush";
 import { sayError } from "../../canvas/frame";
 import { openDeck, type DeckHost, type DeckStore } from "../deck";
 import type { Quad } from "../geometry";
@@ -114,6 +114,10 @@ const MOVED = /changed while this was being made/i;
 export const CONFLICT_WORD = "The deck changed while you typed";
 /** Why a slide an agent's suggestion changes takes no hand edit. */
 export const SUGGESTED = "Accept or reject the suggestion on this slide first";
+/** Words in a box not saved yet, when another box would open over them. */
+export const UNSAVED = "The words in the open box are not saved yet";
+/** A close that waited this long for words still in this window keeps its tab (canvas/flush.ts closes it at FLUSH_WAIT_MS). */
+const CLOSE_WAIT_MS = FLUSH_WAIT_MS - 500;
 /** A typing pause longer than this starts a new step of the box's own undo. */
 const TYPING_STEP_MS = 1000;
 /** A typing pause this long sends the box's words to the file, the box left open (`keep`). */
@@ -139,6 +143,8 @@ export class HandSession {
   private keepTimer: ReturnType<typeof setTimeout> | null = null;
   /** The box's words on their way to the host (a keep or a commit): one at a time, each sent over what the last wrote. */
   private sending: Promise<void> | null = null;
+  /** The box whose commit has handed its words to the host: past that, the host lands them whatever the window does. */
+  private handed: number | null = null;
 
   constructor(
     private host: DeckHost,
@@ -186,6 +192,12 @@ export class HandSession {
   open(slide: DeckSlide, shape: DeckShape, start: Start): boolean {
     // While his last words are on their way the deck's words are about to change: a box now would be built on the old ones.
     if (this.state.box?.phase === "saving") return false;
+    // Words still in a box (a conflict that waits for Reload, a send the host refused) are never drawn over by another.
+    const was = this.state.box;
+    if (was?.phase === "typing" && (was.conflict || !unchanged(was.model, was.initial))) {
+      sayError(new Error(UNSAVED), UNSAVED);
+      return false;
+    }
     const why = this.refusal(slide, shape);
     if (why !== null) {
       if (why) sayError(new Error(why), why);
@@ -436,6 +448,7 @@ export class HandSession {
     }
     this.set({ busy: this.state.busy + 1, failure: null });
     try {
+      this.handed = box.id;
       const next = await this.host.edit([runsOp(box.model, box.slideId, box.shape.id, wordsOf(box.shape))]);
       this.store.view(next);
       const slide = next.slides.find((s) => s.id === box.slideId && s.tint !== "del");
@@ -458,9 +471,20 @@ export class HandSession {
    * when they are still not in the file, so the tab stays open with them and the line's Retry or Reload.
    */
   async flush(): Promise<void> {
-    await this.commit();
-    await this.settled();
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const late = await Promise.race([
+      (async () => {
+        await this.commit();
+        await this.settled();
+        return false;
+      })(),
+      new Promise<boolean>((resolve) => (timer = setTimeout(() => resolve(true), CLOSE_WAIT_MS))),
+    ]);
+    clearTimeout(timer);
     const { box, failure } = this.state;
+    // Before the close's own wait runs out: words the commit has not yet handed to the host (still behind a slow keep)
+    // would be lost with the item, so the tab stays with them; words on their way the host lands.
+    if (late && box && (box.phase === "typing" || (box.phase === "saving" && this.handed !== box.id)) && !unchanged(box.model, box.initial)) throw new CloseRefused(UNSAVED);
     if (box?.phase === "typing" && !unchanged(box.model, box.initial)) throw new CloseRefused(failure?.message ?? "Your words in the box are not in the file yet");
   }
 

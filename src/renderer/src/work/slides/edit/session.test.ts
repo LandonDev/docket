@@ -366,6 +366,47 @@ describe("a close while the box's words are on their way", () => {
     expect(session.get().box?.phase ?? null).not.toBe("typing");
   });
 
+  it("a close whose words are still in this window when its wait runs out keeps the tab, and the words go in after", async () => {
+    vi.useFakeTimers();
+    try {
+      const { host, session, slide: s, shape } = deck();
+      const { gates } = held(host);
+      session.open(s, shape, "end");
+      type(session, " today");
+      await vi.advanceTimersByTimeAsync(TYPING_SAVE_MS);
+      // A slow keep; words typed meanwhile wait behind it, in this window.
+      type(session, "!");
+      const closing = session.flush();
+      const refused = expect(closing).rejects.toThrow("The words in the open box are not saved yet");
+      await vi.advanceTimersByTimeAsync(7600);
+      await refused;
+      expect(session.get().box!.model[0].runs.map((r) => r.text).join("")).toBe("Who comes today!");
+      // The keep lands, then the box's own words: nothing is lost.
+      gates.shift()!();
+      await vi.waitFor(() => expect(gates).toHaveLength(1));
+      gates.shift()!();
+      await vi.waitFor(() => expect(host.view.slides[0].shapes[0].paragraphs![0].runs.map((r) => r.text).join("")).toBe("Who comes today!"));
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("no box opens over words not saved yet: a conflict that waits for Reload keeps its box", async () => {
+    const { host, session, slide: s, shape, store } = deck();
+    session.open(s, shape, "end");
+    type(session, " today");
+    host.view = { ...host.view, slides: [{ ...s, shapes: [textShape(2, [{ level: 0, align: "left", list: "none", runs: [{ text: "Who goes", size: 40 }] }])] }] };
+    store.view(host.view);
+    await session.commit();
+    expect(session.get().failure?.conflict).toBe(true);
+    const other = store.get().view!.slides[0].shapes[0];
+    expect(session.open(store.get().view!.slides[0], other, "all")).toBe(false);
+    expect(session.get().box!.model[0].runs.map((r) => r.text).join("")).toBe("Who comes today");
+    // Escape puts his words back; then a box opens.
+    session.cancel();
+    expect(session.open(store.get().view!.slides[0], other, "all")).toBe(true);
+  });
+
   it("after a keep the box opened on what was written: a press away and the close send nothing more and settle at once", async () => {
     vi.useFakeTimers();
     try {
