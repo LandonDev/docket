@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
-/** `useSessionById` asks again for a transcript the store let go while it is still drawn (W-51). */
+/** `useSessionById` asks again for a transcript the store let go while it is still drawn (W-51), and what it
+ *  draws never waits behind another transcript's catch-up on a remote host. */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
 import { newSession } from "../session";
@@ -84,5 +85,71 @@ describe("useSessionById", () => {
     await waitFor(() => expect(result.current?.load.phase).toBe("loaded"));
     expect(host.fetches).toBe(1);
     expect(result.current?.blocks.map((b) => b.text)).toEqual(["Draft a reply"]);
+  });
+});
+
+/** A remote host whose transcripts all hang: the order they were asked for is the lane's order. */
+class RemoteHost extends Host {
+  override profile = "remote" as unknown as "local";
+  asked: string[] = [];
+  constructor(private readonly metas: SessionMeta[]) {
+    super();
+  }
+  override request<T>(method: string, params?: unknown): Promise<T> {
+    if (method === "session.list") {
+      const archived = (params as { archived?: boolean } | undefined)?.archived;
+      return Promise.resolve({ sessions: archived ? [] : this.metas.map(({ environmentId: _e, ...wire }) => wire), cursor: null } as T);
+    }
+    if (method === "session.events") {
+      this.asked.push((params as { sessionId: string }).sessionId);
+      return new Promise<T>(() => {});
+    }
+    return Promise.resolve(null as T);
+  }
+}
+
+/** A window on a remote host whose focused pane shows `shown`, its own page still out. */
+async function remote(shown: string, metas: SessionMeta[], loading = shown): Promise<RemoteHost> {
+  const box = new RemoteHost(metas);
+  sessionStore.attach(box);
+  await sessionStore.ready();
+  sessionStore.followShown({ shown: () => shown, onChange: () => () => {} });
+  void sessionStore.ensureLoaded(loading, "pane").catch(() => undefined);
+  return box;
+}
+const settle = () => act(() => new Promise((r) => setTimeout(r, 0)));
+const child = (id: string, parentId: string): SessionMeta => ({ ...meta(id), parentId });
+
+describe("useSessionById on a remote host: what it draws is on screen", () => {
+  it("a subagent opened inside a child inside a master loads at once, beside the child", async () => {
+    const box = await remote("m", [meta("m"), child("c", "m"), child("s", "c")]);
+    renderHook(() => useSessionById("c")); // ChildPane, in the master's place
+    renderHook(() => useSessionById("s")); // AgentDetailBody, inside the child
+    await settle();
+    expect(box.asked).toEqual(["m", "c", "s"]);
+  });
+
+  it("a subagent opened inside an ordinary focused thread loads at once", async () => {
+    const box = await remote("t", [meta("t"), child("a", "t")]);
+    renderHook(() => useSessionById("a"));
+    await settle();
+    expect(box.asked).toEqual(["t", "a"]);
+  });
+
+  it("the chat docked beside a file loads at once, ahead of a transcript only kept", async () => {
+    // The focused pane is a file's; a kept transcript's catch-up holds the lane.
+    const box = await remote("files", [meta("k"), meta("d")], "k");
+    await settle();
+    expect(box.asked).toEqual(["k"]);
+    renderHook(() => useSessionById("d"));
+    await settle();
+    expect(box.asked).toEqual(["k", "d"]);
+  });
+
+  it("a fleet row that only quotes a waiting agent's question waits its turn", async () => {
+    const box = await remote("m", [meta("m"), child("q", "m")]);
+    renderHook(() => useSessionById("q", { drawn: false }));
+    await settle();
+    expect(box.asked).toEqual(["m"]);
   });
 });

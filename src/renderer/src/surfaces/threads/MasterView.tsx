@@ -464,8 +464,6 @@ function MasterBoardView(props: ThreadViewProps) {
     rightPanel.showThread(session.id, openId && shownHost ? { id: openId, environmentId: shownHost } : null);
   }, [openId, session.id, shownHost]);
   useEffect(() => () => rightPanel.showThread(session.id, null), [session.id]);
-  // The child drawn in this pane's place is the thread on screen: its transcript never waits its turn behind the master's.
-  useEffect(() => (openId ? sessionStore.showInside(session.id, openId) : undefined), [openId, session.id]);
 
   // Pause all and Resume all, one session.batch per host; what a host
   // refused (or never got) is said in one toast, never dropped.

@@ -107,7 +107,8 @@ export function useFleetModel(sessionId: string): FleetModel {
  *  reads what the store already holds. No context poll, no clock. */
 export function useAgentStatus(agent: SessionMeta): AgentStatus {
   const wanted = loadsTranscript(agent);
-  const fetched = useSessionById(wanted ? agent.id : null);
+  // A row quotes the question; it is not the transcript drawn, so it waits its turn.
+  const fetched = useSessionById(wanted ? agent.id : null, { drawn: false });
   const held = useSessionIfLoaded(agent.id);
   const blocks = (wanted ? fetched : held)?.blocks;
   return useMemo(() => agentStatus(agent, blocks), [agent, blocks]);

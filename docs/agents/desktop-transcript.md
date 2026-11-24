@@ -73,12 +73,15 @@
   `CatchUpLane`, one per remote host): each transcript resumes from the last
   seq it folded (`afterSeq`; the host answers the gap, or a fresh 1 MiB tail
   past RESUME_ROWS or RESUME_BYTES); the thread the focused pane shows
-  (`FocusSignal.shown`, `sessionStore.followShown`), or the child a
-  master's view draws in that pane's place (`sessionStore.showInside`,
-  MasterView; focus, `session.focus` and the read mark stay the pane's),
-  goes at once, jumps
-  the queue when it changes, and is the lane's first pick when a window
-  opening names it a microtask after asking (the pick waits a few
+  (`FocusSignal.shown`, `sessionStore.followShown`), and every thread a
+  mounted view draws in front of him at any depth (`useSessionById`
+  counts it on screen while mounted, `sessionStore.drawOnScreen`: a
+  master's child, a subagent inside a child or a thread, the chat docked
+  beside a file or a mail; a fleet row that only quotes a waiting agent's
+  question passes `drawn: false` and waits its turn; focus,
+  `session.focus` and the read mark stay the pane's), go at once, jump
+  the queue when what is on screen changes, and are the lane's first pick when a window
+  opening names one a microtask after asking (the pick waits a few
   microtasks); no other starts while its fetch is out
   (so its page never queues behind another on the socket); the panes on
   the page, then the kept ones, go one at a time, each followed by a pause
@@ -92,7 +95,9 @@
   keeps its one place; Retry on a load still waiting its turn starts it
   (`retryLoad` → `promote`). Before (2026-11-24): a child opened in a
   master's view sat behind the master's fetches with "Waiting for the box"
-  and a Retry that did nothing. The supervisor's probe fails on 5 s of silence, not on a
+  and a Retry that did nothing; a subagent opened inside that child, or
+  inside any thread, and the docked chat still did until the rule moved to
+  `useSessionById` (sessionById.dom.test.tsx). The supervisor's probe fails on 5 s of silence, not on a
   late answer: while frames still arrive it waits, up to PROBE_LIMIT_MS
   (30 s). Before (2026-11-23, 9:46 PM): six `session.events` at once, 8+ MiB
   unsent on the box's socket, long tasks of 1.2 to 2.6 s, and a probe

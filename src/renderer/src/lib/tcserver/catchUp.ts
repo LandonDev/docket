@@ -24,9 +24,9 @@ export const FRONT_WAIT_MS = 2_000;
 export const TURN_WAIT_MS = 10_000;
 
 export type CatchUpOptions = {
-  /** The thread the window's focused pane shows, or the one it draws in
-   *  its place (a master's child, `showInside`): it never waits here. */
-  shown: () => string | null;
+  /** Whether a thread is on screen: the focused pane's, or one a mounted
+   *  view draws (a master's child, a subagent, a docked chat). It never waits here. */
+  shown: (id: string) => boolean;
   /** Characters received on the link so far (`Link.bytesIn`). */
   bytesIn: () => number;
   now?: () => number;
@@ -65,7 +65,7 @@ export class CatchUpLane {
 
   /** Run one transcript's fetch: at once for the shown thread, else in turn. */
   run<T>(id: string, fetch: () => Promise<T>): Promise<T> {
-    if (id === this.options.shown()) return this.inFront(fetch());
+    if (this.options.shown(id)) return this.inFront(fetch());
     const queued = this.waiting.find((w) => w.id === id);
     if (queued) {
       queued.fetch = fetch;
@@ -82,12 +82,17 @@ export class CatchUpLane {
     return w.answer as Promise<T>;
   }
 
-  /** The shown thread moved, or Retry was pressed: if it waits here, it starts now. */
-  promote(id: string | null): void {
-    const at = id ? this.waiting.findIndex((w) => w.id === id) : -1;
+  /** Retry was pressed: if it waits here, it starts now. */
+  promote(id: string): void {
+    const at = this.waiting.findIndex((w) => w.id === id);
     if (at < 0) return;
     const [w] = this.waiting.splice(at, 1);
     void this.inFront(w.start());
+  }
+
+  /** What is on screen changed: every thread now on screen that waits here starts now. */
+  promoteShown(): void {
+    for (const w of this.waiting.filter((x) => this.options.shown(x.id))) this.promote(w.id);
   }
 
   private inFront<T>(run: Promise<T>): Promise<T> {
@@ -127,9 +132,8 @@ export class CatchUpLane {
           const bound = this.timer(FRONT_WAIT_MS).then(() => void (waited = true));
           while (this.front.size > 0 && !waited) await Promise.race([Promise.all(this.front), bound]);
         }
-        // The shown thread first, if it was asked for before the window named it.
-        const shown = this.options.shown();
-        const at = this.waiting.findIndex((x) => x.id === shown);
+        // A thread on screen first, if it was asked for before the window drew it.
+        const at = this.waiting.findIndex((x) => this.options.shown(x.id));
         const w = at >= 0 ? this.waiting.splice(at, 1)[0] : this.waiting.shift();
         if (!w) break;
         const before = this.options.bytesIn();

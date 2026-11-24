@@ -485,19 +485,19 @@ class SessionStore {
 
   private shownSource: () => string | null = () => null;
   private offShown: (() => void) | null = null;
-  /** A pane's thread → the thread it draws in its own place (a master's child). */
-  private inside = new Map<string, string>();
+  /** Threads a mounted view draws (useSessionById), counted per view. */
+  private drawn = new Map<string, number>();
 
-  /** The thread on screen in the focused pane: its fetches never wait
-   *  behind another transcript's catch-up. */
-  private shownNow(): string | null {
-    const pane = this.shownSource();
-    return (pane && this.inside.get(pane)) ?? pane;
+  /** Whether a thread is on screen: the focused pane's, or one a mounted
+   *  view draws in front of the person at any depth (a master's child, a
+   *  subagent, a docked chat). Its fetches never wait behind another
+   *  transcript's catch-up. */
+  private onScreen(id: string): boolean {
+    return id === this.shownSource() || this.drawn.has(id);
   }
 
   private promoteShown(): void {
-    const id = this.shownNow();
-    for (const attached of this.attached.values()) attached.catchUp.promote(id);
+    for (const attached of this.attached.values()) attached.catchUp.promoteShown();
   }
 
   /** The thread the window's focused pane shows (FocusSignal.shown). */
@@ -508,16 +508,20 @@ class SessionStore {
   }
 
   /**
-   * The pane of `paneId` draws `id` in its place (MasterView's ChildPane):
-   * while that pane is shown, `id` is the thread on screen for the catch-up
-   * lane. Focus, the host's `session.focus` and the read mark stay the
-   * pane's (FocusSignal). Returns the undo.
+   * A mounted view draws `id` in front of the person (useSessionById): until
+   * the undo, it is on screen for the catch-up lane. Focus, the host's
+   * `session.focus` and the read mark stay the pane's (FocusSignal).
    */
-  showInside(paneId: string, id: string): () => void {
-    this.inside.set(paneId, id);
+  drawOnScreen(id: string): () => void {
+    this.drawn.set(id, (this.drawn.get(id) ?? 0) + 1);
     this.promoteShown();
+    let done = false;
     return () => {
-      if (this.inside.get(paneId) === id) this.inside.delete(paneId);
+      if (done) return;
+      done = true;
+      const left = (this.drawn.get(id) ?? 1) - 1;
+      if (left > 0) this.drawn.set(id, left);
+      else this.drawn.delete(id);
     };
   }
 
@@ -549,7 +553,7 @@ class SessionStore {
       });
     }
     const subs = new Subscriptions(link);
-    const catchUp = new CatchUpLane({ shown: () => this.shownNow(), bytesIn: () => link.bytesIn ?? 0 });
+    const catchUp = new CatchUpLane({ shown: (id) => this.onScreen(id), bytesIn: () => link.bytesIn ?? 0 });
     const entry: Attached = { link, subs, catchUp, detach: [], listed: null };
     const list = (): void => {
       // Transcripts asked for while the host was away load now, beside the list.
@@ -651,7 +655,7 @@ class SessionStore {
     this.offShown?.();
     this.offShown = null;
     this.shownSource = () => null;
-    this.inside.clear();
+    this.drawn.clear();
     for (const a of this.attached.values()) {
       for (const off of a.detach) off();
       a.subs.dispose();
@@ -1270,9 +1274,8 @@ class SessionStore {
     }
     // On a remote host they take turns (catchUp.ts): the shown one, then the
     // panes on the page, then the transcripts only kept.
-    const shown = this.shownNow();
     const onPage = (entry: Entry): number =>
-      entry.session.id === shown ? 0 : this.mounted?.has(entry.session.id) || this.apart.has(entry.session.id) ? 1 : 2;
+      this.onScreen(entry.session.id) ? 0 : this.mounted?.has(entry.session.id) || this.apart.has(entry.session.id) ? 1 : 2;
     replay.sort((a, b) => onPage(a) - onPage(b));
     // A pane restored from a saved layout is a loaded draft until its host
     // claims it; its first fetch is a load with a phase like any other.

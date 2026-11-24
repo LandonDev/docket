@@ -6,13 +6,13 @@ const flush = async (): Promise<void> => {
 };
 
 function harness(shown: string | null = null) {
-  const state = { shown, bytes: 0, now: 0 };
+  const state = { shown, onScreen: new Set<string>(), bytes: 0, now: 0 };
   const sleeps: number[] = [];
   const naps: (() => void)[] = [];
   /** The lane's bounds, by length, fired by hand. */
   const timers: { ms: number; fire: () => void }[] = [];
   const lane = new CatchUpLane({
-    shown: () => state.shown,
+    shown: (id: string) => id === state.shown || state.onScreen.has(id),
     bytesIn: () => state.bytes,
     now: () => state.now,
     sleep: (ms) => {
@@ -97,7 +97,7 @@ describe("CatchUpLane", () => {
     for (const id of ["a", "b", "c"]) void h.lane.run(id, h.fetch(id));
     await flush();
     h.state.shown = "c";
-    h.lane.promote("c");
+    h.lane.promoteShown();
     await flush();
     expect(h.started).toEqual(["a", "c"]);
     expect(h.lane.queued()).toEqual(["b"]);
@@ -178,6 +178,17 @@ describe("CatchUpLane", () => {
     await h.answer("a");
     await Promise.all([first, second]);
     expect(calls).toEqual(["new"]);
+  });
+
+  it("puts every thread on screen in front, more than one at a time", async () => {
+    const h = harness("a");
+    for (const id of ["a", "b", "c", "d"]) void h.lane.run(id, h.fetch(id));
+    await flush();
+    h.state.onScreen.add("c").add("d");
+    h.lane.promoteShown();
+    await flush();
+    expect(h.started).toEqual(["a", "c", "d"]);
+    expect(h.lane.queued()).toEqual(["b"]);
   });
 
   it("promote (Retry) starts a waiting transcript now, ahead of a running one", async () => {

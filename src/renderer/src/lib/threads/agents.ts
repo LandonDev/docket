@@ -404,14 +404,19 @@ export function loadsTranscript(agent: Pick<SessionMeta, "status" | "failure">):
   return state === "waiting" || (state === "failed" && !agent.failure);
 }
 
-/** One session's folded state, loading its transcript on first use. */
-export function useSessionById(id: string | null): Session | undefined {
+/** One session's folded state, loading its transcript on first use. The
+ *  caller draws it in front of the person, so while it is mounted its
+ *  fetches never wait behind another transcript's on a remote host
+ *  (`drawOnScreen`); a row that only quotes from it passes `drawn: false`. */
+export function useSessionById(id: string | null, { drawn = true }: { drawn?: boolean } = {}): Session | undefined {
   const session = useSyncExternalStore(sessionStore.subscribe, () =>
     id ? sessionStore.get(id) : undefined,
   );
   // The load's answer counts as loaded too: a draft that became a thread never set `loaded`, so the change to
   // "not loaded" that an unload makes would otherwise ask for nothing.
   const loaded = session?.loaded === true || session?.load?.phase === "loaded";
+  // Before the load below, so its first fetch already goes in front.
+  useEffect(() => (id && drawn ? sessionStore.drawOnScreen(id) : undefined), [id, drawn]);
   useEffect(() => {
     if (id && !loaded) void sessionStore.ensureLoaded(id, "byId").catch(() => undefined);
   }, [id, loaded]);

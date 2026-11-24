@@ -433,22 +433,36 @@ describe("remote profile: the catch-up after a reconnect", () => {
     return { asked };
   }
 
-  it("a child opened inside the master's view loads at once, never behind the master's fetches", async () => {
+  it("a thread a view draws loads at once, never behind the master's fetches", async () => {
     const { asked } = await masterWithChild();
-    const off = sessionStore.showInside("m", "c");
+    const off = sessionStore.drawOnScreen("c");
     void sessionStore.ensureLoaded("c", "byId").catch(() => undefined);
     await new Promise((r) => setTimeout(r, 0));
     expect(asked()).toEqual(["m", "c"]);
     off();
   });
 
-  it("a child asked for before the master's view names it starts when it does", async () => {
+  it("a thread asked for before a view draws it starts when it does", async () => {
     const { asked } = await masterWithChild();
     void sessionStore.ensureLoaded("c", "byId").catch(() => undefined);
-    const off = sessionStore.showInside("m", "c");
+    await new Promise((r) => setTimeout(r, 0));
+    expect(asked()).toEqual(["m"]);
+    const off = sessionStore.drawOnScreen("c");
     await new Promise((r) => setTimeout(r, 0));
     expect(asked()).toEqual(["m", "c"]);
     off();
+  });
+
+  it("a thread is on screen until the last view that draws it lets go", async () => {
+    const { asked } = await masterWithChild();
+    const first = sessionStore.drawOnScreen("c");
+    const second = sessionStore.drawOnScreen("c");
+    first();
+    first();
+    void sessionStore.ensureLoaded("c", "byId").catch(() => undefined);
+    await new Promise((r) => setTimeout(r, 0));
+    expect(asked()).toEqual(["m", "c"]);
+    second();
   });
 
   it("Retry on a load waiting its turn starts it now", async () => {
