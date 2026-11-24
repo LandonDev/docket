@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 /**
  * The shared dock (work/dock): one chat a subject's key, a `send` subject's chips carried by the first send and never
  * shown in the composer, and a must step that stops the first send when it fails and runs again before the next.
@@ -27,6 +28,7 @@ const { contextChipsOf, resetContextChips, takeContextChips } = await import("..
 const { sessionStore } = await import("../../lib/tcserver/store");
 const { newSession } = await import("../../lib/session");
 const { dockShown, workDockPort } = await import("../../lib/workSwitch");
+const { dockDraftKey, projectDrafts } = await import("../../lib/projectDrafts");
 const { afterCreate, ensureCreated } = await import("../../lib/tcserver/commands");
 import type { DockSubject } from "./subject";
 
@@ -35,6 +37,8 @@ const mail: ContextChip = { kind: "mail", label: "Lunch on Friday", ref: { at: "
 const subject = (over: Partial<DockSubject> = {}): DockSubject => ({ key: "mail/w1/mt1", title: "Lunch on Friday", chips: [mail], chipIn: "send", find: async () => null, ...over });
 
 beforeEach(() => {
+  localStorage.clear();
+  projectDrafts.reload();
   sessionStore.reset();
   resetContextChips();
   resetDocks();
@@ -59,6 +63,54 @@ describe("one chat a subject", () => {
 
   it("shows the subject's thread from before when there is one", async () => {
     expect(await dockThread(workspace, subject({ find: async () => "s-old" }))).toEqual({ id: "s-old", draft: false });
+  });
+});
+
+describe("a dock's draft over a quit and a launch", () => {
+  /** What a quit and a launch leave: localStorage alone. */
+  const relaunch = (): void => {
+    projectDrafts.flush();
+    resetDocks();
+    sessionStore.reset();
+    projectDrafts.reload();
+  };
+  const file = (over: Partial<DockSubject> = {}): DockSubject => subject({ key: "w1/tab1", chipIn: "composer", chips: [], ...over });
+
+  it("comes back with its id and the words he typed, under the subject's own record", async () => {
+    const before = await dockThread(workspace, file());
+    // What the composer writes as he types (Composer.tsx `saveProjectDraft`): the record that holds its id.
+    expect(projectDrafts.keyOfDraft(before.id)).toBe(dockDraftKey("w1/tab1"));
+    projectDrafts.put(projectDrafts.keyOfDraft(before.id)!, { segments: [{ text: "Ask about the practice notes" }] });
+    relaunch();
+    const after = await dockThread(workspace, file());
+    expect(after).toEqual({ id: before.id, draft: true });
+    expect(sessionStore.get(after.id)?.workspaceId).toBe("w1");
+    expect(projectDrafts.get(dockDraftKey("w1/tab1"))!.segments).toEqual([{ text: "Ask about the practice notes" }]);
+  });
+
+  it("never takes the workspace's New thread draft, nor gives it its words", async () => {
+    projectDrafts.put("loose:w1", { ...newSession("box", "claude", "/w", undefined, undefined, { projectId: null, workspaceId: "w1" }), environmentId: "box", projectId: null, workspaceId: "w1", id: "ws-draft", threadType: "chat", threadRules: null, modelSettings: {}, segments: [{ text: "a new thread" }], attachments: [] });
+    const docked = await dockThread(workspace, file());
+    projectDrafts.put(projectDrafts.keyOfDraft(docked.id)!, { segments: [{ text: "about this file" }] });
+    relaunch();
+    const again = await dockThread(workspace, file());
+    expect(again.id).not.toBe("ws-draft");
+    expect(projectDrafts.get("loose:w1")!.segments).toEqual([{ text: "a new thread" }]);
+    expect(projectDrafts.get(dockDraftKey("w1/tab1"))!.segments).toEqual([{ text: "about this file" }]);
+  });
+
+  it("is a new draft once the one from before became a thread", async () => {
+    const before = await dockThread(workspace, file());
+    projectDrafts.put(projectDrafts.keyOfDraft(before.id)!, { segments: [{ text: "sent already" }] });
+    relaunch();
+    const meta = vi.spyOn(sessionStore, "metaOf").mockImplementation(((id: string) => (id === before.id ? { id } : null)) as never);
+    try {
+      const after = await dockThread(workspace, file());
+      expect(after.id).not.toBe(before.id);
+      expect(projectDrafts.get(dockDraftKey("w1/tab1"))!.segments).toEqual([]);
+    } finally {
+      meta.mockRestore();
+    }
   });
 });
 

@@ -1,7 +1,7 @@
 import { LOCAL_ENVIRONMENT_ID } from "./connection";
 import { isPlaceholderTitle } from "@server/shared/placeholderTitles";
 import { collapseBlankTabs, isBlankSession } from "./blankTabs";
-import { draftPicks, projectDrafts, sessionFromDraft } from "./projectDrafts";
+import { draftPicks, isDockDraftKey, projectDrafts, sessionFromDraft } from "./projectDrafts";
 import { markTurnInterrupted, type ResumedWorkspace } from "./inFlight";
 import {
   closeLeaf,
@@ -277,6 +277,11 @@ function dropUnsentDrafts(
   const order = kept ? [kept.id, ...[...unsent].filter((id) => id !== kept.id)] : [...unsent];
   for (const id of order) {
     const session = sessions.get(id)!;
+    // A dock's draft (a file's Ask) is its subject's, under its own record: it never seeds the workspace's.
+    if (isDockDraftKey(projectDrafts.keyOfDraft(id) ?? "")) {
+      sessions.delete(id);
+      continue;
+    }
     const key = drafts.keyOf(session);
     const record = projectDrafts.get(key);
     if (!record || drafts.known?.(record.id)) {

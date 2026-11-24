@@ -2,6 +2,7 @@ import type { ContextChip } from "@shared/work";
 import type { Session } from "../../lib/session";
 import { chipPort } from "../../lib/contextChips";
 import { afterCreate } from "../../lib/tcserver/commands";
+import { draftPicks, dockDraftKey, projectDrafts, sessionFromDraft } from "../../lib/projectDrafts";
 import { sessionStore } from "../../lib/tcserver/store";
 import { dockShown, workDockPort } from "../../lib/workSwitch";
 import { aboutFor, addContextChip, contextChipsOf, setSendChips } from "../canvas/chips";
@@ -10,7 +11,8 @@ import type { DockSubject } from "./subject";
 /**
  * Which chat a dock shows, and its draft until he sends (docs/agents/work-files.md "Ask"). Opening a dock makes no
  * thread: it shows the thread it showed for this subject this run, else the subject's thread from before (`find`),
- * else a draft that is on no host and in no rail. A draft becomes a thread by the composer's own send; in that send,
+ * else a draft that is on no host and in no rail. The draft keeps a record of its own by the subject's key
+ * (lib/projectDrafts.ts `dockDraftKey`), so his words come back after a quit and a launch. A draft becomes a thread by the composer's own send; in that send,
  * between the create and the message, the subject's `hold` runs (`afterCreate`). A dock closed with nothing sent
  * leaves nothing behind. Nothing here knows what the subject is.
  */
@@ -78,9 +80,16 @@ function draftFor(workspace: DockWorkspace, subject: DockSubject, again: string 
     heeding = true;
     chipPort.subscribe(heedChips);
   }
-  // The draft from before as it last stood (his picks kept), else a new one seeded as New thread seeds one.
+  // The draft from before as it last stood (his picks kept); else the one a launch before kept for the subject, rebuilt
+  // with its id so the composer finds its words; else a new one seeded as New thread seeds one.
+  const key = dockDraftKey(subject.key);
+  const record = projectDrafts.get(key);
   const kept = again ? sessionStore.get(again) : undefined;
-  const session = kept ?? (subject.seed ? subject.seed(port.draft(workspace, again)) : port.draft(workspace, again));
+  const remembered = !kept && record && (!again || record.id === again) && !sessionStore.metaOf(record.id) ? sessionFromDraft(record, null) : undefined;
+  const made = kept ?? remembered ?? port.draft(workspace, again);
+  const session = subject.seed && !kept ? subject.seed(made) : made;
+  // The subject's own record, never the workspace's draft: what he types here comes back after a launch, here alone.
+  if (record?.id !== session.id) projectDrafts.put(key, { ...draftPicks(session), segments: [], attachments: [] });
   // The seed holds after his defaults land too (sessionStore.reseedDrafts): a mail chat's draft never becomes Muse.
   if (subject.seed) sessionStore.keepDraftRule(session.id, subject.seed);
   const { hold } = subject;

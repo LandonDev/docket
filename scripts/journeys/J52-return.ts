@@ -11,6 +11,14 @@ const DRAFT = 'Ask about the practice notes'
 const INPUT = '[data-files-dock] [data-composer-input]'
 const RAIL = 'nav [data-rail-path] button'
 
+/** What the window keeps of its place and its drafts, written beside the pictures: a failed return's cause is in it. */
+function kept(context: Context, label: string): Promise<void> {
+  return context.pair.page.eval<Record<string, string | null>>(`({
+    window: sessionStorage.getItem('work.return.v1'), returns: localStorage.getItem('work.return.v1'), files: localStorage.getItem('work.files.view.v1'),
+    drafts: localStorage.getItem('monocode.projectDrafts'), dock: document.querySelector('[data-files-dock]')?.getAttribute('data-files-dock') ?? null })`)
+    .then((value) => writeFileSync(join(context.folder, 'kept-' + label + '.json'), JSON.stringify(value, null, 2)), () => undefined)
+}
+
 async function returned(context: Context, label: string) {
   const { pair, folder, workspace } = context
   const { page } = pair
@@ -42,6 +50,7 @@ export default journey({
       await pair.page.clickOn(INPUT)
       await pair.page.typeKeys(DRAFT)
       await returned(context, 'before')
+      await kept(context, 'before')
     }),
     step('Switch workspaces and come back to the same Files view and draft', async (context) => {
       const { pair, workspace } = context
@@ -54,22 +63,20 @@ export default journey({
     step('Reload the window and check the same view, file and draft', async (context) => {
       await context.pair.page.reload()
       await returned(context, 'reload')
+      await kept(context, 'reload')
     }),
     step('end: win, quit and opened again, restores the same view, file and draft', async (context) => {
       const { pair } = context
       // What the window had kept when it was stopped, and what the next launch read: the record of the failure's cause.
-      const kept = (label: string) => pair.page.eval<Record<string, string | null>>(`({
-        window: sessionStorage.getItem('work.return.v1'), returns: localStorage.getItem('work.return.v1'), files: localStorage.getItem('work.files.view.v1') })`)
-        .then((value) => writeFileSync(join(context.folder, 'kept-' + label + '.json'), JSON.stringify(value, null, 2)), () => undefined)
-      await kept('before-stop')
+      await kept(context, 'before-stop')
       pair.later(async () => { if (!pair.abort.signal.aborted) await pair.restart(pair.win) })
       // He quits; he does not pull the plug. A stop by force is a crash, and Chromium keeps no promise about the last minute then.
       const left = await pair.quit(pair.win)
       await pair.restart(pair.win)
       if (!left) throw new Error('win did not quit when its window was closed; it was stopped by force')
-      await kept('at-launch')
+      await kept(context, 'at-launch')
       await returned(context, 'relaunch').catch(async (err: unknown) => {
-        await kept('after-wait')
+        await kept(context, 'after-wait')
         throw err
       })
     })

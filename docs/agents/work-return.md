@@ -63,7 +63,9 @@ Only a place the record gave is treated so: a mail or conversation he opens that
 
 - Scroll positions: the lists are work-kit's and LifeOS's, and a list he returns to has moved on.
 - A search or a filter's words in Mail, Messages and People: a stale search hides rows on return.
-- Mail's composer, the docked chat's thread and words: LifeOS and the dock keep them already.
+- Mail's composer, the docked chat's thread and words: LifeOS and the dock keep them already. A file's Ask draft
+  keeps its words over a quit and a launch in a record of its own (`dockDraftKey`, lib/projectDrafts.ts), never the
+  workspace's New thread draft (work-files.md "Ask").
 - A dialog (New event, a play, a template): it is an act, not a place.
 
 ## Tests and proof

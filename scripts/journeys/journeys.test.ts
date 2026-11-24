@@ -461,7 +461,7 @@ it('tracks a native open answer for the file and the socket that asked', () => {
   expect(proof.answer).toEqual({ opened: true })
 })
 
-it('drives the context menu and selection with mouse events, and reloads the page', async () => {
+it('drives the context menu and selection with mouse events', async () => {
   const send = vi.fn(async (_method: string, _params?: unknown) => undefined)
   const page = Object.assign(Object.create(Window.prototype) as Window, {
     cdp: { send }, signal: new AbortController().signal
@@ -476,8 +476,22 @@ it('drives the context menu and selection with mouse events, and reloads the pag
   expect(send.mock.calls.at(-1)).toEqual(['Input.dispatchMouseEvent', { type: 'mouseReleased', x: 17, y: 10, button: 'left', clickCount: 1 }])
   await page.hover({ x: 3, y: 2 })
   expect(send.mock.calls.at(-1)).toEqual(['Input.dispatchMouseEvent', { type: 'mouseMoved', x: 3, y: 2 }])
+})
+
+it('reloads and returns only once the new page runs, never on the old page', async () => {
+  // The old page answers a check until the reload lands: its marker goes with it.
+  const window: { __journeyOldPage?: boolean } = {}
+  let reloaded = false
+  const send = vi.fn(async (method: string) => {
+    if (method === 'Page.reload') setTimeout(() => { delete window.__journeyOldPage; reloaded = true }, 300)
+  })
+  const evaluate = vi.fn(async (expression: string) => new Function('window', 'document', 'return ' + expression)(window, { readyState: 'complete' }))
+  const page = Object.assign(Object.create(Window.prototype) as Window, {
+    cdp: { send, eval: evaluate }, signal: new AbortController().signal
+  })
   await page.reload()
-  expect(send.mock.calls.at(-1)).toEqual(['Page.reload'])
+  expect(send.mock.calls).toEqual([['Page.reload']])
+  expect(reloaded).toBe(true)
 })
 
 it('reads only the bytes of the named anchor download', async () => {

@@ -180,9 +180,13 @@ export class Window {
     await this.cdp.send('Page.navigate', { url })
   }
 
+  /** Reloads and returns once the new document runs: `Page.reload` answers before the old page goes, and a check made
+   *  then reads the old page (J52's reload step passed on it, 2026-11-24 02A16z). */
   async reload(): Promise<void> {
     this.signal.throwIfAborted()
+    await this.eval('window.__journeyOldPage = true')
     await this.cdp.send('Page.reload')
+    await this.until('the reloaded page', 30_000, () => this.eval('document.readyState !== "loading" && !window.__journeyOldPage').catch(() => false))
   }
 
   async pixelAt({ x, y }: Point): Promise<string> {

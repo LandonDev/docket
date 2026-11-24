@@ -363,7 +363,8 @@ control, takes it away.
   that holds the file (`heldBy` over `work.files.threads`); else a
   **draft**. App fills `workDockPort` (lib/workSwitch.ts): `draft(workspace,
   id?)` answers a Session seeded as New thread seeds one, in the Work
-  workspace, placed in no tab and recorded in no project draft; the dock
+  workspace, placed in no tab and never the workspace's New thread draft;
+  the dock
   puts it in the session store's open set, and names every chat it shows in
   `dockShown` (lib/workSwitch.ts) while it shows it: a dock is no tab, so
   the idle sweep (stores/subscriptions.ts) would otherwise take the chat out
@@ -400,6 +401,19 @@ control, takes it away.
   rail row. Its id is kept for the tab this run, so opening the dock again
   shows the same draft with what he typed (the composer keeps a draft's
   words by id) and its chips. A draft whose send is under way is left to it.
+- **Over a quit and a launch** the draft and his words come back: each
+  dock's draft has a record of its own in `monocode.projectDrafts` under
+  `dockDraftKey(subject.key)` (lib/projectDrafts.ts), made when the draft
+  is, and the composer writes his words to it as he types (Composer.tsx
+  `saveProjectDraft`). The next launch's dock finds the record and rebuilds
+  the draft with its id (`sessionFromDraft`), so the composer finds its
+  words; a record whose id has since become a thread gives way to a new
+  draft. The record is never the workspace's New thread draft, and that one
+  never takes the dock's words: a window restored with the dock's draft in
+  its open set leaves it out of the workspace's draft (`dropUnsentDrafts`,
+  lib/workspaceSnapshot.ts). Dock records are capped apart from projects'
+  (64 each), and one with nothing typed is never written to disk. The first
+  send clears it as it clears a project's draft.
 - **After a send** the thread is an ordinary thread in the rail; the dock
   keeps showing it by its title, with Open in its own tab (`workOpenPort`).
 - **A selection's Ask** (and a kind's own Ask) opens the dock and puts the

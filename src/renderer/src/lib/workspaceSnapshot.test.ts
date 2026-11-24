@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { beforeEach, describe, expect, it } from "vitest";
-import { draftPicks, projectDrafts } from "./projectDrafts";
+import { dockDraftKey, draftPicks, projectDrafts } from "./projectDrafts";
 import { INTERRUPT_MESSAGE } from "./inFlight";
 import {
   leaf,
@@ -451,6 +451,18 @@ describe("restoring unsent drafts", () => {
     expect(workspace.tabs[0]!.focusedId).toBe("remembered");
     expect(workspace.sessions.map((s) => s.id)).toEqual(["remembered"]);
     expect(projectDrafts.get("p1")!.segments).toEqual([{ text: "half a thought" }]);
+  });
+
+  it("a dock's draft saved with the window seeds no workspace draft and keeps its own record", () => {
+    // A file's Ask draft is in the open set, so the window's stubs hold it; it is no tab and no workspace's draft.
+    const docked = draft("docked", "p1");
+    projectDrafts.put(dockDraftKey("w1/tab1"), { ...draftPicks(docked), segments: [{ text: "about this file" }], attachments: [] });
+    const thread = chat("t1", "/repo/p1");
+    const snapshot = collectWorkspaceSnapshot([{ ...newTab("t1"), id: "tab" }], [thread, docked], "tab", "/repo/p1");
+    const workspace = hydrateWorkspaceSnapshot(snapshot, new Map([["t1", thread]]), undefined, drafts)!;
+    expect(workspace.sessions.map((s) => s.id)).toEqual(["t1"]);
+    expect(projectDrafts.get("p1")).toBeUndefined();
+    expect(projectDrafts.get(dockDraftKey("w1/tab1"))!.segments).toEqual([{ text: "about this file" }]);
   });
 
   it("the draft on screen keeps the access he picked on it: the stub knows no pick, its record does", () => {

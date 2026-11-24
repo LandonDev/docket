@@ -3,7 +3,9 @@ import { beforeEach, describe, expect, it } from "vitest";
 import {
   PROJECT_DRAFTS_CAP,
   PROJECT_DRAFTS_TTL_MS,
+  dockDraftKey,
   draftKeyOf,
+  isDockDraftKey,
   planProjectDraft,
   projectDrafts,
   projectDraftsStore,
@@ -109,6 +111,39 @@ describe("projectDrafts", () => {
     projectDrafts.reload(PROJECT_DRAFTS_TTL_MS + 1);
     expect(projectDrafts.get("old")).toBeUndefined();
     expect(projectDrafts.get("new")).toBeDefined();
+  });
+});
+
+describe("a dock's draft", () => {
+  const dock = dockDraftKey("w1/tab1");
+
+  it("lives under a key of its own, apart from the workspace's draft", () => {
+    expect(isDockDraftKey(dock)).toBe(true);
+    expect(isDockDraftKey(draftKeyOf({ projectId: null, environmentId: "local", workspaceId: "w1" }, catalog))).toBe(false);
+    projectDrafts.put("loose:w1", { ...base, id: "ws", segments: [{ text: "for a new thread" }] });
+    projectDrafts.put(dock, { ...base, id: "dk", segments: [{ text: "about this file" }] });
+    projectDrafts.flush();
+    projectDrafts.reload();
+    expect(projectDrafts.get(dock)!.segments).toEqual([{ text: "about this file" }]);
+    expect(projectDrafts.get("loose:w1")!.segments).toEqual([{ text: "for a new thread" }]);
+    expect(projectDrafts.keyOfDraft("dk")).toBe(dock);
+  });
+
+  it("is kept in the run with nothing typed, and never written to disk so", () => {
+    projectDrafts.put(dock, { ...base, id: "dk", segments: [{ text: "  " }] });
+    projectDrafts.flush();
+    expect(projectDrafts.get(dock)!.id).toBe("dk");
+    projectDrafts.reload();
+    expect(projectDrafts.get(dock)).toBeUndefined();
+  });
+
+  it("is capped apart, so docks opened never push a project's draft out", () => {
+    projectDrafts.put("plain", { ...base, id: "p" }, 1);
+    for (let i = 0; i < PROJECT_DRAFTS_CAP + 3; i++) projectDrafts.put(dockDraftKey(`w1/t${i}`), { ...base, id: `dk${i}` }, 1000 + i);
+    const keys = Object.keys(projectDraftsStore.getState().records);
+    expect(keys).toContain("plain");
+    expect(keys.filter(isDockDraftKey)).toHaveLength(PROJECT_DRAFTS_CAP);
+    expect(keys).not.toContain(dockDraftKey("w1/t0"));
   });
 });
 

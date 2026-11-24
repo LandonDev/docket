@@ -17,6 +17,13 @@ import type { ProjectMeta, ThreadType } from "./tcserver/types";
  *
  * Pasted bytes (an attachment with no `path`) never reach localStorage: they
  * live in memory by draft id and rejoin the record within the run.
+ *
+ * A Work dock's draft (work/dock/dockThread.ts) keeps a record of its own,
+ * under `dockDraftKey(subject)`: what he typed in a file's Ask comes back
+ * after a quit and a launch, and never in the workspace's New thread draft
+ * (nor that one's in the dock). Docks are capped apart from projects, so
+ * many files opened never push a project's draft out, and a dock record
+ * with nothing typed is never written to disk.
  */
 export type DraftPlace = {
   environmentId: string;
@@ -51,6 +58,14 @@ export type DraftRecord = DraftPlace & {
 export type DraftRecords = Readonly<Record<string, DraftRecord>>;
 
 const STORAGE_KEY = "monocode.projectDrafts";
+const DOCK_PREFIX = "dock:";
+
+/** The key a dock subject's draft lives under (`DockSubject.key`). */
+export const dockDraftKey = (subject: string): string => DOCK_PREFIX + subject;
+/** Whether `key` is a dock's draft, not a project's or a workspace's. */
+export const isDockDraftKey = (key: string): boolean => key.startsWith(DOCK_PREFIX);
+const holdsNothing = (record: Pick<DraftRecord, "segments" | "attachments">): boolean =>
+  record.attachments.length === 0 && record.segments.every((s) => "text" in s && !s.text.trim());
 /** Projects kept; the least recently seen go first. */
 export const PROJECT_DRAFTS_CAP = 64;
 /** A draft not seen for this long drops on load, as the strip order does. */
@@ -103,17 +118,22 @@ export function loadProjectDrafts(now = Date.now()): DraftRecords {
   }
 }
 
+/** The cap's count, for projects and for docks apart. */
 function capped(records: DraftRecords): DraftRecords {
   const keys = Object.keys(records);
-  if (keys.length <= PROJECT_DRAFTS_CAP) return records;
-  const keep = keys.sort((a, b) => records[b]!.seenAt - records[a]!.seenAt).slice(0, PROJECT_DRAFTS_CAP);
+  const docks = keys.filter(isDockDraftKey);
+  if (docks.length <= PROJECT_DRAFTS_CAP && keys.length - docks.length <= PROJECT_DRAFTS_CAP) return records;
+  const newest = (some: string[]) => some.sort((a, b) => records[b]!.seenAt - records[a]!.seenAt).slice(0, PROJECT_DRAFTS_CAP);
+  const keep = [...newest(keys.filter((key) => !isDockDraftKey(key))), ...newest(docks)];
   return Object.fromEntries(keep.map((key) => [key, records[key]!]));
 }
 
 function write(records: DraftRecords): void {
   const out: Record<string, DraftRecord> = {};
   for (const [key, record] of Object.entries(records)) {
-    out[key] = { ...record, attachments: record.attachments.filter((f) => !pasted(f)).map(storable) };
+    const attachments = record.attachments.filter((f) => !pasted(f)).map(storable);
+    if (isDockDraftKey(key) && holdsNothing({ segments: record.segments, attachments })) continue;
+    out[key] = { ...record, attachments };
   }
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(out));
