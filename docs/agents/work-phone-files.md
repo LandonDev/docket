@@ -376,7 +376,9 @@ this build's (PF5).
   between two reads), or a page the saved file no longer has (its answer
   names the version too), starts the pager over from page 1 of that version
   with its count (`FilesRules.startsOver`); a reply to the pager before the
-  start-over is dropped. No two pages of different versions show together.
+  start-over is dropped. The start-over runs in the screen's own task, not a
+  page's (the pager it replaces would cancel it): a spinner while it reads,
+  and a page 1 that does not come says why with Try Again. No two pages of different versions show together.
 - **Share…** has no row. The one way to share a file from the phone today is
   the guest link, which is its own row (Make a Guest Link, a LifeOS document
   or sheet, a key that may approve). No wire lets a remote key draft a mail

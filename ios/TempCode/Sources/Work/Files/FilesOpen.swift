@@ -97,6 +97,9 @@ struct FileQuickLookScreen: View {
     /// version starts the pager over.
     @State private var version: String?
     @State private var round = 0
+    /// The pager is starting over on a new version (the screen's task, not a page's), and why it could not.
+    @State private var startingOver = false
+    @State private var startFailed: String?
     @State private var reading = false
     @State private var failure: String?
     @State private var shown: URL?
@@ -118,6 +121,10 @@ struct FileQuickLookScreen: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else if pageCount > 0 {
                 pager
+            } else if startingOver {
+                ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else if let startFailed {
+                FilesFailed(title: "Can’t Show \(entry.name)", message: startFailed) { round += 1 }
             } else {
                 facts
             }
@@ -135,6 +142,11 @@ struct FileQuickLookScreen: View {
             // The Files proof: Open the original once the screen is up (`TC_TEST_ACTION=files-original`).
             if TestHooks.action == "files-original", TestHooks.once("files-original") { readTask = Task { await openOriginal() } }
             #endif
+        }
+        // A start-over runs here, on the screen: the pager it replaces would cancel a task of its own.
+        .task(id: round) {
+            guard round > 0 else { return }
+            await startOver()
         }
         .onDisappear {
             readTask?.cancel()
@@ -179,6 +191,26 @@ struct FileQuickLookScreen: View {
         pageCount = max(1, Int(answer.pages ?? 1))
     }
 
+    /// Page 1 of the file's new version and its count, or why not, with Try Again (`startFailed`).
+    private func startOver() async {
+        guard let ref = entry.ref else { return }
+        startFailed = nil
+        startingOver = true
+        defer { startingOver = false }
+        do {
+            let answer = try await files.preview(workspaceId, ref, page: 1, width: previewWidth)
+            guard let png = answer.png, let image = Self.image(png) else {
+                startFailed = answer.none ?? "There is no preview of this page."
+                return
+            }
+            pages = [1: image]
+            version = answer.version
+            pageCount = max(1, Int(answer.pages ?? 1))
+        } catch {
+            if !Task.isCancelled { startFailed = ActionError.wrap(error).message }
+        }
+    }
+
     /// One page; one that does not come says why (the host's `none`, or the failure) in place of a spinner that never ends.
     private func load(_ page: Int) async {
         guard pages[page] == nil, pageFailures[page] == nil, let ref = entry.ref else { return }
@@ -195,7 +227,6 @@ struct FileQuickLookScreen: View {
                 version = nil
                 pageCount = 0
                 round += 1
-                await firstPage()
                 return
             }
             if let png = answer.png, let image = Self.image(png) { pages[page] = image } else { pageFailures[page] = answer.none ?? "There is no preview of this page." }
