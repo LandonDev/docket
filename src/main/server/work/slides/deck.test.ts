@@ -706,6 +706,7 @@ describe.skipIf(!DATA)('the deck tool on python-pptx', () => {
       slide.addText('Title', { x: 1, y: 1, w: 4, h: 1 })
       slide.addImage({ data: 'image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', x: 1, y: 2, w: 1, h: 1 })
       slide.addNotes('Say this')
+      pptx.addSlide().addText('Second', { x: 1, y: 1, w: 4, h: 1 })
       const zip = await JSZip.loadAsync((await pptx.write({ outputType: 'nodebuffer' })) as Buffer)
       const media = Object.keys(zip.files).find((n) => /^ppt\/media\/.+\.png$/.test(n))!
       // His notes page: bold words and a picture, as PowerPoint keeps them.
@@ -713,9 +714,11 @@ describe.skipIf(!DATA)('the deck tool on python-pptx', () => {
       const pic = `<p:pic><p:nvPicPr><p:cNvPr id="9" name="Sketch"/><p:cNvPicPr/><p:nvPr/></p:nvPicPr><p:blipFill><a:blip r:embed="rIdSketch"/><a:stretch><a:fillRect/></a:stretch></p:blipFill><p:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="914400" cy="914400"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></p:spPr></p:pic>`
       zip.file(notes, (await zip.file(notes)!.async('string')).replace('<a:rPr lang="en-US" dirty="0"/><a:t>Say this', '<a:rPr lang="en-US" b="1" dirty="0"/><a:t>Say this').replace('</p:spTree>', `${pic}</p:spTree>`))
       const rels = 'ppt/notesSlides/_rels/notesSlide1.xml.rels'
-      zip.file(rels, (await zip.file(rels)!.async('string')).replace('</Relationships>', `<Relationship Id="rIdSketch" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="../${media.slice('ppt/'.length)}"/></Relationships>`))
+      // And a link in the notes to the second slide.
+      zip.file(rels, (await zip.file(rels)!.async('string')).replace('</Relationships>', `<Relationship Id="rIdSketch" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="../${media.slice('ppt/'.length)}"/><Relationship Id="rIdJump" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/slide" Target="../slides/slide2.xml"/></Relationships>`))
+      zip.file(notes, (await zip.file(notes)!.async('string')).replace('<a:rPr lang="en-US" b="1" dirty="0"/>', '<a:rPr lang="en-US" b="1" dirty="0"><a:hlinkClick r:id="rIdJump" action="ppaction://hlinksldjump"/></a:rPr>'))
       const input = file(await zip.generateAsync({ type: 'nodebuffer' }))
-      const [first] = (await inspect(input)).slides
+      const [first, second] = (await inspect(input)).slides
       const { output } = await apply(input, [{ op: 'duplicate', slide: first.id, id: 9000 }], true)
       const out = await JSZip.loadAsync(readFileSync(output))
       const notesOf = async (id: number): Promise<{ xml: string; rels: string }> => {
@@ -731,6 +734,9 @@ describe.skipIf(!DATA)('the deck tool on python-pptx', () => {
       // The copy's page belongs to the copy; the slide's own page is as it was.
       expect(copy.rels).toContain(`Target="../slides/${(await slidePart(output, 9000)).split('/').pop()}"`)
       expect([was.xml.includes('b="1"'), was.xml.includes('r:embed="rIdSketch"')]).toEqual([true, true])
+      // The link to the second slide still points at the second slide, never at the copy.
+      const jump = /<a:hlinkClick r:id="([^"]+)"/.exec(copy.xml)![1]
+      expect(copy.rels.split('<Relationship ').find((r) => r.includes(`Id="${jump}"`))).toContain(`Target="../slides/${(await slidePart(output, second.id)).split('/').pop()}"`)
       expect((await inspect(output)).slides.find((s) => s.id === 9000)!.notes).toBe('Say this')
     })
 

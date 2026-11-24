@@ -1738,13 +1738,14 @@ def rename_rids(root, ids):
                 e.set(k, ids[v])
 
 
-def copy_notes(src, dst):
+def copy_notes(src, dst, slide_part):
     """A notes page copied whole onto a copy's new one: its words as they look, its pictures and every part it holds;
-    the copy's own notes page keeps its link to the copy and to the notes master."""
+    the copy's own notes page keeps its link to the copy and to the notes master. A link in the notes to another slide
+    keeps pointing there."""
     own = dict((rel.reltype, rid) for rid, rel in dst.rels.items())
     ids = {}
     for rid, rel in src.rels.items():
-        if rel.reltype.endswith('/slide') or rel.reltype.endswith('/notesMaster'):
+        if (rel.reltype.endswith('/slide') and not rel.is_external and rel.target_part is slide_part) or rel.reltype.endswith('/notesMaster'):
             if rel.reltype in own:
                 ids[rid] = own[rel.reltype]
         elif rel.is_external:
@@ -1809,7 +1810,7 @@ def op_duplicate(prs, op):
     for child in list(body):
         el.append(child)
     if slide.has_notes_slide:
-        copy_notes(slide.notes_slide.part, new.notes_slide.part)
+        copy_notes(slide.notes_slide.part, new.notes_slide.part, slide.part)
     place_after(prs, nel, op['slide'])
     section_place(prs, nel.id, op['slide'])
 
