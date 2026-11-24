@@ -60,7 +60,11 @@ The native clicker is built and has no way in yet: "The clicker" below.
   (`ReaderCache.keepsOnDisk` is false: the owner's ruling). A video is the
   one thing the player must read from a file: its copy (`MediaFiles`, under
   the temporary folder) goes when its view closes, a picture's the moment it
-  is decoded, and a launch removes any a crash left (`sweepAtLaunch`). A kept
+  is decoded, and a launch removes any a crash left (`sweepAtLaunch`). The
+  other is Files' Quick Look, which stands in for a document the hosted
+  editor refuses (`hostedFallback`): Open the Original writes the file to the
+  temporary folder while it shows (`OriginalFiles`, removed on close, swept
+  at launch). A kept
   place is stored under a digest of the host and the file's key
   (`ReaderPlaces.key`), never a path or a name.
 - **Loading** draws the paper's shape with a bar that follows the bytes read

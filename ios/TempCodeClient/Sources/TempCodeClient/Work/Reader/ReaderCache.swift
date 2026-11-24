@@ -51,7 +51,7 @@ public final class ReaderCache {
         if entries.count > Self.cap { entries.removeFirst(entries.count - Self.cap) }
     }
 
-    /// A memory warning, or a host that was removed.
+    /// A memory warning (RootView). A removed host's renders are not dropped here: they go as newer ones push them out.
     public func drop() { entries = [] }
 
     public static func key(host: String, file: String) -> String { "\(host)\n\(file)" }
