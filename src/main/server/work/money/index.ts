@@ -7,8 +7,9 @@ import { FenceError } from '../../remote/fence'
 import type { Caller, WorkCtx, WorkModule } from '../modules'
 import { registerFileMoved } from '../files/hooks'
 import { MONEY_TELLS, moneySearch } from './borders'
-import { addRow, editRow, insideJob, MONEY_FOLDER, openBooks, payRow, restoreColumns } from './book'
+import { editRow, insideJob, MONEY_FOLDER, openBooks, payRow, restoreColumns } from './book'
 import { offers, placed } from './calendar'
+import { addEntry } from './entry'
 import { accept, announce, drop, filedPicture, forgetJob, jobOfWaiting, parseFor, receive, resume, toConfirm, waitingPicture, type JobFor } from './inbox'
 import { addTrip, pruneTrips, setYearRate, skipEvent } from './mileage'
 import { movedHook } from './moved'
@@ -128,7 +129,7 @@ async function handle(req: ClientRequest, ctx: WorkCtx, by: Caller, signal?: Abo
       const ws = admit(ctx, by, req.method, p.workspaceId)
       if (ledgerOutside(ctx, ws.id)) throw new MoneyError(LEDGER_OUTSIDE)
       const books = booksHere(ctx, ws.id)
-      const acted = !p.at ? await addRow(ctx, ws, p.fields) : books ? await editRow(ctx, ws, books, p.at, p.fields) : { changed: true as const }
+      const acted = !p.at ? await addEntry(ctx, ws, p.fields, p.key) : books ? await editRow(ctx, ws, books, p.at, p.fields) : { changed: true as const }
       // Every other window on this job reads again.
       if ('ok' in acted) announce(ctx, ws.id)
       return handled(acted)

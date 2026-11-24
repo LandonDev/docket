@@ -11,6 +11,7 @@ import { cn } from "../../lib/cn";
 import { atOf, openBook, saveEntry } from "./api";
 import { Button } from "../../components/ui/button";
 import { AmountInput } from "./fields";
+import { newKey } from "./print";
 import { blankForm, canSave, fieldsOfForm, formOfRow, rowMoney, sheetRow, statusChoices, type EntryForm } from "./model";
 import { formatDay, sigOf } from "@shared/work/money";
 
@@ -100,6 +101,8 @@ function EntryBody({
   const [form, setForm] = useState<EntryForm>(first);
   const [typingCategory, setTypingCategory] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // One key for a new entry's dialog, its whole life: a Save whose answer was lost and is pressed again adds one row.
+  const [key] = useState(newKey);
   const amount = useRef<HTMLInputElement>(null);
   const sellers = useId();
   const patch = (p: Partial<EntryForm>) => setForm((f) => ({ ...f, ...p }));
@@ -134,7 +137,7 @@ function EntryBody({
     setPending(true);
     const write: Promise<boolean> = onSave
       ? onSave(fields, form)
-      : saveEntry(env, workspaceId, fields, row ? atOf({ ref: row.ref, row: row.row, sig: sigOf(row) }) : undefined).then(() => true);
+      : saveEntry(env, workspaceId, fields, row ? atOf({ ref: row.ref, row: row.row, sig: sigOf(row) }) : undefined, key).then(() => true);
     write.then(
       (closes) => {
         setPending(false);

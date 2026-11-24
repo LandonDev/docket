@@ -77,6 +77,38 @@ describe('the books', () => {
     const sums = await call<MoneySums>('work.money.sums', { from: '2026-01-01', to: '2027-01-01', workspaceId: 'ws-ref' })
     expect(sums.rows).toMatchObject([{ workspaceId: 'ws-ref', problem: true }])
     expect(await call<MoneyOwed>('work.money.owed', { workspaceId: 'ws-ref' })).toMatchObject({ rows: [], problems: ['ws-ref'] })
+    // The view and the tool say it too, never "No money yet" or "no ledger yet".
+    await expect(read()).rejects.toThrow("The ledger is gone from its place in the job's folder.")
+    const tool = await moneyTools.find((t) => t.name === 'money_read')!.run({}, { ...b.ctx, sessionId: 't-ref', scope: b.ctx.scopeOf('t-ref')!, signal: new AbortController().signal } as never)
+    expect(tool.isError).toBe(true)
+    expect(JSON.stringify(tool)).toContain('The ledger is gone from its place')
+  })
+
+  it('files one row for a plain entry whose Save is sent again under its key, and tells a Save with other figures what was saved', async () => {
+    const save = (over: Record<string, unknown> = {}) => call<MoneyActed>('work.money.entry', { workspaceId: 'ws-ref', key: 'entry-key-01', fields: { date: '2026-11-21', who: 'Blue Heron Coffee', way: 'out', amount: 1043, what: '', category: '', status: 'Paid', ...over } })
+    // The row lands, its answer is lost, and the read after it fails.
+    await call('work.money.open', { workspaceId: 'ws-ref' })
+    const real = b.sheets.internal
+    let down = false
+    ;(b.ctx.service as { internal: unknown }).internal = async (route: string, body: Record<string, unknown>) => {
+      if (down) throw new Error('The Work service did not answer.')
+      const got = await real(route, body)
+      if (route === '/internal/sheet/cells' && (body.sheet as { tcsheet: string }).tcsheet === ledger()) {
+        down = true
+        throw new Error('The Work service did not answer.')
+      }
+      return got
+    }
+    await expect(save()).rejects.toThrow('did not answer')
+    ;(b.ctx.service as { internal: unknown }).internal = real
+    const again = await save()
+    expect(again).toMatchObject({ ok: true, row: 2 })
+    expect(await save()).toEqual(again)
+    await expect(save({ amount: 2000 })).rejects.toThrow('That entry was already saved: $10.43 on Nov 21, 2026.')
+    expect((await read()).rows).toHaveLength(1)
+    // Without a key each Save is its own row, as before.
+    await entry({})
+    expect((await read()).rows).toHaveLength(2)
   })
 
   it('takes a ledger already at its place as it is', async () => {

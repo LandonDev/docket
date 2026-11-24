@@ -236,6 +236,8 @@ async function usedNumbers(ctx: Ctx, ws: Workspace, kind: Invoice['kind']): Prom
   const ledger = await ledgerOf(ctx, books).catch(() => {
     throw new MoneyError('The ledger could not be read, so the numbers it holds are not known. Try again in a moment.')
   })
+  // A number past the 1,024th column was not read: a ledger read only in part holds no number for free either.
+  if (ledger.grid.partial) throw new MoneyError('The ledger is too wide for Money to read whole (past 1,024 columns), so the numbers it holds are not known. Move the columns past that back in, then try again.')
   // Every cell of the sheet as it stands, not its rows read as money: a ledger whose columns changed still shows the
   // numbers he typed ("Invoice 1042" in For, or a kept file's name), and a suggestion that waits names its own.
   const named = new RegExp(`^${TITLE[kind]} (\\S+?):?(?: |$)`)

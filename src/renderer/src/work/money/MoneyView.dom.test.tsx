@@ -136,6 +136,32 @@ describe("the Money view", () => {
     expect(asked("work.money.entry")).toHaveLength(1);
   });
 
+  it("sends a new entry under one key for the dialog's life, so a Save pressed again after a lost answer adds one row", async () => {
+    let lost = true;
+    const before = host.answer;
+    host.answer = (method, params) => {
+      if (method === "work.money.entry" && lost) {
+        lost = false;
+        throw new Error("The host did not answer");
+      }
+      return before(method, params);
+    };
+    mount();
+    await settle();
+    fireEvent.click(screen.getByRole("button", { name: "Add" }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Entry…" }));
+    const dialog = await screen.findByRole("dialog", { name: "New entry" });
+    fireEvent.change(within(dialog).getByLabelText("Amount"), { target: { value: "12.50" } });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Save" }));
+    await settle();
+    fireEvent.click(within(dialog).getByRole("button", { name: "Save" }));
+    await settle();
+    const sent = asked("work.money.entry");
+    expect(sent).toHaveLength(2);
+    expect(typeof sent[0].key).toBe("string");
+    expect(sent[1].key).toBe(sent[0].key);
+  });
+
   it("keeps Save off without an amount or a date", async () => {
     mount();
     await settle();

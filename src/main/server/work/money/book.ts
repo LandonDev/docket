@@ -146,6 +146,19 @@ async function make(ctx: Ctx, path: string, title: string, headers: readonly str
   await dress(ctx, path, headers.length).catch((err) => ctx.log(`money: ${title} stays plain (${String(err)})`))
 }
 
+const UNSETTLED_GONE = "Money cannot tell yet what an unfinished save wrote: the ledger or the mileage log on record is gone from its place in the job's folder. Put it back, then try again."
+
+/** Whether a write into this job's books was begun and not settled: a receipt's accept, an invoice's keep, an entry, or a trip, its note still standing. */
+export function unsettledIn(ctx: Pick<WorkCtx, 'db'>, workspaceId: string): boolean {
+  const note = ctx.db
+    .prepare(
+      "SELECT 1 FROM work_money_inbox WHERE state IN ('partial', 'reading', 'ready') AND ref IS NOT NULL AND json_valid(ref) AND (json_extract(ref, '$.intent.workspaceId') = ? OR (json_extract(ref, '$.intent.ref') IS NOT NULL AND workspace_id = ? AND source = 'kept')) LIMIT 1"
+    )
+    .get(workspaceId, workspaceId)
+  const trip = ctx.db.prepare("SELECT 1 FROM work_money_events WHERE workspace_id = ? AND state != 'added' AND intent IS NOT NULL LIMIT 1").get(workspaceId)
+  return !!note || !!trip
+}
+
 /**
  * A job's books, made where they are missing: the `Money` folder, the
  * ledger and the mileage log. A sheet already at its place (a folder copied
@@ -163,6 +176,10 @@ export function openBooks(ctx: Ctx, ws: Workspace, need: 'both' | 'ledger' = 'bo
         throw new MoneyError(OUTSIDE)
       }
       const path = join(dir, name)
+      // A sheet on record that is gone from its place while a write into it is unsettled (a Save, a Keep or a trip
+      // whose reply was lost) is never replaced by an empty one: the row that write may have made would not be found
+      // in it, and would be written again. He puts the sheet back first.
+      if (!existsSync(path) && was && unsettledIn(ctx, ws.id)) throw new MoneyError(UNSETTLED_GONE)
       if (!existsSync(path)) await make(ctx, path, title, headers)
       else if (!insideJob(ws, path)) throw new MoneyError(OUTSIDE)
       forgetGrid(path)
@@ -264,11 +281,11 @@ export function writtenRow(ledger: Pick<Ledger, 'grid'>, mark: { ref?: string | 
       if (cells.some((c) => sameCell(c, mark.receipt!))) return mark.receipt
       const moved = [...new Set(cells.filter(followed).map((c) => String(c).trim()))]
       if (moved.length === 1) return moved[0]
-      throw new MoneyError(unsettled(at))
+      throw new AmbiguousRow(unsettled(at))
     }
     const rows = body.flatMap((line, i) => (line.some((c) => sameCell(c, mark.ref!)) ? [i] : []))
     const waits = pending.filter((p) => sameCell(p.v, mark.ref!))
-    if (rows.length + waits.length > 1) throw new MoneyError(unsettled(rows.length ? 2 + rows[0] : waits[0].row))
+    if (rows.length + waits.length > 1) throw new AmbiguousRow(unsettled(rows.length ? 2 + rows[0] : waits[0].row))
     if (rows.length === 1) {
       const link = linkIn(body[rows[0]], 2 + rows[0])
       return { ref: mark.ref, row: 2 + rows[0], suggested: false, ...(link ? { link } : {}) }
@@ -283,9 +300,15 @@ export function writtenRow(ledger: Pick<Ledger, 'grid'>, mark: { ref?: string | 
     }
   }
   const byFile = mark.receipt ? writtenAt(ledger.grid, mark.receipt) : null
-  return byFile ? { ref: null, ...byFile, link: mark.receipt! } : null
+  if (byFile) return { ref: null, ...byFile, link: mark.receipt! }
+  // A sheet read only to its 1,024th column may hold the marks past it: what was read finds the row, never proves it absent.
+  if (ledger.grid.partial) throw new MoneyError(TOO_WIDE)
+  return null
 }
-const unsettled = (row: number): string => `Row ${row} of the ledger may already hold this one. Check that row: if it is this one, discard it here.`
+export const TOO_WIDE = 'The ledger is too wide for Money to read whole (past 1,024 columns), so it cannot tell yet whether this one reached it. Move the columns past that back in, then try again.'
+const unsettled = (row: number): string => `Row ${row} of the ledger may already hold this one. Check that row: if it is this one, discard it here; nothing is deleted.`
+/** A row that may be the one a begun write made, and cannot be told by its marks: a Save stops on it, and a Discard he presses after reading it is his word that it is (`drop`). */
+export class AmbiguousRow extends MoneyError {}
 
 /**
  * Adds a row under the last one that holds anything and under every row

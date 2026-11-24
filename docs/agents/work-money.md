@@ -120,6 +120,13 @@ pages Money prints. Amounts are whole cents everywhere but in the sheet.
 - **`any`** on the read says whether the job has money at all (a ledger row
   or a trip in any period): the view's empty state hangs on it, not on the
   period on screen.
+- **A plain entry from the form** (`work.money.entry {key?}`, `entry.ts`):
+  the entry dialog sends one key for its life, as the trip and invoice
+  dialogs do. Its outcome is a row of `work_money_inbox` (source `entry`,
+  never in To confirm): the Ref and figures noted before the ledger is
+  touched, then what was filed. A Save sent again after a lost answer finds
+  its row by that Ref and adds nothing; one with other figures is told what
+  was saved. A call with no key adds a row each time, as before.
 - **Appending** (`appendRow`): the service has no append. Under a lock per
   workspace (`locked`) the ledger is read for its last row that holds
   anything and the new row's cells are written at once with
@@ -152,7 +159,11 @@ pages Money prints. Amounts are whole cents everywhere but in the sheet.
   the same folder: the link followed the rename). A Ref in two rows, or in
   a row that names another file while the noted file is still there, is
   never settled by a guess: nothing is written and the error names the row
-  ("Row 7 of the ledger may already hold this one. …"). A found row answers
+  ("Row 7 of the ledger may already hold this one. Check that row: if it
+  is this one, discard it here; nothing is deleted.", `AmbiguousRow`): his
+  Discard on that sentence is his word, and the receipt stops waiting with
+  its note kept and no file deleted. A receipt whose half-done accept went
+  into a job since removed is discarded the same way. A found row answers
   the link it holds now (`link`), read raw from the row, so a kept invoice
   is filed under the name it was renamed to whatever the headers say.
   Marks are compared as the reader reads a cell (`sameCell`: the spaces at
@@ -166,8 +177,18 @@ pages Money prints. Amounts are whole cents everywhere but in the sheet.
   keep and a begun trip refuse while their sheets are not at their place,
   where `openBooks` would make empty ones; the numbers an invoice may take
   are read from every cell of the ledger, and a ledger that cannot be read
-  holds no number). A job whose ledger is gone from its place on record is
-  `problem` in the sums and in what is owed, never a job with nothing. A write
+  holds no number). No sheet is made in place of one on record that is
+  gone while any write into the job is unsettled (`openBooks`,
+  `unsettledIn`: a receipt's, an invoice's, an entry's or a trip's note),
+  whichever press would make it. A ledger read only to its 1,024th column
+  (`Grid.partial`) finds a row there, and never proves one absent
+  (`TOO_WIDE`); nor does it hold an invoice number. A job whose ledger is
+  gone from its place on record (`ledgerMissing`) is `problem` in the sums
+  and in what is owed, a failed read in the view ("The ledger is gone from
+  its place in the job's folder. Put it back, or choose Open ledger under
+  More to start a new one.") and an error from `money_read`, never "No
+  money yet"; a job with no books on record (or a folder copied with its
+  mileage log alone) is still a job with none. A write
   that throws is settled by a fresh read at once (the sheet may have taken
   the row and lost its answer): found, it is filed; not readable, the file
   and the note stay for the next try; not there, nothing is left behind.

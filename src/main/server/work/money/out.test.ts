@@ -542,6 +542,36 @@ describe('an invoice', () => {
     expect(existsSync(path)).toBe(false)
   })
 
+  it('makes no empty ledger for a Create while a keep into the moved one is unsettled: no invoice is written twice', async () => {
+    await call('work.money.open', { workspaceId: 'ws-ref' })
+    const inv = invoice({ number: '1042' })
+    await call('work.money.invoice', { workspaceId: 'ws-ref', key: 'moved-key', invoice: inv })
+    const path = join(b.ref, 'Money', 'Ledger.tcsheet')
+    const real = b.sheets.internal
+    let down = false
+    ;(b.ctx.service as { internal: unknown }).internal = async (route: string, body: Record<string, unknown>) => {
+      if (down) throw new Error('The Work service did not answer.')
+      const got = await real(route, body)
+      if (route === '/internal/sheet/cells' && (body.sheet as { tcsheet: string }).tcsheet === path) {
+        down = true
+        throw new Error('The Work service did not answer.')
+      }
+      return got
+    }
+    await expect(keep({ key: 'moved-key', what: 'invoice', invoice: inv })).rejects.toThrow('did not answer')
+    ;(b.ctx.service as { internal: unknown }).internal = real
+    // He moves the ledger aside outside TempCode; the sheet service no longer holds it at its old path.
+    const aside = join(b.root, 'Ledger aside.tcsheet')
+    b.sheets.sheets.set(aside, b.sheets.sheets.get(path)!)
+    b.sheets.sheets.delete(path)
+    renameSync(path, aside)
+    await expect(call('work.money.invoice', { workspaceId: 'ws-ref', key: 'moved-key', invoice: inv })).rejects.toThrow('Money cannot tell yet')
+    await expect(keep({ key: 'moved-key', what: 'invoice', invoice: inv })).rejects.toThrow('Money cannot tell yet')
+    expect(existsSync(path)).toBe(false)
+    expect(b.sheets.grid(aside).filter((r) => r[2] === 'Invoice 1042')).toHaveLength(1)
+    expect(readdirSync(join(b.ref, 'Money', 'Invoices'))).toEqual(['Invoice 1042 Rivera Dental.pdf'])
+  })
+
   it('names undated trips of the mileage log, and the export goes on and says so', async () => {
     await call('work.money.trip', { workspaceId: 'ws-ref', date: '2026-06-01', title: 'Client visit', place: 'Rivera Dental', miles: 40 })
     b.sheets.type(join(b.ref, 'Money', 'Mileage.tcsheet'), 'A2', '')

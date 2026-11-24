@@ -7,7 +7,7 @@ import { isAbsolute, join, sep } from 'node:path'
 import { centsFrom, formatMoney, inPeriod, isDay, milesLine, milesOf, moneyWords, sumsOf, today, undatedWords, type LedgerRow } from '@shared/work/money'
 import type { ToolCtx, WorkTool } from '../modules'
 import { leave } from './inbox'
-import { booksHere, LEDGER_OUTSIDE, ledgerOf, ledgerOutside, mileageLog, mileageWords, MoneyError } from './read'
+import { booksHere, LEDGER_GONE, LEDGER_OUTSIDE, ledgerMissing, ledgerOf, ledgerOutside, mileageLog, mileageWords, MoneyError } from './read'
 import { workspaceOf, type Workspace } from './store'
 
 /**
@@ -43,6 +43,7 @@ const moneyRead: WorkTool = {
     const ws = ctx.scope.workspaceId ? workspaceOf(ctx, ctx.scope.workspaceId) : null
     if (!ws) return fail('This thread is not in a job, so it has no ledger to read.')
     if (ledgerOutside(ctx, ws.id)) return fail(LEDGER_OUTSIDE)
+    if (ledgerMissing(ctx, ws.id)) return fail(LEDGER_GONE)
     const books = booksHere(ctx, ws.id)
     if (!books) return workText(`${ws.name} has no ledger yet.`)
     try {

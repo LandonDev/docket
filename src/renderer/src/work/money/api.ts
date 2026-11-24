@@ -126,9 +126,9 @@ export function heardTrips(env: string, workspaceId: string, answers: readonly (
   if (ledger || mileage) saySuggested(env, workspaceId, SUGGESTED_WORDS, ledger ? "ledger" : "mileage");
 }
 
-/** Adds a row, or with `at` changes that one. True when it was written (or suggested); false when the ledger changed (the toast is said). */
-export async function saveEntry(env: string, workspaceId: string, fields: EntryFields, at?: RowAt): Promise<boolean> {
-  return heard(env, workspaceId, await request<MoneyActed>(env, "work.money.entry", { workspaceId, ...(at ? { at } : {}), fields }));
+/** Adds a row (under the dialog's `key`, so a Save sent again after a lost answer adds nothing twice), or with `at` changes that one. True when it was written (or suggested); false when the ledger changed (the toast is said). */
+export async function saveEntry(env: string, workspaceId: string, fields: EntryFields, at?: RowAt, key?: string): Promise<boolean> {
+  return heard(env, workspaceId, await request<MoneyActed>(env, "work.money.entry", { workspaceId, ...(at ? { at } : {}), fields, ...(!at && key ? { key } : {}) }));
 }
 
 /** An open row is paid, or paid back, today. */

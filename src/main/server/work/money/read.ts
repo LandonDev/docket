@@ -285,6 +285,15 @@ export const mileageWords = (p: MileageProblem): string =>
 
 export const mileageRows = async (ctx: Svc & Pick<WorkCtx, 'db'>, books: Books): Promise<MileageRow[]> => (await mileageLog(ctx, books)).trips
 
+/**
+ * The ledger on record is not there to be read: it leads out of the job's
+ * folder, or is gone from its place. Not the same as a job with none (no
+ * books on record, or a folder copied with only its mileage log): the view,
+ * the tool, the sums and what is owed all say it, never "No money yet".
+ */
+export const ledgerMissing = (ctx: Pick<WorkCtx, 'db'>, workspaceId: string): boolean => !booksHere(ctx, workspaceId) && (ledgerOutside(ctx, workspaceId) || !!booksOf(ctx, workspaceId))
+export const LEDGER_GONE = "The ledger is gone from its place in the job's folder. Put it back, or choose Open ledger under More to start a new one."
+
 /** A job's books when both the row and the ledger's file are there; null otherwise (he has none yet, or deleted the file). */
 export function booksHere(ctx: Pick<WorkCtx, 'db'>, workspaceId: string): Books | null {
   const books = booksOf(ctx, workspaceId) ?? adopt(ctx, workspaceId)
@@ -329,6 +338,7 @@ export async function readMoney(ctx: Pick<WorkCtx, 'db' | 'service' | 'host'>, w
   const root = { at: 'file' as const, host: ctx.host, path: join(ws.path, 'Money') }
   // A ledger that leads out of the job is a fault he must see, never "no money yet".
   if (ledgerOutside(ctx, ws.id)) throw new MoneyError(LEDGER_OUTSIDE)
+  if (ledgerMissing(ctx, ws.id)) throw new MoneyError(LEDGER_GONE)
   const books = booksHere(ctx, ws.id)
   if (!books) {
     // No ledger, and perhaps a mileage log all the same (a job's folder copied in part): its trips are this job's, or its
@@ -388,7 +398,7 @@ export async function readMoney(ctx: Pick<WorkCtx, 'db' | 'service' | 'host'>, w
 function jobsFor(ctx: Pick<WorkCtx, 'db'>, jobs: readonly Workspace[]): { ws: Workspace; books: Books | null }[] {
   return jobs.flatMap((ws): { ws: Workspace; books: Books | null }[] => {
     const books = booksHere(ctx, ws.id)
-    return books ? [{ ws, books }] : ledgerOutside(ctx, ws.id) || booksOf(ctx, ws.id) ? [{ ws, books: null }] : []
+    return books ? [{ ws, books }] : ledgerMissing(ctx, ws.id) ? [{ ws, books: null }] : []
   })
 }
 

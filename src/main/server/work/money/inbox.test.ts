@@ -5,6 +5,7 @@ import { MONEY_PART_BYTES, type MoneyActed, type MoneyPicture, type MoneyRead, t
 import { requiredCapability } from '@shared/capabilities'
 import type { Caller } from '../modules'
 import { money } from '.'
+import { columnLetter } from '@shared/work/money'
 import { FIXTURES, linesOf } from './fixtures/receipts'
 import { read as readWaiting, resume } from './inbox'
 import { movedHook, relink } from './moved'
@@ -483,6 +484,32 @@ describe('his accept', () => {
     expect(b.db.prepare('SELECT state FROM work_money_inbox WHERE id = ?').get(got.id)).toEqual({ state: 'ready' })
   })
 
+  it('keeps the scan and its note when its marks stand past the 1,024 columns Money reads', async () => {
+    const got = await send('coffee.png')
+    await settle()
+    await call('work.money.open', { workspaceId: 'ws-ref' })
+    const sheet = loseReplyAndReads()
+    await expect(call('work.money.accept', { id: got.id, fields: fields() })).rejects.toThrow('did not answer')
+    sheet.back()
+    // He moves Receipt and Ref past the 1,024th column.
+    const [far1, far2] = [columnLetter(1025), columnLetter(1026)]
+    const row = b.sheets.grid(ledger())[1]
+    for (const [at, v] of [[`${far1}1`, 'Receipt'], [`${far2}1`, 'Ref'], [`${far1}2`, row[8]], [`${far2}2`, row[9]], ['I1', ''], ['J1', ''], ['I2', ''], ['J2', '']] as const) b.sheets.type(ledger(), at, v)
+    await expect(call('work.money.drop', { id: got.id })).rejects.toThrow('too wide for Money to read whole')
+    await expect(call('work.money.accept', { id: got.id, fields: fields() })).rejects.toThrow('too wide for Money to read whole')
+    expect(readdirSync(join(b.ref, 'Money', 'Receipts', '2026'))).toEqual(['2026-11-21 Blue Heron Coffee 10.43.png'])
+    expect(b.db.prepare('SELECT state FROM work_money_inbox WHERE id = ?').get(got.id)).toEqual({ state: 'ready' })
+  })
+
+  it('lets his Discard clear a receipt whose half-done accept went into a job since removed, touching no file', async () => {
+    const got = await send('coffee.png')
+    await settle()
+    b.db.prepare('UPDATE work_money_inbox SET ref = ? WHERE id = ?').run(JSON.stringify({ intent: { ref: 'mgone1', workspaceId: 'ws-gone', receipt: 'Receipts/2026/x.png' } }), got.id)
+    await expect(call('work.money.accept', { id: got.id, fields: fields() })).rejects.toThrow('Discard it here; nothing is deleted.')
+    expect(await call('work.money.drop', { id: got.id })).toEqual({ dropped: true })
+    expect(existsSync(join(b.root, 'data', 'work-money', 'incoming', got.id, 'coffee.png'))).toBe(true)
+  })
+
   it('never says a receipt discarded whose write landed while its reply and the read after it were lost', async () => {
     const got = await send('coffee.png')
     await settle()
@@ -803,9 +830,13 @@ describe('what the fourth council round asked of receipts', () => {
     ] as const)
       b.sheets.type(ledger(), at, v)
     b.db.prepare('UPDATE work_money_inbox SET ref = ? WHERE id = ?').run(JSON.stringify({ intent: { ref: 'mdone1', workspaceId: 'ws-ref', receipt: 'Receipts/2026/gone.png' } }), got.id)
-    await expect(call('work.money.accept', { id: got.id, fields: fields() })).rejects.toThrow('Row 2 of the ledger may already hold this one')
+    await expect(call('work.money.accept', { id: got.id, fields: fields() })).rejects.toThrow('Row 2 of the ledger may already hold this one. Check that row: if it is this one, discard it here; nothing is deleted.')
     expect((await view()).rows).toHaveLength(1)
     expect((await view()).toConfirm).toHaveLength(1)
+    // His Discard, pressed on that sentence, is his word: it stops waiting, and nothing is deleted or written.
+    expect(await call('work.money.drop', { id: got.id })).toEqual({ dropped: true })
+    expect((await view()).toConfirm).toEqual([])
+    expect((await view()).rows).toHaveLength(1)
   })
 
   it('lets go of the file an accept kept when its row was never written, and files afresh', async () => {

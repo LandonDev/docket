@@ -158,8 +158,8 @@ export const MoneyRequestSchemas = [
   request('work.money.open', z.object({ workspaceId, restore: z.boolean().optional() })),
   /** → MoneyRead: everything the view paints for a span of local days (`to` is not in it) */
   request('work.money.read', z.object({ workspaceId, from: span, to: span })),
-  /** → MoneyActed: adds a row, or with `at` changes that one */
-  request('work.money.entry', z.object({ workspaceId, at: RowAtSchema.optional(), fields: EntryFieldsSchema })),
+  /** → MoneyActed: adds a row, or with `at` changes that one; `key`, the entry dialog's own for its life: a Save sent again after a lost answer adds nothing twice */
+  request('work.money.entry', z.object({ workspaceId, at: RowAtSchema.optional(), fields: EntryFieldsSchema, key: z.string().min(8).max(100).optional() })),
   /** → MoneyActed: an open row is paid, or paid back, on `on` (today when absent) */
   request('work.money.paid', z.object({ workspaceId, at: RowAtSchema, on: day.optional() })),
   /** → MoneySums: each job's sums for a span of local days; with no workspace, every job on this host that has a ledger */

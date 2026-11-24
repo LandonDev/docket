@@ -100,7 +100,10 @@ async function addOnce(ctx: Ctx, ws: Workspace, p: TripParams, id: string | null
   const was: TripIntent | null = begun?.intent ?? null
   // What the add that was begun already wrote: its rows are looked for by their Refs, in the sheets and among what waits there.
   const paid = was ? writtenRow(await ledgerOf(ctx, books), { ref: was.pay }) : null
-  const logged = was ? writtenAt(await gridOf(ctx, books.mileage), was.trip) : null
+  const log = was ? await gridOf(ctx, books.mileage) : null
+  const logged = was && log ? writtenAt(log, was.trip) : null
+  // A log read only to its 1,024th column may hold the trip past it: not found there is not proof it was never logged.
+  if (was && log && !logged && log.partial) throw new MoneyError("The mileage log is too wide for Money to read whole (past 1,024 columns), so it cannot tell yet whether this trip reached it. Move the columns past that back in, then try again.")
   // An add begun before intents were kept wrote its pay and then stopped: that pay is not written twice.
   const payDone = paid !== null || (begun !== null && !was)
   // The fee that was written stands; the miles are his now, else the ones the unfinished add meant to log.

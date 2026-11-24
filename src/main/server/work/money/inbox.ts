@@ -8,7 +8,7 @@ import { errorText, type SectorKey } from '@shared/work/ids'
 import { fileWord, formatDay, formatMoney, knownSellers, parseReceipt, receiptFileName, receiptName, type ReceiptFields, type ReceiptLine } from '@shared/work/money'
 import { FenceError } from '../../remote/fence'
 import type { Caller, WorkCtx } from '../modules'
-import { appendRow, insideJob, MONEY_FOLDER, moneyFolder, newRef, openBooks, valuesOf, writtenRow } from './book'
+import { AmbiguousRow, appendRow, insideJob, MONEY_FOLDER, moneyFolder, newRef, openBooks, valuesOf, writtenRow } from './book'
 import { pageFolder, partOf, takePart } from './parts'
 import { booksHere, ledgerOf, MoneyError, waiting } from './read'
 import { extOf, isReceiptFile, pdfPicture, readReceipt, shownPicture } from './reader'
@@ -475,7 +475,7 @@ async function acceptOnce(ctx: Ctx, id: string, fields: EntryFields, to: Workspa
     return filedOf(row).acted
   }
   // An accept of this one was begun and not seen to its end: settled first, by its own ledger.
-  if (await settleBegun(ctx, row, may, fields, phone)) {
+  if (await settleBegun(ctx, row, may, { fields, phone })) {
     // Filed as that press asked: its figures are the row's, whatever this one asks. A press that asks for other
     // figures is told what was filed (`unlike`), never answered as if its own had landed.
     const now = byId(ctx, id)!
@@ -526,11 +526,18 @@ async function acceptOnce(ctx: Ctx, id: string, fields: EntryFields, to: Workspa
  * there": nothing is deleted, filed or cleared, and he is told. Every press
  * of a receipt, Save or Discard, settles this first.
  */
-async function settleBegun(ctx: Ctx, row: Row, may: (workspaceId: string) => boolean, fields?: EntryFields, phone = false): Promise<boolean> {
+async function settleBegun(ctx: Ctx, row: Row, may: (workspaceId: string) => boolean, o: { fields?: EntryFields; phone?: boolean; discard?: boolean } = {}): Promise<boolean> {
+  const { fields, phone = false, discard = false } = o
   const begun = intentOf(row)
   if (!begun) return false
   const there = workspaceOf(ctx, begun.workspaceId)
-  if (!there) throw new MoneyError('That receipt was being filed into a job that is not on this computer any more, so Money cannot tell whether it was.')
+  // The job it was being filed into was removed since: its books went with it, so nothing can be settled there. Save
+  // stops; his Discard clears the note and touches no file.
+  if (!there && discard) {
+    set(ctx, row.id, { ref: null })
+    return false
+  }
+  if (!there) throw new MoneyError('That receipt was being filed into a job that is not on this computer any more, so Money cannot tell whether it was. Discard it here; nothing is deleted.')
   // The job that accept was filing into may be another than the one this caller named (he was sending it to another
   // job): its ledger is read, and its file touched, only for a caller who may ask about that job too.
   if (!may(there.id)) throw new MoneyError('That receipt is being filed in another job. Finish it from there.')
@@ -539,7 +546,16 @@ async function settleBegun(ctx: Ctx, row: Row, may: (workspaceId: string) => boo
   const ledger = await ledgerOf(ctx, books).catch(() => {
     throw new MoneyError(UNSETTLED)
   })
-  const found = writtenRow(ledger, { ...begun, moved: !!begun.receipt && !existsSync(keptPath(there, begun.receipt)) })
+  let found: ReturnType<typeof writtenRow>
+  try {
+    found = writtenRow(ledger, { ...begun, moved: !!begun.receipt && !existsSync(keptPath(there, begun.receipt)) })
+  } catch (err) {
+    // A row that may be this one and cannot be told by its marks: Save stops and names it. A Discard he presses after
+    // reading that is his word that the row is this one: the receipt stops waiting, its note stays on it, and no file
+    // is deleted.
+    if (discard && err instanceof AmbiguousRow) return false
+    throw err
+  }
   if (found) {
     fileIt(ctx, row, there, { ok: true, ref: found.ref, row: found.row, ...(found.suggested ? { suggested: true as const } : {}) }, begun.fields ?? fields ?? EMPTY_FIELDS, begun.fields ? begun.phone === true : phone)
     return true
@@ -573,7 +589,7 @@ export function drop(ctx: Ctx, id: string, undo = false, may: (workspaceId: stri
     if (row.state === 'filed' || row.state === 'partial') return false
     // An accept of it begun and not settled may have landed: settled first, so a receipt in the ledger is never said
     // discarded. Filed: false. Not known: the error says so, and it still waits.
-    if (await settleBegun(ctx, row, may)) return false
+    if (await settleBegun(ctx, row, may, { discard: true })) return false
     reading.get(id)?.abort()
     set(ctx, id, { state: 'dropped' })
     announce(ctx, row.workspace_id)
