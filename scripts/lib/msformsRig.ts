@@ -86,8 +86,9 @@ export async function bootRig(dir: string, o: { host?: string; workspaceId?: str
   const workspaceId = o.workspaceId ?? 'wproof'
   const logs: string[] = []
   const log = (line: string): void => {
-    logs.push(`${new Date().toISOString()} ${line}`)
-    ;(o.log ?? console.log)(line)
+    const at = `${new Date().toISOString()} ${line}`
+    logs.push(at)
+    ;(o.log ?? console.log)(o.log ? line : at)
   }
   mkdirSync(join(dir, 'attachments'), { recursive: true })
   mkdirSync(join(dir, 'ws'), { recursive: true })
@@ -124,8 +125,12 @@ export async function bootRig(dir: string, o: { host?: string; workspaceId?: str
   // the outbox finds an act's kind among the loaded pillars, as the host's own load fills them
   for (const m of [outbox, msforms]) if (!WORK_MODULES.includes(m)) WORK_MODULES.push(m)
   const pushes: unknown[] = []
+  // each push timed, for the stages of a make (work.msforms.making)
   const work = startWork({ db, store, registry: registry as never, environmentId: HOST, dataDir: dir, log, remoteFence: { roots: () => [dir], denied: () => [] } } as never, [outbox, msforms])
-  work.pushes.onPush((p) => void pushes.push(p))
+  work.pushes.onPush((p) => {
+    pushes.push(p)
+    if (JSON.stringify(p).includes('making')) log(`push ${JSON.stringify(p).slice(0, 300)}`)
+  })
   wireMsCarrier(db, HOST)
   const request = (method: string, params: unknown): ClientRequest => ClientRequestSchema.parse({ id: 'proof', method, params } as ClientRequest)
   const call = async (method: string, params: unknown, thread?: string): Promise<unknown> => {

@@ -114,11 +114,18 @@ to do in the page.
 
 His New → Form in a Teams or OneDrive folder of Files (Page.tsx; `formKindsFor` in work/msforms/newForm.ts) offers
 "Microsoft Form" and "TempCode Form"; the Forms view's New asks for the place. `work.msforms.make` runs at once: the
-carrier opens the folder's library page, Create or upload → Forms survey, follows the window that page opened to its id, turns
+carrier opens the folder's library page (a Team library's `Forms/AllItems.aspx`; on his OneDrive OneDrive's own
+`_layouts/15/onedrive.aspx`, since a personal site's AllItems answers 404: `folderPageOf`, place.ts), Create or
+upload → "xlsx Forms survey", follows the window that page opened to its id, turns
 **Accept responses off first** and reads it back, then names the form, adds what was asked and sets who can answer
 (org only, record names, one answer each by default). If the first step fails the row keeps the form as a draft that
-may take answers and says "The form was made but may take answers: no one has its link. Open it and turn off Accept
-responses, or delete it." The new form opens in its Files tab (`registerRefSeat('msform')`, files/hooks.ts).
+may take answers and says "The form was made but may take answers until Accept responses is off. Open it and turn
+that off, or delete it." Any failure once Forms has made the form (the box browser stopped, a sign-in, his driving)
+keeps the row the same way (`keptStop`, ops.ts): after Accept responses is off it says what was done and that the
+browser stopped. Before P5 a browser stopped at the title step answered a plain error and left a form in RecWell's
+group forms that no row knew. Forms makes no workbook at create, in the folder or at the library's root (P5); the
+first pull makes it. A make with no questions (New → Form) reads its result once the page has saved, with the
+settings the panel read back, and does not open Settings a second time. The new form opens in its Files tab (`registerRefSeat('msform')`, files/hooks.ts).
 While it runs, the page's state line says the stage the host pushes (`work.msforms.making`: opening, making,
 setting, naming, asking; `MAKE_STAGE_WORDS` in useFormMaking.ts). Each press carries a key (`op`): the same key asked
 again, by a window whose wait ran out, answers the make already under way or just done (kept 10 minutes), never a
@@ -248,6 +255,17 @@ declined, with why, is `review-built-answer.md` beside it):
 
 **The canary**, by hand, never scheduled: `bun --preload ./scripts/lib/electron-stub.ts scripts/proof-msforms-canary.ts` through `.temp-code/bin/heavy`, on a copy of the box browser's profile (refused while the live Work browser runs). It makes "TempCode proof canary <time>" in his OneDrive, adds and renames a question, reads it back, counts and deletes it (only our item from the Forms recycle bin), and prints `CANARY OK` with each step's time or `CANARY BROKE AT <step>: …`; the dummy is deleted on every way out (the rig is `scripts/lib/msformsRig.ts`, shared with `scripts/proof-msforms.ts`).
 
+**P5 job 1, live, 2026-11-24** (`scripts/proof-msforms.ts` with `TC_PROOF_HOST` the box's id, `TC_CARRIER_DEBUG=1`
+timing each call to the page, `/mem` reading the browser's VmRSS and Pss sums; `TC_PROOF_COUNT=rss` caps as the
+deployed host did before the Pss fix). Dummies in a "TempCode proof" folder of RecWell's library and of his OneDrive,
+all deleted. The owner's first make stopped at Settings because the cap counted summed VmRSS: the same make on a cold
+browser read 2,099 MB and was stopped 15 s in, where its Pss was about 1,070 MB. A make, in seconds: the browser
+starts in about 0.5; the folder's page loads and shows Create or upload in 1.1; Create or upload 1.3; Forms survey
+1.5 to 1.9 and the new window found at once; the form's first read 0.9 to 1.1; Settings 1.8 to 2.1; Accept
+responses off 1.3 to 1.8; who can answer 3.5 to 3.8; the title 2.3 to 3.9; the wait for "Saved" and the read 2.4 to
+4.7. In all, 20.8 s before the fixes and 18.3 s after in RecWell; 20.2 s from a cold browser in OneDrive. Each step's
+press costs 0.8 to 1.5 s of the page settling, the most of a make.
+
 **P1 and P2, live, 2026-11-24** (`scripts/proof-msforms.ts`; notes and pictures in `.temp-code/plans/ms-forms/P1/`
 and `P2/`). The box browser on a copy of the box's Work browser profile, the outbox and msforms pillars on their own
 database with the VM's RecWell library record, the real carrier; his presses as owner calls. Dummies only, in a
@@ -276,7 +294,12 @@ menu, the wire and the carrier no longer offer one (2026-11-24).
 Open, found by the proofs:
 - The box browser's 2 GB cap (`MEMORY_CAP_MB`, chromium.ts) stopped it with a Forms page, a SharePoint page and a
   third open (2,053 and 2,784 MB of summed VmRSS; the PSS was about half), so a make or a pull could stop part way.
-  The cap now counts each process's Pss (`treeRssMb` reads smaps_rollup), where shared pages count once.
+  The cap now counts each process's Pss (`treeRssMb` reads smaps_rollup), where shared pages count once. P5 showed
+  it was the owner's first make: under the summed-VmRSS count a dummy make on a cold browser read 2,099 MB at its
+  title step and was stopped (his stopped at Settings), where its Pss was about 1,070 MB. A make holds about 1.0 to
+  1.3 GB of Pss alone; with other pages open it can still pass 2 GB (2,103 MB in P5, with five pages of the proof's
+  own), so while an operation holds the browser (`useBoxBrowser`, `holding` in chromium.ts) the memory stop waits
+  for it to end, up to 1.5 times the cap.
 - After each pull the box browser's Chromium quit (no stop logged; the cause was not found). The next carrier call
   met a fresh browser whose Forms page signs in again for several seconds, and failed once. Since this proof the
   service tells the host's sessions of the new browser (`apps/changed`), so the call after that works.

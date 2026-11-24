@@ -176,12 +176,18 @@ export function wireMsCarrier(db: DatabaseSync, host: string): void {
   const exclusive = exclusiveOn(carrierComputer)
   // Every operation's computer is the session made for it; `computer` below forwards to the one running now.
   let current: FormsComputer | null = null
+  // TC_CARRIER_DEBUG: each call to the page timed, for a proof's own log (names and times, never the page's words)
+  const timed = <T>(what: string, run: () => Promise<T>): Promise<T> => {
+    if (!process.env.TC_CARRIER_DEBUG) return run()
+    const t0 = Date.now()
+    return run().finally(() => console.error(`[carrier] ${new Date().toISOString()} ${what} ${Date.now() - t0} ms`))
+  }
   const forward: FormsComputer = {
-    open: (u) => current!.open(u),
-    read: (w) => current!.read(w),
-    act: (w, s, steps) => current!.act(w, s, steps),
+    open: (u) => timed('open', () => current!.open(u)),
+    read: (w) => timed('read', () => current!.read(w)),
+    act: (w, s, steps) => timed(`act ${steps.map((x) => x.action).join('+')}`, () => current!.act(w, s, steps)),
     windows: () => current!.windows(),
-    close: (w) => current!.close(w),
+    close: (w) => timed('close', () => current!.close(w)),
     wait: (ms) => current!.wait(ms),
     fetch: (w, u, o) => current!.fetch(w, u, o),
     clearData: (o: readonly string[]) => (current as { clearData?: (o: readonly string[]) => Promise<void> })?.clearData?.(o) ?? Promise.resolve()

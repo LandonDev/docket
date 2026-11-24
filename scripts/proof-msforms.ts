@@ -42,13 +42,85 @@ const dir = process.argv[2]
 const port = Number(process.argv[3] ?? 9381)
 if (!dir) throw new Error('usage: proof-msforms.ts <dir> [port]')
 // the rig (scripts/lib/msformsRig.ts): the box browser on the profile copy in `dir`, the frame, the real carrier
-const rig = await bootRig(dir)
+// TC_PROOF_HOST: the box's own environment id, so the library ids are the box's (`<host>~<hash>`)
+const rig = await bootRig(dir, { host: process.env.TC_PROOF_HOST, workspaceId: process.env.TC_PROOF_WORKSPACE })
+/** The browser's memory both ways: each process's VmRSS summed (the deployed cap's count) and each one's Pss summed. */
+const memOf = (): { rssMb: number; pssMb: number; procs: number } => {
+  const root = (rig.host.browser as unknown as { child?: { pid?: number } | null }).child?.pid
+  if (!root) return { rssMb: 0, pssMb: 0, procs: 0 }
+  const kids = (pid: number): number[] => {
+    try {
+      return readFileSync(`/proc/${pid}/task/${pid}/children`, 'utf8').trim().split(/\s+/).filter(Boolean).map(Number)
+    } catch {
+      return []
+    }
+  }
+  const all: number[] = []
+  for (let q = [root]; q.length; ) {
+    const p = q.shift()!
+    all.push(p)
+    q.push(...kids(p))
+  }
+  let rss = 0
+  let pss = 0
+  for (const p of all) {
+    try {
+      rss += Number(/VmRSS:\s+(\d+)/.exec(readFileSync(`/proc/${p}/status`, 'utf8'))?.[1] ?? 0)
+      pss += Number(/Pss:\s+(\d+)/.exec(readFileSync(`/proc/${p}/smaps_rollup`, 'utf8'))?.[1] ?? 0)
+    } catch {}
+  }
+  return { rssMb: Math.round(rss / 1024), pssMb: Math.round(pss / 1024), procs: all.length }
+}
+// TC_PROOF_COUNT=rss: the cap counts as the deployed host's did before the Pss fix, each process's VmRSS summed
+if (process.env.TC_PROOF_COUNT === 'rss') (rig.host.browser as unknown as { opts: { rssMb?: () => number } }).opts.rssMb = () => memOf().rssMb
+// a sample every 2 s into the log while a page is open, the peak kept
+let peak = { rssMb: 0, pssMb: 0 }
+setInterval(() => {
+  const m = memOf()
+  if (!m.procs) return
+  if (m.rssMb > peak.rssMb) peak = { ...peak, rssMb: m.rssMb }
+  if (m.pssMb > peak.pssMb) peak = { ...peak, pssMb: m.pssMb }
+  if (process.env.TC_PROOF_MEM_LOG) console.log(`${new Date().toISOString()} mem rss ${m.rssMb} MB pss ${m.pssMb} MB (${m.procs} procs)`)
+}, 2_000).unref()
 const { db, host, work, logs, pushes, call, looks } = rig
 const WORKSPACE = rig.workspaceId
 const log = (line: string): void => console.log(line)
 
 const routes: Record<string, (body: Record<string, unknown>) => Promise<unknown>> = {
-  work: async (b) => call(String(b.method), b.params ?? {}, b.thread as string | undefined),
+  /** stops the box browser, so the next call starts it cold */
+  stopBrowser: async () => (await host.browser.stop(), { stopped: true }),
+  mem: async (b) => {
+    const out = { now: memOf(), peak }
+    if (b.reset) peak = { rssMb: 0, pssMb: 0 }
+    return out
+  },
+  /** A read in a page by its address, through DevTools: for the proof's own looks (a page's message, a list). */
+  eval: async (b) => {
+    const port = Number(readFileSync(join(dir, 'work-browser/box/profile/DevToolsActivePort'), 'utf8').split('\n')[0])
+    const list = (await (await fetch(`http://127.0.0.1:${port}/json/list`)).json()) as { type: string; url: string; webSocketDebuggerUrl: string }[]
+    if (b.list) return list.filter((t) => t.type === 'page').map((t) => t.url)
+    const target = list.filter((t) => t.type === 'page' && t.url.includes(String(b.match))).at(-1)
+    if (!target) throw new Error('no page with that address')
+    const ws = new WebSocket(target.webSocketDebuggerUrl)
+    await new Promise((r, j) => ((ws.onopen = r), (ws.onerror = j)))
+    const out = await new Promise<unknown>((res) => {
+      ws.onmessage = (m) => {
+        const d = JSON.parse(String(m.data)) as { id?: number; result?: { result?: { value?: unknown }; exceptionDetails?: unknown } }
+        if (d.id === 1) res(d.result?.exceptionDetails ?? d.result?.result?.value)
+      }
+      ws.send(JSON.stringify({ id: 1, method: 'Runtime.evaluate', params: { expression: String(b.expression), returnByValue: true, awaitPromise: true } }))
+    })
+    ws.close()
+    return out
+  },
+  work: async (b) => {
+    const t0 = Date.now()
+    try {
+      return await call(String(b.method), b.params ?? {}, b.thread as string | undefined)
+    } finally {
+      log(`${new Date().toISOString()} work ${String(b.method)} ${Date.now() - t0} ms`)
+    }
+  },
   svc: async (b) => host.service.request(String(b.method) as never, { ...(b.params as object), session: looks } as never, { timeoutMs: 120_000 } as never),
   threadOpen: async (b) => host.sessions.run({ threadId: 't-proof-thread', permission: () => 'auto', approve: async () => true }, 'computer_apps', { launch: 'Chromium', open: [String(b.url)] }),
   shot: async (b) => {
