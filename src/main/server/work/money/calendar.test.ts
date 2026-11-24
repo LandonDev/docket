@@ -215,9 +215,23 @@ describe('adding a trip', () => {
     // Every window on the job is told, so one that did not make the press reads again.
     expect(b.pushed).toContainEqual({ push: 'work.money', workspaceId: 'ws-ref', toConfirm: 0 })
     // The same key again writes nothing, and says what that Add filed: a form he changed since is not taken for saved.
-    expect(await call<MoneyTripped>('work.money.trip', { ...by, miles: 99 })).toEqual({ pay: null, trip: null, already: true, filed: { miles: 10, fee: 2500 } })
+    expect(await call<MoneyTripped>('work.money.trip', { ...by, miles: 99 })).toEqual({ pay: null, trip: null, already: true, filed: { miles: 10, fee: 2500, date: '2026-11-20', title: 'Clinic', place: 'Rec Center' } })
     expect(b.sheets.grid(ledger())).toHaveLength(2)
     expect(b.sheets.grid(mileage())).toHaveLength(2)
+  })
+
+  it('finishes a hand-typed trip whose miles failed on the day its pay was filed, and says so when the form was changed since', async () => {
+    await call('work.money.open', { workspaceId: 'ws-ref' })
+    const by = { workspaceId: 'ws-ref', key: 'year-end-trip', date: '2026-12-31', title: 'Clinic', place: 'Rec Center', miles: 10, fee: 2500 }
+    b.sheets.failing = (route, body) => route === '/internal/sheet/cells' && (body.sheet as { tcsheet: string }).tcsheet === mileage()
+    await expect(call('work.money.trip', by)).rejects.toThrow('did not answer')
+    // He moves the day to January and tries again: the trip is the one its pay was filed for, at that year's rate.
+    await call('work.money.rate', { workspaceId: 'ws-ref', year: 2027, rate: 0.9 })
+    const again = await call<MoneyTripped>('work.money.trip', { ...by, date: '2027-01-01' })
+    expect(b.sheets.grid(mileage())[1].slice(0, 5)).toEqual(['2026-12-31', 'Clinic', 'Rec Center', 10, 0.7])
+    expect(b.sheets.grid(ledger())).toHaveLength(2)
+    expect(again.trip).toMatchObject({ value: 700 })
+    expect(again.filed).toEqual({ miles: 10, fee: 2500, date: '2026-12-31', title: 'Clinic', place: 'Rec Center' })
   })
 
   it('finishes a begun add that he skipped and then picked in Add → Trip…: its pay is not written twice', async () => {
@@ -299,6 +313,17 @@ describe('adding a trip', () => {
       { row: 3, suggested: true }
     ])
     expect(b.sheets.grid(mileage())).toHaveLength(1)
+  })
+
+  it('settles a Skip pressed while an Add of the same event is being written after it: the Add stands, and the Skip says it did not take', async () => {
+    b.lifeos.events = [game('West Side', 3, { amount: { cents: 8000, currency: 'USD' } })]
+    const [west] = await offered()
+    const add = trip(west, { miles: 60 })
+    const skip = call<{ skipped: boolean }>('work.money.skip', { workspaceId: 'ws-ref', eventId: 'West Side' })
+    expect(await skip).toEqual({ skipped: false })
+    expect((await add).pay).toMatchObject({ ok: true })
+    expect(b.db.prepare("SELECT state FROM work_money_events WHERE event_id = 'West Side'").get()).toEqual({ state: 'added' })
+    expect(b.sheets.grid(ledger())).toHaveLength(2)
   })
 
   it('never offers a skipped one again, and a skip does not undo an added one', async () => {

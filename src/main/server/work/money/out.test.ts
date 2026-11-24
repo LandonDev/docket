@@ -1,10 +1,11 @@
-import { existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
+import { existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { beforeEach, describe, expect, it } from 'vitest'
 import { MONEY_CAPS, MONEY_OWNER_ONLY, MONEY_PART_BYTES, type MoneyExport, type MoneyInvoiceNext, type MoneyInvoicePage, type MoneyKept, type MoneyRead } from '@shared/contract-work-money'
 import { ACT_KINDS, ACT_PILLAR } from '@shared/work/acts'
 import type { Caller } from '../modules'
 import { money } from '.'
+import { publishSet } from './out'
 import { bench, LOCAL, REMOTE, req, type Bench } from './testing'
 import { moneyTools } from './tools'
 
@@ -208,6 +209,31 @@ describe('export for tax time', () => {
     }
     await expect(call('work.money.export', { workspaceId: 'ws-ref', year: 2026 })).rejects.toThrow("leads outside this job's folder")
     expect(readdirSync(outside)).toEqual([])
+  })
+
+  it('puts an export in the folder as one set: a step that fails after the first file is replaced puts the older set back', () => {
+    const into = join(b.root, 'set')
+    mkdirSync(into)
+    for (const [name, text] of [['Ledger 2026.csv', 'old csv'], ['Ledger 2026.xlsx', 'old xlsx'], ['Summary 2026.pdf', 'old pdf']]) writeFileSync(join(into, name), text)
+    const set = [
+      { name: 'Ledger 2026.csv', write: (tmp: string) => writeFileSync(tmp, 'new csv', { flag: 'wx' }) },
+      { name: 'Ledger 2026.xlsx', write: (tmp: string) => writeFileSync(tmp, 'new xlsx', { flag: 'wx' }) },
+      { name: 'Summary 2026.pdf' }
+    ]
+    // The new CSV is in place, and the workbook's rename then fails.
+    let placed = 0
+    const rename = (from: string, to: string): void => {
+      if (from.endsWith('.tmp') && ++placed === 2) throw new Error('disk full')
+      renameSync(from, to)
+    }
+    expect(() => publishSet(into, set, { rename })).toThrow('disk full')
+    expect(readdirSync(into).sort()).toEqual(['Ledger 2026.csv', 'Ledger 2026.xlsx', 'Summary 2026.pdf'])
+    expect(readFileSync(join(into, 'Ledger 2026.csv'), 'utf8')).toBe('old csv')
+    expect(readFileSync(join(into, 'Ledger 2026.xlsx'), 'utf8')).toBe('old xlsx')
+    // Whole: every new file, and the older summary gone with nothing in its place.
+    expect(publishSet(into, set)).toEqual({ replaced: ['Ledger 2026.csv', 'Ledger 2026.xlsx'], retired: ['Summary 2026.pdf'] })
+    expect(readdirSync(into).sort()).toEqual(['Ledger 2026.csv', 'Ledger 2026.xlsx'])
+    expect(readFileSync(join(into, 'Ledger 2026.xlsx'), 'utf8')).toBe('new xlsx')
   })
 
   it('binds a page’s key to its job at the first part, before anything is put together', async () => {

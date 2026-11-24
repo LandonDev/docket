@@ -46,8 +46,56 @@ function staged(path: string, write: (tmp: string) => void): void {
     throw err
   }
 }
-const writeWhole = (path: string, data: string | Uint8Array): void => staged(path, (tmp) => writeFileSync(tmp, data, { flag: 'wx' }))
 const copyWhole = (from: string, path: string): void => staged(path, (tmp) => copyFileSync(from, tmp, constants.COPYFILE_EXCL))
+
+/** A file of an export's set: `write` makes it at a staging name; with none, the older file of that name goes. */
+interface SetFile {
+  name: string
+  write?: (tmp: string) => void
+}
+
+/**
+ * An export's files put in the year's folder as one set, or not at all:
+ * each new file is staged first, every older file of the set is set aside
+ * under a name of its own, and only then is each staged file renamed into
+ * place. A failure at any step puts the older set back as it was, so the
+ * folder never holds this export's CSV beside an older export's workbook or
+ * summary. Answers which names had an older file, and which of those went
+ * with nothing in their place.
+ */
+export function publishSet(into: string, set: readonly SetFile[], hooks: { rename?: (from: string, to: string) => void } = {}): { replaced: string[]; retired: string[] } {
+  const move = hooks.rename ?? renameSync
+  const tag = randomUUID()
+  const staging: { name: string; tmp: string }[] = []
+  const aside: { name: string; old: string }[] = []
+  const placed: string[] = []
+  try {
+    for (const f of set) {
+      if (!f.write) continue
+      const tmp = join(into, `${f.name}.${tag}.tmp`)
+      staging.push({ name: f.name, tmp })
+      f.write(tmp)
+    }
+    for (const f of set) {
+      if (!existsSync(join(into, f.name))) continue
+      const old = join(into, `${f.name}.${tag}.old`)
+      move(join(into, f.name), old)
+      aside.push({ name: f.name, old })
+    }
+    for (const { name, tmp } of staging) {
+      move(tmp, join(into, name))
+      placed.push(name)
+    }
+  } catch (err) {
+    for (const name of placed) rmSync(join(into, name), { force: true })
+    for (const { name, old } of aside) renameSync(old, join(into, name))
+    for (const { tmp } of staging) rmSync(tmp, { force: true })
+    throw err
+  }
+  for (const { old } of aside) rmSync(old, { force: true })
+  const made = new Set(staging.map((f) => f.name))
+  return { replaced: aside.map((a) => a.name).filter((n) => made.has(n)), retired: aside.map((a) => a.name).filter((n) => !made.has(n)) }
+}
 
 /**
  * A year for tax time: the CSV, the Excel file made from it, and the
@@ -101,28 +149,19 @@ async function exportOnce(ctx: Ctx, ws: Workspace, o: { year: number; csv: boole
     // The folder is checked again now, after the wait for the conversion: one that came to lead out of the job
     // meanwhile takes nothing.
     const into = taxFolder(ws, o.year)
-    /** An older export's file that this export does not make again would stand beside its figures as if it were theirs: it goes, and he is told. */
-    const retire = (name: string): void => {
-      if (!existsSync(join(into, name))) return
-      rmSync(join(into, name), { force: true })
-      warnings.push(`The older ${name} was removed, so the folder holds one export.`)
-    }
-    if (o.csv) {
-      replaced ||= existsSync(join(into, csvName))
-      writeWhole(join(into, csvName), text)
-      files.push(csvName)
-    } else retire(csvName)
-    if (o.xlsx && workbook) {
-      replaced ||= existsSync(join(into, xlsxName))
-      copyWhole(workbook, join(into, xlsxName))
-      files.push(xlsxName)
-    } else {
-      if (o.xlsx) warnings.push('The Excel file could not be made on this computer.')
-      retire(xlsxName)
-    }
-    // The summary is printed by the window and kept later, by this export's generation: until then, and when no
-    // summary was asked for, the older one is not this export's.
-    retire(`Summary ${o.year}.pdf`)
+    if (o.xlsx && !workbook) warnings.push('The Excel file could not be made on this computer.')
+    // One set: what this export makes, and the older files it does not make again, which would stand beside its
+    // figures as if they were theirs. The summary is printed by the window and kept later, by this export's
+    // generation: until then, and when no summary was asked for, the older one is not this export's.
+    const set: SetFile[] = [
+      { name: csvName, ...(o.csv ? { write: (tmp: string) => writeFileSync(tmp, text, { flag: 'wx' }) } : {}) },
+      { name: xlsxName, ...(o.xlsx && workbook ? { write: (tmp: string) => copyFileSync(workbook!, tmp, constants.COPYFILE_EXCL) } : {}) },
+      { name: `Summary ${o.year}.pdf` }
+    ]
+    const published = publishSet(into, set)
+    replaced = published.replaced.length > 0
+    files.push(...set.filter((f) => f.write).map((f) => f.name))
+    for (const name of published.retired) warnings.push(`The older ${name} was removed, so the folder holds one export.`)
   } finally {
     rmSync(scratch, { recursive: true, force: true })
   }

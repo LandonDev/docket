@@ -79,7 +79,7 @@ async function addOnce(ctx: Ctx, ws: Workspace, p: TripParams, id: string | null
   const mark = id ? eventMarks(ctx, ws.id).get(id) : undefined
   // Already added (a second press, or a list that went stale): nothing is written twice, and the answer says nothing
   // was. For a trip typed by hand it also says what that Add filed, so a form he changed since is not taken for saved.
-  if (mark?.state === 'added') return { pay: null, trip: null, already: true, ...(p.eventId ? {} : { filed: { miles: mark.intent?.miles ?? null, fee: mark.fee } }) }
+  if (mark?.state === 'added') return { pay: null, trip: null, already: true, ...(p.eventId ? {} : { filed: filedOf(mark.intent ?? null, mark.fee) }) }
   // Skipped since this Add was pressed (another window, or Add all still on its way down the list): his Skip stands.
   // Only his own pick of the event in Add → Trip… (`reopen`) takes a skipped one up again.
   if (mark?.state === 'skipped' && !p.reopen) return { pay: null, trip: null, skipped: true }
@@ -98,25 +98,38 @@ async function addOnce(ctx: Ctx, ws: Workspace, p: TripParams, id: string | null
   const miles = logged ? (was?.miles ?? 0) : (p.miles ?? 0) > 0 ? p.miles! : (was?.miles ?? 0)
   if (!(miles > 0) && !(fee > 0)) throw new MoneyError('A trip has miles, pay, or both.')
   if (miles > 0 && !logged) await logOf(ctx, books)
+  // Once one of its rows landed, the trip is the one that add noted: the row still missing takes its day, words and
+  // rate, so pay and miles never stand on two days (or two years' rates) for one trip. A form changed since is told.
+  const fixed = (paid !== null || logged !== null) && was?.date ? was : null
+  const date = fixed?.date ?? p.date
+  const title = fixed?.title ?? p.title
+  const place = fixed?.place ?? p.place
+  const rate = fixed?.rate ?? rateFor(Number(date.slice(0, 4)), books.rates)
   const role = p.eventId ? (roleOf(ws.id, p.eventId) ?? mark?.role ?? null) : null
-  const intent: TripIntent = { pay: was?.pay ?? newRef(), trip: was?.trip ?? newRef(), ...(miles > 0 ? { miles } : {}) }
+  const intent: TripIntent = { pay: was?.pay ?? newRef(), trip: was?.trip ?? newRef(), ...(miles > 0 ? { miles } : {}), date, title, place, rate }
   if (id) markEvent(ctx, ws.id, id, { state: 'adding', role, fee: fee > 0 ? fee : null, intent })
   let pay: MoneyActed | null = paid ? { ok: true, ref: paid.ref, row: paid.row, ...(paid.suggested ? { suggested: true as const } : {}) } : null
   if (!payDone && fee > 0) {
-    const got = await appendRow(ctx, ws, books, { Date: p.date, Who: p.place, For: p.title, Category: payCategory(ws.sector), In: fee / 100, Status: 'Unpaid' }, { ref: intent.pay })
+    const got = await appendRow(ctx, ws, books, { Date: date, Who: place, For: title, Category: payCategory(ws.sector), In: fee / 100, Status: 'Unpaid' }, { ref: intent.pay })
     pay = { ok: true, ref: got.ref, row: got.row, ...(got.suggested ? { suggested: true as const } : {}) }
   }
   let trip: MoneyTripped['trip'] = null
-  const rate = rateFor(Number(p.date.slice(0, 4)), books.rates)
   if (logged) trip = { row: logged.row, ref: intent.trip, value: centsFrom(miles * rate), ...(logged.suggested ? { suggested: true as const } : {}) }
   else if (miles > 0) {
-    trip = await appendTrip(ctx, ws, books, { date: p.date, title: p.title, place: p.place, miles, rate }, intent.trip)
-    if (p.place) keepMiles(ctx, ws.id, p.place, miles)
+    trip = await appendTrip(ctx, ws, books, { date, title, place, miles, rate }, intent.trip)
+    if (place) keepMiles(ctx, ws.id, place, miles)
   }
-  // Added: what was filed stays on the mark (the miles beside the fee), for a later press of the same key to answer with.
-  if (id) markEvent(ctx, ws.id, id, { state: 'added', role, fee: fee > 0 ? fee : null, intent: miles > 0 ? { ...intent, miles } : null })
-  return { pay, trip }
+  // Added: what was filed stays on the mark (the miles beside the fee, its day and words), for a later press of the same key to answer with.
+  if (id) markEvent(ctx, ws.id, id, { state: 'added', role, fee: fee > 0 ? fee : null, intent })
+  return { pay, trip, ...(p.eventId ? {} : { filed: filedOf(intent, fee > 0 ? fee : null) }) }
 }
+
+/** What a hand-typed trip's Add filed, as the dialog checks its form against: the miles, the fee, and its day and words when they were noted. */
+const filedOf = (intent: TripIntent | null, fee: number | null): NonNullable<MoneyTripped['filed']> => ({
+  miles: intent?.miles ?? null,
+  fee,
+  ...(intent?.date ? { date: intent.date, title: intent.title ?? '', place: intent.place ?? '' } : {})
+})
 
 /** A hand-typed trip's note is kept a month, so the same Add again writes nothing twice; after that only the rows stand. */
 export function pruneTrips(ctx: Pick<WorkCtx, 'db'>, now = Date.now()): void {
@@ -127,20 +140,27 @@ export function pruneTrips(ctx: Pick<WorkCtx, 'db'>, now = Date.now()): void {
  * An event he does not want offered again; `undo` offers it again. An event
  * already added is neither. One whose add was begun and not finished keeps
  * what that add noted, so undoing the skip takes it up where it stopped and
- * its pay is not written twice.
+ * its pay is not written twice. A Skip waits its turn behind an Add of the
+ * same event that is being written (another window, Add all), so it never
+ * reports skipped while that Add goes on to write. Answers whether the event
+ * is skipped now (false: it was added first, and the toast must not say
+ * Skipped).
  */
-export function skipEvent(ctx: Pick<WorkCtx, 'db'>, ws: Workspace, eventId: string, undo = false): void {
+export async function skipEvent(ctx: Pick<WorkCtx, 'db'>, ws: Workspace, eventId: string, undo = false): Promise<boolean> {
+  await adding.get(`${ws.id}:${eventId}`)?.catch(() => {})
   const mark = eventMarks(ctx, ws.id).get(eventId)
   if (undo) {
-    if (mark?.state !== 'skipped') return
+    if (mark?.state !== 'skipped') return false
     if (mark.intent || mark.fee !== null) markEvent(ctx, ws.id, eventId, { ...mark, state: 'adding' })
     else ctx.db.prepare('DELETE FROM work_money_events WHERE workspace_id = ? AND event_id = ?').run(ws.id, eventId)
-    return
+    return false
   }
   // Skipped already (a second window, or the same press sent again): nothing changes, and what a begun add noted stays.
-  if (mark?.state === 'added' || mark?.state === 'skipped') return
+  if (mark?.state === 'added') return false
+  if (mark?.state === 'skipped') return true
   const begun = mark?.state === 'adding' ? mark : null
   markEvent(ctx, ws.id, eventId, { state: 'skipped', role: begun?.role ?? roleOf(ws.id, eventId), fee: begun?.fee ?? null, intent: begun?.intent ?? null })
+  return true
 }
 
 /** His own rate for a year. The books are made first when the job has none, so the rate has a row to live in. */

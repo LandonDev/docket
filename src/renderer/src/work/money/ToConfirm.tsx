@@ -47,8 +47,13 @@ export async function dropWaiting(env: string, item: Pick<Waiting, "id" | "name"
 
 /** Skips an offer: it is not offered again, and a toast says so with Undo. */
 export async function skipOffer(env: string, workspaceId: string, offer: CalendarOffer, reload: () => Promise<void>): Promise<void> {
-  await request(env, "work.money.skip", { workspaceId, eventId: offer.eventId });
+  const got = await request<{ skipped?: boolean } | null>(env, "work.money.skip", { workspaceId, eventId: offer.eventId });
   void reload();
+  // An Add of it that was already being written (another window, Add all) came first: it is added, not skipped.
+  if (got?.skipped === false) {
+    void loadToast().then((toast) => toast(`${offer.title} was already added`));
+    return;
+  }
   void loadToast().then((toast) =>
     toast(`Skipped ${offer.title}`, {
       action: { label: "Undo", onClick: () => withToast(() => request(env, "work.money.skip", { workspaceId, eventId: offer.eventId, undo: true }).then(reload)) },

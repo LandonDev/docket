@@ -197,9 +197,9 @@ async function handle(req: ClientRequest, ctx: WorkCtx, by: Caller, signal?: Abo
     case 'work.money.skip': {
       const p = paramsOf('work.money.skip', req)
       const ws = admit(ctx, by, req.method, p.workspaceId)
-      skipEvent(ctx, ws, p.eventId, p.undo === true)
+      const skipped = await skipEvent(ctx, ws, p.eventId, p.undo === true)
       announce(ctx, ws.id)
-      return handled(null)
+      return handled({ skipped })
     }
     case 'work.money.rate': {
       const p = paramsOf('work.money.rate', req)

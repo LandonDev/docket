@@ -173,6 +173,11 @@ export interface TripIntent {
   pay: string
   trip: string
   miles?: number
+  /** what the add means to file, so one taken up again writes its missing row with the same day, words and rate as the row that landed (absent in an intent noted before these were kept) */
+  date?: string
+  title?: string
+  place?: string
+  rate?: number
 }
 export interface EventMark {
   /** `adding`: an add was begun and not seen to its end (a write failed, or the host stopped between the two sheets): offered still, and the next add writes only what is missing */

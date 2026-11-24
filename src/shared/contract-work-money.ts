@@ -287,8 +287,8 @@ export interface MoneyEvents {
 export interface MoneyTripped {
   /** the event it named was added before: nothing was written this time */
   already?: true
-  /** with `already`, for a trip typed by hand (its `key`): what that earlier Add filed, so a form changed since is not taken for saved */
-  filed?: { miles: number | null; fee: number | null }
+  /** for a trip typed by hand (its `key`): what this Add or an earlier one under its key filed, so a form changed since is not taken for saved */
+  filed?: { miles: number | null; fee: number | null; date?: string; title?: string; place?: string }
   /** the event was skipped (in another window, or while this Add waited its turn): nothing was written */
   skipped?: true
   /** the ledger's row for the pay, when there was a fee */

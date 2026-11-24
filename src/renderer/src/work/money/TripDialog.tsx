@@ -9,7 +9,7 @@ import { heardTrip, request } from "./api";
 import { newKey } from "./print";
 import { AmountInput, noHeldReturn } from "./fields";
 import { amountText, offerDay, parseAmount } from "./model";
-import { formatMoney } from "@shared/work/money";
+import { formatDay, formatMoney } from "@shared/work/money";
 
 /**
  * A trip and its pay (docs/DESIGN.md "The Money view"): a calendar offer he
@@ -67,16 +67,21 @@ const NONE = "";
 export const ALREADY_WORDS = "That event was already added.";
 export const SKIPPED_WORDS = "That event was skipped, so nothing was added.";
 
-/** A hand-typed trip the host already has with other values: "This trip was already added with 24 mi and $80.00 pay. Change it in the ledger or the mileage log." */
-export function filedWords(filed: { miles: number | null; fee: number | null }): string {
+type Filed = NonNullable<MoneyTripped["filed"]>;
+
+/** A hand-typed trip the host already has with other values: "This trip was already added for Nov 30, 2026 with 24 mi and $80.00 pay. Change it in the ledger or the mileage log." */
+export function filedWords(filed: Filed): string {
   const parts = [filed.miles ? `${filed.miles.toLocaleString("en-US")} mi` : null, filed.fee ? `${formatMoney(filed.fee)} pay` : null].filter(Boolean);
   const what = parts.length ? ` with ${parts.join(" and ")}` : "";
-  return `This trip was already added${what}. Change it in the ledger or the mileage log.`;
+  const on = filed.date ? ` for ${formatDay(filed.date)}` : "";
+  return `This trip was already added${on}${what}. Change it in the ledger or the mileage log.`;
 }
 
-/** Whether the host's `filed` is what these params would file: no miles and no fee are alike as nothing. */
-const sameFiled = (filed: { miles: number | null; fee: number | null }, params: Record<string, unknown>): boolean =>
-  (filed.miles || null) === ((params.miles as number | undefined) || null) && (filed.fee || null) === ((params.fee as number | undefined) || null);
+/** Whether the host's `filed` is what these params would file: no miles and no fee are alike as nothing; its day and words when the host says them. */
+const sameFiled = (filed: Filed, params: Record<string, unknown>): boolean =>
+  (filed.miles || null) === ((params.miles as number | undefined) || null) &&
+  (filed.fee || null) === ((params.fee as number | undefined) || null) &&
+  (filed.date === undefined || (filed.date === params.date && filed.title === params.title && filed.place === params.place));
 
 export function TripDialog({ env, workspaceId, offer, day, onClose, onSaved }: { env: string; workspaceId: string; offer: CalendarOffer | null; day: string; onClose: () => void; onSaved: () => void }) {
   const [pending, setPending] = useState(false);
@@ -132,8 +137,11 @@ function Body({ env, workspaceId, offer, day, onClose, onSaved, pending, setPend
           setError(ALREADY_WORDS);
           return;
         }
-        if (tripped?.already && tripped.filed && !sameFiled(tripped.filed, params)) {
+        // Taken up where an earlier Add of this key stopped, or added before: when what was filed is not what the form
+        // holds (he changed it after the first Add's answer was lost), the form stays and says what is in the books.
+        if (tripped?.filed && !sameFiled(tripped.filed, params)) {
           setError(filedWords(tripped.filed));
+          onSaved();
           return;
         }
         // Its pay row or its log row may only wait as a suggestion: said, never shown as saved.
