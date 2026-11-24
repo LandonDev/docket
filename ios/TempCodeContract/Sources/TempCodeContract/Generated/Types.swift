@@ -8858,6 +8858,243 @@ public struct TellOpen: Codable, Hashable, Sendable {
     }
 }
 
+public struct RevealTarget: Codable, Hashable, Sendable {
+    public enum View: RawRepresentable, Codable, Hashable, Sendable {
+        case agenda
+        case mail
+        case messages
+        case people
+        case projects
+        case tasks
+        case files
+        case forms
+        case money
+        case plays
+        case prep
+        case routines
+        case templates
+        /// A value this build does not know; `rawValue` keeps it.
+        case unknown(String)
+
+        public init(rawValue: String) {
+            switch rawValue {
+            case "agenda": self = .agenda
+            case "mail": self = .mail
+            case "messages": self = .messages
+            case "people": self = .people
+            case "projects": self = .projects
+            case "tasks": self = .tasks
+            case "files": self = .files
+            case "forms": self = .forms
+            case "money": self = .money
+            case "plays": self = .plays
+            case "prep": self = .prep
+            case "routines": self = .routines
+            case "templates": self = .templates
+            default: self = .unknown(rawValue)
+            }
+        }
+
+        public var rawValue: String {
+            switch self {
+            case .agenda: "agenda"
+            case .mail: "mail"
+            case .messages: "messages"
+            case .people: "people"
+            case .projects: "projects"
+            case .tasks: "tasks"
+            case .files: "files"
+            case .forms: "forms"
+            case .money: "money"
+            case .plays: "plays"
+            case .prep: "prep"
+            case .routines: "routines"
+            case .templates: "templates"
+            case .unknown(let value): value
+            }
+        }
+    }
+    public enum Place: RawRepresentable, Codable, Hashable, Sendable {
+        case today
+        case review
+        /// A value this build does not know; `rawValue` keeps it.
+        case unknown(String)
+
+        public init(rawValue: String) {
+            switch rawValue {
+            case "today": self = .today
+            case "review": self = .review
+            default: self = .unknown(rawValue)
+            }
+        }
+
+        public var rawValue: String {
+            switch self {
+            case .today: "today"
+            case .review: "review"
+            case .unknown(let value): value
+            }
+        }
+    }
+    public enum Held: Codable, Hashable, Sendable {
+        public struct Case0: Codable, Hashable, Sendable {
+            public let id: String
+
+            public init(id: String) {
+                self.id = id
+            }
+        }
+        public struct Case1: Codable, Hashable, Sendable {
+            public enum Table: RawRepresentable, Codable, Hashable, Sendable {
+                case outbox
+                case calendarOps
+                /// A value this build does not know; `rawValue` keeps it.
+                case unknown(String)
+
+                public init(rawValue: String) {
+                    switch rawValue {
+                    case "outbox": self = .outbox
+                    case "calendarOps": self = .calendarOps
+                    default: self = .unknown(rawValue)
+                    }
+                }
+
+                public var rawValue: String {
+                    switch self {
+                    case .outbox: "outbox"
+                    case .calendarOps: "calendarOps"
+                    case .unknown(let value): value
+                    }
+                }
+            }
+
+            public let table: Table
+            public let id: String
+
+            public init(table: Table, id: String) {
+                self.table = table
+                self.id = id
+            }
+        }
+
+        case host(Case0)
+        case lifeos(Case1)
+        /// A `at` this build does not know: the whole object, untouched.
+        case unknown(JSONValue)
+
+        private enum Tag: String, CodingKey {
+            case at
+        }
+
+        public init(from decoder: any Decoder) throws {
+            let tag = try decoder.container(keyedBy: Tag.self).decode(String.self, forKey: .at)
+            switch tag {
+            case "host": self = .host(try Case0(from: decoder))
+            case "lifeos": self = .lifeos(try Case1(from: decoder))
+            default: self = .unknown(try JSONValue(from: decoder))
+            }
+        }
+
+        public func encode(to encoder: any Encoder) throws {
+            switch self {
+            case .host(let value): try Self.encode(tag: "host", value, to: encoder)
+            case .lifeos(let value): try Self.encode(tag: "lifeos", value, to: encoder)
+            case .unknown(let value): try value.encode(to: encoder)
+            }
+        }
+
+        private static func encode(tag: String, _ value: some Encodable, to encoder: any Encoder) throws {
+            var container = encoder.container(keyedBy: Tag.self)
+            try container.encode(tag, forKey: .at)
+            try value.encode(to: encoder)
+        }
+    }
+    public enum Settings: RawRepresentable, Codable, Hashable, Sendable {
+        case general
+        case appearance
+        case editor
+        case keybindings
+        case remote
+        case defaults
+        case providers
+        case addons
+        case skills
+        case orchestration
+        case reviews
+        case appshots
+        case computer
+        case archive
+        case work
+        case connections
+        /// A value this build does not know; `rawValue` keeps it.
+        case unknown(String)
+
+        public init(rawValue: String) {
+            switch rawValue {
+            case "general": self = .general
+            case "appearance": self = .appearance
+            case "editor": self = .editor
+            case "keybindings": self = .keybindings
+            case "remote": self = .remote
+            case "defaults": self = .defaults
+            case "providers": self = .providers
+            case "addons": self = .addons
+            case "skills": self = .skills
+            case "orchestration": self = .orchestration
+            case "reviews": self = .reviews
+            case "appshots": self = .appshots
+            case "computer": self = .computer
+            case "archive": self = .archive
+            case "work": self = .work
+            case "connections": self = .connections
+            default: self = .unknown(rawValue)
+            }
+        }
+
+        public var rawValue: String {
+            switch self {
+            case .general: "general"
+            case .appearance: "appearance"
+            case .editor: "editor"
+            case .keybindings: "keybindings"
+            case .remote: "remote"
+            case .defaults: "defaults"
+            case .providers: "providers"
+            case .addons: "addons"
+            case .skills: "skills"
+            case .orchestration: "orchestration"
+            case .reviews: "reviews"
+            case .appshots: "appshots"
+            case .computer: "computer"
+            case .archive: "archive"
+            case .work: "work"
+            case .connections: "connections"
+            case .unknown(let value): value
+            }
+        }
+    }
+
+    public let thread: String?
+    public let view: View?
+    public let workspaceId: String?
+    public let at: String?
+    public let place: Place?
+    public let item: String?
+    public let held: Held?
+    public let settings: Settings?
+
+    public init(thread: String? = nil, view: View? = nil, workspaceId: String? = nil, at: String? = nil, place: Place? = nil, item: String? = nil, held: Held? = nil, settings: Settings? = nil) {
+        self.thread = thread
+        self.view = view
+        self.workspaceId = workspaceId
+        self.at = at
+        self.place = place
+        self.item = item
+        self.held = held
+        self.settings = settings
+    }
+}
+
 public struct TellRow: Codable, Hashable, Sendable {
     public enum How: RawRepresentable, Codable, Hashable, Sendable {
         case waiting

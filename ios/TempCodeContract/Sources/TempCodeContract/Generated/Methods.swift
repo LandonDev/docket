@@ -6357,6 +6357,26 @@ public enum Methods {
         }
     }
 
+    public enum WorkReveal: ContractMethod {
+        public static let name = "work.reveal"
+
+        public struct Params: Codable, Hashable, Sendable {
+            public let target: RevealTarget
+
+            public init(target: RevealTarget) {
+                self.target = target
+            }
+        }
+
+        public struct Output: Codable, Hashable, Sendable {
+            public let opened: Bool
+
+            public init(opened: Bool) {
+                self.opened = opened
+            }
+        }
+    }
+
     public enum WorkDigestList: ContractMethod {
         public static let name = "work.digest.list"
 
