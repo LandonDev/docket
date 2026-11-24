@@ -499,7 +499,8 @@ this is the short one.
   (`master/ChildPane.tsx`, given the row's host; Escape and ⌘↩ outside
   the composer go back; the board keeps its scroll; the header is Back and
   the title, drawn at once from the board's row, the body the transcript's
-  skeleton until the rows load; a board-type child's view draws one header,
+  skeleton until the rows load, loaded at once on a remote host like the
+  focused pane's own thread, desktop-transcript.md's catch-up lane; a board-type child's view draws one header,
   its own, with Back leading it, surfaces/threads/viewBack.tsx), over the same
   transcript, strip and composer a tab has (`surfaces/threadChat.tsx`:
   `ThreadComposer` and `useThreadChat`, shared with SessionPane; App's

@@ -14,17 +14,30 @@
 /** What background catch-up may take of the link, on average. */
 export const CATCH_UP_BYTES_PER_SEC = 2 * 1024 * 1024;
 
+/** The longest a background fetch waits for the shown thread's: on
+ *  2026-11-24 a child opened in a master's view waited behind the master's
+ *  fetches, a front that never emptied, and never loaded. */
+export const FRONT_WAIT_MS = 2_000;
+
+/** The longest the lane waits on one background fetch before the next one
+ *  goes: the fetch keeps going and settles its own caller. */
+export const TURN_WAIT_MS = 10_000;
+
 export type CatchUpOptions = {
-  /** The thread the window's focused pane shows: it never waits here. */
+  /** The thread the window's focused pane shows, or the one it draws in
+   *  its place (a master's child, `showInside`): it never waits here. */
   shown: () => string | null;
   /** Characters received on the link so far (`Link.bytesIn`). */
   bytesIn: () => number;
   now?: () => number;
   sleep?: (ms: number) => Promise<void>;
+  /** The clock for the two bounds (FRONT_WAIT_MS, TURN_WAIT_MS). */
+  timer?: (ms: number) => Promise<void>;
   bytesPerSec?: number;
 };
 
-type Waiting = { id: string; start: () => Promise<void> };
+/** One transcript's turn; a second ask while it waits takes the newer fetch and the same answer. */
+type Waiting = { id: string; fetch: () => Promise<unknown>; start: () => Promise<void>; answer: Promise<unknown> };
 
 const realSleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -35,11 +48,13 @@ export class CatchUpLane {
   private front = new Set<Promise<void>>();
   private readonly now: () => number;
   private readonly sleep: (ms: number) => Promise<void>;
+  private readonly timer: (ms: number) => Promise<void>;
   private readonly rate: number;
 
   constructor(private readonly options: CatchUpOptions) {
     this.now = options.now ?? (() => Date.now());
     this.sleep = options.sleep ?? realSleep;
+    this.timer = options.timer ?? realSleep;
     this.rate = options.bytesPerSec ?? CATCH_UP_BYTES_PER_SEC;
   }
 
@@ -51,16 +66,23 @@ export class CatchUpLane {
   /** Run one transcript's fetch: at once for the shown thread, else in turn. */
   run<T>(id: string, fetch: () => Promise<T>): Promise<T> {
     if (id === this.options.shown()) return this.inFront(fetch());
-    return new Promise<T>((resolve, reject) => {
-      let running: Promise<void> | null = null;
+    const queued = this.waiting.find((w) => w.id === id);
+    if (queued) {
+      queued.fetch = fetch;
+      return queued.answer as Promise<T>;
+    }
+    let running: Promise<void> | null = null;
+    const w = { id, fetch } as Waiting;
+    w.answer = new Promise<unknown>((resolve, reject) => {
       // Settles when the fetch does, whichever way; started once, by the pump or `promote`.
-      const start = (): Promise<void> => (running ??= fetch().then(resolve, reject));
-      this.waiting.push({ id, start });
-      this.kick();
+      w.start = () => (running ??= w.fetch().then(resolve, reject));
     });
+    this.waiting.push(w);
+    this.kick();
+    return w.answer as Promise<T>;
   }
 
-  /** The shown thread moved: if it waits here, it starts now. */
+  /** The shown thread moved, or Retry was pressed: if it waits here, it starts now. */
   promote(id: string | null): void {
     const at = id ? this.waiting.findIndex((w) => w.id === id) : -1;
     if (at < 0) return;
@@ -98,8 +120,13 @@ export class CatchUpLane {
     this.busy = true;
     try {
       for (;;) {
-        // The shown thread's page is never queued behind a background one on the socket.
-        while (this.front.size > 0) await Promise.all(this.front);
+        // The shown thread's page is never queued behind a background one on
+        // the socket, but a front that keeps filling holds nothing for good.
+        if (this.front.size > 0) {
+          let waited = false;
+          const bound = this.timer(FRONT_WAIT_MS).then(() => void (waited = true));
+          while (this.front.size > 0 && !waited) await Promise.race([Promise.all(this.front), bound]);
+        }
         // The shown thread first, if it was asked for before the window named it.
         const shown = this.options.shown();
         const at = this.waiting.findIndex((x) => x.id === shown);
@@ -107,7 +134,7 @@ export class CatchUpLane {
         if (!w) break;
         const before = this.options.bytesIn();
         const startedAt = this.now();
-        await w.start();
+        await Promise.race([w.start(), this.timer(TURN_WAIT_MS)]);
         const bytes = Math.max(0, this.options.bytesIn() - before);
         const owed = (bytes / this.rate) * 1000 - (this.now() - startedAt);
         // At least one macrotask between two transcripts, so the window paints and takes input.

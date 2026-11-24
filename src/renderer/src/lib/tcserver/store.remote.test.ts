@@ -421,6 +421,46 @@ describe("remote profile: the catch-up after a reconnect", () => {
     }
   });
 
+  /** A master shown in the focused pane whose own page stays out, and a child of its batch. */
+  async function masterWithChild(): Promise<{ asked: () => string[] }> {
+    link.pages = [[wireMeta({ id: "m" }), wireMeta({ id: "c", parentId: "m" })]];
+    for (const id of ["m", "c"]) link.events.set(id, turns(id, 2));
+    await boot(link);
+    sessionStore.followShown({ shown: () => "m", onChange: () => () => {} });
+    link.holdEvents = [];
+    void sessionStore.ensureLoaded("m", "pane").catch(() => undefined);
+    const asked = (): string[] => link.calls.filter((c) => c.method === "session.events").map((c) => (c.params as { sessionId: string }).sessionId);
+    return { asked };
+  }
+
+  it("a child opened inside the master's view loads at once, never behind the master's fetches", async () => {
+    const { asked } = await masterWithChild();
+    const off = sessionStore.showInside("m", "c");
+    void sessionStore.ensureLoaded("c", "byId").catch(() => undefined);
+    await new Promise((r) => setTimeout(r, 0));
+    expect(asked()).toEqual(["m", "c"]);
+    off();
+  });
+
+  it("a child asked for before the master's view names it starts when it does", async () => {
+    const { asked } = await masterWithChild();
+    void sessionStore.ensureLoaded("c", "byId").catch(() => undefined);
+    const off = sessionStore.showInside("m", "c");
+    await new Promise((r) => setTimeout(r, 0));
+    expect(asked()).toEqual(["m", "c"]);
+    off();
+  });
+
+  it("Retry on a load waiting its turn starts it now", async () => {
+    const { asked } = await masterWithChild();
+    void sessionStore.ensureLoaded("c", "byId").catch(() => undefined);
+    await new Promise((r) => setTimeout(r, 0));
+    expect(asked()).toEqual(["m"]);
+    sessionStore.retryLoad("c");
+    await new Promise((r) => setTimeout(r, 0));
+    expect(asked()).toEqual(["m", "c"]);
+  });
+
   it("a page longer than a slice folds across tasks, whole and in order", async () => {
     link.pages = [[wireMeta({ id: "s1" })]];
     link.pageRows = 2_000;

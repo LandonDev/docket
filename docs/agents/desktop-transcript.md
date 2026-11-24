@@ -73,7 +73,10 @@
   `CatchUpLane`, one per remote host): each transcript resumes from the last
   seq it folded (`afterSeq`; the host answers the gap, or a fresh 1 MiB tail
   past RESUME_ROWS or RESUME_BYTES); the thread the focused pane shows
-  (`FocusSignal.shown`, `sessionStore.followShown`) goes at once, jumps
+  (`FocusSignal.shown`, `sessionStore.followShown`), or the child a
+  master's view draws in that pane's place (`sessionStore.showInside`,
+  MasterView; focus, `session.focus` and the read mark stay the pane's),
+  goes at once, jumps
   the queue when it changes, and is the lane's first pick when a window
   opening names it a microtask after asking (the pick waits a few
   microtasks); no other starts while its fetch is out
@@ -83,7 +86,13 @@
   CATCH_UP_BYTES_PER_SEC (2 MiB/s) and at least one macrotask. A page folds
   in slices of FOLD_SLICE_MS (8 ms) with the window given back between
   them; pushes stay held until the last slice. A cold load at launch takes
-  the same lane. The supervisor's probe fails on 5 s of silence, not on a
+  the same lane. No wait there is unbounded: background work waits for the
+  shown thread's fetches at most FRONT_WAIT_MS (2 s) and on one fetch at
+  most TURN_WAIT_MS (10 s); a transcript asked for again while it waits
+  keeps its one place; Retry on a load still waiting its turn starts it
+  (`retryLoad` → `promote`). Before (2026-11-24): a child opened in a
+  master's view sat behind the master's fetches with "Waiting for the box"
+  and a Retry that did nothing. The supervisor's probe fails on 5 s of silence, not on a
   late answer: while frames still arrive it waits, up to PROBE_LIMIT_MS
   (30 s). Before (2026-11-23, 9:46 PM): six `session.events` at once, 8+ MiB
   unsent on the box's socket, long tasks of 1.2 to 2.6 s, and a probe

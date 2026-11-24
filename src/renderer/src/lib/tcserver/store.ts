@@ -483,18 +483,42 @@ class SessionStore {
     primaryEnvironmentId?: string;
   } | null = null;
 
-  private shownNow: () => string | null = () => null;
+  private shownSource: () => string | null = () => null;
   private offShown: (() => void) | null = null;
+  /** A pane's thread → the thread it draws in its own place (a master's child). */
+  private inside = new Map<string, string>();
 
-  /** The thread the window's focused pane shows (FocusSignal.shown): its
-   *  fetches never wait behind another transcript's catch-up. */
+  /** The thread on screen in the focused pane: its fetches never wait
+   *  behind another transcript's catch-up. */
+  private shownNow(): string | null {
+    const pane = this.shownSource();
+    return (pane && this.inside.get(pane)) ?? pane;
+  }
+
+  private promoteShown(): void {
+    const id = this.shownNow();
+    for (const attached of this.attached.values()) attached.catchUp.promote(id);
+  }
+
+  /** The thread the window's focused pane shows (FocusSignal.shown). */
   followShown(source: { shown(): string | null; onChange(listener: () => void): () => void }): void {
     this.offShown?.();
-    this.shownNow = () => source.shown();
-    this.offShown = source.onChange(() => {
-      const id = source.shown();
-      for (const attached of this.attached.values()) attached.catchUp.promote(id);
-    });
+    this.shownSource = () => source.shown();
+    this.offShown = source.onChange(() => this.promoteShown());
+  }
+
+  /**
+   * The pane of `paneId` draws `id` in its place (MasterView's ChildPane):
+   * while that pane is shown, `id` is the thread on screen for the catch-up
+   * lane. Focus, the host's `session.focus` and the read mark stay the
+   * pane's (FocusSignal). Returns the undo.
+   */
+  showInside(paneId: string, id: string): () => void {
+    this.inside.set(paneId, id);
+    this.promoteShown();
+    return () => {
+      if (this.inside.get(paneId) === id) this.inside.delete(paneId);
+    };
   }
 
   /** Follow the registry: every environment's link attaches as it is added
@@ -626,7 +650,8 @@ class SessionStore {
     this.offRegistry = null;
     this.offShown?.();
     this.offShown = null;
-    this.shownNow = () => null;
+    this.shownSource = () => null;
+    this.inside.clear();
     for (const a of this.attached.values()) {
       for (const off of a.detach) off();
       a.subs.dispose();
@@ -1624,14 +1649,20 @@ class SessionStore {
   }
 
   /**
-   * The pane's Retry: a failed load tries at once; a load still waiting
-   * asks the connection to check its socket (a dead one reconnects, and the
-   * load fails over to its own retry).
+   * The pane's Retry: a failed load tries at once; one waiting its turn in
+   * the catch-up lane starts now; a load still waiting on the host asks the
+   * connection to check its socket (a dead one reconnects, and the load
+   * fails over to its own retry).
    */
   retryLoad(id: string): void {
     const entry = this.entries.get(id);
     if (!entry || entry.load.phase === "loaded") return;
     const environmentId = entry.meta?.environmentId ?? entry.session.environmentId;
+    const lane = this.attached.get(environmentId)?.catchUp;
+    if (lane?.queued().includes(id)) {
+      lane.promote(id);
+      return;
+    }
     if (entry.load.phase === "failed" && entry.meta && this.linkOf(entry)?.connected) {
       void this.startLoad(entry, "retry").catch(() => undefined);
       return;

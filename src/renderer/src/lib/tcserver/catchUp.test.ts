@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { CATCH_UP_BYTES_PER_SEC, CatchUpLane } from "./catchUp";
+import { CATCH_UP_BYTES_PER_SEC, CatchUpLane, FRONT_WAIT_MS, TURN_WAIT_MS } from "./catchUp";
 
 const flush = async (): Promise<void> => {
   for (let i = 0; i < 10; i++) await Promise.resolve();
@@ -9,6 +9,8 @@ function harness(shown: string | null = null) {
   const state = { shown, bytes: 0, now: 0 };
   const sleeps: number[] = [];
   const naps: (() => void)[] = [];
+  /** The lane's bounds, by length, fired by hand. */
+  const timers: { ms: number; fire: () => void }[] = [];
   const lane = new CatchUpLane({
     shown: () => state.shown,
     bytesIn: () => state.bytes,
@@ -17,6 +19,7 @@ function harness(shown: string | null = null) {
       sleeps.push(ms);
       return new Promise<void>((resolve) => naps.push(resolve));
     },
+    timer: (ms) => new Promise<void>((fire) => timers.push({ ms, fire })),
   });
   const started: string[] = [];
   const answers = new Map<string, { resolve: () => void; reject: (e: Error) => void }>();
@@ -36,7 +39,13 @@ function harness(shown: string | null = null) {
     naps.shift()?.();
     await flush();
   };
-  return { state, lane, started, fetch, answer, answers, sleeps, wake };
+  /** The first pending bound of this length runs out. */
+  const expire = async (ms: number): Promise<void> => {
+    const at = timers.findIndex((t) => t.ms === ms);
+    timers.splice(at, 1)[0].fire();
+    await flush();
+  };
+  return { state, lane, started, fetch, answer, answers, sleeps, wake, expire };
 }
 
 describe("CatchUpLane", () => {
@@ -132,6 +141,50 @@ describe("CatchUpLane", () => {
     await expect(a).rejects.toThrow("connection closed");
     await flush();
     await h.wake();
+    expect(h.started).toEqual(["a", "b"]);
+    expect(h.lane.queued()).toEqual([]);
+  });
+
+  it("a shown thread's fetch that keeps the front full holds background work no longer than FRONT_WAIT_MS", async () => {
+    const h = harness("master");
+    void h.lane.run("master", h.fetch("master"));
+    void h.lane.run("a", h.fetch("a"));
+    await flush();
+    expect(h.started).toEqual(["master"]);
+    // The master is asked for again before its first page lands: the front never empties.
+    void h.lane.run("master", h.fetch("master"));
+    await h.expire(FRONT_WAIT_MS);
+    expect(h.started).toEqual(["master", "master", "a"]);
+  });
+
+  it("one fetch that never settles holds the next no longer than TURN_WAIT_MS", async () => {
+    const h = harness();
+    for (const id of ["stuck", "b"]) void h.lane.run(id, h.fetch(id));
+    await flush();
+    expect(h.started).toEqual(["stuck"]);
+    await h.expire(TURN_WAIT_MS);
+    await h.wake();
+    expect(h.started).toEqual(["stuck", "b"]);
+  });
+
+  it("a transcript asked for twice while it waits is queued once, the newer fetch run, both callers answered", async () => {
+    const h = harness();
+    void h.lane.run("a", h.fetch("a"));
+    const calls: string[] = [];
+    const first = h.lane.run("b", async () => void calls.push("old"));
+    const second = h.lane.run("b", async () => void calls.push("new"));
+    expect(h.lane.queued()).toEqual(["a", "b"]);
+    await flush();
+    await h.answer("a");
+    await Promise.all([first, second]);
+    expect(calls).toEqual(["new"]);
+  });
+
+  it("promote (Retry) starts a waiting transcript now, ahead of a running one", async () => {
+    const h = harness();
+    for (const id of ["a", "b"]) void h.lane.run(id, h.fetch(id));
+    await flush();
+    h.lane.promote("b");
     expect(h.started).toEqual(["a", "b"]);
     expect(h.lane.queued()).toEqual([]);
   });
