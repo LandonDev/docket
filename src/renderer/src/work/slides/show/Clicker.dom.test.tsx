@@ -243,6 +243,28 @@ describe("the deck's item at phone width", () => {
     expect(document.querySelector("[data-clicker-place]")!.textContent).toBe("2 / 12");
   });
 
+  it("a list read whole gives way to what was heard while it was read, and an older word changes nothing", async () => {
+    const wire = fakeRemote();
+    wire.set([live()]);
+    render(<Seat remote={wire.remote} />);
+    expect(await screen.findByRole("region", { name: "Clicker: Sponsor deck" })).toBeTruthy();
+    // The wire comes back; while the list is read, the show moves on.
+    let answer!: (shows: ShowLive[]) => void;
+    wire.remote.state = () => new Promise((done) => (answer = done));
+    act(() => wire.reopen());
+    act(() => wire.push("show-abc12345", live({ slide: 6, rev: 9 })));
+    await act(async () => answer([live({ slide: 5, rev: 8 })]));
+    expect(document.querySelector("[data-clicker-place]")!.textContent).toBe("6 / 12");
+    // A late word about an older state changes nothing.
+    act(() => wire.push("show-abc12345", live({ slide: 5, rev: 8 })));
+    expect(document.querySelector("[data-clicker-place]")!.textContent).toBe("6 / 12");
+    // A show that ended while the list was read is not put back.
+    act(() => wire.reopen());
+    act(() => wire.push("show-abc12345", null));
+    await act(async () => answer([live({ slide: 6, rev: 9 })]));
+    expect(document.querySelector("[data-clicker]")).toBeNull();
+  });
+
   it("stays the canvas on a wide page", async () => {
     width = CLICKER_WIDTH + 400;
     const wire = fakeRemote();

@@ -201,23 +201,39 @@ export function usePublish(remote: ShowRemote | undefined, read: () => Omit<Live
   }, [key, told]);
 }
 
-/** The shows of a deck running now, kept current by the push; empty while none runs or where there is no wire. */
+/**
+ * The shows of a deck running now, kept current by the push; empty while none runs or where there is no wire. A word
+ * older than the one held (a press's answer behind a newer push) changes nothing, and a list read whole (at the start,
+ * when the wire comes back) gives way to every word heard while it was read: a show that moved on or ended meanwhile
+ * is never put back as it was.
+ */
 export function useLiveShows(remote: ShowRemote | null): ShowLive[] {
   const [shows, setShows] = useState<ShowLive[]>([]);
   useEffect(() => {
     if (!remote) return;
     let live = true;
-    const off = remote.onLive((showId, next) =>
+    let heard: Map<string, ShowLive | null> | null = null;
+    const off = remote.onLive((showId, next) => {
+      heard?.set(showId, next);
       setShows((was) => {
+        const held = was.find((s) => s.showId === showId);
+        if (next && held && next.rev < held.rev) return was;
         const rest = was.filter((s) => s.showId !== showId);
         return next ? [...rest, next] : rest;
-      }),
-    );
-    const read = (): void =>
+      });
+    });
+    const read = (): void => {
+      const since = (heard = new Map());
       void remote.state().then(
-        (got) => live && setShows(got),
-        () => undefined,
+        (got) => {
+          if (!live) return;
+          if (heard === since) heard = null;
+          const newer = [...since.values()].filter((s): s is ShowLive => s !== null);
+          setShows([...got.filter((s) => !since.has(s.showId)), ...newer]);
+        },
+        () => void (heard === since && (heard = null)),
       );
+    };
     read();
     // Back after a cut: the pushes it missed are read whole.
     const offOpen = remote.onOpen?.(read) ?? (() => undefined);

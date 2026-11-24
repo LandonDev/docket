@@ -91,8 +91,9 @@ function hand(show: Show): void {
   if (!next || !show.waiter) return
   next.taken = true
   clearTimeout(next.timer)
-  // Taken but never answered: the window went with it.
-  next.timer = setTimeout(() => settle(show, next, { dropped: 'ended', live: null }), ANSWER_MS)
+  // Taken but never answered: the window may have gone with it, or only be slow. The show is answered as it stands,
+  // so a clicker never takes a show that still runs for one that ended.
+  next.timer = setTimeout(() => settle(show, next, { dropped: 'ended', live: shows.get(show.showId) === show ? liveOf(show) : null }), ANSWER_MS)
   next.timer.unref?.()
   const waiter = show.waiter
   show.waiter = null

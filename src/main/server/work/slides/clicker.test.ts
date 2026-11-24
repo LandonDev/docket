@@ -5,7 +5,7 @@ import { effectsChanged, SHOW_PLAYED_TRANSITIONS, SLIDES_RELAY } from '@shared/c
 import { PLAYED_TRANSITIONS } from './builds'
 import type { CanvasItem } from '@shared/work'
 import type { Caller } from '../modules'
-import { clickerHandle, GONE_MS, NOT_A_THREAD, NOT_HIS, pressShow, RUN_HOLD_MS, runShow, setClickerClock, showStates, stopClicker, TAKE_MS, type RunParams } from './clicker'
+import { ANSWER_MS, clickerHandle, GONE_MS, NOT_A_THREAD, NOT_HIS, pressShow, RUN_HOLD_MS, runShow, setClickerClock, showStates, stopClicker, TAKE_MS, type RunParams } from './clicker'
 
 /**
  * The clicker's wire (docs/agents/work-slides.md "The clicker"): the window that runs a show tells its host the
@@ -145,6 +145,19 @@ describe('the clicker', () => {
     const again = run({ live: live(1) })
     await vi.advanceTimersByTimeAsync(RUN_HOLD_MS)
     await expect(again).resolves.toEqual({ press: null })
+  })
+
+  it('answers a press the window took but did not answer in time with the show as it still runs, never as ended', async () => {
+    vi.useFakeTimers()
+    const first = run({ live: live(1) })
+    const pressed = pressShow(ctx, PHONE, { showId: 'show-0001', act: 'next', rev: 1 })
+    await expect(first).resolves.toMatchObject({ press: { act: 'next' } })
+    // The window took it and is slow to say what it did; it is still calling, so the show still runs.
+    const slow = run({ live: live(1) })
+    await vi.advanceTimersByTimeAsync(ANSWER_MS)
+    await expect(pressed).resolves.toMatchObject({ dropped: 'ended', live: { showId: 'show-0001', rev: 1 } })
+    await vi.advanceTimersByTimeAsync(RUN_HOLD_MS)
+    await slow
   })
 
   it('refuses a thread, and a key that may only read, each with a sentence', async () => {
