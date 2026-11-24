@@ -604,15 +604,21 @@ docs/DESIGN.md "The Mail view"):
   is a bcc, `strangers` in chat/recipients.ts: a mail's words can steer a
   draft's recipients; Put in reply puts the draft's own row in Mail's
   reply box with `putInReply`, the full composer with every field row
-  when the card had to tell, opening the mail it answers; his own open reply stays in Drafts with Undo; Discard
+  when the card had to tell, opening the mail it answers; a new mail or a
+  forward has Open in Mail instead, into the full composer, "In the
+  composer" once there; his own open reply stays in Drafts with Undo; Discard
   with Undo), a rewrite (Take closes his reply, settles it with
   `compose.settleProposal` and opens it again; one that changed since says
   so with Ask again), rows (ticked to start, `TRIAGE_TICKED`; one press
-  runs Mail's own bulk act with its Undo; a row the job's mail does not
-  hold has no tick), a task (New task filled in, filed by Mail's Make task
+  runs Mail's own bulk act with its Undo; the card says "Archived 3" only
+  once LifeOS took the write, read through `answerOf` (writeAnswer.ts) on
+  Mail's own `write`, and a refusal gives the rows back with why; a row the
+  job's mail does not hold has no tick), a task (New task filled in, filed by Mail's Make task
   when it names a mail) and an event (New event filled in,
   `NewEventDialog.initial`). Nothing sends, schedules or archives but his
-  press.
+  press. A card whose LifeOS session failed is one line with the press
+  that mends it, as the mail canvas has (`SessionLine`): Sign in, Open
+  Settings or Retry.
 - **Chips in prose**: `[subject](#lifeos:mailThreads:<id>)` and
   `[name](#lifeos:people:<id>)` draw as chips (`lifeosLinkOf`,
   surfaces/lifeosLink.ts; LifeosChip.tsx) that open through SentChips'

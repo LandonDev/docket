@@ -45,8 +45,9 @@ export function DraftCard({ draftId, at }: { draftId: string; at: OfferAt }) {
   if (doc === undefined) return <CardBones />;
   const message = doc?.message;
   const inReply = page.compose && "open" in page.compose && (page.compose.open as { kind?: string; id?: string }).kind === "row" && (page.compose.open as { id?: string }).id === shownId;
-  const state = gone || !doc ? "Discarded" : (sentState(doc) ?? (inReply ? "In your reply" : "Draft"));
   const reply = message?.mode === "reply" || message?.mode === "replyAll";
+  // A reply goes in the mail's reply box; a new mail or a forward opens in Mail's full composer, and the card says so.
+  const state = gone || !doc ? "Discarded" : (sentState(doc) ?? (inReply ? (reply ? "In your reply" : "In the composer") : "Draft"));
   // Whom it goes to is the rows' to say, each in full: the head names only what kind of mail it is.
   const title = message ? (reply ? "Reply" : message.mode === "forward" ? "Forward" : "New mail") : "A draft";
   const found = message ? strangers({ to: message.to, cc: message.cc, bcc: message.bcc }, message.threadId ? (thread === undefined ? null : (thread?.messages ?? [])) : null) : null;
@@ -136,7 +137,7 @@ export function DraftCard({ draftId, at }: { draftId: string; at: OfferAt }) {
       {open ? (
         <div className={FOOT}>
           <Button variant="secondary" size="sm" onClick={put} disabled={!!inReply}>
-            Put in reply
+            {reply ? "Put in reply" : "Open in Mail"}
           </Button>
           <span className="flex-1" />
           <Tip label="Discard draft">

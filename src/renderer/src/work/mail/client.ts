@@ -7,6 +7,7 @@ import { registry } from "../../lib/connection";
 import { workErrorWords } from "../../lib/workErrorWords";
 import { workOpenPort } from "../../lib/workSwitch";
 import { mailPeopleFor } from "./people";
+import { claimAnswer } from "./writeAnswer";
 
 /**
  * TempCode's `MailClient` (work-kit/mail README, "The two seams"): LifeOS's
@@ -87,10 +88,15 @@ export function undoLast(): void {
   if (act && Date.now() <= act.until) act.undo();
 }
 
-/** Every write a screen makes: its toast on success, with Undo where it has one, and its own words on failure. */
+/**
+ * Every write a screen makes: its toast on success, with Undo where it has one, and its own words on failure. A
+ * screen that waits on the write's answer (`answerOf`, writeAnswer.ts) is told it too.
+ */
 export const write: MailWrite = async ({ run, failed, message, undo }) => {
+  const tell = claimAnswer();
   try {
     const result = await run();
+    tell?.({ ok: true });
     if (message) {
       void loadToast().then((toast) => {
         if (!undo) return void toast(message);
@@ -105,7 +111,8 @@ export const write: MailWrite = async ({ run, failed, message, undo }) => {
       });
     }
     return result;
-  } catch {
+  } catch (error) {
+    tell?.({ ok: false, error });
     void loadToast().then((toast) => toast.error(failed));
     return undefined;
   }

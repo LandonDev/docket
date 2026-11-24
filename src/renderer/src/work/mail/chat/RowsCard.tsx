@@ -1,8 +1,10 @@
 import { useEffect, useState } from "react";
 import { useMailClient, type BatchAct, type ThreadSummary } from "work-kit/mail";
 import { TRIAGE_TICKED, type MailOffer } from "@shared/work/mailChat";
-import { Button } from "../../../components/ui/button";
+import { BusyLabel, Button } from "../../../components/ui/button";
 import { Checkbox } from "../../../components/ui/checkbox";
+import { workErrorWords } from "../../../lib/workErrorWords";
+import { answerOf } from "../writeAnswer";
 import { localOf } from "./AddRow";
 import { CARD, FOOT, HEAD } from "./cardParts";
 
@@ -13,6 +15,12 @@ const VERB: Record<Rows["act"], [string, string]> = { archive: ["Archive", "Arch
 
 const clock = (ms: number): string => new Date(ms).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
 const day = (ms: number): string => new Date(ms).toLocaleDateString([], { month: "short", day: "numeric" });
+
+/** The act in words, for the line a refusal leaves: "LifeOS did not archive them". */
+const REFUSED: Record<Rows["act"], (them: string) => string> = { archive: (t) => `archive ${t}`, read: (t) => `mark ${t} read`, needsMe: (t) => `mark ${t} needs me`, snooze: (t) => `snooze ${t}` };
+
+/** The card's own line when LifeOS refused the act and its answer has no plainer words. */
+export const refusedLine = (act: Rows["act"], n: number): string => `LifeOS did not ${REFUSED[act](n === 1 ? "it" : "them")}`;
 
 /** The line for rows the job's mail does not hold: "1 other is not in this job's mail", or all of them. */
 export function elsewhereLine(elsewhere: number, all: number): string {
@@ -43,19 +51,24 @@ export function RowsCard({ rows }: { rows: Rows }) {
   const actions = client.useMailActions();
   const [threads, setThreads] = useState<Record<string, ThreadSummary | null>>({});
   const [unticked, setUnticked] = useState<ReadonlySet<string>>(() => (TRIAGE_TICKED ? new Set() : new Set(rows.threadIds)));
-  const [done, setDone] = useState<{ n: number; at: number } | null>(null);
+  // The act's own answer drives the card: "Archived 3" only once LifeOS took the write; a refusal gives the rows back with why.
+  const [state, setState] = useState<{ at: "busy" } | { at: "done"; n: number; when: number } | { at: "refused"; why: string } | null>(null);
   const act = batchOf(rows);
   const ticked = rows.threadIds.filter((id) => threads[id] && !unticked.has(id));
   // Rows the job's mail does not hold: no subject to show and nothing to act on, so one line under the rest says how many.
   const elsewhere = rows.threadIds.filter((id) => threads[id] === null).length;
   const [verb, past] = VERB[rows.act];
+  const busy = state?.at === "busy";
   const run = (): void => {
-    if (!act || ticked.length === 0) return;
-    actions.batch(
-      ticked.map((id) => threads[id]!),
-      act,
-    );
-    setDone({ n: ticked.length, at: Date.now() });
+    if (!act || ticked.length === 0 || busy) return;
+    const n = ticked.length;
+    setState({ at: "busy" });
+    void answerOf(() =>
+      actions.batch(
+        ticked.map((id) => threads[id]!),
+        act,
+      ),
+    ).then((answer) => setState(answer.ok ? { at: "done", n, when: Date.now() } : { at: "refused", why: workErrorWords(answer.error, { write: true }) || refusedLine(rows.act, n) }));
   };
   return (
     <div data-mail-offer="rows" className={CARD}>
@@ -68,7 +81,7 @@ export function RowsCard({ rows }: { rows: Rows }) {
             key={id}
             id={id}
             ticked={!unticked.has(id)}
-            locked={!!done}
+            locked={busy || state?.at === "done"}
             onThread={(thread) => setThreads((was) => (id in was && sameRow(was[id]!, thread) ? was : { ...was, [id]: thread }))}
             onTick={(on) =>
               setUnticked((was) => {
@@ -82,14 +95,19 @@ export function RowsCard({ rows }: { rows: Rows }) {
         ))}
         {elsewhere ? <li className="flex h-9 items-center px-3 text-xs text-muted-foreground">{elsewhereLine(elsewhere, rows.threadIds.length)}</li> : null}
       </ul>
+      {state?.at === "refused" ? (
+        <p data-rows-refused role="alert" className="px-3 pt-1 pb-2.5 text-xs leading-5 text-destructive">
+          {state.why}
+        </p>
+      ) : null}
       <div className={FOOT}>
-        {done ? (
+        {state?.at === "done" ? (
           <span className="text-xs text-muted-foreground">
-            {past} {done.n}, {clock(done.at)}
+            {past} {state.n}, {clock(state.when)}
           </span>
         ) : (
-          <Button variant="secondary" size="sm" disabled={!act || ticked.length === 0} onClick={run}>
-            {verb} {ticked.length}
+          <Button variant="secondary" size="sm" disabled={!act || ticked.length === 0 || busy} onClick={run}>
+            <BusyLabel busy={busy} label={`${verb} ${ticked.length}`} />
           </Button>
         )}
       </div>

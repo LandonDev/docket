@@ -37,25 +37,28 @@ const views = vi.hoisted(() => [] as unknown[]);
 vi.mock("../../../lib/workSwitch", async (original) => ({ ...(await original<object>()), openWorkView: (v: unknown) => void views.push(v) }));
 
 const { MailClientProvider } = await import("work-kit/mail");
-const { OfferCard } = await import("./OfferCard");
+const { OfferCard, SessionLine } = await import("./OfferCard");
 const { liveDraftIds, pageOf, patch } = await import("../page");
 const { lifeosLinkOf } = await import("../../../surfaces/lifeosLink");
 const { LifeosChip } = await import("./LifeosChip");
 const { TranscriptSessionContext } = await import("../../../surfaces/transcriptSession");
 const { sessionStore } = await import("../../../lib/tcserver/store");
 const { ASK_AGAIN } = await import("./RewriteCard");
+const { write } = await import("../client");
 
 const at = { sessionId: "s1", workspaceId: "w1", sector: "life" as const };
 const thread = (id: string, subject: string): ThreadSummary => ({ id, subject, senders: ["Dana Lee"], lastMessageAt: Date.parse("2026-11-20T10:00:00"), messageCount: 2 }) as ThreadSummary;
 const message = { kind: "mail", accountId: "a1", threadId: "t1", mode: "reply", to: [{ name: "Dana Lee", address: "dana@example.com" }], cc: [], bcc: [], subject: "Re: Lunch", html: "", text: "Friday works.\nSee you then.", snippet: "" };
 const batches: { ids: string[]; act: unknown }[] = [];
+/** How LifeOS answers a bulk act: the card's write goes through Mail's own `write`, as the LifeOS client's batch does. */
+let batchAnswer: () => Promise<unknown> = async () => null;
 let stranger: { cc: { name?: string; address: string }[]; bcc: { address: string }[] } | null = null;
 const discarded: string[] = [];
 const saved: unknown[] = [];
 const made: { threadId: string; draft: unknown }[] = [];
 
 const client = {
-  useComposeDoc: (id: string | undefined) => (id === "d1" || id === "d2" ? { id: "d1", status: "draft", message: stranger ? { ...message, ...stranger } : message, version: 1, editedAt: 0, urls: {} } : id === "gone" ? null : undefined),
+  useComposeDoc: (id: string | undefined) => (id === "d-new" ? { id: "d-new", status: "draft", message: { ...message, mode: "new", threadId: undefined, subject: "Lunch" }, version: 1, editedAt: 0, urls: {} } : id === "d1" || id === "d2" ? { id: "d1", status: "draft", message: stranger ? { ...message, ...stranger } : message, version: 1, editedAt: 0, urls: {} } : id === "gone" ? null : undefined),
   useOutboxActions: () => ({
     discard: async (id: string) => {
       discarded.push(id);
@@ -68,7 +71,10 @@ const client = {
   }),
   useMailThread: (id: string | null) => (id === "t1" ? { thread: thread("t1", "Lunch on Friday"), messages: [{ from: { name: "Dana Lee", address: "dana@example.com" }, to: [{ address: "me@example.com" }], cc: [] }] } : id === "t2" ? { thread: thread("t2", "Gym hours"), messages: [] } : id ? null : undefined),
   useMailActions: () => ({
-    batch: (threads: readonly ThreadSummary[], act: unknown) => void batches.push({ ids: threads.map((t) => t.id), act }),
+    batch: (threads: readonly ThreadSummary[], act: unknown) => {
+      batches.push({ ids: threads.map((t) => t.id), act });
+      void write({ run: batchAnswer, failed: "archive", message: "Archived" });
+    },
     makeTask: (threadId: string, draft: unknown) => void made.push({ threadId, draft }),
   }),
 } as unknown as MailClient;
@@ -85,6 +91,7 @@ beforeEach(() => {
   submits.length = 0;
   views.length = 0;
   batches.length = 0;
+  batchAnswer = async () => null;
   discarded.length = 0;
   saved.length = 0;
   made.length = 0;
@@ -115,6 +122,15 @@ describe("a draft", () => {
     expect(page.compose).toMatchObject({ open: { kind: "row", id: "d1" }, threadId: "t1", full: false });
     expect(views).toEqual([{ workspaceId: "w1", view: "mail" }]);
     expect(document.querySelector("[data-draft-state]")!.textContent).toBe("In your reply");
+  });
+
+  it("opens a new mail in Mail's composer, and names the press and the state for that", () => {
+    draw({ draft: { draftId: "d-new" } });
+    expect(screen.getByText("New mail")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Put in reply" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Open in Mail" }));
+    expect(pageOf("w1").compose).toMatchObject({ open: { kind: "row", id: "d-new" }, full: true });
+    expect(document.querySelector("[data-draft-state]")!.textContent).toBe("In the composer");
   });
 
   it("keeps his own open reply in Drafts, and Undo puts it back", async () => {
@@ -224,7 +240,34 @@ describe("rows to act on", () => {
     fireEvent.click(screen.getByRole("checkbox", { name: "Gym hours" }));
     fireEvent.click(screen.getByRole("button", { name: "Archive 1" }));
     expect(batches).toEqual([{ ids: ["t1"], act: { kind: "archive", archived: true } }]);
-    expect(document.body.textContent).toMatch(/Archived 1, \d/);
+    await waitFor(() => expect(document.body.textContent).toMatch(/Archived 1, \d/));
+  });
+
+  it("say the past tense only once LifeOS took the write, and give the rows back with the reason when it refused", async () => {
+    let refuse!: (err: Error) => void;
+    batchAnswer = () => new Promise((_, reject) => (refuse = reject));
+    draw({ rows: { act: "archive", title: "Archive 2 notices", threadIds: ["t1", "t2"] } });
+    fireEvent.click(await screen.findByRole("button", { name: "Archive 2" }));
+    // While the write is on its way: nothing claims it happened, and the ticks hold still.
+    expect(document.body.textContent).not.toMatch(/Archived/);
+    expect(screen.getAllByRole("checkbox").every((box) => box.getAttribute("aria-disabled") === "true" || box.hasAttribute("data-disabled"))).toBe(true);
+    await act(async () => refuse(new Error("[CONVEX M(mail:batch)] [Request ID: 6f1c] Server Error\nUncaught Error: thread gone")));
+    expect(document.body.textContent).not.toMatch(/Archived/);
+    expect((await screen.findByRole("alert")).textContent).toBe("LifeOS did not archive them");
+    // The rows are his again: a tick changes the count, and the press can run again.
+    fireEvent.click(screen.getByRole("checkbox", { name: "Gym hours" }));
+    batchAnswer = async () => null;
+    fireEvent.click(screen.getByRole("button", { name: "Archive 1" }));
+    await waitFor(() => expect(document.body.textContent).toMatch(/Archived 1, \d/));
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+
+  it("say a lost answer as uncertain, never as done", async () => {
+    batchAnswer = async () => Promise.reject(new Error("No answer in 4 s"));
+    draw({ rows: { act: "archive", title: "Archive 1 notice", threadIds: ["t1"] } });
+    fireEvent.click(await screen.findByRole("button", { name: "Archive 1" }));
+    expect((await screen.findByRole("alert")).textContent).toMatch(/did not confirm the change/);
+    expect(document.body.textContent).not.toMatch(/Archived/);
   });
 });
 
@@ -274,5 +317,22 @@ describe("mails and people named in an answer", () => {
     expect(chip.getAttribute("data-lifeos-chip")).toBe("mailThreads");
     fireEvent.click(chip);
     await waitFor(() => expect(views).toContainEqual({ workspaceId: "w1", view: "mail", mail: "t1" }));
+  });
+});
+
+describe("a card whose LifeOS session failed", () => {
+  it("says why with the press that mends it, as the mail canvas does", () => {
+    const pressOf = (session: Parameters<typeof SessionLine>[0]["session"]): string[] => {
+      const { container, unmount } = render(<SessionLine session={session} env="local" sector="life" />);
+      const said = [container.querySelector("span")!.textContent!, ...[...container.querySelectorAll("button")].map((b) => b.textContent!)];
+      unmount();
+      return said;
+    };
+    expect(pressOf({ state: "signed-out" })).toEqual(["Not signed in to LifeOS", "Sign in"]);
+    expect(pressOf({ state: "refused" })).toEqual(["LifeOS refused this host's sign-in", "Sign in"]);
+    expect(pressOf({ state: "unreachable" })).toEqual(["LifeOS did not answer", "Retry"]);
+    expect(pressOf({ state: "off" })).toEqual(["Work is off on this host", "Open Settings"]);
+    // A computer kept from LifeOS has nothing to press that would mend it.
+    expect(pressOf({ state: "unreachable", withheld: true })).toEqual(["This computer cannot read LifeOS through this host"]);
   });
 });

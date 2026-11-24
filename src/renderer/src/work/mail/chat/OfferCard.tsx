@@ -1,4 +1,4 @@
-import { useMemo, type ReactNode } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 import { ConvexProvider } from "convex/react";
 import { MailClientProvider, MailKitProvider } from "work-kit/mail";
 import "work-kit/mail/styles.css";
@@ -9,7 +9,9 @@ import type { Block } from "../../../lib/session";
 import { useSessionMeta } from "../../../lib/tcserver/store";
 import { useWorkspaces } from "../../../lib/tcserver/workspaces";
 import { useTranscriptHost, useTranscriptSession } from "../../../surfaces/transcriptSession";
-import { sessionFailure, sessionWaits, useLifeosSession } from "../../shell/lifeos";
+import { BusyLabel, Button } from "../../../components/ui/button";
+import { reopenLifeos, sessionFailure, sessionWaits, useLifeosSession, type LifeosSession } from "../../shell/lifeos";
+import { openConnections, openWorkSettings } from "../../shell/open";
 import { mailClientFor } from "../client";
 import { tempcodeMailKit } from "../kit";
 import { AddRow } from "./AddRow";
@@ -59,7 +61,7 @@ function OfferSession({ sessionId, env, children }: { sessionId: string; env: st
   if (!workspace || !sector) return null;
   if (!lifeos.client) {
     if (sessionWaits(lifeos)) return <CardBones />;
-    return <p className="text-xs text-muted-foreground">{sessionFailure(lifeos.state, lifeos.withheld) || "LifeOS did not answer"}</p>;
+    return <SessionLine session={lifeos} env={env} sector={sector} />;
   }
   return (
     <ConvexProvider client={lifeos.client}>
@@ -67,6 +69,39 @@ function OfferSession({ sessionId, env, children }: { sessionId: string; env: st
         <MailKitProvider kit={tempcodeMailKit}>{children({ sessionId, workspaceId: workspace.id, sector })}</MailKitProvider>
       </MailClientProvider>
     </ConvexProvider>
+  );
+}
+
+/**
+ * Why the card cannot draw, with the press that mends it, as the mail canvas beside it offers: Sign in when LifeOS is
+ * signed out, Open Settings when Work is off, Retry when LifeOS did not answer. A computer kept from LifeOS has none.
+ */
+export function SessionLine({ session, env, sector }: { session: Pick<LifeosSession, "state" | "withheld">; env: string; sector: SectorKey }) {
+  const [retrying, setRetrying] = useState(false);
+  const { state, withheld } = session;
+  const retry = (): void => {
+    setRetrying(true);
+    // A retry that fails leaves the line as it is; the spinner stopping is the answer.
+    void reopenLifeos(env, sector)
+      .catch(() => undefined)
+      .finally(() => setRetrying(false));
+  };
+  const press = withheld
+    ? null
+    : state === "off"
+      ? { label: "Open Settings", run: openWorkSettings }
+      : state === "signed-out" || state === "pairing" || state === "refused"
+        ? { label: "Sign in", run: openConnections }
+        : { label: "Retry", run: retry };
+  return (
+    <div data-offer-session className="flex min-h-7 items-center gap-2 text-xs text-muted-foreground">
+      <span className="min-w-0">{sessionFailure(state, withheld)}</span>
+      {press ? (
+        <Button variant="ghost" size="xs" disabled={retrying} onClick={press.run}>
+          <BusyLabel busy={retrying} label={press.label} />
+        </Button>
+      ) : null}
+    </div>
   );
 }
 
