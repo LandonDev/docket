@@ -473,7 +473,7 @@ describe("the PDF's loading bones", () => {
     render(<PageSkeleton />);
     const bones = document.querySelector("[data-pdf-bones]")!;
     expect(bones.parentElement!.className).toContain("@container");
-    expect(bones.className.split(" ")).toEqual(expect.arrayContaining(["px-6", `@max-[${NARROW}px]:px-3`]));
+    expect(bones.className.split(" ")).toEqual(expect.arrayContaining(["min-w-0", "px-6", `@max-[${NARROW}px]:px-3`]));
     expect([sideInset(NARROW), sideInset(NARROW - 1)]).toEqual([24, 12]);
   });
 });
