@@ -228,6 +228,73 @@ export interface DecisionResult {
   error?: string
 }
 
+/**
+ * A thread's request for his press (docs/agents/work-outbox.md "A thread asks for his press"): the items its thread
+ * asked about, each with what it would do and, while it is open, the receipt his press names for a row drawn as asked.
+ */
+export interface OutboxRequest {
+  id: string
+  /** this host's number for it, the one the thread was told ("request 3") */
+  n: number
+  sessionId: string
+  workspaceId: string | null
+  sector: string | null
+  /** his own words the thread quoted */
+  quote: string
+  /** "Send 4 items and discard 1" */
+  head: string
+  state: 'open' | 'answered' | 'declined' | 'void'
+  /** why it is void */
+  why?: string
+  createdAt: number
+  expiresAt: number
+  answeredBy: string | null
+  answeredAt: number | null
+  rows: OutboxRequestRow[]
+}
+export interface OutboxRequestRow {
+  ref: HeldRef
+  do: 'send' | 'discard' | 'later'
+  at?: number
+  /** the item as it stands now; absent when this host no longer has it */
+  item?: OutboxItem
+  /** it changed since the thread asked: it starts unticked, and opening it (`request.view`) gives a fresh receipt */
+  changed: boolean
+  /** it still waits on him */
+  open: boolean
+  /** what his press names for this row, as drawn now; absent: he cannot press it from the card as it stands */
+  receipt?: string
+  /** what became of it on his press */
+  result?: { ok: boolean; error?: string; state?: string }
+}
+
+export const OutboxRequestRowSchema = z.object({
+  ref: HeldRefSchema,
+  do: z.enum(['send', 'discard', 'later']),
+  at: z.number().int().optional(),
+  item: OutboxItemSchema.optional(),
+  changed: z.boolean(),
+  open: z.boolean(),
+  receipt: z.string().optional(),
+  result: z.object({ ok: z.boolean(), error: z.string().optional(), state: z.string().optional() }).optional()
+})
+export const OutboxRequestSchema = z.object({
+  id: z.string(),
+  n: z.number().int(),
+  sessionId: z.string(),
+  workspaceId: z.string().nullable(),
+  sector: z.string().nullable(),
+  quote: z.string(),
+  head: z.string(),
+  state: z.enum(['open', 'answered', 'declined', 'void']),
+  why: z.string().optional(),
+  createdAt: z.number().int(),
+  expiresAt: z.number().int(),
+  answeredBy: z.string().nullable(),
+  answeredAt: z.number().int().nullable(),
+  rows: z.array(OutboxRequestRowSchema)
+})
+
 const ListParams = z
   .object({
     /** `waiting` (the default): held, live, sending, failed, and stale until he discards it. `done` (or `decided`): sent, discarded, and stale he put away, newest first. */
@@ -249,7 +316,16 @@ export const OutboxRequestSchemas = [
   /** → OutboxItem: the act will never go. `reason`: his words for the thread. An item that went out of date is put away the same way. */
   request('work.outbox.discard', z.object({ ref: HeldRefSchema, reason: z.string().max(500).optional(), via: PressViaSchema.optional() })),
   /** → { results: DecisionResult[] }: one press on one or many items of this host, each run as its own press would be, four at a time, each answering its own result in the order asked. More than one item earns no offered grant. A desktop press across hosts sends one of these to each host. */
-  request('work.outbox.decide', z.object({ items: z.array(DecisionSchema).min(1).max(100), via: PressViaSchema.optional() })),
+  /** With `request` and `receipts` in place of `items`: his Send on a thread's request card, for exactly the ticked rows' receipts (→ { request: OutboxRequest }). */
+  request('work.outbox.decide', z.object({ items: z.array(DecisionSchema).min(1).max(100).optional(), via: PressViaSchema.optional(), request: z.string().optional(), receipts: z.array(z.string()).min(1).max(100).optional() })),
+  /** → { requests: OutboxRequest[] }: the open requests, oldest first */
+  request('work.outbox.requests', z.object({ sessionId: z.string().optional() }).optional()),
+  /** → OutboxRequest: one request as its card draws it, with a receipt for each row he may press as drawn */
+  request('work.outbox.request.get', z.object({ id: z.string() })),
+  /** → OutboxRequestRow: he opened a row that changed since the ask; a fresh receipt at what he sees now */
+  request('work.outbox.request.view', z.object({ id: z.string(), ref: HeldRefSchema })),
+  /** → OutboxRequest: Not now; the items still wait in his Outbox */
+  request('work.outbox.decline', z.object({ request: z.string() })),
   /** → OutboxItem: a scheduled item waits on him again as held (a LifeOS mail only once LifeOS took it back) */
   request('work.outbox.cancelSend', z.object({ ref: HeldRefSchema })),
   /** → OutboxItem: a scheduled item goes now, on its own claim */
@@ -293,6 +369,8 @@ export type OutboxPush =
   | { push: 'work.outbox'; waiting: number; unreviewed: number; failed?: number; item?: OutboxItem }
   /** A Result was made or undone. */
   | { push: 'work.outbox.result'; result: WorkResult }
+  /** A thread's request was made, answered, declined or ran out (to keys with approve alone). */
+  | { push: 'work.outbox.request'; request: OutboxRequest }
 
 export const OUTBOX_CAPS = {
   'work.outbox.list': 'read',
@@ -301,6 +379,10 @@ export const OUTBOX_CAPS = {
   'work.outbox.discard': 'approve',
   'work.outbox.askAgain': 'approve',
   'work.outbox.decide': 'approve',
+  'work.outbox.requests': 'approve',
+  'work.outbox.request.get': 'approve',
+  'work.outbox.request.view': 'approve',
+  'work.outbox.decline': 'approve',
   'work.outbox.cancelSend': 'approve',
   'work.outbox.sendNow': 'approve',
   'work.outbox.undoSend': 'approve',

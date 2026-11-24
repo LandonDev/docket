@@ -6,7 +6,7 @@ import { PillarIdSchema } from './work/ids'
 import { TellGroupSchema, type TellHow, type TellOpen, type TellRow } from './work/tell'
 import { DigestLevelsSchema, type DigestDay, type DigestList, type DigestSettings } from './contract-work-digest'
 import { ActKindSchema, HeldRefSchema } from './work/acts'
-import { OutboxItemSchema, ToolHintsSchema, ToolRuleSchema, type OutboxGrant, type OutboxItem, type ToolRulesCard, type WorkResult } from './contract-work-outbox'
+import { OutboxItemSchema, OutboxRequestSchema, ToolHintsSchema, ToolRuleSchema, type OutboxGrant, type OutboxItem, type OutboxRequest, type ToolRulesCard, type WorkResult } from './contract-work-outbox'
 import { LifeosKeyStateSchema, LifeosStateSchema, type LifeosStateName, type LifeosStatus } from './contract-work-lifeos'
 import { AwayDecidedSchema, AwayStateSchema } from './away'
 import type { CaptureFiled, CaptureState } from './contract-work-capture'
@@ -1205,6 +1205,8 @@ export const AwaySnapshotSchema = z.object({ state: AwayStateSchema, decided: Aw
 export const WorkOutboxPushSchema = push('work.outbox', { waiting: z.number().int(), unreviewed: z.number().int(), failed: z.number().int().optional(), item: OutboxItemSchema.optional() })
 /** A Result was made or undone. */
 export const WorkOutboxResultPushSchema = push('work.outbox.result', { result: WorkResultSchema })
+/** A thread's request was made, answered, declined or ran out. To keys that can approve. */
+export const WorkOutboxRequestPushSchema = push('work.outbox.request', { request: OutboxRequestSchema })
 /** This host's LifeOS sign-in and its sector keys. */
 export const WorkLifeosPushSchema = push('work.lifeos', { status: LifeosStatusSchema })
 /** The capture pillar (contract-work-capture.ts): the phone's voice note reads where it went last, then files. */
@@ -1730,6 +1732,7 @@ export const RemotePushSchema = z.discriminatedUnion('push', [
   WorkPushSchema,
   WorkOutboxPushSchema,
   WorkOutboxResultPushSchema,
+  WorkOutboxRequestPushSchema,
   WorkLifeosPushSchema,
   AwayPushSchema,
   WorkRulesPushSchema,
@@ -1852,6 +1855,7 @@ export type WireSchemaPins = [
   Expect<Mirror<typeof WorkPushSchema, PushOf<'work'>>>,
   Expect<Mirror<typeof WorkOutboxPushSchema, PushOf<'work.outbox'>>>,
   Expect<Mirror<typeof WorkOutboxResultPushSchema, PushOf<'work.outbox.result'>>>,
+  Expect<Mirror<typeof WorkOutboxRequestPushSchema, PushOf<'work.outbox.request'>>>,
   Expect<Mirror<typeof WorkLifeosPushSchema, PushOf<'work.lifeos'>>>,
   Expect<Mirror<typeof AwayPushSchema, PushOf<'away'>>>,
   Expect<Mirror<typeof WorkRulesPushSchema, PushOf<'work.rules'>>>,
@@ -1917,6 +1921,7 @@ export type WireSchemaPins = [
   Expect<Mirror<typeof WorkResultSchema, WorkResult>>,
   Expect<Mirror<typeof OutboxGrantSchema, OutboxGrant>>,
   Expect<Mirror<typeof OutboxItemSchema, OutboxItem>>,
+  Expect<Mirror<typeof OutboxRequestSchema, OutboxRequest>>,
   Expect<Mirror<typeof ToolRulesCardSchema, ToolRulesCard>>,
   Expect<Mirror<typeof LifeosStatusSchema, LifeosStatus>>,
   Expect<Mirror<typeof CaptureStateSchema, CaptureState>>,

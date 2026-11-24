@@ -310,6 +310,11 @@ export interface WorkCtx {
      * `only`, a message that points at no other file (work/threads.ts)
      */
     ownerSaid(sessionId: string, quote: string, about?: readonly string[], only?: boolean): boolean
+    /**
+     * The newest messages the owner himself wrote in this thread alone (no ancestor), newest first: at most `count`
+     * of his among its last rows, each with its seq and the server's time (outbox/ask.ts reads a request's words here).
+     */
+    ownerRecent(sessionId: string, count: number): { seq: number; at: number; text: string }[]
     /** whether the thread is this host's and nobody has written in it yet: no message, so no turn */
     fresh(sessionId: string): boolean
     /**

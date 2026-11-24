@@ -237,6 +237,157 @@ public struct WorkOutboxResultPush: Codable, Hashable, Sendable {
     }
 }
 
+public struct WorkOutboxRequestPush: Codable, Hashable, Sendable {
+    public struct Request: Codable, Hashable, Sendable {
+        public enum State: RawRepresentable, Codable, Hashable, Sendable {
+            case open
+            case answered
+            case declined
+            case void
+            /// A value this build does not know; `rawValue` keeps it.
+            case unknown(String)
+
+            public init(rawValue: String) {
+                switch rawValue {
+                case "open": self = .open
+                case "answered": self = .answered
+                case "declined": self = .declined
+                case "void": self = .void
+                default: self = .unknown(rawValue)
+                }
+            }
+
+            public var rawValue: String {
+                switch self {
+                case .open: "open"
+                case .answered: "answered"
+                case .declined: "declined"
+                case .void: "void"
+                case .unknown(let value): value
+                }
+            }
+        }
+        public struct Row: Codable, Hashable, Sendable {
+            public enum Do: RawRepresentable, Codable, Hashable, Sendable {
+                case send
+                case discard
+                case later
+                /// A value this build does not know; `rawValue` keeps it.
+                case unknown(String)
+
+                public init(rawValue: String) {
+                    switch rawValue {
+                    case "send": self = .send
+                    case "discard": self = .discard
+                    case "later": self = .later
+                    default: self = .unknown(rawValue)
+                    }
+                }
+
+                public var rawValue: String {
+                    switch self {
+                    case .send: "send"
+                    case .discard: "discard"
+                    case .later: "later"
+                    case .unknown(let value): value
+                    }
+                }
+            }
+            public struct Result: Codable, Hashable, Sendable {
+                public let ok: Bool
+                public let error: String?
+                public let state: String?
+
+                public init(ok: Bool, error: String? = nil, state: String? = nil) {
+                    self.ok = ok
+                    self.error = error
+                    self.state = state
+                }
+            }
+
+            public let ref: HeldRef
+            public let `do`: Do
+            public let at: Int?
+            public let item: OutboxItem?
+            public let changed: Bool
+            public let open: Bool
+            public let receipt: String?
+            public let result: Result?
+
+            public init(ref: HeldRef, `do`: Do, at: Int? = nil, item: OutboxItem? = nil, changed: Bool, open: Bool, receipt: String? = nil, result: Result? = nil) {
+                self.ref = ref
+                self.`do` = `do`
+                self.at = at
+                self.item = item
+                self.changed = changed
+                self.open = open
+                self.receipt = receipt
+                self.result = result
+            }
+        }
+
+        public let id: String
+        public let n: Int
+        public let sessionId: String
+        public let workspaceId: String?
+        public let sector: String?
+        public let quote: String
+        public let head: String
+        public let state: State
+        public let why: String?
+        public let createdAt: Int
+        public let expiresAt: Int
+        public let answeredBy: String?
+        public let answeredAt: Int?
+        public let rows: [Row]
+
+        public init(id: String, n: Int, sessionId: String, workspaceId: String?, sector: String?, quote: String, head: String, state: State, why: String? = nil, createdAt: Int, expiresAt: Int, answeredBy: String?, answeredAt: Int?, rows: [Row]) {
+            self.id = id
+            self.n = n
+            self.sessionId = sessionId
+            self.workspaceId = workspaceId
+            self.sector = sector
+            self.quote = quote
+            self.head = head
+            self.state = state
+            self.why = why
+            self.createdAt = createdAt
+            self.expiresAt = expiresAt
+            self.answeredBy = answeredBy
+            self.answeredAt = answeredAt
+            self.rows = rows
+        }
+
+        private enum CodingKeys: String, CodingKey {
+            case id, n, sessionId, workspaceId, sector, quote, head, state, why, createdAt, expiresAt, answeredBy, answeredAt, rows
+        }
+
+        public func encode(to encoder: any Encoder) throws {
+            var container = encoder.container(keyedBy: CodingKeys.self)
+            try container.encode(id, forKey: .id)
+            try container.encode(n, forKey: .n)
+            try container.encode(sessionId, forKey: .sessionId)
+            try container.encode(workspaceId, forKey: .workspaceId)
+            try container.encode(sector, forKey: .sector)
+            try container.encode(quote, forKey: .quote)
+            try container.encode(head, forKey: .head)
+            try container.encode(state, forKey: .state)
+            try container.encodeIfPresent(why, forKey: .why)
+            try container.encode(createdAt, forKey: .createdAt)
+            try container.encode(expiresAt, forKey: .expiresAt)
+            try container.encode(answeredBy, forKey: .answeredBy)
+            try container.encode(answeredAt, forKey: .answeredAt)
+            try container.encode(rows, forKey: .rows)
+        }
+    }
+
+    public let request: Request
+
+    public init(request: Request) {
+        self.request = request
+    }
+}
+
 public struct WorkLifeosPush: Codable, Hashable, Sendable {
     public let status: LifeosStatus
 
@@ -389,6 +540,7 @@ public enum ServerPush: Codable, Hashable, Sendable {
     case work(WorkPush)
     case workOutbox(WorkOutboxPush)
     case workOutboxResult(WorkOutboxResultPush)
+    case workOutboxRequest(WorkOutboxRequestPush)
     case workLifeos(WorkLifeosPush)
     case away(AwayPush)
     case workRules(WorkRulesPush)
@@ -433,6 +585,7 @@ public enum ServerPush: Codable, Hashable, Sendable {
         case "work": self = .work(try WorkPush(from: decoder))
         case "work.outbox": self = .workOutbox(try WorkOutboxPush(from: decoder))
         case "work.outbox.result": self = .workOutboxResult(try WorkOutboxResultPush(from: decoder))
+        case "work.outbox.request": self = .workOutboxRequest(try WorkOutboxRequestPush(from: decoder))
         case "work.lifeos": self = .workLifeos(try WorkLifeosPush(from: decoder))
         case "away": self = .away(try AwayPush(from: decoder))
         case "work.rules": self = .workRules(try WorkRulesPush(from: decoder))
@@ -473,6 +626,7 @@ public enum ServerPush: Codable, Hashable, Sendable {
         case .work(let value): try Self.encode(tag: "work", value, to: encoder)
         case .workOutbox(let value): try Self.encode(tag: "work.outbox", value, to: encoder)
         case .workOutboxResult(let value): try Self.encode(tag: "work.outbox.result", value, to: encoder)
+        case .workOutboxRequest(let value): try Self.encode(tag: "work.outbox.request", value, to: encoder)
         case .workLifeos(let value): try Self.encode(tag: "work.lifeos", value, to: encoder)
         case .away(let value): try Self.encode(tag: "away", value, to: encoder)
         case .workRules(let value): try Self.encode(tag: "work.rules", value, to: encoder)

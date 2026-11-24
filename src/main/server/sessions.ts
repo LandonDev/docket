@@ -5536,6 +5536,11 @@ export class SessionRegistry {
   }
 
   /** Has the person (or a starter) written into the thread (batch.ts: an idle child with a user turn but no completed one is stuck)? */
+  /** A thread's newest `user-text` rows, newest first (db.ts `recentUserTexts`). */
+  recentUserTexts(sessionId: string, limit: number): EventRow[] {
+    return this.store.recentUserTexts(sessionId, limit)
+  }
+
   hasUserText(sessionId: string): boolean {
     return this.store.hasUserText(sessionId)
   }
@@ -6148,7 +6153,9 @@ export class SessionRegistry {
       provider?: string | null
       model?: string | null
       reasoning?: string | null
-    }
+    },
+    /** who changed it: a message whose words someone else rewrote is that one's, not his (the Outbox reads only his own) */
+    by?: UserTextBy
   ): void {
     const q = this.queues.get(sessionId)
     if (!q) return
@@ -6156,6 +6163,7 @@ export class SessionRegistry {
       value === undefined ? current : value === null ? undefined : value
     const apply = (m: QueuedMessage): QueuedMessage => ({
       ...m,
+      ...(patch.text !== undefined && patch.text !== m.text && by ? { by } : {}),
       text: patch.text ?? m.text,
       provider: field(patch.provider as ProviderId | null | undefined, m.provider),
       model: field(patch.model, m.model),

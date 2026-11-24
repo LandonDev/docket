@@ -3983,12 +3983,17 @@ export async function startServer(
             sendFrame({ id: req.id, ok: true, result: null })
             break
           case 'queue.update':
-            registry.queueUpdate(req.params.sessionId, req.params.messageId, {
-              text: req.params.text,
-              provider: req.params.provider,
-              model: req.params.model,
-              reasoning: req.params.reasoning
-            })
+            registry.queueUpdate(
+              req.params.sessionId,
+              req.params.messageId,
+              {
+                text: req.params.text,
+                provider: req.params.provider,
+                model: req.params.model,
+                reasoning: req.params.reasoning
+              },
+              userTextByOf(principal)
+            )
             sendFrame({ id: req.id, ok: true, result: null })
             break
           case 'queue.reorder':

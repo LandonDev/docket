@@ -121,7 +121,12 @@
   the flip's `answerWaitingCards`), its computer act the host reads as
   outward or the model flagged is held for the owner's press and asks no
   card, and text into a password field is denied. Away never releases a
-  held act and never makes a grant: neither is a card. On the Mac bridge a
+  held act and never makes a grant: neither is a card. Away, by whichever
+  kind is on, never answers an Outbox request (a thread's `outbox_request`,
+  docs/agents/work-outbox.md "A thread asks for his press"): it is his
+  press, not a card, so `interceptAway`, `answerWaitingCards` and
+  `awayVerdict` never see it, and it stays open until he answers it or its
+  day runs out. On the Mac bridge a
   Work thread's command on its floor (`workFloor`: the always-ask list,
   save an `osascript` that drives only local apps) stays a prompt, under
   Away and at the flip (`workMustAsk`, `awayKeeps`).

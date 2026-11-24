@@ -1198,6 +1198,15 @@ export class Store {
     return rows.map(toMeta)
   }
 
+  /** A session's newest `user-text` rows, newest first, at most `limit` (the Outbox's reader of his words, outbox/ask.ts). */
+  recentUserTexts(sessionId: string, limit: number): EventRow[] {
+    this.flushEvents()
+    const rows = this
+      .stmt(`SELECT seq, ts, payload FROM ${this.eventsTable(sessionId)} WHERE session_id = ? AND json_extract(payload, '$.type') = 'user-text' ORDER BY seq DESC LIMIT ?`)
+      .all(sessionId, limit) as unknown as { seq: number; ts: number; payload: string }[]
+    return rows.map((r) => ({ sessionId, seq: Number(r.seq), ts: Number(r.ts), event: JSON.parse(r.payload) as AgentEvent }))
+  }
+
   /** The seq of the last user turn in a session's log, null when it has none. */
   lastUserTurnSeq(sessionId: string): number | null {
     const r = this

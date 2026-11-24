@@ -60,11 +60,12 @@ beforeEach(() => {
 })
 
 describe('the kinds', () => {
-  it('are listed once with their groups: held items and failed sends are his to set together, an offer is quiet', () => {
+  it('are listed once with their groups: held items, failed sends and a thread\'s request are his to set together, an offer is quiet', () => {
     expect(OUTBOX_TELLS.map((t) => [t.kind, t.group])).toEqual([
       ['outbox.held', 'held'],
       ['outbox.failed', 'held'],
-      ['outbox.offer', 'system']
+      ['outbox.offer', 'system'],
+      ['outbox.request', 'held']
     ])
   })
 })

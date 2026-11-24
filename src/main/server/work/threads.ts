@@ -237,6 +237,12 @@ export const threadsPart: CtxPart<'threads'> = (ctx, deps) => {
         registry.deliverAgentReport(sessionId, { agentId: 'work', title: 'Work', status: 'notice', text: notice })
       },
       ownerSaid: (sessionId, quote, about, only) => ownerSaid(words, sessionId, quote, about, only),
+      // His own rows by author (events.ts `writtenByOwner`); a row with no author, an app's or a thread's never counts.
+      ownerRecent: (sessionId, count) =>
+        registry
+          .recentUserTexts(sessionId, Math.max(count * 4, 12))
+          .flatMap((row) => (row.event.type === 'user-text' && row.event.by && writtenByOwner(row.event.by) ? [{ seq: row.seq, at: row.ts, text: row.event.text }] : []))
+          .slice(0, count),
       fresh: (sessionId) => !!registry.get(sessionId) && !registry.hasUserText(sessionId),
       async rearm(sessionId) {
         if (registry.get(sessionId) && !registry.hasUserText(sessionId)) await registry.restart(sessionId)

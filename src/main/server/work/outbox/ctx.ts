@@ -18,6 +18,8 @@ import { isLifeosSpec, type RuleAddons } from './rules'
 import { HeldStore, HELD_TABLE, LIVE_LOST } from './store'
 import { heldKey, syncTells, tellHeld, type TellsDeps } from './tells'
 import { heldLine } from './words'
+import { OutboxRequests } from './requests'
+import { hisZone } from '../clock'
 
 /**
  * `ctx.held`, and the hold's wiring into the host (docs/agents/work-outbox.md).
@@ -61,6 +63,8 @@ export interface OutboxHost {
   isWorkScope(workspaceId: string): boolean
   /** drop what the hold keeps in memory for threads that are gone */
   forget(sessionIds: readonly string[]): void
+  /** a thread's requests for his press (requests.ts) */
+  requests: OutboxRequests
 }
 const hosts = new WeakMap<WorkCtx, OutboxHost>()
 export const outboxHostOf = (ctx: WorkCtx): OutboxHost | undefined => hosts.get(ctx)
@@ -241,7 +245,11 @@ export const heldPart: CtxPart<'held'> = (ctx, deps) => {
     }
   })
 
+  const requests = new OutboxRequests({ ctx, outbox, rootOf, whisper: (sessionId, text) => deps.registry.whisper(sessionId, text), zone: () => hisZone(ctx) })
+  // A request whose items were all decided elsewhere ends at once.
+  outbox.onDecided(() => requests.sweep())
   hosts.set(ctx, {
+    requests,
     outbox,
     store,
     earned,

@@ -15,7 +15,8 @@ import { heldNotice, PRIVATE_CHANGE_KINDS, summaryFor } from './words'
 export const OUTBOX_TELLS: TellKind[] = [
   { kind: 'outbox.held', group: 'held', name: 'A held item is waiting' },
   { kind: 'outbox.failed', group: 'held', name: 'A send failed' },
-  { kind: 'outbox.offer', group: 'system', name: 'A grant is offered' }
+  { kind: 'outbox.offer', group: 'system', name: 'A grant is offered' },
+  { kind: 'outbox.request', group: 'held', name: 'A thread asks for your press' }
 ]
 
 /** A failure older than this is no longer news he must hear at once: it waits for the digest. */

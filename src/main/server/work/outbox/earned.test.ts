@@ -436,8 +436,8 @@ describe('an earned grant on the hold', () => {
     const { requiredCapability } = await import('@shared/capabilities')
     const need = (method: string) => requiredCapability({ method } as never)
     expect(['work.outbox.offers', 'work.outbox.takeOffer', 'work.outbox.dismissOffer'].map(need)).toEqual(['approve', 'admin', 'admin'])
-    // no tool of a thread names them: the one tool every Work thread has is the frame's Connections read, which changes nothing
-    expect(rig.work.tools.of({ id: 't-work', scope: 'work' })?.tools.map((x) => [x.name, x.readOnly]) ?? []).toEqual([['work_connections', true]])
+    // no tool of a thread names them: every Work thread has the Outbox's list and request and the frame's Connections read, none of which changes anything
+    expect(rig.work.tools.of({ id: 't-work', scope: 'work' })?.tools.map((x) => [x.name, x.readOnly]) ?? []).toEqual([['outbox_list', true], ['outbox_request', true], ['work_connections', true]])
     // a device with admin takes it
     expect(await offers(approveKey as never)).toHaveLength(1)
     await expect(offers(readKey as never)).rejects.toThrow()

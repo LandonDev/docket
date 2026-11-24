@@ -235,6 +235,7 @@ const ALLOWED_LIFEOS = [
 
 /** Work tools a mail chat may not call. A tool a pillar adds fails the completeness test until it is put here or in MAIL_CHAT_POWERS.work. */
 const REFUSED_WORK = [
+  'outbox_list', 'outbox_request',
   'canvas_open', 'canvas_close', 'play_list', 'play_propose', 'watch_create', 'routine_propose', 'voice_examples', 'messages_read', 'messages_draft_reply',
   'doc_write', 'doc_format', 'doc_suggest', 'doc_comment', 'sheet_read', 'sheet_write', 'sheet_suggest', 'sheet_format', 'sheet_rule', 'sheet_table',
   'sheet_page', 'sheet_note', 'sheet_chart', 'sheet_create', 'office_files', 'office_range_read', 'office_range_write', 'office_range_undo',

@@ -430,11 +430,12 @@ describe('who may decide', () => {
     expect(methods.filter((m) => m.startsWith('app.workOutbox'))).toEqual([])
   })
 
-  it('no tool of any thread is a way to press, grant or set a rule: the outbox lists none', () => {
-    // The frame's own Connections read is the one tool every Work thread has, and it changes nothing.
+  it('no tool of any thread is a way to press, grant or set a rule: the outbox lists only its read and its ask', () => {
+    // The frame's own Connections read, and the Outbox's list and request: none of them performs anything (requests.ts).
     const tools = rig.work.tools.of({ id: 't-work', scope: 'work' })?.tools ?? []
-    expect(tools.map((x) => [x.name, x.readOnly])).toEqual([['work_connections', true]])
-    expect(outboxModule.tools).toBeUndefined()
+    expect(tools.map((x) => [x.name, x.readOnly])).toEqual([['outbox_list', true], ['outbox_request', true], ['work_connections', true]])
+    // and none of the outbox's own names a press: a decide, a decline, a send, a grant or a rule
+    expect(outboxModule.tools!({ workspaceId: 'ws-purdue', sector: 'purdue' } as never).map((t) => t.name)).toEqual(['outbox_list', 'outbox_request'])
   })
 })
 

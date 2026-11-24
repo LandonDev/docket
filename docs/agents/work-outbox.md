@@ -22,6 +22,7 @@ it: the Outbox, a Work thread's Results and the return from Away
 | Microsoft form made, collected, widened or reopened (`msform_create`, `msform_publish`, `msform_settings`, `msform_close`) | held as `msform.make` or `msform.publish`; no matcher, so no grant, no earned offer, and Away releases none. The press reads the form fresh and is stale when it moved; Collect responses reads the link and sends nothing. A change to a collecting form waits for his Accept in the form's own stepper. The carrier is the only hand on Forms | `work/msforms/`, [work-msforms.md](work-msforms.md) "The hold" |
 | `addon_add` | a card for a person with an admin key; never allowed by Away, never by a model | `shared/away.ts`, `sessions.ts` |
 | `addon_remove` | a card over a row a person wrote (none over a thread's own), never allowed by Away; it reaches only rows the thread can see. Nothing leaves by it | `addons/tools.ts` |
+| `outbox_request` (asks him to press for held items he named) | performs nothing: stores one request and answers "Asked"; only his press on the card releases any item, each as he saw it. Below: "A thread asks for his press" | `work/outbox/requests.ts`, `shared/work/outboxAsk.ts` |
 | shell | **not caught.** The owner accepted this; the Work preamble is the rule there | |
 
 A code thread is outside all of it: its add-on calls, cards, Away and
@@ -355,6 +356,105 @@ host does with it:
   ([work-agenda.md](work-agenda.md)); a LifeOS deployment without them
   answers `not built … (milestone 24)`.
 The act's own result, which a thread's Results list keeps, says the same: "Queued to send to Dana Lee: Budget" for a mail and "Queued in LifeOS: Add Walk the ballroom" for a calendar change (`mailSendKind.execute`, `calendarOpKind.execute`), never "Sent to" or "Added" at the press.
+
+## A thread asks for his press
+
+**The invariant.** A held item leaves only on a fresh press of his, unless a
+grant he made or a schedule he set covers that exact act; a thread's
+request supplies neither. "His press" is his window on this host (the local
+socket) or a client key that holds `approve` (`mustBePerson`). The trust
+boundary: a thread's shell runs as the same user as the server and can reach
+the local socket, as it can for every held act (the "shell: not caught" row
+above). Every other path is closed: no tool names `decide` or `decline`, Away
+answers questions and permission cards and a request is neither, a far
+parent's `thread.answer` answers cards and questions only, and the box
+browser and computer use refuse TempCode's own pages.
+
+**The tools** (the outbox module's own `tools`, in every Work thread, on the
+one mount: Claude in-process, Codex and Muse through `app.workTools`; a mail
+chat is refused both): `outbox_list({scope?})` lists the waiting items the
+thread may name, each with a ref (`#N` for a host row, `mail:<id>` or
+`calendar:<id>` for a LifeOS draft): its own tree's by default, the same
+job's other threads' with `scope: 'workspace'` (a Work Chat sees its own
+tree alone), never another job's; another thread's private change reads "a
+change to a file others can open". `outbox_request({items: [{ref, do,
+at?}], quote})` asks; it answers "Asked: request R lists N items (…). It
+waits for the owner's press on the card; nothing has been sent." with
+`structuredContent: {outboxRequest: {id, host}}` alone, and the card loads
+the request from its host.
+
+**When it is refused** (`judgeAsk`, shared/work/outboxAsk.ts, table-tested;
+each refusal is words an agent can act on):
+- **His words.** The quote must lie inside one sentence of one of his three
+  newest messages in this thread (`ctx.threads.ownerRecent`: `user-text`
+  rows whose author is his, `writtenByOwner`; no ancestor, no row without an
+  author, no app or thread text), each at most a day old by the server's
+  time. Every chip Ask put in a message is taken out first (`ownWords`, by
+  every kind in `CHIP_NOUN`); a held chip counts only as the item it points
+  at. A queued message whose words someone else rewrote (`queue.update`)
+  is that caller's from then on.
+- **A command.** Not a question (a polite "can you …?" is a command), not
+  negated ("don't", "never", "not"), not inside quotation marks, no "if",
+  "unless", "once", "after", "when" or "until". A clause under twelve
+  characters tells only when it names its item ("send #12").
+- **The verb.** Each action needs its verb in the sentence: send, approve,
+  release, go ahead (any kind); post, reply, forward, accept, decline,
+  invite, share, publish, submit, make (the kinds each can mean); discard,
+  drop, delete, scrap, cancel for a discard; a later send also needs a day
+  (today, tonight, tomorrow, a weekday) and a clock time with its half of
+  the day, read in his zone (`hisZone`) from the message's time, and `at`
+  must be that moment.
+- **Names, groups and counts.** An item is named by `#N`, its ref, a held
+  chip, or (its own tree's only) a full name, address, channel, file or
+  title that matches exactly one item. "All", "every", "everything", "both",
+  "them", "those", "these", "the rest" cover the asking tree's whole waiting
+  set for that action as it stood at his message: the request must list all
+  of it, and an item held after his words is out. A count in the sentence
+  must equal the number listed; two counts are unclear. A number inside a
+  name is no count.
+- **Eligibility.** Each item waits on him (`needsHim`); a live act, a
+  computer act and a LifeOS reply that quotes its mail go only from their
+  own page; an item out of date may only be discarded; a later send only for
+  a kind in `LATER`.
+- **One request a message.** One message of his gives one request per
+  thread: the same ask again answers the one it made, and once he answered
+  or chose Not now only new words of his give another. A newer request voids
+  the thread's open one.
+
+**The request** (`work_outbox_requests`, requests.ts): its thread and tree
+root, job and sector, his quote, the source message's seq and the clause's
+digest, the items with the revision each had when asked, the receipts
+issued, a generation, its state (`open`, `answered`, `declined`, `void`),
+and an end a day after his message. Methods, each behind the person gate
+with `approve`: `work.outbox.requests`, `request.get` (each row's item now
+and, for a row unchanged since the ask and still waiting, a receipt),
+`request.view` (he opened a changed row: a fresh receipt at what he sees,
+which he then ticks himself), `decide({request, receipts})` and `decline`.
+The push `work.outbox.request` goes to approve keys alone.
+
+**His Send.** One check of the whole press (open, not run out, the
+generation, every receipt this request's and none twice, each the action
+and time asked), then one `UPDATE` claims it as `answered` and keeps the
+receipts; a second press, device or tab gets the request as it stands and
+runs nothing. Each ticked item then runs through `decide` as an Outbox press
+would: its own claim at the receipt's revision (a change after the card drew
+it fails that row), its kind's checks, LifeOS's undo time, never `again`.
+Nothing unlisted can be named, and he may untick, never widen. A request's
+press is many: it earns no offered grant. `via` reads `request:<id>`.
+
+**What the thread hears.** One note, in place of the per-item notes for its
+own tree's items (a kind that wakes its thread still does): "The owner
+approved request R: sent 2, queued 1 in LifeOS (they go after his undo
+time), 1 not sent (…), 1 left out. Do not send any of them another way."
+Not now: "The owner chose Not now on request R. The items still wait in his
+Outbox. Do not ask again unless he asks." Void (its day ran out, every item
+was decided elsewhere): "Request R ran out; the items still wait in his
+Outbox." A removed thread's requests end with it, unsaid.
+
+**How he hears.** `ctx.tell` as `outbox.request` (group `held`), "Asked:
+Post 3 messages" with his quote under it, key `request:<id>`, opening the
+thread where the card is; it interrupts (he asked for it and waits on it),
+and is done when the request is answered, declined or void.
 
 ## The press, grants, and who may decide
 

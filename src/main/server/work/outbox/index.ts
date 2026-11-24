@@ -16,6 +16,7 @@ import { PRIVATE_CHANGE, PRIVATE_CHANGE_KINDS, PRIVATE_ERROR, summaryFor } from 
 import { PRIVATE_EFFECT } from './effects'
 import { pressesFor } from '../files/policy'
 import { outboxMentions } from './mentions'
+import { ensureRequestTables, requestTools } from './requests'
 
 /**
  * The outbox pillar's server module (docs/agents/work-outbox.md): the
@@ -107,8 +108,11 @@ export const outbox: WorkModule = {
   id: 'outbox',
   mentions: outboxMentions,
   tells: OUTBOX_TELLS,
+  // Read the Outbox and ask for his press: nothing a thread calls here performs anything (requests.ts).
+  tools: () => requestTools(),
   ensure(db) {
     ensureOutboxTables(db)
+    ensureRequestTables(db)
     // Offers are a shortcut: a fault in their tables never takes the Outbox down with it.
     try {
       ensureEarnedTables(db)
@@ -140,9 +144,29 @@ export const outbox: WorkModule = {
       case 'work.outbox.discard':
         mustBePerson(by, 'approve')
         return handled(await box.discard(req.params.ref, person(by), { ...(req.params.reason ? { reason: req.params.reason } : {}), ...(req.params.via ? { via: req.params.via } : {}) }))
-      case 'work.outbox.decide':
+      case 'work.outbox.decide': {
         mustBePerson(by, 'approve')
+        // His Send on a thread's request card names only the receipts the card drew (requests.ts `answer`).
+        if (req.params.request !== undefined) {
+          if (!req.params.receipts?.length || req.params.items) throw new Error('refused: a press on a request names its receipts, and nothing else')
+          await host.requests.answer(req.params.request, req.params.receipts, person(by))
+          return handled({ request: host.requests.get(req.params.request, by) })
+        }
+        if (!req.params.items?.length) throw new Error('refused: name the items of this press')
         return handled({ results: (await box.decide(req.params.items, { by: person(by), ...(req.params.via ? { via: req.params.via } : {}) })).map((r) => (r.item ? { ...r, item: seenBy(by, r.item) } : r)) })
+      }
+      case 'work.outbox.requests':
+        mustBePerson(by, 'approve')
+        return handled({ requests: host.requests.open(req.params ?? {}).map((r) => host.requests.get(r.id, by)) })
+      case 'work.outbox.request.get':
+        mustBePerson(by, 'approve')
+        return handled(host.requests.get(req.params.id, by))
+      case 'work.outbox.request.view':
+        mustBePerson(by, 'approve')
+        return handled(host.requests.viewRow(req.params.id, req.params.ref, by))
+      case 'work.outbox.decline':
+        mustBePerson(by, 'approve')
+        return handled(host.requests.decline(req.params.request, person(by)))
       case 'work.outbox.cancelSend':
         mustBePerson(by, 'approve')
         return handled(await box.cancelSend(req.params.ref))
@@ -227,14 +251,18 @@ export const outbox: WorkModule = {
     })
   },
   preamble(scope) {
-    // What a held answer means, said once where every Work thread reads it.
-    return scope ? 'A tool that answers "Held as item N" has put the act in the owner\'s Outbox. An add-on whose tools the owner has not reviewed yet holds every call: name that add-on in your report and do not retry.' : null
+    // What a held answer means, and when a thread may ask for his press, said once where every Work thread reads it.
+    return scope
+      ? 'A tool that answers "Held as item N" has put the act in the owner\'s Outbox. An add-on whose tools the owner has not reviewed yet holds every call: name that add-on in your report and do not retry. ' +
+          "Held items wait in the owner's Outbox for his press. When he asks you in this thread, in words, to send, discard or schedule some of them, call outbox_request with exactly the items he named and his words as the quote; it only asks, and his press on the card does the rest. Never ask for more than he named, and never ask unless he asked."
+      : null
   },
   sessionsRemoved(ids, ctx) {
     const host = outboxHostOf(ctx)
     if (!host) return
     host.forget(ids)
     host.store.closeSessions(ids, 'The thread that made this was deleted.')
+    host.requests.sessionsRemoved(ids)
   },
   workspaceRemoved(id, ctx) {
     const host = outboxHostOf(ctx)

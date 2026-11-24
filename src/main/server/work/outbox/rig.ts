@@ -298,6 +298,8 @@ export interface Rig {
   bridgeCall(sessionId: string, exposed: string, args: Record<string, unknown>): ReturnType<typeof appAddonCall>
   rpc<T>(method: string, params?: unknown, principal?: Principal): Promise<T>
   waiting(): Promise<OutboxItem[]>
+  /** a message in a thread, as the socket stamps it: his own by default (`{kind: 'owner'}`); answers its seq */
+  say(sessionId: string, text: string, opts?: { by?: unknown; at?: number }): number
   /** `keep`: leave the database, for a boot on it again (a restart) */
   close(opts?: { keep?: boolean }): Promise<void>
 }
@@ -341,12 +343,16 @@ export async function makeRig(opts: { modules?: WorkModule[]; reuse?: { dir: str
   const cards: Rig['cards'] = []
   const away = { enabled: false, on: (_kind: 'code' | 'work') => away.enabled }
   const removed: ((ids: string[]) => void)[] = []
+  /** each thread's `user-text` rows, oldest first (`say`) */
+  const said = new Map<string, { sessionId: string; seq: number; ts: number; event: { type: 'user-text'; text: string; by?: unknown } }[]>()
+  let seq = 0
   const gone: ((id: string) => void)[] = []
   const registry = {
     get: (id: string) => sessions.get(id) ?? null,
     getProject: () => null,
     listWorkspaces: () => [...workspaces.values()],
     eventsAfter: () => [],
+    recentUserTexts: (id: string, limit: number) => [...(said.get(id) ?? [])].reverse().slice(0, limit),
     whisper: (sessionId: string, text: string) => void whispers.push({ sessionId, text }),
     deliverAgentReport: (sessionId: string, report: { text: string }) => void woke.push({ sessionId, text: report.text }),
     onRemoved: (fn: (ids: string[]) => void) => (removed.push(fn), () => {}),
@@ -421,6 +427,13 @@ export async function makeRig(opts: { modules?: WorkModule[]; reuse?: { dir: str
     downstream,
     pushes,
     whispers,
+    say(sessionId, text, opts = {}) {
+      const rows = said.get(sessionId) ?? []
+      const row = { sessionId, seq: ++seq, ts: opts.at ?? Date.now(), event: { type: 'user-text' as const, text, by: 'by' in opts ? opts.by : { kind: 'owner' } } }
+      rows.push(row)
+      said.set(sessionId, rows)
+      return row.seq
+    },
     woke,
     notices,
     tells,

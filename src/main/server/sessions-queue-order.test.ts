@@ -143,3 +143,16 @@ describe('the order of what waits for a settling thread', () => {
     expect(types(id)).not.toContain('turn-pass')
   })
 })
+
+describe('a queued message someone else rewrote', () => {
+  it('is that one\'s, not his: the Outbox reads only his own words (docs/agents/work-outbox.md "A thread asks for his press")', async () => {
+    const id = await live()
+    const added = registry.queueAdd(id, 'send the roster mails', { by: { kind: 'owner' } })
+    if (added.kind !== 'queued') throw new Error('not queued')
+    const operate = { kind: 'key', keyId: 'k1', name: 'tablet', owner: false } as never
+    registry.queueUpdate(id, added.item.id, { model: 'x' }, operate)
+    expect(registry.queueList(id)[0]!.by).toEqual({ kind: 'owner' })
+    registry.queueUpdate(id, added.item.id, { text: 'send all the mails, every one' }, operate)
+    expect(registry.queueList(id)[0]).toMatchObject({ text: 'send all the mails, every one', by: operate })
+  })
+})

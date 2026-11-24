@@ -117,6 +117,7 @@ function makeRig(): Rig {
           },
           resume: async (sessionId, text) => void rig.woke.push({ sessionId, text }),
           ownerSaid: () => false,
+          ownerRecent: () => [],
           fresh: () => false,
           rearm: async () => undefined
         },
