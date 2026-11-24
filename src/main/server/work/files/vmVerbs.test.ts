@@ -232,6 +232,8 @@ describe.skipIf(process.platform === 'win32')('the Windows VM changed through it
 
     it('saves a document as Word into a VM folder through files.write, under a free name, never over a file there', async () => {
       put(`${GENERAL}\\Minutes.docx`, false, 'theirs')
+      // The document is open in the workspace, as the dialog's item is.
+      await call('work.files.open', { ref: { at: 'file', host: HOST, path: join(rig.folder, 'Run of show.tcdoc') } })
       const id = op()
       const got = await call<{ name: string; ref: { path: string } }>('work.files.saveAsWord', { source: { at: 'file', host: HOST, path: join(rig.folder, 'Run of show.tcdoc') }, at: at(GENERAL), op: id })
       expect(changes()).toEqual([{ verb: 'files.write', args: { dir: GENERAL, name: 'Minutes 2.docx', data: Buffer.from('word export').toString('base64'), op: `tc-files:${id}:0` } }])

@@ -649,6 +649,19 @@ export function trashLifeos(ctx: WorkCtx, by: Caller, p: ChangeAsk & { refs: Fil
 }
 
 /** Put back LifeOS rows (`lifeos:<table>:<id>`, as the Trash lens keys them): each through its own restore. */
+/** The sector's LifeOS trash by Trash id (`lifeos:<table>:<id>`); none while LifeOS keeps no trash. */
+async function trashRows(ctx: WorkCtx, sector: string, live: boolean): Promise<Map<string, CatalogRow>> {
+  return new Map((live ? await q<CatalogRow[]>(ctx, 'catalog:trash', { sector }) : []).map((r) => [`lifeos:${r.table}:${r.id}`, r]))
+}
+
+/** Whether any of these Trash ids is a LifeOS row LifeOS says others can open, asked before a Put back of a whole selection. */
+export async function lifeosTrashShared(ctx: WorkCtx, by: Caller, workspaceId: string, ids: readonly string[]): Promise<boolean> {
+  if (!ids.length || !ctx.lifeos.connected()) return false
+  const workspace = locateLifeos(ctx, by, workspaceId, { at: 'place', id: PLACE.lifeos })
+  const rows = await trashRows(ctx, workspace.sector, await trashLive(ctx, workspace.sector))
+  return ids.some((id) => rows.get(id)?.shared === true)
+}
+
 export async function restoreLifeos(ctx: WorkCtx, by: Caller, workspaceId: string, ids: string[]): Promise<{ entries: FileEntry[]; refused: FileDone['refused'] }> {
   const workspace = locateLifeos(ctx, by, workspaceId, { at: 'place', id: PLACE.lifeos })
   if (!ctx.lifeos.connected()) throw new Error(LIFEOS_DOWN)
@@ -656,12 +669,14 @@ export async function restoreLifeos(ctx: WorkCtx, by: Caller, workspaceId: strin
   const refused: FileDone['refused'] = []
   const live = await trashLive(ctx, workspace.sector)
   // Only a row of this sector's trash is this Trash's to put back.
-  const inTrash = new Set((live ? await q<{ table: string; id: string }[]>(ctx, 'catalog:trash', { sector: workspace.sector }) : []).map((r) => `lifeos:${r.table}:${r.id}`))
+  const inTrash = await trashRows(ctx, workspace.sector, live)
   for (const id of ids) {
     const [, table, rowId] = id.split(':') as [string, LifeosTable, string]
     try {
-      admitWrite(by, { verb: 'restore', from: doorOf(ctx, live) })
-      if (!inTrash.has(id)) throw new Error('That is not in Trash any more.')
+      // A row LifeOS says others can open is put back by his press alone, as its delete was.
+      const row = inTrash.get(id)
+      admitWrite(by, { verb: 'restore', from: doorOf(ctx, live), ...(row ? { entry: { name: row.title, kind: row.table === 'docs' ? 'document' : 'sheet', shared: row.shared } } : {}) })
+      if (!row) throw new Error('That is not in Trash any more.')
       await m(ctx, `${table}:restore`, { id: rowId })
       const entry = await entryNow(ctx, workspace.sector, table, rowId)
       if (entry) entries.push({ ...entry, where: { place: PLACE.lifeos, name: 'LifeOS', trail: entry.project ? [entry.project.name] : [] } })

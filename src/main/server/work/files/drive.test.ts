@@ -310,6 +310,12 @@ describe("Drive's own bin as Trash", () => {
     expect((await call<FileDone>('work.files.restore', { ids: shared.trashed, op: op() }, approver)).entries.map((e) => e.name)).toEqual(['Open letter'])
   })
 
+  it('puts back no shared file that rides with a LifeOS id, from a key that may not approve', async () => {
+    const shared = await call<FileDone>('work.files.trash', { refs: [doc('dOpen')], op: op(), asked: true })
+    await expect(call('work.files.restore', { ids: ['lifeos:docs:dAny', ...shared.trashed!], op: op() }, phone)).rejects.toThrow(NEEDS_PRESS)
+    expect(fake.files.get('dOpen')!.trashed).toBe(true)
+  })
+
   it('asks first before a shared file goes, and Empty Trash leaves the bin to Drive', async () => {
     await expect(call('work.files.trash', { refs: [doc('dOpen')], op: op() })).rejects.toThrow(ASK_FIRST)
     const done = await call<FileDone>('work.files.trash', { refs: [doc('dOpen')], op: op(), asked: true })

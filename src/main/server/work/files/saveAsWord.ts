@@ -1,6 +1,7 @@
 import type { FileOrigin, SavedAsWord, WrittenBack } from '@shared/contract-work-files'
-import { filesPaneOf, type CanvasSource } from '@shared/work'
-import type { FolderRef } from '@shared/work/files'
+import { canvasSourcePath, filesPaneOf, type CanvasSource } from '@shared/work'
+import { refKey, type FolderRef } from '@shared/work/files'
+import { attachmentDocPathOf } from '../docs/target'
 import type { Caller, WorkCtx } from '../modules'
 import { admitOwner } from './copies'
 import { admitChange, HELD_BY_TOOLS, THREADS_BY_TOOLS } from './handle'
@@ -19,6 +20,17 @@ import { runOp } from './write'
 
 const NOT_A_FOLDER_HERE = 'A Word file is saved into a folder on a computer: the workspace\'s folder, Teams or OneDrive.'
 const DOC_ELSEWHERE = 'That document is on another host: save it as Word there.'
+const NOT_OPEN_HERE = 'That document is not open in this workspace.'
+
+/**
+ * Whether a document is the workspace's own to export: an open item of it (a Files tab, a pane's, a thread's) shows it,
+ * or it is the document a mail's attachment open there was read into. A document of another job is never written here.
+ */
+function openIn(ctx: WorkCtx, workspaceId: string, source: CanvasSource): boolean {
+  const key = refKey(source)
+  const path = canvasSourcePath(source)
+  return ctx.canvas.forWorkspace(workspaceId, { open: true, panes: true }).some((item) => refKey(item.source) === key || (path !== null && item.source.at === 'mail' && attachmentDocPathOf(ctx.dataDir, item) === path))
+}
 
 /** The export's own name, or his, as a Word file's name. */
 function wordName(name: string): string {
@@ -31,6 +43,7 @@ export async function saveAsWord(ctx: WorkCtx, by: Caller, p: { workspaceId: str
   admitCaller(ctx, by, p.workspaceId)
   if (by.kind === 'remote' && !by.caps.includes('operate')) throw new Error('This key may not change files.')
   if (p.source.at === 'file' && p.source.host !== ctx.host) throw new Error(DOC_ELSEWHERE)
+  if (!openIn(ctx, p.workspaceId, p.source)) throw new Error(NOT_OPEN_HERE)
   const at = makeFolderRef(ctx, by, p.at)
   if (at.at === 'drive' || at.at === 'project') throw new Error(NOT_A_FOLDER_HERE)
   const far = at.at === 'file' && at.host !== ctx.host ? at : null

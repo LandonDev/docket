@@ -29,7 +29,7 @@ import { folderEntry, folderName, folderPlace, folderTrail } from './places/fold
 import { forgetLibraries } from './places/libraries'
 import { forgetVmList, libraryEntry, libraryKey, libraryTrail, placeOfPath, placesIn, teamsPlaces, vmPage, type LibraryPlace } from './places/teams'
 import { admitCaller, admitWrite, changeDigest, isLifeosRef, locate, locatedShared, NEEDS_PRESS, NO_WORKSPACE, OWN_ONLY, pressesFor, SHARED_BYTES, sharedOf, PEER_LIBRARIES, workspaceHere, type DoorPlace, type Located, type WorkspaceRow } from './policy'
-import { keepMail, lifeosPlace, lifeosPlaces, lifeosTrash, listLifeos, makeLifeos, moveLifeos, openLifeos, renameLifeos, restoreLifeos, setProject, statLifeos, trashLifeos, waitingRows, withProjects } from './places/lifeos'
+import { keepMail, lifeosPlace, lifeosPlaces, lifeosTrash, lifeosTrashShared, listLifeos, makeLifeos, moveLifeos, openLifeos, renameLifeos, restoreLifeos, setProject, statLifeos, trashLifeos, waitingRows, withProjects } from './places/lifeos'
 import { READ_MAX, readFile, saveCopy, saveFile } from './save'
 import { guestChange, guestOp, vmReadVersioned, vmSave, type VmWhere } from './vmVerbs'
 import { TabStore } from './tabs'
@@ -362,7 +362,8 @@ type OpenAsk = { workspaceId: string; ref: CanvasSource; name?: string; as?: Can
  * A file that is no file of this disk, opened in a tab: one on another host of his, or in this host's Windows VM.
  * It opens as a copy made here, in the pane's own folder, where the workspace's Copy Teams files allows one
  * (`copyIn` refuses otherwise, in the sentence the window offers its press for); the tab says whose copy it is.
- * The copy is read only in effect: changes stay in it, and it goes when its tab closes.
+ * A copy whose kind edits its bytes saves back to the file by version (copies.ts); one that does not keeps his changes
+ * to itself. Either goes once its tab closed and nothing waits in it.
  */
 async function openCopy(ctx: WorkCtx, by: Caller, workspace: WorkspaceRow, p: OpenAsk, file: { host: string; path: string }, signal?: AbortSignal): Promise<FilesOpened> {
   const state = filesState(ctx)
@@ -374,8 +375,10 @@ async function openCopy(ctx: WorkCtx, by: Caller, workspace: WorkspaceRow, p: Op
     // The key is the caller's word: it answers a tab only when that tab is this very file's copy, so naming another
     // tab's key with a file of some other host never shows what that tab holds.
     if (was && (was.copyOf?.host !== file.host || was.copyOf.path !== file.path)) throw new Error(KEY_TAKEN)
-    const shown = was?.itemId ? ctx.canvas.get(was.itemId) : null
-    return was && shown ? { ...tabsFor(ctx, by, workspace.id), tabId: was.id, item: cut(shown) } : null
+    // One file has more than one key (a library row's, a chip's host and path): its copy's tab is found by where the file lies.
+    const tab = was ?? state.tabs.list(workspace.id).tabs.find((t) => t.kind === 'file' && t.copyOf?.host === file.host && t.copyOf.path === file.path)
+    const shown = tab?.itemId ? ctx.canvas.get(tab.itemId) : null
+    return tab && shown ? { ...tabsFor(ctx, by, workspace.id), tabId: tab.id, item: cut(shown) } : null
   }
   const already = tabNow()
   if (already) return already
@@ -854,8 +857,10 @@ async function lifeosCase(ctx: WorkCtx, by: Caller, m: string, p: Record<string,
     case 'work.files.trash': {
       const mine = refs.filter(isLifeosRef)
       if (!mine.length) return null
-      const lifeos = await trashLifeos(ctx, by, { ...(p as never as { workspaceId: string; op: string; asked?: boolean }), refs: mine, op: `${p.op as string}:lifeos` })
       const rest = refs.filter((r) => !isLifeosRef(r))
+      // The other rows pass their door before any LifeOS row goes: one refused refuses the whole delete.
+      if (rest.length) await admitTrash(ctx, by, { ...p, refs: rest }, m)
+      const lifeos = await trashLifeos(ctx, by, { ...(p as never as { workspaceId: string; op: string; asked?: boolean }), refs: mine, op: `${p.op as string}:lifeos` })
       if (!rest.length) return handled({ ...lifeos, op: p.op })
       const disk = (await filesHandle({ method: m, params: { ...p, refs: rest } } as unknown as ClientRequest, ctx, by, signal)) as { result: FileDone }
       const done = disk.result
@@ -909,6 +914,8 @@ export async function filesHandle(req: ClientRequest, ctx: WorkCtx, by: Caller, 
     admitCaller(ctx, by, p.workspaceId)
     await driveAccounts(ctx, workspaceHere(ctx.db, p.workspaceId)?.sector ?? null)
   }
+  // Put back is admitted for the whole selection before any of it runs: the LifeOS branch below puts its rows back first.
+  if (m === 'work.files.restore') await admitRestore(ctx, by, p.workspaceId, p.ids as string[])
   const lifeos = await lifeosCase(ctx, by, m, p, signal)
   if (lifeos) return lifeos
   switch (m) {
@@ -1106,24 +1113,14 @@ export async function filesHandle(req: ClientRequest, ctx: WorkCtx, by: Caller, 
       return handled(await (verb === 'move' ? moveVerb : copyVerb)(ctx, by, p as never, m))
     }
     case 'work.files.trash':
-      // The door for every ref before anything moves: one it refuses refuses the whole change. A retry of a change
-      // already journalled answers what it did (its files are gone by then), held to the same workspace, verb and refs.
-      if (namesDrive(p)) {
-        if (!(p.refs as FileRef[]).every((ref) => namesDrive({ ref }))) throw new Error(DRIVE_APART)
-        if (!journalled(ctx.db, p.op as string, p.workspaceId, 'trash')) held((await admitDrive(ctx, by, 'trash', p as never, m)).verdict)
-        return handled(await driveTrash(ctx, by, ownRows(ctx, by, p.workspaceId), p.refs as FileRef[], p.op as string))
-      }
-      if (!journalled(ctx.db, p.op as string, p.workspaceId, 'trash')) held(admitChange(ctx, by, 'trash', p as never, m))
+      await admitTrash(ctx, by, p, m)
+      if (namesDrive(p)) return handled(await driveTrash(ctx, by, ownRows(ctx, by, p.workspaceId), p.refs as FileRef[], p.op as string))
       // A library's delete may come for a workspace another host keeps (his window asks the file's own host): its row is kept here.
       binRows(ctx, by, p.workspaceId, { peer: true })
       return handled(await trashFiles(ctx, by, p.workspaceId, p.refs as FileRef[], p.op as string))
-    case 'work.files.restore': {
-      const workspace = binRows(ctx, by, p.workspaceId)
-      if (by.kind === 'remote' && !by.caps.includes('operate')) throw new Error(MAY_NOT('put files back'))
-      // Put back changes a place others can open as a delete there does: his press alone, for the whole batch.
-      if (!pressesFor(by) && (await restoresShared(ctx, p.workspaceId, p.ids as string[]))) throw new Error(NEEDS_PRESS)
-      return handled(await restoreRows(ctx, by, workspace, p.ids as string[], p.op as string))
-    }
+    case 'work.files.restore':
+      // Admitted, the whole selection, before the LifeOS branch (`admitRestore`).
+      return handled(await restoreRows(ctx, by, binRows(ctx, by, p.workspaceId), p.ids as string[], p.op as string))
     case 'work.files.purge': {
       const workspace = ownRows(ctx, by, p.workspaceId)
       if (by.kind === 'remote' && !by.caps.includes('approve')) throw new Error(MAY_NOT('empty Trash'))
@@ -1131,6 +1128,20 @@ export async function filesHandle(req: ClientRequest, ctx: WorkCtx, by: Caller, 
     }
   }
   return NOT_HANDLED
+}
+
+/**
+ * `work.files.restore`, for the whole selection, whichever place each row is in: his window's or a key's that may
+ * operate, and, for a caller that is not his press (`pressesFor`), no row others can open, since Put back changes such
+ * a place as its delete did. One such row refuses the batch, before any of it is put back.
+ */
+async function admitRestore(ctx: WorkCtx, by: Caller, workspaceId: string, ids: readonly string[]): Promise<void> {
+  binRows(ctx, by, workspaceId)
+  if (by.kind === 'remote' && !by.caps.includes('operate')) throw new Error(MAY_NOT('put files back'))
+  if (pressesFor(by)) return
+  const lifeos = ids.filter((id) => id.startsWith('lifeos:'))
+  const rest = ids.filter((id) => !id.startsWith('lifeos:'))
+  if ((await restoresShared(ctx, workspaceId, rest)) || (await lifeosTrashShared(ctx, by, workspaceId, lifeos))) throw new Error(NEEDS_PRESS)
 }
 
 /**
@@ -1153,6 +1164,17 @@ async function restoresShared(ctx: WorkCtx, workspaceId: string, ids: readonly s
     } else if (row.provider || sharedOf(ctx, JSON.parse(row.ref) as CanvasSource)) return true
   }
   return false
+}
+
+/**
+ * A delete's door for every ref before anything moves: one it refuses refuses the whole change. A retry of a change
+ * already journalled answers what it did (its files are gone by then), held to the same workspace, verb and refs.
+ */
+async function admitTrash(ctx: WorkCtx, by: Caller, p: Record<string, unknown> & { workspaceId: string }, m: string): Promise<void> {
+  const drive = namesDrive(p)
+  if (drive && !(p.refs as FileRef[]).every((ref) => namesDrive({ ref }))) throw new Error(DRIVE_APART)
+  if (journalled(ctx.db, p.op as string, p.workspaceId, 'trash')) return
+  held(drive ? (await admitDrive(ctx, by, 'trash', p as never, m)).verdict : admitChange(ctx, by, 'trash', p as never, m))
 }
 
 /** The workspace's threads whose open items name exactly this source (a LifeOS row, a Google file), newest first. */

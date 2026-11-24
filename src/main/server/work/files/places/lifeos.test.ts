@@ -10,7 +10,7 @@ import { ensureGuestTables, GuestStore } from '../../guests/store'
 import type { Caller } from '../../modules'
 import { closeFilesState, THREADS_BY_TOOLS } from '../handle'
 import { files } from '../index'
-import { admitWrite, ASK_FIRST, MAIL_NEEDS_APPROVE, NEEDS_APPROVE, PEER_LIBRARIES, setThreadsMayWrite, THREAD_ELSEWHERE } from '../policy'
+import { admitWrite, ASK_FIRST, MAIL_NEEDS_APPROVE, NEEDS_APPROVE, NEEDS_PRESS, PEER_LIBRARIES, setThreadsMayWrite, THREAD_ELSEWHERE } from '../policy'
 import { forgetSearches } from '../search'
 import { approver, at, makeRig, peer, phone, thread, window, WS, type Rig } from '../testkit'
 import { docTools } from '../../docs/tools'
@@ -404,6 +404,31 @@ describe('the verbs', () => {
     const other = await call<FileDone>('work.files.restore', { ids: ['lifeos:docs:dx'], op: op() })
     expect(other.refused[0]!.text).toBe('That is not in Trash any more.')
     expect(lifeos.rows.get('docs:dx')!.deletedAt).toBe(NOW)
+  })
+
+  it('puts nothing back for a key that may not approve when the selection holds a row others can open, its LifeOS rows neither', async () => {
+    await call<FileDone>('work.files.trash', { refs: [sheet('s1')], op: op() })
+    // A library's row, its file in that computer's bin.
+    rig.db
+      .prepare(`INSERT INTO work_files_trash (id, workspace_id, ref, name, place, was_at, state, held_at, deleted_at, by, provider) VALUES ('lib1', ?, ?, 'Testing.pptx', 'p', ?, 'held', 1, 1, 'owner', 'onedrive')`)
+      .run(WS, JSON.stringify(at(join(rig.team, 'General', 'Testing.pptx'))), JSON.stringify(at(join(rig.team, 'General'))))
+    await expect(call('work.files.restore', { ids: ['lifeos:sheets:s1', 'lib1'], op: op() }, phone)).rejects.toThrow(NEEDS_PRESS)
+    // An id that is in no Trash is no way round it either.
+    await expect(call('work.files.restore', { ids: ['lifeos:docs:nope', 'lib1'], op: op() }, phone)).rejects.toThrow(NEEDS_PRESS)
+    expect(lifeos.rows.get('sheets:s1')!.deletedAt).toBeDefined()
+    expect(rig.db.prepare(`SELECT state FROM work_files_trash WHERE id = 'lib1'`).get()).toEqual({ state: 'held' })
+    // A LifeOS row LifeOS says others can open is his press too, as its delete is; his own comes back for the same key.
+    lifeos.add({ table: 'docs', id: 'd9', title: 'Open notes', sector: 'life', shared: true, deletedAt: NOW })
+    await expect(call('work.files.restore', { ids: ['lifeos:sheets:s1', 'lifeos:docs:d9'], op: op() }, phone)).rejects.toThrow(NEEDS_PRESS)
+    expect(lifeos.rows.get('sheets:s1')!.deletedAt).toBeDefined()
+    expect((await call<FileDone>('work.files.restore', { ids: ['lifeos:sheets:s1'], op: op() }, phone)).entries.map((e) => e.name)).toEqual(['Budget'])
+    expect((await call<FileDone>('work.files.restore', { ids: ['lifeos:docs:d9'], op: op() }, approver)).entries.map((e) => e.name)).toEqual(['Open notes'])
+  })
+
+  it('deletes no LifeOS row of a selection whose other rows their door refuses', async () => {
+    await expect(call('work.files.trash', { refs: [sheet('s1'), at(join(rig.team, 'General', 'Plan.docx'))], op: op() })).rejects.toThrow()
+    expect(lifeos.calls).not.toContain('sheets:remove')
+    expect(lifeos.rows.get('sheets:s1')!.deletedAt).toBeUndefined()
   })
 
   it('ends a deleted row\'s guest links, and asks before a delete others will see', async () => {

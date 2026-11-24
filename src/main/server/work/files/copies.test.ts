@@ -147,6 +147,23 @@ describe('a copy is made with where its file lies', () => {
     expect(far.filter((c) => c.verb === 'filesRead')).toHaveLength(1)
   })
 
+  it('is found by where its file lies when a library row and a chip name it by two keys: one tab, one copy, no second read', async () => {
+    const path = join(mac.team, 'General', 'Roster.xlsx')
+    writeFileSync(path, 'workbook one')
+    const ref = { at: 'file', host: MAC, path }
+    const row = await call<FilesOpened>('work.files.open', { ref, name: 'Roster.xlsx', key: 'teams:mac~staff:General/Roster.xlsx' })
+    const copy = canvasSourcePath(row.item!.source)!
+    macUp = false
+    await editorSaves(copy, 'workbook two')
+    await settled()
+    // The chip names the file by its host and path alone.
+    const chip = await call<FilesOpened>('work.files.open', { ref, name: 'Roster.xlsx' })
+    expect(chip.tabId).toBe(row.tabId)
+    expect((await call<FilesTabs>('work.files.tabs', {})).tabs.filter((t) => t.copyOf?.path === path)).toHaveLength(1)
+    expect(readFileSync(copy, 'utf8')).toBe('workbook two')
+    expect(far.filter((c) => c.verb === 'filesRead')).toHaveLength(1)
+  })
+
   it('keeps no record for a kind that edits no bytes of the copy: a document opens on a copy whose changes stay here', async () => {
     const { path, copy } = await openFar('Plan.docx', 'word')
     expect(copyRecord(box.ctx, WS, MAC, path)).toBeNull()
@@ -889,6 +906,19 @@ describe('Save as Word to a folder he picks', () => {
   const doc = () => ({ at: 'file' as const, host: HOST, path: join(box.folder, 'Run of show.tcdoc') })
   let n = 0
   const op = () => `op-word-${++n}-0000`
+  // The document he saves is open in the workspace, as the dialog's item is.
+  beforeEach(async () => void (await call('work.files.open', { ref: doc() })))
+
+  it("exports only a document open in the named workspace: another job's, or one open nowhere, is refused and nothing is written", async () => {
+    const theirs = { at: 'file' as const, host: HOST, path: join(box.otherFolder, 'Payroll notes.tcdoc') }
+    writeFileSync(theirs.path, '{}')
+    await call('work.files.open', { workspaceId: 'w2', ref: theirs })
+    await expect(call('work.files.saveAsWord', { source: theirs, at: { at: 'place', id: 'folder' }, op: op() })).rejects.toThrow('That document is not open in this workspace.')
+    await expect(call('work.files.saveAsWord', { source: { at: 'lifeos', table: 'docs', id: 'd-elsewhere' }, at: { at: 'place', id: 'folder' }, op: op() })).rejects.toThrow('That document is not open in this workspace.')
+    expect(readdirSync(box.folder).filter((f) => f.endsWith('.docx'))).toEqual([])
+    // The document open here still goes.
+    expect((await call<{ name: string }>('work.files.saveAsWord', { source: doc(), at: { at: 'place', id: 'folder' }, op: op() })).name).toBe('Plan.docx')
+  })
 
   it('writes the export as a new .docx into a library folder here under a free name, never over the file there', async () => {
     const general = join(box.team, 'General')
