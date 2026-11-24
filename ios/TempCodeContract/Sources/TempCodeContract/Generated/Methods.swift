@@ -5525,10 +5525,12 @@ public enum Methods {
                     public struct Thing: Codable, Hashable, Sendable {
                         public let key: String
                         public let version: String
+                        public let shared: Bool?
 
-                        public init(key: String, version: String) {
+                        public init(key: String, version: String, shared: Bool? = nil) {
                             self.key = key
                             self.version = version
+                            self.shared = shared
                         }
                     }
 
@@ -5636,10 +5638,12 @@ public enum Methods {
                     public struct Thing: Codable, Hashable, Sendable {
                         public let key: String
                         public let version: String
+                        public let shared: Bool?
 
-                        public init(key: String, version: String) {
+                        public init(key: String, version: String, shared: Bool? = nil) {
                             self.key = key
                             self.version = version
+                            self.shared = shared
                         }
                     }
 
@@ -5741,10 +5745,12 @@ public enum Methods {
                     public struct Thing: Codable, Hashable, Sendable {
                         public let key: String
                         public let version: String
+                        public let shared: Bool?
 
-                        public init(key: String, version: String) {
+                        public init(key: String, version: String, shared: Bool? = nil) {
                             self.key = key
                             self.version = version
+                            self.shared = shared
                         }
                     }
 
@@ -5848,10 +5854,12 @@ public enum Methods {
                     public struct Thing: Codable, Hashable, Sendable {
                         public let key: String
                         public let version: String
+                        public let shared: Bool?
 
-                        public init(key: String, version: String) {
+                        public init(key: String, version: String, shared: Bool? = nil) {
                             self.key = key
                             self.version = version
+                            self.shared = shared
                         }
                     }
 
