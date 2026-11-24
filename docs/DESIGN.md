@@ -2669,9 +2669,10 @@ own selected fill is a card's fill at rest in light.
 - **The job is on every row**, dot and name: the dot is never the only cue,
   and the column is one the eye can run down to find a job. The name is the
   workspace's, as the rail and the held sheet say it, never the sector's
-  own word; a held row names the very workspace its item is in. A title or
-  a second line the column cuts is said whole in a tooltip, only while it
-  is cut.
+  own word; a held row names the very workspace its item is in. A title,
+  a second line or a job's name the columns cut is said whole in a tooltip,
+  only while one is cut: the title, then the job's whole name and the
+  detail, as the narrow row's second line reads.
 - **Verbs show on hover and on focus**, in place of the job and the fact
   (`reveal`, `yields`): at most two ghost `xs` buttons, the last one's
   label ending on the facts' edge. None is drawn at rest, and Send is never

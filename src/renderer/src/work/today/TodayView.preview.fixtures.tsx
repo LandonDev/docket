@@ -11,6 +11,7 @@ export const fixtures = [
   { name: "All clear", props: { state: "clear" } },
   { name: "All clear, the day's meetings over", props: { state: "evening" } },
   { name: "With the other pillars' rows: clashes, Messages, Owed, the review", props: { state: "pillars" } },
+  { name: "A job with a long name", props: { state: "long-job" } },
   { name: "No jobs yet", props: { state: "no-jobs" } },
   { name: "The held sheet", props: { state: "sheet" } },
   { name: "The held sheet, the second of a run", props: { state: "sheet-next" } },

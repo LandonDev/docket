@@ -65,7 +65,7 @@ const job = (environmentId: string, sector: TodayWorkspace["sector"], open = tru
 const JOBS = (["cosmic", "hypixel", "purdue", "ref", "unify", "life"] as const).map((sector) => job("box", sector));
 const fed = (section: TodaySection, answer: TodayAnswer): Fed => ({ source: { id: section.id, section }, answer });
 
-type State = "day" | "unfolded" | "bones" | "empty" | "hosts" | "refused" | "lifeos-down" | "signed-out" | "clear" | "evening" | "pillars" | "no-jobs" | "sheet" | "sheet-next";
+type State = "day" | "unfolded" | "bones" | "empty" | "hosts" | "refused" | "lifeos-down" | "signed-out" | "clear" | "evening" | "pillars" | "long-job" | "no-jobs" | "sheet" | "sheet-next";
 
 /** A job by its workspace's name, as the rail says it. */
 
@@ -103,6 +103,9 @@ function modelOf(state: State) {
       return page([fed(HELD, {}), fed(MEETINGS, { rows: MEETING_ROWS.slice(0, 2), note: "Tomorrow starts at 9:00 AM with Staff sync." }), fed(DUE, {}), fed(WAITING, {}), fed(FILES, {})], opts());
     case "pillars":
       return page(PILLARS, opts());
+    case "long-job":
+      // A workspace named at length: the job column cuts it, and the row's tip says it whole.
+      return page([fed(HELD, { rows: HELD_ROWS.map((r, i) => (i === 0 ? { ...r, job: "UnifyPlatforms client services and events" } : r)) }), ...FULL.slice(1)], opts());
     case "no-jobs":
       return page(FULL, opts("ok", []));
     case "sheet":

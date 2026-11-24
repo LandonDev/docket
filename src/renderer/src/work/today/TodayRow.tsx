@@ -117,8 +117,9 @@ export const TodayRowView = memo(function TodayRowView({ row, job, leaving = fal
   const Glyph = lead?.kind === "glyph" ? lead.glyph : null;
   // One tab stop for the whole list: only the row the arrows are on takes Tab, and its own controls with it.
   const stop = current ? 0 : -1;
-  // A title or a second line the column cuts is said whole on hover and focus, only while it is cut.
-  const words = useTruncated(`${row.title}\n${row.detail ?? ""}`);
+  // A title, a second line or a job name the columns cut is said whole on hover and focus, only while one is cut.
+  const words = useTruncated(`${row.title}\n${job ?? ""}\n${row.detail ?? ""}`);
+  const wideJob = useTruncated(job ?? "");
   // The row's name is its title and second line; its job and its time are read after it, as he sees them.
   const id = useId();
   const told = [job ? `${id}-job` : "", row.when || row.whenLine ? `${id}-when` : ""].filter(Boolean).join(" ");
@@ -136,7 +137,7 @@ export const TodayRowView = memo(function TodayRowView({ row, job, leaving = fal
       )}
     >
       {/* The open control lies over the whole row, so the keyboard's ring is the row's; the tick and the verbs sit above it. */}
-      <Tooltip disabled={!words.cut}>
+      <Tooltip disabled={!words.cut && !wideJob.cut}>
         <TooltipTrigger
           render={
       <ItemButton
@@ -163,7 +164,14 @@ export const TodayRowView = memo(function TodayRowView({ row, job, leaving = fal
         />
         <TooltipContent side="top" align="start">
           {row.title}
-          {row.detail ? <span className="block">{row.detail}</span> : null}
+          {/* The second line as the narrow row reads it: the job's whole name, then the detail. */}
+          {job || row.detail ? (
+            <span data-tip-detail className="block">
+              {job ? <span className="font-medium">{job}</span> : null}
+              {job && row.detail ? " " : null}
+              {row.detail}
+            </span>
+          ) : null}
         </TooltipContent>
       </Tooltip>
       <span className={cn("flex h-5 items-center justify-center", tick ? ROW_CONTROLS : ROW_SHOWS)}>
@@ -189,7 +197,7 @@ export const TodayRowView = memo(function TodayRowView({ row, job, leaving = fal
         {job ? (
           <>
             <SectorDot sector={row.sector} className="-ms-1 @max-[30rem]/today:ms-0" />
-            <span id={`${id}-job`} className={cn("min-w-0 truncate", WIDE_JOB)}>{job}</span>
+            <span ref={wideJob.ref} id={`${id}-job`} className={cn("min-w-0 truncate", WIDE_JOB)}>{job}</span>
           </>
         ) : null}
       </span>
