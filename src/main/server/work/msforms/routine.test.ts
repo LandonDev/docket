@@ -222,4 +222,16 @@ describe("Purdue's withhold at an answer read", () => {
     expect(answersWithheld(scopeCtx, model('t-routine'), null)).toBe(false)
     expect(() => refuseWithheld(scopeCtx, model('t-his'), 'purdue')).not.toThrow()
   })
+
+  it("holds for a routine's delegated child, whose own row names no run, and for a thread whose provenance is unknown", () => {
+    const child = { scopeOf: (id: string) => (id === 't-child' ? ({ routineRunId: null, routineRun: 'run-1' } as never) : id === 't-far' ? ({ routineRunId: null, routineRun: 'unknown-run' } as never) : id === 't-his' ? ({ routineRunId: null, routineRun: null } as never) : null) }
+    expect(answersWithheld(child, model('t-child'), 'purdue')).toBe(true)
+    expect(answersWithheld(child, model('t-far'), 'purdue')).toBe(true)
+    // no scope for the thread, or no thread named at all: provenance cannot be established
+    expect(answersWithheld(child, model('t-gone'), 'purdue')).toBe(true)
+    expect(answersWithheld(child, { kind: 'model' } as Caller, 'purdue')).toBe(true)
+    // his own thread and its children read as before; outside a withheld sector nothing changes
+    expect(answersWithheld(child, model('t-his'), 'purdue')).toBe(false)
+    expect(answersWithheld(child, model('t-child'), 'cosmic')).toBe(false)
+  })
 })

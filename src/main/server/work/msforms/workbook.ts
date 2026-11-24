@@ -21,6 +21,8 @@ import { formReach, librariesFor, LIBRARY_GONE, MsformsError } from './reach'
 
 export const FORMS_WORKBOOK_READ_ONLY = 'Microsoft Forms writes this workbook. Open it Live in Excel to change it.'
 export const FORMS_WORKBOOK_REFUSED = 'refused: Microsoft Forms writes this workbook; no agent changes it. Nothing was written.'
+/** A thread's read of it through the generic sheet and Office readers: answers reach a thread only through the form's own reach and withhold. */
+export const FORMS_WORKBOOK_READ_REFUSED = "refused: Microsoft Forms keeps this workbook's answers; read them with msform_answers, in the form's own job. Nothing was read."
 
 /**
  * A file as Files, the sheets and the office tools name it: in a library by its id and its `/`-joined path there, or
@@ -159,4 +161,4 @@ export async function workbookFile(ctx: WorkCtx, by: Caller, ask: { workspaceId:
 }
 
 // Files and the sheets ask through Files' hook (files/hooks.ts): neither imports this pillar.
-registerReadOnlyFile((ctx, file) => (isFormsWorkbook(ctx, file) ? { reason: FORMS_WORKBOOK_READ_ONLY, refused: FORMS_WORKBOOK_REFUSED } : null))
+registerReadOnlyFile((ctx, file) => (isFormsWorkbook(ctx, file) ? { reason: FORMS_WORKBOOK_READ_ONLY, refused: FORMS_WORKBOOK_REFUSED, readRefused: FORMS_WORKBOOK_READ_REFUSED } : null))

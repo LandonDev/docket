@@ -123,10 +123,15 @@ export const OFFICE_TOOLS: OfficeTool[] = [
       const apps = await env.carrier.apps()
       const on = (app: string) => apps.some((s) => s.app === app && s.running)
       const outlook = (await env.carrier.outlookProblem?.()) ?? null
+      // A workbook another pillar alone reads to threads (a Microsoft form's answers) is listed by its key alone, with what to use instead.
+      const books = on('excel') ? (await env.carrier.workbooks()).map((b) => {
+        const shut = readOnlyOf(env.ctx, { host: env.ctx.host, path: b.key })?.readRefused
+        return shut ? { ...b, sheets: [], readRefused: shut } : b
+      }) : []
       return json({
         apps,
         ...(outlook ? { outlook } : {}),
-        workbooks: on('excel') ? await env.carrier.workbooks() : [],
+        workbooks: books,
         documents: on('word') ? await env.carrier.documents() : [],
         decks: on('powerpoint') ? await env.carrier.presentations() : []
       })
@@ -139,6 +144,8 @@ export const OFFICE_TOOLS: OfficeTool[] = [
     readOnly: true,
     async run(a, env) {
       const { sheet, range } = rangeOf(a.range)
+      const shut = readOnlyOf(env.ctx, { host: env.ctx.host, path: a.workbook })?.readRefused
+      if (shut) return fail(shut)
       const b = await env.excel.read(a.workbook, sheet, range)
       return json({ range: a.range, hash: b.hash, values: b.values, formulas: b.formulas })
     }

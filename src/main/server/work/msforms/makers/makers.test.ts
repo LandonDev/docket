@@ -157,6 +157,20 @@ describe('questionsFrom', () => {
     await expect(questionsFrom(ctx(), thread('t-nobody'), { form: 'f1' })).rejects.toThrow(NOT_YOUR_JOB)
   })
 
+  it("refuses a Microsoft form's answers workbook as a sheet to make a form from, before any cell is read", async () => {
+    const { mkdirSync } = await import('node:fs')
+    const { registerReadOnlyFile } = await import('../../files/hooks')
+    mkdirSync(join(dir, 'purdue'), { recursive: true })
+    const book = join(dir, 'purdue', 'Answers.xlsx')
+    writeFileSync(book, 'not read')
+    const off = registerReadOnlyFile((_c, f) => (f.path.endsWith('Answers.xlsx') ? { reason: 'r', refused: 'refused: w', readRefused: 'refused: read it with msform_answers.' } : null))
+    try {
+      await expect(questionsFrom(ctx(), thread('t-purdue'), { sheet: { at: 'file', host: 'env_test', path: book } })).rejects.toThrow('refused: read it with msform_answers.')
+    } finally {
+      off()
+    }
+  })
+
   it("reads a .tcdoc in the job's folder, and refuses one outside it", async () => {
     const { mkdirSync } = await import('node:fs')
     mkdirSync(join(dir, 'purdue'), { recursive: true })

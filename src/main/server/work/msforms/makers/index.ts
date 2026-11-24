@@ -2,6 +2,7 @@ import { z } from 'zod'
 import { CanvasSourceSchema, type CanvasSource, type WorkScope } from '@shared/work'
 import { fromOurQuestion, type MsQuestion } from '@shared/work/msforms'
 import { locate, workspaceHere, type WorkspaceRow } from '../../files/policy'
+import { readOnlyOf } from '../../files/readOnly'
 import { FormsStore } from '../../forms/store'
 import type { Caller, ToolCtx, WorkCtx } from '../../modules'
 import { MsformsError, NOT_A_JOB } from '../reach'
@@ -110,6 +111,9 @@ async function read(ctx: MakerCtx, by: Caller, from: MakerFrom, opts: { workspac
   const source = from.sheet
   if (source.at !== 'file' || !/\.(xlsx|xlsm|csv|tcsheet)$/i.test(source.path)) throw new MsformsError('A form is made from an .xlsx, .xlsm, .csv or .tcsheet file in this job.')
   const path = localPath(ctx, by, workspace, source)
+  // A Microsoft form's answers workbook is no maker input: its repeated answers would become a form's choices.
+  const shut = readOnlyOf(ctx, { host: ctx.host, path })?.readRefused ?? readOnlyOf(ctx, { host: source.host, path: source.path })?.readRefused
+  if (shut) throw new MsformsError(shut)
   const { readSheetCells } = await import('../../sheets/tools')
   const cells = await readSheetCells(threadCtx(ctx, by), { file: path }, SHEET_RANGE)
   return { questions: questionsOfSheet(rowsOfCells(cells), (from.row ?? 1) - 1) }

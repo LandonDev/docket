@@ -24,7 +24,7 @@ import { sheetTools } from '../sheets/tools'
 import { localJobs } from '../sheets/workerClient'
 import { ensureMsformsTables, MsformsStore } from './store'
 import { FORM_A } from './testing'
-import { ensureWorkbookIndex, FORMS_WORKBOOK_READ_ONLY, FORMS_WORKBOOK_REFUSED, isFormsWorkbook, NO_WORKBOOK, workbookFile } from './workbook'
+import { ensureWorkbookIndex, FORMS_WORKBOOK_READ_ONLY, FORMS_WORKBOOK_READ_REFUSED, FORMS_WORKBOOK_REFUSED, isFormsWorkbook, NO_WORKBOOK, workbookFile } from './workbook'
 import { modeOf } from '../office/live/memory'
 import { refKey } from '@shared/work/files'
 
@@ -158,7 +158,7 @@ describe.skipIf(process.platform === 'win32')("a Microsoft form's answers workbo
     expect(readFileSync(book).equals(before)).toBe(true)
   })
 
-  it('refuses a sheet tool\'s change, and still reads it', async () => {
+  it("refuses a sheet tool's change, and a thread's read of its answers through the generic sheet reader", async () => {
     const book = join(rig.team, 'General', 'Answers.xlsx')
     copyFileSync(join(CORPUS, 'formulas.xlsx'), book)
     form(FORM_A, diskLibrary(), book)
@@ -174,6 +174,14 @@ describe.skipIf(process.platform === 'win32')("a Microsoft form's answers workbo
       expect(got.content[0].text).toBe(FORMS_WORKBOOK_REFUSED)
     }
     expect(readFileSync(book).equals(before)).toBe(true)
+    // the answers reach a thread only through msform_answers, in the form's own job
+    const read = await run('sheet_read', { file: book, range: 'A1:C3' })
+    expect(read.isError).toBe(true)
+    expect(read.content[0].text).toBe(FORMS_WORKBOOK_READ_REFUSED)
+    // another workbook in the same folder is not refused so (this ctx has no sheet host to read it with: only the refusal is judged)
+    const other = join(rig.team, 'General', 'Roster.xlsx')
+    copyFileSync(join(CORPUS, 'formulas.xlsx'), other)
+    expect((await run('sheet_read', { file: other, range: 'A1:C3' })).content[0].text).not.toBe(FORMS_WORKBOOK_READ_REFUSED)
   })
 
   it('names the workbook as Files does for Open the Workbook, remembered as Live in Excel', async () => {
@@ -202,7 +210,7 @@ describe.skipIf(process.platform === 'win32')("a Microsoft form's answers workbo
     const got = await files<FilesOpened>('work.files.open', { ref: { at: 'file', host: HOST, path: VM_BOOK }, name: 'Sign-ups.xlsx' })
     const copy = canvasSourcePath(got.item!.source)!
     expect(copyRecord(rig.ctx, WS, HOST, VM_BOOK)).toBeNull()
-    expect(readOnlyOf(rig.ctx, at(copy))).toEqual({ reason: FORMS_WORKBOOK_READ_ONLY, refused: FORMS_WORKBOOK_REFUSED })
+    expect(readOnlyOf(rig.ctx, at(copy))).toEqual({ reason: FORMS_WORKBOOK_READ_ONLY, refused: FORMS_WORKBOOK_REFUSED, readRefused: FORMS_WORKBOOK_READ_REFUSED })
     // A save of the copy (as an editor's would be) goes nowhere.
     await saveFile({ roots: [dirname(copy)] }, `file::${copy}`, copy, Buffer.from('changed here'), versionWord(await versionOf(copy)))
     await Promise.all(copiesInFlight())

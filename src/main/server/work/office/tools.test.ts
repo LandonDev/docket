@@ -112,6 +112,22 @@ describe('writes, by the rule for files others can open', () => {
     }
   })
 
+  it("refuses a thread's read of a workbook its pillar alone reads to threads (a Microsoft form's answers), and lists it by its key alone", async () => {
+    const off = registerReadOnlyFile((_ctx, file) => (file.path === SHARED ? { reason: 'Forms writes it.', refused: 'refused: Forms writes it.', readRefused: 'refused: read it with msform_answers.' } : null))
+    try {
+      const got = await run('office_range_read', { workbook: SHARED, range: 'Sheet1!A1:B2' })
+      expect(got.isError).toBe(true)
+      expect(text(got)).toBe('refused: read it with msform_answers.')
+      const listed = JSON.parse(text(await run('office_files', {}))) as { workbooks: { key: string; sheets: unknown[]; readRefused?: string }[] }
+      expect(listed.workbooks.find((b) => b.key === SHARED)).toMatchObject({ sheets: [], readRefused: 'refused: read it with msform_answers.' })
+      expect(listed.workbooks.find((b) => b.key === MINE)?.sheets.length).toBeGreaterThan(0)
+      // his own workbook reads as before
+      expect(JSON.parse(text(await run('office_range_read', { workbook: MINE, range: 'Sheet1!A1' })))).toHaveProperty('hash')
+    } finally {
+      off()
+    }
+  })
+
   it('answers conflict on a stale base and writes nothing', async () => {
     const read = JSON.parse(text(await run('office_range_read', { workbook: MINE, range: 'Sheet1!A1' }))) as { hash: string }
     office.type(MINE, 'Sheet1', 'A1', 5)

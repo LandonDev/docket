@@ -1,3 +1,4 @@
+import { routineRunUp } from './provenance'
 import { existsSync, mkdirSync } from 'node:fs'
 import { join } from 'node:path'
 import { CATALOG, type ProviderId } from '@shared/catalog'
@@ -353,7 +354,11 @@ export const scopePart: ScopePart = (ctx, deps) => {
       .catch((err) => ctx.log(`thread ${session.id}: its ${about.kind} was not linked: ${err instanceof Error ? err.message : String(err)}`))
   })
   return {
-    scopeOf: (sessionId) => workScopeOf(facts, deps.registry.get(sessionId), here),
+    scopeOf: (sessionId) => {
+      const scope = workScopeOf(facts, deps.registry.get(sessionId), here)
+      // the run a delegated child acts for, up its line (provenance.ts): the Forms withhold holds for it too
+      return scope ? { ...scope, routineRun: routineRunUp((id) => deps.registry.get(id), sessionId) } : null
+    },
     mentionReach: (sessionId, draft) => mentionReachOf(facts, deps.registry.get(sessionId) ?? null, draft),
     async createWorkspace(params) {
       if (!ctx.enabled()) throw new WorkRefused(WORK_OFF)

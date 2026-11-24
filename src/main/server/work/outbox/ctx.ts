@@ -1,3 +1,4 @@
+import { ROUTINE_UNKNOWN, routineRunUp } from '../provenance'
 import { z } from 'zod'
 import type { OutboxItem } from '@shared/contract-work-outbox'
 import { errorText, WORK_HOME, workspaceKindOf, type ActKind, type HeldItem, type LifeosOrigin } from '@shared/work'
@@ -68,7 +69,7 @@ export const outboxHostOf = (ctx: WorkCtx): OutboxHost | undefined => hosts.get(
 export const TELL_SYNC_MS = 250
 
 /** The run a thread acts for when this host cannot follow its line to the end: no routine has it, so no grant fits it. */
-export const ROUTINE_UNKNOWN = 'unknown-run'
+export { ROUTINE_UNKNOWN }
 
 const outcomeText = (out: ComputerToolOutcome): string => [...out.steps, ...(out.body ? [out.body] : [])].join('\n')
 
@@ -92,18 +93,8 @@ export const heldPart: CtxPart<'held'> = (ctx, deps) => {
    * 32 links) acts for an unknown run, which takes no grant (milestone 50's
    * hold review, finding 5).
    */
-  const routineRunOf = (sessionId: string): string | null => {
-    let at = deps.registry.get(sessionId)
-    for (let hops = 0; at; hops++) {
-      if (at.routineRunId) return at.routineRunId
-      const up = at.parentId ?? at.startedBy
-      if (!up) return null
-      if (hops >= 32) return ROUTINE_UNKNOWN
-      at = deps.registry.get(up)
-      if (!at) return ROUTINE_UNKNOWN
-    }
-    return null
-  }
+  // (a thread this host has no row of acts for no run, as before: the shared walk says unknown for it)
+  const routineRunOf = (sessionId: string): string | null => (deps.registry.get(sessionId) ? routineRunUp((id) => deps.registry.get(id), sessionId) : null)
 
   // What a stop left behind: a row that was being sent is never sent again by the host, and a live act's screen went with the process.
   try {

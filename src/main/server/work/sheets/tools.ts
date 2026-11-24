@@ -86,10 +86,15 @@ async function targetOf(ctx: ToolCtx, a: { item?: string; file?: string }, chang
   return { held, item, shared: stored || sharedOf(ctx, source) || ctx.scope.shared(source) }
 }
 
-/** A workbook another pillar alone writes (a Microsoft form's answers) is read, never changed or suggested on: refused before anything is held. */
+/**
+ * A workbook another pillar alone writes (a Microsoft form's answers) is never changed or suggested on, and one that
+ * pillar alone reads to threads is not read here either: refused before anything is held or read.
+ */
 function refuseLocked(ctx: ToolCtx, held: Target['held'], change: boolean): void {
-  const locked = change && held.at === 'package' ? readOnlyOf(ctx, { host: ctx.host, path: held.path }) : null
-  if (locked) throw new Error(locked.refused)
+  const locked = held.at === 'package' ? readOnlyOf(ctx, { host: ctx.host, path: held.path }) : null
+  if (!locked) return
+  if (change) throw new Error(locked.refused)
+  if (locked.readRefused) throw new Error(locked.readRefused)
 }
 
 function ownerSaid(ctx: ToolCtx, quote: string | undefined): boolean {

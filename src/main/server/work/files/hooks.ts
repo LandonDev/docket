@@ -117,6 +117,12 @@ const refSeats = new Map<CanvasSource['at'], RefSeat>()
 export interface ReadOnlyFile {
   reason: string
   refused: string
+  /**
+   * The refusal a thread's read of it gets, where its owning pillar alone reads it to threads (a Microsoft form's
+   * answers: `msform_answers`, in the form's own job, under Purdue's withhold). Absent: a thread may read it. His own
+   * window's reads never ask this.
+   */
+  readRefused?: string
 }
 
 /**

@@ -17,6 +17,12 @@ export interface WorkScope {
   away: boolean
   /** the routine run that started the thread, if one did */
   routineRunId: string | null
+  /**
+   * The routine run the thread acts for: its own, or the nearest above it by parent or starter
+   * (work/provenance.ts); `'unknown-run'` when its line could not be followed on this host. Absent where the
+   * scope was made without the walk (a test's, an older peer's).
+   */
+  routineRun?: string | null
   /** Whether other people can see the item: a live guest link, a shared flag, a file in Microsoft or Google, or any outside author. */
   shared(source: CanvasSource): boolean
 }
