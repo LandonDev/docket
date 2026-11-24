@@ -15,7 +15,8 @@ import {
   type VmOfficeStatus,
   type VmSyncLibrary
 } from '@shared/contract-work-office'
-import { BYTES_MAX, FETCH_MS, libraryId, noText, readText, SEARCH_MAX, splitLibraryName, TEXT_MAX } from '../files/library'
+import { BYTES_MAX, FETCH_MS, noText, readText, SEARCH_MAX, TEXT_MAX, windowsLibrary } from '../files/library'
+import type { WindowsOneDriveMount } from '../files/oneDrive'
 import type { WorkCtx } from '../../modules'
 import { vmCall, VmAsleep } from './link'
 
@@ -30,14 +31,9 @@ import { vmCall, VmAsleep } from './link'
  * read: it answers from what was kept and reads behind (`readVmBehind`), one read at a time.
  */
 
-interface GuestMount {
-  path: string
-  type: 'mine' | 'team'
-  web: string | null
-}
 interface GuestStatus {
   onedrive: { installed: boolean; running: boolean; account: string | null }
-  mounts: GuestMount[]
+  mounts: WindowsOneDriveMount[]
   office: { installed: boolean; version: string | null; apps: OfficeApp[]; account: string | null; licensed: boolean | null }
   /** the change verbs the helper has (`files.mkdir`, …); absent from a helper built before it could change anything */
   verbs?: string[]
@@ -112,29 +108,12 @@ export const guestWithin = (path: string, dir: string): boolean => {
   return p === d || p.startsWith(`${d}\\`)
 }
 
-/** The folder OneDrive names a tenant by: `OneDrive - <Tenant>` is his own files, `<Tenant>\<Site> - <Library>` a library. */
-const tenantOf = (m: GuestMount): string | null => {
-  const parts = m.path.split('\\')
-  if (m.type === 'mine') return /^OneDrive - (.+)$/.exec(parts[parts.length - 1] ?? '')?.[1] ?? null
-  return parts.length >= 2 ? parts[parts.length - 2]! : null
-}
-
-const TEAM_LIBRARIES = /^(shared )?documents$/i
-
 /** The VM's libraries as this host lists them, from what was last read. */
 export function vmLibraries(db: DatabaseSync, host: string): TeamsLibrary[] {
   const stored = storedStatus(db)
   if (!stored) return []
   return stored.status.mounts
-    .map((m): TeamsLibrary => {
-      const id = libraryId(host, `vm:${m.path.toLowerCase()}`)
-      if (m.type === 'mine') return { id, host, path: m.path, team: 'My files', library: null, tenant: tenantOf(m), kind: 'mine', channels: [], web: m.web, found: true, vm: true }
-      const { team, library } = splitLibraryName(baseOf(m.path))
-      const tops = stored.tops[m.path] ?? []
-      // A site's Documents: its top folders are the team's channels, or the folders he synced one by one on a Mac.
-      const channels = library === null || TEAM_LIBRARIES.test(library)
-      return { id, host, path: m.path, team, library: channels ? null : library, tenant: tenantOf(m), kind: channels ? 'channels' : 'library', channels: channels ? tops : [], web: m.web, found: true, vm: true }
-    })
+    .map((m) => windowsLibrary(host, m, stored.tops[m.path] ?? [], true))
     .sort((a, b) => a.team.localeCompare(b.team) || (a.library ?? '').localeCompare(b.library ?? ''))
 }
 

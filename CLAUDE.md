@@ -338,5 +338,8 @@ section's text as it was when CLAUDE.md was split (2026-11-11).
 - Live Office for Files has a host API in `office/live/` for .docx, .xlsx, .xlsm and .pptx.
   `work.office.live.of` reads the tab's original file and reports its web address, remembered mode and desktop
   options. Address lookup prefers the mount's OneDrive namespace, then a synced twin, then the saved web
-  folder address. `work_office_live` stores per-workspace file choices and `work_office_files` stores library
+  folder address. `office/files/macOneDrive.ts` reads the Mac client's settings by file time and
+  `office/files/oneDrive.ts` reads Windows PC provider rows with `reg query`. The VM gets its rows from
+  `guest.status`. `bun scripts/probe-mac-onedrive.ts` prints the Mac's mount and namespace pairs for the
+  pending Mac check. `work_office_live` stores per-workspace file choices and `work_office_files` stores library
   defaults. The Files view still uses its existing open path. [Teams files](docs/agents/work-teams-files.md#live-office-addresses-and-memory)

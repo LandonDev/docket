@@ -2,9 +2,11 @@ import { createHash } from 'node:crypto'
 import { createReadStream, readdirSync, realpathSync, statSync, type Stats } from 'node:fs'
 import { open, readdir, stat } from 'node:fs/promises'
 import { homedir } from 'node:os'
-import { basename, join, relative, resolve, sep } from 'node:path'
+import { basename, join, relative, resolve, sep, win32 } from 'node:path'
 import type { DatabaseSync } from 'node:sqlite'
 import { teamsKindOf, type TeamsEntry, type TeamsFileKind, type TeamsLibrary, type TeamsPlace, type TeamsRoot } from '@shared/contract-work-office'
+import { readMacOneDrive } from './macOneDrive'
+import { readWindowsOneDrive, type WindowsOneDriveMount } from './oneDrive'
 import { zipEntries } from './zip'
 
 /**
@@ -94,8 +96,36 @@ export function tenantOfSynced(name: string, tenants: readonly string[]): string
 /** Every team has a General channel, and its folder sits at the top of the team's library: the one sign on disk that the top folders are channels. */
 const hasChannels = (dirs: readonly string[]): boolean => dirs.some((d) => d.toLowerCase() === 'general')
 
+/** Both the PC's registry and the VM helper describe the same kinds of Windows mounts. */
+export function windowsLibrary(host: string, mount: WindowsOneDriveMount, tops: readonly string[], vm?: true): TeamsLibrary {
+  const { path, web } = mount
+  const base: Pick<TeamsLibrary, 'host' | 'path' | 'id' | 'web' | 'webSource' | 'found' | 'vm'> = {
+    host, path, id: libraryId(host, vm ? `vm:${path.toLowerCase()}` : path), web, ...(web ? { webSource: 'onedrive' } : {}), found: true, ...(vm ? { vm } : {})
+  }
+  const name = win32.basename(path)
+  if (mount.type === 'mine') {
+    return { ...base, team: 'My files', library: null, tenant: /^OneDrive - (.+)$/.exec(name)?.[1] ?? null, kind: 'mine', channels: [] }
+  }
+  const { team, library } = splitLibraryName(name)
+  const channels = library === null || TEAM_LIBRARIES.test(library)
+  const parent = win32.basename(win32.dirname(path))
+  return { ...base, team, library: channels ? null : library, tenant: parent || null, kind: channels ? 'channels' : 'library', channels: channels ? [...tops] : [] }
+}
+
+function foundOnWindows(host: string): TeamsLibrary[] {
+  return readWindowsOneDrive().flatMap((mount) => {
+    try {
+      if (!statSync(mount.path).isDirectory()) return []
+      return [windowsLibrary(host, mount, mount.type === 'team' ? dirsIn(mount.path) : [])]
+    } catch {
+      return []
+    }
+  })
+}
+
 /** What OneDrive syncs here, as it lies on disk, in either of the two layouts docs/agents/work-teams-files.md describes. */
 function found(host: string): TeamsLibrary[] {
+  if (process.platform === 'win32') return foundOnWindows(host)
   const base = cloudDir(host)
   const out: TeamsLibrary[] = []
   const tops = dirsIn(base)
@@ -136,24 +166,42 @@ function found(host: string): TeamsLibrary[] {
  */
 export function librariesOf(db: DatabaseSync, host: string): TeamsLibrary[] {
   const roots = rootsOf(db).map((r) => ({ ...r, folder: real(r.folder) ?? r.folder }))
-  const edit = new Map(roots.map((r) => [r.folder, r]))
+  const macMounts = readMacOneDrive()
+  const pathKey = process.platform === 'win32' ? (path: string) => path.toLowerCase() : (path: string) => path
+  const edit = new Map(roots.map((r) => [pathKey(r.folder), r]))
   const libs: TeamsLibrary[] = []
   const known = new Set<string>()
   for (const l of found(host)) {
     const path = real(l.path)
-    if (!path || known.has(path) || edit.get(path)?.off) continue
-    known.add(path)
+    if (!path) continue
+    const key = pathKey(path)
+    if (known.has(key) || edit.get(key)?.off) continue
+    known.add(key)
     libs.push({ ...l, id: libraryId(host, path), path })
   }
   for (const r of roots) {
-    if (r.off || known.has(r.folder) || !real(r.folder)) continue
-    known.add(r.folder)
+    const key = pathKey(r.folder)
+    if (r.off || known.has(key) || !real(r.folder)) continue
+    known.add(key)
     const { team, library } = splitLibraryName(basename(r.folder))
     libs.push({ id: libraryId(host, r.folder), host, path: r.folder, team, library, tenant: null, kind: 'folder', channels: [], web: null, found: false })
   }
+  const macKey = (path: string) => path.normalize('NFC').toLowerCase()
+  const namespaces = new Map(macMounts.map((mount) => [macKey(mount.path), mount.web]))
   for (const l of libs) {
-    const web = edit.get(l.path)?.web
-    if (web) {
+    const key = macKey(l.path)
+    const own = namespaces.get(key)
+    if (own) {
+      l.web = own
+      l.webSource = 'onedrive'
+    }
+    const prefix = key.endsWith('/') ? key : `${key}/`
+    const depth = l.path.split('/').filter(Boolean).length
+    const nested = macMounts.filter((m) => macKey(m.path).startsWith(prefix) && macKey(m.path) !== key)
+      .map((m) => ({ folder: m.path.split('/').slice(depth + 1).join('/'), web: m.web }))
+    if (nested.length) l.webMounts = nested
+    const web = edit.get(pathKey(l.path))?.web
+    if (!l.web && web) {
       l.web = web
       l.webSource = 'settings'
     }
@@ -371,7 +419,7 @@ export function noText(name: string): Error {
  * with no CloudStorage folder (the box: null), nothing synced yet, his own files only, or libraries.
  */
 export function foldersPlace(host: string): TeamsPlace | null {
-  if (!real(cloudDir(host))) return null
+  if (process.platform !== 'win32' && !real(cloudDir(host))) return null
   const libs = found(host)
   if (!libs.length) return { kind: 'folders', state: 'no-onedrive', account: null }
   return { kind: 'folders', state: libs.some((l) => l.kind !== 'mine') ? 'ok' : 'no-libraries', account: null }

@@ -77,9 +77,11 @@ export interface TeamsLibrary {
   kind: 'mine' | 'channels' | 'library' | 'folder'
   channels: string[]
   web: string | null
-  /** When set, web came from Settings. Otherwise a non-null web is OneDrive's namespace. */
-  webSource?: 'settings'
-  /** found under ~/Library/CloudStorage, not added by him */
+  /** Where web came from. Older peers can omit this for OneDrive's own namespace. */
+  webSource?: 'onedrive' | 'settings'
+  /** OneDrive namespaces for folder paths within this mount, such as shortcuts in My files. */
+  webMounts?: { folder: string; web: string }[]
+  /** found by OneDrive discovery */
   found: boolean
   /** it lies in the Windows VM this host keeps (docs/agents/work-teams-files.md "The Windows VM"): its path is the guest's, and a read wakes the VM */
   vm?: true

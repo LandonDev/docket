@@ -31,8 +31,8 @@ layouts (`found` in `office/files/library.ts` reads both):
   shown as OneDrive wrote it, one row by that name, with no team heading. No
   attribute, Spotlight field or hidden entry on the folder names the site, the
   library or its web address (looked at read only: the folder's only attribute
-  is its File Provider domain id); the names live inside OneDrive's own
-  databases, which TempCode does not read.
+  is its File Provider domain id). For Live Office, TempCode looks up the
+  namespace in OneDrive's settings, as described below.
 - **As Microsoft documents it**:
   `OneDrive-SharedLibraries-<Tenant>/<Team or site> - <Library>/`. A team's
   library is "Documents" (or "Shared Documents"). The last " - " parts the
@@ -102,7 +102,7 @@ in as him, files on demand. The code is `office/vm/` (`link.ts`, `files.ts`,
   folder verbs (`Guest`): `guest.status` (OneDrive installed, running, the
   account; the mounts from OneDrive's own registry rows,
   `HKCU\Software\SyncEngines\Providers\OneDrive` and the accounts'
-  `Tenants`, each with the web address it stands for; Office as installed
+  `Tenants`, with `UrlNamespace` supplied by the provider rows; Office as installed
   and signed in), `files.list`, `files.stat`, `files.search` (the guest walks
   its own disk: names only), `files.read` (pieces of 4 MB), `files.fetch`,
   `files.free`, `files.open`, `onedrive.signin`, `onedrive.sync`, and the
@@ -431,6 +431,33 @@ It encodes each file path segment and adds `?web=1`. A sharing link or a library
 a folder address. `cloudKey` matches direct paths with SharePoint's `/:w:/r`, `/:x:/r` and `/:p:/r` paths.
 A `Doc.aspx?sourcedoc=…` redirect carries a GUID in place of the file path.
 
+**Mac.** `office/files/macOneDrive.ts` looks for `Business1` and other numbered business
+accounts under these OneDrive settings directories:
+
+- `~/Library/Group Containers/UBF8T346G9.OneDriveStandaloneSuite/OneDrive.noindex/OneDrive/settings`
+- `~/Library/Group Containers/UBF8T346G9.OneDriveStandaloneSuite/Library/Application Support/OneDrive/settings`
+- `~/Library/Containers/com.microsoft.OneDrive-mac/Data/Library/Application Support/OneDrive/settings`
+- `~/Library/Application Support/OneDrive/settings`
+
+`global.ini` gives the active `cid`. In `<cid>.ini`, `libraryScope` pairs the mount path
+with `ClientPolicy.ini` for My files or a matching `ClientPolicy_*.ini` for a Teams
+library. The policy's `DavUrlNamespace` gives the HTTPS folder address. `libraryFolder`
+and `AddedScope` also need folder names and parent IDs from `<cid>.dat` or the
+checkpointed `SyncEngineDatabase.db`. The reader caches each account by its settings
+file times. It reads OneDrive's metadata and resolves mount aliases without reading
+the contents of synced files. Files matches mounts by real path without regard to
+case. Live Office uses the closest known mount, including a shortcut within My files.
+These are private formats and the installed Mac client still needs a check. Run
+`bun scripts/probe-mac-onedrive.ts` on that Mac to print the mount and namespace pairs
+and compare them with the VM and the My files trial. Under Bun the reader uses the
+system `/usr/bin/sqlite3` for the checkpointed database. [Public format reference](https://gist.github.com/guwidoe/038398b6be1b16c458365716a921814d)
+
+**Windows PC.** TempCode runs `reg query` under the signed-in Windows user for
+`HKCU\Software\SyncEngines\Providers\OneDrive`. A provider subkey supplies
+`MountPoint`, `LibraryType`, and `UrlNamespace`. The PC shares the VM's mapping
+of those fields to Files libraries. A library with no OneDrive URL can still use
+a saved folder address.
+
 | Method | Needs | What |
 |---|---|---|
 | `work.office.live.of {workspaceId, tabId}` | operate | `{mode, address, why?, app, tenant, desktops}` for the tab's original file. Each desktop gives a source to pass to `filesOpen` and carries `vm: true` for a VM. |
@@ -584,6 +611,9 @@ are read only. A Work workspace's page has **Copy Teams files to <host>**
 (`TeamsCopyRow`) once it may use a desktop other than its own host.
 
 ## Tests
+
+`office/files/oneDrive.test.ts` covers the Mac account, policy and folder records,
+Windows registry output, and the choice of live address.
 
 `office/files/files.test.ts` builds a dummy CloudStorage (his OneDrive, a
 team's Documents with two channels, a site's other library, a sparse file for a

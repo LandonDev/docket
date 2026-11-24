@@ -77,17 +77,27 @@ export function liveTwin(library: TeamsLibrary, file: string, other: TeamsLibrar
   return twinOf([other], library, file)
 }
 
+function nestedAddress(library: TeamsLibrary, file: string): LiveAddress | null {
+  if (!library.webMounts?.length) return null
+  const key = file.normalize('NFC').toLowerCase()
+  const scope = library.webMounts
+    .filter((mount) => key.startsWith(`${mount.folder.normalize('NFC').toLowerCase()}/`))
+    .sort((a, b) => b.folder.length - a.folder.length)[0]
+  return scope ? inFolder(scope.web, file.split('/').slice(scope.folder.split('/').length).join('/')) : null
+}
+
 export function liveAddress(library: TeamsLibrary, path: string, opts: LiveAddressOptions = {}): LiveAddress {
   const file = relativeLivePath(library, path, opts.platform)
   if (file === null) return { ok: false, why: OUTSIDE }
+  const nested = nestedAddress(library, file)
+  if (nested?.ok) return nested
   const own = library.web ? inFolder(library.web, file) : null
   if (own?.ok && library.webSource !== 'settings') return own
   for (const other of opts.libraries ?? []) {
-    if (!other.web || other.webSource === 'settings') continue
     const twin = liveTwin(library, file, other)
     if (!twin) continue
-    const address = inFolder(other.web, twin.file)
-    if (address.ok) return address
+    const address = nestedAddress(other, twin.file) ?? (other.web && other.webSource !== 'settings' ? inFolder(other.web, twin.file) : null)
+    if (address?.ok) return address
   }
   return own ?? { ok: false, why: NO_ADDRESS }
 }
