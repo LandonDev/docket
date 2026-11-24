@@ -10,6 +10,7 @@ import { PLACE, questionFor, refusal, type FileEntry, type FilePlace, type FileV
 import { FenceError } from '../../remote/fence'
 import type { Caller, WorkCtx } from '../modules'
 import { cloudDirOf, libraryOf } from '../office/files/library'
+import { driveOf, driveUp } from '../office/files/reach'
 import { isGuestPath, vmLibraryOf } from '../office/vm/files'
 import { vmAllowed, vmState } from '../office/vm/office'
 import { librariesHere, vmLibrariesHere } from './places/libraries'
@@ -132,6 +133,8 @@ export function locate(ctx: Pick<WorkCtx, 'db' | 'host' | 'reaches' | 'scopeOf' 
     if (!inVm) throw new Error(NOT_REACHED)
     return { in: 'library', ...inVm }
   }
+  // A path on a drive not known to be there now (the VPN down) is never looked at: a sync look can hold the host, and the file is not gone.
+  if (!driveUp(path)) throw new Error(`${driveOf(path)} is not reachable now.`)
   const at = real(path)
   if (!at) throw new Error(`${path.slice(path.lastIndexOf(sep) + 1)} is not there any more.`)
   const workspace = workspaceHere(ctx.db, workspaceId)

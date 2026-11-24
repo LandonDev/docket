@@ -47,7 +47,8 @@ export interface TeamsPlaces {
  */
 export function teamsPlaces(ctx: Pick<WorkCtx, 'db' | 'host' | 'log' | 'push' | 'scopeOf' | 'settings'>, by: Caller): TeamsPlaces {
   const own = librariesHere(ctx)
-  const places = own.flatMap((l) => placesIn(l, { state: 'ok' }))
+  // A folder on a drive that is not there now (the VPN down) is listed as not reachable, as a host out of reach is.
+  const places = own.flatMap((l) => placesIn(l, l.away ? { state: 'unreachable' } : { state: 'ok' }))
   const folders = foldersPlace(ctx.host)
   const sources: TeamsPlace[] = folders ? [own.some((l) => l.kind !== 'mine') && folders.state !== 'ok' ? { ...folders, state: 'ok' } : folders] : []
   if (vmFor(ctx, by)) {

@@ -34,14 +34,46 @@ export function expandPath(path: string): string {
   return resolve(path)
 }
 
+export type Realpath = (path: string) => string
+
+let realpathOf: Realpath = realpathSync
+/** A test stands in for the native realpath (`fs.realpathSync.native`) or the JavaScript one (`fs.realpathSync`); none: the JavaScript one again. */
+export const setRealpath = (fn?: Realpath): void => void (realpathOf = fn ?? realpathSync)
+
+const UNC = /^(?:\\\\\?\\UNC\\|[\\/]{2})/i
+/** A share's path in one spelling: `\\?\UNC\` and forward slashes as `\\`, no trailing separator. */
+const plainUnc = (p: string): string => p.replace(UNC, '\\\\').replace(/\//g, '\\').replace(/\\+$/, '')
+
+/**
+ * A path's real spelling with its drive letter kept. On a mapped network drive Windows' own realpath (Node's
+ * `fs.realpathSync.native`) answers the share, `J:\Esports` as `\\server\share\Esports`, and the fence's
+ * roots, the place keys and every saved path name the drive. A share answered for a drive path is spelled
+ * back onto the drive; one this drive does not map stays as he wrote it.
+ */
+export function keepDrive(path: string, realpath: Realpath = realpathOf): string {
+  const real = realpath(path)
+  const drive = /^([a-zA-Z]:)[\\/]/.exec(path)
+  if (!drive || !UNC.test(real)) return real
+  let share: string
+  try {
+    share = plainUnc(realpath(`${drive[1]}\\`)).toLowerCase()
+  } catch {
+    return path
+  }
+  const at = plainUnc(real)
+  if (!UNC.test(share) || (at.toLowerCase() !== share && !at.toLowerCase().startsWith(`${share}\\`))) return path
+  return `${drive[1]}\\${at.slice(share.length + 1)}`
+}
+
 /** The real spelling of a path whose tail may not exist yet: the deepest
- *  existing ancestor is resolved and the missing tail put back. */
+ *  existing ancestor is resolved and the missing tail put back. A mapped
+ *  drive keeps its letter (`keepDrive`). */
 export function realSpelling(path: string): string {
   const tail: string[] = []
   let head = path
   for (;;) {
     try {
-      return join(realpathSync(head), ...tail.reverse())
+      return join(keepDrive(head), ...tail.reverse())
     } catch {
       const parent = dirname(head)
       if (parent === head) return path

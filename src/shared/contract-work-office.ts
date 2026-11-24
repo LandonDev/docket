@@ -85,6 +85,8 @@ export interface TeamsLibrary {
   found: boolean
   /** it lies in the Windows VM this host keeps (docs/agents/work-teams-files.md "The Windows VM"): its path is the guest's, and a read wakes the VM */
   vm?: true
+  /** a folder he added on a drive that is not there now (a network drive with the VPN down): listed, never read, its place not reachable */
+  away?: true
 }
 
 /**

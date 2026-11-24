@@ -13,7 +13,8 @@ import { sheetImportFormat } from '@shared/work/sheetFormats'
 import { fencedItem, itemPath } from '../canvas/store'
 import type { Caller, WorkCtx } from '../modules'
 import { copyIn, threadsHolding } from '../office/files/handle'
-import { copyAllowed, fetchFile, whoOf } from '../office/files/library'
+import { copyAllowed, fetchFile, rootsOf, whoOf } from '../office/files/library'
+import { probeDrives } from '../office/files/reach'
 import { copyWaits } from './copyKept'
 import { saveAsWord } from './saveAsWord'
 import { isWordFile, keptDoc, recordWord, wordAuto, wordBacksOf, wordRow, wordSave } from './word'
@@ -25,6 +26,7 @@ import { feedListing, forgetGonePlaces, listedLibraries, namesAnswer, placeOf, w
 import { dropSearch, savedSearches, saveSearch, searchFiles } from './search'
 import { DiskLister, entryOfRow, type DiskPage, type DiskRow } from './places/disk'
 import { folderEntry, folderName, folderPlace, folderTrail } from './places/folder'
+import { forgetLibraries } from './places/libraries'
 import { forgetVmList, libraryEntry, libraryKey, libraryTrail, placeOfPath, placesIn, teamsPlaces, vmPage, type LibraryPlace } from './places/teams'
 import { admitCaller, admitWrite, changeDigest, isLifeosRef, locate, locatedShared, NEEDS_PRESS, NO_WORKSPACE, OWN_ONLY, pressesFor, SHARED_BYTES, sharedOf, PEER_LIBRARIES, workspaceHere, type DoorPlace, type Located, type WorkspaceRow } from './policy'
 import { keepMail, lifeosPlace, lifeosPlaces, lifeosTrash, listLifeos, makeLifeos, moveLifeos, openLifeos, renameLifeos, restoreLifeos, setProject, statLifeos, trashLifeos, waitingRows, withProjects } from './places/lifeos'
@@ -768,6 +770,8 @@ async function lifeosCase(ctx: WorkCtx, by: Caller, m: string, p: Record<string,
   const workspace = (): WorkspaceRow | null => (by.peer ? null : workspaceHere(ctx.db, p.workspaceId))
   switch (m) {
     case 'work.files.places': {
+      // Each drive a folder he added lies on is looked at first, within a short deadline: one that is gone shows as not reachable, never holds the answer.
+      if (await probeDrives(rootsOf(ctx.db).map((r) => r.folder))) forgetLibraries(ctx.db)
       const got = placesAnswer(ctx, by, p.workspaceId)
       const ws = workspace()
       if (ws) got.places.push(...(await lifeosPlaces(ctx, by, ws)))

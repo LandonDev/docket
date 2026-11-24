@@ -635,7 +635,35 @@ folder; a found one has a switch, an added one Remove. Add web link… stores
 the address. Live Office uses a direct web folder address. Add folder… adds any folder, a network drive's too: typed (the hint is `J:\Shared` on
 Windows) or picked with Browse…, the system's folder picker. Only this computer's own window edits its list; another host's rows
 are read only. A Work workspace's page has **Copy Teams files to <host>**
-(`TeamsCopyRow`) once it may use a desktop other than its own host.
+(`TeamsCopyRow`) once it may use a desktop other than its own host. A folder
+added there is a shared place, so a thread's change in it is held as `file.act`.
+
+A box workspace lists a folder on a PC in the PC's own window when two things
+hold. The workspace's page has **Computer use on <PC>** on (`mayUseDesktop`).
+The PC's own Work switch is on: with it off, the PC answers every Files call
+"Work is off on this host" and Settings shows no Folders row for it (Settings →
+Work's **Turn on for <host>** turns it on). Opening a file there from a box
+workspace also needs the PC's bridge for the box at **Read** or more (Settings →
+Hosts); while it is Off the open says "This host's bridge is off for that host".
+
+### A network drive
+
+A mapped drive keeps its letter. Windows' own realpath (Node's
+`fs.realpathSync.native`) answers `J:\Esports` as `\\server\share\Esports`;
+`keepDrive` (remote/fence.ts) spells a share answered for a drive path back
+onto the drive, and `realSpelling` and `librariesOf` read paths through it.
+So the fence, the place key and every saved path name `J:`.
+
+A drive can be gone (the VPN down), and a sync call on it can hold the host
+for half a minute. So `office/files/reach.ts` looks at each drive that is not
+the system's, and each `\\server\share`, with a 1.5 second deadline: the
+Files view's `work.files.places` waits for that look, and the sync code reads
+the answer kept for 30 seconds (`driveUp`). A folder on a drive not known to
+be there is never touched: `librariesOf` lists it with `away`, its place is
+`unreachable` ("<host> is out of reach.", with Retry), and the fence passes
+nothing in it. A listing or an open there answers "J: is not reachable now."
+(files/policy.ts `locate`) without looking at the drive, so a tab left open
+on it reads as away, never as a folder that is gone.
 
 ## Tests
 
@@ -651,8 +679,11 @@ allowed, and the shared-file rule on a folder he added. `office/vm/vm.test.ts`
 proves the list answers at once while the helper never answers, one read
 behind it at a time, the failure as the place, the push only on a change, and
 a thread waiting for the first read; `office/health.test.ts` the same for
-Connections. The renderer:
-`files.test.ts`, `FilesView.dom.test.tsx`, `TeamsFilesRow.dom.test.tsx`.
+Connections. `remote/fenceDrive.test.ts` proves a mapped drive's letter under
+a stubbed native and JavaScript realpath; `office/files/reach.test.ts` a drive
+that hangs, listed as not reachable within the deadline and never touched.
+The renderer: `files.test.ts`, `FilesView.dom.test.tsx`,
+`TeamsFilesRow.dom.test.tsx`, `surfaces/settings/Work.dom.test.tsx`.
 
 Not provable until he signs in to OneDrive on the Mac: real folder names, the
 dataless flag on a real library's files, and who last saved a file there. The

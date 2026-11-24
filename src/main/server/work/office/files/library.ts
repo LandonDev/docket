@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto'
-import { createReadStream, readdirSync, realpathSync, statSync, type Stats } from 'node:fs'
+import { createReadStream, readdirSync, statSync, type Stats } from 'node:fs'
 import { open, readdir, stat } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { basename, join, relative, resolve, sep, win32 } from 'node:path'
@@ -7,6 +7,8 @@ import type { DatabaseSync } from 'node:sqlite'
 import { teamsKindOf, type TeamsEntry, type TeamsFileKind, type TeamsLibrary, type TeamsPlace, type TeamsRoot } from '@shared/contract-work-office'
 import { readMacOneDrive } from './macOneDrive'
 import { readWindowsOneDrive, type WindowsOneDriveMount } from './oneDrive'
+import { keepDrive } from '../../../remote/fence'
+import { driveUp } from './reach'
 import { zipEntries } from './zip'
 
 /**
@@ -165,7 +167,8 @@ function found(host: string): TeamsLibrary[] {
  * lands on the library it points to), so every entry's path starts with its library's.
  */
 export function librariesOf(db: DatabaseSync, host: string): TeamsLibrary[] {
-  const roots = rootsOf(db).map((r) => ({ ...r, folder: real(r.folder) ?? r.folder }))
+  // A folder on a drive not known to be there is never touched: it is listed as not reachable (reach.ts).
+  const roots = rootsOf(db).map((r) => (driveUp(r.folder) ? { ...r, folder: real(r.folder) ?? r.folder } : { ...r, away: true as const }))
   const macMounts = readMacOneDrive()
   const pathKey = process.platform === 'win32' ? (path: string) => path.toLowerCase() : (path: string) => path
   const edit = new Map(roots.map((r) => [pathKey(r.folder), r]))
@@ -181,10 +184,11 @@ export function librariesOf(db: DatabaseSync, host: string): TeamsLibrary[] {
   }
   for (const r of roots) {
     const key = pathKey(r.folder)
-    if (r.off || known.has(key) || !real(r.folder)) continue
+    const away = 'away' in r
+    if (r.off || known.has(key) || (!away && !real(r.folder))) continue
     known.add(key)
-    const { team, library } = splitLibraryName(basename(r.folder))
-    libs.push({ id: libraryId(host, r.folder), host, path: r.folder, team, library, tenant: null, kind: 'folder', channels: [], web: null, found: false })
+    const { team, library } = splitLibraryName(basename(r.folder) || r.folder)
+    libs.push({ id: libraryId(host, r.folder), host, path: r.folder, team, library, tenant: null, kind: 'folder', channels: [], web: null, found: false, ...(away ? { away } : {}) })
   }
   const macKey = (path: string) => path.normalize('NFC').toLowerCase()
   const namespaces = new Map(macMounts.map((mount) => [macKey(mount.path), mount.web]))
@@ -212,9 +216,11 @@ export function librariesOf(db: DatabaseSync, host: string): TeamsLibrary[] {
 /** A folder found here that he turned off: listed in Settings so he can turn it on again. */
 export const offFolders = (db: DatabaseSync): string[] => rootsOf(db).filter((r) => r.off).map((r) => r.folder)
 
+/** A path's real spelling, its drive letter kept (`keepDrive`); null when it is not there, or lies on a drive not known to be there. */
 const real = (path: string): string | null => {
+  if (!driveUp(path)) return null
   try {
-    return realpathSync(path)
+    return keepDrive(path)
   } catch {
     return null
   }
