@@ -97,21 +97,35 @@ export function dashRow(ctx: Pick<WorkCtx, 'db'>, item: CanvasItem): DashRow {
 
 // ── the sheets it reads ──────────────────────────────────────────────
 
-export const sheetKey = (s: DashSheet): string => (s.at === 'lifeos' ? `lifeos:${s.id}` : `file:${s.host}:${s.path}`)
+export const sheetKey = (s: DashSheet): string => (s.at === 'lifeos' ? `lifeos:${s.id}` : s.at === 'msform' ? `msform:${s.workspaceId}:${s.formId}` : `file:${s.host}:${s.path}`)
 
 /** The sheet as the Work service's sheet host names it; a file on another host is not this host's to read. */
 function refOf(ctx: Pick<WorkCtx, 'host'>, s: DashSheet): { lifeos: string } | { tcsheet: string } {
   if (s.at === 'lifeos') return { lifeos: s.id }
+  if (s.at === 'msform') throw new DashError('A Microsoft form is read through its own pillar.')
   if (s.host !== ctx.host) throw new DashError(`That sheet is on another host (${s.host}); open the dashboard there.`)
   if (!s.path.endsWith('.tcsheet')) throw new DashError('A dashboard reads LifeOS sheets and .tcsheet files; an Excel file is not read here yet.')
   return { tcsheet: s.path }
 }
 
+/** The dashboard's own job, as the host reads a form for it: the one reach check names the form's job. */
+const FORMS_READER: Caller = { kind: 'local', caps: [] }
+
 export async function sheetInfo(ctx: Ctx, s: DashSheet): Promise<{ title: string; rev: number }> {
+  if (s.at === 'msform') {
+    if (s.host !== ctx.host) throw new DashError('That form is on another host; open the dashboard there.')
+    const { msformSeries } = await import('../msforms/series')
+    const { title, rev } = await msformSeries(ctx as WorkCtx, FORMS_READER, { workspaceId: s.workspaceId, formId: s.formId })
+    return { title, rev }
+  }
   return (await ctx.service.internal('/internal/sheet/open', { sheet: refOf(ctx, s) })) as { title: string; rev: number }
 }
 
 async function readRange(ctx: Ctx, s: DashSheet, range: string): Promise<Cells> {
+  if (s.at === 'msform') {
+    const { msformSeries } = await import('../msforms/series')
+    return (await msformSeries(ctx as WorkCtx, FORMS_READER, { workspaceId: s.workspaceId, formId: s.formId, range })).cells
+  }
   const got = (await ctx.service.internal('/internal/sheet/range', { sheet: refOf(ctx, s), range })) as { cells: Cells }
   return got.cells
 }

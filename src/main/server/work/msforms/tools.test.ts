@@ -213,3 +213,16 @@ describe('making and changing', () => {
     expect(r.text).toContain('Added 1 of 2 questions')
   })
 })
+
+describe('a dashboard reading a form', () => {
+  it('reads counts through the reach check on the dashboard’s job, marked stale when the read was', async () => {
+    const { msformSeries } = await import('./series')
+    const view = await aForm({ state: 'collecting' })
+    carrier.forms.get(view.formId)!.count = 2
+    carrier.pullBytes = formsWorkbook(['Which night?', 'Anything else?'], madeUpAnswers(2, (i) => [i ? 'Tuesday' : 'Monday', '']))
+    const mine = await msformSeries(work.ctx, { kind: 'model', caps: [], sessionId: 't1' }, { workspaceId: 'w1', formId: view.formId, range: 'option:Which night?' })
+    expect(mine.cells.map((r) => r[0]!.v)).toEqual([1, 1])
+    expect(mine.stale).toBe(false)
+    await expect(msformSeries(work.ctx, { kind: 'model', caps: [], sessionId: 't2' }, { workspaceId: 'w1', formId: view.formId, range: 'count' })).rejects.toThrow("form's own job")
+  })
+})

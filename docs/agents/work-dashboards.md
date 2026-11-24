@@ -27,6 +27,12 @@ look.
   cells; [work-sheets.md](work-sheets.md)). A `.tcsheet` on another host is
   read there; an Excel file is not read yet.
 
+A Microsoft form's answers are a source too (`DashSheet` `{ at: 'msform' }`, docs/agents/work-msforms.md
+"Dashboards"): a thread names it `msform:<form id>`, and its range is `count`, `option:<question title>` (each option's
+count; `#labels` for the options) or `day` (answers per day; `#labels` for the days). The numbers come from msforms'
+`msformSeries`, through the form's one reach check on the dashboard's job and Purdue's withhold; its rev is the form's
+count, and More's Open on it opens the form. Nothing of an answer is kept in the dashboard's row but the counts.
+
 ## As of, and stale
 
 - The page is read whole, every block at once (`refresh`), and `asOf` is

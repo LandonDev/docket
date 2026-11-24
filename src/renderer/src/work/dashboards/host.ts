@@ -23,7 +23,8 @@ export function linkDashHost(env: string, item: CanvasItem): DashHost {
     refresh: () => ask("work.dashboards.refresh"),
     review: (which, verdict) => ask("work.dashboards.review", { which, verdict }),
     openSheet: async (sheet, title) => {
-      await link().request("work.canvas.open", { sessionId: item.sessionId, kind: "sheet", source: sheet, title });
+      // A form's answers open as the form itself.
+      await link().request("work.canvas.open", { sessionId: item.sessionId, kind: sheet.at === "msform" ? "msform" : "sheet", source: sheet, title });
     },
     watch(on) {
       const offPush = link().onPush((push) => {

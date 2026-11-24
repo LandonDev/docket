@@ -21,8 +21,8 @@ const sheet = z
   .string()
   .min(1)
   .max(1000)
-  .describe("The sheet to read: a sheet's id in this thread's canvas, `lifeos:<sheet id>`, or a .tcsheet file's absolute path.")
-const range = z.string().min(2).max(300).describe("A1, with the tab when it is not the first: 'Invoices'!E2:E48")
+  .describe("The sheet to read: a sheet's id in this thread's canvas, `lifeos:<sheet id>`, a .tcsheet file's absolute path, or `msform:<form id>` for a Microsoft form's answers.")
+const range = z.string().min(2).max(300).describe("A1, with the tab when it is not the first: 'Invoices'!E2:E48. For a Microsoft form: count, option:<question title> (option:<question title>#labels for the options), or day (day#labels for the days).")
 const counts = z.string().min(1).max(200).describe('What the number counts, in words the owner reads: "Amount, summed where Status is not Paid".')
 const format = z.enum(DASH_FORMATS).default('number')
 
@@ -55,6 +55,15 @@ function paneDash(ctx: ToolCtx, id: string): CanvasItem {
 async function sheetOf(ctx: ToolCtx, name: string): Promise<{ sheet: DashSheet; title: string }> {
   let s: DashSheet
   if (name.startsWith('lifeos:')) s = { at: 'lifeos', table: 'sheets', id: name.slice('lifeos:'.length) }
+  else if (name.startsWith('msform:')) {
+    // A Microsoft form of the thread's own job, through its one reach check and Purdue's withhold.
+    const { formReach } = await import('../msforms/reach')
+    const { refuseWithheld } = await import('../msforms/withhold')
+    const by = { kind: 'model' as const, caps: [], sessionId: ctx.sessionId }
+    const { row } = formReach(ctx, by, { formId: name.slice('msform:'.length) })
+    refuseWithheld(ctx, by, row.sector)
+    s = { at: 'msform', host: ctx.host, workspaceId: row.workspaceId, formId: row.formId, tenant: row.tenant }
+  }
   else if (isAbsolute(name)) s = { at: 'file', host: ctx.host, path: name }
   else {
     const it = ctx.canvas.get(name)

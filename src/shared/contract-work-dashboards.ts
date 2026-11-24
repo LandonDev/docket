@@ -15,8 +15,11 @@ import { request, type CapsOf, type RelayOf } from './work/wire'
  * on his own dashboard.
  */
 
-/** A sheet a dashboard reads, as the sheet kind opens it: a LifeOS sheet, or a .tcsheet on a host. */
-export type DashSheet = { at: 'lifeos'; table: 'sheets'; id: string } | { at: 'file'; host: string; path: string }
+/**
+ * A sheet a dashboard reads, as the sheet kind opens it: a LifeOS sheet, or a .tcsheet on a host; or a Microsoft
+ * form's answers (work-msforms.md "Dashboards"), whose `range` is `count`, `option:<question>` or `day` (`#labels`).
+ */
+export type DashSheet = { at: 'lifeos'; table: 'sheets'; id: string } | { at: 'file'; host: string; path: string } | { at: 'msform'; host: string; workspaceId: string; formId: string; tenant: string }
 
 export const DASH_AGGS = ['cell', 'sum', 'count', 'average', 'min', 'max'] as const
 export type DashAgg = (typeof DASH_AGGS)[number]

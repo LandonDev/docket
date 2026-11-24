@@ -220,7 +220,7 @@ function sheetsOf(blocks: Block[]): { sheet: DashSheet; sheetTitle: string }[] {
   for (const b of blocks) {
     const froms: DashFrom[] = b.kind === "chart" || b.kind === "table" ? [b.from] : b.kind === "figures" ? b.figures.flatMap((f) => ("sheet" in f.from ? [f.from] : [])) : [];
     for (const f of froms) {
-      const key = f.sheet.at === "lifeos" ? f.sheet.id : `${f.sheet.host}:${f.sheet.path}`;
+      const key = f.sheet.at === "lifeos" ? f.sheet.id : f.sheet.at === "msform" ? `msform:${f.sheet.formId}` : `${f.sheet.host}:${f.sheet.path}`;
       if (!seen.has(key)) seen.set(key, { sheet: f.sheet, sheetTitle: f.sheetTitle });
     }
   }
