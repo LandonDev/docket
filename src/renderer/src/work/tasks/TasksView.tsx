@@ -21,7 +21,7 @@ import { useMinute } from "./minute";
 import { NewTaskDialog } from "./NewTaskDialog";
 import { shared, useShared } from "./store";
 import { sessionWaits } from "../shell/lifeos";
-import { downOf } from "../shell/lifeosDown";
+import { downOf, useKeptOpen } from "../shell/lifeosDown";
 import { StatusMark } from "../../components/ui/status";
 import { useSessionMeta } from "../../lib/tcserver/store";
 import { rowState } from "../../lib/sidebarRows";
@@ -63,15 +63,21 @@ export function Head({ lifeos }: WorkViewProps) {
   );
 }
 
+const closeNewTask = (): void => newTask.set(false);
+
+/**
+ * New task's dialog, the frame's (`Kept`), not the body's: a session that drops while it is open takes the rows away,
+ * never what he typed. The dialog says the session's line and holds Add until it is back; a press made while the session
+ * was on its way, which then went down, is dropped (`useKeptOpen`).
+ */
+export function Kept({ sector, lifeos }: WorkViewProps) {
+  const adding = useShared(newTask);
+  useEffect(() => closeNewTask, []);
+  return useKeptOpen(adding, lifeos, closeNewTask) ? <NewTaskDialog sector={sector} session={lifeos} onClose={closeNewTask} /> : null;
+}
+
 export function View({ env, workspace, sector, lifeos, startThread }: WorkViewProps) {
   const clients = useMemo(() => viewsClients(env, workspace.id, sector), [env, workspace.id, sector]);
-  const adding = useShared(newTask);
-  useEffect(() => () => newTask.set(false), []);
-  // A press made while the session was on its way, which then went down, is dropped: it never opens by itself later.
-  const down = !!downOf(lifeos);
-  useEffect(() => {
-    if (down) newTask.set(false);
-  }, [down]);
   // A task asked for from elsewhere (a person's page) opens in its sheet: taken once, then cleared.
   const wanted = useWorkView();
   const asked = wanted?.workspaceId === workspace.id && wanted.view === "tasks" ? wanted.task : undefined;
@@ -86,7 +92,6 @@ export function View({ env, workspace, sector, lifeos, startThread }: WorkViewPr
   return (
     <ConvexProvider client={lifeos.client}>
       <Tasks client={clients.tasks} sector={sector} startThread={startThread} useThread={useLinkedThread} openTask={openTask} workspaceId={workspace.id} />
-      {adding ? <NewTaskDialog sector={sector} onClose={() => newTask.set(false)} /> : null}
     </ConvexProvider>
   );
 }

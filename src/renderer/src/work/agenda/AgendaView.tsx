@@ -26,7 +26,7 @@ import { NewEventDialog } from "./NewEventDialog";
 import { playRunner } from "../routines/plays/runOn";
 import { openWorkView, useWorkView, workViewNow } from "../../lib/workSwitch";
 import { sessionWaits, useLifeosQuery } from "../shell/lifeos";
-import { downOf } from "../shell/lifeosDown";
+import { downOf, useKeptOpen } from "../shell/lifeosDown";
 import { knownAttendees, type DirectoryPerson } from "../people/model";
 import { clashTime, type Clash } from "@shared/work/clashes";
 import { ClashLines, useClashes } from "../clashes/mark";
@@ -156,14 +156,29 @@ function OpenEvent({ workspaceId, id, lifeos }: { workspaceId: string; id: strin
   return null;
 }
 
+const closeNewEvent = (): void => go({ adding: null });
+
+/** Agenda's place is kept while the frame stays on Agenda or a view inside it (a meeting's page); else it starts over. */
+const leaveAgenda = (workspaceId: string): void => {
+  const next = workViewNow();
+  if (next?.workspaceId === workspaceId && rowOfView(next.view) === "agenda") return;
+  resetAgendaPlace();
+};
+
+/**
+ * New event's dialog, the frame's (`Kept`), not the body's: a session that drops while it is open takes the week away,
+ * never what he typed. The dialog says the session's line and holds Add until it is back; a press made while the session
+ * was on its way, which then went down, is dropped (`useKeptOpen`).
+ */
+export function Kept({ workspace, sector, lifeos }: WorkViewProps) {
+  const { adding } = useShared(state);
+  useEffect(() => () => leaveAgenda(workspace.id), [workspace.id]);
+  return useKeptOpen(adding !== null, lifeos, closeNewEvent) ? <NewEventDialog sector={sector} startsAt={adding === "now" ? null : adding} session={lifeos} onClose={closeNewEvent} /> : null;
+}
+
 export function View({ env, workspace, sector, lifeos }: WorkViewProps) {
   const clients = useMemo(() => viewsClients(env, workspace.id, sector), [env, workspace.id, sector]);
-  const { adding, view } = useShared(state);
-  // A New event asked for while the session was on its way, which then went down, is dropped: it never opens by itself later.
-  const down = !!downOf(lifeos);
-  useEffect(() => {
-    if (down && state.get().adding !== null) go({ adding: null });
-  }, [down]);
+  const { view } = useShared(state);
   // An invitation's Open in Agenda names its event (`openWorkView {event}`): taken once, then cleared.
   const wanted = useWorkView();
   const event = wanted?.workspaceId === workspace.id && wanted.view === "agenda" ? wanted.event : undefined;
@@ -180,15 +195,9 @@ export function View({ env, workspace, sector, lifeos }: WorkViewProps) {
       }),
     [workspace.id],
   );
-  useEffect(
-    () => () => {
-      // A meeting's page stands inside Agenda: going there and back keeps the day and the view he was on.
-      const next = workViewNow();
-      if (next?.workspaceId === workspace.id && next.view !== "agenda" && rowOfView(next.view) === "agenda") return;
-      resetAgendaPlace();
-    },
-    [workspace.id],
-  );
+  // A meeting's page stands inside Agenda: going there and back keeps the day and the view he was on. A body that goes
+  // while the frame stays on Agenda (the session dropped) keeps them too, and New event's dialog with them (`Kept`).
+  useEffect(() => () => leaveAgenda(workspace.id), [workspace.id]);
   // Bones only while the session is on its way; a failed one is the frame's line, with nothing pulsing under it.
   if (!lifeos.client) return sessionWaits(lifeos) ? <AgendaSkeleton view={view} /> : null;
   return (
@@ -196,7 +205,6 @@ export function View({ env, workspace, sector, lifeos }: WorkViewProps) {
       {event ? <OpenEvent workspaceId={workspace.id} id={event} lifeos={lifeos} /> : null}
       {/* While the event is read, its bones: today's list never paints before the event's week. */}
       {event ? <AgendaSkeleton view="week" /> : <Agenda client={clients.agenda} people={people} workspaceId={workspace.id} environmentId={env} />}
-      {adding !== null ? <NewEventDialog sector={sector} startsAt={adding === "now" ? null : adding} onClose={() => go({ adding: null })} /> : null}
     </ConvexProvider>
   );
 }

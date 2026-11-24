@@ -53,7 +53,7 @@ vi.mock("../../surfaces/chunks", async (original) => ({
 }));
 vi.mock("./Description", () => ({ Description: ({ docId, lead }: { docId: string; lead: string }) => <div data-description={docId}>{lead}</div> }));
 
-const { View, Head, Title } = await import("./ProjectsView");
+const { View, Head, Title, Kept } = await import("./ProjectsView");
 const { addRows, hintKeys, openItemIn, projectChip, taskChip } = await import("./kit");
 const { placeOf, resetPlaces } = await import("./place");
 const { openerOf } = await import("../canvas/SentChips");
@@ -91,6 +91,8 @@ function Screen(p: WorkViewProps) {
         <Head {...p} />
       </header>
       <View {...p} />
+      {/* The settings sheet is the frame's, beside the body (WorkViewPage `Kept`). */}
+      <Kept {...p} />
     </div>
   );
 }
@@ -212,6 +214,19 @@ describe("the Projects view", () => {
     // Asked for its settings, so the host answers a finished project's mirror too: the sheet is where he reopens it.
     await waitFor(() => expect(hostCalls.find((c) => c.method === "work.project.open")?.params).toMatchObject({ workspaceId: "ws", lifeosProjectId: "p-lan", forSettings: true }));
     await waitFor(() => expect(document.querySelector("[data-settings-for='mirror-1']")).toBeTruthy());
+  });
+
+  /** Council round 8 (the walk, after Sol Tasks 1): the session dropped with the sheet open, and the view took it. */
+  it("keeps the settings sheet open through a session that drops", async () => {
+    const view = render(<Screen {...props()} />);
+    fireEvent.click(await screen.findByText("Spring LAN"));
+    fireEvent.click(await screen.findByRole("button", { name: "Actions for Spring LAN" }));
+    await act(async () => {
+      fireEvent.click(await screen.findByRole("menuitem", { name: "Project settings…" }));
+    });
+    await waitFor(() => expect(document.querySelector("[data-settings-for='mirror-1']")).toBeTruthy());
+    await act(async () => view.rerender(<Screen {...props({ lifeos: { environmentId: BOX, sector: "purdue", client: null, state: "signed-out" } })} />));
+    expect(document.querySelector("[data-settings-for='mirror-1']")).toBeTruthy();
   });
 
   it("opens no sheet when the host refuses the mirror", async () => {

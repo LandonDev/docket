@@ -13,7 +13,7 @@ vi.mock("./NewTaskDialog", () => ({ NewTaskDialog: () => <div data-new-task-dial
 vi.mock("./client", async (original) => ({ ...(await original<object>()), viewsClients: () => ({ tasks: fakeTasksClient([]) }) }));
 vi.mock("convex/react", async (original) => ({ ...(await original<object>()), ConvexProvider: ({ children }: { children: unknown }) => children, useQuery: () => undefined }));
 
-const { Head, View } = await import("./TasksView");
+const { Head, Kept, View } = await import("./TasksView");
 
 afterEach(cleanup);
 
@@ -27,6 +27,7 @@ function Frame({ lifeos }: { lifeos: LifeosSession }) {
     <>
       <Head {...props} />
       <View {...props} />
+      <Kept {...props} />
     </>
   );
 }
@@ -42,6 +43,17 @@ describe("New task while the session is down", () => {
     expect(document.querySelector("[data-new-task-dialog]")).toBeNull();
     // A press while it reads opens the dialog at once.
     fireEvent.click(screen.getByRole("button", { name: "New task" }));
+    expect(document.querySelector("[data-new-task-dialog]")).toBeTruthy();
+  });
+
+  /** Council round 8 (Sol, Tasks 1 P1): the session dropped with the dialog open, and the view took the dialog with it. */
+  it("keeps an open dialog through a session that drops, and after it comes back", async () => {
+    const view = render(<Frame lifeos={READS} />);
+    fireEvent.click(screen.getByRole("button", { name: "New task" }));
+    expect(document.querySelector("[data-new-task-dialog]")).toBeTruthy();
+    await act(async () => view.rerender(<Frame lifeos={DOWN} />));
+    expect(document.querySelector("[data-new-task-dialog]")).toBeTruthy();
+    await act(async () => view.rerender(<Frame lifeos={READS} />));
     expect(document.querySelector("[data-new-task-dialog]")).toBeTruthy();
   });
 

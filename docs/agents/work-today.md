@@ -181,9 +181,14 @@ nothing.
   box" for the switch); a computer the host keeps LifeOS from ("This computer cannot read
   LifeOS through the box") with no press, since none can help. A job read
   through a narrowed session on another host that is down (`Lost.down`)
-  says that session's state by the same rule in the section it feeds,
-  "<Job>'s tasks left out" after it (`LostLine`); a computer kept from
-  LifeOS there has no Retry, and the jobs that read stay.
+  is said once for the page, not in each section it feeds: one line a host
+  and state (`lostLine` in model.ts, a `lost` block in the place of the
+  first section it fed), that session's state by the same rule, then what
+  every section left out ("Refereeing's meetings, tasks and mail left out",
+  `TodayFailure.left`); its Retry asks that host for its own sessions alone,
+  once each (`Rows.retryLost`), never another host; a computer kept from
+  LifeOS there has no press, and the jobs that read stay. A section that lost
+  a read to it says no empty line (`ShownSection.left`).
   A held calendar act's details use the same helper. A muted line with no
   press wraps across the job and time columns; one with Sign in wraps in
   the titles' column.

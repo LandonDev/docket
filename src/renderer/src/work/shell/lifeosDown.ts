@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import type { ClientRequest } from "@shared/contract";
 import { useEnvironmentStatus } from "../../lib/connection";
 import { capsMay, managedElsewhere, signInElsewhere } from "../../lib/linkMay";
@@ -84,4 +85,21 @@ export function downAction(press: DownPress | null, retry?: () => void | Promise
   if (!press) return undefined;
   const run = press === "retry" ? retry : press === "settings" ? openWorkSettings : signIn;
   return run ? { label: DOWN_PRESS_LABEL[press], run } : undefined;
+}
+
+/**
+ * Whether a form he opened over a view is drawn (`WorkViewModule.Kept`): once drawn on a session that reads, it stays
+ * through a session that drops, with what he typed (the form says the session's line and holds its submit); a press made
+ * while the session was on its way, which then went down, is dropped (`drop`), never opened by itself later.
+ */
+export function useKeptOpen(open: boolean, session: Pick<LifeosSession, "client" | "state" | "withheld" | "unanswered">, drop: () => void): boolean {
+  const [drawn, setDrawn] = useState(false);
+  const reads = !!session.client;
+  const down = !!downOf(session);
+  useEffect(() => {
+    if (!open) setDrawn(false);
+    else if (reads) setDrawn(true);
+    else if (down && !drawn) drop();
+  }, [open, reads, down, drawn, drop]);
+  return open && (drawn || reads);
 }

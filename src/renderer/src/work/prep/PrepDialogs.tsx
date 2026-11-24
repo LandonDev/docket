@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { PREP_NOTES_MAX, prepFold, type PrepAddedPerson, type PrepPage } from "@shared/contract-work-prep";
 import { DialogFooter, ErrorLine } from "../../chrome/ConfirmDialog";
 import { Search } from "../../chrome/icons";
@@ -17,6 +17,8 @@ import { choose, workViewNow } from "../../lib/workSwitch";
 import { Face } from "../mail/face";
 import { findPeople, pictureOf, type DirectoryPerson } from "../people/model";
 import { useLifeosQuery, type LifeosQuery, type LifeosSession } from "../shell/lifeos";
+import { downOf } from "../shell/lifeosDown";
+import { DownLine } from "../shell/DownLine";
 import { dropNotes, followUpFromFile, followUpPrep, heldNotes, holdNotes, keepPrepNotes, loadPrep, notesDocPrep, NotesChanged, openNotesDoc, setPrepPeople } from "./data";
 import { addedKey, fileNotes, namesInvitee, NOTES_FILE_ACCEPT, pickable, returnPicks, samePeople, threadStopped, uploadPercent } from "./model";
 
@@ -33,9 +35,11 @@ import { addedKey, fileNotes, namesInvitee, NOTES_FILE_ACCEPT, pickable, returnP
 export function AddPeopleDialog({ env, lifeos, page, faces, onClose }: { env: string; lifeos: LifeosSession; page: PrepPage; faces: ReadonlyMap<string, string>; onClose: () => void }) {
   const [pending, setPending] = useState(false);
   const directory = useLifeosQuery<DirectoryPerson[]>(lifeos, "people:directory", { sector: page.sector });
+  // The session dropped while the dialog was open: its line, with the rule's press, in the directory's failure's place.
+  const down = downOf(lifeos) ? <DownLine session={lifeos} /> : undefined;
   return (
     <Modal onClose={onClose} title="Add people" size="sm" busy={pending} data-prep-dialog="people">
-      <PeopleForm env={env} directory={directory} page={page} faces={faces} onClose={onClose} pending={pending} setPending={setPending} />
+      <PeopleForm env={env} directory={directory} page={page} faces={faces} onClose={onClose} pending={pending} setPending={setPending} down={down} />
     </Modal>
   );
 }
@@ -50,6 +54,7 @@ export function PeopleForm({
   pending,
   setPending,
   search = "",
+  down,
 }: {
   env: string;
   directory: LifeosQuery<DirectoryPerson[]>;
@@ -59,6 +64,8 @@ export function PeopleForm({
   pending: boolean;
   setPending: (p: boolean) => void;
   search?: string;
+  /** The session's line while it is down (`DownLine`), said in place of the directory's failure. */
+  down?: ReactNode;
 }) {
   const close = useModalClose();
   const [query, setQuery] = useState(search);
@@ -162,7 +169,8 @@ export function PeopleForm({
             </div>
           ) : null}
         </div>
-        <ErrorLine error={error ?? (directory.status === "failed" ? `People did not load: ${directory.error}` : null)} />
+        {down}
+        <ErrorLine error={error ?? (directory.status === "failed" && !down ? `People did not load: ${directory.error}` : null)} />
       </ModalBody>
       {/* Save is for a change: with the same people ticked as the page keeps, there is nothing to save. */}
       <DialogFooter onCancel={onClose} confirmLabel="Save" pending={pending} disabled={samePeople(picked, page.doc.people)} />

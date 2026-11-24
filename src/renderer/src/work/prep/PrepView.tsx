@@ -23,7 +23,7 @@ import { Lifeos } from "../icons";
 import { Face } from "../mail/face";
 import { faceMap, pictureOf, type FaceRow } from "../people/model";
 import { sessionWaits, useLifeosQuery, type LifeosSession } from "../shell/lifeos";
-import { downOf } from "../shell/lifeosDown";
+import { downOf, useKeptOpen } from "../shell/lifeosDown";
 import { shared, useShared } from "../tasks/store";
 import { useMinute } from "../tasks/minute";
 import type { WorkViewProps } from "../views/registry";
@@ -309,6 +309,22 @@ function useFaces(lifeos: LifeosSession): ReadonlyMap<string, string> {
   return useMemo(() => faceMap(value, base ? `${base}/api/storage/` : null), [value, base]);
 }
 
+/**
+ * Add people's dialog, the frame's (`WorkViewModule.Kept`), not the body's: a session that drops while it is open takes
+ * the page away, never what he searched and ticked. The directory it reads says the session's line in the list's place;
+ * Save is the host's own write and stays. A press made while the session was on its way, which then went down, is
+ * dropped (`useKeptOpen`).
+ */
+export function Kept(props: WorkViewProps) {
+  const eventId = useEventId(props.workspace.id);
+  const { page } = usePrepHeld(props.workspace.id, eventId);
+  const faces = useFaces(props.lifeos);
+  const open = useShared(ui);
+  useEffect(() => closeDialog, [eventId]);
+  const wanted = !!eventId && !!page && open.eventId === eventId && open.dialog === "people";
+  return useKeptOpen(wanted, props.lifeos, closeDialog) && page ? <AddPeopleDialog key={`people:${eventId}`} env={props.env} lifeos={props.lifeos} page={page} faces={faces} onClose={closeDialog} /> : null;
+}
+
 export function View(props: WorkViewProps) {
   const workspaceId = props.workspace.id;
   const eventId = useEventId(workspaceId);
@@ -321,13 +337,15 @@ export function View(props: WorkViewProps) {
   const failedPage = useRef<HTMLDivElement>(null);
   // A dialog is its own meeting's: one opened on another meeting's page is not drawn here, and it goes with the page.
   const dialog = open.eventId === eventId ? open.dialog : null;
-  // Add people reads LifeOS: asked for while the session was on its way, which then went down, it is dropped, never
-  // opened by itself later. The notes are the host's: a Notes dialog he had open comes back with the page.
-  const down = !!downOf(props.lifeos);
-  useEffect(() => {
-    if (down && ui.get().dialog === "people") closeDialog();
-  }, [down]);
-  useEffect(() => closeDialog, [eventId]);
+  // Add people is the frame's (`Kept`). The notes are the host's: a Notes dialog he had open sends what he typed as the
+  // page goes from under it, and comes back with the page.
+  // Notes go with the page (they were sent as it went); Add people stays with the frame (`Kept`).
+  useEffect(
+    () => () => {
+      if (ui.get().dialog === "notes") closeDialog();
+    },
+    [eventId],
+  );
   // Agenda keeps its day and view through a visit here (its own unmount leaves them be); leaving for anywhere but
   // Agenda or another meeting's page ends that visit, so the next opens on today's list.
   useEffect(
@@ -417,7 +435,6 @@ export function View(props: WorkViewProps) {
         onDismissOffer={() => settleOffer(workspaceId)}
         refreshError={error}
       />
-      {dialog === "people" ? <AddPeopleDialog key={`people:${eventId}`} env={props.env} lifeos={props.lifeos} page={page} faces={faces} onClose={close} /> : null}
       {dialog === "notes" ? <NotesDialog key={`notes:${eventId}`} env={props.env} page={page} onClose={close} /> : null}
     </>
   );

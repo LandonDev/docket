@@ -42,6 +42,12 @@ export interface WorkViewModule {
   Head?: (props: WorkViewProps) => ReactNode;
   /** In place of the view's name in the header, for a view that stands somewhere inside itself: the way back from a project's page. Until the chunk lands the header shows the name. */
   Title?: (props: WorkViewProps) => ReactNode;
+  /**
+   * A form he has open over the view (New task, New event), drawn by the frame beside the body, never inside it: a
+   * session that drops takes the body away, never what he typed. The form says the session's line itself (`DownLine`)
+   * and holds its submit until the session is back.
+   */
+  Kept?: (props: WorkViewProps) => ReactNode;
 }
 
 export interface WorkViewDef {

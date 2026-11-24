@@ -53,6 +53,9 @@ vi.mock("../canvas/held", async (original) => ({ ...(await original<object>()), 
 vi.mock("../../lib/connection", async (original) => ({
   ...(await original<object>()),
   registry: {
+    environment: () => ({ id: "box", name: "The box" }),
+    statusOf: () => ({ transport: "open" }),
+    subscribe: () => () => {},
     linkOf: () => ({
       onPush: (fn: (push: Record<string, unknown>) => void) => {
         host.pushes.push(fn);
@@ -125,7 +128,7 @@ vi.mock("../shell/lifeos", async (original) => ({
   },
 }));
 
-const { View, Head, Title, PrepPageBody } = await import("./PrepView");
+const { View, Head, Title, Kept, PrepPageBody } = await import("./PrepView");
 const { resetPrep } = await import("./data");
 const { workOpenPort } = await import("../../lib/workSwitch");
 const { forgetOffered } = await import("../msforms/offer");
@@ -169,20 +172,23 @@ const facts = (over: Partial<PrepPage> = {}): PrepPage => ({
 let started: ContextChip[];
 const props = (): WorkViewProps =>
   ({ env: "box", workspace: { id: "ws", environmentId: "box" }, sector: "purdue", lifeos: { client: {}, state: "connected" }, startThread: (c: ContextChip) => void started.push(c) }) as never;
+const tree = (p: WorkViewProps = props()) => (
+  <>
+    {/* The frame's own heading, where it puts a caret left on nothing (WorkViewPage). */}
+    <div data-testid="title" data-view-heading="" tabIndex={-1}>
+      <Title {...p} />
+    </div>
+    <div data-testid="head">
+      <Head {...p} />
+    </div>
+    <View {...p} />
+    {/* Add people is the frame's, beside the body (WorkViewPage `Kept`). */}
+    <Kept {...p} />
+  </>
+);
 const mount = async () => {
   openWorkView({ workspaceId: "ws", view: "prep", event: "ev1" });
-  const view = render(
-    <>
-      {/* The frame's own heading, where it puts a caret left on nothing (WorkViewPage). */}
-      <div data-testid="title" data-view-heading="" tabIndex={-1}>
-        <Title {...props()} />
-      </div>
-      <div data-testid="head">
-        <Head {...props()} />
-      </div>
-      <View {...props()} />
-    </>,
-  );
+  const view = render(tree());
   await act(async () => {});
   return view;
 };
@@ -1128,6 +1134,19 @@ describe("after the meeting", () => {
     fireEvent.change(dialog.getByLabelText("Notes"), { target: { value: "Dana drives. Tom brings the form." } });
     await act(async () => fireEvent.click(dialog.getByRole("button", { name: "Follow up" })));
     expect(host.asked.find((a) => a.method === "work.prep.followUp")!.params).toEqual({ workspaceId: "ws", eventId: "ev1", restart: true });
+  });
+
+  /** Council round 8 (walk, after Sol Tasks 1): the session dropped with Add people open, and the page took the dialog with it. */
+  it("keeps Add people and what he searched through a session that drops: the session's line in the directory's place", async () => {
+    const view = await mount();
+    await more("Add people…");
+    fireEvent.change(screen.getByLabelText("Search people"), { target: { value: "Dana" } });
+    const down = { ...props(), lifeos: { environmentId: "box", sector: "purdue", client: null, state: "unreachable", unanswered: true } } as never;
+    await act(async () => view.rerender(tree(down)));
+    const dialog = within(screen.getByRole("dialog", { name: "Add people" }));
+    expect((dialog.getByLabelText("Search people") as HTMLInputElement).value).toBe("Dana");
+    expect(document.querySelector('[data-session-down="unanswered"]')).toBeTruthy();
+    expect(dialog.queryByText(/People did not load/)).toBeNull();
   });
 
   it("opens a refused draft again only on its own meeting's page, and never over another dialog", async () => {

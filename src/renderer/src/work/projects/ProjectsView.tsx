@@ -2,6 +2,8 @@ import { ConvexProvider } from "convex/react";
 import { makeFunctionReference } from "convex/server";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useState } from "react";
 import { sessionWaits, sessionWords } from "../shell/lifeos";
+import { useKeptOpen } from "../shell/lifeosDown";
+import { shared, useShared } from "../tasks/store";
 import { createLifeosProjectsClient, type SectorKey as KitSector } from "work-kit/lifeos";
 import { projectPlace, Projects, ProjectsClientProvider, ProjectsKitProvider, type Project, type ProjectsPlace, type ProjectTask } from "work-kit/projects";
 import "work-kit/projects/styles.css";
@@ -43,6 +45,21 @@ export function Head(_props: WorkViewProps) {
   return <BarControls />;
 }
 
+/** The Work project whose settings sheet is open: the frame's (`Kept`), so a session that drops never takes what he typed. */
+const settingsOpen = shared<ProjectMeta | null>(null);
+const closeSettings = (): void => settingsOpen.set(null);
+
+/**
+ * Project settings…, the frame's (`WorkViewModule.Kept`), not the body's: the sheet reads the session itself and says
+ * its line while it is down (`ProjectSettings`), so a drop takes the projects away, never the name he typed. A press made
+ * while the session was on its way, which then went down, is dropped (`useKeptOpen`).
+ */
+export function Kept({ workspace, lifeos }: WorkViewProps) {
+  const project = useShared(settingsOpen);
+  useEffect(() => closeSettings, []);
+  return useKeptOpen(project !== null, lifeos, closeSettings) && project ? <ProjectSettingsDialog project={project} workspace={workspace} onClose={closeSettings} /> : null;
+}
+
 export function View(props: WorkViewProps) {
   const { env, workspace, sector, lifeos, startThread } = props;
   const convex = lifeos.client;
@@ -75,8 +92,6 @@ export function View(props: WorkViewProps) {
   }, [project, task, workspace.id, convex]);
   const [coding, setCoding] = useState<ProjectTask | null>(null);
   const [linking, setLinking] = useState<{ project: Project; kind: LinkKind } | null>(null);
-  // Project settings… in a project's menu: the Work project's sheet, on the project's mirror.
-  const [settingsFor, setSettingsFor] = useState<ProjectMeta | null>(null);
   // What the kit reads at a press, set after each commit.
   useLayoutEffect(() => {
     setProjectsHost({
@@ -85,7 +100,7 @@ export function View(props: WorkViewProps) {
       startThread,
       codeThread: setCoding,
       link: (project, kind) => setLinking({ project, kind }),
-      settings: setSettingsFor,
+      settings: (project) => settingsOpen.set(project),
       // LifeOS makes the sheet in the project's own sector; it shows in Documents as the page's live read lands.
       newSheet: async (project) => {
         // A session with no client says its true state, the computer named (`sessionWords`), never a sign-out it is not.
@@ -102,7 +117,6 @@ export function View(props: WorkViewProps) {
         <ProjectsClientProvider client={client}>
           <div className="tc-projects h-full min-h-0">{doc ? <DocInPlace env={env} workspaceId={workspace.id} doc={doc} /> : <Projects sector={sector as KitSector} place={place} onPlace={onPlace} />}</div>
           {coding ? <CodeThreadDialog task={{ _id: coding.id, title: coding.title }} sector={sector} onStart={startThread} onClose={() => setCoding(null)} /> : null}
-          {settingsFor ? <ProjectSettingsDialog project={settingsFor} workspace={workspace} onClose={() => setSettingsFor(null)} /> : null}
           {linking ? <LinkPicker env={env} workspaceId={workspace.id} project={linking.project} kind={linking.kind} onClose={() => setLinking(null)} /> : null}
         </ProjectsClientProvider>
       </ProjectsKitProvider>

@@ -1,6 +1,6 @@
-import { useMutation } from "convex/react";
+import { ConvexProvider, useMutation } from "convex/react";
 import { makeFunctionReference } from "convex/server";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { SectorKey } from "@shared/work";
 import { DialogFooter, ErrorLine } from "../../chrome/ConfirmDialog";
 import { Field } from "../../chrome/DialogField";
@@ -9,6 +9,9 @@ import { Input } from "../../components/ui/input";
 import { loadToast } from "../../components/ui/toaster";
 import { workErrorWords } from "../../lib/workErrorWords";
 import { jobNameNow } from "../jobName";
+import type { LifeosSession } from "../shell/lifeos";
+import { downOf } from "../shell/lifeosDown";
+import { DownLine } from "../shell/DownLine";
 
 /**
  * New task (prototype workspace.html, the Tasks header's verb): a plain write
@@ -26,12 +29,26 @@ export const dueOf = (day: string): number | undefined => (day ? new Date(`${day
 /** Who files the task in place of the plain write: Mail's Make task, which also links it to its mail. */
 export type FileTask = (task: { title: string; dueAt?: number }) => Promise<void> | void;
 
+type Writes = { add: (args: Record<string, unknown>) => Promise<unknown>; undo: (args: { key: string }) => Promise<unknown> };
+
+/** The form's writes, made only while there is a client to make them through: none while the session is down. */
+function Live({ onWrites }: { onWrites: (writes: Writes | null) => void }) {
+  const add = useMutation(create);
+  const undo = useMutation(takeBack);
+  useEffect(() => {
+    onWrites({ add, undo });
+    return () => onWrites(null);
+  }, [add, undo, onWrites]);
+  return null;
+}
+
 export function NewTaskDialog({
   sector,
   initial,
   file,
   onAdded,
   onClose,
+  session,
 }: {
   sector: SectorKey;
   /** what the form starts with (a mail chat's proposed task); he still saves it */
@@ -40,11 +57,17 @@ export function NewTaskDialog({
   /** after his Add went through */
   onAdded?: () => void;
   onClose: () => void;
+  /**
+   * The session it writes through, where the form outlives the view's body (`WorkViewModule.Kept`): while it is down,
+   * the form keeps what he typed, says its line (`DownLine`) and holds Add. Without it, the form writes through the
+   * Convex client around it.
+   */
+  session?: LifeosSession;
 }) {
   const [pending, setPending] = useState(false);
   return (
     <Modal onClose={onClose} title="New task" size="sm" busy={pending}>
-      <Body sector={sector} initial={initial} file={file} onAdded={onAdded} onClose={onClose} pending={pending} setPending={setPending} />
+      <Body sector={sector} initial={initial} file={file} onAdded={onAdded} onClose={onClose} pending={pending} setPending={setPending} session={session} />
     </Modal>
   );
 }
@@ -57,6 +80,7 @@ function Body({
   onClose,
   pending,
   setPending,
+  session,
 }: {
   sector: SectorKey;
   initial?: { title?: string; due?: string };
@@ -65,16 +89,19 @@ function Body({
   onClose: () => void;
   pending: boolean;
   setPending: (p: boolean) => void;
+  session?: LifeosSession;
 }) {
   const close = useModalClose();
-  const add = useMutation(create);
-  const undo = useMutation(takeBack);
+  const [writes, setWrites] = useState<Writes | null>(null);
+  const down = session && downOf(session) ? session : null;
   const [title, setTitle] = useState(initial?.title ?? "");
   const [due, setDue] = useState(initial?.due ?? "");
   const [error, setError] = useState<string | null>(null);
   const save = () => {
     const words = title.trim();
     if (!words) return setError("Say what to do");
+    if (!file && !writes) return;
+    const { add, undo } = writes!;
     const key = crypto.randomUUID();
     const dueAt = dueOf(due);
     setError(null);
@@ -114,7 +141,18 @@ function Body({
         save();
       }}
     >
+      {session ? (
+        session.client ? (
+          <ConvexProvider client={session.client}>
+            <Live onWrites={setWrites} />
+          </ConvexProvider>
+        ) : null
+      ) : (
+        <Live onWrites={setWrites} />
+      )}
       <ModalBody>
+        {/* The session dropped while the form was open: its line, with the rule's press; what he typed stays. */}
+        {down ? <DownLine session={down} /> : null}
         <Field label="Task">
           <Input autoFocus value={title} onChange={(e) => setTitle(e.target.value)} autoComplete="off" />
         </Field>
@@ -123,7 +161,7 @@ function Body({
         </Field>
         <ErrorLine error={error} />
       </ModalBody>
-      <DialogFooter onCancel={onClose} confirmLabel="Add" pending={pending} />
+      <DialogFooter onCancel={onClose} confirmLabel="Add" pending={pending} disabled={!file && !writes} />
     </form>
   );
 }

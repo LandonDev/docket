@@ -1,6 +1,6 @@
-import { useConvex, useMutation, useQuery } from "convex/react";
+import { ConvexProvider, useConvex, useMutation, useQuery, type ConvexReactClient } from "convex/react";
 import { makeFunctionReference } from "convex/server";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { SectorKey } from "@shared/work";
 import { DialogFooter, ErrorLine } from "../../chrome/ConfirmDialog";
 import { Field } from "../../chrome/DialogField";
@@ -12,6 +12,9 @@ import { workErrorWords } from "../../lib/workErrorWords";
 import { jobNameNow } from "../jobName";
 import { tellAdded } from "./added";
 import { eventPayload, type EventForm, pad } from "./newEvent";
+import type { LifeosSession } from "../shell/lifeos";
+import { downOf } from "../shell/lifeosDown";
+import { DownLine } from "../shell/DownLine";
 
 /**
  * New event (prototype workspace.html, the Agenda header's verb): a calendar
@@ -26,12 +29,34 @@ const sourcesList = makeFunctionReference<"query">("sources:list");
 const save = makeFunctionReference<"mutation">("calendarOps:save");
 const send = makeFunctionReference<"mutation">("calendarOps:send");
 
+type Writes = { saveOp: (args: Record<string, unknown>) => Promise<string>; sendOp: (args: Record<string, unknown>) => Promise<unknown>; convex: ConvexReactClient };
+
+/**
+ * What the form reads and writes through a client: the job's calendars and the two writes. Mounted only while there is a
+ * client; the form keeps the calendars it last read and what he typed while there is none.
+ */
+function Live({ onWrites, onSources }: { onWrites: (writes: Writes | null) => void; onSources: (sources: Source[]) => void }) {
+  const sources = useQuery(sourcesList, {}) as Source[] | undefined;
+  const saveOp = useMutation(save) as Writes["saveOp"];
+  const sendOp = useMutation(send);
+  const convex = useConvex();
+  useEffect(() => {
+    if (sources !== undefined) onSources(sources);
+  }, [sources, onSources]);
+  useEffect(() => {
+    onWrites({ saveOp, sendOp, convex });
+    return () => onWrites(null);
+  }, [saveOp, sendOp, convex, onWrites]);
+  return null;
+}
+
 export function NewEventDialog({
   sector,
   startsAt,
   initial,
   onAdded,
   onClose,
+  session,
 }: {
   sector: SectorKey;
   startsAt: number | null;
@@ -40,11 +65,17 @@ export function NewEventDialog({
   /** after his Add went through */
   onAdded?: () => void;
   onClose: () => void;
+  /**
+   * The session it writes through, where the form outlives the view's body (`WorkViewModule.Kept`): while it is down,
+   * the form keeps what he typed, says its line (`DownLine`) and holds Add. Without it, the form reads and writes
+   * through the Convex client around it.
+   */
+  session?: LifeosSession;
 }) {
   const [pending, setPending] = useState(false);
   return (
     <Modal onClose={onClose} title="New event" size="sm" busy={pending}>
-      <Body sector={sector} startsAt={startsAt} initial={initial} onAdded={onAdded} onClose={onClose} pending={pending} setPending={setPending} />
+      <Body sector={sector} startsAt={startsAt} initial={initial} onAdded={onAdded} onClose={onClose} pending={pending} setPending={setPending} session={session} />
     </Modal>
   );
 }
@@ -66,6 +97,7 @@ function Body({
   onClose,
   pending,
   setPending,
+  session,
 }: {
   sector: SectorKey;
   startsAt: number | null;
@@ -74,13 +106,13 @@ function Body({
   onClose: () => void;
   pending: boolean;
   setPending: (p: boolean) => void;
+  session?: LifeosSession;
 }) {
   const close = useModalClose();
-  const sources = useQuery(sourcesList, {}) as Source[] | undefined;
+  const [sources, setSources] = useState<Source[] | undefined>(undefined);
+  const [writes, setWrites] = useState<Writes | null>(null);
+  const down = session && downOf(session) ? session : null;
   const calendars = (sources ?? []).filter((s) => s.kind === "gcal" && s.enabled && s.sector === sector);
-  const saveOp = useMutation(save);
-  const sendOp = useMutation(send);
-  const convex = useConvex();
   // A slot picked in the week, else the next whole hour.
   const start = startsAt ?? Math.ceil(Date.now() / 3_600_000) * 3_600_000;
   const [form, setForm] = useState<EventForm>({ title: "", day: dayOf(start), from: timeOf(start), to: timeOf(start + 3_600_000), where: "", invite: "", ...initial });
@@ -95,7 +127,8 @@ function Body({
 
   const submit = () => {
     if (typeof made === "string") return setError(made);
-    if (!sourceId) return;
+    if (!sourceId || !writes) return;
+    const { saveOp, sendOp, convex } = writes;
     setError(null);
     setPending(true);
     saveOp({ kind: "create", sourceId, payload: made })
@@ -123,7 +156,18 @@ function Body({
         submit();
       }}
     >
+      {session ? (
+        session.client ? (
+          <ConvexProvider client={session.client}>
+            <Live onWrites={setWrites} onSources={setSources} />
+          </ConvexProvider>
+        ) : null
+      ) : (
+        <Live onWrites={setWrites} onSources={setSources} />
+      )}
       <ModalBody>
+        {/* The session dropped while the form was open: its line, with the rule's press; what he typed stays. */}
+        {down ? <DownLine session={down} /> : null}
         <Field label="Event">
           <Input autoFocus value={form.title} onChange={(e) => patch({ title: e.target.value })} autoComplete="off" />
         </Field>
@@ -156,7 +200,7 @@ function Body({
         ) : null}
         <ErrorLine error={error} />
       </ModalBody>
-      <DialogFooter onCancel={onClose} confirmLabel={asks ? "Send invites" : "Add"} pending={pending} disabled={sources === undefined || none} />
+      <DialogFooter onCancel={onClose} confirmLabel={asks ? "Send invites" : "Add"} pending={pending} disabled={sources === undefined || none || !writes} />
     </form>
   );
 }
