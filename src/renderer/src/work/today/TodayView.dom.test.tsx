@@ -441,7 +441,10 @@ describe("Today", () => {
     };
     resetToday([held, failing]);
     render(<View onClose={() => {}} />);
-    const lines = [...section("money").querySelectorAll<HTMLElement>("[data-view-state]")];
+    // Said once for the page, not in the section (council round 8): the section keeps no empty line beside them.
+    const lines = [...document.querySelectorAll<HTMLElement>("[data-today-lost] [data-view-state]")];
+    expect(section("money").querySelector("[data-view-state]")).toBeNull();
+    expect(section("money").textContent).not.toContain("Nothing owed");
     expect(lines.map((line) => line.textContent)).toEqual(["This computer cannot read LifeOS through MacRefereeing's tasks left out", "The box did not answerHypixel's tasks left outRetry"]);
     expect(within(lines[0]!).queryByRole("button")).toBeNull();
     fireEvent.click(within(lines[1]!).getByRole("button", { name: "Retry" }));

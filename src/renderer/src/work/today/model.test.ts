@@ -283,6 +283,54 @@ describe("page", () => {
   });
 });
 
+/** Council round 8 (Sol, Today 1): a second host's job session down was said in Meetings, Due and Waiting on others each. */
+describe("a job's session on another host that is down", () => {
+  const WAITING: TodaySection = { id: "waiting", title: "Waiting on others", order: 40, empty: "No one owes you a reply", lifeos: true };
+  const jobs = [job("box", "purdue"), job("mac", "ref"), job("mac", "unify")];
+  const lost = (environmentId: string, sector: string, what: string, down: "unanswered" | "withheld" | "signed-out", retry?: () => void) => ({
+    environmentId,
+    error: "x",
+    down,
+    sector: sector as TodayWorkspace["sector"],
+    left: { job: sector === "ref" ? "Refereeing" : "Unify", what },
+    said: "each",
+    ...(retry ? { retry } : {}),
+  });
+
+  it("is said once for the page, a line a host and state, naming what every section left out; the sections keep no line and no empty words", () => {
+    const mac = vi.fn();
+    const at = page(
+      [
+        fed("meetings", MEETINGS, { rows: [], failed: [lost("mac", "ref", "meetings", "unanswered", mac)] }),
+        fed("due", DUE, { rows: [row("t1", "due")], failed: [lost("mac", "ref", "tasks", "unanswered", mac), lost("mac", "unify", "tasks", "withheld")] }),
+        fed("waiting", WAITING, { rows: [], failed: [lost("mac", "ref", "mail", "unanswered", mac)] }),
+      ],
+      { jobs, lifeos: "ok" },
+    );
+    expect(at.kind).toBe("day");
+    if (at.kind !== "day") return;
+    const lines = at.blocks.flatMap((b) => (b.kind === "lost" ? [b.failure] : []));
+    expect(lines.map((f) => [f.environmentId, f.down, f.said])).toEqual([
+      ["mac", "unanswered", "Refereeing's meetings, tasks and mail left out"],
+      // One host, two sessions in two states: two lines, never folded into one.
+      ["mac", "withheld", "Unify's tasks left out"],
+    ]);
+    // The first line sits in the place of the first section it fed.
+    expect(at.blocks[0]).toMatchObject({ kind: "lost" });
+    const sections = at.blocks.flatMap((b) => (b.kind === "section" ? [b.section] : []));
+    expect(sections.every((s) => s.failed.length === 0 && s.left)).toBe(true);
+    // One Retry for the line, asking that host's session once; a computer kept from LifeOS has none.
+    void lines[0]!.retry!();
+    expect(mac).toHaveBeenCalledTimes(1);
+    expect(lines[1]!.retry).toBeUndefined();
+  });
+
+  it("is never All clear while a read is lost to it", () => {
+    const at = page([fed("due", DUE, { rows: [], failed: [lost("mac", "ref", "tasks", "signed-out")] })], { jobs, lifeos: "ok" });
+    expect(at.kind).toBe("day");
+  });
+});
+
 describe("the jobs", () => {
   const catalog = [
     { id: "w1", environmentId: "box", name: "Purdue Esports", path: "/w/purdue", kind: "work", sector: "purdue" },

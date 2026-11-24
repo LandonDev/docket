@@ -107,7 +107,17 @@ export type TodaySection = {
  * A read that did not come back. `down`: the read went through a LifeOS session on `environmentId` that is down (a
  * job's narrowed session on another host), said by the rule (`downWords`) with `said` after it and the rule's press.
  */
-export type TodayFailure = { environmentId: string; error: string; said?: string; down?: LifeosDown; retry?(): void | Promise<void> };
+export type TodayFailure = {
+  environmentId: string;
+  error: string;
+  said?: string;
+  down?: LifeosDown;
+  /** With `down`: the job and what of it the down session left out ("Refereeing", "meetings"); the page says it once for every section (model.ts `page`). */
+  left?: { job?: string; what: string };
+  /** With `down`: the sector of the session that is down, so Retry asks that host for that session alone. */
+  sector?: SectorKey | null;
+  retry?(): void | Promise<void>;
+};
 
 export type TodayAnswer = {
   rows?: TodayRow[];

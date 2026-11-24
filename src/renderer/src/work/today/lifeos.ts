@@ -1,5 +1,5 @@
 import { makeFunctionReference } from "convex/server";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import type { SectorKey } from "@shared/work";
 import { loadToast } from "../../components/ui/toaster";
 import { reopenLifeos, sessionWaits, sessionWords, useLifeosQuery, useLifeosSession, type LifeosQuery, type LifeosSession } from "../shell/lifeos";
@@ -93,8 +93,13 @@ export type Rows<T> = {
   pending: boolean;
   /** The reads beside the first that failed: `rows` lacks what they would have brought. */
   lost: readonly Lost[];
-  /** Ask again: every read is dropped and made afresh, and a session that failed is opened again. */
+  /** Ask again: every read is dropped and made afresh. */
   retry(): Promise<void>;
+  /**
+   * Ask again for one lost read: its own host and session alone (`reopenLifeos`), never another's. A down session's
+   * read comes back by itself once the session reads; any other is dropped and made afresh.
+   */
+  retryLost(lost: Lost): Promise<void>;
   /** The session a row of this sector was read through, and so the one its writes go through: the sector's own narrowed session where the first one lacks it. */
   sessionOf(sector: SectorKey): LifeosSession;
 };
@@ -143,13 +148,13 @@ export function useLifeosRows<V, T>(env: TodayEnv, name: string, args: Record<st
   }, [first, sa, sb, sc, sd, se, sf]);
   // eslint-disable-next-line react-hooks/exhaustive-deps -- the cover by its value
   const uncovered = useMemo(() => uncoveredOf(cover, env.workspaces, host), [coverKey, env.workspaces, host]);
-  const lostNow = useRef<readonly Lost[]>(NO_LOST);
-  const retry = useCallback(async () => {
-    await Promise.all(lostNow.current.map((lost) => reopenLifeos(lost.environmentId, lost.sector).catch(() => {})));
-    setResting(true);
+  const retry = useCallback(async () => setResting(true), []);
+  const retryLost = useCallback(async (lost: Lost) => {
+    await reopenLifeos(lost.environmentId, lost.sector).catch(() => {});
+    if (!lost.down) setResting(true);
   }, []);
   const read = useMemo<Rows<T>>(() => {
-    if (main.status !== "ready") return { rows: null, error: main.status === "failed" ? main.error : null, pending: false, lost: NO_LOST, retry, sessionOf };
+    if (main.status !== "ready") return { rows: null, error: main.status === "failed" ? main.error : null, pending: false, lost: NO_LOST, retry, retryLost, sessionOf };
     const seen = new Set<string>();
     const rows: T[] = [];
     const lost: Lost[] = caller.status === "failed" ? [{ environmentId: host, sector: null, error: caller.error }] : [];
@@ -172,13 +177,10 @@ export function useLifeosRows<V, T>(env: TodayEnv, name: string, args: Record<st
     });
     // A job whose sector no open host's session covers: its rows are missing, and nothing is on its way.
     for (const sector of uncovered) lost.push({ environmentId: host, sector, error: NOT_COVERED });
-    return { rows, error: null, pending, lost: lost.length ? lost : NO_LOST, retry, sessionOf };
+    return { rows, error: null, pending, lost: lost.length ? lost : NO_LOST, retry, retryLost, sessionOf };
     // `pick` and `idOf` are the caller's constants.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [main, caller, a, b, c, d, e, f, lacking, uncovered, host, retry, sessionOf]);
-  useEffect(() => {
-    lostNow.current = read.lost;
-  }, [read.lost]);
+  }, [main, caller, a, b, c, d, e, f, lacking, uncovered, host, retry, retryLost, sessionOf]);
   return read;
 }
 
@@ -193,30 +195,32 @@ const NO_ARGS = {};
  * (`jobName`).
  */
 export function answerOf(
-  read: Pick<Rows<unknown>, "error" | "pending" | "lost" | "retry">,
+  read: Pick<Rows<unknown>, "error" | "pending" | "lost" | "retry" | "retryLost">,
   rows: TodayRow[] | null,
   lifeos: LifeosSession,
   what: string,
   note?: string,
   jobName?: (sector: SectorKey) => string | undefined,
 ): TodayAnswer {
-  const failure = (environmentId: string, error: string, sector?: SectorKey | null, down?: LifeosDown | null): TodayFailure => {
-    const of = `${sector && jobName?.(sector) ? `${jobName(sector)}'s ` : ""}${what}`;
+  const failure = (lost: Lost): TodayFailure => {
+    const { environmentId, error, sector, down } = lost;
+    const job = sector ? jobName?.(sector) : undefined;
+    const of = `${job ? `${job}'s ` : ""}${what}`;
     // No session covers the job: asking again reads with the same cover, so the line says the cause and offers no Retry.
     // It goes by itself when a host that can read the job is back.
     if (error === NOT_COVERED) return { environmentId, error, said: `No signed-in host can read ${of}` };
-    // The job's own session, on another host, is down: its state by the rule, with the rows it left out after it; its
-    // press is the rule's (`downPress`), Retry only for silence.
-    if (down) return { environmentId, error, down, said: `${of.charAt(0).toUpperCase()}${of.slice(1)} left out`, retry: read.retry };
-    return { environmentId, error, said: `LifeOS could not read ${of}`, retry: read.retry };
+    // The job's own session, on another host, is down: said once for the page (model.ts `page`), its state by the rule
+    // with what it left out; its press is the rule's (`downPress`), and its Retry asks that host for that session alone.
+    if (down) return { environmentId, error, down, sector, left: { ...(job ? { job } : {}), what }, said: `${of.charAt(0).toUpperCase()}${of.slice(1)} left out`, retry: () => read.retryLost(lost) };
+    return { environmentId, error, said: `LifeOS could not read ${of}`, retry: () => read.retryLost(lost) };
   };
   // A session that is down is the page's one line (model.ts `page`), never each section's.
-  if (read.error && !sessionDown(lifeos)) return { rows: [], failed: [failure(lifeos.environmentId, read.error)] };
+  if (read.error && !sessionDown(lifeos)) return { rows: [], failed: [{ environmentId: lifeos.environmentId, error: read.error, said: `LifeOS could not read ${what}`, retry: read.retry }] };
   if (!rows) return { loading: true };
   return {
     rows,
     ...(read.pending ? { loading: true } : {}),
-    ...(read.lost.length ? { failed: read.lost.map((lost) => failure(lost.environmentId, lost.error, lost.sector, lost.down)) } : {}),
+    ...(read.lost.length ? { failed: read.lost.map(failure) } : {}),
     ...(note ? { note } : {}),
   };
 }

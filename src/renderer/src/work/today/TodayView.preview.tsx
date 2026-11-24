@@ -65,7 +65,7 @@ const job = (environmentId: string, sector: TodayWorkspace["sector"], open = tru
 const JOBS = (["cosmic", "hypixel", "purdue", "ref", "unify", "life"] as const).map((sector) => job("box", sector));
 const fed = (section: TodaySection, answer: TodayAnswer): Fed => ({ source: { id: section.id, section }, answer });
 
-type State = "day" | "unfolded" | "bones" | "empty" | "hosts" | "refused" | "lifeos-down" | "unanswered" | "unanswered-long" | "sign-in-refused" | "signed-out" | "withheld" | "pairing" | "clear" | "evening" | "pillars" | "long-job" | "no-jobs" | "sheet" | "sheet-next";
+type State = "day" | "unfolded" | "bones" | "empty" | "hosts" | "lost-elsewhere" | "refused" | "lifeos-down" | "unanswered" | "unanswered-long" | "sign-in-refused" | "signed-out" | "withheld" | "pairing" | "clear" | "evening" | "pillars" | "long-job" | "no-jobs" | "sheet" | "sheet-next";
 
 /** A job by its workspace's name, as the rail says it. */
 
@@ -88,6 +88,21 @@ function modelOf(state: State) {
         [fed(HELD, { rows: HELD_ROWS.slice(0, 1), failed: [{ environmentId: "box", error: TIMED_OUT, retry: noop }] }), fed(MEETINGS, { rows: MEETING_ROWS.slice(2) }), fed(DUE, { rows: DUE_ROWS.slice(0, 3) }), fed(WAITING, {}), fed(FILES, { failed: [{ environmentId: "box", error: "Work is off on this host", retry: noop }] })],
         opts("ok", [...JOBS, job("mac", "purdue", false)]),
       );
+    case "lost-elsewhere": {
+      // The jobs on the Mac are read through its own sessions: one silent, one kept from this computer. Each is one line
+      // for the page, naming what every section left out (council round 8).
+      const lost = (sector: "ref" | "unify", what: string, down: "unreachable" | "withheld") => ({ environmentId: "mac", error: "x", down, sector, said: `${JOB_NAMES[sector]!}'s ${what} left out`, left: { job: JOB_NAMES[sector]!, what }, ...(down === "unreachable" ? { retry: noop } : {}) });
+      return page(
+        [
+          fed(HELD, { rows: HELD_ROWS.slice(0, 1) }),
+          fed(MEETINGS, { rows: MEETING_ROWS.slice(2), failed: [lost("ref", "meetings", "unreachable")] }),
+          fed(DUE, { rows: DUE_ROWS.slice(0, 3), failed: [lost("ref", "tasks", "unreachable"), lost("unify", "tasks", "withheld")] }),
+          fed(WAITING, { rows: [], failed: [lost("ref", "mail", "unreachable")] }),
+          fed(FILES, {}),
+        ],
+        opts("ok", [...JOBS.filter((j) => j.sector !== "ref" && j.sector !== "unify"), job("mac", "ref"), job("mac", "unify")]),
+      );
+    }
     case "refused":
       return page(
         [fed(HELD, { rows: HELD_ROWS.slice(0, 1) }), fed(MEETINGS, { rows: MEETING_ROWS.slice(2) }), fed(DUE, { rows: [], failed: [{ environmentId: "box", error: "Uncaught Error", said: "LifeOS could not read tasks", retry: noop }] }), fed(WAITING, { rows: WAITING_ROWS }), fed(FILES, {})],

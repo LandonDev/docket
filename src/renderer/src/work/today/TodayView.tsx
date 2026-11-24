@@ -225,6 +225,11 @@ export function TodayPageView({
       {model.blocks.map((block) =>
         block.kind === "section" ? (
           <Section key={block.section.id} section={block.section} hostName={hostName} jobName={jobName} phaseOf={phaseOf} stop={stop} />
+        ) : block.kind === "lost" ? (
+          // A job's session on another host that is down: said once for the page, with what every section left out.
+          <div key={`lost:${block.failure.environmentId}:${block.failure.down}`} data-today-lost={block.failure.down} className="mt-6 first:mt-0">
+            <HostLine failure={block.failure} name={hostName(block.failure.environmentId)} />
+          </div>
         ) : (
           <div key="lifeos" data-today-lifeos={block.reach} className="mt-6 first:mt-0">
             <LifeosLine down={block.reach} environmentId={lifeosEnv ?? ""} host={lifeosHost} retry={onRetryLifeos} />
@@ -296,7 +301,7 @@ function Section({
   const lands = (key: string): boolean => known.keys !== null && !known.keys.has(key);
   // A host that did not answer is said, and the section never says "nothing" beside it; nor while a read it needs is
   // lost to a host that is offline (the page's foot names the host).
-  const unknown = (section.failed.length > 0 || section.away) && section.state !== "rows";
+  const unknown = (section.failed.length > 0 || section.away || !!section.left) && section.state !== "rows";
   return (
     <section aria-label={section.title} data-today-section={section.id} className="mt-6 flex flex-col first:mt-0">
       <h2 className="flex h-7 items-center px-3 text-xs font-medium text-muted-foreground">{section.title}</h2>
@@ -421,7 +426,8 @@ function LostLine({ down, failure, name }: { down: LifeosDown; failure: TodayFai
   const { action, dialog } = useDownAction(press, failure.environmentId, failure.retry);
   return (
     <>
-      {downIsSilence(down) ? <PageLine failed word={word} detail={failure.said} action={action} /> : <PageLine word={word} note={[failure.said, elsewhere]} action={action} />}
+      {/* What it left out is its own muted line under the state: the computer's name and the jobs both stay whole. */}
+      {downIsSilence(down) ? <PageLine failed word={word} note={failure.said} action={action} /> : <PageLine word={word} note={[failure.said, elsewhere]} action={action} />}
       {dialog}
     </>
   );
@@ -459,7 +465,11 @@ function PageLine({ word, detail, note, failed = false, action }: { word: string
           line is the state itself: it wraps, never cut, and with no press it takes the columns the press would have. */}
       {failed ? (
         // The word is the state itself, a computer named in it: it wraps beside the press, never cut with no way to read it.
-        <StatusMark state="failed" glyph={false} wrap word={word} detail={detail ? <CutDetail text={detail} /> : undefined} className="min-w-0" />
+        // A note (what a down session left out) is a muted line of its own under it.
+        <span className="flex min-w-0 flex-col">
+          <StatusMark state="failed" glyph={false} wrap word={word} detail={detail ? <CutDetail text={detail} /> : undefined} className="min-w-0" />
+          {[note ?? []].flat().map((line) => (line ? <span key={line} data-page-line-note className="text-xs text-pretty text-muted-foreground">{line}</span> : null))}
+        </span>
       ) : (
         <span data-page-line-words className={cn("min-w-0 text-xs text-pretty text-muted-foreground", !action && "col-span-3")}>
           {word}

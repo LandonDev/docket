@@ -85,6 +85,8 @@ export type MergedSection = {
   failed: TodayFailure[];
   /** A read it needs failed on, or skipped, a host whose link is not open: the foot says so, and the section never says it is empty. */
   away: boolean;
+  /** A read it needs is lost to a down session the page says once (`page`): the section never says it is empty. */
+  left?: boolean;
   /** One muted line at its foot, from the source that owns it. */
   note?: string;
 };
@@ -118,7 +120,8 @@ export function merge(fed: readonly Fed[], gone: ReadonlySet<string> = NO_KEYS):
     const own = source.section ? sections.get(source.section.id) : undefined;
     // The same line twice (two sources that say one thing of one host) is drawn once.
     const into = (own ?? sections.get(ALSO.id)!).failed;
-    for (const f of answer.failed ?? []) if (!into.some((g) => g.environmentId === f.environmentId && g.said === f.said && g.error === f.error)) into.push(f);
+    // Two down sessions of one host (a silent one, one kept from this computer) are two facts, never one.
+    for (const f of answer.failed ?? []) if (!into.some((g) => g.environmentId === f.environmentId && g.said === f.said && g.error === f.error && g.down === f.down && g.sector === f.sector)) into.push(f);
     if (away || answer.away) (own ?? sections.get(ALSO.id)!).away = true;
     if (!own) continue;
     if (answer.loading) own.loading = true;
@@ -161,6 +164,8 @@ export type ShownSection = {
   failed: TodayFailure[];
   /** A read it needs is lost to an offline host: no empty line. */
   away: boolean;
+  /** A read it needs is lost to a down session, said once for the page (a `lost` block): no empty line either. */
+  left?: boolean;
   note?: string;
 };
 
@@ -188,6 +193,7 @@ export function fold(section: MergedSection, folds: Folds = NO_FOLDS): ShownSect
     more: ahead.length - cap,
     failed: section.failed,
     away: section.away,
+    ...(section.left ? { left: true } : {}),
     ...(section.note ? { note: section.note } : {}),
   };
 }
@@ -198,7 +204,7 @@ export function fold(section: MergedSection, folds: Folds = NO_FOLDS): ShownSect
  */
 export type LifeosReach = "ok" | "waiting" | "offline" | LifeosDown;
 
-export type Block = { kind: "section"; section: ShownSection } | { kind: "lifeos"; reach: LifeosDown };
+export type Block = { kind: "section"; section: ShownSection } | { kind: "lifeos"; reach: LifeosDown } | { kind: "lost"; failure: TodayFailure };
 
 export type TodayPage =
   /** No Work workspace has a sector. */
@@ -224,7 +230,7 @@ export function foldOf(key: string): { which: keyof Folds; section: string } | n
 const done = (s: ShownSection): boolean =>
   // Not while a read is out (an empty answer read again says it is empty, but may yet bring a row), nor while one was
   // lost to an offline host.
-  s.failed.length === 0 && !s.pending && !s.away && (s.state === "empty" || (s.state === "rows" && s.more === 0 && s.rows.every((row) => row.past)));
+  s.failed.length === 0 && !s.pending && !s.away && !s.left && (s.state === "empty" || (s.state === "rows" && s.more === 0 && s.rows.every((row) => row.past)));
 
 /**
  * A read that failed because its host's link is not open is no fault of the
@@ -274,7 +280,10 @@ export function page(fed: readonly Fed[], opts: { jobs: readonly TodayWorkspace[
   const reached = jobsOnly(apartFed, opts.jobs);
   const blocks: Block[] = [];
   let said = false;
-  for (const section of merge(reached, opts.gone)) {
+  // A job's session on another host that is down is said once for the page, in the place of the first section it fed,
+  // never once a section: one line a host and state (`lostLine`).
+  const lostAt = new Map<string, TodayFailure[]>();
+  for (let section of merge(reached, opts.gone)) {
     if (down && section.def.lifeos) {
       if (!said) blocks.push({ kind: "lifeos", reach: down });
       said = true;
@@ -285,9 +294,22 @@ export function page(fed: readonly Fed[], opts: { jobs: readonly TodayWorkspace[
       said = true;
       continue;
     }
+    const lost = section.failed.filter((f) => f.down);
+    if (lost.length) {
+      for (const f of lost) {
+        const key = `${f.environmentId}|${f.down}`;
+        if (!lostAt.has(key)) blocks.push({ kind: "lost", failure: f });
+        lostAt.set(key, [...(lostAt.get(key) ?? []), f]);
+      }
+      section = { ...section, failed: section.failed.filter((f) => !f.down), left: true };
+    }
     // A session on its way: a LifeOS section that has no rows yet is still to answer.
     const waiting = opts.lifeos === "waiting" && !!section.def.lifeos;
     blocks.push({ kind: "section", section: fold(waiting ? { ...section, loading: true, waiting: true } : section, opts.folds) });
+  }
+  for (let i = 0; i < blocks.length; i++) {
+    const block = blocks[i]!;
+    if (block.kind === "lost") blocks[i] = { kind: "lost", failure: lostLine(lostAt.get(`${block.failure.environmentId}|${block.failure.down}`)!) };
   }
   const offline = [...new Set([...offlineHosts(opts.jobs), ...away])];
   const shown = blocks.flatMap((b) => (b.kind === "section" ? [b.section] : []));
@@ -300,4 +322,30 @@ export function page(fed: readonly Fed[], opts: { jobs: readonly TodayWorkspace[
   }
   const keys = shown.flatMap((s) => (s.state !== "rows" ? [] : [...(s.earlier > 0 ? [foldKey("earlier", s.id)] : []), ...s.rows.map((r) => r.key), ...(s.more > 0 ? [foldKey("more", s.id)] : [])]));
   return { kind: "day", blocks, offline, keys };
+}
+
+/** "a", "a and b", "a, b and c". */
+const listed = (items: readonly string[]): string => (items.length < 2 ? (items[0] ?? "") : `${items.slice(0, -1).join(", ")} and ${items.at(-1)}`);
+
+/**
+ * One down session's line for the page: what every section lost to it, named once ("Refereeing's meetings, tasks and
+ * mail left out"), and one Retry that asks that host again for each of its sessions that is down, once each, and no
+ * other host (`TodayFailure.retry` is bound to its own host and sector).
+ */
+export function lostLine(failures: readonly TodayFailure[]): TodayFailure {
+  const first = failures[0]!;
+  const jobs = [...new Set(failures.flatMap((f) => (f.left?.job ? [f.left.job] : [])))];
+  const whats = [...new Set(failures.flatMap((f) => (f.left ? [f.left.what] : [])))];
+  const of = jobs.length ? `${listed(jobs.map((job) => `${job}'s`))} ${listed(whats)}` : listed(whats);
+  const said = whats.length ? `${of.charAt(0).toUpperCase()}${of.slice(1)} left out` : first.said;
+  const bySector = new Map<string, () => void | Promise<void>>();
+  for (const f of failures) if (f.retry && !bySector.has(String(f.sector ?? ""))) bySector.set(String(f.sector ?? ""), f.retry);
+  const retries = [...bySector.values()];
+  return {
+    environmentId: first.environmentId,
+    error: first.error,
+    ...(first.down ? { down: first.down } : {}),
+    ...(said ? { said } : {}),
+    ...(retries.length ? { retry: async () => void (await Promise.all(retries.map((r) => r()))) } : {}),
+  };
 }

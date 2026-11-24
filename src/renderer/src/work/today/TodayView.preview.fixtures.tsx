@@ -5,6 +5,7 @@ export const fixtures = [
   { name: "First open: sections that have never answered", props: { state: "bones" } },
   { name: "Empty sections, meetings over", props: { state: "empty" } },
   { name: "A host did not answer, another is offline", props: { state: "hosts" } },
+  { name: "Jobs read through another computer's sessions that are down, said once for the page", props: { state: "lost-elsewhere" } },
   { name: "LifeOS refused one read", props: { state: "refused" } },
   { name: "LifeOS did not answer", props: { state: "lifeos-down" } },
   { name: "The box did not answer its LifeOS status", props: { state: "unanswered" } },

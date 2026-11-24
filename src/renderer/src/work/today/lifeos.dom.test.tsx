@@ -138,6 +138,42 @@ describe("useLifeosRows", () => {
     expect(downPress(failure!.down!)).toBeNull();
   });
 
+  /** Council round 8 (Sol, Today 2 P1): Retry on a job's silence line reopened every lost session of the section. */
+  it("binds a lost read's Retry to its own host and sector: the box's line asks the box alone, never the computer that withheld", async () => {
+    const box = new FakeConvex().answer("auth:caller", { sectors: ["purdue"] }).answer("tasks:list", [{ _id: "t1", title: "One", sector: "purdue" }]);
+    const lifeos = fakeSession("main", box);
+    const asked: string[] = [];
+    const timeout = () => Object.assign(new Error("No answer in 15 s"), { name: "TimeoutError" });
+    vi.spyOn(registry, "linkOf").mockImplementation(
+      (environmentId: string) =>
+        ({
+          environmentId,
+          connected: true,
+          onPush: () => () => {},
+          onOpen: () => () => {},
+          request: async (method: string) => {
+            asked.push(`${environmentId} ${method}`);
+            if (method === "work.lifeos.status") return { lifeos: { state: "connected", ownerId: "owner", since: 0 }, keys: [] };
+            // The box goes silent on its session's ask; the laptop keeps its session from this computer.
+            if (environmentId === "box") throw timeout();
+            throw new Error("forbidden: work.lifeos.jwt is not for a given computer");
+          },
+        }) as never,
+    );
+    setLifeosStatus("box", { lifeos: { state: "connected", ownerId: "owner", since: 0 }, keys: [] });
+    setLifeosStatus("mac", { lifeos: { state: "connected", ownerId: "owner", since: 0 }, keys: [] });
+    const env = envOf(lifeos, [job("main", "purdue"), job("box", "hypixel"), job("mac", "ref")]);
+    const { result } = renderHook(() => useLifeosRows<Task[], Task>(env, "tasks:list", {}, pick, idOf));
+    await waitFor(() => expect(result.current.lost.map((l) => [l.environmentId, l.down])).toEqual([["box", "unanswered"], ["mac", "withheld"]]));
+    const failed = answerOf(result.current, [], env.lifeos, "tasks").failed!;
+    asked.length = 0;
+    await act(async () => void (await failed[0]!.retry!()));
+    expect(asked.length).toBeGreaterThan(0);
+    expect(asked.every((a) => a.startsWith("box "))).toBe(true);
+    expect(failed[0]).toMatchObject({ environmentId: "box", sector: "hypixel", left: { what: "tasks" } });
+    expect(downPress(failed[1]!.down!)).toBeNull();
+  });
+
   it("names a job no signed-in host can read: its rows are missing, and the read is not whole", async () => {
     // The session covers purdue alone, and ref's only host is the session's own: nothing can read ref.
     const box = new FakeConvex().answer("auth:caller", { sectors: ["purdue"] }).answer("tasks:list", [{ _id: "t1", title: "One", sector: "purdue" }]);
