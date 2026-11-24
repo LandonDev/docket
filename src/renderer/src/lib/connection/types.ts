@@ -35,7 +35,8 @@ export type Environment = {
   /** Public id of the saved key; no bearer material crosses here. */
   keyId?: string;
   /** The host's platform as its last hello said (`build.platform`), saved
-   *  with the host so the glyph paints before this launch's hello. */
+   *  with the host so the glyph paints before this launch's hello; for this
+   *  machine's own row, preload's `process.platform`. */
   platform?: string;
 };
 

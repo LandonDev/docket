@@ -211,12 +211,20 @@ Settings → Work.
   host stores, when it makes one (`createWorkspace`, work/scope.ts), his
   desktops it knows in `mayUseDesktop` (itself when it is a Mac or a PC,
   each saved host whose hello named one, each host lending its desktop over
-  the Mac bridge: `ownerDesktops`) and `windowsVm: true`, and each module's
+  the Mac bridge, by the `build.platform` its `peer.register` said:
+  `desktopsOf`, `ownerDesktops`) and `windowsVm: true`, and each module's
   `workspaceCreated` hook stores its own defaults (the office module: the
   Teams copy on); the window then adds the desktops only it knows
   (`createWorkWorkspace` → `allowComputers`). Each is a stored choice, so
   one he turns off stays off; a workspace made before reads as it always
-  did. Tests: work/newWorkspace.test.ts. A code
+  did. A desktop that pairs later (a PC paired to the box by an ordinary
+  link registers on its peer link) is not added to a workspace made
+  before: the host lists it in `work.desktops` (`knownDesktops`, the same
+  three sources, named), which a window reads beside its own environments
+  for the "Computer use on <desktop>" rows, so he switches it on from any
+  window. The window's own row carries its platform (`localEnvironment`,
+  preload's `process.platform`), so a PC's window lists This PC. Tests:
+  work/newWorkspace.test.ts, lib/connection/registry.test.ts. A code
   workspace's page gains its LifeOS sector while Work is on. Keybindings
   lists the Work group (Ask about the selection, ⌘L) only while Work is on.
 - **The host's side** (contract-work.ts core): `work.workspace.get` (read)

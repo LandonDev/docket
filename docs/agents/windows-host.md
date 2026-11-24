@@ -118,6 +118,9 @@ with its home and `build.platform: 'win32'`. Nothing new crosses the wire: the M
 (`macBridge.thread.<sessionId>` names the host), and the code that answers runs on whichever
 desktop it is, with that platform's rules. The tool names stay `mac_*`.
 
+- **A desktop of the box's Work.** The box lists a registered PC in `work.desktops` by its
+  `build.platform` (work/scope.ts `desktopsOf`), so a box workspace's settings offer "Computer use
+  on <PC>" and a new box workspace starts with it on (docs/agents/work.md).
 - **What a thread is told.** `peer.register`'s home may be a drive path (`MacHomeSchema`); a
   drive-path home makes the tool text say "This host is a Windows PC, not a Mac", that paths are
   drive paths, what `~\Desktop` is, and that commands run in Git Bash (`macToolDescriptions`, and

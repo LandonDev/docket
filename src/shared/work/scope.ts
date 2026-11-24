@@ -21,9 +21,20 @@ export interface WorkScope {
   shared(source: CanvasSource): boolean
 }
 
+/**
+ * A desktop a host knows (`work.desktops`): itself when it is a Mac or a PC, each saved host whose last hello
+ * named one, and each host registered on its peer link to lend its desktop (a PC paired to the box). A
+ * workspace's settings list these as "Computer use on <name>"; `platform` is null for a lender too old to say.
+ */
+export interface WorkDesktop {
+  id: HostId
+  name: string
+  platform: 'darwin' | 'win32' | null
+}
+
 /** A workspace's own Work settings: JSON in `workspaces.work_settings`. */
 export interface WorkspaceWorkSettings {
-  /** "Computer use on <host>": his Macs and Windows hosts; a new Work workspace starts with every one its host and window know (work/scope.ts `ownerDesktops`) */
+  /** "Computer use on <host>": his Macs and Windows hosts; a new Work workspace starts with every one its host and window know (work/scope.ts `ownerDesktops`), and `work.desktops` lists what may be switched on */
   mayUseDesktop: HostId[]
   model?: string
   reasoning?: string

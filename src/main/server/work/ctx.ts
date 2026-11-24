@@ -44,20 +44,22 @@ import { convertPart } from './formats/jobs'
 import { lifeosPart } from './lifeos/ctx'
 import { callRefusalOf, ensureNarrowMarks, NARROWING_BROKEN } from './narrowing'
 import { WORK_LOAD_FAULTS, WORK_MODULES, workModulesAsked, type Caller, type PushTo, type ToolCtx, type WorkCtx, type WorkModule, type WorkSend, type WorkTool } from './modules'
-import type { HealthReport } from '@shared/work'
+import type { HealthReport, WorkDesktop } from '@shared/work'
 import { checkHost, connectionsTool, lapsesOf, type HostHealth } from './health'
 import { heldPart } from './outbox/ctx'
 import { resultsPart } from './outbox/results'
 import { peerPart } from './peer'
 import { lifeosProjectIn, mirrorsPart } from './projects/mirrors'
 import { ensureWorkTables } from './schema'
-import { scopePart } from './scope'
+import { knownDesktops, scopePart } from './scope'
 import { routinesHostPart } from './routines/host'
 import { searchHostPart } from './search/host'
 import { servicePart } from './service/ctx'
 import { WorkSettingsStore } from './settings'
 import { inputShapeOf } from './toolInput'
 import { threadsPart } from './threads'
+import { shortHostName } from '@shared/hostNames'
+import { hostLabel } from '../../hostLabel'
 
 /**
  * Work's one mount on the server (docs/agents/work.md). `startWork(deps)`
@@ -456,6 +458,9 @@ export function startWork(deps: WorkDeps, modules: WorkModule[] = WORK_MODULES):
           return handled(settings.set({ enabled: req.params.enabled }) satisfies WorkSettings)
         case 'work.workspace.get':
           return handled(settings.workspace(knownWorkspace(req.params.workspaceId).id))
+        case 'work.desktops':
+          // This host by its label, a saved host by the name he saved it under, a lender by its hostname's first label.
+          return handled(knownDesktops(deps).map((desktop) => ({ ...desktop, name: desktop.id === deps.environmentId ? hostLabel() : deps.peers?.get(desktop.id) ? desktop.name : shortHostName(desktop.name) })) satisfies WorkDesktop[])
         case 'work.workspace.set': {
           if (!settings.enabled()) throw new Error('Work is off on this host')
           const { workspaceId, patch } = req.params

@@ -3,10 +3,10 @@ import { join } from 'node:path'
 import { CATALOG, type ProviderId } from '@shared/catalog'
 import type { ProjectMeta, ThreadType, WorkspaceMeta } from '@shared/domain'
 import type { SessionMeta } from '@shared/events'
-import { NotBuilt, SectorKeySchema, parseWorkSettings, sessionScopeOf, workspaceKindOf, WORK_HOME, WORK_SETTING_KEY, type CanvasSource, type MentionReach, type WorkScope } from '@shared/work'
+import { NotBuilt, SectorKeySchema, parseWorkSettings, sessionScopeOf, workspaceKindOf, WORK_HOME, WORK_SETTING_KEY, type CanvasSource, type MentionReach, type WorkDesktop, type WorkScope } from '@shared/work'
 import { configureAddonScope } from '../addons/scope'
 import { workRoot } from '../workRoot'
-import type { ScopePart } from './ctx'
+import type { ScopePart, WorkDeps } from './ctx'
 
 /**
  * What a Work thread is (docs/agents/work.md "Scope"). Three things decide
@@ -286,16 +286,42 @@ const isDesktop = (platform: string | null | undefined): boolean => platform ===
 /** `MAC_BRIDGE_OFFER` (@shared/contract-macbridge), spelt here: scope.ts loads no contract (scope.test.ts), and newWorkspace.test.ts holds the two equal. */
 export const LENDING_OFFER = 'mac-bridge'
 
+type HostFacts = { id: string; name?: string | null; platform?: string | null }
+
+/**
+ * The desktops this host knows (`work.desktops`, `WorkDesktop`), once each: this host when it is a Mac or a PC,
+ * each saved host whose last hello named one, and each host registered here to lend its desktop (the Mac bridge's
+ * `peer.register`: a PC paired to the box by an ordinary link is one). A lender says its platform in
+ * `build.platform`; one that says none is an older Mac, and one that says another (a Linux host) lends no desktop.
+ */
+export function desktopsOf(here: HostFacts & { platform: string }, saved: readonly HostFacts[], lending: readonly HostFacts[]): WorkDesktop[] {
+  const out = new Map<string, WorkDesktop>()
+  const add = (host: HostFacts, platform: WorkDesktop['platform']): void => {
+    if (!out.has(host.id)) out.set(host.id, { id: host.id, name: host.name?.trim() || host.id, platform })
+  }
+  if (isDesktop(here.platform)) add(here, here.platform as WorkDesktop['platform'])
+  for (const host of saved) if (isDesktop(host.platform)) add(host, host.platform as WorkDesktop['platform'])
+  for (const host of lending) if (host.platform == null || isDesktop(host.platform)) add(host, (host.platform ?? null) as WorkDesktop['platform'])
+  return [...out.values()]
+}
+
+/** What `desktopsOf` reads on this host: its own platform, the saved links' hellos and the registered lenders' own words, each name as said (`work.desktops` shortens them). */
+export function knownDesktops(deps: Pick<WorkDeps, 'environmentId' | 'peers' | 'peerCalls'>): WorkDesktop[] {
+  const saved = deps.peers?.all().map((link) => ({ id: link.id, name: link.env.name, platform: link.build?.platform ?? link.env.platform })) ?? []
+  const lending = (deps.peerCalls?.registeredIds(LENDING_OFFER) ?? []).map((id) => {
+    const info = deps.peerCalls?.info(id)
+    return { id, name: info?.name ?? deps.peerCalls?.nameOf(id) ?? id, platform: info?.build?.platform ?? null }
+  })
+  return desktopsOf({ id: deps.environmentId, platform: process.platform }, saved, lending)
+}
+
 /**
  * The owner's desktops a new Work workspace may use from the start (the owner's ruling, 2026-11-22: things
- * work by default and he turns them off): this host when it is a Mac or a PC, each saved host whose last
- * hello named one, and each host that registered here to lend its desktop (the Mac bridge). Settings →
- * Work lists the same machines as "Computer use on <host>".
+ * work by default and he turns them off): every desktop `knownDesktops` lists when it is made. A desktop that
+ * pairs later is listed by `work.desktops`, and Settings → Work switches it on as "Computer use on <host>".
  */
-export function ownerDesktops(here: { id: string; platform: string }, saved: readonly { id: string; platform?: string | null }[], lending: readonly string[]): string[] {
-  const out = isDesktop(here.platform) ? [here.id] : []
-  for (const host of saved) if (isDesktop(host.platform)) out.push(host.id)
-  return [...new Set([...out, ...lending])]
+export function ownerDesktops(here: HostFacts & { platform: string }, saved: readonly HostFacts[], lending: readonly HostFacts[]): string[] {
+  return desktopsOf(here, saved, lending).map((desktop) => desktop.id)
 }
 
 export const scopePart: ScopePart = (ctx, deps) => {
@@ -336,9 +362,7 @@ export const scopePart: ScopePart = (ctx, deps) => {
       mkdirSync(path, { recursive: true })
       const made = await deps.registry.createWorkspace(path, name, { kind: 'work', sector })
       // A stored choice, not a default read later: once he turns one off, it stays off.
-      const saved = deps.peers?.all().map((link) => ({ id: link.id, platform: link.build?.platform ?? link.env.platform })) ?? []
-      const lending = deps.peerCalls?.registeredIds(LENDING_OFFER) ?? []
-      ctx.settings.set(made.id, { mayUseDesktop: ownerDesktops({ id: deps.environmentId, platform: process.platform }, saved, lending), windowsVm: true })
+      ctx.settings.set(made.id, { mayUseDesktop: knownDesktops(deps).map((desktop) => desktop.id), windowsVm: true })
       return made
     },
     admitSession(params) {

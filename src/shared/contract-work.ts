@@ -57,6 +57,8 @@ export const WorkCoreRequestSchemas = [
   request('work.set', z.object({ enabled: z.boolean() })),
   /** → WorkspaceWorkSettings: a workspace's own Work settings (`workspaces.work_settings`) */
   request('work.workspace.get', z.object({ workspaceId: z.string() })),
+  /** → WorkDesktop[]: the desktops this host knows, the ones a workspace's settings may switch on ("Computer use on <host>"): itself when a Mac or a PC, its saved desktops, and each host registered on its peer link to lend one (a PC paired to the box) */
+  request('work.desktops', z.object({}).optional()),
   /** → WorkspaceWorkSettings: changes them on the workspace's host; what the patch leaves out stays */
   request(
     'work.workspace.set',
@@ -88,6 +90,7 @@ export const WORK_CORE_CAPS = {
   'work.get': 'read',
   'work.set': 'admin',
   'work.workspace.get': 'read',
+  'work.desktops': 'read',
   'work.workspace.set': 'admin',
   'work.project.open': 'operate',
   'work.health': 'read',
