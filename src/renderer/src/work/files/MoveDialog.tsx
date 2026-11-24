@@ -4,6 +4,7 @@ import { DEFAULT_SORT, refusal, type FileEntry, type FolderRef } from "@shared/w
 import { DialogFooter } from "../../chrome/ConfirmDialog";
 import { ChevronRight } from "../../chrome/icons";
 import { Modal } from "../../chrome/Modal";
+import { Tip } from "../../components/tip";
 import { Button } from "../../components/ui/button";
 import { Skeleton } from "../../components/ui/skeleton";
 import { Spinner } from "../../components/ui/spinner";
@@ -130,10 +131,12 @@ export function Places({ places, recent = [], off = [], waiting, onInto }: { pla
       ))}
       {/* A place the verb cannot reach yet, there and off, with its sentence on hover. */}
       {off.map((place) => (
-        <div key={place.name} role="option" aria-selected={false} aria-disabled title={place.why} className={`${ROW} text-muted-foreground opacity-60`}>
-          <KindGlyph kind="folder" tinted={false} />
-          <span className="min-w-0 flex-1 truncate">{place.name}</span>
-        </div>
+        <Tip key={place.name} label={place.why} side="right">
+          <div role="option" aria-selected={false} aria-disabled aria-description={place.why} className={`${ROW} text-muted-foreground opacity-60`}>
+            <KindGlyph kind="folder" tinted={false} />
+            <span className="min-w-0 flex-1 truncate">{place.name}</span>
+          </div>
+        </Tip>
       ))}
     </div>
   );

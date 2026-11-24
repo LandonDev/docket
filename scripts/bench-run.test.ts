@@ -336,6 +336,8 @@ describe('the dev instance', () => {
     expect(env).toEqual({
       PATH: '/bin',
       TEMP_CODE_USER_DATA: '/tmp/run/dev',
+      // Its own empty folder: a dev instance never finds the real Windows VM (scripts/noRealVm.test.ts).
+      WINVM_DIR: '/tmp/run/dev/no-vm',
       TEMP_CODE_SOAK_WINDOW: '1',
       TEMP_CODE_ALIAX_DATA_DIR: '/tmp/run/aliax',
       TEMP_CODE_WARM_HARNESS: '0',

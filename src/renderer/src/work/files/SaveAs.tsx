@@ -6,6 +6,7 @@ import { confirmChoice, DialogFooter } from "../../chrome/ConfirmDialog";
 import { ChevronDown } from "../../chrome/icons";
 import { RowsMenu, type MenuRow } from "../../chrome/menuRows";
 import { Modal } from "../../chrome/Modal";
+import { Tip, TruncateTip } from "../../components/tip";
 import { Button } from "../../components/ui/button";
 import { Checkbox } from "../../components/ui/checkbox";
 import { GroupInput, InputGroup } from "../../components/ui/input";
@@ -145,10 +146,15 @@ export function SaveAsDialog({ workspace, source, title, itemId, format: asked }
                 </Button>
               }
             />
-            {drops[0] ? (
-              <span title={drops.join("\n")} className="min-w-0 truncate text-xs text-muted-foreground">
-                {drops.length > 1 ? `${drops[0]}, and ${drops.length - 1} more` : drops[0]}
-              </span>
+            {drops.length > 1 ? (
+              // The rest of what the format leaves out, a line each, on hover.
+              <Tip label={<span className="block max-w-80 whitespace-pre-line text-left">{drops.join("\n")}</span>}>
+                <span className="min-w-0 truncate text-xs text-muted-foreground">{`${drops[0]}, and ${drops.length - 1} more`}</span>
+              </Tip>
+            ) : drops[0] ? (
+              <TruncateTip text={drops[0]}>
+                <span className="min-w-0 truncate text-xs text-muted-foreground">{drops[0]}</span>
+              </TruncateTip>
             ) : null}
           </div>
           <span className="self-start pt-2 text-xs text-muted-foreground">Where</span>
