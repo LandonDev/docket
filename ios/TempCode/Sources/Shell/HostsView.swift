@@ -225,9 +225,9 @@ struct HostDetailView: View {
             // 2. Activity: what the host is doing (Shell/Hosts/, thread 21).
             HostActivitySections(client: client)
 
-            // 3. Key: the four capabilities and whether this key has them.
+            // 3. Key: the four capabilities and whether this key has them, then give and device on a key that holds them.
             Section {
-                ForEach(Capability.ordered, id: \.rawValue) { capability in
+                ForEach(Capability.rows(holding: environment.caps), id: \.rawValue) { capability in
                     let allowed = environment.allows(capability)
                     HStack(spacing: Layout.rowGap) {
                         VStack(alignment: .leading, spacing: 2) {

@@ -1,13 +1,14 @@
 import { readdirSync, readFileSync } from 'node:fs'
 import { join, relative } from 'node:path'
 import { describe, expect, it } from 'vitest'
+import { CAPABILITIES } from '../src/shared/capabilities'
 import { ACT_KINDS } from '../src/shared/work/acts'
 import { CHIP_KINDS } from '../src/shared/work/canvas'
 import { PILLAR_IDS } from '../src/shared/work/ids'
 
 /**
- * The phone's switches over the contract's names, and its type names, held on the box. A build that adds a held act kind, a chip kind or
- * a pillar regenerates the Swift contract, and every Swift `switch` over that enum with no `default` stops compiling;
+ * The phone's switches over the contract's names, and its type names, held on the box. A build that adds a capability, a held act kind,
+ * a chip kind or a pillar regenerates the Swift contract, and every Swift `switch` over that enum with no `default` stops compiling;
  * only the Mac's publish gate would notice. This reads each such switch as text and names the case it lacks and the
  * file to add it to.
  *
@@ -22,7 +23,15 @@ const IOS = join(ROOT, 'ios')
 /** `office.calendar.op` → `officeCalendarOp`, as scripts/gen-swift-contract.ts names an enum case. */
 const swiftCase = (raw: string): string => raw.split('.').map((part, i) => (i === 0 ? part : part[0]!.toUpperCase() + part.slice(1))).join('')
 
+/** The cases of a generated Swift enum but `unknown`, read from the contract itself: what the phone compiles against. */
+export function generatedCases(name: string): string[] {
+  const source = readFileSync(join(IOS, 'TempCodeContract', 'Sources', 'TempCodeContract', 'Generated', 'Enums.swift'), 'utf8')
+  const body = source.split(new RegExp(`\\benum ${name}\\b[^{]*\\{`))[1]?.split(/\n\s*public init/)[0] ?? ''
+  return [...body.matchAll(/^\s*case\s+([a-z]\w*)\s*$/gm)].map((m) => m[1]!)
+}
+
 const SETS: { name: string; cases: string[] }[] = [
+  { name: 'capabilities (Capability, Generated/Enums.swift)', cases: generatedCases('Capability') },
   { name: 'act kinds (ACT_KINDS, src/shared/work/acts.ts)', cases: ACT_KINDS.map(swiftCase) },
   { name: 'chip kinds (CHIP_KINDS, src/shared/work/canvas.ts)', cases: CHIP_KINDS.map(swiftCase) },
   { name: 'pillar ids (PILLAR_IDS, src/shared/work/ids.ts)', cases: PILLAR_IDS.map(swiftCase) }
@@ -61,7 +70,7 @@ export function switchesOf(source: string): { line: number; cases: string[]; def
 }
 
 describe('the phone switches over the contract stay whole', () => {
-  it('names every act kind, chip kind and pillar id in each Swift switch over them that has no default', () => {
+  it('names every capability, act kind, chip kind and pillar id in each Swift switch over them that has no default', () => {
     const missing: string[] = []
     for (const file of swiftFiles(IOS)) {
       const source = readFileSync(file, 'utf8')
@@ -77,6 +86,14 @@ describe('the phone switches over the contract stay whole', () => {
       }
     }
     expect(missing, `Add each case to its switch, once:\n${missing.join('\n')}`).toEqual([])
+  })
+
+  it("holds the capability words to the contract's whole enum", () => {
+    // 1.0.371 and 1.0.372 failed the Mac's ios-client row when `give` and `device` joined the enum.
+    expect(generatedCases('Capability')).toEqual([...CAPABILITIES])
+    const file = join(IOS, 'TempCodeClient', 'Sources', 'TempCodeClient', 'Shell', 'HostPresentation.swift')
+    const over = switchesOf(readFileSync(file, 'utf8')).filter((sw) => !sw.defaulted && CAPABILITIES.every((c) => sw.cases.includes(c)))
+    expect(over.length).toBe(2)
   })
 
   it('names no top-level type twice in one Swift target', () => {

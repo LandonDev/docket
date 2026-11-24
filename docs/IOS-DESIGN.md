@@ -2023,7 +2023,9 @@ so the bar's title is the host's name on either path with no principal item.
    Mac bridge, Devices, Sync, in that order; "Host activity" below has
    their rules.
 3. **Key**: Read, Operate, Approve, Admin, each with one line of what it
-   allows and a checkmark in the tint when the key has it; the footer says
+   allows and a checkmark in the tint when the key has it, then Give and
+   Given computer only on a key that holds them (`Capability.rows`; admin
+   never implies either, docs/agents/pc-setup.md); the footer says
    a new key on the host is how to change it.
 4. **Host**: Name (editable in place), Address, Environment id in mono
    (selectable), Version as `1.0.N (<sha7>)` from the hello's `build`

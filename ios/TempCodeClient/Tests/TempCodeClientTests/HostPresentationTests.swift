@@ -159,6 +159,14 @@ struct CapabilityWordsTests {
         #expect(Capability.admin.detail == "Pair devices, manage keys and move threads")
     }
 
+    @Test func `give and device show only on a key that holds them`() {
+        #expect(Capability.rows(holding: [.read, .operate, .approve, .admin]) == Capability.ordered)
+        #expect(Capability.rows(holding: [.device, .operate, .approve, .pending]) == Capability.ordered + [.device])
+        #expect(Capability.rows(holding: [.admin, .give]) == Capability.ordered + [.give])
+        #expect(Capability.give.title == "Give")
+        #expect(Capability.device.title == "Given computer")
+    }
+
     @Test func `an unknown capability keeps its raw name`() {
         #expect(Capability.unknown("x").title == "X")
         #expect(Capability.unknown("x").detail == "Not known to this app")

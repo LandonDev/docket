@@ -147,12 +147,21 @@ public enum HostPushWord {
 public extension Capability {
     static let ordered: [Capability] = [.read, .operate, .approve, .admin]
 
+    /// The rows of a key: the four, then `give` and `device` only on a key
+    /// that holds them (admin never implies either), never `pending`.
+    static func rows(holding caps: [Capability]) -> [Capability] {
+        ordered + [Capability.give, .device].filter(caps.contains)
+    }
+
     var title: String {
         switch self {
         case .read: "Read"
         case .operate: "Operate"
         case .approve: "Approve"
         case .admin: "Admin"
+        case .give: "Give"
+        case .device: "Given computer"
+        case .pending: "Waiting to be allowed"
         case .unknown(let raw): raw.capitalized
         }
     }
@@ -164,6 +173,9 @@ public extension Capability {
         case .operate: "Send turns, stop and start threads"
         case .approve: "Decide approvals and run full-access threads"
         case .admin: "Pair devices, manage keys and move threads"
+        case .give: "Give accounts to computers and set them up"
+        case .device: "A computer set up from the giver"
+        case .pending: "Set up, until the giver allows it"
         case .unknown: "Not known to this app"
         }
     }
