@@ -2073,7 +2073,11 @@ over a colleague's Word file but his own press.
   last written, `saved_rev`, or the one it was made at, `base_rev`), so Saved is said only of the revision on
   screen. The save is the same as his press, by version, never over a change made
   there. Such a change stops autosave for that file (`stopped`, said on the tab's `word`) until his Replace or Keep
-  Both. The header says "Saving to Teams…" while his newest words are not in the file, then what OneDrive did with them
+  Both. The host looks once a second, one look at a time (`autosaveWords`): the documents a tab shows, and one saving by
+  itself only until its words are in its file, their live revisions read together, each within 2 s; saves run apart
+  from the look, one a file, so a slow one (the VM waking) holds up no other document; a record whose document is gone
+  and not in Files' Trash is let go. On 1.0.372 a look started every second over every record and waited on each save
+  in turn, and a new document's first save took three and a half minutes. The header says "Saving to Teams…" while his newest words are not in the file, then what OneDrive did with them
   ("Saved, uploading to Teams…", "In Teams 9:12 PM": "Saved is not uploaded" below), and "This file changed in Teams 9:12 PM" with Keep Both and Replace when stopped. The first time a Word
   file holds edits not in it, the window asks once: "Save Plan.docx to Teams as you work?", with what Word may change,
   Save automatically and Ask me each time (`askAutosave`, `work.files.wordAuto`); the file's menu changes it after.

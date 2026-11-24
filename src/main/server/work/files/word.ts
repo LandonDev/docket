@@ -347,8 +347,8 @@ async function saveRow(ctx: WorkCtx, r: WordRow, p: { workspaceId: string; keep?
   return { at }
 }
 
-/** How long his document must be still before the host saves it as Word by itself. */
-export const wordTiming = { pause: 3000 }
+/** `pause`: how long his document must be still before the host saves it as Word by itself; `read`: a live revision's wait. */
+export const wordTiming = { pause: 3000, read: 2000 }
 const saving = new Set<string>()
 
 /**
@@ -358,38 +358,72 @@ const saving = new Set<string>()
  * Only his own document's live text is written: an agent's change to it waits as a suggestion until his press.
  */
 export async function autosaveWords(ctx: WorkCtx, now = Date.now()): Promise<void> {
-  const rows = ctx.db.prepare(`SELECT * FROM work_files_word WHERE doc IS NOT NULL`).all() as unknown as WordRow[]
-  for (const r of rows) {
-    // Only a document a tab shows, or one that saves by itself, is looked at: each look reads the service.
-    const shown = ctx.canvas.forSession(filesPaneOf(r.workspace_id)).some((i) => i.source.at === 'file' && i.source.path === r.doc)
-    if (!shown && r.auto !== 1) continue
-    const key = keyOf(r)
-    let rev: string
-    try {
-      rev = await liveRev(ctx, r.doc!)
-    } catch {
-      continue
-    }
-    const was = seenRevs.get(key)
-    if (was?.rev !== rev) {
-      seenRevs.set(key, { rev, at: now })
-      // A document made of the Word file: what it held when first seen is what the file holds.
-      if (r.base_rev === null && r.saved_rev === null && r.doc_at !== null && !was) {
-        ctx.db.prepare(`UPDATE work_files_word SET base_rev = ? WHERE workspace_id = ? AND host = ? AND path = ?`).run(rev, r.workspace_id, r.host, r.path)
-        r.base_rev = rev
+  // One look at a time: on 1.0.372 a look started every second whatever the last was doing, and they piled up.
+  if (looking) return
+  looking = true
+  const due: WordRow[] = []
+  try {
+    const rows = ctx.db.prepare(`SELECT * FROM work_files_word WHERE doc IS NOT NULL`).all() as unknown as WordRow[]
+    const looked: WordRow[] = []
+    for (const r of rows) {
+      const key = keyOf(r)
+      // A record whose document is gone (and not in Files' Trash, where Restore brings it back) holds nothing to save: it goes.
+      if (!existsSync(r.doc!)) {
+        const trashed = ctx.db.prepare(`SELECT 1 FROM work_files_trash WHERE was_at = ? OR instr(ref, ?) > 0 LIMIT 1`).get(r.doc, r.doc)
+        if (!trashed) {
+          ctx.db.prepare(`DELETE FROM work_files_word WHERE workspace_id = ? AND host = ? AND path = ?`).run(r.workspace_id, r.host, r.path)
+          seenRevs.delete(key)
+        }
+        continue
       }
-      filesState(ctx).tabs.touch(r.workspace_id)
+      // A document a tab shows; else one that saves by itself, looked at once, then only while it holds words its Word file has not.
+      const shown = ctx.canvas.forSession(filesPaneOf(r.workspace_id)).some((i) => i.source.at === 'file' && i.source.path === r.doc)
+      if (!shown && (r.auto !== 1 || (seenRevs.has(key) && !editsSince(r)))) continue
+      looked.push(r)
     }
-    if (r.auto !== 1 || r.stopped || saving.has(key) || !editsSince(r)) continue
-    // His typing has paused: the revision on screen has held still for the pause.
-    if (now - seenRevs.get(key)!.at < wordTiming.pause) continue
-    saving.add(key)
-    try {
-      await saveRow(ctx, r, { workspaceId: r.workspace_id, auto: true })
-    } catch (err) {
-      ctx.log(`files: a Word file was not saved by itself: ${err instanceof Error ? err.message : String(err)}`)
-    } finally {
-      saving.delete(key)
+    // Read together, each within its own wait: one slow read holds up no other.
+    const revs = await Promise.all(looked.map((r) => withinWait(liveRev(ctx, r.doc!), wordTiming.read).catch(() => null)))
+    for (const [i, r] of looked.entries()) {
+      const rev = revs[i]
+      if (rev === null || rev === undefined) continue
+      const key = keyOf(r)
+      const was = seenRevs.get(key)
+      if (was?.rev !== rev) {
+        seenRevs.set(key, { rev, at: now })
+        // A document made of the Word file: what it held when first seen is what the file holds.
+        if (r.base_rev === null && r.saved_rev === null && r.doc_at !== null && !was) {
+          ctx.db.prepare(`UPDATE work_files_word SET base_rev = ? WHERE workspace_id = ? AND host = ? AND path = ?`).run(rev, r.workspace_id, r.host, r.path)
+          r.base_rev = rev
+        }
+        filesState(ctx).tabs.touch(r.workspace_id)
+      }
+      if (r.auto !== 1 || r.stopped || saving.has(key) || !editsSince(r)) continue
+      // His typing has paused: the revision on screen has held still for the pause.
+      if (now - seenRevs.get(key)!.at < wordTiming.pause) continue
+      due.push(r)
     }
+  } finally {
+    looking = false
   }
+  // Saves go on their own, one a file: a slow one (the VM waking, its helper being made) holds up no look.
+  await Promise.all(
+    due.map(async (r) => {
+      const key = keyOf(r)
+      saving.add(key)
+      try {
+        await saveRow(ctx, r, { workspaceId: r.workspace_id, auto: true })
+      } catch (err) {
+        ctx.log(`files: a Word file was not saved by itself: ${err instanceof Error ? err.message : String(err)}`)
+      } finally {
+        saving.delete(key)
+      }
+    })
+  )
 }
+let looking = false
+/** A read that has not answered in `ms` is no answer this look. */
+const withinWait = <T>(p: Promise<T>, ms: number): Promise<T> =>
+  new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error('no answer in time')), ms)
+    p.then((v) => (clearTimeout(timer), resolve(v)), (e) => (clearTimeout(timer), reject(e)))
+  })

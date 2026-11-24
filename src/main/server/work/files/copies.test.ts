@@ -16,7 +16,7 @@ import { NEEDS_PRESS, setThreadsMayWrite, sharedOf } from './policy'
 import { fileWritten, onFileSaved, saveFile, versionWord, workingOn } from './save'
 import { approver, HOST, makeRig, phone, reader, thread, window, WS, type Rig } from './testkit'
 import { versionOf } from './write'
-import { adoptWordCopies, autosaveWords, wordFollowed, wordImportPlace, wordRow, wordsLeft } from './word'
+import { adoptWordCopies, autosaveWords, wordFollowed, wordImportPlace, wordRow, wordsLeft, wordTiming } from './word'
 import { forgetUploads, lookAll, setUploadReader } from './uploads'
 
 // Save as Word writes the Work service's Word export; here a stand-in's bytes.
@@ -935,6 +935,65 @@ describe('a Word file saved by itself', () => {
     await autosaveWords(box.ctx, t)
     await autosaveWords(box.ctx, t + 5000)
   }
+
+  it('looks one pass at a time over thirteen records, one read never answering, and saves his typing within the bound', async () => {
+    // His document, shown in a tab, saving by itself.
+    const { path, tabId } = await opened('Notes.docx', BLANK)
+    await looks(1_000_000)
+    expect((await tabOf(tabId))?.word).toMatchObject({ auto: true })
+    // Twelve more records: nine saving by themselves with nothing unsaved, one whose read never answers, and two whose
+    // documents are gone (one of those in Files' Trash, where Restore brings it back).
+    const add = (name: string, doc: string, rev: string | null): void =>
+      void box.db.prepare(`INSERT INTO work_files_word (workspace_id, host, path, vm, name, version, doc, doc_at, saved_at, saved_doc_at, at, auto, base_rev) VALUES (?, ?, ?, 0, ?, 'v', ?, 1, NULL, NULL, 1, 1, ?)`).run(WS, MAC, join(mac.team, name), name, doc, rev)
+    for (let i = 0; i < 9; i++) {
+      writeFileSync(join(box.folder, `Kept ${i}.tcdoc`), '{"doc":1}')
+      add(`Kept ${i}.docx`, join(box.folder, `Kept ${i}.tcdoc`), 'r0')
+    }
+    const slow = join(box.folder, 'Slow.tcdoc')
+    writeFileSync(slow, '{"doc":1}')
+    add('Slow.docx', slow, 'r0')
+    add('Gone.docx', join(box.folder, 'Gone.tcdoc'), 'r0')
+    add('Trashed.docx', join(box.folder, 'Trashed.tcdoc'), 'r0')
+    box.db.prepare(`INSERT INTO work_files_trash (id, workspace_id, ref, name, place, was_at, state, deleted_at, by) VALUES ('t1', ?, '{}', 'Trashed.tcdoc', 'folder', ?, 'kept', 1, 'window')`).run(WS, join(box.folder, 'Trashed.tcdoc'))
+    expect((box.db.prepare(`SELECT count(*) AS n FROM work_files_word WHERE doc IS NOT NULL`).get() as { n: number }).n).toBe(13)
+    const reads: string[] = []
+    ;(box.ctx as { service: unknown }).service = {
+      internal: (route: string, body: { file?: string }) => {
+        if (route !== '/internal/docs/rev') return Promise.resolve({})
+        reads.push(body.file!)
+        return body.file === slow ? new Promise(() => {}) : Promise.resolve({ rev: body.file?.endsWith('Notes.tcdoc') ? rev : 'r0' })
+      }
+    }
+    const was = wordTiming.read
+    wordTiming.read = 50
+    try {
+      // A first look at all, the slow one waited out; one started meanwhile reads nothing.
+      const first = autosaveWords(box.ctx, 1_001_000)
+      await autosaveWords(box.ctx, 1_001_500)
+      expect(reads.length).toBeLessThanOrEqual(12)
+      const t0 = Date.now()
+      await first
+      expect(Date.now() - t0).toBeLessThan(1000)
+      // The gone document's record went; the trashed one's stays for Restore.
+      const names = (box.db.prepare(`SELECT name FROM work_files_word`).all() as { name: string }[]).map((r) => r.name)
+      expect(names).not.toContain('Gone.docx')
+      expect(names).toContain('Trashed.docx')
+      // Seen once and saved with nothing new, the nine are not read again: his document and the slow one are.
+      reads.length = 0
+      await autosaveWords(box.ctx, 1_002_000)
+      expect(reads.filter((f) => f.includes('Kept '))).toEqual([])
+      expect(reads.some((f) => f.endsWith('Notes.tcdoc'))).toBe(true)
+      // His keystroke at T: the passes each second see it, and the one at T + pause + one look saves it, slow read and all.
+      // Bound: a save starts within pause (3 s) + 2 looks (1 s each) + one read's wait (2 s) = 7 s of his last keystroke.
+      const T = 1_010_000
+      rev = 'r1'
+      for (let t = T + 1000; t <= T + 1000 + wordTiming.pause; t += 1000) await autosaveWords(box.ctx, t)
+      expect(readFileSync(path, 'utf8')).toBe('word export')
+      expect((await tabOf(tabId))?.word).toMatchObject({ auto: true, since: false })
+    } finally {
+      wordTiming.read = was
+    }
+  })
 
   it('typed words save with the .tcdoc file unchanged: autosave follows the live revision, never the file time', async () => {
     const { path, doc, tabId } = await opened('Notes.docx', BLANK)
