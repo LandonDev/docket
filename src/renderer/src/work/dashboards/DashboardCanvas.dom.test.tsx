@@ -157,7 +157,7 @@ describe("the dashboard kind", () => {
     await found("[data-dash-asof]");
   });
 
-  it("dims the page when a sheet moved, says a failed read once, and asks for a number when empty", async () => {
+  it("dims the page when a sheet moved, says a failed read once, and says an empty page with where to ask", async () => {
     open(page({ stale: true }));
     const body = await found("[data-dashboard]");
     expect(body.getAttribute("data-stale")).toBe("true");
@@ -168,7 +168,8 @@ describe("the dashboard kind", () => {
     await waitFor(() => expect(screen.getByText("Couldn't read the figures")).toBeTruthy());
     cleanup();
     open(page({ blocks: [], asOf: null }));
-    await waitFor(() => expect(screen.getByText("Ask for a number")).toBeTruthy());
+    await waitFor(() => expect(screen.getByText("No numbers yet")).toBeTruthy());
+    expect(screen.getByText("Ask for one in the thread.")).toBeTruthy();
   });
 
   it("stresses the current bar only on a run of periods", async () => {
@@ -191,7 +192,7 @@ describe("the dashboard kind", () => {
     await waitFor(() => expect(document.querySelector("[data-dash-asof]")?.textContent).toMatch(/^As of /));
   });
 
-  it("holds a bone in the bar while the page loads, and says a failed open on the state line with Retry", async () => {
+  it("holds a bone in the bar while the page loads, and says a failed open in the middle of the body with Retry", async () => {
     open(page());
     let fail: (e: Error) => void = () => undefined;
     dashHost.open.mockImplementationOnce(() => new Promise((_, no) => (fail = no)));
@@ -200,6 +201,8 @@ describe("the dashboard kind", () => {
     await waitFor(() => expect(dashHost.open).toHaveBeenCalled());
     fail(new Error("The sheet is gone"));
     await waitFor(() => expect(screen.getByText("Couldn't open this dashboard")).toBeTruthy());
+    // The body's centred failure (`OpenFailed`) with its reason, not a red line over an empty pane.
+    expect(document.querySelector("[data-canvas-failed]")?.textContent).toContain("The sheet is gone");
     expect(document.querySelector("[data-dashboard-loading]")).toBeNull();
     expect(document.querySelector("[data-dash-bar-bone]")).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Retry" }));

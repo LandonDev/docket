@@ -133,7 +133,9 @@ The approved page is `.temp-code/prototypes/work-workspaces-2/browser.html`,
   computer pictures (a Linux window, the browser /ui: `drawsSessions` in
   lib/computerSessions.ts) while the thread drives a computer, "Shown on
   <machine> only", the Computers page's words (docs/DESIGN.md); with no
-  session at all, "The agent is not driving the browser now".
+  session at all, "The agent is not driving the browser now". A first read
+  that fails is the body's centred "Couldn't open this page" with the reason
+  and Retry (`OpenFailed`), never a red line over an empty pane.
 - `bun run ui:preview src/renderer/src/work/browser/BrowserCanvas.preview.tsx#BrowserPreview --width 864`
   draws the six moments in both themes.
 

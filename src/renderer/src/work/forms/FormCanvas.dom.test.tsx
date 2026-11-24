@@ -220,7 +220,7 @@ describe("the form kind", () => {
     }
   });
 
-  it("holds a bone in the bar while the form loads, and says a failed open on the state line with Retry", async () => {
+  it("holds a bone in the bar while the form loads, and says a failed open in the middle of the body with Retry", async () => {
     open(view());
     let fail: (e: Error) => void = () => undefined;
     formHost.open.mockImplementationOnce(() => new Promise((_, no) => (fail = no)));
@@ -229,6 +229,8 @@ describe("the form kind", () => {
     await waitFor(() => expect(formHost.open).toHaveBeenCalled());
     fail(new Error("The host did not answer"));
     await waitFor(() => expect(screen.getByText("Couldn't open this form")).toBeTruthy());
+    // The body's centred failure (`OpenFailed`) with its reason, not a red line over an empty pane.
+    expect(document.querySelector("[data-canvas-failed]")?.textContent).toContain("The host did not answer");
     expect(document.querySelector("[data-form-loading]")).toBeNull();
     expect(document.querySelector("[data-form-bar-bone]")).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Retry" }));

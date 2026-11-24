@@ -19,6 +19,7 @@ import { openFullWindow } from "../../lib/fullWindow";
 import { useDriveHold } from "../../lib/driveHold";
 import { sharpWidth } from "../../lib/video/support";
 import { sayError } from "../canvas/frame";
+import { OpenFailed } from "../canvas/FetchState";
 import type { CanvasBodyProps } from "../canvas/kind";
 import { barFaceOf, heldSubmitOf, portalValues, siteHost, type BarFace, type HeldSubmitPayload, type PortalValue } from "./portal";
 import { discardHeld, pictureShown, setDriver, setLiveDrawn, submitHeld, useBrowserState, useHeldActs, useHeldPicture, useLiveDrawn } from "./store";
@@ -282,11 +283,13 @@ export function Body(props: CanvasBodyProps & BrowserSeam) {
     return () => shell.detail(null);
   }, [shell, where]);
 
-  // A first read that failed says so on the one state line, with Retry; the body under it draws nothing that pretends to load.
+  // A first read that failed leaves the body empty, so the body says it with Retry (`OpenFailed`); the state line is
+  // for a failure over a page still shown (a picture the seam hands in).
+  const lineError = props.picture ? error : null;
   useEffect(() => {
-    shell.statusLine(error ? { tone: "failed", word: "Couldn't open this browser", detail: error, action: retry ? { label: "Retry", run: retry } : undefined } : null);
+    shell.statusLine(lineError ? { tone: "failed", word: "Couldn't open this page", detail: lineError, action: retry ? { label: "Retry", run: retry } : undefined } : null);
     return () => shell.statusLine(null);
-  }, [shell, error, retry]);
+  }, [shell, lineError, retry]);
 
   // A session this window may not draw (a Linux window, the browser /ui: lib/computerSessions.ts `drawsSessions`) says
   // where it is shown, as the Computers page does (docs/DESIGN.md "Shown on Studio only"), never that no one drives it.
@@ -294,11 +297,12 @@ export function Body(props: CanvasBodyProps & BrowserSeam) {
 
   const values = useMemo<PortalValue[]>(() => (waiting ? portalValues((waiting.payload as HeldSubmitPayload).mark ?? "", state?.sources ?? []) : []), [waiting, state?.sources]);
 
+  if (error && !props.picture) return <OpenFailed kind="browser" why={error} onRetry={retry ?? undefined} />;
   return (
     <div ref={measure} data-slot="browser-view" className="flex h-full min-h-0 flex-col gap-3 overflow-x-hidden overflow-y-auto p-3">
       {/* The page fills the body inside its inset (browser.html), at any width of canvas. */}
       <div className="flex w-full flex-col gap-3">
-        {error && !props.picture ? null : props.picture ??
+        {props.picture ??
           (still ? (
             <StillView env={env} held={still} />
           ) : entry ? (

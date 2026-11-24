@@ -11,6 +11,7 @@ import { Tip, TruncateTip } from "../../components/tip";
 import { dayTime } from "../../lib/duration";
 import { EmptyState } from "../../surfaces/SurfaceSkeleton";
 import { sayError } from "../canvas/frame";
+import { OpenFailed } from "../canvas/FetchState";
 import type { CanvasBodyProps, CanvasShell, ReviewAdapter } from "../canvas/kind";
 import { Table } from "../icons";
 import { linkDashHost, type DashHost } from "./host";
@@ -73,7 +74,7 @@ export function Body(props: Props) {
   const store = storeOf(item.id);
   const { view, error, missed } = useSlot(store);
 
-  // A failed first read is said once, on the state line with Retry; Retry reads again.
+  // A failed first read leaves the body empty, so the body says it with Retry (`OpenFailed`); Retry reads again.
   const [attempt, setAttempt] = useState(0);
   useEffect(() => {
     let live = true;
@@ -102,11 +103,11 @@ export function Body(props: Props) {
     store.set({ error: null });
     setAttempt((n) => n + 1);
   };
-  useFeeds(shell, host, store, view, error, retryOpen, current, setCurrent);
+  useFeeds(shell, host, store, view, current, setCurrent);
 
-  if (error) return null;
+  if (error) return <OpenFailed kind="dashboard" why={error} onRetry={retryOpen} />;
   if (!view) return <DashSkeleton />;
-  if (!view.blocks.length) return <EmptyState title="Ask for a number" />;
+  if (!view.blocks.length) return <EmptyState title="No numbers yet" line="Ask for one in the thread." />;
   const proposed = view.blocks.filter((b) => b.proposed);
   const currentId = proposed[Math.min(current, proposed.length - 1)]?.id;
   const stale = view.stale || missed;
@@ -145,8 +146,6 @@ function useFeeds(
   host: DashHost,
   store: DashStore,
   view: DashboardView | null,
-  error: string | null,
-  retryOpen: () => void,
   current: number,
   setCurrent: (n: number) => void,
 ): void {
@@ -183,13 +182,10 @@ function useFeeds(
   }, [shell, host, store, proposedIds, by, current, setCurrent]);
 
   const failed = view?.failed;
-  const retry = useRef(retryOpen);
-  retry.current = retryOpen;
   useEffect(() => {
+    // A first read that failed is the body's to say (`OpenFailed`); the line is for figures that stay on screen.
     shell.statusLine(
-      error
-        ? { tone: "failed", word: "Couldn't open this dashboard", detail: error, action: { label: "Retry", run: () => retry.current() } }
-        : failed
+      failed
           ? {
               tone: "failed",
               word: "Couldn't read the figures",
@@ -199,7 +195,7 @@ function useFeeds(
           : null,
     );
     return () => shell.statusLine(null);
-  }, [shell, host, store, failed, error]);
+  }, [shell, host, store, failed]);
 
   const sheets = view ? sheetsOf(view.blocks) : [];
   const sheetKey = sheets.map((s) => `${s.sheetTitle}`).join("\n");

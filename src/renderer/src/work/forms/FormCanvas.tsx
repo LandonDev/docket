@@ -17,6 +17,7 @@ import { cn } from "../../lib/cn";
 import { dayTime } from "../../lib/duration";
 import { EmptyState } from "../../surfaces/SurfaceSkeleton";
 import { sayError } from "../canvas/frame";
+import { OpenFailed } from "../canvas/FetchState";
 import type { CanvasBodyProps, CanvasShell, ReviewAdapter } from "../canvas/kind";
 import { Table } from "../icons";
 import { AddOption } from "./AddOption";
@@ -123,12 +124,13 @@ export function Body(props: Props) {
   useFeeds(shell, host, store, view, half, current, step, slot.edits !== null, slot.edits !== null && slot.saveError !== null);
   const saveError = slot.saveError;
   const responsesError = half === "responses" ? slot.responsesError : null;
+  const retryOpen = (): void => {
+    store.set({ error: null });
+    setAttempt((n) => n + 1);
+  };
   useEffect(() => {
-    const retryOpen = (): void => {
-      store.set({ error: null });
-      setAttempt((n) => n + 1);
-    };
-    if (error) shell.statusLine({ tone: "failed", word: "Couldn't open this form", detail: error, action: { label: "Retry", run: retryOpen } });
+    // A first read that failed leaves the body empty: the body says it (`OpenFailed`), not the line.
+    if (error) shell.statusLine(null);
     else if (saveError) shell.statusLine({ tone: "failed", word: "Not saved", detail: saveError, action: { label: "Retry", run: () => saverOf(store, host).retry() } });
     else if (responsesError)
       shell.statusLine({
@@ -141,7 +143,7 @@ export function Body(props: Props) {
     return () => shell.statusLine(null);
   }, [shell, host, store, error, saveError, responsesError]);
 
-  if (error) return null;
+  if (error) return <OpenFailed kind="form" why={error} onRetry={retryOpen} />;
   if (!view) return <FormSkeleton />;
   return (
     <div data-form className="flex min-h-0 min-w-0 flex-1 flex-col">

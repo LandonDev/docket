@@ -512,17 +512,18 @@ describe("the browser's body", () => {
     await waitFor(() => expect(screen.getByRole("img").getAttribute("src")).toBe("data:image/png;base64,AAAA"));
   });
 
-  it("a first read that failed says so on the state line with Retry, and the body stops loading; Retry reads again", async () => {
+  it("a first read that failed says so in the middle of the body with Retry, and nothing loads under it; Retry reads again", async () => {
     host.stateDown = true;
     host.live = [];
     const p = props();
     const { container } = render(<Body {...p} />);
-    await waitFor(() => expect(p.shell.statusLine).toHaveBeenLastCalledWith(expect.objectContaining({ tone: "failed", word: "Couldn't open this browser", detail: "not connected" })));
+    await screen.findByText("Couldn't open this page");
+    expect(container.querySelector("[data-canvas-failed]")?.textContent).toMatch(/not connected/i);
     expect(container.querySelector("[data-slot=skeleton]")).toBeNull();
-    const line = vi.mocked(p.shell.statusLine).mock.lastCall![0]!;
-    expect(line.action?.label).toBe("Retry");
+    // The body says it, so no state line says it again.
+    expect(p.shell.statusLine).not.toHaveBeenCalledWith(expect.objectContaining({ tone: "failed" }));
     host.stateDown = false;
-    act(() => void line.action!.run());
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
     await screen.findByText("The agent is not driving the browser now");
     expect(p.shell.statusLine).toHaveBeenLastCalledWith(null);
   });
