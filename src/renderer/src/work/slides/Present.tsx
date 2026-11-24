@@ -39,8 +39,8 @@ export interface InPowerPointAsk {
 }
 /** Given by the deck around its bar and its row: the menu ends with "In PowerPoint" where this holds one. */
 export const InPowerPointRow = createContext<InPowerPointAsk | null>(null);
-/** The row's second line: how many of the deck's effects our show plays otherwise or leaves out. */
-export const effectsWords = (n: number): string => (n === 1 ? "1 effect plays only in PowerPoint" : `${n} effects play only in PowerPoint`);
+/** The row's second line, under "In PowerPoint" (so not naming it twice): how many of the deck's effects our show plays otherwise or leaves out. */
+export const effectsWords = (n: number): string => (n === 1 ? "1 effect plays only there" : `${n} effects play only there`);
 
 /**
  * The ways to present, as menu rows, and what a pick of one asks: shared by the button in the bar and the format

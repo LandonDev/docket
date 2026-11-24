@@ -1387,7 +1387,7 @@ How it works:
 - **What changed**, under the stage: each edit's place (a shape, a cell,
   the notes) at 12px muted, then the words before, struck, on `--del-bg`
   and the words after on `--add-bg`. Then Notes, 14/22 under a 12px medium
-  muted "Notes", or "None yet".
+  muted "Notes"; a slide with no notes draws no Notes block.
 - **The stepper** counts one change a slide (`SlideChange`), in the view's
   order; stepping moves the stage to the slide where the change lands, or
   to the place a removed slide leaves. Accept and Reject call
@@ -1403,7 +1403,7 @@ How it works:
   file is on (`work.office.status` asked of that host, `powerpoint.tsx`
   `usePowerPointOn`); where it is not, the switch is absent, never greyed.
   The PowerPoint side opens the deck there (`work.office.switch`), and the
-  canvas says "Open in PowerPoint" (a spinner and "Opening in PowerPoint…"
+  canvas says "In PowerPoint", centred (a spinner and "Opening in PowerPoint…"
   while the switch runs; "Couldn't open it in PowerPoint" with the
   office pillar's words and Try again when it fails); the bar says how many
   suggestions wait in TempCode, with Review to go back to them.
@@ -1810,7 +1810,7 @@ key a clicker sends.
   "Presenting in PowerPoint"). His press opens the deck there and runs
   PowerPoint's own slideshow from the first slide. Its second line, 12px
   muted, counts what our show plays otherwise or leaves out ("3 effects
-  play only in PowerPoint"), from the file's slides in the view
+  play only there"), from the file's slides in the view
   (`effectsChanged` in contract-work-slides.ts: each slide's
   `builds.changed`, and each transition but a fade, a push or a cut, the
   same sum as `ShowDeck.changed`); with none, no second line. A plain

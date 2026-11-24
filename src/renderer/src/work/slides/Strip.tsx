@@ -198,7 +198,7 @@ export const Strip = memo(function Strip({
                           : "group-hover/th:bg-foreground/5 group-active/th:bg-foreground/12 group-active/th:transition-none"
                   }`}
                 >
-                  <Picture doc={pictures ? picture.doc : null} page={picture.page} width={THUMB} ghost={slide.tint === "del" || slide.hidden} title={slide.title} thumb />
+                  <Picture doc={pictures ? picture.doc : null} page={picture.page} width={THUMB} ghost={slide.tint === "del" || slide.hidden} title={slide.title} thumb waitTitle />
                 </span>
               </button>
             </div>

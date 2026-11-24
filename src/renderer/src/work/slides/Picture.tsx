@@ -29,8 +29,9 @@ export function freePage(doc: PdfDoc | null, page: number): void {
 }
 
 /**
- * A slide at a width: the render's page, or while it comes (or with no
- * render) its title on a blank. A thumbnail paints only near the view, after
+ * A slide at a width: the render's page, or with no render its title on a
+ * blank; the strip's thumbnail (`waitTitle`) shows its title too while its
+ * page comes, so the strip never stands as blank boxes beside a drawn stage. A thumbnail paints only near the view, after
  * the stage, and lets pdf.js free the page when it leaves. A paint pdf.js
  * refuses on the stage says so in the slide's place, with Retry, as a PDF's
  * page does; a thumbnail stays a blank.
@@ -42,6 +43,7 @@ export const Picture = memo(function Picture({
   ghost = false,
   title,
   thumb = false,
+  waitTitle = false,
   first = false,
   onPainted,
   onFailed,
@@ -52,6 +54,8 @@ export const Picture = memo(function Picture({
   ghost?: boolean;
   title: string;
   thumb?: boolean;
+  /** shows the title while the page comes: where nothing beside it names the slide (the strip; the Sorter has its label) */
+  waitTitle?: boolean;
   /** a thumbnail with no stage to wait for (the Sorter's): it paints as soon as it is near the view */
   first?: boolean;
   onPainted?(host: HTMLElement): void;
@@ -97,7 +101,7 @@ export const Picture = memo(function Picture({
   return (
     <span className={`relative block overflow-hidden rounded-[3px] bg-muted outline-1 -outline-offset-1 outline-(--image-outline) ${ghost ? "opacity-45" : ""}`} style={{ width, height: Math.round(width / aspect) }}>
       <span ref={host} data-slide-picture aria-hidden="true" className="absolute inset-0" />
-      {!painted && !failed ? <span className="absolute inset-0 grid place-items-center overflow-hidden p-2 text-center text-xs leading-4 text-muted-foreground">{doc ? "" : title}</span> : null}
+      {!painted && !failed ? <span className="absolute inset-0 grid place-items-center overflow-hidden p-2 text-center text-xs leading-4 text-muted-foreground">{doc && !waitTitle ? "" : title}</span> : null}
       {failed ? (
         <span data-slide-failed className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-1 text-[13px] leading-5 text-muted-foreground">
           Couldn't draw this slide

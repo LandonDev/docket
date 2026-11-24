@@ -158,13 +158,14 @@ export function InPowerPoint({ itemId, onRetry }: { itemId: string; onRetry(): v
     );
   if (opening?.state === "failed")
     return (
-      <div data-in-powerpoint="failed" className="h-full">
+      <div data-in-powerpoint="failed" className="flex h-full">
         <EmptyState title="Couldn't open it in PowerPoint" line={opening.error} action={{ label: "Try again", onClick: onRetry }} />
       </div>
     );
   return (
-    <div data-in-powerpoint="open" className="h-full">
-      <EmptyState title="Open in PowerPoint" />
+    // A noun, centred as every empty pane is: a verb here read as a press that did nothing. The tab row's switch is the way back.
+    <div data-in-powerpoint="open" className="flex h-full">
+      <EmptyState title="In PowerPoint" />
     </div>
   );
 }

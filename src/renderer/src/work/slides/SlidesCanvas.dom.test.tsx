@@ -185,7 +185,9 @@ describe("the slides kind", () => {
     await waitFor(() => expect(document.querySelector("[data-slides-stage]")?.textContent).toContain("Slide 1"));
     expect(screen.getByText("Open with the turnout.")).toBeTruthy();
     fireEvent.click(thumbs()[1]);
-    await waitFor(() => expect(screen.getByText("None yet")).toBeTruthy());
+    // A slide with no notes draws no Notes block.
+    await waitFor(() => expect(screen.queryByText("Open with the turnout.")).toBeNull());
+    expect(document.querySelector("[data-slide-notes]")).toBeNull();
     expect(screen.queryByRole("toolbar", { name: "Review changes" })).toBeNull();
   });
 
@@ -395,7 +397,7 @@ describe("the slides kind", () => {
     expect(waiting.hasAttribute("data-narrow-hide")).toBe(true);
     expect(waiting.className).toContain("@max-[560px]/bar:hidden");
     // The deck opened in PowerPoint on the computer its file is on, and the canvas says so; nothing says "Not built yet".
-    expect(await screen.findByText("Open in PowerPoint")).toBeTruthy();
+    expect(await screen.findByText("In PowerPoint", { selector: "[data-slot=empty-title]" })).toBeTruthy();
     expect(host.office.calls.filter((c) => c.method === "work.office.switch")).toEqual([{ method: "work.office.switch", params: { source: { at: "file", host: "local", path: "/work/deck.pptx" } } }]);
     expect(screen.queryByText("Not built yet")).toBeNull();
     expect(screen.queryByRole("toolbar", { name: "Review changes" })).toBeNull();
@@ -421,7 +423,7 @@ describe("the slides kind", () => {
     expect(screen.getByText("Microsoft PowerPoint is not installed on this Mac.")).toBeTruthy();
     host.office.fail = null;
     fireEvent.click(screen.getByRole("button", { name: "Try again" }));
-    expect(await screen.findByText("Open in PowerPoint")).toBeTruthy();
+    expect(await screen.findByText("In PowerPoint", { selector: "[data-slot=empty-title]" })).toBeTruthy();
     expect(host.office.calls.filter((c) => c.method === "work.office.switch")).toHaveLength(2);
   });
 
@@ -463,7 +465,7 @@ describe("the slides kind", () => {
     const present = await found("[data-present]");
     fireEvent.click(within(present).getByRole("button", { name: "Ways to present" }));
     const row = await screen.findByRole("menuitem", { name: /In PowerPoint/ });
-    expect(row.textContent).toContain("3 effects play only in PowerPoint");
+    expect(row.textContent).toContain("3 effects play only there");
     const rows = screen.getAllByRole("menuitem");
     expect(rows.at(-1)).toBe(row);
     fireEvent.click(row);
@@ -516,7 +518,7 @@ describe("the slides kind", () => {
     open({ ...revised(), hosted: true });
     await found("[data-present]");
     fireEvent.click(within(await screen.findByRole("tablist", { name: "Open in" })).getByRole("tab", { name: "PowerPoint" }));
-    await screen.findByText("Open in PowerPoint");
+    await screen.findByText("In PowerPoint", { selector: "[data-slot=empty-title]" });
     expect(document.querySelector("[data-present]")).toBeNull();
     expect(shows.asks).toHaveLength(0);
   });

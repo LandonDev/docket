@@ -955,20 +955,21 @@ function Main({
       {under ?? (
         <>
           {edits.length > 0 ? <Edits edits={edits} /> : null}
-          <div className="shrink-0 px-5 pt-4 pb-5">
-            <div className="text-xs font-medium text-muted-foreground">Notes</div>
-            {notesEdit ? (
-              <p data-slide-notes-edit tabIndex={0} className="focus-ring mt-1 max-w-[70ch] text-sm leading-[22px] text-pretty whitespace-pre-wrap">
-                <Diff before={notesEdit.before} after={notesEdit.after} />
-              </p>
-            ) : slide.notes.trim() ? (
-              <p tabIndex={0} className="focus-ring mt-1 max-w-[70ch] text-sm leading-[22px] text-pretty whitespace-pre-wrap">
-                {slide.notes}
-              </p>
-            ) : (
-              <p className="mt-1 text-sm leading-[22px] text-muted-foreground">None yet</p>
-            )}
-          </div>
+          {/* A slide with no notes draws no Notes block: an empty heading over "None yet" said nothing he can act on here. */}
+          {notesEdit || slide.notes.trim() ? (
+            <div data-slide-notes className="shrink-0 px-5 pt-4 pb-5">
+              <div className="text-xs font-medium text-muted-foreground">Notes</div>
+              {notesEdit ? (
+                <p data-slide-notes-edit tabIndex={0} className="focus-ring mt-1 max-w-[70ch] text-sm leading-[22px] text-pretty whitespace-pre-wrap">
+                  <Diff before={notesEdit.before} after={notesEdit.after} />
+                </p>
+              ) : (
+                <p tabIndex={0} className="focus-ring mt-1 max-w-[70ch] text-sm leading-[22px] text-pretty whitespace-pre-wrap">
+                  {slide.notes}
+                </p>
+              )}
+            </div>
+          ) : null}
         </>
       )}
     </div>

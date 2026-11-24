@@ -232,7 +232,9 @@ describe("the Animate tab", () => {
     expect(within(sheet()).getByText("From right").className).toContain("bg-(--add-bg)");
     expect(within(sheet()).getByText("On click, after 4 s")).toBeTruthy();
     // The builds the suggestion does not change: listed, untinted.
-    expect(within(sheet()).getByText("Title: Who comes").className).not.toContain("bg-(--add-bg)");
+    expect(within(sheet()).getByText("Who comes").className).not.toContain("bg-(--add-bg)");
+    // A row shows the shape's own words, never "Title: Who comes" with a colon; the label stays whole for a screen reader.
+    expect(within(sheet()).queryByText("Title: Who comes")).toBeNull();
     expect(within(within(sheet()).getByRole("listitem")).getByText("Fade")).toBeTruthy();
     expect(t.edits()).toEqual([]);
   });

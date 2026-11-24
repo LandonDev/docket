@@ -9,7 +9,7 @@ import { reveal, yields } from "../../../components/ui/reveal";
 import { useSortable } from "../../../hooks/useSortable";
 import { cn } from "../../../lib/cn";
 import { altOnly, bareKey } from "../../../lib/keys";
-import { shapeLabel } from "../geometry";
+import { KIND_WORDS, shapeLabel } from "../geometry";
 import { addable, AFTER_FIRST, buildsHold, buildsOp, comesOf, KINDS, kindName, moved, parseSeconds, played, PUSH_SIDES, secondsText, transitionOp, type Comes, type Kind } from "./animation";
 import type { HandSession } from "./session";
 import { NumberField, Row, Section } from "./sheetParts";
@@ -22,10 +22,18 @@ import { NumberField, Row, Section } from "./sheetParts";
  * a suggestion changes it is the proposed value, read only.
  */
 
-/** A shape of the slide by the words the stage reads to a screen reader. */
+/** A shape of the slide by the words the stage reads to a screen reader: "Title: Who comes". */
 export const buildLabel = (slide: DeckSlide, id: number): string => {
   const shape = slide.shapes.find((s) => s.id === id);
   return shape ? shapeLabel(shape) : "Shape";
+};
+
+/** A shape as a row shows it: its own words, or its kind where it has none ("Picture"); never a label with a colon. */
+export const buildWords = (slide: DeckSlide, id: number): string => {
+  const shape = slide.shapes.find((s) => s.id === id);
+  if (!shape) return "Shape";
+  const words = shape.text.replace(/\s+/g, " ").trim();
+  return words || shape.label || KIND_WORDS[shape.kind ?? "other"];
 };
 
 /** How a build comes in, said only where it is not the plain Appear the list adds. */
@@ -178,7 +186,7 @@ function Builds({ slide, session, locked, tinted }: { slide: DeckSlide; session:
           {hold.order.map((id, i) => (
             <li key={id} className="flex h-7 items-center gap-2">
               <span className="w-4 shrink-0 text-xs text-muted-foreground tabular-nums">{i + 1}</span>
-              <Value tinted={tinted}>{buildLabel(slide, id)}</Value>
+              <Value tinted={tinted}>{buildWords(slide, id)}</Value>
               {hold.fade.includes(id) ? <Fades /> : null}
             </li>
           ))}
@@ -265,7 +273,7 @@ function BuildList({ slide, order: theirs, fade: theirFade, session }: { slide: 
                   <span className={cn("text-xs text-muted-foreground tabular-nums", yields("row"))}>{i + 1}</span>
                   <GripVertical className={cn("absolute size-3.5 text-muted-foreground", reveal("row", { row: true }))} />
                 </span>
-                <span className="min-w-0 flex-1 truncate text-[13px] leading-5">{label}</span>
+                <span className="min-w-0 flex-1 truncate text-[13px] leading-5">{buildWords(slide, id)}</span>
                 {fades ? <Fades /> : null}
                 <span className={reveal("row", { row: true })}>
                   <Button variant="ghost" size="icon-xs" tabIndex={-1} aria-label={`Remove ${label}`} onPointerDown={(e) => e.stopPropagation()} onClick={() => remove(id)}>
@@ -289,7 +297,7 @@ function BuildList({ slide, order: theirs, fade: theirFade, session }: { slide: 
       >
         {more.map((s) => (
           <RowMenuItem key={s.id} onSelect={() => send([...order, s.id])}>
-            {buildLabel(slide, s.id)}
+            {buildWords(slide, s.id)}
           </RowMenuItem>
         ))}
       </RowMenu>
