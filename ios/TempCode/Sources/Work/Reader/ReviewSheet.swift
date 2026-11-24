@@ -31,7 +31,8 @@ struct ReviewSheet: View {
                         ForEach(group.rows) { row in
                             ReviewChangeRow(row: row)
                                 .swipeActions(edge: .trailing, allowsFullSwipe: true) {
-                                    if decides {
+                                    // A row only Reject takes (its words say so) has no Accept.
+                                    if decides, row.accepts {
                                         Button("Accept", systemImage: "checkmark") { Task { await decide(row, accept: true) } }
                                             .tint(Tint.success)
                                     }
@@ -113,6 +114,7 @@ struct ReviewSheet: View {
             Spacer(minLength: 0)
             if review.deciding { ProgressView() }
             Button("Accept All") { Task { await decideAll(accept: true) } }
+                .disabled(!review.acceptsAny)
                 .font(.body.weight(.semibold))
                 .padding(.horizontal, 10)
                 .frame(minHeight: Layout.rowHeight)

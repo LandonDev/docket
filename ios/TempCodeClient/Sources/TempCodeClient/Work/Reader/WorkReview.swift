@@ -75,6 +75,8 @@ public final class WorkReview {
     }
 
     public var count: Int { rows.count }
+    /// Some row Accept can take: Accept All is offered only then.
+    public var acceptsAny: Bool { rows.contains(where: \.accepts) }
     /// "1 change", "3 changes".
     public var words: String { count == 1 ? "1 change" : "\(count) changes" }
 
@@ -126,7 +128,8 @@ public final class WorkReview {
     /// decision was still running.
     @discardableResult
     public func decide(_ row: ReviewRow, accept: Bool) async -> Bool {
-        guard !deciding else { return false }
+        // A cell the host found changed since is not sent for Accept: its row already says only Reject takes it.
+        guard !deciding, !accept || row.accepts else { return false }
         deciding = true
         defer { deciding = false }
         do {

@@ -2808,8 +2808,11 @@ he pressed and no other. One decision runs at a time: while it does, the
 swipes and the bar are off and a spinner sits in the bar. The first row has no
 hairline under the bar. A decided row leaves on the row transition with a
 light impact, and the last one closes the sheet. A row the host refuses stays,
-with the host's words under it in the destructive text ink. A failed read is
-the system's unavailable view with the host's words and Try Again.
+with the host's words under it in the destructive text ink. A sheet's cell
+the host found changed since the agent saw it says so the same way from the
+first read and has no Accept swipe; with only such rows left, Accept All is
+off. A failed read is the system's unavailable view with the host's words and
+Try Again.
 
 **Page Preview** (a push titled "Page Preview", a document's): the document
 as it will print, its Word file drawn on the host, in the system's viewer,

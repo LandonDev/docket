@@ -319,14 +319,13 @@ private let s3 = suggestion("g3", set: "cs2", row: 0, col: 26, base: #"{"v":"Dra
         #expect(review.rows.map(\.accepts) == [true, true, false])
         #expect(review.rows[2].refusal == WorkReview.conflictWords)
 
-        // The host refuses an Accept of a cell that changed since: the row stays with its words.
-        let refused = Task { await review.decide(review.rows[2], accept: true) }
-        let first = try #require(await rig.next(fake, "work.sheets.review"))
-        #expect(first.params == .object(["itemId": .string("i1"), "which": .object(["ids": .array([.string("g3")])]), "verdict": .string("accept")]))
-        fake.refuse(id: first.id, error: "That cell changed since the agent saw it: reject it, or edit the cell yourself.")
-        #expect(await refused.value == false)
+        // A cell the host found changed since is never sent for Accept: the row stays with its words.
+        let sentBefore = fake.sentRequests.count
+        #expect(await review.decide(review.rows[2], accept: true) == false)
+        #expect(fake.sentRequests.count == sentBefore)
         #expect(review.rows.count == 3)
         #expect(review.rows[2].refusal == "That cell changed since the agent saw it: reject it, or edit the cell yourself.")
+        #expect(review.acceptsAny)
 
         // A decision the host takes drops its row; a refusal on another row stays.
         let one = Task { await review.decide(review.rows[0], accept: false) }
@@ -369,7 +368,8 @@ private let s3 = suggestion("g3", set: "cs2", row: 0, col: 26, base: #"{"v":"Dra
         #expect(review.rows.map(\.id) == ["g2"])
         #expect(review.rows[0].refusal == "That cell changed since the agent saw it: reject it, or edit the cell yourself.")
         #expect(!review.rows[0].accepts)
-        // With only a conflicted row left, Accept All sends nothing.
+        // With only a conflicted row left, Accept All is not offered, and a press sends nothing.
+        #expect(!review.acceptsAny)
         let sent = fake.sentRequests.count
         #expect(await review.decideAll(accept: true) == false)
         #expect(fake.sentRequests.count == sent)
