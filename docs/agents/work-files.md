@@ -1894,7 +1894,16 @@ over a file that changed there.
   (`flushItem`, src/renderer/src/work/canvas/flush.ts, 8 s at most), a deck's open box with his words in it, a text
   file's words waiting for their save, a document's last frames and its store on the host (work-docs.md "The socket"), a sheet's edits waiting out their gather time (`SheetSync.flushed`: sent,
   and the close goes on once the host answered; before it, a cell typed and the tab closed by × at once was sent after
-  the item had gone, and lost). A cell still open in the grid's editor at the close is not committed. A copy whose changes have not reached its file then asks once
+  the item had gone, and lost). A cell still open in the grid's editor at the close is not committed. The file at a
+  tab's side leaves by the same door before `tabClose {side}` (FilesView.tsx `closeSideOf`; before, it skipped the
+  send). A send that failed, or was still on its way at 8 s, never closes the tab in silence: the house confirm asks
+  (`askCloseUnsent`, canvas/closeDoor.ts, the shape of a live file's "Notes.docx is still saving"): "Changes to
+  notes.txt are not saved." or "Deck.pptx is still saving", with Close Anyway; Cancel keeps the tab and what it holds.
+  A text file's send counts as failed while his words are still in the window after it (refused, or the file changed
+  under them; FileKind.tsx). A kind's refusal (`CloseRefused`) keeps the tab with its reason, as before, and asks
+  nothing. The thread's pane closes by the same door (`closeThroughDoor`) and asks alike. The copy's ask below reads
+  the tab as the host says it after the send (`tabsNow`), never as it was at the press: a send that turned `ok` into
+  `away` asks. A copy whose changes have not reached its file then asks once
   (`closeCopyTab`, copyClose.ts): "Changes to Roster.xlsx have not reached MacBook." with Keep trying and Discard
   while its computer does not answer, Keep Both and Discard over a file that changed there, Discard alone where it
   was refused. Keep trying closes the tab and keeps the copy and its record (`closed`) until the changes land, then
@@ -1903,6 +1912,18 @@ over a file that changed there.
   the close, and never before an editor's work on it under way has ended (`workingOn` and `workDone` in save.ts: the
   deck's queue for its file), so his last edit, sent as the tab closed, lands in the copy and is sent; opened again
   before it goes, the tab shows the kept copy and nothing is read over it.
+- **Quitting, or closing the window.** Quit (the window asked first and every other window, `persistLiveWorkspace`)
+  and a window's close (`persistAndCloseWindow`) both pass through `persistQuitState` (lib/appLifecycle.ts), which
+  sends every item's held edits at once (`flushAll`, lib/canvasFlushPort.ts: the registry is first-paint code, so
+  Work stays out of the entry chunk; canvas/flush.ts re-exports it) beside the layout's snapshot, for 1.5 s at most
+  (`QUIT_FLUSH_MS`: main gives each window but the first 2 s, `PERSIST_TIMEOUT_MS` in src/main/windows.ts; the first
+  and a window's own close have no cap of main's). Past it the app quits and the window goes anyway; the items whose
+  send failed or was late are named in the console (`[quit]`). No kind keeps a draft of its own in the window, so
+  what did not reach the host by then is lost: a text file's words (saved 700 ms after typing), a deck's open box
+  (2 s), a sheet's cells (150 ms) or an open grid cell, a document's last frames. A send that reached the host is
+  safe: a copy's changes are kept and sent from there ("Nothing he changed is dropped in silence"). A window that
+  hides because a thread is busy keeps its tabs and sends nothing yet. Before, quit and window close sent the chat
+  drafts alone, and every such edit was lost.
 - **Nothing he changed is dropped in silence** (.temp-code/plans/landed/F-edits-lost.md). Only his Discard, his
   Reload after its confirm, and a delete of the file after its confirm drop changes that have not reached the file.
   - A copy's item that goes by any way (its tab's close, the pane's own Close, a stray the start's check drops) is

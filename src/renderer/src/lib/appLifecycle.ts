@@ -34,6 +34,7 @@ import { loadWindowTransfer } from "./windowTransferBootstrap";
 import type { WindowTransferPayload } from "./windowTransfer";
 import { lastProjectPath, normalizeProjectPath, sameProjectPath } from "./recents";
 import { draftKeyOf, projectDrafts } from "./projectDrafts";
+import { flushAll } from "./canvasFlushPort";
 import { sessionStore } from "./tcserver/store";
 import { workspaceStore } from "./tcserver/workspaces";
 
@@ -284,7 +285,12 @@ export async function persistAndCloseWindow(
   }
 }
 
-/** Quit and unload keep only the layout; the server keeps the chats. */
+/** Quit, window close and unload keep the layout; the server keeps the chats.
+ *  What a Work item still holds in the window (a deck's typed words, a text
+ *  file's waiting save, a sheet's waiting cells) is sent beside the snapshot,
+ *  for `QUIT_FLUSH_MS` at most: past it the window goes, and what had not
+ *  landed is named in the console (docs/agents/work-files.md "Quitting, or
+ *  closing the window"). */
 export async function persistQuitState(
   sessions: Session[],
   tabs: WorkspaceTab[],
@@ -294,16 +300,20 @@ export async function persistQuitState(
 ): Promise<void> {
   // Electron's quit may skip pagehide: the drafts' last keystrokes go now.
   projectDrafts.flush();
-  await saveWorkspaceSnapshot(
-    collectWorkspaceSnapshot(
-      tabs,
-      sessions,
-      activeTabId,
-      projectCwd,
-      projectTerminals,
-      isPersistedThread,
-    ),
-  ).catch(() => undefined);
+  const [unsent] = await Promise.all([
+    flushAll(),
+    saveWorkspaceSnapshot(
+      collectWorkspaceSnapshot(
+        tabs,
+        sessions,
+        activeTabId,
+        projectCwd,
+        projectTerminals,
+        isPersistedThread,
+      ),
+    ).catch(() => undefined),
+  ]);
+  if (unsent.failed.length || unsent.late.length) console.warn("[quit] items whose last edits did not reach their host", unsent);
 }
 
 async function persistBootingResume(workspace: ResumedWorkspace): Promise<void> {

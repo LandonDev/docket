@@ -65,6 +65,13 @@ vi.mock("../shell/actions", () => ({
   linkIdOfHost: (id: string) => (hosts.has(id) ? id : null),
   allowComputers: vi.fn(async () => settings),
 }));
+// A close's ask (a copy whose changes have not reached its file, a send that did not land): a test says the answer.
+const confirms = vi.hoisted(() => ({ asked: [] as { title: string; action: string; other?: string }[], choice: null as "action" | "other" | null }));
+vi.mock("../../chrome/ConfirmDialog", async (original) => ({
+  ...(await original<typeof import("../../chrome/ConfirmDialog")>()),
+  confirmChoice: async (request: { title: string; action: string; other: string }) => (confirms.asked.push(request), confirms.choice),
+  confirmAction: async (request: { title: string; action: string }) => (confirms.asked.push(request), confirms.choice === "action"),
+}));
 vi.mock("../winvm/signIn", () => ({ openVm: vi.fn(), signInOnVm: vi.fn(async () => undefined) }));
 // A file's own viewer is each kind's business: here the pane says only which item it was handed.
 vi.mock("../canvas/CanvasPane", () => ({
@@ -105,7 +112,7 @@ vi.mock("../../surfaces/threads/ThreadView", async () => {
 vi.mock("../../surfaces/SessionPane", () => ({ LoadLine: () => null }));
 
 const { View } = await import("./FilesView");
-const { resetFilesStore } = await import("./store");
+const { resetFilesStore, tabsNow } = await import("./store");
 const { applyCanvasPush, resetCanvasStore } = await import("../canvas/store");
 const { sessionStore } = await import("../../lib/tcserver/store");
 const { send } = await import("../../lib/tcserver/commands");
@@ -114,6 +121,7 @@ const { newSession } = await import("../../lib/session");
 const { workDockPort, workOpenPort } = await import("../../lib/workSwitch");
 const { resetContextChips } = await import("../canvas/chips");
 const { resetDocks } = await import("./dockThread");
+const { registerFlush } = await import("../canvas/flush");
 
 const workspace = { id: "w1", environmentId: "box", path: "/w", name: "Dummy Esports", kind: "work", sector: "purdue" } as unknown as WorkspaceMeta;
 const props = { env: "box", workspace, sector: "purdue", lifeos: {}, startThread: () => undefined } as unknown as WorkViewProps;
@@ -142,7 +150,7 @@ function newHost(over: { places?: FilePlace[]; sources?: FilesPlaces["sources"];
   let rev = 0;
   let ids = 0;
   const items: { id: string; sessionId: string; workspaceId: string; kind: string; title: string; source: unknown; state: "open"; position: number; rev: number; createdAt: number; updatedAt: number }[] = [];
-  const host: Host & { tabs(): FileTab[]; say(push: Push): void; closeElsewhere(tabId: string): void } = {
+  const host: Host & { tabs(): FileTab[]; say(push: Push): void; closeElsewhere(tabId: string): void; change(tabId: string, over: Partial<FileTab>): void } = {
     name: "The box",
     platform: "linux",
     calls: [],
@@ -151,6 +159,11 @@ function newHost(over: { places?: FilePlace[]; sources?: FilesPlaces["sources"];
     say: (push) => host.pushes.forEach((listener) => listener(push)),
     closeElsewhere(tabId) {
       tabs = tabs.filter((t) => t.id !== tabId);
+      rev++;
+      host.say({ push: "work.files", workspaceId: "w1", tabs: rev });
+    },
+    change(tabId, over) {
+      tabs = tabs.map((t) => (t.id === tabId ? { ...t, ...over } : t));
       rev++;
       host.say({ push: "work.files", workspaceId: "w1", tabs: rev });
     },
@@ -180,6 +193,11 @@ function newHost(over: { places?: FilePlace[]; sources?: FilesPlaces["sources"];
           return list();
         }
         case "work.files.tabClose": {
+          if (params.side) {
+            tabs = tabs.map((t) => (t.id === params.tabId ? { ...t, side: undefined } : t));
+            rev++;
+            return list();
+          }
           tabs = tabs.filter((t) => t.id !== params.tabId);
           if (!tabs.length) tabs = [{ id: `t${++ids}`, kind: "page", name: "Dummy Esports", page: { at: { at: "place", id: "folder" }, name: "Dummy Esports" } }];
           rev++;
@@ -273,6 +291,8 @@ beforeEach(async () => {
   hosts.clear();
   settings.mayUseDesktop = [];
   settings.windowsVm = false;
+  confirms.asked = [];
+  confirms.choice = null;
   localStorage.clear();
   sessionStorage.clear();
   resetFilesStore();
@@ -579,6 +599,53 @@ describe("tabs", () => {
     fireEvent.click(screen.getByRole("button", { name: "Close Dummy Esports" }));
     await waitFor(() => expect(calls(host, "work.files.tabClose")).toHaveLength(2));
     await waitFor(() => expect(tabNames()).toEqual(["Dummy Esports"]));
+  });
+
+  it("sends what the file at a tab's side holds before it closes, as the tab's own close does", async () => {
+    const { host } = await mount();
+    await waitFor(() => expect(rows()).toContain("Budget.xlsx"));
+    fireEvent.doubleClick(row("Budget.xlsx"));
+    await waitFor(() => expect(tabNames()).toHaveLength(2));
+    const tabId = host.tabs().find((t) => t.kind === "file")!.id;
+    await act(async () => host.change(tabId, { side: { itemId: "side-1", key: "file:env_box:/w/notes.txt", name: "notes.txt" } }));
+    const close = await screen.findByRole("button", { name: "Close notes.txt" });
+    let land!: () => void;
+    const off = registerFlush("side-1", () => new Promise<void>((done) => (land = done)));
+    fireEvent.click(close);
+    await act(() => new Promise((r) => setTimeout(r, 30)));
+    expect(calls(host, "work.files.tabClose")).toEqual([]);
+    land();
+    await waitFor(() => expect(calls(host, "work.files.tabClose")).toMatchObject([{ params: { tabId, side: true } }]));
+    off();
+  });
+
+  it("keeps a tab whose last send failed unless he says close, and asks of a copy as it stands after the send", async () => {
+    const { host } = await mount();
+    await waitFor(() => expect(rows()).toContain("Budget.xlsx"));
+    fireEvent.doubleClick(row("Budget.xlsx"));
+    await waitFor(() => expect(tabNames()).toHaveLength(2));
+    const tab = host.tabs().find((t) => t.kind === "file")!;
+    await act(async () => host.change(tab.id, { copyOf: { host: "env_mac", path: "/Users/l/Budget.xlsx" }, back: { is: "ok" } }));
+    // A send that fails: he is asked, and the tab stays.
+    const offFailed = registerFlush(tab.itemId!, () => Promise.reject(new Error("offline")));
+    fireEvent.click(screen.getByRole("button", { name: "Close Budget.xlsx" }));
+    await waitFor(() => expect(confirms.asked).toHaveLength(1));
+    expect(confirms.asked[0]).toMatchObject({ action: "Close Anyway" });
+    await act(() => new Promise((r) => setTimeout(r, 30)));
+    expect(calls(host, "work.files.tabClose")).toEqual([]);
+    expect(tabNames()).toEqual(["Dummy Esports", "Budget.xlsx"]);
+    offFailed();
+    // The send lands but leaves the copy unsent (its computer did not answer): the close asks of that, not of the ok
+    // the tab showed when he pressed.
+    const off = registerFlush(tab.itemId!, async () => {
+      host.change(tab.id, { back: { is: "away" } });
+      await waitFor(() => expect(tabsNow("box", "w1").find((t) => t.id === tab.id)?.back?.is).toBe("away"));
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Close Budget.xlsx" }));
+    await waitFor(() => expect(confirms.asked).toHaveLength(2));
+    expect(confirms.asked[1]).toMatchObject({ title: "Changes to Budget.xlsx have not reached another computer.", action: "Keep trying" });
+    expect(calls(host, "work.files.tabClose")).toEqual([]);
+    off();
   });
 
   it("follows a close made in another window: the tab goes and the tab it came from shows", async () => {

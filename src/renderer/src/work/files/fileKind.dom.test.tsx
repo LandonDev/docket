@@ -79,6 +79,7 @@ vi.mock("./FileTextEditor", () => ({
 
 const { FileTabView } = await import("./FileTabView");
 const { SAVE_AFTER_MS } = await import("./fileSession");
+const { flushItem } = await import("../canvas/flush");
 
 const workspace = { id: "w1", environmentId: "box", path: "/w" } as Pick<WorkspaceMeta, "id" | "environmentId" | "path">;
 const AT = new Date(2026, 10, 23, 13, 52).getTime();
@@ -154,6 +155,20 @@ describe("a text file in a tab", () => {
     fireEvent.change(field, { target: { value: "mine\n" } });
     fireEvent.click(await screen.findByRole("button", { name: "Keep mine as a copy" }, { timeout: SAVE_AFTER_MS + 1500 }));
     await waitFor(() => expect(writes().at(-1)).toMatchObject({ copy: true, text: "mine\n" }));
+    expect(kept("/w/Events/Notes.md").text).toBe("theirs\n");
+  });
+
+  it("answers a close whose words did not go in as failed, and one whose words went as sent", async () => {
+    show("/w/Events/Notes.md");
+    const field = await screen.findByRole("textbox", { name: "Notes.md" });
+    await waitFor(() => expect(line()).toContain("Saved"));
+    fireEvent.change(field, { target: { value: "sent at the close\n" } });
+    await expect(flushItem("i1")).resolves.toBe("sent");
+    expect(kept("/w/Events/Notes.md").text).toBe("sent at the close\n");
+    // A second writer changed the file: his words stay here, and the close is told so.
+    Object.assign(kept("/w/Events/Notes.md"), { text: "theirs\n", version: 9 });
+    fireEvent.change(field, { target: { value: "not in the file\n" } });
+    await expect(flushItem("i1")).resolves.toBe("failed");
     expect(kept("/w/Events/Notes.md").text).toBe("theirs\n");
   });
 

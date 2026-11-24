@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { CloseRefused, flushedItem, flushItem, registerFlush } from "./flush";
+import { CloseRefused, flushAll, flushedItem, flushItem, registerFlush } from "./flush";
 
 describe("what an item holds is sent before its tab closes", () => {
   it("awaits the kind's own send, once registered, and nothing after it is let go", async () => {
@@ -16,9 +16,10 @@ describe("what an item holds is sent before its tab closes", () => {
     expect(sent).toBe(false);
   });
 
-  it("never keeps the tab for a failed send, keeps it for one its kind refuses, and waits no longer than its limit", async () => {
+  it("answers a failed send and one past its limit, throws one its kind refuses, and waits no longer than its limit", async () => {
+    await expect(flushItem("nothing-held")).resolves.toBe("sent");
     const off = registerFlush("item-2", () => Promise.reject(new Error("failed")));
-    await expect(flushItem("item-2")).resolves.toBeUndefined();
+    await expect(flushItem("item-2")).resolves.toBe("failed");
     off();
     const offRefused = registerFlush("item-2", () => Promise.reject(new CloseRefused("refused")));
     await expect(flushItem("item-2")).rejects.toThrow("refused");
@@ -27,7 +28,7 @@ describe("what an item holds is sent before its tab closes", () => {
     const offSlow = registerFlush("item-3", () => new Promise(() => undefined));
     const done = flushItem("item-3", 100);
     vi.advanceTimersByTime(100);
-    await expect(done).resolves.toBeUndefined();
+    await expect(done).resolves.toBe("late");
     offSlow();
     vi.useRealTimers();
   });
@@ -54,5 +55,41 @@ describe("flushedItem", () => {
     const offSlow = registerFlush("slow", () => new Promise(() => undefined));
     expect(await flushedItem("slow", 5)).toBe(false);
     offSlow();
+  });
+});
+
+describe("flushAll: what every item holds, sent as the window closes or the app quits", () => {
+  it("sends every item's at once, within one limit, and names the items whose send failed or ran past it", async () => {
+    vi.useFakeTimers();
+    try {
+      const sent: string[] = [];
+      const offs = [
+        registerFlush("deck", async () => void sent.push("deck")),
+        registerFlush("text", () => Promise.reject(new Error("offline"))),
+        registerFlush("sheet", () => Promise.reject(new CloseRefused("a cell is open"))),
+        registerFlush("doc", () => new Promise(() => undefined)),
+        registerFlush("thrown", () => {
+          throw new Error("at once");
+        }),
+      ];
+      const all = flushAll(1500);
+      await vi.advanceTimersByTimeAsync(1500);
+      const got = await all;
+      expect(sent).toEqual(["deck"]);
+      expect([...got.failed].sort()).toEqual(["sheet", "text", "thrown"]);
+      expect(got.late).toEqual(["doc"]);
+      offs.forEach((off) => off());
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("answers at once when nothing is held, and once every send landed, before its limit", async () => {
+    await expect(flushAll(10_000)).resolves.toEqual({ failed: [], late: [] });
+    const off = registerFlush("quick", async () => undefined);
+    const started = Date.now();
+    await expect(flushAll(10_000)).resolves.toEqual({ failed: [], late: [] });
+    expect(Date.now() - started).toBeLessThan(1000);
+    off();
   });
 });

@@ -74,7 +74,9 @@ Every close, by ×, by More, Close others, a middle click or ⌘W, goes through 
 (canvas/closeDoor.ts `readyToClose`), the one a Files tab's close uses too: what the item's kind
 still holds reaches the host first (`flushItem`: a sheet's waiting cells, a deck's open box, a
 text's waiting words), then a live Office guest unloads (`leaveLive`), and only then does
-`closeItem` tell the host. Before 2026-11-24 the pane beside a chat called `closeItem` alone, so a
+`closeItem` tell the host. A send that failed or ran past 8 s asks first in the house confirm
+(`askCloseUnsent`, Close Anyway; docs/agents/work-files.md "Closing the tab"), and Cancel keeps the
+item. Before 2026-11-24 the pane beside a chat called `closeItem` alone, so a
 cell typed just before a close from there was refused by a host that had already closed the item
 (the loss of landed/F-workbook-not-saved.md, by the chat's pane). Closing one item shows its
 neighbour (`selectedAfter`); closing the last gives the chat the whole pane. A closed item opens

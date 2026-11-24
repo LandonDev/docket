@@ -55,8 +55,12 @@ export function Body({ item, source, env, shell }: CanvasBodyProps<undefined>) {
       if (push.push === "work.files" && push.workspaceId === workspaceId && push.at !== undefined) look();
     });
     window.addEventListener("focus", look);
-    // A tab's close waits for what waits here (canvas/flush.ts).
-    const offFlush = registerFlush(item.id, () => session.flush());
+    // A tab's close waits for what waits here (canvas/flush.ts); words still here after the send (refused, or the file
+    // changed under them) fail it, so the close asks before they go.
+    const offFlush = registerFlush(item.id, async () => {
+      await session.flush();
+      if (session.dirty) throw new Error("Your words are not in the file yet");
+    });
     return () => {
       off();
       offFlush();

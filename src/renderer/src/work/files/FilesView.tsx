@@ -34,7 +34,7 @@ import "./bindings";
 import { FILES_KEYS } from "./chords";
 import { fetchHere, fileOf, openEntry, openInApp, type Busy } from "./open";
 import { ListBones, PageBar, PageView, type NoteFixes, type PageActs, type PageFind } from "./Page";
-import { useSideOpen, hasClosed, openAtSide, closeSide, openFileTab, rememberClosed, takeClosed, dropSearch, saveSearch, useHome, useSavedSearches, useSearchFilter, closeTab, firstPage, goTo, historyOf, keepBothCopy, moveTabs, openPageTab, reloadCopy, selectTab, sendCopyBack, teamRows, useDock, useListing, usePageLook, useReach, useSidebarFolded, useTabs, type ListFrom, type Reach } from "./store";
+import { useSideOpen, hasClosed, openAtSide, closeSide, openFileTab, rememberClosed, takeClosed, dropSearch, saveSearch, useHome, useSavedSearches, useSearchFilter, closeTab, firstPage, goTo, historyOf, keepBothCopy, moveTabs, openPageTab, reloadCopy, selectTab, sendCopyBack, tabsNow, teamRows, useDock, useListing, usePageLook, useReach, useSidebarFolded, useTabs, type ListFrom, type Reach } from "./store";
 import { closeCopyTab } from "./copyClose";
 import { DragLabelLayer, dragging, dropVerb, ROWS_MIME, setDragging, setDragLabel } from "./rowParts";
 import { filesPanelId, TabRow } from "./TabRow";
@@ -377,8 +377,10 @@ function Place({ workspace, reach, again, startThread }: WorkViewProps & { reach
   const closeOne = async (tabId: string): Promise<void> => {
     // The door every canvas item leaves by (canvas/closeDoor.ts): what the tab's kind still holds reaches the host,
     // then a live file's guest unloads; Word may hold it while still saving (office/live/layer.ts).
-    const gone = view.tabs.find((t) => t.id === tabId);
-    if (gone?.itemId && !(await readyToClose(gone.itemId, gone.name))) return;
+    const pressed = view.tabs.find((t) => t.id === tabId);
+    if (pressed?.itemId && !(await readyToClose(pressed.itemId, pressed.name))) return;
+    // The send may have changed how its copy stands (ok to away): the ask reads the tab as the host says it now.
+    const gone = tabsNow(link, workspace.id).find((t) => t.id === tabId) ?? pressed;
     const done = (discard: boolean): Promise<void> => {
       remember(tabId);
       return closeTab(link, workspace.id, tabId, first, discard);
@@ -387,6 +389,11 @@ function Place({ workspace, reach, again, startThread }: WorkViewProps & { reach
     await closeCopyTab(gone, copyHostOf(gone, reach), { choose: confirmChoice, confirm: confirmAction, close: done, keepBoth: () => keepBothCopy(link, workspace.id, tabId) });
   };
   const close = (tabId: string): void => void closeOne(tabId).catch((err: unknown) => say("The tab did not close", err));
+  // The file at a tab's side leaves by the same door: what it holds is sent before it goes.
+  const closeSideOf = async (tab: FileTab): Promise<void> => {
+    if (tab.side && !(await readyToClose(tab.side.itemId, tab.side.name))) return;
+    await closeSide(link, workspace.id, tab.id);
+  };
   const closeMany = async (tabIds: readonly string[]): Promise<void> => {
     for (const id of tabIds) await closeOne(id).catch((err: unknown) => say("The tab did not close", err));
   };
@@ -601,7 +608,7 @@ function Place({ workspace, reach, again, startThread }: WorkViewProps & { reach
         items={canvas.items}
         verbs={verbs}
         onClose={() => close(tab.id)}
-        onCloseSide={() => void closeSide(link, workspace.id, tab.id).catch((err: unknown) => say("The file did not close", err))}
+        onCloseSide={() => void closeSideOf(tab).catch((err: unknown) => say("The file did not close", err))}
         onShowFolder={newTab}
       />
     );
