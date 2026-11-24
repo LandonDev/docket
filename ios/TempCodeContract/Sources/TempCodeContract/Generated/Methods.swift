@@ -5917,6 +5917,66 @@ public enum Methods {
         }
     }
 
+    public enum WorkOfficeLiveAddress: ContractMethod {
+        public static let name = "work.office.live.address"
+
+        public struct Params: Codable, Hashable, Sendable {
+            public let workspaceId: String
+            public let ref: CanvasSource
+
+            public init(workspaceId: String, ref: CanvasSource) {
+                self.workspaceId = workspaceId
+                self.ref = ref
+            }
+        }
+
+        public struct Output: Codable, Hashable, Sendable {
+            public enum App: RawRepresentable, Codable, Hashable, Sendable {
+                case word
+                case excel
+                case powerpoint
+                /// A value this build does not know; `rawValue` keeps it.
+                case unknown(String)
+
+                public init(rawValue: String) {
+                    switch rawValue {
+                    case "word": self = .word
+                    case "excel": self = .excel
+                    case "powerpoint": self = .powerpoint
+                    default: self = .unknown(rawValue)
+                    }
+                }
+
+                public var rawValue: String {
+                    switch self {
+                    case .word: "word"
+                    case .excel: "excel"
+                    case .powerpoint: "powerpoint"
+                    case .unknown(let value): value
+                    }
+                }
+            }
+
+            public let address: String?
+            public let app: App?
+
+            public init(address: String?, app: App?) {
+                self.address = address
+                self.app = app
+            }
+
+            private enum CodingKeys: String, CodingKey {
+                case address, app
+            }
+
+            public func encode(to encoder: any Encoder) throws {
+                var container = encoder.container(keyedBy: CodingKeys.self)
+                try container.encode(address, forKey: .address)
+                try container.encode(app, forKey: .app)
+            }
+        }
+    }
+
     public enum WorkDigestList: ContractMethod {
         public static let name = "work.digest.list"
 

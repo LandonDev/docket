@@ -14,6 +14,7 @@ import type { MoneyReceived, MoneyState } from './contract-work-money'
 import type { ReceiptFields } from './work/money'
 import { CanvasItemSchema, CanvasSourceSchema, type CanvasItem } from './work/canvas'
 import { ENTRY_KINDS, FILE_VERBS, MAKE_KINDS, PLACE_KINDS, PLACE_STATES, type FileEntry, type FilePlace } from './work/files'
+import type { OfficeLiveAddress } from './contract-work-office'
 import { FolderRefSchema, type FileBytes as FilesReadBytes, type FileDone, type FilePreview, type FilesHome, type FilesListing, type FilesOpened, type FilesPlaces } from './contract-work-files'
 import type { WorkspaceWorkSettings } from './work/scope'
 import type { LifeosJwtAnswer } from './contract-work-lifeos'
@@ -1589,6 +1590,8 @@ export const FileDoneSchema = z.object({ entries: z.array(FileEntrySchema), refu
 /** `landed`: the op's file was already made at a commit whose answer was lost (files/upload.ts): nothing more to send. */
 export const FilesUploadBegunSchema = z.object({ uploadId: z.string(), landed: z.literal(true).optional() })
 export const FilesStarredSchema = z.object({ starred: z.boolean() })
+/** `work.office.live.address`: a shared Office file's web address and its app, for the phone's Open in Word. */
+export const OfficeLiveAddressSchema = z.object({ address: z.string().nullable(), app: z.enum(['word', 'excel', 'powerpoint']).nullable() })
 /** Something of a workspace's Files changed on its host: a folder (`at`, its key), the tabs, or the places. */
 export const WorkFilesPushSchema = push('work.files', { workspaceId: z.string(), at: z.string().optional(), tabs: z.number().optional(), places: z.literal(true).optional() })
 /**
@@ -1846,6 +1849,7 @@ export type WireSchemaPins = [
   Expect<Reads<typeof FilePreviewPhoneSchema, FilePreview>>,
   Expect<Reads<typeof FilesOpenedPhoneSchema, FilesOpened>>,
   Expect<Mirror<typeof FileDoneSchema, FileDone>>,
+  Expect<Mirror<typeof OfficeLiveAddressSchema, OfficeLiveAddress>>,
   Expect<Reads<typeof WorkDigestPushSchema, PushOf<'work.digest'>>>,
   Expect<Reads<typeof TellOpenPhoneSchema, TellOpen>>,
   Expect<Reads<typeof TellRowPhoneSchema, TellRow>>,

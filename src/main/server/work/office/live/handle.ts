@@ -1,6 +1,7 @@
 import type { ClientRequest } from '@shared/contract'
 import type { FileTab } from '@shared/contract-work-files'
-import type { OfficeLiveApp, OfficeLiveDesktop, OfficeLiveLibraryDefault, OfficeLiveMode, OfficeLiveOf, OfficeStatus, TeamsLibrariesAnswer, TeamsLibrary, VmOfficeStatus } from '@shared/contract-work-office'
+import type { CanvasSource } from '@shared/work/canvas'
+import type { OfficeLiveAddress, OfficeLiveApp, OfficeLiveDesktop, OfficeLiveLibraryDefault, OfficeLiveMode, OfficeLiveOf, OfficeStatus, TeamsLibrariesAnswer, TeamsLibrary, VmOfficeStatus } from '@shared/contract-work-office'
 import { canvasSourcePath, filesPaneOf, handled, NOT_HANDLED, type CanvasItem, type Handled } from '@shared/work'
 import { FenceError } from '../../../remote/fence'
 import { filesState, ownRows } from '../../files/handle'
@@ -18,6 +19,7 @@ import { signOutLive } from './health'
 import { libraryDefault, modeOf, setLibraryDefault } from './memory'
 
 const OF = 'work.office.live.of'
+const ADDRESS = 'work.office.live.address'
 const PEER_READ_MS = 4_000
 const NO_FILE = 'That Files tab is closed.'
 const EMPTY: OfficeLiveOf = { mode: 'here', address: null, app: null, tenant: null, desktops: [] }
@@ -87,6 +89,40 @@ function twinFiles(ctx: WorkCtx, by: Caller, at: FileAt, file: string, libraries
   return targets
 }
 
+interface LibraryFile {
+  app: OfficeLiveApp
+  /** null when the library is another host's and that host did not answer */
+  at: FileAt | null
+  libraries: TeamsLibrary[]
+  read: PeerRead
+}
+
+/** The library an Office file by its Files ref lies in, here or on a host of the workspace; null for any other file. */
+async function libraryFile(ctx: WorkCtx, by: Caller, workspaceId: string, ref: { host: string; path: string }, method: string, signal?: AbortSignal): Promise<LibraryFile | null> {
+  const app = appOf(ref.path)
+  if (!app) return null
+  const here = ref.host === ctx.host ? locate(ctx, by, workspaceId, { at: 'file', host: ref.host, path: ref.path }, method) : null
+  if (here && here.in !== 'library') return null
+  const own = localLibraries(ctx)
+  const deadline = AbortSignal.timeout(PEER_READ_MS)
+  const readSignal = signal ? AbortSignal.any([signal, deadline]) : deadline
+  const read: PeerRead = (host, verb, args) => ctx.peer.call({ scope: { sessionId: filesPaneOf(workspaceId), workspaceId }, signal: readSignal }, host).call('office', verb, args)
+  const peers = ctx.settings.workspace(workspaceId).mayUseDesktop
+  // A remote key can see the origin of a copy it can reach, and only the mounts it could name on this host.
+  const hosts = [...new Set(peers)].filter((host) => host !== ctx.host && (by.kind === 'local' || host === ref.host))
+  const far = (await Promise.all(hosts.map((host) => readLibraries(read, host)))).flat()
+  const at = here?.in === 'library' ? here : farFile(far, ref)
+  return { app, at, libraries: [...own.filter((l) => reachesPath(ctx, by, l.path)), ...far], read }
+}
+
+/** A Files entry's web address and its app, for the phone's Open in Word: nothing of the tab, the mode or the desktops. */
+async function addressOf(ctx: WorkCtx, by: Caller, workspaceId: string, source: CanvasSource, signal?: AbortSignal): Promise<OfficeLiveAddress> {
+  ownRows(ctx, by, workspaceId)
+  const found = source.at === 'file' ? await libraryFile(ctx, by, workspaceId, source, ADDRESS, signal) : null
+  const result = found?.at ? liveAddress(found.at.library, found.at.path, { libraries: found.libraries }) : null
+  return found && result?.ok ? { address: result.url, app: found.app } : { address: null, app: null }
+}
+
 /** A Files tab of the workspace, its item, and the file it is of: the other computer's it stands for, the original its key marked, or its own. */
 export function tabFile(ctx: WorkCtx, by: Caller, workspaceId: string, tabId: string): { tab: FileTab; item: CanvasItem | null; ref: { host: string; path: string } | null } {
   ownRows(ctx, by, workspaceId)
@@ -117,23 +153,11 @@ async function liveOf(ctx: WorkCtx, by: Caller, workspaceId: string, tabId: stri
  * cache. A file of another host is read from that host, four seconds at most.
  */
 export async function liveFileOf(ctx: WorkCtx, by: Caller, workspaceId: string, ref: { host: string; path: string }, refKey: string, o: { carrier?: () => OfficeCarrier | null; signal?: AbortSignal } = {}): Promise<OfficeLiveOf> {
-  const app = appOf(ref.path)
-  if (!app) return EMPTY
-
-  const here = ref.host === ctx.host ? locate(ctx, by, workspaceId, { at: 'file', host: ref.host, path: ref.path }, OF) : null
-  if (here && here.in !== 'library') return EMPTY
-  const own = localLibraries(ctx)
-  const deadline = AbortSignal.timeout(PEER_READ_MS)
-  const readSignal = o.signal ? AbortSignal.any([o.signal, deadline]) : deadline
-  const read: PeerRead = (host, verb, args) => ctx.peer.call({ scope: { sessionId: filesPaneOf(workspaceId), workspaceId }, signal: readSignal }, host).call('office', verb, args)
-  const peers = ctx.settings.workspace(workspaceId).mayUseDesktop
-  // A remote key can see the origin of a copy it can reach, and only the mounts it could name on this host.
-  const hosts = [...new Set(peers)].filter((host) => host !== ctx.host && (by.kind === 'local' || host === ref.host))
-  const far = (await Promise.all(hosts.map((host) => readLibraries(read, host)))).flat()
-  const at = here?.in === 'library' ? here : farFile(far, ref)
+  const found = await libraryFile(ctx, by, workspaceId, ref, OF, o.signal)
+  if (!found) return EMPTY
+  const { app, at, libraries, read } = found
   if (!at) return { ...EMPTY, mode: modeOf(ctx.db, workspaceId, refKey, null), app, why: 'The file’s library did not answer.' }
 
-  const libraries = [...own.filter((l) => reachesPath(ctx, by, l.path)), ...far]
   const result = liveAddress(at.library, at.path, { libraries })
   const file = relativeLivePath(at.library, at.path)
   const carrier = o.carrier
@@ -156,6 +180,8 @@ export async function liveHandle(req: ClientRequest, ctx: WorkCtx, by: Caller, c
   switch (req.method) {
     case OF:
       return handled(await liveOf(ctx, by, req.params.workspaceId, req.params.tabId, carrier, signal))
+    case ADDRESS:
+      return handled(await addressOf(ctx, by, req.params.workspaceId, req.params.ref, signal))
     case 'work.office.live.libraryDefault':
     case 'work.office.live.setLibraryDefault': {
       if (by.kind === 'model' || (by.peer && req.method === 'work.office.live.setLibraryDefault')) throw new Error('Library defaults are set from a window on this host.')

@@ -1019,8 +1019,10 @@
   can open it), a row's `fact`, Quick Look's `factDetail` (size and time as
   prose after the kind), `sentence` (a failure's words without the wire's
   code word), `opening` (`.item` seats it, `.quickLook`
-  with `Original`: `allowed`, `readOnly`, `tooBig`, `facts(host:)`), the
-  search field's `filter`, `nameProblem` and `untitled`.
+  with `Original`: `allowed`, `readOnly`, `tooBig`, `facts(host:)`),
+  Open in Word's `officeApp` (a shared library's `.docx`, `.xlsx`, `.xlsm` or
+  `.pptx`) and `officeLinks` (`ms-word:ofe%7Cu%7C<address>` without `?web=1`,
+  and the address for Safari), the search field's `filter`, `nameProblem` and `untitled`.
 - **`OriginalFiles`**: Open the original reads a workspace-folder file of
   50 MB or less through `work.files.read` in 4 MB frames, the first frame's
   version asked on every later one (a file that changes midway fails), into
@@ -1044,7 +1046,7 @@
   `PdfItemView`, `SlidesItemView` and `HostedItemView` take an optional Ask
   and draw none without it), its `.quickLook` line `FileQuickLookScreen` (the
   preview pager, the facts, Open the original into `.quickLookPreview`, AVKit
-  for sound and video; also what stands in a file-kept document's place where
+  for sound and video, Open in Word from `FilesHost.officeAddress`; also what stands in a file-kept document's place where
   the hosted editor will not open it). `ItemBody` reads the `file` canvas kind as "This file opens
   in Files." (a thread's canvas seats none before F5).
 - **What degrades until the host builds it**: `work.files.search` and
@@ -1061,7 +1063,7 @@
   `files-document:<name>` or `files-upload` (a 600 × 400 PNG the app draws,
   "Proof picture.png") acts once on the folder the walk ends in, and
   `files-original` presses Open the original on the Quick Look screen it
-  ends on.
+  ends on; `files-office` presses Open in Word there once it shows.
 - **Checked on the box**: the contract package builds and its tests pass
   on Linux (Swift 6.4.2); FilesTests runs there in a scratch package of
   FilesRules, OriginalFiles, FilesHost and WorkRead with stand-ins for

@@ -586,6 +586,8 @@ export const SUBSET: SubsetEntry[] = [
   method('work.files.trash', W.FileDoneSchema),
   method('work.files.restore', W.FileDoneSchema),
   method('work.files.upload', W.FilesUploadBegunSchema),
+  // the phone's Open in Word on a shared Office file's facts (docs/agents/work-files.md "The phone")
+  method('work.office.live.address', W.OfficeLiveAddressSchema),
   // the digest (docs/agents/work-digest.md "The phone"): the list, the settings, a day opened
   type('TellGroup', TellGroupSchema),
   type('TellLevel', TellLevelSchema),

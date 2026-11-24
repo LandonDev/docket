@@ -384,7 +384,7 @@ describe("a file in the Windows VM a host keeps", () => {
 
   it("passes the listener's fence only in a Teams files verb, by the guest's own path: the pillar holds it to OneDrive's libraries there", () => {
     expect(guestPath('work.office.filesList', guest, 'linux')).toBe(true)
-    for (const method of ['work.office.filesList', 'work.office.filesFetch', 'work.office.filesRead', 'work.office.filesOpen', 'work.office.filesCopy', 'work.office.filesThreads']) expect(() => fenceRequest(list(guest, method), ['/srv/work'])).not.toThrow()
+    for (const method of ['work.office.filesList', 'work.office.filesFetch', 'work.office.filesRead', 'work.office.filesOpen', 'work.office.filesCopy', 'work.office.filesThreads', 'work.office.live.address']) expect(() => fenceRequest(list(guest, method), ['/srv/work'])).not.toThrow()
   })
 
   it('stays fenced in every other Work method, with a slash in it, and on a Windows host, whose own paths look the same', () => {
@@ -407,6 +407,8 @@ describe("a file another host of his holds, named by a remote key (F-files-refus
   const ELSEWHERE: [string, (src: object) => Record<string, unknown>][] = [
     ['work.office.filesCopy', (source) => ({ sessionId: 's', source })],
     ['work.office.filesThreads', (source) => ({ workspaceId: 'w', source })],
+    // The phone's Open in Word: the path is matched to that host's libraries, never opened here (office/live/handle.ts).
+    ['work.office.live.address', (ref) => ({ workspaceId: 'w', ref })],
     ['work.files.threads', (ref) => ({ workspaceId: 'w', ref })],
     ['work.files.tabOpen', (page) => ({ workspaceId: 'w', page: { at: page, name: 'P' } })],
     ['work.files.tabSet', (page) => ({ workspaceId: 'w', tabId: 't', page: { at: page, name: 'P' } })],

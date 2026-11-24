@@ -2152,7 +2152,14 @@ operate, opens in Quick Look: the host's preview pages, else the file's
 facts, and Open the original for a workspace-folder file of 50 MB or less,
 read through `work.files.read` by version into a temp file that goes with
 the preview. A shared library's file shows facts only ("On MacBook"):
-`read` gives a library's bytes to his own window alone. A seated file opens
+`read` gives a library's bytes to his own window alone. A shared library's
+`.docx`, `.xlsx`, `.xlsm` or `.pptx` (`FilesRules.officeApp`) asks the host
+once for its web address (`work.office.live.address`); with one, Open in Word
+(Excel, PowerPoint) sits under the facts and opens `ms-word:ofe|u|<address>`
+(`ms-excel:`, `ms-powerpoint:`, the address without `?web=1`,
+`FilesRules.officeLinks`), or the address in Safari, as Word for the web,
+where no Office app takes it (`canOpenURL` against the three schemes in
+`LSApplicationQueriesSchemes`, or the open fails). No address, no button. A seated file opens
 on the phone-files build's reader page (docs/agents/work-phone-files.md "From
 Files"), where Ask finds the thread that holds it or starts one. A document
 or sheet kept as a file in a place of his own is seated too: the hosted

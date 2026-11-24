@@ -97,6 +97,11 @@ targets:
         NSCameraUsageDescription: TempCode uses the camera to scan a receipt you choose to file.
         NSAppTransportSecurity:
           NSAllowsLocalNetworking: true
+        # Open in Word on a shared Office file (Work/Files): canOpenURL asks whether an Office app is installed.
+        LSApplicationQueriesSchemes:
+          - ms-word
+          - ms-excel
+          - ms-powerpoint
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: dev.landon.tempcode.ios

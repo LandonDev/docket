@@ -74,7 +74,8 @@
   `FileRead` (`work.files.read`'s frame: named apart from the PDF's and the
   deck's `FileBytes`), `FilePreview`, `FileDone`, `FilesPlaces`,
   `FilesHome` and `FilesOpened` named, and the `work.files` push in
-  `RemotePushSchema`. Two are phone views pinned with `Reads`:
+  `RemotePushSchema`. Open in Word added `work.office.live.address`
+  (`OfficeLiveAddressSchema`, a `Mirror` of `OfficeLiveAddress`). Two are phone views pinned with `Reads`:
   `FilesPlacesPhoneSchema` leaves out `sources`, `FilesOpenedPhoneSchema`
   the tabs; `FilePreviewPhoneSchema` is one object with every field
   optional, so either answer (`{png, pages, width, height}` or `{none}`)

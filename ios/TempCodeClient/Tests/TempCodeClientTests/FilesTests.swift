@@ -164,6 +164,28 @@ struct FilesRulesTests {
         #expect(FilesRules.startsOver(pinned: "a1", answered: gone.version))
     }
 
+    @Test func `a shared library's Office file offers Open in its app, by the Office scheme, else the address in Safari`() throws {
+        let folder: FilePlace = try decode(place("folder"))
+        let library: FilePlace = try decode(place("lib", kind: "teams", name: "General", host: "MacBook", shared: true))
+        let office = { (name: String) throws -> FilesRules.OfficeApp? in FilesRules.officeApp(try decode(entry(name, kind: "document")), place: library) }
+        #expect(try office("Plan.docx") == .word)
+        #expect(try office("Roster.XLSX") == .excel)
+        #expect(try office("Macros.xlsm") == .excel)
+        #expect(try office("Run of show.pptx") == .powerpoint)
+        #expect(try office("Old.doc") == nil)
+        #expect(try office("Bracket.pdf") == nil)
+        // A file of his own opens in Quick Look as it does; it has no web address to open.
+        #expect(FilesRules.officeApp(try decode(entry("Plan.docx", kind: "document")), place: folder) == nil)
+        #expect(FilesRules.OfficeApp.powerpoint.title == "Open in PowerPoint")
+
+        let address = "https://purdue0.sharepoint.com/sites/Esports/Shared%20Documents/General/Plan%20%231.docx?web=1"
+        let links = try #require(FilesRules.officeLinks(.word, address: address))
+        #expect(links.app.absoluteString == "ms-word:ofe%7Cu%7Chttps://purdue0.sharepoint.com/sites/Esports/Shared%20Documents/General/Plan%20%231.docx")
+        #expect(links.web.absoluteString == address)
+        #expect(FilesRules.officeLinks(.excel, address: "https://x.sharepoint.com/a.xlsx")?.app.absoluteString == "ms-excel:ofe%7Cu%7Chttps://x.sharepoint.com/a.xlsx")
+        #expect(FilesRules.officeLinks(.word, address: "http://x.sharepoint.com/a.docx") == nil)
+    }
+
     @Test func `the search field filters by every word, case and accents ignored`() throws {
         let rows: [FileEntry] = try decode("[\(entry("Spring Café budget.xlsx", kind: "sheet")),\(entry("Bracket.pdf")),\(entry("Budget 2.pdf"))]")
         #expect(FilesRules.filter(rows, query: "cafe BUDGET").map(\.name) == ["Spring Café budget.xlsx"])
@@ -386,6 +408,21 @@ actor StubFilesWire: FilesWire {
         await wire.answer("work.canvas.list", #"{"items":[\#(item)]}"#)
         #expect(try await host.open("w1", pdf).id == "i1")
         #expect(try #require(await wire.params("work.canvas.list").first) == #"{"sessionId":"s9"}"#)
+    }
+
+    @Test func `Open in Word asks the host for the file's address, and none hides it`() async throws {
+        let wire = StubFilesWire()
+        let host = FilesHost(wire: wire, environmentId: "env_box", caps: .readOnly)
+        let plan: FileEntry = try decode(entry("Plan.docx", kind: "document"))
+        await wire.answer("work.office.live.address", #"{"address":"https://x.sharepoint.com/Plan.docx?web=1","app":"word"}"#)
+        let found = try #require(await host.officeAddress("w1", plan))
+        #expect(found.app == .word)
+        #expect(found.address == "https://x.sharepoint.com/Plan.docx?web=1")
+        #expect(try #require(await wire.params("work.office.live.address").first) == #"{"ref":{"at":"file","host":"box","path":"\/w\/Dummy Esports\/Plan.docx"},"workspaceId":"w1"}"#)
+        await wire.answer("work.office.live.address", #"{"address":null,"app":null}"#)
+        #expect(await host.officeAddress("w1", plan) == nil)
+        await wire.refuse("work.office.live.address", "offline")
+        #expect(await host.officeAddress("w1", plan) == nil)
     }
 
     @Test func `the original is read by version into a temp file`() async throws {

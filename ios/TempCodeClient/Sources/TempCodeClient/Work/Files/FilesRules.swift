@@ -320,6 +320,45 @@ public enum FilesRules {
         return [.document, .sheet].contains(entry.kind) ? .readOnly : .allowed
     }
 
+    // MARK: - Open in Word
+
+    /// The Office app a shared library's Office file opens in from its facts (Open in Word), by the host's
+    /// `work.office.live.address` answer.
+    public enum OfficeApp: String, Equatable, Sendable {
+        case word, excel, powerpoint
+
+        public var title: String {
+            switch self {
+            case .word: "Open in Word"
+            case .excel: "Open in Excel"
+            case .powerpoint: "Open in PowerPoint"
+            }
+        }
+    }
+
+    /// The app a shared library's file opens in, by its name (the host's `LIVE_FORMS`): only these ask the host
+    /// for an address; nil for any other file and for every file of his own.
+    public static func officeApp(_ entry: FileEntry, place: FilePlace) -> OfficeApp? {
+        guard case .facts = original(entry, place: place) else { return nil }
+        switch entry.name.split(separator: ".").last.map({ $0.lowercased() }) {
+        case "docx": return .word
+        case "xlsx", "xlsm": return .excel
+        case "pptx": return .powerpoint
+        default: return nil
+        }
+    }
+
+    /// Where Open in Word goes: the app by its Office URI scheme (`ms-word:ofe|u|<address>`, the `|` written
+    /// `%7C`, as a URL must hold it), without the address's `?web=1`; and the address itself, which Safari opens
+    /// as Word for the web where no Office app takes the first.
+    public static func officeLinks(_ app: OfficeApp, address: String) -> (app: URL, web: URL)? {
+        guard let web = URL(string: address), web.scheme == "https" else { return nil }
+        var file = URLComponents(url: web, resolvingAgainstBaseURL: false)
+        file?.query = nil
+        guard let plain = file?.string, let url = URL(string: "ms-\(app.rawValue):ofe%7Cu%7C\(plain)") else { return nil }
+        return (url, web)
+    }
+
     // MARK: - search, New and the change ids
 
     /// The folder's own rows whose name holds every word typed, case and accents ignored: what the system

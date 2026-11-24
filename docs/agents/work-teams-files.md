@@ -374,7 +374,8 @@ asks the named host for the bytes over the host link, `copyIn`, only a host the
 workspace may use; that host holds the path to a library it syncs,
 `admitted`), and `work.office.filesThreads`, `work.files.threads`, `tabOpen`,
 `tabSet`, `star`, `seen` (each matches or keeps the source as words and
-reads nothing). The listener passes its own id (`fenceRequest`'s `self`, the
+reads nothing), and `work.office.live.address` (matched to that host's list of
+libraries, never opened here). The listener passes its own id (`fenceRequest`'s `self`, the
 id Work calls `ctx.host`), and a claimed host must be spelled as a host's id
 is (`ENVIRONMENT_ID`, `env_` and 22 characters): no other word and no `:`, so a
 mark kept as `<host>:<path>` never meets one of this host's. A copy lands
@@ -469,6 +470,7 @@ a saved folder address.
 | Method | Needs | What |
 |---|---|---|
 | `work.office.live.of {workspaceId, tabId}` | operate | `{mode, address, why?, app, tenant, desktops}` for the tab's original file. Each desktop gives a source to pass to `filesOpen` and carries `vm: true` for a VM. |
+| `work.office.live.address {workspaceId, ref}` | read | `{address, app}` for a Files entry's `{at: 'file'}` ref, with no tab: the phone's Open in Word. The same library lookup as `live.of` (`libraryFile` in office/live/handle.ts); both null for a file of no library, of no Office app, or with no address. A thread is refused; a remote key sees only a library it reaches, and may name a file in the VM or on another host of the workspace (`GUEST_METHODS`, `ELSEWHERE_METHODS`). |
 | `work.office.live.libraryDefault {libraryId}` | operate | `{mode}` from the host that holds the library. The workspace's host can read it over the bridge for a copied file. |
 | `work.office.live.setLibraryDefault {libraryId, mode}` | operate | Writes and returns `{mode}` on the host that holds the library. |
 | `work.office.live.set {workspaceId, tabId, mode, typed?, choice?}` | operate | Switches the tab between Edit here and Live and remembers the mode. Answers `{is: 'done'}` or `{is: 'ask', why, words}`. A thread is refused. |

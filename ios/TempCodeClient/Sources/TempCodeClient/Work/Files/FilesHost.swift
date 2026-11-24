@@ -194,6 +194,15 @@ public final class FilesHost {
         }
     }
 
+    /// A shared Office file's web address and its app, for Open in Word; nil where the host has none or did not
+    /// answer, which leaves the facts as they are.
+    public func officeAddress(_ workspaceId: String, _ entry: FileEntry) async -> (app: FilesRules.OfficeApp, address: String)? {
+        guard let ref = entry.ref else { return nil }
+        guard let answer = try? await wire.request(Methods.WorkOfficeLiveAddress.self, .init(workspaceId: workspaceId, ref: ref)),
+              let address = answer.address, let app = answer.app.flatMap({ FilesRules.OfficeApp(rawValue: $0.rawValue) }) else { return nil }
+        return (app, address)
+    }
+
     // MARK: - changes
 
     public func star(_ workspaceId: String, _ entry: FileEntry, on: Bool) async throws {

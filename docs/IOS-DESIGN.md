@@ -2696,7 +2696,10 @@ Files (the files pillar's F9, docs/agents/work-files.md "The phone"):,
   workspace-folder file of 50 MB or less; "Edit on your computer" above it
   for a document or sheet kept as a file; "Over 50 MB. Open it on your
   computer."; or, for a shared library's file, its facts only and "On
-  MacBook". The original opens in the system's Quick Look and its temp
+  MacBook", with Open in Word (Excel, PowerPoint; a prominent wide button,
+  `arrow.up.forward.app`) under it for an Office file whose host knows its
+  web address. It fades in when the host answers and is absent when it has
+  none; it opens the Office app, else the address in Safari. The original opens in the system's Quick Look and its temp
   file goes when the preview closes.
 
 Not on the phone, and why: LifeOS's project cards on a Work workspace's

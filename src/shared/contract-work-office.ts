@@ -225,6 +225,11 @@ export interface OfficeLiveOf {
  * `word`: the document a Word file became holds edits the Word file has not; Save to Teams as Word, then ask again.
  */
 export type OfficeLiveSet = { is: 'done' } | { is: 'ask'; why: 'changed' | 'gone' | 'away' | 'refused' | 'word'; words: string }
+/** A shared Office file's web address and the app it opens in, for the phone's Open in Word; both null for any other file. */
+export interface OfficeLiveAddress {
+  address: string | null
+  app: OfficeLiveApp | null
+}
 
 const LiveLibrary = z.object({ libraryId: z.string().min(1).max(200) })
 export interface OfficeLiveLibraryDefault {
@@ -273,6 +278,8 @@ export const OfficeRequestSchemas = [
    * the file's version on its computer to move. His press alone: a thread is refused.
    */
   request('work.office.live.set', z.object({ workspaceId: z.string().max(200), tabId: z.string().max(100), mode: OfficeLiveModeSchema, typed: z.number().int().min(0).max(1e9).optional(), choice: z.literal('keep-both').optional() })),
+  /** A Files entry's web address (`ref` its `{at: 'file'}` source), without a tab: the phone's Open in Word. → OfficeLiveAddress */
+  request('work.office.live.address', z.object({ workspaceId: z.string().max(200), ref: CanvasSourceSchema })),
   request('work.office.live.libraryDefault', LiveLibrary),
   request('work.office.live.setLibraryDefault', LiveLibrary.extend({ mode: OfficeLiveModeSchema })),
   /** Signs this computer out of one tenant's Office for the web (Settings → Connections); a window of this computer alone. */
@@ -337,6 +344,7 @@ export const OFFICE_CAPS = {
   'work.office.filesOpen': 'operate',
   'work.office.live.of': 'operate',
   'work.office.live.set': 'operate',
+  'work.office.live.address': 'read',
   'work.office.live.libraryDefault': 'operate',
   'work.office.live.setLibraryDefault': 'operate',
   'work.office.live.signOut': 'operate',

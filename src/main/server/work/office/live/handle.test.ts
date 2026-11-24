@@ -152,6 +152,36 @@ describe('the live Office wire', () => {
     await expect(servePeerWork({ ...deps, policyOf: () => 'read' }, 'env_mac', { kind: 'call', module: 'office', verb: 'live.libraryDefault', args: { libraryId: library } })).rejects.toThrow('needs operate')
   })
 
+  it('answers a Files entry’s web address and app with no tab, for the phone’s Open in Word', async () => {
+    const address = (path: string, by = window, host = HOST) => liveHandle(request('work.office.live.address', { workspaceId: WS, ref: at(path, host) }), rig.ctx, by, () => desktop)
+    const none = { handled: true, result: { address: null, app: null } }
+    setRoots(rig.db, [{ folder: rig.team, web: WEB }])
+    expect(await address(join(rig.team, 'General', 'Plan.docx'))).toEqual({ handled: true, result: { address: `${WEB}/General/Plan.docx?web=1`, app: 'word' } })
+    expect(await address(join(rig.team, 'General', 'Spring budget.xlsx'))).toMatchObject({ result: { address: `${WEB}/General/Spring%20budget.xlsx?web=1`, app: 'excel' } })
+    expect(await address(join(rig.team, 'General', 'Cloud only.pdf'))).toEqual(none)
+    expect(await address(join(rig.folder, 'Budget.xlsx'))).toEqual(none)
+    expect(await office.handle!(request('work.office.live.address', { workspaceId: WS, ref: { at: 'lifeos', table: 'docs', id: 'd1' } }), rig.ctx, window)).toEqual(none)
+    // A phone sees the address only of a library its key reaches; a thread has no Files of its own to ask from.
+    await expect(address(join(rig.team, 'General', 'Plan.docx'), phone)).rejects.toThrow()
+    rig.roots.push(rig.team)
+    expect(await address(join(rig.team, 'General', 'Plan.docx'), phone)).toMatchObject({ result: { app: 'word' } })
+    await expect(address(join(rig.team, 'General', 'Plan.docx'), thread())).rejects.toThrow('tabs of Files')
+    expect(METHOD_CAPABILITY['work.office.live.address']).toBe('read')
+
+    // Another host's library answers from its own list; one that does not answer gives no address.
+    const host = 'env_mac'
+    const far: TeamsLibrary = {
+      id: `${host}~esports`, host, path: '/sync/Esports - Documents', team: 'Esports Staff', library: null,
+      tenant: 'Dummy U', kind: 'channels', channels: ['General'], found: true, web: WEB
+    }
+    rig.settings.set(WS, { mayUseDesktop: [host] })
+    const read = vi.fn(async () => ({ host, libraries: [far], roots: [], off: [] }))
+    rig.ctx.peer = () => ({ call: read })
+    expect(await address('/sync/Esports - Documents/General/Run.pptx', window, host)).toEqual({ handled: true, result: { address: `${WEB}/General/Run.pptx?web=1`, app: 'powerpoint' } })
+    read.mockRejectedValue(new Error('offline'))
+    expect(await address('/sync/Esports - Documents/General/Run.pptx', window, host)).toEqual(none)
+  })
+
   it('can list cached libraries without triggering the first VM read', async () => {
     setVmState(() => ({ state: 'asleep', cannot: null }))
     const guest = vi.fn(async () => { throw new Error('The VM must stay asleep.') })

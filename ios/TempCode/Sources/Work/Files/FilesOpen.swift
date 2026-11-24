@@ -80,7 +80,8 @@ struct FileItemScreen: View {
 /// Quick Look (docs/IOS-DESIGN.md "Files"): the host's preview pages in a pager over the file's facts, and
 /// Open the original where the phone may read the bytes, into a temp file the system's Quick Look (or AVKit,
 /// for sound and video) shows; the temp file goes when the preview closes or the screen does. Where the host
-/// makes no preview yet (F3), the facts stand alone.
+/// makes no preview yet (F3), the facts stand alone. A shared library's Office file whose host knows its web
+/// address offers Open in Word (Excel, PowerPoint) under them.
 struct FileQuickLookScreen: View {
     let client: EnvironmentClient
     let workspaceId: String
@@ -103,6 +104,9 @@ struct FileQuickLookScreen: View {
     /// The temp file read for this screen, removed when it closes.
     @State private var kept: URL?
     @State private var readTask: Task<Void, Never>?
+    /// Where Open in Word goes, once the host named the file's address; nil hides it.
+    @State private var office: OfficeLink?
+    @Environment(\.openURL) private var openURL
 
     private var files: FilesHost { client.work.files }
     private var plays: Bool { [.audio, .video].contains(entry.kind) }
@@ -124,6 +128,7 @@ struct FileQuickLookScreen: View {
         .quickLookPreview($shown)
         .onChange(of: shown) { if shown == nil, player == nil { drop() } }
         .task { await files.seen(workspaceId, entry) }
+        .task { await askOffice() }
         .task {
             await firstPage()
             #if DEBUG
@@ -259,8 +264,14 @@ struct FileQuickLookScreen: View {
                 Text("Over 50 MB. Open it on your computer.").textStep(.meta)
             case .facts(let host):
                 Text(host.isEmpty ? "Open it on your computer." : "On \(host)").textStep(.meta)
+                if let office {
+                    WideButton(office.app.title, systemImage: "arrow.up.forward.app", prominent: true) { open(office) }
+                        .accessibilityIdentifier("files-open-office")
+                        .transition(.opacity)
+                }
             }
         }
+        .animation(.easeOut(duration: 0.2), value: office)
         .padding(.horizontal, Layout.textEdge)
         .padding(.vertical, 12)
         .frame(maxWidth: .infinity)
@@ -304,12 +315,42 @@ struct FileQuickLookScreen: View {
         }
     }
 
+    // MARK: - Open in Word
+
+    /// Asked once as the page opens, and only of a shared library's Office file (`FilesRules.officeApp`).
+    private func askOffice() async {
+        guard let place, FilesRules.officeApp(entry, place: place) != nil,
+              let found = await files.officeAddress(workspaceId, entry),
+              let links = FilesRules.officeLinks(found.app, address: found.address) else { return }
+        let link = OfficeLink(app: found.app, url: links.app, web: links.web)
+        office = link
+        #if DEBUG
+        // The Files proof: press Open in Word once it shows (`TC_TEST_ACTION=files-office`).
+        if TestHooks.action == "files-office", TestHooks.once("files-office") { open(link) }
+        #endif
+    }
+
+    /// The Office app where one takes the file; else the address in Safari, as Word for the web.
+    private func open(_ office: OfficeLink) {
+        guard UIApplication.shared.canOpenURL(office.url) else { return openURL(office.web) }
+        openURL(office.url) { opened in
+            if !opened { openURL(office.web) }
+        }
+    }
+
     /// The temp file goes with its preview.
     private func drop() {
         if let kept { OriginalFiles.remove(kept) }
         kept = nil
         player = nil
     }
+}
+
+/// Open in Word's two ways out: the Office app's link and the file's web address.
+private struct OfficeLink: Equatable {
+    let app: FilesRules.OfficeApp
+    let url: URL
+    let web: URL
 }
 
 /// A kind's word (`ENTRY_KIND_WORDS`).
