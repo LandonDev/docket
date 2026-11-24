@@ -50,6 +50,11 @@ export const STATE_LINES: Readonly<Record<string, readonly Line[]>> = {
     ["`Saved ${made.name} to ${made.where}`", "answer"],
   ],
   [`${R}/msforms/NotAnswered.tsx`]: [["Copied", "local"]],
+  [`${R}/msforms/MsFormCanvas.tsx`]: [
+    ["Copied", "local"],
+    ["Copied", "local"],
+    ["Copied", "local"],
+  ],
   [`${R}/forms/FormCanvas.tsx`]: [
     ["Copied", "local"],
     ["Copied", "local"],
@@ -197,6 +202,9 @@ export const STATE_LINES: Readonly<Record<string, readonly Line[]>> = {
   [`${H}/frameio/health.ts`]: [
     ["`Signed in as ${who}`", "stored token"],
     ["Signed in", "stored token"],
+  ],
+  [`${H}/msforms/health.ts`]: [
+    ["`Signed in as ${who}`", "stored token"],
   ],
   [`${H}/frameio/post.ts`]: [
     ["`Added ${p.name} to ${p.ontoName} in Frame.io`", "answer"],

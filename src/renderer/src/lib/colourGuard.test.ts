@@ -17,6 +17,7 @@ const ALLOWED: Record<string, { reason: string; count: number }> = {
   "lib/terminalPalette.ts": { reason: "The ANSI tables map terminal colour codes; the fallbacks stand in for the tokens on a page without the stylesheet.", count: 42 },
   "surfaces/monaco/theme.ts": { reason: "Monaco requires hex palettes, including syntax and fallback colours.", count: 29 },
   "surfaces/settings/hosts/dialogs/PairDialog.tsx": { reason: "The QR encoder requires black and white for its image.", count: 2 },
+  "work/msforms/Share.tsx": { reason: "The QR encoder requires black and white for its image.", count: 2 },
 };
 
 // Match complete hex colours, never part of a word or an id (#ABCDE-12345).
