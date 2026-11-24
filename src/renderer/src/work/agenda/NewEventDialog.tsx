@@ -182,16 +182,19 @@ function Body({
         <Field label="Event">
           <Input autoFocus value={form.title} onChange={(e) => patch({ title: e.target.value })} autoComplete="off" />
         </Field>
-        <div className="grid grid-cols-[minmax(0,1fr)_120px_120px] gap-2">
-          <Field label="Day">
-            <Input type="date" value={form.day} onChange={(e) => patch({ day: e.target.value })} />
-          </Field>
-          <Field label="From">
-            <Input type="time" value={form.from} onChange={(e) => patch({ from: e.target.value })} />
-          </Field>
-          <Field label="To">
-            <Input type="time" value={form.to} onChange={(e) => patch({ to: e.target.value })} />
-          </Field>
+        {/* Day, From and To on one row where Day keeps room for its date; narrower, Day takes a row and the times share one. */}
+        <div data-event-when className="@container/when">
+          <div className="grid grid-cols-2 gap-2 @[400px]/when:grid-cols-[minmax(0,1fr)_120px_120px]">
+            <Field label="Day" className="col-span-2 @[400px]/when:col-span-1">
+              <Input type="date" value={form.day} onChange={(e) => patch({ day: e.target.value })} />
+            </Field>
+            <Field label="From">
+              <Input type="time" value={form.from} onChange={(e) => patch({ from: e.target.value })} />
+            </Field>
+            <Field label="To">
+              <Input type="time" value={form.to} onChange={(e) => patch({ to: e.target.value })} />
+            </Field>
+          </div>
         </div>
         <Field label="Where">
           <Input value={form.where} onChange={(e) => patch({ where: e.target.value })} autoComplete="off" />
