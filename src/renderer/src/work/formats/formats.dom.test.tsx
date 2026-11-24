@@ -94,6 +94,21 @@ describe("Import", () => {
     expect(container.querySelector("[data-slot=skeleton]")).toBeNull();
   });
 
+  it("a failed import is not run again when a canvas push hands the same file afresh", async () => {
+    answer = () => Promise.reject(new Error("LibreOffice could not read it"));
+    const s = shell();
+    const item = { id: "i8", sessionId: "t1" } as CanvasItem;
+    const at = (source: { at: "file"; host: string; path: string }) => <ImportBody item={item} source={source} env="env_box" state={undefined} setState={() => {}} shell={s.shell} />;
+    const { rerender } = render(at({ at: "file", host: "env_box", path: "/w/Old.doc" }));
+    await waitFor(() => expect(s.lines.at(-1)).toMatchObject({ tone: "failed" }));
+    const asked = requests.length;
+    rerender(at({ at: "file", host: "env_box", path: "/w/Old.doc" }));
+    rerender(at({ at: "file", host: "env_box", path: "/w/Old.doc" }));
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(requests.length).toBe(asked);
+    expect(s.lines.at(-1)).toMatchObject({ tone: "failed" });
+  });
+
   it("a file dropped on a document opens as a document; a picture is left to the editor", async () => {
     answer = async () => ({ source: SOURCE, title: "Plan", itemId: "i3", warnings: [], outsiders: false });
     render(

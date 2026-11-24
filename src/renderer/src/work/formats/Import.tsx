@@ -63,11 +63,16 @@ export function ImportBody({ item, source, env, shell }: CanvasBodyProps<unknown
   const said = useRef(false);
   // The item is replaced by the document it becomes; until then it has no versions to show.
   useLayoutEffect(() => shell.ready?.(false), [shell]);
+  // Every canvas push hands the item afresh: its source's value, not its object, says it is another file, so a failed
+  // import is not run again (and its line not cleared) on each push.
+  const sourceKey = JSON.stringify(source);
+  const latest = useRef(source);
+  latest.current = source;
   useEffect(() => {
     let live = true;
     setFailed(false);
     shell.statusLine(null);
-    importOnce(env, `${item.id}#${attempt}`, { sessionId: item.sessionId, itemId: item.id, from: { at: "source", source } }).then(
+    importOnce(env, `${item.id}#${attempt}`, { sessionId: item.sessionId, itemId: item.id, from: { at: "source", source: latest.current } }).then(
       (a) => {
         if (said.current) return;
         said.current = true;
@@ -87,7 +92,7 @@ export function ImportBody({ item, source, env, shell }: CanvasBodyProps<unknown
     return () => {
       live = false;
     };
-  }, [env, item.id, item.sessionId, source, shell, attempt]);
+  }, [env, item.id, item.sessionId, sourceKey, shell, attempt]);
   return failed ? null : <ItemSkeleton />;
 }
 
