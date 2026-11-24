@@ -118,7 +118,13 @@ carries `approve`, work/peer.ts) and a thread do not. On a file others can
 open, every way an agent's change is seen or taken asks it:
 
 - History's `branches` and `decide` on a shared document (a guest-linked
-  LifeOS document, a `.tcdoc` `madeFromShared` calls shared).
+  LifeOS document, a `.tcdoc` `madeFromShared` calls shared). A decide
+  carries the branch's `editedAt` as the screen read it (the desktop's
+  document and history canvases send it): a branch an agent changed since
+  is refused (`BRANCH_MOVED`, history/serviceRoutes.ts) rather than taken.
+  A client that sends none (the phone, until its own build does) is not
+  bound, and an agent's write landing between the host's check and the take
+  is not caught.
 - Docs: the token is view-only for a key that is not his press, and
   `work.docs.thread` and `work.docs.rename` are refused there.
 - Google: `work.google.write`, the mirror sent to Google.

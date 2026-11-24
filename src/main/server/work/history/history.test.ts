@@ -15,6 +15,7 @@ import { startWorkService, type RunningService } from '../service/serve'
 import type { ServiceConfig } from '../service/wire'
 import { history, namesFor } from './index'
 import { NEEDS_PRESS } from '../files/policy'
+import { BRANCH_MOVED } from './serviceRoutes'
 
 /*
  * History end to end on this host: the Work service in process (its socket
@@ -139,6 +140,29 @@ describe('history of a .tcdoc on this host', () => {
     expect((await r.service.collab.read('kd1')).markdown).toBe('# Plan\n\nAlpha!\n\nBravo\n')
     expect(await r.ask('work.history.decide', { source, branchId: branches[0]!.id, which: 'all', accept: false })).toEqual({ left: 0 })
     expect((await r.ask<{ branches: unknown[] }>('work.history.branches', { source })).branches).toEqual([])
+  })
+})
+
+describe('a decision bound to what he read', () => {
+  it("refuses an Accept on a branch an agent changed since his screen read it, and takes one on the branch as read", async () => {
+    const r = await rig()
+    r.convex.docs.set('kd5', { _id: 'kd5', sector: 'life', seq: 0, title: 'Plan', shared: false, markdown: '', plain: '' })
+    const fence = { sectors: 'all' }
+    await post(r.config.socketPath, '/internal/doc/write', { docId: 'kd5', markdown: md('# Plan', 'Alpha'), because: 'asked', botId: 'k', fence })
+    r.convex.docs.get('kd5')!.shared = true
+    const own = (text: string) => post(r.config.socketPath, '/internal/doc/write', { docId: 'kd5', markdown: md('# Plan', text), because: 'own', origin: { host: 'env_box', threadId: 't1' }, fence })
+    await own('Alpha!')
+    const source = { at: 'lifeos', table: 'docs', id: 'kd5' } as const
+    const [read] = (await r.ask<{ branches: { id: string; editedAt: number }[] }>('work.history.branches', { source })).branches
+    // The agent writes its idea again in the same branch while his review is open.
+    await new Promise((done) => setTimeout(done, 5))
+    await own('Alpha, sent to everyone')
+    await expect(r.ask('work.history.decide', { source, branchId: read!.id, which: 'all', accept: true, editedAt: read!.editedAt })).rejects.toThrow(BRANCH_MOVED)
+    expect((await r.service.collab.read('kd5')).markdown).toBe('# Plan\n\nAlpha\n')
+    const [now] = (await r.ask<{ branches: { id: string; editedAt: number }[] }>('work.history.branches', { source })).branches
+    expect(now!.editedAt).not.toBe(read!.editedAt)
+    await r.ask('work.history.decide', { source, branchId: now!.id, which: 'all', accept: true, editedAt: now!.editedAt })
+    expect((await r.service.collab.read('kd5')).markdown).toBe('# Plan\n\nAlpha, sent to everyone\n')
   })
 })
 

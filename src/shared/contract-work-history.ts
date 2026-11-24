@@ -74,7 +74,14 @@ export const HistoryRequestSchemas = [
   /** → { left: number }: Accept or Reject rows of a branch (block ids), or all of it */
   request(
     'work.history.decide',
-    z.object({ source: CanvasSourceSchema, branchId: z.string().min(1).max(64), which: z.union([z.literal('all'), z.array(z.string().min(1).max(64)).min(1).max(1000)]), accept: z.boolean() })
+    z.object({
+      source: CanvasSourceSchema,
+      branchId: z.string().min(1).max(64),
+      which: z.union([z.literal('all'), z.array(z.string().min(1).max(64)).min(1).max(1000)]),
+      accept: z.boolean(),
+      /** the branch's `editedAt` as the screen read it: a branch an agent changed since is refused, not taken as he never saw it */
+      editedAt: z.number().int().min(0).optional()
+    })
   )
 ] as const
 

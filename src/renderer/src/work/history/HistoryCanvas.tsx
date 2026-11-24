@@ -376,7 +376,7 @@ function ReviewView({ env, source, item, state, setState, shell }: CanvasBodyPro
     if (branch.diff.page?.length) rows.push(PAGE_CHANGE_ID);
     const decide = async (which: number | { group: string } | "all", accept: boolean) => {
       const ids = typeof which === "number" ? [rows[which]!] : "all";
-      await actions.decide(branch.id, ids, accept);
+      await actions.decide(branch.id, ids, accept, branch.editedAt);
     };
     shell.review({
       groups: [{ id: branch.id, label: branch.label.startsWith("Restore") ? "Restore" : whoWords(branch.authors, branches.value?.names ?? {}), by: (branch.authors[0] ?? "owner") as never, count: rows.length }],

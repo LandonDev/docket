@@ -3,6 +3,8 @@ import { fileDocName, versionBy, type CollabFile, type VersionRow } from 'work-k
 import { docIn, fenceOf, servingHere, str } from '../service/routes/internal'
 import { RouteError, type InternalRoute, type RouteCtx } from '../service/routes/route'
 
+export const BRANCH_MOVED = 'The suggestion changed since it was shown: look at it again before deciding.'
+
 /**
  * History's internal routes on the Work service (docs/agents/work-history.md):
  * the Unix socket, behind the secret, like routes/internal.ts. Main's
@@ -138,6 +140,11 @@ export const historyRoutes: InternalRoute[] = [
       const branchId = str(body, 'branchId', 64)
       const rows = which(body)
       if (typeof body.accept !== 'boolean') throw new RouteError(400, 'accept is true or false')
+      // Bound to the branch as his screen read it: an agent that changed it since would have him take text he never saw.
+      if (typeof body.editedAt === 'number') {
+        const now = (await ctx.history.branches(t.name, t.file)).find((b) => b.id === branchId)
+        if (now && now.editedAt !== body.editedAt) throw new RouteError(409, BRANCH_MOVED)
+      }
       return refusing(async () => (body.accept ? ctx.history.accept(t.name, branchId, rows, t.file) : ctx.history.reject(t.name, branchId, rows, t.file)))
     }
   }

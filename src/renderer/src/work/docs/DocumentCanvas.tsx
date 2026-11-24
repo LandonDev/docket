@@ -765,7 +765,7 @@ export function useDocReview(host: DocHost, open: DocOpen, shell: CanvasShell, e
       const { branchId, which } = decided(change);
       byBranch.set(branchId, [...(byBranch.get(branchId) ?? []), which]);
     }
-    for (const [branchId, which] of byBranch) await actions.decide(branchId, which, accept);
+    for (const [branchId, which] of byBranch) await actions.decide(branchId, which, accept, value?.branches.find((b) => b.id === branchId)?.editedAt);
   };
   const review = useReview({ changes, groups, accept: decide(true), reject: decide(false) });
   // The changes are places in the text as it was when they were worked out: asked again once the text

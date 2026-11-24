@@ -90,7 +90,8 @@ export function refreshHistory(env: string, source: CanvasSource): void {
 
 export interface HistoryActions {
   restore(versionId: string): Promise<HistoryWrite>;
-  decide(branchId: string, which: string[] | "all", accept: boolean): Promise<{ left: number }>;
+  /** `editedAt`: the branch as the screen read it, so a branch an agent changed since is refused rather than taken */
+  decide(branchId: string, which: string[] | "all", accept: boolean, editedAt?: number): Promise<{ left: number }>;
 }
 
 export function historyActions(env: string, source: CanvasSource): HistoryActions {
@@ -103,7 +104,7 @@ export function historyActions(env: string, source: CanvasSource): HistoryAction
   };
   return {
     restore: (versionId) => call("work.history.restore", { versionId }),
-    decide: (branchId, which, accept) => call("work.history.decide", { branchId, which, accept }),
+    decide: (branchId, which, accept, editedAt) => call("work.history.decide", { branchId, which, accept, ...(editedAt !== undefined ? { editedAt } : {}) }),
   };
 }
 

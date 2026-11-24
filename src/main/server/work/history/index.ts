@@ -119,9 +119,9 @@ export const history: WorkModule = {
         return handled({ branches: got.branches, names: namesFor(ctx, got.branches.flatMap((b) => b.authors)) })
       }
       case 'work.history.decide': {
-        const { source, branchId, which, accept } = req.params
+        const { source, branchId, which, accept, editedAt } = req.params
         const target = at(source)
-        return handled(await call(ctx, 'decide', bodyOf(target, { branchId, which, accept, ...('file' in target ? { shared: target.shared } : {}) })))
+        return handled(await call(ctx, 'decide', bodyOf(target, { branchId, which, accept, ...(editedAt !== undefined ? { editedAt } : {}), ...('file' in target ? { shared: target.shared } : {}) })))
       }
       default:
         return NOT_HANDLED
