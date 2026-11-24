@@ -62,7 +62,8 @@ export async function lookupToken(ctx: RouteCtx, token: string, now = Date.now()
  */
 export function carriedOrigin(headers: IncomingHttpHeaders): string | null {
   const v = headers['x-tempcode-carry']
-  return typeof v === 'string' && /^http:\/\/127\.0\.0\.1:\d{1,5}$/.test(v) ? v : null
+  const m = typeof v === 'string' ? /^http:\/\/127\.0\.0\.1:(\d{1,5})$/.exec(v) : null
+  return m && Number(m[1]) >= 1 && Number(m[1]) <= 65535 ? v as string : null
 }
 
 /** A request addressed to this host's loopback listener itself, as a window on this host asks it. */

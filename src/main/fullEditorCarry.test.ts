@@ -1,7 +1,7 @@
 import { createServer, request, type IncomingHttpHeaders, type Server } from 'node:http'
 import type { AddressInfo } from 'node:net'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { carries, carry, closeCarriers, downstreamHeaders, ownHost, ownOrigin, parseCarry, upstreamHeaders } from './fullEditorCarry'
+import { carries, carry, closeCarriers, downstreamHeaders, handshake, ownHost, ownOrigin, parseCarry, staysOn, upstreamHeaders } from './fullEditorCarry'
 
 /** The carrier with a stand-in box behind it; the real route behind it is in work/sheets/fullEditor/fullEditor.test.ts. */
 const TOKEN = 'ab'.repeat(32)
@@ -68,6 +68,16 @@ describe('the full editor carried from the box', () => {
     expect(downstreamHeaders({ location: `https://tempcode.example/w/full/${TOKEN}/x`, 'set-cookie': ['a=1'], 'service-worker-allowed': '/' }, up, own)).toEqual({ location: `${own}/w/full/${TOKEN}/x` })
     expect(downstreamHeaders({ location: 'https://elsewhere.example/' }, up, own)).toEqual({})
     expect(downstreamHeaders({ location: 'x/y' }, up, own)).toEqual({ location: 'x/y' })
+    expect(downstreamHeaders({ location: '//elsewhere.example/x' }, up, own)).toEqual({})
+    expect(downstreamHeaders({ location: '//tempcode.example/w/full/x' }, up, own)).toEqual({ location: `${own}/w/full/x` })
+  })
+
+  it('passes a socket\'s switch alone, with no cookie, and keeps the window on its own origin', () => {
+    expect(handshake('HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nSet-Cookie: io=1\r\nConnection: Upgrade')).toBe('HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade')
+    expect(handshake('HTTP/1.1 200 OK\r\nContent-Length: 0')).toBeNull()
+    expect(staysOn('http://127.0.0.1:5000', 'http://127.0.0.1:5000/w/full/x')).toBe(true)
+    expect(staysOn('http://127.0.0.1:5000', 'https://tempcode.example/')).toBe(false)
+    expect(staysOn('http://127.0.0.1:5000', 'not a url')).toBe(false)
   })
 
   it('serves the page on a loopback origin of its own and forwards the page\'s paths alone, one carrier a page', async () => {

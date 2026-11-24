@@ -7,10 +7,20 @@ import { connect as tlsConnect } from 'node:tls'
  * The box's full editor, carried to this computer (docs/agents/work-sheets.md "The full editor": "From another
  * computer"). The box answers the switch with the editor page's address on its public origin; this carries that one
  * address on a loopback port of its own, so the page, its frames and its sockets run on `http://127.0.0.1:<port>`, an
- * origin of their own, never the remote UI's where ONLYOFFICE's code could use the owner's session. Only the paths
+ * origin of their own, never the remote UI's where ONLYOFFICE's code could use the owner's session, and are shown in
+ * a window with a session of its own (fullEditorWindow.ts). Only the paths
  * under the page's own token go through; each request names the loopback origin in `x-tempcode-carry`, which the box's
  * route requires of anything that comes through the tunnel and uses for the editor's own links.
  */
+
+/** Where the editor's window may go: its own origin alone (fullEditorWindow.ts). */
+export const staysOn = (own: string, to: string): boolean => {
+  try {
+    return new URL(to).origin === own
+  } catch {
+    return false
+  }
+}
 
 /** The page's address as the box answers it: https (http only to a loopback host, a proof's), `/w/full/<64 hex>/`. */
 export function parseCarry(address: string): { upstream: URL; base: string } | null {
@@ -38,12 +48,25 @@ export function downstreamHeaders(headers: IncomingHttpHeaders, upstream: URL, o
   delete out['set-cookie']
   delete out['service-worker-allowed']
   const to = typeof out.location === 'string' ? out.location : undefined
-  if (to && /^[a-z][a-z0-9+.-]*:/i.test(to)) {
-    // An absolute redirect to the box's own origin comes back through the carrier; one anywhere else is not followed.
-    if (to.startsWith(`${upstream.origin}/`)) out.location = origin + to.slice(upstream.origin.length)
+  // A redirect that names a host (a scheme, or `//host`) comes back through the carrier when it is the box's own; one anywhere else is not followed.
+  if (to && (/^[a-z][a-z0-9+.-]*:/i.test(to) || /^[/\\]{2}/.test(to))) {
+    let at: URL | null = null
+    try {
+      at = new URL(to, upstream)
+    } catch {
+      /* not an address */
+    }
+    if (at && at.origin === upstream.origin) out.location = origin + at.pathname + at.search + at.hash
     else delete out.location
   }
   return out
+}
+
+/** The box's answer to a socket's upgrade, as the browser should get it: a 101 alone, with no cookie; null for anything else. */
+export function handshake(head: string): string | null {
+  const [status, ...lines] = head.split('\r\n')
+  if (!/^HTTP\/1\.1 101\b/.test(status ?? '')) return null
+  return [status, ...lines.filter((l) => !/^(set-cookie|service-worker-allowed)\s*:/i.test(l))].join('\r\n')
 }
 
 /** The browser's request as the box should get it: to the box's host, naming the loopback origin it is shown on. */
@@ -141,7 +164,8 @@ async function start(target: { upstream: URL; base: string }, opts: { idleMs?: n
 
   c.server.on('upgrade', (req: IncomingMessage, socket: Socket, head: Buffer) => {
     c.last = now()
-    if (!carries(base, req.url) || !ownHost(req.headers.host, port0()) || !ownOrigin(req.headers.origin, origin())) return void socket.end('HTTP/1.1 404 Not Found\r\nConnection: close\r\n\r\n')
+    // A browser always names the page's origin on a socket: one that names none, or another, is not passed.
+    if (!carries(base, req.url) || !ownHost(req.headers.host, port0()) || req.headers.origin !== origin()) return void socket.end('HTTP/1.1 404 Not Found\r\nConnection: close\r\n\r\n')
     const up: Socket = secure ? tlsConnect({ host: upstream.hostname, port, servername: upstream.hostname }) : netConnect({ host: upstream.hostname, port })
     c.sockets.add(socket)
     socket.on('close', () => c.sockets.delete(socket))
@@ -152,8 +176,22 @@ async function start(target: { upstream: URL; base: string }, opts: { idleMs?: n
       for (const [k, v] of Object.entries(upstreamHeaders(req.headers, upstream, origin(), true))) for (const one of Array.isArray(v) ? v : [v]) lines.push(`${k}: ${one}`)
       up.write(`${lines.join('\r\n')}\r\n\r\n`)
       if (head.length) up.write(head)
-      up.pipe(socket)
-      socket.pipe(up)
+      // The box's answer is read whole before anything reaches the browser: a switch to the socket alone, its cookies dropped.
+      let got = Buffer.alloc(0)
+      const onHead = (chunk: Buffer): void => {
+        got = Buffer.concat([got, chunk])
+        const end = got.indexOf('\r\n\r\n')
+        if (end < 0) return void (got.length > 16_384 && (up.destroy(), socket.destroy()))
+        up.off('data', onHead)
+        const answer = handshake(got.subarray(0, end).toString('latin1'))
+        if (!answer) return void (up.destroy(), socket.end('HTTP/1.1 502 Bad Gateway\r\nConnection: close\r\n\r\n'))
+        socket.write(`${answer}\r\n\r\n`)
+        const rest = got.subarray(end + 4)
+        if (rest.length) socket.write(rest)
+        up.pipe(socket)
+        socket.pipe(up)
+      }
+      up.on('data', onHead)
     })
   })
 

@@ -373,6 +373,7 @@ describe('the full editor\'s pieces', () => {
     // Closed by default: the remote UI's hostname with no Cloudflare header at all is still refused.
     expect(reachesEditor({ host: 'tempcode.example' })).toBe(false)
     expect(reachesEditor({ host: '127.0.0.1:7695', 'cf-ray': 'r' })).toBe(false)
+    expect(reachesEditor({ host: 'tempcode.example', 'cf-ray': 'r', 'x-tempcode-carry': 'http://127.0.0.1:99999' })).toBe(false)
     expect(reachesEditor({ host: 'tempcode.example', 'cf-connecting-ip': '1.2.3.4', 'x-tempcode-carry': 'https://evil.example' })).toBe(false)
     expect(reachesEditor({ host: 'tempcode.example', 'cf-ray': 'r', 'x-tempcode-carry': 'http://127.0.0.1:51234' })).toBe(true)
     const h = forwardedHeaders({ host: 'tempcode.example', 'x-forwarded-proto': 'https', 'cloudfront-forwarded-proto': 'https', forwarded: 'proto=https', 'x-tempcode-carry': 'http://127.0.0.1:51234' }, 'T')
@@ -451,7 +452,7 @@ describe('the full editor\'s pieces', () => {
       expect((await at(`/w/full/${'a'.repeat(64)}/`)).status).toBe(404)
       // The editor's socket too.
       const got = await new Promise<string>((resolve, reject) => {
-        const sock = connect(Number(via.port), '127.0.0.1', () => sock.write(`GET /w/full/${token}/doc/k/c/?EIO=4&transport=websocket HTTP/1.1\r\nHost: ${via.host}\r\nCF-Ray: r1\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n\r\n`))
+        const sock = connect(Number(via.port), '127.0.0.1', () => sock.write(`GET /w/full/${token}/doc/k/c/?EIO=4&transport=websocket HTTP/1.1\r\nHost: ${via.host}\r\nOrigin: ${via.origin}\r\nCF-Ray: r1\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n\r\n`))
         let text = ''
         sock.on('data', (c) => {
           text += c.toString()
@@ -464,6 +465,12 @@ describe('the full editor\'s pieces', () => {
         sock.on('error', reject)
       })
       expect(got).toMatch(/^HTTP\/1\.1 101/)
+      // A socket that names no origin, or another, is not passed.
+      const refused = await new Promise<string>((resolve) => {
+        const sock = connect(Number(via.port), '127.0.0.1', () => sock.write(`GET /w/full/${token}/doc/k/c/?EIO=4&transport=websocket HTTP/1.1\r\nHost: ${via.host}\r\nOrigin: https://evil.example\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n\r\n`))
+        sock.on('data', (c) => resolve(c.toString()))
+      })
+      expect(refused).toMatch(/^HTTP\/1\.1 404/)
     } finally {
       await closeCarriers()
     }

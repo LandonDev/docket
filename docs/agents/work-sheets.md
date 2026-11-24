@@ -1502,8 +1502,12 @@ owner's alone, unmodified, a separate server (architecture §12.1). Code in
   origin>/w/full/<token>/}` (`openFull`, the guests' `publicOrigin`, over the
   tunnel's existing `^/(g|w|f)/` rule to the Work port), and the app's main
   process serves that one page on a loopback port of its own,
-  `http://127.0.0.1:<port>/w/full/<token>/`, an origin of its own, and opens
-  it in the browser. The carrier passes only the paths under that token,
+  `http://127.0.0.1:<port>/w/full/<token>/`, an origin of its own, and shows
+  it in a window of its own (src/main/fullEditorWindow.ts), not the system
+  browser, where ONLYOFFICE's code would share the 127.0.0.1 cookie jar with
+  every loopback server of his: an in-memory session that goes with the
+  window, sandboxed, no preload, no permission but writing the clipboard, kept
+  on its origin (a link elsewhere opens in the browser). The carrier passes only the paths under that token,
   WebSocket upgrades included, and names its loopback origin in
   `x-tempcode-carry` on each; the route then gives the docservice that origin
   as `X-Forwarded-Host`, so the editor's own links come back through the
@@ -1518,7 +1522,9 @@ owner's alone, unmodified, a separate server (architecture §12.1). Code in
   `*-Forwarded-Proto`). The carrier serves only requests named for its own
   `127.0.0.1:<port>` (no other name that resolves there), refuses dot
   segments, escaped slashes and backslashes in a path, takes a socket or a
-  write only from its own origin, sends the box no cookie or credential
+  write only from its own origin (a socket must name it), passes a socket's
+  answer only once it is a 101 and drops its cookies, sends the box no
+  cookie or credential
   (a cookie of 127.0.0.1 is any loopback server's), keeps a redirect to the
   box on its own origin and drops one anywhere else, and passes on no
   `Set-Cookie` or `Service-Worker-Allowed`. It closes after 30 minutes with

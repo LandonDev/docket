@@ -9,21 +9,21 @@
  * end). Between them stands a stand-in tunnel that adds Cloudflare's headers, as the real one does, and box names it
  * as its public origin. Then:
  *  1. mac's window shows the thread's sheet; the switch "Full editor" is offered there, and pressed by a real click
- *  2. mac's app carries the page on a loopback origin of its own and opens it (a stand-in xdg-open on its PATH takes
- *     the address): never the tunnel's origin
+ *  2. mac's app carries the page on a loopback origin of its own and opens it in a window of its own: never the
+ *     tunnel's origin
  *  3. the page's token straight through the tunnel, as a browser on the remote UI's origin would ask it, is refused
- *  4. headless Chromium opens the carried page, types a value into a cell of the full editor and leaves; box's file
- *     holds the value once the editor saves it back
+ *  4. in that window (driven over mac's debug port), a value typed into a cell of the full editor; the window closed;
+ *     box's file holds the value once the editor saves it back
  * Pictures go to the out folder. Dummy files only.
  *
  * Run (repo root, after `bunx electron-vite build`; on the box through the heavy queue):
  *   FULL_EDITOR_PLAYWRIGHT=<playwright-core> env -u ELECTRON_RUN_AS_NODE bun scripts/e2e-full-editor-remote.ts [--out <dir>]
  */
 import { spawn, type ChildProcess } from 'node:child_process'
-import { appendFileSync, chmodSync, copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
+import { appendFileSync, copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { createServer as httpServer, request as httpRequest } from 'node:http'
 import { connect, createServer, type Socket } from 'node:net'
-import { homedir, tmpdir } from 'node:os'
+import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { E2E_APP_TOKEN_SEED, withAppToken } from './lib/appToken'
 import { attach, type Cdp } from './lib/packagedApp'
@@ -31,7 +31,6 @@ import { attach, type Cdp } from './lib/packagedApp'
 const REPO = resolve(import.meta.dir, '..')
 const KEEP = process.env.TC_E2E_KEEP === '1'
 const TOOLS = process.env.FULL_EDITOR_TOOLS ?? '/srv/agents/temp-code-data/work-tools'
-const CHROME = process.env.FULL_EDITOR_CHROME ?? join(homedir(), '.cache/ms-playwright/chromium-1248/chrome-linux64/chrome')
 const outArg = process.argv.indexOf('--out')
 let failures = 0
 const check = (name: string, ok: boolean, detail = ''): boolean => {
@@ -82,13 +81,6 @@ const tunnel = `http://127.0.0.1:${tunnelPort}`
   writeFileSync(join(mine, 'state.json'), JSON.stringify({ platform: state.platform, at: 1, tools: { onlyoffice: state.tools.onlyoffice } }))
   symlinkSync(join(TOOLS, 'onlyoffice'), join(mine, 'onlyoffice'))
 }
-// mac opens what its app hands the system browser with this: the address goes to a file the run reads.
-const opened = join(root, 'opened.txt')
-const bin = join(root, 'mac-bin')
-mkdirSync(bin)
-writeFileSync(join(bin, 'xdg-open'), `#!/bin/sh\nprintf '%s\\n' "$1" >> '${opened}'\n`)
-chmodSync(join(bin, 'xdg-open'), 0o755)
-
 // The stand-in tunnel: box's Work port behind Cloudflare's headers, as cloudflared delivers the remote UI's hostname.
 const CF = { 'cf-ray': 'e2e-ray', 'cf-connecting-ip': '203.0.113.9' }
 const tunnelServer = httpServer((req, res) => {
@@ -204,7 +196,7 @@ const cleanup = async (): Promise<void> => {
 }
 process.on('SIGINT', () => void cleanup().then(() => process.exit(130)))
 
-launch(mac, true, { PATH: `${bin}:${process.env.PATH ?? ''}` })
+launch(mac, true, {})
 launch(box, false, { TEMP_CODE_WORK_PORT: String(boxWork), TEMP_CODE_WORK_PUBLIC_ORIGIN: tunnel })
 try {
   cdp = await attach(mac.debug, 180_000)
@@ -247,10 +239,14 @@ try {
   const at = (await trigger())!
   await click(at.x, at.y)
 
-  // 2. The carried page's address, as mac's app hands it to the system browser.
-  const got = await until('the page is opened', 180_000, () => existsSync(opened) && readFileSync(opened, 'utf8').trim().length > 0)
-  const url = got ? readFileSync(opened, 'utf8').trim().split('\n')[0]! : ''
-  check('the press opens the page on a loopback origin of mac\'s own', /^http:\/\/127\.0\.0\.1:\d+\/w\/full\/[0-9a-f]{64}\/$/.test(url) && !url.startsWith(tunnel), url.replace(/[0-9a-f]{64}/, '<token>'))
+  // 2. The carried page, in a window of mac's own: found on mac's debug port by its address.
+  const pageTarget = async (): Promise<string | null> => {
+    const list = (await (await fetch(`http://127.0.0.1:${mac.debug}/json/list`)).json()) as { type: string; url: string }[]
+    return list.find((t) => t.type === 'page' && /\/w\/full\/[0-9a-f]{64}\//.test(t.url))?.url ?? null
+  }
+  let url = ''
+  await until('the window opens', 180_000, async () => !!(url = (await pageTarget()) ?? ''))
+  check("the press opens the page in a window of mac's own, on a loopback origin of its own", /^http:\/\/127\.0\.0\.1:\d+\/w\/full\/[0-9a-f]{64}\/$/.test(url) && !url.startsWith(tunnel), url.replace(/[0-9a-f]{64}/, '<token>'))
   if (!url) throw new Error('no page')
   const token = /\/w\/full\/([0-9a-f]{64})\//.exec(url)![1]!
   // 3. The same token straight through the tunnel, as a browser on the remote UI's origin would ask it.
@@ -259,52 +255,51 @@ try {
   const api = await fetch(`${tunnel}/w/full/${token}/web-apps/apps/api/documents/api.js`)
   check("and so is ONLYOFFICE's code", api.status === 404, String(api.status))
 
-  // 4. The full editor in a browser, an edit, and the save back.
+  // 4. The full editor in that window, an edit, and the save back.
   const pw = (await import(/* @vite-ignore */ process.env.FULL_EDITOR_PLAYWRIGHT ?? 'playwright-core')) as {
-    chromium: { launch(o: { executablePath: string }): Promise<{ newPage(o: object): Promise<Page>; close(): Promise<void> }> }
+    chromium: { connectOverCDP(u: string): Promise<{ contexts(): { pages(): Page[] }[]; close(): Promise<void> }> }
   }
   type Page = {
-    goto(u: string): Promise<unknown>
-    on(e: string, f: (x: { message?: string; url(): string; status(): number; failure?(): { errorText: string } | null }) => void): void
+    url(): string
+    on(e: string, f: (x: { message?: string; url(): string; status(): number }) => void): void
     frameLocator(s: string): { locator(s: string): { waitFor(o: object): Promise<void>; click(o?: object): Promise<void>; fill(v: string): Promise<void>; press(k: string): Promise<void> } }
     keyboard: { type(t: string): Promise<void>; press(k: string): Promise<void> }
+    evaluate<T>(f: string): Promise<T>
     waitForTimeout(ms: number): Promise<void>
     screenshot(o: { path: string }): Promise<unknown>
     close(): Promise<void>
   }
-  const browser = await pw.chromium.launch({ executablePath: CHROME })
+  const browser = await pw.chromium.connectOverCDP(`http://127.0.0.1:${mac.debug}`)
   const value = String(4000 + (Date.now() % 900))
-  try {
-    const page = await browser.newPage({ viewport: { width: 1400, height: 900 } })
-    const errors: string[] = []
-    const foreign: string[] = []
-    page.on('pageerror', (e) => errors.push(e.message ?? ''))
-    page.on('response', (r) => {
-      if (!r.url().startsWith(new URL(url).origin) && !r.url().startsWith('data:') && !r.url().startsWith('blob:')) foreign.push(r.url().replace(/[0-9a-f]{64}/, '<token>'))
-      if (r.status() >= 400) log(`HTTP ${r.status()} ${r.url().replace(/[0-9a-f]{64}/, '<token>')}`)
-    })
-    await page.goto(url)
-    const box = page.frameLocator('iframe[name="frameEditor"]').locator('#ce-cell-name')
-    const ready = await box.waitFor({ timeout: 180_000 }).then(() => true, () => false)
-    check('the full editor loads through the carrier, its frames and its socket on that origin', ready)
-    await page.waitForTimeout(3000)
-    await page.screenshot({ path: join(out, '2-full-editor-carried.png') })
-    if (ready) {
-      await box.click({ timeout: 30_000 })
-      await box.fill('Data!F2')
-      await box.press('Enter')
-      await page.waitForTimeout(500)
-      await page.keyboard.type(value)
-      await page.keyboard.press('Enter')
-      await page.waitForTimeout(3000)
-      await page.screenshot({ path: join(out, '3-value-typed.png') })
-    }
-    check('nothing the page loaded came from another origin', foreign.length === 0, foreign.slice(0, 3).join(', '))
-    check('the page threw nothing', errors.length === 0, errors.slice(0, 2).join(' | '))
-    await page.close()
-  } finally {
-    await browser.close()
+  const page = browser.contexts().flatMap((c) => c.pages()).find((p) => p.url().includes(`/w/full/${token}/`))
+  if (!check('the editor window is reachable on mac\'s debug port', !!page)) throw new Error('no window')
+  const errors: string[] = []
+  const foreign: string[] = []
+  page!.on('pageerror', (e) => errors.push(e.message ?? ''))
+  page!.on('response', (r) => {
+    if (!r.url().startsWith(new URL(url).origin) && !/^(data|blob):/.test(r.url())) foreign.push(r.url().replace(/[0-9a-f]{64}/, '<token>'))
+    if (r.status() >= 400) log(`HTTP ${r.status()} ${r.url().replace(/[0-9a-f]{64}/, '<token>')}`)
+  })
+  const cell = page!.frameLocator('iframe[name="frameEditor"]').locator('#ce-cell-name')
+  const ready = await cell.waitFor({ timeout: 180_000 }).then(() => true, () => false)
+  check('the full editor loads through the carrier, its frames and its socket on that origin', ready)
+  await page!.waitForTimeout(3000)
+  await page!.screenshot({ path: join(out, '2-full-editor-carried.png') })
+  if (ready) {
+    await cell.click({ timeout: 30_000 })
+    await cell.fill('Data!F2')
+    await cell.press('Enter')
+    await page!.waitForTimeout(500)
+    await page!.keyboard.type(value)
+    await page!.keyboard.press('Enter')
+    await page!.waitForTimeout(3000)
+    await page!.screenshot({ path: join(out, '3-value-typed.png') })
   }
+  check('nothing the page loaded came from another origin', foreign.length === 0, foreign.slice(0, 3).join(', '))
+  check('the page threw nothing', errors.length === 0, errors.slice(0, 2).join(' | '))
+  // Closing the window is leaving the editor.
+  await page!.close()
+  await browser.close().catch(() => undefined)
   // When everyone has left, the docservice saves through its callback into box's file.
   check("box's workbook holds the value typed in the full editor", await until('the save lands', 120_000, () => holds(book, value)), value)
   await sleep(2000)

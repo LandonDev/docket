@@ -219,7 +219,7 @@ const api = {
     homeDir: (): Promise<string> => ipcRenderer.invoke('app:home-dir'),
     defaultCwd: (): Promise<string> => ipcRenderer.invoke('app:default-cwd'),
     openUrl: (url: string): Promise<void> => ipcRenderer.invoke('shell:open-url', url),
-    /** The box's full editor, carried on a loopback origin of this app's own and opened in the browser (src/main/fullEditorCarry.ts). */
+    /** The box's full editor, carried on a loopback origin of this app's own, in a window with a session of its own (src/main/fullEditorCarry.ts). */
     openFullEditor: (address: string): Promise<void> => ipcRenderer.invoke('full-editor:open', address),
     /** Writes bytes the window holds into Downloads under a safe, free name; answers the path. */
     saveDownload: (name: string, bytes: Uint8Array): Promise<string> => ipcRenderer.invoke('files:save-download', name, bytes),
