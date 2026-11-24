@@ -483,6 +483,16 @@ describe("the Templates view", () => {
     expect(asked("work.files.open")).toHaveLength(2);
   });
 
+  it("never says a make whose answer was lost was not made: the file may be there", async () => {
+    host.answer = (method) => (method === "work.templates.list" ? list : method === "work.templates.make" ? Promise.reject(new Error("No answer in 30 s")) : {});
+    render(<View {...props} />);
+    await settle();
+    fireEvent.click(screen.getByRole("button", { name: "Crew memo" }));
+    await settle();
+    await settle();
+    expect(toasts).toEqual([{ kind: "plain", title: "Crew memo may have been made", options: { description: "The box did not confirm the file was made. Check Files before you try again." } }]);
+  });
+
   it("says which template was not made, with the host's words", async () => {
     host.answer = (method) => (method === "work.templates.list" ? list : method === "work.templates.make" ? Promise.reject(new Error("refused: the workspace's folder is gone")) : {});
     render(<View {...props} />);

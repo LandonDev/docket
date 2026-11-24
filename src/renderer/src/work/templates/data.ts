@@ -63,9 +63,28 @@ async function ask<T>(env: string, method: string, params: object, failed: strin
   }
 }
 
+/**
+ * A make whose answer never came: the host places the file before it answers, so it may be there. Never said as a
+ * refusal ("was not made"), since a second press would make a second file.
+ */
+export class MadeUnsure extends Error {}
+
 /** A new file from the template, its fields filled; the window's own day fills Date. */
-export const makeFrom = (env: string, workspaceId: string, template: string, opts: { into?: FolderRef; fields?: Record<string, string> } = {}): Promise<TemplateMade> =>
-  ask(env, "work.templates.make", { workspaceId, template, ...(opts.into ? { into: opts.into } : {}), ...(opts.fields ? { fields: opts.fields } : {}), today: dayOf(new Date()) }, "The host did not make the file");
+export async function makeFrom(env: string, workspaceId: string, template: string, opts: { into?: FolderRef; fields?: Record<string, string> } = {}): Promise<TemplateMade> {
+  try {
+    return await registry.linkOf(env).request<TemplateMade>("work.templates.make", { workspaceId, template, ...(opts.into ? { into: opts.into } : {}), ...(opts.fields ? { fields: opts.fields } : {}), today: dayOf(new Date()) });
+  } catch (err) {
+    // `workErrorWords`' write rule words a lost answer apart from a refusal: where the two readings differ, no answer came.
+    if (workErrorWords(err, { write: true }) !== workErrorWords(err)) throw new MadeUnsure(madeUnsure(registry.environment(env)?.name ?? null));
+    throw new Error(workErrorWords(err) || "The host did not make the file");
+  }
+}
+
+/** What a make with no answer says, naming the computer asked: the file may be there, so look before another press. */
+export function madeUnsure(host: string | null): string {
+  const who = host ? host.charAt(0).toUpperCase() + host.slice(1) : "That computer";
+  return `${who} did not confirm the file was made. Check Files before you try again.`;
+}
 
 export const saveTemplate = (env: string, workspaceId: string, source: CanvasSource, opts: { name?: string; everywhere?: boolean } = {}): Promise<Template> =>
   ask(env, "work.templates.save", { workspaceId, source, ...(opts.name ? { name: opts.name } : {}), ...(opts.everywhere ? { everywhere: true } : {}) }, "The host did not save it");

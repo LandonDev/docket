@@ -19,6 +19,7 @@ const opens = new Set<() => void>();
 vi.mock("../../lib/connection", async (original) => ({
   ...(await original<object>()),
   registry: {
+    environment: (id: string) => ({ id, name: "The box" }),
     linkOf: () => ({
       connected: true,
       onOpen: (listener: () => void) => (opens.add(listener), () => void opens.delete(listener)),
@@ -296,6 +297,15 @@ describe("New from a template", () => {
     fireEvent.click(screen.getByRole("button", { name: "Show hidden" }));
     await settle();
     expect(asked("work.templates.unhide")).toEqual([{ workspaceId: "ws" }]);
+  });
+
+  it("says a make whose answer was lost may be there, never that it was not made", async () => {
+    host.answer = (method) => (method === "work.templates.list" ? { templates: [MEMO, REPORT], hidden: 0 } : method === "work.templates.make" ? Promise.reject(new Error("connection closed")) : {});
+    render(<TemplateDialog env="box" workspaceId="ws" onClose={() => {}} />);
+    await settle();
+    fireEvent.click(screen.getByRole("button", { name: "Crew memo" }));
+    await settle();
+    expect(screen.getByRole("alert").textContent).toBe("The box did not confirm the file was made. Check Files before you try again.");
   });
 
   it("shows a refusal above the grid, where a press near its top can see it", async () => {

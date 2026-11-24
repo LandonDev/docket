@@ -14,7 +14,7 @@ import { getPathForFile } from "../../lib/native";
 import { EmptyState } from "../../surfaces/SurfaceSkeleton";
 import type { WorkViewProps } from "../views/registry";
 import { ViewStateLine } from "../views/ViewStateLine";
-import { copyTemplate, makeFrom, moveTemplate, removeTemplate, restoreFiles, saveTemplate, unhideStarters, useTemplates } from "./data";
+import { copyTemplate, MadeUnsure, makeFrom, moveTemplate, removeTemplate, restoreFiles, saveTemplate, unhideStarters, useTemplates } from "./data";
 import { baseName, editsACopy, hiddenLine, refusedLine, shelfGroups, tileMenu, unfilledLine, type TileAction, type TileRow } from "./model";
 import { askTemplateFields, openMade } from "./open";
 import { RenameDialog } from "./RenameDialog";
@@ -216,8 +216,12 @@ export function View({ env, workspace }: WorkViewProps) {
     makeFrom(env, workspace.id, t.id)
       .then(
         (file) => open(t.id, file),
-        // What failed, then why, in the host's words: the open-failed toast names the file the same way.
-        (err: unknown) => void loadToast().then((toast) => toast.error(`${t.name} was not made`, { description: words(err) })),
+        // What failed, then why, in the host's words: the open-failed toast names the file the same way. An answer
+        // that never came is no refusal: the file may be there, and the toast says to look before another press.
+        (err: unknown) =>
+          void loadToast().then((toast) =>
+            err instanceof MadeUnsure ? toast(`${t.name} may have been made`, { description: words(err) }) : toast.error(`${t.name} was not made`, { description: words(err) }),
+          ),
       )
       .finally(() => setMaking(null));
   };
