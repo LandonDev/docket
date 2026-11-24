@@ -118,14 +118,27 @@ export const STATE_LINES: Readonly<Record<string, readonly Line[]>> = {
   [`${R}/outbox/AwayList.tsx`]: [
     ["Done", "local"],
   ],
-  [`${R}/outbox/OutboxView.tsx`]: [
-    ["Sent", "answer"],
-    ["`Scheduled for ${scheduleLine(item.scheduledFor, ownZone(), item.scheduledZone)}`", "queued"],
-    ["Nothing held", "read"],
-    ["Sent", "local"],
-    ["Sent", "local"],
-    ["Sending", "queued"],
+  [`${R}/outbox/DoneDetail.tsx`]: [
     ["Sent mail cannot be taken back", "read"],
+  ],
+  [`${R}/outbox/OutboxView.tsx`]: [
+    ["Nothing held", "read"],
+    ["Done", "local"],
+    ["Done", "local"],
+  ],
+  [`${R}/outbox/SummaryList.tsx`]: [
+    ["Done", "answer"],
+  ],
+  [`${R}/outbox/parts.tsx`]: [
+    ["Sent", "local"],
+  ],
+  [`${R}/outbox/waiting.ts`]: [
+    ["Scheduled", "read"],
+    ["Sending", "queued"],
+    ["Scheduled", "answer"],
+    ["Sending", "queued"],
+    ["Sent", "answer"],
+    ["Scheduled", "answer"],
   ],
   [`${R}/outbox/model.ts`]: [
     ["Queued in LifeOS", "queued"],

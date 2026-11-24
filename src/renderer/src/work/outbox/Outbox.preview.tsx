@@ -5,9 +5,10 @@ import { workspaceStore } from "../../lib/tcserver/workspaces";
 import { setWorkOn } from "../../lib/workSwitch";
 import { ACT_VIEWS } from "../acts/registry";
 import { defineChunk } from "../../lib/lazyChunk";
-import { asGivenComputer, OverFrame, usePressNamed } from "../kit.preview";
+import { asGivenComputer, OverFrame, Unsettled, usePressNamed } from "../kit.preview";
 import { OutboxView, rememberOutboxTab } from "./OutboxView";
-import { resetOutboxStore } from "./store";
+import { sessionStore } from "../../lib/tcserver/store";
+import { resetOutboxStore, wantOutboxItem } from "./store";
 
 /**
  * The Outbox over one fixed host, for `bun run ui:preview
@@ -16,8 +17,13 @@ import { resetOutboxStore } from "./store";
  * its foot (`offer`), the same mail with none (`plain`), Waiting with an
  * agent's changes to shared files held for his press (`edits`), and Sent with
  * mail LifeOS has not yet said went (`queued`: queued twelve minutes on, sent,
- * back in drafts). Also: `empty` (nothing waits), `failed` (Waiting with a send that failed, its reason in
- * the row and the detail), `grants` (the grants sheet over Sent), `kinds` (Waiting with a held item of six kinds; `pick` 0 is the
+ * back in drafts). Also: `empty` (nothing waits), `failed` (the day with the send that failed picked: Not sent
+ * leads, its reason once in the detail), `day` (a day of held work in Waiting's order: Not sent, Starts soon, each
+ * thread's group with the roster's fold, Scheduled; the reply to Dana picked, with its sentence and notes),
+ * `ticked` (the roster's Select 6: the summary list), `results` (its Send 6, one row refused), `changed` (Show
+ * changes open), `editing` (Edit in place), `stale` (an out-of-date change: Discard and Ask the thread again),
+ * `scheduled` (a mail he timed: Cancel send and Send now), `done` (Done by day, with a discard's words, a put-away
+ * out-of-date change and a phone's press), `loading` (the list's and the detail's bones), `grants` (the grants sheet over Sent), `kinds` (Waiting with a held item of six kinds; `pick` 0 is the
  * mail, 1 an invite, 5 a payload that could not be read, 6 a reply whose event LifeOS did not read; the calendar acts' LifeOS session did not answer), `kindsSilent` (the same, the host silent on its LifeOS status: the acts name it, with Retry), `longGuest` (`kinds` with `pick` 1: the invite, opened, with a guest whose long name and long address wrap in the column), `given` (Sent from a computer whose key may not grant) and `loadingAct` (Sent while the mail's own view loads).
  * Rendered by nothing in the app.
  */
@@ -133,8 +139,6 @@ const sentList = (): OutboxItem[] => (state === "queued" ? SENT.map((item, i) =>
 
 const OFFER: GrantOffer = { id: "go_1", workspaceId: "ws", kind: "mail.send", label: "Mail to dana.lee@purdue.edu from landon@purdue.edu", routineId: null, from: SENT[0]!.ref, count: 5, createdAt: at(20, 9, 41) };
 
-/** A send that failed, with the reason the host gave. */
-const FAILED: OutboxItem = { ...sent(6, "Re: Ballroom deposit", "Hi Dana,\n\nThe deposit form is attached.\n\nLandon", at(20, 11, 2)), state: "failed", error: "LifeOS refused the send: the attachment is over 25 MB", result: null };
 
 /** One held item of each of six kinds, as the Waiting list shows them; the last one's payload is not one its kind reads. */
 const held = (n: number, kind: OutboxItem["kind"], summary: string, verb: string, payload: unknown, minutes: number): OutboxItem => ({ ...sent(n, "", "", at(20, 10, minutes)), kind, summary, verb, state: "held", payload, decidedBy: null, decidedAt: null, why: "pillar", result: null });
@@ -156,7 +160,79 @@ const GRANTS: OutboxGrant[] = [
   { id: "g2", workspaceId: "ws", kind: "calendar.op", matcher: {}, label: "Changes to events on the Esports calendar", madeFrom: SENT[1]!.ref, routineId: "r1", createdAt: at(15, 16), removedAt: null },
 ];
 
-type State = "offer" | "plain" | "edits" | "queued" | "empty" | "failed" | "grants" | "kinds" | "kindsSilent" | "longGuest" | "given" | "loadingAct";
+/**
+ * A day of held work, for the rebuilt Waiting (`day` and the states over it): a send that failed, an invite that
+ * starts this afternoon, a thread's run of roster mails past its fold, a reply to Dana the thread rewrote and Dana
+ * wrote back to, a Slack reply, a change to a shared sheet that went out of date, and a mail he timed for tomorrow.
+ */
+const H = 3_600_000;
+const NOW = Date.now();
+const TITLES: Record<string, string> = { roster: "Nationals roster", budget: "Travel budget for nationals", release: "Release 2.14", bugs: "Weekly bug report", sweep: "Morning sweep" };
+const mailTo = (n: number, to: string, address: string, subject: string, text: string, over: Partial<OutboxItem> = {}): OutboxItem => ({
+  ...sent(n, subject, text, NOW - (30 - n) * 60_000),
+  ref: { at: "lifeos", table: "outbox", id: `d_${n}` },
+  summary: `Send to ${to}: ${subject}`,
+  state: "held",
+  decidedBy: null,
+  decidedAt: null,
+  result: null,
+  later: true,
+  effect: `Goes from landon@purdue.edu to ${to} after your 30-second undo.`,
+  payload: { id: `d_${n}`, status: "draft", message: { kind: "mail", accountId: "acct", to: [{ name: to, address }], cc: [], bcc: [], subject, html: "", text, from: { address: "landon@purdue.edu" } } },
+  ...over,
+});
+const PLAYERS = ["Alex Kim", "Jordan Patel", "Riley Chen", "Morgan Diaz", "Casey Wu", "Taylor Brooks"];
+const ROSTER = PLAYERS.map((p, i) =>
+  mailTo(i + 1, p, `${p.split(" ")[0]!.toLowerCase()}@purdue.edu`, "Nationals travel, confirm by Friday", `${p.split(" ")[0]},\n\nYou're on the roster for nationals in Columbus, Dec 4 to 6. The bus leaves the Armory at 7:00 AM on the 4th.\n\nReply by Friday to confirm.\n\nLandon`, { sessionId: "roster" }),
+);
+const DANA = mailTo(10, "Dana Lee", "dana.lee@purdue.edu", "Re: Nationals budget", "Dana,\n\nNumbers are in the sheet: $16,294 against the $16,500 budget, with 8% held back for hotels.\n\nCan you sign off before Friday?\n\nLandon", {
+  sessionId: "budget",
+  summary: "Reply to Dana Lee: Re: Nationals budget",
+  verb: "Reply",
+  changed: { at: NOW - 20 * 60_000, by: "thread" },
+});
+const DANA_FIRST = { message: { from: { address: "landon@purdue.edu" }, to: [{ name: "Dana Lee", address: "dana.lee@purdue.edu" }], subject: "Re: Nationals budget", text: "Dana,\n\nNumbers are in the sheet: $16,534 against the $16,500 budget.\n\nCan you sign off before Friday?\n\nLandon" } };
+const DAY: OutboxItem[] = [
+  ...ROSTER,
+  DANA,
+  { ...held(11, "chat.reply", "Reply to Priya in #release: Ship 2.14 tonight after QA signs off", "Reply", { chatId: "c1", source: "slack", chat: "#release", text: "Yes, ship tonight once QA signs off. I'll watch the crash dashboard for the first hour." }, 0), workspaceId: "ws2", sector: "ref", sessionId: "release", createdAt: NOW - 9 * 60_000, effect: "Replies as you in Priya's thread in #release, where 31 people see it.", later: true },
+  { ...mailTo(12, "Priya", "priya@cosmicgames.com", "Bug report, week 47", "Priya,\n\n41 new, 37 closed, 9 still open from last week.\n\nLandon", { sessionId: "bugs", routineRunId: "run1", workspaceId: "ws2", sector: "ref" }), state: "failed", error: "Gmail refused it: the attachment is over 25 MB." },
+  { ...held(13, "calendar.op", "Accept Kickoff call with Northside PT", "Accept", { id: "op13", kind: "accept", eventId: "ev1", eventStartsAt: NOW + 4 * H, account: "landon@purdue.edu" }, 0), sessionId: "sweep", createdAt: NOW - 2 * H, effect: "Tells Northside PT you will come and keeps it on your Purdue calendar." },
+  { ...EDITS[0]!, sessionId: "budget", state: "stale", error: "Dana changed the Hotels sheet at 9:05 AM, after this was made.", createdAt: NOW - 50 * 60_000 },
+  { ...mailTo(14, "Jess", "jess@hypixel.net", "Trailer cut, v3", "Jess,\n\nThe v3 cut is up.\n\nLandon", { sessionId: "release", workspaceId: "ws2", sector: "ref" }), state: "scheduled", scheduledFor: NOW + 22 * H, scheduledZone: "America/Chicago" },
+];
+/** Done for `done`: what went, what he discarded with his words, and what went out of date that he put away. */
+const DONE: OutboxItem[] = [
+  { ...SENT[0]!, decidedAt: NOW - 40 * 60_000, decidedBy: "owner", via: "outbox" },
+  { ...mailTo(15, "Sam Ortiz", "sortiz@purdue.edu", "Scrim schedule", "Sam,\n\nTuesday works.\n\nLandon"), state: "discarded", decidedBy: "owner", decidedAt: NOW - 70 * 60_000, reason: "Already booked the lab for Tuesday." },
+  { ...EDITS[1]!, state: "stale", dismissedAt: NOW - 26 * H, error: "Slide 5 moved after it was made." },
+  { ...SENT[2]!, decidedAt: NOW - 27 * H, decidedBy: "owner:remote", via: "phone" },
+];
+
+type State =
+  | "offer"
+  | "plain"
+  | "edits"
+  | "queued"
+  | "empty"
+  | "failed"
+  | "grants"
+  | "kinds"
+  | "kindsSilent"
+  | "longGuest"
+  | "given"
+  | "loadingAct"
+  | "day"
+  | "ticked"
+  | "results"
+  | "changed"
+  | "editing"
+  | "stale"
+  | "scheduled"
+  | "done"
+  | "loading";
+/** The states drawn over the day's Waiting, and the item each picks. */
+const DAY_PICK: Partial<Record<State, string>> = { day: "d_10", ticked: "d_10", results: "d_10", changed: "d_10", editing: "d_10", stale: "h_8", scheduled: "d_14", failed: "d_12" };
 
 // Each kind draws its act in a chunk of its own: landed before the first render, as a warm window draws them.
 await Promise.all(Object.values(ACT_VIEWS).map((view) => view.chunk?.load()));
@@ -170,16 +246,19 @@ const pickedKinds = (): OutboxItem[] => (state === "longGuest" ? LONG_KINDS : KI
 const waitingEdits = (): OutboxItem[] => EDITS.map((e, i) => (i === pick ? { ...e, createdAt: at(20, 8) } : e));
 let ready = false;
 
-const answers = (method: string, params: { show?: string } = {}): unknown => {
+const onDay = (): boolean => DAY_PICK[state] !== undefined;
+const dayItems = (): OutboxItem[] => DAY.map((i) => (i.ref.id === DAY_PICK[state] ? { ...i } : i));
+const answers = (method: string, params: { show?: string; ref?: { id: string }; items?: { ref: { id: string }; do: string }[] } = {}): unknown => {
   switch (method) {
     case "workspace.list":
       return [WS, WS2];
     case "project.list":
       return [];
     case "work.outbox.list":
-      if (params.show === "decided") return { items: state === "empty" ? [] : sentList() };
+      if (state === "loading") return new Promise(() => {});
+      if (params.show === "done") return { items: state === "empty" ? [] : state === "done" ? DONE : sentList() };
+      if (onDay()) return { items: dayItems(), waiting: DAY.length - 1 };
       if (kinds()) return { items: pickedKinds(), waiting: KINDS.length };
-      if (state === "failed") return { items: [FAILED], waiting: 1 };
       return state === "edits" ? { items: waitingEdits(), waiting: EDITS.length } : { items: [], waiting: 0 };
     case "work.outbox.grants":
       return { grants: state === "grants" ? GRANTS : [] };
@@ -193,8 +272,22 @@ const answers = (method: string, params: { show?: string } = {}): unknown => {
       // In `kindsSilent` the host itself never answers its status: the acts' details name it, with Retry.
       if (state === "kindsSilent") throw Object.assign(new Error("No answer in 15 s"), { name: "TimeoutError" });
       break;
-    case "work.outbox.get":
-      return state === "failed" ? FAILED : kinds() ? pickedKinds()[pick] : state === "edits" ? waitingEdits()[pick] : sentList()[pick];
+    case "work.outbox.decide":
+      // One row the host refuses, the rest go: what the summary's results look like.
+      return {
+        results: params.items!.map((d) => {
+          const item = DAY.find((i) => i.ref.id === d.ref.id)!;
+          return d.ref.id === "d_3" ? { ref: item.ref, ok: false, error: "Outlook did not answer in time" } : { ref: item.ref, ok: true, item: { ...item, state: "sent", lifeos: "queued", decidedAt: NOW } };
+        }),
+      };
+    case "work.outbox.get": {
+      if (onDay()) {
+        const item = DAY.find((i) => i.ref.id === params.ref?.id) ?? DAY[0]!;
+        return item === DANA ? { ...DANA, changed: { ...DANA.changed!, first: DANA_FIRST }, replied: { from: "Dana Lee", at: NOW - 12 * 60_000, line: "Can you add the hotel line before you send?" } } : item;
+      }
+      if (state === "done") return DONE.find((i) => i.ref.id === params.ref?.id) ?? DONE[0];
+      return kinds() ? pickedKinds()[pick] : state === "edits" ? waitingEdits()[pick] : sentList()[pick];
+    }
   }
   throw new Error(`no ${method}`);
 };
@@ -208,7 +301,7 @@ const link = {
   onPush: () => () => {},
   request<T>(method: string, params?: { show?: string }): Promise<T> {
     try {
-      return Promise.resolve(answers(method, params) as T);
+      return Promise.resolve(answers(method, params as never) as T);
     } catch (err) {
       return Promise.reject(err);
     }
@@ -217,6 +310,9 @@ const link = {
 Object.assign(registry, { primary: () => link, linkOf: () => link, link: () => link });
 workspaceStore.reset();
 workspaceStore.attach(link);
+
+// The threads' titles, as the session store would hold them.
+Object.assign(sessionStore, { metaOf: (id: string) => (TITLES[id] ? ({ id, title: TITLES[id] } as never) : null) });
 
 export function OutboxPreview({ state: s = "offer", pick: p = 0 }: { state?: State; pick?: number }) {
   if (!ready) {
@@ -230,8 +326,12 @@ export function OutboxPreview({ state: s = "offer", pick: p = 0 }: { state?: Sta
     if (s === "kindsSilent") Object.assign(registry, { environment: (id: string) => ({ id, name: "The box" }) });
     // A mail's own view still on its way: the bones it shows until then.
     if (s === "loadingAct") ACT_VIEWS["mail.send"] = { kind: "mail.send", chunk: defineChunk("preview-never", () => new Promise(() => {})) };
-    rememberOutboxTab(s === "edits" || s === "kinds" || s === "kindsSilent" || s === "longGuest" || s === "empty" || s === "failed" ? "waiting" : "sent");
+    rememberOutboxTab(s === "edits" || s === "kinds" || s === "kindsSilent" || s === "longGuest" || s === "empty" || s === "failed" || s === "loading" || DAY_PICK[s] ? "waiting" : "done");
+    if (DAY_PICK[s]) wantOutboxItem(`local:${s === "stale" ? "host" : "lifeos"}:${DAY_PICK[s]}`);
   }
+  // Each state's own press, once the page has drawn: the thread's Select 6, its Send 6, Show changes, Edit.
+  usePressNamed(s === "ticked" || s === "results" ? "Select 6" : s === "changed" ? "Show changes" : s === "editing" ? "Edit" : null, 160);
+  usePressNamed(s === "results" ? "Send 6" : null, 300);
   // Grants is the header's own press.
   usePressNamed(s === "grants" ? "Grants" : null, 80);
   // `longGuest` opens the picked row, so a narrow window shows its detail in the list's place.
@@ -242,6 +342,7 @@ export function OutboxPreview({ state: s = "offer", pick: p = 0 }: { state?: Sta
   }, [s]);
   return (
     <OverFrame maxWidth={1100} height={640}>
+      {s === "results" ? <Unsettled ms={900} /> : null}
       <div className="flex h-full w-full">
         <OutboxView besideRail onClose={() => {}} />
       </div>

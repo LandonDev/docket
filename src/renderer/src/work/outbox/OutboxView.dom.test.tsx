@@ -26,6 +26,13 @@ const world = vi.hoisted(() => ({
   sendHeld: null as Promise<void> | null,
   // a press LifeOS takes: the host stores it sent and says what LifeOS said of each (by item id; "*" for all)
   sendSaid: {} as Record<string, "queued" | "confirmed" | "drafts" | "gone">,
+  // what each decide was asked, by host
+  decides: [] as { env: string; items: { ref: { id: string }; do: string; reason?: string; at?: number; rev?: number }[] }[],
+  decideDown: false,
+  // items a decide refuses, with the host's words
+  refuse: {} as Record<string, string>,
+  // what `get` adds to an item (changed.first, replied)
+  extra: {} as Record<string, Partial<OutboxItem>>,
 }));
 
 vi.mock("../../lib/connection", async (original) => {
@@ -43,9 +50,35 @@ vi.mock("../../lib/connection", async (original) => {
       switch (method) {
         case "work.outbox.list": {
           if (world.listDown.has(env)) throw new Error("socket closed");
-          const waiting = items.filter((i) => ["held", "live", "failed", "sending"].includes(i.state));
-          return { items: params.show === "decided" ? items.filter((i) => i.state === "sent" || i.state === "discarded") : waiting, waiting: waiting.length };
+          const waiting = items.filter((i) => ["held", "live", "failed", "sending", "scheduled"].includes(i.state) || (i.state === "stale" && !i.dismissedAt));
+          const done = items.filter((i) => i.state === "sent" || i.state === "discarded" || (i.state === "stale" && i.dismissedAt));
+          return { items: params.show === "done" || params.show === "decided" ? done : waiting, waiting: waiting.filter((i) => i.state !== "scheduled" && i.state !== "sending").length };
         }
+        case "work.outbox.decide": {
+          world.decides.push({ env, items: params.items as never });
+          if (world.decideDown) throw new Error("No answer in 15 s");
+          const results = (params.items as { ref: { id: string }; do: string; reason?: string; at?: number; zone?: string }[]).map((d) => {
+            const it = items.find((i) => i.ref.id === d.ref.id)!;
+            if (world.refuse[d.ref.id]) return { ref: it.ref, ok: false, error: world.refuse[d.ref.id] };
+            if (d.do === "discard") Object.assign(it, { state: "discarded", decidedBy: "owner", decidedAt: now, ...(d.reason ? { reason: d.reason } : {}) });
+            else if (d.do === "later") Object.assign(it, { state: "scheduled", scheduledFor: d.at, scheduledZone: d.zone });
+            else Object.assign(it, { state: "sent", decidedBy: "owner", decidedAt: now, updatedAt: now, ...(world.sendSaid[it.ref.id] ? { lifeos: world.sendSaid[it.ref.id] } : {}) });
+            return { ref: it.ref, ok: true, item: { ...it } };
+          });
+          return { results };
+        }
+        case "work.outbox.askAgain":
+          Object.assign(find(), { dismissedAt: now, reason: "out of date" });
+          return find();
+        case "work.outbox.cancelSend":
+          Object.assign(find(), { state: "held", scheduledFor: undefined, scheduledZone: undefined });
+          return find();
+        case "work.outbox.sendNow":
+          Object.assign(find(), { state: "sent", decidedBy: "owner", decidedAt: now, scheduledFor: undefined });
+          return find();
+        case "work.outbox.undoSend":
+          Object.assign(find(), { state: "held", lifeos: undefined, decidedAt: null, decidedBy: null });
+          return { back: true, item: find() };
         case "work.outbox.grants":
           return { grants: (world.grants.get(env) ?? []).filter((g) => !g.removedAt) };
         case "work.outbox.send":
@@ -56,7 +89,7 @@ vi.mock("../../lib/connection", async (original) => {
           Object.assign(find(), { state: "sent", decidedBy: "owner", decidedAt: now, updatedAt: now, ...(said ? { lifeos: said } : {}) });
           return find();
         case "work.outbox.discard":
-          Object.assign(find(), { state: "discarded", decidedBy: "owner", decidedAt: now });
+          Object.assign(find(), { state: "discarded", decidedBy: "owner", decidedAt: now, ...(params.reason ? { reason: params.reason } : {}) });
           return find();
         case "work.outbox.edit":
           Object.assign(find(), { payload: params.payload, updatedAt: now });
@@ -90,7 +123,7 @@ vi.mock("../../lib/connection", async (original) => {
           return { results: [] };
         case "work.outbox.get":
           if (world.getFails) throw new Error("The host did not answer");
-          return { ...find(), payload: { ...(find().payload as object), picture: { mimeType: "image/png", width: 16, height: 10, data: "AAAA" }, ...(world.quote ? { quote: world.quote } : {}) } };
+          return { ...find(), ...(world.extra[find().ref.id] ?? {}), payload: { ...(find().payload as object), picture: { mimeType: "image/png", width: 16, height: 10, data: "AAAA" }, ...(world.quote ? { quote: world.quote } : {}) } };
       }
       throw new Error(`unknown ${method}`);
     },
@@ -171,6 +204,10 @@ beforeEach(() => {
   world.listDown.clear();
   world.sendHeld = null;
   world.sendSaid = {};
+  world.decides = [];
+  world.decideDown = false;
+  world.refuse = {};
+  world.extra = {};
   workSwitch.reset();
   setWorkOn("box", true);
   setWorkOn("mac", true);
@@ -243,23 +280,16 @@ describe("a mail or calendar act LifeOS holds after his press", () => {
     expect(document.body.textContent).not.toContain("Sent: Budget");
   });
 
-  it("a group's Send says of each what LifeOS said, as its row would: queued, back in drafts, gone; never Sent", async () => {
-    world.sendSaid = { o1: "queued", o2: "drafts", o3: "gone" };
-    const { Toaster } = await import("../../components/ui/toaster");
-    render(<Toaster />);
+  it("Select 3 then Send 3: each row says what LifeOS said of it, as its row in Done would, and the head sums the press", async () => {
+    world.sendSaid = { o1: "queued", o2: "drafts", o3: "confirmed" };
     await open();
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "Select 3" })));
     await act(async () => fireEvent.click(screen.getByRole("button", { name: "Send 3" })));
-    await waitFor(() => expect(document.body.textContent).toContain("1 queued in LifeOS, 1 back in drafts in LifeOS, 1 no longer in LifeOS from "), { timeout: 5000 });
-    expect(document.body.textContent).not.toMatch(/Sent \d/);
-  });
-
-  it("a group's Send that LifeOS confirmed at once, beside one it holds, says Sent for that one alone", async () => {
-    world.sendSaid = { o1: "confirmed", o2: "queued" };
-    const { Toaster } = await import("../../components/ui/toaster");
-    render(<Toaster />);
-    await open();
-    await act(async () => fireEvent.click(screen.getByRole("button", { name: "Send 3" })));
-    await waitFor(() => expect(document.body.textContent).toContain("Sent 2, 1 queued in LifeOS from "), { timeout: 5000 });
+    await waitFor(() => expect(document.querySelector("[data-outbox-summary] h1")!.textContent).toBe("Sent 3"), { timeout: 5000 });
+    const rows = [...document.querySelectorAll("[data-summary-row]")].map((r) => r.textContent);
+    expect(rows[0]).toContain("Queued in LifeOS");
+    expect(rows[1]).toContain("Back in drafts in LifeOS");
+    expect(rows[2]).toContain("Sent");
   });
 });
 
@@ -321,7 +351,7 @@ describe("the Outbox", () => {
   it("sends a LifeOS draft with the updatedAt it was shown with, through the host that holds it", async () => {
     await open();
     await act(async () => fireEvent.click(screen.getByRole("button", { name: "Send" })));
-    expect(sends()).toEqual([{ env: "box", method: "work.outbox.send", params: { ref: { at: "lifeos", table: "outbox", id: "o1" }, rev: 500 } }]);
+    expect(sends()).toEqual([{ env: "box", method: "work.outbox.send", params: { ref: { at: "lifeos", table: "outbox", id: "o1" }, rev: 500, via: "outbox" } }]);
     await waitFor(() => expect(screen.queryAllByText("Send to Dana Lee")).toEqual([]));
   });
 
@@ -337,65 +367,110 @@ describe("the Outbox", () => {
     }
   });
 
-  it("discards, and edits what goes while it waits", async () => {
+  it("edits what goes where it stands: the fields turn into inputs, Save keeps it held, Cancel puts it back", async () => {
     await open();
+    await waitFor(() => expect(screen.getByRole("button", { name: "Edit" })).toBeTruthy());
     fireEvent.click(screen.getByRole("button", { name: "Edit" }));
-    const dialog = await screen.findByRole("dialog");
-    fireEvent.change(within(dialog).getByLabelText("Subject"), { target: { value: "Budget, second draft" } });
-    await act(async () => fireEvent.click(within(dialog).getByRole("button", { name: "Save" })));
+    // No dialog: the thing being edited is the thing on screen.
+    expect(screen.queryByRole("dialog")).toBeNull();
+    const detail = document.querySelector("[data-outbox-detail]") as HTMLElement;
+    fireEvent.change(within(detail).getByLabelText("Subject"), { target: { value: "Budget, second draft" } });
+    expect(within(detail).getByRole("button", { name: "Cancel" })).toBeTruthy();
+    await act(async () => fireEvent.click(within(detail).getByRole("button", { name: "Save" })));
     const edit = world.calls.find((c) => c.method === "work.outbox.edit")!;
     expect((edit.params.payload as { message: { subject: string } }).message.subject).toBe("Budget, second draft");
-    await act(async () => fireEvent.click(screen.getByRole("button", { name: "Discard" })));
-    expect(world.calls.filter((c) => c.method === "work.outbox.discard").map((c) => c.params.ref)).toEqual([{ at: "lifeos", table: "outbox", id: "o1" }]);
+    await waitFor(() => expect(document.querySelector("[data-outbox-editing]")).toBeNull());
+    expect(sends()).toEqual([]);
   });
 
-  it("a workspace's Send 3 sends its three, and nothing of another workspace", async () => {
+  it("saves an edit with the command key and S, and Escape leaves the edit before it leaves the page", async () => {
+    const closed = vi.fn();
+    render(<OutboxView besideRail onClose={closed} />);
+    fireEvent.click(screen.getByRole("tab", { name: "Waiting" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "Edit" })).toBeTruthy(), { timeout: 5000 });
+    fireEvent.click(screen.getByRole("button", { name: "Edit" }));
+    fireEvent.keyDown(document.querySelector("[data-outbox-detail] h1")!, { key: "Escape" });
+    expect(document.querySelector("[data-outbox-editing]")).toBeNull();
+    expect(closed).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "Edit" }));
+    const subject = within(document.querySelector("[data-outbox-detail]") as HTMLElement).getByLabelText("Subject");
+    fireEvent.change(subject, { target: { value: "Budget v3" } });
+    await act(async () => fireEvent.keyDown(subject, { key: "s", metaKey: true, ctrlKey: false }));
+    await act(async () => fireEvent.keyDown(subject, { key: "s", ctrlKey: true, metaKey: false }));
+    expect(world.calls.filter((c) => c.method === "work.outbox.edit").length).toBeGreaterThan(0);
+  });
+
+  it("Discard asks why, for the thread, in a popover over its button, and the host hears his words", async () => {
     await open();
-    await act(async () => fireEvent.click(screen.getByRole("button", { name: "Send 3" })));
-    expect(sends().map((c) => [c.env, (c.params.ref as { id: string }).id])).toEqual([
-      ["box", "o1"],
-      ["box", "o2"],
-      ["box", "o3"],
+    fireEvent.click(screen.getByRole("button", { name: "Discard" }));
+    const field = await screen.findByRole("textbox", { name: "Why, for the thread" });
+    fireEvent.change(field, { target: { value: "She paid yesterday. Thank her instead." } });
+    const pop = field.closest("[data-slot=popover-content]") as HTMLElement;
+    await act(async () => fireEvent.click(within(pop).getByRole("button", { name: "Discard" })));
+    expect(world.calls.filter((c) => c.method === "work.outbox.discard").map((c) => c.params)).toEqual([
+      { ref: { at: "lifeos", table: "outbox", id: "o1" }, reason: "She paid yesterday. Thank her instead.", via: "outbox" },
     ]);
   });
 
-  it("a group's Send leaves a reply that quotes its mail for its own look, and sends the rest", async () => {
+  it("Select 3 on a thread's heading ticks its items, and Send 3 is one decide on their host, nothing of another job", async () => {
+    await open();
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "Select 3" })));
+    expect(document.querySelector("[data-outbox-summary] h1")!.textContent).toBe("Send 3 mails to 3 people");
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "Send 3" })));
+    expect(world.decides).toEqual([
+      {
+        env: "box",
+        items: [
+          { ref: { at: "lifeos", table: "outbox", id: "o1" }, do: "send", rev: 500 },
+          { ref: { at: "lifeos", table: "outbox", id: "o2" }, do: "send", rev: 500 },
+          { ref: { at: "lifeos", table: "outbox", id: "o3" }, do: "send", rev: 500 },
+        ],
+      },
+    ]);
+    expect(sends()).toEqual([]);
+  });
+
+  it("a reply that quotes its mail says Open to send and stays out of Send N: only Discard takes it in a group", async () => {
     world.quote = "<p>On Tue, Dana wrote:</p>";
-    const { loadToast } = await import("../../components/ui/toaster");
-    const toast = await loadToast();
-    const error = vi.spyOn(toast, "error");
     try {
       await open();
-      await act(async () => fireEvent.click(screen.getByRole("button", { name: "Send 3" })));
-      expect(sends()).toEqual([]);
-      // said plainly as waiting on him, never as a failure
-      const { sendMany } = await import("./store");
-      const out = await sendMany(world.items.get("box")!.map((i) => ({ ...i, environmentId: "box" }) as never));
-      expect(out).toMatchObject({ sent: 0, failed: [] });
-      expect(out.waiting).toHaveLength(3);
-      expect(error).not.toHaveBeenCalled();
+      await act(async () => fireEvent.click(screen.getByRole("button", { name: "Select 3" })));
+      await waitFor(() => expect([...document.querySelectorAll("[data-summary-row]")].every((r) => r.textContent!.includes("Open to send"))).toBe(true), { timeout: 5000 });
+      expect(screen.queryByRole("button", { name: /^Send \d/ })).toBeNull();
+      expect(screen.getByRole("button", { name: "Discard 3" })).toBeTruthy();
+      expect(document.querySelector("[data-outbox-summary] h1")!.textContent).toBe("Discard 3");
     } finally {
       world.quote = null;
-      error.mockRestore();
     }
   });
 
-  it("a group's Send leaves a computer act for its own look, where its picture shows", async () => {
-    const click: OutboxItem = { ...addonCall, state: "held", ref: { at: "host", id: "c3" }, kind: "computer.act", summary: "Click Send in Mail", payload: { title: "Click Send in Mail", app: "Mail", picture: { mimeType: "image/png", width: 16, height: 10 } } };
-    const { sendMany } = await import("./store");
-    const out = await sendMany([{ ...click, environmentId: "mac" } as never]);
-    expect(out.sent).toBe(0);
-    expect(out.failed).toEqual([]);
-    expect(out.waiting.map((i) => i.ref)).toEqual([click.ref]);
-    expect(sends()).toEqual([]);
+  it("a host that refuses one item of a press says why on that row alone, and Send again takes only it", async () => {
+    world.refuse = { o2: "This went out of date: discard it, or ask the thread again." };
+    await open();
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "Select 3" })));
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "Send 3" })));
+    await waitFor(() => expect(document.querySelector("[data-outbox-summary] h1")!.textContent).toBe("Sent 2, 1 not sent"), { timeout: 5000 });
+    const rows = [...document.querySelectorAll("[data-summary-row]")];
+    expect(rows[1]!.querySelector("[data-summary-side]")!.textContent).toBe("This went out of date: discard it, or ask the thread again.");
+    expect(rows[0]!.textContent).not.toContain("out of date");
+    expect(screen.getByRole("button", { name: "Send 1 again" })).toBeTruthy();
+  });
+
+  it("a host that does not answer a press fails each of its rows with why, and leaves another host's rows as they went", async () => {
+    world.decideDown = true;
+    await open();
+    fireEvent.click(screen.getByRole("checkbox", { name: "Tick Send to Sam Ortiz" }));
+    fireEvent.click(screen.getByRole("checkbox", { name: "Tick Post message with Slack" }));
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "Send 2" })));
+    await waitFor(() => expect(document.querySelector("[data-outbox-summary] h1")!.textContent).toBe("2 not sent"), { timeout: 5000 });
   });
 
   it("leaves a computer act out of its group's count and gives it no tick: it is sent from its own detail", async () => {
     const click: OutboxItem = { ...addonCall, state: "held", ref: { at: "host", id: "c4" }, workspaceId: "ws1", kind: "computer.act", summary: "Click Send in Mail", payload: { title: "Click Send in Mail", app: "Mail" } };
     world.items.set("box", [mail("o1", "Dana Lee", "Budget"), mail("o2", "Sam Ortiz", "Scrims"), { ...click }]);
     await open();
-    await waitFor(() => expect(screen.getByRole("button", { name: "Send 2" })).toBeTruthy());
-    expect(screen.queryByRole("button", { name: "Send 3" })).toBeNull();
+    await waitFor(() => expect(screen.getByRole("button", { name: "Select 2" })).toBeTruthy());
+    expect(screen.queryByRole("button", { name: "Select 3" })).toBeNull();
     expect(screen.queryByRole("checkbox", { name: "Tick Click Send in Mail" })).toBeNull();
     expect(screen.getByRole("checkbox", { name: "Tick Send to Sam Ortiz" })).toBeTruthy();
   });
@@ -406,20 +481,18 @@ describe("the Outbox", () => {
     await waitFor(() => expect(screen.getByText("Check Sent first")).toBeTruthy());
     expect(screen.queryByRole("button", { name: "More ways to send" })).toBeNull();
     expect(screen.queryByRole("checkbox", { name: "Tick Send to Dana Lee" })).toBeNull();
-    await act(async () => fireEvent.click(screen.getByRole("button", { name: "Send 2" })));
-    expect(sends().map((c) => (c.params.ref as { id: string }).id)).toEqual(["o2", "o3"]);
     await act(async () => fireEvent.click(screen.getByRole("button", { name: "Send again" })));
-    expect(sends().at(-1)!.params).toEqual({ ref: { at: "lifeos", table: "outbox", id: "o1" }, rev: 500, again: true });
+    expect(sends().at(-1)!.params).toEqual({ ref: { at: "lifeos", table: "outbox", id: "o1" }, rev: 500, again: true, via: "outbox" });
   });
 
-  it("ticked rows send together", async () => {
+  it("ticked rows of two hosts go as one decide to each", async () => {
     await open();
     fireEvent.click(screen.getByRole("checkbox", { name: "Tick Send to Sam Ortiz" }));
     fireEvent.click(screen.getByRole("checkbox", { name: "Tick Post message with Slack" }));
     await act(async () => fireEvent.click(screen.getByRole("button", { name: "Send 2" })));
-    expect(sends().map((c) => [c.env, (c.params.ref as { id: string }).id]).sort()).toEqual([
-      ["box", "o2"],
-      ["mac", "h9"],
+    expect(world.decides.map((d) => [d.env, d.items.map((i) => i.ref.id)]).sort()).toEqual([
+      ["box", ["o2"]],
+      ["mac", ["h9"]],
     ]);
   });
 
@@ -451,10 +524,10 @@ describe("the Outbox", () => {
     expect(world.calls.some((c) => /^work\.outbox\.(grant|ungrant|takeOffer|dismissOffer)$/.test(c.method))).toBe(false);
   });
 
-  it("puts what left under Sent, with who pressed and when", async () => {
+  it("puts what left under Done, with who pressed and when", async () => {
     await open();
     await act(async () => fireEvent.click(screen.getByRole("button", { name: "Send" })));
-    fireEvent.click(screen.getByRole("tab", { name: "Sent" }));
+    fireEvent.click(screen.getByRole("tab", { name: "Done" }));
     await waitFor(() => expect(screen.getAllByText("Sent to Dana Lee").length).toBeGreaterThan(0));
     // The title says it went: the head says where, when and by whom, with no second "Sent".
     const facts = document.querySelector("[data-outbox-detail] header [data-slot=facts]")!.textContent!;
@@ -463,24 +536,24 @@ describe("the Outbox", () => {
     expect(screen.getByText("Sent mail cannot be taken back")).toBeTruthy();
   });
 
-  it("groups Sent by job, each row led by its kind's glyph: the job's dot heads the group, never a row", async () => {
-    world.items.set("box", [mail("o1", "Dana Lee", "Budget", { state: "sent", decidedBy: "owner", decidedAt: Date.now() - 60_000 }), mail("o2", "Sam Ortiz", "Scrims", { state: "sent", decidedBy: "owner", decidedAt: Date.now() - 120_000 })]);
+  it("groups Done by day, newest first, each row led by its kind's glyph and ending in its time", async () => {
+    const DAY = 86_400_000;
+    world.items.set("box", [
+      mail("o1", "Dana Lee", "Budget", { state: "sent", decidedBy: "owner", decidedAt: Date.now() - 60_000 }),
+      mail("o2", "Sam Ortiz", "Scrims", { state: "discarded", decidedBy: "owner", decidedAt: Date.now() - DAY, reason: "Already booked" }),
+    ]);
     world.items.set("mac", [{ ...addonCall, state: "sent", decidedBy: "owner", decidedAt: Date.now() - 90_000 }]);
-    rememberOutboxTab("sent");
+    rememberOutboxTab("done");
     render(<OutboxView besideRail onClose={() => undefined} />);
     await waitFor(() => expect(screen.getAllByText("Sent to Dana Lee").length).toBeGreaterThan(0), { timeout: 5000 });
-    const list = document.querySelector("[data-outbox-list]")!;
-    const groups = [...list.querySelectorAll("section")];
-    // Two jobs, newest first; each group's rows its own.
-    expect(groups).toHaveLength(2);
+    const groups = [...document.querySelectorAll("[data-outbox-list] section")];
+    expect(groups.map((g) => g.getAttribute("aria-label"))).toEqual(["Today", "Yesterday"]);
     expect(groups[0]!.querySelectorAll("li")).toHaveLength(2);
-    expect(groups[1]!.querySelectorAll("li")).toHaveLength(1);
-    // The dot is in each heading, and no row carries one: a row leads with its glyph.
-    for (const group of groups) {
-      expect(group.firstElementChild!.querySelector("[data-sector]")).toBeTruthy();
-      expect(group.querySelector("li [data-sector]")).toBeNull();
-      expect(group.querySelector("li svg")).toBeTruthy();
-    }
+    expect(groups[1]!.textContent).toContain("Discarded");
+    for (const group of groups) expect(group.querySelector("li svg")).toBeTruthy();
+    // What he discarded keeps the words he gave the thread.
+    fireEvent.click(screen.getByText("Send to Sam Ortiz"));
+    await waitFor(() => expect(document.querySelector("[data-outbox-detail]")!.textContent).toContain('Discarded. You told the thread: "Already booked"'));
   });
 
   it("says a failed send's reason once, in the detail and in his words: the row keeps what it is about", async () => {
@@ -490,18 +563,17 @@ describe("the Outbox", () => {
     expect(row.textContent).toContain("Budget");
     expect(row.textContent).not.toContain("forbidden");
     const alert = within(document.querySelector("[data-outbox-detail]") as HTMLElement).getByRole("alert");
-    expect(alert.textContent).toBe("This computer's key may not do that on that computer. Do it from a computer that manages that computer.");
+    expect(alert.textContent).toBe("Not sent. This computer's key may not do that on that computer. Do it from a computer that manages that computer.");
+    // It leads Waiting, under Not sent.
+    expect(document.querySelector("[data-outbox-section]")!.getAttribute("data-outbox-section")).toBe("failed");
   });
 
-  it("lets a row with no second line take two lines for its title, so a long act is read whole", async () => {
-    world.items.set("box", [{ ...mail("o1", "Dana Lee", "Budget"), summary: "Share Spring LAN run of show with Maya Chen to comment", account: null }]);
-    render(<OutboxView besideRail onClose={() => undefined} />);
-    fireEvent.click(screen.getByRole("tab", { name: "Waiting" }));
-    await waitFor(() => expect(screen.getAllByText("Share Spring LAN run of show with Maya Chen to comment").length).toBeGreaterThan(0), { timeout: 5000 });
-    const title = document.querySelector("[data-outbox-list] [data-row-title]")!;
-    expect(title.className).toContain("line-clamp-2");
-    expect(title.className).not.toContain("truncate");
-    expect(title.closest("li")!.querySelectorAll("button > span")).toHaveLength(1);
+  it("draws each row on one line: the act, what it is about, and one trailing word", async () => {
+    await open();
+    const row = screen.getAllByText("Send to Dana Lee").find((el) => el.closest("li"))!.closest("li")!;
+    const button = row.querySelector("button")!;
+    expect(button.className).toContain("h-8");
+    expect([...button.children].map((c) => c.textContent)).toEqual(["Send to Dana Lee", "Budget", expect.stringMatching(/\d:\d\d [AP]M|\w{3} \d/)]);
   });
 
   it("when the item he reads is decided elsewhere, the detail empties rather than slide the next one under Send", async () => {
@@ -571,7 +643,7 @@ describe("the Outbox", () => {
     expect(screen.queryByRole("button", { name: "Edit" })).toBeNull();
   });
 
-  it("names the host whose screen a computer act takes, and keeps its picture in Sent", async () => {
+  it("names the host whose screen a computer act takes, and keeps its picture in Done", async () => {
     const click: OutboxItem = { ...addonCall, state: "held", ref: { at: "host", id: "c1" }, kind: "computer.act", summary: "Click Send in Mail", payload: { title: "Click Send in Mail", app: "Mail", picture: { mimeType: "image/png", width: 16, height: 10 } } };
     // The last test's press reloads its host as it ends: let that land before this world is read.
     await act(async () => void (await new Promise((r) => setTimeout(r, 0))));
@@ -591,7 +663,7 @@ describe("the Outbox", () => {
     fireEvent.load(held);
     expect(held.compareDocumentPosition(screen.getByRole("button", { name: "Send" })) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     await act(async () => fireEvent.click(screen.getByRole("button", { name: "Send" })));
-    fireEvent.click(screen.getByRole("tab", { name: "Sent" }));
+    fireEvent.click(screen.getByRole("tab", { name: "Done" }));
     const picture = (await screen.findByRole("img")) as HTMLImageElement;
     expect(picture.src).toBe("data:image/png;base64,AAAA");
     expect(world.calls.some((c) => c.method === "work.outbox.get")).toBe(true);
@@ -622,7 +694,7 @@ describe("the Outbox", () => {
     world.resultsDown = true;
     await open();
     await act(async () => fireEvent.click(screen.getByRole("button", { name: "Send" })));
-    fireEvent.click(screen.getByRole("tab", { name: "Sent" }));
+    fireEvent.click(screen.getByRole("tab", { name: "Done" }));
     await waitFor(() => expect(screen.getByText("The host did not answer")).toBeTruthy());
     expect(screen.queryByText("Sent mail cannot be taken back")).toBeNull();
     world.resultsDown = false;
@@ -766,7 +838,7 @@ describe("the Outbox", () => {
     expect(picked()).toContain("Send to Events booking");
     // He sends Events booking and goes to Sent before the answer: Sent keeps its own pick, its detail on screen.
     answer = await pressLate();
-    fireEvent.click(screen.getByRole("tab", { name: "Sent" }));
+    fireEvent.click(screen.getByRole("tab", { name: "Done" }));
     await act(async () => answer());
     await waitFor(() => expect(within(list()).getAllByText("Sent to Events booking").length).toBeGreaterThan(0));
     await waitFor(() => expect(picked()).not.toBe(""));
@@ -780,21 +852,15 @@ describe("the Outbox", () => {
     await waitFor(() => expect(picked()).toContain("Post message with Slack"));
   });
 
-  it("narrow, the ticked review gives the act and its subject a line each, so a long act never pushes the subject off", async () => {
+  it("narrow, the summary row keeps its act and its side word, and leaves what it is about to the row opened in place", async () => {
     await open();
     fireEvent.click(screen.getByRole("checkbox", { name: "Tick Send to Sam Ortiz" }));
     fireEvent.click(screen.getByRole("button", { name: "Review 1" }));
-    const row = document.querySelector("[data-ticked-row]") as HTMLElement;
-    const act = row.querySelector("[data-ticked-act]") as HTMLElement;
-    const about = row.querySelector("[data-ticked-about]") as HTMLElement;
-    expect(act.textContent).toBe("Send to Sam Ortiz");
-    expect(about.textContent).toBe("Scrims");
-    // one line wide; narrow, a column whose act may shrink and wrap
-    expect(act.parentElement).toBe(about.parentElement);
-    expect(act.parentElement!.className).toContain("@max-[40rem]/outbox:flex-col");
-    expect(act.className).toContain("@max-[40rem]/outbox:shrink");
-    expect(act.className).toContain("@max-[40rem]/outbox:break-words");
-    expect(row.className).not.toMatch(/(^| )h-8( |$)/);
+    const row = document.querySelector("[data-summary-row]") as HTMLElement;
+    expect(row.querySelector("[data-summary-act]")!.textContent).toBe("Send to Sam Ortiz");
+    expect(row.querySelector("[data-summary-about]")!.className).toContain("@max-[40rem]/outbox:hidden");
+    fireEvent.click(within(row).getByRole("button", { name: "Open Send to Sam Ortiz" }));
+    await waitFor(() => expect(row.querySelector("[data-summary-open]")!.textContent).toContain("Scrims"));
   });
 });
 
@@ -807,7 +873,7 @@ describe("a grant he has earned", () => {
   };
   async function openSent() {
     render(<OutboxView besideRail onClose={() => undefined} />);
-    fireEvent.click(screen.getByRole("tab", { name: "Sent" }));
+    fireEvent.click(screen.getByRole("tab", { name: "Done" }));
     await waitFor(() => expect(screen.getAllByText("Sent to Dana Lee").length).toBeGreaterThan(0), { timeout: 5000 });
   }
 
@@ -862,7 +928,185 @@ describe("a grant he has earned", () => {
     const review = await screen.findByRole("button", { name: "Review" }, { timeout: 5000 });
     expect(document.body.textContent).toContain("Mail to Dana Lee: you sent the last 5 as written.");
     await act(async () => fireEvent.click(review));
-    await waitFor(() => expect(screen.getByRole("tab", { name: "Sent" }).getAttribute("aria-selected")).toBe("true"));
+    await waitFor(() => expect(screen.getByRole("tab", { name: "Done" }).getAttribute("aria-selected")).toBe("true"));
     await waitFor(() => expect(document.querySelector("[data-offer-line]")?.textContent).toContain("Mail to Dana Lee"));
+  });
+});
+
+describe("the Outbox, rebuilt around how he decides", () => {
+  const detail = () => document.querySelector("[data-outbox-detail]") as HTMLElement;
+  const page = () => document.querySelector("[data-work-outbox]") as HTMLElement;
+  const picked = () => document.querySelector('[data-outbox-list] [aria-current="true"]')?.textContent ?? "";
+
+  it("orders Waiting: Not sent, Starts soon, each thread's group, then Scheduled", async () => {
+    const soon = Date.now() + 3 * 3_600_000;
+    world.items.set("box", [
+      mail("o1", "Dana Lee", "Budget"),
+      mail("o2", "Sam Ortiz", "Scrims", { state: "failed", error: "Gmail refused it" }),
+      { ...mail("o3", "Kickoff", "call"), ref: { at: "lifeos", table: "calendarOps", id: "o3" }, kind: "calendar.op", summary: "Accept Kickoff call with Northside PT", verb: "Accept", payload: { id: "o3", kind: "accept", eventStartsAt: soon } },
+      mail("o4", "Jess", "Trailer", { state: "scheduled", scheduledFor: Date.now() + 86_400_000, scheduledZone: "America/Chicago" }),
+    ]);
+    await open();
+    const kinds = [...document.querySelectorAll("[data-outbox-section]")].map((s) => s.getAttribute("data-outbox-section"));
+    expect(kinds).toEqual(["failed", "soon", "thread", "thread", "scheduled"]);
+    const headings = [...document.querySelectorAll("[data-outbox-section]")].map((s) => s.getAttribute("aria-label"));
+    expect(headings[0]).toBe("Not sent");
+    expect(headings[1]).toBe("Starts soon");
+    expect(headings.at(-1)).toBe("Scheduled");
+    // The start is the row's word, in the foreground.
+    const start = document.querySelector('[data-outbox-section="soon"] li span.text-foreground');
+    expect(start?.textContent).toMatch(/\d:\d\d [AP]M/);
+  });
+
+  it("folds a group over five to four rows and N more", async () => {
+    world.items.set("box", Array.from({ length: 7 }, (_, i) => mail(`o${i + 1}`, `Player ${i + 1}`, "Nationals travel")));
+    world.items.set("mac", []);
+    render(<OutboxView besideRail onClose={() => undefined} />);
+    fireEvent.click(screen.getByRole("tab", { name: "Waiting" }));
+    await waitFor(() => expect(screen.getByText("3 more")).toBeTruthy(), { timeout: 5000 });
+    expect(document.querySelectorAll("[data-outbox-waiting] li")).toHaveLength(5);
+    fireEvent.click(screen.getByText("3 more"));
+    expect(document.querySelectorAll("[data-outbox-waiting] li")).toHaveLength(7);
+    expect(screen.getByRole("button", { name: "Select 7" })).toBeTruthy();
+  });
+
+  it("is one tab stop: the picked row; J and K, and the arrows, move the pick and the focus together", async () => {
+    await open();
+    const stops = [...document.querySelectorAll("[data-outbox-row]")].filter((r) => r.getAttribute("tabindex") === "0");
+    expect(stops).toHaveLength(1);
+    const first = picked();
+    fireEvent.keyDown(page(), { key: "j" });
+    await waitFor(() => expect(picked()).not.toBe(first));
+    expect(document.activeElement?.getAttribute("aria-current")).toBe("true");
+    fireEvent.keyDown(document.activeElement!, { key: "ArrowUp" });
+    await waitFor(() => expect(picked()).toBe(first));
+    fireEvent.keyDown(document.activeElement!, { key: "k" });
+    expect(picked()).toBe(first);
+  });
+
+  it("X ticks the row, Shift+X ticks the range from the last tick, Escape clears the ticks before it closes the page", async () => {
+    const closed = vi.fn();
+    render(<OutboxView besideRail onClose={closed} />);
+    fireEvent.click(screen.getByRole("tab", { name: "Waiting" }));
+    await waitFor(() => expect(screen.getAllByText("Send to Dana Lee").length).toBeGreaterThan(0), { timeout: 5000 });
+    fireEvent.keyDown(page(), { key: "x" });
+    await waitFor(() => expect(document.querySelector("[data-outbox-summary]")).toBeTruthy());
+    expect(document.querySelectorAll("[data-summary-row]")).toHaveLength(1);
+    // The pick stays put while ticking: the keys move the focus alone.
+    fireEvent.keyDown(page(), { key: "j" });
+    fireEvent.keyDown(document.activeElement!, { key: "j" });
+    fireEvent.keyDown(document.activeElement!, { key: "X", shiftKey: true });
+    await waitFor(() => expect(document.querySelectorAll("[data-summary-row]")).toHaveLength(3));
+    fireEvent.keyDown(document.activeElement!, { key: "Escape" });
+    expect(document.querySelector("[data-outbox-summary]")).toBeNull();
+    expect(closed).not.toHaveBeenCalled();
+    fireEvent.keyDown(document.activeElement ?? page(), { key: "Escape" });
+    expect(closed).toHaveBeenCalledTimes(1);
+  });
+
+  it("the command key and Enter press the primary verb; E edits; D opens Discard's field", async () => {
+    await open();
+    await waitFor(() => expect((screen.getByRole("button", { name: "Send" }) as HTMLButtonElement).disabled).toBe(false), { timeout: 5000 });
+    fireEvent.keyDown(page(), { key: "e" });
+    expect(document.querySelector("[data-outbox-editing]")).toBeTruthy();
+    fireEvent.keyDown(document.querySelector("[data-outbox-detail] h1")!, { key: "Escape" });
+    fireEvent.keyDown(page(), { key: "d" });
+    expect(await screen.findByRole("textbox", { name: "Why, for the thread" })).toBeTruthy();
+    fireEvent.keyDown(screen.getByRole("textbox", { name: "Why, for the thread" }), { key: "Escape" });
+    await act(async () => fireEvent.keyDown(page(), { key: "Enter", metaKey: true }));
+    await act(async () => fireEvent.keyDown(page(), { key: "Enter", ctrlKey: true }));
+    expect(sends().length).toBe(1);
+  });
+
+  it("says in one sentence what the press does, over the thing", async () => {
+    world.items.set("box", [mail("o1", "Dana Lee", "Budget", { effect: "Goes from landon@purdue.edu to Dana Lee after your 30-second undo." })]);
+    await open();
+    const head = detail().querySelector("header")!;
+    expect(head.nextElementSibling!.textContent).toBe("Goes from landon@purdue.edu to Dana Lee after your 30-second undo.");
+  });
+
+  it("an item out of date waits with its why; its bar is Discard and Ask the thread again", async () => {
+    world.items.set("box", [mail("o1", "Dana Lee", "Budget", { state: "stale", error: "Dana changed the sheet at 9:05 AM, after this was made." })]);
+    await open();
+    expect(screen.getAllByText("Out of date").length).toBeGreaterThan(0);
+    await waitFor(() => expect(detail().textContent).toContain("Out of date. Dana changed the sheet at 9:05 AM, after this was made."));
+    expect(within(detail()).queryByRole("button", { name: "Send" })).toBeNull();
+    await act(async () => fireEvent.click(within(detail()).getByRole("button", { name: "Ask the thread again" })));
+    expect(world.calls.filter((c) => c.method === "work.outbox.askAgain").map((c) => c.params)).toEqual([{ ref: { at: "lifeos", table: "outbox", id: "o1" } }]);
+  });
+
+  it("an item the thread rewrote says so, Changed in its row, and Show changes draws the words out and in", async () => {
+    world.items.set("box", [mail("o1", "Dana Lee", "Budget", { changed: { at: Date.now() - 600_000, by: "thread" } })]);
+    world.extra = { o1: { changed: { at: Date.now() - 600_000, by: "thread", first: { message: { to: [{ name: "Dana Lee", address: "dana@purdue.edu" }], subject: "Budget", text: "Hello Dana Lee,\n\nAbout it.\n\nLandon" } } } } };
+    await open();
+    expect(screen.getAllByText("Changed").length).toBeGreaterThan(0);
+    const show = await within(detail()).findByRole("button", { name: "Show changes" });
+    expect(detail().textContent).toMatch(/The thread rewrote this at /);
+    fireEvent.click(show);
+    const changes = detail().querySelector("[data-outbox-changes]")!;
+    expect(changes.querySelector("ins")!.textContent).toContain("Budget.");
+    expect(changes.querySelector("del")!.textContent).toContain("it.");
+    expect(within(detail()).getByRole("button", { name: "Hide changes" })).toBeTruthy();
+  });
+
+  it("a mail whose person wrote back since says who, when and their first line", async () => {
+    world.extra = { o1: { replied: { from: "Dana Lee", at: Date.now() - 60_000, line: "Can we move it to 3?" } } };
+    await open();
+    await waitFor(() => expect(detail().textContent).toMatch(/Dana Lee wrote back at .+, after this was made: "Can we move it to 3\?"/));
+  });
+
+  it("offers Send later on Send's menu only for a kind that may wait, above the grant", async () => {
+    world.items.set("box", [mail("o1", "Dana Lee", "Budget", { later: true })]);
+    await open();
+    await waitFor(() => expect((screen.getByRole("button", { name: "Send" }) as HTMLButtonElement).disabled).toBe(false), { timeout: 5000 });
+    fireEvent.click(screen.getByRole("button", { name: "More ways to send" }));
+    const items = (await screen.findAllByRole("menuitem")).map((m) => m.childNodes[0]!.textContent!.trim());
+    expect(items).toEqual(["In an hour", "This afternoon", "Tomorrow morning", "Pick a time…", "Mail to Dana Lee"].filter((x) => x !== "This afternoon" || new Date().getHours() < 12));
+    await act(async () => fireEvent.click(screen.getAllByRole("menuitem")[0]!));
+    expect(world.decides.at(-1)!.items[0]).toMatchObject({ ref: { id: "o1" }, do: "later", rev: 500 });
+  });
+
+  it("a scheduled item goes in Scheduled, says when, and its bar is Cancel send and Send now", async () => {
+    world.items.set("box", [mail("o1", "Dana Lee", "Budget", { state: "scheduled", scheduledFor: Date.now() + 86_400_000, scheduledZone: "America/Chicago" })]);
+    await open();
+    await waitFor(() => expect(detail().textContent).toMatch(/Goes /));
+    await act(async () => fireEvent.click(within(detail()).getByRole("button", { name: "Send now" })));
+    expect(world.calls.some((c) => c.method === "work.outbox.sendNow")).toBe(true);
+  });
+
+  it("Cancel send puts a scheduled item back as held", async () => {
+    world.items.set("box", [mail("o1", "Dana Lee", "Budget", { state: "scheduled", scheduledFor: Date.now() + 86_400_000 })]);
+    await open();
+    await act(async () => fireEvent.click(within(detail()).getByRole("button", { name: "Cancel send" })));
+    expect(world.calls.filter((c) => c.method === "work.outbox.cancelSend")).toHaveLength(1);
+    expect(world.calls.some((c) => c.method === "work.mail.cancel")).toBe(false);
+  });
+
+  it("a LifeOS mail's toast takes it back with Undo while LifeOS holds it", async () => {
+    world.sendSaid = { o1: "queued" };
+    const plain = vi.fn();
+    const spy = vi.spyOn(await import("../../components/ui/toaster"), "loadToast").mockResolvedValue(Object.assign(plain, { error: vi.fn() }) as never);
+    try {
+      await open();
+      await waitFor(() => expect((screen.getByRole("button", { name: "Send" }) as HTMLButtonElement).disabled).toBe(false), { timeout: 5000 });
+      await act(async () => fireEvent.click(screen.getByRole("button", { name: "Send" })));
+      await waitFor(() => expect(plain).toHaveBeenCalled());
+      const [line, opts] = plain.mock.calls[0] as [string, { action: { label: string; onClick: () => void } }];
+      expect(line).toBe("Queued in LifeOS: Budget");
+      expect(opts.action.label).toBe("Undo");
+      await act(async () => opts.action.onClick());
+      expect(world.calls.filter((c) => c.method === "work.outbox.undoSend").map((c) => c.params)).toEqual([{ ref: { at: "lifeos", table: "outbox", id: "o1" } }]);
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it("says nothing of a thread whose title it does not know, rather than a bare from", async () => {
+    const opened = vi.fn();
+    render(<OutboxView besideRail onClose={() => undefined} onOpenSession={opened} />);
+    fireEvent.click(screen.getByRole("tab", { name: "Waiting" }));
+    await waitFor(() => expect(screen.getAllByText("Send to Dana Lee").length).toBeGreaterThan(0), { timeout: 5000 });
+    // No title known for the thread here: the facts say nothing of it rather than a bare "from".
+    expect(detail().querySelector("header")!.textContent).not.toMatch(/from\s*$/);
   });
 });

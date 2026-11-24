@@ -768,7 +768,7 @@ pillar only its own prefix.
 One lazy chunk, `work-outbox` (`src/renderer/src/work/outbox/`), nothing of
 it in the first paint. `store.ts` keeps one list per host with Work on,
 merged as the rail merges threads, from `work.outbox.list` (waiting and
-decided) and `work.outbox.grants`; the work-shell chunk imports it so the
+done) and `work.outbox.grants`; the work-shell chunk imports it so the
 rail's count follows the `work.outbox` push from boot. No screen reads
 LifeOS's `outbox`; every press goes to the host that holds the item, and a
 LifeOS item's Send carries `rev` = its `updatedAt` as shown.
@@ -776,50 +776,97 @@ LifeOS item's Send carries `rev` = its `updatedAt` as shown.
 - **The rail's Outbox row** (M8's) shows whenever a host has Work on, with
   the plain muted count; it opens the Outbox page (`shell.openOutbox`,
   `outboxViewOpen` in stores/shell.ts, a page like the Inbox).
-- **The Outbox** (`OutboxView.tsx`) on the Inbox frame: Waiting and Sent
-  tabs over the list; Waiting grouped by workspace (sector dot, name, and
-  "Send N" when more than one can go), each row the act and what it is
-  about at 13/20 regular, its kind's glyph giving way to a tick on hover;
-  ticked rows send together. A row with no second line lets its title take
-  two lines. A failed row keeps what it is about under the red mark; its
-  reason is said once, in the detail. A mail or calendar act LifeOS has not yet said went sits in Sent,
-  as every sent row does, in one wording (`lifeosWords` in model.ts) on its
-  row, its detail and the toasts: "Queued in LifeOS for 12m" (its age from
-  his press, kept current on a half-minute clock) with the queued mark,
-  "Back in drafts in LifeOS" or "No longer in LifeOS"; its
-  title keeps the act's own verb ("Send to Dana Lee"), and its detail says
-  where, when and who ("Purdue Esports, 9:31 AM, by you") with no line about
-  taking it back and no bar under it. It reads Sent once LifeOS says sent (a calendar act's
-  done). The detail's head is the job's dot and name, then when (and, held,
-  the thread it came from), at every width, over the act's name; then its
-  payload exactly as it goes (`work/acts/ActView.tsx`: the kind's own view
-  from `ACT_VIEWS`, bones in the payload's shape while it loads
-  (`ActSkeleton`), else `GenericActView`, its fields and its body as
-  plain text; where the payload has html the body is read from it, every
-  link with its target and every image with its source (`htmlWords`), an
-  add-on call's arguments are shown whole, and a payload its kind cannot
-  read says "Its details could not be read."; the kind views below), over one bar: Discard, Edit, and a split Send whose menu
-  makes the grant ("Send and stop holding" › the grant's name;
-  `grantFor` in model.ts: a mail fixes its account and every recipient, an
-  add-on call its server and tool, a computer act takes none). Sent groups
-  what left by job, as Waiting does, each row led by its kind's glyph (the
-  job's dot heads the group, never a row); its title says it went, and its
-  head says where, when and who pressed ("Purdue Esports, Nov 20, by you",
-  "by the grant …", "from another device") and offers the
-  Result's way back, or says it cannot be taken back. Under the sent item
-  whose press earned a grant (`OfferLine.tsx`), past a hairline: one muted
-  line, the open lock, "Mail to dana.lee@purdue.edu from landon@purdue.edu: you sent the last 5 as written.",
-  Dismiss and Stop holding; taken, "Grant made: Mail to dana.lee@purdue.edu …" with
-  Undo (which removes the grant). The press that earned it says so in its
-  toast, whose Review opens that item in Sent. Grants is a sheet:
-  each standing grant by workspace with Remove, no confirm, its name read
-  whole; a heading's dot only where the jobs mix, hung in the sheet's inset.
-  Held is never amber; only a failed send takes the red mark. A failure
-  that comes inside an answer (a row's reason, a refused press) is worded by
-  `failWords.ts` through lib/workErrorWords.ts, a lost answer as unknown.
-- **Edit** (`EditDialog.tsx`) changes each field a person reads and the
-  body; a mail's html is rebuilt from the edited text, so what goes is what
-  was shown. The host keeps the account, the server and the thread.
+- **The Outbox** (`OutboxView.tsx`, prototype A of plan XlwEfoGIGIKa) on
+  the Inbox frame: Waiting and Done over the list, the item or the summary
+  on the right. The order and the words are plain functions in
+  `waiting.ts` (waiting.test.ts):
+  - **Waiting's order** (`waitingSections`): Not sent (failed, oldest
+    first), Starts soon (a calendar act whose event starts before the end
+    of tomorrow, read as the host's `by` reads it: `startsAt`), then one
+    group per thread (a routine's run is its own group) by the job's rail
+    order and then the group's oldest item, then Scheduled (the sends he
+    timed, soonest first, uncounted). A group's heading is the job's dot,
+    the thread's title at 12px medium and the job's name muted (it gives
+    way first); with no thread, the job's name alone. Select N shows on the
+    heading's hover when more than one row may be ticked. A group over five
+    rows shows four and "N more". An out-of-date item stays in its group.
+  - **A row** is one 32px line (`Lists.tsx`): the kind's glyph (the red
+    mark for a failed send, the working dot while sending), the act, what
+    it is about muted (it gives way first, and hides under 640px), and one
+    trailing word (`rowSide`): the event's start in the foreground (Starts
+    soon), when it goes (Scheduled), "Out of date", "Sending", "Changed"
+    (the thread rewrote it), else when it was held. Never amber.
+  - **The detail** (`HeldDetail.tsx`, also Today's sheet): the facts line
+    (the job's dot and name, "from <thread>" or "from the routine <name>"
+    as a link that opens it, when it was held), the act as the title, the
+    host's `effect` sentence at 14px, then the notes that apply, one line
+    each with a 14px glyph (`ItemNotes`): "Not sent. <why>" (the red mark,
+    a refused press the same way), "Out of date. <why>", "The thread
+    rewrote this at 9:20 AM." with Show changes (`changed.first` from
+    `get`; the fields that moved and the body's words out and in,
+    `changesOf`), "<Name> wrote back at 8:12 AM, after this was made:
+    "<line>"" (`replied`, from `get`), "Goes <time>" for a timed send, and
+    a computer act's screen. Then the thing as it will arrive (the kind's
+    view, "Kind views" below). Every item is read whole with `get`; only a
+    LifeOS mail's Send waits on that read.
+  - **The verb bar**: Discard at the start; Edit; the primary verb joined
+    to a menu (`SendSplit`) with Send later (In an hour, This afternoon
+    while the morning lasts, Tomorrow morning, Pick a time…; only when the
+    item carries `later`) above the grant row ("Send and stop holding ›
+    <grant>", only for a key that may make one). A failed item reads Send
+    again; one that may have gone keeps "Check Sent first" and his own Send
+    again. An out-of-date item's bar is Discard and Ask the thread again
+    (`work.outbox.askAgain`). A scheduled item's is Cancel send and Send now
+    (`cancelSend`, `sendNow`; a Mail-scheduled LifeOS mail from before the
+    state takes `work.mail.cancel`).
+  - **Edit** turns the fields and body into inputs where they stand, on the
+    views' 72px label column; the bar reads Cancel and Save (⌘S). The host
+    keeps the account, the server and the thread.
+  - **Discard** opens a popover over its button with one optional field,
+    "Why, for the thread" (≤ 500), and Discard; ⌘↩ in the field discards.
+  - **After a press** the toast says what happened. A LifeOS mail LifeOS
+    still holds carries Undo (`work.outbox.undoSend`: back in Waiting); a
+    kind whose Result keeps a way back carries Undo (`resultOf`, Results'
+    undo). Nothing else has one. The next row down takes the pick.
+  - **Ticks** (click, X, Shift-click or Shift+X for a range, Select N)
+    turn the detail into the summary list (`Ticked.tsx` over
+    `SummaryList.tsx`): one head sentence of what goes (`summaryHead`:
+    "Send 4 mails to 4 people, post 1 message and accept 1 invite"), a row
+    per item with its tick, glyph, act, about and a chevron that opens it in
+    place (sentence, notes and the thing, no border). A computer act, an
+    act read from a live screen and a LifeOS reply that quotes its mail
+    (read whole) say "Open to send" and stay out of Send N. The bar is
+    Clear, Discard N (the same popover) and Send N joined to Send later
+    (when every item may wait). The press is one `work.outbox.decide` per
+    host (`decideMany`, `via: outbox`); each row shows the working mark,
+    then a check and what happened ("Queued in LifeOS", "Posted"), or the
+    red mark and the host's reason; the head becomes "Sent 5, 1 not sent"
+    (`resultsHead`), and Send N again takes the ones that failed. M5's
+    request card draws the same `SummaryList`.
+  - **Done** (`DoneList`, `DoneDetail.tsx`): what went, what he discarded
+    and what went out of date that he put away (`list({show: 'done'})`), by
+    day, newest first; a row's line says "Discarded", "Out of date" or
+    "Queued in LifeOS for 12m". The head says who decided (`whoWords`): "by
+    you", "from another device", "by the grant …", "from your approval in
+    <thread>" (`via` `request:<id>`), "scheduled by you". A discard shows his
+    words ("Discarded. You told the thread: "…""). The Result's way back,
+    "Sent mail cannot be taken back", and the earned grant's line
+    (`OfferLine.tsx`) as before; the toast that earned it opens the item
+    in Done.
+  - **Keys** (only while the page has focus, never in a field, menu,
+    popover or dialog; through lib/keys.ts): ↑/↓ and J/K move the pick and
+    the focus together (the focus alone while rows are ticked), X ticks,
+    Shift+X ticks a range, E edits, D opens Discard, L opens Send later,
+    ⌘↩ (Ctrl+Enter) presses the primary verb, Escape leaves an edit, then
+    the ticks, then the page. The list is one tab stop (the row focused
+    last, else the picked one). Key caps show only in tooltips (`Tip`).
+    Nothing moves on a key.
+  - **States**: the list's one-line bones and the detail's; "Nothing held"
+    (no second line); "Not known yet" while a host did not answer, its row
+    over the list with Retry; "No longer waiting" when another press
+    decided the picked item; under 640px of page the list and the detail
+    take turns, the detail's top row going back. Grants is a sheet, as
+    before. A failure inside an answer is worded by `failWords.ts`.
 - **Results** (`ResultsSection.tsx`) is a right-panel section of a Work
   root thread (`results` in lib/rightPanel.ts, the outbox glyph), listed
   only while it has a row: "Can undo" and "Can't undo", each row with its

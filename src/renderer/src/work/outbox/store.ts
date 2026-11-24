@@ -1,5 +1,5 @@
 import { useSyncExternalStore } from "react";
-import type { GrantOffer, OutboxGrant, OutboxItem } from "@shared/contract-work-outbox";
+import type { Decision, DecisionResult, GrantOffer, OutboxGrant, OutboxItem, WorkResult } from "@shared/contract-work-outbox";
 import type { HeldRef } from "@shared/work";
 import { registry } from "../../lib/connection";
 import { setOutboxFailed, setOutboxWaiting, workSwitch } from "../../lib/workSwitch";
@@ -26,7 +26,8 @@ export type { HostResult } from "./results";
 
 type HostState = {
   waiting: HostItem[];
-  sent: HostItem[];
+  /** what went, what he discarded, and what went out of date that he put away */
+  done: HostItem[];
   grants: HostGrant[];
   offers: HostOffer[];
   count: number;
@@ -42,7 +43,8 @@ let snapshot: OutboxView | null = null;
 
 export type OutboxView = {
   waiting: HostItem[];
-  sent: HostItem[];
+  /** Done: sent, discarded, and out of date put away, newest first */
+  done: HostItem[];
   grants: HostGrant[];
   /** grants he has earned and not yet decided, each beside the item that completed its run */
   offers: HostOffer[];
@@ -54,7 +56,7 @@ export type OutboxView = {
   errors: { environmentId: string; error: string }[];
 };
 
-const emptyHost = (): HostState => ({ waiting: [], sent: [], grants: [], offers: [], count: 0, failed: 0, loaded: false, error: null });
+const emptyHost = (): HostState => ({ waiting: [], done: [], grants: [], offers: [], count: 0, failed: 0, loaded: false, error: null });
 
 function changed(): void {
   snapshot = null;
@@ -75,7 +77,7 @@ function view(): OutboxView {
   const on = [...hosts].filter(([id]) => workSwitch.hosts().has(id)).map(([, state]) => state);
   snapshot = {
     waiting: on.flatMap((h) => h.waiting).sort((a, b) => a.createdAt - b.createdAt),
-    sent: on.flatMap((h) => h.sent).sort((a, b) => (b.decidedAt ?? b.updatedAt) - (a.decidedAt ?? a.updatedAt)),
+    done: on.flatMap((h) => h.done).sort((a, b) => (b.dismissedAt ?? b.decidedAt ?? b.updatedAt) - (a.dismissedAt ?? a.decidedAt ?? a.updatedAt)),
     grants: on.flatMap((h) => h.grants).sort((a, b) => b.createdAt - a.createdAt),
     offers: on.flatMap((h) => h.offers),
     loaded: workSwitch.hosts().size > 0 && [...workSwitch.hosts()].every((id) => hosts.get(id)?.loaded),
@@ -102,13 +104,13 @@ export function loadHost(environmentId: string): Promise<void> {
   const link = registry.linkOf(environmentId);
   const load = Promise.all([
     link.request<{ items: OutboxItem[]; waiting: number }>("work.outbox.list", { show: "waiting" }),
-    link.request<{ items: OutboxItem[] }>("work.outbox.list", { show: "decided", limit: 100 }),
+    link.request<{ items: OutboxItem[] }>("work.outbox.list", { show: "done", limit: 100 }),
     link.request<{ grants: OutboxGrant[] }>("work.outbox.grants", {}),
   ])
     .then(([waiting, decided, grants]) => {
       hosts.set(environmentId, {
         waiting: tag(environmentId, waiting.items),
-        sent: tag(environmentId, decided.items.filter((item) => item.state === "sent")),
+        done: tag(environmentId, decided.items.filter((item) => item.state === "sent" || item.state === "discarded" || item.state === "stale")),
         grants: tag(environmentId, grants.grants),
         offers: hosts.get(environmentId)?.offers ?? [],
         count: waiting.waiting,
@@ -187,28 +189,85 @@ function putItem(environmentId: string, item: OutboxItem): void {
  * Send it. A LifeOS-held item goes with the `updatedAt` it was shown with, so a draft rewritten since is refused, not sent.
  * `again`: he chose Send again on a send that may have gone; the host refuses a plain press on one.
  */
-export async function sendItem(item: HostItem, opts: { again?: boolean } = {}): Promise<OutboxItem> {
+export async function sendItem(item: HostItem, opts: { again?: boolean; via?: PressVia } = {}): Promise<OutboxItem> {
   try {
-    return await registry.linkOf(item.environmentId).request<OutboxItem>("work.outbox.send", { ref: item.ref, rev: item.updatedAt, ...(opts.again ? { again: true } : {}) });
+    return await registry
+      .linkOf(item.environmentId)
+      .request<OutboxItem>("work.outbox.send", { ref: item.ref, rev: item.updatedAt, ...(opts.again ? { again: true } : {}), ...(opts.via ? { via: opts.via } : {}) });
   } finally {
     void loadHost(item.environmentId);
   }
 }
 
-export async function discardItem(item: HostItem): Promise<OutboxItem> {
+/** Where a press was made, as Done says it. */
+export type PressVia = "outbox" | "today" | "phone" | "mail";
+
+/** It will never go. `reason`: his words for the thread (500 characters at most). */
+export async function discardItem(item: HostItem, opts: { reason?: string; via?: PressVia } = {}): Promise<OutboxItem> {
+  const reason = opts.reason?.trim().slice(0, 500);
   try {
-    return await registry.linkOf(item.environmentId).request<OutboxItem>("work.outbox.discard", { ref: item.ref });
+    return await registry.linkOf(item.environmentId).request<OutboxItem>("work.outbox.discard", { ref: item.ref, ...(reason ? { reason } : {}), ...(opts.via ? { via: opts.via } : {}) });
   } finally {
     void loadHost(item.environmentId);
   }
 }
 
-/** Cancel send on a mail he scheduled: LifeOS takes it back to a draft, which waits on him again. False when it is already on its way. */
+/** An item that went out of date, put away, and its thread asked to draft it again from what is true now. */
+export async function askAgain(item: HostItem): Promise<OutboxItem> {
+  try {
+    return await registry.linkOf(item.environmentId).request<OutboxItem>("work.outbox.askAgain", { ref: item.ref });
+  } finally {
+    void loadHost(item.environmentId);
+  }
+}
+
+/**
+ * Cancel send on a send he timed: the host's own (`work.outbox.cancelSend`, back to held) or a LifeOS mail Mail
+ * scheduled (`work.mail.cancel`, back to a draft that waits on him again). False when it is already on its way.
+ */
 export async function cancelScheduled(item: HostItem): Promise<boolean> {
   try {
-    return (await registry.linkOf(item.environmentId).request<{ back: boolean }>("work.mail.cancel", { id: item.ref.id })).back;
+    const link = registry.linkOf(item.environmentId);
+    if (item.state === "scheduled") return (await link.request<OutboxItem>("work.outbox.cancelSend", { ref: item.ref })).state === "held";
+    return (await link.request<{ back: boolean }>("work.mail.cancel", { id: item.ref.id })).back;
   } finally {
     void loadHost(item.environmentId);
+  }
+}
+
+/** Send a timed send now, rather than at its time. */
+export async function sendNow(item: HostItem): Promise<OutboxItem> {
+  try {
+    return await registry.linkOf(item.environmentId).request<OutboxItem>("work.outbox.sendNow", { ref: item.ref });
+  } finally {
+    void loadHost(item.environmentId);
+  }
+}
+
+/** Take a LifeOS mail back while LifeOS still holds it in its undo time: true when it is back as held. */
+export async function undoSend(item: Pick<HostItem, "environmentId" | "ref">): Promise<boolean> {
+  try {
+    return (await registry.linkOf(item.environmentId).request<{ back: boolean }>("work.outbox.undoSend", { ref: item.ref })).back;
+  } finally {
+    void loadHost(item.environmentId);
+  }
+}
+
+/** Whether a press's toast may take it back through `undoSend`: a LifeOS mail LifeOS still holds in its undo time. */
+export const mayUndoSend = (item: Pick<HostItem, "kind">, after: Pick<OutboxItem, "state" | "lifeos">): boolean => item.kind === "mail.send" && after.state === "sent" && after.lifeos === "queued";
+
+/** The Result a press left with a way back, read from its thread's Results: null when it left none (a mail), or none came. */
+export async function resultOf(item: Pick<HostItem, "environmentId" | "sessionId" | "ref">): Promise<(WorkResult & { environmentId: string }) | null> {
+  if (!item.sessionId) return null;
+  try {
+    const { results } = await registry.linkOf(item.environmentId).request<{ results: WorkResult[] }>("work.outbox.results", { sessionId: item.sessionId, limit: 20 });
+    const row = results.find((r) => {
+      const held = (r.ref as { held?: { at: string; id: string } } | null)?.held;
+      return held?.at === item.ref.at && held.id === item.ref.id;
+    });
+    return row && row.undo && !row.undoneAt ? { ...row, environmentId: item.environmentId } : null;
+  } catch {
+    return null;
   }
 }
 
@@ -274,39 +333,45 @@ export async function removeGrant(grant: HostGrant): Promise<void> {
   }
 }
 
-/** Several at once, each its own press; answers how many went and the first refusal. */
-/** What a list press leaves for its own look: a reply carries the mail it quotes, which only its detail shows. */
+/** One press's choice for every item it takes. */
+export type DecideDo = { do: "send" } | { do: "discard"; reason?: string } | { do: "later"; at: number; zone: string };
+
 /**
- * Send several from a list (a group's Send N, or ticked rows). What only its own
- * detail shows is left for his look, not sent and not a failure: a LifeOS reply
- * that quotes the mail it answers, and a computer act's picture of the window
- * (the hold review's findings 28 and 33). A mail whose whole read failed is a
- * failure, in its own words.
+ * One press on many items (ticked rows, a group's Select N): one `work.outbox.decide` per host, in parallel,
+ * each item with the revision it was shown with. The host judges each (one out of date, a live screen's act, a
+ * computer act and a LifeOS reply that quotes its mail are refused inside a press on many) and answers each in
+ * the order asked. `onHost` hears each host's answers as they land, so rows show their results as they come.
+ * A host that did not answer fails each of its items with why.
  */
-export async function sendMany(items: readonly HostItem[]): Promise<{ sent: number; answers: OutboxItem[]; failed: { item: HostItem; error: string }[]; waiting: HostItem[] }> {
-  const waiting = new Set<HostItem>(items.filter((item) => item.kind === "computer.act"));
-  const unread = new Set<HostItem>();
+export async function decideMany(items: readonly HostItem[], choice: DecideDo, opts: { via?: PressVia; onHost?: (results: Map<string, DecisionResult>) => void } = {}): Promise<Map<string, DecisionResult>> {
+  const byHost = new Map<string, HostItem[]>();
+  for (const item of items) byHost.set(item.environmentId, [...(byHost.get(item.environmentId) ?? []), item]);
+  const all = new Map<string, DecisionResult>();
+  const decision = (item: HostItem): Decision => ({
+    ref: item.ref,
+    do: choice.do,
+    rev: item.updatedAt,
+    ...(choice.do === "discard" && choice.reason?.trim() ? { reason: choice.reason.trim().slice(0, 500) } : {}),
+    ...(choice.do === "later" ? { at: choice.at, zone: choice.zone } : {}),
+  });
   await Promise.all(
-    items
-      .filter((item) => item.kind === "mail.send")
-      .map(async (item) => {
-        const whole = await fetchItem(item.environmentId, item.ref).catch(() => null);
-        if (!whole) unread.add(item);
-        else if ((whole.payload as { quote?: string } | null)?.quote) waiting.add(item);
-      }),
+    [...byHost].map(async ([environmentId, list]) => {
+      const mine = new Map<string, DecisionResult>();
+      try {
+        const { results } = await registry
+          .linkOf(environmentId)
+          .request<{ results: DecisionResult[] }>("work.outbox.decide", { items: list.map(decision), ...(opts.via ? { via: opts.via } : {}) });
+        list.forEach((item, i) => mine.set(`${environmentId}:${item.ref.at}:${item.ref.id}`, results[i] ?? { ref: item.ref, ok: false, error: "No answer for it" }));
+      } catch (err) {
+        for (const item of list) mine.set(`${environmentId}:${item.ref.at}:${item.ref.id}`, { ref: item.ref, ok: false, error: errorText(err) });
+      } finally {
+        void loadHost(environmentId);
+      }
+      for (const [k, v] of mine) all.set(k, v);
+      opts.onHost?.(mine);
+    }),
   );
-  const pressed = items.filter((item) => !waiting.has(item) && !unread.has(item));
-  const outcomes = await Promise.allSettled(pressed.map((item) => registry.linkOf(item.environmentId).request<OutboxItem>("work.outbox.send", { ref: item.ref, rev: item.updatedAt, many: true })));
-  for (const id of new Set(items.map((item) => item.environmentId))) void loadHost(id);
-  const failed = [
-    ...[...unread].map((item) => ({ item, error: "The mail did not load" })),
-    ...outcomes.flatMap((o, i) => (o.status === "rejected" ? [{ item: pressed[i]!, error: errorText(o.reason) }] : [])),
-    // A press the host answered with anything but a send (it failed, or another press or device decided it first) is not one.
-    ...outcomes.flatMap((o, i) => (o.status === "fulfilled" && !wentOut(o.value) ? [{ item: pressed[i]!, error: notSentWords(o.value) }] : [])),
-  ];
-  // What the host answered for each that went: the screen says of each what LifeOS says (lifeosWords), not "sent" alone.
-  const answers = outcomes.flatMap((o) => (o.status === "fulfilled" && wentOut(o.value) ? [o.value] : []));
-  return { sent: pressed.length - (failed.length - unread.size), answers, failed, waiting: [...waiting] };
+  return all;
 }
 
 // ── an item asked for from outside ───────────────────────────────────────

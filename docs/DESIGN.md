@@ -1477,29 +1477,50 @@ The kinds, each a hand-made body built from components/ui:
 
 Around the canvas:
 
-- **The Outbox** is hand-made on the split surface (the Inbox frame): a
-  held act's payload (the plain-text body, the attachment pill), a verb
-  bar whose split primary's menu makes a grant, grants as a sheet. A
-  computer-use act names the Mac and says it "takes its screen for a
-  moment", and its Sent record keeps a picture. "Sent mail cannot be taken
-  back" stands in for a way back. The right panel gains Results (the
-  `outbox` glyph, two groups). The page is the split view only. Send's
-  toast has no Undo: the host sends on the press, and the toast says what
-  happened; a press decided elsewhere says so ("Already discarded"). A mail
-  or calendar act LifeOS holds after the press sits in Sent but is not
-  called sent until LifeOS says it went: its row, its detail and its toast
-  say "Queued in LifeOS", the row and detail with its age ("for 12m") and
-  the queued mark, its title in the act's own verb, and no bar under the
-  detail, since nothing there waits for a press; one he took back reads
-  "Back in drafts in LifeOS". The
-  transcript's held line opens the Outbox page. In the grants sheet, under
-  each workspace's heading, a grant's line is "Made today from a held
-  mail". Each kind draws its own payload view; a kind with none gets the
-  generic one (a mail's headers and body, a call's arguments). A view on
-  its way is bones in that shape, never a spinner. Waiting and Sent both
-  group by job under the job's dot and name; a row leads with its kind's
-  glyph, never the job's dot, so a job's colour never stands where a mark
-  would. An item's head names its job at every width.
+- **The Outbox** is hand-made on the split surface (the Inbox frame),
+  built around how he decides (docs/agents/work-outbox.md "The screens").
+  Tabs Waiting and Done, no counts. Waiting's order: Not sent, Starts soon
+  (an invite whose event starts before the end of tomorrow), one group per
+  thread by the jobs' rail order, then Scheduled; each section only when it
+  has rows. A section's heading is 12px medium muted; a thread's group heading
+  is the job's dot, the thread's title at 12px medium and the job's name muted
+  (it gives way first), with Select N on hover; a group over five shows four
+  and "N more". A row is one 32px line: the kind's 14px glyph (the red mark
+  for a failed send), the act, what it is about muted (it gives way first,
+  and hides under 640px), and one trailing word at 12px: the event's start in
+  the foreground, when it goes, "Out of date", "Changed", else when it was
+  held. A tick takes the glyph's place on hover and stays on every row while
+  any is ticked. The detail, in a 688px column: the facts line (the job's dot
+  and name, "from" the thread as a link, the time), the act as a 16px title,
+  one 14px sentence of what the press does and to whom, the notes that apply
+  (one 13px muted line each behind a 14px glyph: not sent, out of date, the
+  thread rewrote it with Show changes, someone wrote back, when it goes),
+  then the thing as it will arrive. Show changes draws only what moved: a
+  field's old value muted and struck beside the new, the body's words taken
+  out muted and struck, the words put in on a light accent tint. The verb bar
+  is a hairline and one row: Discard at the start, Edit, and the primary verb
+  joined to its menu (Send later's four times above the grant row); an
+  out-of-date item's bar is Discard and Ask the thread again, a timed one's
+  Cancel send and Send now. Edit turns the fields and the body into inputs
+  where they stand; the bar reads Cancel and Save. Discard opens a popover
+  over its button with one field, "Why, for the thread". Ticks turn the
+  detail into the summary list: one 16px sentence of everything that goes,
+  a 36px row per item parted by hairlines (tick, glyph, act, about, a side
+  word, a chevron that opens the item in place with no border), and a bar of
+  Clear, Discard N and Send N joined to Send later; after the press each row
+  shows its own result (the working mark, a check and its word, or the red
+  mark and its reason) and the sentence becomes "Sent 5, 1 not sent". Done
+  groups by day under 12px headings; its head says who decided. Keys move,
+  tick and press without motion; their caps show only in tooltips. A
+  computer-use act names the computer and says it "takes its screen for a
+  moment", and its Done record keeps a picture. A press's toast carries Undo
+  only where the act allows it (a LifeOS mail LifeOS still holds, a kind
+  whose Result has a way back); "Sent mail cannot be taken back" stands in
+  for a way back. A mail or calendar act LifeOS holds after the press says
+  "Queued in LifeOS" with its age on its row, its detail and its toast, never
+  sent. Grants are a sheet. The right panel gains Results (the `outbox`
+  glyph, two groups). Each kind draws its own payload view; a view on its
+  way is bones in that shape, never a spinner. Held is never amber.
 - **Back from Away** is one toast ("Decided without you in 4 threads";
   with Work on, "Held 7, decided 4 without you") that offers Review and
   stays until pressed. Review opens "Decided while you were away": one row

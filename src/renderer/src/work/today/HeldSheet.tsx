@@ -107,7 +107,7 @@ export function HeldSheetBody({ item, left, done = 0, workspace, host, close }: 
             onPressed={afterPress}
             onReview={() => {
               openHeld(null);
-              rememberOutboxTab("sent");
+              rememberOutboxTab("done");
               shell.openOutbox();
             }}
           />
