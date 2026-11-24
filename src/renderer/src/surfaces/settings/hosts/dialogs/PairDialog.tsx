@@ -92,10 +92,19 @@ function Code({ made, host, onClose, onChanged }: Props & { made: Made }) {
             />
           </div>
         </div>
-        {made.url ? <Secret label="Link" value={made.url} hint={loopbackLink(made.url) ? `${host ? host.name : "This computer"} has no public address, so this link opens only there.` : undefined} /> : null}
+        {made.url ? <Secret label="Link" value={made.url} hint={loopbackLink(made.url) ? `${host ? host.name : "This computer"} has no public address, so this link opens only there.` : undefined} /> : <Unreachable host={host} />}
       </div>
       <DialogFooter onCancel={() => void cancel()} confirmLabel="Done" onConfirm={() => (close ? close(onClose) : onClose())} />
     </>
+  );
+}
+
+/** Why there is no link: said before the code is made, and beside the code where the answer came after his press. */
+function Unreachable({ host }: { host?: SavedEnvironment }) {
+  return (
+    <p data-pair-unreachable className="text-xs text-muted-foreground">
+      {host ? `Other devices cannot reach ${host.name} yet. Set its Public origin in Settings → Hosts on ${host.name}.` : "Other devices cannot reach this computer yet. Set its Public origin on this page."}
+    </p>
   );
 }
 
@@ -136,11 +145,7 @@ function Form({ host, reach, onClose, onChanged, pending, setPending, onMade }: 
         <FieldRow label="May">
           <CapsPicker value={caps} audience="client" onChange={setCaps} />
         </FieldRow>
-        {reach === null ? (
-          <p data-pair-unreachable className="text-xs text-muted-foreground">
-            {host ? `Other devices cannot reach ${host.name} yet. Set its Public origin in Settings → Hosts on ${host.name}.` : "Other devices cannot reach this computer yet. Set its Public origin on this page."}
-          </p>
-        ) : null}
+        {reach === null ? <Unreachable host={host} /> : null}
         <ErrorLine error={error} />
       </div>
       <DialogFooter onCancel={onClose} confirmLabel="Create code" pending={pending} disabled={!name.trim()} />

@@ -237,6 +237,8 @@ describe("PairDialog pressed before the host has said its reach", () => {
     await screen.findByText("ABCDE-12345");
     expect(screen.queryByLabelText("Link")).toBeNull();
     expect(screen.queryByAltText("Pairing QR code")).toBeNull();
+    // Beside the code, the reason there is no link.
+    expect(screen.getByText("Other devices cannot reach this computer yet. Set its Public origin on this page.")).toBeTruthy();
   });
 });
 
