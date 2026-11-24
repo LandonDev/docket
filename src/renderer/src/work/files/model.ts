@@ -212,6 +212,16 @@ export const sitsAtSide = (source: CanvasSource): boolean => canvasSourcePath(so
 
 const isOffice = (name: string): boolean => /\.(xlsx|xlsm|xlsb|xls|docx|docm|doc|rtf|odt|pptx|pptm|ppt|odp)$/i.test(name);
 
+/**
+ * Whether this window can open a place's file in its own app: only a library's file has one, and only where the
+ * window links to that computer itself (one reached through another host, a PC only the box reaches, carries no
+ * open) and that computer is a Mac or a Windows PC, or the Windows VM. A platform not known yet is not held against it.
+ */
+export function appOpens(copy: Pick<PlaceCopy, "place">, computer: { far: boolean; platform?: string }): boolean {
+  if (!LIBRARY.includes(copy.place.kind) || computer.far) return false;
+  return copy.place.vm === true || computer.platform === undefined || computer.platform === "darwin" || computer.platform === "win32";
+}
+
 /** The verb for a file's own app: "Open in Excel", or "Open in its app". */
 export function appVerb(entry: Pick<FileEntry, "name" | "kind">): string {
   if (entry.kind === "sheet" && !/\.csv$/i.test(entry.name)) return "Open in Excel";
@@ -597,7 +607,7 @@ export interface ActRow {
 export function actsFor(
   entries: readonly FileEntry[],
   place: FilePlace | null,
-  o: { tabs: boolean; /** a file tab he was last in can take a file at its side */ side?: boolean; /** the page can show the folder a row lives in (a lens, a search's results) */ reveal?: boolean; /** the sector has projects a file can be added to */ projects?: boolean; /** Put Back may be offered */ restore?: boolean; /** Delete for Good may be offered */ purge?: boolean } = { tabs: true },
+  o: { tabs: boolean; /** a file tab he was last in can take a file at its side */ side?: boolean; /** the page can show the folder a row lives in (a lens, a search's results) */ reveal?: boolean; /** the sector has projects a file can be added to */ projects?: boolean; /** Put Back may be offered */ restore?: boolean; /** Delete for Good may be offered */ purge?: boolean; /** false: the place's computer cannot open the file in its app for this window (`appOpens`) */ app?: boolean } = { tabs: true },
 ): ActRow[] {
   if (!entries.length) return [];
   const one = entries.length === 1 ? entries[0]! : null;
@@ -618,7 +628,7 @@ export function actsFor(
     // Only a file on a disk can sit at a tab's side today: a LifeOS document or a Drive file opens in a tab of its own.
     if (!one.folder && o.side && one.ref?.at === "file") rows.push({ act: "open-side", label: "Open to the Side" });
     if (o.reveal && one.where) rows.push({ act: "reveal", label: "Show in Its Folder" });
-    if (!one.folder && place && LIBRARY.includes(place.kind)) rows.push({ act: "open-app", label: appVerb(one) });
+    if (!one.folder && place && LIBRARY.includes(place.kind) && o.app !== false) rows.push({ act: "open-app", label: appVerb(one) });
     rows.push({ act: "rename", label: "Rename", refused: no("rename"), rule: true });
   }
   rows.push({ act: "move", label: "Move to…", refused: each("move"), rule: !one });

@@ -34,7 +34,7 @@ import { MoveDialog, type MoveTarget } from "./MoveDialog";
 import { samePage, sitsAtSide, HOME_PAGE, isHomePage, isSearchPage, savedIdOf, savedSearchPage, searchPage, actsFor, placeDown, placeOfRef, placePage, readCopy, deskPlace, sidebarFolds, teamOfPage, teamPage, trailOf, type FilesNote, type PlaceCopy, type PlaceRow, type Sidebar as SidebarModel, type SidebarRow } from "./model";
 import "./bindings";
 import { FILES_KEYS } from "./chords";
-import { fetchHere, fileOf, openEntry, openInApp, type Busy } from "./open";
+import { fetchHere, fileOf, openEntry, openInApp, opensInApp, type Busy } from "./open";
 import { ListBones, PageBar, PageView, type NoteFixes, type PageActs, type PageFind } from "./Page";
 import { useSideOpen, hasClosed, openAtSide, closeSide, openFileTab, rememberClosed, takeClosed, dropSearch, saveSearch, useHome, useSavedSearches, useSearchFilter, closeTab, firstPage, goTo, historyOf, keepBothCopy, moveTabs, openPageTab, reloadCopy, selectTab, sendCopyBack, tabsNow, teamRows, useDock, useListing, usePageLook, useReach, useSidebarFolded, useTabs, type DeskSearch, type ListFrom, type Reach } from "./store";
 import { farName } from "./farLink";
@@ -818,7 +818,7 @@ function FolderPage({
                 project: (entry: FileEntry, project: { id: string; name: string }, on: boolean) => void setProject(of, entry, project, on).then(() => listing.retry()),
               }
             : {}),
-          openApp: (entry) => verbs.openApp(entry, copy),
+          ...(opensInApp(copy) ? { openApp: (entry: FileEntry) => verbs.openApp(entry, copy) } : {}),
           ask: (entries) => verbs.ask(entries, copy),
           pickUpload: () => verbs.pickUpload(copy, page.at),
           // A Drive lists only what TempCode made or he picked: Add from Drive is the way more of it comes in.
@@ -982,7 +982,7 @@ function OpenFile({
   const copy = tab.copyOf && !liveSourceOf(item)
     ? {
         host: copyHostOf(tab, reach),
-        ...(farCopy ? { openThere: () => void openInApp({ name: tab.name, key: tab.key ?? tab.id, ref: { at: "file", host: tab.copyOf!.host, path: tab.copyOf!.path } }, farCopy, { busy: () => undefined }) } : {}),
+        ...(farCopy && opensInApp(farCopy) ? { openThere: () => void openInApp({ name: tab.name, key: tab.key ?? tab.id, ref: { at: "file", host: tab.copyOf!.host, path: tab.copyOf!.path } }, farCopy, { busy: () => undefined }) } : {}),
         // A copy that saves back: its line's presses, each asked of the workspace's host (files/copies.ts).
         ...(tab.back
           ? { send: () => sendCopyBack(link, workspace.id, tab.id), reload: () => reloadCopy(link, workspace.id, tab.id), keepBoth: () => keepBothCopy(link, workspace.id, tab.id) }
@@ -1002,7 +1002,7 @@ function OpenFile({
   const manage: FileManage | undefined =
     entry && place && file?.at === "file"
       ? {
-          rows: actsFor([entry], place.place, { tabs: reach.tabs }),
+          rows: actsFor([entry], place.place, { tabs: reach.tabs, app: opensInApp(place) }),
           run: (act) => {
             const at: FolderRef = { at: "file", host: file.host, path: file.path.replace(/[\\/]+[^\\/]*$/, "") };
             if (act === "move" || act === "copy") return verbs.carry({ verb: act, entries: [entry], from: place, start: { at, name: where ?? place.place.name } });

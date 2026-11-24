@@ -3,12 +3,13 @@ import { canvasSourcePath, type CanvasItem, type CanvasKind, type CanvasSource }
 import { kindOfEntry, type FileEntry } from "@shared/work/files";
 import { loadToast } from "../../components/ui/toaster";
 import { registry } from "../../lib/connection";
+import { platformOf } from "../../lib/hostPlatform";
 import { workErrorWords } from "../../lib/workErrorWords";
 import { sessionStore } from "../../lib/tcserver/store";
 import type { WorkspaceMeta } from "../../lib/tcserver/types";
 import { workOpenPort } from "../../lib/workSwitch";
 import { openItem, setFolded } from "../canvas/store";
-import { openWay, type PlaceCopy } from "./model";
+import { appOpens, openWay, type PlaceCopy } from "./model";
 import { openFileTab } from "./store";
 
 /**
@@ -52,6 +53,12 @@ export async function heldBy(workspace: OpenFrom["workspace"], file: CanvasSourc
     : link.request<{ threads: { sessionId: string; itemId: string; source: CanvasSource }[] }>("work.office.filesThreads", { workspaceId: workspace.id, source: file })
   ).catch(() => null);
   return answer?.threads.find((t) => sessionStore.metaOf(t.sessionId)?.archived === false) ?? null;
+}
+
+/** Whether a file of this place can open in its own app from this window (`appOpens`): its computer linked directly, a Mac or a PC. */
+export function opensInApp(copy: PlaceCopy): boolean {
+  const far = !registry.has(copy.link);
+  return appOpens(copy, { far, ...(far ? {} : { platform: platformOf(copy.link) }) });
 }
 
 /** Opens a file in its own app on the computer it lies on. Only a library's file has one to ask for. */
@@ -111,7 +118,7 @@ export async function openEntry(entry: FileEntry, copy: PlaceCopy, from: OpenFro
                 );
             },
           },
-          cancel: { label: `Open on ${copy.place.vm ? "the VM" : copy.host}`, onClick: () => void openInApp(entry, copy, from) },
+          ...(opensInApp(copy) ? { cancel: { label: `Open on ${copy.place.vm ? "the VM" : copy.host}`, onClick: () => void openInApp(entry, copy, from) } } : {}),
         }),
       );
       return null;

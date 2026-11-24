@@ -33,6 +33,8 @@ const world = vi.hoisted(() => ({
   started: [] as { chips: { kind: string; label: string; where?: { place: string } }[]; at: unknown }[],
   /** the desktops the workspace may use, and the window's link to each it holds one to */
   mayUse: [] as string[],
+  /** the platform every host of the window says it runs */
+  platform: "linux",
   links: {} as Record<string, string>,
 }));
 
@@ -56,6 +58,7 @@ vi.mock("../../lib/connection", async (original) => {
     registry: { linkOf, link: linkOf, has: (id: string) => !id.startsWith("env_"), statusOf: () => ({ lastHello: null }), environment: (id: string) => (id.startsWith("env_") ? undefined : { id, name: id === "mac" ? "MacBook" : "The box", platform: "linux" }), environments: () => [{ id: "box", name: "The box", platform: "linux" }], onLink: () => () => undefined },
   };
 });
+vi.mock("../../lib/hostPlatform", async (original) => ({ ...(await original<typeof import("../../lib/hostPlatform")>()), platformOf: () => world.platform }));
 vi.mock("../shell/actions", () => ({
   workspaceSettings: async () => ({ mayUseDesktop: world.mayUse, windowsVm: false, voice: false }),
   localHostId: async () => null,
@@ -311,6 +314,7 @@ beforeEach(async () => {
   world.yes = true;
   world.mayUse = [];
   world.links = {};
+  world.platform = "linux";
   localStorage.clear();
   sessionStorage.clear();
   resetFilesStore();
@@ -523,6 +527,31 @@ describe("a file open in its tab", () => {
     // The name itself is the same press.
     fireEvent.click(document.querySelector<HTMLElement>("[data-files-rename-name]")!);
     expect(await screen.findByRole("textbox", { name: /Rename / })).toBeTruthy();
+  });
+
+  it("offers Open in its app in a library's tab only where its computer is a Mac or a PC", async () => {
+    const more = async (): Promise<string[]> => {
+      fireEvent.click(screen.getByRole("button", { name: "More for Agenda.docx" }));
+      const menu = await screen.findByRole("menu");
+      const items = within(menu).getAllByRole("menuitem").map((i) => i.textContent ?? "");
+      fireEvent.keyDown(menu, { key: "Escape" });
+      await waitFor(() => expect(screen.queryByRole("menu")).toBeNull());
+      return items;
+    };
+    await mount();
+    fireEvent.click(within(screen.getByRole("navigation", { name: "Places" })).getByRole("button", { name: "General" }));
+    await waitFor(() => expect(rows()).toContain("Agenda.docx"));
+    fireEvent.doubleClick(row("Agenda.docx"));
+    await waitFor(() => expect(document.querySelector("[data-files-header]")).not.toBeNull());
+    // The box runs Linux: no app there opens it, so the verb is not drawn.
+    expect(await more()).not.toContain("Open in Word");
+    cleanup();
+    resetFilesStore();
+    world.platform = "darwin";
+    // The host kept the tab: the window opens on it again.
+    render(<View {...props} />);
+    await waitFor(() => expect(document.querySelector("[data-files-header]")).not.toBeNull());
+    expect(await more()).toContain("Open in Word");
   });
 
   it("fills the app's window on Full Window, and Escape returns", async () => {

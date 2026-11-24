@@ -197,6 +197,15 @@ the first paint.
 | on another computer of his, or in the Windows VM | in a tab, as a copy the host makes in the pane's own folder (`openCopy`), where Copy Teams files is on. A copy whose kind edits its bytes (the sheet's .xlsx and .xlsm, the deck's .pptx, the `file` kind's text: `copySavesBack`) saves back to the file where it lies, by version ("A copy saves back"); its header says where the file stands ("On MacBook", "Saving to MacBook…", "Saved to MacBook 1:52 PM"). Any other copy's header says "A copy from MacBook. Changes stay here", with Open on MacBook. The copy goes when its tab closes, unless changes in it have not reached the file yet: those are kept and sent, and only his Discard drops them |
 | the same, with Copy Teams files off | refused in one toast, "Teams files open on MacBook for this workspace.", whose press Open copies here turns the switch on and opens it, and whose other press opens it on that computer |
 | a kind no canvas shows, in a library | in its own app on its computer (`work.office.filesOpen`) |
+
+Open in its app (a library row's menu, a tab's More, the copy's Open on
+MacBook and the toast's other press) is drawn only where the window can open
+the file there itself (`appOpens` in model.ts, `opensInApp` in open.ts): its
+computer is one the window links to directly, never one reached through the
+box (a PC only the box links to: `work.files.across` carries no open), and is
+a Mac or a Windows PC, or the Windows VM. A Linux machine's own library has no
+app to open it in. A computer whose platform the window does not know yet keeps
+the verb, and its host's refusal stands.
 | a kind no editor shows (a text or code file, a sound, a zip, anything else) | in a tab, as the `file` kind: text in an editor that saves as he types, a sound with Play, a zip as the list of what it holds, the rest as its facts with Download |
 | a PDF, picture, video or deck on this computer a thread already holds | in a tab: the tab and the thread share its marks and its state, kept by the file ("Marks kept by the file"; a deck's by `deckKey`, docs/agents/work-slides.md "Kept by the deck, not the item") |
 | a copy of another computer's file that a thread already holds | in a tab of its own, as any copy: the copy is a file of its own, with marks of its own |

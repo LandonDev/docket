@@ -5,6 +5,7 @@ import type { MenuRow } from "../../chrome/menuRows";
 import type { TeamsEntry, TeamsLibrariesAnswer, TeamsLibrary } from "@shared/contract-work-office";
 import type { FileEntry, FilePlace } from "@shared/work/files";
 import {
+  appOpens,
   appVerb,
   clampDock,
   DOCK,
@@ -413,6 +414,17 @@ describe("the verbs for what is selected", () => {
     // A lens holds nothing of its own.
     const recent = place({ id: "recent", kind: "recent", name: "Recent" });
     expect(actsFor([file("Budget.xlsx")], recent).find((r) => r.act === "rename")!.refused).toBe("Recent only shows files. Change one where it lives.");
+  });
+
+  it("offers Open in its app only where the place's computer can open it for this window", () => {
+    const shown = (o: { far: boolean; platform?: string }, over: Partial<FilePlace> = {}) => appOpens({ place: { ...team, ...over } }, o);
+    expect([shown({ far: false, platform: "darwin" }), shown({ far: false, platform: "win32" }), shown({ far: false })]).toEqual([true, true, true]);
+    // A PC the window reaches only through the box, and a Linux machine's own library: no app opens it from here.
+    expect([shown({ far: true, platform: "win32" }), shown({ far: false, platform: "linux" })]).toEqual([false, false]);
+    // The Windows VM opens its own files whatever runs it; a place that is no library has no app to ask.
+    expect(shown({ far: false, platform: "linux" }, { vm: true })).toBe(true);
+    expect(appOpens({ place: own }, { far: false, platform: "darwin" })).toBe(false);
+    expect(labels(actsFor([file("Plan.docx", { kind: "document", shared: true })], team, { tabs: true, app: false }))).not.toContain("Open in Word");
   });
 
   it("offers Put Back and Delete for Good in Trash, and no star where no marks are kept", () => {
