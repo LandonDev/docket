@@ -28,6 +28,13 @@ The native clicker is built and has no way in yet: "The clicker" below.
   changes wait, the sheets for comments and review, and Comment in the hosted
   editor's edit menu. `ReaderFile` (client) holds one file's `WorkComments`
   and `WorkReview`; a part counts only once its host has answered for it.
+- The page and its frame act on the item as the host last pushed it
+  (`ReaderFile.live`, from `work.canvas`): a file renamed or moved on the
+  host is titled, previewed, asked about, commented and reviewed at its new
+  path. Once the host's list no longer holds the item (closed, its tab gone)
+  the page fails closed: no More rows, no Ask, no comments or changes. A
+  comment sent before the move's push arrives still names the old path; the
+  host's check of a comment write against its item is not built yet.
 - A tap on a page, a slide or a picture hides the navigation bar and the
   kind's foot (stamp, notes, filmstrip), and a tap brings them back. The page
   keeps the bar's room above it, so nothing moves. The status bar stays.

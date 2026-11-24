@@ -31,25 +31,29 @@ struct FileReaderPage: View {
     @State private var file: ReaderFile?
     @State private var sheet: ReaderSheet?
 
+    /// The item as the host last pushed it (a file moved there is read, previewed and asked about at its new path),
+    /// nil once the host's list no longer holds it: then More and Ask offer nothing.
+    private var live: CanvasItem? { ReaderFile.live(item, in: client.work.canvas.items[item.sessionId]) }
+
     private var facts: ReaderFacts {
         ReaderFacts(
             canOperate: client.work.canOperate,
             canApprove: client.work.canApprove,
             inThread: thread != nil,
             waiting: file?.waiting ?? 0,
-            previews: client.work.canvas.preview(for: item) != nil,
+            previews: live.flatMap { client.work.canvas.preview(for: $0) } != nil,
             comments: file?.takesComments ?? false
         )
     }
 
-    private var verbs: [ReaderVerb] { ReaderVerbs.of(item, facts) }
+    private var verbs: [ReaderVerb] { live.map { ReaderVerbs.of($0, facts) } ?? [] }
 
     /// Where Ask sends, for a key that may act: the thread beside the file, else the file's workspace, where
     /// Ask finds or starts the thread. A key that may only read has no Ask: the host would refuse its words.
     private var askTarget: AskTarget? {
-        guard client.work.canOperate else { return nil }
+        guard client.work.canOperate, let live else { return nil }
         if let thread { return .thread(thread) }
-        if let workspaceId { return .file(workspaceId: workspaceId, item: item) }
+        if let workspaceId { return .file(workspaceId: workspaceId, item: live) }
         return nil
     }
 
@@ -70,7 +74,7 @@ struct FileReaderPage: View {
             // The bar leaves and returns on the fade the foot takes.
             .environment(\.readerTap, ReaderVerbs.immerses(item) ? { withAnimation(Motion.base) { immersive.toggle() } } : nil)
             .environment(\.readerImmersive, immersive)
-            .navigationTitle(ReaderVerbs.title(item.title))
+            .navigationTitle(ReaderVerbs.title((live ?? item).title))
             .navigationBarTitleDisplayMode(.inline)
             .tcNavigationBar()
             .toolbar(.hidden, for: .tabBar)
@@ -109,7 +113,7 @@ struct FileReaderPage: View {
                 }
             }
             .navigationDestination(isPresented: $previewing) {
-                if let source = client.work.canvas.preview(for: item) { PagePreview(client: client, item: item, source: source) }
+                if let live, let source = client.work.canvas.preview(for: live) { PagePreview(client: client, item: live, source: source) }
             }
             .alert("Couldn’t do that", isPresented: Binding(get: { failure != nil }, set: { if !$0 { failure = nil } })) {
                 Button("OK", role: .cancel) {}
@@ -157,7 +161,7 @@ struct FileReaderPage: View {
 
     /// What the kind has picked (a selection, else its page), else the file itself.
     private func ask() {
-        if let picked = commands.ask { picked() } else { asking = ChipWords.item(item) }
+        if let picked = commands.ask { picked() } else if let live { asking = ChipWords.item(live) }
     }
 
     /// His words went to a thread: he is taken to it. It opens on its first segment, the file (Chat is one
@@ -173,7 +177,7 @@ struct FileReaderPage: View {
             Task {
                 printing = true
                 defer { printing = false }
-                do { try await ReaderPrint.run(client: client, item: item) } catch { failure = ActionError.wrap(error).message }
+                do { try await ReaderPrint.run(client: client, item: live ?? item) } catch { failure = ActionError.wrap(error).message }
             }
         case .guestLink: sharing = true
         case .close:

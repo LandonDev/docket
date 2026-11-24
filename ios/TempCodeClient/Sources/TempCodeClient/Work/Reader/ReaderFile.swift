@@ -33,7 +33,15 @@ public final class ReaderFile {
     /// The item as the host last pushed it (`work.canvas`, whose list carries a moved file's new path), else as it was
     /// handed over: a page holds the item it opened with, and the push is what says the file moved.
     public static func current(_ item: CanvasItem, in listed: [CanvasItem]?) -> CanvasItem {
-        listed?.first { $0.id == item.id } ?? item
+        live(item, in: listed) ?? item
+    }
+
+    /// The same, failing closed: nil once the host's list for the item's thread no longer holds it (he closed it, or
+    /// its tab went). Its page then reads, asks, previews and writes nothing more. With no list heard yet, the item
+    /// stands as it was handed over.
+    public static func live(_ item: CanvasItem, in listed: [CanvasItem]?) -> CanvasItem? {
+        guard let listed else { return item }
+        return listed.first { $0.id == item.id && $0.state == .open }
     }
 
     /// What a file takes, by its kind and where it is kept.

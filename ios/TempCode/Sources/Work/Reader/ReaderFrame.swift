@@ -33,11 +33,15 @@ struct ReaderFrame<Content: View>: View {
     @ViewBuilder let content: Content
 
     private var canWrite: Bool { client.work.canOperate }
-    /// The item as the host last pushed it: a file renamed or moved there takes its comments and changes from the new path.
-    private var current: CanvasItem { ReaderFile.current(item, in: client.work.canvas.items[item.sessionId]) }
+    /// The item as the host last pushed it: a file renamed or moved there takes its comments and changes from the new
+    /// path; nil once the host's list no longer holds it, when the page keeps no comments or changes at all.
+    private var live: CanvasItem? { ReaderFile.live(item, in: client.work.canvas.items[item.sessionId]) }
     /// The file's parts, only once they are this item's at its present path: on a switch of items, or a move on the
     /// host, the last one's stand for a frame, and its row and its Comment must not show over the new one.
-    private var own: ReaderFile? { file.map { ReaderFile.Identity($0.item) } == ReaderFile.Identity(current) ? file : nil }
+    private var own: ReaderFile? {
+        guard let live, let file, ReaderFile.Identity(file.item) == ReaderFile.Identity(live) else { return nil }
+        return file
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -48,8 +52,9 @@ struct ReaderFrame<Content: View>: View {
             }
             content
         }
-        .task(id: ReaderFile.Identity(current)) {
-            let opened = ReaderFile(work: client.work, item: current)
+        .task(id: live.map(ReaderFile.Identity.init)) {
+            guard let live else { return }
+            let opened = ReaderFile(work: client.work, item: live)
             file = opened
             await opened.load()
         }

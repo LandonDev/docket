@@ -441,12 +441,34 @@ private let s3 = suggestion("g3", set: "cs2", row: 0, col: 26, base: #"{"v":"Dra
         // The push carries the new path: the reader takes it, and it is a different reader from the one at the old path.
         #expect(ReaderFile.current(opened, in: [moved]) == moved)
         #expect(ReaderFile.Identity(opened) != ReaderFile.Identity(moved))
+        // A list that no longer holds the item (he closed it, its tab went) fails closed: the page acts on nothing.
+        #expect(ReaderFile.live(opened, in: []) == nil)
+        #expect(ReaderFile.live(opened, in: nil) == opened)
+        #expect(ReaderFile.live(opened, in: [moved]) == moved)
+        let closed = try JSONDecoder().decode(CanvasItem.self, from: Data(#"{"id":"i9","sessionId":"s1","workspaceId":"w1","kind":"document","title":"Trip","source":{"at":"file","host":"env_box","path":"/w/Trip.tcdoc"},"state":"closed","position":0,"rev":2,"createdAt":1,"updatedAt":2}"#.utf8))
+        #expect(ReaderFile.live(opened, in: [closed]) == nil)
+
         guard case .document(let source)? = ReaderFile.parts(ReaderFile.current(opened, in: [moved])).review else { Issue.record("no review"); return }
         #expect(source == moved.source)
         // A Word file is no source of the docs pillar's: no comments or review are asked for it.
         let letter = try JSONDecoder().decode(CanvasItem.self, from: Data(#"{"id":"i10","sessionId":"s1","workspaceId":"w1","kind":"document","title":"Letter","source":{"at":"file","host":"env_box","path":"/w/Letter.docx"},"state":"open","position":0,"rev":1,"createdAt":1,"updatedAt":1}"#.utf8))
         #expect(ReaderFile.parts(letter).review == nil)
         #expect(ReaderFile.parts(letter).comments == nil)
+    }
+
+    @Test func `Page Preview of a moved file draws the new path, never the old one`() async throws {
+        let rig = try ReaderRig()
+        let fake = await rig.open()
+        let item = { (path: String) in
+            try JSONDecoder().decode(CanvasItem.self, from: Data(#"{"id":"i9","sessionId":"s1","workspaceId":"w1","kind":"document","title":"Trip","source":{"at":"file","host":"env_box","path":"\#(path)"},"state":"open","position":0,"rev":1,"createdAt":1,"updatedAt":1}"#.utf8))
+        }
+        let shown = ReaderFile.current(try item("/w/Trip.tcdoc"), in: [try item("/w/Trip 2.tcdoc")])
+        let source = try #require(rig.work.canvas.preview(for: shown))
+        let read = Task { try? await source.data() }
+        let draw = try #require(await rig.next(fake, "work.formats.preview"))
+        #expect(draw.params == .object(["source": .object(["at": .string("file"), "host": .string("env_box"), "path": .string("/w/Trip 2.tcdoc")]), "itemId": .string("i9"), "format": .string("docx")]))
+        fake.refuse(id: draw.id, error: "no LibreOffice here")
+        _ = await read.value
     }
 
     @Test func `a cell's address reads as Excel writes it`() {
