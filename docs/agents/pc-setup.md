@@ -487,3 +487,23 @@ What the run showed that setup does not do: the PC's bridge for the box stays Of
 he sets Settings → Hosts → Mac bridge for the box → Access → Read on the PC; and Add folders… opens the native
 picker, which the run did not drive (it sends the same pick through `devices.setup.folders`).
 
+
+## The drive bench
+
+`scripts/bench-pc-drive.ts --installer <temp-code-1.0.N-setup.exe> --tree <built checkout> --label before|after`
+times a mapped network drive in Files, in the rig, in both windows: the PC's own and the Mac's through the box.
+J: is the rig's SMB share (impacket's smbserver on :44500) behind a slow link, scripts/lib/slowLink.ts on :44501
+(20 ms each way and 8 Mbit/s each way unless `--delay` and `--rate` say otherwise; its control port :44502 reads and
+resets the bytes and round trips of each step), and the rig comes up only through it (`up.sh --guestfwd
+10.0.2.100:445=44501`, only while the agents slice holds under 45 GiB). The tree on the share is made by
+scripts/make-pc-drive-bench.ts: `Bench` with 300 entries, three levels of 100 below it, and Big.docx (5 MB),
+Deck.pptx (20 MB) and Report.pdf (10 MB). The PC is paired with the stand-in box by a link, Work on, J:\Bench a
+folder, the box's workspace allowed to use it and its bridge for the box at Read (scripts/lib/pcDriveRig.ts).
+
+Each step starts cold (the PC's TempCode restarted, 12 s for Windows' SMB caches, the window reloaded); a step
+behind a listing gets there with the link fast, then the link is slowed for the step alone. Per step it keeps every
+request the window sent (a probe wraps the links' `request`, scripts/lib/pcDriveProbe.ts), the link's counts, the
+longest frame gap and the hosts' slow-request and event-loop lines from `logs/stalls.log`, then times the calls
+alone straight to the PC and the box. Results: .temp-code/plans/landed/pc-drive-speed/<label>.json and .md. Run it
+through `.temp-code/bin/heavy` with `HEAVY_MAX_MIN` raised; `--keep` leaves the rig up and `--reuse` skips the
+install for a second pass on the same installer. The stand-in box has no python-pptx, so a deck there does not draw ("This deck cannot be read"): its open is timed to the answer. `--pc-env TEMP_CODE_X=v` starts the PC's TempCode with that variable, and the record keeps `doctor.get`'s `folderReader`.
