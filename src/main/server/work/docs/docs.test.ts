@@ -205,6 +205,44 @@ describe('an agent writing a document', () => {
     expect(await r.text()).toContain('Bring the keys')
   })
 
+  it('a word he types between the tool\'s check and the service\'s write is never written over: the service checks the revision where it writes', async () => {
+    const r = await rig()
+    const read = await r.tool('doc_read', { item: 'i1' })
+    const revision = /Revision (r[0-9a-f]+)/.exec(read.text)![1]
+    const service = r.ctx.service as { internal(route: string, body: unknown): Promise<unknown> }
+    const forward = service.internal
+    // His line lands after the tool compared, just before the service writes.
+    service.internal = async (route, body) => {
+      if (route === '/internal/docs/write') await r.service.collab.writeMarkdown(r.name, 'owner', md('# Week 1', 'Meet the team at 9:00 AM', 'Bring the keys', '# Week 2', 'Shadow the front desk'), { path: r.path })
+      return forward(route, body)
+    }
+    const said = await r.tool('doc_write', { item: 'i1', revision, markdown: md('# Week 1', 'Meet the team at 9:30 AM', '# Week 2', 'Shadow the front desk'), because: 'own' })
+    service.internal = forward
+    expect(said.error).toBe(true)
+    expect(said.text).toMatch(/changed since you read it/)
+    expect(await r.text()).toContain('Bring the keys')
+    expect(await r.text()).toContain('9:00 AM')
+  })
+
+  it("a styled read's revision is of the text it answered, never of a later read", async () => {
+    const r = await rig()
+    const service = r.ctx.service as { internal(route: string, body: unknown): Promise<unknown> }
+    const forward = service.internal
+    // His line lands right after the styled read answered.
+    service.internal = async (route, body) => {
+      const got = await forward(route, body)
+      if (route === '/internal/docs/read' && (body as { with?: string }).with === 'styles') await r.service.collab.writeMarkdown(r.name, 'owner', md('# Week 1', 'Meet the team at 9:00 AM', 'Bring the keys', '# Week 2', 'Shadow the front desk'), { path: r.path })
+      return got
+    }
+    const read = await r.tool('doc_read', { item: 'i1', with: 'styles' })
+    service.internal = forward
+    expect(read.text).not.toContain('Bring the keys')
+    const revision = /Revision (r[0-9a-f]+)/.exec(read.text)![1]
+    const said = await r.tool('doc_write', { item: 'i1', revision, markdown: md('# Week 1', 'Meet the team at 9:30 AM', '# Week 2', 'Shadow the front desk'), because: 'own' })
+    expect(said.text).toMatch(/changed since you read it/)
+    expect(await r.text()).toContain('Bring the keys')
+  })
+
   it('"routine" counts only in a routine\'s run; doc_suggest always waits', async () => {
     const r = await rig({ shared: true })
     expect((await r.tool('doc_write', { item: 'i1', markdown: md('# Week 1', 'x'), because: 'routine' })).text).toMatch(/This thread runs no routine/)

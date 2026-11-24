@@ -2,11 +2,12 @@ import { createHash } from 'node:crypto'
 import { isAbsolute } from 'node:path'
 import * as Y from 'yjs'
 import { DOCUMENT_FRAGMENT, findQuote, setThreadMark } from 'work-kit/collab'
-import { fileDocName, readDocument, type CollabContext, type CollabFile } from 'work-kit/collab-server'
+import { fileDocName, readDocument, writeMarkdown, type CollabContext, type CollabFile } from 'work-kit/collab-server'
 import { docIn, fenceOf, servingHere, str } from '../service/routes/internal'
 import { RouteError, type InternalRoute, type RouteCtx } from '../service/routes/route'
 import { documentStyleLines } from './formatDescription'
 import { formatRouteFields } from './formatInput'
+import { revisionOf } from './revision'
 
 /**
  * The docs pillar's internal routes on the Work service
@@ -79,14 +80,16 @@ export const docsRoutes: InternalRoute[] = [
         const direct = await ctx.collab.hocuspocus.openDirectConnection(t.name, context)
         try {
           const doc = direct.document!
-          return { ...readDocument(doc.getXmlFragment(DOCUMENT_FRAGMENT)), shared: t.shared, styles: documentStyleLines(doc) }
+          const text = readDocument(doc.getXmlFragment(DOCUMENT_FRAGMENT))
+          // The revision of this very text: an agent's rewrite is checked against it (docs/revision.ts).
+          return { ...text, shared: t.shared, styles: documentStyleLines(doc), revision: revisionOf(text.markdown) }
         } finally {
           await direct.disconnect({ unloadImmediately: false })
         }
       }
       if (body.with !== undefined) throw new RouteError(400, 'with is styles')
       const live = await ctx.collab.read(t.name, t.file)
-      return { markdown: live.markdown, plain: live.plain, shared: t.shared }
+      return { markdown: live.markdown, plain: live.plain, shared: t.shared, revision: revisionOf(live.markdown) }
     }
   },
   {
@@ -103,15 +106,42 @@ export const docsRoutes: InternalRoute[] = [
       if (typeof markdown !== 'string' || markdown.length > 900_000) throw new RouteError(400, 'markdown is missing or too long')
       const because = body.because
       if (because !== 'asked' && because !== 'routine' && because !== 'own') throw new RouteError(400, 'because is asked, routine or own')
+      const revision = body.revision === undefined ? undefined : str(body, 'revision', 64)
+      const principal = principalOf(body)
       const suggest = body.suggest === true
       const file = t.file ? { file: t.file } : {}
       const verdict = suggest ? 'own' : because
       const shared = suggest || t.shared
-      // A write that goes straight in: the version just before it is what its Undo goes back to
-      // (the one history.write answers is cut after it). Nothing changed since the last version: that one.
-      const before = verdict === 'own' && shared ? null : await ctx.history.cut(t.name, 'before-agent', file)
-      const done = await ctx.history.write(t.name, principalOf(body), markdown, { because: verdict, shared, ...file })
-      return { ...done, shared: t.shared, ...(before && done.mode === 'direct' ? { beforeVersionId: before.id } : {}) }
+      // In the document's turn: no restore, accept or other write lands between the check and the write.
+      return ctx.history.inTurn(t.name, async (raw) => {
+        if (verdict === 'own' && shared) {
+          // A suggestion: the text it was drafted from, checked just before the branch is made; what lands after is
+          // his to see in the suggestion, never written into the document.
+          if (revision !== undefined && revisionOf((await ctx.collab.read(t.name, t.file)).markdown) !== revision) return { stale: true }
+          return { ...(await raw.write(t.name, principal, markdown, { because: verdict, shared, ...file })), shared: t.shared }
+        }
+        // A write that goes straight in: the version just before it is what its Undo goes back to. Nothing changed
+        // since the last version: that one.
+        const before = await raw.cut(t.name, 'before-agent', file)
+        // The revision is checked on the live text in the very tick the rewrite is made of it (collab.edit's copy):
+        // a word he typed after the agent read is never written over.
+        let stale = false
+        let changed = 0
+        await ctx.collab.edit(
+          t.name,
+          principal,
+          (doc) => {
+            const fragment = doc.getXmlFragment(DOCUMENT_FRAGMENT)
+            if (revision !== undefined && revisionOf(readDocument(fragment).markdown) !== revision) return void (stale = true)
+            changed = writeMarkdown(fragment, markdown).changed
+          },
+          t.file
+        )
+        if (stale) return { stale: true }
+        if (changed === 0) return { mode: 'direct', versionId: null, shared: t.shared }
+        const row = await raw.cut(t.name, 'agent-turn', file)
+        return { mode: 'direct', versionId: row.id, beforeVersionId: before.id, shared: t.shared }
+      })
     }
   },
   {

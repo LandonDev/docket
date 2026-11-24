@@ -1,4 +1,3 @@
-import { createHash } from 'node:crypto'
 import { z } from 'zod'
 import type { DocFormatResult } from 'work-kit/collab-server'
 import { docFormatFields } from './formatToolInput'
@@ -9,6 +8,7 @@ import { docsOf, modeOf, wrote } from './state'
 import { attachmentDoc, ATTACHMENT_READ_ONLY, lifeosRow, othersOpen, pathOf, serviceTarget, targetOf, titleOf, type DocTarget } from './target'
 import { fetchedItemOfPath } from '../canvas/fetch'
 import { changeThread } from './threads'
+import { revisionOf } from './revision'
 import { EDITED_WITHIN, FIND_BY, FIND_KINDS, FIND_KIND_WORDS, FIND_SORTS, FIND_WHERE, FIND_WHERE_WORDS, findIn, type FindEntry, type FindFilter } from '@shared/work/docFind'
 
 /**
@@ -110,8 +110,7 @@ const plural = (n: number, unit: string) => `${n} ${unit}${n === 1 ? '' : 's'}`
 
 type WhyWrite = { because: 'asked' | 'routine' | 'own'; quote?: string; suggest?: boolean; revision?: string }
 
-/** The text an agent read, as a word it hands back with its rewrite: the live text since then is what the rewrite replaces. */
-export const revisionOf = (markdown: string): string => `r${createHash('sha256').update(markdown).digest('hex').slice(0, 16)}`
+export { revisionOf }
 
 const READ_FIRST = 'Read the document with doc_read first and pass its `revision`: a rewrite replaces the whole text, so it must be written over the text you read.'
 const CHANGED = 'The document changed since you read it (the owner or someone else edited it), so your rewrite would undo their words. Read it again with doc_read and write your change over the text as it is now.'
@@ -147,7 +146,9 @@ async function write(ctx: ToolCtx, a: TargetArgs & WhyWrite & { markdown: string
   if (!a.suggest && !a.revision) return fail(READ_FIRST)
   if (a.revision && a.revision !== revisionOf(before)) return fail(CHANGED)
   const principal = agentPrincipal(ctx.host, ctx.sessionId)
-  const done = (await ctx.service.internal('/internal/docs/write', { ...serviceTarget(t, shared, fence), markdown: a.markdown, because: verdict, suggest, principal })) as ServiceWrite
+  // Checked again where the service writes, in the same tick as the edit: a word typed after this read is never written over.
+  const done = (await ctx.service.internal('/internal/docs/write', { ...serviceTarget(t, shared, fence), markdown: a.markdown, because: verdict, suggest, principal, ...(a.revision ? { revision: a.revision } : {}) })) as ServiceWrite | { stale: true }
+  if ('stale' in done) return fail(CHANGED)
   const parts = changedParts(before, a.markdown)
   if (done.mode === 'branch') {
     docsOf(ctx).push({ push: 'work.docs', doc: t.doc, branches: true }, pathOf(t))
@@ -303,13 +304,12 @@ export const docTools: WorkTool[] = [
       try {
         const a = args as TargetArgs & { with?: 'styles' }
         const { t, shared, fence } = await resolve(ctx, a)
-        const got = (await ctx.service.internal('/internal/docs/read', { ...serviceTarget(t, shared, fence), ...(a.with ? { with: a.with } : {}) })) as { markdown: string; styles?: string[] }
+        const got = (await ctx.service.internal('/internal/docs/read', { ...serviceTarget(t, shared, fence), ...(a.with ? { with: a.with } : {}) })) as { markdown: string; styles?: string[]; revision: string }
         const { readThreads } = await import('./threads')
         const open = (await readThreads(ctx, t)).filter((r) => !r.thread.resolved && r.thread.deletedAt === null)
         const threads = open.map((r) => `- on “${r.thread.quote ?? ''}”: ${r.comments.filter((c) => c.deletedAt === null).map((c) => plainBody(c.body)).join(' / ')}`)
-        // The revision is of the text alone, as doc_write reads it again before it writes.
-        const plainText = a.with ? ((await ctx.service.internal('/internal/docs/read', serviceTarget(t, shared, fence))) as { markdown: string }).markdown : got.markdown
-        return workText(`${shared ? 'Others share this document.\n\n' : ''}${got.markdown}${got.styles ? '\n\n' + got.styles.join('\n') : ''}${threads.length ? `\n\n---\nOpen comments:\n${threads.join('\n')}` : ''}\n\n---\nRevision ${revisionOf(plainText)}: pass it to doc_write as \`revision\`.`)
+        // The revision is the service's, of the very text answered here: never of a second read taken later.
+        return workText(`${shared ? 'Others share this document.\n\n' : ''}${got.markdown}${got.styles ? '\n\n' + got.styles.join('\n') : ''}${threads.length ? `\n\n---\nOpen comments:\n${threads.join('\n')}` : ''}\n\n---\nRevision ${got.revision}: pass it to doc_write as \`revision\`.`)
       } catch (err) {
         return fail(errorText(err))
       }
