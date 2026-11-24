@@ -1,4 +1,5 @@
 import { createConnection, createServer, type Socket } from 'node:net'
+import { startSlowLink, type Counters, type Shape } from '../../lib/slowLink'
 
 /** A run-local socket hop. Cutting it closes only the links through this listener. */
 export async function relay(host: string, target: number) {
@@ -36,5 +37,17 @@ export async function relay(host: string, target: number) {
       disconnect()
       await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()))
     }
+  }
+}
+
+/** The same hop with a delay and a rate each way (scripts/lib/slowLink.ts): his tunnel, for the perf kit. */
+export async function shapedRelay(target: number, shape: Shape) {
+  const link = await startSlowLink({ listen: 0, target, shape })
+  return {
+    port: link.port,
+    cut: (on: boolean) => link.cut(on),
+    stop: () => link.close(),
+    /** Bytes and round trips on the wire since the last reset, then zero. */
+    reset: (): Counters => link.reset()
   }
 }

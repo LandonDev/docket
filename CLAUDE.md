@@ -88,8 +88,7 @@ differs by origin, so it does not carry across; unread is the host's mark
 
 ## The prod worktree is retired
 ~/IdeaProjects/temp-code-prod was the old local updater's build checkout.
-The updater no longer reads it or the source repo at all; it can stay
-detached as a scratch checkout or be removed. Never build into or swap
+The updater no longer reads it or the source repo. Never build into or swap
 /Applications/TempCode.app yourself.
 
 ## Subjects: one entry each, the long account in docs/agents
@@ -268,7 +267,6 @@ section's text as it was when CLAUDE.md was split (2026-11-11).
 - **The renderer over time** — React 19.3.1, the renderer soak and its gate
   rows, the rules that keep a push re-rendering only what it changed.
   [docs/agents/renderer-over-time.md](docs/agents/renderer-over-time.md)
-  (its `--scene reconnect` and `--gate` are described there).
 - **The shape that scales** — profiling, checkpoints, the running cap and the
   stats worker. [docs/agents/shape-that-scales.md](docs/agents/shape-that-scales.md)
 - **The iOS contract** — `ios/TempCodeContract` is generated from zod by
@@ -287,9 +285,8 @@ section's text as it was when CLAUDE.md was split (2026-11-11).
   file from the Files place on that page with Ask finding or starting its thread (`FileAsk`), Save to
   TempCode (the share extension `TempCodeShare`, `ShareInbox`, `ShareUploader`), and the clicker's screen.
   [docs/agents/work-phone-files.md](docs/agents/work-phone-files.md)
-- **Native chat source research** — what the T3 SwiftUI app and other native
-  chat apps do that could carry over to the phone's transcript
-  (docs/research/native-chat-rendering.md). [docs/agents/native-chat-source-research.md](docs/agents/native-chat-source-research.md)
+- **Native chat source research** — what native chat apps do that the phone's
+  transcript could use (docs/research/native-chat-rendering.md). [docs/agents/native-chat-source-research.md](docs/agents/native-chat-source-research.md)
 - **The menu bar** — src/shared/menuTree.ts is the menu as data.
   [docs/agents/menu-bar.md](docs/agents/menu-bar.md)
 - **The fleet switches** — Pause, Resume, Stop and Archive done over a scope
@@ -315,14 +312,15 @@ section's text as it was when CLAUDE.md was split (2026-11-11).
   browser's carrier drives Forms (`CARRIER_ONLY_HOSTS`),
   `msform.make` and `msform.publish` are held, answers live in memory alone, Purdue's withhold.
   [docs/agents/work-msforms.md](docs/agents/work-msforms.md)
+- **Work's speed** — the budgets, `bun run perf` on a slowed, loaded pair (scripts/perf), the stall
+  report, a cache's rules. [docs/agents/work-perf.md](docs/agents/work-perf.md)
 - **work-kit** — the private package shared with LifeOS, pinned as a devDependency at
   `git+https://www.github.com/LandonDev/work-kit.git#<sha>` (bun cannot fetch a private
   `github:` spec), kept out of the app by electron-builder; scripts/workKitPin.test.ts.
   [docs/agents/work-kit.md](docs/agents/work-kit.md)
 - **Work** — a job as a workspace (one per sector per host), behind one switch
   per host, off by default (`work.get`, `work.set`); code branches on the row
-  (`workspaces.kind`, `sessions.scope`), never on the switch. All fifty
-  milestones are built. The frame: `WORK_MODULES`, `WorkCtx`, one tool mount
+  (`workspaces.kind`, `sessions.scope`), never on the switch. The frame: `WORK_MODULES`, `WorkCtx`, one tool mount
   (`withWorkTools`, `app.workTools`); the composer's `@` for Work's things, a
   pillar's `mentions` within `mentionReachOf` (work-canvas.md "Mentions"); a pillar fills its own folder, edits no
   shared file and reaches the frame only through `WorkCtx`

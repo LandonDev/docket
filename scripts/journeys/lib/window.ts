@@ -37,6 +37,7 @@ const PUNCTUATION: Record<string, [string, number]> = {
 export class Window {
   readonly hostErrors: string[] = []
   readonly appOpen = new AppOpenProof()
+  private readonly taps: ((method: string, params: unknown) => void)[] = []
 
   private constructor(private readonly cdp: Cdp, private readonly signal: AbortSignal) {}
 
@@ -45,6 +46,7 @@ export class Window {
     const window = new Window(cdp, signal)
     try {
       cdp.onEvent((method, params) => {
+        for (const tap of window.taps) tap(method, params)
         const sent = method === 'Network.webSocketFrameSent'
         if (!sent && method !== 'Network.webSocketFrameReceived') return
         const { requestId, response } = params as { requestId: string; response?: { payloadData?: string } }
@@ -69,6 +71,17 @@ export class Window {
 
   eval<T>(expression: string): Promise<T> {
     return this.cdp.eval<T>(expression)
+  }
+
+  /** Every CDP event of the page, ahead of the window's own reading of it (the perf kit counts frames by socket). */
+  tap(listener: (method: string, params: unknown) => void): void {
+    this.taps.push(listener)
+  }
+
+  /** A CDP command the window has no verb for. */
+  send(method: string, params?: Record<string, unknown>): Promise<unknown> {
+    this.signal.throwIfAborted()
+    return this.cdp.send(method, params)
   }
 
   until(label: string, ms: number, test: () => unknown | Promise<unknown>): Promise<void> {

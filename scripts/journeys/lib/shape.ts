@@ -9,7 +9,7 @@ import { withAppToken } from '../../lib/appToken'
 import { dummyLibrary, gioStub } from './files'
 import { seedFakeAccount, startFakeProvider, type MailReplyFixture } from './fakeProvider'
 import { until, Window } from './window'
-import { relay } from './relay'
+import { relay, shapedRelay } from './relay'
 import { settingsOpen } from './settings'
 import { FIRST_MAIL, ZONE } from './lifeosSeed'
 import type { Sandbox } from './lifeos'
@@ -196,6 +196,8 @@ export class Pair {
   private readonly instances: Instance[] = []
   private window?: Window
   private winRelay?: Awaited<ReturnType<typeof relay>>
+  /** The shaped hop between win and box, when the run slowed it (`open`'s `link`). */
+  windowLink?: Awaited<ReturnType<typeof shapedRelay>>
   private tmpRoot?: string
   private chromiumTmp?: string
   private launchOptions: LaunchOptions = {}
@@ -259,7 +261,7 @@ export class Pair {
     }
   }
 
-  async open(withDesk: boolean, name: string, options: { fake?: boolean; hosted?: boolean; guests?: boolean; guestTheme?: boolean; cut?: boolean; sector?: string; capture?: boolean; localTools?: boolean; chromium?: string; zone?: string; browser?: boolean } = {}): Promise<Workspace> {
+  async open(withDesk: boolean, name: string, options: { fake?: boolean; hosted?: boolean; guests?: boolean; guestTheme?: boolean; cut?: boolean; sector?: string; capture?: boolean; localTools?: boolean; chromium?: string; zone?: string; browser?: boolean; link?: { delayMs: number; rateMbit: number }; provider?: typeof startFakeProvider } = {}): Promise<Workspace> {
     // Electron's singleton uses a Unix socket under TMPDIR. Keep its path short even when evidence is nested.
     const tmpRoot = this.tmpRoot = mkdtempSync('/tmp/tcj-')
     this.win = await instance(this.root, tmpRoot, 'win')
@@ -271,7 +273,10 @@ export class Pair {
     const tools = (!this.sandbox || options.localTools) && existsSync(join(TOOLS, 'state.json')) ? realpathSync(TOOLS) : undefined
     if (tools) linkTools(this.box.data)
     this.bin = gioStub(this.root)
-    if (options.cut) {
+    if (options.link) {
+      this.winRelay = this.windowLink = await shapedRelay(this.box.remote, options.link)
+      this.relays.push(this.winRelay)
+    } else if (options.cut) {
       this.winRelay = await relay('127.0.0.1', this.box.remote)
       this.relays.push(this.winRelay)
     }
@@ -294,7 +299,7 @@ export class Pair {
       seedFakeAccount(join(this.box.data, 'aliax'))
       if (options.capture) seedFakeAccount(join(this.win.data, 'aliax'))
       const browserTurn = options.browser ? new Promise<void>(resolve => { this.finishFakeBrowserTurn = resolve }) : undefined
-      this.fakeProvider = startFakeProvider(() => { this.fakeMessages++ }, browserTurn, () => this.fakeMailReply)
+      this.fakeProvider = (options.provider ?? startFakeProvider)(() => { this.fakeMessages++ }, browserTurn, () => this.fakeMailReply)
     }
     let chromium: string | undefined
     if (options.chromium) {

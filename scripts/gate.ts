@@ -246,7 +246,8 @@ export const GUARD_TESTS = [
   'scripts/swiftSwitches.test.ts',
   'scripts/ios-debug-guard.test.ts',
   'scripts/ios-literal-guard.test.ts',
-  'scripts/tc-computer-guard.test.ts'
+  'scripts/tc-computer-guard.test.ts',
+  'scripts/perf/perf.test.ts'
 ] as const
 
 export const STEPS: Step[] = [
