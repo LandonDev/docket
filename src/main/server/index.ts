@@ -1810,7 +1810,7 @@ export async function startServer(
   if (process.platform === 'win32')
     givenSetupHooks.lifeosReaderOff = async () => {
       const { lifeosReaderOff, windowsInstallDeps } = await import('./devices/setup/lifeosInstall')
-      await lifeosReaderOff(windowsInstallDeps())
+      await lifeosReaderOff(windowsInstallDeps(), lifeosAddress().url)
     }
   void import('./work/files/across').then(({ setLiveBinding }) => setLiveBinding((envId) => deviceBindings.mayRoute(envId)))
   given.start()

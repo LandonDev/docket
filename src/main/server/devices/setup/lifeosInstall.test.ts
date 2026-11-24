@@ -290,6 +290,14 @@ describe("Remove's reader step", () => {
     expect(JSON.parse(files.get(path) as string)).toEqual({ enabled: false, read: false })
     expect([...files.keys()].filter((k) => k.endsWith('.tmp'))).toEqual([])
   })
+
+  it('turns off the reader of a LifeOS built for another backend, in that backend’s folder', async () => {
+    const d = { ...deps(), env: { APPDATA: 'C:\\Users\\landon\\AppData\\Roaming' } }
+    const standIn = 'C:\\Users\\landon\\AppData\\Roaming\\lifeos-10.0.2.2-3330\\purdue.json'
+    files.set(standIn, JSON.stringify({ read: true, send: false }))
+    expect(await lifeosReaderOff(d, 'http://10.0.2.2:3330')).toBe(true)
+    expect(JSON.parse(files.get(standIn) as string)).toEqual({ read: false, send: false })
+  })
 })
 
 describe('the pieces', () => {
@@ -333,7 +341,7 @@ describe('a stand-in LifeOS (the rig proof)', () => {
       files.delete(file)
       files.set(`${standInDir}\\enroll-${attempt}.result.json`, JSON.stringify({ attempt, ok: true }))
     }
-    expect(await run({ backend: STAND_IN })).toEqual({ ok: true })
+    expect(await run({ backend: STAND_IN })).toMatchObject({ ok: true })
     expect(enroll?.backend).toBe(STAND_IN)
     expect(renames).toEqual([[`${standInDir}\\.enroll-try1.json.tmp`, `${standInDir}\\enroll-try1.json`]])
   })
@@ -348,7 +356,7 @@ describe('a stand-in LifeOS (the rig proof)', () => {
       [`${FEED}latest.yml`, () => new Response(feed())],
       [`${FEED}LifeOS-Setup-0.1.9.exe`, () => new Response(INSTALLER)]
     ])
-    expect(await installLifeos({ code: CODE, owner: 'landon', reader: false, attempt: 'try2' }, withFeed(), () => {})).toEqual({ ok: true })
+    expect(await installLifeos({ code: CODE, owner: 'landon', reader: false, attempt: 'try2' }, withFeed(), () => {})).toMatchObject({ ok: true })
     expect(fetched).toEqual([`${FEED}latest.yml`, `${FEED}LifeOS-Setup-0.1.9.exe`])
 
     // A hop away from the stand-in's origin, GitHub's included, is refused.

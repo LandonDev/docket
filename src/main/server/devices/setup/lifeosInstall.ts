@@ -340,10 +340,11 @@ async function waitForResult(path: string, attempt: string, deps: InstallDeps): 
  * send), every other field kept. Sending needs reading, so the sender stops with it. No file: nothing
  * to turn off. Written whole under another name and renamed into place.
  */
-export async function lifeosReaderOff(deps: Pick<InstallDeps, 'fs' | 'env'>): Promise<boolean> {
+export async function lifeosReaderOff(deps: Pick<InstallDeps, 'fs' | 'env'>, backend: string = LIFEOS_URL): Promise<boolean> {
   const roaming = deps.env.APPDATA
   if (!roaming) throw new Error('APPDATA is not set')
-  const path = win32.join(roaming, 'lifeos', 'purdue.json')
+  // LifeOS keeps its data in the folder named for the backend it was built for, as its enroll folder is.
+  const path = win32.join(roaming, enrollFolderName(backend), 'purdue.json')
   if (!(await deps.fs.exists(path))) return false
   let stored: Record<string, unknown> = {}
   try {
