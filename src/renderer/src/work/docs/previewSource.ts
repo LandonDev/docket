@@ -159,6 +159,21 @@ export function docDrops(format: DocFormat, facts: DocFacts): string[] {
   return lines.filter((line): line is string => line !== null);
 }
 
+/**
+ * What a styled document's page set-up loses on paper, said on PDF and Print: columns are not drawn in Pages or the page
+ * written from the blocks (Word and LibreOffice draw them), and the header and footer print only from the sheets
+ * Pages draws, never from the page written in Flow.
+ */
+export function pageDrops(styled: Pick<DocumentPage, "setup" | "header" | "footer"> | null, sheets: boolean): string[] {
+  if (!styled) return [];
+  const lines: string[] = [];
+  const columns = styled.setup?.columns ?? 1;
+  if (columns > 1) lines.push(`${columns} columns print as one; Word keeps them`);
+  const said = (band: DocumentPage["header"] | undefined): boolean => !!band && band.start.length + band.center.length + band.end.length > 0;
+  if (!sheets && ((styled.setup?.header && said(styled.header)) || (styled.setup?.footer && said(styled.footer)))) lines.push("The header and footer print only from Pages");
+  return lines;
+}
+
 type Request = <T>(env: string, method: string, params: unknown, opts?: { timeoutMs?: number }) => Promise<T>;
 
 export interface DocPreviewDeps {
@@ -244,6 +259,20 @@ async function writePage(editor: AnyEditor, title: string, print: { paper: "A4" 
   return htmlDocument(editor, blocks, { title, print, ...own, fonts: await docPrintFonts(editor, styled) });
 }
 
+/**
+ * The editor's own marks, kept out of a print of the sheets he sees (docs/DESIGN.md "Document pages": no mark of the
+ * editor's own): a comment's wash and underline, the people's carets with their names, and their selections. The
+ * copy keeps the elements, so the sheets' heights stay as laid out; these rules only draw them as plain text.
+ */
+export const PRINT_UNMARKED =
+  "<style>" +
+  ".te-thread,.te-thread-shown,.te-thread-active,.te-thread-flash,.te-thread-settle,.te-thread-hot,.ProseMirror-yjs-selection{background:none!important;text-decoration:none!important}" +
+  ".bn-collaboration-cursor__base,.bn-collaboration-cursor__caret,.bn-collaboration-cursor__label,.collaboration-cursor__caret,.collaboration-cursor__label{display:none!important}" +
+  "</style>";
+
+/** The sheets' page with the editor's marks drawn out of it. */
+export const withoutEditorMarks = (html: string): string => (html.includes("</head>") ? html.replace("</head>", `${PRINT_UNMARKED}</head>`) : html.replace("<body>", `<body>${PRINT_UNMARKED}`));
+
 const cancelled = (): DOMException => new DOMException("The draw was cancelled", "AbortError");
 const unique = (lines: readonly string[]): string[] => [...new Set(lines.filter((line) => line.trim()))];
 /** A host's warning as a line of the column: no closing full stop, as the document's own lines have none. */
@@ -298,7 +327,7 @@ export function docPreviewSource(deps: DocPreviewDeps): PreviewSource {
    * written out (one print contract: Pages is the PDF, page for page); in Flow, or for a classic
    * document, the page written from the blocks.
    */
-  const printPage = async (paper: "A4" | "Letter"): Promise<string> => {
+  const printPage = async (paper: "A4" | "Letter"): Promise<{ html: string; drops: string[] }> => {
     const editor = mustHaveEditor();
     const styled = deps.styled?.() ?? null;
     const pages = styled ? deps.pages?.() : null;
@@ -306,22 +335,23 @@ export function docPreviewSource(deps: DocPreviewDeps): PreviewSource {
       await pages.settled?.();
       const options: PagesHtmlOptions = { title: deps.title, faces: await faces(editor, styled) };
       const html = pages.pagesHtml(options);
-      if (html) return html;
+      if (html) return { html: withoutEditorMarks(html), drops: pageDrops(styled, true) };
     }
-    return page(editor, deps.title, { paper }, styled);
+    return { html: await page(editor, deps.title, { paper }, styled), drops: pageDrops(styled, false) };
   };
 
   /** The format as pages on the host: a render it already keeps for this very text is answered as it is. */
-  const render = async (format: PreviewFormatId, signal: AbortSignal, by?: "word"): Promise<{ env: string; home: boolean; answer: PreviewAnswer }> => {
+  const render = async (format: PreviewFormatId, signal: AbortSignal, by?: "word"): Promise<{ env: string; home: boolean; answer: PreviewAnswer; drops: string[] }> => {
     const paper = paperFor(deps.locale ?? globalThis.navigator?.language ?? "en-US");
-    const html = format === "pdf" ? await printPage(paper) : undefined;
+    const printed = format === "pdf" ? await printPage(paper) : undefined;
+    const html = printed?.html;
     if (signal.aborted) throw cancelled();
     return onHost(async (env, home) => {
       if (signal.aborted) throw cancelled();
       const answer = await request<PreviewResult>(env, "work.formats.preview", { ...target(home), format, ...(html ? { html, paper } : {}), ...(by ? { by } : {}) }, { timeoutMs: 5 * 60_000 });
       if (signal.aborted) throw cancelled();
       if ("notInReach" in answer) throw new NotInReach("Word", answer.notInReach);
-      return { env, home, answer };
+      return { env, home, answer, drops: printed?.drops ?? [] };
     });
   };
 
@@ -329,7 +359,7 @@ export function docPreviewSource(deps: DocPreviewDeps): PreviewSource {
     const made = await render(format, signal, by);
     return {
       picture: { kind: "paged", pdf: bytesOf(made.env, made.home, made.answer), pages: made.answer.pages, drawnBy: made.answer.drawnBy },
-      drops: unique([...docDrops(format, { ...facts(), held: made.answer.heldSuggestions ?? 0 }), ...made.answer.warnings.map(asLine)]),
+      drops: unique([...docDrops(format, { ...facts(), held: made.answer.heldSuggestions ?? 0 }), ...made.drops, ...made.answer.warnings.map(asLine)]),
     };
   };
 

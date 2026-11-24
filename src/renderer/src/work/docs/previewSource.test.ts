@@ -7,7 +7,7 @@ import type { DocumentPage } from "work-kit/editor/page";
 import { paraText } from "work-kit/editor/para";
 import { NotInReach } from "../formats/preview";
 import { previewProblems } from "../formats/previewContract";
-import { blockFacts, DOC_FORMATS, DOC_PAPERS, docDrops, docPreviewSource, type DocFacts, type DocPreviewDeps } from "./previewSource";
+import { blockFacts, DOC_FORMATS, DOC_PAPERS, docDrops, docPreviewSource, pageDrops, PRINT_UNMARKED, withoutEditorMarks, type DocFacts, type DocPreviewDeps } from "./previewSource";
 
 /**
  * The document's side of Preview (docs/agents/work-docs.md "Preview"): what
@@ -447,7 +447,7 @@ describe("the document's Preview source", () => {
 
 describe("a styled document's pages", () => {
   const page = { schema: 1, setup: { paper: "Legal", orientation: "landscape", margins: { top: 72, right: 54, bottom: 72, left: 54 }, columns: 2, header: true, footer: false, differentFirst: true } } as unknown as DocumentPage;
-  const sheets = "<!doctype html><html><body>the sheets</body></html>";
+  const sheets = "<!doctype html><html><head><title>Plan</title></head><body>the sheets</body></html>";
 
   it("a PDF and Print are the sheets he sees once what he set is laid out, with the document's faces inlined; the flow page is not written", async () => {
     const h = host();
@@ -461,13 +461,47 @@ describe("a styled document's pages", () => {
     await s.draw("pdf", { signal: signal() });
     expect(order).toEqual(["settled", "faces", "written"]);
     expect(asked).toEqual([{ title: 'Plan: "spring"', faces: "@font-face{font-family:Carlito}" }]);
-    expect(h.calls[0]!.params).toMatchObject({ format: "pdf", html: sheets });
+    expect(h.calls[0]!.params).toMatchObject({ format: "pdf", html: withoutEditorMarks(sheets) });
     await s.draw("print", { signal: signal() });
-    expect(h.calls.filter((call) => call.method === "work.formats.preview").at(-1)!.params.html).toBe(sheets);
+    expect(h.calls.filter((call) => call.method === "work.formats.preview").at(-1)!.params.html).toBe(withoutEditorMarks(sheets));
     await s.export("print");
     await flush();
     expect(printed).toHaveLength(1);
     expect(pages).toEqual([]);
+  });
+
+  it("a PDF and Print carry no mark of the editor's own: comment washes, the people's carets and names, their selections", async () => {
+    const marked =
+      '<!doctype html><html><head><style>.te-root .te-thread{background:grey}</style></head><body><p><span class="te-thread te-thread-active" data-thread="t1">Doors at six</span>' +
+      '<span class="bn-collaboration-cursor__base"><span class="bn-collaboration-cursor__caret"></span><span class="bn-collaboration-cursor__label">Dana</span></span></p></body></html>';
+    const h = host();
+    const { source: s } = source(h, { styled: () => page, faces: async () => "", pages: () => ({ pagesHtml: () => marked }) });
+    await s.draw("pdf", { signal: signal() });
+    const sent = h.calls[0]!.params.html as string;
+    // The rules come after the page's own, in its head, and win over them.
+    expect(sent.indexOf(PRINT_UNMARKED)).toBeGreaterThan(sent.indexOf(".te-root .te-thread{background:grey}"));
+    expect(sent.indexOf(PRINT_UNMARKED)).toBeLessThan(sent.indexOf("</head>"));
+    expect(PRINT_UNMARKED).toMatch(/\.te-thread,[^{]*\.te-thread-active[^{]*\{background:none!important;text-decoration:none!important\}/);
+    expect(PRINT_UNMARKED).toMatch(/\.bn-collaboration-cursor__base[^{]*\{display:none!important\}/);
+    // The words stay where they were laid out.
+    expect(sent).toContain('<span class="te-thread te-thread-active" data-thread="t1">Doors at six</span>');
+  });
+
+  it("PDF and Print say what of the set-up stays off paper: columns always, the header and footer when printed from Flow", async () => {
+    const band = { start: [], center: [{ text: "Run of show" }], end: [] };
+    const banded = { ...page, header: band, footer: { start: [], center: [], end: [] } } as unknown as DocumentPage;
+    expect(pageDrops(banded, true)).toEqual(["2 columns print as one; Word keeps them"]);
+    expect(pageDrops(banded, false)).toEqual(["2 columns print as one; Word keeps them", "The header and footer print only from Pages"]);
+    const one = { ...banded, setup: { ...banded.setup, columns: 1, header: false } } as DocumentPage;
+    expect(pageDrops(one, false)).toEqual([]);
+    expect(pageDrops(null, false)).toEqual([]);
+    const h = host();
+    const sheets = source(h, { styled: () => banded, faces: async () => "", pages: () => ({ pagesHtml: () => "<html><head></head><body>s</body></html>" }) });
+    expect((await sheets.source.draw("print", { signal: signal() })).drops).toContain("2 columns print as one; Word keeps them");
+    const flow = source(h, { styled: () => banded, faces: async () => "", pages: () => ({ pagesHtml: () => null }) });
+    expect((await flow.source.draw("pdf", { signal: signal() })).drops).toContain("The header and footer print only from Pages");
+    // Word keeps both: it says neither.
+    expect((await flow.source.draw("docx", { signal: signal() })).drops.join()).not.toMatch(/columns|header/);
   });
 
   it("in Flow the editor answers no page and the page written from the blocks goes; a classic document's pages are never asked for", async () => {
