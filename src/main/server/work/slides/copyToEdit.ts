@@ -54,12 +54,17 @@ async function writeFresh(root: string, dir: string, name: string, from: string)
 export async function copyToEdit(ctx: WorkCtx, by: Caller, item: CanvasItem): Promise<CanvasItem> {
   if (by.kind === 'model' || (by.kind === 'remote' && by.peer)) throw new Error(COPY_HIS_PRESS)
   if (!readOnlyWhy(item)) throw new Error('This deck can be edited as it is.')
-  // Files' own rule for his hand: a key without approve takes nothing out of a place others can open.
-  if (by.kind === 'remote' && sharedDeck(ctx, item) && !by.caps.includes('approve')) throw new Error(NEEDS_APPROVE)
+  // Files' own rule for his hand: a key without approve takes nothing out of a place others can open. Asked again on
+  // the queue, where another seat may have found the file to be such a place while this waited.
+  const mine = (): void => {
+    if (by.kind === 'remote' && sharedDeck(ctx, item) && !by.caps.includes('approve')) throw new Error(NEEDS_APPROVE)
+  }
+  mine()
   const name = copyName(item)
   const workspaceId = item.workspaceId ?? paneWorkspace(item.sessionId) ?? ctx.scopeOf(item.sessionId)?.workspaceId ?? null
   const workspace = workspaceId ? workspaceHere(ctx.db, workspaceId) : null
   return serial(ctx, item, async () => {
+    mine()
     const from = await deckPath(ctx, item)
     if (workspace) {
       const path = await writeFresh(workspace.path, folderFor(ctx, item, workspace.path), name, from)

@@ -12,7 +12,7 @@ import { allocateIds, isNote, slideOfOp, type DeckInfo, type ShapeInfo } from '.
 import { writeNewDeck } from './newDeck'
 import { attachFile } from './attach'
 import { rowSession, SlidesStore } from './store'
-import { announce, applyTo, deckDir, deckKey, deckOf, OWN_FILE, readOnlyWhy, renderPath, scratch, serial, sharedDeck, withDeck, writeInto, writing, comesAs } from './view'
+import { announce, applyTo, deckDir, deckKey, deckOf, filePathOf, OWN_FILE, readOnlyWhy, renderPath, scratch, serial, sharedDeck, withDeck, writeInto, writing, comesAs } from './view'
 
 /**
  * The tools a Work thread reads and revises a deck with
@@ -75,39 +75,58 @@ export function slideDetail(info: DeckInfo, slideId: number): string | null {
   return lines.join('\n')
 }
 
-/** Whether the owner typed the quote in this thread. Milestone 6 builds the check; until then it reads as no. */
-function ownerSaid(ctx: ToolCtx, quote: string | undefined): boolean {
+/** Whether the owner typed the quote in this thread; with `about`, in a message that also names one of those whole (threads.ts). */
+function ownerSaid(ctx: ToolCtx, quote: string | undefined, about?: readonly string[]): boolean {
   if (!quote) return false
   try {
-    return ctx.threads.ownerSaid(ctx.sessionId, quote)
+    return ctx.threads.ownerSaid(ctx.sessionId, quote, about)
   } catch {
     return false
   }
+}
+
+/**
+ * What a message of his must name for his words to stand for a change to this deck: its path, as the canvas writes it
+ * and as a file chip's JSON writes it. Never its title or a slide number alone: two decks may share them.
+ */
+const deckNames = (item: CanvasItem): string[] => {
+  const path = filePathOf(item.source)
+  return path === null ? [] : [...new Set([path, JSON.stringify(path).slice(1, -1)])]
 }
 
 const ORDINALS = ['first', 'second', 'third', 'fourth', 'fifth', 'sixth', 'seventh', 'eighth', 'ninth', 'tenth', 'eleventh', 'twelfth']
 /** Words as letters and digits alone, one space between: a title is found whole, never inside another word. */
 const wordsOf = (text: string): string => ` ${text.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim()} `
 
+/** Words that turn a slide's name into one he wants left alone ("don't touch slide 3", "all but the last slide"). */
+const EXCLUDES = /\b(not|never|except|excluding|without|leave|skip|besides|instead|but|other than|apart from)\b|n't\b/
+
 /**
- * The slides, by id, a person's words name: by number ("slide 3", "slides 2 and 4", "slides 2-5"), by place ("the
- * third slide", "the 2nd slide", "the last slide"), or by a title of three letters or more said whole.
+ * The slides, by id, a person's words name without doubt: by number ("slide 3", "slides 2 and 4", "slides 2-5", "slides
+ * 2 to 5"; after "slide" one number alone, so "move slide 2 to 5" names slide 2), by place ("the third slide", "the
+ * 2nd slide", "the last slide"), or by a title of three letters or more said whole that no other slide's title holds.
+ * Words that leave something out name nothing at all: which slide they spare is not certain.
  */
 export function slidesNamed(info: Pick<DeckInfo, 'slides'>, quote: string): Set<number> {
-  const q = quote.toLowerCase()
+  const q = quote.toLowerCase().replace(/[‘’]/g, "'")
+  if (EXCLUDES.test(q)) return new Set()
   const count = info.slides.length
   const places = new Set<number>()
-  for (const m of q.matchAll(/\bslides?\s+(?:no\.?\s*|number\s+)?(\d+(?:\s*(?:,|and|&|or|-|–|to|through)\s*\d+)*)/g)) {
-    const parts = m[1].split(/\s*(,|and|&|or|-|–|to|through)\s*/)
+  for (const m of q.matchAll(/\bslides\s+(?:no\.?\s*|numbers?\s+)?(\d+(?:\s*(?:,|and|&|-|–|to|through)\s*\d+)*)/g)) {
+    const parts = m[1].split(/\s*(,|and|&|-|–|to|through)\s*/)
     for (let i = 0; i < parts.length; i += 2) {
       const n = Number(parts[i])
       const from = i > 0 && /^(-|–|to|through)$/.test(parts[i - 1]) ? Number(parts[i - 2]) : n
       for (let k = Math.min(from, n); k <= Math.min(n, count); k++) places.add(k)
     }
   }
+  for (const m of q.matchAll(/\bslide\s+(?:no\.?\s*|number\s+)?(\d+)/g)) places.add(Number(m[1]))
   for (const m of q.matchAll(new RegExp(`\\b(${ORDINALS.join('|')}|last|(\\d+)(?:st|nd|rd|th))\\s+slide\\b`, 'g'))) places.add(m[2] ? Number(m[2]) : m[1] === 'last' ? count : ORDINALS.indexOf(m[1]) + 1)
   const said = wordsOf(quote)
-  return new Set(info.slides.flatMap((s, i) => (places.has(i + 1) || (wordsOf(s.title).trim().length >= 3 && said.includes(wordsOf(s.title))) ? [s.id] : [])))
+  const titles = info.slides.map((s) => wordsOf(s.title))
+  // A title names its slide only when no other slide's title is it or holds it ("Plan" beside "Travel Plan").
+  const alone = (i: number): boolean => titles[i].trim().length >= 3 && titles.every((t, j) => j === i || !t.includes(titles[i]))
+  return new Set(info.slides.flatMap((s, i) => (places.has(i + 1) || (alone(i) && said.includes(titles[i])) ? [s.id] : [])))
 }
 
 /**
@@ -224,18 +243,21 @@ export const slidesTools: WorkTool[] = [
         // deck now, so the edit still has it when it is accepted, and named from here on by the host's own token.
         const attach = a.ops.some((op) => op.op === 'insert' && op.file !== undefined) ? await deckDir(ctx, it, 'attach') : null
         if (attach) a.ops = a.ops.map((op) => (op.op === 'insert' && op.file !== undefined ? { ...op, file: attachFile(attach, op.file) } : op))
-        // Others can open it (a deck in PowerPoint, a Teams or OneDrive library, a cloud folder): nothing an agent
-        // thought of itself reaches the file, and so their screens, until the person accepts it.
-        const shared = sharedDeck(ctx, it)
         const key = deckKey(it)
         const said = await writing(ctx, it, () => withDeck(ctx, it, ctx.signal, async (deck) => {
-          // Read on the queue: the owner may have switched the mode while this waited behind a render.
+          // Read on the queue: the owner may have switched the mode while this waited behind a render, and another seat
+          // may have found the file to be one others can open (a deck in PowerPoint, a Teams or OneDrive library, a
+          // cloud folder). There nothing an agent thought of itself reaches the file, and so their screens, until the
+          // person accepts it.
           const writes = store.mode(it.id) === 'writes'
+          const shared = sharedDeck(ctx, it)
           const all = allocateIds([...deck.pending.map((p) => p.op), ...a.ops], deck.file.info)
           const fresh = all.slice(deck.pending.length)
-          // His words write at once; on a deck others can open, only what they name (`quoteNames`), the rest waits for his press.
+          // His words write at once. On a deck others can open, only in a message that names this deck (its path, as a
+          // chip carries it: a slide number in words about another deck is not about this one), and only the slides
+          // they name without doubt (`quoteNames`); the rest waits for his press.
           const asked = a.because === 'asked' && ownerSaid(ctx, a.quote)
-          const named = asked && (!shared || quoteNames(deck.file.info, a.quote!, fresh))
+          const named = asked && (!shared || (ownerSaid(ctx, a.quote, deckNames(it)) && quoteNames(deck.file.info, a.quote!, fresh)))
           // With suggestions waiting, what the agent reads is the deck with them in: an edit of that deck waits with them.
           const direct = writes && !deck.pending.length && (a.because === 'own' ? !shared : named)
           const added = fresh.flatMap((o) => (o.op === 'add' ? [o.id!] : []))
@@ -264,7 +286,7 @@ export const slidesTools: WorkTool[] = [
               : a.because === 'own'
                 ? ' The deck is shared, so your own idea is a suggestion.'
                 : asked
-                  ? ' The deck is shared, and the person\'s words do not name every slide this changes, so this is a suggestion.'
+                  ? ' The deck is shared, and the person\'s words do not name this deck (its path, as a file chip gives it) and every slide this changes without doubt, so this is a suggestion.'
                   : ' The person\'s words were not found in this thread, so this is a suggestion.'
           return { added, direct: false, text: `Suggested ${plural(new Set(fresh.map(slideOfOp)).size, 'revised slide')}; the person steps through them from the bar.${why}${noteLines(warnings.filter(isNote), deck.pending.length)}` }
         }))

@@ -12,7 +12,8 @@ import type { DeckInfo } from './deck'
 import { PAPER_SIZES, paperHtml, sheetsOf, type PaperSetup } from './handouts'
 import type { PendingOp } from './store'
 import { mp4Seconds, readJoined, videoSeconds, type PicsOptions } from './video'
-import { deckDir, drawAhead, nameOf, RENDER_FILTER, serial, sharedJob, withDeck, type Ctx } from './view'
+import { deckDir, drawAhead, nameOf, othersOpen, RENDER_FILTER, serial, sharedJob, withDeck, type Ctx } from './view'
+import { pressesFor } from '../files/policy'
 
 /**
  * A deck as each format of Preview holds it (docs/agents/work-slides.md "Preview and export"): the file itself,
@@ -155,8 +156,16 @@ interface Snapshot {
   pdf: string | null
 }
 
-/** The deck as `plan`'s format holds it: kept, or made now. */
+/**
+ * The deck as `plan`'s format holds it: kept, or made now. On a deck others can open, a caller that is not his press
+ * is not told how many slides waiting suggestions change (`pending`): what waits there is his press's to see.
+ */
 export async function deckOut(ctx: Ctx, item: CanvasItem, by: Caller, ask: DeckOutAsk, signal?: AbortSignal): Promise<DeckOut> {
+  const out = await deckOutFor(ctx, item, by, ask, signal)
+  return !pressesFor(by) && othersOpen(ctx, item) ? { ...out, facts: { ...out.facts, pending: 0 } } : out
+}
+
+async function deckOutFor(ctx: Ctx, item: CanvasItem, by: Caller, ask: DeckOutAsk, signal?: AbortSignal): Promise<DeckOut> {
   const plan = planOf(ask)
   await drawAhead(ctx, item, signal)
   const dir = await deckDir(ctx, item, 'out')

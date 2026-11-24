@@ -157,8 +157,22 @@ export function serial<T>(ctx: Pick<WorkCtx, 'db' | 'host' | 'dataDir'>, item: C
   if (path !== null) workingOn(path, run.then(noop, noop))
   return run
 }
-/** A step on the deck's queue that may write its file (`serial`'s `writes`). */
-export const writing = <T>(ctx: Pick<WorkCtx, 'db' | 'host' | 'dataDir'>, item: CanvasItem, fn: () => Promise<T>): Promise<T> => serial(ctx, item, fn, true)
+/**
+ * A step on the deck's queue that may write its file (`serial`'s `writes`). `guard` is asked on the queue, just before
+ * the step: a request that waited there is refused if what it may do changed meanwhile (another seat found the file
+ * to be one others can open).
+ */
+export type Guard = () => void
+export const writing = <T>(ctx: Pick<WorkCtx, 'db' | 'host' | 'dataDir'>, item: CanvasItem, fn: () => Promise<T>, guard?: Guard): Promise<T> =>
+  serial(
+    ctx,
+    item,
+    async () => {
+      guard?.()
+      return fn()
+    },
+    true
+  )
 
 /** The LibreOffice kept running, where the host has one (set by the module when Work starts; null: every render starts its own). */
 let renderer: SlideRenderer | null = null
@@ -943,9 +957,13 @@ async function viewsOf(ctx: Ctx, item: CanvasItem, signal?: AbortSignal): Promis
 }
 
 /** The deck's view; `viewer`: as a caller that is not his press is shown a deck others can open. */
-export async function viewOf(ctx: Ctx, item: CanvasItem, signal?: AbortSignal, viewer = false): Promise<DeckView> {
+/**
+ * The deck's view; `viewer`: as a caller that is not his press is shown a deck others can open. Asked once the deck is
+ * read, so a request that waited on the queue while another seat found the file shared is answered as that file's.
+ */
+export async function viewOf(ctx: Ctx, item: CanvasItem, signal?: AbortSignal, viewer: () => boolean = () => false): Promise<DeckView> {
   const views = await viewsOf(ctx, item, signal)
-  return viewer ? views.viewer() : views.full
+  return viewer() ? views.viewer() : views.full
 }
 
 /**
@@ -976,7 +994,7 @@ export async function slidePath(ctx: Ctx, item: CanvasItem, which: 'file' | 'pro
  * push goes in two shapes: the whole view to the sockets that stand for his press (his window, a key with `approve`),
  * the file alone to every other (`viewFrom`), so what waits there reaches no one before his press.
  */
-export async function announce(ctx: Ctx, item: CanvasItem, signal?: AbortSignal): Promise<DeckView> {
+export async function announce(ctx: Ctx, item: CanvasItem, signal?: AbortSignal, viewerNow: () => boolean = () => false): Promise<DeckView> {
   const views = await viewsOf(ctx, item, signal)
   const view = views.full
   // After any change: the files no waiting edit names any more go (an hour after they came, so one he is adding now stays).
@@ -1001,7 +1019,8 @@ export async function announce(ctx: Ctx, item: CanvasItem, signal?: AbortSignal)
     const name = nameOf(other, filePathOf(other.source))
     tell(other, { ...rest, name, ...seatFields(ctx, other, views.hash) }, viewer && { ...viewer, name, ...seatFields(ctx, other, views.hash, true) })
   }
-  return view
+  // The caller is answered as it may see the deck now: a viewer the file alone.
+  return viewerNow() ? (viewer ?? views.viewer()) : view
 }
 
 /** The render a read is served from: built if it is not yet. */
@@ -1144,8 +1163,11 @@ function checkRev(ctx: Pick<WorkCtx, 'db' | 'host' | 'dataDir'>, item: CanvasIte
  * edits no longer fits the file is left waiting, the others are written, and
  * a `StaleChangesError` names it.
  */
-export async function accept(ctx: Ctx, item: CanvasItem, ids: readonly string[] | 'all', signal?: AbortSignal, rev?: string): Promise<void> {
-  const stale = await writing(ctx, item, () =>
+export async function accept(ctx: Ctx, item: CanvasItem, ids: readonly string[] | 'all', signal?: AbortSignal, rev?: string, guard?: Guard): Promise<void> {
+  const stale = await writing(
+    ctx,
+    item,
+    () =>
     withDeck(ctx, item, signal, async (deck) => {
       checkRev(ctx, item, deck, rev)
       let chosen = deck.pending.filter((p) => ids === 'all' || ids.includes(changeIdOf(p.slide)))
@@ -1250,7 +1272,8 @@ export async function accept(ctx: Ctx, item: CanvasItem, ids: readonly string[] 
         }
       }
       return left
-    })
+    }),
+    guard
   )
   if (stale.length) {
     throw new StaleChangesError(
@@ -1260,8 +1283,9 @@ export async function accept(ctx: Ctx, item: CanvasItem, ids: readonly string[] 
 }
 
 /** Rejects changes: their rows go; an edit anchored on a slide a rejected add would have made takes that add's own anchor. */
-export async function reject(ctx: Ctx, item: CanvasItem, ids: readonly string[] | 'all', rev?: string, signal?: AbortSignal): Promise<void> {
+export async function reject(ctx: Ctx, item: CanvasItem, ids: readonly string[] | 'all', rev?: string, signal?: AbortSignal, guard?: Guard): Promise<void> {
   await serial(ctx, item, async () => {
+    guard?.()
     // Checked on the deck's queue, against the deck as it is now, so no edit lands between the check and the drop.
     checkRev(ctx, item, rev === undefined ? null : await deckOf(ctx, item, signal), rev)
     const store = new SlidesStore(ctx.db)
@@ -1285,8 +1309,9 @@ export async function reject(ctx: Ctx, item: CanvasItem, ids: readonly string[] 
 }
 
 /** Puts the file back as it was before the agent's direct write, while the file is still what that write left. */
-export async function undo(ctx: Ctx, item: CanvasItem, writeId: string): Promise<void> {
+export async function undo(ctx: Ctx, item: CanvasItem, writeId: string, guard?: Guard): Promise<void> {
   await writing(ctx, item, async () => {
+    guard?.()
     const store = new SlidesStore(ctx.db)
     const w = writtenFor(ctx, item)
     if (!w || w.id !== writeId) throw new Error('That write can no longer be taken back.')

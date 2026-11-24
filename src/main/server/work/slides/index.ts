@@ -143,8 +143,13 @@ export const slides: WorkModule = {
     // On a deck others can open, a caller that is not his press (his window, a key with `approve`) is a viewer, as
     // in Docs and Sheets: it changes nothing there and is shown the file alone, never what waits on it, as the
     // Outbox shows what waits to his press alone.
-    const viewer = !pressesFor(by) && othersOpen(ctx, item)
-    if (viewer && WRITE_METHODS.has(req.method)) throw new Error(NEEDS_PRESS)
+    // Asked again where it counts: a request that waited on the deck's queue while another seat found the file to be
+    // one others can open is answered, and refused, as that file's (`mine` runs on the queue just before a write).
+    const viewer = (): boolean => !pressesFor(by) && othersOpen(ctx, item)
+    const mine = (): void => {
+      if (viewer()) throw new Error(NEEDS_PRESS)
+    }
+    if (WRITE_METHODS.has(req.method)) mine()
     switch (req.method) {
       case 'work.slides.open':
         if (item.source.at === 'google') await openSlidesMirror(ctx, item.id, item.title, item.source)
@@ -152,13 +157,15 @@ export const slides: WorkModule = {
       case 'work.slides.copyToEdit':
         return handled({ itemId: (await copyToEdit(ctx, by, item)).id })
       case 'work.slides.read': {
-        if (req.params.which === 'proposed' && viewer) throw new Error(NEEDS_PRESS)
+        if (req.params.which === 'proposed') mine()
         const { path, rev } = await renderPath(ctx, item, req.params.which, signal)
+        if (req.params.which === 'proposed') mine()
         return handled({ ...readRange(path, req.params.offset, req.params.length), rev })
       }
       case 'work.slides.slide': {
-        if (req.params.which === 'proposed' && viewer) throw new Error(NEEDS_PRESS)
+        if (req.params.which === 'proposed') mine()
         const { path, rev } = await slidePath(ctx, item, req.params.which, req.params.slide, signal)
+        if (req.params.which === 'proposed') mine()
         return handled({ ...readRange(path, req.params.offset, req.params.length), rev })
       }
       case 'work.slides.show':
@@ -175,45 +182,54 @@ export const slides: WorkModule = {
         // An agent suggests and the owner accepts: a thread's own call settles nothing.
         if (by.kind === 'model') throw new Error('Only the owner accepts or rejects a suggestion.')
         try {
-          if (req.params.verdict === 'reject') await reject(ctx, item, req.params.changes, req.params.rev, signal)
-          else await accept(ctx, item, req.params.changes, signal, req.params.rev)
+          if (req.params.verdict === 'reject') await reject(ctx, item, req.params.changes, req.params.rev, signal, mine)
+          else await accept(ctx, item, req.params.changes, signal, req.params.rev, mine)
         } catch (err) {
           // What went in is shown at once; the sentence says which change still waits and why. A press on a preview
           // the changes moved on from changes nothing, and every client is shown the changes as they are now.
           if (err instanceof StaleChangesError || err instanceof ChangedSinceError) await announce(ctx, item, signal)
           throw err
         }
-        return handled(await announce(ctx, item, signal))
+        return handled(await announce(ctx, item, signal, viewer))
       }
       case 'work.slides.mode': {
         if (by.kind === 'model') throw new Error('Only the owner sets what an agent may do to a deck.')
         // The mode is this tab's own (store.ts): another seat on the same file keeps its own.
         const store = new SlidesStore(ctx.db)
-        if (!store.setMode(item.id, req.params.mode)) await serial(ctx, item, async () => store.setMode(item.id, req.params.mode))
-        return handled(await announce(ctx, item, signal))
+        if (!store.setMode(item.id, req.params.mode))
+          await serial(ctx, item, async () => {
+            mine()
+            store.setMode(item.id, req.params.mode)
+          })
+        return handled(await announce(ctx, item, signal, viewer))
       }
       case 'work.slides.undo': {
-        await undo(ctx, item, req.params.writeId)
-        return handled(await announce(ctx, item, signal))
+        await undo(ctx, item, req.params.writeId, mine)
+        return handled(await announce(ctx, item, signal, viewer))
       }
       // His own edits (hand.ts): written at once. A thread's own call is refused: an agent edits through
       // slides_edit, where the mode and the hold decide what reaches the file.
       case 'work.slides.edit': {
         if (by.kind === 'model') throw new Error('Only the owner edits a deck by hand; an agent uses slides_edit.')
-        await handEdit(ctx, item, req.params.ops, signal)
-        return handled(await announce(ctx, item, signal))
+        await handEdit(ctx, item, req.params.ops, signal, mine)
+        return handled(await announce(ctx, item, signal, viewer))
       }
       case 'work.slides.step': {
         if (by.kind === 'model') throw new Error('Only the owner takes back his own edits.')
-        await handStep(ctx, item, req.params.dir, signal)
-        return handled(await announce(ctx, item, signal))
+        await handStep(ctx, item, req.params.dir, signal, mine)
+        return handled(await announce(ctx, item, signal, viewer))
       }
       case 'work.slides.versions':
         // A read-only deck keeps no versions: nobody writes it.
         return handled(readOnlyWhy(item) ? [] : await versionsOf(ctx, item))
       case 'work.slides.attach': {
         if (by.kind === 'model') throw new Error('Only the owner adds a file by hand; an agent names a path in slides_edit.')
-        return handled(await serial(ctx, item, async () => attachPiece(await deckDir(ctx, item, 'attach'), { name: req.params.name, ...(req.params.token !== undefined ? { token: req.params.token } : {}), data: Buffer.from(req.params.data, 'base64') })))
+        return handled(
+          await serial(ctx, item, async () => {
+            mine()
+            return attachPiece(await deckDir(ctx, item, 'attach'), { name: req.params.name, ...(req.params.token !== undefined ? { token: req.params.token } : {}), data: Buffer.from(req.params.data, 'base64') })
+          })
+        )
       }
       // Preview and export (out.ts): the deck as a format holds it, read by its rev; PowerPoint's own only on his press.
       case 'work.slides.preview': {
@@ -228,8 +244,8 @@ export const slides: WorkModule = {
         return handled(await deckReach(ctx))
       case 'work.slides.restore': {
         if (by.kind === 'model') throw new Error('Only the owner restores a version of a deck.')
-        await restoreVersion(ctx, item, req.params.version)
-        return handled(await announce(ctx, item, signal))
+        await restoreVersion(ctx, item, req.params.version, mine)
+        return handled(await announce(ctx, item, signal, viewer))
       }
     }
     return NOT_HANDLED

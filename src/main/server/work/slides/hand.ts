@@ -8,7 +8,7 @@ import { sweepAttached, withAttached } from './attach'
 import { joinStep, splitStep, type DeckInfo } from './deck'
 import { HAND_STEPS, hands, lineOf } from './handLine'
 import { SlidesStore } from './store'
-import { CHANGED_WHILE, deckDir, deckKey, deckPath, handKey, hashFile, isFirstVersion, keepHistory, keepOutline, outlineAt, replaceKeeping, scratch, sharedJob, writing, versionAt, type Ctx } from './view'
+import { CHANGED_WHILE, deckDir, deckKey, deckPath, handKey, hashFile, isFirstVersion, keepHistory, keepOutline, outlineAt, replaceKeeping, scratch, sharedJob, writing, versionAt, type Ctx, type Guard } from './view'
 
 /**
  * His own edits to a deck (docs/agents/work-slides.md "Edits by hand"). An
@@ -40,8 +40,9 @@ function sameWords(info: DeckInfo, op: Extract<SlideOp, { op: 'runs' }>): boolea
  * Writes his edits into the file, whole or not at all, and keeps the pack that takes them back. The file is
  * replaced only while it is still what was read; a copy from before is kept once a minute (`keepHistory`).
  */
-export async function handEdit(ctx: Ctx, item: CanvasItem, ops: SlideOp[], signal?: AbortSignal): Promise<void> {
+export async function handEdit(ctx: Ctx, item: CanvasItem, ops: SlideOp[], signal?: AbortSignal, guard?: Guard): Promise<void> {
   await writing(ctx, item, async () => {
+    guard?.()
     const path = await deckPath(ctx, item)
     const dir = await deckDir(ctx, item, 'undo')
     const [base, out, next, pack, info] = await Promise.all(['hand', 'step', 'next', 'pack', 'info'].map((what) => scratch(ctx, item, what)))
@@ -92,8 +93,9 @@ export async function handEdit(ctx: Ctx, item: CanvasItem, ops: SlideOp[], signa
 }
 
 /** Takes his last edit back, or puts back the one he took back, while the file is still what his edits left. */
-export async function handStep(ctx: Ctx, item: CanvasItem, dir: 'undo' | 'redo', signal?: AbortSignal): Promise<void> {
+export async function handStep(ctx: Ctx, item: CanvasItem, dir: 'undo' | 'redo', signal?: AbortSignal, guard?: Guard): Promise<void> {
   await writing(ctx, item, async () => {
+    guard?.()
     const path = await deckPath(ctx, item)
     const folder = await deckDir(ctx, item, 'undo')
     const [base, joined, out, next, back, info] = await Promise.all(['hand', 'in', 'step', 'next', 'pack', 'info'].map((what) => scratch(ctx, item, what)))
@@ -144,8 +146,9 @@ export async function versionsOf(ctx: Ctx, item: CanvasItem): Promise<DeckVersio
 }
 
 /** Puts a kept copy in the file's place. The deck as it is now is kept first, so a restore can itself be taken back from the list. */
-export async function restoreVersion(ctx: Ctx, item: CanvasItem, version: string): Promise<void> {
+export async function restoreVersion(ctx: Ctx, item: CanvasItem, version: string, guard?: Guard): Promise<void> {
   await writing(ctx, item, async () => {
+    guard?.()
     const dir = await deckDir(ctx, item, 'history')
     // A name of the list and nothing else: never a path.
     if (!/^[0-9]{15}-[0-9a-f]{4}(\.first)?\.pptx$/.test(version) || !existsSync(join(dir, version))) throw new Error('That version is no longer kept.')
