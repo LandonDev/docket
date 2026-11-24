@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import type { DocMode, DocOpen, DocWritten } from "@shared/contract-work-docs";
+import type { HistoryCompare } from "@shared/contract-work-history";
 import type { CanvasSource, ContextChip, Principal } from "@shared/work";
 import {
   DOCUMENT_LADDER,
@@ -23,6 +24,7 @@ import type { DocumentPage } from "work-kit/editor/page";
 import { Skeleton } from "../../components/ui/skeleton";
 import { loadToast } from "../../components/ui/toaster";
 import { useColorScheme } from "../../hooks/useColorScheme";
+import { registry } from "../../lib/connection";
 import { dayTime } from "../../lib/duration";
 import { ItemBones, ItemSkeleton } from "../canvas/ItemBones";
 import type { CanvasBodyProps, CanvasShell, MoreEntry, Presence } from "../canvas/kind";
@@ -571,17 +573,7 @@ function Opened({
 
   useEffect(() => {
     const w = doc.written;
-    shell.written(
-      w
-        ? {
-            text: `${w.text}, ${dayTime(w.at)}`,
-            undo: async () => {
-              await historyActions(host.env, open.source).restore(w.versionId);
-              await host.dismiss();
-            },
-          }
-        : null,
-    );
+    shell.written(w ? { text: `${w.text}, ${dayTime(w.at)}`, undo: () => undoWritten(host, open.source, w) } : null);
     return () => shell.written(null);
   }, [shell, doc.written, host, open.source]);
 
@@ -689,6 +681,29 @@ function Opened({
         : null}
     </div>
   );
+}
+
+/** What Undo of an agent's write says when the document changed since: restoring would take those changes too. */
+export const CHANGED_SINCE = "Not undone: the document has changed since. Restore an earlier version from History.";
+
+/**
+ * The bar's Undo of an agent's write: the version before it is restored only while the live text is still what the
+ * write left (its `after` version); once anyone has changed it since, restoring would take their words too, so the
+ * line goes and says so, and History keeps every version for a choice of his own.
+ */
+export async function undoWritten(host: Pick<DocHost, "env" | "dismiss">, source: CanvasSource, w: DocWritten): Promise<void> {
+  if (w.after) {
+    const { diff } = await registry.linkOf(host.env).request<HistoryCompare>("work.history.compare", { source, from: w.after, to: "live" });
+    const { added, removed, changed, moved } = diff.stats;
+    if (added + removed + changed + moved > 0 || diff.page?.length) {
+      await host.dismiss();
+      const toast = await loadToast();
+      toast.message(CHANGED_SINCE);
+      return;
+    }
+  }
+  await historyActions(host.env, source).restore(w.versionId);
+  await host.dismiss();
 }
 
 /** A selection as the composer's chip: its first 40 characters in quotes, then the document's name. */

@@ -135,7 +135,14 @@ describe('an agent writing a document', () => {
     expect(said).toEqual({ text: 'Wrote 1 section.', error: false })
     expect(await r.text()).toContain('9:30 AM')
     const written = docsPushes(r.pushes).find((p) => p.written)!.written!
-    expect(written).toMatchObject({ text: 'Wrote 1 section', versionId: expect.any(String) })
+    expect(written).toMatchObject({ text: 'Wrote 1 section', versionId: expect.any(String), after: expect.any(String) })
+    // The version cut after the write is the live text: Undo is offered while it still is (the window compares them).
+    const same = (await r.post('/internal/history/compare', { file: r.path, from: written.after, to: 'live', fence: { sectors: 'all' } })) as { diff: { stats: Record<string, number> } }
+    expect(same.diff.stats).toMatchObject({ added: 0, removed: 0, changed: 0, moved: 0 })
+    await r.service.collab.writeMarkdown(r.name, 'owner', md('# Week 1', 'Meet the team at 9:30 AM', 'Bring the keys', '# Week 2', 'Shadow the front desk'), { path: r.path })
+    const since = (await r.post('/internal/history/compare', { file: r.path, from: written.after, to: 'live', fence: { sectors: 'all' } })) as { diff: { stats: Record<string, number> } }
+    expect(since.diff.stats.added).toBe(1)
+    await r.service.collab.writeMarkdown(r.name, 'owner', md('# Week 1', 'Meet the team at 9:30 AM', '# Week 2', 'Shadow the front desk'), { path: r.path })
     expect((await r.ask<DocOpen>('work.docs.open', { source: r.source })).written).toEqual(written)
     // Undo restores the version cut just before the write.
     await r.post('/internal/history/restore', { file: r.path, versionId: written.versionId, fence: { sectors: 'all' } })

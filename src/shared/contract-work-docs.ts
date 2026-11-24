@@ -25,6 +25,8 @@ export interface DocWritten {
   at: number
   /** the version cut just before the write: its Undo restores it (`work.history.restore`) */
   versionId: string
+  /** the version cut just after it: Undo goes back only while the live text is still this (his words since would go too) */
+  after?: string
 }
 
 export interface DocOpen {

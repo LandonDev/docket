@@ -12,11 +12,13 @@ const link = {
   onPush: vi.fn(() => () => undefined),
 };
 vi.mock("../../lib/connection", () => ({ registry: { linkOf: () => link } }));
+const said = vi.fn();
+vi.mock("../../components/ui/toaster", () => ({ loadToast: async () => ({ message: said }) }));
 
 const { changeId, decided, reviewOf } = await import("./review");
 const { relaySocket, servedBy, storedAll } = await import("./host");
 const { docThreads } = await import("./threads");
-const { presenceOf } = await import("./DocumentCanvas");
+const { presenceOf, undoWritten, CHANGED_SINCE } = await import("./DocumentCanvas");
 
 afterEach(() => {
   link.request.mockReset();
@@ -207,6 +209,33 @@ describe("the relayed socket", () => {
   it("a document another host serves names that host", () => {
     expect(servedBy(new Error("served elsewhere: env_box"))).toBe("env_box");
     expect(servedBy(new Error("not found"))).toBeNull();
+  });
+});
+
+describe("Undo of an agent's write", () => {
+  const source = { at: "file", host: "env_box", path: "/w/Plan.tcdoc" } as const;
+  const written = { text: "Wrote 1 section", at: 1, versionId: "v-before", after: "v-after" };
+  const stats = (n: number) => ({ same: 4, added: n, removed: 0, changed: 0, moved: 0 });
+
+  it("goes back to the version before it while the document is as the agent left it", async () => {
+    link.request.mockImplementation(async (method) => (method === "work.history.compare" ? { diff: { stats: stats(0), rows: [], lines: [] }, names: {} } : { ok: true }));
+    const dismiss = vi.fn(async () => undefined);
+    await undoWritten({ env: "env_box", dismiss }, source, written);
+    expect(link.request.mock.calls.map(([m, p]) => [m, (p as { from?: string; versionId?: string }).from ?? (p as { versionId?: string }).versionId])).toEqual([
+      ["work.history.compare", "v-after"],
+      ["work.history.restore", "v-before"],
+    ]);
+    expect(dismiss).toHaveBeenCalled();
+  });
+
+  it("restores nothing once anyone has changed it since: the line goes and says why", async () => {
+    said.mockReset();
+    link.request.mockImplementation(async (method) => (method === "work.history.compare" ? { diff: { stats: stats(2), rows: [], lines: [] }, names: {} } : { ok: true }));
+    const dismiss = vi.fn(async () => undefined);
+    await undoWritten({ env: "env_box", dismiss }, source, written);
+    expect(link.request.mock.calls.map(([m]) => m)).toEqual(["work.history.compare"]);
+    expect(dismiss).toHaveBeenCalled();
+    expect(said).toHaveBeenCalledWith(CHANGED_SINCE);
   });
 });
 

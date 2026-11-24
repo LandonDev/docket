@@ -156,7 +156,7 @@ async function write(ctx: ToolCtx, a: TargetArgs & WhyWrite & { markdown: string
   }
   const text = `Wrote ${plural(parts.count, parts.unit)}`
   // His own document, on the agent's own idea: the bar says what was written, with Undo.
-  if (verdict === 'own' && done.versionId && done.beforeVersionId) wrote(ctx, t.doc, { text, at: Date.now(), versionId: done.beforeVersionId }, pathOf(t))
+  if (verdict === 'own' && done.versionId && done.beforeVersionId) wrote(ctx, t.doc, { text, at: Date.now(), versionId: done.beforeVersionId, after: done.versionId }, pathOf(t))
   return workText(`${text}.${note}`)
 }
 
@@ -187,7 +187,7 @@ async function format(ctx: ToolCtx, a: FormatArgs): Promise<WorkToolResult> {
     return workText(`Suggested formatting on ${amount}: he accepts or rejects it in the document.${note}`)
   }
   const text = `${on && !page ? 'Formatted' : 'Applied'} ${amount}`
-  if (verdict === 'own' && done.versionId && done.beforeVersionId) wrote(ctx, t.doc, { text, at: Date.now(), versionId: done.beforeVersionId }, pathOf(t))
+  if (verdict === 'own' && done.versionId && done.beforeVersionId) wrote(ctx, t.doc, { text, at: Date.now(), versionId: done.beforeVersionId, after: done.versionId }, pathOf(t))
   return workText(`${text}${done.words.length ? ': ' + done.words.join(', ') : ''}.${note}`)
 }
 
