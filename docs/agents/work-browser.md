@@ -214,7 +214,16 @@ awake. The code is `src/main/server/work/browser/box/`; the protocol's
   `window()` is the window its last read was of, by id; `end()` closes the
   session and drops the mark. Its session is listed in no row and is no
   pane's page. Tests swap in their own host list with
-  `setCarrierOnlyHostsForTest`.
+  `setCarrierOnlyHostsForTest`. A carrier session takes no picture of any
+  page: the service refuses a screenshot or stream on it and never takes a
+  thin read's automatic one. Its `fetch` (`carrierFetch`) asks only the
+  page's own origin and follows no redirect. Its `close` of the browser's
+  last page empties that page instead, since a headed Chromium quits with its
+  last window.
+- **A browser started again** has a new pid. On the first connection to it
+  the service sends `apps/changed`, so the host's sessions drop the pid they
+  cached by name; without it every call after a restart found no
+  "Chromium" (msforms P2).
 - **The hold** is run.ts's, unchanged: the host reads a Work thread's step
   on the screen (`readOutward`, with `org.chromium.Chromium` in
   `BROWSER_BUNDLES` so a mail or chat page's Return counts), keeps it as a

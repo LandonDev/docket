@@ -169,7 +169,7 @@ export async function pullWorkbook(deps: PullDeps, formId: string, ask: PullAsk)
       if (t.every === 0 && waited > t.noMove) break
     }
     if (!placed(await facts())) throw new CarrierStop(MOVED_WORDS, null, formId)
-    const body = await computer.fetch(site, `${api}/GetFileById('${q(docId)}')/$value`, { bytes: true })
+    const body = await computer.fetch(site, `${api}/GetFileById('${q(docId!)}')/$value`, { bytes: true })
     if (body.status !== 200 || !body.bytes) throw new CarrierStop('SharePoint did not give the workbook. The answers were not read.', null, formId)
     return { workbook: { uniqueId: file.UniqueId, parentId, serverPath: file.ServerRelativeUrl, name: file.Name }, bytes: body.bytes, modified }
   } finally {

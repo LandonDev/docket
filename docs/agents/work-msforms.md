@@ -97,10 +97,14 @@ work-forms.md "Make this a Microsoft form"); `collect: true` also collects at th
 ## Reading answers
 
 msforms/answers/. A read is the Responses view's count first (cheap); when it moved, or the memory holds no rows, the
-pull: Open results in Excel (and its first-use Continue) kept open so Forms writes its rows, then from a second
-window on the folder's site page SharePoint REST by the file's id (its parent must still be the form's folder, else
-the read is refused and the workbook not stored), waiting for Modified to move and stand still, then the bytes into
-memory; both windows close and what the browser stored for those origins is cleared. `answersOf` (parse.ts) finds
+pull: Open results in Excel (and its first-use Continue; once the workbook exists, the view's button that names it
+instead) kept open so Forms writes its rows. The workbook is the one that Excel for the web window opened: its
+document id (`sourcedoc=` in the address) binds it, never a name. From a second window on the folder's site page,
+SharePoint REST checks that id, the form's site and the place, before the first byte and again after the wait (a
+move, another file or no Excel window stops the read and nothing is stored). The place is the form's folder, or, for
+a form made in a Team library, that library's root: Forms makes a Team form's workbook there, named after the form,
+where every member of the team can open it (P1). Then it waits for Modified to move and stand still (or 90 s with
+none), and the bytes come into memory. The windows close and what the browser stored for those origins is cleared. `answersOf` (parse.ts) finds
 `OfficeForms.Table` and reads it by header name: `Id`, `Start time`, `Completion time`, `Email`, `Name`, then each
 question by title. Past 5,000 rows the newest are kept and the summary line says so. A timeout keeps the last rows,
 marked stale ("as of").
@@ -188,3 +192,38 @@ declined, with why, is `review-built-answer.md` beside it):
 - A redesign of Microsoft's page that renames a listed control; the canary is how we learn.
 
 ## Proofs
+
+**P1 and P2, live, 2026-11-24** (`scripts/proof-msforms.ts`; notes and pictures in `.temp-code/plans/ms-forms/P1/`
+and `P2/`). The box browser on a copy of the box's Work browser profile, the outbox and msforms pillars on their own
+database with the VM's RecWell library record, the real carrier; his presses as owner calls. Dummies only, in a
+folder made for the proof in RecWell's library; all deleted at the end.
+
+| Step | Time |
+|---|---|
+| New → Microsoft form in a RecWell folder: made, Accept responses off first, who can answer set, titled | 14 s |
+| Collect responses, held, then his press: collecting, the link read from Forms' dialog | 14 s |
+| The first pull: Open results in Excel, Continue, the workbook made, bound by its id, read | 1 min 43 s (90 s of it the wait for a save that did not come) |
+| An answer, then the quarter-hour check (one poller tick) | the tick's read failed on a browser that had just quit; his Refresh then showed it 124 s after its submit |
+| An answer, then his Refresh | 60 s for the Refresh itself |
+| A question renamed through the carrier's `write` | 9 s; the next read matched the workbook's column to the new title |
+
+Also proven: the form made from a Team library folder is a group form, listed at once in Forms' My groups → RecWell
+for the whole team; Forms makes it with Accept responses on (the carrier's first step turns it off); a thread's
+`box_browser_open` of a Forms address and a thread's `work.msforms.make` are refused; the tell is one row a form,
+counted in place ("3 new responses to …"), with no name; the routine's job filed one task per new answer, none twice
+(LifeOS stood in: no test session of his LifeOS on the box); `isFormsWorkbook` names the workbook.
+
+Not proven: the Files tab's guest (typing in the real builder and its reload on the agent's change) and Open the
+workbook Live, which need the Electron window; no windowed instance was run. The prefill (`Get Pre-filled URL`)
+reached the form's field and then did not find the link Forms shows: not working yet.
+
+Open, found by the proofs:
+- The box browser's 2 GB cap (`MEMORY_CAP_MB`, chromium.ts, the sum of each process's VmRSS) stopped it with a Forms
+  page, a SharePoint page and a third open (2,053 and 2,784 MB; the PSS was about half). The proof raised it for
+  itself; on the host a make or a pull can be stopped part way.
+- After each pull the box browser's Chromium quit (no stop logged; the cause was not found). The next carrier call
+  met a fresh browser whose Forms page signs in again for several seconds, and failed once. Since this proof the
+  service tells the host's sessions of the new browser (`apps/changed`), so the call after that works.
+- A thread's refused Forms open reads "open refused an item; give documents, folders or web pages", not the
+  service's own Forms sentence.
+

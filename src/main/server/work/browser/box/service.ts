@@ -509,8 +509,9 @@ export class BoxComputerService {
       const b = new Uint8Array(await r.arrayBuffer()); let s = ''; for (let i = 0; i < b.length; i += 0x8000) s += String.fromCharCode.apply(null, b.subarray(i, i + 0x8000))
       return { status: r.status, base64: btoa(s) }
     })`
-    const { result } = await cdp.send<{ result: { value?: { status: number; text?: string; base64?: string } } }>('Runtime.evaluate', { expression, awaitPromise: true, returnByValue: true }, sid)
-    const v = result.value ?? { status: 0 }
+    const { result, exceptionDetails } = await cdp.send<{ result: { value?: { status: number; text?: string; base64?: string } }; exceptionDetails?: unknown }>('Runtime.evaluate', { expression, awaitPromise: true, returnByValue: true }, sid)
+    // a fetch that failed (a refused redirect, the network) answers status 0, never the error's own words
+    const v = !exceptionDetails && typeof result.value?.status === 'number' ? result.value : { status: 0 }
     if (v.base64 !== undefined) return { status: v.status, bytes: new Uint8Array(Buffer.from(v.base64, 'base64')) }
     let json: unknown
     try {
