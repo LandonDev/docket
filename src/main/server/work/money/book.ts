@@ -242,17 +242,40 @@ function needs(ledger: Ledger, values: Values): void {
 /**
  * A row Money wrote before and noted (an add taken up again after a stop),
  * by the Ref it was given, else by the file it names: in the ledger, or
- * waiting in it as a suggestion. When the note names a file, the row found
- * by Ref must name that file too: a row that only shares the Ref is not
- * this add's. Both are looked for in every cell of the row, whatever its
- * headers are called now.
+ * waiting in it as a suggestion. Both are looked for in every cell of the
+ * row, whatever its headers are called now. A Ref is Money's own and
+ * random: the one row that holds it, and names the noted file, is this
+ * add's; so is that row when the noted file is no longer at its place
+ * (`moved`: he renamed the kept file since) and the row links another file
+ * in the same folder of Money's (Receipts/…, Invoices/…): the link followed
+ * the rename. A Ref that stands in a row naming another file while the
+ * noted file is still there, or in two rows, cannot be settled by a guess:
+ * nothing is written and he is told which row to look at, since a new row
+ * could be the same money twice.
  */
-export function writtenRow(ledger: Pick<Ledger, 'grid'>, mark: { ref?: string | null; receipt?: string | null }): { ref: string | null; row: number; suggested: boolean } | null {
-  const byRef = mark.ref ? writtenAt(ledger.grid, mark.ref, mark.receipt) : null
-  if (byRef) return { ref: mark.ref!, ...byRef }
+export function writtenRow(ledger: Pick<Ledger, 'grid'>, mark: { ref?: string | null; receipt?: string | null; moved?: boolean }): { ref: string | null; row: number; suggested: boolean } | null {
+  if (mark.ref) {
+    const { body, pending } = ledger.grid
+    const top = mark.receipt ? `${mark.receipt.split('/')[0]}/` : ''
+    const followed = (v: Cell): boolean => !!mark.moved && typeof v === 'string' && v !== mark.receipt && v.startsWith(top)
+    const rows = body.flatMap((line, i) => (line.includes(mark.ref!) ? [i] : []))
+    const waits = pending.filter((p) => p.v === mark.ref)
+    if (rows.length + waits.length > 1) throw new MoneyError(unsettled(rows.length ? 2 + rows[0] : waits[0].row))
+    if (rows.length === 1) {
+      const line = body[rows[0]]
+      if (!mark.receipt || line.includes(mark.receipt) || line.some(followed)) return { ref: mark.ref, row: 2 + rows[0], suggested: false }
+      throw new MoneyError(unsettled(2 + rows[0]))
+    }
+    if (waits.length === 1) {
+      const at = waits[0].row
+      if (!mark.receipt || pending.some((q) => q.row === at && (q.v === mark.receipt || followed(q.v)))) return { ref: mark.ref, row: at, suggested: true }
+      throw new MoneyError(unsettled(at))
+    }
+  }
   const byFile = mark.receipt ? writtenAt(ledger.grid, mark.receipt) : null
   return byFile ? { ref: null, ...byFile } : null
 }
+const unsettled = (row: number): string => `Row ${row} of the ledger may already hold this one. Check that row: if it is this one, discard it here.`
 
 /**
  * Adds a row under the last one that holds anything and under every row

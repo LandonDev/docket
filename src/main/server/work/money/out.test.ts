@@ -5,6 +5,7 @@ import { MONEY_CAPS, MONEY_OWNER_ONLY, MONEY_PART_BYTES, type MoneyExport, type 
 import { ACT_KINDS, ACT_PILLAR } from '@shared/work/acts'
 import type { Caller } from '../modules'
 import { money } from '.'
+import { relink } from './moved'
 import { publishSet } from './out'
 import { bench, LOCAL, REMOTE, req, type Bench } from './testing'
 import { moneyTools } from './tools'
@@ -245,6 +246,20 @@ describe('export for tax time', () => {
     expect(readFileSync(join(into, 'Ledger 2026.xlsx'), 'utf8')).toBe('new xlsx')
   })
 
+  it('moves nothing of his when a folder stands at a name the export takes, and the last export’s summary still lands', async () => {
+    await add({ date: '2026-03-01', who: 'Dated', amount: 1000 })
+    const first = await call<MoneyExport>('work.money.export', { workspaceId: 'ws-ref', year: 2026 })
+    rmSync(join(tax(), 'Ledger 2026.xlsx'))
+    mkdirSync(join(tax(), 'Ledger 2026.xlsx'))
+    writeFileSync(join(tax(), 'Ledger 2026.xlsx', 'his notes.txt'), 'mine')
+    const csv = readFileSync(join(tax(), 'Ledger 2026.csv'), 'utf8')
+    await expect(call('work.money.export', { workspaceId: 'ws-ref', year: 2026 })).rejects.toThrow('Tax 2026 holds a folder named Ledger 2026.xlsx')
+    expect(readFileSync(join(tax(), 'Ledger 2026.xlsx', 'his notes.txt'), 'utf8')).toBe('mine')
+    expect(readFileSync(join(tax(), 'Ledger 2026.csv'), 'utf8')).toBe(csv)
+    // The failed export took no generation: the first one's printed summary is still the year's.
+    expect((await keep({ key: 'summary-after-fail', what: 'summary', year: 2026, generation: first.generation })).receipt).toBe('Tax 2026/Summary 2026.pdf')
+  })
+
   it('binds a page’s key to its job at the first part, before anything is put together', async () => {
     await add({})
     const { generation } = await call<MoneyExport>('work.money.export', { workspaceId: 'ws-ref', year: 2026, csv: false, xlsx: false })
@@ -423,6 +438,57 @@ describe('an invoice', () => {
     // The same Create unchanged is answered with what was kept.
     expect((await keep({ key: 'lost-then-edited', what: 'invoice', invoice: inv })).acted).toMatchObject({ ok: true, row: 2 })
     expect((await view()).rows).toHaveLength(1)
+  })
+
+  it('never lets an unfinished keep carry another number past the check: a changed number is taken as any Create takes one', async () => {
+    await call('work.money.open', { workspaceId: 'ws-ref' })
+    // 1043 is another invoice's, filed under its own key.
+    await create(invoice({ number: '1043', to: 'Other client' }), 'other-key-43')
+    const inv = invoice({ number: '1042' })
+    await call('work.money.invoice', { workspaceId: 'ws-ref', key: 'stuck-key-42', invoice: inv })
+    // The sheet refused 1042's row and the read that would settle it failed: its note stands.
+    const real = b.sheets.internal
+    let down = false
+    ;(b.ctx.service as { internal: unknown }).internal = async (route: string, body: Record<string, unknown>) => {
+      if (down) throw new Error('The Work service did not answer.')
+      if (route === '/internal/sheet/cells' && (body.sheet as { tcsheet: string }).tcsheet === join(b.ref, 'Money', 'Ledger.tcsheet')) {
+        down = true
+        throw new Error('The sheet changed while writing: try again.')
+      }
+      return real(route, body)
+    }
+    await expect(keep({ key: 'stuck-key-42', what: 'invoice', invoice: inv })).rejects.toThrow()
+    ;(b.ctx.service as { internal: unknown }).internal = real
+    // He changes the number to 1043 and creates again under the same key: taken, as for any Create.
+    await expect(call('work.money.invoice', { workspaceId: 'ws-ref', key: 'stuck-key-42', invoice: invoice({ number: '1043' }) })).rejects.toThrow('Invoice 1043 is taken')
+    await expect(keep({ key: 'stuck-key-42', what: 'invoice', invoice: invoice({ number: '1043' }) })).rejects.toThrow('is not held for this Create')
+    expect((await view()).rows.filter((r) => r.what === 'Invoice 1043')).toHaveLength(1)
+  })
+
+  it('files once an invoice whose kept file he renamed before its keep was settled', async () => {
+    await call('work.money.open', { workspaceId: 'ws-ref' })
+    const inv = invoice({ number: '1042' })
+    await call('work.money.invoice', { workspaceId: 'ws-ref', key: 'renamed-key', invoice: inv })
+    const real = b.sheets.internal
+    let down = false
+    ;(b.ctx.service as { internal: unknown }).internal = async (route: string, body: Record<string, unknown>) => {
+      if (down) throw new Error('The Work service did not answer.')
+      const got = await real(route, body)
+      if (route === '/internal/sheet/cells' && (body.sheet as { tcsheet: string }).tcsheet === join(b.ref, 'Money', 'Ledger.tcsheet')) {
+        down = true
+        throw new Error('The Work service did not answer.')
+      }
+      return got
+    }
+    await expect(keep({ key: 'renamed-key', what: 'invoice', invoice: inv })).rejects.toThrow('did not answer')
+    ;(b.ctx.service as { internal: unknown }).internal = real
+    const dir = join(b.ref, 'Money', 'Invoices')
+    renameSync(join(dir, 'Invoice 1042 Rivera Dental.pdf'), join(dir, 'Rivera 1042.pdf'))
+    await relink(b.ctx, 'ws-ref', 'Invoices/Invoice 1042 Rivera Dental.pdf', 'Invoices/Rivera 1042.pdf')
+    const got = await keep({ key: 'renamed-key', what: 'invoice', invoice: inv })
+    expect(got.receipt).toBe('Invoices/Rivera 1042.pdf')
+    expect((await view()).rows).toHaveLength(1)
+    expect(readdirSync(dir)).toEqual(['Rivera 1042.pdf'])
   })
 
   it('files one invoice for the same key sent twice at once', async () => {

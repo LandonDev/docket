@@ -241,12 +241,19 @@ async function receiveOnce(ctx: Ctx, p: ReceiveParams, by: Caller, ws: Workspace
     // He accepted it where he sent it from (an amount and a date) and it still waits here: its filing failed the
     // first time (the ledger's columns, say). The same Save again tries the filing again, and answers what came of it.
     if ((before.state === 'ready' || before.state === 'reading') && p.fields?.amount && p.fields.date) {
-      const acted = await accept(ctx, before.id, phoneFields(p.fields), ws, may)
+      const acted = await accept(ctx, before.id, phoneFields(p.fields), ws, may, { phone: true })
       return { id: before.id, state: 'filed', ...('ok' in acted && acted.suggested ? { suggested: true } : {}) }
     }
     // Filed already, and his Save again says other figures than were filed (he edited the draft after an answer was
     // lost): "filed" would let the phone drop a draft whose figures are not the ledger's. He is told what was filed.
-    if (before.state === 'filed' && p.fields?.amount && p.fields.date) unlike(before, phoneFields(p.fields), ws.id)
+    // After a complete Save there, a field he cleared since is such a change too; a draft he sent incomplete and filed
+    // on the desktop is answered as filed.
+    if (before.state === 'filed' && before.ref) {
+      const as = filedOf(before).as
+      if (p.fields?.amount && p.fields.date) unlike(before, phoneFields(p.fields), ws.id, may)
+      else if (p.fields && as?.phone) unlike(before, null, ws.id, may)
+      else if (as && as.workspaceId !== ws.id && !may(as.workspaceId)) return { id: before.id, state: 'filed' }
+    }
     return answer(before)
   }
   const id = before?.id ?? insert(ctx, { key: p.key, workspaceId: ws.id, state: 'partial', source: p.source, name: basename(p.name.replace(/\\/g, '/')).slice(0, 255), mime: p.mime })
@@ -285,7 +292,7 @@ async function receiveOnce(ctx: Ctx, p: ReceiveParams, by: Caller, ws: Workspace
   // He accepted it where he sent it from: an amount and a date are enough to file it.
   if (p.fields?.amount && p.fields.date) {
     set(ctx, id, { state: 'ready' })
-    const acted = await accept(ctx, id, phoneFields(p.fields), ws)
+    const acted = await accept(ctx, id, phoneFields(p.fields), ws, may, { phone: true })
     return { id, state: 'filed', ...('ok' in acted && acted.suggested ? { suggested: true } : {}) }
   }
   announce(ctx, ws.id)
@@ -298,10 +305,11 @@ async function receiveOnce(ctx: Ctx, p: ReceiveParams, by: Caller, ws: Workspace
 /** What a Save where he sent it from files: his figures, money out, paid. */
 const phoneFields = (f: NonNullable<ReceiveParams['fields']>): EntryFields => ({ date: f.date!, who: f.who ?? '', what: '', category: f.category ?? '', way: 'out', amount: f.amount!, status: 'Paid' })
 
-/** What a filed one was filed as, beside the answer it gave: the fields and the job. */
+/** What a filed one was filed as, beside the answer it gave: the fields and the job; `phone`, a complete Save where he sent it from. */
 interface Filed {
   fields: EntryFields
   workspaceId: string
+  phone?: boolean
 }
 const FILED_KEYS = ['date', 'who', 'what', 'category', 'way', 'amount', 'status', 'paidOn'] as const
 function filedOf(row: Pick<Row, 'ref'>): { acted: MoneyActed; as: Filed | null } {
@@ -309,18 +317,23 @@ function filedOf(row: Pick<Row, 'ref'>): { acted: MoneyActed; as: Filed | null }
   return { acted: acted as MoneyActed, as: as ?? null }
 }
 
+/** Said to a caller who may not ask about the job a receipt was filed into: that it was, and nothing of that job's figures. */
+const FILED_ELSEWHERE = 'That receipt was already filed in another job.'
+
 /**
  * A press on one that is filed already answers the first only when it asks
  * for what was filed: the same figures, the same job. One that differs (a
  * second window, a draft edited after a lost answer) is told what was
- * filed, so nothing closes on figures the ledger does not hold. A row filed
- * before what it was filed as was kept answers as it did.
+ * filed, so nothing closes on figures the ledger does not hold; told only
+ * the figures of a job the caller may ask about. A row filed before what it
+ * was filed as was kept answers as it did.
  */
-function unlike(row: Pick<Row, 'ref'>, fields: EntryFields, workspaceId: string): void {
+function unlike(row: Pick<Row, 'ref'>, fields: EntryFields | null, workspaceId: string, may: (workspaceId: string) => boolean): void {
   if (!row.ref) return
   const { as } = filedOf(row)
   if (!as) return
-  const same = as.workspaceId === workspaceId && FILED_KEYS.every((k) => (as.fields[k] ?? null) === (fields[k] ?? null))
+  if (as.workspaceId !== workspaceId && !may(as.workspaceId)) throw new MoneyError(FILED_ELSEWHERE)
+  const same = fields !== null && as.workspaceId === workspaceId && FILED_KEYS.every((k) => (as.fields[k] ?? null) === (fields[k] ?? null))
   if (same) return
   const elsewhere = as.workspaceId !== workspaceId ? ' in another job' : ''
   throw new MoneyError(`That receipt was already filed${elsewhere}: ${formatMoney(as.fields.amount)} on ${formatDay(as.fields.date)}. Change its row in the ledger.`)
@@ -398,26 +411,30 @@ export async function keepFile(ws: Workspace, from: string, sub: readonly string
 /**
  * His accept: the file is kept under `Money/Receipts/<year>/` by its day,
  * seller and amount, the row is appended with the file's path in Receipt,
- * and the waiting one is filed. `to` sends it to another job. A second
- * accept of the same one answers the first.
+ * and the waiting one is filed. `to` sends it to another job. Every accept
+ * and every discard of one receipt runs in that receipt's own queue, each
+ * reading the row afresh when its turn comes: a second press (one that
+ * waited behind a first that failed, too) never appends a second row.
+ * `phone`: a complete Save where he sent it from.
  */
-export function accept(ctx: Ctx, id: string, fields: EntryFields, to?: Workspace, may: (workspaceId: string) => boolean = () => true): Promise<MoneyActed> {
-  // One accept a receipt at a time: a second press while the first is being filed answers the first, and files nothing twice.
-  // A second press while the first is being filed waits for it, then is answered as a press on one filed: the
-  // first's answer when it asks for the same, else what was filed.
-  const running = accepting.get(id)
-  if (running) return running.catch(() => {}).then(() => acceptOnce(ctx, id, fields, to, may))
-  const run = acceptOnce(ctx, id, fields, to, may).finally(() => accepting.delete(id))
-  accepting.set(id, run)
-  return run
+export function accept(ctx: Ctx, id: string, fields: EntryFields, to?: Workspace, may: (workspaceId: string) => boolean = () => true, o: { phone?: boolean } = {}): Promise<MoneyActed> {
+  return turn(id, () => acceptOnce(ctx, id, fields, to, may, o.phone === true))
 }
-const accepting = new Map<string, Promise<MoneyActed>>()
+/** One receipt's queue: its accepts and discards, one after another, each after the last has ended however it ended. */
+const turn = <T>(id: string, fn: () => Promise<T>): Promise<T> => keyed(`receipt:${id}`, fn)
 
-/** What an accept in hand means to write, noted on the waiting row before the ledger is touched: the Ref its row will carry, the job, and the file it kept. */
+/**
+ * What an accept in hand means to write, noted on the waiting row before
+ * the ledger is touched: the Ref its row will carry, the job, the file it
+ * kept, and the figures of that press, which are what a row found later by
+ * this note was filed with, whatever a later press asks for.
+ */
 interface Intent {
   ref: string
   workspaceId: string
   receipt?: string
+  fields?: EntryFields
+  phone?: boolean
 }
 function intentOf(row: Pick<Row, 'state' | 'ref'>): Intent | null {
   if (row.state === 'filed' || !row.ref) return null
@@ -429,17 +446,18 @@ function intentOf(row: Pick<Row, 'state' | 'ref'>): Intent | null {
 }
 
 /** A file an unfinished accept kept that no row came to name: it is that accept's own, and goes. */
+const keptPath = (ws: Workspace, receipt: string): string => join(ws.path, MONEY_FOLDER, ...receipt.split('/').filter((p) => p && p !== '.' && p !== '..'))
 function unkeep(ws: Workspace, receipt: string): void {
-  const path = join(ws.path, MONEY_FOLDER, ...receipt.split('/').filter((p) => p && p !== '.' && p !== '..'))
+  const path = keptPath(ws, receipt)
   if (existsSync(path) && insideJob(ws, path)) rmSync(path, { force: true })
 }
 
 /** The waiting one is filed: its row is in the ledger (or waits there), its own copy of the file goes, and everyone who counts is told. */
-function fileIt(ctx: Ctx, row: Row, ws: Workspace, acted: MoneyActed, fields: EntryFields): MoneyActed {
+function fileIt(ctx: Ctx, row: Row, ws: Workspace, acted: MoneyActed, fields: EntryFields, phone: boolean): MoneyActed {
   reading.get(row.id)?.abort()
   // `workspace_id` stays the job it was sent to: the sender's key is that job's, wherever he filed it. What it was
   // filed as stays beside the answer, so a later press that asks for other figures is told (`unlike`).
-  set(ctx, row.id, { state: 'filed', ref: JSON.stringify({ ...acted, as: { fields, workspaceId: ws.id } satisfies Filed }), file: null })
+  set(ctx, row.id, { state: 'filed', ref: JSON.stringify({ ...acted, as: { fields, workspaceId: ws.id, ...(phone ? { phone: true } : {}) } satisfies Filed }), file: null })
   rmSync(folderOf(ctx, row.id), { recursive: true, force: true })
   announce(ctx, row.workspace_id)
   if (ws.id !== row.workspace_id) announce(ctx, ws.id)
@@ -447,12 +465,13 @@ function fileIt(ctx: Ctx, row: Row, ws: Workspace, acted: MoneyActed, fields: En
   return acted
 }
 
-async function acceptOnce(ctx: Ctx, id: string, fields: EntryFields, to: Workspace | undefined, may: (workspaceId: string) => boolean): Promise<MoneyActed> {
+async function acceptOnce(ctx: Ctx, id: string, fields: EntryFields, to: Workspace | undefined, may: (workspaceId: string) => boolean, phone: boolean): Promise<MoneyActed> {
   const row = byId(ctx, id)
   if (!row || row.state === 'dropped' || row.state === 'partial') throw new MoneyError('That one is not waiting any more.')
+  const target = (to ?? workspaceOf(ctx, row.workspace_id))?.id ?? row.workspace_id
   if (row.state === 'filed') {
     if (!row.ref) return { changed: true }
-    unlike(row, fields, (to ?? workspaceOf(ctx, row.workspace_id))?.id ?? row.workspace_id)
+    unlike(row, fields, target, may)
     return filedOf(row).acted
   }
   // An accept of this one was begun and not seen to its end (the host stopped between the ledger's write and this
@@ -464,8 +483,15 @@ async function acceptOnce(ctx: Ctx, id: string, fields: EntryFields, to: Workspa
   if (begun && there && !may(there.id)) throw new MoneyError('That receipt is being filed in another job. Finish it from there.')
   if (begun && there) {
     const books = booksHere(ctx, there.id)
-    const found = books ? writtenRow(await ledgerOf(ctx, books), begun) : null
-    if (found) return fileIt(ctx, row, there, { ok: true, ref: found.ref, row: found.row, ...(found.suggested ? { suggested: true as const } : {}) }, fields)
+    const found = books ? writtenRow(await ledgerOf(ctx, books), { ...begun, moved: !!begun.receipt && !existsSync(keptPath(there, begun.receipt)) }) : null
+    if (found) {
+      // Filed as that press asked: its figures are the row's, whatever this one asks. A press that asks for other
+      // figures is told what was filed (`unlike`), never answered as if its own had landed.
+      fileIt(ctx, row, there, { ok: true, ref: found.ref, row: found.row, ...(found.suggested ? { suggested: true as const } : {}) }, begun.fields ?? fields, begun.fields ? begun.phone === true : phone)
+      const now = byId(ctx, id)!
+      unlike(now, fields, target, may)
+      return filedOf(now).acted
+    }
     if (begun.receipt) unkeep(there, begun.receipt)
   }
   const ws = to ?? workspaceOf(ctx, row.workspace_id)
@@ -474,7 +500,7 @@ async function acceptOnce(ctx: Ctx, id: string, fields: EntryFields, to: Workspa
   if (row.file && !existsSync(row.file)) throw new MoneyError("That receipt's file is no longer on this computer. Discard it, then add it again.")
   const books = await openBooks(ctx, ws, 'ledger')
   const ref = newRef()
-  const note = (receipt?: string): void => set(ctx, id, { ref: JSON.stringify({ intent: { ref, workspaceId: ws.id, ...(receipt ? { receipt } : {}) } } satisfies { intent: Intent }) })
+  const note = (receipt?: string): void => set(ctx, id, { ref: JSON.stringify({ intent: { ref, workspaceId: ws.id, fields, ...(phone ? { phone: true } : {}), ...(receipt ? { receipt } : {}) } } satisfies { intent: Intent }) })
   note()
   let kept: { path: string; receipt: string } | null = null
   let got: Awaited<ReturnType<typeof appendRow>>
@@ -492,34 +518,41 @@ async function acceptOnce(ctx: Ctx, id: string, fields: EntryFields, to: Workspa
       (l) => writtenRow(l, { ref, receipt: kept?.receipt }),
       () => undefined
     )
-    if (landed) return fileIt(ctx, row, ws, { ok: true, ref: landed.ref, row: landed.row, ...(landed.suggested ? { suggested: true as const } : {}) }, fields)
+    if (landed) return fileIt(ctx, row, ws, { ok: true, ref: landed.ref, row: landed.row, ...(landed.suggested ? { suggested: true as const } : {}) }, fields, phone)
     if (landed === undefined) throw err
     if (kept) rmSync(kept.path, { force: true })
     set(ctx, id, { ref: null })
     throw err
   }
-  return fileIt(ctx, row, ws, { ok: true, ref: got.ref, row: got.row, ...(got.suggested ? { suggested: true as const } : {}) }, fields)
+  return fileIt(ctx, row, ws, { ok: true, ref: got.ref, row: got.row, ...(got.suggested ? { suggested: true as const } : {}) }, fields, phone)
 }
 
 /**
  * A waiting one is dropped. Its file is kept (a phone's scan is the only
  * copy once the phone has let go of its draft), so `undo` puts it back in
- * To confirm as it was. One that is being filed right now is left alone.
+ * To confirm as it was. A discard waits its turn behind an accept of the
+ * same receipt, and answers whether it took: false when that accept filed
+ * it first, so no window says Discarded (or offers Undo) for a receipt in
+ * the ledger.
  */
-export function drop(ctx: Ctx, id: string, undo = false): void {
-  const row = byId(ctx, id)
-  if (!row || accepting.has(id)) return
-  if (undo) {
-    if (row.state !== 'dropped') return
-    set(ctx, id, { state: 'ready' })
+export function drop(ctx: Ctx, id: string, undo = false): Promise<boolean> {
+  return turn(id, async () => {
+    const row = byId(ctx, id)
+    if (!row) return false
+    if (undo) {
+      if (row.state !== 'dropped') return false
+      set(ctx, id, { state: 'ready' })
+      announce(ctx, row.workspace_id)
+      return true
+    }
+    if (row.state === 'dropped') return true
+    if (row.state === 'filed' || row.state === 'partial') return false
+    reading.get(id)?.abort()
+    set(ctx, id, { state: 'dropped' })
     announce(ctx, row.workspace_id)
-    return
-  }
-  if (row.state === 'filed' || row.state === 'dropped' || row.state === 'partial') return
-  reading.get(id)?.abort()
-  set(ctx, id, { state: 'dropped' })
-  announce(ctx, row.workspace_id)
-  told(ctx, id)
+    told(ctx, id)
+    return true
+  })
 }
 
 /** A workspace is gone: the files that waited for it go too. */

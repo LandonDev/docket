@@ -342,6 +342,11 @@ describe('reading a receipt', () => {
     expect(parseReceipt([{ text: 'Plumber' }, { text: 'Labor 80.00' }, { text: 'Balance due $120.00' }], { today: TODAY }).amount).toBe(12000)
   })
 
+  it('never takes a gift card’s balance as the largest figure when no total could be read', () => {
+    expect(parseReceipt([{ text: 'Corner Shop' }, { text: 'Sandwich 12.50' }, { text: 'GIFT CARD REMAINING BALANCE $91.75' }], { today: TODAY }).amount).toBe(1250)
+    expect(parseReceipt([{ text: 'Corner Shop' }, { text: 'Sandwich 12.50' }, { text: 'Gift card remaining balance' }, { text: '$91.75' }], { today: TODAY }).amount).toBe(1250)
+  })
+
   it('never reads a date after today', () => {
     const got = parseReceipt([{ text: 'Shop' }, { text: 'Returns until 12/24/2026' }, { text: 'Sold 11/20/2026' }, { text: 'Total 5.00' }], { today: TODAY })
     expect(got.date).toBe('2026-11-20')

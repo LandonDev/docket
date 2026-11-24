@@ -169,6 +169,19 @@ describe("receipts in", () => {
     expect(asked("work.money.read").length).toBeGreaterThan(reads);
   });
 
+  it("says a receipt a Save filed first was not discarded, and offers no Undo", async () => {
+    host.read = (p) => readOf(p, undefined, { toConfirm: [waiting("a", { fields: { amount: 4210, date: null, who: "Corner Fuel", category: null } })] });
+    const before = host.answer;
+    host.answer = (method, params) => (method === "work.money.drop" ? { dropped: false } : before(method, params));
+    render(<View {...props} />);
+    await settle();
+    fireEvent.click(screen.getByRole("button", { name: "More for Corner Fuel" }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Discard" }));
+    await settle();
+    expect(toast).toHaveBeenCalledWith("Corner Fuel was already filed");
+    expect(toast).not.toHaveBeenCalledWith("Discarded Corner Fuel", expect.anything());
+  });
+
   it("offers no Review on a receipt still being read", async () => {
     host.read = (p) => readOf(p, undefined, { toConfirm: [waiting("c", { state: "reading", name: "late.jpg" })] });
     render(<View {...props} />);

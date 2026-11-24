@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto'
-import { constants, copyFileSync, existsSync, mkdirSync, renameSync, rmSync, writeFileSync } from 'node:fs'
-import { join } from 'node:path'
+import { constants, copyFileSync, existsSync, lstatSync, mkdirSync, renameSync, rmSync, writeFileSync } from 'node:fs'
+import { basename, join } from 'node:path'
 import type { z } from 'zod'
 import type { InvoiceFromSchema, InvoiceSchema, KeepParamsSchema, MoneyExport, MoneyInvoiceNext, MoneyInvoicePage, MoneyKept } from '@shared/contract-work-money'
 import { errorText } from '@shared/work/ids'
@@ -65,6 +65,12 @@ interface SetFile {
  */
 export function publishSet(into: string, set: readonly SetFile[], hooks: { rename?: (from: string, to: string) => void } = {}): { replaced: string[]; retired: string[] } {
   const move = hooks.rename ?? renameSync
+  // Every name is checked before anything moves: a folder (or anything but a file or a link) of his at a name the
+  // export would take is his, and is neither set aside nor replaced; the export stops and says so.
+  for (const f of set) {
+    const there = lstatSync(join(into, f.name), { throwIfNoEntry: false })
+    if (there && !there.isFile() && !there.isSymbolicLink()) throw new MoneyError(`${basename(into)} holds a folder named ${f.name}. Rename or move it, then export again.`)
+  }
   const tag = randomUUID()
   const staging: { name: string; tmp: string }[] = []
   const aside: { name: string; old: string }[] = []
@@ -77,7 +83,7 @@ export function publishSet(into: string, set: readonly SetFile[], hooks: { renam
       f.write(tmp)
     }
     for (const f of set) {
-      if (!existsSync(join(into, f.name))) continue
+      if (!lstatSync(join(into, f.name), { throwIfNoEntry: false })) continue
       const old = join(into, `${f.name}.${tag}.old`)
       move(join(into, f.name), old)
       aside.push({ name: f.name, old })
@@ -117,9 +123,7 @@ async function exportOnce(ctx: Ctx, ws: Workspace, o: { year: number; csv: boole
   if (log.problem) throw new MoneyError(`${mileageWords(log.problem)} Put it right, then export.`)
   const trips = log.trips
   const dir = taxFolder(ws, o.year)
-  // This export's place among the year's: its summary comes back later, printed by the window, and is kept only
-  // while no newer export has been made since.
-  const generation = nextExport(ctx, ws.id, o.year)
+  let generation = 0
   const xlsxName = `Ledger ${o.year}.xlsx`
   // What this export will write over: only the files it was asked for and that are there already.
   let replaced = false
@@ -160,6 +164,10 @@ async function exportOnce(ctx: Ctx, ws: Workspace, o: { year: number; csv: boole
       { name: `Summary ${o.year}.pdf` }
     ]
     const published = publishSet(into, set)
+    // This export's place among the year's, taken only once its files are in: its summary comes back later, printed
+    // by the window, and is kept only while no newer export has been made since. An export that failed takes none,
+    // so the last good export's summary still lands.
+    generation = nextExport(ctx, ws.id, o.year)
     replaced = published.replaced.length > 0
     files.push(...set.filter((f) => f.write).map((f) => f.name))
     for (const name of published.retired) warnings.push(`The older ${name} was removed, so the folder holds one export.`)
@@ -276,7 +284,7 @@ export async function invoicePage(ctx: Ctx, ws: Workspace, key: string, inv: Inv
     // the number is its own, whatever the books have noted of it since.
     // A keep of this key that was begun and not settled (its note stands) holds the number too, however long ago the
     // page was asked for: the same Create must be able to come back and settle it.
-    const own = claims.some((c) => c.key === key && c.kind === inv.kind && numberKey(c.number) === mine) || unsettled(ctx, ws.id, key)
+    const own = claims.some((c) => c.key === key && c.kind === inv.kind && numberKey(c.number) === mine) || unsettled(ctx, ws.id, key, inv)
     const taken = own ? [] : [...(await usedNumbers(ctx, ws, inv.kind)), ...claims.filter((c) => c.kind === inv.kind && c.key !== key).map((c) => c.number)]
     if (taken.some((n) => numberKey(n) === mine)) {
       const free = nextInvoiceNumber([...taken, ...(kept.last?.[inv.kind] ? [kept.last[inv.kind]!] : [])])
@@ -311,8 +319,23 @@ export function keep(ctx: Ctx, ws: Workspace, p: KeepParams): Promise<MoneyKept>
 }
 
 /** Whether a keep of this key in this job was begun and not settled: its note (the row's Ref, the file) still stands. */
-const unsettled = (ctx: Pick<WorkCtx, 'db'>, workspaceId: string, key: string): boolean =>
-  !!ctx.db.prepare("SELECT 1 FROM work_money_inbox WHERE key = ? AND source = 'kept' AND workspace_id = ? AND state = 'partial' AND ref IS NOT NULL").get(`kept:${key}`, workspaceId)
+/**
+ * Whether a keep of this key in this job was begun and not settled (its
+ * note still stands) for this very number of this kind: only that number is
+ * the key's own. A Create that changed its number since is checked as any
+ * other Create, so it never takes a number another invoice used. A note
+ * from before the invoice was kept with it holds as it did.
+ */
+const unsettled = (ctx: Pick<WorkCtx, 'db'>, workspaceId: string, key: string, inv: Pick<Invoice, 'kind' | 'number'>): boolean => {
+  const row = ctx.db.prepare("SELECT fields FROM work_money_inbox WHERE key = ? AND source = 'kept' AND workspace_id = ? AND state = 'partial' AND ref IS NOT NULL").get(`kept:${key}`, workspaceId) as { fields: string | null } | undefined
+  return !!row && sameNumber(row.fields, inv)
+}
+/** Whether a noted invoice is of this kind and number (true for a note that kept no invoice). */
+function sameNumber(fields: string | null, inv: Pick<Invoice, 'kind' | 'number'>): boolean {
+  if (!fields) return true
+  const was = JSON.parse(fields) as Invoice
+  return was.kind === inv.kind && numberKey(was.number) === numberKey(inv.number)
+}
 
 /** What a keep in hand means to write, noted before the ledger is touched (as an accept's is): the Ref of the invoice's row and the file it kept. */
 interface KeepIntent {
@@ -402,17 +425,21 @@ async function keepOnce(ctx: Ctx, ws: Workspace, p: KeepParams): Promise<MoneyKe
       begun = null
     }
     if (begun) {
-      const found = writtenRow(await ledgerOf(ctx, books), begun)
+      const ledger = await ledgerOf(ctx, books)
+      // Found by its Ref, also when he renamed the kept file since (its row's link followed it): filed under the link the row holds now.
+      const found = writtenRow(ledger, { ...begun, moved: !!begun.receipt && !existsSync(fileOf(begun.receipt)) })
       if (found && begun.receipt) {
         samePage(noted!, inv)
-        return filed(begun.receipt, found)
+        return filed(ledger.rows.find((r) => r.row === found.row)?.receipt || begun.receipt, found)
       }
       // Its row was never written: the file that keep left is no row's, and goes.
       if (begun.receipt && existsSync(fileOf(begun.receipt)) && insideJob(ws, fileOf(begun.receipt))) rmSync(fileOf(begun.receipt), { force: true })
     }
     // The page is this Create's own: its key took this number of this kind when the page was asked for
-    // (`invoicePage`), and still holds it. A page nobody took a number for is not filed.
-    const held = begun !== null || (keptOf(ctx, ws.id).claims ?? []).some((c) => c.key === p.key && c.kind === inv.kind && numberKey(c.number) === numberKey(inv.number) && Date.now() - c.at < CLAIM_MS)
+    // (`invoicePage`), and still holds it; or a keep of this very number was begun under it. A begun keep holds no
+    // other number: one he changed since must have been taken as any Create takes one. A page nobody took a number
+    // for is not filed.
+    const held = (begun !== null && sameNumber(noted?.fields ?? null, inv)) || (keptOf(ctx, ws.id).claims ?? []).some((c) => c.key === p.key && c.kind === inv.kind && numberKey(c.number) === numberKey(inv.number) && Date.now() - c.at < CLAIM_MS)
     if (!held) throw new MoneyError(`${TITLE[inv.kind]} ${inv.number} is not held for this Create any more. Create it again.`)
     const ref = newRef()
     // The invoice itself is noted with its intent: a later press of this key is answered only for the same invoice.

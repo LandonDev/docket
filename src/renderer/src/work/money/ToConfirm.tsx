@@ -30,11 +30,15 @@ const ROW = cn("grid min-h-12 items-center gap-3 border-b border-border text-[13
 /** "Nov 20", or "Nov 20, 2025" when it is not this year's. */
 export const shortDay = (day: string, now: string = today()): string => formatDay(day, day.slice(0, 4) !== now.slice(0, 4));
 
-/** Drops a waiting receipt (its file is kept a while), and says so with Undo. */
-export async function dropWaiting(env: string, item: Pick<Waiting, "id" | "name" | "fields">, reload: () => Promise<void>): Promise<void> {
-  await request(env, "work.money.drop", { id: item.id });
+/** Drops a waiting receipt (its file is kept a while), and says so with Undo. False: a Save of it in another window filed it first, and nothing was discarded. */
+export async function dropWaiting(env: string, item: Pick<Waiting, "id" | "name" | "fields">, reload: () => Promise<void>): Promise<boolean> {
+  const got = await request<{ dropped?: boolean } | null>(env, "work.money.drop", { id: item.id });
   void reload();
   const what = item.fields.who || item.name || "the receipt";
+  if (got?.dropped === false) {
+    void loadToast().then((toast) => toast(`${what} was already filed`));
+    return false;
+  }
   void loadToast().then((toast) =>
     toast(`Discarded ${what}`, {
       action: {
@@ -43,6 +47,7 @@ export async function dropWaiting(env: string, item: Pick<Waiting, "id" | "name"
       },
     }),
   );
+  return true;
 }
 
 /** Skips an offer: it is not offered again, and a toast says so with Undo. */

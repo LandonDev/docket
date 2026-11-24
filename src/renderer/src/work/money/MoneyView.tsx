@@ -335,6 +335,7 @@ type UndatedProblem = Extract<MoneyProblem, { kind: "undated" }>;
 export function mileageWords(p: MileageProblem): string {
   if (p.reason === "outside") return "The mileage log leads outside this job's folder, so its trips are not counted.";
   if (p.reason === "unreadable") return "The mileage log could not be read, so its trips are not counted.";
+  if (p.reason === "twice") return `The mileage log has two ${p.missing.join(" and two ")} columns, so its trips are not counted.`;
   const what = p.missing.length > 1 ? `${p.missing.slice(0, -1).join(", ")} or ${p.missing[p.missing.length - 1]}` : (p.missing[0] ?? "Miles");
   return `The mileage log has no ${what} column, so its trips are not counted.`;
 }

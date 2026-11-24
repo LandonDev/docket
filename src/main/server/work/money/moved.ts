@@ -24,12 +24,13 @@ const under = (root: string, path: string): string | null => {
 }
 
 /**
- * Rewrites every cell that held `from` to `to`, both paths under the job's
- * Money folder. The cells are looked for in the sheet as it stands, in
- * every column: a ledger that cannot be read as money just now (he renamed
- * Out while he works on it, or the Receipt header) still has its link kept,
- * and a cell that holds a kept file's whole path is that file's link
- * whatever its header says.
+ * Rewrites every Receipt cell that held `from` to `to`, both paths under the
+ * job's Money folder. The column is found by its header in the sheet as it
+ * stands, and its cells read raw: a ledger that cannot be read as money just
+ * now (he renamed Out while he works on it) still has its link kept. Only
+ * the Receipt column is written: a cell of his elsewhere that reads the same
+ * (a formula that mirrors Receipt) is his, and stays. With no Receipt header
+ * nothing is written: no cell is known to be the link.
  */
 export async function relink(ctx: Ctx, workspaceId: string, from: string, to: string): Promise<number> {
   const ws = workspaces(ctx).find((w) => w.id === workspaceId)
@@ -39,7 +40,11 @@ export async function relink(ctx: Ctx, workspaceId: string, from: string, to: st
     const books = booksHere(ctx, workspaceId)
     if (!books) return 0
     const ledger = await ledgerOf(ctx, books)
-    const cells = ledger.grid.body.flatMap((line, i) => line.flatMap((v, c) => (v === from ? [{ at: `${columnLetter(c)}${i + 2}`, v: to }] : [])))
+    const named = ledger.grid.header.flatMap((h, i) => (String(h ?? '').trim().toLowerCase() === 'receipt' ? [i] : []))
+    // Two Receipt headers: which is the link cannot be said, and nothing is written.
+    if (named.length !== 1) return 0
+    const col = named[0]
+    const cells = ledger.grid.body.flatMap((line, i) => (line[col] === from ? [{ at: `${columnLetter(col)}${i + 2}`, v: to }] : []))
     const shared = cells.length > 0 && (await othersCanOpen(ctx, books.ledger, ledger.grid.shared))
     if (cells.length) await ctx.service.internal('/internal/sheet/cells', { sheet: { tcsheet: books.ledger }, cells, by: 'money', suggest: shared, ...(shared ? { reason: 'Money' } : {}) })
     return cells.length

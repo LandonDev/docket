@@ -1,5 +1,5 @@
 import type { MoneyActed, MoneyRate, MoneyTripped, TripParams } from '@shared/contract-work-money'
-import { centsFrom, columnLetter, columnsOf, MILEAGE_COLUMNS, payCategory, rateFor, type Cell, type MileageColumn } from '@shared/work/money'
+import { centsFrom, columnLetter, columnsOf, MILEAGE_COLUMNS, mileageTwice, payCategory, rateFor, type Cell, type MileageColumn } from '@shared/work/money'
 import type { WorkCtx } from '../modules'
 import { appendRow, locked, newRef, openBooks, othersCanOpen, write, writtenRow, type A1 } from './book'
 import { roleOf } from './calendar'
@@ -28,6 +28,9 @@ async function logOf(ctx: Ctx, books: Books): Promise<Grid> {
   const grid = await gridOf(ctx, books.mileage)
   const at = columnsOf(grid.header, MILEAGE_COLUMNS)
   if (at.Date === undefined || at.Miles === undefined || at.Rate === undefined || at.Value === undefined) throw new MoneyError(LOG_COLUMNS)
+  // A needed header twice: a trip written under the first would be read (or not) by whichever the reader takes.
+  const twice = mileageTwice(grid.header)
+  if (twice.length) throw new MoneyError(`The mileage log has two ${twice.join(' and two ')} columns. Rename or remove one in the log, then add the trip.`)
   return grid
 }
 
@@ -121,7 +124,9 @@ async function addOnce(ctx: Ctx, ws: Workspace, p: TripParams, id: string | null
   }
   // Added: what was filed stays on the mark (the miles beside the fee, its day and words), for a later press of the same key to answer with.
   if (id) markEvent(ctx, ws.id, id, { state: 'added', role, fee: fee > 0 ? fee : null, intent })
-  return { pay, trip, ...(p.eventId ? {} : { filed: filedOf(intent, fee > 0 ? fee : null) }) }
+  // What was filed, for a calendar trip too: a retry that kept the first add's fee or day while the form says another is
+  // told so in the dialog, never closed as if the form's figures had landed.
+  return { pay, trip, filed: filedOf(intent, fee > 0 ? fee : null) }
 }
 
 /** What a hand-typed trip's Add filed, as the dialog checks its form against: the miles, the fee, and its day and words when they were noted. */

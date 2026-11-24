@@ -174,7 +174,7 @@ export const MoneyRequestSchemas = [
   request('work.money.receive', ReceiveParamsSchema),
   /** → MoneyActed: his accept. The file is kept under Money/Receipts/<year>/, the row appended, the waiting one filed; `workspaceId` sends it to another job */
   request('work.money.accept', z.object({ id: z.string().min(1).max(100), fields: EntryFieldsSchema, workspaceId: workspaceId.optional() })),
-  /** → null: a waiting one is dropped; its file is kept a while, so `undo` puts it back in To confirm as it was */
+  /** → {dropped}: a waiting one is dropped; its file is kept a while, so `undo` puts it back in To confirm as it was. `dropped` false: an accept of it filed it first (or there was nothing to undo), and nothing was discarded */
   request('work.money.drop', z.object({ id: z.string().min(1).max(100), undo: z.boolean().optional() })),
   /** → MoneyPicture: a waiting receipt's picture (`id`) or a filed row's (`workspaceId` and the Receipt cell), a part at a time; a PDF is drawn as its first page */
   request('work.money.picture', z.object({ id: z.string().min(1).max(100).optional(), workspaceId: workspaceId.optional(), receipt: z.string().min(1).max(600).optional(), part: z.number().int().min(0).max(63).default(0) })),
@@ -182,7 +182,7 @@ export const MoneyRequestSchemas = [
   request('work.money.events', z.object({ workspaceId })),
   /** → MoneyTripped: a trip into the mileage log and its pay into the ledger (Game fees, Unpaid); the event it came from is marked added */
   request('work.money.trip', TripParamsSchema),
-  /** → null: a calendar event he does not want offered again; `undo` offers it again */
+  /** → {skipped}: a calendar event he does not want offered again; `undo` offers it again. `skipped` false: an Add of it came first */
   request('work.money.skip', z.object({ workspaceId, eventId: z.string().min(1).max(200), undo: z.boolean().optional() })),
   /** → MoneyRate: his own mileage rate for a year, in dollars a mile */
   request('work.money.rate', z.object({ workspaceId, year: z.number().int().min(1990).max(2100), rate: z.number().min(0).max(100) })),
@@ -233,11 +233,12 @@ export type MoneyProblem =
   /**
    * The mileage log cannot be read, so the miles shown are none and are not
    * the truth: `outside`, its file leads out of the job's folder; `columns`,
-   * it holds rows and lacks Date or Miles (`missing`); `unreadable`, the
+   * it holds rows and lacks Date or Miles (`missing`); `twice`, a Date,
+   * Miles, Rate or Value header stands twice (`missing` names it); `unreadable`, the
    * sheet could not be opened at all. An export is refused until it is
    * right. The ledger reads all the same.
    */
-  | { kind: 'mileage'; reason: 'outside' | 'columns' | 'unreadable'; missing: string[] }
+  | { kind: 'mileage'; reason: 'outside' | 'columns' | 'unreadable' | 'twice'; missing: string[] }
 
 export interface MoneyRead {
   /** false: this job has no ledger yet, and everything below is empty */

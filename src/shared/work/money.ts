@@ -556,6 +556,11 @@ export function mileageMissing(header: readonly Cell[], body: readonly (readonly
   return missing.length && body.some((line) => line.some((c) => c !== undefined && c !== null && c !== '')) ? [...missing] : []
 }
 
+/** The headers the log needs that stand twice (a Miles column copied, the old one cleared): which holds the trips cannot be said, so none is read and none is written. */
+export function mileageTwice(header: readonly Cell[]): MileageColumn[] {
+  return (['Date', 'Miles', 'Rate', 'Value'] as const).filter((c) => header.filter((h) => textOf(h).toLowerCase() === c.toLowerCase()).length > 1)
+}
+
 export function mileageOf(header: readonly Cell[], body: readonly (readonly Cell[])[], firstRow = 2): MileageRow[] {
   const columns = columnsOf(header, MILEAGE_COLUMNS)
   if (columns.Miles === undefined) return []
@@ -679,7 +684,9 @@ export function figuresIn(text: string): number[] {
 const TOTAL_WORDS = /\b(grand\s+total|amount\s+due|balance\s+due|total\s+due|balance|total)\b/i
 /** A balance is what is left to pay, which a paid receipt prints after its total: the total is the sale's, and a balance stands only where no total does. */
 const BALANCE_ONLY = /\bbalance\b/i
-const NOT_THE_TOTAL = /\b(sub\s*-?\s*total|total\s+(tax|savings|discount|items?|qty|points)|tax\s+total|items?\s+total|gift\s*card|remaining\s+balance|balance\s+remaining|(card|points?|previous|available|account)\s+balance|change\s+due)\b/i
+/** Money that is not the sale's at all (what is left on a gift card, change handed back): never the amount, by its label or as the largest figure. */
+const NOT_THE_SALE = /\b(gift\s*card|remaining\s+balance|balance\s+remaining|(card|points?|previous|available|account)\s+balance|change\s+due)\b/i
+const NOT_THE_TOTAL = new RegExp(`\\b(sub\\s*-?\\s*total|total\\s+(tax|savings|discount|items?|qty|points)|tax\\s+total|items?\\s+total)\\b|${NOT_THE_SALE.source}`, 'i')
 
 const CATEGORY_WORDS: readonly [RegExp, readonly string[]][] = [
   [/\b(fuel|gasoline|unleaded|diesel|gallons?|parking|garage|toll|airlines?|hotel|inn|lodging|uber|lyft|taxi|rental)\b/i, ['Travel']],
@@ -742,7 +749,8 @@ export function parseReceipt(lines: readonly ReceiptLine[], hints: ParseHints = 
   }
   let amount: number | null = total ?? balance ?? last
   if (amount === null) {
-    const all = rows.flatMap(figuresIn)
+    // Neither a figure on a line that names money not the sale's, nor one on the line under such a label standing alone.
+    const all = rows.flatMap((row, i) => (NOT_THE_SALE.test(row) || (i > 0 && NOT_THE_SALE.test(rows[i - 1]) && !figuresIn(rows[i - 1]).length && !/[A-Za-z]{3}/.test(row)) ? [] : figuresIn(row)))
     if (all.length) amount = Math.max(...all)
   }
 

@@ -61,8 +61,9 @@ export function ConfirmFlow({ env, workspaceId, read, first, onClose, reload }: 
     setDropping(true);
     withToast(() =>
       dropWaiting(env, item, reload)
-        .then(() => {
-          if (advance()) onClose();
+        .then((dropped) => {
+          // Filed by a Save elsewhere first: nothing was discarded, and the read that follows takes it out of the list.
+          if (dropped && advance()) onClose();
         })
         .finally(() => setDropping(false)),
     );

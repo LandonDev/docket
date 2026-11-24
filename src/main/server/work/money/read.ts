@@ -9,6 +9,7 @@ import {
   inPeriod,
   mileageMissing,
   mileageOf,
+  mileageTwice,
   milesOf,
   owedOf,
   rateFor,
@@ -223,7 +224,7 @@ export async function ledgerOf(ctx: Svc, books: Books): Promise<Ledger> {
 }
 
 /** Why a mileage log cannot be read as trips; null when it can. */
-export type MileageProblem = { kind: 'mileage'; reason: 'outside' | 'columns' | 'unreadable'; missing: string[] }
+export type MileageProblem = { kind: 'mileage'; reason: 'outside' | 'columns' | 'unreadable' | 'twice'; missing: string[] }
 export const LEDGER_OUTSIDE = "The ledger leads outside this job's folder, so Money does not read it."
 
 /** A job's ledger is on record and its file is there, but leads out of the job's folder (a link): it is neither read nor written, and the job is not an empty one. */
@@ -250,6 +251,9 @@ export async function mileageLog(ctx: Svc & Pick<WorkCtx, 'db'>, books: Pick<Boo
   // A log the sheet service cannot open (a damaged file) is the log's own fault: the ledger still reads.
   const grid = await gridOf(ctx, books.mileage).catch(() => null)
   if (!grid) return { trips: [], problem: { kind: 'mileage', reason: 'unreadable', missing: [] } }
+  // A needed header twice: the first would be read and the trips under the second left out of every sum and export.
+  const twice = mileageTwice(grid.header)
+  if (twice.length) return { trips: [], problem: { kind: 'mileage', reason: 'twice', missing: twice } }
   const missing = mileageMissing(grid.header, grid.body)
   if (missing.length) return { trips: [], problem: { kind: 'mileage', reason: 'columns', missing } }
   return { trips: mileageOf(grid.header, grid.body), problem: null }
@@ -257,7 +261,13 @@ export async function mileageLog(ctx: Svc & Pick<WorkCtx, 'db'>, books: Pick<Boo
 
 /** A mileage problem as a sentence. */
 export const mileageWords = (p: MileageProblem): string =>
-  p.reason === 'outside' ? MILEAGE_OUTSIDE : p.reason === 'unreadable' ? 'The mileage log could not be read.' : `The mileage log has no ${p.missing.join(' or ')} column, so its trips cannot be read.`
+  p.reason === 'outside'
+    ? MILEAGE_OUTSIDE
+    : p.reason === 'unreadable'
+      ? 'The mileage log could not be read.'
+      : p.reason === 'twice'
+        ? `The mileage log has two ${p.missing.join(' and two ')} columns, so its trips cannot be read.`
+        : `The mileage log has no ${p.missing.join(' or ')} column, so its trips cannot be read.`
 
 export const mileageRows = async (ctx: Svc & Pick<WorkCtx, 'db'>, books: Books): Promise<MileageRow[]> => (await mileageLog(ctx, books)).trips
 

@@ -176,6 +176,8 @@ describe('adding a trip', () => {
     // The next Add names no miles and another fee: the trip that add meant is logged, and the pay is the one row, at the fee it was written with.
     const again = await trip(west, { miles: undefined, fee: 9000 })
     expect(again.pay).toMatchObject({ ok: true, row: 2 })
+    // The answer says the fee that was filed, so a dialog whose form says $90 stays and says so.
+    expect(again.filed).toMatchObject({ fee: 8000, miles: 60 })
     expect(again.trip).toMatchObject({ row: 2, value: 4200 })
     expect(b.sheets.grid(ledger())).toHaveLength(2)
     expect(b.sheets.grid(ledger())[1][4]).toBe(80)
@@ -269,6 +271,18 @@ describe('adding a trip', () => {
     await trip(listed, { reopen: true })
     expect(b.sheets.grid(ledger())).toHaveLength(2)
     expect(b.sheets.grid(mileage())).toHaveLength(2)
+  })
+
+  it('reads no trips from a log whose Miles header stands twice, says so, refuses its export, and writes no trip into it', async () => {
+    await call('work.money.trip', { workspaceId: 'ws-ref', date: '2026-11-20', title: 'Clinic', place: 'Rec Center', miles: 10 })
+    // He copied Miles to H and cleared the old values, leaving both headers.
+    b.sheets.type(mileage(), 'H1', 'Miles')
+    b.sheets.type(mileage(), 'H2', 10)
+    b.sheets.type(mileage(), 'D2', '')
+    const got = await view()
+    expect(got.problems).toEqual([{ kind: 'mileage', reason: 'twice', missing: ['Miles'] }])
+    await expect(call('work.money.export', { workspaceId: 'ws-ref', year: 2026 })).rejects.toThrow('The mileage log has two Miles columns')
+    await expect(call('work.money.trip', { workspaceId: 'ws-ref', date: '2026-11-21', title: 'Clinic', place: 'Rec Center', miles: 10 })).rejects.toThrow('two Miles columns')
   })
 
   it('writes no trip into a log that could not say its worth: Rate or Value renamed stops the add before its pay', async () => {
