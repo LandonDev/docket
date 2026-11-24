@@ -18,7 +18,8 @@ while Work is on for some host).
   word (Working: the muted check; Needs you: amber; Broken: red) and one
   line after it, then when it lapses ("Ends Feb 17, 2027, 1:22 AM": US
   words, local time, "today" and "tomorrow" by the calendar) and the fix.
-  No line says more than one thing.
+  The window also words a sync or a lost connection's time from the row's
+  instant, such as "Synced 2:14 PM".
 - A row the pillar marks `shared` (a LifeOS source or a Google consent,
   which every signed-in host reads the same from LifeOS) is shown once when
   two hosts give it alike. A host's own row is never folded, nor one with a
@@ -59,7 +60,8 @@ One optional field on the module, two core reads and one frame tool
   broken row for everything that depends on it.
 - `HealthRow`: `id` (`<pillar>.<thing>[:<which>]`), `pillar`, `group`,
   `title`, `state` (`working`, `broken`, `needs-you`), `line?`, `fix?`,
-  `until?` (epoch ms), `sector?`, `shared?` (every host answers alike),
+  `at?` (epoch ms to append to the line), `until?` (epoch ms), `sector?`,
+  `shared?` (every host answers alike),
   `personal?` (it names his accounts, tenants or folders and has no one
   sector). No row carries a password, a token or a cookie's value: it says
   signed in or not, and as whom; and the frame blanks whatever looks like
@@ -98,6 +100,9 @@ One optional field on the module, two core reads and one frame tool
   key does. Rows come worst first, with the fix he can press.
 
 ## Things that lapse
+
+A window words `at` and `until` in its own zone. The `work_connections`
+tool uses `hisZone(ctx)` and names the zone when it gives a time of day.
 
 A row with a known end shows the date. The host tells him before it ends,
 through the digest (docs/agents/work-digest.md, the `lapses` source in

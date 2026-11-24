@@ -53,6 +53,7 @@ export class FakeLifeos implements LifeosTransport {
   readonly tasks = new Map<string, { sector: string; done?: { reason?: string; threadLink?: unknown } }>([['task1', { sector: 'purdue' }]])
   private pairing: { code: string; poll: string; approved: boolean; claimed: boolean } | null = null
   private conns = new Set<{ live: boolean }>()
+  private timezone: string | null = null
   identities = [{ name: 'Landon Hale', isDefault: true }]
   /** a mutation of this name fails as if the function did not exist (a LifeOS from before milestone 4) */
   missing = new Set<string>()
@@ -65,6 +66,11 @@ export class FakeLifeos implements LifeosTransport {
   setProjects(next: { _id: string; name: string; status: string; sector: string }[]): void {
     this.projects = next
     for (const w of [...this.watchers]) if (w.fn === 'projects:list') w.rerun()
+  }
+
+  setTimezone(zone: string | null): void {
+    this.timezone = zone
+    for (const w of [...this.watchers]) if (w.fn === 'settings:get') w.rerun()
   }
 
   /** A device token LifeOS knows, as `auth:mint` makes one. */
@@ -152,6 +158,8 @@ export class FakeLifeos implements LifeosTransport {
       switch (fn) {
         case 'auth:caller':
           return { ownerId: 'landon', sessionId: me.id, sectors: 'all', client: 'tempcode', draftOnly: false } as T
+        case 'settings:get':
+          return { timezone: this.timezone } as T
         case 'sectors:list':
           return SECTORS.map((key, order) => ({ _id: key, key, label: key, order })) as T
         case 'mail:accounts':

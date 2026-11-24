@@ -383,6 +383,9 @@ type, the mail thread, the message and the part):
 
 ## Waiting on
 
+The nudge prompt and `mail_waiting` use the owner's day from `hisZone(ctx)`
+when they say when he wrote.
+
 Mail he sent that no one answered. LifeOS keeps it (its `mailWaits`
 table, one row a mail thread, in the thread's sector), so LifeOS desktop
 shows the same list; the rows, the composer's control and the mailbox are

@@ -604,6 +604,9 @@ it. `doc_find` keeps what a thread reads beyond that: a `.tcdoc`'s and a
 
 ## The tools
 
+In `doc_find`, edit dates and date filters without an offset use
+`hisZone(ctx)`. An explicit offset names an instant.
+
 `doc_find` is the agent's search of the workspace ("the budget sheet from
 last month" is `{query: "budget", kinds: ["sheet"], edited_after:
 "2026-10-01"}`): the same filters, a project by name or id, a sort and a

@@ -188,7 +188,8 @@ describe('the answer as a thread reads it', () => {
         pending: [],
         quiet: [{ cause: 'lifeos', line: 'This host is not signed in to LifeOS' }, { cause: 'source:search.message', line: 'Messages did not answer.' }]
       },
-      reach
+      reach,
+      'America/Chicago'
     )
     expect(text).toBe(
       [
@@ -209,27 +210,27 @@ describe('the answer as a thread reads it', () => {
     )
   })
   it('says so when nothing was found', () => {
-    expect(searchText('zebra', { groups: [], pending: [], quiet: [] }, reach)).toBe('Nothing found for "zebra".')
+    expect(searchText('zebra', { groups: [], pending: [], quiet: [] }, reach, 'America/Chicago')).toBe('Nothing found for "zebra".')
   })
   it('at its own most rows a kind, tells the thread to narrow its words: there is no higher limit to ask for', () => {
     const mail = { source: 'search.mail', kind: 'mail', label: 'Mail', more: true, hits: [hit('lifeos:mailThreads:m1', PURDUE, { title: 'Budget' })] }
-    expect(searchText('budget', { groups: [mail], pending: [], quiet: [] }, reach, 20)).toContain('more mail match: ask again with more exact words')
-    expect(searchText('budget', { groups: [mail], pending: [], quiet: [] }, reach, 5)).toContain('and a higher limit')
+    expect(searchText('budget', { groups: [mail], pending: [], quiet: [] }, reach, 'America/Chicago', 20)).toContain('more mail match: ask again with more exact words')
+    expect(searchText('budget', { groups: [mail], pending: [], quiet: [] }, reach, 'America/Chicago', 5)).toContain('and a higher limit')
   })
   it('says only why when no source could search, and both when one searched and found nothing', () => {
     const quiet = [{ cause: 'lifeos', line: 'Sign in to LifeOS.' }]
-    expect(searchText('zebra', { groups: [], pending: [], quiet, searched: 0 }, reach)).toBe('Not searched: Sign in to LifeOS.')
-    expect(searchText('zebra', { groups: [], pending: [], quiet, searched: 2 }, reach)).toBe('Nothing found for "zebra".\n\nNot searched: Sign in to LifeOS.')
+    expect(searchText('zebra', { groups: [], pending: [], quiet, searched: 0 }, reach, 'America/Chicago')).toBe('Not searched: Sign in to LifeOS.')
+    expect(searchText('zebra', { groups: [], pending: [], quiet, searched: 2 }, reach, 'America/Chicago')).toBe('Nothing found for "zebra".\n\nNot searched: Sign in to LifeOS.')
   })
 })
 
 describe("a hit's time as a thread reads it", () => {
   it("is the day on his own clock, never UTC's: an evening event is not told a day late, and an event says its time and zone", () => {
     const game = Date.parse('2026-11-27T19:00:00-06:00')
-    expect(whenWords({ kind: 'event', at: game }, 'America/Chicago')).toBe('2026-11-27 7:00 PM CST')
+    expect(whenWords({ kind: 'event', at: game }, 'America/Chicago')).toBe('2026-11-27 7:00 PM Central')
     expect(whenWords({ kind: 'mail', at: game }, 'America/Chicago')).toBe('2026-11-27')
     expect(whenWords({ kind: 'mail', at: game }, 'UTC')).toBe('2026-11-28')
-    expect(whenWords({ kind: 'mail' })).toBeNull()
+    expect(whenWords({ kind: 'mail' }, 'America/Chicago')).toBeNull()
   })
 })
 

@@ -24,6 +24,7 @@ const call = (sessionId: string, name: string, args: Record<string, unknown>) =>
 const list = async () => (await rig.rpc<{ routines: RoutineRow[] }>('work.routines.list', { workspaceId: 'ws-purdue' })).routines
 
 beforeEach(async () => {
+  clock.now = Date.UTC(2026, 10, 16, 14)
   // The host's own add-on handles (host.ts, made by buildWorkCtx), with the registry's parts played here.
   routinesSeams.current = {
     interval: false,
@@ -46,6 +47,7 @@ beforeEach(async () => {
   }
   rig = await makeRig({ modules: [outboxModule, routines] })
   cast(rig)
+  rig.work.ctx.clock!.set('lifeos', 'America/Chicago')
 })
 afterEach(async () => {
   await rig.close()
@@ -111,9 +113,9 @@ describe('a watch on a global add-on', () => {
 describe('a routine', () => {
   it('is never made by a thread: a proposal runs nothing until his click, and a thread cannot save, start or change one', async () => {
     const proposed = await call('t-work', 'routine_propose', { name: 'Morning sweep', prompt: 'Read Purdue mail and tell me what needs me.', days: ['mon', 'tue', 'wed', 'thu', 'fri'], at: '07:00' })
-    expect(text(proposed)).toBe('Proposed “Morning sweep” (Weekdays at 7:00 AM). It waits in Routines for the owner to create; nothing runs until he does.')
+    expect(text(proposed)).toBe('Proposed “Morning sweep” (Weekdays at 7:00 AM Central). It waits in Routines for the owner to create; nothing runs until he does.')
     const [row] = await list()
-    expect(row).toMatchObject({ proposed: true, enabled: false, nextAt: null, createdBy: 'model', madeIn: 't-work' })
+    expect(row).toMatchObject({ proposed: true, enabled: false, nextAt: null, createdBy: 'model', madeIn: 't-work', trigger: { tz: 'America/Chicago' } })
     // a week of ticks fires nothing
     const e = routinesEngine(rig.work.ctx)
     for (let i = 0; i < 7; i++) {
@@ -136,10 +138,11 @@ describe('a routine', () => {
     // and the socket's gate lets only a key with admin save or remove one
     expect([ROUTINES_CAPS['work.routines.save'], ROUTINES_CAPS['work.routines.remove']]).toEqual(['admin', 'admin'])
 
-    // his Create: the proposal becomes a routine with a next due time
+    // His Create keeps the proposal’s zone even if his clock has changed.
+    rig.work.ctx.clock!.set('lifeos', 'America/New_York')
     const made = await rig.rpc<RoutineRow>('work.routines.save', { id: row!.id, workspaceId: 'ws-purdue', name: row!.name, prompt: row!.prompt, trigger: row!.trigger, ends: { kind: 'never' } })
-    expect(made).toMatchObject({ proposed: false, enabled: true, words: 'Weekdays at 7:00 AM' })
-    expect(made.nextAt).toBeGreaterThan(clock.now)
+    expect(made).toMatchObject({ proposed: false, enabled: true, words: 'Weekdays at 7:00 AM', trigger: { tz: 'America/Chicago' } })
+    expect(made.nextAt).toBe(Date.UTC(2026, 10, 24, 13))
   })
 
   it("has its held act go only on one of its own grants: a grant from another thread's act does not fit it", async () => {

@@ -6,7 +6,7 @@ import { ChatReplySchema, pinnedReplyTo } from './held'
 import { chatIn, linkedWorkspaces } from './lifeos'
 import { pushDrafts, saveDraft } from './replies'
 import { watchOf } from './watch'
-import { zoneOf } from '../clashes/zone'
+import { dateIn, hisZone, timeIn } from '../clock'
 
 /**
  * A Work thread's two chat tools (docs/agents/work-messages.md "Threads"):
@@ -28,7 +28,7 @@ const notHere = (chat: string) => failed(`No conversation ${chat} in this job's 
 const whenIn =
   (timeZone: string) =>
   (at: number): string =>
-    new Date(at).toLocaleString('en-US', { timeZone, month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', timeZoneName: 'short' })
+    `${dateIn(timeZone, at)}, ${timeIn(timeZone, at, 'named')}`
 type When = ReturnType<typeof whenIn>
 
 /** One conversation as a line of the list. */
@@ -70,7 +70,7 @@ export const readTool: WorkTool = {
     if (!ctx.lifeos.connected()) return failed('LifeOS is not connected.')
     const owner = ctx.lifeos.owner()
     try {
-      const when = whenIn(await zoneOf(ctx))
+      const when = whenIn(hisZone(ctx))
       if (chat) {
         const got = await chatIn(ctx, chat, sector)
         if (!got) return notHere(chat)

@@ -21,6 +21,7 @@ import { changeInOrder } from './serial'
 import { personKey } from './series'
 import { PrepStore, supersededOn, type PageRow } from './store'
 import { workspaceSector } from './workspace'
+import { hisZone } from '../clock'
 
 const eventArg = { event: z.string().trim().min(1).max(200).optional() }
 const lines = z.array(PrepLineSchema).max(PREP_LINES_MAX).optional()
@@ -126,7 +127,7 @@ const read = tool('prep_read', 'Read a meeting’s page. Pass its LifeOS event i
   await eventOf(ctx, sector, eventId)
   const recording = await awaitRecording(ctx, workspaceId, eventId)
   const page = (await gather(ctx, workspaceId, eventId)).page
-  const words = pageWords(page, { docWords: await notesDocWords(ctx, page) })
+  const words = pageWords(page, hisZone(ctx), { docWords: await notesDocWords(ctx, page) })
   if (recording === 'dropped') return workText(`${words}\n\nThe recording this thread was started for never arrived, and the page no longer waits for it. Stop here: write no outcome and draft no mail.`)
   if (recording === 'late') return workText(`${words}\n\nThe recording is still on its way. Call prep_read again to keep waiting for it.`)
   return workText(words)
@@ -141,7 +142,8 @@ const today = tool('prep_today', 'List the upcoming meetings in this workspace t
     .slice(0, 8)
   const { workspaceId } = toolWorkspace(ctx)
   const pages = await Promise.all(meetings.map(async (meeting) => (await gather(ctx, workspaceId, meeting.eventId, now)).page))
-  return workText(pages.filter((page) => page.state === 'none').map((page) => pageWords(page)).join('\n\n') || 'No meetings today need a brief.')
+  const zone = hisZone(ctx)
+  return workText(pages.filter((page) => page.state === 'none').map((page) => pageWords(page, zone)).join('\n\n') || 'No meetings today need a brief.')
 }, true)
 
 const write = tool(

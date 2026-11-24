@@ -25,6 +25,7 @@ import type { FromService, ToService } from './wire'
  */
 
 interface Child extends ServiceChild {
+  messages: ToService[]
   service(): RunningService | null
   /** the process dies: no stop, no flush */
   die(code?: number): void
@@ -45,9 +46,12 @@ function inProcess(spawned: Child[]): () => ServiceChild {
     const asked = new Map<number, (jwt: string) => void>()
     const held = new Map<string, Extract<ToService, { t: 'project' }>['project']>()
     let n = 0
+    let zone: string | undefined
     const child: Child = {
+      messages: [],
       post(m: ToService) {
         if (gone) throw new Error('the child is gone')
+        child.messages.push(m)
         if (m.t === 'config')
           startWorkService(m.config, {
             jwt: () => new Promise((resolve) => (asked.set(++n, resolve), emit({ t: 'jwt?', id: n }))),
@@ -55,6 +59,7 @@ function inProcess(spawned: Child[]): () => ServiceChild {
           }).then(
             (s) => {
               running = s
+              if (zone) s.setZone(zone)
               for (const [linkId, project] of held) s.setProject(linkId, project)
               held.clear()
               emit({ t: 'ready', port: s.port })
@@ -62,6 +67,7 @@ function inProcess(spawned: Child[]): () => ServiceChild {
             (err: Error) => (emit({ t: 'fault', message: err.message }), exit(1))
           )
         else if (m.t === 'jwt') asked.get(m.id)?.(m.jwt ?? '')
+        else if (m.t === 'zone') running ? running.setZone(m.zone) : (zone = m.zone)
         else if (m.t === 'links') running?.setLinks(m.links)
         // As the real process does (workServiceProcess.ts): one that comes while it starts is kept for when it runs.
         else if (m.t === 'project') running ? running.setProject(m.linkId, m.project) : held.set(m.linkId, m.project)
@@ -157,6 +163,17 @@ describe('ctx.service', () => {
     await until('stopped', () => serviceOf(work.ctx)?.state() === 'off' && !existsSync(secret))
     expect(existsSync(join(dataDir(work), 'work-service.sock'))).toBe(false)
     expect(() => work.ctx.service.url('/w/doc/x')).toThrow(WORK_OFF)
+  })
+
+  it("hands the service the owner's zone at start and when it changes", async () => {
+    const spawned: Child[] = []
+    const work = host('env_a', spawned)
+    work.ctx.clock!.set('desktop', 'America/New_York')
+    work.settings.set({ enabled: true })
+    await until('running', () => serviceOf(work.ctx)?.state() === 'running')
+    expect(spawned[0]?.messages[0]).toMatchObject({ t: 'config', config: { zone: 'America/New_York' } })
+    work.ctx.clock!.set('lifeos', 'America/Chicago')
+    expect(spawned[0]?.messages.at(-1)).toEqual({ t: 'zone', zone: 'America/Chicago' })
   })
 
   it('signs a token for a .tcdoc on this host that opens its socket; refuses a sheet, another host\'s file, and a LifeOS doc the box serves', async () => {

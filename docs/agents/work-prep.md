@@ -82,6 +82,10 @@ The push is `{ push: 'work.prep', workspaceId, eventId, rev }`: ids and a revisi
 
 ## The threads
 
+Brief and follow-up prompts and `prep_read` use `hisZone(ctx)` for dates
+and name the zone for meeting times. A filed task's "From" line uses the
+meeting day in that zone.
+
 Both are ordinary Work threads made by `ctx.threads.start`: in the rail, on his Thread defaults for the workspace, linked to the event (`about`), titled by the host ("Prepare: Staff sync", "Follow up: Staff sync") so no model names one from what may be Purdue mail. The host makes the row, so the prompt is never read as his words. Prep makes no hidden model call.
 
 - **Brief** (`prompts.ts` `briefMessage`): the facts as words, then: read the newest mail with each person and the open tasks, look for what changed since last time, call `prep_write`, send nothing, add no task.
@@ -133,6 +137,9 @@ If the window's word that a file never came does not reach the host (the link wa
 Words he types later sit beside either file.
 
 ## Prepare ahead
+
+When the window leaves out the zone, a new Prepare ahead routine uses
+`hisZone(ctx)`.
 
 `ahead.ts`, on mail's Waiting on model. On his press the pillar saves one routine as the owner through the routines module's own `handle`: "Prepare today's meetings", 7:00 each day in the window's time zone, never ending. Its id is kept in `work_prep_ahead`; off pauses it, so its runs stay readable; on again resumes it. The prompt: call `prep_today`; write a brief for each meeting it lists with `prep_write`; with none, say so and stop. It makes no grant.
 

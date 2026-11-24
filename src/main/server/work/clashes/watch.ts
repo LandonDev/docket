@@ -4,7 +4,8 @@ import { errorText, type SectorKey } from '@shared/work/ids'
 import type { Tell } from '@shared/work/tell'
 import type { WorkCtx } from '../modules'
 import { clashOf, homesOf, type LifeosClash, type LifeosRange } from './read'
-import { hostZone, startOfDay, zoneOf } from './zone'
+import { hisZone } from '../clock'
+import { startOfDay } from './zone'
 
 /**
  * The watcher: the next fourteen days of clashes, live from LifeOS. Each
@@ -132,7 +133,7 @@ export function tellClashes(ctx: WorkCtx, clashes: readonly LifeosClash[], zone:
 
 /** Starts the watcher; its return stops it. `now` is for a test. */
 export function watchClashes(ctx: WorkCtx, now: () => number = Date.now): () => void {
-  let zone = hostZone()
+  let zone = hisZone(ctx)
   let from = startOfDay(now(), zone)
   let generation = 0
   let off: (() => void) | null = null
@@ -141,23 +142,20 @@ export function watchClashes(ctx: WorkCtx, now: () => number = Date.now): () => 
   let stopped = false
   let expiry: ReturnType<typeof setTimeout> | null = null
 
-  const onRange = async (range: LifeosRange | null, mine: number): Promise<void> => {
+  const onRange = (range: LifeosRange | null, mine: number): void => {
     if (stopped || mine !== generation || !ctx.enabled() || !range || !Array.isArray(range.clashes)) return
     const seen = JSON.stringify(range)
     if (seen !== last) {
       last = seen
       ctx.push({ push: 'work.clashes' }, { need: 'read' })
     }
-    zone = await zoneOf(ctx)
-    if (stopped || mine !== generation) return
-    tellClashes(ctx, range.clashes, zone, now())
+    tellClashes(ctx, range.clashes, hisZone(ctx), now())
     expire()
     roll()
   }
   /**
    * A timer of the watcher's own, set at the first end kept with a told row: the rows that have ended are taken
-   * back then (`sweepEnded`), with no answer from LifeOS needed and outside the queue of its reads, so a settings
-   * read that hangs holds nothing up.
+   * back then (`sweepEnded`), without waiting for LifeOS to send another range.
    */
   const expire = (): void => {
     if (expiry) clearTimeout(expiry)
@@ -188,8 +186,10 @@ export function watchClashes(ctx: WorkCtx, now: () => number = Date.now): () => 
   /** A new day of his reads a new fourteen days. */
   const roll = (): void => {
     if (stopped) return
-    const day = startOfDay(now(), zone)
-    if (day === from) return
+    const nextZone = hisZone(ctx)
+    const day = startOfDay(now(), nextZone)
+    if (day === from && zone === nextZone) return
+    zone = nextZone
     from = day
     subscribe()
   }
@@ -198,15 +198,13 @@ export function watchClashes(ctx: WorkCtx, now: () => number = Date.now): () => 
   sweepEnded(ctx, now())
   expire()
   subscribe()
-  void zoneOf(ctx).then((z) => {
-    zone = z
-    roll()
-  })
+  const offClock = ctx.clock?.onChange(roll)
   const timer = setInterval(roll, ROLL_MS)
   timer.unref?.()
   return () => {
     stopped = true
     clearInterval(timer)
+    offClock?.()
     if (expiry) clearTimeout(expiry)
     off?.()
     off = null

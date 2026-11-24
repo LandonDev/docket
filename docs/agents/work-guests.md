@@ -41,6 +41,9 @@ with a test.
 
 ## The methods and the tools
 
+The reply to `guest_link` and the thread's note after the owner creates the
+link word the expiry day in `hisZone(ctx)`.
+
 `src/shared/contract-work-guests.ts`:
 
 | Method | Cap | What |

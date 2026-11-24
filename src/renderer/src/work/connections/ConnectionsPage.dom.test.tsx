@@ -2,6 +2,7 @@
 /** Settings → Connections: checks each linked host when it opens, says an unlinked host is offline, and a fix's press runs it on the row's host, then checks that host again. */
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { syncWhen } from "@shared/work/messages";
 import type { HealthReport } from "@shared/work/health";
 import { registry } from "../../lib/connection";
 
@@ -30,6 +31,21 @@ afterEach(() => {
 });
 
 describe("Connections", () => {
+  it("words a host's sync instant on the window's clock", async () => {
+    const at = Date.UTC(2026, 10, 23, 20, 14);
+    const now = at + 60_000;
+    vi.spyOn(Date, "now").mockReturnValue(now);
+    const request = vi.fn(async (): Promise<HealthReport> => ({
+      host: "env_box",
+      at: now,
+      rows: [{ id: "lifeos.source:mail", pillar: "lifeos", group: "Mail and calendar", title: "Purdue mail", state: "working", line: "Synced", at }],
+    }));
+    vi.spyOn(registry, "linkOf").mockReturnValue({ request } as never);
+    render(<ConnectionsPage />);
+    await settle();
+    expect(screen.getByText(`Synced ${syncWhen(at, now)}`)).toBeTruthy();
+  });
+
   it("checks the linked host, says the other is offline, and runs a fix on the row's host", async () => {
     let tools: "broken" | "working" = "broken";
     const report = (): HealthReport => ({

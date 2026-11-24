@@ -8,6 +8,7 @@ import { DETAIL_MAX, TELL_GROUPS, TELL_LEVELS, TITLE_MAX, tellLine, TellOpenSche
 import type { CtxPart } from '../ctx'
 import { WORK_MODULES, type WorkCtx } from '../modules'
 import { hostReadOf, type HostRead } from '../peer'
+import { hisZone } from '../clock'
 import { dayOf, knownZone, lastDigest, nextDigest, zoneOr } from './clock'
 import type { Notifier } from '../../remote/notifier'
 import { makeDeliverer, ofDay, PEER_WAIT_MS } from './deliver'
@@ -51,6 +52,7 @@ export interface DigestDeps {
   /** who lists which kinds: the registry */
   modules(): readonly { tells?: TellKind[] }[]
   now?(): number
+  desktopZone?(zone: string | null): void
 }
 
 const levelsOf = (text: string | null): Partial<Record<TellGroup, TellLevel>> => {
@@ -159,6 +161,7 @@ export class Digest {
     this.store.setSetting('zoneAt', String(when))
     if (this.store.setting('zone') === zone) return
     this.store.setSetting('zone', zone)
+    this.o.desktopZone?.(zone)
     this.settled()
     this.o.push({ push: 'work.digest', settings: this.settings() })
   }
@@ -491,7 +494,8 @@ export const tellPart: CtxPart<'tell'> = (ctx, deps) => {
   }
   let digest: Digest | null = null
   try {
-    digest = new Digest({ db: deps.db, host: deps.environmentId, enabled: () => ctx.enabled(), log: (line) => ctx.log(line), push: (p) => ctx.push(p, { need: pushNeed(p) }), modules: () => WORK_MODULES })
+    digest = new Digest({ db: deps.db, host: deps.environmentId, enabled: () => ctx.enabled(), log: (line) => ctx.log(line), push: (p) => ctx.push(p, { need: pushNeed(p) }), modules: () => WORK_MODULES, desktopZone: (zone) => ctx.clock?.set('desktop', zone) })
+    if (ctx.clock && deps.db.prepare("SELECT 1 FROM sqlite_master WHERE name = 'work_digest_settings'").get()) ctx.clock.set('desktop', digest.store.setting('zone'))
     // The notifier is built late in boot: until then nothing takes a row, and it is kept as due.
     digest.deliverer = makeDeliverer({
       notifier: () => deps.notifier?.() ?? null,
@@ -509,7 +513,7 @@ export const tellPart: CtxPart<'tell'> = (ctx, deps) => {
       modules: () => WORK_MODULES,
       sources: SOURCES,
       day: (now) => dayOf(made.zone(), lastDigest(made.at(), made.zone(), now)),
-      zone: () => made.zone(),
+      zone: () => hisZone(ctx),
       since: () => made.store.days()[0]?.madeAt ?? 0,
       kept: {
         get: (key) => made.store.setting(`source:${key}`),

@@ -354,7 +354,8 @@ describe('Prepare ahead', () => {
     const module = { id: 'routines', ensure() {}, handle } satisfies WorkModule
     WORK_MODULES.push(module)
     try {
-      const set = (on: boolean) => rig.rpc<PrepAhead>('work.prep.ahead', { ...cosmic, on, tz: 'America/New_York' }, adminKey)
+      rig.work.ctx.clock!.set('lifeos', 'America/Chicago')
+      const set = (on: boolean) => rig.rpc<PrepAhead>('work.prep.ahead', { ...cosmic, on }, adminKey)
       const on = { offered: true, on: true, routineId: 'r-ahead' }
       expect(await rig.rpc('work.prep.ahead', cosmic, readKey)).toEqual({ offered: true, on: false })
       expect(await Promise.all([set(true), set(true)])).toEqual([on, on])
@@ -367,7 +368,7 @@ describe('Prepare ahead', () => {
         method: 'work.routines.save',
         params: {
           ...cosmic, name: AHEAD_ROUTINE, prompt: expect.stringContaining('prep_today'),
-          trigger: { on: 'schedule', rrule: 'FREQ=DAILY;BYHOUR=7;BYMINUTE=0', tz: 'America/New_York' }, ends: { kind: 'never' }
+          trigger: { on: 'schedule', rrule: 'FREQ=DAILY;BYHOUR=7;BYMINUTE=0', tz: 'America/Chicago' }, ends: { kind: 'never' }
         }
       })
       expect(parseSchedule('FREQ=DAILY;BYHOUR=7;BYMINUTE=0')).toMatchObject({ hour: 7, minute: 0, days: [0, 1, 2, 3, 4, 5, 6] })

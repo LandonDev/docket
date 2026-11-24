@@ -145,6 +145,10 @@ export function makeLifeosHost(ctx: WorkCtx, deps: WorkPartDeps, seams: LifeosSe
   }
   session.onChange(changed)
   keys.onChange(changed)
+  session.onChange(({ state }) => {
+    if (state === 'signed-out' || state === 'refused') ctx.clock?.set('lifeos', null)
+  })
+  session.subscribe<{ timezone?: unknown } | null>('settings:get', {}, (v) => ctx.clock?.set('lifeos', v?.timezone))
 
   const reconcile = (): Promise<void> => keys.reconcile()
   let soon: NodeJS.Timeout | null = null

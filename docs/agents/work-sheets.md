@@ -34,6 +34,10 @@ A workbook from a mail (`{at: 'mail'}`: .xlsx, .xlsm or .csv) is held as the fil
 
 ## Packages
 
+A restored package appears in sheet history as "Restored an earlier
+version". The revision carries the restore time in epoch ms. History
+uses the same words when reading older restore labels.
+
 - **The sheet worker** (`worker.ts`, forked by `spawnWorker.ts` through
   electron-vite's `?modulePath` as the utility process "TempCode Sheets"):
   `jobs.ts` runs there: inspect a package (`importXlsx`: its sheets, the

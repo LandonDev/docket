@@ -47,7 +47,7 @@ A field is `{{Client}}` typed in the file's text: two braces, a name of 1 to 40 
 | `{{Job}}` | the workspace's name | never |
 | any other name | what he types, or what a caller passes | in the dialog, in the file's order, each name once |
 
-- The window sends its own day (`today: YYYY-MM-DD`). A tool, and a caller that sends none, gets the host's own day. A caller may pass `Date`, `Name` or `Job` in `fields`; its value wins, and a `Date` given in words is written as words in a date cell too.
+- The window sends its own day (`today: YYYY-MM-DD`). A tool or caller that sends none gets the owner's day from `hisZone(ctx)`. A caller may pass `Date`, `Name` or `Job` in `fields`; its value wins, and a `Date` given in words is written as words in a date cell too.
 - A field with no value stays in the file as written (`LEAVE_UNFILLED`; flip it and the field is taken out). `{{Name}}` stays when LifeOS has not given the host his name.
 - A lone `{{Date}}` cell in a format that shows no date gets the day in words: a bare number would say 46349.
 - `Template.fields` holds only the fields the dialog asks for.

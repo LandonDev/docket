@@ -1,8 +1,9 @@
 import { DatabaseSync } from 'node:sqlite'
-import { beforeEach, describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { ClientRequest } from '@shared/contract'
 import type { HouseRule, RuleProposal, RulesPage } from '@shared/contract-work-rules'
 import type { WorkScope } from '@shared/work'
+import { workClock } from '../clock'
 import type { Caller, ToolCtx, WorkCtx } from '../modules'
 import { modulePreambles, workPreamble, workPreambleHead } from '../preamble'
 import { habitsOf } from './habits'
@@ -384,6 +385,20 @@ describe('the voice switch', () => {
     expect(rulesPreamble(db, scope('t3'))).toBeNull()
     expect(await call('work.rules.voice', { workspaceId: 'ws-purdue' })).toEqual({ on: true, count: 1, since: now - 1000, from: ['landon@purdue.edu'] })
     expect(rules.tools!(scope('chat'))).toEqual([])
+  })
+
+  it("dates a sent example in the owner's zone", async () => {
+    voice(true)
+    ctx.clock = workClock('America/New_York')
+    ctx.clock.set('lifeos', 'America/Chicago')
+    const at = Date.UTC(2026, 10, 24, 5, 30)
+    sent('m1', 'purdue', 'Dana, the budget is attached.', at)
+    const now = vi.spyOn(Date, 'now').mockReturnValue(at + 60_000)
+    try {
+      expect(await text('t1')).toContain('To Dana Lee, 2026-11-23: About m1')
+    } finally {
+      now.mockRestore()
+    }
   })
 
   it('keeps the switch readable when LifeOS does not answer', async () => {

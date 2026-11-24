@@ -393,6 +393,9 @@ box. About 4 seconds a file.
 
 ## From the calendar (`calendar.ts`, `mileage.ts`)
 
+An offer takes its date from the event's start in `hisZone(ctx)`. The same
+zone sets the default year and day for a thread's `money_read`.
+
 - The host reads `events:range` for the job's sector, the last 60 days, as
   the owner, at most every ten minutes. Offered once: an ended event with a
   `role` or a US-dollar `amount` that `work_money_events` does not hold.

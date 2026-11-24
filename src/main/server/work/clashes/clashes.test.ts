@@ -4,6 +4,7 @@ import { CLASHES_CAPS, ClashesRequestSchemas } from '@shared/contract-work-clash
 import { requiredCapability } from '@shared/capabilities'
 import type { ClientRequest } from '@shared/contract'
 import type { WorkScope } from '@shared/work'
+import { workClock } from '../clock'
 import type { Caller, ToolCtx, WorkCtx } from '../modules'
 import { clashes } from '.'
 import { milesBetween } from './api'
@@ -67,11 +68,13 @@ beforeEach(() => {
   pushes = []
   on = true
   answers = {
-    'settings:get': () => ({ timezone: ZONE }),
     'clashes:range': () => ({ clashes: [driveClash, overlapClash], leaves: [] })
   }
+  const clock = workClock('UTC')
+  clock.set('lifeos', ZONE)
   ctx = {
     db,
+    clock,
     host: 'env_box',
     enabled: () => on,
     log: () => {},
@@ -443,6 +446,16 @@ describe('the tell', () => {
     expect(subs.at(-1)!.off).toBe(true)
   })
 
+  it('moves its range when the cached zone changes without another LifeOS read', () => {
+    const stop = watchClashes(ctx, () => at(0, 30, 27))
+    expect(subs.at(-1)?.args.from).toBe(at(0, 0, 27))
+    ctx.clock!.set('lifeos', 'America/Chicago')
+    expect(subs.at(-2)?.off).toBe(true)
+    expect(subs.at(-1)?.args.from).toBe(Date.UTC(2026, 10, 26, 6))
+    expect(calls).toEqual([])
+    stop()
+  })
+
   it('tells a new clash once from the earlier job\'s workspace, again when an event moves, and takes it back when it is gone', async () => {
     const stop = watchClashes(ctx, () => at(9))
     await flush()
@@ -587,7 +600,7 @@ describe('the tell', () => {
     }
   })
 
-  it('takes a clash back at its end while a settings read hangs in the queue of its reads', async () => {
+  it('takes a clash back at its end with no new LifeOS range', async () => {
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval'] })
     try {
       let now = at(6)
@@ -597,10 +610,6 @@ describe('the tell', () => {
       subs.at(-1)!.on(range(dawn))
       await vi.advanceTimersByTimeAsync(5)
       expect(told).toHaveLength(1)
-      // The next answer waits on a settings read that never comes back.
-      answers['settings:get'] = () => new Promise(() => {})
-      subs.at(-1)!.on(range(dawn))
-      await vi.advanceTimersByTimeAsync(5)
       now = at(7)
       await vi.advanceTimersByTimeAsync(60 * 60_000)
       expect(done).toEqual(['clash:e_staff-e_game'])
@@ -679,7 +688,7 @@ describe('with Work off', () => {
     await new Promise((r) => setTimeout(r, 5))
     expect(pushes).toEqual([])
     expect(told).toEqual([])
-    expect(calls.filter((c) => c.fn !== 'settings:get')).toEqual([])
+    expect(calls).toEqual([])
     stop()
   })
 })

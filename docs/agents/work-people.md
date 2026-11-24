@@ -24,6 +24,10 @@ Where he stands (the list or a person, and the search) is kept a workspace for t
 
 ## For agents
 
+The `person_page` tool words mail, event and task times in `hisZone(ctx)`
+and names the zone. It words guest link expiry days in that zone and keeps
+the calendar date for all-day events.
+
 - **`person_page {person, sector?}`** (`work/lifeos/people.ts`, a tool of the lifeos pillar, read-only): the same page as words, read as the owner and bounded to the thread's sector, which is its fence (work-scope.md). A person is named by id, address, whole name or the words of a name; several matches are listed by id. A Work Chat, which reads every sector, names one; a workspace's thread may name only its own. The guest links it asks about are this host's (`work_guest_links`): the box keeps them, so a thread on the Mac sees none. It prints no "last heard from": read as the owner, that time may be another sector's.
 - **`@`** finds a person by name through LifeOS's kinds (`lifeos/mentions.ts`, already there): kept when any of their sectors is in reach.
 

@@ -76,11 +76,11 @@ describe('messages_read', () => {
   })
 
   it('gives times in his zone, named, whatever zone the host keeps', async () => {
-    t.chats.timezone = 'America/Chicago'
+    t.rig.work.ctx.clock!.set('lifeos', 'America/Chicago')
     t.chats.messages.set('c-dana', [{ _id: 'm1', who: { name: 'Dana Lee', me: false }, text: 'Can you look?', sentAt: Date.UTC(2026, 10, 20, 20, 15), files: [] }])
-    expect(out(await tool('messages_read', { chat: 'c-dana' })).split('\n')[1]).toBe('[Nov 20, 2:15 PM CST] Dana Lee: Can you look?; message m1')
-    t.chats.timezone = 'America/New_York'
-    expect(out(await tool('messages_read', { chat: 'c-dana' })).split('\n')[1]).toBe('[Nov 20, 3:15 PM EST] Dana Lee: Can you look?; message m1')
+    expect(out(await tool('messages_read', { chat: 'c-dana' })).split('\n')[1]).toBe('[Nov 20, 2:15 PM Central] Dana Lee: Can you look?; message m1')
+    t.rig.work.ctx.clock!.set('lifeos', 'America/New_York')
+    expect(out(await tool('messages_read', { chat: 'c-dana' })).split('\n')[1]).toBe('[Nov 20, 3:15 PM Eastern] Dana Lee: Can you look?; message m1')
   })
 
   it('gives no id to a reply of his still queued, sending or failed: only a stored message is a target', async () => {

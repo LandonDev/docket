@@ -5,7 +5,7 @@ import { join } from 'node:path'
 import type { HostId } from '@shared/work'
 import type { FolderRef } from '@shared/work/files'
 import { errorText } from '@shared/work/ids'
-import { dayOf, fieldKey, fieldValues, filledValues, madeTitle, type TemplateForm, type TemplateMade } from '@shared/work/templates'
+import { fieldKey, fieldValues, filledValues, madeTitle, type TemplateForm, type TemplateMade } from '@shared/work/templates'
 import { sharedOf } from '../files/policy'
 import type { Caller, WorkCtx } from '../modules'
 import { fillDeck } from './deckFill'
@@ -14,6 +14,7 @@ import { fillOffice, isOfficeForm, scanOffice, type OfficeForm } from './ooxml'
 import { OUT_OF_REACH, placeFile, real, type Pillars } from './place'
 import { exportWord } from './save'
 import { ownerName, reachesFile, reachWorkspace, resolveTemplate, scratchRoot, SHELF_READ, tcdocEveryField, type ShelfEntry } from './shelf'
+import { dayOf, hisZone } from '../clock'
 
 /**
  * Making a file from a template (docs/agents/work-templates.md "Making a
@@ -129,7 +130,7 @@ export async function makeFromShelf(ctx: WorkCtx, by: Caller, ask: MakeAsk, deps
   const at = real(entry.path)
   const bound: ShelfEntry = { ...entry, path: at, source: { at: 'file', host: ctx.host as HostId, path: at } }
 
-  const today = ask.today ?? dayOf((deps.now ?? (() => new Date()))())
+  const today = ask.today ?? dayOf(hisZone(ctx), (deps.now ?? (() => new Date()))().getTime())
   // The three filled without asking, then the caller's own, which win.
   const values = new Map([...filledValues({ today, ownerName: ownerName(ctx), job: workspace.name }), ...fieldValues(ask.fields ?? {})])
   // A caller that set the day in words gave no day for a date cell: only the default is a true date.

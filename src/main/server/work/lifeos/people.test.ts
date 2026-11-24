@@ -1,6 +1,7 @@
 import { DatabaseSync } from 'node:sqlite'
 import { beforeEach, describe, expect, it } from 'vitest'
 import type { WorkScope } from '@shared/work'
+import { workClock } from '../clock'
 import type { ToolCtx, WorkCtx } from '../modules'
 import { ensureGuestTables, GUEST_LINKS_TABLE } from '../guests/store'
 import { lifeos } from '.'
@@ -21,8 +22,8 @@ const people = [
 const page = {
   person: { _id: 'p_maya', name: 'Maya Chen', notes: 'Runs the front desk.', emails: ['maya@school.edu'], phones: ['5551110000'] },
   lastAt: Date.UTC(2026, 10, 19, 15, 0),
-  mail: [{ _id: 'mt1', subject: 'Bracket for Friday', snippet: 'Here it is', lastMessageAt: Date.UTC(2026, 10, 19, 15, 0), unread: true }],
-  coming: [{ _id: 'ev1', title: 'Tryouts', startsAt: Date.UTC(2026, 10, 21, 18, 0), location: 'Arena' }],
+  mail: [{ _id: 'mt1', subject: 'Bracket for Friday', snippet: 'Here it is', lastMessageAt: Date.UTC(2026, 10, 19, 5, 30), unread: true }],
+  coming: [{ _id: 'ev1', title: 'Tryouts', startsAt: Date.UTC(2026, 10, 21, 18, 0), location: 'Arena' }, { _id: 'ev2', title: 'Conference', startsAt: Date.UTC(2026, 10, 22), allDay: true }],
   recent: [],
   tasks: [
     { _id: 't1', title: 'Send the bracket', status: 'todo', relation: 'asked' as const },
@@ -41,6 +42,7 @@ beforeEach(() => {
   asked = []
   ctx = {
     db,
+    clock: workClock('America/Chicago'),
     lifeos: {
       owner: () => ({
         query: async (fn: string, args: Record<string, unknown>) => {
@@ -108,9 +110,11 @@ describe('person_page', () => {
       { fn: 'people:page', args: { id: 'p_maya', sector: 'purdue', shared: [{ table: 'docs', id: 'd1' }] } }
     ])
     expect(text).toContain('# Maya Chen (person p_maya, purdue)')
-    expect(text).toContain('- Bracket for Friday, 2026-11-19 15:00Z, unread (mail thread mt1)')
+    expect(text).toContain('- Bracket for Friday, 2026-11-18 11:30 PM Central, unread (mail thread mt1)')
     expect(text).toContain('## Asked for by them\n- Send the bracket (task t1, todo)')
-    expect(text).toContain('## Waiting on them\n- Seat list, due 2026-11-24 14:00Z (task t2, todo)')
+    expect(text).toContain('## Waiting on them\n- Seat list, due 2026-11-24 8:00 AM Central (task t2, todo)')
+    expect(text).toContain('- Tryouts, 2026-11-21 12:00 PM Central, Arena (event ev1)')
+    expect(text).toContain('- Conference, 2026-11-22 (event ev2)')
     expect(text).toContain('- Run of show (document d1), can comment until')
   })
 
@@ -134,6 +138,6 @@ describe('person_page', () => {
 
   it('says when nothing is live with them', () => {
     const quiet = { ...page, mail: [], coming: [], tasks: [], shared: [], person: { ...page.person, notes: '', phones: [] }, lastAt: undefined }
-    expect(pageText(quiet, [], 'purdue')).toBe('# Maya Chen (person p_maya, purdue)\nAddresses: maya@school.edu\n\nNothing live with them in purdue.')
+    expect(pageText(quiet, [], 'purdue', 'America/Chicago')).toBe('# Maya Chen (person p_maya, purdue)\nAddresses: maya@school.edu\n\nNothing live with them in purdue.')
   })
 })

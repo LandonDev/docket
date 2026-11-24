@@ -32,6 +32,7 @@ export interface SupervisorDeps {
   lifeosIssuer: () => TrustedIssuer | null
   /** an unfenced device JWT for the owner (ctx.lifeos.jwt()) */
   jwt(): Promise<string>
+  zone?(): string
   log(line: string): void
   /** first wait before a restart; doubles to 30 s */
   backoffMs?: number
@@ -188,6 +189,7 @@ export class ServiceSupervisor {
       dataDir: this.deps.serviceDir,
       hostedDir: this.deps.hostedDir,
       host: this.deps.host,
+      zone: this.deps.zone?.(),
       lifeos: this.deps.lifeos(),
       trusted: this.trusted(),
       links: this.links
@@ -210,6 +212,14 @@ export class ServiceSupervisor {
       this.fork()
     }, this.backoff)
     this.backoff = Math.min(this.backoff * 2, MAX_BACKOFF)
+  }
+
+  setZone(zone: string): void {
+    try {
+      this.child?.post({ t: 'zone', zone })
+    } catch (err) {
+      this.deps.log(`[work-service] could not send the owner's time zone: ${String(err)}`)
+    }
   }
 
   /** The guest link rows (milestone 31 sends them): a revoked one's sockets close at once. */

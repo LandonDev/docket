@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { REVIEW_CAPS } from '@shared/contract-work-review'
 import { PREP_UPCOMING_MAX_MS } from '@shared/contract-work-prep'
 import { LEFT, mergeReview, type ReviewBody } from '@shared/work/review'
+import { workClock } from '../clock'
 import { WORK_MODULES, type ToolCtx } from '../modules'
 import { NOT_A_WEEK, review, UNKNOWN_ZONE, weekFor } from '.'
 import { NOT_A_PERSON } from './settle'
@@ -304,7 +305,8 @@ describe('the week_review tool', () => {
 
   // The host's zone is LifeOS's when it says one.
   beforeEach(() => {
-    rig.lifeos['settings:get'] = { timezone: TZ }
+    rig.ctx.clock = workClock('UTC')
+    rig.ctx.clock.set('lifeos', TZ)
   })
 
   it('is read only and answers for the thread’s own job alone', async () => {

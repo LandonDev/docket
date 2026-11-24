@@ -10,6 +10,7 @@ import { fetchedItemOfPath } from '../canvas/fetch'
 import { changeThread } from './threads'
 import { revisionOf } from './revision'
 import { EDITED_WITHIN, FIND_BY, FIND_KINDS, FIND_KIND_WORDS, FIND_SORTS, FIND_WHERE, FIND_WHERE_WORDS, findIn, type FindEntry, type FindFilter } from '@shared/work/docFind'
+import { hisZone, instantIn } from '../clock'
 
 /**
  * The tools a Work thread reads and changes a document with
@@ -203,24 +204,25 @@ async function format(ctx: ToolCtx, a: FormatArgs): Promise<WorkToolResult> {
   return workText(`${text}${done.words.length ? ': ' + done.words.join(', ') : ''}.${note}`)
 }
 
-/** A date the model wrote, as ms; a bare date is the start of that day here. */
-function dateOf(text: string | undefined, name: string): number | undefined {
+/** An offset-free date or time from a thread is on the owner’s clock. */
+function dateOf(text: string | undefined, name: string, zone: string): number | undefined {
   if (!text) return undefined
-  const t = new Date(/^\d{4}-\d{2}-\d{2}$/.test(text) ? `${text}T00:00:00` : text).getTime()
+  const day = /^\d{4}-\d{2}-\d{2}$/.test(text)
+  const local = day || /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?$/i.test(text)
+  const t = Date.parse(day ? `${text}T00:00:00Z` : local ? `${text}Z` : text)
   if (Number.isNaN(t)) throw new Error(`\`${name}\` is not a date: write it as 2026-10-01 or 2026-10-01T14:00`)
-  return t
+  return local ? instantIn(zone, t) : t
 }
-
-const day = (t: number) => new Date(t).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
 
 const LAST_BY = { owner: 'the owner', agent: 'an agent', guest: 'a guest' } as const
 
 /** One found entry as a line the model reads, ending with the source `canvas_open` takes. */
-export function foundLine(e: FindEntry, projects: ReadonlyMap<string, string>): string {
+function foundLine(e: FindEntry, projects: ReadonlyMap<string, string>, zone: string): string {
   const facts = [FIND_KIND_WORDS[e.kind], FIND_WHERE_WORDS[e.where]]
   const project = e.projectId && projects.get(e.projectId)
   if (project) facts.push(`project ${project}`)
-  facts.push(`edited ${day(e.editedAt)}${e.lastBy ? ` by ${LAST_BY[e.lastBy]}` : ''}`)
+  const edited = new Intl.DateTimeFormat('en-US', { timeZone: zone, month: 'short', day: 'numeric', year: 'numeric' }).format(e.editedAt)
+  facts.push(`edited ${edited}${e.lastBy ? ` by ${LAST_BY[e.lastBy]}` : ''}`)
   if (e.shared || e.guest) facts.push(e.guest ? 'guest link' : 'shared')
   if (e.comments) facts.push(`${e.comments} open comment${e.comments === 1 ? '' : 's'}`)
   if (e.waiting) facts.push(`${e.waiting} suggestion${e.waiting === 1 ? '' : 's'} waiting`)
@@ -234,7 +236,7 @@ const findInput = z.object({
   where: z.array(z.enum(FIND_WHERE)).optional().describe('lifeos, folder (the workspace folder on this host), google, microsoft, thread (made in a thread)'),
   project: z.string().max(200).optional().describe('A LifeOS project, by name or id.'),
   edited_within: z.enum(EDITED_WITHIN).optional(),
-  edited_after: z.string().max(40).optional().describe('A date or time, as 2026-10-01 or 2026-10-01T14:00.'),
+  edited_after: z.string().max(40).optional().describe("A date or time in the owner's zone, as 2026-10-01 or 2026-10-01T14:00. Include an offset for another zone."),
   edited_before: z.string().max(40).optional(),
   by: z.array(z.enum(FIND_BY)).optional().describe('Who last changed it: owner, agent or guest.'),
   shared: z.boolean().optional().describe('Only what others can see: shared, guest-linked, or in Google or Microsoft.'),
@@ -270,8 +272,9 @@ async function find(ctx: ToolCtx, a: z.infer<typeof findInput>): Promise<WorkToo
     ...(a.review ? { review: true } : {}),
     ...(a.held ? { held: true } : {})
   }
-  const after = dateOf(a.edited_after, 'edited_after')
-  const before = dateOf(a.edited_before, 'edited_before')
+  const zone = hisZone(ctx)
+  const after = dateOf(a.edited_after, 'edited_after', zone)
+  const before = dateOf(a.edited_before, 'edited_before', zone)
   if (after !== undefined) filter.after = after
   if (before !== undefined) filter.before = before
   if (a.project) {
@@ -287,7 +290,7 @@ async function find(ctx: ToolCtx, a: z.infer<typeof findInput>): Promise<WorkToo
   const head = `${missing ? `LifeOS did not answer (${missing}), so its documents are not in this list.\n` : ''}${failed.length ? `${failed.length} workspace${failed.length === 1 ? '' : 's'} did not answer (${failed[0]}).\n` : ''}`
   if (!found.length) return workText(`${head}Nothing matches.`)
   const more = found.length > limit ? `\n${found.length - limit} more match; narrow the search or raise \`limit\`.` : ''
-  return workText(`${head}${found.slice(0, limit).map((e) => foundLine(e, projects)).join('\n')}${more}\nOpen one with canvas_open and its source; a LifeOS document or a .tcdoc also reads with doc_read.`)
+  return workText(`${head}${found.slice(0, limit).map((e) => foundLine(e, projects, zone)).join('\n')}${more}\nOpen one with canvas_open and its source; a LifeOS document or a .tcdoc also reads with doc_read.`)
 }
 
 export const docTools: WorkTool[] = [

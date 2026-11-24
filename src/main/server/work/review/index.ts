@@ -2,9 +2,10 @@ import { z } from 'zod'
 import { REVIEW_CAPS, type ReviewKept, type ReviewReady } from '@shared/contract-work-review'
 import { handled, NOT_HANDLED, workText } from '@shared/work'
 import { isWeek, knownZone, localDay, mergeKept, weekOf, weekOfDay, type ReviewBody } from '@shared/work/review'
+import { hisZone } from '../clock'
 import { WORK_MODULES, type Caller, type WorkCtx, type WorkModule, type WorkTool } from '../modules'
 import { HOST } from './gather/held'
-import { hostZone, makeJob, READY_TELL, readyKey, routineOf, seedRoutine } from './friday'
+import { makeJob, READY_TELL, readyKey, routineOf, seedRoutine } from './friday'
 import { makeWeek } from './make'
 import { mustBePerson, settle, undo } from './settle'
 import { ensureReviewTables, keepWeek, keptWeek, keptWeeks, readyWeek, seeWeek } from './store'
@@ -76,7 +77,7 @@ const weekReview: WorkTool = {
   run: async (args, ctx) => {
     const { week } = args as z.infer<typeof WeekInput>
     if (!ctx.scope.workspaceId) return workText('This thread is in no job, and a review is of a job. Open Review in the rail to see every job.')
-    const tz = await hostZone(ctx)
+    const tz = hisZone(ctx)
     const now = Date.now()
     // The day is read in the zone weeks are cut in: Sunday noon in UTC is already Monday in Auckland.
     const span = week ? weekOfDay(week, tz) : weekOf(now, tz)
@@ -117,7 +118,7 @@ export const review: WorkModule = {
         mustBePerson(by)
         const weeks: ReviewKept[] = keptWeeks(ctx.db)
         // `tz`: the zone this host's routine makes weeks in, so the window asks for the same weeks.
-        return handled({ weeks, tz: await hostZone(ctx) })
+        return handled({ weeks, tz: hisZone(ctx) })
       }
       case 'work.review.settle':
         return handled(await settle(ctx, by, req.params, Date.now()))

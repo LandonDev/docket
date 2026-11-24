@@ -268,5 +268,5 @@ export function lastExport(dir: string): FileStamp | null {
 }
 
 /** Today as a form's date line reads. */
-export const signedDate = (now = new Date()): string => now.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })
+export const signedDate = (zone: string, now = Date.now()): string => new Intl.DateTimeFormat('en-US', { timeZone: zone, year: 'numeric', month: 'long', day: 'numeric' }).format(now)
 

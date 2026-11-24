@@ -116,7 +116,7 @@ describe('Draft a nudge', () => {
   })
 
   it('words the prompt with the subject and whom he wrote to', () => {
-    expect(nudgePrompt({ id: 'x', subject: '', to: 'Dana', addresses: 'dana@x.test', since: Date.UTC(2026, 10, 2, 15) })).toContain('“(no subject)”')
+    expect(nudgePrompt({ id: 'x', subject: '', to: 'Dana', addresses: 'dana@x.test', since: Date.UTC(2026, 10, 3, 5, 30) }, 'America/Chicago')).toContain('“(no subject)” (LifeOS mail thread x). He wrote to Dana on Mon, Nov 2')
   })
 })
 
@@ -249,15 +249,15 @@ describe('mail_waiting, for a thread', () => {
     _id: id,
     subject: `Subject ${id}`,
     sector,
-    waiting: { since: Date.UTC(2026, 10, 13, 15), dueAt: 0, asked, to: [{ name: 'Maya Chen', address: 'maya@x.test' }, { address: 'b@x.test' }, { address: 'c@x.test' }] }
+    waiting: { since: Date.UTC(2026, 10, 14, 5, 30), dueAt: 0, asked, to: [{ name: 'Maya Chen', address: 'maya@x.test' }, { address: 'b@x.test' }, { address: 'c@x.test' }] }
   })
 
   it("lists its own sector's waits and no other's", () => {
-    const text = waitingText([row('a', 'purdue', true), row('b', 'cosmic')], 'purdue', Date.UTC(2026, 10, 20, 15))
+    const text = waitingText([row('a', 'purdue', true), row('b', 'cosmic')], 'purdue', 'America/Chicago', Date.UTC(2026, 10, 20, 19))
     expect(text).toContain('(1)')
     expect(text).toContain('“Subject a” to Maya Chen <maya@x.test>, b@x.test, c@x.test, sent Fri, Nov 13 (7 days), he asked to be reminded; mail thread a')
     expect(text).not.toContain('Subject b')
-    expect(waitingText([], 'purdue')).toBe('Nothing in this sector is waiting on a reply.')
+    expect(waitingText([], 'purdue', 'America/Chicago')).toBe('Nothing in this sector is waiting on a reply.')
   })
 
   it('is read only, listed only to a thread with a sector, and refuses without one', async () => {

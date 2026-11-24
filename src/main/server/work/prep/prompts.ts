@@ -1,22 +1,23 @@
 import type { PrepLine, PrepPage, PrepTask } from '@shared/contract-work-prep'
 import type { DocWords } from './docWords'
+import { timeIn } from '../clock'
 
 export const briefTitle = (title: string): string => `Prepare: ${title}`
 export const followTitle = (title: string): string => `Follow up: ${title}`
 
-const day = (at: number): string => new Date(at).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })
-const time = (at: number): string => new Date(at).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZoneName: 'short' })
 const lineWords = (line: PrepLine): string => line.ref ? `${line.text} (${line.ref.table} ${line.ref.id})` : line.text
 
-function taskWords(task: PrepTask): string {
+function taskWords(task: PrepTask, day: (at: number) => string): string {
   const why = task.who && task.why ? `, ${task.why === 'asked' ? 'asked by' : 'waiting on'} ${task.who}` : ''
   const due = task.dueAt === undefined ? '' : `, due ${day(task.dueAt)}`
   return `${task.title}${why}${due} (task ${task.id})`
 }
 
 /** The facts and the words kept on the page, for a thread to read. `docWords`: his Word notes document read on the host. */
-export function pageWords(page: PrepPage, opts: { docWords?: DocWords } = {}): string {
+export function pageWords(page: PrepPage, zone: string, opts: { docWords?: DocWords } = {}): string {
   const { event, people, tasks, files, last, doc } = page
+  const day = new Intl.DateTimeFormat('en-US', { timeZone: zone, weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' }).format
+  const time = (at: number): string => timeIn(zone, at, 'named')
   const lines = [
     `Meeting: ${event.title} (event ${event.id})`,
     `When: ${day(event.startsAt)}${event.allDay ? ', all day' : ` at ${time(event.startsAt)}`}`
@@ -31,13 +32,13 @@ export function pageWords(page: PrepPage, opts: { docWords?: DocWords } = {}): s
     ...(person.declined ? ['declined'] : []),
     ...(person.mail ? [`newest mail “${person.mail.subject}” (mail thread ${person.mail.id})`] : [])
   ].join(', ')))
-  section('Open tasks', tasks.map(taskWords))
+  section('Open tasks', tasks.map((task) => taskWords(task, day)))
   section('Files', files.map((file) => file.url ? `${file.title} ${file.url}` : file.title))
   if (last) {
     lines.push('', `Last time: ${last.title}, ${day(last.startsAt)} (event ${last.eventId})`)
     section('Decided', last.decided.map(lineWords))
     section('Open', last.open.map(lineWords))
-    section('Tasks from last time', last.tasks.map(taskWords))
+    section('Tasks from last time', last.tasks.map((task) => taskWords(task, day)))
   }
   if (doc.brief) {
     section('Brief', doc.brief.matters.map(lineWords))
@@ -71,9 +72,9 @@ export function pageWords(page: PrepPage, opts: { docWords?: DocWords } = {}): s
   return lines.join('\n')
 }
 
-export function briefMessage(page: PrepPage): string {
+export function briefMessage(page: PrepPage, zone: string): string {
   return [
-    pageWords(page),
+    pageWords(page, zone),
     'Read the newest mail with each person using read_mail_thread, and read the open tasks. Look for what changed since last time.',
     'Call prep_write for this event with the few things he should know or decide walking in. Put at most five things in matters, one line each. Use agreed only when no earlier page says it.',
     'Send nothing and add no task. End with the brief as your last message.'
@@ -86,10 +87,10 @@ export function briefMessage(page: PrepPage): string {
  */
 const MAIL = 'Just before any mail, call prep_read once more. If it lists a follow-up mail already waiting, or says it could not read whether one waits, draft none. Otherwise draft one to the people with addresses using draft_mail. It waits for his press. Never send it.'
 
-export function followMessage(page: PrepPage, opts: { recording?: boolean; document?: boolean; docWords?: DocWords } = {}): string {
+export function followMessage(page: PrepPage, zone: string, opts: { recording?: boolean; document?: boolean; docWords?: DocWords } = {}): string {
   const read = opts.docWords && 'text' in opts.docWords
   return [
-    pageWords(page, { docWords: opts.docWords ?? null }),
+    pageWords(page, zone, { docWords: opts.docWords ?? null }),
     opts.document && read
       ? 'His notes document is above, and is being opened beside you. Change nothing in it. Call prep_follow_up for this event with what was decided, what is still open, and the tasks. Suggest no task the page already lists as open, and no open question that a task you suggest settles. Never call add_task.'
       : opts.document
@@ -106,10 +107,10 @@ export function followMessage(page: PrepPage, opts: { recording?: boolean; docum
  * Asked of a follow-up thread that stopped before it wrote, whose notes are the meeting open beside it. `version`
  * is the notes version it must pass to `prep_follow_up`, as every message into a running follow-up names one.
  */
-export function followAgainMessage(page: PrepPage, version: number, docWords: DocWords = null): string {
+export function followAgainMessage(page: PrepPage, version: number, zone: string, docWords: DocWords = null): string {
   return [
     'He asked for this meeting’s follow-up again. The page as it stands now:',
-    pageWords(page, { docWords }),
+    pageWords(page, zone, { docWords }),
     `Read the meeting beside you with meeting_read. Call prep_follow_up for this event, passing notes: ${version}, with what was decided, what is still open, and the tasks. Suggest no task the page already lists as open, and no open question that a task you suggest settles. Write the tasks with prep_follow_up alone, and never call add_task.`,
     MAIL,
     'End with the outcome as your last message.'
@@ -121,10 +122,10 @@ export function followAgainMessage(page: PrepPage, version: number, docWords: Do
  * the old ones. `version` is the notes version it must pass to `prep_follow_up`, so the host can tell this rewrite
  * from an outcome its older turn writes before it reads this.
  */
-export function followNotesMessage(page: PrepPage, version: number, docWords: DocWords = null): string {
+export function followNotesMessage(page: PrepPage, version: number, zone: string, docWords: DocWords = null): string {
   return [
     'He changed his notes for this meeting after you started. The page as it stands now:',
-    pageWords(page, { docWords }),
+    pageWords(page, zone, { docWords }),
     `Write the outcome again from these notes with prep_follow_up for this event, passing notes: ${version}: what was decided, what is still open, and the tasks. Suggest no task the page already lists as open, and no open question that a task you suggest settles. Never call add_task.`,
     'If you already drafted the follow-up mail, change it with update_mail_draft to match the new outcome. Never send it.',
     MAIL,

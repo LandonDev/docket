@@ -278,6 +278,15 @@ describe('signing', () => {
         ['date', 'needs-owner']
       ])
     )
+    work.ctx.clock!.set('lifeos', 'America/Chicago')
+    await call('work.pdf.setSignature', { signature: SIGNATURE })
+    const now = vi.spyOn(Date, 'now').mockReturnValue(Date.UTC(2026, 10, 24, 5, 30))
+    try {
+      const signed = await call<PdfView>('work.pdf.sign', { itemId: id, signed: true })
+      expect(signed.fields.find((field) => field.type === 'date')).toMatchObject({ value: 'November 23, 2026' })
+    } finally {
+      now.mockRestore()
+    }
   })
 })
 

@@ -8,6 +8,7 @@ import { serviceOf } from '../service/ctx'
 import { GuestRuntime, TICK_MS } from './links'
 import { ensureGuestTables } from './store'
 import { guestsHealth } from './health'
+import { hisZone } from '../clock'
 
 /**
  * The guests pillar's server module (docs/agents/work-guests.md): one named
@@ -27,7 +28,7 @@ export const guestRuntime = (ctx: WorkCtx): GuestRuntime => {
 }
 
 const roleWords = (role: string): string => (role === 'view' ? 'view' : role === 'comment' ? 'comment' : 'edit')
-const day = (at: number): string => new Date(at).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })
+const day = (zone: string, at: number): string => new Intl.DateTimeFormat('en-US', { timeZone: zone, weekday: 'short', month: 'short', day: 'numeric' }).format(at)
 
 export const guestLinkKind: ActKindDef<GuestLinkAct, never> = {
   kind: 'share.guestLink',
@@ -43,7 +44,7 @@ export const guestLinkKind: ActKindDef<GuestLinkAct, never> = {
       await act.threads
         .resume(
           act.item.sessionId,
-          `The owner made the guest link you asked for (${made.link.id}): ${p.name} can ${roleWords(p.role)} ${p.title} until ${day(p.expiresAt)}. Its address is his alone to send: he copies it from Settings, Work, Guest links. Never ask him for it.`
+          `The owner made the guest link you asked for (${made.link.id}): ${p.name} can ${roleWords(p.role)} ${p.title} until ${day(hisZone(act), p.expiresAt)}. Its address is his alone to send: he copies it from Settings, Work, Guest links. Never ask him for it.`
         )
         .catch((err: Error) => act.log(`guests: the thread was not told: ${err.message}`))
     }
@@ -87,7 +88,7 @@ export const guestsTools: WorkTool[] = [
         const refused = guestRefusal(payload)
         if (refused) return fail(refused)
         const held = ctx.held.create({ kind: 'share.guestLink', sessionId: ctx.sessionId, payload })
-        return workText(`Held for the owner's press: a guest link for ${payload.name} to ${payload.title}, can ${roleWords(payload.role)}, ends ${day(payload.expiresAt)} (${held.state}). He sends the address himself.`)
+        return workText(`Held for the owner's press: a guest link for ${payload.name} to ${payload.title}, can ${roleWords(payload.role)}, ends ${day(hisZone(ctx), payload.expiresAt)} (${held.state}). He sends the address himself.`)
       } catch (err) {
         return fail(errorText(err))
       }

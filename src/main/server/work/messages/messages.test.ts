@@ -95,7 +95,7 @@ describe("LifeOS's refusals", () => {
 })
 
 describe("Connections' rows", () => {
-  const now = new Date(2026, 10, 23, 15, 0).getTime()
+  const now = Date.UTC(2026, 10, 23, 15)
   const linked = new Set(['cosmic', 'hypixel'])
   const src = (over: Partial<ChatSourceRow>): ChatSourceRow => ({ _id: 's1', kind: 'slack', account: 'T01', label: 'CosmicGames', sector: 'cosmic', enabled: true, status: 'ok', lastSyncAt: now - 60_000, ...over })
 
@@ -108,16 +108,17 @@ describe("Connections' rows", () => {
       shared: true,
       sector: 'cosmic',
       state: 'working',
-      line: 'Synced 2:59 PM'
+      line: 'Synced',
+      at: now - 60_000
     })
   })
 
   it('holds each kind to its own limit: Slack and Discord fifteen minutes, iMessage and Teams a day and a half', () => {
-    expect(chatSourceRow(src({ lastSyncAt: now - 16 * 60_000 }), linked, now)).toMatchObject({ state: 'broken', line: 'No sync since 2:44 PM' })
-    expect(chatSourceRow(src({ kind: 'discord', label: 'Hypixel Discord', lastSyncAt: new Date(2026, 10, 3, 9).getTime() }), linked, now)).toMatchObject({
+    expect(chatSourceRow(src({ lastSyncAt: now - 16 * 60_000 }), linked, now)).toMatchObject({ state: 'broken', line: 'No sync since', at: now - 16 * 60_000 })
+    expect(chatSourceRow(src({ kind: 'discord', label: 'Hypixel Discord', lastSyncAt: Date.UTC(2026, 10, 3, 9) }), linked, now)).toMatchObject({
       title: 'Hypixel Discord',
       state: 'broken',
-      line: 'No sync since Nov 3'
+      line: 'No sync since', at: Date.UTC(2026, 10, 3, 9)
     })
     expect(chatSourceRow(src({ kind: 'teams', label: '', account: 'pc', lastSyncAt: undefined, reportedAt: now - 20 * 3_600_000 }), linked, now)).toMatchObject({ title: 'pc Teams', state: 'working' })
     expect(chatSourceRow(src({ kind: 'imessage', label: 'Messages', lastSyncAt: now - 40 * 3_600_000 }), linked, now)).toMatchObject({ title: 'Messages iMessage', state: 'broken' })
@@ -149,11 +150,11 @@ describe("Connections' rows", () => {
 
   it('folds a server\'s channel rows into one row: as fresh as its freshest, in error when any is', () => {
     const discord = (over: Partial<ChatSourceRow>): ChatSourceRow => src({ kind: 'discord', account: 'g1', accountName: 'Starboard Community', label: '#general', channel: 'c1', ...over })
-    const nov3 = new Date(2026, 10, 3, 9).getTime()
+    const nov3 = Date.UTC(2026, 10, 3, 9)
     // Forty channels, most never synced, the freshest silent since Nov 3: one broken row, not forty.
     const silent = foldAccounts([discord({ _id: 'a', status: 'idle', lastSyncAt: undefined }), discord({ _id: 'b', channel: 'c2', lastSyncAt: nov3 }), discord({ _id: 'c', channel: 'c3', lastSyncAt: nov3 - 1 })])
     expect(silent).toHaveLength(1)
-    expect(chatSourceRow(silent[0]!, linked, now)).toMatchObject({ id: 'messages.source:discord:g1:cosmic', title: 'Starboard Community Discord', state: 'broken', line: 'No sync since Nov 3' })
+    expect(chatSourceRow(silent[0]!, linked, now)).toMatchObject({ id: 'messages.source:discord:g1:cosmic', title: 'Starboard Community Discord', state: 'broken', line: 'No sync since', at: Date.UTC(2026, 10, 3, 9) })
     // One channel reading is the service reading; a channel that never synced beside it changes nothing.
     const reading = foldAccounts([discord({ _id: 'a', status: 'idle', lastSyncAt: undefined }), discord({ _id: 'b', channel: 'c2' })])
     expect(chatSourceRow(reading[0]!, linked, now)).toMatchObject({ state: 'working' })

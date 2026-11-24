@@ -90,6 +90,7 @@ const tool = async (name: string, args: unknown): Promise<{ text: string; isErro
 
 let server: Server
 let port: number
+let responseZone: string | undefined
 beforeAll(async () => {
   server = createServer((req, res) => {
     const url = new URL(req.url ?? '/', 'http://x')
@@ -110,7 +111,8 @@ beforeEach(async () => {
   const hosted = join(dir, 'hosted')
   mkdirSync(join(hosted, 'form'), { recursive: true })
   writeFileSync(join(hosted, 'form', 'index.html'), '<!doctype html><title>Form</title>')
-  rc.ctx = { config: () => ({ dataDir: join(dir, 'work-service'), hostedDir: hosted, lifeos: { here: false, host: null } }), log: () => {} }
+  responseZone = undefined
+  rc.ctx = { config: () => ({ zone: responseZone, dataDir: join(dir, 'work-service'), hostedDir: hosted, lifeos: { here: false, host: null } }), log: () => {} }
   db = openDb(join(dir, 'test.db'))
   pushes.length = 0
   sessions.set('t1', { id: 't1', provider: 'claude', workspaceId: 'w1', scope: 'work' } as SessionMeta)
@@ -190,6 +192,24 @@ describe('a form', () => {
     const form = (await (await fetch(`http://127.0.0.1:${port}/f/${publicId(live)}/form`)).json()) as PublicForm
     expect(form).toMatchObject({ title: 'Spring LAN registration', open: true })
     expect(pushes.some((p) => p.push === 'work.forms' && p.itemId === itemId && p.view.state === 'open')).toBe(true)
+  })
+
+  it("writes the owner's date and time to the sheet and the response log", async () => {
+    const { itemId } = await made()
+    const live = await publish(itemId)
+    const [name, game] = live.body.questions.map((q) => q.id)
+    const id = publicId(live)
+    responseZone = 'America/Chicago'
+    const now = vi.spyOn(Date, 'now').mockReturnValue(Date.UTC(2026, 10, 24, 5, 30))
+    try {
+      expect((await post(id, { [name]: 'Ava Thompson', [game]: 'Valorant' })).status).toBe(201)
+    } finally {
+      now.mockRestore()
+    }
+    const answer = JSON.parse(readFileSync(join(dir, 'work-service', 'forms', `${id}.answers.jsonl`), 'utf8').trim())
+    expect(answer).toMatchObject({ row: 2, at: '2026-11-23 23:30' })
+    const responses = await call<FormResponses>('work.forms.responses', { itemId })
+    expect(responses.rows).toEqual([['Ava Thompson', 'Valorant', '', '2026-11-23 23:30']])
   })
 
   it('writes one row for a submission sent twice (its reply lost on the way back), and a new row for a new one', async () => {

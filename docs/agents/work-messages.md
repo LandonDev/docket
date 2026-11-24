@@ -112,9 +112,8 @@ answered as if it did not exist when its sector differs (`chatIn`).
   times, file names and each stored message's id, the id `reply_to` takes
   (a reply of his still queued, sending or failed shows its state and no
   id: it is LifeOS's outbox row, nothing to answer), or a
-  search; times in his zone, LifeOS's `settings.timezone` through
-  `clashes/zone.ts` `zoneOf`, the zone named, "Nov 20, 2:15 PM CST"; marks
-  nothing read) and
+  search, with times from `hisZone(ctx)` such as "Nov 20, 2:15 PM Central".
+  It marks nothing read) and
   `messages_draft_reply {chat, text, reply_to?}` (a Slack or iMessage
   conversation → a held `chat.reply`, whatever LifeOS's route says now; a
   Discord or Teams one → a draft row, a push and "Saved as a draft in the

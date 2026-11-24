@@ -2,6 +2,7 @@ import { appendFileSync, existsSync, readFileSync, statSync } from 'node:fs'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { join } from 'node:path'
 import type { PublicForm, PublishedForm } from '@shared/contract-work-forms'
+import { dayOf, hostZone, timeIn } from '../../clock'
 import type { A1Cell } from '../../sheets/host/wire'
 import { HOSTED_CSP } from './hosted'
 import { hostOf } from './internalSheet'
@@ -107,9 +108,8 @@ export function checkAnswers(form: Pick<PublicForm, 'questions'>, raw: unknown):
   return { ok }
 }
 
-const pad = (n: number): string => String(n).padStart(2, '0')
-/** When it came in, in the host's own time: a sheet reads it as text a person can scan. */
-export const submittedAt = (d: Date): string => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`
+/** When it came in, in the owner's zone: a sheet reads it as text a person can scan. */
+export const submittedAt = (zone: string, at: number): string => `${dayOf(zone, at)} ${timeIn(zone, at, '24-hour')}`
 
 const letter = (i: number): string => {
   let s = ''
@@ -158,7 +158,7 @@ async function record(ctx: RouteCtx, form: PublishedForm, ok: Record<string, str
     // Asked inside the queue: two sendings of one submission that crossed are one row.
     if (submission && takenOf(ctx, form.publicId).has(submission)) return 'again'
     const row = countOf(ctx, form.publicId) + 2
-    const at = submittedAt(new Date())
+    const at = submittedAt(ctx.config().zone ?? hostZone(), Date.now())
     const cells: A1Cell[] = [{ at: `A${row}`, v: at }, ...form.columns.flatMap((id, i) => (ok[id] ? [{ at: `${letter(i + 1)}${row}`, v: ok[id] }] : []))]
     await hostOf(ctx).cells(form.sheet, cells, `form:${form.publicId}`, false)
     // The row is taken once the sheet has it, whatever happens to the note of it.

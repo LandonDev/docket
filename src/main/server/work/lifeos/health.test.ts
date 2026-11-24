@@ -6,7 +6,7 @@ import { lifeosRows, signInRow, SOURCE_SILENT_MS, sourceRow, sourceTitle, type L
 import { lifeos } from './index'
 import { ENROLLED_WORDS } from './keys'
 
-const NOW = new Date('2026-11-20T15:00:00').getTime()
+const NOW = new Date('2026-11-20T15:00:00Z').getTime()
 const JWT = 'eyJhbGciOiJIUzI1.eyJzdWIiOiJsYW5kb24.c2lnbmF0dXJlc2ln'
 
 function owner(answers: Record<string, unknown>, calls: string[] = []): LifeosClient {
@@ -25,30 +25,30 @@ const status = (lifeos: LifeosState, keys: LifeosStatus['keys'] = []): LifeosSta
 
 describe('the LifeOS sign-in row', () => {
   it('carries the button the Settings row had, in each state', () => {
-    expect(signInRow({ state: 'connected', ownerId: 'landon', since: NOW }, NOW)).toMatchObject({ id: 'lifeos.signin', group: 'LifeOS', title: 'LifeOS', state: 'working', line: 'Signed in', fix: { kind: 'run', label: 'Sign out', method: 'work.lifeos.signOut' } })
-    expect(signInRow({ state: 'pairing', code: 'ABCD-1234', expiresAt: NOW + 60_000 }, NOW)).toMatchObject({ state: 'needs-you', fix: { kind: 'page', label: 'Show code…', page: 'lifeos-sign-in' } })
-    expect(signInRow({ state: 'signed-out' }, NOW)).toMatchObject({ state: 'needs-you', fix: { kind: 'page', label: 'Sign in…', page: 'lifeos-sign-in' } })
-    expect(signInRow({ state: 'refused', error: 'revoked' }, NOW)).toMatchObject({ state: 'needs-you', fix: { label: 'Sign in…', page: 'lifeos-sign-in' } })
-    const down = signInRow({ state: 'unreachable', since: NOW - 3_600_000, error: 'fetch failed' }, NOW)!
+    expect(signInRow({ state: 'connected', ownerId: 'landon', since: NOW })).toMatchObject({ id: 'lifeos.signin', group: 'LifeOS', title: 'LifeOS', state: 'working', line: 'Signed in', fix: { kind: 'run', label: 'Sign out', method: 'work.lifeos.signOut' } })
+    expect(signInRow({ state: 'pairing', code: 'ABCD-1234', expiresAt: NOW + 60_000 })).toMatchObject({ state: 'needs-you', fix: { kind: 'page', label: 'Show code…', page: 'lifeos-sign-in' } })
+    expect(signInRow({ state: 'signed-out' })).toMatchObject({ state: 'needs-you', fix: { kind: 'page', label: 'Sign in…', page: 'lifeos-sign-in' } })
+    expect(signInRow({ state: 'refused', error: 'revoked' })).toMatchObject({ state: 'needs-you', fix: { label: 'Sign in…', page: 'lifeos-sign-in' } })
+    const down = signInRow({ state: 'unreachable', since: NOW - 3_600_000, error: 'fetch failed' })!
     // Signed in but not answering keeps Sign out, so a host stuck on a wrong address can sign in again.
-    expect(down).toMatchObject({ state: 'broken', line: 'No answer since 2:00 PM; it keeps trying', fix: { kind: 'run', label: 'Sign out', method: 'work.lifeos.signOut' } })
-    expect(signInRow({ state: 'connecting' }, NOW)).toMatchObject({ state: 'broken', fix: { label: 'Sign out' } })
-    expect(signInRow({ state: 'off' }, NOW)).toBeNull()
+    expect(down).toMatchObject({ state: 'broken', line: 'Still trying. No answer since', at: NOW - 3_600_000, fix: { kind: 'run', label: 'Sign out', method: 'work.lifeos.signOut' } })
+    expect(signInRow({ state: 'connecting' })).toMatchObject({ state: 'broken', fix: { label: 'Sign out' } })
+    expect(signInRow({ state: 'off' })).toBeNull()
   })
 
   it('never shows the pairing code', () => {
-    expect(JSON.stringify(signInRow({ state: 'pairing', code: 'ABCD-1234', expiresAt: NOW }, NOW))).not.toContain('ABCD-1234')
+    expect(JSON.stringify(signInRow({ state: 'pairing', code: 'ABCD-1234', expiresAt: NOW }))).not.toContain('ABCD-1234')
   })
 })
 
 describe('a mail or calendar source', () => {
   const H = 3_600_000
   // Shapes as LifeOS's sources:list answers them on 2026-11-20, the worker last started at 3:12 AM.
-  const gcal = (extra: Partial<LifeosSource> = {}): LifeosSource => ({ _id: 'g1', kind: 'gcal', account: 'landon@cosmic.games', label: 'landon@cosmic.games', sector: 'cosmic', enabled: true, status: 'ok', lastSyncAt: new Date('2026-11-20T03:12:00').getTime(), reportedAt: new Date('2026-11-20T03:12:00').getTime(), ...extra })
+  const gcal = (extra: Partial<LifeosSource> = {}): LifeosSource => ({ _id: 'g1', kind: 'gcal', account: 'landon@cosmic.games', label: 'landon@cosmic.games', sector: 'cosmic', enabled: true, status: 'ok', lastSyncAt: new Date('2026-11-20T03:12:00Z').getTime(), reportedAt: new Date('2026-11-20T03:12:00Z').getTime(), ...extra })
   const mail = (extra: Partial<LifeosSource> = {}): LifeosSource => ({ _id: 'm1', kind: 'email', account: 'landon@cosmic.games', label: 'Cosmic', sector: 'cosmic', enabled: true, status: 'ok', lastSyncAt: NOW - 40_000, reportedAt: NOW - 40_000, ...extra })
 
   it('works while mail checked in lately, and says when', () => {
-    expect(sourceRow(mail(), NOW)).toMatchObject({ id: 'lifeos.source:m1', group: 'Mail and calendar', title: 'Cosmic mail', sector: 'cosmic', shared: true, state: 'working', line: 'Synced 2:59 PM' })
+    expect(sourceRow(mail(), NOW)).toMatchObject({ id: 'lifeos.source:m1', group: 'Mail and calendar', title: 'Cosmic mail', sector: 'cosmic', shared: true, state: 'working', line: 'Synced', at: NOW - 40_000 })
     // With no sector it names his account: a thread of a sector reads its state alone.
     expect(sourceRow(mail({ sector: undefined }), NOW)).toMatchObject({ shared: true, personal: true })
   })
@@ -62,10 +62,10 @@ describe('a mail or calendar source', () => {
 
   it('reads silence only for a kind that checks in on every poll: mail after ten minutes, a feed after a day', () => {
     expect(sourceRow(mail({ reportedAt: NOW - 9 * 60_000 }), NOW)).toMatchObject({ state: 'working' })
-    expect(sourceRow(mail({ reportedAt: NOW - SOURCE_SILENT_MS.email! - 60_000 }), NOW)).toMatchObject({ state: 'broken', line: 'No sync since 2:49 PM' })
+    expect(sourceRow(mail({ reportedAt: NOW - SOURCE_SILENT_MS.email! - 60_000 }), NOW)).toMatchObject({ state: 'broken', line: 'No sync since', at: NOW - SOURCE_SILENT_MS.email! - 60_000 })
     const ics = (reportedAt: number): LifeosSource => ({ _id: 'f1', kind: 'ics', account: 'ics', label: 'School', enabled: true, status: 'ok', lastSyncAt: reportedAt, reportedAt })
     expect(sourceRow(ics(NOW - 9 * H), NOW)).toMatchObject({ title: 'School calendar', state: 'working' })
-    expect(sourceRow(ics(new Date('2026-11-18T08:00:00').getTime()), NOW)).toMatchObject({ state: 'broken', line: 'No sync since Nov 18' })
+    expect(sourceRow(ics(new Date('2026-11-18T08:00:00Z').getTime()), NOW)).toMatchObject({ state: 'broken', line: 'No sync since', at: Date.UTC(2026, 10, 18, 8) })
   })
 
   it('is broken on an error or never synced, and needs him when LifeOS stopped reading it', () => {

@@ -9,6 +9,7 @@ import type { FormRead } from './form'
 import { ensurePdfTables, PDF_KEYED, PdfStore } from './store'
 import { pdfTools } from './tools'
 import { announce, exportCopy, formOf, lastExport, signedDate, snapshot, viewOf } from './view'
+import { hisZone } from '../clock'
 
 /**
  * The pdf pillar's server module (docs/agents/work-pdf.md): a PDF item's
@@ -110,7 +111,7 @@ export const pdf: WorkModule = {
         const { stamp } = await snapshot(ctx, item)
         const form = await formOf(stamp)
         const kept = store.keep(item)
-        store.sign(kept.id, kept.sessionId, req.params.signed, 'error' in form ? [] : form.fields, signedDate(), stamp.rev)
+        store.sign(kept.id, kept.sessionId, req.params.signed, 'error' in form ? [] : form.fields, signedDate(hisZone(ctx)), stamp.rev)
         return handled(await announce(ctx, item))
       }
       case 'work.pdf.export': {

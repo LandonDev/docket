@@ -4,11 +4,12 @@ import { errorText } from '@shared/work/ids'
 import { createHash, randomUUID } from 'node:crypto'
 import { existsSync, readdirSync, realpathSync } from 'node:fs'
 import { isAbsolute, join, sep } from 'node:path'
-import { centsFrom, formatMoney, inPeriod, isDay, milesLine, milesOf, moneyWords, sumsOf, today, undatedWords, type LedgerRow } from '@shared/work/money'
+import { centsFrom, formatMoney, inPeriod, isDay, milesLine, milesOf, moneyWords, sumsOf, undatedWords, type LedgerRow } from '@shared/work/money'
 import type { ToolCtx, WorkTool } from '../modules'
 import { leave } from './inbox'
 import { booksHere, LEDGER_GONE, LEDGER_OUTSIDE, ledgerMissing, ledgerOf, ledgerOutside, mileageLog, mileageWords, MoneyError } from './read'
 import { workspaceOf, type Workspace } from './store'
+import { dayOf, hisZone } from '../clock'
 
 /**
  * What a Work thread may do with money (docs/agents/work-money.md "The
@@ -47,7 +48,7 @@ const moneyRead: WorkTool = {
     const books = booksHere(ctx, ws.id)
     if (!books) return workText(`${ws.name} has no ledger yet.`)
     try {
-      const now = today()
+      const now = dayOf(hisZone(ctx), Date.now())
       const period = { from: a.from ?? `${now.slice(0, 4)}-01-01`, to: a.to ?? new Date(Date.parse(`${now}T00:00:00Z`) + 86400_000).toISOString().slice(0, 10) }
       const [ledger, log] = await Promise.all([ledgerOf(ctx, books), mileageLog(ctx, books)])
       if (ledger.twice?.length) return fail(`The ledger's columns changed: ${ledger.twice.join(', ')} stands twice. The owner puts it right in the ledger.`)

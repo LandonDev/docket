@@ -1,5 +1,5 @@
 import { errorText, type HealthRow, type SectorKey } from '@shared/work'
-import { isChatSource, lastHeard, SOURCE_NAME, staleOf, syncWhen, type ChatSource } from '@shared/work/messages'
+import { isChatSource, lastHeard, SOURCE_NAME, staleOf, type ChatSource } from '@shared/work/messages'
 import { redactLine } from '../health'
 import type { HealthSource, WorkCtx } from '../modules'
 import { linkedWorkspaces } from './lifeos'
@@ -48,8 +48,9 @@ export function chatSourceRow(s: ChatSourceRow, sectors: ReadonlySet<string>, no
   // Idle with a reason: LifeOS stopped reading it; only he can connect it again there.
   if (s.status === 'idle' && s.error) return { ...row, state: 'needs-you', line: `Stopped in LifeOS: ${redactLine(s.error)}` }
   const heard = lastHeard(s)
-  if (staleOf({ ...s, kind }, now)) return { ...row, state: 'broken', line: heard === undefined ? 'Never synced' : `No sync since ${syncWhen(heard, now)}` }
-  return { ...row, state: 'working', line: `Synced ${syncWhen(heard!, now)}` }
+  if (heard === undefined) return { ...row, state: 'broken', line: 'Never synced' }
+  if (staleOf({ ...s, kind }, now)) return { ...row, state: 'broken', line: 'No sync since', at: heard }
+  return { ...row, state: 'working', line: 'Synced', at: heard }
 }
 
 /** LifeOS's own rule: a chat source with no sector of its own is "everything else". */

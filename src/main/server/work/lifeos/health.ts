@@ -56,18 +56,11 @@ export function sourceTitle(s: Pick<LifeosSource, 'kind' | 'label' | 'accountNam
   return !word || name.toLowerCase().includes(word) ? name : `${name} ${word}`
 }
 
-/** "2:02 PM" today, "Nov 17" before: his US words, in the host's local time. */
-export function whenWords(at: number, now: number): string {
-  const d = new Date(at)
-  if (d.toDateString() === new Date(now).toDateString()) return d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
-  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
-}
-
 const SIGN_IN = { kind: 'page', label: 'Sign in…', page: 'lifeos-sign-in' } as const
 const SIGN_OUT = { kind: 'run', label: 'Sign out', method: 'work.lifeos.signOut' } as const
 
 /** The sign-in row: what Settings → Work showed, with its button. Null when Work is off here. */
-export function signInRow(state: LifeosStatus['lifeos'], now: number): HealthRow | null {
+export function signInRow(state: LifeosStatus['lifeos']): HealthRow | null {
   const row = { id: 'lifeos.signin', pillar: 'lifeos', group: 'LifeOS', title: 'LifeOS' } as const
   switch (state.state) {
     case 'off':
@@ -84,7 +77,7 @@ export function signInRow(state: LifeosStatus['lifeos'], now: number): HealthRow
     case 'connecting':
       return { ...row, state: 'broken', line: 'Still connecting', fix: SIGN_OUT }
     case 'unreachable':
-      return { ...row, state: 'broken', line: `No answer since ${whenWords(state.since, now)}; it keeps trying`, fix: SIGN_OUT }
+      return { ...row, state: 'broken', line: 'Still trying. No answer since', at: state.since, fix: SIGN_OUT }
   }
 }
 
@@ -100,13 +93,13 @@ export function sourceRow(s: LifeosSource, now: number): HealthRow | null {
   if (silent === undefined) return { ...row, state: 'working', line: 'Syncing' }
   const seen = s.reportedAt ?? s.lastSyncAt
   if (!seen) return { ...row, state: 'broken', line: 'Never synced' }
-  if (now - seen > silent) return { ...row, state: 'broken', line: `No sync since ${whenWords(seen, now)}` }
-  return { ...row, state: 'working', line: `Synced ${whenWords(seen, now)}` }
+  if (now - seen > silent) return { ...row, state: 'broken', line: 'No sync since', at: seen }
+  return { ...row, state: 'working', line: 'Synced', at: seen }
 }
 
 /** Every row, from the host's status and, while signed in, its owner's client. */
 export async function lifeosRows(o: { status: LifeosStatus; owner: LifeosClient; workspaceName: (id: string) => string | undefined; now: number }): Promise<HealthRow[]> {
-  const signIn = signInRow(o.status.lifeos, o.now)
+  const signIn = signInRow(o.status.lifeos)
   if (!signIn) return []
   const rows: HealthRow[] = [signIn]
   if (o.status.lifeos.state !== 'connected') return rows

@@ -51,6 +51,7 @@ export interface RunningService {
   setLinks(links: ServiceLink[]): void
   setProject(linkId: string, project: ServiceProject | null): void
   setTrusted(trusted: TrustedIssuer[]): void
+  setZone(zone: string): void
   stop(): Promise<void>
 }
 
@@ -302,6 +303,9 @@ export async function startWorkService(initial: ServiceConfig, io: ServiceIo): P
     setTrusted(next) {
       trusted = next
       config = { ...config, trusted: next }
+    },
+    setZone(zone) {
+      config = { ...config, zone }
     },
     async stop() {
       clearInterval(recovery)

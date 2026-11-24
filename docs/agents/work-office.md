@@ -666,6 +666,9 @@ passes.
 
 ## What is held
 
+For an Outlook reply or forward, the Outbox names the original mail's
+date in `hisZone(ctx)`.
+
 `office.mail.send`, `office.calendar.op` and `office.edit` are host-store act kinds
 (`held.ts`, registered through `WorkModule.acts`). `office.edit` takes no
 grant and no edit in the Outbox: each one waits for his press. A tool only ever calls

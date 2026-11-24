@@ -176,6 +176,9 @@ each thread) and pauses or resumes it; it starts off and makes no grant.
 
 ## Who may make what
 
+A scheduled `routine_propose` saves the zone from `hisZone(ctx)`. When
+the proposal names a time of day, the reply names its zone. The row keeps its zone when the owner accepts it.
+
 - `work.routines.save`, `remove`: `admin`; `pause`, `runNow`: `operate`.
   All four refuse a thread's own call (`Caller.kind === 'model'`). `list`,
   `runs`: `read`. The push `work.routines {workspaceId, id}` says a

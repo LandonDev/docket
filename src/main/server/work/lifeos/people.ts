@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import { workText, type SectorKey, type WorkToolResult } from '@shared/work'
+import { dayOf, hisZone, timeIn } from '../clock'
 import type { WorkCtx, WorkTool } from '../modules'
 import { GUEST_LINKS_TABLE } from '../guests/store'
 
@@ -74,14 +75,12 @@ function heldLinks(ctx: WorkCtx): HeldLink[] {
   }
 }
 
-const when = (ms: number, allDay?: boolean): string => {
-  const iso = new Date(ms).toISOString()
-  return allDay ? iso.slice(0, 10) : iso.slice(0, 16).replace('T', ' ') + 'Z'
-}
 const NOUN = { docs: 'document', sheets: 'sheet', projects: 'project' } as const
 
 /** The page as words, each thing with the id LifeOS's own tools take. */
-export function pageText(page: Page, links: readonly HeldLink[], sector: string): string {
+export function pageText(page: Page, links: readonly HeldLink[], sector: string, zone: string): string {
+  // LifeOS all-day events carry the calendar date as UTC midnight.
+  const when = (at: number, allDay?: boolean): string => allDay ? dayOf('UTC', at) : `${dayOf(zone, at)} ${timeIn(zone, at, 'named')}`
   const { person } = page
   const out: string[] = [`# ${person.name} (person ${person._id}, ${sector})`]
   if (person.emails.length) out.push(`Addresses: ${person.emails.join(', ')}`)
@@ -99,7 +98,7 @@ export function pageText(page: Page, links: readonly HeldLink[], sector: string)
     'Shared with them by guest link',
     page.shared.map((s) => {
       const l = linkOf.get(`${s.table}:${s.id}`)
-      return `- ${s.title || 'Untitled'} (${NOUN[s.table]} ${s.id})${l ? `, can ${l.role} until ${when(l.expiresAt).slice(0, 10)}` : ''}`
+      return `- ${s.title || 'Untitled'} (${NOUN[s.table]} ${s.id})${l ? `, can ${l.role} until ${dayOf(zone, l.expiresAt)}` : ''}`
     })
   )
   section('Earlier events', page.recent.map((e) => `- ${e.title}, ${when(e.startsAt, e.allDay)} (event ${e._id})`))
@@ -136,7 +135,7 @@ export const personPageTool: WorkTool = {
       const links = linksNamed(heldLinks(ctx), found.person.name, Date.now())
       const page = await owner.query<Page | null>('people:page', { id: found.person._id, sector, shared: links.slice(0, 50).map((l) => ({ table: l.table, id: l.id })) })
       if (!page) return fail(`No one in ${sector}'s people is ${a.person}.`)
-      return workText(pageText(page, links, sector))
+      return workText(pageText(page, links, sector, hisZone(ctx)))
     } catch (err) {
       return fail(`LifeOS did not answer: ${err instanceof Error ? err.message : String(err)}`)
     }

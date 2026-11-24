@@ -201,6 +201,8 @@ export interface Caller {
  * part file work/ctx.ts lists.
  */
 export interface WorkCtx {
+  /** The host's cached owner and desktop time zones. Optional in test mounts. */
+  clock?: ReturnType<typeof import('./clock').workClock>
   db: DatabaseSync
   host: HostId
   /** <userData> on this host: a module keeps its files under `<dataDir>/<its own folder>` (the canvas: `canvas/`, media: `work-media/`) */

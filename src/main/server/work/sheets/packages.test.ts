@@ -37,13 +37,14 @@ const valueAt = (path: string, sheet: string, row: number, col: number): unknown
 
 let n = 0
 let path: string
+let db: DatabaseSync
 let store: PackageStore
 beforeEach(async () => {
   const dir = join(scratch, String(++n))
   path = join(dir, 'Budget.xlsx')
   ;(await import('node:fs')).mkdirSync(dir, { recursive: true })
   copyFileSync(join(CORPUS, 'formulas.xlsx'), path)
-  const db = new DatabaseSync(':memory:')
+  db = new DatabaseSync(':memory:')
   ensurePackageTables(db)
   let t = 1_000
   store = new PackageStore(db, await localJobs(), join(dir, 'copies'), () => engine, () => ++t)
@@ -379,7 +380,11 @@ describe('an opened package', () => {
     expect(readFileSync(path).equals(readFileSync(join(CORPUS, 'formulas.xlsx')))).toBe(true)
     expect(store.since(path, 1)).toEqual({ rev: 2, reload: true })
     expect(valueAt(path, 'Data', 1, 0)).toBe(1)
-    expect(store.history(path).map((h) => h.rev)).toEqual([2, 1, 0])
+    const history = store.history(path)
+    expect(history.map((h) => h.rev)).toEqual([2, 1, 0])
+    expect(history[0]).toMatchObject({ label: 'Restored an earlier version', at: expect.any(Number) })
+    db.prepare("UPDATE work_sheets_ops SET label = 'Restored to 15:14' WHERE path = ? AND rev = ?").run(path, 2)
+    expect(store.history(path)).toEqual(history)
   })
 
   it('offers the switch for a file with a pivot table or macros', async () => {

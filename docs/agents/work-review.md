@@ -293,6 +293,9 @@ Two windows asking for one week at once share one read.
 
 ## Friday
 
+The job and `week_review` work out which week they are in using
+`hisZone(ctx)`. The list gives the window the same zone.
+
 The routines pillar runs host jobs (work-routines.md "A routine that runs a
 job"): the review registers `review.make` on its module's `jobs` and seeds
 one routine a host, once (`seedRoutine`, `work_review_setup.seeded_at`):

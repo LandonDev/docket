@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import { errorText, fixAllowed, fixParams, HEALTH_ORDER, lapseLine, rowsForSector, workText, type HealthReport, type HealthRow, type Lapse, type PillarId, type SectorKey } from '@shared/work'
+import { dateIn, dayOf, hisZone, timeIn } from './clock'
 import type { WorkCtx, WorkModule, WorkTool } from './modules'
 
 /**
@@ -52,6 +53,7 @@ export function cleanRow(row: HealthRow, pillar: PillarId): HealthRow {
     title: oneLine(row.title, 120)!,
     state: row.state === 'working' || row.state === 'needs-you' ? row.state : 'broken',
     ...(row.line ? { line: oneLine(row.line) } : {}),
+    ...(typeof row.at === 'number' && Number.isFinite(row.at) ? { at: row.at } : {}),
     ...(fix ? { fix } : {}),
     ...(typeof row.until === 'number' && Number.isFinite(row.until) ? { until: row.until } : {}),
     ...(row.sector ? { sector: row.sector } : {}),
@@ -121,7 +123,7 @@ export type HostHealth = { name: string; report: HealthReport } | { name: string
 const STATE_WORD: Record<HealthRow['state'], string> = { working: 'working', broken: 'BROKEN', 'needs-you': 'NEEDS HIM' }
 
 /** The rows as a thread reads them: per host, worst first, a thread of one sector seeing no other sector's rows. */
-export function healthText(hosts: readonly HostHealth[], sector: SectorKey | null | 'all', now = Date.now()): string {
+export function healthText(hosts: readonly HostHealth[], sector: SectorKey | null | 'all', zone: string, now = Date.now()): string {
   const out: string[] = []
   for (const host of hosts) {
     if ('offline' in host) {
@@ -135,7 +137,10 @@ export function healthText(hosts: readonly HostHealth[], sector: SectorKey | nul
     const rows = rowsForSector(host.report.rows, sector).sort((a, b) => HEALTH_ORDER[a.state] - HEALTH_ORDER[b.state])
     out.push(`${host.name}${rows.length ? '' : ': no connections to check'}`)
     for (const row of rows) {
-      const parts = [row.line, row.until ? lapseLine(row.until, now) : undefined, row.fix && row.fix.kind !== 'page' ? `fix: ${row.fix.label}` : row.fix ? `fix: ${row.fix.label} (in the app)` : undefined].filter(Boolean)
+      const at = row.at
+      const when = at === undefined ? undefined : dayOf(zone, at) === dayOf(zone, now) ? timeIn(zone, at, 'named') : dateIn(zone, at, now)
+      const line = [row.line, when].filter(Boolean).join(' ')
+      const parts = [line, row.until ? lapseLine(row.until, now, zone) : undefined, row.fix && row.fix.kind !== 'page' ? `fix: ${row.fix.label}` : row.fix ? `fix: ${row.fix.label} (in the app)` : undefined].filter(Boolean)
       out.push(`- ${row.group} / ${row.title}: ${STATE_WORD[row.state]}${parts.length ? `. ${parts.join('. ')}` : ''}`)
     }
   }
@@ -155,6 +160,6 @@ export function connectionsTool(read: (signal: AbortSignal) => Promise<HostHealt
       "Which of Work's sign-ins and helpers work on each of his hosts (LifeOS, mail and calendar sources, Google, Office, the add-in, files sync, the browser, the Work service, tools, the Windows VM, Frame.io): working, broken or needs him, with the one-line reason and the fix he can press in Settings → Connections. Read it before guessing why a Work tool failed. Changes nothing.",
     input: z.object({}),
     readOnly: true,
-    run: async (_args, ctx) => workText(healthText(await read(ctx.signal), ctx.scope.workspaceId ? ctx.scope.sector : 'all'))
+    run: async (_args, ctx) => workText(healthText(await read(ctx.signal), ctx.scope.workspaceId ? ctx.scope.sector : 'all', hisZone(ctx)))
   }
 }

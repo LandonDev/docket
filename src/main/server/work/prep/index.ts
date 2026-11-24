@@ -14,6 +14,7 @@ import { notesDocMoved } from './moved'
 import { registerFileMoved } from '../files/hooks'
 import { prepPreamble, prepTools } from './tools'
 import { workspaceSector } from './workspace'
+import { hisZone } from '../clock'
 
 /**
  * The prep pillar’s server module. A page stays with its event on the
@@ -222,7 +223,7 @@ async function startThread(ctx: WorkCtx, workspaceId: string, eventId: string, k
       // (`notesOwed`, tools.ts). `rewriteTasks` keeps what he ticked or dismissed. Its start time moves to now, so
       // the same notes pressed again tell it nothing more.
       try {
-        await ctx.threads.resume(existing, followNotesMessage(page, version, await notesDocWords(ctx, page)))
+        await ctx.threads.resume(existing, followNotesMessage(page, version, hisZone(ctx), await notesDocWords(ctx, page)))
       } catch (err) {
         throw new Error(`The follow-up thread could not be told of the new notes (${errorText(err)}). Open it from More.`)
       }
@@ -238,7 +239,7 @@ async function startThread(ctx: WorkCtx, workspaceId: string, eventId: string, k
     // until it does: a turn of its own from before, which may still write, read older notes.
     const version = notesVersion(ctx, page.doc.notes)
     try {
-      await ctx.threads.resume(existing, followAgainMessage(page, version, await notesDocWords(ctx, page)))
+      await ctx.threads.resume(existing, followAgainMessage(page, version, hisZone(ctx), await notesDocWords(ctx, page)))
     } catch (err) {
       throw new Error(`The follow-up thread could not be started again (${errorText(err)}). Open it from More.`)
     }
@@ -257,7 +258,7 @@ async function startThread(ctx: WorkCtx, workspaceId: string, eventId: string, k
     title: follow ? followTitle(title) : briefTitle(title),
     about: { kind: 'event', label: title, ref: { at: 'lifeos', table: 'events', id: eventId } },
     // A new recording gets a meeting of its own beside the new thread, which `prep_read` names: the one it takes the place of is not said to be there.
-    text: follow ? followMessage(recording ? { ...page, notesFile: null } : page, { recording: !!recording, document: !recording && notesDoc?.at === 'file', docWords }) : briefMessage(page)
+    text: follow ? followMessage(recording ? { ...page, notesFile: null } : page, hisZone(ctx), { recording: !!recording, document: !recording && notesDoc?.at === 'file', docWords }) : briefMessage(page, hisZone(ctx))
   })
   if (!recording) {
     // On the row as it stands after the awaits above (a rename in Files meanwhile is kept), less the stale meeting.

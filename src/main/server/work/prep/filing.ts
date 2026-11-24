@@ -2,10 +2,11 @@ import type { PrepSuggestion } from '@shared/contract-work-prep'
 import type { SectorKey } from '@shared/work'
 import type { WorkCtx } from '../modules'
 import type { PageRow } from './store'
+import { hisZone } from '../clock'
 
 /** File one accepted suggestion in the page’s sector, with a key that survives a retry. */
 export async function fileTask(ctx: WorkCtx, sector: SectorKey, page: Pick<PageRow, 'id' | 'title' | 'startsAt'>, task: PrepSuggestion): Promise<string> {
-  const day = new Date(page.startsAt).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }).replace(/,/g, '')
+  const day = new Intl.DateTimeFormat('en-US', { timeZone: hisZone(ctx), weekday: 'short', month: 'short', day: 'numeric' }).format(page.startsAt).replace(/,/g, '')
   const where = `From “${page.title}”, ${day}.`
   const key = `prep:${page.id}:${task.id}`
   const id = await ctx.lifeos.owner().mutation<string>('tasks:create', {

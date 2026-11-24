@@ -18,6 +18,7 @@ import { ensureRoutineTables, type Cursor } from './store'
 import { routineMentions } from './mentions'
 import { handlePlays, playTools } from './playMethods'
 import { PlayStore } from './plays'
+import { hisZone, zoneName } from '../clock'
 
 /**
  * The routines pillar (docs/agents/work-routines.md): the scheduler and its
@@ -189,8 +190,6 @@ const ProposeInput = z.object({
   lifeosEvents: z.array(z.enum(Object.keys(LIFEOS_TRIGGER_KINDS) as [string, ...string[]])).min(1).optional().describe('Or run when one of these happens in this workspace’s sector')
 })
 
-const localZone = (): string => Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'
-
 function tools(scope: WorkScope): WorkTool[] {
   return [
     ...playTools(scope),
@@ -239,22 +238,25 @@ function tools(scope: WorkScope): WorkTool[] {
         const given = [a.days || a.at ? 1 : 0, a.everyMinutes ? 1 : 0, a.lifeosEvents ? 1 : 0].reduce((x, y) => x + y, 0)
         if (given !== 1) return { ...workText('Give exactly one of: days with at, everyMinutes, or lifeosEvents.'), isError: true }
         let trigger: Trigger
+        const tz = hisZone(tc)
         if (a.lifeosEvents) trigger = { on: 'lifeos', kinds: a.lifeosEvents }
-        else if (a.everyMinutes) trigger = { on: 'schedule', rrule: scheduleRrule({ every: 'minutes', interval: a.everyMinutes }), tz: localZone() }
+        else if (a.everyMinutes) trigger = { on: 'schedule', rrule: scheduleRrule({ every: 'minutes', interval: a.everyMinutes }), tz }
         else {
           if (!a.days || !a.at) return { ...workText('A schedule needs both days and at.'), isError: true }
           const [h, m] = a.at.split(':').map(Number) as [number, number]
           if (h > 23 || m > 59) return { ...workText(`at: ${a.at} is not a time`), isError: true }
-          trigger = { on: 'schedule', rrule: scheduleRrule({ every: 'week', days: a.days.map((d) => DAY_CODES.indexOf(d)), hour: h, minute: m }), tz: localZone() }
+          trigger = { on: 'schedule', rrule: scheduleRrule({ every: 'week', days: a.days.map((d) => DAY_CODES.indexOf(d)), hour: h, minute: m }), tz }
         }
         const e = routinesEngine(tc)
         const workspaceId = tc.scope.workspaceId ?? WORK_HOME
+        const now = (routinesSeams.current?.now ?? Date.now)()
         const r = e.store.create(
           { workspaceId, kind: 'routine', name: a.name, prompt: a.prompt, trigger, ends: { kind: 'never' }, nextAt: null, proposed: true, madeIn: tc.sessionId, createdBy: 'model' },
-          (routinesSeams.current?.now ?? Date.now)()
+          now
         )
         tc.push({ push: 'work.routines', workspaceId, id: r.id })
-        return workText(`Proposed “${a.name}” (${triggerWords(trigger)}). It waits in Routines for the owner to create; nothing runs until he does.`)
+        const zone = trigger.on === 'schedule' && a.at ? ` ${zoneName(trigger.tz, now)}` : ''
+        return workText(`Proposed “${a.name}” (${triggerWords(trigger)}${zone}). It waits in Routines for the owner to create; nothing runs until he does.`)
       }
     }
   ]

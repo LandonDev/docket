@@ -108,6 +108,8 @@ line follows it.
 
 ## Voice
 
+The `voice_examples` tool dates sent mail in `hisZone(ctx)`.
+
 The switch is `voice` in the workspace's Work settings (`work.workspace.set
 {patch: {voice}}`, milestone 5's column). The `voice_examples` tool is listed
 to every Work thread of a workspace and refuses while the switch is off,

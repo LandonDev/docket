@@ -6,6 +6,7 @@ import { ClientRequestSchema } from '@shared/contract'
 import { DIGEST_CAPS, DigestRequestSchemas, type DigestList, type DigestPush, type DigestSettings } from '@shared/contract-work-digest'
 import type { DigestDay } from '@shared/contract-work-digest'
 import type { NoticeWork, Tell, TellKind } from '@shared/work/tell'
+import { hisZone, workClock } from '../clock'
 import type { WorkPartDeps } from '../ctx'
 import type { WorkCtx } from '../modules'
 import { digest as digestModule } from '.'
@@ -596,7 +597,7 @@ describe('what he sets', () => {
 
 describe('the wire', () => {
   const ctx = (): WorkCtx => {
-    const c = { db: rig.db, host: 'env_box', enabled: () => rig.on.value, log: (l: string) => void rig.logs.push(l), push: (p: DigestPush) => void rig.pushes.push(p) } as unknown as WorkCtx
+    const c = { db: rig.db, clock: workClock('UTC'), host: 'env_box', enabled: () => rig.on.value, log: (l: string) => void rig.logs.push(l), push: (p: DigestPush) => void rig.pushes.push(p) } as unknown as WorkCtx
     Object.assign(c, tellPart(c, { db: rig.db, environmentId: 'env_box', whileOn: () => {} } as unknown as WorkPartDeps))
     return c
   }
@@ -623,7 +624,10 @@ describe('the wire', () => {
     expect(list).toMatchObject({ days: [], waiting: 1, rows: [{ title: 'Send to Dana Reyes: Re: budget', how: 'waiting' }] })
     // the registry is empty in this test: the digest's own kinds are listed by its module alone
     expect(Array.isArray(list.groups)).toBe(true)
-    await call(c, 'work.digest.here', { zone: NY })
+    await call(c, 'work.digest.here', { zone: NY, at: 2 })
+    await call(c, 'work.digest.here', { zone: 'America/Denver', at: 1 })
+    expect(hisZone(c)).toBe(NY)
+    expect(hisZone(ctx())).toBe(NY)
     const set = await call<DigestSettings>(c, 'work.digest.set', { at: '07:15', levels: { results: 'digest' } })
     expect(set).toMatchObject({ at: '07:15', zone: NY, levels: { results: 'digest' } })
     expect(await call<DigestSettings>(c, 'work.digest.get', {})).toEqual(set)

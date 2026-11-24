@@ -7,6 +7,10 @@ and sheets (sheets: [work-sheets.md](work-sheets.md)), published forms
 
 ## The process
 
+Main sends the owner's zone in the service config and sends an update
+each time `hisZone(ctx)` changes. The forms route uses it to date the
+responses it writes to sheets.
+
 - `src/main/workServiceProcess.ts` is the entry (`out/main/workService.js`,
   the `workService` build input). It runs `startWorkService`
   (`work/service/serve.ts`) and talks to main over its parent port

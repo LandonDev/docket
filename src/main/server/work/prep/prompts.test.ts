@@ -1,6 +1,27 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
+import { workClock } from '../clock'
+import type { WorkCtx } from '../modules'
+import { fileTask } from './filing'
 import type { PrepPage } from '@shared/contract-work-prep'
 import { briefMessage, briefTitle, followAgainMessage, followMessage, followNotesMessage, followTitle, pageWords } from './prompts'
+
+const ZONE = 'America/Chicago'
+
+it("uses the owner's day in prompts and in the filed task", async () => {
+  const startsAt = Date.UTC(2026, 10, 24, 5, 30)
+  const endsAt = Date.UTC(2026, 10, 24, 6, 30)
+  const event = { ...page.event, startsAt, endsAt }
+  const text = pageWords({ ...page, event }, ZONE)
+  expect(text).toContain('When: Mon, Nov 23, 2026 at 11:30 PM Central')
+  expect(text).toContain('Ends: Tue, Nov 24, 2026 at 12:30 AM Central')
+
+  const mutation = vi.fn(async () => 'task1')
+  const clock = workClock('America/New_York')
+  clock.set('lifeos', ZONE)
+  const ctx = { clock, lifeos: { owner: () => ({ mutation }) } } as unknown as WorkCtx
+  await fileTask(ctx, 'purdue', event, { id: 'a', title: 'Send the roster', state: 'proposed' })
+  expect(mutation).toHaveBeenCalledWith('tasks:create', expect.objectContaining({ description: 'From “Staff sync”, Mon Nov 23.' }))
+})
 
 const at = Date.parse('2026-11-23T19:00:00Z')
 const home = 'https://example.com/roster'
@@ -50,7 +71,7 @@ const page: PrepPage = {
 
 describe('words for a prep thread', () => {
   it('writes the event facts, people, mail, tasks, links and page history as lines', () => {
-    const text = pageWords(page)
+    const text = pageWords(page, ZONE)
     expect(text).toMatch(/^Meeting: Staff sync \(event ev1\)\nWhen: .*Nov 23.* at .*\nEnds: .*\nPlace: Room 204/)
     expect(text).toMatch(/Send the roster, asked by Maya Chen, due .*Nov 23.* \(task t1\)/)
     for (const line of [
@@ -64,15 +85,15 @@ describe('words for a prep thread', () => {
   })
 
   it('draws an all-day event without a clock time', () => {
-    const text = pageWords({ ...page, event: { ...page.event, allDay: true } })
+    const text = pageWords({ ...page, event: { ...page.event, allDay: true } }, ZONE)
     expect(text).toMatch(/^When: .*Nov 23.*, all day$/m)
     expect(text).not.toMatch(/^Ends:/m)
   })
 
   it('names the brief thread and asks for the newest mail, changes and a short brief', () => {
     expect(briefTitle(page.event.title)).toBe('Prepare: Staff sync')
-    const text = briefMessage(page)
-    expect(text.startsWith(pageWords(page))).toBe(true)
+    const text = briefMessage(page, ZONE)
+    expect(text.startsWith(pageWords(page, ZONE))).toBe(true)
     expect(text).toContain('read_mail_thread')
     expect(text).toContain('Look for what changed since last time.')
     expect(text).toContain('Call prep_write')
@@ -84,8 +105,8 @@ describe('words for a prep thread', () => {
 
   it('names the follow-up thread and asks for an outcome and one held draft from his notes', () => {
     expect(followTitle(page.event.title)).toBe('Follow up: Staff sync')
-    const text = followMessage(page)
-    expect(text.startsWith(pageWords(page))).toBe(true)
+    const text = followMessage(page, ZONE)
+    expect(text.startsWith(pageWords(page, ZONE))).toBe(true)
     expect(text).toContain('Use his notes. Call prep_follow_up')
     expect(text).toContain('Never call add_task.')
     expect(text).toContain('Just before any mail, call prep_read once more. If it lists a follow-up mail already waiting, or says it could not read whether one waits, draft none. Otherwise draft one to the people with addresses using draft_mail. It waits for his press. Never send it.')
@@ -93,15 +114,15 @@ describe('words for a prep thread', () => {
   })
   it('lists a follow-up mail that already waits, so a second follow-up drafts no second one', () => {
     const waiting: PrepPage = { ...page, drafts: [{ outboxId: 'ob1', subject: 'Staff sync follow-up', to: ['Maya Chen', 'tom@x.test'] }] }
-    expect(pageWords(waiting)).toContain('Follow-up mail already waiting for his press in the Outbox:\n- “Staff sync follow-up” to Maya Chen, tom@x.test')
-    expect(pageWords(page)).not.toContain('already waiting for his press')
+    expect(pageWords(waiting, ZONE)).toContain('Follow-up mail already waiting for his press in the Outbox:\n- “Staff sync follow-up” to Maya Chen, tom@x.test')
+    expect(pageWords(page, ZONE)).not.toContain('already waiting for his press')
   })
 
   it('tells a recording’s thread that prep_read waits for the file, and never to read in a loop', () => {
-    const text = followMessage(page, { recording: true })
+    const text = followMessage(page, ZONE, { recording: true })
     expect(text).toContain('Call prep_read first: it waits until the file has arrived and names the meeting. Then read it with meeting_read, which waits while it is transcribed. If it could not be read, say why and stop: write no outcome and draft no mail. Otherwise call prep_follow_up')
     // a recording the host could not read is said as that, never as something to read
-    const unread = pageWords({ ...page, notesFile: { kind: 'meeting', itemId: 'it1', title: 'Staff sync.m4a', error: 'The transcriber is not installed on env_box.' } })
+    const unread = pageWords({ ...page, notesFile: { kind: 'meeting', itemId: 'it1', title: 'Staff sync.m4a', error: 'The transcriber is not installed on env_box.' } }, ZONE)
     expect(unread).toContain('His notes were a recording or a transcript this host could not read: The transcriber is not installed on env_box.')
     expect(unread).not.toContain('Read it with meeting_read')
     expect(text).not.toContain('read again')
@@ -109,8 +130,8 @@ describe('words for a prep thread', () => {
 
   it('asks a stopped follow-up thread again for the meeting beside it, and for a mail only if none waits', () => {
     const recorded: PrepPage = { ...page, notesFile: { kind: 'meeting', itemId: 'it1', title: 'Staff sync.m4a' } }
-    const text = followAgainMessage(recorded, 7)
-    expect(text).toContain(pageWords(recorded))
+    const text = followAgainMessage(recorded, 7, ZONE)
+    expect(text).toContain(pageWords(recorded, ZONE))
     expect(text).toContain('open beside this thread as meeting it1. Read it with meeting_read.')
     expect(text).toContain('Read the meeting beside you with meeting_read. Call prep_follow_up for this event, passing notes: 7,')
     expect(text).toContain('never call add_task')
@@ -121,18 +142,18 @@ describe('words for a prep thread', () => {
   it('gives a Word notes document’s words, or says it could not be read, in place of doc_read', () => {
     const source = { at: 'file' as const, host: 'box', path: '/w/notes.docx' }
     const withDoc: PrepPage = { ...page, notesFile: { kind: 'document', title: 'notes.docx', source } }
-    expect(pageWords(withDoc, { docWords: { text: '# Staff sync\n\nDana drives.' } })).toContain('His notes are the document “notes.docx”. It reads:\n# Staff sync\n\nDana drives.')
-    expect(pageWords(withDoc, { docWords: { error: 'it is not there any more' } })).toContain('His notes document “notes.docx” could not be read: it is not there any more.')
-    expect(followMessage(withDoc, { document: true, docWords: { text: 'x' } })).not.toContain('doc_read')
+    expect(pageWords(withDoc, ZONE, { docWords: { text: '# Staff sync\n\nDana drives.' } })).toContain('His notes are the document “notes.docx”. It reads:\n# Staff sync\n\nDana drives.')
+    expect(pageWords(withDoc, ZONE, { docWords: { error: 'it is not there any more' } })).toContain('His notes document “notes.docx” could not be read: it is not there any more.')
+    expect(followMessage(withDoc, ZONE, { document: true, docWords: { text: 'x' } })).not.toContain('doc_read')
   })
 
   it('says a mail lookup that failed is not knowing, never that no mail waits', () => {
-    expect(pageWords(page)).not.toContain('could not be read just now')
-    expect(pageWords({ ...page, drafts: [], problems: ['drafts'] })).toContain('Whether a follow-up mail already waits in the Outbox could not be read just now.')
+    expect(pageWords(page, ZONE)).not.toContain('could not be read just now')
+    expect(pageWords({ ...page, drafts: [], problems: ['drafts'] }, ZONE)).toContain('Whether a follow-up mail already waits in the Outbox could not be read just now.')
   })
 
   it('tells a follow-up thread still at work that his notes changed, with the page as it stands', () => {
-    const text = followNotesMessage(page, 42)
+    const text = followNotesMessage(page, 42, ZONE)
     expect(text.startsWith('He changed his notes for this meeting after you started.')).toBe(true)
     expect(text).toContain('His notes:\nMaya sends the roster.')
     expect(text).toContain('Write the outcome again from these notes with prep_follow_up for this event, passing notes: 42')

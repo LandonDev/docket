@@ -43,6 +43,8 @@ export interface ServiceConfig {
   hostedDir: string
   /** this host's environment id */
   host: string
+  /** the owner's zone for times written to response sheets */
+  zone?: string
   lifeos: LifeosServer & { url: string }
   /** every issuer whose tokens open a socket: public keys only (main signs; the key never reaches this process) */
   trusted: TrustedIssuer[]
@@ -52,6 +54,7 @@ export interface ServiceConfig {
 /** Main → service. */
 export type ToService =
   | { t: 'config'; config: ServiceConfig }
+  | { t: 'zone'; zone: string }
   | { t: 'links'; links: ServiceLink[] }
   /** one project link's projection; null takes it away */
   | { t: 'project'; linkId: string; project: ServiceProject | null }

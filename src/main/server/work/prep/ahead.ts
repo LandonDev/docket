@@ -4,6 +4,7 @@ import type { SectorKey } from '@shared/work'
 import { WORK_MODULES, type Caller, type WorkCtx } from '../modules'
 import { sectorWord, workspaceSector } from './workspace'
 import { changeInOrder } from './serial'
+import { hisZone } from '../clock'
 
 export const AHEAD_WITHHELD: SectorKey[] = ['purdue']
 export const AHEAD_ROUTINE = 'Prepare today’s meetings'
@@ -46,7 +47,7 @@ export async function aheadOf(ctx: WorkCtx, workspaceId: string): Promise<PrepAh
 }
 
 /** Keep one routine for the switch. Pause it to keep its runs when it is off. */
-export async function setAhead(ctx: WorkCtx, by: Caller, workspaceId: string, on: boolean, tz = Intl.DateTimeFormat().resolvedOptions().timeZone): Promise<PrepAhead> {
+export async function setAhead(ctx: WorkCtx, by: Caller, workspaceId: string, on: boolean, tz = hisZone(ctx)): Promise<PrepAhead> {
   if (by.kind === 'model' || !by.caps.includes('admin')) throw new Error('Only the owner with admin can change Prepare ahead.')
   return changeInOrder(ctx, ['ahead', workspaceId], async () => {
     const sector = workspaceSector(ctx, workspaceId)

@@ -71,6 +71,9 @@ mode shows "Agent suggests" and cannot be switched.
 
 ## The tools
 
+A dashboard's tool reply gives the last read date and time in
+`hisZone(ctx)` and names the zone.
+
 - `dashboard_create {title}`: an empty dashboard, opened in the pane.
 - `dashboard_add {item, block, after?, reason?}`: proposes a block and reads
   the page again. A sheet is named by its canvas item id, `lifeos:<id>`, or a

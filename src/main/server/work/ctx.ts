@@ -39,6 +39,7 @@ import type { StoreSync } from '../remote/storeSync'
 import type { SessionRegistry } from '../sessions'
 import type { storeRpc } from '../storeRpc'
 import { canvasPart } from './canvas/ctx'
+import { workClock } from './clock'
 import { tellPart } from './digest/ctx'
 import { convertPart } from './formats/jobs'
 import { lifeosPart } from './lifeos/ctx'
@@ -160,6 +161,7 @@ export type ScopePart = (ctx: WorkCtx, deps: WorkPartDeps) => Pick<WorkCtx, 'sco
 export function buildWorkCtx(deps: WorkPartDeps, settings: WorkSettingsStore, push: WorkSend): { ctx: WorkCtx; admission: WorkAdmission } {
   const ctx = {
     db: deps.db,
+    clock: workClock(),
     host: deps.environmentId,
     dataDir: deps.dataDir,
     reaches: reachesOf(deps.remoteFence),

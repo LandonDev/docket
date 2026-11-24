@@ -6,6 +6,7 @@ import { fileDocName, LIFEOS_COLLAB_AUDIENCE, MAX_TOKEN_SECONDS, type CollabClai
 import { listEnvironments } from '../../remote/environments'
 import type { CtxPart, WorkPartDeps } from '../ctx'
 import { lifeosAddress } from '../lifeos/ctx'
+import { hisZone } from '../clock'
 import type { WorkCtx } from '../modules'
 import { WORK_OFF } from '../scope'
 import { lifeosServerOf, servicePaths, servicePort } from './config'
@@ -111,10 +112,12 @@ export const servicePart: CtxPart<'service'> = (ctx, deps) => {
     lifeos,
     lifeosIssuer: () => lifeosIssuer(deps, env),
     jwt: () => ctx.lifeos.jwt(),
+    zone: () => hisZone(ctx),
     log: (line) => ctx.log(line),
     ...(seams.backoffMs !== undefined ? { backoffMs: seams.backoffMs } : {})
   })
   supervisors.set(ctx, supervisor)
+  ctx.clock?.onChange((zone) => supervisor.setZone(zone))
   // Only Electron can fork a utility process; a host run any other way (a test that brings no spawn) serves no documents.
   const canFork = !!seams.spawn || !!process.versions.electron
   deps.whileOn(() => {

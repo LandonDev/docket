@@ -138,8 +138,8 @@ is not one of its options, a value longer than a comb field takes.
 ## Signing
 
 `work.pdf.setSignature` saves his drawn strokes; `work.pdf.sign` puts the
-signature on the item's signature boxes, today's date ("November 19,
-2026") on its date boxes, and treats the file's own `/Sig` fields as
+signature on the item's signature boxes and today's date in `hisZone(ctx)`
+("November 19, 2026") on its date boxes. It treats the file's own `/Sig` fields as
 places for the drawing too. Both need the `approve` capability. What
 keeps a thread out is that no tool calls them; the methods also refuse a
 caller of kind `model`, which only a bridge (`app.*`) call can be, so that

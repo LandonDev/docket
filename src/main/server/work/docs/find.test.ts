@@ -12,6 +12,7 @@ import { ensureOutboxTables, HELD_TABLE } from '../outbox/store'
 import { canonicalPath } from '../service/ctx'
 import { setSearchCaps } from '../files/search'
 import { dropView, dropWorkspaceViews, ensureViewsTable, findDocs, keepText, listViews, saveView, VIEWS_MOST } from './find'
+import { workClock } from '../clock'
 import { docTools } from './tools'
 
 /* Finding documents: the host's merge of LifeOS's catalog, the workspace folder and the threads' items, and the agent's doc_find. */
@@ -22,7 +23,7 @@ afterEach(() => {
 })
 
 const DAY = 86_400_000
-const NOW = Date.now()
+const NOW = Date.UTC(2026, 10, 24, 5, 30)
 const LOCAL: Caller = { kind: 'local', caps: [] }
 
 function rig(o: { lifeos?: 'down'; reaches?: (path: string) => boolean; items?: (folder: string) => CanvasItem[] } = {}) {
@@ -255,6 +256,16 @@ describe('doc_find', () => {
     expect(text).toContain('by an agent, 2 suggestions waiting.')
     expect(text).toContain('source {"at":"lifeos","table":"sheets","id":"s1"}')
     expect(text).not.toContain('Private budget')
+  })
+
+  it("reads and words edit dates in the owner's zone", async () => {
+    const { ctx } = rig()
+    ctx.clock = workClock('America/New_York')
+    ctx.clock.set('lifeos', 'America/Chicago')
+    const find = (filters: Record<string, unknown>) => run(ctx, { query: 'budget', ...filters }, {}).then((r) => (r.content[0] as { text: string }).text)
+    expect(await find({ edited_before: '2026-11-24' })).toContain('"Private budget": Document, LifeOS, edited Nov 23, 2026')
+    expect(await find({ edited_after: '2026-11-23T23:15', edited_before: '2026-11-24T05:45:00Z' })).toContain('Private budget')
+    expect(await find({ edited_after: '2026-11-24' })).not.toContain('Private budget')
   })
 
   it('takes a project by name, and says which there are when none is', async () => {

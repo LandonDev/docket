@@ -5,6 +5,7 @@ import { knownZone, weekOf, weekWords, type ReviewBody } from '@shared/work/revi
 import { WORK_MODULES, type RoutineJob, type WorkCtx } from '../modules'
 import { HOST } from './gather/held'
 import { routineMade, setSeeded, setupOf } from './store'
+import { hisZone } from '../clock'
 
 /**
  * Friday (docs/agents/work-review.md "Friday"): the review is made by a routine that runs a host job, with no model
@@ -42,9 +43,6 @@ export async function lifeosZone(ctx: WorkCtx): Promise<string | null> {
     return null
   }
 }
-
-/** This host's own time zone: LifeOS's when it says one, else the machine's. */
-export const hostZone = async (ctx: WorkCtx): Promise<string> => (await lifeosZone(ctx)) ?? (Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC')
 
 let seeding: Promise<void> | null = null
 
@@ -111,7 +109,7 @@ export function makeJob(make: (ctx: WorkCtx, ask: { from: number; to: number; tz
     id: MAKE_JOB,
     name: 'Your hours, what shipped and what slipped',
     async run(ctx, { firedAt }) {
-      const tz = await hostZone(ctx)
+      const tz = hisZone(ctx)
       const week = weekOf(firedAt, tz)
       // Told once a week: the routine made this week before, whether or not he has opened it since.
       const told = routineMade(ctx.db, week.from)

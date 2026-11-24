@@ -29,8 +29,8 @@ ctx.tell.quiet(sessionId)         // this thread started on its own: its done, f
 - A caller states a deadline, never a volume. There is no "loud" flag.
 - A title is a whole sentence with its times written out ("Budget review
   starts at 2:00 PM", never "in 10 min"): the row is read hours later, in
-  the list. A time is written in the digest's zone (`timeIn`, `dateIn` in
-  clock.ts), never the host's: the box may run in UTC.
+  the list. A new row from a source words times in `hisZone(ctx)` with `timeIn`
+  and `dateIn`. The source keeps the zone it first used for each key.
 - A kind the digest tells for a pillar that hands a read, not a tell (its
   gate and its sources), is listed on the digest's own module
   (`DIGEST_TELLS` in rule.ts).

@@ -163,17 +163,26 @@ describe('lapses', () => {
   })
 
   it('reads in his words, in US time, today and tomorrow by the calendar', () => {
-    const now = new Date('2026-11-20T09:00:00').getTime()
-    // The Windows evaluation: 06:22 UTC on the 17th is 1:22 AM that day in Eastern.
-    expect(lapseLine(Date.UTC(2027, 1, 17, 6, 22), now)).toBe('Ends Feb 17, 2027, 1:22 AM')
-    expect(lapseLine(new Date('2026-12-03T17:00:00').getTime(), now)).toBe('Ends Dec 3, 5:00 PM')
-    expect(lapseLine(new Date('2026-11-20T10:00:00').getTime(), now)).toBe('Ends today, 10:00 AM')
-    expect(lapseLine(new Date('2026-11-21T08:00:00').getTime(), now)).toBe('Ends tomorrow, 8:00 AM')
-    expect(lapseLine(new Date('2026-11-19T08:00:00').getTime(), now)).toBe('Ended Nov 19')
+    const now = Date.UTC(2026, 10, 20, 15)
+    const zone = 'America/Chicago'
+    expect(lapseLine(Date.UTC(2027, 1, 17, 6, 22), now, zone)).toBe('Ends Feb 17, 2027, 12:22 AM Central')
+    expect(lapseLine(Date.UTC(2026, 11, 3, 23), now, zone)).toBe('Ends Dec 3, 5:00 PM Central')
+    expect(lapseLine(Date.UTC(2026, 10, 21, 5, 30), now, zone)).toBe('Ends today, 11:30 PM Central')
+    expect(lapseLine(Date.UTC(2026, 10, 21, 14), now, zone)).toBe('Ends tomorrow, 8:00 AM Central')
+    expect(lapseLine(Date.UTC(2026, 10, 19, 14), now, zone)).toBe('Ended Nov 19')
   })
 })
 
 describe('healthText', () => {
+  it('keeps sync instants on the wire and names their zone when a thread reads them', () => {
+    const at = Date.UTC(2026, 10, 24, 5, 30)
+    const source = cleanRow(row({ line: 'Synced', at }), 'mail')
+    expect(source).toMatchObject({ line: 'Synced', at })
+    const reports = [{ name: 'Box', report: { host: 'box', at, rows: [source] } }]
+    expect(healthText(reports, 'all', 'America/Chicago', at + 60_000)).toContain('Synced 11:30 PM Central')
+    expect(healthText(reports, 'all', 'America/Chicago', at + 3_600_000)).toContain('Synced Nov 23')
+  })
+
   const report: HealthReport = {
     host: 'env_box',
     at: 0,
@@ -185,26 +194,26 @@ describe('healthText', () => {
   }
 
   it("shows a thread its own sector's rows and none of another's, worst first", () => {
-    const text = healthText([{ name: 'This host', report }], 'purdue')
+    const text = healthText([{ name: 'This host', report }], 'purdue', 'America/Chicago')
     expect(text).not.toContain('cosmic mail')
     expect(text.split('\n')).toEqual([
       'This host',
       '- Mail and calendar / purdue mail: BROKEN. Token expired',
       '- Office / Outlook: NEEDS HIM. New Outlook cannot be scripted. fix: Sign in… (in the app)'
     ])
-    expect(healthText([{ name: 'This host', report }], 'all')).toContain('cosmic mail')
+    expect(healthText([{ name: 'This host', report }], 'all', 'America/Chicago')).toContain('cosmic mail')
     expect(rowsForSector(report.rows, null).map((r) => r.id)).toEqual(['office.outlook'])
   })
 
   it('reads a personal row of no sector to a sectored thread as its group and state alone', () => {
     const outlook = row({ id: 'office.app:outlook', group: 'Office', title: 'Outlook', line: 'Open, signed in as a@purdue.edu', personal: true, fix: { kind: 'page', label: 'Pair…', page: 'settings:work' } })
     expect(rowsForSector([outlook], 'cosmic')).toEqual([{ id: 'office.app:outlook', pillar: 'mail', group: 'Office', title: 'Office', state: 'working' }])
-    expect(healthText([{ name: 'This host', report: { host: 'h', at: 0, rows: [outlook] } }], 'cosmic')).not.toContain('purdue')
+    expect(healthText([{ name: 'This host', report: { host: 'h', at: 0, rows: [outlook] } }], 'cosmic', 'America/Chicago')).not.toContain('purdue')
     expect(rowsForSector([outlook], 'all')).toEqual([outlook])
   })
 
   it('says a host that is not linked now is offline, not broken', () => {
-    expect(healthText([{ name: 'The Mac', offline: true }, { name: 'PC', error: 'Work is off on this host' }], 'all')).toBe(
+    expect(healthText([{ name: 'The Mac', offline: true }, { name: 'PC', error: 'Work is off on this host' }], 'all', 'America/Chicago')).toBe(
       'The Mac: offline (not checked; offline is not broken)\nPC: did not answer: Work is off on this host'
     )
   })

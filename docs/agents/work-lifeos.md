@@ -25,6 +25,10 @@ the installed app always talks to the owner's own.
 
 ## The session (session.ts)
 
+While Work is on, one owner watch of `settings:get` keeps the time zone
+for `hisZone(ctx)`. The host keeps the last answer through a disconnect
+and clears it on sign-out or refusal.
+
 One `LifeosSession` per host, made at boot and run only while Work is on
 (`deps.whileOn`). It trades the device token for JWTs with `auth:token`
 (open, over HTTP), keeps the owner's live Convex client (`convex/browser`,

@@ -562,7 +562,16 @@ the host exists, and that is the one door:
 
 `WorkCtx` is what one module may ask of the others. `startWork` builds it
 once (work/ctx.ts `buildWorkCtx`). `db`, `host`, `dataDir`, `enabled`,
-`log`, `push`, `reaches` and `settings` are built.
+`log`, `push`, `reaches`, `settings` and `clock` are built.
+
+- `hisZone(ctx)` (work/clock.ts) reads the last valid zone from LifeOS's live
+  `settings:get` watch, then the last desktop to come to the front, then the
+  host's zone. It reads memory alone. Changes from LifeOS take effect as they
+  arrive and the host keeps the last answer through a lost connection. A
+  sign-out or refusal clears it. The digest's saved desktop zone is read at
+  boot. Use `dayOf` and `timeIn` with an explicit zone when the host must write
+  a date or time, and name the zone for a thread. Send epoch ms when a window
+  can word the time. `hostClockGuard.test.ts` checks for local clock reads.
 
 - `dataDir` is `<userData>`; a module keeps its files in a folder of its
   own under it (the canvas: `canvas/`, media: `work-media/`), never in

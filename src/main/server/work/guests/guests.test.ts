@@ -2,7 +2,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { WebSocket as WsSocket } from 'ws'
 import { createCollaborationClient, type CollaborationClient } from 'work-kit/collab'
 import { createCollabSigner, generateCollabKeys, TEMPCODE_COLLAB_AUDIENCE, type CollabSigner } from 'work-kit/collab-server'
@@ -13,6 +13,7 @@ import { PUBLIC_ROUTES } from '../service/routes'
 import { callerKey, cutDue, guestThreads, LIMITS, plainBody, Window } from '../service/routes/guests'
 import { servicePaths } from '../service/config'
 import { startWorkService, type RunningService } from '../service/serve'
+import { workClock } from '../clock'
 import { guestLinkKind, guestsTools } from '.'
 import { ActNotSent } from '../outbox/kinds'
 import { GuestRuntime } from './links'
@@ -397,9 +398,13 @@ describe('after the review', () => {
   it('the thread that asked is told the link, never its address', async () => {
     const r = await rig()
     const told: string[] = []
-    const ctx = { ...(r.rt as unknown as { ctx: WorkCtx }).ctx, item: { sessionId: 't1' }, threads: { resume: async (_s: string, notice: string) => void told.push(notice) } }
-    const got = await guestLinkKind.execute({ source: doc(), title: 'Run of show', name: 'Dana Lee', role: 'view', expiresAt: inDays(7) }, ctx as never)
+    const clock = workClock('America/New_York')
+    clock.set('lifeos', 'America/Chicago')
+    const ctx = { ...(r.rt as unknown as { ctx: WorkCtx }).ctx, clock, item: { sessionId: 't1' }, threads: { resume: async (_s: string, notice: string) => void told.push(notice) } }
+    const now = vi.spyOn(Date, 'now').mockReturnValue(Date.UTC(2026, 10, 17, 5, 30))
+    const got = await guestLinkKind.execute({ source: doc(), title: 'Run of show', name: 'Dana Lee', role: 'view', expiresAt: inDays(7) }, ctx as never).finally(() => now.mockRestore())
     expect(told).toHaveLength(1)
+    expect(told[0]).toContain('until Mon, Nov 23.')
     expect(told[0]).not.toMatch(/#k=|https?:\/\//)
     expect(told[0]).toContain((got.ref as { linkId: string }).linkId)
   })
@@ -522,11 +527,14 @@ describe('an agent asking', () => {
     const ctx = {
       ...(r.rt as unknown as { ctx: WorkCtx }).ctx,
       sessionId: 'thread1',
+      clock: workClock('America/Chicago'),
       scope: { sector: 'life' },
       held: { create: (a: unknown) => (held.push(a), { state: 'held', ref: { at: 'host', id: 'h1' } }) }
     }
-    const out = await tool.run(tool.input.parse({ docId: DOC, name: 'Dana Lee', role: 'edit', days: 7 }), ctx as never)
+    const now = vi.spyOn(Date, 'now').mockReturnValue(Date.UTC(2026, 10, 17, 5, 30))
+    const out = await tool.run(tool.input.parse({ docId: DOC, name: 'Dana Lee', role: 'edit', days: 7 }), ctx as never).finally(() => now.mockRestore())
     expect(out.isError).toBeFalsy()
+    expect(out.content[0]).toMatchObject({ text: expect.stringContaining('ends Mon, Nov 23') })
     expect(held).toEqual([{ kind: 'share.guestLink', sessionId: 'thread1', payload: expect.objectContaining({ source: doc(), name: 'Dana Lee', role: 'edit' }) }])
     // Another sector's document is not this thread's to share.
     r.convex.docs.get(OTHER)!.sector = 'cosmic'

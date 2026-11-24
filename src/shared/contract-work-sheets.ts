@@ -208,7 +208,7 @@ export interface SheetRevision {
   rev: number
   at: number
   by: Principal | 'file'
-  /** "12 cells", "Inserted a row", "Restored to 14:02" */
+  /** "12 cells", "Inserted a row", "Restored an earlier version" */
   label: string
 }
 

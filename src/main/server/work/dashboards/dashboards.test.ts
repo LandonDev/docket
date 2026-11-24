@@ -165,8 +165,15 @@ describe('a dashboard', () => {
     await tool('dashboard_add', { item, block: { kind: 'figures', figures: [{ label: 'Balance', service: 'Stripe', counts: 'Balance on the account', value: '$2,180' }] } })
     const id = (await call<DashboardView>('work.dashboards.open', { itemId: item })).blocks[0]
     const fig = id.kind === 'figures' ? id.figures[0].id : ''
-    const r = await tool('dashboard_refresh', { item, values: [{ figure: fig, value: '$2,640' }] })
-    expect(r.text).toContain('Balance: $2,640')
+    work.ctx.clock!.set('lifeos', 'America/Chicago')
+    const now = vi.spyOn(Date, 'now').mockReturnValue(Date.UTC(2026, 10, 24, 5, 30))
+    try {
+      const r = await tool('dashboard_refresh', { item, values: [{ figure: fig, value: '$2,640' }] })
+      expect(r.text).toContain('Balance: $2,640')
+      expect(r.text).toContain('as of 2026-11-23 at 11:30 PM Central')
+    } finally {
+      now.mockRestore()
+    }
   })
 
   it('says why a read failed and keeps what was there', async () => {

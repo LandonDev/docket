@@ -1,6 +1,7 @@
 import { mkdtempSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { workClock } from '../clock'
 import { DatabaseSync } from 'node:sqlite'
 import { beforeEach, describe, expect, it } from 'vitest'
 import type { HeldItem, WorkToolResult } from '@shared/work'
@@ -33,6 +34,7 @@ let peerCalls: { host: string; module: string; verb: string; args: unknown }[]
 const ctx = (): ToolCtx =>
   ({
     db,
+    clock: workClock('America/Chicago'),
     host: 'env_mac',
     dataDir,
     held: {
@@ -62,7 +64,7 @@ beforeEach(() => {
   office.addBook(SHARED, { Sheet1: { A1: 'Q1', B1: 100 } })
   office.addBook(MINE, { Sheet1: { A1: 1 } })
   office.docs.set('https://contoso.sharepoint.com/Brief.docx', { paragraphs: ['Draft one.'], tracked: [] })
-  office.mailbox.push({ id: '42', account: 'owner@example.com', from: 'dana@example.com', subject: 'Budget', at: '2026-11-18T10:00:00.000Z', read: true, to: ['owner@example.com'], cc: [], text: 'Numbers?' })
+  office.mailbox.push({ id: '42', account: 'owner@example.com', from: 'dana@example.com', subject: 'Budget', at: '2026-11-18T05:30:00.000Z', read: true, to: ['owner@example.com'], cc: [], text: 'Numbers?' })
   db = new DatabaseSync(':memory:')
   ensureSuggestionTables(db)
   ensureExcelTables(db)
@@ -200,7 +202,7 @@ describe('nothing is sent without his press', () => {
     await run('office_mail_send', { to: ['boss@example.com'], subject: 'x', html: '<p>Yes</p><script>x()</script>', replyTo: '42' })
     expect(held[0].payload).toMatchObject({ to: ['dana@example.com'], subject: 'Re: Budget', html: '<p>Yes</p>' })
     // What Outlook adds under a reply is named, so the Outbox shows it (milestone 50's hold review, finding 1).
-    expect((held[0].payload as OfficeMail).outlookAdds).toMatch(/^The mail from dana@example\.com, "Budget" \([A-Z][a-z]{2} \d{1,2}\), under this one$/)
+    expect((held[0].payload as OfficeMail).outlookAdds).toBe('The mail from dana@example.com, "Budget" (Nov 17), under this one')
     const mail = officeActs({ carrier: () => office }).find((a) => a.kind === 'office.mail.send')!
     expect(mail.matches!({ domains: ['example.com'] }, OfficeMailSchema.parse({ host: 'env_mac', to: [], subject: 's', html: '' }))).toBe(false)
   })

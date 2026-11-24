@@ -123,6 +123,8 @@ export interface WriteResult {
   mutations: SheetMutationJson[]
 }
 
+const RESTORED = 'Restored an earlier version'
+
 export class PackageStore {
   /** one save at a time per file, in the order asked */
   private chains = new Map<string, Promise<unknown>>()
@@ -564,7 +566,7 @@ export class PackageStore {
     // revision (the file itself) and those whose copy is still here, so nothing it offers answers "no longer kept".
     const newest = ops[0]?.rev
     const kept = this.isShared(path) ? ops.filter((o) => o.rev === newest || existsSync(this.copyOf(path, o.rev))) : ops
-    return [...kept.map((o) => ({ rev: o.rev, at: o.at, by: o.by as SheetRevision['by'], label: o.label })), ...first]
+    return [...kept.map((o) => ({ rev: o.rev, at: o.at, by: o.by as SheetRevision['by'], label: /^Restored to \d{2}:\d{2}$/.test(o.label) ? RESTORED : o.label })), ...first]
   }
 
   compare(path: string, from: number, to: number, max: number): Promise<{ cells: SheetCellDiff[]; truncated: boolean }> {
@@ -592,8 +594,7 @@ export class PackageStore {
         if (err instanceof ChangedOutside) throw new Error('The file changed outside TempCode just now: open it again and restore.')
         throw new Error(`The file was not restored: ${saveWords(err)}`)
       }
-      const at = new Date(this.history(path).find((h) => h.rev === rev)?.at ?? this.now())
-      this.db.prepare('INSERT INTO work_sheets_ops (path, rev, by, at, label, mutations) VALUES (?, ?, ?, ?, ?, ?)').run(path, next, by, this.now(), `Restored to ${at.toTimeString().slice(0, 5)}`, 'null')
+      this.db.prepare('INSERT INTO work_sheets_ops (path, rev, by, at, label, mutations) VALUES (?, ?, ?, ?, ?, ?)').run(path, next, by, this.now(), RESTORED, 'null')
       this.db.prepare('UPDATE work_sheets_files SET rev = ?, stamp = ?, save_error = NULL WHERE path = ?').run(next, stamp, path)
       this.prune(path)
       return { rev: next }

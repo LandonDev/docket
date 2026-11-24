@@ -2,6 +2,7 @@ import { existsSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'no
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { handled, type CanvasSource } from '@shared/work'
+import { workClock } from '../clock'
 import type { ConvertJob } from '../formats/jobs'
 import type { WorkModule } from '../modules'
 import type { DeckRead } from './deckFill'
@@ -39,8 +40,10 @@ describe('a make', () => {
     expect(made.unfilled).toEqual([])
   })
 
-  it('takes this host\'s own day when the caller sent none', async () => {
-    const made = await makeFromShelf(rig.ctx, window, { workspaceId: WS, template: 'Meeting notes' }, { pillars: none, now: () => new Date(2026, 6, 4, 23, 30) })
+  it("fills Date with the owner's day when a thread sends none", async () => {
+    rig.ctx.clock = workClock('America/New_York')
+    rig.ctx.clock.set('lifeos', 'America/Chicago')
+    const made = await makeFromShelf(rig.ctx, thread(), { workspaceId: WS, template: 'Meeting notes' }, { pillars: none, now: () => new Date('2026-07-05T04:30:00Z') })
     expect(words(pathOf(made.source))[1]).toBe('July 4, 2026')
   })
 

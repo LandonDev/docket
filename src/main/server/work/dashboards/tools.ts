@@ -6,6 +6,7 @@ import { agentPrincipal, workText, type CanvasItem, type WorkToolResult } from '
 import { errorText } from '@shared/work/ids'
 import type { ToolCtx, WorkTool } from '../modules'
 import { announce, DashError, dashItem, dashRow, DashStore, refresh, sheetInfo, type DashRow, type StoredBlock } from './dash'
+import { dayOf, hisZone, timeIn } from '../clock'
 
 /**
  * The tools a Work thread builds and refreshes a dashboard with
@@ -86,8 +87,8 @@ async function blockOf(ctx: ToolCtx, b: z.infer<typeof Block>, proposed: StoredB
 }
 
 /** The page as an agent reads it: each block's id, what it shows, and what waits for the owner. */
-export function outline(row: DashRow): string {
-  const lines = [`${row.title} (dashboard ${row.itemId})${row.asOf ? `, as of ${new Date(row.asOf).toISOString()}` : ', not read yet'}`]
+function outline(row: DashRow, zone: string): string {
+  const lines = [`${row.title} (dashboard ${row.itemId})${row.asOf ? `, as of ${dayOf(zone, row.asOf)} at ${timeIn(zone, row.asOf, 'named')}` : ', not read yet'}`]
   if (row.failed) lines.push(`The last read failed: ${row.failed}`)
   for (const b of row.blocks) {
     const wait = b.proposed ? '  (waiting for his Accept)' : ''
@@ -124,7 +125,7 @@ export const dashboardsTools: WorkTool[] = [
     readOnly: true,
     run: async (args, ctx) => {
       try {
-        return workText(outline(dashRow(ctx, paneDash(ctx, (args as { item: string }).item))))
+        return workText(outline(dashRow(ctx, paneDash(ctx, (args as { item: string }).item)), hisZone(ctx)))
       } catch (err) {
         return fail(errorText(err))
       }
@@ -149,7 +150,7 @@ export const dashboardsTools: WorkTool[] = [
         const next = await refresh(ctx, it, blocks, 'list')
         await announce(ctx, next)
         if (next.failed) return fail(`The block was added, but the page could not be read: ${next.failed}`)
-        return workText(`Proposed; it waits for his Accept.\n\n${outline(next)}`)
+        return workText(`Proposed; it waits for his Accept.\n\n${outline(next, hisZone(ctx))}`)
       } catch (err) {
         return fail(errorText(err))
       }
@@ -172,7 +173,7 @@ export const dashboardsTools: WorkTool[] = [
         )
         const next = await refresh(ctx, it, blocks)
         await announce(ctx, next)
-        return next.failed ? fail(`The page could not be read: ${next.failed}`) : workText(outline(next))
+        return next.failed ? fail(`The page could not be read: ${next.failed}`) : workText(outline(next, hisZone(ctx)))
       } catch (err) {
         return fail(errorText(err))
       }

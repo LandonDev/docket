@@ -1,6 +1,7 @@
 import type { CalendarOffer } from '@shared/contract-work-money'
 import type { WorkCtx } from '../modules'
 import { eventMarks, lastFee, milesTo, type Books, type EventMark, type Workspace } from './store'
+import { dayOf, hisZone } from '../clock'
 
 /**
  * Pay and mileage from the calendar (docs/agents/work-money.md "From the
@@ -12,7 +13,7 @@ import { eventMarks, lastFee, milesTo, type Books, type EventMark, type Workspac
  * the clashes pillar's own call.
  */
 
-type Ctx = Pick<WorkCtx, 'db' | 'lifeos' | 'log'>
+type Ctx = Pick<WorkCtx, 'db' | 'lifeos' | 'log' | 'clock'>
 
 /** A LifeOS event, as far as Money reads it. */
 export interface CalendarEvent {
@@ -54,13 +55,6 @@ export async function endedEvents(ctx: Ctx, ws: Workspace, now = Date.now()): Pr
   return events.filter((e) => (e.endsAt ?? e.startsAt) <= now).sort((a, b) => a.startsAt - b.startsAt)
 }
 
-const pad = (n: number): string => String(n).padStart(2, '0')
-/** The day an event started, on this host's clock. */
-export const dayOfEvent = (startsAt: number): string => {
-  const d = new Date(startsAt)
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
-}
-
 /** One currency: an amount in another is not read as a fee. */
 const usd = (e: CalendarEvent): number | null => (e.amount && e.amount.currency.toUpperCase() === 'USD' && e.amount.cents > 0 ? e.amount.cents : null)
 
@@ -72,12 +66,12 @@ const usd = (e: CalendarEvent): number | null => (e.amount && e.amount.currency.
  * (`withDrives`); else not known: he types them once, and they are kept by
  * place.
  */
-export function offerOf(ctx: Pick<WorkCtx, 'db'>, ws: Workspace, e: CalendarEvent): CalendarOffer {
+export function offerOf(ctx: Pick<WorkCtx, 'db' | 'clock'>, ws: Workspace, e: CalendarEvent): CalendarOffer {
   const place = e.location?.trim() || null
   const miles = place ? milesTo(ctx, ws.id, place) : null
   return {
     eventId: e._id,
-    date: dayOfEvent(e.startsAt),
+    date: dayOf(hisZone(ctx), e.startsAt),
     title: e.title,
     place,
     // An event that names an amount of its own (in another currency, or nothing) is never given an older fee in its place.

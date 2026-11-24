@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import type { HealthFix, HealthReport } from "@shared/work/health";
 import { lapseLine } from "@shared/work/health";
+import { syncWhen } from "@shared/work/messages";
 import { errorText } from "../../chrome/ConfirmDialog";
 import { PageActions, PageRow, PageRowsSkeleton, PageSection } from "../../components/page";
 import { BusyLabel, Button } from "../../components/ui/button";
@@ -172,7 +173,7 @@ function FixRow({ placed, now, onDone }: { placed: PlacedRow; now: number; onDon
   };
   return (
     <>
-      <PageRow title={placed.title} description={<StatusMark state={mark.state} word={mark.word} detail={row.line} />} error={error ?? undefined}>
+      <PageRow title={placed.title} description={<StatusMark state={mark.state} word={mark.word} detail={row.at === undefined ? row.line : [row.line, syncWhen(row.at, now)].filter(Boolean).join(" ")} />} error={error ?? undefined}>
         {row.until ? <span className="text-xs tabular-nums text-muted-foreground">{lapseLine(row.until, now)}</span> : null}
         {fix ? (
           <Button variant={fixVariant(row.state)} size="sm" disabled={busy} onClick={() => void press(fix)}>

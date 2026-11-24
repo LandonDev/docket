@@ -4,7 +4,8 @@ import { workText, type WorkToolResult } from '@shared/work/tools'
 import type { SectorKey } from '@shared/work/ids'
 import type { ToolCtx, WorkTool } from '../modules'
 import { clashOf, lifeosWords, rangeOf, type LifeosClash, type LifeosSide } from './read'
-import { startOfDay, zoneOf } from './zone'
+import { hisZone } from '../clock'
+import { startOfDay } from './zone'
 
 /**
  * `clashes_list`: the thread's own job's clashes. Another job's event is
@@ -85,7 +86,7 @@ export const clashesListTool: WorkTool = {
     if (!sector) return fail('Name the job: a Work Chat belongs to none.')
     const days = Math.min(14, Math.max(1, a.days ?? 7))
     try {
-      const zone = await zoneOf(ctx)
+      const zone = hisZone(ctx)
       const from = startOfDay(Date.now(), zone)
       // To his midnight that many days on: a day the clocks change is 23 or 25 hours.
       const range = await rangeOf(ctx, from, startOfDay(from + days * DAY + DAY / 2, zone))

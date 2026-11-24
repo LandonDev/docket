@@ -137,9 +137,8 @@ Outbox.
 
 `start` subscribes to `clashes:range` from the start of his today to his
 midnight 14 days on,
-and subscribes again when his day turns (checked on each answer and every five
-minutes). His zone is LifeOS's `settings:get` → `timezone`, read at start and
-on each answer, else this host's. Each answer that changed pushes
+and subscribes again when his day or `hisZone(ctx)` changes. It checks the day
+on each answer and every five minutes. Each answer that changed pushes
 `work.clashes`.
 
 Each clash is told through the digest's `ctx.tell` once at its stamp. The

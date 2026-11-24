@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { workClock } from '../clock'
 import { review } from '.'
 import { MAKE_JOB, ROUTINE_NAME, ROUTINE_RRULE, routineOf, seedRoutine } from './friday'
 import { keptWeek, readyWeek, setupOf } from './store'
@@ -9,6 +10,8 @@ import { FRIDAY, HOUR, makeRig, MON, thread, TZ, WEEK, window, type Rig } from '
 let rig: Rig
 beforeEach(() => {
   rig = makeRig()
+  rig.ctx.clock = workClock('UTC')
+  rig.ctx.clock.set('lifeos', TZ)
   rig.lifeos['settings:get'] = { timezone: TZ }
   rig.lifeos['mail:accounts'] = []
   rig.lifeos['events:range'] = []

@@ -1,6 +1,6 @@
 import { existsSync, mkdirSync, renameSync, rmSync, symlinkSync } from 'node:fs'
 import { join } from 'node:path'
-import { beforeEach, describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { MoneyActed, MoneyBooks, MoneyHits, MoneyOwed, MoneyRead, MoneyState, MoneySums } from '@shared/contract-work-money'
 import { requiredCapability } from '@shared/capabilities'
 import { MONEY_CAPS, MoneyRequestSchemas } from '@shared/contract-work-money'
@@ -9,6 +9,7 @@ import type { Caller } from '../modules'
 import { money } from '.'
 import { newRef, setSharedProbe } from './book'
 import { bench, LOCAL, REMOTE, req, type Bench } from './testing'
+import { workClock } from '../clock'
 import { moneyTools } from './tools'
 
 /* The ledger on the host, over a Work service that stands in: what is made, what is written, and who may ask. */
@@ -82,6 +83,20 @@ describe('the books', () => {
     const tool = await moneyTools.find((t) => t.name === 'money_read')!.run({}, { ...b.ctx, sessionId: 't-ref', scope: b.ctx.scopeOf('t-ref')!, signal: new AbortController().signal } as never)
     expect(tool.isError).toBe(true)
     expect(JSON.stringify(tool)).toContain('The ledger is gone from its place')
+  })
+
+  it("defaults a thread's ledger read to the owner's year and day", async () => {
+    await call('work.money.open', { workspaceId: 'ws-ref' })
+    b.ctx.clock = workClock('America/New_York')
+    b.ctx.clock.set('lifeos', 'America/Chicago')
+    const now = vi.spyOn(Date, 'now').mockReturnValue(Date.UTC(2027, 0, 1, 5, 30))
+    try {
+      const tool = moneyTools.find((t) => t.name === 'money_read')!
+      const result = await tool.run({}, { ...b.ctx, sessionId: 't-ref', scope: b.ctx.scopeOf('t-ref')!, signal: new AbortController().signal } as never)
+      expect(result.content[0]).toMatchObject({ text: expect.stringContaining('2026-01-01 up to 2027-01-01') })
+    } finally {
+      now.mockRestore()
+    }
   })
 
   it('files one row for a plain entry whose Save is sent again under its key, and tells a Save with other figures what was saved', async () => {

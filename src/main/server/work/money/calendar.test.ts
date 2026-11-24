@@ -1,11 +1,12 @@
 import { existsSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { CalendarOffer, MoneyRead, MoneyTripped } from '@shared/contract-work-money'
 import { payCategory } from '@shared/work/money'
+import { workClock } from '../clock'
 import type { Caller } from '../modules'
 import { money } from '.'
-import { dayOfEvent, forgetCalendar, setMeasure } from './calendar'
+import { forgetCalendar, setMeasure } from './calendar'
 import { bench, LOCAL, req, type Bench } from './testing'
 
 /* Pay and mileage from the calendar: what is offered, what a press adds, and what is remembered. */
@@ -28,17 +29,23 @@ const mileage = (): string => join(b.ref, 'Money', 'Mileage.tcsheet')
 const ledger = (): string => join(b.ref, 'Money', 'Ledger.tcsheet')
 
 const HOUR = 3600_000
-const at = (daysAgo: number): number => Date.now() - daysAgo * 24 * HOUR
+const NOW = Date.UTC(2026, 10, 25, 5, 30)
+const at = (daysAgo: number): number => NOW - daysAgo * 24 * HOUR
 const game = (id: string, daysAgo: number, over: Record<string, unknown> = {}) => ({ _id: id, sector: 'ref', title: `Varsity at ${id}`, startsAt: at(daysAgo), endsAt: at(daysAgo) + 2 * HOUR, allDay: false, location: `${id} HS`, role: 'Referee', ...over })
 const trip = (o: CalendarOffer, over: Record<string, unknown> = {}) => call<MoneyTripped>('work.money.trip', { workspaceId: 'ws-ref', eventId: o.eventId, date: o.date, title: o.title, place: o.place ?? '', ...(o.fee !== null ? { fee: o.fee } : {}), ...(o.miles !== null ? { miles: o.miles } : {}), ...over })
 
 beforeEach(() => {
   b = bench()
+  vi.spyOn(Date, 'now').mockReturnValue(NOW)
+  b.ctx.clock = workClock('America/New_York')
+  b.ctx.clock.set('lifeos', 'America/Chicago')
   forgetCalendar()
   legs.clear()
   drivesAsked.length = 0
   setMeasure(standIn)
 })
+
+afterEach(() => vi.restoreAllMocks())
 
 describe('what the calendar offers', () => {
   it('offers an ended game or paid item once, the oldest first, and nothing still to come', async () => {
@@ -51,7 +58,7 @@ describe('what the calendar offers', () => {
     ]
     const got = await offered()
     expect(got.map((o) => o.eventId)).toEqual(['West Side', 'dues', 'Harrison'])
-    expect(got[2]).toEqual({ eventId: 'Harrison', date: dayOfEvent(at(2)), title: 'Varsity at Harrison', place: 'Harrison HS', fee: 7500, miles: null, measured: false })
+    expect(got[2]).toEqual({ eventId: 'Harrison', date: '2026-11-22', title: 'Varsity at Harrison', place: 'Harrison HS', fee: 7500, miles: null, measured: false })
     // It asked for the job's own sector, the last 60 days, as the owner.
     expect(b.lifeos.asked[0].fn).toBe('events:range')
     expect(b.lifeos.asked[0].args.sector).toBe('ref')

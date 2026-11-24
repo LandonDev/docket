@@ -1,3 +1,4 @@
+import { dateIn, dayOf, timeIn } from './clock'
 import type { PillarId, SectorKey } from './ids'
 
 /**
@@ -35,6 +36,8 @@ export interface HealthRow {
   state: HealthState
   /** one line: as whom, or why not, or what he must do. Never more. */
   line?: string
+  /** A time to append to the line, in epoch ms. The reader words it. */
+  at?: number
   fix?: HealthFix
   /** when it lapses (epoch ms): a session's or a token's known end, the Windows evaluation */
   until?: number
@@ -108,18 +111,13 @@ export function lapseStage(until: number, now: number): number | null {
   return stage
 }
 
-/** "Ends today, 3:10 PM", "Ends tomorrow, 1:22 AM", "Ends Feb 17, 1:22 AM", "Ended Feb 17": a lapse in his words, in local time. */
-export function lapseLine(until: number, now: number): string {
-  const end = new Date(until)
-  const sameYear = end.getFullYear() === new Date(now).getFullYear()
-  const date = end.toLocaleDateString('en-US', { month: 'short', day: 'numeric', ...(sameYear ? {} : { year: 'numeric' }) })
+/** "Ends today, 3:10 PM", "Ends tomorrow, 1:22 AM", "Ends Feb 17, 1:22 AM", "Ended Feb 17". */
+export function lapseLine(until: number, now: number, timeZone?: string): string {
+  const zone = timeZone ?? Intl.DateTimeFormat().resolvedOptions().timeZone
+  const date = dateIn(zone, until, now)
   if (until <= now) return `Ended ${date}`
-  const time = end.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
-  const dayOf = (t: number): number => {
-    const d = new Date(t)
-    return new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime()
-  }
-  const days = Math.round((dayOf(until) - dayOf(now)) / DAY)
+  const time = timeIn(zone, until, timeZone ? 'named' : 'plain')
+  const days = (Date.parse(dayOf(zone, until)) - Date.parse(dayOf(zone, now))) / DAY
   if (days === 0) return `Ends today, ${time}`
   if (days === 1) return `Ends tomorrow, ${time}`
   return `Ends ${date}, ${time}`

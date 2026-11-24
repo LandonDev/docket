@@ -84,8 +84,9 @@ The Work service serves it (`service/routes/form.ts`; the route list is in
   a long one; anything else is dropped), then written as the next row of the
   sheet through the service's sheet host in process (`hostOf(ctx).cells`),
   then noted in `forms/<publicId>.answers.jsonl` (row, time and the page's submission id), whose
-  length is the row count. Answers to one form are written one after
-  another. The page sends one submission id per set of answers and sends it
+  length is the row count. The sheet and log use the owner's date and
+  24-hour time from the zone main passes to the service. The service
+  writes a form's answers one after another. The page sends one submission id per set of answers and sends it
   again with the same answers, so a reply lost on the way back and sent
   again is the row already written, never a second one, even when the form
   has closed or its questions changed since (the route looks the submission

@@ -10,6 +10,7 @@ import type { WorkspaceMeta } from '@shared/domain'
 import { WORK_HOME } from '@shared/work'
 import type { AddonStore } from '../../addonStore'
 import type { AddonGrants } from '../../addons/addonGrants'
+import { hisZone } from '../clock'
 import { openDb, Store } from '../../db'
 import type { StoreSync } from '../../remote/storeSync'
 import type { SessionRegistry } from '../../sessions'
@@ -568,6 +569,21 @@ describe('after the review', () => {
 })
 
 describe('subscribe', () => {
+  it('keeps the last LifeOS zone in memory and clears it on sign-out', async () => {
+    const ctx = work.ctx
+    ctx.clock!.set('desktop', 'America/New_York')
+    fake.setTimezone('America/Chicago')
+    tokens.write({ v: 1, token: fake.device(), url: URL, at: 1 })
+    work.settings.set({ enabled: true })
+    await until(() => hisZone(ctx) === 'America/Chicago')
+    const reads = () => fake.calls.filter((c) => c.fn === 'settings:get').length
+    expect([hisZone(ctx), hisZone(ctx), reads()]).toEqual(['America/Chicago', 'America/Chicago', 1])
+    fake.setTimezone('America/Denver')
+    await until(() => hisZone(ctx) === 'America/Denver')
+    await call('work.lifeos.signOut', {})
+    expect(hisZone(ctx)).toBe('America/New_York')
+  })
+
   it('runs as the owner while connected and comes back after a reconnect', async () => {
     const seen: unknown[] = []
     work.settings.set({ enabled: true })

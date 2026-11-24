@@ -5,6 +5,7 @@ import { WORK_MODULES, type WorkModule, type WorkTool } from '../modules'
 import { threadReach } from './reach'
 import { runSearch } from './run'
 import type { SearchSource } from './source'
+import { dayOf, hisZone, timeIn } from '../clock'
 
 /**
  * What a Work thread finds things with (docs/agents/work-search.md "For
@@ -17,18 +18,11 @@ import type { SearchSource } from './source'
 const LIMIT = 5
 const LIMIT_MAX = 20
 
-/**
- * A hit's time as a thread reads it, on this host's clock (his own, not UTC: an evening event is not the next
- * day): the day, and for an event its time with the zone's name.
- */
-export function whenWords(hit: Pick<SearchHit, 'kind' | 'at'>, timeZone?: string): string | null {
+/** A hit's day in his zone, with the named time for an event. */
+export function whenWords(hit: Pick<SearchHit, 'kind' | 'at'>, zone: string): string | null {
   if (hit.at === undefined) return null
-  const at = new Date(hit.at)
-  const part = (o: Intl.DateTimeFormatOptions): Record<string, string> => Object.fromEntries(new Intl.DateTimeFormat('en-US', { ...o, timeZone }).formatToParts(at).map((p) => [p.type, p.value]))
-  const d = part({ year: 'numeric', month: '2-digit', day: '2-digit' })
-  const day = `${d.year}-${d.month}-${d.day}`
-  if (hit.kind !== 'event') return day
-  return `${day} ${new Intl.DateTimeFormat('en-US', { hour: 'numeric', minute: '2-digit', timeZoneName: 'short', timeZone }).format(at)}`
+  const day = dayOf(zone, hit.at)
+  return hit.kind === 'event' ? `${day} ${timeIn(zone, hit.at, 'named')}` : day
 }
 
 /** How the thread goes on from a hit: a LifeOS row as `table:id` for the LifeOS tools, a thread by its id, a file by its place in words. */
@@ -49,12 +43,12 @@ function docOf(hit: SearchHit): string | null {
   return ref && ref.at === 'lifeos' && ref.table === 'docs' && typeof ref.id === 'string' ? ref.id : null
 }
 
-function line(hit: SearchHit, reach: SearchReach): string {
+function line(hit: SearchHit, reach: SearchReach, zone: string): string {
   const job = reach.workspaces.length + (reach.chats ? 1 : 0) > 1 ? (hit.workspaceId === null ? 'Work Chats' : (reach.workspaces.find((w) => w.id === hit.workspaceId)?.name ?? null)) : null
   const facts = [
     hit.kind === 'file' && hit.detail ? `in ${hit.detail}` : hit.detail,
     hit.cloud ? 'kept in the cloud' : null,
-    whenWords(hit),
+    whenWords(hit, zone),
     job,
     handle(hit)
   ].filter(Boolean)
@@ -66,7 +60,7 @@ function line(hit: SearchHit, reach: SearchReach): string {
  * `limit` is the most rows a kind: two sources of one kind (a thread by title, by its words) are one heading, a
  * thing is said once, and the kind as a whole is cut to the limit, with a line that says more matched.
  */
-export function searchText(query: string, answer: SearchAnswer, reach: SearchReach, limit = Number.POSITIVE_INFINITY): string {
+export function searchText(query: string, answer: SearchAnswer, reach: SearchReach, zone: string, limit = Number.POSITIVE_INFINITY): string {
   const out: string[] = []
   const seen = new Set<string>()
   const kinds: { kind: string; label: string; hits: SearchHit[]; more: boolean }[] = []
@@ -81,7 +75,7 @@ export function searchText(query: string, answer: SearchAnswer, reach: SearchRea
   }
   for (const { kind, label, hits, more } of kinds) {
     if (!hits.length) continue
-    out.push(...(out.length ? [''] : []), label, ...hits.slice(0, limit).map((hit) => line(hit, reach)))
+    out.push(...(out.length ? [''] : []), label, ...hits.slice(0, limit).map((hit) => line(hit, reach, zone)))
     // At the tool's own most there is no higher limit to ask for: narrower words are the way to the rest.
     if (more || hits.length > limit) out.push(limit >= LIMIT_MAX ? `- more ${label.toLowerCase()} match: ask again with more exact words` : `- more ${label.toLowerCase()} match: ask again with kinds ["${kind}"] and a higher limit`)
   }
@@ -132,7 +126,7 @@ export function searchTools(own: () => readonly SearchSource[], modules: readonl
               return { ...g, kind: 'doc', label: searchLabel('doc'), hits, more: g.more && hits.length === g.hits.length }
             })
           : answer.groups
-        return workText(searchText(a.query.trim(), { ...answer, groups }, reach, limit))
+        return workText(searchText(a.query.trim(), { ...answer, groups }, reach, hisZone(ctx), limit))
       }
     }
   ]
