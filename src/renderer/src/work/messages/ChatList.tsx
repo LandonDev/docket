@@ -774,7 +774,8 @@ function HitRow({
     >
       <span className="row-span-2" />
       <span className={FACE_CELL}>
-        <RowFace row={row ?? { kind, name: hit.chat, faces: [{ name: hit.who }] }} />
+        {/* A direct chat's face is the other person's, whoever wrote the hit (his own words would draw "You"). */}
+        <RowFace row={row ?? { kind, name: hit.chat, faces: [{ name: kind === "direct" ? hit.chat : hit.who }] }} />
       </span>
       <span className="flex h-5 min-w-0 items-center text-[13px]">
         {/* The ink a row gives its name: in ink and semibold while the conversation is unread, else muted. */}

@@ -10,7 +10,8 @@ import { tellKey, tellOf, tellOfChat } from './tell'
  * workspace of this host: one `chats:unread` subscription, whose count
  * reaches every window as the `work.messages` push, once a change; and one
  * `chats:unanswered`, whose conversations are told to the digest as they
- * come into the list and taken back as they leave it (tell.ts). Workspaces
+ * come into the list and taken back as they leave it (tell.ts), and whose
+ * every change sends the same push, so Today's rows move with it. Workspaces
  * coming and going are followed by the module's hooks (`follow`).
  */
 
@@ -34,6 +35,8 @@ interface Watched {
   unread?: number
   /** the conversations told as waiting on him */
   waiting: Set<string>
+  /** the waiting list as last heard: each conversation and its newest from someone else */
+  listed?: string
 }
 
 export class ChatWatch {
@@ -75,6 +78,12 @@ export class ChatWatch {
     for (const [id, row] of now) if (!w.waiting.has(id)) tell?.(tellOfChat(workspaceId, row))
     for (const id of w.waiting) if (!now.has(id)) tell?.done(tellKey(id))
     w.waiting = new Set(now.keys())
+    // A conversation answered, or a second message in one already unread, moves no count: windows (Today's rows) are told
+    // the list moved all the same, once LifeOS has answered a count to carry.
+    const listed = [...now.values()].map((r) => `${r._id}:${r.lastInAt ?? r.lastAt}`).join(',')
+    const moved = w.listed !== undefined && w.listed !== listed
+    w.listed = listed
+    if (moved && w.unread !== undefined) this.ctx.push({ push: 'work.messages', workspaceId, unread: w.unread })
   }
 
   private watch(workspaceId: string, sector: SectorKey): void {

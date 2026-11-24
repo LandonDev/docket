@@ -4,7 +4,7 @@ import { loadWorkModules, WORK_MODULES } from '../modules'
 import { wordsOf } from '../outbox/earned'
 import { approveKey } from '../outbox/rig'
 import { FakeChats } from './fakeChats'
-import { CHAT_GONE, chatReplyKind } from './held'
+import { CHAT_GONE, chatReplyKind, NEW_SINCE } from './held'
 import { makeChatRig, type ChatRig } from './testRig'
 
 /**
@@ -118,6 +118,32 @@ describe('on his press', () => {
     expect(after.state).toBe('failed')
     expect(after.error).toContain('socket hang up')
     expect(t.chats.replies).toEqual([])
+  })
+
+  it('answers in Slack the message it was drafted for, even when another came in before his press', async () => {
+    t.chats.chats.get('c-dana')!.lastInId = 'm-a'
+    await draft({ chat: 'c-dana', text: words })
+    const [item] = await t.rig.waiting()
+    expect(item!.payload).toMatchObject({ replyTo: 'm-a' })
+    Object.assign(t.chats.chats.get('c-dana')!, { lastInId: 'm-b', lastInAt: Date.now() + 1_000 })
+    expect(await send(item!.ref)).toMatchObject({ state: 'sent' })
+    expect(t.chats.replies).toEqual([{ id: expect.any(String), chatId: 'c-dana', replyTo: 'm-a', text: words }])
+  })
+
+  it('names no parent where a source does not thread', async () => {
+    t.chats.chat({ _id: 'c-mom', name: 'Mom', source: 'imessage', lastInId: 'm-x' })
+    await draft({ chat: 'c-mom', text: 'Home by six.' })
+    expect((await t.rig.waiting())[0]!.payload).not.toHaveProperty('replyTo')
+  })
+
+  it('is stale for a Slack reply held with no parent once a message came in after it was held', async () => {
+    const act = (createdAt: number) => ({ lifeos: t.chats.client(), item: { sector: 'cosmic', createdAt } }) as never
+    const p = { chatId: 'c-dana', source: 'slack' as const, chat: 'Dana Lee', text: words }
+    t.chats.chats.get('c-dana')!.lastInAt = 5_000
+    await expect(chatReplyKind.execute(p, act(4_000))).rejects.toThrow(NEW_SINCE)
+    expect(t.chats.replies).toEqual([])
+    await expect(chatReplyKind.execute(p, act(6_000))).resolves.toMatchObject({ summary: 'Sent to Dana Lee in Slack' })
+    expect(t.chats.replies).toHaveLength(1)
   })
 
   it('reads a source that has no way to send as not sent, in its own words', async () => {

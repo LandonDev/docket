@@ -17,7 +17,7 @@ vi.mock("../shell/open", () => ({ openConnections: () => {} }));
 const { registry } = await import("../../lib/connection");
 const { View } = await import("./MessagesView");
 // The host answers no drafts and no canvas items: the pane beside the conversation is empty.
-vi.spyOn(registry, "linkOf").mockReturnValue({ request: async () => ({ drafts: [], items: [] }), onPush: () => () => {} } as never);
+vi.spyOn(registry, "linkOf").mockReturnValue({ request: async () => ({ drafts: [], items: [] }), onPush: () => () => {}, onOpen: () => () => {} } as never);
 
 beforeAll(() => {
   if (!Element.prototype.getAnimations) Element.prototype.getAnimations = () => [];

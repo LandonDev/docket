@@ -2,10 +2,11 @@ import { z } from 'zod'
 import { errorText, workText, type SectorKey, type WorkScope } from '@shared/work'
 import { AGENT_CHAT_SECTORS, CHAT_REPLY_MAX, CHAT_ROUTES, fileMarkers, firstWords, SOURCE_NAME, type ChatHit, type ChatMessage, type ChatRow } from '@shared/work/messages'
 import type { ToolCtx, WorkTool } from '../modules'
-import { ChatReplySchema } from './held'
+import { ChatReplySchema, pinnedReplyTo } from './held'
 import { chatIn, linkedWorkspaces } from './lifeos'
 import { pushDrafts, saveDraft } from './replies'
 import { watchOf } from './watch'
+import { zoneOf } from '../clashes/zone'
 
 /**
  * A Work thread's two chat tools (docs/agents/work-messages.md "Threads"):
@@ -23,22 +24,27 @@ export const readsChat = (scope: Pick<WorkScope, 'sector'>): scope is { sector: 
 const failed = (text: string) => ({ ...workText(text), isError: true as const })
 const notHere = (chat: string) => failed(`No conversation ${chat} in this job's chat. Read the list with messages_read.`)
 
-const when = (at: number): string => new Date(at).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
+/** A time in his zone, named, so a thread on a host in another zone never reads his day an hour off. */
+const whenIn =
+  (timeZone: string) =>
+  (at: number): string =>
+    new Date(at).toLocaleString('en-US', { timeZone, month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', timeZoneName: 'short' })
+type When = ReturnType<typeof whenIn>
 
 /** One conversation as a line of the list. */
-const chatLine = (c: ChatRow): string =>
+const chatLine = (when: When) => (c: ChatRow): string =>
   `- ${c.name} (${SOURCE_NAME[c.source]}${c.accountName ? `, ${c.accountName}` : ''}${c.unread ? ', unread' : ''}), ${when(c.lastAt)}: ${c.lastFromMe ? 'You' : c.lastWho}: “${firstWords(c.lastText, 120)}”; conversation ${c._id}`
 
-/** One message as a plain line: when, who, the words, what it answers and its files. */
-const messageLine = (m: ChatMessage): string => {
+/** One message as a plain line: when, who, the words, what it answers, its files and its id (what `reply_to` takes). */
+const messageLine = (when: When) => (m: ChatMessage): string => {
   const words = fileMarkers(m.text, m.files ?? [])
   const answers = m.replyTo ? ` (replying to ${m.replyTo.who}: “${firstWords(m.replyTo.text)}”)` : ''
   const files = m.files?.length ? ` [files: ${m.files.map((f) => f.name).join(', ')}]` : ''
   const reply = m.reply ? ` (${m.reply.status === 'failed' ? `not sent${m.reply.error ? `: ${m.reply.error}` : ''}` : m.reply.status})` : ''
-  return `[${when(m.sentAt)}] ${m.who.me ? 'You' : m.who.name}${answers}: ${words || '(no words)'}${files}${reply}`
+  return `[${when(m.sentAt)}] ${m.who.me ? 'You' : m.who.name}${answers}: ${words || '(no words)'}${files}${reply}; message ${m._id}`
 }
 
-const hitLine = (h: ChatHit): string => `- ${h.chat} (${SOURCE_NAME[h.source]}), ${when(h.at)}, ${h.who}: “${firstWords(h.text, 160)}”; conversation ${h.chatId}, message ${h.messageId}`
+const hitLine = (when: When) => (h: ChatHit): string => `- ${h.chat} (${SOURCE_NAME[h.source]}), ${when(h.at)}, ${h.who}: “${firstWords(h.text, 160)}”; conversation ${h.chatId}, message ${h.messageId}`
 
 const ReadInput = z.object({
   chat: z.string().trim().min(1).max(64).optional().describe("a conversation's id, from the list: its messages"),
@@ -60,24 +66,25 @@ export const readTool: WorkTool = {
     if (!ctx.lifeos.connected()) return failed('LifeOS is not connected.')
     const owner = ctx.lifeos.owner()
     try {
+      const when = whenIn(await zoneOf(ctx))
       if (chat) {
         const got = await chatIn(ctx, chat, sector)
         if (!got) return notHere(chat)
         const page = await owner.query<{ page: ChatMessage[]; isDone: boolean; continueCursor: string }>('chats:messages', { chatId: chat, paginationOpts: { numItems: limit ?? 50, cursor: before ?? null } })
-        const lines = [...(page?.page ?? [])].reverse().map(messageLine)
-        const head = `${got.chat.name} in ${SOURCE_NAME[got.chat.source]}${got.chat.accountName ? `, ${got.chat.accountName}` : ''} (conversation ${got.chat._id}), oldest to newest:`
+        const lines = [...(page?.page ?? [])].reverse().map(messageLine(when))
+        const head = `${got.chat.name} in ${SOURCE_NAME[got.chat.source]}${got.chat.accountName ? `, ${got.chat.accountName}` : ''} (conversation ${got.chat._id}), oldest to newest; a message's id is what reply_to takes:`
         const more = page && !page.isDone ? `\nOlder messages: messages_read with chat ${chat} and before "${page.continueCursor}".` : ''
         return workText(lines.length ? `${head}\n${lines.join('\n')}${more}` : `${got.chat.name} in ${SOURCE_NAME[got.chat.source]} has no messages LifeOS holds.`)
       }
       if (query) {
         const hits = (await owner.query<(ChatHit & { sector?: string })[]>('chats:search', { sector, text: query, limit: limit ?? 20 })) ?? []
         const mine = hits.filter((h) => h.sector === sector)
-        return workText(mine.length ? [`Messages that hold “${query}”, newest first:`, ...mine.map(hitLine)].join('\n') : `No message in this job's chat holds “${query}”.`)
+        return workText(mine.length ? [`Messages that hold “${query}”, newest first:`, ...mine.map(hitLine(when))].join('\n') : `No message in this job's chat holds “${query}”.`)
       }
       const page = await owner.query<{ page: ChatRow[]; isDone: boolean; continueCursor: string }>('chats:list', { sector, filter: 'all', paginationOpts: { numItems: limit ?? 30, cursor: before ?? null } })
       const rows = (page?.page ?? []).filter((c) => c.sector === sector)
       const more = page && !page.isDone ? `\nMore: messages_read with before "${page.continueCursor}".` : ''
-      return workText(rows.length ? `${['Conversations, newest first:', ...rows.map(chatLine)].join('\n')}${more}` : "This job's chat has no conversations.")
+      return workText(rows.length ? `${['Conversations, newest first:', ...rows.map(chatLine(when))].join('\n')}${more}` : "This job's chat has no conversations.")
     } catch (err) {
       return failed(`LifeOS did not answer: ${errorText(err)}`)
     }
@@ -114,7 +121,8 @@ export const draftTool: WorkTool = {
     const source = got.chat.source
     // A route is the source's, not LifeOS's word now: a Mac asleep now may be awake at his press, which reads it again.
     if (CHAT_ROUTES[source] === 'lifeos') {
-      const payload = ChatReplySchema.parse({ chatId: got.chat._id, ...(reply_to ? { replyTo: reply_to } : {}), source, chat: got.chat.name, text })
+      const replyTo = pinnedReplyTo(source, reply_to, got.chat)
+      const payload = ChatReplySchema.parse({ chatId: got.chat._id, ...(replyTo ? { replyTo } : {}), source, chat: got.chat.name, text })
       const item = ctx.held.create({ kind: 'chat.reply', sessionId: ctx.sessionId, payload })
       return workText(`Held: ${item.summary}. It waits for the owner's press; nothing is sent until then. This is a finished step, not a failure: carry on.`)
     }

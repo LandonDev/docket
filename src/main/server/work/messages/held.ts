@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { CHAT_REPLY_MAX, CHAT_ROUTES, CHAT_SOURCES, firstWords, replyWhere, SOURCE_NAME, type ChatDetail } from '@shared/work/messages'
+import { CHAT_REPLY_MAX, CHAT_ROUTES, CHAT_SOURCES, firstWords, replyWhere, SOURCE_NAME, type ChatDetail, type ChatSource } from '@shared/work/messages'
 import type { ActKindDef } from '../modules'
 import { ActNotSent, ActStale } from '../outbox/kinds'
 import { isRefusal, refusalWords } from './lifeos'
@@ -28,6 +28,16 @@ export const ChatReplySchema = z.object({
 export type ChatReply = z.infer<typeof ChatReplySchema>
 
 export const CHAT_GONE = 'This conversation is no longer in LifeOS, or it moved to another job. Nothing was sent.'
+export const NEW_SINCE = 'A new message came in after this reply was drafted, and the reply names no message it answers. Nothing was sent: draft it again.'
+
+/**
+ * The message a Slack reply answers, fixed when it is held: the one named, else the conversation's newest from someone
+ * else as it stands now. Slack threads a reply under it, so a message that comes in before his press must not take its
+ * place: what the Outbox quotes is what it answers. Other sources do not thread, and get only what was named.
+ */
+export function pinnedReplyTo(source: ChatSource, named: string | undefined, chat: Pick<ChatDetail['chat'], 'lastInId'>): string | undefined {
+  return named ?? (source === 'slack' ? chat.lastInId : undefined)
+}
 
 export const chatReplyKind: ActKindDef<ChatReply, never> = {
   kind: 'chat.reply',
@@ -49,6 +59,9 @@ export const chatReplyKind: ActKindDef<ChatReply, never> = {
     const source = got.chat.source
     if (CHAT_ROUTES[source] !== 'lifeos') throw new ActNotSent(got.route?.can === false ? got.route.why : `LifeOS can't reply in ${SOURCE_NAME[source]} yet`)
     if (got.route?.can === false) throw new ActNotSent(got.route.why)
+    // A Slack reply held before its parent was fixed (pinnedReplyTo) goes under LifeOS's newest from someone else: once a
+    // message has come in since it was held, that is no longer the one it was drafted for, nor the one he may have read.
+    if (source === 'slack' && !p.replyTo && (got.chat.lastInAt ?? 0) > act.item.createdAt) throw new ActStale(NEW_SINCE)
     let outboxId: string
     try {
       outboxId = await owner.mutation<string>('chats:reply', { chatId: p.chatId, ...(p.replyTo ? { replyTo: p.replyTo } : {}), text: p.text })

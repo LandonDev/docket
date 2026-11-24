@@ -1,4 +1,4 @@
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
@@ -151,6 +151,16 @@ describe('a chat file in a canvas', () => {
     await expect(fetchChatFile(item(), ctx(), to(), deps())).rejects.toThrow(NOT_FETCHED)
     file!.url = 'https://lifeos.test/api/storage/abc'
     await expect(fetchChatFile(item(), ctx(), to(), deps({ fetch: async () => new Response('no', { status: 403 }) }))).rejects.toThrow(/answered 403/)
+  })
+
+  it('rejects, and throws nothing past the fetch, when the file cannot be written', async () => {
+    await expect(fetchChatFile(item(), ctx(), { ...to(), dest: join(dir, 'gone', 'out.png') }, deps())).rejects.toThrow(/ENOENT/)
+  })
+
+  it.runIf(existsSync('/dev/full'))('rejects when the disk fills once the bytes are flowing', async () => {
+    const big = new Uint8Array(256 * 1024)
+    const fetch = async () => new Response(new ReadableStream({ pull: (c) => (c.enqueue(big), void 0) }))
+    await expect(fetchChatFile(item(), ctx(), { ...to(), dest: '/dev/full' }, deps({ fetch }))).rejects.toThrow(/ENOSPC/)
   })
 
   it('is picked for a chat’s file and never for a mail’s own, through the canvas', async () => {

@@ -35,14 +35,17 @@ export function useWaitingDrafts(workspaceId: string, chatId: string): readonly 
 /**
  * What the field's words are now, answered once for every reader (the line, Send, the failure cleanup, Undo), against
  * all the drafts still waiting, not only the one the line would show: a held draft's (a press sends the item), a
- * copy-only draft's, a failed item's (the Outbox's; never sent as his own), or his own, which is also what a draft gone
- * from the list leaves behind.
+ * copy-only draft's, a failed item's (the Outbox's; never sent as his own), one another window is sending (nothing here
+ * acts on it), or his own, which is also what an edited draft gone from the list leaves behind (an untouched one goes
+ * with it: the composer's cleanup).
  */
-export type FieldOrigin = { kind: "own" } | { kind: "held" | "copy" | "failed"; draft: ThreadDraft };
+export type FieldOrigin = { kind: "own" } | { kind: "held" | "copy" | "failed" | "sending"; draft: ThreadDraft };
 export function fieldOrigin(from: string | null, drafts: readonly ThreadDraft[]): FieldOrigin {
   const draft = from ? drafts.find((d) => d.id === from) : undefined;
   if (!draft) return { kind: "own" };
-  return { kind: draft.failed !== undefined ? "failed" : draft.held ? "held" : "copy", draft };
+  // Sending from elsewhere is not yet sent: its words stay the draft's, and nothing here may act on them, until the list
+  // says how it ended.
+  return { kind: draft.failed !== undefined ? "failed" : draft.sending ? "sending" : draft.held ? "held" : "copy", draft };
 }
 
 /**

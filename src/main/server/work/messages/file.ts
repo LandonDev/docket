@@ -1,4 +1,6 @@
 import { createWriteStream } from 'node:fs'
+import { Readable, Transform } from 'node:stream'
+import { pipeline } from 'node:stream/promises'
 import { paneWorkspace, type CanvasItem } from '@shared/work'
 import type { ChatFileStatus } from '@shared/work/messages'
 import type { CanvasFetcher } from '../canvas/fetch'
@@ -93,21 +95,18 @@ export async function fetchChatFile(item: CanvasItem, ctx: WorkCtx, to: Paramete
   const res = await deps.fetch(url, { signal: to.signal })
   if (!res.ok || !res.body) throw new Error(`LifeOS's file store answered ${res.status}.`)
   const total = Number(res.headers.get('content-length')) || file.size || null
-  const out = createWriteStream(to.dest, { mode: 0o600 })
   let received = 0
-  try {
-    const reader = res.body.getReader()
-    for (;;) {
-      const { done, value } = await reader.read()
-      if (done) break
-      received += value.byteLength
-      if (received > CHAT_FILE_MAX_BYTES) throw new Error(TOO_BIG)
-      if (!out.write(value)) await new Promise<void>((resolve) => out.once('drain', () => resolve()))
+  const counted = new Transform({
+    transform(chunk: Buffer, _encoding, done) {
+      received += chunk.byteLength
+      if (received > CHAT_FILE_MAX_BYTES) return done(new Error(TOO_BIG))
       to.progress(received, total)
+      done(null, chunk)
     }
-  } finally {
-    await new Promise<void>((resolve, reject) => out.end((err?: Error | null) => (err ? reject(err) : resolve())))
-  }
+  })
+  // One pipeline, so a failed read, a failed write (a full disk) or an abort rejects here and the canvas cleans up: an
+  // error event no one hears would reach the Work service's fatal handler.
+  await pipeline(Readable.fromWeb(res.body as Parameters<typeof Readable.fromWeb>[0]), counted, createWriteStream(to.dest, { mode: 0o600 }), { signal: to.signal })
 }
 
 export const chatFileFetcher: CanvasFetcher = { at: 'mail', from: 'chat', fetch: (item, ctx, to) => fetchChatFile(item, ctx, to) }

@@ -7,12 +7,18 @@ import { cn } from "../../lib/cn";
  * Retry. A stable wrapper per thing. If the keys were inside it when its content changed and the control that held them
  * is gone, they go to the control that took its place (the first focusable inside, or the one `pick` names), or to the
  * wrapper itself, which wears the standard ring, when there is none yet; and from there to the next control when one
- * arrives. It acts only for the wrapper that last held the keys (the innermost, so nested keepers never fight), never
- * takes them from elsewhere, and goes on doing so across any number of swaps.
+ * arrives. It acts only for the innermost wrapper still on the page around where the keys last went (so nested keepers
+ * never fight, and one that leaves the page hands to the one around it), never takes them from elsewhere or back after he
+ * dropped them himself, and goes on doing so across any number of swaps.
  */
 
-/** The innermost keeper the keys were last inside: moved by every focus, so a focus elsewhere frees every keeper. */
-let owner: Element | null = null;
+/**
+ * Where the keys last went: the element focus reached, and every keeper around it, innermost first. Moved by every focus,
+ * so a focus elsewhere frees every keeper. Kept as a chain, so a keeper that leaves the page with the control inside it
+ * (an attachment's whole message scrolled out of the window) leaves the keys to the keeper around it.
+ */
+let reached: Element | null = null;
+let chain: Element[] = [];
 let listening = false;
 function listen(): void {
   if (listening || typeof document === "undefined") return;
@@ -20,15 +26,32 @@ function listen(): void {
   document.addEventListener(
     "focusin",
     (event) => {
-      const target = event.target as Element | null;
-      owner = target?.closest?.("[data-kept-keys]") ?? null;
+      reached = event.target as Element | null;
+      chain = [];
+      for (let at = reached?.closest?.("[data-kept-keys]") ?? null; at; at = at.parentElement?.closest("[data-kept-keys]") ?? null) chain.push(at);
     },
     true,
   );
 }
 
+/**
+ * The keeper whose keys these are to hand on, if any: the innermost still on the page around where they last went. Keys
+ * that fell to the page while the control he left is still there were dropped by him (Escape out of a field, a click on
+ * blank space): no keeper takes them back. Keys that fell because that control went are the keeper's.
+ */
+function holder(): Element | null {
+  const keeper = chain.find((k) => k.isConnected) ?? null;
+  if (!keeper) return null;
+  const active = document.activeElement;
+  const fell = !active || active === document.body;
+  return !fell || (reached !== null && !reached.isConnected) ? keeper : null;
+}
+
 /** Whether a keeper inside `region` (or the region itself) holds the keys: they are its to hand on, not anyone else's. */
-export const keptWithin = (region: Element): boolean => owner !== null && region.contains(owner);
+export const keptWithin = (region: Element): boolean => {
+  const keeper = holder();
+  return keeper !== null && region.contains(keeper);
+};
 
 const FOCUSABLE = "button:not([disabled]), a[href], input:not([disabled]), textarea:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex='-1'])";
 
@@ -43,7 +66,7 @@ export function useKeptKeys<T extends HTMLElement>(pick?: (wrapper: T) => HTMLEl
     listen();
     el.setAttribute("data-kept-keys", "");
     const settle = (): void => {
-      if (owner !== el) return;
+      if (holder() !== el) return;
       const active = document.activeElement;
       const fell = !active || active === document.body;
       // The keys still on a control inside: nothing to do. On the wrapper or fallen: the next control, else the wrapper.

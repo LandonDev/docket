@@ -85,10 +85,17 @@ answered as if it did not exist when its sector differs (`chatIn`).
 - **The hold.** `chat.reply`, `store: 'host'`, no matcher (so no grant can
   cover one; `held.ts` names the two lines that would add `{chatId}`),
   payload `{chatId, replyTo?, source, chat, to?, text}` (1 to 4000), an
-  Outbox edit changes `text` alone. Words "Reply in Slack to Dana Lee:
+  Outbox edit changes `text` alone. A Slack reply's `replyTo` is fixed when
+  it is held (`pinnedReplyTo`): the message named, else the conversation's
+  `lastInId` then, so a message that comes in before his press never takes
+  its place and the Outbox quotes what it answers; other sources keep only
+  what was named. Words "Reply in Slack to Dana Lee:
   “first words”", verb Send. On the press it reads `chats:get` again: gone,
   or in another sector than the item's → stale; a Copy source or a route
-  that says no → not sent in LifeOS's sentence; else `chats:reply` →
+  that says no → not sent in LifeOS's sentence; a Slack reply held with no
+  `replyTo` (from before the pin, or a conversation with nothing from
+  anyone else) once a message from someone else came in after it was held
+  → stale (`NEW_SINCE`: draft it again); else `chats:reply` →
   "Sent to Dana Lee in Slack", ref `{at: 'lifeos', table: 'outbox', id}`; a
   refusal of `chats:reply` is not sent in its words, any other fault may
   have gone. No way back. It earns nothing (`wordsOf` keeps `{chatId,
@@ -96,7 +103,10 @@ answered as if it did not exist when its sector differs (`chatIn`).
 - **Tools**, listed to a Work thread whose sector is in
   `AGENT_CHAT_SECTORS`: `messages_read {chat?, query?, before?, limit?}`
   (read only; the list, a conversation oldest to newest as plain lines with
-  times and file names, or a search; marks nothing read) and
+  times, file names and each message's id, the id `reply_to` takes, or a
+  search; times in his zone, LifeOS's `settings.timezone` through
+  `clashes/zone.ts` `zoneOf`, the zone named, "Nov 20, 2:15 PM CST"; marks
+  nothing read) and
   `messages_draft_reply {chat, text, reply_to?}` (a Slack or iMessage
   conversation → a held `chat.reply`, whatever LifeOS's route says now; a
   Discord or Teams one → a draft row, a push and "Saved as a draft in the
@@ -115,7 +125,14 @@ answered as if it did not exist when its sector differs (`chatIn`).
   have none. The view's sync line judges a service the same way
   (`serviceState`).
 - **Live.** `start` keeps one `chats:unread` and one `chats:unanswered` a
-  linked Work workspace, following workspaces made and deleted.
+  linked Work workspace, following workspaces made and deleted. The
+  `work.messages` push goes when the count moves, and also when the
+  waiting list moves while it does not (a conversation answered, a second
+  message in one already unread), so Today's rows follow.
+- **His own Send** (`sendReply`): LifeOS's refusal comes back in its words
+  (nothing was queued); any other failure of `chats:reply` may have reached
+  it, and comes back as "It may have gone: …" (`REPLY_MAY_HAVE_GONE`), which
+  the window reads as an unknown outcome.
 
 ## Threads and the digest
 
@@ -158,7 +175,11 @@ conversation is outside the pane's sector (or whose row names another
 conversation or message than the item does), asks `chats:requestFiles` for
 one not stored and waits up to two minutes, fails in LifeOS's words ("Slack
 needs the files permission. Reinstall the app."), then streams the bytes
-into the item's own folder. The pane is `messagesPaneOf(workspaceId)`
+into the item's own folder through one `pipeline`, so a failed read, a
+failed write (a full disk) or an abort rejects the fetch and the canvas
+cleans up; no stream error reaches the Work service's fatal handler. A tab
+the host refuses (the host away, a pane with no chat) is said in a toast in
+the window, never a dead press. The pane is `messagesPaneOf(workspaceId)`
 (`msgpane_<id>`), a pane owner as the Mail view's is (`paneWorkspace`,
 `PANE_PREFIXES`). Read only, Download, Save to workspace and Keep as
 document are the canvas's, as for a mail's file. iMessage and Teams hand no
@@ -171,7 +192,7 @@ files: there a file is the plain line LifeOS stored.
 | `view.ts` | The row and its view: after Mail (`order` 0.5), `readsLifeos`, `ownHead`, the chunk `work-messages-view`. In the first paint: an icon, the chunk and `facts.ts`. |
 | `facts.ts` | The row's fact: `chats:unread {sector}` on the column's session, "3" or nothing. |
 | `data.ts` | The one seam, `MessagesData`. Reads: `useChats(filter)`, `useUnread()`, `useChat(id)`, `useMessages(id)`, `useSources()`, `useSearch(text)`, `useDrafted()`, `useDrafts(chatId)` (`ThreadDraft`: a held reply or a copy-only draft, its thread), `useNow()`, `fileVerb(file)`. Writes: `markRead`, `markUnread`, `send`, `undo` (answers the words), `retry`, `sendDraft(draft, text)`, `dropDraft`, `requestFiles(messageId)`, `openFile(chatId, message, file)`. `WAITING` answers while the session opens. |
-| `live.ts` | The seam from LifeOS on the workspace's sector session (`chats:list`, `get`, `messages`, `unread`, `search`, `sources:list` kept to this sector's chat kinds, `markRead`, `markUnread`, `requestFiles`), each list one live query grown in place, the smaller answer kept on screen while the bigger comes; his replies through the host (`work.messages.send`, `undo`, `retry`, `drafts`, `dropDraft`, a refusal in its own words); a thread's held reply from the Outbox's own list (`outbox/store.ts`: `useOutbox`, `editItem` then `sendItem`, `discardItem`); copy-only drafts read once a workspace and again on the `work.messages` push. |
+| `live.ts` | The seam from LifeOS on the workspace's sector session (`chats:list`, `get`, `messages`, `unread`, `search`, `sources:list` kept to this sector's chat kinds, `markRead`, `markUnread`, `requestFiles`), each list one live query grown in place, the smaller answer kept on screen while the bigger comes; his replies through the host (`work.messages.send`, `undo`, `retry`, `drafts`, `dropDraft`, a refusal in its own words); a thread's held reply from the Outbox's own list (`outbox/store.ts`: `useOutbox`, `editItem` then `sendItem`, `discardItem`), one held, failed or sending elsewhere (`ThreadDraft.sending`); a Discard of one the list no longer holds is refused ("This draft is no longer waiting"), never taken; his Send's failure read by `sendFailure` (an answer lost after the request went, or the host's "It may have gone", is `unknown`); copy-only drafts read once a workspace, again on the `work.messages` push and again each time the host's link opens. |
 | `files.ts` | `viewKind` (the canvas kind `kindForFile` names, when the canvas fetches it), `fileVerb`, `chatFileSource` (the mail arm with `from: 'chat'`). |
 | `threads.ts` | `chatChip` ("Dana Lee in Slack", a message's words as `quote`), `threadRows` (Start thread; Mention in a thread only while one is open), `linkRows` (Open in the app, Copy link), `mention`, `StartThreadProvider`. |
 | `fixtures.ts`, `pictures.fixtures.ts` | The seam from a made-up studio, Starboard, kept in memory (a reply lands as his own message, an undo takes it away, a pressed draft goes), with switches: `loading`, `empty`, `noSource`, `stale`, `drafted`, `drafts`, `routes`, `refuse`, and `manyChats`/`manyMessages` for the speed proof; two made-up pictures as `data:` addresses. |
@@ -236,7 +257,14 @@ The look is docs/DESIGN.md "The Messages view".
   puts the draft's words before his. Whose words they are is kept beside them
   in page.ts (`keepTyped(…, from)`), so leaving and coming back, a Retry or
   the 640px crossing find a draft still a draft; a draft gone meanwhile
-  leaves its words as his own. One gate a conversation (page.ts
+  (sent or discarded elsewhere) takes its words with it while they are as
+  they filled the field (`markFilled`, `filledUntouched` in page.ts: on
+  arrival, or Use draft into an empty field), so Return cannot post them
+  again as his own; words he changed stay, his own. A draft another window
+  or the Outbox is sending (`ThreadDraft.sending`) is not gone: the field
+  keeps its words read only, Send, Copy and the quick answers are off,
+  Discard and Use draft are not offered, and the line says "Sending from the
+  Outbox" until the list says how it ended. One gate a conversation (page.ts
   `startGated`, `runGated`, `useGate`) holds every composer action that waits
   on the host and then touches the field, the draft marks or the refusal: his
   own Send until LifeOS answers, a held draft's press, Discard, Copy (its
@@ -251,7 +279,15 @@ The look is docs/DESIGN.md "The Messages view".
   the live list (which may list the item as sending) or the route says
   meanwhile; once it settles the latest list and route apply. His own words:
   Send empties the field at the press, and nothing goes twice on any mount; a refusal puts his words back before whatever he typed since, a
-  line between, as his own, and shows. A held draft's words follow one rule:
+  line between, as his own, and shows. A failure whose outcome is unknown
+  (no answer came after the request went, or the host's "It may have
+  gone") keeps the words aside (`keepUnsure`, page.ts), never under a plain
+  Send: one 12px line above the box, the amber mark and "May have gone.",
+  10px on, muted, "Check above before sending it again", and Use words at
+  its far end, which puts them back before whatever he typed since. The
+  line goes with Use words, or once a later Send of his own goes. Use draft
+  is not offered, and does nothing, while a step holds the gate; the
+  cleanup of a failed draft's words waits for the gate too. A held draft's words follow one rule:
   they stay in the field until the host has taken them. While its press is
   pending the field is read only (`aria-busy`), Send busy and Discard off,
   and the draft's line still names its thread. Taken, the field empties if
@@ -263,8 +299,8 @@ The look is docs/DESIGN.md "The Messages view".
   was, words and origin, and the refusal shows above the line: a second
   Send presses again. Nothing is kept anywhere else. If the item leaves the
   waiting list while the field holds its words (sent or discarded
-  elsewhere), the words stay and are his own now, so Send goes as his own
-  reply. Discard changes nothing before the host answers, and reads what it
+  elsewhere), an edit stays and is his own now, so Send goes as his own
+  reply; untouched words go with it. Discard changes nothing before the host answers, and reads what it
   answered: only an item it discarded is settled and may empty the field (if
   still as pressed); an item it answers already sending or sent elsewhere is
   refused in plain words ("Already sending from the Outbox"), and field,
@@ -375,7 +411,12 @@ The look is docs/DESIGN.md "The Messages view".
   hold the keys while the read runs and hand them to what lands: the rows or results, the column, the next
   failure's Retry, the composer's field (a conversation with no messages yet),
   Back to Messages (the conversation gone) or the search field (an empty list
-  with no action). Under 640px the pane
+  with no action). A keeper acts for the innermost keeper still on the page
+  around where the keys last went, so one that leaves with its control (a
+  file's whole message scrolled out of the window) hands them to the pane
+  around it, which gives them to the column; and keys he dropped himself
+  (Escape out of the search, a click on blank space) stay dropped: only keys
+  that fell because their control went are taken up. Under 640px the pane
   counts as inside the conversation, so Back does not take them first. Sources that did not load make
   an empty list say it did not load. A conversation that fails keeps its
   toolbar, so the way back stays under 640px.
@@ -414,7 +455,8 @@ The look is docs/DESIGN.md "The Messages view".
   (`openItem(env, messagesPaneOf(ws), {kind, source: chatFileSource(…)})`,
   the host fetching it as the owner); any other is saved to Downloads once
   stored. `fileMarkers` takes the folded names out of the words once the
-  files are listed.
+  files are listed: only the tail a reader added after the words, one a
+  file, so the same text typed in the words stays.
 - **The Outbox.** A held reply's quote is read from the newest page, else by
   its id (`rawMessages:get {id}`) on the item's own sector; a line of bones
   holds its place until LifeOS answers. The message quoted is the one LifeOS's
@@ -459,11 +501,20 @@ his chat.
 ## Proofs
 
 `messages/messages.test.ts` (the fence on each read, health's rows and the
-fold, the push), `held.test.ts` (held, Away, once on two presses, no
-thread's press, no grant, stale and not sent), `tools.test.ts` (who is
-offered chat, the read tool's fence, the draft row, his presses),
-`mentions.test.ts` (`@`, the chip's line, the tells), `search.test.ts`,
-`file.test.ts` (the fetcher's fence, ask and wait, its failures, picked for
-a chat's file and never a mail's), `src/shared/work/messages.test.ts`
-(stale, the sync line, folded file names). What has run against the live
+fold, the push, the push when the waiting list moves), `held.test.ts` (held,
+Away, once on two presses, no thread's press, no grant, stale and not sent,
+a Slack parent pinned at hold and stale when unpinned and overtaken),
+`tools.test.ts` (who is offered chat, the read tool's fence, its zone and
+message ids, the draft row, his presses, may-have-gone apart from a
+refusal), `mentions.test.ts` (`@`, the chip's line, the tells),
+`search.test.ts`, `file.test.ts` (the fetcher's fence, ask and wait, its
+failures, a write that fails, picked for a chat's file and never a mail's),
+`src/shared/work/messages.test.ts` (stale, the sync line, folded file names,
+only the reader's tail cut). The view: `model.test.ts`, `today.test.ts`,
+`Composer.dom.test.tsx`, `MessagesView.dom.test.tsx`, `ChatReplyAct.dom.test.tsx`,
+`cold`, `files`, `open`, `ways` and `council` to `council11.dom.test.tsx`,
+`keptKeys.dom.test.tsx` (dropped keys stay dropped, a keeper that leaves
+hands on) and `live.dom.test.tsx` (his Send's failure read, a Discard of a
+draft no longer listed, the copy-only drafts read again on the link's open,
+a refused file tab said). What has run against the live
 LifeOS, and what has not, is `.temp-code/plans/landed/R3-messages.md`.

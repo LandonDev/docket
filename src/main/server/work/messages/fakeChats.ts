@@ -22,6 +22,8 @@ export class FakeChats implements LifeosClient {
   retried: string[] = []
   connected = true
   leaky = false
+  /** LifeOS's `settings.timezone`, his zone; none: `settings:get` answers no zone */
+  timezone: string | undefined = undefined
   /** the next `chats:reply` throws this */
   refuseNext: unknown = null
   private n = 0
@@ -112,6 +114,8 @@ export class FakeChats implements LifeosClient {
         return null as T
       case 'sources:list':
         return this.sources as T
+      case 'settings:get':
+        return (this.timezone ? { timezone: this.timezone } : {}) as T
     }
     throw new Error(`no function ${fn}`)
   }

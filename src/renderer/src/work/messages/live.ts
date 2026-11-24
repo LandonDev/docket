@@ -3,9 +3,9 @@ import { makeFunctionReference } from "convex/server";
 import { loadBytes } from "work-kit/mail/lib/bytes";
 import { messagesPaneOf, type SectorKey } from "@shared/work";
 import type { MessagesDraftsAnswer, MessagesSendAnswer } from "@shared/contract-work-messages";
-import { isChatSource, type ChatDetail, type ChatDraft, type ChatFile, type ChatHit, type ChatMessage, type ChatRow, type ChatSourceState } from "@shared/work/messages";
+import { isChatSource, REPLY_MAY_HAVE_GONE, type ChatDetail, type ChatDraft, type ChatFile, type ChatHit, type ChatMessage, type ChatRow, type ChatSourceState } from "@shared/work/messages";
 import { loadToast } from "../../components/ui/toaster";
-import { registry } from "../../lib/connection";
+import { ConnectionLostError, registry, TimeoutError } from "../../lib/connection";
 import { saveDownload } from "../../lib/native";
 import { refusalWords } from "../../lib/settingsHome";
 import { sessionStore } from "../../lib/tcserver/store";
@@ -142,7 +142,11 @@ export function liveData(session: LifeosSession, sector: SectorKey, env: string,
     markRead: (chatId: string) => write("chats:markRead", chatId, "Couldn't mark it read"),
     markUnread: (chatId: string, onFailed?: () => void) => write("chats:markUnread", chatId, "Couldn't mark it unread", onFailed),
     send: async (chatId, text) => {
-      await host<MessagesSendAnswer>("work.messages.send", { workspaceId, chatId, text });
+      try {
+        await registry.linkOf(env).request<MessagesSendAnswer>("work.messages.send", { workspaceId, chatId, text });
+      } catch (err) {
+        throw sendFailure(err);
+      }
     },
     undo: async (chatId, id) => (await host<{ text: string }>("work.messages.undo", { workspaceId, chatId, id })).text,
     retry: async (chatId, id) => {
@@ -183,12 +187,13 @@ export function liveData(session: LifeosSession, sector: SectorKey, env: string,
     },
     dropDraft: async (draft) => {
       if (draft.held) {
+        // An item the list no longer holds was decided elsewhere, or is on its way: nothing was discarded here, so nothing
+        // settles (the field keeps its words until the list says what became of it).
         const item = heldItem(env, draft.id);
-        if (item) {
-          // Read what the host answered: only a discarded item is settled; one already sending or sent is refused.
-          const refusal = discardRefusal(await discardItem(item));
-          if (refusal) throw new Error(refusal);
-        }
+        if (!item) throw new Error("This draft is no longer waiting");
+        // Read what the host answered: only a discarded item is settled; one already sending or sent is refused.
+        const refusal = discardRefusal(await discardItem(item));
+        if (refusal) throw new Error(refusal);
       } else {
         await host("work.messages.dropDraft", { workspaceId, id: draft.id });
         void loadCopyDrafts(env, workspaceId);
@@ -205,7 +210,10 @@ export function liveData(session: LifeosSession, sector: SectorKey, env: string,
     openFile: (chatId, messageId, file) => {
       const kind = viewKind(file);
       if (kind) {
-        void openItem(env, messagesPaneOf(workspaceId), { kind, source: chatFileSource(chatId, messageId, file), title: file.name.slice(0, 200) });
+        // The host may refuse the tab (it is away, or the pane reads no chat): say so, or the press looks dead.
+        openItem(env, messagesPaneOf(workspaceId), { kind, source: chatFileSource(chatId, messageId, file), title: file.name.slice(0, 200) }).catch((err: unknown) =>
+          loadToast().then((toast) => toast.error(refusalWords(err) || `Couldn't open ${file.name}`)),
+        );
         return;
       }
       void saveFile(file).then(
@@ -214,6 +222,18 @@ export function liveData(session: LifeosSession, sector: SectorKey, env: string,
       );
     },
   };
+}
+
+/**
+ * His Send's failure as the composer must read it: refused (nothing was queued; the words go back in the field), or
+ * `unknown` (LifeOS may have queued them): the host said so (REPLY_MAY_HAVE_GONE), or its answer never came after the
+ * request went out (a timeout, a socket that closed under it). A link that was down never sent the request at all.
+ */
+export function sendFailure(err: unknown): Error {
+  const words = refusalWords(err) || "The host did not answer";
+  const lost = err instanceof TimeoutError || (err instanceof ConnectionLostError && err.message === "connection closed");
+  const unknown = lost || words.startsWith(REPLY_MAY_HAVE_GONE);
+  return Object.assign(new Error(lost ? `${REPLY_MAY_HAVE_GONE}: the host did not answer` : words), unknown ? { unknown: true } : {});
 }
 
 // ── Files ──
@@ -232,6 +252,7 @@ const chatOf = (item: HostItem): string | undefined => ((item.payload ?? {}) as 
 /** A thread's title, from the host's own threads first, else the name the draft kept. */
 const threadTitle = (sessionId: string | null, kept?: string): string | undefined => (sessionId ? sessionStore.metaOf(sessionId)?.title?.trim() : undefined) || kept?.trim() || undefined;
 const heldDraft = (item: HostItem): ThreadDraft => {
+  // Sending (pressed elsewhere): still the item's until the list says how it ended.
   const title = threadTitle(item.sessionId);
   return {
     id: item.ref.id,
@@ -240,18 +261,26 @@ const heldDraft = (item: HostItem): ThreadDraft => {
     threadId: item.sessionId,
     ...(title ? { thread: title } : {}),
     outboxKey: `${item.environmentId}:${item.ref.at}:${item.ref.id}`,
+    ...(item.state === "sending" ? { sending: true } : {}),
     ...(item.state === "failed" ? { failed: item.error ?? "It couldn't be sent", ...(item.outcomeUnknown ? { unknown: true } : {}) } : {}),
   };
 };
 const heldItem = (env: string, id: string): HostItem | undefined => outboxNow().waiting.find((item) => item.environmentId === env && item.ref.id === id && item.kind === "chat.reply");
 
-/** This workspace's held replies still waiting, and those whose press failed, from the Outbox's own list of the host. */
+/**
+ * This workspace's held replies still waiting, those whose press failed, and those a press elsewhere is sending now, from
+ * the Outbox's own list of the host: a sending one is not gone until the list says how it ended.
+ */
 function useHeldReplies(env: string, workspaceId: string): readonly HostItem[] {
   const { waiting } = useOutbox();
-  return useMemo(() => waiting.filter((item) => item.environmentId === env && item.workspaceId === workspaceId && item.kind === "chat.reply" && (item.state === "held" || item.state === "failed")), [waiting, env, workspaceId]);
+  return useMemo(
+    () => waiting.filter((item) => item.environmentId === env && item.workspaceId === workspaceId && item.kind === "chat.reply" && (item.state === "held" || item.state === "failed" || item.state === "sending")),
+    [waiting, env, workspaceId],
+  );
 }
 
-// The copy-only drafts a workspace holds, read once and again on the host's `work.messages` push.
+// The copy-only drafts a workspace holds, read once, again on the host's `work.messages` push, and again each time the link
+// opens: a read that failed while it was down (or a push lost with it) is asked for once it is back.
 const copyDrafts = new Map<string, readonly ChatDraft[]>();
 const copyListeners = new Set<() => void>();
 const watchedDrafts = new Set<string>();
@@ -277,9 +306,11 @@ function useCopyDrafts(env: string, workspaceId: string): readonly ChatDraft[] {
     if (watchedDrafts.has(key)) return;
     watchedDrafts.add(key);
     void loadCopyDrafts(env, workspaceId);
-    registry.linkOf(env).onPush((push) => {
+    const link = registry.linkOf(env);
+    link.onPush((push) => {
       if (push.push === "work.messages" && push.workspaceId === workspaceId) void loadCopyDrafts(env, workspaceId);
     });
+    link.onOpen(() => void loadCopyDrafts(env, workspaceId));
   }, [env, workspaceId, key]);
   return useSyncExternalStore(
     (fn) => {

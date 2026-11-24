@@ -35,6 +35,8 @@ export interface ThreadDraft {
   failed?: string;
   /** Failed with its outcome unknown (the Outbox's `outcomeUnknown`): LifeOS may have taken it, so it may have gone. */
   unknown?: boolean;
+  /** A press from elsewhere (the Outbox, another window) is sending it now: nothing here may press, discard or send its words. */
+  sending?: boolean;
   /** The Outbox page's own key for the item (`<host>:<ref.at>:<ref.id>`), so Open in Outbox picks that very item. */
   outboxKey?: string;
 }
@@ -62,7 +64,10 @@ export interface MessagesData {
   markRead(chatId: string): void;
   /** Marks it unread; `onFailed` hears that LifeOS did not take the mark. */
   markUnread(chatId: string, onFailed?: () => void): void;
-  /** His own reply, through the host; LifeOS holds it for its undo time. Rejects with LifeOS's words. */
+  /**
+   * His own reply, through the host; LifeOS holds it for its undo time. Rejects with LifeOS's words, the error's `unknown`
+   * true when LifeOS may have queued it all the same (no answer came, or the failure was not LifeOS's refusal).
+   */
   send(chatId: string, text: string): Promise<void>;
   /** Takes a reply back inside its undo time and answers its words. */
   undo(chatId: string, replyId: string): Promise<string>;

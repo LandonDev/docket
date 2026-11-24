@@ -31,6 +31,13 @@ export const OWN_REPLY_HELD = false
 /** The sectors whose chat a Work thread may read with `messages_read`. Take one out to keep its chat from agents. */
 export const AGENT_CHAT_SECTORS: readonly SectorKey[] = ['cosmic', 'hypixel', 'purdue', 'ref', 'unify', 'life']
 
+/**
+ * How the host's answer to his own Send begins when LifeOS may have queued the reply (the call failed in a way that is
+ * not LifeOS's refusal: a socket gone, a fault, no answer in time). The window reads it as an unknown outcome: the words
+ * are not put back under a plain Send.
+ */
+export const REPLY_MAY_HAVE_GONE = 'It may have gone'
+
 /** The longest a reply may be: LifeOS's own limit. */
 export const CHAT_REPLY_MAX = 4000
 
@@ -258,20 +265,28 @@ const escapeRe = (text: string): string => text.replace(/[.*+?^${}()|[\]\\]/g, '
  * A message's words less the names LifeOS's readers folded into them, once
  * its files are listed beside it: Slack's `[file: name]`, Discord's
  * `name https://cdn…` line, and iMessage's "Sent an attachment: a, b" when
- * that is all the message says. Words he or anyone wrote are never cut.
+ * that is all the message says. The readers add theirs after the words, one
+ * a file, so only that tail is cut: the same text typed in the words (a
+ * literal `[file: spec.pdf]`) stays, as does anything anyone wrote.
  */
 export function fileMarkers(text: string, files: readonly Pick<ChatFile, 'name'>[]): string {
   if (files.length === 0) return text
-  let out = text
-  for (const { name } of files) {
-    if (!name) continue
-    const n = escapeRe(name)
-    out = out.replace(new RegExp(`[ \\t]*\\[file: ${n}\\]`, 'g'), '')
-    out = out.replace(new RegExp(`(^|\\n)${n} https?://\\S+(?=\\n|$)`, 'g'), '$1')
+  let out = text.trimEnd()
+  const left = files.map((f) => f.name).filter(Boolean)
+  for (let cut = true; cut; ) {
+    cut = false
+    for (let i = left.length - 1; i >= 0; i--) {
+      const n = escapeRe(left[i]!)
+      const next = out.replace(new RegExp(`(^|\\s)\\[file: ${n}\\]$`), '').replace(new RegExp(`(^|\\n)${n} https?://\\S+$`), '').trimEnd()
+      if (next === out) continue
+      out = next
+      left.splice(i, 1)
+      cut = true
+    }
   }
-  // The line goes only when every name it gives is listed beside the message.
+  // The line goes only when it is the whole message and every name it gives is listed beside it.
   const listed = new Set(files.map((f) => f.name))
-  out = out.replace(/^Sent an attachment: (.*)$/m, (line, names: string) => (names.split(', ').every((name) => listed.has(name)) ? '' : line))
+  out = out.replace(/^Sent an attachment: (.*)$/, (line, names: string) => (names.split(', ').every((name) => listed.has(name)) ? '' : line))
   return out.replace(/\n{3,}/g, '\n\n').trim()
 }
 

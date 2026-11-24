@@ -88,4 +88,12 @@ describe('folded file names', () => {
     expect(fileMarkers('Sent an attachment: IMG_2041.heic', [{ name: 'IMG_2041.heic' }])).toBe('')
     expect(fileMarkers('Sent an attachment: IMG_2041.heic, notes.pdf', [{ name: 'IMG_2041.heic' }])).toBe('Sent an attachment: IMG_2041.heic, notes.pdf')
   })
+
+  it("cuts only the tail a reader added, never the same text typed in the words", () => {
+    expect(fileMarkers('Use the literal [file: spec.pdf] in the parser test [file: spec.pdf]', [{ name: 'spec.pdf' }])).toBe('Use the literal [file: spec.pdf] in the parser test')
+    expect(fileMarkers('Post map.png https://cdn.example/x here\nmap.png https://cdn.example/1/map.png', [{ name: 'map.png' }])).toBe('Post map.png https://cdn.example/x here')
+    // Two files, each cut once, whatever order the reader added them in.
+    expect(fileMarkers('Both [file: b.png] [file: a.png]', [{ name: 'a.png' }, { name: 'b.png' }])).toBe('Both')
+    expect(fileMarkers('Hi\nSent an attachment: a.png', [{ name: 'a.png' }])).toBe('Hi\nSent an attachment: a.png')
+  })
 })

@@ -189,11 +189,34 @@ describe('the unread push', () => {
     t.chats.chat({ _id: 'c2' })
     t.chats.fire()
     t.chats.fire()
-    expect(pushes().slice(2)).toEqual([{ push: 'work.messages', workspaceId: 'ws-cosmic', unread: 2 }])
+    // the count, then the waiting list that moved with it; the same answers again push nothing
+    expect(pushes().slice(2)).toEqual([
+      { push: 'work.messages', workspaceId: 'ws-cosmic', unread: 2 },
+      { push: 'work.messages', workspaceId: 'ws-cosmic', unread: 2 }
+    ])
     t.chats.chats.get('c1')!.unread = false
     t.chats.chats.get('c2')!.unread = false
     t.chats.fire()
-    expect(pushes().slice(3)).toEqual([{ push: 'work.messages', workspaceId: 'ws-cosmic', unread: 0 }])
+    expect(pushes().slice(4)).toEqual([
+      { push: 'work.messages', workspaceId: 'ws-cosmic', unread: 0 },
+      { push: 'work.messages', workspaceId: 'ws-cosmic', unread: 0 }
+    ])
+  })
+
+  it('fires when the waiting list moves and the count does not: one answered, or a second message in one unread', async () => {
+    t.chats.chat({ _id: 'c1', lastInAt: 1_000 })
+    t.chats.chat({ _id: 'c2', lastInAt: 1_000 })
+    t.chats.fire()
+    await settle()
+    const before = pushes().length
+    Object.assign(t.chats.chats.get('c1')!, { lastOutAt: 2_000 })
+    t.chats.fire()
+    expect(pushes().slice(before)).toEqual([{ push: 'work.messages', workspaceId: 'ws-cosmic', unread: 2 }])
+    Object.assign(t.chats.chats.get('c2')!, { lastInAt: 3_000, lastAt: 3_000 })
+    t.chats.fire()
+    expect(pushes().slice(before)).toHaveLength(2)
+    t.chats.fire()
+    expect(pushes().slice(before)).toHaveLength(2)
   })
 
   it('watches nothing of a code workspace or one with no sector', () => {

@@ -154,6 +154,38 @@ export function useTyped(workspaceId: string, chatId: string): string {
   );
 }
 
+/**
+ * The revision at which a draft's words filled an empty field (on arrival, or by Use draft into an empty one). While the
+ * field still stands at it, its words are the draft's untouched: once that draft leaves the Outbox's list elsewhere (sent
+ * or discarded in another window), they go with it rather than stand as his own for a second Send.
+ */
+const filledRevs = new Map<string, number>();
+export const markFilled = (workspaceId: string, chatId: string): void => void filledRevs.set(key(workspaceId, chatId), typedRev(workspaceId, chatId));
+export const filledUntouched = (workspaceId: string, chatId: string): boolean => filledRevs.get(key(workspaceId, chatId)) === typedRev(workspaceId, chatId);
+
+/**
+ * His own words whose Send may have gone: the host's answer was lost, or LifeOS failed past a refusal, so it may have
+ * queued them. They are kept here, not in the field, so no plain Send can post them twice; Use words puts them back on his
+ * say, after he has looked. Kept with the conversation until then, or until a later Send of his own goes.
+ */
+const unsure = new Map<string, string>();
+const unsureListeners = new Set<() => void>();
+export function keepUnsure(workspaceId: string, chatId: string, words: string | null): void {
+  if (words) unsure.set(key(workspaceId, chatId), words);
+  else if (!unsure.delete(key(workspaceId, chatId))) return;
+  for (const listener of unsureListeners) listener();
+}
+export function useUnsure(workspaceId: string, chatId: string): string | null {
+  return useSyncExternalStore(
+    (fn) => {
+      unsureListeners.add(fn);
+      return () => void unsureListeners.delete(fn);
+    },
+    () => unsure.get(key(workspaceId, chatId)) ?? null,
+    () => unsure.get(key(workspaceId, chatId)) ?? null,
+  );
+}
+
 /** A send LifeOS refused, in its words, kept with the conversation until he types or sends again. */
 const refusals = new Map<string, string>();
 const refusalListeners = new Set<() => void>();
@@ -417,6 +449,8 @@ export function resetPages(): void {
   typed.clear();
   typedFrom.clear();
   typedRevs.clear();
+  filledRevs.clear();
+  unsure.clear();
   draftMarks.clear();
   visits.clear();
   fileWants.clear();

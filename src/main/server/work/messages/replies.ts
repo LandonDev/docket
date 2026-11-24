@@ -1,10 +1,10 @@
 import { randomUUID } from 'node:crypto'
 import type { MessagesDraftsAnswer, MessagesSendAnswer } from '@shared/contract-work-messages'
 import { errorText, type SectorKey } from '@shared/work'
-import { OWN_REPLY_HELD, type ChatDraft, type ChatMessage } from '@shared/work/messages'
+import { OWN_REPLY_HELD, REPLY_MAY_HAVE_GONE, type ChatDraft, type ChatMessage } from '@shared/work/messages'
 import type { Caller, WorkCtx } from '../modules'
-import { ChatReplySchema } from './held'
-import { chatIn, NO_CHAT, refusalWords, unread, workSector } from './lifeos'
+import { ChatReplySchema, pinnedReplyTo } from './held'
+import { chatIn, isRefusal, NO_CHAT, refusalWords, unread, workSector } from './lifeos'
 
 /**
  * His presses on a reply (docs/agents/work-messages.md "Replies"): his own
@@ -41,12 +41,21 @@ export async function sendReply(ctx: WorkCtx, by: Caller, p: { workspaceId: stri
   const got = await chatIn(ctx, p.chatId, sector)
   if (!got) throw new Error(NO_CHAT)
   if (held) {
-    const payload = ChatReplySchema.parse({ chatId: p.chatId, ...(p.replyTo ? { replyTo: p.replyTo } : {}), source: got.chat.source, chat: got.chat.name, text: p.text })
+    const replyTo = pinnedReplyTo(got.chat.source, p.replyTo, got.chat)
+    const payload = ChatReplySchema.parse({ chatId: p.chatId, ...(replyTo ? { replyTo } : {}), source: got.chat.source, chat: got.chat.name, text: p.text })
     const item = ctx.held.create({ kind: 'chat.reply', sessionId: null, payload })
     return { id: item.ref.id }
   }
-  const id = await lifeosSays(() => ctx.lifeos.owner().mutation<string>('chats:reply', { chatId: p.chatId, ...(p.replyTo ? { replyTo: p.replyTo } : {}), text: p.text }))
-  return { id }
+  // No session to LifeOS throws here, before anything could reach it.
+  const owner = ctx.lifeos.owner()
+  try {
+    return { id: await owner.mutation<string>('chats:reply', { chatId: p.chatId, ...(p.replyTo ? { replyTo: p.replyTo } : {}), text: p.text }) }
+  } catch (err) {
+    // LifeOS said no in its own words, and queued nothing. Any other fault may or may not have reached it: the window must
+    // not offer the words to a plain Send again (REPLY_MAY_HAVE_GONE).
+    if (isRefusal(err)) throw new Error(refusalWords(err))
+    throw new Error(`${REPLY_MAY_HAVE_GONE}: ${refusalWords(err)}`)
+  }
 }
 
 /** How far back a reply he takes back or retries is looked for: his queued and failed replies ride in as his own rows. */

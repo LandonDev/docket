@@ -276,6 +276,8 @@ export interface FixtureOptions {
   refuseDraftTimes?: number;
   /** His own Send is refused with these words (a held draft's press is not). */
   refuseSend?: string;
+  /** His own Send reaches LifeOS, which queues it, but the answer is lost: it rejects as `unknown`. */
+  sendUnknown?: boolean;
   /** Discard is refused with these words and the item stays held. */
   discardRefused?: string;
   /** Discard is answered with the item in this state, not discarded (another window claimed it first). */
@@ -350,6 +352,8 @@ export interface FixtureControls {
   failFile(chatId: string, messageId: string, fileId: string, reason: string): void;
   /** A held item leaves the Outbox's Waiting list from elsewhere (discarded or decided in another window). */
   dropElsewhere(draftId: string): void;
+  /** A held item is pressed elsewhere and is sending now: the list shows it sending. */
+  sendingElsewhere(draftId: string): void;
   /** LifeOS's route for a conversation changes (the Mac goes away, comes back). */
   setRoute(chatId: string, route: ChatRoute): void;
 }
@@ -461,6 +465,12 @@ export function fixtureData(options: FixtureOptions = {}): MessagesData & Fixtur
       const chatId = chatOfDraft(draftId);
       if (chatId) dropped(chatId, draftId);
     },
+    sendingElsewhere(draftId) {
+      const chatId = chatOfDraft(draftId);
+      if (!chatId) return;
+      drafts = { ...drafts, [chatId]: drafts[chatId]!.map((d) => (d.id === draftId ? { ...d, sending: true } : d)) };
+      changed();
+    },
     storeFile(chatId, messageId, fileId, url) {
       putMessages(
         chatId,
@@ -565,6 +575,7 @@ export function fixtureData(options: FixtureOptions = {}): MessagesData & Fixtur
       if (options.refuseSend) throw new Error(options.refuseSend);
       log.sent.push({ chatId, text });
       reply(chatId, text);
+      if (options.sendUnknown) throw Object.assign(new Error("It may have gone: the host did not answer"), { unknown: true });
     },
     async undo(chatId, id) {
       if (options.slowUndo) await new Promise<void>((go) => (letGo = go));

@@ -1971,7 +1971,12 @@ Around the canvas:
   Outbox at the far end. The line wraps rather than cutting, a wrapped row
   flush with the mark (the 10px is the line's gap); only the thread's name
   may be cut, its whole shown on hover while it is; no tip repeats the line;
-  no Discard, its words never in the field, no amber mark on its row). A refusal in red stands above that line, never in its place. His reply shows as his own message with one 12px line under it:
+  no Discard, its words never in the field, no amber mark on its row); his
+  own Send whose outcome is unknown (the amber mark and "May have gone.",
+  10px on, muted, "Check above before sending it again", and Use words at
+  the far end; its words wait there, never in the field); a held draft
+  another window is sending (the draft's line with "Sending from the
+  Outbox", the field read only, Send off, no Discard or Use draft). A refusal in red stands above that line, never in its place. His reply shows as his own message with one 12px line under it:
   "Sending" and Undo (in ink, as Retry), or the red mark, "Not sent.", LifeOS's reason and
   Retry. His own words leave the field at Send's press, the button turning
   busy until LifeOS answers. A held draft's words stay in the field until

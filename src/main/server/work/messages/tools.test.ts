@@ -70,9 +70,28 @@ describe('messages_read', () => {
       { _id: 'm1', who: { name: 'Dana Lee', me: false }, text: 'Can you look at the build? [file: log.txt]', sentAt: Date.UTC(2026, 10, 20, 15), replyTo: { who: 'Omar Reyes', text: 'Build 41 is red' }, files: [{ _id: 'f1', name: 'log.txt', status: 'listed' }] }
     ])
     const lines = out(await tool('messages_read', { chat: 'c-dana' })).split('\n')
-    expect(lines[0]).toBe('Dana Lee in Slack, CosmicGames (conversation c-dana), oldest to newest:')
-    expect(lines[1]).toMatch(/^\[Nov 20, .+\] Dana Lee \(replying to Omar Reyes: “Build 41 is red”\): Can you look at the build\? \[files: log\.txt\]$/)
-    expect(lines[2]).toMatch(/^\[Nov 20, .+\] You: On it\.$/)
+    expect(lines[0]).toBe("Dana Lee in Slack, CosmicGames (conversation c-dana), oldest to newest; a message's id is what reply_to takes:")
+    expect(lines[1]).toMatch(/^\[Nov 20, .+\] Dana Lee \(replying to Omar Reyes: “Build 41 is red”\): Can you look at the build\? \[files: log\.txt\]; message m1$/)
+    expect(lines[2]).toMatch(/^\[Nov 20, .+\] You: On it\.; message m2$/)
+  })
+
+  it('gives times in his zone, named, whatever zone the host keeps', async () => {
+    t.chats.timezone = 'America/Chicago'
+    t.chats.messages.set('c-dana', [{ _id: 'm1', who: { name: 'Dana Lee', me: false }, text: 'Can you look?', sentAt: Date.UTC(2026, 10, 20, 20, 15), files: [] }])
+    expect(out(await tool('messages_read', { chat: 'c-dana' })).split('\n')[1]).toBe('[Nov 20, 2:15 PM CST] Dana Lee: Can you look?; message m1')
+    t.chats.timezone = 'America/New_York'
+    expect(out(await tool('messages_read', { chat: 'c-dana' })).split('\n')[1]).toBe('[Nov 20, 3:15 PM EST] Dana Lee: Can you look?; message m1')
+  })
+
+  it("gives a file-only message's id, and a draft that names it answers that message", async () => {
+    t.chats.messages.set('c-dana', [
+      { _id: 'm9', who: { name: 'Dana Lee', me: false }, text: 'Newer words', sentAt: Date.UTC(2026, 10, 20, 17), files: [] },
+      { _id: 'm8', who: { name: 'Dana Lee', me: false }, text: '[file: spec.pdf]', sentAt: Date.UTC(2026, 10, 20, 16), files: [{ _id: 'f1', name: 'spec.pdf', status: 'stored' }] }
+    ])
+    const lines = out(await tool('messages_read', { chat: 'c-dana', limit: 2 })).split('\n')
+    expect(lines[1]).toMatch(/Dana Lee: \(no words\) \[files: spec\.pdf\]; message m8$/)
+    await tool('messages_draft_reply', { chat: 'c-dana', text: 'Read it.', reply_to: 'm8' })
+    expect((await t.rig.waiting())[0]!.payload).toMatchObject({ chatId: 'c-dana', replyTo: 'm8' })
   })
 
   it("refuses another sector's conversation whatever LifeOS answers, and marks nothing read", async () => {
@@ -145,6 +164,11 @@ describe('his presses', () => {
     t.chats.refuseNext = FakeChats.refusal("LifeOS can't reply in discord yet")
     await expect(t.rig.rpc('work.messages.send', { workspaceId: 'ws-cosmic', chatId: 'c-dana', text: 'x' })).rejects.toThrow(/^LifeOS can't reply in discord yet$/)
     expect(t.chats.replies).toHaveLength(1)
+  })
+
+  it('his Send that failed past a refusal says it may have gone, apart from a refusal', async () => {
+    t.chats.refuseNext = new Error('socket hang up')
+    await expect(t.rig.rpc('work.messages.send', { workspaceId: 'ws-cosmic', chatId: 'c-dana', text: 'x' })).rejects.toThrow(/^It may have gone: socket hang up$/)
   })
 
   it('with OWN_REPLY_HELD his reply waits in the Outbox instead, with no thread, and the answer names it', async () => {
