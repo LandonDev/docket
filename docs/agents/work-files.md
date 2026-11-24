@@ -790,17 +790,22 @@ key, or from the bar for many.
     path.
 - **The row.** `trashInLibrary` (disk) and `vmRecycle` (VM), under the
   file's lock: a file a thread is writing in is refused; the place's own top
-  is refused ("A place itself cannot be deleted."); a Files tab on it, or on
-  anything in the folder, closes first (by its library key and by the plain
-  key a copy's tab holds; a copy's tab through the copies' own
-  `copyClosing`, its unsent changes let go: he was asked); a
+  is refused ("A place itself cannot be deleted."); a
   `work_files_trash` row is written `moving` with `provider: 'onedrive'`,
   the bin is asked, and the row is held with where the bin said it lies
-  (`bin` in its ref JSON). A bin that refuses leaves no row, and its refusal
-  is that file's line in `refused`. No bytes are kept here.
+  (`bin` in its ref JSON). Only once the bin has taken the thing does a
+  Files tab on it, or on anything in the folder, close (by its library key
+  and by the plain key a copy's tab holds; a copy's tab through the copies'
+  own `copyClosing`, its unsent changes let go: he was asked). A bin that
+  refuses leaves no row, the file, and every tab on it with what its copy
+  had not sent; its refusal is that file's line in `refused`. No bytes are
+  kept here.
 - **Undo and Put back** (`restore`): a row with `bin` goes back from there
   to the path it had, never over anything ("Plan (restored).docx" beside one
-  of its name). A Mac renames it back from the Trash (`macBin().back`); the
+  of its name). A Mac moves it back from the Trash (`macBin().back`) by a
+  move that refuses a taken name (`moveOnto`: a hard link then the old name
+  dropped, so a file OneDrive syncs in between the look and the move is
+  never written over; a rename for a folder, or where no link can be made); the
   VM and a PC ask the helper's `files.restore`, which moves the bin's `$R`
   item only when the bin's own `$I` record names that same path, then drops
   the record, as Explorer's Restore does. Gone from the bin: "That is not in
@@ -808,6 +813,13 @@ key, or from the bar for many.
   folder it was in is gone. Put it back from the Trash."; a helper built
   before `files.restore`: "Put it back from the Recycle Bin in the Windows
   VM."; a row with no `bin`: "Put it back from the recycle bin."
+- **Who sees a row.** A remote key hears of no Trash row it could not have
+  named (`visible`, trash.ts): by this disk's roots for a file of this disk,
+  by the workspace's folder for a Drive row, and for a file of the Windows
+  VM as the door judges that file (a VM library is any window's of his): a
+  guest path is no path of this disk, and judged by the roots his Mac's
+  window could delete a VM file and then neither see it in Trash nor put it
+  back.
 - **Another host's workspace.** His window asks the file's own host, even
   for a workspace another host keeps (a Mac's OneDrive from a box
   workspace): that host keeps the row (`binRows` in handle.ts gives such a

@@ -424,6 +424,20 @@ describe("a delete in a library on this host's disk", () => {
     expect(rows()).toEqual([])
   })
 
+  it('leaves a Files tab on a file the bin would not take: what its copy held is not let go for a delete that did not happen', async () => {
+    const plan = join(rig.team, 'General', 'Plan.docx')
+    await call<FilesOpened>('work.files.open', { ref: at(plan), op: op() })
+    const tabs = (): number => (rig.db.prepare(`SELECT COUNT(*) AS n FROM work_files_tabs WHERE kind = 'file'`).get() as { n: number }).n
+    expect(tabs()).toBe(1)
+    setSystemBin(bin({ refuse: 'Plan.docx could not go to the Trash, so it was left where it is: The volume has no Trash.' }))
+    expect((await asked([plan])).trashed).toEqual([])
+    expect(tabs()).toBe(1)
+    // The bin takes it: the tab goes with the file.
+    setSystemBin(bin())
+    expect((await asked([plan])).trashed).toHaveLength(1)
+    expect(tabs()).toBe(0)
+  })
+
   it('keeps the row of a thing that left for the bin even when the bin\'s answer failed', async () => {
     const plan = join(rig.team, 'General', 'Plan.docx')
     setSystemBin({
@@ -449,7 +463,7 @@ describe("a delete in a library on this host's disk", () => {
     expect(existsSync(join(rig.team, 'General'))).toBe(true)
   })
 
-  it('closes a Files tab on the file first', async () => {
+  it('closes a Files tab on the file once the bin has it', async () => {
     const plan = join(rig.team, 'General', 'Plan.docx')
     await call<FilesOpened>('work.files.open', { ref: at(plan), op: op() })
     expect((await call<FilesTabs>('work.files.tabs', {})).tabs.some((t) => t.kind === 'file' && t.name === 'Plan.docx')).toBe(true)

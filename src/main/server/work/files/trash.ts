@@ -238,9 +238,16 @@ export function trashAfterMove(ctx: TrashCtx, workspace: WorkspaceRow, path: str
   })
 }
 
-/** Whether a caller could name where a row's file lay: a remote key hears of no row it could not. A Drive row is the workspace's, which a key reaches by its folder (`locate`). */
+/**
+ * Whether a caller could name where a row's file lay: a remote key hears of no row it could not. A Drive row is the
+ * workspace's, which a key reaches by its folder (`locate`). A row of a file in the Windows VM is judged as the door
+ * judges that file (`locate`: a VM library is any window's of his), never by this disk's roots: a guest path is no
+ * path here, and judged by the roots his own Mac's window could delete a VM file and then neither see it in Trash
+ * nor put it back.
+ */
 const visible = (ctx: Pick<WorkCtx, 'reaches'>, by: Caller, row: TrashRow, workspace?: Pick<WorkspaceRow, 'path'>): boolean =>
-  by.kind !== 'remote' || !!by.peer || (inDriveBin(row) ? !!workspace && ctx.reaches(by, workspace.path) : ctx.reaches(by, pathOf(row.ref)))
+  by.kind !== 'remote' || !!by.peer || (inDriveBin(row) ? !!workspace && ctx.reaches(by, workspace.path) : inVm(row) || ctx.reaches(by, pathOf(row.ref)))
+const inVm = (row: TrashRow): boolean => row.provider === 'onedrive' && isGuestPath(pathOf(row.ref)) && process.platform !== 'win32'
 
 /** The folders from the workspace's top down to `dir`, by name. */
 const trailOf = (root: string, dir: string): string[] => relative(root, dir).split(sep).filter((part) => part && part !== '..')
@@ -448,7 +455,8 @@ const sameDir = (a: string, b: string): boolean => a.replace(/[\\/]+$/, '').toLo
  * A delete in a library on this host's disk (Teams, OneDrive): the row is written first (`moving`), the thing goes to
  * this computer's own bin, never for good, and the row is held with `provider: 'onedrive'`, no bytes here, and where
  * the bin says it lies (`bin` in its ref), from where Put back takes it. OneDrive then takes the delete to the
- * library's own recycle bin. A Files tab on it closes first. Answers the row's id.
+ * library's own recycle bin. A Files tab on it closes once the bin has taken it, never before: a bin that refuses
+ * leaves the file, and the tab with the changes its copy has not sent. Answers the row's id.
  */
 export async function trashInLibrary(ctx: TrashCtx, workspaceId: string, library: LibraryPlace, path: string, op: string, i = 0, bin: SystemBin = binHere()): Promise<string> {
   if (sameDir(path, library.top) || sameDir(path, library.library.path)) throw new FileRefused('busy', PLACE_ITSELF)
@@ -456,9 +464,6 @@ export async function trashInLibrary(ctx: TrashCtx, workspaceId: string, library
   if (keys.some(fileLocked)) throw new FileRefused('busy', WRITING)
   return withFileLocks([keys[0]!], async () => {
     if (!lstatOr(path)) throw new FileRefused('gone', 'That file or folder is not there any more.')
-    const workspace = workspaceHere(ctx.db, workspaceId)
-    if (workspace) closeTabsOn(ctx, workspace, keys)
-    dropName(ctx.db, workspaceId, keys[0]!)
     const id = randomUUID()
     const file = { at: 'file', host: ctx.host, path }
     ctx.db
@@ -476,6 +481,11 @@ export async function trashInLibrary(ctx: TrashCtx, workspaceId: string, library
       ctx.log(`files: ${basename(path)} left for the bin, whose answer failed: ${textOf(e)}`)
       where = null
     }
+    // The thing has left: now its tabs close and Go to forgets it. Closed before, a bin that refused left him the
+    // file and none of what its copy's tab still held.
+    const workspace = workspaceHere(ctx.db, workspaceId)
+    if (workspace) closeTabsOn(ctx, workspace, keys)
+    dropName(ctx.db, workspaceId, keys[0]!)
     if (where) ctx.db.prepare(`UPDATE work_files_trash SET ref = ? WHERE id = ?`).run(JSON.stringify({ ...file, bin: where }), id)
     holdRow(ctx, id, 'moving')
     const dir = dirname(path)

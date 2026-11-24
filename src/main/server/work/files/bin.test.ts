@@ -1,8 +1,8 @@
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { binRefused, FOLDER_GONE, MAC_TRASH, macBin, macTrashAnswer, NOT_IN_TRASH_BIN, restoredName } from './bin'
+import { binRefused, FOLDER_GONE, MAC_TRASH, macBin, macTrashAnswer, NOT_IN_TRASH_BIN, restoredName, moveOnto } from './bin'
 
 /** The Mac's bin (bin.ts): the Trash's answer read, its refusal said, and Put back by path on a scratch folder. */
 
@@ -49,6 +49,26 @@ describe('Put back from the Trash by path', () => {
     expect(await bin.back!(join(dir, 'Trash', 'Plan.docx'), join(dir, 'Library', 'Plan.docx'), 'op')).toBe(join(dir, 'Library', 'Plan (restored).docx'))
     expect(readFileSync(join(dir, 'Library', 'Plan.docx'), 'utf8')).toBe('word')
     await expect(bin.back!(join(dir, 'Trash', 'Plan.docx'), join(dir, 'Library', 'Plan.docx'), 'op')).rejects.toThrow(NOT_IN_TRASH_BIN)
+  })
+
+  it('never writes over a file that took the name between the look and the move: it goes beside it as "(restored)"', async () => {
+    const from = join(dir, 'Trash', 'Plan.docx')
+    const to = join(dir, 'Library', 'Plan.docx')
+    writeFileSync(from, 'his')
+    // OneDrive syncs a file in under the name after it was seen free.
+    writeFileSync(to, 'synced in')
+    expect(moveOnto(from, to)).toBe(false)
+    expect([readFileSync(to, 'utf8'), readFileSync(from, 'utf8')]).toEqual(['synced in', 'his'])
+    // A free name takes it, and the Trash's copy goes.
+    expect(moveOnto(from, join(dir, 'Library', 'Plan (restored).docx'))).toBe(true)
+    expect(readFileSync(join(dir, 'Library', 'Plan (restored).docx'), 'utf8')).toBe('his')
+    expect(existsSync(from)).toBe(false)
+    // Where a link cannot be made (another volume) the move still happens, by rename; a folder always goes by rename.
+    writeFileSync(from, 'again')
+    expect(moveOnto(from, join(dir, 'Library', 'Other.docx'), () => { throw Object.assign(new Error('EXDEV'), { code: 'EXDEV' }) })).toBe(true)
+    mkdirSync(join(dir, 'Trash', 'Budgets'))
+    expect(moveOnto(join(dir, 'Trash', 'Budgets'), join(dir, 'Library', 'Budgets'))).toBe(true)
+    expect(existsSync(join(dir, 'Library', 'Budgets'))).toBe(true)
   })
 
   it('refuses where the folder it was in is gone', async () => {

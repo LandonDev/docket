@@ -222,15 +222,13 @@ export async function vmReadVersioned(path: string, offset: number, length: numb
  * A delete in the VM: to the Windows Recycle Bin, from where OneDrive takes it to the library's own bin; never
  * deleted for good (the helper refuses where Windows would). A row with `provider: 'onedrive'` and no bytes here is
  * kept for each, with where the helper says it lies in the bin (`bin` in its ref), so Trash lists it and Put back
- * takes it out again (`vmRestore`). A Files tab on it, or its copy's tab, closes first.
+ * takes it out again (`vmRestore`). A Files tab on it, or its copy's tab, closes once the bin has taken it, never
+ * before: a helper that refuses leaves the file, and the tab with the changes its copy has not sent.
  */
 export async function vmRecycle(ctx: WorkCtx, workspaceId: string, w: VmWhere, op: string, i: number): Promise<string> {
   if (isTop(w)) throw new FileRefused('busy', 'A place itself cannot be deleted.')
   if (fileLocked(w.key)) throw new FileRefused('busy', WRITING)
   return withFileLocks([w.key], async () => {
-    const workspace = workspaceHere(ctx.db, workspaceId)
-    if (workspace) closeTabsOn(ctx, workspace, [w.key, refKey({ at: 'file', host: ctx.host, path: w.path })], '\\')
-    dropName(ctx.db, workspaceId, w.key)
     const id = randomUUID()
     const file = { at: 'file', host: ctx.host, path: w.path }
     ctx.db
@@ -244,6 +242,9 @@ export async function vmRecycle(ctx: WorkCtx, workspaceId: string, w: VmWhere, o
       ctx.db.prepare(`DELETE FROM work_files_trash WHERE id = ?`).run(id)
       throw err
     }
+    const workspace = workspaceHere(ctx.db, workspaceId)
+    if (workspace) closeTabsOn(ctx, workspace, [w.key, refKey({ at: 'file', host: ctx.host, path: w.path })], '\\')
+    dropName(ctx.db, workspaceId, w.key)
     if (got?.bin) ctx.db.prepare(`UPDATE work_files_trash SET ref = ? WHERE id = ?`).run(JSON.stringify({ ...file, bin: got.bin }), id)
     ctx.db.prepare(`UPDATE work_files_trash SET state = 'held', held_at = COALESCE(held_at, ?) WHERE id = ? AND state = 'moving'`).run(Date.now(), id)
     said(ctx, workspaceId, w.library, [dirOf(w.path)])

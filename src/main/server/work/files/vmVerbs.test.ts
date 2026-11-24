@@ -379,6 +379,16 @@ describe.skipIf(process.platform === 'win32')('the Windows VM changed through it
       expect(rig.db.prepare(`SELECT 1 FROM work_files_trash`).get()).toBeUndefined()
     })
 
+    it("lets his window on another computer see and put back what it deleted there: a guest path is judged as the door judges it, not by this disk's roots", async () => {
+      const done = await call<FileDone>('work.files.trash', { refs: [at(`${GENERAL}\\Plan.txt`)], op: op(), asked: true }, approver)
+      expect(done.trashed).toHaveLength(1)
+      const listed = (await call<{ entries: { name: string }[] }>('work.files.list', { at: { at: 'place', id: 'trash' } }, approver)).entries
+      expect(listed.map((e) => e.name)).toEqual(['Plan.txt'])
+      const back = await call<FileDone>('work.files.restore', { ids: done.trashed, op: op() }, approver)
+      expect(back.entries.map((e) => e.name)).toEqual(['Plan.txt'])
+      expect(disk.has(`${GENERAL}\\Plan.txt`.toLowerCase())).toBe(true)
+    })
+
     it('puts a deleted folder back beside a new one of its name, and a helper without the verb says where to put it back', async () => {
       const done = await call<FileDone>('work.files.trash', { refs: [at(`${GENERAL}\\Budgets`)], op: op(), asked: true })
       put(`${GENERAL}\\Budgets`, true)

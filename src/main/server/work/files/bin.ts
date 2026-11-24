@@ -1,5 +1,5 @@
 import { execFile } from 'node:child_process'
-import { lstatSync, renameSync, type Stats } from 'node:fs'
+import { linkSync, lstatSync, renameSync, unlinkSync, type Stats } from 'node:fs'
 import { basename, dirname, extname, join } from 'node:path'
 
 /**
@@ -84,12 +84,31 @@ export function macBin(): SystemBin {
       for (let i = 0; i < 20; i++) {
         const at = join(dir, i === 0 ? basename(to) : restoredName(basename(to), i))
         if (lstatOr(at)) continue
-        renameSync(bin, at)
-        return at
+        if (moveOnto(bin, at)) return at
       }
       throw new Error(`Too many things named like ${basename(to)} are there already.`)
     }
   }
+}
+
+/**
+ * A thing moved to a name only if nothing has it. A rename replaces a file that is there, and OneDrive can sync one
+ * in between the look and the rename; so a file goes by a hard link, which a taken name refuses, and its old name is
+ * then dropped. A folder goes by rename (which never replaces a file, or a folder that holds anything), as does a
+ * file where a link cannot be made (another volume, a cloud folder that refuses links). False: the name was taken.
+ */
+export function moveOnto(from: string, to: string, link: typeof linkSync = linkSync): boolean {
+  if (lstatOr(from)?.isFile()) {
+    try {
+      link(from, to)
+      unlinkSync(from)
+      return true
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code === 'EEXIST') return false
+    }
+  }
+  renameSync(from, to)
+  return true
 }
 
 /** Linux's own bin (`gio trash`), which never deletes for good; it cannot be asked to put a thing back by path. */
