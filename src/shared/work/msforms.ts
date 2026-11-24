@@ -73,27 +73,101 @@ const FORM_LINK = new RegExp(`(?:https?://)?(?:[a-z0-9-]+\\.)*(?:${LINK_HOSTS})/
 const SHORT_LINK = /(?:https?:\/\/)?(?:forms\.office\.com|forms\.cloud\.microsoft)\/r\/[A-Za-z0-9]{4,}/i
 
 /**
+ * What `payloadText` adds when it stopped before the end (its string or depth cap): what it did not read may hold a
+ * link, so `hasFormLink` answers yes and the grant is refused rather than missed.
+ */
+export const PAYLOAD_UNREAD = '\u0000msforms:unread'
+
+/** The named character references that can spell an address's own characters (a letter has none). */
+const NAMED: Readonly<Record<string, string>> = {
+  amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", colon: ':', sol: '/', bsol: '\\', period: '.', quest: '?', equals: '=',
+  num: '#', percnt: '%', lowbar: '_', plus: '+', comma: ',', semi: ';', excl: '!', commat: '@', lpar: '(', rpar: ')',
+  lsqb: '[', rsqb: ']', lbrack: '[', rbrack: ']', tilde: '~', dollar: '$', ast: '*', midast: '*', nbsp: ' ', Tab: ' ', NewLine: ' ', hyphen: '-', dash: '-', minus: '-'
+}
+
+/** One pass of HTML character references (named, `&#46;`, `&#x2e;`; the `;` may be left off) and percent-encoding. */
+function decodeOnce(text: string): string {
+  const refs = text.replace(/&(?:#(\d{1,7})|#[xX]([0-9a-fA-F]{1,6})|([A-Za-z][A-Za-z0-9]{1,31}));?/g, (whole, dec: string | undefined, hex: string | undefined, name: string | undefined) => {
+    const code = dec !== undefined ? Number(dec) : hex !== undefined ? parseInt(hex, 16) : null
+    if (code !== null) return code > 0 && code <= 0x10ffff ? String.fromCodePoint(code) : whole
+    return NAMED[name!] ?? NAMED[name!.toLowerCase()] ?? whole
+  })
+  // a percent-escape decoded alone, byte by byte, so one bad run does not leave the rest encoded
+  return refs.replace(/(?:%[0-9a-fA-F]{2})+/g, (run) => {
+    try {
+      return decodeURIComponent(run)
+    } catch {
+      return run.replace(/%([0-9a-fA-F]{2})/g, (_, h: string) => String.fromCharCode(parseInt(h, 16)))
+    }
+  })
+}
+
+/** A text as a reader's client may read it: references and escapes decoded until nothing changes (at most four rounds), backslashes as slashes. */
+function decoded(text: string): string {
+  let now = text
+  for (let i = 0; i < 4; i++) {
+    const next = decodeOnce(now)
+    if (next === now) break
+    now = next
+  }
+  return now.replace(/\\/g, '/')
+}
+
+/** Every address-like run in a text: with a scheme, protocol-relative, or a bare host followed by a path. */
+const CANDIDATE = /(?:[a-z][a-z0-9+.-]*:)?\/\/[^\s"'<>()]+|(?:[^\s"'<>()/@:]+\.)+[^\s"'<>()/@:.]+\.?(?::\d{1,5})?\/[^\s"'<>()]*/gi
+
+/** Whether one address, parsed as a browser parses it (its host canonical: case, full-width dots, a trailing dot), is a form's link people answer at. */
+function isAnswerLink(candidate: string): boolean {
+  let url: URL
+  try {
+    url = new URL(/^[a-z][a-z0-9+.-]*:/i.test(candidate) ? candidate : `https:${candidate.startsWith('//') ? '' : '//'}${candidate}`)
+  } catch {
+    return false
+  }
+  if (!isFormsHost(url.hostname)) return false
+  const path = url.pathname.toLowerCase()
+  if (/^\/r\/[a-z0-9]{4,}/i.test(url.pathname)) return true
+  return /\/pages\/responsepage\.aspx$/.test(path) && [...url.searchParams.keys()].some((k) => k.toLowerCase() === 'id')
+}
+
+/**
  * Whether a text holds a Microsoft form's link people answer at. A held act
  * whose words carry one takes no grant and earns no offer
  * (outbox/outbox.ts `notGrantable`): the link reaches people only on his press.
+ * The text is read as a mail client or a browser would: HTML character
+ * references and percent-escapes decoded, each address parsed and its host
+ * compared by the Forms rules (`isFormsHost`). A text `payloadText` could not
+ * read whole (`PAYLOAD_UNREAD`) may hold one, so it answers yes.
  */
 export function hasFormLink(text: string): boolean {
   if (!text) return false
-  const plain = text.replace(/&amp;/g, '&')
-  return FORM_LINK.test(plain) || SHORT_LINK.test(plain)
+  if (text.includes(PAYLOAD_UNREAD)) return true
+  for (const form of [text, decoded(text)]) {
+    if (FORM_LINK.test(form) || SHORT_LINK.test(form)) return true
+    for (const m of form.match(CANDIDATE) ?? []) if (isAnswerLink(m)) return true
+  }
+  return false
 }
 
-/** Every string in a payload, depth first, at most `limit` of them: what `hasFormLink` looks through. */
-export function payloadText(payload: unknown, limit = 400): string {
+/**
+ * Every string in a payload, depth first, at most `limit` of them and `depth` levels down: what `hasFormLink` looks
+ * through. A walk cut short at either cap ends with `PAYLOAD_UNREAD`, so what it did not read is never taken for clean.
+ */
+export function payloadText(payload: unknown, limit = 400, depth = 8): string {
   const out: string[] = []
-  const walk = (v: unknown, depth: number): void => {
-    if (out.length >= limit || depth > 8) return
+  let cut = false
+  const walk = (v: unknown, at: number): void => {
+    if (cut) return
+    if (out.length >= limit || at > depth) {
+      if (typeof v === 'string' || (v && typeof v === 'object')) cut = true
+      return
+    }
     if (typeof v === 'string') out.push(v)
-    else if (Array.isArray(v)) for (const x of v) walk(x, depth + 1)
-    else if (v && typeof v === 'object') for (const x of Object.values(v)) walk(x, depth + 1)
+    else if (Array.isArray(v)) for (const x of v) walk(x, at + 1)
+    else if (v && typeof v === 'object') for (const x of Object.values(v)) walk(x, at + 1)
   }
   walk(payload, 0)
-  return out.join('\n')
+  return [...out, ...(cut ? [PAYLOAD_UNREAD] : [])].join('\n')
 }
 
 // ── questions ────────────────────────────────────────────────────────

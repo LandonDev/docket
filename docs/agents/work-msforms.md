@@ -112,7 +112,9 @@ or only when he looks), skips while he drives the box browser, and never reads a
 at the form's removal and at restart). Work's database, logs, tells, pushes, task titles and the computer journal hold
 no answer, respondent name or address; only fixed sentences reach `stopped` and errors. What remains on the box is
 what opening any Teams file leaves: the box browser's own HTTP cache. An answer a thread reads stays in that thread's
-transcript, as anything a thread reads does.
+transcript, as anything a thread reads does. The answers workbook itself is never read to a thread through the generic
+readers: `sheet_read` and the sheets tools, `office_range_read`, `office_files`' sheet sizes and the sheet maker refuse
+it ("read them with msform_answers"; the read-only judge's `readRefused`, workbook.ts); his own window reads it as before.
 
 ## Around the form
 
@@ -136,17 +138,21 @@ transcript, as anything a thread reads does.
 - **Digest**: "3 new responses to <form>" (`msforms.responses`, key `msforms:<formId>`), done when he opens Responses.
 - **Today**: the Responses section, one row per form with unseen answers.
 - **Routines**: a trigger "When someone answers <form>" and the job `msforms.tasks`, one LifeOS task per new answer,
-  titled with no name (work-routines.md).
+  titled with no name (work-routines.md). The trigger's words, each firing, the job and a save take the form only while
+  it passes `formAdmitted` (reach.ts: its sector, its library still reached); the engine arms no trigger on another
+  workspace's form.
 - **People**: an Answered section and `person_page`'s line (`work.msforms.byPerson`), matched by lower-cased address,
   never across sectors.
 - **Dashboards**: `msform:<form id>` with `count`, `option:<question>`, `day` (work-dashboards.md).
 - **Search and `@`**: forms by title, answers by a word or a name from memory only (a Work Chat gets titles alone);
-  the `msform` chip opens the form by its source.
+  the `msform` chip opens the form by its source. A form `formReach` would refuse now (its library gone, another
+  sector) gives no title, no cached answer and no chip.
 
 ## Purdue
 
-`MSFORM_UNATTENDED_WITHHELD = ['purdue']` (src/shared/work/msforms.ts): a thread a routine started (its scope's
-`routineRunId`) is refused every answer read of a Purdue form, whatever trigger or Run now started it: "refused: a
+`MSFORM_UNATTENDED_WITHHELD = ['purdue']` (src/shared/work/msforms.ts): a thread a routine started, or one it
+delegated to (its scope's `routineRun`, the run up its line by parent or starter: work/provenance.ts, one walk with
+the Outbox's grants; a line this host cannot follow, or no scope, is withheld too) is refused every answer read of a Purdue form, whatever trigger or Run now started it: "refused: a
 routine's thread does not read Purdue answers: they go to no AI tool without the owner's press. Nothing was read."
 Saving a Purdue routine on a form's answers that would start a thread is refused, offering the job instead. His own
 asks are not withheld. Purdue's policy VII.A.5 is why; empty the list to lift it.

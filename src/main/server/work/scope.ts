@@ -1,4 +1,3 @@
-import { routineRunUp } from './provenance'
 import { existsSync, mkdirSync } from 'node:fs'
 import { join } from 'node:path'
 import { CATALOG, type ProviderId } from '@shared/catalog'
@@ -395,3 +394,28 @@ export const scopePart: ScopePart = (ctx, deps) => {
     }
   }
 }
+
+// ── provenance: the routine run a thread acts for (work/provenance.ts re-exports it) ──
+// It lives here, where the scope is made, since this file loads nothing a pillar could fail (scope.test.ts).
+
+/** The run a thread acts for when this host cannot follow its line to the end (a parent on another host, or past 32 links). */
+export const ROUTINE_UNKNOWN = 'unknown-run'
+
+/** What the walk reads of a thread's row: a `SessionMeta`, or a stand-in with the same three fields. */
+type ProvenanceRow = { routineRunId?: string | null; parentId?: string | null; startedBy?: string | null }
+
+/** `get` reads a thread's row on this host. Null: no routine above it. `ROUTINE_UNKNOWN`: its line could not be followed. */
+export function routineRunUp(get: (sessionId: string) => ProvenanceRow | null | undefined, sessionId: string): string | null {
+  let at = get(sessionId)
+  if (!at) return ROUTINE_UNKNOWN
+  for (let hops = 0; at; hops++) {
+    if (at.routineRunId) return at.routineRunId
+    const up = at.parentId ?? at.startedBy
+    if (!up) return null
+    if (hops >= 32) return ROUTINE_UNKNOWN
+    at = get(up)
+    if (!at) return ROUTINE_UNKNOWN
+  }
+  return null
+}
+

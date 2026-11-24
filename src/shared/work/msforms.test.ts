@@ -9,6 +9,7 @@ import {
   hasFormLink,
   isFormsHost,
   payloadText,
+  PAYLOAD_UNREAD,
   respondOf,
   widens,
   workbookNameOf,
@@ -44,6 +45,44 @@ describe('Forms hosts and addresses', () => {
     expect(hasFormLink(builderOf(ID))).toBe(false)
     expect(hasFormLink('the forms are on the desk')).toBe(false)
     expect(hasFormLink(payloadText({ to: ['a@b.c'], body: { html: `<a href="${respondOf(ID)}">go</a>` } }))).toBe(true)
+  })
+
+  it('finds a link spelled in HTML character references, named, decimal or hex, and in percent-escapes', () => {
+    const named = `<a href="https&colon;&sol;&sol;forms&period;office&period;com&sol;r&sol;AbC123xyz">go</a>`
+    const decimal = `<a href="&#104;&#116;&#116;&#112;&#115;&#58;&#47;&#47;&#102;&#111;&#114;&#109;&#115;&#46;&#111;&#102;&#102;&#105;&#99;&#101;&#46;&#99;&#111;&#109;&#47;&#114;&#47;AbC123xyz">go</a>`
+    const hex = `https:&#x2F;&#x2f;forms&#x2E;cloud&#x2E;microsoft/Pages/ResponsePage.aspx?id=${ID}`
+    const percent = `https://forms%2Eoffice%2Ecom/Pages/ResponsePage%2Easpx%3Fid%3D${ID}`
+    const twice = `https:&amp;#47;&amp;#47;forms.office.com/r/AbC123xyz`
+    for (const text of [named, decimal, hex, percent, twice]) expect(hasFormLink(text), text).toBe(true)
+  })
+
+  it('compares hosts as a browser canonicalizes them: case, a trailing dot, a subdomain, a port, a userinfo, backslashes', () => {
+    for (const text of [
+      `HTTPS://FORMS.OFFICE.COM/PAGES/RESPONSEPAGE.ASPX?ID=${ID}`,
+      `https://forms.office.com./r/AbC123xyz`,
+      `https://eu.forms.office.com/Pages/ResponsePage.aspx?lang=en&id=${ID}`,
+      `https://forms.office.com:443/r/AbC123xyz`,
+      `https://someone@forms.office.com/r/AbC123xyz`,
+      String.raw`https:\\forms.office.com\r\AbC123xyz`,
+      `https://forms．office．com/r/AbC123xyz`
+    ])
+      expect(hasFormLink(text), text).toBe(true)
+    // a look-alike host, a builder page, and a short link of another host are no answer link
+    expect(hasFormLink('https://forms.office.com.example.com/r/AbC123xyz')).toBe(false)
+    expect(hasFormLink(`https://forms&period;office&period;com/Pages/DesignPageV2.aspx?id=${ID}`)).toBe(false)
+    expect(hasFormLink('https://example.com/r/AbC123xyz')).toBe(false)
+  })
+
+  it('answers yes for a payload it could not read whole, at its string or its depth cap', () => {
+    const many = { parts: Array.from({ length: 500 }, (_, i) => `part ${i}`) }
+    expect(payloadText(many)).toContain(PAYLOAD_UNREAD)
+    expect(hasFormLink(payloadText(many))).toBe(true)
+    let deep: unknown = 'the end'
+    for (let i = 0; i < 12; i++) deep = { inner: deep }
+    expect(hasFormLink(payloadText(deep))).toBe(true)
+    // a payload read whole and clean is not
+    expect(payloadText({ a: 'one', b: ['two'] })).toBe('one\ntwo')
+    expect(hasFormLink(payloadText({ a: 'one', b: ['two'] }))).toBe(false)
   })
 })
 

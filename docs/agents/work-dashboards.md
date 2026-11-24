@@ -32,6 +32,10 @@ A Microsoft form's answers are a source too (`DashSheet` `{ at: 'msform' }`, doc
 count; `#labels` for the options) or `day` (answers per day; `#labels` for the days). The numbers come from msforms'
 `msformSeries`, through the form's one reach check on the dashboard's job and Purdue's withhold; its rev is the form's
 count, and More's Open on it opens the form. Nothing of an answer is kept in the dashboard's row but the counts.
+An `option:` range names a choice question of the form (by title or Forms id; never a name, address or text answer):
+its labels are the declared options alone, any other answer counted under "Other". A form source is admitted before
+every read, refresh and cached view (`admitForms`, dash.ts): the dashboard item's own job, the form's reach as the
+real caller (the thread, his window, a key) and the withhold; a push about such a page is fenced by the job's folder.
 
 ## As of, and stale
 

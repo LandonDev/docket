@@ -379,7 +379,11 @@ in a mail's text or html, a chat reply, an add-on call's arguments, any
 kind). So no standing grant on `mail.send`, `chat.reply` or any later kind
 sends it, a grant asked for from one is refused
 (`NO_GRANT_FROM_FORM_LINK`), and such a send earns no offer and breaks the
-run it falls in: the link reaches people only on his press.
+run it falls in: the link reaches people only on his press. The text is read as a
+client would: HTML character references (named, decimal, hex) and percent-escapes
+decoded, every address parsed and its host compared by `isFormsHost`; a payload
+`payloadText` could not read whole (past 400 strings or 8 levels) counts as
+holding one (`PAYLOAD_UNREAD`).
 
 ### Offered grants
 
