@@ -26,7 +26,7 @@ import { dropSearch, savedSearches, saveSearch, searchFiles } from './search'
 import { DiskLister, entryOfRow, type DiskPage, type DiskRow } from './places/disk'
 import { folderEntry, folderName, folderPlace, folderTrail } from './places/folder'
 import { forgetVmList, libraryEntry, libraryKey, libraryTrail, placeOfPath, placesIn, teamsPlaces, vmPage, type LibraryPlace } from './places/teams'
-import { admitCaller, admitWrite, changeDigest, isLifeosRef, locate, locatedShared, NO_WORKSPACE, OWN_ONLY, SHARED_BYTES, sharedOf, PEER_LIBRARIES, workspaceHere, type DoorPlace, type Located, type WorkspaceRow } from './policy'
+import { admitCaller, admitWrite, changeDigest, isLifeosRef, locate, locatedShared, NEEDS_PRESS, NO_WORKSPACE, OWN_ONLY, pressesFor, SHARED_BYTES, sharedOf, PEER_LIBRARIES, workspaceHere, type DoorPlace, type Located, type WorkspaceRow } from './policy'
 import { keepMail, lifeosPlace, lifeosPlaces, lifeosTrash, listLifeos, makeLifeos, moveLifeos, openLifeos, renameLifeos, restoreLifeos, setProject, statLifeos, trashLifeos, waitingRows, withProjects } from './places/lifeos'
 import { READ_MAX, readFile, saveCopy, saveFile } from './save'
 import { guestChange, guestOp, vmReadVersioned, vmSave, type VmWhere } from './vmVerbs'
@@ -35,8 +35,8 @@ import { copyVerb, makeFolderRef, makeVerb, moveVerb, offeredIn, renameVerb, rep
 import { purgeRows, restoreRows, trashEntries, trashFiles } from './trash'
 import { beginUpload } from './upload'
 import { previewOf, thumbsOf } from './preview'
-import { googleSeated, googleSeatOf } from '../google/drive'
-import { accountOfPlace, driveAccounts, driveList, drivePlace, driveStat, driveTop } from './places/drive'
+import { driveOf, googleSeated, googleSeatOf } from '../google/drive'
+import { accountOfPlace, driveAccounts, driveList, drivePlace, driveStat, driveTop, itemShared } from './places/drive'
 import { admitDrive, DRIVE_APART, driveMake, driveMove, driveRename, driveTrash, namesDrive } from './driveVerbs'
 import { archiveListing } from './zipdir'
 import { waitingFiles, withWaiting } from './waiting'
@@ -367,16 +367,26 @@ async function openCopy(ctx: WorkCtx, by: Caller, workspace: WorkspaceRow, p: Op
   const name = p.name ?? nameOfPath(file.path)
   const key = p.key ?? refKey({ at: 'file', ...file })
   const cut = (item: CanvasItem): CanvasItem => fencedItem(item, (path) => reaches(ctx, by, path))
-  const was = state.tabs.tabOf(workspace.id, key)
-  // The key is the caller's word: it answers a tab only when that tab is this very file's copy, so naming another
-  // tab's key with a file of some other host never shows what that tab holds.
-  if (was && (was.copyOf?.host !== file.host || was.copyOf.path !== file.path)) throw new Error(KEY_TAKEN)
-  const shown = was?.itemId ? ctx.canvas.get(was.itemId) : null
-  if (was && shown) return { ...tabsFor(ctx, by, workspace.id), tabId: was.id, item: cut(shown) }
-  const seat = await copySeat(ctx, workspace.id, file, name, p.as, signal)
-  const { tabId, item } = state.tabs.openFile(workspace.id, { key, name, ...seat }, p.opener)
-  state.marks.seen(workspace.id, key, { file: { at: 'file', ...file } }, name)
-  return { ...tabsFor(ctx, by, workspace.id), tabId, item: cut(item) }
+  const tabNow = (): FilesOpened | null => {
+    const was = state.tabs.tabOf(workspace.id, key)
+    // The key is the caller's word: it answers a tab only when that tab is this very file's copy, so naming another
+    // tab's key with a file of some other host never shows what that tab holds.
+    if (was && (was.copyOf?.host !== file.host || was.copyOf.path !== file.path)) throw new Error(KEY_TAKEN)
+    const shown = was?.itemId ? ctx.canvas.get(was.itemId) : null
+    return was && shown ? { ...tabsFor(ctx, by, workspace.id), tabId: was.id, item: cut(shown) } : null
+  }
+  const already = tabNow()
+  if (already) return already
+  // Two windows opening the file at once make its copy one after the other, and the second looks again first: a
+  // tab the first made, and the edits it took meanwhile, are answered as they are, never read over from the file.
+  return oneCopyAtATime(workspace.id, file, async () => {
+    const again = tabNow()
+    if (again) return again
+    const seat = await copySeat(ctx, workspace.id, file, name, p.as, signal)
+    const { tabId, item } = state.tabs.openFile(workspace.id, { key, name, ...seat }, p.opener)
+    state.marks.seen(workspace.id, key, { file: { at: 'file', ...file } }, name)
+    return { ...tabsFor(ctx, by, workspace.id), tabId, item: cut(item) }
+  })
 }
 const nameOfPath = (path: string): string => path.slice(Math.max(path.lastIndexOf('/'), path.lastIndexOf('\\')) + 1)
 
@@ -410,6 +420,20 @@ async function copySeat(ctx: WorkCtx, workspaceId: string, file: { host: string;
   return { kind, source: copy.source, copyOf }
 }
 const KEY_TAKEN = 'That key names another file that is open.'
+
+/** The copy of one file of the workspace being made, read or replaced now: the next waits for it (`copyIn` writes one path a file). */
+const making = new Map<string, Promise<unknown>>()
+async function oneCopyAtATime<T>(workspaceId: string, file: { host: string; path: string }, run: () => Promise<T>): Promise<T> {
+  const key = `${workspaceId}\0${file.host}\0${file.path}`
+  const mine = (making.get(key) ?? Promise.resolve()).catch(() => undefined).then(run)
+  const tail = mine.catch(() => undefined)
+  making.set(key, tail)
+  try {
+    return await mine
+  } finally {
+    if (making.get(key) === tail) making.delete(key)
+  }
+}
 
 async function open(ctx: WorkCtx, by: Caller, p: OpenAsk, method: string, signal?: AbortSignal): Promise<FilesOpened> {
   const workspace = ownRows(ctx, by, p.workspaceId)
@@ -478,7 +502,8 @@ export async function reseat(ctx: WorkCtx, workspaceId: string, tabId: string, b
   const file = tab.copyOf ?? (marked && 'file' in marked && marked.file.at === 'file' ? marked.file : null)
   if (!file) throw new Error('That tab names no file to open here.')
   const name = nameOfPath(file.path)
-  const seat = tab.copyOf ? await copySeat(ctx, workspaceId, tab.copyOf, name, undefined, signal) : openAs(ctx, locate(ctx, by, workspaceId, { at: 'file', host: file.host, path: file.path }, 'work.files.open'), name)
+  const copyOf = tab.copyOf
+  const seat = copyOf ? await oneCopyAtATime(workspaceId, copyOf, () => copySeat(ctx, workspaceId, copyOf, name, undefined, signal)) : openAs(ctx, locate(ctx, by, workspaceId, { at: 'file', host: file.host, path: file.path }, 'work.files.open'), name)
   const word = tab.copyOf ? wordRow(ctx, workspaceId, file.host, file.path) : null
   const next = ctx.canvas.replace(item.sessionId, item.id, seat.kind, seat.source, name)
   // word.ts `wordFollowed` takes the first document to replace a Word copy's item for the one made of it: a fresh copy is not.
@@ -488,14 +513,15 @@ export async function reseat(ctx: WorkCtx, workspaceId: string, tabId: string, b
 
 /**
  * A Google file in a Files tab: its kind's item on the workspace's Files pane, with no thread, and never twice
- * (opening it again selects its tab). The google pillar keeps its row and polls its version while it is open. A deck
+ * (opening it again selects its tab). The google pillar keeps its row and polls its version while it is open. A
+ * picked file that is no Doc, Sheet or deck (a PDF, a workbook) shows its facts, with Open in Drive. A deck
  * a thread already shows opens in that thread: a Google deck is no file of this disk, so the slides pillar keeps its
  * review state by item (`deckKey`), and two seats on it would each write that state.
  */
 async function openGoogle(ctx: WorkCtx, by: Caller, workspace: WorkspaceRow, at: Located & { in: 'drive' }, p: OpenAsk): Promise<FilesOpened> {
   if (!at.mime) throw new Error('That is a folder: it opens in its tab.')
   const state = filesState(ctx)
-  const seat = await googleSeatOf(ctx, at.account, at.id)
+  const seat = await googleSeatOf(ctx, at.account, at.id, { facts: true })
   const key = refKey(seat.source)
   if (seat.kind === 'slides') {
     const holding = sameSource(ctx, workspace.id, seat.source)[0]
@@ -978,8 +1004,11 @@ export async function filesHandle(req: ClientRequest, ctx: WorkCtx, by: Caller, 
     }
     case 'work.files.tabClose': {
       const workspace = ownRows(ctx, by, p.workspaceId)
+      const tab = p.side === true ? undefined : filesState(ctx).tabs.list(p.workspaceId).tabs.find((t) => t.id === p.tabId)
+      // Discard drops his changes to a file others can open before they reach it: his press alone, as his Reload's.
+      if (p.discard === true && tab?.copyOf && copyRecord(ctx, p.workspaceId, tab.copyOf.host, tab.copyOf.path) && !pressesFor(by)) throw new Error(NEEDS_PRESS)
       // A copy whose changes have not reached its file is kept, and sent, until they have; Discard drops them.
-      if (p.side !== true) copyClosing(ctx, p.workspaceId, filesState(ctx).tabs.list(p.workspaceId).tabs.find((t) => t.id === p.tabId), p.discard === true)
+      if (p.side !== true) copyClosing(ctx, p.workspaceId, tab, p.discard === true)
       // The last tab closed becomes the workspace's folder: the place is never left with none.
       filesState(ctx).tabs.tabClose(p.workspaceId, p.tabId as string, { at: { at: 'place', id: PLACE.folder }, name: folderName(workspace, workspace.path, workspace.path) }, p.side === true)
       return handled(tabsFor(ctx, by, p.workspaceId))
@@ -1087,6 +1116,8 @@ export async function filesHandle(req: ClientRequest, ctx: WorkCtx, by: Caller, 
     case 'work.files.restore': {
       const workspace = binRows(ctx, by, p.workspaceId)
       if (by.kind === 'remote' && !by.caps.includes('operate')) throw new Error(MAY_NOT('put files back'))
+      // Put back changes a place others can open as a delete there does: his press alone, for the whole batch.
+      if (!pressesFor(by) && (await restoresShared(ctx, p.workspaceId, p.ids as string[]))) throw new Error(NEEDS_PRESS)
       return handled(await restoreRows(ctx, by, workspace, p.ids as string[], p.op as string))
     }
     case 'work.files.purge': {
@@ -1096,6 +1127,28 @@ export async function filesHandle(req: ClientRequest, ctx: WorkCtx, by: Caller, 
     }
   }
   return NOT_HANDLED
+}
+
+/**
+ * Whether Put back of these Trash rows would put something back where others can open it: a row of a library (it lies
+ * in that computer's own bin), one whose folder others can open by its real path (a workspace kept in OneDrive), and
+ * a Drive file Drive says is shared, or of whose sharing it says nothing now.
+ */
+async function restoresShared(ctx: WorkCtx, workspaceId: string, ids: readonly string[]): Promise<boolean> {
+  const get = ctx.db.prepare(`SELECT ref, provider FROM work_files_trash WHERE id = ? AND workspace_id = ? AND state = 'held'`)
+  for (const id of ids) {
+    const row = get.get(id, workspaceId) as { ref: string; provider: string | null } | undefined
+    if (!row) continue
+    if (row.provider === 'drive') {
+      const at = JSON.parse(row.ref) as { at: 'drive'; account: string; folderId: string } | { at: 'google'; account: string; fileId: string }
+      const shared = await driveOf(ctx, at.account)
+        .facts(at.at === 'drive' ? at.folderId : at.fileId)
+        .then((item) => itemShared(ctx, at.account, item))
+        .catch(() => true)
+      if (shared) return true
+    } else if (row.provider || sharedOf(ctx, JSON.parse(row.ref) as CanvasSource)) return true
+  }
+  return false
 }
 
 /** The workspace's threads whose open items name exactly this source (a LifeOS row, a Google file), newest first. */

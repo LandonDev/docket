@@ -11,12 +11,12 @@ import { ensureOutboxTables, HeldStore } from '../outbox/store'
 import { GOOGLE_MIME } from '../google/client'
 import { othersCan } from '../google/drive'
 import { FakeGoogle, FAKE_ROOT, FAKE_TOKEN_URL } from '../google/fake'
-import { resetGoogle, setGoogleDeps } from '../google/google'
+import { googleOf, resetGoogle, setGoogleDeps } from '../google/google'
 import { google, setOpenBrowser } from '../google/index'
 import type { DriveDone } from './driveVerbs'
 import { filesHandle } from './handle'
 import { DRIVE_ACCOUNTS_FRESH_MS, driveAccounts, forgetDriveAccounts, forgetDriveLists } from './places/drive'
-import { ASK_FIRST, NEEDS_APPROVE, NOT_DRIVE, PEER_LIBRARIES, setThreadsMayWrite } from './policy'
+import { ASK_FIRST, NEEDS_APPROVE, NEEDS_PRESS, NOT_DRIVE, PEER_LIBRARIES, setThreadsMayWrite } from './policy'
 import { approver, makeRig, peer, phone, thread, window, WS, type Rig } from './testkit'
 import { fileActKind, filesTools } from './tools'
 
@@ -301,6 +301,15 @@ describe("Drive's own bin as Trash", () => {
     expect((await list({ at: 'place', id: 'trash' })).entries).toEqual([])
   })
 
+  it('puts a shared file back only on his press: a key that may not approve puts back his own file alone', async () => {
+    const own = await call<FileDone>('work.files.trash', { refs: [doc('dBrief')], op: op() })
+    const shared = await call<FileDone>('work.files.trash', { refs: [doc('dOpen')], op: op(), asked: true })
+    await expect(call('work.files.restore', { ids: [...own.trashed!, ...shared.trashed!], op: op() }, phone)).rejects.toThrow(NEEDS_PRESS)
+    expect([fake.files.get('dBrief')!.trashed, fake.files.get('dOpen')!.trashed]).toEqual([true, true])
+    expect((await call<FileDone>('work.files.restore', { ids: own.trashed, op: op() }, phone)).entries.map((e) => e.name)).toEqual(['Brief'])
+    expect((await call<FileDone>('work.files.restore', { ids: shared.trashed, op: op() }, approver)).entries.map((e) => e.name)).toEqual(['Open letter'])
+  })
+
   it('asks first before a shared file goes, and Empty Trash leaves the bin to Drive', async () => {
     await expect(call('work.files.trash', { refs: [doc('dOpen')], op: op() })).rejects.toThrow(ASK_FIRST)
     const done = await call<FileDone>('work.files.trash', { refs: [doc('dOpen')], op: op(), asked: true })
@@ -440,15 +449,21 @@ describe('a Google file in a Files tab', () => {
     const sheet = await call<FilesOpened>('work.files.open', { ref: doc('sBudget', GOOGLE_MIME.sheet) })
     expect(sheet.item).toMatchObject({ kind: 'sheet', sessionId: filesPaneOf(WS) })
     expect((await call<FilesTabs>('work.files.tabs', {})).tabs.filter((t) => t.kind === 'file')).toHaveLength(2)
-    await expect(call('work.files.open', { ref: doc('pScan', 'application/pdf') })).rejects.toThrow('Scan.pdf opens in Google Drive')
-    // A picked workbook too: listed as no sheet, and its open says where it opens.
+    // A picked PDF, which no editor here reads, opens as its facts (the `file` kind), with no row the pillar polls.
+    const scan = await call<FilesOpened>('work.files.open', { ref: doc('pScan', 'application/pdf') })
+    expect(scan.item).toMatchObject({ kind: 'file', title: 'Scan.pdf', sessionId: filesPaneOf(WS), source: doc('pScan', 'application/pdf') })
+    expect(googleOf(workCtx()).files.get(ME, 'pScan')).toBeFalsy()
+    expect((await call<{ entries: (FileEntry | null)[] }>('work.files.stat', { refs: [doc('pScan', 'application/pdf')] })).entries[0]).toMatchObject({ name: 'Scan.pdf', size: 2048 })
+    // A picked workbook too: listed as no sheet, and opened as its facts.
     fake.addItem(ME, 'xRoster', 'Roster.xlsx', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
     forgetDriveLists()
     expect((await list(TOP)).entries.find((e) => e.name === 'Roster.xlsx')).toMatchObject({ kind: 'other' })
-    await expect(call('work.files.open', { ref: doc('xRoster', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet') })).rejects.toThrow('Roster.xlsx opens in Google Drive')
+    expect((await call<FilesOpened>('work.files.open', { ref: doc('xRoster', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet') })).item).toMatchObject({ kind: 'file', title: 'Roster.xlsx' })
+    // A thread's files_open still says where such a file opens.
+    expect((await tool('files_open', { place: PLACE_ID, path: 'Scan.pdf' })).text).toContain('Scan.pdf opens in Google Drive')
     // A tab on a file that goes to the bin closes with it.
     await call('work.files.trash', { refs: [doc('dBrief')], op: op() })
-    expect((await call<FilesTabs>('work.files.tabs', {})).tabs.filter((t) => t.kind === 'file').map((t) => t.key)).toEqual(['google:sBudget'])
+    expect((await call<FilesTabs>('work.files.tabs', {})).tabs.filter((t) => t.kind === 'file').map((t) => t.key)).toEqual(['google:sBudget', 'google:pScan', 'google:xRoster'])
   })
 
   it('Add from Drive: what he picks is listed in the place at once', async () => {

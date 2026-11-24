@@ -11,7 +11,7 @@ import { setCloudDir, setCopyAllowed } from '../office/files/library'
 import { copiesInFlight, copiesLeft, copyRecord, copySaved, copyTiming, retryWaiting, sendBack, settleCopies } from './copies'
 import { closeFilesState, filesHandle, filesState, itemsGone } from './handle'
 import { forgetLibraries } from './places/libraries'
-import { setThreadsMayWrite, sharedOf } from './policy'
+import { NEEDS_PRESS, setThreadsMayWrite, sharedOf } from './policy'
 import { fileWritten, onFileSaved, saveFile, versionWord, workingOn } from './save'
 import { approver, HOST, makeRig, phone, reader, thread, window, WS, type Rig } from './testkit'
 import { versionOf } from './write'
@@ -35,6 +35,8 @@ let far: { module: string; verb: string; args: Record<string, unknown> }[]
 let macUp: boolean
 let refuse: string | null
 let hold: Promise<void> | null
+/** each read of the Mac's file waits on this first, when set */
+let readGate: (() => Promise<void>) | null
 let offSaved: () => void
 
 beforeEach(() => {
@@ -51,6 +53,7 @@ beforeEach(() => {
   macUp = true
   refuse = null
   hold = null
+  readGate = null
   Object.assign(box.ctx, {
     peer(this: unknown, host: string) {
       return {
@@ -59,6 +62,7 @@ beforeEach(() => {
           if (!macUp || host !== MAC) throw new Error(`host offline: ${host} has no live link to this host`)
           if (refuse) throw new Error(refuse)
           if (hold && verb === 'writeBack') await hold
+          if (verb === 'filesRead') await readGate?.()
           const req = ClientRequestSchema.parse({ id: 'peer', method: `work.${module}.${verb}`, params: args }) as ClientRequest
           const out = module === 'office' ? await officeHandle(req, mac.ctx, AS_PEER, () => null) : await filesHandle(req, mac.ctx, AS_PEER)
           if (!out.handled) throw new Error(`${req.method} is not answered there`)
@@ -117,6 +121,30 @@ describe('a copy is made with where its file lies', () => {
     // Every editor's hold for a shared file reads this: the copy, and a document made beside it.
     expect(sharedOf(box.ctx, { at: 'file', host: HOST, path: copy })).toBe(true)
     expect(sharedOf(box.ctx, { at: 'file', host: HOST, path: join(dirname(copy), 'Roster.tcdoc') })).toBe(true)
+  })
+
+  it('is made once when two windows open the file at once: the second is answered the first tab, never read over an edit it took', async () => {
+    const path = join(mac.team, 'General', 'Roster.xlsx')
+    writeFileSync(path, 'workbook one')
+    const ref = { at: 'file', host: MAC, path }
+    // The second read of the Mac is slow: the first window's tab opens, and takes an edit, before it could land.
+    let reads = 0
+    let land!: () => void
+    const late = new Promise<void>((done) => (land = done))
+    readGate = () => (++reads === 2 ? late : Promise.resolve())
+    const first = call<FilesOpened>('work.files.open', { ref, name: 'Roster.xlsx' })
+    const second = call<FilesOpened>('work.files.open', { ref, name: 'Roster.xlsx' })
+    const one = await Promise.race([first, second])
+    const copy = canvasSourcePath(one.item!.source)!
+    await editorSaves(copy, 'workbook two')
+    land()
+    const both = await Promise.all([first, second])
+    await settled()
+    expect(both.map((o) => o.tabId)).toEqual([one.tabId, one.tabId])
+    expect(readFileSync(copy, 'utf8')).toBe('workbook two')
+    expect(readFileSync(path, 'utf8')).toBe('workbook two')
+    expect(copyRecord(box.ctx, WS, MAC, path)).toMatchObject({ state: 'ok', writes: 1, held: 1 })
+    expect(far.filter((c) => c.verb === 'filesRead')).toHaveLength(1)
   })
 
   it('keeps no record for a kind that edits no bytes of the copy: a document opens on a copy whose changes stay here', async () => {
@@ -403,6 +431,34 @@ describe('a tab closed before its changes reached the file', () => {
     expect(copyRecord(box.ctx, WS, MAC, path)).toBeNull()
     expect(existsSync(copy)).toBe(false)
     expect(readFileSync(path, 'utf8')).toBe('one')
+  })
+
+  it('Discard is his press alone: a key that may not approve is refused, and the tab and what waits stay', async () => {
+    const { path, copy, tabId } = await openFar('Roster.xlsx', 'one')
+    macUp = false
+    await editorSaves(copy, 'two')
+    await settled()
+    await expect(call('work.files.tabClose', { tabId, discard: true }, phone)).rejects.toThrow(NEEDS_PRESS)
+    expect((await call<FilesTabs>('work.files.tabs', {})).tabs.some((t) => t.id === tabId)).toBe(true)
+    expect(copyRecord(box.ctx, WS, MAC, path)).toMatchObject({ closed: 0, state: 'away' })
+    expect(readFileSync(copy, 'utf8')).toBe('two')
+    // A key that may approve is his own hand.
+    await call('work.files.tabClose', { tabId, discard: true }, approver)
+    expect(copyRecord(box.ctx, WS, MAC, path)).toBeNull()
+    expect(existsSync(copy)).toBe(false)
+  })
+
+  it('a plain close from a key that may only operate keeps what waits, and sends it', async () => {
+    const { path, copy, tabId } = await openFar('Roster.xlsx', 'one')
+    macUp = false
+    await editorSaves(copy, 'two')
+    await settled()
+    await call('work.files.tabClose', { tabId }, phone)
+    expect(copyRecord(box.ctx, WS, MAC, path)).toMatchObject({ closed: 1, state: 'away' })
+    macUp = true
+    retryWaiting(box.ctx, [MAC])
+    await settled()
+    expect(readFileSync(path, 'utf8')).toBe('two')
   })
 
   it('a closed tab with nothing waiting lets its copy go once its last save had time to land', async () => {

@@ -174,18 +174,23 @@ export class Drive {
 /** An account's Drive on this host. */
 export const driveOf = (ctx: WorkCtx, account: string): Drive => new Drive(googleOf(ctx).api(account))
 
-/** A Google file as an item opens it: its canvas kind and source. Refused for what is no Doc, Sheet or deck. */
-export async function googleSeatOf(ctx: WorkCtx, account: string, fileId: string): Promise<{ kind: CanvasKind; source: GoogleSource; name: string; version: string }> {
+/**
+ * A Google file as an item opens it: its canvas kind and source. Refused for what is no Doc, Sheet or deck, unless
+ * `facts`: a Files tab shows a picked PDF or workbook, which no editor here reads, as the `file` kind's facts, with
+ * Open in Drive.
+ */
+export async function googleSeatOf(ctx: WorkCtx, account: string, fileId: string, o: { facts?: boolean } = {}): Promise<{ kind: CanvasKind; source: GoogleSource; name: string; version: string }> {
   const f = await googleOf(ctx).api(account).file(fileId)
   const seat = GOOGLE_SEATS[f.mimeType]
-  if (!seat) throw new Error(`${f.name} opens in Google Drive: it is not a Doc, a Sheet or a Slides deck.`)
-  return { kind: seat.canvas, source: { at: 'google', account: account.toLowerCase(), fileId: f.id, mime: f.mimeType }, name: f.name, version: f.version }
+  if (!seat && !o.facts) throw new Error(`${f.name} opens in Google Drive: it is not a Doc, a Sheet or a Slides deck.`)
+  return { kind: seat?.canvas ?? 'file', source: { at: 'google', account: account.toLowerCase(), fileId: f.id, mime: f.mimeType }, name: f.name, version: f.version }
 }
 
-/** An item now shows a Google file: the pillar keeps its row and polls its version while the item is open. */
+/** An item now shows a Google file: the pillar keeps its row and polls its version while the item is open. A file shown as its facts has neither. */
 export function googleSeated(ctx: WorkCtx, seat: { source: GoogleSource; name: string; version: string }, itemId: string): void {
   const g = googleOf(ctx)
   const { source } = seat
+  if (!GOOGLE_SEATS[source.mime]) return
   if (!g.files.get(source.account, source.fileId)) g.files.put({ account: source.account, fileId: source.fileId, kind: GOOGLE_SEATS[source.mime]!.kind, name: seat.name, version: seat.version, behind: null, mirror: null, base: null })
   watch(source.account, source.fileId, seat.name, itemId)
 }

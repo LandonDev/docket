@@ -6,7 +6,7 @@ import type { FileDone, FilesListing, FilesOpened, FilesTabs } from '@shared/con
 import type { Caller } from '../modules'
 import { closeFilesState, THREADS_BY_TOOLS } from './handle'
 import { files } from './index'
-import { workspaceHere } from './policy'
+import { NEEDS_PRESS, workspaceHere } from './policy'
 import { approver, at, HOST, makeRig, peer, phone, thread, window, WS, type Rig } from './testkit'
 import { NOT_IN_TRASH, purgeOld, purgeRows, restoreRows, setSystemBin, settleTrash, trashAfterMove, trashRoot, TRASH_DAYS, type SystemBin } from './trash'
 import { withFileLocks } from './write'
@@ -401,6 +401,19 @@ describe("a delete in a library on this host's disk", () => {
     writeFileSync(plan, 'a new plan')
     expect((await restore(again.trashed!)).entries.map((e) => e.name)).toEqual(['Plan (restored).docx'])
     expect(readFileSync(plan, 'utf8')).toBe('a new plan')
+  })
+
+  it('is put back from a key only on his press: a key that may not approve puts back what lay in his own folder alone', async () => {
+    rig.roots.push(rig.team)
+    const plan = join(rig.team, 'General', 'Plan.docx')
+    const lib = await asked([plan])
+    const own = await trash([join(rig.folder, 'notes.txt')])
+    // A batch that holds one thing others can open is refused whole, and nothing moves.
+    await expect(restore([...own.trashed!, ...lib.trashed!], phone)).rejects.toThrow(NEEDS_PRESS)
+    expect([existsSync(plan), existsSync(join(rig.folder, 'notes.txt'))]).toEqual([false, false])
+    expect((await restore(own.trashed!, phone)).entries.map((e) => e.name)).toEqual(['notes.txt'])
+    expect((await restore(lib.trashed!, approver)).entries.map((e) => e.name)).toEqual(['Plan.docx'])
+    expect(readFileSync(plan, 'utf8')).toBe('word')
   })
 
   it('refuses in a plain sentence what the bin will not take, and leaves it', async () => {
