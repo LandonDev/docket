@@ -50,7 +50,8 @@ describe("the bar's line", () => {
     const line = container.querySelector("[data-sheet-waits]")!;
     expect(line.textContent).toBe("2 pivot tables and macros open in Excel");
     // `ms-auto`: at the tools' end, under the switch; no size or colour of its own, so the bar's 12px muted text.
-    expect(line.className).toBe("ms-auto min-w-0 truncate");
+    // 16px at least from the mode's word: the bar's 8px gap and its own 8.
+    expect(line.className).toBe("ms-auto min-w-0 truncate ps-2");
     expect(line.getAttribute("title")).toBeNull();
     expect(container.querySelectorAll("svg, [data-slot='badge']")).toHaveLength(0);
     expect(container.children).toHaveLength(1);

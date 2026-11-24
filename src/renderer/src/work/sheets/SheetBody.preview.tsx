@@ -31,7 +31,7 @@ function setUp(moment: SheetMoment): { view: SheetView; book: Workbook; title: s
       title: "Invoices 2026",
       book: INVOICES,
       grid: fakeGrid({ selection: "F4", columns: 7 }),
-      view: sheetView({ name: "Invoices 2026", store: "package", mode: "writes", written: { id: "w1", text: "Changed 6 cells", at: AT } }),
+      view: sheetView({ name: "Invoices 2026", store: "package", mode: "writes", written: { id: "w1", text: "Wrote 6 cells", at: AT } }),
     };
   // A sheet TempCode keeps: every control of the format row, the selection on a bold heading.
   if (moment === "format")

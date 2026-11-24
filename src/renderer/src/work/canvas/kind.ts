@@ -71,7 +71,7 @@ export interface CanvasShell {
   mode(mode: CanvasMode | null): void;
   /** The one state line across the item, for a source that cannot be reached or needs the person. Never a second banner. */
   statusLine(line: StatusLine | null): void;
-  /** What the agent last wrote directly, in the stepper's place: "Changed 6 cells, 2:04 PM", with Undo. */
+  /** What the agent last wrote directly, in the stepper's place: "Wrote 6 cells, 2:04 PM", with Undo. */
   written(line: WrittenLine | null): void;
   /** Whether the item has opened. A kind that says false (still opening, or it could not open) has no History in its bar until it says true; one that never says is drawn as opened. Optional only so a stand-in shell written before it still types. */
   ready?(ready: boolean): void;
@@ -189,7 +189,7 @@ export interface StatusLine {
 }
 
 export interface WrittenLine {
-  /** "Changed 6 cells, 2:04 PM" */
+  /** "Wrote 6 cells, 2:04 PM" */
   text: string;
   undo?(): Promise<void>;
 }

@@ -541,9 +541,9 @@ describe("the frame a kind drives through its shell", () => {
   it("says what the agent wrote, with its way back, in the stepper's place", async () => {
     const { shell, container } = await driven();
     const undo = vi.fn(async () => undefined);
-    act(() => shell.written({ text: "Changed 6 cells, 2:04 PM", undo }));
+    act(() => shell.written({ text: "Wrote 6 cells, 2:04 PM", undo }));
     const line = container.querySelector<HTMLElement>("[data-canvas-written]")!;
-    expect(line.textContent).toContain("Changed 6 cells, 2:04 PM");
+    expect(line.textContent).toContain("Wrote 6 cells, 2:04 PM");
     fireEvent.click(within(line).getByRole("button", { name: "Undo" }));
     expect(undo).toHaveBeenCalledOnce();
     await act(async () => {});

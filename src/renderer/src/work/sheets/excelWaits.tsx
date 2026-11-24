@@ -35,9 +35,10 @@ export function waitsWords(reach: SheetReach | undefined, store: SheetStoreKind 
 export function ExcelWaits({ reach, store, env }: { reach: SheetReach | undefined; store: SheetStoreKind | undefined; env: string }) {
   const words = waitsWords(reach, store, reachHere(reach, env) ? null : (registry.environment(env)?.name ?? "its host"));
   if (!words) return null;
+  // 16px at least from the mode's word (the bar's 8px gap and 8 more), so the two never read as one phrase.
   return (
     <TruncateTip text={words}>
-      <span data-sheet-waits className="ms-auto min-w-0 truncate">
+      <span data-sheet-waits className="ms-auto min-w-0 truncate ps-2">
         {words}
       </span>
     </TruncateTip>

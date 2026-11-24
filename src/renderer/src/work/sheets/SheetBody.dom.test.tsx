@@ -975,9 +975,9 @@ describe("the sheet kind", () => {
   });
 
   it("offers Undo on the written line only for an opened Excel file", async () => {
-    open(sheetView({ store: "lifeos", mode: "writes", written: { id: "w1", text: "Changed 6 cells", at: Date.UTC(2026, 10, 23, 17) } }));
+    open(sheetView({ store: "lifeos", mode: "writes", written: { id: "w1", text: "Wrote 6 cells", at: Date.UTC(2026, 10, 23, 17) } }));
     await gridUp();
-    expect(await screen.findByText(/Changed 6 cells/)).toBeTruthy();
+    expect(await screen.findByText(/Wrote 6 cells/)).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Undo" })).toBeNull();
   });
 
@@ -989,9 +989,9 @@ describe("the sheet kind", () => {
   });
 
   it("shows what the agent wrote directly, with Undo, and its mode", async () => {
-    open(sheetView({ mode: "writes", written: { id: "w1", text: "Changed 6 cells", at: Date.UTC(2026, 10, 23, 17) } }));
+    open(sheetView({ mode: "writes", written: { id: "w1", text: "Wrote 6 cells", at: Date.UTC(2026, 10, 23, 17) } }));
     await gridUp();
-    expect(await screen.findByText(/Changed 6 cells/)).toBeTruthy();
+    expect(await screen.findByText(/Wrote 6 cells/)).toBeTruthy();
     expect(screen.getByRole("button", { name: /Agent writes/ })).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Undo" }));
     await waitFor(() => expect(sheetHost.calls).toContainEqual(["undo", "w1"]));

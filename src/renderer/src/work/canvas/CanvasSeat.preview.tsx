@@ -60,8 +60,9 @@ function RunOfShow({ plain, ask }: { plain: boolean; ask: boolean }) {
     );
   const row = "relative mt-1 ps-[22px] before:absolute before:top-2.5 before:left-2 before:size-[5px] before:rounded-full before:bg-muted-foreground";
   return (
-    <div className="px-8 pt-6 pb-12">
-      <div className="mx-auto max-w-[672px] text-[15px] leading-6 select-text">
+    // The document kind's own insets (docs/DocumentCanvas.tsx): 24px sides, 32px top, the 52px gutter, the 672px measure.
+    <div className="px-6 pt-8 pb-12">
+      <div className="mx-auto max-w-[724px] pl-[52px] text-[15px] leading-6 select-text">
         <h1 className="text-lg leading-[26px] font-semibold tracking-[-0.01em]">Spring LAN run of show</h1>
         <div className="mt-1 text-xs text-muted-foreground">Spring LAN, edited 2:04 PM</div>
         <h2 className="mt-5 text-base leading-6 font-semibold tracking-[-0.01em]">Morning</h2>

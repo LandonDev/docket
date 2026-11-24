@@ -13,6 +13,9 @@ import type { PdfEngine } from "../pdf/engine";
 import { FOLD, PAGED_ZOOMS, PagedSkeleton, PagedView, ZOOM_WORDS, type PagedZoom } from "./PagedView";
 import { MARGIN_PRESETS, marginPresetOf, NotInReach, PAPER_POINTS, PAPERS, type CommonSetup, type Drawn, type MarginPreset, type OfficeApp, type PaperName, type PreviewFormat, type PreviewPicture, type PreviewSource } from "./preview";
 
+
+/** The host's note for a draw that stopped short (main work/sheets/preview.ts `moreThan`). */
+const PRINTS_MORE = /^Prints on more than [\d,]+ pages$/;
 /**
  * Preview (docs/DESIGN.md "Work editors: Preview"; docs/agents/work-editors.md
  * "Preview"): a state of an item, the same for a document, a sheet and a
@@ -276,7 +279,8 @@ export function Preview({ source, title, kind, initial, readOnly, onClose, pageR
   const officeName = office?.app;
   const canCheck = !!office && (office.state === "ready" || office.state === "asleep") && picture?.kind === "paged" && picture.drawnBy !== office.app.toLowerCase() && !checking;
   const part = picture?.kind === "paged" && picture.shown && (picture.shown.of === undefined || picture.shown.to < picture.shown.of) ? picture.shown : null;
-  const notes = draw.status === "drawn" ? (draw.drawn.notes ?? []) : [];
+  // While "The first 24 pages" and "Draw all 25" say the length, the host's "Prints on more than 24 pages" would say it a third time.
+  const notes = (draw.status === "drawn" ? (draw.drawn.notes ?? []) : []).filter((note) => !(part && PRINTS_MORE.test(note)));
 
   /** The line over the first sheet: who drew it, or what is happening to it; under it, folded, what the format drops. */
   const head = (line: ReactNode, action?: ReactNode): ReactNode => (
