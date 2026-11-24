@@ -453,8 +453,52 @@ describe("the Outbox", () => {
     await act(async () => fireEvent.click(screen.getByRole("button", { name: "Send" })));
     fireEvent.click(screen.getByRole("tab", { name: "Sent" }));
     await waitFor(() => expect(screen.getAllByText("Sent to Dana Lee").length).toBeGreaterThan(0));
-    expect(screen.getByText(/Sent by you at/)).toBeTruthy();
+    // The title says it went: the head says where, when and by whom, with no second "Sent".
+    const facts = document.querySelector("[data-outbox-detail] header [data-slot=facts]")!.textContent!;
+    expect(facts).toMatch(/^A Work workspace.+by you$/);
+    expect(facts).not.toContain("Sent");
     expect(screen.getByText("Sent mail cannot be taken back")).toBeTruthy();
+  });
+
+  it("groups Sent by job, each row led by its kind's glyph: the job's dot heads the group, never a row", async () => {
+    world.items.set("box", [mail("o1", "Dana Lee", "Budget", { state: "sent", decidedBy: "owner", decidedAt: Date.now() - 60_000 }), mail("o2", "Sam Ortiz", "Scrims", { state: "sent", decidedBy: "owner", decidedAt: Date.now() - 120_000 })]);
+    world.items.set("mac", [{ ...addonCall, state: "sent", decidedBy: "owner", decidedAt: Date.now() - 90_000 }]);
+    rememberOutboxTab("sent");
+    render(<OutboxView besideRail onClose={() => undefined} />);
+    await waitFor(() => expect(screen.getAllByText("Sent to Dana Lee").length).toBeGreaterThan(0), { timeout: 5000 });
+    const list = document.querySelector("[data-outbox-list]")!;
+    const groups = [...list.querySelectorAll("section")];
+    // Two jobs, newest first; each group's rows its own.
+    expect(groups).toHaveLength(2);
+    expect(groups[0]!.querySelectorAll("li")).toHaveLength(2);
+    expect(groups[1]!.querySelectorAll("li")).toHaveLength(1);
+    // The dot is in each heading, and no row carries one: a row leads with its glyph.
+    for (const group of groups) {
+      expect(group.firstElementChild!.querySelector("[data-sector]")).toBeTruthy();
+      expect(group.querySelector("li [data-sector]")).toBeNull();
+      expect(group.querySelector("li svg")).toBeTruthy();
+    }
+  });
+
+  it("says a failed send's reason once, in the detail and in his words: the row keeps what it is about", async () => {
+    world.items.set("box", [mail("o1", "Dana Lee", "Budget", { state: "failed", error: "forbidden: work.outbox.send needs admin" })]);
+    await open();
+    const row = screen.getAllByText("Send to Dana Lee").find((el) => el.closest("li"))!.closest("li")!;
+    expect(row.textContent).toContain("Budget");
+    expect(row.textContent).not.toContain("forbidden");
+    const alert = within(document.querySelector("[data-outbox-detail]") as HTMLElement).getByRole("alert");
+    expect(alert.textContent).toBe("This computer's key may not do that on that computer. Do it from a computer that manages that computer.");
+  });
+
+  it("lets a row with no second line take two lines for its title, so a long act is read whole", async () => {
+    world.items.set("box", [{ ...mail("o1", "Dana Lee", "Budget"), summary: "Share Spring LAN run of show with Maya Chen to comment", account: null }]);
+    render(<OutboxView besideRail onClose={() => undefined} />);
+    fireEvent.click(screen.getByRole("tab", { name: "Waiting" }));
+    await waitFor(() => expect(screen.getAllByText("Share Spring LAN run of show with Maya Chen to comment").length).toBeGreaterThan(0), { timeout: 5000 });
+    const title = document.querySelector("[data-outbox-list] [data-row-title]")!;
+    expect(title.className).toContain("line-clamp-2");
+    expect(title.className).not.toContain("truncate");
+    expect(title.closest("li")!.querySelectorAll("button > span")).toHaveLength(1);
   });
 
   it("when the item he reads is decided elsewhere, the detail empties rather than slide the next one under Send", async () => {
@@ -488,13 +532,12 @@ describe("the Outbox", () => {
     expect(facts.closest("header")!.textContent).not.toContain("·");
   });
 
-  it("names a held item's workspace in its head only in the narrow stack, where the list's heading is gone", async () => {
+  it("names a held item's job in its head at every width, as a sent one's does: never the dot alone", async () => {
     await open();
-    const [wide, narrow] = [...document.querySelectorAll("header [data-slot=facts]")] as HTMLElement[];
-    expect(wide!.className).toContain("@max-[40rem]/outbox:hidden");
-    expect(wide!.textContent).not.toContain("A Work workspace");
-    expect(narrow!.className).toContain("@max-[40rem]/outbox:inline-flex");
-    expect(narrow!.textContent).toContain("A Work workspace");
+    const facts = [...document.querySelectorAll("header [data-slot=facts]")] as HTMLElement[];
+    expect(facts).toHaveLength(1);
+    expect(facts[0]!.className).not.toContain("hidden");
+    expect(facts[0]!.textContent).toMatch(/^A Work workspace/);
   });
 
   it("says a rewrite waits once, in the mail's own view, not again over it", async () => {

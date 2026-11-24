@@ -4,6 +4,8 @@ import type { HeldRef } from "@shared/work";
 import { registry } from "../../lib/connection";
 import { setOutboxFailed, setOutboxWaiting, workSwitch } from "../../lib/workSwitch";
 import { applyResult, reloadResults, resetResults } from "./results";
+import { workErrorWords } from "../../lib/workErrorWords";
+import { itemFailWords } from "./failWords";
 
 /**
  * The Outbox as the screens read it (docs/agents/work-outbox.md): one list
@@ -165,10 +167,10 @@ function subscribe(listener: () => void): () => void {
 /** The host's answer to a press says it went (or is going), not that another press or device decided it first. */
 export const wentOut = (after: Pick<OutboxItem, "state">): boolean => after.state === "sent" || after.state === "sending";
 /** Why a press sent nothing, in his words. */
-export function notSentWords(after: Pick<OutboxItem, "state" | "error">): string {
+export function notSentWords(after: Pick<OutboxItem, "state" | "error" | "outcomeUnknown">): string {
   if (after.state === "discarded") return "Already discarded";
-  if (after.state === "stale") return after.error ?? "It changed since it was held; look again";
-  return after.error ?? "It couldn't be sent";
+  if (after.state === "stale") return workErrorWords(after.error ?? "") || "It changed since it was held; look again";
+  return itemFailWords(after);
 }
 
 /** Put the host's answer in place at once, so the next press reads it (an edit's new `updatedAt`). */

@@ -41,7 +41,8 @@ const RULES: Rule[] = [
   [/^(there is )?no canvas item\b/i, () => "This tab is no longer open. Open the file again from Files."],
   [/^not a work workspace\b|^unknown thread\b/i, () => "The thread or workspace this belongs to is gone. Open it again from Work."],
   // The disk, by errno: the file's own words, never the path.
-  [/\bspawn \S+ ENOENT\b/, (c) => `A program ${c.host} needs for this is missing there.`],
+  // A line that starts with it reaches here capitalized (`refusalWords`): "Spawn osascript ENOENT".
+  [/\bspawn \S+ ENOENT\b/i, (c) => `A program ${c.host} needs for this is missing there.`],
   [/\bENOENT\b|^there is no file at |^no file at /i, () => "The file or folder was moved or removed. Refresh Files and open it from where it is now."],
   [/\b(EACCES|EPERM|EROFS)\b/, () => "This computer could not change the file in that folder. Check that you may edit it there, or save a copy somewhere you may."],
   [/\bENOSPC\b/, (c) => `The disk on ${c.host} is full.`],

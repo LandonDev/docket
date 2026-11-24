@@ -30,11 +30,14 @@ import { kindHeading } from "../acts/kindRows";
 import { Calendar, Chat, File, Mail } from "../icons";
 import { EditDialog } from "./EditDialog";
 import { GrantsSheet } from "./GrantsSheet";
-import { byWords, byWorkspace, dayOf, decidedWords, EDITABLE, grantFor, lifeosLine, lifeosWords, offerLine, pastOf, payloadView, timeOf, WORK_CHATS_KEY } from "./model";
+import { byWords, byWorkspace, EDITABLE, grantFor, lifeosLine, lifeosWords, offerLine, pastOf, payloadView, timeOf, WORK_CHATS_KEY } from "./model";
 import { useSlowClock } from "../../lib/turnClock";
 import { heldWhen } from "./when";
 import { loadResults, undoResult, useResults } from "./results";
 import { OfferLine } from "./OfferLine";
+import { itemFailWords, pressFailWords } from "./failWords";
+import { workErrorWords } from "../../lib/workErrorWords";
+import { nameInLine } from "../../lib/hostWords";
 import { ownZone, scheduleLine } from "work-kit/mail/lib/zones";
 import { cancelScheduled, discardItem, fetchItem, grantAndSend, loadHost, loadOutbox, notSentWords, offerAfterPress, offerFrom, sendItem, sendMany, useOutbox, useWantedOutboxItem, wantOutboxItem, wentOut, type HostItem, type HostOffer } from "./store";
 
@@ -132,6 +135,11 @@ export function KindGlyph({ kind, className }: { kind: ActKind; className?: stri
 }
 
 const toast = (line: string) => void loadToast().then((t) => t(line));
+/** Why a host's list did not come, in his words, when it says more than the row's own "did not answer". */
+const hostWhy = (error: string, host: string): string | null => {
+  const why = workErrorWords(error, { host });
+  return why && !/did not answer/i.test(why) ? why : null;
+};
 
 /** A mail he scheduled, said as the mail itself says it: his zone's time, and the zone he picked where it reads another clock. */
 const scheduledWords = (item: HostItem): string | null =>
@@ -140,7 +148,6 @@ const toastError = (line: string) => void loadToast().then((t) => t.error(line))
 /** What a press says when it completed a run: the line of the grant it earned, with Review, which opens the item in Sent. */
 const toastEarned = (line: string, offer: HostOffer, review: () => void) =>
   void loadToast().then((t) => t(line, { description: offerLine(offer), action: { label: "Review", onClick: review } }));
-const errorText = (err: unknown): string => (err instanceof Error ? err.message : String(err));
 
 type Props = {
   besideRail?: boolean;
@@ -279,7 +286,11 @@ export function OutboxView({ besideRail = false, onClose, onToggleSidebar, onOpe
     const notSent = [...said.values()].reduce((a, b) => a + b, 0);
     const went = [sent > notSent ? `${batchVerb(items)} ${sent - notSent}` : null, ...[...said].map(([word, n]) => `${n} ${word[0]!.toLowerCase()}${word.slice(1)}`)].filter(Boolean).join(", ");
     if (went || left) toast([went ? `${went}${where ? ` from ${where}` : ""}` : null, left].filter(Boolean).join(". "));
-    if (failed.length) toastError(`${failed.length} could not go: ${failed[0]!.error}`);
+    if (failed.length) {
+      // The first one's reason in his words; a raw one gives way to the count alone.
+      const why = workErrorWords(failed[0]!.error, { write: true });
+      toastError(why ? `${failed.length} could not go. ${why}` : `${failed.length} could not go`);
+    }
   };
 
   // An empty list is clear only when every host answered: a host that failed is named above with its Retry (the one
@@ -311,7 +322,7 @@ export function OutboxView({ besideRail = false, onClose, onToggleSidebar, onOpe
         <div key={e.environmentId} role="status" className="flex h-9 shrink-0 items-center gap-2 border-b border-border px-4 text-[13px]">
           <StatusMark state="failed" word={false} />
           <span className="min-w-0 flex-1 truncate">
-            {hostName(e.environmentId)} did not answer <span className="text-muted-foreground">{e.error}</span>
+            {hostName(e.environmentId)} did not answer <span className="text-muted-foreground">{hostWhy(e.error, nameInLine(hostName(e.environmentId)))}</span>
           </span>
           <HostRetry environmentId={e.environmentId} />
         </div>
@@ -412,11 +423,14 @@ export function OutboxView({ besideRail = false, onClose, onToggleSidebar, onOpe
 
 // ── the lists ─────────────────────────────────────────────────────────────
 
-/** A workspace's heading; its Send N shows on hover, as a row's controls do. */
+/**
+ * A job's heading; its Send N shows on hover, as a row's controls do. The dot takes the rows' 16px glyph slot, so it
+ * stands over their glyphs and the name starts on their titles' edge.
+ */
 function GroupHead({ sector, name, children, busy = false }: { sector: string | null; name: string; children?: React.ReactNode; busy?: boolean }) {
   return (
     <div className="group/item mt-3 flex h-7 items-center gap-2 pe-1 ps-2 first:mt-1">
-      <SectorDot sector={sector} className="size-3.5" />
+      <SectorDot sector={sector} className="size-4" />
       <span className="min-w-0 flex-1 truncate text-xs font-medium text-muted-foreground">{name}</span>
       {children ? <span className={cn(reveal("item", { row: true }), busy && "opacity-100")}>{children}</span> : null}
     </div>
@@ -469,6 +483,8 @@ function WaitingList({
               {group.items.map((item) => {
                 const { act, about } = rowWords(item);
                 const active = !ticking && current !== null && keyOf(current) === keyOf(item);
+                // A failed send's reason is the detail's: here the red mark says it failed, and the line stays what it is about.
+                const line = scheduledWords(item) ?? (item.state === "sending" ? "Sending" : (about ?? item.account ?? null));
                 return (
                   <li key={keyOf(item)} className="group/row relative">
                     <ItemButton
@@ -477,15 +493,7 @@ function WaitingList({
                       onClick={() => onSelect(item)}
                       className={cn("flex-col flex-nowrap items-stretch gap-0 rounded-md py-2 pe-2 ps-8 text-left transition-none", active ? "bg-muted" : "hover:bg-foreground/5")}
                     >
-                      <span className="flex min-w-0 items-center gap-2">
-                        <span data-row-title className="min-w-0 flex-1 truncate text-[13px] font-medium leading-5">
-                          {act}
-                        </span>
-                        <time className="shrink-0 text-xs tabular-nums text-muted-foreground">{timeOf(item.createdAt)}</time>
-                      </span>
-                      <span className="truncate text-xs leading-4 text-muted-foreground">
-                        {item.state === "failed" ? (item.error ?? "Couldn't send") : scheduledWords(item) ?? (item.state === "sending" ? "Sending" : (about ?? item.account ?? ""))}
-                      </span>
+                      <RowLines title={act} line={line} time={timeOf(item.createdAt)} />
                     </ItemButton>
                     {/* The glyph column: the kind's glyph, which gives way to the tick on hover, and to every tick while any row is ticked. */}
                     <span className={cn("pointer-events-none absolute start-2 top-2.5 grid size-4 place-items-center", batchable(item) && (ticking ? "opacity-0" : yields("row")))}>
@@ -520,45 +528,60 @@ function SentList({
 }) {
   // A queued row's age grows on screen, from his press.
   const now = useSlowClock(items.some((item) => item.state === "sent" && item.lifeos === "queued")) || Date.now();
-  const days = new Map<string, HostItem[]>();
-  for (const item of items) {
-    const day = dayOf(item.decidedAt ?? item.updatedAt);
-    days.set(day, [...(days.get(day) ?? []), item]);
-  }
+  // By job, as Waiting is: the job's dot heads its group, and each row leads with its kind's glyph, so a job's colour
+  // never sits where a row's mark would.
   return (
     <div className="flex flex-col p-1">
-      {[...days].map(([day, rows]) => (
-        <section key={day} aria-label={day}>
-          <div className="mt-3 flex h-7 items-center ps-2 text-xs font-medium text-muted-foreground first:mt-1">{day}</div>
-          <ul className="flex flex-col gap-0.5">
-            {rows.map((item) => {
-              const { act, about } = rowWords(item);
-              const active = current !== null && keyOf(current) === keyOf(item);
-              const at = item.decidedAt ?? item.updatedAt;
-              // One LifeOS has not said went is named as it waits there, not as sent.
-              const queued = lifeosLine(item, now);
-              return (
-                <li key={keyOf(item)}>
-                  <ItemButton
-                    size="sm"
-                    aria-current={active ? "true" : undefined}
-                    onClick={() => onSelect(item)}
-                    className={cn("flex-col flex-nowrap items-stretch gap-0 rounded-md px-2 py-2 text-left transition-none", active ? "bg-muted" : "hover:bg-foreground/5")}
-                  >
-                    <span className="flex min-w-0 items-center gap-2">
-                      <SectorDot sector={item.sector} className="size-4" />
-                      <span className="min-w-0 flex-1 truncate text-[13px] font-medium leading-5">{queued ? act : pastTense(act, item.verb, item.kind)}</span>
-                      <time className="shrink-0 text-xs tabular-nums text-muted-foreground">{timeOf(at)}</time>
+      {byWorkspace(items).map((group) => {
+        const name = nameOf(group.items[0]!.environmentId, group.workspaceId);
+        return (
+          <section key={group.key} aria-label={name}>
+            <GroupHead sector={group.sector} name={name} />
+            <ul className="flex flex-col gap-0.5">
+              {group.items.map((item) => {
+                const { act, about } = rowWords(item);
+                const active = current !== null && keyOf(current) === keyOf(item);
+                // One LifeOS has not said went is named as it waits there, not as sent.
+                const queued = lifeosLine(item, now);
+                return (
+                  <li key={keyOf(item)} className="relative">
+                    <ItemButton
+                      size="sm"
+                      aria-current={active ? "true" : undefined}
+                      onClick={() => onSelect(item)}
+                      className={cn("flex-col flex-nowrap items-stretch gap-0 rounded-md py-2 pe-2 ps-8 text-left transition-none", active ? "bg-muted" : "hover:bg-foreground/5")}
+                    >
+                      <RowLines title={queued ? act : pastTense(act, item.verb, item.kind)} line={queued ?? about} time={timeOf(item.decidedAt ?? item.updatedAt)} />
+                    </ItemButton>
+                    <span className="pointer-events-none absolute start-2 top-2.5 grid size-4 place-items-center">
+                      <KindGlyph kind={item.kind} />
                     </span>
-                    <span className="truncate ps-6 text-xs leading-4 text-muted-foreground">{queued ?? about ?? nameOf(item.environmentId, item.workspaceId)}</span>
-                  </ItemButton>
-                </li>
-              );
-            })}
-          </ul>
-        </section>
-      ))}
+                  </li>
+                );
+              })}
+            </ul>
+          </section>
+        );
+      })}
     </div>
+  );
+}
+
+/**
+ * A list row's words: the title and its time on one baseline, the second line under it. A row with no second line
+ * lets its title take two lines, so a long act is read whole and the row keeps the height of its neighbours.
+ */
+function RowLines({ title, line, time }: { title: string; line: string | null; time: string }) {
+  return (
+    <>
+      <span className="flex min-w-0 items-baseline gap-2">
+        <span data-row-title className={cn("min-w-0 flex-1 text-[13px] leading-5", line ? "truncate" : "line-clamp-2 break-words")}>
+          {title}
+        </span>
+        <time className="shrink-0 text-xs tabular-nums text-muted-foreground">{time}</time>
+      </span>
+      {line ? <span className="truncate text-xs leading-4 text-muted-foreground">{line}</span> : null}
+    </>
   );
 }
 
@@ -569,26 +592,15 @@ function pastTense(act: string, verb: string, kind: string): string {
 
 // ── the detail ────────────────────────────────────────────────────────────
 
-/**
- * Who, where and when, over the act's name. `narrowOnly` facts (a held
- * item's workspace) show only in the narrow stack: wide, the list's group
- * heading beside the detail already names them.
- */
-function DetailHead({ item, facts, narrowOnly = [], menu }: { item: HostItem; facts: string[]; narrowOnly?: string[]; menu?: React.ReactNode }) {
+/** Where and when, over the act's name: the job's dot and its name lead, held or sent, at every width. */
+function DetailHead({ item, facts, menu }: { item: HostItem; facts: string[]; menu?: React.ReactNode }) {
   const { act } = splitSummary(item.summary);
   return (
     <header className="flex flex-col">
       <div className="flex min-h-7 items-center gap-2">
         <span className="flex min-w-0 flex-1 items-center gap-1 text-xs text-muted-foreground">
           <SectorDot sector={item.sector} className="-ms-1 size-4" />
-          {narrowOnly.length ? (
-            <>
-              <Facts parts={facts} className="min-w-0 @max-[40rem]/outbox:hidden" />
-              <Facts parts={[...narrowOnly, ...facts]} className="hidden min-w-0 @max-[40rem]/outbox:inline-flex" />
-            </>
-          ) : (
-            <Facts parts={facts} className="min-w-0" />
-          )}
+          <Facts parts={facts} className="min-w-0" />
         </span>
         {menu}
       </div>
@@ -663,13 +675,15 @@ export function HeldDetail({
   item: HostItem;
   workspace: string;
   host: string;
-  /** No list beside it names the workspace (Today's sheet): the head's facts say it at every width. */
+  /** In Today's sheet: the time is said as the row that opened it says it, and a refusal in the detail itself. */
   alone?: boolean;
   onOpenSession?: Props["onOpenSession"];
   onPressed: (item: HostItem) => void;
   onReview: (item: HostItem) => void;
 }) {
   const { shown: item, ready: read, failed: unread, retry } = useWhole(listed);
+  // The host mid-line in a failure's words ("the box"); one this window has no name for is "that computer".
+  const hostInLine = host && host !== "A host" ? nameInLine(host) : undefined;
   const picture = usePicture(listed);
   // Send waits until all he approves is on screen: the act's own view loaded, the mail read whole, the act's kept picture drawn (the hold review).
   // The act's own view says when its payload is on screen, again after its Retry, and not while its boundary shows an error.
@@ -711,7 +725,7 @@ export function HeldDetail({
       else toast(done);
       if (which === "grant") toast(`Grant made: ${grant!.label}`);
     } catch (err) {
-      sayFailed(errorText(err));
+      sayFailed(pressFailWords(err, which === "discard" ? "It was not discarded" : "It couldn't be sent", hostInLine));
     } finally {
       setBusy(null);
     }
@@ -723,7 +737,7 @@ export function HeldDetail({
     try {
       toast((await cancelScheduled(item)) ? "Back in drafts" : "Already sent");
     } catch (err) {
-      sayFailed(errorText(err));
+      sayFailed(pressFailWords(err, "The send was not cancelled", hostInLine));
     } finally {
       setBusy(null);
     }
@@ -733,11 +747,11 @@ export function HeldDetail({
       <div className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-none">
         <div className="mx-auto flex w-full max-w-[640px] flex-col gap-4 px-8 py-8">
           {/* Alone (Today's sheet) the time is said as the row that opened it says it: one fact, one form. */}
-          <DetailHead item={item} narrowOnly={alone ? [] : [workspace]} facts={[...(alone ? [workspace] : []), threadWords(item) ?? "", alone ? heldWhen(item.createdAt) : timeOf(item.createdAt)]} menu={<ThreadMenu item={item} onOpenSession={onOpenSession} />} />
+          <DetailHead item={item} facts={[workspace, threadWords(item) ?? "", alone ? heldWhen(item.createdAt) : timeOf(item.createdAt)]} menu={<ThreadMenu item={item} onOpenSession={onOpenSession} />} />
           {refused || item.state === "failed" ? (
             <div ref={refusedLine} role="alert" className="flex items-start gap-2 text-[13px] leading-5">
               <StatusMark state="failed" word={false} />
-              <span className="min-w-0 flex-1 text-destructive">{refused ?? item.error ?? "It couldn't be sent."}</span>
+              <span className="min-w-0 flex-1 text-destructive">{refused ?? itemFailWords(item, hostInLine)}</span>
             </div>
           ) : null}
           {item.kind === "computer.act" ? <p className="text-[13px] leading-5 text-muted-foreground">Takes {host}'s screen for a moment.</p> : null}
@@ -848,7 +862,7 @@ function SentDetail({
       await undoResult(result);
       toast(`${result.undo?.label ?? "Undone"}: ${splitSummary(item.summary).about ?? item.summary}`);
     } catch (err) {
-      toastError(errorText(err));
+      toastError(pressFailWords(err, "It was not taken back"));
     } finally {
       setBusy(false);
     }
@@ -857,7 +871,8 @@ function SentDetail({
     <>
       <div className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-none">
         <div className="mx-auto flex w-full max-w-[640px] flex-col gap-4 px-8 py-8">
-          <DetailHead item={item} facts={[workspace, `${queued ? byWords(item, grantLabel) : decidedWords(item, grantLabel)} ${dayOf(at) === "Today" ? "at" : "on"} ${timeOf(at)}`]} menu={<ThreadMenu item={item} onOpenSession={onOpenSession} />} />
+          {/* The title says it went (or the line under it that LifeOS holds it): the head says when, and by whom. */}
+          <DetailHead item={item} facts={[workspace, timeOf(at), byWords(item, grantLabel)]} menu={<ThreadMenu item={item} onOpenSession={onOpenSession} />} />
           {queued ? (
             <p role="status" className="text-[13px] leading-5">
               <StatusMark state={queued.state} word={queued.word} detail={queued.detail ?? undefined} />
@@ -872,7 +887,7 @@ function SentDetail({
         <span className="flex-1" />
         {!results.loaded ? null : results.error && !result ? (
           <>
-            <span className="min-w-0 truncate text-[13px] text-destructive">{results.error}</span>
+            <span className="min-w-0 truncate text-[13px] text-destructive">{workErrorWords(results.error) || "Its way back did not load"}</span>
             <Button variant="ghost" size="sm" disabled={results.reading} onClick={() => loadResults(item.environmentId, item.sessionId ?? "")}>
               <BusyLabel busy={results.reading} label="Retry" />
             </Button>

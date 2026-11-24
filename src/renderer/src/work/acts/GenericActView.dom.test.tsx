@@ -43,3 +43,16 @@ describe("a computer batch in the Outbox", () => {
     expect([...container.querySelectorAll("dt")].map((d) => d.textContent)).toEqual(["App", "Window", "Types", "Presses"]);
   });
 });
+
+describe("a held act whose payload cannot be read", () => {
+  it("says so in one quiet line, never a bare title over an empty pane", () => {
+    const { container } = render(<GenericActView item={{ kind: "teams.post", payload: "not a payload" } as never} env="box" />);
+    expect(container.textContent).toBe("Its details could not be read.");
+    expect(container.querySelector('[data-slot="act-payload"]')).toBeTruthy();
+  });
+
+  it("says nothing of an add-on call that has no arguments: there is nothing to read", () => {
+    const { container } = render(<GenericActView item={{ kind: "addon.call", payload: { arguments: {} } } as never} env="box" />);
+    expect(container.textContent).not.toContain("could not be read");
+  });
+});

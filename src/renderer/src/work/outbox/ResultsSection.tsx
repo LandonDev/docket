@@ -4,6 +4,7 @@ import { loadToast } from "../../components/ui/toaster";
 import { LoadingLine } from "../../surfaces/SurfaceSkeleton";
 import { timeOf } from "./model";
 import { loadResults, undoResult, useResults, type HostResult } from "./results";
+import { pressFailWords } from "./failWords";
 
 /**
  * A Work thread's Results (docs/DESIGN.md "Around the canvas"): what it and
@@ -55,7 +56,7 @@ function ResultRow({ row }: { row: HostResult }) {
       await undoResult(row);
       void loadToast().then((t) => t(`Undone: ${row.summary}`));
     } catch (err) {
-      void loadToast().then((t) => t.error(err instanceof Error ? err.message : String(err)));
+      void loadToast().then((t) => t.error(pressFailWords(err, "It was not undone")));
     } finally {
       setBusy(false);
     }

@@ -6,6 +6,7 @@ import { Textarea } from "../../components/ui/textarea";
 import { applyEdits, payloadView } from "./model";
 import { editItem, type HostItem } from "./store";
 import { splitSummary } from "./OutboxView";
+import { pressFailWords } from "./failWords";
 
 /**
  * Change exactly what will go, while it waits (`work.outbox.edit`): each
@@ -29,7 +30,7 @@ export function EditDialog({ item, onClose }: { item: HostItem; onClose: () => v
       await editItem(item, next.payload);
       onClose();
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      setError(pressFailWords(err, "The change was not saved"));
     } finally {
       setBusy(false);
     }

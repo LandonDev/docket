@@ -14,6 +14,7 @@ vi.mock("./registry", async () => ({
         return { View: () => <div data-slot="act-payload">The form</div> };
       }),
     },
+    "frameio.comment": { kind: "frameio.comment", chunk: defineChunk("test-act-slow", () => new Promise(() => {})) },
   },
 }));
 
@@ -36,6 +37,17 @@ describe("ActView's readiness", () => {
     await flush();
     expect(screen.getByText("The form")).toBeTruthy();
     expect(ready.at(-1)).toBe(true);
+  });
+
+  it("draws bones in the payload's shape while the view loads, never a spinner", async () => {
+    const ready: boolean[] = [];
+    const { container } = render(<ActView item={{ kind: "frameio.comment", payload: {} } as never} env="box" onReady={(r) => ready.push(r)} />);
+    await flush();
+    expect(screen.getByRole("status", { name: "Loading" })).toBeTruthy();
+    // Three header rows and three lines of body, the act's own shape.
+    expect(container.querySelectorAll('[data-slot="skeleton"]').length).toBe(9);
+    expect(screen.queryByText(/Loading the act/)).toBeNull();
+    expect(ready).not.toContain(true);
   });
 
   it("is true at once for the generic view", () => {

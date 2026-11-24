@@ -18,6 +18,15 @@ export function GenericActView({ item }: ActViewProps) {
   const view = own ? null : payloadView(item.payload);
   const body = own ? (own.body === null ? null : { text: own.body }) : view!.body;
   const fields = own ? own.fields.map((f, i) => ({ ...f, key: `${i}:${f.label}` })) : view!.fields.map((f) => ({ ...f, key: f.path.join(".") }));
+  // Its kind's rows found nothing, or it is no record at all: one quiet line says so, never a bare title over an empty
+  // pane. (A record whose fields are all quiet, an add-on call with no arguments, is not unread: it draws nothing.)
+  const unread = !fields.length && !body && (own !== null || item.payload === null || typeof item.payload !== "object");
+  if (unread)
+    return (
+      <p data-slot="act-payload" className="text-[13px] leading-5 text-muted-foreground">
+        Its details could not be read.
+      </p>
+    );
   return (
     <div data-slot="act-payload" className="flex min-w-0 flex-col gap-4">
       {fields.length ? (

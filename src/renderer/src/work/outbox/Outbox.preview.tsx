@@ -3,6 +3,7 @@ import { registry, type Link } from "../../lib/connection";
 import { workspaceStore } from "../../lib/tcserver/workspaces";
 import { setWorkOn } from "../../lib/workSwitch";
 import { ACT_VIEWS } from "../acts/registry";
+import { defineChunk } from "../../lib/lazyChunk";
 import { asGivenComputer, OverFrame, usePressNamed } from "../kit.preview";
 import { OutboxView, rememberOutboxTab } from "./OutboxView";
 import { resetOutboxStore } from "./store";
@@ -16,7 +17,7 @@ import { resetOutboxStore } from "./store";
  * mail LifeOS has not yet said went (`queued`: queued twelve minutes on, sent,
  * back in drafts). Also: `empty` (nothing waits), `failed` (Waiting with a send that failed, its reason in
  * the row and the detail), `grants` (the grants sheet over Sent), `kinds` (Waiting with a held item of six kinds; `pick` 0 is the
- * mail, 5 a payload that could not be read) and `given` (Sent from a computer whose key may not grant).
+ * mail, 5 a payload that could not be read), `given` (Sent from a computer whose key may not grant) and `loadingAct` (Sent while the mail's own view loads).
  * Rendered by nothing in the app.
  */
 
@@ -50,8 +51,11 @@ const sent = (n: number, subject: string, text: string, when: number): OutboxIte
   updatedAt: when,
 });
 
-const SENT = [
+/** A second job, so Sent shows its groups: a calendar change for refereeing. */
+const WS2 = { id: "ws2", name: "Refereeing", path: "/home/work/Refereeing", kind: "work", sector: "ref", createdAt: 2 };
+const SENT: OutboxItem[] = [
   sent(5, "Budget lines for the Spring LAN", "Hi Dana,\n\nThe Spring LAN comes to $4,180: $2,600 for the ballroom, $1,100 for prizes and $480 for food. The PO request is attached.\n\nLandon", at(20, 9, 41)),
+  { ...sent(9, "", "", at(20, 8, 15)), ref: { at: "lifeos", table: "outbox", id: "ob_9" }, kind: "calendar.op", workspaceId: "ws2", sector: "ref", summary: "Add Varsity at North on Fri, Nov 27 at 6:00 PM", verb: "Add", payload: { op: "add", title: "Varsity at North", startsAt: at(27, 18), endsAt: at(27, 20) }, result: null },
   sent(4, "Re: Travel for nationals", "Hi Dana,\n\nSix players and two staff, leaving Thursday at 7 AM. The van is booked through RecWell.\n\nLandon", at(19, 16, 5)),
   sent(3, "Re: Jersey order", "Hi Dana,\n\nThe order is 14 jerseys at $62 each. Invoice attached.\n\nLandon", at(18, 11, 20)),
 ];
@@ -123,7 +127,7 @@ const EDITS = [
 ];
 
 /** What LifeOS said of each sent mail, for `queued`: the newest still queued twelve minutes on, one sent, one taken back. */
-const SAID: Partial<OutboxItem>[] = [{ lifeos: "queued", decidedAt: Date.now() - 12 * 60_000 }, { lifeos: "confirmed" }, { lifeos: "drafts" }];
+const SAID: Partial<OutboxItem>[] = [{ lifeos: "queued", decidedAt: Date.now() - 12 * 60_000 }, {}, { lifeos: "confirmed" }, { lifeos: "drafts" }];
 const sentList = (): OutboxItem[] => (state === "queued" ? SENT.map((item, i) => ({ ...item, ...SAID[i] })) : SENT);
 
 const OFFER: GrantOffer = { id: "go_1", workspaceId: "ws", kind: "mail.send", label: "Mail to dana.lee@purdue.edu from landon@purdue.edu", routineId: null, from: SENT[0]!.ref, count: 5, createdAt: at(20, 9, 41) };
@@ -146,7 +150,7 @@ const GRANTS: OutboxGrant[] = [
   { id: "g2", workspaceId: "ws", kind: "calendar.op", matcher: {}, label: "Changes to events on the Esports calendar", madeFrom: SENT[1]!.ref, routineId: "r1", createdAt: at(15, 16), removedAt: null },
 ];
 
-type State = "offer" | "plain" | "edits" | "queued" | "empty" | "failed" | "grants" | "kinds" | "given";
+type State = "offer" | "plain" | "edits" | "queued" | "empty" | "failed" | "grants" | "kinds" | "given" | "loadingAct";
 
 // Each kind draws its act in a chunk of its own: landed before the first render, as a warm window draws them.
 await Promise.all(Object.values(ACT_VIEWS).map((view) => view.chunk?.load()));
@@ -161,7 +165,7 @@ let ready = false;
 const answers = (method: string, params: { show?: string } = {}): unknown => {
   switch (method) {
     case "workspace.list":
-      return [WS];
+      return [WS, WS2];
     case "project.list":
       return [];
     case "work.outbox.list":
@@ -208,6 +212,8 @@ export function OutboxPreview({ state: s = "offer", pick: p = 0 }: { state?: Sta
     resetOutboxStore();
     setWorkOn("local", true);
     if (s === "given") asGivenComputer({ on: ["local"] });
+    // A mail's own view still on its way: the bones it shows until then.
+    if (s === "loadingAct") ACT_VIEWS["mail.send"] = { kind: "mail.send", chunk: defineChunk("preview-never", () => new Promise(() => {})) };
     rememberOutboxTab(s === "edits" || s === "kinds" || s === "empty" || s === "failed" ? "waiting" : "sent");
   }
   // Grants is the header's own press.

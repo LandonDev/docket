@@ -5,6 +5,7 @@ import { loadToast } from "../../components/ui/toaster";
 import { useLinkMay } from "../../lib/linkMay";
 import { offerLine } from "./model";
 import { dismissOffer, removeGrant, takeOffer, type HostGrant, type HostOffer } from "./store";
+import { pressFailWords } from "./failWords";
 
 /**
  * A grant he has earned (docs/agents/work-outbox.md "Offered grants"), under
@@ -20,7 +21,7 @@ export function OfferLine({ offer }: { offer: HostOffer }) {
   const [made, setMade] = useState<HostGrant | null>(null);
   const [gone, setGone] = useState(false);
   const may = useLinkMay(offer.environmentId, "work.outbox.takeOffer");
-  const failed = (err: unknown) => void loadToast().then((t) => t.error(err instanceof Error ? err.message : String(err)));
+  const failed = (err: unknown) => void loadToast().then((t) => t.error(pressFailWords(err, "It did not go through")));
   const run = (which: "take" | "dismiss" | "undo", job: () => Promise<void>) => {
     setBusy(which);
     job()

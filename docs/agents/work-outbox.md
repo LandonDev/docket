@@ -645,34 +645,44 @@ LifeOS item's Send carries `rev` = its `updatedAt` as shown.
 - **The Outbox** (`OutboxView.tsx`) on the Inbox frame: Waiting and Sent
   tabs over the list; Waiting grouped by workspace (sector dot, name, and
   "Send N" when more than one can go), each row the act and what it is
-  about, its kind's glyph giving way to a tick on hover; ticked rows send
-  together. A mail or calendar act LifeOS has not yet said went sits in Sent,
+  about at 13/20 regular, its kind's glyph giving way to a tick on hover;
+  ticked rows send together. A row with no second line lets its title take
+  two lines. A failed row keeps what it is about under the red mark; its
+  reason is said once, in the detail. A mail or calendar act LifeOS has not yet said went sits in Sent,
   as every sent row does, in one wording (`lifeosWords` in model.ts) on its
   row, its detail and the toasts: "Queued in LifeOS for 12m" (its age from
   his press, kept current on a half-minute clock) with the queued mark,
   "Back in drafts in LifeOS" or "No longer in LifeOS"; its
   title keeps the act's own verb ("Send to Dana Lee"), and its detail says
-  who and when ("by you at 9:31 AM") with no line about taking it back. It
-  reads Sent once LifeOS says sent (a calendar act's done). The detail is
-  who, where and when, the act's name, then its
+  where, when and who ("Purdue Esports, 9:31 AM, by you") with no line about
+  taking it back. It reads Sent once LifeOS says sent (a calendar act's
+  done). The detail's head is the job's dot and name, then when (and, held,
+  the thread it came from), at every width, over the act's name; then its
   payload exactly as it goes (`work/acts/ActView.tsx`: the kind's own view
-  from `ACT_VIEWS`, else `GenericActView`, its fields and its body as
+  from `ACT_VIEWS`, bones in the payload's shape while it loads
+  (`ActSkeleton`), else `GenericActView`, its fields and its body as
   plain text; where the payload has html the body is read from it, every
-  link with its target and every image with its source (`htmlWords`), and
-  an add-on call's arguments are shown whole), over one bar: Discard, Edit, and a split Send whose menu
+  link with its target and every image with its source (`htmlWords`), an
+  add-on call's arguments are shown whole, and a payload its kind cannot
+  read says "Its details could not be read."), over one bar: Discard, Edit, and a split Send whose menu
   makes the grant ("Send and stop holding" › the grant's name;
   `grantFor` in model.ts: a mail fixes its account and every recipient, an
   add-on call its server and tool, a computer act takes none). Sent groups
-  what left by day; its detail says who pressed and when ("Sent by you at
-  9:31 AM", "by the grant …", "from another device") and offers the
+  what left by job, as Waiting does, each row led by its kind's glyph (the
+  job's dot heads the group, never a row); its title says it went, and its
+  head says where, when and who pressed ("Purdue Esports, Nov 20, by you",
+  "by the grant …", "from another device") and offers the
   Result's way back, or says it cannot be taken back. Under the sent item
   whose press earned a grant (`OfferLine.tsx`), past a hairline: one muted
   line, the open lock, "Mail to dana.lee@purdue.edu from landon@purdue.edu: you sent the last 5 as written.",
   Dismiss and Stop holding; taken, "Grant made: Mail to dana.lee@purdue.edu …" with
   Undo (which removes the grant). The press that earned it says so in its
   toast, whose Review opens that item in Sent. Grants is a sheet:
-  each standing grant by workspace with Remove, no confirm. Held is never
-  amber; only a failed send takes the red mark.
+  each standing grant by workspace with Remove, no confirm, its name read
+  whole; a heading's dot only where the jobs mix, hung in the sheet's inset.
+  Held is never amber; only a failed send takes the red mark. A failure
+  that comes inside an answer (a row's reason, a refused press) is worded by
+  `failWords.ts` through lib/workErrorWords.ts, a lost answer as unknown.
 - **Edit** (`EditDialog.tsx`) changes each field a person reads and the
   body; a mail's html is rebuilt from the edited text, so what goes is what
   was shown. The host keeps the account, the server and the thread.

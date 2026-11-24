@@ -2,7 +2,7 @@ import { useLayoutEffect, useRef, type ReactNode } from "react";
 import type { Chunk } from "../../lib/lazyChunk";
 import { ACT_VIEWS, type ActViewProps } from "./registry";
 import { GenericActView } from "./GenericActView";
-import { LoadingLine } from "../../surfaces/SurfaceSkeleton";
+import { Skeleton } from "../../components/ui/skeleton";
 
 type ViewChunk = Chunk<{ View: (props: ActViewProps) => ReactNode }>;
 
@@ -36,10 +36,41 @@ export function ActView({ onReady, ...props }: ActViewProps & { onReady?: (ready
     };
   }, []);
   // `surface` is cached per name in the chunk, its fallback with it: a fallback that holds no item's payload.
-  const View = chunk ? chunk.surface("View", <LoadingLine label="Loading the act" />) : GenericActView;
+  const View = chunk ? chunk.surface("View", <ActSkeleton />) : GenericActView;
   return (
     <div ref={box} className="contents">
       <View {...props} />
+    </div>
+  );
+}
+
+/**
+ * While a kind's view loads: bones in the payload's shape (GenericActView, MailAct), each on the 20px or 22px line
+ * of the words that take its place, so nothing moves when they land. Three header rows on the 72px label column,
+ * the hairline, three lines of body.
+ */
+export function ActSkeleton() {
+  return (
+    <div role="status" aria-label="Loading" aria-busy className="flex min-w-0 flex-col gap-4">
+      <div className="grid grid-cols-[72px_minmax(0,1fr)] gap-x-3 gap-y-1.5">
+        {[40, 64, 52].map((width) => (
+          <div key={width} className="contents">
+            <span className="flex h-5 items-center">
+              <Skeleton className="h-3 w-12" />
+            </span>
+            <span className="flex h-5 items-center">
+              <Skeleton className="h-3" style={{ width: `${width}%` }} />
+            </span>
+          </div>
+        ))}
+      </div>
+      <div className="flex flex-col border-t border-border pt-4">
+        {[88, 72, 80].map((width) => (
+          <span key={width} className="flex h-[22px] items-center">
+            <Skeleton className="h-3.5" style={{ width: `${width}%` }} />
+          </span>
+        ))}
+      </div>
     </div>
   );
 }

@@ -15,6 +15,7 @@ import { AWAY_HEADING, awayLine, awaySections, byWorkspace, spanWords, WORK_CHAT
 import { resultsSince, undoResult, type HostResult } from "./results";
 import { loadHost, outboxNow, useOutbox, type HostItem } from "./store";
 import { rowWords } from "./OutboxView";
+import { itemFailWords, pressFailWords } from "./failWords";
 
 /** One host's tally of the stretch, as its Away push carried it. */
 export type AwayHost = { environmentId: string; decided: AwayDecided };
@@ -89,7 +90,7 @@ export async function gatherAway(hosts: readonly AwayHost[], now = Date.now()): 
   return { report: { since: since || now, until: now, held, failed, decided, written: parts.flat(), unread, outboxDown }, line };
 }
 
-const toastError = (err: unknown) => void loadToast().then((t) => t.error(err instanceof Error ? err.message : String(err)));
+const toastError = (err: unknown) => void loadToast().then((t) => t.error(pressFailWords(err, "It was not undone")));
 
 /**
  * The list behind the return toast's Review (docs/DESIGN.md "Back from
@@ -174,7 +175,7 @@ export function AwayReturnWork({
               </>
             )
               : section === "failed"
-                ? failed.map((item) => <Row key={`${item.environmentId}:${item.ref.id}`} title={rowWords(item).act} line={item.error ?? "It couldn't be sent"} tone="failed" />)
+                ? failed.map((item) => <Row key={`${item.environmentId}:${item.ref.id}`} title={rowWords(item).act} line={itemFailWords(item)} tone="failed" />)
                 : section === "decided"
                   ? report.decided.map((d) => (
                       <Row

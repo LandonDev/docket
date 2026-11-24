@@ -1427,7 +1427,11 @@ Around the canvas:
   transcript's held line opens the Outbox page. In the grants sheet, under
   each workspace's heading, a grant's line is "Made today from a held
   mail". Each kind draws its own payload view; a kind with none gets the
-  generic one (a mail's headers and body, a call's arguments).
+  generic one (a mail's headers and body, a call's arguments). A view on
+  its way is bones in that shape, never a spinner. Waiting and Sent both
+  group by job under the job's dot and name; a row leads with its kind's
+  glyph, never the job's dot, so a job's colour never stands where a mark
+  would. An item's head names its job at every width.
 - **Back from Away** is one toast ("Decided without you in 4 threads";
   with Work on, "Held 7, decided 4 without you") that offers Review and
   stays until pressed. Review opens "Decided while you were away": one row
