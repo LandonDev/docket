@@ -25,6 +25,16 @@ describe("the add menu's Retry", () => {
     await vi.waitFor(() => expect(fail).toHaveBeenCalledWith(error));
   });
 
+  it("says a Retry the host does not answer by the line alone, never a toast beside it (council round 9)", async () => {
+    // The state before the press said something else (LifeOS did not answer): the Retry's own error decides.
+    const { TimeoutError } = await import("../../lib/connection");
+    lifeos.refresh.mockRejectedValueOnce(new TimeoutError("work.lifeos.status", 30_000));
+    const fail = vi.fn();
+    retryLifeos("env_box", fail);
+    await new Promise((r) => setTimeout(r, 0));
+    expect(fail).not.toHaveBeenCalled();
+  });
+
   it("asks nothing with no home host", () => {
     lifeos.refresh.mockClear();
     retryLifeos(null, vi.fn());

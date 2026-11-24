@@ -25,7 +25,7 @@ import { ReturnHost } from "./ReturnHost";
 import { downOf, downPress, downWords, useDownPress, type DownPress, type LifeosDown } from "./lifeosDown";
 import { SignInFor } from "./DownSignIn";
 import { createWorkWorkspace, linkSector, sectorName, SECTORS, workHome } from "./actions";
-import { reopenLifeos, sessionWords, useLifeosQuery, useLifeosSession, useLifeosStatus, type LifeosSession } from "./lifeos";
+import { isSilence, reopenLifeos, sessionWords, useLifeosQuery, useLifeosSession, useLifeosStatus, type LifeosSession } from "./lifeos";
 
 /** The digest's toasts and its list (work/digest), in a chunk of their own: nothing of it loads until Work is on. */
 const DigestHost = workDigestChunk.surface("DigestHost");
@@ -139,7 +139,9 @@ export function sectorMenuRows(current: string | null | undefined, state: Lifeos
  * does not come is said once, as a toast.
  */
 export function retryLifeos(home: string | null | undefined, fail: (error: unknown) => void): void {
-  if (home) void reopenLifeos(home, null).catch(fail);
+  // A Retry the host does not answer is said by the line alone (the menu's row, Settings → Work's line): the newest
+  // cause, judged by the Retry's own error, never by the state before the press.
+  if (home) void reopenLifeos(home, null).catch((error: unknown) => (isSilence(error) ? undefined : fail(error)));
 }
 
 export function WorkRailHost({ onOpenWorkspace }: { onOpenWorkspace: (path: string) => void }) {
@@ -184,8 +186,7 @@ export function WorkRailHost({ onOpenWorkspace }: { onOpenWorkspace: (path: stri
         if (action === "work:signin" || action === "work:code") return setSigningIn(true);
         if (action === "work:settings") return openWorkSettings();
         if (action === "work:retry") {
-          // The host's silence is said already, by the menu's row and the line in Settings, Work, where the press goes: no toast then.
-          retryLifeos(home, session.unanswered ? () => {} : fail);
+          retryLifeos(home, fail);
           return openWorkSettings();
         }
         if (action === "work:add-unlinked") return setNaming(true);
