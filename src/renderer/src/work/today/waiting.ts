@@ -5,8 +5,8 @@ import { loadToast } from "../../components/ui/toaster";
 import { registry } from "../../lib/connection";
 import { workOpenPort } from "../../lib/workSwitch";
 import { shell } from "../../stores/shell";
-import { useLifeosQuery, type LifeosQuery, type LifeosSession } from "../shell/lifeos";
-import { act, answerOf, mutate, shown, useLifeosRows, type Lost } from "./lifeos";
+import { useLifeosQuery, type LifeosQuery } from "../shell/lifeos";
+import { act, answerOf, mutate, shown, useLifeosRows } from "./lifeos";
 import { goTo } from "./open";
 import { useStableRows } from "./stable";
 import { comeBack, leave } from "./store";
@@ -86,17 +86,10 @@ export async function startNudge(workspace: TodayWorkspace, threadId: string): P
   }
 }
 
-const PAGE = { paginationOpts: { numItems: 20, cursor: null } };
-/** A page read with no session: nothing to read, and not on its way. */
-const IDLE: LifeosSession = { environmentId: "", sector: null, client: null, state: "off" };
-/** The cursor of the page after this one, where LifeOS says there is one. */
-const nextOf = (page: LifeosQuery<WaitPage>): string | null => (page.status === "ready" && page.value?.isDone === false && page.value.continueCursor ? page.value.continueCursor : null);
-/** One more page of waits, read only once the page before says there is one. */
-function useNextPage(session: LifeosSession, after: LifeosQuery<WaitPage> | null): { cursor: string | null; page: LifeosQuery<WaitPage> } {
-  const cursor = after ? nextOf(after) : null;
-  const page = useLifeosQuery<WaitPage>(cursor ? session : IDLE, "mailWaits:list", { paginationOpts: { numItems: 20, cursor } });
-  return { cursor, page };
-}
+/** One page of 100: the waits come in one answer, never a run of pages one after another. */
+const PAGE = { paginationOpts: { numItems: 100, cursor: null } };
+/** Whether LifeOS says there is more past the page. */
+const moreAfter = (page: LifeosQuery<WaitPage>): boolean => page.status === "ready" && page.value?.isDone === false && !!page.value.continueCursor;
 const pick = (value: WaitPage): Wait[] => value.page;
 const idOf = (wait: Wait): string => wait._id;
 const NONE: readonly TodayRow[] = [];
@@ -104,29 +97,11 @@ const NONE: readonly TodayRow[] = [];
 function useWaiting(env: TodayEnv): TodayAnswer {
   const read = useLifeosRows<WaitPage, Wait>(env, "mailWaits:list", PAGE, pick, idOf);
   const lifeos = env.lifeos;
-  // The all-sector read's first page is `read`'s own (the same live query); four more follow its cursor, fixed hooks,
-  // each read only once the one before says there is more.
+  // The all-sector read's page is `read`'s own (the same live query): what is past it is not read, so the section never
+  // says no one owes him while LifeOS says there is more.
   const head = useLifeosQuery<WaitPage>(lifeos, "mailWaits:list", PAGE);
-  const p2 = useNextPage(lifeos, head);
-  const p3 = useNextPage(lifeos, p2.cursor ? p2.page : null);
-  const p4 = useNextPage(lifeos, p3.cursor ? p3.page : null);
-  const p5 = useNextPage(lifeos, p4.cursor ? p4.page : null);
-  const more = useMemo(() => {
-    const asked = [p2, p3, p4, p5].filter((p) => p.cursor);
-    const seen = new Set(read.rows?.map(idOf) ?? []);
-    const waits = asked.flatMap((p) => (p.page.status === "ready" ? (p.page.value?.page ?? []) : [])).filter((wait) => !seen.has(wait._id) && !!seen.add(wait._id));
-    const lost: Lost[] = asked.flatMap((p) => (p.page.status === "failed" ? [{ environmentId: lifeos.environmentId, sector: null, error: p.page.error }] : []));
-    return {
-      waits,
-      out: asked.some((p) => p.page.status === "loading"),
-      lost,
-      // The fifth page says there is still more: what is past it is not read, so the section never says no one owes him.
-      beyond: !!p5.cursor && nextOf(p5.page) !== null,
-    };
-    // By their parts: each page's cursor and its query's state, which stay the same objects while nothing moved.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [read.rows, p2.cursor, p2.page, p3.cursor, p3.page, p4.cursor, p4.page, p5.cursor, p5.page, lifeos.environmentId]);
-  const waits = useMemo(() => (read.rows ? [...read.rows, ...more.waits] : null), [read.rows, more.waits]);
+  const beyond = moreAfter(head);
+  const waits = read.rows;
   // A wait is written through the session it was read through: its sector's own, where the first session lacks it.
   const sessionOf = read.sessionOf;
   const today = env.day.from;
@@ -166,11 +141,9 @@ function useWaiting(env: TodayEnv): TodayAnswer {
   const rows = useStableRows(built ?? NONE, ways);
   const jobName = env.workspaceOf;
   return useMemo<TodayAnswer>(() => {
-    // A page still out is a read still out: the section does not say no one owes him a reply while it is.
-    const whole = { ...read, pending: read.pending || more.out, lost: more.lost.length ? [...read.lost, ...more.lost] : read.lost };
-    const answer = answerOf(whole, built && rows, lifeos, "mail", undefined, (sector) => jobName(sector)?.name);
-    return more.beyond && answer.rows ? { ...answer, away: true } : answer;
-  }, [read, more, built, rows, lifeos, jobName]);
+    const answer = answerOf(read, built && rows, lifeos, "mail", undefined, (sector) => jobName(sector)?.name);
+    return beyond && answer.rows ? { ...answer, away: true } : answer;
+  }, [read, beyond, built, rows, lifeos, jobName]);
 }
 
 export const source: TodaySource = { id: "waiting", section: SECTION, use: useWaiting };

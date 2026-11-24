@@ -46,8 +46,8 @@ review is the second. Two lines add one:
   whose label is a binding in the Work keybindings shows that key on hover.
 - `src/renderer/src/work/places/registry.ts`: `WORK_PLACES[id] = {chunk}`.
   The chunk exports `View({onClose})` and may export `Head` (the header's
-  end), `warm(why)` (read ahead on the row's hover or focus, and once at
-  idle after launch) and `ready` (a short promise the frame waits for with
+  end), `warm(why)` (`intent` on the row's hover or focus, which loads the
+  chunk and asks nothing for Today; `idle` once after launch) and `ready` (a short promise the frame waits for with
   the chunk). `places/registry.test.ts` holds every row to a place.
 
 `shell.openWorkPlace(id | null)` opens or closes one and
@@ -66,7 +66,7 @@ place's label. With Work off the rail is what it was
 | Waiting on you | `today/held.ts` | the Outbox's own store (`work.outbox.list` per host, live on the `work.outbox` push) | each host |
 | Meetings | `today/meetings.ts` | LifeOS `events:range {from, to}` over two local days; `people:directory {sector}` for each sector a job holds | LifeOS, once |
 | Due | `today/due.ts` | LifeOS `tasks:list {}`, kept by work-kit's `isTodayTask` | LifeOS, once |
-| Waiting on others | `today/waiting.ts` | LifeOS `mailWaits:list {paginationOpts}`, 20 a page, following `continueCursor` for up to five pages; while a page is out the section is still to answer, and past the fifth it never says it is empty (`away`) | LifeOS, once |
+| Waiting on others | `today/waiting.ts` | LifeOS `mailWaits:list {paginationOpts}`, one page of 100, ready after one answer; where LifeOS says there is more past it, the section never says it is empty (`away`) | LifeOS, once |
 | Changed by others | `today/files.ts` | `work.files.changed {workspaceId}` per job | each host |
 | Responses | `msforms/today.ts` | `work.msforms.list {workspaceId}` per job, live on the `work.msforms` push: one row a Microsoft form with unseen answers ("3 new responses"), section order 70, folded past five, drawn only while it has a row; a press opens the form in its Files tab (`openInFiles`, the `msform` source) | each host |
 
@@ -381,10 +381,20 @@ is open the anchor stands down.
 - **Kept warm** (`today/warm.tsx`). The sources are hooks, so something must
   be mounted for them to run: the page runs them while it is open, and a
   root of their own, in no document, runs them for ten minutes after it
-  closes. The chunk is loaded at idle while Work is on. The sources start on
-  the rail row's hover or focus, and once at idle after launch if he opened
-  Today today or on either of the two days before
-  (`localStorage["work.today.opened.v1"]`: two dates, nothing else).
+  closes. The chunk is loaded at idle while Work is on, and on the rail
+  row's hover or focus, which asks nothing more. The sources start once at
+  idle after launch if he opened Today today or on either of the two days
+  before (`localStorage["work.today.opened.v1"]`: two dates, nothing else).
+- **One read a method** (`today/read.ts` `useEachWorkspace`). The page and
+  the keeper read the same slots, one shared read a method for the window,
+  so opening or closing the page while the keeper runs asks nothing. With
+  no reader the read stops asking: a push or a reopened link marks the job
+  it names, and the next reader asks those, the failed ones, and any older
+  than 30 s (`FRESH_MS`; a read kept by a push counts as current until its
+  last reader left). `work.prep.upcoming` is asked once a host for all its
+  jobs (`perHost`). The held source reads the Outbox store only where it is
+  stale (`loadOutbox({ifStale: true})`, work-outbox.md "The screens").
+  Tests: `today/shared.dom.test.tsx`.
 - **No whole-page wait** and no motion on open or close.
 - **Rows redraw alone**: a minute's tick moves only the meeting's live line.
 - The first paint pays for `lib/workPlaces.ts`, one icon and a few lines in

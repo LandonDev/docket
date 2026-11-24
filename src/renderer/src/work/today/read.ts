@@ -35,7 +35,36 @@ export function readState(read: EachAnswer<unknown>): Pick<TodayAnswer, "loading
 }
 
 /** `fresh`: answered in this read's own life; a value it started with is the last one any read had (`lastOf`). */
-type Slot<T> = { workspace: TodayWorkspace; value?: T; has: boolean; fresh: boolean; error: string | null; pending: boolean; seq: number };
+type Slot<T> = {
+  workspace: TodayWorkspace;
+  value?: T;
+  has: boolean;
+  fresh: boolean;
+  error: string | null;
+  pending: boolean;
+  seq: number;
+  /** When it was last known current: its answer, or, for a read kept by pushes, the moment its last reader left. */
+  at: number;
+  /** A push or a reopened link named it while no reader listened: the next reader asks it. */
+  dirty: boolean;
+};
+
+/** A slot that a reader coming back finds older than this is asked again; a newer one is shown as it is. */
+export const FRESH_MS = 30_000;
+
+/** The asks made in one turn of the event loop, by host: a read `perHost` asks each host once for all its jobs. */
+let turn = 0;
+let turning = false;
+function turnOf(): number {
+  if (!turning) {
+    turning = true;
+    queueMicrotask(() => {
+      turn++;
+      turning = false;
+    });
+  }
+  return turn;
+}
 
 /**
  * The last value each job answered, for the life of the window, by method:
@@ -47,6 +76,7 @@ const lastOf = new Map<string, unknown>();
 /** Test seam: what the reads had is forgotten. */
 export function forgetEach(): void {
   lastOf.clear();
+  forgetSharedReads();
 }
 resetHooks.add(forgetEach);
 
@@ -61,6 +91,8 @@ export type EachOptions = {
   linkOf?: (environmentId: string) => Link;
   /** What the asks depend on beside the jobs (the day): when it changes, every job is asked again. */
   again?: unknown;
+  /** The host answers every job of its own to one ask (the same params for each): one ask a host, its answer each job's. */
+  perHost?: boolean;
 };
 
 /** The read with no React: `set` the jobs and it asks; `subscribe` and `snapshot` for what has come back. */
@@ -76,6 +108,9 @@ export function eachWorkspace<T>(method: string, opts: EachOptions = {}) {
   let closed = false;
   /** Whether it was handed its jobs: before that nothing was asked, and it is not known to hold nothing. */
   let started = false;
+  /** A reader is mounted: pushes and reopened links ask at once. With none, they mark what they name for the next. */
+  let listening = true;
+  const hostAsks = new Map<string, { turn: number; request: Promise<T> }>();
 
   const changed = (): void => {
     cached = null;
@@ -87,21 +122,28 @@ export function eachWorkspace<T>(method: string, opts: EachOptions = {}) {
     if (!slot || closed || !slot.workspace.open) return;
     const seq = ++slot.seq;
     slot.pending = true;
+    slot.dirty = false;
     let timer: ReturnType<typeof setTimeout> | undefined;
     const late = new Promise<never>((_, reject) => {
       timer = setTimeout(() => reject(new Error(TIMED_OUT)), timeoutMs);
     });
     let request: Promise<T>;
-    try {
-      request = linkOf(slot.workspace.environmentId).request<T>(method, paramsOf(slot.workspace), { timeoutMs, retry: false });
-    } catch (err) {
-      request = Promise.reject(err);
+    const environmentId = slot.workspace.environmentId;
+    const shared = opts.perHost ? hostAsks.get(environmentId) : undefined;
+    if (shared && shared.turn === turnOf()) request = shared.request;
+    else {
+      try {
+        request = linkOf(environmentId).request<T>(method, paramsOf(slot.workspace), { timeoutMs, retry: false });
+      } catch (err) {
+        request = Promise.reject(err);
+      }
+      if (opts.perHost) hostAsks.set(environmentId, { turn: turnOf(), request });
     }
     Promise.race([request, late])
       .then(
         (value) => {
           if (slots.get(key) !== slot || slot.seq !== seq) return;
-          Object.assign(slot, { value, has: true, fresh: true, error: null, pending: false });
+          Object.assign(slot, { value, has: true, fresh: true, error: null, pending: false, at: Date.now(), dirty: false });
           lastOf.set(`${method}|${key}`, value);
           changed();
         },
@@ -116,7 +158,11 @@ export function eachWorkspace<T>(method: string, opts: EachOptions = {}) {
   };
 
   const askHost = (environmentId: string, workspaceId?: string): void => {
-    for (const [key, slot] of slots) if (slot.workspace.environmentId === environmentId && (!workspaceId || slot.workspace.workspaceId === workspaceId)) ask(key);
+    for (const [key, slot] of slots) {
+      if (slot.workspace.environmentId !== environmentId || (workspaceId && slot.workspace.workspaceId !== workspaceId)) continue;
+      if (listening) ask(key);
+      else slot.dirty = true;
+    }
   };
 
   const watch = (environmentId: string): void => {
@@ -143,7 +189,9 @@ export function eachWorkspace<T>(method: string, opts: EachOptions = {}) {
   /** A job's slot as a read starts it: with the last value any read had for it, if there is one. */
   const slotOf = (workspace: TodayWorkspace): Slot<T> => {
     const last = `${method}|${keyOf(workspace)}`;
-    return lastOf.has(last) ? { workspace, value: lastOf.get(last) as T, has: true, fresh: false, error: null, pending: false, seq: 0 } : { workspace, has: false, fresh: false, error: null, pending: false, seq: 0 };
+    return lastOf.has(last)
+      ? { workspace, value: lastOf.get(last) as T, has: true, fresh: false, error: null, pending: false, seq: 0, at: 0, dirty: false }
+      : { workspace, has: false, fresh: false, error: null, pending: false, seq: 0, at: 0, dirty: false };
   };
 
   return {
@@ -185,10 +233,25 @@ export function eachWorkspace<T>(method: string, opts: EachOptions = {}) {
         } else {
           const opened = workspace.open && !slot.workspace.open;
           slot.workspace = workspace;
-          if (opened || slot.seq === 0) ask(key);
+          if (opened || slot.seq === 0 || slot.dirty) ask(key);
         }
       }
       changed();
+    },
+    /**
+     * Its last reader left: it stops asking. A read kept by a push was current until now; a push or a reopened link
+     * from now marks what it names, and the next reader asks those.
+     */
+    pause(): void {
+      listening = false;
+      const now = Date.now();
+      if (opts.push) for (const slot of slots.values()) if (slot.has && !slot.error && !slot.dirty) slot.at = now;
+    },
+    /** A reader is back: what is older than FRESH_MS, marked, or failed is asked by the `set` that follows. */
+    resume(): void {
+      listening = true;
+      const now = Date.now();
+      for (const slot of slots.values()) if (slot.error || now - slot.at > FRESH_MS) slot.dirty = true;
     },
     /** One host asked again (the Retry on its line). */
     retry(environmentId: string): void {
@@ -241,23 +304,49 @@ export function eachWorkspace<T>(method: string, opts: EachOptions = {}) {
  * `paramsOf` is read at each ask, so it may be written in line.
  */
 export function useEachWorkspace<T>(env: TodayEnv, method: string, paramsOf: (workspace: TodayWorkspace) => unknown, opts: EachOptions = {}): EachAnswer<T> {
-  const [read] = useState(() => {
-    const made = eachWorkspace<T>(method, opts);
+  const [shared] = useState(() => {
+    const made = sharedRead<T>(method, opts);
     // Its first frame shows the jobs there are now, each with its last value: never a job that has since left.
-    made.prime(env.workspaces);
+    made.read.prime(env.workspaces);
     return made;
   });
+  const read = shared.read;
   const params = useRef(paramsOf);
   params.current = paramsOf;
+  // Before `set`: a reader coming back marks what went stale while none listened.
+  useEffect(() => {
+    if (shared.readers++ === 0) read.resume();
+    return () => {
+      if (--shared.readers === 0) read.pause();
+    };
+  }, [shared, read]);
+  // A day that turned while none read asks every job once, before `set` would ask the stale ones again.
+  useEffect(() => {
+    if (shared.asked !== NOT_ASKED && !Object.is(shared.asked, opts.again)) read.again();
+    shared.asked = opts.again;
+  }, [shared, read, opts.again]);
   useEffect(() => {
     read.set(env.workspaces, (workspace) => params.current(workspace));
   }, [read, env.workspaces]);
-  useEffect(() => () => read.close(), [read]);
-  const asked = useRef(opts.again);
-  useEffect(() => {
-    if (Object.is(asked.current, opts.again)) return;
-    asked.current = opts.again;
-    read.again();
-  }, [read, opts.again]);
   return useSyncExternalStore(read.subscribe, read.snapshot, read.snapshot);
+}
+
+/**
+ * One read a method for the window, shared by every reader of it: Today's page and the keeper that runs its sources
+ * while it is closed read the same slots, so opening or closing the page asks nothing the other already holds. With
+ * no reader it keeps its slots and stops asking (`pause`).
+ */
+type SharedRead<T> = { read: ReturnType<typeof eachWorkspace<T>>; readers: number; asked: unknown };
+const NOT_ASKED = Symbol("not asked");
+const shared = new Map<string, SharedRead<unknown>>();
+function sharedRead<T>(method: string, opts: EachOptions): SharedRead<T> {
+  let made = shared.get(method) as SharedRead<T> | undefined;
+  if (!made) shared.set(method, (made = { read: eachWorkspace<T>(method, opts), readers: 0, asked: NOT_ASKED } as SharedRead<T>));
+  return made;
+}
+
+/** Every shared read closed and forgotten (`forgetEach`, a test's or a preview's reset). */
+function forgetSharedReads(): void {
+  for (const made of shared.values()) made.read.close();
+  shared.clear();
 }

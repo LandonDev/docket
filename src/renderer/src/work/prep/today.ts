@@ -10,7 +10,8 @@ import { meetingMark } from "./model";
  * borders"): a mark on `event:<LifeOS event id>`, never a row of its own. A
  * press opens the meeting's page in its job, and the row says "Prep is ready"
  * only once a brief stands. It reads `work.prep.upcoming` on every host with
- * Work on and again on the `work.prep` push; a host that does not answer adds
+ * Work on, once a host for all its jobs (`perHost`: the params are the same for each), and again on the `work.prep`
+ * push; a host that does not answer adds
  * no line to the page, since a mark is only ever an extra.
  */
 
@@ -31,7 +32,7 @@ export function prepMarks(answers: readonly { workspace: TodayWorkspace; value: 
 
 function usePrepMarks(env: TodayEnv): TodayAnswer {
   // At midnight the range moves with no push: every job is asked for the new day (`again`).
-  const read = useEachWorkspace<Upcoming>(env, "work.prep.upcoming", () => ({ from: env.day.from, to: env.day.to }), { push: "work.prep", again: env.day.from });
+  const read = useEachWorkspace<Upcoming>(env, "work.prep.upcoming", () => ({ from: env.day.from, to: env.day.to }), { push: "work.prep", again: env.day.from, perHost: true });
   return useMemo(() => ({ marks: prepMarks(read.answers) }), [read.answers]);
 }
 

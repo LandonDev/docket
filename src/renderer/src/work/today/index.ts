@@ -1,4 +1,3 @@
-import { loadOutbox } from "../outbox/store";
 import { loadSources } from "./store";
 import { keepWarm, openedLately } from "./warm";
 
@@ -16,12 +15,11 @@ export type { TodayAct, TodayAnswer, TodayEnv, TodayFailure, TodayMark, TodayRow
 export const ready: Promise<void> = loadSources();
 
 /**
- * Read ahead of the open. On the row's hover or focus: the sources run from
- * now, and what waits in the Outbox is asked again. At idle after launch:
- * only if he opened Today today or on either of the two days before.
+ * Read ahead of the open. The row's hover or focus loads this chunk and asks nothing (the keeper and the pushes keep
+ * what it reads current). At idle after launch: the sources run, only if he opened Today today or on either of the
+ * two days before.
  */
 export function warm(why: "intent" | "idle"): void {
-  if (why === "idle" && !openedLately()) return;
+  if (why === "intent" || !openedLately()) return;
   void ready.then(() => keepWarm());
-  if (why === "intent") void loadOutbox();
 }

@@ -106,8 +106,9 @@ const REQUEST_LEAD: TodayRow["lead"] = { kind: "glyph", glyph: ({ className }) =
 function useHeld(env: TodayEnv): TodayAnswer {
   const outbox = useOutbox();
   const requests = useOpenRequests();
+  // What the pushes kept current is not asked again: only a host read more than 30 s ago, or never.
   useEffect(() => {
-    void loadOutbox();
+    void loadOutbox({ ifStale: true });
   }, []);
   // Every workspace the window knows, as the sheet reads them: the row and the sheet name one place.
   const catalog = useWorkspaces();
