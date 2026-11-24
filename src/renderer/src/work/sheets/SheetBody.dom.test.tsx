@@ -900,6 +900,31 @@ describe("the sheet kind", () => {
     await waitFor(() => expect(sheetHost.calls.filter((c) => c[0] === "export").at(-1)?.[1]).toMatchObject({ format: "csv" }));
   });
 
+  it("writes a .csv and saves to Google only once his last edit is in, and neither when it did not save", async () => {
+    // Council r2 (Sol 6): both presses read the file before the edit that waited.
+    open(sheetView({ store: "csv", canUpload: true }));
+    await gridUp();
+    act(() => grid.edit(set(1, 1, 15)));
+    fireEvent.click(await screen.findByRole("button", { name: "More" }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Save as CSV" }));
+    await waitFor(() => expect(sheetHost.calls.some((c) => c[0] === "export")).toBe(true));
+    expect(sheetHost.calls.findIndex((c) => c[0] === "edit")).toBeLessThan(sheetHost.calls.findIndex((c) => c[0] === "export"));
+    // an edit that did not save stops both, in words
+    const exports = sheetHost.calls.filter((c) => c[0] === "export").length;
+    sheetHost.edit = async () => {
+      throw new Error("The host did not answer");
+    };
+    act(() => grid.edit(set(2, 1, 8)));
+    fireEvent.click(await screen.findByRole("button", { name: "More" }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Save as CSV" }));
+    await waitFor(() => expect(toasts.said).toContain("An edit is not saved yet: The host did not answer. Retry it first"));
+    expect(sheetHost.calls.filter((c) => c[0] === "export")).toHaveLength(exports);
+    fireEvent.click(await screen.findByRole("button", { name: "More" }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Save to Google Sheets" }));
+    await waitFor(() => expect(toasts.said.filter((t) => t.startsWith("An edit is not saved yet"))).toHaveLength(2));
+    expect(screen.queryByRole("dialog", { name: "Save to Google Sheets" })).toBeNull();
+  });
+
   it("a sheet opened as an Excel copy says so in one quiet line over the grid, and Save back asks the host and names what the format dropped", async () => {
     open(sheetView({ store: "package", name: "Ledger.xls", imported: { format: "xls", name: "Ledger.xls" } }));
     sheetHost.importDrops = ["2 tables become plain ranges"];

@@ -673,7 +673,8 @@ or onto another), and whole rows or columns dragged (`move-rows`,
   there ("The file changed before this was saved: B4 1200, C5 Hotel and 2
   more. Make it again.", `notSavedWords`), and the grid shows the file.
 - **What reads the file waits for his last edit.** Preview's draws and
-  exports, Save back and Save as Excel await `SheetSync.written`, which
+  exports, Save back, Save as Excel, Save as CSV and Save to Google Sheets
+  (before its dialog opens) await `SheetSync.written`, which
   ends the open cell, sends what waits and rejects in words ("An edit is not
   saved: …") when an edit of his did not save: one refused, one a conflict
   dropped on its way (`lost`), a cell the grid kept open.

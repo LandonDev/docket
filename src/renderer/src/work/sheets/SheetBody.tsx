@@ -143,7 +143,8 @@ export function Body(props: Props) {
     setAsked((n) => n + 1);
   }, []);
   // Save to Google Sheets: offered on the host's word, once the workbook has opened; a file that reads only here, or moved, is not sent.
-  const google = useSaveToGoogle({ env: props.env, itemId: item.id, offered: ready && !locked && view?.canUpload === true });
+  const written = useCallback(() => sync.written(), [sync]);
+  const google = useSaveToGoogle({ env: props.env, itemId: item.id, offered: ready && !locked && view?.canUpload === true, written });
   useSelectionFeed(props, sync, grid, handle, selection, locked, pointer, frame, showPreview, google.row);
   // File → Export… and ⇧⌘E open Preview on the format he last used; File → Print… and ⌘P on Print. Answered once the grid is
   // up, when the root they are offered for is there.
@@ -151,7 +152,7 @@ export function Body(props: Props) {
   // What Preview draws: one source for as long as the item shows the same workbook.
   const previewStore = view?.store;
   const previewName = view?.name;
-  const source = useMemo(() => (previewStore && previewName !== undefined ? sheetPreviewSource({ env: props.env, itemId: item.id, store: previewStore, name: previewName, written: () => sync.written() }) : null), [props.env, item.id, previewStore, previewName, sync]);
+  const source = useMemo(() => (previewStore && previewName !== undefined ? sheetPreviewSource({ env: props.env, itemId: item.id, store: previewStore, name: previewName, written }) : null), [props.env, item.id, previewStore, previewName, written]);
   const [box, setBox] = useState<HTMLDivElement | null>(null);
   const width = useWidth(box);
   const frameRef = useCallback((node: HTMLDivElement | null) => {
@@ -589,7 +590,7 @@ function useSelectionFeed(
       // Every way out is in Preview: each format drawn as it will be, with what it drops. A sheet read from a .csv still
       // saves back over it.
       ...(store ? [{ id: "preview", label: "Preview…", icon: Export, run: () => showPreview("last") }] : []),
-      ...(store === "csv" ? [{ id: "save-csv", label: "Save as CSV", icon: Export, run: () => saveAs(sync.host, "csv", activeName()) }] : []),
+      ...(store === "csv" ? [{ id: "save-csv", label: "Save as CSV", icon: Export, run: () => saveAs(sync, "csv", activeName()) }] : []),
       ...(googleRow ? [googleRow] : []),
       // The copy of an .xls, .ods or .tsv: saved back as the format it was, or out as Excel.
       ...importRows(imported, (act) => (imported ? runImport(importAsk(sync), imported, act) : Promise.resolve())),
@@ -797,9 +798,11 @@ export function TabEnd(props: Props) {
 }
 
 /** Writes the sheet out on the host and says where, by the file's name: the folder is the host's. */
-async function saveAs(host: SheetHost, format: "xlsx" | "csv", sheet?: string): Promise<void> {
+/** Writes the sheet out once his last edit is in it (`written`): an edit that did not save stops it, in words. */
+async function saveAs(sync: SheetSync, format: "xlsx" | "csv", sheet?: string): Promise<void> {
   try {
-    const { path, left } = await host.exportAs(format, sheet);
+    await sync.written();
+    const { path, left } = await sync.host.exportAs(format, sheet);
     const toast = await loadToast();
     const name = path.split(/[\\/]/).pop();
     // What the file could not hold is said with the save, not after it.
