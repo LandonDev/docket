@@ -252,7 +252,8 @@ export class GuestRuntime {
    */
   private opensOf(itemId: string, by: Caller, method: string): Opens {
     const item = this.ctx.canvas.get(itemId)
-    if (!item) throw new Error(TICKET_REFUSALS.gone)
+    // A closed item keeps its row (canvas/store.ts `close`): it opens nothing more.
+    if (!item || item.state !== 'open') throw new Error(TICKET_REFUSALS.gone)
     if (item.kind !== 'document' && item.kind !== 'sheet') throw new Error(TICKET_REFUSALS.kind)
     const s = item.source
     if (s.at === 'lifeos' && (s.table === 'docs' || s.table === 'sheets')) return { at: 'lifeos', source: { at: 'lifeos', table: s.table, id: s.id } }
@@ -279,8 +280,10 @@ export class GuestRuntime {
    */
   private stillOpens(p: Pass): boolean {
     if (!p.itemId || p.opens.at === 'lifeos') return true
-    const s = this.ctx.canvas.get(p.itemId)?.source
-    if (!s || s.at !== 'file' || s.host !== this.ctx.host) return false
+    const item = this.ctx.canvas.get(p.itemId)
+    if (!item || item.state !== 'open') return false
+    const s = item.source
+    if ( s.at !== 'file' || s.host !== this.ctx.host) return false
     if ((p.opens.at === 'tcdoc' ? canonicalPath(s.path) : s.path) !== p.opens.path) return false
     return !sharedOf(this.ctx, s)
   }

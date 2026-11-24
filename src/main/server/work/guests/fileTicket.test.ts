@@ -62,7 +62,7 @@ interface Rig {
   signer: CollabSigner
   /** LifeOS's own signer, which the service trusts for LifeOS's rows */
   lifeos: CollabSigner
-  /** takes an item out of the pane */
+  /** takes an item out of the pane: its row stays, closed, as canvas/store.ts `close` leaves it */
   close(itemId: string): void
   base: string
   /** the workspace's own folder: what a remote key can reach */
@@ -132,7 +132,10 @@ async function rig(): Promise<Rig> {
     base,
     folder,
     outside,
-    close: (itemId) => void items.delete(itemId),
+    close: (itemId) => {
+      const it = items.get(itemId)
+      if (it) items.set(itemId, { ...it, state: 'closed' })
+    },
     open(kind, source) {
       const id = `item${++n}`
       items.set(id, { id, sessionId: 's1', workspaceId: 'w1', kind, title: 'Travel memo', source, state: 'open', position: n, rev: 1, createdAt: 1, updatedAt: 1 } as CanvasItem)
@@ -278,6 +281,8 @@ describe("the owner's ticket for a file-kept item", () => {
     await r.rt.tick()
     const again = await fetch(`${r.base}/w/open/renew`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ renew }) })
     expect(again.status).toBe(403)
+    // A closed item's row is still there, and no new ticket opens it.
+    await expect(r.rt.ticket(item(memoItem), 'Travel memo', PHONE)).rejects.toThrow(TICKET_REFUSALS.gone)
   })
 
   it('names a .tcsheet as its item spells its path, the name the desktop’s own editor opens it by', async () => {
