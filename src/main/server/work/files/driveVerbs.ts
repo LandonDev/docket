@@ -74,9 +74,22 @@ async function boundDrive(ctx: WorkCtx, origin: FileOrigin | undefined, i: numbe
   if (origin?.from !== 'act' || !origin.things) return
   const t = origin.things[i]
   if (!t) return
+  // The card's version word (tools.ts `versionOfEntry`): its size, its time and Drive's revision counter.
   const e = driveEntry(at.account, item)
-  if (keyOfItem(at.account, item) !== t.key || `${e.size ?? 0}:${e.changed ?? 0}:` !== t.version) throw new Error(HELD_MOVED(item.name))
-  if (t.shared !== undefined && (await itemShared(ctx, at.account, item)) !== t.shared) throw new Error(HELD_MOVED(item.name))
+  if (keyOfItem(at.account, item) !== t.key || `${e.size ?? 0}:${e.changed ?? 0}:${e.revision ?? ''}` !== t.version) throw new Error(HELD_MOVED(item.name))
+  // Who can open it, its folders read from Drive now, never from what was kept a few seconds.
+  if (t.shared !== undefined && (await itemShared(ctx, at.account, item, { fresh: true })) !== t.shared) throw new Error(HELD_MOVED(item.name))
+}
+
+/**
+ * The folder a held move goes to, read from Drive just before each thing moves: who can open it must still be who the
+ * card said. One shared after the first thing moved takes none of the rest.
+ */
+async function boundTo(ctx: WorkCtx, origin: FileOrigin | undefined, to: DriveAt, name: string): Promise<void> {
+  if (origin?.from !== 'act' || origin.intoShared === undefined) return
+  const now = to.id === DRIVE_ROOT ? null : await factsNow(ctx, to)
+  const shared = now ? await itemShared(ctx, to.account, now, { fresh: true }) : false
+  if (shared !== origin.intoShared) throw new Error(HELD_MOVED(name))
 }
 
 async function thingOf(ctx: WorkCtx, at: DriveAt): Promise<DriveThing> {
@@ -179,6 +192,7 @@ export async function driveMove(ctx: WorkCtx, by: Caller, p: { workspaceId: stri
   return runOp(ctx.db, { id: p.op, workspaceId: p.workspaceId, verb: 'move', refs: journal('move', p) }, async () => {
     const into = await factsNow(ctx, to)
     if (into && !into.folder) throw new Error(NOT_A_FOLDER)
+    const intoName = into?.name ?? to.account
     const intoShared = await folderShared(ctx, to.account, to.id)
     const entries: FileEntry[] = []
     const refused: FileDone['refused'] = []
@@ -192,6 +206,7 @@ export async function driveMove(ctx: WorkCtx, by: Caller, p: { workspaceId: stri
         const item = (await factsNow(ctx, at))!
         name = item.name
         await boundDrive(ctx, p.origin, i, at, item)
+        await boundTo(ctx, p.origin, to, intoName)
         if (at.id === to.id) throw new Error('A folder cannot go inside itself.')
         const key = keyOfItem(at.account, item)
         if (fileLocked(key)) throw new Error(WRITING)

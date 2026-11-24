@@ -67,7 +67,9 @@ export const FileOriginSchema = z.discriminatedUnion('from', [
     /** each thing the card named, by the order of the refs, as it was held (its key, version and, where the card said it, who could open it): the host that writes checks them as it acts */
     things: z.array(z.object({ key: z.string().max(5000), version: z.string().max(200), shared: z.boolean().optional() })).max(100).optional(),
     /** the folder a move or copy was held to go to, by its key */
-    into: z.string().max(5000).optional()
+    into: z.string().max(5000).optional(),
+    /** who could open that folder as the card said it: a Drive move holds each thing's move to it */
+    intoShared: z.boolean().optional()
   })
 ])
 export type FileOrigin = z.infer<typeof FileOriginSchema>
@@ -192,8 +194,9 @@ export const FilesRequestSchemas = [
    * that already holds it: never twice. The host picks the canvas kind by the file's name (`as` overrules it:
    * Open as a document). `beside`: the file goes in that window's Beside seat instead, which is no tab. `side`: it
    * goes at the side of that file tab instead.
-   * A file on another host of his, or in the Windows VM, is no file of this disk: it opens as a read-only copy
-   * made here (`copyOf` on its tab), where the workspace's Copy Teams files allows one, and is refused otherwise.
+   * A file on another host of his, or in the Windows VM, is no file of this disk: it opens as a copy made here
+   * (`copyOf` on its tab), where the workspace's Copy Teams files allows one, and is refused otherwise. A copy whose
+   * kind edits its bytes saves back to the file by version; any other keeps his changes to itself.
    */
   request(
     'work.files.open',

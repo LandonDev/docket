@@ -1553,6 +1553,7 @@ export const FileEntrySchema = z.object({
   kind: z.enum(ENTRY_KINDS),
   size: z.number().optional(),
   changed: z.number().optional(),
+  revision: z.string().optional(),
   by: z.string().optional(),
   local: z.boolean().optional(),
   shared: z.boolean().optional(),

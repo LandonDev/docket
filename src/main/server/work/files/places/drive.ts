@@ -106,11 +106,11 @@ export function forgetDrive(account: string, folders: readonly string[] = []): v
   for (const k of [...facts.keys()]) if (k.startsWith(`${account.toLowerCase()}\u0000`)) facts.delete(k)
 }
 
-/** One item's facts, kept a few seconds; null when this client may not see it (or it is gone). */
-export async function driveFacts(ctx: WorkCtx, account: string, id: string, now = Date.now()): Promise<DriveItem | null> {
+/** One item's facts, kept a few seconds (`fresh`: asked of Drive now); null when this client may not see it (or it is gone). */
+export async function driveFacts(ctx: WorkCtx, account: string, id: string, now = Date.now(), o: { fresh?: boolean } = {}): Promise<DriveItem | null> {
   const k = keyOf(account, id)
   const hit = facts.get(k)
-  if (hit && now - hit.at < FRESH_MS) return hit.item
+  if (!o.fresh && hit && now - hit.at < FRESH_MS) return hit.item
   let item: DriveItem | null
   try {
     item = await driveOf(ctx, account).facts(id)
@@ -172,6 +172,7 @@ export function driveEntry(account: string, item: DriveItem, inShared = false): 
     ...(item.size !== undefined ? { size: item.size } : {}),
     ...(item.changed !== undefined ? { changed: item.changed } : {}),
     ...(item.by ? { by: item.by } : {}),
+    ...(item.version ? { revision: item.version } : {}),
     shared: item.shared || inShared
   }
 }
@@ -186,10 +187,10 @@ export async function folderShared(ctx: WorkCtx, account: string, folderId: stri
  * Whether others can open an item: its own sharing, or the sharing of a folder it lies in. A folder this client
  * cannot see counts as shared, as in `folderShared`: the host cannot tell. My Drive's own top is his.
  */
-export async function itemShared(ctx: WorkCtx, account: string, item: DriveItem): Promise<boolean> {
+export async function itemShared(ctx: WorkCtx, account: string, item: DriveItem, o: { fresh?: boolean } = {}): Promise<boolean> {
   if (item.shared) return true
   for (const parent of item.parents) {
-    const p = await driveFacts(ctx, account, parent)
+    const p = await driveFacts(ctx, account, parent, Date.now(), o)
     if (p ? p.shared : parent !== (await topIdOf(ctx, account))) return true
   }
   return false

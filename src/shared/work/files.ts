@@ -208,6 +208,8 @@ export interface FileEntry {
   size?: number
   /** epoch ms */
   changed?: number
+  /** a Drive item's revision counter, which every change moves, a change that keeps its size and time among them */
+  revision?: string
   /** who last changed it, where its store says */
   by?: string
   /** false: its bytes are in the cloud until it is opened */

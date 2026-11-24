@@ -5538,12 +5538,14 @@ public enum Methods {
                     public let digest: String
                     public let things: [Thing]?
                     public let into: String?
+                    public let intoShared: Bool?
 
-                    public init(id: String, digest: String, things: [Thing]? = nil, into: String? = nil) {
+                    public init(id: String, digest: String, things: [Thing]? = nil, into: String? = nil, intoShared: Bool? = nil) {
                         self.id = id
                         self.digest = digest
                         self.things = things
                         self.into = into
+                        self.intoShared = intoShared
                     }
                 }
 
@@ -5651,12 +5653,14 @@ public enum Methods {
                     public let digest: String
                     public let things: [Thing]?
                     public let into: String?
+                    public let intoShared: Bool?
 
-                    public init(id: String, digest: String, things: [Thing]? = nil, into: String? = nil) {
+                    public init(id: String, digest: String, things: [Thing]? = nil, into: String? = nil, intoShared: Bool? = nil) {
                         self.id = id
                         self.digest = digest
                         self.things = things
                         self.into = into
+                        self.intoShared = intoShared
                     }
                 }
 
@@ -5758,12 +5762,14 @@ public enum Methods {
                     public let digest: String
                     public let things: [Thing]?
                     public let into: String?
+                    public let intoShared: Bool?
 
-                    public init(id: String, digest: String, things: [Thing]? = nil, into: String? = nil) {
+                    public init(id: String, digest: String, things: [Thing]? = nil, into: String? = nil, intoShared: Bool? = nil) {
                         self.id = id
                         self.digest = digest
                         self.things = things
                         self.into = into
+                        self.intoShared = intoShared
                     }
                 }
 
@@ -5867,12 +5873,14 @@ public enum Methods {
                     public let digest: String
                     public let things: [Thing]?
                     public let into: String?
+                    public let intoShared: Bool?
 
-                    public init(id: String, digest: String, things: [Thing]? = nil, into: String? = nil) {
+                    public init(id: String, digest: String, things: [Thing]? = nil, into: String? = nil, intoShared: Bool? = nil) {
                         self.id = id
                         self.digest = digest
                         self.things = things
                         self.into = into
+                        self.intoShared = intoShared
                     }
                 }
 

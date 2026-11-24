@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ClientRequestSchema, type ClientRequest } from '@shared/contract'
 import type { CopyBack, FilesOpened, FilesTabs } from '@shared/contract-work-files'
 import { canvasSourcePath, filesPaneOf } from '@shared/work'
-import { copySavesBack } from '@shared/work/files'
+import { copySavesBack, refKey } from '@shared/work/files'
 import type { Caller } from '../modules'
 import { copyDirOf, dropItemCopies, filesHandle as officeHandle } from '../office/files/handle'
 import { setCloudDir, setCopyAllowed } from '../office/files/library'
@@ -190,6 +190,27 @@ describe('a copy is made with where its file lies', () => {
     // Opened again under the row's key, each answers its own tab.
     expect((await call<FilesOpened>('work.files.open', { ref: { at: 'file', host: MAC, path: second }, name: 'Roster.xlsx', key: row })).tabId).toBe(b.tabId)
     expect((await call<FilesOpened>('work.files.open', { ref: { at: 'file', host: MAC, path: first }, name: 'Roster.xlsx', key: row })).tabId).toBe(a.tabId)
+  })
+
+  it("never answers another file's tab for a key it holds: a far file whose own address is another tab's key, and a library row here whose key a copy's tab holds", async () => {
+    const x = join(mac.team, 'General', 'Roster.xlsx')
+    const y = join(mac.team, 'Events', 'Roster.xlsx')
+    writeFileSync(x, 'workbook x')
+    writeFileSync(y, 'workbook y')
+    // X's tab is keyed by Y's own address (a caller's key): Y opens in a tab of its own, never X's.
+    const tx = await call<FilesOpened>('work.files.open', { ref: { at: 'file', host: MAC, path: x }, name: 'Roster.xlsx', key: refKey({ at: 'file', host: MAC, path: y }) })
+    const ty = await call<FilesOpened>('work.files.open', { ref: { at: 'file', host: MAC, path: y }, name: 'Roster.xlsx' })
+    expect(ty.tabId).not.toBe(tx.tabId)
+    const tabs = (await call<FilesTabs>('work.files.tabs', {})).tabs
+    expect(tabs.find((t) => t.id === ty.tabId)?.copyOf).toMatchObject({ host: MAC, path: y })
+    expect(tabs.find((t) => t.id === tx.tabId)?.copyOf).toMatchObject({ host: MAC, path: x })
+    // A copy's tab holds this host's library row's key (one merged row): the file here opens as itself.
+    const listed = await call<{ entries: { name: string; key: string }[] }>('work.files.list', { at: { at: 'file', host: HOST, path: join(box.team, 'General') } })
+    const rowKey = listed.entries.find((e) => e.name === 'Spring budget.xlsx')!.key
+    const far = await call<FilesOpened>('work.files.open', { ref: { at: 'file', host: MAC, path: join(mac.team, 'General', 'Spring budget.xlsx') }, name: 'Spring budget.xlsx', key: rowKey })
+    const here = await call<FilesOpened>('work.files.open', { ref: { at: 'file', host: HOST, path: join(box.team, 'General', 'Spring budget.xlsx') }, name: 'Spring budget.xlsx' })
+    expect(here.tabId).not.toBe(far.tabId)
+    expect((await call<FilesTabs>('work.files.tabs', {})).tabs.find((t) => t.id === here.tabId)?.copyOf).toBeUndefined()
   })
 
   it('keeps no record for a kind that edits no bytes of the copy: a document opens on a copy whose changes stay here', async () => {

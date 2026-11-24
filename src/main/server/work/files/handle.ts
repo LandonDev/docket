@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto'
-import { existsSync, statSync } from 'node:fs'
+import { existsSync, realpathSync, statSync } from 'node:fs'
 import { readFile as readBytes } from 'node:fs/promises'
 import { basename, dirname, join } from 'node:path'
 import type { DatabaseSync } from 'node:sqlite'
@@ -29,7 +29,7 @@ import { folderEntry, folderName, folderPlace, folderTrail } from './places/fold
 import { forgetLibraries } from './places/libraries'
 import { filesAcross } from './across'
 import { forgetVmList, libraryEntry, libraryKey, libraryTrail, placeOfPath, placesIn, teamsPlaces, vmPage, type LibraryPlace } from './places/teams'
-import { admitCaller, admitWrite, changeDigest, isLifeosRef, locate, locatedShared, NEEDS_PRESS, NO_WORKSPACE, OWN_ONLY, pressesFor, SHARED_BYTES, sharedOf, PEER_LIBRARIES, workspaceHere, type DoorPlace, type Located, type WorkspaceRow } from './policy'
+import { admitCaller, admitWrite, changeDigest, isLifeosRef, locate, locatedShared, NEEDS_PRESS, NO_WORKSPACE, OWN_ONLY, pressesFor, SHARED_BYTES, sharedOf, PEER_LIBRARIES, within, workspaceHere, type DoorPlace, type Located, type WorkspaceRow } from './policy'
 import { keepMail, lifeosPlace, lifeosPlaces, lifeosTrash, lifeosTrashShared, listLifeos, makeLifeos, moveLifeos, openLifeos, renameLifeos, restoreLifeos, setProject, statLifeos, trashLifeos, waitingRows, withProjects } from './places/lifeos'
 import { READ_MAX, readFile, saveCopy, saveFile } from './save'
 import { guestChange, guestOp, vmReadVersioned, vmSave, type VmWhere } from './vmVerbs'
@@ -376,10 +376,7 @@ async function openCopy(ctx: WorkCtx, by: Caller, workspace: WorkspaceRow, p: Op
   // holds for another file (a merged library row whose host changed, the Mac's file and then the VM's, or a key named
   // beside some other file) is never taken over: this file opens under its own address, and that tab's copy keeps
   // saving to its own file.
-  const keyNow = (): string => {
-    const t = state.tabs.tabOf(workspace.id, named)
-    return !t || holds(t) ? named : refKey({ at: 'file', ...file })
-  }
+  const keyNow = (): string => freeKey(ctx, workspace.id, [named, refKey({ at: 'file', ...file })], holds)
   const tabNow = (): FilesOpened | null => {
     // One file has more than one key (a library row's, a chip's host and path): its copy's tab is found by where the file lies.
     const was = state.tabs.tabOf(workspace.id, named)
@@ -402,6 +399,24 @@ async function openCopy(ctx: WorkCtx, by: Caller, workspace: WorkspaceRow, p: Op
   })
 }
 const nameOfPath = (path: string): string => path.slice(Math.max(path.lastIndexOf('/'), path.lastIndexOf('\\')) + 1)
+
+/**
+ * The first of `keys` that no tab, side or seat of the workspace holds for another file: free, or held by a tab of
+ * this very file (`mine`); past them, the last with a count added. A caller's key, or a merged library row's, may
+ * already name another file's tab, and a tab is answered by its key: that file's tab is never answered for this one.
+ */
+function freeKey(ctx: Pick<WorkCtx, 'db' | 'push' | 'log' | 'canvas'>, workspaceId: string, keys: readonly string[], mine: (t: FileTab) => boolean): string {
+  const tabs = filesState(ctx).tabs
+  const used = ctx.db.prepare(`SELECT 1 FROM work_files_tabs WHERE workspace_id = ? AND (json_extract(page, '$.key') = ? OR json_extract(page, '$.shows') = ? OR json_extract(page, '$.side.key') = ?) LIMIT 1`)
+  const fits = (key: string): boolean => {
+    const tab = tabs.tabOf(workspaceId, key)
+    return tab ? mine(tab) : !used.get(workspaceId, key, key, key)
+  }
+  const found = keys.find(fits)
+  if (found) return found
+  const last = keys.at(-1)!
+  for (let n = 2; ; n++) if (fits(`${last}#${n}`)) return `${last}#${n}`
+}
 
 /** What a copy's tab shows: the Word file's kept document, the copy that waits, or a copy made now. */
 async function copySeat(ctx: WorkCtx, workspaceId: string, file: { host: string; path: string }, name: string, as: CanvasKind | undefined, signal?: AbortSignal): Promise<{ kind: CanvasKind; source: CanvasSource; copyOf: { host: string; path: string; vm?: boolean } }> {
@@ -479,7 +494,10 @@ async function open(ctx: WorkCtx, by: Caller, p: OpenAsk, method: string, signal
   if (!inVm && statSync(at.path).isDirectory()) throw new Error('That is a folder: it opens in its tab.')
   const name = inVm ? at.path.slice(at.path.lastIndexOf('\\') + 1) : basename(at.path)
   const { library } = doorPlace(ctx, by, at)
-  const key = library ? libraryKey(library, at.path) : refKey({ at: 'file', host: ctx.host, path: at.path })
+  const own = library ? libraryKey(library, at.path) : refKey({ at: 'file', host: ctx.host, path: at.path })
+  // A merged library row's key may be a copy's tab's already (that row's file on another computer): this host's own
+  // file never answers that tab, and opens under a key no other file holds.
+  const key = state.tabs.tabOf(workspace.id, own)?.copyOf ? freeKey(ctx, workspace.id, [refKey({ at: 'file', host: ctx.host, path: at.path })], (t) => !t.copyOf) : own
   const made = openAs(ctx, at, name, p.as)
   // A file of this disk opens in its tab even when a thread shows it: a PDF, a video and a deck keep their marks and
   // their state by the file (canvas/fileKey.ts, slides `deckKey`), so the tab and the thread share them.
@@ -895,8 +913,14 @@ async function lifeosCase(ctx: WorkCtx, by: Caller, m: string, p: Record<string,
         // The others refused after the LifeOS rows came back: what came back is still said, each other row by its name.
         if (!lifeos.entries.length) throw err
         const text = err instanceof Error ? err.message : String(err)
-        const nameOf = ctx.db.prepare(`SELECT name FROM work_files_trash WHERE id = ?`)
-        done = { entries: [], refused: rest.map((id) => ({ name: (nameOf.get(id) as { name: string } | undefined)?.name ?? id, text })), op: p.op as string }
+        // A row is named only where Trash would list it to this caller: of this workspace, and a path it could name.
+        const rowOf = ctx.db.prepare(`SELECT name, ref, provider FROM work_files_trash WHERE id = ? AND workspace_id = ?`)
+        const nameOf = (id: string): string => {
+          const row = rowOf.get(id, p.workspaceId) as { name: string; ref: string; provider: string | null } | undefined
+          const path = row && row.provider !== 'drive' ? canvasSourcePath(JSON.parse(row.ref) as CanvasSource) : null
+          return row && (by.kind !== 'remote' || (path !== null && reaches(ctx, by, path))) ? row.name : id
+        }
+        done = { entries: [], refused: rest.map((id) => ({ name: nameOf(id), text })), op: p.op as string }
       }
       return handled({ ...done, entries: [...done.entries, ...lifeos.entries], refused: [...done.refused, ...lifeos.refused] })
     }
@@ -1176,9 +1200,9 @@ async function admitRestore(ctx: WorkCtx, by: Caller, workspaceId: string, ids: 
  * a Drive file Drive says is shared, or of whose sharing it says nothing now.
  */
 export async function restoresShared(ctx: WorkCtx, workspaceId: string, ids: readonly string[]): Promise<boolean> {
-  const get = ctx.db.prepare(`SELECT ref, provider FROM work_files_trash WHERE id = ? AND workspace_id = ? AND state = 'held'`)
+  const get = ctx.db.prepare(`SELECT ref, provider, was_at, name FROM work_files_trash WHERE id = ? AND workspace_id = ? AND state = 'held'`)
   for (const id of ids) {
-    const row = get.get(id, workspaceId) as { ref: string; provider: string | null } | undefined
+    const row = get.get(id, workspaceId) as { ref: string; provider: string | null; was_at: string; name: string } | undefined
     if (!row) continue
     if (row.provider === 'drive') {
       const at = JSON.parse(row.ref) as { at: 'drive'; account: string; folderId: string } | { at: 'google'; account: string; fileId: string }
@@ -1187,9 +1211,32 @@ export async function restoresShared(ctx: WorkCtx, workspaceId: string, ids: rea
         .then((item) => itemShared(ctx, at.account, item))
         .catch(() => true)
       if (shared) return true
-    } else if (row.provider || sharedOf(ctx, JSON.parse(row.ref) as CanvasSource)) return true
+    } else if (row.provider || sharedOf(ctx, JSON.parse(row.ref) as CanvasSource) || sharedOf(ctx, { at: 'file', host: ctx.host, path: join(putBackDir(ctx, workspaceId, row.was_at), row.name) })) return true
   }
   return false
+}
+
+/**
+ * The folder Put back puts a row of the workspace's folder back into, by trash.ts `putBack`'s own rule: the folder it
+ * was in, by its real path, while that is a folder inside the workspace's folder; else that folder's top. The press
+ * check judges this folder, never only the old path, which a link or a gone folder can make another than it.
+ */
+function putBackDir(ctx: Pick<WorkCtx, 'db'>, workspaceId: string, wasAt: string): string {
+  const workspace = workspaceHere(ctx.db, workspaceId)
+  if (!workspace?.path) return (JSON.parse(wasAt) as { path: string }).path
+  let root: string
+  try {
+    root = realpathSync(workspace.path)
+  } catch {
+    return workspace.path
+  }
+  try {
+    const was = realpathSync((JSON.parse(wasAt) as { path: string }).path)
+    if (within(was, root) && statSync(was).isDirectory()) return was
+  } catch {
+    // its folder is gone: the top it is
+  }
+  return root
 }
 
 /**

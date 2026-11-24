@@ -8363,6 +8363,7 @@ public struct FileEntry: Codable, Hashable, Sendable {
     public let kind: Kind
     public let size: Double?
     public let changed: Double?
+    public let revision: String?
     public let by: String?
     public let local: Bool?
     public let shared: Bool?
@@ -8374,7 +8375,7 @@ public struct FileEntry: Codable, Hashable, Sendable {
     public let starred: Bool?
     public let held: Held?
 
-    public init(key: String, ref: CanvasSource?, folder: FolderRef?, name: String, kind: Kind, size: Double? = nil, changed: Double? = nil, by: String? = nil, local: Bool? = nil, shared: Bool? = nil, state: State? = nil, `where`: Where? = nil, project: Project? = nil, madeBy: String? = nil, fresh: Bool? = nil, starred: Bool? = nil, held: Held? = nil) {
+    public init(key: String, ref: CanvasSource?, folder: FolderRef?, name: String, kind: Kind, size: Double? = nil, changed: Double? = nil, revision: String? = nil, by: String? = nil, local: Bool? = nil, shared: Bool? = nil, state: State? = nil, `where`: Where? = nil, project: Project? = nil, madeBy: String? = nil, fresh: Bool? = nil, starred: Bool? = nil, held: Held? = nil) {
         self.key = key
         self.ref = ref
         self.folder = folder
@@ -8382,6 +8383,7 @@ public struct FileEntry: Codable, Hashable, Sendable {
         self.kind = kind
         self.size = size
         self.changed = changed
+        self.revision = revision
         self.by = by
         self.local = local
         self.shared = shared
@@ -8395,7 +8397,7 @@ public struct FileEntry: Codable, Hashable, Sendable {
     }
 
     private enum CodingKeys: String, CodingKey {
-        case key, ref, folder, name, kind, size, changed, by, local, shared, state, `where`, project, madeBy, fresh, starred, held
+        case key, ref, folder, name, kind, size, changed, revision, by, local, shared, state, `where`, project, madeBy, fresh, starred, held
     }
 
     public func encode(to encoder: any Encoder) throws {
@@ -8407,6 +8409,7 @@ public struct FileEntry: Codable, Hashable, Sendable {
         try container.encode(kind, forKey: .kind)
         try container.encodeIfPresent(size, forKey: .size)
         try container.encodeIfPresent(changed, forKey: .changed)
+        try container.encodeIfPresent(revision, forKey: .revision)
         try container.encodeIfPresent(by, forKey: .by)
         try container.encodeIfPresent(local, forKey: .local)
         try container.encodeIfPresent(shared, forKey: .shared)

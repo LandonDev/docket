@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import type { ClientRequest } from '@shared/contract'
@@ -11,7 +11,7 @@ import { ActKinds } from '../outbox/kinds'
 import { NOT_EDITABLE, Outbox } from '../outbox/outbox'
 import { ensureOutboxTables, HeldStore } from '../outbox/store'
 import { filesHandle } from './handle'
-import { NEEDS_APPROVE, PEER_WRONG_ACT, setThreadsMayWrite } from './policy'
+import { NEEDS_APPROVE, NEEDS_PRESS, PEER_WRONG_ACT, setThreadsMayWrite } from './policy'
 import { forgetLibraries } from './places/libraries'
 import { setRoots } from '../office/files/library'
 import { makeRig, peer, WS, type Rig } from './testkit'
@@ -222,6 +222,24 @@ describe('in his own place a change runs at once, with Undo', () => {
     const back = await call('files_undo', { op: (trashed.structuredContent as { undo: { op: string } }).undo.op }, ctx)
     expect(back).toMatchObject({ isError: true, text: 'Others can open it now, so the owner changes it back himself.' })
     expect(existsSync(join(rig.folder, 'Events', 'Poster.png'))).toBe(false)
+    expect(rig.db.prepare(`SELECT state FROM work_files_trash`).all()).toEqual([{ state: 'held' }])
+  })
+
+  it("stops an Undo, and a key's Put back, where Put back would land in the workspace's top that others can open now, its old folder a link out", async () => {
+    const ctx = toolCtx(workCtx())
+    const trashed = await call('files_trash', { place: 'folder', paths: ['Events/Poster.png'] }, ctx)
+    // The old folder is now a link to a private folder outside the workspace, which Put back does not take: it lands
+    // in the workspace's top, which he made a team's library.
+    renameSync(join(rig.folder, 'Events'), join(rig.base, 'Events moved'))
+    symlinkSync(rig.outside, join(rig.folder, 'Events'))
+    setRoots(rig.db, [{ folder: rig.folder }])
+    forgetLibraries(rig.db)
+    const back = await call('files_undo', { op: (trashed.structuredContent as { undo: { op: string } }).undo.op }, ctx)
+    expect(back).toMatchObject({ isError: true, text: 'Others can open it now, so the owner changes it back himself.' })
+    const { id } = rig.db.prepare(`SELECT id FROM work_files_trash`).get() as { id: string }
+    const key: Caller = { kind: 'remote', caps: ['read', 'operate'] }
+    await expect(filesHandle({ id: '1', method: 'work.files.restore', params: { workspaceId: WS, ids: [id], op: 'op-restore-0001' } } as unknown as ClientRequest, rig.ctx, key)).rejects.toThrow(NEEDS_PRESS)
+    expect(existsSync(join(rig.folder, 'Poster.png'))).toBe(false)
     expect(rig.db.prepare(`SELECT state FROM work_files_trash`).all()).toEqual([{ state: 'held' }])
   })
 

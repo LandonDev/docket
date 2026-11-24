@@ -457,6 +457,20 @@ describe('the verbs', () => {
     expect(lifeos.rows.get('sheets:s1')!.deletedAt).toBeUndefined()
   })
 
+  it("names no row of a failed Put back the caller could not see: another job's row, or one out of a key's reach, by its id alone", async () => {
+    await call<FileDone>('work.files.trash', { refs: [sheet('s1')], op: op() })
+    const theirs = await call<FileDone>('work.files.trash', { workspaceId: 'w2', refs: [at(join(rig.otherFolder, 'Payroll.xlsx'))], op: op() })
+    rig.db
+      .prepare(`INSERT INTO work_files_trash (id, workspace_id, ref, name, place, was_at, state, held_at, deleted_at, by, provider) VALUES ('lib1', ?, ?, 'Testing.pptx', 'p', ?, 'held', 1, 1, 'owner', 'onedrive')`)
+      .run(WS, JSON.stringify(at(join(rig.team, 'General', 'Testing.pptx'))), JSON.stringify(at(join(rig.team, 'General'))))
+    // An operation id already used for another change: the disk's Put back refuses the whole of its part.
+    const used = op()
+    await call<FileDone>('work.files.restore', { ids: ['nope'], op: used })
+    const back = await call<FileDone>('work.files.restore', { ids: ['lifeos:sheets:s1', theirs.trashed![0]!, 'lib1'], op: used }, approver)
+    expect(back.entries.map((e) => e.name)).toEqual(['Budget'])
+    expect(back.refused.map((r) => r.name)).toEqual([theirs.trashed![0]!, 'lib1'])
+  })
+
   it('deletes no LifeOS row of a selection whose other rows their door refuses', async () => {
     await expect(call('work.files.trash', { refs: [sheet('s1'), at(join(rig.team, 'General', 'Plan.docx'))], op: op() })).rejects.toThrow()
     expect(lifeos.calls).not.toContain('sheets:remove')

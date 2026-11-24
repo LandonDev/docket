@@ -289,8 +289,44 @@ describe('his window\'s verbs, each one Drive call', () => {
 describe("a held Drive change at the write", () => {
   const held = async (fileId: string, o: { version?: string; shared?: boolean } = {}) => {
     const [e] = (await call<{ entries: (FileEntry | null)[] }>('work.files.stat', { refs: [doc(fileId)] })).entries
-    return { from: 'act', id: 'h1', digest: 'd'.repeat(64), things: [{ key: e!.key, version: o.version ?? `${e!.size ?? 0}:${e!.changed ?? 0}:`, ...(o.shared !== undefined ? { shared: o.shared } : {}) }] }
+    return { from: 'act', id: 'h1', digest: 'd'.repeat(64), things: [{ key: e!.key, version: o.version ?? `${e!.size ?? 0}:${e!.changed ?? 0}:${e!.revision ?? ''}`, ...(o.shared !== undefined ? { shared: o.shared } : {}) }] }
   }
+
+  it("refuses a thing whose Drive revision moved with its size and time the same, and judges its folders' sharing as Drive says it now", async () => {
+    const asHeld = await held('dBrief', { shared: false })
+    // A change Drive counts that leaves the size and the time as they were.
+    fake.files.get('dBrief')!.version++
+    await expect(call('work.files.rename', { ref: doc('dBrief'), name: 'Brief v2', op: op(), origin: asHeld })).rejects.toThrow('Brief is not as it was when this was held')
+    // Its folder shared a moment after the card was read: the facts kept a few seconds are not asked.
+    const again = await held('dBrief', { shared: false })
+    fake.share('fEvents')
+    await expect(call('work.files.rename', { ref: doc('dBrief'), name: 'Brief v2', op: op(), origin: again })).rejects.toThrow('Brief is not as it was when this was held')
+    expect(fake.files.get('dBrief')!.name).toBe('Brief')
+  })
+
+  it('moves each thing only while the folder it goes to is as private as the card said: shared after the first, the rest stay', async () => {
+    let afterMove: (() => void) | null = () => fake.share('fEvents')
+    setGoogleDeps({
+      fetch: (async (input: Parameters<typeof fetch>[0], init?: RequestInit) => {
+        const res = await fake.fetch(input, init)
+        if (init?.method === 'PATCH' && String(input).includes('addParents')) {
+          const then = afterMove
+          afterMove = null
+          then?.()
+        }
+        return res
+      }) as typeof fetch,
+      tokenUrl: FAKE_TOKEN_URL,
+      blocksOf: async () => []
+    })
+    fake.addItem(ME, 'dOne', 'One', GOOGLE_MIME.doc)
+    fake.addItem(ME, 'dTwo', 'Two', GOOGLE_MIME.doc)
+    const things = [(await held('dOne')).things[0]!, (await held('dTwo')).things[0]!]
+    const done = await call<FileDone>('work.files.move', { refs: [doc('dOne'), doc('dTwo')], to: folder('fEvents'), op: op(), asked: true, origin: { from: 'act', id: 'h1', digest: 'd'.repeat(64), things, intoShared: false } })
+    expect(done.entries.map((e) => e.name)).toEqual(['One'])
+    expect(done.refused).toEqual([{ name: 'Two', text: 'Events is not as it was when this was held, so nothing was done.' }])
+    expect(fake.files.get('dTwo')!.parents).not.toContain('fEvents')
+  })
 
   it('renames, moves or deletes a thing only as the card named it: an edit or a share since leaves it for a new review', async () => {
     const edited = await held('dBrief', { version: '0:1:' })

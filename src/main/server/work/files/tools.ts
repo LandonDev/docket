@@ -157,7 +157,7 @@ const whereWords = (where: FileAct['from'], group?: string): string => {
 const pathOf = (e: Pick<FileEntry, 'ref' | 'folder'>): string | null => (e.ref ? canvasSourcePath(e.ref) : e.folder?.at === 'file' ? e.folder.path : null)
 const refOfEntry = (e: FileEntry): FileRef => (e.ref ?? e.folder!) as FileRef
 /** A file's version as a held act binds it: its size and when it last changed, read from its place's listing. No byte of a shared file is read for it. */
-export const versionOfEntry = (e: Pick<FileEntry, 'size' | 'changed'>): string => `${e.size ?? 0}:${e.changed ?? 0}:`
+export const versionOfEntry = (e: Pick<FileEntry, 'size' | 'changed' | 'revision'>): string => `${e.size ?? 0}:${e.changed ?? 0}:${e.revision ?? ''}`
 
 /** One row as a thread reads it: its path in the place, never the host's. */
 function line(place: FilePlace, e: FileEntry, dir = ''): Record<string, unknown> {
@@ -278,7 +278,7 @@ export const fileActKind: ActKindDef<FileAct, never> = {
     const signal = AbortSignal.timeout(5 * 60_000)
     const toolCtx = { ...act, scope, sessionId: item.sessionId, signal } as ToolCtx
     // The things the card named, as held, go with the press: the host that writes checks them as it acts (verbs.ts `boundThing`).
-    const origin = { from: 'act' as const, id: item.ref.id, digest: p.digest, things: p.things.map((t) => ({ key: t.key, version: t.version, ...(t.shared !== undefined ? { shared: t.shared } : {}) })), ...(p.into ? { into: p.into.key } : {}) }
+    const origin = { from: 'act' as const, id: item.ref.id, digest: p.digest, things: p.things.map((t) => ({ key: t.key, version: t.version, ...(t.shared !== undefined ? { shared: t.shared } : {}) })), ...(p.into ? { into: p.into.key, ...(p.into.shared !== undefined ? { intoShared: p.into.shared } : {}) } : {}) }
     const params = { workspaceId: p.workspaceId, ...(p.verb === 'rename' ? { ref: p.request.refs[0], name: p.request.name } : p.verb === 'make' ? { at: p.request.refs[0], kind: p.request.kind, ...(p.request.name ? { name: p.request.name } : {}) } : { refs: p.request.refs, to: p.request.to }), op: p.op, origin, asked: true }
     // A press whose answer was lost, pressed again: the change ran under its own operation id, and its receipt here
     // answers what it did, before the facts it moved (an old path gone) can call it stale. (Another host's receipt is
