@@ -474,25 +474,13 @@ async function acceptOnce(ctx: Ctx, id: string, fields: EntryFields, to: Workspa
     unlike(row, fields, target, may)
     return filedOf(row).acted
   }
-  // An accept of this one was begun and not seen to its end (the host stopped between the ledger's write and this
-  // row's note): the row it meant to write is looked for by its Ref, else by its file, and is never written twice.
-  const begun = intentOf(row)
-  const there = begun ? workspaceOf(ctx, begun.workspaceId) : null
-  // The job that accept was filing into may be another than the one this caller named (he was sending it to another
-  // job): its ledger is read, and its file touched, only for a caller who may ask about that job too.
-  if (begun && there && !may(there.id)) throw new MoneyError('That receipt is being filed in another job. Finish it from there.')
-  if (begun && there) {
-    const books = booksHere(ctx, there.id)
-    const found = books ? writtenRow(await ledgerOf(ctx, books), { ...begun, moved: !!begun.receipt && !existsSync(keptPath(there, begun.receipt)) }) : null
-    if (found) {
-      // Filed as that press asked: its figures are the row's, whatever this one asks. A press that asks for other
-      // figures is told what was filed (`unlike`), never answered as if its own had landed.
-      fileIt(ctx, row, there, { ok: true, ref: found.ref, row: found.row, ...(found.suggested ? { suggested: true as const } : {}) }, begun.fields ?? fields, begun.fields ? begun.phone === true : phone)
-      const now = byId(ctx, id)!
-      unlike(now, fields, target, may)
-      return filedOf(now).acted
-    }
-    if (begun.receipt) unkeep(there, begun.receipt)
+  // An accept of this one was begun and not seen to its end: settled first, by its own ledger.
+  if (await settleBegun(ctx, row, may, fields, phone)) {
+    // Filed as that press asked: its figures are the row's, whatever this one asks. A press that asks for other
+    // figures is told what was filed (`unlike`), never answered as if its own had landed.
+    const now = byId(ctx, id)!
+    unlike(now, fields, target, may)
+    return filedOf(now).acted
   }
   const ws = to ?? workspaceOf(ctx, row.workspace_id)
   if (!ws) throw new MoneyError('That job is not on this computer.')
@@ -528,14 +516,50 @@ async function acceptOnce(ctx: Ctx, id: string, fields: EntryFields, to: Workspa
 }
 
 /**
+ * An accept of this one that was begun and not seen to its end (the host
+ * stopped, or the sheet's reply and the read after it were both lost)
+ * is settled by the ledger it was filing into: its row is looked for by its
+ * Ref, else by its file. Found: the receipt is filed as that press asked
+ * (true). Read and not there: the file that accept kept goes and its note is
+ * cleared (false). A ledger that cannot be read, or is no longer in the
+ * job's folder (moved out of it, or gone from its place), is not "not
+ * there": nothing is deleted, filed or cleared, and he is told. Every press
+ * of a receipt, Save or Discard, settles this first.
+ */
+async function settleBegun(ctx: Ctx, row: Row, may: (workspaceId: string) => boolean, fields?: EntryFields, phone = false): Promise<boolean> {
+  const begun = intentOf(row)
+  if (!begun) return false
+  const there = workspaceOf(ctx, begun.workspaceId)
+  if (!there) throw new MoneyError('That receipt was being filed into a job that is not on this computer any more, so Money cannot tell whether it was.')
+  // The job that accept was filing into may be another than the one this caller named (he was sending it to another
+  // job): its ledger is read, and its file touched, only for a caller who may ask about that job too.
+  if (!may(there.id)) throw new MoneyError('That receipt is being filed in another job. Finish it from there.')
+  const books = booksHere(ctx, there.id)
+  if (!books) throw new MoneyError(UNSETTLED)
+  const ledger = await ledgerOf(ctx, books).catch(() => {
+    throw new MoneyError(UNSETTLED)
+  })
+  const found = writtenRow(ledger, { ...begun, moved: !!begun.receipt && !existsSync(keptPath(there, begun.receipt)) })
+  if (found) {
+    fileIt(ctx, row, there, { ok: true, ref: found.ref, row: found.row, ...(found.suggested ? { suggested: true as const } : {}) }, begun.fields ?? fields ?? EMPTY_FIELDS, begun.fields ? begun.phone === true : phone)
+    return true
+  }
+  if (begun.receipt) unkeep(there, begun.receipt)
+  set(ctx, row.id, { ref: null })
+  return false
+}
+const UNSETTLED = "Money cannot tell yet whether this receipt reached the ledger: the ledger it was being filed into cannot be read where it was. Put it back in the job's folder, then try again."
+const EMPTY_FIELDS: EntryFields = { date: '', who: '', what: '', category: '', way: 'out', amount: 0, status: 'Paid' }
+
+/**
  * A waiting one is dropped. Its file is kept (a phone's scan is the only
  * copy once the phone has let go of its draft), so `undo` puts it back in
  * To confirm as it was. A discard waits its turn behind an accept of the
  * same receipt, and answers whether it took: false when that accept filed
- * it first, so no window says Discarded (or offers Undo) for a receipt in
- * the ledger.
+ * it first, or one begun before it is found in the ledger, so no window
+ * says Discarded (or offers Undo) for a receipt in the ledger.
  */
-export function drop(ctx: Ctx, id: string, undo = false): Promise<boolean> {
+export function drop(ctx: Ctx, id: string, undo = false, may: (workspaceId: string) => boolean = () => true): Promise<boolean> {
   return turn(id, async () => {
     const row = byId(ctx, id)
     if (!row) return false
@@ -547,6 +571,9 @@ export function drop(ctx: Ctx, id: string, undo = false): Promise<boolean> {
     }
     if (row.state === 'dropped') return true
     if (row.state === 'filed' || row.state === 'partial') return false
+    // An accept of it begun and not settled may have landed: settled first, so a receipt in the ledger is never said
+    // discarded. Filed: false. Not known: the error says so, and it still waits.
+    if (await settleBegun(ctx, row, may)) return false
     reading.get(id)?.abort()
     set(ctx, id, { state: 'dropped' })
     announce(ctx, row.workspace_id)

@@ -224,6 +224,20 @@ describe("the confirm dialog", () => {
   });
 });
 
+describe("a receipt filed elsewhere while its dialog is open", () => {
+  it("moves on when Discard finds it already filed, saying so with no Undo", async () => {
+    host.read = (p) => readOf(p, undefined, { toConfirm: [waiting("a")] });
+    host.answer = (method) => (method === "work.money.drop" ? { dropped: false } : method === "work.money.state" ? { host: "box", jobs: [] } : null);
+    mount();
+    await settle();
+    fireEvent.click(screen.getByRole("button", { name: "Review Shop a" }));
+    const dialog = await screen.findByRole("dialog", { name: "Confirm receipt" });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Discard" }));
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Confirm receipt" })).toBeNull());
+    expect(toast).toHaveBeenCalledWith("Shop a was already filed");
+  });
+});
+
 describe("drops", () => {
   const drop = (files: File[]) => {
     const view = document.querySelector("[data-money-view]")!;

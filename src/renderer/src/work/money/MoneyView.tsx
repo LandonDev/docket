@@ -396,7 +396,8 @@ function Ledger({ env, workspaceId, read, label, year, reload, toConfirm }: { en
   // A category of another period does not narrow this one.
   const narrowed = category && read.byCategory.some((c) => c.category.toLowerCase() === category.toLowerCase()) ? category : null;
   const mileage = read.problems.find((p): p is MileageProblem => p.kind === "mileage") ?? null;
-  const undated = read.problems.find((p): p is UndatedProblem => p.kind === "undated") ?? null;
+  const undated = read.problems.find((p): p is UndatedProblem => p.kind === "undated" && p.book !== "mileage") ?? null;
+  const undatedTrips = read.problems.find((p): p is UndatedProblem => p.kind === "undated" && p.book === "mileage") ?? null;
   const rows = narrowed ? read.rows.filter((r) => (r.category || "Other").toLowerCase() === narrowed.toLowerCase()) : read.rows;
   return (
     <Column>
@@ -420,15 +421,7 @@ function Ledger({ env, workspaceId, read, label, year, reload, toConfirm }: { en
         }
       >
         {rows.length ? <Entries env={env} workspaceId={workspaceId} read={read} rows={rows} /> : <p className="text-[13px] text-muted-foreground">Nothing in {label}</p>}
-        {undated ? (
-          // Money in no month and no year: no sum above counts it, so it is said, with the one press that mends it.
-          <p data-money-undated className="flex flex-wrap items-baseline gap-x-2 text-[13px] text-muted-foreground">
-            <span>{undatedWords(undated.rows)}</span>
-            <Button variant="link" className="h-auto p-0 text-[13px] font-normal text-foreground" onClick={() => withToast(() => openBook(env, workspaceId, "ledger"))}>
-              Open ledger
-            </Button>
-          </p>
-        ) : null}
+        {undated ? <UndatedLine env={env} workspaceId={workspaceId} problem={undated} /> : null}
       </Section>
       {mileage ? (
         // The log cannot be read, so its miles are not the truth: one quiet line in the miles line's place, never a zero.
@@ -442,12 +435,26 @@ function Ledger({ env, workspaceId, read, label, year, reload, toConfirm }: { en
             ) : null}
           </p>
         </Section>
-      ) : read.miles.miles > 0 ? (
+      ) : read.miles.miles > 0 || undatedTrips ? (
         <Section title="Mileage">
-          <Facts parts={splitFacts(milesLine(read.miles))} className="text-[13px] text-muted-foreground" />
+          {read.miles.miles > 0 ? <Facts parts={splitFacts(milesLine(read.miles))} className="text-[13px] text-muted-foreground" /> : null}
+          {undatedTrips ? <UndatedLine env={env} workspaceId={workspaceId} problem={undatedTrips} /> : null}
         </Section>
       ) : null}
     </Column>
+  );
+}
+
+/** Money or miles in no month and no year: no sum above counts them, so they are said, with the one press that mends it. */
+function UndatedLine({ env, workspaceId, problem }: { env: string; workspaceId: string; problem: UndatedProblem }) {
+  const book = problem.book ?? "ledger";
+  return (
+    <p data-money-undated={book} className="flex flex-wrap items-baseline gap-x-2 text-[13px] text-muted-foreground">
+      <span>{undatedWords(problem.rows, book)}</span>
+      <Button variant="link" className="h-auto p-0 text-[13px] font-normal text-foreground" onClick={() => withToast(() => openBook(env, workspaceId, book))}>
+        {book === "mileage" ? "Open mileage log" : "Open ledger"}
+      </Button>
+    </p>
   );
 }
 

@@ -4,7 +4,7 @@ import { basename, join } from 'node:path'
 import type { z } from 'zod'
 import type { InvoiceFromSchema, InvoiceSchema, KeepParamsSchema, MoneyExport, MoneyInvoiceNext, MoneyInvoicePage, MoneyKept } from '@shared/contract-work-money'
 import { errorText } from '@shared/work/ids'
-import { csvOf, daysBetween, fileWord, formatMoney, INVOICE_DUE_DAYS, invoiceHtml, invoiceTotal, nextInvoiceNumber, payCategory, staleSummary, taxSummaryHtml, undatedWords } from '@shared/work/money'
+import { csvOf, daysBetween, fileWord, formatMoney, INVOICE_DUE_DAYS, invoiceHtml, invoiceTotal, nextInvoiceNumber, payCategory, staleSummary, taxSummaryHtml, undatedWords, type Cell } from '@shared/work/money'
 import type { WorkCtx } from '../modules'
 import { appendRow, insideJob, locked, MONEY_FOLDER, moneyFolder, newRef, openBooks, writtenRow } from './book'
 import { keepFile, keyed } from './inbox'
@@ -129,7 +129,10 @@ async function exportOnce(ctx: Ctx, ws: Workspace, o: { year: number; csv: boole
   let replaced = false
   const files: string[] = []
   // Rows with no date Money can read are in no year: the export says so, so the tax folder is never short without a word.
-  const warnings: string[] = ledger.undated.length ? [`${undatedWords(ledger.undated)} Give ${ledger.undated.length === 1 ? 'it a date' : 'them dates'} in the ledger, then export again.`] : []
+  const warnings: string[] = [
+    ...(ledger.undated.length ? [`${undatedWords(ledger.undated)} Give ${ledger.undated.length === 1 ? 'it a date' : 'them dates'} in the ledger, then export again.`] : []),
+    ...(log.undated.length ? [`${undatedWords(log.undated, 'mileage')} Give ${log.undated.length === 1 ? 'it a date' : 'them dates'} in the log, then export again.`] : [])
+  ]
   const text = csvOf(ledger.rows, trips, o.year)
   const csvName = `Ledger ${o.year}.csv`
   // Everything asked for is made first, in this host's own data folder, and only then put in the year's folder, one
@@ -225,20 +228,24 @@ function keptOf(ctx: Pick<WorkCtx, 'db'>, workspaceId: string): Kept {
  */
 async function usedNumbers(ctx: Ctx, ws: Workspace, kind: Invoice['kind']): Promise<string[]> {
   const filed = (keptOf(ctx, ws.id).used ?? []).filter((u) => u.kind === kind).map((u) => u.number)
+  // A ledger that cannot be read (it leads out of the job, the sheet does not answer) may hold a number he typed:
+  // it is never taken as one that holds none, so no number is offered or held on it.
+  if (ledgerOutside(ctx, ws.id)) throw new MoneyError(LEDGER_OUTSIDE)
   const books = booksHere(ctx, ws.id)
   if (!books) return filed
+  const ledger = await ledgerOf(ctx, books).catch(() => {
+    throw new MoneyError('The ledger could not be read, so the numbers it holds are not known. Try again in a moment.')
+  })
+  // Every cell of the sheet as it stands, not its rows read as money: a ledger whose columns changed still shows the
+  // numbers he typed ("Invoice 1042" in For, or a kept file's name), and a suggestion that waits names its own.
   const named = new RegExp(`^${TITLE[kind]} (\\S+?):?(?: |$)`)
-  const ledger = await ledgerOf(ctx, books).catch(() => null)
-  const shown = (ledger?.rows ?? []).flatMap((row) => {
-    const n = named.exec(row.what)?.[1] ?? named.exec(row.receipt.split('/').pop() ?? '')?.[1]
+  const numberIn = (v: Cell): string[] => {
+    if (typeof v !== 'string') return []
+    const text = v.trim()
+    const n = named.exec(text)?.[1] ?? named.exec(text.split('/').pop() ?? '')?.[1]
     return n ? [n] : []
-  })
-  // A row that only waits in the sheet as a suggestion names its number too.
-  const waiting = (ledger?.grid.pending ?? []).flatMap((p) => {
-    const n = typeof p.v === 'string' ? (named.exec(p.v)?.[1] ?? named.exec(p.v.split('/').pop() ?? '')?.[1]) : undefined
-    return n ? [n] : []
-  })
-  return [...filed, ...shown, ...waiting]
+  }
+  return [...filed, ...ledger.grid.body.flatMap((line) => line.flatMap(numberIn)), ...ledger.grid.pending.flatMap((p) => numberIn(p.v))]
 }
 
 const TITLE: Record<Invoice['kind'], string> = { invoice: 'Invoice', request: 'Purchase request' }
@@ -397,6 +404,9 @@ async function keepOnce(ctx: Ctx, ws: Workspace, p: KeepParams): Promise<MoneyKe
     const inv = p.invoice!
     const total = invoiceTotal(inv.lines)
     if (total <= 0) throw new MoneyError('An invoice needs a line with an amount.')
+    // A keep begun and not settled is settled by the ledger it was writing into: one no longer at its place is not
+    // an empty ledger, and none is made in its stead (where its row would not be found and its file would go).
+    if (noted?.ref && !booksHere(ctx, ws.id)) throw new MoneyError("Money cannot tell yet whether this invoice reached the ledger: the ledger is not in the job's folder. Put it back, then create it again.")
     const books = await openBooks(ctx, ws, 'ledger')
     const fileOf = (receipt: string): string => join(ws.path, MONEY_FOLDER, ...receipt.split('/'))
     /** The number is used for good, noted BEFORE the ledger is touched: a stop after the sheet took the row never leaves the number free for another Create. */
@@ -430,7 +440,8 @@ async function keepOnce(ctx: Ctx, ws: Workspace, p: KeepParams): Promise<MoneyKe
       const found = writtenRow(ledger, { ...begun, moved: !!begun.receipt && !existsSync(fileOf(begun.receipt)) })
       if (found && begun.receipt) {
         samePage(noted!, inv)
-        return filed(ledger.rows.find((r) => r.row === found.row)?.receipt || begun.receipt, found)
+        // Filed under the link its row holds now, read raw from that row (a rename followed, whatever the headers say).
+        return filed(found.link ?? begun.receipt, found)
       }
       // Its row was never written: the file that keep left is no row's, and goes.
       if (begun.receipt && existsSync(fileOf(begun.receipt)) && insideJob(ws, fileOf(begun.receipt))) rmSync(fileOf(begun.receipt), { force: true })
@@ -471,7 +482,7 @@ async function keepOnce(ctx: Ctx, ws: Workspace, p: KeepParams): Promise<MoneyKe
         (l) => writtenRow(l, { ref, receipt: file?.receipt }),
         () => undefined
       )
-      if (landed && file) return filed(file.receipt, landed)
+      if (landed && file) return filed(landed.link ?? file.receipt, landed)
       if (landed === undefined) throw err
       if (file) rmSync(file.path, { force: true })
       unuse()

@@ -205,11 +205,20 @@ export const nextRow = (grid: Grid): number => Math.max(grid.last, ...grid.pendi
  */
 export function writtenAt(grid: Grid, mark: string, also?: string | null): { row: number; suggested: boolean } | null {
   if (!mark) return null
-  const i = grid.body.findIndex((line) => line.includes(mark) && (!also || line.includes(also)))
+  const holds = (line: readonly Cell[], v: string): boolean => line.some((c) => sameCell(c, v))
+  const i = grid.body.findIndex((line) => holds(line, mark) && (!also || holds(line, also)))
   if (i >= 0) return { row: 2 + i, suggested: false }
-  const waits = grid.pending.find((p) => p.v === mark && (!also || grid.pending.some((q) => q.row === p.row && q.v === also)))
+  const waits = grid.pending.find((p) => sameCell(p.v, mark) && (!also || grid.pending.some((q) => q.row === p.row && sameCell(q.v, also))))
   return waits ? { row: waits.row, suggested: true } : null
 }
+
+/**
+ * Whether a cell holds a mark of Money's (a Ref, a kept file's path) as the
+ * ledger's reader reads it: text with the spaces at its ends put aside (a
+ * paste leaves one), so a link the paperclip opens is the link a relink or a
+ * recovery finds.
+ */
+export const sameCell = (cell: Cell, mark: string): boolean => typeof cell === 'string' && cell.trim() === mark
 
 /** Forgets a sheet's cells, for a file that moved or went. */
 export const forgetGrid = (path: string): void => void grids.delete(path)
@@ -243,7 +252,12 @@ export const MILEAGE_OUTSIDE = "The mileage log leads outside this job's folder,
  * out of the job's folder, or holds rows without Date or Miles, has trips
  * Money cannot say, which is not the same as none.
  */
-export async function mileageLog(ctx: Svc & Pick<WorkCtx, 'db'>, books: Pick<Books, 'workspaceId' | 'mileage'>): Promise<{ trips: MileageRow[]; problem: MileageProblem | null }> {
+export async function mileageLog(ctx: Svc & Pick<WorkCtx, 'db'>, books: Pick<Books, 'workspaceId' | 'mileage'>): Promise<{ trips: MileageRow[]; problem: MileageProblem | null; undated: number[] }> {
+  const got = await logOf(ctx, books)
+  // Trips with no date Money can read are in no month and no year: named, as the ledger's undated rows are.
+  return { ...got, undated: got.trips.filter((t) => !t.date).map((t) => t.row) }
+}
+async function logOf(ctx: Svc & Pick<WorkCtx, 'db'>, books: Pick<Books, 'workspaceId' | 'mileage'>): Promise<{ trips: MileageRow[]; problem: MileageProblem | null }> {
   if (!existsSync(books.mileage)) return { trips: [], problem: null }
   // A log that is a link out of the job's folder is not this job's: its miles are not read, shown or exported.
   const ws = workspaces(ctx).find((w) => w.id === books.workspaceId)
@@ -321,7 +335,7 @@ export async function readMoney(ctx: Pick<WorkCtx, 'db' | 'service' | 'host'>, w
     // fault is said, never "no money yet".
     const kept = booksOf(ctx, ws.id)
     const log = await mileageLog(ctx, { workspaceId: ws.id, mileage: kept?.mileage ?? join(ws.path, 'Money', 'Mileage.tcsheet') })
-    return { made: false, any: log.trips.length > 0 || log.problem !== null, root, period, rows: [], sums: EMPTY_SUMS, byCategory: [], byMonth: byMonth([], year), owed: [], miles: milesOf(log.trips, period), categories: categoriesFor(ws.sector), sellers: [], toConfirm: [], calendar: [], rate: rateOf(kept, year), problems: log.problem ? [log.problem] : [] }
+    return { made: false, any: log.trips.length > 0 || log.problem !== null, root, period, rows: [], sums: EMPTY_SUMS, byCategory: [], byMonth: byMonth([], year), owed: [], miles: milesOf(log.trips, period), categories: categoriesFor(ws.sector), sellers: [], toConfirm: [], calendar: [], rate: rateOf(kept, year), problems: [...(log.problem ? [log.problem] : []), ...(log.undated.length ? [{ kind: 'undated' as const, rows: log.undated, book: 'mileage' as const }] : [])] }
   }
   const [ledger, log] = await Promise.all([ledgerOf(ctx, books), mileageLog(ctx, books)])
   const rows = ledger.rows
@@ -359,16 +373,22 @@ export async function readMoney(ctx: Pick<WorkCtx, 'db' | 'service' | 'host'>, w
       ...(ledger.missing.length ? [{ kind: 'columns' as const, missing: ledger.missing, renamed: ledger.renamed, ...(ledger.twice?.length ? { twice: ledger.twice } : headersWait(ledger.grid, ledger.missing) ? { waits: true as const } : {}) }] : []),
       // Money in no month and no year: the sums of every span leave it out, and he is told, never short without a word.
       ...(ledger.undated.length ? [{ kind: 'undated' as const, rows: ledger.undated }] : []),
-      ...(log.problem ? [log.problem] : [])
+      ...(log.problem ? [log.problem] : []),
+      ...(log.undated.length ? [{ kind: 'undated' as const, rows: log.undated, book: 'mileage' as const }] : [])
     ]
   }
 }
 
-/** The jobs a call covers, of the ones the caller may ask about: those that have a ledger, one that leads out of its job among them (`books` null: it cannot be read, which is not the same as none). No other job's books are opened. */
+/**
+ * The jobs a call covers, of the ones the caller may ask about: those that
+ * have a ledger, one that leads out of its job or is gone from the place on
+ * record among them (`books` null: it cannot be read, which is not the same
+ * as none). No other job's books are opened.
+ */
 function jobsFor(ctx: Pick<WorkCtx, 'db'>, jobs: readonly Workspace[]): { ws: Workspace; books: Books | null }[] {
   return jobs.flatMap((ws): { ws: Workspace; books: Books | null }[] => {
     const books = booksHere(ctx, ws.id)
-    return books ? [{ ws, books }] : ledgerOutside(ctx, ws.id) ? [{ ws, books: null }] : []
+    return books ? [{ ws, books }] : ledgerOutside(ctx, ws.id) || booksOf(ctx, ws.id) ? [{ ws, books: null }] : []
   })
 }
 

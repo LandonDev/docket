@@ -21,7 +21,7 @@ import {
   type RowAt
 } from '@shared/work/money'
 import type { WorkCtx } from '../modules'
-import { forgetGrid, gridOf, ledgerOf, MoneyError, nextRow, restorePlan, writtenAt, type Ledger } from './read'
+import { forgetGrid, gridOf, ledgerOf, MoneyError, nextRow, restorePlan, sameCell, writtenAt, type Ledger } from './read'
 import { booksOf, putBooks, type Books, type Workspace } from './store'
 
 /**
@@ -253,27 +253,37 @@ function needs(ledger: Ledger, values: Values): void {
  * nothing is written and he is told which row to look at, since a new row
  * could be the same money twice.
  */
-export function writtenRow(ledger: Pick<Ledger, 'grid'>, mark: { ref?: string | null; receipt?: string | null; moved?: boolean }): { ref: string | null; row: number; suggested: boolean } | null {
+export function writtenRow(ledger: Pick<Ledger, 'grid'>, mark: { ref?: string | null; receipt?: string | null; moved?: boolean }): { ref: string | null; row: number; suggested: boolean; link?: string } | null {
   if (mark.ref) {
     const { body, pending } = ledger.grid
     const top = mark.receipt ? `${mark.receipt.split('/')[0]}/` : ''
-    const followed = (v: Cell): boolean => !!mark.moved && typeof v === 'string' && v !== mark.receipt && v.startsWith(top)
-    const rows = body.flatMap((line, i) => (line.includes(mark.ref!) ? [i] : []))
-    const waits = pending.filter((p) => p.v === mark.ref)
+    const followed = (v: Cell): boolean => !!mark.moved && typeof v === 'string' && v.trim() !== mark.receipt && v.trim().startsWith(top)
+    /** The link the found row holds now: the noted file, else the one its link followed to; two such cells cannot be told apart. */
+    const linkIn = (cells: readonly Cell[], at: number): string | undefined => {
+      if (!mark.receipt) return undefined
+      if (cells.some((c) => sameCell(c, mark.receipt!))) return mark.receipt
+      const moved = [...new Set(cells.filter(followed).map((c) => String(c).trim()))]
+      if (moved.length === 1) return moved[0]
+      throw new MoneyError(unsettled(at))
+    }
+    const rows = body.flatMap((line, i) => (line.some((c) => sameCell(c, mark.ref!)) ? [i] : []))
+    const waits = pending.filter((p) => sameCell(p.v, mark.ref!))
     if (rows.length + waits.length > 1) throw new MoneyError(unsettled(rows.length ? 2 + rows[0] : waits[0].row))
     if (rows.length === 1) {
-      const line = body[rows[0]]
-      if (!mark.receipt || line.includes(mark.receipt) || line.some(followed)) return { ref: mark.ref, row: 2 + rows[0], suggested: false }
-      throw new MoneyError(unsettled(2 + rows[0]))
+      const link = linkIn(body[rows[0]], 2 + rows[0])
+      return { ref: mark.ref, row: 2 + rows[0], suggested: false, ...(link ? { link } : {}) }
     }
     if (waits.length === 1) {
       const at = waits[0].row
-      if (!mark.receipt || pending.some((q) => q.row === at && (q.v === mark.receipt || followed(q.v)))) return { ref: mark.ref, row: at, suggested: true }
-      throw new MoneyError(unsettled(at))
+      const link = linkIn(
+        pending.filter((q) => q.row === at).map((q) => q.v),
+        at
+      )
+      return { ref: mark.ref, row: at, suggested: true, ...(link ? { link } : {}) }
     }
   }
   const byFile = mark.receipt ? writtenAt(ledger.grid, mark.receipt) : null
-  return byFile ? { ref: null, ...byFile } : null
+  return byFile ? { ref: null, ...byFile, link: mark.receipt! } : null
 }
 const unsettled = (row: number): string => `Row ${row} of the ledger may already hold this one. Check that row: if it is this one, discard it here.`
 

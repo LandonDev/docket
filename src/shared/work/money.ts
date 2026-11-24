@@ -294,9 +294,10 @@ export function rowsOf(header: readonly Cell[], body: readonly (readonly Cell[])
 }
 
 /** "Row 7 has money and no date Money can read, so no month or year counts it.": one sentence for the view, the export and the tool. */
-export function undatedWords(rows: readonly number[]): string {
-  const which = rows.length === 1 ? `Row ${rows[0]} has` : `${rows.length} rows (${rows.slice(0, 5).join(', ')}${rows.length > 5 ? ', …' : ''}) have`
-  return `${which} money and no date Money can read, so no month or year counts ${rows.length === 1 ? 'it' : 'them'}.`
+export function undatedWords(rows: readonly number[], book: 'ledger' | 'mileage' = 'ledger'): string {
+  const of = book === 'mileage' ? ' of the mileage log' : ''
+  const which = rows.length === 1 ? `Row ${rows[0]}${of} has` : `${rows.length} rows${of} (${rows.slice(0, 5).join(', ')}${rows.length > 5 ? ', …' : ''}) have`
+  return `${which} ${book === 'mileage' ? 'miles' : 'money'} and no date Money can read, so no month or year counts ${rows.length === 1 ? 'it' : 'them'}.`
 }
 
 /** A short print of a text (cyrb128, 32 hex letters): the same on the host and in the window, and not for secrets. */
@@ -684,6 +685,9 @@ export function figuresIn(text: string): number[] {
 const TOTAL_WORDS = /\b(grand\s+total|amount\s+due|balance\s+due|total\s+due|balance|total)\b/i
 /** A balance is what is left to pay, which a paid receipt prints after its total: the total is the sale's, and a balance stands only where no total does. */
 const BALANCE_ONLY = /\bbalance\b/i
+/** A line that is a figure alone, a currency's code or sign beside it allowed ("$91.75", "USD 91.75", "91.75 CAD"): the value of a label on the line above. */
+const figureAlone = (row: string): boolean => figuresIn(row).length > 0 && !/[A-Za-z]{3}/.test(row.replace(/\b(?:USD|US|CAD|EUR|GBP|AUD|MXN)\b/gi, ''))
+
 /** Money that is not the sale's at all (what is left on a gift card, change handed back): never the amount, by its label or as the largest figure. */
 const NOT_THE_SALE = /\b(gift\s*card|remaining\s+balance|balance\s+remaining|(card|points?|previous|available|account)\s+balance|change\s+due)\b/i
 const NOT_THE_TOTAL = new RegExp(`\\b(sub\\s*-?\\s*total|total\\s+(tax|savings|discount|items?|qty|points)|tax\\s+total|items?\\s+total)\\b|${NOT_THE_SALE.source}`, 'i')
@@ -739,7 +743,7 @@ export function parseReceipt(lines: readonly ReceiptLine[], hints: ParseHints = 
     if (!TOTAL_WORDS.test(row) || NOT_THE_TOTAL.test(row)) continue
     const here = figuresIn(row)
     // A label on a line of its own: its figure is the next line's, when that line is a figure alone.
-    const next = here.length || i + 1 >= rows.length || /[A-Za-z]{3}/.test(rows[i + 1]) ? [] : figuresIn(rows[i + 1])
+    const next = here.length || i + 1 >= rows.length || !figureAlone(rows[i + 1]) ? [] : figuresIn(rows[i + 1])
     const found = here.length ? here[here.length - 1] : next[0]
     if (found === undefined) continue
     last = found
@@ -750,7 +754,7 @@ export function parseReceipt(lines: readonly ReceiptLine[], hints: ParseHints = 
   let amount: number | null = total ?? balance ?? last
   if (amount === null) {
     // Neither a figure on a line that names money not the sale's, nor one on the line under such a label standing alone.
-    const all = rows.flatMap((row, i) => (NOT_THE_SALE.test(row) || (i > 0 && NOT_THE_SALE.test(rows[i - 1]) && !figuresIn(rows[i - 1]).length && !/[A-Za-z]{3}/.test(row)) ? [] : figuresIn(row)))
+    const all = rows.flatMap((row, i) => (NOT_THE_SALE.test(row) || (i > 0 && NOT_THE_SALE.test(rows[i - 1]) && !figuresIn(rows[i - 1]).length && figureAlone(row)) ? [] : figuresIn(row)))
     if (all.length) amount = Math.max(...all)
   }
 

@@ -167,6 +167,10 @@ describe('the ledger', () => {
     ])
   })
 
+  it('names undated trips in the mileage log in its own words', () => {
+    expect(undatedWords([3], 'mileage')).toBe('Row 3 of the mileage log has miles and no date Money can read, so no month or year counts it.')
+  })
+
   it('names the rows with money and no date it can read, which no month or year counts', () => {
     const got = rowsOf(HEADER, [line('2026-11-01', 'A', 1, ''), line('', 'Blank day', 80, ''), line('TBD', 'Later', '', 5), line('', 'A note', '', '')])
     expect(got.undated).toEqual([3, 4])
@@ -345,6 +349,9 @@ describe('reading a receipt', () => {
   it('never takes a gift card’s balance as the largest figure when no total could be read', () => {
     expect(parseReceipt([{ text: 'Corner Shop' }, { text: 'Sandwich 12.50' }, { text: 'GIFT CARD REMAINING BALANCE $91.75' }], { today: TODAY }).amount).toBe(1250)
     expect(parseReceipt([{ text: 'Corner Shop' }, { text: 'Sandwich 12.50' }, { text: 'Gift card remaining balance' }, { text: '$91.75' }], { today: TODAY }).amount).toBe(1250)
+    expect(parseReceipt([{ text: 'Corner Shop' }, { text: 'Sandwich 12.50' }, { text: 'Gift card remaining balance' }, { text: 'USD 91.75' }], { today: TODAY }).amount).toBe(1250)
+    // A total whose figure stands on the next line with its currency's code is still the total.
+    expect(parseReceipt([{ text: 'Corner Shop' }, { text: 'Sandwich 12.50' }, { text: 'Total' }, { text: 'USD 18.25' }], { today: TODAY }).amount).toBe(1825)
   })
 
   it('never reads a date after today', () => {

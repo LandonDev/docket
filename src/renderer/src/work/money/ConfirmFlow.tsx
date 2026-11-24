@@ -61,9 +61,10 @@ export function ConfirmFlow({ env, workspaceId, read, first, onClose, reload }: 
     setDropping(true);
     withToast(() =>
       dropWaiting(env, item, reload)
-        .then((dropped) => {
-          // Filed by a Save elsewhere first: nothing was discarded, and the read that follows takes it out of the list.
-          if (dropped && advance()) onClose();
+        .then(() => {
+          // Discarded, or filed by a Save elsewhere first (the toast says which): either way it no longer waits, so the
+          // dialog moves on. A discard that could not be told throws, and the receipt stays in view.
+          if (advance()) onClose();
         })
         .finally(() => setDropping(false)),
     );

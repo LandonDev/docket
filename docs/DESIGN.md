@@ -2277,7 +2277,9 @@ Around the canvas:
   own cell, so it grows taller and no row's Who is cut to a letter; rows
   with money and no date Money can read are one quiet muted line under the
   table ("Row 7 has money and no date Money can read, so no month or year
-  counts it.") with Open ledger, as the mileage log's fault line is);
+  counts it.") with Open ledger, as the mileage log's fault line is; the
+  log's trips with no readable date are the same line under the Mileage
+  heading, after the miles line, with Open mileage log);
   the whole row is one press, reached
   by Tab, that opens the entry dialog, and it takes a `muted` fill in hand
   and while focused within, the table's one row with one, since the row is

@@ -446,6 +446,59 @@ describe('his accept', () => {
     expect(readdirSync(dir)).toEqual(['Coffee.png'])
   })
 
+  /** The sheet takes the ledger's row and its reply is lost; every read after it fails until `back()`. */
+  const loseReplyAndReads = (): { back: () => void } => {
+    const real = b.sheets.internal
+    let down = false
+    ;(b.ctx.service as { internal: unknown }).internal = async (route: string, body: Record<string, unknown>) => {
+      if (down) throw new Error('The Work service did not answer.')
+      const answer = await real(route, body)
+      if (route === '/internal/sheet/cells' && (body.sheet as { tcsheet: string }).tcsheet === ledger()) {
+        down = true
+        throw new Error('The Work service did not answer.')
+      }
+      return answer
+    }
+    return { back: () => void ((b.ctx.service as { internal: unknown }).internal = real) }
+  }
+
+  it('keeps the scan and its note while the ledger it was filed into is out of the job, and writes nothing', async () => {
+    const got = await send('coffee.png')
+    await settle()
+    await call('work.money.open', { workspaceId: 'ws-ref' })
+    const sheet = loseReplyAndReads()
+    await expect(call('work.money.accept', { id: got.id, fields: fields() })).rejects.toThrow('did not answer')
+    sheet.back()
+    // He moves the ledger out of the job before he tries again.
+    const away = join(b.root, 'elsewhere', 'Ledger.tcsheet')
+    mkdirSync(join(b.root, 'elsewhere'), { recursive: true })
+    b.sheets.sheets.set(away, b.sheets.sheets.get(ledger())!)
+    renameSync(ledger(), away)
+    movedHook(b.ctx)({ at: 'file', host: 'env_box', path: ledger() }, { at: 'file', host: 'env_box', path: away }, { db: b.db, dataDir: '', host: 'env_box' })
+    await expect(call('work.money.accept', { id: got.id, fields: fields() })).rejects.toThrow('Money cannot tell yet whether this receipt reached the ledger')
+    expect(readdirSync(join(b.ref, 'Money', 'Receipts', '2026'))).toEqual(['2026-11-21 Blue Heron Coffee 10.43.png'])
+    expect(b.sheets.grid(away)).toHaveLength(2)
+    expect(b.sheets.grid(away)[1][8]).toBe('Receipts/2026/2026-11-21 Blue Heron Coffee 10.43.png')
+    await expect(call('work.money.drop', { id: got.id })).rejects.toThrow('Money cannot tell yet')
+    expect(b.db.prepare('SELECT state FROM work_money_inbox WHERE id = ?').get(got.id)).toEqual({ state: 'ready' })
+  })
+
+  it('never says a receipt discarded whose write landed while its reply and the read after it were lost', async () => {
+    const got = await send('coffee.png')
+    await settle()
+    await call('work.money.open', { workspaceId: 'ws-ref' })
+    const sheet = loseReplyAndReads()
+    await expect(call('work.money.accept', { id: got.id, fields: fields() })).rejects.toThrow('did not answer')
+    // Still unreadable: not known, so not discarded, and it still waits.
+    await expect(call('work.money.drop', { id: got.id })).rejects.toThrow('Money cannot tell yet')
+    expect(b.db.prepare('SELECT state FROM work_money_inbox WHERE id = ?').get(got.id)).toEqual({ state: 'ready' })
+    // Readable again: its row is there, so it is filed, and the discard says it did not take.
+    sheet.back()
+    expect(await call('work.money.drop', { id: got.id })).toEqual({ dropped: false })
+    expect(b.db.prepare('SELECT state FROM work_money_inbox WHERE id = ?').get(got.id)).toEqual({ state: 'filed' })
+    expect((await view()).rows).toHaveLength(1)
+  })
+
   it('never brings a discarded receipt back when its reading ends late', async () => {
     const got = await send('coffee.png')
     await call('work.money.drop', { id: got.id })
@@ -551,6 +604,14 @@ describe('a file that moves', () => {
     b.sheets.type(ledger(), 'I2', 'Receipts/2026/a.png')
     expect(await relink(b.ctx, 'ws-ref', 'Receipts/2026/a.png', 'Receipts/2026/b.png')).toBe(1)
     expect(await relink(b.ctx, 'ws-ref', 'Receipts/2026/a.png', 'Receipts/2026/c.png')).toBe(0)
+    expect(b.sheets.grid(ledger())[1][8]).toBe('Receipts/2026/b.png')
+  })
+
+  it('follows a link the paperclip opens, a space a paste left at its end included', async () => {
+    await call('work.money.entry', { workspaceId: 'ws-ref', fields: fields() })
+    b.sheets.type(ledger(), 'I2', 'Receipts/2026/a.png ')
+    expect((await view()).rows[0].receipt).toBe('Receipts/2026/a.png')
+    expect(await relink(b.ctx, 'ws-ref', 'Receipts/2026/a.png', 'Receipts/2026/b.png')).toBe(1)
     expect(b.sheets.grid(ledger())[1][8]).toBe('Receipts/2026/b.png')
   })
 

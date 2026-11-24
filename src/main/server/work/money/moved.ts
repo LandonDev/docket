@@ -4,7 +4,7 @@ import { columnLetter } from '@shared/work/money'
 import type { FileMoved } from '../files/hooks'
 import type { WorkCtx } from '../modules'
 import { locked, MONEY_FOLDER, othersCanOpen } from './book'
-import { booksHere, forgetGrid, ledgerOf } from './read'
+import { booksHere, forgetGrid, ledgerOf, sameCell } from './read'
 import { booksOf, putBooks, workspaces } from './store'
 
 /**
@@ -44,7 +44,8 @@ export async function relink(ctx: Ctx, workspaceId: string, from: string, to: st
     // Two Receipt headers: which is the link cannot be said, and nothing is written.
     if (named.length !== 1) return 0
     const col = named[0]
-    const cells = ledger.grid.body.flatMap((line, i) => (line[col] === from ? [{ at: `${columnLetter(col)}${i + 2}`, v: to }] : []))
+    // Read as the paperclip reads it (`sameCell`: the spaces at its ends put aside), so a link that opens is a link that follows.
+    const cells = ledger.grid.body.flatMap((line, i) => (sameCell(line[col], from) ? [{ at: `${columnLetter(col)}${i + 2}`, v: to }] : []))
     const shared = cells.length > 0 && (await othersCanOpen(ctx, books.ledger, ledger.grid.shared))
     if (cells.length) await ctx.service.internal('/internal/sheet/cells', { sheet: { tcsheet: books.ledger }, cells, by: 'money', suggest: shared, ...(shared ? { reason: 'Money' } : {}) })
     return cells.length

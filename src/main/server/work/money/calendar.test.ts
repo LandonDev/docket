@@ -1,4 +1,4 @@
-import { rmSync, symlinkSync, writeFileSync } from 'node:fs'
+import { existsSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { beforeEach, describe, expect, it } from 'vitest'
 import type { CalendarOffer, MoneyRead, MoneyTripped } from '@shared/contract-work-money'
@@ -185,6 +185,18 @@ describe('adding a trip', () => {
     expect(await offered()).toEqual([])
     // What it learned of the fee for that role is the fee in the ledger.
     expect(b.db.prepare("SELECT state, fee FROM work_money_events WHERE event_id = 'West Side'").get()).toEqual({ state: 'added', fee: 8000 })
+  })
+
+  it('takes up no begun add while its mileage log is gone from its place: nothing is written twice', async () => {
+    b.lifeos.events = [game('West Side', 3, { amount: { cents: 8000, currency: 'USD' } })]
+    const [west] = await offered()
+    await call('work.money.open', { workspaceId: 'ws-ref' })
+    b.sheets.failing = (route, body) => route === '/internal/sheet/cells' && (body.sheet as { tcsheet: string }).tcsheet === mileage()
+    await expect(trip(west, { miles: 60 })).rejects.toThrow('did not answer')
+    rmSync(mileage())
+    await expect(trip(west, { miles: 60 })).rejects.toThrow('Money cannot tell yet')
+    expect(existsSync(mileage())).toBe(false)
+    expect(b.sheets.grid(ledger())).toHaveLength(2)
   })
 
   it('finds the pay a stopped add already wrote by its Ref, and writes only the trip', async () => {

@@ -152,7 +152,22 @@ pages Money prints. Amounts are whole cents everywhere but in the sheet.
   the same folder: the link followed the rename). A Ref in two rows, or in
   a row that names another file while the noted file is still there, is
   never settled by a guess: nothing is written and the error names the row
-  ("Row 7 of the ledger may already hold this one. …"). A write
+  ("Row 7 of the ledger may already hold this one. …"). A found row answers
+  the link it holds now (`link`), read raw from the row, so a kept invoice
+  is filed under the name it was renamed to whatever the headers say.
+  Marks are compared as the reader reads a cell (`sameCell`: the spaces at
+  its ends put aside).
+- **A read that failed is never "nothing there".** Before Money deletes a
+  kept file, discards a receipt, holds an invoice number or writes a row
+  again, the sheet it would settle by must have been read: a ledger that
+  does not answer, leads out of the job, or is gone from the place on
+  record stops the press with "Money cannot tell yet …" and changes
+  nothing (`settleBegun` for a receipt's Save and Discard; a begun invoice
+  keep and a begun trip refuse while their sheets are not at their place,
+  where `openBooks` would make empty ones; the numbers an invoice may take
+  are read from every cell of the ledger, and a ledger that cannot be read
+  holds no number). A job whose ledger is gone from its place on record is
+  `problem` in the sums and in what is owed, never a job with nothing. A write
   that throws is settled by a fresh read at once (the sheet may have taken
   the row and lost its answer): found, it is filed; not readable, the file
   and the note stay for the next try; not there, nothing is left behind.
@@ -268,10 +283,13 @@ file it once.
   list and keeps its file a week (a phone's scan is the only copy once the
   phone has let go of its draft), so `undo` puts it back as it was. A
   retry of a dropped key answers `dropped` and brings nothing back; a
-  reading that ends after the drop does not either. A discard waits behind
+  reading that ends after the drop does not either. A discard first
+  settles an accept of it that was begun and not settled: its row found,
+  the receipt is filed and the discard says it did not take; its ledger
+  unreadable, nothing is discarded and he is told. A discard waits behind
   an accept of the same receipt and answers `dropped: false` when that
   accept filed it: the window then says "… was already filed", with no
-  Undo, and the confirm dialog does not move on as if it were discarded.
+  Undo, and the confirm dialog moves on, since it no longer waits.
 - **A restart** (`resume`, in the module's `start`): rows left `reading` are
   read again, parts nobody finished in a day go. Filed and dropped rows are
   kept for good, a sender's key and what came of it: after 30 days only
@@ -286,8 +304,9 @@ file it once.
 - **A file that moves** (`moved.ts`): Money registers `registerFileMoved`.
   The ledger or the mileage log renamed in Files is followed in the books'
   row; a receipt renamed inside the Money folder has every Receipt cell
-  that held its whole path rewritten, a moment after the rename's
-  savepoint, read raw from the column under the Receipt header: a ledger
+  that held its whole path (as the paperclip reads it, ends trimmed)
+  rewritten, a moment after the rename's savepoint, read raw from the
+  column under the Receipt header: a ledger
   that cannot be read as money just then (Out being renamed) keeps its
   link all the same (`relink`). Only that column is written: a cell of his
   elsewhere that reads the same (a formula mirroring Receipt) stays. With
@@ -336,7 +355,8 @@ host (`by.peer`, which only a thread's tool makes there).
    total does (a gift card's remaining balance, change due and a paid
    invoice's zero balance never stand for the total); else the largest
    money figure, leaving out a figure such a label names (on its line, or
-   on the line under it when the label stands alone);
+   on the line under it when the label stands alone; a figure alone may
+   carry its currency's code, "USD 91.75");
    the date is the first that is not after today; the seller is the first
    line of words above the first figure; the category is the one he last
    gave that seller in this ledger, else what the receipt's words say when
@@ -400,6 +420,10 @@ box. About 4 seconds a file.
   once: a log where one of them stands twice (a Miles column copied, the
   old cleared) reads no trips (`reason: 'twice'`), is refused for export
   and takes no trip, since the trips under the second would be left out. A
+  log's trip with no date Money can read is named as the ledger's undated
+  rows are (`{kind: 'undated', rows, book: 'mileage'}`): a line in the
+  Mileage section with Open mileage log, and a warning in the export,
+  which goes on. A
   log that cannot be read (`mileageLog`: its file leads out of the job's
   folder, the sheet cannot be opened, or it holds rows and lacks Date,
   Miles or Rate) is `problems: [{kind:

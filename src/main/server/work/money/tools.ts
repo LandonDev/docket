@@ -62,7 +62,8 @@ const moneyRead: WorkTool = {
         `In ${formatMoney(sums.in)}, out ${formatMoney(sums.out)}, net ${formatMoney(sums.net)}`,
         `Owed to the owner ${formatMoney(sums.owedToHim)}, the owner owes ${formatMoney(sums.heOwes)} (all time)`,
         ...(log.problem ? [`Mileage: not read. ${mileageWords(log.problem)}`] : miles.miles && !wanted ? [`Mileage: ${milesLine(miles)}`] : []),
-        ...(ledger.undated.length ? [undatedWords(ledger.undated)] : [])
+        ...(ledger.undated.length ? [undatedWords(ledger.undated)] : []),
+        ...(log.undated.length ? [undatedWords(log.undated, 'mileage')] : [])
       ]
       const shown = rows.slice(-READ_ROWS_MAX)
       const cut = rows.length > shown.length ? [`Showing the latest ${shown.length} of ${rows.length} entries: narrow the days to see the rest.`] : []

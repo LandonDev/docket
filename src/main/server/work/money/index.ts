@@ -171,7 +171,7 @@ async function handle(req: ClientRequest, ctx: WorkCtx, by: Caller, signal?: Abo
     case 'work.money.drop': {
       const p = paramsOf('work.money.drop', req)
       admit(ctx, by, req.method, jobOfWaiting(ctx, p.id))
-      return handled({ dropped: await drop(ctx, p.id, p.undo === true) })
+      return handled({ dropped: await drop(ctx, p.id, p.undo === true, mayAsk(ctx, by, req.method)) })
     }
     case 'work.money.picture': {
       const p = paramsOf('work.money.picture', req)

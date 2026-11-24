@@ -485,10 +485,70 @@ describe('an invoice', () => {
     const dir = join(b.ref, 'Money', 'Invoices')
     renameSync(join(dir, 'Invoice 1042 Rivera Dental.pdf'), join(dir, 'Rivera 1042.pdf'))
     await relink(b.ctx, 'ws-ref', 'Invoices/Invoice 1042 Rivera Dental.pdf', 'Invoices/Rivera 1042.pdf')
+    // Out is renamed for a moment too: the row is not read as money, and the link is still read from it raw.
+    b.sheets.type(join(b.ref, 'Money', 'Ledger.tcsheet'), 'F1', 'Spent')
     const got = await keep({ key: 'renamed-key', what: 'invoice', invoice: inv })
     expect(got.receipt).toBe('Invoices/Rivera 1042.pdf')
+    expect(got.source).toMatchObject({ path: join(dir, 'Rivera 1042.pdf') })
+    b.sheets.type(join(b.ref, 'Money', 'Ledger.tcsheet'), 'F1', 'Out')
     expect((await view()).rows).toHaveLength(1)
     expect(readdirSync(dir)).toEqual(['Rivera 1042.pdf'])
+  })
+
+  it('holds no number while the ledger cannot be read: a number he typed is never taken for free', async () => {
+    await call('work.money.open', { workspaceId: 'ws-ref' })
+    const path = join(b.ref, 'Money', 'Ledger.tcsheet')
+    for (const [at, v] of [['A2', '2026-11-01'], ['B2', 'Rivera Dental'], ['C2', 'Invoice 1042'], ['E2', 320]] as const) b.sheets.type(path, at, v)
+    const real = b.sheets.internal
+    ;(b.ctx.service as { internal: unknown }).internal = async (route: string, body: Record<string, unknown>) => {
+      if (route === '/internal/sheet/open' && (body.sheet as { tcsheet: string }).tcsheet === path) throw new Error('The Work service did not answer.')
+      return real(route, body)
+    }
+    await expect(call('work.money.invoice', { workspaceId: 'ws-ref', key: 'blind-key-42', invoice: invoice({ number: '1042' }) })).rejects.toThrow('The ledger could not be read')
+    await expect(call('work.money.invoiceNext', { workspaceId: 'ws-ref' })).rejects.toThrow('The ledger could not be read')
+    ;(b.ctx.service as { internal: unknown }).internal = real
+    await expect(call('work.money.invoice', { workspaceId: 'ws-ref', key: 'blind-key-42', invoice: invoice({ number: '1042' }) })).rejects.toThrow('Invoice 1042 is taken')
+    await expect(keep({ key: 'blind-key-42', what: 'invoice', invoice: invoice({ number: '1042' }) })).rejects.toThrow('is not held')
+  })
+
+  it('reads the numbers he typed while the ledger’s columns are changed', async () => {
+    await call('work.money.open', { workspaceId: 'ws-ref' })
+    const path = join(b.ref, 'Money', 'Ledger.tcsheet')
+    for (const [at, v] of [['A2', '2026-11-01'], ['C2', 'Invoice 1042'], ['E2', 320], ['F1', 'Spent']] as const) b.sheets.type(path, at, v)
+    expect((await call<MoneyInvoiceNext>('work.money.invoiceNext', { workspaceId: 'ws-ref' })).number).toBe('1043')
+  })
+
+  it('settles no unfinished keep against a ledger that is no longer in the job: its file stays', async () => {
+    await call('work.money.open', { workspaceId: 'ws-ref' })
+    const inv = invoice({ number: '1042' })
+    await call('work.money.invoice', { workspaceId: 'ws-ref', key: 'away-key', invoice: inv })
+    const path = join(b.ref, 'Money', 'Ledger.tcsheet')
+    const real = b.sheets.internal
+    let down = false
+    ;(b.ctx.service as { internal: unknown }).internal = async (route: string, body: Record<string, unknown>) => {
+      if (down) throw new Error('The Work service did not answer.')
+      const got = await real(route, body)
+      if (route === '/internal/sheet/cells' && (body.sheet as { tcsheet: string }).tcsheet === path) {
+        down = true
+        throw new Error('The Work service did not answer.')
+      }
+      return got
+    }
+    await expect(keep({ key: 'away-key', what: 'invoice', invoice: inv })).rejects.toThrow('did not answer')
+    ;(b.ctx.service as { internal: unknown }).internal = real
+    rmSync(path)
+    await expect(keep({ key: 'away-key', what: 'invoice', invoice: inv })).rejects.toThrow('Money cannot tell yet whether this invoice reached the ledger')
+    expect(readdirSync(join(b.ref, 'Money', 'Invoices'))).toEqual(['Invoice 1042 Rivera Dental.pdf'])
+    expect(existsSync(path)).toBe(false)
+  })
+
+  it('names undated trips of the mileage log, and the export goes on and says so', async () => {
+    await call('work.money.trip', { workspaceId: 'ws-ref', date: '2026-06-01', title: 'Client visit', place: 'Rivera Dental', miles: 40 })
+    b.sheets.type(join(b.ref, 'Money', 'Mileage.tcsheet'), 'A2', '')
+    expect((await view()).problems).toEqual([{ kind: 'undated', rows: [2], book: 'mileage' }])
+    const got = await call<MoneyExport>('work.money.export', { workspaceId: 'ws-ref', year: 2026 })
+    expect(got.warnings).toContain('Row 2 of the mileage log has miles and no date Money can read, so no month or year counts it. Give it a date in the log, then export again.')
+    expect(got.files).toContain('Ledger 2026.csv')
   })
 
   it('files one invoice for the same key sent twice at once', async () => {

@@ -71,6 +71,14 @@ describe('the books', () => {
     expect(got.miles).toMatchObject({ miles: 10, value: 700 })
   })
 
+  it('says a job whose ledger is gone from its place on record is not known, never that it holds nothing', async () => {
+    await entry({ who: 'Unpaid client', way: 'in', status: 'Unpaid' })
+    rmSync(ledger())
+    const sums = await call<MoneySums>('work.money.sums', { from: '2026-01-01', to: '2027-01-01', workspaceId: 'ws-ref' })
+    expect(sums.rows).toMatchObject([{ workspaceId: 'ws-ref', problem: true }])
+    expect(await call<MoneyOwed>('work.money.owed', { workspaceId: 'ws-ref' })).toMatchObject({ rows: [], problems: ['ws-ref'] })
+  })
+
   it('takes a ledger already at its place as it is', async () => {
     await call('work.money.open', { workspaceId: 'ws-ref' })
     b.db.exec('DELETE FROM work_money_books')

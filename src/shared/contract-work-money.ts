@@ -228,8 +228,8 @@ export interface MoneyBooks {
 export type MoneyProblem =
   /** `waits`: the missing headers already wait in the sheet as a suggestion (a restore on a ledger others can open): accepting it there is what is left to do; `twice`: these headers stand twice, so which holds his figures cannot be said */
   | { kind: 'columns'; missing: string[]; renamed: string[]; waits?: true; twice?: string[] }
-  /** Rows with money and no date Money can read (`rows`, their numbers in the sheet): in no month and no year, so the sums leave them out and the view says so */
-  | { kind: 'undated'; rows: number[] }
+  /** Rows with money and no date Money can read (`rows`, their numbers in the sheet; `book: 'mileage'`, the mileage log's trips): in no month and no year, so the sums leave them out and the view says so */
+  | { kind: 'undated'; rows: number[]; book?: 'mileage' }
   /**
    * The mileage log cannot be read, so the miles shown are none and are not
    * the truth: `outside`, its file leads out of the job's folder; `columns`,

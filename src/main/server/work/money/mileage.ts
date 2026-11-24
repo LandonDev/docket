@@ -1,9 +1,10 @@
+import { existsSync } from 'node:fs'
 import type { MoneyActed, MoneyRate, MoneyTripped, TripParams } from '@shared/contract-work-money'
 import { centsFrom, columnLetter, columnsOf, MILEAGE_COLUMNS, mileageTwice, payCategory, rateFor, type Cell, type MileageColumn } from '@shared/work/money'
 import type { WorkCtx } from '../modules'
 import { appendRow, locked, newRef, openBooks, othersCanOpen, write, writtenRow, type A1 } from './book'
 import { roleOf } from './calendar'
-import { gridOf, ledgerOf, MoneyError, nextRow, writtenAt, type Grid } from './read'
+import { booksHere, gridOf, ledgerOf, MoneyError, nextRow, writtenAt, type Grid } from './read'
 import { booksOf, eventMarks, keepMiles, markEvent, setRate, type Books, type TripIntent, type Workspace } from './store'
 
 /**
@@ -86,6 +87,12 @@ async function addOnce(ctx: Ctx, ws: Workspace, p: TripParams, id: string | null
   // Skipped since this Add was pressed (another window, or Add all still on its way down the list): his Skip stands.
   // Only his own pick of the event in Add → Trip… (`reopen`) takes a skipped one up again.
   if (mark?.state === 'skipped' && !p.reopen) return { pay: null, trip: null, skipped: true }
+  // An add begun and not finished is settled by the two sheets it was writing into: one no longer at its place is
+  // not an empty sheet, and none is made in its stead (where its row would not be found, and would be written twice).
+  if (mark?.intent) {
+    const kept = booksOf(ctx, ws.id)
+    if (!kept || !booksHere(ctx, ws.id) || !existsSync(kept.mileage)) throw new MoneyError("Money cannot tell yet what this trip's first Add wrote: the ledger or the mileage log is not in the job's folder. Put it back, then add it again.")
+  }
   const books = await openBooks(ctx, ws)
   // An add that was begun and not finished: still offered (`adding`), or skipped since with its note kept. Either way
   // it is taken up where it stopped, whichever way he comes back to it (the offer, or Add → Trip… on a skipped one).
