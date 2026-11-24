@@ -1419,7 +1419,10 @@ The kinds, each a hand-made body built from components/ui:
   Responses (forms/responses.tsx), its summary saying "as of" once when the
   read is old. A change the agent made reloads a guest he has not typed in
   for ten seconds; otherwise the state line says "Changed by the agent"
-  with Reload. More holds Open in Browser and Check for Answers.
+  with Reload. More holds Open in Browser, Open the Workbook once Forms
+  made it (Live in Excel in a Files tab), Question History… (a dialog of
+  each change in words, newest first, under a 12px muted line of who and
+  when: You, An agent, Seen in the page) and Check for Answers.
 - **Compare and History.** A compare is read only: its bar has no mode,
   its tab is named for the item and the versions once, in the pickers.
   Side by side is the default from 420px a side. The list's rows are

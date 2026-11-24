@@ -18,7 +18,9 @@ import { LiveCover } from "../office/live/cover";
 import { liveAskUrl, liveLayer } from "../office/live/layer";
 import { linkMsFormHost, type MsFormHost } from "./host";
 import { PrefillDialog, QrDialog } from "./Share";
-import { Mail, QrCode } from "../icons";
+import { HistoryDialog } from "./History";
+import { History, Mail, QrCode, Table } from "../icons";
+import { openInFiles } from "../files/openFrom";
 import { writeMail } from "../mail/mailto";
 import { openWorkView } from "../../lib/workSwitch";
 import { answerBarsOf, chartOf, timeColumnOf } from "./model";
@@ -48,7 +50,7 @@ interface Slot {
   /** the guest changed under him: the agent wrote while he was typing */
   changed: boolean;
   /** a dialog More opened */
-  dialog: "prefill" | null;
+  dialog: "prefill" | "history" | null;
 }
 class Store {
   private slot: Slot;
@@ -112,7 +114,7 @@ export function Body(props: Props) {
   }, [half, state?.half, setState]);
 
   useReloadOnChange(item.id, view, store);
-  useChrome(shell, host, store, view, changed, item.id);
+  useChrome(shell, host, store, view, changed, item.id, props.env);
   const current = useReview(shell, host, store, view, half);
   useEffect(() => {
     shell.ready?.(!!view);
@@ -191,7 +193,7 @@ function useReloadOnChange(itemId: string, view: MsFormView | null, store: Store
 }
 
 /** The mode, the state line and More, said to the frame for this form. */
-function useChrome(shell: CanvasShell, host: MsFormHost, store: Store, view: MsFormView | null, changed: boolean, itemId: string): void {
+function useChrome(shell: CanvasShell, host: MsFormHost, store: Store, view: MsFormView | null, changed: boolean, itemId: string, env: string): void {
   const state = view?.state;
   const mode = view?.mode;
   useEffect(() => {
@@ -218,10 +220,27 @@ function useChrome(shell: CanvasShell, host: MsFormHost, store: Store, view: MsF
   const link = view?.link ?? null;
   const title = view?.title;
   const workspaceId = view?.workspaceId;
+  const workbook = !!view?.workbook;
   useEffect(() => {
     if (!formId || !tenant) return shell.more?.(null);
     const entries: MoreEntry[] = [
       { id: "browser", label: "Open in Browser", icon: ExternalLink, run: () => void window.open(liveAskUrl({ forms: { tenant, formId, page: "design" } }), "_blank", "noopener") },
+      ...(workbook && workspaceId
+        ? [
+            {
+              id: "workbook",
+              label: "Open the Workbook",
+              icon: Table,
+              // Live in Excel in a Files tab: the host remembers the file as Live, and Files seats it so.
+              run: () =>
+                void host
+                  .workbook()
+                  .then((file) => openInFiles({ id: workspaceId, environmentId: env }, file))
+                  .catch((err: unknown) => sayError(err, "Couldn't open the workbook")),
+            } satisfies MoreEntry,
+          ]
+        : []),
+      { id: "history", label: "Question History…", icon: History, run: () => store.set({ dialog: "history" }) },
       ...(state !== "draft"
         ? MSFORM_CHECKS.map<MoreEntry>((every) => ({
             id: `check-${every}`,
@@ -249,7 +268,7 @@ function useChrome(shell: CanvasShell, host: MsFormHost, store: Store, view: MsF
     ];
     shell.more?.(entries);
     return () => shell.more?.(null);
-  }, [shell, host, store, formId, tenant, state, check, link, title, workspaceId]);
+  }, [shell, host, store, formId, tenant, state, check, link, title, workspaceId, workbook, env]);
 }
 
 // ── the bar ──────────────────────────────────────────────────────────
@@ -300,6 +319,7 @@ export function Bar(props: Props) {
         </span>
       ) : null}
       {dialog === "prefill" ? <PrefillDialog view={view} make={(values) => host.prefill(values)} onClose={() => store.set({ dialog: null })} /> : null}
+      {dialog === "history" ? <HistoryDialog title={view.title} load={host.history} onClose={() => store.set({ dialog: null })} /> : null}
     </>
   );
 }

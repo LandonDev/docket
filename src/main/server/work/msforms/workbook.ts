@@ -1,10 +1,16 @@
 import { realpathSync } from 'node:fs'
+import { join } from 'node:path'
 import type { DatabaseSync } from 'node:sqlite'
 import type { MsFormWorkbook } from '@shared/contract-work-msforms'
 import { registerReadOnlyFile } from '../files/hooks'
 import { librariesHere, vmLibrariesHere } from '../files/places/libraries'
-import type { WorkCtx } from '../modules'
+import { refKey } from '@shared/work/files'
+import { locate } from '../files/policy'
+import { libraryKey } from '../files/places/teams'
+import type { Caller, WorkCtx } from '../modules'
+import { ensureLiveTables, setMode } from '../office/live/memory'
 import { siteOf } from './place'
+import { formReach, librariesFor, LIBRARY_GONE, MsformsError } from './reach'
 
 /**
  * A Microsoft form's answers workbook (docs/agents/work-msforms.md "Open the workbook"): Forms writes a row to it for
@@ -121,6 +127,35 @@ export function isFormsWorkbook(ctx: Pick<WorkCtx, 'db' | 'host'>, ref: Workbook
     if (at !== null && books.some((b) => b.libraryId === library.id && b.path === at)) return true
   }
   return false
+}
+
+export const NO_WORKBOOK = 'Forms has not made the workbook for this form yet: it does once the first answer is read.'
+
+/**
+ * `work.msforms.workbook`: the answers workbook as Files names it, to open Live in Excel in a Files tab. His press:
+ * the file's mode is remembered as Live (office/live/memory.ts), keyed as the seat chooser keys it (office/live/switch.ts
+ * `liveSeat`), so the open that follows seats it Live with no copy made.
+ */
+export async function workbookFile(ctx: WorkCtx, by: Caller, ask: { workspaceId: string; formId: string }): Promise<{ ref: { at: 'file'; host: string; path: string }; name: string }> {
+  const { workspace, row } = formReach(ctx, by, ask)
+  const book = row.workbook
+  if (!book) throw new MsformsError(NO_WORKBOOK)
+  const library = librariesFor(ctx, by).find((l) => l.id === book.libraryId)
+  if (!library) throw new MsformsError(LIBRARY_GONE)
+  const inside = parts(book.path)
+  const path = library.vm ? [library.path.replace(/\\+$/, ''), ...inside].join('\\') : join(library.path, ...inside)
+  const ref = { at: 'file' as const, host: ctx.host, path }
+  let key = refKey(ref)
+  if (!library.vm) {
+    // (Files' door, loaded when asked: msforms reads no Files module at its own load)
+    const { doorPlace } = await import('../files/handle')
+    const at = locate(ctx, by, workspace.id, ref, 'work.files.open')
+    const place = at.in === 'library' ? doorPlace(ctx, by, at).library : undefined
+    if (place && at.in === 'library') key = libraryKey(place, at.path)
+  }
+  ensureLiveTables(ctx.db)
+  setMode(ctx.db, workspace.id, key, 'live')
+  return { ref, name: book.name || inside.at(-1) || 'Answers.xlsx' }
 }
 
 // Files and the sheets ask through Files' hook (files/hooks.ts): neither imports this pillar.

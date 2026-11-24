@@ -24,7 +24,9 @@ import { sheetTools } from '../sheets/tools'
 import { localJobs } from '../sheets/workerClient'
 import { ensureMsformsTables, MsformsStore } from './store'
 import { FORM_A } from './testing'
-import { ensureWorkbookIndex, FORMS_WORKBOOK_READ_ONLY, FORMS_WORKBOOK_REFUSED, isFormsWorkbook } from './workbook'
+import { ensureWorkbookIndex, FORMS_WORKBOOK_READ_ONLY, FORMS_WORKBOOK_REFUSED, isFormsWorkbook, NO_WORKBOOK, workbookFile } from './workbook'
+import { modeOf } from '../office/live/memory'
+import { refKey } from '@shared/work/files'
 
 /**
  * A Microsoft form's answers workbook is Forms' to write (docs/agents/work-msforms.md "Open the workbook"): opened Edit
@@ -172,6 +174,27 @@ describe.skipIf(process.platform === 'win32')("a Microsoft form's answers workbo
       expect(got.content[0].text).toBe(FORMS_WORKBOOK_REFUSED)
     }
     expect(readFileSync(book).equals(before)).toBe(true)
+  })
+
+  it('names the workbook as Files does for Open the Workbook, remembered as Live in Excel', async () => {
+    const lib = diskLibrary()
+    const book = join(rig.team, 'General', 'Answers.xlsx')
+    copyFileSync(join(CORPUS, 'formulas.xlsx'), book)
+    form(FORM_A, lib, book)
+    const got = await workbookFile(rig.ctx, window, { workspaceId: WS, formId: FORM_A })
+    expect(got).toEqual({ ref: { at: 'file', host: HOST, path: book }, name: 'Sign-ups.xlsx' })
+    // keyed as the seat chooser keys a library file of this host: one row, Live
+    expect(rig.db.prepare("SELECT mode FROM work_office_live WHERE workspace_id = ?").all(WS)).toEqual([{ mode: 'live' }])
+    // in the VM: a guest path, keyed as a copy's tab is
+    const vm = `${FORM_A.slice(0, 40)}vm00`
+    form(vm, vmLibrary(), VM_BOOK)
+    const far = await workbookFile(rig.ctx, window, { workspaceId: WS, formId: vm })
+    expect(far.ref).toEqual({ at: 'file', host: HOST, path: VM_BOOK })
+    expect(modeOf(rig.db, WS, refKey(far.ref), null)).toBe('live')
+    // no workbook yet
+    const none = `${FORM_A.slice(0, 40)}none`
+    form(none, lib, null)
+    await expect(workbookFile(rig.ctx, window, { workspaceId: WS, formId: none })).rejects.toThrow(NO_WORKBOOK)
   })
 
   it('in the VM opens as a copy that sends nothing back, and reads only by the file it is a copy of', async () => {

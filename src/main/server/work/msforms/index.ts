@@ -11,7 +11,7 @@ import { ensureMsformJobs, msformTasksJob, msformTrigger, removeMsformJobs, setT
 import { ensureMsformsTables, MsformsStore } from './store'
 import { registerRefSeat } from '../files/hooks'
 import { refKey } from '@shared/work/files'
-import { ensureWorkbookIndex } from './workbook'
+import { ensureWorkbookIndex, workbookFile } from './workbook'
 import { refuseWithheld } from './withhold'
 import { MSFORMS_PREAMBLE, msformsTools } from './tools'
 import { msformMentions, msformSearch } from './search'
@@ -57,6 +57,8 @@ async function route(req: ClientRequest, ctx: WorkCtx, by: Caller): Promise<Hand
       return handled(get(ctx, by, paramsOf('work.msforms.get', req)))
     case 'work.msforms.page':
       return handled(page(ctx, by, paramsOf('work.msforms.page', req)))
+    case 'work.msforms.workbook':
+      return handled(await workbookFile(ctx, by, paramsOf('work.msforms.workbook', req)))
     case 'work.msforms.history':
       return handled(history(ctx, by, paramsOf('work.msforms.history', req)))
     case 'work.msforms.make': {

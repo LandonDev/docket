@@ -173,6 +173,8 @@ export const MsformsRequestSchemas = [
   request('work.msforms.refresh', z.object(both)),
   /** His Responses half was shown: what was new is seen. */
   request('work.msforms.seen', z.object(both)),
+  /** → `{ref, name}`: the answers workbook as Files names it, its mode remembered as Live; his press, to open it Live in Excel. */
+  request('work.msforms.workbook', z.object(both)),
   /** The changes of the question list kept per rev. */
   request('work.msforms.history', z.object(both)),
   /** The forms each address answered, from what was read (People's Answered). */
@@ -196,7 +198,8 @@ export const MSFORMS_OWNER_ONLY: ReadonlySet<string> = new Set([
   'work.msforms.refresh',
   'work.msforms.seen',
   'work.msforms.survey',
-  'work.msforms.prefill'
+  'work.msforms.prefill',
+  'work.msforms.workbook'
 ])
 
 export const MSFORMS_CAPS = {
@@ -213,6 +216,7 @@ export const MSFORMS_CAPS = {
   'work.msforms.refresh': 'operate',
   'work.msforms.seen': 'operate',
   'work.msforms.history': 'read',
+  'work.msforms.workbook': 'operate',
   'work.msforms.byPerson': 'read',
   'work.msforms.survey': 'operate',
   'work.msforms.prefill': 'operate'

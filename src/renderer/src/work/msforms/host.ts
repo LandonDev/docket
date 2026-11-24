@@ -1,4 +1,4 @@
-import type { MsFormResponses, MsFormView } from "@shared/contract-work-msforms";
+import type { MsFormHistoryRow, MsFormResponses, MsFormView } from "@shared/contract-work-msforms";
 import type { OutboxItem } from "@shared/contract-work-outbox";
 import type { HeldRef } from "@shared/work";
 import type { MsFormCheck } from "@shared/work/msforms";
@@ -24,6 +24,10 @@ export interface MsFormHost {
   seen(): Promise<MsFormView>;
   /** Forms' own prefilled link for these answers, read by the carrier from Get Pre-filled URL. */
   prefill(values: Record<string, string>): Promise<{ link: string }>;
+  /** The changes of the question list, newest first. */
+  history(): Promise<MsFormHistoryRow[]>;
+  /** The answers workbook as Files names it, remembered as Live in Excel for the open that follows. */
+  workbook(): Promise<{ ref: { at: "file"; host: string; path: string }; name: string }>;
   watch(on: (view: MsFormView | null) => void): () => void;
 }
 
@@ -50,6 +54,8 @@ export function linkMsFormHost(env: string, at: { workspaceId: string; formId: s
     refresh: () => ask("work.msforms.refresh", {}, SLOW),
     seen: () => ask("work.msforms.seen"),
     prefill: (values) => ask("work.msforms.prefill", { values }, SLOW),
+    history: () => ask("work.msforms.history"),
+    workbook: () => ask("work.msforms.workbook"),
     watch(on) {
       const offPush = link().onPush((push) => {
         if (push.push === "work.msforms" && push.workspaceId === at.workspaceId && push.formId === at.formId) on(push.view);
