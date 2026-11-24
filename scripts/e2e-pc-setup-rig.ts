@@ -107,7 +107,16 @@ async function run(): Promise<void> {
   })
 
   await step(`install ${basename(installer)} as tcuser, fresh`, async () => {
-    await ps(`Get-Process TempCode,LifeOS -EA 0 | Stop-Process -Force -EA 0; Remove-Item -Recurse -Force '${USER_DATA}', "$env:APPDATA\\aliax" -EA 0`)
+    // Nothing of a run before: TempCode's data and vault, and any LifeOS with its data and uninstall entry.
+    await ps(
+      [
+        `Get-Process TempCode,LifeOS -EA 0 | Stop-Process -Force -EA 0; Start-Sleep 2`,
+        `Remove-Item -Recurse -Force '${USER_DATA}', "$env:APPDATA\\aliax" -EA 0`,
+        `Get-ChildItem "$env:LOCALAPPDATA\\Programs" -Directory | Where-Object { Test-Path (Join-Path $_.FullName 'LifeOS.exe') } | Remove-Item -Recurse -Force -EA 0`,
+        `Get-ChildItem $env:LOCALAPPDATA, $env:APPDATA -Directory -Filter 'lifeos*' -EA 0 | Remove-Item -Recurse -Force -EA 0`,
+        `Get-ChildItem 'HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall' | Where-Object { (Get-ItemProperty $_.PSPath).DisplayName -like 'LifeOS*' } | Remove-Item -Recurse -Force`
+      ].join('; ')
+    )
     const copied = await vm('scp', [installer, 'guest:Downloads/'], 900_000)
     if (copied.code !== 0) throw new Error(copied.out.slice(-200))
     const t0 = Date.now()
@@ -227,7 +236,7 @@ async function run(): Promise<void> {
 
   await step('LifeOS installed and signed in against the stand-in, reading on and sending off', async () => {
     const folder = `lifeos-10.0.2.2-${PORTS.lifeos}`
-    const got = await ps(`@(Get-Process LifeOS -EA 0).Count; Test-Path "$env:LOCALAPPDATA\\Programs\\LifeOS\\LifeOS.exe"; Get-Content -Raw "$env:APPDATA\\${folder}\\purdue.json" -EA 0`)
+    const got = await ps(`@(Get-Process LifeOS -EA 0).Count; [bool](Get-ChildItem "$env:LOCALAPPDATA\\Programs" -Recurse -Depth 1 -Filter LifeOS.exe -EA 0); Get-Content -Raw "$env:APPDATA\\${folder}\\purdue.json" -EA 0`)
     const [running, exe, ...json] = got.out.trim().split(/\r?\n/)
     rec.check('LifeOS is installed under %LOCALAPPDATA%\\Programs and running', Number(running) > 0 && exe === 'True', `${running} ${exe}`)
     const purdue = JSON.parse(json.join('') || '{}') as { read?: boolean; send?: boolean }
@@ -237,6 +246,14 @@ async function run(): Promise<void> {
   })
 
   await step("J: listed and a file opened from the stand-in Mac's window, through the stand-in box", async () => {
+    // The box reads J: through the PC's bridge for it: Read is enough (docs/agents/work-files.md); setup leaves it as it was.
+    const box = (await pcRpc<{ id: string; name: string }[]>('remote.environments.list'))[0]
+    const policy = (await pcRpc<{ environmentId: string; policy: string }[]>('macBridge.policy.get')).find((h) => h.environmentId === box?.id)?.policy
+    rec.log(`the PC's bridge for the box after setup: ${policy}`)
+    if (policy === 'off') {
+      rec.log('his one press on the PC: Settings → Hosts → Mac bridge for the box → Access → Read')
+      await pcRpc('macBridge.policy.set', { environmentId: box!.id, policy: 'read' })
+    }
     await mac!.key('Escape')
     await sleep(1000)
     await mac!.click(/^Purdue \(rig\)$/)
@@ -268,34 +285,49 @@ async function run(): Promise<void> {
   })
 
   await step('the vault folder copied to a second standard user is unreadable there, the original untouched', async () => {
-    const pass = randomBytes(12).toString('base64url')
     const hash = `Get-ChildItem -Recurse -File "C:\\Users\\tcuser\\AppData\\Roaming\\aliax" | Sort-Object FullName | ForEach-Object { (Get-FileHash $_.FullName).Hash } | Out-String`
     const before = (await ps(hash, 60_000, true)).out
     const key = (await ps(`(Get-Content -Raw "$env:APPDATA\\aliax\\vault.key").Substring(0, 14)`)).out.trim()
-    rec.check('the vault key on the PC is wrapped by the user (aliax-wrap:v1), never plain hex', key === 'aliax-wrap:v1:', key)
-    await vm('scp', [join(REPO, 'scripts', 'win-vm', 'dpapi-try.ps1'), 'guest:dpapi-try.ps1'], 60_000)
-    await ps(`Copy-Item -Force 'C:\\Users\\tcuser\\dpapi-try.ps1' 'C:\\Users\\Public\\dpapi-try.ps1'`, 60_000, true)
-    const made = await ps(
+    rec.check('the vault key on the PC is sealed for its user (aliax-wrap:v1), never plain hex', key === 'aliax-wrap:v1:', key)
+    for (const f of ['dpapi-try.ps1', 'batch-right.ps1']) await vm('scp', [join(REPO, 'scripts', 'win-vm', f), `guest:${f}`], 60_000)
+    const copy = 'C:\\Users\\Public\\tc-vault-copy'
+    const pass = `Rig${randomBytes(6).toString('hex')}!`
+    // tcuser2: a second standard user made for the run, with a password logon (DPAPI needs one) through a task, which
+    // needs the batch logon right on this throwaway overlay.
+    await ps(
       [
+        `Copy-Item -Force C:\\Users\\tcuser\\dpapi-try.ps1 C:\\Users\\Public\\dpapi-try.ps1`,
         `$p = ConvertTo-SecureString '${pass}' -AsPlainText -Force`,
-        `if (-not (Get-LocalUser tcuser2 -EA 0)) { New-LocalUser tcuser2 -Password $p -NoPasswordExpiry | Out-Null; Add-LocalGroupMember Users tcuser2 }`,
-        `$copy = 'C:\\Users\\Public\\tc-vault-copy'; Remove-Item -Recurse -Force $copy -EA 0; New-Item -ItemType Directory -Force $copy | Out-Null`,
-        `Copy-Item -Recurse 'C:\\Users\\tcuser\\AppData\\Roaming\\aliax' $copy; Copy-Item '${USER_DATA}\\Local State' $copy`,
-        `$c = New-Object PSCredential('tcuser2', $p)`,
-        `$s = Start-Process powershell.exe -Credential $c -LoadUserProfile -Wait -PassThru -WindowStyle Hidden -ArgumentList '-NoProfile','-ExecutionPolicy','Bypass','-File','C:\\Users\\Public\\dpapi-try.ps1','-LocalState',"$copy\\Local State",'-Out','C:\\Users\\Public\\dpapi-tcuser2.json'`,
-        `Get-Content -Raw 'C:\\Users\\Public\\dpapi-tcuser2.json'`
+        `if (Get-LocalUser tcuser2 -EA 0) { Set-LocalUser tcuser2 -Password $p } else { New-LocalUser tcuser2 -Password $p -PasswordNeverExpires | Out-Null; Add-LocalGroupMember Users tcuser2 }`,
+        `Remove-Item -Recurse -Force '${copy}' -EA 0; New-Item -ItemType Directory -Force '${copy}' | Out-Null`,
+        `Copy-Item -Recurse 'C:\\Users\\tcuser\\AppData\\Roaming\\aliax' '${copy}'; Copy-Item '${USER_DATA}\\Local State' '${copy}'`,
+        `icacls '${copy}' /grant 'tcuser2:(OI)(CI)R' /T | Out-Null`
+      ].join('; '),
+      120_000,
+      true
+    )
+    await ps(readFileSync(join(REPO, 'scripts', 'win-vm', 'batch-right.ps1'), 'utf8'), 60_000, true)
+    const asOther = await ps(
+      [
+        `Remove-Item C:\\Users\\Public\\dpapi-tcuser2.json -EA 0`,
+        `schtasks /create /tn tc-dpapi-tcuser2 /ru tcuser2 /rp '${pass}' /sc once /st 23:59 /f /tr "powershell.exe -NoProfile -ExecutionPolicy Bypass -File C:\\Users\\Public\\dpapi-try.ps1 -LocalState '${copy}\\Local State' -Out C:\\Users\\Public\\dpapi-tcuser2.json" 2>&1 | Out-Null`,
+        `schtasks /run /tn tc-dpapi-tcuser2 | Out-Null`,
+        `for ($i = 0; $i -lt 30 -and -not (Test-Path C:\\Users\\Public\\dpapi-tcuser2.json); $i++) { Start-Sleep 2 }`,
+        `schtasks /delete /tn tc-dpapi-tcuser2 /f | Out-Null`,
+        `Get-Content -Raw C:\\Users\\Public\\dpapi-tcuser2.json`
       ].join('; '),
       180_000,
       true
     )
-    const other = JSON.parse(made.out.trim().split(/\r?\n/).pop() || '{}') as { user?: string; opened?: boolean }
-    rec.check("as tcuser2, the copied vault's key does not open (DPAPI is tcuser's)", other.user === 'tcuser2' && other.opened === false, JSON.stringify(other).slice(0, 200))
-    const own = await ps(`powershell -NoProfile -ExecutionPolicy Bypass -File C:\\Users\\Public\\dpapi-try.ps1 -LocalState 'C:\\Users\\Public\\tc-vault-copy\\Local State' -Out C:\\Users\\Public\\dpapi-tcuser.json; Get-Content -Raw C:\\Users\\Public\\dpapi-tcuser.json`)
-    const mine = JSON.parse(own.out.trim().split(/\r?\n/).pop() || '{}') as { user?: string; opened?: boolean }
-    rec.check('as tcuser, the same copy opens (the control)', mine.user === 'tcuser' && mine.opened === true, JSON.stringify(mine).slice(0, 120))
+    const other = JSON.parse(asOther.out.trim().split(/\r?\n/).pop() || '{}') as { user?: string; ownWorks?: boolean; opened?: boolean }
+    rec.check("as tcuser2 (DPAPI working for its own data), the copied vault's key does not open", other.user === 'tcuser2' && other.ownWorks === true && other.opened === false, JSON.stringify(other).slice(0, 220))
+    // The control: tcuser on his own desktop opens the same copy.
+    const asOwner = await inSession(['C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', 'C:\\Users\\Public\\dpapi-try.ps1', '-LocalState', `${copy}\\Local State`, '-Out', 'C:\\Users\\Public\\dpapi-tcuser.json'], true, 60)
+    const mine = JSON.parse((await ps(`Get-Content -Raw C:\\Users\\Public\\dpapi-tcuser.json -EA 0`)).out.trim() || '{}') as { user?: string; opened?: boolean }
+    rec.check('as tcuser, the same copy opens (the control)', mine.user === 'tcuser' && mine.opened === true, `${asOwner.code} ${JSON.stringify(mine).slice(0, 120)}`)
     const after = (await ps(hash, 60_000, true)).out
     rec.check("tcuser's vault folder is untouched", before === after && before.length > 0)
-    await ps(`Remove-Item -Recurse -Force 'C:\\Users\\Public\\tc-vault-copy', 'C:\\Users\\Public\\dpapi-*.json' -EA 0; Remove-LocalUser tcuser2 -EA 0`, 60_000, true)
+    await ps(`Remove-Item -Recurse -Force '${copy}', 'C:\\Users\\Public\\dpapi-*.json' -EA 0; Remove-LocalUser tcuser2 -EA 0`, 60_000, true)
   })
 
   await step('Remove on the stand-in Mac takes everything back and the key ends', async () => {
@@ -317,9 +349,10 @@ async function run(): Promise<void> {
     rec.check('every given account is gone from the PC', wiped)
     const binding = await until('the receipt', 120_000, async () => (await rpc<{ bindings: { envId: string; state: string }[] }>(stand!.box, 'devices.list')).bindings.find((b) => b.envId === row.envId)?.state === 'retired', 3000)
     rec.check("the box retired the PC's binding on its signed receipt", binding)
-    const keys = await rpc<{ keys: { name: string; revokedAt?: number | null }[] } | { name: string; revokedAt?: number | null }[]>(stand!.box, 'remote.keys.list')
-    const list = Array.isArray(keys) ? keys : keys.keys
-    rec.check("the PC's key on the box is revoked", list.filter((k) => /Rig PC/.test(k.name)).every((k) => !!k.revokedAt), JSON.stringify(list.map((k) => ({ n: k.name, r: !!k.revokedAt }))).slice(0, 200))
+    const keyId = (await rpc<{ bindings: { envId: string; keyId: string }[] }>(stand!.box, 'devices.list')).bindings.find((b) => b.envId === row.envId)?.keyId
+    const keys = await rpc<{ keys: { id: string; revokedAt?: number | null; revoked?: boolean }[] } | { id: string; revokedAt?: number | null; revoked?: boolean }[]>(stand!.box, 'remote.keys.list')
+    const mine = (Array.isArray(keys) ? keys : keys.keys).find((k) => k.id === keyId)
+    rec.check("the PC's key on the box is revoked", !!keyId && (!mine || !!mine.revokedAt || mine.revoked === true), JSON.stringify(mine ?? { keyId, listed: false }).slice(0, 200))
     const hosts = await pcRpc<unknown[]>('remote.environments.list')
     rec.check('the PC holds no box any more', Array.isArray(hosts) && hosts.length === 0, JSON.stringify(hosts).slice(0, 120))
     const work = await pcRpc<{ lifeos: { state: string } }>('work.lifeos.status')
