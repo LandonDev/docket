@@ -330,15 +330,18 @@ export interface RowAt {
 }
 
 /**
- * The row an act names, in a fresh read: by Ref wherever it now stands
- * (he may have sorted the sheet), else by its number; either way only while
- * it still reads as the window saw it. Null: the ledger changed, and
- * nothing is written over what he changed.
+ * The row an act names, in a fresh read: a row Money wrote by its Ref
+ * wherever it now stands (he may have sorted the sheet), a row he typed by
+ * its number; either way only while it still reads as the window saw it.
+ * A Ref that is gone, or stands twice, is never looked for by number: the
+ * row now in that place may be another that reads the same (two $75 games
+ * filed apart, the first deleted). Null: the ledger changed, and nothing is
+ * written over what he changed.
  */
 export function findRow(rows: readonly LedgerRow[], at: RowAt): LedgerRow | null {
   if (at.ref) {
     const byRef = rows.filter((r) => r.ref === at.ref)
-    if (byRef.length === 1) return sigOf(byRef[0]) === at.sig ? byRef[0] : null
+    return byRef.length === 1 && sigOf(byRef[0]) === at.sig ? byRef[0] : null
   }
   const same = rows.find((r) => r.row === at.row)
   return same && sigOf(same) === at.sig ? same : null

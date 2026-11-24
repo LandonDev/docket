@@ -85,7 +85,7 @@ async function extentOf(ctx: Svc, path: string, rev: number): Promise<{ rows: nu
     offset += part.length
     if (offset >= frame.size || part.length === 0) break
   }
-  const book = JSON.parse(Buffer.concat(chunks).toString('utf8')) as { sheetOrder?: string[]; sheets?: Record<string, { cellData?: Record<string, Record<string, { v?: unknown; f?: unknown } | null> | null> }> }
+  const book = JSON.parse(Buffer.concat(chunks).toString('utf8')) as { sheetOrder?: string[]; sheets?: Record<string, { cellData?: Record<string, Record<string, { v?: unknown; f?: unknown; p?: unknown } | null> | null> }> }
   const id = book.sheetOrder?.[0] ?? ''
   const tab = book.sheets?.[id]
   let last = 0
@@ -93,7 +93,8 @@ async function extentOf(ctx: Svc, path: string, rev: number): Promise<{ rows: nu
   for (const [row, cells] of Object.entries(tab?.cellData ?? {})) {
     if (!cells) continue
     for (const [column, c] of Object.entries(cells)) {
-      if (!c || !((c.v !== undefined && c.v !== null && c.v !== '') || !!c.f)) continue
+      // A cell made rich in the cell editor keeps its words in its document (`p`) alone: it holds something all the same.
+      if (!c || !((c.v !== undefined && c.v !== null && c.v !== '') || !!c.f || !!c.p)) continue
       last = Math.max(last, Number(row))
       across = Math.max(across, Number(column) + 1)
     }
@@ -195,15 +196,17 @@ export const nextRow = (grid: Grid): number => Math.max(grid.last, ...grid.pendi
 
 /**
  * Where a row Money wrote now stands: by its mark (a Ref, or a receipt's
- * path) in the named column, among the sheet's rows or among what waits as
- * a suggestion. Null: no such row was written.
+ * path), in any cell of the sheet's rows or among what waits as a
+ * suggestion; `with`, a second mark the same row must hold too. Looked for
+ * in every column, never under a header's name: a header he renamed since
+ * (Receipt to Scan) must not make a row that is there read as never
+ * written, or its file would be taken for no row's. Null: no such row.
  */
-export function writtenAt(grid: Grid, column: string, mark: string): { row: number; suggested: boolean } | null {
-  const at = grid.header.findIndex((h) => String(h ?? '').trim().toLowerCase() === column.toLowerCase())
-  if (at < 0 || !mark) return null
-  const i = grid.body.findIndex((line) => line[at] === mark)
+export function writtenAt(grid: Grid, mark: string, also?: string | null): { row: number; suggested: boolean } | null {
+  if (!mark) return null
+  const i = grid.body.findIndex((line) => line.includes(mark) && (!also || line.includes(also)))
   if (i >= 0) return { row: 2 + i, suggested: false }
-  const waits = grid.pending.find((p) => p.column === at && p.v === mark)
+  const waits = grid.pending.find((p) => p.v === mark && (!also || grid.pending.some((q) => q.row === p.row && q.v === also)))
   return waits ? { row: waits.row, suggested: true } : null
 }
 

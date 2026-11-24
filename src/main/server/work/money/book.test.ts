@@ -524,6 +524,23 @@ describe('what the fourth council round asked of the ledger', () => {
     expect(sheet.cells.get('E3')).toBe('=E2')
   })
 
+  it('appends under a last row he typed in rich text, whose words stand in the cell’s document alone', async () => {
+    await entry({})
+    type({ A3: 'Carry-over from 2025', B3: 'Notes' })
+    // The workbook keeps a rich cell's words in `p` with no `v`; the range read still gives its text.
+    const real = b.sheets.internal
+    ;(b.ctx.service as { internal: unknown }).internal = async (route: string, body: Record<string, unknown>) => {
+      const got = (await real(route, body)) as { data: string; size: number }
+      if (route !== '/internal/sheet/snapshot') return got
+      const book = JSON.parse(Buffer.from(got.data, 'base64').toString('utf8')) as { sheets: { sheet1: { cellData: Record<string, Record<string, unknown>> } } }
+      for (const [col, c] of Object.entries(book.sheets.sheet1.cellData['2'])) book.sheets.sheet1.cellData['2'][col] = { p: { body: { dataStream: `${(c as { v: string }).v}\r\n` } } }
+      const bytes = Buffer.from(JSON.stringify(book), 'utf8')
+      return { rev: (got as unknown as { rev: number }).rev, data: bytes.toString('base64'), size: bytes.length }
+    }
+    expect(await entry({ who: 'Under the rich row' })).toMatchObject({ row: 4 })
+    expect(b.sheets.grid(ledger())[2].slice(0, 2)).toEqual(['Carry-over from 2025', 'Notes'])
+  })
+
   it('counts a figure below nothing as the sheet does, and leaves such a row to the sheet', async () => {
     await entry({ amount: 10000, who: 'Shop' })
     type({ A3: '2026-11-22', B3: 'Shop refund', F3: -20 })

@@ -243,12 +243,13 @@ function needs(ledger: Ledger, values: Values): void {
  * by the Ref it was given, else by the file it names: in the ledger, or
  * waiting in it as a suggestion. When the note names a file, the row found
  * by Ref must name that file too: a row that only shares the Ref is not
- * this add's.
+ * this add's. Both are looked for in every cell of the row, whatever its
+ * headers are called now.
  */
-export function writtenRow(ledger: Ledger, mark: { ref?: string | null; receipt?: string | null }): { ref: string | null; row: number; suggested: boolean } | null {
-  const byFile = mark.receipt ? writtenAt(ledger.grid, 'Receipt', mark.receipt) : null
-  const byRef = mark.ref ? writtenAt(ledger.grid, 'Ref', mark.ref) : null
-  if (byRef && (!mark.receipt || byFile?.row === byRef.row)) return { ref: mark.ref!, ...byRef }
+export function writtenRow(ledger: Pick<Ledger, 'grid'>, mark: { ref?: string | null; receipt?: string | null }): { ref: string | null; row: number; suggested: boolean } | null {
+  const byRef = mark.ref ? writtenAt(ledger.grid, mark.ref, mark.receipt) : null
+  if (byRef) return { ref: mark.ref!, ...byRef }
+  const byFile = mark.receipt ? writtenAt(ledger.grid, mark.receipt) : null
   return byFile ? { ref: null, ...byFile } : null
 }
 

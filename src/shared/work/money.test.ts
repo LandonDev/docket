@@ -175,6 +175,16 @@ describe('the ledger', () => {
     }
   })
 
+  it('never takes the row now at a deleted row’s number for it: a Ref that is gone or stands twice finds nothing', () => {
+    // Two $75 games filed apart; he deleted the first, so the second moved up into its place and reads the same.
+    const [first] = read(line('2026-11-01', 'Harrison HS', 75, '', 'Unpaid', { ref: 'mgame1' }))
+    const now = read(line('2026-11-01', 'Harrison HS', 75, '', 'Unpaid', { ref: 'mgame2' }))
+    expect(sigOf(now[0])).toBe(sigOf(first))
+    expect(findRow(now, { ref: 'mgame1', row: 2, sig: sigOf(first) })).toBeNull()
+    const twice = read(line('2026-11-01', 'A', 1, '', '', { ref: 'mtwin1' }), line('2026-11-01', 'A', 1, '', '', { ref: 'mtwin1' }))
+    expect(findRow(twice, { ref: 'mtwin1', row: 2, sig: sigOf(twice[0]) })).toBeNull()
+  })
+
   const year = read(
     line('2026-10-03', 'Harrison HS', 75, '', 'Paid', { category: 'Game fees' }),
     line('2026-11-07', 'West Side HS', 80, '', 'Unpaid', { category: 'Game fees' }),

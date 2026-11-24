@@ -365,6 +365,31 @@ describe('an invoice', () => {
     expect((await view()).rows).toHaveLength(2)
   })
 
+  it('keeps an invoice’s file when its row is there under a Receipt header he renamed since the keep stopped', async () => {
+    const got = await create(invoice())
+    const ref = (got.acted as { ref: string }).ref
+    b.db.prepare("UPDATE work_money_inbox SET state = 'partial', ref = ? WHERE key = 'kept:keep-key-01'").run(JSON.stringify({ intent: { ref, receipt: got.receipt } }))
+    b.sheets.type(join(b.ref, 'Money', 'Ledger.tcsheet'), 'I1', 'Scan')
+    expect(await keep({ what: 'invoice', invoice: invoice() })).toEqual(got)
+    expect(readdirSync(join(b.ref, 'Money', 'Invoices'))).toEqual(['Invoice 1042 Rivera Dental.pdf'])
+  })
+
+  it('never files a second balance for one Create whose answer was lost: a changed retry of its key is told what was created', async () => {
+    await call('work.money.open', { workspaceId: 'ws-ref' })
+    const inv = invoice({ number: '1042' })
+    await call('work.money.invoice', { workspaceId: 'ws-ref', key: 'lost-then-edited', invoice: inv })
+    b.sheets.losing = (route, body) => route === '/internal/sheet/cells' && (body.sheet as { tcsheet: string }).tcsheet === join(b.ref, 'Money', 'Ledger.tcsheet')
+    // The row landed and its answer was lost on the way to the window.
+    await keep({ key: 'lost-then-edited', what: 'invoice', invoice: inv })
+    // He corrects the rate and presses Create again in the same dialog: one key, so the host knows this Create.
+    const edited = invoice({ number: '1042', lines: [{ what: 'Design', quantity: 2.5, rate: 13000 }] })
+    await expect(call('work.money.invoice', { workspaceId: 'ws-ref', key: 'lost-then-edited', invoice: edited })).rejects.toThrow('Invoice 1042 was already created, for $320.00. It is in the ledger.')
+    await expect(keep({ key: 'lost-then-edited', what: 'invoice', invoice: edited })).rejects.toThrow('already created')
+    // The same Create unchanged is answered with what was kept.
+    expect((await keep({ key: 'lost-then-edited', what: 'invoice', invoice: inv })).acted).toMatchObject({ ok: true, row: 2 })
+    expect((await view()).rows).toHaveLength(1)
+  })
+
   it('files one invoice for the same key sent twice at once', async () => {
     await call('work.money.invoice', { workspaceId: 'ws-ref', key: 'keep-key-01', invoice: invoice() })
     const [x, y] = await Promise.all([keep({ what: 'invoice', invoice: invoice() }), keep({ what: 'invoice', invoice: invoice() })])

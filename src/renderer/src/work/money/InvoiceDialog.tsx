@@ -96,7 +96,9 @@ function Body({ env, workspaceId, kind, onClose, onCreated, pending, setPending 
   const [dueTouched, setDueTouched] = useState(false);
   const [editingFrom, setEditingFrom] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const keys = useRef(new Map<string, string>());
+  // One key for the dialog's life: a Create whose answer was lost is the same Create however he changes the form
+  // after it, so the host can say it was already filed instead of taking a second number for the same work.
+  const [key] = useState(newKey);
   const [focusLine, setFocusLine] = useState<number | null>(null);
   const linesRef = useRef<HTMLDivElement>(null);
   // A line added from the keyboard takes the caret in its What.
@@ -138,10 +140,6 @@ function Body({ env, workspaceId, kind, onClose, onCreated, pending, setPending 
     if (!invoice || pending) return;
     setError(null);
     setPending(true);
-    // One key for one invoice: a retry of the same Create files it once on the host.
-    const content = JSON.stringify(invoice);
-    const key = keys.current.get(content) ?? newKey();
-    keys.current.set(content, key);
     createInvoice(env, workspaceId, invoice, key).then(
       (kept) => {
         setPending(false);

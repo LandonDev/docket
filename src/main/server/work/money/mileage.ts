@@ -90,7 +90,7 @@ async function addOnce(ctx: Ctx, ws: Workspace, p: TripParams, id: string | null
   const was: TripIntent | null = begun?.intent ?? null
   // What the add that was begun already wrote: its rows are looked for by their Refs, in the sheets and among what waits there.
   const paid = was ? writtenRow(await ledgerOf(ctx, books), { ref: was.pay }) : null
-  const logged = was ? writtenAt(await gridOf(ctx, books.mileage), 'Ref', was.trip) : null
+  const logged = was ? writtenAt(await gridOf(ctx, books.mileage), was.trip) : null
   // An add begun before intents were kept wrote its pay and then stopped: that pay is not written twice.
   const payDone = paid !== null || (begun !== null && !was)
   // The fee that was written stands; the miles are his now, else the ones the unfinished add meant to log.

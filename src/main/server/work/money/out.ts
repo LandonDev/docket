@@ -4,7 +4,7 @@ import { join } from 'node:path'
 import type { z } from 'zod'
 import type { InvoiceFromSchema, InvoiceSchema, KeepParamsSchema, MoneyExport, MoneyInvoiceNext, MoneyInvoicePage, MoneyKept } from '@shared/contract-work-money'
 import { errorText } from '@shared/work/ids'
-import { csvOf, daysBetween, fileWord, INVOICE_DUE_DAYS, invoiceHtml, invoiceTotal, nextInvoiceNumber, payCategory, staleSummary, taxSummaryHtml } from '@shared/work/money'
+import { csvOf, daysBetween, fileWord, formatMoney, INVOICE_DUE_DAYS, invoiceHtml, invoiceTotal, nextInvoiceNumber, payCategory, staleSummary, taxSummaryHtml } from '@shared/work/money'
 import type { WorkCtx } from '../modules'
 import { appendRow, insideJob, locked, MONEY_FOLDER, moneyFolder, newRef, openBooks, writtenRow } from './book'
 import { keepFile, keyed } from './inbox'
@@ -225,7 +225,8 @@ export async function invoicePage(ctx: Ctx, ws: Workspace, key: string, inv: Inv
   if (!inv.from.name.trim()) throw new MoneyError('Say who it is from.')
   await openBooks(ctx, ws, 'ledger')
   // The same Create again after its row was filed (its answer was lost on the way): the number in the ledger is its own.
-  const mine = ctx.db.prepare("SELECT state FROM work_money_inbox WHERE key = ? AND source = 'kept' AND workspace_id = ?").get(`kept:${key}`, ws.id) as { state: string } | undefined
+  const mine = ctx.db.prepare("SELECT state, fields FROM work_money_inbox WHERE key = ? AND source = 'kept' AND workspace_id = ?").get(`kept:${key}`, ws.id) as Pick<KeptRow, 'state' | 'fields'> | undefined
+  if (mine?.state === 'filed') samePage(mine, inv)
   if (mine?.state === 'filed') return { name: invoiceFile(inv), html: invoiceHtml(inv) }
   await locked(ws.id, async () => {
     const kept = keptOf(ctx, ws.id)
@@ -278,12 +279,26 @@ interface KeepIntent {
   ref: string
   receipt?: string
 }
-type KeptRow = { id: string; workspace_id: string; state: string; ref: string | null }
+type KeptRow = { id: string; workspace_id: string; state: string; ref: string | null; fields: string | null }
+
+/**
+ * A Create whose row is in the ledger (filed, or begun and its row found)
+ * is that invoice's alone: the same press again is answered, and
+ * one with other lines, another rate or another number is told what was
+ * created, never filed as a second balance for the same work.
+ */
+function samePage(row: Pick<KeptRow, 'fields'>, inv: Invoice): void {
+  if (!row.fields) return
+  const was = JSON.parse(row.fields) as Invoice
+  if (JSON.stringify(was) === JSON.stringify(inv)) return
+  throw new MoneyError(`${TITLE[was.kind]} ${was.number} was already created, for ${formatMoney(invoiceTotal(was.lines))}. It is in the ledger.`)
+}
 
 async function keepOnce(ctx: Ctx, ws: Workspace, p: KeepParams): Promise<MoneyKept> {
-  const noted = ctx.db.prepare("SELECT id, workspace_id, state, ref FROM work_money_inbox WHERE key = ? AND source = 'kept'").get(`kept:${p.key}`) as KeptRow | undefined
+  const noted = ctx.db.prepare("SELECT id, workspace_id, state, ref, fields FROM work_money_inbox WHERE key = ? AND source = 'kept'").get(`kept:${p.key}`) as KeptRow | undefined
   // A key is one page of one job: under another job it neither answers this one's file nor is filed there.
   if (noted && noted.workspace_id !== ws.id) throw new MoneyError('That page was kept for another job.')
+  if (noted?.state === 'filed' && p.what === 'invoice' && p.invoice) samePage(noted, p.invoice)
   if (noted?.state === 'filed' && noted.ref) return JSON.parse(noted.ref) as MoneyKept
   if (p.what === 'summary' && p.year === undefined) throw new MoneyError('A summary names its year.')
   if (p.what === 'invoice' && !p.invoice) throw new MoneyError('An invoice comes with its fields.')
@@ -348,7 +363,10 @@ async function keepOnce(ctx: Ctx, ws: Workspace, p: KeepParams): Promise<MoneyKe
     }
     if (begun) {
       const found = writtenRow(await ledgerOf(ctx, books), begun)
-      if (found && begun.receipt) return filed(begun.receipt, found)
+      if (found && begun.receipt) {
+        samePage(noted!, inv)
+        return filed(begun.receipt, found)
+      }
       // Its row was never written: the file that keep left is no row's, and goes.
       if (begun.receipt && existsSync(fileOf(begun.receipt)) && insideJob(ws, fileOf(begun.receipt))) rmSync(fileOf(begun.receipt), { force: true })
     }
@@ -357,10 +375,11 @@ async function keepOnce(ctx: Ctx, ws: Workspace, p: KeepParams): Promise<MoneyKe
     const held = begun !== null || (keptOf(ctx, ws.id).claims ?? []).some((c) => c.key === p.key && c.kind === inv.kind && numberKey(c.number) === numberKey(inv.number) && Date.now() - c.at < CLAIM_MS)
     if (!held) throw new MoneyError(`${TITLE[inv.kind]} ${inv.number} is not held for this Create any more. Create it again.`)
     const ref = newRef()
+    // The invoice itself is noted with its intent: a later press of this key is answered only for the same invoice.
     const note = (receipt?: string): void =>
       void ctx.db
-        .prepare("UPDATE work_money_inbox SET ref = ?, updated_at = ? WHERE key = ? AND source = 'kept'")
-        .run(JSON.stringify({ intent: { ref, ...(receipt ? { receipt } : {}) } } satisfies { intent: KeepIntent }), Date.now(), `kept:${p.key}`)
+        .prepare("UPDATE work_money_inbox SET ref = ?, fields = ?, updated_at = ? WHERE key = ? AND source = 'kept'")
+        .run(JSON.stringify({ intent: { ref, ...(receipt ? { receipt } : {}) } } satisfies { intent: KeepIntent }), JSON.stringify(inv), Date.now(), `kept:${p.key}`)
     use()
     note()
     let file: { path: string; receipt: string } | null = null
@@ -389,7 +408,7 @@ async function keepOnce(ctx: Ctx, ws: Workspace, p: KeepParams): Promise<MoneyKe
       if (landed === undefined) throw err
       if (file) rmSync(file.path, { force: true })
       unuse()
-      ctx.db.prepare("UPDATE work_money_inbox SET ref = NULL WHERE key = ? AND source = 'kept' AND state = 'partial'").run(`kept:${p.key}`)
+      ctx.db.prepare("UPDATE work_money_inbox SET ref = NULL, fields = NULL WHERE key = ? AND source = 'kept' AND state = 'partial'").run(`kept:${p.key}`)
       throw err
     }
   } finally {

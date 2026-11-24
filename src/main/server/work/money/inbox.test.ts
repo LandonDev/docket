@@ -238,9 +238,12 @@ describe('his accept', () => {
     expect(now.toConfirm).toEqual([])
     expect(existsSync(join(b.root, 'data', 'work-money', 'incoming', got.id))).toBe(false)
     expect(b.pushed.at(-1)).toEqual({ push: 'work.money', workspaceId: 'ws-ref', toConfirm: 0 })
-    // A second accept answers the first and writes nothing.
+    // A second accept of the same answers the first and writes nothing; one that asks for other figures, or another
+    // job, is told what was filed, so no window closes on figures the ledger does not hold.
     const rev = b.sheets.sheets.get(ledger())!.rev
-    expect(await call('work.money.accept', { id: got.id, fields: fields({ amount: 999 }) })).toEqual(acted)
+    expect(await call('work.money.accept', { id: got.id, fields: fields() })).toEqual(acted)
+    await expect(call('work.money.accept', { id: got.id, fields: fields({ amount: 10000 }) })).rejects.toThrow('That receipt was already filed: $10.43 on Nov 21, 2026.')
+    await expect(call('work.money.accept', { id: got.id, workspaceId: 'ws-purdue', fields: fields() })).rejects.toThrow('already filed in another job')
     expect(b.sheets.sheets.get(ledger())!.rev).toBe(rev)
   })
 
@@ -328,8 +331,22 @@ describe('his accept', () => {
     resume(b.ctx, Date.now() + 8 * day)()
     expect(existsSync(join(b.root, 'data', 'work-money', 'incoming', got.id))).toBe(false)
     expect((await send('coffee.png', { key: 'old-drop-01' })).state).toBe('dropped')
-    resume(b.ctx, Date.now() + 40 * day)()
-    expect(b.db.prepare('SELECT COUNT(*) AS n FROM work_money_inbox').get()).toEqual({ n: 0 })
+    // A month on, what was read goes and the key stays for good: a phone's late retry still hears "discarded".
+    resume(b.ctx, Date.now() + 400 * day)()
+    expect(b.db.prepare('SELECT state, lines FROM work_money_inbox').all()).toEqual([{ state: 'dropped', lines: null }])
+    expect((await send('coffee.png', { key: 'old-drop-01' })).state).toBe('dropped')
+    expect((await view()).toConfirm).toEqual([])
+  })
+
+  it('answers a phone’s Save sent again long after its receipt was filed, and files nothing twice; other figures are told what was filed', async () => {
+    const more = { source: 'phone', lines: [], seen: true, fields: { amount: 4817, date: '2026-11-14', who: 'Northside Fuel Stop', category: 'Travel' } }
+    expect(await send('fuel.jpg', { key: 'late-key-01', more })).toMatchObject({ state: 'filed' })
+    resume(b.ctx, Date.now() + 400 * 24 * 3600_000)()
+    expect(await send('fuel.jpg', { key: 'late-key-01', more })).toMatchObject({ state: 'filed' })
+    expect((await view()).rows).toHaveLength(1)
+    // He edited the draft after the first answer was lost: the phone must not drop it as filed.
+    await expect(send('fuel.jpg', { key: 'late-key-01', more: { ...more, fields: { ...more.fields, amount: 5817 } } })).rejects.toThrow('already filed: $48.17 on Nov 14, 2026')
+    expect((await view()).rows).toHaveLength(1)
   })
 
   it('files one row for two accepts at once, and a discard during the filing is left alone', async () => {
@@ -617,6 +634,29 @@ describe('what the fourth council round asked of receipts', () => {
     expect((acted as { ref: string }).ref).not.toBe('mdone1')
     expect((await view()).rows).toHaveLength(2)
     expect(readdirSync(join(b.ref, 'Money', 'Receipts', '2026'))).toEqual(['2026-11-21 Blue Heron Coffee 10.43.png'])
+  })
+
+  it('finds the row an accept wrote by its Ref and file in any column: a Receipt header he renamed since never makes its file go', async () => {
+    const got = await send('coffee.png')
+    await settle()
+    await call('work.money.open', { workspaceId: 'ws-ref' })
+    const name = 'Receipts/2026/2026-11-21 Blue Heron Coffee 10.43.png'
+    mkdirSync(join(b.ref, 'Money', 'Receipts', '2026'), { recursive: true })
+    copyFileSync(fixture('coffee.png'), join(b.ref, 'Money', 'Receipts', '2026', '2026-11-21 Blue Heron Coffee 10.43.png'))
+    for (const [at, v] of [
+      ['A2', '2026-11-21'],
+      ['B2', 'Blue Heron Coffee'],
+      ['F2', 10.43],
+      ['I2', name],
+      ['J2', 'mdone1'],
+      // The row landed, its answer was lost, and he then renamed the Receipt header.
+      ['I1', 'Scan']
+    ] as const)
+      b.sheets.type(ledger(), at, v)
+    b.db.prepare('UPDATE work_money_inbox SET ref = ? WHERE id = ?').run(JSON.stringify({ intent: { ref: 'mdone1', workspaceId: 'ws-ref', receipt: name } }), got.id)
+    expect(await call<MoneyActed>('work.money.accept', { id: got.id, fields: fields() })).toEqual({ ok: true, ref: 'mdone1', row: 2 })
+    expect(readdirSync(join(b.ref, 'Money', 'Receipts', '2026'))).toEqual(['2026-11-21 Blue Heron Coffee 10.43.png'])
+    expect(b.sheets.grid(ledger())).toHaveLength(2)
   })
 
   it('lets go of the file an accept kept when its row was never written, and files afresh', async () => {
