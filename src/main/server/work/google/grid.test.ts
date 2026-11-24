@@ -123,6 +123,23 @@ describe('a Google Sheet in the grid', () => {
     expect(cells()[5]).toEqual(['Misc', 80])
   })
 
+  it('asks again for a cell among blank rows once the sheet changed, and for a suggestion that kept no place', async () => {
+    // Rows below Total are blank: every one of them reads alike. On the sheet as it was, he approves a note in B6: written.
+    const asIs = await suggest(ctx, ref, 'agent:env_box:t1', 'tidy', [{ sheet: 'Q1', row: 5, col: 1, value: { v: 'Note' } }])
+    expect(await review(ctx, ref, { changeSet: asIs.changeSet }, 'accept')).toEqual({ written: 1, conflicts: 0 })
+    // Once the sheet changed (a blank row inserted among them, which nothing in those rows shows), one there is asked for again.
+    const { changeSet } = await suggest(ctx, ref, 'agent:env_box:t1', 'tidy', [{ sheet: 'Q1', row: 8, col: 1, value: { v: 'Note' } }])
+    cells().splice(7, 0, [])
+    ;(fake as unknown as { bump(f: unknown): void }).bump(fake.files.get('sh1')!)
+    expect(await review(ctx, ref, { changeSet }, 'accept')).toEqual({ written: 0, conflicts: 1 })
+    expect(writes()).toBe(1)
+    // One made before where it stood was kept: asked for again, never written by its value alone.
+    const store = new SuggestionStore(ctx.db)
+    store.add('google:sh1', 'cs-old', 'agent:env_box:t1', 'tidy', [{ sheet: 'Q1', row: 1, col: 1, base: { v: 1200 }, proposed: { v: 1300 } }])
+    expect(await review(ctx, ref, { changeSet: 'cs-old' }, 'accept')).toEqual({ written: 0, conflicts: 1 })
+    expect(cells()[1]![1]).toBe(1200)
+  })
+
   it('gives each suggestion its own id, two in the same millisecond on the same cell included', async () => {
     const now = vi.spyOn(Date, 'now').mockReturnValue(1_800_000_000_000)
     try {

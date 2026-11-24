@@ -140,7 +140,13 @@ landing between the compare and the write is not caught. A spreadsheet past
 the cell cap refuses writes. An agent's cells are suggestions in
 `work_sheets_suggestions` under `google:<fileId>` (`google_sheet_suggest`);
 an accepted set is written as one update, a cell changed since stays a
-conflict. `googleSource` is the spreadsheet as work-kit's `SheetSource`
+conflict. Each suggestion keeps where its cell stood (`target`, `targetOf`:
+the tab's numeric id, the other cells of its row, its column's header); one
+whose place moved is a conflict. A cell in a row with nothing else in it is
+ambiguous (blank rows read alike), so its target also keeps the sheet's Drive
+version, and once the sheet changed anywhere it is a conflict to be asked for
+again; on the unchanged sheet it is written. A suggestion made before targets
+were kept is a conflict too, never written by its value alone. `googleSource` is the spreadsheet as work-kit's `SheetSource`
 (`formulas: 'store'`, `live: false`). History, structural edits and export
 are Google's: the sheets pillar says so. The switch (`reach.to: 'google'`)
 opens the spreadsheet in the system browser.

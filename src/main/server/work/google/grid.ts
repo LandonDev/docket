@@ -119,8 +119,8 @@ export function gridOf(json: GoogleSheetJson): { grid: Grid; order: string[]; si
     for (const d of s.data ?? []) {
       const r0 = d.startRow ?? 0
       const c0 = d.startColumn ?? 0
-      ;(d.rowData ?? []).forEach((row: { values?: unknown[] }, dr: number) =>
-        (row.values ?? []).forEach((v, dc) => {
+      ;(d.rowData ?? []).forEach((row: { values?: unknown[] } | null, dr: number) =>
+        (row?.values ?? []).forEach((v, dc) => {
           const cell = cellOfApi(v as never)
           if (!cell) return
           if (budget <= 0) {
@@ -185,12 +185,16 @@ interface CellWrite {
 }
 
 /**
- * Where a cell stands, past its value (round 2): its tab's numeric id, the other cells of its row (its label and
- * the rest of its record) and its column's header (its first row's cell). A row or column inserted before it, or a
- * tab replaced under the same title, leaves a blank at the old address that a value alone would take for the blank
- * he approved; this does not. An edit elsewhere in its column changes nothing here; one in its own row does.
+ * Where a cell stands, past its value: its tab's numeric id, the other cells of its row (its label and the rest of
+ * its record) and its column's header (its first row's cell). A row or column inserted before it, or a tab replaced
+ * under the same title, leaves a blank at the old address that a value alone would take for the blank he approved;
+ * this does not. An edit elsewhere in its column changes nothing here; one in its own row does.
+ *
+ * A cell whose row holds nothing else is ambiguous (round 3): every blank row of an empty stretch reads alike, so a
+ * blank row inserted among them cannot be seen. Its target also keeps the sheet's version then (`@<version>`), and
+ * once the sheet changed anywhere it is asked for again rather than written by its address.
  */
-export function targetOf(grid: Grid, ids: ReadonlyMap<string, number>, sheet: string, row: number, col: number): string {
+export function targetOf(grid: Grid, ids: ReadonlyMap<string, number>, sheet: string, row: number, col: number, version?: string): string {
   const cells = grid.get(sheet) ?? new Map<string, SheetCell>()
   const line: [number, unknown][] = []
   for (const [name, cell] of cells) {
@@ -199,7 +203,13 @@ export function targetOf(grid: Grid, ids: ReadonlyMap<string, number>, sheet: st
   }
   line.sort((a, b) => a[0] - b[0])
   const header = row === 0 ? null : (cells.get(cellName(0, col)) ?? null)
-  return createHash('sha256').update(JSON.stringify([ids.get(sheet) ?? null, line, header])).digest('hex').slice(0, 32)
+  const hash = createHash('sha256').update(JSON.stringify([ids.get(sheet) ?? null, line, header])).digest('hex').slice(0, 32)
+  return !line.length && version !== undefined ? `${hash}@${version}` : hash
+}
+/** Whether a kept target still names the cell: the same place, and for an ambiguous one a sheet that has not changed. */
+const sameTarget = (kept: string, now: string, version: string): boolean => {
+  const [hash, at] = kept.split('@')
+  return hash === now.split('@')[0] && (at === undefined || at === version)
 }
 
 /**
@@ -211,8 +221,10 @@ async function compareAndWrite(ctx: WorkCtx, ref: GoogleSheetRef, cells: readonl
   const { grid, capped, ids } = gridOf(await api.sheet(ref.fileId))
   // Past the cap some cells were never read, so a compare there would pass over what they hold.
   if (capped) throw new Error(`${ref.name} holds more than ${GOOGLE_MAX_CELLS.toLocaleString('en-US')} cells: change it in Google.`)
-  // Its value, and where it stands: a new blank at the old address of an approved blank is another cell.
-  const moved = cells.filter((c) => !same(grid.get(c.sheet)?.get(cellName(c.row, c.col)) ?? null, c.base) || (!!c.target && targetOf(grid, ids, c.sheet, c.row, c.col) !== c.target))
+  const asOf = cells.some((c) => c.target?.includes('@')) ? (await api.file(ref.fileId)).version : ''
+  // Its value, and where it stands: a new blank at the old address of an approved blank is another cell. A
+  // suggestion made before where it stood was kept (`target: null`) cannot be told so, and is asked for again.
+  const moved = cells.filter((c) => !same(grid.get(c.sheet)?.get(cellName(c.row, c.col)) ?? null, c.base) || (c.target !== undefined && (c.target === null || !sameTarget(c.target, targetOf(grid, ids, c.sheet, c.row, c.col), asOf))))
   if (moved.length) return { written: 0, moved }
   if (!cells.length) return { written: 0, moved: [] }
   await api.sheetWrite(
@@ -279,7 +291,9 @@ export async function review(ctx: WorkCtx, ref: GoogleSheetRef, which: Which, ve
 
 /** An agent's cells over the spreadsheet, as one change set of suggestions, each with what it saw there. */
 export async function suggest(ctx: WorkCtx, ref: GoogleSheetRef, by: Principal, reason: string | undefined, cells: { sheet: string; row: number; col: number; value: SheetCell | null }[]): Promise<{ changeSet: string; count: number }> {
-  const { grid, order, ids } = gridOf(await googleOf(ctx).api(ref.account).sheet(ref.fileId))
+  const api = googleOf(ctx).api(ref.account)
+  const { grid, order, ids } = gridOf(await api.sheet(ref.fileId))
+  const version = (await api.file(ref.fileId)).version
   for (const c of cells) if (!grid.has(c.sheet)) throw new Error(`There is no sheet "${c.sheet}": the sheets are ${order.map((s) => `"${s}"`).join(', ')}.`)
   // Its own id each time: two suggestions in one millisecond never share one, so an id he was shown means one value.
   const changeSet = `cs-${Date.now().toString(36)}${randomBytes(4).toString('hex')}`
@@ -288,7 +302,7 @@ export async function suggest(ctx: WorkCtx, ref: GoogleSheetRef, by: Principal, 
     changeSet,
     by,
     reason,
-    cells.map((c) => ({ sheet: c.sheet, row: c.row, col: c.col, base: grid.get(c.sheet)!.get(cellName(c.row, c.col)) ?? null, proposed: c.value, target: targetOf(grid, ids, c.sheet, c.row, c.col) }))
+    cells.map((c) => ({ sheet: c.sheet, row: c.row, col: c.col, base: grid.get(c.sheet)!.get(cellName(c.row, c.col)) ?? null, proposed: c.value, target: targetOf(grid, ids, c.sheet, c.row, c.col, version) }))
   )
   bump(ref)
   return { changeSet, count }
