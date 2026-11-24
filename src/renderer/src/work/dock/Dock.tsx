@@ -12,10 +12,11 @@ import { useMetaById, useSessionById } from "../../lib/threads/agents";
 import { workDockPort, workOpenPort } from "../../lib/workSwitch";
 import { LoadLine } from "../../surfaces/SessionPane";
 import { SurfaceSkeleton } from "../../surfaces/SurfaceSkeleton";
+import { ChatFooter } from "../../surfaces/threads/chatSlots";
 import { useSessionActions, useThreadChat } from "../../surfaces/threadChat";
 import { ThreadView } from "../../surfaces/threads/ThreadView";
 import { addContextChip } from "../canvas/chips";
-import { dockThread, enterDock, leaveDock, type DockThread, type DockWorkspace } from "./dockThread";
+import { dockThreadNow, draftIsEmpty, enterDock, findThread, leaveDock, plannedDraft, showFound, type DockThread, type DockWorkspace } from "./dockThread";
 import type { DockSubject } from "./subject";
 
 /** What a dock's head is drawn from: the chat's id once known, its thread's meta once it is one, and Close. */
@@ -28,8 +29,8 @@ export interface DockHead {
 /**
  * A chat docked beside something (docs/DESIGN.md "The Files place", "The Mail view"): a head its owner draws, and
  * under it the thread's transcript and composer, as a tab draws them, without its canvas (the subject is beside it).
- * Until the thread is known, and while its rows come, the transcript's skeleton; a chat that cannot be had says so
- * with Retry. `name` marks the section (`data-<name>-dock`) for its owner's tests and styles.
+ * Its composer is there the moment it opens (the draft, or the thread it showed before), and a thread's rows still
+ * coming are the transcript's skeleton over it; a chat that cannot be had says so with Retry. `name` marks the section (`data-<name>-dock`) for its owner's tests and styles.
  */
 export function Dock({
   name,
@@ -67,32 +68,26 @@ export function Dock({
   /** rides the composer's top edge (Mail's starters) */
   composerTop?(sessionId: string): ReactNode;
 }) {
-  const [thread, setThread] = useState<DockThread | null>(preset);
-  /** The subject the shown thread is for. */
-  const shownFor = useRef<string | null>(null);
-  const [failed, setFailed] = useState(false);
-  const [attempt, setAttempt] = useState(0);
+  // What the dock shows the moment it opens: the thread it showed before, else a draft, with no ask of any host
+  // (dockThreadNow); drawn in the same commit, so a composer is there at once. A dock that cannot have a chat here says so.
+  const now = (): { thread: DockThread | null; failed: boolean } => {
+    if (!subject) return { thread: null, failed: false };
+    try {
+      return { thread: dockThreadNow(workspace, subject), failed: false };
+    } catch {
+      return { thread: null, failed: true };
+    }
+  };
   const key = subject?.key ?? null;
-  useEffect(() => {
-    if (!subject || preset) return;
-    let live = true;
-    setFailed(false);
-    // Another subject: its chat is not the one shown, so nothing is typed into the last one while it is found.
-    setThread((was) => (was && shownFor.current === subject.key ? was : null));
-    dockThread(workspace, subject).then(
-      (next) => {
-        if (!live) return;
-        shownFor.current = subject.key;
-        setThread(next);
-      },
-      () => live && setFailed(true),
-    );
-    return () => {
-      live = false;
-    };
-    // The key stands for the subject: one chat a key.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [workspace.id, key, attempt]);
+  const [attempt, setAttempt] = useState(0);
+  const [state, setState] = useState(() => ({ key, attempt, ...(preset ? { thread: preset, failed: false } : now()) }));
+  let shown = state;
+  // Another subject (or a Retry): its chat, at once, in this same draw. A subject gone keeps what was shown.
+  if (!preset && subject && (state.key !== key || state.attempt !== attempt)) {
+    shown = { key, attempt, ...now() };
+    setState(shown);
+  }
+  const { thread, failed } = shown;
   // On screen, a draft is in the open set with its first send's step; closed (or the subject gone), one he sent nothing in goes.
   // Set in the commit that draws the composer, so no send can come before the step.
   const id = thread?.id ?? null;
@@ -103,7 +98,32 @@ export function Dock({
   }, [id]);
 
   const root = useRef<HTMLElement | null>(null);
-  const caret = (): void => void requestAnimationFrame(() => root.current?.querySelector<HTMLElement>("[data-composer-input]")?.focus());
+  const input = (): HTMLElement | null | undefined => root.current?.querySelector<HTMLElement>("[data-composer-input]");
+  const caret = (): void => void requestAnimationFrame(() => input()?.focus());
+  // The subject's thread from before, asked behind the draft (once a subject a run: findThread): it takes the draft's
+  // place only while he has put nothing in it, in place and with no fade; the caret stays in the composer.
+  const draftId = thread?.draft ? thread.id : null;
+  useEffect(() => {
+    if (!subject || preset || !draftId) return;
+    let live = true;
+    findThread(subject).then(
+      (held) => {
+        if (!live || !held || held === draftId || !draftIsEmpty(draftId, input())) return;
+        const typing = !!root.current?.contains(document.activeElement);
+        showFound(subject.key, held);
+        setState((was) => (was.thread?.id === draftId ? { ...was, thread: { id: held, draft: false } } : was));
+        if (typing) caret();
+      },
+      // A find that failed leaves the draft; the next open of the subject asks again.
+      () => undefined,
+    );
+    return () => {
+      live = false;
+    };
+    // The key stands for the subject: one chat a key.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [workspace.id, key, draftId]);
+
   useEffect(() => {
     if (!id || !chip) return;
     for (const one of Array.isArray(chip) ? chip : [chip as ContextChip]) addContextChip(id, one);
@@ -135,7 +155,7 @@ export function Dock({
           </Button>
         </div>
       ) : id ? (
-        <DockChat key={id} sessionId={id} environmentId={workspace.environmentId} focus={focus} top={composerTop?.(id)} />
+        <DockChat key={id} sessionId={id} environmentId={workspace.environmentId} focus={focus} top={composerTop?.(id)} planned={thread?.draft ? plannedDraft(id) : undefined} />
       ) : (
         <Bones />
       )}
@@ -172,26 +192,30 @@ const Bones = () => (
   </div>
 );
 
-/** The thread's transcript and composer, as the master board's child pane draws them (ChildPane.tsx). */
-function DockChat({ sessionId, environmentId, focus, top }: { sessionId: string; environmentId: string; focus: boolean; top?: ReactNode }) {
+/**
+ * The thread's transcript and composer, as the master board's child pane draws them (ChildPane.tsx). A draft draws its
+ * composer at once (from its plan, until the store holds it); a thread whose rows are still coming draws them as the
+ * transcript's skeleton over its live composer, as a tab's pane does (SessionPane.tsx), so he can type at once.
+ */
+function DockChat({ sessionId, environmentId, focus, top, planned }: { sessionId: string; environmentId: string; focus: boolean; top?: ReactNode; planned?: Session }) {
   const meta = useMetaById(sessionId);
-  const session = useSessionById(sessionId);
+  const session = useSessionById(sessionId) ?? planned;
   const block = useEnvironmentBlock(environmentId);
+  if (!session) return <Bones />;
   // A draft has no rows to wait for; a thread waits for its host's answer, never shown as empty.
-  const answered = session?.loaded === true || session?.load?.phase === "loaded";
-  const loading = !session || (!!meta && session.blocks.length === 0 && !answered);
-  if (loading)
-    return (
-      <div className="flex min-h-0 flex-1 flex-col" data-transcript-loading={session?.load?.phase ?? "loading"}>
-        {session?.load ? <LoadLine name={block.name} load={session.load} onRetry={() => sessionStore.retryLoad(sessionId)} /> : null}
-        {/* A failed read is its Retry line alone: the bones say a load is under way, and come back when a retry starts. */}
-        {session?.load?.phase === "failed" ? null : <Bones />}
-      </div>
-    );
-  return <DockThreadView session={session} focus={focus} top={top} />;
+  const answered = session.loaded === true || session.load?.phase === "loaded";
+  const waiting = !!meta && session.blocks.length === 0 && !answered;
+  const quiet = waiting ? (
+    <div className="flex min-h-0 flex-1 flex-col" data-transcript-loading={session.load?.phase ?? "loading"}>
+      {session.load && !block.degraded ? <LoadLine name={block.name} load={session.load} onRetry={() => sessionStore.retryLoad(sessionId)} /> : null}
+      {/* A failed read is its Retry line alone: the bones say a load is under way, and come back when a retry starts. */}
+      {session.load?.phase === "failed" ? null : <Bones />}
+    </div>
+  ) : null;
+  return <DockThreadView session={session} focus={focus} top={top} quiet={quiet} />;
 }
 
-function DockThreadView({ session, focus, top }: { session: Session; focus: boolean; top?: ReactNode }) {
+function DockThreadView({ session, focus, top, quiet }: { session: Session; focus: boolean; top?: ReactNode; quiet: ReactNode }) {
   const actions = useSessionActions();
   const rootRef = useRef<HTMLDivElement>(null);
   const port = workDockPort.get();
@@ -214,18 +238,25 @@ function DockThreadView({ session, focus, top }: { session: Session; focus: bool
   });
   return (
     <div ref={rootRef} className="flex min-h-0 min-w-0 flex-1 flex-col">
-      <ThreadView
-        session={session}
-        renderChat={top ? (opts) => chat.renderChat({ topSlot: top, ...opts }) : chat.renderChat}
-        renderSlots={top ? (opts) => chat.renderSlots({ topSlot: top, ...opts }) : chat.renderSlots}
-        composing={chat.newPassArmed}
-        onArmNewPass={chat.armNewPass}
-        onOpenFile={openFile}
-        onOpenDiff={openDiff}
-        onOpenSession={(id) => workOpenPort.get()?.(id)}
-        bare
-        seat={false}
-      />
+      {quiet ? (
+        <>
+          {quiet}
+          <ChatFooter slots={{ transcript: null, strip: null, composer: chat.composerOf(top ? { topSlot: top } : undefined) }} />
+        </>
+      ) : (
+        <ThreadView
+          session={session}
+          renderChat={top ? (opts) => chat.renderChat({ topSlot: top, ...opts }) : chat.renderChat}
+          renderSlots={top ? (opts) => chat.renderSlots({ topSlot: top, ...opts }) : chat.renderSlots}
+          composing={chat.newPassArmed}
+          onArmNewPass={chat.armNewPass}
+          onOpenFile={openFile}
+          onOpenDiff={openDiff}
+          onOpenSession={(id) => workOpenPort.get()?.(id)}
+          bare
+          seat={false}
+        />
+      )}
     </div>
   );
 }

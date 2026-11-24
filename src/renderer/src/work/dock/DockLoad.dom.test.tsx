@@ -1,7 +1,8 @@
 // @vitest-environment jsdom
 /**
  * A docked chat whose first transcript read failed (Dock.tsx `DockChat`): its Retry line stands alone, with no
- * bones under it that say "Loading chat"; while a read is under way, the bones are back.
+ * bones under it that say "Loading chat"; while a read is under way, the bones are back. Either way its composer is
+ * there: a known thread takes his words before its rows come.
  */
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -12,7 +13,7 @@ const h = vi.hoisted(() => ({ meta: null as SessionMeta | null, session: undefin
 vi.mock("../../lib/threads/agents", () => ({ useMetaById: () => h.meta, useSessionById: () => h.session }));
 vi.mock("../../surfaces/threadChat", () => ({
   useSessionActions: () => ({}),
-  useThreadChat: () => ({ renderChat: () => null, renderSlots: () => null, newPassArmed: false, armNewPass: () => undefined }),
+  useThreadChat: () => ({ renderChat: () => null, renderSlots: () => null, composerOf: () => <div data-composer-input contentEditable />, newPassArmed: false, armNewPass: () => undefined }),
 }));
 vi.mock("../../surfaces/threads/ThreadView", () => ({ ThreadView: () => <div data-testid="thread-view" /> }));
 const retryLoad = vi.hoisted(() => vi.fn());
@@ -21,7 +22,15 @@ vi.mock("../../chrome/ConnectionLine", () => ({ useEnvironmentBlock: () => ({ na
 vi.mock("../../surfaces/SessionPane", () => ({
   LoadLine: ({ load, onRetry }: { load: { phase: string }; onRetry: () => void }) => (load.phase === "failed" ? <button onClick={onRetry}>Retry now</button> : null),
 }));
-vi.mock("./dockThread", () => ({ dockThread: async () => ({ id: "c1", draft: false }), enterDock: () => undefined, leaveDock: () => undefined }));
+vi.mock("./dockThread", () => ({
+  dockThreadNow: () => ({ id: "c1", draft: false }),
+  findThread: async () => null,
+  draftIsEmpty: () => true,
+  showFound: () => undefined,
+  plannedDraft: () => undefined,
+  enterDock: () => undefined,
+  leaveDock: () => undefined,
+}));
 
 const { Dock } = await import("./Dock");
 
@@ -41,6 +50,7 @@ describe("a docked chat's first read", () => {
     h.session = { id: "c1", blocks: [], load: { phase: "failed", since: 0, attempt: 2 } } as unknown as Session;
     draw();
     expect(bones()).toBeNull();
+    expect(document.querySelector("[data-composer-input]")).not.toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Retry now" }));
     expect(retryLoad).toHaveBeenCalledWith("c1");
   });
@@ -50,5 +60,6 @@ describe("a docked chat's first read", () => {
     h.session = { id: "c1", blocks: [], load: { phase: "loading", since: 0, attempt: 3 } } as unknown as Session;
     draw();
     expect(bones()).not.toBeNull();
+    expect(document.querySelector("[data-composer-input]")).not.toBeNull();
   });
 });

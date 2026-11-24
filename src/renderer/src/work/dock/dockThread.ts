@@ -30,28 +30,80 @@ export interface DockThread {
 }
 
 /**
- * Which thread the subject's dock shows: the one it showed before, while it is a live thread; else the subject's
- * thread from before; else a draft (the one from before, so what he typed is still there).
+ * What the dock shows the moment it opens, with no ask of any host: the thread it showed before for this subject,
+ * while that is a live thread; else a draft (the one from before, so what he typed is still there). Safe to call while
+ * drawing: the draft is only planned here, and `enterDock` puts it in the store in the commit that draws it. The
+ * subject's thread from before, if any, comes later (`findThread`), and the dock shows it only while the draft is empty.
  */
-export async function dockThread(workspace: DockWorkspace, subject: DockSubject): Promise<DockThread> {
+export function dockThreadNow(workspace: DockWorkspace, subject: DockSubject): DockThread {
   const known = shown.get(subject.key);
   const meta = known ? sessionStore.metaOf(known) : null;
   if (known && meta && !meta.archived) return { id: known, draft: false };
-  const held = await subject.find();
+  // A thread from before that is now archived is not reopened as a draft: a new draft takes its place.
+  const id = planDraft(workspace, subject, known && !meta ? known : undefined);
+  shown.set(subject.key, id);
+  return { id, draft: true };
+}
+
+/** Most subjects whose `find` is kept; past it the oldest is asked again next time. */
+export const FOUND_KEPT = 200;
+/** Each subject's `find`, asked once a run (a failed one is asked again): its tab shown again asks the host nothing. */
+const found = new Map<string, Promise<string | null>>();
+
+/**
+ * The subject's thread from before, asked of its host once a run. A thread kept here that he archived since, or that
+ * this window no longer knows as live, is no answer.
+ */
+export async function findThread(subject: DockSubject): Promise<string | null> {
+  let asked = found.get(subject.key);
+  if (!asked) {
+    asked = subject.find();
+    found.set(subject.key, asked);
+    if (found.size > FOUND_KEPT) found.delete(found.keys().next().value!);
+    asked.catch(() => {
+      if (found.get(subject.key) === asked) found.delete(subject.key);
+    });
+  }
+  const held = await asked;
+  const meta = held ? sessionStore.metaOf(held) : null;
+  return held && !meta?.archived ? held : null;
+}
+
+/** The dock shows the subject's thread from before in its draft's place (the draft was empty). */
+export function showFound(subjectKey: string, id: string): void {
+  shown.set(subjectKey, id);
+}
+
+/**
+ * Which thread the subject's dock shows, settled: the one it showed before, while it is a live thread; else the
+ * subject's thread from before; else a draft, in the store. (The dock draws `dockThreadNow` at once instead.)
+ */
+export async function dockThread(workspace: DockWorkspace, subject: DockSubject): Promise<DockThread> {
+  const now = dockThreadNow(workspace, subject);
+  if (!now.draft) return now;
+  const held = await findThread(subject);
   if (held) {
     shown.set(subject.key, held);
     return { id: held, draft: false };
   }
-  // A thread from before that is now archived is not reopened as a draft: a new draft takes its place.
-  const id = draftFor(workspace, subject, known && !meta ? known : undefined);
-  shown.set(subject.key, id);
-  return { id, draft: true };
+  keepDraft(now.id);
+  sessionStore.mutate((prev) => [...prev.filter((s) => s.id !== now.id), drafts.get(now.id)!.session]);
+  putChips(now.id);
+  return now;
+}
+
+/** The planned draft of `id`, before the store has it: what the dock's first commit draws its composer from. */
+export function plannedDraft(id: string): Session | undefined {
+  return drafts.get(id)?.session;
 }
 
 /** The drafts the docks made this run: the session to put back in the open set, its subject's chips, and its first send's step. */
 const drafts = new Map<
   string,
   {
+    /** the subject's key, for its record */
+    key: string;
+    seed: DockSubject["seed"];
     session: Session;
     chips: readonly ContextChip[];
     chipIn: DockSubject["chipIn"];
@@ -83,14 +135,16 @@ function heedChips(): void {
 }
 let heeding = false;
 
-/** A draft for the subject, in the store's open set (no host has it, so no rail lists it), its chips on it. */
-function draftFor(workspace: DockWorkspace, subject: DockSubject, again: string | undefined): string {
+/**
+ * A draft for the subject, planned: its session made and its first send's step set here, nothing written yet. The
+ * draft goes in the store's open set (no host has it, so no rail lists it) and its record is kept when the dock
+ * enters it (`enterDock`, `keepDraft`), in the commit that draws it. Planned twice (a redraw), it is the same draft.
+ */
+function planDraft(workspace: DockWorkspace, subject: DockSubject, again: string | undefined): string {
+  const planned = again ? drafts.get(again) : undefined;
+  if (planned && planned.key === subject.key && !sessionStore.get(again!)) return again!;
   const port = workDockPort.get();
   if (!port) throw new Error("This window cannot start a chat here");
-  if (!heeding) {
-    heeding = true;
-    chipPort.subscribe(heedChips);
-  }
   // The draft from before as it last stood (his picks kept); else the one a launch before kept for the subject, rebuilt
   // with its id so the composer finds its words; else a new one seeded as New thread seeds one.
   const key = dockDraftKey(subject.key);
@@ -99,20 +153,51 @@ function draftFor(workspace: DockWorkspace, subject: DockSubject, again: string 
   const remembered = !kept && record && (!again || record.id === again) && !sessionStore.metaOf(record.id) ? sessionFromDraft(record, null) : undefined;
   const made = kept ?? remembered ?? port.draft(workspace, again);
   const session = subject.seed && !kept ? subject.seed(made) : made;
-  // The subject's own record, never the workspace's draft: what he types here comes back after a launch, here alone.
-  if (record?.id !== session.id) projectDrafts.put(key, { ...draftPicks(session), segments: [], attachments: [] });
-  // The seed holds after his defaults land too (sessionStore.reseedDrafts): a mail chat's draft never becomes Muse.
-  if (subject.seed) sessionStore.keepDraftRule(session.id, subject.seed);
   const { hold } = subject;
   // A composer's hold runs only while its lead chip is still on the composer: he took it off, so the thread is not about it.
   const run = (): Promise<void> => (!hold || chipTaken.has(session.id) ? Promise.resolve() : hold(session.id));
   // The same step as data, under the same rule, for a host that runs it inside the create.
   const fold = subject.fold ? (): CreateFold => (chipTaken.has(session.id) ? {} : subject.fold!()) : undefined;
-  drafts.set(session.id, { session, chips: subject.chips, chipIn: subject.chipIn, hold: run, must: !!subject.mustHold, fold, onItemsFailed: subject.onItemsFailed });
-  // In the store before the dock draws it, so nothing asks a host for an id no host has.
-  sessionStore.mutate((prev) => [...prev.filter((s) => s.id !== session.id), session]);
-  putChips(session.id);
+  drafts.set(session.id, {
+    key: subject.key,
+    seed: subject.seed,
+    session,
+    chips: subject.chips,
+    chipIn: subject.chipIn,
+    hold: run,
+    must: !!subject.mustHold,
+    fold,
+    onItemsFailed: subject.onItemsFailed,
+  });
   return session.id;
+}
+
+/** A planned draft's record and rule, written once the dock draws it. */
+function keepDraft(id: string): void {
+  const draft = drafts.get(id);
+  if (!draft) return;
+  if (!heeding) {
+    heeding = true;
+    chipPort.subscribe(heedChips);
+  }
+  const key = dockDraftKey(draft.key);
+  // The subject's own record, never the workspace's draft: what he types here comes back after a launch, here alone.
+  if (projectDrafts.get(key)?.id !== id) projectDrafts.put(key, { ...draftPicks(draft.session), segments: [], attachments: [] });
+  // The seed holds after his defaults land too (sessionStore.reseedDrafts): a mail chat's draft never becomes Muse.
+  if (draft.seed) sessionStore.keepDraftRule(id, draft.seed);
+}
+
+/**
+ * Whether the draft holds nothing of his: no row sent, and no words or files in its composer (`composer`, the input on
+ * screen, else its kept record). Only then may the dock show the subject's thread from before in its place.
+ */
+export function draftIsEmpty(id: string, composer: Element | null | undefined): boolean {
+  if (!sessionStore.isDraft(id) || sessionStore.isProvisional(id) || (sessionStore.get(id)?.blocks.length ?? 0) > 0) return false;
+  if (composer?.textContent?.trim()) return false;
+  const draft = drafts.get(id);
+  const record = draft ? projectDrafts.get(dockDraftKey(draft.key)) : undefined;
+  if (!record || record.id !== id) return true;
+  return record.attachments.length === 0 && record.segments.every((s) => "text" in s && !s.text.trim());
 }
 
 /** The subject's chips on a draft: in its composer unless he took the lead off, or held for its first send. */
@@ -138,6 +223,7 @@ export function enterDock(id: string): void {
     sessionStore.openForSend(id);
     return;
   }
+  keepDraft(id);
   if (!sessionStore.isOpen(id)) {
     const session = sessionStore.get(id) ?? draft.session;
     sessionStore.mutate((prev) => [...prev.filter((s) => s.id !== id), session]);
@@ -165,6 +251,7 @@ export function leaveDock(id: string): void {
 /** Test seam: forget what the docks showed. */
 export function resetDocks(): void {
   shown.clear();
+  found.clear();
   drafts.clear();
   chipSeen.clear();
   chipTaken.clear();
