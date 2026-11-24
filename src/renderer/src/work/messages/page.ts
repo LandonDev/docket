@@ -1,7 +1,8 @@
 import { useSyncExternalStore } from "react";
 import type { ChatFile } from "@shared/work/messages";
 import type { RowAnchor } from "../../lib/transcriptWindow";
-import type { ChatFilter } from "./model";
+import { CHAT_FILTERS, type ChatFilter } from "./model";
+import { keepPlace as keepViewPlace, keptPlace } from "../shell/place";
 
 /**
  * What each workspace's Messages shows, kept while the window lives, so
@@ -22,11 +23,28 @@ const BLANK: MessagesPage = { chatId: null, filter: "all", query: "" };
 const pages = new Map<string, MessagesPage>();
 const listeners = new Set<() => void>();
 
-export const pageOf = (workspaceId: string): MessagesPage => pages.get(workspaceId) ?? BLANK;
+/** The open conversation as the record gave it, by workspace, until the page moves off it: a gone one gives way to the list. */
+const keptChat = new Map<string, string>();
+export const keptChatOf = (workspaceId: string): string | null => keptChat.get(workspaceId) ?? null;
+
+/** A workspace's page, first read from the record a window before this one left (lib/workReturn.ts): the conversation and the filter; a search is not kept. */
+export function pageOf(workspaceId: string): MessagesPage {
+  let page = pages.get(workspaceId);
+  if (!page) {
+    const kept = keptPlace<MessagesPage>(workspaceId, "messages", { chatId: "string", filter: "string" });
+    page = { ...BLANK, chatId: kept.chatId ?? null, filter: kept.filter && CHAT_FILTERS.includes(kept.filter) ? kept.filter : BLANK.filter };
+    pages.set(workspaceId, page);
+    if (page.chatId) keptChat.set(workspaceId, page.chatId);
+  }
+  return page;
+}
 
 /** Changes what a workspace's Messages shows. The preview sets its scenes through it. */
 export function patchPage(workspaceId: string, next: Partial<MessagesPage>): void {
-  pages.set(workspaceId, { ...pageOf(workspaceId), ...next });
+  const page = { ...pageOf(workspaceId), ...next };
+  pages.set(workspaceId, page);
+  if (page.chatId !== keptChat.get(workspaceId)) keptChat.delete(workspaceId);
+  keepViewPlace(workspaceId, "messages", { chatId: page.chatId, filter: page.filter });
   for (const listener of listeners) listener();
 }
 
@@ -527,6 +545,7 @@ export function dropWanted(workspaceId: string): void {
 /** Test seam: every workspace back to blank. */
 export function resetPages(): void {
   pages.clear();
+  keptChat.clear();
   listTops.clear();
   places.clear();
   typed.clear();

@@ -20,6 +20,7 @@ import { openConnections, openWorkSettings } from "./open";
 import { PlaysHost } from "../routines/plays/PlaysHost";
 import { TemplatesHost } from "../templates/TemplatesHost";
 import { ClashHost } from "../clashes/ClashHost";
+import { ReturnHost } from "./ReturnHost";
 import { createWorkWorkspace, linkSector, sectorName, SECTORS, workHome } from "./actions";
 import { refreshLifeos, useLifeosQuery, useLifeosSession, useLifeosStatus } from "./lifeos";
 
@@ -164,6 +165,8 @@ export function WorkRailHost({ onOpenWorkspace }: { onOpenWorkspace: (path: stri
       <ClashHost />
       {/* The day's digest and what cannot wait, told once across hosts (work/digest). */}
       <DigestHost />
+      {/* Where he was in each Work workspace: written as he moves, opened again after a launch (work/shell/ReturnHost.tsx). */}
+      <ReturnHost />
       {naming && home ? (
         <NameWorkspaceDialog
           environmentId={home}

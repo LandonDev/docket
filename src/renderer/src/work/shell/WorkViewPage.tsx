@@ -53,9 +53,14 @@ export function WorkViewSurface() {
     // Taken once per way in: the view it names changes as soon as Files shows.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [docs]);
+  // A view no release has any more (a kept record, a host ahead or behind) falls back to the thread, quietly.
+  const def = open ? WORK_VIEWS[open.view as WorkViewId] : undefined;
+  const unknown = !!open && !def && open.view !== "docs";
+  useEffect(() => {
+    if (unknown) openWorkView(null);
+  }, [unknown]);
   if (elsewhere) return null;
   if (!open || !workspace?.sector) return null;
-  const def = WORK_VIEWS[open.view as WorkViewId];
   if (!def) return null;
   return <ViewFrame key={`${workspace.id}:${def.id}`} view={def.id} environmentId={workspace.environmentId} workspaceId={workspace.id} sector={workspace.sector as SectorKey} />;
 }

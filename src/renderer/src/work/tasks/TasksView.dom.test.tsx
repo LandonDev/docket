@@ -7,6 +7,8 @@
 import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { fakeTasksClient, type Task } from "work-kit/views";
+import { keepPlace } from "../shell/place";
+import { returnOf } from "../../lib/workReturn";
 
 vi.mock("../../lib/tcserver/store", async (original) => ({
   ...(await original<object>()),
@@ -237,5 +239,28 @@ describe("the Tasks view", () => {
   it("says when nothing is open", () => {
     render(<Tasks client={fakeTasksClient([])} startThread={() => {}} />);
     expect(screen.getByText("Nothing open")).toBeTruthy();
+  });
+});
+
+describe("Tasks coming back", () => {
+  afterEach(() => localStorage.clear());
+
+  it("opens the sheet of the task he left open, and keeps the one he opens", async () => {
+    keepPlace("ws", "tasks", { task: "t3" });
+    render(<Tasks client={fakeTasksClient(rows)} startThread={() => {}} workspaceId="ws" />);
+    expect(within(await screen.findByRole("dialog")).getByText("Ask for the east hall")).toBeTruthy();
+    cleanup();
+    localStorage.clear();
+    render(<Tasks client={fakeTasksClient(rows)} startThread={() => {}} openTask="t1" workspaceId="ws2" />);
+    await screen.findByRole("dialog");
+    expect(returnOf("ws2").places?.tasks).toEqual({ task: "t1" });
+  });
+
+  it("a task done since opens nothing, quietly", async () => {
+    keepPlace("ws", "tasks", { task: "gone" });
+    render(<Tasks client={fakeTasksClient(rows)} startThread={() => {}} workspaceId="ws" />);
+    await act(async () => {});
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(returnOf("ws").places?.tasks).toEqual({});
   });
 });

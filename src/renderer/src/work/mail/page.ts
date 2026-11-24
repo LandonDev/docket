@@ -1,6 +1,7 @@
 import { useSyncExternalStore } from "react";
 import { opening, type ComposeState, type MailBox } from "work-kit/mail";
 import type { MailInView } from "./chat/subject";
+import { keepPlace, keptPlace } from "../shell/place";
 
 /**
  * What each workspace's Mail shows (docs/agents/work-mail.md): its mailbox, the open mail, a mail being written and
@@ -27,9 +28,32 @@ export const BLANK: MailPage = { account: null, box: "inbox", threadId: null, sh
 export const pages = new Map<string, MailPage>();
 const listeners = new Set<() => void>();
 
+/** The open mail as the record gave it, by workspace, until the page moves off it: Mail checks it still exists. */
+const keptMail = new Map<string, string>();
+export const keptMailOf = (workspaceId: string): string | null => keptMail.get(workspaceId) ?? null;
+
+const BOXES: readonly MailBox[] = ["inbox", "needsMe", "waiting", "unread", "drafts", "scheduled", "sent", "snoozed", "archive", "trash"];
+/** What of a page outlives the window (lib/workReturn.ts): the account, the mailbox, the open mail and the chat beside it. A mail being written is LifeOS's own saved draft. */
+type Kept = Pick<MailPage, "account" | "box" | "threadId" | "chat">;
+
+/** A workspace's page, first read from the record a window before this one left. */
+function pageAt(workspaceId: string): MailPage {
+  let page = pages.get(workspaceId);
+  if (!page) {
+    const kept = keptPlace<Kept>(workspaceId, "mail", { account: "string", box: "string", threadId: "string", chat: "boolean" });
+    page = { ...BLANK, ...kept, box: kept.box && BOXES.includes(kept.box) ? kept.box : BLANK.box };
+    pages.set(workspaceId, page);
+    if (page.threadId) keptMail.set(workspaceId, page.threadId);
+  }
+  return page;
+}
+
 /** Changes what a workspace's Mail shows. Exported for the preview page, which sets a scene. */
 export function patch(workspaceId: string, next: Partial<MailPage>): void {
-  pages.set(workspaceId, { ...(pages.get(workspaceId) ?? BLANK), ...next });
+  const page = { ...pageAt(workspaceId), ...next };
+  pages.set(workspaceId, page);
+  if (page.threadId !== keptMail.get(workspaceId)) keptMail.delete(workspaceId);
+  keepPlace(workspaceId, "mail", { account: page.account, box: page.box, threadId: page.threadId, chat: page.chat });
   for (const listener of listeners) listener();
 }
 
@@ -39,12 +63,12 @@ export function usePage(workspaceId: string): MailPage {
       listeners.add(fn);
       return () => void listeners.delete(fn);
     },
-    () => pages.get(workspaceId) ?? BLANK,
+    () => pageAt(workspaceId),
   );
 }
 
 /** What a workspace's Mail shows now. */
-export const pageOf = (workspaceId: string): MailPage => pages.get(workspaceId) ?? BLANK;
+export const pageOf = (workspaceId: string): MailPage => pageAt(workspaceId);
 
 /** What each workspace's Mail shows now, so a mail opened from a chip can keep the chat on what it was about. */
 export const liveViews = new Map<string, MailInView>();
@@ -54,7 +78,7 @@ export const liveViews = new Map<string, MailInView>();
  * stays on what it was about until his own next move in the list.
  */
 export function showMail(workspaceId: string, threadId: string): void {
-  const now = pages.get(workspaceId) ?? BLANK;
+  const now = pageAt(workspaceId);
   if (now.chat && !now.chatAt) patch(workspaceId, { chatAt: liveViews.get(workspaceId) ?? null });
   patch(workspaceId, { threadId, compose: null });
 }

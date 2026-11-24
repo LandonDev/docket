@@ -37,6 +37,7 @@ vi.mock("../files/openFrom", () => ({ openDocInFiles: async (...args: unknown[])
 
 const { View, Head, Title, placeOf, setPlace } = await import("./PeopleView");
 const { openerOf } = await import("../canvas/SentChips");
+const { keepPlace } = await import("../shell/place");
 
 const mayaPage = {
   person: { _id: "p_maya", name: "Maya Chen", notes: "Runs the front desk.", sectors: ["purdue"], emails: ["maya@school.edu"], phones: [] },
@@ -186,5 +187,24 @@ describe("the ways in", () => {
     const opener = openerOf({ noun: "person", label: "Maya Chen", ref: "LifeOS people p_maya" } as never, { environmentId: "box", sessionId: "s", workspaceId: "ws" });
     void opener!();
     expect(workViewNow()).toEqual({ workspaceId: "ws", view: "people", person: "p_maya" });
+  });
+});
+
+describe("People coming back", () => {
+  const at = (id: string) => ({ ...props(), workspace: { id, environmentId: "box" } }) as never;
+
+  it("opens the page it was left on, and a person gone since gives way to the list, quietly", async () => {
+    keepPlace("back", "people", { person: "p_maya" });
+    lifeos.page = mayaPage;
+    const first = render(<View {...at("back")} />);
+    await act(async () => {});
+    expect(screen.getByText("Runs the front desk.")).toBeTruthy();
+    first.unmount();
+    keepPlace("back2", "people", { person: "p_gone" });
+    lifeos.page = null;
+    render(<View {...at("back2")} />);
+    await act(async () => {});
+    expect(screen.queryByText("Not in People here")).toBeNull();
+    expect(placeOf("back2").person).toBeNull();
   });
 });

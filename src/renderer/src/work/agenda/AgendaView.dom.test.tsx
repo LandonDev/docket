@@ -9,7 +9,7 @@ afterEach(cleanup);
 
 describe("the Agenda's header", () => {
   it("keeps a short period in the Week and Month views under a 640px header, beside the full period wider", () => {
-    const { container } = render(<Head {...({} as never)} />);
+    const { container } = render(<Head {...({ workspace: { id: "ws" } } as never)} />);
     // The list has no period to name.
     expect(container.querySelector("[data-agenda-short-period]")).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Month" }));

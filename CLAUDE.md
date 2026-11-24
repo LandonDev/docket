@@ -210,6 +210,8 @@ section's text as it was when CLAUDE.md was split (2026-11-11).
   tenant, no loopback; the server's `originAllowed`); guests in one layer (work/office/live/layer.ts); the address
   by `liveAddress`/`cloudKey` (office/live/); `work.office.live.*`; `MenuState.live`.
   [docs/agents/work-office-live.md](docs/agents/work-office-live.md)
+- **Work return** — a Work workspace reopens on its view, thread and places: one record per window
+  (lib/workReturn.ts reads, work/shell/returnRecord.ts writes, ReturnHost.tsx moves). [docs/agents/work-return.md](docs/agents/work-return.md)
 - **Search across hosts** — one query fanned out to every host
   (lib/crossHostSearch.ts), an FTS5 index per host (turnIndex.ts).
   [docs/agents/search-across-hosts.md](docs/agents/search-across-hosts.md)

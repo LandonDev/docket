@@ -40,6 +40,8 @@ describe('the renderer entry, read from source', () => {
     expect(glue).toEqual([
       'src/renderer/src/chrome/useWorkMentions.ts',
       'src/renderer/src/lib/workPlaces.ts',
+      'src/renderer/src/lib/workReturn.ts',
+      'src/renderer/src/lib/workRow.ts',
       'src/renderer/src/lib/workSearchPort.ts',
       'src/renderer/src/lib/workSwitch.ts'
     ])

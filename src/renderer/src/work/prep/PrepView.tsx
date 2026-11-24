@@ -310,6 +310,11 @@ export function View(props: WorkViewProps) {
     },
     [workspaceId],
   );
+  // A meeting deleted since (a page kept from before, a chip of an old thread) has no page: Agenda, quietly.
+  const gone = loaded && !page && !!error && /no such event/i.test(error);
+  useEffect(() => {
+    if (gone) openWorkView({ workspaceId, view: "agenda" });
+  }, [gone, workspaceId]);
   // A Notes dialog whose close could not keep his words opens again on them (PrepDialogs `reopenNotes`).
   useEffect(() => {
     if (!eventId) return;

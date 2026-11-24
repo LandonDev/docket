@@ -1,5 +1,5 @@
 import { ConvexProvider } from "convex/react";
-import { memo, useEffect, useMemo } from "react";
+import { memo, useEffect, useLayoutEffect, useMemo } from "react";
 import type { ContextChip } from "@shared/work";
 import { AgendaMonth, AgendaWeek, type ViewsKit, ViewsKitProvider } from "work-kit/views";
 import { addDays, endOf, formatPeriod, groupByDay, leaveAt, localeWeekStart, shiftPeriod, startOfDay, viewRange } from "work-kit/views/lib/agenda";
@@ -15,7 +15,7 @@ import { EmptyState } from "../../surfaces/SurfaceSkeleton";
 import { type AgendaClient, type AgendaEvent, viewsClients } from "../tasks/client";
 import { useMinute } from "../tasks/minute";
 import { useShared } from "../tasks/store";
-import { agendaPlace, resetAgendaPlace } from "./place";
+import { agendaPlace, keepAgendaPlace, resetAgendaPlace, restoreAgendaPlace } from "./place";
 import { rowOfView } from "../views/registry";
 import { prepEndOf } from "@shared/contract-work-prep";
 import { NewEventDialog } from "./NewEventDialog";
@@ -68,7 +68,9 @@ export function shortWeek(day: number, start = weekStart): string {
   return first.getMonth() === last.getMonth() ? `${monthDay(first)} – ${last.getDate()}` : `${monthDay(first)} – ${monthDay(last)}`;
 }
 
-export function Head(_props: WorkViewProps) {
+export function Head({ workspace }: WorkViewProps) {
+  // The header mounts before the view's chunk lands: the visit's place is the workspace's from its first frame.
+  useLayoutEffect(() => restoreAgendaPlace(workspace.id), [workspace.id]);
   const { view, day } = useShared(state);
   return (
     <>
@@ -122,7 +124,16 @@ export function View({ env, workspace, sector, lifeos }: WorkViewProps) {
   // The sector's people, so an attendee who is one is named on the row and opens their page.
   const directory = useLifeosQuery<DirectoryPerson[]>(lifeos, "people:directory", { sector });
   const people = directory.status === "ready" ? directory.value : NO_PEOPLE;
-  // Each visit opens on today's list.
+  // Each visit opens where this workspace's last one stood, and keeps where it stands as he moves.
+  useLayoutEffect(() => restoreAgendaPlace(workspace.id), [workspace.id]);
+  useEffect(
+    () =>
+      state.subscribe(() => {
+        const at = workViewNow();
+        if (at?.workspaceId === workspace.id && at.view === "agenda") keepAgendaPlace(workspace.id);
+      }),
+    [workspace.id],
+  );
   useEffect(
     () => () => {
       // A meeting's page stands inside Agenda: going there and back keeps the day and the view he was on.

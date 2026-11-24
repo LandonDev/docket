@@ -16,6 +16,7 @@ import { openDocInFiles } from "../files/openFrom";
 import { Face } from "../mail/face";
 import { mailTo, writeMail } from "../mail/mailto";
 import { sessionWaits, useLifeosQuery, type LifeosSession } from "../shell/lifeos";
+import { keepPlace, keptPlace } from "../shell/place";
 import type { WorkViewProps } from "../views/registry";
 import { SEARCH_FIELD } from "../views/searchField";
 import { faceMap, findPeople, linksFor, linkWords, pageIsQuiet, personFor, pictureOf, type DirectoryPerson, type FaceRow, type PageEvent, type PersonPage, type SharedTable } from "./model";
@@ -36,11 +37,24 @@ const places = new Map<string, Place>();
 const placeListeners = new Set<() => void>();
 const NOWHERE: Place = { person: null, query: "" };
 
+/** The person's page as the record gave it (lib/workReturn.ts), by workspace, until the view moves off it: a gone one gives way to the list. */
+const keptPerson = new Map<string, string>();
+
+/** A workspace's place, first read from the record a window before this one left: the person's page; a search is not kept. */
 export function placeOf(workspaceId: string): Place {
-  return places.get(workspaceId) ?? NOWHERE;
+  let place = places.get(workspaceId);
+  if (!place) {
+    place = { ...NOWHERE, person: keptPlace<Place>(workspaceId, "people", { person: "string" }).person ?? null };
+    places.set(workspaceId, place);
+    if (place.person) keptPerson.set(workspaceId, place.person);
+  }
+  return place;
 }
 export function setPlace(workspaceId: string, patch: Partial<Place>): void {
-  places.set(workspaceId, { ...placeOf(workspaceId), ...patch });
+  const place = { ...placeOf(workspaceId), ...patch };
+  places.set(workspaceId, place);
+  if (place.person !== keptPerson.get(workspaceId)) keptPerson.delete(workspaceId);
+  keepPlace(workspaceId, "people", { person: place.person });
   for (const l of placeListeners) l();
 }
 function usePlace(workspaceId: string): Place {
@@ -276,6 +290,11 @@ function useGuestLinks(env: string, person: string): GuestLinkRow[] | null {
   return links?.person === person ? links.rows : null;
 }
 
+function GoneToList({ workspaceId }: { workspaceId: string }) {
+  useEffect(() => setPlace(workspaceId, { person: null }), [workspaceId]);
+  return <PageSkeleton />;
+}
+
 function PersonPageView(props: WorkViewProps & { person: string; faces: ReadonlyMap<string, string> }) {
   const directory = useDirectory(props.lifeos, props.sector);
   const name = directory.status === "ready" ? directory.value.find((p) => p._id === props.person)?.name : undefined;
@@ -288,6 +307,8 @@ function PersonPageView(props: WorkViewProps & { person: string; faces: Readonly
   if (page.status === "failed") return <EmptyState title="This page did not load" line={page.error} />;
   // Held until the links are read too, so the page lands once rather than growing a section.
   if (page.status === "loading" || links === null || (directory.status === "loading" && !name)) return <PageSkeleton />;
+  // A page kept from a window before this one whose person is gone: the list, quietly.
+  if (!page.value && keptPerson.get(props.workspace.id) === props.person) return <GoneToList workspaceId={props.workspace.id} />;
   if (!page.value)
     return <EmptyState title="Not in People here" action={{ label: "Back to People", onClick: () => setPlace(props.workspace.id, { person: null }) }} />;
   return <PersonPageBody {...props} page={page.value} links={mine} />;

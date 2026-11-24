@@ -24,7 +24,7 @@ import { Ask as AskGlyph } from "../icons";
 import { mailChatWithheld } from "@shared/work/mailChat";
 import { mailChatSubject, type MailInView } from "./chat/subject";
 import { mailDockPort } from "./chat/port";
-import { BLANK, liveDraftIds, liveViews, pages, patch, showMail, usePage, type MailPage } from "./page";
+import { keptMailOf, liveDraftIds, liveViews, pageOf, patch, showMail, usePage, type MailPage } from "./page";
 
 export { patch, showMail, type MailPage } from "./page";
 import { keepDockWidth, mailRoom, readDockWidth } from "./chat/layout";
@@ -132,7 +132,7 @@ export function MailScreen({
   const kit = useMailKit();
   const pane = mailPaneOf(id);
   const env = files?.env;
-  const toggleChat = useCallback(() => patch(id, { chat: !(pages.get(id) ?? BLANK).chat, chatAt: null }), [id]);
+  const toggleChat = useCallback(() => patch(id, { chat: !pageOf(id).chat, chatAt: null }), [id]);
   const placed = useMemo(() => {
     // A draft asked for this workspace's Mail (`writeMail(draft, id)`) is heard here and in no other job's.
     let base = env ? { ...placedKit(kit, { env, pane }), onMailto: (hear: (draft: MailtoDraft) => void) => onMailto(hear, id) } : kit;
@@ -142,6 +142,11 @@ export function MailScreen({
   }, [kit, env, pane, onNudge, chat, page.chat, page.box, toggleChat, id]);
   const client = useMailClient();
   const accounts = client.useMailAccounts();
+  // An account kept from before that is gone now: all of them, quietly.
+  const lostAccount = !!page.account && !!accounts && !accounts.some((a) => a.id === page.account);
+  useEffect(() => {
+    if (lostAccount) patch(id, { account: null, threadId: null });
+  }, [lostAccount, id]);
   const actions = client.useMailActions();
 
   const nav = useMemo<MailNav>(
@@ -189,13 +194,19 @@ export function MailScreen({
       liveDraftIds.set(id, next.draftId);
       setView((was) => {
         // A tick or a search is his own move: a chat held on a mail opened from a chip follows it again.
-        if ((was.query ?? "") !== (next.query ?? "") || was.picked.join(",") !== next.picked.join(",")) if ((pages.get(id) ?? BLANK).chatAt) patch(id, { chatAt: null });
+        if ((was.query ?? "") !== (next.query ?? "") || was.picked.join(",") !== next.picked.join(",")) if (pageOf(id).chatAt) patch(id, { chatAt: null });
         return next;
       });
     },
     [id],
   );
   const thread = client.useMailThread(open ? page.threadId : null);
+  // A mail kept from a window before this one that is gone now (deleted, or out of its box) closes the reader quietly.
+  const kept = keptMailOf(id);
+  const gone = client.useMailThread(kept && page.box !== "trash" ? kept : null) === null && !!kept && page.box !== "trash";
+  useEffect(() => {
+    if (gone) patch(id, { threadId: null });
+  }, [gone, id]);
   const live: MailInView = { box: page.box, threadId: page.threadId, subject: thread?.thread.subject ?? null, query: view.query, picked: view.picked };
   liveViews.set(id, live);
   const about = page.chatAt ?? live;

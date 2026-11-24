@@ -28,6 +28,7 @@ import { marksAtRest } from "../../lib/threadStripModel";
 import { openWorkView, useWorkView, workOpenPort } from "../../lib/workSwitch";
 import { useLinkedThread } from "./links";
 import { TaskSheet } from "./TaskSheet";
+import { keepPlace, keptPlace } from "../shell/place";
 import { CodeThreadDialog, type CodeThreadStart } from "./CodeThreadDialog";
 
 /**
@@ -76,7 +77,7 @@ export function View({ env, workspace, sector, lifeos, startThread }: WorkViewPr
   if (!lifeos.client) return sessionWaits(lifeos) ? <TasksSkeleton /> : null;
   return (
     <ConvexProvider client={lifeos.client}>
-      <Tasks client={clients.tasks} sector={sector} startThread={startThread} useThread={useLinkedThread} openTask={openTask} />
+      <Tasks client={clients.tasks} sector={sector} startThread={startThread} useThread={useLinkedThread} openTask={openTask} workspaceId={workspace.id} />
       {adding ? <NewTaskDialog sector={sector} onClose={() => newTask.set(false)} /> : null}
     </ConvexProvider>
   );
@@ -105,8 +106,11 @@ export function Tasks({
   startThread,
   useThread = noThread,
   openTask,
+  workspaceId,
 }: {
   client: TasksClient;
+  /** The workspace whose record keeps the open sheet; absent (a test, a preview), nothing is kept. */
+  workspaceId?: string;
   /** A task whose sheet opens when it is given (a person's page asked for it). */
   openTask?: string | undefined;
   /** The workspace's sector: a code workspace linked to it reads the task in LifeOS. */
@@ -123,11 +127,20 @@ export function Tasks({
   latest.current = startThread;
   const start = useMemo(() => (task: Task) => latest.current(chipOf(task)), []);
   const startCode = useMemo((): CodeThreadStart => (about, at) => latest.current(about, at), []);
-  const [opened, setOpened] = useState<string | null>(null);
+  // The task whose sheet is open, kept in the workspace's record (lib/workReturn.ts) so coming back opens it again.
+  const [opened, setOpened] = useState<string | null>(() => (workspaceId ? (keptPlace<{ task: string }>(workspaceId, "tasks", { task: "string" }).task ?? null) : null));
   const open = useMemo(() => (task: Task) => setOpened(task._id), []);
   useEffect(() => {
     if (openTask) setOpened(openTask);
   }, [openTask]);
+  useEffect(() => {
+    if (workspaceId) keepPlace(workspaceId, "tasks", { task: opened ?? undefined });
+  }, [workspaceId, opened]);
+  // A task done or dropped since (here or on another computer) is no longer open: its sheet closes, quietly.
+  const missing = !!opened && !!tasks && !tasks.some((t) => t._id === opened);
+  useEffect(() => {
+    if (missing) setOpened(null);
+  }, [missing]);
   const [coding, setCoding] = useState<Task | null>(null);
   const code = useMemo(() => (task: Task) => setCoding(task), []);
   const groups = useMemo(() => (tasks ? groupTasks(tasks, now, zone) : null), [tasks, now]);

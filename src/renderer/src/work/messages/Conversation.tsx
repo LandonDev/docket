@@ -14,7 +14,7 @@ import { Composer } from "./Composer";
 import { keptWithin, useKeptKeys } from "./keptKeys";
 import { MessageBlock } from "./Message";
 import { blocksOf, chatFact, estimateOf, menuKey, newSince, wantsRead, type Block } from "./model";
-import { dropWanted, heldUnread, noteShownOwn, settleAside, useAside, keepPlace, keepVisitSince, markUnreadHeld, placeOf, releaseUnread, settleFile, useFileWants, useWanted, type FileWant, visitPlaceOf, visitSince } from "./page";
+import { dropWanted, heldUnread, keptChatOf, noteShownOwn, patchPage, settleAside, useAside, keepPlace, keepVisitSince, markUnreadHeld, placeOf, releaseUnread, settleFile, useFileWants, useWanted, type FileWant, visitPlaceOf, visitSince } from "./page";
 import { chatChip, copyText, linkRows, mentionTarget, pickThreadVerb, threadRows, useStartThread } from "./threads";
 
 /**
@@ -121,6 +121,11 @@ function ConversationBody({ workspaceId, chatId, narrow, onBack, retry }: { work
 
   const failed = detail.status === "failed" || messages.status === "failed";
   const gone = detail.status === "ready" && !detail.value;
+  // A conversation kept from a window before this one that is gone now: the list, quietly, never the gone state.
+  const keptGone = gone && keptChatOf(workspaceId) === chatId;
+  useEffect(() => {
+    if (keptGone) patchPage(workspaceId, { chatId: null });
+  }, [keptGone, workspaceId]);
   return (
     <div data-conversation className="flex h-full min-h-0 flex-col">
       {/* The toolbar stays whatever came back, so under 640px the way back is always there. */}

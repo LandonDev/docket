@@ -304,6 +304,7 @@ import { ProjectTerminalDock } from "./surfaces/ProjectTerminalDock";
 import { aliaxChunk, awayReturnChunk, computersChunk, dialogsChunk, fullWindowChunk, popOutChunk, inboxChunk, notesChunk, pickersChunk, releaseNotesChunk, searchChunk, settingsChunk, terminalChunk, workDigestChunk, workOutboxChunk, workSearchChunk, workPlacesChunk, workShellChunk } from "./surfaces/chunks";
 import { choose, openWorkView, useWorkOn, useWorkView, workDockPort, workHome, workEnterPort, workFilePort, workOpenPort, workStartPort, workSwitch } from "./lib/workSwitch";
 import { warmWorkPlacesAtIdle, workPlaceLabel } from "./lib/workPlaces";
+import { returnOf } from "./lib/workReturn";
 import { isBareSeed, onWorkSearch, openWorkSearch, type WorkSearchSeed } from "./lib/workSearchPort";
 import { devPane, devPaneStore, useDevPane } from "./lib/devPane";
 import { useNativeMenuState } from "./lib/nativeMenuState";
@@ -2095,11 +2096,16 @@ export default function App() {
         (activeWorkspace ? focusedFileTab(activeWorkspace)?.cwd : undefined);
       if (project.alreadyIn(currentCwd, normalized)) return;
 
+      // A Work workspace comes back where he left it (lib/workReturn.ts): its thread, if still there, wins the landing rule.
+      const work = workspaceByPath(workspaceStore.getSnapshot().workspaces, normalized);
+      const spot = work?.kind === "work" ? returnOf(work.id) : {};
       // The one landing rule, else the workspace's own draft.
-      const landing = landingOf({ workspacePath: normalized }, sessionStore.metas(), workspaceStore.getSnapshot(), seenNow())?.id;
+      const landing = landingOf({ workspacePath: normalized }, sessionStore.metas(), workspaceStore.getSnapshot(), seenNow(), spot.thread)?.id;
       project.enterWorkspace(normalized);
       if (landing) void openLanding(landing, normalized);
       else openProjectDraft({ cwd: normalized }, { placement: "tab" });
+      // After the landing: opening its tab leaves any view.
+      if (work && spot.view) openWorkView({ workspaceId: work.id, view: spot.view, ...(spot.event ? { event: spot.event } : {}) });
     },
     [openLanding, openProjectDraft],
   );

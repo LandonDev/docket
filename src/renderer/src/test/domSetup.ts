@@ -8,6 +8,9 @@
  * keeps a mount from throwing.
  */
 
+import { afterEach } from 'vitest'
+import { forgetReturnWindow } from '../work/shell/returnRecord'
+
 type Listener = (event: Event) => void
 
 if (typeof window.matchMedia !== 'function') {
@@ -102,3 +105,9 @@ if (!css.highlights) css.highlights = new Map()
 if (!("api" in window)) {
   Object.defineProperty(window, "api", { value: {}, configurable: true, writable: true });
 }
+
+// Where he was in each Work workspace is kept in storage (lib/workReturn.ts): one test's moves are never the next one's start.
+afterEach(() => {
+  globalThis.localStorage?.removeItem('work.return.v1')
+  forgetReturnWindow(true)
+})

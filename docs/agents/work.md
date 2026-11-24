@@ -115,6 +115,8 @@ Settings → Work.
   (work/places/registry.ts), drawn by `WorkPlacePage` on the Outbox page's
   frame and opened with `shell.openWorkPlace(id)`. With Work off there is
   no such row.
+- **Coming back**: a Work workspace reopens on the view, the thread and each view's place he left
+  (lib/workReturn.ts, work/shell/ReturnHost.tsx; [work-return.md](work-return.md)).
 - **Work Chats**: `WORK_CHATS` (`"~work"`, lib/tcserver/workspaces.ts) is
   their key as `"~"` is the code chats': `workspaceIdOf` and
   `workspacePathOfSession` answer it for a row with `scope: "work"` and no
