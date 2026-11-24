@@ -1796,6 +1796,21 @@ Around the canvas:
   of what it holds, and anything else as its facts (one comma sentence;
   the header already names it) with Download and Open in its app. Opening a file makes no thread, and the thread is never the
   first thing he sees.
+  A **shared Office file** (.docx, .xlsx, .xlsm, .pptx in a library) has one
+  more control before ⋯: a ghost menu button named by the mode the tab is in,
+  "Edit here" or "Live in Word" (Excel, PowerPoint), with a chevron. Its menu
+  holds the two modes as ticked rows, then "Open in Word on MacBook" and "Open
+  in Word in the Windows VM" where those exist, which act at once and leave
+  the mode as it is. A live tab's body is Office for the web itself, edge to
+  edge under the header; the line says where the file is kept ("In Team
+  RecWell"), "Opening in Word…" with a 4px bar along the header's foot in
+  place of its rule while Word comes up, or "Signing in at
+  login.microsoftonline.com" while the page is on another site. It never says
+  saved: Office does. A file that did not load is one `Empty` ("Word for the
+  web did not open", the reason, Retry). A chat or a side file that lies over
+  the body hides the page under it. While a switch waits the line says why
+  ("Sending your changes first…", "Getting the newest from Teams…") and the
+  control waits.
   **Ask** docks a chat at the file's right, under the header; Ask again or
   the dock's close takes it away, at once, never a tween. It shows the
   thread that holds the file, else a draft that is in no rail and on no

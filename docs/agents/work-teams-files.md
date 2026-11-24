@@ -424,6 +424,8 @@ opens in its app.
 
 ### Live Office addresses and memory
 
+The whole account of a live tab (the fence, the layer, keys, sign-in) is [work-office-live.md](work-office-live.md); this part is the host's addresses, memory and switch.
+
 The host supports Word (.docx), Excel (.xlsx and .xlsm), and PowerPoint (.pptx) in shared Files tabs.
 `office/live/address.ts` builds a file's web address from its OneDrive mount namespace, the synced namespace
 of the same Files place on another machine, or the folder address saved in Settings, in that order.
