@@ -376,6 +376,15 @@ describe('a format or a rule an agent proposes on an Excel file others can open'
     expect(folder()).toEqual(before)
   })
 
+  it('Accept all takes two rules a thread proposed on one tab: the second is made over the first, never refused for it', async () => {
+    // Council r2 (Opus 1): the second list was sent on the revision the agent saw, and the list check orphaned it.
+    await tool('sheet_rule', { item: itemId, rule: { kind: 'highlight', range: 'Data!A2:A9', when: 'greater', value: 100, look: { colour: '#C00000' } }, because: 'own' })
+    await tool('sheet_rule', { item: itemId, rule: { kind: 'highlight', range: 'Data!B2:B9', when: 'less', value: 5, look: { colour: '#0000C0' } }, because: 'own' })
+    const all = await call<SheetView>('work.sheets.review', { itemId, which: 'all', verdict: 'accept' })
+    expect(all.changes).toBeUndefined()
+    expect(rulesOf(book(), 'SHEET_CONDITIONAL_FORMATTING_PLUGIN')).toHaveLength(2)
+  })
+
   it('his accept lays each as his own ordinary edit; a reject leaves nothing anywhere', async () => {
     await tool('sheet_format', { item: itemId, range: 'Data!A2:B3', format: { bold: true, fill: '#FFF2CC' }, because: 'own' })
     await tool('sheet_rule', { item: itemId, rule: { kind: 'highlight', range: 'Data!A2:A9', when: 'greater', value: 100, look: { colour: '#C00000' } }, because: 'own' })

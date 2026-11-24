@@ -206,13 +206,17 @@ async function read(ask: ChangeAsk, now: Standing): Promise<{ at: Placed | null;
  * place for (its tab gone, its name taken since) throws `Unplaced`, before anything is written.
  */
 export async function layChange(s: Sheets, held: Target['held'], ask: ChangeAsk, by: Principal, label: string, rev?: number): Promise<boolean> {
-  const now = await standing(s, held)
-  const mutations = await mutationsFor(s, held, ask, now)
-  const base = rev ?? now.rev
   if (held.at === 'package') {
-    const got = await s.packages.edit(held.path, base, mutations, by, { label })
+    const base = rev ?? (await s.packages.open(held.path)).rev
+    // The list it leaves (a tab's rules, tables, charts or page set-up) is worked out in the save's own turn, from
+    // the file as that save finds it: a list taken since `rev` (another proposal of that tab, his own change) is in it
+    // and stays, so the store's list check does not hold it to `rev`. Rows or sheets moved since still answer a conflict.
+    const got = await s.packages.edit(held.path, base, [], by, { label, under: async () => ({ mutations: await mutationsFor(s, held, ask, await standing(s, held)), label }) })
     return !('conflict' in got)
   }
+  const now = await standing(s, held)
+  const base = rev ?? now.rev
+  const mutations = await mutationsFor(s, held, ask, now)
   const got = await host(s.ctx, 'apply', { sheet: held.ref, baseRev: base, mutations, by })
   return !('conflict' in got)
 }
