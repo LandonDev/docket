@@ -468,3 +468,22 @@ until the setup starts. Shapes: `SetupItems`, `SetupStep`, `SetupPeek`,
 | LifeOS sign-in (LifeOS app and TempCode's Work) | Two enrolled sessions made for that computer after Allow | never the Mac's own token |
 | Outlook and Teams reader | Reading on (Windows); sending stays his switch | his own Outlook and Teams sign-ins stay his |
 | Folders in Files | Picked on the computer (Add folders…) | the paths are its own |
+
+## The rig run (M7)
+
+`bun scripts/e2e-pc-setup-rig.ts --installer <release-win's temp-code-1.0.N-setup.exe>` runs the whole setup in
+the Windows rig from a fresh install as tcuser: stand-ins on the box (scripts/lib/pcRigStandins.ts: a headless box,
+a windowed Mac that is the giver with two dummy Claude accounts and the box's lent one-year Claude token, a fake
+provider, LifeOS's feed; every instance with an empty `WINVM_DIR`), J: mapped from a user-space SMB share through
+`up.sh --guestfwd 10.0.2.100:445=44500`, the link made in the Mac's dialog and pasted on the PC, Allow with the
+words matching, every step, a Sonnet turn on the lent account, LifeOS against a local backend
+(`TEMP_CODE_LIFEOS_URL` and `TEMP_CODE_LIFEOS_FEED`, honoured under the harness marker alone), J: listed and a file
+opened from the Mac's window through the box, a removal on the Mac, the vault copied to a second user
+(scripts/win-vm/dpapi-try.ps1, a task with the batch right on the throwaway overlay) and Remove. It needs a local
+LifeOS backend on :3330 and the SMB share on :44500 running (the script's header). The run of record, with its
+pictures and times, is .temp-code/plans/landed/pc-setup/rig/.
+
+What the run showed that setup does not do: the PC's bridge for the box stays Off, so the box cannot read J: until
+he sets Settings → Hosts → Mac bridge for the box → Access → Read on the PC; and Add folders… opens the native
+picker, which the run did not drive (it sends the same pick through `devices.setup.folders`).
+

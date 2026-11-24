@@ -132,7 +132,7 @@ async function run(): Promise<void> {
   })
 
   await step('J: mapped by tcuser from the box', async () => {
-    const mapped = await inSession(['C:\\Windows\\System32\\cmd.exe', '/c', `net use J: \\\\10.0.2.100\\JDRIVE ${readFileSync('/tmp/tc-pc-rig/smb.pass', 'utf8').trim()} /user:jproof /persistent:no && dir /b J:\\Esports`], true, 90)
+    const mapped = await inSession(['C:\\Windows\\System32\\cmd.exe', '/c', `(net use J: /delete /y >nul 2>&1) & net use J: \\\\10.0.2.100\\JDRIVE ${readFileSync('/tmp/tc-pc-rig/smb.pass', 'utf8').trim()} /user:jproof /persistent:no && dir /b J:\\Esports`], true, 90)
     rec.check('J: is mapped from the box over SMB, signing required', mapped.code === 0 && /readme\.txt/.test(mapped.out), mapped.out.slice(-160))
   })
 
