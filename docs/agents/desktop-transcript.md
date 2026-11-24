@@ -61,7 +61,8 @@
   `session.events { tail, subscribe: true }`, answered `subscribed: true`
   (an older host omits it and the client subscribes and folds the gap);
   the store keeps the last `KEEP_RECENT` (6) transcripts whose panes left
-  loaded and subscribed, so a switch back sends nothing; the markdown
+  loaded and subscribed, so a switch back sends nothing (a chat a Work dock
+  shows counts as a mounted pane, `sessionStore.showApart`); the markdown
   worker parses one commit's texts newest first. docs/TRANSCRIPT.md
   "Opening a thread on another host" has the numbers. The local profile's
   `session.events` reads on the reader worker in 4 MiB pages

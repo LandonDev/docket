@@ -13,7 +13,6 @@ import { sessionStore } from "../lib/tcserver/store";
 import type { ProjectMeta, SessionMeta, WorkspaceCatalog } from "../lib/tcserver/types";
 import { workspaceStore } from "../lib/tcserver/workspaces";
 import { PARK_MS } from "../lib/warmTabs";
-import { dockShown } from "../lib/workSwitch";
 import { migrateWorkspaces } from "../lib/workspaceMigration";
 import { forgetHarnessSession, refreshHarnessCatalogs } from "../lib/harness";
 import { nativeModelId, resetHarnessModelOverlays, setHarnessModels } from "../lib/models";
@@ -343,13 +342,13 @@ describe("installIdleSweep", () => {
   it("leaves a chat a dock shows: it is on screen with no tab of its own", async () => {
     setTabs([tab("a")]);
     sessionStore.mutate([session("s-a"), session("s-docked")]);
-    dockShown.add("s-docked");
+    sessionStore.showApart("s-docked", true);
     teardown = installIdleSweep();
     await flush();
     expect(sessionStore.getSnapshot().map((s) => s.id)).toEqual(["s-a", "s-docked"]);
     expect(forgetHarnessSession).not.toHaveBeenCalled();
     // The dock closed: the next change sweeps it as any hidden idle chat.
-    dockShown.delete("s-docked");
+    sessionStore.showApart("s-docked", false);
     sessionStore.mutate((prev) => [...prev]);
     await flush();
     expect(sessionStore.getSnapshot().map((s) => s.id)).toEqual(["s-a"]);

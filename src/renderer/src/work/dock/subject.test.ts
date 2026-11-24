@@ -27,7 +27,7 @@ const { dockThread, enterDock, leaveDock, resetDocks } = await import("./dockThr
 const { contextChipsOf, resetContextChips, takeContextChips } = await import("../canvas/chips");
 const { sessionStore } = await import("../../lib/tcserver/store");
 const { newSession } = await import("../../lib/session");
-const { dockShown, workDockPort } = await import("../../lib/workSwitch");
+const { workDockPort } = await import("../../lib/workSwitch");
 const { dockDraftKey, projectDrafts } = await import("../../lib/projectDrafts");
 const { afterCreate, ensureCreated } = await import("../../lib/tcserver/commands");
 import type { DockSubject } from "./subject";
@@ -115,13 +115,13 @@ describe("a dock's draft over a quit and a launch", () => {
 });
 
 describe("a docked chat stays open", () => {
-  it("a draft the dock shows is marked for the idle sweep, and let go when the dock closes", async () => {
+  it("a draft the dock shows is held as shown (the idle sweep and the unload leave it), and let go when the dock closes", async () => {
     const a = await dockThread(workspace, subject());
     enterDock(a.id);
-    expect(dockShown.has(a.id)).toBe(true);
+    expect(sessionStore.shownApart().has(a.id)).toBe(true);
     expect(sessionStore.isOpen(a.id)).toBe(true);
     leaveDock(a.id);
-    expect(dockShown.has(a.id)).toBe(false);
+    expect(sessionStore.shownApart().has(a.id)).toBe(false);
     expect(sessionStore.isOpen(a.id)).toBe(false);
   });
 
@@ -134,7 +134,7 @@ describe("a docked chat stays open", () => {
     enterDock(a.id);
     expect(a).toEqual({ id: "t-before", draft: false });
     expect(sessionStore.isOpen("t-before")).toBe(true);
-    expect(dockShown.has("t-before")).toBe(true);
+    expect(sessionStore.shownApart().has("t-before")).toBe(true);
   });
 });
 

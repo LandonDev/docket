@@ -1220,6 +1220,68 @@ describe("the mounted set", () => {
     expect(sessionStore.get("other")?.loaded).toBe(false);
   });
 
+  it("a chat shown apart from every pane (a Work dock) is held as a mounted pane's: kept through the sweep, replayed on a reconnect, let go as one that left", async () => {
+    link.metas = [wireMeta({ id: "a" }), wireMeta({ id: "docked" }), wireMeta({ id: "other" })];
+    for (const id of ["a", "docked", "other"]) link.events.set(id, rowsFor(id, 2));
+    sessionStore.attach(link);
+    await sessionStore.ready();
+    await Promise.all(["a", "docked", "other"].map((id) => sessionStore.ensureLoaded(id, "test")));
+    sessionStore.showApart("docked", true);
+    expect([...sessionStore.shownApart()]).toEqual(["docked"]);
+    vi.useFakeTimers();
+    try {
+      // A pane change runs the sweep after its grace period; the docked chat is in no pane.
+      sessionStore.setMounted(["a"]);
+      await vi.advanceTimersByTimeAsync(3100);
+    } finally {
+      vi.useRealTimers();
+    }
+    expect(sessionStore.get("docked")?.loaded).toBe(true);
+    expect(sessionStore.get("docked")?.blocks).toHaveLength(2);
+    expect(sessionStore.get("other")?.loaded).toBe(false);
+    // A reconnect replays its gap with the mounted pane's.
+    link.calls.length = 0;
+    link.reopen();
+    await tick();
+    await tick();
+    const replayed = link.calls.filter((c) => c.method === "session.events").map((c) => (c.params as { sessionId: string }).sessionId);
+    expect(replayed.sort()).toEqual(["a", "docked"]);
+    // The dock closed: recently shown, as a pane that left, and no longer apart.
+    sessionStore.showApart("docked", false);
+    expect(sessionStore.shownApart().size).toBe(0);
+    vi.useFakeTimers();
+    try {
+      await vi.advanceTimersByTimeAsync(3100);
+    } finally {
+      vi.useRealTimers();
+    }
+    expect(sessionStore.get("docked")?.loaded).toBe(true);
+  });
+
+  it("a dock's draft that became a thread stays loaded after its turn while a pane change sweeps (W-51)", async () => {
+    sessionStore.attach(link);
+    await sessionStore.ready();
+    const draft = newSession("local", "claude", "/repo");
+    sessionStore.mutate([draft]);
+    sessionStore.showApart(draft.id, true);
+    sessionStore.appendOptimisticUser(draft.id, "Draft a reply");
+    sessionStore.adopt(meta({ id: draft.id, status: "running" }), { created: true });
+    link.push({ push: "event", row: row(draft.id, 1, { type: "user-text", text: "Draft a reply" }) });
+    link.push({ push: "event", row: row(draft.id, 2, { type: "turn-complete" }) });
+    link.push({ push: "session", session: wireMeta({ id: draft.id, status: "idle" }) });
+    expect(sessionStore.get(draft.id)?.busy).toBe(false);
+    vi.useFakeTimers();
+    try {
+      sessionStore.setMounted(["elsewhere"]);
+      await vi.advanceTimersByTimeAsync(3100);
+    } finally {
+      vi.useRealTimers();
+    }
+    expect(sessionStore.get(draft.id)?.blocks.map((b) => b.text)).toEqual(["Draft a reply"]);
+    expect(sessionStore.get(draft.id)?.load.phase).toBe("loaded");
+    expect(link.method("session.unsubscribe")).toBe(0);
+  });
+
   it("a transcript whose tab left the warm set unloads after the grace period, unless busy", async () => {
     link.metas = [wireMeta({ id: "a" }), wireMeta({ id: "b" }), wireMeta({ id: "busy", status: "running" })];
     for (const id of ["a", "b"]) link.events.set(id, rowsFor(id, 2));

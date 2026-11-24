@@ -409,7 +409,9 @@ export function useSessionById(id: string | null): Session | undefined {
   const session = useSyncExternalStore(sessionStore.subscribe, () =>
     id ? sessionStore.get(id) : undefined,
   );
-  const loaded = session?.loaded === true;
+  // The load's answer counts as loaded too: a draft that became a thread never set `loaded`, so the change to
+  // "not loaded" that an unload makes would otherwise ask for nothing.
+  const loaded = session?.loaded === true || session?.load?.phase === "loaded";
   useEffect(() => {
     if (id && !loaded) void sessionStore.ensureLoaded(id, "byId").catch(() => undefined);
   }, [id, loaded]);

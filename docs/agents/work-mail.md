@@ -576,7 +576,10 @@ docs/DESIGN.md "The Mail view"):
   alone, never a word a sender wrote. `chipIn: 'send'`: no chip sits in
   the composer; the first send carries it (`setSendChips`, canvas/chips.ts)
   and it becomes the thread's `about`. Opening the dock reads nothing from
-  LifeOS: a mail's chat from before is `work.mail.chat.find`.
+  LifeOS: a mail's chat from before is `work.mail.chat.find`. While the
+  dock shows the chat the store holds its transcript as a mounted pane's
+  (`sessionStore.showApart`, work-files.md "Ask"): the offered draft's card
+  stays after the turn settles, through a pane change and a reconnect.
 - **The first send**: `session.create` (the chip as `about`), then the
   must step `work.mail.chat.adopt` (`afterCreate.set(id, run, {must})`,
   lib/tcserver/commands.ts), then `session.send`. A must step that fails

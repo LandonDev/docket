@@ -365,11 +365,19 @@ control, takes it away.
   id?)` answers a Session seeded as New thread seeds one, in the Work
   workspace, placed in no tab and never the workspace's New thread draft;
   the dock
-  puts it in the session store's open set, and names every chat it shows in
-  `dockShown` (lib/workSwitch.ts) while it shows it: a dock is no tab, so
-  the idle sweep (stores/subscriptions.ts) would otherwise take the chat out
-  of the open set, and a send into a chat that is not open went nowhere
-  (he typed, sent, the words vanished and no thread was made). A send into
+  puts it in the session store's open set, and tells the store every chat
+  it shows while it shows it (`sessionStore.showApart`, work/dock/dockThread.ts
+  `enterDock`/`leaveDock`): a dock is no pane and no tab, and the store then
+  holds that chat as a mounted pane's. The idle sweep (stores/subscriptions.ts)
+  leaves it in the open set, since a send into a chat that is not open went
+  nowhere (he typed, sent, the words vanished and no thread was made); and
+  the unload of transcripts no pane shows leaves its rows loaded and a
+  reconnect replays its gap. Before that (W-51) a turn that settled in the
+  dock went back to loading bones three seconds after the next pane change
+  and stayed there; closed, the dock's chat is recently shown, as a pane
+  that left. `useSessionById` asks again for a transcript the store let go
+  while it is still drawn, a draft that became a thread too (its `loaded`
+  was never set; the load's answer counts). A send into
   a chat the store holds opens it again whatever swept it
   (`sessionStore.openForSend`, App's `onSubmit`), and a send nothing took
   leaves his words in the field with "Not sent" under them

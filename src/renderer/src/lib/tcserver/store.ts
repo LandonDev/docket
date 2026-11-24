@@ -659,6 +659,7 @@ class SessionStore {
     this.archivedScopes.clear();
     this.archivedLoads.clear();
     this.mounted = null;
+    this.apart.clear();
     this.recent = [];
     this.rowBodies.clear();
     this.rowBodyLoads.clear();
@@ -1245,7 +1246,8 @@ class SessionStore {
     // On a remote host they take turns (catchUp.ts): the shown one, then the
     // panes on the page, then the transcripts only kept.
     const shown = this.shownNow();
-    const onPage = (entry: Entry): number => (entry.session.id === shown ? 0 : this.mounted?.has(entry.session.id) ? 1 : 2);
+    const onPage = (entry: Entry): number =>
+      entry.session.id === shown ? 0 : this.mounted?.has(entry.session.id) || this.apart.has(entry.session.id) ? 1 : 2;
     replay.sort((a, b) => onPage(a) - onPage(b));
     // A pane restored from a saved layout is a loaded draft until its host
     // claims it; its first fetch is a load with a phase like any other.
@@ -1274,8 +1276,34 @@ class SessionStore {
     const now = new Set(ids);
     this.mounted = now;
     const left = before ? [...before].filter((id) => !now.has(id)) : [];
+    this.leave(left, now);
+  }
+
+  /** Sessions shown outside every pane (a Work dock's chat): mounted as a pane's are while shown. */
+  private apart = new Set<string>();
+
+  /**
+   * A chat drawn outside every pane (a Work dock) shows `id`, or (`shown` false) let it go. While shown it is in
+   * the mounted set: its transcript stays loaded and a reconnect replays its gap, as a pane's; let go, it is
+   * recently shown and unloads as a pane that left does. Also what the idle sweep keeps in the open set.
+   */
+  showApart(id: string, shown: boolean): void {
+    if (shown) {
+      this.apart.add(id);
+      return;
+    }
+    if (this.apart.delete(id)) this.leave([id], this.mounted ?? new Set());
+  }
+
+  /** The sessions shown outside every pane now (`showApart`). */
+  shownApart(): ReadonlySet<string> {
+    return this.apart;
+  }
+
+  /** `left` went off screen: recently shown, and the unload runs after the grace period. */
+  private leave(left: string[], now: ReadonlySet<string>): void {
     this.recent = [...left, ...this.recent.filter((id) => !now.has(id) && !left.includes(id))]
-      .filter((id) => this.entries.has(id))
+      .filter((id) => this.entries.has(id) && !this.apart.has(id))
       .slice(0, KEEP_RECENT);
     if (this.unloadTimer) clearTimeout(this.unloadTimer);
     this.unloadTimer = setTimeout(() => {
@@ -1284,12 +1312,12 @@ class SessionStore {
     }, UNLOAD_MS);
   }
 
-  /** Mounted sessions plus their children (the agent boards), and a
+  /** Mounted sessions (a dock's chat with them) plus their children (the agent boards), and a
    *  mounted master's batch threads (its board opens one in its own pane,
    *  ChildPane, so the transcript it loaded stays while the board shows). */
   private mountedClosure(): Set<string> | null {
     if (!this.mounted) return null;
-    const keep = new Set(this.mounted);
+    const keep = new Set([...this.mounted, ...this.apart]);
     for (const entry of this.entries.values()) {
       const master = entry.meta?.masterId;
       if (master && !entry.meta!.parentId && keep.has(master)) keep.add(entry.meta!.id);

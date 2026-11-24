@@ -4,7 +4,7 @@ import { chipPort } from "../../lib/contextChips";
 import { afterCreate } from "../../lib/tcserver/commands";
 import { draftPicks, dockDraftKey, projectDrafts, sessionFromDraft } from "../../lib/projectDrafts";
 import { sessionStore } from "../../lib/tcserver/store";
-import { dockShown, workDockPort } from "../../lib/workSwitch";
+import { workDockPort } from "../../lib/workSwitch";
 import { aboutFor, addContextChip, contextChipsOf, setSendChips } from "../canvas/chips";
 import type { DockSubject } from "./subject";
 
@@ -112,13 +112,14 @@ function putChips(id: string): void {
 }
 
 /**
- * The dock shows `id`, so the idle sweep leaves it in the open set (`dockShown`): a dock is no tab, and a chat
- * out of the open set takes no send and no pick. A draft goes into the open set (as it last stood there, its picks
+ * The dock shows `id`, and tells the store so (`showApart`): a dock is no pane and no tab, and the store then holds its
+ * chat as a mounted pane's, its transcript loaded and replayed on a reconnect, and the idle sweep leaves it in the
+ * open set (a chat out of the open set takes no send and no pick). A draft goes into the open set (as it last stood there, its picks
  * kept), its subject's chips are put on it (each time it is shown, unless he took them off), and its first send's
  * step is set. A thread the store holds is opened too.
  */
 export function enterDock(id: string): void {
-  dockShown.add(id);
+  sessionStore.showApart(id, true);
   const draft = drafts.get(id);
   if (!draft || !sessionStore.isDraft(id) || sessionStore.isProvisional(id)) {
     sessionStore.openForSend(id);
@@ -140,7 +141,7 @@ export function enterDock(id: string): void {
  * run (`enterDock` puts it back). A draft whose first send is under way is left to it.
  */
 export function leaveDock(id: string): void {
-  dockShown.delete(id);
+  sessionStore.showApart(id, false);
   if (!sessionStore.isDraft(id) || sessionStore.isProvisional(id)) return;
   if ((sessionStore.get(id)?.blocks.length ?? 0) > 0) return;
   afterCreate.clear(id);
@@ -154,5 +155,5 @@ export function resetDocks(): void {
   drafts.clear();
   chipSeen.clear();
   chipTaken.clear();
-  dockShown.clear();
+  for (const id of sessionStore.shownApart()) sessionStore.showApart(id, false);
 }
