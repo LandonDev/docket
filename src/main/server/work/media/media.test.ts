@@ -489,7 +489,7 @@ describe('kept by the file: a Files tab and a thread on one clip', () => {
     expect(db.prepare(`SELECT DISTINCT file_key FROM work_media_notes`).all()).toEqual([{ file_key: fileKeyOf(thread) }])
   })
 
-  it('keeps the rows while one item on the clip is left, and drops them, with their prepared copies, with the last', () => {
+  it('keeps the rows while one item on the clip is left, and after the last for the next item that opens the clip', () => {
     const thread = canvasItem('i1', 't1', 'w1', fileOf())
     const tab = canvasItem('tab1', 'files:w1', 'w1', fileOf())
     note(thread, 'x')
@@ -500,8 +500,9 @@ describe('kept by the file: a Files tab and a thread on one clip', () => {
     expect(store.versions('tab1').map((v) => v.id)).toEqual([version])
     expect(bodies(tab)).toEqual(['x'])
     db.prepare(`DELETE FROM work_canvas_items WHERE id = 'tab1'`).run()
-    expect(store.removeItems(['tab1'])).toEqual([version])
-    expect(db.prepare(`SELECT COUNT(*) AS n FROM work_media_notes`).get()).toEqual({ n: 0 })
+    // The last item on the clip closes: its notes are the clip's and wait for it; no version went, so no prepared copy is forgotten.
+    expect(store.removeItems(['tab1'])).toEqual([])
+    expect(bodies(canvasItem('tab2', 'files:w1', 'w1', fileOf()))).toEqual(['x'])
   })
 
   it('fills the key at start for rows made before it', () => {

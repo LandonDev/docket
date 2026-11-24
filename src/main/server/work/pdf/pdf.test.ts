@@ -360,13 +360,14 @@ describe('the tools without pdf-tools on this host', () => {
 })
 
 describe('deleted threads', () => {
-  it('drops a deleted thread\'s rows', async () => {
+  it('leaves a deleted thread\'s marks and filled fields with the file they are on, for whoever opens it next', async () => {
     const id = openItem(put('fw9.pdf', W9))
     await call('work.pdf.setField', { itemId: id, key: NAME, value: 'Ada' })
     await call('work.pdf.mark', { itemId: id, page: 1, quads: [[0, 0, 1, 0.1]], text: 'x' })
     for (const fn of removed) fn(['t1'])
     const count = (t: string): number => (db.prepare(`SELECT COUNT(*) AS n FROM ${t} WHERE session_id = 't1'`).get() as { n: number }).n
-    expect([count('work_pdf_fields'), count('work_pdf_marks'), count('work_pdf_items')]).toEqual([0, 0, 0])
+    // They are the file's (canvas/fileKey.ts `dropKept`): the thread going takes none of them.
+    expect([count('work_pdf_fields'), count('work_pdf_marks'), count('work_pdf_items')]).toEqual([1, 1, 1])
   })
 })
 

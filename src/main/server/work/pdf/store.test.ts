@@ -425,7 +425,7 @@ describe('kept by the file: a Files tab and a thread on one PDF share its rows',
     expect(marksOf(thread)).toEqual(['his'])
   })
 
-  it('keeps the rows while one item on the file is left, and drops them with the last', () => {
+  it('keeps the rows while one item on the file is left, and after the last for the next item that opens the file', () => {
     const thread = canvasItem('i1', 't1', 'w1', fileOf())
     const tab = canvasItem('tab1', 'files:w1', 'w1', fileOf())
     mark(thread, 'x')
@@ -438,13 +438,25 @@ describe('kept by the file: a Files tab and a thread on one PDF share its rows',
     gone('i2')
     store.removeItems(['i2'])
     expect(marksOf(tab)).toEqual(['x'])
+    // The last tab on the file closes: his highlights are the file's, and wait for it (they once went with the tab).
     gone('tab1')
     store.removeItems(['tab1'])
-    for (const table of ['work_pdf_items', 'work_pdf_fields', 'work_pdf_marks']) expect(count(table)).toBe(0)
+    expect(count('work_pdf_marks')).toBe(1)
     expect(again.id).toBe('i2')
+    // The file is opened again, in a new tab: the marks are there, kept under the new item.
+    const reopened = canvasItem('tab2', 'files:w1', 'w1', fileOf())
+    expect(marksOf(reopened)).toEqual(['x'])
+    expect(store.keep(reopened)).toMatchObject({ id: 'tab2', sessionId: 'files:w1' })
+    expect(keysOf('work_pdf_marks').map(([item]) => item)).toEqual(['tab2'])
+    // An item with no file keeps its rows by itself, and they go with it.
+    const own = canvasItem('m1', 't9', 'w1', { at: 'thread' })
+    mark(own, 'mine')
+    gone('m1')
+    store.removeItems(['m1'])
+    expect(db.prepare(`SELECT COUNT(*) AS n FROM work_pdf_marks WHERE item_id = 'm1'`).get()).toEqual({ n: 0 })
   })
 
-  it("passes a deleted thread's rows to the tab that shows its file; a thread alone on its file takes them with it", () => {
+  it("passes a deleted thread's rows to the tab that shows its file; a thread alone on its file leaves them with the file", () => {
     const thread = canvasItem('i1', 't1', 'w1', fileOf())
     const tab = canvasItem('tab1', 'files:w1', 'w1', fileOf())
     mark(thread, 'x')
@@ -454,7 +466,9 @@ describe('kept by the file: a Files tab and a thread on one PDF share its rows',
     store.removeSessions(['t1', 't3'])
     expect(store.keep(tab)).toMatchObject({ id: 'tab1', sessionId: 'files:w1' })
     expect(marksOf(tab)).toEqual(['x'])
-    expect(db.prepare(`SELECT COUNT(*) AS n FROM work_pdf_marks WHERE item_id = 'i3'`).get()).toEqual({ n: 0 })
+    // The other file's marks wait for whoever opens it next.
+    gone('i3')
+    expect(marksOf(canvasItem('tab3', 'files:w1', 'w1', fileOf('/w/Job/Other.pdf')))).toEqual(['y'])
   })
 
   it('fills the key at start for rows an older build made, and keeps two items that each had rows apart', () => {

@@ -1790,9 +1790,14 @@ folder or a lens) and file tabs.
   keeps its rows by its own id as before. Every read still comes through an
   item the caller may open (`fenceItem`), and the key holds the workspace,
   so an item of another workspace on the same file finds none of them.
-  Closing one item passes its rows to another item on the file; only the
-  last takes them away (`dropKept`, from `itemsRemoved` and
-  `sessionsRemoved`). A thread that moves to another host takes a copy of
+  Closing one item passes its rows to another item on the file; when the
+  last one closes they stay, by the file's key, and the next item that
+  opens the file takes them (`dropKept`, from `itemsRemoved` and
+  `sessionsRemoved`; `keptOf` hands them over): a highlight, a note or a
+  filled field is the file's, and closing a PDF's only tab once took them
+  away. Rows kept by item alone (no file, no workspace) go with their item.
+  A copy of another computer's file is a file of its own, made anew at each
+  open, so marks on it still end with its tab (listed in POLISH-work.md). A thread that moves to another host takes a copy of
   what it shares, with new ids, and the rows stay here for the tab
   (`fileKeyedMoveModule`). Each start fills the key for rows an older build
   wrote; where two items already kept rows for one file, the newest keeps

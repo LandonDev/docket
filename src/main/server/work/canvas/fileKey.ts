@@ -90,7 +90,13 @@ export function keptOf(db: DatabaseSync, spec: FileKeyed, item: Pick<CanvasItem,
   const key = fileKeyOf(item)
   if (!key) return { id: item.id, sessionId: item.sessionId, fileKey: '' }
   const keeper = db.prepare(`SELECT item_id, session_id FROM ${spec.items} WHERE file_key = ? ORDER BY rowid DESC LIMIT 1`).get(key) as { item_id: string; session_id: string } | undefined
-  return keeper ? { id: keeper.item_id, sessionId: keeper.session_id, fileKey: key } : { id: item.id, sessionId: item.sessionId, fileKey: key }
+  if (!keeper) return { id: item.id, sessionId: item.sessionId, fileKey: key }
+  // The rows the file's last item left behind when it closed (`dropKept`): this item, the first to open the file since, takes them.
+  if (hasTable(db, 'work_canvas_items') && !db.prepare(`SELECT 1 FROM work_canvas_items WHERE id = ?`).get(keeper.item_id)) {
+    for (const table of tablesOf(spec)) db.prepare(`UPDATE ${table} SET item_id = ?, session_id = ? WHERE item_id = ?`).run(item.id, item.sessionId, keeper.item_id)
+    return { id: item.id, sessionId: item.sessionId, fileKey: key }
+  }
+  return { id: keeper.item_id, sessionId: keeper.session_id, fileKey: key }
 }
 
 /** An item of the canvas that shares the file's rows and is none of `gone`: open ones first, the newest first. One that keeps rows of its own is passed over. */
@@ -108,8 +114,10 @@ function heirOf(db: DatabaseSync, spec: FileKeyed, key: string, gone: { items: S
 
 /**
  * Items that went (a tab closed, a thread deleted or moved away): the rows each kept for its file pass to another
- * item of the workspace on that file, else they go; then whatever else these threads kept goes. Answers the
- * items whose rows went.
+ * item of the workspace on that file. With no other item on it they stay, by the file's key, for the next item
+ * that opens the file (`keptOf` hands them over): his highlights, notes and filled fields are the file's, and
+ * closing its last tab once took them away. Rows kept by item alone (no file, no workspace) go with their item;
+ * then whatever else these threads kept goes. Answers the items whose rows went.
  */
 export function dropKept(db: DatabaseSync, spec: FileKeyed, gone: { items?: readonly string[]; sessions?: readonly string[] }): string[] {
   const g = { items: new Set(gone.items ?? []), sessions: new Set(gone.sessions ?? []) }
@@ -117,8 +125,14 @@ export function dropKept(db: DatabaseSync, spec: FileKeyed, gone: { items?: read
   const bySession = db.prepare(`SELECT item_id, file_key FROM ${spec.items} WHERE session_id = ?`)
   const keepers = [...[...g.items].flatMap((id) => (of.get(id) as { item_id: string; file_key: string | null } | undefined) ?? []), ...[...g.sessions].flatMap((sid) => bySession.all(sid) as { item_id: string; file_key: string | null }[])]
   const dropped: string[] = []
+  /** Items whose rows stay with their file, waiting for its next item. */
+  const waits = new Set<string>()
   for (const k of keepers) {
     const heir = k.file_key ? heirOf(db, spec, k.file_key, g) : null
+    if (!heir && k.file_key) {
+      waits.add(k.item_id)
+      continue
+    }
     for (const table of tablesOf(spec)) {
       if (heir) db.prepare(`UPDATE ${table} SET item_id = ?, session_id = ? WHERE item_id = ?`).run(heir.id, heir.sessionId, k.item_id)
       else db.prepare(`DELETE FROM ${table} WHERE item_id = ?`).run(k.item_id)
@@ -127,8 +141,11 @@ export function dropKept(db: DatabaseSync, spec: FileKeyed, gone: { items?: read
   }
   // Rows of these items or threads with no row in `items` (none is made that way now; an older build made some).
   for (const table of tablesOf(spec)) {
-    for (const id of g.items) db.prepare(`DELETE FROM ${table} WHERE item_id = ?`).run(id)
-    for (const sid of g.sessions) db.prepare(`DELETE FROM ${table} WHERE session_id = ?`).run(sid)
+    for (const id of g.items) if (!waits.has(id)) db.prepare(`DELETE FROM ${table} WHERE item_id = ?`).run(id)
+    for (const sid of g.sessions) {
+      const rows = db.prepare(`SELECT DISTINCT item_id FROM ${table} WHERE session_id = ?`).all(sid) as { item_id: string }[]
+      for (const { item_id } of rows) if (!waits.has(item_id)) db.prepare(`DELETE FROM ${table} WHERE session_id = ? AND item_id = ?`).run(sid, item_id)
+    }
   }
   return dropped
 }
