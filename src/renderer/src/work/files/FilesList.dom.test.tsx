@@ -187,6 +187,22 @@ describe("a row being opened", () => {
   });
 });
 
+describe("a row's state in words", () => {
+  /** Council round 7 (both seats, Files 1): "3 suggestions" and "<Name> is in it" were shrink-0 and pushed the name out of a narrow list. */
+  it.each([
+    [{ is: "suggestions", count: 3 }, "3 suggestions"],
+    [{ is: "present", who: "Sam Ortiz" }, "Sam Ortiz is in it"],
+  ] as const)("gives way to the name, cut, its words whole in the row: %o", async (state, words) => {
+    const { RowState } = await import("./rowParts");
+    const { container } = render(<RowState entry={{ ...file("Budget.xlsx"), state } as never} />);
+    const outer = container.firstElementChild as HTMLElement;
+    expect(outer.className).toContain("min-w-0");
+    expect(outer.className).toContain("shrink-[999]");
+    expect(outer.className).not.toContain("shrink-0");
+    expect(outer.querySelector("span.truncate")!.textContent).toBe(words);
+  });
+});
+
 describe("the list's columns", () => {
   it("leave by the width of the list itself, so a details pane beside it narrows them; the pane keeps the page's own width", () => {
     keepPageLook(PAGE.at, { details: true });
@@ -265,7 +281,15 @@ describe("Home", () => {
     expect(names("Recent")).toEqual(["Budget.xlsx"]);
     const opening = document.querySelector<HTMLElement>(`[data-files-home-row="${file("Budget.xlsx").key}"]`)!;
     expect(opening.textContent).toContain("Opening…");
-    expect(opening.querySelector('[data-slot="busy-label"][data-busy]')).not.toBeNull();
+    // Council round 7 (both seats, Files 2): the state gives way before the name, as in the folder's list.
+    const busy = opening.querySelector<HTMLElement>("[data-files-busy]")!;
+    expect(busy.querySelector('[data-slot="spinner"]')).not.toBeNull();
+    expect(busy.className).toContain("shrink-[999]");
+    expect(busy.className).not.toContain("shrink-0");
+    // The name's basis is its own width, so the state's shrink is what gives way.
+    expect(opening.querySelector("span.truncate")!.className).toContain("flex-auto");
+    const heldWords = [...document.querySelector(`[data-files-home-row="${held.key}"]`)!.querySelectorAll("span")].find((el) => el.textContent === "Rename waits for you")!;
+    expect(heldWords.closest(".shrink-\\[999\\]")).not.toBeNull();
     // A row that says a state gives its date up first in a narrow page; a plain row keeps it.
     const date = (row: Element): string => [...row.querySelectorAll("span")].at(-1)!.className;
     expect(date(opening)).toContain("hidden @[400px]/files-home:block");

@@ -309,6 +309,21 @@ export function FilesHome() {
   );
 }
 
+/** Home in a narrow pane: a row opening from another computer, a held change and suggestions, each giving way to its name. */
+export function FilesHomeNarrow() {
+  const opening = home.recent[0]!;
+  return (
+    <div className="flex gap-6 p-6">
+      <Window width={420} height={520}>
+        <HomePage panelId="p" home={home} error={null} busy={{ key: opening.key, word: "Opening… 8.0 of 20 MB" }} onRetry={noop} onOpen={noop} bar={null} />
+      </Window>
+      <Window width={260} height={520} sidebarOpen={false}>
+        <HomePage panelId="p" home={home} error={null} busy={{ key: opening.key, word: "Opening… 8.0 of 20 MB" }} onRetry={noop} onOpen={noop} bar={null} />
+      </Window>
+    </div>
+  );
+}
+
 /** A search's results from every place, under its filters. */
 export function FilesSearch() {
   const found = entries.filter((e) => !e.folder).slice(0, 7).map((e, i) => ({ ...e, where: i % 2 ? { place: "folder", name: "Dummy Esports", trail: ["Events"] } : { place: "b1/Events", name: "Esports Staff", trail: ["Events"] } }));

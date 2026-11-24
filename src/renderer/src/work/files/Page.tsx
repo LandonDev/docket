@@ -56,7 +56,7 @@ import {
   type PlaceCopy,
 } from "./model";
 import type { Busy } from "./open";
-import { dragging, dragProps, dropVerb, howOf, NameField, onNameOf, ROWS_MIME, RowState, setDragging, setDragLabel, stepHow, whenDragEnds, type RowDrag, type ShapeProps } from "./rowParts";
+import { dragging, dragProps, dropVerb, howOf, NameField, onNameOf, ROWS_MIME, RowState, RowWords, setDragging, setDragLabel, stepHow, whenDragEnds, type RowDrag, type ShapeProps } from "./rowParts";
 import type { PictureFrom } from "./previews";
 import { QuickLook } from "./QuickLook";
 import { FileColumns, FileGrid } from "./Shapes";
@@ -329,12 +329,7 @@ export function FileList({
             // The name has first claim on the row: the progress gives way first, its words cut at the width of the By
             // column, and under 360px of list they go from sight (still read out) as Changed does, the spinner staying.
             // The whole of it on hover.
-            <Tip label={busy!.word}>
-              <span data-files-busy className="flex min-w-3 shrink-[999] items-center gap-1.5 self-center overflow-hidden text-xs text-muted-foreground">
-                <Spinner className="size-3 shrink-0" />
-                <span className="max-w-0 truncate @[360px]/files-list:max-w-40">{busy!.word}</span>
-              </span>
-            </Tip>
+            <RowWords data-files-busy="" busy words={busy!.word} cut="max-w-0 @[360px]/files-list:max-w-40" />
           ) : (
             <RowState entry={entry} />
           )}

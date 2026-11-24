@@ -5,7 +5,7 @@ import { ENTRY_KIND_WORDS, type EntryKind, type FileEntry } from "@shared/work/f
 import { DialogFooter } from "../../chrome/ConfirmDialog";
 import { RowsMenu, type MenuRow } from "../../chrome/menuRows";
 import { Modal, ModalBody } from "../../chrome/Modal";
-import { BusyLabel, Button } from "../../components/ui/button";
+import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
 import { Skeleton } from "../../components/ui/skeleton";
 import { dayTime } from "../../lib/duration";
@@ -14,7 +14,7 @@ import { ViewStateLine } from "../views/ViewStateLine";
 import { KindGlyph } from "./KindGlyph";
 import { homeLists, whereWords, type Sidebar } from "./model";
 import type { Busy } from "./open";
-import { RowState } from "./rowParts";
+import { RowState, RowWords } from "./rowParts";
 
 /**
  * Home (docs/DESIGN.md "The Files place"): the page a new tab opens on. Three short lists from the workspace's
@@ -38,15 +38,14 @@ function HomeList({ title, entries, busy, onOpen }: { title: string; entries: re
         return (
           <Button key={entry.key} variant="ghost" data-files-home-row={entry.key} disabled={opening} className="h-9 w-full min-w-0 justify-start gap-2 rounded-md px-2 text-[13px] font-normal" onClick={() => onOpen(entry)}>
             <KindGlyph kind={entry.kind} />
-            <span className="min-w-0 flex-1 truncate text-start text-foreground">{entry.name}</span>
+            {/* Its own width as its basis (`flex-auto`), so a state beside it gives way first (`RowWords`). */}
+            <span className="min-w-0 flex-auto truncate text-start text-foreground">{entry.name}</span>
             {/* A change a thread holds for his press says its verb; the row opens the held item, not the file. */}
+            {/* A state gives way before the name, cut, whole on hover (`RowWords`), as in the folder's list. */}
             {opening ? (
-              // The list's own opening state: its 12px spinner and word.
-              <span className="shrink-0 text-xs text-muted-foreground [--busy-space:0.75rem]">
-                <BusyLabel busy label={busy!.word} />
-              </span>
+              <RowWords data-files-busy="" busy words={busy!.word} />
             ) : entry.held ? (
-              <span className="shrink-0 text-xs text-warning">{HELD_WORDS[entry.held.verb] ?? "A change"} waits for you</span>
+              <RowWords tone="warning" words={`${HELD_WORDS[entry.held.verb] ?? "A change"} waits for you`} />
             ) : (
               <RowState entry={entry} />
             )}
