@@ -10,6 +10,7 @@ import { OVERFLOW_FADE, useOverflowEdges } from "../../hooks/useOverflowEdges";
 import { useSortable } from "../../hooks/useSortable";
 import { glyphOf, type CanvasKindDef } from "./kind";
 import { CANVAS, kindDefOf } from "./registry";
+import { tabShrink } from "./tabShrink";
 
 /**
  * The canvas pane's tab row (docs/DESIGN.md "The canvas pane"): the open
@@ -118,7 +119,7 @@ export function CanvasTabs({
         const lineStart = moving && sortable.toIndex! < sortable.fromIndex!;
         const lineEnd = moving && sortable.toIndex! > sortable.fromIndex!;
         return (
-          <div key={item.id} ref={(el) => sortable.setItemRef(item.id, el)} className={`group/dock-tab relative flex max-w-60 min-w-9 shrink ${dragging ? "z-10" : ""}`}>
+          <div key={item.id} ref={(el) => sortable.setItemRef(item.id, el)} className={`group/dock-tab relative flex max-w-60 min-w-9 ${dragging ? "z-10" : ""}`} style={{ flexShrink: tabShrink(item.title, active) }}>
             {lineStart ? <div className="pointer-events-none absolute inset-y-1 -left-0.5 z-20 w-0.5 rounded-full bg-accent" /> : null}
             {lineEnd ? <div className="pointer-events-none absolute inset-y-1 -right-0.5 z-20 w-0.5 rounded-full bg-accent" /> : null}
             <TitleTip title={item.title}>

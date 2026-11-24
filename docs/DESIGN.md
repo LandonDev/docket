@@ -1216,8 +1216,9 @@ thread; nothing answers inside the canvas.
   thread's canvas with the thread folded away, and the thread that already
   holds it shows it again. An item whose viewer fails, with nothing to
   show, is the centred `Empty` in the body's place: "Couldn't open this
-  document", the reason in his words (`workErrorWords`) when there is one,
-  and Retry (`OpenFailed`, work/canvas/FetchState.tsx); never a red line
+  document", the reason in his words (`workErrorWords`, naming the pane's
+  computer: "The box is not connected. Try again once it is back.") when
+  there is one, and Retry (`OpenFailed`, work/canvas/FetchState.tsx); never a red line
   over a blank pane. The document, the sheet, the PDF, the deck, the
   media viewer and the meeting all draw it; a Keynote file he must export
   first has no Retry. The state line stays for a failure that leaves
@@ -1234,14 +1235,20 @@ thread; nothing answers inside the canvas.
   `muted-foreground`): on the selected tab and on the tab under the
   pointer, lying over the tab's end, and always right after a lone
   item's name. Every tab keeps the close's room, shown or not, so a name
-  is cut at one point and nothing moves under the pointer.
+  is cut at one point and nothing moves under the pointer. Past what fits
+  the selected tab keeps its name and every other gives up the same part
+  of its own (`tabShrink`, the Files row's rule).
 - **The kind's bar** is 32px on `background` (the editor's `FileHeader`
   row), 12px muted, in a fixed order: other people as 20px avatars, the
   mode ("Agent suggests" or "Agent writes", a quiet menu button), the
   kind's own tools, Download and Save to workspace (a copy of someone
   else's file: a mail's attachment), History, then the review stepper at
   the end. A kind
-  with nothing to put there draws no bar. The agent suggests on what
+  with nothing to put there draws no bar. A second file beside a Files
+  tab's own leads the bar with its glyph, name and save line and ends it
+  with its close, one row level with the bar beside it. A quiet line's cut
+  reason is a Tab stop with its whole words in a tooltip, as a state
+  line's detail is. The agent suggests on what
   other people can edit and writes, with history and Undo, on what only
   the person sees; the mode says which.
 - **The review stepper**: Previous, "2/6" tabular, Next, Reject (ghost),

@@ -1,7 +1,10 @@
+import { createContext, useContext } from "react";
 import type { CanvasKind } from "@shared/work";
 import { Button } from "../../components/ui/button";
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "../../components/ui/empty";
 import { Progress } from "../../components/ui/progress";
+import { registry } from "../../lib/connection/registry";
+import { hostName } from "../../lib/threadResources";
 import { workErrorWords } from "../../lib/workErrorWords";
 import type { Fetch } from "./fetched";
 import { ItemBones } from "./ItemBones";
@@ -18,14 +21,23 @@ const mb = (bytes: number): string => (bytes / (1024 * 1024)).toFixed(1);
 /** "2.1 of 8.4 MB" */
 export const progressWords = (received: number, total: number): string => `${mb(Math.min(received, total))} of ${mb(total)} MB`;
 
+/** The environment the pane's item is on: set by `CanvasPane`, so a failure inside it can name the computer. */
+export const FailedHost = createContext<string | null>(null);
+
+/** That computer by the name the rail gives it in a line ("the box"); null where this window does not know it. */
+const paneHost = (environmentId: string): string | null => (registry.environment(environmentId) ? hostName(environmentId) : null);
+
 /**
  * A viewer with nothing to show (docs/DESIGN.md "The canvas pane"): the centred `Empty` with the kind in its title,
  * the reason when there is one, and Retry; never a red line over a blank pane. The state line is for a source that
  * dropped while the content stays.
  */
 export function OpenFailed({ kind, why, onRetry }: { kind: CanvasKind; why?: string | undefined; /** absent where trying again cannot help (a file he must export first) */ onRetry?: (() => void) | undefined }) {
-  // A host's reason in his words (`workErrorWords`): a raw line says nothing, and the title stands alone.
-  const said = why ? workErrorWords(why) : "";
+  // A host's reason in his words (`workErrorWords`), naming the pane's computer: a link that is down says which is
+  // away. A raw line says nothing, and the title stands alone.
+  const env = useContext(FailedHost);
+  const host = why && env ? paneHost(env) : null;
+  const said = why ? workErrorWords(why, host ? { host } : {}) : "";
   return (
     <Empty data-canvas-failed>
       <EmptyHeader>

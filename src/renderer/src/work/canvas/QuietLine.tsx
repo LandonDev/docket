@@ -1,5 +1,24 @@
 import { useState } from "react";
+import { useTruncated } from "../../components/tip";
 import { BusyLabel, Button } from "../../components/ui/button";
+import { Tooltip, TooltipContent, TooltipTrigger } from "../../components/ui/tooltip";
+
+/** A state line's detail: cut, it is a Tab stop with its whole words in a tooltip, on hover and on focus alike. */
+export function CutDetail({ text, className = "" }: { text: string; className?: string }) {
+  const { ref, cut } = useTruncated(text);
+  const span = (
+    <span ref={ref} tabIndex={cut ? 0 : undefined} className={`focus-ring block min-w-0 truncate rounded-sm ${className}`}>
+      {text}
+    </span>
+  );
+  if (!cut) return span;
+  return (
+    <Tooltip>
+      <TooltipTrigger render={span} />
+      <TooltipContent>{text}</TooltipContent>
+    </Tooltip>
+  );
+}
 
 /**
  * One muted line across an item that says how it is, not that he is needed (docs/DESIGN.md "The canvas pane"):
@@ -27,7 +46,7 @@ export function QuietLine({
       {word || detail ? (
         <span className="flex min-w-0 items-baseline gap-1">
           {word ? <span className="shrink-0 font-medium">{word}</span> : null}
-          {detail ? <span className="min-w-0 truncate">{detail}</span> : null}
+          {detail ? <CutDetail text={detail} /> : null}
         </span>
       ) : null}
       {press ? (

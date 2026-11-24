@@ -1,9 +1,7 @@
 import { createContext, useContext, useEffect, useLayoutEffect, useState, type ReactNode } from "react";
 import type { CanvasItem, CanvasKind } from "@shared/work";
 import { BusyLabel, Button } from "../../components/ui/button";
-import { useTruncated } from "../../components/tip";
 import { Skeleton } from "../../components/ui/skeleton";
-import { Tooltip, TooltipContent, TooltipTrigger } from "../../components/ui/tooltip";
 import { ItemSkeleton } from "./ItemBones";
 import { StatusMark } from "../../components/ui/status";
 import type { Chunk } from "../../lib/lazyChunk";
@@ -13,8 +11,8 @@ import { KindBar } from "./KindBar";
 import type { CanvasBodyProps, CanvasKindDef, CanvasKindModule, CanvasSelection, CanvasShell, StatusLine } from "./kind";
 import { CANVAS, kindDefOf } from "./registry";
 import { SelectionBar } from "./SelectionBar";
-import { FetchState, OpenFailed } from "./FetchState";
-import { QuietLine } from "./QuietLine";
+import { FailedHost, FetchState, OpenFailed } from "./FetchState";
+import { CutDetail, QuietLine } from "./QuietLine";
 import { downloadItem, keepItem, useItemFetch } from "./fetched";
 import { useKeptState } from "./store";
 
@@ -56,22 +54,6 @@ export function detailWords(detail: string): string {
 }
 
 /** The state line's detail, cut to its room: while cut it takes the focus too, so the keyboard can bring up the whole of it in the same tip the pointer does. */
-function Detail({ text }: { text: string }) {
-  const { ref, cut } = useTruncated(text);
-  const span = (
-    <span ref={ref} tabIndex={cut ? 0 : undefined} className="focus-ring block truncate rounded-sm">
-      {text}
-    </span>
-  );
-  if (!cut) return span;
-  return (
-    <Tooltip>
-      <TooltipTrigger render={span} />
-      <TooltipContent>{text}</TooltipContent>
-    </Tooltip>
-  );
-}
-
 /** One line of state across the item: a source that did not answer, or one that needs the person. Never a second banner. A cut detail shows whole on hover. */
 function StateLine({ line }: { line: StatusLine }) {
   if (line.tone === "quiet") return <QuietLine data-canvas-state="quiet" word={line.word} detail={line.detail} press={line.action} />;
@@ -88,7 +70,7 @@ function LoudLine({ line }: { line: StatusLine }) {
         state={line.tone === "failed" ? "failed" : "waiting"}
         word={line.word}
         detail={
-          detail ? <Detail text={detail} /> : null
+          detail ? <CutDetail text={detail} /> : null
         }
         className="min-w-0 flex-1"
       />
@@ -208,11 +190,13 @@ export function CanvasPane({
       />
       {feeds.status ? <StateLine line={feeds.status} /> : null}
       <div data-canvas-body className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-auto">
-        {waiting ? <FetchState fetch={waiting} kind={item.kind} name={item.title} onRetry={fetched!.retry} /> : (
-          <PaneShell.Provider value={shell}>
-            <Body {...props} />
-          </PaneShell.Provider>
-        )}
+        <FailedHost.Provider value={environmentId}>
+          {waiting ? <FetchState fetch={waiting} kind={item.kind} name={item.title} onRetry={fetched!.retry} /> : (
+            <PaneShell.Provider value={shell}>
+              <Body {...props} />
+            </PaneShell.Provider>
+          )}
+        </FailedHost.Provider>
       </div>
       <SelectionBar selection={feeds.selection} onAsk={onAsk} onDismiss={() => shell.selection(null)} />
     </div>

@@ -648,13 +648,8 @@ export function actsFor(
   return rows;
 }
 
-/**
- * How readily a Files tab gives up width past what fits (TabRow.tsx). The selected tab keeps its whole name (up to the
- * tab's 240px) while any other has room to give; the others give in step with their name's share of the tab, so each
- * loses the same part of its name. Flex takes from each tab in step with its whole width, the glyph and the close's
- * room (about 9 letters) included, which cut a short name ("Events") to a letter while long ones kept most.
- */
-export const tabShrink = (name: string, selected = false): number => (selected ? 0 : name.length / (name.length + 9));
+/** How readily a tab gives up width past what fits: one rule for Files' row and the canvas tab row (canvas/tabShrink.ts). */
+export { tabShrink } from "../canvas/tabShrink";
 
 /** Why a verb is greyed for a file on a computer this window reaches only through another host: where it can be done. */
 export const farWhy = (far: { computer: string; via: string }): string => `${far.computer} is reached through ${far.via}. Change its files on ${far.computer} itself.`;

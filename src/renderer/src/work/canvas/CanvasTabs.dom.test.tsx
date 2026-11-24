@@ -4,6 +4,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-libra
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { tooltipChunk, warmTooltips } from "../../components/ui/tooltip";
 import { CanvasTabs } from "./CanvasTabs";
+import { tabShrink } from "./tabShrink";
 import { canvasItem, drivenKinds } from "./testkit";
 
 afterEach(cleanup);
@@ -40,6 +41,21 @@ describe("a canvas tab", () => {
       for (const tab of all) expect(tab.className.split(" ")).not.toContain("group-hover/dock-tab:pe-7");
       // `muted` on `sidebar` can barely be seen in light; the Files row's selected fill is plain in both themes.
       expect(all[1]!.className).toContain("aria-selected:bg-sidebar-group-selected");
+    } finally {
+      restore();
+    }
+  });
+});
+
+describe("the canvas tab row past what fits", () => {
+  it("keeps the selected tab's whole name, and the others give in step with their names, as Files' row does", async () => {
+    const { restore } = await tabs(false);
+    try {
+      const shrinkOf = (tab: HTMLElement): number => Number(tab.closest<HTMLElement>(".group\\/dock-tab")!.style.flexShrink);
+      const [doc, sheet] = screen.getAllByRole("tab") as [HTMLElement, HTMLElement];
+      expect(shrinkOf(sheet)).toBe(0);
+      expect(shrinkOf(doc)).toBeCloseTo(tabShrink(LONG));
+      expect(shrinkOf(doc)).toBeGreaterThan(0);
     } finally {
       restore();
     }
