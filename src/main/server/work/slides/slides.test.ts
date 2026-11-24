@@ -2604,6 +2604,23 @@ describe("a show's builds and clips, made in the background", () => {
     })
   })
 
+  it('a running show reading a step let go to make room has it made again and is told it is ready', async () => {
+    await host(realPdfs)
+    const path = join(dir, 'Built.pptx')
+    writeFileSync(path, fakeBytes(BUILT))
+    const item = openDeck(fileSource(path))
+    await showOf(item.id)
+    await vi.waitFor(async () => expect(!!(await showOf(item.id)).slides[1].steps![0].pic).toBe(true))
+    const rev = (await showOf(item.id)).slides[1].steps![0].pic!.rev
+    const pages = join(deckCache(dir, deckKey(item)), 'pages')
+    for (const f of readdirSync(pages).filter((f) => f.startsWith(rev))) rmSync(join(pages, f))
+    const told = ready(item.id).length
+    // The show on screen reads the step it was told of: gone, the read fails, and the job is started again.
+    await expect(call('work.slides.build', { itemId: item.id, rev, offset: 0, length: 1 << 20 })).rejects.toThrow('not ready, or is gone')
+    await vi.waitFor(() => expect(ready(item.id).length).toBeGreaterThan(told))
+    expect(readdirSync(pages).some((f) => f.startsWith(rev))).toBe(true)
+  })
+
   it("keeps a shared library's step pictures and clips in the item's own folder, and marks every job so none leaves the host", async () => {
     await host(realPdfs)
     const team = join(dir, 'Esports Staff')

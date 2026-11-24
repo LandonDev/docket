@@ -209,6 +209,8 @@ function ShowRoot({ ask, places: opened, native, onOver }: { ask: ShowAsk; place
   /** The host's notices that more of a revision's show is ready, counted: one that came while a read was on its way is not lost. */
   const readied = useRef<{ seq: number; rev: string | null }>({ seq: 0, rev: null });
   const loads = useRef(0);
+  /** Each read of the show that drew: a step picture that failed to read is tried again at the next. */
+  const [reads, setReads] = useState(0);
   const retry = useRef<{ timer: ReturnType<typeof setTimeout> | undefined; wait: number }>({ timer: undefined, wait: RETRY_FIRST_MS });
   const load = useCallback(async (): Promise<void> => {
     const mine = ++loads.current;
@@ -231,6 +233,7 @@ function ShowRoot({ ask, places: opened, native, onOver }: { ask: ShowAsk; place
       setError(deck.renderError ?? null);
       setLost(false);
       setState((was) => (was ? showReducer(was, { t: "deck", slides: deck.slides }) : startShowState(deck.slides, ask.from)));
+      setReads((n) => n + 1);
       // More of this revision was made while it was read (its notice came before the show knew its revision): once more.
       if (readied.current.seq !== asked && readied.current.rev === deck.rev) void load();
     } catch (e) {
@@ -380,7 +383,7 @@ function ShowRoot({ ask, places: opened, native, onOver }: { ask: ShowAsk; place
     if (next.kind === "slide" && shown.slides[next.at]) slides.push(shown.slides[next.at]);
     return slides;
   }, [shown]);
-  const stepDocs = useStepDocs(engine, host.step, near.flatMap((s) => (s.steps ?? []).flatMap((p) => (p.pic ? [p.pic] : []))));
+  const stepDocs = useStepDocs(engine, host.step, near.flatMap((s) => (s.steps ?? []).flatMap((p) => (p.pic ? [p.pic] : []))), reads);
   const mediaUrls = useMediaUrls(host.media, near.flatMap((s) => (s.media ?? []).flatMap((m) => (m.file ? [m.file] : []))));
 
   // One clip state for both windows; leaving a slide stops its clips.

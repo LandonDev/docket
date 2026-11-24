@@ -51,7 +51,12 @@ type Opened = PdfDoc | "opening" | "failed";
  * let go once the show has moved two slides on. A picture that fails to read is held for the room like one not made
  * (Show.tsx), never the slide whole.
  */
-export function useStepDocs(engine: PdfEngine, read: ((rev: string, offset: number, length: number) => Promise<Uint8Array>) | undefined, near: ReadonlyArray<{ rev: string; size: number }>): ReadonlyMap<string, Opened> {
+export function useStepDocs(
+  engine: PdfEngine,
+  read: ((rev: string, offset: number, length: number) => Promise<Uint8Array>) | undefined,
+  near: ReadonlyArray<{ rev: string; size: number }>,
+  again = 0,
+): ReadonlyMap<string, Opened> {
   const [docs, setDocs] = useState<ReadonlyMap<string, Opened>>(new Map());
   const live = useRef(docs);
   live.current = docs;
@@ -66,10 +71,16 @@ export function useStepDocs(engine: PdfEngine, read: ((rev: string, offset: numb
     };
   }, []);
   const wanted = near.map((p) => p.rev).join(",");
+  // Each new read of the show (`again`, after a ready notice) tries once more a picture whose read failed: the host may
+  // have made it again since.
+  const tried = useRef(again);
   useEffect(() => {
     if (!read) return;
+    const retry = tried.current !== again;
+    tried.current = again;
     for (const pic of near) {
-      if (live.current.has(pic.rev)) continue;
+      const had = live.current.get(pic.rev);
+      if (had !== undefined && !(retry && had === "failed")) continue;
       setDocs((was) => new Map(was).set(pic.rev, "opening"));
       engine.open({ size: pic.size, read: (offset, length) => (ended.current ? Promise.reject(new Error("The show has ended")) : read(pic.rev, offset, length)) }).then(
         (doc) => (ended.current ? doc.destroy() : setDocs((was) => (was.get(pic.rev) === "opening" ? new Map(was).set(pic.rev, doc) : (doc.destroy(), was)))),
@@ -91,7 +102,7 @@ export function useStepDocs(engine: PdfEngine, read: ((rev: string, offset: numb
       });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- `near` is read by its revisions
-  }, [engine, read, wanted]);
+  }, [engine, read, wanted, again]);
   return docs;
 }
 

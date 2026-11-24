@@ -822,6 +822,31 @@ describe("a show's builds, its own clock and its clips", () => {
     await act(async () => handle.end());
   });
 
+  it("a step picture whose read failed is read again once the host says more is ready, in the same running show", async () => {
+    const slides = deck(2, { 2: { steps: [{ hides: [4], pic: { rev: "0123456789abcdef", size: 101 } }, { hides: [] }] } });
+    const host = showHost(showDeck(2, { slides }));
+    const places: Record<string, ReturnType<typeof place>> = {};
+    let fails = 1;
+    const engine = {
+      open: async (file: { size: number }) => {
+        if (file.size !== 101) return pages(2);
+        if (fails-- > 0) throw new Error("That picture or clip is not ready, or is gone.");
+        return fakeDoc([{ size: WIDE, runs: [{ str: "Step picture 101", box: [0.1, 0.1, 0.6, 0.2] as [number, number, number, number] }] }]);
+      },
+    };
+    let handle!: Awaited<ReturnType<typeof startShow>>;
+    await act(async () => {
+      handle = await startShow({ host, title: "Deck", from: "start", mode: "windowed", engine, native: null, open: (surface) => (places[surface] = place(surface)) });
+    });
+    await waitFor(() => expect(seen(places.audience)).toBe("Slide 1"));
+    fireEvent.keyDown(places.audience.body, { key: "ArrowRight" });
+    await waitFor(() => expect(within(places.presenter.body).getByRole("status").textContent).toBe("This build could not be drawn here. The room keeps the picture before it."));
+    // The host made it again and says so: the running show reads it, never stepping away.
+    await act(async () => host.ready("r1"));
+    await waitFor(() => expect(seen(places.audience)).toBe("Step picture 101"));
+    await act(async () => handle.end());
+  });
+
   it("says a slide whose picture could not be painted, and holds its clock", async () => {
     const host = showHost(showDeck(2, { slides: deck(2, { 1: { transition: { kind: "fade", ms: 500, after: 30 } } }) }));
     const places: Record<string, ReturnType<typeof place>> = {};

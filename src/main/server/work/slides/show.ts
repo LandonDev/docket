@@ -85,7 +85,14 @@ const told = new Map<string, Set<string>>()
 const showKey = (ctx: Ctx, item: CanvasItem): string => handKey(ctx, item)
 export async function stepPath(ctx: Ctx, item: CanvasItem, rev: string): Promise<string> {
   if (!told.get(showKey(ctx, item))?.has(rev)) throw new ItemFileError('That picture or clip is not ready, or is gone.', 'missing')
-  return byRev(ctx, item, 'pages', rev, '.pdf')
+  try {
+    return await byRev(ctx, item, 'pages', rev, '.pdf')
+  } catch (err) {
+    // A step its running show was told of is gone (let go to make room among the pages): the show's own read starts
+    // the job again, and its ready notice has the window read the step once more.
+    void showOf(ctx, item).catch(() => undefined)
+    throw err
+  }
 }
 export const mediaPath = (ctx: Ctx, item: CanvasItem, rev: string): Promise<string> => byRev(ctx, item, 'media', rev, '.play')
 
