@@ -158,6 +158,7 @@ export const WORK_ASKS: readonly Ask[] = [
   ["work.formats.previewRead", "read", ok, ok, ok, ok, [ok, refused, refused]],
   ["work.formats.print", "operate", ok, ok, refused, refused],
   ["work.forms.close", "operate", ok, ok, refused, refused],
+  ["work.forms.list", "read", ok, ok, ok, ok],
   ["work.forms.mode", "operate", ok, ok, refused, refused],
   ["work.forms.open", "read", ok, ok, ok, ok],
   ["work.forms.publish", "operate", ok, ok, refused, refused],
@@ -246,6 +247,18 @@ export const WORK_ASKS: readonly Ask[] = [
   ["work.money.state", "read", ok, ok, ok, ok],
   ["work.money.sums", "read", ok, ok, ok, ok],
   ["work.money.trip", "operate", ok, ok, refused, refused],
+  ["work.msforms.check", "operate", ok, ok, refused, refused],
+  ["work.msforms.close", "operate", ok, ok, refused, refused],
+  ["work.msforms.get", "read", ok, ok, ok, ok],
+  ["work.msforms.list", "read", ok, ok, ok, ok],
+  ["work.msforms.make", "operate", ok, ok, refused, refused],
+  ["work.msforms.mode", "operate", ok, ok, refused, refused],
+  ["work.msforms.prefill", "operate", ok, ok, refused, refused],
+  ["work.msforms.publish", "approve", ok, ok, refused, refused],
+  ["work.msforms.refresh", "operate", ok, ok, refused, refused],
+  ["work.msforms.responses", "read", ok, ok, ok, ok],
+  ["work.msforms.review", "operate", ok, ok, refused, refused],
+  ["work.msforms.seen", "operate", ok, ok, refused, refused],
   ["work.office.addin.list", "read", ok, ok, ok, ok],
   ["work.office.addin.pair", "operate", ok, ok, refused, refused],
   ["work.office.addin.remove", "operate", ok, ok, refused, refused],
@@ -418,6 +431,7 @@ export const WORK_PRELOAD = {
 export const BOX_PATH = "/tempcode-guard-box/item.txt";
 export const BOX_HOST = "env_aaaaaaaaaaaaaaaaaaaaaa";
 const file = { at: "file", host: BOX_HOST, path: BOX_PATH };
+const FORM_ID = "Ob0wQVN8nEGx5YdY1tY_IQaWFXVrVqJAiq2zrvrFVrNURDVET1gyWlpLNkJXOUsyWEJXNFlKMzMxVC4u";
 
 // Omitted params pass the schema as-is. The path examples use fake files on fake hosts.
 export const ASK_PARAMS: Partial<Record<ClientRequest["method"], unknown>> = {
@@ -541,6 +555,7 @@ export const ASK_PARAMS: Partial<Record<ClientRequest["method"], unknown>> = {
   "work.formats.previewRead": {"source": file, "rev": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "offset": 0, "length": 1},
   "work.formats.print": {"name": "x", "html": "x"},
   "work.forms.close": {"itemId": "item", "open": false},
+  "work.forms.list": {"workspaceId": "w"},
   "work.forms.mode": {"itemId": "item", "mode": "suggests"},
   "work.forms.open": {"itemId": "item"},
   "work.forms.publish": {"itemId": "item"},
@@ -621,6 +636,18 @@ export const ASK_PARAMS: Partial<Record<ClientRequest["method"], unknown>> = {
   "work.money.state": {},
   "work.money.sums": {"from": "2026-01-01", "to": "2026-01-01"},
   "work.money.trip": {"workspaceId": "w", "date": "2026-01-01", "title": "x"},
+  "work.msforms.check": {"workspaceId": "w", "formId": FORM_ID, "every": "hour"},
+  "work.msforms.close": {"workspaceId": "w", "formId": FORM_ID, "open": false},
+  "work.msforms.get": {"workspaceId": "w", "formId": FORM_ID},
+  "work.msforms.list": {"workspaceId": "w"},
+  "work.msforms.make": {"workspaceId": "w", "folder": {"libraryId": "x", "path": "x"}, "title": "x"},
+  "work.msforms.mode": {"workspaceId": "w", "formId": FORM_ID, "mode": "suggests"},
+  "work.msforms.prefill": {"workspaceId": "w", "formId": FORM_ID, "values": {"x": "x"}},
+  "work.msforms.publish": {"workspaceId": "w", "formId": FORM_ID},
+  "work.msforms.refresh": {"workspaceId": "w", "formId": FORM_ID},
+  "work.msforms.responses": {"workspaceId": "w", "formId": FORM_ID},
+  "work.msforms.review": {"workspaceId": "w", "formId": FORM_ID, "accept": [], "reject": []},
+  "work.msforms.seen": {"workspaceId": "w", "formId": FORM_ID},
   "work.office.addin.list": {},
   "work.office.addin.pair": {},
   "work.office.addin.remove": {"id": "id"},
