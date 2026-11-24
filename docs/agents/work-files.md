@@ -2104,12 +2104,17 @@ workbooks, text and Word alike (files/uploads.ts):
   (`lookAll`), for at most 30 minutes. A tab whose save went before the host started is looked at again when its
   tabs are read (`seedUpload`). The tab carries what is known as `cloud` (`CloudBack`): `uploading`, `uploaded`,
   `late` with `why`, or `unknown`.
-- **The Windows VM.** The helper's file entries carry `sync`: the cloud filter's own reading of the listing
-  (`CfGetPlaceholderStateFromFindData`, placeholder and in-sync bits, 0x9), so no file is opened and nothing
-  downloads (TcOffice.cs `Guest.Sync`; `vmSynced`). OneDrive clears the in-sync bit when the file changes and sets it
-  once its upload is done: the green tick Explorer shows. A file OneDrive has not taken in at all is no placeholder
-  and reads `pending` too. A helper from before says nothing: `unknown`. A sleeping VM is never woken to be asked;
-  while a write of ours is still owed, the keeper does not put the VM to sleep (`KeeperDeps.owed`, `uploadsOwed`).
+- **The Windows VM.** The helper's `files.stat` answers `synced`: the cloud filter's own reading of the file's
+  listing entry (`CfGetPlaceholderStateFromFindData`, placeholder and in-sync bits, 0x9), so no file is opened and
+  nothing downloads (TcOffice.cs `Guest.Synced`; `vmSynced`). The helper has no manifest, so Windows shows it OneDrive's
+  placeholders disguised as plain files; it reads with them shown to its thread for that one look
+  (`RtlSetThreadPlaceholderCompatibilityMode`) and puts the thread back. 1.0.372's helper read them disguised and said
+  `sync: pending` of every file, so after a minute every save read "Not uploaded to Teams yet": the box believes only
+  `synced`, and any older helper's answer is `unknown` ("Saved on the Windows VM; OneDrive uploads it"). OneDrive
+  clears the in-sync bit when the file changes and sets it once its upload is done: the green tick Explorer shows. A
+  file OneDrive has not taken in at all is no placeholder and reads not synced too. A sleeping VM is never woken to be
+  asked; while a write of ours is still owed, the keeper does not put the VM to sleep (`KeeperDeps.owed`,
+  `uploadsOwed`).
 - **A Mac.** `work.files.uploaded {ref}`, asked of the file's own host by the workspace's host 2 s after its write
   (a Mac says the old version is uploaded for about 0.6 s after a write): the File Provider item's
   `NSURLUbiquitousItemIsUploadedKey` and `IsUploadingKey`, read by JXA through osascript with no prompt

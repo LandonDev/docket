@@ -13,7 +13,7 @@ import { locate } from './policy'
  * Saved is not uploaded (docs/agents/work-files.md "Saved is not uploaded"). A save of ours into a folder OneDrive
  * syncs puts the bytes on that computer; the file in Teams changes only once OneDrive uploads them. One record a file,
  * kept by the workspace's host after each write through `deliver` (copies.ts: a copy's send, a Word file's save), for
- * decks, workbooks, text and Word alike, looked at until OneDrive has it: in the Windows VM through the helper's `sync`
+ * decks, workbooks, text and Word alike, looked at until OneDrive has it: in the Windows VM through the helper's `synced`
  * (the cloud filter's own in-sync mark, read from the listing), on another host of his through `work.files.uploaded`
  * (a Mac's File Provider item: uploaded and not uploading). Nothing here wakes the VM; while an upload there is still
  * owed the keeper does not put it to sleep (`uploadsOwed`).

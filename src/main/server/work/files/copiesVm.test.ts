@@ -35,6 +35,8 @@ describe.skipIf(process.platform === 'win32')('a copy of a file in the Windows V
   let offSaved: () => void
   /** what the helper says of OneDrive's upload of the file (absent: a helper built before it could say) */
   let sync: 'in' | 'pending' | undefined
+  /** the 1.0.372 helper: `sync` read with placeholders disguised, so pending always */
+  let disguised: boolean
   let stats: number
 
   const versionIn = (path: string): string => {
@@ -46,7 +48,7 @@ describe.skipIf(process.platform === 'win32')('a copy of a file in the Windows V
     switch (verb) {
       case 'files.stat':
         stats++
-        return { name: f!.path.slice(f!.path.lastIndexOf('\\') + 1), path: f!.path, dir: false, size: Buffer.from(f!.data, 'base64').length, modified: f!.modified, local: true, link: false, ...(sync ? { sync } : {}) }
+        return { name: f!.path.slice(f!.path.lastIndexOf('\\') + 1), path: f!.path, dir: false, size: Buffer.from(f!.data, 'base64').length, modified: f!.modified, local: true, link: false, ...(disguised ? { sync: 'pending' } : sync ? { synced: sync === 'in' } : {}) }
       case 'files.read':
         return { data: f!.data, size: Buffer.from(f!.data, 'base64').length, eof: true, ...(args.version ? { version: versionIn(f!.path), changed: f!.modified } : {}) }
       case 'files.list':
@@ -79,6 +81,7 @@ describe.skipIf(process.platform === 'win32')('a copy of a file in the Windows V
     disk = new Map([[ROSTER.toLowerCase(), { path: ROSTER, data: Buffer.from('vm workbook').toString('base64'), modified: 1000 }]])
     writes = []
     sync = 'pending'
+    disguised = false
     stats = 0
     forgetUploads()
     forgetVmLists()
@@ -239,6 +242,14 @@ describe.skipIf(process.platform === 'win32')('a copy of a file in the Windows V
       await lookAll(rig.ctx, () => Date.now() + uploadTiming.late)
       expect(await cloud(tabId)).toMatchObject({ is: 'late', why: 'asleep' })
       expect(stats).toBe(0)
+    })
+
+    it("never believes an older helper's `sync`, read with placeholders disguised: unknown, never late (1.0.372)", async () => {
+      const { copy, tabId } = await open()
+      disguised = true
+      await save(copy, 'edited here')
+      await lookAll(rig.ctx, () => Date.now() + uploadTiming.late)
+      expect(await cloud(tabId)).toMatchObject({ is: 'unknown' })
     })
 
     it('is unknown from a helper that cannot say', async () => {

@@ -1504,6 +1504,9 @@ public static class Guest {
   [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)] static extern bool SetFileAttributesW(string path, uint attrs);
   // The cloud filter's own reading of a listed entry: placeholder (0x1) and in sync with the cloud (0x8), from what the listing holds.
   [DllImport("cldapi.dll")] static extern uint CfGetPlaceholderStateFromFindData(ref FindData data);
+  // This helper has no manifest, so Windows shows it OneDrive's placeholders disguised as plain files (no reparse tag, no
+  // cloud state). One thread is shown them as they are for one look, then put back (2: expose; the call answers the old mode).
+  [DllImport("ntdll.dll")] static extern sbyte RtlSetThreadPlaceholderCompatibilityMode(sbyte mode);
   [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
   static extern Microsoft.Win32.SafeHandles.SafeFileHandle CreateFileW(string path, uint access, uint share, IntPtr security, uint disposition, uint flags, IntPtr template);
 
@@ -1517,18 +1520,26 @@ public static class Guest {
     var isDir = (d.attrs & DIRECTORY) != 0;
     var link = (d.attrs & REPARSE) != 0 && (d.reserved0 == TAG_SYMLINK || d.reserved0 == TAG_MOUNT_POINT);
     var cloud = (d.attrs & (OFFLINE | RECALL_ON_OPEN | RECALL_ON_DATA_ACCESS)) != 0;
-    var entry = Office.Obj("name", d.name, "path", dir.TrimEnd('\\') + "\\" + d.name, "dir", isDir, "size", isDir ? 0L : ((long)d.sizeHigh << 32) | d.sizeLow,
+    return Office.Obj("name", d.name, "path", dir.TrimEnd('\\') + "\\" + d.name, "dir", isDir, "size", isDir ? 0L : ((long)d.sizeHigh << 32) | d.sizeLow,
       "modified", Ms(((long)d.writtenHigh << 32) | d.writtenLow), "local", isDir || !cloud, "link", link, "pinned", (d.attrs & PINNED) != 0);
-    if (!isDir) { var sync = Sync(ref d); if (sync != null) entry["sync"] = sync; }
-    return entry;
   }
 
-  // Whether OneDrive has the file's bytes as they lie here: "in" once it marks the placeholder in sync (it has
-  // uploaded them), else "pending" (changed since, or new and not taken in yet). Null where Windows has no cloud filter.
-  static string Sync(ref FindData d) {
-    try { return (CfGetPlaceholderStateFromFindData(ref d) & 0x9) == 0x9 ? "in" : "pending"; }
+  // Whether OneDrive has the file's bytes as they lie here: true once it marks the placeholder in sync (it has
+  // uploaded them), else false (changed since, or new and not taken in yet). Read with placeholders shown as they
+  // are, on this thread for this one look. Null where Windows has no cloud filter.
+  static bool? Synced(string path) {
+    sbyte was = -1;
+    try {
+      was = RtlSetThreadPlaceholderCompatibilityMode(2);
+      FindData d;
+      var h = FindFirstFileW(Long(path), out d);
+      if (h == new IntPtr(-1)) return null;
+      FindClose(h);
+      return (CfGetPlaceholderStateFromFindData(ref d) & 0x9) == 0x9;
+    }
     catch (DllNotFoundException) { return null; }
     catch (EntryPointNotFoundException) { return null; }
+    finally { if (was >= 0) RtlSetThreadPlaceholderCompatibilityMode(was); }
   }
 
   // One folder's entries as the disk lists them: nothing is opened, so nothing downloads.
@@ -1558,7 +1569,10 @@ public static class Guest {
     FindClose(h);
     var at = path.TrimEnd('\\');
     var cut = at.LastIndexOf('\\');
-    return Entry(at.Substring(0, cut), d);
+    var entry = Entry(at.Substring(0, cut), d);
+    // `synced`, not the older `sync`: a helper that read the mark disguised said pending always, and the box trusts only this one.
+    if ((d.attrs & DIRECTORY) == 0) { var synced = Synced(at); if (synced.HasValue) entry["synced"] = synced.Value; }
+    return entry;
   }
 
   static RegistryKey User(string path) { return Registry.CurrentUser.OpenSubKey(path); }

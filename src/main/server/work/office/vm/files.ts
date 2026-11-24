@@ -47,8 +47,11 @@ export interface GuestEntry {
   local: boolean
   link: boolean
   root?: string
-  /** a file: OneDrive has it as it lies here (`in`), or not yet (`pending`); absent from a helper built before it could say */
-  sync?: 'in' | 'pending'
+  /**
+   * a file of `files.stat`: OneDrive has it as it lies here, or not yet, read with placeholders shown as they are. An
+   * older helper said `sync` instead, read with them disguised (always pending on 1.0.372): that is never believed.
+   */
+  synced?: boolean
 }
 /** What the guest said the last time it was read, and each team mount's top folders. */
 interface Stored {
@@ -305,7 +308,7 @@ export async function vmSearch(libs: readonly TeamsLibrary[], query: string, kin
 /** Whether OneDrive in the VM has uploaded the file as it lies there; null from a helper that cannot say. Nothing downloads. */
 export async function vmSynced(path: string, signal?: AbortSignal): Promise<boolean | null> {
   const e = (await vmCall('files.stat', { path }, { signal })) as GuestEntry
-  return e.sync === undefined ? null : e.sync === 'in'
+  return typeof e.synced === 'boolean' ? e.synced : null
 }
 
 export async function vmFetch(library: string, path: string, signal?: AbortSignal): Promise<TeamsEntry> {
