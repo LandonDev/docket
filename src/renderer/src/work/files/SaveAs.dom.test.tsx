@@ -131,6 +131,10 @@ describe("Save as Template… in a Files tab", () => {
       show("document", "Agenda.docx", "Agenda");
       fireEvent.click(within(await openMenu("Agenda.docx")).getByRole("menuitem", { name: "Save as Template…" }));
       expect(asked).toEqual([{ workspaceId: "w1", source: { at: "file", host: "env_box", path: "/w/Agenda.docx" } }]);
+      cleanup();
+      // A Word file opened as the document made of it: the tab wears the document's name, the file is still one the shelf keeps.
+      render(<FileTabView tab={tab("Agenda")} item={item("document", "/w/Agenda.tcdoc", "Agenda")} panelId="p" workspace={META} where="Dummy Esports" copy={null} onClose={() => undefined} />);
+      expect(within(await openMenu("Agenda")).getByRole("menuitem", { name: "Save as Template…" })).toBeTruthy();
     } finally {
       workTemplatePort.set(null);
     }

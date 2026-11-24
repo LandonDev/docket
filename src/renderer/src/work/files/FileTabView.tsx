@@ -395,9 +395,10 @@ export function FileTabView({
   const meta = useWorkspaceOf(workspace.environmentId, workspace.id);
   const wordable = !!meta && item?.kind === "document";
   // Save as Template…: a file the shelf can keep (Word, Excel, PowerPoint, our own document or sheet as a file) that lies on
-  // the workspace's own host, where the shelf copies it. A copy of a file from elsewhere is not offered: its file is not here.
+  // the workspace's own host, where the shelf copies it; judged by the file itself, since a Word file opened as a document
+  // wears the document's name. A copy of a file from elsewhere is not offered: its file is not here.
   const mayTemplate = useLinkMay(workspace.environmentId, "work.templates.save");
-  const template = meta && item && !copy && item.source.at === "file" && templateFormOf(tab.name) && mayTemplate && workTemplatePort.get() ? item.source : null;
+  const template = meta && item && !copy && item.source.at === "file" && templateFormOf(item.source.path) && mayTemplate && workTemplatePort.get() ? item.source : null;
   const rows: MenuRow[] = [
     ...verbs.flatMap((row): MenuRow[] => [
       ...(row.rule ? ([{ kind: "sep" }] satisfies MenuRow[]) : []),
