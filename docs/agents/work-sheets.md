@@ -498,7 +498,10 @@ the file's own name.
   macros (an .xls's VBA storage, an .ods's `Basic/` or `Scripts/`) is never
   written back, since the copy keeps none: the view says `noBack`.
 - **Save as Excel** (`act: 'xlsx'`): the copy written out as `<name>.xlsx`
-  through `makeFile`, never over anything ("Ledger 2.xlsx"): beside his own
+  through `makeFile`, while the copy's saves are held (`holding`: an edit
+  asked meanwhile lands first or after, never between the read and the
+  tab's hand-over), and the window takes no edit until it is answered
+  (`SheetSync.handOver`), never over anything ("Ledger 2.xlsx"): beside his own
   file; in the workspace's own folder for a file others can open or one
   that lies among the app's files (a mail's), refused in words where there
   is none. In a Files tab the tab becomes the .xlsx and the copy goes; in a

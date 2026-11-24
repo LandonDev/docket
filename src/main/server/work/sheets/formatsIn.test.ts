@@ -485,6 +485,27 @@ describe('Save as Excel: the copy written out as an .xlsx he can see', () => {
     expect(existsSync(dirname(held.path))).toBe(false)
   })
 
+  it('an edit sent as the copy is written out is in the .xlsx: it never lands in a copy that then goes', async () => {
+    // Council r2 (Sol 7): an edit saved into the import after the .xlsx read it, and the tab's copy was dropped with it.
+    const path = dummy(join(rig.folder, 'Ledger.ods'))
+    const item = openIn(filesPaneOf(WS), path)
+    const held = heldOf(item)
+    await ensureImported(rig.ctx, held)
+    const st = await s.packages.open(held.path)
+    const idle = s.packages.idle.bind(s.packages)
+    let late: Promise<unknown> = Promise.resolve()
+    // (the press has waited for every save asked so far; his next edit is sent just then)
+    Object.assign(s.packages, {
+      idle: async () => {
+        await idle()
+        late = s.packages.edit(held.path, st.rev, [set(st.inspected.sheets[0]!.id, 1, 0, { v: 'late' })], 'owner')
+      }
+    })
+    const done = await importAct(s, window, item, held, 'xlsx')
+    expect(await late).toEqual({ rev: st.rev + 1 })
+    expect(valueIn(new Uint8Array(readFileSync(done.path!)))).toBe('late')
+  })
+
   it('of a file others can open: in his workspace\'s own folder, never beside the file; its tab\'s copy goes', async () => {
     const path = dummy(join(general(), 'Ledger.xls'))
     const item = openIn(filesPaneOf(WS), path)

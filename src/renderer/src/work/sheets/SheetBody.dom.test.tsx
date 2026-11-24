@@ -815,6 +815,25 @@ describe("the sheet kind", () => {
     expect(edits()[1]!.baseRev).toBe(5);
   });
 
+  it("takes no edit while Save as Excel hands the tab to the .xlsx, after his last edit is sent", async () => {
+    // Council r2 (Sol 7): an edit made during the hand-over landed in the copy that then went.
+    open(sheetView({ store: "package", name: "Ledger.ods", imported: { format: "ods", name: "Ledger.ods" } }));
+    await gridUp();
+    let release!: () => void;
+    const imported = sheetHost.imported;
+    sheetHost.imported = async (act) => {
+      await new Promise<void>((done) => (release = done));
+      return imported(act);
+    };
+    act(() => grid.edit(set(1, 1, 15)));
+    fireEvent.click(await screen.findByRole("button", { name: "More" }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Save as Excel" }));
+    await waitFor(() => expect(grid.readOnly).toBe(true));
+    expect(edits()).toHaveLength(1);
+    release();
+    await waitFor(() => expect(grid.readOnly).toBe(false));
+  });
+
   it("names the grid's own workbook in an op it brings in", async () => {
     open(sheetView({ rev: 3 }));
     await gridUp();

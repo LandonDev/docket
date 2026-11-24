@@ -281,10 +281,14 @@ export function Body(props: Props) {
   );
 }
 
-/** A press on a copy's way out: his last edit reaches the copy first (Discard edits and read again drops them, so it waits on none). */
+/**
+ * A press on a copy's way out: his last edit reaches the copy first (Discard edits and read again drops them, so it waits
+ * on none), and Save as Excel, which hands the tab to the .xlsx, takes no edit until it is answered.
+ */
 const importAsk =
   (sync: SheetSync) =>
   async (act: SheetImportAct): Promise<SheetImportDone> => {
+    if (act === "xlsx") return sync.handOver(() => sync.host.imported(act));
     if (act !== "again") await sync.written();
     return sync.host.imported(act);
   };

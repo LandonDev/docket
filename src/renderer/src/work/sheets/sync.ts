@@ -403,6 +403,22 @@ export class SheetSync {
     this.set({ stopped: { why, n: (this.state.stopped?.n ?? 0) + 1 } });
   }
 
+  /**
+   * A press that hands the item to another file (Save as Excel reseats the tab on the .xlsx): his last edit reaches the
+   * file first, and the grid takes none until the host has answered, since one made meanwhile would be in neither. The
+   * open cell is ended before the lock, which would refuse it.
+   */
+  async handOver<T>(work: () => Promise<T>): Promise<T> {
+    await this.endEditor();
+    this.set({ reloading: true });
+    try {
+      await this.written();
+      return await work();
+    } finally {
+      this.set({ reloading: false });
+    }
+  }
+
   /** An edit of his that will not reach the file: counted for what waits on `written`. */
   private drop(why: string): void {
     this.lost = { n: this.lost.n + 1, why };
