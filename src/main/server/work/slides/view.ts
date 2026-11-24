@@ -86,7 +86,11 @@ export function seatOf(ctx: Pick<WorkCtx, 'db' | 'host' | 'dataDir'>, item: Canv
   const shared = deckShared(ctx, item)
   new SlidesStore(ctx.db).seat(item.id, item.sessionId, key, shared)
   // A file found to be one others can open keeps nothing by the file: what an earlier seat kept there goes.
-  if (shared && key.startsWith('file:')) for (const folder of [deckBase, deckCache]) rmSync(folder(ctx.dataDir, key), { recursive: true, force: true })
+  if (shared && key.startsWith('file:')) {
+    for (const folder of [deckBase, deckCache]) rmSync(folder(ctx.dataDir, key), { recursive: true, force: true })
+    // The show's job made those pictures: done, it would never make them again.
+    stopShow(key)
+  }
   return key
 }
 
@@ -1335,8 +1339,12 @@ function lastSeatLeft(ctx: Pick<WorkCtx, 'db' | 'dataDir'>, key: string, shared:
   if (!key.startsWith('file:')) return
   if (shared) new SlidesStore(ctx.db).removeDeck(key)
   void chained(key, async () => {
-    // A seat taken meanwhile keeps its pictures.
-    if (new SlidesStore(ctx.db).seats(key).length === 0) rmSync(deckCache(ctx.dataDir, key), { recursive: true, force: true })
+    // A seat taken meanwhile keeps its pictures. The show's job goes with them: kept as done, it would never make them
+    // again for the next seat.
+    if (new SlidesStore(ctx.db).seats(key).length === 0) {
+      rmSync(deckCache(ctx.dataDir, key), { recursive: true, force: true })
+      stopShow(key)
+    }
   })
 }
 
@@ -1357,6 +1365,8 @@ export function itemsGone(ctx: Pick<WorkCtx, 'db' | 'host' | 'dataDir'>, items: 
     // and so does its own line of his edits on a deck others can open (`handKey`).
     store.removeDeck(item.id)
     hands.delete(item.id)
+    // On a deck others can open the item's show job filled the item's own folder, which goes with it.
+    stopShow(item.id)
     void dropTabCopy(ctx, item.id, key, () => false)
     if (!key.startsWith('file:')) {
       store.removeDeck(key)
@@ -1413,6 +1423,7 @@ export function sessionsGone(ctx: Pick<WorkCtx, 'db' | 'dataDir'>, sessionIds: r
   for (const seat of seats) {
     void dropTabCopy(ctx, seat.item_id, seat.deck, () => false)
     hands.delete(seat.item_id)
+    stopShow(seat.item_id)
   }
   for (const lost of store.removeSessions(sessionIds)) {
     const w = store.written(lost.deck)

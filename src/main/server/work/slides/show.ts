@@ -7,7 +7,7 @@ import { transitionChanged } from './builds'
 import { makeMedia, mediaFile, showMedia } from './media'
 import { makeSteps, showSteps, stepJobs } from './steps'
 import { SlidesStore } from './store'
-import { deckDir, deckKey, deckOf, tabCopyOf, sharedJob, hashFile, nameOf, RENDER_FILTER, renderOf, scratch, serial, slideRenderer, type Built, type Ctx, type Deck, drawAhead } from './view'
+import { type Built, type Ctx, type Deck, deckDir, deckKey, deckOf, drawAhead, handKey, hashFile, nameOf, RENDER_FILTER, renderOf, scratch, serial, sharedJob, slideRenderer } from './view'
 
 /**
  * A show as the host serves it (docs/agents/work-slides.md "The show"): the file's own slides in its order, each
@@ -71,8 +71,11 @@ async function byRev(ctx: Ctx, item: CanvasItem, folder: 'pages' | 'media', rev:
  * proposed deck's slides, which only his press may see: a step is read only by a rev the file's own show named.
  */
 const told = new Map<string, Set<string>>()
-/** One show a deck, or a tab for a shared import, whose pictures are its own. */
-const showKey = (ctx: Ctx, item: CanvasItem): string => (tabCopyOf(ctx, item) ? item.id : deckKey(item))
+/**
+ * One show's job and pictures by the folder they fill (`deckFolder`): the deck's for a file of his own, every seat on
+ * it sharing them; each tab's own on a file others can open, whose pictures lie in the item's own folder.
+ */
+const showKey = (ctx: Ctx, item: CanvasItem): string => handKey(ctx, item)
 export async function stepPath(ctx: Ctx, item: CanvasItem, rev: string): Promise<string> {
   if (!told.get(showKey(ctx, item))?.has(rev)) throw new ItemFileError('That picture or clip is not ready, or is gone.', 'missing')
   return byRev(ctx, item, 'pages', rev, '.pdf')
@@ -97,8 +100,9 @@ function lacks(pages: string, media: string, file: Built): boolean {
 /** Tells every seat on the deck that more of its show is ready. */
 function tellReady(ctx: Ctx, item: CanvasItem, hash: string): void {
   const rev = hash.slice(0, 16)
-  // A tab on a shared import draws from its own snapshot: no other seat shows this revision.
-  const seats = tabCopyOf(ctx, item) ? [] : new SlidesStore(ctx.db).seats(deckKey(item))
+  // On a file others can open each tab's pictures are its own (a shared import's tab draws from its own snapshot too):
+  // no other seat shows these.
+  const seats = showKey(ctx, item) === deckKey(item) ? new SlidesStore(ctx.db).seats(deckKey(item)) : []
   const items = [item, ...seats.filter((s) => s.itemId !== item.id).flatMap((s) => ctx.canvas.get(s.itemId) ?? [])]
   for (const it of items) ctx.push({ push: 'work.slides.ready', sessionId: it.sessionId, itemId: it.id, rev }, pushFor(it))
 }

@@ -2497,6 +2497,42 @@ describe("a show's builds and clips, made in the background", () => {
     expect(calls.slice(made).filter((c) => c.startsWith('steps') || c.startsWith('media') || c === 'playable')).toEqual([])
   })
 
+  it('a deck closed and opened again in the same run, or a second tab on a shared deck, makes its pictures and clips again', async () => {
+    await host(realPdfs)
+    const path = join(dir, 'Built.pptx')
+    writeFileSync(path, fakeBytes(BUILT))
+    const first = openDeck(fileSource(path))
+    await showOf(first.id)
+    await vi.waitFor(() => expect(ready(first.id).length).toBeGreaterThanOrEqual(2))
+    // The last seat goes, and its pictures with it; he opens the file again and presents.
+    slides.itemsRemoved!([first], work.ctx)
+    await vi.waitFor(() => expect(existsSync(deckCache(dir, deckKey(first)))).toBe(false))
+    const again = openDeck(fileSource(path))
+    const cold = (await showOf(again.id)).slides[1]
+    expect(cold.steps![0].missing).not.toBe('failed')
+    await vi.waitFor(async () => {
+      const warm = (await showOf(again.id)).slides[1]
+      expect([!!warm.steps![0].pic, !!warm.media![0].file]).toEqual([true, true])
+    })
+    // A deck others can open: each tab's pictures lie in its own folder, and each tab's show gets them.
+    const team = join(dir, 'Esports Staff')
+    mkdirSync(team)
+    const teamPath = join(team, 'Built.pptx')
+    writeFileSync(teamPath, fakeBytes(BUILT))
+    sharedPaths.add(team)
+    sessions.set('t2', { id: 't2', provider: 'claude', workspaceId: 'w1', scope: 'work' } as SessionMeta)
+    const a = openDeck(fileSource(teamPath), 'A')
+    await showOf(a.id)
+    await vi.waitFor(async () => expect(!!(await showOf(a.id)).slides[1].steps![0].pic).toBe(true))
+    const b = canvasStoreOf(db).open('t2', { kind: 'slides', source: fileSource(teamPath), title: 'B' })
+    expect((await showOf(b.id)).slides[1].steps![0].missing).not.toBe('failed')
+    await vi.waitFor(async () => {
+      const shown = (await showOf(b.id)).slides[1]
+      expect([!!shown.steps![0].pic, !!shown.media![0].file]).toEqual([true, true])
+    })
+    expect(readdirSync(join(dir, 'canvas', 't2', b.id, 'pages')).length).toBeGreaterThan(0)
+  })
+
   it("keeps a shared library's step pictures and clips in the item's own folder, and marks every job so none leaves the host", async () => {
     await host(realPdfs)
     const team = join(dir, 'Esports Staff')
