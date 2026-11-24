@@ -121,6 +121,7 @@ function launch(): void {
     ...(process.env as Record<string, string>),
     HOME: home,
     TMPDIR: join(root, 'tmp'),
+    // a folder of the run's own: this instance never holds the real Windows VM (db1d2366f)
     WINVM_DIR: `${data}/no-vm`,
     TEMP_CODE_USER_DATA: data,
     TEMP_CODE_APP_TOKEN_SEED: E2E_APP_TOKEN_SEED,
@@ -272,7 +273,7 @@ async function openForward(): Promise<boolean> {
   return until('the forward', 30_000, () => spawnSync('test', ['-S', SOCKET]).status === 0)
 }
 /** A saved line, as 1.0.370 says it or as a build that tells the upload says it ("Saved, uploading…", "In OneDrive 4:10 AM"). */
-const savedLine = (line: string): boolean => /Saved to OneDrive|In OneDrive \d|Saved, uploading to OneDrive/.test(line)
+const savedLine = (line: string): boolean => /Saved to OneDrive|In OneDrive \d|Saved, uploading to OneDrive|Saved on the Windows VM; OneDrive uploads it/.test(line)
 
 /**
  * OneDrive's own record of the file in the VM, as the sync client last heard it from the server: its eTag
@@ -395,7 +396,11 @@ async function wordCase(): Promise<void> {
   await press(`button[aria-label=${JSON.stringify(`More for ${name.replace(/\.docx$/, '')}`)}], button[aria-label=${JSON.stringify(`More for ${name}`)}]`, undefined)
   const offered = await press('[role="menuitem"]', 'Save as Word to…', { ms: 5_000 })
   await shot('15-save-as-word-picker')
-  if (check('the file menu offers Save as Word to…', offered)) {
+  // A build with Save As… in its place (226b881f2) has its own sheet and proof: this step is skipped there.
+  if (!offered) {
+    log('the file menu has no Save as Word to… on this build (Save As… took its place): skipped')
+    await key('Escape')
+  } else {
     await press('[role="dialog"] button, [role="dialog"] [role="button"], [role="dialog"] div', 'My OneDrive', { ms: 15_000 })
     await sleep(1500)
     const saved = await press('[role="dialog"] button', 'Save Here', { ms: 15_000 })
@@ -412,6 +417,114 @@ async function wordCase(): Promise<void> {
 const keptExtra: string[] = []
 
 /** New → Document in a Teams library: in a "TempCode proof" folder made for the run and removed after. */
+/** A file's whole bytes at a path in the VM, by the box's own read through the guest's helper. */
+function bytesAt(path: string): Buffer | null {
+  try {
+    const parts: Buffer[] = []
+    for (let offset = 0; ; ) {
+      const got = box<{ data: string; end: boolean }>('work.files.read', { workspaceId: WS, ref: { at: 'file', host: boxId, path }, offset, length: 4 * 1024 * 1024 })
+      const b = Buffer.from(got.data, 'base64')
+      parts.push(b)
+      offset += b.length
+      if (got.end || !b.length) break
+    }
+    return Buffer.concat(parts)
+  } catch {
+    return null
+  }
+}
+/** The part names of an Office file's bytes. */
+function partsOf(bytes: Buffer | null): string[] {
+  if (!bytes) return []
+  const file = join(scratch, `l${Date.now()}.zip`)
+  writeFileSync(file, bytes)
+  return (spawnSync('unzip', ['-Z1', file], { encoding: 'utf8' }).stdout ?? '').split('\n').filter(Boolean)
+}
+/** SharePoint's own parts in a file it took in (its columns as custom XML): its rewrite after the upload came down. */
+const rewritten = (path: string): boolean => partsOf(bytesAt(path)).some((n) => n.startsWith('customXml/'))
+
+/** Every header line the window shows, with when it showed (a page interval, 100 ms). */
+async function traceLines(): Promise<void> {
+  await ev(`(() => { window.__lines = []; clearInterval(window.__linesTimer); window.__linesTimer = setInterval(() => { const p = [...document.querySelectorAll('[data-files-save-line]')].find((e) => e.getClientRects().length); const t = p ? p.dataset.filesSaveLine + ' | ' + p.textContent : '(none)'; if (window.__lines.at(-1)?.t !== t) window.__lines.push({ at: Date.now(), t }); }, 100); })()`)
+}
+const linesSeen = (): Promise<{ at: number; t: string }[]> => ev(`window.__lines ?? []`)
+
+/** The helper's own `sync` mark on a file, looked at every 300 ms by this run's forward: each change with when. */
+function traceSync(path: string): { marks: { at: number; sync: string }[]; stop(): void } {
+  const marks: { at: number; sync: string }[] = []
+  let on = true
+  void (async () => {
+    while (on) {
+      try {
+        const e = (await guestCall('files.stat', { path })) as { sync?: string }
+        const sync = e.sync ?? '(none)'
+        if (marks.at(-1)?.sync !== sync) marks.push({ at: Date.now(), sync })
+      } catch {
+        /* the file is being replaced: the next look */
+      }
+      await sleep(300)
+    }
+  })()
+  return { marks, stop: () => (on = false) }
+}
+const hms = (at: number): string => new Date(at).toISOString().slice(11, 23)
+
+/** A PowerShell script run as tcuser on the VM's desktop (a task with his interactive token, made by the admin); its output. */
+function asUser(ps: string): string {
+  const name = `tc-proof-${process.pid}-${Date.now()}`
+  const local = join(scratch, `${name}.ps1`)
+  writeFileSync(local, ps)
+  const opts = ['-i', '/srv/agents/win-vm/keys/id_ed25519', '-o', 'IdentitiesOnly=yes', '-o', 'BatchMode=yes', '-o', 'LogLevel=ERROR', '-o', 'UserKnownHostsFile=/srv/agents/win-vm/standing/known_hosts']
+  if (spawnSync('scp', ['-q', ...opts, '-P', '22230', local, `tcadmin@127.0.0.1:C:/Users/Public/${name}.ps1`], { timeout: 60_000 }).status !== 0) return 'not copied'
+  const out = `C:\\Users\\Public\\${name}.out`
+  const reg = `$ErrorActionPreference='Stop'
+$svc = New-Object -ComObject Schedule.Service; $svc.Connect(); $root = $svc.GetFolder('\\')
+$def = $svc.NewTask(0); $def.Principal.UserId = 'tcuser'; $def.Principal.LogonType = 3; $def.Settings.ExecutionTimeLimit = 'PT5M'
+$a = $def.Actions.Create(0); $a.Path = 'powershell.exe'
+$a.Arguments = '-NoProfile -NonInteractive -ExecutionPolicy Bypass -WindowStyle Hidden -Command "& ''C:\\Users\\Public\\${name}.ps1'' *> ''${out}''"'
+$t = $root.RegisterTaskDefinition('${name}', $def, 6, $null, $null, 3)
+$t.Run($null) | Out-Null
+$end = (Get-Date).AddSeconds(240)
+do { Start-Sleep 1; $s = $root.GetTask('${name}').State } while ($s -eq 4 -and (Get-Date) -lt $end)
+$root.DeleteTask('${name}', 0)
+if (Test-Path '${out}') { Get-Content '${out}'; Remove-Item '${out}' }
+Remove-Item 'C:\\Users\\Public\\${name}.ps1'`
+  const encoded = Buffer.from(reg, 'utf16le').toString('base64')
+  const r = spawnSync('ssh', [...opts, '-p', '22230', 'tcadmin@127.0.0.1', `powershell -NoProfile -EncodedCommand ${encoded}`], { encoding: 'utf8', timeout: 300_000 })
+  return (r.stdout ?? '').split('\n').filter((l) => !l.startsWith('#< CLIXML') && !l.startsWith('<Objs')).join('\n').trim()
+}
+/** OneDrive in the VM, stopped for the proof's late upload and started again after (never left stopped: `cleanup`). */
+let oneDriveExe: string | null = null
+function stopOneDrive(): boolean {
+  const said = asUser(`$p = Get-Process OneDrive -ErrorAction SilentlyContinue | Select-Object -First 1
+if (-not $p) { 'not running'; return }
+$exe = $p.Path; & $exe /shutdown; Start-Sleep 5
+'exe=' + $exe; 'running=' + [bool](Get-Process OneDrive -ErrorAction SilentlyContinue)`)
+  oneDriveExe = /exe=(.+)/.exec(said)?.[1]?.trim() ?? null
+  log(`OneDrive stopped: ${said.replace(/\n/g, '; ')}`)
+  return said.includes('running=False')
+}
+function startOneDrive(): boolean {
+  if (!oneDriveExe) return true
+  const said = asUser(`Start-Process -FilePath '${oneDriveExe.replaceAll("'", "''")}' -ArgumentList '/background'; Start-Sleep 8; 'running=' + [bool](Get-Process OneDrive -ErrorAction SilentlyContinue)`)
+  log(`OneDrive started again: ${said.replace(/\n/g, '; ')}`)
+  const ok = said.includes('running=True')
+  if (ok) oneDriveExe = null
+  return ok
+}
+
+/** The file's version as the helper writes by it, and a write over it there: a change made in the VM, not by TempCode. */
+async function changeThere(path: string, data: Buffer): Promise<void> {
+  const now = (await guestCall('files.read', { path, offset: 0, length: 1, version: true })) as { version: string }
+  await guestCall('files.write', { path, data: data.toString('base64'), expect: now.version, op: crypto.randomUUID() })
+}
+
+/**
+ * A Teams library (1.0.371): in a "TempCode proof" folder made in Team RecWell, a document, a deck and a workbook each
+ * saved again after OneDrive uploaded them and SharePoint wrote its own parts into them, never stopped by that, and
+ * stopped by a real change made in the VM. The header's stages are traced against the helper's own `sync` mark, and
+ * OneDrive stopped for one save shows the late line.
+ */
 async function teamsDocumentCase(): Promise<void> {
   const channel = places.find((p) => p.kind === 'teams' && p.vm && p.name === 'Team RecWell')
   if (!check('a Teams library place in the VM is listed (Team RecWell)', !!channel)) return
@@ -430,42 +543,185 @@ async function teamsDocumentCase(): Promise<void> {
   proofFolder = dir
   const listed = (path: string): string[] => box<{ entries: { name: string }[] }>('work.files.list', { workspaceId: WS, at: { at: 'file', host: boxId, path } }).entries.map((e) => e.name)
   if (!check('a "TempCode proof" folder is made in the Teams library', await until('the folder', 60_000, () => listed(channel!.root.path).includes(folder)))) return
-  if (!check('it opens', await pressRow(folder))) return
-  await until('the folder page', 30_000, async () => !!(await centre('button', 'New')))
+  const toFolder = async (): Promise<boolean> => {
+    await press('button, a, [role="button"], [role="link"], div', 'RecWell')
+    await sleep(1500)
+    await pressRow('Team RecWell')
+    await until('the channel', 60_000, async () => !!(await centre('button', 'New')))
+    const ok = await pressRow(folder)
+    await until('the folder page', 30_000, async () => !!(await centre('button', 'New')))
+    return ok
+  }
+  if (!check('it opens', await toFolder())) return
+  // The helper the deploy made: its entries say OneDrive's own mark.
+  const probe = (await guestCall('files.list', { dir })) as unknown
+  log(`the helper lists the folder: ${JSON.stringify(probe).slice(0, 200)}`)
+  const inTeams = (line: string): boolean => /In Teams \d/.test(line)
+  const stopped = (line: string): boolean => /changed (in Teams|on the Windows VM)/.test(line)
+
+  // ── the document ──
   const stem = `${WORD} teams`
   await press('button', 'New')
   const offered = await press('[role="menuitem"]', 'Document', { ms: 5_000 })
-  await shot('17-teams-new')
+  await shot('20-teams-new')
   if (!check('New offers a Document in the Teams library', offered)) return
   await until('the name field', 30_000, () => ev<boolean>(`document.activeElement?.tagName === 'INPUT'`))
   await sleep(500)
   await typeKeys(stem)
   await key('Enter')
   const name = `${stem}.docx`
-  if (!check('a Word file is made there', await until('the Word file', 60_000, () => listed(dir).includes(name)))) return
-  if (!check('it opens from its row', await pressRow(name))) return
-  await until('the document', 180_000, async () => !!(await centre('[data-files-file] [contenteditable="true"]')))
-  const tab = box<{ tabs: { itemId?: string; key?: string }[] }>('work.files.tabs', { workspaceId: WS }).tabs.find((t) => t.key?.endsWith(name))
-  keptDocs.push(box<{ items: { id: string; source: { path?: string } }[] }>('work.canvas.list', { sessionId: `filespane_${WS}` }).items.find((i) => i.id === tab?.itemId)?.source.path ?? '')
-  if (!check('the shown file is the Teams document', await oursShown())) return
-  const ed = (await centre('[data-files-file] [contenteditable="true"]'))!
-  await click(ed.x, ed.y)
-  await typeKeys(`Bracket ${STAMP.slice(-4)} finals`)
-  const read = (): string => {
-    try {
-      const parts: Buffer[] = []
-      const got = box<{ data: string }>('work.files.read', { workspaceId: WS, ref: { at: 'file', host: boxId, path: `${dir}\\${name}` }, offset: 0, length: 4 * 1024 * 1024 })
-      parts.push(Buffer.from(got.data, 'base64'))
-      return partOf(Buffer.concat(parts), 'word/document.xml')
-    } catch {
-      return ''
+  const path = `${dir}\\${name}`
+  if (check('a Word file is made there', await until('the Word file', 60_000, () => listed(dir).includes(name))) && check('it opens from its row', await pressRow(name))) {
+    await until('the document', 180_000, async () => !!(await centre('[data-files-file] [contenteditable="true"]')))
+    const tab = box<{ tabs: { itemId?: string; key?: string }[] }>('work.files.tabs', { workspaceId: WS }).tabs.find((t) => t.key?.endsWith(name))
+    keptDocs.push(box<{ items: { id: string; source: { path?: string } }[] }>('work.canvas.list', { sessionId: `filespane_${WS}` }).items.find((i) => i.id === tab?.itemId)?.source.path ?? '')
+    if (check('the shown file is the Teams document', await oursShown())) {
+      const words = (): string => textOf(partOf(bytesAt(path), 'word/document.xml'))
+      const typeIn = async (text: string): Promise<void> => {
+        if (!(await oursShown())) throw new Error("the file shown is not this run's dummy: nothing typed")
+        const ed = (await centre('[data-files-file] [contenteditable="true"]'))!
+        await click(ed.x, ed.y)
+        await ev(`(() => { const e = document.querySelector('[data-files-file] [contenteditable="true"]'); const r = document.createRange(); r.selectNodeContents(e); r.collapse(false); const s = getSelection(); s.removeAllRanges(); s.addRange(r); })()`)
+        await typeKeys(text)
+      }
+      const sync = traceSync(path)
+      await traceLines()
+      const rounds = [`Bracket ${STAMP.slice(-4)} finals`, ' round two', ' round three']
+      for (const [i, text] of rounds.entries()) {
+        await typeIn(text)
+        const word = text.trim().split(' ').at(-1)!
+        const landed = await until(`save ${i + 1} in the Teams file`, 120_000, () => words().includes(word))
+        const told = await until('In Teams', 90_000, async () => inTeams(await saveLine()))
+        if (i === 0) await shot('21-teams-doc-in-teams')
+        // SharePoint writes its own parts into it about half a second after the upload, and they come down.
+        const back = await until('SharePoint\'s rewrite comes down', 30_000, () => rewritten(path))
+        await sleep(4000)
+        check(`save ${i + 1} of ${rounds.length}: his words reach the Teams file by themselves, the header says In Teams, and SharePoint's rewrite (${back ? 'seen' : 'not seen'}) stops nothing`, landed && told && !stopped(await saveLine()), await saveLine())
+      }
+      // The stages, read against the helper's own mark.
+      const lines = await linesSeen()
+      const uploading = lines.filter((l) => l.t.includes('Saved, uploading to Teams'))
+      const inT = lines.filter((l) => inTeams(l.t))
+      const ins = sync.marks.filter((m) => m.sync === 'in')
+      const pend = sync.marks.filter((m) => m.sync === 'pending')
+      log(`header lines: ${lines.map((l) => `${hms(l.at)} ${l.t}`).join(' / ')}`)
+      log(`helper sync marks: ${sync.marks.map((m) => `${hms(m.at)} ${m.sync}`).join(' / ')}`)
+      const firstIn = inT[0]?.at ?? 0
+      const markBefore = ins.filter((m) => m.at <= firstIn + 2500).at(-1)
+      check('the header said "Saved, uploading to Teams…" and only then "In Teams <time>", after the helper\'s mark said in sync', uploading.length > 0 && inT.length > 0 && uploading[0]!.at < firstIn && !!markBefore && pend.length > 0, `uploading at ${uploading.map((l) => hms(l.at)).join(',')}; In Teams first at ${hms(firstIn)}; helper in-sync marks ${ins.map((m) => hms(m.at)).join(',')}; pending marks ${pend.map((m) => hms(m.at)).join(',')}`)
+      // OneDrive stopped: the save reaches the VM, the upload does not, and after a minute the header says so.
+      if (process.env.SKIP_PAUSE !== '1') {
+        if (check('OneDrive in the VM stops for one save (started again after)', stopOneDrive())) {
+          await traceLines()
+          await typeIn(' paused')
+          const local = await until('the paused save in the VM', 120_000, () => words().includes('paused'))
+          const late = await until('Not uploaded yet', 150_000, async () => (await saveLine()).includes('Not uploaded to Teams yet'))
+          await shot('22-teams-not-uploaded')
+          const paused = await linesSeen()
+          check('the save reaches the VM, the header says "Saved, uploading to Teams…", and a minute on "Not uploaded to Teams yet." with what to do', local && late && paused.some((l) => l.t.includes('Saved, uploading to Teams')), (await saveLine()))
+          const again = startOneDrive()
+          const up = await until('In Teams again', 150_000, async () => inTeams(await saveLine()))
+          await shot('23-teams-in-teams-again')
+          check('OneDrive started again: it uploads, and the header says In Teams', again && up, await saveLine())
+          await until('SharePoint\'s rewrite comes down', 30_000, () => rewritten(path))
+          await sleep(4000)
+        }
+      }
+      sync.stop()
+      // A real change made in the VM: autosave stops, and nothing is written over it.
+      const theirs = readFileSync(join(import.meta.dir, '..', 'resources', 'work-templates', 'ref', 'Incident report.docx'))
+      await changeThere(path, theirs)
+      await sleep(2000)
+      await typeIn(' kickoff')
+      const halted = await until('the stop', 60_000, async () => stopped(await saveLine()))
+      await sleep(6000)
+      await shot('24-teams-doc-stopped')
+      // (SharePoint may write its parts into their file too: its document part is theirs either way)
+      check('a real change made in the VM still stops it: "This file changed in Teams", and the file keeps the change', halted && !words().includes('kickoff') && words() === textOf(partOf(theirs, 'word/document.xml')), await saveLine())
     }
+    await closeTabByX(name)
+    await sleep(2000)
   }
-  const landed = await until('the words in the Teams file', 120_000, () => read().includes('finals'))
-  await shot('18-teams-document-saved')
-  check('typed into it, its words reach the .docx in the Teams library by themselves', landed, await saveLine())
-  await closeTabByX(name)
-  await sleep(2000)
+
+  // ── a deck and a workbook copy, two sends each ──
+  const copyCase = async (kind: 'Deck' | 'Sheet', stemOf: string, ext: string, edit: (n: number) => Promise<void>, holds: (bytes: Buffer | null, n: number) => boolean, shots: string): Promise<void> => {
+    if (!(await toFolder())) return
+    const n = `${stemOf}${ext}`
+    const p = `${dir}\\${n}`
+    await press('button', 'New')
+    if (!(await press('[role="menuitem"]', kind))) return void check(`New → ${kind} in the Teams folder`, false)
+    await until('the name field', 60_000, () => ev<boolean>(`document.activeElement?.tagName === 'INPUT'`))
+    await sleep(500)
+    await typeKeys(stemOf)
+    await key('Enter')
+    if (!check(`New → ${kind} makes ${n} in the Teams folder`, await until(n, 90_000, () => listed(dir).includes(n)))) return
+    if (!check('it opens from its row', await pressRow(n))) return
+    await traceLines()
+    let firstSend: Buffer | null = null
+    for (const i of [1, 2]) {
+      await edit(i)
+      const landed = await until(`send ${i}`, 120_000, () => holds(bytesAt(p), i))
+      if (i === 1) firstSend = bytesAt(p)
+      const told = await until('In Teams', 90_000, async () => inTeams(await saveLine()))
+      await shot(`${shots}-${i}`)
+      const back = await until('SharePoint\'s rewrite comes down', 30_000, () => rewritten(p))
+      await sleep(4000)
+      check(`send ${i} of 2: the ${kind === 'Deck' ? 'deck' : 'workbook'} in the Teams folder holds it, the header says In Teams, and SharePoint's rewrite (${back ? 'seen' : 'not seen'}) stops nothing`, landed && told && !stopped(await saveLine()), await saveLine())
+    }
+    const lines = await linesSeen()
+    log(`${kind} header lines: ${lines.map((l) => `${hms(l.at)} ${l.t}`).join(' / ')}`)
+    if (firstSend) {
+      await changeThere(p, firstSend)
+      await sleep(2000)
+      await edit(3)
+      const halted = await until('the stop', 90_000, async () => stopped(await saveLine()))
+      await shot(`${shots}-stopped`)
+      check(`a real change made in the VM still stops the ${kind === 'Deck' ? 'deck' : 'workbook'}'s send: the header says it changed, and the file keeps the change`, halted && !holds(bytesAt(p), 3), await saveLine())
+    }
+    await closeTabByX(n)
+    await sleep(2000)
+  }
+
+  // The deck: a box on its slide, words typed, the box left open between sends.
+  let boxOpen = false
+  await copyCase(
+    'Deck',
+    `${DECK} teams`,
+    '.pptx',
+    async (i) => {
+      if (!boxOpen) {
+        await until('the deck draws', 180_000, () => ev<boolean>(`!!document.querySelector('[data-slides-shapes] [data-shape]')`))
+        if (!(await oursShown())) throw new Error("the file shown is not this run's dummy: nothing typed")
+        boxOpen = await pickAndOpenBox()
+      }
+      await typeKeys(` deck${i}x${STAMP.slice(-3)}`)
+    },
+    (bytes, i) => textOf(partOf(bytes, 'ppt/slides/slide1.xml')).includes(`deck${i}x${STAMP.slice(-3)}`),
+    '25-teams-deck'
+  )
+  // The workbook: a cell a send.
+  await copyCase(
+    'Sheet',
+    `${SHEET} teams`,
+    '.xlsx',
+    async (i) => {
+      const cell = async (): Promise<{ x: number; y: number } | null> =>
+        ev(`(() => { const c = [...document.querySelectorAll('[data-sheet-item] canvas')].find((e) => e.getBoundingClientRect().width > 100); if (!c) return null; const r = c.getBoundingClientRect(); return { x: Math.round(r.x + 78), y: Math.round(r.y + 30) }; })()`)
+      await until('the sheet', 180_000, async () => !!(await cell()))
+      if (!(await oursShown())) throw new Error("the file shown is not this run's dummy: nothing typed")
+      await sleep(1000)
+      const at = (await cell())!
+      await click(at.x, at.y + (i - 1) * 22)
+      await sleep(300)
+      await typeKeys(`cell${i}x${STAMP.slice(-3)}`)
+      await key('Enter')
+    },
+    (bytes, i) => textOf(partOf(bytes, 'xl/sharedStrings.xml')).includes(`cell${i}x${STAMP.slice(-3)}`) || textOf(partOf(bytes, 'xl/worksheets/sheet1.xml')).includes(`cell${i}x${STAMP.slice(-3)}`),
+    '26-teams-sheet'
+  )
+  // No Word left open in the VM by this run.
+  const word = asUser(`'winword=' + @(Get-Process WINWORD -ErrorAction SilentlyContinue).Count`)
+  check('no Word is left open in the VM', word.includes('winword=0'), word)
 }
 let proofFolder: string | null = null
 
@@ -497,6 +753,8 @@ async function newDocumentCase(): Promise<void> {
 const keptDocs: string[] = []
 
 const cleanup = async (): Promise<void> => {
+  // OneDrive in the VM is never left stopped by this run.
+  if (oneDriveExe && !startOneDrive()) log('OneDrive in the VM did not start again: start it there')
   forward?.kill()
   // Every tab this run opened in his workspace goes; anything it made in the VM goes to its Recycle Bin.
   try {
