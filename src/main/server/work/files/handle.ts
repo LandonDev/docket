@@ -236,7 +236,8 @@ export function withMarks(state: FilesState, workspaceId: string, entries: FileE
 /** The stall log's word for where a Files call went: `place=vm` on its slow-request line (stalls.ts). */
 const placeWord = (at: Located): string => (at.in === 'library' ? (at.library.vm ? 'vm' : 'library') : at.in)
 
-async function list(ctx: WorkCtx, by: Caller, p: { workspaceId: string; at: FolderRef; cursor?: string; sort?: FileSort; foldersOnly?: boolean; wake?: boolean }, method: string, signal?: AbortSignal): Promise<FilesListing> {
+/** `pushAt`: filled with the key a `work.files` push names this folder by (and its path, where the push is fenced by it). */
+async function list(ctx: WorkCtx, by: Caller, p: { workspaceId: string; at: FolderRef; cursor?: string; sort?: FileSort; foldersOnly?: boolean; wake?: boolean }, method: string, signal?: AbortSignal, pushAt: { at?: string; path?: string } = {}): Promise<FilesListing> {
   const state = filesState(ctx)
   const sort = p.sort ?? DEFAULT_SORT
   let at = locate(ctx, by, p.workspaceId, p.at, method)
@@ -261,6 +262,7 @@ async function list(ctx: WorkCtx, by: Caller, p: { workspaceId: string; at: Fold
   }
   if (at.in === 'folder') {
     const { workspace, root, path } = at
+    Object.assign(pushAt, { at: refKey({ at: 'file', host: ctx.host, path }), path })
     const page = await state.lister.page(path, { sort, cursor: p.cursor, foldersOnly: p.foldersOnly, signal })
     if (first && !page.stale) {
       // While a tab shows the folder, a name added or removed in it is said, only to callers that could name the folder.
@@ -284,6 +286,8 @@ async function list(ctx: WorkCtx, by: Caller, p: { workspaceId: string; at: Fold
   if (at.in !== 'library') throw new Error(NOT_BUILT_PLACE)
   const { library, path } = at
   const { library: place } = doorPlace(ctx, by, at)
+  // A guest path is no path of this host to fence a push by: any key that may read hears it, as a VM folder's change is said.
+  Object.assign(pushAt, { at: libraryKey(place!, path), ...(library.vm ? {} : { path }) })
   // A folder in the VM wakes it only for his press (`wake`; a window a release behind sends none and still wakes it); a thread's list never does.
   const wake = by.kind !== 'model' && p.wake !== false
   const page: VmPage = library.vm
@@ -890,7 +894,8 @@ async function lifeosCase(ctx: WorkCtx, by: Caller, m: string, p: Record<string,
         const got = await listLifeos(ctx, by, p as never)
         return handled({ ...got, entries: withMarks(filesState(ctx), p.workspaceId, got.entries) })
       }
-      const got = await list(ctx, by, p as never, m, signal)
+      const pushAt: { at?: string; path?: string } = {}
+      const got = await list(ctx, by, p as never, m, signal, pushAt)
       feedListing(ctx, by, p.workspaceId, at, got)
       const ws = workspace()
       // Trash lists LifeOS's own trash beside the folder's, each put back by its own place.
@@ -899,7 +904,19 @@ async function lifeosCase(ctx: WorkCtx, by: Caller, m: string, p: Record<string,
         return handled({ ...got, entries: [...got.entries, ...more].sort((a, b) => (b.changed ?? 0) - (a.changed ?? 0)) })
       }
       // A workbook with an agent's suggestions waiting says how many, from the pillars' own tables (waiting.ts).
-      return handled({ ...got, entries: withWaiting(ctx, await withProjects(ctx, ws, got.entries)) })
+      // Project marks never hold the first rows: what LifeOS links is used as kept, and a first read lands behind as one
+      // push of the folder (the window lists it again and draws the marks).
+      const filled =
+        pushAt.at && !p.cursor
+          ? (): void => {
+              try {
+                ctx.push({ push: 'work.files', workspaceId: p.workspaceId, at: pushAt.at! }, { need: 'read', ...(pushAt.path ? { path: pushAt.path } : {}) })
+              } catch (err) {
+                ctx.log(`files: a folder's project marks were not pushed: ${err instanceof Error ? err.message : String(err)}`)
+              }
+            }
+          : undefined
+      return handled({ ...got, entries: withWaiting(ctx, await withProjects(ctx, ws, got.entries, { wait: 0, ...(filled ? { filled } : {}) })) })
     }
     case 'work.files.home': {
       const ws = ownRows(ctx, by, p.workspaceId)

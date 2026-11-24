@@ -87,9 +87,9 @@ const kept = new WeakMap<object, Map<string, Kept<unknown>>>()
 /**
  * What `read` answers, kept `FRESH_MS`: a fresh value at once; a stale one at once, read again behind it
  * (`onChange` hears a new answer); none yet, waited for `wait` ms at most, then null. A failed read keeps what
- * was there.
+ * was there. `behind`: told the value a read lands with when this call answered without it (stale, or not yet).
  */
-async function keptRead<T>(ctx: Pick<WorkCtx, 'db' | 'log'>, key: string, read: () => Promise<T>, o: { wait?: number; refresh?: boolean; onChange?: () => void } = {}): Promise<T | null> {
+async function keptRead<T>(ctx: Pick<WorkCtx, 'db' | 'log'>, key: string, read: () => Promise<T>, o: { wait?: number; refresh?: boolean; onChange?: () => void; behind?: (value: T) => void } = {}): Promise<T | null> {
   const cache = kept.get(ctx.db) ?? kept.set(ctx.db, new Map()).get(ctx.db)!
   const slot = (cache.get(key) ?? cache.set(key, { at: 0 }).get(key)!) as Kept<T>
   const start = (): Promise<T> => {
@@ -112,18 +112,28 @@ async function keptRead<T>(ctx: Pick<WorkCtx, 'db' | 'log'>, key: string, read: 
     slot.reading = reading
     return reading
   }
+  const behind = (reading: Promise<T>): void => void reading.then((value) => o.behind?.(value), () => undefined)
   if (slot.value !== undefined && !o.refresh) {
-    if (Date.now() - slot.at > FRESH_MS) start().catch(() => undefined)
+    if (Date.now() - slot.at > FRESH_MS) behind(start())
     return slot.value
   }
   const wait = o.wait ?? Infinity
+  // Not waited for at all: answered with what is kept (or nothing), the read going on behind.
+  if (wait === 0) {
+    behind(start())
+    return slot.value ?? null
+  }
   let timer: ReturnType<typeof setTimeout> | undefined
   try {
+    const reading = start()
     return await Promise.race([
-      start(),
+      reading,
       new Promise<T | null>((done) => {
         if (wait === Infinity) return
-        timer = setTimeout(() => done(slot.value ?? null), wait)
+        timer = setTimeout(() => {
+          behind(reading)
+          done(slot.value ?? null)
+        }, wait)
         timer.unref?.()
       })
     ])
@@ -316,7 +326,14 @@ export async function unkeptParts(ctx: WorkCtx, workspace: WorkspaceRow, o: { wa
  * The files linked to each listed project (`projectItems`, read with `projects:page`), by key: what puts a project
  * on a row of the folder, a library or a search, and what a project's lens lists beside its LifeOS rows.
  */
-async function linksOf(ctx: WorkCtx, sector: string, o: { wait?: number } = {}): Promise<Map<string, { project: { id: string; name: string }; source: CanvasSource; title: string; id: string }[]> | null> {
+type Links = Map<string, { project: { id: string; name: string }; source: CanvasSource; title: string; id: string }[]>
+const linkMap = (got: readonly [string, { project: { id: string; name: string }; source: CanvasSource; title: string; id: string }][]): Links => {
+  const map: Links = new Map()
+  for (const [key, link] of got) (map.get(key) ?? map.set(key, []).get(key)!).push(link)
+  return map
+}
+
+async function linksOf(ctx: WorkCtx, sector: string, o: { wait?: number; behind?: (links: Links) => void } = {}): Promise<Map<string, { project: { id: string; name: string }; source: CanvasSource; title: string; id: string }[]> | null> {
   const got = await keptRead(
     ctx,
     `links|${sector}`,
@@ -329,18 +346,32 @@ async function linksOf(ctx: WorkCtx, sector: string, o: { wait?: number } = {}):
       }
       return out
     },
-    o
+    { ...(o.wait !== undefined ? { wait: o.wait } : {}), ...(o.behind ? { behind: (got) => o.behind!(linkMap(got)) } : {}) }
   )
-  if (!got) return null
-  const map = new Map<string, { project: { id: string; name: string }; source: CanvasSource; title: string; id: string }[]>()
-  for (const [key, link] of got) (map.get(key) ?? map.set(key, []).get(key)!).push(link)
-  return map
+  return got ? linkMap(got) : null
 }
 
-/** Rows of a folder, a library or a search that are linked to a project say so (`FileEntry.project`); unchanged while LifeOS is down or slow. */
-export async function withProjects(ctx: WorkCtx, workspace: WorkspaceRow | null, entries: FileEntry[]): Promise<FileEntry[]> {
+/** The project each row is marked with, by key: what a list said, to tell whether a later read changes it. */
+const marksOf = (entries: readonly FileEntry[], links: Links | null): string => JSON.stringify(entries.map((e) => e.project?.id ?? (links?.get(e.key)?.[0]?.project.id ?? null)))
+
+/**
+ * Rows of a folder, a library or a search that are linked to a project say so (`FileEntry.project`); unchanged while
+ * LifeOS is down or slow. `wait`: how long a first read of the links is waited for (1.5 s); 0 answers at once with
+ * what is kept, and `filled` hears once the read behind it lands with marks these rows did not get (a folder's
+ * list then pushes, and the window lists again: M3, project marks behind the first rows).
+ */
+export async function withProjects(ctx: WorkCtx, workspace: WorkspaceRow | null, entries: FileEntry[], o: { wait?: number; filled?: () => void } = {}): Promise<FileEntry[]> {
   if (!workspace?.sector || !entries.length || !ctx.lifeos.connected()) return entries
-  const links = await linksOf(ctx, workspace.sector, { wait: FIRST_WAIT_MS })
+  let said: string | null = null
+  let early: Links | undefined
+  const landed = (now: Links): void => void (marksOf(entries, now) !== said && o.filled!())
+  const links = await linksOf(ctx, workspace.sector, {
+    wait: o.wait ?? FIRST_WAIT_MS,
+    // A read that lands before this answer is made is compared once it is.
+    ...(o.filled ? { behind: (now: Links) => (said === null ? void (early = now) : landed(now)) } : {})
+  })
+  said = marksOf(entries, links)
+  if (early) landed(early)
   if (!links?.size) return entries
   return entries.map((e) => (e.project || !links.has(e.key) ? e : { ...e, project: links.get(e.key)![0]!.project }))
 }

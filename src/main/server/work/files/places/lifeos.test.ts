@@ -289,9 +289,19 @@ describe('a listing', () => {
     await expect(list({ at: 'project', id: 'px' })).rejects.toThrow('no such project')
   })
 
-  it('puts the project on a folder row a project links', async () => {
-    const got = await list({ at: 'file', host: rig.ctx.host, path: join(rig.folder, 'Events') })
+  it('puts the project on a folder row a project links, behind the first rows: one push of the folder fills it', async () => {
+    const events = { at: 'file' as const, host: rig.ctx.host, path: join(rig.folder, 'Events') }
+    const pushes = () => rig.pushes.filter((x) => x.p.push === 'work.files' && (x.p as { at?: string }).at === refKey(events))
+    // The first rows go at once, before LifeOS has said which project links them.
+    const first = await list(events)
+    expect(first.entries.find((e) => e.name === 'Poster.png')!.project).toBeUndefined()
+    await vi.waitFor(() => expect(pushes()).toHaveLength(1))
+    expect(pushes()[0]!.to).toEqual({ need: 'read', path: events.path })
+    // The push's list draws it, with nothing more pushed.
+    const got = await list(events)
     expect(got.entries.find((e) => e.name === 'Poster.png')!.project).toEqual({ id: 'p1', name: 'Spring LAN' })
+    await new Promise((r) => setTimeout(r, 0))
+    expect(pushes()).toHaveLength(1)
   })
 
   it('counts a row with a live guest link as shared', async () => {
