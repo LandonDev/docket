@@ -38,7 +38,7 @@ environment before it mints a device token or writes fixtures.
 
 Every instance connects to the same loopback sandbox. Only box receives
 the device token. The window asks box for a sector JWT, then checks for
-Spring LAN mail in the Purdue workspace. J32 starts LifeOS’s tool
+Spring LAN mail in the Purdue workspace. Journeys that call a LifeOS draft tool start its tool
 listener as well, with access only to the sandbox backend. The sandbox
 runs no delivery worker. Queued mail stays queued and calendar writes
 wait for a provider. The seed data includes local events that can move
@@ -121,7 +121,7 @@ their files.
 
 | Journey | Shapes | What it checks |
 | --- | --- | --- |
-| J20 | A, U | A file's Share yields a reachable guest link. The guest comments, and the revoked link answers gone. |
+| J20 | S, U | A sandbox LifeOS document's Share makes a comment link on the host's configured origin. The guest selects words and comments. The owner sees it, revokes the link, and the open guest page stops answering. |
 | J21 | B2 | The Word switch offers the dummy SharePoint address, the local tab names its editor, and the holder's bytes stay the same. The built webview needs a public Microsoft origin, so the journey stops at the offered address before navigation. |
 | J24 | B2 | Desk's place shows an away notice and Retry. The open copy waits, then sends the edit to desk after it returns. |
 | J27 | A, U | A phone-width /ui clicker can advance, go back, blank and end the separate slideshow. The host and the audience page agree. A read key can watch. |
@@ -136,8 +136,9 @@ their files.
 | J57 | A, K | An owner's edit reaches the open tab in a second window. The given computer's key limits its controls. |
 | J58 | A | New chats keep box's access, provider, model, effort and Work scope across start surfaces. The walks that need LifeOS are skipped. |
 
-For the first run, use
-`--only J20,J27,J28,J29,J30,J31,J52,J53,J54,J56,J57,J58 --shape A,B1,K,U --no-table`.
+For both guest walks, use `--only J20 --shape S,U --no-table`.
+For the rest of the first run, use
+`--only J27,J28,J29,J30,J31,J52,J53,J54,J56,J57,J58 --shape A,B1,K,U --no-table`.
 Run `--only J21,J24,J29 --shape B2 --desk --no-table` for the far library.
 Use `heavy` for both. With `--no-table`, the runner keeps its evidence in
 the run folder and skips the shared Journeys table.
@@ -162,7 +163,16 @@ sessions, pairings and keys before stopping the instances.
 | J40 | S | The same task stays due today as the owner completes it and undoes completion. Today shows it while open. |
 | J33 | S | The same reply goes from draft to queued, back to draft, and to queued again. The window gives the send's state. |
 | J32 | S | A thread’s mail tool makes a draft. The edit reaches the LifeOS queue, and Outbox shows how long it has waited. |
-| J34 | S | Mail and Outbox give the named time zone for a scheduled reply. Cancel returns the same reply to draft. |
+| J34 | S | Scheduled and the thread foot show the owner's timed reply. Cancel keeps its time on the draft. Only a thread-origin reply also appears in Outbox, with Cancel send alone. |
+| J35 | S, A | Mail opens the attachment read-only, saves the original bytes to the workspace, and keeps an editable document there. |
+| J36 | S | A mail-side Work thread drafts through its own tool. The owner's press queues that same reply. |
+| J37 | S | A task points to its source mail, and its own thread points back to that task. |
+| J38 | S | An overdue mail wait opens a nudge thread. Its draft and the original wait both stay. |
+| J39 | S | A Slack reply remains queued and the screen says it is on its way. The conversation's stored file opens beside it. |
+| J42 | S | The meeting keeps its brief and notes. Only the ticked suggestion becomes a task. The follow-up mail waits for a press. |
+| J44 | S | The mail sender opens the right People page and the new thread keeps the person's chip. |
+| J50 | S, A | The digest gives a held item and a meeting deadline once. Open goes to the meeting the toast named. |
+| J51 | S | Today opens the held item, meeting, due task, waiting mail, unanswered chat, owed row, and ready weekly review. Review settles the slipped task in LifeOS. |
 | J41 | S | The New event toast follows the calendar operation. A local move changes the clash shown on Agenda. |
 | J55 | S, K | Connections agrees with the hosts. LifeOS views show the sign-in state, and the given computer sees that its key cannot read them. |
 

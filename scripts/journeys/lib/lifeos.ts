@@ -8,7 +8,7 @@ import { makeFunctionReference } from 'convex/server'
 import type { Value } from 'convex/values'
 import { freePort } from '../../e2e-work-lib'
 import { mainCheckout } from './record'
-import { seedLifeos } from './lifeosSeed'
+import { seedDeadline, seedLifeos } from './lifeosSeed'
 import { until } from './window'
 
 const SOURCE = '/srv/agents/work/lifeos'
@@ -25,6 +25,7 @@ export type Sandbox = {
   mcpUrl: string
   deviceToken: string
   mintDevice(): Promise<string>
+  seedDeadline(title: string, startsAt: number): Promise<() => Promise<void>>
   query: LifeosRead
   stop(): Promise<void>
 }
@@ -287,10 +288,11 @@ export async function startSandbox(runFolder: string, signal?: AbortSignal, tool
     const { jwt } = await owner.action(makeFunctionReference<'action'>('auth:token'), { token: await mint('Journey proof reader') }) as { jwt: string }
     owner.setAuth(jwt)
     const query: LifeosRead = (fn, args = {}) => owner.query(makeFunctionReference<'query'>(fn), args)
+    const internal = <T>(fn: string, args: Args) => admin.mutation(makeFunctionReference<'mutation'>(fn), { ...args, ownerId: OWNER }) as Promise<T>
     await seedLifeos({
       query,
       mutate: (fn, args) => owner.mutation(makeFunctionReference<'mutation'>(fn), args),
-      internal: (fn, args) => admin.mutation(makeFunctionReference<'mutation'>(fn), { ...args, ownerId: OWNER }),
+      internal,
       upload: async (body) => {
         const uploadUrl = new URL(await owner.mutation(makeFunctionReference<'mutation'>('compose:uploadUrl')) as string)
         if (uploadUrl.origin !== url) throw new Error('File upload URL is outside the sandbox')
@@ -305,7 +307,7 @@ export async function startSandbox(runFolder: string, signal?: AbortSignal, tool
     })
     if (!waits.page.some(({ subject }) => subject === 'Spring LAN unanswered room request')) throw new Error('LifeOS did not list the unanswered mail')
     if (tools) mcp = await startMcp(folder, siteUrl, cliEnv, signal)
-    return { url, siteUrl, mcpUrl: mcp?.url ?? siteUrl + '/mcp', deviceToken, mintDevice, query, stop }
+    return { url, siteUrl, mcpUrl: mcp?.url ?? siteUrl + '/mcp', deviceToken, mintDevice, query, seedDeadline: (title, startsAt) => seedDeadline(internal, title, startsAt), stop }
   } catch (error) {
     await stop()
     throw error

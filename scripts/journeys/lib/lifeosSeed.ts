@@ -1,6 +1,8 @@
 import type { Value } from 'convex/values'
 
 export const SECTOR = 'purdue'
+export const GUEST_DOC = 'Spring LAN practice invitation'
+export const GUEST_WORDS = 'Practice starts at noon. Check-in opens at the north doors.'
 export const FIRST_MAIL = 'Spring LAN room plan'
 export const SECOND_MAIL = 'Spring LAN check-in'
 export const MOVED_EVENT = 'Test the projectors'
@@ -31,6 +33,22 @@ export function seedDay(now: Date, days: number, hour: number): number {
   const [, sign, hours, minutes] = offset?.match(/^GMT([+-])(\d{2}):(\d{2})$/) ?? []
   if (!sign) throw new Error('Could not read the journey time zone')
   return local + (sign === '-' ? 1 : -1) * (Number(hours) * 60 + Number(minutes)) * 60_000
+}
+
+export async function seedDeadline(internal: Write, title: string, startsAt: number): Promise<() => Promise<void>> {
+  const uid = 'journey-deadline-' + startsAt
+  const sourceId = await internal<string>('sources:upsert', {
+    kind: 'gcal', account: 'practice@example.com', channel: uid, label: title, sector: SECTOR, enabled: true
+  })
+  const range = { sourceId, from: startsAt - HOUR, to: startsAt + 2 * HOUR }
+  await internal('events:syncFeed', {
+    ...range,
+    events: [{ uid, title, startsAt, endsAt: startsAt + HOUR, allDay: false, location: 'East room' }],
+    provider: [{ uid, providerEventId: uid, attendees: [{ ...DANA, response: 'accepted' }] }]
+  })
+  return async () => {
+    await internal('events:syncFeed', { ...range, events: [], provider: [] })
+  }
 }
 
 export async function seedLifeos({ query, mutate, internal, upload }: Seed, now = new Date()): Promise<void> {
@@ -73,6 +91,7 @@ export async function seedLifeos({ query, mutate, internal, upload }: Seed, now 
     message: { kind: 'mail', accountId: accounts[0]!, to: [DANA], cc: [], bcc: [], subject: 'Spring LAN signs',
       html: '<p>I can bring the signs.</p>', text: 'I can bring the signs.' }
   })
+  await mutate('docs:create', { sector: SECTOR, title: GUEST_DOC, markdown: GUEST_WORDS })
   const projectId = await mutate<string>('projects:create', { sector: SECTOR, name: 'Spring LAN', status: 'active' })
   await mutate('tasks:create', { sector: SECTOR, title: 'Count the spare cables', projectId })
   const done = await mutate<string>('tasks:create', { sector: SECTOR, title: 'Reserve the east room', projectId })
@@ -86,6 +105,7 @@ export async function seedLifeos({ query, mutate, internal, upload }: Seed, now 
   await mutate('events:create', { sector: SECTOR, title: FIRST_CLASH, startsAt: at(1, 18), endsAt: at(1, 20), location: 'West room' })
   await mutate('events:create', { sector: SECTOR, title: 'Open the equipment cupboard', startsAt: at(0, 13), endsAt: at(0, 14) })
   await mutate('events:create', { sector: SECTOR, title: NEXT_CLASH, startsAt: at(1, 21), endsAt: at(1, 22) })
+  await mutate('events:create', { sector: SECTOR, title: 'Spring LAN equipment check', startsAt: at(0, 0), allDay: true })
   const sourceId = await internal<string>('sources:upsert', {
     kind: 'gcal', account: 'practice@example.com', channel: 'spring-lan', label: 'Spring LAN calendar', sector: SECTOR, enabled: true
   })
@@ -105,6 +125,16 @@ export async function seedLifeos({ query, mutate, internal, upload }: Seed, now 
       sentAt: now.getTime() - (2 - i) * HOUR, context: [],
       ...(!i ? { files: [{ ref: 'journey-chat-file', name: attachment.name, contentType: attachment.contentType, size: attachment.size }] } : {})
     }))
+  })
+  await internal('sources:upsert', {
+    kind: 'slack', account: 'journey-chat', channel: 'spring-lan-volunteers', label: 'Spring LAN volunteers', sector: SECTOR, enabled: true
+  })
+  await internal('rawMessages:insertBatch', {
+    messages: [{
+      source: 'slack', account: 'journey-chat', channel: 'spring-lan-volunteers', channelName: 'Spring LAN volunteers',
+      externalId: 'journey-chat-volunteers', author: { id: 'journey-person-0', name: DANA.name, email: DANA.address },
+      fromMe: false, addressed: ['dm'], text: 'Can you confirm the volunteer desk?', sentAt: now.getTime() - HOUR / 2, context: []
+    }]
   })
   const paginationOpts = { numItems: 10, cursor: null }
   const chats = await query<{ page: { _id: string; name: string }[] }>('chats:list', { sector: SECTOR, paginationOpts })

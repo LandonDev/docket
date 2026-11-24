@@ -7,9 +7,13 @@ import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { expect, it, vi } from 'vitest'
+import { guestAddress } from './J20-guest-link'
 import { queuedAge } from './J32-held-mail'
 import { earlySent } from './J33-mail-undo'
-import { scheduledWords } from './J34-mail-scheduled'
+import { keptSchedule, scheduledWords } from './J34-mail-scheduled'
+import { queuedChatWords } from './J39-messages'
+import { toldOnce } from './J50-digest'
+import { todayOpen } from './J51-today-review'
 import { taskMatches } from './J40-task-today'
 import { honestAdding } from './J41-agenda-clash'
 import { ledgerHasReceipt } from './J45-receipt'
@@ -19,12 +23,12 @@ import { headedResult } from './J60-browser-canvas'
 import { ownedDisplay } from './lib/capture'
 import { withheldWords } from './J55-connections'
 import { assertSandboxKeys } from './lib/lifeos'
-import { FIRST_MAIL, SECOND_MAIL, seedDay, seedLifeos } from './lib/lifeosSeed'
+import { FIRST_MAIL, SECOND_MAIL, seedDay, seedDeadline, seedLifeos } from './lib/lifeosSeed'
 import { composeRow } from './lib/mailJourney'
 import { wordBodyLayout } from './J05-document-export'
 import { desktopDrop, rowDrop } from './lib/drop'
 import { documentHas } from './lib/edit'
-import { BROWSER_PROMPT, fakeMessage, seedFakeAccount, startFakeProvider } from './lib/fakeProvider'
+import { BROWSER_PROMPT, fakeMessage, mailReplyTool, seedFakeAccount, startFakeProvider } from './lib/fakeProvider'
 import { pdfFacts } from './lib/preview'
 import { letterPaper, printViewer } from './lib/print'
 import { AppOpenProof } from './lib/appOpen'
@@ -89,6 +93,7 @@ it('starts one sandbox for a selected S journey, including its given-computer wa
   expect(selected.sandbox).toBe(true)
   expect(selected.noTable).toBe(true)
   expect(options(['--only', 'J55', '--shape', 'K'])).toMatchObject({ sandbox: true })
+  for (const id of ['J35', 'J50']) expect(options(['--only', id, '--shape', 'A'])).toMatchObject({ sandbox: true })
   const runner = readFileSync(join(HERE, 'run.ts'), 'utf8')
   expect(runner.match(/await startSandbox\(/g)).toHaveLength(1)
   expect(runner).toMatch(/if \(flags\.sandbox\)[\s\S]+await startSandbox\([\s\S]+not run: no sandbox/)
@@ -114,6 +119,18 @@ it('reads tracked source and points deployment, applications, and tool traffic a
   expect(launcher).toMatch(/this\.rpc\(this\.box, 'work\.lifeos\.setToken', \{ token: this\.sandbox\.deviceToken/)
   expect(launcher).toMatch(/TEMP_CODE_WARM_HARNESS: '0'/)
   expect(launcher).toMatch(/\(!this\.sandbox \|\| options\.localTools\) && existsSync/)
+  expect(launcher).toMatch(/for \(const dir of \[.*join\(data, 'no-vm'\)/)
+})
+
+it('uses the sandbox for both guest walks and keeps its configured guest origin', () => {
+  expect(options(['--only', 'J20']).jobs.map(({ shape }) => shape)).toEqual(['S', 'U'])
+  expect(options(['--only', 'J20', '--shape', 'U'])).toMatchObject({ sandbox: true })
+  const outside = new URL('http://192.0.2.8:4000/g/link123#k=fake')
+  const loopback = new URL('http://127.0.0.1:4000/g/link123#k=fake')
+  expect(guestAddress(outside, outside.origin, 'link123')).toBe(true)
+  expect(guestAddress(loopback, loopback.origin, 'link123')).toBe(true)
+  expect(guestAddress(loopback, outside.origin, 'link123')).toBe(false)
+  expect(guestAddress(outside, outside.origin, 'another')).toBe(false)
 })
 
 it('accepts only the fresh matching JWT pair and omits its values from the audit line', () => {
@@ -180,10 +197,47 @@ it('reads the backend’s compose row and detects false journey wording', async 
   expect(queuedAge('Queued in LifeOS')).toBe(false)
   expect(scheduledWords('Scheduled for 9:00 AM Eastern · 8:00 AM CentralUndo')).toBe(true)
   expect(scheduledWords('Scheduled for 8:00 AM Central\nSending')).toBe(false)
+  const eightCentral = Date.parse('2026-11-24T14:00:00Z')
+  expect(scheduledWords('Scheduled for 9:00 AM Eastern · 8:00 AM Central', eightCentral)).toBe(true)
+  expect(scheduledWords('Scheduled for 9:00 AM Eastern · 7:00 AM Central', eightCentral)).toBe(false)
   expect(honestAdding(['Adding Sort the spare adapters'], 'queued')).toBe(true)
   expect(honestAdding(['Added Sort the spare adapters'], 'queued')).toBe(false)
   expect(withheldWords('This computer cannot read LifeOS here')).toBe(true)
   expect(withheldWords('This computer cannot read LifeOS here\nLifeOS did not answer')).toBe(false)
+})
+
+it('keeps an owner’s cancelled reply as the same draft with its original time and zone', () => {
+  const queued = { _id: 'reply', status: 'queued', scheduled: true, sendAt: 900, sendZone: 'America/Chicago', message: { subject: 'Room', text: 'Noon' } }
+  const draft = { _id: 'reply', status: 'draft', suggestedSend: { at: 900, zone: 'America/Chicago' }, message: queued.message }
+  expect(keptSchedule(queued, draft)).toBe(true)
+  expect(keptSchedule(queued, { ...draft, _id: 'new' })).toBe(false)
+  expect(keptSchedule(queued, { ...draft, suggestedSend: { at: 901, zone: 'America/Chicago' } })).toBe(false)
+  expect(keptSchedule(queued, { ...draft, sendAt: 900 })).toBe(false)
+})
+
+it('checks the Messages reply wording and the identity of a Today row', () => {
+  expect(queuedChatWords('Sending')).toBe(true)
+  expect(queuedChatWords('Queued in LifeOS')).toBe(true)
+  expect(queuedChatWords('Sent')).toBe(false)
+  expect(queuedChatWords('Sending but already sent')).toBe(false)
+  expect(todayOpen('event:local')).toBe('[data-today-row="event:local"] [data-row-open]')
+})
+
+it('seeds a calendar deadline and counts a single emitted telling', async () => {
+  const write = vi.fn(async () => 'calendar-source')
+  const retire = await seedDeadline(write as unknown as Parameters<typeof seedDeadline>[0], 'Practice reminder', 100_000)
+  expect(write).toHaveBeenCalledWith('events:syncFeed', expect.objectContaining({
+    sourceId: 'calendar-source',
+    events: [expect.objectContaining({ title: 'Practice reminder', startsAt: 100_000 })],
+    provider: [expect.objectContaining({ attendees: [expect.objectContaining({ address: 'dana@example.com' })] })]
+  }))
+  await retire()
+  expect(write).toHaveBeenLastCalledWith('events:syncFeed', expect.objectContaining({ sourceId: 'calendar-source', events: [], provider: [] }))
+  const row = { kind: 'prep.starting', title: 'Practice reminder', toldAt: 90_000 } as Parameters<typeof toldOnce>[0][number]
+  const match = (item: typeof row) => item.title === row.title
+  expect(toldOnce([row], 'prep.starting', match)).toBe(true)
+  expect(toldOnce([row, row], 'prep.starting', match)).toBe(false)
+  expect(toldOnce([{ ...row, toldAt: null }], 'prep.starting', match)).toBe(false)
 })
 
 it('refuses a missing or stale build and checks the worktree sources', () => {
@@ -499,6 +553,26 @@ it('serves a fixed fake provider stream with one text block and no tool calls', 
   ])
   expect(events[0].message.model).toBe('dummy-model')
   expect(events[2].delta).toEqual({ type: 'text_delta', text: 'I have the practice list.' })
+})
+
+it('scripts only the mail prompt and offers only an id returned by its real draft tool', () => {
+  const fixture = { prompt: 'Please draft a reply', threadId: 'mail1', body: 'The room is ready.' }
+  const tools = [{ name: 'mcp__app__lifeos__draft_mail' }, { name: 'mcp__work__mail_offer' }]
+  const prompt = { role: 'user', content: fixture.prompt }
+  const search = mailReplyTool({ messages: [prompt], tools: [{ name: 'ToolSearch' }] }, fixture)
+  expect(search).toMatchObject({ name: 'ToolSearch', input: { query: 'select:' + tools.map(({ name }) => name).join(',') } })
+  const draft = mailReplyTool({ messages: [prompt], tools }, fixture)
+  expect(draft).toMatchObject({ name: tools[0]!.name, input: { thread_id: 'mail1', body: fixture.body } })
+  expect(fakeMessage('dummy', draft, 'msg_journey_2')).toContain('"id":"msg_journey_2"')
+  expect(fakeMessage('dummy', draft)).toContain('"stop_reason":"tool_use"')
+  const result = (id: string, content: string) => ({ role: 'user', content: [{ type: 'tool_result', tool_use_id: id, content: [{ text: content }] }] })
+  expect(mailReplyTool({ messages: [prompt, result(search!.id, 'No match')], tools: [{ name: 'ToolSearch' }] }, fixture)).toBeUndefined()
+  const drafted = result(draft!.id, '{"id":"draft123"}')
+  const offer = mailReplyTool({ messages: [prompt, drafted], tools }, fixture)
+  expect(offer).toMatchObject({ name: tools[1]!.name, input: { draft: { draftId: 'draft123' } } })
+  expect(mailReplyTool({ messages: [prompt, drafted, result(offer!.id, 'OK')], tools }, fixture)).toBeUndefined()
+  expect(mailReplyTool({ messages: [prompt, result(draft!.id, 'Refused')], tools }, fixture)).toBeUndefined()
+  expect(mailReplyTool({ messages: [{ ...prompt, content: 'Another prompt' }], tools }, fixture)).toBeUndefined()
 })
 
 it('carries one transfer through the row drag and dispatches the desktop File bytes', async () => {

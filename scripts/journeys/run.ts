@@ -36,14 +36,23 @@ import j31 from './J31-thread-file'
 import j32 from './J32-held-mail'
 import j33 from './J33-mail-undo'
 import j34 from './J34-mail-scheduled'
+import j35 from './J35-mail-attachment'
+import j36 from './J36-mail-chat-reply'
+import j37 from './J37-task-from-mail'
+import j38 from './J38-mail-nudge'
+import j39 from './J39-messages'
 import j40 from './J40-task-today'
 import j41 from './J41-agenda-clash'
+import j42 from './J42-meeting-followup'
 import j43 from './J43-meeting-recording'
+import j44 from './J44-person-from-mail'
 import j45 from './J45-receipt'
 import j46 from './J46-invoice-export'
 import j47 from './J47-routine'
 import j48, { PLAY_SECTOR } from './J48-play'
 import j49 from './J49-capture'
+import j50 from './J50-digest'
+import j51 from './J51-today-review'
 import j52 from './J52-return'
 import j53 from './J53-work-switch'
 import j54 from './J54-pair-computer'
@@ -59,7 +68,7 @@ import { mainCheckout, saveResults, step, walk, type Results } from './lib/recor
 import { Pair, SHAPES, words } from './lib/shape'
 import { writeJourneysTable } from './table'
 
-export const JOURNEYS = [j01, j02, j03, j04, j05, j06, j07, j08, j09, j10, j11, j12, j13, j14, j15, j16, j17, j18, j19, j20, j21, j22, j23, j24, j25, j26, j27, j28, j29, j30, j31, j32, j33, j34, j40, j41, j43, j45, j46, j47, j48, j49, j52, j53, j54, j55, j56, j57, j58, j59, j60]
+export const JOURNEYS = [j01, j02, j03, j04, j05, j06, j07, j08, j09, j10, j11, j12, j13, j14, j15, j16, j17, j18, j19, j20, j21, j22, j23, j24, j25, j26, j27, j28, j29, j30, j31, j32, j33, j34, j35, j36, j37, j38, j39, j40, j41, j42, j43, j44, j45, j46, j47, j48, j49, j50, j51, j52, j53, j54, j55, j56, j57, j58, j59, j60]
 
 const needsSandbox = ({ id, shapes }: typeof JOURNEYS[number]) => shapes.includes('S') || ['J48', 'J49', 'J59'].includes(id)
 
@@ -138,7 +147,7 @@ async function main(): Promise<number> {
   try {
     if (flags.sandbox) {
       try {
-        pair.sandbox = await startSandbox(root, pair.abort.signal, flags.jobs.some(({ spec }) => spec.id === 'J32'))
+        pair.sandbox = await startSandbox(root, pair.abort.signal, flags.jobs.some(({ spec }) => ['J32', 'J34', 'J36', 'J38', 'J42', 'J50', 'J51'].includes(spec.id)))
         for (const url of [pair.sandbox.url, pair.sandbox.siteUrl, pair.sandbox.mcpUrl]) pair.trackPort(Number(new URL(url).port))
       } catch (error) {
         results.journeys = flags.jobs.filter(({ spec }) => needsSandbox(spec)).map(({ spec, shape }) => ({
@@ -154,7 +163,7 @@ async function main(): Promise<number> {
       zone: has('J47') ? ZONE : undefined,
       chromium: has('J60') ? boxChromium(join(homedir(), '.cache/ms-playwright')) : undefined,
       localTools: ['J43', 'J45', 'J46', 'J59', 'J60'].some(has),
-      fake: flags.jobs.some(({ spec }) => ['J12', 'J31', 'J47', 'J48', 'J49', 'J58', 'J60'].includes(spec.id)),
+      fake: ['J12', 'J31', 'J36', 'J37', 'J38', 'J42', 'J44', 'J47', 'J48', 'J49', 'J51', 'J58', 'J60'].some(has),
       capture: flags.jobs.some(({ spec }) => spec.id === 'J49'),
       hosted: ['J22', 'J29', 'J59'].some(has),
       guests: has('J20'),

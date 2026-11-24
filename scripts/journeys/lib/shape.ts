@@ -7,7 +7,7 @@ import { DEFAULT_THREAD_DEFAULTS } from '../../../src/shared/defaults'
 import { freePort, linkTools, sleep, TOOLS } from '../../e2e-work-lib'
 import { withAppToken } from '../../lib/appToken'
 import { dummyLibrary, gioStub } from './files'
-import { seedFakeAccount, startFakeProvider } from './fakeProvider'
+import { seedFakeAccount, startFakeProvider, type MailReplyFixture } from './fakeProvider'
 import { until, Window } from './window'
 import { relay } from './relay'
 import { FIRST_MAIL, ZONE } from './lifeosSeed'
@@ -53,7 +53,7 @@ async function instance(root: string, name: Seat): Promise<Instance> {
   const data = join(root, name + '-data')
   const tmp = join(root, name + '-tmp')
   const work = join(home, 'work')
-  for (const dir of [home, data, tmp, work, join(home, '.claude'), join(home, '.codex')]) mkdirSync(dir, { recursive: true })
+  for (const dir of [home, data, tmp, work, join(data, 'no-vm'), join(home, '.claude'), join(home, '.codex')]) mkdirSync(dir, { recursive: true })
   return {
     name, home, data, tmp, work,
     remote: await freePort(),
@@ -67,7 +67,7 @@ async function instance(root: string, name: Seat): Promise<Instance> {
 
 /** xvfb also gives the headless host a display for its hidden preview windows. */
 const OFFLINE = 'http://127.0.0.1:0'
-type LaunchOptions = { guestTheme?: boolean; zone?: string; chromium?: string; fakeOrigin?: string; publicOrigin?: string; sandbox?: Sandbox }
+type LaunchOptions = { serveLifeos?: boolean; zone?: string; chromium?: string; fakeOrigin?: string; publicOrigin?: string; sandbox?: Sandbox }
 
 function launch(repo: string, inst: Instance, seed: string, bin: string, options: LaunchOptions, tools?: string): ChildProcess {
   const inherited = isolatedEnvironment(process.env)
@@ -93,7 +93,7 @@ function launch(repo: string, inst: Instance, seed: string, bin: string, options
     TEMP_CODE_LIFEOS_MCP_URL: options.sandbox?.mcpUrl ?? OFFLINE + '/mcp',
     ...(options.sandbox || options.zone ? { TZ: options.zone ?? ZONE } : {}),
     ...(options.sandbox ? { TEMP_CODE_WARM_HARNESS: '0' } : {}),
-    ...(inst.name === 'box' && options.guestTheme && options.sandbox ? { TEMP_CODE_WORK_LIFEOS_SERVER: 'here' } : {}),
+    ...(inst.name === 'box' && options.serveLifeos ? { TEMP_CODE_WORK_LIFEOS_SERVER: 'here' } : {}),
     TEMP_CODE_WORK_ROOT: inst.work,
     TEMP_CODE_WORK_PORT: String(inst.workPort),
     ...(inst.name === 'box' && options.publicOrigin ? { TEMP_CODE_WORK_PUBLIC_ORIGIN: options.publicOrigin } : {}),
@@ -207,6 +207,7 @@ export class Pair {
   private fakeProvider?: ReturnType<typeof startFakeProvider>
   fakeMessages = 0
   private finishFakeBrowserTurn?: () => void
+  fakeMailReply?: MailReplyFixture
   private stopping = false
   win!: Instance
   box!: Instance
@@ -280,6 +281,8 @@ export class Pair {
         const publicLink = await relay(address, this.box.workPort)
         this.relays.push(publicLink)
         this.guestOrigin = 'http://' + address + ':' + publicLink.port
+      } else {
+        this.guestOrigin = 'http://127.0.0.1:' + this.box.workPort
       }
     }
     this.abort.signal.throwIfAborted()
@@ -287,7 +290,7 @@ export class Pair {
       seedFakeAccount(join(this.box.data, 'aliax'))
       if (options.capture) seedFakeAccount(join(this.win.data, 'aliax'))
       const browserTurn = options.browser ? new Promise<void>(resolve => { this.finishFakeBrowserTurn = resolve }) : undefined
-      this.fakeProvider = startFakeProvider(() => { this.fakeMessages++ }, browserTurn)
+      this.fakeProvider = startFakeProvider(() => { this.fakeMessages++ }, browserTurn, () => this.fakeMailReply)
     }
     let chromium: string | undefined
     if (options.chromium) {
@@ -299,7 +302,7 @@ export class Pair {
     }
     this.launchOptions = {
       sandbox: this.sandbox,
-      guestTheme: options.guestTheme,
+      serveLifeos: !!this.sandbox && (options.guestTheme || options.guests),
       chromium,
       zone: options.zone,
       fakeOrigin: this.fakeProvider?.url.origin,
