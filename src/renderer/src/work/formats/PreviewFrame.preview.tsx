@@ -74,7 +74,7 @@ function setUp(moment: PreviewMoment): { source: PreviewSource; engine: PdfEngin
 export function PreviewFrame({ moment = "word" }: { moment?: PreviewMoment }) {
   const { source, engine, width, initial, tight, rows } = setUp(moment);
   return (
-    <div className="flex h-[620px] overflow-hidden rounded-xl border border-border" style={{ width }}>
+    <div className="flex h-[620px] w-full overflow-hidden rounded-xl border border-border" style={{ maxWidth: width }}>
       <div className="flex min-w-0 flex-1 flex-col">
         <Preview
           source={source}

@@ -56,7 +56,7 @@ function setUp(moment: SheetMoment): { source: PreviewSource; initial: string; p
 export function SheetPreview({ moment = "excel" }: { moment?: SheetMoment }) {
   const { source, initial, paper, tight } = setUp(moment);
   return (
-    <div className="flex h-[620px] overflow-hidden rounded-xl border border-border" style={{ width: 864 }}>
+    <div className="flex h-[620px] w-full overflow-hidden rounded-xl border border-border" style={{ maxWidth: 864 }}>
       <div className="flex min-w-0 flex-1 flex-col">
         <Preview source={source} title="Spring LAN budget" kind={`sheet-preview-${moment}`} initial={initial} onClose={() => undefined} engine={fakeEngine(fakeDoc(paper))} width={864} height={584} tight={tight} />
       </div>

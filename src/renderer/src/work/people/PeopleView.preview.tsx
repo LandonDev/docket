@@ -57,7 +57,7 @@ const none = () => {};
 
 function Frame({ title, head, children }: { title: ReactNode; head?: ReactNode; children: ReactNode }) {
   return (
-    <div className="flex w-[864px] flex-col bg-background">
+    <div className="flex w-full flex-col bg-background">
       <div className="flex h-10 shrink-0 items-center gap-2 border-b border-border pr-2 pl-4 text-[13px]">
         <Users className="size-3.5 text-muted-foreground" />
         {title}

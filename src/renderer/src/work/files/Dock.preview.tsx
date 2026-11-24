@@ -1,5 +1,6 @@
-// A preview page for `bun run ui:preview src/renderer/src/work/files/Dock.preview.tsx#DockDraft` (and #DockThread, #FilesSide):
-// a file open in its Files tab with a chat docked at its right, on a draft and on a thread with a few messages.
+// A preview page for `bun run ui:preview src/renderer/src/work/files/Dock.preview.tsx#DockDraft` (and #DockThread, #FilesSide,
+// #DockNarrow, #DockAt820): a file open in its Files tab with a chat docked at its right, on a draft and on a thread with a
+// few messages; under 800px the chat lies over the file, at 820px it sits beside it.
 // Rendered by nothing in the app.
 import type { FileTab } from "@shared/contract-work-files";
 import type { CanvasItem } from "@shared/work";
@@ -61,6 +62,10 @@ const kinds = { ...CANVAS, document: { ...CANVAS.document, chunk } };
 // The transcript mounts the rows that meet its viewport, and the preview's document lays nothing out: here every
 // element says it is a screen tall, so the static page draws the thread's rows.
 if (typeof document !== "undefined" && !navigator.userAgent.includes("Chrome")) Object.defineProperty(HTMLElement.prototype, "clientHeight", { configurable: true, get: () => 560 });
+// The tab measures its body to choose where the chat sits: here every element says it is the frame's width, so the
+// static page draws the shape a pane that wide gets.
+let room = 1200;
+if (typeof document !== "undefined" && !navigator.userAgent.includes("Chrome")) Object.defineProperty(HTMLElement.prototype, "clientWidth", { configurable: true, get: () => room });
 
 /** The window kept this tab's dock open, at its width. */
 function keepDock(width = 360): void {
@@ -78,9 +83,10 @@ function seed(id: string, meta: Partial<SessionMeta> | null, blocks: Block[]): v
 }
 
 function Frame({ width, preset }: { width: number; preset: { id: string; draft: boolean } }) {
+  room = width;
   return (
     <SessionActionsContext.Provider value={actions}>
-      <div className="flex h-[620px] overflow-hidden border border-border" style={{ width }}>
+      <div className="flex h-[620px] w-full overflow-hidden border border-border" style={{ maxWidth: width }}>
         <FileTabView tab={tab} item={item} panelId={filesPanelId(tab.id)} workspace={workspace} where="Events" copy={null} onClose={() => undefined} kinds={kinds} dockPreset={preset} />
       </div>
     </SessionActionsContext.Provider>
@@ -109,6 +115,27 @@ export function DockThread() {
   return <Frame width={1200} preset={{ id: "s1", draft: false }} />;
 }
 
+function seedThread(): void {
+  keepDock();
+  resetContextChips();
+  seed("s1", { title: "Budget request questions" }, [
+    turn("u1", "user", "Does the total match the four lines?", 300_000),
+    turn("a1", "assistant", "Yes. $9,200 + $5,600 + $2,100 + $1,500 is $18,400, the total the request asks for.", 290_000),
+  ]);
+}
+
+/** A pane too narrow for both (under 800px): the chat lies over the file, its close at its head. */
+export function DockNarrow() {
+  seedThread();
+  return <Frame width={400} preset={{ id: "s1", draft: false }} />;
+}
+
+/** The narrowest pane that holds both: the file keeps its 440px and the chat sits beside it at 360px. */
+export function DockAt820() {
+  seedThread();
+  return <Frame width={820} preset={{ id: "s1", draft: false }} />;
+}
+
 const sideItem: CanvasItem = { ...item, id: "pi2", title: "Run of show.md", source: { at: "file", host: "env_local", path: "/w/Events/Run of show.md" } };
 
 /** Two files in one tab: the second at the side of the first, each under its own head, a sash between. */
@@ -116,7 +143,7 @@ export function FilesSide() {
   localStorage.removeItem("work.files.view.v1");
   return (
     <SessionActionsContext.Provider value={actions}>
-      <div className="flex h-[620px] overflow-hidden border border-border" style={{ width: 1200 }}>
+      <div className="flex h-[620px] w-full overflow-hidden border border-border" style={{ maxWidth: 1200 }}>
         <FileTabView
           tab={{ ...tab, side: { itemId: "pi2", key: "k2", name: "Run of show.md" } }}
           item={item}

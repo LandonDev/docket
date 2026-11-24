@@ -91,7 +91,7 @@ const trail = [{ name: "Esports Staff", at: { at: "place" as const, id: "team:Es
 
 function Window({ width, height = 560, children, sidebarOpen = true }: { width: number; height?: number; children: React.ReactNode; sidebarOpen?: boolean }) {
   return (
-    <div data-files-view style={{ width, height }} className="@container/files flex overflow-hidden rounded-lg border border-border bg-background">
+    <div data-files-view style={{ maxWidth: width, height }} className="@container/files flex w-full overflow-hidden rounded-lg border border-border bg-background">
       {sidebarOpen ? <SidebarView model={sidebar} workspace={workspace} at={tabs[0]!.page!.at} note={null} onGo={noop} onNewTab={noop} /> : null}
       <div className="flex min-w-0 flex-1 flex-col">
         <TabRow tabs={tabs} selected="t1" sidebarOpen={sidebarOpen} onSidebar={noop} onSelect={noop} onClose={noop} onReorder={noop} onNew={noop} />
@@ -363,7 +363,7 @@ export function FilesStates() {
           <PageView {...common} listing={null} note={n.note} />
         </Window>
       ))}
-      <div className="h-56 w-[720px] rounded-lg border border-border">
+      <div style={{ maxWidth: 720 }} className="h-56 w-full rounded-lg border border-border">
         <NoteEmpty note={{ title: "No Teams files on MacBook Pro", line: "Sync a channel from Teams with OneDrive there." }} fixes={fixes} />
       </div>
     </div>
@@ -388,20 +388,20 @@ const idle = { disabled: false, pressed: false, run: noop };
 export function FilesFile() {
   return (
     <div className="flex flex-col gap-8 p-6">
-      <div className="flex w-[720px] flex-col overflow-hidden rounded-lg border border-border bg-background">
+      <div style={{ maxWidth: 720 }} className="flex w-full flex-col overflow-hidden rounded-lg border border-border bg-background">
         {saveLines.map((s, i) => (
           <FileHeader key={i} name={s.name} line={s.line} where="Events" running={null} onRun={noop} onShowFolder={noop} rows={menu} onPick={noop} ask={idle} />
         ))}
       </div>
-      <div className="flex h-80 w-[720px] flex-col overflow-hidden rounded-lg border border-border bg-background">
+      <div style={{ maxWidth: 720 }} className="flex h-80 w-full flex-col overflow-hidden rounded-lg border border-border bg-background">
         <FileHeader name="Run of show.md" line={{ state: "saved", at: NOW - 13 * 60_000 }} where="Events" running={null} onRun={noop} onShowFolder={noop} rows={menu} onPick={noop} ask={idle} />
         <FileTextEditor name="Run of show.md" path="/w/Events/Run of show.md" readOnly={false} onChange={noop} text={"# Spring LAN: run of show\n\n- 9:00 Doors, check-in at the north desk\n- 10:00 Pools start, stations 1 to 12\n- 13:00 Lunch; the stage resets for brackets\n- 14:00 Bracket play\n- 18:30 Finals on the main stage\n\nBring: the spare router, two capture cards, gaffer tape.\n"} />
       </div>
-      <div className="flex h-72 w-[720px] flex-col overflow-hidden rounded-lg border border-border bg-background">
+      <div style={{ maxWidth: 720 }} className="flex h-72 w-full flex-col overflow-hidden rounded-lg border border-border bg-background">
         <FileHeader name="tournament.ts" line={{ state: "saved", at: NOW - 3 * day }} where="Tools" running={null} onRun={noop} rows={menu} onPick={noop} ask={idle} />
         <FileTextEditor name="tournament.ts" path="/w/Tools/tournament.ts" readOnly={false} onChange={noop} text={"export interface Seat {\n  station: number;\n  team: string;\n}\n\n/** Seats teams round robin across the stations. */\nexport function seat(teams: string[], stations: number): Seat[] {\n  return teams.map((team, i) => ({ station: (i % stations) + 1, team }));\n}\n"} />
       </div>
-      <div className="flex h-72 w-[720px] flex-col overflow-hidden rounded-lg border border-border bg-background">
+      <div style={{ maxWidth: 720 }} className="flex h-72 w-full flex-col overflow-hidden rounded-lg border border-border bg-background">
         <FileHeader name="Assets.zip" line={null} where="Events" running={null} onRun={noop} rows={menu} onPick={noop} ask={idle} />
         <Facts name="Assets.zip" entry={file("Assets.zip", "archive", 30 * day, { size: 2_400_000 })} env="box" workspaceId="w" itemId="i" source={{ at: "file", host: "env_box", path: "/w/Events/Assets.zip" }} />
       </div>

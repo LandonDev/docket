@@ -49,7 +49,7 @@ export function DeckPreviewPreview({ moment = "pptx", width = 1200 }: { moment?:
   const source = useMemo(() => deckPreviewSource({ env: "e", itemId: "deck", options, setOptions: set, reach: async () => reach, request }), [options]); // eslint-disable-line react-hooks/exhaustive-deps
   const initial = moment === "handouts" ? "pdf" : moment;
   return (
-    <div className="flex h-[640px] overflow-hidden rounded-xl border border-border" style={{ width }}>
+    <div className="flex h-[640px] w-full overflow-hidden rounded-xl border border-border" style={{ maxWidth: width }}>
       <div className="flex min-w-0 flex-1 flex-col">
         <Preview
           source={source}

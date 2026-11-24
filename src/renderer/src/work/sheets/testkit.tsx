@@ -480,6 +480,8 @@ export function fakeGrid(options: { selection?: string; rows?: number; columns?:
         onMutation: (listener: (m: SheetMutationJson) => void) => (listeners.add(listener), () => listeners.delete(listener)),
         focus: () => undefined,
         objects: fakeObjects(objects, (change) => grid.objectsGiven?.onObjects?.(change)),
+        // A grid with no tables: the format row's table menu reads it and listens for none.
+        tables: { list: () => [], at: () => null, models: () => [], refusal: () => null, add: () => null, set: () => false, problem: () => null, remove: () => false, totals: () => false, nameProblem: () => null, onChange: () => () => undefined },
       } as unknown as SheetHandle;
       grid.handle = handle;
       onReady?.(handle);
