@@ -121,7 +121,8 @@ export function DropImport({ env, sessionId, editor, children }: { env: string; 
     if (file.size > DROP_MAX_BYTES) return void toast.error("That file is over 64 MB");
     setBusy(file.name);
     try {
-      sayWarnings(await importOnce(env, `drop#${sessionId}#${file.name}`, { sessionId, from: await fromFile(file, editor) }));
+      // A drop is his press: each one imports, however its file is named (a busy surface takes none meanwhile).
+      sayWarnings(await registry.linkOf(env).request<ImportAnswer>("work.formats.import", { sessionId, from: await fromFile(file, editor) }, { timeoutMs: IMPORT_MS }));
     } catch (err) {
       toast.error(err instanceof Error && err.message ? err.message : "It could not be opened");
     } finally {

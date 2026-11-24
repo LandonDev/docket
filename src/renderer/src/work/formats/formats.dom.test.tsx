@@ -111,5 +111,10 @@ describe("Import", () => {
     await act(async () => drop(new File([new Uint8Array([80, 75, 3, 4])], "Brief.docx")));
     await waitFor(() => expect(requests).toHaveLength(1));
     expect(requests[0]!.params).toEqual({ sessionId: "t1", from: { at: "bytes", name: "Brief.docx", data: toBase64(new Uint8Array([80, 75, 3, 4])) } });
+    // A later file of the same name is another drop: it opens too, with its own bytes.
+    await waitFor(() => expect(screen.queryByText("Opening Brief.docx")).toBeNull());
+    await act(async () => drop(new File([new Uint8Array([80, 75, 3, 4, 9])], "Brief.docx")));
+    await waitFor(() => expect(requests).toHaveLength(2));
+    expect(requests[1]!.params).toEqual({ sessionId: "t1", from: { at: "bytes", name: "Brief.docx", data: toBase64(new Uint8Array([80, 75, 3, 4, 9])) } });
   });
 });
