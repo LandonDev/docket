@@ -1,0 +1,146 @@
+// @vitest-environment jsdom
+/**
+ * The Microsoft form kind's bar and Responses half on a stand-in host: each
+ * face of the bar (Collect responses, the link with Copy and Close form, the
+ * closed line with Reopen), the presses it makes, and the answers drawn from
+ * `work.msforms.responses` as our forms' Responses are.
+ */
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import type { MsFormResponses, MsFormView } from "@shared/contract-work-msforms";
+import type { CanvasItem } from "@shared/work";
+import type { CanvasBodyProps, CanvasShell } from "../canvas/kind";
+import type { MsFormHost } from "./host";
+import { answerBarsOf, chartOf, timeColumnOf } from "./model";
+import { Bar, Body, type MsFormState } from "./MsFormCanvas";
+
+const FORM = "Ob0wQVN8nEGx5YdY1tY_IQaWFXVrVqJAiq2zrvrFVrNURDVET1gyWlpLNkJXOUsyWEJXNFlKMzMxVC4u";
+const BASE: MsFormView = {
+  workspaceId: "w1",
+  formId: FORM,
+  tenant: "purdue0",
+  title: "Spring intramural sign-up",
+  folder: { libraryId: "lib", path: "Esports", siteUrl: "https://purdue0.sharepoint.com/sites/RecWell" },
+  workbook: null,
+  state: "draft",
+  mode: "suggests",
+  settings: { accepting: false, orgOnly: true, recordName: true, onePerPerson: true },
+  questions: [{ title: "Which night works?", type: "choice", options: ["Monday", "Tuesday"], required: true }],
+  rev: 1,
+  readAt: null,
+  answersReadAt: null,
+  count: 0,
+  lastAnswerAt: null,
+  check: "hour",
+  suggestions: [],
+  held: null,
+  link: null,
+  madeBy: "owner",
+  signedInAs: null,
+  updatedAt: 0,
+  unseen: 0,
+  stopped: null,
+  closedAt: null,
+};
+const LINK = `https://forms.cloud.microsoft/Pages/ResponsePage.aspx?id=${FORM}`;
+const RESPONSES: MsFormResponses = {
+  rev: 1,
+  columns: [
+    { id: "name", label: "Name" },
+    { id: "q1", label: "Which night works?" },
+    { id: "done", label: "Completion time" },
+  ],
+  rows: [
+    ["Ava Thompson", "Tuesday", "2026-11-24 14:02"],
+    ["Marcus Lee", "Monday", "2026-11-24 13:40"],
+    ["Jordan Kim", "Tuesday", "2026-11-24 12:18"],
+  ],
+  count: 3,
+  cut: false,
+  at: Date.now(),
+  stale: false,
+  none: false,
+};
+
+function hostOf(view: MsFormView, over: Partial<MsFormHost> = {}): MsFormHost {
+  const same = () => vi.fn(async () => view);
+  return { get: same(), collect: same(), close: same(), mode: same(), check: same(), review: same(), responses: vi.fn(async () => RESPONSES), refresh: same(), seen: same(), watch: () => () => undefined, ...over };
+}
+const shell = (): CanvasShell => ({ review: vi.fn(), selection: vi.fn(), presence: vi.fn(), mode: vi.fn(), statusLine: vi.fn(), written: vi.fn(), detail: vi.fn(), openHistory: vi.fn(), held: vi.fn(), more: vi.fn(), ready: vi.fn() });
+let n = 0;
+function props(host: MsFormHost, half: MsFormState["half"] = "form"): CanvasBodyProps<MsFormState> & { host: MsFormHost } {
+  const item = { id: `msform-${++n}`, sessionId: "t1", workspaceId: "w1", kind: "msform", title: "Spring intramural sign-up", source: { at: "msform", host: "env", workspaceId: "w1", formId: FORM, tenant: "purdue0" }, state: "open", position: 0, rev: 0, createdAt: 0, updatedAt: 0 } as CanvasItem;
+  return { item, source: item.source, env: "local", state: { half }, setState: () => undefined, shell: shell(), host };
+}
+
+afterEach(cleanup);
+
+/** The bar, once the body has read the form (the two share the item's store). */
+async function bar(view: MsFormView, host = hostOf(view), half: MsFormState["half"] = "form") {
+  const p = props(host, half);
+  render(
+    <>
+      <Bar {...p} />
+      <Body {...p} />
+    </>,
+  );
+  await waitFor(() => expect(host.get).toHaveBeenCalled());
+  return { host, p };
+}
+
+describe("the bar", () => {
+  it("a draft offers Collect responses, his press", async () => {
+    const { host } = await bar(BASE);
+    const button = await screen.findByRole("button", { name: "Collect responses" });
+    await act(async () => void fireEvent.click(button));
+    expect(host.collect).toHaveBeenCalledOnce();
+  });
+
+  it("while collecting: the link, Copy link and Close form", async () => {
+    const view = { ...BASE, state: "collecting" as const, link: LINK, unseen: 2 };
+    const { host } = await bar(view);
+    expect(await screen.findByRole("link", { name: LINK.replace("https://", "") })).toBeTruthy();
+    expect(screen.getAllByRole("button", { name: "Copy link" }).length).toBeGreaterThan(0);
+    expect(screen.queryByRole("button", { name: "Collect responses" })).toBeNull();
+    await act(async () => void fireEvent.click(screen.getByRole("button", { name: "Close form" })));
+    expect(host.close).toHaveBeenCalledWith(false);
+  });
+
+  it("closed: when, and Reopen", async () => {
+    const view = { ...BASE, state: "closed" as const, link: LINK, closedAt: new Date(2026, 10, 24, 12, 0).getTime() };
+    const { host } = await bar(view);
+    expect((await screen.findByText(/^Closed /)).textContent).toContain("12:00");
+    await act(async () => void fireEvent.click(screen.getByRole("button", { name: "Reopen" })));
+    expect(host.close).toHaveBeenCalledWith(true);
+  });
+});
+
+describe("Responses", () => {
+  it("draws the answers from work.msforms.responses, with the choice question's bars, and marks them seen", async () => {
+    const view = { ...BASE, state: "collecting" as const, link: LINK, count: 3 };
+    const { host } = await bar(view, hostOf(view), "responses");
+    expect(await screen.findByText("Marcus Lee")).toBeTruthy();
+    expect(host.responses).toHaveBeenCalled();
+    expect(host.seen).toHaveBeenCalled();
+    expect(screen.getByRole("img").getAttribute("aria-label")).toBe("Which night works?: Monday 1, Tuesday 2");
+    expect(screen.getByText(/^3 responses/)).toBeTruthy();
+  });
+
+  it("says as of when the read is old", async () => {
+    const view = { ...BASE, state: "collecting" as const, link: LINK, count: 3 };
+    await bar(view, hostOf(view, { responses: vi.fn(async () => ({ ...RESPONSES, stale: true, at: Date.now() - 3_600_000 })) }), "responses");
+    expect((await screen.findByText(/^3 responses/)).textContent).toMatch(/as of /);
+  });
+});
+
+describe("the sums", () => {
+  it("finds the time column and the choice question by title, and counts its options", () => {
+    expect(timeColumnOf(RESPONSES)).toBe(2);
+    const chart = chartOf(BASE.questions, RESPONSES)!;
+    expect(chart.column).toBe(1);
+    expect(answerBarsOf(RESPONSES, chart)).toEqual([
+      { label: "Monday", count: 1 },
+      { label: "Tuesday", count: 2 },
+    ]);
+  });
+});

@@ -15,6 +15,7 @@ import { meetingCanvas } from "../meetings/canvas";
 import { formCanvas } from "../forms/canvas";
 import { dashboardCanvas } from "../dashboards/canvas";
 import { fileCanvas } from "../files/canvas";
+import { msformCanvas } from "../msforms/canvas";
 
 export type * from "./kind";
 export { defineCanvasKind } from "./kind";
@@ -43,6 +44,7 @@ export const CANVAS: Record<CanvasKind, CanvasKindDef> = {
   form: formCanvas,
   dashboard: dashboardCanvas,
   file: fileCanvas,
+  msform: msformCanvas,
 };
 
 /**

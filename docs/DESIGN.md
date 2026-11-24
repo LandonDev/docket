@@ -1407,6 +1407,19 @@ The kinds, each a hand-made body built from components/ui:
   form and Reopen are not. Answer bars are `chart-neutral`, 8px tall,
   square at the base and 4px round at the end, the count beside them in
   muted tabular text.
+- **Microsoft form.** The real Forms page in the Office-live guest, his
+  own to edit, beside our Responses. The bar holds the mode, then the 24px
+  segmented switch Form | Responses (the unseen count after Responses in
+  muted tabular text), then at the end: the stepper while agent changes
+  wait; Collect responses (the one primary) while a draft; while
+  collecting, the response link in `link` with Copy and Close form, the
+  address giving way to a worded Copy link under 600px; while closed, one
+  muted line "Closed 12:00 PM" with Reopen. Collect responses is held, as
+  Publish is; Close form and Reopen are not. Responses is our form's
+  Responses (forms/responses.tsx), its summary saying "as of" once when the
+  read is old. A change the agent made reloads a guest he has not typed in
+  for ten seconds; otherwise the state line says "Changed by the agent"
+  with Reload. More holds Open in Browser and Check for Answers.
 - **Compare and History.** A compare is read only: its bar has no mode,
   its tab is named for the item and the versions once, in the pickers.
   Side by side is the default from 420px a side. The list's rows are

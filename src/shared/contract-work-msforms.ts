@@ -104,6 +104,8 @@ export interface MsFormView {
   unseen: number
   /** what the carrier last could not finish, in words, until the next pass that did */
   stopped: string | null
+  /** when it last stopped taking answers */
+  closedAt: number | null
 }
 
 /** One row of the Forms view: ours and Microsoft's alike. */

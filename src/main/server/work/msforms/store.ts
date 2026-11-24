@@ -40,6 +40,8 @@ export interface MsFormRow {
   seenCount: number
   /** what the carrier last could not finish, in words */
   stopped: string | null
+  /** when it last stopped taking answers */
+  closedAt: number | null
   updatedAt: number
 }
 
@@ -69,6 +71,7 @@ export function ensureMsformsTables(db: DatabaseSync): void {
     signed_in_as TEXT,
     seen_count INTEGER NOT NULL DEFAULT 0,
     stopped TEXT,
+    closed_at INTEGER,
     updated_at INTEGER NOT NULL,
     PRIMARY KEY (workspace_id, form_id)
   )`)
@@ -120,6 +123,7 @@ function rowOf(r: Raw): MsFormRow {
     signedInAs: (r.signed_in_as as string | null) ?? null,
     seenCount: Number(r.seen_count),
     stopped: (r.stopped as string | null) ?? null,
+    closedAt: num(r.closed_at),
     updatedAt: Number(r.updated_at)
   }
 }
@@ -148,6 +152,7 @@ const COLUMNS: Record<keyof Omit<MsFormRow, 'workspaceId' | 'formId'>, [string, 
   signedInAs: ['signed_in_as', (v: string | null) => v],
   seenCount: ['seen_count', (v: number) => v],
   stopped: ['stopped', (v: string | null) => v],
+  closedAt: ['closed_at', (v: number | null) => v],
   updatedAt: ['updated_at', (v: number) => v]
 }
 
@@ -200,13 +205,14 @@ export class MsformsStore {
       signedInAs: null,
       seenCount: 0,
       stopped: null,
+      closedAt: null,
       ...row,
       updatedAt: at
     }
     this.db
       .prepare(
-        `INSERT INTO work_msforms (workspace_id, form_id, tenant, sector, title, folder, workbook, state, mode, settings, questions, rev, read_at, answers_read_at, count, last_id, last_answer_at, "check", suggestions, held, made_by, signed_in_as, seen_count, stopped, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `INSERT INTO work_msforms (workspace_id, form_id, tenant, sector, title, folder, workbook, state, mode, settings, questions, rev, read_at, answers_read_at, count, last_id, last_answer_at, "check", suggestions, held, made_by, signed_in_as, seen_count, stopped, closed_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT (workspace_id, form_id) DO NOTHING`
       )
       .run(
@@ -234,6 +240,7 @@ export class MsformsStore {
         full.signedInAs,
         full.seenCount,
         full.stopped,
+        full.closedAt,
         full.updatedAt
       )
     this.version(full.workspaceId, full.formId, full.rev, full.questions, full.madeBy)

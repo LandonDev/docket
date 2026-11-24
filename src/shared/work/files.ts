@@ -277,6 +277,8 @@ export function refKey(ref: CanvasSource | FolderRef, lib?: { key: string; path:
       return `place:${ref.id}`
     case 'thread':
       return 'thread'
+    case 'msform':
+      return `msform:${word(ref.workspaceId)}:${ref.formId}`
   }
 }
 

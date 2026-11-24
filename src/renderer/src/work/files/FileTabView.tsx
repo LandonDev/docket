@@ -26,6 +26,7 @@ import { keepItem } from "../canvas/fetched";
 import { flushedItem } from "../canvas/flush";
 import { liveLayer, STAGE_SHARE, useLiveState } from "../office/live/layer";
 import { LiveBody } from "../office/live/LiveBody";
+import { LiveCover } from "../office/live/cover";
 import { leaveLive } from "../office/live/leave";
 import { LiveControl, useLiveOf, type LiveDesktop } from "../office/live/LiveControl";
 import { APP_NAME, liveSourceOf, offersLive, switchTo, type LiveSetAnswer } from "../office/live/liveSwitch";
@@ -552,20 +553,23 @@ export function FileTabView({
           {item && live ? (
             <LiveBody itemId={item.id} ask={live.url} app={live.app} covered={(docked && shape.over) || sideOver || dropSide} full={full} />
           ) : item ? (
-            <CanvasPane
-              key={`${item.id}:${fresh}`}
-              item={item}
-              environmentId={workspace.environmentId}
-              feeds={feeds}
-              shell={shell}
-              {...(kinds ? { kinds } : {})}
-              historyOpen={!!historyItem}
-              onAsk={(selection: CanvasSelection) => {
-                shell.selection(null);
-                window.getSelection()?.removeAllRanges();
-                askWith(selection.chip);
-              }}
-            />
+            // A kind that mounts its own guest (a Microsoft form) is told whether the chat lies over the tab, as a live file is.
+            <LiveCover.Provider value={{ covered: (docked && shape.over) || sideOver || dropSide, full }}>
+              <CanvasPane
+                key={`${item.id}:${fresh}`}
+                item={item}
+                environmentId={workspace.environmentId}
+                feeds={feeds}
+                shell={shell}
+                {...(kinds ? { kinds } : {})}
+                historyOpen={!!historyItem}
+                onAsk={(selection: CanvasSelection) => {
+                  shell.selection(null);
+                  window.getSelection()?.removeAllRanges();
+                  askWith(selection.chip);
+                }}
+              />
+            </LiveCover.Provider>
           ) : (
             <ItemSkeleton />
           )}

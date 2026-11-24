@@ -1,14 +1,12 @@
-import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type KeyboardEvent, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type KeyboardEvent } from "react";
 import type { FormBody, FormQuestion, FormResponses, FormView } from "@shared/contract-work-forms";
 import { Check, ChevronDown, CircleDot, Copy, FileText, MoreHorizontal, Plus, TextCursor, Trash2, X, CaseSensitive } from "../../chrome/icons";
 import { BusyLabel, Button } from "../../components/ui/button";
-import { Checkbox } from "../../components/ui/checkbox";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "../../components/ui/dropdown-menu";
 import { Input, INPUT_FIELD_CLASS } from "../../components/ui/input";
 import { Skeleton } from "../../components/ui/skeleton";
 import { Switch } from "../../components/ui/switch";
 import { Textarea } from "../../components/ui/textarea";
-import { Table as DataTable, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../../components/ui/table";
 import { Tabs, TabsIndicator, TabsList, TabsTrigger, TABS_PILL_TRIGGER } from "../../components/ui/tabs";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../../components/ui/tooltip";
 import { Tip, TruncateTip } from "../../components/tip";
@@ -23,7 +21,9 @@ import { Table } from "../icons";
 import { AddOption } from "./AddOption";
 import { AddQuestion } from "./AddQuestion";
 import { linkFormHost, type FormHost } from "./host";
-import { answerBars, chartQuestion, liveView, optionDiff, plural, resolvePick, shownQuestions, submittedTime, TYPE_WORDS, type Pick, type Shown } from "./model";
+import { answerBars, chartQuestion, liveView, optionDiff, plural, resolvePick, shownQuestions, TYPE_WORDS, type Pick, type Shown } from "./model";
+import { ResponsesSkeleton, ResponseTable as SharedResponseTable } from "./responses";
+export { responseKeys } from "./responses";
 
 /**
  * The form kind (docs/agents/work-forms.md; the approved page is
@@ -894,117 +894,18 @@ function Responses({ view, host, store, item, shell }: { view: FormView; host: F
   return <ResponseTable view={view} got={got} item={item} shell={shell} />;
 }
 
-/**
- * Each response's own key: the sheet sends no id, so a row is known by what it holds, its answers and the moment it was
- * submitted. A newer answer arriving above it moves its row, never its key, so what he ticked stays ticked.
- */
-export function responseKeys(rows: readonly (readonly string[])[]): string[] {
-  // Two rows the same in every answer and to the second are told apart by which of them comes first.
-  const seen = new Map<string, number>();
-  return rows.map((row) => {
-    const key = row.join("\u001f");
-    const n = seen.get(key) ?? 0;
-    seen.set(key, n + 1);
-    return n ? `${key}\u001e${n}` : key;
-  });
-}
-
 function ResponseTable({ view, got, item, shell }: { view: FormView; got: FormResponses; item: Props["item"]; shell: CanvasShell }) {
-  const last = submittedTime(got.rows[0]?.at(-1) ?? "");
   const q = chartQuestion(view.body);
-  const bars = q ? answerBars(got, q) : [];
-  const max = Math.max(1, ...bars.map((b) => b.count));
-  // What he ticked, by each response's key, never its row: a new revision keeps the ones still there and drops the rest.
-  const keys = useMemo(() => responseKeys(got.rows), [got.rows]);
-  const [ticked, setPicked] = useState<ReadonlySet<string>>(new Set());
-  const picked = useMemo(() => {
-    const here = new Set(keys);
-    return new Set([...ticked].filter((k) => here.has(k)));
-  }, [ticked, keys]);
-  const table = useRef<HTMLTableElement>(null);
-  useEffect(() => {
-    const el = table.current;
-    if (!picked.size || !el) return shell.selection(null);
-    const rows = got.rows.filter((_, i) => picked.has(keys[i]!));
-    const head = got.columns.map((c) => c.label).join("\t");
-    shell.selection({
-      chip: { kind: "selection", label: `${plural(rows.length, "response")}, ${view.body.title}`, ref: view.sheet ?? item.source, quote: [head, ...rows.map((r) => r.join("\t"))].join("\n") },
-      rect: (el.querySelector("tr[data-picked]") ?? el).getBoundingClientRect(),
-    });
-    return () => shell.selection(null);
-  }, [shell, picked, got, keys, view.sheet, view.body.title, item.source]);
-  const toggle = (key: string): void =>
-    setPicked(() => {
-      const next = new Set(picked);
-      if (!next.delete(key)) next.add(key);
-      return next;
-    });
-  const all = got.rows.length > 0 && picked.size === keys.length;
   return (
-    <div data-form-responses className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-contain">
-      <p className="px-4 pt-3 text-[13px] leading-5 text-muted-foreground">
-        {plural(got.count, "response")}
-        {got.cut ? " shown, the newest; the sheet has them all" : ""}
-        {last ? `, the last ${dayTime(last)}` : ""}
-      </p>
-      {q && bars.length ? (
-        <div role="img" aria-label={`${q.label}: ${bars.map((b) => `${b.label} ${b.count}`).join(", ")}`} className="grid max-w-[560px] grid-cols-[minmax(0,max-content)_minmax(40px,1fr)_24px] items-center gap-x-3 gap-y-1.5 px-4 pt-3 pb-4 text-[13px] leading-5">
-          <span className="col-span-full mb-0.5 font-medium">{q.label}</span>
-          {bars.map((b) => (
-            <BarRow key={b.label} label={b.label} count={b.count} max={max} />
-          ))}
-        </div>
-      ) : null}
-      <div className="border-t border-border">
-        <DataTable ref={table} className="min-w-max leading-5">
-          <TableHeader>
-            <TableRow>
-              <TableHead className="w-4 pe-0 first:pl-4">
-                <Checkbox aria-label="Select all" checked={all} onCheckedChange={() => setPicked(all ? new Set() : new Set(keys))} />
-              </TableHead>
-              {got.columns.map((c, i) => (
-                <TableHead key={c.id} className={`last:pr-4 ${i === got.columns.length - 1 ? "text-end" : ""}`}>
-                  {c.label}
-                </TableHead>
-              ))}
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {got.rows.map((r, i) => (
-              <TableRow key={keys[i]} data-picked={picked.has(keys[i]!) || undefined} className={picked.has(keys[i]!) ? "bg-(--sel-bg)" : ""}>
-                <TableCell className="w-4 pe-0 first:pl-4">
-                  <Checkbox aria-label="Select" checked={picked.has(keys[i]!)} onCheckedChange={() => toggle(keys[i]!)} />
-                </TableCell>
-                {r.map((v, j) => (
-                  <Cell key={j} last={j === r.length - 1}>
-                    {j === r.length - 1 ? when(v) : v}
-                  </Cell>
-                ))}
-              </TableRow>
-            ))}
-          </TableBody>
-        </DataTable>
-      </div>
-    </div>
-  );
-}
-
-const when = (v: string): string => {
-  const t = submittedTime(v);
-  return t === null ? v : dayTime(t);
-};
-
-function Cell({ last, children }: { last: boolean; children: ReactNode }) {
-  return <TableCell className={`h-8 max-w-[320px] truncate last:pr-4 ${last ? "text-end text-muted-foreground" : ""}`}>{children}</TableCell>;
-}
-
-function BarRow({ label, count, max }: { label: string; count: number; max: number }) {
-  return (
-    <>
-      <span className="min-w-0 truncate">{label}</span>
-      <span className="h-2 origin-left rounded-e bg-(--chart-neutral)" style={{ width: `${(count / max) * 100}%` }} />
-      <span className="text-end text-xs text-muted-foreground tabular-nums">{count}</span>
-    </>
+    <SharedResponseTable
+      title={view.body.title}
+      got={got}
+      chart={q ? { label: q.label, bars: answerBars(got, q) } : null}
+      chipRef={view.sheet ?? item.source}
+      shell={shell}
+      timeColumn={got.columns.length - 1}
+      whole="the sheet has them all"
+    />
   );
 }
 
@@ -1024,17 +925,6 @@ export function FormSkeleton() {
       {pair}
       {pair}
       {pair}
-    </div>
-  );
-}
-
-function ResponsesSkeleton() {
-  return (
-    <div aria-busy="true" className="flex flex-col gap-3 p-4">
-      <Skeleton className="h-3 w-[40%]" />
-      <Skeleton className="h-3 w-[90%]" />
-      <Skeleton className="h-3 w-[90%]" />
-      <Skeleton className="h-3 w-[90%]" />
     </div>
   );
 }

@@ -54,7 +54,8 @@ export function viewOf(row: MsFormRow): MsFormView {
     signedInAs: row.signedInAs,
     updatedAt: row.updatedAt,
     unseen: Math.max(0, row.count - row.seenCount),
-    stopped: row.stopped
+    stopped: row.stopped,
+    closedAt: row.closedAt
   }
 }
 
@@ -89,7 +90,8 @@ export function readPatch(read: FormRead): Partial<MsFormRow> {
 /** Writes a read to the row; a change made in the page (not ours) is kept as a version by the page. */
 export function storeRead(ctx: MsCtx, row: MsFormRow, read: FormRead, o: { by?: Principal | 'page'; bump?: boolean; state?: MsFormRow['state']; stopped?: string | null } = {}): MsFormRow {
   const state = o.state ?? (row.state === 'draft' ? 'draft' : read.settings.accepting ? 'collecting' : 'closed')
-  return new MsformsStore(ctx.db).update(row.workspaceId, row.formId, { ...readPatch(read), state, stopped: o.stopped ?? null }, { by: o.by ?? 'page', bump: o.bump })
+  const closedAt = state === 'closed' ? (row.state === 'closed' ? row.closedAt : Date.now()) : null
+  return new MsformsStore(ctx.db).update(row.workspaceId, row.formId, { ...readPatch(read), state, closedAt, stopped: o.stopped ?? null }, { by: o.by ?? 'page', bump: o.bump })
 }
 
 /** A carrier stop said on the row, with the page as it then stood when the stop read it. */

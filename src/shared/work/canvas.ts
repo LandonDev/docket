@@ -8,7 +8,7 @@ import { PillarIdSchema, type HostId, type PillarId } from './ids'
  * and every pillar's contract read.
  */
 
-export const CANVAS_KINDS = ['mail', 'document', 'sheet', 'pdf', 'slides', 'media', 'browser', 'history', 'meeting', 'form', 'dashboard', 'file'] as const
+export const CANVAS_KINDS = ['mail', 'document', 'sheet', 'pdf', 'slides', 'media', 'browser', 'history', 'meeting', 'form', 'dashboard', 'file', 'msform'] as const
 export type CanvasKind = (typeof CANVAS_KINDS)[number]
 export const CanvasKindSchema = z.enum(CANVAS_KINDS)
 
@@ -25,7 +25,8 @@ export const CANVAS_PILLAR: Record<CanvasKind, PillarId> = {
   meeting: 'meetings',
   form: 'forms',
   dashboard: 'dashboards',
-  file: 'files'
+  file: 'files',
+  msform: 'msforms'
 }
 
 /** Where an item's truth lives. */
@@ -54,6 +55,8 @@ export type CanvasSource =
    * it as it reads a mail's file; only the fetcher differs.
    */
   | { at: 'mail'; threadId: string; messageId: string; partId: string; name: string; contentType?: string; size?: number; from?: 'chat' }
+  /** A Microsoft form (work-msforms.md): the job's row on `host` by Forms' own id. No file: the page is Microsoft's, opened on a Forms ticket. */
+  | { at: 'msform'; host: HostId; workspaceId: string; formId: string; tenant: string }
 
 export const CanvasSourceSchema = z.discriminatedUnion('at', [
   z.object({ at: z.literal('lifeos'), table: z.enum(['docs', 'sheets', 'outbox', 'calendarOps', 'projectDocs']), id: z.string().describe('Its LifeOS id.') }),
@@ -79,6 +82,13 @@ export const CanvasSourceSchema = z.discriminatedUnion('at', [
     contentType: z.string().max(200).optional(),
     size: z.number().int().nonnegative().optional().describe('Bytes.'),
     from: z.literal('chat').optional()
+  }),
+  z.object({
+    at: z.literal('msform'),
+    host: z.string(),
+    workspaceId: z.string().min(1).max(100),
+    formId: z.string().regex(/^[A-Za-z0-9_.-]{20,200}$/, "a Microsoft form's id"),
+    tenant: z.string().regex(/^[a-z0-9-]{1,63}$/, 'a tenant')
   })
 ])
 
