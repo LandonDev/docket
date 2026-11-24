@@ -18,7 +18,7 @@ Where he stands (the list or a person, and the search) is kept a workspace for t
 
 ## The ways in
 
-- **Mail**: work-kit v51's `MailKit.openPerson`: in the reader, an open message's sender (name and face) and each known person in its Details (From, To, Cc) is pressable when the address is one of the sector's people. TempCode's kit opens People on that address (`openWorkView {view: 'people', person: <address>}`), in the open view's workspace, else the active thread's. People reads the address against the list; an address no one there has is put in the search.
+- **Mail**: work-kit v51's `MailKit.openPerson`: in the reader, an open message's sender (name and face) and each known person in its Details (From, To, Cc) is pressable when the address is one of the sector's people: the mail client's `people` hooks read `people:directory` for its own sector (`work/mail/people.ts`), so work-kit's `PersonPress` knows her. TempCode's kit opens People on that address (`openWorkView {view: 'people', person: <address>}`), in the open view's workspace, else the active thread's. People reads the address against the list; an address no one there has is put in the search.
 - **Agenda**: a List row names the event's attendees who are the sector's people ("With Maya Chen, Tom Beck, and 2 more", `knownAttendees`), each name a button to their page. Week and Month are work-kit's and draw no attendees.
 - **A sent person chip** opens their page (`openerOf` in work/canvas/SentChips.tsx).
 

@@ -6,6 +6,7 @@ import { loadToast } from "../../components/ui/toaster";
 import { registry } from "../../lib/connection";
 import { workErrorWords } from "../../lib/workErrorWords";
 import { workOpenPort } from "../../lib/workSwitch";
+import { mailPeopleFor } from "./people";
 
 /**
  * TempCode's `MailClient` (work-kit/mail README, "The two seams"): LifeOS's
@@ -131,7 +132,9 @@ export function mailClientFor(env: string, convexUrl: string, scope: string): Ma
   const key = `${env}|${convexUrl}|${scope}`;
   let client = clients.get(key);
   if (!client) {
-    client = wrapClient(env, createLifeosMailClient({ convexUrl, write }));
+    // A sender or recipient who is one of the sector's people is a press into People (people.ts).
+    const people = mailPeopleFor(scope);
+    client = wrapClient(env, createLifeosMailClient({ convexUrl, write, ...(people ? { people } : {}) }));
     clients.set(key, client);
   }
   return client;

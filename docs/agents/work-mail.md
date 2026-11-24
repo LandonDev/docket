@@ -207,7 +207,12 @@ stay per workspace while the window lives (`MailPage`).
 
 A sender, and each known person in a message's Details, opens their page
 in People when the address is one of the sector's people (work-kit's
-`MailKit.openPerson`; [work-people.md](work-people.md)). People's Write
+`MailKit.openPerson`; [work-people.md](work-people.md)). Who is known is
+the mail client's `people` hooks (`work/mail/people.ts` `mailPeopleFor`):
+LifeOS's `people:directory` for the client's own sector, read live on the
+Mail view's session and indexed by lower-cased address; a client of every
+sector ("all", Settings) knows no one, and until the directory answers, or
+when LifeOS refuses it, every name stays text (W-48). People's Write
 opens a new mail here through the kit's `onMailto` (`work/mail/mailto.ts`).
 A draft asked for one job's workspace (`writeMail(draft, workspaceId)`, the
 Clash dialog's Running late) goes only to that workspace's Mail: the view
