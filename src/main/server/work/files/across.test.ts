@@ -77,6 +77,14 @@ describe('work.files.across', () => {
     expect(stat.entries[0]?.name).toBe('Plan.docx')
   })
 
+  it('says a desktop with no live link (asleep, off its VPN, TempCode closed) is not reachable now, in words a window reads as away', async () => {
+    Object.assign(box.ctx, { peer: { call: () => ({ call: async () => { throw new Error(`host offline: ${PC} has no live link to this host`) } }) } })
+    await expect(across(macKey, 'work.files.places')).rejects.toThrow(/^That computer is not reachable now\.$/)
+    // Any other refusal there passes as it was said.
+    Object.assign(box.ctx, { peer: { call: () => ({ call: async () => { throw new Error("this host's bridge is off for that host") } }) } })
+    await expect(across(macKey, 'work.files.places')).rejects.toThrow("this host's bridge is off for that host")
+  })
+
   it('asks nothing of a desktop whose binding is not live', async () => {
     setLiveBinding((id) => id !== PC)
     await expect(across(macKey, 'work.files.places')).rejects.toThrow(NOT_BOUND)

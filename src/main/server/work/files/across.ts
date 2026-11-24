@@ -21,6 +21,9 @@ let liveBinding: (envId: string) => boolean = () => true
 export const setLiveBinding = (fn?: (envId: string) => boolean): void => void (liveBinding = fn ?? (() => true))
 
 export const NOT_BOUND = "That computer's link to this host is stopped or removed."
+/** What the host link says of a desktop it cannot reach now. */
+const AWAY = /offline|no live link|not connected|connection closed|timed out/i
+
 export const ACROSS_WINDOW = 'Only your own window lists another computer through this host.'
 
 /** One listing call of a desktop the window cannot reach, run there for it. Places come back read only, named as he names that desktop. */
@@ -33,11 +36,18 @@ export async function filesAcross(ctx: WorkCtx, by: Caller, p: { workspaceId: st
   if (p.host === ctx.host) throw new Error('That is this host: ask it directly.')
   if (!liveBinding(p.host)) throw new Error(NOT_BOUND)
   // `ctx.peer` itself holds the call to a desktop the workspace may use ("May use this computer").
+  const name = hostReadOf(ctx)?.name?.(p.host) ?? null
   const far = ctx.peer.call({ scope: { sessionId: filesPaneOf(workspace.id), workspaceId: workspace.id }, signal } as never, p.host)
-  const answer = await far.call('files', p.method.slice('work.files.'.length), { ...p.params, workspaceId: workspace.id })
+  let answer: unknown
+  try {
+    answer = await far.call('files', p.method.slice('work.files.'.length), { ...p.params, workspaceId: workspace.id })
+  } catch (err) {
+    // Asleep, off its VPN or TempCode closed: it is not linked now. Said so, in words a window reads as away.
+    if (AWAY.test(err instanceof Error ? err.message : String(err))) throw new Error(`${name ?? 'That computer'} is not reachable now.`)
+    throw err
+  }
   if (p.method !== 'work.files.places') return answer
   const got = answer as FilesPlaces
-  const name = hostReadOf(ctx)?.name?.(p.host) ?? null
   // Nothing is changed there from here: a file opens as a copy made on this host.
   return { ...got, places: got.places.map(({ makes: _, ...place }) => ({ ...place, can: [] })), ...(name ? { name } : {}) }
 }

@@ -13,6 +13,11 @@ type FilesLink = Pick<Link, "request" | "onPush" | "onOpen">;
 const through = new Map<string, { via: string; workspaceId: string }>();
 const ACROSS: ReadonlySet<string> = new Set(FILES_ACROSS);
 
+/** A far desktop's name as the host in between last said it, so a line about it names it while it is away. */
+const names = new Map<string, string>();
+export const farName = (link: string): string | undefined => names.get(link);
+export const keepFarName = (link: string, name: string | undefined): void => void (name && names.set(link, name));
+
 /** The window reaches `link` only through `via`, the host of the workspace being shown. */
 export const reachThrough = (link: string, via: string, workspaceId: string): void => void through.set(link, { via, workspaceId });
 

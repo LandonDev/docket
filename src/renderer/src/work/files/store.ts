@@ -8,7 +8,7 @@ import { LOCAL_ENVIRONMENT_ID, registry } from "../../lib/connection";
 import { refusalWords } from "../../lib/settingsHome";
 import type { WorkspaceMeta } from "../../lib/tcserver/types";
 import { linkIdOfHost, localHostId, windowDesktops, workspaceSettings } from "../shell/actions";
-import { filesLink, reachThrough } from "./farLink";
+import { farName, filesLink, keepFarName, reachThrough } from "./farLink";
 import {
   clampDock,
   DOCK,
@@ -134,7 +134,7 @@ export function useReach(workspace: WorkspaceMeta, attempt: number): Reach | nul
       const ask = (link: string): void => {
         const mine = (asked.get(link) ?? 0) + 1;
         asked.set(link, mine);
-        let name = registry.environment(link)?.name ?? link;
+        let name = registry.environment(link)?.name ?? farName(link) ?? link;
         const desktop = far.includes(link) || desktops.some((d) => d.link === link);
         const current = (): boolean => live && asked.get(link) === mine;
         const failed = (err: unknown): void => {
@@ -150,6 +150,7 @@ export function useReach(workspace: WorkspaceMeta, attempt: number): Reach | nul
           settle();
           if (!current()) return;
           name = answer.name ?? name;
+          keepFarName(link, answer.name);
           reads.set(link, { link, name, desktop, wire, answer });
           paint();
           if (!reading(answer)) return;
