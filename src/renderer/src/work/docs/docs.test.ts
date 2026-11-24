@@ -16,7 +16,7 @@ const said = vi.fn();
 vi.mock("../../components/ui/toaster", () => ({ loadToast: async () => ({ message: said }) }));
 
 const { changeId, decided, reviewOf } = await import("./review");
-const { NOT_SENT, docHost, relaySocket, servedBy, storedAll } = await import("./host");
+const { NOT_SENT, NOT_TAKEN, docHost, frameHead, relaySocket, relayTiming, servedBy, storedAll } = await import("./host");
 const { docThreads } = await import("./threads");
 const { presenceOf, undoWritten, writtenLine, CHANGED_SINCE, UNDO_ELSEWHERE } = await import("./DocumentCanvas");
 
@@ -156,88 +156,132 @@ describe("the relayed socket", () => {
     expect(link.request.mock.calls.find(([m]) => m === "work.docs.recv")?.[2]).toEqual({ timeoutMs: 45_000 });
   });
 
-  it("a close sends what waits behind a send in flight before the host's socket closes; the flush asks the host to store after the last frame", async () => {
+  /** Hocuspocus frames as the provider and the service write them: the address, the type, then a step or a flag. */
+  const frame = (type: number, next: number, ...rest: number[]) => new Uint8Array([2, 100, 49, type, next, ...rest]);
+  const state = () => frame(0, 1, 0); // sync step 2: the window's state the host lacked
+  const update = (n: number) => frame(0, 2, n); // an update
+  const applied = (yes = true) => btoa(String.fromCharCode(...frame(8, yes ? 1 : 0)));
+  const label = (f: string) => {
+    const b = [...atob(f)].map((c) => c.charCodeAt(0));
+    return b[3] === 0 ? (b[4] === 1 ? "state" : `update ${b[5]}`) : String.fromCharCode(...b);
+  };
+  /** A host that hands down what the test gives it, when it gives it. */
+  const fakeHost = () => {
+    const inbox: string[] = [];
+    let wake: () => void = () => undefined;
     const calls: string[] = [];
-    let release: () => void = () => undefined;
-    const held = new Promise<void>((resolve) => (release = resolve));
+    let hold: Promise<void> | null = null;
     link.request.mockImplementation(async (method, params) => {
       if (method === "work.docs.connect") return { socket: "s".repeat(24) };
-      if (method === "work.docs.recv") return new Promise(() => undefined);
+      if (method === "work.docs.recv") {
+        while (!inbox.length) await new Promise<void>((resolve) => (wake = resolve));
+        return { frames: inbox.splice(0) };
+      }
       if (method === "work.docs.send") {
-        calls.push(`send ${(params.frames as string[]).map((f) => atob(f)).join(",")}${params.stored ? " stored" : ""}`);
-        if (calls.length === 1) await held;
+        if (params.stored) calls.push("stored");
+        else {
+          calls.push(...(params.frames as string[]).map(label));
+          if (hold) await hold;
+        }
         return { ok: true };
       }
       calls.push(method);
       return { ok: true };
     });
-    const Socket = relaySocket("env_box", { at: "lifeos", table: "docs", id: "d1" });
+    return {
+      calls,
+      down: (...frames: string[]) => {
+        inbox.push(...frames);
+        wake();
+      },
+      hold: (until: Promise<void> | null) => void (hold = until),
+    };
+  };
+  const opened = async (Socket: new (url: string) => WebSocket) => {
     const ws = new Socket("ws://x/w/doc/d1");
     await new Promise((resolve) => ws.addEventListener("open", resolve));
     await new Promise((resolve) => setTimeout(resolve, 0));
-    ws.send(new TextEncoder().encode("a"));
-    ws.send(new TextEncoder().encode("b"));
-    ws.send(new TextEncoder().encode("c"));
-    const flushed = storedAll(Socket);
-    release();
+    return ws;
+  };
+
+  it("the flush asks the host to store only once the service has applied every update the socket sent, its own state first", async () => {
+    const h = fakeHost();
+    const Socket = relaySocket("env_box", { at: "lifeos", table: "docs", id: "d1" });
+    const ws = await opened(Socket);
+    let done = false;
+    const flushed = storedAll(Socket).then(() => void (done = true));
+    // A new socket that has not sent its own state: nothing it holds is known to be there.
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(done).toBe(false);
+    ws.send(state());
+    ws.send(update(1));
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(done).toBe(false);
+    // The first applied, the second not yet.
+    h.down(applied());
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(done).toBe(false);
+    h.down(applied());
     await flushed;
-    expect(calls).toEqual(["send a", "send b,c", "send  stored"]);
-    // Typed, then closed at once: the frames go up, then the close.
-    calls.length = 0;
-    let again: () => void = () => undefined;
-    const second = new Promise<void>((resolve) => (again = resolve));
-    link.request.mockImplementation(async (method, params) => {
-      if (method === "work.docs.send") {
-        calls.push(`send ${(params.frames as string[]).map((f) => atob(f)).join(",")}`);
-        if (calls.length === 1) await second;
-        return { ok: true };
-      }
-      calls.push(method);
-      return { ok: true };
-    });
-    ws.send(new TextEncoder().encode("d"));
-    ws.send(new TextEncoder().encode("e"));
-    ws.close();
-    expect(ws.readyState).toBe(3);
-    again();
-    await vi.waitFor(() => expect(calls).toEqual(["send d", "send e", "work.docs.close"]));
-    // A closed socket has nothing left to store.
-    await storedAll(Socket);
-    expect(calls).toHaveLength(3);
+    expect(h.calls).toEqual(["state", "update 1", "stored"]);
   });
 
-  it("the flush fails when a send fails or nothing is connected, and passes again once a later store is confirmed", async () => {
-    let refuse = true;
-    link.request.mockImplementation(async (method, params) => {
-      if (method === "work.docs.connect") return { socket: "s".repeat(24) };
-      if (method === "work.docs.recv") return new Promise(() => undefined);
-      if (method === "work.docs.send" && refuse && (params.frames as string[]).length) throw new Error("host offline");
-      return { ok: true };
-    });
+  it("a close sends what waits behind a send in flight before the host's socket closes", async () => {
+    const h = fakeHost();
     const Socket = relaySocket("env_box", { at: "lifeos", table: "docs", id: "d1" });
-    const ws = new Socket("ws://x/w/doc/d1");
-    await new Promise((resolve) => ws.addEventListener("open", resolve));
-    await new Promise((resolve) => setTimeout(resolve, 0));
-    ws.send(new TextEncoder().encode("a"));
-    // The send fails, the socket closes, and what it carried never reached the host: the flush says so.
-    await expect(storedAll(Socket)).rejects.toThrow("host offline");
+    const ws = await opened(Socket);
+    let release: () => void = () => undefined;
+    h.hold(new Promise<void>((resolve) => (release = resolve)));
+    ws.send(update(1));
+    ws.send(update(2));
+    ws.send(update(3));
+    ws.close();
     expect(ws.readyState).toBe(3);
-    await expect(storedAll(Socket)).rejects.toThrow("host offline");
-    // The provider's next socket, not connected yet: still not stored.
-    refuse = false;
-    let connect: (v: { socket: string }) => void = () => undefined;
-    link.request.mockImplementation(async (method) => {
-      if (method === "work.docs.connect") return new Promise((resolve) => (connect = resolve));
-      if (method === "work.docs.recv") return new Promise(() => undefined);
-      return { ok: true };
-    });
-    const again = new Socket("ws://x/w/doc/d1");
-    await expect(storedAll(Socket)).rejects.toThrow(NOT_SENT);
-    connect({ socket: "t".repeat(24) });
-    await new Promise((resolve) => again.addEventListener("open", resolve));
-    // Connected and stored: the loss is behind it.
-    await expect(storedAll(Socket)).resolves.toBeUndefined();
-    await expect(storedAll(Socket)).resolves.toBeUndefined();
+    release();
+    await vi.waitFor(() => expect(h.calls).toEqual(["update 1", "update 2", "update 3", "work.docs.close"]));
+  });
+
+  it("the flush fails when a send fails, when the host refuses an update, or when the socket never sends its state; a later confirmed store passes", async () => {
+    relayTiming.syncWaitMs = 150;
+    try {
+      let refuse = true;
+      link.request.mockImplementation(async (method, params) => {
+        if (method === "work.docs.connect") return { socket: "s".repeat(24) };
+        if (method === "work.docs.recv") return new Promise(() => undefined);
+        if (method === "work.docs.send" && refuse && (params.frames as string[]).length) throw new Error("host offline");
+        return { ok: true };
+      });
+      const Socket = relaySocket("env_box", { at: "lifeos", table: "docs", id: "d1" });
+      const ws = await opened(Socket);
+      ws.send(update(1));
+      // The send fails, the socket closes, and what it carried never reached the host: the flush says so.
+      await expect(storedAll(Socket)).rejects.toThrow("host offline");
+      expect(ws.readyState).toBe(3);
+      await expect(storedAll(Socket)).rejects.toThrow("host offline");
+      // The provider's next socket: open, but its own state never goes up in time.
+      refuse = false;
+      const h = fakeHost();
+      const again = await opened(Socket);
+      await expect(storedAll(Socket)).rejects.toThrow(NOT_SENT);
+      // It sends its state and hears it applied: the loss is behind it.
+      again.send(state());
+      h.down(applied());
+      await expect(storedAll(Socket)).resolves.toBeUndefined();
+      expect(h.calls.filter((c) => c === "stored")).toHaveLength(1);
+      // An update the host refused (a read-only view): not stored.
+      again.send(update(2));
+      h.down(applied(false));
+      await expect(storedAll(Socket)).rejects.toThrow(NOT_TAKEN);
+    } finally {
+      relayTiming.syncWaitMs = 6000;
+    }
+  });
+
+  it("reads a frame's head as Hocuspocus writes it, and nothing from bytes that are not one", () => {
+    expect(frameHead(state())).toEqual({ type: 0, step: 1, value: null });
+    expect(frameHead(frame(8, 1))).toEqual({ type: 8, step: null, value: 1 });
+    expect(frameHead(new Uint8Array([97]))).toBeNull();
+    expect(frameHead(new Uint8Array([]))).toBeNull();
   });
 
   it("a document another host serves names that host", () => {
