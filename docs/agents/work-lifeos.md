@@ -213,7 +213,7 @@ once too. A switch back to a job thus asks the host nothing and LifeOS
 nothing before it paints.
 
 A launch asks for a session's JWT at once when the host's last status, in
-any launch, said connected (`work.lifeos.connected.v1` in localStorage, set
+any launch, said connected (the localStorage key `CONNECTED_KEY` in work/shell/lifeos.ts, set
 and cleared by each status): the JWT goes out when the socket opens, beside
 the status ask, not behind it. A status that then says otherwise closes
 what it opened. `useLifeosSession` gives one object while nothing changes.
