@@ -24,25 +24,44 @@ type Listener = () => void;
 const statuses = new Map<string, LifeosStatus>();
 const statusListeners = new Set<Listener>();
 const watched = new Map<string, () => void>();
+/** Hosts whose last status ask went unanswered while the status is still unknown: no bones for them, a line with Retry. */
+const unanswered = new Set<string>();
 
 function putStatus(environmentId: string, status: LifeosStatus): void {
   statuses.set(environmentId, status);
+  unanswered.delete(environmentId);
   for (const listener of statusListeners) listener();
 }
+
+function markUnanswered(environmentId: string, on: boolean): void {
+  if (unanswered.has(environmentId) === on) return;
+  if (on) unanswered.add(environmentId);
+  else unanswered.delete(environmentId);
+  for (const listener of statusListeners) listener();
+}
+
+/** An answer that never came: a wait that ran out, or the link that dropped under the ask. */
+const isSilence = (err: unknown): boolean => {
+  const name = (err as { name?: string } | null)?.name;
+  return name === "ConnectionLostError" || name === "TimeoutError";
+};
 
 /** Ask one host for its LifeOS status, and keep it from the push from then on. */
 export function watchLifeos(environmentId: string): void {
   if (watched.has(environmentId)) return;
   const link = registry.linkOf(environmentId);
   const ask = (): void => {
+    // An ask that is out draws bones again, even after one that went unanswered.
+    markUnanswered(environmentId, false);
     link
       .request<LifeosStatus>("work.lifeos.status")
       .then((status) => putStatus(environmentId, status))
       // A host that refused (Work off, or a build from before Work) says so: never "signed out", which asks for a sign-in
-      // that cannot help. A host out of reach stays unknown until its link opens again and it is asked afresh.
+      // that cannot help. An ask that went unanswered leaves the status unknown and is marked, so a screen says so
+      // with Retry (`useLifeosUnanswered`); the link's next open asks afresh on its own.
       .catch((err: unknown) => {
-        const name = (err as { name?: string } | null)?.name;
-        if (name !== "ConnectionLostError" && name !== "TimeoutError") putStatus(environmentId, { lifeos: { state: "off" }, keys: [] });
+        if (!isSilence(err)) putStatus(environmentId, { lifeos: { state: "off" }, keys: [] });
+        else if (!statuses.has(environmentId)) markUnanswered(environmentId, true);
       });
   };
   const offPush = link.onPush((push) => {
@@ -59,7 +78,30 @@ export function watchLifeos(environmentId: string): void {
 /** Ask one host for its LifeOS status now (Retry on "LifeOS did not answer"); rejects when the host does not answer. */
 export async function refreshLifeos(environmentId: string): Promise<void> {
   watchLifeos(environmentId);
-  putStatus(environmentId, await registry.linkOf(environmentId).request<LifeosStatus>("work.lifeos.status"));
+  try {
+    putStatus(environmentId, await registry.linkOf(environmentId).request<LifeosStatus>("work.lifeos.status"));
+  } catch (err) {
+    if (isSilence(err) && !statuses.has(environmentId)) markUnanswered(environmentId, true);
+    throw err;
+  }
+}
+
+/** Whether a host's status is unknown because its last ask went unanswered while its link stayed open: no bones then. */
+export function useLifeosUnanswered(environmentId: string | null | undefined): boolean {
+  return useSyncExternalStore(
+    (fn) => {
+      statusListeners.add(fn);
+      return () => void statusListeners.delete(fn);
+    },
+    () => (environmentId ? unanswered.has(environmentId) : false),
+  );
+}
+
+/** A host whose status ask went unanswered, by hand: a test's or a preview's seam. */
+export function setLifeosUnanswered(environmentId: string): void {
+  watched.set(environmentId, () => {});
+  statuses.delete(environmentId);
+  markUnanswered(environmentId, true);
 }
 
 /** A host's LifeOS status; null until it answers. */
@@ -236,6 +278,25 @@ export function sessionFailure(state: LifeosStateName, withheld?: boolean): stri
 }
 
 /**
+ * The LifeOS state a host's failure text names, or null for any other cause: the host's own sentences for a LifeOS it
+ * could not ask (`UNAVAILABLE_WORDS` in src/main/server/work/lifeos/session.ts) and an answer that never came. A host
+ * that sends such a reason inside an answer (Waiting on's days) is worded by `sessionFailure` from it, never verbatim.
+ */
+export function lifeosStateOf(reason: string): LifeosStateName | null {
+  for (const [form, state] of STATE_WORDS) if (form.test(reason)) return state;
+  return null;
+}
+
+const STATE_WORDS: [RegExp, LifeosStateName][] = [
+  [/work is off on this host/i, "off"],
+  [/not signed in to lifeos/i, "signed-out"],
+  [/lifeos sign-in waits for approval/i, "pairing"],
+  [/lifeos is still connecting/i, "connecting"],
+  [/lifeos refused this host's sign-in/i, "refused"],
+  [/lifeos is unreachable|\btimed out\b|^timeout\b|no answer in \d|fetch failed|\b(ECONNREFUSED|ECONNRESET|EHOSTUNREACH|ENETUNREACH|ETIMEDOUT)\b/i, "unreachable"],
+];
+
+/**
  * Retry on the view frame's line: the host's status asked afresh, then, if
  * it says connected, the session's JWT asked again. The JWT can fail while
  * the host says connected, and a status that did not change starts nothing.
@@ -288,6 +349,7 @@ export function resetLifeos(): void {
   for (const off of watched.values()) off();
   watched.clear();
   statuses.clear();
+  unanswered.clear();
   for (const key of [...sessions.keys()]) closeSession(key);
   for (const timer of closing.values()) clearTimeout(timer);
   closing.clear();

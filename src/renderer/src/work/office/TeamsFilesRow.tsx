@@ -67,8 +67,9 @@ export function TeamsFilesRow({ link, title, host, editable }: { link: Link | nu
   const [dialog, setDialog] = useState<{ kind: "add" } | { kind: "web"; library: TeamsLibrary } | null>(null);
   const value = read.value;
   const add = editable && value ? (
-    // Its words end on the controls' edge, as "Open the digest" does: the ghost's 10px inset hangs past it.
-    <Button variant="ghost" size="sm" className="-me-2.5" onClick={() => setDialog({ kind: "add" })}>
+    // A ghost press over a column of ghost presses (Remove) and switches: its box ends on the column's edge as theirs do,
+    // so its words end where Remove's do (plan §3.1). Never pulled past the edge, as a press over a column of selects is.
+    <Button variant="ghost" size="sm" onClick={() => setDialog({ kind: "add" })}>
       Add folder…
     </Button>
   ) : undefined;

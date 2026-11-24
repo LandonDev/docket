@@ -8,13 +8,17 @@ import { corpusSignatures, corpusThreads, createFixtureMailClient } from "work-k
 const lifeos = vi.hoisted(() => ({
   state: { environmentId: "local", sector: null, client: null as unknown, state: "signed-out", withheld: undefined as true | undefined },
   status: { lifeos: { state: "signed-out" } } as { lifeos: { state: string } } | null,
+  unanswered: false,
   reopen: vi.fn(async () => {}),
+  refresh: vi.fn(async () => {}),
 }));
 vi.mock("../shell/lifeos", async (real) => ({
   sessionFailure: ((await real()) as typeof import("../shell/lifeos")).sessionFailure,
   useLifeosSession: () => lifeos.state,
   useLifeosStatus: () => lifeos.status,
+  useLifeosUnanswered: () => lifeos.unanswered,
   reopenLifeos: lifeos.reopen,
+  refreshLifeos: lifeos.refresh,
 }));
 const link = vi.hoisted(() => ({ transport: "open" }));
 vi.mock("../../lib/connection", () => ({ useEnvironmentStatus: () => link, registry: { environment: () => ({ name: "the box" }), retry: vi.fn() } }));
@@ -59,6 +63,7 @@ describe("Mail's settings on the Work settings page", () => {
   afterEach(() => {
     at("signed-out", "signed-out");
     link.transport = "open";
+    lifeos.unanswered = false;
   });
 
   it("say LifeOS did not answer in red with Retry, never signed out, when the host cannot reach it", () => {
@@ -92,8 +97,19 @@ describe("Mail's settings on the Work settings page", () => {
     first.unmount();
     link.transport = "offline";
     render(<Section environmentId="local" />);
-    expect(screen.getByText("the box is not connected")).toBeTruthy();
+    expect(screen.getByText("The box is not connected")).toBeTruthy();
     expect(screen.getByRole("button", { name: "Retry" })).toBeTruthy();
+  });
+
+  /** Sol round 3 P1: a first status ask that timed out while the link stayed open is said, with Retry, never bones for good. */
+  it("name the host that did not answer the status ask, in red with Retry that asks it again", () => {
+    at("connecting", null);
+    lifeos.unanswered = true;
+    render(<Section environmentId="local" />);
+    expect(screen.queryByLabelText("Loading")).toBeNull();
+    expect(screen.getByRole("alert").textContent).toBe("The box did not answer");
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    expect(lifeos.refresh).toHaveBeenCalledWith("local");
   });
 
   it("say a refused sign-in as refused, with Sign in, and a sign-in that waits with no press", () => {

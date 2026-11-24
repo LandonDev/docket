@@ -4,16 +4,17 @@
 // Mail with LifeOS signed out), and `elsewhere` (on, from a computer whose key cannot switch the box: the switch says so and the
 // box's controls are gone), and `nowhere` (on, from a key that may switch no host, a phone's or /ui: no switch, the line
 // says where), and `unreachable` (on, LifeOS not answering the box: Mail says "LifeOS did not answer" with Retry, never
-// signed out). Rendered by nothing in the app.
+// signed out), and `unanswered` (on, the box's first LifeOS status ask timed out on an open link: Mail says "The box did
+// not answer" with Retry, never bones for good). Rendered by nothing in the app.
 import { Page } from "../../components/page";
 import { setWorkOn } from "../../lib/workSwitch";
 import { seedDigestHost } from "../../work/digest/store";
-import { setLifeosStatus } from "../../work/shell/lifeos";
+import { setLifeosStatus, setLifeosUnanswered } from "../../work/shell/lifeos";
 import { answerAs, asGivenComputer, JOB, Unsettled } from "../../work/kit.preview";
 import { workDigestChunk, workShellChunk } from "../chunks";
 import { WorkPage } from "./Work";
 
-type State = "off" | "on" | "elsewhere" | "nowhere" | "unreachable";
+type State = "off" | "on" | "elsewhere" | "nowhere" | "unreachable" | "unanswered";
 
 const NOW = Date.now();
 // What each host says, by method; a method it does not know is refused, which the page draws as that section's error.
@@ -55,7 +56,8 @@ export function WorkSettingsPreview({ state = "on" }: { state?: State }) {
     if (state !== "off") for (const id of ["local", "mac"]) setWorkOn(id, true);
     // LifeOS is signed out on the box (Connections holds the sign-in): Mail's section says so in one line, and the
     // sectors LifeOS has are not listed. A signed-in LifeOS would open a session a static page cannot.
-    setLifeosStatus("local", state === "unreachable" ? { lifeos: { state: "unreachable", since: NOW - 600_000, error: "fetch failed" }, keys: [] } : { lifeos: { state: "signed-out" }, keys: [] });
+    if (state === "unanswered") setLifeosUnanswered("local");
+    else setLifeosStatus("local", state === "unreachable" ? { lifeos: { state: "unreachable", since: NOW - 600_000, error: "fetch failed" }, keys: [] } : { lifeos: { state: "signed-out" }, keys: [] });
     for (const id of ["local", "mac"]) seedDigestHost(id, { settings: { at: "07:30", zone: "America/Chicago", levels: {}, nextAt: NOW + 20 * 3_600_000 } });
   }
   return (

@@ -160,8 +160,9 @@ describe("a code workspace with no sector, LifeOS signed out", () => {
 
 describe("a code workspace with no sector, LifeOS not signed out (Sol round 2 P1)", () => {
   const status = (answer: () => Promise<unknown>) => {
-    setWorkOn("env_box", true);
+    // The link first: turning Work on wakes every store that watches it (the outbox's among them), and each asks the host.
     vi.spyOn(registry, "linkOf").mockReturnValue({ environmentId: "env_box", connected: true, request: vi.fn(answer), onPush: () => () => {}, onOpen: () => () => {} } as never);
+    setWorkOn("env_box", true);
   };
 
   it("draws the sector row's bones while the host's status is on its way, never the signed-out line", async () => {
@@ -172,6 +173,31 @@ describe("a code workspace with no sector, LifeOS not signed out (Sol round 2 P1
       await act(async () => void (await new Promise((r) => setTimeout(r, 0))));
       expect(screen.queryByText("Not signed in to LifeOS")).toBeNull();
       expect(screen.getByLabelText("Loading")).toBeTruthy();
+    } finally {
+      transport.now = null;
+    }
+  });
+
+  /** Sol round 3 P1: a first status ask that timed out on an open link stops the bones and names the host with Retry. */
+  it("names the host whose first status ask timed out, and Retry asks again until the sector row shows", async () => {
+    let reply: () => Promise<unknown> = () => Promise.reject(Object.assign(new Error("no answer in 15 s"), { name: "TimeoutError" }));
+    status(() => reply());
+    vi.spyOn(registry, "environment").mockReturnValue({ id: "env_box", name: "the box" } as never);
+    transport.now = "open";
+    try {
+      render(<CodeWorkspaceSector workspaceId="bare" />);
+      await act(async () => void (await new Promise((r) => setTimeout(r, 0))));
+      expect(screen.queryByLabelText("Loading")).toBeNull();
+      expect(screen.getByRole("alert").textContent).toBe("The box did not answer");
+      reply = async () => ({ lifeos: { state: "connected", ownerId: "landon", since: 1 }, keys: [] });
+      await act(async () => {
+        fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+        await new Promise((r) => setTimeout(r, 0));
+      });
+      expect(screen.queryByRole("alert")).toBeNull();
+      expect(screen.getByText("Sector")).toBeTruthy();
+      // The session the connected status opens lands before the reset, so nothing of it reaches the next test.
+      await act(async () => void (await new Promise((r) => setTimeout(r, 0))));
     } finally {
       transport.now = null;
     }

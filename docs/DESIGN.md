@@ -1671,7 +1671,9 @@ Around the canvas:
   row that opens Thread defaults. "Where it runs" names the host new Work
   workspaces are made on (only with two or more hosts with Work on); each
   desktop host's folders are a section of their own, "Folders" or, with
-  two hosts, "Folders on <host>", Add folder… at the heading's end;
+  two hosts, "Folders on <host>", Add folder… at the heading's end, its
+  box on the column's edge as the Remove presses' are, so their words end
+  on one edge;
   computer use is one switch per desktop host on each workspace's page,
   and for a key that may not change them one line says so ("Computer use
   is changed from a computer that manages the box"). A key that may switch
@@ -1681,8 +1683,14 @@ Around the canvas:
   bones while the answer is out; "Not signed in to LifeOS" (or the refused
   sign-in) with Sign in at its end opening Settings → Connections only when
   the host says so; "LifeOS did not answer" in red with Retry; a host never
-  heard from by name with Retry; a computer kept from LifeOS, a sign-in that
-  waits and Work off with no press.
+  heard from by name with Retry; a host whose link is open but whose
+  status ask went unanswered, "<Host> did not answer" in red with Retry
+  (bones are for an ask still out, never one that timed out); a computer
+  kept from LifeOS, a sign-in that waits and Work off with no press. A
+  workspace's Waiting on words its days' failed read from the cause the
+  host sent, in the same words ("Not signed in to LifeOS"; "LifeOS did not
+  answer" for a wait alone), with Retry at the row's end; the routine's
+  switch under it stays usable.
 - **The Files place** (`work/files/`, the Files row): the finder with
   tabs, under the app's strip in the view's own frame. Three regions.
   The **sidebar** is 200px on `sidebar` with a hairline at its right, 8px
@@ -2397,7 +2405,9 @@ Around the canvas:
   end their amounts 48px in (the paperclip's room), Owed and To confirm
   keep their 120px for their presses, Owed's who and what wrap as one run
   of words rather than cut beside Paid (whose name says both), and Month or Year moves to two
-  ticked rows at the head of More, so Add and More stay in the header. To confirm leads the column while anything waits: a
+  ticked rows at the head of More, so Add and More stay in the header. The 520px is the header's
+  content box, inside its padding, for both the toggle's container query and More's measure
+  (`headIsNarrow`), so at no width is the choice in neither. To confirm leads the column while anything waits: a
   row each, a 32px picture (6px corners on the image outline, the receipt
   glyph where there is none), who or the file's name in foreground with
   the date 4px after it in 12px muted (the year only when it is not this

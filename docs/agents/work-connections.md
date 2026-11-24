@@ -18,6 +18,8 @@ while Work is on for some host).
   word (Ready: the muted check, since "Working" is a running thread; Needs you: amber; Broken: red) and one
   line after it, then when it lapses ("Ends Feb 17, 2027, 1:22 AM": US
   words, local time, "today" and "tomorrow" by the calendar) and the fix.
+  A row that ends on a date is a `PageRow wide`: under 480px of page its
+  date and fix take a line under the words, which keep their room.
   The window also words a sync or a lost connection's time from the row's
   instant, such as "Synced 2:14 PM".
 - A row the pillar marks `shared` (a LifeOS source or a Google consent,

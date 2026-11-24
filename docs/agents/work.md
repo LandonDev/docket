@@ -239,7 +239,9 @@ Settings → Work.
   the frame draws the sign-in instead of the view; unreachable, one state
   line over it.
 - **The LifeOS session** (work/shell/lifeos.ts): `useLifeosStatus(env)`
-  (`work.lifeos.status` and the `work.lifeos` push) and
+  (`work.lifeos.status` and the `work.lifeos` push; null while unknown, and
+  `useLifeosUnanswered(env)` true when the ask timed out on an open link,
+  so a screen says so with Retry, `refreshLifeos`, never bones for good) and
   `useLifeosSession(env, sector)`, a `ConvexReactClient` of the screen's
   own on the address `work.lifeos.jwt` answers (approve), fed narrowed
   JWTs; `useLifeosQuery(session, "module:fn", args)` is a live query.

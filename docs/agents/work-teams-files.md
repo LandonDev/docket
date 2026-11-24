@@ -552,7 +552,7 @@ The Files view of before (`src/renderer/src/work/office/view.ts`,
 
 Settings → Work: a section **Folders** (with two hosts, **Folders on <host>**) for
 each Mac or Windows host with Work on (`TeamsFilesRow`), Add folder… at its heading's
-end: each library found or added, by team, with its
+end, its box on the column's edge as Remove's: each library found or added, by team, with its
 folder; a found one has a switch, an added one Remove. Add web link… stores
 the address. Live Office uses a direct web folder address. Add folder… adds any folder, a network drive's too: typed (the hint is `J:\Shared` on
 Windows) or picked with Browse…, the system's folder picker. Only this computer's own window edits its list; another host's rows

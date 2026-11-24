@@ -186,7 +186,8 @@ function FixRow({ placed, now, onDone }: { placed: PlacedRow; now: number; onDon
   };
   return (
     <>
-      <PageRow title={placed.title} description={<StatusMark className={STATE_LINE} state={mark.state} word={mark.word} detail={row.at === undefined ? row.line : [row.line, syncWhen(row.at, now)].filter(Boolean).join(" ")} />} error={error ?? undefined}>
+      {/* A row that ends on a date is wide: under 480px of page its date and press take a line under the words, which keep their room. */}
+      <PageRow wide={Boolean(row.until)} title={placed.title} description={<StatusMark className={STATE_LINE} state={mark.state} word={mark.word} detail={row.at === undefined ? row.line : [row.line, syncWhen(row.at, now)].filter(Boolean).join(" ")} />} error={error ?? undefined}>
         {row.until ? <span className="text-xs tabular-nums text-muted-foreground">{lapseLine(row.until, now)}</span> : null}
         {fix ? (
           <Button variant={fixVariant(row.state)} size="sm" disabled={busy} onClick={() => void press(fix)}>

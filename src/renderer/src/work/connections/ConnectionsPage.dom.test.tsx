@@ -180,6 +180,26 @@ describe("Connections", () => {
     expect(mark.className).toContain("[&>[data-slot=status-glyph]]:self-start");
   });
 
+  /** Opus round 3 P3: a row that ends on a date gives its date and press a line of their own under 480px of page. */
+  it("draws a row that ends on a date as a wide row, and a row with none as a plain one", async () => {
+    const until = Date.UTC(2027, 1, 17, 23, 59);
+    const request = vi.fn(async () => ({
+      host: "env_box",
+      at: 1,
+      rows: [
+        { id: "winvm", pillar: "winvm", group: "Windows VM", title: "Windows VM", state: "working", line: "Stopped, its disk is ready", until },
+        { id: "google", pillar: "google", group: "Google", title: "Google", state: "working", line: "Signed in" },
+      ],
+    }));
+    vi.spyOn(registry, "linkOf").mockReturnValue({ request } as never);
+    render(<ConnectionsPage />);
+    await settle();
+    const row = (title: string) => screen.getByText(title, { selector: "[data-slot=item-title]" }).closest("[data-slot=page-row]")!;
+    expect(row("Windows VM").hasAttribute("data-wide")).toBe(true);
+    expect(row("Windows VM").querySelector("[data-wide-control]")?.textContent).toMatch(/^Ends /);
+    expect(row("Google").hasAttribute("data-wide")).toBe(false);
+  });
+
   it("draws the same bones while its chunk loads as while the first check is out, so nothing changes shape", async () => {
     const { readFileSync } = await import("node:fs");
     const { join } = await import("node:path");

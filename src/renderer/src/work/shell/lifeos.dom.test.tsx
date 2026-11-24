@@ -140,4 +140,36 @@ describe("a host's status that could not be read", () => {
     expect(await read(new Error("Work is off on this host"))).toBe("off");
     expect(await read(Object.assign(new Error("not connected"), { name: "ConnectionLostError" }))).toBeNull();
   });
+
+  /** Sol round 3 P1: a first ask that timed out on an open link is marked, so no screen keeps its bones for good. */
+  it("marks a first ask that went unanswered, and Retry clears the mark once the host answers", async () => {
+    resetLifeos();
+    let reply: () => Promise<unknown> = () => Promise.reject(Object.assign(new Error("no answer in 15 s"), { name: "TimeoutError" }));
+    vi.spyOn(registry, "linkOf").mockReturnValue({ connected: true, onPush: () => () => {}, onOpen: () => () => {}, request: () => reply() } as never);
+    const { watchLifeos, refreshLifeos, useLifeosStatus, useLifeosUnanswered } = await import("./lifeos");
+    const { result } = renderHook(() => ({ status: useLifeosStatus("env_far"), unanswered: useLifeosUnanswered("env_far") }));
+    expect(result.current.unanswered).toBe(false);
+    watchLifeos("env_far");
+    await act(flush);
+    expect(result.current).toEqual({ status: null, unanswered: true });
+    // A Retry that goes unanswered keeps the mark and rejects, so the line stays as it is.
+    await act(() => expect(refreshLifeos("env_far")).rejects.toThrow());
+    expect(result.current.unanswered).toBe(true);
+    reply = () => Promise.resolve(connected);
+    await act(() => refreshLifeos("env_far"));
+    expect(result.current).toEqual({ status: connected, unanswered: false });
+  });
+
+  it("never marks a host whose status is known, nor one that refused", async () => {
+    resetLifeos();
+    vi.spyOn(registry, "linkOf").mockReturnValue({ connected: true, onPush: () => () => {}, onOpen: () => () => {}, request: () => Promise.reject(new Error("Work is off on this host")) } as never);
+    const { watchLifeos, refreshLifeos, useLifeosUnanswered } = await import("./lifeos");
+    const { result } = renderHook(() => useLifeosUnanswered("env_far"));
+    watchLifeos("env_far");
+    await act(flush);
+    expect(result.current).toBe(false);
+    vi.spyOn(registry, "linkOf").mockReturnValue({ connected: true, request: () => Promise.reject(Object.assign(new Error("x"), { name: "TimeoutError" })) } as never);
+    await act(() => expect(refreshLifeos("env_far")).rejects.toThrow());
+    expect(result.current).toBe(false);
+  });
 });
