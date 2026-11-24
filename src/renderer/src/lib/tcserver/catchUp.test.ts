@@ -60,6 +60,17 @@ describe("CatchUpLane", () => {
     expect(h.started).toEqual(["a", "focused"]);
   });
 
+  it("starts no background transcript while the shown thread's fetch is out", async () => {
+    const h = harness("focused");
+    void h.lane.run("focused", h.fetch("focused"));
+    for (const id of ["a", "b"]) void h.lane.run(id, h.fetch(id));
+    await flush();
+    expect(h.started).toEqual(["focused"]);
+    h.answers.get("focused")!.resolve();
+    await flush();
+    expect(h.started).toEqual(["focused", "a"]);
+  });
+
   it("starts a waiting transcript at once when it becomes the shown one", async () => {
     const h = harness();
     for (const id of ["a", "b", "c"]) void h.lane.run(id, h.fetch(id));
@@ -69,8 +80,11 @@ describe("CatchUpLane", () => {
     await flush();
     expect(h.started).toEqual(["a", "c"]);
     expect(h.lane.queued()).toEqual(["b"]);
-    // The lane's own turn moves on to b, never c again.
+    // The lane's own turn moves on to b once c is in, never c again.
     await h.answer("a");
+    expect(h.started).toEqual(["a", "c"]);
+    h.answers.get("c")!.resolve();
+    await flush();
     expect(h.started).toEqual(["a", "c", "b"]);
   });
 

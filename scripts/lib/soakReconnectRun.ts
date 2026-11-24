@@ -1,4 +1,5 @@
 import type { ChildProcess } from 'node:child_process'
+import { writeFileSync } from 'node:fs'
 import { createInterface } from 'node:readline'
 import { sleep, type Cdp } from './packagedApp'
 import { judgeReconnect } from './soakJudge'
@@ -86,6 +87,21 @@ function hostPhase(host: ChildProcess, phase: ReconnectPhase, onBegan: () => Pro
   })
 }
 
+/** `TC_RECONNECT_PROFILE=<file prefix>`: a CPU profile of the window across each phase, `<prefix>-<phase>.cpuprofile`. */
+async function profiled<T>(c: Cdp, phase: ReconnectPhase, run: () => Promise<T>): Promise<T> {
+  const prefix = process.env.TC_RECONNECT_PROFILE
+  if (!prefix) return run()
+  await c.send('Profiler.enable')
+  await c.send('Profiler.setSamplingInterval', { interval: 500 })
+  await c.send('Profiler.start')
+  try {
+    return await run()
+  } finally {
+    const { profile } = (await c.send('Profiler.stop')) as { profile: unknown }
+    writeFileSync(`${prefix}-${phase}.cpuprofile`, JSON.stringify(profile))
+  }
+}
+
 export async function recordReconnect(
   c: Cdp,
   host: ChildProcess,
@@ -117,7 +133,7 @@ export async function recordReconnect(
   const loadedRows = await c.eval<number[]>(`[${ids.map((id) => `${entry(id)}.rows.length`).join(', ')}]`)
   log(`six remote transcripts loaded (${loadedRows.join(', ')} rows in the store)`)
   log('cutting the remote WebSocket for 6 s')
-  const cutWire = await hostPhase(host, 'cut', async () => {})
+  const cutWire = await profiled(c, 'cut', () => hostPhase(host, 'cut', async () => {}))
   const cut = await readWindow(c, ids, focus, cutWire)
   log(`cut recorded, ${cut.summary.connections} connection(s), ${cut.summary.longTasks.maxMs} ms longest task`)
   log('reloading the window with its saved layout')

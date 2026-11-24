@@ -31,6 +31,8 @@ const realSleep = (ms: number): Promise<void> => new Promise((resolve) => setTim
 export class CatchUpLane {
   private waiting: Waiting[] = [];
   private busy = false;
+  /** The shown thread's fetches in flight: the next background one waits for them. */
+  private front = new Set<Promise<void>>();
   private readonly now: () => number;
   private readonly sleep: (ms: number) => Promise<void>;
   private readonly rate: number;
@@ -48,7 +50,7 @@ export class CatchUpLane {
 
   /** Run one transcript's fetch: at once for the shown thread, else in turn. */
   run<T>(id: string, fetch: () => Promise<T>): Promise<T> {
-    if (id === this.options.shown()) return fetch();
+    if (id === this.options.shown()) return this.inFront(fetch());
     return new Promise<T>((resolve, reject) => {
       let running: Promise<void> | null = null;
       // Settles when the fetch does, whichever way; started once, by the pump or `promote`.
@@ -63,14 +65,28 @@ export class CatchUpLane {
     const at = id ? this.waiting.findIndex((w) => w.id === id) : -1;
     if (at < 0) return;
     const [w] = this.waiting.splice(at, 1);
-    void w.start();
+    void this.inFront(w.start());
+  }
+
+  private inFront<T>(run: Promise<T>): Promise<T> {
+    const settled = run.then(
+      () => undefined,
+      () => undefined,
+    );
+    this.front.add(settled);
+    void settled.then(() => this.front.delete(settled));
+    return run;
   }
 
   private async pump(): Promise<void> {
     if (this.busy) return;
     this.busy = true;
     try {
-      for (let w = this.waiting.shift(); w; w = this.waiting.shift()) {
+      for (;;) {
+        // The shown thread's page is never queued behind a background one on the socket.
+        while (this.front.size > 0) await Promise.all(this.front);
+        const w = this.waiting.shift();
+        if (!w) break;
         const before = this.options.bytesIn();
         const startedAt = this.now();
         await w.start();

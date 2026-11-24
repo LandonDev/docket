@@ -402,8 +402,8 @@ describe("remote profile: the catch-up after a reconnect", () => {
     await new Promise((r) => setTimeout(r, 0));
     const asked = (): string[] =>
       link.calls.filter((c) => c.method === "session.events").slice(before).map((c) => (c.params as { sessionId: string }).sessionId);
-    // The shown thread and one other, never all three at once.
-    expect(asked()).toEqual(["c", "a"]);
+    // The shown thread alone: the others wait while its page is out.
+    expect(asked()).toEqual(["c"]);
     // A row of the shown thread pushed while its page is out folds once, after it.
     link.push({ push: "event", row: link.events.get("c")!.at(-1)! });
     const held = link.holdEvents;
@@ -411,10 +411,11 @@ describe("remote profile: the catch-up after a reconnect", () => {
     shown = "b";
     for (const l of shownListeners) l();
     await new Promise((r) => setTimeout(r, 0));
-    expect(asked()).toEqual(["c", "a", "b"]);
+    expect(asked()).toEqual(["c", "b"]);
     link.holdEvents = null;
     for (const release of held) release();
     for (let i = 0; i < 5; i++) await new Promise((r) => setTimeout(r, 0));
+    expect(asked()).toEqual(["c", "b", "a"]);
     for (const id of ["a", "b", "c"]) {
       expect(sessionStore.get(id)!.blocks.map((b) => b.text)).toEqual(["prompt 1", "answer 1", "prompt 2", "answer 2", "late 0", "late 1"]);
     }
