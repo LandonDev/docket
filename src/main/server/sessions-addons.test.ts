@@ -159,3 +159,14 @@ it('a start still under way when the thread is narrowed is put down once it land
   expect(spawned.filter((s) => s === session.id).length).toBeGreaterThanOrEqual(1)
   expect((registry as unknown as { narrowingMoved(id: string): boolean }).narrowingMoved(session.id)).toBe(false)
 })
+
+it('a thread the frame refuses to run (a mail chat whose Mail did not load) starts no harness, and says why', async () => {
+  const said = 'Mail did not load on this computer, so this chat cannot run. Open it once Mail is back.'
+  registry.turnRefusalOf = () => said
+  const session = await registry.create({ cwd: root, provider: 'claude', model: 'claude-opus-5-5' })
+  // The message is refused with the sentence, nothing stored, and no harness starts, then or at the create.
+  await expect(registry.send(session.id, 'hello')).rejects.toThrow(said)
+  await sleep(20)
+  expect(spawnsOf(session.id)).toBe(0)
+  expect(registry.eventsAfter(session.id, 0).some((row) => row.event.type === 'user-text')).toBe(false)
+})

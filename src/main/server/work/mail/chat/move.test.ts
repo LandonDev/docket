@@ -18,7 +18,7 @@ describe("a mail chat's row", () => {
     const db = new DatabaseSync(':memory:')
     db.exec('CREATE TABLE sessions (id TEXT PRIMARY KEY, parent_id TEXT, started_by TEXT)')
     ensureChatTables(db)
-    expect(registered.map((m) => m.id)).toEqual(['mail-chats'])
+    expect(registered.map((m) => m.id)).toEqual(['mail-chats', 'narrowed'])
     db.prepare('INSERT INTO sessions VALUES (?, NULL, NULL)').run('chat')
     db.prepare('INSERT INTO work_mail_chats VALUES (?, ?, ?, ?, ?)').run('chat', 'ws', 'box', null, 1)
     expect(mailChatHere('chat')).not.toBeNull()

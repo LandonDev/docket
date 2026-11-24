@@ -1,6 +1,52 @@
 import { errorText } from '@shared/work/ids'
 import { WORK_TOOL_SERVER } from '@shared/work/tools'
-import { WORK_MODULES, type CallAsk, type WorkCtx, type WorkModule } from './modules'
+import type { DatabaseSync } from 'node:sqlite'
+import { WORK_LOAD_FAULTS, WORK_MODULES, type CallAsk, type WorkCtx, type WorkModule } from './modules'
+
+/**
+ * The frame's own mark of a narrowed thread (a mail chat): which pillar narrows it, kept where the frame reads it
+ * without that pillar. A thread so marked whose pillar did not load, or could not make its tables, runs nothing: no
+ * turn, no tool. Closed, never open.
+ */
+let marks: DatabaseSync | null = null
+/** Pillars that loaded but could not make their tables this run (startWork). */
+export const NARROWING_BROKEN = new Set<string>()
+const PILLAR_NAMES: Record<string, string> = { mail: 'Mail' }
+
+export function ensureNarrowMarks(db: DatabaseSync): void {
+  db.exec('CREATE TABLE IF NOT EXISTS work_narrowed (session_id TEXT PRIMARY KEY, module TEXT NOT NULL, at INTEGER NOT NULL)')
+  marks = db
+}
+
+/** Marks a thread narrowed by `module`; the pillar's own row stays the pillar's. */
+export function markNarrowed(db: DatabaseSync, sessionId: string, module: string, at = Date.now()): void {
+  ensureNarrowMarks(db)
+  db.prepare('INSERT OR IGNORE INTO work_narrowed (session_id, module, at) VALUES (?, ?, ?)').run(sessionId, module, at)
+}
+
+/** The words a thread marked by a pillar that is not here reads, for every turn and every tool; else null. */
+export function unloadedRefusal(sessionId: string, db: DatabaseSync | null = marks): string | null {
+  if (!db || !sessionId) return null
+  try {
+    const mark = db.prepare('SELECT module FROM work_narrowed WHERE session_id = ?')
+    const up = db.prepare('SELECT parent_id, started_by FROM sessions WHERE id = ?')
+    // The thread, then what it hangs under (a subagent, a thread it started), as the pillar reads it.
+    let id: string | null = sessionId
+    for (let hop = 0; id && hop < 32; hop++) {
+      const row = mark.get(id) as { module: string } | undefined
+      if (row) {
+        if (!WORK_LOAD_FAULTS.has(row.module as never) && !NARROWING_BROKEN.has(row.module)) return null
+        const name = PILLAR_NAMES[row.module] ?? row.module
+        return `${name} did not load on this computer, so this chat cannot run. Open it once ${name} is back.`
+      }
+      const next = up.get(id) as { parent_id: string | null; started_by: string | null } | undefined
+      id = next?.parent_id ?? next?.started_by ?? null
+    }
+    return null
+  } catch {
+    return null
+  }
+}
 
 /**
  * A pillar narrowing one thread's powers (docs/agents/work.md "Narrowing a
@@ -13,6 +59,8 @@ export const REFUSED_UNCHECKED = 'This call was refused: the host could not chec
 
 /** The first module's words refusing the call, or null when every module lets it run. A module that throws refuses it. */
 export function callRefusalOf(modules: readonly WorkModule[], ctx: WorkCtx, call: CallAsk, log: (line: string) => void = ctx.log): string | null {
+  const unloaded = unloadedRefusal(call.sessionId)
+  if (unloaded) return unloaded
   for (const module of modules) {
     if (!module.callRefusal) continue
     try {
@@ -31,6 +79,8 @@ export const DENIED_UNCHECKED: readonly string[] = ['Bash', 'Write', 'Edit', 'No
 
 /** Every harness tool some module denies this thread, read at its harness's start. A module that throws is logged and the thread is denied `DENIED_UNCHECKED`. */
 export function harnessDeniedOf(sessionId: string, modules: readonly WorkModule[] = WORK_MODULES, log: (line: string) => void = (line) => console.error(`[work] ${line}`)): string[] {
+  // A thread its pillar would narrow, with that pillar not here: every harness tool the frame knows to deny.
+  if (unloadedRefusal(sessionId)) return [...DENIED_UNCHECKED]
   const denied = new Set<string>()
   for (const module of modules) {
     if (!module.harnessDenied) continue

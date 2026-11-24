@@ -42,7 +42,7 @@ import { canvasPart } from './canvas/ctx'
 import { tellPart } from './digest/ctx'
 import { convertPart } from './formats/jobs'
 import { lifeosPart } from './lifeos/ctx'
-import { callRefusalOf } from './narrowing'
+import { callRefusalOf, ensureNarrowMarks, NARROWING_BROKEN } from './narrowing'
 import { WORK_LOAD_FAULTS, WORK_MODULES, workModulesAsked, type Caller, type PushTo, type ToolCtx, type WorkCtx, type WorkModule, type WorkSend, type WorkTool } from './modules'
 import type { HealthReport } from '@shared/work'
 import { checkHost, connectionsTool, lapsesOf, type HostHealth } from './health'
@@ -246,9 +246,14 @@ export function startWork(deps: WorkDeps, modules: WorkModule[] = WORK_MODULES):
   // The registry is filled by a load, never by importing it: without one the default list would be silently empty.
   if (modules === WORK_MODULES && !workModulesAsked()) throw new Error('work: the pillars are not loaded; await loadWorkModules() (work/modules.ts) before startWork, or pass the modules')
   // Tables first, Work on or off: they only add. A pillar whose tables could not be made is left out of everything below.
+  // The frame's mark of a narrowed thread first: read without the pillar that narrows it (narrowing.ts).
+  ensureNarrowMarks(deps.db)
   const broken = ensureWorkTables(deps.db, modules)
   // So is a pillar whose code could not be loaded at all (work/modules.ts): its methods answer why.
   if (modules === WORK_MODULES) for (const [id, why] of WORK_LOAD_FAULTS) broken.set(id, why)
+  // A thread a broken pillar narrows runs nothing (narrowing.ts unloadedRefusal).
+  NARROWING_BROKEN.clear()
+  for (const id of broken.keys()) NARROWING_BROKEN.add(id)
   const sound = modules.filter((m) => !broken.has(m.id))
   const settings = new WorkSettingsStore(deps.store)
   const sinks = new Map<(p: WorkPush) => void, SocketPrincipal>()

@@ -2,6 +2,7 @@ import type { MailChatKind } from '@shared/work/mailChat'
 import { mailChatWithheld } from '@shared/work/mailChat'
 import type { Caller, WorkCtx } from '../../modules'
 import { workSector } from '../waiting'
+import { markNarrowed } from '../../narrowing'
 import { chatRow } from './find'
 
 /**
@@ -76,6 +77,8 @@ export async function adoptChat(ctx: WorkCtx, by: Caller, p: Adopt, now = Date.n
   // Read just before the row: a thread whose move has begun would leave without it.
   if (moving(ctx, p.sessionId)) throw new Error(MOVING)
   ctx.db.prepare('INSERT INTO work_mail_chats (session_id, workspace_id, kind, mail_thread_id, created_at) VALUES (?, ?, ?, ?, ?)').run(p.sessionId, p.workspaceId, p.kind, mailThreadId, now)
+  // The frame's own mark: if Mail does not load on a later start, the frame alone keeps this thread from running.
+  markNarrowed(ctx.db, p.sessionId, 'mail', now)
   // The registry boots a harness at create, before this row: end it, so the first send boots one with the narrowing.
   await ctx.threads.rearm(p.sessionId)
   return { ok: true }

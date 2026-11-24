@@ -1,4 +1,4 @@
-import { harnessDeniedOf } from './narrowing'
+import { harnessDeniedOf, unloadedRefusal } from './narrowing'
 import { CATALOG, resolveModel, type ProviderId } from '@shared/catalog'
 import { writtenByOwner, type SessionMeta, type UserTextBy } from '@shared/events'
 import { sessionScopeOf, WORK_HOME } from '@shared/work'
@@ -101,6 +101,8 @@ export const threadsPart: CtxPart<'threads'> = (ctx, deps) => {
   // The registry asks here for what the modules add to a Work thread's preamble.
   // The registry asks here what a thread's harness is denied, so a harness spawned under another narrowing never takes a turn.
   registry.narrowingOf = (sessionId) => harnessDeniedOf(sessionId)
+  // And whether it may run at all: a thread whose narrowing pillar did not load runs no turn (narrowing.ts).
+  registry.turnRefusalOf = (sessionId) => unloadedRefusal(sessionId)
   registry.workPreambleParts = (session) => {
     const scope = ctx.scopeOf(session.id)
     return scope ? modulePreambles(scope, WORK_MODULES, ctx.log) : []

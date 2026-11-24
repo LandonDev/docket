@@ -1,4 +1,5 @@
 import { registerMoveModule, tableMoveModule } from '../../../sessionMove'
+import { ensureNarrowMarks } from '../../narrowing'
 import type { DatabaseSync } from 'node:sqlite'
 import type { MailChatFound } from '@shared/contract-work-mail'
 import type { MailChatKind } from '@shared/work/mailChat'
@@ -33,8 +34,12 @@ export function ensureChatTables(db: DatabaseSync): void {
     created_at INTEGER NOT NULL
   )`)
   db.exec('CREATE INDEX IF NOT EXISTS work_mail_chats_by_mail ON work_mail_chats (workspace_id, mail_thread_id, created_at)')
-  // A thread that moves to another host takes its row, so it is a mail chat there too.
+  // A thread that moves to another host takes its row, so it is a mail chat there too, and the frame's mark with it.
   registerMoveModule(db, tableMoveModule('mail-chats', 'work_mail_chats'))
+  // Chats marked before the frame kept marks get theirs now (narrowing.ts).
+  ensureNarrowMarks(db)
+  db.exec("INSERT OR IGNORE INTO work_narrowed (session_id, module, at) SELECT session_id, 'mail', created_at FROM work_mail_chats")
+  registerMoveModule(db, tableMoveModule('narrowed', 'work_narrowed'))
 }
 
 type Row = { session_id: string; workspace_id: string; kind: string; mail_thread_id: string | null }

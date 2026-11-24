@@ -3109,6 +3109,9 @@ export class SessionRegistry {
     let meta = this.store.getSession(sessionId)
     if (!meta) throw new Error(`unknown session: ${sessionId}`)
     this.assertNotMoving(sessionId)
+    // A thread that may not run at all (a mail chat whose Mail did not load) refuses the message, nothing stored.
+    const refused = this.turnRefusalOf?.(sessionId)
+    if (refused) throw new Error(refused)
     // The send's phase line (sendSpans.ts) opens here; a send that ends up
     // queued instead of in a harness is dropped from it.
     this.spans.begin(sessionId)
@@ -4716,8 +4719,13 @@ export class SessionRegistry {
     return !!spawned && spawned.narrowed !== this.narrowedKey(sessionId)
   }
 
+  /** Why a thread may not run at all (a mail chat whose Mail did not load); set by Work (work/threads.ts). */
+  turnRefusalOf: ((sessionId: string) => string | null) | null = null
+
   private async handleFor(sessionId: string): Promise<DriverHandle> {
     if (this.closed) throw new BootStopped()
+    const refused = this.turnRefusalOf?.(sessionId)
+    if (refused) throw new Error(refused)
     // A harness spawned before the thread was narrowed never takes its turn, whatever the order of the marks and the send.
     if ((this.handles.has(sessionId) || this.starting.has(sessionId)) && this.narrowingMoved(sessionId)) {
       console.log(`[sessions] ${sessionId}: a fresh harness under the thread's narrowing`)

@@ -588,6 +588,14 @@ docs/DESIGN.md "The Mail view"):
   `[name](#lifeos:people:<id>)` draw as chips (`lifeosLinkOf`,
   surfaces/lifeosLink.ts; LifeosChip.tsx) that open through SentChips'
   `openerOf`; any other `#lifeos:` table stays a link.
+- **Closed when Mail is not here**: adopt also writes the frame's own mark
+  (`work_narrowed`, work/narrowing.ts `markNarrowed`; Mail's tables copy
+  older chats in, and the mark rides a move). A thread so marked whose
+  pillar did not load (`WORK_LOAD_FAULTS`) or could not make its tables
+  runs nothing: the registry refuses its message before anything is stored
+  (`turnRefusalOf`) and any harness start, every tool call is refused, and
+  every harness tool is denied, all with one sentence: "Mail did not load
+  on this computer, so this chat cannot run. Open it once Mail is back."
 - **The switch**: `MAIL_CHAT.on` (src/shared/work/mailChat.ts) turns the
   whole chat off: no Ask, no ⌘L, adopt refused.
 - **The window's proof**: `bun scripts/mail-preview.ts --chat <dir>`, by
