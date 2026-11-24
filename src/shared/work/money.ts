@@ -67,13 +67,21 @@ export const columnLetter = (i: number): string => {
 }
 
 /**
- * Whole cents from dollars, half a cent going up. The noise a float carries
+ * Whole cents from dollars, half a cent going away from nothing. The noise a float carries
  * is put aside first: 1.4 miles at $0.725 is held as 1.01499…, and is one
  * dollar and two cents wherever Money says it.
  */
 export const centsFrom = (dollars: number): number => wholeFrom(dollars * 100)
-/** A whole number from a product, half going up, the float's noise put aside first: 1.15 hours at 3250 cents is 3737.4999…, and is 3738. */
-export const wholeFrom = (product: number): number => Math.round(Number(product.toPrecision(14)))
+/**
+ * A whole number from a product, half going away from nothing as the
+ * sheet's ROUND does, the float's noise put aside first: 1.15 hours at 3250
+ * cents is 3737.4999…, and is 3738; -1.015 dollars is -102 cents however it
+ * was typed, a number or text.
+ */
+export const wholeFrom = (product: number): number => {
+  const n = Number(product.toPrecision(14))
+  return n < 0 ? -Math.round(-n) : Math.round(n)
+}
 
 /**
  * Whole cents from a cell: a number of dollars, or text like "$1,204.50" or
@@ -669,7 +677,9 @@ export function figuresIn(text: string): number[] {
 }
 
 const TOTAL_WORDS = /\b(grand\s+total|amount\s+due|balance\s+due|total\s+due|balance|total)\b/i
-const NOT_THE_TOTAL = /\b(sub\s*-?\s*total|total\s+(tax|savings|discount|items?|qty|points)|tax\s+total|items?\s+total)\b/i
+/** A balance is what is left to pay, which a paid receipt prints after its total: the total is the sale's, and a balance stands only where no total does. */
+const BALANCE_ONLY = /\bbalance\b/i
+const NOT_THE_TOTAL = /\b(sub\s*-?\s*total|total\s+(tax|savings|discount|items?|qty|points)|tax\s+total|items?\s+total|gift\s*card|remaining\s+balance|balance\s+remaining|(card|points?|previous|available|account)\s+balance|change\s+due)\b/i
 
 const CATEGORY_WORDS: readonly [RegExp, readonly string[]][] = [
   [/\b(fuel|gasoline|unleaded|diesel|gallons?|parking|garage|toll|airlines?|hotel|inn|lodging|uber|lyft|taxi|rental)\b/i, ['Travel']],
@@ -701,9 +711,10 @@ const sellerLike = (row: string): boolean => {
  * The one receipt parser: four fields from a reader's lines, each null when
  * it could not be read. It guesses nothing and calls no model.
  *
- * The amount is the figure beside the last of Total, Amount due, Balance or
- * Grand total (a figure on that line, else the next line's), else the
- * largest money figure. The date is the first one that is not after today.
+ * The amount is the figure beside the last of Total, Amount due or Grand
+ * total (a figure on that line, else the next line's); a Balance only where
+ * no total names a sum (a gift card's remaining balance, a paid invoice's
+ * zero balance, never); else the largest money figure. The date is the first one that is not after today.
  * The seller is the first line of words above the first figure. The
  * category is the one he last gave that seller, else what the receipt's
  * own words say, when the job has such a category.
@@ -712,7 +723,10 @@ export function parseReceipt(lines: readonly ReceiptLine[], hints: ParseHints = 
   const rows = joinLines(lines)
   const notAfter = hints.today ?? today()
 
-  let amount: number | null = null
+  // The last total that says a sum, else the last balance that does, else the last of either (a receipt for nothing).
+  let total: number | null = null
+  let balance: number | null = null
+  let last: number | null = null
   for (let i = 0; i < rows.length; i++) {
     const row = rows[i]
     if (!TOTAL_WORDS.test(row) || NOT_THE_TOTAL.test(row)) continue
@@ -720,8 +734,13 @@ export function parseReceipt(lines: readonly ReceiptLine[], hints: ParseHints = 
     // A label on a line of its own: its figure is the next line's, when that line is a figure alone.
     const next = here.length || i + 1 >= rows.length || /[A-Za-z]{3}/.test(rows[i + 1]) ? [] : figuresIn(rows[i + 1])
     const found = here.length ? here[here.length - 1] : next[0]
-    if (found !== undefined) amount = found
+    if (found === undefined) continue
+    last = found
+    if (!found) continue
+    if (BALANCE_ONLY.test(row) && !/\btotal\b/i.test(row)) balance = found
+    else total = found
   }
+  let amount: number | null = total ?? balance ?? last
   if (amount === null) {
     const all = rows.flatMap(figuresIn)
     if (all.length) amount = Math.max(...all)

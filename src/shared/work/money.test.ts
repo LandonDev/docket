@@ -65,6 +65,14 @@ const line = (date: string, who: string, cin: number | '', cout: number | '', st
 const read = (...body: Cell[][]): LedgerRow[] => rowsOf(HEADER, body).rows
 
 describe('cells', () => {
+  it('rounds a half cent below nothing as the sheet does, the same for a number and for text', () => {
+    expect(centsOf(-1.015)).toBe(-102)
+    expect(centsOf('-1.015')).toBe(-102)
+    expect(centsOf('(1.015)')).toBe(-102)
+    expect(centsOf(1.015)).toBe(102)
+    expect(centsOf(-0.005)).toBe(-1)
+  })
+
   it('reads cents from a number of dollars and from money as he types it', () => {
     expect(centsOf(10.43)).toBe(1043)
     expect(centsOf('$1,204.50')).toBe(120450)
@@ -325,6 +333,13 @@ describe('reading a receipt', () => {
 
   it('takes the figure on the next line when the total’s label stands alone', () => {
     expect(parseReceipt([{ text: 'CORNER SHOP' }, { text: 'Total' }, { text: '$12.00' }, { text: 'Cash 20.00' }], { today: TODAY }).amount).toBe(1200)
+  })
+
+  it('takes the sale’s total over a balance printed after it: a gift card’s remaining balance, a paid invoice’s zero', () => {
+    expect(parseReceipt([{ text: 'Corner Shop' }, { text: 'TOTAL $18.25' }, { text: 'GIFT CARD REMAINING BALANCE $91.75' }], { today: TODAY }).amount).toBe(1825)
+    expect(parseReceipt([{ text: 'Rivera Dental' }, { text: 'Total $250.00' }, { text: 'Paid $250.00' }, { text: 'Balance due $0.00' }], { today: TODAY }).amount).toBe(25000)
+    // A balance alone is still the sum asked for.
+    expect(parseReceipt([{ text: 'Plumber' }, { text: 'Labor 80.00' }, { text: 'Balance due $120.00' }], { today: TODAY }).amount).toBe(12000)
   })
 
   it('never reads a date after today', () => {
