@@ -1027,19 +1027,23 @@ What the store asks (the perf pass's M2; `outbox/store.dom.test.tsx`):
   shows the lists (the page, Today, Messages, Away), one read follows every
   push within 500 ms (`JOIN_MS`), with one notify; with none, the host's
   lists are marked stale for the next mount.
-- Only the Outbox page (`useOutboxPage`) reads what was decided, the
-  grants and the offers; every other reader reads what waits alone.
+- Only the Outbox page (`useOutboxPage`) reads Done (`show: "done"`), the
+  grants and the offers; every other reader (Today, Messages, Away) reads
+  what waits alone.
 - A mount reads only a host that is stale (`loadOutbox({ifStale: true})`):
   marked by a push, failed, not as deep as the page needs, or read more than
   30 s ago with no reader listening since. A press, a reconnect and Retry
   read at once.
-- A row keeps its object while its `updatedAt`, state and `decidedAt`
-  stand, and `HeldRow` and `SentRow` are memoised: a read that changed one
-  item draws that row alone.
-- A detail is one ask (`fetchDetail`): `work.outbox.get {ref, results:
-  true}` answers a decided act's Results with it, shared by the mail's
-  quote, the computer act's picture and the way back; a host whose answer
-  carries none is asked `work.outbox.results` on its own.
+- A row keeps its object while its `updatedAt`, state, `decidedAt` and
+  `dismissedAt` stand, and the list's rows are memoised (Lists.tsx `HeldRow`
+  and `DoneRow`, with the page's `onPick` and `onTick` the same functions
+  for its life): a read that changed one item draws that row alone.
+- A detail is one ask (`fetchDetail`, keyed by the item and its
+  `updatedAt`): the held detail's whole read, a computer act's picture
+  (parts.tsx `usePicture`), the ticked mails' quote check (Ticked.tsx) and a
+  Done act's way back share it; `work.outbox.get {ref, results: true}`
+  answers a decided act's Results with it, and a host whose answer carries
+  none is asked `work.outbox.results` on its own.
 
 - **The rail's Outbox row** (M8's) shows whenever a host has Work on, with
   the plain muted count; it opens the Outbox page (`shell.openOutbox`,
