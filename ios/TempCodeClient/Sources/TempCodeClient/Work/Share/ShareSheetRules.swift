@@ -22,6 +22,21 @@ public enum SharePhase: Equatable, Sendable {
         return .saved
     }
 
+    /// The same, when some of the files never reached the queue (the phone could not keep a copy to send, its disk
+    /// full): those are named first, then what became of the rest, so he knows which went and which did not.
+    public static func after(_ items: [ShareItem], host: String, notQueued: [String], total: Int) -> SharePhase {
+        guard let first = notQueued.first else { return after(items, host: host) }
+        let lost = notQueued.count == 1 ? "Could not send \(first) from this phone."
+            : notQueued.count >= total ? "Could not send any of the \(notQueued.count) files from this phone."
+            : "Could not send \(notQueued.count) of \(total) files from this phone."
+        guard !items.isEmpty else { return .refused(lost) }
+        switch after(items, host: host) {
+        case .saved: return .refused(items.count == 1 ? "\(lost) \(items[0].name) is saved." : "\(lost) The other \(items.count) are saved.")
+        case .waiting(let words), .refused(let words): return .refused("\(lost) \(words)")
+        case .picking, .saving: return .refused(lost)
+        }
+    }
+
     public static func unreachable(_ host: String) -> String {
         "\(host) can’t be reached. TempCode will save this when it can."
     }

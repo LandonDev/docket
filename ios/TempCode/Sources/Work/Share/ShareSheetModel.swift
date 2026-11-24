@@ -151,27 +151,32 @@ final class ShareSheetModel {
     }
 
     /// Queues every file, then sends what the host will take now. A host that cannot be reached leaves the
-    /// files queued for the app; nothing is lost when the sheet closes.
+    /// files queued for the app; nothing is lost when the sheet closes. A file the phone could not queue is
+    /// named, and the rest still go: each queued file is sent now or by the app later, whatever the sheet says.
     func save() async {
         guard let target, phase == .picking else { return }
         let destination = target.destination(folder)
         phase = .saving(0)
         var queued: [ShareItem] = []
+        var notQueued: [String] = []
         for (index, pick) in picks.enumerated() {
             let wanted = picks.count == 1 ? name : pick.name
             do {
                 queued.append(try inbox.add(pick.url, to: destination, name: ShareSummary.name(wanted, kind: pick.kind, at: Date().addingTimeInterval(Double(index)))))
             } catch {
-                phase = .refused(ShareSummary.unread([pick.name], of: 1) ?? "")
-                return
+                notQueued.append(pick.name)
             }
+        }
+        guard !queued.isEmpty else {
+            phase = SharePhase.after([], host: target.host.name, notQueued: notQueued, total: picks.count)
+            return
         }
         thisSave = Set(queued.map(\.id))
         targets.used(hostId: target.host.id, workspaceId: target.workspace.id, folder: destination.folder, at: Date().timeIntervalSince1970 * 1000)
         try? targets.write(root: root)
         let link = link(target.host)
         guard await link.open() else {
-            phase = .waiting(SharePhase.unreachable(target.host.name))
+            phase = SharePhase.after(queued, host: target.host.name, notQueued: notQueued, total: picks.count)
             return
         }
         let uploader = link.uploader(inbox)
@@ -183,7 +188,7 @@ final class ShareSheetModel {
                 self?.phase = .saving(SharePhase.share(sizes: sizes, done: done, current: share))
             })
         }
-        phase = SharePhase.after(results, host: target.host.name)
+        phase = SharePhase.after(results, host: target.host.name, notQueued: notQueued, total: picks.count)
         readEarlier()
     }
 

@@ -209,7 +209,10 @@ pictures and three movies.
   It keeps a result per file: one it could not copy is named in the first
   group's footer and the rest still save; when none could be read the sheet
   says so with Done alone, never a silent cancel. Once Save is pressed the
-  files are in the queue, so Cancel goes and Done alone closes.
+  files are in the queue, so Cancel goes and Done alone closes. A file Save
+  could not put in the queue (the phone could not keep its copy) is named
+  first and the rest still go, with what became of them
+  (`SharePhase.after(_:host:notQueued:total:)`).
 - **One queue, one uploader.** `ShareInbox` (client, Work/Share/) is a folder
   an item in the App Group: the payload copied by stream with its sha256,
   then an atomic manifest written last, so a crash mid-copy leaves nothing

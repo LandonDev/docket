@@ -17,6 +17,15 @@ struct ShareSheetRulesTests {
         #expect(SharePhase.after([item("a", .refused)], host: "The box") == .refused("The box did not take a."))
     }
 
+    @Test func `files the phone could not queue are named first, then what became of the rest`() {
+        #expect(SharePhase.after([item("a", .done)], host: "The box", notQueued: [], total: 1) == .saved)
+        #expect(SharePhase.after([], host: "The box", notQueued: ["b"], total: 1) == .refused("Could not send b from this phone."))
+        #expect(SharePhase.after([], host: "The box", notQueued: ["a", "b"], total: 2) == .refused("Could not send any of the 2 files from this phone."))
+        #expect(SharePhase.after([item("a", .done)], host: "The box", notQueued: ["b"], total: 2) == .refused("Could not send b from this phone. a is saved."))
+        #expect(SharePhase.after([item("a", .done), item("c", .done)], host: "The box", notQueued: ["b"], total: 3) == .refused("Could not send b from this phone. The other 2 are saved."))
+        #expect(SharePhase.after([item("a", .queued), item("c", .queued)], host: "The box", notQueued: ["b", "d"], total: 4) == .refused("Could not send 2 of 4 files from this phone. The box can’t be reached. TempCode will save this when it can."))
+    }
+
     @Test func `the bar is the share of every file's bytes together`() {
         // A small photo, then a video nine times its size: the photo fills a tenth of the bar.
         #expect(SharePhase.share(sizes: [100, 900], done: 0, current: 1) == 0.1)
