@@ -20,7 +20,14 @@ final class ShareHost: @unchecked Sendable {
     var landedOps: Set<String> = []
     /// Cancels the sending task when the chunk with this index arrives.
     var cancelAtIndex: Int?
+    /// The host has pruned its op rows (a week went by): an op sent again begins a new upload, as a fresh one does.
+    var forgetsOps = false
+    /// Runs as a begin arrives, before it answers.
+    var onBegin: (() -> Void)?
     private var chunkCount = 0
+    /// The id each op was answered with: the same op again answers the same id (`runOp`), unless the host forgot it.
+    private var opIds: [String: String] = [:]
+    private var ids = 0
 
     var calls: [String] { lock.withLock { _calls } }
     var begun: [Methods.WorkFilesUpload.Params] { lock.withLock { _begun } }
@@ -38,8 +45,12 @@ final class ShareHost: @unchecked Sendable {
                 // Kept before any error: a begin whose answer is lost was still sent.
                 let id = self.lock.withLock { () -> String in
                     self._begun.append(params)
-                    return "u\(self._begun.count)"
+                    if !self.forgetsOps, let known = self.opIds[params.op] { return known }
+                    self.ids += 1
+                    self.opIds[params.op] = "u\(self.ids)"
+                    return "u\(self.ids)"
                 }
+                self.onBegin?()
                 if let error = self.beginError { throw error }
                 return ShareUploader.Begun(uploadId: id, landed: self.lock.withLock { self.landedOps.contains(params.op) })
             },
@@ -222,7 +233,7 @@ final class ShareHost: @unchecked Sendable {
         let after = await uploader.send(item)
         #expect(after.state == .done)
         #expect(host.begun.map(\.op) == ["\(item.id)-0", "\(item.id)-0", "\(item.id)-1"])
-        #expect(host.calls.contains("commit u3"))
+        #expect(host.calls.contains("commit u2"))
         #expect(rig.inbox.item(item.id)?.committing == nil)
     }
 
@@ -257,6 +268,38 @@ final class ShareHost: @unchecked Sendable {
         #expect(rig.inbox.item(item.id)?.committing == "u1")
         #expect(host.begun.map(\.op) == ["\(item.id)-0", "\(item.id)-0"])
         #expect(!host.calls.contains { $0.hasPrefix("chunk u2") })
+    }
+
+    @Test func `a lost commit whose op the host no longer keeps stays pending, and nothing is sent again`() async throws {
+        let (rig, host, uploader) = try rig()
+        host.commitError = TransportError.notConnected
+        let item = try rig.add(bytes)
+        #expect(await uploader.send(item).state == .queued)
+        // A week later: the upload and its op are both gone, so the op sent again begins a new upload.
+        host.commitError = nil
+        host.commitFailures = ["u1": TransportError.server(method: "attachment.commit", message: "unknown upload (expired, aborted or never begun)")]
+        host.forgetsOps = true
+        let after = await uploader.send(item)
+        #expect(after.state == .refused)
+        #expect(after.words == ShareUploader.unknown(host: "The box", folder: item.folder.name))
+        #expect(rig.inbox.item(item.id)?.committing == "u1")
+        #expect(host.calls.contains("abort u2"))
+        #expect(!host.calls.contains { $0.hasPrefix("chunk u2") || $0 == "commit u2" })
+    }
+
+    @Test func `no commit goes when the phone cannot write down the upload it began`() async throws {
+        let (rig, host, uploader) = try rig()
+        let item = try rig.add(bytes)
+        let folder = rig.inbox.payload(item).deletingLastPathComponent()
+        // The item's folder takes no write once the host has answered the begin.
+        host.onBegin = { try? FileManager.default.setAttributes([.posixPermissions: 0o555], ofItemAtPath: folder.path) }
+        defer { try? FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: folder.path) }
+        _ = await uploader.send(item)
+        #expect(!host.calls.contains { $0.hasPrefix("commit") })
+        #expect(!host.calls.contains { $0.hasPrefix("chunk") }, "not a byte before the op is written down")
+        // Its refusal offers Try Again: nothing was sent.
+        #expect(!ShareUploader.LocalError.unrecorded.isFinal)
+        #expect(host.calls.contains("abort u1"))
     }
 
     @Test func `cancel aborts the upload on the host and the item goes back to the queue`() async throws {

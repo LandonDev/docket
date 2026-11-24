@@ -289,8 +289,13 @@ pictures and three movies.
   the path on the op's row before it makes the file (`landing`), so a stop
   between making it and saying so is settled when the op is asked again: the
   file there with the upload's sha256 is landed. Only an op whose file never
-  landed begins anew; an op that cannot be read keeps the commit pending,
-  refused with Try Again, and begins nothing. Done is written with `committing` cleared in
+  landed begins anew; an op that cannot be read, or that the host answers
+  with another upload id (it pruned the op after a week), keeps the commit
+  pending, refused with his words ("… may already have this file. Look in …")
+  and Discard, and begins nothing. The op's count and then the upload id are
+  written to the manifest before a byte and before the commit go; a write
+  that fails sends nothing more ("This phone could not keep track of the
+  save"), with Try Again. Done is written with `committing` cleared in
   the same manifest write (`ShareInbox.mark`).
 - **Final refusals.** What no retry can change is marked `isFinal` on the
   manifest (absent in an older one: retryable): the phone's "<host> takes

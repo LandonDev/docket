@@ -73,13 +73,25 @@ public final class ShareUploader {
     /// What went wrong on the phone's side, in the words the item keeps.
     enum LocalError: Error {
         case gone, changed
+        /// The phone could not write down the upload it began, so nothing is committed: a commit it could not ask
+        /// again could save the file twice.
+        case unrecorded
 
         var words: String {
             switch self {
             case .gone: "The file is no longer on this phone."
             case .changed: "The file changed on this phone after it was shared."
+            case .unrecorded: "This phone could not keep track of the save, so nothing was sent."
             }
         }
+
+        /// No retry changes it.
+        var isFinal: Bool { self != .unrecorded }
+    }
+
+    /// The words of a save whose outcome nothing can tell: kept, with Discard, never sent again unasked.
+    static func unknown(host: String, folder: String) -> String {
+        "\(host) may already have this file. Look in \(folder) before you send it again."
     }
 
     private enum Outcome {
@@ -188,6 +200,13 @@ public final class ShareUploader {
                     progress(1)
                     return .done
                 }
+                // Another id: the host no longer keeps the op (a week went by), so nothing says whether the file
+                // landed. The save stays pending with his words; the upload just begun is dropped.
+                if again.uploadId != pending {
+                    let abort = request.abort
+                    await Task { await abort(again.uploadId) }.value
+                    return .refused(Self.unknown(host: hostName, folder: item.folder.name), final: false)
+                }
             } catch {
                 if error is CancellationError || Self.isUnreachable(error) { return .queued }
                 // Not known whether it landed: the commit stays pending, and Try Again asks once more. Beginning anew
@@ -217,11 +236,13 @@ public final class ShareUploader {
                 return Self.outcome(of: error)
             }
             attempts += 1
-            try? inbox.spent(item.id, attempts: attempts)
             do {
+                // The op and then the upload are written down before a byte or the commit goes: a commit the phone did
+                // not record could not be asked again, and its file could be saved twice.
+                do { try inbox.spent(item.id, attempts: attempts) } catch { throw LocalError.unrecorded }
                 try await chunks(item, uploadId: uploadId, step: step, progress: progress)
                 try Task.checkCancellation()
-                try? inbox.committing(item.id, uploadId: uploadId)
+                do { try inbox.committing(item.id, uploadId: uploadId) } catch { throw LocalError.unrecorded }
                 try await request.commit(uploadId)
                 progress(1)
                 return .done
@@ -262,7 +283,7 @@ public final class ShareUploader {
     }
 
     private static func outcome(of error: any Error) -> Outcome {
-        if let local = error as? LocalError { return .refused(local.words, final: true) }
+        if let local = error as? LocalError { return .refused(local.words, final: local.isFinal) }
         if error is CancellationError || isUnreachable(error) { return .queued }
         return .refused(ActionError.wrap(error).message, final: false)
     }
