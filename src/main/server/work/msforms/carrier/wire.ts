@@ -17,6 +17,10 @@ import { CarrierBusy, configureMsCarrier } from './types'
 const APP = BOX_BROWSER_APP.name
 
 /** The box browser's carrier session as the carrier's computer. */
+/** How long a page-open waits for its page to show: 20 looks, a quarter second apart. */
+export const OPEN_TRIES = 20
+export const OPEN_EVERY_MS = 250
+
 export function formsComputerOn(c: CarrierComputer): FormsComputer {
   const read = async (window: string): Promise<Screen> => {
     // no picture of any page the carrier drives (review 21): the read is words alone
@@ -33,19 +37,22 @@ export function formsComputerOn(c: CarrierComputer): FormsComputer {
   const windowOf = (ref: string): number => Number(ref.replace(/^#/, ''))
   return {
     async open(url) {
-      const before = new Map((await c.pages()).map((p) => [p.window, p.url]))
+      // Pages are matched by Chromium's own target id: the service numbers windows afresh when it starts again (a
+      // host or browser restart between the two lists), so a number seen before may name another page after.
+      const before = new Map((await c.pages()).map((p) => [p.target, p.url]))
       const o = await c.run('computer_apps', { launch: APP, open: [url] })
       if (o.isError) throw new Error('The box browser did not open the page.')
-      // A new window, or the blank page the launch used for it (the box browser starts with one, P1): its address
-      // moves off about:blank once the navigation commits, so it is looked for a few times.
-      for (let tries = 0; tries < 20; tries++) {
+      // A new page, or the blank page the launch used for it (a browser just started has one, P1): its address moves
+      // off about:blank once the navigation commits, which may come after the launch answered.
+      for (let tries = 0; tries < OPEN_TRIES; tries++) {
         const now = await c.pages()
-        const page = now.filter((p) => !before.has(p.window)).at(-1) ?? now.find((p) => before.get(p.window) === 'about:blank' && p.url !== 'about:blank')
+        const page = now.filter((p) => !before.has(p.target)).at(-1) ?? now.find((p) => before.get(p.target)?.startsWith('about:blank') && !p.url.startsWith('about:blank'))
         if (page) return `#${page.window}`
-        await new Promise((r) => setTimeout(r, 250))
+        await new Promise((r) => setTimeout(r, OPEN_EVERY_MS))
       }
       throw new Error('The box browser opened no window for the page.')
     },
+
     read,
     async act(window, _screen: Screen, steps: readonly ComputerAction[]) {
       const o = steps.length === 1 ? await c.run('computer_act', { app: APP, window, screenshot: false, ...steps[0] }) : await c.run('computer_batch', { app: APP, window, screenshot: false, actions: steps })

@@ -477,8 +477,8 @@ export class BoxComputerService {
   // ── the msforms carrier's own page calls (no tool reaches these; carrier.ts in msforms) ──────────
 
   /** Every page, with its window id and address: the carrier follows the window a press opened by its id. */
-  async carrierPages(): Promise<{ window: number; url: string }[]> {
-    return (await this.pages()).map((p) => ({ window: p.window, url: p.url }))
+  async carrierPages(): Promise<{ window: number; url: string; target: string }[]> {
+    return (await this.pages()).map((p) => ({ window: p.window, url: p.url, target: p.targetId }))
   }
 
   /**

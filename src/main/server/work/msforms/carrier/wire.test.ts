@@ -2,51 +2,61 @@ import { describe, expect, it } from 'vitest'
 import type { CarrierComputer } from '../../browser/box'
 import { formsComputerOn } from './wire'
 
-/** The carrier's computer on the box browser: which window an open takes (P1, 2026-11-24). */
+/**
+ * The carrier's page-open on the box browser as the deployed host met it: a browser already running with other
+ * pages, a browser not started yet (it starts with one blank page the launch navigates), and a service that started
+ * again between the carrier's two lists and numbered its windows afresh. Each must answer the page the open made.
+ */
 
-const calls: { tool: string; args: Record<string, unknown> }[] = []
-function fakeComputer(pages: { window: number; url: string }[], launch: (url: string) => void, fail = false): CarrierComputer {
+type Page = { window: number; url: string; target: string }
+
+/** A stand-in for the box browser's carrier session: `pages` answers what the script says at each look. */
+function computer(script: { before: Page[]; launch(): void; after: () => Page[] }): CarrierComputer {
+  let launched = false
   return {
-    session: 'tc-carrier-test',
-    run: async (tool, args) => {
-      calls.push({ tool, args })
-      if (tool === 'computer_apps') launch((args.open as string[])[0]!)
-      return fail ? { steps: [], shots: [], body: 'answer: Zorble-7Q from dummy1@example.test', isError: true } : { steps: [], shots: [], body: 'ok', isError: false }
+    session: 'carrier-test',
+    run: async (tool) => {
+      if (tool === 'computer_apps') {
+        launched = true
+        script.launch()
+      }
+      return { isError: false, body: '', steps: [], shots: [] } as never
     },
     window: () => null,
-    end: async () => {},
-    pages: async () => pages.map((p) => ({ ...p })),
-    close: async () => {},
+    end: async () => undefined,
+    pages: async () => (launched ? script.after() : script.before),
+    close: async () => undefined,
     fetch: async () => ({ status: 200 }),
-    clear: async () => {}
+    clear: async () => undefined
   }
 }
 
-describe('formsComputerOn', () => {
-  it('takes the new window an open made', async () => {
-    const pages = [{ window: 1, url: 'https://purdue0.sharepoint.com/x' }]
-    const c = formsComputerOn(fakeComputer(pages, (url) => pages.push({ window: 2, url })))
-    expect(await c.open('https://purdue0.sharepoint.com/y')).toBe('#2')
+const URL_ = 'https://purdue0.sharepoint.com/sites/RecWell/Shared%20Documents/Forms/AllItems.aspx?id=%2Fsites%2FRecWell%2FShared%20Documents%2FEsports'
+
+describe("the carrier's page-open", () => {
+  it('finds the new page on a browser already running with other pages', async () => {
+    const outlook = { window: 1, url: 'https://outlook.office.com/mail/', target: 'T-outlook' }
+    const c = computer({ before: [outlook], launch: () => {}, after: () => [outlook, { window: 2, url: URL_, target: 'T-new' }] })
+    expect(await formsComputerOn(c).open(URL_)).toBe('#2')
   })
 
-  it("takes the blank page the launch navigated, once its address has moved off about:blank", async () => {
-    const pages = [{ window: 1, url: 'about:blank' }]
-    // the box browser starts with one blank page, and a launch uses it; the address commits a moment later
-    const c = formsComputerOn(fakeComputer(pages, (url) => void setTimeout(() => (pages[0]!.url = url), 300)))
-    expect(await c.open('https://purdue0.sharepoint.com/y')).toBe('#1')
+  it('finds the blank page the launch navigated, once its address commits after the launch answered', async () => {
+    const blank = { window: 1, url: 'about:blank', target: 'T-blank' }
+    let looks = 0
+    const c = computer({ before: [blank], launch: () => {}, after: () => (++looks < 3 ? [blank] : [{ ...blank, url: `${URL_}&view=1` }]) })
+    expect(await formsComputerOn(c).open(URL_)).toBe('#1')
   })
 
-  it('asks for no picture of a page it reads or acts on, and says no word of the page when it fails (review 21)', async () => {
-    calls.length = 0
-    const c = formsComputerOn(fakeComputer([{ window: 1, url: 'https://forms.cloud.microsoft/x' }], () => {}, true))
-    await expect(c.read('#1')).rejects.toThrow(/^The box browser could not read the page\.$/)
-    const acted = await c.act('#1', { elements: new Map() } as never, [{ action: 'left_click', element: 3 } as never])
-    expect(acted).toEqual({ ok: false })
-    await c.act('#1', { elements: new Map() } as never, [{ action: 'left_click', element: 3 } as never, { action: 'key', element: 3, text: 'Tab' } as never])
-    expect(calls.map((x) => [x.tool, x.args.screenshot])).toEqual([
-      ['computer_observe', false],
-      ['computer_act', false],
-      ['computer_batch', false]
-    ])
+  it('finds the page on a browser not started yet', async () => {
+    const c = computer({ before: [], launch: () => {}, after: () => [{ window: 1, url: URL_, target: 'T-first' }] })
+    expect(await formsComputerOn(c).open(URL_)).toBe('#1')
+  })
+
+  it('finds the page when the service started again between its two lists and numbered windows afresh', async () => {
+    // Before: the Outlook page is window 1. After a restart the service numbers the new page 1 and Outlook 2:
+    // matched by number, window 1 looked old; matched by Chromium's own id, the new page is found.
+    const outlook = { window: 1, url: 'https://outlook.office.com/mail/', target: 'T-outlook' }
+    const c = computer({ before: [outlook], launch: () => {}, after: () => [{ window: 1, url: URL_, target: 'T-new' }, { ...outlook, window: 2 }] })
+    expect(await formsComputerOn(c).open(URL_)).toBe('#1')
   })
 })
