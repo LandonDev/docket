@@ -16,6 +16,7 @@ import { macCarrier } from './mac'
 import { owaCarrier } from './owa'
 import { ensureRouteTables, OutlookRoute } from './route'
 import { officeTool, runHere, type Env } from './tools'
+import { keyedArgs } from './live/agents'
 import { dropCopies, dropItemCopies, filesHandle, type FilesDeps } from './files/handle'
 import { isGuestPath, missingLibraries, readVmBehind, storedStatus } from './vm/files'
 import { stopVmOffice, vmAllowed, vmAwake, vmHasOffice, vmHereOf, vmState } from './vm/office'
@@ -195,7 +196,8 @@ export const office: WorkModule = {
         // Another host of his sends what its own thread's words said (office/tools.ts), judged there.
         const asked = (write?.asked ?? false) && (by.kind !== 'remote' || !!by.peer || pressesFor(by))
         const env: Env = { ctx, ...here, by: peerPrincipal(write?.by, by, ctx.host), sessionId: by.kind === 'model' ? (by.sessionId ?? null) : null, asked }
-        return handled(await runHere(t, req.params.args, env))
+        // A live file named by another form of its address goes by the key this host's Office has it open under.
+        return handled(await runHere(t, await keyedArgs(here.carrier, req.params.args), env))
       }
       case 'work.office.switch': {
         const s = req.params.source

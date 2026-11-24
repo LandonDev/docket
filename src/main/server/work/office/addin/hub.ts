@@ -1,4 +1,5 @@
 import { OfficeError, type OfficeFile } from '../carrier'
+import { sameCloudFile } from '../live/address'
 import type { AddinKeys } from './keys'
 
 /**
@@ -149,10 +150,13 @@ export class AddinHub {
     })
   }
 
-  /** The add-in that has this file open, the newest where there are two. */
+  /**
+   * The add-in that has this file open, the newest where there are two. Its key is `Office.context.document.url`; a
+   * key that is another form of that address (a Files tab's `?web=1`, a `/:w:/r` link) finds it too (`sameCloudFile`).
+   */
   sessionFor(app: AddinApp, key: string): AddinSession | undefined {
     let best: AddinSession | undefined
-    for (const s of this.sessions.values()) if (s.app === app && s.file?.key === key && (!best || s.since >= best.since)) best = s
+    for (const s of this.sessions.values()) if (s.app === app && s.file && sameCloudFile(s.file.key, key) && (!best || s.since >= best.since)) best = s
     return best
   }
 
@@ -161,11 +165,15 @@ export class AddinHub {
     return [...this.sessions.values()].some((s) => s.file !== null)
   }
 
-  /** Every file open in an add-in of this app, once each. */
+  /** Every file open in an add-in of this app, once each (by `sessionFor`, so two forms of one address are one file). */
   files(app: AddinApp): AddinSession[] {
-    const byKey = new Map<string, AddinSession>()
-    for (const s of this.sessions.values()) if (s.app === app && s.file) byKey.set(s.file.key, this.sessionFor(app, s.file.key)!)
-    return [...byKey.values()]
+    const once = new Map<number, AddinSession>()
+    for (const s of this.sessions.values())
+      if (s.app === app && s.file) {
+        const best = this.sessionFor(app, s.file.key)!
+        once.set(best.conn, best)
+      }
+    return [...once.values()]
   }
 
   /** Closes every add-in on a key he removed. */

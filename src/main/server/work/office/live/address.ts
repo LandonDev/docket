@@ -115,3 +115,50 @@ export function cloudKey(url: string): string | null {
 export function tenantOf(url: string): string | null {
   return /^([a-z0-9-]+?)(?:-my)?\.sharepoint\.com$/i.exec(parsed(url)?.hostname ?? '')?.[1] ?? null
 }
+
+/** Whether two keys name one cloud file: the same key, or one place by `cloudKey` (SharePoint's paths ignore case). */
+export function sameCloudFile(a: string, b: string): boolean {
+  if (a === b) return true
+  const x = cloudKey(a)
+  return x !== null && x.toLowerCase() === cloudKey(b)?.toLowerCase()
+}
+
+/** The address Office's own open takes (`ms-word:ofe|u|…`): the file's direct link, its query, fragment and `/:w:/r` dropped. A GUID redirect stays whole. */
+export function openAddress(url: string): string {
+  const link = parsed(url)
+  if (!link || cloudKey(url) === null) return url
+  return link.origin + link.pathname.replace(/^\/:[wxp]:\/r(?=\/)/i, '').replace(/\/+$/, '')
+}
+
+/**
+ * Every synced copy of a file named by its address: the library whose web folder holds it, then the same place in
+ * another machine's library (`liveTwin`), each with the file's path there. The deepest web folder first.
+ */
+export function syncedFilesOf(libraries: readonly TeamsLibrary[], url: string): { library: TeamsLibrary; path: string }[] {
+  const key = cloudKey(url)?.toLowerCase()
+  if (!key) return []
+  const out: { library: TeamsLibrary; path: string }[] = []
+  const pathIn = (library: TeamsLibrary, file: string): string | null => {
+    const parts = file.split('/')
+    if (parts.some((p) => !p || p === '.' || p === '..' || p.includes('\0') || (pathRules(library) === win32 && /[\\:]/.test(p)))) return null
+    return pathRules(library).join(library.path, ...parts)
+  }
+  const homes = libraries
+    .flatMap((library) => {
+      const base = library.web && cloudKey(library.web)?.toLowerCase()
+      return base && key.startsWith(`${base}/`) ? [{ library, base, file: cloudKey(url)!.slice(base.length + 1) }] : []
+    })
+    .sort((a, b) => b.base.length - a.base.length)
+  for (const { library, file } of homes) {
+    const add = (l: TeamsLibrary, f: string): void => {
+      const path = pathIn(l, f)
+      if (path && !out.some((o) => o.library.id === l.id)) out.push({ library: l, path })
+    }
+    add(library, file)
+    for (const other of libraries) {
+      const twin = liveTwin(library, file, other)
+      if (twin) add(twin.library, twin.file)
+    }
+  }
+  return out
+}

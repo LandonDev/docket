@@ -5,6 +5,7 @@ import type { Caller, ToolCtx, WorkCtx, WorkTool } from '../../modules'
 import { serviceOf } from '../../service/ctx'
 import type { OfficeCarrier } from '../carrier'
 import { workTools, type ToolDeps } from '../tools'
+import { BEHIND, byAddress, fileOf, keyedArgs, openByAddress, readSynced, withKey, type OpenWait } from '../live/agents'
 import { AddinHub } from './hub'
 import { AddinKeys, ensureAddinTables } from './keys'
 
@@ -102,15 +103,6 @@ export async function addinHandle(req: ClientRequest, ctx: WorkCtx, by: Caller):
 
 type Here = ReturnType<ToolDeps['here']>
 
-/** The file a tool's arguments name, if any. */
-const fileOf = (args: unknown): { app: 'excel' | 'word' | 'powerpoint'; key: string } | null => {
-  const a = (args ?? {}) as Record<string, unknown>
-  if (typeof a.workbook === 'string') return { app: 'excel', key: a.workbook }
-  if (typeof a.document === 'string') return { app: 'word', key: a.document }
-  if (typeof a.deck === 'string') return { app: 'powerpoint', key: a.deck }
-  return null
-}
-
 /**
  * Whether a tool call runs on this host: always where it has a desktop carrier (the
  * add-in rides along on it); where it has only the add-in, for a file open in one, and
@@ -156,7 +148,18 @@ export interface VmOffice {
   offered(ctx: ToolCtx): boolean
   awake(): Promise<void>
   here(ctx: WorkCtx): NonNullable<Here>
+  /** how long Word there may take to open a file by its address (a test's short wait) */
+  open?: OpenWait
 }
+
+/** A file read from its synced copy, where no Office could read it live (live/agents.ts `readSynced`). */
+type Synced = (ctx: ToolCtx, url: string, vm: boolean) => Promise<{ text: string; truncated: boolean } | null>
+/** A test's own synced read and add-in hub. */
+export interface AddinToolsOptions {
+  synced?: Synced
+  hub?: () => AddinHub | null
+}
+const READS = new Set(['office_doc_read', 'office_slides_read'])
 
 const failed = (r: WorkToolResult): boolean => r.isError === true
 const textOf = (r: WorkToolResult): string => r.content.map((c) => ('text' in c ? c.text : '')).join('')
@@ -164,7 +167,9 @@ const textOf = (r: WorkToolResult): string => r.content.map((c) => ('text' in c 
 const NO_DESKTOP = /may use no desktop/
 
 /** The office tools, each call run where `placesOf` says: here, in the Windows VM, or on the desktop host. */
-export function addinTools(here: (ctx: WorkCtx) => Here, vm?: VmOffice): WorkTool[] {
+export function addinTools(here: (ctx: WorkCtx) => Here, vm?: VmOffice, o: AddinToolsOptions = {}): WorkTool[] {
+  const fromCopy: Synced = o.synced ?? ((ctx, url, offered) => readSynced(ctx, () => here(ctx)?.carrier ?? null, url, offered))
+  const hubNow = o.hub ?? (() => hub)
   const local = workTools({ here })
   const away = workTools({ here: () => null })
   const inVm = vm ? workTools({ here: (ctx) => vm.here(ctx), vm: true }) : null
@@ -173,17 +178,28 @@ export function addinTools(here: (ctx: WorkCtx) => Here, vm?: VmOffice): WorkToo
     async run(args, ctx: ToolCtx) {
       const h = here(ctx)
       const offered = !!vm && !!inVm && vm.offered(ctx)
+      const f = fileOf(args)
       const run = async (place: Place): Promise<WorkToolResult> => {
-        if (place === 'here') return t.run(args, ctx)
+        // A file named by any form of its address goes by the key the Office that has it open gives it, so a held
+        // change keeps the key its press finds again (live/agents.ts).
+        if (place === 'here') return t.run(h && byAddress(f) ? await keyedArgs(h.carrier, args) : args, ctx)
         if (place === 'away') return away[i]!.run(args, ctx)
         try {
           await vm!.awake()
         } catch (err) {
           return { ...workText(`The Windows VM could not be reached: ${err instanceof Error ? err.message : String(err)}`), isError: true }
         }
-        return inVm![i]!.run(args, ctx)
+        if (!byAddress(f)) return inVm![i]!.run(args, ctx)
+        // A live file no add-in has open: Word in the VM opens it by its address and co-authors it.
+        let key: string
+        try {
+          key = await openByAddress(vm!.here(ctx).carrier, f, vm!.open)
+        } catch (err) {
+          return { ...workText(`It did not open in the Windows VM: ${err instanceof Error ? err.message : String(err)}`), isError: true }
+        }
+        return inVm![i]!.run(withKey(args, f, key), ctx)
       }
-      const places = placesOf(h?.carrier ?? null, t.name, args, offered)
+      const places = placesOf(h?.carrier ?? null, t.name, args, offered, hubNow())
       if (t.name === 'office_files' && places.length > 1) {
         // Every place's open files, each under the computer it is on; a place that cannot be asked is left out.
         const NAMES: Record<Place, string> = { here: 'our Office add-in', vm: 'the Windows VM', away: 'the desktop' }
@@ -194,15 +210,24 @@ export function addinTools(here: (ctx: WorkCtx) => Here, vm?: VmOffice): WorkToo
         return workText(JSON.stringify({ computers: ok.map((g) => ({ on: NAMES[g.p], ...(JSON.parse(textOf(g.r)) as object) })) }, null, 1))
       }
       let first: WorkToolResult | null = null
+      let last: WorkToolResult | null = null
       for (const place of places) {
         const r = await run(place)
         if (!failed(r)) return r
         // The more telling refusal: the first place's, unless it only says the file is not open there.
         first ??= r
         if (place === 'vm' && places.includes('away')) continue
-        if (place === 'away' && first !== r && !NO_DESKTOP.test(textOf(r))) return { ...workText(`In the Windows VM: ${textOf(first)} On the desktop: ${textOf(r)}`), isError: true }
+        if (place === 'away' && first !== r && !NO_DESKTOP.test(textOf(r))) {
+          last = { ...workText(`In the Windows VM: ${textOf(first)} On the desktop: ${textOf(r)}`), isError: true }
+          break
+        }
       }
-      return first!
+      // No Office could read a live file: its synced copy can, and the answer says it may be behind.
+      if (READS.has(t.name) && byAddress(f)) {
+        const copy = await fromCopy(ctx, f.key, offered).catch(() => null)
+        if (copy) return workText(`${BEHIND}\n\n${copy.text}${copy.truncated ? '\n\n(cut: the file goes on)' : ''}`)
+      }
+      return last ?? first!
     }
   }))
 }

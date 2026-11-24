@@ -85,7 +85,8 @@ describe('a tool call from a box thread', () => {
         woke++
         if (wakeFails) throw new Error('Windows did not come up within 300 s')
       },
-      here: () => inVm
+      here: () => inVm,
+      open: { ms: 4, every: 2, sleep: async () => {} }
     })
     return (name: string, args: unknown) => all.find((t) => t.name === name)!.run(args, ctx() as never)
   }
@@ -117,6 +118,8 @@ describe('a tool call from a box thread', () => {
   it('tries the VM, then the Mac, for a file named by a URL', async () => {
     expect(text(await tools()('office_doc_read', { document: URL }))).toBe('from the Mac')
     expect(woke).toBe(1)
+    // Word in the VM was asked to open it by its address first
+    expect(vmOffice.opened).toEqual([{ app: 'word', ref: { kind: 'url', url: 'https://purdue0.sharepoint.com/sites/RecWell/Shared%20Documents/Plan.xlsx' } }])
   })
   it('lists open files on every computer, each under its own', async () => {
     const out = JSON.parse(text(await tools()('office_files', {}))) as { computers: { on: string; workbooks: { key: string }[] }[] }

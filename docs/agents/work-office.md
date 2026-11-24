@@ -311,6 +311,31 @@ and only once Office is installed there (`vmAllowed`, `vmHasOffice`).
 Before 2026-11-22 the box answered every file tool "Excel is not on the
 box" and never asked the Mac: its own carrier took the call.
 
+**A file named by its address** (office/live/agents.ts, plan g6gWATXhCtN4
+M7). A thread asked from a live Files tab holds an item on the tab's own
+`microsoft` URL source (`holdFile`), so its tools name the file by the
+tab's address (`…/Plan.docx?web=1`). The Office that has it open keys it
+by its own form of that address: the add-in by `Office.context.document.url`
+(often a `/:w:/r/` link), Word by `FullName`. `sameCloudFile` (live/address.ts,
+`cloudKey`, case ignored) makes them meet: `AddinHub.sessionFor` finds the
+add-in by any form, and before a file tool runs here, in the VM, or for
+another host over `work.office.read`/`write`, `keyedArgs` names the file by
+the key that Office has it open under, so a held `office.edit` keeps the
+key its press finds again. Where no add-in has the file and the VM is a
+place, Word in the VM opens it by its address (`openByAddress`:
+`Office.Open`'s URL route, `ms-word:ofe|u|<address>` with the query
+dropped, then up to 90 s for Word to list it), so Word co-authors the live
+file and the read is live. Where no Office could read it (no add-in, no VM,
+no desktop that has it open), `office_doc_read` and `office_slides_read`
+read OneDrive's synced copy on a host the thread may reach (`readSynced`:
+the library whose web folder holds the address, or its twin, through
+`filesLibraries` and `filesRead`; the VM's copy only where the thread may
+use the VM), and the answer starts by saying it may be behind (`BEHIND`).
+A change is never made of a copy. The hold is unchanged: an agent's own
+idea is the held `office.edit`, pressed in the add-in or the VM's Word.
+`scripts/probe-vm-live.ts` proves the VM's part on the standing machine's
+helper (not yet run: the machine was asleep).
+
 **Outlook on the web** (`owa/`, milestone 38). Mail and calendar only:
 Excel, Word and PowerPoint answer "not on the box". The carrier keeps its
 own tab of Outlook on the web in the box's browser

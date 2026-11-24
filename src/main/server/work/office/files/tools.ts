@@ -31,9 +31,9 @@ const APP_NAME = { excel: 'Excel', word: 'Word', powerpoint: 'PowerPoint' } as c
 export const reachableHosts = (ctx: ToolCtx): string[] => [...new Set([ctx.host, ...(ctx.scope.workspaceId ? ctx.settings.workspace(ctx.scope.workspaceId).mayUseDesktop : [])])]
 
 /** Runs one `work.office.files*` verb on a host: here directly, else over the host link. */
-type Deps = FilesDeps | (() => OfficeCarrier | null)
+export type Deps = FilesDeps | (() => OfficeCarrier | null)
 
-async function on(ctx: ToolCtx, carrier: Deps, host: string, verb: string, params: Record<string, unknown>): Promise<unknown> {
+export async function on(ctx: ToolCtx, carrier: Deps, host: string, verb: string, params: Record<string, unknown>): Promise<unknown> {
   if (host !== ctx.host) return ctx.peer(host).call('office', verb, params)
   const req = { id: 'tool', method: `work.office.${verb}`, params } as unknown as ClientRequest
   const answer = await filesHandle(req, ctx, { kind: 'model', caps: [], sessionId: ctx.sessionId }, carrier, ctx.signal)
