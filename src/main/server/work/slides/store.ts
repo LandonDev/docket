@@ -155,6 +155,7 @@ export class SlidesStore {
     }
     const by = this.db.prepare(`DELETE FROM work_slides_ops WHERE by LIKE ? ESCAPE '\\'`)
     for (const id of ids) if (id) by.run(`agent:%:${id.replace(/[\\%_]/g, '\\$&')}`)
+    for (const [deck, shared] of lost) if (shared) this.keepShared(deck)
     return [...lost].map(([deck, shared]) => ({ deck, left: this.seats(deck).length, shared: shared || this.sharedDeck(deck) }))
   }
 
@@ -173,7 +174,9 @@ export class SlidesStore {
   seat(itemId: string, sessionId: string, deck: string, shared = false): void {
     const was = this.db.prepare(`SELECT deck, shared FROM work_slides_seats WHERE item_id = ?`).get(itemId) as { deck: string; shared: number } | undefined
     if (was?.deck === deck) {
-      if ((was.shared === 1) !== shared) this.db.prepare(`UPDATE work_slides_seats SET shared = ? WHERE item_id = ?`).run(shared ? 1 : 0, itemId)
+      // Once known to be a file others can open, a seat stays so while it sits there: its own source naming the file
+      // as a plain one says nothing of where the file lies (`keepShared`).
+      if (shared && was.shared !== 1) this.db.prepare(`UPDATE work_slides_seats SET shared = 1 WHERE item_id = ?`).run(itemId)
       return
     }
     // The mode it had as an item, from before modes were kept by the seat.
@@ -208,11 +211,21 @@ export class SlidesStore {
     return this.db.prepare(`SELECT 1 FROM work_slides_seats WHERE deck = ? AND shared = 1 LIMIT 1`).get(deck) !== undefined
   }
 
+  /**
+   * A seat that knew the deck as one others can open left (a PowerPoint tab closed): the seats still on it keep that
+   * word, so the deck's waiting changes stay his press's to see and an agent's own idea stays a suggestion, while any
+   * tab has it open. The word goes with the deck's last seat.
+   */
+  private keepShared(deck: string): void {
+    this.db.prepare(`UPDATE work_slides_seats SET shared = 1 WHERE deck = ?`).run(deck)
+  }
+
   /** An item left: its seat goes; answers the deck it sat on, how many seats that deck has left, and whether any seat on it (this one included) was shared. */
   unseat(itemId: string): { deck: string; left: number; shared: boolean } | null {
     const was = this.db.prepare(`SELECT deck, shared FROM work_slides_seats WHERE item_id = ?`).get(itemId) as { deck: string; shared: number } | undefined
     if (!was) return null
     this.db.prepare(`DELETE FROM work_slides_seats WHERE item_id = ?`).run(itemId)
+    if (was.shared === 1) this.keepShared(was.deck)
     return { deck: was.deck, left: this.seats(was.deck).length, shared: was.shared === 1 || this.sharedDeck(was.deck) }
   }
 

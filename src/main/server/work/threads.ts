@@ -145,18 +145,45 @@ function pointsAt(text: string, ids: readonly string[]): boolean {
   return text.split('\n').some((line) => CHIP_HEAD.test(line) && (ids.some((id) => line.endsWith(` (${id})`)) || chipRefs(line).some((ref) => ids.includes(ref))))
 }
 
+/** A path as one is written: from the root, or from a drive's letter. */
+const PATH = String.raw`(?:\/|[A-Za-z]:[\\/])`
+const TYPED_PATH = new RegExp(String.raw`(?:^|[\s("'“‘«[{,])(${PATH}[^\s"'”’»\]},;!?()]+\.[A-Za-z0-9]{1,8})(?=$|[\s)"'”’»\]},.;:!?])`, 'g')
+
+/** The files one message of his points at: each file chip's path (its JSON ref's, or the one its head ends on) and each path he typed. */
+function filesIn(text: string): string[] {
+  const out: string[] = []
+  for (const line of text.split('\n')) {
+    if (!CHIP_HEAD.test(line)) continue
+    const json = /\((\{[^()]*\})\)$/.exec(line)
+    if (json) {
+      try {
+        const ref = JSON.parse(json[1]!) as { path?: unknown }
+        if (typeof ref.path === 'string') out.push(ref.path)
+      } catch {
+        // not a ref of ours
+      }
+      continue
+    }
+    const end = new RegExp(String.raw`\((${PATH}[^()]*)\)$`).exec(line)
+    if (end) out.push(end[1]!)
+  }
+  for (const m of typedWords(text).matchAll(TYPED_PATH)) out.push(m[1]!)
+  return out
+}
+
 /**
  * Whether the owner typed `quote` in the thread: found whole in one of the owner's messages, letter case and spacing
  * aside. With `about`, the same message must also point at one of those exactly (`pointsAt`): for a document, what
  * identifies it alone (its path, its LifeOS id, the canvas item it is), never a title two documents may share or one
  * inside another's ("Plan" in "Travel Plan"). Words he wrote about one document never stand for a change to another.
+ * With `only`, that message points at no other file either: words in a message about two decks do not say which.
  */
-export function ownerSaid(words: OwnerWords, sessionId: string, quote: string, about?: readonly string[]): boolean {
+export function ownerSaid(words: OwnerWords, sessionId: string, quote: string, about?: readonly string[], only = false): boolean {
   const want = plain(quote)
   if (want.length < OWNER_QUOTE_MIN) return false
   const ids = about?.filter((id) => id.length >= OWNER_NAME_MIN)
   if (ids && !ids.length) return false
-  return ownerMessages(words, sessionId).some((text) => plain(typedWords(text)).includes(want) && (!ids || pointsAt(text, ids)))
+  return ownerMessages(words, sessionId).some((text) => plain(typedWords(text)).includes(want) && (!ids || (pointsAt(text, ids) && (!only || filesIn(text).every((file) => ids.includes(file))))))
 }
 
 export const threadsPart: CtxPart<'threads'> = (ctx, deps) => {
@@ -213,7 +240,7 @@ export const threadsPart: CtxPart<'threads'> = (ctx, deps) => {
         // The app's own line, delivered as a report is: never a row that reads as the owner's message.
         registry.deliverAgentReport(sessionId, { agentId: 'work', title: 'Work', status: 'notice', text: notice })
       },
-      ownerSaid: (sessionId, quote, about) => ownerSaid(words, sessionId, quote, about),
+      ownerSaid: (sessionId, quote, about, only) => ownerSaid(words, sessionId, quote, about, only),
       fresh: (sessionId) => !!registry.get(sessionId) && !registry.hasUserText(sessionId),
       async rearm(sessionId) {
         if (registry.get(sessionId) && !registry.hasUserText(sessionId)) await registry.restart(sessionId)

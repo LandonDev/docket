@@ -244,6 +244,14 @@ describe('ctx.threads.ownerSaid: a quote the owner typed', () => {
     expect(said('change doors to 6:30 PM for everyone', ['kd7q2'])).toBe(false)
     // a name too short to say which document was meant binds nothing
     expect(said('move the keynote to 2:00 PM', ['Ru'])).toBe(false)
+    // `only`: a message about two files, by chip or typed path, says neither surely; one about this file alone does.
+    await send(thread.id, 'About this file: A.pptx ({"at":"file","host":"env_box","path":"/w/A.pptx"})\nAbout this file: B.pptx ({"at":"file","host":"env_box","path":"/w/B.pptx"})\n\nretitle the second slide to Kickoff')
+    await send(thread.id, 'About this file: C.pptx ({"at":"file","host":"env_box","path":"/w/C.pptx"})\n\nmove the agenda after /w/D.pptx is done')
+    const only = (quote: string, about: string[]): boolean => work.ctx.threads.ownerSaid(thread.id, quote, about, true)
+    expect(said('retitle the second slide to Kickoff', ['/w/A.pptx'])).toBe(true)
+    expect(only('retitle the second slide to Kickoff', ['/w/A.pptx'])).toBe(false)
+    expect(only('move the agenda after /w/D.pptx is done', ['/w/C.pptx'])).toBe(false)
+    expect(only('put the totals in bold please', ['/w/Budget (2).tcdoc'])).toBe(true)
   })
 
   it("a subagent's first message is its parent's writing; the owner's words above it, and his own into it, count", async () => {

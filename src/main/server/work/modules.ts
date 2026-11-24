@@ -282,8 +282,11 @@ export interface WorkCtx {
     /** `by`: who pressed for it; a remote key's thread holds to the key's ceiling (no full access without approve). */
     start(o: { workspaceId: string; projectId?: string; text: string; model?: string; routineRunId?: string; about?: ContextChip; title?: string; by?: Caller }): Promise<string>
     resume(sessionId: string, notice: string): Promise<void>
-    /** whether the owner typed this quote in the thread; with `about`, in a message that also names one of those (work/threads.ts) */
-    ownerSaid(sessionId: string, quote: string, about?: readonly string[]): boolean
+    /**
+     * whether the owner typed this quote in the thread; with `about`, in a message that also names one of those, and with
+     * `only`, a message that points at no other file (work/threads.ts)
+     */
+    ownerSaid(sessionId: string, quote: string, about?: readonly string[], only?: boolean): boolean
     /** whether the thread is this host's and nobody has written in it yet: no message, so no turn */
     fresh(sessionId: string): boolean
     /**

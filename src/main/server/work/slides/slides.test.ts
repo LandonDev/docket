@@ -1010,6 +1010,15 @@ describe('the module, on a fake deck tool', () => {
       expect([...slidesNamed(FAKE_DECK, 'fix slide 3 or 4, whichever has the chart')]).toEqual([258])
       expect([...slidesNamed(FAKE_DECK, 'move slide 2 to 4')]).toEqual([257])
       expect([...slidesNamed(FAKE_DECK, 'fix slides 2 to 4')]).toEqual([257, 258, 259])
+      // One message about two decks does not say which: even the deck it names first waits.
+      typed.set('t1', [`${fileChip(deckAt)}\n${fileChip(other)}\nPlease retitle the second slide to New words for the staff meeting`])
+      const both = await tool('slides_edit', { item: item.id, because: 'asked', quote: 'retitle the second slide to New words', ops: [{ op: 'text', slide: 257, shape: 3, paragraphs: ['New words'] }] })
+      expect(both.structuredContent).toMatchObject({ direct: false })
+      expect(readFileSync(deckAt).equals(before)).toBe(true)
+      // Where a move goes is a place, not a slide to change.
+      expect(quoteNames(FAKE_DECK, 'move slide 2 after slide 4', [{ op: 'move', slide: 257, after: 259 }])).toBe(true)
+      expect(quoteNames(FAKE_DECK, 'move slide 2 after slide 4', [{ op: 'move', slide: 257, after: 259 }, { op: 'notes', slide: 259, text: 'x' }])).toBe(false)
+      expect(quoteNames(FAKE_DECK, 'put the second slide before the last slide', [{ op: 'notes', slide: 259, text: 'x' }])).toBe(false)
     })
 
     it('a key that may not approve is a viewer: shown and told the file alone, it changes nothing', async () => {
@@ -1600,6 +1609,34 @@ describe('a deck kept by its file, drawn slide by slide', () => {
     await expect(edit).rejects.toThrow(NEEDS_PRESS)
     expect((await agent).structuredContent).toMatchObject({ direct: false })
     expect(readFake(shared).slides.map((s) => s.notes)).toEqual(['', '', '', ''])
+  })
+
+  it('a deck stays one others can open while any tab has it open, after the tab that knew it so closes', async () => {
+    db.prepare(`INSERT INTO workspaces (id, name, path, created_at) VALUES ('w9', 'Job', ?, 1)`).run(dir)
+    const reader = { kind: 'remote', keyId: 'k1', name: 'Bot', audience: 'mcp', caps: ['read', 'operate'] } as never
+    const team = join(dir, 'Esports Staff')
+    mkdirSync(team)
+    const shared = join(team, 'Show.pptx')
+    writeFileSync(shared, fakeBytes(FAKE_DECK))
+    const plain = openDeck(fileSource(shared))
+    await call('work.slides.mode', { itemId: plain.id, mode: 'writes' })
+    // A PowerPoint tab on the same file says it is one others can open; an agent's idea waits there.
+    const hosted = canvasStoreOf(db).open('t1', { kind: 'slides', source: { at: 'microsoft', host: 'env_test', app: 'powerpoint', name: 'Show.pptx', ref: { kind: 'path', path: shared } }, title: 'Hosted' })
+    await call('work.slides.open', { itemId: hosted.id })
+    await tool('slides_edit', { item: plain.id, because: 'own', ops: [{ op: 'notes', slide: 257, text: 'Waiting words' }] })
+    // The PowerPoint tab closes; the plain tab and the waiting change stay.
+    slides.itemsRemoved!([hosted], work.ctx)
+    await call('work.slides.open', { itemId: plain.id })
+    expect(new SlidesStore(db).sharedDeck(deckKey(plain))).toBe(true)
+    const seen = await call('work.slides.open', { itemId: plain.id }, reader)
+    expect(seen.changes).toEqual([])
+    expect(JSON.stringify(seen)).not.toContain('Waiting words')
+    const r = await tool('slides_edit', { item: plain.id, because: 'own', ops: [{ op: 'notes', slide: 258, text: 'Agent' }] })
+    expect(r.structuredContent).toMatchObject({ direct: false })
+    expect(readFake(shared).slides.map((x) => x.notes)).toEqual(['', '', '', ''])
+    // The word goes with the deck's last seat.
+    slides.itemsRemoved!([plain], work.ctx)
+    expect(new SlidesStore(db).sharedDeck(deckKey(plain))).toBe(false)
   })
 
   it('on a file others can open, only the tab that made a direct write offers its Undo, and it goes with that tab', async () => {

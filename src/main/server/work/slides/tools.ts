@@ -76,10 +76,10 @@ export function slideDetail(info: DeckInfo, slideId: number): string | null {
 }
 
 /** Whether the owner typed the quote in this thread; with `about`, in a message that also names one of those whole (threads.ts). */
-function ownerSaid(ctx: ToolCtx, quote: string | undefined, about?: readonly string[]): boolean {
+function ownerSaid(ctx: ToolCtx, quote: string | undefined, about?: readonly string[], only = false): boolean {
   if (!quote) return false
   try {
-    return ctx.threads.ownerSaid(ctx.sessionId, quote, about)
+    return ctx.threads.ownerSaid(ctx.sessionId, quote, about, only)
   } catch {
     return false
   }
@@ -101,45 +101,73 @@ const wordsOf = (text: string): string => ` ${text.toLowerCase().replace(/[^\p{L
 /** Words that turn a slide's name into one he wants left alone ("don't touch slide 3", "all but the last slide"). */
 const EXCLUDES = /\b(not|never|except|excluding|without|leave|skip|besides|instead|but|other than|apart from)\b|n't\b/
 
+/** Words that make what follows them a place, not a slide to change ("after slide 4", "before the last slide"). */
+const PLACE = /\b(after|before|behind|following|below|above|between|past|into|onto|to|ahead of|next to)\s+(?:the\s+)?$/
+
 /**
- * The slides, by id, a person's words name without doubt: by number ("slide 3", "slides 2 and 4", "slides 2-5", "slides
- * 2 to 5"; after "slide" one number alone, so "move slide 2 to 5" names slide 2), by place ("the third slide", "the
- * 2nd slide", "the last slide"), or by a title of three letters or more said whole that no other slide's title holds.
- * Words that leave something out name nothing at all: which slide they spare is not certain.
+ * The slides, by id, a person's words name without doubt, and how: `targets`, slides to change; `places`, slides named
+ * only as where something goes ("move slide 2 after slide 4": 2 a target, 4 a place). By number ("slide 3", "slides 2
+ * and 4", "slides 2-5", "slides 2 to 5"; after "slide" one number alone, so "move slide 2 to 5" names slide 2), by
+ * place ("the third slide", "the 2nd slide", "the last slide"), or by a title of three letters or more said whole that
+ * no other slide's title holds. Words that leave something out name nothing at all: which slide they spare is not
+ * certain. A slide named both ways is a target.
  */
-export function slidesNamed(info: Pick<DeckInfo, 'slides'>, quote: string): Set<number> {
+function slidesIn(info: Pick<DeckInfo, 'slides'>, quote: string): { targets: Set<number>; places: Set<number> } {
   const q = quote.toLowerCase().replace(/[‘’]/g, "'")
-  if (EXCLUDES.test(q)) return new Set()
+  const none = { targets: new Set<number>(), places: new Set<number>() }
+  if (EXCLUDES.test(q)) return none
   const count = info.slides.length
-  const places = new Set<number>()
+  const at = { targets: new Set<number>(), places: new Set<number>() }
+  const put = (n: number, before: string): void => void (PLACE.test(before) ? at.places : at.targets).add(n)
   for (const m of q.matchAll(/\bslides\s+(?:no\.?\s*|numbers?\s+)?(\d+(?:\s*(?:,|and|&|-|–|to|through)\s*\d+)*)/g)) {
     const parts = m[1].split(/\s*(,|and|&|-|–|to|through)\s*/)
     for (let i = 0; i < parts.length; i += 2) {
       const n = Number(parts[i])
       const from = i > 0 && /^(-|–|to|through)$/.test(parts[i - 1]) ? Number(parts[i - 2]) : n
-      for (let k = Math.min(from, n); k <= Math.min(n, count); k++) places.add(k)
+      for (let k = Math.min(from, n); k <= Math.min(n, count); k++) put(k, q.slice(0, m.index))
     }
   }
-  for (const m of q.matchAll(/\bslide\s+(?:no\.?\s*|number\s+)?(\d+)/g)) places.add(Number(m[1]))
-  for (const m of q.matchAll(new RegExp(`\\b(${ORDINALS.join('|')}|last|(\\d+)(?:st|nd|rd|th))\\s+slide\\b`, 'g'))) places.add(m[2] ? Number(m[2]) : m[1] === 'last' ? count : ORDINALS.indexOf(m[1]) + 1)
+  for (const m of q.matchAll(/\bslide\s+(?:no\.?\s*|number\s+)?(\d+)/g)) put(Number(m[1]), q.slice(0, m.index))
+  for (const m of q.matchAll(new RegExp(`\\b(${ORDINALS.join('|')}|last|(\\d+)(?:st|nd|rd|th))\\s+slide\\b`, 'g'))) put(m[2] ? Number(m[2]) : m[1] === 'last' ? count : ORDINALS.indexOf(m[1]) + 1, q.slice(0, m.index))
   const said = wordsOf(quote)
   const titles = info.slides.map((s) => wordsOf(s.title))
   // A title names its slide only when no other slide's title is it or holds it ("Plan" beside "Travel Plan").
   const alone = (i: number): boolean => titles[i].trim().length >= 3 && titles.every((t, j) => j === i || !t.includes(titles[i]))
-  return new Set(info.slides.flatMap((s, i) => (places.has(i + 1) || (alone(i) && said.includes(titles[i])) ? [s.id] : [])))
+  const out = { targets: new Set<number>(), places: new Set<number>() }
+  info.slides.forEach((s, i) => {
+    const n = i + 1
+    if (at.targets.has(n)) out.targets.add(s.id)
+    else if (at.places.has(n)) out.places.add(s.id)
+    if (!alone(i)) return
+    for (let k = said.indexOf(titles[i]); k !== -1; k = said.indexOf(titles[i], k + 1)) (PLACE.test(said.slice(0, k + 1)) ? out.places : out.targets).add(s.id)
+  })
+  for (const id of out.targets) out.places.delete(id)
+  return out
 }
 
+/** The slides, by id, a person's words name without doubt as ones to change (`slidesIn`). */
+export const slidesNamed = (info: Pick<DeckInfo, 'slides'>, quote: string): Set<number> => slidesIn(info, quote).targets
+
 /**
- * Whether the person's words name every slide a batch changes (`slidesNamed`): an add by the slide it goes after, a
- * copy by the slide it copies, and an edit of a slide the batch adds by that add. An edit of the deck as a whole (its
- * theme, a section taken away or renamed) is named by no slide.
+ * Whether the person's words name every slide a batch changes, as one to change (`slidesIn`): a slide an edit changes,
+ * a move's slide and a copy's source must be targets; where a move or an add goes may be named as a place too (an add
+ * at the very start, or a move there, by "start", "beginning", "front" or "top"); an edit of a slide the batch adds is
+ * named by that add. An edit of the deck as a whole (its theme, a section taken away or renamed) is named by no slide.
  */
 export function quoteNames(info: Pick<DeckInfo, 'slides'>, quote: string, ops: readonly SlideOp[]): boolean {
-  const named = slidesNamed(info, quote)
+  const { targets, places } = slidesIn(info, quote)
+  const start = /\b(start|beginning|front|top)\b/i.test(quote)
+  const where = (after: number): boolean => (after === 0 ? start : targets.has(after) || places.has(after))
   for (const op of ops) {
-    const on = op.op === 'add' ? op.after : op.op === 'theme' ? null : op.op === 'section' ? (op.act === 'add' ? op.at : null) : op.slide
-    if (on === null || !named.has(on)) return false
-    if ((op.op === 'add' || op.op === 'duplicate') && op.id !== undefined) named.add(op.id)
+    if (op.op === 'add') {
+      if (!where(op.after)) return false
+    } else if (op.op === 'move') {
+      if (!targets.has(op.slide) || !where(op.after)) return false
+    } else {
+      const on = op.op === 'theme' ? null : op.op === 'section' ? (op.act === 'add' ? op.at : null) : op.slide
+      if (on === null || !targets.has(on)) return false
+    }
+    if ((op.op === 'add' || op.op === 'duplicate') && op.id !== undefined) targets.add(op.id)
   }
   return true
 }
@@ -253,11 +281,11 @@ export const slidesTools: WorkTool[] = [
           const shared = sharedDeck(ctx, it)
           const all = allocateIds([...deck.pending.map((p) => p.op), ...a.ops], deck.file.info)
           const fresh = all.slice(deck.pending.length)
-          // His words write at once. On a deck others can open, only in a message that names this deck (its path, as a
-          // chip carries it: a slide number in words about another deck is not about this one), and only the slides
-          // they name without doubt (`quoteNames`); the rest waits for his press.
+          // His words write at once. On a deck others can open, only in a message that names this deck and no other file
+          // (its path, as a chip carries it: a slide number in words about another deck, or about two, is not surely
+          // about this one), and only the slides they name without doubt (`quoteNames`); the rest waits for his press.
           const asked = a.because === 'asked' && ownerSaid(ctx, a.quote)
-          const named = asked && (!shared || (ownerSaid(ctx, a.quote, deckNames(it)) && quoteNames(deck.file.info, a.quote!, fresh)))
+          const named = asked && (!shared || (ownerSaid(ctx, a.quote, deckNames(it), true) && quoteNames(deck.file.info, a.quote!, fresh)))
           // With suggestions waiting, what the agent reads is the deck with them in: an edit of that deck waits with them.
           const direct = writes && !deck.pending.length && (a.because === 'own' ? !shared : named)
           const added = fresh.flatMap((o) => (o.op === 'add' ? [o.id!] : []))
