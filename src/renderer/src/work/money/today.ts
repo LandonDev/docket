@@ -2,7 +2,7 @@ import { useMemo } from "react";
 import type { MoneyOwed } from "@shared/contract-work-money";
 import { formatMoney, today } from "@shared/work/money";
 import { goTo } from "../today/open";
-import { useEachWorkspace } from "../today/read";
+import { readState, useEachWorkspace } from "../today/read";
 import type { TodayAnswer, TodayEnv, TodayRow, TodaySource } from "../today/types";
 import { sinceWords } from "./model";
 
@@ -57,7 +57,7 @@ function useOwed(env: TodayEnv): TodayAnswer {
   // The same answer while the read has not moved: a new one would wake the page for nothing.
   // The day is an input: a row's "Today" turns at midnight with no push. `stale`: the rows a reopen had, read again.
   const day = env.day.from;
-  return useMemo(() => ({ rows: owedRows(read.answers, today(new Date(day))), loading: read.loading, failed: read.failed, ...(read.stale ? { stale: true } : {}) }), [read, day]);
+  return useMemo(() => ({ rows: owedRows(read.answers, today(new Date(day))), ...readState(read) }), [read, day]);
 }
 
 export const source: TodaySource = {

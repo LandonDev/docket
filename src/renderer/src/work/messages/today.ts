@@ -8,7 +8,7 @@ import type { LifeosSession } from "../shell/lifeos";
 import { shown } from "../today/lifeos";
 import { goTo } from "../today/open";
 import { comeBack, leave } from "../today/store";
-import { useEachWorkspace } from "../today/read";
+import { readState, useEachWorkspace } from "../today/read";
 import type { TodayAnswer, TodayEnv, TodayRow, TodaySection, TodaySource, TodayWorkspace } from "../today/types";
 import { rowTime } from "./model";
 
@@ -34,10 +34,16 @@ const LEAD: NonNullable<TodayRow["lead"]> = { kind: "glyph", glyph: Chat };
 
 /** The waiting conversations as rows, newest first: who wrote and where, their words, when. */
 export function waitingRows(answers: readonly { workspace: TodayWorkspace; value: MessagesUnansweredAnswer }[], now: number, markRead: (chatId: string, at: number) => Promise<void> | void): TodayRow[] {
-  const rows: TodayRow[] = [];
+  // One row a conversation: two hosts that hold its sector may answer it at two last messages (one has not caught
+  // up), and the newest is the one he would answer, and mark read.
+  const newest = new Map<string, { workspace: TodayWorkspace; chat: ChatWaiting }>();
   for (const { workspace, value } of answers) {
-    for (const chat of value.rows) rows.push(rowOf(workspace, chat, now, markRead));
+    for (const chat of value.rows) {
+      const had = newest.get(chat.chatId);
+      if (!had || chat.at > had.chat.at) newest.set(chat.chatId, { workspace, chat });
+    }
   }
+  const rows = [...newest.values()].map(({ workspace, chat }) => rowOf(workspace, chat, now, markRead));
   return rows.sort((a, b) => (a.at ?? 0) - (b.at ?? 0));
 }
 
@@ -85,7 +91,7 @@ function useWaiting(env: TodayEnv): TodayAnswer {
   // The day is an input: a row's time ("2:00 PM", "Sat") is said from today, which turns at midnight with no push.
   const day = env.day.from;
   return useMemo(
-    () => ({ rows: waitingRows(each.answers, Date.now(), (chatId, at) => markChatRead(client, chatId, at)), loading: each.loading, failed: each.failed, ...(each.stale ? { stale: true } : {}) }),
+    () => ({ rows: waitingRows(each.answers, Date.now(), (chatId, at) => markChatRead(client, chatId, at)), ...readState(each) }),
     // eslint-disable-next-line react-hooks/exhaustive-deps -- `day`: the rows' times are said again when the day turns
     [each, client, day],
   );

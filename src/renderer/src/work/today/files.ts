@@ -87,7 +87,11 @@ function useFiles(env: TodayEnv): TodayAnswer {
   const now = env.day.from;
   const built = useMemo(() => fileRows(read.answers, now, { open: openFile }), [read.answers, now]);
   const rows = useStableRows(built, null);
-  return useMemo<TodayAnswer>(() => ({ rows, ...(read.loading && rows.length === 0 ? { loading: true } : {}), ...(read.failed.length ? { failed: read.failed } : {}) }), [rows, read.loading, read.failed]);
+  // A job whose host is offline was not asked: the section never says no one changed a file (read.ts `away`).
+  return useMemo<TodayAnswer>(
+    () => ({ rows, ...(read.loading && rows.length === 0 ? { loading: true } : {}), ...(read.failed.length ? { failed: read.failed } : {}), ...(read.away ? { away: true } : {}) }),
+    [rows, read.loading, read.failed, read.away],
+  );
 }
 
 export const source: TodaySource = { id: "files", section: SECTION, use: useFiles };

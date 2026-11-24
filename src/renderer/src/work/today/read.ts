@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { registry, type Link } from "../../lib/connection";
 import { resetHooks } from "./store";
-import type { TodayEnv, TodayFailure, TodayWorkspace } from "./types";
+import type { TodayAnswer, TodayEnv, TodayFailure, TodayWorkspace } from "./types";
 
 /**
  * A read that lives on hosts (docs/agents/work-today.md "Reading the hosts"):
@@ -25,7 +25,14 @@ export type EachAnswer<T> = {
   failed: TodayFailure[];
   /** It is `loading`, and every job still out has a value from an earlier read: what it shows is whole, only being read again. */
   stale: boolean;
+  /** A job's host is offline, so it was not asked: what it holds is not known (the page names the host at its foot). */
+  away: boolean;
 };
+
+/** What a source passes on of its read, beside its rows: one rule for every source whose rows live on hosts. */
+export function readState(read: EachAnswer<unknown>): Pick<TodayAnswer, "loading" | "failed" | "stale" | "away"> {
+  return { loading: read.loading, failed: read.failed, ...(read.stale ? { stale: true } : {}), ...(read.away ? { away: true } : {}) };
+}
 
 /** `fresh`: answered in this read's own life; a value it started with is the last one any read had (`lastOf`). */
 type Slot<T> = { workspace: TodayWorkspace; value?: T; has: boolean; fresh: boolean; error: string | null; pending: boolean; seq: number };
@@ -133,8 +140,25 @@ export function eachWorkspace<T>(method: string, opts: EachOptions = {}) {
     });
   };
 
+  /** A job's slot as a read starts it: with the last value any read had for it, if there is one. */
+  const slotOf = (workspace: TodayWorkspace): Slot<T> => {
+    const last = `${method}|${keyOf(workspace)}`;
+    return lastOf.has(last) ? { workspace, value: lastOf.get(last) as T, has: true, fresh: false, error: null, pending: false, seq: 0 } : { workspace, has: false, fresh: false, error: null, pending: false, seq: 0 };
+  };
+
   return {
-    /** The jobs to read and how to ask each. A new job, and one whose host's link opened, is asked; one that left is forgotten. */
+    /**
+     * The jobs it will read, before it asks: its first snapshot holds these
+     * jobs' last values and no other's (a job removed while Today was closed
+     * shows nothing). Asks nothing; `set` does.
+     */
+    prime(workspaces: readonly TodayWorkspace[]): void {
+      if (started) return;
+      order = workspaces.map(keyOf);
+      for (const workspace of workspaces) if (!slots.has(keyOf(workspace))) slots.set(keyOf(workspace), slotOf(workspace));
+      changed();
+    },
+    /** The jobs to read and how to ask each. A new job, one never asked, and one whose host's link opened, is asked; one that left is forgotten. */
     set(workspaces: readonly TodayWorkspace[], params: (workspace: TodayWorkspace) => unknown): void {
       closed = false;
       started = true;
@@ -156,13 +180,12 @@ export function eachWorkspace<T>(method: string, opts: EachOptions = {}) {
         const slot = slots.get(key);
         watch(workspace.environmentId);
         if (!slot) {
-          const last = `${method}|${key}`;
-          slots.set(key, lastOf.has(last) ? { workspace, value: lastOf.get(last) as T, has: true, fresh: false, error: null, pending: false, seq: 0 } : { workspace, has: false, fresh: false, error: null, pending: false, seq: 0 });
+          slots.set(key, slotOf(workspace));
           ask(key);
         } else {
           const opened = workspace.open && !slot.workspace.open;
           slot.workspace = workspace;
-          if (opened) ask(key);
+          if (opened || slot.seq === 0) ask(key);
         }
       }
       changed();
@@ -189,13 +212,15 @@ export function eachWorkspace<T>(method: string, opts: EachOptions = {}) {
         failed.set(environmentId, { environmentId, error: slot.error, retry: () => askHost(environmentId) });
       }
       // Out: a job that has not answered this read, or whose failed read is asked again (Retry). A fresh value read
-      // again on a push is not out: it shows until the new one lands.
-      const out = live.filter((slot) => slot.workspace.open && slot.pending && (!slot.fresh || slot.error !== null));
+      // again on a push is not out: it shows until the new one lands. Before it is handed its jobs, each open job it
+      // was primed with is out.
+      const out = started ? live.filter((slot) => slot.workspace.open && slot.pending && (!slot.fresh || slot.error !== null)) : live.filter((slot) => slot.workspace.open);
       cached = {
         answers: live.filter((slot) => slot.has).map((slot) => ({ workspace: slot.workspace, value: slot.value as T })),
         loading: !started || out.length > 0,
         failed: [...failed.values()],
-        stale: started && out.length > 0 && out.every((slot) => slot.has),
+        stale: out.length > 0 && out.every((slot) => slot.has),
+        away: live.some((slot) => !slot.workspace.open),
       };
       return cached;
     },
@@ -216,7 +241,12 @@ export function eachWorkspace<T>(method: string, opts: EachOptions = {}) {
  * `paramsOf` is read at each ask, so it may be written in line.
  */
 export function useEachWorkspace<T>(env: TodayEnv, method: string, paramsOf: (workspace: TodayWorkspace) => unknown, opts: EachOptions = {}): EachAnswer<T> {
-  const [read] = useState(() => eachWorkspace<T>(method, opts));
+  const [read] = useState(() => {
+    const made = eachWorkspace<T>(method, opts);
+    // Its first frame shows the jobs there are now, each with its last value: never a job that has since left.
+    made.prime(env.workspaces);
+    return made;
+  });
   const params = useRef(paramsOf);
   params.current = paramsOf;
   useEffect(() => {

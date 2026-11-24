@@ -10,9 +10,9 @@ const owed = { workspace: ws, value: { rows: [{ workspaceId: "w1", sector: "ref"
 const chats = { workspace: ws, value: { rows: [{ chatId: "c1", chat: "Dana Lee", who: "Dana Lee", text: "Can you look?", at: at(23, 14), source: "slack" }] } };
 // One read, the same object on every render: nothing but the day moves.
 const reads = vi.hoisted(() => ({ answers: [] as unknown[] }));
-vi.mock("./read", () => {
-  const snap = { answers: reads.answers, loading: false, failed: [], stale: false };
-  return { useEachWorkspace: () => snap };
+vi.mock("./read", async (original) => {
+  const snap = { answers: reads.answers, loading: false, failed: [], stale: false, away: false };
+  return { ...(await original<object>()), useEachWorkspace: () => snap };
 });
 
 const { source: money } = await import("../money/today");

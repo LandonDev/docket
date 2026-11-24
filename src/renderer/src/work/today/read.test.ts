@@ -166,6 +166,37 @@ describe("eachWorkspace", () => {
     expect(again.snapshot()).toMatchObject({ loading: false, stale: false, failed: [{ environmentId: "box" }] });
   });
 
+  it("primed with the jobs there are now, its first snapshot holds their last values and no other's, and set asks each", async () => {
+    const first = eachWorkspace<{ n: number }>("work.money.owed", { linkOf });
+    first.set([job("box", "w1"), job("box", "gone")], paramsOf);
+    box.asked[0]!.resolve({ n: 1 });
+    box.asked[1]!.resolve({ n: 9 });
+    await flush();
+    first.close();
+    const again = eachWorkspace<{ n: number }>("work.money.owed", { linkOf });
+    again.prime([job("box", "w1"), job("mac", "new")]);
+    // Before any ask: the job that left shows nothing, the new one is out with nothing to show.
+    expect(again.snapshot().answers.map((a) => [a.workspace.workspaceId, a.value])).toEqual([["w1", { n: 1 }]]);
+    expect(again.snapshot()).toMatchObject({ loading: true, stale: false });
+    expect(box.asked).toHaveLength(2);
+    again.set([job("box", "w1"), job("mac", "new")], paramsOf);
+    expect(box.asked).toHaveLength(3);
+    expect(mac.asked).toHaveLength(1);
+  });
+
+  it("says a job whose host is offline was not asked (`away`), until its host is back and asked", async () => {
+    const read = eachWorkspace<{ n: number }>("work.messages.unanswered", { linkOf });
+    read.set([job("box", "w1"), job("mac", "w3", false)], paramsOf);
+    box.asked[0]!.resolve({ n: 0 });
+    await flush();
+    expect(read.snapshot()).toMatchObject({ loading: false, away: true });
+    read.set([job("box", "w1"), job("mac", "w3", true)], paramsOf);
+    expect(read.snapshot()).toMatchObject({ loading: true, away: false });
+    mac.asked[0]!.resolve({ n: 1 });
+    await flush();
+    expect(read.snapshot()).toMatchObject({ loading: false, away: false });
+  });
+
   it("forgets a job's last value once the job leaves", async () => {
     const first = eachWorkspace<{ n: number }>("work.money.owed", { linkOf });
     first.set([job("box", "w1"), job("box", "w2")], paramsOf);

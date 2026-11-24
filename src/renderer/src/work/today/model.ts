@@ -77,10 +77,12 @@ export type MergedSection = {
   rows: TodayRow[];
   /** A source that feeds it has not answered yet. */
   loading: boolean;
+  /** A source that feeds it has nothing to show yet: not one that only reads again a whole answer it had (`stale`). Bones are for this. */
+  waiting: boolean;
   /** A source that feeds it answered with rows and a read still out: what it shows is not all of it. Not while it only reads again what it had. */
   partial: boolean;
   failed: TodayFailure[];
-  /** A read it needs failed on a host whose link is not open: the foot says so, and the section never says it is empty. */
+  /** A read it needs failed on, or skipped, a host whose link is not open: the foot says so, and the section never says it is empty. */
   away: boolean;
   /** One muted line at its foot, from the source that owns it. */
   note?: string;
@@ -97,7 +99,7 @@ export type MergedSection = {
 export function merge(fed: readonly Fed[], gone: ReadonlySet<string> = NO_KEYS): MergedSection[] {
   const sections = new Map<string, MergedSection>();
   const add = (def: TodaySection): void => {
-    if (!sections.has(def.id)) sections.set(def.id, { def, rows: [], loading: false, partial: false, failed: [], away: false });
+    if (!sections.has(def.id)) sections.set(def.id, { def, rows: [], loading: false, waiting: false, partial: false, failed: [], away: false });
   };
   for (const { source } of fed) if (source.section) add(source.section);
   add(ALSO);
@@ -116,9 +118,10 @@ export function merge(fed: readonly Fed[], gone: ReadonlySet<string> = NO_KEYS):
     // The same line twice (two sources that say one thing of one host) is drawn once.
     const into = (own ?? sections.get(ALSO.id)!).failed;
     for (const f of answer.failed ?? []) if (!into.some((g) => g.environmentId === f.environmentId && g.said === f.said && g.error === f.error)) into.push(f);
-    if (away) (own ?? sections.get(ALSO.id)!).away = true;
+    if (away || answer.away) (own ?? sections.get(ALSO.id)!).away = true;
     if (!own) continue;
     if (answer.loading) own.loading = true;
+    if (answer.loading && !answer.stale) own.waiting = true;
     if (answer.loading && answer.rows !== undefined && !kept && !answer.stale) own.partial = true;
     if (answer.note) own.note = answer.note;
   }
@@ -169,7 +172,8 @@ export function fold(section: MergedSection, folds: Folds = NO_FOLDS): ShownSect
   const cap = def.fold !== undefined && !folds.more.has(def.id) && ahead.length > def.fold ? def.fold : ahead.length;
   const rows = [...(showEarlier ? past : []), ...ahead.slice(0, cap)];
   // Rows it kept from before a slow or failed read still show; bones are for a section that has never answered.
-  const state = section.rows.length > 0 ? "rows" : section.loading ? "bones" : "empty";
+  // A section that only reads again an empty answer it had says it is empty, though it is not clear until the read is back.
+  const state = section.rows.length > 0 ? "rows" : section.waiting ? "bones" : "empty";
   return {
     id: def.id,
     title: def.title,
@@ -214,7 +218,9 @@ export function foldOf(key: string): { which: keyof Folds; section: string } | n
  * earlier" is folded or open (the day settles the same way either way).
  */
 const done = (s: ShownSection): boolean =>
-  s.failed.length === 0 && (s.state === "empty" || (s.state === "rows" && !s.pending && s.more === 0 && s.rows.every((row) => row.past)));
+  // Not while a read is out (an empty answer read again says it is empty, but may yet bring a row), nor while one was
+  // lost to an offline host.
+  s.failed.length === 0 && !s.pending && !s.away && (s.state === "empty" || (s.state === "rows" && s.more === 0 && s.rows.every((row) => row.past)));
 
 /**
  * A read that failed because its host's link is not open is no fault of the
@@ -236,6 +242,18 @@ function apart(fed: readonly Fed[], open: ReadonlySet<string>): { fed: Fed[]; aw
 }
 
 /**
+ * Rows the store kept from before a source read again (a reopen) were made
+ * for the jobs there were then: one of a sector no job holds now (its
+ * workspace removed while Today was closed) would open a place that is gone,
+ * so it is left out until the source answers for the jobs there are.
+ */
+function jobsOnly(fed: readonly Fed[], jobs: readonly TodayWorkspace[]): readonly Fed[] {
+  const held = new Set(jobs.map((job) => job.sector));
+  const left = (row: TodayRow): boolean => !!row.sector && !held.has(row.sector);
+  return fed.map((one) => (one.kept && one.answer.rows?.some(left) ? { ...one, answer: { ...one.answer, rows: one.answer.rows.filter((row) => !left(row)) } } : one));
+}
+
+/**
  * The whole page. While no host can read LifeOS, the sections that read it
  * give way to one line in the first one's place. "All clear" is said only
  * when every source answered whole, none failed, no host is offline and
@@ -246,7 +264,8 @@ function apart(fed: readonly Fed[], open: ReadonlySet<string>): { fed: Fed[]; aw
 export function page(fed: readonly Fed[], opts: { jobs: readonly TodayWorkspace[]; lifeos: LifeosReach; folds?: Folds; gone?: ReadonlySet<string>; open?: ReadonlySet<string> }): TodayPage {
   if (opts.jobs.length === 0) return { kind: "no-jobs" };
   const down = opts.lifeos === "unreachable" || opts.lifeos === "signed-out" ? opts.lifeos : null;
-  const { fed: reached, away } = opts.open ? apart(fed, opts.open) : { fed, away: [] };
+  const { fed: apartFed, away } = opts.open ? apart(fed, opts.open) : { fed, away: [] };
+  const reached = jobsOnly(apartFed, opts.jobs);
   const blocks: Block[] = [];
   let said = false;
   for (const section of merge(reached, opts.gone)) {
@@ -262,7 +281,7 @@ export function page(fed: readonly Fed[], opts: { jobs: readonly TodayWorkspace[
     }
     // A session on its way: a LifeOS section that has no rows yet is still to answer.
     const waiting = opts.lifeos === "waiting" && !!section.def.lifeos;
-    blocks.push({ kind: "section", section: fold(waiting ? { ...section, loading: true } : section, opts.folds) });
+    blocks.push({ kind: "section", section: fold(waiting ? { ...section, loading: true, waiting: true } : section, opts.folds) });
   }
   const offline = [...new Set([...offlineHosts(opts.jobs), ...away])];
   const shown = blocks.flatMap((b) => (b.kind === "section" ? [b.section] : []));

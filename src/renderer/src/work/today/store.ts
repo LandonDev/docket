@@ -160,8 +160,9 @@ export function putAnswer(id: string, answer: TodayAnswer): void {
   if (handed.get(id) === answer) return;
   handed.set(id, answer);
   const had = state.answers.get(id);
-  // A read on hosts that is out again answers its empty list while it waits: that is not a whole answer either.
-  const keeps = !!answer.loading && !answer.rows?.length && !!had?.rows?.length;
+  // Only an answer with no rows at all is still to answer. A read on hosts answers its own rows from its first frame,
+  // each job's last value (read.ts `prime`), so nothing kept here stands in for a job that has since left.
+  const keeps = !!answer.loading && answer.rows === undefined && !!had?.rows;
   const kept: TodayAnswer = keeps ? { ...answer, rows: had!.rows!, ...(had!.marks ? { marks: had!.marks } : {}), ...(had!.note ? { note: had!.note } : {}) } : answer;
   if (keeps) keptAnswers.add(kept);
   const answers = new Map(state.answers).set(id, kept);

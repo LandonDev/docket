@@ -109,6 +109,8 @@ export type TodayAnswer = {
   loading?: boolean;
   /** With `loading`: its rows are a whole earlier answer read again (a reopen), so no cue says more may come; the page is still not clear. */
   stale?: boolean;
+  /** A read it needs was not made, its host offline: its section never says it is empty (the page names the host at its foot). */
+  away?: boolean;
   failed?: TodayFailure[];
   /** One muted line at the foot of the source's own section ("Tomorrow starts at 9:00 AM with Staff sync"). */
   note?: string;

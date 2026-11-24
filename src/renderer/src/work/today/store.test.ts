@@ -32,14 +32,11 @@ describe("Today's store", () => {
     expect(fedOf(todayNow())[0]!.answer).toEqual({ rows: [] });
   });
 
-  it("a read on hosts that is out again with an empty list keeps the rows it had: a reopen is not a day with none", () => {
+  it("keeps nothing for an answer that has rows of its own while it reads, even none: a host read answers its jobs' own (read.ts `prime`)", () => {
     putAnswer("due", { rows: [row("owed:1")] });
-    // A fresh read's first answer, before any host was asked.
+    // A workspace removed while Today was closed: the new jobs' read has nothing yet, and the old row must not stand.
     putAnswer("due", { rows: [], loading: true });
-    expect(fedOf(todayNow())[0]).toMatchObject({ kept: true, answer: { loading: true, rows: [{ key: "owed:1" }] } });
-    // A whole answer with none is believed.
-    putAnswer("due", { rows: [] });
-    expect(fedOf(todayNow())[0]!.answer).toEqual({ rows: [] });
+    expect(fedOf(todayNow())[0]).toEqual({ source: expect.anything(), answer: { rows: [], loading: true } });
   });
 
   it("the same answer again wakes no one", () => {

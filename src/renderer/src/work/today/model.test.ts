@@ -88,7 +88,7 @@ describe("merge", () => {
 });
 
 describe("fold", () => {
-  const section = (def: TodaySection, rows: TodayRow[], loading = false) => ({ def, rows, loading, failed: [] });
+  const section = (def: TodaySection, rows: TodayRow[], loading = false) => ({ def, rows, loading, waiting: loading, partial: false, failed: [], away: false });
   const tasks = (n: number) => Array.from({ length: n }, (_, i) => row(`task:${i}`, "due", { at: i }));
 
   it("shows a section's first rows and counts the rest, until he unfolds it", () => {
@@ -121,6 +121,8 @@ describe("fold", () => {
     expect(fold(section(DUE, [], true)).state).toBe("bones");
     expect(fold(section(DUE, [], false)).state).toBe("empty");
     expect(fold(section(DUE, tasks(1), true)).state).toBe("rows");
+    // Out, but only reading again an empty answer it had: its empty line, not bones.
+    expect(fold({ ...section(DUE, [], true), waiting: false })).toMatchObject({ state: "empty", pending: true });
   });
 });
 
@@ -201,9 +203,21 @@ describe("page", () => {
     expect(day.offline).toEqual(["pc"]);
     // The section lost a read to it: it never says it is empty (TodayView's `unknown`).
     expect(day.blocks.map((b) => b.kind === "section" && b.section.away)).toEqual([true, false]);
+    // So does a section whose host read skipped an offline host and says so (`away`, read.ts `readState`).
+    const skipped = page([fed("due", DUE, { rows: [], away: true })], { jobs, lifeos: "ok" });
+    expect(skipped.kind === "day" && skipped.blocks.map((b) => b.kind === "section" && b.section.away)).toEqual([true]);
     // A failure that names no host (a source that threw) stays where it is.
     const thrown = page([fed("review", undefined, { rows: [], failed: [{ environmentId: "", error: "review", said: "Today could not show the weekly review" }] })], { jobs, lifeos: "ok", open: new Set(["box"]) });
     expect(thrown.kind === "day" && thrown.blocks.map((b) => b.kind === "section" && b.section.failed.length)).toEqual([1]);
+  });
+
+  it("leaves out kept rows of a sector no job holds now: its workspace went while Today was closed", () => {
+    const kept = { source: { id: "due", section: DUE }, answer: { rows: [row("task:1", "due"), row("task:2", "due", { sector: "hypixel" })], loading: true }, kept: true };
+    const day = page([kept], { jobs, lifeos: "ok" });
+    expect(day.kind === "day" && day.keys).toEqual(["task:1"]);
+    // A source's own answer is its own: only what the store kept is held to the jobs there are.
+    const own = page([fed("due", DUE, { rows: [row("task:2", "due", { sector: "hypixel" })] })], { jobs, lifeos: "ok" });
+    expect(own.kind === "day" && own.keys).toEqual(["task:2"]);
   });
 
   it("draws one line where two sources say the same of one host", () => {
@@ -221,7 +235,10 @@ describe("page", () => {
     expect(partial(of({ kept: true }))).toEqual([false]);
     // A host read that a reopen started with each job's last value says so itself (`stale`).
     expect(partial(page([fed("due", DUE, { rows, loading: true, stale: true })], { jobs, lifeos: "ok" }))).toEqual([false]);
-    expect(page([fed("due", DUE, { rows: [], loading: true, stale: true })], { jobs, lifeos: "ok" }).kind).toBe("day");
+    const empty = page([fed("due", DUE, { rows: [], loading: true, stale: true })], { jobs, lifeos: "ok" });
+    expect(empty.kind).toBe("day");
+    // An empty answer it reads again says it is empty, with no bones; still not clear until it is back.
+    expect(empty.kind === "day" && empty.blocks.map((b) => b.kind === "section" && [b.section.state, b.section.pending])).toEqual([["empty", true]]);
     expect(partial(page([fed("due", DUE, { rows })], { jobs, lifeos: "ok" }))).toEqual([false]);
   });
 

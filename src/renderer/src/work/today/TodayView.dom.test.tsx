@@ -24,6 +24,8 @@ const world = vi.hoisted(() => ({
   workspaces: [] as { id: string; environmentId: string; name: string; path: string; kind?: string; sector?: string | null }[],
   open: new Set(["box", "mac"]),
   owed: 0,
+  // workspaces whose `work.test.owed` never answers
+  owedHeld: new Set<string>(),
 }));
 
 vi.mock("../../lib/connection", async (original) => {
@@ -61,6 +63,7 @@ vi.mock("../../lib/connection", async (original) => {
         case "work.lifeos.status":
           return { lifeos: { state: "signed-out" }, keys: [] };
         case "work.test.owed":
+          if (world.owedHeld.has(params.workspaceId as string)) return new Promise(() => {});
           return { n: world.owed };
       }
       throw new Error(`unknown ${method}`);
@@ -116,7 +119,7 @@ import { loadOutbox, resetOutboxStore } from "../outbox/store";
 import { source as held } from "./held";
 import { toastAnchor } from "../../lib/toastAnchor";
 import { nextHeld } from "./HeldSheet";
-import { TIMED_OUT, useEachWorkspace } from "./read";
+import { forgetEach, readState, TIMED_OUT, useEachWorkspace } from "./read";
 import { comeBack, leave, openHeld, putAnswer, resetToday, toastUp, todayNow } from "./store";
 import { ROW_GRID, TITLE_EDGE } from "./TodayRow";
 import { View } from "./TodayView";
@@ -151,6 +154,22 @@ const JOBS = [
   { id: "ws2", environmentId: "mac", name: "Ref", path: "/m/ref", kind: "work", sector: "ref" },
 ];
 
+/** A source whose rows live on hosts, as Owed and Messages read them: `n` rows a job, from `work.test.owed`. */
+const hostRead = (sectionDef: TodaySource["section"] & object): TodaySource => ({
+  id: sectionDef.id,
+  section: sectionDef,
+  use(env) {
+    const read = useEachWorkspace<{ n: number }>(env, "work.test.owed", (w) => ({ workspaceId: w.workspaceId }));
+    return useMemo(
+      () => ({
+        rows: read.answers.flatMap(({ workspace, value }) => Array.from({ length: value.n }, (_, i) => ({ key: `${sectionDef.id}:${workspace.workspaceId}:${i}`, section: sectionDef.id, sector: workspace.sector, title: `Owed ${workspace.workspaceId} ${i}`, open: () => {} }))),
+        ...readState(read),
+      }),
+      [read],
+    );
+  },
+});
+
 const rowTitles = (root: ParentNode = document) => [...root.querySelectorAll("[data-today-row] [data-row-title]")].map((el) => el.textContent);
 const section = (id: string) => document.querySelector<HTMLElement>(`[data-today-section="${id}"]`)!;
 const moved = () => (registry as unknown as { moved(): void }).moved();
@@ -165,6 +184,8 @@ beforeEach(() => {
   world.workspaces = [...JOBS];
   world.open = new Set(["box", "mac"]);
   world.owed = 0;
+  world.owedHeld.clear();
+  forgetEach();
   moved();
   setWorkOn("box", true);
   setWorkOn("mac", true);
@@ -653,22 +674,7 @@ describe("a source", () => {
 
   it("that reads hosts paints the rows it had in the first frame of a reopen, before any host is asked again", async () => {
     world.owed = 2;
-    const owed: TodaySource = {
-      id: "money",
-      section: { id: "money", title: "Owed", order: 60, empty: "", fold: 5 },
-      use(env) {
-        const read = useEachWorkspace<{ n: number }>(env, "work.test.owed", (w) => ({ workspaceId: w.workspaceId }));
-        return useMemo(
-          () => ({
-            rows: read.answers.flatMap(({ workspace, value }) => Array.from({ length: value.n }, (_, i) => ({ key: `money:${workspace.workspaceId}:${i}`, section: "money", sector: workspace.sector, title: `Owed ${workspace.workspaceId} ${i}`, open: () => {} }))),
-            loading: read.loading,
-            failed: read.failed,
-            ...(read.stale ? { stale: true } : {}),
-          }),
-          [read],
-        );
-      },
-    };
+    const owed = hostRead({ id: "money", title: "Owed", order: 60, empty: "", fold: 5 });
     await loadOutbox();
     resetToday([held, owed]);
     const { unmount } = render(<View onClose={() => {}} />);
@@ -682,6 +688,45 @@ describe("a source", () => {
     await act(async () => {});
     expect(rowTitles()).toHaveLength(4);
     expect(section("money").querySelector('[role="status"][aria-busy]')).toBeNull();
+  });
+
+  it("that reads hosts, reopened after a job left and another came, shows no row of the job that left while the new one is out", async () => {
+    world.owed = 1;
+    const owed = hostRead({ id: "money", title: "Owed", order: 60, empty: "", fold: 5 });
+    await loadOutbox();
+    resetToday([held, owed]);
+    const { unmount } = render(<View onClose={() => {}} />);
+    await waitFor(() => expect(rowTitles()).toEqual(["Owed ws1 0", "Owed ws2 0"]));
+    unmount();
+    // While Today was closed: both workspaces went, a Hypixel one came, and its host has not answered yet.
+    world.workspaces = [{ id: "ws3", environmentId: "mac", name: "Hypixel", path: "/m/hypixel", kind: "work", sector: "hypixel" }];
+    world.owedHeld.add("ws3");
+    render(<View onClose={() => {}} />);
+    // No row of a workspace that is gone, though the new one's read is still out.
+    expect(rowTitles()).toEqual([]);
+    await act(async () => {});
+    expect(rowTitles()).toEqual([]);
+  });
+
+  it("that reads hosts never says its section is empty while a job's host is offline and was not asked; the first answer after it is back shows", async () => {
+    world.owed = 0;
+    world.open = new Set(["box"]);
+    moved();
+    const chats = hostRead({ id: "messages", title: "Messages", order: 45, empty: "No one is waiting on a reply" });
+    await loadOutbox();
+    resetToday([held, chats]);
+    const { rerender } = render(<View onClose={() => {}} />);
+    await waitFor(() => expect(world.calls.some((c) => c.env === "box" && c.method === "work.test.owed")).toBe(true));
+    await act(async () => {});
+    expect(section("messages").textContent).not.toContain("No one is waiting on a reply");
+    expect(document.querySelectorAll("[data-today-offline]")).toHaveLength(1);
+    // The Mac is back, with a chat waiting on Ref.
+    world.owed = 1;
+    world.open = new Set(["box", "mac"]);
+    moved();
+    // The test's status hook does not listen: the page is drawn again, as a status push would.
+    rerender(<View onClose={() => {}} />);
+    await waitFor(() => expect(rowTitles()).toEqual(["Owed ws2 0"]));
   });
 
   it("whose read failed with no section of its own says so under Also, with its Retry, and the page is not clear", async () => {

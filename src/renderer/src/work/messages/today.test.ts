@@ -58,8 +58,19 @@ describe("Messages on Today", () => {
       now,
       () => {},
     );
-    expect(rows.map((r) => r.key)).toEqual([chatKey("c1", now - 3_600_000), chatKey("c1", now - 3_600_000)]);
-    expect(new Set(rows.map((r) => r.key)).size).toBe(1);
+    expect(rows.map((r) => r.key)).toEqual([chatKey("c1", now - 3_600_000)]);
+  });
+
+  it("lists a conversation once where two hosts answer it at two last messages, the newest, in either order, and marks that one read", async () => {
+    const box = { workspace: job("ws-a", "cosmic", "box"), value: { rows: [chat("c1", { at: now - 60_000, text: "Newer" })] } };
+    const mac = { workspace: job("ws-a2", "cosmic", "mac"), value: { rows: [chat("c1", { at: now - 120_000, text: "Older" })] } };
+    for (const answers of [[box, mac], [mac, box]]) {
+      const read: unknown[][] = [];
+      const rows = waitingRows(answers, now, (...args) => void read.push(args));
+      expect(rows.map((r) => [r.key, r.detail])).toEqual([[chatKey("c1", now - 60_000), "Newer"]]);
+      await rows[0]!.acts![0]!.run();
+      expect(read).toEqual([["c1", now - 60_000]]);
+    }
   });
 
   it("opens the conversation in its job's Messages view, and offers Mark read", async () => {

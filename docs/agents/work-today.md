@@ -235,13 +235,18 @@ export const source: TodaySource = { id: "money", section: { id: "money", title:
   depend on beside the jobs: when it changes every job is asked again
   (Prep passes the day, so midnight asks for the new one). Each job's last
   value is kept for the life of the window, by method (`lastOf`), and
-  forgotten when the job leaves: a read made afresh (a reopen) starts with
-  it, so a fast job's answer never drops a slow job's rows, and a job whose
-  read fails keeps its own. While every job still out has such a value the
-  read is `stale`: the source passes it on, and the page draws its rows
-  with no cue that more may come, though it is not clear until they
-  answer. A source whose words turn with the day (Owed's "Today",
-  Messages' "2:00 PM") takes `env.day` as an input of its memo.
+  forgotten when the job leaves: a read made afresh (a reopen) is primed
+  with the jobs there are now (`prime`, from its first frame), so it shows
+  their last values and never a job removed while Today was closed; a fast
+  job's answer never drops a slow job's rows, and a job whose read fails
+  keeps its own. While every job still out has such a value the read is
+  `stale`: the page draws its rows, or its empty line, with no bones or cue
+  that more may come, though it is not clear until they answer. A job
+  whose host is offline is not asked, and the read says so (`away`): its
+  section never says it is empty. A source passes all of this on in one
+  spread, `readState(read)`, beside its rows. A source whose words turn
+  with the day (Owed's "Today", Messages' "2:00 PM") takes `env.day` as an
+  input of its memo.
 - A row his own act takes off the page calls `leave(key)` (today/store.ts)
   and `comeBack(key)` if the act fails or he undoes it.
 - A source still loading draws nothing and keeps the page from "All
@@ -261,7 +266,9 @@ export const source: TodaySource = { id: "money", section: { id: "money", title:
 Row keys Today makes: `held:<environmentId>:<ref.at>:<ref.id>`,
 `event:<id>`, `task:<id>`, `mail:<id>`, `file:<FileEntry.key>`, and
 Messages' `chat:<chatId>:<at>`, by the last message, so one he marked read
-stays off and a newer one shows. A key his act took off is kept off only
+stays off and a newer one shows; where two hosts answer one chat at two
+last messages, the newest makes its one row, and is the one Mark read
+marks. A key his act took off is kept off only
 while some source still gives it.
 
 ## The page
@@ -317,10 +324,12 @@ is open the anchor stands down.
 - **The first frame has rows.** The Outbox's store is live from boot, and
   the sources are loaded with the page's chunk (`ready`), so Waiting on you
   paints at once. Every source's last answer is kept in `today/store.ts`
-  for the life of the window, and a source that is reading again keeps the
-  rows it had (one that answers `loading` with no rows, as a fresh host
-  read does before it asks), so a reopen paints them and the live read
-  corrects them.
+  for the life of the window, and a source that is reading again with no
+  rows at all (`loading` alone, as a LifeOS read before its session
+  answers) keeps the rows it had, so a reopen paints them and the live read
+  corrects them. A kept row of a sector no job holds now is left out
+  (model.ts `jobsOnly`). A host read answers its own rows from its first
+  frame (`prime`), so nothing is kept for it.
 - **Kept warm** (`today/warm.tsx`). The sources are hooks, so something must
   be mounted for them to run: the page runs them while it is open, and a
   root of their own, in no document, runs them for ten minutes after it
