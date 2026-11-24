@@ -15,6 +15,7 @@ import { closeFilesState } from '../handle'
 import { files } from '../index'
 import { at, HOST, makeRig, phone, thread, window, WS, type Rig } from '../testkit'
 import { forgetVmLists, libraryTrail, placeOfPath, placesIn } from './teams'
+import { FAR_FIRST } from '../../office/files/handle'
 
 /** Teams and OneDrive as places (teams.ts): one place per channel or library, and the Windows VM's folders read through its helper. */
 
@@ -171,7 +172,7 @@ describe('the Windows VM through its helper', () => {
     const ctx = { ...rig.ctx, peer } as typeof rig.ctx
     const out = await files.handle!({ id: '1', method: 'work.files.open', params: { workspaceId: WS, ref: far, key: 'lib:esportsstaffgeneral:Budget.xlsx' } } as never, ctx, window)
     const opened = (out as { result: FilesOpened }).result
-    expect(asked).toEqual([{ host: 'env_mac', module: 'office', verb: 'filesRead', args: { source: far, as: 'bytes' }, as: { sessionId: filesPaneOf(WS), workspaceId: WS } }])
+    expect(asked).toEqual([{ host: 'env_mac', module: 'office', verb: 'filesRead', args: { source: far, as: 'bytes', offset: 0, length: FAR_FIRST }, as: { sessionId: filesPaneOf(WS), workspaceId: WS } }])
     expect(opened.item).toMatchObject({ kind: 'sheet', title: 'Budget.xlsx', source: { at: 'file', host: HOST } })
     expect(opened.tabs[0]).toMatchObject({ copyOf: { host: 'env_mac', path: far.path }, key: 'lib:esportsstaffgeneral:Budget.xlsx' })
     expect(opened.tabs[0]!.copyOf!.vm).toBeUndefined()
