@@ -1710,8 +1710,9 @@ Around the canvas:
   the tab it came from, never twice, and closing it returns there. No dirty
   dot: nothing is saved by hand. Past what fits the selected tab keeps its
   name and every other gives up the same part of its own (a short name is
-  not cut first), down to its glyph; then the tabs scroll under a faded
-  edge.
+  not cut first), down to its glyph: under the room of one letter and its
+  ellipsis the name gives way whole, never a sliver (`TabName`, the canvas
+  row's too); then the tabs scroll under a faded edge.
   While a place loads, the bar's bones stand where it will: Back and
   Forward greyed and a bone for the trail, over the list's bones, so
   nothing moves when the page lands.

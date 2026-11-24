@@ -11,6 +11,7 @@ import { useSortable } from "../../hooks/useSortable";
 import { glyphOf, type CanvasKindDef } from "./kind";
 import { CANVAS, kindDefOf } from "./registry";
 import { tabShrink } from "./tabShrink";
+import { TabName } from "./TabName";
 
 /**
  * The canvas pane's tab row (docs/DESIGN.md "The canvas pane"): the open
@@ -151,9 +152,7 @@ export function CanvasTabs({
                   className={`h-7 w-full min-w-0 shrink touch-none justify-start gap-2 rounded-md ps-2 text-[13px] font-normal text-muted-foreground hover:bg-foreground/5 hover:text-foreground aria-selected:bg-sidebar-group-selected aria-selected:text-foreground aria-selected:transition-none data-dragging:opacity-50 pe-7`}
                 >
                   <Glyph className="size-3.5" />
-                  <span ref={titleRef} className="min-w-0 truncate">
-                    {item.title}
-                  </span>
+                  <TabName name={item.title} titleRef={titleRef} />
                 </Button>
               )}
             </TitleTip>

@@ -11,6 +11,7 @@ import { useSortable } from "../../hooks/useSortable";
 import { shortcutFor } from "../../lib/settings";
 import { KindGlyph } from "./KindGlyph";
 import { tabShrink } from "./model";
+import { TabName } from "../canvas/TabName";
 import { setDragLabel, setSideOver } from "./rowParts";
 
 /**
@@ -243,9 +244,7 @@ export function TabRow({
                     className={`h-7 w-full min-w-0 shrink touch-none justify-start gap-2 rounded-md ps-2 text-[13px] font-normal text-muted-foreground hover:bg-foreground/5 hover:text-foreground aria-selected:bg-sidebar-group-selected aria-selected:text-foreground aria-selected:transition-none data-dragging:opacity-50 pe-7`}
                   >
                     <KindGlyph kind={tab.kind === "page" ? "folder" : kindOfEntry(name).kind} tinted={false} className="size-3.5 shrink-0" />
-                    <span ref={titleRef} className="min-w-0 truncate">
-                      {name}
-                    </span>
+                    <TabName name={name} titleRef={titleRef} />
                   </Button>
                 )}
               </TitleTip>
