@@ -226,7 +226,7 @@ function readDir(ctx: ShelfCtx, store: TemplatesStore, where: TemplateWhere, dir
     out.push(entry)
   }
   if (where !== 'starter') store.prune(dir, present)
-  return withTwins(out).sort(byName)
+  return withTwins(out, store).sort(byName)
 }
 
 /** Office's file systems keep a time to 2 seconds: a Word file written just before its import may read as just after it. */
@@ -245,16 +245,46 @@ export function madeOf(tcdoc: string, docx: string): boolean {
   }
 }
 
-/** A `.tcdoc` beside the Word file it was made of stands for both (`ShelfEntry.twin`): one tile, the one with his edits. Any other two of one name are two tiles. */
-function withTwins(entries: ShelfEntry[]): ShelfEntry[] {
+/**
+ * A file's identity: which file of which disk, and when it was made, so a number the disk gives again later is
+ * another file. It holds through a rename and a move by link; a move by copy gives a new one, which the move records.
+ * Null for a name that holds nothing.
+ */
+export function fileIdentity(path: string): string | null {
+  try {
+    const info = statSync(path)
+    return `${info.dev}:${info.ino}:${Math.floor(info.birthtimeMs)}`
+  } catch {
+    return null
+  }
+}
+
+/**
+ * A `.tcdoc` beside the Word file it was made of stands for both (`ShelfEntry.twin`): one tile, the one with his
+ * edits. What is known of the two files wins (`TemplatesStore.paired`, kept by identity, so a pair this pillar renamed
+ * or moved stays one, and two it put side by side stay two); the import's own record (`madeOf`) is asked only of two
+ * files never seen before, and a pair it proves is kept. Any other two of one name are two tiles.
+ */
+function withTwins(entries: ShelfEntry[], store: TemplatesStore): ShelfEntry[] {
   const docs = new Map(entries.filter((e) => e.form === 'tcdoc').map((e) => [e.name, e]))
   const out: ShelfEntry[] = []
   for (const e of entries) {
     const doc = e.form === 'docx' ? docs.get(e.name) : undefined
-    if (doc && madeOf(doc.path, e.path)) doc.twin = e.path
+    if (doc && isPair(store, doc.path, e.path)) doc.twin = e.path
     else out.push(e)
   }
   return out
+}
+
+function isPair(store: TemplatesStore, doc: string, word: string): boolean {
+  const d = fileIdentity(doc)
+  const w = fileIdentity(word)
+  if (!d || !w) return false
+  const known = store.paired(d, w)
+  if (known !== undefined) return known
+  if (!madeOf(doc, word)) return false
+  store.pair(d, w, true)
+  return true
 }
 
 const starterKey = (sector: string, stem: string): string => `${sector}/${starterSlug(stem)}`

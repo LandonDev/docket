@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto'
 import { existsSync, readFileSync } from 'node:fs'
 import { copyFile, mkdir, rename, rm, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
+import type { HostId } from '@shared/work'
 import type { FolderRef } from '@shared/work/files'
 import { errorText } from '@shared/work/ids'
 import { dayOf, fieldKey, fieldValues, filledValues, madeTitle, type TemplateForm, type TemplateMade } from '@shared/work/templates'
@@ -10,7 +11,7 @@ import type { Caller, WorkCtx } from '../modules'
 import { fillDeck } from './deckFill'
 import { lookOf, type LookOf } from './look'
 import { fillOffice, isOfficeForm, scanOffice, type OfficeForm } from './ooxml'
-import { OUT_OF_REACH, placeFile, type Pillars } from './place'
+import { OUT_OF_REACH, placeFile, real, type Pillars } from './place'
 import { exportWord } from './save'
 import { ownerName, reachesFile, reachWorkspace, resolveTemplate, scratchRoot, SHELF_READ, tcdocEveryField, type ShelfEntry } from './shelf'
 
@@ -123,6 +124,10 @@ export async function makeFromShelf(ctx: WorkCtx, by: Caller, ask: MakeAsk, deps
   // A key names a template by id, never by path: what it may reach is asked of the folders the make reads and writes.
   if (by.kind === 'remote' && !by.peer && entry.where === 'job' && !reachesFile(ctx, by, entry.path)) throw new Error(OUT_OF_REACH)
   if (!existsSync(entry.path)) throw new Error(GONE(entry.name))
+  // Read by the file the shelf admitted, resolved in the same step as its checks: a link moved while the make runs
+  // cannot hand it another file.
+  const at = real(entry.path)
+  const bound: ShelfEntry = { ...entry, path: at, source: { at: 'file', host: ctx.host as HostId, path: at } }
 
   const today = ask.today ?? dayOf((deps.now ?? (() => new Date()))())
   // The three filled without asking, then the caller's own, which win.
@@ -133,8 +138,8 @@ export async function makeFromShelf(ctx: WorkCtx, by: Caller, ask: MakeAsk, deps
   const dir = join(scratchRoot(ctx), randomUUID())
   await mkdir(dir, { recursive: true })
   try {
-    const { scratch, form } = await scratchOf(ctx, entry, dir, deps)
-    if (isOfficeForm(form)) await fill(ctx, entry, form, scratch, values, dateSaid ? '' : today, deps.signal)
+    const { scratch, form } = await scratchOf(ctx, bound, dir, deps)
+    if (isOfficeForm(form)) await fill(ctx, bound, form, scratch, values, dateSaid ? '' : today, deps.signal)
     // A job's own look: none yet (look.ts). When there is one, its theme is swapped into the scratch file here.
     void (deps.look ?? lookOf)(ctx, workspace.id)
     const unfilled = unfilledOf(form, scratch)

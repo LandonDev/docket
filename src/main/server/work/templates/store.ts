@@ -4,14 +4,18 @@ import type { DatabaseSync } from 'node:sqlite'
 /**
  * What the templates pillar keeps in the database
  * (docs/agents/work-templates.md "The shelf"): each template file's fields
- * by its path, size and time, so a file is opened only when it changed, and
- * the starters he hid in each workspace. The files themselves are the
- * shelf; these rows can be dropped and are made again.
+ * by its path, size and time, so a file is opened only when it changed, the
+ * starters he hid in each workspace, and which document and Word file are
+ * one template (a pair, by each file's identity, so it holds through a
+ * rename or a move). The files themselves are the shelf; the index rows can
+ * be dropped and are made again.
  */
 
 export function ensureTemplatesTables(db: DatabaseSync): void {
   db.exec('CREATE TABLE IF NOT EXISTS work_templates_index (path TEXT PRIMARY KEY, size INTEGER NOT NULL, mtime INTEGER NOT NULL, fields TEXT NOT NULL)')
   db.exec('CREATE TABLE IF NOT EXISTS work_templates_hidden (workspace_id TEXT NOT NULL, starter TEXT NOT NULL, PRIMARY KEY (workspace_id, starter))')
+  // `paired` 1: this document was made of this Word file; 0: the two were put side by side by this pillar and are not one.
+  db.exec('CREATE TABLE IF NOT EXISTS work_templates_pairs (doc TEXT NOT NULL, word TEXT NOT NULL, paired INTEGER NOT NULL, PRIMARY KEY (doc, word))')
 }
 
 export class TemplatesStore {
@@ -52,6 +56,21 @@ export class TemplatesStore {
   unhide(workspaceId: string, starter?: string): void {
     if (starter === undefined) this.db.prepare('DELETE FROM work_templates_hidden WHERE workspace_id = ?').run(workspaceId)
     else this.db.prepare('DELETE FROM work_templates_hidden WHERE workspace_id = ? AND starter = ?').run(workspaceId, starter)
+  }
+
+  /** What is known of a document and a Word file, by their identities: one template, not one, or nothing yet (undefined). */
+  paired(doc: string, word: string): boolean | undefined {
+    const row = this.db.prepare('SELECT paired FROM work_templates_pairs WHERE doc = ? AND word = ?').get(doc, word) as { paired: number } | undefined
+    return row ? row.paired === 1 : undefined
+  }
+
+  pair(doc: string, word: string, paired: boolean): void {
+    this.db.prepare('INSERT INTO work_templates_pairs (doc, word, paired) VALUES (?, ?, ?) ON CONFLICT(doc, word) DO UPDATE SET paired = excluded.paired').run(doc, word, paired ? 1 : 0)
+  }
+
+  /** A file is gone: what was known of it goes. */
+  forget(id: string): void {
+    this.db.prepare('DELETE FROM work_templates_pairs WHERE doc = ? OR word = ?').run(id, id)
   }
 
   /** A workspace was deleted: its hidden rows go, and the index rows of its own Templates folder. */

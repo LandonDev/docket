@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto'
-import { constants, existsSync, realpathSync } from 'node:fs'
+import { constants, existsSync, realpathSync, statSync } from 'node:fs'
 import { copyFile, link, mkdir, rm } from 'node:fs/promises'
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path'
 import type { ClientRequest } from '@shared/contract'
@@ -119,6 +119,44 @@ const within = (path: string, dir: string): boolean => {
   const r = relative(dir, path)
   return r === '' || (r !== '..' && !r.startsWith(`..${sep}`) && !isAbsolute(r))
 }
+
+/**
+ * A folder resolved once: its real path, and which folder that is (or, for one not made yet, its nearest folder
+ * that is). Every check is made on `path`, and the write goes to `path`, so a link moved meanwhile cannot carry the
+ * write somewhere the checks never saw; `unchanged` says whether the name still leads there before the write.
+ */
+export interface ResolvedDir {
+  path: string
+  /** the identity of `path`, or of the nearest folder of it that exists */
+  at: string
+}
+
+const folderIdentity = (path: string): string => {
+  let at = path
+  for (;;) {
+    try {
+      const info = statSync(at)
+      return `${at}|${info.dev}:${info.ino}`
+    } catch {
+      const up = dirname(at)
+      if (up === at) return ''
+      at = up
+    }
+  }
+}
+
+export function resolveDir(dir: string): ResolvedDir {
+  const path = real(dir)
+  return { path, at: folderIdentity(path) }
+}
+
+/** Whether a folder's name still leads to the folder it was resolved to. */
+export const unchanged = (dir: string, was: ResolvedDir): boolean => {
+  const now = resolveDir(dir)
+  return now.path === was.path && now.at === was.at
+}
+
+export const FOLDER_MOVED = 'That Templates folder now leads somewhere else: nothing was saved.'
 
 /** Whether a remote key could name a folder itself, as written and where it really is: a link may lead it out of the key's roots. */
 export function reachesDir(ctx: Pick<WorkCtx, 'reaches'>, by: Caller, dir: string): boolean {

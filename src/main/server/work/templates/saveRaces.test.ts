@@ -1,9 +1,9 @@
-import { existsSync, readdirSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs'
+import { existsSync, readdirSync, readFileSync, unlinkSync, utimesSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { CHANGED, moveTemplate, MOVED_UNDER, removeTemplate, renameTemplate } from './save'
 import { sharedDir } from './shelf'
-import { docx, makeRig, window, WS, type Rig } from './testkit'
+import { docx, imported, makeRig, window, WS, type Rig } from './testkit'
 
 // What lands between this pillar's steps: an editor's save, another window's file. `links: false` is a disk with no hard links.
 const hooks = vi.hoisted(() => ({
@@ -12,7 +12,8 @@ const hooks = vi.hoisted(() => ({
   afterLink: (_from: string): void => {},
   afterCopy: (_from: string): void => {},
   afterStat: (_path: string): void => {},
-  beforeRm: (_path: string): void => {}
+  beforeRm: (_path: string): void => {},
+  beforeRename: (_from: string, _to: string): void => {}
 }))
 vi.mock('node:fs/promises', async (original) => {
   const real = await original<typeof import('node:fs/promises')>()
@@ -36,6 +37,10 @@ vi.mock('node:fs/promises', async (original) => {
     rm: async (path: string, options?: Parameters<typeof real.rm>[1]) => {
       hooks.beforeRm(path)
       return real.rm(path, options)
+    },
+    rename: async (from: string, to: string) => {
+      hooks.beforeRename(from, to)
+      return real.rename(from, to)
     }
   }
 })
@@ -43,7 +48,7 @@ vi.mock('node:fs/promises', async (original) => {
 let rig: Rig
 beforeEach(() => void (rig = makeRig()))
 afterEach(() => {
-  Object.assign(hooks, { links: true, beforeLink: () => {}, afterLink: () => {}, afterCopy: () => {}, afterStat: () => {}, beforeRm: () => {} })
+  Object.assign(hooks, { links: true, beforeLink: () => {}, afterLink: () => {}, afterCopy: () => {}, afterStat: () => {}, beforeRm: () => {}, beforeRename: () => {} })
   rig.close()
 })
 
@@ -130,9 +135,10 @@ describe('a save that lands after the last look', () => {
     const there = join(sharedDir(rig.ctx), 'Letter.docx')
     // The editor saves the old name after the link, so the move is taken back; another window saves the new name after the move looked at it.
     hooks.afterLink = (from) => void (from === letter() && saveAnew(from, '{{To}} with his edit'))
-    hooks.afterStat = (path) => {
-      if (path !== there) return
-      hooks.afterStat = () => {}
+    // Just before the move takes the new name back.
+    hooks.beforeRename = (from, to) => {
+      if (from !== there || !to.endsWith('.claimed')) return
+      hooks.beforeRename = () => {}
       saveAnew(there, 'theirs')
     }
     await expect(moveTemplate(rig.ctx, window, WS, 'job:Letter.docx', true)).rejects.toThrow(MOVED_UNDER)
@@ -147,5 +153,59 @@ describe('a save that lands after the last look', () => {
     await expect(removeTemplate(rig.ctx, window, WS, 'job:Letter.docx', asked.version!, { pillars: () => [] })).rejects.toThrow(CHANGED)
     expect(readFileSync(letter()).equals(Buffer.from(docx('a new one')))).toBe(true)
     expect(readdirSync(join(rig.folder, 'Templates'))).toEqual(['Letter.docx'])
+  })
+})
+
+describe('a move taken back', () => {
+  it('never removes a file put under the new name before the move looked at it', async () => {
+    rig.put(letter(), docx('{{To}}'))
+    const there = join(sharedDir(rig.ctx), 'Letter.docx')
+    // Just after the link: the editor saves the old name, and another window the new one.
+    hooks.afterLink = (from) => {
+      if (from !== letter()) return
+      hooks.afterLink = () => {}
+      saveAnew(from, '{{To}} with his edit')
+      saveAnew(there, 'theirs')
+    }
+    await expect(moveTemplate(rig.ctx, window, WS, 'job:Letter.docx', true)).rejects.toThrow(MOVED_UNDER)
+    expect(readFileSync(letter()).equals(Buffer.from(docx('{{To}} with his edit')))).toBe(true)
+    expect(readFileSync(there).equals(Buffer.from(docx('theirs')))).toBe(true)
+  })
+
+  it('of a pair, takes back only what it published: a file saved over the first new name since stays there', async () => {
+    rig.put(join(rig.folder, 'Templates', 'Game report.docx'), docx('Old {{Home}}'))
+    rig.put(join(rig.folder, 'Templates', 'Game report.tcdoc'), imported('Edited {{Home}}', 'Game report.docx'))
+    const doc = join(sharedDir(rig.ctx), 'Game report.tcdoc')
+    const word = join(sharedDir(rig.ctx), 'Game report.docx')
+    // The Word file's new name is taken as it is moved, so the move is taken back; the document's new name was saved over just before.
+    hooks.beforeLink = (to) => {
+      if (to !== word) return
+      hooks.beforeLink = () => {}
+      saveAnew(doc, 'theirs')
+      writeFileSync(word, docx('another window'))
+    }
+    await expect(moveTemplate(rig.ctx, window, WS, 'job:Game report.tcdoc', true)).rejects.toThrow('already there')
+    expect(readFileSync(doc).equals(Buffer.from(docx('theirs')))).toBe(true)
+    expect(readFileSync(word).equals(Buffer.from(docx('another window')))).toBe(true)
+    expect(readFileSync(join(rig.folder, 'Templates', 'Game report.docx')).equals(Buffer.from(docx('Old {{Home}}')))).toBe(true)
+  })
+})
+
+describe('a delete of a pair whose second name cannot be taken', () => {
+  it('gives the first its name back: both files stay where they were, as they were', async () => {
+    const doc = rig.put(join(rig.folder, 'Templates', 'Game report.tcdoc'), imported('Edited {{Home}}', 'Game report.docx'))
+    const word = rig.put(join(rig.folder, 'Templates', 'Game report.docx'), docx('Old {{Home}}'))
+    // The Word file is written before the import, as Edit leaves it.
+    const old = new Date(Date.now() - 60_000)
+    utimesSync(word, old, old)
+    const before = [readFileSync(doc), readFileSync(word)]
+    const asked = await removeTemplate(rig.ctx, window, WS, 'job:Game report.tcdoc', null, { pillars: () => [] })
+    // Word holds the file open: its name cannot be taken.
+    hooks.beforeRename = (from, to) => {
+      if (from === word && to.endsWith('.claimed')) throw Object.assign(new Error('resource busy or locked'), { code: 'EBUSY' })
+    }
+    await expect(removeTemplate(rig.ctx, window, WS, 'job:Game report.tcdoc', asked.version!, { pillars: () => [] })).rejects.toThrow('busy')
+    expect(readdirSync(join(rig.folder, 'Templates')).sort()).toEqual(['Game report.docx', 'Game report.tcdoc'])
+    expect([readFileSync(doc), readFileSync(word)].every((b, i) => b.equals(before[i]!))).toBe(true)
   })
 })

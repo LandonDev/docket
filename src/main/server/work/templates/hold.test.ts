@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readdirSync, symlinkSync } from 'node:fs'
+import { existsSync, mkdirSync, readdirSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { handled } from '@shared/work'
@@ -7,7 +7,7 @@ import { NEEDS_APPROVE, setThreadsMayWrite } from '../files/policy'
 import { setCloudDir } from '../office/files/library'
 import { makeFromTemplate } from './api'
 import { makeFromShelf } from './make'
-import { SHARED_HELD } from './place'
+import { FOLDER_MOVED, SHARED_HELD } from './place'
 import { moveTemplate, removeTemplate, renameTemplate, saveTemplate, SHELF_UNREAD } from './save'
 import { listTemplates, NoTemplateError, OUT_OF_REACH, sharedDir } from './shelf'
 import { templateTools } from './tools'
@@ -140,10 +140,18 @@ describe('the shelf reads only inside the job', () => {
 })
 
 describe('a deck whose file others can open', () => {
-  it('is said shared on every job the fill hands the runner, so it never leaves this host', async () => {
+  it('is said shared on every job the fill hands the runner, the read and each batch of edits, so it never leaves this host', async () => {
     rig.put(join(cloudJob(), 'Templates', 'Pitch.pptx'), pptx('Pitch for {{Client}}'))
+    // A runner that answers: the read names one shape with a field, and the edit writes its output.
+    rig.convert = async (job) => {
+      writeFileSync(job.output!, job.to === 'deckinfo' ? JSON.stringify({ slides: [{ id: 256, shapes: [{ id: 2, text: 'Pitch for {{Client}}', paragraphs: [{ runs: [{ text: 'Pitch for {{Client}}' }] }] }] }] }) : 'edited')
+      return { output: job.output!, ranOn: HOST, warnings: [] }
+    }
     await makeFromShelf(rig.ctx, window, { workspaceId: CLOUD_WS, template: 'Pitch', fields: { Client: 'Acme' }, today: '2026-11-23' }, { pillars: () => [] })
-    expect(rig.jobs.map((j) => [j.to, j.shared])).toEqual([['deckinfo', true]])
+    expect(rig.jobs.map((j) => [j.to, j.shared])).toEqual([
+      ['deckinfo', true],
+      ['pptxedit', true]
+    ])
   })
 
   it('leaves the runner to judge a deck of his own', async () => {
@@ -210,5 +218,28 @@ describe('a key that makes from a document for all jobs', () => {
     expect(callers).toEqual(['local'])
     expect(made).toMatchObject({ unfilled: [] })
     expect(made.source).toEqual(file(join(rig.folder, 'Letter - Acme.docx')))
+  })
+})
+
+describe('a Templates folder whose link is moved while a save runs', () => {
+  it("takes no thread's file into the place it now leads to, nor into the one it led to", async () => {
+    const mine = join(rig.folder, 'Private')
+    mkdirSync(mine, { recursive: true })
+    symlinkSync(mine, join(rig.folder, 'Templates'))
+    const library = join(cloud, 'OneDrive-Dummy', 'Shared Templates')
+    // The export, standing in: while it runs, the link is turned to a OneDrive folder.
+    const formats: WorkModule = {
+      id: 'formats',
+      ensure() {},
+      handle: async () => {
+        unlinkSync(join(rig.folder, 'Templates'))
+        symlinkSync(library, join(rig.folder, 'Templates'))
+        return handled({ name: 'Brief.docx', data: Buffer.from(docx('Brief for {{Client}}')).toString('base64'), warnings: [] })
+      }
+    }
+    const source = rig.put(join(rig.folder, 'Brief.tcdoc'), makeZip({ 'preview.md': 'Brief for {{Client}}' }))
+    await expect(saveTemplate(rig.ctx, thread(), { workspaceId: WS, source: file(source) }, { pillars: () => [formats] })).rejects.toThrow(FOLDER_MOVED)
+    expect(filesIn(library)).toEqual([])
+    expect(filesIn(mine)).toEqual([])
   })
 })

@@ -8,7 +8,7 @@ import { fieldValues } from '@shared/work/templates'
 import { LIBREOFFICE_CONVERTERS } from '../formats'
 import { convertersOf, JobRunner, type ConvertJob, type ConvertResult } from '../formats/jobs'
 import { SLIDES_CONVERTERS } from '../slides/deck'
-import { deckOps, fillDeck, type DeckRead } from './deckFill'
+import { accounts, deckOps, fillDeck, type DeckRead } from './deckFill'
 import { deckCellRuns, scanOffice } from './ooxml'
 import { makeZip, partText, readZip } from './zip'
 
@@ -139,6 +139,26 @@ describe("a deck's table cells, read in its own XML", () => {
         [{ runs: [{ text: '{{Cli' }, { text: 'ent}}' }] }, { runs: [{ text: 'Read & see' }, { text: '\n' }, { text: '4' }] }, { runs: [] }]
       ]
     ])
+  })
+
+  it('reads a text tag in every form XML allows, so no run reads empty beside a field', () => {
+    const spaced = makeZip({
+      'ppt/presentation.xml': `<p:presentation ${P}><p:sldIdLst><p:sldId r:id='rId9' id='300'/></p:sldIdLst></p:presentation>`,
+      'ppt/_rels/presentation.xml.rels': '<Relationships><Relationship Target="slides/slide4.xml" Id = "rId9" Type="slide"/></Relationships>',
+      'ppt/slides/slide4.xml': `<p:sld ${P}><p:graphicFrame><p:cNvPr name="Table" id = "7"/><a:tbl><a:tr>${cell('<a:p><a:r><a:t>{{Client}}</a:t></a:r><a:r><a:t >Keep this</a:t ></a:r><a:r><a:t xml:space="preserve"> and this</a:t></a:r><a:r><a:t/></a:r></a:p>')}</a:tr></a:tbl></p:graphicFrame></p:sld>`
+    })
+    const runs = deckCellRuns(spaced).get('300/7')
+    expect(runs).toEqual([[[{ runs: [{ text: '{{Client}}' }, { text: 'Keep this' }, { text: ' and this' }, { text: '' }] }]]])
+    const deck: DeckRead = { slides: [{ id: 300, shapes: [{ id: 7, text: '', cells: [['{{Client}}Keep this and this']], cellRuns: runs! }] }] }
+    expect(deckOps(deck, VALUES)).toEqual<SlideOp[]>([
+      { op: 'runs', slide: 300, shape: 7, row: 0, col: 0, paragraphs: [{ from: 0, runs: [{ text: 'Acme & Co', from: [0, 0] }, { text: 'Keep this', from: [0, 1] }, { text: ' and this', from: [0, 2] }, { text: '', from: [0, 3] }] }] }
+    ])
+  })
+
+  it('leaves a cell whose runs do not account for the text the read gave', () => {
+    const deck: DeckRead = { slides: [{ id: 300, shapes: [{ id: 7, text: '', cells: [['{{Client}}Keep this']], cellRuns: [[[{ runs: [{ text: '{{Client}}' }, { text: '' }] }]]] }] }] }
+    expect(deckOps(deck, VALUES)).toEqual([])
+    expect(accounts([{ runs: [{ text: 'a' }, { text: '\n' }, { text: 'b' }] }, { runs: [{ text: 'c' }] }], 'a\vb\nc')).toBe(true)
   })
 
   it('are none for bytes that are no deck', () => {

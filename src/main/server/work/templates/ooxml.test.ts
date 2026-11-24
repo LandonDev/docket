@@ -3,7 +3,7 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 import { fieldValues } from '@shared/work/templates'
-import { dateStyles, escapeXml, fillOffice, paragraphsOf, scanOffice, tcdocPreview, unescapeXml } from './ooxml'
+import { attr, dateStyles, escapeXml, fillOffice, paragraphsOf, scanOffice, tcdocPreview, unescapeXml } from './ooxml'
 import { makeZip, NotZipError, partBytes, partText, readZip, writeZip } from './zip'
 
 /*
@@ -267,5 +267,24 @@ describe('a part that claims more than any Office text holds', () => {
   it('is not unpacked: the file is read as a plain copy', () => {
     const zip = readZip(makeZip({ 'word/document.xml': '<w:document/>' }))
     expect(() => partText({ ...zip[0]!, size: 65 * 1024 * 1024 })).toThrow(NotZipError)
+  })
+})
+
+describe('an attribute read by pattern', () => {
+  it('is read in either quote, with spaces around its equals sign, and a prefixed name is another', () => {
+    expect(attr(` r="A1" t='s'`, 't')).toBe('s')
+    expect(attr('<p:sldId r:id="rId2" id = "256"/>', 'id')).toBe('256')
+    expect(attr('<p:sldId r:id="rId2"/>', 'id')).toBeUndefined()
+    expect(attr(`<numFmt formatCode='d&quot;/&quot;m' numFmtId="164"/>`, 'formatCode')).toBe('d"/"m')
+  })
+
+  it("makes a lone date cell a date and drops its string type in either quote, so its number is not read as a string's index", () => {
+    const S = 'xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"'
+    const book = makeZip({
+      'xl/worksheets/sheet1.xml': `<worksheet ${S}><sheetData><row r="1"><c r="A1" s='1' t='inlineStr'><is><t>{{Date}}</t></is></c></row></sheetData></worksheet>`,
+      'xl/styles.xml': `<styleSheet ${S}><cellXfs count="2"><xf numFmtId="0"/><xf numFmtId = '14'/></cellXfs></styleSheet>`
+    })
+    const sheet = part(fillOffice('xlsx', book, VALUES, { today: '2026-11-23' }).bytes, 'xl/worksheets/sheet1.xml')
+    expect(sheet).toContain(`<c r="A1" s='1'><v>46349</v></c>`)
   })
 })

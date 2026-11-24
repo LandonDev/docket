@@ -32,6 +32,19 @@ export const unescapeXml = (s: string): string =>
 const BAD_XML = /[\u0000-\u0008\u000b\u000c\u000e-\u001f￾￿]/g
 export const escapeXml = (s: string): string => s.replace(BAD_XML, '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
 
+// ── reading XML by pattern ────────────────────────────────────────────
+//
+// One rule for every pattern here: an opening tag may carry attributes and spaces, a closing tag may end in spaces
+// (`</a:t >`), and an attribute is read in either quote with spaces around its `=` (`attr`). The prefixes are the ones
+// Office and python-pptx write (`w:`, `a:`, `p:`, none in a sheet); a part written with others reads as holding no
+// field, and is left as it is.
+
+/** An attribute's value in a tag, unescaped: `name="v"` or `name='v'`, with spaces around `=`; a prefixed name (`r:id`) is not `id`. */
+export function attr(tag: string, name: string): string | undefined {
+  const m = new RegExp(`(?:^|\\s)${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*=\\s*(["'])(.*?)\\1`).exec(tag)
+  return m ? unescapeXml(m[2]!) : undefined
+}
+
 // ── a part's text runs, by paragraph ──────────────────────────────────
 
 interface Run {
@@ -183,7 +196,7 @@ const SLIDE_PART = /^ppt\/slides\/slide(\d+)\.xml$/
 const SHEET_PART = /^xl\/worksheets\/sheet(\d+)\.xml$/
 const STRINGS_PART = 'xl/sharedStrings.xml'
 /** A sheet's page header and footer: one text each, with Excel's own `&` codes in it. */
-const HEAD_FOOT = /<(oddHeader|oddFooter|evenHeader|evenFooter|firstHeader|firstFooter)>([^<]*)<\/\1>/g
+const HEAD_FOOT = /<(oddHeader|oddFooter|evenHeader|evenFooter|firstHeader|firstFooter)((?:\s[^>]*)?)>([^<]*)<\/\1\s*>/g
 
 const numbered = (parts: ZipEntry[], re: RegExp): ZipEntry[] => parts.filter((p) => re.test(p.name)).sort((a, b) => +re.exec(a.name)![1]! - +re.exec(b.name)![1]!)
 
@@ -195,11 +208,11 @@ function slideParts(parts: ZipEntry[]): ZipEntry[] {
   if (!deck || !rels) return slides
   const target = new Map<string, string>()
   for (const m of partText(rels).matchAll(/<Relationship\b[^>]*>/g)) {
-    const id = /\bId="([^"]*)"/.exec(m[0])?.[1]
-    const to = /\bTarget="([^"]*)"/.exec(m[0])?.[1]
+    const id = attr(m[0], 'Id')
+    const to = attr(m[0], 'Target')
     if (id && to) target.set(id, to.startsWith('/') ? to.slice(1) : `ppt/${to}`)
   }
-  const order = [...partText(deck).matchAll(/<p:sldId\b[^>]*\br:id="([^"]*)"/g)].map((m) => target.get(m[1]!))
+  const order = [...partText(deck).matchAll(/<p:sldId\b[^>]*>/g)].map((m) => target.get(attr(m[0], 'r:id') ?? ''))
   const rank = (name: string): number => {
     const i = order.indexOf(name)
     return i < 0 ? order.length : i
@@ -218,9 +231,9 @@ const isLoneDate = (text: string): boolean => {
 const sharedStrings = (xml: string): string[] => {
   // Each `si` is one string; one with no text run still holds its place.
   const out: string[] = []
-  for (const m of xml.matchAll(/<si(?=[\s/>])([^>]*)>([\s\S]*?)<\/si>|<si\s*\/>/g)) {
+  for (const m of xml.matchAll(/<si(?=[\s/>])([^>]*[^/>])?>([\s\S]*?)<\/si\s*>|<si(?:\s[^>]*)?\/>/g)) {
     const body = m[2] ?? ''
-    out.push(paragraphTexts(body.replace(/<rPh(?=[\s>])[\s\S]*?<\/rPh>/g, ''), [], 't').join(''))
+    out.push(paragraphTexts(body.replace(/<rPh(?=[\s>])[\s\S]*?<\/rPh\s*>/g, ''), [], 't').join(''))
   }
   return out
 }
@@ -234,11 +247,11 @@ interface Cell {
 /** A sheet's cells that hold something, in the file's order. */
 function cellsOf(xml: string): Cell[] {
   const out: Cell[] = []
-  for (const m of xml.matchAll(/<c(?=[\s>])([^>]*[^/>])?>([\s\S]*?)<\/c>/g)) out.push({ start: m.index, end: m.index + m[0].length, attrs: m[1] ?? '', body: m[2]! })
+  for (const m of xml.matchAll(/<c(?=[\s>])([^>]*[^/>])?>([\s\S]*?)<\/c\s*>/g)) out.push({ start: m.index, end: m.index + m[0].length, attrs: m[1] ?? '', body: m[2]! })
   return out
 }
-const cellType = (attrs: string): string => /\bt="([^"]*)"/.exec(attrs)?.[1] ?? 'n'
-const cellValue = (body: string): string => /<v(?=[\s>])[^>]*>([^<]*)<\/v>/.exec(body)?.[1] ?? ''
+const cellType = (attrs: string): string => attr(attrs, 't') ?? 'n'
+const cellValue = (body: string): string => /<v(?=[\s>])[^>]*>([^<]*)<\/v\s*>/.exec(body)?.[1] ?? ''
 
 // ── the scan ──────────────────────────────────────────────────────────
 
@@ -265,7 +278,7 @@ export function scanOffice(form: OfficeForm, bytes: Uint8Array): string[] {
         else if (type === 'inlineStr') take(paragraphTexts(cell.body, ['is'], 't').join(''))
       }
     }
-    for (const xml of sheets) for (const m of xml.matchAll(HEAD_FOOT)) take(unescapeXml(m[2]!))
+    for (const xml of sheets) for (const m of xml.matchAll(HEAD_FOOT)) take(unescapeXml(m[3]!))
     // A string no cell shows (a rich string in a table's head, say) is still the file's.
     shared.forEach(take)
   }
@@ -283,15 +296,15 @@ const isDateCode = (code: string): boolean => /[dmyhs]/i.test(code.replace(/"[^"
 export function dateStyles(stylesXml: string): Set<number> {
   const custom = new Set<number>()
   for (const m of stylesXml.matchAll(/<numFmt\b[^>]*>/g)) {
-    const id = /\bnumFmtId="(\d+)"/.exec(m[0])?.[1]
-    const code = /\bformatCode="([^"]*)"/.exec(m[0])?.[1]
-    if (id && code !== undefined && isDateCode(unescapeXml(code))) custom.add(+id)
+    const id = attr(m[0], 'numFmtId')
+    const code = attr(m[0], 'formatCode')
+    if (id && /^\d+$/.test(id) && code !== undefined && isDateCode(code)) custom.add(+id)
   }
   const out = new Set<number>()
-  const xfs = /<cellXfs\b[^>]*>([\s\S]*?)<\/cellXfs>/.exec(stylesXml)?.[1] ?? ''
+  const xfs = /<cellXfs\b[^>]*>([\s\S]*?)<\/cellXfs\s*>/.exec(stylesXml)?.[1] ?? ''
   let i = 0
   for (const m of xfs.matchAll(/<xf\b[^>]*>/g)) {
-    const id = +(/\bnumFmtId="(\d+)"/.exec(m[0])?.[1] ?? 0)
+    const id = +(attr(m[0], 'numFmtId') ?? 0)
     if (DATE_FORMATS.has(id) || custom.has(id)) out.add(i)
     i++
   }
@@ -308,24 +321,24 @@ function fillDateCells(xml: string, loneShared: ReadonlySet<number>, serial: num
   const edits: Edit[] = []
   let taken = 0
   for (const cell of cellsOf(xml)) {
-    if (!dated.has(+(/\bs="(\d+)"/.exec(cell.attrs)?.[1] ?? 0))) continue
+    if (!dated.has(+(attr(cell.attrs, 's') ?? 0))) continue
     const type = cellType(cell.attrs)
     const lone = type === 's' ? loneShared.has(+cellValue(cell.body)) : type === 'inlineStr' && isLoneDate(paragraphTexts(cell.body, ['is'], 't').join(''))
     if (!lone) continue
     if (type === 's') taken++
-    edits.push({ start: cell.start, end: cell.end, text: `<c${cell.attrs.replace(/\s+t="[^"]*"/, '')}><v>${serial}</v></c>` })
+    edits.push({ start: cell.start, end: cell.end, text: `<c${cell.attrs.replace(/\s+t\s*=\s*(["']).*?\1/, '')}><v>${serial}</v></c>` })
   }
   return { xml: edits.length ? applyEdits(xml, edits) : xml, taken }
 }
 
 /** Excel reads `&` in a header as the start of a code: a value's own is doubled. */
 const fillHeadFoot = (xml: string, values: ReadonlyMap<string, string>): string =>
-  xml.replace(HEAD_FOOT, (whole, tag: string, text: string) => {
+  xml.replace(HEAD_FOOT, (whole, tag: string, attrs: string, text: string) => {
     const raw = unescapeXml(text)
     if (!raw.includes('{{')) return whole
     const safe = new Map([...values].map(([k, v]) => [k, v.replace(/&/g, '&&')]))
     const filled = fillText(raw, safe)
-    return filled === raw ? whole : `<${tag}>${escapeXml(filled)}</${tag}>`
+    return filled === raw ? whole : `<${tag}${attrs}>${escapeXml(filled)}</${tag}>`
   })
 
 export interface FillOptions {
@@ -352,7 +365,7 @@ export function fillOffice(form: 'docx' | 'xlsx', bytes: Uint8Array, values: Rea
   } else {
     const strings = parts.find((p) => p.name === STRINGS_PART)
     const stringsXml = strings ? partText(strings) : ''
-    const serial = options.today && values.has(DATE_KEY) ? excelSerial(options.today, /<workbookPr\b[^>]*\bdate1904="(1|true)"/.test(partTextOf(parts, 'xl/workbook.xml'))) : null
+    const serial = options.today && values.has(DATE_KEY) ? excelSerial(options.today, /^(1|true)$/.test(attr(/<workbookPr\b[^>]*>/.exec(partTextOf(parts, 'xl/workbook.xml'))?.[0] ?? '', 'date1904') ?? '')) : null
     const lone = new Set<number>()
     if (serial !== null) sharedStrings(stringsXml).forEach((text, i) => void (isLoneDate(text) && lone.add(i)))
     const dated = serial !== null ? dateStyles(partTextOf(parts, 'xl/styles.xml')) : new Set<number>()
@@ -371,7 +384,7 @@ export function fillOffice(form: 'docx' | 'xlsx', bytes: Uint8Array, values: Rea
     if (strings) {
       let next = fillPart(stringsXml, ['si'], 't', values)
       // The cells that became dates no longer point at a string: the table's count of uses says so.
-      if (taken) next = next.replace(/(<sst\b[^>]*\bcount=")(\d+)(")/, (_w, a: string, n: string, b: string) => `${a}${Math.max(0, +n - taken)}${b}`)
+      if (taken) next = next.replace(/(<sst\b[^>]*\scount\s*=\s*["'])(\d+)(["'])/, (_w, a: string, n: string, b: string) => `${a}${Math.max(0, +n - taken)}${b}`)
       put(strings, stringsXml, next)
     }
   }
@@ -429,23 +442,23 @@ export function deckCellRuns(bytes: Uint8Array): Map<string, DeckParagraph[][][]
   if (!deck || !rels) return out
   const target = new Map<string, string>()
   for (const m of partText(rels).matchAll(/<Relationship\b[^>]*>/g)) {
-    const id = /\bId="([^"]*)"/.exec(m[0])?.[1]
-    const to = /\bTarget="([^"]*)"/.exec(m[0])?.[1]
+    const id = attr(m[0], 'Id')
+    const to = attr(m[0], 'Target')
     if (id && to) target.set(id, to.startsWith('/') ? to.slice(1) : `ppt/${to}`)
   }
   for (const m of partText(deck).matchAll(/<p:sldId\b[^>]*>/g)) {
-    const slideId = /\bid="(\d+)"/.exec(m[0])?.[1]
-    const part = parts.find((p) => p.name === target.get(/\br:id="([^"]*)"/.exec(m[0])?.[1] ?? ''))
+    const slideId = attr(m[0], 'id')
+    const part = parts.find((p) => p.name === target.get(attr(m[0], 'r:id') ?? ''))
     if (!slideId || !part) continue
-    for (const frame of partText(part).matchAll(/<p:graphicFrame\b[\s\S]*?<\/p:graphicFrame>/g)) {
-      const shapeId = /<p:cNvPr\b[^>]*\bid="(\d+)"/.exec(frame[0])?.[1]
-      const table = /<a:tbl\b[\s\S]*?<\/a:tbl>/.exec(frame[0])?.[0]
+    for (const frame of partText(part).matchAll(/<p:graphicFrame\b[\s\S]*?<\/p:graphicFrame\s*>/g)) {
+      const shapeId = attr(/<p:cNvPr\b[^>]*>/.exec(frame[0])?.[0] ?? '', 'id')
+      const table = /<a:tbl\b[\s\S]*?<\/a:tbl\s*>/.exec(frame[0])?.[0]
       if (!shapeId || !table) continue
-      const rows = [...table.matchAll(/<a:tr\b[^>]*?(?:\/>|>([\s\S]*?)<\/a:tr>)/g)].map((row) =>
-        [...(row[1] ?? '').matchAll(/<a:tc\b[^>]*?(?:\/>|>([\s\S]*?)<\/a:tc>)/g)].map((cell) =>
-          [...(cell[1] ?? '').matchAll(/<a:p\b[^>]*?(?:\/>|>([\s\S]*?)<\/a:p>)/g)].map((para) => ({
-            runs: [...(para[1] ?? '').matchAll(/<a:(r|fld)\b[^>]*?(?:\/>|>([\s\S]*?)<\/a:\1>)|<a:br\b[^>]*?(?:\/>|>[\s\S]*?<\/a:br>)/g)].map((run) => ({
-              text: run[1] ? [...(run[2] ?? '').matchAll(/<a:t>([^<]*)<\/a:t>/g)].map((t) => unescapeXml(t[1]!)).join('') : '\n'
+      const rows = [...table.matchAll(/<a:tr\b[^>]*?(?:\/>|>([\s\S]*?)<\/a:tr\s*>)/g)].map((row) =>
+        [...(row[1] ?? '').matchAll(/<a:tc\b[^>]*?(?:\/>|>([\s\S]*?)<\/a:tc\s*>)/g)].map((cell) =>
+          [...(cell[1] ?? '').matchAll(/<a:p\b[^>]*?(?:\/>|>([\s\S]*?)<\/a:p\s*>)/g)].map((para) => ({
+            runs: [...(para[1] ?? '').matchAll(/<a:(r|fld)\b[^>]*?(?:\/>|>([\s\S]*?)<\/a:\1\s*>)|<a:br\b[^>]*?(?:\/>|>[\s\S]*?<\/a:br\s*>)/g)].map((run) => ({
+              text: run[1] ? [...(run[2] ?? '').matchAll(/<a:t(?:\s[^>]*)?>([^<]*)<\/a:t\s*>/g)].map((t) => unescapeXml(t[1]!)).join('') : '\n'
             }))
           }))
         )

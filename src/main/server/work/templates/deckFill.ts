@@ -62,6 +62,15 @@ function filledRuns(paragraphs: Paragraphs, values: ReadonlyMap<string, string>)
   return changed ? out : null
 }
 
+/**
+ * Whether a cell's runs, read from the deck's XML, hold exactly the text the read gave for it (python-pptx's: its
+ * paragraphs joined by a line feed, a line break inside one as a vertical tab).
+ */
+export function accounts(paragraphs: readonly DeckParagraph[], text: string): boolean {
+  const lines = (t: string): string => t.replace(/\v/g, '\n')
+  return lines(paragraphs.map((p) => p.runs.map((r) => r.text).join('')).join('\n')) === lines(text)
+}
+
 const holds = (text: string, values: ReadonlyMap<string, string>): boolean => text.includes('{{') && fieldMatches(text).some((m) => values.has(m.key))
 /** A value in a deck stays in its paragraph: a line break in it would make a second one. */
 const oneLine = (values: ReadonlyMap<string, string>): Map<string, string> => new Map([...values].map(([k, v]) => [k, v.replace(/\s*[\r\n\v]+\s*/g, ' ')]))
@@ -78,7 +87,8 @@ export function deckOps(deck: DeckRead, values: ReadonlyMap<string, string>): Sl
             // A cell read at the cap may be cut short: writing it back would lose its end. One read without its runs is left.
             if (cell.length >= TEXT_MAX || !holds(cell, flat)) return
             const runs = shape.cellRuns?.[r]?.[c]
-            const paragraphs = runs ? filledRuns(runs, flat) : null
+            // The runs must account for every character the read gave: a run read short would be written back short.
+            const paragraphs = runs && accounts(runs, cell) ? filledRuns(runs, flat) : null
             if (paragraphs) ops.push({ op: 'runs', slide: slide.id, shape: shape.id, row: r, col: c, paragraphs })
           })
         )
