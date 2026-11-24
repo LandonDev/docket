@@ -7,7 +7,7 @@
  *
  * Under 520px (the view's `money` container) By category and Entries end their amounts 48px in, the
  * paperclip's room, and give the rest to the names; Owed and To confirm keep their 120px, since a press
- * (Paid, Review) stands there.
+ * (Paid, Review) stands there, and Owed's days move under the name.
  */
 
 /** By category: name, the bar, the amount, then 104px empty (+16px gap = 120); under 520px 32px (+16 = 48). */
@@ -16,8 +16,11 @@ export const CATEGORY_GRID = "grid-cols-[minmax(0,12rem)_minmax(0,1fr)_7rem_104p
 /** Entries: the paperclip's column, 116px (the table hangs 8px past the column; the amount cell's 12px padding: 8 + 120 = 116 + 12); under 520px 44px (8 + 48 = 44 + 12). */
 export const ENTRIES_TAIL = "w-[116px] @max-[520px]/money:w-[44px]";
 
-/** Owed: who and for what, how long, the amount, then Paid in 104px (+16px gap = 120). */
-export const OWED_GRID = "grid-cols-[minmax(0,1fr)_5rem_6rem_104px]";
+/**
+ * Owed: who and for what, how long, the amount, then Paid in 104px (+16px gap = 120). Under 520px how long gives way
+ * and reads as the name's second line, so who owes keeps the room beside Paid.
+ */
+export const OWED_GRID = "grid-cols-[minmax(0,1fr)_5rem_6rem_104px] @max-[520px]/money:grid-cols-[minmax(0,1fr)_5rem_104px]";
 
 /** To confirm: the picture, the words, the amount, then the verb and the menu in 108px (+12px gap = 120). */
 export const TO_CONFIRM_GRID = "grid-cols-[2rem_minmax(0,1fr)_6rem_108px]";

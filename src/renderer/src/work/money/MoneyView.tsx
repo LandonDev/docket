@@ -645,11 +645,14 @@ function Owed({ env, workspaceId, owed, reload }: { env: string; workspaceId: st
               const words = owedWords(r);
               return (
                 <li key={key} data-owed-row={r.row} className={cn("grid min-h-10 items-center gap-4 border-b border-border text-[13px] last:border-0", OWED_GRID)}>
-                  <span className="flex min-w-0 items-baseline gap-1">
-                    <span className="max-w-full shrink-0 truncate text-foreground">{words.lead}</span>
-                    {words.after ? <span className="min-w-0 truncate text-muted-foreground">{words.after}</span> : null}
+                  <span className="min-w-0">
+                    <span className="flex min-w-0 items-baseline gap-1">
+                      <span className="max-w-full shrink-0 truncate text-foreground">{words.lead}</span>
+                      {words.after ? <span className="min-w-0 truncate text-muted-foreground">{words.after}</span> : null}
+                    </span>
+                    <span className={cn("text-xs leading-4 text-muted-foreground tabular-nums", NARROW_ONLY)}>{sinceWords(r.since)}</span>
                   </span>
-                  <span className="text-end text-xs text-muted-foreground tabular-nums">{sinceWords(r.since)}</span>
+                  <span className={cn("text-end text-xs text-muted-foreground tabular-nums", WIDE_ONLY)}>{sinceWords(r.since)}</span>
                   <span className="text-end tabular-nums">{formatMoney(r.amount)}</span>
                   {r.both ? (
                     // One status covers both sides of this row: Paid here would settle the other too, so it is settled in the sheet.

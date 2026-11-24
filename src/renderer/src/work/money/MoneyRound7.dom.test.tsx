@@ -159,6 +159,17 @@ describe("Owed's verbs", () => {
     const paid = screen.getAllByRole("button", { name: /^Paid: / })[0];
     expect((paid.querySelector("[data-slot=busy-label] > span") as HTMLElement).className).toContain("justify-end");
   });
+  it("under 520px keep who owes beside Paid, the days under the name", async () => {
+    mount();
+    await settle();
+    const row = screen.getAllByRole("button", { name: /^Paid: / })[0].closest("li")!;
+    expect(row.className).toContain("@max-[520px]/money:grid-cols-[minmax(0,1fr)_5rem_104px]");
+    const [name, days] = Array.from(row.children) as HTMLElement[];
+    expect(days.className).toContain("@max-[520px]/money:hidden");
+    const second = name.lastElementChild as HTMLElement;
+    expect(second.className).toContain("@max-[520px]/money:block");
+    expect(second.textContent).toBe(days.textContent);
+  });
 });
 
 describe("the loading bones", () => {

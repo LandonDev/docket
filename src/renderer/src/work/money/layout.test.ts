@@ -20,6 +20,10 @@ describe("one right edge for money", () => {
     expect(narrow(ENTRIES_TAIL) + 12 - 8).toBe(48);
   });
 
+  it("under 520px keeps Owed's press on its 120px edge", () => {
+    expect(narrow(OWED_GRID) + 16).toBe(120);
+  });
+
   it("swaps Category's column for Who's second line on one width", () => {
     expect(WIDE_ONLY).toBe("@max-[520px]/money:hidden");
     expect(NARROW_ONLY).toContain("@max-[520px]/money:block");
