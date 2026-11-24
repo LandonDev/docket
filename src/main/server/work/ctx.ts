@@ -8,6 +8,8 @@ import type { ProjectMeta, WorkspaceMeta } from '@shared/domain'
 import type { SessionMeta } from '@shared/events'
 import {
   handled,
+  HIS_ZONE,
+  HOST_ZONE,
   NOT_HANDLED,
   NotBuilt,
   PILLAR_MILESTONE,
@@ -39,7 +41,7 @@ import type { StoreSync } from '../remote/storeSync'
 import type { SessionRegistry } from '../sessions'
 import type { storeRpc } from '../storeRpc'
 import { canvasPart } from './canvas/ctx'
-import { workClock } from './clock'
+import { hisZone, hostZone, workClock, zoneName } from './clock'
 import { tellPart } from './digest/ctx'
 import { convertPart } from './formats/jobs'
 import { lifeosPart } from './lifeos/ctx'
@@ -360,6 +362,12 @@ export function startWork(deps: WorkDeps, modules: WorkModule[] = WORK_MODULES):
   const seed = process.env.TEMP_CODE_USER_DATA ? process.env.TEMP_CODE_WORK_TOKEN_SEED : undefined
   const secret = seed && /^[0-9a-f]{64,}$/i.test(seed) ? Buffer.from(seed, 'hex') : randomBytes(32)
   const tokenFor = (sessionId: string): string => createHmac('sha256', secret).update(sessionId).digest('base64url')
+  // The zones a listing names for HIS_ZONE and HOST_ZONE, as they are at `now`.
+  const zoneWords = (now: number) => {
+    const his = `${zoneName(hisZone(ctx), now)} today`
+    const host = zoneName(hostZone(), now)
+    return (text: string): string => (text.includes('{') ? text.replaceAll(HIS_ZONE, his).replaceAll(HOST_ZONE, host) : text)
+  }
   const tools: WorkToolMount = {
     of(session) {
       // The row decides, never the switch alone: a code thread has no Work tools, and asking costs it nothing.
@@ -384,10 +392,11 @@ export function startWork(deps: WorkDeps, modules: WorkModule[] = WORK_MODULES):
       return { scope, tools: list }
     },
     listing(session) {
+      const named = zoneWords(Date.now())
       return (tools.of(session)?.tools ?? []).map((tool) => ({
         name: tool.name,
-        description: tool.description,
-        inputSchema: z.toJSONSchema(tool.input, { io: 'input' }) as Record<string, unknown>,
+        description: named(tool.description),
+        inputSchema: JSON.parse(named(JSON.stringify(z.toJSONSchema(tool.input, { io: 'input' })))) as Record<string, unknown>,
         readOnly: tool.readOnly
       }))
     },
@@ -404,7 +413,7 @@ export function startWork(deps: WorkDeps, modules: WorkModule[] = WORK_MODULES):
       const refusal = callRefusalOf(sound, ctx, { sessionId: session.id, via: 'work', server: WORK_TOOL_SERVER, tool: name })
       if (refusal) return { content: [{ type: 'text', text: refusal }], isError: true }
       const parsed = tool.input.safeParse(args ?? {})
-      if (!parsed.success) return { content: [{ type: 'text', text: inputProblemWords(name, tool.input, args ?? {}, parsed.error.issues) }], isError: true }
+      if (!parsed.success) return { content: [{ type: 'text', text: zoneWords(Date.now())(inputProblemWords(name, tool.input, args ?? {}, parsed.error.issues)) }], isError: true }
       // The caller's signal (the harness's cancel, the bridge's socket) or Work turning off, whichever comes first.
       const toolCtx: ToolCtx = { ...ctx, scope: mounted.scope, sessionId: session.id, signal: AbortSignal.any([signal, period.signal]) }
       return tool.run(parsed.data, toolCtx)

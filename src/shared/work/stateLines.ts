@@ -211,7 +211,7 @@ export const STATE_LINES: Readonly<Record<string, readonly Line[]>> = {
   ],
   [`${H}/media/tools.ts`]: [
     ["Added a note", "answer"],
-    ["Added", "answer"],
+    ["`Added: note ${notes[0].id} at v${v.n} ${momentOf(v, frame, table)}.`", "answer"],
     ["`Added ${notes.length} chapter${notes.length === 1 ? '' : 's'}`", "answer"],
     ["Added", "answer"],
     ["`Added v${v.n} ${v.name}.`", "answer"],
@@ -223,7 +223,7 @@ export const STATE_LINES: Readonly<Record<string, readonly Line[]>> = {
     ["`Sent to ${got.chat.name} in ${SOURCE_NAME[source]}`", "answer"],
   ],
   [`${H}/messages/tools.ts`]: [
-    ["`Saved as a draft in the conversation: nothing can send to ${SOURCE_NAME[source]} from here, the owner will copy it.`", "answer"],
+    ["`Saved as a draft in the conversation. Nothing was sent: nothing here can send to ${SOURCE_NAME[source]}. Tell the owner the draft waits there for him to copy into ${SOURCE_NAME[source]}.`", "answer"],
   ],
   [`${H}/office/health.ts`]: [
     ["`Syncing ${count}${tenants.length ? ` for ${listOf(tenants)}` : ''}`", "read"],

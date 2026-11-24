@@ -183,7 +183,7 @@ describe('filling', () => {
     const id = openItem(put('fw9.pdf', W9))
     const r = await tool('pdf_fill', { item: id, fields: [{ key: NAME, value: 'Ada Exampleton', source: SOURCE }, { key: SSN1, value: '123' }] })
     expect(r.isError).toBeFalsy()
-    expect(textOf(r)).toContain('Suggested 1 value; the person accepts each from the bar.')
+    expect(textOf(r)).toContain('Suggested in the PDF: 1 value. The file has not changed.')
     expect(textOf(r)).toContain(`field 2 (${SSN1}): say where the value came from (source)`)
     const shown = pushes.at(-1) as { push: string; view: PdfView }
     expect(shown.push).toBe('work.pdf')
@@ -639,7 +639,7 @@ describe('round three: the fence on every method, the push, the hash, reverts', 
     await call('work.pdf.setSignature', { signature: SIGNATURE })
     expect((await call<PdfView>('work.pdf.sign', { itemId: id, signed: true })).signed).toBe(true)
     const r = await tool('pdf_fill', { item: id, fields: [{ key: NAME, value: 'Someone else', source: SOURCE }, { key: 'box:phone', value: '555-9999', source: SOURCE }] })
-    expect(textOf(r)).toContain('Suggested 2 values')
+    expect(textOf(r)).toContain('Suggested in the PDF: 2 values')
     expect((await call<PdfView>('work.pdf.open', { itemId: id })).signed).toBe(true)
     await call('work.pdf.export', { itemId: id })
     const text = await pageText(await bytesOf(id, 'export'))

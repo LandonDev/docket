@@ -50,6 +50,11 @@ const LEAD =
   'Never type a password: say he must take over. There is no command line here: the consoles and script hosts do not start. ' +
   'To save, press ctrl+s, set_value the dialog\'s File name box and press Return; save_as does not run on Windows. ' +
   'Below, "computer_*" and "the computer" mean these windows_* tools and this PC.\n\n'
+/** The other tools point to windows_apps for the lead, said once. */
+const SHORT_LEAD =
+  'The Windows 11 PC on this host, as windows_apps describes it. A send, a post or a submit is held for his press: drive up to it and stop. Never type a password. ' +
+  'To save, press ctrl+s, set_value the dialog\'s File name box and press Return; save_as does not run on Windows. ' +
+  'Below, "computer_*" and "the computer" mean these windows_* tools and this PC.\n\n'
 
 const rename = (name: string): string => name.replace(/^computer_/, 'windows_')
 
@@ -90,7 +95,7 @@ function guestFiles(keeper: () => Keeper | null): GuestFiles | null {
       try {
         await k.wake()
       } catch (e) {
-        return `refused: ${e instanceof Error ? e.message : String(e)}`
+        return `refused: the Windows VM did not wake (${e instanceof Error ? e.message : String(e)}), so nothing ran. The owner can check it in Settings → Work → Windows VM; try again once it is ready.`
       }
       return null
     },
@@ -109,7 +114,7 @@ export function vmTools(scope: WorkScope, d: VmToolsDeps): WorkTool[] {
 function computerTools(d: VmToolsDeps): WorkTool[] {
   return computerToolSpecs('anthropic', 'act', { result: true, platform: 'windows' }).map((spec) => ({
     name: rename(spec.name),
-    description: LEAD + spec.description.replace(/\bcomputer_(apps|observe|act|batch|result)\b/g, 'windows_$1'),
+    description: (spec.name === 'computer_apps' ? LEAD : SHORT_LEAD) + spec.description.replace(/\bcomputer_(apps|observe|act|batch|result)\b/g, 'windows_$1'),
     input: spec.input as z.ZodType,
     readOnly: spec.name === 'computer_observe' || spec.name === COMPUTER_RESULT_TOOL,
     async run(args, ctx): Promise<WorkToolResult> {

@@ -47,7 +47,7 @@ describe('the office wire', () => {
 
   it('holds a send that came over the link: it waits here for his press', async () => {
     const got = await call('work.office.write', { tool: 'office_mail_send', args: { to: ['d@example.com'], subject: 's', html: 'h' }, asked: true, by: 'agent:env_box:t9' })
-    expect(got).toMatchObject({ result: { content: [{ text: expect.stringMatching(/^Held for the owner/) }] } })
+    expect(got).toMatchObject({ result: { content: [{ text: expect.stringMatching(/^Held( as item \d+)?: .* Nothing was sent/) }] } })
     expect(held).toEqual([expect.objectContaining({ kind: 'office.mail.send', sessionId: null })])
     expect(office.sent).toEqual([])
   })

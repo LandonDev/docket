@@ -108,6 +108,8 @@ async function readVersion(ctx: ToolCtx, id: string, n?: number) {
   return { p, row, v, table: p.table(row.id) }
 }
 
+const MOMENT = 'A frame number from 0, a time such as 0:41, or a clip timecode such as 00:00:41:12.'
+const UNTIL = 'Where the stretch ends, in the same form as `at`.'
 const momentInput = z.union([z.number().int().nonnegative(), z.string().min(1).max(40)])
 const itemInput = z.string().describe('the media item id, as canvas_open answered it')
 const versionInput = z.number().int().positive().optional().describe('the version number (1 for v1); the newest when left out')
@@ -133,7 +135,7 @@ export const mediaTools: WorkTool[] = [
     name: 'media_frames',
     description:
       'Looks at frames of a video item (or at an image item): up to 8 stills, each at most 1280 px, by frame number or time (`0:41`, `1:02:05.5`, `00:00:41:12`). Pass `at`, or `count` for frames spread evenly over the clip.',
-    input: z.object({ item: itemInput, version: versionInput, at: z.array(momentInput).max(8).optional(), count: z.number().int().min(1).max(8).optional() }),
+    input: z.object({ item: itemInput, version: versionInput, at: z.array(momentInput.describe(MOMENT)).max(8).optional().describe('Up to 8 moments.'), count: z.number().int().min(1).max(8).optional() }),
     readOnly: true,
     run: async (args, ctx) => {
       const a = args as { item: string; version?: number; at?: Array<string | number>; count?: number }
@@ -160,7 +162,7 @@ export const mediaTools: WorkTool[] = [
     name: 'media_note',
     description:
       'Adds a note to an image or video item: at a moment (`at`: a frame number, `0:41`, or a timecode), over a stretch (`until`), and on a region of the picture (`region`, 0 to 1 of the picture, from its top left). On the person\'s own file it goes straight on and he can undo it; on a shared item, or when he set Suggests, it waits for him to accept.',
-    input: z.object({ item: itemInput, version: versionInput, text: z.string().min(1).max(40_000), at: momentInput.optional(), until: momentInput.optional(), region: MediaRegionSchema.optional() }),
+    input: z.object({ item: itemInput, version: versionInput, text: z.string().min(1).max(40_000), at: momentInput.optional().describe(MOMENT), until: momentInput.optional().describe(UNTIL), region: MediaRegionSchema.optional() }),
     readOnly: false,
     run: async (args, ctx) => {
       const a = args as { item: string; version?: number; text: string; at?: string | number; until?: string | number; region?: { x: number; y: number; w: number; h: number } }
@@ -172,7 +174,7 @@ export const mediaTools: WorkTool[] = [
         const end = table && a.until !== undefined ? frameOf(table, a.until, v.probe?.timecode, v.probe?.rate) : undefined
         const anchor = { versionId: v.id, ...(frame !== undefined ? { frame } : {}), ...(frame !== undefined && end !== undefined && end > frame ? { durationFrames: end - frame + 1 } : {}), ...(a.region ? { region: a.region } : {}) }
         const { notes, suggested } = agentWrite(ctx, id, ctx.sessionId, [{ anchor, body: a.text }], 'Added a note')
-        return workText(`${suggested ? 'Waiting for the person' : 'Added'}: note ${notes[0].id} at v${v.n} ${momentOf(v, frame, table)}.`)
+        return workText(suggested ? `Suggested on the item: note ${notes[0].id} at v${v.n} ${momentOf(v, frame, table)}. Tell the owner it waits there for him to accept; nothing went to Frame.io.` : `Added: note ${notes[0].id} at v${v.n} ${momentOf(v, frame, table)}.`)
       } catch (err) {
         return fail(message(err))
       }
@@ -181,7 +183,7 @@ export const mediaTools: WorkTool[] = [
   {
     name: 'media_chapters',
     description: 'Adds chapters to a video item, each a title at a moment (a frame number, `4:12`, or a timecode). They mark the scrubber and list under the player. The person can undo them in one step.',
-    input: z.object({ item: itemInput, version: versionInput, chapters: z.array(z.object({ at: momentInput, title: z.string().min(1).max(200) })).min(1).max(200) }),
+    input: z.object({ item: itemInput, version: versionInput, chapters: z.array(z.object({ at: momentInput.describe(MOMENT), title: z.string().min(1).max(200) })).min(1).max(200) }),
     readOnly: false,
     run: async (args, ctx) => {
       const a = args as { item: string; version?: number; chapters: Array<{ at: string | number; title: string }> }

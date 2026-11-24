@@ -10,7 +10,7 @@ import {
   PrepLineSchema,
   PrepSuggestionSchema
 } from '@shared/contract-work-prep'
-import { errorText, workText, type SectorKey, type WorkScope } from '@shared/work'
+import { errorText, HOST_ZONE, workText, type SectorKey, type WorkScope } from '@shared/work'
 import type { ToolCtx, WorkTool } from '../modules'
 import { rewriteTasks } from './after'
 import { draftsOf, eventOf, gather, meetingOf, ownAdditions, standing, startDoc, upcoming } from './gather'
@@ -23,12 +23,12 @@ import { PrepStore, supersededOn, type PageRow } from './store'
 import { workspaceSector } from './workspace'
 import { hisZone } from '../clock'
 
-const eventArg = { event: z.string().trim().min(1).max(200).optional() }
+const eventArg = { event: z.string().trim().min(1).max(200).optional().describe('Its LifeOS event id, from prep_today; omit it in a thread linked to the meeting.') }
 const lines = z.array(PrepLineSchema).max(PREP_LINES_MAX).optional()
 const people = PrepAddedPersonSchema.pick({ name: true, address: true })
 const file = PrepFileRefSchema.pick({ title: true }).extend({ url: z.url({ protocol: /^https?$/ }).max(2000) })
 const suggestion = PrepSuggestionSchema.pick({ title: true, who: true, quote: true }).extend({
-  due: z.union([z.iso.date(), z.iso.datetime({ offset: true, local: true })]).optional()
+  due: z.union([z.iso.date(), z.iso.datetime({ offset: true, local: true })]).optional().describe(`YYYY-MM-DD means 09:00 that day on this host's clock (${HOST_ZONE}); a time with an offset is that instant.`)
 })
 
 // A date without a time is due at 9 a.m. on this host, as in Meetings.
@@ -133,7 +133,7 @@ const read = tool('prep_read', 'Read a meeting’s page. Pass its LifeOS event i
   return workText(words)
 }, true)
 
-const today = tool('prep_today', 'List the upcoming meetings in this workspace that need a brief, with their facts and event ids.', z.object({}), async (_args, ctx) => {
+const today = tool('prep_today', 'List the meetings in this workspace in the next 16 hours that need a brief (eight at most), with their facts and event ids.', z.object({}), async (_args, ctx) => {
   const scope = toolWorkspace(ctx)
   const now = Date.now()
   const until = now + 16 * 3_600_000
@@ -177,7 +177,7 @@ const write = tool(
 const followUp = tool(
   'prep_follow_up',
   'Keep the outcome of a meeting: what was decided, what is still open, and the tasks that came of it. The tasks are suggestions that wait for the owner to tick them; nothing is filed by you. A rewrite keeps what he already accepted or rejected. Pass the event id or use this thread’s linked meeting. When you were told his notes changed and given a notes version, pass it as notes.',
-  z.object({ ...eventArg, summary: lines, decisions: lines, questions: lines, tasks: z.array(suggestion).max(PREP_TASKS_MAX).optional(), notes: z.number().int().nonnegative().optional() }),
+  z.object({ ...eventArg, summary: lines, decisions: lines, questions: lines, tasks: z.array(suggestion).max(PREP_TASKS_MAX).optional(), notes: z.number().int().nonnegative().optional().describe('The notes version you were given with his changed notes.') }),
   async (args, ctx) => {
     const { workspaceId } = toolWorkspace(ctx)
     const eventId = await toolEvent(ctx, args.event)
@@ -198,7 +198,7 @@ const followUp = tool(
       // version); another thread's outcome stands but settles nothing, so the bound thread's older turn stays refused.
       const settles = row?.notesOwed != null && row.followSessionId === ctx.sessionId && args.notes === row.notesOwed
       writePage(ctx, workspaceId, event, last, (current) => ({ ...current, after }), at, { suggestionSeq, ...(settles ? { notesOwed: null } : {}) })
-      return workText(`Kept the outcome for “${event.title}”. Suggested tasks wait for the owner on the meeting’s page.`)
+      return workText(`Kept the outcome for “${event.title}” on the meeting’s page. Suggested tasks wait there for the owner to tick; none was filed.`)
     })
   }
 )

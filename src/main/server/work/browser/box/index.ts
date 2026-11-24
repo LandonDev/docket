@@ -377,15 +377,19 @@ const NAMES: Record<ComputerToolName, string> = {
   computer_batch: 'box_browser_batch'
 }
 
+/** How the box browser works, said once on box_browser_open; the other three point to it. */
 const LEAD =
-  "The box's own browser, Chromium, which runs on this host whatever Mac is awake: its app is \"Chromium\", each of its pages a window, and its address bar takes a web address and Return. Call browser_open first so the owner sees it beside the thread. A submit, a send or the like on its final screen is held for his press on its own: drive up to it and stop. Never type a password: call browser_needs_you. His mailbox (Outlook on the web) does not open here: use the office_* tools for his mail and calendar. A form drawn in an embedded frame is read, filled and clicked like the page around it: the frame is a group by its title, its controls under it. Below, \"the Mac\" and \"computer_*\" mean this browser and these box_browser_* tools.\n\n"
+  "The box's own browser, Chromium, on this host whatever Mac is awake. Call browser_open first: it shows this browser beside the thread for the owner, and these box_browser_* tools drive it: open lists or opens its pages, observe reads one, act and batch act on it. Its app is \"Chromium\", each page a window; its address bar takes a web address and Return. A submit, a send or the like on its final screen is held for his press on its own: drive up to it and stop. Never type a password: call browser_needs_you. While he drives, stop until he hands back. His mailbox (Outlook on the web) does not open here: use the office_mail_* and office_calendar_* tools where this thread has them. A form drawn in an embedded frame is read, filled and clicked like the page around it: the frame is a group by its title, its controls under it. Below, \"the Mac\" and \"computer_*\" mean this browser and these box_browser_* tools.\n\n"
+const SHORT_LEAD =
+  'The box\'s Chromium, as box_browser_open describes it. A submit, a send or the like on its final screen is held for his press: drive up to it and stop. Never type a password: call browser_needs_you. ' +
+  'Below, "the Mac" and "computer_*" mean this browser and these box_browser_* tools.\n\n'
 
 /** The four computer tools, renamed for the box browser and run on its sessions. Listed only where the box has one. */
 export function boxBrowserTools(): WorkTool[] {
   if (!host) return []
   return computerToolSpecs('anthropic', 'act').map((spec) => ({
     name: NAMES[spec.name as ComputerToolName] ?? `box_${spec.name}`,
-    description: LEAD + spec.description,
+    description: (spec.name === 'computer_apps' ? LEAD : SHORT_LEAD) + spec.description,
     input: spec.input as z.ZodType,
     readOnly: spec.name === 'computer_observe',
     async run(args, ctx): Promise<WorkToolResult> {

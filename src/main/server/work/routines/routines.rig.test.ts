@@ -8,6 +8,7 @@ import { cast, makeRig, type Rig } from '../outbox/rig'
 import { WORK_MODULES, type WorkModule } from '../modules'
 import { routinesHost, type RoutinesHost } from './host'
 import { routines, routinesEngine, routinesSeams } from './index'
+import { hostZone, zoneName } from '../clock'
 
 /**
  * Routines on the hold's own rig (work/outbox/rig.ts): a real add-on host
@@ -85,6 +86,21 @@ describe('watch_create', () => {
     expect(direct.isError).toBe(true)
     expect(text(direct)).toMatch(/a watch may call only tools that run without his press/)
     expect(rig.downstream).toHaveLength(1)
+  })
+})
+
+describe('watch_create until', () => {
+  it("names the zone of the host clock the day ends on, and the listing names it in the field's help", async () => {
+    const outlook = await rig.addon('outlook', 'ws-purdue')
+    await rig.rpc('work.outbox.setRules', { addonId: outlook.id, rules: { read: 'runs' } })
+    const made = await call('t-work', 'watch_create', { name: 'Reply from events booking', addon: 'outlook', tool: 'read', arguments: { key: 'events' }, until: '2026-11-18' })
+    const zone = zoneName(hostZone(), Date.parse('2026-11-18T23:59:59'))
+    expect(text(made)).toBe(`Watching “Reply from events booking”: every 15 minutes, until the end of 2026-11-18 (${zone}). This thread will be woken with the new answer; nothing else runs.`)
+    const listed = rig.work.tools.listing(rig.sessions.get('t-work')!)
+    const props = (name: string) => (listed.find((t) => t.name === name)!.inputSchema as { properties: Record<string, { description: string }> }).properties
+    expect(props('watch_create').until.description).toContain(`on this host's clock (${zoneName(hostZone(), Date.now())})`)
+    // his zone, from LifeOS, for a routine's time of day
+    expect(props('routine_propose').at.description).toBe(`HH:MM, 24-hour, in the owner’s zone (${zoneName('America/Chicago', Date.now())} today)`)
   })
 })
 

@@ -214,7 +214,7 @@ describe('healthText', () => {
 
   it('says a host that is not linked now is offline, not broken', () => {
     expect(healthText([{ name: 'The Mac', offline: true }, { name: 'PC', error: 'Work is off on this host' }], 'all', 'America/Chicago')).toBe(
-      'The Mac: offline (not checked; offline is not broken)\nPC: did not answer: Work is off on this host'
+      'The Mac: offline (not checked; offline is not broken)\nPC: did not answer the check (Work is off on this host), so its connections are unknown, not broken. The owner can see that host in Settings → Hosts; try again later.'
     )
   })
 })

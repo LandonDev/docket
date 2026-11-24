@@ -13,6 +13,7 @@ import { writeNewDeck } from './newDeck'
 import { attachFile } from './attach'
 import { rowSession, SlidesStore } from './store'
 import { announce, applyTo, deckDir, deckKey, deckOf, filePathOf, OWN_FILE, readOnlyWhy, renderPath, scratch, serial, sharedDeck, withDeck, writeInto, writing, comesAs } from './view'
+import { suggestedIn } from '../outbox/words'
 
 /**
  * The tools a Work thread reads and revises a deck with
@@ -228,7 +229,7 @@ export const slidesTools: WorkTool[] = [
       'Reads a deck in the canvas: each slide\'s number, id, layout and title, every shape\'s id, name and words (a table by rows from 0, a chart\'s data), and the notes. ' +
       'With `slide` (an id), reads that one slide in full: each shape\'s box in EMU, turn, fill and outline, its words run by run with each run\'s font, size and colour, and how the slide comes and builds. ' +
       'When your suggestions wait, it reads the deck with them in. Edit with `slides_edit`, naming slides by id and shapes by id.',
-    input: z.object({ item, slide: z.number().int().positive().optional().describe('A slide id: read this slide alone, in full.') }),
+    input: z.object({ item, slide: z.number().int().positive().optional().describe("A slide's id from the outline (not its number): read this slide alone, in full.") }),
     readOnly: true,
     run: async (args, ctx) => {
       const a = args as { item: string; slide?: number }
@@ -251,8 +252,8 @@ export const slidesTools: WorkTool[] = [
   },
   {
     name: 'slides_image',
-    description: 'A picture of one slide of a deck in the canvas, by its number (as `slides_read` gives it). When suggestions wait, it shows the deck with them in.',
-    input: z.object({ item, slide: z.number().int().positive() }),
+    description: "A picture of one slide of a deck in the canvas, by its number, where `slides_read` and `slides_edit` take its id. When suggestions wait, it shows the deck with them in.",
+    input: z.object({ item, slide: z.number().int().positive().describe("The slide's number, 1 for the first, as `slides_read` lists it (not its id).") }),
     readOnly: true,
     run: async (args, ctx) => {
       const a = args as { item: string; slide: number }
@@ -273,7 +274,7 @@ export const slidesTools: WorkTool[] = [
   {
     name: 'slides_edit',
     description:
-      'Revises a deck in the canvas, by slide id and shape id from `slides_read`: `text` (a shape\'s paragraphs; each keeps its look), `cell` (row and column from 0), `notes`, `chart` (new data, same look), `add` (a slide from one of the deck\'s layouts by name, after a slide id, 0 for first), `remove`, `move`, `runs` (a shape\'s paragraphs as runs: each `from` the run whose look it keeps, with a font, size, bold, italic, underline or colour set on top) and `format` (a look on a whole shape, or on a `range` of its characters); a shape\'s place and size in EMU (`geometry`), its `order`, `fill` and `line`; `insert` (a text box, a shape, a picture or video by its path on this host, a table, a chart) and `delete`; a table\'s rows and columns (`grid`); a slide hidden (`hide`), copied (`duplicate`) or given another `layout`; the deck\'s `section`s and `theme`; how a slide comes in a show (`transition`: a cut, a fade or a push, and the seconds after which it moves on) and what comes in on each press (`builds`: the shapes in `order`, those also named in `fade` by Fade, the rest by Appear). Read one slide in full with `slides_read` and `slide` before you change a look or a place. ' +
+      'Revises a deck in the canvas, by slide id and shape id from `slides_read` (ids, not the numbers `slides_image` takes): `text` (a shape\'s paragraphs; each keeps its look), `cell` (row and column from 0), `notes`, `chart` (new data, same look), `add` (a slide from one of the deck\'s layouts by name, after a slide id, 0 for first), `remove`, `move`, `runs` (a shape\'s paragraphs as runs: each `from` the run whose look it keeps, with a font, size, bold, italic, underline or colour set on top) and `format` (a look on a whole shape, or on a `range` of its characters); a shape\'s place and size in EMU (`geometry`), its `order`, `fill` and `line`; `insert` (a text box, a shape, a picture or video by its path on this host, a table, a chart) and `delete`; a table\'s rows and columns (`grid`); a slide hidden (`hide`), copied (`duplicate`) or given another `layout`; the deck\'s `section`s and `theme`; how a slide comes in a show (`transition`: a cut, a fade or a push, and the seconds after which it moves on) and what comes in on each press (`builds`: the shapes in `order`, those also named in `fade` by Fade, the rest by Appear). Read one slide in full with `slides_read` and `slide` before you change a look or a place. ' +
       'An `add` is given an id in the answer; give it `id` yourself to edit the new slide in the same list. ' +
       'Each revised slide is a suggestion the person steps through and accepts. When the deck says "Agent writes", the edit goes into the file at once if `because` is `own`, or `asked` with `quote`: the person\'s own words asking for it. ' +
       'The edits are checked first: if one cannot be made, nothing is kept and the answer says why. A Google deck, or one opened from a .ppt, .pps, .ppsx, .odp or .key file, is read only here: the person makes a copy to edit.',
@@ -344,7 +345,7 @@ export const slidesTools: WorkTool[] = [
                 : asked
                   ? ' The deck is shared, and the person\'s words do not name this deck (its path, as a file chip gives it) and every slide this changes without doubt, so this is a suggestion.'
                   : ' The person\'s words were not found in this thread, so this is a suggestion.'
-          return { added, direct: false, text: `Suggested ${plural(new Set(fresh.map(slideOfOp)).size, 'revised slide')}; the person steps through them from the bar.${why}${noteLines(warnings.filter(isNote), deck.pending.length)}` }
+          return { added, direct: false, text: `${suggestedIn('deck', plural(new Set(fresh.map(slideOfOp)).size, 'revised slide'))}${why}${noteLines(warnings.filter(isNote), deck.pending.length)}` }
         }))
         await announce(ctx, it, ctx.signal)
         return { ...workText(`${said.text}${said.added.length ? `\nNew slide ${said.added.length === 1 ? 'id' : 'ids'}: ${said.added.join(', ')}` : ''}`), structuredContent: { added: said.added, direct: said.direct } }

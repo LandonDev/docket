@@ -6,6 +6,7 @@ import { errorText } from '@shared/work/ids'
 import type { ToolCtx, WorkTool } from '../modules'
 import { agentChange, FormError, formItem, hold, responses, rowOf, setOpen, viewOf } from './forms'
 import { FormsStore, newQuestionId, tidyQuestion } from './store'
+import { heldReceipt } from '../outbox/words'
 
 /** A change's id, never shared with another call's change made in the same millisecond: a decision by id takes exactly one (the hold review). */
 export const suggestionId = (): string => `s${Date.now().toString(36)}${randomBytes(4).toString('hex')}`
@@ -48,15 +49,15 @@ function outline(ctx: ToolCtx, it: CanvasItem): string {
 
 const Change = z.discriminatedUnion('op', [
   z.object({ op: z.literal('add'), question: NewQuestion, after: z.string().nullable().optional().describe('The id of the question it follows; null or absent: at the end.') }),
-  z.object({ op: z.literal('change'), id: z.string(), label: z.string().min(1).max(300).optional(), type: type.optional(), required: z.boolean().optional(), options }),
-  z.object({ op: z.literal('remove'), id: z.string() })
+  z.object({ op: z.literal('change'), id: z.string().describe("The question's id, from form_read."), label: z.string().min(1).max(300).optional(), type: type.optional(), required: z.boolean().optional(), options }),
+  z.object({ op: z.literal('remove'), id: z.string().describe("The question's id, from form_read.") })
 ])
 
 export const formsTools: WorkTool[] = [
   {
     name: 'form_create',
     description:
-      'Makes a form and opens it in the canvas: a title, a line about it, and its questions. Publishing it is a separate step the owner presses (`form_publish` holds it for him).',
+      "Makes a form and opens it in the canvas: a title, a line about it, and its questions. Answers its canvas item id, which the other form tools take. Publishing it is a separate step the owner presses (`form_publish` holds it for him).",
     input: z.object({
       title: z.string().min(1).max(200),
       description: z.string().max(2000).optional(),
@@ -115,7 +116,7 @@ export const formsTools: WorkTool[] = [
           return { op: 'change', question: tidyQuestion({ ...was, ...Object.fromEntries(Object.entries(c).filter(([k, v]) => k !== 'op' && k !== 'id' && v !== undefined)) }), reason: a.reason, by }
         })
         const { waiting } = await agentChange(ctx, it, made, suggestionId)
-        return workText(waiting ? `${made.length} change(s) wait for the owner to accept in the canvas.` : `Changed the form.\n\n${outline(ctx, it)}`)
+        return workText(waiting ? `Suggested in the form: ${made.length} change(s). The form has not changed. Tell the owner they wait there for him to accept or reject.` : `Changed the form.\n\n${outline(ctx, it)}`)
       } catch (err) {
         return fail(errorText(err))
       }
@@ -132,7 +133,7 @@ export const formsTools: WorkTool[] = [
         const it = paneForm(ctx, (args as { item: string }).item)
         const { held } = hold(ctx, it)
         if (held && held.state !== 'held') return workText(`Published ${it.title}.`)
-        return workText(`Held: Publish ${it.title}. The link goes live when he presses Publish; until then nobody can answer.`)
+        return workText(heldReceipt({ ...held, state: 'held', summary: `Publish ${it.title}` }, 'Nothing was published: there is no link to share yet, and nobody can answer until he presses Publish.'))
       } catch (err) {
         return fail(errorText(err))
       }
@@ -151,7 +152,7 @@ export const formsTools: WorkTool[] = [
         if (a.open && rowOf(ctx, it).state === 'closed') {
           const { held } = hold(ctx, it)
           if (held && held.state !== 'held') return workText(`${it.title} takes answers again.`)
-          return workText(`Held: Reopen ${it.title}. It takes answers again when he presses Publish.`)
+          return workText(heldReceipt({ ...held, state: 'held', summary: `Reopen ${it.title}` }, 'It stays closed until he presses Publish.'))
         }
         const view = setOpen(ctx, it, a.open)
         return workText(view.state === 'open' ? `${it.title} takes answers again at ${view.link}.` : `${it.title} is closed; it takes no more answers.`)

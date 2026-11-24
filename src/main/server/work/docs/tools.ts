@@ -1,7 +1,7 @@
 import { z } from 'zod'
 import type { DocFormatResult } from 'work-kit/collab-server'
 import { docFormatFields } from './formatToolInput'
-import { agentPrincipal, canvasSourcePath, workText, type CanvasSource, type WorkToolResult } from '@shared/work'
+import { agentPrincipal, canvasSourcePath, HIS_ZONE, workText, type CanvasSource, type WorkToolResult } from '@shared/work'
 import { errorText } from '@shared/work/ids'
 import type { ToolCtx, WorkTool } from '../modules'
 import { docsOf, modeOf, wrote } from './state'
@@ -11,6 +11,7 @@ import { changeThread } from './threads'
 import { revisionOf } from './revision'
 import { EDITED_WITHIN, FIND_BY, FIND_KINDS, FIND_KIND_WORDS, FIND_SORTS, FIND_WHERE, FIND_WHERE_WORDS, findIn, type FindEntry, type FindFilter } from '@shared/work/docFind'
 import { hisZone, instantIn } from '../clock'
+import { suggestedIn } from '../outbox/words'
 
 /**
  * The tools a Work thread reads and changes a document with
@@ -163,8 +164,8 @@ async function write(ctx: ToolCtx, a: TargetArgs & WhyWrite & { markdown: string
   const parts = changedParts(before, a.markdown)
   if (done.mode === 'branch') {
     docsOf(ctx).push({ push: 'work.docs', doc: t.doc, branches: true }, pathOf(t))
-    const why = a.suggest ? 'he steps through them in the document' : shared ? 'others share this document, so he accepts or rejects each one' : 'he set this document to suggest, so he accepts or rejects each one'
-    return workText(`Suggested changes to ${plural(parts.count, parts.unit)}: ${why}.${note}`)
+    const why = a.suggest ? '' : shared ? ', because others share this document' : ', because he set this document to suggest'
+    return workText(`${suggestedIn('document', `changes to ${plural(parts.count, parts.unit)}${why}`)}${note}`)
   }
   const text = `Wrote ${plural(parts.count, parts.unit)}`
   // His own document, on the agent's own idea: the bar says what was written, with Undo.
@@ -197,7 +198,7 @@ async function format(ctx: ToolCtx, a: FormatArgs): Promise<WorkToolResult> {
   const amount = plural(done.changed, on && !page ? 'paragraph' : 'formatting change')
   if (done.mode === 'branch') {
     docsOf(ctx).push({ push: 'work.docs', doc: t.doc, branches: true }, pathOf(t))
-    return workText(`Suggested formatting on ${amount}: he accepts or rejects it in the document.${note}`)
+    return workText(`${suggestedIn('document', `formatting on ${amount}`)}${note}`)
   }
   const text = `${on && !page ? 'Formatted' : 'Applied'} ${amount}`
   if (verdict === 'own' && done.versionId && done.beforeVersionId) wrote(ctx, t.doc, { text, at: Date.now(), versionId: done.beforeVersionId, ...(done.undoable ? { after: done.versionId } : {}) }, pathOf(t))
@@ -236,8 +237,8 @@ const findInput = z.object({
   where: z.array(z.enum(FIND_WHERE)).optional().describe('lifeos, folder (the workspace folder on this host), google, microsoft, thread (made in a thread)'),
   project: z.string().max(200).optional().describe('A LifeOS project, by name or id.'),
   edited_within: z.enum(EDITED_WITHIN).optional(),
-  edited_after: z.string().max(40).optional().describe("A date or time in the owner's zone, as 2026-10-01 or 2026-10-01T14:00. Include an offset for another zone."),
-  edited_before: z.string().max(40).optional(),
+  edited_after: z.string().max(40).optional().describe(`A date or time in the owner's zone (${HIS_ZONE}), as 2026-10-01 or 2026-10-01T14:00. Include an offset for another zone.`),
+  edited_before: z.string().max(40).optional().describe('The same form as edited_after.'),
   by: z.array(z.enum(FIND_BY)).optional().describe('Who last changed it: owner, agent or guest.'),
   shared: z.boolean().optional().describe('Only what others can see: shared, guest-linked, or in Google or Microsoft.'),
   review: z.boolean().optional().describe('Only what has open comments or suggestions waiting.'),
@@ -297,7 +298,7 @@ export const docTools: WorkTool[] = [
   {
     name: 'doc_find',
     description:
-      'Finds documents, sheets, PDFs, decks, media, recordings, forms and dashboards in this workspace: by words in the title or written inside (LifeOS documents, .tcdoc and .csv files in the folder), and by kind, place, project, when and by whom it was last edited, sharing, open comments or waiting suggestions, and held acts. Each line ends with the source to open it by.',
+      'Finds documents, sheets, PDFs, decks, media, recordings, forms and dashboards in this workspace (for other Work records use work_search): by words in the title or written inside (LifeOS documents, .tcdoc and .csv files in the folder), and by kind, place, project, when and by whom it was last edited, sharing, open comments or waiting suggestions, and held acts. Each line ends with the source to open it by.',
     input: findInput,
     readOnly: true,
     run: async (args, ctx) => {
@@ -332,14 +333,14 @@ export const docTools: WorkTool[] = [
   {
     name: 'doc_write',
     description:
-      'Rewrites a document: pass its whole new text as markdown, and the `revision` doc_read gave (a document changed since is refused: read it again); blocks you leave as they were keep their place, comments and ids. Say why: `because: "asked"` with `quote`, the owner\'s own words asking for this change, writes at once; ' +
+      'Rewrites a document over the text you read: pass the `revision` doc_read ended with (a document changed since is refused: read it again) and its whole new text as markdown; blocks you leave as they were keep their place, comments and ids. Say why: `because: "asked"` with `quote`, the owner\'s own words asking for this change, writes at once; ' +
       '`"routine"` writes at once when this thread runs a routine; `"own"` is your own idea: on a document others share, or one he set to suggest, it waits as suggestions he steps through; on his own document it is written and he can take it back.',
     input: z.object({
       ...target,
-      markdown: z.string().max(900_000),
+      markdown: z.string().max(900_000).describe('The whole new text, with everything to keep.'),
       because: z.enum(['asked', 'routine', 'own']),
       quote: z.string().max(2000).optional().describe('With "asked": the owner\'s words, as he typed them in this thread.'),
-      revision: z.string().max(64).optional().describe('The revision doc_read ended with.')
+      revision: z.string().max(64).optional().describe('Needed: the revision doc_read ended with.')
     }),
     readOnly: false,
     run: async (args, ctx) => {

@@ -29,7 +29,7 @@ export const NotesInputSchema = z.object({
         /** `YYYY-MM-DD`, or a full ISO time */
         due: z.string().regex(/^\d{4}-\d{2}-\d{2}(T[\d:.]+(Z|[+-]\d{2}:\d{2})?)?$/, 'a date as YYYY-MM-DD or a full ISO time').optional(),
         /** a LifeOS task that already covers it: shown as filed, never proposed */
-        lifeosTaskId: z.string().min(1).max(128).optional()
+        lifeosTaskId: z.string().min(1).max(128).optional().describe('The id of a LifeOS task that already covers it.')
       })
     )
     .max(80)

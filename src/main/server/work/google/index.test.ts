@@ -487,7 +487,7 @@ describe('the google tools', () => {
     const { itemId } = await call<{ itemId: string }>('work.google.open', { sessionId: 's1', account: ME, fileId: 'doc2' })
     const before = JSON.stringify([...fake.files])
     const got = await run('google_doc_suggest', { item: itemId, edits: [{ find: 'March', replace: 'May' }] })
-    expect(text(got)).toMatch(/^Held(?: as item \d+)?: a change to a file others can open\. Nothing went to Google\. It waits for the owner's press, and nobody else sees it/)
+    expect(text(got)).toMatch(/^Held(?: as item \d+)?: a change to a file others can open\. It waits for the owner's press\. The file has not changed\. Nothing went to Google\. Nobody else sees it/)
     expect(JSON.stringify([...fake.files])).toBe(before)
     expect(fake.docSuggestions('doc2')).toEqual([])
     expect(held).toEqual([expect.objectContaining({ kind: 'google.edit', payload: expect.objectContaining({ app: 'doc', fileId: 'doc2', edits: [{ find: 'March', replace: 'May', within: 'We ship in March.', tab: 't.0', at: expect.any(Number) }] }) })])
@@ -508,7 +508,7 @@ describe('the google tools', () => {
   it("holds a share for his press, and its way back takes the person out", async () => {
     const { itemId } = await call<{ itemId: string }>('work.google.open', { sessionId: 's1', account: ME, fileId: 'sh1' })
     const got = await run('google_share', { item: itemId, email: 'dana@example.com', role: 'commenter' })
-    expect(text(got)).toMatch(/^Held for the owner/)
+    expect(text(got)).toMatch(/^Held(?: as item \d+)?: Share Brief.* It waits for the owner's press\. Nothing was shared\./)
     expect(held).toEqual([expect.objectContaining({ kind: 'share.google' })])
     expect(fake.files.get('sh1')!.permissions).toEqual([])
     const payload = googleShare.payload.parse(held[0].payload)

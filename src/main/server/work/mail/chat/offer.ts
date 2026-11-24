@@ -87,7 +87,7 @@ export async function offer(args: unknown, ctx: ToolCtx): Promise<WorkToolResult
 export const offerTool: WorkTool = {
   name: 'mail_offer',
   description:
-    'Show the owner one card beside the mail, for his press: {draft} a reply you wrote here with draft_mail; {rewrite} your rewrite of his reply, made with update_mail_draft; {rows} mail threads to archive, mark read, flag as needs me or snooze; {task} or {event} to add. It changes nothing itself. Give exactly one.',
+    'Show the owner one card beside the mail, for his press: {draft} a reply you already wrote with draft_mail; {rewrite} your rewrite of his reply, made with update_mail_draft; {rows} mail threads to archive, mark read, flag as needs me or snooze; {task} or {event} to add. It changes nothing itself. Give exactly one.',
   input: OfferInput,
   readOnly: true,
   run: offer

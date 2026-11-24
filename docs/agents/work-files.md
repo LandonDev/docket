@@ -1136,8 +1136,9 @@ anything else. Then:
   answer is "Others can open it now, so the owner changes it back himself.";
   nothing is held for it. Only a tool's own operation ids are undone.
 - **In a place others can open** nothing is written: it is held as a
-  `file.act` (below), and the answer is "Held as item N. It waits for the
-  owner's press: <the sentence>". A delete there is held too ("Delete
+  `file.act` (below), and the answer is `heldChange`'s: "Held as item N: a
+  change to a file others can open. It waits for the owner's press. The file
+  has not changed. Nothing in the place changed. …". A delete there is held too ("Delete
   Plan.docx from Esports Staff, General. Everyone in Esports Staff can open
   it."); his press sends it to the computer's own bin and answers "Deleted:
   Plan.docx."

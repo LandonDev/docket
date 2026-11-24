@@ -741,9 +741,11 @@ input that is not a `z.object` is left out and logged.
 
 - **Claude**: `withWorkTools` adds an MCP server named `work` and allows
   `mcp__work__<name>`. A thread with no Work tools gets its options back
-  untouched, so its spawn is what it was. The SDK is handed a loose object
-  drawn as the tool's own JSON schema (`claudeInputOf`, work/toolInput.ts),
-  so it checks nothing and the mount's words below answer a bad input.
+  untouched, so its spawn is what it was. It mounts the bridge's listing
+  (`tools.listing`), so both harnesses read the same words, and the SDK is
+  handed a loose object drawn as that JSON schema (`claudeInputOf`,
+  work/toolInput.ts): it checks nothing, and the mount's words below answer
+  a bad input.
 - **Codex and Muse**: `bridgeMcpConfig` gives the bridge
   `TEMP_CODE_WORK_TOKEN` only for a thread that has Work tools at spawn. The
   bridge lists them once from `app.workTools` (a list that failed is asked
@@ -765,6 +767,16 @@ input that is not a `z.object` is left out and logged.
   not have says it is not in the thread's list, to read the list again, and
   names the nearest of its own tools (`unknownToolWords`); while Work is off
   it says so (`WORK_OFF_WORDS`).
+- **Zones in the words.** A description or field help never names a city: it
+  writes `HIS_ZONE` or `HOST_ZONE` (src/shared/work/tools.ts), and the
+  listing fills them in as it lists ("Central today", from `hisZone`; the
+  host's own zone for an input a pillar reads on the host's clock).
+- **Field help.** Every id, time, measure and destination field (a name that
+  is or ends in id, at, time, date, until, from, to, width, height, x, y,
+  size, minutes, path or ref) has a `.describe()` saying what it is, its unit
+  or form and where the agent gets it; a literal or a list of choices says
+  itself. work/toolWords.test.ts walks every tool a workspace thread is
+  listed and fails on a bare one.
 
 ### Narrowing a thread
 

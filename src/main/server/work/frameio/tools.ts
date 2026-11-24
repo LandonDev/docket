@@ -11,6 +11,7 @@ import { frameioConfig } from './auth'
 import { frameioItem, frameioOf } from './live'
 import { openFile, syncComments } from './media'
 import { holdCopy, postWords } from './post'
+import { heldReceipt } from '../outbox/words'
 
 /**
  * The agent's Frame.io tools (docs/agents/work-frameio.md, "Tools"): look
@@ -50,13 +51,13 @@ function ownItem(ctx: ToolCtx, id: string): { itemId: string; account: string } 
 
 const itemInput = z.string().describe('the media item id, as frameio_open answered it')
 const versionInput = z.number().int().positive().optional().describe('the version number (1 for v1); the newest when left out')
-const momentInput = z.union([z.number().int().nonnegative(), z.string().min(1).max(40)])
+const momentInput = z.union([z.number().int().nonnegative(), z.string().min(1).max(40)]).describe('A frame number from 0, a time such as 0:41, or a clip timecode such as 00:00:41:12.')
 
 /** Holds a post and says so. */
 function hold(ctx: ToolCtx, payload: FrameioPost): WorkToolResult {
   const item = ctx.held.create({ kind: 'frameio.post', sessionId: ctx.sessionId, payload })
   const { summary } = postWords(payload)
-  return workText(item.state === 'sent' ? `Sent: ${summary}.` : `Held: ${summary}. It waits in the Outbox for the person to post it; nothing went to Frame.io.`)
+  return workText(item.state === 'sent' ? `Sent: ${summary}.` : heldReceipt({ ...item, summary }, 'Nothing went to Frame.io.'))
 }
 
 export const frameioTools: WorkTool[] = [
@@ -64,7 +65,11 @@ export const frameioTools: WorkTool[] = [
     name: 'frameio_browse',
     description:
       "Looks through the person's Frame.io: with nothing named, his accounts; with `account`, its workspaces; with `kind` and `id`, what is inside a workspace (its projects), a project or folder (folders, version stacks, files) or a version stack (its versions, newest first).",
-    input: z.object({ account: z.string().optional(), kind: z.enum(['workspace', 'project', 'folder', 'stack']).optional(), id: z.string().optional() }),
+    input: z.object({
+      account: z.string().optional().describe('An account id from frameio_browse.'),
+      kind: z.enum(['workspace', 'project', 'folder', 'stack']).optional(),
+      id: z.string().optional().describe('The id frameio_browse gave that workspace, project, folder or stack; not a canvas item id.')
+    }),
     readOnly: true,
     run: async (args, ctx) => {
       try {
@@ -99,7 +104,7 @@ export const frameioTools: WorkTool[] = [
     name: 'frameio_comment',
     description:
       'Holds a comment for a Frame.io item at a moment (a frame number, `0:41`, or a timecode), over a stretch (`until`), and on a region of the picture (0 to 1 from its top left). Or pass `note` to post one of your waiting notes on the item. It shows on the item as waiting and posts to Frame.io only when the person presses Post in the Outbox. Frame.io cannot take a reply to a comment.',
-    input: z.object({ item: itemInput, version: versionInput, note: z.string().optional(), text: z.string().min(1).max(40_000).optional(), at: momentInput.optional(), until: momentInput.optional(), region: MediaRegionSchema.optional() }),
+    input: z.object({ item: itemInput, version: versionInput, note: z.string().optional(), text: z.string().min(1).max(40_000).optional(), at: momentInput.optional(), until: momentInput.optional().describe('Where the stretch ends, in the same form as `at`.'), region: MediaRegionSchema.optional() }),
     readOnly: false,
     run: async (args, ctx) => {
       const a = args as { item: string; version?: number; note?: string; text?: string; at?: string | number; until?: string | number; region?: { x: number; y: number; w: number; h: number } }

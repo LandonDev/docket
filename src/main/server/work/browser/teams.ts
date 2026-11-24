@@ -19,9 +19,8 @@ import { ActStale } from '../outbox/kinds'
  */
 
 export const TeamsPostSchema = z.object({
-  /** the chat, channel or person as Teams lists it */
-  chat: z.string().trim().min(1).max(200),
-  text: z.string().trim().min(1).max(8000)
+  chat: z.string().trim().min(1).max(200).describe('The chat, channel or person as Teams lists it.'),
+  text: z.string().trim().min(1).max(8000).describe('The reply, exactly as it should be posted.')
 })
 export type TeamsPost = z.infer<typeof TeamsPostSchema>
 
@@ -49,7 +48,7 @@ export function configureTeamsCarrier(next: TeamsCarrier | null): void {
 export const teamsCarrier = (): TeamsCarrier | null => carrier
 
 export const TEAMS_UNAVAILABLE =
-  'refused: this host cannot post to Teams. A reply goes out by computer use on a Mac with Teams signed in, and a thread on another host cannot hold one for it. Give him the text in your reply instead.'
+  'refused: this host cannot post to Teams, so nothing was held or posted. A reply goes out by computer use on a Mac with Teams signed in. Give the owner the text in your reply, or keep it as a draft with messages_draft_reply.'
 export const TEAMS_GONE = 'This host can no longer post to Teams. Nothing was posted.'
 
 const clip = (text: string, n: number): string => {

@@ -34,7 +34,7 @@ afterEach(async () => {
 describe('a drafted reply', () => {
   it('is held with where it goes and its first words, and nothing reaches LifeOS', async () => {
     expect(text(await draft({ chat: 'c-dana', text: words }))).toBe(
-      'Held: Reply in Slack to Dana Lee: “Looking now, the build should be green by noon.”. It waits for the owner\'s press; nothing is sent until then. This is a finished step, not a failure: carry on.'
+      'Held as item 1: Reply in Slack to Dana Lee: “Looking now, the build should be green by noon.”. It waits for the owner\'s press. Nothing was sent. This is a finished step, not a failure: tell the owner it waits in his Outbox, do not look for another way to do it, and carry on.'
     )
     const [item] = await t.rig.waiting()
     expect(item).toMatchObject({ kind: 'chat.reply', state: 'held', verb: 'Send', sessionId: 't-cosmic', workspaceId: 'ws-cosmic', sector: 'cosmic', payload: { chatId: 'c-dana', source: 'slack', chat: 'Dana Lee', text: words } })

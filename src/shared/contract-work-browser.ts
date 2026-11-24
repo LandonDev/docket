@@ -18,7 +18,10 @@ export const BROWSER_DRIVERS = ['agent', 'owner'] as const
 export type BrowserDriver = (typeof BROWSER_DRIVERS)[number]
 
 /** Where the agent says one value on the page came from, by the field's name as the page labels it. */
-export const PortalSourceSchema = z.object({ field: z.string().min(1).max(200), source: z.string().min(1).max(300) })
+export const PortalSourceSchema = z.object({
+  field: z.string().min(1).max(200).describe("The field's name as the page labels it."),
+  source: z.string().min(1).max(300).describe('Where its value came from: "Hilton folio.pdf, page 1".')
+})
 export type PortalSource = z.infer<typeof PortalSourceSchema>
 
 /** One thread's browser, keyed by the thread whose pane shows it (a subagent's acts show in its root's). */

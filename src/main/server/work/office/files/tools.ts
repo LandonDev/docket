@@ -141,7 +141,7 @@ export function teamsTools(carrier: Deps): WorkTool[] {
     tool({
       name: 'teams_libraries',
       description:
-        "Lists the Teams and SharePoint libraries synced on the hosts this thread may use: each library's id, its team (or site), the library's own name when it is not the team's Documents, and the channels (a team's top folders).",
+        "Lists the Teams and SharePoint libraries synced on the hosts this thread may use (files_places lists every place of the workspace; use it to open a file in the canvas): each library's id, its team (or site), the library's own name when it is not the team's Documents, and the channels (a team's top folders).",
       input: {},
       readOnly: true,
       async run(_a, ctx) {

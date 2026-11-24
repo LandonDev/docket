@@ -9,6 +9,7 @@ import { GuestRuntime, TICK_MS } from './links'
 import { ensureGuestTables } from './store'
 import { guestsHealth } from './health'
 import { hisZone } from '../clock'
+import { heldReceipt } from '../outbox/words'
 
 /**
  * The guests pillar's server module (docs/agents/work-guests.md): one named
@@ -88,7 +89,9 @@ export const guestsTools: WorkTool[] = [
         const refused = guestRefusal(payload)
         if (refused) return fail(refused)
         const held = ctx.held.create({ kind: 'share.guestLink', sessionId: ctx.sessionId, payload })
-        return workText(`Held for the owner's press: a guest link for ${payload.name} to ${payload.title}, can ${roleWords(payload.role)}, ends ${day(hisZone(ctx), payload.expiresAt)} (${held.state}). He sends the address himself.`)
+        return workText(
+          heldReceipt({ ...held, summary: `a guest link for ${payload.name} to ${payload.title}, can ${roleWords(payload.role)}, ends ${day(hisZone(ctx), payload.expiresAt)}` }, 'No link exists yet, and nothing was shared; he sends the address himself once he creates it.')
+        )
       } catch (err) {
         return fail(errorText(err))
       }
@@ -96,8 +99,8 @@ export const guestsTools: WorkTool[] = [
   },
   {
     name: 'guest_link_revoke',
-    description: 'Revokes a guest link this thread asked for: the guest is shut out at once. Its id is in the Outbox row of the link.',
-    input: z.object({ linkId: z.string().min(1).max(40) }),
+    description: 'Revokes a guest link this thread asked for and the owner created: the guest is shut out at once.',
+    input: z.object({ linkId: z.string().min(1).max(40).describe("The link's id, from its Outbox row or the note that it was made.") }),
     readOnly: false,
     run: async (args, ctx) => {
       const { linkId } = args as { linkId: string }

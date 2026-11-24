@@ -1,8 +1,9 @@
 import { randomUUID } from 'node:crypto'
-import { heldChange } from '../outbox/words'
+import { heldChange, heldReceipt, suggestedIn } from '../outbox/words'
+import { inputProblemWords } from '../inputWords'
 import { z, type ZodType } from 'zod'
 import { OfficeCellSchema, type OfficeCell } from '@shared/contract-work-office'
-import { workText, type Principal, type WorkToolResult } from '@shared/work'
+import { HIS_ZONE, workText, type Principal, type WorkToolResult } from '@shared/work'
 import { judgeWrite, WriteReasonSchema, type WriteReason } from '@shared/work/because'
 import { errorText } from '@shared/work/ids'
 import type { ToolCtx, WorkCtx, WorkTool } from '../modules'
@@ -12,7 +13,7 @@ import { eventById, type OfficeCarrier } from './carrier'
 import { cleanMailHtml, fileRead, placedOf, placesOf, spotsOf, textHash, type OfficeEdit } from './held'
 import { cellOf, EXCEL_MAX_CELLS, excelStore, type ExcelHelper } from './excel'
 import { fileKey, fileShared, sharedKey } from './shared'
-import { dateIn, hisZone } from '../clock'
+import { dateIn, hisZone, timeIn } from '../clock'
 
 export { fileKey, sharedKey }
 
@@ -68,9 +69,10 @@ async function judged(reason: WriteReason, kind: 'workbook' | 'document' | 'deck
 }
 
 const Reason = WriteReasonSchema.shape
+const AT_OFFSET = `ISO 8601 with an offset or Z: 2026-11-24T15:00:00Z. His zone: ${HIS_ZONE}.`
 const Addresses = z.array(z.string().max(320)).max(100)
 const MailFields = {
-  to: Addresses.describe('Recipients.'),
+  to: Addresses.describe('Recipients, by address.'),
   cc: Addresses.optional(),
   bcc: Addresses.optional(),
   subject: z.string().max(998),
@@ -113,7 +115,7 @@ function rangeOf(text: string): { sheet: string; range: NonNullable<ReturnType<t
 export const OFFICE_TOOLS: OfficeTool[] = [
   tool({
     name: 'office_files',
-    description: 'Lists the Office files open on the Mac: workbooks with their sheets and used sizes, Word documents and PowerPoint decks, each with the `key` the other office tools take (a path, or a URL for a file in OneDrive, SharePoint or Teams).',
+    description: 'Lists the Office files open on the Office host (a Mac, a PC or the Windows VM): workbooks with their sheets and used sizes, Word documents and PowerPoint decks, each with the `key` the other office tools take (a path, or a URL for a file in OneDrive, SharePoint or Teams).',
     input: {},
     readOnly: true,
     async run(_a, env) {
@@ -145,7 +147,13 @@ export const OFFICE_TOOLS: OfficeTool[] = [
     description:
       "Writes a block of cells in an open Excel workbook, through Excel. `values` is rows of cells, the block's size; a string starting with = is a formula, null empties a cell. Pass the `hash` you read as `base`: if the cells changed since, nothing is written and the answer is `conflict` with what they hold now. " +
       'On a workbook others can open (a URL), say why: `because: "asked"` with his words as `quote` writes it; your own idea waits as suggestions he steps through. Answers a `writeId` for `office_range_undo`.',
-    input: { workbook: z.string(), range: z.string(), values: z.array(z.array(OfficeCellSchema)).min(1), base: z.string().optional(), ...Reason },
+    input: {
+      workbook: z.string().describe('The workbook\'s key from `office_files`.'),
+      range: z.string().describe("One A1 range with its tab, such as 'Sheet1'!B2:D9."),
+      values: z.array(z.array(OfficeCellSchema)).min(1),
+      base: z.string().optional().describe('The `hash` from `office_range_read` of this same range.'),
+      ...Reason
+    },
     readOnly: false,
     async run(a, env) {
       const { sheet, range } = rangeOf(a.range)
@@ -172,7 +180,7 @@ export const OFFICE_TOOLS: OfficeTool[] = [
             }))
           )
         )
-        return workText(`Others can open this workbook, so nothing was written: ${n} cell${n === 1 ? ' waits' : 's wait'} as suggestions for the owner to take or leave.`)
+        return workText(suggestedIn('workbook', `${n} cell${n === 1 ? '' : 's'}, because others can open it`))
       }
       const res = await env.excel.write(workbook, sheet, range, a.values as OfficeCell[][], { base: a.base, by: env.by })
       return 'conflict' in res ? json({ conflict: true, now: res.now.values }) : json({ written: a.range, writeId: res.writeId, hash: res.hash })
@@ -182,13 +190,13 @@ export const OFFICE_TOOLS: OfficeTool[] = [
     name: 'office_range_undo',
     description:
       'Takes back one of your writes to a workbook (its `writeId`), while its cells still hold what you wrote. Excel\'s own Undo does not cover scripted writes. On a workbook others can open, taking a write back is a new change they see: only with `because: "asked"` and his words as `quote`.',
-    input: { workbook: z.string(), writeId: z.string(), because: Reason.because.optional(), quote: Reason.quote },
+    input: { workbook: z.string().describe('The workbook\'s key from `office_files`.'), writeId: z.string().describe('The `writeId` from that `office_range_write`.'), because: Reason.because.optional(), quote: Reason.quote },
     readOnly: false,
     async run(a, env) {
       const { verdict } = await judged({ because: a.because ?? 'own', quote: a.quote }, 'workbook', a.workbook, env)
       if (verdict === 'suggest') return fail('Others can open this workbook, so taking the write back would show them a change he has not asked for: nothing was taken back. Say it in your reply; he can ask for it in so many words.')
       const res = await env.excel.undo(a.workbook, a.writeId)
-      return 'conflict' in res ? fail('Those cells changed since your write: nothing was taken back.') : workText('Taken back.')
+      return 'conflict' in res ? fail('Those cells changed since your write, so nothing was taken back. Read the range again to see what they hold.') : workText('Taken back.')
     }
   }),
   tool({
@@ -201,8 +209,15 @@ export const OFFICE_TOOLS: OfficeTool[] = [
   tool({
     name: 'office_doc_edit',
     description:
-      'Changes an open Word document: `insert` text at its `start` or `end`, or `find` and `replace` every match. On a document others can open, your own idea waits for the owner, unseen by anyone else, and is written only when he approves it; `because: "asked"` with his words as `quote` writes it at once.',
-    input: { document: z.string(), insert: z.string().max(100_000).optional(), at: z.enum(['start', 'end']).optional(), find: z.string().min(1).max(255).optional(), replace: z.string().max(255).optional(), ...Reason },
+      'Changes a document open in Word (for a TempCode document use `doc_*`): `insert` text at its `start` or `end`, or `find` and `replace` every match (an empty `replace` removes them). On a document others can open, your own idea is held in the Outbox, unseen by anyone else, and is written only when he approves it; `because: "asked"` with his words as `quote` writes it at once.',
+    input: {
+      document: z.string().describe('The document\'s key from `office_files`.'),
+      insert: z.string().max(100_000).optional(),
+      at: z.enum(['start', 'end']).optional().describe('Where `insert` goes; default end.'),
+      find: z.string().min(1).max(255).optional(),
+      replace: z.string().max(255).optional(),
+      ...Reason
+    },
     readOnly: false,
     async run(a, env) {
       const edit = a.insert !== undefined ? { insert: a.insert, at: a.at ?? 'end' } : a.find !== undefined && a.replace !== undefined ? { find: a.find, replace: a.replace } : null
@@ -222,8 +237,8 @@ export const OFFICE_TOOLS: OfficeTool[] = [
   }),
   tool({
     name: 'office_slides_replace',
-    description: 'Replaces text on every slide of an open deck. On a deck others can open, your own idea waits for the owner, unseen by anyone else, and is written only when he approves it; `because: "asked"` with his words as `quote` writes it at once.',
-    input: { deck: z.string(), find: z.string().min(1).max(1_000), replace: z.string().max(1_000), ...Reason },
+    description: 'Replaces text on every slide of a deck open in PowerPoint (for a TempCode deck use `slides_*`). On a deck others can open, your own idea is held in the Outbox, unseen by anyone else, and is written only when he approves it; `because: "asked"` with his words as `quote` writes it at once.',
+    input: { deck: z.string().describe('The deck\'s key from `office_files`.'), find: z.string().min(1).max(1_000), replace: z.string().max(1_000), ...Reason },
     readOnly: false,
     async run(a, env) {
       const { verdict, key } = await judged(a, 'deck', a.deck, env)
@@ -242,25 +257,29 @@ export const OFFICE_TOOLS: OfficeTool[] = [
   tool({
     name: 'office_mail_read',
     description: 'Reads one mail in Outlook by the id `office_mail_list` gave.',
-    input: { id: z.string().max(200) },
+    input: { id: z.string().max(200).describe('The mail\'s id from `office_mail_list`.') },
     readOnly: true,
     run: async (a, env) => json(await env.carrier.readMail(a.id))
   }),
   tool({
     name: 'office_mail_draft',
-    description: "Leaves a draft in Outlook's Drafts for the owner to finish and send himself. Nothing is sent.",
-    input: { ...MailFields, replyTo: z.string().max(200).optional().describe('The id of the mail it answers.') },
+    description: "Leaves a draft in Outlook's Drafts for the owner to finish and send himself: nothing is sent, and nothing waits in the Outbox. For a mail that waits for his press in the Outbox, use `office_mail_send`.",
+    input: { ...MailFields, replyTo: z.string().max(200).optional().describe('The id of the mail it answers, from `office_mail_list`.') },
     readOnly: false,
     async run(a, env) {
       const id = await env.carrier.draftMail({ ...a, cc: a.cc ?? [], bcc: a.bcc ?? [] })
-      return workText(`Left in Outlook's Drafts (${id}).`)
+      return workText(`Left in Outlook's Drafts (${id}). Nothing was sent. Tell the owner it waits there for him to finish and send.`)
     }
   }),
   tool({
     name: 'office_mail_send',
     description:
-      "Sends, replies to (`replyTo`: it goes to that mail's sender, and `to` is not used) or forwards (`forward`) a mail through Outlook, with its formatting. It is held: it waits in the owner's Outbox, where he can change it, and goes only when he presses Send. The answer says it is waiting.",
-    input: { ...MailFields, replyTo: z.string().max(200).optional(), forward: z.string().max(200).optional() },
+      "Puts a mail in the owner's Outbox to go through Outlook with its formatting: a new mail, a reply (`replyTo`) or a forward (`forward`). Nothing is sent until he presses Send there, and he can change it first. To leave a draft he finishes in Outlook instead, use `office_mail_draft`.",
+    input: {
+      ...MailFields,
+      replyTo: z.string().max(200).optional().describe('The id of the mail it answers, from `office_mail_list`: it goes to that mail\'s sender from its account, and `to` is not used.'),
+      forward: z.string().max(200).optional().describe('The id of the mail to pass on, from `office_mail_list`; name who gets it in `to`.')
+    },
     readOnly: false,
     async run(a, env) {
       if (a.replyTo && a.forward) return fail('A mail answers one mail or passes one on, not both.')
@@ -289,43 +308,47 @@ export const OFFICE_TOOLS: OfficeTool[] = [
         account,
         payload: { host: env.ctx.host, ...a, ...(account ? { account } : {}), html: cleanMailHtml(a.html), to, subject, cc: a.cc ?? [], bcc: a.bcc ?? [], ...(outlookAdds ? { outlookAdds } : {}) }
       })
-      return heldAnswer(item.state, item.summary)
+      return workText(heldReceipt(item))
     }
   }),
   tool({
     name: 'office_calendar_list',
-    description: "Lists events in Outlook's calendar that start between `from` and `to` (ISO 8601).",
-    input: { from: z.string().datetime({ offset: true }), to: z.string().datetime({ offset: true }) },
+    description: "Lists events in Outlook's calendar that start between `from` and `to`.",
+    input: { from: z.string().datetime({ offset: true }).describe(AT_OFFSET), to: z.string().datetime({ offset: true }).describe(AT_OFFSET) },
     readOnly: true,
     run: async (a, env) => json(await env.carrier.events(a.from, a.to))
   }),
   tool({
     name: 'office_calendar_create',
     description:
-      "Puts an event in the owner's Outlook calendar. With nobody invited it is a hold on his own calendar and is made at once; with `attendees` it is an invitation, held for his press like a mail.",
+      "Puts an event in the owner's Outlook calendar. With no `attendees` it is a private event on his calendar, made at once. With `attendees` it is an invitation that waits in his Outbox; nobody is invited until he presses it.",
     input: {
       subject: z.string().min(1).max(255),
-      start: z.string().datetime({ offset: true }),
-      end: z.string().datetime({ offset: true }),
+      start: z.string().datetime({ offset: true }).describe(`${AT_OFFSET} Use end's offset: they are compared as written.`),
+      end: z.string().datetime({ offset: true }).describe(AT_OFFSET),
       location: z.string().max(255).optional(),
       body: z.string().max(100_000).optional(),
-      attendees: Addresses.default([]),
-      account: z.string().max(320).optional()
+      attendees: Addresses.default([]).describe('Who to invite, by address; none makes a private event.'),
+      account: MailFields.account
     },
     readOnly: false,
     async run(a, env) {
       if (a.end <= a.start) return fail('The end comes after the start.')
-      if (!a.attendees.length) return workText(`On his calendar (${await env.carrier.createEvent(a)}).`)
+      if (!a.attendees.length) {
+        const id = await env.carrier.createEvent(a)
+        const zone = hisZone(env.ctx)
+        return workText(`On his calendar now (${id}): ${a.subject}, ${dateIn(zone, Date.parse(a.start))} at ${timeIn(zone, Date.parse(a.start), 'named')}. Nobody was invited.`)
+      }
       // An invitation goes from a bound account too: the press never takes Outlook's default of that moment.
       const bound = await senderAccount(env.carrier, a.account)
       if ('refused' in bound) return fail(bound.refused)
       const item = env.ctx.held.create({ kind: 'office.calendar.op', sessionId: env.sessionId, account: bound.account, payload: { host: env.ctx.host, op: 'create', event: { ...a, account: bound.account } } })
-      return heldAnswer(item.state, item.summary)
+      return workText(heldReceipt(item, 'Nothing was sent, and nobody has been invited.'))
     }
   }),
   tool({
     name: 'office_calendar_answer',
-    description: "Answers an invitation in Outlook (accept, decline or tentative). Held: it waits for the owner's press.",
+    description: "Answers an invitation in Outlook (accept, decline or tentative). The answer waits in the owner's Outbox and goes only when he presses it.",
     input: { id: z.string().max(200).describe('The event id, from office_calendar_list.'), answer: z.enum(['accept', 'decline', 'tentative']), comment: z.string().max(10_000).optional() },
     readOnly: false,
     async run(a, env) {
@@ -337,7 +360,7 @@ export const OFFICE_TOOLS: OfficeTool[] = [
         sessionId: env.sessionId,
         payload: { host: env.ctx.host, op: 'answer', id: a.id, subject: event.subject, start: event.start, end: event.end, location: event.location, organizer: event.organizer, answer: a.answer, ...(a.comment ? { comment: a.comment } : {}) }
       })
-      return heldAnswer(item.state, item.summary)
+      return workText(heldReceipt(item))
     }
   })
 ]
@@ -358,7 +381,7 @@ async function held(env: Env, app: OfficeEdit['app'], key: string, asked: string
   const spots = 'find' in edit ? spotsOf(texts, edit.find) : undefined
   const placed = 'find' in edit ? placedOf(texts, edit.find) : undefined
   const item = env.ctx.held.create({ kind: 'office.edit', sessionId: env.sessionId, payload: { host: env.ctx.host, app, key, name, edit, places, base: textHash(texts), ...(on ? { on } : {}), ...(spots ? { spots, placed } : {}), ...(env.vm ? { vm: true as const } : {}) } satisfies OfficeEdit })
-  return workText(heldChange(item as { n?: number | null; ref?: { id: string } }, 'Nothing in the file changed.'))
+  return workText(heldChange(item as { n?: number | null; ref?: { id: string } }))
 }
 
 /** A file's name from its key: the last part of a path or a URL, without a query. */
@@ -371,12 +394,6 @@ export function fileName(key: string): string {
   }
 }
 
-/** What a held tool answers: it waits for him, or a grant he made let it go. */
-function heldAnswer(state: string, summary: string): WorkToolResult {
-  if (state === 'held') return workText(`Held for the owner: "${summary}" waits in his Outbox and goes only when he presses it.`)
-  return workText(`"${summary}": a grant he made covers it, so it went (${state}).`)
-}
-
 /** The tool by name, or a refusal: the peer route names tools by string. */
 export function officeTool(name: string): OfficeTool {
   const t = OFFICE_TOOLS.find((x) => x.name === name)
@@ -387,7 +404,7 @@ export function officeTool(name: string): OfficeTool {
 /** Runs a tool here, its arguments checked against its own schema. Never throws: a refusal is an error result. */
 export async function runHere(t: OfficeTool, args: unknown, env: Env): Promise<WorkToolResult> {
   const parsed = (t.input as ZodType).safeParse(args ?? {})
-  if (!parsed.success) return fail(`The arguments do not fit ${t.name}: ${parsed.error.issues[0]?.message ?? 'invalid'}`)
+  if (!parsed.success) return fail(inputProblemWords(t.name, t.input as ZodType, args ?? {}, parsed.error.issues))
   try {
     return await t.run(parsed.data as never, env)
   } catch (err) {

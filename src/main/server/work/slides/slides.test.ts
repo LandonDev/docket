@@ -1272,7 +1272,7 @@ describe('the module, on a fake deck tool', () => {
     }
     await opening
     await switching
-    expect(textOf(await editing)).toContain('Suggested 1 revised slide')
+    expect(textOf(await editing)).toContain('Suggested in the deck: 1 revised slide')
     expect(readFake(path).slides[0].notes).toBe('')
   })
 
@@ -1574,7 +1574,7 @@ describe('a deck kept by its file, drawn slide by slide', () => {
       expect([existsSync(deckBase(dir, deckKey(plain))), existsSync(deckCache(dir, deckKey(plain)))]).toEqual([false, false])
       jobs.length = 0
       const r = await tool('slides_edit', { item: hosted.id, because: 'own', ops: [{ op: 'notes', slide: 256, text: 'x' }] })
-      expect(textOf(r)).toContain('Suggested 1 revised slide')
+      expect(textOf(r)).toContain('Suggested in the deck: 1 revised slide')
       expect(readFake(shared)).toEqual(FAKE_DECK)
       // The seat that names it as a plain file draws the same waiting suggestion, marked shared on every job.
       jobs.length = 0

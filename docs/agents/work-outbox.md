@@ -36,6 +36,28 @@ A held act never fails or stalls its turn. The tool answers `Held as item
 12: <the act in his words>. It waits for the owner's press. …` as an
 ordinary result, the turn goes on, and the row waits.
 
+One wording for every pillar that holds (outbox/words.ts). The head above is
+read by the desktop's ApprovalCard and the phone's `OutboxModel.heldOf`, so
+it stays as it is. After it comes what has not happened, then one tail:
+"This is a finished step, not a failure: tell the owner it waits in his
+Outbox, do not look for another way to do it, and carry on."
+
+- An act that sends, posts, shares or books (`heldReceipt`): "Nothing was
+  sent." (`NOT_SENT`), or the pillar's own fact: "Nothing was posted."
+  (`teams_reply`), "Nothing was shared." (`google_share`), "Nothing went to
+  Frame.io.", "No link exists yet, and nothing was shared; …"
+  (`guest_link`), "Nothing was published: there is no link to share yet, …"
+  (`form_publish`). A grant he made that let it go at once is said instead.
+- An agent's change to a file others can open, held here (`heldChange`):
+  "Held as item N: a change to a file others can open. It waits for the
+  owner's press. The file has not changed." with the pillar's fact ("Nothing
+  went to Google.").
+- An edit kept as suggestions in the file's own editor, not in the Outbox
+  (`suggestedIn`): "Suggested in the document: changes to 2 sections. The
+  file has not changed. Tell the owner it waits there for him to accept or
+  reject." The sheet, deck, workbook and PDF say the same with their own
+  word.
+
 ## The store
 
 Three tables, made by the module's `ensure` (`work/outbox/store.ts`):

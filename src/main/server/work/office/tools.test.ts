@@ -79,7 +79,7 @@ describe('writes, by the rule for files others can open', () => {
     expect(text(await run('office_range_write', { workbook: MINE, range: "'Sheet1'!A1", values: [[2]], because: 'own' }))).toContain('writeId')
     expect((await office.readRange(MINE, 'Sheet1', 'A1')).values).toEqual([[2]])
 
-    expect(text(await run('office_range_write', { workbook: SHARED, range: 'Sheet1!B1', values: [[120]], because: 'own' }))).toContain('1 cell waits as suggestions')
+    expect(text(await run('office_range_write', { workbook: SHARED, range: 'Sheet1!B1', values: [[120]], because: 'own' }))).toContain('Suggested in the workbook: 1 cell')
     expect((await office.readRange(SHARED, 'Sheet1', 'B1')).values).toEqual([[100]])
     expect(suggestions.open(excelStore(SHARED))).toMatchObject([{ sheet: 'Sheet1', row: 0, col: 1, base: { v: 100 }, proposed: { v: 120 }, state: 'pending' }])
   })
@@ -102,7 +102,7 @@ describe('writes, by the rule for files others can open', () => {
   it("keeps an agent's own idea for a shared Word document on this host: nothing reaches Word until his press", async () => {
     const KEY = 'https://contoso.sharepoint.com/Brief.docx'
     const before = JSON.stringify([...office.docs])
-    expect(text(await run('office_doc_edit', { document: KEY, find: 'one', replace: 'two', because: 'own' }))).toContain('nobody else sees it')
+    expect(text(await run('office_doc_edit', { document: KEY, find: 'one', replace: 'two', because: 'own' }))).toContain('Nobody else sees it')
     expect(JSON.stringify([...office.docs])).toBe(before)
     expect(office.log.filter((c) => c.verb === 'editDocument')).toEqual([])
     expect(held).toMatchObject([{ kind: 'office.edit', sessionId: 't1', payload: { host: 'env_mac', app: 'word', key: KEY, name: 'Brief.docx', edit: { find: 'one', replace: 'two' }, places: 1 } }])
@@ -128,12 +128,12 @@ describe('writes, by the rule for files others can open', () => {
 
     const BOOK = '/Users/owner/Library/CloudStorage/OneDrive-Contoso/Plan 2.xlsx'
     office.addBook(BOOK, { Sheet1: { B1: 100 } })
-    expect(text(await run('office_range_write', { workbook: 'Plan 2.xlsx', range: 'Sheet1!B1', values: [[120]], because: 'own' }))).toContain('1 cell waits as suggestions')
+    expect(text(await run('office_range_write', { workbook: 'Plan 2.xlsx', range: 'Sheet1!B1', values: [[120]], because: 'own' }))).toContain('Suggested in the workbook: 1 cell')
     expect((await office.readRange(BOOK, 'Sheet1', 'B1')).values).toEqual([[100]])
     expect(suggestions.open(excelStore(BOOK))).toHaveLength(1)
 
     office.decks.set('/Users/owner/OneDrive - Contoso/Pitch.pptx', [['Q1 plan']])
-    expect(text(await run('office_slides_replace', { deck: 'Pitch.pptx', find: 'Q1', replace: 'Q2', because: 'own' }))).toContain('nobody else sees it')
+    expect(text(await run('office_slides_replace', { deck: 'Pitch.pptx', find: 'Q1', replace: 'Q2', because: 'own' }))).toContain('Nobody else sees it')
     expect(office.decks.get('/Users/owner/OneDrive - Contoso/Pitch.pptx')).toEqual([['Q1 plan']])
     expect(held.at(-1)).toMatchObject({ kind: 'office.edit', payload: { app: 'powerpoint', key: '/Users/owner/OneDrive - Contoso/Pitch.pptx', edit: { find: 'Q1', replace: 'Q2' }, places: 1 } })
 
@@ -146,7 +146,7 @@ describe('writes, by the rule for files others can open', () => {
   it('counts a name no open file answers to, or two do, as shared', async () => {
     office.addBook('/Users/owner/Documents/Twin.xlsx', { Sheet1: { A1: 1 } })
     office.addBook('/Users/owner/Desktop/Twin.xlsx', { Sheet1: { A1: 1 } })
-    expect(text(await run('office_range_write', { workbook: 'Twin.xlsx', range: 'Sheet1!A1', values: [[2]], because: 'own' }))).toContain('waits as suggestions')
+    expect(text(await run('office_range_write', { workbook: 'Twin.xlsx', range: 'Sheet1!A1', values: [[2]], because: 'own' }))).toContain('Suggested in the workbook')
     expect((await office.readRange('/Users/owner/Documents/Twin.xlsx', 'Sheet1', 'A1')).values).toEqual([[1]])
     expect((await office.readRange('/Users/owner/Desktop/Twin.xlsx', 'Sheet1', 'A1')).values).toEqual([[1]])
     // his own file by its bare name is his: written at once
@@ -191,7 +191,7 @@ describe('nothing is sent without his press', () => {
   it('every verb that sends, replies, forwards, invites or answers returns a held act, and Outlook sends nothing', async () => {
     const sending = OFFICE_TOOLS.filter((t) => /mail_send|calendar_(create|answer)/.test(t.name)).map((t) => t.name)
     expect(new Set(SENDS.map(([n]) => n))).toEqual(new Set(sending))
-    for (const [name, args] of SENDS) expect(text(await run(name, args))).toMatch(/^Held for the owner/)
+    for (const [name, args] of SENDS) expect(text(await run(name, args))).toMatch(/^Held( as item \d+)?: .* Nothing was sent/)
     expect(held.map((h) => h.kind)).toEqual(['office.mail.send', 'office.mail.send', 'office.mail.send', 'office.calendar.op', 'office.calendar.op'])
     expect(held.every((h) => h.sessionId === 't1')).toBe(true)
     for (const h of held) expect((h.kind === 'office.mail.send' ? OfficeMailSchema : OfficeCalendarSchema).safeParse(h.payload).success).toBe(true)
@@ -260,8 +260,9 @@ describe('nothing is sent without his press', () => {
   })
 
   it('a draft only leaves a draft, and a hold on his own calendar with nobody invited is made at once', async () => {
-    await run('office_mail_draft', { to: ['dana@example.com'], subject: 'Plan', html: '<p>x</p>' })
-    await run('office_calendar_create', { subject: 'Focus', start: '2026-11-20T15:00:00Z', end: '2026-11-20T17:00:00Z' })
+    expect(text(await run('office_mail_draft', { to: ['dana@example.com'], subject: 'Plan', html: '<p>x</p>' }))).toMatch(/^Left in Outlook's Drafts \(.+\)\. Nothing was sent\./)
+    // the event's time in his zone, named, so the thread can say it back
+    expect(text(await run('office_calendar_create', { subject: 'Focus', start: '2026-11-20T15:00:00Z', end: '2026-11-20T17:00:00Z' }))).toMatch(/^On his calendar now \(.+\): Focus, Nov 20 at 9:00 AM Central\. Nobody was invited\.$/)
     expect(office.drafts).toHaveLength(1)
     expect(office.sent).toEqual([])
     expect(office.calendar.map((e) => e.subject)).toEqual(['Standup', 'Focus'])
@@ -334,9 +335,9 @@ describe("the account a held mail or invitation goes from (the hold review's 16.
   const payloadOf = (i: number) => held[i]!.payload as { account?: string; event?: { account?: string } }
 
   it("binds Outlook's only account when none is named, for a mail and for an invitation", async () => {
-    expect(text(await run('office_mail_send', { to: ['dana@example.com'], subject: 'Plan', html: '<p>Hi</p>' }))).toMatch(/^Held for the owner/)
+    expect(text(await run('office_mail_send', { to: ['dana@example.com'], subject: 'Plan', html: '<p>Hi</p>' }))).toMatch(/^Held( as item \d+)?: .* Nothing was sent/)
     expect(payloadOf(0).account).toBe('owner@example.com')
-    expect(text(await run('office_calendar_create', { subject: 'Review', start: '2026-11-20T15:00:00Z', end: '2026-11-20T15:30:00Z', attendees: ['dana@example.com'] }))).toMatch(/^Held for the owner/)
+    expect(text(await run('office_calendar_create', { subject: 'Review', start: '2026-11-20T15:00:00Z', end: '2026-11-20T15:30:00Z', attendees: ['dana@example.com'] }))).toMatch(/^Held( as item \d+)?: .* Nothing was sent/)
     expect(payloadOf(1).event!.account).toBe('owner@example.com')
   })
 

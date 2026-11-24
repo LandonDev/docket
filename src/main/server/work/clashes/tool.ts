@@ -1,6 +1,6 @@
 import { z } from 'zod'
 import { driveLine, timeNear, type ClashWordsOpts } from '@shared/work/clashes'
-import { workText, type WorkToolResult } from '@shared/work/tools'
+import { HIS_ZONE, workText, type WorkToolResult } from '@shared/work/tools'
 import type { SectorKey } from '@shared/work/ids'
 import type { ToolCtx, WorkTool } from '../modules'
 import { clashOf, lifeosWords, rangeOf, type LifeosClash, type LifeosSide } from './read'
@@ -69,9 +69,9 @@ function knownChat(ctx: ToolCtx): boolean {
 export const clashesListTool: WorkTool = {
   name: 'clashes_list',
   description:
-    "This job's calendar clashes with any of the owner's jobs, from today on: two events at once, or two he cannot drive between in time. Another job's event shows only as that job's name and its times. Read-only: to answer a clash, draft the act with draft_calendar_op or a mail draft, which waits in the Outbox for his press.",
+    "This job's calendar clashes with any of the owner's jobs, from today on: two events at once, or two he cannot drive between in time. Another job's event shows only as that job's name and its times. Read-only: to answer a clash, draft the change with the calendar or mail tools this thread has; it waits in the Outbox for his press.",
   input: z.object({
-    days: z.number().int().min(1).max(14).optional().describe('How many days from today to read: 7 when left out, 14 at most.'),
+    days: z.number().int().min(1).max(14).optional().describe(`How many days to read from midnight today in the owner's zone (${HIS_ZONE}): 7 when left out, 14 at most.`),
     sector: z.string().min(1).max(40).optional().describe("Only in a Work Chat, which belongs to no job: the job to read. A workspace's thread reads its own.")
   }),
   readOnly: true,

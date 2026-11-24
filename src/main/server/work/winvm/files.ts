@@ -120,7 +120,7 @@ export function fileTools(guest: () => GuestFiles | null): WorkTool[] {
       name: 'windows_put',
       description:
         "Copy a file from this workspace into the Windows VM, into tcuser's Documents, Downloads or Desktop, so an app there can open it. `path` is the file in the workspace; `name` names it in the guest (the file's own name if left out; a taken name gets \"(1)\"). At most 200 MB. Programs, scripts, shortcuts and setup files are refused. It is recorded with an undo that removes the file.",
-      input: z.object({ path: z.string().min(1).max(1000), to: folder, name: z.string().min(1).max(200).optional() }),
+      input: z.object({ path: z.string().min(1).max(1000).describe('The workspace file to copy in.'), to: folder.describe('The guest folder it goes to.'), name: z.string().min(1).max(200).optional() }),
       readOnly: false,
       async run(args, ctx) {
         const { path, to, name } = args as { path: string; to: GuestFolder; name?: string }
@@ -160,7 +160,7 @@ export function fileTools(guest: () => GuestFiles | null): WorkTool[] {
       name: 'windows_get',
       description:
         "Copy a file from tcuser's Documents, Downloads or Desktop in the Windows VM into this workspace. `name` is the file's name there; `path` is a folder in the workspace to put it in (the workspace's own folder if left out; a taken name gets \"(1)\"). At most 200 MB.",
-      input: z.object({ from: folder, name: z.string().min(1).max(200), path: z.string().min(1).max(1000).optional() }),
+      input: z.object({ from: folder.describe('The guest folder it is in.'), name: z.string().min(1).max(200), path: z.string().min(1).max(1000).optional().describe('The workspace folder to copy it into (not a file).') }),
       readOnly: false,
       async run(args, ctx) {
         const { from, name, path } = args as { from: GuestFolder; name: string; path?: string }
@@ -197,7 +197,7 @@ if (-not $f) { 'missing' } elseif ($f.PSIsContainer -or ($f.Attributes -band [IO
     {
       name: 'windows_put_undo',
       description: 'Remove a file windows_put put in the Windows VM, by the put\'s id, while it is still as it was put. The way back of a put\'s Result.',
-      input: z.object({ put: z.string().regex(/^[0-9a-f]{12}$/) }),
+      input: z.object({ put: z.string().regex(/^[0-9a-f]{12}$/).describe("The put's id, from windows_put's answer.") }),
       readOnly: false,
       async run(args, ctx) {
         const { put } = args as { put: string }

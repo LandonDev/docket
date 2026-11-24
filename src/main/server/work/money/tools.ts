@@ -32,7 +32,7 @@ const lineOf = (r: LedgerRow): string =>
 const moneyRead: WorkTool = {
   name: 'money_read',
   description:
-    "Reads this job's ledger: money in and out, what is owed, and each entry for a span of days. Read only. The ledger is a sheet the owner keeps; to add to it use money_add or money_receipt, which wait for the owner's accept.",
+    `Reads this job's ledger: money in and out, what is owed, and each entry for a span of days (at most ${READ_ROWS_MAX} listed; the sums count them all). Read only. The ledger is a sheet the owner keeps; to add to it use money_add or money_receipt, which wait for the owner's accept.`,
   input: z.object({
     from: day.optional().describe('First day, YYYY-MM-DD. Default: January 1 of this year.'),
     to: day.optional().describe('The day after the last day, YYYY-MM-DD. Default: tomorrow.'),
@@ -149,7 +149,7 @@ const moneyAdd: WorkTool = {
         ...(a.file ? { file: fileFor(ctx, ws, a.file) } : {})
       })
       const words = `${a.who.trim()}, ${a.way === 'in' ? '+' : ''}${formatMoney(amount)}, ${a.date}`
-      return workText(got.fresh ? `Left for the owner to confirm in Money: ${words}. It is not in the ledger until he accepts it.` : `That entry was already left for the owner (${words}): nothing was added twice.`)
+      return workText(got.fresh ? `Left for the owner to confirm in Money: ${words}. It is not in the ledger until he accepts it; tell him it waits in Money's To confirm list.` : `That entry was already left for the owner (${words}): nothing was added twice.`)
     } catch (err) {
       return fail(err instanceof MoneyError ? err.message : `The entry could not be left: ${errorText(err)}`)
     }

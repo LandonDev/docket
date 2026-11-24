@@ -36,9 +36,9 @@ export interface PdfProvenance {
 export const PdfProvenanceSchema = z.object({
   kind: z.enum(['file', 'mail', 'page', 'thread', 'manual']),
   label: z.string().min(1).max(200),
-  id: z.string().max(2000).optional(),
+  id: z.string().max(2000).optional().describe('The id or path of the file, mail or page it came from, when it has one.'),
   quote: z.string().max(2000).optional(),
-  page: z.number().int().positive().optional(),
+  page: z.number().int().positive().optional().describe('The page of that source, from 1.'),
   bbox: BboxSchema.optional(),
   confidence: z.number().min(0).max(1).optional()
 })

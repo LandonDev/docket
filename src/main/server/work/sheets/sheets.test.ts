@@ -146,7 +146,7 @@ describe('a package in the canvas', () => {
   it('on a shared sheet an agent\'s own idea waits as suggestions; what the owner asked for is written at once', async () => {
     state.shared = true
     const own = await tool('sheet_write', { item: itemId, cells: [{ at: 'A2', v: 5 }, { at: 'B2', v: 'x' }], because: 'own', reason: 'Round the totals' })
-    expect(own.text).toMatch(/^Suggested 2 cells: others share this sheet/)
+    expect(own.text).toMatch(/^Suggested in the sheet: 2 cells, because others share this sheet/)
     expect(valueAt('Data', 1, 0)).toBe(1)
     const view = await call<SheetView>('work.sheets.open', { itemId })
     expect(view.suggestions.map((s) => [s.row, s.col, s.base?.v, s.proposed?.v, s.state, s.reason])).toEqual([
@@ -162,7 +162,7 @@ describe('a package in the canvas', () => {
     expect(valueAt('Data', 3, 0)).toBe(100)
     // A routine's run suggests on a shared sheet: no grant covers its write (milestone 50's hold review, finding 6); on his own it writes.
     state.routine = 'run1'
-    expect((await tool('sheet_write', { item: itemId, cells: [{ at: 'A5', v: 7 }], because: 'routine' })).text).toMatch(/^Suggested 1 cell: .* none does, so this counts as your own idea\.$/)
+    expect((await tool('sheet_write', { item: itemId, cells: [{ at: 'A5', v: 7 }], because: 'routine' })).text).toMatch(/^Suggested in the sheet: 1 cell, because .* none does, so this counts as your own idea\.$/)
     expect(valueAt('Data', 4, 0)).not.toBe(7)
     state.shared = false
     expect((await tool('sheet_write', { item: itemId, cells: [{ at: 'A6', v: 8 }], because: 'routine' })).text).toBe('Wrote A6.')

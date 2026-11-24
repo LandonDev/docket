@@ -206,7 +206,7 @@ describe('a Teams reply', () => {
 
   it('is held, posted only on his press, once, and its picture is kept for Sent', async () => {
     configureTeamsCarrier(carrier())
-    expect(text(await tool('teams_reply', reply))).toMatch(/^Held: Post in Teams to Esports staff: “Thanks, I will have the travel report in by Friday\.”\. It waits/)
+    expect(text(await tool('teams_reply', reply))).toMatch(/^Held( as item \d+)?: Post in Teams to Esports staff: “Thanks, I will have the travel report in by Friday\.”\. It waits for the owner's press\. Nothing was posted\./)
     const [item] = await rig.waiting()
     expect(item).toMatchObject({ kind: 'teams.post', state: 'held', verb: 'Post', sessionId: 't-work', payload: reply })
     expect(posted).toEqual([])

@@ -169,7 +169,7 @@ describe('a form', () => {
   it('waits in the Outbox to publish; nothing answers at its link until the owner presses', async () => {
     const { itemId } = await made()
     const r = await tool('form_publish', { item: itemId })
-    expect(r.text).toContain('Held: Publish Spring LAN registration')
+    expect(r.text).toMatch(/^Held as item \d+: Publish Spring LAN registration\. It waits for the owner's press\. Nothing was published: there is no link to share yet/)
     const waiting = await call<{ items: OutboxItem[] }>('work.outbox.list', { show: 'waiting' })
     expect(waiting.items.map((i) => [i.kind, i.summary])).toEqual([['form.publish', 'Publish Spring LAN registration']])
     // The Outbox shows the form's words as they will go live (the hold review's finding 12).
@@ -281,7 +281,7 @@ describe('a form', () => {
     expect(((await (await fetch(`http://127.0.0.1:${port}/f/${id}/form`)).json()) as PublicForm).open).toBe(false)
     // An agent's reopen shares the link again, so it waits for his press like Publish (the hold review's finding 2).
     const reopened = await tool('form_close', { item: itemId, open: true })
-    expect(reopened.text).toBe('Held: Reopen Spring LAN registration. It takes answers again when he presses Publish.')
+    expect(reopened.text).toMatch(/^Held as item \d+: Reopen Spring LAN registration\. It waits for the owner's press\. It stays closed until he presses Publish\./)
     expect((await post(id, { [name]: 'Late', [game]: 'Valorant' })).status).toBe(410)
     const held = (await call<FormView>('work.forms.open', { itemId })).held!
     expect((await call<OutboxItem>('work.outbox.send', { ref: held.ref })).state).toBe('sent')
@@ -295,7 +295,7 @@ describe('a form', () => {
     await call('work.forms.mode', { itemId, mode: 'writes' })
     const live = await publish(itemId)
     const r = await tool('form_edit', { item: itemId, changes: [{ op: 'add', question: { label: 'T-shirt size', type: 'dropdown', options: ['S', 'M', 'L'] } }], reason: 'Sam asked for sizes' })
-    expect(r.text).toContain('wait for the owner')
+    expect(r.text).toContain('Suggested in the form: 1 change(s). The form has not changed.')
     let view = await call<FormView>('work.forms.open', { itemId })
     expect(view.body.questions).toHaveLength(3)
     expect(view.suggestions.map((s) => [s.op, s.question.label, s.reason])).toEqual([['add', 'T-shirt size', 'Sam asked for sizes']])

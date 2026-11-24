@@ -65,7 +65,7 @@ export const templateTools: WorkTool[] = [
     name: 'template_make',
     description:
       "Makes a new file from one of this workspace's templates, in the workspace's own folder, and opens it in this thread's canvas. `template` is a name from `template_list` (or its id). `fields` gives a value for each field the template asks for, by the field's name; Date, Name and Job are filled for you. A field you give no value stays in the file as `{{Field}}` and is named in the answer. `title` names the file; without it the file is named for the template and its first field. Answers the item id.",
-    input: z.object({ template: z.string().min(1).max(500), fields: TemplateFieldsSchema.optional(), title: z.string().min(1).max(200).optional() }).strict(),
+    input: z.object({ template: z.string().min(1).max(500).describe('A name from template_list, or its id when two share a name.'), fields: TemplateFieldsSchema.optional(), title: z.string().min(1).max(200).optional() }).strict(),
     readOnly: false,
     run: async (args, ctx) => {
       const a = args as { template: string; fields?: Record<string, string>; title?: string }
@@ -83,7 +83,7 @@ export const templateTools: WorkTool[] = [
     name: 'template_save',
     description:
       "Puts the file of one of this thread's canvas items on the workspace's shelf as a template, as a copy: the file itself is not changed. Type `{{Client}}` in a file's text to make a field the template asks for. `name` names the template (the file's name without it); `everywhere: true` keeps it for all jobs on this computer.",
-    input: z.object({ item: z.string().min(1).max(200), name: z.string().min(1).max(200).optional(), everywhere: z.boolean().optional() }).strict(),
+    input: z.object({ item: z.string().min(1).max(200).describe("The canvas item id of the file to copy."), name: z.string().min(1).max(200).optional(), everywhere: z.boolean().optional() }).strict(),
     readOnly: false,
     run: async (args, ctx) => {
       const a = args as { item: string; name?: string; everywhere?: boolean }

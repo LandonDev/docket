@@ -246,7 +246,7 @@ describe('an agent writing a document', () => {
     const r = await rig({ ownerSaid: ['Please change the meeting to 10:00 AM for everyone'] })
     expect((await r.ask<DocOpen>('work.docs.mode', { source: r.source, mode: 'suggests' })).mode).toBe('suggests')
     const own = await r.tool('doc_write', { file: r.path, markdown: md('# Week 1', 'Meet the team at 9:30 AM', '# Week 2', 'Shadow the front desk'), because: 'own' })
-    expect(own.text).toMatch(/^Suggested changes to 1 section: he set this document to suggest/)
+    expect(own.text).toMatch(/^Suggested in the document: changes to 1 section, because he set this document to suggest\./)
     expect(await r.text()).toContain('9:00 AM')
     expect(await r.branches()).toHaveLength(1)
     expect(docsPushes(r.pushes).some((p) => p.branches)).toBe(true)
@@ -258,7 +258,7 @@ describe('an agent writing a document', () => {
   it('on a shared document, "asked" with words he never typed is the agent\'s own idea and waits; with his words it is written', async () => {
     const r = await rig({ shared: true, ownerSaid: ['About this selection: “Shadow the front desk”, Onboarding plan ({path})\n\nmove week 2 to the clinic'] })
     const made = await r.tool('doc_write', { item: 'i1', markdown: md('# Week 1', 'Meet the team at 9:00 AM', '# Week 2', 'Shadow at the clinic'), because: 'asked', quote: 'the owner wants this' })
-    expect(made.text).toBe("Suggested changes to 1 section: others share this document, so he accepts or rejects each one. The quote was not found among the owner's words in this thread, so this counts as your own idea.")
+    expect(made.text).toBe("Suggested in the document: changes to 1 section, because others share this document. The file has not changed. Tell the owner it waits there for him to accept or reject. The quote was not found among the owner's words in this thread, so this counts as your own idea.")
     expect(await r.text()).toContain('front desk')
     const asked = await r.tool('doc_write', { item: 'i1', markdown: md('# Week 1', 'Meet the team at 9:00 AM', '# Week 2', 'Shadow at the clinic'), because: 'asked', quote: 'move week 2 to the clinic' })
     expect(asked.text).toBe('Wrote 1 section.')
@@ -270,7 +270,7 @@ describe('an agent writing a document', () => {
   it('on a shared document, his words about another document, or naming it by its title alone, are not his ask for this one: it waits', async () => {
     const r = await rig({ shared: true, ownerSaid: ['In the Onboarding plan, move week 2 to the clinic'] })
     const said = await r.tool('doc_write', { item: 'i1', markdown: md('# Week 1', 'Meet the team at 9:00 AM', '# Week 2', 'Shadow at the clinic'), because: 'asked', quote: 'move week 2 to the clinic' })
-    expect(said.text).toBe('Suggested changes to 1 section: others share this document, so he accepts or rejects each one. Others share this document and the owner\'s message with that quote does not point at it ("Onboarding plan": an Ask from the document, or its path), so this counts as your own idea.')
+    expect(said.text).toBe('Suggested in the document: changes to 1 section, because others share this document. The file has not changed. Tell the owner it waits there for him to accept or reject. Others share this document and the owner\'s message with that quote does not point at it ("Onboarding plan": an Ask from the document, or its path), so this counts as your own idea.')
     expect(await r.text()).toContain('front desk')
     expect(await r.branches()).toHaveLength(1)
     // On his own document the quote alone is enough: nobody else reads it, and History keeps what was there.
@@ -338,13 +338,13 @@ describe('an agent writing a document', () => {
     expect((await r.tool('doc_write', { item: 'i1', markdown: md('# Week 1', 'x'), because: 'routine' })).text).toMatch(/This thread runs no routine/)
     // On a shared document a routine's run suggests: no grant covers its write (milestone 50's hold review, finding 6).
     const s = await rig({ shared: true, routineRunId: 'run1' })
-    expect((await s.tool('doc_write', { item: 'i1', markdown: md('# Week 1', 'Meet the team at 9:00 AM', '# Week 2', 'Routine words'), because: 'routine' })).text).toMatch(/^Suggested changes to 1 section: .* none does, so this counts as your own idea\.$/)
+    expect((await s.tool('doc_write', { item: 'i1', markdown: md('# Week 1', 'Meet the team at 9:00 AM', '# Week 2', 'Routine words'), because: 'routine' })).text).toMatch(/^Suggested in the document: changes to 1 section, because .* none does, so this counts as your own idea\.$/)
     expect(await s.text()).not.toContain('Routine words')
     // On his own document it writes.
     const mine = await rig({ routineRunId: 'run1' })
     expect((await mine.tool('doc_write', { item: 'i1', markdown: md('# Week 1', 'Meet the team at 9:00 AM', '# Week 2', 'Routine words'), because: 'routine' })).text).toBe('Wrote 1 section.')
     expect(await mine.text()).toContain('Routine words')
-    expect((await mine.tool('doc_suggest', { item: 'i1', markdown: md('# Week 1', 'Suggested words') })).text).toMatch(/^Suggested changes to 2 sections: he steps through them/)
+    expect((await mine.tool('doc_suggest', { item: 'i1', markdown: md('# Week 1', 'Suggested words') })).text).toMatch(/^Suggested in the document: changes to 2 sections\. The file has not changed\./)
     expect(await mine.text()).toContain('Routine words')
   })
 
@@ -445,7 +445,7 @@ describe('an agent formatting a document', () => {
     const r = await rig({ shared: true, ownerSaid: ['About this file: Onboarding plan ({path})\n\nMake both headings blue'] })
     const before = await snapshot(r)
     const no = await r.tool('doc_format', { file: r.path, ...blue, because: 'asked', quote: 'words he never typed' })
-    expect(no.text).toMatch(/^Suggested formatting on 2 paragraphs: .*quote was not found/)
+    expect(no.text).toMatch(/^Suggested in the document: formatting on 2 paragraphs\. .*quote was not found/)
     expect((await snapshot(r)).bytes).toEqual(before.bytes)
     expect((await snapshot(r)).page).toBeNull()
     expect(await r.branches()).toHaveLength(1)
@@ -471,7 +471,7 @@ describe('an agent formatting a document', () => {
     const r = await rig({ shared: true })
     const before = await snapshot(r)
     const result = await r.tool('doc_format', { item: 'i1', ...blue, ...margins, because: 'own' })
-    expect(result.text).toMatch(/^Suggested formatting on 3 formatting changes/)
+    expect(result.text).toMatch(/^Suggested in the document: formatting on 3 formatting changes/)
     expect((await snapshot(r)).bytes).toEqual(before.bytes)
     expect(docsPushes(r.pushes).some((p) => p.branches)).toBe(true)
     const [branch] = await r.branches() as { id: string; diff: { page: string[]; rows: unknown[] } }[]
@@ -482,7 +482,7 @@ describe('an agent formatting a document', () => {
 
     const mine = await rig()
     await mine.ask('work.docs.mode', { source: mine.source, mode: 'suggests' })
-    expect((await mine.tool('doc_format', { item: 'i1', ...margins, because: 'own' })).text).toMatch(/^Suggested formatting/)
+    expect((await mine.tool('doc_format', { item: 'i1', ...margins, because: 'own' })).text).toMatch(/^Suggested in the document: formatting/)
     expect((await snapshot(mine)).page).toBeNull()
   })
 

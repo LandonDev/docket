@@ -6,7 +6,15 @@ import type { HeldRow } from './store'
  * and never a failure: a held act is a finished step.
  */
 
-const CARRY_ON = 'This is a finished step, not a failure. Do not ask the owner to press, and do not look for another way to do it. Carry on with the rest.'
+/**
+ * The one tail of every held answer, whichever pillar held it: a finished step, what to tell the owner, and no
+ * second way round. The head ("Held as item N: … It waits for the owner's press.") is read by the desktop's
+ * ApprovalCard and the phone's `OutboxModel.heldOf`: keep it as it is.
+ */
+const CARRY_ON = "This is a finished step, not a failure: tell the owner it waits in his Outbox, do not look for another way to do it, and carry on."
+/** What has not happened yet, said right after the head: an act that sends, posts, shares or books, and a change to a file others can open. */
+export const NOT_SENT = 'Nothing was sent.'
+export const NOT_CHANGED = 'The file has not changed.'
 
 /** The answer to the tool call that was held. */
 export function heldLine(row: Pick<HeldRow, 'n' | 'summary' | 'why'>): string {
@@ -17,6 +25,17 @@ export function heldLine(row: Pick<HeldRow, 'n' | 'summary' | 'why'>): string {
         ? ' The app read this step on the screen as one that sends, posts, pays, deletes or the like.'
         : ''
   return `Held as item ${row.n}: ${row.summary}. It waits for the owner's press.${why} ${CARRY_ON}`
+}
+
+/**
+ * What a pillar's tool answers for an act it held with `ctx.held.create`: the same head and tail as `heldLine`, with
+ * what has not happened (`NOT_SENT` unless the pillar names more, "Nothing was shared."). A grant he made may have
+ * let it go at once: then it says so.
+ */
+export function heldReceipt(item: { n?: number | null; summary: string; state: string }, notYet: string = NOT_SENT): string {
+  const numbered = item.n != null
+  if (item.state !== 'held') return `${numbered ? `Item ${item.n}` : 'This'} (${item.summary}) went at once under a standing grant of the owner's (${item.state}).`
+  return `Held${numbered ? ` as item ${item.n}` : ''}: ${item.summary}. It waits for the owner's press. ${notYet} ${CARRY_ON}`
 }
 
 /** The answer when a standing grant let the act go at once. */
@@ -84,7 +103,11 @@ export const summaryFor = (item: { kind: string; summary: string }): string => (
  * What a tool answers its thread when it held a change to a file others can open (round 3): the item's number and the
  * plain line, since the thread's transcript is read by whatever may read the thread. The thread knows its own words.
  */
-export function heldChange(item: { n?: number | null; ref?: { id: string } }, where: string): string {
+export function heldChange(item: { n?: number | null; ref?: { id: string } }, also = ''): string {
   const id = item.n ?? item.ref?.id
-  return `Held${id !== undefined ? ` as item ${id}` : ''}: ${PRIVATE_CHANGE}. ${where} It waits for the owner's press, and nobody else sees it before he approves it. This is a finished step: do not ask him to press, and do not look for another way to do it.`
+  return `Held${id !== undefined ? ` as item ${id}` : ''}: ${PRIVATE_CHANGE}. It waits for the owner's press. ${NOT_CHANGED}${also ? ` ${also}` : ''} Nobody else sees it before he approves it. ${CARRY_ON}`
 }
+
+/** What a tool answers for an edit it left as suggestions in the file's own editor (a document, a sheet, a deck): not in the Outbox, and not in the file. */
+export const suggestedIn = (where: 'document' | 'sheet' | 'deck' | 'workbook' | 'PDF', what: string): string =>
+  `Suggested in the ${where}: ${what}. ${NOT_CHANGED} Tell the owner it waits there for him to accept or reject.`

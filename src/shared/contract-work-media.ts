@@ -165,7 +165,12 @@ export interface MediaRegion {
   w: number
   h: number
 }
-export const MediaRegionSchema = z.object({ x: z.number().min(0).max(1), y: z.number().min(0).max(1), w: z.number().min(0).max(1), h: z.number().min(0).max(1) })
+export const MediaRegionSchema = z.object({
+  x: z.number().min(0).max(1).describe('Left edge, a fraction of the width from the left.'),
+  y: z.number().min(0).max(1).describe('Top edge, a fraction of the height from the top.'),
+  w: z.number().min(0).max(1),
+  h: z.number().min(0).max(1)
+})
 
 /**
  * Where a note sits. A video note names a frame of its version (and a run of

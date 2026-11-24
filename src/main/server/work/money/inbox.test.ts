@@ -681,7 +681,7 @@ describe('what a thread may leave', () => {
     const args = { date: '2026-11-07', who: 'West Side HS', amount: 80, way: 'in', category: 'Game fees', for: 'Varsity', key: 'west-side-fee' }
     const got = await run('money_add', args)
     expect(got.isError).toBeUndefined()
-    expect(got.text).toContain('It is not in the ledger until he accepts it.')
+    expect(got.text).toContain("It is not in the ledger until he accepts it; tell him it waits in Money's To confirm list.")
     expect((await run('money_add', args)).text).toContain('nothing was added twice')
     const now = await view()
     expect(now.made).toBe(false)

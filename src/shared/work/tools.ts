@@ -21,6 +21,14 @@ export function workToolNameProblem(name: string): string | null {
   return null
 }
 
+/**
+ * Words a tool's description or field help may hold for a zone the mount names when it lists the tool
+ * (work/ctx.ts `listing`): the owner's zone ("Central today", from `hisZone`) and the Work host's own,
+ * for an input a pillar reads on the host's clock. Never a city written in.
+ */
+export const HIS_ZONE = '{his zone}'
+export const HOST_ZONE = '{host zone}'
+
 /** A tool's answer: MCP's own result shape, passed to the harness whole. (A type, not an interface: the SDK's result type has an index signature.) */
 export type WorkToolResult = {
   content: Array<{ type: 'text'; text: string } | { type: 'image'; data: string; mimeType: string }>

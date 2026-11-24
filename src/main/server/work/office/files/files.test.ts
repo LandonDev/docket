@@ -415,7 +415,7 @@ describe('the layout OneDrive 26 writes (his Mac, 2026-11-20)', () => {
     office.addBook(book, { Sheet1: { A1: 1 } })
     const peer: Caller = { kind: 'remote', caps: ['read', 'operate'], peer: 'env_box' }
     const got = await call('work.office.write', { tool: 'office_range_write', args: { workbook: book, range: 'Sheet1!A1', values: [[2]], because: 'own' }, by: 'agent:env_box:t1' }, peer)
-    expect(JSON.stringify(got)).toContain('nothing was written')
+    expect(JSON.stringify(got)).toContain('Suggested in the workbook')
     // A box thread whose workspace has not turned the copy on gets no copy of it.
     const boxCtx = ctxOn('env_box', { scopeOf: () => ({ sessionId: 's1', workspaceId: 'w1' }) } as unknown as Partial<WorkCtx>)
     await expect(call('work.office.filesCopy', { sessionId: 's1', source: { at: 'file', host: 'env_mac', path: book } }, window, boxCtx)).rejects.toThrow('keeps Teams files where they are')
@@ -433,11 +433,11 @@ describe('the shared-file rule on a Teams file', () => {
     office.addBook(book, { Sheet1: { A1: 1 } })
     const peer: Caller = { kind: 'remote', caps: ['read', 'operate'], peer: 'env_box' }
     const got = await call('work.office.write', { tool: 'office_range_write', args: { workbook: book, range: 'Sheet1!A1', values: [[2]], because: 'own' }, by: 'agent:env_box:t1' }, peer)
-    expect(JSON.stringify(got)).toContain('nothing was written')
+    expect(JSON.stringify(got)).toContain('Suggested in the workbook')
     // The same idea on a workbook outside every Teams folder is written (the rule judges the file, not the thread).
     office.addBook(join(base, 'outside', 'Mine.xlsx'), { Sheet1: { A1: 1 } })
     const own = await call('work.office.write', { tool: 'office_range_write', args: { workbook: join(base, 'outside', 'Mine.xlsx'), range: 'Sheet1!A1', values: [[2]], because: 'own' } }, window)
-    expect(JSON.stringify(own)).not.toContain('nothing was written')
+    expect(JSON.stringify(own)).not.toContain('Suggested in the workbook')
   })
 })
 

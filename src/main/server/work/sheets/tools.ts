@@ -17,6 +17,7 @@ import type { A1Cell } from './host/wire'
 import { mutationsOf } from './mutations'
 import { PACKAGE_UNIT } from './packages'
 import { waitsNote } from './excelWaits'
+import { suggestedIn } from '../outbox/words'
 
 /**
  * The tools a Work thread reads and changes a sheet with
@@ -267,7 +268,7 @@ async function change(ctx: ToolCtx, a: { item?: string; file?: string; because: 
     if (!writes) {
       const words = await propose(s, t, ask, by, a.reason)
       await announceItem(s, t.item)
-      return workText(`Suggested: ${ended(words)} ${t.shared ? 'Others share this sheet, so' : 'The sheet is set to suggest, so'} the owner takes or drops it; nothing in the sheet changed.${note}`)
+      return workText(`${suggestedIn('sheet', `${words.replace(/\.$/, '')}, because ${whySuggested(t)}`)}${note}`)
     }
     const { words } = await read(ask, await standing(s, t.held))
     if (!(await layChange(s, t.held, ask, by, words))) throw new Error('The sheet changed as this was written: read it again and try once more.')
@@ -282,6 +283,8 @@ async function change(ctx: ToolCtx, a: { item?: string; file?: string; because: 
 
 /** Words as a sentence: a full stop unless they end one already (a quoted note's own). */
 const ended = (words: string): string => (/[.!?]”?$/.test(words) ? words : `${words}.`)
+/** Why an agent's own change became a suggestion. */
+const whySuggested = (t: Pick<Target, 'shared'>): string => (t.shared ? 'others share this sheet' : 'the owner set this sheet to suggest')
 
 const shown = (c: { at: string; v?: unknown; f?: string }): string => (c.f !== undefined ? `${c.at} ${c.f}${c.v !== undefined ? ` = ${JSON.stringify(c.v)}` : ''}` : c.v !== undefined ? `${c.at} ${JSON.stringify(c.v)}` : '')
 /** A cell as `sheet_read` says it: its value or formula, then its note's words. */
@@ -344,7 +347,7 @@ export const sheetTools: WorkTool[] = [
     description:
       'Reads cells of a sheet: each cell\'s value, its formula when it has one, and its note\'s words when it has one. `range` is A1 (B4:D9, or \'Q1 Budget\'!A1:F40 for another tab; at most 10,000 cells a call). ' +
       'Pass `item` for a sheet open in the canvas, or `file` for an .xlsx, .xlsm or .tcsheet path. For an Excel file it also says what only Excel changes there (pivot tables, charts, macros).',
-    input: z.object({ ...target, range: z.string().min(2).max(300) }),
+    input: z.object({ ...target, range: z.string().min(2).max(300).describe("A1: B4:D9 on the first tab, or 'Q1 Budget'!B4:D9 for another.") }),
     readOnly: true,
     run: async (args, ctx) => {
       const a = args as { item?: string; file?: string; range: string }
@@ -364,8 +367,8 @@ export const sheetTools: WorkTool[] = [
   {
     name: 'sheet_write',
     description:
-      'Changes cells of a sheet. Say why: `because: "asked"` with `quote`, the owner\'s own words asking for this change, writes at once; `"routine"` writes at once when this thread runs a routine; `"own"` is your own idea: ' +
-      'on a sheet others share it waits as a suggestion the owner steps through, on his own sheet it is written and he can take it back. ' +
+      'Changes cells of a sheet. Say why: `because: "asked"` with `quote`, his own words asking for it, writes at once; `"routine"` writes at once in a routine\'s run; `"own"` is your idea: ' +
+      'a sheet others share, or one he set to suggest, keeps it as a suggestion and does not change; otherwise it is written and he can take it back. ' +
       `At most ${WRITE_MAX} cells a call; null empties a cell.`,
     input: z.object({
       ...target,
@@ -387,7 +390,7 @@ export const sheetTools: WorkTool[] = [
         if (!writes) {
           const count = await suggest(s, t, a.cells, by, a.reason)
           await announceItem(s, t.item)
-          return workText(`Suggested ${count === 1 ? '1 cell' : `${count} cells`}: ${t.shared ? 'others share this sheet, so' : 'the sheet is set to suggest, so'} the owner accepts or rejects each change.${note}`)
+          return workText(`${suggestedIn('sheet', `${count === 1 ? '1 cell' : `${count} cells`}, because ${whySuggested(t)}`)}${note}`)
         }
         const writeId = randomUUID()
         if (t.held.at === 'package') await s.packages.writeCells(t.held.path, a.cells, by, label, writeId)
@@ -415,7 +418,7 @@ export const sheetTools: WorkTool[] = [
         const s = await sheetsOf(ctx)
         const count = await suggest(s, t, a.cells, agentPrincipal(ctx.host, ctx.sessionId), a.reason)
         await announceItem(s, t.item)
-        return workText(`Suggested ${count === 1 ? '1 cell' : `${count} cells`}; the owner steps through them in the sheet.`)
+        return workText(suggestedIn('sheet', count === 1 ? '1 cell' : `${count} cells`))
       } catch (err) {
         return fail(errorText(err))
       }

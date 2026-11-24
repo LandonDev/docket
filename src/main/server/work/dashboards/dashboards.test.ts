@@ -117,7 +117,7 @@ describe('a dashboard', () => {
       reason: 'You asked what came in'
     })
     expect(r.isError).toBeFalsy()
-    expect(r.text).toContain('waits for his Accept')
+    expect(r.text).toContain('Suggested in the dashboard: 1 block. Tell the owner it waits there for him to accept.')
     await tool('dashboard_add', { item, block: { kind: 'chart', title: 'Paid by month', sheet: sheetPath, labels: 'A2:A4', values: 'B2:B4', counts: 'Paid each month', format: 'money' } })
     await tool('dashboard_add', { item, block: { kind: 'table', title: 'Clients', sheet: sheetPath, range: 'A1:C4', counts: 'Every invoice this quarter' } })
     const view = await call<DashboardView>('work.dashboards.open', { itemId: item })

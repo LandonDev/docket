@@ -130,11 +130,11 @@ export const personPageTool: WorkTool = {
       const owner = ctx.lifeos.owner()
       const rows = (await owner.query<Person[]>('people:directory', { sector })) ?? []
       const found = resolvePerson(rows, a.person)
-      if ('none' in found) return fail(`No one in ${sector}'s people is ${a.person}.`)
+      if ('none' in found) return fail(`No one in ${sector}'s people is ${a.person}. Check the name, or find them with work_search, and ask again.`)
       if ('several' in found) return fail(`Several of ${sector}'s people match ${a.person}: ${found.several.map((p) => `${p.name} (${p._id})`).join(', ')}. Ask again by id.`)
       const links = linksNamed(heldLinks(ctx), found.person.name, Date.now())
       const page = await owner.query<Page | null>('people:page', { id: found.person._id, sector, shared: links.slice(0, 50).map((l) => ({ table: l.table, id: l.id })) })
-      if (!page) return fail(`No one in ${sector}'s people is ${a.person}.`)
+      if (!page) return fail(`No one in ${sector}'s people is ${a.person}. Check the name, or find them with work_search, and ask again.`)
       return workText(pageText(page, links, sector, hisZone(ctx)))
     } catch (err) {
       return fail(`LifeOS did not answer: ${err instanceof Error ? err.message : String(err)}`)

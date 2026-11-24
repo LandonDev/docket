@@ -11,6 +11,7 @@ import { hasMagic, paneItem } from './file'
 import { labelFields } from './form'
 import { announce, exportCopy, fieldsOfFile, snapshot } from './view'
 import { PdfStore, type FieldFill, type FieldPlace } from './store'
+import { suggestedIn } from '../outbox/words'
 
 /**
  * The tools a Work thread reads and fills a PDF with
@@ -23,6 +24,7 @@ const fail = (text: string): WorkToolResult => ({ ...workText(text), isError: tr
 /** What one answer may carry back to the model. */
 const ANSWER_MAX = 60_000
 
+const PDF_ITEM = z.string().describe("The id of a PDF item in this thread's canvas (from `canvas_open`).")
 const target = {
   item: z.string().optional().describe('The id of a PDF item in this thread\'s canvas (from `canvas_open`).'),
   file: z.string().optional().describe('An absolute path to a PDF on this host, when it is not open in the canvas.')
@@ -59,7 +61,7 @@ const FillSchema = z.object({
   key: z.string().max(500).optional().describe('The field\'s name, from `pdf_fields`. Leave out to place a new box with `place`.'),
   place: z
     .object({
-      page: z.number().int().positive(),
+      page: z.number().int().positive().describe('The page, from 1.'),
       bbox: BboxSchema.describe('x0, y0, x1, y1 as shares of the page from its top left, as `pdf_extract` gives them.'),
       label: z.string().min(1).max(200),
       type: z.enum(['text', 'checkbox', 'signature', 'date']).default('text')
@@ -78,7 +80,7 @@ export const pdfTools: WorkTool[] = [
       'Pass `item` for a PDF open in the canvas, or `file` for a path. `pages` is a list like "1-3,7" (40 pages at most a call; ask again for more). ' +
       'After each passage of a canvas item comes a code like `#pdf:…`: write `[p. 6, clause 7.2](#pdf:…)` in your reply and the person can click it to see the place. ' +
       'A page with no text layer is a scan: look at it with `pdf_page_image`.',
-    input: z.object({ ...target, pages: z.string().max(200).optional(), format: z.enum(['markdown', 'json']).default('markdown') }),
+    input: z.object({ ...target, pages: z.string().max(200).optional().describe('Pages from 1, as "1-3,7".'), format: z.enum(['markdown', 'json']).default('markdown').describe('markdown: readable text with the links above; json: each page laid out as data.') }),
     readOnly: true,
     run: async (args, ctx) => {
       const a = args as { item?: string; file?: string; pages?: string; format: 'markdown' | 'json' }
@@ -98,7 +100,7 @@ export const pdfTools: WorkTool[] = [
   {
     name: 'pdf_page_image',
     description: 'A picture of one page of a PDF, or of a region of it: for a scan with no text layer, a diagram, or a region the person selected. `region` is x0, y0, x1, y1 as shares of the page from its top left.',
-    input: z.object({ ...target, page: z.number().int().positive(), region: BboxSchema.optional() }),
+    input: z.object({ ...target, page: z.number().int().positive().describe('The page, from 1.'), region: BboxSchema.optional() }),
     readOnly: true,
     run: async (args, ctx) => {
       const a = args as { item?: string; file?: string; page: number; region?: Bbox }
@@ -114,7 +116,7 @@ export const pdfTools: WorkTool[] = [
   {
     name: 'pdf_fields',
     description: 'Lists the fields of a PDF form open in the canvas: each field\'s name, kind, label, page and box, and what is in it. A form with no fields (a flat or scanned form) lists none: place boxes with `pdf_fill`.',
-    input: z.object({ item: z.string() }),
+    input: z.object({ item: PDF_ITEM }),
     readOnly: true,
     run: async (args, ctx) => {
       const { item: id } = args as { item: string }
@@ -151,7 +153,7 @@ export const pdfTools: WorkTool[] = [
       'Puts values in a PDF form open in the canvas. Each value is a suggestion the person accepts or rejects from the bar (or lands at once when the item says "Agent writes"), and each needs `source`: where the value came from. ' +
       'Name a field by `key` (from `pdf_fields`), or place a new box with `place` on a page that has no field there. ' +
       'You never sign and never date a signature: place `type: "signature"` and `type: "date"` boxes where they go, with no value, and the person presses Sign.',
-    input: z.object({ item: z.string(), fields: z.array(FillSchema).min(1).max(500) }),
+    input: z.object({ item: PDF_ITEM, fields: z.array(FillSchema).min(1).max(500) }),
     readOnly: false,
     run: async (args, ctx) => {
       const a = args as { item: string; fields: Array<z.infer<typeof FillSchema>> }
@@ -188,7 +190,7 @@ export const pdfTools: WorkTool[] = [
         refused.push(...done.refused)
         await announce(ctx, item)
         const lines = [
-          done.done.length ? `${direct ? 'Wrote' : 'Suggested'} ${done.done.length} ${done.done.length === 1 ? 'value' : 'values'}${direct ? '' : '; the person accepts each from the bar'}.` : '',
+          done.done.length ? (direct ? `Wrote ${done.done.length} ${done.done.length === 1 ? 'value' : 'values'}.` : suggestedIn('PDF', `${done.done.length} ${done.done.length === 1 ? 'value' : 'values'}`)) : '',
           put.placed.length ? `Placed ${put.placed.length} ${put.placed.length === 1 ? 'box' : 'boxes'}: ${places.filter((p) => put.placed.includes(p.key)).map((p) => `${p.key} (${p.type})`).join(', ')}.` : '',
           refused.length ? `Refused:\n${refused.join('\n')}` : ''
         ].filter(Boolean)
@@ -202,8 +204,8 @@ export const pdfTools: WorkTool[] = [
   {
     name: 'pdf_export',
     description:
-      'Writes a copy of a PDF open in the canvas with the values the person accepted, the highlights, and the signature if the person signed, and answers the copy\'s path (to attach to a draft). `flatten` (the default) paints the fields into the page so the copy cannot be edited. Values that still wait for the person are not in it.',
-    input: z.object({ item: z.string(), flatten: z.boolean().default(true) }),
+      'Writes a copy of a PDF open in the canvas with the values already in it (those the person accepted, or wrote in Agent writes), the highlights, and the signature if the person signed, and answers the copy\'s path (to attach to a draft). `flatten` (the default) paints the fields into the page so the copy cannot be edited. Values that still wait for the person are not in it.',
+    input: z.object({ item: PDF_ITEM, flatten: z.boolean().default(true) }),
     readOnly: false,
     run: async (args, ctx) => {
       const a = args as { item: string; flatten: boolean }

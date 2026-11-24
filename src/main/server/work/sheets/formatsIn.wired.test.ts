@@ -323,7 +323,7 @@ describe('a .csv in a folder others can open takes an edit, and the file holds i
     const itemId = open(csv)
     await call<SheetView>('work.sheets.open', { itemId })
     const own = await tool('sheet_write', { item: itemId, cells: [{ at: 'A2', v: SECRET }], because: 'own' })
-    expect(own.text).toMatch(/^Suggested 1 cell/)
+    expect(own.text).toMatch(/^Suggested in the sheet: 1 cell/)
     expect(readFileSync(csv, 'utf8')).toBe('name,code\nAda,1\n')
     const view = await call<SheetView>('work.sheets.open', { itemId })
     expect(view.suggestions).toHaveLength(1)

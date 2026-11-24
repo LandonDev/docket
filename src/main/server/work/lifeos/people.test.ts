@@ -128,7 +128,7 @@ describe('person_page', () => {
 
   it('says who it could not tell apart, and who is not in the sector', async () => {
     expect((await run({ person: 'Tom' })).text).toBe("Several of purdue's people match Tom: Tom Beck (p_tom), Tom Rivera (p_tom2). Ask again by id.")
-    expect(await run({ person: 'Pat' })).toEqual({ text: "No one in purdue's people is Pat.", isError: true })
+    expect(await run({ person: 'Pat' })).toEqual({ text: "No one in purdue's people is Pat. Check the name, or find them with work_search, and ask again.", isError: true })
   })
 
   it('is listed to a Work thread as read-only, by the lifeos pillar', () => {

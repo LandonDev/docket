@@ -24,7 +24,7 @@ export const canvasTools: WorkTool[] = [
       kind: CanvasKindSchema.optional(),
       title: z.string().min(1).max(200).optional(),
       source: CanvasSourceSchema.optional(),
-      item: z.string().optional()
+      item: z.string().optional().describe('An item id an earlier canvas_open in this thread answered, to open it again. Leave it out to open a new one.')
     }),
     readOnly: false,
     run: async (args, ctx) => {
@@ -43,7 +43,7 @@ export const canvasTools: WorkTool[] = [
   {
     name: 'canvas_close',
     description: "Closes one of this thread's canvas items: it leaves the tab row, and `canvas_open` with its id opens it again.",
-    input: z.object({ item: z.string() }),
+    input: z.object({ item: z.string().describe('The item id canvas_open answered.') }),
     readOnly: false,
     run: async (args, ctx) => {
       const { item: id } = args as { item: string }

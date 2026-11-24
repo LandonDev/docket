@@ -12,12 +12,12 @@ export const inputShapeOf = (input: ZodType): Record<string, ZodType> | null => 
 
 /**
  * The schema Claude's server checks a call against: any object passes, so a bad input reaches the
- * mount and its words (inputWords.ts) rather than the SDK's issue dump. The model is still shown the
- * tool's own JSON schema: zod draws a schema's `_zod.toJSONSchema` in place of its own.
+ * mount and its words (inputWords.ts) rather than the SDK's issue dump. The model is shown `listed`,
+ * the tool's own JSON schema as the mount lists it: zod draws a schema's `_zod.toJSONSchema` in place
+ * of its own.
  */
-export function claudeInputOf(input: ZodType): ZodType {
-  const json = z.toJSONSchema(input, { io: 'input' }) as Record<string, unknown>
-  delete json.$schema
+export function claudeInputOf(listed: Record<string, unknown>): ZodType {
+  const { $schema: _drawn, ...json } = listed
   const open = z.looseObject({})
   ;(open._zod as { toJSONSchema?: () => unknown }).toJSONSchema = () => structuredClone(json)
   return open

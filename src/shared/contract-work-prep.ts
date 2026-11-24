@@ -36,7 +36,7 @@ export const PREP_UPCOMING_MAX_MS = 31 * 86_400_000
 /** One thing said on a page, and the LifeOS row it is about when there is one: a press opens it. */
 export const PrepLineSchema = z.object({
   text: z.string().trim().min(1).max(PREP_LINE_MAX),
-  ref: z.object({ table: z.enum(['mailThreads', 'tasks', 'events', 'docs', 'people']), id: z.string().min(1).max(200) }).optional()
+  ref: z.object({ table: z.enum(['mailThreads', 'tasks', 'events', 'docs', 'people']), id: z.string().min(1).max(200).describe('Its LifeOS id.') }).optional().describe('The LifeOS record it is about.')
 })
 export type PrepLine = z.infer<typeof PrepLineSchema>
 

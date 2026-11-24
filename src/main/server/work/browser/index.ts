@@ -3,6 +3,7 @@ import { configureComputerDrive, driveComputer, type ComputerDriveHook } from '.
 import { configureOwnerDrives } from '../../computer/run'
 import { PortalSourceSchema, type BrowserState, type BrowserVideo } from '@shared/contract-work-browser'
 import { handled, NOT_HANDLED, workText } from '@shared/work'
+import { heldReceipt } from '../outbox/words'
 import type { ActKindDef, ToolCtx, WorkCtx, WorkModule, WorkTool } from '../modules'
 import { boxBrowserTools, boxDriveChanged, startBoxBrowser } from './box'
 import { DriveStore, ensureBrowserTables } from './drive'
@@ -63,7 +64,11 @@ function tools(): WorkTool[] {
       name: 'browser_open',
       description:
         "Show the browser beside the thread at full size before you drive a website with computer use, so the owner can watch it, take over and hand back. `url` is the page you are on or about to open, `name` the site as a person says it (\"Arbiter\", \"Concur\"), `title` the page's title. Call it again when you move to another site. A submit on a site's final screen waits for his press on its own: drive up to it and stop there.",
-      input: z.object({ url: z.string().min(1).max(2000), name: z.string().min(1).max(80), title: z.string().min(1).max(200) }),
+      input: z.object({
+        url: z.string().min(1).max(2000).describe('The page you are on or about to open.'),
+        name: z.string().min(1).max(80).describe('The site as the owner says it: "Arbiter".'),
+        title: z.string().min(1).max(200).describe("The page's title, shown on the tab beside the thread.")
+      }),
       readOnly: false,
       async run(args, ctx) {
         const { url, name, title } = args as { url: string; name: string; title: string }
@@ -100,13 +105,13 @@ function tools(): WorkTool[] {
     {
       name: 'teams_reply',
       description:
-        'Reply in Microsoft Teams. Never post in Teams with computer use yourself. The reply is held: nothing is posted until the owner presses Post, and then the app posts it to the chat on this Mac and keeps a picture of the posted message. `chat` is the chat, channel or person as Teams lists it.',
+        "Reply in Microsoft Teams through Teams on this Mac. The reply waits in the owner's Outbox; nothing is posted until he presses Post, and then the app posts it and keeps a picture of the posted message. For Teams this is the tool that can post: messages_draft_reply keeps a Teams reply only as a draft for him to copy. Never post in Teams with computer use yourself.",
       input: TeamsPostSchema,
       readOnly: false,
       async run(args, ctx) {
         if (!teamsCarrier()) return { ...workText(TEAMS_UNAVAILABLE), isError: true }
         const item = ctx.held.create({ kind: 'teams.post', sessionId: ctx.sessionId, payload: TeamsPostSchema.parse(args) })
-        return workText(`Held: ${item.summary}. It waits for the owner's press; nothing is posted until then. This is a finished step, not a failure: carry on.`)
+        return workText(heldReceipt(item, 'Nothing was posted.'))
       }
     }
   ]

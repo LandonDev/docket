@@ -56,28 +56,28 @@ export type CanvasSource =
   | { at: 'mail'; threadId: string; messageId: string; partId: string; name: string; contentType?: string; size?: number; from?: 'chat' }
 
 export const CanvasSourceSchema = z.discriminatedUnion('at', [
-  z.object({ at: z.literal('lifeos'), table: z.enum(['docs', 'sheets', 'outbox', 'calendarOps', 'projectDocs']), id: z.string() }),
-  z.object({ at: z.literal('file'), host: z.string(), path: z.string() }),
-  z.object({ at: z.literal('google'), account: z.string(), fileId: z.string(), mime: z.string() }),
+  z.object({ at: z.literal('lifeos'), table: z.enum(['docs', 'sheets', 'outbox', 'calendarOps', 'projectDocs']), id: z.string().describe('Its LifeOS id.') }),
+  z.object({ at: z.literal('file'), host: z.string(), path: z.string().describe('Absolute, on that host.') }),
+  z.object({ at: z.literal('google'), account: z.string(), fileId: z.string().describe("Google's file id."), mime: z.string() }),
   z.object({
     at: z.literal('microsoft'),
     host: z.string(),
     app: z.enum(['excel', 'word', 'powerpoint']),
     name: z.string(),
     // A URL is a web address and nothing else: a `file:` one would be a path the fence never saw.
-    ref: z.discriminatedUnion('kind', [z.object({ kind: z.literal('path'), path: z.string() }), z.object({ kind: z.literal('url'), url: z.string().regex(/^https?:\/\/[^\s]+$/i, 'an http(s) URL') })])
+    ref: z.discriminatedUnion('kind', [z.object({ kind: z.literal('path'), path: z.string().describe('Absolute, on that host.') }), z.object({ kind: z.literal('url'), url: z.string().regex(/^https?:\/\/[^\s]+$/i, 'an http(s) URL') })]).describe('Its path or web address.')
   }),
-  z.object({ at: z.literal('frameio'), account: z.string(), fileId: z.string() }),
-  z.object({ at: z.literal('browser'), host: z.string(), sessionId: z.string() }),
+  z.object({ at: z.literal('frameio'), account: z.string(), fileId: z.string().describe("Frame.io's file id.") }),
+  z.object({ at: z.literal('browser'), host: z.string(), sessionId: z.string().describe('Its thread.') }),
   z.object({ at: z.literal('thread') }),
   z.object({
     at: z.literal('mail'),
-    threadId: z.string().min(1).max(200),
-    messageId: z.string().min(1).max(200),
-    partId: z.string().min(1).max(200),
+    threadId: z.string().min(1).max(200).describe('From the mail tools.'),
+    messageId: z.string().min(1).max(200).describe('From the mail tools.'),
+    partId: z.string().min(1).max(200).describe("The attachment's, from the mail tools."),
     name: z.string().min(1).max(500),
     contentType: z.string().max(200).optional(),
-    size: z.number().int().nonnegative().optional(),
+    size: z.number().int().nonnegative().optional().describe('Bytes.'),
     from: z.literal('chat').optional()
   })
 ])

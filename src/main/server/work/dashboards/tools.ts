@@ -104,7 +104,7 @@ function outline(row: DashRow, zone: string): string {
 export const dashboardsTools: WorkTool[] = [
   {
     name: 'dashboard_create',
-    description: 'Makes an empty dashboard and opens it in the canvas. Add its blocks with `dashboard_add`.',
+    description: 'Makes an empty dashboard and opens it in the canvas. Answers its item id, which dashboard_read, dashboard_add and dashboard_refresh take.',
     input: z.object({ title: z.string().min(1).max(200) }),
     readOnly: false,
     run: async (args, ctx) => {
@@ -136,7 +136,7 @@ export const dashboardsTools: WorkTool[] = [
     description:
       'Proposes a block for a dashboard: a heading, a line of text, up to three figures, one plain chart (one series), or a flat table. Every number comes from a sheet\'s range (or, for a figure, a service you name), with what it counts in words. ' +
       'The block waits for the owner to Accept it, even on his own dashboard; the page is read again as it is added.',
-    input: z.object({ item, block: Block, after: z.string().optional().describe('The id of the block it follows; absent: at the end.'), reason: z.string().max(300).optional() }),
+    input: z.object({ item, block: Block, after: z.string().optional().describe('The id of the block it follows, from dashboard_read; absent: at the end.'), reason: z.string().max(300).optional() }),
     readOnly: false,
     run: async (args, ctx) => {
       const a = args as { item: string; block: z.infer<typeof Block>; after?: string; reason?: string }
@@ -150,7 +150,7 @@ export const dashboardsTools: WorkTool[] = [
         const next = await refresh(ctx, it, blocks, 'list')
         await announce(ctx, next)
         if (next.failed) return fail(`The block was added, but the page could not be read: ${next.failed}`)
-        return workText(`Proposed; it waits for his Accept.\n\n${outline(next, hisZone(ctx))}`)
+        return workText(`Suggested in the dashboard: 1 block. Tell the owner it waits there for him to accept.\n\n${outline(next, hisZone(ctx))}`)
       } catch (err) {
         return fail(errorText(err))
       }
@@ -160,7 +160,7 @@ export const dashboardsTools: WorkTool[] = [
     name: 'dashboard_refresh',
     description:
       "Reads every block of a dashboard again, now. A routine that keeps a dashboard current calls this. Give `values` for figures that come from a service (by the figure's id from dashboard_read); figures from sheets are read from their ranges.",
-    input: z.object({ item, values: z.array(z.object({ figure: z.string(), value: z.string().max(60) })).max(60).optional() }),
+    input: z.object({ item, values: z.array(z.object({ figure: z.string().describe("The figure's id from dashboard_read, block/figure."), value: z.string().max(60) })).max(60).optional() }),
     readOnly: false,
     run: async (args, ctx) => {
       const a = args as { item: string; values?: { figure: string; value: string }[] }

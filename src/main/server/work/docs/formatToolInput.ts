@@ -25,7 +25,7 @@ export const docFormatFields = {
     z.strictObject({ all: z.literal(true) })
   ]).optional().describe('The text to format. Leave it out when changing only styles, theme or page settings.'),
   run: z.strictObject({
-    ...booleans, font: font.nullable().optional(), size: z.number().min(1).max(400).nullable().optional(),
+    ...booleans, font: font.nullable().optional(), size: z.number().min(1).max(400).nullable().optional().describe('Points.'),
     color: colour.nullable().optional(), highlight: colour.nullable().optional()
   }).optional(),
   paragraph: z.strictObject({
@@ -36,7 +36,7 @@ export const docFormatFields = {
   }).optional(),
   style: z.strictObject({
     name: style, basedOn: style.optional(), next: style.optional(),
-    fontFamily: font.optional(), fontSize: z.number().min(1).max(400).optional(), ...booleans,
+    fontFamily: font.optional(), fontSize: z.number().min(1).max(400).optional().describe('Points.'), ...booleans,
     color: colour.optional(), align: z.enum(ALIGNMENTS).optional(),
     lineSpacing: spacing.lineSpacing.optional(), spaceBefore: spacing.spaceBefore.optional(), spaceAfter: spacing.spaceAfter.optional(),
     indent: spacing.indent.optional(), firstLine: spacing.firstLine.optional(), keepWithNext: z.boolean().optional()

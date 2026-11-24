@@ -436,7 +436,7 @@ describe('suggested tasks', () => {
     const result = await call('prep_follow_up', {
       event: 'ev1', tasks: [{ title: 'Send the roster', who: 'Maya Chen', due: '2026-11-24T15:00:00-05:00', quote: 'Maya can send the roster.' }]
     }, sessionId)
-    expect(words(result)).toContain('Suggested tasks wait for the owner')
+    expect(words(result)).toContain('Suggested tasks wait there for the owner to tick; none was filed.')
     expect(lifeos.called('tasks:create')).toEqual([])
     expect((await page()).doc.after?.tasks[0]).toMatchObject({ id: 's1', state: 'proposed', who: 'Maya Chen' })
     const [a, b] = await Promise.all([decide('accept', 's1'), decide('accept', 's1')])

@@ -241,7 +241,7 @@ const PAGE = 100
 
 export const waitingTool: WorkTool = {
   name: 'mail_waiting',
-  description: "List the mail the owner sent in this workspace's sector that no one has answered in the time he set (his Waiting on list): whom it went to, the subject, when, and the mail thread's id. Read only.",
+  description: "List the mail the owner sent in this workspace's sector that no one has answered in the time he set (his Waiting on list): whom it went to, the subject, when, and the mail thread's id. It only lists: nothing is sent.",
   input: z.object({}),
   readOnly: true,
   run: async (_args, ctx) => {

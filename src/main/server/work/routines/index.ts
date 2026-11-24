@@ -8,7 +8,7 @@ import {
   type RoutineRun
 } from '@shared/contract-work-routines'
 import type { ClientRequest } from '@shared/contract'
-import { handled, NOT_HANDLED, WORK_HOME, workText, type Trigger, type WorkScope } from '@shared/work'
+import { handled, HIS_ZONE, HOST_ZONE, NOT_HANDLED, WORK_HOME, workText, type Trigger, type WorkScope } from '@shared/work'
 import { WORK_MODULES, type Caller, type RoutineJob, type WorkCtx, type WorkModule, type WorkTool } from '../modules'
 import { outboxHostOf } from '../outbox/ctx'
 import { RoutinesEngine, triggerWords, type EngineDeps } from './engine'
@@ -18,7 +18,7 @@ import { ensureRoutineTables, type Cursor } from './store'
 import { routineMentions } from './mentions'
 import { handlePlays, playTools } from './playMethods'
 import { PlayStore } from './plays'
-import { hisZone, zoneName } from '../clock'
+import { hisZone, hostZone, zoneName } from '../clock'
 
 /**
  * The routines pillar (docs/agents/work-routines.md): the scheduler and its
@@ -178,14 +178,14 @@ const WatchInput = z.object({
   arguments: z.record(z.string(), z.unknown()).optional().describe('Fixed now; every read uses exactly these'),
   fire: z.enum(['changed', 'non-empty']).optional().describe('changed (default): when the answer differs from the last read; non-empty: when it has anything in it'),
   everyMinutes: z.number().int().min(5).max(1440).optional().describe('How often to read; default 15'),
-  until: z.string().optional().describe('A date (YYYY-MM-DD) the watch ends on. Without it the watch ends when it first fires.')
+  until: z.string().optional().describe(`YYYY-MM-DD: the watch ends at the end of that day on this host's clock (${HOST_ZONE}). Without it the watch ends when it first fires.`)
 })
 
 const ProposeInput = z.object({
   name: z.string().trim().min(1).max(120),
   prompt: z.string().trim().min(1).max(8000).describe('What each run does, in the owner’s words'),
   days: z.array(z.enum(DAY_CODES)).min(1).optional().describe('Run on these days, at `at`'),
-  at: z.string().regex(/^\d{1,2}:\d{2}$/).optional().describe('HH:MM, 24-hour, the owner’s time'),
+  at: z.string().regex(/^\d{1,2}:\d{2}$/).optional().describe(`HH:MM, 24-hour, in the owner’s zone (${HIS_ZONE})`),
   everyMinutes: z.number().int().min(5).max(1440).optional().describe('Or run every so many minutes'),
   lifeosEvents: z.array(z.enum(Object.keys(LIFEOS_TRIGGER_KINDS) as [string, ...string[]])).min(1).optional().describe('Or run when one of these happens in this workspace’s sector')
 })
@@ -196,7 +196,7 @@ function tools(scope: WorkScope): WorkTool[] {
     {
       name: 'watch_create',
       description:
-        'Wake this thread when something changes, without a model: the host reads an add-on tool on its own every few minutes and wakes you with the answer when it changes. Only tools the owner set to Runs; the arguments are fixed now. Use it to wait on a reply, a status or a file instead of checking by hand.',
+        'Starts a watch now, with no model and nothing for the owner to approve: the host reads an add-on tool every few minutes and wakes this thread with the answer when it changes. Only read-only tools the owner set to Runs; the arguments are fixed now. Use it to wait on a reply, a status or a file instead of checking by hand. For work that runs on a schedule, use routine_propose.',
       input: WatchInput,
       readOnly: false,
       async run(raw, tc) {
@@ -220,7 +220,7 @@ function tools(scope: WorkScope): WorkTool[] {
             now
           )
           tc.push({ push: 'work.routines', workspaceId, id: r.id })
-          const end = a.until ? `until ${a.until}` : 'until it first changes'
+          const end = a.until ? `until the end of ${a.until} (${zoneName(hostZone(), until)})` : 'until it first changes'
           return workText(`Watching “${a.name}”: ${triggerWords(t.trigger).toLowerCase()}, ${end}. This thread will be woken with the new answer; nothing else runs.`)
         } catch (err) {
           return { ...workText(err instanceof Error ? err.message : String(err)), isError: true }
@@ -230,7 +230,7 @@ function tools(scope: WorkScope): WorkTool[] {
     {
       name: 'routine_propose',
       description:
-        'Offer the owner a routine: work that runs on its own on a schedule or when something happens in LifeOS. It runs nothing: it shows in his Routines for him to create, change or drop. Give exactly one of days with at, everyMinutes, or lifeosEvents.',
+        'Offer the owner a routine: work that runs on its own on a schedule or when something happens in LifeOS. It runs nothing: it waits in his Routines for him to create, change or drop. Give exactly one of days with at, everyMinutes, or lifeosEvents.',
       input: ProposeInput,
       readOnly: false,
       async run(raw, tc) {

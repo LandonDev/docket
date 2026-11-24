@@ -217,7 +217,7 @@ describe('held posts', () => {
     const item = await openCut()
     await readyView(item.id)
     const r = await tool('frameio_comment', { item: item.id, at: 48, until: 59, text: 'Hold the title a beat longer', region: { x: 0.1, y: 0.2, w: 0.3, h: 0.4 } })
-    expect(text(r)).toBe('Held: Comment on cut12_v2.mov at 0:02: “Hold the title a beat longer”. It waits in the Outbox for the person to post it; nothing went to Frame.io.')
+    expect(text(r)).toBe("Held as item 1: Comment on cut12_v2.mov at 0:02: “Hold the title a beat longer”. It waits for the owner's press. Nothing went to Frame.io. This is a finished step, not a failure: tell the owner it waits in his Outbox, do not look for another way to do it, and carry on.")
     expect(fake.writes.filter((w) => w.path.endsWith('/comments'))).toEqual([])
     const waiting = (await rig.rpc<MediaView>('work.media.view', { itemId: item.id })).notes.find((n) => n.body === 'Hold the title a beat longer')!
     expect(waiting).toMatchObject({ state: 'suggested', anchor: { frame: 48, durationFrames: 12 } })
@@ -245,7 +245,7 @@ describe('held posts', () => {
     await tool('media_note', { item: item.id, at: 10, text: 'Audio dips here' })
     const note = (await rig.rpc<MediaView>('work.media.view', { itemId: item.id })).notes.find((n) => n.body === 'Audio dips here')!
     expect(note.state).toBe('suggested')
-    expect(text(await tool('frameio_comment', { item: item.id, note: note.id }))).toContain('Held: Comment on cut12_v2.mov at 0:00')
+    expect(text(await tool('frameio_comment', { item: item.id, note: note.id }))).toMatch(/^Held as item \d+: Comment on cut12_v2.mov at 0:00/)
     const [held] = await rig.waiting()
     await rig.rpc('work.outbox.discard', { ref: held!.ref })
     await until(() => true)
@@ -264,7 +264,7 @@ describe('held posts', () => {
     expect(text(await tool('frameio_add_version', { item: item.id, file: join(rig.dir, 'ws', 'cut_v4.mp4') }))).toContain('outside the folders this host shows')
     expect(text(await tool('frameio_add_version', { item: item.id, file }))).toBe(
       // Named by the file's name, never its local path.
-      `Held: Add cut12_v3.mp4 as the next version of cut12_v2.mov in Frame.io. It waits in the Outbox for the person to post it; nothing went to Frame.io.`
+      `Held as item 1: Add cut12_v3.mp4 as the next version of cut12_v2.mov in Frame.io. It waits for the owner's press. Nothing went to Frame.io. This is a finished step, not a failure: tell the owner it waits in his Outbox, do not look for another way to do it, and carry on.`
     )
     // What goes is what was named when it was held: a rewrite after the hold does not reach Frame.io.
     writeFileSync(file, Buffer.alloc(5000, 9))

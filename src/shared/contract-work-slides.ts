@@ -32,14 +32,14 @@ export type DeckColour = z.infer<typeof colour>
 /** A length on the slide in EMU (914,400 to an inch, 12,700 to a point). */
 const emu = z.number().int().min(-60_000_000).max(60_000_000)
 /** A shape's box as it lies on the slide before any turn: left, top, width, height, in EMU. */
-const box = z.tuple([emu, emu, emu.min(1), emu.min(1)])
+const box = z.tuple([emu, emu, emu.min(1), emu.min(1)]).describe('[left, top, width, height] in EMU (914400 an inch).')
 
 /** What he set on a run; what is absent stays as it was. */
 const runLook = {
   /** a typeface by its name ("Calibri") */
   font: z.string().min(1).max(100).optional(),
   /** points, as drawn */
-  size: z.number().min(1).max(4000).optional(),
+  size: z.number().min(1).max(4000).optional().describe('Points.'),
   bold: z.boolean().optional(),
   italic: z.boolean().optional(),
   underline: z.boolean().optional(),
@@ -53,7 +53,7 @@ const paraLook = {
 }
 /** One cell of a table, row and column from 0; absent for a shape's own words. */
 const cellAt = { row: z.number().int().min(0).optional(), col: z.number().int().min(0).optional() }
-const at = z.tuple([z.number().int().min(0), z.number().int().min(0)])
+const at = z.tuple([z.number().int().min(0), z.number().int().min(0)]).describe('[paragraph, character], both from 0.')
 
 export const SlideOpSchema = z.discriminatedUnion('op', [
   /** A shape's words. `paragraphs`: one entry a paragraph; each keeps its first run's look. */
@@ -79,7 +79,7 @@ export const SlideOpSchema = z.discriminatedUnion('op', [
     /** the body placeholder's paragraphs */
     body: z.array(text).max(200).optional(),
     notes: text.optional(),
-    id: slide.optional()
+    id: slide.optional().describe('To edit it later in this list.')
   }),
   z.object({ op: z.literal('remove'), slide }),
   /** Moves a slide to after slide `after` (0: first). */
@@ -100,7 +100,13 @@ export const SlideOpSchema = z.discriminatedUnion('op', [
      */
     was: z.array(z.union([z.string().max(100_000), z.array(z.string().max(20_000)).max(400)])).max(2000).optional(),
     paragraphs: z
-      .array(z.object({ from: z.number().int().min(0).optional(), ...paraLook, runs: z.array(z.object({ text, from: z.tuple([z.number().int().min(0), z.number().int().min(0)]).optional(), ...runLook })).max(400) }))
+      .array(
+        z.object({
+          from: z.number().int().min(0).optional().describe('The old paragraph, from 0, whose spacing, level and list it keeps.'),
+          ...paraLook,
+          runs: z.array(z.object({ text, from: z.tuple([z.number().int().min(0), z.number().int().min(0)]).optional().describe('[paragraph, run], both from 0: the old run whose look it keeps.'), ...runLook })).max(400)
+        })
+      )
       .min(1)
       .max(200)
   }),
@@ -131,7 +137,7 @@ export const SlideOpSchema = z.discriminatedUnion('op', [
     slide,
     what: z.enum(['text', 'shape', 'picture', 'table', 'chart', 'video']),
     box,
-    id: z.number().int().positive().max(2_000_000_000).optional(),
+    id: z.number().int().positive().max(2_000_000_000).optional().describe('To edit it later in this list.'),
     text: text.optional(),
     preset: z.string().regex(/^[A-Za-z0-9]{1,40}$/).optional(),
     file: z.string().min(1).max(1000).optional(),
@@ -150,16 +156,16 @@ export const SlideOpSchema = z.discriminatedUnion('op', [
   /** A shape's fill: a colour, or null for none. */
   z.object({ op: z.literal('fill'), slide, shape, color: colour.nullable() }),
   /** A shape's outline: its colour (null: none), its weight in points, its dash. */
-  z.object({ op: z.literal('line'), slide, shape, color: colour.nullable().optional(), width: z.number().min(0).max(100).optional(), dash: z.enum(['solid', 'dash', 'dot']).optional() }),
+  z.object({ op: z.literal('line'), slide, shape, color: colour.nullable().optional(), width: z.number().min(0).max(100).optional().describe('Points.'), dash: z.enum(['solid', 'dash', 'dot']).optional() }),
   /** A table's row or column put in before place `at` (from 0; the count puts it last), or the one at `at` taken out. */
-  z.object({ op: z.literal('grid'), slide, shape, what: z.enum(['row', 'col']), act: z.enum(['insert', 'delete']), at: z.number().int().min(0).max(1000) }),
+  z.object({ op: z.literal('grid'), slide, shape, what: z.enum(['row', 'col']), act: z.enum(['insert', 'delete']), at: z.number().int().min(0).max(1000).describe('The row or column, from 0; the count puts a new one last.') }),
   /** A slide left out of the show, or put back in. */
   z.object({ op: z.literal('hide'), slide, hidden: z.boolean() }),
   /** A copy of a slide, right after it. `id` is given by the host. */
-  z.object({ op: z.literal('duplicate'), slide, id: slide.optional() }),
+  z.object({ op: z.literal('duplicate'), slide, id: slide.optional().describe('The id to give the copy.') }),
   /** The deck's sections: one started at slide `at`, one renamed or taken away by its place in the list (from 0). */
   z.discriminatedUnion('act', [
-    z.object({ op: z.literal('section'), act: z.literal('add'), at: slide, name: z.string().min(1).max(200) }),
+    z.object({ op: z.literal('section'), act: z.literal('add'), at: slide.describe('The slide id it starts at.'), name: z.string().min(1).max(200) }),
     z.object({ op: z.literal('section'), act: z.literal('rename'), section: z.number().int().min(0).max(1000), name: z.string().min(1).max(200) }),
     z.object({ op: z.literal('section'), act: z.literal('remove'), section: z.number().int().min(0).max(1000) })
   ]),

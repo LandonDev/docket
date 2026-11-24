@@ -1,6 +1,6 @@
 import { z } from 'zod'
 import { REVIEW_CAPS, type ReviewKept, type ReviewReady } from '@shared/contract-work-review'
-import { handled, NOT_HANDLED, workText } from '@shared/work'
+import { handled, HIS_ZONE, NOT_HANDLED, workText } from '@shared/work'
 import { isWeek, knownZone, localDay, mergeKept, weekOf, weekOfDay, type ReviewBody } from '@shared/work/review'
 import { hisZone } from '../clock'
 import { WORK_MODULES, type Caller, type WorkCtx, type WorkModule, type WorkTool } from '../modules'
@@ -65,7 +65,7 @@ const WeekInput = z.object({
     .string()
     .regex(/^\d{4}-\d{2}-\d{2}$/)
     .optional()
-    .describe('Any day of the week to review, as YYYY-MM-DD. Leave it out for this week.')
+    .describe(`Any day of the week to review, as YYYY-MM-DD in the owner's zone (${HIS_ZONE}). Leave it out for this week.`)
 })
 
 const weekReview: WorkTool = {

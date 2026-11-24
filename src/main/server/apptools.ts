@@ -186,7 +186,8 @@ export function setAppWork(next: AppWork | null): void {
  */
 export function withWorkTools(options: Options, session: SessionMeta): Options {
   const mount = work?.tools
-  const tools = mount?.of(session)?.tools ?? []
+  // The bridge's listing, zones named (work/ctx.ts): one set of words for every harness.
+  const tools = mount?.listing(session) ?? []
   if (!mount || tools.length === 0) return options
   const server = createSdkMcpServer({
     name: WORK_TOOL_SERVER,
@@ -196,7 +197,7 @@ export function withWorkTools(options: Options, session: SessionMeta): Options {
         t.name,
         t.description,
         // A loose object drawn as the tool's schema: the mount, not the SDK, answers a bad input (toolInput.ts).
-        claudeInputOf(t.input) as unknown as Record<string, ZodType>,
+        claudeInputOf(t.inputSchema) as unknown as Record<string, ZodType>,
         async (args, extra) => {
           const live = registry?.get(session.id) ?? session
           const signal = (extra as { signal?: AbortSignal } | undefined)?.signal ?? new AbortController().signal

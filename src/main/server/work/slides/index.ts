@@ -253,7 +253,7 @@ export const slides: WorkModule = {
   tools: () => slidesTools,
   convert: [...SLIDES_CONVERTERS, ...STEPS_CONVERTERS, ...VIDEO_CONVERTERS, ...SLIDES_IMPORT_CONVERTERS],
   preamble: () =>
-    'A deck in the canvas opens as PowerPoint. Use the Google tools for a Google Slides deck. Read other decks with `slides_read` and look at a slide with `slides_image`. Revise it with `slides_edit`, naming slides and shapes by id: each revised slide is a suggestion the person steps through and accepts. Say `because: "asked"` with the person\'s own words as `quote` when they asked for the edit, and `because: "own"` when it is your idea. Draft a new deck with `slides_new`.',
+    'A deck in the canvas opens as PowerPoint. Use the Google tools for a Google Slides deck. Read other decks with `slides_read` and look at a slide with `slides_image`. Revise it with `slides_edit`, naming slides and shapes by id: each revised slide is a suggestion the person steps through and accepts, unless the deck is set to Agent writes. Say `because: "asked"` with the person\'s own words as `quote` when they asked for the edit, and `because: "own"` when it is your idea. Draft a new deck with `slides_new`.',
   sessionsRemoved(ids, ctx) {
     sessionsGone(ctx, ids)
   },

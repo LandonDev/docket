@@ -37,7 +37,7 @@ export const NO_PLACE_IN_CHAT = 'A Work Chat has no files place. Files belong to
 const NO_SUCH_PLACE = (place: string): string => `No place "${place}" here: list them with files_places.`
 const TWO_PLACES = (place: string): string => `Two computers have a place "${place}": name the host as files_places shows it.`
 const NOT_A_PATH = 'Name a file by its path inside the place, with forward slashes (Events/Poster.png): no "." or "..".'
-const OPEN_FAR = (host: string): string => `That file is on ${host}: open it with teams_open, which copies it here.`
+const OPEN_FAR = (host: string): string => `That file is on ${host}, so nothing was opened. For a file in a Teams or OneDrive library, teams_open copies it here; otherwise ask the owner to open it on ${host}.`
 
 // ── where a thread's words point ──────────────────────────────────────
 
@@ -699,7 +699,7 @@ const DRIVE_WHO = 'Each file by its own sharing in Google Drive: a change to one
 export const filesTools: WorkTool[] = [
   tool({
     name: 'files_places',
-    description: "Lists the places this workspace's files live in, on this computer and on each computer the workspace may use: its own folder, Teams and OneDrive libraries, and a Google Drive per Google account of the workspace (only the files TempCode made or the owner picked). Each has an id the other files_* tools take, and says who else can open what is in it.",
+    description: "Start here: lists the places this workspace's files live in, on this computer and on each computer the workspace may use: its own folder, Teams and OneDrive libraries, and a Google Drive per Google account of the workspace (only the files TempCode made or the owner picked). Each has an id the other files_* tools take, and says who else can open what is in it.",
     input: {},
     readOnly: true,
     run: async (_a, ctx, workspaceId) => {
@@ -717,7 +717,7 @@ export const filesTools: WorkTool[] = [
   tool({
     name: 'files_list',
     description: 'Lists one folder of a place: its folders first, then its files, 500 a page (pass `cursor` for the next). A file is named by its path inside the place.',
-    input: { place: Place, path: PathIn.default(''), host: Host, cursor: z.string().max(2000).optional() },
+    input: { place: Place, path: PathIn.default(''), host: Host, cursor: z.string().max(2000).optional().describe('The `next` token files_list answered for this place and folder.') },
     readOnly: true,
     run: async (a, ctx, workspaceId) => {
       const named = await placeNamed(ctx, workspaceId, a.place, a.host)
@@ -729,7 +729,7 @@ export const filesTools: WorkTool[] = [
   }),
   tool({
     name: 'files_search',
-    description: "Finds files and folders by name (every word of `query` in the name, any case), and by the words in the small text files of the workspace's folder, in this computer's places, or in one place. 50 at most.",
+    description: "Finds files and folders by name (every word of `query` in the name, any case), and by the words in the small text files of the workspace's folder, in this computer's places (without `place`), or in one place. 50 at most.",
     input: { query: z.string().min(1).max(200), place: Place.optional(), host: Host },
     readOnly: true,
     run: async (a, ctx, workspaceId) => {
@@ -744,8 +744,8 @@ export const filesTools: WorkTool[] = [
   }),
   tool({
     name: 'files_open',
-    description: "Opens a file beside this thread, in its canvas, as canvas_open does: by `place` and `path`, or by `name` alone (it is found by name first; when several match, they are listed to choose from).",
-    input: { place: Place.optional(), path: PathIn.optional(), name: z.string().min(1).max(500).optional(), host: Host },
+    description: "Opens a file beside this thread, in its canvas, as canvas_open does: by `place` and `path`, or by `name` alone (it is found by name first; when several match, nothing opens and they are listed: call again with the chosen place and path).",
+    input: { place: Place.optional(), path: PathIn.optional(), name: z.string().min(1).max(500).optional().describe('A file name to find, when place and path are left out.'), host: Host },
     readOnly: false,
     run: async (a, ctx, workspaceId) => {
       let named: Named
@@ -786,7 +786,7 @@ export const filesTools: WorkTool[] = [
   tool({
     name: 'files_make',
     description: `Makes a new ${FILE_MAKE_KINDS.join(', ')} in a folder of a place, in the form that place keeps (a .tcdoc in the workspace's folder, a .docx in Teams), named for its kind unless you name it. ${HELD_RULE} Its row is marked as made by this thread until the owner opens it.`,
-    input: { place: Place, path: PathIn.default(''), kind: z.enum(FILE_MAKE_KINDS), name: z.string().min(1).max(200).optional(), host: Host },
+    input: { place: Place, path: PathIn.default('').describe('The folder inside the place, with forward slashes; empty for its top.'), kind: z.enum(FILE_MAKE_KINDS), name: z.string().min(1).max(200).optional(), host: Host },
     readOnly: false,
     run: async (a, ctx, workspaceId) => {
       const into = await folderNamed(ctx, workspaceId, a.place, a.path, a.host)
@@ -801,7 +801,7 @@ export const filesTools: WorkTool[] = [
     input: {
       place: Place,
       paths: z.array(PathIn.min(1)).min(1).max(100).describe('What to move, each a path inside `place`.'),
-      to: z.object({ place: Place, path: PathIn.default('') }).optional().describe('The folder to move them into.'),
+      to: z.object({ place: Place, path: PathIn.default('') }).optional().describe('The folder to move them into: its place and its path there, empty for the top. Leave it out for a rename.'),
       name: z.string().min(1).max(500).optional().describe('A new name, for a rename of one thing in its own folder.'),
       host: Host
     },
@@ -823,7 +823,7 @@ export const filesTools: WorkTool[] = [
   tool({
     name: 'files_copy',
     description: `Copies files or folders into a folder; a name already there gets the next free one ("notes 2.txt"). ${HELD_RULE}`,
-    input: { place: Place, paths: z.array(PathIn.min(1)).min(1).max(100), to: z.object({ place: Place, path: PathIn.default('') }), host: Host },
+    input: { place: Place, paths: z.array(PathIn.min(1)).min(1).max(100).describe('What to copy, each a path inside `place`.'), to: z.object({ place: Place, path: PathIn.default('') }).describe('The folder to copy into: its place and its path there, empty for the top.'), host: Host },
     readOnly: false,
     run: async (a, ctx, workspaceId) => {
       const named = await placeNamed(ctx, workspaceId, a.place, a.host)
@@ -834,7 +834,7 @@ export const filesTools: WorkTool[] = [
   tool({
     name: 'files_trash',
     description: "Deletes files or folders. In the workspace's own folder they go to Trash at once, where the owner can put them back for 30 days. In a place others can open (Teams, OneDrive) nothing is deleted: the delete is held for the owner's press, which sends them to that computer's own bin.",
-    input: { place: Place, paths: z.array(PathIn.min(1)).min(1).max(100), host: Host },
+    input: { place: Place, paths: z.array(PathIn.min(1)).min(1).max(100).describe('What to delete, each a path inside `place`.'), host: Host },
     readOnly: false,
     run: async (a, ctx, workspaceId) => {
       const named = await placeNamed(ctx, workspaceId, a.place, a.host)
@@ -844,7 +844,7 @@ export const filesTools: WorkTool[] = [
   tool({
     name: 'files_undo',
     description: "Undoes a change a files_* tool made in the owner's own place, by the `op` its answer named: a move goes back, a rename back, a made file or copy to Trash, a file put in Trash back. A file that changed since is left as it is.",
-    input: { op: z.string().min(8).max(100) },
+    input: { op: z.string().min(8).max(100).describe('The `op` a completed change in his own place answered.') },
     readOnly: false,
     run: (a, ctx, workspaceId) => undo(ctx, workspaceId, a.op)
   })

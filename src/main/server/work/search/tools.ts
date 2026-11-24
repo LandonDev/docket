@@ -92,7 +92,7 @@ export function searchTools(own: () => readonly SearchSource[], modules: readonl
     {
       name: 'work_search',
       description:
-        "Find anything in this thread's job by words: people, mail, chat messages, tasks, events, files (by name), documents, projects and Work threads. In a Work Chat it reads every job. Read-only. A LifeOS row is named as table:id for the LifeOS tools; a thread by its id.",
+        "Start here to find anything in this thread's job by words: people, mail, chat messages, tasks, events, files (by name), documents, projects and Work threads. Matches come grouped by kind, and the answer names any source it could not search. For files in one place use files_search; for document text and filters use doc_find. In a Work Chat it reads every job. Read-only. A LifeOS row is named as table:id for the LifeOS tools; a thread by its id.",
       input: z.object({
         query: z.string().min(1).max(200).describe('The words to look for.'),
         kinds: z.array(z.string().max(40)).max(20).optional().describe(`Only these kinds: ${SEARCH_ORDER.join(', ')}.`),

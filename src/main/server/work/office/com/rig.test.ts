@@ -161,7 +161,7 @@ describe.skipIf(!RIG)('tc-office.exe over the recorded COM surface (the rig)', (
     })
 
     it("waits an agent's own idea on a shared workbook as suggestions, and writes a block with formulas", async () => {
-      expect(text(await run('office_range_write', { workbook: SHARED, range: 'Sheet1!B1', values: [[120]], because: 'own' }))).toContain('1 cell waits as suggestions')
+      expect(text(await run('office_range_write', { workbook: SHARED, range: 'Sheet1!B1', values: [[120]], because: 'own' }))).toContain('Suggested in the workbook: 1 cell')
       expect((await carrier.readRange(SHARED, 'Sheet1', 'B1')).values).toEqual([[100]])
       expect(suggestions.open(excelStore(SHARED))).toMatchObject([{ sheet: 'Sheet1', row: 0, col: 1, base: { v: 100 }, proposed: { v: 120 } }])
 
@@ -262,7 +262,7 @@ describe.skipIf(!RIG)('tc-office.exe over the recorded COM surface (the rig)', (
   describe('Word and PowerPoint', () => {
     it("keeps an agent's own idea for a shared document out of Word until his press, edits his own directly, and the press writes it plainly", async () => {
       // the owner's ruling of 2026-11-23: no tracked change for co-authors; the change waits on this host
-      expect(text(await run('office_doc_edit', { document: BRIEF, find: 'one', replace: 'two', because: 'own' }))).toContain('nobody else sees it')
+      expect(text(await run('office_doc_edit', { document: BRIEF, find: 'one', replace: 'two', because: 'own' }))).toContain('Nobody else sees it')
       await run('office_doc_edit', { document: NOTES, insert: ' More.', at: 'end', because: 'own' })
       let docs = (await state()).docs
       expect(docs[0]).toEqual({ key: BRIEF, text: 'Draft one.\rSecond one.\r', tracked: [] })
@@ -312,7 +312,7 @@ describe.skipIf(!RIG)('tc-office.exe over the recorded COM surface (the rig)', (
         ['office_calendar_create', { account: 'owner@purdue.edu', subject: 'Review', start: '2026-11-20T15:00:00Z', end: '2026-11-20T15:30:00Z', attendees: ['dana@example.com'] }],
         ['office_calendar_answer', { id: 'ev-9', subject: 'Standup', answer: 'accept' }]
       ]
-      for (const [name, args] of SENDS) expect(text(await run(name, args))).toMatch(/^Held for the owner/)
+      for (const [name, args] of SENDS) expect(text(await run(name, args))).toMatch(/^Held( as item \d+)?: .* Nothing was sent/)
       expect(held.map((h) => h.kind)).toEqual(['office.mail.send', 'office.mail.send', 'office.mail.send', 'office.calendar.op', 'office.calendar.op'])
       expect(held[1].payload).toMatchObject({ to: ['dana@example.com'] })
       const s = await state()
@@ -339,7 +339,7 @@ describe.skipIf(!RIG)('tc-office.exe over the recorded COM surface (the rig)', (
 
       it("holds a reply for the sender, and sends it there, never to the mail's Reply-To", async () => {
         await seed({ mail: [...SEED.mail, SIGNUPS] })
-        expect(text(await run('office_mail_send', { to: [], subject: 'Re: Signups', html: '<p>In</p>', replyTo: '44' }))).toMatch(/^Held for the owner/)
+        expect(text(await run('office_mail_send', { to: [], subject: 'Re: Signups', html: '<p>In</p>', replyTo: '44' }))).toMatch(/^Held( as item \d+)?: .* Nothing was sent/)
         expect(held[0].payload).toMatchObject({ to: ['kim@example.com'] })
         await mail().execute(OfficeMailSchema.parse(held[0].payload), actCtx)
         const { sent } = await state()

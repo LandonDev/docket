@@ -137,7 +137,7 @@ describe('messages_draft_reply', () => {
     t.chats.fire()
     await settle()
     const answer = await tool('messages_draft_reply', { chat: 'c-clips', text: 'Clip 3 is the one.' })
-    expect(out(answer)).toBe('Saved as a draft in the conversation: nothing can send to Discord from here, the owner will copy it.')
+    expect(out(answer)).toBe('Saved as a draft in the conversation. Nothing was sent: nothing here can send to Discord. Tell the owner the draft waits there for him to copy into Discord.')
     expect(await t.rig.waiting()).toEqual([])
     expect(t.chats.calls.map((c) => c.fn)).not.toContain('chats:reply')
     expect(await t.rig.rpc('work.messages.drafts', { workspaceId: 'ws-cosmic', chatId: 'c-clips' }, readKey)).toEqual({

@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import type { SectorKey } from './ids'
+import { HIS_ZONE } from './tools'
 
 /**
  * The chat beside the mail (docs/agents/work-mail.md "The chat beside the mail"): its names and the rules the
@@ -66,6 +67,8 @@ export const MAIL_CHAT = { on: true }
 export const mailChatWithheld = (sector: SectorKey | null | undefined): boolean => !MAIL_CHAT.on || (sector != null && MAIL_CHAT_WITHHELD.includes(sector))
 
 const id = z.string().min(1).max(64)
+const AT_HIS = `ISO 8601; no offset: his zone (${HIS_ZONE}).`
+const THREAD = id.optional().describe('Its mail thread.')
 const words = (n: number) => z.string().trim().min(1).max(n)
 
 /** The acts a rows card proposes; each runs as Mail's own bulk act on his press. */
@@ -74,25 +77,25 @@ export type MailRowAct = (typeof MAIL_ROW_ACTS)[number]
 
 /** `mail_offer`'s input: one card. The host checks every id before it answers. */
 export const MailOfferSchema = z.union([
-  z.object({ draft: z.object({ draftId: id }).strict() }).strict(),
-  z.object({ rewrite: z.object({ draftId: id }).strict() }).strict(),
+  z.object({ draft: z.object({ draftId: id.describe('From your draft_mail.') }).strict() }).strict(),
+  z.object({ rewrite: z.object({ draftId: id.describe('From your update_mail_draft.') }).strict() }).strict(),
   z
     .object({
       rows: z
         .object({
           act: z.enum(MAIL_ROW_ACTS),
           title: words(200),
-          threadIds: z.array(id).min(1).max(50),
-          snoozeUntil: z.string().max(40).optional()
+          threadIds: z.array(id).min(1).max(50).describe('Mail thread ids.'),
+          snoozeUntil: z.string().max(40).optional().describe(AT_HIS)
         })
         .strict()
     })
     .strict(),
-  z.object({ task: z.object({ title: words(500), due: z.string().max(40).optional(), notes: z.string().max(4_000).optional(), threadId: id.optional() }).strict() }).strict(),
+  z.object({ task: z.object({ title: words(500), due: z.string().max(40).optional().describe(AT_HIS), notes: z.string().max(4_000).optional(), threadId: THREAD }).strict() }).strict(),
   z
     .object({
       event: z
-        .object({ title: words(500), start: z.string().min(1).max(40), end: z.string().max(40).optional(), where: z.string().max(500).optional(), threadId: id.optional() })
+        .object({ title: words(500), start: z.string().min(1).max(40).describe(AT_HIS), end: z.string().max(40).optional().describe(AT_HIS), where: z.string().max(500).optional(), threadId: THREAD })
         .strict()
     })
     .strict()

@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { heldChange } from '../outbox/words'
+import { heldChange, heldReceipt, suggestedIn } from '../outbox/words'
 import { agentPrincipal, workText, type CanvasItem, type WorkToolResult } from '@shared/work'
 import { errorText } from '@shared/work/ids'
 import type { SheetCell } from 'work-kit/sheet/source'
@@ -32,7 +32,7 @@ function itemOf(ctx: ToolCtx, id: string, mime: string, what: string): CanvasIte
   return item as CanvasItem & { source: GoogleSource }
 }
 
-const Item = z.string().max(200).describe('The canvas item: a Google file open in this thread.')
+const Item = z.string().max(200).describe("The canvas item id of a Google file open in this thread (from canvas_open), not Google's file id.")
 
 const tool = <S extends z.ZodRawShape>(t: { name: string; description: string; input: S; readOnly: boolean; run(a: z.infer<z.ZodObject<S>>, ctx: ToolCtx): Promise<WorkToolResult> }): WorkTool => ({
   name: t.name,
@@ -122,7 +122,7 @@ export const GOOGLE_TOOLS: WorkTool[] = [
       })
       if (!cells.length) return fail('Name at least one cell.')
       const got = await suggest(ctx, { ...ref, name: item.title }, agentPrincipal(ctx.host, ctx.sessionId), a.reason, cells)
-      return workText(`Suggested ${got.count} ${got.count === 1 ? 'cell' : 'cells'} in ${item.title}; they wait in the grid for the owner.`)
+      return workText(`${suggestedIn('sheet', `${got.count} ${got.count === 1 ? 'cell' : 'cells'} in ${item.title}`)} Nothing went to Google.`)
     }
   }),
   tool({
@@ -155,19 +155,28 @@ export const GOOGLE_TOOLS: WorkTool[] = [
   }),
   tool({
     name: 'google_share',
-    description: "Asks to let someone into a Google file open in the canvas, as `reader`, `commenter` or `writer`. It waits in the Outbox for the owner's press; nothing changes in Google before it.",
-    input: { item: Item, email: z.string().max(320), role: z.enum(['reader', 'commenter', 'writer']), notify: z.boolean().default(true) },
+    description: "Asks to let someone into a Google file open in the canvas, as `reader`, `commenter` or `writer`. It waits in the Outbox for the owner's press; nothing changes in Google before it. For a LifeOS document, sheet or project, use guest_link.",
+    input: {
+      item: Item,
+      email: z.string().max(320).describe('Who to let in, by Google address.'),
+      role: z.enum(['reader', 'commenter', 'writer']),
+      notify: z.boolean().default(true).describe("Send Google's notice when the owner approves.")
+    },
     readOnly: false,
     async run(a, ctx) {
       const item = itemOf(ctx, a.item, '', 'file')
       const held = ctx.held.create({ kind: 'share.google', sessionId: ctx.sessionId, account: item.source.account, payload: { account: item.source.account, fileId: item.source.fileId, name: item.title, email: a.email, role: a.role, notify: a.notify } })
-      return workText(held.state === 'held' ? `Held for the owner: ${held.summary}` : `${held.summary}.`)
+      return workText(heldReceipt(held, 'Nothing was shared.'))
     }
   }),
   tool({
     name: 'google_unshare',
-    description: 'Takes someone back out of a Google file: the way back of a share the owner allowed this thread.',
-    input: { account: z.string().max(320), fileId: z.string().max(200), permissionId: z.string().max(200) },
+    description: "Takes someone back out of a Google file: the way back of a share the owner approved for this thread. Give the three ids the share's result or Outbox row names.",
+    input: {
+      account: z.string().max(320).describe('The Google account the file is in.'),
+      fileId: z.string().max(200).describe("Google's id of the file."),
+      permissionId: z.string().max(200).describe("Google's id of that person's access.")
+    },
     readOnly: false,
     async run(a, ctx) {
       // Only a share his press let through for this thread's tree: never anyone else's access.
@@ -177,7 +186,7 @@ export const GOOGLE_TOOLS: WorkTool[] = [
       if (!row?.session_id || ctx.canvas.paneOf(row.session_id) !== ctx.canvas.paneOf(ctx.sessionId)) return fail('That share was not made for this thread.')
       await googleOf(ctx).api(a.account).unshare(a.fileId, a.permissionId)
       ctx.db.prepare('DELETE FROM work_google_shares WHERE account = ? AND file_id = ? AND permission_id = ?').run(a.account.toLowerCase(), a.fileId, a.permissionId)
-      return workText('They no longer have access.')
+      return workText('They no longer have access to the file in Google.')
     }
   })
 ]

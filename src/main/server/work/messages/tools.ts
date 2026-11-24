@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import { errorText, workText, type SectorKey, type WorkScope } from '@shared/work'
+import { heldReceipt } from '../outbox/words'
 import { AGENT_CHAT_SECTORS, CHAT_REPLY_MAX, CHAT_ROUTES, fileMarkers, firstWords, SOURCE_NAME, type ChatHit, type ChatMessage, type ChatRow } from '@shared/work/messages'
 import type { ToolCtx, WorkTool } from '../modules'
 import { ChatReplySchema, pinnedReplyTo } from './held'
@@ -107,7 +108,7 @@ const draftHome = (ctx: ToolCtx, sector: SectorKey): string | null => ctx.scope.
 export const draftTool: WorkTool = {
   name: 'messages_draft_reply',
   description:
-    "Answer a conversation of this job's chat. The reply is held: nothing is sent until the owner presses Send. Where nothing here can send (Discord, Teams) it is kept as a draft in the conversation for him to copy. Never send chat any other way.",
+    "Answer a conversation of this job's chat. A Slack or iMessage reply waits in the owner's Outbox; nothing is sent until he presses Send. A Discord or Teams reply is kept as a draft in the conversation for him to copy (for Teams, teams_reply can post, where this thread has it). Never send chat any other way.",
   input: DraftInput,
   readOnly: false,
   async run(args, ctx) {
@@ -134,13 +135,13 @@ export const draftTool: WorkTool = {
       }
       const payload = ChatReplySchema.parse({ chatId: got.chat._id, ...(replyTo ? { replyTo } : {}), source, chat: got.chat.name, text })
       const item = ctx.held.create({ kind: 'chat.reply', sessionId: ctx.sessionId, payload })
-      return workText(`Held: ${item.summary}. It waits for the owner's press; nothing is sent until then. This is a finished step, not a failure: carry on.`)
+      return workText(heldReceipt(item))
     }
     const workspaceId = draftHome(ctx, sector)
     if (!workspaceId) return failed(`Nothing can send to ${SOURCE_NAME[source]} from here, and this job has no workspace on this host to keep a draft in. Give him the text in your reply.`)
     saveDraft(ctx, { workspaceId, chatId: got.chat._id, sessionId: ctx.sessionId, text })
     await pushDrafts(ctx, workspaceId, watchOf(ctx)?.unreadOf(workspaceId))
-    return workText(`Saved as a draft in the conversation: nothing can send to ${SOURCE_NAME[source]} from here, the owner will copy it.`)
+    return workText(`Saved as a draft in the conversation. Nothing was sent: nothing here can send to ${SOURCE_NAME[source]}. Tell the owner the draft waits there for him to copy into ${SOURCE_NAME[source]}.`)
   }
 }
 

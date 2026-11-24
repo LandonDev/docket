@@ -131,7 +131,7 @@ export function healthText(hosts: readonly HostHealth[], sector: SectorKey | nul
       continue
     }
     if ('error' in host) {
-      out.push(`${host.name}: did not answer: ${oneLine(host.error)}`)
+      out.push(`${host.name}: did not answer the check (${oneLine(host.error)}), so its connections are unknown, not broken. The owner can see that host in Settings → Hosts; try again later.`)
       continue
     }
     const rows = rowsForSector(host.report.rows, sector).sort((a, b) => HEALTH_ORDER[a.state] - HEALTH_ORDER[b.state])

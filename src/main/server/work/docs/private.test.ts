@@ -331,7 +331,7 @@ describe("the document kept for a Word file of another computer", () => {
     const wrote = await r.tool('doc_write', { file: source.path, markdown: AFTER, because: 'own' })
     expect(wrote.text).toMatch(/others share this document/)
     const formatted = await r.tool('doc_format', { file: source.path, on: { quote: 'Shadow the front desk' }, run: { bold: true }, because: 'own' })
-    expect(formatted.text).toMatch(/^Suggested formatting/)
+    expect(formatted.text).toMatch(/^Suggested in the document: formatting/)
     expect(await r.text(source.path)).not.toContain(SUGGESTED)
     await autosave(r)
     // His own edit goes by itself; what the agent suggested stays out of it.
