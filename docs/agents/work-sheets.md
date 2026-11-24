@@ -1506,8 +1506,9 @@ owner's alone, unmodified, a separate server (architecture §12.1). Code in
   it in a window of its own (src/main/fullEditorWindow.ts), not the system
   browser, where ONLYOFFICE's code would share the 127.0.0.1 cookie jar with
   every loopback server of his: an in-memory session that goes with the
-  window, sandboxed, no preload, no permission but writing the clipboard, kept
-  on its origin (a link elsewhere opens in the browser). The carrier passes only the paths under that token,
+  window, sandboxed, no preload, no permission but writing the clipboard, and
+  nothing it loads, frames, opens or links to leaves its loopback origin (the
+  session cancels every other request; a link elsewhere does nothing). The carrier passes only the paths under that token,
   WebSocket upgrades included, and names its loopback origin in
   `x-tempcode-carry` on each; the route then gives the docservice that origin
   as `X-Forwarded-Host`, so the editor's own links come back through the
@@ -1523,7 +1524,7 @@ owner's alone, unmodified, a separate server (architecture §12.1). Code in
   `127.0.0.1:<port>` (no other name that resolves there), refuses dot
   segments, escaped slashes and backslashes in a path, takes a socket or a
   write only from its own origin (a socket must name it), passes a socket's
-  answer only once it is a 101 and drops its cookies, sends the box no
+  answer only once it is a 101 (within 15 seconds) and drops its cookies, sends the box no
   cookie or credential
   (a cookie of 127.0.0.1 is any loopback server's), keeps a redirect to the
   box on its own origin and drops one anywhere else, and passes on no

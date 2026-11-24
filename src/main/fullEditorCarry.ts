@@ -92,6 +92,9 @@ export const ownOrigin = (origin: string | undefined, own: string): boolean => o
 /** A request named for the carrier's own address: another name that resolves here (DNS rebinding) is not served. */
 export const ownHost = (host: string | undefined, port: number): boolean => host === `127.0.0.1:${port}`
 
+/** The longest the box may take to answer a socket's switch. */
+export const HANDSHAKE_MS = 15_000
+
 /** An idle carrier closes: the box lets an open go after fifteen minutes unloaded, and the page itself keeps a socket open. */
 export const CARRY_IDLE_MS = 30 * 60_000
 
@@ -171,6 +174,10 @@ async function start(target: { upstream: URL; base: string }, opts: { idleMs?: n
     socket.on('close', () => c.sockets.delete(socket))
     up.on('error', () => socket.destroy())
     socket.on('error', () => up.destroy())
+    // Either side gone ends the other; a switch the box has not answered in its time ends both.
+    up.on('close', () => socket.destroy())
+    socket.on('close', () => up.destroy())
+    const late = setTimeout(() => (up.destroy(), socket.destroy()), HANDSHAKE_MS)
     up.once(secure ? 'secureConnect' : 'connect', () => {
       const lines = [`${req.method ?? 'GET'} ${req.url} HTTP/1.1`]
       for (const [k, v] of Object.entries(upstreamHeaders(req.headers, upstream, origin(), true))) for (const one of Array.isArray(v) ? v : [v]) lines.push(`${k}: ${one}`)
@@ -183,6 +190,7 @@ async function start(target: { upstream: URL; base: string }, opts: { idleMs?: n
         const end = got.indexOf('\r\n\r\n')
         if (end < 0) return void (got.length > 16_384 && (up.destroy(), socket.destroy()))
         up.off('data', onHead)
+        clearTimeout(late)
         const answer = handshake(got.subarray(0, end).toString('latin1'))
         if (!answer) return void (up.destroy(), socket.end('HTTP/1.1 502 Bad Gateway\r\nConnection: close\r\n\r\n'))
         socket.write(`${answer}\r\n\r\n`)
