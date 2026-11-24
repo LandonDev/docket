@@ -5,12 +5,22 @@ import { setWorkOn } from "../../lib/workSwitch";
 import { DIGEST_BODY, DIGEST_WIDTH, DigestList } from "./DigestSheet";
 import { mergeDays, mergeRows, resetDigestStore, seedDigestHost } from "./store";
 import { SettingsSection } from "./SettingsSection";
+import { useEffect, useState } from "react";
+import { loadToast, Toaster } from "../../components/ui/toaster";
+import { digestNotice, nowToasts } from "./notice";
+import { Unsettled } from "../kit.preview";
+
+// The toast stack rides its own chunk: landed before the first render.
+await loadToast();
 
 /**
  * The digest's surfaces, still, for `bun run ui:preview
  * src/renderer/src/work/digest/Digest.preview.tsx#DigestSheetPreview --props
  * '{"state":"full"}'` (also `empty`, `hostDown`, `loading`) and
- * `#DigestSettingsPreview` (`default`, `changed`, `failed`, `loading`).
+ * `#DigestSettingsPreview` (`default`, `changed`, `failed`, `loading`), and
+ * `#DigestToastsPreview`: the two toasts, the digest's for the days he has not
+ * opened and an interrupt for a thing that cannot wait, stacked as they come
+ * (`only` draws one of them alone; `fold` shows four interrupts as one).
  * The sheet's own box and head are drawn around the real list, since a
  * sheet draws in a portal a static page cannot hold. Made-up rows; rendered
  * by nothing in the app.
@@ -94,6 +104,36 @@ export function DigestSettingsPreview({ state = "default" }: { state?: SettingsS
   return (
     <div className="@container/page w-[624px]">
       <SettingsSection />
+    </div>
+  );
+}
+
+/**
+ * The digest's two toasts in the one toast stack, as DigestHost shows them: the same calls (an interrupt is a
+ * warning with its detail, the digest a plain toast with its line, each closable with Open) and the words its rules
+ * make from the rows (`nowToasts`, `digestNotice`). The stack is drawn in a box that holds its fixed place.
+ */
+export function DigestToastsPreview({ fold = false, only }: { fold?: boolean; only?: "digest" | "now" }) {
+  // sonner writes its own stylesheet into the document's head, which a static page does not keep: a copy rides here.
+  const [sonnerCss, setSonnerCss] = useState("");
+  useEffect(() => {
+    const t = setTimeout(() => setSonnerCss([...document.head.querySelectorAll("style")].map((el) => el.textContent ?? "").filter((css) => css.includes("data-sonner-toaster")).join("\n")), 20);
+    return () => clearTimeout(t);
+  }, []);
+  useEffect(() => {
+    const interrupts = ROWS.filter((r) => r.how === "now");
+    const now = nowToasts(fold ? [...interrupts, ...[1, 2, 3].map((i) => ({ ...interrupts[0]!, id: `n${i}`, key: `k${i}`, title: `Interrupt ${i}` }))] : interrupts);
+    const notice = digestNotice({ days: [{ day: "2026-11-24", madeAt: at(24, 8), seenAt: null, hosts: ["box"] }], rows: ROWS });
+    void loadToast().then((toast) => {
+      if (only !== "digest") for (const t of now) toast.warning(t.title, { id: t.id, description: t.detail, duration: Infinity, closeButton: true, action: { label: "Open", onClick: () => {} } });
+      if (notice && only !== "now") toast(notice.line, { id: "work-digest", duration: Infinity, closeButton: true, action: { label: "Open", onClick: () => {} } });
+    });
+  }, [fold, only]);
+  return (
+    <div className="relative w-full overflow-hidden rounded-lg border border-border bg-background" style={{ maxWidth: 720, height: 320, transform: "translateZ(0)" }}>
+      <style>{sonnerCss}</style>
+      <Toaster />
+      <Unsettled />
     </div>
   );
 }

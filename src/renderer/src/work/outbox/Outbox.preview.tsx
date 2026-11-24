@@ -1,7 +1,9 @@
-import type { GrantOffer, OutboxItem } from "@shared/contract-work-outbox";
+import type { GrantOffer, OutboxGrant, OutboxItem } from "@shared/contract-work-outbox";
 import { registry, type Link } from "../../lib/connection";
 import { workspaceStore } from "../../lib/tcserver/workspaces";
 import { setWorkOn } from "../../lib/workSwitch";
+import { ACT_VIEWS } from "../acts/registry";
+import { asGivenComputer, OverFrame, usePressNamed } from "../kit.preview";
 import { OutboxView, rememberOutboxTab } from "./OutboxView";
 import { resetOutboxStore } from "./store";
 
@@ -12,7 +14,10 @@ import { resetOutboxStore } from "./store";
  * its foot (`offer`), the same mail with none (`plain`), Waiting with an
  * agent's changes to shared files held for his press (`edits`), and Sent with
  * mail LifeOS has not yet said went (`queued`: queued twelve minutes on, sent,
- * back in drafts). Rendered by nothing in the app.
+ * back in drafts). Also: `empty` (nothing waits), `failed` (Waiting with a send that failed, its reason in
+ * the row and the detail), `grants` (the grants sheet over Sent), `kinds` (Waiting with a held item of six kinds; `pick` 0 is the
+ * mail, 5 a payload that could not be read) and `given` (Sent from a computer whose key may not grant).
+ * Rendered by nothing in the app.
  */
 
 const WS = { id: "ws", name: "Purdue Esports", path: "/home/work/Purdue Esports", kind: "work", sector: "purdue", createdAt: 1 };
@@ -123,10 +128,33 @@ const sentList = (): OutboxItem[] => (state === "queued" ? SENT.map((item, i) =>
 
 const OFFER: GrantOffer = { id: "go_1", workspaceId: "ws", kind: "mail.send", label: "Mail to dana.lee@purdue.edu from landon@purdue.edu", routineId: null, from: SENT[0]!.ref, count: 5, createdAt: at(20, 9, 41) };
 
-type State = "offer" | "plain" | "edits" | "queued";
+/** A send that failed, with the reason the host gave. */
+const FAILED: OutboxItem = { ...sent(6, "Re: Ballroom deposit", "Hi Dana,\n\nThe deposit form is attached.\n\nLandon", at(20, 11, 2)), state: "failed", error: "LifeOS refused the send: the attachment is over 25 MB", result: null };
+
+/** One held item of each of six kinds, as the Waiting list shows them; the last one's payload is not one its kind reads. */
+const held = (n: number, kind: OutboxItem["kind"], summary: string, verb: string, payload: unknown, minutes: number): OutboxItem => ({ ...sent(n, "", "", at(20, 10, minutes)), kind, summary, verb, state: "held", payload, decidedBy: null, decidedAt: null, why: "pillar", result: null });
+const KINDS: OutboxItem[] = [
+  { ...SENT[0]!, state: "held", decidedBy: null, decidedAt: null, result: null, n: 21, createdAt: at(20, 10, 50) },
+  held(22, "calendar.op", "Add Spring LAN walkthrough on Fri, Nov 27 at 1:00 PM", "Add", { op: "add", title: "Spring LAN walkthrough", startsAt: at(27, 13), endsAt: at(27, 14) }, 44),
+  held(23, "chat.reply", "Reply to Sam Ortiz in Teams: Thursday at 7 works for varsity", "Reply", { chatId: "c1", text: "Thursday at 7 works for varsity." }, 38),
+  held(24, "file.act", "Move Risk assessment.docx to Esports Staff › Events", "Move", { verb: "move", name: "Risk assessment.docx" }, 31),
+  held(25, "share.guestLink", "Share Spring LAN run of show with Maya Chen to comment", "Share", { name: "Maya Chen", role: "comment" }, 20),
+  held(26, "teams.post", "Post in Esports Staff › General: the bus leaves at 6:30 AM", "Post", "not a payload", 12),
+];
+const GRANTS: OutboxGrant[] = [
+  { id: "g1", workspaceId: "ws", kind: "mail.send", matcher: {}, label: "Mail to dana.lee@purdue.edu from landon@purdue.edu", madeFrom: SENT[0]!.ref, routineId: null, createdAt: at(12, 9), removedAt: null },
+  { id: "g2", workspaceId: "ws", kind: "calendar.op", matcher: {}, label: "Changes to events on the Esports calendar", madeFrom: SENT[1]!.ref, routineId: "r1", createdAt: at(15, 16), removedAt: null },
+];
+
+type State = "offer" | "plain" | "edits" | "queued" | "empty" | "failed" | "grants" | "kinds" | "given";
+
+// Each kind draws its act in a chunk of its own: landed before the first render, as a warm window draws them.
+await Promise.all(Object.values(ACT_VIEWS).map((view) => view.chunk?.load()));
 let state: State = "offer";
 /** Which held change shows in the detail (the oldest waiting item is the one selected): 0 a Word replace, 1 a deck's two changes, 2 a Word insert, 3 a Doc's replace. */
 let pick = 0;
+/** The oldest waiting item is the one selected: the picked kind is made the oldest. */
+const pickedKinds = (): OutboxItem[] => KINDS.map((k, i) => (i === pick ? { ...k, createdAt: at(20, 8) } : k));
 const waitingEdits = (): OutboxItem[] => EDITS.map((e, i) => (i === pick ? { ...e, createdAt: at(20, 8) } : e));
 let ready = false;
 
@@ -137,16 +165,18 @@ const answers = (method: string, params: { show?: string } = {}): unknown => {
     case "project.list":
       return [];
     case "work.outbox.list":
-      if (params.show === "decided") return { items: sentList() };
+      if (params.show === "decided") return { items: state === "empty" ? [] : sentList() };
+      if (state === "kinds") return { items: pickedKinds(), waiting: KINDS.length };
+      if (state === "failed") return { items: [FAILED], waiting: 1 };
       return state === "edits" ? { items: waitingEdits(), waiting: EDITS.length } : { items: [], waiting: 0 };
     case "work.outbox.grants":
-      return { grants: [] };
+      return { grants: state === "grants" ? GRANTS : [] };
     case "work.outbox.offers":
-      return { offers: state === "offer" ? [OFFER] : [] };
+      return { offers: state === "offer" || state === "given" ? [OFFER] : [] };
     case "work.outbox.results":
       return { results: [] };
     case "work.outbox.get":
-      return state === "edits" ? waitingEdits()[pick] : sentList()[pick];
+      return state === "failed" ? FAILED : state === "kinds" ? pickedKinds()[pick] : state === "edits" ? waitingEdits()[pick] : sentList()[pick];
   }
   throw new Error(`no ${method}`);
 };
@@ -177,11 +207,16 @@ export function OutboxPreview({ state: s = "offer", pick: p = 0 }: { state?: Sta
     pick = p;
     resetOutboxStore();
     setWorkOn("local", true);
-    rememberOutboxTab(s === "edits" ? "waiting" : "sent");
+    if (s === "given") asGivenComputer({ on: ["local"] });
+    rememberOutboxTab(s === "edits" || s === "kinds" || s === "empty" || s === "failed" ? "waiting" : "sent");
   }
+  // Grants is the header's own press.
+  usePressNamed(s === "grants" ? "Grants" : null, 80);
   return (
-    <div className="flex h-[640px] w-full">
-      <OutboxView besideRail onClose={() => {}} />
-    </div>
+    <OverFrame maxWidth={1100} height={640}>
+      <div className="flex h-full w-full">
+        <OutboxView besideRail onClose={() => {}} />
+      </div>
+    </OverFrame>
   );
 }

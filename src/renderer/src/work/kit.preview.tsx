@@ -1,7 +1,7 @@
 // What preview pages share to draw a state a static render cannot reach by props alone: a dialog or menu drawn in a
 // portal, a control pressed as his click would, words typed into a field, and a host that answers from fixtures.
 // Rendered by nothing in the app; imported only by *.preview.tsx files.
-import { useEffect, useRef, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import type { CanvasItem, CanvasKind, SectorKey } from "@shared/work";
 import { defineChunk } from "../lib/lazyChunk";
 import { CanvasSeat } from "./canvas/CanvasSeat";
@@ -15,6 +15,10 @@ import { setWorkOn } from "../lib/workSwitch";
 import { ViewFrame } from "./shell/WorkViewPage";
 import { FakeConvex, fakeSession } from "./today/fakeLifeos";
 import { WORK_VIEWS, type WorkViewId } from "./views/registry";
+
+// A static render runs in a document whose events are its own: code that makes an `Event` (the rail's order) must make
+// the document's, which the runtime's global is not.
+if (typeof window !== "undefined" && !navigator.userAgent.includes("Chrome")) Object.assign(globalThis, { Event: window.Event, CustomEvent: window.CustomEvent });
 
 // jsdom runs no animations, and lacks the call that lists them (Base UI asks it as a popup settles).
 if (typeof Element !== "undefined" && !("getAnimations" in Element.prototype)) Object.assign(Element.prototype, { getAnimations: () => [] });
@@ -31,7 +35,7 @@ export function PortalCopy({ height, place }: { height: number; place?: { top: n
     if (!box) return;
     const copy = (): void => {
       box.replaceChildren(...[...document.body.children].filter((el) => !el.contains(box)).map((el) => el.cloneNode(true)));
-      const menu = box.querySelector<HTMLElement>("[role=menu]")?.parentElement;
+      const menu = box.querySelector<HTMLElement>("[role=menu], [data-slot=popover-content]")?.parentElement;
       if (menu && place) menu.setAttribute("style", `position:absolute;top:${place.top}px;${place.left !== undefined ? `left:${place.left}px` : `right:${place.right ?? 0}px`};z-index:50`);
       for (const row of box.querySelectorAll("[data-highlighted]")) row.removeAttribute("data-highlighted");
       // jsdom never ends an entrance: a copy caught "starting" would be drawn half see-through.
@@ -64,6 +68,20 @@ export function OverFrame({ height, maxWidth, place, children }: { height: numbe
       <PortalCopy height={height} place={place} />
     </div>
   );
+}
+
+/**
+ * The static render reads the page once its markup holds still for 50ms: a section whose own lazy chunk is still on
+ * its way would be read as its bones. This keeps an empty mark changing for `ms`, so such a section lands first.
+ */
+export function Unsettled({ ms = 350 }: { ms?: number }) {
+  const [tick, setTick] = useState(0);
+  useEffect(() => {
+    if (tick * 40 >= ms) return;
+    const t = setTimeout(() => setTick((n) => n + 1), 40);
+    return () => clearTimeout(t);
+  }, [tick, ms]);
+  return <span hidden data-settling={tick} />;
 }
 
 /** Presses the first element `selector` finds once the page has painted, as his click would. */
@@ -101,28 +119,37 @@ export function useTyped(selector: string | null, text: string, after = 40): voi
 }
 
 /**
- * Every link of the window as one host that answers from `answer` (a method it does not know is refused), with
- * `environmentId` as its name. Returns the link, so a store can be attached to it.
+ * Every link of the window as a host that answers from `answer` (a method it does not know is refused), told which
+ * link asked; `environmentId` names the window's primary link. Returns that link, so a store can be attached to it.
  */
-export function answerAs(answer: (method: string, params: Record<string, unknown>) => unknown, environmentId = "local"): Link {
-  const link = {
-    environmentId,
-    profile: environmentId,
-    connected: true,
-    onOpen: () => () => {},
-    onClose: () => () => {},
-    onPush: () => () => {},
-    onStatus: () => () => {},
-    request<T>(method: string, params: Record<string, unknown> = {}): Promise<T> {
-      try {
-        return Promise.resolve(answer(method, params) as T);
-      } catch (err) {
-        return Promise.reject(err);
-      }
-    },
-  } as unknown as Link;
-  Object.assign(registry, { primary: () => link, linkOf: () => link, link: () => link });
-  return link;
+export function answerAs(answer: (method: string, params: Record<string, unknown>, environmentId: string) => unknown, environmentId = "local"): Link {
+  const links = new Map<string, Link>();
+  const linkOf = (id: string): Link => {
+    let link = links.get(id);
+    if (!link)
+      links.set(
+        id,
+        (link = {
+          environmentId: id,
+          profile: id,
+          connected: true,
+          onOpen: () => () => {},
+          onClose: () => () => {},
+          onPush: () => () => {},
+          onStatus: () => () => {},
+          request<T>(method: string, params: Record<string, unknown> = {}): Promise<T> {
+            try {
+              return Promise.resolve(answer(method, params, id) as T);
+            } catch (err) {
+              return Promise.reject(err);
+            }
+          },
+        } as unknown as Link),
+      );
+    return link;
+  };
+  Object.assign(registry, { primary: () => linkOf(environmentId), linkOf, link: linkOf });
+  return linkOf(environmentId);
 }
 
 /** The made-up job every view preview stands in: Purdue Esports on this computer. */
@@ -163,20 +190,28 @@ export function ViewAt({ view, height = 640, maxWidth = 864 }: { view: WorkViewI
 }
 
 /**
- * The window as a computer the host gave a key (docs/agents/pc-setup.md: operate, approve and device, no admin), on
- * every link: the seam `linkMay` reads (the link's last hello), as lib/linkMay.testkit.ts gives a DOM test. The host
- * is named `host`, so "Changed from a computer that manages …" names it.
+ * The window as a computer the host gave a key (docs/agents/pc-setup.md: operate, approve and device, no admin): the
+ * seam `linkMay` reads (the link's last hello), as lib/linkMay.testkit.ts gives a DOM test. `on` names the links whose
+ * host gave it (every link the window has, by default); the others are the window's own socket. The links are
+ * `computers` (this computer and the box by default), so "Changed from a computer that manages …" names the host.
  */
-export function asGivenComputer(host = "The box", caps: readonly Capability[] = ["operate", "approve", "device"]): void {
+export function asGivenComputer({ on, computers = COMPUTERS, caps = ["operate", "approve", "device"] }: { on?: readonly string[]; computers?: readonly { id: string; name: string; platform: string }[]; caps?: readonly Capability[] } = {}): void {
   const statuses = new Map<string, ReturnType<typeof registry.statusOf>>();
   const statusOf = (id: string): ReturnType<typeof registry.statusOf> => {
     let status = statuses.get(id);
-    if (!status) statuses.set(id, (status = { ...REAL_STATUS(id), transport: "open", lastHello: { caps, key: { id: "laptop" } } } as ReturnType<typeof registry.statusOf>));
+    const given = !on || on.includes(id);
+    if (!status) statuses.set(id, (status = { ...REAL_STATUS(id), transport: "open", lastHello: given ? { caps, key: { id: "laptop" } } : { caps: ["read", "operate", "approve", "admin"] } } as ReturnType<typeof registry.statusOf>));
     return status;
   };
-  const all = new Map([["local", statusOf("local")]]);
-  Object.assign(registry, { statusOf, statuses: () => all, environment: (id: string) => ({ ...(REAL_ENVIRONMENT(id) ?? {}), id, name: host }) });
+  const all = new Map(computers.map((c) => [c.id, statusOf(c.id)]));
+  const list = computers.map((c) => ({ ...(REAL_ENVIRONMENT(c.id) ?? {}), ...c })) as ReturnType<typeof registry.environmentsSnapshot>;
+  Object.assign(registry, { statusOf, statuses: () => all, environmentsSnapshot: () => list, environment: (id: string) => list.find((c) => c.id === id) ?? list[0] });
 }
+/** This computer and the box, as the window lists them. */
+export const COMPUTERS = [
+  { id: "local", name: "The box", platform: "linux" },
+  { id: "mac", name: "MacBook Pro", platform: "darwin" },
+];
 const REAL_STATUS = registry.statusOf.bind(registry);
 const REAL_ENVIRONMENT = registry.environment.bind(registry);
 

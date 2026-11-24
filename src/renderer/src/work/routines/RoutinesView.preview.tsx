@@ -49,7 +49,7 @@ const ROUTINES: RoutineRow[] = [
   row({ id: "r2", name: "Sponsor mail watch", prompt: "When a sponsor writes, draft a reply and hold it.", trigger: { on: "lifeos", kinds: ["mail"], filter: { from: "sponsors" } }, words: "When mail comes from a sponsor", lastState: "quiet", lastWords: "Nothing to do", createdAt: 2 }),
   row({ id: "r3", name: "Friday week in review for Purdue Esports Club Operations", prompt: "Make the week's review.", words: "Fridays at 4:00 PM", enabled: false, lastState: "failed", lastWords: "Failed: LifeOS did not answer", createdAt: 3 }),
 ];
-const PROPOSED = row({ id: "r0", name: "Nudge unanswered vendor mail", prompt: "Each Monday, list vendor mail with no answer in five days and draft a nudge.", words: "Mondays at 9:00 AM", proposed: true, createdBy: "agent", lastAt: null, lastState: null, lastWords: null, createdAt: 0 });
+const PROPOSED = row({ id: "r0", name: "Nudge unanswered vendor mail", prompt: "Each Monday, list vendor mail with no answer in five days and draft a nudge.", words: "Mondays at 9:00 AM", proposed: true, createdBy: "model", lastAt: null, lastState: null, lastWords: null, createdAt: 0 });
 
 const run = (n: number, ago: number, state: RoutineRun["state"], summary: string, cause = "Weekdays at 7:00 AM"): RoutineRun => ({ id: `run${n}`, routineId: "r1", sessionId: state === "skipped" ? null : `s${n}`, firedAt: NOW - ago, cause, folded: 0, state, summary });
 const RUNS: RoutineRun[] = [run(1, 10 * HOUR, "held", "Held 2"), run(2, DAY + 10 * HOUR, "quiet", "Nothing to do"), run(3, 2 * DAY + 10 * HOUR, "failed", "Failed: LifeOS did not answer"), run(4, 3 * DAY + 10 * HOUR, "asked", "Asked you 1 question")];
@@ -59,7 +59,7 @@ let ready = false;
 export function RoutinesPreview({ state = "list" }: { state?: State }) {
   if (!ready) {
     ready = true;
-    if (state === "given") asGivenComputer();
+    if (state === "given") asGivenComputer({ on: ["local"] });
     const routines = state === "empty" ? [] : state === "proposed" ? [PROPOSED, ...ROUTINES] : ROUTINES;
     standUpView("routines", {}, (method) => {
       if (method === "work.routines.list") {
