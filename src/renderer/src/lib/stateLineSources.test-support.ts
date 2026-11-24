@@ -11,8 +11,14 @@ const roots = ["src/renderer/src/work", "src/main/server/work"];
 export function stateLineSources() {
   const found: { file: string; literal: string; at: string }[] = [];
   for (const file of roots.flatMap(sourcePaths)) {
-    // The starter decks and sheets are example content. Mail's scenes and Google's fake are test data.
-    if (file.includes("/templates/starters/") || file.endsWith("/mail/preview/scenes.ts") || file.endsWith("/google/fake.ts")) continue;
+    // The starter decks and sheets are example content. Mail's scenes, Google's fake and the Forms page stand-in are test data.
+    if (
+      file.includes("/templates/starters/") ||
+      file.endsWith("/mail/preview/scenes.ts") ||
+      file.endsWith("/google/fake.ts") ||
+      file.endsWith("/msforms/carrier/fakePage.ts")
+    )
+      continue;
     visitSource(sourceFile(file), (node) => {
       if (node.parent && (ts.isLiteralTypeNode(node.parent) || (ts.isPropertyAssignment(node.parent) && node.parent.name === node))) return;
       const text = ts.isTemplateExpression(node) ? node.head.text : ts.isStringLiteralLike(node) || ts.isJsxText(node) ? node.text : "";
