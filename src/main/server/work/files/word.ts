@@ -86,7 +86,8 @@ export function wordImportPlace(ctx: WorkCtx, original: string, itemId: string |
 export function wordFollowed(ctx: WorkCtx, old: CanvasItem, next: CanvasItem): void {
   const workspaceId = filesPaneWorkspace(old.sessionId)
   if (!workspaceId || next.kind !== 'document' || next.source.at !== 'file') return
-  const tab = wordTab(ctx, old.id, workspaceId)
+  // The tab may already have followed to the document (TabStore.follow hears the replace too, in either order).
+  const tab = wordTab(ctx, old.id, workspaceId) ?? wordTab(ctx, next.id, workspaceId)
   if (!tab) return
   ctx.db
     .prepare(`UPDATE work_files_word SET doc = ?, doc_at = ? WHERE workspace_id = ? AND host = ? AND path = ? AND doc IS NULL`)

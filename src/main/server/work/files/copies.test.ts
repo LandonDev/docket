@@ -590,6 +590,27 @@ describe('a Word file of another computer', () => {
   })
 })
 
+describe('a Word file opened, whichever hears the replace first', () => {
+  for (const order of ['the tab follows first', 'the record is made first'] as const) {
+    it(`names its document in the record when ${order}`, async () => {
+      // The tab store's own follow is registered when the Files state is first made.
+      if (order === 'the tab follows first') filesState(box.ctx)
+      const off = box.ctx.canvas.onReplaced((old, next) => wordFollowed(box.ctx, old, next))
+      try {
+        const opened = await openFar('Agenda.docx', 'word bytes')
+        const folder = wordImportPlace(box.ctx, opened.copy, opened.item.id)
+        const doc = join(folder!, 'Agenda.tcdoc')
+        writeFileSync(doc, '{"doc":1}')
+        box.ctx.canvas.replace(filesPaneOf(WS), opened.item.id, 'document', { at: 'file', host: HOST, path: doc }, 'Agenda')
+        expect(wordRow(box.ctx, WS, MAC, opened.path)).toMatchObject({ doc })
+        expect((await call<FilesTabs>('work.files.tabs', {})).tabs.find((t) => t.id === opened.tabId)?.word).toEqual({ since: true })
+      } finally {
+        off()
+      }
+    })
+  }
+})
+
 describe('a Word file an older build opened, its document beside the copy with his edits', () => {
   it('is adopted at start as the kept document: never deleted with its tab, opened again for the Word file', async () => {
     const opened = await openFar('Screening.docx', 'word bytes')
