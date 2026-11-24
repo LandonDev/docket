@@ -59,6 +59,9 @@ impl Desktop for Fake {
         let root = if from == Some(&"field") { field } else { root };
         Ok(RawWindow { pid, app_name: "Notepad".into(), bundle_id: Some("notepad.exe".into()), window_id: 70, title: "Untitled - Notepad".into(), frame: Rect { x: 0.0, y: 0.0, w: 800.0, h: 600.0 }, others: vec![], root, partial: false, read_ms: 1 })
     }
+    fn browser_url(&self, pid: i64, _window: Option<&WindowRef>) -> Option<String> {
+        (pid == 11).then(|| "http://localhost:7677/ui".into())
+    }
     fn clip_seq(&self) -> i64 {
         self.clip.lock().unwrap().1
     }
@@ -86,6 +89,24 @@ impl Desktop for Fake {
             _ => Err(fail(ComputerErrorKind::ActionUnsupported, "no")),
         }
     }
+}
+
+#[test]
+fn native_checks_the_browser_address_again_before_reads_and_steps() {
+    let mut w = Wire::start(Fake::default());
+    init(&mut w);
+    w.ok("session.open", json!({ "session": "test" }));
+    let target = json!({ "session": "test", "app": { "pid": 11 } });
+    assert_eq!(w.ok("browser.target", target.clone()), json!({ "browser": true, "url": "http://localhost:7677/ui" }));
+
+    let mut changed = target;
+    changed["browserUrl"] = json!("https://ordinary.test/");
+    assert_eq!(w.kind("state.get", changed.clone()), "browser_refused");
+    changed["action"] = json!({ "action": "key", "text": "Enter" });
+    changed["tiers"] = json!(["process"]);
+    let result = w.ok("action.run", changed);
+    assert_eq!(result["step"]["error"]["kind"], "browser_refused");
+    assert_eq!(result["observationError"]["kind"], "browser_refused");
 }
 
 #[test]

@@ -181,6 +181,8 @@ describe('ComputerConnection', () => {
     expect(lines.some((l) => / → \{"jsonrpc":"2\.0","id":\d+,"method":"permissions\.get"/.test(l))).toBe(true)
     expect(lines.some((l) => / ← \{"jsonrpc":"2\.0","id":\d+,"result"/.test(l))).toBe(true)
     expect(traceFrame(JSON.stringify({ params: { data: 'A'.repeat(4_000) } }))).toBe('{"params":{"data":"<base64 3000 bytes>"}}')
+    expect(traceFrame(JSON.stringify({ params: { browserUrl: 'https://example.test/?ticket=private' } }))).toBe('{"params":{"browserUrl":"<browser address>"}}')
+    expect(traceFrame(JSON.stringify({ result: { browser: true, url: 'https://example.test/?ticket=private' } }))).toBe('{"result":{"browser":true,"url":"<browser address>"}}')
     const long = traceFrame(JSON.stringify({ text: 'x'.repeat(3_000) }))
     expect(long).toMatch(/…\(\+\d+\)$/)
     expect(long.length).toBeLessThan(2_020)

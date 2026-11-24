@@ -1,0 +1,12 @@
+{
+  "jsonrpc": "2.0",
+  "id": 61,
+  "error": {
+    "code": -32000,
+    "message": "refused: TempCode pages are off limits to computer tools.",
+    "data": {
+      "kind": "browser_refused",
+      "message": "refused: TempCode pages are off limits to computer tools."
+    }
+  }
+}

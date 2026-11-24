@@ -6,6 +6,10 @@ import { spawnLowered } from '../../../childPriority'
 import { BoxXDisplay, DISPLAY_SCALE, PAGE_HEIGHT, PAGE_WIDTH, displayEnv, type BoxDisplay } from './display'
 import type { VideoTools } from './videoSetting'
 import { BoxWindowManager } from './xwm'
+import type { TempCodeOrigins } from '../../../remote/tempcodeOrigins'
+import { startOriginProxy } from './originProxy'
+import { Cdp } from './cdp'
+import { clearTempCodeLogins } from './logins'
 
 /**
  * The box's one Chromium (docs/agents/work-browser.md "The box's browser"):
@@ -253,6 +257,7 @@ export function treeRssMb(pid: number, proc = '/proc'): number {
 export interface BoxChromiumOptions {
   /** <dataDir>/work-browser/box: the profile lives in `profile/` under it */
   root: string
+  origins?: () => TempCodeOrigins
   bin?: () => string | null
   capMb?: number
   idleMs?: number
@@ -292,6 +297,8 @@ const groupAlive = (pid: number): boolean => {
 
 export class BoxChromium {
   private child: ChildProcess | null = null
+  private proxy: Awaited<ReturnType<typeof startOriginProxy>> | null = null
+  refusedRequests = 0
   private starting: Promise<string> | null = null
   private ws: string | null = null
   private idle: ReturnType<typeof setTimeout> | null = null
@@ -342,9 +349,14 @@ export class BoxChromium {
   /** The browser's DevTools address, starting it first when it is not running. Every call counts as use. */
   async endpoint(): Promise<string> {
     this.touch()
+    if (this.starting) return this.starting
     if (this.running && this.ws) return this.ws
-    this.starting ??= this.start().finally(() => (this.starting = null))
+    this.starting = this.start().finally(() => (this.starting = null))
     return this.starting
+  }
+
+  refreshOriginFence(): void {
+    this.proxy?.refresh()
   }
 
   /** Use: the idle stop waits ten minutes from now. */
@@ -388,6 +400,23 @@ export class BoxChromium {
         throw new Error('the box browser was stopped as it started')
       }
     } else clearHeadedPrefs(this.profile)
+    if (this.opts.origins) {
+      try {
+        this.proxy = await startOriginProxy(this.opts.origins, () => this.refusedRequests++)
+        if (generation !== this.generation) throw new Error('the box browser was stopped as it started')
+        args.unshift(
+          `--proxy-server=socks5://127.0.0.1:${this.proxy.port}`,
+          '--proxy-bypass-list=<-loopback>',
+          '--disable-quic',
+          '--disable-http2',
+          '--force-webrtc-ip-handling-policy=disable_non_proxied_udp'
+        )
+      } catch (error) {
+        this.closeProxy()
+        await this.stopDisplay()
+        throw error
+      }
+    }
     // A headed browser is handed its own display and nothing of this process's; a headless one needs none.
     // The browser runs below the server (childPriority.ts).
     const child = (this.opts.spawn ?? spawnLowered('browser'))(bin, args, { stdio: 'ignore', detached: true, ...(pair ? { env: displayEnv(pair) } : {}) })
@@ -397,6 +426,7 @@ export class BoxChromium {
       this.child = null
       this.ws = null
       this.clear()
+      this.closeProxy()
       // the next start waits for this: a new display must not write its cookie where the old one is still being removed
       this.exiting = this.exiting.then(() => this.stopDisplay())
       this.tell('exited')
@@ -418,6 +448,20 @@ export class BoxChromium {
     if (!this.ws) {
       void this.stop('asked')
       throw new Error('Chromium did not open DevTools in time')
+    }
+    if (this.opts.origins) {
+      try {
+        const cdp = await Cdp.open(this.ws)
+        try {
+          await clearTempCodeLogins(cdp)
+        } finally {
+          cdp.close()
+        }
+        if (generation !== this.generation) throw new Error('the box browser was stopped as it started')
+      } catch (error) {
+        await this.stop()
+        throw error
+      }
     }
     this.opts.log?.(`box browser: started ${pair ? `headed on ${pair.DISPLAY}` : 'headless'} (pid ${child.pid})`)
     this.touch()
@@ -441,6 +485,7 @@ export class BoxChromium {
     this.child = null
     this.ws = null
     this.clear()
+    this.closeProxy()
     if (!child?.pid) return this.exiting
     const pid = child.pid
     const main = new Promise<void>((r) => (child.exitCode !== null || child.signalCode !== null ? r() : child.once('exit', () => r())))
@@ -494,6 +539,11 @@ export class BoxChromium {
     this.xdisplay = null
     this.videoTools = null
     await xdisplay?.stop()
+  }
+
+  private closeProxy(): void {
+    this.proxy?.close()
+    this.proxy = null
   }
 
   private clear(): void {

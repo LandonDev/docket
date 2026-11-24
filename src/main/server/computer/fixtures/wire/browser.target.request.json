@@ -1,0 +1,6 @@
+{
+  "jsonrpc": "2.0",
+  "id": 60,
+  "method": "browser.target",
+  "params": { "session": "thread-9fK2", "app": { "pid": 16800 }, "window": { "id": 1581 } }
+}

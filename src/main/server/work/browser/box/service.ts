@@ -1,3 +1,4 @@
+import { isTempCodeOrigin, TEMPCODE_ORIGIN_REFUSAL, type TempCodeOrigins } from '../../../remote/tempcodeOrigins'
 import { randomUUID } from 'node:crypto'
 import { EventEmitter } from 'node:events'
 import { mkdirSync, writeFileSync } from 'node:fs'
@@ -250,6 +251,9 @@ const sleep = (ms: number, signal?: AbortSignal): Promise<void> =>
   })
 
 export interface BoxServiceOptions {
+  origins?: () => TempCodeOrigins
+  refusedRequests?: () => number
+  refreshOriginFence?: () => void
   browser: BrowserLink
   /** told the page a session last used, each time it uses one: what a stream of that thread's pane shows after its session stops */
   onPage?: (session: string, targetId: string) => void
@@ -332,11 +336,16 @@ export class BoxComputerService {
       return { error: { code: RPC_ERROR.computer, message: 'initialize first', data: { kind: 'not_initialized', message: 'initialize first' } } }
     const abort = new AbortController()
     this.running.set(id, abort)
+    const before = m === 'apps.launch' || m === 'action.run' || m === 'action.batch' ? this.opts.refusedRequests?.() : undefined
+    const blocked = (): boolean => before !== undefined && before !== this.opts.refusedRequests?.()
     try {
-      return { result: await this.handle(m, parsed.data as never, abort.signal) }
+      this.opts.refreshOriginFence?.()
+      const result = await this.handle(m, parsed.data as never, abort.signal)
+      if (blocked()) refuse('browser_refused', TEMPCODE_ORIGIN_REFUSAL)
+      return { result }
     } catch (err) {
       const data: ComputerError =
-        err instanceof Refused ? err.error : abort.signal.aborted ? { kind: 'cancelled', message: 'cancelled' } : { kind: 'timeout', message: `the browser did not answer: ${(err as Error).message}` }
+        err instanceof Refused ? err.error : blocked() ? { kind: 'browser_refused', message: TEMPCODE_ORIGIN_REFUSAL } : abort.signal.aborted ? { kind: 'cancelled', message: 'cancelled' } : { kind: 'timeout', message: `the browser did not answer: ${(err as Error).message}` }
       return { error: { code: RPC_ERROR.computer, message: data.message, data } }
     } finally {
       this.running.delete(id)
@@ -650,13 +659,18 @@ export class BoxComputerService {
 
   /** An address this session may not open: his mailbox for every session, Forms for all but the carrier's. */
   private fence(url: string, session: string | undefined, line = FORMS_OPEN): void {
+    if (this.tempCodePage(url)) refuse('browser_refused', TEMPCODE_ORIGIN_REFUSAL)
     if (closedToAgents(url)) refuse('open_refused', CLOSED)
     if (!isCarrierSession(session) && carrierOnly(url)) refuse('open_refused', line)
   }
 
+  private tempCodePage(url: string): boolean {
+    return this.opts.origins !== undefined && isTempCodeOrigin(url, this.opts.origins())
+  }
+
   /** The pages a session sees: a carrier-only page is the carrier's alone, and a page a carrier owns is that carrier's alone. */
   private seenBy(pages: Page[], session: string | undefined): Page[] {
-    const own = pages.filter((p) => carrierLets(p.targetId, session))
+    const own = pages.filter((p) => !this.tempCodePage(p.url) && carrierLets(p.targetId, session))
     return isCarrierSession(session) ? own : own.filter((p) => !carrierOnly(p.url))
   }
 
@@ -737,7 +751,12 @@ export class BoxComputerService {
     const id = ref?.id ?? (ref?.title !== undefined && !pages.some((p) => p.title === ref.title) && /^#\d+$/.test(ref.title) ? Number(ref.title.slice(1)) : undefined)
     let page: Page | undefined
     if (id !== undefined) page = all.find((p) => p.window === id)
-    else if (ref?.title !== undefined) page = pages.find((p) => p.title === ref.title) ?? pages.find((p) => p.title.includes(ref.title!))
+    else if (ref?.title !== undefined) {
+      page = pages.find((p) => p.title === ref.title) ?? pages.find((p) => p.title.includes(ref.title!))
+      if (!page && all.some((p) => p.title === ref.title && this.tempCodePage(p.url) && carrierLets(p.targetId, session))) {
+        refuse('browser_refused', TEMPCODE_ORIGIN_REFUSAL)
+      }
+    }
     else page = this.mainOf(all, session)
     // a carrier's page is, to every other session, a window that is not there
     if (!page || !carrierLets(page.targetId, session)) return refuse('window_not_found', 'no such window in the box browser', { candidates: pages.map((p) => p.title) })
@@ -855,10 +874,10 @@ export class BoxComputerService {
         const { cdp: c, sid } = await this.on(blank)
         await c.send('Page.navigate', { url }, sid)
         window = { id: blank.window, title: blank.title }
-      } else if (carrier) {
+      } else if (carrier || this.opts.origins) {
         // A carrier's page is made blank and reserved before it loads anything: nothing it shows is ever another's to list.
         const targetId = await this.newPage('about:blank')
-        CARRIER_TARGETS.set(targetId, carrier)
+        if (carrier) CARRIER_TARGETS.set(targetId, carrier)
         const p = (await this.pages()).find((x) => x.targetId === targetId)
         if (p) {
           const { cdp: c, sid } = await this.on(p)

@@ -732,6 +732,12 @@ function handle({ id, method, params = {} }) {
     // §29.8: the clipboard's text, as the Windows service answers it
     case 'clipboard.read': return reply(id, { text: clipboardText, truncated: false })
     case 'clipboard.write': clipboardText = params.text ?? null; return reply(id, {})
+    case 'browser.target': {
+      if (process.env.FAKE_OLD_BROWSER_SERVICE === '1') return reply(id, { code: -32601, message: 'no method browser.target' }, true)
+      const ctx = target(params)
+      if (ctx.app.name !== 'Webby') return reply(id, { browser: false })
+      return reply(id, { browser: true, url: process.env.FAKE_BROWSER_URL || undefined })
+    }
     case 'state.get': case 'action.run': case 'action.batch': case 'capture.screenshot': case 'capture.stream.start': case 'capture.video.start': case 'input.probe': {
       const ctx = target(params)
       if (ctx.app.name === 'Slow' && ['state.get', 'action.run', 'action.batch'].includes(method)) {

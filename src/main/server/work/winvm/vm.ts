@@ -1,3 +1,4 @@
+import type { TempCodeOrigins } from '../../remote/tempcodeOrigins'
 import { join } from 'node:path'
 import type { ComputerSessionRow } from '@shared/contract-computer'
 import type { SessionMeta, SessionStatus } from '@shared/events'
@@ -33,6 +34,7 @@ export interface VmRegistry extends ComputerRegistry {
 }
 
 export interface VmWiring {
+  origins?: () => TempCodeOrigins
   registry: VmRegistry
   store: SettingsStore
   /** <userData>: the service's pictures land in `winvm/computer` */
@@ -87,6 +89,7 @@ export function wireVm(o: VmWiring): VmHost {
     dataDir,
     rootOf: (id) => o.registry.rootSessionOf(id),
     gate: () => VM_TIER_GATE,
+    origins: o.origins,
     vm: true,
     log,
     ...(o.landing ? { landing: o.landing } : {})

@@ -72,6 +72,13 @@ enum LiveTabs {
     }
 }
 
+/// The live, top-level document URL, from AXWebArea rather than editable browser chrome.
+public func activeBrowserURL(_ window: AXUIElement) -> String? {
+    let found = LiveTabs.scan(window)
+    guard !found.capped, found.webAreas.count == 1, let area = found.webAreas.first else { return nil }
+    return AX.string(AX.batch(area, ["AXURL"])["AXURL"]?.value)
+}
+
 /// §25.4's tab selection, for the ComputerService handlers: they call it under the app's exclusive action
 /// slot (§1), held from the selection through the wait, the steps and the observation, so two threads
 /// never switch each other's tab between a selection and a read. Resolution (`AppWindows.resolveTarget`)

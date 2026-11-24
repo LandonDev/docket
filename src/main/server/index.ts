@@ -149,6 +149,7 @@ import { LIVE_STATUSES } from '@shared/session-lifecycle'
 import { isHeadless, personsDesktop } from '../headless'
 import type { SelfUpdateOutcome } from '../updateTrigger'
 import { RemoteAuth } from './remote/auth'
+import { readTempCodeOrigins } from './remote/tempcodeOrigins'
 import { startRemoteListener, type RemoteListener } from './remote/listener'
 import { fenceDenied, fenceRequest, requestBases } from './remote/fence'
 import { createMcpHandler } from './remote/mcp'
@@ -552,6 +553,22 @@ export async function startServer(
   // writer opened WAL first, so the -shm file the read-only open needs is there.
   const reader = new EventReader(dbPath)
   const store = new Store(db, { reader })
+  // The fixed port behind the tunnel (remote/listener.ts). An env override
+  // beats the settings so a dev instance never fights the installed app
+  // for 7677; '0' turns it off.
+  let remote: RemoteListener | null = null
+  /** The port to listen on, or null for off: the option or the env var
+   *  override the PORT (0 in the env turns it off); remote.enabled applies either way. */
+  const remotePortWanted = (): number | null => {
+    const settings = readRemoteSettings(store)
+    if (!settings.enabled) return null
+    if (options.remotePort !== undefined) return options.remotePort
+    const env = process.env.TEMP_CODE_REMOTE_PORT
+    if (env === undefined) return settings.port
+    const n = Number(env)
+    return Number.isInteger(n) && n > 0 && n < 65536 ? n : null
+  }
+  const tempCodeOrigins = () => readTempCodeOrigins(store, remotePortWanted(), remote?.port)
   const environmentId = loadEnvironmentId(options.dataDir ?? dirname(dbPath))
   // What this host runs, said in every hello; and master's number, so the
   // renderer can mark a host that is behind (src/shared/deployDrift.ts).
@@ -1532,6 +1549,7 @@ export async function startServer(
     const computerAwayFor = (id: string): boolean => (parseMacComputerKey(id) ? macBridge.computer.awayFor(id) : registry.awayFor(id))
     const sessions = new ComputerSessions({
       service,
+      origins: tempCodeOrigins,
       registry: { get: (id) => registry.get(id), requestApproval: (id, req) => registry.requestApproval(id, req), awayFor: computerAwayFor },
       store,
       dataDir: computerData,
@@ -1916,6 +1934,7 @@ export async function startServer(
     void import('./work/browser/box').then(
       (m) => {
         const box = m.wireBoxBrowser({
+          origins: tempCodeOrigins,
           registry,
           store,
           dataDir: options.dataDir ?? dirname(dbPath),
@@ -1940,7 +1959,7 @@ export async function startServer(
     void Promise.all([import('./work/winvm/vm'), import('./work/winvm/host')]).then(
       ([m, h]) => {
         const dataDir = options.dataDir ?? dirname(dbPath)
-        const vm = m.wireVm({ registry, store, dataDir })
+        const vm = m.wireVm({ registry, store, dataDir, origins: tempCodeOrigins })
         const picture = h.wireVmPicture({ dataDir, video: { relay: videoRelay, rpc: videoRpc }, holder: () => vm.lease.holderPane(), log: (line) => console.log(`[winvm] ${line}`) })
         vmPreviews = picture.previews
         computerRpc.setBox(h.joinRows(vm.rows, picture))
@@ -2381,21 +2400,6 @@ export async function startServer(
   warmTimer.unref()
 
   const builder = new BuildRunner()
-  // The fixed port behind the tunnel (remote/listener.ts). An env override
-  // beats the settings so a dev instance never fights the installed app
-  // for 7677; '0' turns it off.
-  let remote: RemoteListener | null = null
-  /** The port to listen on, or null for off: the option or the env var
-   *  override the PORT (0 in the env turns it off); remote.enabled applies either way. */
-  const remotePortWanted = (): number | null => {
-    const settings = readRemoteSettings(store)
-    if (!settings.enabled) return null
-    if (options.remotePort !== undefined) return options.remotePort
-    const env = process.env.TEMP_CODE_REMOTE_PORT
-    if (env === undefined) return settings.port
-    const n = Number(env)
-    return Number.isInteger(n) && n > 0 && n < 65536 ? n : null
-  }
   let remoteRestart: Promise<void> = Promise.resolve()
   const restartRemote = (): Promise<void> =>
     (remoteRestart = remoteRestart.then(async () => {

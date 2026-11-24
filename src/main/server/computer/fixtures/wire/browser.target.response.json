@@ -1,0 +1,5 @@
+{
+  "jsonrpc": "2.0",
+  "id": 60,
+  "result": { "browser": true, "url": "http://127.0.0.1:7677/ui/" }
+}

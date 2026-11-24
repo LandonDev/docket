@@ -1,3 +1,4 @@
+import { isTempCodeOrigin, TEMPCODE_ORIGIN_REFUSAL, type TempCodeOrigins } from '../remote/tempcodeOrigins'
 import { errorLine } from '@shared/computer/errorWords'
 import { hostErrorLine } from '@shared/computer/hostErrors'
 import type { ConfirmNeed } from '@shared/computer/policy'
@@ -224,6 +225,19 @@ export function refusedTarget(app: { pid: number; bundleId: string | null }, use
   if (app.pid === ownPid || app.bundleId === TEMPCODE_BUNDLE_ID || id === TEMPCODE_WINDOWS_EXE) return hostErrorLine('refused_app', 'tempcode')
   if (use === 'act' && id && (WINDOWS_PROMPT_EXES.includes(id) || REFUSED_ACT_BUNDLES.some((b) => b.toLowerCase() === id))) return hostErrorLine('refused_app', promptsOf(id))
   return null
+}
+
+export const BROWSER_ADDRESS_UNAVAILABLE = 'refused: the computer service could not verify this browser tab’s address.'
+
+export function refusedBrowserTarget(target: { browser: boolean; url?: string }, origins: TempCodeOrigins): string | null {
+  if (!target.browser) return null
+  if (!target.url || !URL.canParse(target.url)) return BROWSER_ADDRESS_UNAVAILABLE
+  return isTempCodeOrigin(target.url, origins) ? TEMPCODE_ORIGIN_REFUSAL : null
+}
+
+/** Old native services cannot read a browser address. Known browsers stay off limits until the service is updated. */
+export function knownBrowser(app: { bundleId: string | null; name: string }): boolean {
+  return /chrome|chromium|safari|firefox|msedge|microsoft edge|brave|opera|vivaldi|waterfox|librewolf|zen browser|floorp|tor browser|thebrowser\.browser|\barc\b|\borion\b/i.test(`${app.bundleId ?? ''} ${app.name}`)
 }
 
 const promptsOf = (id: string): 'prompts' | 'windows-prompts' => (WINDOWS_PROMPT_EXES.includes(id) ? 'windows-prompts' : 'prompts')

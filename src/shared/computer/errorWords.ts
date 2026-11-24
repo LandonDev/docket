@@ -164,6 +164,7 @@ export const COMPUTER_ERROR_WORDS: Readonly<Record<ComputerErrorKind, Words>> = 
   },
   key_window_unavailable: () => "the window isn't its app's key window, so keys and paste can't reach it; use set_value, or type with element",
   open_refused: OPEN_REFUSED,
+  browser_refused: () => 'refused: the browser tab is off limits or its address could not be verified.',
   value_not_taken: (e, ctx) => {
     const reads = e.value === undefined ? 'did not take the value' : `still reads ${quote(e.value)}`
     return `${index(e, ctx)} ${reads}; nothing after it ran. On a pop up, click it and perform pick on the item; on a field, type with element`

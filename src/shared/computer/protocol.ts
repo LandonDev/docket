@@ -320,7 +320,9 @@ export const TargetSchema = z.object({
   /** an installed app that is not running is launched in the background */
   launch: z.boolean().optional(),
   /** the epoch of the observation the call's element indices came from; required when a call names an element */
-  epoch: z.string().min(1).optional()
+  epoch: z.string().min(1).optional(),
+  /** The native service must still see this browser URL before it reads or acts. */
+  browserUrl: z.string().min(1).optional()
 })
 export type Target = z.infer<typeof TargetSchema>
 
@@ -720,6 +722,7 @@ export const COMPUTER_ERROR_KINDS = [
   'session_unavailable',
   'already_running',
   'open_refused',
+  'browser_refused',
   'value_not_taken',
   'focus_moved',
   'tab_in_use',
@@ -1309,6 +1312,10 @@ export const COMPUTER_METHODS = {
   },
   'session.open': { params: SessionRefSchema, result: EmptySchema },
   'session.close': { params: SessionRefSchema, result: EmptySchema },
+  'browser.target': {
+    params: TargetSchema,
+    result: z.object({ browser: z.boolean(), url: z.string().min(1).optional() })
+  },
   'state.get': { params: StateGetParamsSchema, result: ObservationSchema },
   'action.run': { params: ActionRunParamsSchema, result: ActionResultSchema },
   'action.batch': { params: ActionBatchParamsSchema, result: BatchResultSchema },

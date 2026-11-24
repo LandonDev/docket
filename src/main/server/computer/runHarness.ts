@@ -1,3 +1,4 @@
+import type { TempCodeOrigins } from '../remote/tempcodeOrigins'
 import type { CallTiming } from '@shared/computer/bridgeTiming'
 import { existsSync, mkdtempSync, readFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -27,6 +28,7 @@ export interface Card {
 
 export function computerHarness(
   opts: {
+    origins?: () => TempCodeOrigins
     env?: Record<string, string>
     gate?: SessionTierGate
     /** a gate that needs the service and the sessions (the scheduler) */
@@ -72,6 +74,7 @@ export function computerHarness(
     : null
   const sessions = new ComputerSessions({
     service,
+    origins: opts.origins,
     registry,
     store,
     dataDir,

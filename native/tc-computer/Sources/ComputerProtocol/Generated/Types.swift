@@ -61,13 +61,15 @@ public struct Target: Codable, Hashable, Sendable {
     public let window: WindowRef?
     public let launch: Bool?
     public let epoch: String?
+    public let browserUrl: String?
 
-    public init(session: String, app: AppRef, window: WindowRef? = nil, launch: Bool? = nil, epoch: String? = nil) {
+    public init(session: String, app: AppRef, window: WindowRef? = nil, launch: Bool? = nil, epoch: String? = nil, browserUrl: String? = nil) {
         self.session = session
         self.app = app
         self.window = window
         self.launch = launch
         self.epoch = epoch
+        self.browserUrl = browserUrl
     }
 }
 

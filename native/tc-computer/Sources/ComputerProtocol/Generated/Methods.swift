@@ -172,6 +172,22 @@ public enum Methods {
         public typealias Output = Empty
     }
 
+    public enum BrowserTarget: ContractMethod {
+        public static let name = "browser.target"
+
+        public typealias Params = Target
+
+        public struct Output: Codable, Hashable, Sendable {
+            public let browser: Bool
+            public let url: String?
+
+            public init(browser: Bool, url: String? = nil) {
+                self.browser = browser
+                self.url = url
+            }
+        }
+    }
+
     public enum StateGet: ContractMethod {
         public static let name = "state.get"
 
@@ -181,6 +197,7 @@ public enum Methods {
             public let window: WindowRef?
             public let launch: Bool?
             public let epoch: String?
+            public let browserUrl: String?
             public let mode: ObservationMode?
             public let element: Int?
             public let screenshot: ScreenshotPolicy?
@@ -191,12 +208,13 @@ public enum Methods {
             public let wait: WaitOptions?
             public let tabs: TabsMode?
 
-            public init(session: String, app: AppRef, window: WindowRef? = nil, launch: Bool? = nil, epoch: String? = nil, mode: ObservationMode? = nil, element: Int? = nil, screenshot: ScreenshotPolicy? = nil, maxEdge: Int? = nil, geometry: Bool? = nil, menus: Bool? = nil, budget: Budget? = nil, wait: WaitOptions? = nil, tabs: TabsMode? = nil) {
+            public init(session: String, app: AppRef, window: WindowRef? = nil, launch: Bool? = nil, epoch: String? = nil, browserUrl: String? = nil, mode: ObservationMode? = nil, element: Int? = nil, screenshot: ScreenshotPolicy? = nil, maxEdge: Int? = nil, geometry: Bool? = nil, menus: Bool? = nil, budget: Budget? = nil, wait: WaitOptions? = nil, tabs: TabsMode? = nil) {
                 self.session = session
                 self.app = app
                 self.window = window
                 self.launch = launch
                 self.epoch = epoch
+                self.browserUrl = browserUrl
                 self.mode = mode
                 self.element = element
                 self.screenshot = screenshot
@@ -221,6 +239,7 @@ public enum Methods {
             public let window: WindowRef?
             public let launch: Bool?
             public let epoch: String?
+            public let browserUrl: String?
             public let action: ComputerAction
             public let tiers: [Tier]
             public let wait: WaitOptions?
@@ -235,12 +254,13 @@ public enum Methods {
             public let prior: Prior?
             public let textWindowId: Int?
 
-            public init(session: String, app: AppRef, window: WindowRef? = nil, launch: Bool? = nil, epoch: String? = nil, action: ComputerAction, tiers: [Tier], wait: WaitOptions? = nil, observe: ObserveOptions? = nil, pasteQuietMs: Int? = nil, personIdleMs: Int? = nil, ignored: IgnoredRoutes? = nil, tabs: TabsMode? = nil, expectFocus: Int? = nil, axWait: WaitOptions? = nil, axStepWait: WaitOptions? = nil, prior: Prior? = nil, textWindowId: Int? = nil) {
+            public init(session: String, app: AppRef, window: WindowRef? = nil, launch: Bool? = nil, epoch: String? = nil, browserUrl: String? = nil, action: ComputerAction, tiers: [Tier], wait: WaitOptions? = nil, observe: ObserveOptions? = nil, pasteQuietMs: Int? = nil, personIdleMs: Int? = nil, ignored: IgnoredRoutes? = nil, tabs: TabsMode? = nil, expectFocus: Int? = nil, axWait: WaitOptions? = nil, axStepWait: WaitOptions? = nil, prior: Prior? = nil, textWindowId: Int? = nil) {
                 self.session = session
                 self.app = app
                 self.window = window
                 self.launch = launch
                 self.epoch = epoch
+                self.browserUrl = browserUrl
                 self.action = action
                 self.tiers = tiers
                 self.wait = wait
@@ -269,6 +289,7 @@ public enum Methods {
             public let window: WindowRef?
             public let launch: Bool?
             public let epoch: String?
+            public let browserUrl: String?
             public let actions: [ComputerAction]
             public let tiers: [Tier]
             public let stepWait: WaitOptions?
@@ -284,12 +305,13 @@ public enum Methods {
             public let prior: Prior?
             public let textWindowId: Int?
 
-            public init(session: String, app: AppRef, window: WindowRef? = nil, launch: Bool? = nil, epoch: String? = nil, actions: [ComputerAction], tiers: [Tier], stepWait: WaitOptions? = nil, wait: WaitOptions? = nil, observe: ObserveOptions? = nil, pasteQuietMs: Int? = nil, personIdleMs: Int? = nil, ignored: IgnoredRoutes? = nil, tabs: TabsMode? = nil, expectFocus: Int? = nil, axWait: WaitOptions? = nil, axStepWait: WaitOptions? = nil, prior: Prior? = nil, textWindowId: Int? = nil) {
+            public init(session: String, app: AppRef, window: WindowRef? = nil, launch: Bool? = nil, epoch: String? = nil, browserUrl: String? = nil, actions: [ComputerAction], tiers: [Tier], stepWait: WaitOptions? = nil, wait: WaitOptions? = nil, observe: ObserveOptions? = nil, pasteQuietMs: Int? = nil, personIdleMs: Int? = nil, ignored: IgnoredRoutes? = nil, tabs: TabsMode? = nil, expectFocus: Int? = nil, axWait: WaitOptions? = nil, axStepWait: WaitOptions? = nil, prior: Prior? = nil, textWindowId: Int? = nil) {
                 self.session = session
                 self.app = app
                 self.window = window
                 self.launch = launch
                 self.epoch = epoch
+                self.browserUrl = browserUrl
                 self.actions = actions
                 self.tiers = tiers
                 self.stepWait = stepWait
@@ -319,17 +341,19 @@ public enum Methods {
             public let window: WindowRef?
             public let launch: Bool?
             public let epoch: String?
+            public let browserUrl: String?
             public let maxEdge: Int?
             public let region: Region?
             public let format: ShotFormat?
             public let tabs: TabsMode?
 
-            public init(session: String, app: AppRef, window: WindowRef? = nil, launch: Bool? = nil, epoch: String? = nil, maxEdge: Int? = nil, region: Region? = nil, format: ShotFormat? = nil, tabs: TabsMode? = nil) {
+            public init(session: String, app: AppRef, window: WindowRef? = nil, launch: Bool? = nil, epoch: String? = nil, browserUrl: String? = nil, maxEdge: Int? = nil, region: Region? = nil, format: ShotFormat? = nil, tabs: TabsMode? = nil) {
                 self.session = session
                 self.app = app
                 self.window = window
                 self.launch = launch
                 self.epoch = epoch
+                self.browserUrl = browserUrl
                 self.maxEdge = maxEdge
                 self.region = region
                 self.format = format
@@ -349,16 +373,18 @@ public enum Methods {
             public let window: WindowRef?
             public let launch: Bool?
             public let epoch: String?
+            public let browserUrl: String?
             public let stream: String
             public let fps: Int?
             public let maxEdge: Int?
 
-            public init(session: String, app: AppRef, window: WindowRef? = nil, launch: Bool? = nil, epoch: String? = nil, stream: String, fps: Int? = nil, maxEdge: Int? = nil) {
+            public init(session: String, app: AppRef, window: WindowRef? = nil, launch: Bool? = nil, epoch: String? = nil, browserUrl: String? = nil, stream: String, fps: Int? = nil, maxEdge: Int? = nil) {
                 self.session = session
                 self.app = app
                 self.window = window
                 self.launch = launch
                 self.epoch = epoch
+                self.browserUrl = browserUrl
                 self.stream = stream
                 self.fps = fps
                 self.maxEdge = maxEdge
@@ -401,17 +427,19 @@ public enum Methods {
             public let window: WindowRef?
             public let launch: Bool?
             public let epoch: String?
+            public let browserUrl: String?
             public let maxEdge: Int
             public let fps: Int?
             public let bitrate: Int?
             public let mode: VideoMode
 
-            public init(session: String, app: AppRef, window: WindowRef? = nil, launch: Bool? = nil, epoch: String? = nil, maxEdge: Int, fps: Int? = nil, bitrate: Int? = nil, mode: VideoMode) {
+            public init(session: String, app: AppRef, window: WindowRef? = nil, launch: Bool? = nil, epoch: String? = nil, browserUrl: String? = nil, maxEdge: Int, fps: Int? = nil, bitrate: Int? = nil, mode: VideoMode) {
                 self.session = session
                 self.app = app
                 self.window = window
                 self.launch = launch
                 self.epoch = epoch
+                self.browserUrl = browserUrl
                 self.maxEdge = maxEdge
                 self.fps = fps
                 self.bitrate = bitrate
@@ -455,14 +483,16 @@ public enum Methods {
             public let window: WindowRef?
             public let launch: Bool?
             public let epoch: String?
+            public let browserUrl: String?
             public let classes: [ActionClass]?
 
-            public init(session: String, app: AppRef, window: WindowRef? = nil, launch: Bool? = nil, epoch: String? = nil, classes: [ActionClass]? = nil) {
+            public init(session: String, app: AppRef, window: WindowRef? = nil, launch: Bool? = nil, epoch: String? = nil, browserUrl: String? = nil, classes: [ActionClass]? = nil) {
                 self.session = session
                 self.app = app
                 self.window = window
                 self.launch = launch
                 self.epoch = epoch
+                self.browserUrl = browserUrl
                 self.classes = classes
             }
         }

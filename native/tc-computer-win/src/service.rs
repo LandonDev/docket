@@ -338,6 +338,15 @@ impl<D: Desktop> Service<D> {
                 st.cursors.retain(|(s, _), _| *s != p.session);
                 encode(json!({}))
             }
+            "browser.target" => {
+                let p: Target = decode(params)?;
+                gate()?;
+                self.check_session(&p)?;
+                let app = self.resolve(&p.app)?;
+                let browser = browser_app(&app);
+                let url = if browser { self.desktop.browser_url(app.pid, p.window.as_ref()) } else { None };
+                encode(BrowserTargetResult { browser, url })
+            }
             "state.get" => {
                 let p: StateGetParams = decode(params)?;
                 gate()?;
@@ -349,7 +358,7 @@ impl<D: Desktop> Service<D> {
                     return Err(RpcError::std(rpc_error::INVALID_PARAMS, "invalid params: at least one tier"));
                 }
                 gate()?;
-                let target = Target { session: p.session, app: p.app, window: p.window, launch: p.launch, epoch: p.epoch };
+                let target = Target { session: p.session, app: p.app, window: p.window, launch: p.launch, epoch: p.epoch, browser_url: p.browser_url };
                 let wait = p.ax_wait.or(p.wait);
                 let r = self.run_steps(&target, &[p.action], &p.tiers, None, wait, p.observe.as_ref(), p.expect_focus.is_some(), p.paste_quiet_ms, cancel)?;
                 encode(ActionResult { step: r.steps.into_iter().next().unwrap(), observation: r.observation, observation_error: r.observation_error, ..Default::default() })
@@ -360,23 +369,24 @@ impl<D: Desktop> Service<D> {
                     return Err(RpcError::std(rpc_error::INVALID_PARAMS, format!("invalid params: 1 to {} actions and at least one tier", limits::BATCH_MAX_ACTIONS)));
                 }
                 gate()?;
-                let target = Target { session: p.session, app: p.app, window: p.window, launch: p.launch, epoch: p.epoch };
+                let target = Target { session: p.session, app: p.app, window: p.window, launch: p.launch, epoch: p.epoch, browser_url: p.browser_url };
                 let r = self.run_steps(&target, &p.actions, &p.tiers, p.ax_step_wait.or(p.step_wait), p.ax_wait.or(p.wait), p.observe.as_ref(), p.expect_focus.is_some(), p.paste_quiet_ms, cancel)?;
                 encode(r)
             }
             "capture.screenshot" => {
                 let p: CaptureScreenshotParams = decode(params)?;
                 gate()?;
-                let target = Target { session: p.session.clone(), app: p.app.clone(), window: p.window.clone(), launch: p.launch, epoch: p.epoch.clone() };
+                let target = Target { session: p.session.clone(), app: p.app.clone(), window: p.window.clone(), launch: p.launch, epoch: p.epoch.clone(), browser_url: p.browser_url.clone() };
                 self.check_session(&target)?;
                 let app = self.resolve(&p.app)?;
+                self.check_browser(app.pid, p.window.as_ref(), p.browser_url.as_deref())?;
                 let win = self.desktop.window(app.pid, p.window.as_ref())?;
                 encode(self.shoot(&p.session, &win, p.max_edge, p.region.as_ref(), p.format, "screenshot")?)
             }
             "capture.stream.start" => {
                 let p: CaptureStreamStartParams = decode(params)?;
                 gate()?;
-                let target = Target { session: p.session.clone(), app: p.app.clone(), window: p.window.clone(), launch: p.launch, epoch: p.epoch.clone() };
+                let target = Target { session: p.session.clone(), app: p.app.clone(), window: p.window.clone(), launch: p.launch, epoch: p.epoch.clone(), browser_url: p.browser_url.clone() };
                 self.check_session(&target)?;
                 let me = self.me.get().and_then(Weak::upgrade).ok_or_else(|| fail(ComputerErrorKind::CaptureFailed, "the service is not serving"))?;
                 encode(me.stream_start(p)?)
@@ -385,7 +395,7 @@ impl<D: Desktop> Service<D> {
             "capture.video.start" => {
                 let p: CaptureVideoStartParams = decode(params)?;
                 gate()?;
-                let target = Target { session: p.session.clone(), app: p.app.clone(), window: p.window.clone(), launch: p.launch, epoch: p.epoch.clone() };
+                let target = Target { session: p.session.clone(), app: p.app.clone(), window: p.window.clone(), launch: p.launch, epoch: p.epoch.clone(), browser_url: p.browser_url.clone() };
                 self.check_session(&target)?;
                 let me = self.me.get().and_then(Weak::upgrade).ok_or_else(|| fail(ComputerErrorKind::CaptureFailed, "the service is not serving"))?;
                 encode(me.video_start(p)?)
@@ -413,6 +423,7 @@ impl<D: Desktop> Service<D> {
                 let p: InputProbeParams = decode(params)?;
                 gate()?;
                 let app = self.resolve(&p.app)?;
+                self.check_browser(app.pid, p.window.as_ref(), p.browser_url.as_deref())?;
                 // posted messages reach a background window's controls whatever has the focus: nothing to probe
                 encode(ProbeReport { pid: app.pid, bundle_id: app.bundle_id, key_window: KeyWindowState::None, results: vec![] })
             }
@@ -694,22 +705,40 @@ impl<D: Desktop> Service<D> {
         })
     }
 
+    fn check_browser(&self, pid: i64, window: Option<&WindowRef>, expected: Option<&str>) -> Result<(), ComputerError> {
+        if let Some(url) = expected {
+            if self.desktop.browser_url(pid, window).as_deref() != Some(url) {
+                return Err(fail(ComputerErrorKind::BrowserRefused, "refused: the browser tab’s address changed or could not be verified."));
+            }
+        }
+        Ok(())
+    }
+
+    fn guarded_read(&self, pid: i64, window: Option<&WindowRef>, from: Option<&D::Handle>, browser_url: Option<&str>) -> Result<RawWindow<D::Handle>, ComputerError> {
+        self.check_browser(pid, window, browser_url)?;
+        let raw = self.read(pid, window, from)?;
+        self.check_browser(pid, window, browser_url)?;
+        Ok(raw)
+    }
+
     fn state_get(&self, p: StateGetParams, cancel: &AtomicBool) -> Result<Value, RpcError> {
-        let target = Target { session: p.session.clone(), app: p.app.clone(), window: p.window.clone(), launch: p.launch, epoch: p.epoch.clone() };
+        let target = Target { session: p.session.clone(), app: p.app.clone(), window: p.window.clone(), launch: p.launch, epoch: p.epoch.clone(), browser_url: p.browser_url.clone() };
         self.check_session(&target)?;
         if p.element.is_some() {
             self.check_epoch(&target)?;
         }
         let app = self.resolve(&p.app)?;
         let _read = self.slots.read(app.pid);
+        self.check_browser(app.pid, p.window.as_ref(), p.browser_url.as_deref())?;
         let waited = match &p.wait {
             Some(w) => Some(self.wait(app.pid, p.window.as_ref(), w, cancel)?),
             None => None,
         };
         let from = p.element.map(|i| self.element(&p.session, app.pid, i)).transpose()?;
-        let raw = self.read(app.pid, p.window.as_ref(), from.as_ref())?;
+        let raw = self.guarded_read(app.pid, p.window.as_ref(), from.as_ref(), p.browser_url.as_deref())?;
         let shots = (from.is_none()).then(|| Shots { policy: p.screenshot.unwrap_or(ScreenshotPolicy::Auto), max_edge: p.max_edge });
         let obs = self.observe(&p.session, raw, from.is_some(), p.geometry.unwrap_or(false), p.budget.map(|b| b.bytes), waited, shots)?;
+        self.check_browser(app.pid, p.window.as_ref(), p.browser_url.as_deref())?;
         encode(obs)
     }
 
@@ -820,10 +849,11 @@ impl<D: Desktop> Service<D> {
         if cancel.load(Ordering::SeqCst) {
             observation_error = Some(cancelled());
         } else if mode != ObserveMode::None {
-            match self.read(pid, target.window.as_ref(), None) {
+            match self.guarded_read(pid, target.window.as_ref(), None, target.browser_url.as_deref()) {
                 Ok(raw) => {
                     let shots = Shots { policy: observe.and_then(|o| o.screenshot).unwrap_or(ScreenshotPolicy::Auto), max_edge: observe.and_then(|o| o.max_edge) };
                     let o = self.observe(&target.session, raw, false, observe.and_then(|o| o.geometry).unwrap_or(false), observe.and_then(|o| o.budget.clone()).map(|b| b.bytes), Some(waited.clone()), Some(shots))?;
+                    self.check_browser(pid, target.window.as_ref(), target.browser_url.as_deref())?;
                     // a step's effect: whether the window's text moved from the last one the session got
                     for s in steps.iter_mut() {
                         if let StepResult::Ok(ok) = s {
@@ -858,6 +888,7 @@ impl<D: Desktop> Service<D> {
     /// One step: at the `ax` tier when it takes the step, else at the first allowed event tier (act.rs).
     #[allow(clippy::too_many_arguments)]
     fn step(&self, target: &Target, pid: i64, a: &ComputerAction, tiers: &[Tier], max_edge: Option<i64>, paste_quiet_ms: Option<i64>, cancel: &AtomicBool) -> Result<OkStep, ComputerError> {
+        self.check_browser(pid, target.window.as_ref(), target.browser_url.as_deref())?;
         let ok = |tier: Option<Tier>| OkStep { action: a.action, tier, effect: StepEffect::Unknown, ..Default::default() };
         match a.action {
             ComputerActionName::Wait => {
@@ -964,6 +995,14 @@ impl<D: Desktop> Service<D> {
 }
 
 /// Two texts the same but for how their line breaks are written: a RichEdit keeps `\r` where it was given `\r\n`.
+fn browser_app(app: &AppInfo) -> bool {
+    matches!(
+        app.bundle_id.as_deref(),
+        Some("chrome.exe" | "msedge.exe" | "firefox.exe" | "brave.exe" | "opera.exe" | "vivaldi.exe" | "chromium.exe" |
+             "waterfox.exe" | "librewolf.exe" | "zen.exe" | "floorp.exe" | "arc.exe" | "safari.exe" | "browser.exe")
+    )
+}
+
 pub fn same_text(a: &str, b: &str) -> bool {
     let norm = |s: &str| s.replace("\r\n", "\n").replace('\r', "\n");
     norm(a) == norm(b)

@@ -113,4 +113,6 @@ struct LiveWindows: WindowSource {
     func tabSelected(_ tab: TabHandle) -> Bool { AppWindows.tabSelected(tab.element) }
 
     func chromium(pid: pid_t) -> Bool { AppWindows.isChromium(pid: pid) }
+
+    func browserURL(window: AXUIElement) -> String? { activeBrowserURL(window) }
 }

@@ -578,6 +578,7 @@ describe('/ui and /pair', () => {
     expect(bare.status).toBe(302)
     expect(bare.headers.get('location')).toBe('/ui/')
     const index = await call('GET', '/ui/', { headers: { Cookie: cookie } })
+    expect(index.headers.get('content-security-policy')).toBe("frame-ancestors 'none'")
     expect(index.status).toBe(200)
     expect(index.headers.get('cache-control')).toBe('no-store')
     expect(String(index.body)).toContain(

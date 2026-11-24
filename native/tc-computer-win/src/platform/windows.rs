@@ -697,6 +697,40 @@ impl Desktop for WindowsDesktop {
         Ok(apps)
     }
 
+    fn browser_url(&self, pid: i64, window: Option<&WindowRef>) -> Option<String> {
+        com();
+        let (win, _) = self.resolve_window(pid, window).ok()?;
+        unsafe {
+            let root = self.uia.automation.ElementFromHandle(win.hwnd).ok()?;
+            let walker = self.uia.automation.ControlViewWalker().ok()?;
+            let mut queue = std::collections::VecDeque::from([root]);
+            let mut document = None;
+            let mut visited = 0;
+            while let Some(element) = queue.pop_front() {
+                visited += 1;
+                if visited > 160 { return None; }
+                if element.CurrentIsOffscreen().ok()?.as_bool() { continue; }
+                if element.CurrentControlType().ok()? == UIA_DocumentControlTypeId {
+                    // Do not walk into the document, where a frame or field could supply a different URL.
+                    if document.is_some() { return None; }
+                    document = Some(element);
+                    continue;
+                }
+                let mut child = walker.GetFirstChildElement(&element).ok();
+                while let Some(element) = child {
+                    child = walker.GetNextSiblingElement(&element).ok();
+                    if queue.len() >= 160 { return None; }
+                    queue.push_back(element);
+                }
+            }
+            let value = document?.GetCurrentPatternAs::<IUIAutomationValuePattern>(UIA_ValuePatternId).ok()?;
+            let url = s(value.CurrentValue())?;
+            // A browser that publishes document text rather than a URL is unreadable here.
+            url.split_once(':').filter(|(scheme, _)| matches!(*scheme, "http" | "https" | "about" | "chrome" | "edge" | "file"))?;
+            Some(url)
+        }
+    }
+
     fn read(&self, pid: i64, window: Option<&WindowRef>, from: Option<&Elem>, deadline: Instant) -> Result<RawWindow<Elem>, ComputerError> {
         com();
         let started = Instant::now();

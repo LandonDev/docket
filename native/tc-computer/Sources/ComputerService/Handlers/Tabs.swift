@@ -58,6 +58,9 @@ extension ComputerService {
         let mode = TabPlan.mode(tabs)
         let selection = try await target.worker.run { state -> TabSelection? in
             guard let window = state.windows[windowID], let tab = state.tabs[windowID] else { return nil }
+            if target.browserURL != nil && !source.tabSelected(tab) {
+                throw ComputerError(kind: .browserRefused, message: "refused: the browser tab’s address changed or could not be verified.")
+            }
             let done = try source.selectTab(pid: pid, window: window, tab: tab, mode: mode, waitMs: waitMs)
             // the tab is selected now: a later read of this window with the same ref takes the shared lease
             state.tabs[windowID] = TabHandle(element: tab.element, title: tab.title, selected: true)

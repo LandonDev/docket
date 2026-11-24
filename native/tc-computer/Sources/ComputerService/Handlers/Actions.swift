@@ -95,7 +95,7 @@ extension ComputerService {
         // a cancelled action answers its normal result, the stopped step failed (spec §1)
         router.on("action.run", keepsResult: true) { [self] (p: Methods.ActionRun.Params, ctx) -> ActionResult in
             let result = try await runActions(
-                session: p.session, app: p.app, window: p.window, launch: p.launch ?? false, epoch: p.epoch,
+                session: p.session, app: p.app, window: p.window, launch: p.launch ?? false, epoch: p.epoch, browserURL: p.browserUrl,
                 actions: [p.action], tiers: p.tiers, stepWait: nil, wait: p.wait, observe: p.observe, pasteQuietMs: p.pasteQuietMs, personIdleMs: p.personIdleMs, ignored: p.ignored,
                 tabs: p.tabs, expectFocus: p.expectFocus, axWait: p.axWait, prior: p.prior, textWindowId: p.textWindowId, ctx: ctx
             )
@@ -106,7 +106,7 @@ extension ComputerService {
         }
         router.on("action.batch", keepsResult: true) { [self] (p: Methods.ActionBatch.Params, ctx) in
             features.fit(try await runActions(
-                session: p.session, app: p.app, window: p.window, launch: p.launch ?? false, epoch: p.epoch,
+                session: p.session, app: p.app, window: p.window, launch: p.launch ?? false, epoch: p.epoch, browserURL: p.browserUrl,
                 actions: p.actions, tiers: p.tiers, stepWait: p.stepWait, wait: p.wait, observe: p.observe, pasteQuietMs: p.pasteQuietMs, personIdleMs: p.personIdleMs, ignored: p.ignored,
                 tabs: p.tabs, expectFocus: p.expectFocus, axWait: p.axWait, axStepWait: p.axStepWait, prior: p.prior, textWindowId: p.textWindowId, ctx: ctx
             ))
@@ -123,7 +123,7 @@ extension ComputerService {
     /// waits after steps that went in at `ax` (`WaitRows`), `prior` what the call's earlier segments did, `textWindowId`
     /// the window the host last read.
     func runActions(
-        session: String, app: AppRef, window: WindowRef?, launch: Bool, epoch callEpoch: String?, actions: [ComputerAction],
+        session: String, app: AppRef, window: WindowRef?, launch: Bool, epoch callEpoch: String?, browserURL: String? = nil, actions: [ComputerAction],
         tiers: [Tier], stepWait: WaitOptions?, wait: WaitOptions?, observe: ObserveOptions?, pasteQuietMs: Int? = nil, personIdleMs: Int? = nil, ignored: IgnoredRoutes? = nil,
         tabs: TabsMode? = nil, expectFocus: Int? = nil, axWait: WaitOptions? = nil, axStepWait: WaitOptions? = nil, prior: Prior? = nil, textWindowId: Int? = nil,
         ctx: RequestContext
@@ -132,7 +132,7 @@ extension ComputerService {
         do {
             let rows = WaitRows(stepWait: stepWait, wait: wait, axStepWait: axStepWait, axWait: axWait)
             let result = try await runActions(
-                session: session, app: app, window: window, launch: launch, epoch: callEpoch, actions: actions, tiers: tiers,
+                session: session, app: app, window: window, launch: launch, epoch: callEpoch, browserURL: browserURL, actions: actions, tiers: tiers,
                 rows: rows, observe: observe, pasteQuietMs: pasteQuietMs, personIdleMs: personIdleMs, ignored: ignored,
                 tabs: tabs, expectFocus: expectFocus, prior: prior, textWindowId: textWindowId, ctx: ctx, front: guarded
             )
@@ -144,13 +144,13 @@ extension ComputerService {
     }
 
     private func runActions(
-        session: String, app: AppRef, window: WindowRef?, launch: Bool, epoch callEpoch: String?, actions: [ComputerAction],
+        session: String, app: AppRef, window: WindowRef?, launch: Bool, epoch callEpoch: String?, browserURL: String? = nil, actions: [ComputerAction],
         tiers: [Tier], rows: WaitRows, observe: ObserveOptions?, pasteQuietMs: Int?, personIdleMs: Int?, ignored: IgnoredRoutes?,
         tabs: TabsMode?, expectFocus: Int?, prior: Prior?, textWindowId: Int?, ctx: RequestContext, front: FrontRun
     ) async throws -> BatchResult {
         // every index the call names, `expectFocus` with them, against the call's epoch (§4.2, §25.9)
         if let failure = CallIndexes.check(actions, expectFocus: expectFocus, epoch: callEpoch, current: epoch) { throw failure }
-        let target = try await resolveTarget(session: session, app: app, window: window, launch: launch, ctx: ctx)
+        let target = try await resolveTarget(session: session, app: app, window: window, launch: launch, browserURL: browserURL, ctx: ctx)
         front.watch(target)
         // a click this call makes is carried for a stream that starts until clickCarryMs after its answer
         ctx.afterAnswer { [self] in clickCallAnswered(ctx.id) }
@@ -166,6 +166,7 @@ extension ComputerService {
             )
         }
         defer { lease.release() }
+        try await checkBrowser(target)
         // §25.4: a ref naming a background tab selects it now, under this call's exclusive slot, which it holds
         // through the steps and the observation; `tab_in_use` and a selection that did not take are request errors
         var selection: TabSelection?
@@ -317,6 +318,11 @@ extension ComputerService {
 
     /// One step: the shell's own pictures and wait, or Input.
     private func step(_ index: Int, _ action: ComputerAction, target: Resolved, tiers: [Tier], maxEdge: Int?, pasteQuietMs: Int?, call: StepCall, facts: CallFacts, ignored: IgnoredRoutes?, next: ComputerAction?, ctx: RequestContext) async -> StepRun {
+        do {
+            try await checkBrowser(target)
+        } catch {
+            return StepRun(step: failed(index, action, error, or: .browserRefused))
+        }
         let thin = book.lastThin(target.session, pid: target.pid)
         switch action.action {
         case .screenshot, .zoom:
@@ -398,6 +404,7 @@ extension ComputerService {
                 guard let reader = state.reader, let window = state.windows[windowID] else {
                     throw ComputerError(kind: .windowNotFound, message: "The window is gone.")
                 }
+                try Self.checkBrowser(target.browserURL, window: window, source: source)
                 // §27.9, §27.10: the step's target by its name or its menu-bar path, resolved now; Input acts on the element
                 var input = action
                 var named: ResolvedElement?
@@ -532,7 +539,7 @@ extension ComputerService {
            }) {
             opened = OkStep.Opened(id: info.id, title: info.title)
             facts.windows.append(info.id)
-            next = Resolved(session: target.session, pid: pid, app: target.app, worker: target.worker, info: info, launched: false)
+            next = Resolved(session: target.session, pid: pid, app: target.app, worker: target.worker, info: info, launched: false, browserURL: target.browserURL)
         } else if target.info.id != original.info.id {
             let current = target.info.id, home = original.info.id
             // the original target keeps its own resolution (its tab, its element on the worker); another window is resolved
@@ -545,7 +552,7 @@ extension ComputerService {
                 return info
             }
             if let info = back ?? nil {
-                next = info.id == home ? original : Resolved(session: target.session, pid: pid, app: target.app, worker: target.worker, info: info, launched: false)
+                next = info.id == home ? original : Resolved(session: target.session, pid: pid, app: target.app, worker: target.worker, info: info, launched: false, browserURL: target.browserURL)
             }
         }
         return (.ok(ok.with(opened: opened, focusTo: moved ? focusAfter : nil)), next)
@@ -593,7 +600,7 @@ extension ComputerService {
             state.windows[UInt32(truncatingIfNeeded: info.id)] = element
             return info
         }
-        return Resolved(session: target.session, pid: pid, app: target.app, worker: target.worker, info: info, launched: false)
+        return Resolved(session: target.session, pid: pid, app: target.app, worker: target.worker, info: info, launched: false, browserURL: target.browserURL)
     }
 
     /// The wait after a step, from its last input. A copy or cut (`pasteboard`) also watches the

@@ -1,3 +1,4 @@
+import type { TempCodeOrigins } from '../../../remote/tempcodeOrigins'
 import { join } from 'node:path'
 import type { z } from 'zod'
 import type { SessionMeta } from '@shared/events'
@@ -83,6 +84,7 @@ export interface BoxRegistry extends ComputerRegistry {
  * `work-browser/box/computer`.
  */
 export interface BoxWiring {
+  origins?: () => TempCodeOrigins
   registry: BoxRegistry
   store: SettingsStore
   dataDir: string
@@ -100,7 +102,7 @@ export function wireBoxBrowser(o: BoxWiring): BoxBrowserHost | null {
   const log = o.log ?? ((line: string) => console.log(`[box browser] ${line}`))
   const videoOn = (): boolean => o.videoOn?.() !== false
   // Headed for live video when the tools are installed and the setting is on (videoSetting.ts); read at every start of the browser.
-  const browser = new BoxChromium({ root, log, busy, holding: () => inUse > 0, video: () => (videoOn() ? videoToolsAt(o.dataDir) : null) })
+  const browser = new BoxChromium({ root, log, origins: o.origins, busy, holding: () => inUse > 0, video: () => (videoOn() ? videoToolsAt(o.dataDir) : null) })
   if (browser.unavailable()) return null
   const stage = new BoxStage({ endpoint: () => browser.endpoint(), wm: () => browser.wm }, { closed: closedToAgents, log })
   const paneOf = (thread: string): string => {
@@ -114,6 +116,9 @@ export function wireBoxBrowser(o: BoxWiring): BoxBrowserHost | null {
   const lastPage = new Map<string, string>()
   const make = () =>
     (liveService = new BoxComputerService({
+      origins: o.origins,
+      refusedRequests: () => browser.refusedRequests,
+      refreshOriginFence: () => browser.refreshOriginFence(),
       browser: {
         endpoint: () => browser.endpoint(),
         pid: () => browser.pid,

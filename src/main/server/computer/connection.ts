@@ -113,6 +113,7 @@ export const COMPUTER_DEADLINES = {
   'apps.launch': 15_000,
   'session.open': 5_000,
   'session.close': 5_000,
+  'browser.target': 5_000,
   'state.get': 30_000,
   'action.run': 60_000,
   'action.batch': 60_000,
@@ -158,9 +159,13 @@ const TRACE_DATA_MAX = 1_024
 export function traceFrame(raw: string): string {
   let text = raw
   try {
-    text = JSON.stringify(JSON.parse(raw), (key, value) =>
-      key === 'data' && typeof value === 'string' && value.length > TRACE_DATA_MAX ? `<base64 ${Math.floor((value.length * 3) / 4)} bytes>` : value
-    )
+    text = JSON.stringify(JSON.parse(raw), function (key, value) {
+      if (key === 'browserUrl' || (key === 'url' && typeof this.browser === 'boolean')) return '<browser address>'
+      if (key === 'data' && typeof value === 'string' && value.length > TRACE_DATA_MAX) {
+        return `<base64 ${Math.floor((value.length * 3) / 4)} bytes>`
+      }
+      return value
+    })
   } catch {
     // not JSON: printed as it came
   }

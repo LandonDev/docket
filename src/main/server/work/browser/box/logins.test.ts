@@ -5,7 +5,7 @@ import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import { Cdp } from './cdp'
 import { BoxChromium, findChromium } from './chromium'
-import { chromeKey, cookieOfRow, decryptCookie, importDir, onSites, parseExport, takeImports } from './logins'
+import { clearTempCodeLogins, chromeKey, cookieOfRow, decryptCookie, importDir, onSites, parseExport, takeImports } from './logins'
 
 const dirs: string[] = []
 afterEach(() => dirs.splice(0).forEach((d) => rmSync(d, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 })))
@@ -52,6 +52,10 @@ describe('logins from his Mac', () => {
       const file = join(importDir(root), 'logins.json')
       writeFileSync(file, JSON.stringify({ cookies: [{ name: 'ESTSAUTHPERSISTENT', value: 'tok', domain: '.login.microsoftonline.com', path: '/', expires: 4_000_000_000, httpOnly: true, secure: true, sameSite: 'None' }] }))
       writeFileSync(join(importDir(root), 'broken.json'), '{')
+      const ownerCookie = { name: 'tc_session', value: 'paired-test', domain: 'tempcode.example.com', path: '/', httpOnly: true, secure: true }
+      writeFileSync(join(importDir(root), 'owner.json'), JSON.stringify({ cookies: [ownerCookie] }))
+      await cdp.send('Storage.setCookies', { cookies: [ownerCookie] })
+      await clearTempCodeLogins(cdp)
       const lines: string[] = []
       expect(await takeImports(root, cdp, (l) => lines.push(l))).toBe(1)
       expect(existsSync(file)).toBe(false)
@@ -59,6 +63,8 @@ describe('logins from his Mac', () => {
       expect(lines.join('\n')).toMatch(/took 1 cookies for login\.microsoftonline\.com/)
       const { cookies } = await cdp.send<{ cookies: { name: string; value: string }[] }>('Storage.getCookies')
       expect(cookies.find((c) => c.name === 'ESTSAUTHPERSISTENT')?.value).toBe('tok')
+      expect(cookies.find((c) => c.name === ownerCookie.name)).toBeUndefined()
+      expect(existsSync(join(importDir(root), 'owner.json'))).toBe(false)
     } finally {
       cdp.close()
       await browser.stop()

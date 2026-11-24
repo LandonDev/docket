@@ -1,3 +1,4 @@
+import { isTempCodeOrigin, TEMPCODE_ORIGIN_REFUSAL, type TempCodeOrigins } from '../remote/tempcodeOrigins'
 import type { z } from 'zod'
 import {
   COMPUTER_WAIT,
@@ -40,6 +41,8 @@ import {
   passwordTarget,
   refusedLaunch,
   refusedLaunchList,
+  refusedBrowserTarget,
+  knownBrowser,
   refusedVmKey,
   vmLaunchFile,
   refusedOpenItem,
@@ -245,6 +248,7 @@ export interface ThreadComputer {
 }
 
 export interface RunHost {
+  origins?: () => TempCodeOrigins
   service: ComputerService
   verdicts: TierVerdicts
   gate(): SessionTierGate
@@ -549,11 +553,19 @@ async function runChecked(
   // host reads as outward, or the model flagged, is kept for the owner's press and asks no card. So the flag is no card here.
   const work = ctx.work === true || host.registry.get(threadId)?.scope === 'work'
 
+  const browserOrigins = (): TempCodeOrigins | undefined => {
+    const origins = host.origins?.()
+    // QEMU's guest gateway stands for the box's loopback.
+    return origins && host.vm ? { ...origins, lanAddresses: [...origins.lanAddresses, '10.0.2.2'] } : origins
+  }
+
   // an app no call may touch, or an item that is no page, file or folder: refused before the card
   if (tool === 'computer_apps') {
     const line =
       (typeof args.launch === 'string' ? refusedLaunch(args.launch, !!host.vm) : null) ?? (openOf(args).map((item) => refusedOpenItem(item, !!host.vm)).find((l) => l !== null) ?? null)
     if (line) return refusalOf(line)
+    const origins = browserOrigins()
+    if (origins && openOf(args).some((item) => isTempCodeOrigin(item, origins))) return refusal(TEMPCODE_ORIGIN_REFUSAL)
     // a Work thread opens no Forms page: only the msform tools reach Forms
     if (work && openOf(args).some(isFormsUrl)) return refusal(FORMS_OPEN_REFUSED)
   }
@@ -674,7 +686,7 @@ async function runChecked(
     return null
   }
   // A code thread's card comes here, before anything is asked of the service, as it always did.
-  if (!work) {
+  if (!work && (!host.origins || tool === 'computer_apps')) {
     const notAllowed = await askCard()
     if (notAllowed) return notAllowed
   }
@@ -720,12 +732,35 @@ async function runChecked(
       return await timed(method, params)
     }
   }
-  /** Every request, a read or an input: on the bridge it waits until someone will read the result, so nothing runs unread. */
-  async function call<M extends ComputerMethod>(method: M, params: ComputerParams<M>): Promise<ComputerResult<M>> {
+  /** Check a browser target without reading its content or switching tabs. The native service binds checks to its steps. */
+  async function browserUrl(target: Pick<TargetBase, 'session' | 'app' | 'window'>): Promise<string | undefined> {
+    const origins = browserOrigins()
+    if (!origins) return
+    const report = await send('browser.target', { session: target.session, app: target.app, window: target.window }).catch((error: unknown) => {
+      if (!(error instanceof ComputerRpcError) || error.code !== -32601) throw error
+      return { browser: resolvedApp !== undefined && knownBrowser(resolvedApp), url: undefined }
+    })
+    const line = refusedBrowserTarget(report, origins)
+    if (line) throw new ComputerRpcError(-32000, line, { kind: 'browser_refused', message: line })
+    return report.browser ? report.url : undefined
+  }
+
+  /** On the bridge, requests wait for a reader so nothing runs unread. */
+  async function withReader<T>(request: () => Promise<T>): Promise<T> {
     const reader = ctx.reader
-    if (!reader) return await send(method, params)
+    if (!reader) return await request()
     if (!reader.present()) await holding(READER_WAIT_WORDS, () => reader.whenPresent(signal))
-    return await reader.request(signal, () => send(method, params))
+    return await reader.request(signal, request)
+  }
+
+  async function call<M extends ComputerMethod>(method: M, params: ComputerParams<M>): Promise<ComputerResult<M>> {
+    return await withReader(async () => {
+      if (host.origins && (method === 'state.get' || method === 'action.run' || method === 'action.batch' || method === 'input.probe')) {
+        const url = await browserUrl(params as TargetBase)
+        if (url) return send(method, { ...params, browserUrl: url })
+      }
+      return send(method, params)
+    })
   }
 
   const errCtx: ErrorContext = {
@@ -783,6 +818,13 @@ async function runChecked(
     note.person = person
     const offLimits = refusedTarget(pin.app, steps.some(sendsInput) ? 'act' : 'read')
     if (offLimits) return refusalOf(offLimits)
+    if (!work && host.origins && tool !== 'computer_observe') {
+      const current = app()?.window
+      const window = args.window ? { title: args.window } : current ? { id: current.id } : undefined
+      await withReader(() => browserUrl({ session: t.serviceSession, app: { pid: pin.app.pid }, window }))
+      const notAllowed = await askCard()
+      if (notAllowed) return notAllowed
+    }
     if (work && tool !== 'computer_observe') {
       const identity = { bundleId: pin.app.bundleId, name: pin.app.name }
       /** The window as it is now, whole and with frames. The model never sees this read, so the app's next read is full: no diff is taken against it. */
@@ -804,7 +846,8 @@ async function runChecked(
           const now = app()
           if (now) now.needsFull = true
           return obs
-        } catch {
+        } catch (error) {
+          if (error instanceof ComputerRpcError && error.data?.kind === 'browser_refused') throw error
           return null
         }
       }
@@ -1116,6 +1159,7 @@ async function runChecked(
       // the service caught an app no call may touch (a path to TempCode.app): the host's own words for it
       if (e.data?.kind === 'open_refused' && e.data.reason === 'app') return refused('refused_app', 'tempcode')
       if (e.data) note.error = e.data
+      if (e.data?.kind === 'browser_refused') return refusal(e.data.message)
       return refusal(e.data ? errorLine(e.data, errCtx) : e.message)
     }
     host.log(`computer call failed in ${threadId}: ${(e as Error).stack ?? e}`)

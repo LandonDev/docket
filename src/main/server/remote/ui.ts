@@ -164,7 +164,10 @@ export function createUiHandler(options: UiOptions): UiHandler {
     if (isDocument) {
       // The page may fetch from this host and, for Mail's bodies and pictures, from the LifeOS it talks to.
       const html = withLifeosConnect(rewriteCsp(readFileSync(indexPath, 'utf8'), ctx.host, ctx.proto), lifeosAddress().url)
-      send(res, 200, html, 'text/html; charset=utf-8', { 'Cache-Control': 'no-store' })
+      send(res, 200, html, 'text/html; charset=utf-8', {
+        'Cache-Control': 'no-store',
+        'Content-Security-Policy': "frame-ancestors 'none'"
+      })
       return true
     }
     const file = fencedUnder(root, path.slice('/ui/'.length))

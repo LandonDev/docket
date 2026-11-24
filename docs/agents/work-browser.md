@@ -241,6 +241,20 @@ awake. The code is `src/main/server/work/browser/box/`; the protocol's
   frame, of its own origin or another's, is read, filled, clicked and held
   like any page (`hold.test.ts`).
 
+## TempCode pages
+
+Both modes of the box browser send web traffic through a local proxy. The
+proxy refuses the listener's loopback and LAN addresses, the tunnel address
+and saved routes to linked hosts. It checks the host and port before it
+connects, even on a redirect, frame, popup or WebSocket. The tools also
+refuse a tab already on one of these addresses. The profile drops any
+existing TempCode session cookie when Chromium starts, and Chrome exports
+and box imports leave that cookie out.
+
+The proxy knows the routes saved by this host. It cannot identify an
+unlisted tunnel alias or an unrelated site that proxies the UI. It does
+not apply to shell commands or to a browser the owner runs on his own.
+
 ## Logins
 
 The box never sees a password. Two ways in:

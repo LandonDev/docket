@@ -40,6 +40,11 @@ pub trait Desktop: Send + Sync + 'static {
         true
     }
 
+    /// The active, top-level browser document URL, if UI Automation can read it.
+    fn browser_url(&self, _pid: i64, _window: Option<&WindowRef>) -> Option<String> {
+        None
+    }
+
     // ── input (§29.4) ───────────────────────────────────────────────────
 
     /// The window of `pid` that `window` names (none: its main window), for input and capture.

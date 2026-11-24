@@ -15,6 +15,7 @@ struct Resolved: Sendable {
     let launched: Bool
     /// the browser tab the ref matched (§25.4), nil for none; the element is on the worker
     var tab: TabRef? = nil
+    var browserURL: String? = nil
 
     var windowID: UInt32 { UInt32(truncatingIfNeeded: info.id) }
 }
@@ -53,16 +54,34 @@ struct ObserveKnobs: Sendable {
 
 extension ComputerService {
     func registerObserve() {
+        router.on("browser.target") { [self] (p: Methods.BrowserTarget.Params, ctx) -> Methods.BrowserTarget.Output in
+            let target = try await resolveTarget(session: p.session, app: p.app, window: p.window, launch: false, ctx: ctx)
+            let source = modules.windows
+            let identity = "\(target.app.bundleId ?? "") \(target.app.name)"
+            let browser = source.chromium(pid: target.pid) ||
+                identity.range(of: #"chrome|chromium|safari|firefox|msedge|microsoft edge|brave|opera|vivaldi|waterfox|librewolf|zen browser|floorp|tor browser|thebrowser\.browser|\barc\b|\borion\b"#,
+                               options: [.regularExpression, .caseInsensitive]) != nil
+            guard browser else { return .init(browser: false) }
+            let id = target.windowID
+            let url = try await target.worker.run { state -> String? in
+                guard let window = state.windows[id] else { return nil }
+                // AX does not give us the document URL of a tab that is not selected.
+                if let tab = state.tabs[id], !source.tabSelected(tab) { return nil }
+                return source.browserURL(window: window)
+            }
+            return .init(browser: true, url: url.flatMap { $0.isEmpty ? nil : $0 })
+        }
         router.on("state.get") { [self] (p: Methods.StateGet.Params, ctx) in try await stateGet(p, ctx) }
     }
 
     func stateGet(_ p: Methods.StateGet.Params, _ ctx: RequestContext) async throws -> Observation {
         if let failure = EpochCheck.check(names: p.element, epoch: p.epoch, current: epoch) { throw failure }
-        let target = try await resolveTarget(session: p.session, app: p.app, window: p.window, launch: p.launch ?? false, ctx: ctx)
+        let target = try await resolveTarget(session: p.session, app: p.app, window: p.window, launch: p.launch ?? false, browserURL: p.browserUrl, ctx: ctx)
         let options = p.wait ?? ComputerDefaults.Wait.observe
         // a read that must select a tab holds the exclusive slot through its observation (§25.4)
         let hold = try await readHold(target, tabs: p.tabs, waitMs: options.busyMaxMs)
         defer { hold.lease.release() }
+        try await checkBrowser(target)
         let pixel = await pixelWatch(target)
         let t0 = MachTime.now()
         let sig0 = try await signature(target)
@@ -87,7 +106,7 @@ extension ComputerService {
 
     /// The session open, Accessibility on, the app found (launched in the background when asked, then its
     /// first window waited for), the window resolved on the session × pid worker, which keeps its element.
-    func resolveTarget(session: String, app: AppRef, window: WindowRef?, launch: Bool, ctx: RequestContext) async throws -> Resolved {
+    func resolveTarget(session: String, app: AppRef, window: WindowRef?, launch: Bool, browserURL: String? = nil, ctx: RequestContext) async throws -> Resolved {
         try requireSession(session)
         lock.withLock { sessionRequests[session, default: [:]][ctx.id] = ctx.cancel }
         ctx.afterAnswer { [self] in
@@ -116,8 +135,24 @@ extension ComputerService {
         let running = inventory.running().first { $0.pid == pid }
         return Resolved(
             session: session, pid: pid, app: Observation.App(pid: Int(pid), bundleId: running?.bundleId, name: running?.name ?? ""),
-            worker: worker, info: info, launched: launched, tab: tab
+            worker: worker, info: info, launched: launched, tab: tab, browserURL: browserURL
         )
+    }
+
+    func checkBrowser(_ target: Resolved) async throws {
+        guard let expected = target.browserURL else { return }
+        let source = modules.windows
+        let id = target.windowID
+        try await target.worker.run { state in
+            try Self.checkBrowser(expected, window: state.windows[id], source: source)
+        }
+    }
+
+    static func checkBrowser(_ expected: String?, window: AXUIElement?, source: any WindowSource) throws {
+        guard let expected else { return }
+        guard let window, source.browserURL(window: window) == expected else {
+            throw ComputerError(kind: .browserRefused, message: "refused: the browser tab’s address changed or could not be verified.")
+        }
     }
 
     /// §2.1's match, tabs included, then §27.6's last step: a kept title of exactly one live window. A title a live
@@ -218,6 +253,7 @@ extension ComputerService {
             text = try await read(target, request)
         }
         if cancel.isSet { return try await dropped(target) }
+        try await checkBrowser(target)
         // what coordinates mean from now on is the space this observation states, shot or no shot
         book.setSpace(target.session, window: windowID, space)
         if text.kind != .subtree { book.noteThin(target.session, pid: target.pid, thin: text.stats.thin) }
@@ -234,9 +270,13 @@ extension ComputerService {
 
     private func read(_ target: Resolved, _ request: ObserveRequest) async throws -> TextBox {
         let box = RequestBox(request: request)
+        let source = modules.windows
+        let id = target.windowID
         return try await target.worker.run { state in
             guard let reader = state.reader else { throw ComputerError(kind: .windowNotFound, message: "The app's reader is gone.") }
+            try Self.checkBrowser(target.browserURL, window: state.windows[id], source: source)
             let text = try reader.observe(box.request)
+            try Self.checkBrowser(target.browserURL, window: state.windows[id], source: source)
             // §27.6: the title the service answered for this window, which a later ref may still use
             if box.request.element == nil { state.aliases.answered(id: text.window.id, title: text.window.title) }
             return TextBox(text: text, page: reader.lastPage)
@@ -259,6 +299,7 @@ extension ComputerService {
     /// The one gate every picture path goes through (shell §9.2): Screen Recording off is
     /// `permission_missing`, a minimized window `window_minimized`.
     func captureGuard(_ target: Resolved) async throws {
+        try await checkBrowser(target)
         guard currentPermissions.screenRecording else {
             pokePermissions()
             throw ComputerError(kind: .permissionMissing, message: "TempCode needs the Screen Recording permission to capture windows.", which: .screenRecording)

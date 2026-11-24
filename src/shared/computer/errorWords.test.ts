@@ -9,6 +9,7 @@ const err = (kind: ComputerErrorKind, data: Partial<ComputerError> = {}): Comput
 const SAMPLES: Record<ComputerErrorKind, Partial<ComputerError>> = {
   not_initialized: {},
   open_refused: { reason: 'executable' },
+  browser_refused: {},
   protocol_mismatch: {},
   permission_missing: { which: 'accessibility' },
   unknown_session: {},

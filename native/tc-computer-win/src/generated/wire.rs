@@ -595,6 +595,8 @@ pub enum ComputerErrorKind {
     AlreadyRunning,
     #[serde(rename = "open_refused")]
     OpenRefused,
+    #[serde(rename = "browser_refused")]
+    BrowserRefused,
     #[serde(rename = "value_not_taken")]
     ValueNotTaken,
     #[serde(rename = "focus_moved")]
@@ -641,6 +643,7 @@ impl ComputerErrorKind {
             ComputerErrorKind::SessionUnavailable => "session_unavailable",
             ComputerErrorKind::AlreadyRunning => "already_running",
             ComputerErrorKind::OpenRefused => "open_refused",
+            ComputerErrorKind::BrowserRefused => "browser_refused",
             ComputerErrorKind::ValueNotTaken => "value_not_taken",
             ComputerErrorKind::FocusMoved => "focus_moved",
             ComputerErrorKind::TabInUse => "tab_in_use",
@@ -1000,6 +1003,8 @@ pub struct Target {
     pub launch: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub epoch: Option<String>,
+    #[serde(rename = "browserUrl", default, skip_serializing_if = "Option::is_none")]
+    pub browser_url: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
@@ -2227,6 +2232,13 @@ pub struct AppsLaunchResult {
 }
 
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+pub struct BrowserTargetResult {
+    pub browser: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub url: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
 pub struct StateGetParams {
     pub session: String,
     pub app: AppRef,
@@ -2236,6 +2248,8 @@ pub struct StateGetParams {
     pub launch: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub epoch: Option<String>,
+    #[serde(rename = "browserUrl", default, skip_serializing_if = "Option::is_none")]
+    pub browser_url: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub mode: Option<ObservationMode>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -2266,6 +2280,8 @@ pub struct ActionRunParams {
     pub launch: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub epoch: Option<String>,
+    #[serde(rename = "browserUrl", default, skip_serializing_if = "Option::is_none")]
+    pub browser_url: Option<String>,
     pub action: ComputerAction,
     pub tiers: Vec<Tier>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -2302,6 +2318,8 @@ pub struct ActionBatchParams {
     pub launch: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub epoch: Option<String>,
+    #[serde(rename = "browserUrl", default, skip_serializing_if = "Option::is_none")]
+    pub browser_url: Option<String>,
     pub actions: Vec<ComputerAction>,
     pub tiers: Vec<Tier>,
     #[serde(rename = "stepWait", default, skip_serializing_if = "Option::is_none")]
@@ -2340,6 +2358,8 @@ pub struct CaptureScreenshotParams {
     pub launch: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub epoch: Option<String>,
+    #[serde(rename = "browserUrl", default, skip_serializing_if = "Option::is_none")]
+    pub browser_url: Option<String>,
     #[serde(rename = "maxEdge", default, skip_serializing_if = "Option::is_none")]
     pub max_edge: Option<i64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -2360,6 +2380,8 @@ pub struct CaptureStreamStartParams {
     pub launch: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub epoch: Option<String>,
+    #[serde(rename = "browserUrl", default, skip_serializing_if = "Option::is_none")]
+    pub browser_url: Option<String>,
     pub stream: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub fps: Option<i64>,
@@ -2389,6 +2411,8 @@ pub struct CaptureVideoStartParams {
     pub launch: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub epoch: Option<String>,
+    #[serde(rename = "browserUrl", default, skip_serializing_if = "Option::is_none")]
+    pub browser_url: Option<String>,
     #[serde(rename = "maxEdge")]
     pub max_edge: i64,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -2420,6 +2444,8 @@ pub struct InputProbeParams {
     pub launch: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub epoch: Option<String>,
+    #[serde(rename = "browserUrl", default, skip_serializing_if = "Option::is_none")]
+    pub browser_url: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub classes: Option<Vec<ActionClass>>,
 }
@@ -2468,6 +2494,8 @@ pub mod methods {
     pub type SessionOpenResult = super::Empty;
     pub type SessionCloseParams = super::SessionRef;
     pub type SessionCloseResult = super::Empty;
+    pub type BrowserTargetParams = super::Target;
+    pub type BrowserTargetResult = super::BrowserTargetResult;
     pub type StateGetParams = super::StateGetParams;
     pub type StateGetResult = super::Observation;
     pub type ActionRunParams = super::ActionRunParams;
@@ -2507,6 +2535,7 @@ pub mod methods {
             "apps.launch" => serde_json::from_value::<AppsLaunchParams>(v).and_then(serde_json::to_value).map_err(|e| e.to_string()),
             "session.open" => serde_json::from_value::<SessionOpenParams>(v).and_then(serde_json::to_value).map_err(|e| e.to_string()),
             "session.close" => serde_json::from_value::<SessionCloseParams>(v).and_then(serde_json::to_value).map_err(|e| e.to_string()),
+            "browser.target" => serde_json::from_value::<BrowserTargetParams>(v).and_then(serde_json::to_value).map_err(|e| e.to_string()),
             "state.get" => serde_json::from_value::<StateGetParams>(v).and_then(serde_json::to_value).map_err(|e| e.to_string()),
             "action.run" => serde_json::from_value::<ActionRunParams>(v).and_then(serde_json::to_value).map_err(|e| e.to_string()),
             "action.batch" => serde_json::from_value::<ActionBatchParams>(v).and_then(serde_json::to_value).map_err(|e| e.to_string()),
@@ -2535,6 +2564,7 @@ pub mod methods {
             "apps.launch" => serde_json::from_value::<AppsLaunchResult>(v).and_then(serde_json::to_value).map_err(|e| e.to_string()),
             "session.open" => serde_json::from_value::<SessionOpenResult>(v).and_then(serde_json::to_value).map_err(|e| e.to_string()),
             "session.close" => serde_json::from_value::<SessionCloseResult>(v).and_then(serde_json::to_value).map_err(|e| e.to_string()),
+            "browser.target" => serde_json::from_value::<BrowserTargetResult>(v).and_then(serde_json::to_value).map_err(|e| e.to_string()),
             "state.get" => serde_json::from_value::<StateGetResult>(v).and_then(serde_json::to_value).map_err(|e| e.to_string()),
             "action.run" => serde_json::from_value::<ActionRunResult>(v).and_then(serde_json::to_value).map_err(|e| e.to_string()),
             "action.batch" => serde_json::from_value::<ActionBatchResult>(v).and_then(serde_json::to_value).map_err(|e| e.to_string()),
@@ -2553,5 +2583,5 @@ pub mod methods {
         }
     }
     /// The wire names, in COMPUTER_METHODS' order.
-    pub const NAMES: &[&str] = &["initialize", "shutdown", "permissions.get", "permissions.request", "apps.list", "apps.launch", "session.open", "session.close", "state.get", "action.run", "action.batch", "capture.screenshot", "capture.stream.start", "capture.stream.stop", "capture.video.start", "capture.video.stop", "input.probe", "input.restoreSession", "clipboard.state", "clipboard.read", "clipboard.write", "escape.watch"];
+    pub const NAMES: &[&str] = &["initialize", "shutdown", "permissions.get", "permissions.request", "apps.list", "apps.launch", "session.open", "session.close", "browser.target", "state.get", "action.run", "action.batch", "capture.screenshot", "capture.stream.start", "capture.stream.stop", "capture.video.start", "capture.video.stop", "input.probe", "input.restoreSession", "clipboard.state", "clipboard.read", "clipboard.write", "escape.watch"];
 }

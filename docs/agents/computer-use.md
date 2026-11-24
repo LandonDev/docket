@@ -169,6 +169,15 @@ why and the measured headline.
   first (`TargetResolver`), and TempCode itself and the system's password
   and Touch ID prompts are refused (`refused_app`). Service errors read
   through `errorLine` (src/shared/computer/errorWords.ts).
+- **TempCode pages.** Reads and acts in a browser on a TempCode address
+  are refused in every access and Away mode. The host checks the current
+  document address the Mac or Windows service reports, and the service
+  checks it again before reading or sending input. If a known browser
+  cannot give the address, the call stops. This includes background tabs
+  whose address the Mac cannot read before switching to them. If a step
+  changes the address, further steps and the closing read stop. A fresh
+  call checks the new address. This check uses the top-level document and
+  the host's known routes. The owner UI also refuses to load in a frame.
 - **The hold in a Work thread** (docs/computer-protocol.md §19.3 "The hold
   in a Work thread", [work-outbox.md](work-outbox.md)). The host classes
   each call from the screen, whatever the model flagged

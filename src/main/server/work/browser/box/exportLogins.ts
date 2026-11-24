@@ -14,7 +14,7 @@ import { execFileSync } from 'node:child_process'
 import { copyFileSync, mkdtempSync, rmSync } from 'node:fs'
 import { homedir, tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { chromeKey, cookieOfRow, OUTLOOK_SITES, onSites, type ChromeCookieRow } from './logins'
+import { chromeKey, cookieOfRow, mayImportCookie, OUTLOOK_SITES, onSites, type ChromeCookieRow } from './logins'
 
 const arg = (name: string): string | undefined => {
   const i = process.argv.indexOf(`--${name}`)
@@ -34,7 +34,7 @@ try {
   const password = execFileSync('security', ['find-generic-password', '-w', '-s', 'Chrome Safe Storage'], { encoding: 'utf8' }).trim()
   const key = chromeKey(password)
   const rows = sql('SELECT host_key, name, path, expires_utc, is_secure, is_httponly, samesite, hex(encrypted_value) AS ev, value FROM cookies') as ChromeCookieRow[]
-  const cookies = rows.filter((r) => onSites(r.host_key, sites)).map((r) => cookieOfRow(r, key, version))
+  const cookies = rows.filter((r) => mayImportCookie(r.name) && onSites(r.host_key, sites)).map((r) => cookieOfRow(r, key, version))
   process.stdout.write(`${JSON.stringify({ cookies })}\n`)
   process.stderr.write(`${cookies.length} cookies for ${sites.join(', ')}\n`)
 } finally {

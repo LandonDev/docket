@@ -33,7 +33,7 @@ func roundTrip<T: Codable>(_ type: T.Type, _ value: JSONValue, sourceLocation: S
 func allMethods() -> [any ContractMethod.Type] { [
     Methods.Initialize.self, Methods.Shutdown.self, Methods.PermissionsGet.self, Methods.PermissionsRequest.self,
     Methods.AppsList.self, Methods.AppsLaunch.self, Methods.SessionOpen.self, Methods.SessionClose.self,
-    Methods.StateGet.self, Methods.ActionRun.self, Methods.ActionBatch.self, Methods.CaptureScreenshot.self,
+    Methods.BrowserTarget.self, Methods.StateGet.self, Methods.ActionRun.self, Methods.ActionBatch.self, Methods.CaptureScreenshot.self,
     Methods.CaptureStreamStart.self, Methods.CaptureStreamStop.self, Methods.InputProbe.self,
     Methods.InputRestoreSession.self, Methods.ClipboardState.self
 ] }
@@ -65,7 +65,7 @@ func check<M: ContractMethod>(_ method: M.Type) throws {
 
     @Test func everyErrorKindHasAFixtureThatDecodes() throws {
         let kinds = try WireFixtures.names().filter { $0.hasPrefix("error-") }
-        #expect(kinds.count == 30) // every ComputerErrorKind but `unknown`
+        #expect(kinds.count == 31) // every ComputerErrorKind but `unknown`
         for name in kinds {
             let kind = String(name.dropFirst("error-".count).dropLast(".json".count))
             switch try WireFixtures.frame(name) {

@@ -567,6 +567,7 @@ public enum ComputerErrorKind: RawRepresentable, Codable, Hashable, Sendable {
     case sessionUnavailable
     case alreadyRunning
     case openRefused
+    case browserRefused
     case valueNotTaken
     case focusMoved
     case tabInUse
@@ -602,6 +603,7 @@ public enum ComputerErrorKind: RawRepresentable, Codable, Hashable, Sendable {
         case "session_unavailable": self = .sessionUnavailable
         case "already_running": self = .alreadyRunning
         case "open_refused": self = .openRefused
+        case "browser_refused": self = .browserRefused
         case "value_not_taken": self = .valueNotTaken
         case "focus_moved": self = .focusMoved
         case "tab_in_use": self = .tabInUse
@@ -638,6 +640,7 @@ public enum ComputerErrorKind: RawRepresentable, Codable, Hashable, Sendable {
         case .sessionUnavailable: "session_unavailable"
         case .alreadyRunning: "already_running"
         case .openRefused: "open_refused"
+        case .browserRefused: "browser_refused"
         case .valueNotTaken: "value_not_taken"
         case .focusMoved: "focus_moved"
         case .tabInUse: "tab_in_use"

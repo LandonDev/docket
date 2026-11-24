@@ -27,6 +27,7 @@ public protocol WindowSource: Sendable {
     func tabSelected(_ tab: TabHandle) -> Bool
     /// §25.1: the process is Chromium, by its bundle
     func chromium(pid: pid_t) -> Bool
+    func browserURL(window: AXUIElement) -> String?
 }
 
 extension WindowSource {
@@ -42,6 +43,8 @@ extension WindowSource {
     public func tabSelected(_ tab: TabHandle) -> Bool { tab.selected }
 
     public func chromium(pid: pid_t) -> Bool { false }
+
+    public func browserURL(window: AXUIElement) -> String? { nil }
 }
 
 /// A tab a window ref matched: its element (which stays on the session × pid's worker), title and selection.

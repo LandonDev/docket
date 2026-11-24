@@ -1389,6 +1389,14 @@ The session tier activates the app, moves the real pointer and types at the focu
 | `cancelled` | the call was given up, the turn stopped, the thread paused | `cancelled: <why>` |
 | `refused_app` | TempCode's own window, the system's password and Touch ID prompts, an app the host could not identify | `TempCode's own window is off limits to computer use`, `macOS's password and Touch ID prompts are the person's to answer`, `couldn't check which app this is, so nothing was sent; try the call again` |
 
+A targeted tool call checks the native service's `browser.target` result
+before reading or acting. The method reports whether the target is a browser
+and the current document URL if it can read it. For a verified browser tab,
+the host passes `browserUrl` on the native request. A changed or missing
+address stops a read or a later step with `browser_refused`. The host
+refuses known browsers whose service cannot supply the address. This gate
+runs in every access and Away mode.
+
 ### 17.7 The wire and the proofs
 
 - `computer.sessions` (read) answers the service's state and the live rows; `computer.stop { sessionId }` (operate); the `computer` push carries both to every client, at most four a second (`ComputerPushSchema`, not in the phone's subset). `app.computer`, `app.computerCancel` and `app.computerTools` are `local`; each checks the thread's token, and a socket that closes cancels every call it made (`rpc.ts`).

@@ -1,3 +1,4 @@
+import type { TempCodeOrigins } from '../remote/tempcodeOrigins'
 import type { PreviewTarget } from './preview'
 import { join } from 'node:path'
 import type { ComputerSessionRow } from '@shared/contract-computer'
@@ -27,6 +28,7 @@ import { TierVerdicts, type SettingsStore } from './verdicts'
  */
 
 export interface ComputerSessionsOptions {
+  origins?: () => TempCodeOrigins
   service: ComputerService
   registry: ComputerRegistry
   store: SettingsStore
@@ -106,6 +108,7 @@ export class ComputerSessions {
     })
     this.host = {
       service: opts.service,
+      origins: opts.origins,
       verdicts: this.verdicts,
       gate: () => opts.gate?.() ?? currentSessionTierGate(),
       registry: opts.registry,

@@ -1,6 +1,7 @@
 import { createDecipheriv, createHash, pbkdf2Sync } from 'node:crypto'
 import { mkdirSync, readdirSync, readFileSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
+import { COOKIE_NAME } from '../../../remote/auth'
 import type { Cdp } from './cdp'
 
 /**
@@ -32,6 +33,27 @@ export interface LoginExport {
 
 export const importDir = (root: string): string => join(root, 'import')
 
+/** This name is reserved for the remote listener's browser session. */
+export const mayImportCookie = (name: string): boolean => name !== COOKIE_NAME
+
+export async function clearTempCodeLogins(cdp: Cdp): Promise<void> {
+  const { cookies } = await cdp.send<{ cookies: (LoginCookie & { partitionKey?: unknown })[] }>('Storage.getCookies')
+  const ownerCookies = cookies.filter((cookie) => !mayImportCookie(cookie.name))
+  if (!ownerCookies.length) return
+
+  // Network.deleteCookies is a page method, even though cookies belong to its browser context.
+  const { targetInfos } = await cdp.send<{ targetInfos: { targetId: string; type: string }[] }>('Target.getTargets')
+  const existing = targetInfos.find((target) => target.type === 'page')
+  const { targetId } = existing ?? await cdp.send<{ targetId: string }>('Target.createTarget', { url: 'about:blank' })
+  const { sessionId } = await cdp.send<{ sessionId: string }>('Target.attachToTarget', { targetId, flatten: true })
+  try {
+    for (const { name, domain, path, partitionKey } of ownerCookies) await cdp.send('Network.deleteCookies', { name, domain, path, partitionKey }, sessionId)
+  } finally {
+    await cdp.send('Target.detachFromTarget', { sessionId })
+    if (!existing) await cdp.send('Target.closeTarget', { targetId })
+  }
+}
+
 /**
  * Takes in every export waiting in the import folder, then deletes it:
  * the file holds his sessions and stays no longer than it must. A file
@@ -50,8 +72,8 @@ export async function takeImports(root: string, cdp: Cdp, log: (line: string) =>
   for (const name of names) {
     const path = join(dir, name)
     try {
-      const cookies = parseExport(readFileSync(path, 'utf8'))
-      await cdp.send('Storage.setCookies', { cookies })
+      const cookies = parseExport(readFileSync(path, 'utf8')).filter((cookie) => mayImportCookie(cookie.name))
+      if (cookies.length) await cdp.send('Storage.setCookies', { cookies })
       taken += cookies.length
       log(`logins: took ${cookies.length} cookies for ${[...new Set(cookies.map((c) => c.domain.replace(/^\./, '')))].join(', ')}`)
     } catch (err) {

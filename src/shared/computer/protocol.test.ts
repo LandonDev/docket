@@ -228,8 +228,8 @@ describe('targets and params', () => {
     expect(ActionBatchParamsSchema.safeParse({ ...base, actions: [] }).success).toBe(false)
   })
 
-  it('declares 22 methods, each with params and a result', () => {
-    expect(Object.keys(COMPUTER_METHODS)).toHaveLength(22)
+  it('declares 23 methods, each with params and a result', () => {
+    expect(Object.keys(COMPUTER_METHODS)).toHaveLength(23)
     for (const [name, m] of Object.entries(COMPUTER_METHODS)) {
       expect(m.params, name).toBeDefined()
       expect(m.result, name).toBeDefined()
