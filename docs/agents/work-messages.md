@@ -5,7 +5,8 @@ Discord, iMessage, Teams) as LifeOS holds it, in a Messages view beside
 Mail. LifeOS keeps the conversations (`chats`), their unread mark, their
 files and the replies' queue; TempCode reads no chat service. The window
 reads lists and conversations straight from LifeOS on its sector session
-and writes only the read mark there; every send goes through the host.
+and writes only the read mark and the ask for a message's files
+(`chats:requestFiles`) there; every send goes through the host.
 
 ## LifeOS (its `docs/BRIEF.md`, "Conversations")
 
@@ -86,16 +87,19 @@ answered as if it did not exist when its sector differs (`chatIn`).
   cover one; `held.ts` names the two lines that would add `{chatId}`),
   payload `{chatId, replyTo?, source, chat, to?, text}` (1 to 4000), an
   Outbox edit changes `text` alone. A Slack reply's `replyTo` is fixed when
-  it is held (`pinnedReplyTo`): the message named, else the conversation's
-  `lastInId` then, so a message that comes in before his press never takes
-  its place and the Outbox quotes what it answers; other sources keep only
-  what was named. Words "Reply in Slack to Dana Lee:
+  it is held (`pinnedReplyTo`), by the rule the Outbox's quote reads: the
+  message named, else the conversation's `lastInId` then, else, a
+  conversation of only his own words, his newest stored message on the
+  newest page (a row still carrying `reply` is an outgoing reply, not a
+  message), so a message that comes in before his press, his own included,
+  never takes its place and the Outbox quotes what it answers; other
+  sources keep only what was named. Words "Reply in Slack to Dana Lee:
   “first words”", verb Send. On the press it reads `chats:get` again: gone,
   or in another sector than the item's → stale; a Copy source or a route
   that says no → not sent in LifeOS's sentence; a Slack reply held with no
-  `replyTo` (from before the pin, or a conversation with nothing from
-  anyone else) once a message from someone else came in after it was held
-  → stale (`NEW_SINCE`: draft it again); else `chats:reply` →
+  `replyTo` (from before the pin, or a page that could not be read) once a
+  message from someone else came in after it was held, or, with none from
+  anyone else, one of his own → stale (`NEW_SINCE`: draft it again); else `chats:reply` →
   "Sent to Dana Lee in Slack", ref `{at: 'lifeos', table: 'outbox', id}`; a
   refusal of `chats:reply` is not sent in its words, any other fault may
   have gone. No way back. It earns nothing (`wordsOf` keeps `{chatId,
@@ -103,7 +107,9 @@ answered as if it did not exist when its sector differs (`chatIn`).
 - **Tools**, listed to a Work thread whose sector is in
   `AGENT_CHAT_SECTORS`: `messages_read {chat?, query?, before?, limit?}`
   (read only; the list, a conversation oldest to newest as plain lines with
-  times, file names and each message's id, the id `reply_to` takes, or a
+  times, file names and each stored message's id, the id `reply_to` takes
+  (a reply of his still queued, sending or failed shows its state and no
+  id: it is LifeOS's outbox row, nothing to answer), or a
   search; times in his zone, LifeOS's `settings.timezone` through
   `clashes/zone.ts` `zoneOf`, the zone named, "Nov 20, 2:15 PM CST"; marks
   nothing read) and
@@ -128,7 +134,10 @@ answered as if it did not exist when its sector differs (`chatIn`).
   linked Work workspace, following workspaces made and deleted. The
   `work.messages` push goes when the count moves, and also when the
   waiting list moves while it does not (a conversation answered, a second
-  message in one already unread), so Today's rows follow.
+  message in one already unread, new words in a row at the same time: the
+  list is compared as Today shows it, `waitingOf`), so Today's rows follow.
+  What moves in one turn makes one push (`tell`, a microtask), not one a
+  subscription.
 - **His own Send** (`sendReply`): LifeOS's refusal comes back in its words
   (nothing was queued); any other failure of `chats:reply` may have reached
   it, and comes back as "It may have gone: …" (`REPLY_MAY_HAVE_GONE`), which
@@ -264,7 +273,15 @@ The look is docs/DESIGN.md "The Messages view".
   or the Outbox is sending (`ThreadDraft.sending`) is not gone: the field
   keeps its words read only, Send, Copy and the quick answers are off,
   Discard and Use draft are not offered, and the line says "Sending from the
-  Outbox" until the list says how it ended. One gate a conversation (page.ts
+  Outbox" until the list says how it ended. The Outbox's list is capped
+  (200), so a draft still held can drop out of it: the field's draft, as
+  the list last showed it, is kept (`rememberDraft`), and a draft the field
+  came from that left the list stays the draft's (`originOf`, drafts.ts,
+  `unlisted`; locked the same way, its line "Waiting in the Outbox") until
+  the host, asked by its id (`draftState`: `work.outbox.get` for a held
+  one, the host's whole list for a copy-only one), says it ended
+  (`endDraft`); it is asked again whenever the list moves. Every reader of
+  the field's origin, Undo's placement included, goes through `originOf`. One gate a conversation (page.ts
   `startGated`, `runGated`, `useGate`) holds every composer action that waits
   on the host and then touches the field, the draft marks or the refusal: his
   own Send until LifeOS answers, a held draft's press, Discard, Copy (its
@@ -284,8 +301,19 @@ The look is docs/DESIGN.md "The Messages view".
   gone") keeps the words aside (`keepUnsure`, page.ts), never under a plain
   Send: one 12px line above the box, the amber mark and "May have gone.",
   10px on, muted, "Check above before sending it again", and Use words at
-  its far end, which puts them back before whatever he typed since. The
-  line goes with Use words, or once a later Send of his own goes. Use draft
+  its far end, which puts them back before whatever he typed since. Each
+  press is its own part (`AsidePart`), so a second lost Send keeps the
+  first; Use words gives them all, oldest first, a line apart. An unsure
+  part goes by itself once his reply with those words shows in the
+  conversation, sent no earlier than it was kept less two minutes
+  (`settleAside`: LifeOS took it), or when Undo brings that reply's words
+  back (`dropAsideWords`); else only by Use words: a later Send of his own
+  drops nothing. Undo's words recalled while the field holds a draft that
+  is sending elsewhere or out of the list wait aside too, the line then
+  muted "Taken back while a draft was sending" with no mark. Use words is
+  off while the field holds a draft's words (held, copy-only, failed,
+  sending or unlisted), so kept words never join a draft's and take its
+  place; it is on again once the field is empty or his own. Use draft
   is not offered, and does nothing, while a step holds the gate; the
   cleanup of a failed draft's words waits for the gate too. A held draft's words follow one rule:
   they stay in the field until the host has taken them. While its press is
@@ -512,8 +540,9 @@ failures, a write that fails, picked for a chat's file and never a mail's),
 `src/shared/work/messages.test.ts` (stale, the sync line, folded file names,
 only the reader's tail cut). The view: `model.test.ts`, `today.test.ts`,
 `Composer.dom.test.tsx`, `MessagesView.dom.test.tsx`, `ChatReplyAct.dom.test.tsx`,
-`cold`, `files`, `open`, `ways` and `council` to `council11.dom.test.tsx`,
-`keptKeys.dom.test.tsx` (dropped keys stay dropped, a keeper that leaves
+`cold`, `files`, `open`, `ways` and `council` to `council12.dom.test.tsx`,
+`council12.dom.test.tsx` (two lost Sends kept, a reply shown above lets go, Use words off over a draft, Undo while a
+draft sends, a draft out of the capped list), `keptKeys.dom.test.tsx` (dropped keys stay dropped, a keeper that leaves
 hands on) and `live.dom.test.tsx` (his Send's failure read, a Discard of a
 draft no longer listed, the copy-only drafts read again on the link's open,
 a refused file tab said). What has run against the live

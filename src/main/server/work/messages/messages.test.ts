@@ -188,19 +188,16 @@ describe('the unread push', () => {
     t.chats.chat({ _id: 'c1' })
     t.chats.chat({ _id: 'c2' })
     t.chats.fire()
+    await settle()
     t.chats.fire()
-    // the count, then the waiting list that moved with it; the same answers again push nothing
-    expect(pushes().slice(2)).toEqual([
-      { push: 'work.messages', workspaceId: 'ws-cosmic', unread: 2 },
-      { push: 'work.messages', workspaceId: 'ws-cosmic', unread: 2 }
-    ])
+    await settle()
+    // the count and the waiting list moved together: one push; the same answers again push nothing
+    expect(pushes().slice(2)).toEqual([{ push: 'work.messages', workspaceId: 'ws-cosmic', unread: 2 }])
     t.chats.chats.get('c1')!.unread = false
     t.chats.chats.get('c2')!.unread = false
     t.chats.fire()
-    expect(pushes().slice(4)).toEqual([
-      { push: 'work.messages', workspaceId: 'ws-cosmic', unread: 0 },
-      { push: 'work.messages', workspaceId: 'ws-cosmic', unread: 0 }
-    ])
+    await settle()
+    expect(pushes().slice(3)).toEqual([{ push: 'work.messages', workspaceId: 'ws-cosmic', unread: 0 }])
   })
 
   it('fires when the waiting list moves and the count does not: one answered, or a second message in one unread', async () => {
@@ -211,12 +208,20 @@ describe('the unread push', () => {
     const before = pushes().length
     Object.assign(t.chats.chats.get('c1')!, { lastOutAt: 2_000 })
     t.chats.fire()
+    await settle()
     expect(pushes().slice(before)).toEqual([{ push: 'work.messages', workspaceId: 'ws-cosmic', unread: 2 }])
     Object.assign(t.chats.chats.get('c2')!, { lastInAt: 3_000, lastAt: 3_000 })
     t.chats.fire()
+    await settle()
     expect(pushes().slice(before)).toHaveLength(2)
     t.chats.fire()
+    await settle()
     expect(pushes().slice(before)).toHaveLength(2)
+    // new words in the same row at the same time, the count held
+    Object.assign(t.chats.chats.get('c2')!, { lastText: 'Edited: the build is green' })
+    t.chats.fire()
+    await settle()
+    expect(pushes().slice(before)).toHaveLength(3)
   })
 
   it('watches nothing of a code workspace or one with no sector', () => {

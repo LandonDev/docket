@@ -130,6 +130,28 @@ describe('on his press', () => {
     expect(t.chats.replies).toEqual([{ id: expect.any(String), chatId: 'c-dana', replyTo: 'm-a', text: words }])
   })
 
+  it("answers his own newest stored message in a Slack conversation of only his words, though he posts again before the press", async () => {
+    t.chats.chat({ _id: 'c-notes', name: '#my-notes', kind: 'channel', lastInId: undefined, lastInAt: undefined, lastFromMe: true })
+    const mine = (id: string, reply?: { outboxId: string; status: 'queued' }) => ({ _id: id, who: { name: 'Landon', me: true }, text: id, sentAt: 1, files: [], ...(reply ? { reply } : {}) })
+    // newest first: a queued reply of his is LifeOS's outbox row, not a message to answer
+    t.chats.messages.set('c-notes', [mine('out-row', { outboxId: 'o1', status: 'queued' }), mine('m-a'), mine('m-older')])
+    await draft({ chat: 'c-notes', text: words })
+    const [item] = await t.rig.waiting()
+    expect(item!.payload).toMatchObject({ replyTo: 'm-a' })
+    t.chats.messages.set('c-notes', [mine('m-b'), mine('m-a')])
+    Object.assign(t.chats.chats.get('c-notes')!, { lastOutAt: Date.now() + 1_000 })
+    expect(await send(item!.ref)).toMatchObject({ state: 'sent' })
+    expect(t.chats.replies.at(-1)).toMatchObject({ chatId: 'c-notes', replyTo: 'm-a' })
+  })
+
+  it('is stale for an unpinned Slack reply in a conversation of only his words once he wrote there after it was held', async () => {
+    t.chats.chat({ _id: 'c-notes', name: '#my-notes', kind: 'channel', lastInId: undefined, lastInAt: undefined, lastOutAt: 5_000 })
+    const act = (createdAt: number) => ({ lifeos: t.chats.client(), item: { sector: 'cosmic', createdAt } }) as never
+    const p = { chatId: 'c-notes', source: 'slack' as const, chat: '#my-notes', text: words }
+    await expect(chatReplyKind.execute(p, act(4_000))).rejects.toThrow(NEW_SINCE)
+    expect(t.chats.replies).toEqual([])
+  })
+
   it('names no parent where a source does not thread', async () => {
     t.chats.chat({ _id: 'c-mom', name: 'Mom', source: 'imessage', lastInId: 'm-x' })
     await draft({ chat: 'c-mom', text: 'Home by six.' })

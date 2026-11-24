@@ -278,6 +278,8 @@ export interface FixtureOptions {
   refuseSend?: string;
   /** His own Send reaches LifeOS, which queues it, but the answer is lost: it rejects as `unknown`. */
   sendUnknown?: boolean;
+  /** His own Send's answer is lost and LifeOS never queued it: it rejects as `unknown`, and nothing shows above. */
+  sendLost?: boolean;
   /** Discard is refused with these words and the item stays held. */
   discardRefused?: string;
   /** Discard is answered with the item in this state, not discarded (another window claimed it first). */
@@ -354,6 +356,10 @@ export interface FixtureControls {
   dropElsewhere(draftId: string): void;
   /** A held item is pressed elsewhere and is sending now: the list shows it sending. */
   sendingElsewhere(draftId: string): void;
+  /** A held item leaves the list though it is still held (the list's cap): asked by its id, it is still waiting. */
+  hideDraft(draftId: string): void;
+  /** A hidden item is decided: asked by its id, it has ended. */
+  endHidden(draftId: string): void;
   /** LifeOS's route for a conversation changes (the Mac goes away, comes back). */
   setRoute(chatId: string, route: ChatRoute): void;
 }
@@ -441,6 +447,8 @@ export function fixtureData(options: FixtureOptions = {}): MessagesData & Fixtur
     else dropped(chatId, id);
   };
   let delivered = 0;
+  /** Held items out of the list, as the host answers them by id. */
+  const hidden = new Map<string, "waiting" | "done">();
   return {
     log,
     deliver(chatId, who, text) {
@@ -464,6 +472,17 @@ export function fixtureData(options: FixtureOptions = {}): MessagesData & Fixtur
     dropElsewhere(draftId) {
       const chatId = chatOfDraft(draftId);
       if (chatId) dropped(chatId, draftId);
+    },
+    hideDraft(draftId) {
+      hidden.set(draftId, "waiting");
+      const chatId = chatOfDraft(draftId);
+      if (chatId) dropped(chatId, draftId);
+    },
+    endHidden(draftId) {
+      hidden.set(draftId, "done");
+      // The list moves on the decision, as the Outbox's does: each conversation's drafts are read afresh.
+      drafts = Object.fromEntries(Object.entries(drafts).map(([chatId, list]) => [chatId, [...list]]));
+      changed();
     },
     sendingElsewhere(draftId) {
       const chatId = chatOfDraft(draftId);
@@ -571,6 +590,7 @@ export function fixtureData(options: FixtureOptions = {}): MessagesData & Fixtur
     },
     async send(chatId, text) {
       if (options.slow) await new Promise<void>((go) => (letGo = go));
+      if (options.sendLost) throw Object.assign(new Error("It may have gone: the host did not answer"), { unknown: true });
       if (options.refuse) throw new Error(options.refuse);
       if (options.refuseSend) throw new Error(options.refuseSend);
       log.sent.push({ chatId, text });
@@ -634,6 +654,9 @@ export function fixtureData(options: FixtureOptions = {}): MessagesData & Fixtur
       if (!chatId) return;
       drafts = { ...drafts, [chatId]: drafts[chatId]!.map((d) => (d.id === draft.id ? { ...d, text } : d)) };
       changed();
+    },
+    async draftState(draft) {
+      return hidden.get(draft.id) ?? (chatOfDraft(draft.id) ? "waiting" : "done");
     },
     async dropDraft(draft) {
       if (options.slowDrop) await new Promise<void>((go) => (letGo = go));

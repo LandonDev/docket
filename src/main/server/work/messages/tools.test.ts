@@ -70,7 +70,7 @@ describe('messages_read', () => {
       { _id: 'm1', who: { name: 'Dana Lee', me: false }, text: 'Can you look at the build? [file: log.txt]', sentAt: Date.UTC(2026, 10, 20, 15), replyTo: { who: 'Omar Reyes', text: 'Build 41 is red' }, files: [{ _id: 'f1', name: 'log.txt', status: 'listed' }] }
     ])
     const lines = out(await tool('messages_read', { chat: 'c-dana' })).split('\n')
-    expect(lines[0]).toBe("Dana Lee in Slack, CosmicGames (conversation c-dana), oldest to newest; a message's id is what reply_to takes:")
+    expect(lines[0]).toBe("Dana Lee in Slack, CosmicGames (conversation c-dana), oldest to newest; a stored message's id is what reply_to takes:")
     expect(lines[1]).toMatch(/^\[Nov 20, .+\] Dana Lee \(replying to Omar Reyes: “Build 41 is red”\): Can you look at the build\? \[files: log\.txt\]; message m1$/)
     expect(lines[2]).toMatch(/^\[Nov 20, .+\] You: On it\.; message m2$/)
   })
@@ -81,6 +81,18 @@ describe('messages_read', () => {
     expect(out(await tool('messages_read', { chat: 'c-dana' })).split('\n')[1]).toBe('[Nov 20, 2:15 PM CST] Dana Lee: Can you look?; message m1')
     t.chats.timezone = 'America/New_York'
     expect(out(await tool('messages_read', { chat: 'c-dana' })).split('\n')[1]).toBe('[Nov 20, 3:15 PM EST] Dana Lee: Can you look?; message m1')
+  })
+
+  it('gives no id to a reply of his still queued, sending or failed: only a stored message is a target', async () => {
+    t.chats.messages.set('c-dana', [
+      { _id: 'q1', who: { name: 'Landon', me: true }, text: 'Queued words', sentAt: Date.UTC(2026, 10, 20, 18), files: [], reply: { outboxId: 'o1', status: 'queued' } },
+      { _id: 'f1', who: { name: 'Landon', me: true }, text: 'Failed words', sentAt: Date.UTC(2026, 10, 20, 17), files: [], reply: { outboxId: 'o2', status: 'failed', error: 'Slack said no' } },
+      { _id: 'm1', who: { name: 'Dana Lee', me: false }, text: 'Stored words', sentAt: Date.UTC(2026, 10, 20, 16), files: [] }
+    ])
+    const lines = out(await tool('messages_read', { chat: 'c-dana' })).split('\n')
+    expect(lines[1]).toMatch(/Dana Lee: Stored words; message m1$/)
+    expect(lines[2]).toMatch(/You: Failed words \(not sent: Slack said no\)$/)
+    expect(lines[3]).toMatch(/You: Queued words \(queued\)$/)
   })
 
   it("gives a file-only message's id, and a draft that names it answers that message", async () => {

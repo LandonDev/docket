@@ -41,7 +41,7 @@ export async function sendReply(ctx: WorkCtx, by: Caller, p: { workspaceId: stri
   const got = await chatIn(ctx, p.chatId, sector)
   if (!got) throw new Error(NO_CHAT)
   if (held) {
-    const replyTo = pinnedReplyTo(got.chat.source, p.replyTo, got.chat)
+    const replyTo = await pinnedReplyTo(ctx.lifeos.owner(), got.chat.source, p.replyTo, got.chat)
     const payload = ChatReplySchema.parse({ chatId: p.chatId, ...(replyTo ? { replyTo } : {}), source: got.chat.source, chat: got.chat.name, text: p.text })
     const item = ctx.held.create({ kind: 'chat.reply', sessionId: null, payload })
     return { id: item.ref.id }

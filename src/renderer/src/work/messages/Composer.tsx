@@ -11,8 +11,8 @@ import { openUrl } from "../../lib/native";
 import { workOpenPort } from "../../lib/workSwitch";
 import { useMessagesData, type ThreadDraft } from "./data";
 import { firstName } from "./model";
-import { fieldOrigin, useWaitingDrafts } from "./drafts";
-import { draftSeen, fieldAsPressed, filledUntouched, gateFree, keepFailedPress, keepUnsure, markFilled, startGated, useGate, seeDraft, keepRefusal, keepTyped, markDraft, stillPressed, typedIn, useFailedPress, useRefusal, useTyped, useTypedFrom, useUnsure, type PressedField } from "./page";
+import { lockedOrigin, originOf, useWaitingDrafts } from "./drafts";
+import { draftSeen, endDraft, fieldAsPressed, filledUntouched, gateFree, keepFailedPress, keepUnsure, markFilled, rememberDraft, startGated, takeAside, useAside, useDraftEnded, useGate, seeDraft, keepRefusal, keepTyped, markDraft, stillPressed, typedIn, useFailedPress, useRefusal, useTyped, useTypedFrom, type PressedField } from "./page";
 import { QUICK_ANSWERS } from "./quick";
 
 /**
@@ -30,6 +30,8 @@ import { QUICK_ANSWERS } from "./quick";
  */
 export function Composer({ workspaceId, detail }: { workspaceId: string; detail: ChatDetail }) {
   const data = useMessagesData();
+  // The view's clock: a word kept aside is stamped with it, so his reply shown above can be told from an older one.
+  const clock = data.useNow();
   const chat = detail.chat;
   const chatId = chat._id;
   const text = useTyped(workspaceId, chatId);
@@ -50,12 +52,30 @@ export function Composer({ workspaceId, detail }: { workspaceId: string; detail:
   const drafts = useWaitingDrafts(workspaceId, chatId);
   // Whose words the field holds: the draft's (or his edit of them, started from it), or his own. It is kept beside the
   // words in page.ts, so leaving and coming back, a Retry or the 640px crossing find it as it was; and it is resolved
-  // against every draft still waiting (`fieldOrigin`), so a second draft waiting never hides what the field holds.
+  // against every draft still waiting (`fieldOrigin`), so a second draft waiting never hides what the field holds. A
+  // draft that left the list is the draft's still, until the host says it ended (`originOf`: the list is capped).
   const fromDraft = useTypedFrom(workspaceId, chatId);
-  const origin = fieldOrigin(fromDraft, drafts);
-  // A held draft the field holds that another window (or the Outbox) is sending now: its words stay, read only, and
-  // nothing here sends, discards or copies them until the list says how the press ended.
-  const sendingElsewhere = origin.kind === "sending";
+  useDraftEnded(workspaceId, chatId, fromDraft);
+  const origin = originOf(workspaceId, chatId, fromDraft, drafts);
+  // A held draft the field holds that another window (or the Outbox) is sending now, or that is out of the list and not
+  // known to have ended: its words stay, read only, and nothing here sends, discards or copies them until it settles.
+  const sendingElsewhere = lockedOrigin(origin);
+  // The field's draft as the list shows it, kept so it can still be named, and asked after, once the list drops it.
+  useEffect(() => {
+    if (origin.kind !== "own" && origin.kind !== "unlisted") rememberDraft(workspaceId, chatId, origin.draft);
+  });
+  // Out of the list: ask the host what became of it by its id, again whenever the list moves, until it says it ended.
+  const unlisted = origin.kind === "unlisted" ? origin.draft : null;
+  useEffect(() => {
+    if (!unlisted) return;
+    let live = true;
+    void data.draftState(unlisted).then((state) => {
+      if (live && state === "done") endDraft(workspaceId, chatId, unlisted.id);
+    });
+    return () => {
+      live = false;
+    };
+  }, [unlisted, drafts, data, workspaceId, chatId]);
   // A draft sending elsewhere is offered nowhere else: not as the line's draft, nor to fill the field.
   const offered = drafts.filter((d) => !d.sending);
   // A press from this composer that failed (or may have gone) owns the line, with its Open in Outbox on that item, over
@@ -72,6 +92,8 @@ export function Composer({ workspaceId, detail }: { workspaceId: string; detail:
     : (pressFailed ?? (origin.kind !== "own" ? origin.draft : (offered.find((d) => d.held && d.failed === undefined) ?? offered.find((d) => d.failed !== undefined) ?? offered[0] ?? null)));
   // A held reply whose press failed is the Outbox's to send again or check: its words never come into the field.
   const failed = draft?.failed !== undefined;
+  // The line's draft is another's to settle: sending elsewhere, or the field's own draft out of the list.
+  const draftLocked = draft !== null && (draft.sending === true || (origin.kind === "unlisted" && draft.id === origin.draft.id));
   // A refusal stays with the conversation until he types or sends again.
   const refused = useRefusal(workspaceId, chatId);
   const setRefused = (words: string | null): void => keepRefusal(workspaceId, chatId, words);
@@ -111,7 +133,7 @@ export function Composer({ workspaceId, detail }: { workspaceId: string; detail:
     if (!draftGone || pending) return;
     if (filledUntouched(workspaceId, chatId)) keepTyped(workspaceId, chatId, "", null);
   }, [draftGone, pending, workspaceId, chatId]);
-  const drafting = inFlight !== null || ((origin.kind === "held" || origin.kind === "copy" || origin.kind === "sending") && text.trim() !== "");
+  const drafting = inFlight !== null || ((origin.kind === "held" || origin.kind === "copy" || sendingElsewhere) && text.trim() !== "");
   // The draft's words, put before his own on his say ("Use draft"), so neither is lost. Not while a step holds the gate:
   // the step's settlement owns the field until then.
   const takeDraft = (d: ThreadDraft): void => {
@@ -121,13 +143,17 @@ export function Composer({ workspaceId, detail }: { workspaceId: string; detail:
     if (!own.trim()) markFilled(workspaceId, chatId);
     field.current?.focus();
   };
-  // His own words whose Send may have gone wait aside (page.ts) until he puts them back, in front of what he typed since.
-  const unsure = useUnsure(workspaceId, chatId);
-  const useUnsureWords = (): void => {
-    if (!unsure || !gateFree(workspaceId, chatId)) return;
-    const own = typedIn(workspaceId, chatId);
-    keepTyped(workspaceId, chatId, own.trim() ? `${unsure}\n${own}` : unsure, null);
-    keepUnsure(workspaceId, chatId, null);
+  // His own words kept aside (page.ts: a Send that may have gone, Undo's words while a draft sent) wait until he puts them
+  // back, in front of what he typed since: only into a field that holds nothing or his own words, so they never join a
+  // draft's words and take its place.
+  const aside = useAside(workspaceId, chatId);
+  const fieldIsHis = !text.trim() || origin.kind === "own";
+  const useAsideWords = (): void => {
+    if (!aside.length || !gateFree(workspaceId, chatId)) return;
+    const now = fieldAsPressed(workspaceId, chatId);
+    if (now.text.trim() && originOf(workspaceId, chatId, now.from, drafts).kind !== "own") return;
+    const words = takeAside(workspaceId, chatId);
+    keepTyped(workspaceId, chatId, now.text.trim() ? `${words}\n${now.text}` : words, null);
     field.current?.focus();
   };
 
@@ -174,8 +200,8 @@ export function Composer({ workspaceId, detail }: { workspaceId: string; detail:
     const sent = pressed.text.trim();
     if (!sent || !gateFree(workspaceId, chatId)) return;
     // The same origin the line reads: a failed item's words are never sent as his own (the cleanup takes them).
-    const at = fieldOrigin(pressed.from, drafts);
-    if (at.kind === "failed" || at.kind === "sending") return;
+    const at = originOf(workspaceId, chatId, pressed.from, drafts);
+    if (at.kind === "failed" || lockedOrigin(at)) return;
     const pressing = at.kind === "held" ? at.draft : null;
     setRefused(null);
     field.current?.focus();
@@ -185,11 +211,10 @@ export function Composer({ workspaceId, detail }: { workspaceId: string; detail:
       void startGated(workspaceId, chatId, { kind: "send", text: sent }, async () => {
         try {
           await data.send(chatId, sent);
-          // A Send of his own that went: earlier words that may have gone are behind him.
-          keepUnsure(workspaceId, chatId, null);
         } catch (err) {
-          // LifeOS may have queued them: they wait aside behind "May have gone", never back under a plain Send.
-          if ((err as { unknown?: boolean }).unknown) return keepUnsure(workspaceId, chatId, sent);
+          // LifeOS may have queued them: they wait aside behind "May have gone", never back under a plain Send, each press
+          // its own part, until his reply shows above or he puts them back.
+          if ((err as { unknown?: boolean }).unknown) return keepUnsure(workspaceId, chatId, sent, clock);
           const now = typedIn(workspaceId, chatId);
           keepTyped(workspaceId, chatId, now.trim() ? `${sent}\n${now}` : sent, null);
           keepRefusal(workspaceId, chatId, refusalOf(err));
@@ -218,8 +243,8 @@ export function Composer({ workspaceId, detail }: { workspaceId: string; detail:
     // Taken before the clipboard is written: the cleanup judges the field by this, not by what it holds by then. The whole
     // of it holds the gate, so nothing starts meanwhile and Undo's placement waits.
     const pressed = fieldAsPressed(workspaceId, chatId);
-    const at = fieldOrigin(pressed.from, drafts);
-    if (at.kind === "sending") return;
+    const at = originOf(workspaceId, chatId, pressed.from, drafts);
+    if (lockedOrigin(at)) return;
     void startGated(workspaceId, chatId, { kind: "drop" }, async () => {
       try {
         await navigator.clipboard.writeText(pressed.text.trim());
@@ -277,7 +302,7 @@ export function Composer({ workspaceId, detail }: { workspaceId: string; detail:
     />
   ) : draft ? (
     // A draft's line ends with why its button is Copy, while it is; a draft he is not using offers itself.
-    <DraftLine draft={draft} why={draft.sending ? "Sending from the Outbox" : draft.held && sends ? undefined : why} onUse={drafting || pending || draft.sending ? undefined : () => takeDraft(draft)} />
+    <DraftLine draft={draft} why={draftLocked ? (origin.kind === "unlisted" ? "Waiting in the Outbox" : "Sending from the Outbox") : draft.held && sends ? undefined : why} onUse={drafting || pending || draftLocked ? undefined : () => takeDraft(draft)} />
   ) : mode === "copy" ? (
     <p className="text-xs text-muted-foreground">{why}</p>
   ) : null;
@@ -287,9 +312,9 @@ export function Composer({ workspaceId, detail }: { workspaceId: string; detail:
     <div className="shrink-0 overflow-hidden [scrollbar-gutter:stable]">
       <div data-composer className="mx-auto w-full max-w-[728px] px-6 pb-4">
         {alert ? <div className="flex min-h-6 items-center px-3 pb-1">{alert}</div> : null}
-        {unsure ? (
+        {aside.length ? (
           <div className="flex min-h-6 items-center px-3 pb-1">
-            <UnsureLine onUse={pending ? undefined : useUnsureWords} />
+            <AsideLine unsure={aside.some((part) => part.unsure)} onUse={pending || !fieldIsHis ? undefined : useAsideWords} />
           </div>
         ) : null}
         {note ? <div className="flex min-h-6 items-center px-3 pb-1">{note}</div> : null}
@@ -329,7 +354,7 @@ export function Composer({ workspaceId, detail }: { workspaceId: string; detail:
               </div>
             ) : null}
             <span className="flex-1" />
-            {draft && !failed && !draft.sending ? (
+            {draft && !failed && !draftLocked ? (
               <Button variant="ghost" size="sm" className="text-muted-foreground" disabled={pending} onClick={() => discard(draft)}>
                 <BusyLabel busy={gate?.kind === "discard"} label="Discard" />
               </Button>
@@ -352,7 +377,7 @@ export function Composer({ workspaceId, detail }: { workspaceId: string; detail:
         </div>
         {/* One status region, always mounted, so a screen reader speaks what became of his press as it changes. */}
         <span role="status" data-press-status className="sr-only">
-          {sentences([unsure ? `May have gone. ${UNSURE_WHY}` : undefined, draft && failed ? spokenFailure(draft) : undefined])}
+          {sentences([aside.some((part) => part.unsure) ? `May have gone. ${UNSURE_WHY}` : undefined, draft && failed ? spokenFailure(draft) : undefined])}
         </span>
       </div>
     </div>
@@ -400,15 +425,16 @@ function DraftLine({ draft, why, onUse }: { draft: ThreadDraft; why?: string; on
 const UNSURE_WHY = "Check above before sending it again";
 
 /**
- * His own Send whose outcome is unknown: the amber mark and "May have gone.", then 10px on, muted, what to do first, and
- * Use words at the far end, which puts the pressed words back in the field once he has looked. The words never stand in
+ * His own words kept aside. A Send whose outcome is unknown: the amber mark and "May have gone.", then 10px on, muted,
+ * what to do first. Only Undo's words, recalled while a draft in the field was sending: one muted line saying so. Use
+ * words at the far end puts them back in the field, off while the field holds a draft's words. The words never stand in
  * the field meanwhile, so no plain Send posts them twice.
  */
-function UnsureLine({ onUse }: { onUse?: () => void }) {
+function AsideLine({ unsure, onUse }: { unsure: boolean; onUse?: () => void }) {
   return (
-    <span data-send-unknown className="flex min-w-0 flex-1 flex-wrap items-center gap-x-2.5 gap-y-0.5 text-xs">
-      <StatusMark state="waiting" word="May have gone." className="shrink-0" />
-      <span className="min-w-0 text-muted-foreground">{UNSURE_WHY}</span>
+    <span data-send-unknown={unsure ? "" : undefined} data-aside className="flex min-w-0 flex-1 flex-wrap items-center gap-x-2.5 gap-y-0.5 text-xs">
+      {unsure ? <StatusMark state="waiting" word="May have gone." className="shrink-0" /> : null}
+      <span className="min-w-0 text-muted-foreground">{unsure ? UNSURE_WHY : "Taken back while a draft was sending"}</span>
       <Button variant="ghost" size="xs" className="-my-1 ms-auto shrink-0" disabled={!onUse} onClick={onUse}>
         Use words
       </Button>

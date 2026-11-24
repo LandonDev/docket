@@ -35,13 +35,17 @@ type When = ReturnType<typeof whenIn>
 const chatLine = (when: When) => (c: ChatRow): string =>
   `- ${c.name} (${SOURCE_NAME[c.source]}${c.accountName ? `, ${c.accountName}` : ''}${c.unread ? ', unread' : ''}), ${when(c.lastAt)}: ${c.lastFromMe ? 'You' : c.lastWho}: “${firstWords(c.lastText, 120)}”; conversation ${c._id}`
 
-/** One message as a plain line: when, who, the words, what it answers, its files and its id (what `reply_to` takes). */
+/**
+ * One message as a plain line: when, who, the words, what it answers, its files, and for a stored message its id (what
+ * `reply_to` takes). A reply of his still queued, sending or failed is LifeOS's outbox row, not a stored message: it
+ * shows its state and no id, so nothing answers it.
+ */
 const messageLine = (when: When) => (m: ChatMessage): string => {
   const words = fileMarkers(m.text, m.files ?? [])
   const answers = m.replyTo ? ` (replying to ${m.replyTo.who}: “${firstWords(m.replyTo.text)}”)` : ''
   const files = m.files?.length ? ` [files: ${m.files.map((f) => f.name).join(', ')}]` : ''
   const reply = m.reply ? ` (${m.reply.status === 'failed' ? `not sent${m.reply.error ? `: ${m.reply.error}` : ''}` : m.reply.status})` : ''
-  return `[${when(m.sentAt)}] ${m.who.me ? 'You' : m.who.name}${answers}: ${words || '(no words)'}${files}${reply}; message ${m._id}`
+  return `[${when(m.sentAt)}] ${m.who.me ? 'You' : m.who.name}${answers}: ${words || '(no words)'}${files}${reply}${m.reply ? '' : `; message ${m._id}`}`
 }
 
 const hitLine = (when: When) => (h: ChatHit): string => `- ${h.chat} (${SOURCE_NAME[h.source]}), ${when(h.at)}, ${h.who}: “${firstWords(h.text, 160)}”; conversation ${h.chatId}, message ${h.messageId}`
@@ -72,7 +76,7 @@ export const readTool: WorkTool = {
         if (!got) return notHere(chat)
         const page = await owner.query<{ page: ChatMessage[]; isDone: boolean; continueCursor: string }>('chats:messages', { chatId: chat, paginationOpts: { numItems: limit ?? 50, cursor: before ?? null } })
         const lines = [...(page?.page ?? [])].reverse().map(messageLine(when))
-        const head = `${got.chat.name} in ${SOURCE_NAME[got.chat.source]}${got.chat.accountName ? `, ${got.chat.accountName}` : ''} (conversation ${got.chat._id}), oldest to newest; a message's id is what reply_to takes:`
+        const head = `${got.chat.name} in ${SOURCE_NAME[got.chat.source]}${got.chat.accountName ? `, ${got.chat.accountName}` : ''} (conversation ${got.chat._id}), oldest to newest; a stored message's id is what reply_to takes:`
         const more = page && !page.isDone ? `\nOlder messages: messages_read with chat ${chat} and before "${page.continueCursor}".` : ''
         return workText(lines.length ? `${head}\n${lines.join('\n')}${more}` : `${got.chat.name} in ${SOURCE_NAME[got.chat.source]} has no messages LifeOS holds.`)
       }
@@ -121,7 +125,7 @@ export const draftTool: WorkTool = {
     const source = got.chat.source
     // A route is the source's, not LifeOS's word now: a Mac asleep now may be awake at his press, which reads it again.
     if (CHAT_ROUTES[source] === 'lifeos') {
-      const replyTo = pinnedReplyTo(source, reply_to, got.chat)
+      const replyTo = await pinnedReplyTo(ctx.lifeos.owner(), source, reply_to, got.chat)
       const payload = ChatReplySchema.parse({ chatId: got.chat._id, ...(replyTo ? { replyTo } : {}), source, chat: got.chat.name, text })
       const item = ctx.held.create({ kind: 'chat.reply', sessionId: ctx.sessionId, payload })
       return workText(`Held: ${item.summary}. It waits for the owner's press; nothing is sent until then. This is a finished step, not a failure: carry on.`)

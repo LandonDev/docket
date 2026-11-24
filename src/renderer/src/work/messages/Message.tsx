@@ -18,9 +18,9 @@ import { Face } from "../mail/face";
 import { useMessagesData, type FileVerb } from "./data";
 import { isPicture, pictureBox, viewKind } from "./files";
 import { linkParts, opensOutside, type Block } from "./model";
-import { fieldOrigin, useWaitingDrafts } from "./drafts";
+import { lockedOrigin, originOf, useWaitingDrafts } from "./drafts";
 import { KeptKeys } from "./keptKeys";
-import { fieldAsPressed, keepRefusal, keepTyped, runGated, stillPressed, typedIn, wantFile } from "./page";
+import { dropAsideWords, fieldAsPressed, keepAside, keepRefusal, keepTyped, runGated, stillPressed, typedIn, wantFile } from "./page";
 
 /**
  * One message in the conversation's column (docs/agents/work-messages.md):
@@ -357,8 +357,13 @@ function ReplyState({ reply, workspaceId, chatId }: { reply: ChatReplyState; wor
       // The field as it is now. A held draft's edit there is saved to its item before the recalled words take the field.
       let pressed = fieldAsPressed(workspaceId, chatId);
       let saved: string | null = null;
+      // That very reply is back: words of it kept aside as may-have-gone are these, and go.
+      dropAsideWords(workspaceId, chatId, words);
       for (let round = 0; round < 5; round++) {
-        const at = fieldOrigin(pressed.from, waiting.current);
+        const at = originOf(workspaceId, chatId, pressed.from, waiting.current);
+        // A draft in the field that is another's to settle (sending elsewhere, or out of the list): its words are not his
+        // yet and are not touched. His recalled words wait aside behind Use words until the field can take them.
+        if (pressed.text.trim() && lockedOrigin(at)) return keepAside(workspaceId, chatId, { text: words, unsure: false, at: Date.now() });
         if (at.kind !== "held" || !pressed.text.trim()) break;
         const edit = pressed.text.trim();
         if (edit !== (saved ?? at.draft.text)) {
@@ -382,7 +387,7 @@ function ReplyState({ reply, workspaceId, chatId }: { reply: ChatReplyState; wor
       }
       // His own words, or a copy-only draft's edit (which has nowhere to be saved), stay behind his recalled words; an
       // unedited copy-only draft waits behind Use draft.
-      const at = fieldOrigin(pressed.from, waiting.current);
+      const at = originOf(workspaceId, chatId, pressed.from, waiting.current);
       const now = pressed.text;
       const behind = now.trim() && !(at.kind !== "own" && now === at.draft.text) ? now : "";
       keepTyped(workspaceId, chatId, behind ? `${words}\n${behind}` : words, null);

@@ -164,25 +164,95 @@ export const markFilled = (workspaceId: string, chatId: string): void => void fi
 export const filledUntouched = (workspaceId: string, chatId: string): boolean => filledRevs.get(key(workspaceId, chatId)) === typedRev(workspaceId, chatId);
 
 /**
- * His own words whose Send may have gone: the host's answer was lost, or LifeOS failed past a refusal, so it may have
- * queued them. They are kept here, not in the field, so no plain Send can post them twice; Use words puts them back on his
- * say, after he has looked. Kept with the conversation until then, or until a later Send of his own goes.
+ * His own words kept aside, out of the field, until he puts them back (Use words): a Send that may have gone (the host's
+ * answer was lost, or LifeOS failed past a refusal, so it may have queued them), and Undo's words recalled while a draft
+ * in the field was sending elsewhere. Each press is its own part, so a second lost Send never writes over the first.
+ * An unsure part goes once his reply with those words shows in the conversation (it went; `settleAside`), else only by
+ * Use words: a later Send of his own does not drop them.
  */
-const unsure = new Map<string, string>();
-const unsureListeners = new Set<() => void>();
-export function keepUnsure(workspaceId: string, chatId: string, words: string | null): void {
-  if (words) unsure.set(key(workspaceId, chatId), words);
-  else if (!unsure.delete(key(workspaceId, chatId))) return;
-  for (const listener of unsureListeners) listener();
+export interface AsidePart {
+  text: string;
+  /** a Send that may have gone, as against words Undo recalled */
+  unsure: boolean;
+  /** when it was kept aside, on the view's clock */
+  at: number;
 }
-export function useUnsure(workspaceId: string, chatId: string): string | null {
+const aside = new Map<string, readonly AsidePart[]>();
+const NO_ASIDE: readonly AsidePart[] = [];
+const asideListeners = new Set<() => void>();
+const setAside = (at: string, parts: readonly AsidePart[]): void => {
+  if (parts.length) aside.set(at, parts);
+  else if (!aside.delete(at)) return;
+  for (const listener of asideListeners) listener();
+};
+export const asideOf = (workspaceId: string, chatId: string): readonly AsidePart[] => aside.get(key(workspaceId, chatId)) ?? NO_ASIDE;
+export const keepAside = (workspaceId: string, chatId: string, part: AsidePart): void => setAside(key(workspaceId, chatId), [...asideOf(workspaceId, chatId), part]);
+/** His Send that may have gone, its words kept aside. */
+export const keepUnsure = (workspaceId: string, chatId: string, words: string, at: number): void => keepAside(workspaceId, chatId, { text: words, unsure: true, at });
+/** Every part, oldest first, joined a line apart, and let go: Use words. */
+export function takeAside(workspaceId: string, chatId: string): string {
+  const words = asideOf(workspaceId, chatId)
+    .map((part) => part.text)
+    .join("\n");
+  setAside(key(workspaceId, chatId), NO_ASIDE);
+  return words;
+}
+/** The clock may run a little apart between the view and LifeOS: a reply this much older than its part still counts. */
+const ASIDE_SLACK_MS = 120_000;
+/**
+ * Drops each unsure part whose words now show as his own message in the conversation, sent no earlier than the part was
+ * kept: LifeOS took that Send, so the words are there and need no second press. Undo's words that match go the same way.
+ */
+export function settleAside(workspaceId: string, chatId: string, mine: readonly { text: string; sentAt: number }[]): void {
+  const parts = asideOf(workspaceId, chatId);
+  if (!parts.length) return;
+  const left = parts.filter((part) => !part.unsure || !mine.some((m) => m.text.trim() === part.text.trim() && m.sentAt >= part.at - ASIDE_SLACK_MS));
+  if (left.length !== parts.length) setAside(key(workspaceId, chatId), left);
+}
+/** Undo put these words back in the field: an unsure part of the same words is that very reply, and goes. */
+export function dropAsideWords(workspaceId: string, chatId: string, words: string): void {
+  const parts = asideOf(workspaceId, chatId);
+  const left = parts.filter((part) => !(part.unsure && part.text.trim() === words.trim()));
+  if (left.length !== parts.length) setAside(key(workspaceId, chatId), left);
+}
+export function useAside(workspaceId: string, chatId: string): readonly AsidePart[] {
   return useSyncExternalStore(
     (fn) => {
-      unsureListeners.add(fn);
-      return () => void unsureListeners.delete(fn);
+      asideListeners.add(fn);
+      return () => void asideListeners.delete(fn);
     },
-    () => unsure.get(key(workspaceId, chatId)) ?? null,
-    () => unsure.get(key(workspaceId, chatId)) ?? null,
+    () => asideOf(workspaceId, chatId),
+    () => asideOf(workspaceId, chatId),
+  );
+}
+
+/**
+ * The draft the field's words came from, as the list last showed it, and whether the host has said it ended. The
+ * Outbox's list is capped, so a draft still held can leave it: its words stay the draft's (`originOf`, drafts.ts) until
+ * the host, asked by the draft's id, says it was sent, discarded or went stale (`endDraft`).
+ */
+const fieldDrafts = new Map<string, ThreadDraftLike>();
+const endedDrafts = new Map<string, string>();
+const endListeners = new Set<() => void>();
+type ThreadDraftLike = { id: string; held: boolean; text: string; threadId: string | null; thread?: string };
+export const rememberDraft = (workspaceId: string, chatId: string, draft: ThreadDraftLike): void => void fieldDrafts.set(key(workspaceId, chatId), draft);
+export function rememberedDraft<T extends ThreadDraftLike>(workspaceId: string, chatId: string, id: string): T | undefined {
+  const draft = fieldDrafts.get(key(workspaceId, chatId));
+  return draft?.id === id ? (draft as T) : undefined;
+}
+export const draftEnded = (workspaceId: string, chatId: string, id: string): boolean => endedDrafts.get(key(workspaceId, chatId)) === id;
+export function endDraft(workspaceId: string, chatId: string, id: string): void {
+  endedDrafts.set(key(workspaceId, chatId), id);
+  for (const listener of endListeners) listener();
+}
+export function useDraftEnded(workspaceId: string, chatId: string, id: string | null): boolean {
+  return useSyncExternalStore(
+    (fn) => {
+      endListeners.add(fn);
+      return () => void endListeners.delete(fn);
+    },
+    () => (id ? draftEnded(workspaceId, chatId, id) : false),
+    () => (id ? draftEnded(workspaceId, chatId, id) : false),
   );
 }
 
@@ -450,7 +520,9 @@ export function resetPages(): void {
   typedFrom.clear();
   typedRevs.clear();
   filledRevs.clear();
-  unsure.clear();
+  aside.clear();
+  fieldDrafts.clear();
+  endedDrafts.clear();
   draftMarks.clear();
   visits.clear();
   fileWants.clear();

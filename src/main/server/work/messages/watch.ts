@@ -2,7 +2,7 @@ import type { DatabaseSync } from 'node:sqlite'
 import { errorText, type SectorKey } from '@shared/work'
 import type { WorkCtx } from '../modules'
 import type { ChatRow } from '@shared/work/messages'
-import { linkedWorkspaces, unreadAnswer } from './lifeos'
+import { linkedWorkspaces, unreadAnswer, waitingOf } from './lifeos'
 import { tellKey, tellOf, tellOfChat } from './tell'
 
 /**
@@ -35,8 +35,10 @@ interface Watched {
   unread?: number
   /** the conversations told as waiting on him */
   waiting: Set<string>
-  /** the waiting list as last heard: each conversation and its newest from someone else */
+  /** the waiting list as last heard, as Today shows it */
   listed?: string
+  /** a push is due at the end of this turn */
+  telling?: boolean
 }
 
 export class ChatWatch {
@@ -78,12 +80,26 @@ export class ChatWatch {
     for (const [id, row] of now) if (!w.waiting.has(id)) tell?.(tellOfChat(workspaceId, row))
     for (const id of w.waiting) if (!now.has(id)) tell?.done(tellKey(id))
     w.waiting = new Set(now.keys())
-    // A conversation answered, or a second message in one already unread, moves no count: windows (Today's rows) are told
-    // the list moved all the same, once LifeOS has answered a count to carry.
-    const listed = [...now.values()].map((r) => `${r._id}:${r.lastInAt ?? r.lastAt}`).join(',')
+    // A conversation answered, a second message in one already unread, or new words in a row at the same time move no
+    // count: windows (Today's rows) are told the list moved all the same, once LifeOS has answered a count to carry. The
+    // list is compared as Today shows it (`waitingOf`), so any change of what a row says counts.
+    const listed = JSON.stringify([...now.values()].map(waitingOf))
     const moved = w.listed !== undefined && w.listed !== listed
     w.listed = listed
-    if (moved && w.unread !== undefined) this.ctx.push({ push: 'work.messages', workspaceId, unread: w.unread })
+    if (moved && w.unread !== undefined) this.tell(workspaceId, w)
+  }
+
+  /**
+   * One `work.messages` push for whatever moved in this turn: a new message moves the count and the waiting list at once,
+   * and each push makes every window read its drafts and Today's rows again.
+   */
+  private tell(workspaceId: string, w: Watched): void {
+    if (w.telling) return
+    w.telling = true
+    queueMicrotask(() => {
+      w.telling = false
+      if (this.watched.get(workspaceId) === w && w.unread !== undefined) this.ctx.push({ push: 'work.messages', workspaceId, unread: w.unread })
+    })
   }
 
   private watch(workspaceId: string, sector: SectorKey): void {
@@ -97,7 +113,7 @@ export class ChatWatch {
           const { unread } = unreadAnswer(value)
           if (w.unread === unread) return
           w.unread = unread
-          this.ctx.push({ push: 'work.messages', workspaceId, unread })
+          this.tell(workspaceId, w)
         })
       )
       w.offs.push(this.ctx.lifeos.subscribe<ChatRow[] | null>('chats:unanswered', { sector }, (rows) => this.waiting(workspaceId, w, rows ?? [])))

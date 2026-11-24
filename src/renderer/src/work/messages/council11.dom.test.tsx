@@ -128,12 +128,12 @@ describe("the gate holds the field", () => {
 
 describe("his Send whose answer was lost", () => {
   it("keeps the words aside behind May have gone, never under a plain Send, until Use words", async () => {
-    const data = mount({ sendUnknown: true });
+    const data = mount({ sendLost: true });
     await flush();
     type("On it.");
     enter();
     await flush();
-    expect(data.log.sent).toEqual([{ chatId: "c_dana", text: "On it." }]);
+    expect(data.log.sent).toEqual([]);
     expect(field().value).toBe("");
     expect(composer().querySelector("[data-send-unknown]")?.textContent).toContain("May have gone.");
     expect(inComposer("Send")!.disabled).toBe(true);

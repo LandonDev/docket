@@ -85,6 +85,11 @@ export interface MessagesData {
   saveDraft(draft: ThreadDraft, text: string): Promise<void>;
   /** Opens the Outbox on this very held reply, in the tab that holds it, where it is sent again or checked. */
   openOutbox(draft: ThreadDraft): void;
+  /**
+   * A draft's state asked of the host by its id, for one that has left the list it was read from: `waiting` (still held,
+   * failed or sending), `done` (sent, discarded or stale), or `unknown` (the host did not answer).
+   */
+  draftState(draft: ThreadDraft): Promise<"waiting" | "done" | "unknown">;
   /** Discards a held draft, or drops a copy-only one. */
   dropDraft(draft: ThreadDraft): Promise<void>;
   /** Asks LifeOS's worker to fetch a message's files it only listed; rejects when LifeOS did not take the ask. */
@@ -121,6 +126,7 @@ export const WAITING: MessagesData = {
   saveDraft: () => Promise.reject(new Error("LifeOS is not connected")),
   openOutbox: () => {},
   dropDraft: () => Promise.resolve(),
+  draftState: () => Promise.resolve("unknown"),
   requestFiles: () => Promise.reject(new Error("LifeOS is not connected")),
   fileVerb: () => "save",
   openFile: () => {},

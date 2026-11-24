@@ -59,6 +59,22 @@ describe("a draft's Discard", () => {
   });
 });
 
+describe("a draft out of the list, asked by its id", () => {
+  it("is waiting while the host holds it, done once it was decided, unknown when the host does not answer", async () => {
+    const state = async (answer: () => Promise<unknown>) => {
+      const link = fakeLink((method) => (method === "work.outbox.get" ? answer() : Promise.resolve({})));
+      const got = await (await data("ws-state")).draftState({ id: "h1", held: true, text: "x", threadId: null });
+      expect(link.request).toHaveBeenCalledWith("work.outbox.get", { ref: { at: "host", id: "h1" } });
+      return got;
+    };
+    expect(await state(async () => ({ state: "held" }))).toBe("waiting");
+    expect(await state(async () => ({ state: "sending" }))).toBe("waiting");
+    expect(await state(async () => ({ state: "sent" }))).toBe("done");
+    expect(await state(async () => ({ state: "discarded" }))).toBe("done");
+    expect(await state(() => Promise.reject(new Error("no such item")))).toBe("unknown");
+  });
+});
+
 describe("the copy-only drafts", () => {
   it("are asked for again when the link opens, after a read that failed while it was down", async () => {
     let up = false;

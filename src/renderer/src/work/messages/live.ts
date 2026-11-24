@@ -11,7 +11,7 @@ import { refusalWords } from "../../lib/settingsHome";
 import { sessionStore } from "../../lib/tcserver/store";
 import { shell } from "../../stores/shell";
 import { openItem } from "../canvas/store";
-import { discardItem, editItem, notSentWords, outboxNow, sendItem, useOutbox, wantOutboxItem, wentOut, type HostItem } from "../outbox/store";
+import { discardItem, editItem, fetchItem, notSentWords, outboxNow, sendItem, useOutbox, wantOutboxItem, wentOut, type HostItem } from "../outbox/store";
 import { useLifeosQuery, type LifeosQuery, type LifeosSession } from "../shell/lifeos";
 import type { MessagesData, Paged, ThreadDraft } from "./data";
 import { discardRefusal } from "./drafts";
@@ -184,6 +184,16 @@ export function liveData(session: LifeosSession, sector: SectorKey, env: string,
       if (!item) throw new Error("This draft is no longer waiting");
       const payload = (item.payload ?? {}) as { text?: string };
       if (payload.text !== text) await editItem(item, { ...payload, text });
+    },
+    draftState: async (draft) => {
+      // A copy-only draft's list is the host's whole: one not in it is gone.
+      if (!draft.held) return copyDrafts.get(draftsKey(env, workspaceId))?.some((d) => d.id === draft.id) ? "waiting" : "done";
+      try {
+        const item = await fetchItem(env, { at: "host", id: draft.id });
+        return item.state === "held" || item.state === "failed" || item.state === "sending" ? "waiting" : "done";
+      } catch {
+        return "unknown";
+      }
     },
     dropDraft: async (draft) => {
       if (draft.held) {

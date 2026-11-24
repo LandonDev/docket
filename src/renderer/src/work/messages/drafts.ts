@@ -1,6 +1,6 @@
 import { useEffect, useMemo } from "react";
 import { useMessagesData, type ThreadDraft } from "./data";
-import { markDraft, useDraftMarks } from "./page";
+import { draftEnded, markDraft, rememberedDraft, useDraftMarks } from "./page";
 
 /**
  * The threads' drafts still waiting in a conversation, as the composer and Undo
@@ -39,7 +39,7 @@ export function useWaitingDrafts(workspaceId: string, chatId: string): readonly 
  * acts on it), or his own, which is also what an edited draft gone from the list leaves behind (an untouched one goes
  * with it: the composer's cleanup).
  */
-export type FieldOrigin = { kind: "own" } | { kind: "held" | "copy" | "failed" | "sending"; draft: ThreadDraft };
+export type FieldOrigin = { kind: "own" } | { kind: "held" | "copy" | "failed" | "sending" | "unlisted"; draft: ThreadDraft };
 export function fieldOrigin(from: string | null, drafts: readonly ThreadDraft[]): FieldOrigin {
   const draft = from ? drafts.find((d) => d.id === from) : undefined;
   if (!draft) return { kind: "own" };
@@ -59,3 +59,18 @@ export function discardRefusal(after: { state: string; error?: string | null }):
   if (after.state === "sent") return "Already sent from the Outbox";
   return after.error ?? "The Outbox did not discard it";
 }
+
+/**
+ * Whose words the field holds, as every reader must take it: `fieldOrigin`, except that a draft the field came from that
+ * has left the Outbox's list is not his own until the host says it ended (`endDraft`): the list is capped, so a draft
+ * still held can drop out of it. Until then it is `unlisted`, and nothing here sends, discards or writes over its words.
+ */
+export function originOf(workspaceId: string, chatId: string, from: string | null, drafts: readonly ThreadDraft[]): FieldOrigin {
+  const origin = fieldOrigin(from, drafts);
+  if (origin.kind !== "own" || !from || draftEnded(workspaceId, chatId, from)) return origin;
+  const kept = rememberedDraft<ThreadDraft>(workspaceId, chatId, from);
+  return kept ? { kind: "unlisted", draft: kept } : origin;
+}
+
+/** A draft whose state is another's to settle (sending elsewhere, or out of the list): its words are not to be touched. */
+export const lockedOrigin = (origin: FieldOrigin): boolean => origin.kind === "sending" || origin.kind === "unlisted";
