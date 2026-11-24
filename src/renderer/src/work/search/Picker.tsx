@@ -22,6 +22,7 @@ import { useSelectedWorkspaceIds } from "../../stores/project";
 import { Calendar, Card, Chat, Cloud, Doc, Mail, Person, Project, Table, Task } from "../icons";
 import { liveDeps, SearchController } from "./controller";
 import { holdStill, outOfSight } from "./hold";
+import { askDesktop, DESK, deskHosts, desktopsFor, NO_DESKTOPS, unsearchedLine, type Desktops } from "./desktops";
 import { askHost, jobOfWorkspace, jobsOf, searchHosts, type Job } from "./hosts";
 import { activeOf, busy, isOption, placesMix, rowsOf, type Option, type Row } from "./model";
 import { canStartAbout, openHit, startAbout } from "./open";
@@ -135,14 +136,34 @@ export function WorkSearch({ seed, onClose }: { seed: WorkSearchSeed; onClose: (
     setSaid(kind ? `${searchLabel(kind)} only` : "Every kind");
   }, [kind]);
 
-  const [controller] = useState(() => new SearchController(liveDeps(askHost)));
+  // His other computers' folders, searched by the window itself when files are asked alone (desktops.ts).
+  const desktops = useRef<Desktops>(NO_DESKTOPS);
+  const [desksAt, setDesksAt] = useState(0);
+  const [controller] = useState(() => new SearchController(liveDeps((hostId, params) => (hostId.startsWith(DESK) ? askDesktop(desktops.current, hostId, params) : askHost(hostId, params)))));
   const model = useSyncExternalStore(controller.subscribe, controller.read, controller.read);
   useEffect(() => () => controller.close(), [controller]);
   useEffect(() => {
     const { hosts, offline } = searchHosts(job, { workspaces: () => workspaces });
-    controller.search(query, kind, hosts, offline, job?.key ?? null, job?.ids ?? null);
+    const files = kind === "file";
+    controller.search(query, kind, files ? [...hosts, ...deskHosts(desktops.current)] : hosts, offline, job?.key ?? null, job?.ids ?? null, files ? unsearchedLine(desktops.current.far) : null);
     // The hosts follow the Work switches and the catalog; a job is its key.
-  }, [controller, query, kind, job?.key, workHosts, workspaces]);
+  }, [controller, query, kind, job?.key, workHosts, workspaces, desksAt]);
+  // Which desktops the jobs in scope may use is asked once files are asked alone, and the search runs again with them.
+  const filesAlone = kind === "file";
+  useEffect(() => {
+    if (!filesAlone) return;
+    let live = true;
+    const scope = workspaces.filter((w) => w.kind === "work" && (!job || job.ids.includes(w.id)));
+    void desktopsFor(scope).then((found) => {
+      if (!live) return;
+      const same = JSON.stringify(found) === JSON.stringify(desktops.current);
+      desktops.current = found;
+      if (!same) setDesksAt((n) => n + 1);
+    });
+    return () => {
+      live = false;
+    };
+  }, [filesAlone, job?.key, workspaces]);
 
   // The search key pressed again: all jobs, or the job the window is in. With no job to narrow to, the menu.
   const flip = (): void => {

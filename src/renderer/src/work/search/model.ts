@@ -103,9 +103,10 @@ export const asksNetwork = (text: string): boolean => text.trim().length >= NETW
  * row of a job the search no longer reads must not stand there, unlabelled,
  * for a Return to take; widened, every row stays. A change of words, kind
  * or scope puts the highlight back on the first row; `offline` are hosts
- * with Work on that cannot be asked, each one quiet line.
+ * with Work on that cannot be asked, each one quiet line; `unsearched` is
+ * the one line for his other computers' folders nobody could search.
  */
-export function begin(model: SearchModel, ask: { text: string; kind: string | null; scope?: string | null; within?: readonly string[] | null; hosts: SearchHost[]; offline?: readonly string[] }): SearchModel {
+export function begin(model: SearchModel, ask: { text: string; kind: string | null; scope?: string | null; within?: readonly string[] | null; hosts: SearchHost[]; offline?: readonly string[]; unsearched?: string | null }): SearchModel {
   // No more than the wire takes: a host refuses longer words, and that is not a host that did not answer.
   const text = ask.text.trim().slice(0, SEARCH_TEXT_MAX);
   const scope = ask.scope ?? null;
@@ -124,7 +125,11 @@ export function begin(model: SearchModel, ask: { text: string; kind: string | nu
       scope === model.scope || scope === null ? null : (ask.within ?? []),
     ),
     out: new Set(ask.hosts.map((h) => outKey(h.id))),
-    quiet: (ask.offline ?? []).map((name) => ({ key: `offline:${name}`, line: `${name} is offline.` })),
+    quiet: [
+      ...(ask.offline ?? []).map((name) => ({ key: `offline:${name}`, line: `${name} is offline.` })),
+      // What a search of files alone could not look in (search/desktops.ts): said once, under the list.
+      ...(ask.unsearched ? [{ key: "unsearched", line: ask.unsearched }] : []),
+    ],
     // The rows on screen stay as they stand until an answer lands; the same ask again carries their order on.
     orderGen: same && model.orderGen === model.gen ? model.gen + 1 : model.orderGen,
     searched: false,

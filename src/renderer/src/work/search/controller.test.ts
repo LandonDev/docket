@@ -36,6 +36,21 @@ function rig() {
   return { controller, asked, tick, keys };
 }
 
+describe("what a search of files could not look in", () => {
+  it("is one quiet line under the list, said from the start and kept when the hosts answer", async () => {
+    const { controller, asked, tick } = rig();
+    controller.search("kickoff", "file", [box], [], null, null, "Folders on Purdue laptop were not searched.");
+    const notes = (): string[] => rowsOf(controller.model).flatMap((row) => (row.type === "note" ? [row.text] : []));
+    expect(notes()).toContain("Folders on Purdue laptop were not searched.");
+    asked[0]!.answer({ groups: [], pending: [], quiet: [], searched: 1 });
+    await tick();
+    expect(notes()).toContain("Folders on Purdue laptop were not searched.");
+    // Every kind again: nothing was left out of a search that never looks in his folders.
+    controller.search("kickoff", null, [box]);
+    expect(notes()).not.toContain("Folders on Purdue laptop were not searched.");
+  });
+});
+
 describe("a search as it runs", () => {
   it("asks every host at once for what it knows without the network, each for its own job when held to one", async () => {
     const r = rig();

@@ -38,10 +38,10 @@ export class SearchController {
   }
 
   /** A new generation: his words, the kind, the hosts, and the job it is held to (its key and its workspaces; null: all jobs). */
-  search(text: string, kind: string | null, hosts: AskedHost[], offline: readonly string[] = [], scope: string | null = null, within: readonly string[] | null = null): void {
+  search(text: string, kind: string | null, hosts: AskedHost[], offline: readonly string[] = [], scope: string | null = null, within: readonly string[] | null = null, unsearched: string | null = null): void {
     for (const cancel of this.waits.splice(0)) cancel();
     this.closed = false;
-    this.set(begin(this.model, { text, kind, scope, within, hosts, offline }));
+    this.set(begin(this.model, { text, kind, scope, within, hosts, offline, unsearched }));
     const gen = this.model.gen;
     const typedAt = this.deps.now();
     for (const host of hosts) {

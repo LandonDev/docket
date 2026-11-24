@@ -93,6 +93,8 @@ export const askHost = (hostId: string, params: Record<string, unknown>): Promis
 
 /** He opened this: the hit's own host keeps it for Recent. Never waited on. */
 export function tellOpened(hostId: string, hit: SearchHit): void {
+  // A file one of his desktops found (search/desktops.ts) was found by no host that keeps a Recent list.
+  if (!registry.has(hostId)) return;
   void registry
     .linkOf(hostId)
     .request("work.search.opened", { hit })

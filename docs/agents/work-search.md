@@ -349,7 +349,30 @@ downloads a file; the contents of a Teams library are searched by nobody
 a stand-in library and expects none). Nothing in LifeOS or work-kit changed
 for it.
 
+## Files on his computers
+
+A job's host searches its own disk and the places it keeps. A Teams library
+synced on his Mac is the Mac's to search: the host cannot walk it, and to
+search a far computer through the host is a reach nobody has ruled on. So
+for "All files for …" (files asked alone) the window asks, itself, each
+desktop the jobs in scope may use that it holds a link to
+(`search/desktops.ts`): `desktopsFor` reads each workspace's `mayUseDesktop`
+and sorts those hosts into `linked` and `far`; a linked one joins the search
+as one more host (`desk:<link>`, `deskHosts`), asked `work.office.filesSearch`
+on that link, the walk Files' old wire uses there (names, never a file's
+words; the desktop's own caps). A hit opens through `work.files.open` on the
+job's host as any file of another computer does, a copy. A desktop a job may
+use that this window has no link to (a PC only the box reaches), or whose
+link is down, is named in one quiet line under the list: "Folders on Purdue
+laptop were not searched." As he types nothing of this runs: a walk of his
+folders is no work for every key. No new reach: the window lists those
+folders by the same link already.
+
 ## What is not searched
+
+- As he types, a file in a library another computer holds, unless the
+  job's host has listed it before; "All files for …" searches it.
+- The words inside a file on another computer, ever.
 
 - A LifeOS row of a sector with no Work workspace on the host that asks.
 - People and events by anything but a name, an address, a title or a
