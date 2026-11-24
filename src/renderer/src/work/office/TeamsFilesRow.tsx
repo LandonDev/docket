@@ -138,7 +138,8 @@ export function TeamsFilesRow({ link, title, host, editable }: { link: Link | nu
               ) : null}
               {row.library && !row.library.found ? (
                 <Button variant="ghost" size="sm" disabled={busy === row.folder} onClick={() => void save(withRoot(value.roots, row.folder, null), row.folder)}>
-                  <BusyLabel busy={busy === row.folder} label="Remove" />
+                  {/* Its words end on the box's edge, as Add folder…'s do: the spinner's room is kept at the start. */}
+                  <BusyLabel busy={busy === row.folder} label="Remove" align="end" />
                 </Button>
               ) : (
                 <SettingSwitch label={row.title} on={row.on} disabled={busy === row.folder} onChange={(on) => save(withRoot(value.roots, row.folder, { off: !on }), row.folder)} />

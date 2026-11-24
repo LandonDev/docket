@@ -138,6 +138,18 @@ describe("Folders in Settings", () => {
     expect(document.body.textContent).not.toContain("filesSetRoots");
   });
 
+  /** Sol round 4 P3: Remove's words end on the box's edge, where Add folder…'s end, the spinner's room kept at the start. */
+  it("ends Remove's words on its box's edge, as Add folder…'s are", async () => {
+    const { link } = fakeHost();
+    await act(async () => void render(<TeamsFilesRow link={link} title="Folders" editable />));
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "Add folder…" })));
+    fireEvent.change(screen.getByLabelText("Folder"), { target: { value: "/c/S/Scrims" } });
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "Add" })));
+    const remove = await screen.findByRole("button", { name: "Remove" });
+    expect(remove.querySelector(".justify-end")?.textContent).toBe("Remove");
+    expect(remove.querySelector(".justify-center")).toBeNull();
+  });
+
   it("is read only from another computer's window", async () => {
     const { link } = fakeHost();
     await act(async () => void render(<TeamsFilesRow link={link} title="Folders on The box" editable={false} />));
