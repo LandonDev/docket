@@ -1,4 +1,4 @@
-import { useMemo, useState, type ReactNode } from "react";
+import { useMemo, type ReactNode } from "react";
 import { ConvexProvider } from "convex/react";
 import { MailClientProvider, MailKitProvider } from "work-kit/mail";
 import "work-kit/mail/styles.css";
@@ -9,9 +9,8 @@ import type { Block } from "../../../lib/session";
 import { useSessionMeta } from "../../../lib/tcserver/store";
 import { useWorkspaces } from "../../../lib/tcserver/workspaces";
 import { useTranscriptHost, useTranscriptSession } from "../../../surfaces/transcriptSession";
-import { BusyLabel, Button } from "../../../components/ui/button";
-import { reopenLifeos, sessionWaits, sessionWords, useLifeosSession, type LifeosSession } from "../../shell/lifeos";
-import { openConnections, openWorkSettings } from "../../shell/open";
+import { sessionWaits, useLifeosSession, type LifeosSession } from "../../shell/lifeos";
+import { DownLine } from "../../shell/DownLine";
 import { mailClientFor } from "../client";
 import { tempcodeMailKit } from "../kit";
 import { AddRow } from "./AddRow";
@@ -73,36 +72,12 @@ function OfferSession({ sessionId, env, children }: { sessionId: string; env: st
 }
 
 /**
- * Why the card cannot draw, with the press that mends it, as the mail canvas beside it offers: Sign in when LifeOS is
- * signed out, Open Settings when Work is off, Retry when LifeOS or the host did not answer. A computer kept from LifeOS has none.
+ * Why the card cannot draw, said as every reader of a down session says it (`DownLine`): Retry when LifeOS or the host
+ * did not answer, Sign in when LifeOS is signed out or refused it; none for a computer kept from LifeOS, a sign-in that
+ * waits or Work off.
  */
 export function SessionLine({ session, env, sector }: { session: Pick<LifeosSession, "state" | "withheld" | "unanswered">; env: string; sector: SectorKey }) {
-  const [retrying, setRetrying] = useState(false);
-  const { state, withheld } = session;
-  const retry = (): void => {
-    setRetrying(true);
-    // A retry that fails leaves the line as it is; the spinner stopping is the answer.
-    void reopenLifeos(env, sector)
-      .catch(() => undefined)
-      .finally(() => setRetrying(false));
-  };
-  const press = withheld
-    ? null
-    : state === "off"
-      ? { label: "Open Settings", run: openWorkSettings }
-      : state === "signed-out" || state === "pairing" || state === "refused"
-        ? { label: "Sign in", run: openConnections }
-        : { label: "Retry", run: retry };
-  return (
-    <div data-offer-session className="flex min-h-7 items-center gap-2 text-xs text-muted-foreground">
-      <span className="min-w-0">{sessionWords({ ...session, environmentId: env })}</span>
-      {press ? (
-        <Button variant="ghost" size="xs" disabled={retrying} onClick={press.run}>
-          <BusyLabel busy={retrying} label={press.label} />
-        </Button>
-      ) : null}
-    </div>
-  );
+  return <DownLine data-offer-session session={{ ...session, environmentId: env, sector, client: null }} className="text-xs" />;
 }
 
 /** `mail_offer`'s result, whichever envelope the harness kept it in: the JSON text, its structured content, a text part. */

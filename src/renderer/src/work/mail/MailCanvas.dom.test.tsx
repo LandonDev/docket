@@ -13,12 +13,12 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { CanvasItem } from "@shared/work";
 import type { CanvasShell, StatusLine } from "../canvas/kind";
 
-const lifeos = vi.hoisted(() => ({ state: "unreachable" as string, doc: null as unknown, proposed: null as unknown, reopen: null as unknown as ReturnType<typeof vi.fn> }));
+const lifeos = vi.hoisted(() => ({ state: "unreachable" as string, withheld: false, doc: null as unknown, proposed: null as unknown, reopen: null as unknown as ReturnType<typeof vi.fn> }));
 vi.mock("../shell/lifeos", async (original) => {
   lifeos.reopen = vi.fn(async () => undefined);
   return {
     ...(await original<typeof import("../shell/lifeos")>()),
-    useLifeosSession: (environmentId: string, sector: unknown) => ({ environmentId, sector, client: lifeos.state === "connected" ? { url: "https://lifeos.test" } : null, state: lifeos.state }),
+    useLifeosSession: (environmentId: string, sector: unknown) => ({ environmentId, sector, client: lifeos.state === "connected" ? { url: "https://lifeos.test" } : null, state: lifeos.state, ...(lifeos.withheld ? { withheld: true } : {}) }),
     reopenLifeos: (...args: unknown[]) => lifeos.reopen(...args),
   };
 });
@@ -92,15 +92,33 @@ describe("the mail canvas with LifeOS unreachable", () => {
     await expect(Promise.resolve(run())).resolves.toBeUndefined();
   });
 
-  it("says why it cannot read, each with its press, never an empty body: Work off, signed out, a sign-in waiting, refused", () => {
-    const said = { off: ["Work is off on this host", "Open Settings"], "signed-out": ["Not signed in to LifeOS", "Sign in"], pairing: ["The LifeOS sign-in waits for your approval", "Sign in"], refused: ["LifeOS refused this host's sign-in", "Sign in"] };
+  it("says why it cannot read, once, with the one press that can help: Sign in for signed out or refused, none for Work off or a sign-in waiting", () => {
+    const said = { off: ["Work is off on this host", null], "signed-out": ["Not signed in to LifeOS", "Sign in"], pairing: ["The LifeOS sign-in waits for your approval", null], refused: ["LifeOS refused this host's sign-in", "Sign in"] };
     for (const [state, [words, press]] of Object.entries(said)) {
       lifeos.state = state;
       const view = body();
-      expect(screen.getByText(words!), state).toBeTruthy();
-      expect(screen.getByRole("button", { name: press }), state).toBeTruthy();
+      expect(screen.getAllByText(words!), state).toHaveLength(1);
+      expect(view.lines.at(-1), state).toBeNull();
+      expect(screen.queryAllByRole("button").map((b) => b.textContent), state).toEqual(press ? [press] : []);
       view.unmount();
     }
+  });
+
+  /** Council round 5 (Sol P1, Opus P2): a computer the host keeps LifeOS from was offered a Retry that cannot help. */
+  it("on a computer kept from LifeOS says so with no press and no red line: asking again cannot help", () => {
+    lifeos.state = "unreachable";
+    lifeos.withheld = true;
+    const { lines } = body();
+    expect(lines.at(-1)).toBeNull();
+    expect(screen.getByText("This computer cannot read LifeOS through this host")).toBeTruthy();
+    expect(screen.queryByRole("button")).toBeNull();
+    lifeos.withheld = false;
+  });
+
+  it("says where the draft is kept while LifeOS is silent: in LifeOS, never \"there\"", () => {
+    lifeos.state = "unreachable";
+    const { lines } = body();
+    expect(lines.at(-1)).toMatchObject({ detail: "The draft is kept in LifeOS" });
   });
 
   it("with no copy read, draws nothing under the line rather than loading forever", () => {

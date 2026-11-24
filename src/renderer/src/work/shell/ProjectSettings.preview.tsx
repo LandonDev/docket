@@ -23,8 +23,9 @@ const GUESTS: Record<string, GuestLinkRow[] | null> = { none: [], two: [guest("a
 const REACH: Record<string, LifeosReach> = {
   ready: { status: "ready" },
   loading: { status: "loading" },
-  signedOut: { status: "failed", line: "Sign in to LifeOS to change its name or state" },
-  unreachable: { status: "failed", line: "LifeOS did not answer", retry: noop },
+  signedOut: { status: "failed", line: "Not signed in to LifeOS", press: { label: "Sign in", run: noop } },
+  unreachable: { status: "failed", line: "LifeOS did not answer", press: { label: "Retry", run: noop } },
+  withheld: { status: "failed", line: "This computer cannot read LifeOS through the box" },
   gone: { status: "failed", line: "This project is no longer in LifeOS" },
   local: { status: "local" },
 };

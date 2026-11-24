@@ -120,7 +120,7 @@ export function ChatNewMail() {
   );
 }
 
-/** A card whose LifeOS session failed: why, with the press that mends it; the last, a host that did not answer its LifeOS status, by name. */
+/** A card whose LifeOS session failed: why, with the one press that can help (none for a computer kept from LifeOS or a sign-in that waits); a host that did not answer its LifeOS status, by name. */
 export function ChatSessionFailed() {
   Object.assign(registry, { environment: (id: string) => ({ id, name: "The box" }) });
   return (
@@ -128,6 +128,8 @@ export function ChatSessionFailed() {
       <SessionLine session={{ state: "signed-out" }} env="local" sector="unify" />
       <SessionLine session={{ state: "unreachable" }} env="local" sector="unify" />
       <SessionLine session={{ state: "unreachable", unanswered: true }} env="local" sector="unify" />
+      <SessionLine session={{ state: "unreachable", withheld: true }} env="local" sector="unify" />
+      <SessionLine session={{ state: "pairing" }} env="local" sector="unify" />
     </div>
   );
 }

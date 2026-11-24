@@ -405,7 +405,7 @@ describe("mails and people named in an answer", () => {
 });
 
 describe("a card whose LifeOS session failed", () => {
-  it("says why with the press that mends it, as the mail canvas does", () => {
+  it("says why with the one press that can help (downPress), as every reader of a down session does", () => {
     const pressOf = (session: Parameters<typeof SessionLine>[0]["session"]): string[] => {
       const { container, unmount } = render(<SessionLine session={session} env="local" sector="life" />);
       const said = [container.querySelector("span")!.textContent!, ...[...container.querySelectorAll("button")].map((b) => b.textContent!)];
@@ -415,7 +415,9 @@ describe("a card whose LifeOS session failed", () => {
     expect(pressOf({ state: "signed-out" })).toEqual(["Not signed in to LifeOS", "Sign in"]);
     expect(pressOf({ state: "refused" })).toEqual(["LifeOS refused this host's sign-in", "Sign in"]);
     expect(pressOf({ state: "unreachable" })).toEqual(["LifeOS did not answer", "Retry"]);
-    expect(pressOf({ state: "off" })).toEqual(["Work is off on this host", "Open Settings"]);
+    // Work off and a sign-in that waits have none: nothing here mends them.
+    expect(pressOf({ state: "off" })).toEqual(["Work is off on this host"]);
+    expect(pressOf({ state: "pairing" })).toEqual(["The LifeOS sign-in waits for your approval"]);
     // A computer kept from LifeOS has nothing to press that would mend it.
     expect(pressOf({ state: "unreachable", withheld: true })).toEqual(["This computer cannot read LifeOS through this host"]);
     // Council round 4 (Sol P1): a host whose status went unanswered is down, named by the registry, with Retry.

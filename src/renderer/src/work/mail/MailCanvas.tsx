@@ -12,9 +12,10 @@ import { useSessionMeta } from "../../lib/tcserver/store";
 import { useWorkspaces } from "../../lib/tcserver/workspaces";
 import { EmptyState, SurfaceSkeleton } from "../../surfaces/SurfaceSkeleton";
 import type { CanvasBodyProps, CanvasShell } from "../canvas/kind";
-import { openConnections, openWorkSettings } from "../shell/open";
+import { openConnections } from "../shell/open";
 import { sentState } from "./sentState";
 import { reopenLifeos, sessionWaits, sessionWords, useLifeosSession } from "../shell/lifeos";
+import { downIsSilence, downOf, downPress } from "../shell/lifeosDown";
 import { RuleLine } from "../rules/RuleLine";
 import { mailClientFor } from "./client";
 import { placedKit } from "./files";
@@ -39,20 +40,22 @@ export function Body({ item, source, env, shell }: CanvasBodyProps) {
   // A Work Chat's items read through the whole session; a workspace's, through its sector alone.
   const sector = (workspace?.sector ?? null) as SectorKey | null;
   const lifeos = useLifeosSession(env, sector);
-  const unreachable = lifeos.state === "unreachable";
-  // LifeOS's silence, or the host's own ("The box did not answer").
-  const silence = sessionWords(lifeos);
+  const down = downOf(lifeos);
+  // LifeOS's silence, or the host's own ("The box did not answer"): the state line with Retry. A computer the host keeps
+  // LifeOS from is no silence, and asking again cannot help.
+  const silent = !!down && downIsSilence(down);
+  const words = sessionWords(lifeos);
   useEffect(() => {
     // Retry asks the host's status afresh and, once it says connected, this sector's session again: watching a host already
     // watched starts nothing. A retry that fails leaves the line as it is; the spinner stopping is the answer.
     const retry = (): Promise<void> => reopenLifeos(env, sector).catch(() => undefined);
-    shell.statusLine(unreachable ? { tone: "failed", word: silence, detail: "The draft is kept there", action: { label: "Retry", run: retry } } : null);
-  }, [shell, unreachable, silence, env, sector]);
+    shell.statusLine(silent ? { tone: "failed", word: words, detail: "The draft is kept in LifeOS", action: { label: "Retry", run: retry } } : null);
+  }, [shell, silent, words, env, sector]);
   // A file of the mail it answers opens as another item of this pane (files.ts).
   const kit = useMemo(() => placedKit(tempcodeMailKit, { env, pane: item.sessionId }), [env, item.sessionId]);
   if (source.at !== "lifeos" || source.table !== "outbox") return <EmptyState title="This mail could not be shown" />;
-  if (lifeos.state === "off") return <EmptyState title={sessionWords(lifeos)} action={{ label: "Open Settings", onClick: openWorkSettings }} />;
-  if (lifeos.state === "signed-out" || lifeos.state === "pairing" || lifeos.state === "refused") return <EmptyState title={sessionWords(lifeos)} action={{ label: "Sign in", onClick: openConnections }} />;
+  // Any other down state is said once, with the press that can help, if any (`downPress`).
+  if (down && !silent) return <EmptyState title={words} {...(downPress(down) === "sign-in" ? { action: { label: "Sign in", onClick: openConnections } } : {})} />;
   // LifeOS did not answer: the state line says so once, and the draft last read stays, read only; with none read, nothing pulses under the line.
   if (!lifeos.client) {
     if (sessionWaits(lifeos)) return <SurfaceSkeleton kind="column" label="Loading the mail" />;

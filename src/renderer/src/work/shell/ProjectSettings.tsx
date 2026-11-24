@@ -23,6 +23,8 @@ import { useAccounts } from "../../stores/accounts";
 import { dialogsChunk } from "../../surfaces/chunks";
 import { ProjectSharing } from "../guests/Share";
 import { reopenLifeos, sessionWaits, sessionWords, useLifeosQuery, useLifeosSession } from "./lifeos";
+import { downOf, downPress } from "./lifeosDown";
+import { openConnections } from "./open";
 
 // The rules dialog rides the dialogs chunk, as it does for a code project: asked for at the press on Edit.
 const PreambleDialog = dialogsChunk.surface("PreambleDialog");
@@ -53,8 +55,8 @@ export type LifeosReach =
   | { status: "ready" }
   /** on its way: the field holds the mirror's name and what he types; Save waits */
   | { status: "loading" }
-  /** the two stand as plain words, never as disabled controls, and one line under them says why, with Retry where asking again can help */
-  | { status: "failed"; line: string; retry?: () => void }
+  /** the two stand as plain words, never as disabled controls, and one line under them says why, with the press that can help: Retry where asking again can, Sign in where LifeOS is signed out */
+  | { status: "failed"; line: string; press?: { label: "Retry" | "Sign in"; run: () => void } }
   /** a project of the workspace that mirrors nothing: its name is this host's */
   | { status: "local" };
 
@@ -129,9 +131,9 @@ export function WorkProjectFields({
           ) : null}
           <p data-lifeos-line className="flex items-baseline gap-2 pt-2 text-xs text-muted-foreground">
             <span className="min-w-0">{reach.line}</span>
-            {reach.retry ? (
-              <Button type="button" variant="link" size="xs" className="h-auto shrink-0 px-0 text-xs" onClick={reach.retry}>
-                Retry
+            {reach.press ? (
+              <Button type="button" variant="link" size="xs" className="h-auto shrink-0 px-0 text-xs" onClick={reach.press.run}>
+                {reach.press.label}
               </Button>
             ) : null}
           </p>
@@ -194,10 +196,15 @@ export function WorkProjectSettings({ project: opened, workspace, onClose }: { p
         .catch(() => {})
         .finally(() => setRetrying(false));
     };
-    if (session.client) return { status: "failed", line: listed.status === "failed" ? listed.error : sessionWords(session), retry };
-    // Asking again helps only when LifeOS did not answer. Signed out is mended in Settings, Work, and the line names the sign-in.
-    if (session.state === "unreachable") return { status: "failed", line: sessionWords(session), retry };
-    return { status: "failed", line: session.state === "refused" ? sessionWords(session) : "Sign in to LifeOS to change its name or state" };
+    if (session.client) return { status: "failed", line: listed.status === "failed" ? listed.error : sessionWords(session), press: { label: "Retry", run: retry } };
+    // A session that is down says its state once, with the press `downPress` gives: Retry only where LifeOS or the host
+    // did not answer, never for a computer the host keeps LifeOS from; Sign in, in Connections, where it is signed out.
+    const press = downPress(downOf(session) ?? "unreachable");
+    return {
+      status: "failed",
+      line: sessionWords(session),
+      ...(press === "retry" ? { press: { label: "Retry", run: retry } } : press === "sign-in" ? { press: { label: "Sign in", run: openConnections } } : {}),
+    };
   }, [lifeosId, row, listed, session, retrying, workspace.environmentId, sector]);
 
   // null follows what is saved, so a rename that lands from elsewhere shows until he types.

@@ -258,7 +258,7 @@ describe("Name and State", () => {
 });
 
 describe("while LifeOS cannot be reached", () => {
-  it("signed out: the name stands as words, no state or Delete is drawn, nothing is disabled, and one line names the sign-in", async () => {
+  it("signed out: the name stands as words, no state or Delete is drawn, nothing is disabled, and one line says so with Sign in", async () => {
     setLifeosStatus(BOX, { lifeos: { state: "signed-out" }, keys: [] });
     render(<ProjectSettingsDialog project={MIRROR} workspace={WORK} onClose={() => {}} />);
     const root = await sheet();
@@ -267,8 +267,8 @@ describe("while LifeOS cannot be reached", () => {
     expect(screen.queryByRole("combobox", { name: "State" })).toBeNull();
     expect(root.querySelector("[data-readonly-state]")).toBeNull();
     expect(root.querySelectorAll("[data-lifeos-line]")).toHaveLength(1);
-    // Asking again would not sign him in: the line has no Retry.
-    expect(root.querySelector("[data-lifeos-line]")!.textContent).toBe("Sign in to LifeOS to change its name or state");
+    // Asking again would not sign him in: the line has Sign in, never Retry.
+    expect(root.querySelector("[data-lifeos-line]")!.textContent).toBe("Not signed in to LifeOSSign in");
     expect(screen.queryByRole("button", { name: "Delete project" })).toBeNull();
     expect(saveButton().disabled).toBe(true);
     // The rules are this host's: they can still be edited.
@@ -285,6 +285,21 @@ describe("while LifeOS cannot be reached", () => {
       fireEvent.click(within(line).getByRole("button", { name: "Retry" }));
     });
     expect(hostCalls.some((c) => c.method === "work.lifeos.status")).toBe(true);
+  });
+
+  /** Council round 5 (Sol P1, Opus P3): a computer the host keeps LifeOS from was offered a Retry that cannot help. */
+  it("on a computer kept from LifeOS: the known name stands, the line names the computer, and nothing is offered to press", async () => {
+    vi.spyOn(registry, "environment").mockReturnValue({ id: BOX, name: "The box" } as never);
+    // His laptop as a given computer: the host never hands its key a LifeOS session.
+    const given = { ...IDLE_STATUS, transport: "open", lastHello: { environmentId: BOX, contract: 1, caps: ["operate", "approve", "device"], key: { id: "laptop" }, build: { release: 1, version: "1.0.1", sha: null, platform: "linux" } } };
+    vi.spyOn(registry, "statusOf").mockReturnValue(given as never);
+    setLifeosStatus(BOX, { lifeos: { state: "connected", ownerId: "landon", since: 1 }, keys: [] });
+    render(<ProjectSettingsDialog project={MIRROR} workspace={WORK} onClose={() => {}} />);
+    const root = await sheet();
+    const line = root.querySelector("[data-lifeos-line]") as HTMLElement;
+    expect(line.textContent).toBe("This computer cannot read LifeOS through the box");
+    expect(within(line).queryByRole("button")).toBeNull();
+    expect(root.querySelector("[data-readonly-name]")!.textContent).toBe("Spring LAN");
   });
 
   it("a project LifeOS no longer has says so, with nothing to retry", async () => {
