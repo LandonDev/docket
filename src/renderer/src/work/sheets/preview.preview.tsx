@@ -42,7 +42,8 @@ function setUp(moment: SheetMoment): { source: PreviewSource; initial: string; p
   const short = [sheetPage(ROWS), sheetPage([["Flight", "Fare"], ["IND to LAS", "412.00"], ["LAS to IND", "388.00"]])];
   switch (moment) {
     case "long":
-      return { source: source(async () => paged(24, ["Prints on more than 24 pages"], { from: 1, to: 24, of: 25 })), initial: "pdf", paper: longPages(24), tight: true };
+      // As the host answers (main work/sheets/preview.ts): the length is a note, not a loss.
+      return { source: source(async () => ({ ...paged(24, [], { from: 1, to: 24, of: 25 }), notes: ["Prints on more than 24 pages"] })), initial: "pdf", paper: longPages(24), tight: true };
     case "xls":
       return { source: source(async () => paged(2, ["3 colour scales stay behind", "2 tables become plain ranges", "4 formulas use functions Excel 97-2003 does not have"])), initial: "xls", paper: short, tight: false };
     case "csv":

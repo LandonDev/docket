@@ -262,11 +262,11 @@ export function SlidesPreview({ moment = "sugg", previewWidth }: { moment?: Slid
   const host = hosts.get(moment) ?? hosts.set(moment, fakeDeckHost({ ...view, itemId })).get(moment)!;
   const store = deckStoreOf(itemId);
   if (moment === "loading") host.open = () => new Promise(() => undefined);
+  else if (moment === "failed") host.open = () => Promise.reject(new Error("The deck is not where it was."));
   else store.view({ ...view, itemId });
   if (current) store.set({ current });
   store.set({ look: look ?? "slide", sheet: !!sheet, sheetTab: tab ?? "format" });
   if (moment === "ppt") store.set({ side: "powerpoint" });
-  if (moment === "failed") store.set({ error: "The deck is not where it was." });
   // The file's render in the deck's order; the proposed render in the revision's.
   let opened = 0;
   const docs = [sponsorDoc([1, 2, 3, 4, 5, 6, 8]), sponsorDoc([1, 2, 3, 6, 4, 7, 5, 8])];
