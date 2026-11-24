@@ -58,6 +58,16 @@ holds at most 64 at once. A token is
 asked with `work.docs.token` (edit for this host's window and an operate
 key, view for a read key), always as the owner.
 
+A close of the socket sends what still waits first: frames queued behind a
+send in flight go up, then `work.docs.close` closes the host's socket behind
+them. And a tab's close waits for the document to be on disk: the body
+registers its item's flush (`registerFlush`, canvas/flush.ts), which sends
+every frame the editor has handed the socket and then `work.docs.send` with
+`stored: true`, answered once the service has applied what that socket sent
+and stored the document (`/internal/docs/stored`). So whatever judges the
+file after the close (a Word file's document he only looked at, files/word.ts
+`wordsLeft`) reads its change time as he left it.
+
 While a LifeOS document has a socket open here, main watches its threads
 in LifeOS and pushes `work.docs {threads: true}` when they change, so a
 comment made in LifeOS desktop shows at once.
@@ -325,14 +335,25 @@ place for a LifeOS document). What it tells the pane:
 - **Mode**: "Agent writes" or "Agent suggests", switched in the bar on his
   own document (`work.docs.mode`, kept per document in `work_docs_mode`);
   on a shared document it suggests and cannot be switched. Shared is a
-  LifeOS document a guest link marks, or a `.tcdoc` others can open where
-  it lies (`othersOpen`, docs/target.ts: "Agent suggestions stay private").
+  LifeOS document a guest link marks, a `.tcdoc` others can open where
+  it lies, or the document kept for a Word file of another computer
+  (`othersOpen`, docs/target.ts: "Agent suggestions stay private").
+  A mode change the host refuses puts back the mode before the press.
 - **The state line**: the editor's own sentence when it is offline, waiting,
   read only or did not open.
 - **The agent's last write**: "Wrote 1 section, 2:04 PM" with Undo, which
   restores the version the write answered (`work.history.restore`) and
-  clears the line (`work.docs.dismiss`). Kept in memory on the host: after
-  a restart the line is gone and History still has the version.
+  clears the line (`work.docs.dismiss`). Undo goes back only while the
+  document is as the agent left it: the line carries the version cut just
+  after the write (`DocWritten.after`), and Undo first compares it with the
+  live text (`work.history.compare`). Changed since by anyone, nothing is
+  restored (his words would go too): the line goes and a toast says "Not
+  undone: the document has changed since. Restore an earlier version from
+  History." (`undoWritten`). Kept in memory on the host: after a restart the
+  line is gone and History still has the version.
+- **Opened once per source**: the open keys on the source's value, so a
+  canvas push, which hands every item afresh, never reopens the editor
+  under his hands.
 - **Suggestions**: each pending branch (`work.history.branches`) drawn in the
   text as the editor's review, one group a branch named for whose it is.
   A changed line is cut into pieces (work-kit's `inlinePieces`): "8:00
@@ -389,7 +410,7 @@ for as long as the document is the same one:
 |---|---|---|
 | Word | the exported Word file (`work.formats.preview`) | LibreOffice, or Word on Check in Word |
 | OpenDocument, Rich Text | the exported file itself, converted on the host (`work.formats.preview`) | LibreOffice |
-| PDF | the document's print page, written here from the editor's blocks and printed on the host: a styled document's with its own styles, theme, paper and margins (`htmlDocument`'s `page`) and the faces it names; a classic one's in Calibri's twin (work-editors.md "Fonts") | TempCode |
+| PDF | the document's print page, printed on the host: in Pages the sheets he sees (`pagesHtml`, with no mark of the editor's own: `withoutEditorMarks` draws comment washes, carets, their names and others' selections as plain text); else written here from the editor's blocks, a styled document's with its own styles, theme, paper and margins (`htmlDocument`'s `page`) and the faces it names, a classic one's in Calibri's twin (work-editors.md "Fonts") | TempCode |
 | Print | the same PDF: the pages that go to paper | TempCode ("As it will print") |
 | Markdown | the host's text (`work.formats.export`) | the file's own text |
 | Web page | the page written here, in a frame where no script runs and nothing is fetched | the file's own page |
@@ -398,9 +419,11 @@ for as long as the document is the same one:
   picture kept from an earlier look (he may have gone back to the words
   since). Word, OpenDocument, Rich Text and Markdown go through
   `work.formats.export`, which needs no renderer for Word, so Word still
-  goes out on a host that cannot draw it. A PDF is the same print the
-  preview makes, read from the render the host keeps: an unchanged document
-  saves the bytes he saw. The system's save dialog is the answer.
+  goes out on a host that cannot draw it. A PDF is the pages Preview shows,
+  read from the render the host keeps, even when another window changed the
+  text since: what he checked is what he saves. A new draw takes its place,
+  and a press before it lands makes the print anew. The system's save
+  dialog is the answer.
 - **Check in Word** is offered on Word when the app is ready or this host's
   Windows VM can wake on his press. The Word picture has a rev of its own.
   If Word is out of reach after he presses, the LibreOffice picture stays.
@@ -421,7 +444,7 @@ for as long as the document is the same one:
   |---|---|
   | Word, OpenDocument | "3 suggestions go as tracked changes" (a person's; comments go whole); an agent's "stay out until you accept them" |
   | Rich Text | the same suggestion lines, "Replies to 2 comments become separate comments", "Theme text colours become fixed colours" |
-  | PDF, Print, Web page | "2 comments stay behind", "3 suggestions stay out until you accept them", "1 footnote moves to the end" (every colour, font, size and style is kept: the page writes them) |
+  | PDF, Print, Web page | "2 comments stay behind", "3 suggestions stay out until you accept them", "1 footnote moves to the end" (every colour, font, size and style is kept: the page writes them); on PDF and Print a styled document's set-up (`pageDrops`): "2 columns print as one; Word keeps them", and from Flow "The header and footer print only from Pages" |
   | Markdown | comments and suggestions as a PDF's, "Colours stay behind", "Underlines stay behind", and the styling lines below |
 
   **Styling a format cannot hold** is said once each, only of a document that
@@ -438,12 +461,14 @@ for as long as the document is the same one:
   font, size, highlight, underline, Title style, paragraph spacing, two
   columns, and the header and footer with their page fields.
 - **Print…** hands the PDF to this computer's own PDF viewer, which prints
-  it (`work/formats/printOut.ts`, work-editors.md "Print"): the same render a
-  PDF export saves, so an unchanged document prints the pages he saw. In
+  it (`work/formats/printOut.ts`, work-editors.md "Print"): the render
+  Preview shows, so what goes to paper is the pages he checked. In
   `/ui` the PDF opens in a tab on his press. Print's lines are a PDF's, the
   host's own among them.
 - A styled document's Page section edits its own set-up. The PDF and Print
-  write that page, and Word exports the page and its running bands.
+  write that page, and Word exports the page and its running bands. Columns
+  are not drawn on PDF and Print, and the header and footer print only from
+  Pages: Preview says both (above).
 
 ## Where the Docs view went
 
@@ -525,7 +550,11 @@ LifeOS document.
 `doc_read`, `doc_write`, `doc_format`, `doc_suggest` and `doc_comment`, each taking
 `item` (a document in the thread's canvas), `doc` (a LifeOS document id) or
 `file` (a `.tcdoc` path). `doc_write` takes the whole new text as markdown;
-blocks left as they were keep their ids and comments. `doc_read` with
+blocks left as they were keep their ids and comments. `doc_read` ends with
+the text's revision (`revisionOf`, a hash of the live markdown); `doc_write`
+needs it and is refused when the text changed since ("read it again"), so a
+rewrite drafted from an older read never erases what he typed in between.
+`doc_suggest` takes it too, optional. `doc_read` with
 `with: "styles"` adds the named styles, theme, page setup and the blocks
 with formatting of their own after the text.
 
@@ -539,7 +568,10 @@ keeps other page settings he has changed since the suggestion.
 The rule (architecture §6.7, §8.4): `because: "asked"` writes at once only
 when its `quote` is in one of the owner's own messages in the thread
 (`ctx.threads.ownerSaid`), else it is the agent's own idea and the reply
-says so; `"routine"` only in a routine's run, and on his own document; `"own"` on a shared document,
+says so. On a document others share, the message must also name this
+document: its title, path or LifeOS id, typed or in the head of a chip Ask
+put in (`ownerSaid` with `about`, work/threads.ts; names under 3 letters
+bind nothing); his words about another document wait as suggestions here; `"routine"` only in a routine's run, and on his own document; `"own"` on a shared document,
 or one set to suggest, waits as a branch; on his own document it is
 written as one version and the bar shows it with Undo. The verdict is
 this host's: the service is told `asked`, `routine` or `own` after the
@@ -576,7 +608,11 @@ else reads.
   it); a `.tcdoc` `sharedOf` says lies where others reach it (a Teams or
   OneDrive library, the cloud folder, another host, the Windows VM); the
   `.tcdoc` the importer wrote under `work-files/imports` for a file in a
-  library. On these an agent's own idea is always a branch.
+  library; the document kept in the workspace's own folder for a Word file
+  of another computer, which a `work_files_word` record names (`keptForWord`,
+  by real path): Save as Word and the autosave carry its live text to that
+  Word file, so only his accept reaches it. On these an agent's own idea is
+  always a branch, and `doc_comment` is refused.
 - **Where a pending agent branch lives**: a LifeOS document's in LifeOS's
   `docBranches`, read with the owner's key only; never in the live room, so
   a guest's socket, `/g/<id>/item`, `/g/<id>/threads` and another window
@@ -654,5 +690,7 @@ publishes them yet). `blockDocs` is to go on only then.
 A `.docx` opened from a library on another computer, or in the Windows VM, is read into a document kept in the
 workspace's own folder, and the Word file is written back as our Word export: on his press, or by itself once he
 chose that (or for a file New made here). The rules, the header's words and the first-time question are in
-work-files.md "A Word file from another computer".
+work-files.md "A Word file from another computer". That document counts as shared ("Agent suggestions stay private"):
+a thread's own `doc_write` or `doc_format` there waits as a suggestion, the window opens it locked to suggest, and a
+key that may not approve views it. A tab's close stores it first ("The socket"), so a quick close after a typo keeps it.
 

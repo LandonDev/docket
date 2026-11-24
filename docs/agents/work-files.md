@@ -1702,7 +1702,7 @@ over a file that changed there.
   own rule for a shared file, and goes back as his save would.
 - **Closing the tab.** What the tab's kind still holds is sent first: the close awaits the kind's own send
   (`flushItem`, src/renderer/src/work/canvas/flush.ts, 8 s at most), a deck's open box with his words in it, a text
-  file's words waiting for their save, a sheet's edits waiting out their gather time (`SheetSync.flushed`: sent,
+  file's words waiting for their save, a document's last frames and its store on the host (work-docs.md "The socket"), a sheet's edits waiting out their gather time (`SheetSync.flushed`: sent,
   and the close goes on once the host answered; before it, a cell typed and the tab closed by × at once was sent after
   the item had gone, and lost). A cell still open in the grid's editor at the close is not committed. A copy whose changes have not reached its file then asks once
   (`closeCopyTab`, copyClose.ts): "Changes to Roster.xlsx have not reached MacBook." with Keep trying and Discard
