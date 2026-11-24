@@ -465,3 +465,15 @@ describe("the bar and failures", () => {
     expect(field?.className).toContain("focus-field");
   });
 });
+
+describe("the PDF's loading bones", () => {
+  it("stand on the paper's own side inset, 24px and 12px under the narrow width, so the page does not widen as it lands", async () => {
+    const { PageSkeleton } = await import("./PdfCanvas");
+    const { NARROW, sideInset } = await import("./layout");
+    render(<PageSkeleton />);
+    const bones = document.querySelector("[data-pdf-bones]")!;
+    expect(bones.parentElement!.className).toContain("@container");
+    expect(bones.className.split(" ")).toEqual(expect.arrayContaining(["px-6", `@max-[${NARROW}px]:px-3`]));
+    expect([sideInset(NARROW), sideInset(NARROW - 1)]).toEqual([24, 12]);
+  });
+});

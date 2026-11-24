@@ -15,6 +15,8 @@ export interface CanvasKindDef<S = unknown> {
   /** The kind as a person reads it: "Document", "Sheet". */
   label: string;
   icon: IconComponent;
+  /** One item's glyph where the kind holds more than one sort of file (media: a video's glyph, else the picture's); absent, `icon`. */
+  iconOf?(item: CanvasItem): IconComponent;
   /** What the kind claims. `kindFor` tries sources first, then the mime type, then the file extension. */
   opens: {
     sources?: Array<{ at: CanvasSource["at"]; app?: "excel" | "word" | "powerpoint"; table?: string }>;
@@ -195,6 +197,9 @@ export interface WrittenLine {
 }
 
 /** A kind's definition as the registry holds it: its state type is the kind's own business. */
+/** The glyph a tab and a lone item's title wear for an item: its own where its kind tells one, else the kind's. */
+export const glyphOf = (def: CanvasKindDef, item: CanvasItem): IconComponent => def.iconOf?.(item) ?? def.icon;
+
 export function defineCanvasKind<S>(def: CanvasKindDef<S>): CanvasKindDef {
   return def as unknown as CanvasKindDef;
 }

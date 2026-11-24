@@ -8,7 +8,7 @@ import { reveal } from "../../components/ui/reveal";
 import { shortcutFor } from "../../lib/settings";
 import { OVERFLOW_FADE, useOverflowEdges } from "../../hooks/useOverflowEdges";
 import { useSortable } from "../../hooks/useSortable";
-import type { CanvasKindDef } from "./kind";
+import { glyphOf, type CanvasKindDef } from "./kind";
 import { CANVAS, kindDefOf } from "./registry";
 
 /**
@@ -68,7 +68,7 @@ export function CanvasTabs({
   }, [selected, items.length]);
   if (items.length === 1) {
     const [item] = items;
-    const Glyph = kindDefOf(kinds, item.kind).icon;
+    const Glyph = glyphOf(kindDefOf(kinds, item.kind), item);
     return (
       <div data-canvas-title className="flex min-w-0 flex-1 items-center gap-2 px-1.5">
         <Glyph className="size-3.5 shrink-0 text-muted-foreground" />
@@ -111,7 +111,7 @@ export function CanvasTabs({
       onWheel={wheelToX}
     >
       {items.map((item, index) => {
-        const Glyph = kindDefOf(kinds, item.kind).icon;
+        const Glyph = glyphOf(kindDefOf(kinds, item.kind), item);
         const active = item.id === selected;
         const dragging = sortable.draggingId === item.id;
         const moving = sortable.draggingId !== null && sortable.toIndex === index && sortable.fromIndex !== null;

@@ -217,6 +217,9 @@ export const documentCanvas = defineCanvasKind<DocState>({
 });
 ```
 
+A kind that holds more than one sort of file may give `iconOf(item)`: the tab and a lone item's title wear that
+glyph (`glyphOf`); the media kind gives a video the video glyph and an image the picture's, as Files' rows do.
+
 ```tsx
 // src/renderer/src/work/docs/DocumentCanvas.tsx: the chunk. `Body` is required; `Bar` and `TabEnd` are optional.
 import { useEffect } from "react";

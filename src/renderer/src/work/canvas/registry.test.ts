@@ -14,11 +14,21 @@ import { officeActs } from "../office/act";
 import { outboxActs } from "../outbox/act";
 import { kindOfFile } from "@shared/work/docFind";
 import { extsOfCanvas, kindOfEntry } from "@shared/work/files";
+import { Media, Video } from "../icons";
+import { canvasItem } from "./testkit";
+import { glyphOf } from "./kind";
 import { CANVAS, kindFor, kindForFile } from "./registry";
 
 /** The two registries Work's pillars plug into: every kind and every act kind once, each in its pillar's own file. */
 
 describe("the canvas kinds", () => {
+  it("gives a video its video glyph and an image the picture's, as Files' rows do; other kinds their own", () => {
+    const at = (path: string) => canvasItem(path, { kind: "media", title: path.split("/").pop()!, source: { at: "file", host: "local", path } });
+    expect(glyphOf(CANVAS.media, at("/w/Skyblock trailer v3.mp4"))).toBe(Video);
+    expect(glyphOf(CANVAS.media, at("/w/Poster.PNG"))).toBe(Media);
+    expect(glyphOf(CANVAS.pdf, canvasItem("p", { kind: "pdf" }))).toBe(CANVAS.pdf.icon);
+  });
+
   it("lists every kind once, under its own name", () => {
     expect(Object.keys(CANVAS)).toEqual([...CANVAS_KINDS]);
     for (const kind of CANVAS_KINDS) expect(CANVAS[kind].kind).toBe(kind);

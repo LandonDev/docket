@@ -204,13 +204,15 @@ function useFeeds(
   }, [shell, host, keys, at, run]);
 }
 
-/** Loading: the page's own shape, on the card step. */
+/** Loading: the page's own shape, on the card step, on the paper's own side inset (layout.ts `sideInset`: 24px, 12px under 640px). */
 export function PageSkeleton() {
   return (
-    <div aria-busy="true" aria-label="Loading" className="flex min-h-0 flex-1 justify-center bg-(--stage) px-6 pt-4">
-      <div className="flex aspect-[440/569] w-[440px] max-w-full flex-col gap-2.5 self-start rounded-[2px] bg-card px-10 py-8 outline-1 outline-border">
-        <Skeleton className="mb-2 h-3 w-[38%] self-center" />
-        {[92, 88, 96, 60, 0, 90, 94, 72, 0, 86, 90, 54].map((w, i) => (w ? <Skeleton key={i} className="h-2" style={{ width: `${w}%` }} /> : <span key={i} className="h-1" />))}
+    <div aria-busy="true" aria-label="Loading" className="@container flex min-h-0 flex-1 bg-(--stage)">
+      <div data-pdf-bones className="flex flex-1 justify-center px-6 pt-4 @max-[640px]:px-3">
+        <div className="flex aspect-[440/569] w-[440px] max-w-full flex-col gap-2.5 self-start rounded-[2px] bg-card px-10 py-8 outline-1 outline-border">
+          <Skeleton className="mb-2 h-3 w-[38%] self-center" />
+          {[92, 88, 96, 60, 0, 90, 94, 72, 0, 86, 90, 54].map((w, i) => (w ? <Skeleton key={i} className="h-2" style={{ width: `${w}%` }} /> : <span key={i} className="h-1" />))}
+        </div>
       </div>
     </div>
   );
