@@ -158,6 +158,10 @@ struct FilesRulesTests {
         #expect(!FilesRules.startsOver(pinned: "a1", answered: nil))
         let page: FilePreview = try decode(#"{"png":"AA==","pages":3,"width":10,"height":10,"version":"b2"}"#)
         #expect(page.version == "b2")
+        // A page a saved file no longer has names the new version: the pager starts over rather than ask for it again.
+        let gone: FilePreview = try decode(#"{"none":"It has no page 2.","version":"c3"}"#)
+        #expect(gone.png == nil)
+        #expect(FilesRules.startsOver(pinned: "a1", answered: gone.version))
     }
 
     @Test func `the search field filters by every word, case and accents ignored`() throws {

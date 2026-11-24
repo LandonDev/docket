@@ -367,9 +367,10 @@ this build's (PF5).
 - **Quick Look's pages are of one version.** Each page the host draws names
   the file's version it is of (`FilePreview.version`, a digest); the first
   pins it, and a page of another version (the file saved on the computer
-  between two reads) starts the pager over at that version
-  (`FilesRules.startsOver`), so no two pages of different versions show
-  together.
+  between two reads), or a page the saved file no longer has (its answer
+  names the version too), starts the pager over from page 1 of that version
+  with its count (`FilesRules.startsOver`); a reply to the pager before the
+  start-over is dropped. No two pages of different versions show together.
 - **Share…** has no row. The one way to share a file from the phone today is
   the guest link, which is its own row (Make a Guest Link, a LifeOS document
   or sheet, a key that may approve). No wire lets a remote key draft a mail

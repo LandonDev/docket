@@ -210,7 +210,7 @@ describe('where a picture comes from, cheapest first', () => {
     expect(pairs().slice(1)).toEqual(['pdf→extract', 'pdf→png'])
     expect(jobs[2]!.options).toEqual({ page: 2, width: 800 })
     // The count is kept by file and version: a page past the end asks nothing of the runner.
-    expect(await one(mine('Bracket.pdf'), { page: 7, width: 800 })).toEqual({ none: NO_PREVIEW.page(7) })
+    expect(await one(mine('Bracket.pdf'), { page: 7, width: 800 })).toMatchObject({ none: NO_PREVIEW.page(7) })
     expect(jobs).toHaveLength(3)
   })
 
@@ -266,8 +266,8 @@ describe('where a picture comes from, cheapest first', () => {
   })
 
   it('answers no picture for an archive or a sound, and a folder says it is one', async () => {
-    expect(await one(mine('Kit.zip'), { thumb: 192 })).toEqual({ none: NO_PREVIEW.none })
-    expect(await one(at(join(rig.folder, 'Events')), { thumb: 192 })).toEqual({ none: NO_PREVIEW.folder })
+    expect(await one(mine('Kit.zip'), { thumb: 192 })).toMatchObject({ none: NO_PREVIEW.none })
+    expect(await one(at(join(rig.folder, 'Events')), { thumb: 192 })).toMatchObject({ none: NO_PREVIEW.folder })
   })
 })
 
@@ -282,7 +282,7 @@ describe('the wire', () => {
 
   it('answers no picture past 2 MB', async () => {
     previewSeams.scale = async () => ({ png: Buffer.concat([png(64), Buffer.alloc(2 * 1024 * 1024)]), width: 64, height: 64 })
-    expect(await call<FilePreview>('work.files.preview', { ref: mine('Poster.png'), width: 640 })).toEqual({ none: NO_PREVIEW.big })
+    expect(await call<FilePreview>('work.files.preview', { ref: mine('Poster.png'), width: 640 })).toMatchObject({ none: NO_PREVIEW.big })
   })
 })
 
@@ -308,6 +308,10 @@ describe('his own places: kept on disk', () => {
     writeFileSync(join(rig.folder, 'Bracket.pdf'), '%PDF dummy, saved since')
     const saved = await call<FilePreview>('work.files.preview', { ref: mine('Bracket.pdf'), width: 600 })
     expect('version' in saved && saved.version).not.toBe('version' in first && first.version)
+    // A page the saved file no longer has names its version too, so a pager of the old one starts over.
+    const gone = await call<FilePreview>('work.files.preview', { ref: mine('Bracket.pdf'), page: 7, width: 600 })
+    expect(gone).toMatchObject({ none: NO_PREVIEW.page(7) })
+    expect('version' in gone && gone.version).toBe('version' in saved && saved.version)
   })
 
   it("keeps an Office file's PDF, so its next page is one draw", async () => {
@@ -383,13 +387,13 @@ describe('a shared library: memory only, his window only', () => {
     forgetLibraries(rig.db)
     await via(mine('Poster.png'))
     expect(previewMemory(rig.db).count).toBe(0)
-    expect(await one(shared('Shared photo.png'), { thumb: 192 })).toEqual({ none: NO_PREVIEW.reach })
+    expect(await one(shared('Shared photo.png'), { thumb: 192 })).toMatchObject({ none: NO_PREVIEW.reach })
   })
 
   it('answers nothing to a remote key, the phone or another host, even one whose fence names the library', async () => {
     rig.roots.push(rig.team)
     for (const by of [phone, approver, reader, peer]) {
-      expect(await one(shared('Shared photo.png'), { thumb: 192 }, by)).toEqual({ none: NO_PREVIEW.sharedHere })
+      expect(await one(shared('Shared photo.png'), { thumb: 192 }, by)).toMatchObject({ none: NO_PREVIEW.sharedHere })
       expect((await call<{ thumbs: unknown[] }>('work.files.thumbs', { refs: [shared('Shared photo.png')], size: 192 }, by)).thumbs).toEqual([null])
     }
     expect(scaled).toBe(0)
@@ -403,7 +407,7 @@ describe('a shared library: memory only, his window only', () => {
 describe('who gets nothing', () => {
   it('gives a thread nothing from preview or thumbs, its own workspace included, and reads nothing', async () => {
     for (const ref of [mine('Poster.png'), shared('Shared photo.png')]) {
-      expect(await call<FilePreview>('work.files.preview', { ref, width: 400 }, thread())).toEqual({ none: NO_PREVIEW.thread })
+      expect(await call<FilePreview>('work.files.preview', { ref, width: 400 }, thread())).toMatchObject({ none: NO_PREVIEW.thread })
       expect((await call<{ thumbs: unknown[] }>('work.files.thumbs', { refs: [ref], size: 192 }, thread())).thumbs).toEqual([null])
     }
     expect(opened).toEqual([])
@@ -411,11 +415,11 @@ describe('who gets nothing', () => {
   })
 
   it('answers a plain tile for a file on another computer, in the Windows VM, or out of reach', async () => {
-    expect(await one(at('/Users/dummy/Poster.png', 'env_mac'), { thumb: 192 })).toEqual({ none: NO_PREVIEW.elsewhere })
-    expect(await one(at('C:\\Users\\dummy\\OneDrive\\Poster.png'), { thumb: 192 })).toEqual({ none: NO_PREVIEW.vm })
-    expect(await one(at(join(rig.outside, 'secret.txt')), { thumb: 192 })).toEqual({ none: NO_PREVIEW.reach })
-    expect(await one(at(join(rig.otherFolder, 'Payroll.xlsx')), { thumb: 192 }, thread())).toEqual({ none: NO_PREVIEW.thread })
-    expect(await one(mine('Gone.png'), { thumb: 192 })).toEqual({ none: NO_PREVIEW.gone })
+    expect(await one(at('/Users/dummy/Poster.png', 'env_mac'), { thumb: 192 })).toMatchObject({ none: NO_PREVIEW.elsewhere })
+    expect(await one(at('C:\\Users\\dummy\\OneDrive\\Poster.png'), { thumb: 192 })).toMatchObject({ none: NO_PREVIEW.vm })
+    expect(await one(at(join(rig.outside, 'secret.txt')), { thumb: 192 })).toMatchObject({ none: NO_PREVIEW.reach })
+    expect(await one(at(join(rig.otherFolder, 'Payroll.xlsx')), { thumb: 192 }, thread())).toMatchObject({ none: NO_PREVIEW.thread })
+    expect(await one(mine('Gone.png'), { thumb: 192 })).toMatchObject({ none: NO_PREVIEW.gone })
     expect(opened).toEqual([])
   })
 
@@ -429,7 +433,7 @@ describe('who gets nothing', () => {
     if (statSync(sparse[0]!).blocks !== 0) return
     const got = await call<{ thumbs: unknown[] }>('work.files.thumbs', { refs: sparse.map((path) => at(path)), size: 192 })
     expect(got.thumbs).toEqual([null, null, null])
-    for (const path of sparse) expect(await call<FilePreview>('work.files.preview', { ref: at(path), width: 800 })).toEqual({ none: NO_PREVIEW.cloud })
+    for (const path of sparse) expect(await call<FilePreview>('work.files.preview', { ref: at(path), width: 800 })).toMatchObject({ none: NO_PREVIEW.cloud })
     expect(opened.filter((path) => /Cloud /.test(path))).toEqual([])
     expect(jobs).toEqual([])
     expect(scaled).toBe(0)
@@ -445,7 +449,7 @@ describe('no conversion leaves this host', () => {
     expect(jobs.every((j) => j.here === true)).toBe(true)
     missing.add('docx→pdf')
     writeFileSync(join(rig.folder, 'Bare again.docx'), readFileSync(join(rig.folder, 'Bare.docx')))
-    expect(await one(mine('Bare again.docx'), { page: 1, width: 900 })).toEqual({ none: NO_PREVIEW.tool })
+    expect(await one(mine('Bare again.docx'), { page: 1, width: 900 })).toMatchObject({ none: NO_PREVIEW.tool })
     expect((await call<{ thumbs: unknown[] }>('work.files.thumbs', { refs: [mine('Bare again.docx')], size: 416 })).thumbs).toEqual([null])
   })
 })
@@ -505,20 +509,20 @@ describe('the queue', () => {
   it('answers a dropped ask as a plain tile on the wire', async () => {
     const cancel = new AbortController()
     cancel.abort()
-    expect(await previewOne(rig.ctx, window, WS, mine('Banner.webp'), { thumb: 192 }, 'work.files.thumbs', cancel.signal)).toEqual({ none: NO_PREVIEW.busy })
+    expect(await previewOne(rig.ctx, window, WS, mine('Banner.webp'), { thumb: 192 }, 'work.files.thumbs', cancel.signal)).toMatchObject({ none: NO_PREVIEW.busy })
   })
 })
 
 describe('access is checked again before the answer', () => {
   it('answers nothing, and keeps nothing, for a file moved out of reach during its render', async () => {
     previewSeams.rendered = (path) => renameSync(path, join(rig.outside, 'Bracket.pdf'))
-    expect(await call<FilePreview>('work.files.preview', { ref: mine('Bracket.pdf'), width: 600 })).toEqual({ none: NO_PREVIEW.reach })
+    expect(await call<FilePreview>('work.files.preview', { ref: mine('Bracket.pdf'), width: 600 })).toMatchObject({ none: NO_PREVIEW.reach })
     expect(kept().filter((n) => n.endsWith('.png'))).toEqual([])
   })
 
   it('answers nothing, and keeps nothing, for a file that changed during its render', async () => {
     previewSeams.rendered = (path) => writeFileSync(path, '%PDF dummy, and a page more')
-    expect(await call<FilePreview>('work.files.preview', { ref: mine('Bracket.pdf'), width: 600 })).toEqual({ none: NO_PREVIEW.changed })
+    expect(await call<FilePreview>('work.files.preview', { ref: mine('Bracket.pdf'), width: 600 })).toMatchObject({ none: NO_PREVIEW.changed })
     expect(kept().filter((n) => n.endsWith('.png'))).toEqual([])
     expect(previewMemory(rig.db).count).toBe(0)
   })
@@ -526,7 +530,7 @@ describe('access is checked again before the answer', () => {
   it('answers nothing, and leaves nothing on disk, for a file that others came to be able to open during its render', async () => {
     // The workspace's folder is found to lie in a cloud folder of this computer: from then on it is shared.
     previewSeams.rendered = () => setCloudDir(() => rig.base)
-    expect(await one(mine('Poster.png'), { thumb: 192 })).toEqual({ none: NO_PREVIEW.changed })
+    expect(await one(mine('Poster.png'), { thumb: 192 })).toMatchObject({ none: NO_PREVIEW.changed })
     expect(kept()).toEqual([])
     expect(previewMemory(rig.db).count).toBe(0)
   })
@@ -534,7 +538,7 @@ describe('access is checked again before the answer', () => {
   it('answers nothing from the cache for a file now out of reach', async () => {
     await via(mine('Poster.png'))
     previewSeams.rendered = (path) => renameSync(path, join(rig.outside, 'Poster.png'))
-    expect(await one(mine('Poster.png'), { thumb: 192 })).toEqual({ none: NO_PREVIEW.reach })
+    expect(await one(mine('Poster.png'), { thumb: 192 })).toMatchObject({ none: NO_PREVIEW.reach })
   })
 })
 

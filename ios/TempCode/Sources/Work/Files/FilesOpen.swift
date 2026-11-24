@@ -177,19 +177,25 @@ struct FileQuickLookScreen: View {
     /// One page; one that does not come says why (the host's `none`, or the failure) in place of a spinner that never ends.
     private func load(_ page: Int) async {
         guard pages[page] == nil, pageFailures[page] == nil, let ref = entry.ref else { return }
+        // A reply to the pager before a start-over is of the old file: it is dropped.
+        let mine = round
         do {
             let answer = try await files.preview(workspaceId, ref, page: page, width: previewWidth)
+            guard mine == round else { return }
             if FilesRules.startsOver(pinned: version, answered: answer.version) {
-                // Saved between two reads: every page read before is of the old file.
+                // Saved between two reads (a page drawn, or one the file no longer has): the pager starts over from
+                // page 1 of the new version, with its count.
                 pages = [:]
                 pageFailures = [:]
-                version = answer.version
-                pageCount = max(1, Int(answer.pages ?? 1))
+                version = nil
+                pageCount = 0
                 round += 1
+                await firstPage()
+                return
             }
             if let png = answer.png, let image = Self.image(png) { pages[page] = image } else { pageFailures[page] = answer.none ?? "There is no preview of this page." }
         } catch {
-            if !Task.isCancelled { pageFailures[page] = ActionError.wrap(error).message }
+            if !Task.isCancelled, mine == round { pageFailures[page] = ActionError.wrap(error).message }
         }
     }
 

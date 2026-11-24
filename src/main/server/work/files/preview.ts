@@ -96,7 +96,8 @@ export interface Rendered {
   /** the file's version it is of (`previewOne`'s answer only; not kept with the picture) */
   version?: string
 }
-type None = { none: string }
+/** No picture, and why; `version` where the file was read, so a pager knows a page gone from a saved file is of another version. */
+type None = { none: string; version?: string }
 const isNone = (r: unknown): r is None => typeof r === 'object' && r !== null && 'none' in r
 
 /** A file located for its caller, with what decides where its picture is kept. */
@@ -662,8 +663,8 @@ export async function previewOne(ctx: WorkCtx, by: Caller, workspaceId: string, 
     fresh = true
   }
   if (got === DROPPED) return { none: NO_PREVIEW.busy }
-  if (isNone(got)) return got
-  if (got.png.length > PREVIEW_PNG_MAX) return { none: NO_PREVIEW.big }
+  if (isNone(got)) return { ...got, version: t.version }
+  if (got.png.length > PREVIEW_PNG_MAX) return { none: NO_PREVIEW.big, version: t.version }
   await previewSeams.rendered?.(t.path)
   // The second look: a file that moved out of this caller's reach during the render answers nothing, and is kept nowhere.
   const again = await targetOf(ctx, by, workspaceId, ref, method)
@@ -682,7 +683,8 @@ export async function previewOne(ctx: WorkCtx, by: Caller, workspaceId: string, 
 export async function previewOf(ctx: WorkCtx, by: Caller, p: { workspaceId: string; ref: CanvasSource; page?: number; width: number }, method: string, signal?: AbortSignal): Promise<FilePreview> {
   const got = await previewOne(ctx, by, p.workspaceId, p.ref, { page: p.page ?? 1, width: p.width }, method, signal)
   // The version, as a digest: a pager pins it, and a page of another version (saved between two reads) starts it over.
-  return isNone(got) ? got : { png: got.png.toString('base64'), pages: got.pages, width: got.width, height: got.height, ...(got.version ? { version: hash(got.version).slice(0, 16) } : {}) }
+  const version = got.version ? { version: hash(got.version).slice(0, 16) } : {}
+  return isNone(got) ? { none: got.none, ...version } : { png: got.png.toString('base64'), pages: got.pages, width: got.width, height: got.height, ...version }
 }
 
 /** `work.files.thumbs`: a small picture of each file, null where there is none to show. */
