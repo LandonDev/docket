@@ -3140,6 +3140,19 @@ The stall log names the next queue itself: a slow-request line carries
 `pool=<ms>`, a one-a-second `stat` through the thread pool (`<age>ms+`
 while it is still out).
 
+Four more words since the Work performance pass (stalls.ts, 2026-11-24). A
+long poll is slow only past its own wait plus 2 s (`LONG_POLL_MS`:
+`work.docs.recv` waits 20 s by design and was 88% of the slow lines, which
+hid the rest). A handler adds its own words to its line with `noteRequest`:
+a Files list says `place=<folder|library|vm|drive|place|lifeos|across>`,
+a call that waited 500 ms or more on the Windows VM's door says
+`wake=<ms>`, and a transcript scan on the loop says whose socket asked
+(`timed events tail scan 88ms profile=remote`). Once an hour one
+`work-calls` line counts every `work.*` method's calls and how many passed
+500 ms (`work.files.list:120/3`), so the slow tail has its share.
+`bun scripts/perf/stall-report.ts <stalls.log…>` turns a log into the
+table the Work baseline keeps (docs/agents/work-perf.md).
+
 ## The shape that scales
 
 Hundreds of threads may exist on a host; a bounded number run, and the

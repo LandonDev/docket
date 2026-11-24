@@ -1,5 +1,5 @@
 import { Buffer } from 'node:buffer'
-import { BACKPRESSURE_BYTES } from './stalls'
+import { BACKPRESSURE_BYTES, noteRequest } from './stalls'
 import type { IncomingHttpHeaders } from 'node:http'
 import type { AgentEvent, EventRow, SessionMeta, ToolPreview } from '@shared/events'
 import type { ServerFrame, ServerPush } from '@shared/contract'
@@ -302,6 +302,8 @@ export async function sessionEvents(
 ): Promise<EventRow[] | EventsPage> {
   if (!host.knows(params.sessionId)) throw new Error(`unknown session: ${params.sessionId}`)
   if (params.subscribe) subscribe()
+  // A scan this ask makes on the loop names whose it was (`timed events tail scan 88ms profile=remote`).
+  noteRequest('profile', profile)
   if (profile === 'local') return host.eventsAsync(params.sessionId, params)
   const page = eventsPage(host, params)
   return params.subscribe ? { ...page, subscribed: true } : page

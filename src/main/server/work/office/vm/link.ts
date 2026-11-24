@@ -2,6 +2,10 @@ import { connect, type Socket } from 'node:net'
 import { vmHelper } from '../../winvm'
 import { VM_ASLEEP } from '../../winvm/helperDoor'
 import { OfficeError } from '../carrier'
+import { noteRequest } from '../../../stalls'
+
+/** A door open slower than this is named `wake=<ms>` on the request's slow-request line. */
+const WAKE_NOTED_MS = 500
 
 /**
  * One call to the helper in the Windows VM (docs/agents/work-teams-files.md "The Windows VM"): a
@@ -106,7 +110,10 @@ async function real(verb: string, args: Record<string, unknown> = {}, opts: VmCa
   const open = async () => {
     let door: { socket: string; token: string } | null
     try {
+      const asked = Date.now()
       door = opts.wake === false ? await helper.openIfAwake() : await helper.open()
+      // A door that took this long was a wake (or a wait on one): the request's stall line says so.
+      if (Date.now() - asked >= WAKE_NOTED_MS) noteRequest('wake', `${Date.now() - asked}ms`)
     } catch (err) {
       throw new VmUnreachable(err)
     }

@@ -8,7 +8,12 @@
  *   - `timed`: a known synchronous section ran ≥ TIMED_MS
  *   - `checkpoint`: the checkpoint worker (dbWorkers.ts) copied a WAL into
  *     its file for ≥ TIMED_MS; off the loop, but the disk time shows here
- *   - `slow-request`: a WS request took longer than the boot log's cap
+ *   - `slow-request`: a WS request took longer than the boot log's cap; a
+ *     long poll (LONG_POLL_MS) only past its own wait plus LONG_POLL_GRACE_MS.
+ *     The handler's own words ride on it (`noteRequest`): a `work.files.*`
+ *     line says `place=<kind>` and, when it woke the VM, `wake=<ms>`
+ *   - `work-calls`: once an hour, each `work.*` method's calls and how many
+ *     passed SLOW_WORK_MS (`work.files.list:120/3`), so a slow tail has its share
  *   - `[renderer] …`: a line the renderer sent through `stall.report`
  *
  * Every server line carries the requests in flight (method + age), the
@@ -20,6 +25,7 @@
  * here, `pool=<age>ms+` while the probe is still out). Cost: two integer counters, one Map entry per in-flight request,
  * one histogram read a second. Nothing allocates per event.
  */
+import { AsyncLocalStorage } from 'node:async_hooks'
 import { appendFileSync, mkdirSync, renameSync, statSync } from 'node:fs'
 import { stat } from 'node:fs/promises'
 import { join } from 'node:path'
@@ -181,6 +187,25 @@ export function recordComputerSpan(body: string): void {
   write(body)
 }
 
+/** What a request's handler said of it (`noteRequest`), kept for the lines written inside it. */
+const requestNotes = new AsyncLocalStorage<Map<string, string>>()
+
+/** Runs one request with a place for its handler's words. */
+export function withRequestNotes<T>(fn: () => T): T {
+  return requestNotes.run(new Map(), fn)
+}
+
+/** A word for this request's stall lines: `place=vm`, `wake=13200ms`, `profile=remote`. Outside a request it is dropped. */
+export function noteRequest(key: string, value: string | number): void {
+  requestNotes.getStore()?.set(key, String(value).replace(/\s+/g, '_').slice(0, 40))
+}
+
+/** The notes as ` key=value …`, or nothing. */
+export function requestNotesField(): string {
+  const notes = requestNotes.getStore()
+  return notes?.size ? ' ' + [...notes].map(([key, value]) => `${key}=${value}`).join(' ') : ''
+}
+
 /** Runs `fn` and logs it when it held the loop for TIMED_MS or more. */
 export function timed<T>(label: string, fn: () => T): T {
   const startedAt = performance.now()
@@ -188,7 +213,7 @@ export function timed<T>(label: string, fn: () => T): T {
     return fn()
   } finally {
     const ms = performance.now() - startedAt
-    if (ms >= TIMED_MS) write(`timed ${label} ${Math.round(ms)}ms`)
+    if (ms >= TIMED_MS) write(`timed ${label} ${Math.round(ms)}ms${requestNotesField()}`)
   }
 }
 
@@ -197,10 +222,49 @@ export function recordCheckpoint(schema: string, frames: number, ms: number): vo
   if (ms >= TIMED_MS) write(`checkpoint schema=${schema} frames=${frames} ms=${Math.round(ms)}`)
 }
 
-/** `lane=` and, for bulk, `gate=` (the wait before it ran; `gate=joined` when it shared another's run). */
+/** A request slower than this is a slow request (the boot log's cap). */
+export const SLOW_REQUEST_MS = 500
+/** Methods that wait by design, with the longest each waits: slow only past that plus the grace. */
+export const LONG_POLL_MS: Readonly<Record<string, number>> = { 'work.docs.recv': 20_000 }
+export const LONG_POLL_GRACE_MS = 2000
+
+/** Whether a request of `ms` is slow: a long poll that answered within its own wait is working as built. */
+export function isSlowRequest(method: string, ms: number): boolean {
+  const wait = LONG_POLL_MS[method]
+  return ms > (wait === undefined ? SLOW_REQUEST_MS : wait + LONG_POLL_GRACE_MS)
+}
+
+/** `lane=` and, for bulk, `gate=` (the wait before it ran; `gate=joined` when it shared another's run), then the handler's notes. */
 export function recordSlowRequest(method: string, ms: number, how?: { lane: string; gateMs: number | null }): void {
   const lane = how ? ` lane=${how.lane}${how.lane === 'bulk' ? ` gate=${how.gateMs === null ? 'joined' : `${how.gateMs}ms`}` : ''}` : ''
-  write(`slow-request ${method} ${ms}ms${lane}`)
+  write(`slow-request ${method} ${ms}ms${lane}${requestNotesField()}`)
+}
+
+/** A `work.*` call past this counts as slow in the hourly line. */
+export const SLOW_WORK_MS = 500
+const WORK_CALLS_EVERY_MS = 60 * 60 * 1000
+/** The hour's `work.*` calls: method → [calls, slow]. The methods are a fixed set, so the map is bounded by them. */
+const workCalls = new Map<string, [number, number]>()
+let workCallsAt = Date.now()
+
+/** One `work.*` request ended after `ms`; other methods are not counted. */
+export function countWorkCall(method: string, ms: number): void {
+  if (!method.startsWith('work.')) return
+  const row = workCalls.get(method) ?? [0, 0]
+  row[0] += 1
+  if (ms > SLOW_WORK_MS) row[1] += 1
+  workCalls.set(method, row)
+}
+
+/** The `work-calls` line for the calls counted so far, busiest first, or null when there were none. Empties the count. */
+export function workCallsLine(): string | null {
+  if (workCalls.size === 0) return null
+  const body = [...workCalls]
+    .sort((a, b) => b[1][0] - a[1][0] || a[0].localeCompare(b[0]))
+    .map(([method, [calls, slow]]) => `${method}:${calls}/${slow}`)
+    .join(',')
+  workCalls.clear()
+  return `work-calls ${body}`
 }
 
 /** A stall the renderer measured; its line already carries its own context. */
@@ -237,6 +301,11 @@ export function startStallMonitor(): () => void {
     if (line) write(line)
     resetPushes()
     probePool()
+    if (Date.now() - workCallsAt >= WORK_CALLS_EVERY_MS) {
+      workCallsAt = Date.now()
+      const calls = workCallsLine()
+      if (calls) write(calls, false)
+    }
   }, SAMPLE_MS)
   timer.unref()
   return () => {

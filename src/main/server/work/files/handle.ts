@@ -49,6 +49,7 @@ import { admitDrive, DRIVE_APART, driveMake, driveMove, driveRename, driveTrash,
 import { archiveListing } from './zipdir'
 import { waitingFiles, withWaiting } from './waiting'
 import { readOnlyOf } from './readOnly'
+import { noteRequest } from '../../stalls'
 
 /**
  * The files pillar's wire (`work.files.*`, docs/agents/work-files.md "The wire"). Every method names its
@@ -232,10 +233,14 @@ export function withMarks(state: FilesState, workspaceId: string, entries: FileE
   })
 }
 
+/** The stall log's word for where a Files call went: `place=vm` on its slow-request line (stalls.ts). */
+const placeWord = (at: Located): string => (at.in === 'library' ? (at.library.vm ? 'vm' : 'library') : at.in)
+
 async function list(ctx: WorkCtx, by: Caller, p: { workspaceId: string; at: FolderRef; cursor?: string; sort?: FileSort; foldersOnly?: boolean }, method: string, signal?: AbortSignal): Promise<FilesListing> {
   const state = filesState(ctx)
   const sort = p.sort ?? DEFAULT_SORT
   let at = locate(ctx, by, p.workspaceId, p.at, method)
+  noteRequest('place', placeWord(at))
   const first = !p.cursor
   if (at.in === 'place') {
     if (at.id === PLACE.recent || at.id === PLACE.starred || at.id === PLACE.made) {
@@ -252,6 +257,7 @@ async function list(ctx: WorkCtx, by: Caller, p: { workspaceId: string; at: Fold
     }
     // A place's top is its root folder: listed as that folder.
     at = locate(ctx, by, p.workspaceId, placeRoot(ctx, by, p.workspaceId, at.id), method)
+    noteRequest('place', placeWord(at))
   }
   if (at.in === 'folder') {
     const { workspace, root, path } = at
@@ -870,6 +876,7 @@ async function lifeosCase(ctx: WorkCtx, by: Caller, m: string, p: Record<string,
     case 'work.files.list': {
       const at = p.at as FolderRef
       if (isLifeosRef(at)) {
+        noteRequest('place', 'lifeos')
         const got = await listLifeos(ctx, by, p as never)
         return handled({ ...got, entries: withMarks(filesState(ctx), p.workspaceId, got.entries) })
       }

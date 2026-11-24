@@ -201,6 +201,9 @@ import {
   inFlightRequests,
   recordBackpressure,
   recordSlowRequest,
+  isSlowRequest,
+  countWorkCall,
+  withRequestNotes,
   reportRendererStall,
   setBufferedBytes,
   setLaneStats,
@@ -470,7 +473,6 @@ let firstListMarked = false
 /** Read once: a slow remote peer for the launch-mirror proof (peerDelay.ts). */
 const PEER_DELAY_MS = peerDelayMs()
 /** WS requests slower than this land in the boot log. */
-const SLOW_REQUEST_MS = 500
 
 /**
  * TEMP_CODE_DROP_ANSWERS=method:count[,method:count], isolated instances
@@ -2652,7 +2654,8 @@ export async function startServer(
     const offWork = work.pushes.onPush(sendFrame, principal)
     const workSocket = new AbortController()
 
-    ws.on('message', async (data) => {
+    // Each request runs with a place for its handler's words on the stall log's lines (stalls.ts noteRequest).
+    ws.on('message', (data) => withRequestNotes(async () => {
       let raw: unknown
       try {
         raw = JSON.parse(String(data))
@@ -2733,12 +2736,13 @@ export async function startServer(
         // something that did; either way the boot log should say which.
         untrackRequest(requestKey)
         const ms = Date.now() - startedAt
-        if (ms > SLOW_REQUEST_MS) {
+        countWorkCall(req.method, ms)
+        if (isSlowRequest(req.method, ms)) {
           bootMark('slow-request', `${req.method} ${ms}ms`)
           recordSlowRequest(req.method, ms, lane === null ? undefined : { lane, gateMs })
         }
       }
-    })
+    }))
 
     /** One request, answered through `sendFrame`: the socket's own, or a
      *  bulk request's capture (captureAnswer). Pushes a handler makes go to

@@ -2,6 +2,7 @@ import type { FilesAcross, FilesPlaces } from '@shared/contract-work-files'
 import { filesPaneOf } from '@shared/work'
 import type { Caller, WorkCtx } from '../modules'
 import { hostReadOf } from '../peer'
+import { noteRequest } from '../../stalls'
 import { NO_WORKSPACE, PEER_LIBRARIES, workspaceHere } from './policy'
 
 /**
@@ -31,6 +32,7 @@ export const ACROSS_WINDOW = 'Only your own window lists another computer throug
 
 /** One listing call of a desktop the window cannot reach, run there for it. Places come back read only, named as he names that desktop. */
 export async function filesAcross(ctx: WorkCtx, by: Caller, p: { workspaceId: string; host: string; method: FilesAcross; params: Record<string, unknown> }, signal?: AbortSignal): Promise<unknown> {
+  noteRequest('place', 'across')
   if (by.kind === 'model') throw new Error(ACROSS_WINDOW)
   // Another host asking this one to ask a third: never a chain.
   if (by.peer) throw new Error(PEER_LIBRARIES)
