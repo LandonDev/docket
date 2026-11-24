@@ -69,6 +69,44 @@ describe("a mail chat's harness", () => {
   });
 });
 
+describe("a mail chat's draft made before his defaults land", () => {
+  it("ends on Claude, as his pick, when they land with Muse, and its create names Claude", async () => {
+    const { mailDockSubject } = await import("./MailDock");
+    const { newDefaultSession } = await import("../../../lib/session");
+    const { modelParams } = await import("../../../lib/tcserver/commands");
+    const { sessionStore } = await import("../../../lib/tcserver/store");
+    const { scopeKey, workspaceStore } = await import("../../../lib/tcserver/workspaces");
+    const { workDockPort } = await import("../../../lib/workSwitch");
+    const { dockThread, enterDock, resetDocks } = await import("../../dock/dockThread");
+    workspaceStore.reset();
+    sessionStore.reset();
+    const workspace = { id: "w1", environmentId: "box", path: "/w" };
+    // The dock's draft as App's port makes it: his defaults for the workspace, the built-in until they load.
+    workDockPort.set({ draft: (ws: typeof workspace, id?: string) => ({ ...newDefaultSession(ws.environmentId, ws.path, { workspaceId: ws.id }), ...(id ? { id } : {}) }) } as never);
+    try {
+      const view = { box: "inbox" as const, threadId: null, subject: null, query: null, picked: [] as string[] };
+      const { id } = await dockThread(workspace, mailDockSubject(workspace, mailChatSubject("w1", view)));
+      enterDock(id);
+      expect(sessionStore.get(id)).toMatchObject({ harness: "claude" });
+      expect(sessionStore.get(id)!.modelPicked).toBeUndefined();
+      // As App wires it; then his Muse default lands.
+      const stop = workspaceStore.subscribe(sessionStore.reseedDrafts);
+      (workspaceStore as unknown as { setDefaults(m: ReadonlyMap<string, unknown>): void }).setDefaults(
+        new Map([[scopeKey("box", null), { defaults: { provider: "muse", model: "", reasoning: "medium", permission: "edits" }, overridden: true }]]),
+      );
+      stop();
+      const draft = sessionStore.get(id)!;
+      expect(draft).toMatchObject({ harness: "claude", modelPicked: true });
+      expect(modelParams(draft)).toMatchObject({ provider: "claude" });
+    } finally {
+      workDockPort.set(null);
+      resetDocks();
+      sessionStore.reset();
+      workspaceStore.reset();
+    }
+  });
+});
+
 describe("a task's or an event's time", () => {
   it("reads a day alone as 09:00 that day in his zone, never the day before", async () => {
     const { formOf, localOf } = await import("./AddRow");

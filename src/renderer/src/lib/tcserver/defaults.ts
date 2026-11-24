@@ -1,7 +1,7 @@
 import { DEFAULT_THREAD_DEFAULTS, type StartOn } from "@server/shared/defaults";
 import { REASONING_LEVELS as LEVELS } from "@server/shared/catalog";
-import { HARNESSES, HARNESS_TITLE, RUNTIME_MODE_HINT, RUNTIME_MODE_LABEL, type HarnessId, type RuntimeMode } from "../session";
-import { modelsFor, resolveModel, type AgentModel } from "../models";
+import { HARNESSES, HARNESS_TITLE, RUNTIME_MODE_HINT, RUNTIME_MODE_LABEL, type HarnessId, type ModelSeed, type RuntimeMode } from "../session";
+import { loadLastModelSettings, mergeModelSettings, modelsFor, resolveModel, type AgentModel } from "../models";
 import { modeForPolicy } from "./access";
 import type { ThreadDefaults, ThreadType } from "./types";
 import { readHome, type SettingsHome } from "../settingsHome";
@@ -153,14 +153,24 @@ export type DraftSeed = {
  *  A research thread runs on claude whatever the default provider: it has
  *  both a search and a fetch tool, and its web tools run free under
  *  Auto-accept edits (codex has no fetch, and its edits sandbox has no network). */
-export function draftFromDefaults(d: ThreadDefaults, threadType?: ThreadType | null): DraftSeed {
+export function draftFromDefaults(d: ThreadDefaults, threadType?: ThreadType | null, environmentId?: string): DraftSeed {
   const seed = threadType === "research" && d.provider !== "claude" ? { ...d, provider: "claude" as const, model: "" } : d;
   const harness = seed.provider as HarnessId;
-  const model = modelForDefaults(seed);
+  const model = modelForDefaults(seed, environmentId);
   return {
     harness,
     model: seed.model ? model.id : undefined,
     runtimeMode: modeForPolicy(seed.permission),
     modelSettings: { effort: clampReasoning(model, seed.reasoning) },
   };
+}
+
+/** What a draft he picked no model on shows (lib/session.ts `withNewThreadModel`): the set's provider, model and
+ *  effort as the host resolves them, research on claude. His last context window and speed picks still ride where the
+ *  model offers them: they are the window's, sent with the create (`context1m`) or tuned after it; the effort is the host's. */
+export function modelSeed(d: ThreadDefaults, threadType?: ThreadType | null, environmentId?: string): ModelSeed {
+  const seed = draftFromDefaults(d, threadType, environmentId);
+  const model = resolveModel(seed.harness, seed.model, environmentId);
+  const { effort: _effort, ...kept } = loadLastModelSettings();
+  return { harness: seed.harness, model: model.id, modelSettings: mergeModelSettings(model, { ...kept, ...seed.modelSettings }) };
 }

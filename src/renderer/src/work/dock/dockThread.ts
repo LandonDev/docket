@@ -81,6 +81,8 @@ function draftFor(workspace: DockWorkspace, subject: DockSubject, again: string 
   // The draft from before as it last stood (his picks kept), else a new one seeded as New thread seeds one.
   const kept = again ? sessionStore.get(again) : undefined;
   const session = kept ?? (subject.seed ? subject.seed(port.draft(workspace, again)) : port.draft(workspace, again));
+  // The seed holds after his defaults land too (sessionStore.reseedDrafts): a mail chat's draft never becomes Muse.
+  if (subject.seed) sessionStore.keepDraftRule(session.id, subject.seed);
   const { hold } = subject;
   // A composer's hold runs only while its lead chip is still on the composer: he took it off, so the thread is not about it.
   const run = (): Promise<void> => (!hold || chipTaken.has(session.id) ? Promise.resolve() : hold(session.id));
@@ -116,6 +118,8 @@ export function enterDock(id: string): void {
   if (!sessionStore.isOpen(id)) {
     const session = sessionStore.get(id) ?? draft.session;
     sessionStore.mutate((prev) => [...prev.filter((s) => s.id !== id), session]);
+    // Out of the open set it heard no defaults land: it takes them now.
+    sessionStore.reseedDrafts();
   }
   putChips(id);
   afterCreate.set(id, draft.hold, { must: draft.must });

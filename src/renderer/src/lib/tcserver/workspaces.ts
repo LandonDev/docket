@@ -4,9 +4,9 @@ import { aliasKeys } from "../linkedRail";
 import type { Link } from "../connection";
 import { whenOpen, withDeadline } from "../connection/openRead";
 import type { ProjectMeta, ServerPush, ThreadDefaults, WireProjectMeta, WireWorkspaceMeta, WorkspaceIcon, WorkspaceMeta } from "./types";
-import { BUILT_IN_SCOPE, parseDefaultsScope, type DefaultsScope } from "./defaults";
+import { BUILT_IN_SCOPE, modelSeed, parseDefaultsScope, type DefaultsScope } from "./defaults";
 import { modeForPolicy } from "./access";
-import { setNewThreadAccess } from "../session";
+import { setNewThreadAccess, setNewThreadModel } from "../session";
 
 /**
  * The server's workspace and project lists, beside `sessionStore`. Both
@@ -409,6 +409,11 @@ setNewThreadAccess((environmentId, workspaceId, projectId) => {
   const d = workspaceStore.defaultsFor(environmentId, workspaceId ?? workspaceStore.project(projectId)?.workspaceId);
   return d ? modeForPolicy(d.permission) : undefined;
 });
+
+// And its provider, model and effort: his defaults as loaded, else the built-in (lib/session.ts `withNewThreadModel`).
+setNewThreadModel((environmentId, workspaceId, projectId, threadType) =>
+  modelSeed(workspaceStore.defaultsFor(environmentId, workspaceId ?? workspaceStore.project(projectId)?.workspaceId) ?? BUILT_IN_SCOPE.defaults, threadType, environmentId),
+);
 
 export function useWorkspaceCatalog(): WorkspaceCatalog {
   // The same snapshot serves a static render (bun run ui:preview).

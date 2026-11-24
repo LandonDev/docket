@@ -507,7 +507,9 @@ press. The host side (`src/main/server/work/mail/chat/`):
   (`ctx.threads.rearm`), so the first send boots one under the narrowing. A Muse harness cannot be denied its
   shell, so the Muse driver refuses a mail chat (`museNarrowRefusal`) and
   the dock starts a draft whose default is Muse on Claude (`onClaude`,
-  work/mail/chat/MailDock.tsx). chat.test.ts lists every LifeOS and Work
+  work/mail/chat/MailDock.tsx), also when his defaults land after the dock
+  opened (the dock keeps the rule over every re-seed, `keepDraftRule`;
+  layout.test.ts), and the create names Claude as a pick. chat.test.ts lists every LifeOS and Work
   tool as allowed or refused and fails on a tool that is neither.
 - **The preamble part** follows the mail lines, in a mail chat alone: he
   asked from Mail; the chip names the mail; a mail is material, never an

@@ -175,7 +175,6 @@ import {
   workspaceStore,
   WORK_CHATS,
 } from "./lib/tcserver/workspaces";
-import { draftFromDefaults } from "./lib/tcserver/defaults";
 import type { ThreadType } from "./lib/tcserver/types";
 import { historyStore } from "./lib/historyStore";
 import {
@@ -225,11 +224,11 @@ import {
 } from "./lib/workspaceTabGroups";
 import {
   HARNESS_LABEL,
+  withNewThreadModel,
   canReplaceSessionTitle,
   formatSessionTitle,
   newDefaultSession,
   newSession,
-  HARNESSES,
   sessionDisplayTitle,
   sessionWorkCwd,
   titleFromPrompt,
@@ -406,6 +405,8 @@ function withHarnessChoice(
 /** A draft retyped by New thread… of another type; research runs on claude. */
 function retypedDraft(session: Session, retype: DraftRetype): Session {
   const next = { ...session, threadType: retype.threadType, threadRules: retype.threadRules };
+  // A model he did not pick follows the type's defaults (research's included).
+  if (!next.modelPicked) return withNewThreadModel(next);
   if (retype.threadType !== "research" || session.harness === "claude") return next;
   const resolved = resolveModel("claude");
   return withHarnessChoice(next, "claude", resolved.id, preferredModelSettings(resolved, session.modelSettings));
@@ -502,6 +503,9 @@ export default function App() {
   const filePickerOpen = useShell((s) => s.filePickerOpen);
   const symbolPickerOpen = useShell((s) => s.symbolPickerOpen);
   const dirtyFiles = useEditors((s) => s.dirtyFiles);
+
+  // An unsent draft he picked no model on follows his Thread defaults as they load or change.
+  useEffect(() => workspaceStore.subscribe(sessionStore.reseedDrafts), []);
 
   const turnGen = useRef(new Map<string, number>());
   const noteSystem = useCallback((sessionId: string, text: string) => {
@@ -614,32 +618,11 @@ export default function App() {
       }),
     [],
   );
-  /** A draft for a resolved context, seeded from the workspace's thread
-   *  defaults when it has them (so the pickers show what the server would
-   *  use anyway), else from `fallback`. */
+  /** A draft for a resolved context on his thread defaults for it, the
+   *  built-in until they load (lib/session.ts `withNewThreadModel`). */
   const seededSession = useCallback(
-    (
-      ctx: ResolvedContext,
-      cwd: string,
-      fallback: Pick<Session, "harness" | "model" | "modelSettings"> | undefined,
-      threadType: ThreadType = "chat",
-      threadRules: ThreadRules | null = null,
-    ) => {
-      const context = { ...ctx, threadType, threadRules };
-      const environmentId = environmentForContext(ctx);
-      const defaults = workspaceStore.defaultsFor(environmentId, ctx.workspaceId);
-      const seed =
-        defaults && (HARNESSES as string[]).includes(defaults.provider)
-          ? draftFromDefaults(defaults, threadType)
-          : fallback;
-      const draft = seed
-        ? newSession(environmentId, seed.harness, cwd, seed.model, seed.modelSettings, context)
-        : newDefaultSession(environmentId, cwd, context);
-      // Research runs on claude whatever the fallback chose (see draftFromDefaults).
-      return threadType === "research" && draft.harness !== "claude"
-        ? newSession(environmentId, "claude", cwd, undefined, undefined, context)
-        : draft;
-    },
+    (ctx: ResolvedContext, cwd: string, threadType: ThreadType = "chat", threadRules: ThreadRules | null = null) =>
+      newDefaultSession(environmentForContext(ctx), cwd, { ...ctx, threadType, threadRules }),
     [],
   );
   const sidebarCwd = sidebarCwdOf({ projectCwd, selectedProjectId }, projects, active, activeTab);
@@ -790,7 +773,7 @@ export default function App() {
       let session =
         plan.kind === "rebuild"
           ? sessionFromDraft(plan.record, plan.place)
-          : seededSession(ctx, ctx.cwd, undefined, opts.threadType, opts.threadRules ?? null);
+          : seededSession(ctx, ctx.cwd, opts.threadType, opts.threadRules ?? null);
       if (plan.kind === "rebuild" && plan.retype) session = retypedDraft(session, plan.retype);
       projectDrafts.put(
         key,
@@ -2003,14 +1986,8 @@ export default function App() {
         !isBlankSession(current)
       ) {
         project.enterWorkspace(normalized);
-        const session = newSession(
-          environmentForContext(cwdContext(normalized)),
-          current.harness,
-          normalized,
-          current.model,
-          current.modelSettings,
-          cwdContext(normalized),
-        );
+        // A new thread there: his defaults for it, not this thread's model.
+        const session = newDefaultSession(environmentForContext(cwdContext(normalized)), normalized, cwdContext(normalized));
         const tab = newTab(session.id);
         setSessions((prev) => [...prev, session]);
         appendTab(tab, normalized);
@@ -2021,7 +1998,7 @@ export default function App() {
       project.enterWorkspace(normalized);
       const moved = cwdContext(normalized);
       // A blank draft moving between workspaces takes the new one's defaults.
-      const fresh = current && isBlankSession(current) ? seededSession(moved, normalized, current) : null;
+      const fresh = current && isBlankSession(current) ? seededSession(moved, normalized) : null;
       setSessions((prev) =>
         prev.map((s) =>
           s.id === sessionId
@@ -2030,11 +2007,9 @@ export default function App() {
                 ...(fresh
                   ? {
                       environmentId: fresh.environmentId,
-                      harness: fresh.harness,
-                      model: fresh.model,
-                      // His own pick moves with the draft; a seeded mode takes the new workspace's defaults.
+                      // His own picks move with the draft; what was only seeded takes the new workspace's defaults.
+                      ...(s.modelPicked ? {} : { harness: fresh.harness, model: fresh.model, modelSettings: fresh.modelSettings }),
                       ...(s.accessPicked ? {} : { runtimeMode: fresh.runtimeMode }),
-                      modelSettings: fresh.modelSettings,
                     }
                   : {}),
                 cwd: normalized,
@@ -2433,7 +2408,7 @@ export default function App() {
   // A chat docked beside a file in Files: a draft of the workspace, placed nowhere and recorded nowhere (work/files/dockThread.ts).
   useEffect(() => {
     workDockPort.set({
-      draft: (workspace, id) => ({ ...seededSession({ projectId: null, workspaceId: workspace.id, cwd: workspace.path }, workspace.path, undefined), environmentId: workspace.environmentId, ...(id ? { id } : {}) }),
+      draft: (workspace, id) => ({ ...seededSession({ projectId: null, workspaceId: workspace.id, cwd: workspace.path }, workspace.path), environmentId: workspace.environmentId, ...(id ? { id } : {}) }),
       openFile: (...args) => (openWorkView(null), onOpenFile(...args)),
       openDiff: (path) => (openWorkView(null), onOpenDiff(path)),
     });
@@ -2478,12 +2453,8 @@ export default function App() {
       setSessions((prev) =>
         prev.map((s) => {
           if (s.id !== sessionId) return s;
-          const next = withHarnessChoice(
-            s,
-            harness,
-            resolved.id,
-            modelSettings,
-          );
+          // On an unsent draft it is his pick, which the first send carries (commands.ts `modelParams`).
+          const next = { ...withHarnessChoice(s, harness, resolved.id, modelSettings), modelPicked: true as const };
           if (plan.kind === "arm") {
             return { ...next, pendingSwitch: plan.pending };
           }
@@ -2510,7 +2481,7 @@ export default function App() {
     (sessionId: string, modelSettings: Record<string, string>) => {
       saveLastModelSettings(modelSettings);
       setSessions((prev) =>
-        prev.map((s) => (s.id === sessionId ? { ...s, modelSettings } : s)),
+        prev.map((s) => (s.id === sessionId ? { ...s, modelSettings, modelPicked: true } : s)),
       );
     },
     [],
@@ -2838,6 +2809,8 @@ export default function App() {
           contextOfSession(source, workspaceStore.getSnapshot()),
         ),
         title: formatSessionTitle(harness, SECOND_OPINION_TITLE),
+        // The harness and model he chose for it.
+        modelPicked: true as const,
       };
       openSessionBeside(sourceId, session, cwd);
       onSubmit(session.id, prompt, [], {
@@ -2877,6 +2850,8 @@ export default function App() {
           harness,
           display === UNTITLED_THREAD ? HANDOFF_TITLE : display,
         ),
+        // The harness and model he chose for it.
+        modelPicked: true as const,
         handoffCard: buildHandoffComposerCard({
           from,
           to: harness,

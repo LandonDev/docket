@@ -50,11 +50,53 @@ work/narrowing.ts), and changes no Mac bridge or computer-use gate (confirm card
 provider has a mode for each policy (Claude `bypassPermissions`, Codex `never` + `danger-full-access`,
 Cursor `force` with no sandbox, Muse `:unrestricted`); FX has no access picker.
 
+## The model: the same rule
+
+A new thread's provider, model and effort follow the same shape as its access. His Thread defaults
+(provider, model, effort) for the thread's own workspace on its own host decide, unless he picked.
+
+- **A draft sends no model unless he picked it** (`Session.modelPicked`, set by the composer's model
+  picker and effort control; `modelParams` in lib/tcserver/commands.ts, carried by `ensureCreated`):
+  provider, model and reasoning go together, or none of them go. The context window is the
+  window's own choice, which no Thread default holds: `context1m` goes as the draft shows it,
+  picked or not. A remembered draft
+  (lib/projectDrafts.ts, lib/workspaceSnapshot.ts) keeps the pick.
+- **The window shows what the host will use** (`withNewThreadModel`, lib/session.ts; the workspace
+  store answers through `setNewThreadModel` with `modelSeed`, lib/tcserver/defaults.ts): every
+  unpicked draft is set to his defaults for its host, workspace and type, else the built-in. When
+  the defaults load or change, `sessionStore.reseedDrafts` (subscribed in App.tsx) sets every
+  unsent, unpicked draft again, so the composer's harness, tools and slash commands follow. His
+  last context window (1M) and speed pick (fast) still ride where the model offers them
+  (`mergeModelSettings`); his last effort no longer leaks into a new draft. A draft's own rule holds
+  over every re-seed (`sessionStore.keepDraftRule`, set by the dock from its subject's `seed`): a
+  mail chat's draft that becomes Muse when his defaults land moves to Claude, as a pick.
+- **The host decides** (`SessionRegistry.create`): `params.provider ?? d.provider`, the model or the
+  provider's catalog default, a research thread on Claude whatever the default, an effort clamped
+  to the model it resolved to (`clampReasoning`, src/shared/catalog.ts), so a named model of
+  another provider never carries an effort its harness refuses, and `context1m` stored only for a
+  model that offers the 1M window (`supportsContext1m`; one the catalog does not know keeps what
+  was asked).
+- **After the create** the store takes the host's provider, model, effort and window (and access)
+  for whatever the draft did not pick (`mergeMeta`), and the first `session.send` switches nothing.
+  Before this, draft adoption kept the draft's own values, so a dock draft made on the built-in kept
+  showing Auto-accept edits on a thread the host had made at Full access (commands.test.ts runs the
+  writes `onSubmit` makes after the create).
+- **What the window has heard**: it reads his defaults when a link opens and after its own save
+  (workspaces.ts `refresh`, `loadDefaults`). `defaults.set` from another client sends no push, so
+  until this window reconnects, an unpicked draft shows (but never sends) the defaults it last read.
+- **Picked on purpose**: a second opinion and a hand-off (he chose the harness and model in the
+  menu), the Mail chat's move off Muse (MailDock.tsx `onClaude`, a rule of the product, kept over a re-seed). Start
+  build's dialog sends the model it shows (the plan thread's, by the product's rule) to
+  `plan.implement`. A new tab opened by moving a thread to another project takes his defaults.
+
 ## The guard
 
-`src/renderer/src/lib/accessGuard.test.ts` fails on a literal mode or a fallback of its own in the
+`src/renderer/src/lib/accessGuard.test.ts` fails on a create that sends a model other than his
+pick (`...modelParams(session)` alone), on a Work path in the window that names a provider, model or
+effort (MailDock's `onClaude` is allowed, with its reason), and on a literal mode or a fallback of its own in the
 window, a `policyForMode` outside a pick or an existing thread's change, a create that sends an
 unpicked mode, a host start that passes a `permission` other than its starter's or his pick, and a
 second `?? d.permission`. The paths with his default at Full access: lib/newThreadAccess.test.ts
 (window), server/newThreadAccess.test.ts (host); on a host of its own:
-`bun --preload scripts/lib/electron-stub.ts scripts/proof-full-access.ts`.
+`bun --preload scripts/lib/electron-stub.ts scripts/proof-full-access.ts`. The model's paths:
+lib/newThreadModel.test.ts (window), server/newThreadModel.test.ts (host).

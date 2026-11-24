@@ -33,7 +33,7 @@ import type { AwayService } from './away'
 import { awayVerdict } from '@shared/away'
 import { AWAY_APPROVAL_REPLY, AWAY_MECHANICS, AWAY_QUESTION_REPLY, awayBlock } from './awayPrompts'
 import { approvalLine } from '@shared/approvalLine'
-import { CATALOG, resolveModel, visibleModels, type ProviderId } from '@shared/catalog'
+import { CATALOG, clampReasoning, modelInfo, resolveModel, supportsContext1m, visibleModels, type ProviderId } from '@shared/catalog'
 import type {
   AgentEvent,
   Attachment,
@@ -2935,14 +2935,19 @@ export class SessionRegistry {
       cwd
     })
     // Fields the caller left open come from the thread defaults
-    // (workspace override → global → built-in).
+    // (workspace override → global → built-in). A window's draft leaves them
+    // all open unless he picked (renderer commands.ts `modelParams`), and so
+    // does a Work thread the host starts unless its caller names a model.
     const d = this.resolveThreadDefaults(project?.workspaceId ?? workspace?.id ?? null)
+    // A research thread runs on claude whatever the default provider: it has
+    // both a search and a fetch tool (renderer lib/tcserver/defaults.ts `draftFromDefaults`).
+    const seed = params.threadType === 'research' && d.provider !== 'claude' ? { provider: 'claude' as const, model: '' } : d
     // A model id names its harness: a session asked to run another
     // provider's model routes to that provider instead of erroring.
-    const requested = params.provider ?? d.provider
+    const requested = params.provider ?? seed.provider
     const { provider, model } = resolveModel(
       requested,
-      params.model ?? (d.model || CATALOG[requested].defaultModel)
+      params.model ?? (seed.model || CATALOG[requested].defaultModel)
     )
     // A Work thread runs only on a harness the fence was proven for.
     const unfenced = stamp ? workProviderRefusal(provider) : null
@@ -2965,7 +2970,8 @@ export class SessionRegistry {
               : (params.planPath ?? null),
       provider,
       model,
-      reasoning: params.reasoning ?? d.reasoning,
+      // An effort the model it resolved to serves (another provider's model may not take his default's).
+      reasoning: clampReasoning(provider, model, params.reasoning ?? d.reasoning),
       // Orchestration threads ARE orchestrator sessions (MCP toolset attaches).
       agentType: params.threadType === 'orchestration' ? 'orchestrator' : params.agentType,
       title:
@@ -2982,7 +2988,8 @@ export class SessionRegistry {
       permission: newThreadPermission({ asked: params.permission, defaults: d, ceiling: internal.ceiling }),
       fast: false,
       ultrafast: false,
-      context1m: params.context1m ?? false,
+      // The 1M window only on a model that offers it; one the catalog does not know keeps what was asked, as its effort does.
+      context1m: !!params.context1m && (!modelInfo(provider, model) || supportsContext1m(provider, model)),
       account: null,
       busySince: null,
       pausedAt: null,

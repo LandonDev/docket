@@ -379,6 +379,16 @@ export function modelInfo(provider: ProviderId, modelId: string): ModelInfo | un
   return CATALOG[provider]?.models.find((m) => m.id === modelId && runnableHere(provider, m))
 }
 
+/** An effort the model serves: `wanted` when its ladder has it (or it has none, or the
+ *  catalog does not know it), else the model's own default. The host's twin of the
+ *  window's `clampReasoning` (renderer lib/tcserver/defaults.ts): a thread started on
+ *  another provider's model never carries an effort its harness refuses. */
+export function clampReasoning(provider: ProviderId, modelId: string, wanted: Reasoning, info: ModelInfo | undefined = modelInfo(provider, modelId)): Reasoning {
+  const ladder = info?.reasoning ?? []
+  if (ladder.length === 0 || ladder.includes(wanted)) return wanted
+  return info?.defaultReasoning && ladder.includes(info.defaultReasoning) ? info.defaultReasoning : ladder[0]!
+}
+
 /** Whether a provider's row is a Meta model (`vendor: 'meta'`). */
 export function isMetaModel(provider: ProviderId, modelId: string): boolean {
   return modelInfo(provider, modelId)?.vendor === 'meta'

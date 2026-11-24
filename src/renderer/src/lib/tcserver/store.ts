@@ -2,7 +2,7 @@ import { useRef, useSyncExternalStore } from "react";
 import type { ApprovalToastNotice } from "../approvalToast";
 import { noteBootResume } from "../bootResume";
 import type { Attachment, Block, HarnessId, LoadState, Session } from "../session";
-import { HARNESSES, newSession, sameSessionChrome } from "../session";
+import { HARNESSES, newSession, sameSessionChrome, withNewThreadModel } from "../session";
 import { resolveModel } from "../models";
 import { isTurnActive } from "../turnClock";
 import {
@@ -638,6 +638,7 @@ class SessionStore {
       this.stopTimers(entry);
     }
     this.entries.clear();
+    this.draftRules.clear();
     this.metaChildren.clear();
     this.entryOrder.clear();
     this.nextEntryOrder = 0;
@@ -2179,12 +2180,24 @@ class SessionStore {
     }
     if (!entry.meta) {
       // Draft adoption: the server echoes what the UI sent, so the local
-      // view stays; only what the server adds comes across.
+      // view stays; only what the server adds comes across, and what the
+      // draft left to the host's defaults (commands.ts `modelParams`,
+      // lib/session.ts `accessParams`): the composer shows what runs.
       // A pane restored from a saved layout before its host listed it is
       // a stub too: the host that answers for it is the one it lives on.
+      const local = entry.session;
+      const harness = asHarness(meta.provider);
       entry.session = applyThreadMeta(
         {
-          ...entry.session,
+          ...local,
+          ...(local.modelPicked
+            ? {}
+            : {
+                harness,
+                model: pickerModelId(harness, meta.model),
+                modelSettings: { ...local.modelSettings, effort: meta.reasoning, context: meta.context1m ? "1m" : "200k" },
+              }),
+          ...(local.accessPicked ? {} : { runtimeMode: modeForPolicy(meta.permission) }),
           environmentId: meta.environmentId,
           busy: entry.session.busy || isOpenStatus(meta.status),
           ...(meta.nativeId ? { providerSessionId: meta.nativeId } : {}),
@@ -2291,6 +2304,7 @@ class SessionStore {
 
   private drop(id: string): void {
     this.metasSnapshot = null;
+    this.draftRules.delete(id);
     const entry = this.entries.get(id);
     if (entry?.meta) this.indexMeta(id, null);
     if (entry) {
@@ -2358,6 +2372,25 @@ class SessionStore {
     }
     this.openOrder = order;
     this.bump();
+  };
+
+  /** A draft's own rule, kept over every re-seed: a mail chat's draft never runs on Muse (work/dock `seed`). */
+  private draftRules = new Map<string, (draft: Session) => Session>();
+  keepDraftRule(id: string, rule: (draft: Session) => Session): void {
+    this.draftRules.set(id, rule);
+  }
+
+  /** Unsent drafts he picked no model on, set again to his Thread defaults
+   *  (lib/session.ts `withNewThreadModel`), then to their own rule: run when they load or change. */
+  reseedDrafts = (): void => {
+    this.mutate((prev) => {
+      const next = prev.map((s) => {
+        if (!this.isDraft(s.id) || this.isProvisional(s.id) || s.blocks.length > 0) return s;
+        const seeded = withNewThreadModel(s);
+        return this.draftRules.get(s.id)?.(seeded) ?? seeded;
+      });
+      return next.some((s, i) => s !== prev[i]) ? next : prev;
+    });
   };
 
   /** A thread just made on the server: adopt its meta. A session the UI

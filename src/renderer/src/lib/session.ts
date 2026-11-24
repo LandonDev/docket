@@ -303,6 +303,33 @@ export function accessParams(draft: Pick<Session, "runtimeMode" | "accessPicked"
   return draft.accessPicked ? { permission: policyForMode(draft.runtimeMode) } : {};
 }
 
+/**
+ * The provider, model and effort a NEW thread starts on: the twin of
+ * `newThreadAccess`. The workspace store answers through `setNewThreadModel`
+ * with his Thread defaults for the draft's host, workspace and thread type
+ * (lib/tcserver/defaults.ts `modelSeed`), else the built-in. A draft he picked
+ * no model on sends none with `session.create` (commands.ts `modelParams`), so
+ * the host decides; this keeps what the draft shows, and the composer's tools
+ * that hang on its harness, on what the host will use.
+ */
+export type ModelSeed = Pick<Session, "harness" | "model" | "modelSettings">;
+type ModelResolver = (environmentId: string, workspaceId: string | null, projectId: string | null, threadType: ThreadType) => ModelSeed | undefined;
+let modelResolver: ModelResolver = () => undefined;
+export function setNewThreadModel(resolver: ModelResolver): void {
+  modelResolver = resolver;
+}
+const sameSettings = (a: Record<string, string>, b: Record<string, string>): boolean =>
+  Object.keys(a).length === Object.keys(b).length && Object.entries(a).every(([k, v]) => b[k] === v);
+/** A draft he picked no model on, set to what the host will start it on; the same object when nothing moves. */
+export function withNewThreadModel(session: Session): Session {
+  if (session.modelPicked) return session;
+  const seed = modelResolver(session.environmentId, session.workspaceId ?? null, session.projectId ?? null, session.threadType ?? "chat");
+  if (!seed || (seed.harness === session.harness && seed.model === session.model && sameSettings(seed.modelSettings, session.modelSettings))) return session;
+  // A draft still named for its harness takes the new one's name; a name it was given stays.
+  const title = session.title === HARNESS_LABEL[session.harness] ? HARNESS_LABEL[seed.harness] : session.title;
+  return { ...session, ...seed, title };
+}
+
 /** The modes the permission picker offers: one per server policy
  *  (tcserver/access.ts). `auto` is the edits policy on this server, so it
  *  is offered once, as Auto-accept edits, and a thread stored with it reads
@@ -341,6 +368,8 @@ export type Session = {
   runtimeMode: RuntimeMode;
   /** An unsent draft's access that he picked himself: only then does `session.create` carry it (`accessParams`). */
   accessPicked?: true;
+  /** An unsent draft's provider, model or effort that he picked himself: only then does `session.create` carry them (commands.ts `modelParams`). */
+  modelPicked?: true;
   title: string;
   /** Project / working directory for this session. */
   cwd: string;
@@ -536,14 +565,14 @@ export function newSession(
   };
 }
 
-/** New conversation using the Providers defaults. */
+/** A new draft on his Thread defaults (`withNewThreadModel`), sent with none of them. */
 export function newDefaultSession(
   environmentId: string,
   cwd = "~",
   context: SessionContext = {},
 ): Session {
   const choice = defaultSessionChoice();
-  return newSession(environmentId, choice.harness, cwd, choice.model, undefined, context);
+  return withNewThreadModel(newSession(environmentId, choice.harness, cwd, choice.model, undefined, context));
 }
 
 /** First line of a prompt, truncated for the tab strip. */
@@ -658,6 +687,7 @@ export const COMPOSER_FIELDS = [
   "modelSettings",
   "runtimeMode",
   "accessPicked",
+  "modelPicked",
   "cwd",
   "worktreeCwd",
   "projectId",

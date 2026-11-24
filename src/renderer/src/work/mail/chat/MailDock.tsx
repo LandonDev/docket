@@ -95,12 +95,13 @@ export function mailDockSubject(workspace: DockWorkspace, subject: MailChatSubje
 
 /**
  * A mail chat runs where its harness can be narrowed (no shell, no web): a Muse default cannot, and the Muse driver
- * refuses a mail chat, so its draft starts on Claude's default model instead.
+ * refuses a mail chat, so its draft starts on Claude's default model instead. The product's rule, so it counts as a
+ * pick: the create carries it (commands.ts `modelParams`), never the Muse default.
  */
 export function onClaude(draft: Session): Session {
   if (draft.harness !== "muse") return draft;
   const claude = newSession(draft.environmentId, "claude", draft.cwd, undefined, undefined, { projectId: draft.projectId, workspaceId: draft.workspaceId });
-  return { ...draft, harness: claude.harness, model: claude.model, modelSettings: claude.modelSettings, title: claude.title };
+  return { ...draft, harness: claude.harness, model: claude.model, modelSettings: claude.modelSettings, title: claude.title, modelPicked: true };
 }
 
 /**

@@ -27,6 +27,7 @@ import {
   RUNTIME_MODES,
   newSession,
   newThreadAccess,
+  withNewThreadModel,
   type HarnessId,
   type RuntimeMode,
   type Session,
@@ -287,10 +288,14 @@ function dropUnsentDrafts(
   // one (its text comes back), else the stub on screen, now its record.
   if (kept && active) {
     const record = projectDrafts.get(drafts.keyOf(kept))!;
-    // The stub knows no pick: the record's comes back with it.
+    // The stub knows no pick: the record's comes back with it, and a model it never picked is his defaults as they are now.
     const draft =
       record.id === kept.id
-        ? { ...kept, ...(record.accessPicked ? { runtimeMode: record.runtimeMode, accessPicked: true as const } : {}) }
+        ? withNewThreadModel({
+            ...kept,
+            ...(record.accessPicked ? { runtimeMode: record.runtimeMode, accessPicked: true as const } : {}),
+            ...(record.modelPicked ? { modelPicked: true as const } : {}),
+          })
         : sessionFromDraft(record, null);
     sessions.set(draft.id, draft);
     shownId = draft.id;

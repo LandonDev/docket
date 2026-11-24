@@ -2,7 +2,7 @@ import { createStore } from "zustand/vanilla";
 import { WORK_CHATS } from "./tcserver/workspaces";
 import type { ThreadRules } from "@server/shared/rules";
 import type { ComposerSegment } from "./composerText";
-import { HARNESS_LABEL, newThreadAccess, type Attachment, type HarnessId, type RuntimeMode, type Session } from "./session";
+import { HARNESS_LABEL, newThreadAccess, withNewThreadModel, type Attachment, type HarnessId, type RuntimeMode, type Session } from "./session";
 import { stripScopeKey } from "./threadHeaderModel";
 import type { ProjectMeta, ThreadType } from "./tcserver/types";
 
@@ -33,6 +33,8 @@ export type DraftRecord = DraftPlace & {
   runtimeMode: RuntimeMode;
   /** He picked the access himself (Session.accessPicked); without it the rebuilt draft takes his defaults as they are now. */
   accessPicked?: true;
+  /** He picked the provider, model or effort himself (Session.modelPicked); without it the rebuilt draft takes his defaults as they are now. */
+  modelPicked?: true;
   threadType: ThreadType;
   threadRules: ThreadRules | null;
   /** A chat draft's "Master thread" pick (Session.draftMaster). */
@@ -213,6 +215,7 @@ export function draftPicks(session: Session): DraftPatch {
     modelSettings: session.modelSettings,
     runtimeMode: session.runtimeMode,
     ...(session.accessPicked ? { accessPicked: true as const } : {}),
+    ...(session.modelPicked ? { modelPicked: true as const } : {}),
     threadType: session.threadType ?? "chat",
     threadRules: session.threadRules ?? null,
     master: !!session.draftMaster,
@@ -227,12 +230,14 @@ export function draftPicks(session: Session): DraftPatch {
  *  folder) never brings that folder back. */
 export function sessionFromDraft(record: DraftRecord, place: DraftPlace | null, now = Date.now()): Session {
   const where = place ?? record;
-  return {
+  // A model seeded once is no pick either: the draft shows his defaults as they are now.
+  return withNewThreadModel({
     id: record.id,
     environmentId: where.environmentId,
     harness: record.harness,
     model: record.model,
     modelSettings: record.modelSettings,
+    ...(record.modelPicked ? { modelPicked: true as const } : {}),
     // A mode seeded once is no pick: the draft shows his defaults as they are now.
     ...(record.accessPicked
       ? { runtimeMode: record.runtimeMode, accessPicked: true as const }
@@ -249,7 +254,7 @@ export function sessionFromDraft(record: DraftRecord, place: DraftPlace | null, 
     ...(record.scope === "work" && !where.projectId && !where.workspaceId ? { scope: "work" as const } : {}),
     createdAt: now,
     blocks: [],
-  };
+  });
 }
 
 export type DraftCopy = Pick<ProjectMeta, "id" | "environmentId" | "workspaceId" | "cwd">;

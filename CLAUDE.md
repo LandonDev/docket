@@ -117,9 +117,9 @@ section's text as it was when CLAUDE.md was split (2026-11-11).
   through `appRoot()`, never `app.getAppPath()`, and every `app.relaunch` names its arguments
   (codePaths.test.ts). A base that differs needs a full release.
   [docs/agents/code-only-updates.md](docs/agents/code-only-updates.md)
-- **A new thread's access** — his Thread defaults on every start path, one rule a side:
-  `newThreadPermission` (src/shared/defaults.ts) and `newThreadAccess` (lib/session.ts); the guard
-  lib/accessGuard.test.ts. [docs/agents/new-thread-access.md](docs/agents/new-thread-access.md)
+- **A new thread's access and model** — his Thread defaults on every start path, one rule a side:
+  `newThreadPermission` (src/shared/defaults.ts), `newThreadAccess` and `withNewThreadModel`
+  (lib/session.ts); the guard lib/accessGuard.test.ts. [docs/agents/new-thread-access.md](docs/agents/new-thread-access.md)
 - **Project preambles** — the house rules as markdown on the project row
   (`projects.preamble`), added to a thread's first message on every start
   path by `decidePreamble` (src/main/server/projectPreamble.ts).

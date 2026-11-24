@@ -8,6 +8,8 @@ import { describe, expect, it } from "vitest";
  * `newThreadPermission` (src/shared/defaults.ts), both reading his Thread
  * defaults. This guard fails when a start path sets a mode by hand: a literal
  * mode, a fallback of its own, or a create that sends a mode he did not pick.
+ * Its twin for the model: a create sends a provider, model or effort only as
+ * his pick (commands.ts `modelParams`), and no Work path names one.
  */
 const REPO = resolve(__dirname, "../../../..");
 function sources(dir: string): string[] {
@@ -63,6 +65,36 @@ describe("the new-thread access guard", () => {
     const commands = read(join(REPO, "src/renderer/src/lib/tcserver/commands.ts"));
     const create = commands.slice(commands.indexOf('link.request<WireSessionMeta>("session.create", {'));
     expect(create.slice(0, create.indexOf("});"))).toMatch(/\.\.\.accessParams\(session\)/);
+  });
+
+  it("every window create of a draft carries his model pick alone: no provider, model, effort or window of its own", () => {
+    const commands = read(join(REPO, "src/renderer/src/lib/tcserver/commands.ts"));
+    const create = commands.slice(commands.indexOf('link.request<WireSessionMeta>("session.create", {'));
+    const body = create.slice(0, create.indexOf("});"));
+    expect(body).toMatch(/\.\.\.modelParams\(session\)/);
+    expect(body).not.toMatch(/^\s*(provider|model|reasoning|context1m)\s*:/m);
+  });
+
+  it("no Work path starts a thread on a provider, model or effort it names: only his pick or the host's default", () => {
+    // A Work module, view or dock, and Work's rows in lib (named as entryGraph.test.ts names them), never a preview.
+    const work = RENDERER.filter((f) => {
+      const r = rel(f);
+      return (r.startsWith("src/renderer/src/work/") && !r.includes("/preview/")) || /^src\/renderer\/src\/lib\/work(?!space|ing|tree)[^/]*$/i.test(r);
+    });
+    /** Each with its reason: a rule of the product, never a fallback. */
+    const allowed = new Map([
+      // A mail chat cannot run on Muse (the driver refuses a narrowed thread there), so its draft moves to Claude, as a pick.
+      ["src/renderer/src/work/mail/chat/MailDock.tsx", /^const claude = newSession\(draft\.environmentId, "claude", draft\.cwd, undefined, undefined, /],
+    ]);
+    const hits: string[] = [];
+    for (const file of work) {
+      read(file).split("\n").forEach((line, i) => {
+        const literal = /\b(model|provider|reasoning|harness)\s*:\s*["'`]/.test(line) || /\bnewSession\([^,]+,\s*["']/.test(line);
+        if (literal && !allowed.get(rel(file))?.test(line.trim())) hits.push(`${rel(file)}:${i + 1}`);
+      });
+    }
+    expect(hits).toEqual([]);
+    expect(work.length).toBeGreaterThan(100);
   });
 
   it("the host's starts ask for no mode but a starter's grant or a pick passed through", () => {

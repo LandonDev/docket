@@ -65,21 +65,28 @@ class FakeLink implements Link {
   /** How queue.add answers: an older host's bare item, the typed queued answer, or a steer. */
   queueAnswer: "item" | "queued" | "steered" = "item";
   calls: { method: string; params: any }[] = [];
+  /** What each create answered, which its later pushes repeat. */
+  created = new Map<string, Omit<SessionMeta, "environmentId">>();
+  private made(wire: Omit<SessionMeta, "environmentId">): Omit<SessionMeta, "environmentId"> {
+    this.created.set(wire.id, wire);
+    return wire;
+  }
   private pushListeners = new Set<(push: ServerPush) => void>();
   request<T>(method: string, params?: unknown): Promise<T> {
     this.calls.push({ method, params });
     if (method === "session.list") return Promise.resolve([] as T);
     if (method === "session.create") {
       const p = params as any;
-      return Promise.resolve(wireMeta({ id: p.id ?? "minted", provider: p.provider, model: p.model, reasoning: p.reasoning ?? "medium", permission: p.permission, cwd: p.cwd ?? "/repo", status: "running", threadType: p.threadType ?? null, planPath: p.planPath ?? null, agentType: p.agentType ?? "implementer" }) as T);
+      // Fields a create leaves out are the host's defaults: here his Codex default.
+      return Promise.resolve(this.made(wireMeta({ id: p.id ?? "minted", provider: p.provider ?? "codex", model: p.model ?? "gpt-5.5", reasoning: p.reasoning ?? "medium", context1m: p.context1m ?? false, permission: p.permission ?? "auto", cwd: p.cwd ?? "/repo", status: "running", threadType: p.threadType ?? null, planPath: p.planPath ?? null, agentType: p.agentType ?? "implementer" })) as T);
     }
     if (method === "session.send") {
       const p = params as any;
       // The server echoes the message, works, and settles a tick later.
       setTimeout(() => {
         this.push({ push: "event", row: { sessionId: p.sessionId, seq: 1, ts: 1, event: { type: "user-text", text: p.text } } });
-        this.push({ push: "session", session: wireMeta({ id: p.sessionId, status: "running" }) });
-        this.push({ push: "session", session: wireMeta({ id: p.sessionId, status: "idle" }) });
+        this.push({ push: "session", session: { ...(this.created.get(p.sessionId) ?? wireMeta({ id: p.sessionId })), status: "running" } });
+        this.push({ push: "session", session: { ...(this.created.get(p.sessionId) ?? wireMeta({ id: p.sessionId })), status: "idle" } });
       }, 0);
       return Promise.resolve(null as T);
     }
@@ -127,8 +134,8 @@ afterEach(() => {
 
 describe("send", () => {
   it("creates a draft with its own id, then sends, then waits for idle", async () => {
-    // He picked Supervised on the draft: the create carries his pick.
-    const draft = { ...newSession("local", "claude", "/repo", "claude:sonnet-5.5"), runtimeMode: "supervised" as const, accessPicked: true as const, modelSettings: { effort: "high" } };
+    // He picked Supervised, the model and the effort on the draft: the create carries his picks.
+    const draft = { ...newSession("local", "claude", "/repo", "claude:sonnet-5.5"), runtimeMode: "supervised" as const, accessPicked: true as const, modelPicked: true as const, modelSettings: { effort: "high" } };
     sessionStore.mutate([draft]);
     await send(draft, "hello", [], undefined, undefined);
     expect(link.of("session.create")[0]).toMatchObject({ id: draft.id, provider: "claude", model: "claude-sonnet-5-5", reasoning: "high", cwd: "/repo", permission: "safe", context1m: false });
@@ -143,6 +150,36 @@ describe("send", () => {
     sessionStore.mutate([draft]);
     await send(draft, "hello", [], undefined, undefined);
     expect(link.of("session.create")[0]).not.toHaveProperty("permission");
+  });
+
+  it("a draft whose model he never picked asks for none, only the window it shows: the host's defaults decide, and its first send switches nothing", async () => {
+    // Seeded with the built-in before his Codex default loaded, and his habitual 1M window.
+    const draft = { ...newSession("local", "claude", "/repo", "claude:sonnet-5.5"), modelSettings: { effort: "high", context: "1m" } };
+    sessionStore.mutate([draft]);
+    await send(draft, "hello", [], undefined, undefined);
+    const create = link.of("session.create")[0];
+    for (const field of ["provider", "model", "reasoning"]) expect(create).not.toHaveProperty(field);
+    expect(create.context1m).toBe(true);
+    expect(link.of("session.send")[0]).toEqual({ sessionId: draft.id, text: "hello" });
+    // The thread is the host's answer: the composer shows what runs.
+    expect(sessionStore.get(draft.id)).toMatchObject({ harness: "codex", modelSettings: { effort: "medium", context: "1m" } });
+    expect(sessionStore.metaOf(draft.id)).toMatchObject({ provider: "codex", model: "gpt-5.5" });
+  });
+
+  it("after the create the host's answer stays through the writes onSubmit makes: no stale copy of the draft comes back", async () => {
+    // Built while the window held the built-in: Claude at medium, Auto-accept edits. The host's defaults are Codex, full access.
+    const draft = { ...newSession("local", "claude", "/repo", "claude:sonnet-5.5"), runtimeMode: "auto-accept-edits" as const, modelSettings: { effort: "medium" } };
+    sessionStore.mutate([draft]);
+    // As App.tsx onSubmit: open it, clear its cards and seed its title, send the store's copy, then stop streaming.
+    const current = sessionStore.openForSend(draft.id)!;
+    sessionStore.mutate((prev) => prev.map((s) => (s.id === draft.id ? { ...s, inboxCard: undefined, noteCard: undefined, title: "hello" } : s)));
+    await send(sessionStore.get(draft.id) ?? current, "hello", [], undefined, undefined);
+    sessionStore.mutate((prev) => prev.map((s) => (s.id === draft.id ? { ...s, busy: false } : s)));
+    // A later push of the same meta changes nothing back.
+    link.push({ push: "session", session: { ...link.created.get(draft.id)!, status: "idle" } });
+    expect(link.of("session.create")[0]).not.toHaveProperty("permission");
+    expect(sessionStore.get(draft.id)).toMatchObject({ harness: "codex", runtimeMode: "full-access", modelSettings: { effort: "medium" } });
+    expect(sessionStore.get(draft.id)!.model).toMatch(/gpt-5\.5$/);
   });
 
   it("a provisional entry is never created: a send into it fails instead of minting a second thread", async () => {
@@ -184,7 +221,7 @@ describe("send", () => {
   });
 
   it("~ cwd is left to the server and fast is tuned after create", async () => {
-    const draft = { ...newSession("local", "claude", "~"), modelSettings: { fast: "true", context: "1m" } };
+    const draft = { ...newSession("local", "claude", "~"), modelSettings: { fast: "true", context: "1m" }, modelPicked: true as const };
     sessionStore.mutate([draft]);
     await send(draft, "x", [], undefined, undefined);
     expect(link.of("session.create")[0].cwd).toBeUndefined();

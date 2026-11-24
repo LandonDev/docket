@@ -61,6 +61,20 @@ export function reasoningOf(session: Pick<Session, "modelSettings">): string | u
   return undefined;
 }
 
+/** The provider, model and effort `session.create` carries for a draft: his own pick, else none, so the host's
+ *  defaults decide (lib/session.ts `withNewThreadModel`). The context window is the window's own choice, which no
+ *  Thread default holds: it goes as the draft shows it, picked or not. */
+export function modelParams(draft: Pick<Session, "harness" | "model" | "modelSettings" | "modelPicked">): {
+  provider?: string;
+  model?: string;
+  reasoning?: string;
+  context1m: boolean;
+} {
+  const context1m = draft.modelSettings.context === "1m";
+  if (!draft.modelPicked) return { context1m };
+  return { provider: draft.harness, model: nativeModelId(draft.model), reasoning: reasoningOf(draft), context1m };
+}
+
 function serverCwd(cwd: string): string | undefined {
   return cwd && cwd !== "~" ? cwd : undefined;
 }
@@ -173,13 +187,10 @@ export async function ensureCreated(session: Session): Promise<SessionMeta> {
   const about = chipPort.get()?.about(session.id);
   const wire = await link.request<WireSessionMeta>("session.create", {
     id: session.id,
-    provider: session.harness,
-    model: nativeModelId(session.model),
-    reasoning: reasoningOf(session),
+    // His picks on the draft, else none: the host's own defaults decide (lib/session.ts `newThreadAccess`, `withNewThreadModel`).
+    ...modelParams(session),
     cwd: serverCwd(session.worktreeCwd || session.cwd),
-    // His pick on the draft, else none: the host's own defaults decide (lib/session.ts `newThreadAccess`).
     ...accessParams(session),
-    context1m: session.modelSettings.context === "1m",
     threadType: session.threadType ?? "chat",
     agentType: agentTypeFor(session.threadType),
     ...(session.planPath ? { planPath: session.planPath } : {}),
@@ -226,6 +237,8 @@ export async function send(
   );
   const link = linkOfSession(session);
   const files = [...(await toServerAttachments(link.environmentId, attachments, session.id)), ...(extra?.attachments ?? [])];
+  // A draft he picked no model on runs on what the host chose at the create: its first send switches nothing.
+  const picked = !!sessionStore.metaOf(session.id) || !!session.modelPicked;
   const meta = await ensureCreated(session);
   const model = nativeModelId(session.model);
   const reasoning = reasoningOf(session);
@@ -234,9 +247,9 @@ export async function send(
     text,
     ...(extra?.newPass ? { newPass: true } : {}),
     ...(files.length > 0 ? { attachments: files } : {}),
-    ...(session.harness !== meta.provider ? { provider: session.harness } : {}),
-    ...(model !== meta.model ? { model } : {}),
-    ...(reasoning && reasoning !== meta.reasoning ? { reasoning } : {}),
+    ...(picked && session.harness !== meta.provider ? { provider: session.harness } : {}),
+    ...(picked && model !== meta.model ? { model } : {}),
+    ...(picked && reasoning && reasoning !== meta.reasoning ? { reasoning } : {}),
   }, UI);
   await sessionStore.waitIdle(session.id);
 }
