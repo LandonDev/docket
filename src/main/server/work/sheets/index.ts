@@ -166,7 +166,7 @@ export const sheets: WorkModule = {
           const rev = held.at === 'excel' ? (await import('../office/grid')).revOf(held.ref) : (await import('../google/grid')).revOf(held.ref)
           return handled(rev === req.params.rev ? { rev, ops: [] } : { rev, reload: true as const })
         }
-        if (csvMoved(ctx, item!, held)) return handled({ rev: (await host(ctx, 'open', { sheet: held.ref })).rev, reload: true as const })
+        if (held.at === 'service' && csvMoved(ctx, item!, held)) return handled({ rev: (await host(ctx, 'open', { sheet: held.ref })).rev, reload: true as const })
         return handled(held.at === 'package' ? s.packages.since(held.path, req.params.rev) : await host(ctx, 'since', { sheet: held.ref, rev: req.params.rev }))
       }
       case 'work.sheets.edit': {
