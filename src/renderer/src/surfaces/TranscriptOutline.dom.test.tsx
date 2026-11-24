@@ -46,6 +46,8 @@ const base = { onJump: () => {}, now: NOW, locale: "en-US" };
 const rows = () => [...document.querySelectorAll<HTMLElement>("[data-jump-key]")];
 const chevron = () => screen.getByRole("button", { name: /message list$/ });
 const nav = () => screen.getByRole("navigation", { name: "Your messages" });
+/** The way the chevron points: the glyph a swap lands on is the last one in the button. */
+const glyph = () => [...chevron().querySelectorAll("[data-glyph]")].at(-1)?.getAttribute("data-glyph");
 
 describe("TranscriptOutline", () => {
   it("lists each message's first line with its clock time, and no day label for one day", () => {
@@ -120,7 +122,8 @@ describe("TranscriptOutline", () => {
       expect(chevron().getAttribute("aria-label")).toBe("Hide message list");
       expect(chevron().getAttribute("aria-expanded")).toBe("true");
       expect(chevron().getAttribute("aria-controls")).toBe(nav().id);
-      expect(chevron().querySelector("svg")!.getAttribute("class")).toContain("rotate-90");
+      // Open, the chevron points left, the way the list folds.
+      expect(glyph()).toBe("left");
       expect(nav().className).not.toContain("invisible");
       // Open is the resting state: the chevron takes no expanded fill.
       expect(chevron().className).toContain("aria-expanded:bg-transparent");
@@ -131,12 +134,12 @@ describe("TranscriptOutline", () => {
       fireEvent.click(chevron());
       expect(chevron().getAttribute("aria-label")).toBe("Show message list");
       expect(chevron().getAttribute("aria-expanded")).toBe("false");
-      expect(chevron().querySelector("svg")!.getAttribute("class")).not.toContain("rotate-90");
-      // Faded and slid toward the chevron, then out of the tab order and the
-      // pointer's way; under reduced motion it only fades.
+      expect(glyph()).toBe("right");
+      // Faded and slid out past the pane's left edge, then out of the tab
+      // order and the pointer's way; under reduced motion it only fades.
       expect(nav().className).toEqual(expect.stringContaining("invisible"));
       expect(nav().className).toContain("opacity-0");
-      expect(nav().className).toContain("-translate-x-1");
+      expect(nav().className).toContain("-translate-x-[calc(100%_+_1rem)]");
       expect(nav().className).toContain("motion-reduce:translate-x-0");
       expect(nav().className).toContain("duration-(--dur-fast)");
       fireEvent.click(chevron());
@@ -145,7 +148,7 @@ describe("TranscriptOutline", () => {
       expect(nav().className).toContain("duration-(--dur-base)");
     });
 
-    it("moves only opacity, translate and visibility, so nothing else on the page moves", () => {
+    it("moves only opacity, translate and visibility", () => {
       render(<TranscriptOutline {...base} turns={oneDay} />);
       expect(nav().className).toContain("transition-[opacity,translate,visibility]");
       expect(nav().className).toContain("motion-reduce:transition-[opacity,visibility]");
@@ -197,7 +200,7 @@ describe("TranscriptOutline", () => {
       expect(chevron().getAttribute("aria-expanded")).toBe("false");
       rerender(<TranscriptOutline {...base} turns={oneDay} onJump={onJump} folded={false} />);
       expect(nav().className).toContain("starting:opacity-0");
-      expect(nav().className).toContain("starting:-translate-x-1");
+      expect(nav().className).toContain("starting:-translate-x-[calc(100%_+_1rem)]");
       fireEvent.click(rows()[0]);
       expect(onJump).toHaveBeenCalledWith("u1", "pointer");
       // Folded again, the rows stay mounted so they can fade.

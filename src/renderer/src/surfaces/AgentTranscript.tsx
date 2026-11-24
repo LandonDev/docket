@@ -7,13 +7,17 @@ import {
   useMemo,
   useRef,
   useState,
+  useSyncExternalStore,
 } from "react";
 import { perfMark } from "../lib/perfMarks";
 import { harnessForTurn } from "../lib/secondOpinion";
 import { TranscriptOutline } from "./TranscriptOutline";
+import { useColumnGlide } from "./columnGlide";
+import { messageListFold } from "../lib/messageListFold";
 import {
   COLUMN_MAX_CLASS,
   LIST_SPACE,
+  columnBeside,
   createReaderStore,
   outlineEntries,
   outlinePlacement,
@@ -221,6 +225,11 @@ export const AgentTranscript = memo(function AgentTranscript({
   useLayoutEffect(() => {
     onPlacementChange?.(placement);
   }, [placement, onPlacementChange]);
+  // Folded beside the column, the list gives its width back: the column
+  // centres, gliding there (columnGlide.ts); the footer follows the same flag.
+  const folded = useSyncExternalStore(messageListFold.subscribe, messageListFold.get, messageListFold.get);
+  const beside = columnBeside(placement, folded);
+  useColumnGlide(container, placement, beside, () => paneWidth.current);
   const { selection, dismissSelection } = useTranscriptSelection(
     scrollerEl,
     onAddToChat !== undefined,
@@ -1092,11 +1101,11 @@ export const AgentTranscript = memo(function AgentTranscript({
       <div
         ref={inner}
         className="px-4 pb-4"
-        style={placement === "beside" ? { paddingLeft: LIST_SPACE } : undefined}
+        style={beside ? { paddingLeft: LIST_SPACE } : undefined}
       >
         <div
           ref={container}
-          className={`relative ${placement === "beside" ? "mr-auto" : "mx-auto"} w-full min-w-0 ${COLUMN_MAX_CLASS}`}
+          className={`relative ${beside ? "mr-auto" : "mx-auto"} w-full min-w-0 ${COLUMN_MAX_CLASS}`}
           style={{ height: rowLayout.total() }}
         >
           {shown.map((row, i) => (

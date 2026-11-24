@@ -81,14 +81,15 @@ export const TranscriptOutlineList = memo(function TranscriptOutlineList({
     <JumpList
       id={id}
       label="Your messages"
-      // Folding is an exit: it leaves faster than it comes back. Opacity
-      // and translate only, so the compositor runs it; visibility flips at
-      // the fold's end, taking the rows out of the tab order and the
-      // pointer's way.
+      // Folding is an exit: the rows go out past the pane's left edge,
+      // faster than they come back, on the column's glide timing
+      // (columnGlide.ts), so the two never meet. Opacity and translate
+      // only, so the compositor runs it; visibility flips at the fold's
+      // end, taking the rows out of the tab order and the pointer's way.
       className={cn(
         "min-h-0 transition-[opacity,translate,visibility] duration-(--dur-base) ease-(--ease-out) motion-reduce:transition-[opacity,visibility] motion-reduce:duration-(--dur-fast)",
-        enter && "starting:-translate-x-1 starting:opacity-0 motion-reduce:starting:translate-x-0",
-        folded && "invisible -translate-x-1 opacity-0 duration-(--dur-fast) motion-reduce:translate-x-0",
+        enter && "starting:-translate-x-[calc(100%_+_1rem)] starting:opacity-0 motion-reduce:starting:translate-x-0",
+        folded && "invisible -translate-x-[calc(100%_+_1rem)] opacity-0 duration-(--dur-fast) motion-reduce:translate-x-0",
       )}
       groups={groups}
       active={currentEntry(entries, turn)}

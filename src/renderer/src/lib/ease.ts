@@ -95,6 +95,9 @@ const bezier = (c: readonly number[]) => `cubic-bezier(${c.join(", ")})`;
 /** EASE_SWAP as a Web Animation easing string. */
 export const EASE_SWAP_CSS = bezier(EASE_SWAP);
 
+/** EASE_OUT as a Web Animation easing string: `--ease-out`. */
+export const EASE_OUT_CSS = bezier(EASE_OUT);
+
 /** The breathing curve, as CSS `--ease-breathe`, for a loop's segments. */
 const EASE_BREATHE = bezier([0.37, 0, 0.63, 1]);
 

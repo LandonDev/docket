@@ -91,6 +91,8 @@ import { AgentTranscript, shouldRestoreScroll } from "./AgentTranscript";
 import { messageListChunk } from "./chunks";
 import type { Block } from "../lib/session";
 import { requestTranscriptJump } from "../lib/transcriptJump";
+import { messageListFold } from "../lib/messageListFold";
+import { EASE_OUT_CSS } from "../lib/ease";
 import type { TranscriptScrollMemory } from "../lib/transcriptScrollMemory";
 
 /** `turns` chat turns of a prompt, a Read call and an answer, as the long
@@ -460,6 +462,107 @@ describe("AgentTranscript message list", () => {
     expect(boxOf(container).className).toContain("mr-auto");
     const again = container.querySelector<HTMLElement>(`[data-row="${anchor}"]`)!;
     expect(topOf(again) - el.scrollTop).toBeCloseTo(onScreen, 0);
+  });
+
+  describe("folded", () => {
+    afterEach(() => {
+      localStorage.clear();
+      messageListFold.reload();
+      delete (HTMLElement.prototype as { animate?: unknown }).animate;
+    });
+    const fold = (folded: boolean) => act(() => messageListFold.set(folded));
+    const gutterOf = (container: HTMLElement) => boxOf(container).parentElement as HTMLElement;
+    /** Every glide asked of the column: its start and timing. */
+    const glides = () => {
+      const calls: { from: string; duration: number; easing: string }[] = [];
+      HTMLElement.prototype.animate = function (this: HTMLElement, frames: Keyframe[], options: KeyframeAnimationOptions) {
+        if (this.dataset.glide !== undefined || this.style.height) {
+          calls.push({ from: String(frames[0].transform), duration: Number(options.duration), easing: String(options.easing) });
+        }
+        return { cancel() {}, effect: { getComputedTiming: () => ({ progress: 0.5 }) } } as unknown as Animation;
+      } as typeof HTMLElement.prototype.animate;
+      return calls;
+    };
+
+    it("gives the column its centre back between 864px and 1264px, and moves nothing in the gutter", () => {
+      for (const width of [900, 1100]) {
+        paneWidth = width;
+        const { container, unmount } = render(<AgentTranscript sessionId={`f${width}`} blocks={chat(2)} busy={false} visible />);
+        expect(boxOf(container).className).toContain("mr-auto");
+        expect(gutterOf(container).style.paddingLeft).toBe("248px");
+        fold(true);
+        expect(boxOf(container).className).toContain("mx-auto");
+        expect(gutterOf(container).style.paddingLeft).toBe("");
+        // The list still answers its chevron: only the column moved.
+        expect(container.querySelector('[data-transcript-outline]')).not.toBeNull();
+        fold(false);
+        expect(boxOf(container).className).toContain("mr-auto");
+        unmount();
+      }
+      paneWidth = 1400;
+      const { container } = render(<AgentTranscript sessionId="f1400" blocks={chat(2)} busy={false} visible />);
+      expect(boxOf(container).className).toContain("mx-auto");
+      fold(true);
+      expect(boxOf(container).className).toContain("mx-auto");
+      expect(gutterOf(container).style.paddingLeft).toBe("");
+    });
+
+    it("opens folded from launch with the column centred", () => {
+      fold(true);
+      paneWidth = 1000;
+      const { container } = render(<AgentTranscript sessionId="f-launch" blocks={chat(2)} busy={false} visible />);
+      expect(boxOf(container).className).toContain("mx-auto");
+      expect(gutterOf(container).style.paddingLeft).toBe("");
+    });
+
+    it("keeps the reader's row in place across a fold, the rows measuring again at the new width", () => {
+      paneWidth = 900;
+      const { container } = render(<AgentTranscript sessionId="f-read" blocks={chat(200)} busy={false} visible />);
+      const el = scrollerOf(container);
+      scrollTo(el, parseFloat(boxOf(container).style.height) / 2);
+      // Every mounted row measured, so the row the top edge cuts is one.
+      measureRows(() => 60);
+      const anchor = anchorKeyOf(container, el.scrollTop);
+      const onScreen = topOf(container.querySelector<HTMLElement>(`[data-row="${anchor}"]`)!) - el.scrollTop;
+      fold(true);
+      // Wider, every row is shorter.
+      measureRows(() => 48);
+      const again = container.querySelector<HTMLElement>(`[data-row="${anchor}"]`)!;
+      expect(topOf(again) - el.scrollTop).toBeCloseTo(onScreen, 0);
+      fold(false);
+      measureRows(() => 60);
+      const back = container.querySelector<HTMLElement>(`[data-row="${anchor}"]`)!;
+      expect(topOf(back) - el.scrollTop).toBeCloseTo(onScreen, 0);
+    });
+
+    it("glides the column from where it stood, out on --dur-fast and back on --dur-base", () => {
+      reducedMotion = false;
+      const calls = glides();
+      paneWidth = 900;
+      render(<AgentTranscript sessionId="f-glide" blocks={chat(2)} busy={false} visible />);
+      expect(calls).toEqual([]);
+      fold(true);
+      // Beside at 248px, centred at 66px: it starts 182px right of its new place.
+      expect(calls).toEqual([{ from: "translateX(182px)", duration: 120, easing: EASE_OUT_CSS }]);
+      // Caught half way (the stub's progress), it goes back from where it is.
+      fold(false);
+      expect(calls[1]).toEqual({ from: "translateX(-91px)", duration: 180, easing: EASE_OUT_CSS });
+    });
+
+    it("glides nothing under reduced motion, in the gutter, or on a resize across 864px", () => {
+      const calls = glides();
+      paneWidth = 900;
+      const { container } = render(<AgentTranscript sessionId="f-still" blocks={chat(2)} busy={false} visible />);
+      fold(true);
+      fold(false);
+      expect(calls).toEqual([]);
+      reducedMotion = false;
+      resizePane(container, 1400);
+      fold(true);
+      resizePane(container, 900);
+      expect(boxOf(container).className).toContain("mx-auto");
+      expect(calls).toEqual([]);
+    });
   });
 });
 

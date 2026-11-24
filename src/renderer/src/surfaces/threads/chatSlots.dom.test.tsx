@@ -1,7 +1,8 @@
 // @vitest-environment jsdom
-import { cleanup, render } from "@testing-library/react";
+import { act, cleanup, render } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import { EmptySession } from "../EmptySession";
+import { messageListFold } from "../../lib/messageListFold";
 import { COLUMN_MAX_CLASS, LIST_SPACE } from "../transcriptOutlineModel";
 import { COLUMN_GUTTER_CLASS, ChatColumn, ChatFooter, type ChatSlots } from "./chatSlots";
 
@@ -52,6 +53,19 @@ describe("ChatFooter", () => {
     // A placement named outright wins over the slots'.
     rerender(<ChatFooter slots={{ ...slots, placement: "beside" }} placement="hidden" />);
     expect(footerOf(container).dataset.chatFooter).toBe("hidden");
+  });
+
+  it("centres with the transcript's column while the list beside it is folded", () => {
+    const { container } = render(<ChatFooter slots={slots} placement="beside" />);
+    const footer = footerOf(container);
+    act(() => messageListFold.set(true));
+    expect(footer.style.paddingLeft).toBe("");
+    expect((footer.firstElementChild as HTMLElement).className).toContain("mx-auto");
+    act(() => messageListFold.set(false));
+    expect(footer.style.paddingLeft).toBe(`${LIST_SPACE}px`);
+    expect((footer.firstElementChild as HTMLElement).className).toContain("mr-auto");
+    localStorage.clear();
+    messageListFold.reload();
   });
 });
 

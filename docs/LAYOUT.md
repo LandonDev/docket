@@ -1226,22 +1226,35 @@ mounts inside the scroller as a zero-height sticky child, so a wheel over
 it scrolls the thread, and caps at the viewport less 40px with its own
 scroll. One tab stop; arrows and Home/End move, Enter or Space lands at
 once, a click glides; "Earlier messages" heads it while older history
-remains. Nothing in it animates but its fold: a 24px ghost chevron
-(`DISCLOSURE_CHEVRON`, pointing down while open) sits above the rows, its
-glyph on the rows' text edge, and folds the list to the chevron alone and
+remains. Nothing in it animates but its fold: a 24px ghost chevron sits
+above the rows, its glyph on the rows' text edge, pointing left while the
+list is open and right while it is folded (a `SwapIcon` between the two
+glyphs, never a turn), and folds the list sideways to the chevron alone and
 back; the chevron's tooltip, View → Hide Message List and ⌘⇧M do the same
 in every thread of the window, which remembers the choice under one
-localStorage key (lib/messageListFold.ts). The rows fade and slide 4px
-toward the chevron (opacity and translate, `--dur-fast` going, `--dur-base`
-coming back, a fade alone under reduced motion), then leave the tab order;
-the rows ride their own chunk (`messageListChunk`,
+localStorage key (lib/messageListFold.ts). The rows slide out past the
+pane's left edge and fade (opacity and translate, `--dur-fast` going,
+`--dur-base` coming back, a fade alone under reduced motion), then leave
+the tab order; the rows ride their own chunk (`messageListChunk`,
 surfaces/TranscriptOutlineList.tsx), so a list folded from launch loads
 nothing until it opens, and an open one draws with the transcript, no
-entry motion.
-Nothing else moves: in the gutter the column is centred either way, and
-beside the list the column keeps its place, so a fold never reflows the
-transcript. Folded it is the chevron and nothing else: a rail of dots
-would say the list a second time in a form that names nothing.
+entry motion. Folded, the chevron stays where it was, at the pane's top
+left: the centred column starts at least 48px from the edge at 864px, so
+the chevron never sits over text.
+Folded, the list gives its width back. From 864px to 1264px the column
+goes back to centred (`columnBeside`, `columnBox` in
+transcriptOutlineModel.ts) and the footer with it (`ChatFooter` reads the
+same flag); below 1032px that also widens it toward 768px, so its rows are
+measured once and the reader's anchor row holds the place. The layout
+changes once; the column then glides from where it was on a transform
+alone, on the list's timing, so the two never overlap (surfaces/
+columnGlide.ts; a fold caught mid-glide starts from where it is, and
+reduced motion, or a resize that crosses 864px or 1264px, snaps). From
+1264px the column is centred either way and nothing but the list moves.
+The rule this replaces, that a fold never reflows the transcript, went
+because the owner asked for the width back. Folded it is the chevron and
+nothing else: a rail of dots would say the list a second time in a form
+that names nothing.
 
 While the thread has changes nobody kept, the checkpoint strip sits on the
 composer's top edge (chrome/SessionReview.tsx): one 32px row with the file's

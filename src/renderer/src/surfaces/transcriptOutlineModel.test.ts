@@ -8,6 +8,9 @@ import {
   COLUMN_MAX_PX,
   GUTTER_FROM_PX,
   LIST_SPACE,
+  columnBeside,
+  columnBox,
+  columnShift,
   createReaderStore,
   currentEntry,
   dayGroups,
@@ -115,6 +118,37 @@ describe("dayGroups", () => {
     const untimed: OutlineEntry = { id: "n", turnIndex: 2, block: user("n") };
     const groups = dayGroups([at("p", 2026, 9, 31, 0), untimed, at("t", 2026, 10, 1, 3)], now, "en-US");
     expect(groups.map((g) => g.entries.map((e) => e.id))).toEqual([["p", "n"], ["t"]]);
+  });
+});
+
+describe("the column's place, open and folded", () => {
+  it("starts after the list only where the list sits beside it and is open", () => {
+    expect(columnBeside("beside", false)).toBe(true);
+    expect(columnBeside("beside", true)).toBe(false);
+    expect(columnBeside("gutter", false)).toBe(false);
+    expect(columnBeside("hidden", false)).toBe(false);
+  });
+
+  it("at 900px: folded, the column takes the list's width back and centres", () => {
+    expect(columnBox(900, true)).toEqual({ left: 248, width: 636 });
+    expect(columnBox(900, false)).toEqual({ left: 66, width: 768 });
+    expect(columnShift(900, true, false)).toBe(182);
+  });
+
+  it("at 1100px: the same width, centred where it started after the list", () => {
+    expect(columnBox(1100, true)).toEqual({ left: 248, width: 768 });
+    expect(columnBox(1100, false)).toEqual({ left: 166, width: 768 });
+    expect(columnShift(1100, false, true)).toBe(-82);
+  });
+
+  it("at 1400px the list sits in the gutter: a fold moves nothing", () => {
+    expect(outlinePlacement(1400, 3)).toBe("gutter");
+    expect(columnBeside("gutter", true)).toBe(columnBeside("gutter", false));
+    expect(columnBox(1400, false)).toEqual({ left: 316, width: 768 });
+  });
+
+  it("folded at 864px, the column starts clear of the chevron's 24px box at 16px", () => {
+    expect(columnBox(BESIDE_FROM_PX, false).left).toBeGreaterThanOrEqual(16 + 24 + 8);
   });
 });
 

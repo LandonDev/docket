@@ -1,9 +1,9 @@
 import { keyHint } from "../lib/keys";
 import { memo, useEffect, useId, useRef, useState, useSyncExternalStore } from "react";
 import { Button } from "../components/ui/button";
-import { DISCLOSURE_CHEVRON } from "../components/ui/disclosure";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../components/ui/tooltip";
-import { ChevronRight } from "../chrome/icons";
+import { ChevronLeft, ChevronRight } from "../chrome/icons";
+import { SwapIcon } from "../motion/IconSwap";
 import type { JumpHow } from "../chrome/JumpList";
 import { cn } from "../lib/cn";
 import { messageListFold } from "../lib/messageListFold";
@@ -17,11 +17,13 @@ const List = messageListChunk.surface("TranscriptOutlineList");
  * The transcript's left side: the person's own messages, one line each with
  * its clock time, the one being read marked, a click or Enter landing on it
  * (transcriptOutlineModel.ts has the rules; AgentTranscript places it).
- * The chevron above it folds the list away to the chevron alone and back
- * (lib/messageListFold.ts keeps the window's choice); the list fades and
- * slides 4px toward the chevron, and nothing else on the page moves. The
- * rows ride `messageListChunk` (TranscriptOutlineList.tsx), mounted once the
- * list is first open and kept through a fold so it can fade.
+ * The chevron above it folds the list sideways to the chevron alone and
+ * back (lib/messageListFold.ts keeps the window's choice): it points left
+ * while the list is open and right while folded, the rows slide out past
+ * the pane's left edge and in again, and where the list sat beside the
+ * column the column takes the width back (AgentTranscript, columnGlide.ts).
+ * The rows ride `messageListChunk` (TranscriptOutlineList.tsx), mounted once
+ * the list is first open and kept through a fold so they can slide out.
  */
 export const TranscriptOutline = memo(function TranscriptOutline({
   turns,
@@ -90,7 +92,7 @@ export const TranscriptOutline = memo(function TranscriptOutline({
             />
           }
         >
-          <ChevronRight className={cn("size-3.5", DISCLOSURE_CHEVRON, !folded && "rotate-90")} />
+          <SwapIcon swapped={folded} from={<ChevronLeft data-glyph="left" className="size-3.5" />} to={<ChevronRight data-glyph="right" className="size-3.5" />} />
         </TooltipTrigger>
         <TooltipContent side="right">{verb} {keyHint("mod+shift+M")}</TooltipContent>
       </Tooltip>

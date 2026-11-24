@@ -22,7 +22,9 @@
   anchor row (`TranscriptScrollMemory.anchor`); the message list
   (surfaces/TranscriptOutline.tsx: the person's messages down the left
   side, a zero-height sticky child of the scroller placed by
-  `outlinePlacement`) and search hits jump by block id through
+  `outlinePlacement`; folded beside the column it gives the width back, the
+  column centred again and glided there on a transform, surfaces/columnGlide.ts)
+  and search hits jump by block id through
   `scrollToRow`, which lands exactly once the row is measured (a keyboard
   jump with `instant`, no glide). Never put `content-visibility` or size containment on a row:
   the window measures natural heights.

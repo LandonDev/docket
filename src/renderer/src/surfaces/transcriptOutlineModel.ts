@@ -140,7 +140,7 @@ export const COLUMN_MAX_PX = 768;
 /** The narrowest the column gets to make room for the list. */
 export const COLUMN_MIN_PX = 600;
 /** The scroller's own padding on the right. */
-const PANE_PAD_PX = 16;
+export const PANE_PAD_PX = 16;
 
 /** Under this the list hides. */
 export const BESIDE_FROM_PX = LIST_SPACE + COLUMN_MIN_PX + PANE_PAD_PX;
@@ -158,6 +158,32 @@ export type OutlinePlacement = "hidden" | "beside" | "gutter";
 export function outlinePlacement(paneWidth: number, count: number): OutlinePlacement {
   if (count < 2 || paneWidth < BESIDE_FROM_PX) return "hidden";
   return paneWidth < GUTTER_FROM_PX ? "beside" : "gutter";
+}
+
+/**
+ * Whether the column starts after the list: only where the list sits
+ * beside it and is open. Folded, the column is centred as with no list,
+ * taking the list's width back.
+ */
+export function columnBeside(placement: OutlinePlacement, folded: boolean): boolean {
+  return placement === "beside" && !folded;
+}
+
+/**
+ * The column's left edge and width in a scroller `paneWidth` wide (its
+ * client width, the scrollbar's strip left out): after the list, or
+ * centred between the 16px paddings.
+ */
+export function columnBox(paneWidth: number, beside: boolean): { left: number; width: number } {
+  if (beside) return { left: LIST_SPACE, width: Math.min(COLUMN_MAX_PX, paneWidth - LIST_SPACE - PANE_PAD_PX) };
+  const room = paneWidth - 2 * PANE_PAD_PX;
+  const width = Math.min(COLUMN_MAX_PX, room);
+  return { left: PANE_PAD_PX + (room - width) / 2, width };
+}
+
+/** How far right the column was before a fold moved it: where it glides from. */
+export function columnShift(paneWidth: number, from: boolean, to: boolean): number {
+  return columnBox(paneWidth, from).left - columnBox(paneWidth, to).left;
 }
 
 /**

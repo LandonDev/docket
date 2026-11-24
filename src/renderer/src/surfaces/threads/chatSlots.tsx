@@ -1,7 +1,9 @@
-import { useCallback, type ReactNode } from "react";
+import { useCallback, useRef, useSyncExternalStore, type ReactNode } from "react";
+import { messageListFold } from "../../lib/messageListFold";
+import { useColumnGlide } from "../columnGlide";
 import { registerToastAnchor } from "../../lib/toastAnchor";
 import { tallyRender } from "../../lib/devRenders";
-import { COLUMN_MAX_CLASS, LIST_SPACE, type OutlinePlacement } from "../transcriptOutlineModel";
+import { COLUMN_MAX_CLASS, LIST_SPACE, PANE_PAD_PX, columnBeside, type OutlinePlacement } from "../transcriptOutlineModel";
 
 /**
  * The chat column pulled into its three slots so a view can seat them
@@ -59,9 +61,9 @@ export function ChatColumn({ slots }: { slots: ChatSlots }) {
  */
 export const COLUMN_GUTTER_CLASS = "w-full ps-4 pe-[calc(1rem+var(--scrollbar-size))]";
 
-/** The column inside that gutter: centred, or after the message list when it sits beside. */
-export function columnClass(placement: OutlinePlacement = "hidden"): string {
-  return `${placement === "beside" ? "mr-auto" : "mx-auto"} w-full ${COLUMN_MAX_CLASS}`;
+/** The column inside that gutter: centred, or after the message list when it sits beside, open. */
+export function columnClass(beside = false): string {
+  return `${beside ? "mr-auto" : "mx-auto"} w-full ${COLUMN_MAX_CLASS}`;
 }
 
 /**
@@ -81,6 +83,17 @@ export function ChatFooter({
 }) {
   tallyRender("chatFooter");
   const where = placement ?? slots.placement ?? "hidden";
+  // The transcript's own rule (AgentTranscript): a folded list gives the
+  // column its centre back, and the composer glides there with it.
+  const folded = useSyncExternalStore(messageListFold.subscribe, messageListFold.get, messageListFold.get);
+  const beside = columnBeside(where, folded);
+  const column = useRef<HTMLDivElement>(null);
+  // The pane's width as the transcript reads it: the footer less the
+  // scrollbar's strip its end padding holds for it.
+  useColumnGlide(column, where, beside, () => {
+    const footer = column.current?.parentElement;
+    return footer ? footer.clientWidth - parseFloat(getComputedStyle(footer).paddingRight) + PANE_PAD_PX : 0;
+  });
   const anchored = !!slots.anchor;
   const ref = useCallback(
     (el: HTMLDivElement | null) => (anchored ? registerToastAnchor(el) : undefined),
@@ -92,9 +105,9 @@ export function ChatFooter({
       data-toast-anchor={slots.anchor ? "" : undefined}
       data-chat-footer={where}
       className={`${COLUMN_GUTTER_CLASS} shrink-0 ${className}`}
-      style={where === "beside" ? { paddingLeft: LIST_SPACE } : undefined}
+      style={beside ? { paddingLeft: LIST_SPACE } : undefined}
     >
-      <div className={columnClass(where)}>
+      <div ref={column} className={columnClass(beside)}>
         {slots.strip}
         {slots.composer}
       </div>
