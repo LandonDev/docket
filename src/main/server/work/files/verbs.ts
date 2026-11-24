@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import { existsSync, mkdirSync, readdirSync, realpathSync, rmSync, statSync } from 'node:fs'
 import { basename, dirname, join } from 'node:path'
-import type { FileDone, FileMakeKind, FileRef } from '@shared/contract-work-files'
+import type { FileDone, FileMakeKind, FileOrigin, FileRef } from '@shared/contract-work-files'
 import type { CanvasSource } from '@shared/work'
 import { extOf, freeName, PLACE, questionFor, refKey, refusal, UNTITLED, type FileEntry, type FolderRef } from '@shared/work/files'
 import type { Caller, WorkCtx } from '../modules'
@@ -123,7 +123,7 @@ function freeIn(dir: string, name: string): string {
 }
 
 /** A held act's press (`origin.from: 'act'`) makes the name its card showed, or nothing: another free name is no change he saw. */
-const pressedAct = (p: { origin?: { from?: string } }): boolean => p.origin?.from === 'act'
+const pressedAct = (p: { origin?: FileOrigin }): boolean => p.origin?.from === 'act'
 export const NAME_TAKEN = (name: string): string => `Something named ${name} is there now, so nothing was made: the press makes only the name it showed.`
 export const isNameTaken = (text: string): boolean => /^Something named .+ is there now, so nothing was made: the press makes only the name it showed\.$/.test(text)
 /** `name` in `dir`, read case-blind as `freeIn` reads it, or the refusal that it is taken. */
@@ -149,7 +149,7 @@ interface Change {
   workspaceId: string
   op: string
   /** where the change began: a held act's press is held to the names it showed */
-  origin?: { from?: string }
+  origin?: FileOrigin
 }
 type MakeAsk = Change & { at: FolderRef; kind: FileMakeKind; name?: string; from?: CanvasSource; asked?: boolean }
 type RenameAsk = Change & { ref: FileRef; name: string }
