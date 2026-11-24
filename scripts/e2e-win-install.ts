@@ -12,12 +12,12 @@
  * (nothing under Program Files), with the Start menu shortcut; the app carries the win32 claude.exe (it
  * answers --version), node-pty's x64 prebuild with ConPTY, and tc-computer.exe (it answers `version`); the
  * app starts on the desktop, its data under %LOCALAPPDATA%\temp-code, its feed config naming GitHub; its
- * updater checks the real feed without an error; the computer-use service starts (`computer.service.retry`,
- * a tc-computer.exe process); and a Claude thread runs one turn and answers.
+ * updater reads the real feed (strictly, for a released installer); a Claude thread runs one turn and
+ * answers; and its computer call starts tc-computer.exe out of the install folder.
  *
  * The turn needs a sign-in: the box's Claude credentials go into the guest's ~/.claude with the refresh
- * token blanked (so nothing there can rotate the box's), as milestone 13 did, and are deleted at the end,
- * with the app's data. Screenshots in /tmp/tc-win-install/shots.
+ * token blanked (so nothing there can rotate the box's), as milestone 13 did, saved in the app's Accounts,
+ * and deleted at the end with the app's data and its account store. Screenshots in /tmp/tc-win-install/shots.
  */
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
@@ -204,21 +204,20 @@ async function run(): Promise<void> {
   let status: Status | null = null
   await waitFor('the update check', 90_000, async () => {
     status = await cdp.eval<Status>('window.api.updates.get()')
-    return status.phase !== 'checking' && (status.latest !== null || status.phase === 'error')
+    // A check that found nothing newer ends idle with latest null; checked says it ran.
+    return (status as Status & { checked?: boolean }).checked === true && status.phase !== 'checking'
   })
   const s = status as Status | null
   // A build of ours before its release has Windows files reads a feed with no latest.yml yet: only the
   // installer downloaded from a release (--url) is held to a clean check.
-  if (url) check(`the updater reads GitHub's latest.yml without an error (current ${version})`, !!s && s.current === version && s.phase !== 'error' && !!s.latest, JSON.stringify(s))
+  if (url) check(`the updater reads GitHub's latest.yml without an error (current ${version})`, !!s && s.current === version && s.phase !== 'error', JSON.stringify(s))
   else log(`the updater's check: ${JSON.stringify(s)}`)
-
-  // ── computer use: the service starts ──
-  const state = await rpc<unknown>('computer.service.retry').catch((e: Error) => ({ error: e.message }))
-  const procs = await waitFor('tc-computer.exe', 60_000, async () => (await ps(`@(Get-Process tc-computer -EA 0).Count`)).out.trim() !== '0')
-  check('the computer-use service starts (a tc-computer.exe process)', procs, JSON.stringify(state).slice(0, 200))
 
   // ── a thread runs one turn ──
   if (withThread && lentCredentials) {
+    // The gateway runs a turn only on an account the app saved (Accounts, or this call).
+    const captured = await cdp.eval<{ ok?: boolean; error?: string }>("window.aliax.capture('claude-code')").catch((e: Error) => ({ ok: false, error: e.message }))
+    check('the lent account is saved in the app (Accounts)', captured?.ok !== false, JSON.stringify(captured).slice(0, 160))
     const meta = await rpc<{ id: string }>('session.create', { provider: 'claude', cwd: `${GUEST_HOME}\\tc-proof`, title: 'Windows install proof', threadType: 'chat', permission: 'auto' })
     await rpc('session.send', { sessionId: meta.id, text: 'Reply with exactly WIN-INSTALL-OK and nothing else.', model: 'claude-sonnet-5-5', reasoning: 'low' })
     type Ev = { seq: number; event: { type: string; text?: string; message?: string } }
@@ -230,6 +229,18 @@ async function run(): Promise<void> {
     })
     await shot('thread')
     check('a Claude thread runs one turn and answers', answered, said)
+
+    // ── computer use: the app starts tc-computer.exe for a thread's first computer call ──
+    await rpc('session.send', { sessionId: meta.id, text: 'Call the computer_apps tool once (it only reads which apps are open), then reply with exactly WIN-COMPUTER-OK.', model: 'claude-sonnet-5-5', reasoning: 'low' })
+    const served = await waitFor('tc-computer.exe', 240_000, async () => (await ps(`@(Get-Process tc-computer -EA 0).Count`)).out.trim() !== '0')
+    const events = await rpc<Ev[]>('session.events', { sessionId: meta.id, afterSeq: 0 })
+    const tail = events.map((e) => `${e.event.type}:${(e.event.text ?? e.event.message ?? '').slice(0, 100)}`).slice(-6).join(' | ')
+    await shot('computer')
+    check('a computer call starts tc-computer.exe from the install folder', served, tail)
+  } else {
+    const state = await rpc<unknown>('computer.service.retry').catch((e: Error) => ({ error: e.message }))
+    const procs = await waitFor('tc-computer.exe', 60_000, async () => (await ps(`@(Get-Process tc-computer -EA 0).Count`)).out.trim() !== '0')
+    check('the computer-use service starts (a tc-computer.exe process)', procs, JSON.stringify(state).slice(0, 200))
   }
 }
 
@@ -240,7 +251,7 @@ try {
 } finally {
   {
     const gone = await ps(
-      `Get-Process TempCode,claude,tc-computer -EA 0 | Stop-Process -Force -EA 0; Start-Sleep 3; Remove-Item -Force "$env:USERPROFILE\\.claude\\.credentials.json" -EA 0; Remove-Item -Recurse -Force '${DATA_DIR}' -EA 0; Test-Path "$env:USERPROFILE\\.claude\\.credentials.json"`
+      `Get-Process TempCode,claude,tc-computer -EA 0 | Stop-Process -Force -EA 0; Start-Sleep 3; Remove-Item -Force "$env:USERPROFILE\\.claude\\.credentials.json" -EA 0; Remove-Item -Recurse -Force '${DATA_DIR}', "$env:USERPROFILE\\.aliax" -EA 0; Test-Path "$env:USERPROFILE\\.claude\\.credentials.json"`
     )
     check('the lent sign-in and the app data are gone from the guest', gone.out.trim().split('\n').pop() === 'False', gone.out.slice(-80))
   }

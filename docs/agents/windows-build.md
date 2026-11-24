@@ -121,7 +121,7 @@ The files:
 | `TempCode-1.0.N-win-x64.zip` | the app unpacked, for a PC that refuses the installer; a copy made this way does not update itself |
 | `latest.yml` | the feed file a Windows install reads, beside the Mac's `latest-mac.yml` |
 
-A release with no `latest.yml` (before 1.0.366, or one whose pass failed) leaves a Windows install's
+A release with no `latest.yml` (every one before 1.0.367, or one whose pass failed) leaves a Windows install's
 check failing quietly until the next one that has it.
 
 ## Install
@@ -233,6 +233,22 @@ Seen in the rig on 2026-11-19, as the standard user, never elevated (`bun script
 Not seen: Snap Layouts on hovering maximise (milestone 43's pointer input can drive it, not yet tried); a
 real thread or a warm harness across the update (milestone 13); the real product's name
 (`TempCode`; the test builds are `TempCodeE2E`, the folder rule is the same); the zip.
+
+**The first published installer** (2026-11-23, .temp-code/plans/landed/F-windows-installer.md):
+
+- 1.0.367 is the first release with Windows files, put there by the default pass after the Mac's
+  release went live (8:20 PM CT); `releases/latest/download/latest.yml` names its installer.
+- The box built master's head the same way (`release-win.ts`, the wine stand-in), and the slim
+  bundle carries what Windows needs: the win32 `claude.exe`, node-pty's `win32-x64` prebuild with
+  `conpty.dll` and `OpenConsole.exe`, `tc-computer.exe`, the GitHub feed config; 3,099 files.
+- `bun scripts/e2e-win-install.ts --url <the release's setup.exe>` in the rig as the standard user:
+  the download (10 s), the silent install (104 s), nothing under Program Files, the Start menu entry,
+  `claude.exe --version`, `tc-computer.exe version` on the desktop, the app on the desktop with its
+  data in `%LOCALAPPDATA%\temp-code`, its server up. `--installer <file>` does the same with a build
+  of ours.
+- The update from 1.0.365 to 1.0.366 (`e2e-updater.ts --win --busy`, two copies of master's head):
+  check, download, Restart to update with a bundled `claude.exe` running out of the install folder,
+  the new app back in 82 s (it was six to eight minutes before the slim bundle).
 
 The driver, on the box: builds 1.0.N-1 and 1.0.N as `TempCodeE2E` with the harness block, serves
 the new one from a local feed, installs the old one silently, starts it on the desktop, checks the
