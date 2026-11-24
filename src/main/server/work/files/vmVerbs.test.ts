@@ -249,6 +249,24 @@ describe.skipIf(process.platform === 'win32')('the Windows VM changed through it
       expect(changes().at(-1)).toMatchObject({ verb: 'files.rename', args: { name: 'Plan v2.txt' } })
     })
 
+    it("checks each thing of a held move just before its own move: one replaced while the one before it moved is refused, never moved", async () => {
+      const files = [`${GENERAL}\\Plan.txt`, `${GENERAL}\\Notes.txt`]
+      const stat = (await call<{ entries: { key: string; size?: number; changed?: number }[] }>('work.files.stat', { refs: files.map((f) => at(f)) })).entries
+      const things = stat.map((e) => ({ key: e.key, version: `${e.size ?? 0}:${e.changed ?? 0}:` }))
+      // The first move's answer comes back once OneDrive has replaced the second file.
+      setVmCall(async (verb, args) => {
+        const answer = await guest(verb, (args ?? {}) as Record<string, unknown>)
+        const notes = disk.get(`${GENERAL}\\Notes.txt`.toLowerCase())
+        if (verb === 'files.move' && notes) notes.modified = 5000
+        return answer
+      })
+      const done = await call<FileDone>('work.files.move', { refs: files.map((f) => at(f)), to: at(`${GENERAL}\\Budgets`), op: op(), asked: true, origin: { from: 'act', id: 'h1', digest: 'd'.repeat(64), things } })
+      expect(done.entries.map((e) => e.name)).toEqual(['Plan.txt'])
+      expect(done.refused).toEqual([{ name: 'Notes.txt', text: 'Notes.txt is not as it was when this was held, so nothing was done.' }])
+      expect(disk.has(`${GENERAL}\\Notes.txt`.toLowerCase())).toBe(true)
+      expect(changes().filter((c) => c.verb === 'files.move')).toHaveLength(1)
+    })
+
     it("makes a Word file from Files' own blank where no maker writes one (New → Document in a Teams library in the VM)", async () => {
       const made = await call<FileDone>('work.files.make', { at: at(GENERAL), kind: 'document', name: 'Minutes', op: op() })
       const blank = readFileSync(join(process.cwd(), 'resources', 'work-files', 'blank', 'blank.docx')).toString('base64')

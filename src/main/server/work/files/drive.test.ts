@@ -286,6 +286,29 @@ describe('his window\'s verbs, each one Drive call', () => {
   })
 })
 
+describe("a held Drive change at the write", () => {
+  const held = async (fileId: string, o: { version?: string; shared?: boolean } = {}) => {
+    const [e] = (await call<{ entries: (FileEntry | null)[] }>('work.files.stat', { refs: [doc(fileId)] })).entries
+    return { from: 'act', id: 'h1', digest: 'd'.repeat(64), things: [{ key: e!.key, version: o.version ?? `${e!.size ?? 0}:${e!.changed ?? 0}:`, ...(o.shared !== undefined ? { shared: o.shared } : {}) }] }
+  }
+
+  it('renames, moves or deletes a thing only as the card named it: an edit or a share since leaves it for a new review', async () => {
+    const edited = await held('dBrief', { version: '0:1:' })
+    await expect(call('work.files.rename', { ref: doc('dBrief'), name: 'Brief v2', op: op(), origin: edited })).rejects.toThrow('Brief is not as it was when this was held')
+    const shared = await held('dBrief', { shared: true })
+    await expect(call('work.files.rename', { ref: doc('dBrief'), name: 'Brief v2', op: op(), origin: shared })).rejects.toThrow('Brief is not as it was when this was held')
+    expect(fake.files.get('dBrief')!.name).toBe('Brief')
+    const moved = await call<FileDone>('work.files.move', { refs: [doc('dBrief')], to: folder('fStaff'), op: op(), asked: true, origin: edited })
+    expect(moved.refused).toEqual([{ name: 'Brief', text: 'Brief is not as it was when this was held, so nothing was done.' }])
+    const gone = await call<FileDone>('work.files.trash', { refs: [doc('dBrief')], op: op(), origin: edited })
+    expect(gone.refused).toEqual([{ name: 'Brief', text: 'Brief is not as it was when this was held, so nothing was done.' }])
+    expect(fake.files.get('dBrief')).toMatchObject({ name: 'Brief', trashed: false })
+    // As held: renamed.
+    await call('work.files.rename', { ref: doc('dBrief'), name: 'Brief v2', op: op(), origin: await held('dBrief', { shared: false }) })
+    expect(fake.files.get('dBrief')!.name).toBe('Brief v2')
+  })
+})
+
 describe("Drive's own bin as Trash", () => {
   it('deletes to the bin, lists the row in Trash with where it was, and puts it back', async () => {
     const done = await call<FileDone>('work.files.trash', { refs: [doc('dBrief')], op: op() })

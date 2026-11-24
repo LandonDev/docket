@@ -64,8 +64,8 @@ export const FileOriginSchema = z.discriminatedUnion('from', [
     from: z.literal('act'),
     id: z.string().min(1).max(200),
     digest: z.string().min(16).max(128),
-    /** each thing the card named, by the order of the refs, as it was held (its key and version): the host that writes checks them as it acts */
-    things: z.array(z.object({ key: z.string().max(5000), version: z.string().max(200) })).max(100).optional(),
+    /** each thing the card named, by the order of the refs, as it was held (its key, version and, where the card said it, who could open it): the host that writes checks them as it acts */
+    things: z.array(z.object({ key: z.string().max(5000), version: z.string().max(200), shared: z.boolean().optional() })).max(100).optional(),
     /** the folder a move or copy was held to go to, by its key */
     into: z.string().max(5000).optional()
   })

@@ -163,7 +163,7 @@ function carry(ctx: WorkCtx, w: VmWhere, e: GuestEntry, key: string): void {
 }
 
 /** Move inside one place of the VM: each thing one move into the folder; a taken name is that thing's refused row, and the rest still move. */
-export async function vmMove(ctx: WorkCtx, workspaceId: string, all: readonly VmWhere[], to: VmWhere, op: string): Promise<FileDone> {
+export async function vmMove(ctx: WorkCtx, workspaceId: string, all: readonly VmWhere[], to: VmWhere, op: string, check?: (i: number) => Promise<void>): Promise<FileDone> {
   const done: GuestEntry[] = []
   const refused: FileDone['refused'] = []
   const changed = new Set<string>([to.path])
@@ -175,6 +175,8 @@ export async function vmMove(ctx: WorkCtx, workspaceId: string, all: readonly Vm
       const key = libraryKey(to.library, inDir(to.path, name))
       done.push(
         await withFileLocks([w.key, key], async () => {
+          // A held act's thing, as the guest finds it now, under its lock: the one before it took its time to move.
+          await check?.(i)
           const e = (await guestChange<{ entry: GuestEntry }>('files.move', { path: w.path, dir: to.path, op: guestOp(op, i) })).entry
           carry(ctx, w, e, key)
           return e

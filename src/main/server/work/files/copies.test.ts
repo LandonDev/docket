@@ -1,4 +1,4 @@
-import { existsSync, readdirSync, readFileSync, statSync, utimesSync, writeFileSync } from 'node:fs'
+import { existsSync, readdirSync, readFileSync, realpathSync, statSync, utimesSync, writeFileSync } from 'node:fs'
 import { basename, dirname, join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ClientRequestSchema, type ClientRequest } from '@shared/contract'
@@ -162,6 +162,34 @@ describe('a copy is made with where its file lies', () => {
     expect((await call<FilesTabs>('work.files.tabs', {})).tabs.filter((t) => t.copyOf?.path === path)).toHaveLength(1)
     expect(readFileSync(copy, 'utf8')).toBe('workbook two')
     expect(far.filter((c) => c.verb === 'filesRead')).toHaveLength(1)
+  })
+
+  it("opens a file under its own address when another tab holds the row's key for another file, and that tab's copy keeps saving to its own file", async () => {
+    // A merged library row: the Mac's file first, then the same row from another computer, under the one row key.
+    const first = join(mac.team, 'General', 'Roster.xlsx')
+    const second = join(mac.team, 'Events', 'Roster.xlsx')
+    writeFileSync(first, 'workbook one')
+    writeFileSync(second, 'workbook elsewhere')
+    const row = 'teams:merged~staff:Roster.xlsx'
+    const a = await call<FilesOpened>('work.files.open', { ref: { at: 'file', host: MAC, path: first }, name: 'Roster.xlsx', key: row })
+    const copyA = canvasSourcePath(a.item!.source)!
+    macUp = false
+    await editorSaves(copyA, 'workbook two')
+    await settled()
+    macUp = true
+    const b = await call<FilesOpened>('work.files.open', { ref: { at: 'file', host: MAC, path: second }, name: 'Roster.xlsx', key: row })
+    expect(b.tabId).not.toBe(a.tabId)
+    expect(canvasSourcePath(b.item!.source)).not.toBe(copyA)
+    // The first tab still holds its copy, and its changes still wait for its own file.
+    expect(readFileSync(copyA, 'utf8')).toBe('workbook two')
+    expect(copyRecord(box.ctx, WS, MAC, first)).toMatchObject({ copy: realpathSync(copyA), state: 'away' })
+    expect(copyRecord(box.ctx, WS, MAC, second)).toMatchObject({ state: 'ok' })
+    const tabs = (await call<FilesTabs>('work.files.tabs', {})).tabs
+    expect(tabs.find((t) => t.id === a.tabId)).toMatchObject({ key: row, copyOf: { host: MAC, path: first } })
+    expect(tabs.find((t) => t.id === b.tabId)?.copyOf).toMatchObject({ host: MAC, path: second })
+    // Opened again under the row's key, each answers its own tab.
+    expect((await call<FilesOpened>('work.files.open', { ref: { at: 'file', host: MAC, path: second }, name: 'Roster.xlsx', key: row })).tabId).toBe(b.tabId)
+    expect((await call<FilesOpened>('work.files.open', { ref: { at: 'file', host: MAC, path: first }, name: 'Roster.xlsx', key: row })).tabId).toBe(a.tabId)
   })
 
   it('keeps no record for a kind that edits no bytes of the copy: a document opens on a copy whose changes stay here', async () => {

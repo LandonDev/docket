@@ -360,15 +360,18 @@ export async function moveVerb(ctx: WorkCtx, by: Caller, p: MoveAsk, method: str
     if (!to.vm || all.some((w) => !w.vm || w.place.id !== to.place.id)) throw new Error('Files in the Windows VM move only within their place.')
     boundInto(p, to)
     return runOp(ctx.db, { id: p.op, workspaceId: p.workspaceId, verb: 'move', refs: journalled('move', p) }, async () => {
+      // Every thing as held before any moves, and each again just before its own move: one replaced while the ones
+      // before it moved is refused, never moved in its place.
       for (const [i, w] of all.entries()) await boundGuest(p, i, w)
-      return vmMove(ctx, p.workspaceId, all.map(vmOf), vmOf(to), p.op)
+      return vmMove(ctx, p.workspaceId, all.map(vmOf), vmOf(to), p.op, (i) => boundGuest(p, i, all[i]!))
     })
   }
   asFolder(to)
   boundInto(p, to)
   const workspace = workspaceHere(ctx.db, p.workspaceId)
-  return runOp(ctx.db, { id: p.op, workspaceId: p.workspaceId, verb: 'move', refs: journalled('move', p) }, async () => {
+  return runOp<MoveDone>(ctx.db, { id: p.op, workspaceId: p.workspaceId, verb: 'move', refs: journalled('move', p) }, async () => {
     const done: string[] = []
+    const moved: NonNullable<MoveDone['moved']> = []
     const refused: FileDone['refused'] = []
     const changed = new Set<string>([to.path])
     for (const w of all) {
@@ -378,12 +381,15 @@ export async function moveVerb(ctx: WorkCtx, by: Caller, p: MoveAsk, method: str
         if (fileLocked(w.key)) throw new Error(WRITING)
         const key = keyIn(ctx, to, join(to.path, name))
         const i = all.indexOf(w)
+        let now: string
         if (w.place.id === to.place.id) {
-          done.push(await withFileLocks([w.key, key], () => (boundThing(p, i, w, { version: true }), moveInside(ctx, w, fenceOf(w.root, to.root), to.path, name, key))))
+          now = await withFileLocks([w.key, key], () => (boundThing(p, i, w, { version: true }), moveInside(ctx, w, fenceOf(w.root, to.root), to.path, name, key)))
         } else {
           if (!workspace) throw new Error(NO_WORKSPACE)
-          done.push(await withFileLocks([w.key, key], () => (boundThing(p, i, w, { version: true }), moveAcross(ctx, workspace, w, to, name, key, p.op))))
+          now = await withFileLocks([w.key, key], () => (boundThing(p, i, w, { version: true }), moveAcross(ctx, workspace, w, to, name, key, p.op)))
         }
+        done.push(now)
+        moved.push({ from: w.path, to: now })
         changed.add(dirname(w.path))
       } catch (err) {
         refused.push({ name, text: message(err) })
@@ -391,9 +397,15 @@ export async function moveVerb(ctx: WorkCtx, by: Caller, p: MoveAsk, method: str
     }
     said(ctx, by, p.workspaceId, changed, method)
     const entries = (await Promise.all(done.map((path) => entryOf(ctx, by, p.workspaceId, path, method)))).filter((e): e is FileEntry => e !== null)
-    return { entries, refused, op: p.op } satisfies FileDone
+    return { entries, refused, op: p.op, moved }
   })
 }
+
+/**
+ * A move as its journal keeps it: beside what the wire answers, where each thing that moved came from, so an Undo
+ * sends each back to its own folder, two things of one name from two folders among them. The wire leaves it out.
+ */
+export type MoveDone = FileDone & { moved?: { from: string; to: string }[] }
 
 /** One thing moved to another place: copied and checked, carried, then its source to Trash. */
 async function moveAcross(ctx: WorkCtx, workspace: WorkspaceRow, w: Where, to: Where, name: string, key: string, op: string): Promise<string> {

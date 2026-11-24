@@ -9,11 +9,11 @@ import { audienceOf, MAKE_WORDS, refKey, refusal, type FileEntry, type FilePlace
 import { errorText } from '@shared/work/ids'
 import type { ActKindDef, Caller, ToolCtx, WorkCtx, WorkTool } from '../modules'
 import { ActNotSent, ActStale } from '../outbox/kinds'
-import { admitChange, filesHandle, filesState, openAs } from './handle'
+import { admitChange, filesHandle, filesState, openAs, restoresShared } from './handle'
 import { formIn } from './make'
 import { changeDigest, locate, workspaceHere } from './policy'
 import { restoreRows, trashFiles } from './trash'
-import { copyVerb, isHeldMoved, isNameTaken, makeFolderRef, makeVerb, moveVerb, renameVerb, replayed } from './verbs'
+import { copyVerb, isHeldMoved, isNameTaken, makeFolderRef, makeVerb, moveVerb, renameVerb, replayed, type MoveDone } from './verbs'
 import { admitDrive, driveMake, driveMove, driveRename, driveTrash, type DriveDone } from './driveVerbs'
 import { googleSeated, googleSeatOf } from '../google/drive'
 import { driveFacts } from './places/drive'
@@ -248,6 +248,16 @@ async function takenIn(ctx: ToolCtx, host: string, workspaceId: string, to: File
 }
 
 /**
+ * A held delete that ran here and whose answer was lost: its journal row says what it did (the things are in Trash,
+ * not where they were), and the same verb under the same operation id answers it from there, deleting nothing again.
+ */
+function trashReceipt(act: WorkCtx, p: FileAct, params: Record<string, unknown>, signal: AbortSignal): Promise<FileDone> | null {
+  const done = act.db.prepare(`SELECT 1 FROM work_files_ops WHERE id = ? AND workspace_id = ? AND verb = 'trash' AND state = 'done'`).get(p.op, p.workspaceId)
+  if (!done) return null
+  return filesHandle({ id: 'act', method: 'work.files.trash', params } as unknown as ClientRequest, act, WINDOW, signal).then((a) => (a as { result: FileDone }).result)
+}
+
+/**
  * `file.act`: a thread's change in a place others can open, carried out only by his press. No matcher (no grant
  * fits it, and none is offered), no edit (the Outbox's `EDITABLE_KINDS` leaves it out), and Away presses nothing.
  * The press checks the thread's fence and every bound fact again on the file's own host, then runs the same verb
@@ -268,13 +278,13 @@ export const fileActKind: ActKindDef<FileAct, never> = {
     const signal = AbortSignal.timeout(5 * 60_000)
     const toolCtx = { ...act, scope, sessionId: item.sessionId, signal } as ToolCtx
     // The things the card named, as held, go with the press: the host that writes checks them as it acts (verbs.ts `boundThing`).
-    const origin = { from: 'act' as const, id: item.ref.id, digest: p.digest, things: p.things.map((t) => ({ key: t.key, version: t.version })), ...(p.into ? { into: p.into.key } : {}) }
+    const origin = { from: 'act' as const, id: item.ref.id, digest: p.digest, things: p.things.map((t) => ({ key: t.key, version: t.version, ...(t.shared !== undefined ? { shared: t.shared } : {}) })), ...(p.into ? { into: p.into.key } : {}) }
     const params = { workspaceId: p.workspaceId, ...(p.verb === 'rename' ? { ref: p.request.refs[0], name: p.request.name } : p.verb === 'make' ? { at: p.request.refs[0], kind: p.request.kind, ...(p.request.name ? { name: p.request.name } : {}) } : { refs: p.request.refs, to: p.request.to }), op: p.op, origin, asked: true }
     // A press whose answer was lost, pressed again: the change ran under its own operation id, and its receipt here
     // answers what it did, before the facts it moved (an old path gone) can call it stale. (Another host's receipt is
     // that host's to answer: see docs/agents/work-files.md "The held act".)
     const asked = p.verb === 'make' ? { ...params, at: makeFolderRef(act, WINDOW, p.request.refs[0] as FolderRef) } : params
-    const receipt = p.host === act.host && p.verb !== 'trash' ? replayed(act, WINDOW, p.verb, asked as never) : null
+    const receipt = p.host !== act.host ? null : p.verb === 'trash' ? trashReceipt(act, p, params, signal) : replayed(act, WINDOW, p.verb, asked as never)
     if (receipt) return pressed(act, p, item.sessionId, await receipt)
     // The fence and the facts, again, on the file's own host: the thread must still reach each thing as it was.
     const now = await ask<{ entries: (FileEntry | null)[] }>(toolCtx, p.host, 'stat', { workspaceId: p.workspaceId, refs: p.request.refs })
@@ -481,6 +491,8 @@ async function undo(ctx: ToolCtx, workspaceId: string, op: string): Promise<Work
   if (row.verb === 'trash') {
     const workspace = workspaceHere(ctx.db, workspaceId)
     if (!workspace || !done.trashed?.length) return fail(UNDO_GONE)
+    // Put back changes the place it goes back to as a delete there does: where others can open it now, the owner does it.
+    if (await restoresShared(ctx, workspaceId, done.trashed)) return fail(UNDO_SHARED)
     const put = await restoreRows(ctx, me, workspace, done.trashed, back)
     return answerOf('Put back', put)
   }
@@ -503,11 +515,18 @@ async function undo(ctx: ToolCtx, workspaceId: string, op: string): Promise<Work
     return answerOf('Renamed back', await renameVerb(ctx, me, { workspaceId, op: back, ref: refOfEntry(left[0]), name: basename(was) }, method))
   }
   if (row.verb === 'move') {
-    // Each thing back to the folder it came from, by its name.
-    const from = new Map((asked.refs ?? []).map((r) => [basename((r as { path: string }).path), dirname((r as { path: string }).path)]))
+    // Each thing back to the folder it came from: by the move's own record of where each came from, or, for a move
+    // recorded before it kept one, by its name where no other thing of that name was asked to move.
+    const moved = (done as MoveDone).moved
+    const named = (asked.refs ?? []).map((r) => (r as { path: string }).path)
+    const once = (name: string): string | null => {
+      const from = named.filter((path) => basename(path) === name)
+      return from.length === 1 ? dirname(from[0]!) : null
+    }
     const out: FileDone = { entries: [], refused: [], op: back }
     for (const e of left) {
-      const dir = from.get(e.name)
+      const was = moved ? moved.find((m) => m.to === pathOf(e))?.from : undefined
+      const dir = moved ? (was === undefined ? null : dirname(was)) : once(e.name)
       if (!dir) {
         out.refused.push({ name: e.name, text: UNDO_GONE })
         continue

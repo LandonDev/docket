@@ -212,6 +212,35 @@ describe('in his own place a change runs at once, with Undo', () => {
     expect(outbox.store.list({})).toEqual([])
   })
 
+  it('stops the Undo of a delete where what comes back would lie where others can open it now, and leaves it in Trash', async () => {
+    const ctx = toolCtx(workCtx())
+    const trashed = await call('files_trash', { place: 'folder', paths: ['Events/Poster.png'] }, ctx)
+    expect(existsSync(join(rig.folder, 'Events', 'Poster.png'))).toBe(false)
+    // He adds the Events folder as a team's library: a file put back there is the team's to see.
+    setRoots(rig.db, [{ folder: join(rig.folder, 'Events') }])
+    forgetLibraries(rig.db)
+    const back = await call('files_undo', { op: (trashed.structuredContent as { undo: { op: string } }).undo.op }, ctx)
+    expect(back).toMatchObject({ isError: true, text: 'Others can open it now, so the owner changes it back himself.' })
+    expect(existsSync(join(rig.folder, 'Events', 'Poster.png'))).toBe(false)
+    expect(rig.db.prepare(`SELECT state FROM work_files_trash`).all()).toEqual([{ state: 'held' }])
+  })
+
+  it('sends each moved thing back to its own folder, two of one name from two folders among them', async () => {
+    const ctx = toolCtx(workCtx())
+    for (const dir of ['A', 'B', 'C']) mkdirSync(join(rig.folder, dir))
+    writeFileSync(join(rig.folder, 'A', 'Plan.txt'), 'from A')
+    writeFileSync(join(rig.folder, 'B', 'Plan.txt'), 'from B')
+    // A's goes; B's is refused, its name taken in C by then.
+    const moved = await call('files_move', { place: 'folder', paths: ['A/Plan.txt', 'B/Plan.txt'], to: { place: 'folder', path: 'C' } }, ctx)
+    expect(readFileSync(join(rig.folder, 'C', 'Plan.txt'), 'utf8')).toBe('from A')
+    expect(existsSync(join(rig.folder, 'B', 'Plan.txt'))).toBe(true)
+    // B's own file leaves B; the Undo still sends A's back to A, never to B.
+    rmSync(join(rig.folder, 'B', 'Plan.txt'))
+    expect((await call('files_undo', { op: (moved.structuredContent as { undo: { op: string } }).undo.op }, ctx)).text).toBe('Moved back: Plan.txt.')
+    expect(readFileSync(join(rig.folder, 'A', 'Plan.txt'), 'utf8')).toBe('from A')
+    expect(existsSync(join(rig.folder, 'B', 'Plan.txt'))).toBe(false)
+  })
+
   it("undoes only the calling thread's own change: another thread of the workspace is told it is not one it can undo", async () => {
     rig.scopes.set('t3', { workspaceId: WS })
     const moved = await call('files_move', { place: 'folder', paths: ['notes.txt'], to: { place: 'folder', path: 'Events' } }, toolCtx(workCtx()))
@@ -430,6 +459,28 @@ describe('in a place others can open a change is held as a file.act', () => {
     const again = await fileActKind.execute(fileActKind.payload.parse(row.payload), { ...workCtx(), item: { sessionId: 't1', workspaceId: WS, ref: { at: 'host', id: row.id } } } as never)
     expect(again).toMatchObject({ summary: 'Renamed: Plan v2.docx.' })
     expect(readdirSync(join(rig.team, 'General')).filter((n) => n.startsWith('Plan'))).toEqual(['Plan v2.docx'])
+  })
+
+  it("answers a held delete pressed again from its own receipt: the file is in its bin, never called stale or sent twice", async () => {
+    const binned: string[] = []
+    setSystemBin({
+      async put(path) {
+        binned.push(path)
+        rmSync(path, { recursive: true })
+        return null
+      }
+    })
+    try {
+      await call('files_trash', { place: TEAM_GENERAL, paths: ['Plan.docx'] }, toolCtx(workCtx()))
+      const row = outbox.store.list({})[0]!
+      expect(await press({ ref: { at: 'host', id: row.id } })).toMatchObject({ state: 'sent', result: { summary: 'Deleted: Plan.docx.' } })
+      // The delete landed and the host stopped before the Outbox heard: pressed again, the act finds its receipt.
+      const again = await fileActKind.execute(fileActKind.payload.parse(row.payload), { ...workCtx(), item: { sessionId: 't1', workspaceId: WS, ref: { at: 'host', id: row.id } } } as never)
+      expect(again).toMatchObject({ summary: 'Deleted: Plan.docx.' })
+      expect(binned).toHaveLength(1)
+    } finally {
+      setSystemBin(null)
+    }
   })
 
   it('does nothing on a press gone stale: the file changed, the file moved, the folder gone, the thread moved', async () => {

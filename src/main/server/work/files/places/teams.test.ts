@@ -279,9 +279,11 @@ describe('the Windows VM through its helper', () => {
       const mine = { id: '1', method: 'work.files.open', params: { workspaceId: WS, ref: { at: 'file', ...(host ? { host } : {}), path: secret } } }
       expect(() => fenceRequest(mine as never, [rig.folder], [], [], HOST)).toThrow(FenceError)
     }
-    // A local file's tab is not shown to a key that names its key beside some other host's file.
+    // A local file's tab is not shown to a key that names its key beside some other host's file: that file is asked
+    // of its own host under its own address (here the Mac refuses it), and the local tab is never answered.
     const local = await call<FilesOpened>('work.files.open', { ref: at(join(rig.folder, 'Budget.xlsx')) })
     const steal = ClientRequestSchema.parse({ id: '1', method: 'work.files.open', params: { workspaceId: WS, ref: { at: 'file', host: MAC, path: '/x/y.pdf' }, key: local.tabs[0]!.key } })
-    await expect(files.handle!(steal, ctx, key)).rejects.toThrow('That key names another file that is open.')
+    await expect(files.handle!(steal, ctx, key)).rejects.toThrow('not in a library')
+    expect(asked.at(-1)).toBe(`${MAC}:/x/y.pdf`)
   })
 })

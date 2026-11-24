@@ -12,6 +12,8 @@ import { closeFilesState, THREADS_BY_TOOLS } from '../handle'
 import { files } from '../index'
 import { admitWrite, ASK_FIRST, MAIL_NEEDS_APPROVE, NEEDS_APPROVE, NEEDS_PRESS, PEER_LIBRARIES, setThreadsMayWrite, THREAD_ELSEWHERE } from '../policy'
 import { forgetSearches } from '../search'
+import { setRoots } from '../../office/files/library'
+import { forgetLibraries } from './libraries'
 import { approver, at, makeRig, peer, phone, thread, window, WS, type Rig } from '../testkit'
 import { docTools } from '../../docs/tools'
 import type { ToolCtx } from '../../modules'
@@ -423,6 +425,36 @@ describe('the verbs', () => {
     expect(lifeos.rows.get('sheets:s1')!.deletedAt).toBeDefined()
     expect((await call<FileDone>('work.files.restore', { ids: ['lifeos:sheets:s1'], op: op() }, phone)).entries.map((e) => e.name)).toEqual(['Budget'])
     expect((await call<FileDone>('work.files.restore', { ids: ['lifeos:docs:d9'], op: op() }, approver)).entries.map((e) => e.name)).toEqual(['Open notes'])
+  })
+
+  it('says what LifeOS deleted, with its Trash row for Undo, when the other rows are refused after it went', async () => {
+    // His Events folder becomes a team's library while LifeOS removes its row: the poster's door refuses a key that may not approve now.
+    const remove = lifeos.mutation.bind(lifeos)
+    lifeos.mutation = async (fn: string, a: Record<string, any>) => {
+      const got = await remove(fn, a)
+      if (fn === 'sheets:remove') {
+        setRoots(rig.db, [{ folder: join(rig.folder, 'Events') }])
+        forgetLibraries(rig.db)
+      }
+      return got
+    }
+    const done = await call<FileDone>('work.files.trash', { refs: [sheet('s1'), at(join(rig.folder, 'Events', 'Poster.png'))], op: op() }, phone)
+    expect(done.trashed).toEqual(['lifeos:sheets:s1'])
+    expect(done.refused).toEqual([{ name: 'Poster.png', text: NEEDS_APPROVE }])
+    expect(lifeos.rows.get('sheets:s1')!.deletedAt).toBeDefined()
+    expect(existsSync(join(rig.folder, 'Events', 'Poster.png'))).toBe(true)
+  })
+
+  it('says what LifeOS put back when the other rows of the selection fail after it', async () => {
+    const own = await call<FileDone>('work.files.trash', { refs: [at(join(rig.folder, 'notes.txt'))], op: op() })
+    await call<FileDone>('work.files.trash', { refs: [sheet('s1')], op: op() })
+    // An operation id already used for another change: the disk's Put back refuses the whole of its part.
+    const used = op()
+    await call<FileDone>('work.files.restore', { ids: ['nope'], op: used })
+    const back = await call<FileDone>('work.files.restore', { ids: ['lifeos:sheets:s1', ...own.trashed!], op: used })
+    expect(back.entries.map((e) => e.name)).toEqual(['Budget'])
+    expect(back.refused).toEqual([{ name: 'notes.txt', text: 'That operation id was used for another change.' }])
+    expect(lifeos.rows.get('sheets:s1')!.deletedAt).toBeUndefined()
   })
 
   it('deletes no LifeOS row of a selection whose other rows their door refuses', async () => {

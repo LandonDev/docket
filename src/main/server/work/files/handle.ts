@@ -5,7 +5,7 @@ import { basename, dirname, join } from 'node:path'
 import type { DatabaseSync } from 'node:sqlite'
 import type { ClientRequest } from '@shared/contract'
 import { isFileForm } from '@shared/work/fileForms'
-import type { FileBytes, FileCrumb, FileDone, FilePage, FileRef, FileSaved, FilesListing, FilesOpened, FilesPlaces, FilesTabs, FileTab } from '@shared/contract-work-files'
+import type { FileBytes, FileCrumb, FileDone, FileOrigin, FilePage, FileRef, FileSaved, FilesListing, FilesOpened, FilesPlaces, FilesTabs, FileTab } from '@shared/contract-work-files'
 import { teamsCanvasOf, teamsKindOf } from '@shared/contract-work-office'
 import { canvasSourcePath, filesPaneOf, handled, NOT_HANDLED, type CanvasItem, type CanvasKind, type CanvasSource, type Handled } from '@shared/work'
 import { copySavesBack, DEFAULT_SORT, extOf, freeName, kindOfEntry, PLACE, refKey, refusal, seatOf, splitName, type FileEntry, type FilePlace, type FileSort, type FileVerb, type FolderRef } from '@shared/work/files'
@@ -33,7 +33,7 @@ import { keepMail, lifeosPlace, lifeosPlaces, lifeosTrash, lifeosTrashShared, li
 import { READ_MAX, readFile, saveCopy, saveFile } from './save'
 import { guestChange, guestOp, vmReadVersioned, vmSave, type VmWhere } from './vmVerbs'
 import { TabStore } from './tabs'
-import { copyVerb, makeFolderRef, makeVerb, moveVerb, offeredIn, renameVerb, replayed } from './verbs'
+import { copyVerb, makeFolderRef, makeVerb, moveVerb, offeredIn, renameVerb, replayed, type MoveDone } from './verbs'
 import { purgeRows, restoreRows, trashEntries, trashFiles } from './trash'
 import { beginUpload } from './upload'
 import { previewOf, thumbsOf } from './preview'
@@ -368,15 +368,21 @@ type OpenAsk = { workspaceId: string; ref: CanvasSource; name?: string; as?: Can
 async function openCopy(ctx: WorkCtx, by: Caller, workspace: WorkspaceRow, p: OpenAsk, file: { host: string; path: string }, signal?: AbortSignal): Promise<FilesOpened> {
   const state = filesState(ctx)
   const name = p.name ?? nameOfPath(file.path)
-  const key = p.key ?? refKey({ at: 'file', ...file })
+  const named = p.key ?? refKey({ at: 'file', ...file })
   const cut = (item: CanvasItem): CanvasItem => fencedItem(item, (path) => reaches(ctx, by, path))
+  const holds = (t: FileTab | null | undefined): t is FileTab => !!t && t.kind === 'file' && t.copyOf?.host === file.host && t.copyOf.path === file.path
+  // The key is the caller's word: it answers a tab only when that tab holds this very file's copy. One another tab
+  // holds for another file (a merged library row whose host changed, the Mac's file and then the VM's, or a key named
+  // beside some other file) is never taken over: this file opens under its own address, and that tab's copy keeps
+  // saving to its own file.
+  const keyNow = (): string => {
+    const t = state.tabs.tabOf(workspace.id, named)
+    return !t || holds(t) ? named : refKey({ at: 'file', ...file })
+  }
   const tabNow = (): FilesOpened | null => {
-    const was = state.tabs.tabOf(workspace.id, key)
-    // The key is the caller's word: it answers a tab only when that tab is this very file's copy, so naming another
-    // tab's key with a file of some other host never shows what that tab holds.
-    if (was && (was.copyOf?.host !== file.host || was.copyOf.path !== file.path)) throw new Error(KEY_TAKEN)
     // One file has more than one key (a library row's, a chip's host and path): its copy's tab is found by where the file lies.
-    const tab = was ?? state.tabs.list(workspace.id).tabs.find((t) => t.kind === 'file' && t.copyOf?.host === file.host && t.copyOf.path === file.path)
+    const was = state.tabs.tabOf(workspace.id, named)
+    const tab = holds(was) ? was : state.tabs.list(workspace.id).tabs.find(holds)
     const shown = tab?.itemId ? ctx.canvas.get(tab.itemId) : null
     return tab && shown ? { ...tabsFor(ctx, by, workspace.id), tabId: tab.id, item: cut(shown) } : null
   }
@@ -388,6 +394,7 @@ async function openCopy(ctx: WorkCtx, by: Caller, workspace: WorkspaceRow, p: Op
     const again = tabNow()
     if (again) return again
     const seat = await copySeat(ctx, workspace.id, file, name, p.as, signal)
+    const key = keyNow()
     const { tabId, item } = state.tabs.openFile(workspace.id, { key, name, ...seat }, p.opener)
     state.marks.seen(workspace.id, key, { file: { at: 'file', ...file } }, name)
     return { ...tabsFor(ctx, by, workspace.id), tabId, item: cut(item) }
@@ -424,7 +431,6 @@ async function copySeat(ctx: WorkCtx, workspaceId: string, file: { host: string;
   if (word && copy.version) recordWord(ctx, { workspaceId, host: file.host, path: file.path, vm, name, version: copy.version, sha: createHash('sha256').update(await readBytes(path)).digest('hex') })
   return { kind, source: copy.source, copyOf }
 }
-const KEY_TAKEN = 'That key names another file that is open.'
 
 /** The copy of one file of the workspace being made, read or replaced now: the next waits for it (`copyIn` writes one path a file). */
 const making = new Map<string, Promise<unknown>>()
@@ -862,8 +868,17 @@ async function lifeosCase(ctx: WorkCtx, by: Caller, m: string, p: Record<string,
       if (rest.length) await admitTrash(ctx, by, { ...p, refs: rest }, m)
       const lifeos = await trashLifeos(ctx, by, { ...(p as never as { workspaceId: string; op: string; asked?: boolean }), refs: mine, op: `${p.op as string}:lifeos` })
       if (!rest.length) return handled({ ...lifeos, op: p.op })
-      const disk = (await filesHandle({ method: m, params: { ...p, refs: rest } } as unknown as ClientRequest, ctx, by, signal)) as { result: FileDone }
-      const done = disk.result
+      let done: FileDone
+      try {
+        done = ((await filesHandle({ method: m, params: { ...p, refs: rest } } as unknown as ClientRequest, ctx, by, signal)) as { result: FileDone }).result
+      } catch (err) {
+        // The others refused after the LifeOS rows went (a Drive file gone since its door): what went is still said,
+        // with its Trash rows for Undo, and each of the others is refused by its name.
+        if (!lifeos.trashed?.length) throw err
+        const text = err instanceof Error ? err.message : String(err)
+        const names = await Promise.all(rest.map(async (r) => (await statOne(ctx, by, p.workspaceId, r, m, signal).catch(() => null))?.name ?? refName(r)))
+        done = { entries: [], refused: names.map((name) => ({ name, text })), trashed: [], op: p.op as string }
+      }
       return handled({ ...done, refused: [...lifeos.refused, ...done.refused], trashed: [...(done.trashed ?? []), ...(lifeos.trashed ?? [])] })
     }
     case 'work.files.restore': {
@@ -872,7 +887,16 @@ async function lifeosCase(ctx: WorkCtx, by: Caller, m: string, p: Record<string,
       if (!mine.length) return null
       const lifeos = await restoreLifeos(ctx, by, p.workspaceId, mine)
       const rest = ids.filter((id) => !id.startsWith('lifeos:'))
-      const done: FileDone = rest.length ? await restoreRows(ctx, by, ownRows(ctx, by, p.workspaceId), rest, p.op as string) : { entries: [], refused: [], op: p.op as string }
+      let done: FileDone = { entries: [], refused: [], op: p.op as string }
+      try {
+        if (rest.length) done = await restoreRows(ctx, by, ownRows(ctx, by, p.workspaceId), rest, p.op as string)
+      } catch (err) {
+        // The others refused after the LifeOS rows came back: what came back is still said, each other row by its name.
+        if (!lifeos.entries.length) throw err
+        const text = err instanceof Error ? err.message : String(err)
+        const nameOf = ctx.db.prepare(`SELECT name FROM work_files_trash WHERE id = ?`)
+        done = { entries: [], refused: rest.map((id) => ({ name: (nameOf.get(id) as { name: string } | undefined)?.name ?? id, text })), op: p.op as string }
+      }
       return handled({ ...done, entries: [...done.entries, ...lifeos.entries], refused: [...done.refused, ...lifeos.refused] })
     }
     case 'work.files.stat': {
@@ -1103,18 +1127,18 @@ export async function filesHandle(req: ClientRequest, ctx: WorkCtx, by: Caller, 
     case 'work.files.copy': {
       const verb = m === 'work.files.move' ? 'move' : 'copy'
       const again = replayed(ctx, by, verb, p as never)
-      if (again) return handled(await again)
+      if (again) return handled(onWire(await again))
       if (namesDrive(p)) {
         held((await admitDrive(ctx, by, verb, p as never, m)).verdict)
         if (verb === 'copy') throw new Error(DRIVE_APART)
         return handled(await driveMove(ctx, by, p as never, m))
       }
       held(admitChange(ctx, by, verb, p as never, m))
-      return handled(await (verb === 'move' ? moveVerb : copyVerb)(ctx, by, p as never, m))
+      return handled(onWire(await (verb === 'move' ? moveVerb : copyVerb)(ctx, by, p as never, m)))
     }
     case 'work.files.trash':
       await admitTrash(ctx, by, p, m)
-      if (namesDrive(p)) return handled(await driveTrash(ctx, by, ownRows(ctx, by, p.workspaceId), p.refs as FileRef[], p.op as string))
+      if (namesDrive(p)) return handled(await driveTrash(ctx, by, ownRows(ctx, by, p.workspaceId), p.refs as FileRef[], p.op as string, p.origin as FileOrigin | undefined))
       // A library's delete may come for a workspace another host keeps (his window asks the file's own host): its row is kept here.
       binRows(ctx, by, p.workspaceId, { peer: true })
       return handled(await trashFiles(ctx, by, p.workspaceId, p.refs as FileRef[], p.op as string))
@@ -1149,7 +1173,7 @@ async function admitRestore(ctx: WorkCtx, by: Caller, workspaceId: string, ids: 
  * in that computer's own bin), one whose folder others can open by its real path (a workspace kept in OneDrive), and
  * a Drive file Drive says is shared, or of whose sharing it says nothing now.
  */
-async function restoresShared(ctx: WorkCtx, workspaceId: string, ids: readonly string[]): Promise<boolean> {
+export async function restoresShared(ctx: WorkCtx, workspaceId: string, ids: readonly string[]): Promise<boolean> {
   const get = ctx.db.prepare(`SELECT ref, provider FROM work_files_trash WHERE id = ? AND workspace_id = ? AND state = 'held'`)
   for (const id of ids) {
     const row = get.get(id, workspaceId) as { ref: string; provider: string | null } | undefined
@@ -1175,6 +1199,15 @@ async function admitTrash(ctx: WorkCtx, by: Caller, p: Record<string, unknown> &
   if (drive && !(p.refs as FileRef[]).every((ref) => namesDrive({ ref }))) throw new Error(DRIVE_APART)
   if (journalled(ctx.db, p.op as string, p.workspaceId, 'trash')) return
   held(drive ? (await admitDrive(ctx, by, 'trash', p as never, m)).verdict : admitChange(ctx, by, 'trash', p as never, m))
+}
+
+/** A move's answer as the wire says it: where each thing came from is its journal's alone (verbs.ts `MoveDone`). */
+const onWire = ({ moved: _journal, ...done }: MoveDone): FileDone => done
+
+/** A thing's name by its ref alone, when it can no longer be looked at. */
+const refName = (ref: FileRef): string => {
+  const path = canvasSourcePath(ref as CanvasSource)
+  return path !== null ? nameOfPath(path) : ref.at === 'google' ? ref.fileId : 'That'
 }
 
 /** The workspace's threads whose open items name exactly this source (a LifeOS row, a Google file), newest first. */

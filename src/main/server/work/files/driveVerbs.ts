@@ -5,7 +5,7 @@ import { DRIVE_ROOT, driveOf, type DriveItem, type DriveMakeKind } from '../goog
 import { accountOfPlace, DRIVE_NEW, driveChanged, driveEntry, driveFacts, drivePlace, driveTop, folderShared, itemShared, kindOfItem } from './places/drive'
 import { admitWrite, changeDigest, locate, type Located, type WorkspaceRow } from './policy'
 import { trashInDrive } from './trash'
-import { checkName, fileLocked, NAME_TAKEN, runOp, withFileLocks } from './write'
+import { checkName, fileLocked, HELD_MOVED, NAME_TAKEN, runOp, withFileLocks } from './write'
 
 /**
  * New, rename, move and delete in a Google Drive (docs/agents/work-files.md "Google Drive"), each one Drive call
@@ -63,6 +63,20 @@ export interface DriveThing {
   item: DriveItem | null
   name: string
   shared: boolean
+}
+
+/**
+ * A held act's thing, as Drive says it is just before the call that changes it: its key, its version and who can open
+ * it, as the card named them. A collaborator's edit, a move or a share since his press leaves it for a new review.
+ * (Drive's own call takes no version to hold it to, so the seconds between this read and that call stay open.)
+ */
+async function boundDrive(ctx: WorkCtx, origin: FileOrigin | undefined, i: number, at: DriveAt, item: DriveItem): Promise<void> {
+  if (origin?.from !== 'act' || !origin.things) return
+  const t = origin.things[i]
+  if (!t) return
+  const e = driveEntry(at.account, item)
+  if (keyOfItem(at.account, item) !== t.key || `${e.size ?? 0}:${e.changed ?? 0}:` !== t.version) throw new Error(HELD_MOVED(item.name))
+  if (t.shared !== undefined && (await itemShared(ctx, at.account, item)) !== t.shared) throw new Error(HELD_MOVED(item.name))
 }
 
 async function thingOf(ctx: WorkCtx, at: DriveAt): Promise<DriveThing> {
@@ -143,7 +157,7 @@ export async function driveMake(ctx: WorkCtx, by: Caller, p: { workspaceId: stri
 }
 
 /** A Drive file or folder by a new name; Drive keeps its id, so what hangs on it (its tab, star, recent) follows. `before` keeps the old name for an Undo. */
-export async function driveRename(ctx: WorkCtx, by: Caller, p: { workspaceId: string; op: string; ref: FileRef; name: string }, method: string): Promise<DriveDone> {
+export async function driveRename(ctx: WorkCtx, by: Caller, p: { workspaceId: string; op: string; ref: FileRef; name: string; origin?: FileOrigin }, method: string): Promise<DriveDone> {
   const at = located(ctx, by, p.workspaceId, p.ref, method)
   if (at.id === DRIVE_ROOT) throw new Error(PLACE_ITSELF)
   checkName(p.name)
@@ -151,6 +165,7 @@ export async function driveRename(ctx: WorkCtx, by: Caller, p: { workspaceId: st
     const was = await factsNow(ctx, at)
     const key = keyOfItem(at.account, was!)
     if (fileLocked(key)) throw new Error(WRITING)
+    await boundDrive(ctx, p.origin, 0, at, was!)
     const now = await withFileLocks([key], () => driveOf(ctx, at.account).rename(at.id, p.name))
     driveChanged(ctx, p.workspaceId, at.account, now.parents.length ? now.parents : [DRIVE_ROOT])
     return { entries: [driveEntry(at.account, now, await itemShared(ctx, at.account, now))], refused: [], before: [{ key, name: was!.name, parents: was!.parents }], op: p.op } satisfies DriveDone
@@ -158,7 +173,7 @@ export async function driveRename(ctx: WorkCtx, by: Caller, p: { workspaceId: st
 }
 
 /** Into another folder of the same Drive: one call that adds the new folder and takes the old ones away. A thing already there is left as it is. */
-export async function driveMove(ctx: WorkCtx, by: Caller, p: { workspaceId: string; op: string; refs: FileRef[]; to: FolderRef }, method: string): Promise<DriveDone> {
+export async function driveMove(ctx: WorkCtx, by: Caller, p: { workspaceId: string; op: string; refs: FileRef[]; to: FolderRef; origin?: FileOrigin }, method: string): Promise<DriveDone> {
   const to = located(ctx, by, p.workspaceId, p.to, method)
   const all = p.refs.map((ref) => located(ctx, by, p.workspaceId, ref, method))
   return runOp(ctx.db, { id: p.op, workspaceId: p.workspaceId, verb: 'move', refs: journal('move', p) }, async () => {
@@ -169,13 +184,14 @@ export async function driveMove(ctx: WorkCtx, by: Caller, p: { workspaceId: stri
     const refused: FileDone['refused'] = []
     const before: NonNullable<DriveDone['before']> = []
     const changed = new Set<string>([to.id])
-    for (const at of all) {
+    for (const [i, at] of all.entries()) {
       let name = at.id
       try {
         if (at.account !== to.account) throw new Error('A Google file moves only within its own Drive.')
         if (at.id === DRIVE_ROOT) throw new Error(PLACE_ITSELF)
         const item = (await factsNow(ctx, at))!
         name = item.name
+        await boundDrive(ctx, p.origin, i, at, item)
         if (at.id === to.id) throw new Error('A folder cannot go inside itself.')
         const key = keyOfItem(at.account, item)
         if (fileLocked(key)) throw new Error(WRITING)
@@ -198,17 +214,18 @@ export async function driveMove(ctx: WorkCtx, by: Caller, p: { workspaceId: stri
 }
 
 /** To Drive's own bin, each thing through its Trash row (trash.ts `trashInDrive`). What could not go is said thing by thing. */
-export function driveTrash(ctx: WorkCtx, by: Caller, workspace: WorkspaceRow, refs: FileRef[], op: string): Promise<FileDone> {
+export function driveTrash(ctx: WorkCtx, by: Caller, workspace: WorkspaceRow, refs: FileRef[], op: string, origin?: FileOrigin): Promise<FileDone> {
   return runOp(ctx.db, { id: op, workspaceId: workspace.id, verb: 'trash', refs }, async () => {
     const trashed: string[] = []
     const refused: FileDone['refused'] = []
-    for (const ref of refs) {
+    for (const [i, ref] of refs.entries()) {
       let name = 'That'
       try {
         const at = located(ctx, by, workspace.id, ref, 'work.files.trash')
         if (at.id === DRIVE_ROOT) throw new Error('A place itself cannot be deleted.')
         const item = (await factsNow(ctx, at))!
         name = item.name
+        await boundDrive(ctx, origin, i, at, item)
         const parent = item.parents[0] ? await driveFacts(ctx, at.account, item.parents[0]) : null
         trashed.push(await trashInDrive(ctx, workspace, { account: at.account, item, trail: parent ? [parent.name] : [] }))
       } catch (err) {
