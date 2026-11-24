@@ -1774,7 +1774,8 @@ Around the canvas:
   and its sentence, with Retry, and "Not saved to MacBook." and the reason
   with Retry where his window's own ask for a send failed. It never says
   saved while his ask is unanswered: "Saving to MacBook…" until the host
-  answers. A Word file of another computer opened as its document says
+  answers, and the file holds the copy's last write; a save of his that
+  wrote nothing into the copy reads "On MacBook". A Word file of another computer opened as its document says
   whether the Word file holds his edits ("The Word file in Teams has not
   changed", "Changes since 9:12 PM are not in the Word file", "Saved to
   Teams as Word 9:12 PM", all muted), with one press while it does not,

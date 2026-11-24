@@ -102,7 +102,19 @@ export type HeaderLine = SavedLine & { words?: string; needs?: boolean };
 export interface CopyAsk {
   owed?: boolean;
   failed?: string;
+  /** the copy's writes as known when his edit began saving: a save that wrote none after them is not called Saved */
+  base?: number;
 }
+
+/** Of the tab's word and his ask's answer on how sending stands, the one that knows more of the copy's writes and of what the file holds. */
+export function newestBack(tab: CopyBack, answer: CopyBack | undefined): CopyBack {
+  if (answer?.writes === undefined || answer.held === undefined) return tab;
+  if (tab.writes === undefined || tab.held === undefined) return answer;
+  return answer.writes > tab.writes || (answer.writes === tab.writes && answer.held > tab.held) ? answer : tab;
+}
+
+/** Whether a send's answer is how sending stands (an older frame's send answers nothing). */
+export const isCopyBack = (x: unknown): x is CopyBack => !!x && typeof x === "object" && typeof (x as { is?: unknown }).is === "string";
 
 /**
  * The line of a copy that saves back to its file on another computer (docs/DESIGN.md "The Files place"): where the
@@ -130,6 +142,12 @@ export function copyLine(kind: SavedLine | null, back: CopyBack, host: string, n
       return { state: "conflict", words: why ? `${host} refused the save. ${why[0]!.toUpperCase()}${why.slice(1)}` : `${host} refused the save` };
     }
     default:
+      // Saved is said of a write of the copy the file holds (an older host says neither count): a write it does not
+      // hold yet is still saving, and a save of his that wrote nothing into the copy saved nothing there.
+      if (back.writes !== undefined && back.held !== undefined) {
+        if (back.held < back.writes) return { state: "saving", words: `Saving to ${host}…` };
+        if (ask.base !== undefined && back.writes <= ask.base) return { state: "saved", words: `On ${host}` };
+      }
       return { state: "saved", words: back.at ? `Saved to ${host} ${whenWords(back.at, now)}` : `On ${host}` };
   }
 }

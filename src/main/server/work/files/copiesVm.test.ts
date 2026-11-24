@@ -149,7 +149,7 @@ describe.skipIf(process.platform === 'win32')('a copy of a file in the Windows V
       throw new (await import('../office/vm/link')).VmUnreachable('asleep')
     })
     writeFileSync(copy, 'two')
-    expect(await call<CopyBack>('work.files.copyBack', { tabId })).toEqual({ is: 'away' })
+    expect(await call<CopyBack>('work.files.copyBack', { tabId })).toMatchObject({ is: 'away', held: 0 })
     await expect(call('work.files.copyBack', { tabId }, thread('t1'))).rejects.toThrow('files_* tools')
   })
 })

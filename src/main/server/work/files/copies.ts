@@ -51,6 +51,10 @@ export interface CopyRow {
   changed_at: number | null
   closed: number
   at: number
+  /** how many times an editor replaced the copy's bytes (`copySaved`) */
+  writes: number
+  /** the last of those writes the file is known to hold */
+  held: number
 }
 
 /** His window: what the workspace's host itself sends as when the press was his. */
@@ -92,16 +96,17 @@ export function recordCopy(ctx: Pick<WorkCtx, 'db'>, c: { workspaceId: string; h
       `INSERT INTO work_files_copies (id, workspace_id, host, path, vm, copy, dir, name, kind, version, sent, state, detail, saved_at, changed_at, closed, at)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'ok', NULL, NULL, NULL, 0, ?)
        ON CONFLICT (workspace_id, host, path) DO UPDATE SET copy = excluded.copy, dir = excluded.dir, name = excluded.name, kind = excluded.kind,
-         version = excluded.version, sent = excluded.sent, state = 'ok', detail = NULL, saved_at = NULL, changed_at = NULL, closed = 0, at = excluded.at`
+         version = excluded.version, sent = excluded.sent, state = 'ok', detail = NULL, saved_at = NULL, changed_at = NULL, closed = 0, at = excluded.at,
+         held = work_files_copies.writes`
     )
     .run(randomUUID(), c.workspaceId, c.host, c.path, c.vm ? 1 : 0, copy, dirname(copy), c.name, c.kind, c.version, c.sha256, Date.now())
   return copyRecord(ctx, c.workspaceId, c.host, c.path)!
 }
 
-/** How sending stands, as a tab says it. */
+/** How sending stands, as a tab says it, with the copy's writes and the last one its file holds. */
 export function backOf(r: CopyRow): CopyBack {
   const at = r.state === 'changed' ? r.changed_at : r.state === 'ok' ? r.saved_at : null
-  return { is: r.state, ...(at ? { at } : {}), ...(r.state === 'refused' && r.detail ? { detail: r.detail } : {}) }
+  return { is: r.state, ...(at ? { at } : {}), ...(r.state === 'refused' && r.detail ? { detail: r.detail } : {}), writes: r.writes, held: r.held }
 }
 
 /** Each copy of the workspace that saves back, by where its file lies (`host\0path`). */
@@ -180,8 +185,11 @@ async function sendOnce(ctx: WorkCtx, id: string): Promise<void> {
   }
   const hash = sha(data)
   if (hash === r.sent) {
+    // The file holds these bytes already: the writes up to this look are in it, and that is known now.
+    if (r.held < r.writes) ctx.db.prepare(`UPDATE work_files_copies SET held = ?, saved_at = ? WHERE id = ?`).run(r.writes, Date.now(), r.id)
     if (r.closed) return letGo(ctx, r)
     if (r.state !== 'ok') setState(ctx, r, 'ok')
+    else if (r.held < r.writes) said(ctx, r.workspace_id)
     return
   }
   if (data.length > COPY_ACROSS_MAX) return setState(ctx, r, 'refused', { detail: TOO_BIG(r.name) })
@@ -196,7 +204,8 @@ async function sendOnce(ctx: WorkCtx, id: string): Promise<void> {
   }
   if ('conflict' in got) return 'gone' in got.conflict ? setState(ctx, r, 'gone') : setState(ctx, r, 'changed', { changedAt: got.conflict.changed })
   if (!('version' in got)) return setState(ctx, r, 'refused', { detail: 'The other computer answered something else.' })
-  ctx.db.prepare(`UPDATE work_files_copies SET version = ?, sent = ?, state = 'ok', detail = NULL, saved_at = ?, changed_at = NULL WHERE id = ?`).run(got.version, hash, Date.now(), r.id)
+  // The bytes read after write `r.writes` landed: the file holds that write (a later one asks for its own send).
+  ctx.db.prepare(`UPDATE work_files_copies SET version = ?, sent = ?, state = 'ok', detail = NULL, saved_at = ?, changed_at = NULL, held = MAX(held, ?) WHERE id = ?`).run(got.version, hash, Date.now(), r.writes, r.id)
   const after = row(ctx, r.id)
   if (after?.closed) return letGo(ctx, after)
   said(ctx, r.workspace_id)
@@ -233,10 +242,12 @@ export function sendBack(ctx: WorkCtx, id: string): Promise<void> {
   return flight.run
 }
 
-/** `saveFile` replaced a file: when it is a copy that saves back, it is sent. */
+/** `saveFile` replaced a file: when it is a copy that saves back, that is one more write of it, and it is sent. */
 export function copySaved(ctx: WorkCtx, path: string): void {
   const r = ctx.db.prepare(`SELECT id FROM work_files_copies WHERE copy = ?`).get(real(path)) as { id: string } | undefined
-  if (r) void sendBack(ctx, r.id)
+  if (!r) return
+  ctx.db.prepare(`UPDATE work_files_copies SET writes = writes + 1 WHERE id = ?`).run(r.id)
+  void sendBack(ctx, r.id)
 }
 
 /**
@@ -385,14 +396,15 @@ export async function copyKeep(ctx: WorkCtx, by: Caller, p: { workspaceId: strin
   const { tab, r } = recordOfTab(ctx, by, p.workspaceId, p.tabId)
   admitOwner(by, r)
   await flights.get(r.id)?.run
+  const writes = row(ctx, r.id)?.writes ?? r.writes
   const data = await readFile(r.copy)
   if (data.length > COPY_ACROSS_MAX) throw new Error(TOO_BIG(r.name))
   const got = await deliver(ctx, r, data, true)
   if (!('copy' in got)) throw new Error('The other computer did not keep the copy.')
   const made = got.copy
   ctx.db
-    .prepare(`UPDATE work_files_copies SET path = ?, name = ?, version = ?, sent = ?, state = 'ok', detail = NULL, saved_at = ?, changed_at = NULL WHERE id = ?`)
-    .run(made.path, made.name, made.version, sha(data), Date.now(), r.id)
+    .prepare(`UPDATE work_files_copies SET path = ?, name = ?, version = ?, sent = ?, state = 'ok', detail = NULL, saved_at = ?, changed_at = NULL, held = MAX(held, ?) WHERE id = ?`)
+    .run(made.path, made.name, made.version, sha(data), Date.now(), writes, r.id)
   const copyOf = { host: r.host, path: made.path, ...(r.vm ? { vm: true } : {}) }
   filesState(ctx).tabs.repoint(p.workspaceId, tab.id, { name: made.name, copyOf })
   if (tab.itemId) {

@@ -595,6 +595,12 @@ or onto another), and whole rows or columns dragged (`move-rows`,
   from the drop until the host has answered (`reloading`): an edit made on a
   move the file then refuses would be lost with it, or written into another
   cell. The wait is LibreOffice's run, some seconds.
+- **A close sends what waits first.** The canvas gathers his edits for
+  `EDIT_WAIT` before it sends them; a tab's close awaits `SheetSync.flushed`
+  (registered with canvas/flush.ts like the deck's and the text's), so the
+  host has his last edit before the item goes. Before 2026-11-23 a cell
+  typed and the tab closed by × at once was sent after the item was gone,
+  refused, and never reached the file.
 - **Not proven.** None of this was opened in real Excel: the proof files
   (each case's file before and after, with the cells and values Excel
   should show, `manifest.json`) wait for a live proof; the first thing to

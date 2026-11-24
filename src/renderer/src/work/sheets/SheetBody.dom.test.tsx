@@ -57,6 +57,7 @@ vi.mock("work-kit/sheet", async (original) => ({
 import { CanvasSeat } from "../canvas/CanvasSeat";
 import { contextChipsOf, resetContextChips } from "../canvas/chips";
 import { resetCanvasStore } from "../canvas/store";
+import { flushItem } from "../canvas/flush";
 
 const ITEM: CanvasItem = canvasItem("s1", { kind: "sheet", title: "Nationals travel budget.xlsx", source: { at: "file", host: "local", path: "/work/budget.xlsx" } });
 const BOOK = workbookOf([
@@ -200,6 +201,18 @@ describe("the sheet kind", () => {
     act(() => sheetHost.push({ rev: sheetHost.rev, view: { ...sheetHost.view, suggestions: [] } }));
     await waitFor(() => expect(cell("D2").textContent).toBe("412"));
     expect(cell("E4").textContent).toBe("1500");
+  });
+
+  it("sends what waits when its tab closes, and the close goes on only once the host has the edit", async () => {
+    // The deployed run of 2026-11-23: a second cell typed in a VM workbook, then its tab closed by × at once. The edit
+    // still waited out its gather time and was sent after the item had gone, so the file never had it.
+    open(sheetView({ rev: 3 }));
+    await gridUp();
+    act(() => grid.edit(set(2, 0, "Second")));
+    expect(edits()).toHaveLength(0);
+    await act(() => flushItem(ITEM.id));
+    expect(edits()).toEqual([{ baseRev: 3, mutations: [set(2, 0, "Second")] }]);
+    expect(sheetHost.rev).toBe(4);
   });
 
   it("sends edits in one batch from the rev it stands at, and after a conflict catches up and sends again", async () => {

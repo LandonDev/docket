@@ -8,7 +8,10 @@
  *  1. New → Deck, named in place; opened; words typed into a box on its slide; 3 s with the box still open: the file's
  *     bytes in the VM hold them (read by the box's own `work.files.read`, through the guest's helper). Then more words
  *     and the tab closed by its × at once: the file holds those too.
- *  2. New → Sheet, named in place; A1 typed, Return: the workbook in the VM holds the value.
+ *  2. New → Sheet, named in place; A1 typed, Return: the workbook in the VM holds the value, judged by the words of its
+ *     cells with the markup taken out (Univer gives the first key typed its own text run: `<t>P</t>…<t>roof …</t>`).
+ *     A second cell, then the tab closed by its × at once: it holds that too. Opened again (now an existing
+ *     workbook), A3 typed: it holds all three.
  *  3. Delete on the deck: the question, Cancel focused; confirmed: the file is gone from the folder and Trash lists
  *     it; Undo puts it back; deleted again at the end, with the sheet.
  * Pictures of the header's line at each state and of the question go to `--out`.
@@ -94,6 +97,13 @@ function partOf(bytes: Buffer | null, part: string): string {
   const file = join(scratch, `f${Date.now()}.zip`)
   writeFileSync(file, bytes)
   return spawnSync('unzip', ['-p', file, part], { encoding: 'utf8' }).stdout ?? ''
+}
+/** A part's words with its markup taken out: a value written as rich text runs is one string again. */
+const textOf = (xml: string): string => xml.replace(/<[^>]+>/g, '')
+/** Whether the proof's workbook in the VM holds a value, as words in a cell (a value typed may be split in rich text runs). */
+const sheetHolds = (value: string): boolean => {
+  const b = bytesInVm(`${SHEET}.xlsx`)
+  return textOf(partOf(b, 'xl/sharedStrings.xml')).includes(value) || textOf(partOf(b, 'xl/worksheets/sheet1.xml')).includes(value)
 }
 const inVm = (name: string): boolean => (box<{ entries: { name: string }[] }>('work.files.list', { workspaceId: WS, at: { at: 'file', host: boxId, path: oneDrive.root.path } }).entries ?? []).some((e) => e.name === name)
 
@@ -458,31 +468,36 @@ try {
       const right = await saveLine()
       await shot('4-sheet-saving')
       log(`header just after Return: ${right}`)
-      const kept = await until('the VM workbook holds the value', 60_000, () => {
-        const b = bytesInVm(`${SHEET}.xlsx`)
-        return partOf(b, '*').includes(value)
-      })
+      const kept = await until('the VM workbook holds the value', 60_000, () => sheetHolds(value))
       await until('saved line', 20_000, async () => (await saveLine()).startsWith('saved'))
       await shot('4-sheet-saved')
-      if (!kept) {
-        const b = bytesInVm(`${SHEET}.xlsx`)
-        const file = join(scratch, 'sheet-now.xlsx')
-        if (b) writeFileSync(file, b)
-        log(`the workbook in the VM now: ${b ? `${b.length} bytes; parts ${spawnSync('unzip', ['-Z1', file], { encoding: 'utf8' }).stdout.replace(/\n/g, ' ')}` : 'not read'}; the copy here: ${spawnSync('unzip', ['-p', box<{ items: { id: string; source: { path?: string } }[] }>('work.canvas.list', { sessionId: `filespane_${WS}` }).items.find((i) => i.source.path?.includes(SHEET))?.source.path ?? '/none'], { encoding: 'utf8' }).stdout.includes(value) ? 'holds the value' : 'lacks the value'}`)
-      }
-      check('A1 typed and Return: the workbook in the VM holds the value, the header says saved', kept, await saveLine())
+      // The dummy's own strings, as the VM holds them (a value typed may lie in several rich text runs).
+      if (!kept) log(`the dummy workbook's strings in the VM: ${partOf(bytesInVm(`${SHEET}.xlsx`), 'xl/sharedStrings.xml').slice(0, 1200)}`)
+      check('A1 typed and Return: the workbook in the VM holds the value, the header says saved', kept && /^saved \| Saved to .*\d/.test(await saveLine()), await saveLine())
       // A second cell, and the tab closed by its × at once.
       await click(at.x, at.y + 22)
       await sleep(300)
-      const second = `Second ${STAMP.slice(-3)}`
+      const second = `Second ${STAMP.slice(-4)}`
       await typeKeys(second)
       await key('Enter')
       await closeTabByX(`${SHEET}.xlsx`)
-      const closed = await until('the VM workbook holds the second value', 60_000, () => {
-        const b = bytesInVm(`${SHEET}.xlsx`)
-        return partOf(b, '*').includes(second)
-      })
-      check('a second cell, then the tab closed by its × at once: the workbook in the VM holds it', closed)
+      const closed = await until('the VM workbook holds the second value', 60_000, () => sheetHolds(second))
+      check('a second cell, then the tab closed by its × at once: the workbook in the VM holds it', closed, `toasts ${JSON.stringify(await toasts())}`)
+      // The same workbook again, now one that was already there: a third cell.
+      await until('the folder', 20_000, async () => !!(await centre('[data-files-row]')))
+      if (check('the workbook, now an existing one, opens from its row again', await pressRow(`${SHEET}.xlsx`)) && (await until('the sheet', 180_000, async () => !!(await a1())))) {
+        await sleep(1500)
+        const again = (await a1())!
+        await click(again.x, again.y + 40)
+        await sleep(300)
+        const third = `Third ${STAMP.slice(-4)}`
+        await typeKeys(third)
+        await key('Enter')
+        const held = await until('the VM workbook holds the third value', 60_000, () => sheetHolds(third))
+        await until('saved line', 20_000, async () => (await saveLine()).startsWith('saved'))
+        check('A3 typed in the existing workbook: the workbook in the VM holds all three values, the header says saved', held && sheetHolds(value) && sheetHolds(second) && (await saveLine()).startsWith('saved'), await saveLine())
+        await closeTabByX(`${SHEET}.xlsx`)
+      }
     }
   }
 

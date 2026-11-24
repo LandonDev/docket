@@ -1625,6 +1625,16 @@ over a file that changed there.
   there as his own save of that library file (`admitChange` as `edit`, a peer only with its origin, a file of a
   library of that host, never its VM), then `saveFile` by the version. The VM: `vmSave`, the guest's versioned
   `files.write {path, data, expect}`. Landed, `version` and `sent` move and `saved_at` is set.
+- **Saved means the file holds his write.** The record counts each time an editor replaced the copy's bytes
+  (`writes`, bumped by `copySaved` as `saveFile` or `fileWritten` tells of the copy) and keeps the last of those the
+  file is known to hold (`held`): a send landed after it was read, or a look found the copy's bytes the file's own
+  (then `saved_at` is that look's time, not an older send's). Reload and Keep Both set `held` to `writes`. The tab
+  carries both (`CopyBack.writes`, `held`), and the window says Saved only when `held` is `writes` and the write came
+  after his edit began saving: the tab notes `writes` as the kind goes to saving and hands it to its ask (`CopyAsk.base`,
+  fileText.ts `copyLine`); a write the file does not hold yet reads "Saving to MacBook…", and a save of his that wrote
+  nothing into the copy reads "On MacBook", never Saved. Of the tab's word and the ask's answer the line reads the one
+  that knows more (`newestBack`). An older host sends neither count, and its line is as it was. (2026-11-23,
+  `.temp-code/plans/landed/F-workbook-not-saved.md`.)
 - **Three things ask for a send, and all meet there.** `saveFile` replacing a recorded copy's path (`onFileSaved`
   in save.ts, which the module's start hears): the sheet's saves, and the `file` kind's text, whose
   `work.files.write` of a copy goes through the door to the copy. An editor that writes its file its own way and
@@ -1655,7 +1665,9 @@ over a file that changed there.
   own rule for a shared file, and goes back as his save would.
 - **Closing the tab.** What the tab's kind still holds is sent first: the close awaits the kind's own send
   (`flushItem`, src/renderer/src/work/canvas/flush.ts, 8 s at most), a deck's open box with his words in it, a text
-  file's words waiting for their save. A copy whose changes have not reached its file then asks once
+  file's words waiting for their save, a sheet's edits waiting out their gather time (`SheetSync.flushed`: sent,
+  and the close goes on once the host answered; before it, a cell typed and the tab closed by × at once was sent after
+  the item had gone, and lost). A cell still open in the grid's editor at the close is not committed. A copy whose changes have not reached its file then asks once
   (`closeCopyTab`, copyClose.ts): "Changes to Roster.xlsx have not reached MacBook." with Keep trying and Discard
   while its computer does not answer, Keep Both and Discard over a file that changed there, Discard alone where it
   was refused. Keep trying closes the tab and keeps the copy and its record (`closed`) until the changes land, then

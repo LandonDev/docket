@@ -319,7 +319,7 @@ export interface FileTab {
 }
 /**
  * How sending a copy back stands (docs/agents/work-files.md "A copy saves back"):
- *  - `ok`: the file holds what the copy holds; `at`: when a send last landed (absent: nothing was sent yet)
+ *  - `ok`: no send is under way or refused; `at`: when the file was last known to hold the copy (absent: not since it was read)
  *  - `sending`: a send is on its way
  *  - `changed`: the file changed on its computer since the copy was read or last sent; `at`: when it changed
  *  - `gone`: the file was moved or deleted there
@@ -330,6 +330,10 @@ export interface CopyBack {
   is: 'ok' | 'sending' | 'changed' | 'gone' | 'away' | 'refused'
   at?: number
   detail?: string
+  /** how many times an editor replaced the copy's bytes (absent from an older host) */
+  writes?: number
+  /** the last of those writes the file holds: Saved is said only when it is `writes`, of a write made after his edit began */
+  held?: number
 }
 /**
  * A Word file opened as a document (docs/agents/work-files.md "A Word file from another computer"): his edits are

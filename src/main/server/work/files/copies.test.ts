@@ -113,7 +113,7 @@ describe('a copy is made with where its file lies', () => {
     expect(readFileSync(copy, 'utf8')).toBe('workbook one')
     // The Mac answered its bytes and their version together.
     expect(far.map((c) => `${c.module}.${c.verb}`)).toEqual(['office.filesRead'])
-    expect(await backOf(tabId)).toEqual({ is: 'ok' })
+    expect(await backOf(tabId)).toEqual({ is: 'ok', writes: 0, held: 0 })
     // Every editor's hold for a shared file reads this: the copy, and a document made beside it.
     expect(sharedOf(box.ctx, { at: 'file', host: HOST, path: copy })).toBe(true)
     expect(sharedOf(box.ctx, { at: 'file', host: HOST, path: join(dirname(copy), 'Roster.tcdoc') })).toBe(true)
@@ -170,6 +170,38 @@ describe('his save goes back to the file', () => {
     expect(readFileSync(path, 'utf8')).toBe('v4')
   })
 
+  it('counts each write of the copy, and says the file holds one only once a send of it landed or the file is found to hold its bytes', async () => {
+    const { path, copy, tabId } = await openFar('Roster.xlsx', 'v1')
+    let open!: () => void
+    hold = new Promise((r) => (open = r))
+    await editorSaves(copy, 'v2')
+    // The write is counted at once; the file does not hold it while its send is under way.
+    expect(copyRecord(box.ctx, WS, MAC, path)).toMatchObject({ writes: 1, held: 0 })
+    expect(await backOf(tabId)).toMatchObject({ writes: 1, held: 0 })
+    open()
+    await settled()
+    const sent = await backOf(tabId)
+    expect(sent).toMatchObject({ is: 'ok', writes: 1, held: 1 })
+    expect(sent?.at).toBeGreaterThan(0)
+    // A write that leaves the bytes the file holds is held by that look, and its time is the look's, not the older send's.
+    await new Promise((r) => setTimeout(r, 5))
+    await editorSaves(copy, 'v2')
+    await settled()
+    const same = await backOf(tabId)
+    expect(same).toMatchObject({ is: 'ok', writes: 2, held: 2 })
+    expect(same!.at!).toBeGreaterThan(sent!.at!)
+    expect(writes()).toBe(1)
+    expect(readFileSync(path, 'utf8')).toBe('v2')
+  })
+
+  it("leaves a write the file could not take unheld: the line can say it is not saved there", async () => {
+    const { path, copy, tabId } = await openFar('Roster.xlsx', 'ours')
+    writeFileSync(path, 'theirs')
+    await editorSaves(copy, 'mine')
+    await settled()
+    expect(await backOf(tabId)).toMatchObject({ is: 'changed', writes: 1, held: 0 })
+  })
+
   it("writes the file kind's text to the copy through the door, which sends it on", async () => {
     const { path, copy, tabId, item } = await openFar('Agenda.md', '# Agenda')
     const read = await call<{ version: string; locked?: string }>('work.files.read', { ref: item.source, itemId: item.id, offset: 0, length: 1000 })
@@ -217,7 +249,8 @@ describe('a file that changed on its computer', () => {
     await call('work.files.copyReload', { tabId })
     expect(readFileSync(copy, 'utf8')).toBe('theirs')
     expect(copyRecord(box.ctx, WS, MAC, path)).toMatchObject({ state: 'ok', version: versionWord(await versionOf(path)) })
-    expect(await backOf(tabId)).toEqual({ is: 'ok' })
+    // The write that was dropped is no longer owed: the file holds the copy as read again, and nothing is said saved.
+    expect(await backOf(tabId)).toEqual({ is: 'ok', writes: 1, held: 1 })
   })
 
   it("Reload after Keep Both reads the file the tab now shows into the copy its item names, in the tab's one folder", async () => {
@@ -238,7 +271,7 @@ describe('a file that changed on its computer', () => {
     expect(item.id).toBe(shown.id)
     expect(readFileSync(copy, 'utf8')).toBe('mine, changed on mac')
     expect(copyRecord(box.ctx, WS, MAC, mine)).toMatchObject({ copy, state: 'ok', version: versionWord(await versionOf(mine)) })
-    expect(await backOf(tabId)).toEqual({ is: 'ok' })
+    expect(await backOf(tabId)).toEqual({ is: 'ok', writes: 2, held: 2 })
     // One folder for the tab: no other was made beside it.
     expect(readdirSync(copyDirOf(box.dataDir, filesPaneOf(WS)))).toEqual([basename(dirname(copy))])
   })
@@ -292,7 +325,7 @@ describe('the other computer not answering, or refusing', () => {
     refuse = 'this host\'s bridge policy for that host is "read", and work.files.writeBack needs operate (Settings → Hosts)'
     await editorSaves(copy, 'two')
     await settled()
-    expect(await backOf(tabId)).toEqual({ is: 'refused', detail: refuse })
+    expect(await backOf(tabId)).toMatchObject({ is: 'refused', detail: refuse, held: 0 })
     expect(readFileSync(path, 'utf8')).toBe('one')
   })
 })

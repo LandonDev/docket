@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { closeCopyTab } from "./copyClose";
-import { copyBackDue, copyLine } from "./fileText";
+import { copyBackDue, copyLine, isCopyBack, newestBack } from "./fileText";
 
 /** A copy that saves back to its file on another computer: the header's words per state, when its tab sends, and its close. */
 
@@ -31,6 +31,28 @@ describe("the line of a copy that saves back", () => {
     // What the host says of the file wins over the window's own ask.
     expect(copyLine(null, { is: "away" }, "MacBook", NOW, { failed: "x" }).words).toBe("MacBook is not answering. Changes wait here");
     expect(copyLine(null, { is: "ok", at: AT }, "MacBook", NOW, {}).words).toBe("Saved to MacBook 1:52 PM");
+  });
+
+  it("says Saved only of a write the file holds that his save made, never by an older send's time", () => {
+    // The host counted a write the file does not hold yet: still saving, though an older send's time is known.
+    expect(copyLine({ state: "saved", at: AT }, { is: "ok", at: AT - 60_000, writes: 4, held: 3 }, "the Windows VM", NOW)).toMatchObject({ state: "saving", words: "Saving to the Windows VM…" });
+    // His save wrote nothing into the copy (it had 3 writes when he began, and still has): nothing of it is in the file.
+    expect(copyLine({ state: "saved", at: AT }, { is: "ok", at: AT - 60_000, writes: 3, held: 3 }, "the Windows VM", NOW, { base: 3 }).words).toBe("On the Windows VM");
+    // His save made the fourth write, and the file holds it.
+    expect(copyLine({ state: "saved", at: AT }, { is: "ok", at: AT, writes: 4, held: 4 }, "the Windows VM", NOW, { base: 3 }).words).toBe("Saved to the Windows VM 1:52 PM");
+    // An older host says neither count: the line is as it was.
+    expect(copyLine({ state: "saved" }, { is: "ok", at: AT }, "MacBook", NOW, { base: 3 }).words).toBe("Saved to MacBook 1:52 PM");
+  });
+
+  it("reads how sending stands from whichever of the tab and his ask's answer knows more", () => {
+    const tab = { is: "ok" as const, writes: 3, held: 2 };
+    expect(newestBack(tab, { is: "ok", writes: 3, held: 3, at: AT })).toMatchObject({ held: 3 });
+    expect(newestBack(tab, { is: "ok", writes: 2, held: 2 })).toBe(tab);
+    expect(newestBack({ is: "ok", writes: 5, held: 5 }, { is: "ok", writes: 4, held: 4 })).toMatchObject({ writes: 5 });
+    expect(newestBack(tab, undefined)).toBe(tab);
+    expect(newestBack({ is: "ok" }, { is: "ok", writes: 1, held: 1 })).toMatchObject({ writes: 1 });
+    expect(isCopyBack({ is: "ok" })).toBe(true);
+    expect(isCopyBack(undefined)).toBe(false);
   });
 
   it("takes the foreground only where it needs him", () => {

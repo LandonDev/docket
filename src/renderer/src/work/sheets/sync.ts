@@ -385,6 +385,15 @@ export class SheetSync {
   }
 
   /**
+   * Sends what has gathered and settles once the host has answered every send under way: a tab's close awaits it
+   * (canvas/flush.ts), so his last edit is in the file before the item goes, never sent after it to a sheet that is gone.
+   */
+  flushed(): Promise<void> {
+    this.flush();
+    return this.chain;
+  }
+
+  /**
    * After a save that failed. An opened Excel file refuses a batch for good
    * (a locked cell, a change it cannot keep), so its grid holds an edit the
    * file does not: it is loaded again and the edits that wait are dropped.

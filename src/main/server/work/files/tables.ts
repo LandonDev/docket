@@ -20,7 +20,9 @@ import type { DatabaseSync } from 'node:sqlite'
  *  - `work_files_copies`: a Files tab's copy of a file on another computer (or in the Windows VM) whose kind
  *    saves, and where the file itself lies: its host and path there, its version and the sha256 of the bytes it
  *    holds as last read or written (`sent`), the copy's path here and its folder, and how sending it back stands (copies.ts).
- *    `closed`: its tab closed with changes not yet sent; the copy is kept until they are.
+ *    `closed`: its tab closed with changes not yet sent; the copy is kept until they are. `writes`: how many times an
+ *    editor replaced the copy's bytes; `held`: the last of those writes the file is known to hold (a send of it
+ *    landed, or the file was found to hold the same bytes), so a tab says Saved only for a write that reached the file.
  *  - `work_files_word`: a Word file of another computer (or the Windows VM) opened in a Files tab, and the document
  *    made of it in the workspace's own folder (`doc`), where his edits are kept (word.ts): the file's version as
  *    read or last written, the document's change time when made (`doc_at`) and when last saved as Word.
@@ -62,6 +64,9 @@ export function ensureFilesTables(db: DatabaseSync): void {
     state TEXT NOT NULL DEFAULT 'ok', detail TEXT, saved_at INTEGER, changed_at INTEGER, closed INTEGER NOT NULL DEFAULT 0,
     at INTEGER NOT NULL, UNIQUE (workspace_id, host, path))`)
   db.exec(`CREATE INDEX IF NOT EXISTS work_files_copies_by_dir ON work_files_copies (dir)`)
+  const copyCols = new Set((db.prepare(`SELECT name FROM pragma_table_info('work_files_copies')`).all() as { name: string }[]).map((c) => c.name))
+  if (!copyCols.has('writes')) db.exec(`ALTER TABLE work_files_copies ADD COLUMN writes INTEGER NOT NULL DEFAULT 0`)
+  if (!copyCols.has('held')) db.exec(`ALTER TABLE work_files_copies ADD COLUMN held INTEGER NOT NULL DEFAULT 0`)
   db.exec(`CREATE TABLE IF NOT EXISTS work_files_word (
     workspace_id TEXT NOT NULL, host TEXT NOT NULL, path TEXT NOT NULL, vm INTEGER NOT NULL DEFAULT 0, name TEXT NOT NULL,
     version TEXT NOT NULL, doc TEXT, doc_at INTEGER, saved_at INTEGER, saved_doc_at INTEGER, at INTEGER NOT NULL,

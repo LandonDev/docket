@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type RefObject } from "react";
 import { confirmAction, confirmChoice } from "../../chrome/ConfirmDialog";
-import type { FileTab } from "@shared/contract-work-files";
+import type { CopyBack, FileTab } from "@shared/contract-work-files";
 import { filesPaneOf, type CanvasItem, type CanvasKind, type ContextChip } from "@shared/work";
 import { kindOfEntry } from "@shared/work/files";
 import { Maximize2, Minimize2, MoreHorizontal, X } from "../../chrome/icons";
@@ -23,7 +23,7 @@ import { dockShape, type ActRow, type EntryAct } from "./model";
 import { saveWordFile, sendCopyBack, setWordAuto, useDock, useDockWidth } from "./store";
 import { askAutosave, saveAsWord, serviceOf, wordLine } from "./wordSave";
 import { NameField, useSideOver } from "./rowParts";
-import { copyBackDue, copyLine, type CopyAsk, type HeaderLine } from "./fileText";
+import { copyBackDue, copyLine, isCopyBack, newestBack, type CopyAsk, type HeaderLine } from "./fileText";
 import { SaveActions, SaveLine } from "./SaveLine";
 import { SidePane, SideSash, sideWidth } from "./SideFile";
 
@@ -62,11 +62,11 @@ export interface CopyWords {
  * most two): Reload and Keep Both over a file that changed there, Keep Both over one that went, Retry where its
  * computer did not answer or refused. Reload drops what was not sent, so it asks first.
  */
-function savingCopyLine(kind: SavedLine | null, tab: FileTab, copy: CopyWords, ask: CopyAsk, reloaded: () => void, send: () => Promise<void>): HeaderLine {
-  const line = copyLine(kind, tab.back!, copy.host, Date.now(), ask);
+function savingCopyLine(kind: SavedLine | null, tab: FileTab, back: CopyBack, copy: CopyWords, ask: CopyAsk, reloaded: () => void, send: () => Promise<void>): HeaderLine {
+  const line = copyLine(kind, back, copy.host, Date.now(), ask);
   if (line.words === undefined) return line;
   const retry = copy.send ? [{ id: "retry", label: "Retry", run: send }] : [];
-  if (ask.failed && tab.back!.is === "ok") return { ...line, actions: retry };
+  if (ask.failed && back.is === "ok") return { ...line, actions: retry };
   const keep = copy.keepBoth ? [{ id: "keep", label: "Keep Both", run: copy.keepBoth }] : [];
   const reload = copy.reload
     ? [
@@ -81,7 +81,7 @@ function savingCopyLine(kind: SavedLine | null, tab: FileTab, copy: CopyWords, a
         },
       ]
     : [];
-  switch (tab.back!.is) {
+  switch (back.is) {
     case "changed":
       return { ...line, actions: [...reload, ...keep] };
     case "gone":
@@ -262,18 +262,23 @@ export function FileTabView({
   // its saving and saved say nothing of the file, and the frame's line says the changes stay here.
   const kindLine = feeds.saved;
   // His window's own ask for a send: under way until the host answers, or refused in the host's words.
-  const [sendAsk, setSendAsk] = useState<CopyAsk>({});
+  // With the host's answer to it, which may know of a write of the copy the tab's own word does not yet.
+  const [sendAsk, setSendAsk] = useState<CopyAsk & { got?: CopyBack }>({});
   const copySend = copy?.send;
-  const sendBack = useCallback(async (): Promise<void> => {
-    setSendAsk({ owed: true });
-    try {
-      // The copy's own send where the frame gives one (FilesView: the same ask on the workspace's link).
-      await (copySend ? copySend() : sendCopyBack(workspace.environmentId, workspace.id, tab.id));
-      setSendAsk({});
-    } catch (err: unknown) {
-      setSendAsk({ failed: err instanceof Error ? err.message : String(err) });
-    }
-  }, [copySend, workspace.environmentId, workspace.id, tab.id]);
+  const sendBack = useCallback(
+    async (base?: number): Promise<void> => {
+      setSendAsk({ owed: true, base });
+      try {
+        // The copy's own send where the frame gives one (FilesView: the same ask on the workspace's link).
+        const got = await (copySend ? copySend() : sendCopyBack(workspace.environmentId, workspace.id, tab.id));
+        setSendAsk({ base, ...(isCopyBack(got) ? { got } : {}) });
+      } catch (err: unknown) {
+        setSendAsk({ failed: err instanceof Error ? err.message : String(err) });
+      }
+    },
+    [copySend, workspace.environmentId, workspace.id, tab.id],
+  );
+  const back = tab.back ? newestBack(tab.back, sendAsk.got) : undefined;
   // A Word file opened as its document: whether the Word file holds his changes, and Save as Word (wordSave.ts).
   const saveWord = (): Promise<void> =>
     saveAsWord(tab, {
@@ -300,8 +305,8 @@ export function FileTabView({
   const line: HeaderLine | null =
     copy && word && (!kindLine || kindLine.state === "saved" || kindLine.state === "saving")
       ? { ...wordLine(word, serviceOf(tab)), ...(wordActions(word).length ? { actions: wordActions(word) } : {}) }
-      : copy && tab.back
-      ? savingCopyLine(kindLine, tab, copy, sendAsk, () => setFresh((n) => n + 1), sendBack)
+      : copy && back
+      ? savingCopyLine(kindLine, tab, back, copy, sendAsk, () => setFresh((n) => n + 1), () => sendBack())
       : copy
         ? kindLine && kindLine.state !== "saved" && kindLine.state !== "saving"
           ? kindLine
@@ -310,12 +315,18 @@ export function FileTabView({
   // Once a copy's kind has saved, the host sends the copy to its file (one send at a time there, the newest bytes).
   const saving = !!(copy && tab.back);
   const lastLine = useRef<SavedLine | null>(null);
+  // The copy's writes as known when the kind began saving: the send it asks for must hold a write made after them.
+  const baseRef = useRef<number | undefined>(undefined);
+  const knownWrites = back?.writes;
   useEffect(() => {
     const was = lastLine.current;
     lastLine.current = kindLine;
+    if (kindLine?.state === "saving" && was?.state !== "saving") baseRef.current = knownWrites;
     if (!saving || !copyBackDue(was, kindLine)) return;
-    void sendBack();
-  }, [kindLine, saving, sendBack]);
+    const base = was?.state === "saving" ? baseRef.current : undefined;
+    baseRef.current = undefined;
+    void sendBack(base);
+  }, [kindLine, saving, sendBack, knownWrites]);
   const [running, setRunning] = useState<string | null>(null);
   const runAction = (action: SavedAction): void => {
     if (running) return;
