@@ -1,9 +1,8 @@
 # Work: end-to-end proofs
 
-Milestone 49 of the Work plan. Whole jobs, run on an isolated dev instance
-of the built app against the owner's real LifeOS with dummy data; what each
-proved, with pictures; and every line the build still has not proven, with
-why and the steps that would prove it.
+Work proofs cover full jobs, file edits, and the rules that hold an action
+for approval. The command table gives each run's setup, time, and account
+use. The Milestone 49 results record what the original runs proved.
 
 ## Journeys
 
@@ -196,27 +195,83 @@ checked and any listener or process left after it stopped.
 
 ## Running them
 
-Build once (`electron-vite build`), then from the repo root, one at a time:
+Run from the repo root. Times are estimates for one run, excluding the queue
+and a prior build. For Linux, a private display means Xvfb and D-Bus. Run
+Electron, Chromium and benchmarks through `heavy`. A nonzero exit means a
+failed check or a failed setup. The table names proofs that use real services
+or a Windows VM. Use the script header for its flags and setup steps.
 
-```
-env -u ELECTRON_RUN_AS_NODE bun scripts/e2e-work-triage.ts
-env -u ELECTRON_RUN_AS_NODE bun scripts/e2e-work-report.ts
-env -u ELECTRON_RUN_AS_NODE bun scripts/e2e-work-document.ts
-env -u ELECTRON_RUN_AS_NODE bun scripts/e2e-work-meeting.ts
-env -u ELECTRON_RUN_AS_NODE bun scripts/e2e-work-routine.ts
-env -u ELECTRON_RUN_AS_NODE bun scripts/e2e-work-switchoff.ts
-env -u ELECTRON_RUN_AS_NODE bun scripts/e2e-work-sweep.ts
-```
+| Proof | Command | Time | Real account or LifeOS | Needs |
+| --- | --- | --- | --- | --- |
+| `scripts/e2e-files.ts` | `bun run script:e2e-files` | <1 min | No | Bun, SQLite |
+| `scripts/e2e-review.ts` | `bun run script:e2e-review` | <1 min | No | Bun, SQLite, LifeOS stand-in |
+| `scripts/proof-digest.ts` | `bun run script:proof-digest` | <1 min | No | Bun, SQLite |
+| `scripts/proof-full-access.ts` | `bun run script:proof-full-access` | <1 min | No | Bun, SQLite |
+| `scripts/proof-templates.ts` | `bun run script:proof-templates` | <1 min, or 1–3 min with tools | No | Bun, SQLite. Optional: `TEMP_CODE_WORK_TOOLS_DATA` with Python and LibreOffice. |
+| `scripts/e2e-money.ts` | `bun run script:e2e-money` | 1–3 min | No | Bun, SQLite and Work receipt tools |
+| `scripts/e2e-work-files.ts` | `bun run script:e2e-work-files` | 2–6 min | No | Built app and private display, two fixtures. Optional: Work preview tools. |
+| `scripts/e2e-work-files-thread.ts` | `bun run script:e2e-work-files-thread` | 1–3 min | No | Built app, private display, dummy Teams library |
+| `scripts/e2e-files-open-remote.ts` | `bun run script:e2e-files-open-remote` | 2–5 min | No | Built app and private display, two scratch hosts |
+| `scripts/e2e-files-copy-edit.ts` | `bun run script:e2e-files-copy-edit` | 4–12 min | No | Built app, private display, LibreOffice, unzip. Optional: `--nine`. |
+| `scripts/e2e-save-as-remote.ts` | `bun run script:e2e-save-as-remote` | 2–5 min | No | Built app and private display, two scratch hosts |
+| `scripts/e2e-canvas-close.ts` | `bun run script:e2e-canvas-close` | 2–5 min | No | Built app, private display and unzip |
+| `scripts/e2e-sheet-files-save.ts` | `bun run script:e2e-sheet-files-save` | 2–5 min | No | Built app, private display, scratch workbooks |
+| `scripts/e2e-export-preview-remote.ts` | `bun run script:e2e-export-preview-remote` | 2–5 min | No | Built app, private display, Work format tools |
+| `scripts/e2e-full-editor-remote.ts` | `bun run script:e2e-full-editor-remote` | 2–6 min | No | Built app, private display, ONLYOFFICE and Playwright Chromium |
+| `scripts/e2e-remote-media.ts` | `bun run script:e2e-remote-media` | 1–3 min | No | Built app and two scratch hosts |
+| `scripts/e2e-work-return.ts` | `bun run script:e2e-work-return` | 1–3 min | No | Built app and private display |
+| `scripts/e2e-work-switchoff.ts` | `bun run script:e2e-work-switchoff` | 1–3 min | No | Built app, private display and SQLite CLI |
+| `scripts/e2e-work-search.ts` | `bun run script:e2e-work-search` | 1–3 min | No | Built app, private display, LifeOS stand-in |
+| `scripts/e2e-mail-chat.ts` | `bun run script:e2e-mail-chat` | 1–3 min | No | Built app, private display and mail fixtures |
+| `scripts/e2e-templates.ts` | `bun run script:e2e-templates` | 2–5 min | No | Built app, private display and template fixtures |
+| `scripts/e2e-work-digest.ts` | `bun run script:e2e-work-digest` | 2–4 min | No | Built app, private display and fake add-on |
+| `scripts/e2e-work-document.ts` | `bun run script:e2e-work-document` | 1–4 min, plus 1–4 min for guest | No | Built app, private display, Python and LibreOffice. Guest needs hosted build and Chromium. Set `E2E_GUEST=0` to run the document leg alone. |
+| `scripts/proof-doc-window.ts` | `bun run script:proof-doc-window` | 2–5 min | No | Built app, private display and Work format tools |
+| `scripts/proof-doc-gate.ts` | `bun run script:proof-doc-gate` | 4–10 min | No | Two built trees, private display and Work format tools |
+| `scripts/proof-doc-guest-phone.ts` | `bun run script:proof-doc-guest-phone` | 2–6 min | No | Hosted build and Playwright Chromium. Desktop leg needs a built app and format tools. |
+| `scripts/e2e-phone-hosted.ts` | `bun run script:e2e-phone-hosted` | 3–8 min | No | Playwright WebKit. Builds hosted pages and starts a scratch host. |
+| `scripts/proof-office-live-fence.ts` | `bun run script:proof-office-live-fence` | 1–3 min | No | Bun, Electron, private display and fake origins |
+| `scripts/e2e-box-video.ts` | `bun run script:e2e-box-video` | 2–6 min | No | Chromium, screen relay and private display |
+| `scripts/e2e-work-files-lifeos.ts` | `E2E_REAL_LIFEOS=1 bun run script:e2e-work-files-lifeos` | 1–4 min | Yes, LifeOS documents | Built app and private display. Makes, renames, trashes and restores one document. |
+| `scripts/e2e-work-triage.ts` | `E2E_REAL_LIFEOS=1 bun run script:e2e-work-triage` | 2–5 min | Yes, LifeOS and mail | Built app and private display. `E2E_SEND=1` sends one mail to the owner. |
+| `scripts/e2e-work-report.ts` | `E2E_REAL_LIFEOS=1 bun run script:e2e-work-report` | 2–5 min | Yes, LifeOS and mail drafts | Built app, private display and Python with openpyxl |
+| `scripts/e2e-work-meeting.ts` | `E2E_REAL_LIFEOS=1 bun run script:e2e-work-meeting` | 2–10 min | Yes, LifeOS tasks | Built app, private display, speech tools and fixture recording |
+| `scripts/e2e-work-routine.ts` | `E2E_REAL_LIFEOS=1 bun run script:e2e-work-routine` | 3–7 min | Yes, LifeOS and mail drafts | Built app and private display. Waits for a real schedule. |
+| `scripts/e2e-prep.ts` | `E2E_REAL_LIFEOS=1 bun run script:e2e-prep` | 3–7 min | Yes, LifeOS calendar, tasks and drafts | Built app and private display |
+| `scripts/e2e-work-sweep.ts` | `E2E_REAL_LIFEOS=1 bun run script:e2e-work-sweep` | 1–3 min | Yes, LifeOS records, keys and sessions | Explicit maintenance command for earlier proof runs. Run alone. |
+| `scripts/e2e-office-live.ts` | `bun run script:e2e-office-live` | 3–10 min | Yes, signed-in Microsoft profile and OneDrive | Chromium, Electron, private display and dummy document in OneDrive |
+| `scripts/proof-mac-bin.ts` | `bun run script:proof-mac-bin` | 1–3 min | Cloud leg uses the Mac’s OneDrive | macOS, Finder and scratch files |
+| `scripts/probe-mac-onedrive.ts` | `bun run script:probe-mac-onedrive` | <1 min | Reads the Mac’s OneDrive mount settings | macOS |
+| `scripts/e2e-box-vm-edit.ts` | `bun run script:e2e-box-vm-edit` | 8–25 min | Yes, deployed box and standing VM OneDrive | Built app via `--app <dir> --out <dir>`, scratch VM files |
+| `scripts/proof-files-standing.ts` | `bun run script:proof-files-standing` | 2–5 min | Yes, standing VM and its OneDrive | Authorized SSH and standing helper |
+| `scripts/probe-vm-copy.ts` | `bun run script:probe-vm-copy` | 1–3 min | Standing VM and its mounted files | Authorized SSH, installed helper, forwarded socket and token |
+| `scripts/probe-vm-live.ts` | `bun run script:probe-vm-live` | 1–3 min | Standing VM and its Office setup | Authorized SSH and installed helper |
+| `scripts/proof-files-vm.ts` | `bun run script:proof-files-vm` | 3–10 min | No account. Uses the Windows rig. | Windows rig, built helper and dummy mount |
+| `scripts/e2e-winvm-keeper.ts` | `bun run script:e2e-winvm-keeper` | 10–30 min | Standing Windows VM disk | Standing VM lock, base image and built helper |
+| `scripts/e2e-winvm-points.ts` | `bun run script:e2e-winvm-points` | 5–15 min | Standing Windows VM disk | Standing VM lock and prepared disk |
+| `scripts/e2e-winvm-stop.ts` | `bun run script:e2e-winvm-stop` | 5–15 min | No account. Uses the Windows rig. | Rig lock, base image and built helper |
+| `scripts/e2e-winvm-picture.ts` | `bun run script:e2e-winvm-picture` | 10–30 min | Standing Windows VM disk | Standing VM lock, screen relay and base image |
+| `scripts/e2e-winvm-work.ts` | `bun run script:e2e-winvm-work` | 10–30 min | Yes, real Claude login and standing Windows VM | Standing VM lock, built app and helper |
+| `scripts/e2e-computer.ts` | `bun run script:e2e-computer` | 2–8 min | Uses a real model login and the Mac’s desktop | Mac idle check, permissions and scratch form |
+| `scripts/e2e-session-move.ts` | `bun run script:e2e-session-move` | 1–4 min | No | Built app and two scratch hosts |
+| `scripts/proof-box-load.ts` | `bun run script:proof-box-load` | 1–3 min | Reads admission from the live box. Adds load. | Private host, box load below 12 and heavy queue |
+| `scripts/bench-files.ts` | `bun run script:bench-files` | 1–4 min | No | Scratch file fixtures and heavy queue |
+| `scripts/bench-review.ts` | `bun run script:bench-review` | 1–4 min | No | Scratch database and heavy queue |
+| `scripts/bench-sheet-save.ts` | `bun run script:bench-sheet-save` | 2–10 min | No | Scratch workbooks and heavy queue |
+| `scripts/bench-work-search.ts` | `bun run script:bench-work-search` | 1–4 min | No | Scratch index and heavy queue |
 
-Each prints PASS or FAIL per check, writes its pictures and a `run-*.txt`
-to `.temp-code/plans/landed/M49/<job>/` (or `--out <dir>`), and exits
-non-zero on any failure.
+The shared runner writes its pictures and a `run-*.txt` file under
+`.temp-code/plans/landed/M49/<job>/` unless the script supplies another
+default or takes `--out <dir>`. The Windows and live account rows require
+their own setup. For a local routine check, run
+`NODE_ENV=test bunx vitest run src/main/server/work/routines/engine.test.ts`.
 
 What they share is `scripts/e2e-work-lib.ts` (`Run`):
 
 - One windowed instance under xvfb, in a folder of its own under /tmp,
-  with its own HOME, userData, Work root, debug port and Work service port
-  (both ports picked free). It never opens the installed app's database.
+  with its own HOME, userData, Work root, debug port and Work service port. A
+  child exit during a proof fails the run. Requests and cleanup have
+  deadlines. Cleanup ends by stopping that run’s process group.
 - It names `WINVM_DIR`, a folder of its own that holds no machine. Left unset, an isolated
   instance on the box reads the standing Windows VM under `/srv/agents/win-vm`, and its
   keeper's idle tick can hibernate that machine under his Work threads after 30 minutes.
@@ -227,7 +282,7 @@ What they share is `scripts/e2e-work-lib.ts` (`Run`):
   `jobs/`, `run/` and `downloads/`, though a tool may still write its own
   cache in its folder (Python's `__pycache__`).
 - LifeOS: the run mints a device session (`auth:mint`, named
-  `E2E-49 <job> <time>`, never printed) and its sign-out revokes it; the
+  `E2E-49 <run id> <job> <time>`, with the token kept out of logs) and its sign-out revokes it; the
   run checks the sign-out. Deleting a Work workspace revokes its key; at
   the end the run revokes every key its instance minted that is still live,
   the Work Chats key (which reads every sector) among them, by the names in
@@ -238,13 +293,12 @@ What they share is `scripts/e2e-work-lib.ts` (`Run`):
   turn runs: the instance's provider is a dead address. The owner's side is
   the wire (`work.outbox.send`, `work.meetings.decide`, …) or a press in
   the window.
-- Every LifeOS record a job makes is named `E2E-49 …`. When the job ends,
-  pass or fail, its own cleanups drop its tasks (with a reason; a dropped
-  task stays in LifeOS's lists, marked dropped) and discard its drafts;
-  then the run searches LifeOS for any task or draft named `E2E-49` still
-  live, takes it away and fails. A cleanup that throws or answers an error
-  fails the run too. `e2e-work-sweep.ts` revokes any `E2E-49` session or
-  key still live and lists the TempCode keys made in the last day.
+- The LifeOS runs opt in with `E2E_REAL_LIFEOS=1`. They give new rows
+  an `E2E-49 <run id>` prefix. At the end, each run drops its tasks and
+  discards its drafts by ID. The final check looks for rows with that
+  run’s prefix and fails if it has to clean any up. The separate sweep
+  checks the shared `E2E-49` prefix and can revoke keys or sessions from
+  other runs. Run it when all other LifeOS proofs have stopped.
 - Mail goes only to his own address. `E2E_SEND=1` lets the triage job send
   one mail to himself; every other run discards its drafts.
 - A picture that could show his real lists (the rail, a workspace's

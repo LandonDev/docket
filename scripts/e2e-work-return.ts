@@ -1,4 +1,4 @@
-import { existsSync, lstatSync, mkdirSync, readdirSync, rmSync, unlinkSync, writeFileSync } from 'node:fs'
+import { mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { REPO, Run, sleep } from './e2e-work-lib'
 
@@ -101,17 +101,8 @@ async function main(): Promise<void> {
   await expectA('2-reload', older)
 
   // (c) quit and launch again on the same data.
-  await sleep(2000)
-  await run.page('(window.api.app.confirmQuit(), true)').catch(() => undefined)
-  await sleep(8000)
-  run.check('the first instance quit', !(await fetch(`http://127.0.0.1:${run.port}/json/version`, { signal: AbortSignal.timeout(2000) }).then(() => true, () => false)))
-  // The same data folder; the harness links its tools folder again at each start (links only: the tools stay).
-  const tools = join(run.data, 'work-tools')
-  for (const name of existsSync(tools) ? readdirSync(tools) : []) {
-    const at = join(tools, name)
-    if (lstatSync(at).isSymbolicLink() || lstatSync(at).isFile()) unlinkSync(at)
-    else rmSync(at, { recursive: true, force: true }) // the run's own jobs, run and downloads folders, never a link
-  }
+  await run.quit()
+  run.check('the first instance quit', true)
   await run.start({})
   await expectA('3-relaunch', older)
 }

@@ -1,9 +1,11 @@
+import { AsyncLocalStorage } from 'node:async_hooks'
 import { execFileSync, spawn, type ChildProcess } from 'node:child_process'
 import { createHmac, randomBytes } from 'node:crypto'
 import { appendFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { createServer } from 'node:net'
 import { homedir } from 'node:os'
 import { join, resolve } from 'node:path'
+import { setTimeout as delay } from 'node:timers/promises'
 import { fileURLToPath } from 'node:url'
 import { ConvexHttpClient } from 'convex/browser'
 import { makeFunctionReference } from 'convex/server'
@@ -11,12 +13,12 @@ import { makeFunctionReference } from 'convex/server'
 /**
  * What every `scripts/e2e-work-*.ts` job shares (milestone 49; docs/agents/work-proofs.md):
  * one isolated windowed instance of the BUILT tree under xvfb, with its own HOME, userData,
- * Work root, debug port and Work service port; Work on; signed in to the owner's real LifeOS
- * with a device session minted for the run (`auth:mint`, never printed) and signed out at the
+ * Work root, debug port and Work service port. Jobs that need the owner's real LifeOS must opt in
+ * and use a device session minted for the run (`auth:mint`, never printed) and signed out at the
  * end, which revokes it. The agent's side is called as a thread's bridge calls it
  * (`app.workCall`, `app.addonCall`) with that thread's own tokens, from seeds this run sets; the
  * owner's side is the wire (`work.outbox.send`, `work.meetings.decide` …) or a press in the
- * window. Every LifeOS record a job makes is named `E2E-49 …` and taken away through LifeOS's
+ * window. Every LifeOS record a job makes is named with that run’s `E2E-49 <id>` prefix and taken away through LifeOS's
  * API with a reason when the job ends, pass or fail.
  *
  * Run a job from the repo root after `electron-vite build`:
@@ -43,20 +45,100 @@ export interface Tool {
 export const textOf = (r: Tool): string => (r.content ?? []).map((c) => c.text ?? `[${c.type}]`).join('\n')
 
 export type Cdp = {
-  eval<T>(expression: string): Promise<T>
-  send(method: string, params?: Record<string, unknown>): Promise<unknown>
+  eval<T>(expression: string, timeoutMs?: number, signal?: AbortSignal): Promise<T>
+  send(method: string, params?: Record<string, unknown>, timeoutMs?: number, signal?: AbortSignal): Promise<unknown>
   close(): void
   onEvent(listener: (method: string, params: unknown) => void): void
 }
 
-export const freePort = (): Promise<number> =>
-  new Promise((ok) => {
-    const s = createServer()
-    s.listen(0, '127.0.0.1', () => {
-      const { port } = s.address() as { port: number }
-      s.close(() => ok(port))
+export class ProofTimeout extends Error {}
+
+export async function withinDeadline<T>(label: string, ms: number, work: (signal: AbortSignal) => T | Promise<T>, parent?: AbortSignal): Promise<T> {
+  const controller = new AbortController()
+  const signal = parent ? AbortSignal.any([parent, controller.signal]) : controller.signal
+  signal.throwIfAborted()
+  const timer = setTimeout(() => controller.abort(new ProofTimeout(`${label} timed out after ${ms} ms`)), ms)
+  const aborted = Promise.withResolvers<never>()
+  const onAbort = (): void => aborted.reject(signal.reason)
+  signal.addEventListener('abort', onAbort, { once: true })
+  try {
+    return await Promise.race([aborted.promise, Promise.resolve().then(() => {
+      signal.throwIfAborted()
+      return work(signal)
+    })])
+  } finally {
+    clearTimeout(timer)
+    signal.removeEventListener('abort', onAbort)
+  }
+}
+
+export function proofPrefix(id: string): string {
+  return `${PREFIX} ${id}`
+}
+
+export function ownsProofRecord(prefix: string, title: string | undefined): boolean {
+  return title?.startsWith(`${prefix} `) === true
+}
+
+export function sessionIds(reply: unknown): string[] {
+  if (!Array.isArray(reply) || reply.some((row) => typeof row?.id !== 'string' || !row.id)) throw new Error('session.list returned no session list')
+  return reply.map((row: { id: string }) => row.id).sort()
+}
+
+export function watchProofChild(child: Pick<ChildProcess, 'once'>, label: string): Promise<Error | null> {
+  return new Promise((resolve) => {
+    child.once('error', (error: Error) => resolve(new Error(`${label} could not start: ${error.message}`, { cause: error })))
+    child.once('exit', (code: number | null, signal: NodeJS.Signals | null) => {
+      resolve(code === 0 ? null : new Error(`${label} exited (${signal ?? code})`))
     })
   })
+}
+
+export const freePort = (): Promise<number> =>
+  withinDeadline('reserve a loopback port', 5000, (signal) => new Promise((ok, fail) => {
+    const s = createServer()
+    s.once('error', fail)
+    s.listen({ port: 0, host: '127.0.0.1', signal }, () => {
+      const { port } = s.address() as { port: number }
+      s.close((error) => error ? fail(error) : ok(port))
+    })
+  }))
+
+export function proofRpc<T>(port: number, method: string, params: unknown, ms = 120_000, parent?: AbortSignal): Promise<T> {
+  return withinDeadline(method, ms, (signal) => new Promise<T>((resolve, reject) => {
+    const ws = new WebSocket(`ws://127.0.0.1:${port}/`)
+    const id = `e2e-${randomBytes(8).toString('hex')}`
+    const finish = (): void => {
+      signal.removeEventListener('abort', finish)
+      ws.onopen = ws.onmessage = ws.onclose = ws.onerror = null
+      if (ws.readyState < WebSocket.CLOSING) ws.close()
+    }
+    signal.addEventListener('abort', finish, { once: true })
+    ws.onopen = () => {
+      try {
+        ws.send(JSON.stringify({ id, method, params }))
+      } catch (error) {
+        reject(error)
+        finish()
+      }
+    }
+    ws.onmessage = (ev) => {
+      try {
+        const frame = JSON.parse(String(ev.data)) as { id?: string; ok?: boolean; result?: T; error?: string }
+        if (frame.id !== id) return
+        if (frame.ok === true) resolve(frame.result as T)
+        else reject(new Error(`${method}: ${frame.error ?? 'invalid reply'}`))
+      } catch (error) {
+        reject(error)
+      }
+      finish()
+    }
+    ws.onclose = ws.onerror = () => {
+      reject(new Error(`socket closed while asking ${method}`))
+      finish()
+    }
+  }), parent)
+}
 
 /** Mints a device session on the owner's LifeOS for one run; the run's sign-out revokes it. Its words never reach a log. */
 export function mint(name: string): string {
@@ -64,7 +146,8 @@ export function mint(name: string): string {
   try {
     const out = execFileSync('sudo', ['-n', '/usr/local/bin/lifeos-deploy', 'run', LIFEOS_CHECKOUT, 'auth:mint', JSON.stringify({ ownerId: 'landon', name })], {
       encoding: 'utf8',
-      stdio: ['ignore', 'pipe', 'pipe']
+      stdio: ['ignore', 'pipe', 'pipe'],
+      timeout: 30_000
     })
     token = JSON.parse(out.trim().split('\n').at(-1) ?? '')
   } catch {
@@ -82,14 +165,25 @@ export function linkTools(data: string): void {
   for (const name of readdirSync(TOOLS)) {
     if (['jobs', 'run', 'downloads'].includes(name)) mkdirSync(join(mine, name), { recursive: true })
     else if (name === 'state.json') writeFileSync(join(mine, name), readFileSync(join(TOOLS, name)))
-    else symlinkSync(join(TOOLS, name), join(mine, name))
+    else if (!existsSync(join(mine, name))) symlinkSync(join(TOOLS, name), join(mine, name))
   }
 }
+
+/** These scratch windows start without a setup link. Dismiss only the first-run setup offer. */
+export const skipSetupOffer = `(() => {
+  localStorage.setItem('monocode.setupOffered', '1')
+  for (const dialog of document.querySelectorAll('[role="dialog"]')) {
+    if (!dialog.textContent.includes('Use a setup link')) continue
+    const skip = [...dialog.querySelectorAll('button')].find((button) => button.textContent.trim() === 'Skip')
+    if (skip) skip.click()
+  }
+})()`
 
 export class Run {
   readonly root: string
   readonly out: string
   readonly seed = randomBytes(32).toString('hex')
+  readonly prefix = proofPrefix(randomBytes(8).toString('hex'))
   readonly results: string[] = []
   readonly data: string
   readonly home: string
@@ -99,6 +193,15 @@ export class Run {
   serverPort = 0
   host = ''
   private proc: ChildProcess | null = null
+  private exited: Promise<Error | null> | null = null
+  private child = new AbortController()
+  private expectedExit = false
+  private readonly budget = AbortSignal.timeout(20 * 60_000)
+  private readonly scope = new AsyncLocalStorage<AbortSignal>()
+  private stopping: Promise<void> | null = null
+  private get signal(): AbortSignal {
+    return this.scope.getStore() ?? AbortSignal.any([this.child.signal, this.budget])
+  }
   private cdp: Cdp | null = null
   private calls = 0
   private owner: ConvexHttpClient | null = null
@@ -145,13 +248,24 @@ export class Run {
     console.log(`[${this.job}] ${line}`)
   }
   async until(label: string, ms: number, test: () => Promise<boolean> | boolean): Promise<boolean> {
-    const end = Date.now() + ms
-    while (Date.now() < end) {
-      if (await Promise.resolve(test()).catch(() => false)) return true
-      await sleep(400)
+    let lastError: unknown
+    try {
+      return await withinDeadline(label, ms, (signal) => this.scope.run(signal, async () => {
+        while (true) {
+          signal.throwIfAborted()
+          try {
+            if (await test()) return true
+          } catch (error) {
+            lastError = error
+          }
+          await delay(400, undefined, { signal })
+        }
+      }), this.signal)
+    } catch (error) {
+      if (!(error instanceof ProofTimeout)) throw error
+      this.note(`${error.message}${lastError ? `; last error: ${String(lastError)}` : ''}`)
+      return false
     }
-    this.note(`timed out: ${label}`)
-    return false
   }
   /** Registers a cleanup; `finish` runs them newest first, whatever happened. */
   later(label: string, fn: () => Promise<unknown>): void {
@@ -160,6 +274,8 @@ export class Run {
 
   /** Launches the instance, attaches to its window, turns Work on (unless `work: false`). `env` adds the run's own test seams (a job that needs no real LifeOS names its stand-in there). */
   async start(opts: { work?: boolean; env?: Record<string, string> } = {}): Promise<void> {
+    if (this.proc) throw new Error('stop the current instance before starting another')
+    this.signal.throwIfAborted()
     this.port = await freePort()
     this.workPort = await freePort()
     if (await fetch(`http://127.0.0.1:${this.port}/json/version`, { signal: AbortSignal.timeout(3000) }).then(() => true, () => false)) throw new Error(`debug port ${this.port} is in use`)
@@ -189,6 +305,8 @@ export class Run {
       TEMP_CODE_FAKE_PROVIDERS: 'http://127.0.0.1:9',
       ...opts.env
     }
+    env.WINVM_DIR = join(this.root, 'no-vm')
+    mkdirSync(env.WINVM_DIR, { recursive: true })
     const electron = join(this.repo, 'node_modules', '.bin', 'electron')
     // Linux draws into xvfb; a Mac opens a real window (a Mac child runs only after the idle gate).
     const argv = process.platform === 'linux' ? ['xvfb-run', '-a', '-s', '-screen 0 1440x900x24 -nolisten tcp', 'dbus-run-session', '--', electron, '.'] : [electron, '.']
@@ -198,48 +316,59 @@ export class Run {
       stdio: ['ignore', 'pipe', 'pipe'],
       detached: true
     })
+    const child = this.child
+    this.exited = watchProofChild(this.proc, `${this.job} instance`).then((error) => {
+      if (!this.expectedExit) {
+        const failure = error ?? new Error(`${this.job} instance exited before the proof ended`)
+        this.check('the instance stayed up', false, failure.message)
+        child.abort(failure)
+      }
+      return error
+    })
     const log = join(this.root, 'instance.log')
     this.proc.stdout?.on('data', (c: Buffer) => appendFileSync(log, c))
     this.proc.stderr?.on('data', (c: Buffer) => appendFileSync(log, c))
-    this.cdp = await attach(this.port, 120_000)
-    // The first connection can be made while the page is still loading, and what it asks is then never answered: an
-    // ask that fails or goes unanswered for a few seconds is asked again on a fresh connection.
     const connected = `window.__monocode?.registry?.statusOf?.(window.__monocode.registry.primaryEnvironmentId)?.transport === 'open'`
     const up = await this.until('window connected', 180_000, async () => {
-      const answer = await Promise.race([this.page<boolean>(connected).catch(() => null), sleep(8000).then(() => null)])
-      if (answer !== null) return answer
+      this.cdp ??= await attach(this.port, 15_000, this.signal)
       try {
-        this.cdp?.close()
-      } catch {
-        /* gone */
+        return await this.cdp.eval<boolean>(connected, 8_000, this.signal)
+      } catch (error) {
+        this.cdp.close()
+        this.cdp = null
+        throw error
       }
-      this.cdp = await attach(this.port, 60_000)
-      return false
     })
-    if (!this.check('the instance is up', up)) throw new Error(readFileSync(log, 'utf8').slice(-1500))
+    if (!this.check('the instance is up', up)) throw new Error(existsSync(log) ? readFileSync(log, 'utf8').slice(-1500) : 'The instance wrote no log')
     this.serverPort = (await this.page<number | null>('window.api.getServerPort()')) ?? 0
-    await this.cdp.send('Page.enable')
-    await this.cdp.send('Emulation.setDeviceMetricsOverride', { width: 1440, height: 900, deviceScaleFactor: 1, mobile: false })
+    if (!this.serverPort) throw new Error('The instance has no local server port')
+    await this.send('Page.enable')
+    await this.send('Emulation.setDeviceMetricsOverride', { width: 1440, height: 900, deviceScaleFactor: 1, mobile: false })
     if (opts.work !== false) await this.call('work.set', { enabled: true })
-    await this.until('environment.json', 30_000, () => existsSync(join(this.data, 'environment.json')))
+    if (!(await this.until('environment.json', 30_000, () => existsSync(join(this.data, 'environment.json'))))) throw new Error('No environment.json')
     this.host = (JSON.parse(readFileSync(join(this.data, 'environment.json'), 'utf8')) as { id: string }).id
   }
 
   /** Signs in with a session minted for this run, and keeps the owner's client for checks and cleanup. */
   async signIn(name: string): Promise<void> {
-    this.sessionName = `${PREFIX} ${name} ${new Date().toISOString()}`
+    this.signal.throwIfAborted()
+    if (process.env.E2E_REAL_LIFEOS !== '1') throw new Error('Set E2E_REAL_LIFEOS=1 to run against the owner’s LifeOS')
+    this.sessionName = `${this.prefix} ${name} ${new Date().toISOString()}`
     const token = mint(this.sessionName)
-    // Run last to first: whatever a job left named E2E-49, then every key this instance minted (its Work
+    // Run last to first: whatever this run left, then every key this instance minted (its Work
     // Chats key, which reads every sector, among them), then the session itself.
     this.later('sign out (revokes the minted session)', async () => {
       const after = await this.call<{ lifeos: { state: string } }>('work.lifeos.signOut', {})
       this.check('signed out: the minted session is revoked', after.lifeos.state === 'signed-out', after.lifeos.state)
     })
     this.later('retire the keys this run minted', () => this.retireKeys())
-    this.later('take away anything named E2E-49 a job left', () => this.leftovers())
+    this.later('take away records left by this run', () => this.leftovers())
     const s = await this.call<{ lifeos: { state: string } }>('work.lifeos.setToken', { token })
     this.check('signed in to LifeOS with a session minted for this run', s.lifeos.state === 'connected', JSON.stringify(s.lifeos))
-    this.owner = new ConvexHttpClient(LIFEOS, { logger: false })
+    this.owner = new ConvexHttpClient(LIFEOS, {
+      logger: false,
+      fetch: (input, init) => fetch(input, { ...init, signal: init?.signal ? AbortSignal.any([init.signal, this.signal]) : this.signal })
+    })
   }
 
   /** The owner's own LifeOS client with a JWT asked for now. */
@@ -250,10 +379,18 @@ export class Run {
     return this.owner
   }
   async query<T>(fn: string, args: Record<string, unknown> = {}): Promise<T> {
-    return (await (await this.lifeos()).query(makeFunctionReference<'query'>(fn), args)) as T
+    return withinDeadline(`LifeOS query ${fn}`, 30_000, (signal) => this.scope.run(signal, async () => (await (await this.lifeos()).query(makeFunctionReference<'query'>(fn), args)) as T), this.signal)
   }
   async mutation<T>(fn: string, args: Record<string, unknown> = {}): Promise<T> {
-    return (await (await this.lifeos()).mutation(makeFunctionReference<'mutation'>(fn), args)) as T
+    return withinDeadline(`LifeOS mutation ${fn}`, 30_000, (signal) => this.scope.run(signal, async () => (await (await this.lifeos()).mutation(makeFunctionReference<'mutation'>(fn), args)) as T), this.signal)
+  }
+
+  /** Cleanup is idempotent when the proof already discarded or sent the draft through the Outbox. */
+  cleanupDraft(id: string): void {
+    this.later(`discard draft ${id.slice(-6)}`, async () => {
+      const draft = await this.query<{ row: { status: string } } | null>('compose:get', { id })
+      if (draft?.row.status === 'draft') await this.mutation('compose:discard', { id })
+    })
   }
 
   /** A Work workspace for `sector`, its LifeOS key and add-on ready; deleted at the end (the host revokes its key). */
@@ -294,34 +431,20 @@ export class Run {
     return this.call<Tool>('app.addonCall', { sessionId, appToken: this.appToken(sessionId), tool: `lifeos__${name}`, arguments: args })
   }
   /** A Work tool, as the thread's bridge calls it. */
-  tool(sessionId: string, name: string, args: Record<string, unknown> = {}): Promise<Tool> {
-    return this.call<Tool>('app.workCall', { sessionId, token: this.workToken(sessionId), appToken: this.appToken(sessionId), call: ++this.calls, tool: name, args }, 300_000)
+  tool(sessionId: string, name: string, args: Record<string, unknown> = {}, timeoutMs = 300_000): Promise<Tool> {
+    return this.call<Tool>('app.workCall', { sessionId, token: this.workToken(sessionId), appToken: this.appToken(sessionId), call: ++this.calls, tool: name, args }, timeoutMs)
   }
 
   /** One request on the instance's local socket (the implicit admin, the owner's own seat). */
   call<T>(method: string, params: unknown = {}, timeoutMs = 120_000): Promise<T> {
-    const ws = new WebSocket(`ws://127.0.0.1:${this.serverPort}/`)
-    const id = `e2e-${Math.random().toString(36).slice(2)}`
-    return new Promise<T>((ok, fail) => {
-      const timer = setTimeout(() => (ws.close(), fail(new Error(`no answer to ${method}`))), timeoutMs)
-      ws.addEventListener('open', () => ws.send(JSON.stringify({ id, method, params })))
-      ws.addEventListener('message', (ev) => {
-        const frame = JSON.parse(String(ev.data)) as { id?: string; ok?: boolean; result?: T; error?: string }
-        if (frame.id !== id) return
-        clearTimeout(timer)
-        ws.close()
-        if (frame.ok) ok(frame.result as T)
-        else fail(new Error(`${method}: ${frame.error}`))
-      })
-      ws.addEventListener('error', () => (clearTimeout(timer), fail(new Error(`socket error on ${method}`))))
-    })
+    return proofRpc<T>(this.serverPort, method, params, timeoutMs, this.signal)
   }
 
   page<T>(expression: string): Promise<T> {
-    return this.cdp!.eval<T>(expression)
+    return this.cdp!.eval<T>(expression, undefined, this.signal)
   }
   send(method: string, params: Record<string, unknown> = {}): Promise<unknown> {
-    return this.cdp!.send(method, params)
+    return this.cdp!.send(method, params, undefined, this.signal)
   }
   /** Opens a thread in the window, by id. */
   async show(sessionId: string): Promise<void> {
@@ -338,6 +461,13 @@ export class Run {
     for (const type of ['mousePressed', 'mouseReleased']) await this.send('Input.dispatchMouseEvent', { type, x: at.x, y: at.y, button: 'left', clickCount: 1 })
     return true
   }
+  async key(key: string, code: string, windowsVirtualKeyCode: number, modifiers = 0): Promise<void> {
+    const params = { key, code, windowsVirtualKeyCode, modifiers }
+    const text = modifiers ? undefined : key.length === 1 ? key : key === 'Enter' ? '\r' : undefined
+    await this.send('Input.dispatchKeyEvent', { ...params, type: 'keyDown', text })
+    await this.send('Input.dispatchKeyEvent', { ...params, type: 'keyUp' })
+  }
+
   has(text: string): Promise<boolean> {
     return this.page<boolean>(`document.body.textContent.includes(${JSON.stringify(text)})`)
   }
@@ -365,7 +495,7 @@ export class Run {
     const names = new Set<string>()
     for (const file of existsSync(this.data) ? readdirSync(this.data).filter((f) => f.endsWith('.db')) : []) {
       try {
-        const rows = execFileSync('sqlite3', [join(this.data, file), 'SELECT bot_name FROM work_lifeos_keys'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] })
+        const rows = execFileSync('sqlite3', [join(this.data, file), 'SELECT bot_name FROM work_lifeos_keys'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], timeout: 5000 })
         for (const line of rows.split('\n')) if (line.trim()) names.add(line.trim())
       } catch {
         /* not the app's database */
@@ -377,23 +507,30 @@ export class Run {
     const names = this.keyNames()
     const live = async () => ((await this.query<{ _id: string; name: string; revokedAt?: number }[]>('bots:list')).filter((b) => b.revokedAt === undefined && names.includes(b.name)))
     await this.until('keys revoked by the host', 20_000, async () => (await live()).length === 0)
-    for (const bot of await live().catch(() => [])) await this.mutation('bots:revoke', { id: bot._id }).catch(() => null)
-    const left = await live().catch(() => null)
-    this.check(`every LifeOS key this run minted is retired (${names.length})`, left !== null && left.length === 0, JSON.stringify(left?.map((b) => b.name)))
+    for (const bot of await live()) {
+      await this.mutation('bots:revoke', { id: bot._id }).catch((error: unknown) => this.check('revoke a run key', false, String(error)))
+    }
+    const left = await live()
+    this.check(`every LifeOS key this run minted is retired (${names.length})`, left.length === 0, JSON.stringify(left.map((b) => b.name)))
   }
 
-  /** A task or a draft named E2E-49 still in LifeOS after the job's own cleanups: taken away, and a failure. */
+  /** A task or draft with this run’s prefix still in LifeOS after the job's own cleanups: taken away, and a failure. */
   private async leftovers(): Promise<void> {
-    const tasks = (await this.query<{ _id: string; title: string; status: string }[]>('tasks:search', { text: PREFIX })).filter((t) => t.title.startsWith(PREFIX) && t.status !== 'dropped')
-    for (const t of tasks) await this.mutation('tasks:drop', { id: t._id, reason: 'E2E-49 proof: left by its job, taken away at its end' })
-    const drafts = (await this.query<{ _id: string; message?: { subject?: string } }[]>('compose:list', { view: 'drafts' })).filter((d) => d.message?.subject?.startsWith(PREFIX))
-    for (const d of drafts) await this.mutation('compose:discard', { id: d._id })
-    this.check('the job left no task or draft named E2E-49 in LifeOS', tasks.length + drafts.length === 0, [...tasks.map((t) => t.title), ...drafts.map((d) => d.message?.subject)].join('; '))
+    const tasks = (await this.query<{ _id: string; title: string; status: string }[]>('tasks:search', { text: this.prefix })).filter((t) => ownsProofRecord(this.prefix, t.title) && t.status !== 'dropped')
+    for (const t of tasks) {
+      await this.mutation('tasks:drop', { id: t._id, reason: 'E2E-49 proof: left by its job, taken away at its end' }).catch((error: unknown) => this.check('drop a leftover task', false, String(error)))
+    }
+    const drafts = (await this.query<{ _id: string; message?: { subject?: string } }[]>('compose:list', { view: 'drafts' })).filter((d) => ownsProofRecord(this.prefix, d.message?.subject))
+    for (const d of drafts) {
+      await this.mutation('compose:discard', { id: d._id }).catch((error: unknown) => this.check('discard a leftover draft', false, String(error)))
+    }
+    this.check('the job left no task or draft with its prefix in LifeOS', tasks.length + drafts.length === 0, [...tasks.map((t) => t.title), ...drafts.map((d) => d.message?.subject)].join('; '))
   }
 
   /** Runs the cleanups, stops the instance, writes the results; exits non-zero on any failure. */
   async finish(err?: unknown): Promise<never> {
     await this.stop(err)
+    mkdirSync(this.out, { recursive: true })
     const summary = this.failures ? `${this.failures} FAILED` : 'ALL PASS'
     this.results.push(summary)
     writeFileSync(join(this.out, `run-${new Date().toISOString().replace(/[:.]/g, '-')}.txt`), this.results.join('\n') + '\n')
@@ -406,42 +543,73 @@ export class Run {
     return this.failures
   }
 
-  /** Runs the cleanups and stops the instance, with no exit: a job of two instances stops one, then finishes with the other. */
-  async stop(err?: unknown): Promise<void> {
-    if (err) this.check('the job ran to its end', false, err instanceof Error ? (err.stack ?? err.message) : String(err))
-    // A cleanup that throws, or a tool that answers an error, leaves something behind: that fails the run.
-    for (const { label, fn } of this.undo) {
-      try {
-        const r = (await fn()) as { isError?: boolean } | undefined
-        if (r && typeof r === 'object' && r.isError) this.check(`cleanup "${label}"`, false, textOf(r as Tool).slice(0, 200))
-      } catch (e) {
-        this.check(`cleanup "${label}"`, false, (e as Error).message.slice(0, 200))
+  /** The restart proof asks the child to quit and waits for the exact child it started. */
+  async quit(): Promise<void> {
+    if (!this.exited) throw new Error('No instance to quit')
+    this.expectedExit = true
+    await this.page('setTimeout(() => window.api.app.confirmQuit(), 0); true')
+    const error = await withinDeadline('quit the Work instance', 30_000, () => this.exited!, this.signal)
+    if (error) throw error
+    await this.stopGroup()
+    this.expectedExit = false
+    this.child = new AbortController()
+  }
+
+  /** Runs cleanups and stops the instance without exiting. */
+  stop(err?: unknown): Promise<void> {
+    return this.stopping ??= this.stopOnce(err)
+  }
+
+  private async stopOnce(err?: unknown): Promise<void> {
+    if (err !== undefined) this.check('the job ran to its end', false, err instanceof Error ? (err.stack ?? err.message) : String(err))
+    const cleanupBudget = AbortSignal.timeout(120_000)
+    try {
+      for (const { label, fn } of this.undo.splice(0)) {
+        try {
+          const result = await withinDeadline(label, 30_000, (signal) => this.scope.run(signal, fn), cleanupBudget)
+          if (result && typeof result === 'object' && 'isError' in result && result.isError) throw new Error(textOf(result as Tool))
+        } catch (error) {
+          this.check(`cleanup "${label}"`, false, String(error))
+        }
       }
-    }
-    try {
-      this.cdp?.close()
-    } catch {
-      /* gone */
-    }
-    this.stopStale()
-    try {
-      if (this.proc?.pid) process.kill(-this.proc.pid, 'SIGKILL')
-    } catch {
-      /* gone */
+    } finally {
+      this.expectedExit = true
+      try {
+        await this.stopGroup()
+      } catch (error) {
+        this.check('stop the instance group', false, String(error))
+      }
     }
     if (!this.failures && process.env.E2E_KEEP !== '1') rmSync(this.root, { recursive: true, force: true })
   }
 
-  /** Kills every process of an earlier run of this job, found by its userData in the environ. */
-  private stopStale(): void {
-    const marker = `TEMP_CODE_USER_DATA=${this.data}`
-    if (!existsSync('/proc')) return
-    for (const pid of readdirSync('/proc').filter((p) => /^\d+$/.test(p))) {
+  private async stopGroup(): Promise<void> {
+    this.cdp?.close()
+    this.cdp = null
+    const pid = this.proc?.pid
+    if (!pid) {
+      this.proc = null
+      this.exited = null
+      return
+    }
+    const signalGroup = (signal: NodeJS.Signals): void => {
       try {
-        if (Number(pid) !== process.pid && readFileSync(`/proc/${pid}/environ`, 'utf8').split('\0').includes(marker)) process.kill(Number(pid), 'SIGKILL')
-      } catch {
-        /* gone, or not ours */
+        process.kill(-pid, signal)
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== 'ESRCH') throw error
       }
+    }
+    const exited = this.exited!
+    try {
+      signalGroup('SIGTERM')
+      await withinDeadline('stop the instance', 3000, () => exited).catch((error: unknown) => {
+        if (!(error instanceof ProofTimeout)) throw error
+      })
+    } finally {
+      signalGroup('SIGKILL')
+      await withinDeadline('reap the instance', 5000, () => exited)
+      this.proc = null
+      this.exited = null
     }
   }
 }
@@ -462,11 +630,12 @@ export async function attach(
   let found: WebSocket | null = null
   while (!found && Date.now() < end) {
     signal?.throwIfAborted()
-    const deadline = AbortSignal.timeout(Math.min(3000, end - Date.now()))
+    const deadline = AbortSignal.timeout(Math.max(1, Math.min(3000, end - Date.now())))
     const list = await fetch(`http://127.0.0.1:${port}/json/list`, {
       signal: signal ? AbortSignal.any([deadline, signal]) : deadline
     }).then((r) => r.json()).catch(() => []) as { type: string; url: string; webSocketDebuggerUrl?: string }[]
-    const url = list.find((t) => t.type === 'page' && matchesPage(t.url))?.webSocketDebuggerUrl
+    signal?.throwIfAborted()
+    const url = (Array.isArray(list) ? list : []).find((t) => t.type === 'page' && matchesPage(t.url))?.webSocketDebuggerUrl
     if (url) {
       const socket = new WebSocket(url)
       const open = await new Promise<boolean>((ok) => {
@@ -484,33 +653,44 @@ export async function attach(
       if (open) found = socket
       else socket.close()
     }
-    if (!found) await sleep(250)
+    if (!found) await delay(Math.min(250, Math.max(0, end - Date.now())), undefined, { signal })
   }
+  signal?.throwIfAborted()
   if (!found) throw new Error('no page on the debug port')
   const ws = found
   let n = 0
   const waiting = new Map<number, (error: Error | null, value?: unknown) => void>()
   let onEvent: ((method: string, params: unknown) => void) | undefined
   ws.onmessage = (ev) => {
-    const m = JSON.parse(String(ev.data)) as { id?: number; result?: unknown; error?: { message: string }; method?: string; params?: unknown }
+    let m: { id?: number; result?: unknown; error?: { message: string }; method?: string; params?: unknown }
+    try {
+      m = JSON.parse(String(ev.data)) as typeof m
+    } catch {
+      ws.close()
+      return
+    }
     if (m.id !== undefined) waiting.get(m.id)?.(m.error ? new Error(m.error.message) : null, m.result)
     else if (m.method) onEvent?.(m.method, m.params)
   }
   ws.onclose = ws.onerror = () => {
     for (const finish of waiting.values()) finish(new Error('the debug socket closed'))
   }
-  const send = (method: string, params: Record<string, unknown> = {}) =>
+  const send = (method: string, params: Record<string, unknown> = {}, timeoutMs = EVAL_TIMEOUT_MS, signal?: AbortSignal) =>
     new Promise<unknown>((ok, fail) => {
+      if (signal?.aborted) return fail(signal.reason)
       if (ws.readyState !== WebSocket.OPEN) return fail(new Error('the debug socket is closed'))
       const id = ++n
       const finish = (error: Error | null, value?: unknown): void => {
         waiting.delete(id)
         clearTimeout(timer)
+        signal?.removeEventListener('abort', abort)
         if (error) fail(error)
         else ok(value)
       }
-      const timer = setTimeout(() => finish(new Error(`the page did not answer ${method}`)), EVAL_TIMEOUT_MS)
+      const abort = (): void => finish(signal!.reason)
+      const timer = setTimeout(() => finish(new Error(`the page did not answer ${method}`)), timeoutMs)
       waiting.set(id, finish)
+      signal?.addEventListener('abort', abort, { once: true })
       try {
         ws.send(JSON.stringify({ id, method, params }))
       } catch (error) {
@@ -519,8 +699,8 @@ export async function attach(
     })
   return {
     send,
-    async eval<T>(expression: string): Promise<T> {
-      const r = (await send('Runtime.evaluate', { expression, awaitPromise: true, returnByValue: true })) as { result: { value?: T }; exceptionDetails?: { text: string; exception?: { description: string } } }
+    async eval<T>(expression: string, timeoutMs?: number, signal?: AbortSignal): Promise<T> {
+      const r = (await send('Runtime.evaluate', { expression, awaitPromise: true, returnByValue: true }, timeoutMs, signal)) as { result: { value?: T }; exceptionDetails?: { text: string; exception?: { description: string } } }
       if (r.exceptionDetails) throw new Error(r.exceptionDetails.exception?.description ?? r.exceptionDetails.text)
       return r.result.value as T
     },

@@ -1,7 +1,7 @@
 import { execFileSync } from 'node:child_process'
 import { join } from 'node:path'
 import type { OutboxItem } from '../src/shared/contract-work-outbox'
-import { ownMailbox, PREFIX, PYTHON, Run, sleep, textOf } from './e2e-work-lib'
+import { ownMailbox, PYTHON, Run, sleep, textOf } from './e2e-work-lib'
 
 /**
  * Job 2 (milestone 49): a weekly report from a sheet to a held mail.
@@ -27,11 +27,11 @@ try {
   await run.start()
   await run.signIn('report')
   const box = await ownMailbox(run)
-  const ws = await run.workspace(box.defaultSector, `${PREFIX} report`)
-  const thread = await run.thread(ws, `${PREFIX} weekly report`, { firstMessage: 'Send me the weekly report from the sheet.' })
+  const ws = await run.workspace(box.defaultSector, `${run.prefix} report`)
+  const thread = await run.thread(ws, `${run.prefix} weekly report`, { firstMessage: 'Send me the weekly report from the sheet.' })
 
   // The week's sheet, as an Excel file.
-  const file = join(run.work, `${PREFIX} week 47.xlsx`)
+  const file = join(run.work, `${run.prefix} week 47.xlsx`)
   execFileSync(
     PYTHON,
     [
@@ -45,9 +45,10 @@ ws["A7"] = "Total"; ws["B7"] = "=SUM(B2:B6)"
 wb.save(sys.argv[1])`,
       file,
       JSON.stringify(DAYS)
-    ]
+    ],
+    { timeout: 30_000, stdio: ['ignore', 'pipe', 'pipe'] }
   )
-  const item = await run.call<{ id: string }>('work.canvas.open', { sessionId: thread, kind: 'sheet', source: { at: 'file', host: run.host, path: file }, title: `${PREFIX} week 47` })
+  const item = await run.call<{ id: string }>('work.canvas.open', { sessionId: thread, kind: 'sheet', source: { at: 'file', host: run.host, path: file }, title: `${run.prefix} week 47` })
   run.check('the workbook opens as a sheet beside the thread', !!item.id)
 
   // The agent reads the figures.
@@ -67,10 +68,11 @@ wb.save(sys.argv[1])`,
 
   // The report, drafted to himself with what it read.
   const body = [`Week 47: ${total} in revenue over ${rows.length} days.`, ...rows.map((r) => `${r.day}: ${r.sessions} sessions, ${r.revenue}`), 'A test from TempCode\'s end-to-end proof. Please ignore it.'].join('\n')
-  const d = await run.addon(thread, 'draft_mail', { account_id: box._id, to: [{ address: box.address }], subject: `${PREFIX} weekly report, week 47`, body, reason: 'E2E-49 report proof: discarded at the end' })
+  const d = await run.addon(thread, 'draft_mail', { account_id: box._id, to: [{ address: box.address }], subject: `${run.prefix} weekly report, week 47`, body, reason: 'E2E-49 report proof: discarded at the end' })
   run.check('the thread drafted the report', !d.isError, textOf(d).slice(0, 200))
   const draftId = (JSON.parse(textOf(d)) as { id: string }).id
-  run.later('discard the draft', () => run.mutation('compose:discard', { id: draftId }).catch(() => null))
+  if (!draftId) throw new Error('The draft answer had no ID')
+  run.cleanupDraft(draftId)
   run.check("the figures it read add up to the week's", total === TOTAL, `${total} vs ${TOTAL}`)
   let held: OutboxItem | undefined
   run.check('the report waits in the Outbox', await run.until('held', 60_000, async () => !!(held = (await run.call<{ items: OutboxItem[] }>('work.outbox.list', {})).items.find((i) => (i.ref as { id?: string }).id === draftId))))
@@ -89,11 +91,11 @@ wb.save(sys.argv[1])`,
   run.check('Accept all takes the suggestion', review.suggestions.length === 0, String(review.suggestions.length))
   // The file on disk, as Excel would open it.
   const onDisk = async () =>
-    execFileSync(PYTHON, ['-I', '-c', 'import sys, openpyxl\nprint(openpyxl.load_workbook(sys.argv[1])["Week"]["C7"].value)', file], { encoding: 'utf8' }).trim()
+    execFileSync(PYTHON, ['-I', '-c', 'import sys, openpyxl\nprint(openpyxl.load_workbook(sys.argv[1])["Week"]["C7"].value)', file], { encoding: 'utf8', timeout: 10_000, stdio: ['ignore', 'pipe', 'pipe'] }).trim()
   const saved = await run.until('saved', 30_000, async () => (await onDisk()) === '=SUM(C2:C6)')
   run.check('the accepted total is saved in the .xlsx on disk', saved, await onDisk())
   await run.page(`(() => { const el = [...document.querySelectorAll('button, a, [role=button]')].find((e) => /^Outbox\\d*$/.test(e.textContent.trim())); el?.click() })()`)
-  await run.until('row', 20_000, () => run.has(`${PREFIX} weekly report`))
+  await run.until('row', 20_000, () => run.has(`${run.prefix} weekly report`))
   await sleep(1200)
   await run.shot('02-report-held')
   const gone = await run.call<OutboxItem>('work.outbox.discard', { ref: held!.ref })

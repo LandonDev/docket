@@ -26,6 +26,7 @@ try {
     env: { ...process.env, ELECTRON_RUN_AS_NODE: undefined, PROOF_OUT: out, PROOF_DIR: dir },
     timeout: 200_000
   })
+  if (run.error || run.status !== 0) throw new Error(`Office fence Electron run: ${run.error?.message ?? run.signal ?? run.status}`)
   const r = JSON.parse(readFileSync(out, 'utf8'))
   console.log(JSON.stringify(r, null, 2))
   const g = r.inGuest ?? {}
@@ -46,7 +47,6 @@ try {
     console.log(`${ok ? 'PASS' : 'FAIL'} ${name}`)
     if (!ok) failed++
   }
-  if (run.status !== 0 && run.status !== null) console.log(`electron exited ${run.status}`)
   process.exitCode = failed ? 1 : 0
 } finally {
   if (!keep) rmSync(dir, { recursive: true, force: true })

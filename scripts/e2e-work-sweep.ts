@@ -12,6 +12,7 @@ import { PREFIX, Run } from './e2e-work-lib'
  */
 const run = new Run('sweep')
 try {
+  run.note('Live LifeOS sweep of the shared E2E-49 prefix. No other LifeOS proofs should be running.')
   await run.start()
   await run.signIn('sweep')
   const found = (await run.query<{ _id: string; title: string; status: string }[]>('tasks:search', { text: PREFIX })).filter((t) => t.title.startsWith(PREFIX))

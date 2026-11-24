@@ -37,20 +37,22 @@
  * Run: env -u ELECTRON_RUN_AS_NODE bun scripts/e2e-files-open-remote.ts   (electron-vite build first)
  * Dummy files only. Nothing here touches /Applications/TempCode.app, a real HOME or the box's live service.
  */
-import { spawn, type ChildProcess } from 'node:child_process'
+import { spawn } from 'node:child_process'
 import { createHmac, randomBytes } from 'node:crypto'
 import { appendFileSync, copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
-import { createServer } from 'node:net'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { teamsCanvasOf } from '../src/shared/contract-work-office'
 import { E2E_APP_TOKEN_SEED, withAppToken } from './lib/appToken'
-import { attach, type Cdp } from './lib/packagedApp'
+import { attach, freePort, proofRpc, withinDeadline, type Cdp } from './e2e-work-lib'
+
+import { WorkProofChildren } from './lib/workProofChildren'
 
 const REPO = resolve(import.meta.dir, '..')
 /** box's Work token key, so this script calls a thread's tools as its bridge does (work/ctx.ts `TEMP_CODE_WORK_TOKEN_SEED`). */
 const WORK_SEED = randomBytes(32).toString('hex')
 const workToken = (sessionId: string): string => createHmac('sha256', Buffer.from(WORK_SEED, 'hex')).update(sessionId).digest('base64url')
+const children = new WorkProofChildren()
 const KEEP = process.env.TC_E2E_KEEP === '1'
 let failures = 0
 const check = (name: string, ok: boolean, detail = ''): boolean => {
@@ -64,17 +66,8 @@ if (!existsSync(join(REPO, 'out', 'main', 'index.js'))) {
   console.error('out/main is missing: run electron-vite build first')
   process.exit(2)
 }
-const freePort = (): Promise<number> =>
-  new Promise((ok) => {
-    const s = createServer()
-    s.listen(0, '127.0.0.1', () => {
-      const { port } = s.address() as { port: number }
-      s.close(() => ok(port))
-    })
-  })
-
 const root = Bun.spawnSync(['realpath', mkdtempSync(join(tmpdir(), 'tc-files-open-e2e-'))]).stdout.toString().trim()
-type Inst = { name: string; home: string; data: string; tmp: string; work: string; remote: number; debug: number; log: string; proc?: ChildProcess }
+type Inst = { name: string; home: string; data: string; tmp: string; work: string; remote: number; debug: number; log: string }
 const mk = async (name: string): Promise<Inst> => {
   const home = join(root, `${name}-home`)
   const inst = { name, home, data: join(root, `${name}-data`), tmp: join(root, `${name}-tmp`), work: join(home, 'work'), remote: await freePort(), debug: await freePort(), log: join(root, `${name}.log`) }
@@ -125,6 +118,7 @@ function launch(inst: Inst, windowed: boolean): void {
     NODE_ENV: 'production',
     SHELL: '/bin/bash'
   }
+  for (const key of Object.keys(env)) if (/^TEMP_CODE_(HUB|APNS)_/.test(key)) delete env[key]
   delete env.ELECTRON_RUN_AS_NODE
   if (windowed) env.TEMP_CODE_DEBUG_PORT = String(inst.debug)
   else delete env.TEMP_CODE_DEBUG_PORT
@@ -133,37 +127,16 @@ function launch(inst: Inst, windowed: boolean): void {
   const proc = spawn(argv[0]!, argv.slice(1), { cwd: REPO, env, stdio: ['ignore', 'pipe', 'pipe'], detached: true })
   proc.stdout?.on('data', (c: Buffer) => appendFileSync(inst.log, c))
   proc.stderr?.on('data', (c: Buffer) => appendFileSync(inst.log, c))
-  inst.proc = proc
+  children.track(proc, inst.name)
 }
-const until = async (label: string, ms: number, test: () => Promise<boolean> | boolean): Promise<boolean> => {
-  const end = Date.now() + ms
-  while (Date.now() < end) {
-    if (await Promise.resolve(test()).catch(() => false)) return true
-    await sleep(300)
-  }
-  log(`timed out: ${label}`)
-  return false
-}
-/** A headless instance writes its local port to server.json; a windowed one hands it to its window (`window.api.getServerPort`). */
+const until = (label: string, ms: number, test: () => Promise<boolean> | boolean): Promise<boolean> =>
+  children.until(label, ms, test, log)
 const ports = new Map<string, number>()
 const portOf = (inst: Inst): number => ports.get(inst.name) ?? (JSON.parse(readFileSync(join(inst.data, 'server.json'), 'utf8')) as { port: number }).port
 
 /** One request on the instance's local socket (the implicit admin). */
 async function rpc<T = unknown>(inst: Inst, method: string, params: unknown = {}, timeoutMs = 120_000): Promise<T> {
-  const ws = new WebSocket(`ws://127.0.0.1:${portOf(inst)}/`)
-  return new Promise<T>((ok, fail) => {
-    const timer = setTimeout(() => (ws.close(), fail(new Error(`${inst.name}: no answer to ${method}`))), timeoutMs)
-    ws.addEventListener('open', () => ws.send(JSON.stringify({ id: 'e2e', method, params: withAppToken(method, params) })))
-    ws.addEventListener('message', (ev) => {
-      const frame = JSON.parse(String(ev.data)) as { id?: string; ok?: boolean; result?: T; error?: string }
-      if (frame.id !== 'e2e') return
-      clearTimeout(timer)
-      ws.close()
-      if (frame.ok) ok(frame.result as T)
-      else fail(new Error(frame.error))
-    })
-    ws.addEventListener('error', () => (clearTimeout(timer), fail(new Error(`${inst.name}: socket error on ${method}`))))
-  })
+  return proofRpc<T>(portOf(inst), method, withAppToken(method, params), timeoutMs, children.signal)
 }
 
 let cdp: Cdp | null = null
@@ -174,30 +147,26 @@ async function fromWindow<T>(boxId: string, method: string, params: unknown): Pr
   )
 }
 
-function stop(inst: Inst): void {
-  for (const sig of ['SIGTERM', 'SIGKILL'] as const)
-    try {
-      if (inst.proc?.pid) process.kill(-inst.proc.pid, sig)
-    } catch {
-      /* gone */
-    }
-}
 let keyId: string | null = null
-const cleanup = async (): Promise<void> => {
+let cleaning: Promise<void> | undefined
+const cleanup = (): Promise<void> => cleaning ??= (async () => {
   cdp?.close()
-  if (keyId) await rpc(box, 'remote.keys.revoke', { id: keyId }).then(() => log('the run key is revoked'), () => log('could not revoke the run key (box is gone with it)'))
-  for (const inst of [mac, box]) if (inst.proc?.pid) process.kill(-inst.proc.pid, 'SIGTERM')
-  await sleep(1500)
-  for (const inst of [mac, box]) stop(inst)
+  try {
+    if (keyId) await proofRpc(portOf(box), 'remote.keys.revoke', { id: keyId }, 5000)
+  } catch (error) {
+    check('close the scratch proof', false, String(error))
+  } finally {
+    await children.stop().catch((error: unknown) => check('stop both scratch instances', false, String(error)))
+  }
   if (!KEEP && failures === 0) rmSync(root, { recursive: true, force: true })
   else log(`left for inspection: ${root}`)
-}
+})()
 process.on('SIGINT', () => void cleanup().then(() => process.exit(130)))
 
-launch(mac, true)
-launch(box, false)
 try {
-  cdp = await attach(mac.debug, 120_000)
+  launch(mac, true)
+  launch(box, false)
+  cdp = await attach(mac.debug, 120_000, children.signal)
   ports.set('mac', (await cdp.eval<number | null>('window.api.getServerPort()')) ?? 0)
   const up = ports.get('mac')! > 0 && (await until('box up', 120_000, () => existsSync(join(box.data, 'server.json'))))
   if (!check('both instances published their local socket', up)) throw new Error(`no local port; logs ${mac.log} ${box.log}`)
@@ -243,6 +212,7 @@ try {
       return { error: copy.error, ...(held.ok ? {} : { held: held.error }) }
     }
     const name = path.slice(path.lastIndexOf('/') + 1)
+    check(`${name}: box returned a copy on its own host`, copy.value.source.host === boxId, copy.value.source.host)
     const at = teamsCanvasOf({ name, path: copy.value.source.path, kind: 'file' }, copy.value.source.host, true)
     if (!at) return { error: `no canvas kind for ${name}` }
     const item = await fromWindow(boxId, 'work.canvas.open', { sessionId: made.value.id, kind: at.kind, source: at.source, title: name })

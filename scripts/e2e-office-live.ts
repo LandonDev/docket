@@ -18,6 +18,7 @@ import { spawn, spawnSync, type ChildProcess } from 'node:child_process'
 import { chmodSync, copyFileSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { basename, join, resolve } from 'node:path'
+import { watchProofChild, withinDeadline, ProofTimeout } from './e2e-work-lib'
 import { Cdp } from '../src/main/server/work/browser/box/cdp'
 
 const REPO = resolve(import.meta.dir, '..')
@@ -28,12 +29,15 @@ const CHROME = join(homedir(), '.cache/ms-playwright/chromium-1248/chrome-linux6
 const TENANT = 'https://purdue0-my.sharepoint.com'
 const PREFIX = 'TempCode proof live'
 const DUMMY_TEXT = 'TempCode proof dummy'
+const chromeLost = new AbortController()
+let cleaning = false
 const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms))
 const log = (s: string): void => console.log(`[e2e-office-live] ${new Date().toISOString()} ${s}`)
 
 // Chromium and Electron draw on a display of their own: run again under xvfb with a D-Bus session.
 if (!process.argv.includes('--inner')) {
-  const r = spawnSync('xvfb-run', ['-a', '-s', '-screen 0 1600x1000x24 -nolisten tcp', 'dbus-run-session', '--', process.execPath, import.meta.path, '--inner'], { stdio: 'inherit' })
+  const r = spawnSync('xvfb-run', ['-a', '-s', '-screen 0 1600x1000x24 -nolisten tcp', 'dbus-run-session', '--', process.execPath, import.meta.path, '--inner'], { stdio: 'inherit', timeout: 15 * 60_000, killSignal: 'SIGKILL' })
+  if (r.error) console.error(r.error.message)
   process.exit(r.status ?? 1)
 }
 
@@ -182,16 +186,31 @@ async function editorText(): Promise<string | null> {
 }
 
 async function waitFor<T>(ms: number, probe: () => Promise<T | null | undefined | false>, every = 1000): Promise<T | null> {
-  const until = Date.now() + ms
-  while (Date.now() < until) {
-    const v = await probe().catch(() => null)
-    if (v) return v as T
-    await sleep(every)
+  let lastError: unknown
+  try {
+    return await withinDeadline('wait for Office', ms, async (signal) => {
+      while (true) {
+        signal.throwIfAborted()
+        try {
+          const value = await probe()
+          if (value) return value as T
+        } catch (error) {
+          lastError = error
+        }
+        await sleep(every)
+      }
+    }, chromeLost.signal)
+  } catch (error) {
+    if (!(error instanceof ProofTimeout)) throw error
+    log(lastError ? `Last Office readiness error: ${String(lastError)}` : String(error))
+    return null
   }
-  return null
 }
 
 async function run(): Promise<void> {
+  for (const path of [CHROME, join(LIVE_PROFILE, 'Local State'), join(LIVE_PROFILE, 'Default')]) {
+    if (!existsSync(path)) throw new Error(`Missing Office proof input: ${path}`)
+  }
   // 1. The profile copy, and Chromium on it.
   r.liveBrowserRunning = spawnSync('pgrep', ['-f', `user-data-dir=${LIVE_PROFILE}`]).status === 0
   const copy = join(dir, 'profile')
@@ -211,6 +230,9 @@ async function run(): Promise<void> {
     '--window-size=1400,950',
     'about:blank'
   ], { stdio: ['ignore', 'ignore', 'ignore'] })
+  void watchProofChild(chrome, 'Office proof Chromium').then((error) => {
+    if (!cleaning) chromeLost.abort(error ?? new Error('Office proof Chromium exited early'))
+  })
   r.chromePid = chrome.pid
   const port = await waitFor(20_000, async () => (existsSync(join(copy, 'DevToolsActivePort')) ? readFileSync(join(copy, 'DevToolsActivePort'), 'utf8').split('\n') : null), 250)
   if (!port) throw new Error('Chromium did not open its DevTools')
@@ -353,6 +375,7 @@ try {
   r.error = String(e instanceof Error ? e.stack : e)
   log(`error: ${r.error}`)
 } finally {
+  cleaning = true
   await cleanUp().catch((e) => {
     r.cleanupError = String(e)
   })

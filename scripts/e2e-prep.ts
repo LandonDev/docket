@@ -2,7 +2,7 @@ import { writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import type { PrepPage, PrepUpcoming } from '../src/shared/contract-work-prep'
 import type { OutboxItem } from '../src/shared/contract-work-outbox'
-import { ownMailbox, PREFIX, Run, sleep, textOf } from './e2e-work-lib'
+import { ownMailbox, Run, sleep, textOf } from './e2e-work-lib'
 
 /**
  * Meeting prep and follow-up, one whole job (docs/agents/work-prep.md; the
@@ -23,15 +23,15 @@ import { ownMailbox, PREFIX, Run, sleep, textOf } from './e2e-work-lib'
  *
  *   env -u ELECTRON_RUN_AS_NODE bun scripts/e2e-prep.ts --out .temp-code/plans/landed/R3-prep/e2e
  */
-const TITLE = `${PREFIX} Quorvex sync`
-const MAYA = `${PREFIX} Maya Chen`
-const TOM = `${PREFIX} Tom Beck`
+const run = new Run('prep')
+const TITLE = `${run.prefix} Quorvex sync`
+const MAYA = `${run.prefix} Maya Chen`
+const TOM = `${run.prefix} Tom Beck`
 const BRIEF = 'Maya still waits on the seat list, and the van to Illinois has no driver.'
 const NOTES = 'Dana drives the van, leaving 3:30 Friday. Seat list goes to Maya on Wednesday. The venue form is still not signed.'
-const KEEP = `${PREFIX} Send Maya the final seat list`
-const DROP = `${PREFIX} A task he will not tick`
+const KEEP = `${run.prefix} Send Maya the final seat list`
+const DROP = `${run.prefix} A task he will not tick`
 
-const run = new Run('prep')
 /** A real press (pointer down and up) on the element a page expression answers. */
 async function pressOn(what: string, element: string): Promise<boolean> {
   // Brought into view first, then measured once the page has settled: a press aimed at where the control was lands on nothing.
@@ -66,7 +66,7 @@ try {
   console.log('[prep] signing in')
   await run.signIn('prep')
   const box = await ownMailbox(run)
-  const ws = await run.workspace('life', `${PREFIX} prep`)
+  const ws = await run.workspace('life', `${run.prefix} prep`)
   const where = { workspaceId: ws }
   const page = async (eventId: string): Promise<PrepPage> => (await run.call<{ page: PrepPage }>('work.prep.page', { ...where, eventId })).page
 
@@ -80,12 +80,12 @@ try {
   // The page of facts, read with no model; reading it writes nothing.
   const facts = await page(eventId)
   run.check('the page reads the event with no model and has kept nothing', facts.event.title === TITLE && facts.rev === 0 && facts.state === 'none' && facts.briefSessionId === null, JSON.stringify({ rev: facts.rev, state: facts.state, people: facts.people.length, tasks: facts.tasks.length }))
-  run.check('no task of his own is on it (the subject is a made-up word)', facts.tasks.every((t) => t.title.startsWith(PREFIX)), String(facts.tasks.length))
+  run.check('no task of his own is on it (the subject is a made-up word)', facts.tasks.every((t) => t.title.startsWith(`${run.prefix} `)), String(facts.tasks.length))
   const far = await run.call<unknown>('work.prep.page', { ...where, eventId: 'not-an-event' }).then(() => 'answered', (e: Error) => e.message)
   run.check('an event that is not there is refused in words', far !== 'answered', String(far).slice(0, 120))
 
   // The window: a thread of the workspace brings its column up; Agenda's row verb opens the page.
-  const seat = await run.thread(ws, `${PREFIX} prep seat`)
+  const seat = await run.thread(ws, `${run.prefix} prep seat`)
   await run.show(seat)
   await pressOn('Agenda in the column', `[...document.querySelectorAll('button, [role=button], a')].find((e) => /^Agenda/.test(e.textContent.trim()) && e.getBoundingClientRect().left < 460)`)
   run.check('Agenda lists the dummy event', await run.until('agenda row', 60_000, () => run.has(TITLE)))
@@ -110,7 +110,10 @@ try {
   const briefThread = (await page(eventId)).briefSessionId ?? ''
   run.check('Brief me starts one thread for the page', briefed && !!briefThread)
   // Deleted by the job itself at its end; a second delete of a thread already gone is no failure.
-  if (briefThread) run.later('delete the brief thread', () => run.call('session.delete', { sessionId: briefThread }).catch(() => null))
+  let briefDeleted = false
+  if (briefThread) run.later('delete the brief thread', async () => {
+    if (!briefDeleted) await run.call('session.delete', { sessionId: briefThread })
+  })
   const metaOf = (): Promise<{ title?: string; scope?: string } | null> => run.page(`(() => { const m = window.__monocode.sessionStore.metaOf(${JSON.stringify(briefThread)}); return m ? { title: m.title, scope: m.scope } : null })()`)
   await run.until('the window knows the thread', 20_000, async () => (await metaOf()) !== null)
   const meta = await metaOf()
@@ -163,19 +166,19 @@ try {
   })
   run.check('prep_follow_up keeps the outcome', !outcome.isError, textOf(outcome).slice(0, 200))
   const drafts: string[] = []
-  run.later('discard the unsent draft', async () => {
-    for (const id of drafts) await run.mutation('compose:discard', { id }).catch(() => null)
-  })
   const drafted = await run.addon(followThread, 'draft_mail', {
     account_id: box._id,
     to: [{ address: box.address }],
-    subject: `${PREFIX} prep follow-up`,
+    subject: `${run.prefix} prep follow-up`,
     body: 'A test follow-up from TempCode’s end-to-end proof of meeting prep, to myself. Please ignore it.',
     reason: 'E2E-49 prep proof: a draft to himself, discarded at the end'
   })
   if (run.check('the thread drafted the follow-up mail', !drafted.isError, textOf(drafted).slice(0, 200))) {
     const parsed = JSON.parse(textOf(drafted)) as { id?: string; draftId?: string }
-    drafts.push((parsed.id ?? parsed.draftId)!)
+    const id = parsed.id ?? parsed.draftId
+    if (!id) throw new Error('The draft answer had no ID')
+    drafts.push(id)
+    run.cleanupDraft(id)
   }
   const waits = await run.until('the draft on the page', 60_000, async () => (await page(eventId)).drafts.some((d) => d.outboxId === drafts[0]))
   run.check('the page lists the mail as waiting for his press', waits)
@@ -216,6 +219,7 @@ try {
 
   // A page stays when its thread is deleted.
   await run.call('session.delete', { sessionId: briefThread })
+  briefDeleted = true
   const kept = await page(eventId)
   run.check('the page stays when its brief thread is deleted', kept.briefSessionId === null && kept.doc.brief?.matters.length === 2)
 } catch (err) {

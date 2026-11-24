@@ -11,7 +11,6 @@
  *
  *   bun scripts/proof-bun.ts scripts/probe-vm-copy.ts --socket /tmp/tc-vm-probe.sock [--token-file <file>]
  */
-import { connect } from 'node:net'
 import { readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import type { CopyBack, FilesOpened, FilesTabs, FileDone } from '../src/shared/contract-work-files'
@@ -25,6 +24,8 @@ import { registerFileMaker } from '../src/main/server/work/files/hooks'
 import { forgetVmLists } from '../src/main/server/work/files/places/teams'
 import { fileWritten, onFileSaved } from '../src/main/server/work/files/save'
 import { approver, HOST, makeRig, window, WS } from '../src/main/server/work/files/testkit'
+
+import { vmProofCall } from './lib/vmProofWire'
 
 const arg = (name: string): string | undefined => {
   const i = process.argv.indexOf(name)
@@ -41,31 +42,8 @@ const check = (name: string, ok: boolean, detail = ''): boolean => {
 }
 
 /** One call to the helper, as office/vm/link.ts makes one: the token, its `ready`, one request, its answer. */
-function helper(verb: string, args: Record<string, unknown> = {}): Promise<unknown> {
-  return new Promise((resolve, reject) => {
-    const s = connect(SOCKET)
-    let buf = ''
-    const timer = setTimeout(() => (s.destroy(), reject(new Error(`no answer to ${verb}`))), 120_000)
-    s.on('connect', () => s.write(`${TOKEN}\n`))
-    s.on('data', (d) => {
-      buf += d
-      let nl: number
-      while ((nl = buf.indexOf('\n')) >= 0) {
-        const line = buf.slice(0, nl).trim()
-        buf = buf.slice(nl + 1)
-        if (!line) continue
-        const f = JSON.parse(line) as { event?: string; id?: number; ok?: boolean; value?: unknown; error?: { message?: string } }
-        if (f.event === 'ready') s.write(JSON.stringify({ id: 1, verb, args }) + '\n')
-        else if (f.id === 1) {
-          clearTimeout(timer)
-          s.destroy()
-          if (f.ok) resolve(f.value)
-          else reject(new Error(f.error?.message ?? 'the helper failed'))
-        }
-      }
-    })
-    s.on('error', (err) => (clearTimeout(timer), reject(err)))
-  })
+function helper(verb: string, args: Record<string, unknown> = {}, ms = 120_000): Promise<unknown> {
+  return vmProofCall(SOCKET, TOKEN, verb, args, ms)
 }
 
 const rig = makeRig()
@@ -135,7 +113,7 @@ try {
 } catch (err) {
   check('the probe ran', false, String((err as Error).stack ?? err))
 } finally {
-  if (guest) await helper('files.recycle', { path: guest, op: `probe-recycle-${stamp}` }).then(() => console.log(`      ${guest} sent to the VM's Recycle Bin`), (err) => console.log(`      could not recycle ${guest}: ${err}`))
+  if (guest) await helper('files.recycle', { path: guest, op: `probe-recycle-${stamp}` }, 10_000).then(() => console.log(`      ${guest} sent to the VM's Recycle Bin`), (err) => check('recycle the VM fixture', false, String(err)))
   offSaved()
   closeFilesState(rig.db)
   rig.close()

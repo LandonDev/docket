@@ -2,7 +2,7 @@ import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync } from '
 import { join } from 'node:path'
 import { paragraphsOf, unescapeXml } from '../src/main/server/work/templates/ooxml'
 import { partText, readZip } from '../src/main/server/work/templates/zip'
-import { REPO, Run, sleep, textOf } from './e2e-work-lib'
+import { REPO, Run, skipSetupOffer, sleep, textOf } from './e2e-work-lib'
 
 /**
  * Templates per job, live (docs/agents/work-templates.md "Proofs"): the
@@ -98,9 +98,9 @@ try {
   run.check('rename gives it a new name', renamed.id === 'job:North report.docx')
   const moved = await run.call<Template>('work.templates.move', { workspaceId: ws.id, template: renamed.id, everywhere: true })
   run.check('"Use in all jobs" moves it to the host\'s own data', moved.id === 'all:North report.docx' && existsSync(join(run.data, 'work-templates', 'shared', 'North report.docx')) && !existsSync(join(folder, 'Templates', 'North report.docx')), moved.id)
-  const ask = await run.call<{ confirm?: boolean }>('work.templates.remove', { workspaceId: ws.id, template: moved.id })
-  run.check('remove of his own deletes nothing until the window says he agreed', ask.confirm === true && existsSync(join(run.data, 'work-templates', 'shared', 'North report.docx')), JSON.stringify(ask))
-  await run.call('work.templates.remove', { workspaceId: ws.id, template: moved.id, confirmed: true })
+  const ask = await run.call<{ confirm?: boolean; version?: string }>('work.templates.remove', { workspaceId: ws.id, template: moved.id })
+  run.check('remove of his own deletes nothing until the window says he agreed', ask.confirm === true && !!ask.version && existsSync(join(run.data, 'work-templates', 'shared', 'North report.docx')), JSON.stringify(ask))
+  await run.call('work.templates.remove', { workspaceId: ws.id, template: moved.id, confirmed: true, version: ask.version })
   run.check('and deletes it once he did', !existsSync(join(run.data, 'work-templates', 'shared', 'North report.docx')))
   if (starter) {
     await run.call('work.templates.remove', { workspaceId: ws.id, template: starter.id })
@@ -130,6 +130,7 @@ try {
   run.check('a Work Chat, which has no workspace, is listed none of them', !chatTools.tools.some((t) => t.name.startsWith('template_')))
 
   // ── the window ────────────────────────────────────────────────────
+  await run.page(skipSetupOffer)
   await run.page(`location.hash = ''`)
   await sleep(1500)
   await run.press('Dummy Officials', 'rail')
@@ -149,10 +150,6 @@ try {
     await run.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: at.x, y: at.y })
     for (const type of ['mousePressed', 'mouseReleased']) await run.send('Input.dispatchMouseEvent', { type, x: at.x, y: at.y, button: 'left', clickCount: 1 })
     return true
-  }
-  const key = async (k: string): Promise<void> => {
-    for (const type of ['keyDown', 'keyUp']) await run.send('Input.dispatchKeyEvent', { type, key: k, code: k, windowsVirtualKeyCode: k === 'Escape' ? 27 : 13 })
-    await sleep(500)
   }
   if (await run.press('Templates')) {
     await run.until('the shelf paints', 20_000, () => run.has('All jobs'))
@@ -176,7 +173,8 @@ try {
       const rows = await run.page<string[]>(`[...document.querySelectorAll('[role=menu] [role=menuitem]')].map((e) => e.textContent.trim())`)
       run.check('a starter has New from this, Edit a copy and Hide', JSON.stringify(rows) === JSON.stringify(['New from this', 'Edit a copy', 'Hide']), rows.join(' | '))
       await run.shot('04-menu-starter')
-      await key('Escape')
+      await run.key('Escape', 'Escape', 27)
+      run.check('Escape closes the starter menu', await run.until('the menu closes', 5000, () => run.page<boolean>(`!document.querySelector('[role=menu]')`)))
     }
     if (await menuOf('East report')) {
       await run.press('Remove')

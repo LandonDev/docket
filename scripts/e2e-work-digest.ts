@@ -84,7 +84,9 @@ try {
   await run.shot('01-digest-toast')
 
   // ── Open: Today, the day's page, since its row is on the rail; the day is seen ──
-  run.check('Open is pressed', await run.press('Open'))
+  const digestToast = '[data-sonner-toast]'
+  const digestOpened = await run.page<boolean>(`(() => { const toast = [...document.querySelectorAll(${JSON.stringify(digestToast)})].find((e) => e.textContent.includes('Digest: 3 things')); const open = [...(toast?.querySelectorAll('button') ?? [])].find((b) => b.textContent.trim() === 'Open'); open?.click(); return !!open })()`)
+  if (!run.check('Open on the digest toast is pressed', digestOpened)) throw new Error('The digest toast offered no Open button')
   const today = await run.until('Today opens', 10_000, () => run.page<boolean>(`!!document.querySelector('[data-work-place=today]')`))
   run.check("the press opens Today, the day's page", today)
   run.check('opening it marks the day seen, and the toast is gone', await run.until('seen', 10_000, async () => (await ledger()).days[0]!.seenAt !== null && !(await run.page<boolean>(`[...document.querySelectorAll('[data-sonner-toast]')].some((t) => t.textContent.includes('Digest:'))`))))
@@ -92,11 +94,10 @@ try {
 
   // ── the list, the record of all Work told him: Settings → Work → Digest → Open the digest ──
   await run.page(`window.dispatchEvent(new CustomEvent('monocode:open-settings', { detail: 'work' }))`)
-  await run.until('the Digest section', 20_000, () => run.page<boolean>(`[...document.querySelectorAll('[data-slot=page-section] h2')].some((h) => h.textContent.trim() === 'Digest')`))
-  run.check('Open the digest is pressed', await run.press('Open the digest'))
+  const openedList = await run.until('the Digest settings button is visible', 20_000, () => run.page<boolean>(`(() => { const button = [...document.querySelectorAll('[data-app-settings] button')].find((b) => b.textContent.trim() === 'Open the digest' && b.getClientRects().length); if (!button) return false; button.click(); return true })()`))
+  if (!run.check('Open the digest is pressed in Work Settings', openedList)) throw new Error('No Open the digest button in Work Settings')
   const sheet = await run.until('the list opens', 10_000, () => run.page<boolean>(`!!document.querySelector('[data-slot=sheet-content]') && document.querySelector('[data-slot=sheet-title]')?.textContent === 'Digest'`))
-  run.check('it opens the list, a sheet titled Digest', sheet)
-  await sleep(600)
+  if (!run.check('it opens the list, a sheet titled Digest', sheet)) throw new Error('The Digest sheet did not open')
   const sections = await run.page<string[]>(`[...document.querySelectorAll('[data-slot=sheet-content] h3')].map((h) => h.textContent.trim())`)
   run.check("its one section is today's digest", sections.length === 1 && /^Today, /.test(sections[0] ?? ''), sections.join(' | '))
   const rows = await run.page<string[]>(`[...document.querySelectorAll('[data-slot=sheet-content] li')].map((li) => li.textContent.trim())`)
@@ -117,8 +118,9 @@ try {
 
   // ── a send that fails interrupts at once ──
   const fail = (await waiting()).find((i) => /fail/i.test(i.summary))!
-  await run.call('work.outbox.send', { ref: fail.ref }).catch(() => null)
-  const told = await run.until('the failed send is told', 15_000, async () => (await ledger()).rows.some((r) => r.title.startsWith('Not sent: ') && r.how === 'now'))
+  const failed = await run.call<Held & { error?: string }>('work.outbox.send', { ref: fail.ref })
+  if (!run.check('the fake add-on reports its deliberate failure', failed.ref.id === fail.ref.id && failed.state === 'failed' && /failed on purpose/.test(failed.error ?? ''), failed.error)) throw new Error('The send did not return the expected failed outbox item')
+  const told = await run.until('the failed send is told', 15_000, async () => (await ledger()).rows.some((r) => r.title === `Not sent: ${fail.summary}` && r.how === 'now'))
   run.check('a send that failed is told at once, not kept for tomorrow', told, JSON.stringify((await ledger()).rows.map((r) => [r.title, r.how])))
   const interrupt = await run.until("the interrupt's toast", 15_000, () => run.has('Not sent: '))
   run.check('the window shows it as its own toast, with Open', interrupt && (await run.page<boolean>(`[...document.querySelectorAll('[data-sonner-toast]')].some((t) => t.textContent.includes('Not sent: ') && [...t.querySelectorAll('button')].some((b) => b.textContent.trim() === 'Open'))`)))
@@ -126,7 +128,8 @@ try {
 
   // ── he sends one: its row leaves the ledger ──
   const echo = (await waiting()).find((i) => i.summary.includes('Varsity'))!
-  await run.call('work.outbox.send', { ref: echo.ref })
+  const sent = await run.call<Held>('work.outbox.send', { ref: echo.ref })
+  run.check('the fake add-on send succeeded', sent.ref.id === echo.ref.id && sent.state === 'sent', sent.state)
   run.check('a held item he sent leaves the ledger', await run.until('its row goes', 15_000, async () => !(await ledger()).rows.some((r) => r.title.includes('Varsity'))))
 
   // ── Settings → Work → Digest ──

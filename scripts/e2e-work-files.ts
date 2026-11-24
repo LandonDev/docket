@@ -141,8 +141,8 @@ async function stop(): Promise<boolean> {
       /* gone */
     }
   }
-  await until('every process of the instance gone', 10_000, () => ours().length === 0)
-  return clean
+  const gone = await until('every process of the instance gone', 10_000, () => ours().length === 0)
+  return clean && gone
 }
 
 async function start(): Promise<boolean> {
@@ -506,8 +506,8 @@ try {
   const t11 = performance.now()
   let answered = 0
   for (const e of looked) {
-    const look = await a.call<{ none?: string; png?: string }>('work.files.preview', { workspaceId: ws.id, ref: e.ref, width: 1024 }).catch((err: Error) => ({ none: err.message }) as { none?: string; png?: string })
-    if (look.png || look.none) answered++
+    const look = await a.call<{ none?: string; png?: string }>('work.files.preview', { workspaceId: ws.id, ref: e.ref, width: 1024 })
+    if (typeof look.png === 'string' && look.png.length > 0 || typeof look.none === 'string' && look.none.trim().length > 0) answered++
   }
   const walkMs = performance.now() - t11
   timings.push(['Quick Look over 12 files, one after another', walkMs])
@@ -519,7 +519,7 @@ try {
   check('the proof ran to its end', false, err instanceof Error ? err.message : String(err))
 } finally {
   for (const c of [a, b, r]) c?.close()
-  await stop()
+  check('the scratch instance stopped and left no descendants', await stop())
   if (!KEEP && failures === 0) rmSync(root, { recursive: true, force: true })
   else log(`left for inspection: ${root}`)
 }

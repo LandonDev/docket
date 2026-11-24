@@ -20,11 +20,12 @@
  */
 import { spawn, spawnSync, type ChildProcess } from 'node:child_process'
 import { appendFileSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
-import { connect, createServer } from 'node:net'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { E2E_APP_TOKEN_SEED, withAppToken } from './lib/appToken'
-import { attach, type Cdp } from './lib/packagedApp'
+import { attach, freePort, proofRpc, watchProofChild, type Cdp } from './e2e-work-lib'
+import { WorkProofChildren } from './lib/workProofChildren'
+import { vmProofCall } from './lib/vmProofWire'
 
 const arg = (name: string): string | undefined => {
   const i = process.argv.indexOf(name)
@@ -34,7 +35,7 @@ const APP = resolve(arg('--app') ?? '.')
 const OUT = resolve(arg('--out') ?? join(tmpdir(), 'tc-box-vm-edit-shots'))
 const WS = 'YfBTHVqGfj7M'
 const BOX_URL = 'http://127.0.0.1:7677'
-const STAMP = new Date().toISOString().slice(0, 16).replace(/[-:T]/g, '')
+const STAMP = `${new Date().toISOString().slice(0, 16).replace(/[-:T]/g, '')}-${crypto.randomUUID().slice(0, 8)}`
 const DECK = `TempCode proof ${STAMP}`
 const SHEET = `TempCode proof ${STAMP} sheet`
 mkdirSync(OUT, { recursive: true })
@@ -46,27 +47,14 @@ const check = (name: string, ok: boolean, detail = ''): boolean => {
 }
 const log = (m: string): void => console.log(`      ${m}`)
 const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms))
-const freePort = (): Promise<number> =>
-  new Promise((ok) => {
-    const s = createServer()
-    s.listen(0, '127.0.0.1', () => {
-      const { port } = s.address() as { port: number }
-      s.close(() => ok(port))
-    })
-  })
-const until = async (label: string, ms: number, test: () => Promise<boolean> | boolean): Promise<boolean> => {
-  const end = Date.now() + ms
-  while (Date.now() < end) {
-    if (await Promise.resolve(test()).catch(() => false)) return true
-    await sleep(300)
-  }
-  log(`timed out: ${label}`)
-  return false
-}
+const children = new WorkProofChildren(40 * 60_000)
+let cleaning = false
+const until = (label: string, ms: number, test: () => Promise<boolean> | boolean): Promise<boolean> =>
+  children.until(label, ms, test, log)
 
 /** The real box's local socket, the implicit admin (tc-local). Never prints what it answers. */
 function box<T>(method: string, params: unknown): T {
-  const r = spawnSync('tc-local', [method, JSON.stringify(params)], { encoding: 'utf8', timeout: 180_000 })
+  const r = spawnSync('tc-local', [method, JSON.stringify(params)], { encoding: 'utf8', timeout: cleaning ? 10_000 : 180_000 })
   if (r.status !== 0) throw new Error(`${method}: ${(r.stderr || r.stdout).slice(0, 300)}`)
   return JSON.parse(r.stdout) as T
 }
@@ -140,6 +128,7 @@ function launch(): void {
   delete env.ELECTRON_RUN_AS_NODE
   const electron = join(APP, 'node_modules', '.bin', 'electron')
   proc = spawn('xvfb-run', ['-a', '-s', '-screen 0 1600x1000x24 -nolisten tcp', 'dbus-run-session', '--', electron, '.'], { cwd: APP, env, stdio: ['ignore', 'pipe', 'pipe'], detached: true })
+  children.track(proc, 'VM proof window')
   proc.stdout?.on('data', (c: Buffer) => appendFileSync(join(root, 'app.log'), c))
   proc.stderr?.on('data', (c: Buffer) => appendFileSync(join(root, 'app.log'), c))
 }
@@ -235,42 +224,27 @@ async function pickAndOpenBox(): Promise<boolean> {
 }
 
 const WORD = `TempCode proof ${STAMP} word`
-const SOCKET = arg('--socket') ?? '/tmp/tc-vm-probe.sock'
+const SOCKET = arg('--socket') ?? join(scratch, 'vm.sock')
 /** One call to the guest's helper through this run's own forward (as office/vm/link.ts makes one), for a dummy file alone. */
 function guestCall(verb: string, args: Record<string, unknown>): Promise<unknown> {
+  if (forwardFailure) return Promise.reject(forwardFailure)
   const token = readFileSync('/srv/agents/temp-code-data/winvm/token', 'utf8').trim()
-  return new Promise((resolve, reject) => {
-    const sock = connect(SOCKET)
-    let buf = ''
-    const timer = setTimeout(() => (sock.destroy(), reject(new Error(`no answer to ${verb}`))), 120_000)
-    sock.on('connect', () => sock.write(`${token}\n`))
-    sock.on('data', (d) => {
-      buf += d
-      let nl: number
-      while ((nl = buf.indexOf('\n')) >= 0) {
-        const line = buf.slice(0, nl).trim()
-        buf = buf.slice(nl + 1)
-        if (!line) continue
-        const f = JSON.parse(line) as { event?: string; id?: number; ok?: boolean; value?: unknown; error?: { message?: string } }
-        if (f.event === 'ready') sock.write(JSON.stringify({ id: 1, verb, args }) + '\n')
-        else if (f.id === 1) {
-          clearTimeout(timer)
-          sock.destroy()
-          if (f.ok) resolve(f.value)
-          else reject(new Error(f.error?.message ?? 'the helper failed'))
-        }
-      }
-    })
-    sock.on('error', (err) => (clearTimeout(timer), reject(err)))
-  })
+  return vmProofCall(SOCKET, token, verb, args)
 }
 const docText = async (): Promise<string> => ev(`(() => { const e = document.querySelector('[data-files-file] [contenteditable="true"]'); return e ? e.textContent : '' })()`)
 let forward: ChildProcess | null = null
+let forwardFailure: Error | undefined
 /** This run's own forward to the helper, as the admin over the standing machine's SSH: opened once the VM is awake. */
 async function openForward(): Promise<boolean> {
-  rmSync(SOCKET, { force: true })
+  if (forward && forward.exitCode === null && forward.signalCode === null) throw new Error('This run already has a VM forward')
+  forwardFailure = undefined
   forward = spawn('ssh', ['-i', '/srv/agents/win-vm/keys/id_ed25519', '-p', '22230', '-o', 'IdentitiesOnly=yes', '-o', 'BatchMode=yes', '-o', 'LogLevel=ERROR', '-o', 'UserKnownHostsFile=/srv/agents/win-vm/standing/known_hosts', '-o', 'ExitOnForwardFailure=yes', '-N', '-L', `${SOCKET}:127.0.0.1:47801`, 'tcadmin@127.0.0.1'], { stdio: 'ignore' })
-  return until('the forward', 30_000, () => spawnSync('test', ['-S', SOCKET]).status === 0)
+  void watchProofChild(forward, 'VM proof SSH forward').then((error) => {
+    if (!cleaning) forwardFailure = error ?? new Error('The VM forward exited early')
+  })
+  const up = await until('the forward', 30_000, () => !!forwardFailure || spawnSync('test', ['-S', SOCKET], { timeout: 3000 }).status === 0)
+  if (forwardFailure) throw forwardFailure
+  return up
 }
 /** A saved line, as 1.0.370 says it or as a build that tells the upload says it ("Saved, uploading…", "In OneDrive 4:10 AM"). */
 const savedLine = (line: string): boolean => /Saved to the Windows VM|In OneDrive \d|Saved, uploading to OneDrive|Saved on the Windows VM; OneDrive uploads it/.test(line)
@@ -771,61 +745,59 @@ async function newDocumentCase(): Promise<void> {
 }
 const keptDocs: string[] = []
 
-const cleanup = async (): Promise<void> => {
-  // OneDrive in the VM is never left stopped by this run.
-  if (oneDriveExe && !startOneDrive()) log('OneDrive in the VM did not start again: start it there')
-  forward?.kill()
-  // Every tab this run opened in his workspace goes; anything it made in the VM goes to its Recycle Bin.
+let cleaningJob: Promise<void> | undefined
+const cleanup = (): Promise<void> => cleaningJob ??= (async () => {
+  cleaning = true
   try {
-    for (const t of tabsOfWs()) if (!before.has(t.id)) box('work.files.tabClose', { workspaceId: WS, tabId: t.id })
-  } catch (err) {
-    log(`tabs left: ${err}`)
-  }
-  // Save as Word's new file, and the Teams proof folder with what is in it.
-  for (const name of keptExtra) {
+    // OneDrive in the VM is never left stopped by this run.
+    if (oneDriveExe && !startOneDrive()) check('OneDrive starts again after the proof', false)
+    // Every tab this run opened in his workspace goes; anything it made in the VM goes to its Recycle Bin.
     try {
-      box('work.files.trash', { workspaceId: WS, refs: [{ at: 'file', host: boxId, path: guest(name) }], op: crypto.randomUUID(), asked: true })
+      for (const t of tabsOfWs()) if (!before.has(t.id) && t.name.startsWith(`TempCode proof ${STAMP}`)) box('work.files.tabClose', { workspaceId: WS, tabId: t.id })
     } catch (err) {
-      log(`could not delete ${name}: ${String(err).slice(0, 200)}`)
+      check('close the dummy tabs', false, String(err))
     }
-  }
-  if (proofFolder) {
-    try {
-      box('work.files.trash', { workspaceId: WS, refs: [{ at: 'file', host: boxId, path: proofFolder }], op: crypto.randomUUID(), asked: true })
-      log('the Teams proof folder is in the Recycle Bin')
-    } catch (err) {
-      log(`could not delete the Teams proof folder: ${String(err).slice(0, 200)}`)
+    // Save as Word's new file, and the Teams proof folder with what is in it.
+    for (const name of keptExtra) {
+      try {
+        box('work.files.trash', { workspaceId: WS, refs: [{ at: 'file', host: boxId, path: guest(name) }], op: crypto.randomUUID(), asked: true })
+      } catch (err) {
+        check(`delete dummy ${name}`, false, String(err))
+      }
     }
-  }
-  for (const name of failures && process.env.KEEP_ON_FAIL === '1' ? [] : [`${DECK}.pptx`, `${SHEET}.xlsx`, `${WORD}.docx`, `${WORD} (mine).docx`, `${WORD} new.docx`]) {
-    try {
-      if (inVm(name)) box('work.files.trash', { workspaceId: WS, refs: [{ at: 'file', host: boxId, path: guest(name) }], op: crypto.randomUUID(), asked: true })
-    } catch (err) {
-      log(`could not delete ${name}: ${String(err).slice(0, 200)}`)
+    if (proofFolder) {
+      try {
+        box('work.files.trash', { workspaceId: WS, refs: [{ at: 'file', host: boxId, path: proofFolder }], op: crypto.randomUUID(), asked: true })
+        log('the Teams proof folder is in the Recycle Bin')
+      } catch (err) {
+        check('delete the Teams proof folder', false, String(err))
+      }
     }
-  }
-  if (keyId) {
-    try {
-      box('remote.keys.revoke', { id: keyId })
-      log('the run key is revoked')
-    } catch {
-      log('could not revoke the run key')
+    for (const name of failures && process.env.KEEP_ON_FAIL === '1' ? [] : [`${DECK}.pptx`, `${SHEET}.xlsx`, `${WORD}.docx`, `${WORD} (mine).docx`, `${WORD} new.docx`]) {
+      try {
+        if (inVm(name)) box('work.files.trash', { workspaceId: WS, refs: [{ at: 'file', host: boxId, path: guest(name) }], op: crypto.randomUUID(), asked: true })
+      } catch (err) {
+        check(`delete dummy ${name}`, false, String(err))
+      }
     }
-  }
-  cdp?.close()
-  for (const sig of ['SIGTERM', 'SIGKILL'] as const) {
-    try {
-      if (proc?.pid) process.kill(-proc.pid, sig)
-    } catch {
-      /* gone */
+    if (keyId) {
+      try {
+        box('remote.keys.revoke', { id: keyId })
+        log('the run key is revoked')
+      } catch {
+        check('revoke this run’s key', false)
+      }
     }
-    await sleep(1500)
+  } finally {
+    cdp?.close()
+    forward?.kill()
+    await children.stop().catch((error: unknown) => check('stop the scratch window', false, String(error)))
   }
   // The workspace's folder last, with the window gone: a tab closing as it went writes its document there.
   for (const doc of keptDocs) {
     try {
       // The run's own document, removed outright: nothing of it is left in his workspace's folder or its Trash.
-      if (doc.startsWith('/srv/agents/work/Work/Purdue/TempCode proof ')) rmSync(doc, { force: true })
+      if (doc.startsWith(`/srv/agents/work/Work/Purdue/TempCode proof ${STAMP}`)) rmSync(doc, { force: true })
     } catch (err) {
       log(`could not remove ${doc}: ${String(err).slice(0, 200)}`)
     }
@@ -840,26 +812,17 @@ const cleanup = async (): Promise<void> => {
   }
   rmSync(scratch, { recursive: true, force: true })
   log(`window's folder: ${root}`)
-}
+})()
 process.on('SIGINT', () => void cleanup().then(() => process.exit(130)))
 
-launch()
 try {
-  cdp = await attach(debug, 180_000)
+  launch()
+  cdp = await attach(debug, 180_000, children.signal)
   await cdp.send('Page.enable')
   const port = await cdp.eval<number | null>('window.api.getServerPort()')
-  const local = async <T>(method: string, params: unknown): Promise<T> =>
-    new Promise<T>((ok, fail) => {
-      const ws = new WebSocket(`ws://127.0.0.1:${port}/`)
-      ws.addEventListener('open', () => ws.send(JSON.stringify({ id: 'p', method, params: withAppToken(method, params) })))
-      ws.addEventListener('message', (e) => {
-        const f = JSON.parse(String(e.data)) as { id?: string; ok?: boolean; result?: T; error?: string }
-        if (f.id !== 'p') return
-        ws.close()
-        if (f.ok) ok(f.result as T)
-        else fail(new Error(f.error))
-      })
-    })
+  if (!port) throw new Error('The proof window has no local server port')
+  const local = <T>(method: string, params: unknown): Promise<T> =>
+    proofRpc<T>(port, method, withAppToken(method, params), 30_000, children.signal)
   await local('work.set', { enabled: true })
   const minted = box<{ token: string; id?: string; key?: { id: string } }>('remote.keys.create', { name: 'edits-lost proof window', audience: 'client', caps: ['read', 'operate', 'approve'] })
   keyId = minted.id ?? minted.key?.id ?? null

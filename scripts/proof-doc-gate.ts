@@ -1,3 +1,4 @@
+import { execFileSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
@@ -262,6 +263,15 @@ const STYLING = ['font', 'size', 'colour', 'highlight', 'spacing']
 class Stop extends Error {}
 
 try {
+  for (const [name, tree] of [['HOST', HOST_TREE], ['OLD', OLD_TREE]] as const) {
+    let revision = 'revision unavailable'
+    try {
+      revision = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: tree, encoding: 'utf8', timeout: 3000 }).trim()
+    } catch {
+      // An unpacked build can be supplied without its checkout.
+    }
+    note(`${name} uses ${tree} (${revision})`)
+  }
   remotePort.host = await freePort()
   remotePort.old = await freePort()
   await host.start({ env: { TEMP_CODE_REMOTE_PORT: String(remotePort.host) } })
@@ -469,7 +479,7 @@ try {
   // Stop is the job's own end (a control pair's, or the whole run's); anything else is a failure of the run.
   const failure = err instanceof Stop ? undefined : err
   if (failure) console.error(failure)
-  await old.stop().catch(() => undefined)
+  await old.stop().catch((error: unknown) => check('OLD stopped clean', false, String(error)))
   for (const line of old.results) host.results.push(`OLD ${line}`)
   if (old.failed) check('OLD stopped clean', false, `${old.failed} failure(s) on OLD's side`)
   await host.finish(failure)

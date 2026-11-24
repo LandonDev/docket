@@ -19,16 +19,19 @@
  * Run (repo root, after `bunx electron-vite build`; on the box through the heavy queue):
  *   FULL_EDITOR_PLAYWRIGHT=<playwright-core> env -u ELECTRON_RUN_AS_NODE bun scripts/e2e-full-editor-remote.ts [--out <dir>]
  */
-import { spawn, type ChildProcess } from 'node:child_process'
+import { spawn } from 'node:child_process'
 import { appendFileSync, copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { createServer as httpServer, request as httpRequest } from 'node:http'
-import { connect, createServer, type Socket } from 'node:net'
+import { connect, type Socket } from 'node:net'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { E2E_APP_TOKEN_SEED, withAppToken } from './lib/appToken'
-import { attach, type Cdp } from './lib/packagedApp'
+import { attach, freePort, proofRpc, withinDeadline, type Cdp } from './e2e-work-lib'
+
+import { WorkProofChildren } from './lib/workProofChildren'
 
 const REPO = resolve(import.meta.dir, '..')
+const children = new WorkProofChildren()
 const KEEP = process.env.TC_E2E_KEEP === '1'
 const TOOLS = process.env.FULL_EDITOR_TOOLS ?? '/srv/agents/temp-code-data/work-tools'
 const outArg = process.argv.indexOf('--out')
@@ -48,19 +51,10 @@ if (!existsSync(join(TOOLS, 'onlyoffice'))) {
   console.error(`ONLYOFFICE is not installed under ${TOOLS}`)
   process.exit(2)
 }
-const freePort = (): Promise<number> =>
-  new Promise((ok) => {
-    const s = createServer()
-    s.listen(0, '127.0.0.1', () => {
-      const { port } = s.address() as { port: number }
-      s.close(() => ok(port))
-    })
-  })
-
 const root = Bun.spawnSync(['realpath', mkdtempSync(join(tmpdir(), 'tc-full-remote-'))]).stdout.toString().trim()
 const out = outArg > 0 ? resolve(process.argv[outArg + 1]!) : join(root, 'shots')
 mkdirSync(out, { recursive: true })
-type Inst = { name: string; home: string; data: string; tmp: string; work: string; remote: number; debug: number; log: string; proc?: ChildProcess }
+type Inst = { name: string; home: string; data: string; tmp: string; work: string; remote: number; debug: number; log: string }
 const mk = async (name: string): Promise<Inst> => {
   const home = join(root, `${name}-home`)
   const inst = { name, home, data: join(root, `${name}-data`), tmp: join(root, `${name}-tmp`), work: join(home, 'work'), remote: await freePort(), debug: await freePort(), log: join(root, `${name}.log`) }
@@ -133,38 +127,18 @@ function launch(inst: Inst, windowed: boolean, extra: Record<string, string>): v
   const proc = spawn(argv[0]!, argv.slice(1), { cwd: REPO, env, stdio: ['ignore', 'pipe', 'pipe'], detached: true })
   proc.stdout?.on('data', (c: Buffer) => appendFileSync(inst.log, c))
   proc.stderr?.on('data', (c: Buffer) => appendFileSync(inst.log, c))
-  inst.proc = proc
+  children.track(proc, inst.name)
 }
-const until = async (label: string, ms: number, test: () => Promise<boolean> | boolean): Promise<boolean> => {
-  const end = Date.now() + ms
-  while (Date.now() < end) {
-    if (await Promise.resolve(test()).catch(() => false)) return true
-    await sleep(250)
-  }
-  log(`timed out: ${label}`)
-  return false
-}
+const until = (label: string, ms: number, test: () => Promise<boolean> | boolean): Promise<boolean> =>
+  children.until(label, ms, test, log)
 const ports = new Map<string, number>()
 const portOf = (inst: Inst): number => ports.get(inst.name) ?? (JSON.parse(readFileSync(join(inst.data, 'server.json'), 'utf8')) as { port: number }).port
 async function rpc<T = unknown>(inst: Inst, method: string, params: unknown = {}, timeoutMs = 120_000): Promise<T> {
-  const ws = new WebSocket(`ws://127.0.0.1:${portOf(inst)}/`)
-  return new Promise<T>((ok, fail) => {
-    const timer = setTimeout(() => (ws.close(), fail(new Error(`${inst.name}: no answer to ${method}`))), timeoutMs)
-    ws.addEventListener('open', () => ws.send(JSON.stringify({ id: 'e2e', method, params: withAppToken(method, params) })))
-    ws.addEventListener('message', (ev) => {
-      const frame = JSON.parse(String(ev.data)) as { id?: string; ok?: boolean; result?: T; error?: string }
-      if (frame.id !== 'e2e') return
-      clearTimeout(timer)
-      ws.close()
-      if (frame.ok) ok(frame.result as T)
-      else fail(new Error(frame.error))
-    })
-    ws.addEventListener('error', () => (clearTimeout(timer), fail(new Error(`${inst.name}: socket error on ${method}`))))
-  })
+  return proofRpc<T>(portOf(inst), method, withAppToken(method, params), timeoutMs, children.signal)
 }
 
 let cdp: Cdp | null = null
-const ev = <T>(js: string): Promise<T> => cdp!.eval<T>(js)
+const ev = <T>(js: string): Promise<T> => cdp!.eval<T>(js, undefined, children.signal)
 async function shot(name: string): Promise<void> {
   const r = (await cdp!.send('Page.captureScreenshot', { format: 'png' })) as { data: string }
   writeFileSync(join(out, `${name}.png`), Buffer.from(r.data, 'base64'))
@@ -176,31 +150,30 @@ async function click(x: number, y: number): Promise<void> {
 const unzip = (file: string, part: string): string => Bun.spawnSync(['unzip', '-p', file, part]).stdout.toString()
 const holds = (file: string, value: string): boolean => ['xl/worksheets/sheet1.xml', 'xl/worksheets/sheet2.xml', 'xl/sharedStrings.xml'].some((p) => unzip(file, p).replace(/<[^>]+>/g, ' ').split(/\s+/).includes(value))
 
-function stop(inst: Inst): void {
-  for (const sig of ['SIGTERM', 'SIGKILL'] as const)
-    try {
-      if (inst.proc?.pid) process.kill(-inst.proc.pid, sig)
-    } catch {
-      /* gone */
-    }
-}
 let keyId: string | null = null
-const cleanup = async (): Promise<void> => {
+let browser: { close(): Promise<void> } | undefined
+let cleaning: Promise<void> | undefined
+const cleanup = (): Promise<void> => cleaning ??= (async () => {
   cdp?.close()
-  if (keyId) await rpc(box, 'remote.keys.revoke', { id: keyId }).then(() => log('the minted key is revoked'), () => log('the key could not be revoked: the instance and its data are deleted below'))
-  for (const inst of [mac, box]) if (inst.proc?.pid) process.kill(-inst.proc.pid, 'SIGTERM')
-  await sleep(1500)
-  for (const inst of [mac, box]) stop(inst)
-  tunnelServer.close()
+  try {
+    await withinDeadline('close the Playwright connection', 5000, () => browser?.close())
+    if (keyId) await proofRpc(portOf(box), 'remote.keys.revoke', { id: keyId }, 5000)
+  } catch (error) {
+    check('close the scratch proof', false, String(error))
+  } finally {
+    await children.stop().catch((error: unknown) => check('stop both scratch instances', false, String(error)))
+    tunnelServer.closeAllConnections()
+    tunnelServer.close()
+  }
   if (!KEEP && failures === 0) rmSync(root, { recursive: true, force: true })
   else log(`left for inspection: ${root}`)
-}
+})()
 process.on('SIGINT', () => void cleanup().then(() => process.exit(130)))
 
-launch(mac, true, {})
-launch(box, false, { TEMP_CODE_WORK_PORT: String(boxWork), TEMP_CODE_WORK_PUBLIC_ORIGIN: tunnel })
 try {
-  cdp = await attach(mac.debug, 180_000)
+  launch(mac, true, {})
+  launch(box, false, { TEMP_CODE_WORK_PORT: String(boxWork), TEMP_CODE_WORK_PUBLIC_ORIGIN: tunnel })
+  cdp = await attach(mac.debug, 180_000, children.signal)
   await cdp.send('Page.enable')
   await cdp.send('Emulation.setDeviceMetricsOverride', { width: 1440, height: 900, deviceScaleFactor: 1, mobile: false })
   ports.set('mac', (await cdp.eval<number | null>('window.api.getServerPort()')) ?? 0)
@@ -251,14 +224,14 @@ try {
   if (!url) throw new Error('no page')
   const token = /\/w\/full\/([0-9a-f]{64})\//.exec(url)![1]!
   // 3. The same token straight through the tunnel, as a browser on the remote UI's origin would ask it.
-  const straight = await fetch(`${tunnel}/w/full/${token}/`)
+  const straight = await fetch(`${tunnel}/w/full/${token}/`, { signal: AbortSignal.timeout(5000) })
   check('the page itself is refused through the tunnel without the carrier', straight.status === 404, String(straight.status))
-  const api = await fetch(`${tunnel}/w/full/${token}/web-apps/apps/api/documents/api.js`)
+  const api = await fetch(`${tunnel}/w/full/${token}/web-apps/apps/api/documents/api.js`, { signal: AbortSignal.timeout(5000) })
   check("and so is ONLYOFFICE's code", api.status === 404, String(api.status))
 
   // 4. The full editor in that window, an edit, and the save back.
   const pw = (await import(/* @vite-ignore */ process.env.FULL_EDITOR_PLAYWRIGHT ?? 'playwright-core')) as {
-    chromium: { connectOverCDP(u: string): Promise<{ contexts(): { pages(): Page[] }[]; close(): Promise<void> }> }
+    chromium: { connectOverCDP(u: string, options: { timeout: number }): Promise<{ contexts(): { pages(): Page[] }[]; close(): Promise<void> }> }
   }
   type Page = {
     url(): string
@@ -270,9 +243,10 @@ try {
     screenshot(o: { path: string }): Promise<unknown>
     close(): Promise<void>
   }
-  const browser = await pw.chromium.connectOverCDP(`http://127.0.0.1:${mac.debug}`)
+  const connected = await withinDeadline('connect Playwright', 20_000, () => pw.chromium.connectOverCDP(`http://127.0.0.1:${mac.debug}`, { timeout: 20_000 }), children.signal)
+  browser = connected
   const value = String(4000 + (Date.now() % 900))
-  const page = browser.contexts().flatMap((c) => c.pages()).find((p) => p.url().includes(`/w/full/${token}/`))
+  const page = connected.contexts().flatMap((c) => c.pages()).find((p) => p.url().includes(`/w/full/${token}/`))
   if (!check('the editor window is reachable on mac\'s debug port', !!page)) throw new Error('no window')
   const errors: string[] = []
   const foreign: string[] = []
@@ -300,7 +274,6 @@ try {
   check('the page threw nothing', errors.length === 0, errors.slice(0, 2).join(' | '))
   // Closing the window is leaving the editor.
   await page!.close()
-  await browser.close().catch(() => undefined)
   // When everyone has left, the docservice saves through its callback into box's file.
   check("box's workbook holds the value typed in the full editor", await until('the save lands', 120_000, () => holds(book, value)), value)
   await sleep(2000)

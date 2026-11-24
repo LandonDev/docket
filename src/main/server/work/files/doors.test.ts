@@ -63,6 +63,7 @@ describe('every agent route into a folder others can open', () => {
       ['work.files.make', { at: at(join(rig.team, 'General')), kind: 'text', op: 'op-000001' }],
       ['work.files.copy', { refs: [at(join(rig.folder, 'notes.txt'))], to: at(join(rig.team, 'General')), op: 'op-000002', asked: true, origin: { from: 'window' } }],
       ['work.files.write', { ref: at(join(rig.team, 'General', 'Plan.docx')), text: 'x', version: '1:1:' }],
+      ['work.files.trash', { refs: [at(join(rig.team, 'General', 'Plan.docx'))], op: 'op-000004', asked: true }],
       ['work.files.upload', { at: at(join(rig.team, 'General')), name: 'a.txt', size: 1, sha256: 'a'.repeat(64), op: 'op-000003' }]
     ] as const)
       await expect(filesHandle({ id: 'x', method, params: { workspaceId: WS, ...params } } as unknown as ClientRequest, rig.ctx, thread('t1'), undefined), method).rejects.toThrow(THREADS_BY_TOOLS)

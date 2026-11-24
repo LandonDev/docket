@@ -1,7 +1,7 @@
 import { copyFileSync } from 'node:fs'
 import { join } from 'node:path'
 import type { Meeting } from '../src/shared/contract-work-meetings'
-import { PREFIX, REPO, Run, sleep, textOf } from './e2e-work-lib'
+import { REPO, Run, sleep, textOf } from './e2e-work-lib'
 
 /**
  * Job 4 (milestone 49): a meeting file to accepted tasks.
@@ -18,16 +18,22 @@ const run = new Run('meeting')
 try {
   await run.start()
   await run.signIn('meeting')
-  const ws = await run.workspace('life', `${PREFIX} meetings`)
-  const thread = await run.thread(ws, `${PREFIX} staff sync`, { firstMessage: 'Take the tasks out of this recording.' })
-  const file = join(run.work, `${PREFIX} staff sync.ogg`)
+  const ws = await run.workspace('life', `${run.prefix} meetings`)
+  const thread = await run.thread(ws, `${run.prefix} staff sync`, { firstMessage: 'Take the tasks out of this recording.' })
+  const file = join(run.work, `${run.prefix} staff sync.ogg`)
   copyFileSync(join(REPO, 'src/main/server/work/meetings/fixtures/two-speakers.ogg'), file)
 
   const t0 = Date.now()
-  const opened = await run.tool(thread, 'meeting_open', { file })
+  const transcriptionMs = 9 * 60_000 + 30_000
+  run.note('Open the meeting and wait for transcription')
+  const opened = await run.tool(thread, 'meeting_open', { file }, transcriptionMs)
+  if (opened.isError) throw new Error(`Open meeting: ${textOf(opened)}`)
   const meetingId = (opened.structuredContent as { item?: string } | undefined)?.item ?? ''
   run.check('the recording opens and is transcribed on the host', !opened.isError && (opened.structuredContent as { status?: string } | undefined)?.status === 'ready', `${textOf(opened).slice(0, 200)} (${Math.round((Date.now() - t0) / 1000)} s)`)
-  const transcript = textOf(await run.tool(thread, 'meeting_read', { meeting: meetingId }))
+  run.note('Read the transcribed meeting')
+  const read = await run.tool(thread, 'meeting_read', { meeting: meetingId }, transcriptionMs)
+  if (read.isError) throw new Error(`Read meeting: ${textOf(read)}`)
+  const transcript = textOf(read)
   const turns = [...transcript.matchAll(/^(s\d+) \[[\d:]+\] ([^:]+): (.+)$/gm)]
   run.check('the transcript has turns from two speakers', turns.length >= 2 && new Set(turns.map((m) => m[2])).size >= 2, transcript.slice(0, 300))
 
@@ -35,8 +41,8 @@ try {
     meeting: meetingId,
     summary: [{ text: 'Two people talk through the design in turn.', refs: [turns[0]![1]] }],
     actions: [
-      { text: `${PREFIX} Follow up on what was said first`, refs: [turns[0]![1]] },
-      { text: `${PREFIX} A task he will turn down`, refs: [turns[1]![1]] }
+      { text: `${run.prefix} Follow up on what was said first`, refs: [turns[0]![1]] },
+      { text: `${run.prefix} A task he will turn down`, refs: [turns[1]![1]] }
     ]
   })
   run.check('the notes are written, every line resting on a turn', !wrote.isError, textOf(wrote).slice(0, 200))
@@ -63,7 +69,7 @@ try {
   if (filed?.lifeosTaskId) {
     const id = filed.lifeosTaskId
     const task = (await run.query<{ task: { title: string; sector: string; description?: string } } | null>('tasks:get', { id }))?.task
-    run.check('LifeOS holds it in Life, saying where it was said', task?.sector === 'life' && task.title.includes(PREFIX) && (task.description ?? '').includes('staff sync'), JSON.stringify(task).slice(0, 300))
+    run.check('LifeOS holds it in Life, saying where it was said', task?.sector === 'life' && task.title.startsWith(`${run.prefix} `) && (task.description ?? '').includes('staff sync'), JSON.stringify(task).slice(0, 300))
   }
   const rejected = await run.addon(thread, 'search_tasks', { query: 'A task he will turn down' })
   run.check('the rejected one is nowhere in LifeOS', !rejected.isError && !textOf(rejected).includes('turn down'), textOf(rejected).slice(0, 200))

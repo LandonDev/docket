@@ -1,6 +1,6 @@
 import type { OutboxItem } from '../src/shared/contract-work-outbox'
 import type { RoutineRow, RoutineRun } from '../src/shared/contract-work-routines'
-import { ownMailbox, PREFIX, Run, sleep, textOf } from './e2e-work-lib'
+import { ownMailbox, Run, sleep, textOf } from './e2e-work-lib'
 
 /**
  * Job 5 (milestone 49): a routine that fires overnight under Away and
@@ -22,7 +22,7 @@ try {
   await run.start()
   await run.signIn('routine')
   const box = await ownMailbox(run)
-  const ws = await run.workspace(box.defaultSector, `${PREFIX} routines`)
+  const ws = await run.workspace(box.defaultSector, `${run.prefix} routines`)
   await run.call('away.set', { enabled: true })
   run.later('Away off', () => run.call('away.set', { enabled: false }))
 
@@ -33,8 +33,8 @@ try {
   const rrule = `FREQ=WEEKLY;BYDAY=${day};BYHOUR=${Number(part({ hour: 'numeric', hour12: false })) % 24};BYMINUTE=${Number(part({ minute: 'numeric' }))}`
   const routine = await run.call<RoutineRow>('work.routines.save', {
     workspaceId: ws,
-    name: `${PREFIX} overnight digest`,
-    prompt: `Draft a short digest of overnight mail to me, subject "${PREFIX} overnight digest". Do not send it.`,
+    name: `${run.prefix} overnight digest`,
+    prompt: `Draft a short digest of overnight mail to me, subject "${run.prefix} overnight digest". Do not send it.`,
     trigger: { on: 'schedule', rrule, tz: TZ },
     ends: { kind: 'once' }
   })
@@ -51,10 +51,11 @@ try {
   run.check("its thread is a Work thread stamped with the run", meta?.scope === 'work' && meta.routineRunId === fired!.id, JSON.stringify(meta && { scope: meta.scope, routineRunId: meta.routineRunId }))
 
   // The run's thread drafts through its own key.
-  const d = await run.addon(sessionId, 'draft_mail', { account_id: box._id, to: [{ address: box.address }], subject: `${PREFIX} overnight digest`, body: 'A test digest from TempCode\'s end-to-end proof. Please ignore it.', reason: 'E2E-49 routine proof: discarded at the end' })
+  const d = await run.addon(sessionId, 'draft_mail', { account_id: box._id, to: [{ address: box.address }], subject: `${run.prefix} overnight digest`, body: 'A test digest from TempCode\'s end-to-end proof. Please ignore it.', reason: 'E2E-49 routine proof: discarded at the end' })
   run.check("the run's thread drafted the digest", !d.isError, textOf(d).slice(0, 200))
   const draftId = (JSON.parse(textOf(d)) as { id: string }).id
-  run.later('discard the draft', () => run.mutation('compose:discard', { id: draftId }).catch(() => null))
+  if (!draftId) throw new Error('The draft answer had no ID')
+  run.cleanupDraft(draftId)
   let held: OutboxItem | undefined
   run.check('the draft waits in the Outbox as the run\'s', await run.until('held', 60_000, async () => !!(held = (await run.call<{ items: OutboxItem[] }>('work.outbox.list', {})).items.find((i) => (i.ref as { id?: string }).id === draftId && i.routineRunId === fired!.id))))
   await sleep(20_000)
@@ -69,7 +70,7 @@ try {
   // Morning: he is back.
   await run.call('away.set', { enabled: false })
   await run.page(`(() => { const el = [...document.querySelectorAll('button, a, [role=button]')].find((e) => /^Outbox\\d*$/.test(e.textContent.trim())); el?.click() })()`)
-  run.check('the Outbox shows the night\'s digest waiting', await run.until('row', 20_000, () => run.has(`${PREFIX} overnight digest`)))
+  run.check('the Outbox shows the night\'s digest waiting', await run.until('row', 20_000, () => run.has(`${run.prefix} overnight digest`)))
   await sleep(1200)
   await run.shot('01-overnight-held')
   const gone = await run.call<OutboxItem>('work.outbox.discard', { ref: held!.ref })

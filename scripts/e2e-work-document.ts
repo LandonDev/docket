@@ -26,13 +26,22 @@ import { PREFIX, PYTHON, REPO, Run, sleep, textOf } from './e2e-work-lib'
 const run = new Run('document')
 const PY = PYTHON
 const TITLE = `${PREFIX} supplier agreement`
+function python(phase: string, args: string[]): string {
+  try {
+    return execFileSync(PY, args, { encoding: 'utf8', timeout: 30_000, stdio: ['ignore', 'pipe', 'pipe'] })
+  } catch (error) {
+    const stderr = (error as { stderr?: string }).stderr?.trim()
+    throw new Error(`${phase}: ${stderr || String(error)}`, { cause: error })
+  }
+}
+
 try {
   await run.start()
   const thread = await run.thread(null, TITLE, { firstMessage: 'Tidy the supplier agreement.' })
 
   // The Word file, as a supplier would send it.
   const docx = join(run.root, `${TITLE}.docx`)
-  execFileSync(PY, [
+  python('write the Word fixture', [
     '-I',
     '-c',
     `import sys, docx
@@ -83,7 +92,7 @@ d.save(sys.argv[1])`,
     writeFileSync(join(run.out, 'exports', out.name), Buffer.from(out.data, 'base64'))
     run.check(`it exports as .${format}`, out.data.length > 100, `${out.name}${out.warnings.length ? `; ${out.warnings.join('; ')}` : ''}`)
   }
-  const back = execFileSync(PY, [
+  const back = python('read the exported Word file', [
     '-I',
     '-c',
     `import sys, docx
@@ -92,7 +101,7 @@ print("PARAS", " | ".join(p.text for p in d.paragraphs))
 print("CELLS", " | ".join(c.text for t in d.tables for row in t.rows for c in row.cells))
 print("COMMENTS", len(list(d.comments)), " | ".join(c.text for c in d.comments))`,
     join(run.out, 'exports', `${TITLE}.docx`)
-  ]).toString()
+  ])
   const paras = /^PARAS (.*)$/m.exec(back)?.[1] ?? ''
   run.check(
     "Word's own reader finds the accepted words, the table and the reviewer's comment in the .docx",
@@ -103,7 +112,7 @@ print("COMMENTS", len(list(d.comments)), " | ".join(c.text for c in d.comments))
   const pdf = await run.call<{ name: string; data: string }>('work.formats.print', { name: TITLE, html: `<!doctype html><html><head><meta charset="utf-8"><title>${TITLE}</title></head><body><main>${md}</main></body></html>`, paper: 'Letter' }, 180_000)
   const pdfPath = join(run.out, 'exports', `${TITLE}.pdf`)
   writeFileSync(pdfPath, Buffer.from(pdf.data, 'base64'))
-  const words = execFileSync(PY, ['-I', '-c', 'import sys, pypdfium2 as p\nd = p.PdfDocument(sys.argv[1])\nprint(len(d), d[0].get_textpage().get_text_range())', pdfPath]).toString()
+  const words = python('read the printed PDF', ['-I', '-c', 'import sys, pypdfium2 as p\nd = p.PdfDocument(sys.argv[1])\nprint(len(d), d[0].get_textpage().get_text_range())', pdfPath])
   run.check("Electron's print window makes the PDF", readFileSync(pdfPath).subarray(0, 5).toString() === '%PDF-' && words.includes('fourteen days'), words.slice(0, 200))
 
   // The guest's edit: milestone 31's live proof, against this tree's built hosted page. E2E_GUEST=0 leaves it out
@@ -121,7 +130,7 @@ print("COMMENTS", len(list(d.comments)), " | ".join(c.text for c in d.comments))
     timeout: 600_000
   })
   const tally = /Tests\s+(.*)/.exec(guest.stdout)?.[1] ?? guest.stdout.slice(-300)
-  run.check("a guest edits the owner's document from the hosted page (M31's live proof)", guest.status === 0 && !/failed/.test(tally), tally)
+  run.check("a guest edits the owner's document from the hosted page (M31's live proof)", guest.status === 0 && /passed/.test(tally) && !/failed/.test(tally), guest.error?.message ?? (guest.stderr ? `${tally} ${guest.stderr}` : tally))
 } catch (err) {
   await run.finish(err)
 }

@@ -161,7 +161,7 @@ try {
         check(`LibreOffice opens the filled .${from}`, false, err instanceof Error ? err.message : String(err))
       }
     }
-  } else console.log('     (no TEMP_CODE_WORK_TOOLS_DATA: the real deck edit and the LibreOffice open were not run)')
+  } else console.log('SKIP real deck edit and LibreOffice open. TEMP_CODE_WORK_TOOLS_DATA is unset.')
 } finally {
   db.close()
   rmSync(base, { recursive: true, force: true })

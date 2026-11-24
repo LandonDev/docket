@@ -194,10 +194,11 @@ try {
   // The item opened anew at this width: the window is loaded again, his state untouched (he pressed nothing).
   await run.send('Page.reload')
   await sleep(1500)
-  await run.until('the window again', 90_000, () => run.page<boolean>(`!!window.__monocode && document.readyState === 'complete'`).catch(() => false))
+  const connected = await run.until('the window reconnects', 90_000, () => run.page<boolean>(`(() => { const ports = window.__monocode?.registry; return document.readyState === 'complete' && ports?.statusOf(ports.primaryEnvironmentId)?.transport === 'open' })()`))
+  if (!run.check('the reloaded window reconnects to its host', connected)) throw new Error('The document host did not reconnect')
   await sleep(2500)
   await run.show(thread)
-  const again = await run.until('the words again', 90_000, () => run.page<boolean>(`${editorText}.includes('Before doors') && ${editorText}.includes('Finals')`).catch(() => false))
+  const again = await run.until('the words again', 90_000, () => run.page<boolean>(`${editorText}.includes('Before doors') && ${editorText}.includes('Finals')`))
   run.check('the window loaded again draws the document', again)
   const drew = await run.until('the sheets', 20_000, async () => (await sheets()).sheets > 1 && /^Page 1 of \d+$/.test((await sheets()).fact))
   const open = await sheets()

@@ -1,5 +1,5 @@
 import type { OutboxItem } from '../src/shared/contract-work-outbox'
-import { ownMailbox, PREFIX, Run, sleep, textOf } from './e2e-work-lib'
+import { ownMailbox, Run, sleep, textOf } from './e2e-work-lib'
 
 /**
  * Job 1 (milestone 49): morning triage → held drafts → the owner's batch.
@@ -20,8 +20,8 @@ try {
   await run.signIn('triage')
   const box = await ownMailbox(run)
   const sector = box.defaultSector
-  const ws = await run.workspace(sector, `${PREFIX} triage`)
-  const thread = await run.thread(ws, `${PREFIX} morning triage`, { firstMessage: 'Triage my morning mail.' })
+  const ws = await run.workspace(sector, `${run.prefix} triage`)
+  const thread = await run.thread(ws, `${run.prefix} morning triage`, { firstMessage: 'Triage my morning mail.' })
 
   // The agent reads the morning.
   const guide = await run.addon(thread, 'get_guide')
@@ -30,26 +30,26 @@ try {
   run.check("the thread reads its sector's inbox", !list.isError, textOf(list).slice(0, 200))
 
   // A task from the triage.
-  const task = JSON.parse(textOf(await run.addon(thread, 'add_task', { sector, title: `${PREFIX} Follow up on the morning mail`, reason: 'E2E-49 triage proof: removed at the end', key: `e2e49-${Date.now()}` }))) as { id: string }
+  const task = JSON.parse(textOf(await run.addon(thread, 'add_task', { sector, title: `${run.prefix} Follow up on the morning mail`, reason: 'E2E-49 triage proof: removed at the end', key: `${run.prefix}-task` }))) as { id: string }
   run.check('the thread filed a task', !!task.id)
   run.later('drop the task', () => run.addon(thread, 'drop_tasks', { ids: [task.id], reason: 'E2E-49 triage proof: cleanup' }))
 
   // Three replies, drafted to himself; each is discarded at the end unless he sent it.
   const drafts: string[] = []
-  run.later('discard the unsent drafts', async () => {
-    for (const id of drafts.filter((d) => d !== sentId)) await run.mutation('compose:discard', { id }).catch(() => null)
-  })
   for (const n of [1, 2, 3]) {
     const d = await run.addon(thread, 'draft_mail', {
       account_id: box._id,
       to: [{ address: box.address }],
-      subject: `${PREFIX} triage reply ${n}`,
+      subject: `${run.prefix} triage reply ${n}`,
       body: `A test reply from TempCode's end-to-end proof (${n} of 3), to myself. Please ignore it.`,
       reason: 'E2E-49 triage proof: a draft to himself, discarded or sent to himself'
     })
     if (!run.check(`the thread drafted reply ${n}`, !d.isError, textOf(d).slice(0, 200))) continue
     const parsed = JSON.parse(textOf(d)) as { id?: string; draftId?: string }
-    drafts.push((parsed.id ?? parsed.draftId)!)
+    const id = parsed.id ?? parsed.draftId
+    if (!id) throw new Error('The draft answer had no ID')
+    drafts.push(id)
+    run.cleanupDraft(id)
   }
   const origin = await run.query<{ row: { origin?: { threadId?: string } } }>('compose:get', { id: drafts[0] })
   run.check("the host stamped the thread's origin on the draft", origin.row.origin?.threadId === thread)
@@ -63,7 +63,7 @@ try {
 
   // The window: the Outbox with the three, ticked as a batch.
   await run.page(`(() => { const el = [...document.querySelectorAll('button, a, [role=button], [role=link]')].find((e) => /^Outbox\\d*$/.test(e.textContent.trim())); el?.click(); return !!el })()`)
-  run.check('the Outbox lists the three', await run.until('rows', 30_000, async () => (await run.has(`${PREFIX} triage reply 1`)) && (await run.has(`${PREFIX} triage reply 3`))))
+  run.check('the Outbox lists the three', await run.until('rows', 30_000, async () => (await run.has(`${run.prefix} triage reply 1`)) && (await run.has(`${run.prefix} triage reply 3`))))
   await run.until('detail', 15_000, () => run.has('Subject'))
   run.check("the window offers the three as one batch (the group's Send 3)", await run.page<boolean>(`[...document.querySelectorAll('button')].some((b) => b.textContent.trim() === 'Send 3')`))
   await run.shot('01-outbox-batch')

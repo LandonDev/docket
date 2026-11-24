@@ -316,10 +316,10 @@ async function provePage(
     await page.locator(editor).waitFor({ timeout: 12_000 })
     const loadedBody = await page.waitForFunction(({ selector, body }: { selector: string; body: string }) =>
       [...document.querySelectorAll(selector + ' p')].some((p) => p.textContent === body && p.getClientRects().length > 0),
-    { selector: editor, body: BODY }, { timeout: 8000 }).then(() => true, () => false)
+    { selector: editor, body: BODY }, { timeout: 8000 }).then(() => true, (error: unknown) => (check(`${label} draws the seeded paragraph`, false, safe(error)), false))
     // The editor registers its font faces through a lazy module.
     if (loadedBody) await page.waitForFunction(() => [...document.fonts].some((face) => face.family.replace(/['"]/g, '') === 'Carlito' && face.status === 'loaded'),
-      undefined, { timeout: 8000 }).catch(() => {})
+      undefined, { timeout: 8000 }).catch((error: unknown) => check(`${label} loads Carlito`, false, safe(error)))
     await page.evaluate(async () => {
       await document.fonts.ready
       await new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())))
@@ -550,8 +550,8 @@ async function provePages(
     page.on('pageerror', (err: Error) => errors.push(phase + ' ' + safe(err)))
     await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30_000 })
     await page.locator(editor).waitFor({ timeout: 12_000 })
-    await page.waitForFunction(({ selector, last }: { selector: string; last: string }) => !!document.querySelector(selector)?.textContent?.includes(last), { selector: editor, last: LAST_LINE }, { timeout: 12_000 }).catch(() => {})
-    await page.waitForFunction(() => [...document.fonts].some((face) => face.family.replace(/['"]/g, '') === 'Carlito' && face.status === 'loaded'), undefined, { timeout: 8000 }).catch(() => {})
+    await page.waitForFunction(({ selector, last }: { selector: string; last: string }) => !!document.querySelector(selector)?.textContent?.includes(last), { selector: editor, last: LAST_LINE }, { timeout: 12_000 })
+    await page.waitForFunction(() => [...document.fonts].some((face) => face.family.replace(/['"]/g, '') === 'Carlito' && face.status === 'loaded'), undefined, { timeout: 8000 }).catch((error: unknown) => check(`${label} loads Carlito`, false, safe(error)))
     await page.evaluate(() => document.fonts.ready.then(() => undefined))
     const open = await settled(page)
     // The Flow | Pages switch is an Edit link's, and only where sheets have room.

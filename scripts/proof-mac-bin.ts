@@ -10,6 +10,7 @@
  * `fileproviderctl evict` makes a file cloud-only, what the Trash does with it is said. The dummy folder ends in the
  * Trash, through the same call. Exits 1 on the first step that does not hold.
  */
+import { randomUUID } from 'node:crypto'
 import { execFileSync } from 'node:child_process'
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
@@ -17,7 +18,7 @@ import { join } from 'node:path'
 import { macBin, NOT_IN_TRASH_BIN } from '../src/main/server/work/files/bin'
 
 const LIB = process.argv[2] ?? join(homedir(), 'Library', 'CloudStorage', 'OneDrive-purdue.edu')
-const DIR = join(LIB, 'TempCode proof')
+const DIR = join(LIB, `TempCode proof ${randomUUID().slice(0, 8)}`)
 const log = (...a: unknown[]): void => console.log(`[proof ${new Date().toISOString().slice(11, 19)}]`, ...a)
 function ok(cond: boolean, what: string, got: unknown): void {
   if (!cond) {
@@ -28,6 +29,7 @@ function ok(cond: boolean, what: string, got: unknown): void {
 }
 
 async function main(): Promise<void> {
+  if (process.platform !== 'darwin') throw new Error('The Finder Trash proof needs a Mac')
   if (!existsSync(LIB)) throw new Error(`No library at ${LIB}`)
   const bin = macBin()
   mkdirSync(join(DIR, 'TempCode proof folder'), { recursive: true })
@@ -58,25 +60,27 @@ async function main(): Promise<void> {
   }
   ok(twice === NOT_IN_TRASH_BIN, 'a second Put back of the same thing is refused', twice)
 
-  // A file kept only online, where the File Provider lets one be made so.
+  // A file kept only online, where the File Provider can make one.
   const cloud = join(DIR, 'TempCode proof cloud.txt')
   writeFileSync(cloud, 'online only')
   await new Promise((r) => setTimeout(r, 30_000))
+  let evicted = false
   try {
     execFileSync('fileproviderctl', ['evict', cloud], { stdio: 'pipe', timeout: 60_000 })
-    log('evicted the cloud dummy')
-  } catch (err) {
-    log(`could not make the dummy cloud-only: ${(err as Error).message.split('\n')[0]}`)
+    evicted = true
+  } catch (error) {
+    log(`SKIP cloud-only file: ${(error as Error).message.split('\n')[0]}`)
   }
-  try {
-    const where = await bin.put(cloud, 'p6')
-    log(`a cloud-only dummy went to the Trash: ${where}; still there: ${!!where && existsSync(where)}`)
-    if (where) {
-      await bin.back!(where, cloud, 'p7')
-      log(`and came back: ${existsSync(cloud)}, its words: ${readFileSync(cloud, 'utf8')}`)
+  if (evicted) {
+    try {
+      const where = await bin.put(cloud, 'p6')
+      ok(!!where && existsSync(where), 'the cloud-only dummy reaches the Trash', where)
+      await bin.back!(where!, cloud, 'p7')
+      ok(existsSync(cloud) && readFileSync(cloud, 'utf8') === 'online only', 'the cloud-only dummy returns whole', cloud)
+    } catch (error) {
+      ok(existsSync(cloud), 'a refused cloud-only dummy stays in the library', error)
+      log(`the bin refused the cloud-only dummy: ${(error as Error).message}`)
     }
-  } catch (err) {
-    log(`a cloud-only dummy was refused and left: ${(err as Error).message}; still there: ${existsSync(cloud)}`)
   }
 
   // The dummy folder leaves the library the same way: to the Trash.

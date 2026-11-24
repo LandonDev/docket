@@ -1,6 +1,8 @@
-import { copyFileSync, mkdirSync } from 'node:fs'
+import { copyFileSync, mkdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { PREFIX, REPO, Run, sleep } from './e2e-work-lib'
+import { unescapeXml } from '../src/main/server/work/templates/ooxml'
+import { partText, readZip } from '../src/main/server/work/templates/zip'
+import { PREFIX, REPO, Run, skipSetupOffer, sleep } from './e2e-work-lib'
 
 /**
  * Closing an item beside a Work thread's chat, in a real window (docs/agents/work-canvas.md "Closing an item"; the
@@ -14,19 +16,17 @@ import { PREFIX, REPO, Run, sleep } from './e2e-work-lib'
  * Run after `electron-vite build`: env -u ELECTRON_RUN_AS_NODE bun scripts/e2e-canvas-close.ts [--out <dir>]
  */
 const run = new Run('canvas-close')
-const unzip = (file: string, part: string): string => Bun.spawnSync(['unzip', '-p', file, part]).stdout.toString()
-// Univer may give the first key typed its own text run: judge the words with the markup taken out.
-const holds = (file: string, word: string): boolean => [unzip(file, 'xl/sharedStrings.xml'), unzip(file, 'xl/worksheets/sheet1.xml')].some((xml) => xml.replace(/<[^>]+>/g, '').includes(word))
+// The first key can have its own XML run. Read the text from the actual workbook bytes.
+const holds = (file: string, word: string): boolean => readZip(new Uint8Array(readFileSync(file)))
+  .filter(({ name }) => name === 'xl/sharedStrings.xml' || name === 'xl/worksheets/sheet1.xml')
+  .some((part) => unescapeXml(partText(part).replace(/<[^>]+>/g, '')).includes(word))
 const point = async (x: number, y: number): Promise<void> => {
   await run.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x, y })
   for (const type of ['mousePressed', 'mouseReleased']) await run.send('Input.dispatchMouseEvent', { type, x, y, button: 'left', clickCount: 1 })
 }
 const centreOf = (selector: string): Promise<{ x: number; y: number } | null> =>
   run.page(`(() => { const el = [...document.querySelectorAll(${JSON.stringify(selector)})].find((e) => e.getClientRects().length); if (!el) return null; const r = el.getBoundingClientRect(); return { x: Math.round(r.x + r.width / 2), y: Math.round(r.y + r.height / 2) } })()`)
-const key = async (k: string, code: string, vk: number, modifiers = 0): Promise<void> => {
-  await run.send('Input.dispatchKeyEvent', { type: 'keyDown', key: k, code, windowsVirtualKeyCode: vk, modifiers, ...(modifiers ? {} : { text: k.length === 1 ? k : k === 'Enter' ? '\r' : undefined }) })
-  await run.send('Input.dispatchKeyEvent', { type: 'keyUp', key: k, code, windowsVirtualKeyCode: vk, modifiers })
-}
+const key = run.key.bind(run)
 const typeText = async (text: string): Promise<void> => {
   for (const ch of text) await key(ch, /[a-z]/i.test(ch) ? `Key${ch.toUpperCase()}` : /\d/.test(ch) ? `Digit${ch}` : 'Space', ch.toUpperCase().charCodeAt(0))
 }
@@ -36,6 +36,7 @@ const boardShown = (): Promise<boolean> => run.page(`!!document.querySelector('[
 
 try {
   await run.start()
+  await run.page(skipSetupOffer)
   const ws = await run.call<{ id: string; path: string }>('workspace.create', { kind: 'work', name: `${PREFIX} close`, sector: 'dummy' })
   run.later('delete the workspace', () => run.call('workspace.delete', { workspaceId: ws.id }))
   const thread = await run.thread(ws.id, `${PREFIX} close thread`)
@@ -61,6 +62,7 @@ try {
   await run.shot('1-open-beside-chat')
 
   // 2. A cell typed, Return, and the × at once.
+  await run.page(skipSetupOffer)
   const value = `Close ${Date.now() % 100000}`
   const a1 = (await cell())!
   await point(a1.x, a1.y)

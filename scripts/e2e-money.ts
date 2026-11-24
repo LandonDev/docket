@@ -38,6 +38,8 @@ import { MONEY_PART_BYTES, type MoneyActed, type MoneyExport, type MoneyKept, ty
 import { sigOf } from '../src/shared/work/money'
 
 const TOOLS = process.env.E2E_WORK_TOOLS ?? '/srv/agents/temp-code-data/work-tools'
+import { withinDeadline } from './e2e-work-lib'
+
 const root = mkdtempSync(join(tmpdir(), 'tc-money-e2e-'))
 const data = join(root, 'data')
 const work = join(root, 'work')
@@ -113,9 +115,13 @@ server.store.setSetting('workspace.root', work)
 
 /** One request on the host's own socket: the window's. */
 const ws = new WebSocket(`ws://127.0.0.1:${server.port}/`)
-await new Promise<void>((ok, bad) => {
-  ws.addEventListener('open', () => ok())
-  ws.addEventListener('error', () => bad(new Error('no socket')))
+await withinDeadline('open the money proof socket', 5000, (signal) => new Promise<void>((resolve, reject) => {
+  signal.addEventListener('abort', () => ws.close(), { once: true })
+  ws.onopen = () => resolve()
+  ws.onerror = () => reject(new Error('The money proof socket did not open'))
+})).catch(async (error: unknown) => {
+  await withinDeadline('stop the money proof host', 10_000, () => server.close())
+  throw error
 })
 const pending = new Map<string, (frame: { ok?: boolean; result?: unknown; error?: string }) => void>()
 const pushes: { push?: string; workspaceId?: string; toConfirm?: number }[] = []
@@ -124,18 +130,31 @@ ws.addEventListener('message', (ev) => {
   if (frame.id) pending.get(frame.id)?.(frame)
   else if (frame.push === 'work.money') pushes.push(frame)
 })
+const closed = (): void => {
+  for (const finish of pending.values()) finish({ ok: false, error: 'The money proof socket closed' })
+}
+ws.onclose = ws.onerror = closed
 let next = 0
 function rpc<T>(method: string, params: unknown = {}): Promise<T> {
   return new Promise<T>((ok, bad) => {
     const id = `m${++next}`
-    const timer = setTimeout(() => bad(new Error(`no answer to ${method}`)), 180_000)
+    const timer = setTimeout(() => {
+      pending.delete(id)
+      bad(new Error(`no answer to ${method}`))
+    }, 180_000)
     pending.set(id, (frame) => {
       clearTimeout(timer)
       pending.delete(id)
       if (frame.ok) ok(frame.result as T)
       else bad(new Error(frame.error ?? `${method} failed`))
     })
-    ws.send(JSON.stringify({ id, method, params }))
+    try {
+      ws.send(JSON.stringify({ id, method, params }))
+    } catch (error) {
+      clearTimeout(timer)
+      pending.delete(id)
+      bad(error)
+    }
   })
 }
 const refusal = (p: Promise<unknown>): Promise<string> => p.then(() => '', (err: Error) => err.message)
@@ -146,10 +165,19 @@ function service<T>(route: string, body: unknown): Promise<T> {
   const secret = readFileSync(paths.secretFile, 'utf8').trim()
   const payload = JSON.stringify(body)
   return new Promise<T>((ok, bad) => {
-    const req = httpRequest({ socketPath: paths.socketPath, path: route, method: 'POST', headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(payload), Authorization: `Bearer ${secret}` } }, (res) => {
+    const req = httpRequest({ socketPath: paths.socketPath, path: route, method: 'POST', signal: AbortSignal.timeout(10_000), headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(payload), Authorization: `Bearer ${secret}` } }, (res) => {
       const chunks: Buffer[] = []
       res.on('data', (c: Buffer) => chunks.push(c))
-      res.on('end', () => (res.statusCode === 200 ? ok(JSON.parse(Buffer.concat(chunks).toString('utf8')) as T) : bad(new Error(`${route}: ${res.statusCode} ${Buffer.concat(chunks).toString('utf8')}`))))
+      res.on('error', bad)
+      res.on('end', () => {
+        const text = Buffer.concat(chunks).toString('utf8')
+        try {
+          if (res.statusCode !== 200) throw new Error(`${route}: ${res.statusCode} ${text}`)
+          ok(JSON.parse(text) as T)
+        } catch (error) {
+          bad(error)
+        }
+      })
     })
     req.on('error', bad)
     req.end(payload)
@@ -291,7 +319,7 @@ try {
   check('the run finished', false, err instanceof Error ? (err.stack ?? err.message) : String(err))
 } finally {
   ws.close()
-  await server.close().catch(() => {})
+  await withinDeadline('stop the money proof host', 10_000, () => server.close()).catch((error: unknown) => check('stop the scratch host', false, String(error)))
   if (failures === 0 && !process.env.E2E_KEEP) rmSync(root, { recursive: true, force: true })
   else console.log(`left for inspection: ${root}`)
 }

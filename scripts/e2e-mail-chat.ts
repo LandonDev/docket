@@ -57,7 +57,7 @@ try {
   run.check('adopt marks the fresh thread a mail chat', adopted.ok === true)
   const again = await run.call<{ ok: boolean }>('work.mail.chat.adopt', { workspaceId: ws.id, sessionId: chat, kind: 'box' })
   run.check('adopt asked again answers the same', again.ok === true)
-  await sleep(2000)
+  run.check('the old harnesses exit after adoption', await run.until('the old harnesses exit', 15_000, () => [...booted.keys()].every((pid) => !clis().has(pid))))
   const left = [...booted.keys()].filter((pid) => clis().has(pid))
   run.check('no harness started before the mark is still running', left.length === 0, left.join(' '))
 

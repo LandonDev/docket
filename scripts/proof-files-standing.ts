@@ -15,8 +15,11 @@
  * the path its record names, the record gone), as the admin. The dummy folder ends in the Recycle Bin.
  */
 import { spawn, spawnSync, type ChildProcess } from 'node:child_process'
-import { connect, type Socket } from 'node:net'
+import type { Socket } from 'node:net'
 import { join } from 'node:path'
+
+import { openVmProofSocket, VmProofWire, type VmProofReply } from './lib/vmProofWire'
+import { watchProofChild } from './e2e-work-lib'
 
 const VM = process.env.WINVM_DIR ?? '/srv/agents/win-vm'
 const PORT = 22230
@@ -26,8 +29,7 @@ const KEY = ['-i', join(VM, 'keys', 'id_ed25519'), '-p', String(PORT), '-o', 'Id
 
 const log = (...a: unknown[]): void => console.log(`[standing ${new Date().toISOString().slice(11, 19)}]`, ...a)
 function fail(what: string, got: unknown): never {
-  console.error(`FAILED: ${what}\n${JSON.stringify(got, null, 2)}`)
-  process.exit(1)
+  throw new Error(`${what}\n${JSON.stringify(got, null, 2)}`)
 }
 function ok(cond: boolean, what: string, got: unknown): void {
   if (!cond) fail(what, got)
@@ -41,43 +43,25 @@ function adminPs(script: string): string {
   return r.stdout.trim()
 }
 
-type Answer = { id?: number; ok: boolean; value?: any; error?: { code: string; message: string } }
-
 /** The helper's door: one JSON line each way after the token. */
 class Door {
-  private s!: Socket
-  private buf = ''
-  private id = 0
-  private waiting = new Map<number, (a: Answer) => void>()
-  async open(token: string): Promise<void> {
-    this.s = connect(LOCAL, '127.0.0.1')
-    await new Promise<void>((resolve, reject) => {
-      this.s.once('error', reject)
-      this.s.setEncoding('utf8')
-      this.s.on('data', (d: string) => {
-        this.buf += d
-        let nl: number
-        while ((nl = this.buf.indexOf('\n')) >= 0) {
-          const line = this.buf.slice(0, nl).trim()
-          this.buf = this.buf.slice(nl + 1)
-          if (!line) continue
-          const f = JSON.parse(line)
-          if (f.event === 'ready') resolve()
-          else if (typeof f.id === 'number') this.waiting.get(f.id)?.(f)
-        }
-      })
-      this.s.write(`${token}\n`)
-    })
+  private socket?: Socket
+  private wire?: VmProofWire
+
+  async open(token: string, signal: AbortSignal): Promise<void> {
+    this.socket = await openVmProofSocket({ host: '127.0.0.1', port: LOCAL }, signal)
+    this.wire = new VmProofWire(this.socket, this.socket)
+    this.socket.write(token + '\n')
+    await this.wire.waitReady(10_000, signal)
   }
-  call(verb: string, args: Record<string, unknown> = {}): Promise<Answer> {
-    const id = ++this.id
-    return new Promise((resolve) => {
-      this.waiting.set(id, resolve)
-      this.s.write(JSON.stringify({ id, verb, args }) + '\n')
-    })
+
+  call(verb: string, args: Record<string, unknown> = {}, ms = 60_000): Promise<VmProofReply> {
+    return this.wire!.call(verb, args, ms)
   }
+
   close(): void {
-    this.s?.destroy()
+    this.wire?.close()
+    this.socket?.destroy()
   }
 }
 
@@ -106,7 +90,9 @@ async function main(): Promise<void> {
   const token = adminPs(`Get-Content -LiteralPath 'C:\\ProgramData\\TempCode\\token' -Raw`).trim()
   ok(token.length >= 32, 'the door\'s token is read as the admin', token.length)
   const forward: ChildProcess = spawn('ssh', [...KEY, '-N', '-L', `127.0.0.1:${LOCAL}:127.0.0.1:47801`, 'tcadmin@127.0.0.1'], { stdio: 'ignore' })
-  await new Promise((r) => setTimeout(r, 2000))
+  const lost = new AbortController()
+  const exited = watchProofChild(forward, 'VM proof SSH forward')
+  void exited.then((error) => lost.abort(error ?? new Error('VM proof SSH forward exited')))
   const door = new Door()
   const kit = await import('../src/main/server/work/files/testkit')
   const { filesHandle, closeFilesState } = await import('../src/main/server/work/files/handle')
@@ -115,7 +101,17 @@ async function main(): Promise<void> {
   const rig = kit.makeRig()
   let top = ''
   try {
-    await door.open(token)
+    const connectBy = Date.now() + 15_000
+    while (true) {
+      try {
+        await door.open(token, lost.signal)
+        break
+      } catch (error) {
+        door.close()
+        if (lost.signal.aborted || Date.now() > connectBy) throw error
+        await new Promise((resolve) => setTimeout(resolve, 100))
+      }
+    }
     const status = (await door.call('guest.status')).value
     ok(status?.onedrive?.running === true, `OneDrive runs in the VM as ${status?.onedrive?.account ?? 'nobody'}`, status?.onedrive)
     const mounts = status.mounts as { path: string; type: string }[]
@@ -178,20 +174,29 @@ async function main(): Promise<void> {
     await new Promise((r) => setTimeout(r, 20_000))
     for (const p of [file, inner]) log(`OneDrive's state of ${p.slice(p.lastIndexOf('\\') + 1)} after: ${JSON.stringify((await door.call('files.stat', { path: p })).value)}`)
   } finally {
-    // The dummy folder leaves his OneDrive the same way: to the Recycle Bin.
-    if (top) log(`the dummy folder to the Recycle Bin: ${JSON.stringify(await door.call('files.recycle', { path: top, op: `tc-files:standing-${RUN}:end` }))}`)
-    // An earlier run's dummy folder, named on the command line, goes the same way; only one this proof made.
-    for (const [i, left] of process.argv.slice(2).entries()) {
-      if (!/\\TempCode proof [a-z0-9]+$/.test(left)) fail('only an earlier run\'s dummy folder may be named', left)
-      log(`an earlier dummy folder to the Recycle Bin: ${JSON.stringify(await door.call('files.recycle', { path: left, op: `tc-files:standing-${RUN}:left-${i}` }))}`)
+    try {
+      const recycle = async (path: string, suffix: string): Promise<void> => {
+        const answer = await door.call('files.recycle', { path, op: `tc-files:standing-${RUN}:${suffix}` }, 10_000)
+        if (!answer.ok) throw new Error(answer.error?.message ?? `Could not recycle ${path}`)
+        log(`recycled proof folder ${path}`)
+      }
+      if (top) await recycle(top, 'end')
+      for (const [i, left] of process.argv.slice(2).entries()) {
+        if (!/\\TempCode proof [a-z0-9]+$/.test(left)) fail('only an earlier run’s dummy folder may be named', left)
+        await recycle(left, `left-${i}`)
+      }
+    } finally {
+      door.close()
+      forward.kill()
+      setVmCall(null)
+      closeFilesState(rig.db)
+      rig.close()
     }
-    setVmCall(null)
-    closeFilesState(rig.db)
-    rig.close()
-    door.close()
-    forward.kill()
   }
   log('ALL HELD')
 }
 
-main().catch((err) => fail('the proof threw', err instanceof Error ? err.stack : err))
+main().catch((error: unknown) => {
+  console.error('FAILED', error)
+  process.exitCode = 1
+})

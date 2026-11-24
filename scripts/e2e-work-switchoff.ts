@@ -1,7 +1,7 @@
 import { execFileSync } from 'node:child_process'
 import { connect } from 'node:net'
 import { join } from 'node:path'
-import { PREFIX, Run, sleep } from './e2e-work-lib'
+import { PREFIX, Run, sleep, withinDeadline } from './e2e-work-lib'
 
 /**
  * Job 6 (milestone 49): master with Work off is the app before Work.
@@ -18,11 +18,15 @@ import { PREFIX, Run, sleep } from './e2e-work-lib'
  */
 const run = new Run('switchoff')
 const listening = (port: number): Promise<boolean> =>
-  new Promise((ok) => {
-    const s = connect(port, '127.0.0.1')
-    s.once('connect', () => (s.destroy(), ok(true)))
-    s.once('error', () => ok(false))
-  })
+  withinDeadline('probe the Work service socket', 3000, (signal) => new Promise<boolean>((resolve, reject) => {
+    const socket = connect(port, '127.0.0.1')
+    signal.addEventListener('abort', () => socket.destroy(), { once: true })
+    socket.once('connect', () => { socket.destroy(); resolve(true) })
+    socket.once('error', (error: NodeJS.ErrnoException) => {
+      if (error.code === 'ECONNREFUSED') resolve(false)
+      else reject(error)
+    })
+  }))
 interface Look {
   rail: string[]
   settings: string[]
@@ -35,17 +39,20 @@ async function look(label: string, code: string): Promise<Look> {
   await run.page(`location.hash = ''`)
   await sleep(1500)
   const rail = await run.page<string[]>(`[...document.querySelectorAll('aside button, aside a, nav button, nav a, aside h2, aside [role=heading]')].filter((e) => e.getBoundingClientRect().left < 200 && e.offsetParent).map((e) => e.textContent.trim().replace(/\\d+$/, '')).filter(Boolean)`)
-  await run.press('Settings', 'rail')
-  await sleep(2000)
-  // Settings puts its own list of pages where the rail was.
-  await run.until('settings', 10_000, () => run.has('Appearance'))
-  const settings = await run.page<string[]>(`[...document.querySelectorAll('button, a, [role=tab]')].filter((e) => e.getBoundingClientRect().left < 200 && e.offsetParent).map((e) => e.textContent.trim()).filter(Boolean)`)
+  await run.page(`window.dispatchEvent(new CustomEvent('monocode:open-settings', { detail: 'general' }))`)
+  const settingsRail = '[aria-label="Settings"]:not([data-app-settings])'
+  const settingsPath = JSON.stringify(settingsRail)
+  if (!(await run.until('Settings rail', 15_000, () =>
+    run.page<boolean>(`[...document.querySelectorAll(${settingsPath} + ' button')].some((e) => e.textContent.trim() === 'Appearance')`)
+  ))) throw new Error('The Settings rail did not open')
+  const settings = await run.page<string[]>(`[...document.querySelectorAll(${settingsPath} + ' button, ' + ${settingsPath} + ' a')].map((e) => e.textContent.trim()).filter(Boolean)`)
   await run.shot(`${label}-settings`)
-  await run.press('Back', 'rail')
-  await sleep(1200)
+  const closed = await run.page<boolean>(`(() => { const rail = document.querySelector(${settingsPath}); const button = [...(rail?.nextElementSibling?.querySelectorAll('button') ?? [])].find((e) => e.textContent.trim() === 'Back'); button?.click(); return !!button })()`)
+  if (!closed) throw new Error('The Settings rail had no Back button')
+  if (!(await run.until('Settings closes', 10_000, () => run.page<boolean>(`!document.querySelector('[data-app-settings]')`)))) throw new Error('Settings did not close')
   const outbox = await run.call('work.outbox.list', {}).then(() => 'answered', (e: Error) => e.message)
   const codeTools = await run.call<{ tools?: unknown[] }>('app.workTools', { sessionId: code, token: run.workToken(code), appToken: run.appToken(code) }).then((r) => JSON.stringify(r?.tools ?? r), (e: Error) => `refused: ${e.message}`)
-  const tables = execFileSync('sqlite3', [join(run.data, 'temp-code.db'), `SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name`], { encoding: 'utf8' }).trim().split('\n')
+  const tables = execFileSync('sqlite3', [join(run.data, 'temp-code.db'), `SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name`], { encoding: 'utf8', timeout: 5000 }).trim().split('\n')
   return { rail, settings, service: await listening(run.workPort), outbox, codeTools, tables }
 }
 
@@ -88,9 +95,9 @@ try {
   run.check('the database only gained tables, all of them Work\'s', before.tables.every((t) => after.tables.includes(t)) && added.every((t) => t.startsWith('work_')), added.join(', ') || 'none')
   const kept = await run.call<{ id: string; kind?: string }[]>('workspace.list').then((l) => l.find((w) => w.id === ws.id))
   run.check('the Work workspace is kept for when Work is on again', kept?.kind === 'work')
-  await run.call('workspace.delete', { workspaceId: ws.id }).catch((e: Error) => run.note(`workspace.delete while off: ${e.message.slice(0, 160)}`))
-  await run.call('session.delete', { sessionId: chat.id }).catch(() => null)
-  await run.call('session.delete', { sessionId: code.id }).catch(() => null)
+  await run.call('workspace.delete', { workspaceId: ws.id })
+  await run.call('session.delete', { sessionId: chat.id })
+  await run.call('session.delete', { sessionId: code.id })
 } catch (err) {
   await run.finish(err)
 }

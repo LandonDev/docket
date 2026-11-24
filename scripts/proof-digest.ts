@@ -112,7 +112,7 @@ notifier.setGate(
     // run-1 fired on its schedule; no run here was started with Run now
     pressed: async () => false,
     ownerWrote: () => false,
-    tell: (t) => void digest.tell(t),
+    tell: (t) => digest.tell(t) !== null,
     log: (l) => void logs.push(l)
   })
 )
@@ -123,62 +123,67 @@ const item = (over: Partial<OutboxItem>): OutboxItem => ({ kind: 'mail.send', ve
 
 // ── Monday, 10:00 AM: the first look, then the day's news ──────────────────
 digest.tick()
-const mail = item({ ref: { at: 'lifeos', table: 'outbox', id: 'ob1' }, workspaceId: 'ws-purdue', sector: 'purdue', sessionId: 't-budget', summary: 'Send to Dana Reyes: Re: budget' })
-const post = item({ ref: { at: 'host', id: 'h1' }, kind: 'addon.call', workspaceId: 'ws-cosmic', sector: 'cosmic', sessionId: null, summary: 'Post to #patch-notes: the season pass copy' })
-const invite = item({ ref: { at: 'lifeos', table: 'calendarOps', id: 'op1' }, kind: 'calendar.op', workspaceId: 'ws-purdue', sector: 'purdue', sessionId: 't-invite', summary: 'Invite Dana Reyes to Spring LAN walkthrough', payload: { id: 'op1', kind: 'create', payload: { title: 'Spring LAN walkthrough', startsAt: at(24, '09:30') } } })
-tellHeld(tells, mail)
-tellHeld(tells, post)
-check('a held item with no clock waits: nothing is sent for the two of them', heard.length === 0, heard)
-tellHeld(tells, invite)
-check('a held invite for an event at 9:30 tomorrow cannot wait for the 8:00 digest: it interrupts on its own thread, through held', heard.length === 1 && heard[0]!.event === 'needs_you' && heard[0]!.threadId === 't-invite' && heard[0]!.body === 'Held: Invite Dana Reyes to Spring LAN walkthrough' && same(heard[0]!.held, invite.ref), heard)
+try {
+  const mail = item({ ref: { at: 'lifeos', table: 'outbox', id: 'ob1' }, workspaceId: 'ws-purdue', sector: 'purdue', sessionId: 't-budget', summary: 'Send to Dana Reyes: Re: budget' })
+  const post = item({ ref: { at: 'host', id: 'h1' }, kind: 'addon.call', workspaceId: 'ws-cosmic', sector: 'cosmic', sessionId: null, summary: 'Post to #patch-notes: the season pass copy' })
+  const invite = item({ ref: { at: 'lifeos', table: 'calendarOps', id: 'op1' }, kind: 'calendar.op', workspaceId: 'ws-purdue', sector: 'purdue', sessionId: 't-invite', summary: 'Invite Dana Reyes to Spring LAN walkthrough', payload: { id: 'op1', kind: 'create', payload: { title: 'Spring LAN walkthrough', startsAt: at(24, '09:30') } } })
+  tellHeld(tells, mail)
+  tellHeld(tells, post)
+  check('a held item with no clock waits: nothing is sent for the two of them', heard.length === 0, heard)
+  tellHeld(tells, invite)
+  check('a held invite for an event at 9:30 tomorrow cannot wait for the 8:00 digest: it interrupts on its own thread, through held', heard.length === 1 && heard[0]!.event === 'needs_you' && heard[0]!.threadId === 't-invite' && heard[0]!.body === 'Held: Invite Dana Reyes to Spring LAN walkthrough' && same(heard[0]!.held, invite.ref), heard)
 
-// a routine's run ends, and a thread he started himself ends
-settle('t-morning', 'idle')
-settle('t-chat', 'idle')
-await sleep(120)
-check("a routine's run that ends is kept back from the phone; his own thread's Done still goes", heard.filter((n) => n.event === 'finished').map((n) => n.threadId).join() === 't-chat', heard.map((n) => `${n.event}:${n.threadId ?? 'work'}`))
-check('the run is in the ledger as a result on its thread', same(digest.store.byKey('thread:t-morning') && { kind: digest.store.byKey('thread:t-morning')!.kind, group: digest.store.byKey('thread:t-morning')!.group, title: digest.store.byKey('thread:t-morning')!.title, how: digest.store.byKey('thread:t-morning')!.how, open: digest.store.byKey('thread:t-morning')!.open }, { kind: 'routines.done', group: 'results', title: 'Morning summary', how: 'waiting', open: { thread: 't-morning' } }), digest.store.byKey('thread:t-morning'))
+  // a routine's run ends, and a thread he started himself ends
+  settle('t-morning', 'idle')
+  settle('t-chat', 'idle')
+  await sleep(120)
+  check("a routine's run that ends is kept back from the phone; his own thread's Done still goes", heard.filter((n) => n.event === 'finished').map((n) => n.threadId).join() === 't-chat', heard.map((n) => `${n.event}:${n.threadId ?? 'work'}`))
+  check('the run is in the ledger as a result on its thread', same(digest.store.byKey('thread:t-morning') && { kind: digest.store.byKey('thread:t-morning')!.kind, group: digest.store.byKey('thread:t-morning')!.group, title: digest.store.byKey('thread:t-morning')!.title, how: digest.store.byKey('thread:t-morning')!.how, open: digest.store.byKey('thread:t-morning')!.open }, { kind: 'routines.done', group: 'results', title: 'Morning summary', how: 'waiting', open: { thread: 't-morning' } }), digest.store.byKey('thread:t-morning'))
 
-// a sign-in on its last day: the source reads it at the next look
-clock.now += 30_000
-digest.tick()
-await sleep(20)
-const lapse = heard.find((n) => n.work)
-check('a sign-in that ends today interrupts as a notice with no thread, named Work, opening Connections', !!lapse && lapse.event === 'needs_you' && lapse.threadId === undefined && lapse.title === 'Work' && lapse.body === 'Sign-in to Frame.io ends Nov 23 at 6:30 PM' && same(lapse.work, { key: 'now', tell: `lapse:frameio:frameio.signin:${lapsing.until}:1`, by: lapsing.until, open: { settings: 'connections' } }), lapse)
-check('two interrupts all day, and no digest yet', heard.filter((n) => n.event === 'needs_you').length === 2 && !heard.some((n) => n.work && 'digest' in n.work), heard.map((n) => `${n.event}:${n.threadId ?? 'work'}`))
+  // a sign-in on its last day: the source reads it at the next look
+  clock.now += 30_000
+  digest.tick()
+  await sleep(20)
+  const lapse = heard.find((n) => n.work)
+  check('a sign-in that ends today interrupts as a notice with no thread, named Work, opening Connections', !!lapse && lapse.event === 'needs_you' && lapse.threadId === undefined && lapse.title === 'Work' && lapse.body === 'Sign-in to Frame.io ends Nov 23 at 6:30 PM' && same(lapse.work, { key: 'now', tell: `lapse:frameio:frameio.signin:${lapsing.until}:1`, by: lapsing.until, open: { settings: 'connections' } }), lapse)
+  check('two interrupts all day, and no digest yet', heard.filter((n) => n.event === 'needs_you').length === 2 && !heard.some((n) => n.work && 'digest' in n.work), heard.map((n) => `${n.event}:${n.threadId ?? 'work'}`))
 
-// looked at again all afternoon and night: nothing is told twice
-for (clock.now = at(23, '12:00'); clock.now < at(24, '07:59'); clock.now += 30 * 60_000) digest.tick()
-await sleep(20)
-check('nothing is told twice through the afternoon and the night', heard.filter((n) => n.event === 'needs_you').length === 2, heard.length)
+  // looked at again all afternoon and night: nothing is told twice
+  for (clock.now = at(23, '12:00'); clock.now < at(24, '07:59'); clock.now += 30 * 60_000) digest.tick()
+  await sleep(20)
+  check('nothing is told twice through the afternoon and the night', heard.filter((n) => n.event === 'needs_you').length === 2, heard.length)
 
-// ── Tuesday, 8:00 AM: the digest ───────────────────────────────────────────
-clock.now = at(24, '08:00')
-digest.tick()
-await digest.making
-await sleep(20)
-const digests = heard.filter((n) => n.work && 'digest' in n.work)
-check('at 8:00 one digest goes out, quiet, for what waited across both jobs', digests.length === 1 && digests[0]!.event === 'finished' && digests[0]!.title === 'Work' && digests[0]!.body === 'Digest: 3 things in Cosmic and Purdue' && same(digests[0]!.work, { key: 'digest:2026-11-24', digest: '2026-11-24' }), digests)
-const list = digest.list()
-check('the day is kept once, counted by what waited', same(list.days.map((d) => [d.day, d.count, d.seenAt]), [['2026-11-24', 3, null]]), list.days)
-check('every tell of the day is in the list, whether it interrupted or waited', same(list.rows.map((r) => `${r.how}:${r.group}:${r.sector ?? '-'}`).sort(), ['digest:held:cosmic', 'digest:held:purdue', 'digest:results:cosmic', 'now:ending:-', 'now:held:purdue'].sort()), list.rows.map((r) => `${r.how}:${r.group}:${r.sector ?? '-'}:${r.title}`))
-clock.now += 30_000
-digest.tick()
-clock.now = at(24, '08:20')
-digest.tick()
-await sleep(20)
-check('the day is never made twice', heard.filter((n) => n.work && 'digest' in n.work).length === 1 && digest.list().days.length === 1)
+  // ── Tuesday, 8:00 AM: the digest ───────────────────────────────────────────
+  clock.now = at(24, '08:00')
+  digest.tick()
+  await digest.making
+  await sleep(20)
+  const digests = heard.filter((n) => n.work && 'digest' in n.work)
+  check('at 8:00 one digest goes out, quiet, for what waited across both jobs', digests.length === 1 && digests[0]!.event === 'finished' && digests[0]!.title === 'Work' && digests[0]!.body === 'Digest: 3 things in Cosmic and Purdue' && same(digests[0]!.work, { key: 'digest:2026-11-24', digest: '2026-11-24' }), digests)
+  const list = digest.list()
+  check('the day is kept once, counted by what waited', same(list.days.map((d) => [d.day, d.count, d.seenAt]), [['2026-11-24', 3, null]]), list.days)
+  check('every tell of the day is in the list, whether it interrupted or waited', same(list.rows.map((r) => `${r.how}:${r.group}:${r.sector ?? '-'}`).sort(), ['digest:held:cosmic', 'digest:held:purdue', 'digest:results:cosmic', 'now:ending:-', 'now:held:purdue'].sort()), list.rows.map((r) => `${r.how}:${r.group}:${r.sector ?? '-'}:${r.title}`))
+  clock.now += 30_000
+  digest.tick()
+  clock.now = at(24, '08:20')
+  digest.tick()
+  await sleep(20)
+  check('the day is never made twice', heard.filter((n) => n.work && 'digest' in n.work).length === 1 && digest.list().days.length === 1)
 
-// ── he sends the mail: its row goes, and every window hears ────────────────
-pushes.length = 0
-ctx.tell.done(heldKey(mail.ref))
-check('a held item he sent leaves the ledger, and the windows are told which row went', digest.store.byKey(heldKey(mail.ref)) === null && pushes.length === 1 && typeof pushes[0]!.gone === 'string', pushes)
-digest.seen('2026-11-24')
-check('opening the digest marks its day seen', digest.list().days[0]!.seenAt === clock.now, digest.list().days)
-check('no fault was logged', logs.length === 0, logs)
-
-notifier.stop()
-db.close()
-rmSync(base, { recursive: true, force: true })
+  // ── he sends the mail: its row goes, and every window hears ────────────────
+  pushes.length = 0
+  ctx.tell.done(heldKey(mail.ref))
+  check('a held item he sent leaves the ledger, and the windows are told which row went', digest.store.byKey(heldKey(mail.ref)) === null && pushes.length === 1 && typeof pushes[0]!.gone === 'string', pushes)
+  digest.seen('2026-11-24')
+  check('opening the digest marks its day seen', digest.list().days[0]!.seenAt === clock.now, digest.list().days)
+  check('no fault was logged', logs.length === 0, logs)
+} finally {
+  notifier.stop()
+  try {
+    db.close()
+  } finally {
+    rmSync(base, { recursive: true, force: true })
+  }
+}
 console.log(failures.length ? `\n${failures.length} of ${checks} checks failed` : `\nall ${checks} checks hold`)
 process.exit(failures.length ? 1 : 0)

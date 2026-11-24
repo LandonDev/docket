@@ -271,10 +271,8 @@ try {
   await run.shot('09-thread-in-other-job')
 
   // The mark on the rail opens it too.
-  await run.press('Search Work').catch(() => false)
   const pressed = await run.page<boolean>(`(() => { const b = document.querySelector('[aria-label="Search Work"]'); if (!b) return false; b.click(); return true })()`)
-  await run.until('the picker opens from the mark', 8_000, open)
-  run.check("a click on the rail's mark opens it", pressed && (await open()))
+  run.check("a click on the rail's mark opens it", pressed && await run.until('the picker opens from the mark', 8_000, open))
   await key('Escape')
   await run.until('closed', 5_000, async () => !(await open()))
 

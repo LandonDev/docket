@@ -40,6 +40,8 @@
  * alone are not read), beside the burner count and the core list.
  */
 import { execFile, spawn, type ChildProcess } from 'node:child_process'
+import { once } from 'node:events'
+import { watchProofChild, withinDeadline } from './e2e-work-lib'
 import { createWriteStream, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { availableParallelism, loadavg, tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -170,9 +172,12 @@ async function main(): Promise<void> {
   let serverChild: ChildProcess | null = null
   let hardKill: ReturnType<typeof setTimeout> | null = null
   let burnStoppedAt = 0
+  let startedBurners = 0
+  let burnerFault: string | null = null
   const stopBurners = (): void => {
     if (hardKill) clearTimeout(hardKill)
     hardKill = null
+    if (!burnStoppedAt) burnStoppedAt = Date.now()
     for (const b of burners.splice(0)) {
       try {
         process.kill(-b.pid!, 'SIGKILL')
@@ -184,7 +189,6 @@ async function main(): Promise<void> {
         }
       }
     }
-    if (!burnStoppedAt) burnStoppedAt = Date.now()
   }
   const stopAll = (): void => {
     stopBurners()
@@ -300,9 +304,27 @@ async function main(): Promise<void> {
   const burnStartedAt = Date.now()
   for (let i = 0; i < burnerCount; i++) {
     const [cmd, args] = pinned('timeout', ['-s', 'KILL', String(Math.ceil(BURN_MAX_MS / 1000) + 5), 'sh', '-c', 'while :; do :; done'])
-    burners.push(spawn(cmd, args, { detached: true, stdio: 'ignore' }))
+    const burner = spawn(cmd, args, { detached: true, stdio: 'ignore' })
+    burners.push(burner)
+    const ready = once(burner, 'spawn')
+    void watchProofChild(burner, `burner ${i + 1}`).then((error) => {
+      if (!burnStoppedAt) {
+        burnerFault = (error ?? new Error(`burner ${i + 1} exited early`)).message
+        console.error(burnerFault)
+        stopBurners()
+      }
+    })
+    try {
+      await withinDeadline(`spawn burner ${i + 1}`, 5000, () => ready)
+      startedBurners++
+    } catch (error) {
+      burnerFault = String(error)
+      stopBurners()
+      break
+    }
+    if (burnStoppedAt) break
   }
-  hardKill = setTimeout(stopBurners, BURN_MAX_MS)
+  if (!burnStoppedAt) hardKill = setTimeout(stopBurners, BURN_MAX_MS)
   let watching = false
   const watchdog = setInterval(() => {
     if (watching || burnStoppedAt) return
@@ -312,7 +334,7 @@ async function main(): Promise<void> {
       if (ms > LIVE_MAX_MS) abort(ms, false)
     })
   }, WATCH_MS)
-  console.log(`${burnerCount} burners on cores ${coreList} (${cores} of ${total}); ramp ${RAMP_MS / 1000} s, then ${measureMs / 1000} s measured`)
+  console.log(`${startedBurners}/${burnerCount} burners on cores ${coreList} (${cores} of ${total}); ramp ${RAMP_MS / 1000} s, then ${measureMs / 1000} s measured`)
   if (burnerCount > 0) await new Promise((r) => setTimeout(r, RAMP_MS))
   const loadAtMeasure = sampleLoad('measure-start')
   const loadTimer = setInterval(() => sampleLoad('measuring'), 2_000)
@@ -347,7 +369,8 @@ async function main(): Promise<void> {
     at: new Date().toISOString(),
     cores,
     coreList,
-    burners: burnerCount,
+    burners: startedBurners,
+    burnerFault,
     live: { max: Math.max(...live.map((l) => l.ms)), readings: live },
     burnedMs: (burnStoppedAt || Date.now()) - burnStartedAt,
     capMs: CAP_MS,
@@ -358,14 +381,14 @@ async function main(): Promise<void> {
     loads,
     requests,
     over,
-    pass: over.length === 0
+    pass: over.length === 0 && !burnerFault && startedBurners === burnerCount && loadedRounds > 0
   }
   writeFileSync(out, JSON.stringify(summary, null, 2) + '\n')
   const pad = (s: string | number, n: number): string => String(s).padStart(n)
   console.log(`box load: start ${summary.load.start?.toFixed(1)}, at measure ${loadAtMeasure.toFixed(1)}, max ${summary.load.max.toFixed(1)}, end ${loadAtEnd.toFixed(1)}; ${burnerCount} burners on cores ${coreList}; live host at most ${summary.live.max} ms`)
   console.log(`${'request'.padEnd(52)}${pad('n', 4)}${pad('p50', 7)}${pad('p95', 7)}${pad('max', 7)}${pad('t/o', 5)}`)
   for (const r of requests) console.log(`${r.name.padEnd(52)}${pad(r.n, 4)}${pad(r.p50, 7)}${pad(r.p95, 7)}${pad(r.max, 7)}${pad(r.timeouts, 5)}`)
-  console.log(summary.pass ? `PASS: every request under load answered in ${passMs} ms` : `FAIL (${passMs} ms): ${over.join(', ')}`)
+  console.log(summary.pass ? `PASS: every request under load answered in ${passMs} ms` : `FAIL (${passMs} ms): ${burnerFault ?? (loadedRounds ? over.join(', ') : 'no load rounds ran')}`)
   console.log(`summary: ${out}`)
   process.exit(summary.pass ? 0 : 1)
 }

@@ -16,8 +16,8 @@
  *  4. a text file: words typed; mac's file holds them
  *  5. a deck MADE there from New → Deck and named in place, opened from its row, a shape deleted: mac's file loses it
  *  6. each tab closed: nothing waits, mac's files keep his edits, no copy record is left
- *  7. a copy whose computer stops answering (mac's bridge set to off): an edit says it waits, the tab's close asks
- *     before anything is dropped, and Keep trying sends it once mac answers again
+ *  7. a dropped Mac peer link offers Keep trying and sends once it reconnects. Turning the bridge off offers
+ *     Cancel and Discard. Cancel keeps the tab, and Retry sends the edit once the bridge is back on.
  * Pictures of the window go to the out folder.
  *
  * Run (repo root, after `bunx electron-vite build`; on the box through the heavy queue):
@@ -25,13 +25,15 @@
  * TC_E2E_KEEP=1 leaves the run's folder. Dummy files only; nothing here touches /Applications, a real HOME, a sign-in
  * or the box's live service; it stops only the process groups it started.
  */
-import { spawn, type ChildProcess } from 'node:child_process'
+import { spawn } from 'node:child_process'
 import { appendFileSync, copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
-import { createServer } from 'node:net'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { E2E_APP_TOKEN_SEED, withAppToken } from './lib/appToken'
-import { attach, type Cdp } from './lib/packagedApp'
+import { attach, freePort, proofRpc, skipSetupOffer, type Cdp } from './e2e-work-lib'
+import { proofPeerLink, slideParagraphs } from './lib/proofPeerLink'
+
+import { WorkProofChildren } from './lib/workProofChildren'
 
 const REPO = resolve(import.meta.dir, '..')
 const KEEP = process.env.TC_E2E_KEEP === '1'
@@ -46,23 +48,15 @@ const check = (name: string, ok: boolean, detail = ''): boolean => {
 }
 const log = (m: string): void => console.log(`      ${m}`)
 const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms))
+const children = new WorkProofChildren()
 if (!existsSync(join(REPO, 'out', 'renderer', 'index.html'))) {
   console.error('out/ is missing: run electron-vite build first')
   process.exit(2)
 }
-const freePort = (): Promise<number> =>
-  new Promise((ok) => {
-    const s = createServer()
-    s.listen(0, '127.0.0.1', () => {
-      const { port } = s.address() as { port: number }
-      s.close(() => ok(port))
-    })
-  })
-
 const root = Bun.spawnSync(['realpath', mkdtempSync(join(tmpdir(), 'tc-copy-edit-'))]).stdout.toString().trim()
 const out = outArg > 0 ? resolve(process.argv[outArg + 1]!) : join(root, 'shots')
 mkdirSync(out, { recursive: true })
-type Inst = { name: string; home: string; data: string; tmp: string; work: string; remote: number; debug: number; log: string; proc?: ChildProcess }
+type Inst = { name: string; home: string; data: string; tmp: string; work: string; remote: number; debug: number; log: string }
 const mk = async (name: string): Promise<Inst> => {
   const home = join(root, `${name}-home`)
   const inst = { name, home, data: join(root, `${name}-data`), tmp: join(root, `${name}-tmp`), work: join(home, 'work'), remote: await freePort(), debug: await freePort(), log: join(root, `${name}.log`) }
@@ -127,38 +121,18 @@ function launch(inst: Inst, windowed: boolean): void {
   const proc = spawn(argv[0]!, argv.slice(1), { cwd: REPO, env, stdio: ['ignore', 'pipe', 'pipe'], detached: true })
   proc.stdout?.on('data', (c: Buffer) => appendFileSync(inst.log, c))
   proc.stderr?.on('data', (c: Buffer) => appendFileSync(inst.log, c))
-  inst.proc = proc
+  children.track(proc, inst.name)
 }
-const until = async (label: string, ms: number, test: () => Promise<boolean> | boolean): Promise<boolean> => {
-  const end = Date.now() + ms
-  while (Date.now() < end) {
-    if (await Promise.resolve(test()).catch(() => false)) return true
-    await sleep(250)
-  }
-  log(`timed out: ${label}`)
-  return false
-}
+const until = (label: string, ms: number, test: () => Promise<boolean> | boolean): Promise<boolean> =>
+  children.until(label, ms, test, log)
 const ports = new Map<string, number>()
 const portOf = (inst: Inst): number => ports.get(inst.name) ?? (JSON.parse(readFileSync(join(inst.data, 'server.json'), 'utf8')) as { port: number }).port
 async function rpc<T = unknown>(inst: Inst, method: string, params: unknown = {}, timeoutMs = 120_000): Promise<T> {
-  const ws = new WebSocket(`ws://127.0.0.1:${portOf(inst)}/`)
-  return new Promise<T>((ok, fail) => {
-    const timer = setTimeout(() => (ws.close(), fail(new Error(`${inst.name}: no answer to ${method}`))), timeoutMs)
-    ws.addEventListener('open', () => ws.send(JSON.stringify({ id: 'e2e', method, params: withAppToken(method, params) })))
-    ws.addEventListener('message', (ev) => {
-      const frame = JSON.parse(String(ev.data)) as { id?: string; ok?: boolean; result?: T; error?: string }
-      if (frame.id !== 'e2e') return
-      clearTimeout(timer)
-      ws.close()
-      if (frame.ok) ok(frame.result as T)
-      else fail(new Error(frame.error))
-    })
-    ws.addEventListener('error', () => (clearTimeout(timer), fail(new Error(`${inst.name}: socket error on ${method}`))))
-  })
+  return proofRpc<T>(portOf(inst), method, withAppToken(method, params), timeoutMs, children.signal)
 }
 
 let cdp: Cdp | null = null
-const ev = <T>(js: string): Promise<T> => cdp!.eval<T>(js)
+const ev = <T>(js: string): Promise<T> => cdp!.eval<T>(js, undefined, children.signal)
 async function shot(name: string): Promise<void> {
   const r = (await cdp!.send('Page.captureScreenshot', { format: 'png' })) as { data: string }
   writeFileSync(join(out, `${name}.png`), Buffer.from(r.data, 'base64'))
@@ -205,35 +179,33 @@ async function openRow(name: string): Promise<boolean> {
   await click(at.x, at.y, 2)
   return true
 }
-const unzip = (file: string, part: string): string => Bun.spawnSync(['unzip', '-p', file, part]).stdout.toString()
+const unzip = (file: string, part: string): string => Bun.spawnSync(['unzip', '-p', file, part], { timeout: 5000 }).stdout.toString()
 const holdsWord = (file: string, word: string): boolean => unzip(file, 'xl/sharedStrings.xml').includes(word) || unzip(file, 'xl/worksheets/sheet1.xml').includes(word)
 type Back = { is: string; at?: number; detail?: string }
 type TabRow = { id: string; name: string; kind: string; copyOf?: { host: string; path: string }; back?: Back }
 
-function stop(inst: Inst): void {
-  for (const sig of ['SIGTERM', 'SIGKILL'] as const)
-    try {
-      if (inst.proc?.pid) process.kill(-inst.proc.pid, sig)
-    } catch {
-      /* gone */
-    }
-}
 let keyId: string | null = null
-const cleanup = async (): Promise<void> => {
+let peerLink: Awaited<ReturnType<typeof proofPeerLink>> | undefined
+let cleaning: Promise<void> | undefined
+const cleanup = (): Promise<void> => cleaning ??= (async () => {
   cdp?.close()
-  if (keyId) await rpc(box, 'remote.keys.revoke', { id: keyId }).catch(() => undefined)
-  for (const inst of [mac, box]) if (inst.proc?.pid) process.kill(-inst.proc.pid, 'SIGTERM')
-  await sleep(1500)
-  for (const inst of [mac, box]) stop(inst)
+  try {
+    if (keyId) await proofRpc(portOf(box), 'remote.keys.revoke', { id: keyId }, 5000)
+  } catch (error) {
+    check('close the scratch proof', false, String(error))
+  } finally {
+    await children.stop().catch((error: unknown) => check('stop both scratch instances', false, String(error)))
+    await peerLink?.close().catch((error: unknown) => check('close the scratch peer link', false, String(error)))
+  }
   if (!KEEP && failures === 0) rmSync(root, { recursive: true, force: true })
   else log(`left for inspection: ${root}`)
-}
+})()
 process.on('SIGINT', () => void cleanup().then(() => process.exit(130)))
 
-launch(mac, true)
-launch(box, false)
 try {
-  cdp = await attach(mac.debug, 180_000)
+  launch(mac, true)
+  launch(box, false)
+  cdp = await attach(mac.debug, 180_000, children.signal)
   await cdp.send('Page.enable')
   ports.set('mac', (await cdp.eval<number | null>('window.api.getServerPort()')) ?? 0)
   const up = ports.get('mac')! > 0 && (await until('box up', 120_000, () => existsSync(join(box.data, 'server.json'))))
@@ -248,8 +220,10 @@ try {
   await rpc(box, 'work.workspace.set', { workspaceId: ws.id, patch: { mayUseDesktop: [macId] } })
   const key = await rpc<{ token: string; id?: string; key?: { id: string } }>(box, 'remote.keys.create', { name: 'copy edit (e2e)', audience: 'client', caps: ['read', 'operate', 'approve', 'admin'] })
   keyId = key.id ?? key.key?.id ?? null
-  await rpc(mac, 'remote.environments.add', { url: `http://127.0.0.1:${box.remote}`, key: key.token, name: 'box' })
-  const registered = await until('mac registers on box', 90_000, async () => (await rpc<{ environmentId: string; registered: boolean }[]>(mac, 'macBridge.policy.get')).some((p) => p.environmentId === boxId && p.registered))
+  peerLink = await proofPeerLink(box.remote)
+  await rpc(mac, 'remote.environments.add', { url: `http://127.0.0.1:${peerLink.port}`, key: key.token, name: 'box' })
+  const macRegistered = async () => (await rpc<{ environmentId: string; registered: boolean }[]>(mac, 'macBridge.policy.get', {}, 5000)).some((p) => p.environmentId === boxId && p.registered)
+  const registered = await until('mac registers on box', 90_000, macRegistered)
   check("mac's link registered on box", registered)
   // As his Mac lets the box run its Files verbs: a copy's bytes go back through work.files.writeBack.
   await rpc(mac, 'macBridge.policy.set', { environmentId: boxId, policy: 'read+run' })
@@ -261,6 +235,7 @@ try {
   const tabNamed = async (name: string): Promise<TabRow | undefined> => (await tabs()).find((t) => t.name === name)
   const copies = async (): Promise<number> => (await tabs()).filter((t) => t.back).length
 
+  await ev(skipSetupOffer)
   // 1. The rail's workspace, its Files view, the library and its channel.
   check("the rail shows box's workspace and it opens", await press('button, a, [role="button"], [role="treeitem"], [role="link"], div', 'Proof Esports', 1, 60_000))
   check('its Files view opens', await press('button, a, [role="button"], [role="link"], div', 'Files'))
@@ -370,14 +345,15 @@ try {
     check(`${tag}: Deck makes one`, await press('[role="menuitem"]', 'Deck'))
     const made = await until('a new deck on mac', 30_000, () => readdirSync(general).some((n) => /^Untitled.*\.pptx$/i.test(n)))
     const name = readdirSync(general).find((n) => /^Untitled.*\.pptx$/i.test(n)) ?? ''
-    if (check(`${tag}: the deck is made in mac's library`, made, readdirSync(general).join(', '))) {
+    if (!check(`${tag}: the deck is made in mac's library`, made, readdirSync(general).join(', '))) throw new Error('No new deck')
+    {
       // He names it in place, as he named his.
-      await sleep(1500)
+      if (!(await until('the rename field opens', 10_000, () => ev<boolean>("document.activeElement?.hasAttribute('data-files-rename')")))) throw new Error('No focused rename field')
       await typeKeys('Testing')
       await enter()
       const named = await until('the deck is renamed on mac', 30_000, () => existsSync(join(general, 'Testing.pptx')))
-      check(`${tag}: named Testing.pptx in place`, named, readdirSync(general).join(', '))
-      await sleep(800)
+      if (!check(`${tag}: named Testing.pptx in place`, named, readdirSync(general).join(', '))) throw new Error('The rename did not land')
+      if (!(await until('the renamed row appears', 10_000, async () => !!(await rowAt('Testing.pptx'))))) throw new Error('No Testing.pptx row')
       await deckCase(tag, join(general, 'Testing.pptx'), 'Testing.pptx')
       // His words typed into a box on the slide, and the tab closed while the box is still open: by its ×, then by the
       // close key. The words reach mac's file either way.
@@ -389,8 +365,7 @@ try {
           await libraryTab()
           await openRow('Testing.pptx')
         }
-        await until('the deck draws', 60_000, () => ev<boolean>(`!!document.querySelector('[data-slides-shapes] [data-shape]')`))
-        await sleep(800)
+        if (!(await until('the deck draws', 60_000, () => ev<boolean>(`!!document.querySelector('[data-slides-shapes] [data-shape]')`)))) throw new Error('No deck on the stage')
         let typing = false
         for (const [fx, fy] of [[0.5, 0.3], [0.5, 0.55], [0.5, 0.7], [0.13, 0.46]] as const) {
           const box = await ev<{ x: number; y: number; w: number; h: number } | null>(`(() => { const l = document.querySelector('[data-slides-shapes]'); if (!l) return null; const r = l.getBoundingClientRect(); return { x: r.x, y: r.y, w: r.width, h: r.height }; })()`)
@@ -400,9 +375,8 @@ try {
           await enter()
           if ((typing = await until('the box opens', 3_000, () => ev<boolean>(`!!document.querySelector('[data-slide-typing][data-phase="typing"]')`)))) break
         }
-        if (!check(`${tag}: a box on the slide opens for his words (${how})`, typing)) continue
+        if (!check(`${tag}: a box on the slide opens for his words (${how})`, typing)) throw new Error('No slide editor')
         await typeKeys(words)
-        await sleep(300)
         await shot(`${tag}-typed-${how === 'the ×' ? 'x' : 'key'}`)
         log(`${tag}: header with the box open: ${await saveLine()}`)
         if (how === 'the ×') await closeTab('Testing.pptx')
@@ -411,10 +385,27 @@ try {
           // The row reads "Close Tab" and its key.
           const row = await until('Close Tab', 5_000, () => ev<boolean>(`!![...document.querySelectorAll('[role="menuitem"]')].find((e) => e.textContent.trim().startsWith('Close Tab'))`))
           const at = row ? await ev<{ x: number; y: number }>(`(() => { const r = [...document.querySelectorAll('[role="menuitem"]')].find((e) => e.textContent.trim().startsWith('Close Tab')).getBoundingClientRect(); return { x: Math.round(r.x + r.width / 2), y: Math.round(r.y + r.height / 2) }; })()`) : null
-          if (at) await click(at.x, at.y)
+          if (!at) throw new Error('No Close Tab menu item')
+          await click(at.x, at.y)
         }
-        await until('the tab goes', 10_000, async () => !(await tabNamed('Testing.pptx')))
-        const kept = await until("mac's deck holds his words", 30_000, () => unzip(file, 'ppt/slides/slide1.xml').includes(words))
+        const landed = () => slideParagraphs(unzip(file, 'ppt/slides/slide1.xml')).some((p) => p.includes(words))
+        const dialog = () => ev<boolean>(`!!document.querySelector('[role="alertdialog"]')`)
+        if (!(await until('the tab closes or asks about the save', 15_000, async () => !(await tabNamed('Testing.pptx')) || await dialog()))) throw new Error('The deck tab did not close or ask')
+        if (await dialog()) {
+          // Keep the tab while its send finishes, then repeat the same close.
+          if (!(await press('[role="alertdialog"] button', 'Cancel'))) throw new Error('The pending-save dialog did not offer Cancel')
+          if (!(await until("mac's deck holds the pending edit", 30_000, landed))) throw new Error('The pending deck edit did not reach mac')
+          if (!(await until('the dialog leaves', 5000, async () => !(await dialog())))) throw new Error('The pending-save dialog stayed open')
+          if (how === 'the ×') await closeTab('Testing.pptx')
+          else {
+            await press('button[aria-label="More for Testing.pptx"]', undefined)
+            const item = await ev<{ x: number; y: number } | null>(`(() => { const el = [...document.querySelectorAll('[role="menuitem"]')].find((e) => e.textContent.trim().startsWith('Close Tab')); if (!el) return null; const r = el.getBoundingClientRect(); return { x: r.x + r.width / 2, y: r.y + r.height / 2 } })()`)
+            if (!item) throw new Error('No Close Tab menu item on retry')
+            await click(item.x, item.y)
+          }
+        }
+        if (!(await until('the tab closes', 10_000, async () => !(await tabNamed('Testing.pptx'))))) throw new Error('The deck tab stayed open')
+        const kept = await until("mac's deck holds his words", 30_000, landed)
         check(`${tag}: words typed and the tab closed by ${how} reach mac's file`, kept, `tab left: ${JSON.stringify(await tabNamed('Testing.pptx'))}; copies on box: ${await copies()}`)
       }
     }
@@ -432,44 +423,56 @@ try {
   check("after the close mac's files still hold his edits", Bun.file(files.deck).size === kept.deck && readFileSync(files.sheet).equals(kept.sheet) && readFileSync(files.text, 'utf8') === kept.text)
   check('and no copy is left on box', (await copies()) === 0 && !existsSync(join(box.data, 'attachments', 'teams-files', `filespane_${ws.id}`)) || readdirSync(join(box.data, 'attachments', 'teams-files', `filespane_${ws.id}`)).length === 0)
 
-  // 7. mac stops answering: the edit waits, its close asks, and Keep trying sends it once mac answers.
-  await libraryTab()
-  {
-    const tag = 'away'
-    check(`${tag}: the text file opens again`, await openRow('Notes.txt'))
-    const editor = async (): Promise<{ x: number; y: number } | null> => centre('[data-files-file] .cm-content, [data-files-file] textarea, [data-files-file] [contenteditable="true"]')
-    if (await until('the editor', 30_000, async () => !!(await editor()))) {
+  // 7. A lost connection and a bridge refusal have different close choices.
+  for (const state of ['away', 'refused'] as const) {
+    await libraryTab()
+    if (!(await openRow('Notes.txt'))) throw new Error(`${state}: the text file did not open`)
+    const editor = () => centre('[data-files-file] .cm-content, [data-files-file] textarea, [data-files-file] [contenteditable="true"]')
+    if (!(await until('the text editor draws', 30_000, async () => !!(await editor())))) throw new Error(`${state}: no text editor`)
+
+    if (state === 'away') {
+      peerLink.unplug()
+      if (!(await until('the Mac peer disconnects', 10_000, async () => !(await macRegistered())))) throw new Error('The Mac peer stayed connected')
+    } else {
       await rpc(mac, 'macBridge.policy.set', { environmentId: boxId, policy: 'off' })
-      const at = (await editor())!
-      await click(at.x, at.y)
-      const words = ` waits ${Date.now() % 1000}`
-      await typeKeys(words)
-      const waiting = await until('the line says it waits or refused', 30_000, async () => /not answering|refused/i.test(await saveLine()))
-      check(`${tag}: the header says the changes have not reached mac, never saved`, waiting && !(await savedThere()), await saveLine())
-      check(`${tag}: mac's file is as it was`, !readFileSync(files.text, 'utf8').includes(words.trim()))
-      await shot(`${tag}-1-waiting`)
-      await closeTab('Notes.txt')
-      const dialog = await until('the close asks', 10_000, () => ev<boolean>('!!document.querySelector(\'[role="alertdialog"]\')'))
-      check(`${tag}: closing it asks before anything is dropped`, dialog, await ev<string>(`document.querySelector('[role="alertdialog"]')?.textContent ?? ''`))
-      await shot(`${tag}-2-asked`)
-      const keepWord = await ev<string>(`[...document.querySelectorAll('[role="alertdialog"] button')].map((b) => b.textContent.trim()).join(' / ')`)
-      log(`${tag}: the close offers ${keepWord}`)
-      // A bridge set off is mac's refusal, said with its reason, not silence: the close offers Cancel and Discard, and
-      // what he typed stays in the tab until he turns the bridge on and presses Retry. A copy whose computer does not
-      // answer at all offers Keep trying, and is sent once it answers.
-      const refused = /refused/i.test(await saveLine())
-      if (refused) check(`${tag}: Cancel keeps the tab and what it holds`, (await press('[role="alertdialog"] button', 'Cancel')) && (await until('the tab stays', 5_000, async () => !!(await tabNamed('Notes.txt')))))
-      else await press('[role="alertdialog"] button', 'Keep trying')
+    }
+
+    const before = readFileSync(files.text, 'utf8')
+    const words = ` waiting ${state}`
+    const at = (await editor())!
+    await click(at.x, at.y)
+    await typeKeys(words)
+    if (!(await until(`the copy is ${state}`, 60_000, async () => (await tabNamed('Notes.txt'))?.back?.is === state))) throw new Error(`The copy did not report ${state}: ${await saveLine()}`)
+    check(`${state}: the source file still has its old bytes`, readFileSync(files.text, 'utf8') === before)
+    check(`${state}: the header does not say Saved`, !(await savedThere()), await saveLine())
+    await shot(`${state}-1-waiting`)
+
+    await closeTab('Notes.txt')
+    const options = () => ev<string[]>(`[...document.querySelectorAll('[role="alertdialog"] button')].map((b) => b.textContent.trim())`)
+    if (!(await until('the close asks', 15_000, async () => (await options()).length > 0))) throw new Error(`${state}: closing did not ask`)
+    const actions = await options()
+    const expected = state === 'away' ? ['Cancel', 'Discard', 'Keep trying'] : ['Cancel', 'Discard']
+    check(`${state}: the close offers the choices for this state`, JSON.stringify(actions.sort()) === JSON.stringify(expected.sort()), actions.join(' / '))
+    await shot(`${state}-2-asked`)
+    if (state === 'away') {
+      if (!(await press('[role="alertdialog"] button', 'Keep trying'))) throw new Error('The dialog did not offer Keep trying')
+      if (!(await until('Keep trying closes the tab', 10_000, async () => !(await tabNamed('Notes.txt'))))) throw new Error('Keep trying left the tab open')
+      check('Keep trying left the source alone while the Mac was away', readFileSync(files.text, 'utf8') === before)
+      peerLink.plugIn()
+      if (!(await until('the Mac peer reconnects', 40_000, macRegistered))) throw new Error('The Mac peer did not reconnect')
+    } else {
+      if (!(await press('[role="alertdialog"] button', 'Cancel'))) throw new Error('The refusal dialog did not offer Cancel')
+      if (!(await until('Cancel leaves the tab and dismisses the dialog', 10_000, async () => !!(await tabNamed('Notes.txt')) && (await options()).length === 0))) throw new Error('Cancel did not keep the tab')
       await rpc(mac, 'macBridge.policy.set', { environmentId: boxId, policy: 'read+run' })
-      // Retry once the dialog has gone (its fading backdrop takes a press), and again while the line still says refused.
-      await until('the dialog goes', 5_000, async () => !(await ev<boolean>('!!document.querySelector(\'[role="alertdialog"]\')')))
-      const sent = await until("mac's file holds the words once it answers", 90_000, async () => {
-        if (readFileSync(files.text, 'utf8').includes(words.trim())) return true
-        if (refused && /refused/i.test(await saveLine())) await press('button', 'Retry', 1, 2_000)
-        await sleep(2_000)
-        return false
-      })
-      check(`${tag}: ${refused ? 'Retry' : 'Keep trying'} sends them once mac takes them again`, sent, JSON.stringify(readFileSync(files.text, 'utf8')))
+      if (!(await press('button', 'Retry'))) throw new Error('The refused copy did not offer Retry')
+    }
+    const landed = await until("mac's file holds the words", 90_000, () => readFileSync(files.text, 'utf8').includes(words.trim()))
+    if (!check(`${state}: the held edit reaches the source`, landed, await saveLine())) throw new Error(`The ${state} edit did not reach the file`)
+    if (state === 'refused') {
+      check('the retried copy has its local save receipt', await until('the copy reports its save', 15_000, async () => {
+        const tab = await tabNamed('Notes.txt')
+        return tab?.back?.is === 'ok' && typeof tab.back.at === 'number' && await savedThere()
+      }))
     }
   }
 

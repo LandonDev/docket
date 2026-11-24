@@ -14,7 +14,7 @@ import { PREFIX, Run, sleep, textOf } from './e2e-work-lib'
  *     held as a `file.act` whose one sentence says the file, the new name and who can open it. The file is as it
  *     was until the owner presses; his press renames it.
  *  3. A held act gone stale: the file changes after the act was held, the press does nothing and says so.
- *  4. The wire takes no thread's change: only the tools reach the door.
+ *  4. A delete in the team’s library waits for the owner just as the rename did.
  *
  * No model runs and no LifeOS is signed in: the workspace has a dummy sector and every file is the run's own.
  * Run after `electron-vite build`: env -u ELECTRON_RUN_AS_NODE bun scripts/e2e-work-files-thread.ts
@@ -77,16 +77,22 @@ try {
   let stale: OutboxItem | undefined
   await run.until('held again', 30_000, async () => !!(stale = (await run.call<{ items: OutboxItem[] }>('work.outbox.list', {})).items.find((i) => i.kind === 'file.act' && i.state === 'held')))
   // Someone on the team changes the file after the act was held.
-  await sleep(1100)
   writeFileSync(join(library, 'General', 'Budget.txt'), 'The budget, changed by someone on the team after the thread asked.\n')
-  const pressed = await run.call<OutboxItem>('work.outbox.send', { ref: stale!.ref }).catch((e: Error) => ({ state: 'refused', error: e.message }) as unknown as OutboxItem)
+  const pressed = await run.call<OutboxItem>('work.outbox.send', { ref: stale!.ref })
   run.check('the press on a file that changed since does nothing', !existsSync(join(library, 'General', 'Budget final.txt')) && existsSync(join(library, 'General', 'Budget.txt')), JSON.stringify(pressed).slice(0, 300))
   run.check('and the act reads as stale, with why', (pressed.state === 'stale' || pressed.state === 'failed') && !!pressed.error, `${pressed.state} ${pressed.error ?? ''}`)
 
-  // 4. The wire takes no thread's change (asked here as the owner's seat would relay a thread's own token).
+  // 4. The registered tool holds a library delete for the owner.
   const viaTool = await run.tool(thread, 'files_trash', { place: team?.place ?? '', paths: ['Plan v2.txt'] })
-  run.check('a delete in the team\'s library is refused in the place\'s own words, not held', !!viaTool.isError || /Delete it in Teams/.test(textOf(viaTool)), textOf(viaTool).slice(0, 200))
-  run.check('and the file is still there', existsSync(join(library, 'General', 'Plan v2.txt')))
+  run.check('a delete in the team’s library is held', !viaTool.isError && /^Held as item \d+/.test(textOf(viaTool)), textOf(viaTool))
+  let deletion: OutboxItem | undefined
+  const queued = await run.until('the delete waits in the Outbox', 30_000, async () => {
+    const { items } = await run.call<{ items: OutboxItem[] }>('work.outbox.list', {})
+    deletion = items.find((item) => item.kind === 'file.act' && item.state === 'held' && /Delete Plan v2\.txt/.test(item.summary))
+    return !!deletion
+  })
+  run.check('the held delete names the file and its audience', queued && /can open it/.test(deletion?.summary ?? ''), deletion?.summary)
+  run.check('the held delete left the file and its words in place', readFileSync(join(library, 'General', 'Plan v2.txt'), 'utf8') === 'The plan, as the team wrote it.\n')
 
   const after = await run.call<FilesPlaces>('work.files.places', { workspaceId: ws.id })
   run.check('the place still lists as it did', after.places.some((p) => p.kind === 'teams'), after.places.map((p) => p.kind).join(', '))
