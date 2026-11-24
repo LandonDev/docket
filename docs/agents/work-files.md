@@ -158,9 +158,10 @@ the first paint.
   (`openWay`), the one line said when Teams files are missing (`teamsNote`,
   the Teams view's own table) or a place is not simply there (`placeNote`),
   and what a host a release behind still answers.
-- `store.ts` reads the hosts (`useReach`: the workspace's own, then each
-  desktop it may use, each painting as it answers, 4 s before one is said
-  not to answer), keeps the tabs as the host says them (`useTabs`: the list
+- `store.ts` reads the hosts (`useReach`: what was painted of the workspace
+  first, then its own host beside its settings, then each desktop it may
+  use, each painting as it answers, 4 s before one is said not to answer;
+  "What the window keeps"), keeps the tabs as the host says them (`useTabs`: the list
   again on each `work.files` push that names a new revision), lists folders
   a page at a time (`useListing`: more as the list nears its end, again from
   the top when the host says a name changed or answers `stale`; a later page
@@ -1564,7 +1565,8 @@ edit), `shared` (LifeOS says so, or a live guest link shows it),
 `state: { is: 'suggestions', count }` where the catalog counts suggestions
 waiting, and `project`. A row of the workspace's folder or a library that a
 project links carries `project` too (`withProjects`, from the links kept for
-the sector). A mail's file is the Mail view's `{ at: 'mail', threadId,
+the sector; a folder's list never waits for them, and a first read lands as one
+push of the folder: "What the window keeps"). A mail's file is the Mail view's `{ at: 'mail', threadId,
 messageId, partId, name, contentType?, size? }`, keyed `mail:<message>:<part>`,
 with `by` its sender and `where.trail` the mail's subject.
 
@@ -1838,6 +1840,13 @@ index.ts by devices/binding.ts `mayRoute`: a given computer stopped or removed
 answers "That computer's link to this host is stopped or removed."). Places come back with `trash`, `rename` and `move`
 alone of the changes, named as the box names that desktop (`name`).
 
+- **Kept 5 s, joined.** `places`, `list` and `stat` through the box are kept per workspace, host, method and params
+  for `ACROSS_FRESH_MS` (5 s, 64 asks at most, in memory: names, sizes and times) and an ask while the same one is in
+  flight joins it, so two lists of one folder within 5 s make one peer call (live 2026-11-24: 4.4, 3.6, 3.0, 6.0 and
+  48 s one after another before). Work on, the binding being live and the workspace's "May use this computer" run on
+  every ask before a kept answer; a workspace no longer allowed is asked through and refused as before. A change sent
+  to that desktop drops what was kept of it; Work off drops all of it.
+
 - **Delete, Rename and Move there** (2026-11-24, the owner: "Trying to delete a file says its on another host ask that
   host, shouldn't happen"). On his press alone (his window, or a key that may approve; a thread never, `pressesFor`), the
   box sends each to the desktop with `origin: {from: 'window'}`, so that desktop's door asks it as his
@@ -1888,6 +1897,39 @@ Proven 2026-11-24 in the Windows rig (.temp-code/plans/landed/pc-setup/files-acr
 a stand-in Mac window listed and opened `J:\Esports` on the rig PC through a
 stand-in box; a box thread's `files_places`, `files_list` and `teams_read`
 reached it and its `files_move` was held.
+
+## What the window keeps
+
+The window paints what it holds first and asks behind it (work/files/store.ts; the rules in work/files/keep.ts and
+shell/actions.ts; M3 of the performance pass).
+
+- **Reach.** Each workspace's places as last painted (24 workspaces, by link and workspace) are drawn in the first
+  render of a return, and every host is asked again behind them; each answer takes its host's place as it lands, so
+  the folder's copy does not change under a page. A cold open asks the workspace's own host's `places` at once, beside
+  `work.workspace.get`, and paints once the settings say whether the Windows VM is the workspace's: two round trips in
+  a row, not three.
+- **Settings.** `work.workspace.get` is kept per workspace and joined while out (`SETTINGS_KEEP_MS`, 5 minutes), and
+  dropped when this window sets them or the host's link comes back; Settings and Allow read them fresh, as they write
+  from what they read.
+- **Home** is kept per link and workspace, read once on open and again only on a `work.files` push with `marks` (the
+  host sends one when a star, a recent or a thread's made-by mark changes, files/marks.ts) or a reconnect; pushes
+  while a read is out make one more read.
+- **Listings.** `LISTING_KEEP_MOST` (24) at most, each gone `LISTING_KEEP_MS` (10 minutes) after it was last shown or
+  its last reader left, never one on screen; no empty listener set is kept. A place its host answers without (a
+  library no longer synced, the VM switched off for the workspace) takes its listings with it at once (as its page
+  leaves the screen, if it is on it); Work off on a host drops that host's listings, reach and Home. A kept listing
+  is names, sizes, times and marks; the host fences every ask again, and no permission is read from a mark.
+- **Back.** A folder shown again within `LISTING_FRESH_MS` (5 s, the host's own freshness) of its first page, with no
+  push naming it since, is drawn as kept and asks the host nothing; the window hears each host's pushes once for the
+  keep, so a change named while no one shows the folder makes its next showing ask once. Back's own `tabSet` stays
+  (the host keeps where each tab stands), and while it is out its own tabs push asks for nothing; a newer revision is
+  asked once after its answer.
+- **Draws.** A read of a page already drawn (a push, a showing past 5 s) never puts it back to loading and keeps
+  every row object whose row did not change (with who saved it), and each row is a memo `FileRow` taking `on: boolean`:
+  a push that changed one file draws one row, and a press that moves the selection draws two.
+- **Project marks** come behind the first rows: `list` draws them from what is kept of LifeOS's links and asks
+  behind its answer, and once that read lands with marks the rows lacked the folder is pushed once and drawn again.
+  Search keeps its 1.5 s wait for them.
 
 ## A tab
 
