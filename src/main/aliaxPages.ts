@@ -4,6 +4,7 @@ import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { accounts, adapter, credentials, vault, type ActionResult, type ServiceId } from 'aliax-core'
 import { appSessionEmail } from 'aliax-core/adapters/claude'
+import { watchSignIns } from './aliax/signInWatch'
 import * as login from './aliax/login'
 import { mintInWindow } from './aliax/staticMint'
 import { CANCELLED, cliInstallNote, cliRepairNote, cliTakesSignIn, holdsGrant, keyErrorLine, signInNotes } from '@shared/signInWords'
@@ -245,9 +246,8 @@ export function registerAliaxPages(server: { accounts: AliaxPagesHost; accountSy
   server.accounts.mint = () => staticTokens?.progress() ?? null
   staticTokens.start()
   vault.ensureColors()
-  // Codex rotates its refresh token in place; the vault copy follows every
-  // rotation or a later switch would present a revoked one (invariant 18).
-  accounts.watchLiveCredentials()
+  // The vault follows Codex's and Muse's sign-in files; a refused watch never stops the boot (signInWatch.ts).
+  watchSignIns()
   // The CLIs' own logs are read into the stats store the first time the
   // Stats page asks, not at boot: the walk covers every Claude and Codex
   // transcript on disk (33k files, 60 GB on 2026-10-17), and boot has

@@ -39,15 +39,33 @@ probe() {
   as_agents env TEMP_CODE_USER_DATA="$user_data" TC_LOCAL_TIMEOUT_MS=10000 \
     node /usr/local/lib/temp-code/box-probe.mjs "$port" "$version" "$contract"
 }
+# A failure says which step failed, what the probe said and the unit's last
+# journal lines: the deploy log is what the window shows, and the app's user
+# cannot read the journal (2026-11-23: a trial's boot threw ENOSPC and the log
+# said only "health/socket check failed").
 wait_ready() {
-  local build=$1 user_data=$2 port=$3 deadline=$((SECONDS + 90))
+  local build=$1 user_data=$2 port=$3 unit=${4:-} deadline=$((SECONDS + ${BOX_READY_SECONDS:-90})) healthy=0 said=
   while ((SECONDS < deadline)); do
-    if curl -fsS --max-time 2 "http://127.0.0.1:$port/healthz" >/dev/null 2>&1 && [[ -s $user_data/server.json ]]; then
-      probe "$build" "$user_data" "$port" && return 0
+    if curl -fsS --max-time 2 "http://127.0.0.1:$port/healthz" >/dev/null 2>&1; then
+      healthy=1
+      if [[ -s $user_data/server.json ]]; then
+        if said=$(probe "$build" "$user_data" "$port" 2>&1); then
+          [[ -z $said ]] || printf '%s\n' "$said"
+          return 0
+        fi
+      fi
     fi
     sleep 1
   done
   echo "ERROR: health/socket check failed on $port" >&2
+  if ((!healthy)); then echo "  /healthz on $port never answered" >&2
+  elif [[ ! -s $user_data/server.json ]]; then echo "  /healthz answered but the server never wrote $user_data/server.json (its boot stopped before the end)" >&2
+  else printf '  the probe said:\n%s\n' "$(printf '%s\n' "$said" | tail -n 20 | sed 's/^/    /')" >&2
+  fi
+  if [[ -n $unit ]]; then
+    echo "  the last lines of $unit:" >&2
+    journalctl -u "$unit" -n 40 --no-pager -o cat 2>&1 | sed 's/^/    /' >&2 || true
+  fi
   return 1
 }
 rollback() {
@@ -62,7 +80,7 @@ rollback() {
   link_to current "$old"
   if [[ -n $old_previous ]]; then link_to previous "$old_previous"; else rm -f "$builds/previous"; fi
   systemctl restart temp-code.service
-  wait_ready "$old" "$data" 7677 || { echo 'ERROR: rollback verification failed; pending record retained' >&2; return 1; }
+  wait_ready "$old" "$data" 7677 temp-code.service || { echo 'ERROR: rollback verification failed; pending record retained' >&2; return 1; }
   rm -f "$pending"
   flipped=0
   echo "ROLLBACK PASS: $(expected "$old") current=$(readlink "$builds/current")"
@@ -199,7 +217,7 @@ systemd-run --quiet --collect --unit="$trial" \
   --setenv=TEMP_CODE_CLAIM_SHIM=0 --setenv=AGENT_CLI_CREDENTIAL_STORE=file \
   --setenv="TEMP_CODE_REMOTE_PORT=$port" --setenv=NODE_ENV=production --setenv=SHELL=/bin/bash \
   /usr/local/lib/temp-code/run "$candidate"
-wait_ready "$candidate" "$scratch/data" "$port"
+wait_ready "$candidate" "$scratch/data" "$port" "$trial.service"
 echo "TRIAL PASS: $(expected "$candidate") port=$port sha=$sha"
 systemctl stop "$trial.service"; trial=
 rm -rf -- "$scratch"; scratch=
@@ -233,7 +251,7 @@ if [[ -n $old ]]; then link_to previous "$old"; else rm -f "$builds/previous"; f
 link_to current "$candidate"
 echo "COMMIT: current=$(basename "$candidate") previous=$(basename "$old")"
 systemctl restart temp-code.service
-wait_ready "$candidate" "$data" 7677
+wait_ready "$candidate" "$data" 7677 temp-code.service
 # Root-only one-shot fault file for proving rollback after a healthy restart.
 if [[ -f /run/temp-code-update-force-post-flip-failure ]]; then
   rm /run/temp-code-update-force-post-flip-failure

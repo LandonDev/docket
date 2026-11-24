@@ -2,6 +2,7 @@ import { watch as fsWatch, statSync, type FSWatcher } from 'fs'
 import { readdir } from 'fs/promises'
 import { basename, join, relative, sep } from 'path'
 import { APP_DIR } from './appDir'
+import { guardWatch, noteWatchFailure } from './watchGuard'
 
 /**
  * One watcher per tree, one fd per tree. chokidar 4+ has no FSEvents
@@ -98,7 +99,7 @@ export function watchTree(
   }
 ): TreeWatcher {
   if (process.platform === 'darwin' || process.platform === 'win32') {
-    const w = fsWatch(root, { recursive: true }, (event, filename) => {
+    const w = guardWatch(`the file tree ${root}`, 'its live file events are off', () => fsWatch(root, { recursive: true }, (event, filename) => {
       if (!filename) return
       const abs = join(root, filename.toString())
       if (treeIgnored(root, abs)) return
@@ -117,7 +118,8 @@ export function watchTree(
       }
       if (isDir && !opts.dirs) return
       opts.onEvent(event === 'change' ? 'changed' : 'created', abs)
-    })
+    }))
+    if (!w) return { close() {} }
     w.on('error', () => {}) // transient fs races — the next event self-heals
     return w
   }
@@ -164,7 +166,10 @@ function linuxTree(root: string, opts: { onEvent: (kind: TreeEventKind, abs: str
       watch = fsWatch(dir, { persistent: true }, (event, filename) => {
         if (filename) void onChild(dir, event, filename.toString())
       })
-    } catch {
+    } catch (err) {
+      // ENOSPC or EMFILE: the tree is watched in part, said once.
+      if (!share.partial) noteWatchFailure(`the file tree ${root}`, `it is watched in part (${share.held} folders)`, err)
+      share.partial = true
       return
     }
     watch.on('error', () => unwatch(dir))

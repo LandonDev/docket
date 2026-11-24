@@ -86,7 +86,13 @@ and all its trees together stop at 20,000 folder watches with one
 ceiling, each tree's share). On 2026-11-23 the old watcher (chokidar, a
 watch per file) held 1,030,566 of the 1,048,576 with the main checkout
 open, nearly all of them files in 198 worktrees under `.claude/worktrees`,
-and every new watch on the box failed with ENOSPC. Counted on the same
+and every new watch on the box failed with ENOSPC. A refused watch never
+stops a boot either (watchGuard.ts): each watch on the boot path is caught,
+logged once as `[watch] cannot watch …`, counted in `doctor.get`
+(`watchFailures`), and its timed fallback covers it (the Codex and Muse sign-ins
+are checked every 30 s, signInWatch.ts). On 2026-11-23 a deploy's trial threw
+ENOSPC from that sign-in watch, its boot stopped before `server.json`, and the
+deploy could not pass until root restarted the live service. Counted on the same
 checkout, the new rules take 369 watches; on a copy with two worktrees,
 2,066 before and 20 after.
 
@@ -4212,6 +4218,10 @@ live Aliax shim. The check requires `/healthz`, an HTTP hello with the built
 version and contract, a matching local WebSocket hello, `tc-local session.list`,
 and a remote pairing → bearer → ticket → socket `session.list`. Probe keys
 are revoked. A failed build or trial leaves `current` and the live PID alone.
+A failed check says in the deploy log which step failed (`/healthz` never
+answered, no `server.json`: the boot stopped before its end, or what the probe
+said) and the unit's last 40 journal lines, which only root can read
+(`wait_ready`, scripts/box/waitReady.test.ts).
 The launcher also refuses an older version after trial: a stale GitHub master
 cannot silently replace a newer local deployment. Publish the green master
 through the project's normal flow, or use the bundle commands below.

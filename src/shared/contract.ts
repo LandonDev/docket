@@ -1389,6 +1389,8 @@ export type DoctorGetResult = Record<z.infer<typeof providerEnum>, DoctorReport>
   addonHost?: { pid: number | null; restarts: number; down: boolean }
   /** Folder watches the host holds for file trees (treewatch.ts; one inotify watch each on Linux), its ceiling, and each tree's share. */
   watches?: { held: number; ceiling: number; roots: { root: string; held: number; partial: boolean }[] }
+  /** Watches the kernel refused since boot (ENOSPC, EMFILE), each with what covers it instead (watchGuard.ts). */
+  watchFailures?: { what: string; error: string; fallback: string; at: number }[]
 }
 
 export type ServerResponse =

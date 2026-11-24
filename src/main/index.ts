@@ -285,7 +285,13 @@ app.whenReady().then(async () => {
   }
   setRemotePages({ environmentId: server.environmentId, read: server.remotePage })
   setRemoteMedia({ environmentId: server.environmentId, read: server.remoteMedia })
-  registerAliaxPages(server)
+  // A throw here once ended the boot before the rest of it ran (2026-11-23, a refused watch);
+  // the accounts pages are not worth the windows, the terminals and the remote port.
+  try {
+    registerAliaxPages(server)
+  } catch (err) {
+    console.error('[boot] the accounts pages did not register; the boot goes on:', err)
+  }
   registerPty()
   const { store } = server
   const mountedServer = server

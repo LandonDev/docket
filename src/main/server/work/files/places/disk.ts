@@ -3,6 +3,7 @@ import { watch, type FSWatcher, type Stats } from 'node:fs'
 import { lstat, opendir, stat } from 'node:fs/promises'
 import { join } from 'node:path'
 import { compareEntries, DEFAULT_SORT, kindOfEntry, LIST_PAGE_BYTES, LIST_PAGE_MAX, type EntryKind, type FileEntry, type FileSort } from '@shared/work/files'
+import { noteWatchFailure } from '../../../watchGuard'
 
 /**
  * One folder of a disk as a sorted list, a page at a time (docs/agents/work-files.md "Performance"): what the
@@ -281,8 +282,8 @@ export class DiskLister {
       })
       entry.watcher.on('error', () => this.unwatch(dir))
       this.watched.set(dir, entry)
-    } catch {
-      // No watch on this disk.
+    } catch (err) {
+      noteWatchFailure(dir, 'its listing refreshes when asked', err)
     }
   }
 

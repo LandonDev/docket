@@ -52,6 +52,7 @@ import {
   type SetRule
 } from './harnessSet'
 import type { Peers } from './peers'
+import { noteWatchFailure } from '../watchGuard'
 
 /**
  * Harness config sync (docs/box.md "Harness config: synced from the Mac").
@@ -367,7 +368,7 @@ export class HarnessSync {
         w.on('error', () => w.close())
         this.watchers.push(w)
       } catch (err) {
-        this.log(`cannot watch ${dir} (${(err as Error).message}); the 15-minute sync covers it`)
+        noteWatchFailure(dir, 'the 15-minute sync covers it', err)
       }
     }
   }

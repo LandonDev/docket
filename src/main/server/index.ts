@@ -158,6 +158,7 @@ import { CheckpointStore, inHeadMany, listTracked } from './checkpoint'
 import { handleCheckpoint } from './checkpointRpc'
 import { CheckpointTurns } from './checkpointTurns'
 import { watchStats } from './treewatch'
+import { watchFailures } from './watchGuard'
 import { Linear, handleLinear } from './linear'
 import { GithubInbox, handleGithubInbox } from './githubInbox'
 import { SessionRegistry } from './sessions'
@@ -2565,7 +2566,8 @@ export async function startServer(
                 gateway: { ...gateway.status().process, port: gateway.status().port },
                 execBroker: execBroker.status(),
                 addonHost: addonHost.status(),
-                watches: watchStats()
+                watches: watchStats(),
+                watchFailures: watchFailures()
               } satisfies DoctorGetResult
             })
             break

@@ -39,6 +39,7 @@ import { chooseAccount, eligible, type ResolvedPin, type RouteOptions } from './
 import type { HeadroomStore } from './headroom'
 import type { UsageWindow } from 'aliax-core'
 import { whenLoopIdle } from './stalls'
+import { noteWatchFailure } from './watchGuard'
 
 export interface AccountsDeps {
   listServices: () => Promise<ServiceView[]>
@@ -332,8 +333,8 @@ export class AccountsService {
           this.nudge()
         })
         this.watcher.on('error', () => {})
-      } catch {
-        // the poll still catches up
+      } catch (err) {
+        noteWatchFailure("Aliax's settings", 'the poll catches up', err)
       }
     }
     // Aliax polls when it owns the gateway; anyone else's poll would only
