@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import type { RoutineRow, RoutineRun } from "@shared/contract-work-routines";
 import { ChevronLeft, Plus } from "../../chrome/icons";
 import { BusyLabel, Button } from "../../components/ui/button";
@@ -9,6 +9,7 @@ import { StatusMark } from "../../components/ui/status";
 import { registry, useEnvironments } from "../../lib/connection";
 import { dayTime } from "../../lib/duration";
 import { hostKind, platformOf } from "../../lib/hostPlatform";
+import { headAsk } from "../../lib/headAsk";
 import { managedElsewhere, useLinkMay } from "../../lib/linkMay";
 import { workErrorWords } from "../../lib/workErrorWords";
 import { loadToast } from "../../components/ui/toaster";
@@ -34,18 +35,14 @@ import { Tip } from "../../components/tip";
  * proposal says who can take it. Pause and Run now stay where it may operate.
  */
 
-// The header's New routine asks the view to open the form.
-const formAsks = new Set<() => void>();
-let formAsked = 0;
-const askForm = () => {
-  formAsked++;
-  for (const fn of formAsks) fn();
-};
+// The header's New routine asks the view to open the form: a press made while the view still loads is answered when it mounts.
+const newForm = headAsk();
 
 export function Head({ env }: WorkViewProps) {
+  newForm.useHead();
   if (!useLinkMay(env, "work.routines.save")) return null;
   return (
-    <Button variant="ghost" size="sm" onClick={askForm}>
+    <Button variant="ghost" size="sm" onClick={newForm.ask}>
       <Plus />
       New routine
     </Button>
@@ -120,17 +117,7 @@ export function View({ env, workspace }: WorkViewProps) {
   const playName = (id: string | null) => (id && plays.status === "ready" ? (plays.value.find((p) => p.id === id)?.name ?? null) : null);
   const [picked, setPicked] = useState<string | null>(null);
   const [form, setForm] = useState<{ row: RoutineRow | null } | null>(null);
-  const asked = useSyncExternalStore(
-    (fn) => (formAsks.add(fn), () => formAsks.delete(fn)),
-    () => formAsked,
-  );
-  const [seen, setSeen] = useState(asked);
-  useEffect(() => {
-    if (asked !== seen) {
-      setSeen(asked);
-      setForm({ row: null });
-    }
-  }, [asked, seen]);
+  newForm.useAnswer(() => setForm({ row: null }));
 
   const rows = useMemo(() => {
     if (load.status !== "ready") return [];

@@ -1,4 +1,4 @@
-import { useEffect, useState, useSyncExternalStore } from "react";
+import { useState } from "react";
 import type { PlayRow, StarterPlay } from "@shared/contract-work-routines";
 import { Pencil, Plus } from "../../../chrome/icons";
 import { Button } from "../../../components/ui/button";
@@ -9,6 +9,7 @@ import { Spinner } from "../../../components/ui/spinner";
 import { loadToast } from "../../../components/ui/toaster";
 import { cn } from "../../../lib/cn";
 import { useEnvironments } from "../../../lib/connection";
+import { headAsk } from "../../../lib/headAsk";
 import { managedElsewhere, useLinkMay } from "../../../lib/linkMay";
 import { EmptyState } from "../../../surfaces/SurfaceSkeleton";
 import type { WorkViewProps } from "../../views/registry";
@@ -27,18 +28,14 @@ import { startersLeft, takesLine } from "./model";
  * runs them; New, Edit, the proposals and the starters are not drawn.
  */
 
-// The header's New play asks the view to open the dialog.
-const newAsks = new Set<() => void>();
-let newAsked = 0;
-const askNew = () => {
-  newAsked++;
-  for (const fn of newAsks) fn();
-};
+// The header's New play asks the view to open the dialog: a press made while the view still loads is answered when it mounts.
+const newPlay = headAsk();
 
 export function Head({ env }: WorkViewProps) {
+  newPlay.useHead();
   if (!useLinkMay(env, "work.routines.playSave")) return null;
   return (
-    <Button variant="ghost" size="sm" onClick={askNew}>
+    <Button variant="ghost" size="sm" onClick={newPlay.ask}>
       <Plus />
       New play
     </Button>
@@ -53,17 +50,7 @@ export function View({ env, workspace, sector }: WorkViewProps) {
   const maySave = useLinkMay(env, "work.routines.playSave");
   const mayStart = useLinkMay(env, "work.routines.playStart");
   const host = useEnvironments().find((e) => e.id === env)?.name ?? "this host";
-  const asked = useSyncExternalStore(
-    (fn) => (newAsks.add(fn), () => newAsks.delete(fn)),
-    () => newAsked,
-  );
-  const [seen, setSeen] = useState(asked);
-  useEffect(() => {
-    if (asked !== seen) {
-      setSeen(asked);
-      setDialog({ kind: "new" });
-    }
-  }, [asked, seen]);
+  newPlay.useAnswer(() => setDialog({ kind: "new" }));
 
   if (load.status === "loading") return <PlaysSkeleton />;
   if (load.status === "error") return <EmptyState title="Plays did not load" line={load.error} action={{ label: "Retry", onClick: retry }} />;
