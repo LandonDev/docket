@@ -24,8 +24,9 @@ export default journey({
         await pair.page.clickOn(MAIL_PANE + ' button', 'Ask')
         const sessionId = await newThread(context, () => sendPrompt(pair.page, PROMPT, DOCK))
         await see(pair.page, DOCK, PROMPT)
-        const found = await pair.rpc<MailChatFound>(pair.box, 'work.mail.chat.find', { workspaceId: workspace.id, mailThreadId: mail._id })
-        if (!found.sessionIds.includes(sessionId)) throw new Error('The thread was not adopted by the mail dock')
+        // The prompt shows as soon as he sends; the dock tells the host (adopt) before the first turn starts.
+        await pair.page.until('the thread adopted by the mail dock', 15_000, async () =>
+          (await pair.rpc<MailChatFound>(pair.box, 'work.mail.chat.find', { workspaceId: workspace.id, mailThreadId: mail._id })).sessionIds.includes(sessionId))
         let row: MailRow | undefined
         await pair.page.until('the held reply from the mail chat’s draft tool', 25_000, async () => {
           const drafts = await pair.sandbox!.query<MailRow[]>('outboxHeld:held', { host: pair.box.host })

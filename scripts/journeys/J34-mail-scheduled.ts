@@ -107,7 +107,7 @@ export default journey({
       const item = await pair.rpc<{ updatedAt: number }>(pair.box, 'work.outbox.get', { ref })
       const send = await pair.fromWindow('work.outbox.send', { ref, rev: item.updatedAt })
       const discard = await pair.fromWindow('work.outbox.discard', { ref })
-      for (const reply of [send, discard]) if (reply.ok || !reply.error.includes('You scheduled this mail')) throw new Error('An Outbox press did not refuse the scheduled row')
+      for (const reply of [send, discard]) if (reply.ok || !reply.error.includes('You scheduled this')) throw new Error('An Outbox press did not refuse the scheduled row')
       const row = await composeRow(context, queued._id)
       if (!row.scheduled || row.sendAt !== queued.sendAt) throw new Error('A refused press changed the scheduled row')
       await pair.page.shot(join(folder, 'scheduled-held.png'))

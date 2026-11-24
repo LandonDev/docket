@@ -49,8 +49,8 @@ export default journey({
       const { pair, folder } = context
       const state = states.get(context)!
       const { page } = pair
+      // Share opens the one sheet with its form on top (For, Can, Ends).
       await page.press('button', 'Share')
-      await page.press('button', 'New guest link…')
       await page.clickOn('[role="dialog"] input[placeholder="Name"]')
       await page.typeKeys(guestName(context))
       await page.clickOn('[role="dialog"] button', 'Comment')
@@ -116,13 +116,12 @@ export default journey({
       if (!(await wordsIn(page, 'body')).includes(comment(context))) await page.clickOn('button.te-threads-button')
       await see(page, 'body', comment(context))
       await page.shot(join(context.folder, 'owner-comment.png'))
+      // The sheet lists the item's live links; Revoke is in the row's menu.
       await page.press('button', 'Share')
-      const button = '[aria-label=' + JSON.stringify("Revoke " + guestName(context) + "'s link") + ']'
-      let point: { x: number; y: number } | null = null
-      await page.until('the guest row in Share', 10_000, async () => (point =
-        await page.centre('[data-slot="popover-content"] [class~="group/row"] span', guestName(context))))
-      await page.hover(point!)
-      await page.clickOn(button)
+      const menu = '[data-share-sheet] [aria-label=' + JSON.stringify(guestName(context) + "'s link") + ']'
+      await page.until('the guest row in Share', 10_000, () => page.centre(menu))
+      await page.clickOn(menu)
+      await page.press('menuitem', 'Revoke')
       await page.until('this link revoked on box', 15_000, async () => (await links(context)).some((row) => row.id === link!.id && row.revokedAt))
     }),
     step('end: the open guest page stops answering and LifeOS clears the share', async (context) => {

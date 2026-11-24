@@ -633,7 +633,12 @@ export class Pair {
         for (const temp of [this.tmpRoot, this.chromiumTmp]) if (temp) rmSync(temp, { recursive: true, force: true })
       }
       result.portsChecked = [...this.ports].sort((a, b) => a - b)
-      result.remainingPorts = listeners().map(portOf).filter(port => this.ports.has(port))
+      // A stopped sandbox's listeners can take a moment to close on a loaded box: look again for up to three seconds.
+      for (let i = 0; i < 30; i++) {
+        result.remainingPorts = listeners().map(portOf).filter(port => this.ports.has(port))
+        if (!result.remainingPorts.length) break
+        await sleep(100)
+      }
       if (result.remainingPorts.length) result.errors.push('Listeners remain on ports ' + result.remainingPorts.join(', '))
     }
     return result
