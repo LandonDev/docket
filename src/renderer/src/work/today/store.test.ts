@@ -66,6 +66,16 @@ describe("Today's store", () => {
     expect(keys()).toEqual(["task:2"]);
   });
 
+  it("a row whose source stopped giving it while it faded is not kept as gone: the same key may show again", () => {
+    putAnswer("due", { rows: [row("task:1")] });
+    leave("task:1");
+    putAnswer("due", { rows: [] });
+    vi.advanceTimersByTime(300);
+    expect(todayNow().gone.has("task:1")).toBe(false);
+    putAnswer("due", { rows: [row("task:1")] });
+    expect(keys()).toEqual(["task:1"]);
+  });
+
   it("comes back at once when the act fails or he undoes it, before the fade ends or after", () => {
     putAnswer("due", { rows: [row("task:1"), row("task:2")] });
     leave("task:1");

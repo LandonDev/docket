@@ -220,7 +220,9 @@ export const source: TodaySource = { id: "money", section: { id: "money", title:
   for ("LifeOS could not read clashes"). A failure from a host whose link
   is not open is no section's line: `page` takes it out and names the host
   once at the foot (model.ts `apart`), since its link refused at once and
-  Retry cannot mend it. The same line from two sources is drawn once. A
+  Retry cannot mend it; the section it fed never says it is empty then
+  (`away`), since what that host holds is not known. The same line from
+  two sources is drawn once. A
   source that reads LifeOS says nothing of its own while the session is
   down (`sessionDown`): the page's one LifeOS line says it.
 - `useEachWorkspace(env, method, paramsOf, {push})` (today/read.ts) is the
@@ -231,14 +233,24 @@ export const source: TodaySource = { id: "money", section: { id: "money", title:
   is handed its jobs, and while a failed read is asked again by Retry, so
   neither is taken for a job with nothing. `again` names what the asks
   depend on beside the jobs: when it changes every job is asked again
-  (Prep passes the day, so midnight asks for the new one).
+  (Prep passes the day, so midnight asks for the new one). Each job's last
+  value is kept for the life of the window, by method (`lastOf`), and
+  forgotten when the job leaves: a read made afresh (a reopen) starts with
+  it, so a fast job's answer never drops a slow job's rows, and a job whose
+  read fails keeps its own. While every job still out has such a value the
+  read is `stale`: the source passes it on, and the page draws its rows
+  with no cue that more may come, though it is not clear until they
+  answer. A source whose words turn with the day (Owed's "Today",
+  Messages' "2:00 PM") takes `env.day` as an input of its memo.
 - A row his own act takes off the page calls `leave(key)` (today/store.ts)
   and `comeBack(key)` if the act fails or he undoes it.
 - A source still loading draws nothing and keeps the page from "All
   clear" (`pending` in today/store.ts). One that fails to load, or throws
   while it runs, is run no more and said on the page in one line: "Today
   could not show this" in its own section, or under Also with what is
-  missing, from the registry's `what` ("Today could not show clashes").
+  missing, from the registry's `what` ("Today could not show clashes"; a
+  source whose chunk did not load never drew its section, so it is named
+  there too: "Today could not show what is due").
   The page shows the rest and is never "All clear" over it. A read that
   failed in a source with no section is said under Also the same way.
   Prep drops its failures on purpose (a mark is only an extra, and a
@@ -247,7 +259,10 @@ export const source: TodaySource = { id: "money", section: { id: "money", title:
   `work.review.ready` (one from before the review) has no review to name.
 
 Row keys Today makes: `held:<environmentId>:<ref.at>:<ref.id>`,
-`event:<id>`, `task:<id>`, `mail:<id>`, `file:<FileEntry.key>`.
+`event:<id>`, `task:<id>`, `mail:<id>`, `file:<FileEntry.key>`, and
+Messages' `chat:<chatId>:<at>`, by the last message, so one he marked read
+stays off and a newer one shows. A key his act took off is kept off only
+while some source still gives it.
 
 ## The page
 
@@ -290,7 +305,9 @@ Toasts: the titles' column at the page's foot is the toast anchor
 (lib/toastAnchor.ts), so a toast covers neither a tick nor a verb, and the
 list ends with a runway so its last row scrolls clear. In the narrow column
 the page's own toasts (`act`, counted in the store's `toastsUp`) get a
-strip under the list while one is up: until the toast says it left, or,
+strip under the list while one is up, a toast's place (5rem) for each of
+them, up to the four the toaster shows, so the stack covers no row even
+open under the pointer: until the toast says it left, or,
 for a way out it did not say, until no toast is left in the document (one
 held under the pointer, or a loading one, keeps it). While the held sheet
 is open the anchor stands down.

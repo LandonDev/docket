@@ -107,6 +107,8 @@ export type TodayAnswer = {
   marks?: TodayMark[];
   /** Nothing has come back yet. */
   loading?: boolean;
+  /** With `loading`: its rows are a whole earlier answer read again (a reopen), so no cue says more may come; the page is still not clear. */
+  stale?: boolean;
   failed?: TodayFailure[];
   /** One muted line at the foot of the source's own section ("Tomorrow starts at 9:00 AM with Staff sync"). */
   note?: string;

@@ -168,6 +168,8 @@ export function putAnswer(id: string, answer: TodayAnswer): void {
   set({ answers, ...(state.gone.size ? { gone: stillGiven(state.gone, answers) } : {}) });
 }
 
+const given = (key: string): boolean => [...state.answers.values()].some((answer) => answer.rows?.some((row) => row.key === key));
+
 function stillGiven(gone: ReadonlySet<string>, answers: ReadonlyMap<string, TodayAnswer>): ReadonlySet<string> {
   const given = new Set<string>();
   for (const answer of answers.values()) for (const row of answer.rows ?? []) given.add(row.key);
@@ -199,7 +201,8 @@ export function leave(key: string): void {
     set({ leaving: without(state.leaving, key), closing: new Set(state.closing).add(key) });
     step(DUR.base * 1000, () => {
       timers.delete(key);
-      set({ closing: without(state.closing, key), gone: new Set(state.gone).add(key) });
+      // A key no source gives by now is already off the page: kept as gone, it would hide the same thing for ever.
+      set({ closing: without(state.closing, key), gone: given(key) ? new Set(state.gone).add(key) : state.gone });
     });
   });
 }

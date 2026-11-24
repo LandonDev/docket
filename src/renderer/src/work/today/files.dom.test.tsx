@@ -43,6 +43,7 @@ import { projectStore } from "../../stores/project";
 import { fileRows, source as files } from "./files";
 import { dayBounds } from "./model";
 import { TODAY_SOURCES } from "./sources";
+import { forgetEach } from "./read";
 import type { TodayEnv, TodayWorkspace } from "./types";
 
 const at = (day: number, hour: number, minute = 0) => new Date(2026, 10, day, hour, minute).getTime();
@@ -52,6 +53,8 @@ const entry = (key: string, name: string, kind: FileEntry["kind"], changed: numb
 const env = (): TodayEnv => ({ day: dayBounds(at(23, 9)), workspaces: JOBS, lifeos: { environmentId: "", sector: null, client: null, state: "off" }, workspaceOf: (sector) => JOBS.find((w) => w.sector === sector) ?? null });
 
 beforeEach(() => {
+  // What another test's reads had is not this test's.
+  forgetEach();
   world.calls.length = 0;
   world.changed.clear();
   world.down.clear();

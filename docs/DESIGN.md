@@ -2488,7 +2488,9 @@ own selected fill is a card's fill at rest in light.
   list ends with a runway a toast and its gaps tall (96px), so the last row
   can be scrolled clear of the stack. In the narrow column, where a toast
   is as wide as a row, the page's own toasts get a strip under the list
-  (80px, only while one is up), outside the scrolling rows. While the held
+  (80px for each of them, up to the four the toaster shows, so the stack
+  covers no row even open under the pointer; only while one is up),
+  outside the scrolling rows. While the held
   sheet is open the toasts are back in the window's corner, behind it, as
   under any sheet.
 - **Long sections fold**: Waiting on you shows 5, Due 7, Waiting on others

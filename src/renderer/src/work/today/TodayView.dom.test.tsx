@@ -193,6 +193,10 @@ describe("Today", () => {
     expect(section("held").querySelector("h2")?.textContent).toBe("Waiting on you");
     // No verb is drawn on a held row: Send is never in the row.
     expect(first.querySelectorAll("button")).toHaveLength(1);
+    // Its name is the title and second line; its job and its time describe it, as he sees them.
+    const told = first.querySelector("[data-row-open]")!.getAttribute("aria-describedby")!.split(" ").map((id) => document.getElementById(id)!.textContent);
+    expect(told[0]).toBe("Purdue Esports");
+    expect(told[1]).toMatch(/\S/);
   });
 
   it("draws bones only for a section that has never answered, beside the rows of one that has; then its empty line", async () => {
@@ -315,18 +319,24 @@ describe("Today", () => {
       world.items.set("box", [mail("o1", "Marcus Bell", "Sponsor deck")]);
       await loadOutbox();
       render(<View onClose={() => {}} />);
-      const strip = document.querySelector<HTMLElement>("[data-today-strip], [aria-hidden].flex.shrink-0")!;
+      const strip = document.querySelector<HTMLElement>("[aria-hidden].flex.shrink-0.px-6")!;
       const anchor = toastAnchor()!;
       // The titles' column is not the anchor here; the strip's own is, outside the scrolling rows.
       expect(anchor.closest("[data-today]")).toBeNull();
       expect(strip.contains(anchor)).toBe(true);
-      expect(strip.className).toContain("h-0");
+      expect(strip.style.height).toBe("0rem");
       let down!: () => void;
       act(() => void (down = toastUp()));
       expect(strip.getAttribute("data-today-strip")).toBe("up");
-      expect(strip.className).toContain("h-20");
+      expect(strip.style.height).toBe("5rem");
+      // Two Undo toasts: the stack opens under the pointer to both, and the strip keeps a place for each.
+      let second!: () => void;
+      act(() => void (second = toastUp()));
+      expect(strip.style.height).toBe("10rem");
+      act(() => second());
       act(() => down());
       expect(strip.getAttribute("data-today-strip")).toBeNull();
+      expect(strip.style.height).toBe("0rem");
       expect(todayNow().toastsUp).toBe(0);
     } finally {
       vi.unstubAllGlobals();
@@ -352,6 +362,18 @@ describe("Today", () => {
     expect(screen.queryByText("All clear")).toBeNull();
   });
 
+  it("with an offline host and nothing on the open one, Waiting on you never says nothing waits", async () => {
+    world.open = new Set(["box"]);
+    moved();
+    world.items.set("mac", [mail("o3", "Northfield Parks", "Invoice 1042", { sector: "ref", workspaceId: "ws2" })]);
+    await loadOutbox();
+    render(<View onClose={() => {}} />);
+    expect(section("held").textContent).not.toContain("Nothing waits on your press");
+    expect(section("held").querySelectorAll('[data-view-state="failed"]')).toHaveLength(0);
+    expect(document.querySelectorAll("[data-today-offline]")).toHaveLength(1);
+    expect(screen.queryByText("All clear")).toBeNull();
+  });
+
   it("names an offline host once, at the page's foot, and no section blames it for a read its link refused", async () => {
     world.open = new Set(["box"]);
     moved();
@@ -373,8 +395,10 @@ describe("Today", () => {
     const { unmount } = render(<View onClose={() => {}} />);
     expect(rowTitles()).toHaveLength(5);
     const more = screen.getByRole("button", { name: "3 more" });
-    // The fold's words start where the titles do.
+    // The fold's words start where the titles do, and the fold is an item of the section's list as a row is.
     expect(more.className).toContain(TITLE_EDGE);
+    expect(more.parentElement!.getAttribute("role")).toBe("listitem");
+    expect(more.parentElement!.parentElement!.getAttribute("role")).toBe("list");
     fireEvent.click(more);
     expect(rowTitles()).toHaveLength(8);
     expect(screen.queryByRole("button", { name: "3 more" })).toBeNull();
@@ -639,6 +663,7 @@ describe("a source", () => {
             rows: read.answers.flatMap(({ workspace, value }) => Array.from({ length: value.n }, (_, i) => ({ key: `money:${workspace.workspaceId}:${i}`, section: "money", sector: workspace.sector, title: `Owed ${workspace.workspaceId} ${i}`, open: () => {} }))),
             loading: read.loading,
             failed: read.failed,
+            ...(read.stale ? { stale: true } : {}),
           }),
           [read],
         );
@@ -651,6 +676,10 @@ describe("a source", () => {
     unmount();
     render(<View onClose={() => {}} />);
     // The fresh read has asked no host yet: the rows it had stand, with no bones over them.
+    expect(rowTitles()).toHaveLength(4);
+    expect(section("money").querySelector('[role="status"][aria-busy]')).toBeNull();
+    // Each job starts with its last value, read again: still none, once the hosts are asked.
+    await act(async () => {});
     expect(rowTitles()).toHaveLength(4);
     expect(section("money").querySelector('[role="status"][aria-busy]')).toBeNull();
   });
@@ -679,6 +708,8 @@ describe("a source", () => {
     expect(rowTitles()).toEqual(["Northfield Parks owes 420"]);
     expect(bones()).toHaveLength(1);
     expect(section("money").querySelector('[role="status"][aria-busy]')!.getAttribute("aria-label")).toBe("Loading more of Money");
+    // The bone is an item of the list it stands in.
+    expect(section("money").querySelector('[role="status"][aria-busy]')!.parentElement!.getAttribute("role")).toBe("listitem");
     fireEvent.click(screen.getByRole("button", { name: "Northfield Parks owes 420" }));
     expect(opened).toHaveBeenCalledTimes(1);
     // The read is back: the bone goes, the row stays.

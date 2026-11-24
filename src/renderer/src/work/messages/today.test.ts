@@ -9,7 +9,12 @@ const toasts = vi.hoisted(() => [] as unknown[][]);
 vi.mock("../../components/ui/toaster", () => ({ loadToast: async () => ({ error: (...args: unknown[]) => void toasts.push(args) }) }));
 
 const { chatKey, markChatRead, source, waitingRows } = await import("./today");
-const { resetToday, todayNow } = await import("../today/store");
+const { fedOf, putAnswer, resetToday, todayNow } = await import("../today/store");
+const { page } = await import("../today/model");
+const shownKeys = (): string[] => {
+  const p = page(fedOf(todayNow()), { jobs: [{ environmentId: "box", workspaceId: "ws-a", sector: "cosmic", name: "Cosmic", path: "/w", open: true }], lifeos: "ok", gone: todayNow().gone });
+  return p.kind === "day" ? p.keys : [];
+};
 const { TODAY_SOURCES } = await import("../today/sources");
 
 /** Messages on Today: the conversations that wait on his answer, from every job. Made-up people. */
@@ -35,9 +40,9 @@ describe("Messages on Today", () => {
       () => {},
     );
     expect(rows.map((r) => [r.key, r.title, r.detail, r.when, r.sector])).toEqual([
-      ["chat:c2", "Omar Reyes in #builds", "Second pad still drops", "2:59 PM", "cosmic"],
-      ["chat:c1", "Dana Lee", "Can you look at the cut?", "2:00 PM", "cosmic"],
-      ["chat:c3", "Marcus Bell in Ref crew", "Can you look at the cut?", "Sat", "hypixel"],
+      [`chat:c2:${now - 60_000}`, "Omar Reyes in #builds", "Second pad still drops", "2:59 PM", "cosmic"],
+      [`chat:c1:${now - 3_600_000}`, "Dana Lee", "Can you look at the cut?", "2:00 PM", "cosmic"],
+      [`chat:c3:${now - 2 * 86_400_000}`, "Marcus Bell in Ref crew", "Can you look at the cut?", "Sat", "hypixel"],
     ]);
     // The section orders by `at` ascending: the newest carries the least.
     expect(rows.map((r) => r.at)).toEqual([...rows.map((r) => r.at)].sort((a, b) => (a ?? 0) - (b ?? 0)));
@@ -53,7 +58,7 @@ describe("Messages on Today", () => {
       now,
       () => {},
     );
-    expect(rows.map((r) => r.key)).toEqual([chatKey("c1"), chatKey("c1")]);
+    expect(rows.map((r) => r.key)).toEqual([chatKey("c1", now - 3_600_000), chatKey("c1", now - 3_600_000)]);
     expect(new Set(rows.map((r) => r.key)).size).toBe(1);
   });
 
@@ -67,6 +72,26 @@ describe("Messages on Today", () => {
     expect(read).toEqual(["c1"]);
   });
 
+  it("a message that comes after the one he marked read shows, with or without an empty answer between", async () => {
+    vi.useFakeTimers();
+    try {
+      for (const between of [false, true]) {
+        resetToday([source]);
+        const rowsAt = (at: number) => waitingRows([{ workspace: job("ws-a", "cosmic"), value: { rows: [chat("c1", { at })] } }], now, () => {});
+        putAnswer("messages", { rows: rowsAt(now - 60_000) });
+        await markChatRead({ mutation: async () => null } as never, "c1", now - 60_000);
+        if (between) putAnswer("messages", { rows: [] });
+        // The row's fade and its closing place run out.
+        await vi.advanceTimersByTimeAsync(1_000);
+        // The host's next answer holds the conversation again, with a newer message in it.
+        putAnswer("messages", { rows: rowsAt(now) });
+        expect(shownKeys(), String(between)).toEqual([chatKey("c1", now)]);
+      }
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("names the very workspace its host answered for", () => {
     const [row] = waitingRows([{ workspace: { ...job("ws-a", "cosmic", "mac"), name: "Cosmic (Mac)" }, value: { rows: [chat("c1")] } }], now, () => {});
     expect(row!.job).toBe("Cosmic (Mac)");
@@ -75,12 +100,12 @@ describe("Messages on Today", () => {
   it("Mark read takes the row off as his act, and puts it back with a counted toast when the write fails", async () => {
     resetToday([]);
     const mutation = vi.fn(async () => null);
-    await markChatRead({ mutation } as never, "c1");
+    await markChatRead({ mutation } as never, "c1", 1);
     expect(mutation).toHaveBeenCalledWith(expect.anything(), { id: "c1" });
-    expect(todayNow().leaving.has(chatKey("c1"))).toBe(true);
+    expect(todayNow().leaving.has(chatKey("c1", 1))).toBe(true);
     resetToday([]);
-    await markChatRead({ mutation: async () => Promise.reject(new Error("no")) } as never, "c2");
-    expect(todayNow().leaving.has(chatKey("c2"))).toBe(false);
+    await markChatRead({ mutation: async () => Promise.reject(new Error("no")) } as never, "c2", 1);
+    expect(todayNow().leaving.has(chatKey("c2", 1))).toBe(false);
     expect(toasts.at(-1)?.[0]).toBe("Couldn't mark it read");
     // Counted while it is up, so a narrow column gives it its strip.
     expect(todayNow().toastsUp).toBe(1);

@@ -50,7 +50,7 @@ import { FakeConvex, fakeSession } from "./fakeLifeos";
 import { source as meetings } from "./meetings";
 import { dayBounds } from "./model";
 import { goTo, openToday, TODAY, toggleToday } from "./open";
-import { resetToday, todayNow } from "./store";
+import { putAnswer, resetToday, todayNow } from "./store";
 import type { TodayEnv, TodayRow, TodayWorkspace } from "./types";
 import { source as waiting } from "./waiting";
 
@@ -201,6 +201,8 @@ describe("the due source", () => {
     convex.answer("tasks:list", TASKS);
     const env = envNow();
     const { result } = renderHook(() => due.use(env));
+    // As the page does: the store holds what the source gives, so the row it takes off is one still given.
+    putAnswer("due", result.current);
     const lead = rowOf(result.current.rows, "task:t1").lead;
     await act(async () => {
       if (lead?.kind === "tick") await lead.run();

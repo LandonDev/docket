@@ -199,6 +199,8 @@ describe("page", () => {
     expect(day.blocks.map((b) => b.kind === "section" && [b.section.id, b.section.failed.map((f) => f.environmentId)])).toEqual([["held", []], ["due", ["box"]]]);
     // Not a job's host, but its read failed: named once with the others.
     expect(day.offline).toEqual(["pc"]);
+    // The section lost a read to it: it never says it is empty (TodayView's `unknown`).
+    expect(day.blocks.map((b) => b.kind === "section" && b.section.away)).toEqual([true, false]);
     // A failure that names no host (a source that threw) stays where it is.
     const thrown = page([fed("review", undefined, { rows: [], failed: [{ environmentId: "", error: "review", said: "Today could not show the weekly review" }] })], { jobs, lifeos: "ok", open: new Set(["box"]) });
     expect(thrown.kind === "day" && thrown.blocks.map((b) => b.kind === "section" && b.section.failed.length)).toEqual([1]);
@@ -217,6 +219,9 @@ describe("page", () => {
     expect(partial(of({}))).toEqual([true]);
     // Rows the store kept from before (a reopen): they are a whole answer, shown with no cue.
     expect(partial(of({ kept: true }))).toEqual([false]);
+    // A host read that a reopen started with each job's last value says so itself (`stale`).
+    expect(partial(page([fed("due", DUE, { rows, loading: true, stale: true })], { jobs, lifeos: "ok" }))).toEqual([false]);
+    expect(page([fed("due", DUE, { rows: [], loading: true, stale: true })], { jobs, lifeos: "ok" }).kind).toBe("day");
     expect(partial(page([fed("due", DUE, { rows })], { jobs, lifeos: "ok" }))).toEqual([false]);
   });
 

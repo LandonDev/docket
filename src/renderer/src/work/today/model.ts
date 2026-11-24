@@ -50,7 +50,7 @@ export function offlineHosts(jobs: readonly TodayWorkspace[]): string[] {
 const NO_KEYS: ReadonlySet<string> = new Set();
 
 /** One source and what it last answered. `kept`: the rows are its last whole answer, shown while it reads again (store.ts `putAnswer`). */
-export type Fed = { source: Pick<TodaySource, "id" | "section">; answer: TodayAnswer; kept?: boolean };
+export type Fed = { source: Pick<TodaySource, "id" | "section">; answer: TodayAnswer; kept?: boolean; away?: boolean };
 
 /** A row with its marks laid on. */
 function lay(row: TodayRow, marks: readonly TodayMark[]): TodayRow {
@@ -80,6 +80,8 @@ export type MergedSection = {
   /** A source that feeds it answered with rows and a read still out: what it shows is not all of it. Not while it only reads again what it had. */
   partial: boolean;
   failed: TodayFailure[];
+  /** A read it needs failed on a host whose link is not open: the foot says so, and the section never says it is empty. */
+  away: boolean;
   /** One muted line at its foot, from the source that owns it. */
   note?: string;
 };
@@ -95,14 +97,14 @@ export type MergedSection = {
 export function merge(fed: readonly Fed[], gone: ReadonlySet<string> = NO_KEYS): MergedSection[] {
   const sections = new Map<string, MergedSection>();
   const add = (def: TodaySection): void => {
-    if (!sections.has(def.id)) sections.set(def.id, { def, rows: [], loading: false, partial: false, failed: [] });
+    if (!sections.has(def.id)) sections.set(def.id, { def, rows: [], loading: false, partial: false, failed: [], away: false });
   };
   for (const { source } of fed) if (source.section) add(source.section);
   add(ALSO);
   const marks = new Map<string, TodayMark[]>();
   for (const { answer } of fed) for (const mark of answer.marks ?? []) marks.set(mark.key, [...(marks.get(mark.key) ?? []), mark]);
   const seen = new Set<string>();
-  for (const { source, answer, kept } of fed) {
+  for (const { source, answer, kept, away } of fed) {
     for (const row of answer.rows ?? []) {
       const section = sections.get(row.section);
       // A row his own act took off the page is gone before its source drops it.
@@ -114,9 +116,10 @@ export function merge(fed: readonly Fed[], gone: ReadonlySet<string> = NO_KEYS):
     // The same line twice (two sources that say one thing of one host) is drawn once.
     const into = (own ?? sections.get(ALSO.id)!).failed;
     for (const f of answer.failed ?? []) if (!into.some((g) => g.environmentId === f.environmentId && g.said === f.said && g.error === f.error)) into.push(f);
+    if (away) (own ?? sections.get(ALSO.id)!).away = true;
     if (!own) continue;
     if (answer.loading) own.loading = true;
-    if (answer.loading && answer.rows !== undefined && !kept) own.partial = true;
+    if (answer.loading && answer.rows !== undefined && !kept && !answer.stale) own.partial = true;
     if (answer.note) own.note = answer.note;
   }
   const ordered = [...sections.values()].sort((a, b) => a.def.order - b.def.order);
@@ -152,6 +155,8 @@ export type ShownSection = {
   /** Rows under the fold: how many, 0 once unfolded or with none. */
   more: number;
   failed: TodayFailure[];
+  /** A read it needs is lost to an offline host: no empty line. */
+  away: boolean;
   note?: string;
 };
 
@@ -177,6 +182,7 @@ export function fold(section: MergedSection, folds: Folds = NO_FOLDS): ShownSect
     rows,
     more: ahead.length - cap,
     failed: section.failed,
+    away: section.away,
     ...(section.note ? { note: section.note } : {}),
   };
 }
@@ -224,7 +230,7 @@ function apart(fed: readonly Fed[], open: ReadonlySet<string>): { fed: Fed[]; aw
     const failed = one.answer.failed;
     if (!failed?.some(closed)) return one;
     for (const f of failed) if (closed(f)) away.push(f.environmentId);
-    return { ...one, answer: { ...one.answer, failed: failed.filter((f) => !closed(f)) } };
+    return { ...one, answer: { ...one.answer, failed: failed.filter((f) => !closed(f)) }, away: true };
   });
   return { fed: out, away };
 }

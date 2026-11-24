@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Link } from "../../lib/connection";
 import type { ServerPush } from "../../lib/tcserver/types";
-import { EACH_TIMEOUT_MS, eachWorkspace } from "./read";
+import { EACH_TIMEOUT_MS, eachWorkspace, forgetEach } from "./read";
 import type { TodayWorkspace } from "./types";
 
 type Asked = { method: string; params: unknown; resolve(value: unknown): void; reject(err: unknown): void };
@@ -55,6 +55,7 @@ describe("eachWorkspace", () => {
     vi.useFakeTimers();
     box = new FakeLink("box");
     mac = new FakeLink("mac");
+    forgetEach();
   });
   afterEach(() => {
     vi.useRealTimers();
@@ -134,10 +135,50 @@ describe("eachWorkspace", () => {
     day = "tue";
     read.again();
     expect(box.asked.map((a) => a.params)).toEqual([{ day: "mon" }, { day: "tue" }]);
-    box.asked[0]!.resolve({ day: "mon" });
+    // The new day's answer comes first; the old ask's, late, is dropped.
     box.asked[1]!.resolve({ day: "tue" });
     await flush();
+    box.asked[0]!.resolve({ day: "mon" });
+    await flush();
     expect(read.snapshot().answers.map((a) => a.value)).toEqual([{ day: "tue" }]);
+  });
+
+  it("a read made afresh (a reopen) starts with each job's last value: a fast job's answer drops no slow job's, and one that fails keeps its own", async () => {
+    const first = eachWorkspace<{ n: number }>("work.money.owed", { linkOf });
+    first.set([job("box", "w1"), job("mac", "w3")], paramsOf);
+    box.asked[0]!.resolve({ n: 1 });
+    mac.asked[0]!.resolve({ n: 3 });
+    await flush();
+    first.close();
+    const again = eachWorkspace<{ n: number }>("work.money.owed", { linkOf });
+    again.set([job("box", "w1"), job("mac", "w3")], paramsOf);
+    // Both stand at once, read again: out, and whole.
+    expect(again.snapshot()).toMatchObject({ loading: true, stale: true });
+    expect(again.snapshot().answers.map((a) => a.value)).toEqual([{ n: 1 }, { n: 3 }]);
+    // The Mac answers first: the box's last value still stands beside it.
+    mac.asked[1]!.resolve({ n: 4 });
+    await flush();
+    expect(again.snapshot().answers.map((a) => a.value)).toEqual([{ n: 1 }, { n: 4 }]);
+    expect(again.snapshot()).toMatchObject({ loading: true, stale: true });
+    // The box runs out of time: it keeps what it had, and says it did not answer.
+    await vi.advanceTimersByTimeAsync(EACH_TIMEOUT_MS);
+    expect(again.snapshot().answers.map((a) => a.value)).toEqual([{ n: 1 }, { n: 4 }]);
+    expect(again.snapshot()).toMatchObject({ loading: false, stale: false, failed: [{ environmentId: "box" }] });
+  });
+
+  it("forgets a job's last value once the job leaves", async () => {
+    const first = eachWorkspace<{ n: number }>("work.money.owed", { linkOf });
+    first.set([job("box", "w1"), job("box", "w2")], paramsOf);
+    box.asked[0]!.resolve({ n: 1 });
+    box.asked[1]!.resolve({ n: 2 });
+    await flush();
+    first.set([job("box", "w1")], paramsOf);
+    first.close();
+    const again = eachWorkspace<{ n: number }>("work.money.owed", { linkOf });
+    again.set([job("box", "w1"), job("box", "w2")], paramsOf);
+    expect(again.snapshot().answers.map((a) => a.workspace.workspaceId)).toEqual(["w1"]);
+    // Not whole: w2 has nothing to show while it is out.
+    expect(again.snapshot()).toMatchObject({ loading: true, stale: false });
   });
 
   it("names a host once however many of its jobs failed, with the host's own words", async () => {

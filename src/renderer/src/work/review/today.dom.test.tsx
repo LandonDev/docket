@@ -88,9 +88,12 @@ describe("the review on Today", () => {
           },
         }) as never,
     );
-    render(<Probe e={env([["box", true], ["mac", true], ["old", true], ["asleep", false]])} />);
+    // A host from before the review refuses the ask from the first.
     answers.old = new Error("not built: work.review.ready");
+    render(<Probe e={env([["box", true], ["mac", true], ["old", true], ["asleep", false]])} />);
     await settle();
+    // Its refusal is an answer: no review to name there, and nothing still out.
+    expect(loading).toBe(false);
     // A host that is not linked is not asked; one from before the review has nothing to name.
     expect(asked.sort()).toEqual(["box:work.review.ready", "mac:work.review.ready", "old:work.review.ready"]);
     expect(rows.map((r) => [r.key, r.title, r.detail])).toEqual([[`review:${WEEK.from}`, "This week's review is ready", "Week of Nov 16"]]);

@@ -13,7 +13,7 @@ const deferred = () => {
 vi.mock("./sources", () => ({
   TODAY_SOURCES: ["due", "review"].map((id) => ({
     id,
-    ...(id === "review" ? { what: "the weekly review" } : {}),
+    what: id === "review" ? "the weekly review" : "what is due",
     load: () => {
       const d = deferred();
       loads.set(id, d);
@@ -56,6 +56,16 @@ describe("Today's sources while they load", () => {
     expect(p.kind).toBe("day");
     const also = p.kind === "day" ? p.blocks.find((b) => b.kind === "section" && b.section.id === "also") : undefined;
     expect(also?.kind === "section" && also.section.failed.map((f) => f.said)).toEqual(["Today could not show the weekly review"]);
+  });
+
+  it("a source with a section of its own whose chunk did not load is named under Also, since its section never came", async () => {
+    void loadSources();
+    loads.get("due")!.reject(new Error("chunk failed"));
+    loads.get("review")!.resolve({ source: { id: "review", use: () => ({}) } });
+    await vi.waitFor(() => expect(todayNow().pending).toEqual([]));
+    const p = page(fedOf(todayNow()), { jobs, lifeos: "ok" });
+    const also = p.kind === "day" ? p.blocks.find((b) => b.kind === "section" && b.section.id === "also") : undefined;
+    expect(also?.kind === "section" && also.section.failed.map((f) => f.said)).toEqual(["Today could not show what is due"]);
   });
 });
 

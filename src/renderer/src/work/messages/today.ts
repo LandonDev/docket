@@ -22,13 +22,18 @@ import { rowTime } from "./model";
 
 const SECTION: TodaySection = { id: "messages", title: "Messages", order: 45, empty: "No one is waiting on a reply", fold: 5, lifeos: true };
 
-/** A conversation's row key: one row a conversation, whichever host answered for it. */
-export const chatKey = (chatId: string): string => `chat:${chatId}`;
+/**
+ * A conversation's row key: one row a conversation, whichever host answered
+ * for it, and one for each last message (`at`). A row he marked read is
+ * hidden by its key until no source gives it (store.ts `gone`): a message
+ * that comes after is a new key, so it shows.
+ */
+export const chatKey = (chatId: string, at: number): string => `chat:${chatId}:${at}`;
 
 const LEAD: NonNullable<TodayRow["lead"]> = { kind: "glyph", glyph: Chat };
 
 /** The waiting conversations as rows, newest first: who wrote and where, their words, when. */
-export function waitingRows(answers: readonly { workspace: TodayWorkspace; value: MessagesUnansweredAnswer }[], now: number, markRead: (chatId: string) => Promise<void> | void): TodayRow[] {
+export function waitingRows(answers: readonly { workspace: TodayWorkspace; value: MessagesUnansweredAnswer }[], now: number, markRead: (chatId: string, at: number) => Promise<void> | void): TodayRow[] {
   const rows: TodayRow[] = [];
   for (const { workspace, value } of answers) {
     for (const chat of value.rows) rows.push(rowOf(workspace, chat, now, markRead));
@@ -36,11 +41,11 @@ export function waitingRows(answers: readonly { workspace: TodayWorkspace; value
   return rows.sort((a, b) => (a.at ?? 0) - (b.at ?? 0));
 }
 
-function rowOf(workspace: TodayWorkspace, chat: ChatWaiting, now: number, markRead: (chatId: string) => Promise<void> | void): TodayRow {
+function rowOf(workspace: TodayWorkspace, chat: ChatWaiting, now: number, markRead: (chatId: string, at: number) => Promise<void> | void): TodayRow {
   // In a channel or a group the row says who wrote and where; one person's chat is named by them alone.
   const title = chat.who && chat.who !== chat.chat ? `${chat.who} in ${chat.chat}` : chat.chat;
   return {
-    key: chatKey(chat.chatId),
+    key: chatKey(chat.chatId, chat.at),
     section: SECTION.id,
     sector: workspace.sector,
     // The workspace its host answered for: where two hosts hold the sector under two names, the one the press opens.
@@ -52,7 +57,7 @@ function rowOf(workspace: TodayWorkspace, chat: ChatWaiting, now: number, markRe
     when: rowTime(chat.at, now),
     lead: LEAD,
     open: () => goTo(workspace, { view: "messages", chat: chat.chatId }),
-    acts: [{ label: "Mark read", run: () => markRead(chat.chatId) }],
+    acts: [{ label: "Mark read", run: () => markRead(chat.chatId, chat.at) }],
   };
 }
 
@@ -62,8 +67,8 @@ function rowOf(workspace: TodayWorkspace, chat: ChatWaiting, now: number, markRe
  * as any row does (store.ts `leave`), and is back as it was if the write
  * fails, with a toast the page counts (lifeos.ts `shown`).
  */
-export async function markChatRead(client: LifeosSession["client"], chatId: string): Promise<void> {
-  const key = chatKey(chatId);
+export async function markChatRead(client: LifeosSession["client"], chatId: string, at: number): Promise<void> {
+  const key = chatKey(chatId, at);
   leave(key);
   try {
     if (!client) throw new Error("LifeOS is not connected");
@@ -77,9 +82,12 @@ export async function markChatRead(client: LifeosSession["client"], chatId: stri
 function useWaiting(env: TodayEnv): TodayAnswer {
   const each = useEachWorkspace<MessagesUnansweredAnswer>(env, "work.messages.unanswered", (w) => ({ workspaceId: w.workspaceId }), { push: "work.messages" });
   const client = env.lifeos.client;
+  // The day is an input: a row's time ("2:00 PM", "Sat") is said from today, which turns at midnight with no push.
+  const day = env.day.from;
   return useMemo(
-    () => ({ rows: waitingRows(each.answers, Date.now(), (chatId) => markChatRead(client, chatId)), loading: each.loading, failed: each.failed }),
-    [each, client],
+    () => ({ rows: waitingRows(each.answers, Date.now(), (chatId, at) => markChatRead(client, chatId, at)), loading: each.loading, failed: each.failed, ...(each.stale ? { stale: true } : {}) }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- `day`: the rows' times are said again when the day turns
+    [each, client, day],
   );
 }
 

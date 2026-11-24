@@ -55,7 +55,9 @@ export function owedRows(answers: ReturnType<typeof useEachWorkspace<MoneyOwed>>
 function useOwed(env: TodayEnv): TodayAnswer {
   const read = useEachWorkspace<MoneyOwed>(env, "work.money.owed", (w) => ({ workspaceId: w.workspaceId }), { push: "work.money" });
   // The same answer while the read has not moved: a new one would wake the page for nothing.
-  return useMemo(() => ({ rows: owedRows(read.answers), loading: read.loading, failed: read.failed }), [read]);
+  // The day is an input: a row's "Today" turns at midnight with no push. `stale`: the rows a reopen had, read again.
+  const day = env.day.from;
+  return useMemo(() => ({ rows: owedRows(read.answers, today(new Date(day))), loading: read.loading, failed: read.failed, ...(read.stale ? { stale: true } : {}) }), [read, day]);
 }
 
 export const source: TodaySource = {

@@ -64,6 +64,8 @@ export function View(_props: WorkPlaceProps) {
     return () => observer.disconnect();
   }, []);
   const sheetOpen = state.held !== null;
+  // How many toasts' places the narrow strip keeps: the page's own that are up, as many as the toaster shows.
+  const strip = compact && !sheetOpen ? Math.min(state.toastsUp, STRIP_MOST) : 0;
   // While it is open the page runs its sources itself; closed, they run on for ten minutes (warm.tsx).
   useLayoutEffect(() => {
     pageOpen(true);
@@ -86,14 +88,25 @@ export function View(_props: WorkPlaceProps) {
         />
         <HeldSheet />
       </div>
-      {/* The narrow column's toasts: a strip under the list, as tall as a toast while one of the page's own is up, the
-          rows' width. Not while the held sheet is open (TodayPageView's own anchor says why). */}
-      <div aria-hidden data-today-strip={compact && state.toastsUp > 0 && !sheetOpen ? "up" : undefined} className={cn("flex shrink-0 items-end px-6", compact && state.toastsUp > 0 && !sheetOpen ? "h-20" : "h-0")}>
+      {/* The narrow column's toasts: a strip under the list while one of the page's own is up, the rows' width, as tall
+          as the page's toasts stand when the stack opens under the pointer (one toast's place each, as many as the
+          toaster shows), so even an open stack covers no row. Not while the held sheet is open (TodayPageView's own
+          anchor says why). */}
+      <div
+        aria-hidden
+        data-today-strip={strip > 0 ? "up" : undefined}
+        style={{ height: `${strip * STRIP_REM}rem` }}
+        className="flex shrink-0 items-end px-6"
+      >
         <span ref={compact && !sheetOpen ? registerToastAnchor : undefined} className="h-0 flex-1" />
       </div>
     </div>
   );
 }
+
+/** One toast's place in the narrow strip, its gap with it (5rem, as the strip stood for one), and how many the toaster shows (toaster.tsx `visibleToasts`). */
+const STRIP_REM = 5;
+const STRIP_MOST = 4;
 
 /** The column's width under which the grid is compact (TodayRow.tsx: 30rem). */
 const COMPACT_PX = 480;
@@ -273,8 +286,9 @@ function Section({
   else if (known.keys === null || folded < known.folded) known.keys = new Set(section.rows.map((row) => row.key));
   known.folded = folded;
   const lands = (key: string): boolean => known.keys !== null && !known.keys.has(key);
-  // A host that did not answer is said, and the section never says "nothing" beside it.
-  const unknown = section.failed.length > 0 && section.state !== "rows";
+  // A host that did not answer is said, and the section never says "nothing" beside it; nor while a read it needs is
+  // lost to a host that is offline (the page's foot names the host).
+  const unknown = (section.failed.length > 0 || section.away) && section.state !== "rows";
   return (
     <section aria-label={section.title} data-today-section={section.id} className="mt-6 flex flex-col first:mt-0">
       <h2 className="flex h-7 items-center px-3 text-xs font-medium text-muted-foreground">{section.title}</h2>

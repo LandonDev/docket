@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { registry, type Link } from "../../lib/connection";
+import { resetHooks } from "./store";
 import type { TodayEnv, TodayFailure, TodayWorkspace } from "./types";
 
 /**
@@ -22,9 +23,25 @@ export type EachAnswer<T> = {
   loading: boolean;
   /** One line per host with a job that did not answer, with its Retry. */
   failed: TodayFailure[];
+  /** It is `loading`, and every job still out has a value from an earlier read: what it shows is whole, only being read again. */
+  stale: boolean;
 };
 
-type Slot<T> = { workspace: TodayWorkspace; value?: T; has: boolean; error: string | null; pending: boolean; seq: number };
+/** `fresh`: answered in this read's own life; a value it started with is the last one any read had (`lastOf`). */
+type Slot<T> = { workspace: TodayWorkspace; value?: T; has: boolean; fresh: boolean; error: string | null; pending: boolean; seq: number };
+
+/**
+ * The last value each job answered, for the life of the window, by method:
+ * a read made afresh (the page reopened) starts with it, so each job shows
+ * what it had until its own answer comes, and keeps it if that answer fails.
+ * A job that leaves is forgotten.
+ */
+const lastOf = new Map<string, unknown>();
+/** Test seam: what the reads had is forgotten. */
+export function forgetEach(): void {
+  lastOf.clear();
+}
+resetHooks.add(forgetEach);
 
 const keyOf = (w: Pick<TodayWorkspace, "environmentId" | "workspaceId">): string => `${w.environmentId}:${w.workspaceId}`;
 const errorText = (err: unknown): string => (err instanceof Error ? err.message : String(err));
@@ -77,7 +94,8 @@ export function eachWorkspace<T>(method: string, opts: EachOptions = {}) {
       .then(
         (value) => {
           if (slots.get(key) !== slot || slot.seq !== seq) return;
-          Object.assign(slot, { value, has: true, error: null, pending: false });
+          Object.assign(slot, { value, has: true, fresh: true, error: null, pending: false });
+          lastOf.set(`${method}|${key}`, value);
           changed();
         },
         (err: unknown) => {
@@ -123,7 +141,11 @@ export function eachWorkspace<T>(method: string, opts: EachOptions = {}) {
       paramsOf = params;
       order = workspaces.map(keyOf);
       const live = new Set(order);
-      for (const key of [...slots.keys()]) if (!live.has(key)) slots.delete(key);
+      for (const key of [...slots.keys()]) {
+        if (live.has(key)) continue;
+        slots.delete(key);
+        lastOf.delete(`${method}|${key}`);
+      }
       for (const environmentId of [...hosts.keys()]) {
         if (workspaces.some((w) => w.environmentId === environmentId)) continue;
         hosts.get(environmentId)?.();
@@ -134,7 +156,8 @@ export function eachWorkspace<T>(method: string, opts: EachOptions = {}) {
         const slot = slots.get(key);
         watch(workspace.environmentId);
         if (!slot) {
-          slots.set(key, { workspace, has: false, error: null, pending: false, seq: 0 });
+          const last = `${method}|${key}`;
+          slots.set(key, lastOf.has(last) ? { workspace, value: lastOf.get(last) as T, has: true, fresh: false, error: null, pending: false, seq: 0 } : { workspace, has: false, fresh: false, error: null, pending: false, seq: 0 });
           ask(key);
         } else {
           const opened = workspace.open && !slot.workspace.open;
@@ -165,11 +188,14 @@ export function eachWorkspace<T>(method: string, opts: EachOptions = {}) {
         const environmentId = slot.workspace.environmentId;
         failed.set(environmentId, { environmentId, error: slot.error, retry: () => askHost(environmentId) });
       }
+      // Out: a job that has not answered this read, or whose failed read is asked again (Retry). A fresh value read
+      // again on a push is not out: it shows until the new one lands.
+      const out = live.filter((slot) => slot.workspace.open && slot.pending && (!slot.fresh || slot.error !== null));
       cached = {
         answers: live.filter((slot) => slot.has).map((slot) => ({ workspace: slot.workspace, value: slot.value as T })),
-        // A read that failed and is asked again (Retry) is out, though it says neither its answer nor its fault.
-        loading: !started || live.some((slot) => slot.workspace.open && slot.pending && (!slot.has || slot.error !== null)),
+        loading: !started || out.length > 0,
         failed: [...failed.values()],
+        stale: started && out.length > 0 && out.every((slot) => slot.has),
       };
       return cached;
     },

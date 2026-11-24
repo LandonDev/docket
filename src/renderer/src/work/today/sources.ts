@@ -10,17 +10,17 @@ import type { TodaySource } from "./types";
  */
 export const TODAY_SOURCES: {
   id: string;
-  /** For a source with no section of its own: what the page says it could not show, under Also, if it fails. */
-  what?: string;
+  /** What the page says it could not show, under Also, when the source has no section of its own or its chunk did not load. */
+  what: string;
   load: () => Promise<{ source: TodaySource }>;
 }[] = [
-  { id: "held", load: () => import("./held") },
-  { id: "meetings", load: () => import("./meetings") },
-  { id: "due", load: () => import("./due") },
-  { id: "waiting", load: () => import("./waiting") },
-  { id: "messages", load: () => import("../messages/today") },
+  { id: "held", what: "what waits on your press", load: () => import("./held") },
+  { id: "meetings", what: "meetings", load: () => import("./meetings") },
+  { id: "due", what: "what is due", load: () => import("./due") },
+  { id: "waiting", what: "mail waiting on a reply", load: () => import("./waiting") },
+  { id: "messages", what: "messages", load: () => import("../messages/today") },
   { id: "clashes", what: "clashes", load: () => import("../clashes/today") },
-  { id: "money", load: () => import("../money/today") },
+  { id: "money", what: "what is owed", load: () => import("../money/today") },
   { id: "review", what: "the weekly review", load: () => import("../review/today") },
   { id: "prep", what: "meeting prep", load: () => import("../prep/today") },
   // What only the digest is told (a routine's result, a sign-in about to end, a guest's edit): rows in `also`.
