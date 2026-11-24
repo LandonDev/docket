@@ -106,3 +106,31 @@
   font-size: 13px;
   line-height: 20px;
 }
+
+/* Mail's settings inside Settings → Work (MailSettingsSection.tsx): one of the page's sections, "Mail", and work-kit's
+   groups inside it as groups, not as sections of a page of their own (docs/DESIGN.md "Type scale" and "Spacing"): a
+   group heading 12/16 regular muted under the section's 12px medium one, 8px to its first row, groups 16px apart, a
+   small action on the heading's line overhanging it as `PageSection`'s does. The bones keep the same rhythm. */
+[data-mail-settings] section:not(:first-child) {
+  margin-top: 16px;
+}
+[data-mail-settings] section > div:first-child {
+  min-height: 20px;
+  margin-bottom: 8px;
+}
+[data-mail-settings] section > div:first-child > h3 {
+  font-size: 12px;
+  line-height: 16px;
+  font-weight: 400;
+  color: var(--muted-foreground);
+}
+[data-mail-settings] section > div:first-child > [data-slot="button"] {
+  margin-block: -4px;
+}
+[data-mail-settings] > [aria-hidden] > div:not(:first-child) {
+  margin-top: 16px;
+}
+[data-mail-settings] > [aria-hidden] > div > [data-slot="skeleton"]:first-child {
+  height: 12px;
+  margin-block: 4px 12px;
+}

@@ -114,7 +114,11 @@ const DigestSection = workDigestChunk.surface("SettingsSection", <PageRowsSkelet
 
 /** Mail's settings, in a chunk of their own: the mail client loads only when Settings shows them. */
 const mailSettingsChunk = defineChunk("work-mail-settings", () => import("../mail/MailSettingsSection"));
-const MailSettingsSection = mailSettingsChunk.surface("Section", <PageRowsSkeleton rows={3} />);
+const MailSettingsSection = mailSettingsChunk.surface("Section", (
+  <PageSection title="Mail">
+    <PageRowsSkeleton rows={3} />
+  </PageSection>
+));
 
 /** The sectors LifeOS has, each with its dot: what this host's Work threads can be linked to. Signed out, nothing: Connections holds the sign-in. */
 function SectorsSection({ environmentId }: { environmentId: string }) {

@@ -2033,8 +2033,10 @@ Around the canvas:
   glyph, the title at 13px medium, one 12px muted line, Add…). A mail or a
   person named in an answer is a 20px chip on `muted` at radius 6 with a
   12px glyph.
-  Mail's settings are flat groups of 44px rows under 13px semibold
-  headings; a signature and an account open as dialogs in the one dialog
+  Mail's settings are flat groups of 44px rows; in Settings → Work they
+  are one page section, "Mail", with the groups (Writing, Reading,
+  Signatures, Accounts) inside it under 12px regular muted headings, 16px
+  apart, and no second title; a signature and an account open as dialogs in the one dialog
   shape (the title beside a quiet Close, a hairline over the footer), every
   control in the account dialog at one width.
 - **The Messages view** (TempCode's own, src/renderer/src/work/messages/;

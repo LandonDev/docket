@@ -647,7 +647,12 @@ account a new mail goes from, who a reply goes to, the undo time, pictures
 from the web (Show, Ask, Never, with the senders allowed under Ask), list
 rows, mark as read, the signatures, and each account's name, sector,
 signatures and notices. LifeOS keeps all of it, so LifeOS desktop reads the
-same values.
+same values. On the page it is one of the page's sections, "Mail"
+(`PageSection`, the kit's own title left out): the kit's four groups sit
+inside it under 12px regular muted headings, 8px to their first row and
+16px apart (mail.css `data-mail-settings`, since the kit has no slot for a
+host's section part); signed out, the section says "Sign in to LifeOS to
+set up Mail" under its heading.
 
 ## The Outbox
 

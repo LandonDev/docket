@@ -2,7 +2,7 @@ import { ConvexProvider } from "convex/react";
 import { MailClientProvider, MailKitProvider, MailSettings } from "work-kit/mail";
 import "work-kit/mail/styles.css";
 import "./mail.css";
-import { PageEmpty, PageRowsSkeleton } from "../../components/page";
+import { PageEmpty, PageRowsSkeleton, PageSection } from "../../components/page";
 import { sessionWaits, useLifeosSession } from "../shell/lifeos";
 import { mailClientFor } from "./client";
 import { tempcodeMailKit } from "./kit";
@@ -15,7 +15,7 @@ import { tempcodeMailKit } from "./kit";
  */
 export function Section({ environmentId }: { environmentId: string }) {
   const lifeos = useLifeosSession(environmentId, null);
-  if (!lifeos.client) return sessionWaits(lifeos) ? <PageRowsSkeleton rows={3} /> : <PageEmpty>Sign in to LifeOS to set up Mail.</PageEmpty>;
+  if (!lifeos.client) return <PageSection title="Mail">{sessionWaits(lifeos) ? <PageRowsSkeleton rows={3} /> : <PageEmpty>Sign in to LifeOS to set up Mail</PageEmpty>}</PageSection>;
   return (
     <ConvexProvider client={lifeos.client}>
       <MailClientProvider client={mailClientFor(environmentId, lifeos.client.url, "all")}>
@@ -25,13 +25,19 @@ export function Section({ environmentId }: { environmentId: string }) {
   );
 }
 
-/** The settings themselves, under whatever mail client is round them (the mail preview's fixture client draws them in a page). */
+/**
+ * The settings under whatever mail client is round them (the mail preview's fixture client draws them in a page):
+ * one of the page's sections, "Mail", with work-kit's groups (Writing, Reading, Signatures, Accounts) inside it on the
+ * page's scale (mail.css `data-mail-settings`), and no title of the kit's own.
+ */
 export function MailSettingsBody() {
   return (
-    <MailKitProvider kit={tempcodeMailKit}>
-      <div data-mail-kit className="tc-mail pt-8">
-        <MailSettings className="max-w-none" />
-      </div>
-    </MailKitProvider>
+    <PageSection title="Mail">
+      <MailKitProvider kit={tempcodeMailKit}>
+        <div data-mail-kit data-mail-settings className="tc-mail">
+          <MailSettings className="max-w-none" heading={false} />
+        </div>
+      </MailKitProvider>
+    </PageSection>
   );
 }
