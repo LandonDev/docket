@@ -318,7 +318,10 @@ A workbook from a mail (`{at: 'mail'}`: .xlsx, .xlsm or .csv) is held as the fil
   (objects.ts `FileIds`), sends every list under the file's names and lays a
   list from elsewhere under the grid's, so the next save names the same
   parts and Undo of an inserted chart after Saved takes it out of the file
-  (the grid renamed it until 2026-11-24, and that Undo left the chart). A revision is labelled "Chart" or "Picture". The writers' refusals
+  (the grid renamed it until 2026-11-24, and that Undo left the chart). A
+  picture put on the grid (made, or brought back by Undo or Redo after its
+  removal was saved) goes as new, under the grid's id and with its bytes
+  (`pictureAdded`), so the file makes it again. A revision is labelled "Chart" or "Picture". The writers' refusals
   (`ObjectsRefused`: a protected sheet, a range in another workbook, a kind
   this editor cannot make, a chart in a group) are said once as a toast,
   and the canvas reads the file again, so the object is as it was. A

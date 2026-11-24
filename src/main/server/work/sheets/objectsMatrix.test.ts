@@ -11,7 +11,7 @@ import { SHEET_ROW, type SheetMutationJson } from '@shared/contract-work-sheets'
 import { isObjectList, latestRules, RULES_SET } from '@shared/work/sheets'
 // (the kit's objects store is not among its exports: the grid makes it; a test reaches it by its file)
 import { createObjects } from '../../../../../node_modules/work-kit/src/sheet/objects/access'
-import { FileIds, MadePictures, objectListOf } from '../../../../renderer/src/work/sheets/objects'
+import { FileIds, MadePictures, objectListOf, pictureAdded } from '../../../../renderer/src/work/sheets/objects'
 import { ensurePackageTables, PackageStore } from './packages'
 import { budget, chart, place, series } from './patch/charts-testkit'
 import { localJobs } from './workerClient'
@@ -50,6 +50,8 @@ async function opened(bytes: Uint8Array = budget()) {
   const told: ObjectChange[] = []
   held.access.onChange((change) => {
     made.take(change)
+    // (as sync.ts `object` does: a picture put back is new to the file)
+    pictureAdded(change, names, sentMedia, made, () => undefined)
     told.push(change)
   })
   const sheetId = (name: string) => workbook.sheetOrder.find((id) => workbook.sheets[id]?.name === name)
@@ -146,6 +148,22 @@ describe('charts and pictures in an opened Excel file', () => {
     await s.save()
     expect(s.file().charts).toEqual([])
     expect(s.cold().charts).toEqual([])
+  })
+
+  it('makes a picture again with Redo after its Undo was saved: it goes as new, with its bytes', async () => {
+    // Council r2 (Sol 8): the grid remembered it had sent the bytes, and the file refused a new picture without them.
+    const s = await opened()
+    s.objects.add({ picture: { bytes: PNG, type: 'image/png', name: 'Logo' } })
+    await s.save()
+    expect(s.file().pictures).toHaveLength(1)
+    await s.grid.api.undo()
+    await s.save()
+    expect(s.file().pictures).toEqual([])
+    await s.grid.api.redo()
+    await s.save()
+    const [picture] = s.file().pictures
+    expect(picture).toMatchObject({ name: 'Logo', contentType: 'image/png' })
+    expect(readMedia(new Uint8Array(readFileSync(s.path)), picture!.part)).toEqual(PNG)
   })
 
   it('writes a picture made on the grid with its bytes once, and keeps it by the file\'s part after', async () => {

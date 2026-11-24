@@ -19,7 +19,7 @@ export function tabList(kind: ObjectListKind, subUnitId: string, tab: string, li
       : list.pictures
           .filter((p) => p.sheet === tab)
           .map((p) => {
-            const bytes = p.part.startsWith("media:") ? bytesOf(p.part) : undefined;
+            const bytes = bytesOf(p.part);
             return bytes ? { ...p, data: base64Of(bytes) } : p;
           });
   const params: RulesSetParams = { kind, subUnitId, list: items };
@@ -102,6 +102,10 @@ export class FileIds {
   out(m: SheetMutation): SheetMutation {
     return this.named.size ? mapped(m, (id) => this.named.get(id)) : m;
   }
+  /** An object the file no longer has under the name it gave (a picture put back by Undo or Redo): it goes as new. */
+  forget(id: string): void {
+    this.named.delete(id);
+  }
   /** A list from elsewhere as the grid names its objects. */
   in(m: SheetMutation): SheetMutation {
     if (!this.named.size) return m;
@@ -119,6 +123,20 @@ function mapped(m: SheetMutation, to: (id: string) => { id: string; part?: strin
     return name ? { ...x, id: name.id, ...(name.part && "part" in x ? { part: name.part } : {}) } : x;
   });
   return { ...m, params: { ...p, list } };
+}
+
+/**
+ * A picture put on the grid (made here, or brought back by Undo or Redo after its removal was saved) is new to the file,
+ * whatever it was there: it goes under the grid's own id, with its bytes (the file's own for a picture read from it).
+ * `sent` is the parts whose bytes the host has; `own` a part's bytes as the file was read.
+ */
+export function pictureAdded(change: ObjectChange, names: FileIds, sent: Set<string>, made: MadePictures, own: (part: string) => PictureMedia | undefined): void {
+  if (change.kind !== "add" || !("picture" in change.object)) return;
+  const { id, part } = change.object.picture;
+  names.forget(id);
+  sent.delete(part);
+  const bytes = made.get(part) ?? own(part);
+  if (bytes) made.keep(part, bytes);
 }
 
 /** The bytes of the pictures made here, by their part, kept until the grid lets go: what a save sends, and what the grid draws. */

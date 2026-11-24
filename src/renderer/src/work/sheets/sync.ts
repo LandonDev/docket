@@ -3,7 +3,7 @@ import type { SheetCellJson, SheetMutationJson, SheetView } from "@shared/contra
 import type { ObjectChange, SheetObjects } from "work-kit/sheet";
 import { AUTO_FIT, forPackage, isObjectList, latestRules, ruleKinds, SHEET_MOVES, sheetStopWords, type ObjectIds, type RulesSetParams, type SheetRuleKind } from "@shared/work/sheets";
 import { cellText, holds } from "./model";
-import { FileIds, listChanges, listMedia, MadePictures, objectListOf, tabList } from "./objects";
+import { FileIds, listChanges, listMedia, MadePictures, objectListOf, pictureAdded, tabList } from "./objects";
 import { EDIT_MAX, fromBase64, LOAD_MAX, type SheetHost, type SheetPushed } from "./host";
 import { CloseRefused } from "../canvas/flush";
 
@@ -694,6 +694,7 @@ export class SheetSync {
    */
   object(change: ObjectChange): void {
     this.made.take(change);
+    pictureAdded(change, this.fileIds, this.sentMedia, this.made, (part) => this.state.book?.media?.get(part));
     const grid = this.grid;
     const view = this.state.view;
     if (!grid?.objects || !view?.row?.includes("objects")) return;
