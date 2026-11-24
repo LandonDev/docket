@@ -883,7 +883,7 @@ export class SessionRegistry {
   private limited = new Map<string, { switching: Promise<Switched | null> }>()
   /** What each live handle was spawned with (model, effort, pin): a turn
    *  start on a handle whose thread moved since boots fresh (staleHandle). */
-  private spawnedWith = new Map<string, { model: string | null; reasoning: SessionMeta['reasoning'] | null; pin: string | null }>()
+  private spawnedWith = new Map<string, { model: string | null; reasoning: SessionMeta['reasoning'] | null; pin: string | null; narrowed: string }>()
   /** Threads a usage cap stopped with no other account left for their
    *  model: report and batch wakes park instead of spending a turn on the
    *  cap, until a model or account change, a continue, the person's own
@@ -4705,12 +4705,33 @@ export class SessionRegistry {
     throw new Error(`this thread's folder no longer exists: ${meta.cwd}`)
   }
 
+  /** What some pillar denies this thread's harness (a mail chat's narrowing), as one key; set by Work (work/threads.ts). */
+  narrowingOf: ((sessionId: string) => readonly string[]) | null = null
+  private narrowedKey(sessionId: string): string {
+    return [...(this.narrowingOf?.(sessionId) ?? [])].sort().join(',')
+  }
+  /** A live or starting harness spawned under another narrowing than the thread now has: a fresh mail chat marked after its create booted one. */
+  private narrowingMoved(sessionId: string): boolean {
+    const spawned = this.spawnedWith.get(sessionId)
+    return !!spawned && spawned.narrowed !== this.narrowedKey(sessionId)
+  }
+
   private async handleFor(sessionId: string): Promise<DriverHandle> {
     if (this.closed) throw new BootStopped()
+    // A harness spawned before the thread was narrowed never takes its turn, whatever the order of the marks and the send.
+    if ((this.handles.has(sessionId) || this.starting.has(sessionId)) && this.narrowingMoved(sessionId)) {
+      console.log(`[sessions] ${sessionId}: a fresh harness under the thread's narrowing`)
+      await this.dropHandle(sessionId, { replacing: true })
+    }
     const existing = this.handles.get(sessionId)
     if (existing) return existing
     const inflight = this.starting.get(sessionId)
-    if (inflight) return inflight
+    if (inflight) {
+      // A start already under way may have read the thread before it was narrowed: judged once it lands.
+      const handle = await inflight
+      if (!this.narrowingMoved(sessionId)) return handle
+      return this.handleFor(sessionId)
+    }
 
     const stored = this.store.getSession(sessionId)
     if (!stored) throw new Error(`unknown session: ${sessionId}`)
@@ -4734,7 +4755,7 @@ export class SessionRegistry {
     const pin = this.pinOf(meta)
     const { route, current, vanished } = this.limits?.routeFor(meta, pin, { fresh: true }) ?? { route: null, current: null }
     if (vanished) this.accountGone(meta, pin, vanished)
-    this.spawnedWith.set(sessionId, { model: meta.model ?? null, reasoning: meta.reasoning ?? null, pin: vanished?.pin ? null : (pin?.name ?? null) })
+    this.spawnedWith.set(sessionId, { model: meta.model ?? null, reasoning: meta.reasoning ?? null, pin: vanished?.pin ? null : (pin?.name ?? null), narrowed: this.narrowedKey(sessionId) })
     this.setAccount(sessionId, current)
     // A Meta model with no Meta key on this host never goes out unscoped to
     // Anthropic or OpenAI: the send fails here with the host's one line

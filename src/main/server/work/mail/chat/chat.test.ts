@@ -18,10 +18,10 @@ import { callRefusalOf, harnessDeniedOf } from '../../narrowing'
 import { makeAddonGate, type CatchDeps } from '../../outbox/catch'
 import type { RuleAddons } from '../../outbox/rules'
 import { mail } from '..'
-import { adoptChat, NO_MAIL, NOT_A_PERSON, NOT_A_ROOT, NOT_FRESH, OTHER_SECTOR, OTHER_SUBJECT, WITHHELD } from './adopt'
+import { adoptChat, MOVING, NO_MAIL, NOT_A_PERSON, NOT_A_ROOT, NOT_FRESH, OTHER_SECTOR, OTHER_SUBJECT, WITHHELD } from './adopt'
 import { chatRow, ensureChatTables, findChats, mailChatOf } from './find'
 import { NO_REWRITE, NOT_YOURS, offer, ONE_CARD, OUT_OF_SECTOR } from './offer'
-import { chatCallRefusal, chatHarnessDenied, refusalWords } from './refusal'
+import { REWRITE_REFUSAL, chatCallRefusal, chatHarnessDenied, refusalWords } from './refusal'
 
 /**
  * The chat beside the mail, on the host (docs/agents/work-mail.md "The chat
@@ -53,7 +53,7 @@ const scope = (sessionId: string, workspaceId: string | null, sector: WorkScope[
 function fakeCtx(answers: Record<string, unknown> = {}) {
   const db = new DatabaseSync(':memory:')
   db.exec('CREATE TABLE workspaces (id TEXT PRIMARY KEY, kind TEXT, sector TEXT)')
-  db.exec('CREATE TABLE sessions (id TEXT PRIMARY KEY, parent_id TEXT, started_by TEXT)')
+  db.exec('CREATE TABLE sessions (id TEXT PRIMARY KEY, parent_id TEXT, started_by TEXT, moving_to TEXT, moving_from TEXT, moved_to TEXT)')
   db.prepare('INSERT INTO workspaces VALUES (?, ?, ?)').run('ws', 'work', 'life')
   db.prepare('INSERT INTO workspaces VALUES (?, ?, ?)').run('ws-2', 'work', 'cosmic')
   ensureChatTables(db)
@@ -66,7 +66,7 @@ function fakeCtx(answers: Record<string, unknown> = {}) {
     child: { parent: 'chat', workspace: 'ws', sector: 'life' },
     started: { starter: 'chat', workspace: 'ws', sector: 'life' }
   }
-  for (const [id, t] of Object.entries(threads)) db.prepare('INSERT INTO sessions VALUES (?, ?, ?)').run(id, t.parent ?? null, t.starter ?? null)
+  for (const [id, t] of Object.entries(threads)) db.prepare('INSERT INTO sessions (id, parent_id, started_by) VALUES (?, ?, ?)').run(id, t.parent ?? null, t.starter ?? null)
   const query = async (fn: string, args: { id: string }) => {
     const a = answers[fn]
     if (a instanceof Error) throw a
@@ -88,9 +88,10 @@ function fakeCtx(answers: Record<string, unknown> = {}) {
 /** LifeOS's `mail:thread`: mail `m-life` in life, `m-cosmic` in cosmic, nothing else. */
 const mailThread = ({ id }: { id: string }) => (id === 'm-life' || id === 'm-life-2' ? { thread: { _id: id, sector: 'life' } } : id === 'm-cosmic' ? { thread: { _id: id, sector: 'cosmic' } } : null)
 
-// The chat is held off on master (MAIL_CHAT.on); these tests prove it as it runs when on.
+// These tests prove the chat as it runs when on, whatever MAIL_CHAT.on holds.
+const wasOn = MAIL_CHAT.on
 beforeAll(() => void (MAIL_CHAT.on = true))
-afterAll(() => void (MAIL_CHAT.on = false))
+afterAll(() => void (MAIL_CHAT.on = wasOn))
 
 describe('the chat while it is off', () => {
   it('marks no thread a mail chat: adopt is refused, as for a withheld job', async () => {
@@ -127,6 +128,13 @@ describe('work.mail.chat.adopt', () => {
     await expect(adoptChat(ctx, owner, { workspaceId: 'ws', sessionId: 'child', kind: 'box' })).rejects.toThrow(NOT_A_ROOT)
     await expect(adoptChat(ctx, owner, { workspaceId: 'ws', sessionId: 'elsewhere', kind: 'box' })).rejects.toThrow(NOT_A_ROOT)
     await expect(adoptChat(ctx, owner, { workspaceId: 'nope', sessionId: 'chat', kind: 'box' })).rejects.toThrow('Waiting on is for a Work workspace with a sector')
+  })
+
+  it('refuses a thread whose move to another host has begun, so its row never misses the move', async () => {
+    const { ctx } = fakeCtx({ 'mail:thread': mailThread })
+    ctx.db.prepare("UPDATE sessions SET moving_to = 'mac' WHERE id = 'chat'").run()
+    await expect(adoptChat(ctx, owner, { workspaceId: 'ws', sessionId: 'chat', kind: 'box' })).rejects.toThrow(MOVING)
+    expect(chatRow(ctx.db, 'chat')).toBeNull()
   })
 
   it('refuses a thread with a message in it already', async () => {
@@ -183,6 +191,15 @@ describe('work.mail.chat.find', () => {
     await adoptChat(ctx, owner, { workspaceId: 'ws', sessionId: 'chat', kind: 'box' })
     mail.sessionsRemoved!(['chat'], ctx)
     expect(chatRow(ctx.db, 'chat')).toBeNull()
+  })
+
+  it("lets a mail chat write a new draft but never rewrite one by its id (another thread's, or one he edited)", async () => {
+    const { ctx } = fakeCtx({ 'mail:thread': mailThread })
+    await adoptChat(ctx, owner, { workspaceId: 'ws', sessionId: 'chat', kind: 'box' })
+    expect(chatCallRefusal(ctx, { sessionId: 'chat', via: 'addon', server: 'lifeos', tool: 'draft_mail', args: { thread_id: 'm-life', body: 'Hi' } })).toBeNull()
+    expect(chatCallRefusal(ctx, { sessionId: 'chat', via: 'addon', server: 'lifeos', tool: 'draft_mail', args: { draft_id: 'ob_his', body: 'Hi' } })).toBe(REWRITE_REFUSAL)
+    // An ordinary Work thread keeps LifeOS's own rule.
+    expect(chatCallRefusal(ctx, { sessionId: 'chat2', via: 'addon', server: 'lifeos', tool: 'draft_mail', args: { draft_id: 'ob_his' } })).toBeNull()
   })
 
   it('reads a subagent of a mail chat, and a thread it started, as the chat', async () => {

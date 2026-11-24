@@ -69,7 +69,7 @@ describe("a pillar's say on one thread's call", () => {
 
   it('refuses with its words before the LifeOS row runs, and lets the rest run as before', async () => {
     expect(await gate.decide({ row: lifeos, tool: 'archive_mail', args: {}, sessionId: 'narrow', work: true })).toEqual({ run: false, result: { content: [{ type: 'text', text: 'Offer it instead.' }], isError: true } })
-    expect(asked.at(-1)).toEqual({ sessionId: 'narrow', via: 'addon', server: 'lifeos', tool: 'archive_mail' })
+    expect(asked.at(-1)).toEqual({ sessionId: 'narrow', via: 'addon', server: 'lifeos', tool: 'archive_mail', args: {} })
     expect(await gate.decide({ row: lifeos, tool: 'archive_mail', args: {}, sessionId: 'other', work: true })).toEqual({ run: true, args: {} })
     expect(await gate.decide({ row: lifeos, tool: 'draft_mail', args: {}, sessionId: 'narrow', work: true })).toEqual({ run: true, args: { origin: { app: 'tempcode', threadId: 'narrow', host: 'box' } } })
     expect(gate.peek({ row: lifeos, tool: 'archive_mail', sessionId: 'narrow', work: true })).toBe('refuse')

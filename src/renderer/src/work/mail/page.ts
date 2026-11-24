@@ -67,7 +67,7 @@ export const liveDraftIds = new Map<string, string | null>();
  * as a new mail. His own reply that was open stays saved in Drafts; the answer is what Undo puts back (that mail, and
  * his reply opened again on its saved row), or null when no words of his were open.
  */
-export function putInReply(workspaceId: string, draft: { id: string; threadId?: string | null }): Pick<MailPage, "threadId" | "compose"> | null {
+export function putInReply(workspaceId: string, draft: { id: string; threadId?: string | null; full?: boolean }): Pick<MailPage, "threadId" | "compose"> | null {
   const { threadId, compose } = pageOf(workspaceId);
   const open = compose?.open as { kind?: string; id?: string } | undefined;
   // His reply as a saved row: the row it was opened on, else the row his composer saved it to.
@@ -75,7 +75,8 @@ export function putInReply(workspaceId: string, draft: { id: string; threadId?: 
   const back = compose && his && his !== draft.id ? { threadId, compose: opening(compose.threadId ? { open: { kind: "row", id: his }, threadId: compose.threadId, full: compose.full } : { open: { kind: "row", id: his }, full: true }) } : null;
   if (draft.threadId && threadId !== draft.threadId) showMail(workspaceId, draft.threadId);
   patch(workspaceId, {
-    compose: opening(draft.threadId ? { open: { kind: "row", id: draft.id }, threadId: draft.threadId, full: false } : { open: { kind: "row", id: draft.id }, full: true }),
+    // The draft's own row, so the composer shows its own To, Cc and Bcc; `full` puts every field row in view.
+    compose: opening(draft.threadId ? { open: { kind: "row", id: draft.id }, threadId: draft.threadId, full: !!draft.full } : { open: { kind: "row", id: draft.id }, full: true }),
   });
   return back;
 }

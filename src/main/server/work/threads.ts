@@ -1,3 +1,4 @@
+import { harnessDeniedOf } from './narrowing'
 import { CATALOG, resolveModel, type ProviderId } from '@shared/catalog'
 import { writtenByOwner, type SessionMeta, type UserTextBy } from '@shared/events'
 import { sessionScopeOf, WORK_HOME } from '@shared/work'
@@ -98,6 +99,8 @@ export function ownerSaid(words: OwnerWords, sessionId: string, quote: string): 
 export const threadsPart: CtxPart<'threads'> = (ctx, deps) => {
   const { registry, store } = deps
   // The registry asks here for what the modules add to a Work thread's preamble.
+  // The registry asks here what a thread's harness is denied, so a harness spawned under another narrowing never takes a turn.
+  registry.narrowingOf = (sessionId) => harnessDeniedOf(sessionId)
   registry.workPreambleParts = (session) => {
     const scope = ctx.scopeOf(session.id)
     return scope ? modulePreambles(scope, WORK_MODULES, ctx.log) : []

@@ -176,6 +176,8 @@ export interface CallAsk {
   server: string
   /** the tool's own short name: `archive_mail`, `files_trash` */
   tool: string
+  /** what the call was asked with, where the funnel has it */
+  args?: Readonly<Record<string, unknown>>
 }
 
 /** Who asked: a person at this host, a remote key, or a thread's own call through the bridge. */

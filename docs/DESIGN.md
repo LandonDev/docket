@@ -1920,11 +1920,14 @@ Around the canvas:
   draft shows at most three starters over the composer, 32px rows at 13px
   in `muted-foreground` going to `foreground` under the pointer; they go
   once he types. Its answers are cards in the transcript, 12px radius and
-  a hairline, no card inside one: a draft (a 36px head, "Reply to Dana
-  Lee" at 13px medium and its state at the end in 12px muted: Draft, In
-  your reply, Sent 2:14 PM, Discarded; the words at 13/20, twelve lines
-  then Show all; Put in reply, secondary, and Discard, a ghost trash
-  glyph); a rewrite of his reply (words taken out and put in, the review
+  a hairline, no card inside one: a draft (a 36px head, "Reply",
+  "Forward" or "New mail" at 13px medium and its state at the end in 12px
+  muted: Draft, In your reply, Sent 2:14 PM, Discarded; then To, Cc and
+  Bcc in full at 12px, each name with the address it really goes to, and
+  one plain line in medium when an address is not on the thread or there
+  is a bcc ("Not on this thread: …. Bcc: …."); the words at 13/20, twelve
+  lines then Show all; Put in reply, secondary, which opens the full
+  composer when the card had to tell, and Discard, a ghost trash glyph); a rewrite of his reply (words taken out and put in, the review
   tints; Take and Leave); rows to act on (36px rows: a tick, the subject
   at 13px, the sender and the date at 12px muted; one press in the foot
   names the count, "Archive 3"); a task or an event (one 44px row: a 14px

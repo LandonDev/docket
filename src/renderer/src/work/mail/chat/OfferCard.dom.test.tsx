@@ -47,12 +47,13 @@ const at = { sessionId: "s1", workspaceId: "w1", sector: "life" as const };
 const thread = (id: string, subject: string): ThreadSummary => ({ id, subject, senders: ["Dana Lee"], lastMessageAt: Date.parse("2026-11-20T10:00:00"), messageCount: 2 }) as ThreadSummary;
 const message = { kind: "mail", accountId: "a1", threadId: "t1", mode: "reply", to: [{ name: "Dana Lee", address: "dana@example.com" }], cc: [], bcc: [], subject: "Re: Lunch", html: "", text: "Friday works.\nSee you then.", snippet: "" };
 const batches: { ids: string[]; act: unknown }[] = [];
+let stranger: { cc: { name?: string; address: string }[]; bcc: { address: string }[] } | null = null;
 const discarded: string[] = [];
 const saved: unknown[] = [];
 const made: { threadId: string; draft: unknown }[] = [];
 
 const client = {
-  useComposeDoc: (id: string | undefined) => (id === "d1" || id === "d2" ? { id: "d1", status: "draft", message, version: 1, editedAt: 0, urls: {} } : id === "gone" ? null : undefined),
+  useComposeDoc: (id: string | undefined) => (id === "d1" || id === "d2" ? { id: "d1", status: "draft", message: stranger ? { ...message, ...stranger } : message, version: 1, editedAt: 0, urls: {} } : id === "gone" ? null : undefined),
   useOutboxActions: () => ({
     discard: async (id: string) => {
       discarded.push(id);
@@ -63,7 +64,7 @@ const client = {
       return "d2";
     },
   }),
-  useMailThread: (id: string | null) => (id === "t1" ? { thread: thread("t1", "Lunch on Friday"), messages: [] } : id === "t2" ? { thread: thread("t2", "Gym hours"), messages: [] } : id ? null : undefined),
+  useMailThread: (id: string | null) => (id === "t1" ? { thread: thread("t1", "Lunch on Friday"), messages: [{ from: { name: "Dana Lee", address: "dana@example.com" }, to: [{ address: "me@example.com" }], cc: [] }] } : id === "t2" ? { thread: thread("t2", "Gym hours"), messages: [] } : id ? null : undefined),
   useMailActions: () => ({
     batch: (threads: readonly ThreadSummary[], act: unknown) => void batches.push({ ids: threads.map((t) => t.id), act }),
     makeTask: (threadId: string, draft: unknown) => void made.push({ threadId, draft }),
@@ -95,7 +96,10 @@ afterEach(cleanup);
 describe("a draft", () => {
   it("reads whom it answers, its words and its state, live", () => {
     draw({ draft: { draftId: "d1" } });
-    expect(screen.getByText("Reply to Dana Lee")).toBeTruthy();
+    expect(screen.getByText("Reply")).toBeTruthy();
+    // Every recipient in full, the address it really goes to beside the name; nothing to tell when all are on the thread.
+    expect(document.querySelector("[data-recipients]")!.textContent).toBe("ToDana Lee dana@example.com");
+    expect(document.querySelector("[data-recipients-note]")).toBeNull();
     expect(document.querySelector("[data-draft-state]")!.textContent).toBe("Draft");
     expect(document.body.textContent).toContain("Friday works.");
   });
@@ -150,6 +154,25 @@ describe("a draft", () => {
     await waitFor(() => expect(saved).toEqual([{ message, quote: "quoted" }]));
     // The card follows the draft saved again.
     await waitFor(() => expect(document.querySelector("[data-draft-state]")!.textContent).toBe("Draft"));
+  });
+});
+
+describe("a draft's recipients", () => {
+  it("names a cc and a bcc in full, says plainly who is not on the thread, and opens in the full composer", () => {
+    stranger = { cc: [{ name: "Dana Lee", address: "dana@evil.example" }], bcc: [{ address: "copy@evil.example" }] };
+    try {
+      draw({ draft: { draftId: "d1" } });
+      const rows = document.querySelector("[data-recipients]")!.textContent!;
+      expect(rows).toContain("CcDana Lee dana@evil.example");
+      expect(rows).toContain("Bcccopy@evil.example");
+      // The name a sender chose is no cover: the address shows, and it is not one of the thread's.
+      expect(document.querySelector("[data-recipients-note]")!.textContent).toBe("Not on this thread: dana@evil.example. Bcc: copy@evil.example.");
+      fireEvent.click(screen.getByRole("button", { name: "Put in reply" }));
+      // The reply box opens the draft's own row, every field row in view: nothing goes that he did not see.
+      expect(pageOf("w1").compose).toMatchObject({ open: { kind: "row", id: "d1" }, full: true });
+    } finally {
+      stranger = null;
+    }
   });
 });
 

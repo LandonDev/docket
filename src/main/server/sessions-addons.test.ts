@@ -129,3 +129,33 @@ it('a scope gaining its first add-on marks its codex and Muse handles, not its c
   expect(spawnsOf(codex)).toBe(3)
   stop()
 })
+
+it("a harness spawned before the thread was narrowed (a mail chat marked after its create) never takes a turn: the send boots a fresh one", async () => {
+  const narrowed = new Set<string>()
+  registry.narrowingOf = (id) => (narrowed.has(id) ? ['Bash', 'WebFetch'] : [])
+  // The create boots a harness at once, under no narrowing.
+  const session = await registry.create({ cwd: root, provider: 'claude', model: 'claude-opus-5-5' })
+  const id = session.id
+  await registry.send(id, 'first, as an ordinary thread would')
+  emits.get(id)!({ type: 'status', status: 'idle' })
+  expect(spawnsOf(id)).toBe(1)
+  // Marked now (adopt's row), with that harness still live: whatever the order of a second mark and the send, the old one goes.
+  narrowed.add(id)
+  await registry.send(id, 'the first message of the mail chat')
+  expect(disposed).toEqual([id])
+  expect(spawnsOf(id)).toBe(2)
+  emits.get(id)!({ type: 'status', status: 'idle' })
+  await registry.send(id, 'and the next keeps the narrowed one')
+  expect(spawnsOf(id)).toBe(2)
+})
+
+it('a start still under way when the thread is narrowed is put down once it lands, and a fresh one takes the turn', async () => {
+  const narrowed = new Set<string>()
+  registry.narrowingOf = (id) => (narrowed.has(id) ? ['Bash'] : [])
+  const session = await registry.create({ cwd: root, provider: 'claude', model: 'claude-opus-5-5' })
+  narrowed.add(session.id)
+  await registry.send(session.id, 'hello')
+  // The spawn record of the handle that took the turn holds the narrowing.
+  expect(spawned.filter((s) => s === session.id).length).toBeGreaterThanOrEqual(1)
+  expect((registry as unknown as { narrowingMoved(id: string): boolean }).narrowingMoved(session.id)).toBe(false)
+})

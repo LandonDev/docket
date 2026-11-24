@@ -571,8 +571,11 @@ docs/DESIGN.md "The Mail view"):
   beside the mail opens it with that selection.
 - **Cards** (`mail_offer` in the transcript, `isMailOfferBlock` standing
   alone, OfferCard.tsx over the thread's own sector session): a draft
-  (Put in reply puts it in Mail's reply box with `putInReply`, opening the
-  mail it answers; his own open reply stays in Drafts with Undo; Discard
+  (every recipient in full, and one line when one is not on the thread or
+  is a bcc, `strangers` in chat/recipients.ts: a mail's words can steer a
+  draft's recipients; Put in reply puts the draft's own row in Mail's
+  reply box with `putInReply`, the full composer with every field row
+  when the card had to tell, opening the mail it answers; his own open reply stays in Drafts with Undo; Discard
   with Undo), a rewrite (Take closes his reply, settles it with
   `compose.settleProposal` and opens it again; one that changed since says
   so with Ask again), rows (ticked to start, `TRIAGE_TICKED`; one press
@@ -585,6 +588,19 @@ docs/DESIGN.md "The Mail view"):
   `[name](#lifeos:people:<id>)` draw as chips (`lifeosLinkOf`,
   surfaces/lifeosLink.ts; LifeosChip.tsx) that open through SentChips'
   `openerOf`; any other `#lifeos:` table stays a link.
+- **The switch**: `MAIL_CHAT.on` (src/shared/work/mailChat.ts) turns the
+  whole chat off: no Ask, no ⌘L, adopt refused.
+- **The window's proof**: `bun scripts/mail-preview.ts --chat <dir>`, by
+  real clicks on the fixture client in Chromium under the app's page
+  policy (preview/chat.tsx, chatProof.ts): Ask opens the dock with the
+  mail's subject, ⌘L, Put in reply fills the reply box and sends nothing, a
+  triage press archives exactly the ticked rows once, Undo.
+- **Draft writes**: `draft_mail` with a `draft_id` is refused in a mail
+  chat (LifeOS lets a key rewrite any draft it made, another thread's or
+  one he edited); a change goes through `update_mail_draft`'s proposal.
+  adopt refuses a thread whose move has begun. A harness spawned under
+  another narrowing never takes a turn (`registry.narrowingOf`,
+  sessions.ts `narrowingMoved`).
 - **Withheld**: a sector in `MAIL_CHAT_WITHHELD` gets no Ask, no ⌘L and a
   refused adopt. Purdue is not in it: a Purdue mail chat reads university
   mail only when he sends.

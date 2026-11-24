@@ -7,7 +7,7 @@
  */
 import type React from "react";
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from "vitest";
 
 const calls = vi.hoisted(() => [] as { method: string; params: Record<string, unknown> }[]);
 const found = vi.hoisted(() => ({ ids: [] as string[] }));
@@ -98,7 +98,9 @@ const cmdL = (): void => void fireEvent.keyDown(window, { key: "l", metaKey: IS_
 
 describe("the chat while it is off", () => {
   it("gives Mail no seat for it, so the reader's toolbar has no Ask and ⌘L does nothing", async () => {
-    expect(MAIL_CHAT.on).toBe(false);
+    const wasOn = MAIL_CHAT.on;
+    MAIL_CHAT.on = false;
+    onTestFinished(() => void (MAIL_CHAT.on = wasOn));
     expect(chatSeat(workspace, "life")).toBeUndefined();
     const client = createFixtureMailClient({ write: async ({ run }) => run(), instant: true, threads: corpusThreads() });
     render(
@@ -113,6 +115,13 @@ describe("the chat while it is off", () => {
     expect(screen.queryByRole("button", { name: "Ask" })).toBeNull();
     act(() => cmdL());
     expect(dock()).toBeNull();
+  });
+});
+
+describe("the chat when it is on", () => {
+  it("gives Mail its seat", () => {
+    expect(MAIL_CHAT.on).toBe(true);
+    expect(chatSeat(workspace, "life")).toEqual({ workspace });
   });
 });
 

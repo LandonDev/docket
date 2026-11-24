@@ -132,7 +132,7 @@ export function makeAddonGate(deps: CatchDeps): AddonGate {
     const lifeos = isLifeosRow(deps.addons, call.row, deps.mcpUrl())
     // A pillar may narrow one thread (a mail chat): asked of every thread's call, before the LifeOS row's run and any rule.
     if (call.sessionId !== null) {
-      const refusal = callRefusalOf(deps.modules(), deps.ctx, { sessionId: call.sessionId, via: 'addon', server: lifeos ? 'lifeos' : call.row.id, tool: call.tool }, deps.log)
+      const refusal = callRefusalOf(deps.modules(), deps.ctx, { sessionId: call.sessionId, via: 'addon', server: lifeos ? 'lifeos' : call.row.id, tool: call.tool, ...(args ? { args } : {}) }, deps.log)
       if (refusal) return { verdict: 'refuse', why: 'pillar', lifeos, refusal }
     }
     // The app's own LifeOS row, pointed at LifeOS: never held, whoever calls, and every thread's drafts are stamped.

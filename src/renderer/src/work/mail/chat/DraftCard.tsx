@@ -8,13 +8,23 @@ import { openWorkView } from "../../../lib/workSwitch";
 import { Trash2 as Trash } from "../../../chrome/icons";
 import { patch, putInReply, usePage } from "../page";
 import { CARD, CardBones, FOOT, HEAD } from "./cardParts";
+import { strangers, strangersLine, type Address } from "./recipients";
 import type { OfferAt } from "./OfferCard";
 
 /** Lines of a draft shown before "Show all". */
 const LINES = 12;
 
 const clock = (ms: number): string => new Date(ms).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
-const nameOf = (to: readonly { name?: string | undefined; address: string }[]): string => (to[0] ? to[0].name?.trim() || to[0].address : "no one yet") + (to.length > 1 ? ` and ${to.length - 1} more` : "");
+/** One recipient as the card names it: the name he knows, then the address it really goes to. */
+function Who({ who }: { who: Address }) {
+  const name = who.name?.trim();
+  return (
+    <span className="whitespace-nowrap">
+      {name && name !== who.address ? <span className="text-foreground">{name} </span> : null}
+      <span className={name && name !== who.address ? "text-muted-foreground" : "text-foreground"}>{who.address}</span>
+    </span>
+  );
+}
 
 /**
  * A draft the chat wrote, as he will send it: whom it goes to, its words, and where it stands, read live from
@@ -27,6 +37,7 @@ export function DraftCard({ draftId, at }: { draftId: string; at: OfferAt }) {
   const [restored, setRestored] = useState<string | null>(null);
   const shownId = restored ?? draftId;
   const doc = client.useComposeDoc(shownId);
+  const thread = client.useMailThread(doc?.message.threadId ?? null);
   const outbox = client.useOutboxActions();
   const page = usePage(at.workspaceId);
   const [all, setAll] = useState(false);
@@ -36,13 +47,18 @@ export function DraftCard({ draftId, at }: { draftId: string; at: OfferAt }) {
   const inReply = page.compose && "open" in page.compose && (page.compose.open as { kind?: string; id?: string }).kind === "row" && (page.compose.open as { id?: string }).id === shownId;
   const state = gone || !doc ? "Discarded" : doc.status === "sent" ? `Sent ${clock(doc.editedAt)}` : doc.status === "failed" ? "Not sent" : doc.status === "queued" || doc.status === "sending" ? "Sending" : inReply ? "In your reply" : "Draft";
   const reply = message?.mode === "reply" || message?.mode === "replyAll";
-  const title = message ? `${reply ? "Reply to" : message.mode === "forward" ? "Forward to" : "New mail to"} ${nameOf(message.to)}` : "A draft";
+  // Whom it goes to is the rows' to say, each in full: the head names only what kind of mail it is.
+  const title = message ? (reply ? "Reply" : message.mode === "forward" ? "Forward" : "New mail") : "A draft";
+  const found = message ? strangers({ to: message.to, cc: message.cc, bcc: message.bcc }, message.threadId ? (thread === undefined ? null : (thread?.messages ?? [])) : null) : null;
+  // A bcc is told at once; an address off the thread only once the thread has been read, never guessed before.
+  const line = found && (message?.threadId && thread === undefined ? found.bcc.length > 0 : true) ? strangersLine(found) : null;
   const lines = (message?.text ?? "").trimEnd().split("\n");
   const long = lines.length > LINES;
   const open = !gone && !!doc && doc.status === "draft";
 
   const put = (): void => {
-    const before = putInReply(at.workspaceId, { id: shownId, threadId: message?.threadId ?? null });
+    // A draft whose recipients the card had to tell about opens in the full composer, its To, Cc and Bcc rows in view.
+    const before = putInReply(at.workspaceId, { id: shownId, threadId: message?.threadId ?? null, full: !!line });
     openWorkView({ workspaceId: at.workspaceId, view: "mail" });
     // His own reply that was open stays saved in Drafts; Undo puts it back, in the mail it was in.
     const his = before;
@@ -83,6 +99,30 @@ export function DraftCard({ draftId, at }: { draftId: string; at: OfferAt }) {
           {state}
         </span>
       </div>
+      {message ? (
+        <dl data-recipients className="grid grid-cols-[2.5rem_minmax(0,1fr)] gap-x-2 gap-y-0.5 px-3 pb-2 text-xs leading-5">
+          {(["to", "cc", "bcc"] as const).map((field) =>
+            message[field].length ? (
+              <div key={field} className="contents">
+                <dt className="text-muted-foreground">{field === "to" ? "To" : field === "cc" ? "Cc" : "Bcc"}</dt>
+                <dd className="min-w-0 break-words">
+                  {message[field].map((who, i) => (
+                    <span key={who.address}>
+                      {i ? ", " : null}
+                      <Who who={who} />
+                    </span>
+                  ))}
+                </dd>
+              </div>
+            ) : null,
+          )}
+          {line ? (
+            <p data-recipients-note className="col-span-2 pt-1 text-xs leading-5 font-medium text-foreground">
+              {line}
+            </p>
+          ) : null}
+        </dl>
+      ) : null}
       {message ? (
         <div className="px-3 pb-3">
           <p className={`text-[13px] leading-5 break-words whitespace-pre-wrap text-foreground select-text ${all || !long ? "" : "line-clamp-12"}`}>{message.text.trimEnd()}</p>

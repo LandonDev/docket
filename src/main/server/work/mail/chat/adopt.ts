@@ -12,6 +12,13 @@ import { chatRow } from './find'
 
 export const NOT_A_PERSON = 'only a person can start a mail chat'
 export const WITHHELD = 'Mail chats are off for this job.'
+export const MOVING = 'This thread is moving to another host; ask again once it has landed.'
+
+/** Whether the thread's move to another host has begun, or it is still landing here (sessionMove.ts). */
+function moving(ctx: Pick<WorkCtx, 'db'>, sessionId: string): boolean {
+  const row = ctx.db.prepare('SELECT moving_to, moving_from, moved_to FROM sessions WHERE id = ?').get(sessionId) as { moving_to: string | null; moving_from: string | null; moved_to: string | null } | undefined
+  return !!row && !!(row.moving_to || row.moving_from || row.moved_to)
+}
 export const NOT_A_ROOT = "That is not a thread of this workspace's on this host, at the top of its tree."
 export const NOT_FRESH = 'That thread has messages already: a mail chat starts empty.'
 export const OTHER_SECTOR = "That mail is not in this workspace's sector."
@@ -66,6 +73,8 @@ export async function adoptChat(ctx: WorkCtx, by: Caller, p: Adopt, now = Date.n
     throw new Error(OTHER_SUBJECT)
   }
   if (!ctx.threads.fresh(p.sessionId)) throw new Error(NOT_FRESH)
+  // Read just before the row: a thread whose move has begun would leave without it.
+  if (moving(ctx, p.sessionId)) throw new Error(MOVING)
   ctx.db.prepare('INSERT INTO work_mail_chats (session_id, workspace_id, kind, mail_thread_id, created_at) VALUES (?, ?, ?, ?, ?)').run(p.sessionId, p.workspaceId, p.kind, mailThreadId, now)
   // The registry boots a harness at create, before this row: end it, so the first send boots one with the narrowing.
   await ctx.threads.rearm(p.sessionId)

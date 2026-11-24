@@ -5,6 +5,8 @@ import { Toaster } from "../../../components/ui/toaster";
 import { changeScheme } from "../../../lib/placeScheme";
 import { nameOrigins, tempcodeMailKit } from "../kit";
 import { MailScreen, patch, type MailPage } from "../MailView";
+import { write } from "../client";
+import { ChatActions, ChatSide, chatClient, chatDrafts, CHAT_WORKSPACE, prepareChat } from "./chat";
 
 /**
  * Mail on dummy mail, with no host and no sign-in: TempCode's own kit, frame
@@ -28,14 +30,18 @@ nameOrigins(() => ({ label: "Drafted in", name: "Overdue invoices, Nov 18", open
 
 const bulk = Number(params.get("threads") ?? 0);
 const client = createFixtureMailClient({
-  write: async ({ run }) => run(),
+  // In chat mode the window's own write, so a bulk act says so with Undo as it does in the app (client.ts).
+  write: params.get("chat") ? write : async ({ run }) => run(),
   instant: params.get("late") !== "1",
   // `waits=0`: Waiting on with nothing in it.
   threads: [...corpusThreads().map((t) => (params.get("waits") === "0" ? { ...t, wait: undefined } : t)), ...(bulk ? generateThreads(bulk) : [])],
   settings: { pictures: (params.get("pictures") as "ask" | "show" | "never" | null) ?? "show", density: params.get("density") === "two" ? "two" : "three" },
   signatures: corpusSignatures,
-  outbox: corpusOutbox(),
+  outbox: [...corpusOutbox(), ...(params.get("chat") ? chatDrafts() : [])],
 });
+// `chat=1`: the chat beside the mail on, its dock on a stand-in host, and its cards beside the page (preview/chat.tsx).
+const chat = params.get("chat") ? prepareChat() : null;
+const shown = chat ? chatClient(client) : client;
 
 // The dummy mail is made by now: what follows is Mail's own work, which the speed run times from here.
 (window as unknown as { __mailBuiltAt: number }).__mailBuiltAt = performance.now();
@@ -73,16 +79,21 @@ if (open) patch(ID, { threadId: open });
 
 createRoot(document.getElementById("root")!).render(
   <>
-    <MailClientProvider client={client}>
+    <MailClientProvider client={shown}>
       <MailKitProvider kit={tempcodeMailKit}>
         {params.get("page") === "settings" ? (
           <div data-mail-kit className="tc-mail h-screen overflow-x-hidden overflow-y-auto bg-background p-6 text-foreground">
             <MailSettings />
           </div>
         ) : (
-          <div className="h-screen bg-background text-foreground">
-            <MailScreen id={ID} onOpenTask={() => {}} onStartThread={() => {}} onNudge={() => {}} />
-          </div>
+          <ChatActions>
+            <div className="flex h-screen bg-background text-foreground">
+              <div className="h-full min-w-0 flex-1">
+                <MailScreen id={ID} onOpenTask={() => {}} onStartThread={() => {}} onNudge={() => {}} chat={chat ? { workspace: { ...CHAT_WORKSPACE, id: ID } } : undefined} />
+              </div>
+              {chat ? <ChatSide workspaceId={ID} /> : null}
+            </div>
+          </ChatActions>
         )}
       </MailKitProvider>
     </MailClientProvider>

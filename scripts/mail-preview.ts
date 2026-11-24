@@ -10,6 +10,7 @@
  *   bun scripts/mail-preview.ts --serve            # print the address and keep serving
  *   bun scripts/mail-preview.ts --shots <dir>      # the review shots: every scene, dark and light, 1280 and 640
  *   bun scripts/mail-preview.ts --proof            # the reader's proof; exits 1 when a claim fails
+ *   bun scripts/mail-preview.ts --chat <dir>       # the chat beside the mail by real clicks, dark and light; pictures into <dir>
  *   taskset -c 0-3 bun scripts/mail-preview.ts --speed   # the list on 5,000 threads: first paint beside 50's, and a scroll through them all
  *   … --policy <index.html>                        # serve under another app's page policy (LifeOS desktop's)
  */
@@ -21,6 +22,7 @@ import { join, resolve } from 'node:path'
 import { parseArgs } from 'node:util'
 import { Chromium, type Page } from '../node_modules/work-kit/src/mail/proof/index'
 import { runProof } from '../src/renderer/src/work/mail/preview/proof'
+import { runChatProof } from '../src/renderer/src/work/mail/preview/chatProof'
 import { SCENES, shoot } from '../src/renderer/src/work/mail/preview/scenes'
 import { runSpeed } from '../src/renderer/src/work/mail/preview/speed'
 
@@ -32,7 +34,8 @@ const { values } = parseArgs({
     proof: { type: 'boolean' },
     speed: { type: 'boolean' },
     policy: { type: 'string' },
-    only: { type: 'string' }
+    only: { type: 'string' },
+    chat: { type: 'string' }
   }
 })
 
@@ -125,6 +128,15 @@ if (import.meta.main) {
         const claims = await runProof(page, site.url)
         for (const claim of claims) console.log(`${claim.ok ? 'ok  ' : 'FAIL'} ${claim.name}${claim.ok ? '' : `: ${claim.detail}`}`)
         failed = claims.some((claim) => !claim.ok)
+      }
+      if (values.chat) {
+        mkdirSync(values.chat, { recursive: true })
+        for (const theme of ['dark', 'light'] as const) {
+          const page: Page = await browser.page(1280, 800)
+          const claims = await runChatProof(page, site.url, values.chat, theme)
+          for (const claim of claims) console.log(`${claim.ok ? 'ok  ' : 'FAIL'} ${theme} ${claim.name}${claim.ok ? '' : `: ${claim.detail}`}`)
+          failed = failed || claims.some((claim) => !claim.ok) || claims.length < 6
+        }
       }
       if (values.speed) {
         const speed = await runSpeed(browser, site.url)
