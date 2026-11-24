@@ -97,10 +97,14 @@ describe("which lists may wake the VM", () => {
     await waitFor(() => expect(woke).toHaveLength(4));
     expect(woke[3]).toBe(true);
     pressed.unmount();
+    // Shown again once its first page is older than the window's fresh time (keep.ts), so the host is asked: no press.
+    const real = Date.now();
+    vi.spyOn(Date, "now").mockReturnValue(real + 6_000);
     const again = renderHook(() => useListing({ workspaceId: "w1", copy: VM }, other));
     await waitFor(() => expect(woke).toHaveLength(5));
     expect(woke[4]).toBe(false);
     again.unmount();
+    vi.restoreAllMocks();
     // A press that was never followed by its list lapses.
     const late = at(`${TOP}\\Late`);
     pressFor(late, Date.now() - 60_000);

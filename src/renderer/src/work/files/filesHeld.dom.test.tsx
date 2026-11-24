@@ -7,7 +7,8 @@
 import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { FilesHome, FilesPlaces } from "@shared/contract-work-files";
-import type { FilePlace } from "@shared/work/files";
+import type { FileEntry, FilePlace, FolderRef } from "@shared/work/files";
+import { refKey } from "@shared/work/files";
 import type { WorkspaceMeta } from "../../lib/tcserver/types";
 
 type Push = Record<string, unknown>;
@@ -46,7 +47,8 @@ vi.mock("../shell/actions", () => ({
   linkIdOfHost: () => null,
 }));
 
-const { resetFilesStore, useHome, useReach } = await import("./store");
+const { listingsKept, resetFilesStore, useHome, useListing, useReach } = await import("./store");
+const { LISTING_FRESH_MS, LISTING_KEEP_MOST, LISTING_KEEP_MS } = await import("./keep");
 
 const workspace = { id: "w1", environmentId: "box", path: "/w", name: "Dummy Esports", kind: "work", sector: "purdue" } as unknown as WorkspaceMeta;
 const at = (path: string) => ({ at: "file" as const, host: "box", path });
@@ -63,7 +65,10 @@ beforeEach(() => {
   settings.next = null;
   net.answer = (method) => Promise.resolve(method === "work.files.places" ? PLACES : method === "work.office.filesCopyGet" ? { on: false } : method === "work.files.home" ? HOME : null);
 });
-afterEach(() => cleanup());
+afterEach(() => {
+  cleanup();
+  vi.restoreAllMocks();
+});
 
 describe("a workspace's reach", () => {
   it("asks its own host's places beside its settings, and paints once the settings say what is the workspace's", async () => {
@@ -131,5 +136,98 @@ describe("Home", () => {
     const again = renderHook(() => useHome("box", "w1"));
     expect(again.result.current.home).toEqual(HOME);
     expect(asked("work.files.home")).toBe(2);
+  });
+});
+
+describe("the folders the window keeps", () => {
+  const COPY = { place: FOLDER, link: "box", host: "The box", wire: "files" as const };
+  const from = { workspaceId: "w1", copy: COPY };
+  const row = (name: string, changed = 1): FileEntry => ({ key: `file:box:/w/A/${name}`, ref: at(`/w/A/${name}`), folder: null, name, kind: "document", changed });
+  let rows: FileEntry[];
+  beforeEach(() => {
+    rows = [row("Plan.docx"), row("Notes.docx")];
+    const base = net.answer;
+    net.answer = (method, params) => (method === "work.files.list" ? Promise.resolve({ entries: rows, trail: [] }) : base(method, params));
+  });
+  const lists = (path?: string) => net.calls.filter((c) => c.method === "work.files.list" && (!path || (c.params.at as FolderRef & { path: string }).path === path)).length;
+  const show = async (path: string) => {
+    const view = renderHook(() => useListing(from, at(path)));
+    await waitFor(() => expect(view.result.current.loaded).toBe(true));
+    return view;
+  };
+
+  it(`keeps ${LISTING_KEEP_MOST} listings at most for 100 folders visited, and no empty listener set`, async () => {
+    for (let i = 0; i < 100; i++) (await show(`/w/F${i}`)).unmount();
+    expect(listingsKept()).toEqual({ listings: LISTING_KEEP_MOST, sets: 0, empty: 0 });
+  });
+
+  it(`drops a listing no one has shown for ${LISTING_KEEP_MS / 60_000} minutes`, async () => {
+    (await show("/w/A")).unmount();
+    const left = Date.now();
+    vi.spyOn(Date, "now").mockReturnValue(left + LISTING_KEEP_MS + 1);
+    (await show("/w/B")).unmount();
+    expect(listingsKept().listings).toBe(1);
+  });
+
+  it("draws a folder shown again within its life with no call, and one a push named meanwhile with one", async () => {
+    (await show("/w/A")).unmount();
+    expect(lists("/w/A")).toBe(1);
+    // Back: drawn from what was kept, at once.
+    const back = renderHook(() => useListing(from, at("/w/A")));
+    expect(back.result.current.entries.map((e) => e.name)).toEqual(["Plan.docx", "Notes.docx"]);
+    await new Promise((r) => setTimeout(r, 0));
+    expect(lists("/w/A")).toBe(1);
+    back.unmount();
+    // A change notice while no one shows it: shown again, it is asked once.
+    push({ push: "work.files", workspaceId: "w1", at: refKey(at("/w/A")) });
+    (await show("/w/A")).unmount();
+    expect(lists("/w/A")).toBe(2);
+    // Past the fresh time the host is asked again.
+    const real = Date.now();
+    vi.spyOn(Date, "now").mockReturnValue(real + LISTING_FRESH_MS + 1);
+    (await show("/w/A")).unmount();
+    expect(lists("/w/A")).toBe(3);
+  });
+
+  it("redraws once for a push that lists the folder again, never putting it back to loading", async () => {
+    let renders = 0;
+    const loadings: boolean[] = [];
+    const view = renderHook(() => {
+      renders++;
+      const listing = useListing(from, at("/w/A"));
+      loadings.push(listing.loading);
+      return listing;
+    });
+    await waitFor(() => expect(view.result.current.loaded).toBe(true));
+    const before = renders;
+    const kept = view.result.current.entries;
+    rows = [row("Plan.docx", 2), row("Notes.docx")];
+    push({ push: "work.files", workspaceId: "w1", at: refKey(at("/w/A")) });
+    await waitFor(() => expect(view.result.current.entries[0]!.changed).toBe(2));
+    expect(renders - before).toBe(1);
+    expect(loadings.slice(before)).toEqual([false]);
+    // The row that did not change is the same object, so its row does not draw again.
+    expect(view.result.current.entries[1]).toBe(kept[1]);
+    expect(view.result.current.entries[0]).not.toBe(kept[0]);
+  });
+
+  it("drops what it kept of a place its host no longer lists", async () => {
+    const LIB = { ...FOLDER, id: "lib", kind: "teams", name: "General", root: at("/cloud/General") } as unknown as FilePlace;
+    const libFrom = { workspaceId: "w1", copy: { place: LIB, link: "box", host: "The box", wire: "files" as const } };
+    const base = net.answer;
+    let places: FilePlace[] = [FOLDER, LIB];
+    net.answer = (method, params) => (method === "work.files.places" ? Promise.resolve({ ...PLACES, places }) : base(method, params));
+    const reach = renderHook(({ n }) => useReach(workspace, n), { initialProps: { n: 0 } });
+    await waitFor(() => expect(reach.result.current?.sidebar).toBeTruthy());
+    const lib = renderHook(() => useListing(libFrom, at("/cloud/General")));
+    await waitFor(() => expect(lib.result.current.loaded).toBe(true));
+    lib.unmount();
+    expect(listingsKept().listings).toBe(1);
+    // The library is no longer synced there: its places answer without it, and its rows go with it.
+    places = [FOLDER];
+    reach.rerender({ n: 1 });
+    await waitFor(() => expect(listingsKept().listings).toBe(0));
+    const again = renderHook(() => useListing(libFrom, at("/cloud/General")));
+    expect(again.result.current.entries).toEqual([]);
   });
 });

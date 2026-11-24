@@ -5,6 +5,8 @@ import type { CanvasSource } from "@shared/work";
 import { DEFAULT_SORT, PLACE, refKey, sortEntries, type FileEntry, type FileSort, type FolderRef } from "@shared/work/files";
 import type { LibraryPlace } from "@shared/work/filePlaces";
 import { LOCAL_ENVIRONMENT_ID, registry } from "../../lib/connection";
+import { workSwitch } from "../../lib/workSwitch";
+import { LISTING_FRESH_MS, LISTING_KEEP_MOST, LISTING_KEEP_MS } from "./keep";
 import { workErrorWords } from "../../lib/workErrorWords";
 import type { WorkspaceMeta } from "../../lib/tcserver/types";
 import { linkIdOfHost, localHostId, windowDesktops, workspaceSettings } from "../shell/actions";
@@ -161,6 +163,12 @@ export function useReach(workspace: WorkspaceMeta, attempt: number): Reach | nul
         old,
       };
       keepReach(key, { reach: next, reads: new Map(reads), copy, old: new Map(old) });
+      // A place a host answered without (a library no longer synced, the VM switched off for the workspace): what was kept of its folders goes now.
+      for (const r of shownReads) {
+        if (!r.answer) continue;
+        const live = new Set(r.answer.places.map((p) => p.id));
+        dropListings((m) => m.workspaceId === workspace.id && m.link === r.link && !live.has(m.placeId));
+      }
       setShown({ key, reach: next });
     };
     // Only the newest ask of a host lands.
@@ -720,6 +728,10 @@ export function resetFilesStore(): void {
   closedTabs.clear();
   pressed.clear();
   reachKept.clear();
+  listingMeta.clear();
+  listingRound.clear();
+  listingListeners.clear();
+  keepHears.clear();
   homes.clear();
   look = null;
   windowId = null;
@@ -774,9 +786,99 @@ const listings = new Map<string, ListingEntry>();
 const listingListeners = new Map<string, Set<() => void>>();
 const EMPTY_LISTING: Listing = { entries: [], trail: [], loaded: false, more: false, loading: true, error: null, away: false };
 
+/** What the keep knows of each listing: where it is read from and how a push names it, when it was last shown, when its first page last landed. */
+interface ListingMeta {
+  link: string;
+  workspaceId: string;
+  /** the place it lies in: a place its host no longer lists takes its listings with it */
+  placeId: string;
+  pushAt: string | null;
+  lens: boolean;
+  seenAt: number;
+  loadedAt: number;
+  /** a push named it while no one read it, or while its read was out: shown again, it is read again */
+  dirty: boolean;
+  /** a drop rule named it while it was on screen: it goes as its last reader leaves */
+  gone?: boolean;
+}
+const listingMeta = new Map<string, ListingMeta>();
+/** The newest load of each listing: an older one that lands is dropped. */
+const listingRound = new Map<string, number>();
+let rounds = 0;
+
 function putListing(key: string, next: ListingEntry): void {
+  const fresh = !listings.has(key);
   listings.set(key, next);
+  // A new one may put the keep past its bound.
+  if (fresh) sweepListings();
   for (const listener of listingListeners.get(key) ?? []) listener();
+}
+
+function dropListing(key: string): void {
+  listings.delete(key);
+  listingMeta.delete(key);
+  listingRound.delete(key);
+}
+
+/** The keep's rules (keep.ts): one not shown for `LISTING_KEEP_MS` goes, and past `LISTING_KEEP_MOST` the one shown longest ago. One on screen stays. */
+function sweepListings(now = Date.now()): void {
+  const unread: [string, number][] = [];
+  for (const key of listings.keys()) {
+    const meta = listingMeta.get(key);
+    if (listingListeners.get(key)?.size) {
+      if (meta) meta.seenAt = now;
+      continue;
+    }
+    const seen = meta?.seenAt ?? 0;
+    if (now - seen > LISTING_KEEP_MS) dropListing(key);
+    else unread.push([key, seen]);
+  }
+  unread.sort((a, b) => a[1] - b[1]);
+  while (listings.size > LISTING_KEEP_MOST && unread.length) dropListing(unread.shift()![0]);
+}
+
+/**
+ * Listings a drop rule names go at once (a place its host no longer lists, Work off). One on screen stays: its page
+ * reads from a place that is still listed, and a page whose place went has no reader left.
+ */
+export function dropListings(which: (meta: Pick<ListingMeta, "link" | "workspaceId" | "placeId">) => boolean): void {
+  for (const [key, meta] of [...listingMeta]) {
+    if (!which(meta)) continue;
+    if (listingListeners.get(key)?.size) meta.gone = true;
+    else dropListing(key);
+  }
+}
+
+/** How many listings are kept, and listener sets (tests). */
+export const listingsKept = (): { listings: number; sets: number; empty: number } => ({ listings: listings.size, sets: listingListeners.size, empty: [...listingListeners.values()].filter((set) => !set.size).length });
+
+/** Each host's pushes, heard once for the keep: a folder named while no one shows it is read again when it is shown. */
+const keepHears = new Map<string, unknown>();
+function hearForKeep(link: string): void {
+  // Once per link: again only for a link made anew (a host paired again).
+  const host = filesLink(link);
+  if (keepHears.get(link) === host) return;
+  keepHears.set(link, host);
+  host.onPush((push) => {
+    if (push.push !== "work.files") return;
+    for (const meta of listingMeta.values()) {
+      if (meta.link !== link || meta.workspaceId !== push.workspaceId) continue;
+      if ((meta.pushAt && push.at === meta.pushAt) || (meta.lens && (push.tabs !== undefined || push.marks))) meta.dirty = true;
+    }
+  });
+}
+
+/** Work off on a host: what was kept of its folders, its workspaces' reach and Home goes. */
+let offHeard = false;
+function hearWorkOff(): void {
+  if (offHeard) return;
+  offHeard = true;
+  workSwitch.subscribe(() => {
+    const on = workSwitch.hosts();
+    dropListings((meta) => !on.has(meta.link));
+    for (const key of [...reachKept.keys()]) if (!on.has(key.split("\u0000")[0]!)) reachKept.delete(key);
+    for (const key of [...homes.keys()]) if (!on.has(key.split("\u0000")[0]!)) homes.delete(key);
+  });
 }
 
 /** Where a folder is read from: the copy of its place that answers, and how (the new wire, or a host a release behind). */
@@ -872,17 +974,40 @@ async function fillWho(key: string, from: ListFrom, round: number): Promise<void
   if (!want.length) return;
   const got = await ask<{ entries: (FileEntry | null)[] }>(from.copy.link, "work.files.stat", { workspaceId: from.workspaceId, refs: want.map((e) => e.ref) }, readMs(from.copy)).catch(() => null);
   const now = listings.get(key);
-  if (!got || !now || now.round !== round) return;
+  if (!got || !now || listingRound.get(key) !== round) return;
   const who = new Map(got.entries.flatMap((e) => (e?.by ? [[e.key, e.by] as const] : [])));
   if (who.size) putListing(key, { ...now, entries: now.entries.map((e) => (who.has(e.key) ? { ...e, by: who.get(e.key)! } : e)) });
 }
 
-/** `again`: a host's push lists the page again; a search keeps what his desktops found rather than walking their folders again. `wake`: his press, which may wake the folder's machine. */
-async function load(key: string, from: ListFrom, at: FolderRef, sort: FileSort, more: boolean, again = false, wake = false): Promise<void> {
+/** A page's rows, the objects it had kept where a row says the same (with who saved it, which a list leaves out), so a row that did not change does not draw again. */
+function steady(was: readonly FileEntry[], next: readonly FileEntry[]): FileEntry[] {
+  if (!was.length) return [...next];
+  const old = new Map(was.map((e) => [e.key, e]));
+  return next.map((e) => {
+    const prev = old.get(e.key);
+    if (!prev) return e;
+    const same = prev.by !== undefined && e.by === undefined ? { ...e, by: prev.by } : e;
+    return JSON.stringify(same) === JSON.stringify(prev) ? prev : same;
+  });
+}
+
+/**
+ * `again`: a host's push lists the page again; a search keeps what his desktops found rather than walking their
+ * folders again. `wake`: his press, which may wake the folder's machine. `retry`: his Retry, which shows the page busy;
+ * any other read of a page already drawn keeps it as it is until the answer lands.
+ */
+async function load(key: string, from: ListFrom, at: FolderRef, sort: FileSort, more: boolean, again = false, wake = false, retry = false): Promise<void> {
   const was = listings.get(key);
   if (more && (!was?.next || was.loading)) return;
-  const round = more ? was!.round : (was?.round ?? 0) + 1;
-  putListing(key, { ...(was ?? { ...EMPTY_LISTING }), loading: true, error: null, lostPage: false, round });
+  const meta = listingMeta.get(key);
+  const round = more ? (listingRound.get(key) ?? ++rounds) : ++rounds;
+  listingRound.set(key, round);
+  if (!more) {
+    // Read from now: a push from here on marks it again.
+    if (meta) meta.dirty = false;
+  }
+  const quiet = !more && !retry && !!was?.loaded && !was.error;
+  if (!quiet) putListing(key, { ...(was ?? { ...EMPTY_LISTING }), loading: true, error: null, lostPage: false, round });
   const search = from.search;
   // A search's desktops are asked once a search, beside its host, and only for its first page.
   const desks = !more && search?.desks && desksJoin(search.filter ?? {}) ? (again && was?.desk ? Promise.resolve(was.desk) : searchDesks(search.desks, search.query, search.filter ?? {})) : null;
@@ -896,10 +1021,14 @@ async function load(key: string, from: ListFrom, at: FolderRef, sort: FileSort, 
       first = true;
     }
     const now = listings.get(key);
-    if (!now || now.round !== round) return;
+    if (!now || listingRound.get(key) !== round) return;
     const desk = more ? now.desk : undefined;
+    if (first) {
+      const m = listingMeta.get(key);
+      if (m) m.loadedAt = Date.now();
+    }
     putListing(key, {
-      entries: first ? page.entries : desk ? mergeFound(now.entries, page.entries) : [...now.entries, ...page.entries],
+      entries: first ? steady(now.entries, page.entries) : desk ? mergeFound(now.entries, page.entries) : [...now.entries, ...page.entries],
       trail: first ? (page.trail ?? []) : now.trail,
       loaded: true,
       more: !!page.next,
@@ -924,12 +1053,12 @@ async function load(key: string, from: ListFrom, at: FolderRef, sort: FileSort, 
     // The host's rows are drawn first; the desktops' join them in the list's order when they come.
     const found = await desks;
     const then = listings.get(key);
-    if (!then || then.round !== round) return;
+    if (!then || listingRound.get(key) !== round) return;
     const said = deskSays(found);
     putListing(key, { ...then, entries: mergeFound(then.entries, found.rows), searching: false, desk: found, ...said, ...(said.incomplete || then.incomplete ? { incomplete: true } : {}) });
   } catch (err) {
     const now = listings.get(key);
-    if (!now || now.round !== round) return;
+    if (!now || listingRound.get(key) !== round) return;
     putListing(key, { ...now, loaded: true, loading: false, searching: false, error: workErrorWords(err, { host: registry.environment(from.copy.link)?.name }) || "The host did not answer.", away: unreachable(err), lostPage: more });
   }
 }
@@ -956,7 +1085,16 @@ export function useListing(from: ListFrom | null, at: FolderRef, sort: FileSort 
       const set = listingListeners.get(key) ?? new Set();
       listingListeners.set(key, set);
       set.add(listener);
-      return () => void set.delete(listener);
+      return () => {
+        set.delete(listener);
+        // No empty set is kept; the listing's own life starts now.
+        if (set.size) return;
+        listingListeners.delete(key);
+        const meta = listingMeta.get(key);
+        if (meta?.gone) return dropListing(key);
+        if (meta) meta.seenAt = Date.now();
+        sweepListings();
+      };
     },
     () => listings.get(key) ?? EMPTY_LISTING,
   );
@@ -964,16 +1102,25 @@ export function useListing(from: ListFrom | null, at: FolderRef, sort: FileSort 
   const team = from?.team?.map((e) => e.key).join("\n");
   useEffect(() => {
     if (!from) return;
-    // Shown because he pressed for it, or shown again (a restored tab): only the first may wake its machine.
-    void load(key, from, at, sort, false, false, takePress(at));
-    // A team's page asks no host, and a page fed by the seam has none to hear from.
-    if (from.team || listingSeams.fetch) return;
     const watched = pushKey(from.copy, at);
     const lens = at.at === "place" && (at.id === PLACE.recent || at.id === PLACE.starred);
+    const now = Date.now();
+    const meta = listingMeta.get(key);
+    listingMeta.set(key, { link: from.copy.link, workspaceId: from.workspaceId, placeId: from.copy.place.id, pushAt: watched, lens, seenAt: now, loadedAt: meta?.loadedAt ?? 0, dirty: meta?.dirty ?? false });
+    hearWorkOff();
+    const was = listings.get(key);
+    // Shown again this soon (Back, a tab switched to and back), as it was and with nothing named since: drawn, not asked.
+    const fresh = !!was?.loaded && !was.error && !was.sleeping && !was.loading && !meta?.dirty && now - (meta?.loadedAt ?? 0) <= LISTING_FRESH_MS && !from.search && !from.team;
+    // Shown because he pressed for it, or shown again (a restored tab): only the first may wake its machine.
+    const wake = takePress(at);
+    if (!fresh) void load(key, from, at, sort, false, false, wake);
+    // A team's page asks no host, and a page fed by the seam has none to hear from.
+    if (from.team || listingSeams.fetch) return;
+    hearForKeep(from.copy.link);
     const off = filesLink(from.copy.link).onPush((push) => {
       if (push.push !== "work.files" || push.workspaceId !== from.workspaceId) return;
       // A lens follows his marks, which change with the tabs he opens.
-      if ((watched && push.at === watched) || (lens && push.tabs !== undefined)) void load(key, from, at, sort, false, true);
+      if ((watched && push.at === watched) || (lens && (push.tabs !== undefined || push.marks))) void load(key, from, at, sort, false, true);
     });
     return off;
     // The key names the host, the folder and the order; a team's rows are its own input.
@@ -983,7 +1130,7 @@ export function useListing(from: ListFrom | null, at: FolderRef, sort: FileSort 
     ...value,
     loadMore: () => void (from && load(key, from, at, sort, true)),
     // Retry, and Wake it over a sleeping folder, are his press.
-    retry: () => void (from && load(key, from, at, sort, false, false, true)),
+    retry: () => void (from && load(key, from, at, sort, false, false, true, true)),
   };
 }
 
