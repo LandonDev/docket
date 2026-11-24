@@ -78,7 +78,19 @@ export function queuedNote(row: Told & Pick<HeldRow, 'decidedBy'>): string {
 export const failedNote = (row: Told & Pick<HeldRow, 'error'>): string =>
   `Held item ${row.n} (${toldAs(row)}) could not be carried out: ${whyOf(row, 'it failed')}. It still waits in the owner's Outbox. Do not try another way to do it.`
 
-export const discardedNote = (row: Told): string => `The owner discarded held item ${row.n} (${toldAs(row)}). It will not go. Do not send it another way.`
+/** His reason goes to the thread as he wrote it, but never for a change to a file others can open, whose thread's transcript a reader may see. */
+export const discardedNote = (row: Told & Partial<Pick<HeldRow, 'decidedBy' | 'reason'>>): string => {
+  const where = row.decidedBy === 'owner:remote' ? ' from another device' : ''
+  const why = row.reason && !PRIVATE_CHANGE_KINDS.has(row.kind) ? `: "${cut(row.reason.replace(/\s+/g, ' ').trim(), 500)}"` : ''
+  return `The owner discarded held item ${row.n} (${toldAs(row)})${where}${why}. It will not go. Do not send it another way.`
+}
+
+/** The reason an item put away by Ask the thread again carries. */
+export const OUT_OF_DATE = 'out of date'
+
+/** What wakes a thread when he asks it to redo an item that went out of date. */
+export const askAgainNote = (row: Told & Pick<HeldRow, 'error'>): string =>
+  `The owner asks you to redo held item ${row.n} (${toldAs(row)}): it went out of date because ${PRIVATE_CHANGE_KINDS.has(row.kind) ? 'the file is not as it was when it was held' : (row.error ?? 'what it was made from moved on').replace(/\.$/, '')}. Draft it again from what is true now; it will be held again for his press.`
 
 export const staleNote = (row: Told & Pick<HeldRow, 'error'>): string =>
   `Held item ${row.n} (${toldAs(row)}) can no longer be carried out as it was shown: ${whyOf(row, 'the screen moved on')}. If it is still needed, ${PRIVATE_CHANGE_KINDS.has(row.kind) ? 'read the file again and propose it again' : 'do the step again'}; it will be held again.`

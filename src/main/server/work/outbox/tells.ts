@@ -1,5 +1,5 @@
 import type { GrantOffer, OutboxItem } from '@shared/contract-work-outbox'
-import { errorText, type HeldRef } from '@shared/work'
+import { errorText, needsHim, type HeldRef } from '@shared/work'
 import type { Tell, TellKind } from '@shared/work/tell'
 import type { ActKindDef, WorkCtx } from '../modules'
 import { heldNotice, PRIVATE_CHANGE_KINDS, summaryFor } from './words'
@@ -69,11 +69,13 @@ function byOf(deps: TellsDeps, item: Pick<OutboxItem, 'kind' | 'payload'>): numb
   }
 }
 
-/** A new held item: "Held: Send to Dana Lee: Re: budget". */
+/** A new held item: "Held: Send to Dana Lee: Re: budget". One that went out of date waits for him too, until he discards it: "Out of date: …". */
 export function tellHeld(deps: TellsDeps, item: OutboxItem): void {
-  if (item.state !== 'held' && item.state !== 'live') return
-  const by = byOf(deps, item)
-  deps.ctx.tell({ kind: 'outbox.held', workspaceId: workspaceOf(deps, item), title: heldNotice(summaryFor(item)), key: heldKey(item.ref), open: openOf(item), ...(by !== undefined ? { by } : {}) })
+  const stale = item.state === 'stale'
+  if (!needsHim(item) || item.state === 'failed') return
+  const by = stale ? undefined : byOf(deps, item)
+  const title = stale ? `Out of date: ${oneLine(summaryFor(item), 140)}` : heldNotice(summaryFor(item))
+  deps.ctx.tell({ kind: 'outbox.held', workspaceId: workspaceOf(deps, item), title, key: heldKey(item.ref), open: openOf(item), ...(by !== undefined ? { by } : {}) })
 }
 
 /** A send that failed and still waits on him: at once while it is fresh, in the digest once it is a day old. */
@@ -135,8 +137,9 @@ export const WAITING_MAX = 500
 export function syncTells(deps: TellsDeps, source: TellsSource): void {
   try {
     const waiting = source.waiting()
-    const held = waiting.filter((i) => i.state === 'held' || i.state === 'live')
-    const failed = waiting.filter((i) => i.state === 'failed')
+    // The one count (shared/work/outboxCount.ts): what the rail, Today and the phone count is what the digest tells.
+    const held = waiting.filter((i) => needsHim(i) && i.state !== 'failed')
+    const failed = waiting.filter((i) => needsHim(i) && i.state === 'failed')
     for (const item of held) tellHeld(deps, item)
     for (const item of failed) tellFailed(deps, item)
     const offers = source.offers()

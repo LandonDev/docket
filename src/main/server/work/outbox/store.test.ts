@@ -206,3 +206,54 @@ describe('grants and rules', () => {
     expect(store.rules('ad_1')).toEqual([])
   })
 })
+
+describe('Outbox 2: the store', () => {
+  it('counts what the fixture counts: a stale row waits until he puts it away, a row being sent does not count', () => {
+    const rows = ['held', 'held', 'failed', 'stale', 'stale', 'sending', 'sent', 'discarded'].map((s) => store.insert(act({ summary: s })))
+    const set = (id: string, state: string, extra = '') => db.prepare(`UPDATE work_held_acts SET state = ?${extra} WHERE id = ?`).run(state, id)
+    set(rows[1]!.id, 'live')
+    set(rows[2]!.id, 'failed')
+    set(rows[3]!.id, 'stale')
+    set(rows[4]!.id, 'stale', ', dismissed_at = 5')
+    set(rows[5]!.id, 'sending')
+    set(rows[6]!.id, 'sent')
+    set(rows[7]!.id, 'discarded')
+    // the fixture's five less its LifeOS draft, which the Outbox adds from LifeOS
+    expect(store.waiting()).toBe(4)
+    expect(store.list().map((r) => r.summary)).toEqual(['held', 'held', 'failed', 'stale', 'sending'])
+    expect(store.list({ show: 'decided' }).map((r) => r.summary).sort()).toEqual(['discarded', 'sent', 'stale'])
+  })
+
+  it('a discard keeps his reason and where he pressed; a stale row is put away, not turned into a discard', () => {
+    const a = store.insert(act())
+    expect(store.discard(a.id, 'owner', { reason: ' wrong person ', via: 'phone' })).toMatchObject({ state: 'discarded', reason: 'wrong person', via: 'phone' })
+    const b = store.insert(act())
+    store.stale(b.id, 'moved')
+    const put = store.discard(b.id, 'owner:remote', { reason: 'x'.repeat(900) })!
+    expect(put).toMatchObject({ state: 'stale', dismissedBy: 'owner:remote' })
+    expect(put.reason).toHaveLength(500)
+    expect(store.discard(b.id, 'owner')).toBeNull()
+  })
+
+  it('a database made before Outbox 2 has every stale row put away already', () => {
+    const old = new DatabaseSync(':memory:')
+    old.exec(`CREATE TABLE work_held_acts (id TEXT PRIMARY KEY, workspace_id TEXT, session_id TEXT, sector TEXT, kind TEXT NOT NULL, origin TEXT NOT NULL, why TEXT NOT NULL DEFAULT 'rule', summary TEXT NOT NULL, verb TEXT NOT NULL DEFAULT 'Send', account TEXT, payload TEXT NOT NULL, state TEXT NOT NULL, run_key TEXT NOT NULL UNIQUE, grant_id TEXT, decided_by TEXT, decided_at INTEGER, result TEXT, error TEXT, routine_run_id TEXT, attempts INTEGER NOT NULL DEFAULT 0, outcome_unknown INTEGER NOT NULL DEFAULT 0, task TEXT, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL)`)
+    old.prepare(`INSERT INTO work_held_acts (id, kind, origin, summary, payload, state, run_key, created_at, updated_at) VALUES ('a', 'addon.call', 'app', 's', '{}', 'stale', 'host:a', 1, 7)`).run()
+    ensureOutboxTables(old)
+    const s = new HeldStore(old)
+    expect(s.waiting()).toBe(0)
+    expect(s.get('a')).toMatchObject({ state: 'stale', dismissedAt: 7 })
+  })
+
+  it('a claim records where the press was made', () => {
+    const a = store.insert(act())
+    expect(store.claim(a.id, 'owner', null, { via: 'today' })).toMatchObject({ via: 'today' })
+  })
+
+  it('a removed thread\'s items are put away with it, not left waiting', () => {
+    const a = store.insert(act())
+    store.closeSessions(['t1'], 'gone')
+    expect(store.get(a.id)).toMatchObject({ state: 'stale', dismissedBy: 'host' })
+    expect(store.waiting()).toBe(0)
+  })
+})

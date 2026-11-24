@@ -233,6 +233,13 @@ describe("waiting on you", () => {
     expect(rows.map((r) => r.job)).toEqual(["Purdue Esports", "Purdue", undefined]);
   });
 
+  it("lists what the rail counts, the one count (needsHim): no send under way, no mail he scheduled, an item out of date until put away", async () => {
+    const { COUNT_FIXTURE, COUNT_FIXTURE_WAITS } = await import("@shared/work/outboxCount.fixture");
+    const rows = heldRows(COUNT_FIXTURE.map((i) => ({ ...i, environmentId: "box" })), at(23, 9, 30));
+    expect(rows).toHaveLength(COUNT_FIXTURE_WAITS);
+    expect(rows.find((r) => r.title.includes("4") || r.detail === "Out of date")?.detail).toBe("Out of date");
+  });
+
   it("names an item's place as its sheet does: Work Chats for an item of no workspace", () => {
     const nameOf = (environmentId: string, workspaceId: string) => (workspaceId === "ws1" ? `${environmentId}'s Purdue` : undefined);
     expect(placeOf({ environmentId: "box", workspaceId: "ws1" }, nameOf)).toBe("box's Purdue");

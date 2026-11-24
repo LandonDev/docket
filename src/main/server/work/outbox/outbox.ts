@@ -1,13 +1,14 @@
-import type { GrantOffer, HeldWhy, OutboxGrant, OutboxItem } from '@shared/contract-work-outbox'
+import type { GrantOffer, HeldWhy, OutboxChanged, OutboxGrant, OutboxItem, OutboxReplied } from '@shared/contract-work-outbox'
 import { hasFormLink, payloadText } from '@shared/work/msforms'
-import { ACT_PILLAR, errorText, NotBuilt, PILLAR_MILESTONE, type ActKind, type ActResult, type HeldItem, type HeldRef } from '@shared/work'
+import { ACT_PILLAR, errorText, needsHim, NotBuilt, PILLAR_MILESTONE, type ActKind, type ActResult, type HeldItem, type HeldRef } from '@shared/work'
 import type { ActCtx, ActKindDef, WorkCtx } from '../modules'
 import { canonical } from '../../addonStore'
-import { EARN_DAYS, earn, wireOffer, type EarnedStore, type StoredOffer } from './earned'
+import { EARN_DAYS, earn, sameWords, wireOffer, wordsOf, type EarnedStore, type StoredOffer } from './earned'
+import { effectOf } from './effects'
 import type { SentFact } from './confirmed'
 import { ActNotSent, ActStale, type ActKinds } from './kinds'
-import { itemOfRow, lifeosRunKey, PRESSABLE, type HeldRow, type HeldStore } from './store'
-import { discardedNote, failedNote, queuedNote, sentNote, staleNote } from './words'
+import { itemOfRow, lifeosRunKey, PRESSABLE, type HeldRow, type HeldStore, type Via } from './store'
+import { askAgainNote, discardedNote, failedNote, OUT_OF_DATE, queuedNote, sentNote, staleNote } from './words'
 
 /**
  * The hold as one service (docs/agents/work-outbox.md): an act is held
@@ -127,6 +128,10 @@ export const SCHEDULED_BY_HIM = 'You scheduled this mail: it goes at its time. C
 export const MAY_HAVE_GONE = 'This may have gone already: the last send did not say how it ended. Check Sent first, and choose Send again only if it is not there.'
 export const NO_SUCH_OFFER = 'There is no such offer on this host, or it was already decided.'
 export const REV_NEEDED = 'refused: a press on an item LifeOS holds names what was read (`rev`), so what goes is what was shown'
+export const NOT_OUT_OF_DATE = 'Only an item that went out of date can be asked for again.'
+
+/** The run key an item's decision would carry: a host row's own, a LifeOS item's by its table and id. */
+const runKeyOfRef = (ref: HeldRef): string => (ref.at === 'lifeos' ? lifeosRunKey(ref.table, ref.id) : `host:${ref.id}`)
 
 /** What `execute` left behind, small enough to keep in the row: a result too large for the log keeps its line and drops its body. */
 function keepable(result: ActResult): ActResult {
@@ -154,7 +159,7 @@ export class Outbox {
   private readonly changeListeners = new Set<(item: OutboxItem | null) => void>()
 
   constructor(private readonly deps: OutboxDeps) {
-    deps.store.onChange((row) => this.changed(itemOfRow(row)))
+    deps.store.onChange((row) => this.changed(this.wire(row)))
   }
 
   get store(): HeldStore {
@@ -232,7 +237,7 @@ export class Outbox {
    * the row taken (sent, being sent, discarded) answers the row as it
    * stands and runs nothing.
    */
-  async send(ref: HeldRef, opts: { rev?: number; by?: string; again?: boolean; /** one of several sent by one press */ many?: boolean } = {}): Promise<OutboxItem> {
+  async send(ref: HeldRef, opts: { rev?: number; by?: string; again?: boolean; /** one of several sent by one press */ many?: boolean; via?: Via } = {}): Promise<OutboxItem> {
     let row = this.store.byRef(ref)
     if (ref.at === 'lifeos' && (!row || PRESSABLE.includes(row.state))) {
       // What goes is what LifeOS holds now, and only if that is what he was shown.
@@ -256,14 +261,17 @@ export class Outbox {
     const def = this.def(row.kind)
     // A send that may have gone is sent again only when he chose that, after checking.
     if (row.state === 'failed' && row.outcomeUnknown && !opts.again) throw new Error(MAY_HAVE_GONE)
-    const claimed = this.store.claim(row.id, opts.by ?? 'owner', null, { again: opts.again === true })
+    const claimed = this.store.claim(row.id, opts.by ?? 'owner', null, { again: opts.again === true, via: opts.via ?? null })
     if (!claimed) return this.wire(this.store.get(row.id)!)
     if (opts.many) this.markBatch(claimed.runKey)
     return this.wire(await this.run(claimed, def))
   }
 
-  /** The act will never go. For a LifeOS-held item the draft is deleted there, and a row here records who decided. */
-  async discard(ref: HeldRef, by = 'owner'): Promise<OutboxItem> {
+  /**
+   * The act will never go. For a LifeOS-held item the draft is deleted there, and a row here records who decided. An
+   * item that went out of date is put away: it stops waiting, and its thread, which heard it went stale, hears nothing more.
+   */
+  async discard(ref: HeldRef, by = 'owner', opts: { reason?: string; via?: Via } = {}): Promise<OutboxItem> {
     let row = this.store.byRef(ref)
     if (ref.at === 'lifeos' && (!row || PRESSABLE.includes(row.state))) {
       const live = await this.readLifeos(ref)
@@ -274,9 +282,27 @@ export class Outbox {
       if (row && PRESSABLE.includes(row.state)) await this.lifeos!.discard(ref)
     }
     if (!row) throw new Error(NO_SUCH_ITEM)
-    const gone = this.store.discard(row.id, by)
-    if (gone) this.settled(gone)
+    const gone = this.store.discard(row.id, by, { reason: opts.reason ?? null, via: opts.via ?? null })
+    if (gone?.state === 'discarded') this.settled(gone)
     return this.wire(gone ?? this.store.get(row.id)!)
+  }
+
+  /**
+   * His press on an item that went out of date: put away as out of date, and its thread woken to draft it again from
+   * what is true now. It may start a turn: he asked for it.
+   */
+  async askAgain(ref: HeldRef, by = 'owner', opts: { via?: Via } = {}): Promise<OutboxItem> {
+    const row = this.store.byRef(ref)
+    if (!row) throw new Error(NO_SUCH_ITEM)
+    if (row.state !== 'stale' || row.dismissedAt !== null) throw new Error(NOT_OUT_OF_DATE)
+    const gone = this.store.discard(row.id, by, { reason: OUT_OF_DATE, via: opts.via ?? null })
+    if (!gone) return this.wire(this.store.get(row.id)!)
+    if (gone.sessionId) {
+      const sessionId = gone.sessionId
+      const note = askAgainNote(gone)
+      void this.deps.ctx.threads.resume(sessionId, note).catch(() => this.deps.whisper(sessionId, note))
+    }
+    return this.wire(gone)
   }
 
   /** Change exactly what will go, while it waits. */
@@ -286,8 +312,9 @@ export class Outbox {
       if (row && !PRESSABLE.includes(row.state)) throw new Error('This item was already decided; it cannot be changed.')
       if (!this.lifeos) throw new Error(NO_SUCH_ITEM)
       const next = await this.lifeos.edit(ref, payload)
+      this.markEdited(runKeyOfRef(ref), next.updatedAt)
       this.changed(null)
-      return next
+      return this.withChanged(next)
     }
     const row = this.store.byRef(ref)
     if (!row) throw new Error(NO_SUCH_ITEM)
@@ -299,6 +326,7 @@ export class Outbox {
     const words = def.words(next)
     const edited = this.store.edit(row.id, { payload: next, summary: words.summary, verb: words.verb })
     if (!edited) throw new Error(row.state === 'live' ? 'An act read from a live screen is carried out as it was read; it cannot be changed.' : 'This item was already decided; it cannot be changed.')
+    this.markEdited(edited.runKey, edited.updatedAt)
     return this.wire(edited)
   }
 
@@ -492,32 +520,93 @@ export class Outbox {
   // ── reading ───────────────────────────────────────────────────────────
 
   /** This host's rows and the LifeOS-held items nobody here decided, as one list. */
-  list(q: { show?: 'waiting' | 'decided' | 'all'; workspaceId?: string; sessionId?: string; limit?: number } = {}): { items: OutboxItem[]; waiting: number } {
-    const show = q.show ?? 'waiting'
+  list(q: { show?: 'waiting' | 'done' | 'decided' | 'all'; workspaceId?: string; sessionId?: string; limit?: number } = {}): { items: OutboxItem[]; waiting: number } {
+    const show = q.show === 'done' ? 'decided' : (q.show ?? 'waiting')
     // A LifeOS item recorded here (a send that failed) and still waiting is listed with LifeOS's own copy and revision,
     // so a later press names what LifeOS holds now (milestone 50's hold review).
-    const rows = this.store.list(q).map((row) => {
+    const rows = this.store.list({ ...q, show }).map((row) => {
       const item = this.wire(row)
       if (item.ref.at !== 'lifeos' || !PRESSABLE.includes(row.state)) return item
       const there = this.lifeos?.items().find((i) => JSON.stringify(i.ref) === JSON.stringify(item.ref))
-      return there ? { ...item, payload: there.payload, updatedAt: there.updatedAt } : item
+      return there ? this.withChanged({ ...item, payload: there.payload, updatedAt: there.updatedAt, effect: this.effect(item.kind, there.payload) }) : item
     })
-    const held = show === 'decided' ? [] : this.undecided().filter((i) => (q.workspaceId === undefined || i.workspaceId === q.workspaceId) && (q.sessionId === undefined || i.sessionId === q.sessionId))
+    const held = show === 'decided' ? [] : this.undecided().map((i) => this.withChanged({ ...i, effect: this.effect(i.kind, i.payload) })).filter((i) => (q.workspaceId === undefined || i.workspaceId === q.workspaceId) && (q.sessionId === undefined || i.sessionId === q.sessionId))
     const items = [...rows, ...held]
     if (show === 'waiting') items.sort((a, b) => a.createdAt - b.createdAt)
     return { items: items.slice(0, q.limit ?? 200), waiting: this.waiting() }
   }
 
+  /** One item whole: what the list carries, the thread's first words beside a change, and a newer message in a mail's conversation. */
   async get(ref: HeldRef): Promise<OutboxItem> {
     const row = this.store.byRef(ref)
-    if (row && (ref.at === 'host' || !PRESSABLE.includes(row.state))) return this.wire(row)
-    if (ref.at === 'lifeos') return this.readLifeos(ref)
-    throw new Error(NO_SUCH_ITEM)
+    let item: OutboxItem
+    if (row && (ref.at === 'host' || !PRESSABLE.includes(row.state))) item = this.wire(row)
+    else if (ref.at === 'lifeos') {
+      const live = await this.readLifeos(ref)
+      item = this.withChanged({ ...live, effect: this.effect(live.kind, live.payload) })
+    } else throw new Error(NO_SUCH_ITEM)
+    if (item.changed) item = { ...item, changed: { ...item.changed, first: this.firstOf(runKeyOfRef(item.ref)) } }
+    const replied = needsHim(item) ? await this.repliedTo(item) : null
+    return replied ? { ...item, replied } : item
   }
 
-  /** How many items wait on the owner: this host's and LifeOS's. */
+  /** How many items wait on the owner (`needsHim`): this host's and LifeOS's. A mail he scheduled is his press already. */
   waiting(): number {
-    return this.store.waiting() + this.undecided().length
+    return this.store.waiting() + this.undecided().filter((i) => needsHim(i)).length
+  }
+
+  /** What a press does, in one sentence. */
+  effect(kind: ActKind, payload: unknown): string {
+    const own = this.deps.kinds.get(kind)?.effect
+    return effectOf(kind, payload, own ? (p) => own(p as never) : undefined)
+  }
+
+  /** The words as first written, kept by earned.ts; null when the host never saw them. */
+  private firstOf(runKey: string): unknown {
+    try {
+      return this.deps.earned?.first(runKey) ?? null
+    } catch {
+      return null
+    }
+  }
+
+  /** An item with `changed` when what would go is not what the thread first wrote: his own edit while its revision stands, else the thread's. */
+  withChanged<T extends OutboxItem>(item: T): T {
+    const first = this.firstOf(runKeyOfRef(item.ref))
+    const now = wordsOf(item.kind, item.payload)
+    if (first === null || now === null || sameWords(item.kind, first, now)) return item
+    let mine: number | null = null
+    try {
+      mine = this.store.editedRev(runKeyOfRef(item.ref))
+    } catch {
+      // no edits table: every change reads as the thread's
+    }
+    const changed: OutboxChanged = { at: item.updatedAt, by: mine === item.updatedAt ? 'you' : 'thread' }
+    return { ...item, changed }
+  }
+
+  private markEdited(runKey: string, rev: number): void {
+    try {
+      this.store.markEdited(runKey, rev)
+    } catch (err) {
+      this.deps.ctx.log(`outbox: an edit was not marked as his: ${errorText(err)}`)
+    }
+  }
+
+  /** The newest message from someone else in a LifeOS mail's conversation, when it came after the mail was made. Never in the way of a read. */
+  private async repliedTo(item: OutboxItem): Promise<OutboxReplied | null> {
+    if (item.kind !== 'mail.send') return null
+    const threadId = (item.payload as { message?: { threadId?: unknown } } | null)?.message?.threadId
+    if (typeof threadId !== 'string' || !threadId) return null
+    try {
+      const view = await this.deps.ctx.lifeos.owner().query<{ messages?: { fromMe: boolean; sentAt: number; snippet?: string; from?: { name?: string; address: string } }[] } | null>('mail:thread', { id: threadId })
+      const newer = (view?.messages ?? []).filter((m) => !m.fromMe && m.sentAt > item.createdAt).sort((a, b) => b.sentAt - a.sentAt)[0]
+      if (!newer) return null
+      const line = (newer.snippet ?? '').split(/\r?\n/).find((l) => l.trim())?.trim() ?? ''
+      return { from: newer.from?.name?.trim() || newer.from?.address || 'Someone', at: newer.sentAt, line: line.length > 140 ? `${line.slice(0, 139)}…` : line }
+    } catch {
+      return null
+    }
   }
 
   /** Of those waiting, the ones whose send failed: here, and LifeOS's own that came back failed. */
@@ -533,7 +622,7 @@ export class Outbox {
   /** A row as a screen gets it: a kind's payload is its own to trim (a picture's file path never leaves the host). */
   wire(row: HeldRow): OutboxItem {
     const fact = row.state === 'sent' ? this.lifeos?.sentFact?.(row) : undefined
-    const item = { ...itemOfRow(row), ...fact }
+    const item = this.withChanged({ ...itemOfRow(row), ...fact, effect: this.effect(row.kind, row.payload) })
     const payload = item.payload as { picture?: { path?: string } | null } | null
     if (row.kind === 'computer.act' && payload?.picture && typeof payload.picture === 'object') {
       const { path: _path, ...picture } = payload.picture

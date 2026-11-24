@@ -67,8 +67,37 @@ Three tables, made by the module's `ensure` (`work/outbox/store.ts`):
   `held`, `live` (a computer act, tied to a live screen), `sending`, `sent`,
   `failed`, `discarded`, `stale`. `rowid` is the number the thread is told.
   No row is ever deleted: the table is the log.
+  A discard keeps his `reason` (500 characters at most) and every press
+  where it was made (`via`: `outbox`, `today`, `phone`, `mail`,
+  `scheduled`, or `request:<id>` for a thread's request he answered). A
+  `stale` row waits on him until he puts it away (Discard, or Ask the
+  thread again): then it stays `stale` with `dismissed_by`/`dismissed_at`
+  and moves to Done. A database made before this has every stale row put
+  away already, and a thread or workspace he removes puts its rows away
+  with it (`dismissed_by = 'host'`).
 - `work_grants`: standing grants, removed by a mark (`removed_at`).
 - `work_outbox_tool_rules`: the rule he set per add-on tool.
+- `work_held_edits`: the revision his own last edit left, by run key. An
+  item whose words differ from what the thread first wrote
+  (`work_held_first`, earned.ts) carries `changed: {at, by}`: `you` while
+  his edit's revision stands, `thread` once anything moved it after;
+  `work.outbox.get` adds `first`, the first words, for Show changes.
+
+**One count.** What waits on him is one rule, `needsHim`
+(src/shared/work/outboxCount.ts): held, live, failed, and stale until he
+puts it away. A send under way and a mail he scheduled do not count. The
+host's `waiting` (the rail's number and the push), Today's rows, the
+digest's tells (`syncTells`) and the phone all read it, and one fixture
+(`outboxCount.fixture.ts`) holds each to the same number.
+
+**What a press does.** Every item carries `effect`, one sentence of who
+it reaches, as whom and when ("Goes from landon@purdue.edu to Dana Lee
+after your undo time."): a kind's own `ActKindDef.effect`, else
+work/outbox/effects.ts, else "Carries this out as you." A change to a
+file others can open says only "Changes a file others can open." to a
+caller that cannot press, with no first words and no reason (`seenBy`).
+A held LifeOS mail read by `get` also carries `replied` when its
+conversation got a newer message from someone else after it was made.
 
 **An act runs once.** A send claims its row with one `UPDATE` that names the
 states it may leave (`held`, `live`, `failed`), so of any number of presses
@@ -332,7 +361,7 @@ The act's own result, which a thread's Results list keeps, says the same: "Queue
 | Method | Needs | |
 |---|---|---|
 | `work.outbox.list`, `get`, `grants`, `rules` | read | `get` adds a computer act's picture |
-| `work.outbox.send`, `discard`, `edit` | approve | |
+| `work.outbox.send`, `discard`, `edit`, `askAgain` | approve | `discard` takes his `reason`; `askAgain` puts an out-of-date item away and wakes its thread to draft it again |
 | `work.outbox.grant`, `ungrant`, `setRules`, `setForWork` | admin | |
 
 A window whose key may not make grants on that host (`linkMay`, docs/agents/work.md
@@ -351,7 +380,12 @@ keeps owing it while LifeOS is out of reach; a mail or calendar act's reason
 reads "Queued to send: …", since LifeOS still holds it. A call held only because its
 add-on was never reviewed completes nothing. The thread hears how its act
 ended as the app's own note: an add-on call and a computer act wake it with
-what came back; the rest are told quietly ahead of its next turn.
+what came back; the rest are told quietly ahead of its next turn. A
+discard says his reason when he gave one (never for a change to a file
+others can open) and "from another device" for a press from a paired
+device. Ask the thread again wakes the thread: "The owner asks you to redo
+held item N (…): it went out of date because <why>. Draft it again from
+what is true now."
 
 **A grant** is made only from a held item (`work.outbox.grant({from,
 matcher})`), and its matcher must fit that item. It fits later acts of the
@@ -753,6 +787,8 @@ digest's rule decides whether it interrupts:
   that starts before the next digest interrupts; when a thread made the
   item, that notice goes out on the thread through `Notifier.held`, so the
   phone opens the Outbox item as it always did.
+- **An item that went out of date** waits as a held one does: `outbox.held`,
+  "Out of date: …", until he puts it away.
 - **A send that failed** is `outbox.failed`, "Not sent: …" with the error
   as its second line, key `unsent:<ref>@<decidedAt>` (the press it
   failed on; a LifeOS item with no press here is `unsent:<ref>`), so a

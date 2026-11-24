@@ -132,6 +132,8 @@ export interface ActKindDefOf<P, M, C> {
   matches?(m: M, p: P): boolean
   /** An edit in the Outbox, with what it may not change put back: the fields the act's carrier fixes for itself, so what he edits is what goes. */
   keep?(old: P, next: P): P
+  /** What a press does, in one sentence he reads before it (outbox/effects.ts has the words for every kind that says nothing here). */
+  effect?(p: P): string
   /** host-side; once per run key */
   execute(p: P, ctx: C): Promise<ActResult>
   /** null: "Sent mail cannot be taken back" */

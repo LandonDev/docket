@@ -5015,6 +5015,51 @@ public struct OutboxItem: Codable, Hashable, Sendable {
             }
         }
     }
+    public struct Changed: Codable, Hashable, Sendable {
+        public enum By: RawRepresentable, Codable, Hashable, Sendable {
+            case thread
+            case you
+            /// A value this build does not know; `rawValue` keeps it.
+            case unknown(String)
+
+            public init(rawValue: String) {
+                switch rawValue {
+                case "thread": self = .thread
+                case "you": self = .you
+                default: self = .unknown(rawValue)
+                }
+            }
+
+            public var rawValue: String {
+                switch self {
+                case .thread: "thread"
+                case .you: "you"
+                case .unknown(let value): value
+                }
+            }
+        }
+
+        public let at: Int
+        public let by: By
+        public let first: JSONValue?
+
+        public init(at: Int, by: By, first: JSONValue? = nil) {
+            self.at = at
+            self.by = by
+            self.first = first
+        }
+    }
+    public struct Replied: Codable, Hashable, Sendable {
+        public let from: String
+        public let at: Int
+        public let line: String
+
+        public init(from: String, at: Int, line: String) {
+            self.from = from
+            self.at = at
+            self.line = line
+        }
+    }
 
     public let ref: HeldRef
     public let kind: Kind
@@ -5040,9 +5085,15 @@ public struct OutboxItem: Codable, Hashable, Sendable {
     public let scheduledFor: Int?
     public let scheduledZone: String?
     public let lifeos: Lifeos?
+    public let effect: String?
+    public let changed: Changed?
+    public let replied: Replied?
+    public let reason: String?
+    public let via: String?
+    public let dismissedAt: Int?
     public let updatedAt: Int
 
-    public init(ref: HeldRef, kind: Kind, workspaceId: String?, sessionId: String?, sector: String?, summary: String, verb: String, account: String?, state: State, payload: JSONValue? = nil, createdAt: Int, decidedBy: String?, decidedAt: Int?, n: Int?, why: Why, grantId: String?, error: String?, result: Result?, routineRunId: String?, proposed: Bool? = nil, outcomeUnknown: Bool? = nil, scheduledFor: Int? = nil, scheduledZone: String? = nil, lifeos: Lifeos? = nil, updatedAt: Int) {
+    public init(ref: HeldRef, kind: Kind, workspaceId: String?, sessionId: String?, sector: String?, summary: String, verb: String, account: String?, state: State, payload: JSONValue? = nil, createdAt: Int, decidedBy: String?, decidedAt: Int?, n: Int?, why: Why, grantId: String?, error: String?, result: Result?, routineRunId: String?, proposed: Bool? = nil, outcomeUnknown: Bool? = nil, scheduledFor: Int? = nil, scheduledZone: String? = nil, lifeos: Lifeos? = nil, effect: String? = nil, changed: Changed? = nil, replied: Replied? = nil, reason: String? = nil, via: String? = nil, dismissedAt: Int? = nil, updatedAt: Int) {
         self.ref = ref
         self.kind = kind
         self.workspaceId = workspaceId
@@ -5067,11 +5118,17 @@ public struct OutboxItem: Codable, Hashable, Sendable {
         self.scheduledFor = scheduledFor
         self.scheduledZone = scheduledZone
         self.lifeos = lifeos
+        self.effect = effect
+        self.changed = changed
+        self.replied = replied
+        self.reason = reason
+        self.via = via
+        self.dismissedAt = dismissedAt
         self.updatedAt = updatedAt
     }
 
     private enum CodingKeys: String, CodingKey {
-        case ref, kind, workspaceId, sessionId, sector, summary, verb, account, state, payload, createdAt, decidedBy, decidedAt, n, why, grantId, error, result, routineRunId, proposed, outcomeUnknown, scheduledFor, scheduledZone, lifeos, updatedAt
+        case ref, kind, workspaceId, sessionId, sector, summary, verb, account, state, payload, createdAt, decidedBy, decidedAt, n, why, grantId, error, result, routineRunId, proposed, outcomeUnknown, scheduledFor, scheduledZone, lifeos, effect, changed, replied, reason, via, dismissedAt, updatedAt
     }
 
     public func encode(to encoder: any Encoder) throws {
@@ -5100,6 +5157,12 @@ public struct OutboxItem: Codable, Hashable, Sendable {
         try container.encodeIfPresent(scheduledFor, forKey: .scheduledFor)
         try container.encodeIfPresent(scheduledZone, forKey: .scheduledZone)
         try container.encodeIfPresent(lifeos, forKey: .lifeos)
+        try container.encodeIfPresent(effect, forKey: .effect)
+        try container.encodeIfPresent(changed, forKey: .changed)
+        try container.encodeIfPresent(replied, forKey: .replied)
+        try container.encodeIfPresent(reason, forKey: .reason)
+        try container.encodeIfPresent(via, forKey: .via)
+        try container.encodeIfPresent(dismissedAt, forKey: .dismissedAt)
         try container.encode(updatedAt, forKey: .updatedAt)
     }
 }

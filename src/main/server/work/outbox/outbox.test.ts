@@ -131,7 +131,8 @@ describe("a Work thread's add-on call", () => {
     expect(rig.downstream).toEqual([])
     expect((await rig.waiting()).map((i) => i.state)).toEqual(['held', 'held'])
     // each is still told: only he can press, wherever he is
-    expect(rig.tells).toHaveLength(2)
+    // (the sync may tell them again in the same words, which the ledger takes as no change)
+    expect(new Set(rig.tells.map((t) => t.key)).size).toBe(2)
   })
 
   it('is still held with the Work switch off: the row decides, never the switch', async () => {
@@ -793,5 +794,74 @@ describe('the rules card and the push', () => {
     expect(await rig.waiting()).toEqual([])
     expect(rig.host.store.grants()).toEqual([])
     expect(rig.host.store.list({ show: 'all' })).toHaveLength(2)
+  })
+})
+
+describe('Outbox 2: what he reads before he presses', () => {
+  const heldEcho = async (text: string): Promise<OutboxItem> => {
+    const slack = await rig.addon('slack', 'ws-purdue')
+    await rig.claudeCall('t-work', slack.id, 'echo', { text })
+    return (await rig.waiting()).at(-1)!
+  }
+
+  it('says in one sentence what the press does', async () => {
+    const item = await heldEcho('x')
+    expect(item.effect).toBe('Runs Echo on slack with what is below.')
+  })
+
+  it('a discard carries his reason to the thread, and says when it came from another device', async () => {
+    const item = await heldEcho('x')
+    const gone = await rig.rpc<OutboxItem>('work.outbox.discard', { ref: item.ref, reason: '  Wrong list,   use the staff one ', via: 'outbox' }, approveKey)
+    expect(gone).toMatchObject({ state: 'discarded', decidedBy: 'owner:remote', reason: 'Wrong list,   use the staff one', via: 'outbox' })
+    expect(rig.whispers.at(-1)!.text).toBe('The owner discarded held item 1 (Echo with Slack: “x”) from another device: "Wrong list, use the staff one". It will not go. Do not send it another way.')
+  })
+
+  it('an item that went out of date waits, and counts, until he puts it away; its thread hears nothing more', async () => {
+    const item = await heldEcho('x')
+    const id = (item.ref as { id: string }).id
+    rig.host.store.stale(id, 'The screen moved on.')
+    expect((await rig.waiting()).map((i) => i.state)).toEqual(['stale'])
+    expect(rig.host.outbox.waiting()).toBe(1)
+    const told = rig.whispers.length
+    const put = await rig.rpc<OutboxItem>('work.outbox.discard', { ref: item.ref, reason: 'not needed' })
+    expect(put).toMatchObject({ state: 'stale', reason: 'not needed' })
+    expect(put.dismissedAt).toEqual(expect.any(Number))
+    expect(await rig.waiting()).toEqual([])
+    expect(rig.host.outbox.waiting()).toBe(0)
+    expect(rig.whispers.length).toBe(told)
+    const done = await rig.rpc<{ items: OutboxItem[] }>('work.outbox.list', { show: 'done' })
+    expect(done.items.map((i) => [i.state, i.reason])).toEqual([['stale', 'not needed']])
+  })
+
+  it('Ask the thread again puts an out-of-date item away and wakes its thread to draft it again', async () => {
+    const item = await heldEcho('x')
+    await expect(rig.rpc('work.outbox.askAgain', { ref: item.ref })).rejects.toThrow(/out of date/)
+    rig.host.store.stale((item.ref as { id: string }).id, 'The channel was archived.')
+    const put = await rig.rpc<OutboxItem>('work.outbox.askAgain', { ref: item.ref })
+    expect(put).toMatchObject({ state: 'stale', reason: 'out of date' })
+    await until(() => rig.woke.length > 0 || rig.whispers.some((w) => w.text.startsWith('The owner asks you to redo')))
+    const said = [...rig.woke, ...rig.whispers].map((w) => w.text).find((t) => t.startsWith('The owner asks you to redo'))
+    expect(said).toBe('The owner asks you to redo held item 1 (Echo with Slack: “x”): it went out of date because The channel was archived. Draft it again from what is true now; it will be held again for his press.')
+  })
+
+  it('a thread may not ask again or discard with a reason', async () => {
+    const item = await heldEcho('x')
+    const by = { kind: 'model' as const, caps: ['read', 'operate', 'approve', 'admin'], sessionId: 't-work' }
+    for (const [method, params] of [
+      ['work.outbox.askAgain', { ref: item.ref }],
+      ['work.outbox.discard', { ref: item.ref, reason: 'x' }]
+    ] as const)
+      await expect(outboxModule.handle!({ id: '1', method, params } as never, rig.work.ctx, by as never)).rejects.toThrow(NOT_A_PERSON)
+  })
+
+  it('says it changed, and whose words it is now: his edit, then the thread\'s', async () => {
+    const item = await heldEcho('first words')
+    expect(item.changed).toBeUndefined()
+    const mine = await rig.rpc<OutboxItem>('work.outbox.edit', { ref: item.ref, payload: { arguments: { text: 'his words' } } })
+    expect(mine.changed).toMatchObject({ by: 'you' })
+    const got = await rig.rpc<OutboxItem>('work.outbox.get', { ref: item.ref })
+    expect(got.changed).toMatchObject({ by: 'you', first: { arguments: { text: 'first words' } } })
+    rig.host.store.edit((item.ref as { id: string }).id, { payload: { ...(mine.payload as object), arguments: { text: 'the thread again' } }, summary: mine.summary, verb: mine.verb })
+    expect((await rig.waiting())[0]!.changed).toMatchObject({ by: 'thread' })
   })
 })

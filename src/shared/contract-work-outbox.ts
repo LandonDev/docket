@@ -50,7 +50,30 @@ export interface OutboxItem extends HeldItem {
   scheduledZone?: string
   /** a mail or calendar act stored `sent`: what LifeOS last said of it for this attempt, `queued` short of its word (absent: an act LifeOS does not hold, or one sent before this host asked) */
   lifeos?: LifeosSaid
+  /** what a press does, in one sentence ("Goes from landon@purdue.edu to Dana Lee after your undo time.") */
+  effect?: string
+  /** what would go differs from what the thread first wrote: when, and whose words it is now. `get` adds `first`, the words as first written, for Show changes. */
+  changed?: OutboxChanged
+  /** a mail whose conversation got a newer message from someone else after it was made (`get` only) */
+  replied?: OutboxReplied
+  /** why he discarded it, for the thread */
+  reason?: string
+  /** where the press was made: `outbox`, `today`, `phone`, `mail`, `scheduled`, or `request:<id>` for a thread's request he answered */
+  via?: string
+  /** an item that went out of date and that he put away: it no longer waits */
+  dismissedAt?: number
   updatedAt: number
+}
+export interface OutboxChanged {
+  at: number
+  by: 'thread' | 'you'
+  first?: unknown
+}
+export interface OutboxReplied {
+  from: string
+  at: number
+  /** the first line of what they wrote */
+  line: string
 }
 export const OutboxItemSchema = HeldItemSchema.extend({
   n: z.number().int().nullable(),
@@ -65,6 +88,12 @@ export const OutboxItemSchema = HeldItemSchema.extend({
   scheduledFor: z.number().int().optional(),
   scheduledZone: z.string().optional(),
   lifeos: z.enum(LIFEOS_SAID).optional(),
+  effect: z.string().optional(),
+  changed: z.object({ at: z.number().int(), by: z.enum(['thread', 'you']), first: z.unknown().optional() }).optional(),
+  replied: z.object({ from: z.string(), at: z.number().int(), line: z.string() }).optional(),
+  reason: z.string().optional(),
+  via: z.string().optional(),
+  dismissedAt: z.number().int().optional(),
   updatedAt: z.number().int()
 })
 
@@ -172,10 +201,13 @@ export interface WorkResult {
   createdAt: number
 }
 
+/** Where a press was made, as the client says it (Done's words); a thread's request is the host's own to record. */
+export const PressViaSchema = z.enum(['outbox', 'today', 'phone', 'mail'])
+
 const ListParams = z
   .object({
-    /** `waiting` (the default): held, live, sending and failed. `decided`: sent, discarded and stale, newest first. */
-    show: z.enum(['waiting', 'decided', 'all']).optional(),
+    /** `waiting` (the default): held, live, sending, failed, and stale until he discards it. `done` (or `decided`): sent, discarded, and stale he put away, newest first. */
+    show: z.enum(['waiting', 'done', 'decided', 'all']).optional(),
     workspaceId: z.string().optional(),
     sessionId: z.string().optional(),
     limit: z.number().int().min(1).max(500).optional()
@@ -189,9 +221,11 @@ export const OutboxRequestSchemas = [
   request('work.outbox.get', z.object({ ref: HeldRefSchema })),
   /** → OutboxItem: the owner's press. Runs the act once: a second press, another client's press and a restart never run it again. */
   /** `rev`: the item's `updatedAt` as the screen read it. Required for an item LifeOS holds, so what goes is what was shown; for a host row a press on a stale view is refused when given. */
-  request('work.outbox.send', z.object({ ref: HeldRefSchema, rev: z.number().int().optional(), /** he checked Sent and chose Send again on an item whose last send may have gone */ again: z.boolean().optional(), /** one of several sent by one press (a group's Send N, ticked rows): it earns no offered grant */ many: z.boolean().optional() })),
-  /** → OutboxItem: the act will never go */
-  request('work.outbox.discard', z.object({ ref: HeldRefSchema })),
+  request('work.outbox.send', z.object({ ref: HeldRefSchema, rev: z.number().int().optional(), /** he checked Sent and chose Send again on an item whose last send may have gone */ again: z.boolean().optional(), /** one of several sent by one press (a group's Send N, ticked rows): it earns no offered grant */ many: z.boolean().optional(), via: PressViaSchema.optional() })),
+  /** → OutboxItem: the act will never go. `reason`: his words for the thread. An item that went out of date is put away the same way. */
+  request('work.outbox.discard', z.object({ ref: HeldRefSchema, reason: z.string().max(500).optional(), via: PressViaSchema.optional() })),
+  /** → OutboxItem: an item that went out of date, put away with "out of date", and its thread asked to draft it again from what is true now */
+  request('work.outbox.askAgain', z.object({ ref: HeldRefSchema })),
   /** → OutboxItem: change exactly what will go, while it waits. `payload` is the kind's own shape. */
   request('work.outbox.edit', z.object({ ref: HeldRefSchema, payload: z.unknown() })),
   /** → OutboxGrant: let later acts like this one go without a press. Only from a held item, only by a person with admin. `routine`: for the routine whose run made the item, and no other thread. */
@@ -233,6 +267,7 @@ export const OUTBOX_CAPS = {
   'work.outbox.get': 'read',
   'work.outbox.send': 'approve',
   'work.outbox.discard': 'approve',
+  'work.outbox.askAgain': 'approve',
   'work.outbox.edit': 'approve',
   'work.outbox.grant': 'admin',
   'work.outbox.grants': 'read',

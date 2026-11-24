@@ -1,5 +1,5 @@
 import { createElement, useEffect, useMemo } from "react";
-import type { SectorKey } from "@shared/work";
+import { needsHim, type SectorKey } from "@shared/work";
 import { useWorkspaces } from "../../lib/tcserver/workspaces";
 import { WORK_CHATS_KEY } from "../outbox/model";
 import { KindGlyph, rowWords } from "../outbox/OutboxView";
@@ -47,11 +47,12 @@ export function placeOf(item: Pick<HostItem, "environmentId" | "workspaceId">, n
  * the one its sheet will.
  */
 export function heldRows(waiting: readonly HostItem[], now = Date.now(), jobOf: (item: HostItem) => string | undefined = () => undefined): TodayRow[] {
-  return waiting.map((item) => {
+  // The one count (shared/work/outboxCount.ts): a send under way or one he scheduled is not his to decide again.
+  return waiting.filter((item) => needsHim(item)).map((item) => {
     const key = heldKey(item);
     const job = jobOf(item);
     const { act, about } = rowWords(item);
-    const detail = item.state === "failed" ? (item.error ?? "Couldn't send") : item.state === "sending" ? "Sending" : (about ?? item.account ?? undefined);
+    const detail = item.state === "failed" ? (item.error ?? "Couldn't send") : item.state === "stale" ? "Out of date" : (about ?? item.account ?? undefined);
     return {
       key,
       section: SECTION.id,
@@ -59,7 +60,7 @@ export function heldRows(waiting: readonly HostItem[], now = Date.now(), jobOf: 
       ...(job ? { job } : {}),
       title: act,
       ...(detail ? { detail } : {}),
-      ...(item.state === "failed" ? { detailLate: true } : {}),
+      ...(item.state === "failed" || item.state === "stale" ? { detailLate: true } : {}),
       at: item.createdAt,
       when: heldWhen(item.createdAt, now),
       lead: leadOf(item.kind),

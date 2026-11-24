@@ -254,3 +254,13 @@ describe('the ledger kept in step', () => {
     expect(logs).toEqual(['outbox: what it tells was not brought up to date: the table is gone'])
   })
 })
+
+describe('the one count', () => {
+  it('tells exactly what the rail counts: held, live, failed and out of date, never a send under way or one he scheduled', async () => {
+    const { COUNT_FIXTURE, COUNT_FIXTURE_WAITS } = await import('@shared/work/outboxCount.fixture')
+    const source: TellsSource = { waiting: () => COUNT_FIXTURE, offers: () => [], lifeosLoaded: () => ({ outbox: true, calendarOps: true }) }
+    syncTells(deps, source)
+    expect(told.filter((t) => t.kind === 'outbox.held' || t.kind === 'outbox.failed')).toHaveLength(COUNT_FIXTURE_WAITS)
+    expect(told.find((t) => t.key === heldKey({ at: 'host', id: 'ha_4' }))?.title).toBe('Out of date: Post 4')
+  })
+})

@@ -26,11 +26,22 @@ export const HELD_TABLE = 'work_held_acts'
 export const BOUND_TABLE = 'work_outbox_bound_events'
 export const GRANTS_TABLE = 'work_grants'
 export const RULES_TABLE = 'work_outbox_tool_rules'
+/** The revision his own edit left, by run key: an item whose revision is still that one reads "changed by you", any later one "by the thread". */
+export const EDITS_TABLE = 'work_held_edits'
 
 /** States a press may take a row from. `failed` is in: a send that failed waits on him as much as a held one does. */
 export const PRESSABLE: readonly HeldState[] = ['held', 'live', 'failed']
-/** States that wait on the owner: what the Outbox row counts. */
+/** States that wait on the owner, as the Waiting list shows them; an item that went out of date waits too, until he discards it (`WAITING_SQL`). */
 export const WAITING: readonly HeldState[] = ['held', 'live', 'failed', 'sending']
+/** What the Waiting list holds, as SQL: the states above, and a stale row he has not discarded. */
+const WAITING_SQL = `(state IN ('held', 'live', 'failed', 'sending') OR (state = 'stale' AND dismissed_at IS NULL))`
+/** What the count holds (shared/work/outboxCount.ts `needsHim`): the same less a row being sent. */
+const COUNTED_SQL = `(state IN ('held', 'live', 'failed') OR (state = 'stale' AND dismissed_at IS NULL))`
+/** Where a press was made, as Done says it. `request:<id>` is the host's own, for a thread's request he answered. */
+export const VIAS = ['outbox', 'today', 'phone', 'mail', 'scheduled'] as const
+export type Via = (typeof VIAS)[number] | `request:${string}`
+/** The longest reason a discard keeps for the thread. */
+export const REASON_MAX = 500
 
 export const INTERRUPTED = 'The app stopped while this was being sent, so it may or may not have gone. Check before you send it again.'
 export const LIVE_LOST = 'The app restarted, so the screen this act was read from is gone.'
@@ -42,6 +53,15 @@ export function ensureOutboxTables(db: DatabaseSync): void {
   if (!columns.includes('outcome_unknown')) {
     db.exec(`ALTER TABLE ${HELD_TABLE} ADD COLUMN outcome_unknown INTEGER NOT NULL DEFAULT 0`)
     db.exec(`UPDATE ${HELD_TABLE} SET outcome_unknown = 1 WHERE state = 'failed' AND run_key NOT LIKE 'lifeos:%'`)
+  }
+  // Outbox 2: a discard's reason, where the press was made, and when a stale row was put away. A database made before
+  // it has every stale row put away already: only what goes out of date from now on waits for him.
+  if (!columns.includes('dismissed_at')) {
+    db.exec(`ALTER TABLE ${HELD_TABLE} ADD COLUMN reason TEXT`)
+    db.exec(`ALTER TABLE ${HELD_TABLE} ADD COLUMN via TEXT`)
+    db.exec(`ALTER TABLE ${HELD_TABLE} ADD COLUMN dismissed_by TEXT`)
+    db.exec(`ALTER TABLE ${HELD_TABLE} ADD COLUMN dismissed_at INTEGER`)
+    db.exec(`UPDATE ${HELD_TABLE} SET dismissed_at = updated_at WHERE state = 'stale'`)
   }
 }
 
@@ -70,6 +90,10 @@ function ensureTables(db: DatabaseSync): void {
       attempts       INTEGER NOT NULL DEFAULT 0,
       outcome_unknown INTEGER NOT NULL DEFAULT 0,
       task           TEXT,
+      reason         TEXT,
+      via            TEXT,
+      dismissed_by   TEXT,
+      dismissed_at   INTEGER,
       created_at     INTEGER NOT NULL,
       updated_at     INTEGER NOT NULL
     );
@@ -85,6 +109,10 @@ function ensureTables(db: DatabaseSync): void {
       routine_id   TEXT,
       created_at   INTEGER NOT NULL,
       removed_at   INTEGER
+    );
+    CREATE TABLE IF NOT EXISTS ${EDITS_TABLE} (
+      run_key TEXT PRIMARY KEY,
+      rev     INTEGER NOT NULL
     );
     CREATE TABLE IF NOT EXISTS ${BOUND_TABLE} (
       act_id  TEXT PRIMARY KEY,
@@ -128,6 +156,10 @@ type Row = {
   routine_run_id: string | null
   attempts: number
   outcome_unknown: number
+  reason: string | null
+  via: string | null
+  dismissed_by: string | null
+  dismissed_at: number | null
   created_at: number
   updated_at: number
 }
@@ -158,6 +190,13 @@ export interface HeldRow {
   attempts: number
   /** a failed send whose end nobody knows (a timeout, a lost answer, a stop mid-send): it may have gone, so a press must say "Send again" */
   outcomeUnknown: boolean
+  /** why he discarded it, for the thread */
+  reason: string | null
+  /** where the press was made (`Via`) */
+  via: string | null
+  /** a stale row he put away: by whom and when; until then it waits */
+  dismissedBy: string | null
+  dismissedAt: number | null
   createdAt: number
   updatedAt: number
 }
@@ -224,6 +263,10 @@ const decode = (r: Row): HeldRow => ({
   routineRunId: r.routine_run_id,
   attempts: Number(r.attempts),
   outcomeUnknown: Number(r.outcome_unknown) === 1,
+  reason: r.reason ?? null,
+  via: r.via ?? null,
+  dismissedBy: r.dismissed_by ?? null,
+  dismissedAt: r.dismissed_at == null ? null : Number(r.dismissed_at),
   createdAt: Number(r.created_at),
   updatedAt: Number(r.updated_at)
 })
@@ -257,6 +300,9 @@ export const itemOfRow = (row: HeldRow): OutboxItem => ({
   result: row.result,
   routineRunId: row.routineRunId,
   ...(row.outcomeUnknown ? { outcomeUnknown: true } : {}),
+  ...(row.reason ? { reason: row.reason } : {}),
+  ...(row.via ? { via: row.via } : {}),
+  ...(row.dismissedAt != null ? { dismissedAt: row.dismissedAt } : {}),
   updatedAt: row.updatedAt
 })
 
@@ -338,13 +384,8 @@ export class HeldStore {
     const show = q.show ?? 'waiting'
     const where: string[] = []
     const args: (string | number)[] = []
-    if (show === 'waiting') {
-      where.push(`state IN (${marks(WAITING)})`)
-      args.push(...WAITING)
-    } else if (show === 'decided') {
-      where.push(`state NOT IN (${marks(WAITING)})`)
-      args.push(...WAITING)
-    }
+    if (show === 'waiting') where.push(WAITING_SQL)
+    else if (show === 'decided') where.push(`NOT ${WAITING_SQL}`)
     // null: the acts outside every workspace (a Work Chat's).
     if (q.workspaceId === null) where.push('workspace_id IS NULL')
     else if (q.workspaceId !== undefined) {
@@ -378,8 +419,9 @@ export class HeldStore {
     return Number(row.c)
   }
 
+  /** How many rows wait on him (`needsHim`): held, live, failed, and stale until he discards it. */
   waiting(): number {
-    const row = this.db.prepare(`SELECT COUNT(*) AS c FROM ${HELD_TABLE} WHERE state IN (${marks(['held', 'live', 'failed'])})`).get('held', 'live', 'failed') as { c: number }
+    const row = this.db.prepare(`SELECT COUNT(*) AS c FROM ${HELD_TABLE} WHERE ${COUNTED_SQL}`).get() as { c: number }
     return Number(row.c)
   }
 
@@ -389,14 +431,14 @@ export class HeldStore {
    * get null and send nothing. A row whose last send may have gone is taken
    * only with `again`: he chose Send again.
    */
-  claim(id: string, decidedBy: string, grantId: string | null = null, opts: { again?: boolean } = {}): HeldRow | null {
+  claim(id: string, decidedBy: string, grantId: string | null = null, opts: { again?: boolean; via?: Via | null } = {}): HeldRow | null {
     const at = this.now()
     const done = this.db
       .prepare(
-        `UPDATE ${HELD_TABLE} SET state = 'sending', decided_by = ?, decided_at = ?, grant_id = ?, error = NULL, outcome_unknown = 0, attempts = attempts + 1, updated_at = MAX(updated_at + 1, ?)
+        `UPDATE ${HELD_TABLE} SET state = 'sending', decided_by = ?, decided_at = ?, grant_id = ?, via = ?, error = NULL, outcome_unknown = 0, attempts = attempts + 1, updated_at = MAX(updated_at + 1, ?)
          WHERE id = ? AND state IN (${marks(PRESSABLE)}) AND (outcome_unknown = 0 OR ? = 1)`
       )
-      .run(decidedBy, at, grantId, at, id, ...PRESSABLE, opts.again ? 1 : 0)
+      .run(decidedBy, at, grantId, opts.via ?? null, at, id, ...PRESSABLE, opts.again ? 1 : 0)
     return Number(done.changes) === 1 ? this.told(id) : null
   }
 
@@ -408,13 +450,32 @@ export class HeldStore {
     return Number(done.changes) === 1 ? this.told(id) : null
   }
 
-  /** The act will never go. Only a row that waits is discarded; one being sent is not. */
-  discard(id: string, decidedBy: string): HeldRow | null {
+  /**
+   * The act will never go. Only a row that waits is discarded; one being sent is not. A stale row stays stale, put
+   * away: Done says it went out of date, with his reason.
+   */
+  discard(id: string, decidedBy: string, opts: { reason?: string | null; via?: Via | null } = {}): HeldRow | null {
     const at = this.now()
+    const reason = opts.reason?.trim().slice(0, REASON_MAX) || null
     const done = this.db
-      .prepare(`UPDATE ${HELD_TABLE} SET state = 'discarded', decided_by = ?, decided_at = ?, updated_at = MAX(updated_at + 1, ?) WHERE id = ? AND state IN (${marks(PRESSABLE)})`)
-      .run(decidedBy, at, at, id, ...PRESSABLE)
-    return Number(done.changes) === 1 ? this.told(id) : null
+      .prepare(`UPDATE ${HELD_TABLE} SET state = 'discarded', decided_by = ?, decided_at = ?, reason = ?, via = ?, updated_at = MAX(updated_at + 1, ?) WHERE id = ? AND state IN (${marks(PRESSABLE)})`)
+      .run(decidedBy, at, reason, opts.via ?? null, at, id, ...PRESSABLE)
+    if (Number(done.changes) === 1) return this.told(id)
+    const put = this.db
+      .prepare(`UPDATE ${HELD_TABLE} SET dismissed_by = ?, dismissed_at = ?, reason = ?, via = ?, updated_at = MAX(updated_at + 1, ?) WHERE id = ? AND state = 'stale' AND dismissed_at IS NULL`)
+      .run(decidedBy, at, reason, opts.via ?? null, at, id)
+    return Number(put.changes) === 1 ? this.told(id) : null
+  }
+
+  /** His own edit left this revision: until it moves, a change from the first words is his. */
+  markEdited(runKey: string, rev: number): void {
+    this.db.prepare(`INSERT INTO ${EDITS_TABLE} (run_key, rev) VALUES (?, ?) ON CONFLICT(run_key) DO UPDATE SET rev = excluded.rev`).run(runKey, rev)
+  }
+
+  /** The revision his last edit left, or null. */
+  editedRev(runKey: string): number | null {
+    const row = this.db.prepare(`SELECT rev FROM ${EDITS_TABLE} WHERE run_key = ?`).get(runKey) as { rev: number } | undefined
+    return row ? Number(row.rev) : null
   }
 
   /** The screen or the store a waiting act was read from moved on: it can no longer be carried out as shown. */
@@ -442,7 +503,8 @@ export class HeldStore {
     let n = 0
     for (const id of sessionIds)
       for (const row of (this.db.prepare(`${SELECT} WHERE session_id = ? AND state IN (${marks(PRESSABLE)})`).all(id, ...PRESSABLE) as unknown as Row[]).map(decode)) {
-        const done = this.db.prepare(`UPDATE ${HELD_TABLE} SET state = 'stale', error = ?, updated_at = MAX(updated_at + 1, ?) WHERE id = ? AND state IN (${marks(PRESSABLE)})`).run(why, this.now(), row.id, ...PRESSABLE)
+        // He removed the thread himself: what it made is put away with it, not left waiting for him to discard.
+        const done = this.db.prepare(`UPDATE ${HELD_TABLE} SET state = 'stale', error = ?, dismissed_by = 'host', dismissed_at = ?, updated_at = MAX(updated_at + 1, ?) WHERE id = ? AND state IN (${marks(PRESSABLE)})`).run(why, this.now(), this.now(), row.id, ...PRESSABLE)
         if (Number(done.changes) === 1) {
           n++
           this.told(row.id)
@@ -481,8 +543,8 @@ export class HeldStore {
     const at = this.now()
     return Number(
       this.db
-        .prepare(`UPDATE ${HELD_TABLE} SET state = 'stale', error = ?, updated_at = MAX(updated_at + 1, ?) WHERE workspace_id = ? AND state IN (${marks(PRESSABLE)})`)
-        .run(why, at, workspaceId, ...PRESSABLE).changes
+        .prepare(`UPDATE ${HELD_TABLE} SET state = 'stale', error = ?, dismissed_by = 'host', dismissed_at = ?, updated_at = MAX(updated_at + 1, ?) WHERE workspace_id = ? AND state IN (${marks(PRESSABLE)})`)
+        .run(why, at, at, workspaceId, ...PRESSABLE).changes
     )
   }
 

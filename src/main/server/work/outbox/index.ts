@@ -12,6 +12,7 @@ import { ensureEarnedTables } from './earned'
 import { ensureSaidTable } from './confirmed'
 import { ensureOutboxTables } from './store'
 import { PRIVATE_CHANGE, PRIVATE_CHANGE_KINDS, PRIVATE_ERROR, summaryFor } from './words'
+import { PRIVATE_EFFECT } from './effects'
 import { pressesFor } from '../files/policy'
 import { outboxMentions } from './mentions'
 
@@ -71,10 +72,17 @@ export function seenBy(by: Caller, item: OutboxItem): OutboxItem {
     const p = item.payload as FileAct
     // What its card draws, and nothing else: no refs, no digest, no operation id, no versions, no name it would give.
     const card = { verb: p.verb, request: { ...(p.request.kind ? { kind: p.request.kind } : {}) }, things: p.things.map((t) => ({ name: t.name })), from: p.from, ...(p.into ? { into: { place: p.into.place, name: p.into.name, trail: p.into.trail } } : {}), audience: p.audience }
-    return { ...item, summary: summaryFor(item), error, payload: card, result: item.result ? { summary: item.state === 'sent' ? item.result.summary : PRIVATE_CHANGE } : null }
+    return { ...item, ...hidden(item), summary: summaryFor(item), error, payload: card, result: item.result ? { summary: item.state === 'sent' ? item.result.summary : PRIVATE_CHANGE } : null }
   }
-  return { ...item, summary: summaryFor(item), error, payload: null, result: item.result ? { summary: item.result.summary } : null }
+  return { ...item, ...hidden(item), summary: summaryFor(item), error, payload: null, result: item.result ? { summary: item.result.summary } : null }
 }
+
+/** What a private change says outside his press: the plain effect, no first words, no reason that could quote the file. */
+const hidden = (item: OutboxItem): Partial<OutboxItem> => ({
+  effect: PRIVATE_EFFECT,
+  ...(item.changed ? { changed: { at: item.changed.at, by: item.changed.by } } : {}),
+  ...(item.reason ? { reason: PRIVATE_CHANGE } : {})
+})
 
 /** A computer act's picture, read for one item: the list never carries it. */
 async function withPicture(host: OutboxHost, item: OutboxItem): Promise<OutboxItem> {
@@ -135,10 +143,13 @@ export const outbox: WorkModule = {
         return handled(seenBy(by, await withPicture(host, await box.get(req.params.ref))))
       case 'work.outbox.send':
         mustBePerson(by, 'approve')
-        return handled(await box.send(req.params.ref, { ...(req.params.rev !== undefined ? { rev: req.params.rev } : {}), ...(req.params.again ? { again: true } : {}), ...(req.params.many ? { many: true } : {}), by: person(by) }))
+        return handled(await box.send(req.params.ref, { ...(req.params.rev !== undefined ? { rev: req.params.rev } : {}), ...(req.params.again ? { again: true } : {}), ...(req.params.many ? { many: true } : {}), ...(req.params.via ? { via: req.params.via } : {}), by: person(by) }))
       case 'work.outbox.discard':
         mustBePerson(by, 'approve')
-        return handled(await box.discard(req.params.ref, person(by)))
+        return handled(await box.discard(req.params.ref, person(by), { ...(req.params.reason ? { reason: req.params.reason } : {}), ...(req.params.via ? { via: req.params.via } : {}) }))
+      case 'work.outbox.askAgain':
+        mustBePerson(by, 'approve')
+        return handled(await box.askAgain(req.params.ref, person(by)))
       case 'work.outbox.edit':
         mustBePerson(by, 'approve')
         return handled(await box.edit(req.params.ref, req.params.payload))

@@ -2460,6 +2460,7 @@ public enum Methods {
         public struct Params: Codable, Hashable, Sendable {
             public enum Show: RawRepresentable, Codable, Hashable, Sendable {
                 case waiting
+                case done
                 case decided
                 case all
                 /// A value this build does not know; `rawValue` keeps it.
@@ -2468,6 +2469,7 @@ public enum Methods {
                 public init(rawValue: String) {
                     switch rawValue {
                     case "waiting": self = .waiting
+                    case "done": self = .done
                     case "decided": self = .decided
                     case "all": self = .all
                     default: self = .unknown(rawValue)
@@ -2477,6 +2479,7 @@ public enum Methods {
                 public var rawValue: String {
                     switch self {
                     case .waiting: "waiting"
+                    case .done: "done"
                     case .decided: "decided"
                     case .all: "all"
                     case .unknown(let value): value
@@ -2526,16 +2529,47 @@ public enum Methods {
         public static let name = "work.outbox.send"
 
         public struct Params: Codable, Hashable, Sendable {
+            public enum Via: RawRepresentable, Codable, Hashable, Sendable {
+                case outbox
+                case today
+                case phone
+                case mail
+                /// A value this build does not know; `rawValue` keeps it.
+                case unknown(String)
+
+                public init(rawValue: String) {
+                    switch rawValue {
+                    case "outbox": self = .outbox
+                    case "today": self = .today
+                    case "phone": self = .phone
+                    case "mail": self = .mail
+                    default: self = .unknown(rawValue)
+                    }
+                }
+
+                public var rawValue: String {
+                    switch self {
+                    case .outbox: "outbox"
+                    case .today: "today"
+                    case .phone: "phone"
+                    case .mail: "mail"
+                    case .unknown(let value): value
+                    }
+                }
+            }
+
             public let ref: HeldRef
             public let rev: Int?
             public let again: Bool?
             public let many: Bool?
+            public let via: Via?
 
-            public init(ref: HeldRef, rev: Int? = nil, again: Bool? = nil, many: Bool? = nil) {
+            public init(ref: HeldRef, rev: Int? = nil, again: Bool? = nil, many: Bool? = nil, via: Via? = nil) {
                 self.ref = ref
                 self.rev = rev
                 self.again = again
                 self.many = many
+                self.via = via
             }
         }
 
@@ -2546,10 +2580,43 @@ public enum Methods {
         public static let name = "work.outbox.discard"
 
         public struct Params: Codable, Hashable, Sendable {
-            public let ref: HeldRef
+            public enum Via: RawRepresentable, Codable, Hashable, Sendable {
+                case outbox
+                case today
+                case phone
+                case mail
+                /// A value this build does not know; `rawValue` keeps it.
+                case unknown(String)
 
-            public init(ref: HeldRef) {
+                public init(rawValue: String) {
+                    switch rawValue {
+                    case "outbox": self = .outbox
+                    case "today": self = .today
+                    case "phone": self = .phone
+                    case "mail": self = .mail
+                    default: self = .unknown(rawValue)
+                    }
+                }
+
+                public var rawValue: String {
+                    switch self {
+                    case .outbox: "outbox"
+                    case .today: "today"
+                    case .phone: "phone"
+                    case .mail: "mail"
+                    case .unknown(let value): value
+                    }
+                }
+            }
+
+            public let ref: HeldRef
+            public let reason: String?
+            public let via: Via?
+
+            public init(ref: HeldRef, reason: String? = nil, via: Via? = nil) {
                 self.ref = ref
+                self.reason = reason
+                self.via = via
             }
         }
 

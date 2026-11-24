@@ -1,7 +1,7 @@
 import { ROUTINE_UNKNOWN, routineRunUp } from '../provenance'
 import { z } from 'zod'
 import type { OutboxItem } from '@shared/contract-work-outbox'
-import { errorText, WORK_HOME, workspaceKindOf, type ActKind, type HeldItem, type LifeosOrigin } from '@shared/work'
+import { errorText, needsHim, WORK_HOME, workspaceKindOf, type ActKind, type HeldItem, type LifeosOrigin } from '@shared/work'
 import { configureLifeosRow } from '../../addonStore'
 import { configureComputerHold, HELD_STALE, type HeldComputerCall } from '../../computer/run'
 import type { ComputerToolOutcome } from '../../computer/result'
@@ -144,7 +144,8 @@ export const heldPart: CtxPart<'held'> = (ctx, deps) => {
   // An item that reached its end is no longer waiting: its row goes at once. Whatever else moved (a failed send, an
   // offer, an item decided on another device) is brought up to date a moment later, once for a burst of changes.
   outbox.onDecided((item) => {
-    if (item.state !== 'failed') ctx.tell.done(heldKey(item.ref))
+    // One that still waits on him (a failed send, one out of date) is told again as it stands by the sync below.
+    if (!needsHim(item)) ctx.tell.done(heldKey(item.ref))
   })
   let syncing: ReturnType<typeof setTimeout> | null = null
   outbox.onChange(() => {
