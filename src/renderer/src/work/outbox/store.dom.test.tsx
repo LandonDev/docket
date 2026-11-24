@@ -172,6 +172,15 @@ describe("a detail", () => {
     results.unmount();
   });
 
+  it("of a held computer act is one ask: its whole read and its picture share it", async () => {
+    world.items = [item("p", { kind: "computer.act" } as Partial<OutboxItem>)];
+    const shown = { ...world.items[0]!, environmentId: "box" } as store.HostItem;
+    // HeldDetail's useWhole and parts.tsx's usePicture each ask for the item whole.
+    await Promise.all([store.fetchDetail(shown), store.fetchDetail(shown)]);
+    expect(methods()).toEqual(["work.outbox.get"]);
+    expect(world.calls[0]!.params.results).toBeUndefined();
+  });
+
   it("from a host whose answer carries no Results, asks for them on their own", async () => {
     world.withResults = false;
     world.items = [item("s", { state: "sent", decidedAt: 5, sessionId: "t2" } as Partial<OutboxItem>)];
