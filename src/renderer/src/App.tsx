@@ -281,6 +281,7 @@ import {
   type AppCommandId,
 } from "./lib/appCommands";
 import { filesPort } from "./lib/filesKeys";
+import { canvasClosePort } from "./lib/canvasClosePort";
 import { preparePrompt } from "./lib/promptPreparation";
 import { deriveMentionAttachments } from "./lib/mentionAttachments";
 import {
@@ -1406,6 +1407,8 @@ export default function App() {
 
   const onClosePane = useCallback(
     (sessionId?: string) => {
+      // Focus on the item side of a Work thread's pane: the item shown closes, never the thread.
+      if (sessionId === undefined && canvasClosePort.run(document.activeElement)) return;
       if (sessionId === undefined && projectTerminalFocused) {
         const dock = currentDock(currentDockCwd());
         if (dock) {

@@ -10,7 +10,7 @@ import { ItemButton } from "../../components/ui/item";
 import { ROW_PRESS } from "../../components/ui/press";
 import { loadToast } from "../../components/ui/toaster";
 import { registry, LOCAL_ENVIRONMENT_ID } from "../../lib/connection";
-import { leaveLive } from "../office/live/leave";
+import { readyToClose } from "../canvas/closeDoor";
 import { liveSourceOf } from "../office/live/liveSwitch";
 import { filesPort, type FilesCommand } from "../../lib/filesKeys";
 import { refusalWords } from "../../lib/settingsHome";
@@ -36,7 +36,6 @@ import { fetchHere, fileOf, openEntry, openInApp, type Busy } from "./open";
 import { ListBones, PageBar, PageView, type NoteFixes, type PageActs, type PageFind } from "./Page";
 import { useSideOpen, hasClosed, openAtSide, closeSide, openFileTab, rememberClosed, takeClosed, dropSearch, saveSearch, useHome, useSavedSearches, useSearchFilter, closeTab, firstPage, goTo, historyOf, keepBothCopy, moveTabs, openPageTab, reloadCopy, selectTab, sendCopyBack, teamRows, useDock, useListing, usePageLook, useReach, useSidebarFolded, useTabs, type ListFrom, type Reach } from "./store";
 import { closeCopyTab } from "./copyClose";
-import { flushItem } from "../canvas/flush";
 import { DragLabelLayer, dragging, dropVerb, ROWS_MIME, setDragging, setDragLabel } from "./rowParts";
 import { filesPanelId, TabRow } from "./TabRow";
 
@@ -376,11 +375,10 @@ function Place({ workspace, reach, again, startThread }: WorkViewProps & { reach
   };
   // A copy whose changes have not reached its file asks once before its tab closes (copyClose.ts).
   const closeOne = async (tabId: string): Promise<void> => {
-    // What the tab's kind still holds (a deck's open box, a text's waiting words) reaches the host before the item goes.
-    await flushItem(view.tabs.find((t) => t.id === tabId)?.itemId);
+    // The door every canvas item leaves by (canvas/closeDoor.ts): what the tab's kind still holds reaches the host,
+    // then a live file's guest unloads; Word may hold it while still saving (office/live/layer.ts).
     const gone = view.tabs.find((t) => t.id === tabId);
-    // A live file's guest unloads first; Word may hold it while still saving (office/live/layer.ts).
-    if (gone?.itemId && !(await leaveLive(gone.itemId, gone.name))) return;
+    if (gone?.itemId && !(await readyToClose(gone.itemId, gone.name))) return;
     const done = (discard: boolean): Promise<void> => {
       remember(tabId);
       return closeTab(link, workspace.id, tabId, first, discard);

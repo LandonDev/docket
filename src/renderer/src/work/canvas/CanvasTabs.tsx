@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useRef, type KeyboardEvent, type ReactElement, type ReactNode, type WheelEvent } from "react";
 import type { CanvasItem, CanvasKind } from "@shared/work";
-import { MoreHorizontal } from "../../chrome/icons";
+import { MoreHorizontal, X } from "../../chrome/icons";
 import { RowsMenu, type MenuRow } from "../../chrome/menuRows";
 import { Tip, TruncateTip, useTruncated } from "../../components/tip";
 import { Button } from "../../components/ui/button";
+import { reveal } from "../../components/ui/reveal";
+import { shortcutFor } from "../../lib/settings";
 import { OVERFLOW_FADE, useOverflowEdges } from "../../hooks/useOverflowEdges";
 import { useSortable } from "../../hooks/useSortable";
 import type { CanvasKindDef } from "./kind";
@@ -13,7 +15,8 @@ import { CANVAS, kindDefOf } from "./registry";
  * The canvas pane's tab row (docs/DESIGN.md "The canvas pane"): the open
  * items as tabs in the strip's chip shape, each led by its kind's glyph. One
  * item alone is named as a split view's title is, with one muted fact after
- * it. The row is the lead of the split view's header (SplitShell `lead`), so
+ * it. Each closes by its own ×, as a Files tab does: on the selected tab and on the
+ * one under the pointer, and always after a lone item's name. The row is the lead of the split view's header (SplitShell `lead`), so
  * More and the conversation toggle end it. Past what fits, the tabs shrink to
  * their glyph and then scroll, as the title strip's settled row does: no bar,
  * a faded edge where there is more, a mouse wheel turned sideways, and the
@@ -81,11 +84,13 @@ export function CanvasTabs({
             </span>
           ) : null}
         </div>
+        <CloseButton title={item.title} tabbable onClose={() => onClose(item.id)} />
       </div>
     );
   }
   // One tab stop: the arrows move along the row and show the tab they land on.
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement>): void => {
+    if ((event.target as HTMLElement).closest("[data-canvas-close]")) return;
     const at = ids.indexOf(selected ?? "");
     const to =
       event.key === "ArrowRight" ? at + 1 : event.key === "ArrowLeft" ? at - 1 : event.key === "Home" ? 0 : event.key === "End" ? ids.length - 1 : -1;
@@ -113,7 +118,7 @@ export function CanvasTabs({
         const lineStart = moving && sortable.toIndex! < sortable.fromIndex!;
         const lineEnd = moving && sortable.toIndex! > sortable.fromIndex!;
         return (
-          <div key={item.id} ref={(el) => sortable.setItemRef(item.id, el)} className={`relative flex max-w-60 min-w-9 shrink ${dragging ? "z-10" : ""}`}>
+          <div key={item.id} ref={(el) => sortable.setItemRef(item.id, el)} className={`group/dock-tab relative flex max-w-60 min-w-9 shrink ${dragging ? "z-10" : ""}`}>
             {lineStart ? <div className="pointer-events-none absolute inset-y-1 -left-0.5 z-20 w-0.5 rounded-full bg-accent" /> : null}
             {lineEnd ? <div className="pointer-events-none absolute inset-y-1 -right-0.5 z-20 w-0.5 rounded-full bg-accent" /> : null}
             <TitleTip title={item.title}>
@@ -140,7 +145,8 @@ export function CanvasTabs({
                   onAuxClick={(event) => {
                     if (event.button === 1) onClose(item.id);
                   }}
-                  className="h-7 w-full min-w-0 shrink touch-none justify-start gap-2 rounded-md px-2 text-[13px] font-normal text-muted-foreground hover:bg-foreground/5 hover:text-foreground aria-selected:bg-muted aria-selected:text-foreground aria-selected:transition-none data-dragging:opacity-50"
+                  // The close control lies over the tab's end: the name stops short of it on the tab that shows one.
+                  className={`h-7 w-full min-w-0 shrink touch-none justify-start gap-2 rounded-md ps-2 text-[13px] font-normal text-muted-foreground hover:bg-foreground/5 hover:text-foreground aria-selected:bg-muted aria-selected:text-foreground aria-selected:transition-none data-dragging:opacity-50 ${active ? "pe-7" : "pe-2 group-hover/dock-tab:pe-7"}`}
                 >
                   <Glyph className="size-3.5" />
                   <span ref={titleRef} className="min-w-0 truncate">
@@ -149,10 +155,24 @@ export function CanvasTabs({
                 </Button>
               )}
             </TitleTip>
+            <div className={`absolute end-0.5 top-0.5 ${active ? "" : reveal("dock-tab", { row: true })}`}>
+              <CloseButton title={item.title} tabbable={active} onClose={() => onClose(item.id)} />
+            </div>
           </div>
         );
       })}
     </div>
+  );
+}
+
+/** An item's ×: the Files tab's own, named for the item, with Close's key in its tip. */
+function CloseButton({ title, tabbable, onClose }: { title: string; tabbable: boolean; onClose(): void }) {
+  return (
+    <Tip label="Close" shortcut={shortcutFor("Panes", "Close")}>
+      <Button variant="ghost" size="icon-xs" data-canvas-close aria-label={`Close ${title}`} tabIndex={tabbable ? 0 : -1} className="shrink-0 text-muted-foreground" onClick={onClose}>
+        <X />
+      </Button>
+    </Tip>
   );
 }
 

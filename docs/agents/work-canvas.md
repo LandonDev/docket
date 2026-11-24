@@ -44,7 +44,7 @@ frame a plan and a report already use:
   chip shape (`CanvasTabs`), one item alone as a title with one muted fact,
   then the kind's `TabEnd`, More (the kind's own entries, Accept all,
   Reject all, Close, Close others) and the toggle. Tabs reorder by drag (`work.canvas.reorder`),
-  close on a middle click, and the arrows move along the row.
+  close by their ×, on a middle click, and the arrows move along the row.
 - Under the row, `CanvasPane` draws the kind's bar (`KindBar`), the one
   state line, the kind's body and the selection bar. Only the shown item's
   body is mounted; a kind keeps what it needs across a tab switch with
@@ -58,6 +58,28 @@ frame a plan and a report already use:
 - Which tab is shown and whether the thread is folded are this window's,
   kept per thread in localStorage (`work.canvas.view.v1`). The items are
   the host's, so they are there after a restart and on every client.
+
+### Closing an item
+
+Every item beside a chat has its ×, the Files tab's own: on the selected tab and on the one under
+the pointer, and always after a lone item's name (CanvasTabs.tsx). Before 2026-11-24 Close lived
+only in More and on a tab's middle click, and a lone item had no tab to middle-click: the owner
+found no way to close one. ⌘W (File → Close Tab) with focus on the item's side of the pane (its
+tab row, its bar, its body) closes the item shown, never the thread: each `CanvasSeat` puts its
+close in `canvasClosePort` (lib/canvasClosePort.ts, first-paint code) under its thread's id and
+marks its tab row `data-canvas-seat`, and App's `onClosePane` asks the port first. Focus in the
+chat keeps ⌘W's old meaning.
+
+Every close, by ×, by More, Close others, a middle click or ⌘W, goes through one door
+(canvas/closeDoor.ts `readyToClose`), the one a Files tab's close uses too: what the item's kind
+still holds reaches the host first (`flushItem`: a sheet's waiting cells, a deck's open box, a
+text's waiting words), then a live Office guest unloads (`leaveLive`), and only then does
+`closeItem` tell the host. Before 2026-11-24 the pane beside a chat called `closeItem` alone, so a
+cell typed just before a close from there was refused by a host that had already closed the item
+(the loss of landed/F-workbook-not-saved.md, by the chat's pane). Closing one item shows its
+neighbour (`selectedAfter`); closing the last gives the chat the whole pane. A closed item opens
+again from its chip in the thread (`work.canvas.open {itemId}`) or from Files (the same kind and
+source opens the closed item again). Proof: `scripts/e2e-canvas-close.ts`.
 
 A subagent's `canvas_open` opens beside its root thread. A research or a
 master thread of Work scope keeps its own board; its canvas sits to the

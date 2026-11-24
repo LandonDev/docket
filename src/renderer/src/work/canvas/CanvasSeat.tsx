@@ -1,4 +1,4 @@
-import { lazy, Suspense, useState, type ReactNode } from "react";
+import { lazy, Suspense, useEffect, useRef, useState, type ReactNode } from "react";
 import type { CanvasKind, ContextChip } from "@shared/work";
 import { Check, File, FolderOpen, X } from "../../chrome/icons";
 import { Button } from "../../components/ui/button";
@@ -6,6 +6,8 @@ import { Progress } from "../../components/ui/progress";
 import { Spinner } from "../../components/ui/spinner";
 import type { MenuRow } from "../../chrome/menuRows";
 import { addContextChip } from "./chips";
+import { canvasClosePort } from "../../lib/canvasClosePort";
+import { closeThroughDoor } from "./closeDoor";
 import type { Session } from "../../lib/session";
 import { SplitShell, useSplit, type ChatToggleWords } from "../../surfaces/threads/SplitShell";
 import { CanvasPane, useKindModule } from "./CanvasPane";
@@ -15,7 +17,7 @@ import type { CanvasKindDef, CanvasSelection } from "./kind";
 import { useOpening, type Opening } from "./fileDrop";
 import { itemVerbsFor } from "./itemVerbs";
 import { CANVAS, kindDefOf } from "./registry";
-import { closeItem, reorderItems, selectItem, setFolded, useCanvas, useKeptState } from "./store";
+import { reorderItems, selectItem, setFolded, useCanvas, useKeptState } from "./store";
 
 /** Google's Picker, loaded when asked for (work/google). */
 const PickDialog = lazy(() => import("../google/PickDialog").then((m) => ({ default: m.PickDialog })));
@@ -78,7 +80,19 @@ export function CanvasSeat({
   const opening = useOpening(sessionId);
   const board = shown !== null || opening !== null;
 
-  const close = (itemId: string): void => void closeItem(environmentId, sessionId, itemId).catch((error: unknown) => sayError(error, "Couldn't close the item"));
+  // Every close goes through the door a Files tab's close uses, so what the item holds is sent before it goes.
+  const closeOne = async (itemId: string): Promise<void> => {
+    const item = view.items.find((i) => i.id === itemId);
+    if (item) await closeThroughDoor(environmentId, sessionId, item).catch((error: unknown) => sayError(error, "Couldn't close the item"));
+  };
+  const close = (itemId: string): void => void closeOne(itemId);
+  const closeMany = async (itemIds: readonly string[]): Promise<void> => {
+    for (const id of itemIds) await closeOne(id);
+  };
+  // ⌘W with focus on the item's side closes the item shown, never the thread (lib/canvasClosePort.ts).
+  const closeShown = useRef(() => {});
+  closeShown.current = () => (shown ? close(shown.id) : undefined);
+  useEffect(() => canvasClosePort.set(sessionId, () => closeShown.current()), [sessionId]);
   const ask = (selection: CanvasSelection): void => {
     shell.selection(null);
     putChip(selection.chip);
@@ -131,7 +145,7 @@ export function CanvasSeat({
     if (id === "google-open") setPicking(true);
     if (id === "open-file") void import("./openOutside").then(({ pickAndOpen }) => pickAndOpen({ at: "thread", sessionId })).catch((error: unknown) => sayError(error, "Couldn't open the file"));
     if (id === "close") close(shown.id);
-    if (id === "close-others") view.items.filter((item) => item.id !== shown.id).forEach((item) => close(item.id));
+    if (id === "close-others") void closeMany(view.items.filter((item) => item.id !== shown.id).map((item) => item.id));
     if (review && !review.held && !review.verdictsHeld && (id === "accept-all" || id === "reject-all")) {
       const accept = id === "accept-all";
       review[accept ? "accept" : "reject"]("all").catch((error: unknown) => sayError(error, accept ? "Couldn't accept the changes" : "Couldn't reject the changes"));
@@ -156,15 +170,17 @@ export function CanvasSeat({
         held={held}
         lead={
           shown ? (
-            <CanvasTabs
-              items={view.items}
-              selected={shown.id}
-              detail={feeds.detail}
-              onSelect={(itemId) => selectItem(sessionId, itemId)}
-              onClose={close}
-              kinds={kinds}
-              onReorder={(order) => void reorderItems(environmentId, sessionId, order).catch((error: unknown) => sayError(error, "Couldn't move the tab"))}
-            />
+            <div data-canvas-seat={sessionId} className="contents">
+              <CanvasTabs
+                items={view.items}
+                selected={shown.id}
+                detail={feeds.detail}
+                onSelect={(itemId) => selectItem(sessionId, itemId)}
+                onClose={close}
+                kinds={kinds}
+                onReorder={(order) => void reorderItems(environmentId, sessionId, order).catch((error: unknown) => sayError(error, "Couldn't move the tab"))}
+              />
+            </div>
           ) : undefined
         }
         actions={

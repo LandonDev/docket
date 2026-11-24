@@ -1201,6 +1201,10 @@ thread; nothing answers inside the canvas.
   row's ends), the kind's 14px glyph, the name, no dirty dot; the selected
   tab is `muted` with foreground text. One item alone is its glyph, its
   name as the split view's 14px semibold title and one 12px muted fact.
+  Each closes by its own ×, the Files tab's (a 24px ghost glyph in
+  `muted-foreground`): on the selected tab and on the tab under the
+  pointer, lying over the tab's end, and always right after a lone
+  item's name.
 - **The kind's bar** is 32px on `background` (the editor's `FileHeader`
   row), 12px muted, in a fixed order: other people as 20px avatars, the
   mode ("Agent suggests" or "Agent writes", a quiet menu button), the

@@ -962,3 +962,48 @@ describe("the frame a kind drives through its shell", () => {
     expect(canvasOf("t9")).toMatchObject({ loaded: true, selected: "x" });
   });
 });
+
+describe("closing an item beside the chat", () => {
+  it("gives each tab a × named for its item, and a lone item one after its name", async () => {
+    await seat([DOC, SHEET]);
+    expect(screen.getByRole("button", { name: "Close Run of show" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Close Travel budget" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Close Run of show" }));
+    await waitFor(() => expect(screen.queryByRole("tablist")).toBeNull());
+    // The neighbour shows, alone now, with its own ×.
+    expect(canvasOf("t1").selected).toBe("sheet");
+    fireEvent.click(screen.getByRole("button", { name: "Close Travel budget" }));
+    await waitFor(() => expect(document.querySelector("[data-board]")).toBeNull());
+    // The last one gone, the chat has the pane.
+    expect(screen.getByTestId("thread")).toBeTruthy();
+    expect(canvasOf("t1").folded).toBe(false);
+  });
+
+  it("sends what the item holds before the host is told it closed, as a Files tab's close does", async () => {
+    const { registerFlush } = await import("./flush");
+    await seat([DOC, SHEET]);
+    const order: string[] = [];
+    const request = host.current!.link.request;
+    host.current!.link.request = async (method, params) => {
+      if (method === "work.canvas.close") order.push(`close ${String(params?.itemId)}`);
+      return request(method, params);
+    };
+    const off = registerFlush("doc", async () => {
+      await new Promise((r) => setTimeout(r, 20));
+      order.push("flushed doc");
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Close Run of show" }));
+    await waitFor(() => expect(order).toEqual(["flushed doc", "close doc"]));
+    off();
+  });
+
+  it("takes ⌘W's Close Tab while focus is on the item's side, and leaves it to the pane from the chat", async () => {
+    const { canvasClosePort } = await import("../../lib/canvasClosePort");
+    const { container } = await seat([DOC, SHEET]);
+    const tab = within(screen.getByRole("tablist")).getAllByRole("tab")[0];
+    expect(canvasClosePort.run(tab)).toBe(true);
+    await waitFor(() => expect(host.current!.calls.some((c) => c.method === "work.canvas.close" && c.params.itemId === "doc")).toBe(true));
+    expect(canvasClosePort.run(container.querySelector("[data-composer-input]"))).toBe(false);
+    expect(canvasClosePort.run(null)).toBe(false);
+  });
+});
