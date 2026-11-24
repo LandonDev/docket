@@ -230,6 +230,19 @@ describe('a package in the canvas', () => {
     expect((await call<SheetView>('work.sheets.open', { itemId })).suggestions.map((s) => s.state)).toEqual(['orphaned'])
   })
 
+  it('a press naming a pending cell and one changed since writes the pending one and answers the view: never a failure after a write', async () => {
+    // Council r2 (Sol 10): the host wrote A2, then threw for A3, and the window kept the old review.
+    await tool('sheet_suggest', { item: itemId, cells: [{ at: 'A2', v: 5 }, { at: 'A3', v: 6 }] })
+    let view = await call<SheetView>('work.sheets.open', { itemId })
+    const sheet = importXlsx(new Uint8Array(readFileSync(path))).workbook.sheetOrder[0]
+    await call('work.sheets.edit', { itemId, baseRev: view.rev, mutations: [{ id: SET_RANGE_VALUES, params: { unitId: PACKAGE_UNIT, subUnitId: sheet, cellValue: { 2: { 0: { v: 77 } } } } }] })
+    view = await call<SheetView>('work.sheets.review', { itemId, which: { ids: view.suggestions.map((s) => s.id) }, verdict: 'accept' })
+    expect([valueAt('Data', 1, 0), valueAt('Data', 2, 0)]).toEqual([5, 77])
+    expect(view.suggestions.map((s) => [s.row, s.state])).toEqual([[2, 'conflict']])
+    // one by itself that cannot be taken is still refused in words, and nothing is written
+    await expect(call('work.sheets.review', { itemId, which: { ids: [view.suggestions[0]!.id] }, verdict: 'accept' })).rejects.toThrow(/changed since/)
+  })
+
   it('lists history and compares two revisions', async () => {
     await tool('sheet_write', { item: itemId, cells: [{ at: 'A2', v: 3 }], because: 'own' })
     const { revisions } = await call<{ revisions: { rev: number; label: string }[] }>('work.sheets.history', { itemId })

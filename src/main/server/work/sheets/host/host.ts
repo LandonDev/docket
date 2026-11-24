@@ -402,7 +402,8 @@ export class SheetHost {
       const open = await this.suggestionsOf(o)
       const picked = which === 'all' ? open : 'ids' in which ? open.filter((s) => which.ids.includes(s.id)) : open.filter((s) => s.changeSet === which.changeSet)
       const taken = verdict === 'accept' ? picked.filter((s) => s.state === 'pending') : picked
-      if (verdict === 'accept' && which !== 'all' && 'ids' in which && taken.length < picked.length) throw new Error('That cell changed since the agent saw it: reject it, or edit the cell yourself.')
+      // What can be taken is, and the rest stays as it is; refused in words only when the press could take nothing.
+      if (verdict === 'accept' && which !== 'all' && 'ids' in which && taken.length === 0 && picked.length > 0) throw new Error('That cell changed since the agent saw it: reject it, or edit the cell yourself.')
       let rev: number | undefined
       if (verdict === 'accept' && taken.length) {
         const got = await this.commit(o, o.rev, [{ by: 'owner', mutations: mutationsOf(o.unitId, taken.map((s) => ({ sheet: s.sheet, row: s.row, col: s.col, cell: s.proposed }))) }])

@@ -366,13 +366,16 @@ async function reviewChanges(s: Sheets, held: Extract<Held, { at: 'package' | 's
   const picked = s.changes.pick(key, which)
   if (!picked.length) return false
   const only = which !== 'all' && 'ids' in which && which.ids.every((id) => picked.some((p) => p.id === id))
+  // One change pressed by itself is refused in words when it cannot be laid; of many, one that cannot is marked and the
+  // rest go on, so a press that changed the file never answers as if it had failed.
+  const alone = only && picked.length === 1
   if (verdict === 'reject') {
     s.changes.mark(key, picked.map((p) => p.id), 'rejected')
     return only ? 'only' : 'some'
   }
   for (const change of picked) {
     if (change.state !== 'pending') {
-      if (only) throw new Error(MOVED_SINCE)
+      if (alone) throw new Error(MOVED_SINCE)
       continue
     }
     let why = MOVED_SINCE
@@ -384,7 +387,7 @@ async function reviewChanges(s: Sheets, held: Extract<Held, { at: 'package' | 's
     if (landed) s.changes.mark(key, [change.id], 'accepted')
     else {
       s.changes.mark(key, [change.id], 'orphaned')
-      if (only) throw new Error(why)
+      if (alone) throw new Error(why)
     }
   }
   return only ? 'only' : 'some'
@@ -420,7 +423,8 @@ async function reviewPackage(s: Sheets, path: string, key: string, which: Which,
     s.suggestions.mark(key, stale.map((p) => p.id), 'conflict')
   }
   if (ok.length) s.suggestions.mark(key, ok.map((p) => p.id), 'accepted')
-  if (one && ok.length < picked.length) throw new Error('That cell changed since the agent saw it: reject it, or edit the cell yourself.')
+  // (what was written stands and the view says what was not: refused in words only when the press took nothing)
+  if (one && ok.length === 0 && picked.length > 0) throw new Error('That cell changed since the agent saw it: reject it, or edit the cell yourself.')
 }
 
 const sameCell = (a: SheetCellJson | null, b: SheetCellJson | null): boolean => (a?.f ?? null) === (b?.f ?? null) && (a?.f ? true : (a?.v ?? null) === (b?.v ?? null))

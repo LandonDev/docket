@@ -194,6 +194,19 @@ describe('the sheet host', () => {
     await expect(host.snapshot(REF, 3, 0, 100)).rejects.toThrow(/moved on/)
   })
 
+  it('takes what can be taken of a press that names a pending cell and one in conflict, and refuses one in conflict by itself', async () => {
+    // Council r2 (Sol 10): the whole batch was refused for one stale row.
+    const store = new MemoryBackend(budget())
+    const host = hostOf(store)
+    await host.cells(REF, [{ at: 'B3', v: 350 }, { at: 'B4', v: 80 }], 'agent:h:t1', true)
+    const [b3, b4] = (await host.open(REF)).suggestions
+    await host.apply(REF, 0, [setCell(3, 1, { v: 99 })], 'owner')
+    expect((await host.open(REF)).suggestions.find((s) => s.id === b4!.id)?.state).toBe('conflict')
+    await host.review(REF, { ids: [b3!.id, b4!.id] }, 'accept')
+    expect((await host.range(REF, 'B3:B4')).cells.map((r) => r[0]!.v)).toEqual([350, 99])
+    await expect(host.review(REF, { ids: [b4!.id] }, 'accept')).rejects.toThrow(/changed since/)
+  })
+
   it('lists history, compares two revisions and restores one', async () => {
     const host = hostOf(new MemoryBackend(budget()))
     await host.cells(REF, [{ at: 'B2', v: 1000 }], 'owner', false)

@@ -21,12 +21,18 @@ export const REVIEW_IDS_MOST = 5000;
  * that came after he looked is not taken by his press; in batches the wire takes, one request each. `w` is one change
  * by its place in the list, a group, or all. Nothing on screen names nothing.
  */
-export function reviewBatches(list: readonly SheetChange[], w: number | { group: string } | "all"): { ids: string[] }[] {
-  const shown = (typeof w === "number" ? (list[w] ? [list[w]!] : []) : w === "all" ? list : list.filter((c) => c.changeSet === w.group)).flatMap((c) => c.ids);
+export function reviewBatches(list: readonly SheetChange[], w: number | { group: string } | "all", verdict: "accept" | "reject" = "reject"): { ids: string[] }[] {
+  const picked = typeof w === "number" ? (list[w] ? [list[w]!] : []) : w === "all" ? list : list.filter((c) => c.changeSet === w.group);
+  // Accept all and a group's Accept take what can be taken: a conflict or an orphaned change, which can only be dropped,
+  // is left out (one pressed by itself is still sent, and the host says why it cannot be taken).
+  const shown = typeof w !== "number" && verdict === "accept" ? picked.flatMap(acceptable) : picked.flatMap((c) => c.ids);
   const out: { ids: string[] }[] = [];
   for (let i = 0; i < shown.length; i += REVIEW_IDS_MOST) out.push({ ids: shown.slice(i, i + REVIEW_IDS_MOST) });
   return out;
 }
+
+/** The ids of a change an Accept can take: its pending cells, a format or a rule still where the agent saw it. */
+const acceptable = (c: SheetChange): string[] => (c.kind === "cells" ? c.run.cells.filter((x) => x.state === "pending").map((x) => x.id) : c.kind === "said" && c.said.state !== "orphaned" ? c.ids : []);
 
 export interface SheetChanges {
   changes: SheetChange[];

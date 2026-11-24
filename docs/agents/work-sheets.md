@@ -1163,7 +1163,12 @@ Our own canvas does not use the socket: it calls the pillar's methods.
 and for a group (`reviewWhich`, renderer sheets/model.ts), never `all` or a
 change set the host would pick from what waits now, so a suggestion that came
 after he looked is not taken; past 5,000 ids (the wire's limit) it sends them
-in batches of that many (`reviewBatches`), never all. One review of a sheet runs at a time (`oneReview`, sheets/index.ts):
+in batches of that many (`reviewBatches`), never all. Accept all and a
+group's Accept leave out what can only be dropped (a conflict, an orphaned
+cell, format or rule); of what they send, what can be taken is written and
+the rest marked, and the answer is the view: a press is refused in words
+only when it took nothing, so a press that changed the file never answers
+as if it had failed. One review of a sheet runs at a time (`oneReview`, sheets/index.ts):
 each picks what waits only once the last settled, so an Accept waiting on
 Google or Excel never writes what a Reject in another window dropped, and two
 Accepts never write the same rows. Over an opened Excel file the cells are
