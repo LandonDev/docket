@@ -393,6 +393,119 @@ public enum Methods {
                     self.instructions = instructions
                 }
             }
+            public struct Item: Codable, Hashable, Sendable {
+                public enum Kind: RawRepresentable, Codable, Hashable, Sendable {
+                    case mail
+                    case document
+                    case sheet
+                    case pdf
+                    case slides
+                    case media
+                    case browser
+                    case history
+                    case meeting
+                    case form
+                    case dashboard
+                    case file
+                    case msform
+                    /// A value this build does not know; `rawValue` keeps it.
+                    case unknown(String)
+
+                    public init(rawValue: String) {
+                        switch rawValue {
+                        case "mail": self = .mail
+                        case "document": self = .document
+                        case "sheet": self = .sheet
+                        case "pdf": self = .pdf
+                        case "slides": self = .slides
+                        case "media": self = .media
+                        case "browser": self = .browser
+                        case "history": self = .history
+                        case "meeting": self = .meeting
+                        case "form": self = .form
+                        case "dashboard": self = .dashboard
+                        case "file": self = .file
+                        case "msform": self = .msform
+                        default: self = .unknown(rawValue)
+                        }
+                    }
+
+                    public var rawValue: String {
+                        switch self {
+                        case .mail: "mail"
+                        case .document: "document"
+                        case .sheet: "sheet"
+                        case .pdf: "pdf"
+                        case .slides: "slides"
+                        case .media: "media"
+                        case .browser: "browser"
+                        case .history: "history"
+                        case .meeting: "meeting"
+                        case .form: "form"
+                        case .dashboard: "dashboard"
+                        case .file: "file"
+                        case .msform: "msform"
+                        case .unknown(let value): value
+                        }
+                    }
+                }
+
+                public let kind: Kind
+                public let source: CanvasSource
+                public let title: String
+                public let copy: Bool?
+
+                public init(kind: Kind, source: CanvasSource, title: String, copy: Bool? = nil) {
+                    self.kind = kind
+                    self.source = source
+                    self.title = title
+                    self.copy = copy
+                }
+            }
+            public struct MailAdopt: Codable, Hashable, Sendable {
+                public enum Kind: RawRepresentable, Codable, Hashable, Sendable {
+                    case mail
+                    case picked
+                    case box
+                    /// A value this build does not know; `rawValue` keeps it.
+                    case unknown(String)
+
+                    public init(rawValue: String) {
+                        switch rawValue {
+                        case "mail": self = .mail
+                        case "picked": self = .picked
+                        case "box": self = .box
+                        default: self = .unknown(rawValue)
+                        }
+                    }
+
+                    public var rawValue: String {
+                        switch self {
+                        case .mail: "mail"
+                        case .picked: "picked"
+                        case .box: "box"
+                        case .unknown(let value): value
+                        }
+                    }
+                }
+
+                public let workspaceId: String
+                public let kind: Kind
+                public let mailThreadId: String?
+
+                public init(workspaceId: String, kind: Kind, mailThreadId: String? = nil) {
+                    self.workspaceId = workspaceId
+                    self.kind = kind
+                    self.mailThreadId = mailThreadId
+                }
+            }
+            public struct Bridge: Codable, Hashable, Sendable {
+                public let macPeer: String
+
+                public init(macPeer: String) {
+                    self.macPeer = macPeer
+                }
+            }
 
             public let id: String?
             public let provider: ProviderId?
@@ -416,10 +529,14 @@ public enum Methods {
             public let queue: Bool?
             public let master: Bool?
             public let firstMessage: String?
+            public let attachments: [Attachment]?
+            public let items: [Item]?
+            public let mailAdopt: MailAdopt?
+            public let bridge: Bridge?
             public let scope: SessionScope?
             public let about: ContextChip?
 
-            public init(id: String? = nil, provider: ProviderId? = nil, model: String? = nil, reasoning: Reasoning? = nil, agentType: AgentType? = nil, cwd: String? = nil, title: String? = nil, parentId: Patch<String>? = nil, projectId: Patch<String>? = nil, workspaceId: Patch<String>? = nil, threadType: Patch<ThreadType>? = nil, planPath: String? = nil, permission: PermissionPolicy? = nil, context1m: Bool? = nil, threadRules: ThreadRules? = nil, goal: String? = nil, startedBy: String? = nil, masterId: String? = nil, after: String? = nil, queue: Bool? = nil, master: Bool? = nil, firstMessage: String? = nil, scope: SessionScope? = nil, about: ContextChip? = nil) {
+            public init(id: String? = nil, provider: ProviderId? = nil, model: String? = nil, reasoning: Reasoning? = nil, agentType: AgentType? = nil, cwd: String? = nil, title: String? = nil, parentId: Patch<String>? = nil, projectId: Patch<String>? = nil, workspaceId: Patch<String>? = nil, threadType: Patch<ThreadType>? = nil, planPath: String? = nil, permission: PermissionPolicy? = nil, context1m: Bool? = nil, threadRules: ThreadRules? = nil, goal: String? = nil, startedBy: String? = nil, masterId: String? = nil, after: String? = nil, queue: Bool? = nil, master: Bool? = nil, firstMessage: String? = nil, attachments: [Attachment]? = nil, items: [Item]? = nil, mailAdopt: MailAdopt? = nil, bridge: Bridge? = nil, scope: SessionScope? = nil, about: ContextChip? = nil) {
                 self.id = id
                 self.provider = provider
                 self.model = model
@@ -442,6 +559,10 @@ public enum Methods {
                 self.queue = queue
                 self.master = master
                 self.firstMessage = firstMessage
+                self.attachments = attachments
+                self.items = items
+                self.mailAdopt = mailAdopt
+                self.bridge = bridge
                 self.scope = scope
                 self.about = about
             }

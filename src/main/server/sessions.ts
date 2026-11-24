@@ -305,6 +305,9 @@ export type StartWithOpts = RunSettings & {
   ceiling?: SessionMeta['permission']
   /** Who wrote the first message; its user row carries it (events.ts UserTextBySchema). Absent: the app. */
   by?: UserTextBy
+  /** Run once the thread exists and before its message (a window's folded steps, createSteps.ts). A failure stops the
+   *  message and keeps the thread, as the window's own step between its create and its send left it. */
+  before?: (created: SessionMeta) => Promise<void>
 }
 
 // ── thread references (send)─────────────────────────────────────────
@@ -2868,8 +2871,10 @@ export class SessionRegistry {
    *  handoff (link, handoff row, archive) waits for that row too. */
   async startWith(raw: CreateSessionInput, text: string, opts: StartWithOpts = {}): Promise<SessionMeta> {
     if (this.closed) throw new BootStopped()
-    const { routineRunId, farWork, ceiling, ...sendOpts } = opts
+    const { routineRunId, farWork, ceiling, before, ...sendOpts } = opts
     const created = await this.create(raw, { handoff: false, routineRunId, farWork, ceiling })
+    if (this.closed) throw new BootStopped()
+    if (before) await before(created)
     if (this.closed) throw new BootStopped()
     let stored = false
     try {
@@ -2889,10 +2894,20 @@ export class SessionRegistry {
     return this.get(created.id) ?? created
   }
 
-  /** `session.create`: with a first message, the one-step start. `by` is who sent it: the owner's own first message counts as his words (`ownerSaid`). */
-  async createSession(raw: CreateSessionInput, by?: UserTextBy, limits: { ceiling?: SessionMeta['permission'] } = {}): Promise<SessionMeta> {
-    const { firstMessage, ...spec } = raw
-    return firstMessage ? this.startWith(spec, firstMessage, { ...(by ? { by } : {}), ...limits }) : this.create(spec, limits)
+  /** `session.create`: with a first message, the one-step start. `by` is who sent it: the owner's own first message counts as his words (`ownerSaid`).
+   *  `before` runs between the create and the message (a window's folded steps); with no message, after the create. */
+  async createSession(
+    raw: CreateSessionInput,
+    by?: UserTextBy,
+    limits: { ceiling?: SessionMeta['permission']; before?: (created: SessionMeta) => Promise<void> } = {}
+  ): Promise<SessionMeta> {
+    const { firstMessage, attachments, items: _items, mailAdopt: _mailAdopt, bridge: _bridge, ...spec } = raw
+    const { before, ceiling } = limits
+    if (firstMessage) return this.startWith(spec, firstMessage, { ...(by ? { by } : {}), ceiling, before, ...(attachments?.length ? { attachments } : {}) })
+    const created = await this.create(spec, { ceiling })
+    if (!before) return created
+    await before(created)
+    return this.get(created.id) ?? created
   }
 
   async create(raw: CreateSessionInput, internal: { handoff?: boolean; routineRunId?: string; farWork?: boolean; ceiling?: SessionMeta['permission'] } = {}): Promise<SessionMeta> {

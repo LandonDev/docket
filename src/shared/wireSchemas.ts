@@ -1064,6 +1064,7 @@ export const HelloPushSchema = push('hello', {
   name: z.string().optional(),
   contract: z.number().int(),
   caps: z.array(CapabilitySchema),
+  features: z.array(z.string()).optional(),
   key: z.object({ id: z.string(), name: z.string() }).optional(),
   build: BuildFactsSchema.optional(),
   hosts: z.array(HostPresenceSchema).optional(),

@@ -141,4 +141,35 @@ describe('startWith', () => {
     const app = await registry.createSession({ cwd: root, provider: 'claude', title: 'App', firstMessage: 'go' })
     expect(byOf(app.id)).toMatchObject({ by: { kind: 'app' } })
   })
+
+  it('a folded create runs its steps between the create and the message, with the message\'s files', async () => {
+    const order: string[] = []
+    const meta = await registry.createSession(
+      { cwd: root, provider: 'claude', title: 'Folded', firstMessage: 'about this file', attachments: [{ path: join(root, 'a.png'), name: 'a.png', kind: 'image' }] },
+      { kind: 'owner' },
+      {
+        before: async (created) => {
+          order.push(`step rows=${userTexts(store, created.id).length}`)
+        }
+      }
+    )
+    await settle()
+    expect(order).toEqual(['step rows=0'])
+    expect(userTexts(store, meta.id)).toEqual(['about this file'])
+    const user = store.eventsAfter(meta.id, 0).map((r) => r.event).find((e) => e.type === 'user-text') as { attachments?: { name: string }[] }
+    expect(user.attachments?.map((a) => a.name)).toEqual(['a.png'])
+  })
+
+  it('a folded step that fails stops the message and keeps the thread, as the window\'s own step left it', async () => {
+    await expect(
+      registry.createSession({ cwd: root, provider: 'claude', title: 'Held', firstMessage: 'hello' }, undefined, {
+        before: async () => {
+          throw new Error('The chat did not start')
+        }
+      })
+    ).rejects.toThrow('The chat did not start')
+    const held = registry.list().find((s) => s.title === 'Held')
+    expect(held).toBeTruthy()
+    expect(userTexts(store, held!.id)).toEqual([])
+  })
 })

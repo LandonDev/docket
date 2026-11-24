@@ -23,12 +23,14 @@ import { createServer } from 'node:http'
 import { visibleCatalog } from '@shared/catalog'
 import { lifeosAddress } from '@shared/pagePolicy'
 import { networkRefusalOf, refusalCodeOf } from './failureKind'
-import { ClientRequestSchema, type ClientRequest, type ServerFrame, type ServerPush, type ServerResponse } from '@shared/contract'
+import { ClientRequestSchema, type ClientRequest, type CreateSessionReply, type ServerFrame, type ServerPush, type ServerResponse } from '@shared/contract'
+import { hasCreateSteps, runCreateSteps, type ItemFailed } from './createSteps'
 import type { SessionChanges, SessionPage } from '@shared/wire'
 import {
   LOCAL_CAPS,
   capabilityRefusal,
   CONTRACT_VERSION,
+  HOST_FEATURES,
   LOCAL_PRINCIPAL,
   accessCeiling,
   allows,
@@ -2631,6 +2633,7 @@ export async function startServer(
       environmentId,
       contract: CONTRACT_VERSION,
       caps: principalCaps(principal),
+      features: [...HOST_FEATURES],
       name: hostLabel(),
       ...(principal.kind === 'remote' ? { key: { id: principal.keyId, name: principal.name } } : {}),
       build,
@@ -2680,14 +2683,8 @@ export async function startServer(
       if (failAnswers.take(req.method)) return sendFrame({ id: req.id, ok: false, error: FAILED_ANSWER })
       // TEMP_CODE_PEER_DELAY_MS (peerDelay.ts): a proof's slow box.
       if (PEER_DELAY_MS > 0) await peerDelay(principal.kind, PEER_DELAY_MS)
-      if (principal.kind !== 'local') {
-        const refused =
-          capabilityRefusal(givers.withGive(principal), req) ??
-          relayedRefusal(principal, req.method) ??
-          givenHostRefusal(principal, req.method) ??
-          deviceBindings.socketRefusal(principal, connection, req.method)
-        if (refused) return sendFrame({ id: req.id, ok: false, error: refused })
-      }
+      const refused = callerRefusal(req)
+      if (refused) return sendFrame({ id: req.id, ok: false, error: refused })
       // An app.* call answers as the thread it names: only with that thread's own bridge token (apptools.ts).
       const notOwn = bridgeCallRefusal(req.method, (raw as { params?: unknown }).params)
       if (notOwn) return sendFrame({ id: req.id, ok: false, error: notOwn })
@@ -2704,17 +2701,7 @@ export async function startServer(
         // A remote key names paths only inside the app-managed roots; the
         // refusal is one typed error that never carries the path. Ahead of
         // the lane gate: a bulk request never joins one it may not make.
-        if (principal.kind !== 'local') {
-          fenceRequest(req, managedRoots(), [ATTACH_DIR], [computerHistoryRoot], environmentId)
-          // the same deny for a file named through a project id or inside a cwd, and for a copy that would carry it out
-          fenceDenied(req, requestBases(req, (id) => registry.getProject(id)?.cwd), [computerHistoryRoot])
-          // and a write by path into a library others can open goes through Files, never the generic verbs
-          if (req.method.startsWith('fs.')) {
-            const { fsPathRefusal } = await import('./work/files/policy')
-            const shared = fsPathRefusal({ db, host: environmentId, dataDir: options.dataDir ?? dirname(dbPath) }, req.method, (req as { params?: unknown }).params)
-            if (shared) throw new Error(shared)
-          }
-        }
+        await fenceCaller(req)
         // The lane gate (lane.ts): interactive and normal run now; bulk waits
         // its turn and a duplicate shares the answer of the one before it.
         lane = laneOf(req, focus)
@@ -2747,6 +2734,45 @@ export async function startServer(
         }
       }
     }))
+
+    /** What this caller may not ask, by its key (capabilities, a relayed lane, a given computer's socket); null when it may. */
+    const callerRefusal = (req: ClientRequest): string | null =>
+      principal.kind === 'local'
+        ? null
+        : (capabilityRefusal(givers.withGive(principal), req) ??
+          relayedRefusal(principal, req.method) ??
+          givenHostRefusal(principal, req.method) ??
+          deviceBindings.socketRefusal(principal, connection, req.method) ??
+          null)
+
+    /** The path fence for a remote caller: throws when the request names a path it may not. */
+    const fenceCaller = async (req: ClientRequest): Promise<void> => {
+      if (principal.kind === 'local') return
+      // A remote key names paths only inside the app-managed roots; the
+      // refusal is one typed error that never carries the path.
+      fenceRequest(req, managedRoots(), [ATTACH_DIR], [computerHistoryRoot], environmentId)
+      // the same deny for a file named through a project id or inside a cwd, and for a copy that would carry it out
+      fenceDenied(req, requestBases(req, (id) => registry.getProject(id)?.cwd), [computerHistoryRoot])
+      // and a write by path into a library others can open goes through Files, never the generic verbs
+      if (req.method.startsWith('fs.')) {
+        const { fsPathRefusal } = await import('./work/files/policy')
+        const shared = fsPathRefusal({ db, host: environmentId, dataDir: options.dataDir ?? dirname(dbPath) }, req.method, (req as { params?: unknown }).params)
+        if (shared) throw new Error(shared)
+      }
+    }
+
+    /** One step of a folded create (createSteps.ts), run as the request this caller would have sent: its key's
+     *  refusals, the path fence, then the one dispatcher. Resolves with the answer's result; throws its error. */
+    let stepSeq = 0
+    const runStep = async (req: ClientRequest): Promise<unknown> => {
+      const refused = callerRefusal(req) ?? workBridgeRefusal(req.method, (req as { params?: unknown }).params, (id) => registry.get(id))
+      if (refused) throw new Error(refused)
+      await fenceCaller(req)
+      const answer = await captureAnswer(req)
+      if (!answer) throw new Error(`${req.method} gave no answer`)
+      if (!answer.ok) throw new Error(answer.error)
+      return answer.result
+    }
 
     /** One request, answered through `sendFrame`: the socket's own, or a
      *  bulk request's capture (captureAnswer). Pushes a handler makes go to
@@ -3666,8 +3692,17 @@ export async function startServer(
             if (req.params.scope === 'work' || req.params.about) work.admitSession(req.params, workCaller(principal))
             // A key that may not approve may not hold full access, asked or by default (capabilities.ts requiredCapability).
             const ceiling = principal.kind === 'remote' ? accessCeiling(principal.caps) : undefined
-            const session = await registry.createSession(req.params, userTextByOf(principal), { ceiling })
-            sendFrame({ id: req.id, ok: true, result: session })
+            // A window's draft may fold its first send's steps into the create (createSteps.ts): run here, each as its own request.
+            let itemsFailed: ItemFailed[] = []
+            const steps = hasCreateSteps(req.params)
+            const before = steps
+              ? async (created: SessionMeta): Promise<void> => {
+                  itemsFailed = (await runCreateSteps(created.id, req.params, runStep, () => `${req.id}~step${++stepSeq}`)).itemsFailed
+                }
+              : undefined
+            const session = await registry.createSession(req.params, userTextByOf(principal), { ceiling, before })
+            const result: CreateSessionReply = itemsFailed.length ? { ...session, itemsFailed } : session
+            sendFrame({ id: req.id, ok: true, result })
             break
           }
           case 'stall.report':

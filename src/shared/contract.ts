@@ -32,7 +32,8 @@ import { AddonGrantRequestSchemas } from './contract-addonGrants'
 import { ComputerRequestSchemas } from './contract-computer'
 import { VideoRequestSchemas } from './contract-video'
 import { WorkRequestSchemas } from './contract-work'
-import { ContextChipSchema } from './work/canvas'
+import { CanvasKindSchema, CanvasSourceSchema, ContextChipSchema } from './work/canvas'
+import { MAIL_CHAT_KINDS } from './work/mailChat'
 import { SessionScopeSchema, WorkspaceKindSchema } from './work/ids'
 import { AGENT_TYPES, REASONING_LEVELS } from './catalog'
 import { AttachmentSchema, PermissionPolicySchema } from './events'
@@ -112,6 +113,27 @@ export const CreateSessionParams = z.object({
   /** The thread's first message, stored as its first row in the same step
    *  (SessionRegistry.startWith): the thread and its brief, or neither. */
   firstMessage: z.string().min(1).optional(),
+  /** The first message's files, as `session.send` carries them; read only with `firstMessage`. */
+  attachments: z.array(AttachmentSchema).optional(),
+  /** A window's draft folds its first send's steps into its create (Ask beside a file or a mail): the host runs
+   *  them between the create and the first message, each as if the caller had sent it (its capability and the path
+   *  fence), so the message reaches the host in one trip. A window sends them only to a host whose hello lists
+   *  `create.steps` (HOST_FEATURES): an older host would drop them unread. */
+  items: z.array(z.object({
+    kind: CanvasKindSchema,
+    source: CanvasSourceSchema,
+    title: z.string().min(1).max(200),
+    /** `source` is a file of another computer: the thread opens a copy of its own (`work.office.filesCopy`) */
+    copy: z.boolean().optional()
+  })).max(8).optional(),
+  /** `work.mail.chat.adopt`'s fields: the thread is a mail chat before its first turn, or it does not start */
+  mailAdopt: z.object({
+    workspaceId: z.string().min(1).max(64),
+    kind: z.enum(MAIL_CHAT_KINDS),
+    mailThreadId: z.string().min(1).max(64).optional()
+  }).optional(),
+  /** `macBridge.thread.set`'s Mac: the thread takes that Mac's bridge before its first turn */
+  bridge: z.object({ macPeer: z.string().min(1).max(200) }).optional(),
   /** Work (src/shared/work): 'work' asks for a Work thread; the host stamps
    *  the scope itself from the workspace, a Work Chat or a Work parent, and
    *  refuses what it cannot honour (work/scope.ts). */
@@ -122,6 +144,8 @@ export const CreateSessionParams = z.object({
 export type CreateSessionParams = z.infer<typeof CreateSessionParams>
 /** Pre-parse shape (defaults still optional) — what callers construct. */
 export type CreateSessionInput = z.input<typeof CreateSessionParams>
+/** `session.create`'s answer: the thread, and with `items`, each that did not open and why (the message went all the same). */
+export type CreateSessionReply = SessionMeta & { itemsFailed?: { title: string; error: string }[] }
 
 export interface SessionBatchResult {
   attempted: string[]
@@ -1433,6 +1457,8 @@ export type ServerPush =
       name?: string
       contract: number
       caps: import('./capabilities').Capability[]
+      /** What this host takes beyond the contract number (capabilities.ts HOST_FEATURES); absent on an older host. */
+      features?: string[]
       key?: { id: string; name: string }
       /** What the host runs (release number, version, commit, platform); the deploy-drift mark reads it. */
       build?: import('./deployDrift').BuildFacts

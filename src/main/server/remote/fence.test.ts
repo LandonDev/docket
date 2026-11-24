@@ -113,7 +113,7 @@ describe('FENCED_PARAMS', () => {
       if (params && 'attachments' in params.shape && !(method in ATTACHMENT_PARAMS)) missing.push(method)
     }
     expect(missing).toEqual([])
-    expect(Object.keys(ATTACHMENT_PARAMS).sort()).toEqual(['attachment.read', 'queue.add', 'session.send'])
+    expect(Object.keys(ATTACHMENT_PARAMS).sort()).toEqual(['attachment.read', 'queue.add', 'session.create', 'session.send'])
   })
   it('names the right params', () => {
     const req = (method: string, params: unknown): ClientRequest => ({ id: '1', method, params }) as ClientRequest
@@ -146,6 +146,8 @@ describe('FENCED_PARAMS', () => {
       '/r/shot.txt'
     ])
     expect(attachmentPaths(req('queue.add', { sessionId: 's', text: 't', attachments: atts.slice(0, 2) }))).toEqual(['/r/a.png'])
+    // A create that carries its first message carries that message's files, fenced as a send's.
+    expect(attachmentPaths(req('session.create', { cwd: '/r', firstMessage: 't', attachments: atts.slice(0, 1) }))).toEqual(['/r/a.png'])
     expect(attachmentPaths(req('session.send', { sessionId: 's', text: 't' }))).toEqual([])
     expect(attachmentPaths(req('session.list', {}))).toBeNull()
     expect(attachmentPaths(req('attachment.read', { path: '/a' }))).toEqual(['/a'])

@@ -224,6 +224,8 @@ const attachmentFiles = (p: { attachments?: WireAttachment[] }): string[] =>
  */
 export const ATTACHMENT_PARAMS: { [M in ClientRequest['method']]?: Picker<M> } = {
   'session.send': attachmentFiles,
+  // A create that carries its first message carries that message's files (createSteps.ts).
+  'session.create': attachmentFiles,
   'queue.add': attachmentFiles,
   // A thumbnail read: the same roots readAttachment admits a remote caller.
   'attachment.read': path

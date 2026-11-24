@@ -18,17 +18,19 @@ public struct HelloPush: Codable, Hashable, Sendable {
     public let name: String?
     public let contract: Int
     public let caps: [Capability]
+    public let features: [String]?
     public let key: Key?
     public let build: BuildFacts?
     public let hosts: [HostPresence]?
     public let via: String?
     public let presence: HostPresence?
 
-    public init(environmentId: String, name: String? = nil, contract: Int, caps: [Capability], key: Key? = nil, build: BuildFacts? = nil, hosts: [HostPresence]? = nil, via: String? = nil, presence: HostPresence? = nil) {
+    public init(environmentId: String, name: String? = nil, contract: Int, caps: [Capability], features: [String]? = nil, key: Key? = nil, build: BuildFacts? = nil, hosts: [HostPresence]? = nil, via: String? = nil, presence: HostPresence? = nil) {
         self.environmentId = environmentId
         self.name = name
         self.contract = contract
         self.caps = caps
+        self.features = features
         self.key = key
         self.build = build
         self.hosts = hosts
