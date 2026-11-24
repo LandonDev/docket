@@ -70,18 +70,21 @@ Every call runs on the owner session, so it reads every job.
   LifeOS. A time (a proposal, a move) carries `seen`, the pair as the step
   showed it when it offered the time: the host reads both events again
   (`events:get`) and refuses with "These events changed. Go back for a new
-  time." when either's start or end moved, so an offer a calendar made
-  stale before the window heard is never sent (the step keeps its form). A
-  row's end counts as LifeOS's clash rule counts it (`clashEnd`, `sameTimes`
-  in `shared/work/clashes.ts`, its `eventEnd`): an end taken away, or one
+  time." when either's start, end or place moved (the offer's drive was
+  worked out from both places), so an offer a calendar made
+  stale before the window heard is never sent (the step keeps its form). One
+  rule says whether a row read again is the event a side was built from
+  (`sameEvent` in `shared/work/clashes.ts`): its start, its place words whole
+  as LifeOS's own waive compares them, and its end as LifeOS's clash rule
+  counts it (`clashEnd`, its `eventEnd`): an end taken away, or one
   before the start, is an hour on, so taking an end away is a change and an
   event that never had one is not refused for ever (all-day events never
   clash). Each side of `seen` also says whether the step told of its guests:
   a move of an event the step said tells no one, which has gained someone
   with an address since (`hasGuests`, the rule's own), is refused with "This
   event has guests now, and a move tells them. Go back to look again." The
-  place is not compared: LifeOS's waive does that, and a false refusal here
-  would leave him no way to move. Refused for a thread's call whatever its key holds, and for any key
+  dialog sends each side's place as words ("" for none); a window a release
+  behind sends none, and its place is not compared. Refused for a thread's call whatever its key holds, and for any key
   without approve. A LifeOS refusal comes back in its own words. It answers
   `{queued}` (`ClashAnswered`): true when the act was handed to LifeOS's
   sender for a calendar, which has not reached the calendar yet, false when
@@ -139,13 +142,19 @@ minutes). His zone is LifeOS's `settings:get` → `timezone`, read at start and
 on each answer, else this host's. Each answer that changed pushes
 `work.clashes`.
 
-Each clash is told through the digest's `ctx.tell` once at its stamp (both
-events' starts, ends and place text, so a moved event tells again, under
-`TELL_VERSION`: a build that tells another way raises it, and each kept clash
-is told once more on its first read, which updates its digest row under the
-same key). A pair whose later event is over is never told, and one told is
-taken back once it is, as the Agenda and Today drop it (its deadline has
-passed, which the digest would take as at once):
+Each clash is told through the digest's `ctx.tell` once at its stamp. The
+stamp is the tell itself, every word and field (both titles, the minutes short
+and whether measured, the date and time, the jobs, where it opens, its
+deadline), so whatever it says that changes (a rename, a drive measured anew,
+a move) updates its digest row under the same key, and nothing else tells it
+again; the digest's own rule decides whether the update interrupts. It is
+kept under `TELL_VERSION`: a build that tells another way raises it, and each
+kept clash is told once more on its first read. A pair whose later event is
+over is never told, and one told is taken back once it is, as the Agenda and
+Today drop it (its deadline has passed, which the digest would take as at
+once). The watcher does not wait on LifeOS for that: a timer of its own looks
+at the last answer's clashes again when the first of their later events ends,
+so a digest made after a pair is over never says it:
 
 - `kind: 'clashes.new'`, `key: 'clash:<id>'`, the same on every host, so the
   digest shows one row for one clash.
@@ -188,13 +197,18 @@ The pillar has no view of its own and no row in the column.
 - `ClashDialog.tsx`: the two events and the drive, the ways out each allows,
   each way's one step. Decline, a proposed time and a move go through
   `work.clashes.answer`; "This is fine" through `work.clashes.waive`, with
-  Undo on its toast. Running late reads the event's people (`events:get`,
+  Undo on its toast. Running late reads both events again (`events:get`,
   given ten seconds by `answered` in `clashes/wait.ts`: Convex's own call
   has no end, and the dialog is locked while it is out; a Start place Save
   is given the same; if the two change or stop clashing while it reads, or
   the later event ends or changes job (Mail would open under the old one),
-  or the people's reply has the later event at other times than the screen (its end counted as the clash rule counts it, `sameTimes`),
-  nothing is drafted and the press is his again on the pair as it is).
+  or either reply has its event at other times or another place than the
+  screen (`sameEvent`), or the earlier event is gone, nothing is drafted and
+  the press is his again on the pair as it is). The subject names the later
+  event by the title its reply has, which may be a rename the screen has yet
+  to draw. The minutes short of a drive clash also rest on the later event's
+  arrive-by, which a clash's side does not carry, so a change of that alone is
+  seen only once the live read brings it.
   Then the window enters that job's workspace as a Today row's press does
   (`today/open.ts` `goTo`), opens its Mail, and hands the draft to Mail's
   door bound to that workspace (`writeMail(draft, workspaceId)`,

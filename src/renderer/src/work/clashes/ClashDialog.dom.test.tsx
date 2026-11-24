@@ -36,10 +36,10 @@ const mocked = (real: object) => ({
 });
 const marks = vi.hoisted(() => ({ now: null as unknown, asked: [] as unknown[] }));
 vi.mock("./mark", () => ({ useClashes: (...asked: unknown[]) => ((marks.asked = asked), marks.now) }));
-const lifeos = vi.hoisted(() => ({ attendees: [] as { address: string }[], gone: false, connecting: false, silent: false, held: null as Promise<unknown> | null, sector: undefined as string | undefined, times: null as { startsAt: number; endsAt: number } | null }));
+const lifeos = vi.hoisted(() => ({ attendees: [] as { address: string }[], gone: false, connecting: false, silent: false, held: null as Promise<unknown> | null, sector: undefined as string | undefined, times: null as { startsAt: number; endsAt: number } | null, title: undefined as string | undefined, earlier: {} as Record<string, unknown> | null }));
 vi.mock("../shell/lifeos", async (original) => ({
   ...(await original<object>()),
-  useLifeosSession: () => (lifeos.gone || lifeos.connecting ? { environmentId: "box", sector: null, state: lifeos.gone ? "unreachable" : "connecting", client: null } : { environmentId: "box", sector: null, state: "connected", client: { query: () => lifeos.held ?? (lifeos.silent ? new Promise<never>(() => {}) : Promise.resolve({ attendees: lifeos.attendees, ...(lifeos.sector ? { sector: lifeos.sector } : {}), ...lifeos.times })) } }),
+  useLifeosSession: () => (lifeos.gone || lifeos.connecting ? { environmentId: "box", sector: null, state: lifeos.gone ? "unreachable" : "connecting", client: null } : { environmentId: "box", sector: null, state: "connected", client: { query: (_fn: unknown, args: { id: string }) => lifeos.held ?? (lifeos.silent ? new Promise<never>(() => {}) : Promise.resolve(args.id === "ev_a" ? lifeos.earlier : { attendees: lifeos.attendees, ...(lifeos.sector ? { sector: lifeos.sector } : {}), ...(lifeos.title ? { title: lifeos.title } : {}), ...lifeos.times })) } }),
 }));
 const toasts = vi.hoisted(() => ({ said: [] as { words: string; action?: { label: string; onClick: () => void } }[] }));
 vi.mock("../../components/ui/toaster", () => ({
@@ -94,6 +94,8 @@ beforeEach(() => {
   lifeos.held = null;
   lifeos.sector = undefined;
   lifeos.times = null;
+  lifeos.title = undefined;
+  lifeos.earlier = {};
 });
 afterEach(() => {
   cleanup();
@@ -354,7 +356,7 @@ describe("the Clash dialog", () => {
     expect((screen.getByLabelText("To") as HTMLInputElement).value).toBe("13:15");
     fireEvent.click(screen.getByRole("button", { name: "Send" }));
     await settle();
-    expect(wire.calls[0]).toEqual({ method: "work.clashes.answer", params: { eventId: "ev_a", way: "propose", start: T0 - 105 * 60_000, end: T0 + 15 * 60_000, seen: [{ eventId: "ev_a", startsAt: T0, endsAt: T0 + 2 * HOUR, guests: false }, { eventId: "ev_b", startsAt: T0 + HOUR, endsAt: T0 + 3 * HOUR, guests: false }] } });
+    expect(wire.calls[0]).toEqual({ method: "work.clashes.answer", params: { eventId: "ev_a", way: "propose", start: T0 - 105 * 60_000, end: T0 + 15 * 60_000, seen: [{ eventId: "ev_a", startsAt: T0, endsAt: T0 + 2 * HOUR, location: "", guests: false }, { eventId: "ev_b", startsAt: T0 + HOUR, endsAt: T0 + 3 * HOUR, location: "", guests: false }] } });
     expect(toasts.said[0]?.words).toBe("Proposing a new time for Staff meeting…");
   });
 
@@ -371,7 +373,7 @@ describe("the Clash dialog", () => {
     expect(screen.getByText("Next day")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Move" }));
     await settle();
-    expect(wire.calls[0]).toEqual({ method: "work.clashes.answer", params: { eventId: "ev_b", way: "move", start: T0 + 10.5 * HOUR, end: T0 + 12 * HOUR, seen: [{ eventId: "ev_a", startsAt: T0, endsAt: T0 + 2 * HOUR, guests: false }, { eventId: "ev_b", startsAt: T0 + HOUR, endsAt: T0 + 3 * HOUR, guests: false }] } });
+    expect(wire.calls[0]).toEqual({ method: "work.clashes.answer", params: { eventId: "ev_b", way: "move", start: T0 + 10.5 * HOUR, end: T0 + 12 * HOUR, seen: [{ eventId: "ev_a", startsAt: T0, endsAt: T0 + 2 * HOUR, location: "", guests: false }, { eventId: "ev_b", startsAt: T0 + HOUR, endsAt: T0 + 3 * HOUR, location: "", guests: false }] } });
   });
 
   it("moves his own event to the time he sets, with no note to send", async () => {
@@ -383,7 +385,7 @@ describe("the Clash dialog", () => {
     fireEvent.change(screen.getByLabelText("To"), { target: { value: "19:30" } });
     fireEvent.click(screen.getByRole("button", { name: "Move" }));
     await settle();
-    expect(wire.calls[0]).toEqual({ method: "work.clashes.answer", params: { eventId: "ev_b", way: "move", start: T0 + 5 * HOUR, end: T0 + 6.5 * HOUR, seen: [{ eventId: "ev_a", startsAt: T0, endsAt: T0 + 2 * HOUR, guests: false }, { eventId: "ev_b", startsAt: T0 + HOUR, endsAt: T0 + 3 * HOUR, guests: false }] } });
+    expect(wire.calls[0]).toEqual({ method: "work.clashes.answer", params: { eventId: "ev_b", way: "move", start: T0 + 5 * HOUR, end: T0 + 6.5 * HOUR, seen: [{ eventId: "ev_a", startsAt: T0, endsAt: T0 + 2 * HOUR, location: "", guests: false }, { eventId: "ev_b", startsAt: T0 + HOUR, endsAt: T0 + 3 * HOUR, location: "", guests: false }] } });
   });
 
   it("says a move is done only when the host wrote it in LifeOS; one handed to a calendar's sender is under way", async () => {
@@ -600,6 +602,40 @@ describe("the Clash dialog", () => {
     fireEvent.click(screen.getByRole("button", { name: "Running late…" }));
     await settle();
     expect(mail.drafts).toHaveLength(1);
+  });
+
+  it("names the event in the subject as LifeOS has it now, when the reply has a rename the screen has yet to draw", async () => {
+    lifeos.attendees = [{ address: "dana@example.com" }];
+    lifeos.title = "JV Basketball";
+    show(overlap());
+    await settle();
+    fireEvent.click(screen.getByRole("button", { name: "Running late…" }));
+    await settle();
+    // The screen still says Varsity Basketball.
+    expect(mail.drafts).toEqual([expect.objectContaining({ subject: "Running late: JV Basketball" })]);
+  });
+
+  it("reads the earlier event again too: its end or its place moved, and nothing is drafted from the old minutes", async () => {
+    lifeos.attendees = [{ address: "dana@example.com" }];
+    // 1:00 to 3:00 against 2:00 to 4:00, no drive: an hour late. The meeting now ends at 2:15, which the screen has not drawn.
+    const plain = (): Clash => ({ id: "ev_a-ev_b", kind: "overlap", a: meeting(["decline", "propose"]), b: game(["move", "late"]) });
+    lifeos.earlier = { startsAt: T0, endsAt: T0 + 75 * 60_000 };
+    show(plain());
+    await settle();
+    fireEvent.click(screen.getByRole("button", { name: "Running late…" }));
+    await settle();
+    expect(mail.drafts).toEqual([]);
+    expect((screen.getByRole("button", { name: "Running late…" }) as HTMLButtonElement).disabled).toBe(false);
+    // Its place moved: another drive.
+    lifeos.earlier = { startsAt: T0, endsAt: T0 + 2 * HOUR, location: "Armory, 812 3rd St" };
+    fireEvent.click(screen.getByRole("button", { name: "Running late…" }));
+    await settle();
+    expect(mail.drafts).toEqual([]);
+    // As the screen has it: drafted, an hour late.
+    lifeos.earlier = { startsAt: T0, endsAt: T0 + 2 * HOUR };
+    fireEvent.click(screen.getByRole("button", { name: "Running late…" }));
+    await settle();
+    expect(mail.drafts).toEqual([expect.objectContaining({ body: "I'm running about 60 minutes late." })]);
   });
 
   it("says with a move whether the step told of guests, so the host can refuse one a guest was added to since", async () => {

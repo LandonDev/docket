@@ -117,13 +117,19 @@ export const clashEnd = (event: { startsAt: number; endsAt?: number | undefined 
   event.endsAt !== undefined && event.endsAt >= event.startsAt ? event.endsAt : event.startsAt + CLASH_NO_END_MS
 
 /**
- * Whether an event's row, read again (`events:get`), still has the times a clash's side showed: its start, and
- * its end as the clash rule counts it, so an end taken away reads as an hour on (a change) and an event that
- * never had one is not refused for ever. A row with no start says nothing either way: undefined.
+ * Whether an event's row, read again (`events:get`), is still the event a clash's side was built from: its
+ * start, its end as the clash rule counts it (so an end taken away reads as an hour on, a change, and an event
+ * that never had one is not refused for ever), and its place words, whole, as LifeOS's own waive compares them
+ * (a place moved is another drive). `place` false leaves the place out, for a caller that did not say it. A
+ * row with no start says nothing either way: undefined.
  */
-export function sameTimes(row: { startsAt?: number | undefined; endsAt?: number | undefined }, side: { startsAt: number; endsAt: number }): boolean | undefined {
+export function sameEvent(
+  row: { startsAt?: number | undefined; endsAt?: number | undefined; location?: string | undefined },
+  side: { startsAt: number; endsAt: number; location?: string | undefined },
+  place = true
+): boolean | undefined {
   if (typeof row.startsAt !== 'number') return undefined
-  return row.startsAt === side.startsAt && clashEnd({ startsAt: row.startsAt, endsAt: row.endsAt }) === side.endsAt
+  return row.startsAt === side.startsAt && clashEnd({ startsAt: row.startsAt, endsAt: row.endsAt }) === side.endsAt && (!place || (row.location ?? '') === (side.location ?? ''))
 }
 
 /** Whether someone else is on an event with an address, as LifeOS's clash rule says `guests`: a change on its calendar is mailed to them. */

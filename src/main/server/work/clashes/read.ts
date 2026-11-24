@@ -1,5 +1,5 @@
 import type { ClashLeave, ClashMiles } from '@shared/contract-work-clashes'
-import { clashFrom, hasGuests, leaveFrom, listFrom, milesOf, sameTimes, type Clash, type ClashAnswered, type ClashList, type ClashStop, type LifeosClash, type LifeosRange } from '@shared/work/clashes'
+import { clashFrom, hasGuests, leaveFrom, listFrom, milesOf, sameEvent, type Clash, type ClashAnswered, type ClashList, type ClashStop, type LifeosClash, type LifeosRange } from '@shared/work/clashes'
 
 export type { LifeosClash, LifeosLeave, LifeosRange, LifeosSide } from '@shared/work/clashes'
 import { errorText, type SectorKey } from '@shared/work/ids'
@@ -143,14 +143,16 @@ export async function answer(ctx: WorkCtx, a: Answer, by: Caller): Promise<Clash
   if (end <= start) throw new Error('The end must come after the start.')
   // The time was offered from the pair as the step showed it: a calendar that moved either event since (and has
   // not reached the window yet) may have made it clash anew, so the pair is read again here before anything goes.
-  // A row's end is counted as the clash rule counts it (`sameTimes`): an end taken away is an hour on, a change.
-  type Event = { source?: string; startsAt?: number; endsAt?: number; arriveByAt?: number; leaveByAt?: number; attendees?: { address: string }[] }
+  // Each event as the step offered from it (`sameEvent`): its start, its end as the clash rule counts it (an end
+  // taken away is an hour on, a change), and its place, which the drive and so the offer were worked out from.
+  // A window a release behind sends no place: it is not compared then.
+  type Event = { source?: string; startsAt?: number; endsAt?: number; location?: string; arriveByAt?: number; leaveByAt?: number; attendees?: { address: string }[] }
   const read = new Map<string, Event | null>()
   for (const s of a.seen ?? []) {
     const now = await asked(() => owner.query<Event | null>('events:get', { id: s.eventId }))
     read.set(s.eventId, now)
     if (!now) throw new Error('That event is no longer in LifeOS.')
-    if (sameTimes(now, s) !== true) throw new Error(PAIR_CHANGED)
+    if (sameEvent(now, s, typeof s.location === 'string') !== true) throw new Error(PAIR_CHANGED)
     // The step said the move tells no one: a guest added since would be mailed by its calendar unwarned.
     if (a.way === 'move' && s.eventId === a.eventId && s.guests === false && hasGuests(now)) throw new Error(GUESTS_ADDED)
   }

@@ -1,6 +1,6 @@
 import { makeFunctionReference } from "convex/server";
 import { useEffect, useRef, useState, type FormEvent } from "react";
-import { clashTitle, driveLine, sameTimes, timeNear, type Clash, type ClashAnswered, type ClashSide, type ClashWay } from "@shared/work/clashes";
+import { clashTitle, driveLine, sameEvent, timeNear, type Clash, type ClashAnswered, type ClashSide, type ClashWay } from "@shared/work/clashes";
 import { addDays, startOfDay } from "work-kit/views/lib/agenda";
 import { formatDayHeading } from "work-kit/views/lib/format";
 import { DialogFooter, ErrorLine } from "../../chrome/ConfirmDialog";
@@ -279,17 +279,23 @@ function Body({
     // The pair's times and drive, and the later event's job and workspace: the draft is for these, in that job's Mail.
     const stampOf = (c: Clash) => `${pairStamp(c)}|${c.b.eventId}|${c.b.sector}|${c.b.workspaceId ?? ""}`;
     const pressed = stampOf(clash);
-    answered(session.client.query(eventGet, { id: clash.b.eventId })).then(
-      (event: { sector?: string; startsAt?: number; endsAt?: number; attendees?: { address: string }[] } | null) => {
+    // Both events are read again: the line is built from the later event's title and people, and its minutes from both events' times and places (the drive is between them).
+    type Row = { sector?: string; title?: string; startsAt?: number; endsAt?: number; location?: string; attendees?: { address: string }[] } | null;
+    const read = (id: string) => answered(session.client!.query(eventGet, { id })) as Promise<Row>;
+    Promise.all([read(clash.b.eventId), read(clash.a.eventId)]).then(
+      ([event, earlier]) => {
         setPending(false);
-        // The reply may know of a change the screen has not drawn yet: the event's job and times are read from it too, so a move the live read has yet to bring drafts no old minutes. Its end counts as the clash rule counts it (`sameTimes`): an end taken away is an hour on.
-        if ((event?.sector !== undefined && event.sector !== clash.b.sector) || (event && sameTimes(event, latest.current.b) === false)) return setBusy(null);
+        // The replies may know of a change the screen has not drawn yet: the later event's job, and either event's times and place (`sameEvent`: an end counts as the clash rule counts it, so one taken away is an hour on). Any of them changed, or the earlier event gone, and the minutes he pressed for are no longer the minutes: nothing is drafted, and the press is his again once the dialog shows the pair as it is.
+        const now = latest.current;
+        if ((event?.sector !== undefined && event.sector !== clash.b.sector) || earlier === null || (event && sameEvent(event, now.b) === false) || (earlier && sameEvent(earlier, now.a) === false)) return setBusy(null);
         // The pair changed while the people were read (its times, its drive, or the later event's job), or stopped being a clash: the minutes he pressed for are no longer the minutes, or the Mail no longer the job's. The dialog shows the pair as it is, or that it is gone, and the press is his again.
         // Nor is a line drafted for an event that ended in the wait: its Running late is gone from the dialog by then.
-        if (left.current || latest.current.b.endsAt <= Date.now() || stampOf(latest.current) !== pressed) return setBusy(null);
+        if (left.current || now.b.endsAt <= Date.now() || stampOf(now) !== pressed) return setBusy(null);
         const to = (event?.attendees ?? []).map((a) => a.address).filter((a) => a.includes("@"));
         if (!to.length) return failed(null, "Nobody on this event has an address");
-        if (!lateMail(environmentId, workspaceId, lateDraft(latest.current, to, Date.now()))) return failed(null, "This job's workspace is not on this host");
+        // The subject names the event as LifeOS has it now: a rename the screen has yet to draw is the name its people know.
+        const title = typeof event?.title === "string" && event.title.trim() ? event.title : now.b.title;
+        if (!lateMail(environmentId, workspaceId, lateDraft({ ...now, b: { ...now.b, title } }, to, Date.now()))) return failed(null, "This job's workspace is not on this host");
         close ? close(onClose) : onClose();
       },
       (err: unknown) => failed(err, "LifeOS did not answer"),
@@ -316,7 +322,8 @@ function Body({
           setRefused(null);
           setPending(true);
           // A time goes with the pair it was offered from (the step holds Send once the pair on screen changes): the host reads both again and refuses a pair a calendar changed that has not reached the window yet.
-          const seen = params.start !== undefined ? { seen: [clash.a, clash.b].map(({ eventId, startsAt, endsAt, guests }) => ({ eventId, startsAt, endsAt, guests: Boolean(guests) })) } : {};
+          // Each side's place goes too, as words ("" for none): the offer's drive was worked out from both places.
+          const seen = params.start !== undefined ? { seen: [clash.a, clash.b].map(({ eventId, startsAt, endsAt, location, guests }) => ({ eventId, startsAt, endsAt, location: location ?? "", guests: Boolean(guests) })) } : {};
           link.request("work.clashes.answer", { eventId: step.eventId, way: step.way, ...params, ...seen }, { lane: "ui" }).then(
             (reply: unknown) => {
               done(doneWords(step.way, clash[side].title, (reply as ClashAnswered | null)?.queued ?? true));

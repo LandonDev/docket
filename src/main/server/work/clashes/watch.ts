@@ -1,6 +1,7 @@
 import type { DatabaseSync } from 'node:sqlite'
 import { tellWords } from '@shared/work/clashes'
 import { errorText, type SectorKey } from '@shared/work/ids'
+import type { Tell } from '@shared/work/tell'
 import type { WorkCtx } from '../modules'
 import { clashOf, homesOf, type LifeosClash, type LifeosRange } from './read'
 import { hostZone, startOfDay, zoneOf } from './zone'
@@ -23,12 +24,17 @@ export function ensureClashes(db: DatabaseSync): void {
 export const tellKey = (id: string): string => `clash:${id}`
 
 /**
- * What a clash is told at: both events' times and place text, so a moved event tells again, under the version of
- * how a tell is made. A tell made another way since (its date, its deadline, where it opens) tells each kept clash
- * once more on the first read after the upgrade, which updates its digest row under the same key.
+ * What a clash is told at: the tell itself, every word and field of it (both titles, the minutes short and whether
+ * they are measured, the date and time, the jobs, where it opens, its deadline), so anything it says that changes
+ * (a rename, a new drive, a move) updates its digest row under the same key, and nothing else tells it again. The
+ * digest's own rule decides whether the update interrupts. Under the version of how a tell is made: a build that
+ * tells another way raises it, and each kept clash is told once more on its first read.
  */
-export const TELL_VERSION = 2
-export const stampOf = (c: LifeosClash): string => JSON.stringify([TELL_VERSION, c.a.startsAt, c.a.endsAt, c.a.location ?? '', c.b.startsAt, c.b.endsAt, c.b.location ?? ''])
+export const TELL_VERSION = 3
+export const stampOf = (tell: Tell): string => JSON.stringify([TELL_VERSION, tell])
+
+/** Longer than a timer waits (setTimeout's 24.8 days): the watcher looks again then, and waits on. */
+const MAX_WAIT = 2 ** 31 - 1
 
 /**
  * Where a tell opens: the Agenda on the later event, whose week holds the clash (a block of weeks starts long
@@ -58,21 +64,22 @@ export function tellClashes(ctx: WorkCtx, clashes: readonly LifeosClash[], zone:
     seen.add(key)
     // The earlier event's job tells, on a host that holds it; the key is the same on each such host.
     const workspaceId = homes.get(c.a.sector)
-    const stamp = stampOf(c)
-    if (!workspaceId || told.get(key) === stamp) continue
-    const words = tellWords(clashOf(c, homes), { timeZone: zone })
+    if (!workspaceId) continue
+    const tell: Tell = {
+      kind: 'clashes.new',
+      workspaceId,
+      ...tellWords(clashOf(c, homes), { timeZone: zone }),
+      open: openOf(c, workspaceId, homes),
+      // Too late once the later event starts. The digest's rule holds a later day's clash for the digest and
+      // interrupts once its start comes before the next digest (work-digest.md): on its day, or the night before
+      // for one early in the morning, however many days ahead it was found.
+      by: c.b.startsAt,
+      key
+    }
+    const stamp = stampOf(tell)
+    if (told.get(key) === stamp) continue
     try {
-      ctx.tell({
-        kind: 'clashes.new',
-        workspaceId,
-        ...words,
-        open: openOf(c, workspaceId, homes),
-        // Too late once the later event starts. The digest's rule holds a later day's clash for the digest and
-        // interrupts once its start comes before the next digest (work-digest.md): on its day, or the night before
-        // for one early in the morning, however many days ahead it was found.
-        by: c.b.startsAt,
-        key
-      })
+      ctx.tell(tell)
     } catch (err) {
       ctx.log(`clashes: a clash was not told: ${errorText(err)}`)
       continue
@@ -101,6 +108,8 @@ export function watchClashes(ctx: WorkCtx, now: () => number = Date.now): () => 
   let last = ''
   let chain: Promise<void> = Promise.resolve()
   let stopped = false
+  let kept: readonly LifeosClash[] = []
+  let expiry: ReturnType<typeof setTimeout> | null = null
 
   const onRange = async (range: LifeosRange | null, mine: number): Promise<void> => {
     if (stopped || mine !== generation || !ctx.enabled() || !range || !Array.isArray(range.clashes)) return
@@ -111,8 +120,33 @@ export function watchClashes(ctx: WorkCtx, now: () => number = Date.now): () => 
     }
     zone = await zoneOf(ctx)
     if (stopped || mine !== generation) return
-    tellClashes(ctx, range.clashes, zone, now())
+    kept = range.clashes
+    tellClashes(ctx, kept, zone, now())
+    expire()
     roll()
+  }
+  /**
+   * The last answer's clashes are looked at again when the first of their later events ends, with no answer from
+   * LifeOS needed: a pair that is over is taken back then, so a digest made after it never says it.
+   */
+  const expire = (): void => {
+    if (expiry) clearTimeout(expiry)
+    expiry = null
+    if (stopped) return
+    const at = now()
+    const next = Math.min(...kept.map((c) => c.b.endsAt).filter((end) => end > at))
+    if (!Number.isFinite(next)) return
+    expiry = setTimeout(() => {
+      expiry = null
+      chain = chain
+        .then(() => {
+          if (stopped || !ctx.enabled()) return
+          tellClashes(ctx, kept, zone, now())
+          expire()
+        })
+        .catch((err: unknown) => ctx.log(`clashes: the watch failed: ${errorText(err)}`))
+    }, Math.min(next - at, MAX_WAIT))
+    expiry.unref?.()
   }
   const subscribe = (): void => {
     off?.()
@@ -140,6 +174,7 @@ export function watchClashes(ctx: WorkCtx, now: () => number = Date.now): () => 
   return () => {
     stopped = true
     clearInterval(timer)
+    if (expiry) clearTimeout(expiry)
     off?.()
     off = null
   }

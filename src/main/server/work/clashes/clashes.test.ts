@@ -284,6 +284,19 @@ describe('his answer', () => {
     expect(await call('work.clashes.answer', { eventId: 'e_game', way: 'move', start: at(18), end: at(20), seen: seen(true) })).toEqual({ queued: true })
   })
 
+  it('refuses a time offered from a place that has moved since, and leaves the place alone for a window that sends none', async () => {
+    const seen = (location?: string) => [
+      { eventId: 'e_staff', startsAt: at(16), endsAt: at(17), ...(location !== undefined ? { location } : {}) },
+      { eventId: 'e_game', startsAt: at(17, 30), endsAt: at(19, 30), ...(location !== undefined ? { location: '' } : {}) }
+    ]
+    // The meeting moved to another building: the drive the offer left is another.
+    answers['events:get'] = (args) => (args.id === 'e_staff' ? { startsAt: at(16), endsAt: at(17), location: 'Armory, 812 3rd St' } : { startsAt: at(17, 30), endsAt: at(19, 30) })
+    await expect(call('work.clashes.answer', { eventId: 'e_staff', way: 'propose', start: at(14), end: at(15), seen: seen('Room 210, Elm Hall') })).rejects.toThrow(/^These events changed\./)
+    // A window a release behind says no place: only the times are compared.
+    await call('work.clashes.answer', { eventId: 'e_staff', way: 'propose', start: at(14), end: at(15), seen: seen() })
+    expect(calls.map((c) => c.fn).slice(-2)).toEqual(['calendarOps:save', 'calendarOps:send'])
+  })
+
   it("refuses a thread's call whatever its key holds, and a key without approve, before LifeOS is asked", async () => {
     await expect(call('work.clashes.answer', { eventId: 'e_staff', way: 'decline' }, MODEL)).rejects.toThrow('Only the owner answers a clash')
     await expect(call('work.clashes.answer', { eventId: 'e_staff', way: 'decline' }, REMOTE)).rejects.toThrow('Only the owner answers a clash')
@@ -495,6 +508,55 @@ describe('the tell', () => {
     await flush()
     expect(told.map((t) => t.key)).toEqual(['clash:e_staff-e_game', 'clash:e_lunch-e_call'])
     stop()
+  })
+
+  it('updates the row it told when the words change with no time moved: a rename, an estimate measured', async () => {
+    const stop = watchClashes(ctx, () => at(9))
+    await flush()
+    const rough = { ...driveClash, measured: false, shortBy: 13 }
+    subs.at(-1)!.on(range(rough))
+    await flush()
+    expect(told.map((t) => t.title)).toEqual(['About 15 min short between Staff meeting and Varsity Basketball'])
+    // The map measured the drive: 12 minutes short, the times and places as they were.
+    subs.at(-1)!.on(range({ ...driveClash, shortBy: 12 }))
+    await flush()
+    // The game renamed, nothing else changed.
+    subs.at(-1)!.on(range({ ...driveClash, shortBy: 12, b: { ...game, title: 'JV Basketball' } }))
+    await flush()
+    expect(told.map((t) => [t.key, t.title])).toEqual([
+      ['clash:e_staff-e_game', 'About 15 min short between Staff meeting and Varsity Basketball'],
+      ['clash:e_staff-e_game', '12 min short between Staff meeting and Varsity Basketball'],
+      ['clash:e_staff-e_game', '12 min short between Staff meeting and JV Basketball']
+    ])
+    // The same words again: told no more.
+    subs.at(-1)!.on(range({ ...driveClash, shortBy: 12, b: { ...game, title: 'JV Basketball' } }))
+    await flush()
+    expect(told).toHaveLength(3)
+    stop()
+  })
+
+  it('takes a clash back when its later event ends, with no new answer from LifeOS, so a digest made after never says it', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval'] })
+    try {
+      let now = at(6)
+      const tick = () => vi.advanceTimersByTimeAsync(5)
+      const stop = watchClashes(ctx, () => now)
+      await tick()
+      // 6:30 to 7:00 against 6:45 to 7:00, told at 6:00 AM, before an 8:00 AM digest.
+      const dawn = { ...overlapClash, id: 'e_staff-e_game', a: { ...staff, startsAt: at(6, 30), endsAt: at(7) }, b: { ...game, startsAt: at(6, 45), endsAt: at(7) } }
+      subs.at(-1)!.on(range(dawn))
+      await tick()
+      expect(told.map((t) => t.key)).toEqual(['clash:e_staff-e_game'])
+      expect(done).toEqual([])
+      // 7:00: both are over, and LifeOS says nothing.
+      now = at(7)
+      await vi.advanceTimersByTimeAsync(60 * 60_000)
+      expect(done).toEqual(['clash:e_staff-e_game'])
+      expect(rows()).toEqual([])
+      stop()
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it('never tells a pair whose later event is over, and takes one back once it is', async () => {
