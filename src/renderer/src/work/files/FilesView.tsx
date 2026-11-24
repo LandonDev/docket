@@ -24,7 +24,7 @@ import { allowComputers } from "../shell/actions";
 import { openTemplates, workTemplatePort } from "../templates/open";
 import type { WorkViewProps } from "../views/registry";
 import { openVm, signInOnVm } from "../winvm/signIn";
-import { addFromDrive, carryTo, download, makeIn, purge, renameTo, restore, star, trash, uploadTo, type ActsOf, type UploadProgress, keepMail, setProject } from "./acts";
+import { addFromDrive, carryTo, download, downloadOf, makeIn, purge, renameTo, restore, star, trash, uploadTo, type ActsOf, type UploadProgress, keepMail, setProject } from "./acts";
 import { FileTabView, type FileManage } from "./FileTabView";
 import type { GoToRow } from "./GoTo";
 import { filterChoices, HomePage, SaveSearchDialog, SearchFilters } from "./Home";
@@ -982,8 +982,13 @@ function OpenFile({
             if (act === "open-app") return verbs.openApp(entry, place);
           },
           rename: (name) => void renameTo(of, place, entry, name),
-          // Its bytes are read from where they lie: a shared library's only in the window of the computer that holds it.
-          ...(entry.shared && !place.place.vm && place.link !== workspace.environmentId ? {} : { download: () => void download(of, place, entry) }),
+          // A copy of a file on another computer or in the VM downloads the copy this tab holds, asked of the workspace's
+          // host by its item: the original's bytes go to no window but its own computer's, so asking for them was refused.
+          // Any other file is read from where it lies: a shared library's only in the window of the computer that holds it.
+          ...downloadOf({ copy: !!tab.copyOf && !!item, shared: !!entry.shared, there: place.link !== workspace.environmentId }, {
+            copy: () => void download(of, { ...place, link: workspace.environmentId }, { ...entry, ref: item!.source }, item!.id),
+            lies: () => void download(of, place, entry),
+          }),
         }
       : undefined;
   return (

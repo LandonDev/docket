@@ -286,15 +286,29 @@ export async function uploadTo(of: ActsOf, copy: PlaceCopy, at: FolderRef, files
   return landed;
 }
 
-/** A file's bytes to this computer, read from where they lie in parts of one version. */
-export async function download(of: ActsOf, copy: PlaceCopy, entry: FileEntry): Promise<void> {
+/**
+ * Which Download a file's tab offers: its own copy's bytes for a copy, the file's own where this window may read
+ * them (never a shared library's from another computer's window), else none: a press that can only be refused is
+ * not offered.
+ */
+export function downloadOf<T>(file: { copy: boolean; shared: boolean; there: boolean }, ways: { copy: T; lies: T }): { download?: T } {
+  if (file.copy) return { download: ways.copy };
+  return file.shared && file.there ? {} : { download: ways.lies };
+}
+
+/**
+ * A file's bytes to this computer, read from where they lie in parts of one version. With `itemId` the bytes are a
+ * Files tab's own copy (a file of another computer or the VM, open here): the workspace's host reads the copy it
+ * holds, since the original's bytes go to no window but its own computer's.
+ */
+export async function download(of: ActsOf, copy: PlaceCopy, entry: FileEntry, itemId?: string): Promise<void> {
   if (!entry.ref) return;
   try {
     const link = registry.linkOf(copy.link);
     const parts: BlobPart[] = [];
     let version: string | undefined;
     for (let offset = 0; ; ) {
-      const got = await link.request<{ data: string; version: string; end: boolean }>("work.files.read", { workspaceId: of.workspaceId, ref: entry.ref as CanvasSource, offset, length: 4 * 1024 * 1024, ...(version ? { version } : {}) }, longWait(copy));
+      const got = await link.request<{ data: string; version: string; end: boolean }>("work.files.read", { workspaceId: of.workspaceId, ref: entry.ref as CanvasSource, ...(itemId ? { itemId } : {}), offset, length: 4 * 1024 * 1024, ...(version ? { version } : {}) }, longWait(copy));
       const raw = atob(got.data);
       const bytes = new Uint8Array(raw.length);
       for (let i = 0; i < raw.length; i++) bytes[i] = raw.charCodeAt(i);

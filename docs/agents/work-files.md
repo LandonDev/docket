@@ -335,6 +335,12 @@ comes in then uploads. A drag that leaves the window and comes back still
 held is the same rows, and a drop then still moves them. Rows that cannot go out (a folder among them, a file kept in the cloud,
 another computer's) keep the window's own drag.
 
+Download in a file tab's More menu follows one rule (`downloadOf`, work/files/acts.ts): a tab that holds a copy
+(a file of another computer or the VM, open here) downloads that copy, asked of the workspace's host by its item
+(`work.files.read { itemId }`, the host's `readCopy`), since the original's bytes go to no window but its own
+computer's; a file of the workspace's own host is read where it lies; a shared library's file with no copy here is
+offered no Download from another computer's window. Facts' Download reads by the item the same way.
+
 **Ask: a chat docked beside the file** (`Dock.tsx`, `dockThread.ts`). The
 owner's rule: a file opens chat only when he asks for it; by default it is
 the file alone, and a chat is kept only once he sends in it. So opening a
