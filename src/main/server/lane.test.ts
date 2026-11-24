@@ -48,9 +48,11 @@ describe('laneOf', () => {
   it('a person\'s click is interactive; the polls and walks are bulk; the rest normal', () => {
     expect(laneOf(req('session.archive', { sessionId: 'elsewhere', archived: true }, 'ui'), focus)).toBe('interactive')
     expect(laneOf(req('session.batch', { action: 'stop', ids: ['a'] }, 'ui'), focus)).toBe('interactive')
-    for (const method of ['project.changes', 'project.compare', 'git.diffStats', 'git.diffIndex', 'search.project', 'session.search', 'commands.list', 'github.inbox', 'github.prStatus', 'resources.listAll', 'doctor.get', 'fs.watch', 'host.deploy', 'host.publish', 'harness.sync', 'memory.sync'])
+    for (const method of ['project.changes', 'project.compare', 'git.diffStats', 'git.diffIndex', 'search.project', 'session.search', 'github.inbox', 'github.prStatus', 'resources.listAll', 'doctor.get', 'fs.watch', 'host.deploy', 'host.publish', 'harness.sync', 'memory.sync'])
       expect(laneOf(req(method, {}), focus), method).toBe('bulk')
-    expect(laneOf(req('checkpoint.status', { sessionId: 'elsewhere' }), focus)).toBe('bulk')
+    // Held answers (heldAnswer.ts): nothing to wait in the gate for.
+    expect(laneOf(req('checkpoint.status', { sessionId: 'elsewhere' }), focus)).toBe('normal')
+    expect(laneOf(req('commands.list', { provider: 'claude', cwd: '/x' }), focus)).toBe('normal')
     expect(laneOf(req('batch.get', { masterId: 'other-master' }), focus)).toBe('normal')
     for (const method of ['session.events', 'workspace.list', 'session.list', 'fs.read'])
       expect(laneOf(req(method, { sessionId: 'elsewhere' }), focus), method).toBe('normal')

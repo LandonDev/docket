@@ -134,7 +134,9 @@ describe('checkpoint turns', () => {
     expect(t.manifest().files).toEqual({})
     expect((await t.turns.status('s1')).files.map((f) => f.relative)).toEqual([])
     git.dirty = ['src/app.ts']
-    expect((await t.turns.status('s1')).files.map((f) => f.relative)).toEqual(['src/app.ts'])
+    // The ask answers what the host held at once and reads again behind it; the changed answer comes on the next ask.
+    expect((await t.turns.status('s1')).files.map((f) => f.relative)).toEqual([])
+    await vi.waitFor(async () => expect((await t.turns.status('s1')).files.map((f) => f.relative)).toEqual(['src/app.ts']))
   })
 
   it('the flush writes only paths on disk; a temporary file it listed and the turn removed leaves the manifest at the settle', async () => {
@@ -410,9 +412,33 @@ describe('checkpoint turns', () => {
     await t.end()
     expect(t.manifest().touched).toEqual(['a.txt', 'hand.txt'])
     expect(t.manifest().files).toEqual({ 'hand.txt': 'contents' })
-    expect((await t.turns.status('s1')).files.map((f) => f.relative)).toEqual(['a.txt', 'hand.txt'])
+    await vi.waitFor(async () => expect((await t.turns.status('s1')).files.map((f) => f.relative)).toEqual(['a.txt', 'hand.txt']))
     await t.turns.undo('s1', 'hand.txt')
     expect(readFileSync(join(t.dir, 'hand.txt'), 'utf8')).toBe('person\n')
+  })
+
+  it('status answers what the host held while the read behind it waits on the thread\'s queued work, and pushes when it changes', async () => {
+    const t = setup()
+    git.dirty = ['a.txt']
+    await t.turns.ensure('s1', t.dir)
+    await t.call('Write', { file_path: 'b.txt', content: 'x' })
+    t.file('b.txt', 'x\n')
+    await t.end()
+    await vi.waitFor(async () => expect((await t.turns.status('s1')).files.map((f) => f.relative)).toEqual(['b.txt']))
+    // Everything behind the answer is stuck: the store's status never returns.
+    const stuck = vi.spyOn(CheckpointStore.prototype, 'status').mockReturnValue(new Promise(() => {}))
+    const started = performance.now()
+    expect((await t.turns.status('s1')).files.map((f) => f.relative)).toEqual(['b.txt'])
+    expect(performance.now() - started).toBeLessThan(100)
+    // A thread never read before answers empty within the bound, and is told once its read lands.
+    const before = t.pushed[0].length
+    let land!: (value: { files: [] }) => void
+    stuck.mockReturnValue(new Promise((resolve) => (land = resolve)))
+    const first = performance.now()
+    expect((await t.turns.status('s2')).files).toEqual([])
+    expect(performance.now() - first).toBeLessThan(500)
+    land({ files: [] })
+    await vi.waitFor(() => expect(t.pushed[0].slice(before)).toContain('s2'))
   })
 
   it('status, undo and keep find the cwd on the session row', async () => {

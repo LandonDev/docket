@@ -2319,10 +2319,15 @@ every host:
   temp-code.service` → `[Service]` `Nice=-5` and a restart at the next
   deploy. The hand relief of 2026-11-04 (`renice 19` on every java, `-10`
   on the server's threads) is what these make permanent.
-- **The orphan sweep.** Every 10 s the host reads one process table of
-  its own user: `/proc` directly on Linux (procScan.ts: `stat`, `cmdline`
-  and the pid dir's owner per process, no child process at all), one `ps`
-  through the exec broker elsewhere; a call ending within 2 s of a sweep
+- **The orphan sweep.** Every 10 s the host reads one process table:
+  `/proc` directly on Linux (procScan.ts: `stat` and `cmdline` of each pid
+  in the server's own cgroup tree, `temp-code.service` on the box, else of
+  every pid its user owns; two reads in flight at most, each into a reused
+  16 KB buffer, no child process at all), one `ps` through the exec broker
+  elsewhere. Until 2026-11-23 it read every pid on the host at once with a
+  64 KB buffer per file: at 30 threads that was a scan every 2 s, thousands
+  of jobs ahead of every other file read in libuv's four threads and a
+  second of loop stall in two ("Answers under load"); a call ending within 2 s of a sweep
   reads the sweep's rows (`SCAN_SHARE_MS`), and a process's environment is
   read once (`/proc/<pid>/environ` on Linux, `ps -E` on macOS, which has no
   /proc);

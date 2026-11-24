@@ -14,10 +14,14 @@
  * Every server line carries the requests in flight (method + age), the
  * pushes sent in the last second, the running thread count, loadavg, RSS,
  * the most unsent bytes on a socket and the bulk lane (lane.ts) as
- * `lane=bulk:<running>/<held>`. Cost: two integer counters, one Map entry per in-flight request,
+ * `lane=bulk:<running>/<held>`, and `pool=`: how long the last one-a-second
+ * `stat` took through libuv's thread pool (every fs/promises call, dns.lookup
+ * and zlib share its four threads; a fs-only request that waits there shows
+ * here, `pool=<age>ms+` while the probe is still out). Cost: two integer counters, one Map entry per in-flight request,
  * one histogram read a second. Nothing allocates per event.
  */
 import { appendFileSync, mkdirSync, renameSync, statSync } from 'node:fs'
+import { stat } from 'node:fs/promises'
 import { join } from 'node:path'
 import { loadavg } from 'node:os'
 import { monitorEventLoopDelay } from 'node:perf_hooks'
@@ -78,6 +82,9 @@ const pushes = { meta: 0, event: 0 }
 /** The last second's meta pushes by producer (notifyMeta's tag) and the distinct sessions they named. */
 const metaProducers = new Map<string, number>()
 const metaIds = new Set<string>()
+/** The thread-pool probe: the last answer's time, and when the one out now left. */
+let poolMs = 0
+let poolProbeAt: number | null = null
 
 /** Where stall lines go; `null` (tests, no data dir) disables the recorder. */
 export function setStallLog(logDir: string | null): void {
@@ -190,8 +197,10 @@ export function recordCheckpoint(schema: string, frames: number, ms: number): vo
   if (ms >= TIMED_MS) write(`checkpoint schema=${schema} frames=${frames} ms=${Math.round(ms)}`)
 }
 
-export function recordSlowRequest(method: string, ms: number): void {
-  write(`slow-request ${method} ${ms}ms`)
+/** `lane=` and, for bulk, `gate=` (the wait before it ran; `gate=joined` when it shared another's run). */
+export function recordSlowRequest(method: string, ms: number, how?: { lane: string; gateMs: number | null }): void {
+  const lane = how ? ` lane=${how.lane}${how.lane === 'bulk' ? ` gate=${how.gateMs === null ? 'joined' : `${how.gateMs}ms`}` : ''}` : ''
+  write(`slow-request ${method} ${ms}ms${lane}`)
 }
 
 /** A stall the renderer measured; its line already carries its own context. */
@@ -227,6 +236,7 @@ export function startStallMonitor(): () => void {
     histogram.reset()
     if (line) write(line)
     resetPushes()
+    probePool()
   }, SAMPLE_MS)
   timer.unref()
   return () => {
@@ -234,6 +244,25 @@ export function startStallMonitor(): () => void {
     histogram.disable()
     lag = { meanMs: 0, maxMs: 0, ewmaMs: 0 }
   }
+}
+
+/** One `stat` through the thread pool unless one is still out. */
+function probePool(): void {
+  if (poolProbeAt !== null) return
+  const at = performance.now()
+  poolProbeAt = at
+  void stat(process.execPath)
+    .catch(() => null)
+    .finally(() => {
+      poolMs = performance.now() - at
+      poolProbeAt = null
+    })
+}
+
+/** The `pool=` field: the probe out now when it is older than the last answer. */
+export function poolField(): string {
+  const out = poolProbeAt === null ? 0 : performance.now() - poolProbeAt
+  return out > poolMs ? `pool=${Math.round(out)}ms+` : `pool=${Math.round(poolMs)}ms`
 }
 
 /** The state suffix every server line ends with. */
@@ -262,7 +291,7 @@ export function context(): string {
   } catch {
     // context is best effort
   }
-  return `inflight=${requests || '-'} ${pushesField()} running=${running} load=${loadavg()[0].toFixed(1)} rss=${rss}MB wsbuf=${wsbuf}KB lane=bulk:${lane}`
+  return `inflight=${requests || '-'} ${pushesField()} running=${running} load=${loadavg()[0].toFixed(1)} rss=${rss}MB wsbuf=${wsbuf}KB lane=bulk:${lane} ${poolField()}`
 }
 
 function write(body: string, withContext = true): void {

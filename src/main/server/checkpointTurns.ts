@@ -11,6 +11,7 @@ import {
   type ManifestPaths,
   type TouchedPath
 } from './checkpoint'
+import { HELD_WAIT_MS, HeldAnswers } from './heldAnswer'
 import type { LiveEditPush } from './livediff'
 import { statusBudget, withBudget } from './spawnBudget'
 
@@ -45,6 +46,12 @@ import { statusBudget, withBudget } from './spawnBudget'
  * an ensure; the paths it does not know are asked with one `ls-tree` for all
  * of them. Nothing here runs per window or per client, and a host with no
  * socket open keeps the same checkpoints.
+ *
+ * `status` is what a review strip asks on mount, focus and every
+ * `checkpoint-changed`: it answers what the host last read for the thread
+ * at once and reads again behind it (heldAnswer.ts), so a window never waits
+ * on the thread's queued writes, the status budget or git under load; a
+ * read that changes the answer pushes `checkpoint-changed` again.
  */
 
 export const FLUSH_MS = 5_000
@@ -63,6 +70,8 @@ export function writtenPath(name: string, input: unknown): string | null {
   const path = typeof file_path === 'string' ? file_path : typeof notebook_path === 'string' ? notebook_path : ''
   return path.trim() ? path : null
 }
+
+const answerKey = (sessionId: string, cwd: string): string => `${sessionId}\0${cwd}`
 
 export type CheckpointChangedPush = Extract<ServerPush, { push: 'checkpoint-changed' }>
 
@@ -98,6 +107,11 @@ export class CheckpointTurns {
   private readonly turns = new Map<string, Turn>()
   private readonly listings = new Map<string, Promise<Set<string>>>()
   private readonly chains = new Map<string, Promise<void>>()
+  private readonly answers = new HeldAnswers<CheckpointStatus>({
+    waitMs: HELD_WAIT_MS,
+    fallback: () => ({ files: [] }),
+    onFresh: (key) => this.changed(key.slice(0, key.indexOf('\0')), false)
+  })
 
   constructor(private readonly deps: CheckpointTurnsDeps) {}
 
@@ -141,7 +155,8 @@ export class CheckpointTurns {
 
   status(sessionId: string): Promise<CheckpointStatus> {
     const cwd = checkpointCwd(this.deps.session(sessionId))
-    return cwd ? this.deps.store.status(sessionId, cwd) : Promise.resolve({ files: [] })
+    if (!cwd) return Promise.resolve({ files: [] })
+    return this.answers.get(answerKey(sessionId, cwd), () => this.deps.store.status(sessionId, cwd))
   }
 
   undo(sessionId: string, relative?: string | null): Promise<CheckpointStatus> {
@@ -259,6 +274,7 @@ export class CheckpointTurns {
     if (!cwd) return { files: [] }
     await this.flush(sessionId)
     const status = await run(cwd)
+    this.answers.set(answerKey(sessionId, cwd), status)
     // Undo all and Keep all drop the checkpoint; the next send arms a new one.
     if (relative == null) this.forget(sessionId)
     return status
@@ -277,7 +293,13 @@ export class CheckpointTurns {
     return true
   }
 
-  private changed(sessionId: string): void {
+  /** Tell the thread's sockets; a change the host made itself first marks
+   *  the held status stale, so the ask the push brings reads again. */
+  private changed(sessionId: string, stale = true): void {
+    if (stale) {
+      const cwd = checkpointCwd(this.deps.session(sessionId))
+      if (cwd) this.answers.stale(answerKey(sessionId, cwd))
+    }
     this.deps.push(sessionId, { push: 'checkpoint-changed', sessionId })
   }
 

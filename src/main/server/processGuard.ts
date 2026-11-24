@@ -3,7 +3,7 @@ import { readFile } from 'node:fs/promises'
 import { CALL_MARK, INSTANCE_MARK, NICE_PRELUDE, THREAD_MARK } from '@shared/bashMarks'
 import type { EventRow } from '@shared/events'
 import { parseEnviron } from './portSweep'
-import { readProcTable } from './procScan'
+import { cgroupTreePids, readProcTable } from './procScan'
 import { execFileOffBudget } from './spawnBudget'
 import { ADDON_MARK } from './addons/addonWire'
 
@@ -478,7 +478,7 @@ const darwinEnviron = (pid: number, args?: string): Promise<string | null> =>
 export function hostGuardDeps(): Pick<ProcessGuardDeps, 'scan' | 'environ' | 'kill'> {
   const uid = process.getuid?.()
   return {
-    scan: process.platform === 'win32' ? async () => [] : process.platform === 'linux' ? () => readProcTable({ uid }) : async () => parseGuardPs(await psRows()),
+    scan: process.platform === 'win32' ? async () => [] : process.platform === 'linux' ? () => readProcTable({ uid, pids: () => cgroupTreePids() }) : async () => parseGuardPs(await psRows()),
     environ: (pid, args) =>
       process.platform === 'linux'
         ? readFile(`/proc/${pid}/environ`, 'utf8').catch(() => null)

@@ -2,7 +2,7 @@ import { chmod, mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { argsOfCmdline, pageSizeFromAuxv, parseProcStat, readProcTable } from './procScan'
+import { argsOfCmdline, cgroupTreePids, pageSizeFromAuxv, parseProcStat, PROC_READERS, readProcTable } from './procScan'
 
 /** A fixture `/proc`: one dir per pid with the two files the reader takes. */
 let root: string
@@ -81,5 +81,58 @@ describe('readProcTable', () => {
     await proc(20, 'b', 1, 20, 1, ['b'])
     await chmod(join(root, '20', 'stat'), 0o000)
     expect(await readProcTable({ root, pageSize: 4096 })).toEqual([])
+  })
+
+  it('reads only the pids it is given, with no owner check, and a cmdline longer than a reader\'s buffer whole', async () => {
+    const long = 'x'.repeat(40_000)
+    await proc(30, 'mine', 1, 30, 1, ['node', long])
+    await proc(31, 'other', 1, 31, 1, ['other'])
+    const rows = await readProcTable({ root, uid: (process.getuid?.() ?? 0) + 1, pageSize: 4096, pids: async () => [30, 99] })
+    expect(rows).toEqual([{ pid: 30, ppid: 1, pgid: 30, rssKb: 4, args: `node ${long}` }])
+  })
+
+  it('falls back to every pid dir when the pid list cannot be read', async () => {
+    await proc(40, 'a', 1, 40, 1, ['a'])
+    const rows = await readProcTable({ root, pageSize: 4096, pids: async () => null })
+    expect(rows.map((r) => r.pid)).toEqual([40])
+  })
+
+  it('reads a large table through a bounded number of readers', async () => {
+    for (let pid = 100; pid < 160; pid++) await proc(pid, 'p', 1, pid, 1, ['p', String(pid)])
+    const rows = await readProcTable({ root, pageSize: 4096 })
+    expect(rows.length).toBe(60)
+    expect(PROC_READERS).toBeLessThanOrEqual(2)
+  })
+})
+
+describe('cgroupTreePids', () => {
+  async function tree(self: string, groups: Record<string, number[]>): Promise<{ procRoot: string; cgroupRoot: string }> {
+    const procRoot = join(root, 'proc')
+    const cgroupRoot = join(root, 'cgroup')
+    await mkdir(join(procRoot, 'self'), { recursive: true })
+    await writeFile(join(procRoot, 'self', 'cgroup'), self)
+    for (const [path, pids] of Object.entries(groups)) {
+      await mkdir(join(cgroupRoot, path), { recursive: true })
+      await writeFile(join(cgroupRoot, path, 'cgroup.procs'), pids.map((p) => `${p}\n`).join(''))
+    }
+    return { procRoot, cgroupRoot }
+  }
+
+  it('lists the unit\'s own processes and its sub-groups\'', async () => {
+    const t = await tree('0::/agents.slice/temp-code.service\n', { 'agents.slice/temp-code.service': [5, 6], 'agents.slice/temp-code.service/x': [7], 'agents.slice/other.service': [8] })
+    expect((await cgroupTreePids(t.procRoot, t.cgroupRoot))?.sort()).toEqual([5, 6, 7])
+  })
+
+  it('reads the whole unit when the server sits in its `server` sub-group', async () => {
+    const t = await tree('0::/agents.slice/temp-code.service/server\n', { 'agents.slice/temp-code.service': [], 'agents.slice/temp-code.service/server': [5], 'agents.slice/temp-code.service/jobs': [9, 10] })
+    expect((await cgroupTreePids(t.procRoot, t.cgroupRoot))?.sort((a, b) => a - b)).toEqual([5, 9, 10])
+  })
+
+  it('is null in the root group, without a v2 line, or when the group cannot be read', async () => {
+    expect(await cgroupTreePids((await tree('0::/\n', {})).procRoot, join(root, 'cgroup'))).toBeNull()
+    await rm(join(root, 'proc'), { recursive: true, force: true })
+    expect(await cgroupTreePids((await tree('1:name=systemd:/x\n', {})).procRoot, join(root, 'cgroup'))).toBeNull()
+    await rm(join(root, 'proc'), { recursive: true, force: true })
+    expect(await cgroupTreePids((await tree('0::/gone.service\n', {})).procRoot, join(root, 'cgroup'))).toBeNull()
   })
 })

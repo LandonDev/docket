@@ -161,7 +161,7 @@ describe('stall recorder', () => {
     recordSlowRequest('queue.list', 812)
     untrackRequest('1:7')
     const line = log().trim()
-    expect(line).toMatch(/^\d{4}-\d\d-\d\dT[^ ]+ slow-request queue\.list 812ms inflight=session\.events:\d+ms pushes=meta:2,event:1 running=3 load=\d+\.\d rss=\d+MB wsbuf=0KB lane=bulk:0\/0$/)
+    expect(line).toMatch(/^\d{4}-\d\d-\d\dT[^ ]+ slow-request queue\.list 812ms inflight=session\.events:\d+ms pushes=meta:2,event:1 running=3 load=\d+\.\d rss=\d+MB wsbuf=0KB lane=bulk:0\/0 pool=\d+ms\+?$/)
   })
 
   it('a meta push names its producer and its session: the field reads the breakdown and the distinct ids', () => {
@@ -189,7 +189,7 @@ describe('stall recorder', () => {
     recordBackpressure(2, 9 * 1024 * 1024)
     setBufferedBytes(() => 0)
     const line = log().trim()
-    expect(line).toMatch(/ backpressure connection=2 unsent=9216KB inflight=- pushes=meta:\d+,event:\d+ running=3 load=\d+\.\d rss=\d+MB wsbuf=9216KB lane=bulk:0\/0$/)
+    expect(line).toMatch(/ backpressure connection=2 unsent=9216KB inflight=- pushes=meta:\d+,event:\d+ running=3 load=\d+\.\d rss=\d+MB wsbuf=9216KB lane=bulk:0\/0 pool=\d+ms\+?$/)
     expect(BACKPRESSURE_BYTES).toBe(8 * 1024 * 1024)
   })
 
@@ -197,7 +197,17 @@ describe('stall recorder', () => {
     setLaneStats(() => ({ running: 2, held: 7 }))
     recordSlowRequest('git.diffStats', 900)
     setLaneStats(() => ({ running: 0, held: 0 }))
-    expect(log().trim()).toMatch(/ slow-request git\.diffStats 900ms .* wsbuf=\d+KB lane=bulk:2\/7$/)
+    expect(log().trim()).toMatch(/ slow-request git\.diffStats 900ms .* wsbuf=\d+KB lane=bulk:2\/7 pool=\d+ms\+?$/)
+  })
+
+  it('a slow request names its lane, and a bulk one its wait in the gate or that it joined another', () => {
+    recordSlowRequest('session.list', 700, { lane: 'normal', gateMs: null })
+    recordSlowRequest('git.diffIndex', 21_000, { lane: 'bulk', gateMs: 20_000 })
+    recordSlowRequest('git.diffIndex', 9_000, { lane: 'bulk', gateMs: null })
+    const lines = log().trim().split('\n')
+    expect(lines[0]).toMatch(/ slow-request session\.list 700ms lane=normal inflight=/)
+    expect(lines[1]).toMatch(/ slow-request git\.diffIndex 21000ms lane=bulk gate=20000ms inflight=/)
+    expect(lines[2]).toMatch(/ slow-request git\.diffIndex 9000ms lane=bulk gate=joined inflight=/)
   })
 
   it('a worker checkpoint at or over the threshold writes a checkpoint line with the context', () => {

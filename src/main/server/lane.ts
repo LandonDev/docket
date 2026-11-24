@@ -11,10 +11,12 @@ import { currentLag } from './stalls'
  *     master's batch), or one the renderer marked `lane: 'ui'` (a person's
  *     click: send, approve, answer, stop, pause, resume, start now, archive);
  *   - `bulk`: the polls and walks nobody waits on second by second: the git
- *     status reads, an unfocused thread's checkpoint state, the searches,
- *     the command list, GitHub, thread resources, the doctor, file watches,
- *     and the deploy, publish and sync methods;
- *   - `normal`: everything else.
+ *     status reads, the searches, GitHub, thread resources, the doctor,
+ *     file watches, and the deploy, publish and sync methods;
+ *   - `normal`: everything else, among it the two a window asks on connect
+ *     and focus that answer from what the host holds (heldAnswer.ts): a
+ *     thread's checkpoint state and the command list. In bulk they waited
+ *     up to BULK_MAX_WAIT_MS for nothing (2026-11-23: 108 s and 104 s).
  * Interactive and normal run at once. Bulk runs at most BULK_RUNNING at a
  * time per host and only while the loop keeps up (`currentLag().meanMs`
  * under BULK_LAG_MS); otherwise it waits in a FIFO, and a duplicate of a
@@ -45,10 +47,8 @@ const BULK_METHODS: ReadonlySet<string> = new Set([
   'project.compare',
   'git.diffStats',
   'git.diffIndex',
-  'checkpoint.status',
   'search.project',
   'session.search',
-  'commands.list',
   'doctor.get',
   'fs.watch',
   'host.deploy',

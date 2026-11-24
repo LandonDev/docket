@@ -17,9 +17,14 @@
   interactive thread, or the renderer marked it `lane: 'ui'`: send,
   approve, answer, stop, pause, resume, start now, archive, the fleet
   switches), bulk (project.changes, project.compare, git.diffStats,
-  git.diffIndex, an unfocused checkpoint.status, search.project,
-  session.search, commands.list, github.*, resources.*, doctor.get,
-  fs.watch, the deploy, publish and sync methods), normal (the rest). Two
+  git.diffIndex, search.project, session.search, github.*, resources.*,
+  doctor.get, fs.watch, the deploy, publish and sync methods), normal (the
+  rest). `checkpoint.status` and `commands.list` are normal: a window asks
+  them on connect and focus, and they answer what the host last read at
+  once, reading again behind it (src/main/server/heldAnswer.ts; a first ask
+  waits 250 ms at most, then answers empty, and a thread's review strip
+  hears `checkpoint-changed` when the read lands). In bulk they waited 108 s
+  and 104 s at load 30 on 2026-11-23 (docs/box.md "Answers under load"). Two
   of them answer from a host cache, since the panels ask on every mount,
   focus and branch change: `github.prStatus` for 60 s per checkout and
   branch (concurrent asks share one gh child; the host's own PR and
@@ -45,7 +50,9 @@
   replayable ones; control and peer frames stay) and tells the client to
   `resync` once it drained to half; one past 64 MiB is closed (1013,
   `SocketBudget` in wire.ts). Stall lines end
-  `lane=bulk:<running>/<held>`; the renderer reports `first-paint
+  `lane=bulk:<running>/<held> pool=<ms>` (the last thread-pool probe, a
+  `stat` a second; `<age>ms+` while it is still out), and a slow-request
+  line names its lane and, in bulk, `gate=<ms>` waited or `gate=joined`; the renderer reports `first-paint
   session=<id> host=<env> ms=<n>` past 500 ms (lib/firstPaint.ts).
 - The host's own jobs pause on `yieldUntilIdle` (cold mover, turn index
   backfill, fold sweep, mirror backfill, archive and attachment sweeps) or

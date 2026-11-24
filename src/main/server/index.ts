@@ -319,7 +319,7 @@ import {
 import { closeAllLiveWatchers, onLiveEdit } from './livediff'
 import { eventsWindowMs, frameJson, profileFor, PushCoalescer, SocketBudget, remoteDeflateOptions, sessionEvents, sessionPage } from './wire'
 import { FocusSet } from './focus'
-import { bulkKey, LaneGate, laneOf } from './lane'
+import { bulkKey, LaneGate, laneOf, type Lane } from './lane'
 import { ListChangeLog } from './listChanges'
 import { LaunchMirror } from './launchMirror'
 import { peerDelay, peerDelayMs } from './peerDelay'
@@ -2324,6 +2324,9 @@ export async function startServer(
       const notWork = workBridgeRefusal(req.method, (raw as { params?: unknown }).params, (id) => registry.get(id))
       if (notWork) return sendFrame({ id: req.id, ok: false, error: notWork })
       const startedAt = Date.now()
+      // The slow-request line names the lane and the wait in the bulk gate (a join never ran its own).
+      let lane: Lane | null = null
+      let gateMs: number | null = null
       const requestKey = `${connection}:${req.id}`
       trackRequest(requestKey, req.method)
       try {
@@ -2343,13 +2346,16 @@ export async function startServer(
         }
         // The lane gate (lane.ts): interactive and normal run now; bulk waits
         // its turn and a duplicate shares the answer of the one before it.
-        const lane = laneOf(req, focus)
+        lane = laneOf(req, focus)
         if (lane === 'bulk') {
           // A read joins whoever asked first and runs even if this socket
           // closes (they want it); this socket's own request is dropped once
           // it closed (a watch must not register for a closed socket).
           const key = bulkKey(req)
-          const answer = await laneGate.run(lane, key, () => (key === null && socketClosed ? Promise.resolve(null) : captureAnswer(req)))
+          const answer = await laneGate.run(lane, key, () => {
+            gateMs = Date.now() - startedAt
+            return key === null && socketClosed ? Promise.resolve(null) : captureAnswer(req)
+          })
           if (answer) sendFrame({ ...answer, id: req.id })
         } else await serve(req, sendFrame)
       } catch (err) {
@@ -2365,7 +2371,7 @@ export async function startServer(
         const ms = Date.now() - startedAt
         if (ms > SLOW_REQUEST_MS) {
           bootMark('slow-request', `${req.method} ${ms}ms`)
-          recordSlowRequest(req.method, ms)
+          recordSlowRequest(req.method, ms, lane === null ? undefined : { lane, gateMs })
         }
       }
     })

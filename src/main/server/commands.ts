@@ -3,6 +3,7 @@ import { homedir } from 'node:os'
 import { basename, join } from 'node:path'
 import type { ProviderId } from '@shared/catalog'
 import type { SlashCommand } from '@shared/domain'
+import { HELD_WAIT_MS, HeldAnswers } from './heldAnswer'
 
 /**
  * Slash-command discovery: what `/name` means to each harness, read from
@@ -217,7 +218,7 @@ let skillSources: CommandSkillSources | null = null
 
 export function configureCommandSkills(sources: CommandSkillSources | null): void {
   skillSources = sources
-  cache.clear()
+  answers = newAnswers()
 }
 
 /** A provider's user skills: the store's first, then the home folder's while it is read, then the CLI's own buckets. */
@@ -231,16 +232,20 @@ async function userSkills(provider: 'claude' | 'codex', storeDir: string | null)
   return [...fromStore, ...own]
 }
 
-const cache = new Map<string, { at: number; commands: SlashCommand[] }>()
 const CACHE_MS = 30_000
+/** The menu asks on every open: the last list at once, read again behind it
+ *  once it is CACHE_MS old; a first ask waits HELD_WAIT_MS at most (heldAnswer.ts). */
+const newAnswers = (): HeldAnswers<SlashCommand[]> => new HeldAnswers<SlashCommand[]>({ waitMs: HELD_WAIT_MS, freshMs: CACHE_MS, fallback: () => [] })
+let answers = newAnswers()
 
-export async function listCommands(provider: ProviderId, cwd: string): Promise<SlashCommand[]> {
+export function listCommands(provider: ProviderId, cwd: string): Promise<SlashCommand[]> {
   const storeDir = (provider === 'claude' || provider === 'codex' || provider === 'muse') && skillSources ? skillSources.storeDir(provider, cwd) : null
   // A new generation is a new key: a write shows at the next menu open.
   const key = `${provider}:${cwd}:${storeDir ?? ''}`
-  const hit = cache.get(key)
-  if (hit && Date.now() - hit.at < CACHE_MS) return hit.commands
+  return answers.get(key, () => readCommands(provider, cwd, storeDir))
+}
 
+async function readCommands(provider: ProviderId, cwd: string, storeDir: string | null): Promise<SlashCommand[]> {
   const home = homedir()
   const groups = await Promise.all(
     provider === 'claude'
@@ -271,7 +276,5 @@ export async function listCommands(provider: ProviderId, cwd: string): Promise<S
     const cur = byName.get(c.name)
     if (!cur || (cur.scope === 'user' && c.scope === 'project')) byName.set(c.name, c)
   }
-  const commands = [...byName.values()].sort((a, b) => a.name.localeCompare(b.name))
-  cache.set(key, { at: Date.now(), commands })
-  return commands
+  return [...byName.values()].sort((a, b) => a.name.localeCompare(b.name))
 }
