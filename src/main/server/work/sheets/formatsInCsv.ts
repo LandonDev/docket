@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto'
-import { accessSync, constants, existsSync, readFileSync, statSync, writeFileSync } from 'node:fs'
+import { accessSync, closeSync, constants, existsSync, fstatSync, openSync, readFileSync, statSync, writeFileSync } from 'node:fs'
 import { basename, dirname, join } from 'node:path'
 import type { IWorkbookData } from '@univerjs/core'
 import { SHEET_LOAD_MAX } from '@shared/contract-work-sheets'
@@ -21,6 +21,17 @@ import { readCsv, writeCsv } from './writer'
 const nameOf = (csv: string): string => createHash('sha256').update(csv).digest('hex').slice(0, 24)
 /** A file's size and time, in a few characters: the cache made of it is named for this. */
 const stampWord = (size: number, mtimeMs: number): string => createHash('sha256').update(`${size}:${Math.round(mtimeMs)}`).digest('hex').slice(0, 8)
+/** The stamp of the file a save just wrote, when it holds the bytes whose digest is `sha256`; else one no look will find. */
+function writtenStamp(csv: string, sha256: string): string {
+  const fd = openSync(csv, 'r')
+  try {
+    const st = fstatSync(fd)
+    return createHash('sha256').update(readFileSync(fd)).digest('hex') === sha256 ? stampWord(st.size, st.mtimeMs) : 'changed'
+  } finally {
+    closeSync(fd)
+  }
+}
+
 /** The file as it stands. */
 function stampOf(csv: string): string {
   try {
@@ -139,10 +150,10 @@ export function throughCsv<T>(ctx: ServiceCtx, sheet: string, write: () => Promi
       throw new Error(`${title} could not be saved: ${code === 'EACCES' || code === 'EPERM' || code === 'EROFS' ? 'this folder is read only' : code === 'ENOSPC' || code === 'EDQUOT' ? 'the disk is full' : 'the folder did not take it'}. The edit is still in this tab.`)
     })
     if ('conflict' in got) throw new Error(changed(csv))
-    // The cache goes on as this file's: it is what the file now holds, as the door wrote it (its size and time, never
-    // what a later look finds: a co-author's file put there just after is a change of the file, read again).
-    const [size, mtime] = got.version.split(':')
-    caches.set(csv, { sheet, stamp: stampWord(Number(size), Number(mtime)) })
+    // The cache goes on as this file's only while the file holds the bytes this save sent (read through one descriptor,
+    // never the door's receipt, which describes whatever stood there when it looked): a co-author's file put there just
+    // after is a change of the file, read again.
+    caches.set(csv, { sheet, stamp: writtenStamp(csv, createHash('sha256').update(new TextEncoder().encode(next)).digest('hex')) })
     return out
   })
 }

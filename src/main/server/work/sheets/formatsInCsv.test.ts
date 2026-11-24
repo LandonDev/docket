@@ -1,4 +1,5 @@
-import { chmodSync, existsSync, readdirSync, readFileSync, statSync, utimesSync, writeFileSync } from 'node:fs'
+import { createHash } from 'node:crypto'
+import { chmodSync, existsSync, readdirSync, readFileSync, renameSync, statSync, utimesSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { sharedOf } from '../files/policy'
@@ -7,15 +8,16 @@ import { at, makeRig, type Rig } from '../files/testkit'
 import { CSV_NO_WRITE, CSV_NOT_UTF8, csvRows, delimitedAsCsv, forgetCsvCaches, patchCsv, sharedCsvCache, sharedCsvReadOnly, throughCsv } from './formatsInCsv'
 
 /** Files' door as it is, with a hook run just after it writes (a co-author's file landing in that moment). */
-const door = vi.hoisted(() => ({ after: null as null | (() => void) }))
+const door = vi.hoisted(() => ({ after: null as null | (() => string | void) }))
 vi.mock('../files/save', async (original) => {
   const real = await original<typeof import('../files/save')>()
   return {
     ...real,
     saveFile: async (...args: Parameters<typeof real.saveFile>) => {
       const got = await real.saveFile(...args)
-      door.after?.()
-      return got
+      // (a hook may answer the receipt the door would read of what stands there now)
+      const version = door.after?.()
+      return typeof version === 'string' && !('conflict' in got) ? { ...got, version } : got
     }
   }
 })
@@ -210,6 +212,23 @@ describe('a shared .csv saved through to its file', () => {
     door.after = () => {
       writeFileSync(csv, 'name,hours\r\nTheirs,1\r\n')
       utimesSync(csv, new Date(), new Date(Date.now() + 5000))
+    }
+    try {
+      await throughCsv(rig.ctx, sheet, async () => host.apply({ tcsheet: sheet }, 0, [typedAt(2, 0, 'Bob')] as never, 'owner'))
+    } finally {
+      door.after = null
+    }
+    expect(sharedCsvCache(sharedCsvDir(rig.dataDir), csv)).not.toBe(sheet)
+  })
+
+  it('a co-author\'s file renamed in before the door reads its receipt is not taken for the save: the cache is read again', async () => {
+    // Council r4 (Sol 2): the receipt described the replacement, and the cache took its size and time as its own.
+    const sheet = open()
+    door.after = () => {
+      writeFileSync(`${csv}.in`, 'name,hours\r\nTheirs,1\r\n')
+      renameSync(`${csv}.in`, csv)
+      const st = statSync(csv)
+      return `${st.size}:${Math.round(st.mtimeMs)}:${createHash('sha256').update(readFileSync(csv)).digest('hex')}`
     }
     try {
       await throughCsv(rig.ctx, sheet, async () => host.apply({ tcsheet: sheet }, 0, [typedAt(2, 0, 'Bob')] as never, 'owner'))

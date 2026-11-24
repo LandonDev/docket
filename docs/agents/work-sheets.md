@@ -100,8 +100,9 @@ A workbook from a mail (`{at: 'mail'}`: .xlsx, .xlsm or .csv) is held as the fil
   not make (told by the file's size, time and inode, so a workbook of the
   same length renamed in with the same time counts; a copy written into the
   same inode that keeps the length and the time does not; a save's own
-  stamp is read through one open descriptor and only from the bytes it
-  wrote, `stampOfWritten`) is a revision of
+  stamp is read through one open descriptor and only while the file hashes
+  to the bytes it sent, never the door's receipt, which describes whatever
+  stood there when it looked and holds no hash past 64 MiB, `stampOfWritten`) is a revision of
   its own (`by: 'file'`), seen when something
   asks the host (an edit, a push, a reopen): an open grid shows the older
   workbook until then, and reloads when it asks. Restore puts a kept copy
@@ -149,8 +150,8 @@ A workbook from a mail (`{at: 'mail'}`: .xlsx, .xlsm or .csv) is held as the fil
   (`saveFile`: its lock, one whole replace, and only while the file is still
   the bytes read before the change, so a co-author's save during the
   service's wait refuses it, never patched over). After the save the cache
-  takes its stamp from the door's answer, the size and time it wrote, never
-  a later look (`stampWord`). A grid is bound to the cache it drew
+  keeps its stamp only while the file holds the bytes the save sent (read
+  through one descriptor, `writtenStamp`), never from the door's receipt. A grid is bound to the cache it drew
   (`drawnCsv`, its load): once a co-author's change has made a new cache
   (which also starts at revision 0), an edit made on the old one answers a
   conflict and its catch-up a reload, so the edit is said and the grid reads

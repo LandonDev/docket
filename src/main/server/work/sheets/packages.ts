@@ -85,17 +85,17 @@ const stampOf = (path: string): string => {
   return `${st.size}:${Math.round(st.mtimeMs)}:${st.ino}`
 }
 /**
- * The stamp of the file a save just wrote (`version`, the door's `size:mtime:sha`): read through one open descriptor,
- * so the inode and the bytes are one file's, and taken only when those bytes are the ones written. A file renamed in
- * after the save (a sync's, of the same length and time) leaves a stamp no look will find: a change from outside.
+ * The stamp of the file a save just wrote: read through one open descriptor, so the inode and the bytes are one file's,
+ * and taken only when those bytes hash to `sha256`, the digest of the bytes this save sent (never the door's receipt,
+ * which describes whatever stood there when it looked, and carries no hash past 64 MiB). A file renamed in after the
+ * save (a sync's, of the same length and time) leaves a stamp no look will find: a change from outside.
  */
-export function stampOfWritten(target: string, version: string): string {
-  const [size, mtime, sha] = version.split(':')
+export function stampOfWritten(target: string, sha256: string): string {
   const fd = openSync(target, 'r')
   try {
     const st = fstatSync(fd)
-    const ours = createHash('sha256').update(readFileSync(fd)).digest('hex') === sha
-    return ours ? `${st.size}:${Math.round(st.mtimeMs)}:${st.ino}` : `${size}:${mtime}:-`
+    const ours = createHash('sha256').update(readFileSync(fd)).digest('hex') === sha256
+    return ours ? `${st.size}:${Math.round(st.mtimeMs)}:${st.ino}` : `${st.size}:${Math.round(st.mtimeMs)}:-`
   } finally {
     closeSync(fd)
   }
@@ -489,7 +489,7 @@ export class PackageStore {
       rmSync(copy, { force: true })
       throw new ChangedOutside()
     }
-    return stampOfWritten(target, got.version)
+    return stampOfWritten(target, createHash('sha256').update(bytes).digest('hex'))
   }
 
   /** Reads the cells of an A1 range as the package holds them now. */

@@ -2,11 +2,24 @@ import { copyFileSync, existsSync, mkdtempSync, rmSync, utimesSync, writeFileSyn
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
-import { afterAll, beforeEach, describe, expect, it } from 'vitest'
+import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { importXlsx } from 'work-kit/sheet/xlsx'
 import { RULES_SET } from '@shared/work/sheets'
 import { SET_RANGE_VALUES } from './mutations'
 import { ensurePackageTables, PackageStore, PACKAGE_UNIT, stampOfWritten } from './packages'
+
+/** Files' door as it is, with a hook that may answer the receipt it would read of what stands there just after. */
+const door = vi.hoisted(() => ({ after: null as null | (() => string) }))
+vi.mock('../files/save', async (original) => {
+  const real = await original<typeof import('../files/save')>()
+  return {
+    ...real,
+    saveFile: async (...args: Parameters<typeof real.saveFile>) => {
+      const got = await real.saveFile(...args)
+      return door.after && !('conflict' in got) ? { ...got, version: door.after() } : got
+    }
+  }
+})
 import { localJobs } from './workerClient'
 
 const CORPUS = join(__dirname, 'harness/corpus')
@@ -267,14 +280,36 @@ describe('an opened package', () => {
     const fs = await import('node:fs')
     const ours = readFileSync(path)
     const st = fs.statSync(path)
-    const version = `${ours.length}:${Math.round(st.mtimeMs)}:${createHash('sha256').update(ours).digest('hex')}`
-    expect(stampOfWritten(path, version)).toBe(`${st.size}:${Math.round(st.mtimeMs)}:${st.ino}`)
+    // (Council r4, Sol 2: the digest of the bytes the save sent, never the door's receipt, which past 64 MiB holds none)
+    const sent = createHash('sha256').update(ours).digest('hex')
+    expect(stampOfWritten(path, sent)).toBe(`${st.size}:${Math.round(st.mtimeMs)}:${st.ino}`)
     const theirs = Buffer.from(ours)
     theirs[theirs.length - 1] = theirs[theirs.length - 1]! ^ 0xff
     writeFileSync(`${path}.incoming`, theirs)
     utimesSync(`${path}.incoming`, st.mtime, st.mtime)
     fs.renameSync(`${path}.incoming`, path)
-    expect(stampOfWritten(path, version)).toBe(`${st.size}:${Math.round(st.mtimeMs)}:-`)
+    expect(stampOfWritten(path, sent)).toBe(`${st.size}:${Math.round(st.mtimeMs)}:-`)
+  })
+
+  it('takes no replacement renamed in before the door reads its receipt for the save: the next look sees a change from outside', async () => {
+    // Council r4 (Sol 2): the receipt described the replacement, and its inode was given to the save.
+    const fs = await import('node:fs')
+    const { createHash } = await import('node:crypto')
+    const data = (await store.open(path)).inspected.sheets[0].id
+    door.after = () => {
+      const theirs = readFileSync(path)
+      theirs[theirs.length - 1] = theirs[theirs.length - 1]! ^ 0xff
+      writeFileSync(`${path}.in`, theirs)
+      fs.renameSync(`${path}.in`, path)
+      const st = fs.statSync(path)
+      return `${st.size}:${Math.round(st.mtimeMs)}:${createHash('sha256').update(theirs).digest('hex')}`
+    }
+    try {
+      expect(await store.edit(path, 0, [set(data, 1, 0, { v: 7 })], 'owner')).toEqual({ rev: 1 })
+    } finally {
+      door.after = null
+    }
+    expect(store.since(path, 1)).toEqual({ rev: 2, reload: true })
   })
 
   it('reads a stamp kept before the file\'s identity was in it as the same file: no revision of its own', async () => {
