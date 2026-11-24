@@ -226,6 +226,20 @@ describe("PairDialog's link", () => {
   });
 });
 
+describe("PairDialog pressed before the host has said its reach", () => {
+  it("waits for the answer, and offers no loopback link where no other device reaches the host", async () => {
+    render(<PairDialog onClose={() => {}} onChanged={noop} />);
+    // The first answer is still on its way when he presses; the host answers the second ask.
+    answers.set("remote.status", { publicOrigin: "", learnedOrigin: null });
+    fireEvent.change(screen.getByLabelText("Name"), { target: { value: "Laptop" } });
+    answers.set("remote.pairings.create", { pairing: { id: "p1", caps: ["operate"], expiresAt: Date.now() + 600_000 }, code: "ABCDE-12345", url: "http://127.0.0.1:7677/pair#ABCDE-12345" });
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "Create code" })));
+    await screen.findByText("ABCDE-12345");
+    expect(screen.queryByLabelText("Link")).toBeNull();
+    expect(screen.queryByAltText("Pairing QR code")).toBeNull();
+  });
+});
+
 describe("AddHostDialog", () => {
   it("keeps the e2e's fields and switches from a link to a host and key", () => {
     render(<AddHostDialog onClose={() => {}} onChanged={noop} />);

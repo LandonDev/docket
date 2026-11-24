@@ -41,16 +41,20 @@ export const outsideOrigin = (status: Pick<RemoteStatus, "publicOrigin" | "learn
 /** The link a pairing is offered by: on the host's outside address; none where it has none; the host's own where it did not say. */
 export const pairLink = (reach: Reach, made: Pairing): string | null => (reach === null ? null : reach ? `${reach.replace(/\/+$/, "")}/pair#${made.code}` : made.url);
 
+/** What the host says of its reach; undefined where it does not say. */
+const reachOf = (host: SavedEnvironment | undefined): Promise<Reach> =>
+  askOf(host)<RemoteStatus | undefined>("remote.status", {}).then(
+    (status) => (status ? outsideOrigin(status) : undefined),
+    () => undefined,
+  );
+
 export function PairDialog(props: Props) {
   const [pending, setPending] = useState(false);
   const [made, setMade] = useState<Made | null>(null);
   const [reach, setReach] = useState<Reach>(undefined);
   useEffect(() => {
     let live = true;
-    askOf(props.host)<RemoteStatus | undefined>("remote.status", {}).then(
-      (status) => live && setReach(status ? outsideOrigin(status) : undefined),
-      () => undefined,
-    );
+    void reachOf(props.host).then((next) => live && setReach(next));
     return () => void (live = false);
   }, [props.host]);
   return (
@@ -105,7 +109,8 @@ function Form({ host, reach, onClose, onChanged, pending, setPending, onMade }: 
     setError(null);
     try {
       const next = await askOf(host)<Pairing>("remote.pairings.create", { name: name.trim(), audience: "client", caps });
-      const url = pairLink(reach, next);
+      // A press before the host answered waits for its answer: the loopback link is never a guess.
+      const url = pairLink(reach === undefined ? await reachOf(host) : reach, next);
       // A QR only of a link another device can open.
       const qr = url && !loopbackLink(url) ? await QRCode.toDataURL(url, { margin: 1, width: 192, color: { dark: "#000000", light: "#ffffff" } }).catch(() => null) : null;
       onMade({ ...next, url, qr });
