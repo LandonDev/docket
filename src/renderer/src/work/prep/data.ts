@@ -4,7 +4,7 @@ import type { CanvasSource } from "@shared/work";
 import { attachmentSettings, blobSource, formatBytes, uploadFile, type UploadProgress } from "../../lib/attachmentUpload";
 import { registry } from "../../lib/connection";
 import { refusalWords } from "../../lib/settingsHome";
-import { stillChosen, type OpenWorkView } from "../../lib/workSwitch";
+import { stillChosen, workViewNow, type OpenWorkView } from "../../lib/workSwitch";
 
 /**
  * The window's copy of each meeting's page (the host's `work.prep.page`,
@@ -148,13 +148,24 @@ export function resetPrep(): void {
 export const briefPrep = async (environmentId: string, workspaceId: string, eventId: string, restart = false): Promise<string> =>
   (await ask<{ sessionId: string }>(environmentId, "work.prep.brief", { workspaceId, eventId, ...(restart ? { restart } : {}) })).sessionId;
 
+/** Another window kept other notes since this dialog opened; `now` is what the host holds. */
+export class NotesChanged extends Error {
+  constructor(readonly now: string) {
+    super("These notes were changed in another window while you typed. Your words are still here: save again to put them in place of those.");
+  }
+}
+
 /**
- * Keeps his notes with the page (empty text takes them back). `dropItem`: the meeting an upload went to never got
- * its file, or could not read it, so it is no notes; the host lets go of that meeting alone, and keeps the words it
- * holds (another window may have kept newer ones than this one had).
+ * Keeps his notes with the page (empty text takes them back). `base`: the words the dialog opened on (or last
+ * kept); when the host holds others by now, nothing is written and this throws `NotesChanged`. `dropItem`: the
+ * meeting an upload went to never got its file, or could not read it, so it is no notes; the host lets go of that
+ * meeting alone, and keeps the words it holds (another window may have kept newer ones than this one had).
  */
-export async function keepPrepNotes(environmentId: string, workspaceId: string, eventId: string, text: string, dropItem?: string): Promise<void> {
-  holdPrep((await ask<{ page: PrepPage }>(environmentId, "work.prep.notes", { workspaceId, eventId, text, ...(dropItem ? { dropFile: true, itemId: dropItem } : {}) })).page);
+export async function keepPrepNotes(environmentId: string, workspaceId: string, eventId: string, text: string, opts: { base?: string; dropItem?: string } = {}): Promise<void> {
+  const { dropItem, base } = opts;
+  const out = await ask<{ page: PrepPage; conflict?: boolean }>(environmentId, "work.prep.notes", { workspaceId, eventId, text, ...(dropItem ? { dropFile: true, itemId: dropItem } : base !== undefined ? { base } : {}) });
+  holdPrep(out.page);
+  if (out.conflict) throw new NotesChanged(out.page.doc.notes?.text ?? "");
 }
 
 /** Follow up: the host starts the follow-up thread from the notes, or answers the one still working. `restart`: the window knows that thread stopped. */
@@ -187,7 +198,7 @@ export async function followUpFromFile(
     if (meeting.status === "failed") throw new Error(meeting.error?.trim() || "This host could not read the file.");
   } catch (err) {
     // The file never arrived, or the host could not read it: this upload's meeting is no notes. What he typed stays; the page offers Add notes or Follow up as before.
-    await keepPrepNotes(environmentId, workspaceId, eventId, opts.typed ?? "", itemId).catch(() => undefined);
+    await keepPrepNotes(environmentId, workspaceId, eventId, opts.typed ?? "", { dropItem: itemId }).catch(() => undefined);
     throw err;
   } finally {
     void loadPrep(environmentId, workspaceId, eventId);
@@ -234,8 +245,10 @@ export async function notesDocPrep(environmentId: string, workspaceId: string, e
  * somewhere since, nothing opens, and the page's Notes row holds the document.
  */
 export async function openNotesDoc(environmentId: string, workspaceId: string, source: CanvasSource, chosen?: { mine: number; before: OpenWorkView | null }): Promise<void> {
-  if (chosen && !stillChosen(chosen.mine, chosen.before, workspaceId)) return;
   const { openInFiles } = await import("../files/openFrom");
+  // Asked after the opener has loaded, the last wait before Files: he has gone nowhere since the press, and is still on
+  // the meeting he pressed it on (another meeting's page in the same job counts as no new choice of view).
+  if (chosen && (!stillChosen(chosen.mine, chosen.before, workspaceId) || workViewNow()?.event !== chosen.before?.event)) return;
   await openInFiles({ id: workspaceId, environmentId }, { ref: source, name: source.at === "file" ? fileName(source.path) : "Notes" });
 }
 

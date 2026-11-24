@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { emptyPrepDoc, type PrepEvent, type PrepPage } from "@shared/contract-work-prep";
-import { addedKey, addTasksLabel, failedWhy, fileNotes, notesToFollow, namesInvitee, briefIsComing, dayWords, draftLine, fileWhere, headVerb, isOver, lastLabel, meetingMark, moreWords, nobodyOn, notesLines, outcomeIsComing, pageThread, personLine, personTrail, pickable, problemWords, shownTasks, suggestionLine, taskLine, failedWords, returnPicks, samePeople, threadStopped, timeWords, uploadPercent, whenLine } from "./model";
+import { addedKey, addTasksLabel, briefWorks, failedWhy, fileNotes, notesToFollow, namesInvitee, briefIsComing, dayWords, draftLine, fileWhere, headVerb, isOver, lastLabel, meetingMark, moreWords, nobodyOn, notesLines, outcomeIsComing, pageThread, personLine, personTrail, pickable, problemWords, shownTasks, suggestionLine, taskLine, failedWords, returnPicks, samePeople, threadStopped, timeWords, uploadPercent, whenLine } from "./model";
 
 /** A meeting's page in words (docs/agents/work-prep.md "The page"): the comma line, each row's second line and what trails it. */
 
@@ -210,8 +210,8 @@ describe("the header's verb", () => {
     expect(headVerb(page({ briefSessionId: "t", briefUntil: NOW + 60_000 }), NOW, idle)).toBe("preparing");
     expect(headVerb(page({ briefSessionId: "t", briefUntil: NOW + 60_000 }), NOW + 61_000, idle)).toBe("brief");
     expect(headVerb(page({ briefSessionId: "t", briefUntil: null }), NOW, idle)).toBe("brief");
-    expect(briefIsComing(page({ briefSessionId: "t", briefUntil: NOW + 1 }), "preparing")).toBe(true);
-    expect(briefIsComing(page({ doc: { ...emptyPrepDoc(), brief } }), "preparing")).toBe(false);
+    expect(briefIsComing(page({ briefSessionId: "t", briefUntil: NOW + 1 }), true)).toBe(true);
+    expect(briefIsComing(page({ doc: { ...emptyPrepDoc(), brief } }), true)).toBe(false);
     // the same for a follow-up thread on a host whose threads this window does not hold
     const followed = page({ followSessionId: "f", followUntil: NOW + 60_000, doc: { ...emptyPrepDoc(), notes } });
     expect(headVerb(followed, NOW, idle)).toBe("following");
@@ -229,6 +229,16 @@ describe("the header's verb", () => {
     expect(headVerb(page({ followSessionId: "f", doc: { ...emptyPrepDoc(), notes, after } }), over, { ...idle, follow: "idle" })).toBeNull();
     // notes typed before the end lead to Follow up too
     expect(headVerb(page({ doc: { ...emptyPrepDoc(), notes } }), NOW, idle)).toBe("followUp");
+  });
+
+  it("knows the brief thread is at work whatever the header holds, and not once its run has written", () => {
+    const early = { ...emptyPrepDoc(), notes: { text: "Ask Dana.", at: 1 } };
+    const working = page({ doc: early, briefSessionId: "b", briefUntil: NOW + 60_000, briefStartedAt: NOW - 1 });
+    expect(headVerb(working, NOW, idle)).toBe("followUp");
+    expect(briefWorks(working, NOW, idle)).toBe(true);
+    expect(briefWorks(working, NOW + 61_000, idle)).toBe(false);
+    expect(briefWorks(working, NOW, { brief: "idle" })).toBe(false);
+    expect(briefWorks(page({ ...working, doc: { ...early, brief: { ...brief, at: NOW } } }), NOW, idle)).toBe(false);
   });
 
   it("counts a file as notes only while the page holds it readable: a meeting item that is gone asks for notes again", () => {

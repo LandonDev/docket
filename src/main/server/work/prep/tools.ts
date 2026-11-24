@@ -15,6 +15,7 @@ import type { ToolCtx, WorkTool } from '../modules'
 import { rewriteTasks } from './after'
 import { draftsOf, eventOf, gather, meetingOf, ownAdditions, standing, startDoc, upcoming } from './gather'
 import { writePage } from './page'
+import { notesDocWords } from './docWords'
 import { pageWords } from './prompts'
 import { changeInOrder } from './serial'
 import { personKey } from './series'
@@ -94,6 +95,16 @@ function refuseReplaced(row: PageRow | null, kind: 'brief' | 'follow', sessionId
 }
 
 /**
+ * An outcome from the follow-up thread's older turn, after he changed his notes and the host told the thread so
+ * (`notesOwed`): that turn read the old notes, and its outcome and suggestions would stand as the new ones. It is
+ * refused until the thread writes with the version it was told.
+ */
+function refuseOldNotes(row: PageRow | null, sessionId: string, version: number | undefined): void {
+  if (row?.notesOwed == null || row.followSessionId !== sessionId || version === row.notesOwed) return
+  throw new Error(`His notes changed after you read them, so this outcome is not kept. You are told the new notes when this turn ends: write nothing more now and draft no mail.`)
+}
+
+/**
  * The threads an outcome names after this write, oldest first: every one that wrote it, so the mail an earlier one
  * drafted stays on the page. Past the page's limit, the oldest that left no mail waiting go first; one whose mail
  * could not be read is kept as if it had.
@@ -114,7 +125,8 @@ const read = tool('prep_read', 'Read a meeting’s page. Pass its LifeOS event i
   // The fence first: nothing is waited on for an event of another sector.
   await eventOf(ctx, sector, eventId)
   const recording = await awaitRecording(ctx, workspaceId, eventId)
-  const words = pageWords((await gather(ctx, workspaceId, eventId)).page)
+  const page = (await gather(ctx, workspaceId, eventId)).page
+  const words = pageWords(page, { docWords: await notesDocWords(ctx, page) })
   if (recording === 'dropped') return workText(`${words}\n\nThe recording this thread was started for never arrived, and the page no longer waits for it. Stop here: write no outcome and draft no mail.`)
   if (recording === 'late') return workText(`${words}\n\nThe recording is still on its way. Call prep_read again to keep waiting for it.`)
   return workText(words)
@@ -129,7 +141,7 @@ const today = tool('prep_today', 'List the upcoming meetings in this workspace t
     .slice(0, 8)
   const { workspaceId } = toolWorkspace(ctx)
   const pages = await Promise.all(meetings.map(async (meeting) => (await gather(ctx, workspaceId, meeting.eventId, now)).page))
-  return workText(pages.filter((page) => page.state === 'none').map(pageWords).join('\n\n') || 'No meetings today need a brief.')
+  return workText(pages.filter((page) => page.state === 'none').map((page) => pageWords(page)).join('\n\n') || 'No meetings today need a brief.')
 }, true)
 
 const write = tool(
@@ -154,7 +166,7 @@ const write = tool(
       if (added.size > PREP_PEOPLE_MAX) throw new Error(`The page can keep at most ${PREP_PEOPLE_MAX} added people.`)
       const at = Date.now()
       const brief = { matters: args.matters, agreed: args.agreed ?? [], files: args.files ?? [], at, by: ctx.sessionId }
-      writePage(ctx, workspaceId, event, last, { ...doc, people: [...added.values()], brief }, at)
+      writePage(ctx, workspaceId, event, last, (current) => ({ ...current, people: [...added.values()], brief }), at)
       return workText(`Kept the brief for “${event.title}” (${args.matters.length} ${args.matters.length === 1 ? 'thing' : 'things'}). It is on the meeting’s page.`)
     })
   }
@@ -162,8 +174,8 @@ const write = tool(
 
 const followUp = tool(
   'prep_follow_up',
-  'Keep the outcome of a meeting: what was decided, what is still open, and the tasks that came of it. The tasks are suggestions that wait for the owner to tick them; nothing is filed by you. A rewrite keeps what he already accepted or rejected. Pass the event id or use this thread’s linked meeting.',
-  z.object({ ...eventArg, summary: lines, decisions: lines, questions: lines, tasks: z.array(suggestion).max(PREP_TASKS_MAX).optional() }),
+  'Keep the outcome of a meeting: what was decided, what is still open, and the tasks that came of it. The tasks are suggestions that wait for the owner to tick them; nothing is filed by you. A rewrite keeps what he already accepted or rejected. Pass the event id or use this thread’s linked meeting. When you were told his notes changed and given a notes version, pass it as notes.',
+  z.object({ ...eventArg, summary: lines, decisions: lines, questions: lines, tasks: z.array(suggestion).max(PREP_TASKS_MAX).optional(), notes: z.number().int().nonnegative().optional() }),
   async (args, ctx) => {
     const { workspaceId } = toolWorkspace(ctx)
     const eventId = await toolEvent(ctx, args.event)
@@ -172,13 +184,15 @@ const followUp = tool(
       const event = await eventOf(ctx, sector, eventId)
       const { row, last } = standing(new PrepStore(ctx.db), workspaceId, event)
       refuseReplaced(row, 'follow', ctx.sessionId)
+      refuseOldNotes(row, ctx.sessionId, args.notes)
       const doc = row?.doc ?? startDoc(last)
       const input = (args.tasks ?? []).map(({ due, ...task }) => ({ ...task, ...(due ? { due: dueAt(due) } : {}) }))
-      const { tasks, suggestionSeq, dismissed } = rewriteTasks(input, doc.after?.tasks ?? [], row?.suggestionSeq ?? 0, doc.after?.dismissed ?? [])
+      const { tasks, suggestionSeq, dismissed, unanswered } = rewriteTasks(input, doc.after?.tasks ?? [], row?.suggestionSeq ?? 0, doc.after?.dismissed ?? [], doc.after?.unanswered ?? [])
       const by = await writersOf(ctx, sector, doc.after?.by ?? [], ctx.sessionId)
       const at = Date.now()
-      const after = { summary: args.summary ?? [], decisions: args.decisions ?? [], questions: args.questions ?? [], tasks, at, by, ...(dismissed.length ? { dismissed } : {}) }
-      writePage(ctx, workspaceId, event, last, { ...doc, after }, at, { suggestionSeq })
+      const after = { summary: args.summary ?? [], decisions: args.decisions ?? [], questions: args.questions ?? [], tasks, at, by, ...(dismissed.length ? { dismissed } : {}), ...(unanswered.length ? { unanswered } : {}) }
+      // Only the outcome changes, on the row as it stands after the reads above; the version owed is paid.
+      writePage(ctx, workspaceId, event, last, (current) => ({ ...current, after }), at, { suggestionSeq, ...(row?.notesOwed != null ? { notesOwed: null } : {}) })
       return workText(`Kept the outcome for “${event.title}”. Suggested tasks wait for the owner on the meeting’s page.`)
     })
   }

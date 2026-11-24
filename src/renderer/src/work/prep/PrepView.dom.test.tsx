@@ -73,6 +73,9 @@ vi.mock("../../lib/connection", async (original) => ({
         if (method === "work.prep.ahead") return { on: params.on, offered: true };
         if (method === "work.prep.notes") {
           const was = host.page as PrepPage;
+          // the host's rule: a save from a dialog that opened on other words than it holds writes nothing
+          const now = was.doc.notes?.text ?? "";
+          if (typeof params.base === "string" && now.trim() !== params.base.trim() && now.trim() !== String(params.text).trim()) return { page: was, conflict: true };
           host.page = { ...was, rev: was.rev + 1, doc: { ...was.doc, notes: String(params.text).trim() ? { text: String(params.text).trim(), at: 1 } : null } };
         }
         if (method === "work.prep.decide") {
@@ -588,6 +591,15 @@ const BRIEF = { matters: [{ text: "Maya needs the seat list by Wednesday.", ref:
 const briefed = (over: Partial<PrepPage> = {}) => facts({ doc: { ...emptyPrepDoc(), brief: BRIEF }, rev: 2, state: "briefed", briefSessionId: "t-brief", ...over });
 
 describe("Brief me", () => {
+  it("shows the brief being written, and offers no second Brief me, while notes kept early hold the header", async () => {
+    host.page = facts({ rev: 2, state: "after", briefSessionId: "t-brief", briefUntil: NOW + 600_000, briefStartedAt: NOW - 60_000, doc: { ...emptyPrepDoc(), notes: { text: "Ask Dana about the van.", at: 1 } } });
+    await mount();
+    expect(head().getByRole("button", { name: "Follow up" })).toBeTruthy();
+    expect(screen.getByLabelText("The brief is being written")).toBeTruthy();
+    expect(await moreRows()).not.toContain("Brief me");
+    expect(await moreRows()).toContain("Open thread");
+  });
+
   it("stays in More before the meeting once notes kept early take the header's place", async () => {
     host.page = facts({ rev: 1, state: "after", doc: { ...emptyPrepDoc(), notes: { text: "Ask Dana about the van.", at: 1 } } });
     await mount();
@@ -1096,6 +1108,39 @@ describe("after the meeting", () => {
     expect(screen.queryByRole("dialog", { name: "Notes" })).toBeNull();
   });
 
+  it("keeps his words in the dialog when another window kept other notes since it opened, and puts them in place only on a second save", async () => {
+    host.page = facts({ rev: 2, state: "after", doc: { ...emptyPrepDoc(), notes: { text: "Line one.", at: 1 } } });
+    await mount();
+    await more("Edit notes…");
+    const dialog = within(await screen.findByRole("dialog", { name: "Notes" }));
+    // the other window keeps a line meanwhile
+    host.page = { ...(host.page as PrepPage), rev: 3, doc: { ...emptyPrepDoc(), notes: { text: "Line one.\nFrom the other window.", at: 2 } } };
+    fireEvent.change(dialog.getByLabelText("Notes"), { target: { value: "Line one.\nMine." } });
+    await act(async () => fireEvent.click(dialog.getByRole("button", { name: "Cancel" })));
+    expect(await dialog.findByText(/changed in another window/)).toBeTruthy();
+    expect((host.page as PrepPage).doc.notes?.text).toBe("Line one.\nFrom the other window.");
+    expect((dialog.getByLabelText("Notes") as HTMLTextAreaElement).value).toBe("Line one.\nMine.");
+    await act(async () => fireEvent.click(dialog.getByRole("button", { name: "Cancel" })));
+    await vi.waitFor(() => expect((host.page as PrepPage).doc.notes?.text).toBe("Line one.\nMine."));
+  });
+
+  it("holds his words for this meeting when he leaves a dialog whose notes another window changed meanwhile", async () => {
+    host.page = facts({ rev: 2, state: "after", doc: { ...emptyPrepDoc(), notes: { text: "Line one.", at: 1 } } });
+    await mount();
+    await more("Edit notes…");
+    const dialog = within(await screen.findByRole("dialog", { name: "Notes" }));
+    host.page = { ...(host.page as PrepPage), rev: 3, doc: { ...emptyPrepDoc(), notes: { text: "Line one.\nFrom the other window.", at: 2 } } };
+    fireEvent.change(dialog.getByLabelText("Notes"), { target: { value: "Line one.\nMine." } });
+    await act(async () => openWorkView({ workspaceId: "ws", view: "agenda" }));
+    await act(async () => {});
+    expect((host.page as PrepPage).doc.notes?.text).toBe("Line one.\nFrom the other window.");
+    await act(async () => openWorkView({ workspaceId: "ws", view: "prep", event: "ev1" }));
+    await act(async () => {});
+    const back = within(await screen.findByRole("dialog", { name: "Notes" }));
+    expect((back.getByLabelText("Notes") as HTMLTextAreaElement).value).toBe("Line one.\nMine.");
+    expect(back.getByText(/changed in another window/)).toBeTruthy();
+  });
+
   it("keeps what he typed when the page goes from under the dialog, and opens it again on his words when the host did not take them", async () => {
     await mount();
     await act(async () => fireEvent.click(head().getByRole("button", { name: "Add notes" })));
@@ -1104,7 +1149,7 @@ describe("after the meeting", () => {
     // he opens another view with the dialog still open: no close of its own runs
     await act(async () => openWorkView({ workspaceId: "ws", view: "agenda" }));
     await act(async () => {});
-    expect(host.asked.at(-1)).toEqual({ method: "work.prep.notes", params: { workspaceId: "ws", eventId: "ev1", text: "Dana drives the van." } });
+    expect(host.asked.at(-1)).toEqual({ method: "work.prep.notes", params: { workspaceId: "ws", eventId: "ev1", text: "Dana drives the van.", base: "" } });
     // typed again, and this time the host refuses: the words wait for him on this meeting's page
     await act(async () => openWorkView({ workspaceId: "ws", view: "prep", event: "ev1" }));
     await act(async () => {});
@@ -1273,6 +1318,22 @@ describe("a recording or a transcript as the notes", () => {
 describe("notes written in a document", () => {
   beforeEach(() => vi.setSystemTime(OVER));
 
+  it("opens nothing when he went to another meeting of the same job while the host made the document", async () => {
+    await mount();
+    await act(async () => fireEvent.click(head().getByRole("button", { name: "Add notes" })));
+    const dialog = within(await screen.findByRole("dialog", { name: "Notes" }));
+    let answer: () => void = () => {};
+    host.slow = new Promise<void>((resolve) => (answer = resolve));
+    await act(async () => fireEvent.click(dialog.getByRole("button", { name: "Write in a document" })));
+    // another meeting's page, in the same job and the same view: no new choice of view, but not this meeting
+    await act(async () => openWorkView({ workspaceId: "ws", view: "prep", event: "ev2" }));
+    host.slow = null;
+    await act(async () => answer());
+    await act(async () => {});
+    expect(host.asked.some((a) => a.method === "work.prep.notesDoc")).toBe(true);
+    expect(outside.opened).toEqual([]);
+  });
+
   it("lets Follow up start from the document alone, with nothing typed in the field", async () => {
     const source = { at: "file" as const, host: "box", path: "/work/purdue/Staff sync notes.docx" };
     host.page = facts({ rev: 2, state: "after", doc: { ...emptyPrepDoc(), notes: { text: "", at: 1, file: source } }, notesFile: { kind: "document", title: "Staff sync notes.docx", source } });
@@ -1286,6 +1347,8 @@ describe("notes written in a document", () => {
   });
 
   it("makes the notes document on the host, opens it in a Files tab of the meeting's own workspace, and the header's verb becomes Follow up", async () => {
+    // pressed two days after the meeting: the document is dated by the meeting's day
+    vi.setSystemTime(at(16, 0, 25));
     await mount();
     await act(async () => fireEvent.click(head().getByRole("button", { name: "Add notes" })));
     const dialog = within(await screen.findByRole("dialog", { name: "Notes" }));

@@ -68,7 +68,9 @@ export const PrepSuggestionSchema = z.object({
   due: z.number().optional(),
   quote: z.string().trim().max(400).optional(),
   state: z.enum(['proposed', 'filed', 'rejected']),
-  lifeosTaskId: z.string().optional()
+  lifeosTaskId: z.string().optional(),
+  /** a filing was asked and LifeOS did not answer it: it may have made the task, under this suggestion's key */
+  tried: z.boolean().optional()
 })
 export type PrepSuggestion = z.infer<typeof PrepSuggestionSchema>
 
@@ -107,7 +109,12 @@ export const PrepDocSchema = z.object({
        */
       by: z.preprocess((v) => (typeof v === 'string' ? [v] : v), z.array(z.string()).max(PREP_WRITERS_MAX)).optional(),
       /** the folded titles of suggestions he dismissed that a rewrite left out: suggested again, they stay dismissed */
-      dismissed: z.array(z.string().max(300)).max(PREP_DISMISSED_MAX).optional()
+      dismissed: z.array(z.string().max(300)).max(PREP_DISMISSED_MAX).optional(),
+      /**
+       * Suggestions a filing was asked for with no answer (`tried`) that a rewrite left out: suggested again
+       * unchanged, each comes back with its id, so its filing key, and a second filing finds the task LifeOS made.
+       */
+      unanswered: z.array(PrepSuggestionSchema).max(PREP_TASKS_MAX).optional()
     })
     .nullable()
 })
@@ -115,7 +122,7 @@ export interface PrepDoc {
   people: PrepAddedPerson[]
   brief: { matters: PrepLine[]; agreed: PrepLine[]; files: PrepFileRef[]; at: number; by: string } | null
   notes: { text: string; at: number; file?: CanvasSource; meetingItemId?: string } | null
-  after: { summary: PrepLine[]; decisions: PrepLine[]; questions: PrepLine[]; tasks: PrepSuggestion[]; at: number; by?: string[]; dismissed?: string[] } | null
+  after: { summary: PrepLine[]; decisions: PrepLine[]; questions: PrepLine[]; tasks: PrepSuggestion[]; at: number; by?: string[]; dismissed?: string[]; unanswered?: PrepSuggestion[] } | null
 }
 export const emptyPrepDoc = (): PrepDoc => ({ people: [], brief: null, notes: null, after: null })
 
@@ -315,9 +322,11 @@ export const PrepRequestSchemas = [
    * Keeps his notes (empty text takes them back). A file that holds the notes stays beside the words, unless
    * `dropFile`: the window says a recording never arrived or could not be read, so it is no notes. With `itemId`
    * (the meeting its upload went to) only that meeting is let go, and only while the page still names it; the words
-   * the host holds stay, since another window may have kept newer ones. → { page }
+   * the host holds stay, since another window may have kept newer ones; and while the meetings pillar has the file
+   * after all, nothing is let go. `base`: the words the dialog opened on; when the host holds other words by now (another
+   * window kept them), nothing is written and the answer says `conflict`. → { page, conflict? }
    */
-  request('work.prep.notes', z.object({ ...page, text: z.string().max(PREP_NOTES_MAX), dropFile: z.boolean().optional(), itemId: z.string().min(1).max(200).optional() })),
+  request('work.prep.notes', z.object({ ...page, text: z.string().max(PREP_NOTES_MAX), dropFile: z.boolean().optional(), itemId: z.string().min(1).max(200).optional(), base: z.string().max(PREP_NOTES_MAX).optional() })),
   /**
    * Starts the follow-up thread from the notes, or answers the one still working. With `recording`
    * (a recording or a transcript he picked) the host opens an empty meeting beside the new thread and

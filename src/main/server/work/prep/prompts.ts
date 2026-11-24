@@ -1,4 +1,5 @@
 import type { PrepLine, PrepPage, PrepTask } from '@shared/contract-work-prep'
+import type { DocWords } from './docWords'
 
 export const briefTitle = (title: string): string => `Prepare: ${title}`
 export const followTitle = (title: string): string => `Follow up: ${title}`
@@ -13,8 +14,8 @@ function taskWords(task: PrepTask): string {
   return `${task.title}${why}${due} (task ${task.id})`
 }
 
-/** The facts and the words kept on the page, for a thread to read. */
-export function pageWords(page: PrepPage): string {
+/** The facts and the words kept on the page, for a thread to read. `docWords`: his Word notes document read on the host. */
+export function pageWords(page: PrepPage, opts: { docWords?: DocWords } = {}): string {
   const { event, people, tasks, files, last, doc } = page
   const lines = [
     `Meeting: ${event.title} (event ${event.id})`,
@@ -45,8 +46,13 @@ export function pageWords(page: PrepPage): string {
   if (page.notesFile?.kind === 'meeting') {
     lines.push('', page.notesFile.error ? `His notes were a recording or a transcript this host could not read: ${page.notesFile.error}` : `His notes are a recording or a transcript, open beside this thread as meeting ${page.notesFile.itemId}. Read it with meeting_read.`)
   }
+  const docWords = opts.docWords
   if (page.notesFile?.kind === 'document') {
-    lines.push('', page.notesFile.itemId ? `His notes are the document “${page.notesFile.title}”, open beside this thread as item ${page.notesFile.itemId}. Read it with doc_read.` : `His notes are the document “${page.notesFile.title}” in the workspace’s folder.`)
+    const title = page.notesFile.title
+    // A Word file is read here: doc_read takes a .tcdoc alone.
+    if (docWords && 'text' in docWords) lines.push('', `His notes are the document “${title}”${page.notesFile.itemId ? `, open beside this thread as item ${page.notesFile.itemId}` : ''}. It reads:`, docWords.text || '(The document is empty.)')
+    else if (docWords && 'error' in docWords) lines.push('', `His notes document “${title}” could not be read: ${docWords.error}.`)
+    else lines.push('', page.notesFile.itemId ? `His notes are the document “${title}”, open beside this thread as item ${page.notesFile.itemId}. Read it with doc_read.` : `His notes are the document “${title}” in the workspace’s folder.`)
   }
   if (doc.notes?.text) lines.push('', 'His notes:', doc.notes.text)
   section('Follow-up mail already waiting for his press in the Outbox', page.drafts.map((draft) => `“${draft.subject}”${draft.to.length ? ` to ${draft.to.join(', ')}` : ''}`))
@@ -80,10 +86,13 @@ export function briefMessage(page: PrepPage): string {
  */
 const MAIL = 'Just before any mail, call prep_read once more. If it lists a follow-up mail already waiting, or says it could not read whether one waits, draft none. Otherwise draft one to the people with addresses using draft_mail. It waits for his press. Never send it.'
 
-export function followMessage(page: PrepPage, opts: { recording?: boolean; document?: boolean } = {}): string {
+export function followMessage(page: PrepPage, opts: { recording?: boolean; document?: boolean; docWords?: DocWords } = {}): string {
+  const read = opts.docWords && 'text' in opts.docWords
   return [
-    pageWords(page),
-    opts.document
+    pageWords(page, { docWords: opts.docWords ?? null }),
+    opts.document && read
+      ? 'His notes document is above, and is being opened beside you. Change nothing in it. Call prep_follow_up for this event with what was decided, what is still open, and the tasks. Suggest no task the page already lists as open, and no open question that a task you suggest settles. Never call add_task.'
+      : opts.document
       ? 'His notes are in a document that is being opened beside you. Call prep_read: it names the item. Read it with doc_read, and change nothing in it. Call prep_follow_up for this event with what was decided, what is still open, and the tasks. Suggest no task the page already lists as open, and no open question that a task you suggest settles. Never call add_task.'
       : opts.recording
       ? 'The meeting’s recording or transcript is being opened beside you as a meeting, and transcribed on this host if it is a recording. Call prep_read first: it waits until the file has arrived and names the meeting. Then read it with meeting_read, which waits while it is transcribed. If it could not be read, say why and stop: write no outcome and draft no mail. Otherwise call prep_follow_up for this event with what was decided, what is still open, and the tasks. Suggest no task the page already lists as open, and no open question that a task you suggest settles. Write the tasks with prep_follow_up alone: write no actions with meeting_notes, or each task would be suggested twice. Never call add_task.'
@@ -104,12 +113,17 @@ export function followAgainMessage(page: PrepPage): string {
   ].join('\n\n')
 }
 
-/** Told to a follow-up thread still at work when he changed his notes and pressed Follow up again: it started from the old ones. */
-export function followNotesMessage(page: PrepPage): string {
+/**
+ * Told to a follow-up thread still at work when he changed his notes and pressed Follow up again: it started from
+ * the old ones. `version` is the notes version it must pass to `prep_follow_up`, so the host can tell this rewrite
+ * from an outcome its older turn writes before it reads this.
+ */
+export function followNotesMessage(page: PrepPage, version: number, docWords: DocWords = null): string {
   return [
     'He changed his notes for this meeting after you started. The page as it stands now:',
-    pageWords(page),
-    'Write the outcome again from these notes with prep_follow_up for this event: what was decided, what is still open, and the tasks. Suggest no task the page already lists as open, and no open question that a task you suggest settles. Never call add_task.',
+    pageWords(page, { docWords }),
+    `Write the outcome again from these notes with prep_follow_up for this event, passing notes: ${version}: what was decided, what is still open, and the tasks. Suggest no task the page already lists as open, and no open question that a task you suggest settles. Never call add_task.`,
+    'If you already drafted the follow-up mail, change it with update_mail_draft to match the new outcome. Never send it.',
     MAIL,
     'End with the outcome as your last message.'
   ].join('\n\n')

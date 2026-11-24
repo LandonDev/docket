@@ -118,16 +118,25 @@ describe('words for a prep thread', () => {
     expect(text.endsWith('End with the outcome as your last message.')).toBe(true)
   })
 
+  it('gives a Word notes document’s words, or says it could not be read, in place of doc_read', () => {
+    const source = { at: 'file' as const, host: 'box', path: '/w/notes.docx' }
+    const withDoc: PrepPage = { ...page, notesFile: { kind: 'document', title: 'notes.docx', source } }
+    expect(pageWords(withDoc, { docWords: { text: '# Staff sync\n\nDana drives.' } })).toContain('His notes are the document “notes.docx”. It reads:\n# Staff sync\n\nDana drives.')
+    expect(pageWords(withDoc, { docWords: { error: 'it is not there any more' } })).toContain('His notes document “notes.docx” could not be read: it is not there any more.')
+    expect(followMessage(withDoc, { document: true, docWords: { text: 'x' } })).not.toContain('doc_read')
+  })
+
   it('says a mail lookup that failed is not knowing, never that no mail waits', () => {
     expect(pageWords(page)).not.toContain('could not be read just now')
     expect(pageWords({ ...page, drafts: [], problems: ['drafts'] })).toContain('Whether a follow-up mail already waits in the Outbox could not be read just now.')
   })
 
   it('tells a follow-up thread still at work that his notes changed, with the page as it stands', () => {
-    const text = followNotesMessage(page)
+    const text = followNotesMessage(page, 42)
     expect(text.startsWith('He changed his notes for this meeting after you started.')).toBe(true)
     expect(text).toContain('His notes:\nMaya sends the roster.')
-    expect(text).toContain('Write the outcome again from these notes with prep_follow_up')
+    expect(text).toContain('Write the outcome again from these notes with prep_follow_up for this event, passing notes: 42')
+    expect(text).toContain('change it with update_mail_draft to match the new outcome')
     expect(text.endsWith('End with the outcome as your last message.')).toBe(true)
   })
 })

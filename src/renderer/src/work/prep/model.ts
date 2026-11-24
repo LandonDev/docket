@@ -162,8 +162,20 @@ export function headVerb(
   // Notes that are only that recording are no notes to follow up from (a press would read the same failure); words he typed or a notes document still are.
   if (notesToFollow(page)) return "followUp";
   if (isOver(page.event, now)) return "addNotes";
-  if (works(page.briefSessionId, threads.brief, page.briefUntil, wrote(page.briefStartedAt, doc.brief?.at))) return "preparing";
+  if (briefWorks(page, now, threads)) return "preparing";
   return doc.brief ? null : "brief";
+}
+
+/**
+ * Whether the brief thread is at work, whatever the header holds: with notes kept before the meeting the header
+ * says Follow up, and the brief started from More still shows its bones and is not offered again. The same rule
+ * as the header's (the thread's own status, else the host's bound; written since this run began ends it).
+ */
+export function briefWorks(page: Pick<PrepPage, "doc" | "briefSessionId" | "briefUntil" | "briefStartedAt">, now: number, threads: { brief: ThreadStatus }): boolean {
+  const started = page.briefStartedAt;
+  const written = started !== null && page.doc.brief !== null && page.doc.brief.at >= started;
+  if (page.briefSessionId === null || written) return false;
+  return threads.brief === undefined ? page.briefUntil !== null && page.briefUntil > now : threadWorks(threads.brief);
 }
 
 /** Whether the page holds a file a follow-up reads as the notes: his notes document, or a meeting this host still has and could read. */
@@ -177,8 +189,8 @@ export const fileNotes = (page: Pick<PrepPage, "doc" | "notesFile">): boolean =>
  */
 export const notesToFollow = (page: Pick<PrepPage, "doc" | "notesFile">): boolean => !!page.doc.notes && (!!page.doc.notes.text.trim() || fileNotes(page));
 
-/** Whether the brief's place shows its bones: a thread is writing and nothing stands yet. */
-export const briefIsComing = (page: Pick<PrepPage, "doc">, verb: HeadVerb): boolean => verb === "preparing" && !page.doc.brief;
+/** Whether the brief's place shows its bones: its thread is writing (`briefWorks`) and nothing stands yet. */
+export const briefIsComing = (page: Pick<PrepPage, "doc">, working: boolean): boolean => working && !page.doc.brief;
 
 /** Whether the outcome's place shows its bones: the follow-up thread is at work and has written nothing yet. */
 export const outcomeIsComing = (page: Pick<PrepPage, "doc">, verb: HeadVerb): boolean => verb === "following" && !page.doc.after;

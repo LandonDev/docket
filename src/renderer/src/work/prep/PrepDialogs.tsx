@@ -17,7 +17,7 @@ import { choose, workViewNow } from "../../lib/workSwitch";
 import { Face } from "../mail/face";
 import { findPeople, pictureOf, type DirectoryPerson } from "../people/model";
 import { useLifeosQuery, type LifeosQuery, type LifeosSession } from "../shell/lifeos";
-import { dropNotes, followUpFromFile, followUpPrep, heldNotes, holdNotes, keepPrepNotes, loadPrep, notesDocPrep, openNotesDoc, setPrepPeople } from "./data";
+import { dropNotes, followUpFromFile, followUpPrep, heldNotes, holdNotes, keepPrepNotes, loadPrep, notesDocPrep, NotesChanged, openNotesDoc, setPrepPeople } from "./data";
 import { addedKey, fileNotes, namesInvitee, NOTES_FILE_ACCEPT, pickable, returnPicks, samePeople, threadStopped, uploadPercent } from "./model";
 
 /**
@@ -210,7 +210,13 @@ export function NotesDialog({ env, page, onClose }: { env: string; page: PrepPag
   const keep = async () => {
     if (!changed()) return;
     if (tooLong()) throw new Error(TOO_LONG);
-    await keepPrepNotes(env, workspaceId, eventId, text);
+    try {
+      await keepPrepNotes(env, workspaceId, eventId, text, { base: kept.current });
+    } catch (err) {
+      // Another window kept other words: his stay in the field, and a second save is his choice to put them in place.
+      if (err instanceof NotesChanged) kept.current = err.now;
+      throw err;
+    }
     kept.current = text;
     dropNotes(workspaceId, eventId);
   };
@@ -252,10 +258,10 @@ export function NotesDialog({ env, page, onClose }: { env: string; page: PrepPag
    */
   const sendLate = (typed: string) =>
     // Notes too long to keep are not sent to be refused in the host's words: they are held, and the dialog says why in its own.
-    void (typed.trim().length > PREP_NOTES_MAX ? Promise.reject(new Error(TOO_LONG)) : keepPrepNotes(env, workspaceId, eventId, typed)).then(
+    void (typed.trim().length > PREP_NOTES_MAX ? Promise.reject(new Error(TOO_LONG)) : keepPrepNotes(env, workspaceId, eventId, typed, { base: kept.current })).then(
       () => dropNotes(workspaceId, eventId),
       (err: unknown) => {
-        holdNotes(workspaceId, eventId, typed, err instanceof Error && err.message === TOO_LONG ? TOO_LONG : `The notes were not kept: ${refusalWords(err) || "the host did not answer"}`);
+        holdNotes(workspaceId, eventId, typed, err instanceof Error && err.message === TOO_LONG ? TOO_LONG : err instanceof NotesChanged ? err.message : `The notes were not kept: ${refusalWords(err) || "the host did not answer"}`);
         reopenNotes.current?.(workspaceId, eventId);
       },
     );

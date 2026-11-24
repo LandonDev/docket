@@ -31,6 +31,7 @@ import { briefPrep, decidePrepTasks, followUpPrep, heldNotes, loadPrep, openNote
 import {
   addTasksLabel,
   briefIsComing,
+  briefWorks,
   draftLine,
   fileWhere,
   headVerb,
@@ -91,10 +92,15 @@ const said = (err: unknown, fallback = "The host did not answer"): void => void 
 
 /** The header's verb now: from the page, the clock, and what this window knows of the page's two threads. */
 function useHeadVerb(page: PrepPage | null): HeadVerb {
+  return usePrepWork(page).verb;
+}
+
+/** The header's verb, and whether the brief thread is at work whatever the header holds (notes kept early hold it). */
+function usePrepWork(page: PrepPage | null): { verb: HeadVerb; briefWorking: boolean } {
   const now = useMinute();
   const brief = useSessionMetaValue(page?.briefSessionId, (meta) => meta.status);
   const follow = useSessionMetaValue(page?.followSessionId, (meta) => meta.status);
-  return page ? headVerb(page, now, { brief, follow }) : null;
+  return page ? { verb: headVerb(page, now, { brief, follow }), briefWorking: briefWorks(page, now, { brief }) } : { verb: null, briefWorking: false };
 }
 
 // ── The offer, once per workspace ──
@@ -180,7 +186,8 @@ export function Head(props: WorkViewProps) {
       busy={busy}
       thread={pageThread(page) !== null}
       // Before the end, More always offers a brief the header does not: notes kept early take the header's place (Follow up), never the brief's.
-      brief={isOver(page.event, now) || verb === "preparing" || verb === "brief" ? null : page.doc.brief ? "again" : "brief"}
+      // Not while a brief is being written, whatever the header holds: Open thread opens it.
+      brief={isOver(page.event, now) || briefWorks(page, now, { brief: briefStatus }) || verb === "brief" ? null : page.doc.brief ? "again" : "brief"}
       notes={!!page.doc.notes}
       rest={proposed.length}
       ahead={page.aheadOffered ? page.aheadOn : null}
@@ -284,7 +291,7 @@ export function View(props: WorkViewProps) {
   const eventId = useEventId(workspaceId);
   const { page, loaded, error, reading } = usePrep(props.env, workspaceId, eventId);
   const faces = useFaces(props.lifeos);
-  const verb = useHeadVerb(page);
+  const { verb, briefWorking } = usePrepWork(page);
   const now = useMinute();
   const offered = useOfferSettled(workspaceId);
   const open = useShared(ui);
@@ -350,6 +357,7 @@ export function View(props: WorkViewProps) {
         faces={faces}
         now={now}
         verb={verb}
+        briefWorking={briefWorking}
         offer={!offered}
         onRetry={retry}
         onAddPeople={() => openDialog("people", eventId)}
@@ -422,6 +430,8 @@ export interface PrepBodyProps {
   now?: number;
   /** the header's verb, which says whether a brief is on its way */
   verb?: HeadVerb;
+  /** the brief thread is at work whatever the header holds (`briefWorks`); left out, the header's Preparing says it */
+  briefWorking?: boolean;
   /** the one-time offer of Prepare ahead may still be drawn in this workspace */
   offer?: boolean;
   /** reads the page again: what a part that did not load offers */
@@ -443,7 +453,7 @@ export interface PrepBodyProps {
 }
 
 /** The page over a `PrepPage`, holding no query: the preview and the tests draw it as the app does. */
-export function PrepPageBody({ page, faces, now = Date.now(), verb = null, offer = false, onRetry, onAddPeople, onDecide, onOpenDraft, onOpenNotesFile, onAhead, onDismissOffer, refreshError = null, failedAtFirst, tickedAtFirst }: PrepBodyProps) {
+export function PrepPageBody({ page, faces, now = Date.now(), verb = null, briefWorking, offer = false, onRetry, onAddPeople, onDecide, onOpenDraft, onOpenNotesFile, onAhead, onDismissOffer, refreshError = null, failedAtFirst, tickedAtFirst }: PrepBodyProps) {
   const { event, workspaceId, doc } = page;
   const go = (view: string, target: Record<string, unknown>) => openWorkView({ workspaceId, view, ...target });
   const openLine = (line: PrepLine) => (line.ref ? () => openRef(workspaceId, line.ref!) : undefined);
@@ -577,7 +587,7 @@ export function PrepPageBody({ page, faces, now = Date.now(), verb = null, offer
               </div>
             ) : null}
           </Brief>
-        ) : briefIsComing(page, verb) ? (
+        ) : briefIsComing(page, briefWorking ?? verb === "preparing") ? (
           <TextBones label="The brief is being written" />
         ) : null}
 

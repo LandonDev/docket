@@ -37,6 +37,11 @@ export function ensurePrepTables(db: DatabaseSync): void {
   if (!db.prepare("SELECT 1 FROM pragma_table_info('work_prep_pages') WHERE name = 'superseded'").get()) {
     db.exec("ALTER TABLE work_prep_pages ADD COLUMN superseded TEXT NOT NULL DEFAULT '[]'")
   }
+  // The notes version the follow-up thread was told to write again from: until it writes with that version, an
+  // outcome from its older turn is refused.
+  if (!db.prepare("SELECT 1 FROM pragma_table_info('work_prep_pages') WHERE name = 'notes_owed'").get()) {
+    db.exec('ALTER TABLE work_prep_pages ADD COLUMN notes_owed INTEGER')
+  }
   db.exec('CREATE INDEX IF NOT EXISTS work_prep_pages_by_series ON work_prep_pages (workspace_id, series, starts_at)')
   // The Prepare-ahead routine a workspace's switch made, so the switch reads it again (and finds it gone).
   db.exec(`CREATE TABLE IF NOT EXISTS work_prep_ahead (
@@ -64,6 +69,8 @@ export interface PageRow {
   followAt: number | null
   /** the brief and follow-up threads a later press replaced, `brief:<id>` and `follow:<id>`, newest last */
   superseded: string[]
+  /** the notes version the follow-up thread was sent to write again from, until it has; null when none is owed */
+  notesOwed: number | null
   createdAt: number
   updatedAt: number
 }
@@ -88,6 +95,8 @@ export interface PageWriteOptions {
   brief?: string | null
   follow?: string | null
   suggestionSeq?: number
+  /** the notes version owed by the follow-up thread (null: none); left out, it stays, unless the follow-up thread changes */
+  notesOwed?: number | null
 }
 
 type Raw = {
@@ -107,6 +116,7 @@ type Raw = {
   follow_session_id: string | null
   follow_at: number | null
   superseded: string
+  notes_owed: number | null
   created_at: number
   updated_at: number
 }
@@ -142,12 +152,18 @@ const rowOf = (r: Raw): PageRow => ({
   followSessionId: r.follow_session_id,
   followAt: r.follow_at,
   superseded: json<string[]>(r.superseded, []),
+  notesOwed: r.notes_owed ?? null,
   createdAt: r.created_at,
   updatedAt: r.updated_at
 })
 
 export class PrepStore {
   constructor(private readonly db: DatabaseSync) {}
+
+  byId(id: string): PageRow | null {
+    const r = this.db.prepare('SELECT * FROM work_prep_pages WHERE id = ?').get(id) as Raw | undefined
+    return r ? rowOf(r) : null
+  }
 
   get(workspaceId: string, eventId: string): PageRow | null {
     const r = this.db.prepare('SELECT * FROM work_prep_pages WHERE workspace_id = ? AND event_id = ?').get(workspaceId, eventId) as Raw | undefined
@@ -191,14 +207,15 @@ export class PrepStore {
       const next = options[kind]
       return was && next !== undefined && next !== was ? [`${kind}:${was}`] : []
     })
+    const owed = options.notesOwed !== undefined ? options.notesOwed : follow.id === (before?.followSessionId ?? null) ? (before?.notesOwed ?? null) : null
     const superseded = JSON.stringify([...(before?.superseded ?? []).filter((id) => !replaced.includes(id)), ...replaced].slice(-SUPERSEDED_MAX))
     if (before) {
       this.db
         .prepare(
           `UPDATE work_prep_pages SET series = ?, title = ?, starts_at = ?, ends_at = ?, people_keys = ?, doc = ?, rev = rev + 1,
-           brief_session_id = ?, brief_at = ?, follow_session_id = ?, follow_at = ?, updated_at = ?, suggestion_seq = ?, superseded = ? WHERE id = ?`
+           brief_session_id = ?, brief_at = ?, follow_session_id = ?, follow_at = ?, updated_at = ?, suggestion_seq = ?, superseded = ?, notes_owed = ? WHERE id = ?`
         )
-        .run(event.series, event.title, event.startsAt, event.endsAt, JSON.stringify(event.peopleKeys), JSON.stringify(doc), brief.id, brief.at, follow.id, follow.at, now, sequence, superseded, before.id)
+        .run(event.series, event.title, event.startsAt, event.endsAt, JSON.stringify(event.peopleKeys), JSON.stringify(doc), brief.id, brief.at, follow.id, follow.at, now, sequence, superseded, owed, before.id)
     } else {
       this.db
         .prepare(

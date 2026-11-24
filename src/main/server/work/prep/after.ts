@@ -16,7 +16,7 @@ export function lifeosWords(err: unknown): string {
   return words ? words.charAt(0).toUpperCase() + words.slice(1) : 'LifeOS did not take it'
 }
 
-type Suggested = Omit<PrepSuggestion, 'id' | 'state' | 'lifeosTaskId'>
+type Suggested = Omit<PrepSuggestion, 'id' | 'state' | 'lifeosTaskId' | 'tried'>
 
 const titleKey = (title: string) => foldTitle(title) || title.normalize('NFKC').trim().toLowerCase()
 
@@ -27,12 +27,13 @@ const sameSuggestion = (a: Suggested, b: PrepSuggestion): boolean =>
  * Take the thread’s new suggestions and keep any decisions the owner already made. A suggestion he dismissed stays
  * dismissed though a rewrite between left it out (its folded title is kept in `dismissed`). One that waits for his
  * tick and comes back unchanged keeps its id, so a filing LifeOS took but never answered keeps its key on Retry; an
- * edited one is a new suggestion with a new id.
+ * edited one is a new suggestion with a new id. One whose filing went unanswered and that a rewrite leaves out is
+ * kept aside (`unanswered`), so it keeps its id however many rewrites pass before it is suggested again.
  */
-export function rewriteTasks(input: Suggested[], prior: PrepSuggestion[], sequence: number, dismissedBefore: readonly string[] = []): { tasks: PrepSuggestion[]; suggestionSeq: number; dismissed: string[] } {
-  let suggestionSeq = Math.max(sequence, ...prior.map((task) => Number(/^s(\d+)$/.exec(task.id)?.[1] ?? 0)))
+export function rewriteTasks(input: Suggested[], prior: PrepSuggestion[], sequence: number, dismissedBefore: readonly string[] = [], unansweredBefore: readonly PrepSuggestion[] = []): { tasks: PrepSuggestion[]; suggestionSeq: number; dismissed: string[]; unanswered: PrepSuggestion[] } {
+  let suggestionSeq = Math.max(sequence, ...[...prior, ...unansweredBefore].map((task) => Number(/^s(\d+)$/.exec(task.id)?.[1] ?? 0)))
   const settled = prior.filter((task) => task.state !== 'proposed')
-  const waiting = prior.filter((task) => task.state === 'proposed')
+  const waiting = [...prior.filter((task) => task.state === 'proposed'), ...unansweredBefore]
   const dismissed = new Set(dismissedBefore)
   const kept = new Set<string>()
   const tasks: PrepSuggestion[] = []
@@ -58,10 +59,11 @@ export function rewriteTasks(input: Suggested[], prior: PrepSuggestion[], sequen
     if (task.state === 'filed') tasks.push(task)
     else dismissed.add(titleKey(task.title))
   }
+  const unanswered = waiting.filter((task) => task.tried && !kept.has(task.id)).slice(-PREP_TASKS_MAX)
   if (tasks.length > PREP_TASKS_MAX) throw new Error(`The page keeps its filed tasks. Suggest fewer tasks so the page has at most ${PREP_TASKS_MAX}.`)
   // A title the page still lists as dismissed is said there; the newest of the rest are kept.
   const listed = new Set(tasks.filter((task) => task.state === 'rejected').map((task) => titleKey(task.title)))
-  return { tasks, suggestionSeq, dismissed: [...dismissed].filter((key) => !listed.has(key)).slice(-PREP_DISMISSED_MAX) }
+  return { tasks, suggestionSeq, dismissed: [...dismissed].filter((key) => !listed.has(key)).slice(-PREP_DISMISSED_MAX), unanswered }
 }
 
 /** File or reject only proposed tasks. Keep each successful filing before trying the next one. */
@@ -74,11 +76,13 @@ export async function decideTasks(ctx: WorkCtx, workspaceId: string, eventId: st
   if (row && after) {
     const selected = new Set(taskIds)
     const picked = after.tasks.filter((task) => task.state === 'proposed' && selected.has(task.id))
+    // Each write changes the tasks alone, on the row as it stands then: a filing waits on LifeOS, and a rename of
+    // the notes document in Files meanwhile is kept.
+    const setTask = (id: string, change: (task: PrepSuggestion) => PrepSuggestion) =>
+      writePage(ctx, workspaceId, event, last, (doc) => (doc.after ? { ...doc, after: { ...doc.after, tasks: doc.after.tasks.map((t) => (t.id === id ? change(t) : t)) } } : doc), Date.now())
     if (picked.length && decision === 'reject') {
-      const tasks = after.tasks.map((task): PrepSuggestion => task.state === 'proposed' && selected.has(task.id) ? { ...task, state: 'rejected' } : task)
-      writePage(ctx, workspaceId, event, last, { ...row.doc, after: { ...after, tasks } }, Date.now())
+      writePage(ctx, workspaceId, event, last, (doc) => (doc.after ? { ...doc, after: { ...doc.after, tasks: doc.after.tasks.map((task): PrepSuggestion => task.state === 'proposed' && selected.has(task.id) ? { ...task, state: 'rejected' } : task) } } : doc), Date.now())
     } else if (decision === 'accept') {
-      let tasks = after.tasks
       for (const task of picked) {
         let lifeosTaskId: string
         try {
@@ -86,10 +90,11 @@ export async function decideTasks(ctx: WorkCtx, workspaceId: string, eventId: st
           lifeosTaskId = await fileTask(ctx, sector, { id: row.id, title: event.title, startsAt: event.startsAt }, task)
         } catch (err) {
           failed.push({ id: task.id, error: lifeosWords(err) })
+          // LifeOS may have made it and lost the answer: the suggestion keeps its key through any rewrite (`unanswered`).
+          setTask(task.id, (t) => ({ ...t, tried: true }))
           continue
         }
-        tasks = tasks.map((item) => item.id === task.id ? { ...item, state: 'filed', lifeosTaskId } : item)
-        const kept = writePage(ctx, workspaceId, event, last, { ...row.doc, after: { ...after, tasks } }, Date.now())
+        const kept = setTask(task.id, (t) => ({ ...t, state: 'filed', lifeosTaskId }))
         const sessionId = kept.followSessionId
         if (sessionId && ctx.scopeOf(sessionId)) {
           try {
