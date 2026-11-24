@@ -27,6 +27,8 @@ export interface ShowStage {
   motion: ShowMotion;
   motionKey: string;
   media: MediaRun | null;
+  /** the room's picture of the place `key` is painted: in the slideshow, or the presenter's view when it runs alone */
+  shown?(key: string, where: "audience" | "presenter"): void;
 }
 
 export const StageContext = createContext<ShowStage | null>(null);

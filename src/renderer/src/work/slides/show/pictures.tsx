@@ -106,6 +106,8 @@ export interface SlidePictureProps {
   /** the slide's title, drawn while there is no picture of it */
   title?: string;
   className?: string;
+  /** told once the picture asked for is painted, so a clock waits for what the room sees */
+  onShown?(): void;
 }
 
 /** One page of one render: the same page of the render that replaces it is another layer. */
@@ -126,7 +128,7 @@ const nameOf = (doc: PdfDoc): number => names.get(doc) ?? (names.set(doc, ++name
  * picture outlives its render, so a save mid-talk never blanks the room's
  * screen).
  */
-export function SlidePicture({ doc, page, ahead = null, aheadDoc, width, ratio = 1, title = "", className = "", waiting = false, motion = null, motionKey, children }: SlidePictureProps) {
+export function SlidePicture({ doc, page, ahead = null, aheadDoc, width, ratio = 1, title = "", className = "", waiting = false, motion = null, motionKey, children, onShown }: SlidePictureProps) {
   const [painted, setPainted] = useState<readonly Drawn[]>([]);
   const [last, setLast] = useState<Drawn | null>(null);
   const [onPainted] = useState(() => (drawn: Drawn): void => setPainted((was) => (was.some((d) => same(d, drawn)) ? was : [...was, drawn])));
@@ -138,6 +140,9 @@ export function SlidePicture({ doc, page, ahead = null, aheadDoc, width, ratio =
   useEffect(() => {
     if (wantedDone && wanted && !same(wanted, last)) setLast(wanted);
   });
+  useEffect(() => {
+    if (wantedDone) onShown?.();
+  }, [wantedDone, onShown]);
   const nextDoc = aheadDoc ?? doc;
   const next: Drawn | null = nextDoc && typeof ahead === "number" && ahead >= 1 && ahead <= nextDoc.pages ? { doc: nextDoc, page: ahead } : null;
 

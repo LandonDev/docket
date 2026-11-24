@@ -206,10 +206,13 @@ function ShowRoot({ ask, places: opened, native, onOver }: { ask: ShowAsk; place
   const held = useRef<PdfDoc | null>(null);
   const heldRev = useRef<string | null>(null);
   const drawn = useRef<string | null>(null);
+  /** The host's notices that more of a revision's show is ready, counted: one that came while a read was on its way is not lost. */
+  const readied = useRef<{ seq: number; rev: string | null }>({ seq: 0, rev: null });
   const loads = useRef(0);
   const retry = useRef<{ timer: ReturnType<typeof setTimeout> | undefined; wait: number }>({ timer: undefined, wait: RETRY_FIRST_MS });
   const load = useCallback(async (): Promise<void> => {
     const mine = ++loads.current;
+    const asked = readied.current.seq;
     clearTimeout(retry.current.timer);
     try {
       const deck = await host.show();
@@ -228,6 +231,8 @@ function ShowRoot({ ask, places: opened, native, onOver }: { ask: ShowAsk; place
       setError(deck.renderError ?? null);
       setLost(false);
       setState((was) => (was ? showReducer(was, { t: "deck", slides: deck.slides }) : startShowState(deck.slides, ask.from)));
+      // More of this revision was made while it was read (its notice came before the show knew its revision): once more.
+      if (readied.current.seq !== asked && readied.current.rev === deck.rev) void load();
     } catch (e) {
       if (mine !== loads.current) return;
       const message = e instanceof Error && e.message ? e.message : "The host did not answer";
@@ -244,7 +249,11 @@ function ShowRoot({ ask, places: opened, native, onOver }: { ask: ShowAsk; place
     void load();
     const off = host.onRev((rev) => void (rev !== drawn.current && void load()));
     // More of this revision's show is ready: read it again (the open render is kept).
-    const offReady = host.onReady?.((rev) => void (rev === drawn.current && void load())) ?? (() => undefined);
+    const offReady =
+      host.onReady?.((rev) => {
+        readied.current = { seq: readied.current.seq + 1, rev };
+        if (rev === drawn.current) void load();
+      }) ?? (() => undefined);
     const waiting = retry.current;
     return () => {
       off();
@@ -388,6 +397,8 @@ function ShowRoot({ ask, places: opened, native, onOver }: { ask: ShowAsk; place
     }),
     [mediaUrls, plays, audience],
   );
+  // The place whose picture the room has seen painted: the slideshow's, or the presenter's view when it runs alone.
+  const [seen, setSeen] = useState<string | null>(null);
   const stage = useMemo<ShowStage>(
     () => ({
       pictureOf: (slide, step): Picture => {
@@ -395,22 +406,23 @@ function ShowRoot({ ask, places: opened, native, onOver }: { ask: ShowAsk; place
         const pic = at?.pic;
         const opened = pic ? stepDocs.get(pic.rev) : undefined;
         if (opened && typeof opened === "object") return { doc: opened, page: 1, waiting: false };
-        // A step's picture on its way, not made yet or that could not be made holds the picture before it: the slide's
-        // final page would show the room what its builds still hide.
-        if (opened === "opening" || (pic && !opened && host.step) || at?.missing) return { doc, page: slide.page, waiting: true };
+        // A step's picture on its way, not made yet, or that could not be made or read, holds the picture before it:
+        // the slide's final page would show the room what its builds still hide.
+        if (opened === "opening" || opened === "failed" || (pic && !opened && host.step) || at?.missing) return { doc, page: slide.page, waiting: true };
         return { doc, page: slide.page, waiting: false };
       },
       motion: moved.motion,
       motionKey: moved.key,
       media,
+      shown: (key, where) => void ((where === "audience" || !audience) && setSeen(key)),
     }),
-    [stepDocs, doc, moved.motion, moved.key, media, host.step],
+    [stepDocs, doc, moved.motion, moved.key, media, host.step, audience],
   );
 
   // "Advance after": one clock for both windows, counted again at each place the show reaches, from when its picture
-  // is there to be seen: a step still waiting for its picture holds the clock too.
+  // is painted where the room sees it: a step still waiting for its picture, or still painting, holds the clock too.
   const here = state ? shown.slides[shown.at] : undefined;
-  const painted = !!here && !stage.pictureOf(here, shown.step).waiting;
+  const painted = !!here && !stage.pictureOf(here, shown.step).waiting && seen === placeKey;
   const wait = state && painted ? autoAfter(state) : null;
   const atNow = state?.at;
   const stepNow = state?.step;
@@ -419,8 +431,9 @@ function ShowRoot({ ask, places: opened, native, onOver }: { ask: ShowAsk; place
     const timer = setTimeout(() => dispatch({ t: "auto", at: atNow, step: stepNow }), wait);
     return () => clearTimeout(timer);
   }, [wait, atNow, stepNow, dispatch]);
-  // A step whose picture could not be made is held for the room; the presenter is told why.
-  const undrawn = here?.steps?.[shown.step]?.missing === "failed" ? "This build could not be drawn here. The room sees the step before it." : null;
+  // A step whose picture could not be made, or read, is held for the room; the presenter is told why.
+  const stepNowAt = here?.steps?.[shown.step];
+  const undrawn = stepNowAt?.missing === "failed" || (stepNowAt?.pic && stepDocs.get(stepNowAt.pic.rev) === "failed") ? "This build could not be drawn here. The room keeps the picture before it." : null;
 
   return (
     <StageContext.Provider value={stage}>

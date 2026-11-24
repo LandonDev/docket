@@ -1631,7 +1631,7 @@ key a clicker sends.
   read, not made yet or that could not be made (`missing`) holds the
   picture shown (nothing but the matte at a show's first step), and a
   failed one puts one line in the presenter's view, "This build could not
-  be drawn here. The room sees the step before it.". His next press goes on
+  be drawn here. The room keeps the picture before it.". His next press goes on
   as ever, so the last step, which hides nothing, shows the slide whole.
   When the show ends, a picture still opening is let go as it lands and no
   more of it is read; a clip on its way stops asking for chunks and makes

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import { Button } from "../../../components/ui/button";
 import { MENU_ROW } from "../../../components/ui/menu-row";
 import { Skeleton } from "../../../components/ui/skeleton";
@@ -99,6 +99,9 @@ export function Presenter({ state, dispatch, doc, loading = false, error = null,
   const nextSlide = next.kind === "slide" ? state.slides[next.at] : next.kind === "build" ? slide : undefined;
   const pictureOf = usePicture(doc);
   const stage = useStage();
+  const key = stage?.motionKey;
+  const tell = stage?.shown;
+  const shown = useCallback(() => void (key !== undefined && tell?.(key, "presenter")), [key, tell]);
   const here = pictureOf(slide, state.step);
   const coming = nextSlide ? pictureOf(nextSlide, next.kind === "build" ? next.step : 0) : null;
   return (
@@ -178,6 +181,7 @@ export function Presenter({ state, dispatch, doc, loading = false, error = null,
                 className={`${PICTURE} ${state.blank ? "opacity-45" : ""}`}
                 motion={stage?.motion ?? null}
                 motionKey={stage?.motionKey}
+                onShown={shown}
               >
                 <SlideMedia slide={slide} step={state.step} surface="presenter" width={now_.width} height={now_.height} />
               </SlidePicture>

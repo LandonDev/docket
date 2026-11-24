@@ -754,9 +754,27 @@ describe("a show's builds, its own clock and its clips", () => {
     await act(async () => handle.end());
   });
 
+  it("a notice that a build is ready, come while the show's first read is still opening, is not lost", async () => {
+    const slides = deck(2, { 1: { steps: [{ hides: [4], missing: "making" }, { hides: [] }] } });
+    const host = showHost(showDeck(2, { slides }));
+    let opened!: (doc: ReturnType<typeof pages>) => void;
+    const engine = { open: (file: { size: number }) => (file.size === 1000 ? new Promise<ReturnType<typeof pages>>((done) => (opened = done)) : Promise.resolve(pages(2))) };
+    let handle!: Awaited<ReturnType<typeof startShow>>;
+    await act(async () => {
+      handle = await startShow({ host, title: "Deck", from: "start", mode: "windowed", engine, native: null, open: (surface) => place(surface) });
+    });
+    await waitFor(() => expect(host.shows).toBe(1));
+    // The host made the step while the deck's picture was still opening.
+    host.deck = showDeck(2, { slides: deck(2, { 1: { steps: [{ hides: [4], pic: { rev: "0123456789abcdef", size: 101 } }, { hides: [] }] } }) });
+    await act(async () => host.ready("r1"));
+    await act(async () => opened(pages(2)));
+    await waitFor(() => expect(host.shows).toBe(2));
+    await act(async () => handle.end());
+  });
+
   it("holds a step whose picture could not be made, says why to the presenter alone, and starts no clock on it", async () => {
     const { places, handle } = await start(deck(3, { 1: { steps: [{ hides: [4], missing: "failed" }, { hides: [] }], transition: { kind: "fade", ms: 500, after: 30 } } }));
-    await waitFor(() => expect(within(places.presenter.body).getByRole("status").textContent).toBe("This build could not be drawn here. The room sees the step before it."));
+    await waitFor(() => expect(within(places.presenter.body).getByRole("status").textContent).toBe("This build could not be drawn here. The room keeps the picture before it."));
     expect(seen(places.audience)).not.toBe("Slide 1");
     expect(places.audience.body.textContent).not.toContain("could not be drawn");
     await new Promise((r) => setTimeout(r, 80));
@@ -765,6 +783,42 @@ describe("a show's builds, its own clock and its clips", () => {
     fireEvent.keyDown(places.audience.body, { key: "ArrowRight" });
     await waitFor(() => expect(text(places.presenter, "[data-show-place]")).toBe("2 / 3"));
     expect(within(places.presenter.body).queryByRole("status")).toBeNull();
+    await act(async () => handle.end());
+  });
+
+  it("a step picture the window could not read is held for the room, never the slide whole, and the presenter is told", async () => {
+    const slides = deck(2, { 2: { steps: [{ hides: [4], pic: { rev: "0123456789abcdef", size: 666 } }, { hides: [] }] } });
+    const host = showHost(showDeck(2, { slides }));
+    const places: Record<string, ReturnType<typeof place>> = {};
+    const engine = { open: async (file: { size: number }) => (file.size === 666 ? Promise.reject(new Error("not a PDF")) : pages(2)) };
+    let handle!: Awaited<ReturnType<typeof startShow>>;
+    await act(async () => {
+      handle = await startShow({ host, title: "Deck", from: "start", mode: "windowed", engine, native: null, open: (surface) => (places[surface] = place(surface)) });
+    });
+    await waitFor(() => expect(seen(places.audience)).toBe("Slide 1"));
+    fireEvent.keyDown(places.audience.body, { key: "ArrowRight" });
+    await waitFor(() => expect(text(places.presenter, "[data-show-place]")).toBe("2 / 2"));
+    await waitFor(() => expect(within(places.presenter.body).getByRole("status").textContent).toBe("This build could not be drawn here. The room keeps the picture before it."));
+    expect(seen(places.audience)).toBe("Slide 1");
+    await act(async () => handle.end());
+  });
+
+  it("counts a slide's time from when the room's picture is painted, not from when it was read", async () => {
+    const slides = deck(3, { 1: { transition: { kind: "fade", ms: 500, after: 30 } } });
+    const host = showHost(showDeck(3, { slides }));
+    const places: Record<string, ReturnType<typeof place>> = {};
+    let paint!: () => void;
+    const painting = new Promise<void>((go) => (paint = go));
+    const doc = pages(3);
+    const slow = { ...doc, paint: (...a: Parameters<typeof doc.paint>) => painting.then(() => doc.paint(...a)) };
+    let handle!: Awaited<ReturnType<typeof startShow>>;
+    await act(async () => {
+      handle = await startShow({ host, title: "Deck", from: "start", mode: "windowed", engine: { open: async () => slow }, native: null, open: (surface) => (places[surface] = place(surface)) });
+    });
+    await new Promise((r) => setTimeout(r, 120));
+    expect(text(places.presenter, "[data-show-place]")).toBe("1 / 3");
+    await act(async () => paint());
+    await waitFor(() => expect(text(places.presenter, "[data-show-place]")).toBe("2 / 3"));
     await act(async () => handle.end());
   });
 
