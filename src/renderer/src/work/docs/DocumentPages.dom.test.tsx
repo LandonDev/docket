@@ -16,6 +16,7 @@ import type { CanvasItem } from "@shared/work";
 import type { CanvasShell, MoreEntry } from "../canvas/kind";
 import { MARGIN_PRESETS, type PreviewSource } from "../formats/preview";
 import type { DocState } from "./DocumentCanvas";
+import { withoutEditorMarks } from "./previewSource";
 
 const FILE = { at: "file", host: "box", path: "/w/Run of show.tcdoc" } as const;
 const PAGE = { schema: 1, styles: Object.fromEntries(DEFAULT_STYLES.map((style) => [style.name, style])), theme: TEMPCODE_THEME, setup: { ...defaultSetup(), header: true }, header: { start: [], center: [], end: [] }, footer: { start: [], center: [], end: [] } } as DocumentPage;
@@ -263,9 +264,9 @@ describe("one print contract", () => {
     const source = await preview(view);
     await source.draw("pdf", { signal: new AbortController().signal });
     expect(pages.pagesHtml).toHaveBeenLastCalledWith({ title: "Run of show", faces: "@font-face{font-family:Carlito}" });
-    expect(printed()).toBe(sheets);
+    expect(printed()).toBe(withoutEditorMarks(sheets));
     await source.draw("print", { signal: new AbortController().signal });
-    expect(printed()).toBe(sheets);
+    expect(printed()).toBe(withoutEditorMarks(sheets));
     expect(pages.pagesHtml).toHaveBeenCalledTimes(2);
   });
 
@@ -337,7 +338,7 @@ describe("one print contract", () => {
     const source = await preview(reader);
     expect(source.setup).toBeUndefined();
     await source.draw("pdf", { signal: new AbortController().signal });
-    expect(printed()).toBe(sheets);
+    expect(printed()).toBe(withoutEditorMarks(sheets));
     expect(pages.setSetup).not.toHaveBeenCalled();
     cleanup();
     opened.role = "edit";
