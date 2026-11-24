@@ -466,6 +466,15 @@ describe('a file that moves', () => {
     expect(await relink(b.ctx, 'ws-ref', 'Receipts/2026/a.png', 'Receipts/2026/c.png')).toBe(0)
     expect(b.sheets.grid(ledger())[1][8]).toBe('Receipts/2026/b.png')
   })
+
+  it('keeps a receipt’s link while the ledger cannot be read as money: Out renamed while he works on it', async () => {
+    await call('work.money.entry', { workspaceId: 'ws-ref', fields: fields() })
+    b.sheets.type(ledger(), 'I2', 'Receipts/2026/a.png')
+    b.sheets.type(ledger(), 'F1', 'Spent')
+    expect(await relink(b.ctx, 'ws-ref', 'Receipts/2026/a.png', 'Receipts/2026/b.png')).toBe(1)
+    b.sheets.type(ledger(), 'F1', 'Out')
+    expect((await view()).rows).toMatchObject([{ receipt: 'Receipts/2026/b.png' }])
+  })
 })
 
 describe('what a thread may leave', () => {
@@ -483,8 +492,8 @@ describe('what a thread may leave', () => {
     ])
   })
 
-  it('money_add lands in To confirm with the thread named, never in the ledger, and never twice', async () => {
-    const args = { date: '2026-11-07', who: 'West Side HS', amount: 80, way: 'in', category: 'Game fees', for: 'Varsity' }
+  it('money_add lands in To confirm with the thread named, never in the ledger, and never twice for a retry under its key', async () => {
+    const args = { date: '2026-11-07', who: 'West Side HS', amount: 80, way: 'in', category: 'Game fees', for: 'Varsity', key: 'west-side-fee' }
     const got = await run('money_add', args)
     expect(got.isError).toBeUndefined()
     expect(got.text).toContain('It is not in the ledger until he accepts it.')
@@ -495,6 +504,13 @@ describe('what a thread may leave', () => {
     // His accept files it as money in.
     await call('work.money.accept', { id: now.toConfirm[0].id, fields: fields({ date: '2026-11-07', who: 'West Side HS', way: 'in', amount: 8000, category: 'Game fees', what: 'Varsity', status: 'Unpaid' }) })
     expect((await view()).owed).toMatchObject([{ who: 'West Side HS', amount: 8000, way: 'toHim' }])
+  })
+
+  it('money_add leaves two equal entries from two calls as two: only a key sent again makes a call a retry', async () => {
+    const parking = { date: '2026-11-07', who: 'City Garage', amount: 12, way: 'out' }
+    expect((await run('money_add', parking)).text).toContain('Left for the owner')
+    expect((await run('money_add', parking)).text).toContain('Left for the owner')
+    expect((await view()).toConfirm).toHaveLength(2)
   })
 
   it('money_receipt hands over a file of the job’s own folder, which is read like any receipt', async () => {

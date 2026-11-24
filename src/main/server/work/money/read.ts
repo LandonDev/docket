@@ -242,7 +242,7 @@ export const MILEAGE_OUTSIDE = "The mileage log leads outside this job's folder,
  * out of the job's folder, or holds rows without Date or Miles, has trips
  * Money cannot say, which is not the same as none.
  */
-export async function mileageLog(ctx: Svc & Pick<WorkCtx, 'db'>, books: Books): Promise<{ trips: MileageRow[]; problem: MileageProblem | null }> {
+export async function mileageLog(ctx: Svc & Pick<WorkCtx, 'db'>, books: Pick<Books, 'workspaceId' | 'mileage'>): Promise<{ trips: MileageRow[]; problem: MileageProblem | null }> {
   if (!existsSync(books.mileage)) return { trips: [], problem: null }
   // A log that is a link out of the job's folder is not this job's: its miles are not read, shown or exported.
   const ws = workspaces(ctx).find((w) => w.id === books.workspaceId)
@@ -307,7 +307,11 @@ export async function readMoney(ctx: Pick<WorkCtx, 'db' | 'service' | 'host'>, w
   if (ledgerOutside(ctx, ws.id)) throw new MoneyError(LEDGER_OUTSIDE)
   const books = booksHere(ctx, ws.id)
   if (!books) {
-    return { made: false, any: false, root, period, rows: [], sums: EMPTY_SUMS, byCategory: [], byMonth: byMonth([], year), owed: [], miles: { miles: 0, value: 0, rate: null }, categories: categoriesFor(ws.sector), sellers: [], toConfirm: [], calendar: [], rate: rateOf(booksOf(ctx, ws.id), year), problems: [] }
+    // No ledger, and perhaps a mileage log all the same (a job's folder copied in part): its trips are this job's, or its
+    // fault is said, never "no money yet".
+    const kept = booksOf(ctx, ws.id)
+    const log = await mileageLog(ctx, { workspaceId: ws.id, mileage: kept?.mileage ?? join(ws.path, 'Money', 'Mileage.tcsheet') })
+    return { made: false, any: log.trips.length > 0 || log.problem !== null, root, period, rows: [], sums: EMPTY_SUMS, byCategory: [], byMonth: byMonth([], year), owed: [], miles: milesOf(log.trips, period), categories: categoriesFor(ws.sector), sellers: [], toConfirm: [], calendar: [], rate: rateOf(kept, year), problems: log.problem ? [log.problem] : [] }
   }
   const [ledger, log] = await Promise.all([ledgerOf(ctx, books), mileageLog(ctx, books)])
   const rows = ledger.rows

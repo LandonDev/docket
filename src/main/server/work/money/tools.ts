@@ -1,7 +1,7 @@
 import { z } from 'zod'
 import { workText, type WorkToolResult } from '@shared/work'
 import { errorText } from '@shared/work/ids'
-import { createHash } from 'node:crypto'
+import { createHash, randomUUID } from 'node:crypto'
 import { existsSync, readdirSync, realpathSync } from 'node:fs'
 import { isAbsolute, join, sep } from 'node:path'
 import { centsFrom, formatMoney, inPeriod, isDay, milesLine, milesOf, moneyWords, sumsOf, today, undatedWords, type LedgerRow } from '@shared/work/money'
@@ -124,11 +124,12 @@ const moneyAdd: WorkTool = {
     way: z.enum(['in', 'out']).describe('`out`: money the owner spent. `in`: money the owner is paid.'),
     category: z.string().max(100).optional(),
     for: z.string().max(500).optional().describe('What it was for, in a few words.'),
-    file: z.string().max(4000).optional().describe("A receipt's full path on this computer, in this job's folder.")
+    file: z.string().max(4000).optional().describe("A receipt's full path on this computer, in this job's folder."),
+    key: z.string().min(1).max(100).optional().describe('A word of your own for this entry. Send the same key only to retry this same call; each entry otherwise waits on its own, two equal ones too.')
   }),
   readOnly: false,
   async run(args, ctx: ToolCtx) {
-    const a = args as { date: string; who: string; amount: number; way: 'in' | 'out'; category?: string; for?: string; file?: string }
+    const a = args as { date: string; who: string; amount: number; way: 'in' | 'out'; category?: string; for?: string; file?: string; key?: string }
     const ws = jobOf(ctx)
     if (!ws) return fail(NO_JOB)
     try {
@@ -136,7 +137,9 @@ const moneyAdd: WorkTool = {
       const amount = centsFrom(a.amount)
       if (amount < 1) return fail('The amount is less than a cent.')
       const got = await leave(ctx, {
-        key: keyOf(ctx, a),
+        // Two calls with the same fields are two entries (two $12 parking fees on one day): only the thread's own key, sent
+        // again, says a call is a retry of the first.
+        key: a.key ? keyOf(ctx, { key: a.key }) : `agent:${ctx.sessionId}:${randomUUID()}`,
         ws,
         sessionId: ctx.sessionId,
         fields: { amount, date: a.date, who: a.who.trim(), category: a.category?.trim() || null, way: a.way, ...(a.for?.trim() ? { what: a.for.trim() } : {}) },

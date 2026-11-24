@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, renameSync, symlinkSync } from 'node:fs'
+import { existsSync, mkdirSync, renameSync, rmSync, symlinkSync } from 'node:fs'
 import { join } from 'node:path'
 import { beforeEach, describe, expect, it } from 'vitest'
 import type { MoneyActed, MoneyBooks, MoneyHits, MoneyOwed, MoneyRead, MoneyState, MoneySums } from '@shared/contract-work-money'
@@ -59,6 +59,16 @@ describe('the books', () => {
     const creates = b.sheets.asked.filter((a) => a.route === '/internal/sheet/create').length
     await call('work.money.open', { workspaceId: 'ws-ref' })
     expect(b.sheets.asked.filter((a) => a.route === '/internal/sheet/create')).toHaveLength(creates)
+  })
+
+  it('reads a mileage log that stands with no ledger beside it: its trips are the job’s, never "no money yet"', async () => {
+    await call('work.money.trip', { workspaceId: 'ws-ref', date: '2026-11-20', title: 'Clinic', place: 'Rec Center', miles: 10 })
+    rmSync(ledger())
+    b.db.exec('DELETE FROM work_money_books')
+    const got = await read()
+    expect(got.made).toBe(false)
+    expect(got.any).toBe(true)
+    expect(got.miles).toMatchObject({ miles: 10, value: 700 })
   })
 
   it('takes a ledger already at its place as it is', async () => {

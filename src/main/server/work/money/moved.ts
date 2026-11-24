@@ -23,7 +23,14 @@ const under = (root: string, path: string): string | null => {
   return rel && !rel.startsWith('..') && !rel.startsWith(sep) ? rel.split(sep).join('/') : null
 }
 
-/** Rewrites every Receipt cell that held `from` to `to`, both paths under the job's Money folder. */
+/**
+ * Rewrites every cell that held `from` to `to`, both paths under the job's
+ * Money folder. The cells are looked for in the sheet as it stands, in
+ * every column: a ledger that cannot be read as money just now (he renamed
+ * Out while he works on it, or the Receipt header) still has its link kept,
+ * and a cell that holds a kept file's whole path is that file's link
+ * whatever its header says.
+ */
 export async function relink(ctx: Ctx, workspaceId: string, from: string, to: string): Promise<number> {
   const ws = workspaces(ctx).find((w) => w.id === workspaceId)
   if (!ws) return 0
@@ -32,9 +39,7 @@ export async function relink(ctx: Ctx, workspaceId: string, from: string, to: st
     const books = booksHere(ctx, workspaceId)
     if (!books) return 0
     const ledger = await ledgerOf(ctx, books)
-    const col = ledger.columns.Receipt
-    if (col === undefined) return 0
-    const cells = ledger.rows.filter((r) => r.receipt === from).map((r) => ({ at: `${columnLetter(col)}${r.row}`, v: to }))
+    const cells = ledger.grid.body.flatMap((line, i) => line.flatMap((v, c) => (v === from ? [{ at: `${columnLetter(c)}${i + 2}`, v: to }] : [])))
     const shared = cells.length > 0 && (await othersCanOpen(ctx, books.ledger, ledger.grid.shared))
     if (cells.length) await ctx.service.internal('/internal/sheet/cells', { sheet: { tcsheet: books.ledger }, cells, by: 'money', suggest: shared, ...(shared ? { reason: 'Money' } : {}) })
     return cells.length
