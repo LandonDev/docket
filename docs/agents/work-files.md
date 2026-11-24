@@ -923,7 +923,9 @@ follows; the title shows the old name until the tab opens again).
   upload with a target of its own (`AttachmentUploads.beginInto`), held to
   the host's attachment limit. It answers `{ uploadId }`; the same `op`
   again answers the same id, and `landed: true` once a commit on it made the
-  file (`amendOp` keeps that on the op's row, across a restart), so a commit
+  file (`amendOp` keeps that on the op's row, across a restart; the path it
+  goes to is written there first, `landing`, and a row with a landing and
+  no `landed` is settled by the file's sha256 when the op is asked again), so a commit
   whose answer was lost is never saved twice. A commit sent again to a host
   that has not restarted answers its first answer (`AttachmentUploads`
   keeps them a day).

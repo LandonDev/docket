@@ -243,6 +243,22 @@ final class ShareHost: @unchecked Sendable {
         #expect(rig.inbox.item(item.id)?.committing == nil)
     }
 
+    @Test func `a lost commit whose op cannot be read stays pending, and begins nothing`() async throws {
+        let (rig, host, uploader) = try rig()
+        host.commitError = TransportError.notConnected
+        let item = try rig.add(bytes)
+        #expect(await uploader.send(item).state == .queued)
+        host.commitError = nil
+        host.commitFailures = ["u1": TransportError.server(method: "attachment.commit", message: "unknown upload (expired, aborted or never begun)")]
+        host.beginError = TransportError.server(method: "work.files.upload", message: "The app stopped before this finished.")
+        let after = await uploader.send(item)
+        #expect(after.state == .refused)
+        #expect(after.canRetry)
+        #expect(rig.inbox.item(item.id)?.committing == "u1")
+        #expect(host.begun.map(\.op) == ["\(item.id)-0", "\(item.id)-0"])
+        #expect(!host.calls.contains { $0.hasPrefix("chunk u2") })
+    }
+
     @Test func `cancel aborts the upload on the host and the item goes back to the queue`() async throws {
         let (rig, host, uploader) = try rig()
         host.cancelAtIndex = 1

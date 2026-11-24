@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto'
-import { existsSync, readdirSync, readFileSync, renameSync, symlinkSync } from 'node:fs'
+import { existsSync, readdirSync, readFileSync, renameSync, symlinkSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { ClientRequestSchema } from '@shared/contract'
@@ -12,7 +12,7 @@ import { files } from './index'
 import { NEEDS_APPROVE } from './policy'
 import { approver, at, HOST, makeRig, phone, thread, window, WS, type Rig } from './testkit'
 import { stagingRoot, type UploadLanded } from './upload'
-import { writeSeams } from './write'
+import { amendOp, writeSeams } from './write'
 
 /** An upload into a folder of the Files place (upload.ts): begun on the wire, its bytes sent as `attachment.*`, landed at commit. */
 
@@ -118,6 +118,42 @@ describe('an upload into his own folder', () => {
     const out = await files.handle!(req, rig.ctx, window)
     expect(out.handled && out.result).toEqual({ uploadId: id, landed: true })
     expect(readdirSync(rig.folder).filter((n) => n.startsWith('d'))).toEqual(['d.txt'])
+  })
+
+  it('names where the file goes on the op before it is made', async () => {
+    const id = await begin('e.txt', 'e', { op: 'op-upload-reserve' })
+    let row: unknown = null
+    writeSeams.beforeWrite = () => {
+      row = JSON.parse((rig.db.prepare(`SELECT result FROM work_files_ops WHERE id = ?`).get('op-upload-reserve') as { result: string }).result)
+    }
+    await send(id, 'e')
+    expect(row).toEqual({ uploadId: id, landing: join(rig.folder, 'e.txt') })
+  })
+
+  it('settles a host that stopped after making the file and before saying so: its own bytes there are landed, others are not', async () => {
+    const restart = (): void => {
+      uploads.close()
+      uploads = new AttachmentUploads({ dirFor: () => join(rig.base, 'unused'), store: { getSetting: () => null, setSetting: () => {} }, now: () => clock, sweepEveryMs: 0 })
+      ;(rig.ctx as { uploads: WorkCtx['uploads'] }).uploads = uploads
+    }
+    const again = async (name: string, text: string, op: string): Promise<unknown> => {
+      const req = ClientRequestSchema.parse({ id: '3', method: 'work.files.upload', params: { workspaceId: WS, at: { at: 'place', id: 'folder' }, name, size: Buffer.byteLength(text), sha256: sha(text), op } })
+      const out = await files.handle!(req, rig.ctx, window)
+      return out.handled && out.result
+    }
+    // The file was made under the recorded name, and the host stopped before `landed` was written.
+    const id = await begin('f.txt', 'ffff', { op: 'op-upload-stopped' })
+    amendOp(rig.db, 'op-upload-stopped', { uploadId: id, landing: join(rig.folder, 'f.txt') })
+    writeFileSync(join(rig.folder, 'f.txt'), 'ffff')
+    restart()
+    expect(await again('f.txt', 'ffff', 'op-upload-stopped')).toEqual({ uploadId: id, landed: true })
+    expect(readdirSync(rig.folder).filter((n) => n.startsWith('f'))).toEqual(['f.txt'])
+    // A file there that is not its bytes (another's, made in the gap) is not taken as landed.
+    const other = await begin('g.txt', 'gggg', { op: 'op-upload-other' })
+    amendOp(rig.db, 'op-upload-other', { uploadId: other, landing: join(rig.folder, 'g.txt') })
+    writeFileSync(join(rig.folder, 'g.txt'), 'not the upload')
+    restart()
+    expect(await again('g.txt', 'gggg', 'op-upload-other')).toEqual({ uploadId: other })
   })
 
   it('refuses a name no place takes, before anything is staged', async () => {

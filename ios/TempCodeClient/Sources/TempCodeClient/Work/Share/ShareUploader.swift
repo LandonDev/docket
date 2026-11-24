@@ -190,6 +190,9 @@ public final class ShareUploader {
                 }
             } catch {
                 if error is CancellationError || Self.isUnreachable(error) { return .queued }
+                // Not known whether it landed: the commit stays pending, and Try Again asks once more. Beginning anew
+                // here could save the file twice.
+                return Self.outcome(of: error)
             }
             // Nothing landed under it: begin anew below.
             try? inbox.committing(item.id, uploadId: nil)

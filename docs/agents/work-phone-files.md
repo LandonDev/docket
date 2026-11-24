@@ -279,8 +279,12 @@ pictures and three movies.
   knows the upload (it restarted, or a day went by), the phone sends the
   begin's op again: the host kept "landed" on the op's row when the file was
   made (`amendOp`, files/upload.ts; rows live a week), and answers
-  `{uploadId, landed: true}`, which ends the item as Done. Only an op whose
-  file never landed begins anew. Done is written with `committing` cleared in
+  `{uploadId, landed: true}`, which ends the item as Done. The host writes
+  the path on the op's row before it makes the file (`landing`), so a stop
+  between making it and saying so is settled when the op is asked again: the
+  file there with the upload's sha256 is landed. Only an op whose file never
+  landed begins anew; an op that cannot be read keeps the commit pending,
+  refused with Try Again, and begins nothing. Done is written with `committing` cleared in
   the same manifest write (`ShareInbox.mark`).
 - **Final refusals.** What no retry can change is marked `isFinal` on the
   manifest (absent in an older one: retryable): the phone's "<host> takes
