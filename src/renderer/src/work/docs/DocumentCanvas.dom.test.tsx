@@ -10,9 +10,9 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { CanvasItem } from "@shared/work";
 import type { CanvasShell, StatusLine } from "../canvas/kind";
 
-const opening = vi.hoisted(() => ({ fail: (_: Error) => {} }));
+const opening = vi.hoisted(() => ({ fail: (_: Error) => {}, made: 0 }));
 vi.mock("./host", () => ({
-  docHost: (env: string) => ({ env, open: () => new Promise((_, reject) => (opening.fail = reject)) }),
+  docHost: (env: string) => (opening.made++, { env, open: () => new Promise((_, reject) => (opening.fail = reject)) }),
   servedBy: () => null,
 }));
 const conn = vi.hoisted(() => ({ asked: [] as Array<{ method: string; params: unknown }>, answer: (_method: string): Promise<unknown> => Promise.resolve([]) }));
@@ -46,6 +46,18 @@ describe("the document's body", () => {
     expect(container.querySelector("[data-slot=skeleton]")).toBeNull();
     expect(container.querySelector("[aria-busy]")).toBeNull();
     expect(ready.at(-1)).toBe(false);
+  });
+
+  it("opens once for the same source: a canvas push's new copy of the item reopens nothing; another document opens", () => {
+    const shell = { statusLine: () => {}, ready: () => {}, more: () => {} } as unknown as CanvasShell;
+    const made = opening.made;
+    const at = (source: typeof FILE | { at: "file"; host: string; path: string }) => <Body item={{ ...ITEM, source }} source={source} env="box" state={undefined} setState={() => {}} shell={shell} />;
+    const { rerender } = render(at(FILE));
+    rerender(at({ ...FILE }));
+    rerender(at({ ...FILE }));
+    expect(opening.made - made).toBe(1);
+    rerender(at({ ...FILE, path: "/w/Budget.tcdoc" }));
+    expect(opening.made - made).toBe(2);
   });
 });
 

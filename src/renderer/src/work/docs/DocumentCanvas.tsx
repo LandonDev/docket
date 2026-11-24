@@ -125,11 +125,16 @@ type Opened = { host: DocHost; open: DocOpen } | { error: string } | null;
 /** Opens the document on the host the item lives on, or on the host that serves it when that is another. */
 export function useOpened(env: string, source: CanvasSource, attempt: number): Opened {
   const [opened, setOpened] = useState<Opened>(null);
+  // Every canvas push hands a new copy of the item: the source's value, not its object, says it is another document,
+  // so a push never reopens the editor under his hands (its caret, find, Preview and the frames it has yet to send).
+  const key = JSON.stringify(source);
+  const latest = useRef(source);
+  latest.current = source;
   useEffect(() => {
     let live = true;
     setOpened(null);
     const tryOn = async (on: string, again: boolean): Promise<void> => {
-      const host = docHost(on, source);
+      const host = docHost(on, latest.current);
       try {
         const open = await host.open();
         if (live) setOpened({ host, open });
@@ -143,7 +148,7 @@ export function useOpened(env: string, source: CanvasSource, attempt: number): O
     return () => {
       live = false;
     };
-  }, [env, source, attempt]);
+  }, [env, key, attempt]);
   return opened;
 }
 
