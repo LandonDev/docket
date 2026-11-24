@@ -150,9 +150,8 @@ describe("the week across hosts", () => {
     page.unmount();
     // A drag while the page is closed: it reopens in the new order before any host answers again.
     saveProjectRailOrder(["/env-box/purdue", "/env-box/hypixel", "/env-box/cosmic", "/env-mac/cosmic"]);
-    const again = renderHook(() => useReview(WEEK));
-    expect(again.result.current.review!.jobs.map((j) => j.key).slice(0, 3)).toEqual(["purdue", "hypixel", "cosmic"]);
-    again.unmount();
+    // Hypixel is still pinned, so it leads; Purdue now comes before Cosmic.
+    expect(reviewNow(WEEK).review!.jobs.map((j) => j.key).slice(0, 3)).toEqual(["hypixel", "purdue", "cosmic"]);
   });
 
   it("holds a host that links again as from before until its new answer lands, with no page open too", async () => {

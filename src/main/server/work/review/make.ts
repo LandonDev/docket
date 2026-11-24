@@ -61,7 +61,7 @@ export async function makeWeek(ctx: WorkCtx, a: MakeAsk): Promise<Made> {
     ...(a.signal ? { signal: a.signal } : {})
   }
   const jobs = jobsOf(ctx.db, a.only)
-  const hidden = hiddenKeys(ctx.db, a.now)
+  const hidden = hiddenKeys(ctx.db, a.now, !a.only)
   const left: string[] = []
 
   let lifeos: ReviewLifeos | null = null

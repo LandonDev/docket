@@ -283,6 +283,16 @@ describe('the week_review tool', () => {
     for (const other of ['Purdue', 'Budget', 'jerseys', 'travel forms', 'Dana', '#esports']) expect(cosmic).not.toContain(other)
   })
 
+  it('never shows a Cosmic item stamped with Purdue’s workspace to Purdue, and changes no mark', async () => {
+    rig.outbox.waiting = [held('moved', { createdAt: MON, workspaceId: 'w-purdue', sector: 'cosmic', summary: 'Post the patch notes to #announcements' })]
+    setMark(rig.db, { key: 'held:host:gone', how: 'later', until: MON }, MON - DAY)
+    const marks = () => rig.db.prepare('SELECT key FROM work_review_marks').all()
+    const before = marks()
+    expect(await run('t-purdue')).not.toContain('#announcements')
+    expect(await run('t-cosmic')).toContain('#announcements')
+    expect(marks()).toEqual(before)
+  })
+
   it('adds the job\'s own sums from Money, asked for that workspace alone', async () => {
     const { WORK_MODULES } = await import('../modules')
     const asked: unknown[] = []

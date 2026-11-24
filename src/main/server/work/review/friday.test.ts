@@ -125,6 +125,13 @@ describe('the job', () => {
     expect(await call('work.review.ready', {})).toEqual({ handled: true, result: null })
   })
 
+  it('opening the newest week withdraws the tell of each older week seen with it', async () => {
+    await job().run(rig.ctx, { workspaceId: 'w-purdue', firedAt: FRIDAY })
+    await job().run(rig.ctx, { workspaceId: 'w-purdue', firedAt: FRIDAY + 7 * 24 * HOUR })
+    await call('work.review.seen', { from: WEEK.to })
+    expect(rig.toldDone.sort()).toEqual([`review:${WEEK.from}`, `review:${WEEK.to}`].sort())
+  })
+
   it('ready answers null once he has seen it', async () => {
     await job().run(rig.ctx, { workspaceId: 'w-purdue', firedAt: FRIDAY })
     expect(await call('work.review.ready', {})).toEqual({ handled: true, result: { from: WEEK.from, madeAt: FRIDAY } })

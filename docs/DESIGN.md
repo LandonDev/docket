@@ -1532,7 +1532,7 @@ Around the canvas:
     ("Its last answer is shown."). A slipped row whose source did not
     answer stands as last known with its presses off (a held item's Open
     stays), and one muted line under the red ones says "Slipped shows what
-    was last known.", unless a host's own line already said so." Nudge, as Follow up, is off where the job has no
+    was last known.", unless a host's own line already said so. Nudge, as Follow up, is off where the job has no
     workspace this window can open. No comparison with the week
     before is drawn on anything unread, or on a host's answer from before.
     After a Retry the keyboard is back on Retry, or on the Hours heading

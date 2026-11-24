@@ -71,7 +71,7 @@ the tool and the tests all call it. Per job, three facts, never mixed:
 
 | Fact | From | Said as |
 |---|---|---|
-| On the calendar | LifeOS `events:range`: the job's events he did not decline or hide, that are not all day and have an end (`countedSpan`), cut to the week and to now; overlaps inside a job counted once | a measure: "6 h 30 m" |
+| On the calendar | LifeOS `events:range`: the job's events he did not decline or hide, that are not all day and have an end (`countedSpan`), cut to the week and to now; read from a week before the span, so a timed event of a few days that began before Monday counts for its part (one longer than a week is not seen); overlaps inside a job counted once | a measure: "6 h 30 m" |
 | At the desk | the points. Points less than 20 minutes apart (`SITTING_GAP_MS`), whatever their jobs, are one sitting; each gap goes to the job of its later point; 5 minutes (`LEAD_MS`) lead the first. Desk time under a counted event of any job is dropped, so no hour counts twice | an estimate: "about 4 h 30 m", to the quarter hour, always with "about" |
 | Threads ran | the job's threads' `status` rows, running to settled, cut to the week | a measure of its own, never added to his hours |
 
@@ -162,7 +162,7 @@ a slice is sized by bytes and a long row is never loaded.
 | Tasks | finished (`review:doneBetween`) | past due and open (`tasks:due`) | Done (`tasks:complete`) | due next Monday 9:00 (`tasks:update`) | Drop (`tasks:drop`) |
 | Mail | sent (`review:sentBetween`); answered (`review:answeredBetween`) | waiting past its time (`mailWaits:list`) | Nudge (`work.mail.nudge`: a held draft in its own thread) | `mailWaits:putOff` | Stop waiting (`mailWaits:dismiss`) |
 | Held items | sent on his press (`work.outbox.list {show: 'decided'}`) | held a day or more (`HELD_SLIPS_MS`) | Open: the Outbox, whose press it stays | a mark | Discard (`work.outbox.discard`) |
-| Meetings | | ended, someone else on it, no mail to any of them since | Follow up: a new thread with the event's chip | a mark | None needed (a mark) |
+| Meetings | | ended, someone else on it, no mail to any of them since, no notes in Prep on any host | Follow up: the meeting's Prep page | a mark | None needed (a mark) |
 
 - A held mail that was sent is listed once, as the mail.
 - Tasks due before the week fold behind "12 older" per job (`splitOlder`).
@@ -174,7 +174,28 @@ a slice is sized by bytes and a long row is never loaded.
   after". It never says he forgot.
 - A mark (`work_review_marks`) hides a held item or a meeting until next
   Monday, or a meeting for good. A task or a waiting mail needs none: its
-  own date moves.
+  own date moves. A thread's tool reads the marks and deletes none
+  (`hiddenKeys(…, prune = false)`).
+- A waiting mail's key is its thread and when the wait began
+  (`waitKey`, `mail:<thread>:<since>`): a newer wait on the same thread (he
+  wrote again) is another row, so a kept row never looks open, or is
+  pressed, on the strength of a newer one. A week kept before this matches
+  its rows by their ref.
+- A held item or a document is filed by its own sector (`jobIndex`,
+  `rowJob`): a held item's workspace counts only while it is of the item's
+  sector, a LifeOS document goes by LifeOS's sector for it (`docs:get`), and
+  a `.tcdoc` by the Work workspace whose folder holds it; only a file outside
+  every folder goes by the tab it was open in. So one job's thing never shows
+  in another job's week, the thread tool's included.
+- His own addresses (`mail:accounts`) unread, or a carried meeting's mail
+  unread, leaves `LEFT.mail` and judges no meeting: he would be "someone
+  else" on every event, or a mail he sent would be missed.
+- Prep is asked from the first start among the meetings judged (one that
+  began before Monday, a put-off one), within the 31 days it answers
+  (`PREP_UPCOMING_MAX_MS`). Each host carries the events its own Prep calls
+  done on its part (`ReviewBody.prepped`), and the window drops a meeting
+  any part names (in a week that is over it reads as dealt with since), since
+  a job's Prep pages live on the host that holds its workspace.
 
 **The presses** go through `work.review.settle {row, how, tz, sector?}` on
 the row's host: the host LifeOS's rows were read from (which keeps the
@@ -183,11 +204,16 @@ the job. It needs a key that may approve and refuses a thread's own call
 before anything is read. It calls the thing's own write and nothing else,
 and answers an undo token where the write can be taken back (`tasks:reopen`,
 the due date the press replaced, read then with `tasks:get`, never a kept
-week's memory of it; `mailWaits:putBack`; the mark removed, or the mark that
+week's memory of it, and put back only while the task still has the date the
+press wrote, else "It has changed since"; no token when that read failed;
+`mailWaits:putBack`; the mark removed, or the mark that
 stood before it put back whole, since a put-off meeting is in this week by
 that older mark), held in memory for
 half an hour and good once (`work.review.undo`). A nudge is a draft, held
-like every draft. A held item's "now" and a meeting's "now" never reach the
+like every draft, and is started only while the thread's wait is the row's
+own (`mailWaits:get`, its `since`). Next week or Stop waiting on a wait that
+LifeOS no longer holds as the row's (it answers null) is said as "That
+mail's wait has changed", never toasted as done. A held item's "now" and a meeting's "now" never reach the
 host: the window opens the Outbox, or starts the thread. A call into
 another pillar goes through that module's `handle` (`WORK_MODULES`), as the
 mail pillar reaches routines.
@@ -218,6 +244,19 @@ mail pillar reaches routines.
 - A week first asked for after it ended has no such make: it shows what is
   still open from it, read again each time, and says "Not made in its week.
   What slipped is as of today."
+- **A read that failed or was cut never lowers or settles what was kept**
+  (`keepFacts`). A list that comes back full at its cap says so: the waiting
+  mail past three pages (`LEFT.mailPart`), the Outbox's waiting list at 500
+  or its decided list at 500 that does not reach back past the span's start
+  (`LEFT.heldPart`), more than 200 documents or one whose history or sector
+  did not answer beside others that did (`LEFT.filesPart`). What was read
+  counts; a kept row past the cut stays as last known; no "nothing" and no
+  comparison stand on it. And a make over a kept week joins what was kept to
+  what was read: desk points (matched by value, the job found again by
+  workspace), run time (the larger), this host's shipped rows and LifeOS's
+  sent, done and answered (by id). The calendar alone is replaced, by the
+  fresh read where it answered (a meeting may be cancelled after a read) and
+  by the kept one, cut to the moment it was read, where it did not.
 
 Two windows asking for one week at once share one read.
 
@@ -236,7 +275,12 @@ menu ("Made Fridays at 4:00 PM…"), or answers null.
 The job makes this week, keeps it as made by the routine (so
 `work.review.ready` names it until `work.review.seen`), pushes `work.review
 {from, madeAt, seen: false}`, and tells the digest once a week (`ctx.tell`,
-kind `review.ready`, key `review:<from>`). Its
+kind `review.ready`, key `review:<from>`): a second run of a week the
+routine already made (Run now) tells nobody, and a week he opened stays
+seen (`routineMade`). Opening a week withdraws the tell of every older week
+seen with it. The seed keeps its one shared try and lets it go in two
+steps, so a try that found no linked workspace is not reused once he links
+one. Its
 run's row in Routines opens the page at that week (`open: {place: 'review',
 at}`) and says how many things slipped on this host (its count is LifeOS's
 things and its own held items; the page adds every host's), or, when a source did not answer,
@@ -264,19 +308,29 @@ under the `work-places` frame.
   as asked for before any host answers, so a host that links later fills it
   in, after the zone is asked again). `settleHost` picks the host of a
   press. LifeOS's facts come from a host that answered this time before one
-  whose part is kept from an earlier answer (`ReviewPart.stale`), the home
-  first in each. Every job the window knows of is listed (`knownJobs`), one
+  whose part is kept from an earlier answer (`ReviewPart.stale`), and among
+  those from the one whose own LifeOS reads failed least, the home first at
+  a tie; facts taken from an answer from before call nothing empty
+  (`known.calendar`). A source is not yet mixed across hosts (the box's tasks
+  with the Mac's calendar): one host's facts are taken whole. Every job the window knows of is listed (`knownJobs`), one
   whose only host is off too, in the rail's own order (`railWorkspaces`: the
   pinned rows first, then the rail's saved list, a job on two hosts at its
   first row's place; a drag or a pin while the page is open is followed:
-  lib/recents.ts `subscribeRailOrder`). A
+  lib/recents.ts `subscribeRailOrder`, and the views kept while it is closed
+  are dropped, so it reopens in the rail's order). A
   host that links again is from before until its new read lands: its part
   is `stale`, the page waits as for a host still answering, and its sums
   are dropped until the new ones come. A press's
   reload is a read that starts after the write (`loadWeek(week, true)`),
-  never one already on its way. A running week is counted to the moment its
-  facts were read (`madeAt`), not to the window's clock, so a re-merge of
-  the same answers adds nothing. A row whose source did not answer, or
+  never one already on its way. A part made while its week ran is counted
+  to the moment its facts were read (`madeAt`), not to the window's clock,
+  and so is compared "by this point last week", even read back after the
+  week ended and before the new answer lands: a re-merge of the same
+  answers adds nothing, and the weekend's plans are never measured time.
+  A host names a week by its first moment in its own zone; the window finds
+  it from that week's middle (`weekNamed`), so a Tokyo host's Monday is not
+  a New York window's Sunday. `week_review`'s `week` is a day read in the
+  host's zone (`weekOfDay`). A row whose source did not answer, or
   whose host answered from before, is `unchecked` (`uncheckedIn`): it stands
   as last known and its presses wait. `hostError` says why a host did not
   answer in his words; `errors[].kept` says its last answer still counts.
@@ -334,12 +388,14 @@ what he sees. A Work Chat is in no job and is told so.
   `work.money.sums {from, to}` (local days, `localDay`) on each linked host
   and shows one line in a job's opened Hours row ("Money  $2,400.00 in,
   $312.50 out"); `week_review` adds the same for its own workspace. A host
-  with no Money has no line.
+  with no Money has no line. A job one of whose ledgers Money could not read
+  whole (`problem` on its row) shows no sum, on the page and in the tool, and
+  a read that fails drops the sums that host answered before.
 - **Prep**: a meeting whose page in Prep holds notes or an outcome
   (`work.prep.upcoming`, state `after`) counts as followed up
-  (`preppedAfter`, beside the mail rule in `followedUp`). "Follow up" opens
-  Prep's page for the event once its view is in the build (`"prep" in
-  WORK_VIEWS`, `go.ts`); until then it starts a thread with the event's chip.
+  (`preppedAfter`, beside the mail rule in `followedUp`), on any host
+  (`ReviewBody.prepped`). "Follow up" opens Prep's page for the event
+  (`"prep" in WORK_VIEWS`, `go.ts`).
 - **Clashes** owns clashes and drive time: the review counts an event's own
   length only.
 - **Files and the editors**: only document history says who changed a file,

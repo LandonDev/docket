@@ -71,9 +71,10 @@ export function readyWeek(db: DatabaseSync): { from: number; madeAt: number } | 
   return row ? { from: row.from_at, madeAt: row.routine_at! } : null
 }
 
-/** He opened the week: true when that changed anything. Every older week the routine made is seen with it. */
-export function seeWeek(db: DatabaseSync, from: number, now: number): boolean {
-  return Number(db.prepare('UPDATE work_review_weeks SET seen_at = ? WHERE from_at <= ? AND routine_at IS NOT NULL AND seen_at IS NULL').run(now, from).changes) > 0
+/** He opened the week: the weeks that changed. Every older week the routine made is seen with it. */
+export function seeWeek(db: DatabaseSync, from: number, now: number): number[] {
+  const rows = db.prepare('UPDATE work_review_weeks SET seen_at = ? WHERE from_at <= ? AND routine_at IS NOT NULL AND seen_at IS NULL RETURNING from_at').all(now, from) as { from_at: number }[]
+  return rows.map((r) => r.from_at)
 }
 
 export type Mark = { key: string; how: 'later' | 'drop'; until: number | null }
@@ -86,8 +87,9 @@ export const CARRIED_FOR_MS = 14 * 24 * 60 * 60_000
  * waits, so it is listed again by itself. A meeting's is kept a while longer (`carriedMeetings`): the meeting ended
  * in a week that is over, and nothing else would bring it back.
  */
-export function hiddenKeys(db: DatabaseSync, now: number): Set<string> {
-  db.prepare(`DELETE FROM work_review_marks WHERE until IS NOT NULL AND until <= ? AND (key NOT LIKE 'meeting:%' OR until <= ?)`).run(now, now - CARRIED_FOR_MS)
+export function hiddenKeys(db: DatabaseSync, now: number, prune = true): Set<string> {
+  // `prune: false`: a thread's read-only tool, which changes nothing; the marks it skips are dropped at the next make.
+  if (prune) db.prepare(`DELETE FROM work_review_marks WHERE until IS NOT NULL AND until <= ? AND (key NOT LIKE 'meeting:%' OR until <= ?)`).run(now, now - CARRIED_FOR_MS)
   return new Set((db.prepare('SELECT key FROM work_review_marks WHERE until IS NULL OR until > ?').all(now) as { key: string }[]).map((r) => r.key))
 }
 

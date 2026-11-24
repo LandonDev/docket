@@ -171,13 +171,13 @@ function focusNear(row: HTMLElement | null): void {
   target?.focus();
 }
 
+/** On a narrow page a line wraps, a long word too: nothing a row says is cut where there is no room to open it. */
+const WRAPS = "@max-[30rem]/page:[overflow-wrap:anywhere] @max-[30rem]/page:whitespace-normal";
+
 /**
  * The verbs' leading edge: the words under them fade into the row's fill over 24px (the fill is the foreground at 5%
  * on the page), so a title or a detail is never cut mid-letter.
  */
-/** On a narrow page a line wraps, a long word too: nothing a row says is cut where there is no room to open it. */
-const WRAPS = "@max-[30rem]/page:[overflow-wrap:anywhere] @max-[30rem]/page:whitespace-normal";
-
 const FADES = "before:pointer-events-none before:absolute before:inset-y-0 before:end-full before:w-6 before:bg-linear-to-r before:from-transparent before:to-[color-mix(in_srgb,var(--foreground)_5%,var(--background))]";
 
 function SlippedRowView({ job, row, review, gone, canOpen, onOpen, onPress, shown = false }: { job: MergedJob; row: Placed<SlippedRow>; review: MergedReview; gone: boolean; canOpen: (job: MergedJob, target: Target) => boolean; onOpen: (job: MergedJob, target: Target) => void; onPress: Press; shown?: boolean }) {

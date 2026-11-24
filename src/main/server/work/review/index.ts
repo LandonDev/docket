@@ -160,10 +160,11 @@ export const review: WorkModule = {
 
 /** He opened a week's review: it is no longer ready, and every screen that said so hears. */
 export function seen(ctx: WorkCtx, _by: Caller, from: number, now = Date.now()): { ok: true } {
-  if (seeWeek(ctx.db, from, now)) {
+  const weeks = seeWeek(ctx.db, from, now)
+  if (weeks.length) {
     ctx.push({ push: 'work.review', from, madeAt: now, seen: true })
-    // It is no longer news: the digest's row goes, and a notice of it is withdrawn.
-    ctx.tell.done(readyKey(from))
+    // It is no longer news: the digest's row goes, and a notice of it is withdrawn, for each older week seen with it.
+    for (const week of weeks) ctx.tell.done(readyKey(week))
   }
   return { ok: true }
 }
