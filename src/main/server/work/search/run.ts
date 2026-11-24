@@ -86,10 +86,12 @@ const EMPTY: SearchAnswer = { groups: [], pending: [], quiet: [], searched: 0 }
 export async function runSearch(ctx: WorkCtx, o: SearchRun): Promise<SearchAnswer> {
   const text = o.text.trim()
   if (!text || emptyReach(o.reach)) return EMPTY
-  let listed = listSources(o.modules, o.own)
+  const wanted = listSources(o.modules, o.own)
     .filter((l) => (o.kind === undefined || l.source.kind === o.kind) && (!o.kinds || o.kinds.includes(l.source.kind)))
     .filter((l) => !(o.skipLifeos && l.source.lifeos))
-    .filter((l) => l.source.when !== 'alone' || o.kind !== undefined)
+  // A source asked only alone is left out as he types, and its kind is named: the window offers the kind alone.
+  const deeper = o.kind === undefined ? [...new Set(wanted.filter((l) => l.source.when === 'alone').map((l) => l.source.kind))] : []
+  let listed = wanted.filter((l) => l.source.when !== 'alone' || o.kind !== undefined)
   const quiet: SearchQuiet[] = []
   // LifeOS not connected: none of its sources is asked, and it is said once, in the session's own words.
   if (listed.some((l) => l.source.lifeos) && !safely(() => ctx.lifeos.connected())) {
@@ -107,7 +109,8 @@ export async function runSearch(ctx: WorkCtx, o: SearchRun): Promise<SearchAnswe
     pending,
     // One line a cause, and never the same words twice (two sources of one kind that both failed).
     quiet: quiet.filter((q, i) => quiet.findIndex((other) => other.cause === q.cause || other.line === q.line) === i),
-    searched: answered.count
+    searched: answered.count,
+    ...(deeper.length ? { deeper } : {})
   }
 }
 
@@ -133,7 +136,7 @@ async function askOne(ctx: WorkCtx, listed: Listed, o: SearchRun, limit: number,
   try {
     // The caller giving up ends the wait at once, whether or not the source heeds its signal.
     const gone = new Promise<never>((_, reject) => (own.signal.aborted ? reject(new Error('given up')) : own.signal.addEventListener('abort', () => reject(new Error('given up')), { once: true })))
-    hits = (await Promise.race([within(Promise.resolve().then(() => source.search({ text: o.text, reach: o.reach, limit, by: o.by, signal: own.signal }, ctx)), o.waitMs ?? SEARCH_WAIT_MS), gone])) ?? []
+    hits = (await Promise.race([within(Promise.resolve().then(() => source.search({ text: o.text, reach: o.reach, limit, by: o.by, signal: own.signal, note: (said) => void quiet.push(said) }, ctx)), o.waitMs ?? SEARCH_WAIT_MS), gone])) ?? []
   } catch (err) {
     if (o.signal?.aborted) return null
     ctx.log(`search: ${id} did not answer: ${errorText(err)}`)
@@ -148,7 +151,7 @@ async function askOne(ctx: WorkCtx, listed: Listed, o: SearchRun, limit: number,
   // The fence, a second time: whatever a source answered, a hit outside the reach is never shown.
   const inside = hits.filter((hit) => hit && typeof hit.key === 'string' && inReach(o.reach, hit.workspaceId ?? null))
   if (inside.length !== hits.length) ctx.log(`search: ${id} answered ${hits.length - inside.length} hit(s) outside the reach; dropped`)
-  let kept = inside.filter((hit) => o.by.kind !== 'remote' || namesOnlyReachable(ctx, o.by, hit)).map((hit) => tidy(hit, source.kind))
+  let kept = inside.filter((hit) => o.by.kind !== 'remote' || namesOnlyReachable(ctx, o.by, hit)).map((hit) => tidy(hit, source.kind, o.text))
   if (source.unranked && o.opened) {
     const when = (hit: SearchHit): number => o.opened!(hit.key) ?? 0
     kept = kept.map((hit, i) => ({ hit, i })).sort((a, b) => when(b.hit) - when(a.hit) || a.i - b.i).map((x) => x.hit)
@@ -157,10 +160,10 @@ async function askOne(ctx: WorkCtx, listed: Listed, o: SearchRun, limit: number,
   return { source: id, kind: source.kind, label, hits: kept.slice(0, limit), more: kept.length > limit }
 }
 
-/** A hit as the wire carries it: its source's kind, its job named, its snippet cut. */
-function tidy(hit: SearchHit, kind: string): SearchHit {
+/** A hit as the wire carries it: its source's kind, its job named, its snippet cut round the words that found it. */
+function tidy(hit: SearchHit, kind: string, text: string): SearchHit {
   const { snippet, ...rest } = hit
-  const cut = searchSnippet(snippet)
+  const cut = searchSnippet(snippet, text)
   return { ...rest, kind, workspaceId: hit.workspaceId ?? null, ...(cut ? { snippet: cut } : {}) }
 }
 

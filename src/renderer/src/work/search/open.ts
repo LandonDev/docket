@@ -33,7 +33,7 @@ export interface OpenDeps {
   held(id: string, hostId: string): void;
   startThread(chip: ContextChip, workspace: WorkspaceMeta): void;
   opened(hostId: string, hit: SearchHit): void;
-  /** a full-page view (the Inbox, Settings) leaves, so what opens is seen */
+  /** whatever lies over the board (a full-page view, Settings) leaves, so what opens is seen */
   clear(): void;
 }
 
@@ -54,7 +54,7 @@ const live: OpenDeps = {
   held: (id, hostId) => openHeld({ at: "host", id }, hostId),
   startThread: (chip, workspace) => startThreadAbout(chip, null, workspace.path),
   opened: tellOpened,
-  clear: () => shell.closeViews(),
+  clear: () => shell.closeOverlays(),
 };
 
 export type Opened = "opened" | "gone" | "failed" | "nothing";

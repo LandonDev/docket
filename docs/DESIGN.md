@@ -3263,14 +3263,20 @@ his hands and leaves no trace on what he was searching from.
   the cloud wears Files' cloud mark after its name.
 - **The job** is the sector dot and the job's name in 12px muted, in an
   80px column so the names line up (a longer name is cut); never a chip. It is drawn only
-  while the results can mix jobs (All jobs, with more than one job in
-  reach). Scoped to one job the column is gone.
+  while the results can mix places (All jobs, with more than one job in
+  reach, or one job and a thread of the Work Chats among its rows, which
+  reads "Work Chats"). Scoped to one job the column is gone.
 - **Four rows a kind**, then one muted row, "All mail for “budget”"
   (foreground once the highlight is on it, as any row Return will take):
   Return on it narrows the picker to that kind (thirty rows), the kind's
   name standing muted before his words in the field (and in the hint's
   place while he has typed none). Escape steps back out, onto the row he
-  came in by; a second Escape closes.
+  came in by; a second Escape closes. A kind a host can search further when
+  asked alone (Files: a file's text, every place) offers its row on every
+  search, under its rows or, with none, as the list's last row.
+- **Return opens what he sees.** A highlighted row he has scrolled out of
+  sight by the trackpad is brought back by the first Return and opened by
+  the next.
 - **The list holds still.** Rows on screen never change order among
   themselves: within a kind, what lands later goes under the rows already
   there, into the free places, and the rest is behind "All …". Until he

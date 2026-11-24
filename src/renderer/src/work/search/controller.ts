@@ -20,6 +20,8 @@ export class SearchController {
   model: SearchModel = emptyModel();
   private listeners = new Set<() => void>();
   private waits: (() => void)[] = [];
+  /** the picker closed since the last search began */
+  private closed = false;
 
   constructor(private readonly deps: ControllerDeps) {}
 
@@ -38,6 +40,7 @@ export class SearchController {
   /** A new generation: his words, the kind, the hosts, and the job it is held to (its key and its workspaces; null: all jobs). */
   search(text: string, kind: string | null, hosts: AskedHost[], offline: readonly string[] = [], scope: string | null = null, within: readonly string[] | null = null): void {
     for (const cancel of this.waits.splice(0)) cancel();
+    this.closed = false;
     this.set(begin(this.model, { text, kind, scope, within, hosts, offline }));
     const gen = this.model.gen;
     const typedAt = this.deps.now();
@@ -46,7 +49,8 @@ export class SearchController {
         (answer) => {
           const { model, ask } = landInstant(this.model, gen, host.id, answer);
           this.set(model);
-          if (ask.length === 0 || gen !== this.model.gen) return;
+          // Closed while the first ask was out: nothing more is asked of anyone.
+          if (ask.length === 0 || gen !== this.model.gen || this.closed) return;
           const go = (): void => {
             if (gen !== this.model.gen) return;
             for (const one of ask) {
@@ -74,6 +78,7 @@ export class SearchController {
 
   /** The picker closed: nothing still waiting is asked. An answer on its way lands on a model nobody reads. */
   close(): void {
+    this.closed = true;
     for (const cancel of this.waits.splice(0)) cancel();
   }
 }

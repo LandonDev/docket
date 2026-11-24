@@ -147,6 +147,33 @@ describe('the cap', () => {
     expect(group.hits[0].snippet).toHaveLength(160)
     expect(group.hits[0].snippet).toMatch(/^the budget x/)
   })
+  it('cuts a long line round the word that found it, so the row shows why it is there', async () => {
+    const rig = makeRig()
+    const [group] = (await run(rig, [fakeSource('mail', [hit('m1', PURDUE, { snippet: `${'seats and tables '.repeat(20)}the budget is late ${'more notes '.repeat(20)}` })])])).groups
+    expect(group.hits[0].snippet).toMatch(/^….*the budget is late.*…$/)
+    expect(group.hits[0].snippet!.length).toBeLessThanOrEqual(160)
+  })
+  it('names a kind that has more to search when asked alone, as he types; asked alone it searches and names none', async () => {
+    const rig = makeRig()
+    const names = fakeSource('file', [hit('f1', PURDUE)])
+    const deep = fakeSource('file', [hit('f2', PURDUE)], { tier: 'network', when: 'alone' })
+    const typed = await run(rig, [names, deep, fakeSource('mail', [hit('m1', PURDUE)])])
+    expect(typed.deeper).toEqual(['file'])
+    expect(deep.asks).toHaveLength(0)
+    const alone = await run(rig, [names, deep], { kind: 'file' })
+    expect(alone.deeper).toBeUndefined()
+    expect(deep.asks).toHaveLength(1)
+    expect((await run(rig, [names])).deeper).toBeUndefined()
+  })
+  it("carries a source's own note of what it could not search into the quiet lines, once a cause", async () => {
+    const rig = makeRig()
+    const gap = { cause: 'files:asleep', line: 'The Windows VM is asleep. Its files were not searched.' }
+    const noting = (rows: ReturnType<typeof hit>[]) => fakeSource('file', (ask) => (ask.note?.(gap), rows))
+    const none = await run(rig, [noting([])], { kind: 'file' })
+    expect([none.groups, none.quiet, none.searched]).toEqual([[], [gap], 1])
+    const some = await run(rig, [noting([hit('f1', PURDUE)]), noting([hit('f2', PURDUE)])], { kind: 'file' })
+    expect([some.groups.flatMap((g) => g.hits).length, some.quiet]).toEqual([2, [gap]])
+  })
 })
 
 describe('the fence, checked a second time', () => {

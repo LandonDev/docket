@@ -23,7 +23,7 @@ import { Calendar, Card, Chat, Cloud, Doc, Mail, Person, Project, Table, Task } 
 import { liveDeps, SearchController } from "./controller";
 import { holdStill, outOfSight } from "./hold";
 import { askHost, jobOfWorkspace, jobsOf, searchHosts, type Job } from "./hosts";
-import { activeOf, busy, isOption, rowsOf, type Option, type Row } from "./model";
+import { activeOf, busy, isOption, placesMix, rowsOf, type Option, type Row } from "./model";
 import { canStartAbout, openHit, startAbout } from "./open";
 import { factOf, timeOf } from "./words";
 
@@ -171,7 +171,7 @@ export function WorkSearch({ seed, onClose }: { seed: WorkSearchSeed; onClose: (
     : rows
         .flatMap((row) => (row.type === "note" ? [/[.!?]$/.test(row.text) ? row.text : `${row.text}.`] : []))
         .join(" ");
-  const mixed = job === null && jobs.length > 1;
+  const mixed = job === null && placesMix(jobs.length, rows);
   const jobOf = (hit: SearchHit): Job | null => jobOfWorkspace(jobs, hit.workspaceId);
 
   const take = (row: Option, o: { thread?: boolean } = {}): void => {
@@ -563,7 +563,7 @@ export function Results({
             }
             const { hit } = row;
             const Glyph = GLYPH[hit.kind] ?? Layers;
-            const fact = factOf(hit, now);
+            const fact = factOf(hit, now, text);
             const time = timeOf(hit, now);
             const job = mixed ? jobOf(hit) : null;
             return (

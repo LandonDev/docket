@@ -47,13 +47,26 @@ const hitOf = (row: FileRow, workspaceId: string): SearchHit => ({
 const chipOf = (row: FileRow) => fileChipOf(row as unknown as FileEntry)
 
 /** One Files method asked of every job in reach, a turn a job, folders left out (a hit opens as a file). */
-async function ask(ctx: WorkCtx, modules: readonly WorkModule[], method: string, params: (workspaceId: string) => Record<string, unknown>, o: { reach: { workspaces: { id: string }[] }; limit: number; by: Caller; signal: AbortSignal }): Promise<SearchHit[]> {
+async function ask(ctx: WorkCtx, modules: readonly WorkModule[], method: string, params: (workspaceId: string) => Record<string, unknown>, o: Pick<SearchAsk, 'limit' | 'by' | 'signal' | 'note'> & { reach: { workspaces: { id: string }[] } }): Promise<SearchHit[]> {
+  const asleep = new Set<string>()
   const each = await Promise.all(
-    o.reach.workspaces.map(async (w) => ((await askPillar<{ entries?: FileRow[] }>(ctx, modules, method, params(w.id), o.by, o.signal))?.entries ?? []).filter((row) => row.ref).map((row) => hitOf(row, w.id)))
+    o.reach.workspaces.map(async (w) => {
+      const answer = await askPillar<{ entries?: FileRow[]; asleep?: string[] }>(ctx, modules, method, params(w.id), o.by, o.signal)
+      for (const name of answer?.asleep ?? []) asleep.add(name)
+      return (answer?.entries ?? []).filter((row) => row.ref).map((row) => hitOf(row, w.id))
+    })
   )
+  // Files left a place out because its machine is asleep (a search never wakes one): said under the list, in Files' own words.
+  if (asleep.size) o.note?.({ cause: 'files:asleep', line: asleepWords([...asleep]) })
   const out: SearchHit[] = []
   for (let i = 0; out.length <= o.limit && each.some((hits) => i < hits.length); i++) for (const hits of each) if (i < hits.length) out.push(hits[i])
   return out.slice(0, o.limit + 1)
+}
+
+/** What Files' own search says of the places it left asleep (work/files/model.ts `searchGap`). */
+export function asleepWords(names: readonly string[]): string {
+  const list = names.length < 3 ? names.join(' and ') : `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`
+  return names.length === 1 ? `${list} is asleep. Its files were not searched.` : `${list} are asleep. Their files were not searched.`
 }
 
 export function fileSources(modules: readonly WorkModule[] = WORK_MODULES): SearchSource[] {

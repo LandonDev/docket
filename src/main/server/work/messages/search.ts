@@ -1,3 +1,4 @@
+import { mentionExcerptAt } from '@shared/work'
 import { lifeosKey, SEARCH_SNIPPET, type SearchHit } from '@shared/work/search'
 import type { ChatRow } from '@shared/work/messages'
 import type { SearchSource } from '../search/source'
@@ -12,7 +13,8 @@ import { chatLabel } from './mentions'
  * Messages view on its conversation, a message's on the message.
  */
 
-const clip = (text: string): string => (text.length <= SEARCH_SNIPPET ? text : `${text.slice(0, SEARCH_SNIPPET - 1).trimEnd()}…`)
+/** A message's line for a row: cut round the words that found it, so a long message still shows why it is there. */
+const clip = (text: string, asked: string): string => mentionExcerptAt(text, asked, SEARCH_SNIPPET) ?? ''
 
 /** One turn a job, so one job's rows never fill the group before another's first. */
 function dealt(each: SearchHit[][], limit: number): SearchHit[] {
@@ -38,11 +40,11 @@ export const messageSearch: SearchSource = {
             kind: 'message',
             title: hit.chat,
             detail: hit.who,
-            snippet: clip(hit.text),
+            snippet: clip(hit.text, ask.text),
             at: hit.at,
             workspaceId: job.id,
             open: { to: 'view', view: 'messages', with: { chat: hit.chatId, message: hit.messageId } },
-            chip: { kind: 'chat', label: chatLabel({ name: hit.chat, source: hit.source }), ref: { at: 'lifeos', table: 'chats', id: hit.chatId }, quote: clip(hit.text) }
+            chip: { kind: 'chat', label: chatLabel({ name: hit.chat, source: hit.source }), ref: { at: 'lifeos', table: 'chats', id: hit.chatId }, quote: clip(hit.text, ask.text) }
           })
         )
       })
@@ -69,7 +71,7 @@ export const chatSearch: SearchSource = {
               key: lifeosKey('chats', row._id),
               kind: 'chat',
               title: row.name,
-              ...(row.lastText ? { detail: clip(row.lastText) } : {}),
+              ...(row.lastText ? { detail: clip(row.lastText, '') } : {}),
               at: row.lastAt,
               workspaceId: job.id,
               open: { to: 'view', view: 'messages', with: { chat: row._id } },

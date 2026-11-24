@@ -204,6 +204,23 @@ describe('documents', () => {
     // one catalog search and one page of titles a sector in reach, and the one title that was not in a page
     expect(rig.asked.map((a) => `${a.fn}:${a.args.sector ?? a.args.id}`).sort()).toEqual(['catalog:search:cosmic', 'catalog:search:purdue', 'docs:get:d9', 'docs:list:cosmic', 'docs:list:purdue'])
   })
+  it('are found by a title though not among the newest: the titles are read a page at a time, and kept while he types', async () => {
+    const rig = makeRig()
+    const pages: Record<string, { _id: string; sector: string; title: string; editedAt: number }[]> = {
+      first: Array.from({ length: 25 }, (_, i) => ({ _id: `n${i}`, sector: 'purdue', title: `Note ${i}`, editedAt: 100 - i })),
+      second: [{ _id: 'old', sector: 'purdue', title: 'Charter of the club', editedAt: 1 }]
+    }
+    rig.rows['docs:list'] = (a: Record<string, unknown>) => {
+      const cursor = (a.paginationOpts as { cursor: string | null }).cursor
+      return cursor === null ? { page: pages.first, isDone: false, continueCursor: 'c2' } : { page: pages.second, isDone: true, continueCursor: '' }
+    }
+    rig.rows['catalog:search'] = () => []
+    expect((await doc.search(ask('charter', onlyPurdue), rig.ctx)).map((h) => [h.key, h.title])).toEqual([['lifeos:docs:old', 'Charter of the club']])
+    // his next word reads the titles kept, and asks LifeOS only for the text
+    rig.asked.length = 0
+    await doc.search(ask('club', onlyPurdue), rig.ctx)
+    expect(rig.asked.map((a) => a.fn)).toEqual(['catalog:search'])
+  })
   it('of a sector outside the reach are never asked for', async () => {
     const rig = makeRig()
     lifeos(rig)

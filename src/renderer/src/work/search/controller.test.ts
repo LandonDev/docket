@@ -117,6 +117,19 @@ describe("a search as it runs", () => {
     expect(r.asked).toHaveLength(1);
     off();
   });
+  it("asks nothing more when it closed before a host's first answer came, and asks again for a search begun after", async () => {
+    const r = rig();
+    r.controller.search("budget", null, [box]);
+    r.controller.close();
+    r.asked[0].answer({ groups: [], pending: [{ source: "search.mail", kind: "mail" }], quiet: [] });
+    await r.tick(500);
+    expect(r.asked).toHaveLength(1);
+    // the same controller searched again (a remount in development): it is open
+    r.controller.search("budget", null, [box]);
+    r.asked[1].answer({ groups: [], pending: [{ source: "search.mail", kind: "mail" }], quiet: [] });
+    await r.tick(500);
+    expect(r.asked).toHaveLength(3);
+  });
   it("moves the highlight by an arrow and by the pointer", async () => {
     const r = rig();
     r.controller.search("budget", null, [box]);

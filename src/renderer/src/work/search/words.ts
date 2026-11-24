@@ -1,4 +1,5 @@
 import type { SearchHit } from "@shared/work/search";
+import { matchRanges } from "../../chrome/MatchText";
 
 /**
  * A row's muted words (docs/DESIGN.md "Work search"): its one fact, and its
@@ -23,9 +24,23 @@ export function ageWords(at: number, now = Date.now()): string {
   return `${Math.floor(gone / (365 * DAY))}y`;
 }
 
+/** A found line keeps this many characters before the first word that found it; past that the line begins a word before it. */
+const LEAD = 12;
+
+/**
+ * A found line as a row shows it. The row cuts a long line at its end, so a line whose matched word lies
+ * past its start would show none of why it was found: it begins a word before that word instead, marked as cut.
+ */
+export function lineAt(line: string, query: string): string {
+  const first = matchRanges(line, { query })[0];
+  if (!first || first[0] <= LEAD) return line;
+  const from = line.slice(0, first[0]).trimEnd().lastIndexOf(" ") + 1;
+  return from <= 1 ? line : `…${line.slice(from)}`;
+}
+
 /** The fact a row shows after its title: the line the words were found in, else its own fact; a task's due day. */
-export function factOf(hit: SearchHit, now = Date.now()): string | undefined {
-  if (hit.snippet) return hit.snippet;
+export function factOf(hit: SearchHit, now = Date.now(), query = ""): string | undefined {
+  if (hit.snippet) return lineAt(hit.snippet, query);
   // A task that is done, dropped or waiting says so; an open one says when it is due, else its key.
   if (hit.kind === "task" && hit.at !== undefined && (!hit.detail || TASK_KEY.test(hit.detail))) return `Due ${eventWords(hit.at, now)}`;
   return hit.detail;

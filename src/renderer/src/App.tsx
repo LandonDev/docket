@@ -2159,6 +2159,8 @@ export default function App() {
   // Work's views open a thread here: a routine's run, the thread that set a watch (work/routines).
   useEffect(() => {
     workOpenPort.set((sessionId) => {
+      // Whatever lies over the board (Today, Review, the Inbox, Settings) leaves: a thread opened under it is not seen.
+      shell.closeOverlays();
       openWorkView(null);
       onOpenSessionById(sessionId);
     });

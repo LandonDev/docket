@@ -12,8 +12,13 @@ import type { SearchSource } from '../source'
  * every place.
  */
 
-/** Transcript rows read for one search: enough that a few threads' best rows are among them. */
+/**
+ * Transcript rows read for one search: enough that a few threads' best rows are among them. The index ranks
+ * rows, not threads, and knows no job: one long thread, or another job's threads, can fill the first read. When
+ * it comes back full and the reach still wants rows, one wider read is made.
+ */
 const WORDS_ROWS = 60
+const WORDS_ROWS_WIDE = 600
 
 const hitOf = (t: WorkThread, over: Partial<SearchHit> = {}): SearchHit => ({
   key: threadKey(t.id),
@@ -48,18 +53,24 @@ export const threadWords: SearchSource = {
   async search(ask) {
     const host = searchHost()
     if (!host) return []
-    const out: SearchHit[] = []
-    const seen = new Set<string>()
-    for (const row of await host.words(ask.text, WORDS_ROWS)) {
-      if (out.length > ask.limit) break
-      if (seen.has(row.sessionId)) continue
-      seen.add(row.sessionId)
-      const t = host.thread(row.sessionId)
-      // The host's query is held to Work threads; the row's own stamp is read again here all the same.
-      if (!t || t.archived || !inReach(ask.reach, t.workspaceId)) continue
-      out.push(hitOf(t, { snippet: row.snippet, at: row.ts, open: { to: 'thread', sessionId: t.id, ...(row.seq > 0 ? { seq: row.seq } : {}) } }))
+    const read = async (rows: number): Promise<{ out: SearchHit[]; full: boolean }> => {
+      const out: SearchHit[] = []
+      const seen = new Set<string>()
+      const found = await host.words(ask.text, rows)
+      for (const row of found) {
+        if (out.length > ask.limit) break
+        if (seen.has(row.sessionId)) continue
+        seen.add(row.sessionId)
+        const t = host.thread(row.sessionId)
+        // The host's query is held to Work threads; the row's own stamp is read again here all the same.
+        if (!t || t.archived || !inReach(ask.reach, t.workspaceId)) continue
+        out.push(hitOf(t, { snippet: row.snippet, at: row.ts, open: { to: 'thread', sessionId: t.id, ...(row.seq > 0 ? { seq: row.seq } : {}) } }))
+      }
+      return { out, full: found.length >= rows }
     }
-    return out
+    const first = await read(WORDS_ROWS)
+    if (first.out.length > ask.limit || !first.full || ask.signal.aborted) return first.out
+    return (await read(WORDS_ROWS_WIDE)).out
   }
 }
 

@@ -74,12 +74,14 @@ export interface SearchModel {
   orderGen: number;
   /** a source searched and answered this generation: only then is there something to say was not found */
   searched: boolean;
+  /** kinds a host can search further when asked alone (Files' search of every place and of text): each is offered as "All files for …" whatever was found */
+  deeper: readonly string[];
   /** he moved the highlight (an arrow, the pointer): it stays on `active` */
   moved: boolean;
   active: string | null;
 }
 
-export const emptyModel = (): SearchModel => ({ gen: 0, text: "", kind: null, scope: null, hosts: [], slots: [], out: new Set(), quiet: [], seen: [], order: {}, orderGen: 0, searched: false, moved: false, active: null });
+export const emptyModel = (): SearchModel => ({ gen: 0, text: "", kind: null, scope: null, hosts: [], slots: [], out: new Set(), quiet: [], seen: [], order: {}, orderGen: 0, searched: false, deeper: [], moved: false, active: null });
 
 const outKey = (host: string, source = "*"): string => `${host}\n${source}`;
 
@@ -126,6 +128,8 @@ export function begin(model: SearchModel, ask: { text: string; kind: string | nu
     // The rows on screen stay as they stand until an answer lands; the same ask again carries their order on.
     orderGen: same && model.orderGen === model.gen ? model.gen + 1 : model.orderGen,
     searched: false,
+    // What a host can search further holds for the hosts asked, whatever the words: kept across a change of words, so the row does not blink.
+    deeper: model.deeper,
     moved: same ? model.moved : back !== null,
     active: same ? model.active : back,
   };
@@ -170,6 +174,12 @@ function withQuiet(model: SearchModel, host: SearchHost, quiet: SearchAnswer["qu
   return out;
 }
 
+/** The kinds a host can search further, added to those already known; the same list when nothing is new. */
+const withDeeper = (known: readonly string[], answer: SearchAnswer): readonly string[] => {
+  const fresh = (answer.deeper ?? []).filter((kind) => !known.includes(kind));
+  return fresh.length ? [...known, ...fresh] : known;
+};
+
 /** A host that predates the count is taken to have searched. */
 const didSearch = (answer: SearchAnswer): boolean => answer.searched === undefined || answer.searched > 0;
 
@@ -192,7 +202,7 @@ export function landInstant(model: SearchModel, gen: number, hostId: string, ans
   const kept = model.slots.filter((slot) => slot.host !== hostId || (slot.tier === "network" && ask.some((a) => a.source === slot.source)));
   const slots = [...kept, ...answer.groups.map((g) => slotOf(hostId, g, "instant", model))];
   return {
-    model: settled({ ...model, out, slots, quiet: withQuiet(model, host, answer.quiet), seen: withSeen(model.seen, answer.groups), searched: model.searched || didSearch(answer) }),
+    model: settled({ ...model, out, slots, quiet: withQuiet(model, host, answer.quiet), seen: withSeen(model.seen, answer.groups), searched: model.searched || didSearch(answer), deeper: withDeeper(model.deeper, answer) }),
     ask,
   };
 }
@@ -338,7 +348,8 @@ export function rowsOf(model: SearchModel, o: { scoped?: boolean; /** the job a 
   for (const group of groupsOf(model, o.jobOf)) {
     const { kind } = group;
     const cap = kind === RECENT_KIND ? SEARCH_RECENTS : model.kind ? SEARCH_ALL : SEARCH_PER_GROUP;
-    const more = group.more || group.hits.length > cap;
+    // A kind a host can search further (Files' own search, asked only alone) always offers all of itself.
+    const more = group.more || group.hits.length > cap || (kind !== RECENT_KIND && model.deeper.includes(kind));
     const shownHits = group.hits.slice(0, cap);
     // The row he chose is never the one the cap cuts: when rows stand before it that did not, it takes the last place.
     const chosen = model.moved && model.active ? group.hits.findIndex((found) => `hit:${found.hit.key}` === model.active) : -1;
@@ -354,9 +365,20 @@ export function rowsOf(model: SearchModel, o: { scoped?: boolean; /** the job a 
     rows.push({ type: "note", id: "nothing", text: `Nothing for “${model.text}”` });
     if (o.scoped) rows.push({ type: "widen", id: "widen", label: "Search all jobs" });
   }
+  // A kind a host can search further with no row of its own yet (no file's name held the words, its text may):
+  // offered at the list's end, so the deeper search is always one Return away.
+  if (!model.kind && asksNetwork(model.text)) {
+    for (const kind of model.deeper) if (!rows.some((row) => row.type === "all" && row.kind === kind)) rows.push({ type: "all", id: `all:${kind}`, kind, label: `All ${searchNoun(kind)} for “${model.text}”` });
+  }
   for (const quiet of model.quiet) rows.push({ type: "note", id: `quiet:${quiet.key}`, text: quiet.line, cause: true });
   return rows;
 }
+
+/**
+ * Whether rows of more than one place stand together, so each must say where it is: several jobs, or one job
+ * and a thread of the Work Chats (which is in no job).
+ */
+export const placesMix = (jobs: number, rows: readonly Row[]): boolean => jobs > 1 || (jobs === 1 && rows.some((row) => row.type === "hit" && row.hit.workspaceId === null));
 
 /**
  * The highlighted row: the first a Return can take until he moves the

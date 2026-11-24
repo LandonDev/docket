@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { SearchAnswer, SearchGroup, SearchHit } from "@shared/work/search";
-import { activeOf, asksNetwork, begin, busy, emptyModel, failed, isOption, landInstant, landSource, paramsFor, point, quietLine, rowsOf, step, type Row, type SearchHost, type SearchModel } from "./model";
+import { activeOf, asksNetwork, begin, busy, emptyModel, failed, isOption, landInstant, landSource, paramsFor, placesMix, point, quietLine, rowsOf, step, type Row, type SearchHost, type SearchModel } from "./model";
 
 /** The picker's list as data: one test a rule. */
 
@@ -270,6 +270,33 @@ describe("nothing found, and what could not be searched", () => {
     expect(rowsOf(m)).toEqual([]);
     m = landSource(m, m.gen, "box", "search.mail", answer([]));
     expect(shape(rowsOf(m))).toEqual(["(Nothing for “zebra”)"]);
+  });
+  it("offers all of a kind a host can search further (a file's text, every place) whatever was found: under its rows, or alone at the list's end", () => {
+    const deeper = (a: SearchAnswer): SearchAnswer => ({ ...a, deeper: ["file"] });
+    // a file's name matched: its group offers all files though nothing overflowed
+    let m = typed("budget");
+    m = landInstant(m, m.gen, "box", deeper(answer([group("mail", ["m1"]), group("file", ["f1"])]))).model;
+    expect(shape(rowsOf(m))).toEqual(["# Mail", "m1", "# File", "f1", "[All files for “budget”]"]);
+    // no file's name matched: the row stands at the end, and under nothing found
+    m = typed("zebra", [box], m);
+    m = landInstant(m, m.gen, "box", deeper(answer([group("mail", ["m2"])]))).model;
+    expect(shape(rowsOf(m))).toEqual(["# Mail", "m2", "[All files for “zebra”]"]);
+    m = typed("quagga", [box], m);
+    m = landInstant(m, m.gen, "box", deeper(answer([]))).model;
+    expect(shape(rowsOf(m, { scoped: true }))).toEqual(["(Nothing for “quagga”)", "[Search all jobs]", "[All files for “quagga”]"]);
+    // held to the kind, the deeper search is what runs: no row offers it again; and under two characters nothing is offered
+    const alone = landInstant(typed("quagga", [box], m, "file"), m.gen + 1, "box", answer([group("file", ["f9"])])).model;
+    expect(shape(rowsOf(alone))).toEqual(["f9"]);
+    expect(rowsOf(typed("q", [box], m))).toEqual([]);
+  });
+  it("says where each row is when places mix: several jobs, or one job with a thread of the Work Chats among its rows", () => {
+    let m = typed("budget");
+    m = landInstant(m, m.gen, "box", answer([{ ...group("thread", []), hits: [hit("t1", { kind: "thread" }), hit("t-chat", { kind: "thread", workspaceId: null })] }])).model;
+    expect(placesMix(1, rowsOf(m))).toBe(true);
+    expect(placesMix(2, [])).toBe(true);
+    m = landInstant(m, m.gen, "box", answer([group("thread", ["t1"])])).model;
+    expect(placesMix(1, rowsOf(m))).toBe(false);
+    expect(placesMix(0, rowsOf(m))).toBe(false);
   });
   it("offers Search all jobs under it when the search is held to one job", () => {
     let m = typed("zebra");

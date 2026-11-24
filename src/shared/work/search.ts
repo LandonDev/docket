@@ -1,5 +1,6 @@
 import type { ContextChip } from './canvas'
 import type { SectorKey } from './ids'
+import { mentionExcerptAt } from './mentions'
 
 /**
  * Work search's names (docs/agents/work-search.md): one field that finds a
@@ -74,6 +75,8 @@ export interface SearchAnswer {
   quiet: SearchQuiet[]
   /** how many sources searched and answered for this call, with or without rows; 0: none could (the window then says only why) */
   searched?: number
+  /** kinds with more to search when asked alone (Files' own search of every place and of text): the window offers "All files for …" for each, with or without a row of the kind */
+  deeper?: SearchKind[]
 }
 
 /** The order the kinds' groups stand in; a kind not named here follows them, in the order it came. */
@@ -159,9 +162,7 @@ export const workspaceOfSector = (reach: SearchReach, sector: string | null | un
 /** The sectors a reach reads. */
 export const reachSectors = (reach: SearchReach): SectorKey[] => [...new Set(reach.workspaces.flatMap((w) => (w.sector ? [w.sector] : [])))]
 
-/** A matched line cut to a row's worth, on one line. */
-export function searchSnippet(text: string | null | undefined, max = SEARCH_SNIPPET): string | undefined {
-  const flat = (text ?? '').replace(/\s+/g, ' ').trim()
-  if (!flat) return undefined
-  return flat.length > max ? `${flat.slice(0, max - 1).trimEnd()}…` : flat
+/** A matched line cut to a row's worth, on one line: round the first of the words asked that it holds, when the start would not show it. */
+export function searchSnippet(text: string | null | undefined, query = '', max = SEARCH_SNIPPET): string | undefined {
+  return mentionExcerptAt(text, query, max)
 }

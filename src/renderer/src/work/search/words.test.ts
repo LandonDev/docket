@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { SearchHit } from "@shared/work/search";
-import { ageWords, eventWords, factOf, timeOf } from "./words";
+import { ageWords, eventWords, factOf, lineAt, timeOf } from "./words";
 
 /** A row's muted words: how long ago, when, and its one fact. */
 
@@ -35,5 +35,14 @@ describe("a row's words", () => {
     expect(factOf(hit({ detail: "Vendor", snippet: "fits the budget" }), now)).toBe("fits the budget");
     expect(factOf(hit({ detail: "Vendor" }), now)).toBe("Vendor");
     expect(factOf(hit({}), now)).toBeUndefined();
+  });
+  it("begins a found line a word before the word that found it, when that lies past the row's start: the cut end never hides why", () => {
+    const line = "…the seating and the parking, and then the vendor said the invoice for the deposit";
+    expect(lineAt(line, "invoice")).toBe("…the invoice for the deposit");
+    expect(factOf(hit({ snippet: line }), now, "invoice")).toBe("…the invoice for the deposit");
+    // a word near the start, a line that does not hold the word, and no words: the line as it came
+    expect(lineAt("The invoice is late", "invoice")).toBe("The invoice is late");
+    expect(lineAt(line, "zebra")).toBe(line);
+    expect(factOf(hit({ snippet: line }), now)).toBe(line);
   });
 });

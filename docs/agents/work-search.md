@@ -72,11 +72,19 @@ Other fields a source may set: `lifeos: true` (read from LifeOS: not asked
 while LifeOS is not connected, and asked of one host only), `unranked: true`
 (its order is a list's, not a ranking, so a thing he opened before goes
 first), `when: 'alone'` (asked only for "All … for q", never as he types: a
-search that walks), `tier` as a function of the context (decided at each
+search that walks; the answer names such a kind in `deeper`, and the window
+then offers "All files for q" on every search of two characters or more,
+under the kind's rows or, with no row of the kind, at the list's end, so
+the deeper search is always one Return away), `tier` as a function of the context (decided at each
 ask: what a host holds in memory is instant, the same read from LifeOS is
 not); on a hit, `snippet` (the matched words in their line, drawn in the
-fact's place), `chip` (the thing as a thread's context, for ⌘↩) and
-`cloud: true` (a file kept in the cloud alone).
+fact's place; the frame cuts a long one round the first of his words it
+holds, `searchSnippet`, and the row begins a found line a word before that
+word when it lies past the row's start, `lineAt` in work/search/words.ts),
+`chip` (the thing as a thread's context, for ⌘↩) and `cloud: true` (a file
+kept in the cloud alone). A source that answered but could not search
+something (Files left a library asleep) says so through `ask.note`: one
+quiet line under the list, once a cause.
 
 **A pillar that has `mentions` and no `search` is found already.** The
 mention bridge (`search/mentions.ts`) asks each mention source once a job in
@@ -156,8 +164,9 @@ is not shown, since it has no view to open in.
 `work_search_recent (key, hit, opened_at)`, the newest 50 kept
 (`search/recents.ts`). `work.search.opened` writes a row only for a thing
 of a job this host has. A row keeps the kind, the title, the id, the job
-and how to open the thing again: never its fact, its snippet, or the words
-a chip carried. Empty text answers the newest eight whose job still exists,
+and how to open the thing again: never its fact, its snippet, the words
+a chip carried, or the row of a thread his words were found in (from Recent
+a thread opens where it now stands). Empty text answers the newest eight whose job still exists,
 each with `openedAt`, so the window makes one Recent list across hosts, the
 newest first and a thing two hosts hold by its newest opening, before it
 takes eight; a deleted job takes its rows with it
@@ -175,7 +184,7 @@ takes eight; a deleted job takes its rows with it
 | mail | network | `mail:search { text }`, each thread kept by the sector it sits in; a snippet only when the words are in neither its subject nor its sender | `{ view: 'mail', with: { mail } }` |
 | task | open tasks instant from the mirror; network for all | a key he typed (`PUR-41`) through `tasks:byKeys` first, then `tasks:search { text, sector? }` | `{ view: 'tasks', with: { task } }` |
 | event | instant from the mirror, else network | `events:range` from 30 days back to 120 days ahead (`EVENTS_BACK_DAYS`, `EVENTS_AHEAD_DAYS`), kept by title and place, what is coming first | `{ view: 'agenda', with: { event } }` |
-| doc | network | a sector at a time: the newest page of `docs:list` by title, then `catalog:search { sector, text }` with its line (a title outside that page read with `docs:get`) | `{ to: 'file', ref: { at: 'lifeos', table: 'docs', id }, name }`: a Files tab (a hit kept from before, `{ view: 'docs' }`, opens there too) |
+| doc | network | a sector at a time: `docs:list` by title, a page at a time up to 300 documents, kept 30 s (`docTitles`), then `catalog:search { sector, text }` with its line (a title past those read with `docs:get`) | `{ to: 'file', ref: { at: 'lifeos', table: 'docs', id }, name }`: a Files tab (a hit kept from before, `{ view: 'docs' }`, opens there too) |
 | project | network | `projects:list { sector? }` by name and description | `{ view: 'projects', with: { project } }` |
 | thread | instant by title, network by its words | the host's rows for titles; `Store.searchEvents { query, scope: 'work' }` for words, with the index's own snippet (thread notes among them) | `{ to: 'thread', sessionId, seq? }` |
 | file | instant; network for LifeOS's documents where they are files; a third source `when: 'alone'` | `work.files.names { workspaceId, text }` a job in reach (the names Files has listed, from its database); the documents of a job where Files holds LifeOS, as the doc row reads them, by the key Files gives a document; for "All files", `work.files.search { workspaceId, query }` | `{ to: 'file', ref, name }`, through Files' own door `openInFiles` (work/files/openFrom.ts), the window moved first; each carries the chip Files gives the row (`fileChipOf`), so ⌘↩ starts a thread about a file |
@@ -284,9 +293,13 @@ method can be given a small source here on `ask.ts`, as Files is.
 
 `work_search { query, kinds?, limit? }` (read only; `search/tools.ts`) runs
 both tiers over the thread's own reach and answers plain lines under kind
-headings: a LifeOS row with `table:id` for the LifeOS tools, a thread by
-its id, a file by its place. It ends with one line a source it could not
-search. It has no argument that names a job, a workspace or a sector. One
+headings: a LifeOS row with `table:id` for the LifeOS tools (a document
+listed under Files too: `docs:id`), a thread by its id, a file by its
+place. A time is the day on the host's own clock, and an event's its time
+with the zone. `limit` holds a kind as a whole, across its sources. `kinds:
+["doc"]` also finds the documents a job's Files lists. It ends with one
+line a source it could not search, and says "Nothing found" only when some
+source searched. It has no argument that names a job, a workspace or a sector. One
 line of the Work preamble names it.
 
 ## What a search costs
@@ -350,6 +363,13 @@ for it.
   over a thread, when he was on a thread at Return and only changed to
   another thread while he waited: the window's tabs are not read by
   `movedOnSince`.
+- With one job, the search key does not narrow from "the job and the Work
+  Chats" to the job alone (the picker has one scope while there is one
+  job); a Work Chats thread among the job's rows says where it is.
+
+Transcript words are read 60 rows at a time, and the index ranks rows and
+knows no job: when the first read comes back full and the reach still
+wants rows, one read of 600 is made (`threadWords`).
 
 A project found by a word late in a long description shows the line cut
 round that word (`mentionExcerptAt`, src/shared/work/mentions.ts).

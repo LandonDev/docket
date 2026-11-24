@@ -15,7 +15,7 @@ import { search } from './index'
 import type { SearchSource } from './source'
 import { lifeosSources } from './sources/lifeos'
 import { COSMIC, fakeSource, hit, makeRig, PURDUE } from './testkit'
-import { searchPreamble, searchText, searchTools } from './tools'
+import { searchPreamble, searchText, searchTools, whenWords } from './tools'
 
 /**
  * The agents' tool and its fence: it reads the thread's own reach and has
@@ -125,10 +125,34 @@ describe('work_search', () => {
     expect(mail.asks.at(-1)).toMatchObject({ limit: 2, by: { kind: 'model', sessionId: 't-purdue' } })
     expect(mail.asks.at(-1)!.signal.aborted).toBe(true) // the frame ends a source's signal once it has answered
   })
+  it('holds a kind to the limit asked across its sources: a thread found by its title and another by its words are one list, cut once', async () => {
+    const rig = rigged()
+    const titles = fakeSource('thread', [hit('thread:1', PURDUE, { title: 'Budget thread' })], { label: 'Threads' })
+    const words = fakeSource('thread', [hit('thread:1', PURDUE, { title: 'Budget thread' }), hit('thread:2', PURDUE, { title: 'Venue thread' })], { label: 'Threads', tier: 'network' })
+    const one = await run(rig, 't-purdue', [titles, words], { query: 'budget', limit: 1 })
+    expect(one.text).toContain('Budget thread')
+    expect(one.text).not.toContain('Venue thread')
+    expect(one.text.match(/^Threads$/gm)).toHaveLength(1)
+    expect(one.text).toContain('more threads match')
+    const two = await run(rig, 't-purdue', [titles, words], { query: 'budget', limit: 2 })
+    expect(two.text).toContain('Venue thread')
+    expect(two.text).not.toContain('more threads match')
+  })
+  it('finds a LifeOS document listed under Files when documents alone are asked for, names it docs:id, and leaves the other files out', async () => {
+    const rig = rigged()
+    const files = fakeSource('file', [hit('file:plan', PURDUE, { title: 'Plan', open: { to: 'file', ref: { at: 'lifeos', table: 'docs', id: 'd1' } as never, name: 'Plan' } }), hit('file:sheet', PURDUE, { title: 'Budget.xlsx', open: { to: 'file', ref: { at: 'file', host: 'box', path: '/w/Budget.xlsx' } as never, name: 'Budget.xlsx' } })], { label: 'Files' })
+    const docs = await run(rig, 't-purdue', [files], { query: 'plan', kinds: ['doc'] })
+    expect(docs.text).toContain('- Plan (docs:d1)')
+    expect(docs.text).not.toContain('Budget.xlsx')
+    // with no kinds asked, both are listed and the document still carries its id
+    const all = await run(rig, 't-purdue', [files], { query: 'plan' })
+    expect(all.text).toContain('- Plan (docs:d1)')
+    expect(all.text).toContain('Budget.xlsx')
+  })
   it('reads LifeOS rows only of its own sector through the real sources', async () => {
     const rig = rigged()
     rig.rows['mail:search'] = [
-      { _id: 'm1', sector: 'purdue', subject: 'Budget for the LAN', senders: ['Dana Kim'], lastMessageAt: Date.UTC(2026, 10, 20) },
+      { _id: 'm1', sector: 'purdue', subject: 'Budget for the LAN', senders: ['Dana Kim'], lastMessageAt: new Date(2026, 10, 20, 12).getTime() },
       { _id: 'm2', sector: 'cosmic', subject: 'Budget for servers', senders: ['Ops'] }
     ]
     const { text } = await run(rig, 't-purdue', lifeosSources, { query: 'budget', kinds: ['mail'] })
@@ -179,6 +203,21 @@ describe('the answer as a thread reads it', () => {
   })
   it('says so when nothing was found', () => {
     expect(searchText('zebra', { groups: [], pending: [], quiet: [] }, reach)).toBe('Nothing found for "zebra".')
+  })
+  it('says only why when no source could search, and both when one searched and found nothing', () => {
+    const quiet = [{ cause: 'lifeos', line: 'Sign in to LifeOS.' }]
+    expect(searchText('zebra', { groups: [], pending: [], quiet, searched: 0 }, reach)).toBe('Not searched: Sign in to LifeOS.')
+    expect(searchText('zebra', { groups: [], pending: [], quiet, searched: 2 }, reach)).toBe('Nothing found for "zebra".\n\nNot searched: Sign in to LifeOS.')
+  })
+})
+
+describe("a hit's time as a thread reads it", () => {
+  it("is the day on his own clock, never UTC's: an evening event is not told a day late, and an event says its time and zone", () => {
+    const game = Date.parse('2026-11-27T19:00:00-06:00')
+    expect(whenWords({ kind: 'event', at: game }, 'America/Chicago')).toBe('2026-11-27 7:00 PM CST')
+    expect(whenWords({ kind: 'mail', at: game }, 'America/Chicago')).toBe('2026-11-27')
+    expect(whenWords({ kind: 'mail', at: game }, 'UTC')).toBe('2026-11-28')
+    expect(whenWords({ kind: 'mail' })).toBeNull()
   })
 })
 

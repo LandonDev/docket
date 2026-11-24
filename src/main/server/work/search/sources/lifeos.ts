@@ -199,8 +199,37 @@ export const event = source<Event>({
   hit: eventHit
 })
 
-/** How many documents' titles a sector is asked for: LifeOS's own page. */
+/**
+ * A sector's document titles: LifeOS's own list, newest first, a page at a time up to `DOCS_MOST`, so a title
+ * is found though the document is not among the newest. Kept a short while and shared while on its way: he
+ * types several words in the time one read stands.
+ */
 const DOCS_PAGE = 25
+const DOCS_MOST = 300
+const TITLES_FRESH_MS = 30_000
+const titleReads = new WeakMap<object, Map<string, { at: number; read: Promise<Doc[]> }>>()
+
+function docTitles(ctx: WorkCtx, sector: string): Promise<Doc[]> {
+  let kept = titleReads.get(ctx.db)
+  if (!kept) titleReads.set(ctx.db, (kept = new Map()))
+  const fresh = kept.get(sector)
+  if (fresh && Date.now() - fresh.at < TITLES_FRESH_MS) return fresh.read
+  const cache = kept
+  const read = (async () => {
+    const docs: Doc[] = []
+    let cursor: string | null = null
+    while (docs.length < DOCS_MOST) {
+      const page = await q<{ page?: Doc[]; isDone?: boolean; continueCursor?: string } | undefined>(ctx, 'docs:list', { sector, paginationOpts: { numItems: DOCS_PAGE, cursor } })
+      docs.push(...(page?.page ?? []))
+      if (!page || page.isDone !== false || !page.continueCursor || !page.page?.length) break
+      cursor = page.continueCursor
+    }
+    return docs
+  })()
+  cache.set(sector, { at: Date.now(), read })
+  read.catch(() => cache.delete(sector))
+  return read
+}
 
 type FoundDoc = Doc & { snippet?: string }
 
@@ -215,18 +244,15 @@ async function readDocs(ctx: WorkCtx, ask: SearchAsk, all: string[], asFiles: bo
   const sectors = all.filter((_, i) => held[i] === asFiles)
   const each = await Promise.all(
     sectors.map(async (sector) => {
-      const [listed, found] = await Promise.all([
-        q<{ page: Doc[] }>(ctx, 'docs:list', { sector, paginationOpts: { numItems: DOCS_PAGE, cursor: null } }),
-        q<{ table: string; id: string; snippet: string }[]>(ctx, 'catalog:search', { sector, text: ask.text })
-      ])
-      const byId = new Map((listed?.page ?? []).map((d) => [d._id, d]))
-      const titled = (listed?.page ?? []).filter((d) => mentionMatches(ask.text, d.title)).map((d) => ({ ...d, sector }))
+      const [listed, found] = await Promise.all([docTitles(ctx, sector), q<{ table: string; id: string; snippet: string }[]>(ctx, 'catalog:search', { sector, text: ask.text })])
+      const byId = new Map(listed.map((d) => [d._id, d]))
+      const titled = listed.filter((d) => mentionMatches(ask.text, d.title)).map((d) => ({ ...d, sector }))
       const inText = (found ?? []).filter((f) => f.table === 'docs' && !titled.some((d) => d._id === f.id)).map((f) => ({ _id: f.id, sector, title: byId.get(f.id)?.title ?? '', editedAt: byId.get(f.id)?.editedAt, snippet: f.snippet }))
       return { titled, inText }
     })
   )
   const rows: FoundDoc[] = [...each.flatMap((s) => s.titled), ...each.flatMap((s) => s.inText)].slice(0, ask.limit + 1)
-  // A document found by its text alone, outside the newest page: its title is read, for the few rows shown.
+  // A document found by its text alone, past the titles read: its title is read, for the few rows shown.
   await Promise.all(
     rows.map(async (row) => {
       if (row.title) return

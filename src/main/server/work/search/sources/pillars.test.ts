@@ -6,7 +6,7 @@ import type { Caller, WorkModule } from '../../modules'
 import { askPillar } from '../ask'
 import { runSearch } from '../run'
 import { COSMIC, everywhere, makeRig, onlyPurdue, phone, PURDUE, thread, window } from '../testkit'
-import { fileSources, filesHoldLifeos } from './files'
+import { asleepWords, fileSources, filesHoldLifeos } from './files'
 import { doc, docAsFile } from './lifeos'
 
 /**
@@ -104,6 +104,16 @@ describe('files', () => {
       ['work.files.names', { workspaceId: COSMIC, text: 'budget' }],
       ['work.files.names', { workspaceId: 'ws-bare', text: 'budget' }]
     ])
+  })
+  it("says the places Files left asleep, in Files' own words, with or without rows", async () => {
+    const rig = makeRig()
+    const said: { cause: string; line: string }[] = []
+    const asleep = standIn('files', { 'work.files.search': (p) => (p.workspaceId === PURDUE ? { entries: [], asleep: ['The Windows VM'] } : p.workspaceId === COSMIC ? { entries: [entry('k9', 'Policy.docx')], asleep: ['The Windows VM', 'Studio Mac'] } : { entries: [] }) })
+    const [, all] = fileSources([asleep])
+    const hits = await all.search({ ...ask('policy'), note: (q) => void said.push(q) }, rig.ctx)
+    expect(hits.map((h) => h.key)).toEqual(['file:k9'])
+    expect(said).toEqual([{ cause: 'files:asleep', line: 'The Windows VM and Studio Mac are asleep. Their files were not searched.' }])
+    expect(asleepWords(['The Windows VM'])).toBe('The Windows VM is asleep. Its files were not searched.')
   })
   it("asks Files as the caller the search was given, so Files' own fence answers", async () => {
     const rig = makeRig()

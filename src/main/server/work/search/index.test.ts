@@ -87,6 +87,12 @@ describe('Recent', () => {
     expect(groups[0]).toMatchObject({ source: 'search.recent', kind: 'recent', label: 'Recent', more: false })
     expect(groups[0].hits.map((h) => h.title).sort()).toEqual(['Budget for the LAN', 'Budget review'])
   })
+  it('keeps a thread without the row his words were found in: from Recent it opens where it now stands', async () => {
+    const rig = makeRig()
+    await opened(rig, hit('thread:t1', PURDUE, { kind: 'thread', title: 'Budget review', open: { to: 'thread', sessionId: 't1', seq: 14 } }))
+    const row = rig.db.prepare(`SELECT hit FROM work_search_recent`).get() as { hit: string }
+    expect(JSON.parse(row.hit).open).toEqual({ to: 'thread', sessionId: 't1' })
+  })
   it('keeps the title, the kind, the id and the job, and never a fact, a snippet or the words a chip carried', async () => {
     const rig = makeRig()
     const chip = { kind: 'mail' as const, label: 'Budget for the LAN', ref: { at: 'lifeos' as const, table: 'mailThreads' as const, id: 'm1' }, excerpt: 'Dear all, the numbers are', quote: 'secret' }

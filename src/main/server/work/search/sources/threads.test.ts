@@ -116,6 +116,12 @@ describe('the words said in a thread', () => {
     const hits = await threadWords.search(ask('pizza', onlyPurdue, 10), {} as never)
     expect(hits.map((h) => h.key).sort()).toEqual(['thread:t-child', 'thread:t-project', 'thread:t-purdue'])
   })
+  it("are still found in one job when another job's thread fills the first read of the index: one wider read is made", async () => {
+    // The index ranks rows and knows no job: seventy rows of one Cosmic thread outrank Purdue's one line each.
+    for (let i = 0; i < 70; i++) say('t-cosmic', `pizza pizza pizza ${i}`)
+    const hits = await threadWords.search(ask('pizza', onlyPurdue, 10), {} as never)
+    expect(hits.map((h) => h.key).sort()).toEqual(['thread:t-child', 'thread:t-project', 'thread:t-purdue'])
+  })
   it("ask the store for Work rows alone: the same search with no scope finds the code thread first", async () => {
     const all = await store.searchEvents({ query: 'pizza' })
     expect(all.hits.map((h) => h.sessionId)).toContain('t-code')

@@ -36,4 +36,6 @@ export interface SearchAsk {
   limit: number
   by: Caller
   signal: AbortSignal
+  /** Something the source could not search though it answered (a library whose machine is asleep): one quiet line under the list, said once a cause. */
+  note?(quiet: SearchQuiet): void
 }

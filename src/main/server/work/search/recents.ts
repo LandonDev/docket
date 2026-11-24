@@ -15,7 +15,13 @@ export function ensureRecents(db: DatabaseSync): void {
 /** A hit as Recent keeps it: no fact, no snippet, and its chip without the words it carried. */
 function kept(hit: SearchHit): SearchHit {
   const chip = hit.chip ? { kind: hit.chip.kind, label: hit.chip.label, ref: hit.chip.ref } : undefined
-  const open = hit.open.to === 'chip' ? { to: 'chip' as const, chip: { kind: hit.open.chip.kind, label: hit.open.chip.label, ref: hit.open.chip.ref } } : hit.open
+  // A thread is kept without the row his words were found in: from Recent it opens where it now stands.
+  const open =
+    hit.open.to === 'chip'
+      ? { to: 'chip' as const, chip: { kind: hit.open.chip.kind, label: hit.open.chip.label, ref: hit.open.chip.ref } }
+      : hit.open.to === 'thread'
+        ? { to: 'thread' as const, sessionId: hit.open.sessionId }
+        : hit.open
   return { key: hit.key, kind: hit.kind, title: hit.title, workspaceId: hit.workspaceId, open, ...(chip ? { chip } : {}), ...(hit.cloud ? { cloud: true as const } : {}) }
 }
 
