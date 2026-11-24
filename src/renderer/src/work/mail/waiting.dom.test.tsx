@@ -18,7 +18,9 @@ vi.mock("../../lib/connection", async (original) => ({
   registry: {
     environment: () => ({ name: "The box" }),
     linkOf: () => ({
+      // A real link's two hooks: Waiting on watches the host's LifeOS status, to read its days again once it is back.
       onPush: () => () => {},
+      onOpen: () => () => {},
       request: async (method: string, params: Record<string, unknown> = {}) => {
         calls.push({ method, params });
         // As the host does (src/main/server/work/mail/waiting.ts): a read takes the routine before it waits on the days.
