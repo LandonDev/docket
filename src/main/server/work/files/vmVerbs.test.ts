@@ -493,6 +493,24 @@ describe.skipIf(process.platform === 'win32')('the Windows VM changed through it
       expect(pending()).toBeUndefined()
     })
 
+    it('settled later from the journal, keeps what he typed in the copy since the delete was asked', async () => {
+      const path = `${GENERAL}\\Plan.txt`
+      setCopyAllowed(rig.db, WS, true)
+      const opened = await call<FilesOpened>('work.files.open', { ref: at(path), name: 'Plan.txt' })
+      const copy = canvasSourcePath(opened.item!.source)!
+      lose = 3
+      await expect(call<FileDone>('work.files.trash', { refs: [at(path)], op: op(), asked: true })).rejects.toThrow('The Windows VM is unreachable')
+      // The answer was lost: the tab is still open, and he types again.
+      writeFileSync(copy, 'typed after the delete was asked')
+      rig.db.prepare("UPDATE work_files_copies SET state = 'refused', writes = writes + 1 WHERE copy = ?").run(copy)
+      // The next Trash listing reads the helper's journal: the file went to the bin.
+      await call<FilesListing>('work.files.list', { at: trashAt })
+      await call<FilesListing>('work.files.list', { at: trashAt })
+      expect((await call<FilesTabs>('work.files.tabs', {})).tabs.find((t) => t.id === opened.tabId)).toBeUndefined()
+      expect(readFileSync(copy, 'utf8')).toBe('typed after the delete was asked')
+      expect(copyRecord(rig.ctx, WS, HOST, path)).toMatchObject({ closed: 1 })
+    })
+
     it('uses the pending VM delete when the paired window retries with a new operation id', async () => {
       const path = `${GENERAL}\\Notes.txt`
       const remove = (id: string) => paired<FileDone>('work.files.trash', { refs: [at(path)], op: id, asked: true })

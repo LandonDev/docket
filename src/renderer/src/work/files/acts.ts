@@ -79,6 +79,19 @@ async function copiesFollow(of: ActsOf, copy: PlaceCopy, pairs: readonly [FileEn
   await registry.linkOf(of.home).request("work.files.copiesMoved", { workspaceId: of.workspaceId, moves }).catch(() => undefined);
 }
 
+/**
+ * Each thing a move took, with where it went: paired by name only where the name is one thing's alone, among those
+ * asked and those that went, and was not refused. Two of one name from two folders pair with nothing, so no copy is
+ * ever pointed at the other's file.
+ */
+export function movedPairs(entries: readonly FileEntry[], done: Pick<FileDone, "entries" | "refused">): [FileEntry, FileEntry][] {
+  const once = (names: readonly string[], name: string): boolean => names.filter((n) => n === name).length === 1;
+  const asked = entries.map((e) => e.name);
+  const went = done.entries.map((e) => e.name);
+  const refused = new Set(done.refused.map((r) => r.name));
+  return entries.flatMap((e) => (once(asked, e.name) && once(went, e.name) && !refused.has(e.name) ? [[e, done.entries.find((d) => d.name === e.name)!] as [FileEntry, FileEntry]] : []));
+}
+
 /** The folder a move's rows came from, where its Undo puts them back. */
 export interface CameFrom {
   at: FolderRef;
@@ -100,7 +113,7 @@ export async function carryTo(of: ActsOf, verb: "move" | "copy", from: PlaceCopy
     const done = await registry
       .linkOf(from.link)
       .request<FileDone>(`work.files.${verb}`, { workspaceId: of.workspaceId, refs: entries.map(refOf), to: to.at, op: opId(), ...(question ? { asked: true } : {}) }, longWait(from));
-    if (verb === "move") await copiesFollow(of, from, entries.flatMap((e) => done.entries.filter((d) => d.name === e.name).slice(0, 1).map((d) => [e, d] as [FileEntry, FileEntry])));
+    if (verb === "move") await copiesFollow(of, from, movedPairs(entries, done));
     const samePlace = from.link === to.copy.link && from.place.id === to.copy.place.id;
     const undo = verb === "move" && back && samePlace ? () => void carryTo(of, "move", to.copy, done.entries, { copy: from, at: back.at, name: back.name }) : undefined;
     if (done.entries.length) said(doneWords(verb === "move" ? "Moved" : "Copied", done.entries.map((e) => e.name), to.name), { description: leftovers(done), ...(undo ? { undo } : {}) });

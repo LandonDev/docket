@@ -242,7 +242,7 @@ export const FilesRequestSchemas = [
    * file by the version it was read at, never over a file that changed there; `keep` puts it beside the file under
    * the keep-both name instead. His own edit of that file: his window, or a key that may approve.
    */
-  request('work.files.wordSave', z.object({ workspaceId: Workspace, tabId: z.string().max(100), keep: z.boolean().optional(), /** his press on Replace over a file that changed there */ replace: z.boolean().optional(), /** the window's own save after a pause in his typing */ auto: z.boolean().optional() })),
+  request('work.files.wordSave', z.object({ workspaceId: Workspace, tabId: z.string().max(100), keep: z.boolean().optional(), /** his press on Replace over a file that changed there */ replace: z.boolean().optional(), /** the change time the Replace dialog named: a later change there is asked again, never written over */ seen: z.number().int().optional(), /** the window's own save after a pause in his typing */ auto: z.boolean().optional() })),
   /** → FilesTabs: his choice for a Word file opened as its document: save it by itself (`on`), or ask each time. */
   request('work.files.wordAuto', z.object({ workspaceId: Workspace, tabId: z.string().max(100), on: z.boolean() })),
   /**

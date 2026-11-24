@@ -35,7 +35,7 @@ export function wordLine(word: WordBack, service: string, now = Date.now()): Hea
  */
 export async function saveAsWord(
   tab: Pick<FileTab, "copyOf" | "name" | "key">,
-  deps: { choose: typeof confirmChoice; confirm: typeof confirmAction; save(keep: boolean, replace?: boolean): Promise<WordSaved>; said(text: string): void },
+  deps: { choose: typeof confirmChoice; confirm: typeof confirmAction; save(keep: boolean, replace?: boolean, seen?: number): Promise<WordSaved>; said(text: string): void },
   now = Date.now(),
 ): Promise<"saved" | "kept" | null> {
   const name = wordName(tab);
@@ -68,7 +68,8 @@ export async function saveAsWord(
   });
   if (again === null) return null;
   if (again === "other") return kept(await deps.save(true));
-  return "at" in (await deps.save(false, true)) ? "saved" : null;
+  // Replace goes over the change the line named, and no later one: a newer change there is said again.
+  return "at" in (await deps.save(false, true, got.conflict.changed)) ? "saved" : null;
 }
 
 /** The first time a Word file would be saved by itself: one notice, what Word may lose, and his choice for the file. */

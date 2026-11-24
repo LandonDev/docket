@@ -526,8 +526,8 @@ export async function closeTab(link: string, workspaceId: string, tabId: string,
 export const sendCopyBack = (link: string, workspaceId: string, tabId: string): Promise<CopyBack> => ask<CopyBack>(link, "work.files.copyBack", { workspaceId, tabId });
 
 /** Save as Word: the document a Word file of another computer became, written over that file by its version, or beside it with `keep` (files/word.ts). */
-export const saveWordFile = (link: string, workspaceId: string, tabId: string, keep: boolean, replace = false): Promise<WordSaved> =>
-  ask<WordSaved>(link, "work.files.wordSave", { workspaceId, tabId, ...(keep ? { keep: true } : {}), ...(replace ? { replace: true } : {}) }, { timeoutMs: 180_000 });
+export const saveWordFile = (link: string, workspaceId: string, tabId: string, keep: boolean, replace = false, seen?: number): Promise<WordSaved> =>
+  ask<WordSaved>(link, "work.files.wordSave", { workspaceId, tabId, ...(keep ? { keep: true } : {}), ...(replace ? { replace: true } : {}), ...(replace && seen !== undefined ? { seen } : {}) }, { timeoutMs: 180_000 });
 
 /** His choice for a Word file opened as its document: save it by itself, or ask each time (files/word.ts). */
 export async function setWordAuto(link: string, workspaceId: string, tabId: string, on: boolean): Promise<void> {

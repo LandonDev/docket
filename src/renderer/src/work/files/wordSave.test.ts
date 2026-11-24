@@ -49,7 +49,7 @@ describe("Save as Word", () => {
     expect(await saveAsWord(TAB, d, NOW)).toBe("saved");
     expect(d.choose.mock.calls[1]![0]).toMatchObject({ title: "AD Screening 9-2.docx changed in Teams 9:12 PM, after you opened it.", action: "Replace", other: "Keep Both", focusOther: true });
     expect(d.choose.mock.calls[1]![0].body).toContain("version history");
-    expect(d.save.mock.calls).toEqual([[false], [false, true]]);
+    expect(d.save.mock.calls).toEqual([[false], [false, true, AT]]);
     const both = deps("action", [{ conflict: { changed: AT } }, { copy: { name: "AD Screening 9-2 (mine).docx" } }]);
     both.choose.mockResolvedValueOnce("action").mockResolvedValueOnce("other");
     expect(await saveAsWord(TAB, both, NOW)).toBe("kept");

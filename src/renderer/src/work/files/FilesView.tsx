@@ -387,6 +387,8 @@ function Place({ workspace, reach, again, startThread }: WorkViewProps & { reach
     // then a live file's guest unloads; Word may hold it while still saving (office/live/layer.ts).
     const pressed = view.tabs.find((t) => t.id === tabId);
     if (pressed?.itemId && !(await readyToClose(pressed.itemId, pressed.name))) return;
+    // The file at its side goes with it: what that one holds is sent first too.
+    if (pressed?.side && !(await readyToClose(pressed.side.itemId, pressed.side.name))) return;
     // The send may have changed how its copy stands (ok to away): the ask reads the tab as the host says it now.
     const gone = tabsNow(link, workspace.id).find((t) => t.id === tabId) ?? pressed;
     const done = (discard: boolean): Promise<void> => {

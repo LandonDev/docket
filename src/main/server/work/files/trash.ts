@@ -137,13 +137,14 @@ async function settleMoving(ctx: TrashCtx, row: TrashRow): Promise<'held' | 'und
  * `sep` is the separator of the file's own disk. A copy's tab closes through the copies' own door (`copyClosing`),
  * its changes let go: his window asked before a delete of a file whose copy held changes not sent yet.
  */
-export function closeTabsOn(ctx: TrashCtx, workspace: WorkspaceRow, keys: readonly string[], sepOf: string = sep): void {
+export function closeTabsOn(ctx: TrashCtx, workspace: WorkspaceRow, keys: readonly string[], sepOf: string = sep, discard = true): void {
   const state = filesState(ctx)
   const on = (key: string | undefined): boolean => !!key && keys.some((k) => key === k || key.startsWith(`${k}${sepOf}`))
   const root = workspace.path
   for (const tab of state.tabs.list(workspace.id).tabs) {
     if (tab.kind !== 'file' || !on(tab.key)) continue
-    if (tab.copyOf) copyClosing(ctx as WorkCtx, workspace.id, tab, true)
+    // His delete's own answer drops what he was told is lost; one settled later keeps it, words typed since among it.
+    if (tab.copyOf) copyClosing(ctx as WorkCtx, workspace.id, tab, discard)
     state.tabs.tabClose(workspace.id, tab.id, { at: { at: 'place', id: PLACE.folder }, name: folderName(workspace, root, root) })
   }
   for (const key of keys) {

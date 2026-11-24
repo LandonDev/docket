@@ -228,6 +228,13 @@ async function sendOnce(ctx: WorkCtx, id: string): Promise<void> {
     if (unreachable(err)) return setState(ctx, r, 'away')
     return setState(ctx, r, 'refused', { detail: message(err) })
   }
+  // The file was renamed or moved while this send was on its way (`copiesMoved`, `fileMoved`): its answer is of the old
+  // path, never this record's. The copy is sent again, to where the file lies now.
+  if (row(ctx, r.id)?.path !== r.path) {
+    const flight = flights.get(r.id)
+    if (flight) flight.again = true
+    return
+  }
   if ('conflict' in got) return 'gone' in got.conflict ? setState(ctx, r, 'gone') : setState(ctx, r, 'changed', { changedAt: got.conflict.changed })
   if (!('version' in got)) return setState(ctx, r, 'refused', { detail: 'The other computer answered something else.' })
   // The bytes read after write `r.writes` landed: the file holds that write (a later one asks for its own send).

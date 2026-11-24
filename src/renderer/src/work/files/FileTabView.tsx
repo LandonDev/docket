@@ -316,7 +316,7 @@ export function FileTabView({
     saveAsWord(tab, {
       choose: confirmChoice,
       confirm: confirmAction,
-      save: (keep, replace) => saveWordFile(workspace.environmentId, workspace.id, tab.id, keep, replace),
+      save: (keep, replace, seen) => saveWordFile(workspace.environmentId, workspace.id, tab.id, keep, replace, seen),
       said: (text) => void loadToast().then((toast) => toast.message(text)),
     }).then(() => undefined);
   // The first time a Word file holds edits not in it: one notice, and his choice for the file (wordSave.ts).

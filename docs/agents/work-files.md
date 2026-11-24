@@ -672,7 +672,12 @@ lands, tells the workspace's host where each thing went
 (`work.files.copiesMoved`, acts.ts `copiesFollow`, only when a tab holds a
 copy of it); the host re-points that workspace's records of the copy
 (`farMoved`), his own act only (his window or a key that may approve),
-never for a file of its own and never across two hosts. Nothing is read or
+never for a file of its own and never across two hosts. A move's things are
+paired with where they went by a name one thing alone holds, never one the
+move refused (`movedPairs`); a record already at the new path is never
+dropped for the one that moved, which stays, with its tab, where it was. A
+send on its way when the file moves is sent again to the new path, never
+answered as gone (`sendOnce`). Nothing is read or
 written on a disk there, and a record pointed at the wrong file still
 writes only over the version it read. The fence lets a remote key name the
 other host's paths in this verb alone (`ELSEWHERE_METHODS`).
@@ -887,7 +892,9 @@ verbs and their journal) and holds both ends to OneDrive's mounts again.
   lets the caller try the same `op` again. A delete keeps its pending Trash
   row and helper id even if the window tries again with a fresh `op`.
   The next Trash listing checks `files.outcome` without waking the VM.
-  A confirmed delete holds the row for Undo and closes the tabs. A
+  A confirmed delete holds the row for Undo and closes the tabs; one
+  confirmed only by that later look keeps the copies (sent, then kept as
+  gone), since he may have typed in them after his answer was lost. A
   confirmed refusal drops the row. While the outcome is unknown, the
   row stays pending and the tabs and copies stay open.
 - **Who.** His window; a remote key with `approve` (every VM place is one
@@ -1907,7 +1914,7 @@ over a file that changed there.
   and the close goes on once the host answered; before it, a cell typed and the tab closed by × at once was sent after
   the item had gone, and lost). A cell still open in the grid's editor at the close is not committed. The file at a
   tab's side leaves by the same door before `tabClose {side}` (FilesView.tsx `closeSideOf`; before, it skipped the
-  send). A send that failed, or was still on its way at 8 s, never closes the tab in silence: the house confirm asks
+  send), and before the tab itself closes, since its side goes with it. A send that failed, or was still on its way at 8 s, never closes the tab in silence: the house confirm asks
   (`askCloseUnsent`, canvas/closeDoor.ts, the shape of a live file's "Notes.docx is still saving"): "Changes to
   notes.txt are not saved." or "Deck.pptx is still saving", with Close Anyway; Cancel keeps the tab and what it holds.
   A text file's send counts as failed while his words are still in the window after it (refused, or the file changed
@@ -2092,8 +2099,12 @@ over a colleague's Word file but his own press.
   deleted with its record (`wordsLeft`). The close first asks the service to store what any window sent it
   (`/internal/docs/stored`), so a word typed in the last second, after the autosave's last look, counts; a service
   that does not answer keeps the document. Anything else is kept, in the workspace's folder, for the Word file's next
-  open: one he typed into (his words live in the Work service before the `.tcdoc` file is written), and one the host
-  never looked at. The close of a remote key, a pane's removal and a thread's own close are judged the same way.
+  open: one he typed into (his words live in the Work service before the `.tcdoc` file is written), one the host
+  never looked at, and one any other open item shows (a thread's pane too). The close of a remote key, a pane's
+  removal and a thread's own close are judged the same way.
+- **Save as Word's revision and Replace.** The document's live revision is read before the export, so an edit made
+  while the export runs is never marked saved. Replace over a file that changed there carries the change time its
+  dialog named (`seen`): a later change there is said again, never written over.
 
 ## Saved is not uploaded
 

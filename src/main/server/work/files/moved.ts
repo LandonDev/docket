@@ -200,6 +200,8 @@ function moveDocs(db: DatabaseSync, pairs: readonly [string, string][]): void {
 function moveCopies(db: DatabaseSync, host: string, from: string, to: string, pairs: readonly [string, string][], only?: string): string[] {
   const sep = sepOf(from)
   const changed = new Set<string>()
+  /** records left where they were (another one at the new path): their tabs stay with them */
+  const stayed = new Set<string>()
   const rename = (path: string, name: string): string => (path === from && name === basename(from.replaceAll('\\', '/')) ? basename(to.replaceAll('\\', '/')) : name)
   for (const table of ['work_files_copies', 'work_files_word', 'work_files_links', 'work_files_bodies'] as const) {
     if (!hasTable(db, table)) continue
@@ -208,8 +210,12 @@ function moveCopies(db: DatabaseSync, host: string, from: string, to: string, pa
     for (const row of rows) {
       const path = under(row.path, from, to, sep)
       if (path === null || (only && row.workspace_id !== only)) continue
-      // A stale row already under the new path (a file since gone from there) gives way to the one that moved.
-      if (table !== 'work_files_links') db.prepare(`DELETE FROM ${table} WHERE workspace_id = ? AND host = ? AND path = ? AND rowid != ?`).run(row.workspace_id, host, path, row.rid)
+      // A record already at the new path is never dropped for this one: this one stays where it was, and its next save
+      // there says the file is gone, with Keep Both, rather than lose what either holds.
+      if (table !== 'work_files_links' && db.prepare(`SELECT 1 FROM ${table} WHERE workspace_id = ? AND host = ? AND path = ? AND rowid != ?`).get(row.workspace_id, host, path, row.rid)) {
+        stayed.add(`${row.workspace_id}\0${row.path}`)
+        continue
+      }
       if (named) db.prepare(`UPDATE ${table} SET path = ?, name = ? WHERE rowid = ?`).run(path, rename(row.path, row.name!), row.rid)
       else db.prepare(`UPDATE ${table} SET path = ? WHERE rowid = ?`).run(path, row.rid)
       changed.add(row.workspace_id)
@@ -231,7 +237,7 @@ function moveCopies(db: DatabaseSync, host: string, from: string, to: string, pa
         continue
       }
       const copyOf = page?.copyOf
-      if (!copyOf || copyOf.host !== host || typeof copyOf.path !== 'string') continue
+      if (!copyOf || copyOf.host !== host || typeof copyOf.path !== 'string' || stayed.has(`${row.workspace_id}\0${copyOf.path}`)) continue
       const path = under(copyOf.path, from, to, sep)
       if (path === null) continue
       set.run(JSON.stringify({ ...page, copyOf: { ...copyOf, path }, ...(copyOf.path === from && typeof page.name === 'string' ? { name: rename(from, page.name) } : {}) }), Date.now(), row.workspace_id, row.id)

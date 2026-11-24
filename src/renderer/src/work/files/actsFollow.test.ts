@@ -20,7 +20,7 @@ vi.mock("./store", () => ({ tabsNow: () => world.tabs, closeTab: vi.fn() }));
 vi.mock("../../chrome/ConfirmDialog", () => ({ confirmAction: async () => true }));
 vi.mock("../../components/ui/toaster", () => ({ loadToast: async () => ({ message: vi.fn(), error: vi.fn() }) }));
 
-const { renameTo, carryTo } = await import("./acts");
+const { renameTo, carryTo, movedPairs } = await import("./acts");
 
 const MAC = "env_mac";
 const file = (path: string): FileEntry => ({ key: `file:${MAC}:${path}`, ref: { at: "file", host: MAC, path }, folder: null, name: path.slice(path.lastIndexOf("/") + 1), kind: "sheet" }) as FileEntry;
@@ -51,6 +51,14 @@ describe("a far file whose copy is open", () => {
     world.answers["work.files.move"] = { entries: [file("/T/Events/Roster.xlsx")], refused: [], op: "o" };
     await carryTo(of, "move", macCopy, [file("/T/General/Roster.xlsx")], { copy: macCopy, at: { at: "file", host: MAC, path: "/T/Events" } as never, name: "Events" });
     expect(world.calls.find((c) => c.method === "work.files.copiesMoved")?.params.moves).toEqual([{ from: { at: "file", host: MAC, path: "/T/General/Roster.xlsx" }, to: { at: "file", host: MAC, path: "/T/Events/Roster.xlsx" } }]);
+  });
+
+  it("pairs a move's things only by a name one thing alone holds, and never one the move refused", () => {
+    const a = file("/T/General/Plan.xlsx");
+    const b = file("/T/Events/Plan.xlsx");
+    const c = file("/T/General/Roster.xlsx");
+    const went = { entries: [file("/T/Out/Plan.xlsx"), file("/T/Out/Roster.xlsx")], refused: [{ name: "Plan.xlsx", text: "taken" }] } as never;
+    expect(movedPairs([a, b, c], went).map(([x, y]) => [x.ref, y.ref])).toEqual([[c.ref, { at: "file", host: MAC, path: "/T/Out/Roster.xlsx" }]]);
   });
 
   it("asks nothing more when no tab holds a copy of it, or when the file is the workspace host's own", async () => {

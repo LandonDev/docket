@@ -624,6 +624,23 @@ describe("tabs", () => {
     off();
   });
 
+  it("sends what the file at its side holds too before a tab closes, since the side goes with it", async () => {
+    const { host } = await mount();
+    await waitFor(() => expect(rows()).toContain("Budget.xlsx"));
+    fireEvent.doubleClick(row("Budget.xlsx"));
+    await waitFor(() => expect(tabNames()).toHaveLength(2));
+    const tabId = host.tabs().find((t) => t.kind === "file")!.id;
+    await act(async () => host.change(tabId, { side: { itemId: "side-2", key: "file:env_box:/w/notes.txt", name: "notes.txt" } }));
+    let land!: () => void;
+    const off = registerFlush("side-2", () => new Promise<void>((done) => (land = done)));
+    fireEvent.click(await screen.findByRole("button", { name: "Close Budget.xlsx" }));
+    await act(() => new Promise((r) => setTimeout(r, 30)));
+    expect(calls(host, "work.files.tabClose")).toEqual([]);
+    land();
+    await waitFor(() => expect(calls(host, "work.files.tabClose")).toMatchObject([{ params: { tabId } }]));
+    off();
+  });
+
   it("keeps a tab whose last send failed unless he says close, and asks of a copy as it stands after the send", async () => {
     const { host } = await mount();
     await waitFor(() => expect(rows()).toContain("Budget.xlsx"));

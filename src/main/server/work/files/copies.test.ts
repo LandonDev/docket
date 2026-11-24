@@ -1,4 +1,4 @@
-import { existsSync, readdirSync, readFileSync, realpathSync, statSync, utimesSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, statSync, utimesSync, writeFileSync } from 'node:fs'
 import { basename, dirname, join } from 'node:path'
 import { strToU8, zipSync } from 'fflate'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -20,8 +20,8 @@ import { adoptWordCopies, autosaveWords, wordFollowed, wordImportPlace, wordRow,
 import { forgetUploads, lookAll, setUploadReader } from './uploads'
 
 // Save as Word writes the Work service's Word export; here a stand-in's bytes.
-const exported = vi.hoisted(() => ({ data: null as Buffer | null }))
-vi.mock('../formats/exporter', () => ({ exportDoc: async () => ({ name: 'Plan.docx', data: (exported.data ?? Buffer.from('word export')).toString('base64'), warnings: [] }) }))
+const exported = vi.hoisted(() => ({ data: null as Buffer | null, during: null as (() => void) | null }))
+vi.mock('../formats/exporter', () => ({ exportDoc: async () => (exported.during?.(), { name: 'Plan.docx', data: (exported.data ?? Buffer.from('word export')).toString('base64'), warnings: [] }) }))
 
 /**
  * A copy saves back (copies.ts): two hosts, the workspace's (`env_box`) and his Mac (`env_mac`) with a dummy Teams
@@ -337,6 +337,36 @@ describe('a file renamed or moved on its computer while its copy is open', () =>
     expect(await backOf(tabId)).toMatchObject({ is: 'ok', writes: 1, held: 1 })
     const again = await call<FilesOpened>('work.files.open', { ref: { at: 'file', host: MAC, path: renamed }, name: 'Roster 2026.xlsx' })
     expect(again.tabId).toBe(tabId)
+  })
+
+  it('a send on its way when the file is renamed is sent again to the new name, never called gone', async () => {
+    const { path, copy, tabId } = await openFar('Roster.xlsx', 'one')
+    let open!: () => void
+    hold = new Promise((r) => (open = r))
+    await editorSaves(copy, 'two')
+    // The send to the old name waits on the link; meanwhile the file is renamed on the Mac and the copy follows it.
+    const renamed = join(dirname(path), 'Roster 2026.xlsx')
+    await filesHandle({ id: 'r', method: 'work.files.rename', params: { workspaceId: WS, ref: { at: 'file', host: MAC, path }, name: 'Roster 2026.xlsx', op: 'op-r2' } } as never, mac.ctx, window)
+    await call('work.files.copiesMoved', { moves: [{ from: { at: 'file', host: MAC, path }, to: { at: 'file', host: MAC, path: renamed } }] })
+    hold = null
+    open()
+    await settled()
+    expect(readFileSync(renamed, 'utf8')).toBe('two')
+    expect(await backOf(tabId)).toMatchObject({ is: 'ok', writes: 1, held: 1 })
+  })
+
+  it('a move of two files of one name from two folders re-points neither copy to the other\'s file', async () => {
+    const a = await openFar('Plan.xlsx', 'a')
+    const otherDir = join(mac.team, 'Events')
+    mkdirSync(otherDir, { recursive: true })
+    const bPath = join(otherDir, 'Plan.xlsx')
+    writeFileSync(bPath, 'b')
+    const b = await call<FilesOpened>('work.files.open', { ref: { at: 'file', host: MAC, path: bPath }, name: 'Plan.xlsx' })
+    // A pair that names a path another of the workspace's copies already holds leaves both as they were.
+    await call('work.files.copiesMoved', { moves: [{ from: { at: 'file', host: MAC, path: bPath }, to: { at: 'file', host: MAC, path: a.path } }] })
+    expect(copyRecord(box.ctx, WS, MAC, a.path)).not.toBeNull()
+    expect(copyRecord(box.ctx, WS, MAC, bPath)).not.toBeNull()
+    expect((await call<FilesTabs>('work.files.tabs', {})).tabs.find((t) => t.id === b.tabId)?.copyOf?.path).toBe(bPath)
   })
 
   it("is re-pointed only by his own act, and never for a file of this host or a pair across two hosts", async () => {
@@ -831,6 +861,17 @@ describe('a Word file of another computer', () => {
     expect(asked.lastIndexOf('/internal/docs/rev')).toBeGreaterThan(asked.indexOf('/internal/docs/stored'))
   })
 
+  it("keeps a document a thread's pane still shows, though the Files tab that made it closes unchanged", async () => {
+    const rev = 'r0'
+    ;(box.ctx as { service: unknown }).service = { internal: async () => ({ rev }) }
+    const shown = await imported('Shown.docx', 'word bytes')
+    await autosaveWords(box.ctx, 5_000_000)
+    box.canvas.open('t1', { kind: 'document', source: { at: 'file', host: HOST, path: shown.doc }, title: 'Shown' })
+    await closeAndHear(shown.tabId)
+    expect(existsSync(shown.doc)).toBe(true)
+    expect(wordRow(box.ctx, WS, MAC, shown.path)?.doc).toBe(shown.doc)
+  })
+
   it('keeps the document when the service cannot say what it holds', async () => {
     let rev = 'r0'
     let down = false
@@ -898,6 +939,19 @@ describe('a Word file of another computer', () => {
     // Kept once: a later save writes no second copy.
     await call('work.files.wordSave', { tabId, replace: true })
     expect(readdirSync(box.folder).filter((n) => n.includes('before TempCode'))).toHaveLength(1)
+  })
+
+  it("Replace goes over the change its dialog named, never one made there after: that one is said again", async () => {
+    const { tabId, path } = await imported('Brief.docx', 'word bytes')
+    writeFileSync(path, 'a colleague saved')
+    utimesSync(path, new Date(), new Date(Date.now() - 60_000))
+    const clash = await call<{ conflict?: { changed: number } }>('work.files.wordSave', { tabId })
+    // Another save lands there while his dialog is open.
+    writeFileSync(path, 'and saved again')
+    const got = await call<{ at?: number; conflict?: { changed: number } }>('work.files.wordSave', { tabId, replace: true, seen: clash.conflict!.changed })
+    expect(got.conflict?.changed).toBeGreaterThan(clash.conflict!.changed)
+    expect(readFileSync(path, 'utf8')).toBe('and saved again')
+    expect((await call<{ at?: number }>('work.files.wordSave', { tabId, replace: true, seen: got.conflict!.changed })).at).toBeGreaterThan(0)
   })
 
   it('refuses a thread, a read key and a key that may not approve', async () => {
@@ -1020,6 +1074,18 @@ describe('a Word file saved by itself', () => {
     // He types again: until that revision is written the tab is not saved.
     rev = 'r2'
     await autosaveWords(box.ctx, 3_000_000)
+    expect((await tabOf(tabId))?.word).toMatchObject({ since: true })
+  })
+
+  it('never marks saved an edit made while its export was being made', async () => {
+    const { tabId } = await opened('Agenda.docx', BLANK)
+    await looks(4_000_000)
+    rev = 'r1'
+    // He types while the export runs: the file gets r1's words, and r2 is still to save.
+    exported.during = () => void (rev = 'r2')
+    await call('work.files.wordSave', { tabId })
+    exported.during = null
+    await autosaveWords(box.ctx, 4_100_000)
     expect((await tabOf(tabId))?.word).toMatchObject({ since: true })
   })
 

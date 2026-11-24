@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto'
 import { fileDocName } from 'work-kit/collab-server'
 import { existsSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
-import { dirname, join } from 'node:path'
+import { basename, dirname, join } from 'node:path'
 import type { FileTab, WordBack, WordSaved } from '@shared/contract-work-files'
 import { filesPaneOf, filesPaneWorkspace, type CanvasItem } from '@shared/work'
 import { extOf, freeName, splitName } from '@shared/work/files'
@@ -262,9 +262,19 @@ export async function wordsLeft(ctx: Pick<WorkCtx, 'db' | 'canvas' | 'service' |
     if (now !== null) rmSync(r.doc!, { force: true })
   }
 }
-/** Whether another open item, in any pane, shows this document. */
-function shownElsewhere(ctx: Pick<WorkCtx, 'canvas'>, item: CanvasItem, doc: string): boolean {
-  return ctx.canvas.forSession(item.sessionId).some((open) => open.id !== item.id && open.source.at === 'file' && open.source.path === doc)
+/** Whether another open item shows this document: in the same pane, or in any thread's or pane's of any workspace. */
+function shownElsewhere(ctx: Pick<WorkCtx, 'canvas' | 'db'>, item: CanvasItem, doc: string): boolean {
+  if (ctx.canvas.forSession(item.sessionId).some((open) => open.id !== item.id && open.source.at === 'file' && open.source.path === doc)) return true
+  const hint = `%${JSON.stringify(basename(doc)).slice(1, -1).replace(/[%_\\]/g, (c) => `\\${c}`)}%`
+  const rows = ctx.db.prepare(`SELECT source FROM work_canvas_items WHERE state = 'open' AND id != ? AND source LIKE ? ESCAPE '\\'`).all(item.id, hint) as { source: string }[]
+  return rows.some((r) => {
+    try {
+      const source = JSON.parse(r.source) as CanvasItem['source']
+      return source.at === 'file' && source.path === doc
+    } catch {
+      return false
+    }
+  })
 }
 
 /** The sha256 of the bytes the Word file was read with: recorded at its open, or the copy an older build left beside the document. */
@@ -298,14 +308,14 @@ function keepOriginal(ctx: WorkCtx, r: WordRow, data: Buffer): void {
  * over it. Before the first write over the file its bytes are kept in the workspace's folder. `keep` puts his
  * version beside the file instead.
  */
-export async function wordSave(ctx: WorkCtx, by: Caller, p: { workspaceId: string; tabId: string; keep?: boolean; replace?: boolean; auto?: boolean }): Promise<WordSaved> {
+export async function wordSave(ctx: WorkCtx, by: Caller, p: { workspaceId: string; tabId: string; keep?: boolean; replace?: boolean; seen?: number; auto?: boolean }): Promise<WordSaved> {
   const r = recordOfWordTab(ctx, p.workspaceId, p.tabId)
   admitOwner(by, r)
   return saveRow(ctx, r, p)
 }
 
 /** One save of a Word file's document as Word, as `wordSave` and the host's autosave run it. */
-async function saveRow(ctx: WorkCtx, r: WordRow, p: { workspaceId: string; keep?: boolean; replace?: boolean; auto?: boolean }): Promise<WordSaved> {
+async function saveRow(ctx: WorkCtx, r: WordRow, p: { workspaceId: string; keep?: boolean; replace?: boolean; seen?: number; auto?: boolean }): Promise<WordSaved> {
   const row = { workspace_id: r.workspace_id, host: r.host, path: r.path, vm: r.vm, name: r.name, version: r.version }
   let version = r.version
   if (!p.keep) {
@@ -318,7 +328,8 @@ async function saveRow(ctx: WorkCtx, r: WordRow, p: { workspaceId: string; keep?
     }
     // the same version, the same bytes, or only SharePoint's own rewrite of them after an upload (body.ts)
     const same = now.version === r.version || (knownSha(r) !== null && shaOf(now.data) === knownSha(r)) || sameBody(ctx, r, now.data)
-    if (!same && !p.replace) {
+    // His Replace covers the change its dialog named (`seen`), never one made there after he read it.
+    if (!same && (!p.replace || (p.seen !== undefined && changedOf(now.version) !== p.seen))) {
       // An autosave that meets a change made there stops for this file until his press: never a silent overwrite.
       if (p.auto) {
         ctx.db.prepare(`UPDATE work_files_word SET stopped = ? WHERE workspace_id = ? AND host = ? AND path = ?`).run(changedOf(now.version), r.workspace_id, r.host, r.path)
@@ -332,12 +343,13 @@ async function saveRow(ctx: WorkCtx, r: WordRow, p: { workspaceId: string; keep?
     // A file still exactly our blank holds nothing of anyone's to keep.
     if (!bornHere(shaOf(now.data))) keepOriginal(ctx, r, now.data)
   }
+  // The revision written is the one read before the export: an edit after it keeps the file behind, and is saved next.
+  // Read after, an edit landing during the export would be marked saved with words the file never got.
+  const docAt = mtime(r.doc!)
+  const writtenRev = await liveRev(ctx, r.doc!).catch(() => null)
   const { exportDoc } = await import('../formats/exporter')
   const out = await exportDoc(ctx, LOCAL, { source: { at: 'file', host: ctx.host, path: r.doc! }, format: 'docx' })
   const data = Buffer.from(out.data, 'base64')
-  const docAt = mtime(r.doc!)
-  // The revision written is the one read before the export: an edit after it keeps the file behind, and is saved next.
-  const writtenRev = await liveRev(ctx, r.doc!).catch(() => null)
   const got = await deliver(ctx, { ...row, version }, data, !!p.keep)
   if ('conflict' in got) return { conflict: 'gone' in got.conflict ? { gone: true } : { changed: got.conflict.changed } }
   if ('copy' in got) return { copy: { name: got.copy.name } }

@@ -245,12 +245,12 @@ async function recycleOutcome(op: string, opts?: { wake?: boolean; signal?: Abor
 }
 
 /** Called under the file's lock when the helper has confirmed the delete. */
-function keepRecycled(ctx: WorkCtx, workspaceId: string, w: VmWhere, id: string, ref: VmTrashRef, got: Recycled): void {
+function keepRecycled(ctx: WorkCtx, workspaceId: string, w: VmWhere, id: string, ref: VmTrashRef, got: Recycled, discard = true): void {
   ctx.db
     .prepare("UPDATE work_files_trash SET ref = ?, state = 'held', held_at = COALESCE(held_at, ?) WHERE id = ? AND state = 'moving'")
     .run(JSON.stringify({ ...ref, bin: got.bin || undefined }), Date.now(), id)
   const workspace = workspaceHere(ctx.db, workspaceId)
-  if (workspace) closeTabsOn(ctx, workspace, [w.key, refKey(ref)], '\\')
+  if (workspace) closeTabsOn(ctx, workspace, [w.key, refKey(ref)], '\\', discard)
   dropName(ctx.db, workspaceId, w.key)
   said(ctx, workspaceId, w.library, [dirOf(w.path)])
 }
@@ -262,7 +262,8 @@ export async function settleVmRecycle(ctx: WorkCtx, workspaceId: string, w: VmWh
   await withFileLocks([w.key], async () => {
     if (!ctx.db.prepare("SELECT 1 FROM work_files_trash WHERE id = ? AND state = 'moving'").get(id)) return
     const got = await recycleOutcome(op, { wake: false, signal }).catch(() => null)
-    if (got?.state === 'done') keepRecycled(ctx, workspaceId, w, id, ref, got.value)
+    // Settled after its answer was lost: the tab may have taken more of his words since, so its copy is kept.
+    if (got?.state === 'done') keepRecycled(ctx, workspaceId, w, id, ref, got.value, false)
     else if (got?.state === 'failed') ctx.db.prepare("DELETE FROM work_files_trash WHERE id = ? AND state = 'moving'").run(id)
   })
 }
