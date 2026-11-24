@@ -173,6 +173,10 @@ export class SheetSync {
   private gather: (() => void) | null = null;
   /** ops from elsewhere are being laid on the grid: the objects it moves under them are not his change */
   private applying = false;
+  /** how many hold the grid still (`lock`) */
+  private locks = 0;
+  /** a catch-up that is owed: one that failed, or a reload put off while an edit waits for Retry */
+  private owed = false;
   /** each edit of his dropped or refused on its way (said once then), and why: what an action waiting on `written` reads */
   private lost = { n: 0, why: "" };
 
@@ -308,7 +312,8 @@ export class SheetSync {
         // refuse it (a table it would cut, a formula that reads where it lands), and an edit made on a move the file never
         // took would be lost with it or written into another cell.
         this.queue.push(...taken, ...lists);
-        this.set({ tick: this.state.tick + 1, saving: true, reloading: true });
+        this.lock();
+        this.set({ tick: this.state.tick + 1, saving: true });
         if (this.timer) clearTimeout(this.timer);
         this.timer = null;
         this.run(() => this.send());
@@ -383,7 +388,7 @@ export class SheetSync {
   private stop(grid: GridLink, why: string, commands: number): void {
     this.reverting = true;
     // The grid is locked from the stop until the book is drawn again: an edit made in between would be in neither.
-    if (commands !== 1) this.set({ reloading: true });
+    if (commands !== 1) this.lock();
     const done = (): void => {
       this.reverting = false;
       if (commands !== 1)
@@ -392,7 +397,7 @@ export class SheetSync {
             await this.send();
             await this.open();
           } finally {
-            this.set({ reloading: false });
+            this.unlock();
           }
         });
     };
@@ -410,13 +415,24 @@ export class SheetSync {
    */
   async handOver<T>(work: () => Promise<T>): Promise<T> {
     await this.endEditor();
-    this.set({ reloading: true });
+    this.lock();
     try {
       await this.written();
       return await work();
     } finally {
-      this.set({ reloading: false });
+      this.unlock();
     }
+  }
+
+  /**
+   * The grid takes no edit while anything holds it (a reload, a move on its way, a press handing the item over): each
+   * holder takes a lock and lets its own go, so one that ends first never frees the grid under another.
+   */
+  private lock(): void {
+    if (this.locks++ === 0) this.set({ reloading: true });
+  }
+  private unlock(): void {
+    if (this.locks > 0 && --this.locks === 0) this.set({ reloading: false });
   }
 
   /** An edit of his that will not reach the file: counted for what waits on `written`. */
@@ -539,10 +555,17 @@ export class SheetSync {
         // its rows moved): the batch names cells of a sheet that is gone, so it is not sent again. He is told what it held.
         if (await this.catchUp(batch)) return;
       }
-      if (behind) await this.catchUp();
       // (an opened Excel file's refused batch is still not in the file: its line stays until Reload makes the grid the file again)
       if (this.state.sendError && this.state.view?.store !== "package") this.set({ sendError: null });
       if (this.queue.length === 0) this.set({ saving: false, savedAt: Date.now() });
+      // The save stands, whatever its catch-up does: one that fails is owed, and the next send or push makes it. The
+      // grid stays at the revision it last laid, so what it sends meanwhile is judged against that one.
+      if (behind || this.owed) {
+        this.owed = false;
+        await this.catchUp().catch(() => {
+          this.owed = true;
+        });
+      }
     } catch (error) {
       // An opened Excel file refuses a batch for good: it is not sent again, and the edits after it go on. Reload makes the grid the file again.
       if (this.state.view?.store !== "package") {
@@ -554,13 +577,15 @@ export class SheetSync {
         // A chart or picture the file's writer refused (a protected sheet, a range it cannot name, a kind it cannot make):
         // said once, as a change stopped at the press, and the book read again from the file so the object is as it was.
         // What waits after it goes first.
-        this.set({ reloading: true, stopped: { why: message(error, "The host did not answer"), n: (this.state.stopped?.n ?? 0) + 1 } });
+        this.lock();
+        this.set({ stopped: { why: message(error, "The host did not answer"), n: (this.state.stopped?.n ?? 0) + 1 } });
         this.drop(message(error, "The host did not answer"));
         try {
           if (this.queue.length > 0) await this.send();
           await this.open();
         } finally {
-          this.set({ reloading: false, saving: false });
+          this.unlock();
+          this.set({ saving: false });
         }
         return;
       }
@@ -574,7 +599,7 @@ export class SheetSync {
         try {
           await this.open();
         } finally {
-          this.set({ reloading: false });
+          this.unlock();
         }
         return;
       }
@@ -586,7 +611,7 @@ export class SheetSync {
       try {
         await this.open();
       } finally {
-        this.set({ reloading: false });
+        this.unlock();
       }
     }
     if (this.queue.length > 0) await this.send();
@@ -609,7 +634,7 @@ export class SheetSync {
       // with what waits (or is named with it below). The workbook is not yet locked, which would refuse the end.
       const ended = await this.endEditor();
       // The grid takes no edit until the file is drawn again: one made meanwhile would be in neither.
-      this.set({ reloading: true });
+      this.lock();
       try {
         this.settle?.();
         if (this.timer) clearTimeout(this.timer);
@@ -625,6 +650,12 @@ export class SheetSync {
           // What waits goes first: the host moves an edit through what it missed (a rule's list, a shared workbook's
           // edit), and refuses one the file can no longer take, which is then said (above).
           await this.send();
+          // One that failed and waits for Retry keeps its grid: the book is not read again under it, so the edit the line
+          // offers to send again is still there to send, and still shown. The reload is owed: made after it lands.
+          if (this.queue.length > 0 && this.state.sendError) {
+            this.owed = true;
+            return false;
+          }
         }
         // A cell the grid kept open (it refused the value) is gone with the book: said once.
         if (!ended) {
@@ -634,7 +665,7 @@ export class SheetSync {
         // (a send that met a conflict has read the file again already)
         if (this.books === books) await this.load(answer.rev);
       } finally {
-        this.set({ reloading: false });
+        this.unlock();
       }
       return true;
     }

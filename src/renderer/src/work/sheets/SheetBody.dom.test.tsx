@@ -834,6 +834,79 @@ describe("the sheet kind", () => {
     await waitFor(() => expect(grid.readOnly).toBe(false));
   });
 
+  it("keeps an edit that waits for Retry through a reload: the book is read again only once it lands", async () => {
+    // Council r3 (Sol 3): the reload's own send failed and put the batch back, and the load then emptied the queue.
+    open(sheetView({ store: "tcsheet", rev: 3 }));
+    await gridUp();
+    sheetHost.since = async () => ({ rev: 9, reload: true as const });
+    const edit = sheetHost.edit;
+    sheetHost.edit = async () => {
+      throw new Error("The host did not answer");
+    };
+    act(() => grid.edit(set(1, 1, 15)));
+    act(() => sheetHost.push({ rev: 9 }));
+    expect(await screen.findByText("Couldn't save")).toBeTruthy();
+    const reload = () => sheetHost.calls.some((c) => c[0] === "load" && (c[1] as { rev: number }).rev === 9);
+    expect(reload()).toBe(false);
+    expect(cell("B2").textContent).toBe("15");
+    sheetHost.edit = edit;
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    await waitFor(() => expect(edits().map((e) => e.mutations)).toEqual([[set(1, 1, 15)]]));
+    await waitFor(() => expect(reload()).toBe(true));
+  });
+
+  it("keeps a save as saved when its catch-up fails, and makes the catch-up later", async () => {
+    // Council r3 (Sol 5): the receipt's catch-up failed inside the save's own handler, so a saved edit read as failed.
+    open(sheetView({ store: "package", rev: 3, row: ROW_ALL }));
+    await gridUp();
+    sheetHost.rev = 4;
+    sheetHost.ops.push({ rev: 4, by: "person:dana", mutations: [set(0, 5, "Dana")] });
+    sheetHost.edit = async (baseRev, mutations) => {
+      sheetHost.calls.push(["edit", { baseRev, mutations }]);
+      sheetHost.rev++;
+      sheetHost.ops.push({ rev: sheetHost.rev, by: "owner", mutations });
+      return { rev: sheetHost.rev };
+    };
+    const since = sheetHost.since;
+    let failing = true;
+    sheetHost.since = async (rev) => {
+      sheetHost.calls.push(["since", rev]);
+      if (failing) throw new Error("The host did not answer");
+      return since(rev);
+    };
+    act(() => grid.edit(set(1, 1, 15)));
+    await waitFor(() => expect(sheetHost.calls.some((c) => c[0] === "since")).toBe(true), { timeout: EDIT_WAIT * 10 });
+    await act(async () => undefined);
+    expect(screen.queryByText("Couldn't save")).toBeNull();
+    expect(edits()).toHaveLength(1);
+    failing = false;
+    act(() => sheetHost.push({ rev: 5 }));
+    await waitFor(() => expect(cell("F1").textContent).toBe("Dana"));
+  });
+
+  it("keeps the grid still while Save as Excel waits, through a reload in the middle of it", async () => {
+    // Council r3 (Sol 6): the reload's own finally freed the grid the hand-over still held.
+    open(sheetView({ store: "package", name: "Ledger.ods", imported: { format: "ods", name: "Ledger.ods" } }));
+    await gridUp();
+    let release!: () => void;
+    const imported = sheetHost.imported;
+    sheetHost.imported = async (a) => {
+      await new Promise<void>((done) => (release = done));
+      return imported(a);
+    };
+    sheetHost.since = async () => ({ rev: 9, reload: true as const });
+    fireEvent.click(await screen.findByRole("button", { name: "More" }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Save as Excel" }));
+    await waitFor(() => expect(grid.readOnly).toBe(true));
+    act(() => sheetHost.push({ rev: 9 }));
+    await waitFor(() => expect(sheetHost.calls.some((c) => c[0] === "load" && (c[1] as { rev: number }).rev === 9)).toBe(true));
+    await gridUp();
+    await act(async () => undefined);
+    expect(grid.readOnly).toBe(true);
+    release();
+    await waitFor(() => expect(grid.readOnly).toBe(false));
+  });
+
   it("names the grid's own workbook in an op it brings in", async () => {
     open(sheetView({ rev: 3 }));
     await gridUp();

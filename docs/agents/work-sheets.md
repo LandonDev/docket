@@ -670,14 +670,20 @@ or onto another), and whole rows or columns dragged (`move-rows`,
   revision a save answers only when nothing landed between; else (another
   window's op landed first) it catches up, passing its own, before what it
   sends next, so it shows theirs and a whole list it sends is made over
-  theirs.
+  theirs. The save stands whatever that catch-up does: one that fails is
+  owed, made by the next send or push.
 - **A reload holds the grid.** While catch-up reads the file again (a rule's
   list landed, a shared workbook's edit, a change from outside), the grid is
   `reloading` and takes no edit: a cell still open in the editor is ended
   first, against the book it was typed on (a locked workbook would refuse
   it), what he typed before it is sent first, and nothing is typed into a
   book about to be replaced. A cell the grid keeps open (it refused the
-  value) is said once as the book goes.
+  value) is said once as the book goes. A send of what waits that fails and
+  waits for Retry (a sheet the service holds) keeps the grid and its batch:
+  the reload is owed until Retry lands it. Each holder of the grid (a
+  reload, a move on its way, Save as Excel's hand-over) takes its own lock
+  (`lock`, `unlock`), so one that ends first never frees the grid under
+  another.
 - **A conflict that reads the file again** (the file changed outside
   TempCode, a restore, rows moved elsewhere, a list replaced) sends the
   refused batch no more, nor what waited behind it: its cells named the
