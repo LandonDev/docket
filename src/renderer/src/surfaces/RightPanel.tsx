@@ -37,6 +37,7 @@ import { useComputerSection } from "../lib/computerSection";
 import { ActivitySection } from "./threads/ActivitySection";
 import { computerChunk, workOutboxChunk } from "./chunks";
 import { resultsListed, useResults } from "../work/outbox/results";
+import { isWorkThread } from "../lib/workRow";
 import { FleetList } from "./threads/fleet/FleetPanel";
 import { NotesBody } from "./threads/NotesPanel";
 import { SessionActionsContext } from "./threadChat";
@@ -292,7 +293,8 @@ function usePanelFacts(session: Session, state: PanelState, inPane: boolean): Pa
   const computer = useComputerSection(session.id);
   // Only a Work thread has Results; a code thread never asks.
   // Listed while there is a row, and while the read failed, so its red line and Retry have a place to show.
-  const results = resultsListed(useResults(session.environmentId, session.id, session.scope === "work" && !session.parentId));
+  const work = isWorkThread(session);
+  const results = resultsListed(useResults(session.environmentId, session.id, work && !session.parentId));
   const facts = useMemo<PanelFacts>(
     () => ({
       root: !session.parentId || inPane,
@@ -309,8 +311,9 @@ function usePanelFacts(session: Session, state: PanelState, inPane: boolean): Pa
       computerLive: computer.live,
       results,
       debug: DEBUG_SECTION || state.debug,
+      work,
     }),
-    [session, project, workspace, agents.length, activity.length, computer.exists, computer.loading, computer.live, results, state.section, state.debug, inPane],
+    [session, work, project, workspace, agents.length, activity.length, computer.exists, computer.loading, computer.live, results, state.section, state.debug, inPane],
   );
   return { facts, project, workspace };
 }

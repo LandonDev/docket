@@ -7,10 +7,12 @@ import {
   THREAD_MIN,
   panelFit,
   rightPanel,
+  CODE_SECTIONS,
   sectionsCompact,
   sectionsFor,
   shownSection,
   watchSection,
+  WORK_SECTIONS,
   type PanelFacts,
 } from "./rightPanel";
 
@@ -25,9 +27,30 @@ const quiet: PanelFacts = {
   computerLive: false,
   results: 0,
   debug: false,
+  work: false,
 };
 
 describe("sectionsFor", () => {
+  it("a Work thread lists no code section, even in a project with a checkout or a folder inside a repo", () => {
+    const repo = { ...quiet, project: true, checkout: true, debug: true };
+    expect(sectionsFor({ ...repo, work: true })).toEqual({ sections: ["notes"], defaultSection: "notes" });
+    expect(sectionsFor({ ...repo, work: true, results: 2, agents: 1 })).toEqual({ sections: ["agents", "results", "notes"], defaultSection: "agents" });
+    // the code thread in the same place keeps every one
+    expect(sectionsFor(repo).sections).toEqual(["changes", "notes", "files", "build", "debug"]);
+  });
+
+  it("every state of a Work thread draws only from WORK_SECTIONS, which holds no code section", () => {
+    expect(WORK_SECTIONS.some((s) => CODE_SECTIONS.includes(s))).toBe(false);
+    const flags = ["notes", "project", "checkout", "computer", "computerLive", "debug"] as const;
+    for (let bits = 0; bits < 1 << flags.length; bits++) {
+      const facts: PanelFacts = { ...quiet, work: true, agents: bits & 1, activity: bits & 2 ? 1 : 0, results: bits & 4 ? 1 : 0 };
+      flags.forEach((flag, i) => (facts[flag] = !!(bits & (1 << i))));
+      const { sections, defaultSection } = sectionsFor(facts);
+      expect(sections.every((s) => WORK_SECTIONS.includes(s))).toBe(true);
+      if (defaultSection) expect(WORK_SECTIONS).toContain(defaultSection);
+    }
+  });
+
   it("a Work thread with Results lists them after Computer, and opens on them before its notes", () => {
     expect(sectionsFor({ ...quiet, results: 2 })).toEqual({ sections: ["results", "notes"], defaultSection: "results" });
     expect(sectionsFor({ ...quiet, results: 2, activity: 1 }).defaultSection).toBe("activity");

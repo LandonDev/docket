@@ -26,10 +26,8 @@ import { panelFit, rightPanel, THREAD_MIN, useRightPanel, useShownThread } from 
 import { rightPanelChunk } from "../chunks";
 import { useSessionById } from "../../lib/threads/agents";
 import { useSessionMetaValue } from "../../lib/tcserver/store";
-import type { SessionMeta } from "../../lib/tcserver/types";
+import { isWorkThread } from "../../lib/workRow";
 
-/** A row stamped Work: its view sits in the canvas seat. */
-export const isWorkThread = (meta: SessionMeta): boolean => meta.scope === "work";
 
 export type { ChatOpts } from "./chatSlots";
 

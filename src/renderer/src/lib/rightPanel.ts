@@ -21,6 +21,12 @@ export type Section = "activity" | "agents" | "computer" | "results" | "changes"
 
 export const SECTIONS: readonly Section[] = ["agents", "activity", "computer", "results", "changes", "notes", "files", "build", "debug"];
 
+/** The sections of a code thread alone: a repo's changes and tree, a project's build and debugger. */
+export const CODE_SECTIONS: readonly Section[] = ["changes", "files", "build", "debug"];
+
+/** A Work thread's sections: every one but the code ones, whatever its folder or project holds. */
+export const WORK_SECTIONS: readonly Section[] = SECTIONS.filter((s) => !CODE_SECTIONS.includes(s));
+
 export const SECTION_LABEL: Record<Section, string> = {
   activity: "Activity",
   agents: "Agents",
@@ -91,6 +97,8 @@ export type PanelFacts = {
   results: number;
   /** A dev build, or the debug setting on: the Debug section is listed. */
   debug: boolean;
+  /** A Work thread (lib/workRow.ts): only `WORK_SECTIONS` are listed, even in a folder inside a repo. */
+  work: boolean;
 };
 
 export type PanelSections = { sections: Section[]; defaultSection: Section | null };
@@ -99,6 +107,9 @@ export type PanelSections = { sections: Section[]; defaultSection: Section | nul
 export function sectionsFor(facts: PanelFacts): PanelSections {
   if (!facts.root) return { sections: [], defaultSection: null };
   const activity = facts.activity > 0;
+  // A Work thread is a job, not a checkout: no changes, repo tree, build or debugger, even in a repo's folder.
+  const checkout = facts.checkout && !facts.work;
+  const project = facts.project && !facts.work;
   // One line per section, in the header's order; an area that retires a section deletes its line.
   const sections: Section[] = [];
   // A master's batch lives on its board, never here: agents means its own subagents.
@@ -106,11 +117,11 @@ export function sectionsFor(facts: PanelFacts): PanelSections {
   if (activity) sections.push("activity");
   if (facts.computer) sections.push("computer");
   if (facts.results > 0) sections.push("results");
-  if (facts.checkout) sections.push("changes");
+  if (checkout) sections.push("changes");
   if (facts.notes) sections.push("notes");
-  if (facts.checkout) sections.push("files");
-  if (facts.project) sections.push("build");
-  if (facts.project && facts.debug) sections.push("debug");
+  if (checkout) sections.push("files");
+  if (project) sections.push("build");
+  if (project && facts.debug) sections.push("debug");
   // Subagents first: what a thread watches is its agents far more often than a shell. Then the Mac while the
   // thread uses it; its kept steps alone never take the default.
   const defaultSection: Section | null = facts.agents > 0
@@ -119,7 +130,7 @@ export function sectionsFor(facts: PanelFacts): PanelSections {
       ? "computer"
       : activity
         ? "activity"
-        : facts.checkout
+        : checkout
           ? "changes"
           : facts.results > 0
             ? "results"

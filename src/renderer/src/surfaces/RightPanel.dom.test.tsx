@@ -399,6 +399,21 @@ describe("RightPanel", () => {
     r.unmount();
   });
 
+  it("a Work thread lists no Changes, Files or Build, in a project's checkout or a folder inside a repo", () => {
+    // its own id: a Work thread asks for its Results, and that read is kept by thread id
+    rightPanel.open("work1");
+    const inProject = { ...session, id: "work1", scope: "work" } as unknown as Session;
+    const r = render(<RightPanel session={inProject} onOpenFile={noop} onOpenDiff={noop} />);
+    expect(screen.getAllByRole("tab").map((t) => t.getAttribute("aria-label"))).toEqual(["Notes"]);
+    expect(screen.queryByTestId("changes-body")).toBeNull();
+    r.unmount();
+    state.workspaces = [{ id: "w1", environmentId: "local", path: "/w", git: true }];
+    const inRepo = { ...session, id: "work1", scope: "work", cwd: "/w", projectId: null, workspaceId: "w1" } as unknown as Session;
+    const r2 = render(<RightPanel session={inRepo} onOpenFile={noop} onOpenDiff={noop} />);
+    expect(screen.getAllByRole("tab").map((t) => t.getAttribute("aria-label"))).toEqual(["Notes"]);
+    r2.unmount();
+  });
+
   it("a loose chat in a workspace that is no repository has notes alone", () => {
     state.workspaces = [{ id: "w1", environmentId: "local", path: "/w", git: false }];
     const chat = { ...session, cwd: "/w", projectId: null, workspaceId: "w1" } as unknown as Session;

@@ -32,7 +32,6 @@ vi.mock("../lib/lazyChunk", async (importOriginal) => ({ ...(await importOrigina
 vi.mock("./EmptySession", () => ({ EmptySession: () => <div data-testid="empty-session" /> }));
 vi.mock("./threads/ThreadView", () => ({
   ThreadView: ({ quiet }: { quiet?: React.ReactNode }) => <div data-testid="thread-view">{quiet}</div>,
-  isWorkThread: (meta: { scope?: string }) => meta.scope === "work",
 }));
 vi.mock("./threads/WorkingStrip", () => ({ WorkingStrip: () => null }));
 vi.mock("../lib/tcserver/commands", () => ({ focusSignal: { pane: () => {}, left: () => {} } }));
