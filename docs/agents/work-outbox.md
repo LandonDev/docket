@@ -530,6 +530,15 @@ desktop press across hosts sends one `decide` to each host. A LifeOS
 reply's quote is read fresh at the press (the list's copy lacks it), and a
 LifeOS discard claims the row here before LifeOS deletes its draft.
 
+**A LifeOS mail read whole.** Its detail reads the item again
+(`work.outbox.get`, with the quote) before Send may go. A read the host's
+LifeOS session failed says that cause by the down rule with the item's host
+named, in the detail's notes (`useMailUnread`, outbox/MailUnread.tsx): the
+red note with Retry (the read again) for silence, else a muted note with Sign
+in, Show the code or Open Settings where this window may, else who can; "The
+mail did not load" with Retry for any other cause. LifeOS still connecting keeps the quote's bone. A fresh status of
+that host that says connected reads it again with no press.
+
 **Send later.** Send's menu offers a time on an item whose kind may wait
 (`OutboxItem.later`; the kinds in `LATER`, outbox.ts: a LifeOS mail,
 `office.mail.send`, `teams.post`, `chat.reply`; only a kind that checks

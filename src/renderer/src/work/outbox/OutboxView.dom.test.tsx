@@ -21,6 +21,8 @@ const world = vi.hoisted(() => ({
   listDown: new Set<string>(),
   quote: null as string | null,
   getFails: false,
+  /** the host's words for a full read it could not make (`work.outbox.get`), as its LifeOS session throws them */
+  getCause: null as string | null,
   // a send the host has not answered yet: it answers when the test lets it
   grantId: 0,
   sendHeld: null as Promise<void> | null,
@@ -123,6 +125,7 @@ vi.mock("../../lib/connection", async (original) => {
           return { results: [] };
         case "work.outbox.get":
           if (world.getFails) throw new Error("The host did not answer");
+          if (world.getCause) throw new Error(world.getCause);
           return { ...find(), ...(world.extra[find().ref.id] ?? {}), payload: { ...(find().payload as object), picture: { mimeType: "image/png", width: 16, height: 10, data: "AAAA" }, ...(world.quote ? { quote: world.quote } : {}) } };
       }
       throw new Error(`unknown ${method}`);
@@ -133,6 +136,7 @@ vi.mock("../../lib/connection", async (original) => {
     ...(await original<typeof import("../../lib/connection")>()),
     registry: {
       linkOf: (env: "box" | "mac") => links[env],
+      environment: (env: string) => ({ name: env === "box" ? "The box" : "Mac" }),
       onLink: (listener: (l: ReturnType<typeof link>, event: string) => void) => {
         listener(links.box, "added");
         listener(links.mac, "added");
@@ -364,6 +368,46 @@ describe("the Outbox", () => {
       expect((screen.getByRole("button", { name: "Send" }) as HTMLButtonElement).disabled).toBe(false);
     } finally {
       world.quote = null;
+    }
+  });
+
+  it("says why a LifeOS mail could not be read whole, by the rule with its host named, and reads it again when that host is back", async () => {
+    // Council round 9 (Sol Outbox 1, P2): the read's own cause, never a bare "did not load".
+    const { resetLifeos, setLifeosStatus } = await import("../shell/lifeos");
+    world.quote = "<p>On Tue, Dana wrote:</p>";
+    world.getCause = "This host is not signed in to LifeOS";
+    try {
+      await open();
+      const line = await waitFor(() => document.querySelector("[data-mail-unread]")!);
+      expect(line.getAttribute("data-mail-unread")).toBe("signed-out");
+      expect(line.textContent).toContain("Not signed in to LifeOS on the box");
+      expect(line.textContent).not.toContain("did not load");
+      // A state, not silence: a muted note, not an alert.
+      expect(line.closest("[data-outbox-note]")?.getAttribute("role")).toBeNull();
+      expect(line.querySelector("button")?.textContent).not.toBe("Retry");
+      expect((screen.getByRole("button", { name: "Send" }) as HTMLButtonElement).disabled).toBe(true);
+      // The box signs in: its status says connected, and the mail is read again with no press.
+      world.getCause = null;
+      act(() => setLifeosStatus("box", { lifeos: { state: "connected" }, keys: [] } as never));
+      await waitFor(() => expect(document.querySelector("[data-mail-quote]")).toBeTruthy(), { timeout: 5000 });
+      expect(document.querySelector("[data-mail-unread]")).toBeNull();
+      cleanup();
+      // Silence is red with Retry, which reads the mail again.
+      world.getCause = "LifeOS is unreachable";
+      await open();
+      const silent = await waitFor(() => document.querySelector("[data-mail-unread]")!);
+      expect(silent.textContent).toContain("LifeOS did not answer the box");
+      // Silence is the red note: the failed mark, read out as an alert.
+      expect(silent.closest("[data-outbox-note]")?.getAttribute("role")).toBe("alert");
+      const gets = world.calls.filter((c) => c.method === "work.outbox.get").length;
+      world.getCause = null;
+      fireEvent.click(within(silent as HTMLElement).getByRole("button", { name: "Retry" }));
+      await waitFor(() => expect(world.calls.filter((c) => c.method === "work.outbox.get").length).toBe(gets + 1));
+      await waitFor(() => expect(document.querySelector("[data-mail-quote]")).toBeTruthy(), { timeout: 5000 });
+      resetLifeos();
+    } finally {
+      world.quote = null;
+      world.getCause = null;
     }
   });
 

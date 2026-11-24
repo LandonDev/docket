@@ -8,7 +8,7 @@ import { StatusMark } from "../../components/ui/status";
 import { Textarea } from "../../components/ui/textarea";
 import { loadToast } from "../../components/ui/toaster";
 import { Tip } from "../../components/tip";
-import { ChevronDown, Clock, Pencil, SquareMousePointer } from "../../chrome/icons";
+import { ChevronDown, Clock, Pencil, Plug, SquareMousePointer } from "../../chrome/icons";
 import { SectorDot } from "../../chrome/WorkspaceGlyph";
 import { DialogFooter, ErrorLine } from "../../chrome/ConfirmDialog";
 import { Field } from "../../chrome/DialogField";
@@ -50,6 +50,8 @@ import {
 } from "./store";
 import { aheadTime, changesOf, isScheduled, laterChoices, type Piece } from "./waiting";
 import { heldWhen } from "./when";
+import { unreadDown, useMailUnread } from "./MailUnread";
+import { useLifeosStatusHeard } from "../shell/lifeos";
 
 /**
  * A held item whole, with its verbs (docs/DESIGN.md "The Outbox"): what the
@@ -134,17 +136,17 @@ export function DetailFacts({ item, job, when, onOpenSession, extra }: { item: H
  * press approves what he read (the hold review's finding 28). Every other kind is read whole too, for what only `get`
  * says (the thread's first words for Show changes, a reply that came in), but its Send never waits on that read.
  */
-function useWhole(item: HostItem): { shown: HostItem; ready: boolean; failed: boolean; retry(): void } {
+function useWhole(item: HostItem): { shown: HostItem; ready: boolean; failed: boolean; error: unknown; retry(): void } {
   const gate = item.kind === "mail.send";
   const key = JSON.stringify([item.environmentId, item.ref, item.updatedAt]);
-  const [read, setRead] = useState<{ key: string; item: HostItem | null } | null>(null);
+  const [read, setRead] = useState<{ key: string; item: HostItem | null; error?: unknown } | null>(null);
   const [attempt, setAttempt] = useState(0);
   useEffect(() => {
     let live = true;
     setRead(null);
     fetchItem(item.environmentId, item.ref).then(
       (whole) => live && setRead({ key, item: { ...item, ...whole, environmentId: item.environmentId } as HostItem }),
-      () => live && setRead({ key, item: null }),
+      (error: unknown) => live && setRead({ key, item: null, error }),
     );
     return () => {
       live = false;
@@ -152,8 +154,15 @@ function useWhole(item: HostItem): { shown: HostItem; ready: boolean; failed: bo
     // eslint-disable-next-line react-hooks/exhaustive-deps -- read again for another item, a change, or a Retry
   }, [key, attempt]);
   const mine = read?.key === key ? read : null;
+  const failed = gate && !!mine && !mine.item;
+  // A mail's read its host's LifeOS failed is read again once that host says LifeOS is back (the note goes by itself).
+  const status = useLifeosStatusHeard(gate ? item.environmentId : null);
+  useEffect(() => {
+    if (failed && status?.lifeos.state === "connected") setAttempt((n) => n + 1);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- a fresh answer of the host, not the failure itself
+  }, [status]);
   // A kind whose read failed still shows as listed: only a mail's Send waits on it.
-  return { shown: mine?.item ?? item, ready: gate ? !!mine?.item : true, failed: gate && !!mine && !mine.item, retry: () => setAttempt((n) => n + 1) };
+  return { shown: mine?.item ?? item, ready: gate ? !!mine?.item : true, failed, error: mine?.error, retry: () => setAttempt((n) => n + 1) };
 }
 
 /** A note under the sentence: one line, its 14px glyph in the column the title's text starts on. */
@@ -220,11 +229,13 @@ function Words({ pieces }: { pieces: readonly Piece[] }) {
  * The notes that apply, one line each, in order: not sent (or a refused press), out of date, rewritten (with Show
  * changes), a reply that came in, the time it goes, a computer act's screen, a mail that did not load.
  */
-export function ItemNotes({ item, host, refused, unread, onRetry, showChanges, onShowChanges, noteRef }: {
+export function ItemNotes({ item, host, refused, unread, unreadError, onRetry, showChanges, onShowChanges, noteRef }: {
   item: HostItem;
   host?: string;
   refused?: string | null;
   unread?: boolean;
+  /** why the mail's read failed: its cause is said by the LifeOS rule (`useMailUnread`) */
+  unreadError?: unknown;
   onRetry?: () => void;
   showChanges?: boolean;
   onShowChanges?: (on: boolean) => void;
@@ -232,6 +243,7 @@ export function ItemNotes({ item, host, refused, unread, onRetry, showChanges, o
 }) {
   const hostInLine = host && host !== "A host" ? nameInLine(host) : undefined;
   const first = item.changed?.first;
+  const said = useMailUnread(unreadError, !!unread, item.environmentId, onRetry ?? (() => {}));
   const notes: ReactNode[] = [];
   if (refused || item.state === "failed")
     notes.push(
@@ -281,13 +293,19 @@ export function ItemNotes({ item, host, refused, unread, onRetry, showChanges, o
         Takes {host ?? "the computer"}'s screen for a moment.
       </Note>,
     );
-  if (unread)
+  if (said)
     notes.push(
-      <Note key="unread" alert glyph={<StatusMark state="failed" word={false} />}>
-        The mail did not load
-        <Button variant="ghost" size="xs" className="-my-0.5 ms-1" onClick={onRetry}>
-          Retry
-        </Button>
+      <Note key="unread" alert={said.red} glyph={said.red ? <StatusMark state="failed" word={false} /> : <Plug className="size-3.5" />}>
+        <span data-mail-unread={said.cause ?? "failed"}>
+          {said.words}
+          {said.action ? (
+            <Button variant="ghost" size="xs" className="-my-0.5 ms-1" onClick={said.action.run}>
+              {said.action.label}
+            </Button>
+          ) : null}
+          {said.elsewhere ? <span className="block">{said.elsewhere}</span> : null}
+        </span>
+        {said.dialog}
       </Note>,
     );
   return notes.length ? <div className="mt-3 flex flex-col gap-2">{notes}</div> : null;
@@ -552,7 +570,7 @@ export function HeldDetail({
   /** Filled with the verbs the page's keys reach. */
   commands?: RefObject<DetailCommands | null>;
 }) {
-  const { shown: item, ready: read, failed: unread, retry } = useWhole(listed);
+  const { shown: item, ready: read, failed: unread, error: unreadError, retry } = useWhole(listed);
   const hostInLine = host && host !== "A host" ? nameInLine(host) : undefined;
   const picture = usePicture(listed);
   // Send waits until all he approves is on screen: the act's own view loaded, the mail read whole, the act's kept
@@ -746,7 +764,7 @@ export function HeldDetail({
           <h1 className="mt-1 text-base font-semibold leading-6 tracking-[-0.01em] text-balance">{itemTitle(item, false)}</h1>
         </header>
         <Effect item={item} />
-        <ItemNotes item={item} host={host} refused={refused} unread={unread} onRetry={retry} showChanges={showChanges} onShowChanges={setShowChanges} noteRef={refusedLine} />
+        <ItemNotes item={item} host={host} refused={refused} unread={unread} unreadError={unreadError} onRetry={retry} showChanges={showChanges} onShowChanges={setShowChanges} noteRef={refusedLine} />
         <div
           className="mt-5 flex flex-col gap-4"
           onKeyDown={(e) => {
@@ -765,7 +783,7 @@ export function HeldDetail({
             <ActView item={item} env={item.environmentId} onReady={setViewLoaded} />
           )}
           {/* While the mail is read whole, a bone where its quote may land: Send waits on it. */}
-          {item.kind === "mail.send" && !read && !unread ? <Skeleton data-mail-quote-bone className="h-4 w-2/3 rounded" /> : null}
+          {item.kind === "mail.send" && !read && (!unread || unreadDown(unreadError) === "wait") ? <Skeleton data-mail-quote-bone className="h-4 w-2/3 rounded" /> : null}
           {item.kind === "computer.act" ? <KeptPicture item={item} picture={picture} /> : null}
         </div>
       </DetailColumn>
