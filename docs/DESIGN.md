@@ -1735,9 +1735,7 @@ Around the canvas:
   Delete. With two or more selected one bar floats 12px over the list's
   foot (40px, radius 12, the popover's depth): "3 selected", Move, Copy,
   Delete, Clear; while it shows the list keeps 56px under its last row.
-  **Move to… and Copy to…** (and **Save as Word to…**, a document's, which
-  opens on the places and saves a new Word file there, said in one toast
-  with Show) are one small dialog that drills down in one
+  **Move to… and Copy to…** are one small dialog that drills down in one
   column: it opens in the folder the things are in, a trail over it leads
   back up and to Places, a press walks into a folder (folders alone,
   more as the list nears its end), and the place's own sentence stands
@@ -3191,6 +3189,59 @@ opening puts the focus on Edit.
   `paper` and `paper-ink` have, held to 4.5:1 and to the edge floor on
   `paper` by `lib/tokenContrast.test.ts`. Nothing inside the paper, a slide
   or the web frame is ours.
+
+#### Save As…
+
+A document's one way to save itself as a file somewhere (work/files/SaveAs.tsx,
+DocLinks.tsx; docs/agents/work-files.md "Save As…"). A ghost extra-small
+"Save As…" stands in the document's own bar, before Share (beside a thread,
+and in a Files tab under its 48px header, which holds no second one); File →
+Save As… (⇧⌘S), More and ⋯ open the same sheet.
+
+- **The sheet** is the large modal (768px): "Save As" as its title, then a
+  20px inset in two columns, 20px apart: the form, and 200px for the page.
+  The form is a label column of 56px (12px muted, 12px from its field) and
+  rows 12px apart: Name, a 32px field whose extension is the format's, muted
+  at its end; Format, a 28px outline menu button with the format's name and
+  a 12px chevron (its menu rows are the names with the extension as the
+  muted end fact and a tick), and after it, 10px off, one 12px muted line of
+  what that format drops, counted ("3 suggestions go as tracked changes",
+  ", and 1 more" with the rest on hover), none when nothing is lost; Where,
+  a 252px box at the 8px radius with the hairline and 6px inside, holding
+  the Move to… walk: the trail over the folders with New Folder (ghost
+  extra-small, muted) at its end, a new folder named in place as Files
+  names one. On the places, Recent comes first (the three folders he saved
+  to last, each with its place's name muted at the row's end), then Places;
+  Google Drive and LifeOS stand last, muted and off, their sentence on hover.
+- **The page** is the document's first page as the host draws its file, 168px
+  wide on `paper` with the image outline, centred on `stage` at the 8px
+  radius with 16px inside; "Page 1 of 4" under it in 12px muted, nothing for a
+  one-page file. While it is drawn, a skeleton in the paper's shape; no page
+  for Markdown, its kind glyph at 32px in its place. Under 620px the column
+  goes and the form takes the width.
+- **The footer** is the dialog's: Just a copy (a checkbox and its 13px word)
+  at the start, then one 12px muted line of what Save does, truncating
+  before the buttons: "Saves Plan.docx in General, kept up to date", "Saves
+  a copy of Plan.docx in General", "Pick a folder" while none is; Cancel and
+  Save (primary, "Saving…" with the spinner while the host works). Enter in
+  the name is Save. Save is off with no folder or no name.
+- **A file of that name there** is the house confirm over the sheet:
+  "Replace Plan.docx in General?", Replace and Keep Both, Keep Both holding
+  the focus. Nothing is written until he answers.
+- **After Save** the sheet closes. A linked file is said by the header alone:
+  one quiet extra-small menu button before Save As…, the format's 14px glyph
+  in its tint, then the words ("Saved to General 9:12 PM", "Saving to
+  General…", "Not saved to General yet"), "+1" muted for each other link, a
+  12px chevron; at most 256px, truncating. It reads `muted-foreground`, and
+  `foreground` only when a link needs him (its words are a polite live region): "Changed in
+  General", "Moved or deleted in General", "Not saved to General". Its menu
+  is a label row per link (its name, and with several its state too), that
+  link's presses first (Keep Both, Replace for a Word file changed there;
+  Save Again for another format changed or gone; Retry), then Open, Show in
+  Files and Unlink, links apart by a rule. A copy made once (Just a copy) is
+  one toast, "Saved a copy of Plan.docx in General", with Show.
+- **Motion** is the modal's, the menus' and the toast's; a folder walk swaps
+  the list at once. Nothing glows or slides in the header: its words change.
 
 #### Work editors: The document
 

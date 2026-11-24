@@ -95,10 +95,10 @@ Today the document and the sheet answer `export` by opening Preview on the
 format he last used and `print` by opening it on Print ("Print" below); the
 document answers `find` by opening the editor's own find bar (work-docs.md
 "Find…"). A document of a Work workspace also answers `save_word`, File →
-Save as Word to… (a Work-only row under Print…): the Files place's folder
-picker, and a new .docx made in the folder he picks (work-files.md "Save as
-Word to a folder"). The sheet's `find` and the deck's answers come with their
-milestones.
+Save As… (⇧⌘S, a Work-only row under Save All): one sheet with the name, the
+format and a folder of his places, and the file it makes stays linked to the
+document (work-files.md "Save As…"). The sheet's `find` and the deck's answers
+come with their milestones; Save As… for sheets and decks is not built.
 
 ## Preview: the contract
 

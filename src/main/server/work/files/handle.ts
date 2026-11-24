@@ -16,6 +16,7 @@ import { copyIn, threadsHolding } from '../office/files/handle'
 import { copyAllowed, fetchFile, rootsOf, whoOf } from '../office/files/library'
 import { probeDrives } from '../office/files/reach'
 import { copyWaits } from './copyKept'
+import { linkAct, linksOf, saveAs } from './saveAs'
 import { saveAsWord } from './saveAsWord'
 import { isWordFile, keptDoc, recordWord, wordAuto, wordBacksOf, wordRow, wordSave } from './word'
 import { admitOwner, backsOf, copyAt, copyBack, copyClosing, copyKeep, copyRecord, copyReload, recordCopy, reopened, writeBack } from './copies'
@@ -752,6 +753,14 @@ async function write(ctx: WorkCtx, by: Caller, p: { workspaceId: string; ref: Ca
     if (!entry) throw new Error('The copy was made and could not be read back.')
     return { copy: entry }
   }
+  return writeBytes(ctx, by, { workspaceId: p.workspaceId, ref: p.ref, data, version: p.version, ...(p.origin ? { origin: p.origin } : {}) }, method)
+}
+
+/**
+ * A file of this host's replaced by version through the door as `edit`: on its disk or in its Windows VM. The editor's
+ * save above, and a document's linked file written again after an edit (links.ts).
+ */
+export async function writeBytes(ctx: WorkCtx, by: Caller, p: { workspaceId: string; ref: CanvasSource; data: Buffer; version: string; origin?: Parameters<typeof admitWrite>[1]['origin'] }, method: string): Promise<FileSaved> {
   let at: Located
   try {
     if (admitChange(ctx, by, 'edit', { workspaceId: p.workspaceId, refs: [p.ref], origin: p.origin }, method) === 'hold') throw new Error(HELD_NOT_YET)
@@ -763,12 +772,12 @@ async function write(ctx: WorkCtx, by: Caller, p: { workspaceId: string; ref: Ca
   }
   if (at.in === 'library' && at.library.vm) {
     if (by.kind !== 'local') throw new Error(LIBRARY_BYTES)
-    return vmSave(ctx, p.workspaceId, vmWhere(ctx, by, at), data, p.version, randomUUID())
+    return vmSave(ctx, p.workspaceId, vmWhere(ctx, by, at), p.data, p.version, randomUUID())
   }
   const { roots, path } = bytesFence(ctx, by, at)
   const { library } = doorPlace(ctx, by, at)
   const key = library ? libraryKey(library, path) : refKey({ at: 'file', host: ctx.host, path })
-  return saveFile({ roots }, key, path, data, p.version)
+  return saveFile({ roots }, key, path, p.data, p.version)
 }
 
 /** A located thing in the VM, as vmVerbs.ts takes it. */
@@ -797,7 +806,7 @@ const held = (verdict: 'run' | 'hold'): void => {
 const MAY_NOT = (what: string): string => `This key may not ${what}.`
 /** A thread changes files only through the `files_*` tools (files/tools.ts), which give a run its Result and Undo and hold a shared change: never by the wire. */
 export const THREADS_BY_TOOLS = 'A thread changes files with the files_* tools.'
-const CHANGES: ReadonlySet<string> = new Set(['make', 'rename', 'move', 'copy', 'trash', 'upload', 'write', 'restore', 'purge', 'project', 'copyBack', 'copyReload', 'copyKeep', 'wordSave', 'wordAuto', 'writeBack', 'saveAsWord'].map((v) => `work.files.${v}`))
+const CHANGES: ReadonlySet<string> = new Set(['make', 'rename', 'move', 'copy', 'trash', 'upload', 'write', 'restore', 'purge', 'project', 'copyBack', 'copyReload', 'copyKeep', 'wordSave', 'wordAuto', 'writeBack', 'saveAsWord', 'saveAs', 'linkAct'].map((v) => `work.files.${v}`))
 /** Whether an operation id is in the journal already (`runOp` then answers it, and checks it is the same change). */
 const journalled = (db: DatabaseSync, op: string, workspaceId: string, verb: FileVerb): boolean => !!db.prepare(`SELECT 1 FROM work_files_ops WHERE id = ? AND workspace_id = ? AND verb = ?`).get(op, workspaceId, verb)
 /** How many rows each of Home's lists shows. */
@@ -1122,6 +1131,12 @@ export async function filesHandle(req: ClientRequest, ctx: WorkCtx, by: Caller, 
       return handled(await uploadedHere(ctx, by, p as never, m))
     case 'work.files.saveAsWord':
       return handled(await saveAsWord(ctx, by, p as never, m))
+    case 'work.files.saveAs':
+      return handled(await saveAs(ctx, by, p as never, m))
+    case 'work.files.links':
+      return handled(linksOf(ctx, by, p as never))
+    case 'work.files.linkAct':
+      return handled(await linkAct(ctx, by, p as never))
     case 'work.files.star': {
       ownRows(ctx, by, p.workspaceId)
       const { key, at } = markedOf(ctx, by, p.workspaceId, p.ref as FileRef, m)

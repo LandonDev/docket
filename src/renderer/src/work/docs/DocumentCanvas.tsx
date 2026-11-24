@@ -37,15 +37,17 @@ import { historyActions, refreshHistory, useBranches } from "../history/store";
 import { useGoogleDoc } from "../google/docMore";
 import { DOC_FONTS } from "./fonts";
 import { docHost, servedBy, type DocHost } from "./host";
-import { docPreviewSource } from "./previewSource";
+import { blockFacts, docDrops, docPreviewSource } from "./previewSource";
 import { decided, PAGE_CHANGE_ID, reviewOf } from "./review";
 import { PageChangeSummary } from "../history/Compare";
 import { docThreads, type DocThreads } from "./threads";
 import { ShareButton } from "../guests/Share";
 import { useWorkspaceOf } from "../files/workspaceOf";
+import { DocSaveControls } from "../files/DocLinks";
+import { openSaveAs, tellDrops, useSaveAsAsk } from "../files/saveAsPort";
 
 // Save as Word to…: the Files place's folder picker, loaded on his press.
-const SaveAsWordDialog = lazy(() => import("../files/SaveAsWordDialog").then((m) => ({ default: m.SaveAsWordDialog })));
+const SaveAsDialog = lazy(() => import("../files/SaveAs").then((m) => ({ default: m.SaveAsDialog })));
 
 /**
  * The document kind's body (docs/agents/work-docs.md; the approved
@@ -299,11 +301,13 @@ function PageFact({ itemId }: { itemId: string }) {
  */
 export function Bar({ item, source, env }: CanvasBodyProps<DocState>) {
   const state = useOpenState(item.id);
+  const workspace = useWorkspaceOf(env, item.workspaceId);
   // A mail's attachment is read only and is not shared; a Word file becoming a document has nothing yet.
   if (source.at === "mail" || importsFirst(source) || state === "failed") return null;
   if (state === "opening") return <Skeleton aria-hidden className="h-3 w-30" />;
   return (
     <>
+      {workspace ? <DocSaveControls workspace={workspace} source={source} itemId={item.id} /> : null}
       <ShareButton env={env} source={source} title={item.title} />
       <PageFact itemId={item.id} />
     </>
@@ -357,10 +361,10 @@ function DocBody({ item, source, env, state, setState, shell, more: own = NO_MOR
   const reopen = useCallback(() => setAttempt((n) => n + 1), []);
   const googleMore = useGoogleDoc(env, item, reopen);
   const google = useMemo(() => (own.length ? [...own, ...googleMore] : googleMore), [own, googleMore]);
-  // Save as Word to… a folder of his places: a document of a Work workspace, from the pane's More and File → Save as Word to….
+  // Save As…: a document of a Work workspace, from the header, the pane's More and File → Save As… (⇧⌘S).
   const workspace = useWorkspaceOf(env, item.workspaceId);
-  const [wordTo, setWordTo] = useState(false);
-  const saveWord = useCallback(() => setWordTo(true), []);
+  const savingAs = useSaveAsAsk(item.id);
+  const saveAs = useCallback(() => openSaveAs(item.id), [item.id]);
   useEffect(() => {
     shell.statusLine(opened && "error" in opened ? { tone: "failed", word: "Couldn't open this document", detail: opened.error, action: { label: "Retry", run: () => setAttempt((n) => n + 1) } } : null);
   }, [shell, opened]);
@@ -429,15 +433,15 @@ function DocBody({ item, source, env, state, setState, shell, more: own = NO_MOR
                   preview={{ slot, on: previewing, asked, set: showPreview }}
                   rowSlot={rowSlot}
                   pages={pages}
-                  {...(workspace ? { onSaveWord: saveWord } : {})}
+                  {...(workspace ? { onSaveAs: saveAs } : {})}
                 />
               ) : null
             }
           </Scroller>
         </div>
-        {wordTo && workspace ? (
+        {savingAs && workspace ? (
           <Suspense fallback={null}>
-            <SaveAsWordDialog workspace={workspace} source={source} name={item.title} onClose={() => setWordTo(false)} />
+            <SaveAsDialog workspace={workspace} source={source} title={item.title} itemId={item.id} format={savingAs.format} />
           </Suspense>
         ) : null}
       </div>
@@ -556,7 +560,7 @@ function Opened({
   preview,
   rowSlot,
   pages,
-  onSaveWord,
+  onSaveAs,
 }: {
   host: DocHost;
   open: DocOpen;
@@ -569,7 +573,7 @@ function Opened({
   rowSlot: HTMLElement | null;
   pages?: PagesWiring;
   /** Save as Word to…: opens the folder picker; absent outside a Work workspace */
-  onSaveWord?(): void;
+  onSaveAs?(): void;
 }) {
   const doc = useDocument(host, open);
   const margin = width >= MARGIN_FROM;
@@ -616,13 +620,13 @@ function Opened({
   // ⌘P open it on Print (work/formats/PreviewFrame.tsx).
   const showPreview = preview.set;
   useEffect(() => {
-    shell.more?.([...more, { id: "export", label: "Export…", icon: Export, run: () => showPreview("last") }, ...(onSaveWord ? [{ id: "save-word", label: "Save as Word to…", icon: Doc, run: onSaveWord }] : [])]);
+    shell.more?.([...more, { id: "export", label: "Export…", icon: Export, run: () => showPreview("last") }, ...(onSaveAs ? [{ id: "save-as", label: "Save As…", icon: Doc, run: onSaveAs }] : [])]);
     return () => shell.more?.(null);
-  }, [shell, more, showPreview, onSaveWord]);
+  }, [shell, more, showPreview, onSaveAs]);
   // Edit → Find… and ⌘F with the caret in the text open the editor's own find; Replace is in its bar where he may edit.
   const finder = useRef<FindHandle | null>(null);
   const onFind = useCallback((handle: FindHandle | null) => void (finder.current = handle), []);
-  useWorkCommands(root, { export: () => showPreview("last"), print: () => showPreview("print"), find: () => finder.current?.open(), ...(onSaveWord ? { save_word: onSaveWord } : {}) });
+  useWorkCommands(root, { export: () => showPreview("last"), print: () => showPreview("print"), find: () => finder.current?.open(), ...(onSaveAs ? { save_word: onSaveAs } : {}) });
   // The document went (a tab closed, another opened in its place): its Preview goes with it.
   useEffect(() => () => showPreview(false), [showPreview]);
   // Under Preview the editor draws the document and nothing else: find's tints go here, and the changes in review below.
@@ -678,6 +682,23 @@ function Opened({
       }),
     [host.env, open.source, open.title, open.doc, itemId, root, canSet],
   );
+  // Save As…'s one line of what each format drops, counted as Preview counts it (previewSource.ts `docDrops`).
+  useEffect(() => {
+    tellDrops(itemId, (format) => {
+      // A count is a hint: one that fails says nothing rather than stop the sheet.
+      try {
+        const review = {
+          comments: new Set(Array.from(live.current.editor?.domElement?.querySelectorAll(".bn-thread-mark") ?? [], (m) => m.getAttribute("data-bn-thread-id") ?? m.textContent)).size,
+          replied: (live.current.threads.adapter.rows(open.doc) ?? []).filter((row) => row.comments.length > 1).length,
+          suggestions: live.current.suggestions,
+        };
+        return docDrops(format, { ...blockFacts((live.current.editor?.document ?? []) as readonly unknown[]), ...review });
+      } catch {
+        return [];
+      }
+    });
+    return () => tellDrops(itemId, null);
+  }, [itemId, open.doc]);
   const closePreview = (): void => {
     showPreview(false);
     // Back to the words, where the caret was.

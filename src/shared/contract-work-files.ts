@@ -3,6 +3,7 @@ import { CanvasKindSchema, CanvasSourceSchema, type CanvasItem, type CanvasSourc
 import { COPY_ACROSS_MAX, ENTRY_KINDS, FILE_SORTS, FILE_TEXT_MAX, MAKE_KINDS, type FileEntry, type FilePlace, type FolderRef } from './work/files'
 import type { TeamsPlace } from './contract-work-office'
 import { EDITED_WITHIN, type FindSpec } from './work/docFind'
+import { SAVE_AS_IDS } from './work/saveAs'
 import { request, type CapsOf, type RelayOf } from './work/wire'
 
 /**
@@ -253,6 +254,18 @@ export const FilesRequestSchemas = [
    * door as New there; his own press: his window, or a key that may approve where others can open the folder.
    */
   request('work.files.saveAsWord', z.object({ workspaceId: Workspace, source: CanvasSourceSchema, at: FolderRefSchema, name: Name.optional(), op: Op })),
+  /**
+   * → SavedAs: Save As… (files/saveAs.ts): the document `source` written from its live text in `format` into the folder
+   * `at`, named `name`. A file of that name there is never written over unasked: the answer is `exists` until his
+   * `exists` choice says Replace (over it by the version read now) or Keep Both (a free name). Linked unless `link`
+   * is false: each later edit is written to the file again by the host. `place` and `computer` are the names the
+   * header says it by. His press alone, through Files' door as New there.
+   */
+  request('work.files.saveAs', z.object({ workspaceId: Workspace, source: CanvasSourceSchema, at: FolderRefSchema, name: Name.optional(), format: z.enum(SAVE_AS_IDS), link: z.boolean().optional(), place: Name.optional(), computer: Name.optional(), exists: z.enum(['replace', 'keep']).optional(), op: Op })),
+  /** → DocLink[]: the files a document is linked to, oldest first, with how each stands. */
+  request('work.files.links', z.object({ workspaceId: Workspace, source: CanvasSourceSchema })),
+  /** → DocLink[]: his press on a linked file: Unlink, Retry, Replace (over a change made there) or Keep Both. */
+  request('work.files.linkAct', z.object({ workspaceId: Workspace, id: z.string().max(100), act: z.enum(['unlink', 'retry', 'replace', 'keep']) })),
   /** → FilesTabs: moves a tab before `before` (last when null). */
   request('work.files.tabMove', z.object({ workspaceId: Workspace, tabId: z.string().max(100), before: z.string().max(100).nullable() })),
   /** → FilesTabs: where a page tab stands now. */
@@ -548,6 +561,9 @@ export const FILES_CAPS = {
   // Another host of his only: whether OneDrive here uploaded what that write left.
   'work.files.uploaded': 'read',
   'work.files.saveAsWord': 'operate',
+  'work.files.saveAs': 'operate',
+  'work.files.links': 'read',
+  'work.files.linkAct': 'operate',
   'work.files.tabMove': 'operate',
   'work.files.tabSet': 'operate',
   'work.files.star': 'operate',
@@ -589,6 +605,9 @@ export const FILES_RELAY = {
   'work.files.wordAuto': 'screen',
   'work.files.writeBack': 'screen',
   'work.files.saveAsWord': 'screen',
+  'work.files.saveAs': 'screen',
+  'work.files.links': 'screen',
+  'work.files.linkAct': 'screen',
   'work.files.project': 'screen',
   'work.files.purge': 'never'
 } satisfies RelayOf<typeof FilesRequestSchemas>

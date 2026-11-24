@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import type { FileCrumb } from "@shared/contract-work-files";
 import { DEFAULT_SORT, refusal, type FileEntry, type FolderRef } from "@shared/work/files";
 import { DialogFooter } from "../../chrome/ConfirmDialog";
@@ -27,7 +27,7 @@ export interface MoveTarget {
 
 const VERB = { move: "Move", copy: "Copy", word: "Save" } as const;
 
-const ROW = "flex h-8 w-full min-w-0 cursor-default items-center gap-2 rounded-md px-2 text-start text-[13px] select-none";
+export const ROW = "flex h-8 w-full min-w-0 cursor-default items-center gap-2 rounded-md px-2 text-start text-[13px] select-none";
 
 export function MoveDialog({
   verb,
@@ -97,11 +97,25 @@ export function MoveDialog({
   );
 }
 
-/** The places a thing can go to. */
-function Places({ places, waiting, onInto }: { places: readonly MoveTarget[]; waiting: boolean; onInto(to: MoveTarget): void }) {
+/** The places a thing can go to; Save As… puts the folders he saved to last over them. */
+export function Places({ places, recent = [], off = [], waiting, onInto }: { places: readonly MoveTarget[]; recent?: readonly (MoveTarget & { where: string })[]; off?: readonly { name: string; why: string }[]; waiting: boolean; onInto(to: MoveTarget): void }) {
   return (
     <div role="listbox" aria-label="Places" className="flex min-h-0 flex-1 flex-col overflow-x-hidden overflow-y-auto">
-      <p className="px-2 pb-1 text-xs font-medium text-muted-foreground">Places</p>
+      {recent.length ? (
+        <>
+          <p className="px-2 pb-1 text-xs font-medium text-muted-foreground">Recent</p>
+          {recent.map((folder) => (
+            <Button key={`${folder.copy.link}:${JSON.stringify(folder.at)}`} variant="ghost" role="option" aria-selected={false} className={`${ROW} justify-start font-normal`} onClick={() => onInto(folder)}>
+              <KindGlyph kind="folder" />
+              <span className="min-w-0 flex-1 truncate">{folder.name}</span>
+              <span className="max-w-[45%] shrink-0 truncate text-xs text-muted-foreground">{folder.where}</span>
+            </Button>
+          ))}
+          <p className="px-2 pt-2 pb-1 text-xs font-medium text-muted-foreground">Places</p>
+        </>
+      ) : (
+        <p className="px-2 pb-1 text-xs font-medium text-muted-foreground">Places</p>
+      )}
       {waiting && !places.length ? <RowBones /> : null}
       {places.map((place) => (
         <Button key={`${place.copy.link}:${place.copy.place.id}`} variant="ghost" role="option" aria-selected={false} className={`${ROW} justify-start font-normal`} onClick={() => onInto(place)}>
@@ -110,12 +124,23 @@ function Places({ places, waiting, onInto }: { places: readonly MoveTarget[]; wa
           <ChevronRight aria-hidden className="size-3 shrink-0 text-muted-foreground" />
         </Button>
       ))}
+      {/* A place the verb cannot reach yet, there and off, with its sentence on hover. */}
+      {off.map((place) => (
+        <div key={place.name} role="option" aria-selected={false} aria-disabled title={place.why} className={`${ROW} text-muted-foreground opacity-60`}>
+          <KindGlyph kind="folder" tinted={false} />
+          <span className="min-w-0 flex-1 truncate">{place.name}</span>
+        </div>
+      ))}
     </div>
   );
 }
 
-/** One folder's folders, under the trail that led to it; a press walks in. The host is asked for folders alone, a page at a time as the list nears its end. */
-function Folders({ workspaceId, target, entries, onInto, onPlaces }: { workspaceId: string; target: MoveTarget; entries: readonly FileEntry[]; onInto(to: MoveTarget): void; onPlaces(): void }) {
+/**
+ * One folder's folders, under the trail that led to it; a press walks in. The host is asked for folders alone, a page at
+ * a time as the list nears its end. `end` stands at the trail's end (Save As…'s New Folder); `first` is a row over the
+ * folders (the new folder's name being typed).
+ */
+export function Folders({ workspaceId, target, entries, onInto, onPlaces, end, first }: { workspaceId: string; target: MoveTarget; entries: readonly FileEntry[]; onInto(to: MoveTarget): void; onPlaces(): void; end?: ReactNode; first?: ReactNode }) {
   const from: ListFrom = { workspaceId, copy: target.copy, foldersOnly: true };
   const listing = useListing(from, target.at, DEFAULT_SORT);
   const folders = listing.entries.filter((e) => e.folder);
@@ -154,8 +179,10 @@ function Folders({ workspaceId, target, entries, onInto, onPlaces }: { workspace
             )}
           </span>
         ))}
+        {end ? <span className="ms-auto flex shrink-0 items-center">{end}</span> : null}
       </nav>
       <div ref={setScroller} role="listbox" aria-label={`Folders in ${target.name}`} className="flex min-h-0 flex-1 flex-col overflow-x-hidden overflow-y-auto">
+        {first}
         {!listing.loaded ? (
           <RowBones />
         ) : listing.error && !folders.length ? (
@@ -166,7 +193,7 @@ function Folders({ workspaceId, target, entries, onInto, onPlaces }: { workspace
             </Button>
           </div>
         ) : !folders.length ? (
-          <p className="p-2 text-xs text-muted-foreground">No folders in here.</p>
+          first ? null : <p className="p-2 text-xs text-muted-foreground">No folders in here.</p>
         ) : (
           folders.map((folder) => (
             <Button
@@ -204,7 +231,7 @@ function Folders({ workspaceId, target, entries, onInto, onPlaces }: { workspace
 }
 
 /** Rows still being read: three bones in the rows' own shape. */
-function RowBones() {
+export function RowBones() {
   return (
     <div role="status" aria-label="Loading" aria-busy className="flex flex-col">
       {["w-[46%]", "w-[60%]", "w-[38%]"].map((w, i) => (

@@ -22,6 +22,10 @@ import { printToPdf } from './print'
 
 const METHOD = 'work.formats.export'
 
+/** The formats the host writes a document in by itself (Save As… adds PDF, this Word file drawn by the converter: shared/work/saveAs.ts). */
+export const EXPORT_FORMATS = ['docx', 'odt', 'rtf', 'md'] as const
+export type ExportFormat = (typeof EXPORT_FORMATS)[number]
+
 /** Whether a document is, or was made from, a file others can open (docs/target.ts, where the doc tools ask it too). */
 export { madeFromShared }
 
@@ -48,7 +52,7 @@ export async function serviceExport(
   }
 }
 
-export async function exportDoc(ctx: WorkCtx, by: Caller, params: { source: CanvasSource; format: 'docx' | 'odt' | 'rtf' | 'md' }): Promise<ExportAnswer> {
+export async function exportDoc(ctx: WorkCtx, by: Caller, params: { source: CanvasSource; format: ExportFormat }): Promise<ExportAnswer> {
   const t = await targetOf(ctx, by, METHOD, params.source)
   const kind = params.format === 'md' ? 'md' : 'docx'
   const got = await serviceExport(ctx, t, kind)

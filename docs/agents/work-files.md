@@ -1362,7 +1362,9 @@ while its screen is unlocked.
 | `star {ref, name, on}`, `seen {ref, name}` | operate | yes | his marks |
 | `copyBack {tabId}`, `copyReload {tabId}`, `copyKeep {tabId}` | operate, and his own edit (`approve` for a key) | screen | a copy that saves back: send it if it differs (`CopyBack`), read the file into it again, keep his beside the file ("A copy saves back"). `tabClose {tabId, discard}` drops a copy's changes not yet sent, `approve` for a key |
 | `writeBack {ref, data, version, copy?, into?, origin}` | operate; another host of his only | screen | run where the file lies: `saveFile` by version, or with `copy` beside it under the keep-both name, or with `into` a new file in `ref`'s folder under a free name (`WrittenBack`) |
-| `saveAsWord {source, at, name?, op}` | operate, and `approve` where others can open the folder | screen | a document exported as Word and made a new .docx in the folder ("Save as Word to a folder"): `SavedAsWord {name, ref}` |
+| `saveAs {source, at, name?, format, link?, place?, computer?, exists?, op}` | operate, and `approve` where others can open the folder | screen | a document saved in a format as a new file in the folder, or over the one of that name on his Replace, linked unless `link` is false ("Save As…"): `SavedAs` |
+| `links {source}`, `linkAct {id, act}` | read; operate and his own edit there | screen | the files a document is linked to (`DocLink[]`); Unlink, Retry, Replace or Keep Both on one |
+| `saveAsWord {source, at, name?, op}` | operate, as `saveAs` | screen | an older window's Save as Word to…: `saveAs` with Word, Keep Both and no link (`SavedAsWord {name, ref}`) |
 | `make {at, kind, name?, from?}`, `rename {ref, name}`, `move {refs, to}`, `copy {refs, to}` | operate, and `approve` where others can open the place | screen | `FileDone`: the things as they are now, and a `refused` row with its sentence for each one that could not be done ("New, rename, move and copy") |
 | `trash`, `upload` | operate, and `approve` where others can open the place | screen | located and passed through the door, then "Files cannot … yet" |
 | `restore`, `purge` | operate; approve | screen; never | the workspace's own rows; not built |
@@ -1862,41 +1864,84 @@ over a file that changed there.
   says "Saving to MacBook…"; an ask the host refused says "Not saved to MacBook." and the reason, with Retry
   (`copyLine`'s `CopyAsk`). What the host says of the file (not answering, changed there, refused) wins over it.
 
-## Save as Word to a folder
+## Save As…
 
-`files/saveAsWord.ts`, the owner's ask of 2026-11-24 ("There's no option for me to save a doc as a type (docx) to a
-teams file area."). Any document he has open (a `.tcdoc`, the document kept for a library Word file, a LifeOS
-document, a Google Doc) goes as a NEW Word file into a folder he picks.
+`files/saveAs.ts`, the owner's asks of 2026-11-24 ("I still want a clear button to say save this doc as X file at this
+location including teams", then "the doc and the export of that doc wherever it is are linked and saves to the doc
+update the exported version properly"). Any document he has open (a `.tcdoc`, the document kept for a library Word
+file, a LifeOS document, a Google Doc) is saved as Word, PDF, OpenDocument, Rich Text or Markdown into a folder he
+picks, and stays linked to that file: each later edit is written to it.
 
-- **Where he finds it.** File → Save as Word to… (`save_word`, a Work-only row under Print…, live while a document of a
-  Work workspace is on screen: `useWorkCommands`), the document's More beside a thread ("Save as Word to…", after
-  Export…), and the ⋯ of a Files tab showing a document (after Download). Each opens `SaveAsWordDialog`, the Move to…
-  dialog (`MoveDialog` with `verb: 'word'`) on his places: the workspace's folder and every Teams and OneDrive library
-  of each computer the workspace may use, the VM's among them. A folder whose place makes nothing is off with the
-  grammar's sentence (`refusal(place, 'make')`). Save Here, then one toast: "Saved as Word in General" with Show, which
-  opens that folder in a Files tab.
-- **The host** (`work.files.saveAsWord {workspaceId, source, at, name?, op}`, asked of the workspace's own host, where
-  the document lives). The document must be the workspace's own: an open item of it shows it (a Files tab, a pane's,
-  a thread's), or it is the document a mail's attachment open there was read into; else "That document is not open in
-  this workspace.", so no job's document is written into another's folder. The door next, before anything is
-  exported: a folder of this host as New there (`admitChange`
-  as `make`, so a key needs `approve` where others can open it); a folder of another host of his as his own edit
-  there (`admitOwner`). A thread is refused at the wire (`CHANGES`), a read key by its capability (and again here).
-  Then `exportDoc` writes Word from the live text (the Work service's), named for the document unless `name` says, and
-  the file is made under a free name read case-blind ("Plan 2.docx"), never over anything, under the operation id
-  (`runOp`: the same press again makes nothing twice):
-  - the workspace's folder or a library on this host: `makeBytes` (verbs.ts), `makeFile` by exclusive create;
-  - a library in this host's Windows VM: `vmMake` with the bytes, the guest's `files.write {dir, name, data, op}`;
-  - a library on another computer of his: that host's `writeBack` with `into: true` (`ref` the wanted file, its folder
-    a library there, never its VM), which passes its own door as `make` with the window's origin and runs
-    `makeBytes` there. The writeBack verb was kept rather than a new peer verb: one route across hosts for a file's
-    bytes, one flag.
-  Each changed folder is pushed as for New. The answer is the file made (`SavedAsWord`).
-- **The fence.** `saveAsWord` is in `GUEST_METHODS` (a VM folder named by its guest path) and `ELSEWHERE_METHODS`
-  (another host's folder, which is sent to that host and never opened here); the document's own path is still held
-  to the roots.
+- **Where he finds it.** A ghost "Save As…" in the document's own bar (`Bar` in work/docs/DocumentCanvas.tsx, drawn
+  by `DocSaveControls`, work/files/DocLinks.tsx): beside a thread, and in a Files tab under the tab's 48px header,
+  which draws none of its own (never twice). Also File → Save As… (⇧⌘S; the menu row keeps the old id `save_word`,
+  answered through `useWorkCommands`), the document's More beside a thread, and the ⋯ of a Files tab. Each asks
+  `openSaveAs(itemId)` (work/files/saveAsPort.ts); the document's body draws the sheet for the item asked. Save as Word
+  to… is gone: one way to do one thing.
+- **The sheet** (`SaveAsDialog`, work/files/SaveAs.tsx; its look is docs/DESIGN.md "Save As…"): Name (the stem; the
+  extension is the format's), Format (a menu of `SAVE_AS_FORMATS`, src/shared/work/saveAs.ts, Word first, the one he
+  saved in last chosen), one muted line of what the format drops, counted from the editor as Preview counts it
+  (`docDrops`, told by the open document through `tellDrops`), and Where: the Move to… dialog's folder walk (`Places`
+  and `Folders` of MoveDialog.tsx) with the three folders he saved to last first under Recent (kept in the window's
+  localStorage per workspace), opening in the last one, and New Folder at the trail's end (named in place, then walked
+  into). At the right the document's first page as the host draws its Word file (`work.files.preview` on the
+  document, LibreOffice), small; none for Markdown and none under 620px. The footer: Just a copy (unticked: linked),
+  one line of what Save does ("Saves Plan.docx in General, kept up to date", or "Saves a copy of …"), Cancel and Save.
+- **The formats are the host's own.** Word, OpenDocument, Rich Text and Markdown are the exporter's (`EXPORT_FORMATS`
+  in formats/exporter.ts; saveAs.test.ts holds the list equal); PDF is the document's Word file drawn by the host's
+  converter (`fileDocumentPdf`, the picture Preview shows for Word), so a linked PDF can be made again with no window
+  open. Export…'s PDF is still TempCode's own print of the pages; Save As…'s is LibreOffice's. The Web page is the
+  window's own and is not offered.
+- **The host** (`work.files.saveAs {workspaceId, source, at, name?, format, link?, place?, computer?, exists?, op}`,
+  asked of the workspace's own host). The same rules as before for whose document it is ("That document is not open in
+  this workspace.") and for the door: a folder of this host as New there (`admitChange` as `make`, so a key needs
+  `approve` where others can open it), a folder of another host of his as his own edit there (`admitOwner`), a thread
+  refused at the wire (`CHANGES`) and here, a read key by its capability. The workspace's folder (`{at: 'place', id:
+  'folder'}`) is its path on this host. The file is then made from the live text:
+  - a file of that name already there is never written over unasked: the answer is `{exists: {name}}` and nothing is
+    written; the window asks "Replace Plan.docx in General?" with Replace and Keep Both (Keep Both holds the focus).
+    Keep Both (`exists: 'keep'`) makes it under a free name read case-blind ("Plan 2.docx"); Replace (`exists:
+    'replace'`) writes over the file by the version read now (a change made since is refused, never written over).
+    Whether it is there: this host's disk by its version, the VM's folder listed case-blind as Windows reads it, another
+    computer by `files.stat` there;
+  - made as before: `makeBytes` here and in this host's VM (`vmMake`), that host's `writeBack` with `into` on another
+    computer, under the operation id (`runOp`: the same press again makes nothing, and links nothing, twice).
+  The answer is `SavedAs`: `{saved: {name, ref, linked}}`. `work.files.saveAsWord` stays on the wire for an older
+  window, as Save As… with Word, Keep Both and no link.
+- **The link** (`work_files_links`, tables.ts): one row a file, by the document's `.tcdoc` path: the format, where the
+  file lies (host, path, VM or not), the name and the folder's name the header says, the version it was last written
+  at, its bytes' sha, the document's live revision written to it (`saved_rev`) and how it stands (`ok`, `waiting`,
+  `changed`, `gone`, `refused`). Only a `.tcdoc` of this host links (its live revision is the Work service's); a LifeOS
+  or Google document saves as a copy. A document may have several links.
+- **Each later edit reaches the file** (`autosaveLinks`, every second from the module's start): the rule of the Word
+  file's autosave (word.ts), reused: the document's live revision (`liveRev`, `/internal/docs/rev`) against the one
+  last written, so Saved is said only of what is on screen; once it has held still for 3 s (`linkTiming.pause`) the
+  host exports the format again and writes it over the file by the version last written: this host's disk and VM
+  through the door as `edit` (`writeBytes`, handle.ts, the editor save's own path), another computer through its
+  `writeBack` (`deliver`, copies.ts). The revision written is the one read before the export, so an edit during it is
+  written next. A document no item shows is looked at every 30 s (an edit from the phone's page). A PDF is written
+  whole.
+- **A change made there stops it.** A version that moved there (a colleague's save in Teams) answers a conflict: the
+  link is `changed` and nothing more is written until his press. A file gone there is `gone`, never made again on its
+  own. A place that does not answer (`unreachable`: the computer asleep, the VPN down) keeps the document as it is,
+  is `waiting`, and is tried again every 30 s (`linkTiming.retry`); any other refusal is `refused` with its sentence.
+- **His presses** (`work.files.linkAct {workspaceId, id, act}`): `unlink` stops it and leaves the file as it is;
+  `retry` writes now; `replace` writes over the file as it is there now (read for its version first); `keep` makes
+  the document again beside it under a free name and links that file instead. A thread is refused; a key needs his
+  own edit there (`admitOwner`: `approve`). `work.files.links {workspaceId, source}` answers the links as `DocLink`s,
+  oldest first, read again by the window on every `work.files` push with `tabs` (`tabs.touch` on each change).
+- **The header** (`DocSaveControls`): the first link as one quiet menu button, the format's glyph and where it stands
+  ("Saved to General 9:12 PM", "Saving to General…", "Not saved to General yet", "Changed in General", "Moved or
+  deleted in General", "Not saved to General"), with "+1" for the others; it takes the foreground only
+  when a link needs him. Its menu holds, for each link: Keep Both and Replace for a Word file changed there, Save Again
+  for another format changed or gone (`replace`, `keep`), Retry for one waiting or refused, then Open, Show in Files
+  and Unlink. A copy made once (Just a copy) is said in one toast with Show; a linked one by the header alone.
+- **The fence.** `saveAs` is in `GUEST_METHODS` and `ELSEWHERE_METHODS`, as `saveAsWord` was.
 
-Not yet: a folder of Google Drive or a LifeOS project (refused in a sentence), and a VM library on another host.
+Not yet: a folder of Google Drive or a LifeOS project (refused in a sentence: their adapters make no bytes in a folder
+that a link could write again by version), a VM library on another host, Reload of a changed Word file into the
+document, and Save As… for sheets and decks (the sheet and its contract are the document's; each kind would hand its
+own formats and exporter).
 
 ## A Word file from another computer
 

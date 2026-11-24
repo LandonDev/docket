@@ -47,7 +47,7 @@ export interface WordRow {
  * The document's live revision as the Work service holds it now (its `/internal/docs/rev`): it moves with every edit
  * he types, while the `.tcdoc` file on disk is written only now and then. Autosave and the header follow it.
  */
-async function liveRev(ctx: WorkCtx, doc: string): Promise<string> {
+export async function liveRev(ctx: WorkCtx, doc: string): Promise<string> {
   const { serviceTarget } = await import('../docs/target')
   const target = { at: 'file' as const, doc, path: doc, source: { at: 'file' as const, host: ctx.host, path: doc } }
   return ((await ctx.service.internal('/internal/docs/rev', serviceTarget(target, false, 'all'))) as { rev: string }).rev

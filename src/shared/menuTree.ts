@@ -112,10 +112,11 @@ export const MENU_TREE: MenuSection[] = [
       cmd('open_file', 'Open File…', undefined, { desktopOnly: true }),
       sep,
       cmd('save_all', 'Save All', 'CmdOrCtrl+S'),
+      // A document's Save As… (work/files/SaveAs.tsx): the id is the Save as Word row's it took over.
+      cmd('save_word', 'Save As…', 'CmdOrCtrl+Shift+S', { workOnly: true }),
       sep,
       cmd('export', 'Export…', 'CmdOrCtrl+Shift+E'),
       { ...cmd('print', 'Print…'), whileEditing: { accelerator: 'CmdOrCtrl+P', from: 'go_to_file' } },
-      cmd('save_word', 'Save as Word to…', undefined, { workOnly: true }),
       sep,
       { ...cmd('close_tab', 'Close Tab', 'CmdOrCtrl+W'), toggle: { show: 'Close Tab', hide: 'Close Pane' } },
       role('close', 'Close Window', 'CmdOrCtrl+Shift+W')

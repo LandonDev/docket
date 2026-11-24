@@ -289,6 +289,22 @@ describe.skipIf(process.platform === 'win32')('the Windows VM changed through it
       expect(changes()).toHaveLength(1)
     })
 
+    it("Save As… from a key that may approve makes the file in a VM library, linked, and writes it again there by the version it made", async () => {
+      const source = { at: 'file', host: HOST, path: join(rig.folder, 'Run of show.tcdoc') }
+      await call('work.files.open', { ref: source })
+      const got = await call<{ saved: { name: string; linked: boolean } }>('work.files.saveAs', { source, at: at(GENERAL), format: 'docx', name: 'Agenda', place: 'General', op: op() }, approver)
+      expect(got.saved).toMatchObject({ name: 'Agenda.docx', linked: true })
+      const made = versionOf(`${GENERAL}\\Agenda.docx`)
+      const [link] = await call<{ id: string; state: string }[]>('work.files.links', { source }, approver)
+      expect(link).toMatchObject({ state: 'saved' })
+      // His Retry writes the document again over the file, by the version the guest answered when it was made.
+      await call('work.files.linkAct', { id: link!.id, act: 'retry' }, approver)
+      expect(changes().at(-1)).toMatchObject({ verb: 'files.write', args: { path: `${GENERAL}\\Agenda.docx`, expect: made } })
+      // A key that may not approve neither saves there nor touches the link.
+      await expect(call('work.files.saveAs', { source, at: at(GENERAL), format: 'docx', op: op() }, phone)).rejects.toThrow('this key may not change it')
+      await expect(call('work.files.linkAct', { id: link!.id, act: 'unlink' }, phone)).rejects.toThrow()
+    })
+
     it('refuses a template and a name NTFS would not take, before the guest is asked', async () => {
       await expect(call('work.files.make', { at: at(GENERAL), kind: 'text', from: at(`${GENERAL}\\Plan.txt`), op: op() })).rejects.toThrow('made blank')
       await expect(call('work.files.make', { at: at(GENERAL), kind: 'folder', name: 'CON', op: op() })).rejects.toThrow('Windows keeps that name for itself.')
@@ -465,6 +481,9 @@ describe.skipIf(process.platform === 'win32')('the Windows VM changed through it
       // outside them, or claimed for another host, is still refused.
       const doc = at(join(rig.folder, 'Run of show.tcdoc'))
       expect(fenced('work.files.saveAsWord', { source: doc, at: at(GENERAL), op: 'op-00001' })).not.toThrow()
+      expect(fenced('work.files.saveAs', { source: doc, at: at(GENERAL), format: 'pdf', op: 'op-00001' })).not.toThrow()
+      expect(fenced('work.files.saveAs', { source: doc, at: at('/Users/him/OneDrive', 'env_mac0000000000000000000'), format: 'docx', op: 'op-00001' })).not.toThrow()
+      expect(fenced('work.files.saveAs', { source: doc, at: at('/etc'), format: 'docx', op: 'op-00001' })).toThrow(FenceError)
       expect(fenced('work.files.saveAsWord', { source: doc, at: at('/Users/him/OneDrive', 'env_mac0000000000000000000'), op: 'op-00001' })).not.toThrow()
       expect(fenced('work.files.saveAsWord', { source: at('/etc/secret.tcdoc'), at: at(GENERAL), op: 'op-00001' })).toThrow(FenceError)
       expect(fenced('work.files.saveAsWord', { source: doc, at: at('/etc'), op: 'op-00001' })).toThrow(FenceError)

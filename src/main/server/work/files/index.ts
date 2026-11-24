@@ -1,6 +1,7 @@
 import { filesPaneWorkspace } from '@shared/work'
 import type { ActKindDef, WorkModule } from '../modules'
 import { copiesLeft, copySaved, retryWaiting, settleCopies } from './copies'
+import { autosaveLinks } from './saveAs'
 import { adoptWordCopies, autosaveWords, wordFollowed, wordImportPlace, wordsLeft } from './word'
 import { closeFilesState, filesHandle, filesState, itemsGone, removeWorkspace } from './handle'
 import { onFileSaved } from './save'
@@ -105,6 +106,16 @@ export const files: WorkModule = {
     // A Word file he chose to save by itself is written once his document has been still for a pause (word.ts).
     const words = setInterval(() => void autosaveWords(ctx).catch((err) => ctx.log(`files: Word autosave failed: ${err instanceof Error ? err.message : String(err)}`)), 1000)
     words.unref?.()
+    // A document's linked files (Save As…) are written again once his typing has paused (saveAs.ts).
+    let linking = false
+    const links = setInterval(() => {
+      if (linking) return
+      linking = true
+      void autosaveLinks(ctx)
+        .catch((err) => ctx.log(`files: a linked file was not written: ${err instanceof Error ? err.message : String(err)}`))
+        .finally(() => (linking = false))
+    }, 1000)
+    links.unref?.()
     const waiting = setInterval(() => {
       try {
         retryWaiting(ctx)
@@ -121,6 +132,7 @@ export const files: WorkModule = {
       clearInterval(daily)
       clearInterval(waiting)
       clearInterval(words)
+      clearInterval(links)
       closeFilesState(ctx.db)
     }
   },

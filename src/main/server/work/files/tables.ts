@@ -85,6 +85,14 @@ export function ensureFilesTables(db: DatabaseSync): void {
   // The document's live revision (the Work service's, never the file's time) last written to the Word file
   // (`saved_rev`), and as it stood when it was made of the file (`base_rev`): word.ts.
   for (const column of ['saved_rev', 'base_rev']) if (!have.has(column)) db.exec(`ALTER TABLE work_files_word ADD COLUMN ${column} TEXT`)
+  // A document's linked files (Save As…, saveAs.ts): where each lies, the format, the version and the document's live
+  // revision last written to it, and how it stands (ok, waiting for its place, changed or gone there, refused).
+  db.exec(`CREATE TABLE IF NOT EXISTS work_files_links (
+    id TEXT PRIMARY KEY, workspace_id TEXT NOT NULL, doc TEXT NOT NULL, format TEXT NOT NULL,
+    host TEXT NOT NULL, path TEXT NOT NULL, vm INTEGER NOT NULL DEFAULT 0, name TEXT NOT NULL, place TEXT NOT NULL, computer TEXT,
+    version TEXT NOT NULL, sha TEXT NOT NULL, saved_rev TEXT, saved_at INTEGER,
+    state TEXT NOT NULL DEFAULT 'ok', changed_at INTEGER, detail TEXT, tried_at INTEGER, made_at INTEGER NOT NULL)`)
+  db.exec(`CREATE INDEX IF NOT EXISTS work_files_links_by_doc ON work_files_links (workspace_id, doc)`)
 }
 
-export const FILES_TABLES = ['work_files_tabs', 'work_files_revs', 'work_files_marks', 'work_files_trash', 'work_files_ops', 'work_files_names', 'work_files_kept', 'work_files_copies', 'work_files_bodies', 'work_files_word'] as const
+export const FILES_TABLES = ['work_files_tabs', 'work_files_revs', 'work_files_marks', 'work_files_trash', 'work_files_ops', 'work_files_names', 'work_files_kept', 'work_files_copies', 'work_files_bodies', 'work_files_word', 'work_files_links'] as const

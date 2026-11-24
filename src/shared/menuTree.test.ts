@@ -88,10 +88,10 @@ describe('menu tree', () => {
       ['Open File…'],
       '—',
       ['Save All', 'Cmd+S'],
+      ['Save As…', 'Shift+Cmd+S'],
       '—',
       ['Export…', 'Shift+Cmd+E'],
       ['Print…'],
-      ['Save as Word to…'],
       '—',
       ['Close Tab', 'Cmd+W'],
       ['Close Window', 'Shift+Cmd+W']
@@ -354,13 +354,15 @@ describe('resolveMenu', () => {
       expect(MENU_COMMANDS.find((c) => c.id === 'print')!.accelerator).toBeUndefined()
     })
 
-    it('Export…, Print… and Save as Word to… sit together in File, are the renderer\'s, and grey as the window says', () => {
+    it('Save As… sits under Save All with ⇧⌘S, Export… and Print… together after it, all the renderer\'s, and grey as the window says', () => {
       const file = MENU_TREE.find((s) => s.label === 'File')!.items
+      const save = file.findIndex((i) => i.kind === 'command' && i.id === 'save_word')
+      expect(file[save - 1]).toMatchObject({ kind: 'command', id: 'save_all' })
+      expect(file[save]).toMatchObject({ label: 'Save As…', accelerator: 'CmdOrCtrl+Shift+S', workOnly: true })
       const at = file.findIndex((i) => i.kind === 'command' && i.id === 'export')
       expect(file[at - 1].kind).toBe('separator')
       expect(file[at + 1]).toMatchObject({ kind: 'command', id: 'print', label: 'Print…' })
-      expect(file[at + 2]).toMatchObject({ kind: 'command', id: 'save_word', label: 'Save as Word to…', workOnly: true })
-      expect(file[at + 3].kind).toBe('separator')
+      expect(file[at + 2].kind).toBe('separator')
       expect(RENDERER_MENU_IDS).toEqual(expect.arrayContaining(['print', 'export', 'save_word']))
       const off = resolveMenu(MENU_TREE, { open: [], disabled: ['print', 'export', 'save_word'], checked: {} })
       expect(find(off, 'print').enabled).toBe(false)
