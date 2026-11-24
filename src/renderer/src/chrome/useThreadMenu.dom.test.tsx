@@ -23,7 +23,7 @@ vi.mock("../components/ui/toaster", async (original) => ({
 vi.mock("../lib/tcserver/store", () => ({
   sessionStore: { get: (id: string) => sessions.get(id), metaOf: () => null, subscribe: () => () => {}, isDraft: () => false },
 }));
-vi.mock("../lib/tcserver/workspaces", () => ({ useProjects: () => [{ id: "p1", environmentId: "local", cwd: "/p", name: "P" }] }));
+vi.mock("../lib/tcserver/workspaces", () => ({ useProjects: () => [{ id: "p1", environmentId: "local", cwd: "/p", name: "P" }], useWorkspaces: () => [] }));
 vi.mock("../lib/devServers", () => ({ useDevServable: () => dev.servable, useDevRunning: () => false }));
 vi.mock("../lib/devPane", () => ({ devPane: { toggle: dev.toggle }, useDevPane: (pick: (s: { open: boolean }) => boolean) => pick({ open: dev.open }) }));
 vi.mock("../lib/tcserver/commands", () => commands);

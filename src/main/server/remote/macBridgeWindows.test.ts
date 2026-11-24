@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 import { macDenied } from './macBridge'
 import { alwaysAsks, coversHome, hostPath, programOf, runOffer } from './macBridgeRules'
 import { writeDenied } from './macBridgeWrite'
+import { lowerCommand } from '../childPriority'
 import { ptySpawnerOf } from './macJobs'
 import { scrubbedEnv, shellCall, signalTree } from './macRunner'
 
@@ -226,7 +227,9 @@ describe('what the review of milestone 41 found', () => {
       child.once('exit', () => (row.exited = true))
     })
     spawner({ file: 'cmd.exe', args: ['/d', '/s', '/c', '"dir /b"'], cwd: 'C:\\', env: {}, options: { windowsVerbatimArguments: true } })
-    expect(seenArgs).toBe('/d /s /c "dir /b"')
+    // On Windows the line is cmd's own (childPriority.test.ts); a test run elsewhere sees this host's nice prefix before it.
+    expect(seenArgs).toBe(lowerCommand('job', 'cmd.exe', ['/d', '/s', '/c', '"dir /b"']).args.join(' '))
+    expect(seenArgs).toMatch(/\/d \/s \/c "dir \/b"$/)
     expect(adopted).toEqual([{ pid: 4242, exited: false }])
     for (const cb of exits) cb()
     expect(adopted[0].exited).toBe(true)
