@@ -279,8 +279,8 @@ export interface WorkCtx {
     /** `title` names the thread, and no model is asked for one. */
     start(o: { workspaceId: string; projectId?: string; text: string; model?: string; routineRunId?: string; about?: ContextChip; title?: string }): Promise<string>
     resume(sessionId: string, notice: string): Promise<void>
-    /** whether the owner typed this quote in the thread */
-    ownerSaid(sessionId: string, quote: string): boolean
+    /** whether the owner typed this quote in the thread; with `about`, in a message that also names one of those (work/threads.ts) */
+    ownerSaid(sessionId: string, quote: string, about?: readonly string[]): boolean
     /** whether the thread is this host's and nobody has written in it yet: no message, so no turn */
     fresh(sessionId: string): boolean
     /**

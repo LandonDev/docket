@@ -74,16 +74,35 @@ export async function lifeosRow(ctx: WorkCtx, t: DocTarget): Promise<LifeosDocRo
 /**
  * Whether a document is, or was made from, a file others can open: a source
  * `sharedOf` says is shared (a Teams or OneDrive library, the cloud folder,
- * another host, the Windows VM), or the `.tcdoc` the importer wrote under
+ * another host, the Windows VM), the `.tcdoc` the importer wrote under
  * `work-files/imports` for a file in a library (it writes there for no
- * other). An agent only suggests on such a document, and what is made of it
- * (a converted copy, a preview's render) never leaves this host.
+ * other), or the document kept in the workspace's own folder for a Word file
+ * of another computer (files/word.ts): that Word file is a library's, and
+ * Save as Word and the autosave carry this document's live text to it. An
+ * agent only suggests on such a document, and what is made of it (a
+ * converted copy, a preview's render) never leaves this host.
  */
 export function madeFromShared(ctx: Pick<WorkCtx, 'db' | 'host' | 'dataDir'>, source: CanvasSource): boolean {
   if (sharedOf(ctx, source)) return true
   const path = canvasSourcePath(source)
   if (!path) return false
-  return isInside(path, importsRoot(ctx.dataDir))
+  return isInside(path, importsRoot(ctx.dataDir)) || keptForWord(ctx, path)
+}
+
+/**
+ * Whether a Word file's record names this `.tcdoc` as its kept document (`work_files_word.doc`), by its real path.
+ * Read here by name, as files/moved.ts reads the docs tables; a database without the table (a test's) keeps none.
+ */
+function keptForWord(ctx: Pick<WorkCtx, 'db'>, path: string): boolean {
+  if (!ctx.db || !path.toLowerCase().endsWith('.tcdoc')) return false
+  if (!(ctx.db.prepare(`SELECT count(*) AS n FROM pragma_table_info('work_files_word')`).get() as { n: number }).n) return false
+  const docs = ctx.db.prepare(`SELECT doc FROM work_files_word WHERE doc IS NOT NULL`).all() as { doc: string }[]
+  // By name first (a Windows disk ignores its case), so a workspace's many records cost no real path each.
+  const name = basename(path).toLowerCase()
+  const near = docs.filter((r) => basename(r.doc).toLowerCase() === name)
+  if (!near.length) return false
+  const at = canonicalPath(path)
+  return near.some((r) => r.doc === path || canonicalPath(r.doc) === at)
 }
 
 /** Whether anyone but the owner can open it: its LifeOS row is shared (a guest link), or the file lies where others reach it. */

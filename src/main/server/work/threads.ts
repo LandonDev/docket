@@ -89,11 +89,21 @@ export function typedWords(text: string): string {
   return kept.join('\n')
 }
 
-/** Whether the owner typed `quote` in the thread: found whole in one of the owner's messages, letter case and spacing aside. */
-export function ownerSaid(words: OwnerWords, sessionId: string, quote: string): boolean {
+/** The shortest name of a thing that binds a message to it: a shorter one is in too many messages to say which thing was meant. */
+export const OWNER_NAME_MIN = 3
+
+/**
+ * Whether the owner typed `quote` in the thread: found whole in one of the owner's messages, letter case and spacing
+ * aside. With `about` (a document's title, path or id), the same message must also name one of them, typed or in the
+ * head of a chip Ask put in it (a selection's chip names its document): words he wrote about one document never
+ * stand for a change to another.
+ */
+export function ownerSaid(words: OwnerWords, sessionId: string, quote: string, about?: readonly string[]): boolean {
   const want = plain(quote)
   if (want.length < OWNER_QUOTE_MIN) return false
-  return ownerMessages(words, sessionId).some((text) => plain(typedWords(text)).includes(want))
+  const names = about?.map(plain).filter((name) => name.length >= OWNER_NAME_MIN)
+  if (names && !names.length) return false
+  return ownerMessages(words, sessionId).some((text) => plain(typedWords(text)).includes(want) && (!names || names.some((name) => plain(text).includes(name))))
 }
 
 export const threadsPart: CtxPart<'threads'> = (ctx, deps) => {
@@ -147,7 +157,7 @@ export const threadsPart: CtxPart<'threads'> = (ctx, deps) => {
         // The app's own line, delivered as a report is: never a row that reads as the owner's message.
         registry.deliverAgentReport(sessionId, { agentId: 'work', title: 'Work', status: 'notice', text: notice })
       },
-      ownerSaid: (sessionId, quote) => ownerSaid(words, sessionId, quote),
+      ownerSaid: (sessionId, quote, about) => ownerSaid(words, sessionId, quote, about),
       fresh: (sessionId) => !!registry.get(sessionId) && !registry.hasUserText(sessionId),
       async rearm(sessionId) {
         if (registry.get(sessionId) && !registry.hasUserText(sessionId)) await registry.restart(sessionId)

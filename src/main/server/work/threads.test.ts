@@ -184,6 +184,20 @@ describe('ctx.threads.ownerSaid: a quote the owner typed', () => {
     expect(said('Please approve the overtime for the build crew')).toBe(false)
   })
 
+  it('with what it is about, only in a message that also names it: typed, or in the head of a chip Ask put in', async () => {
+    const purdue = await workWorkspace('purdue')
+    const thread = await registry.startWith({ threadType: 'chat', workspaceId: purdue }, 'In the run of show, move the keynote to 2:00 PM please.', { by: { kind: 'owner' } })
+    await settle(thread.id)
+    await registry.send(thread.id, 'About this selection: “Doors at 6”, Budget (LifeOS docs d7)\n> Doors at 6\n\nchange doors to 6:30 PM for everyone', { by: { kind: 'owner' } })
+    const said = (quote: string, about: string[]): boolean => work.ctx.threads.ownerSaid(thread.id, quote, about)
+    expect(said('move the keynote to 2:00 PM', ['Run of show', '/w/Run of show.tcdoc'])).toBe(true)
+    expect(said('move the keynote to 2:00 PM', ['Budget', 'd7'])).toBe(false)
+    expect(said('change doors to 6:30 PM for everyone', ['Budget'])).toBe(true)
+    expect(said('change doors to 6:30 PM for everyone', ['Run of show'])).toBe(false)
+    // a name too short to say which document was meant binds nothing
+    expect(said('move the keynote to 2:00 PM', ['Ru'])).toBe(false)
+  })
+
   it("a subagent's first message is its parent's writing; the owner's words above it, and his own into it, count", async () => {
     const purdue = await workWorkspace('purdue')
     const parent = await registry.startWith({ threadType: 'chat', workspaceId: purdue }, 'Update the shared roster with the two new hires.', { by: { kind: 'owner' } })

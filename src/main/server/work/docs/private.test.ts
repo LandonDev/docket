@@ -1,11 +1,11 @@
-import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs'
 import { request } from 'node:http'
 import { homedir, tmpdir } from 'node:os'
 import { createRequire } from 'node:module'
 import { dirname, join } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
 import { strFromU8, unzipSync } from 'fflate'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { createCollaborationClient, type CollaborationClient } from 'work-kit/collab'
 import { createCollabSigner, fileDocName, generateCollabKeys, TEMPCODE_COLLAB_AUDIENCE, type CollabSigner } from 'work-kit/collab-server'
 import * as Y from 'yjs'
@@ -14,6 +14,9 @@ import type { DocOpen } from '@shared/contract-work-docs'
 import type { ExportAnswer, ImportAnswer, PreviewAnswer } from '@shared/contract-work-formats'
 import type { Caller, ToolCtx, WorkCtx } from '../modules'
 import { formats } from '../formats/index'
+import { closeFilesState } from '../files/handle'
+import { ensureFilesTables } from '../files/tables'
+import { autosaveWords } from '../files/word'
 import { setCloudDir } from '../office/files/library'
 import { servicePaths } from '../service/config'
 import { startFakeConvex, type FakeConvex } from '../service/fakeConvex'
@@ -21,9 +24,21 @@ import { startWorkService, type RunningService } from '../service/serve'
 import type { ServiceConfig } from '../service/wire'
 import { docs } from './index'
 import { stopDocs } from './state'
+import { madeFromShared } from './target'
 import { docTools } from './tools'
 
 /** A conversion job as `ctx.convert` takes and answers it. */
+// The Word file of another computer, as the autosave reads and writes it (files/copies.ts): what is written there is kept.
+const wordFile = vi.hoisted(() => ({ sent: [] as Buffer[] }))
+vi.mock('../files/copies', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../files/copies')>()),
+  freshBytes: async () => ({ data: Buffer.from('word bytes'), version: `v${wordFile.sent.length}` }),
+  deliver: async (_ctx: unknown, _r: unknown, data: Buffer) => {
+    wordFile.sent.push(data)
+    return { version: `v${wordFile.sent.length}` }
+  }
+}))
+
 type Job = { from: string; to: string; input: string; shared?: boolean; output: string }
 
 /*
@@ -41,7 +56,11 @@ const open: { dirs: string[]; services: RunningService[]; convex: FakeConvex[]; 
 afterEach(async () => {
   setCloudDir(() => join(homedir(), 'Library', 'CloudStorage'))
   await Promise.all(open.clients.splice(0).map((c) => c.destroy()))
-  for (const ctx of open.ctxs.splice(0)) stopDocs(ctx)
+  for (const ctx of open.ctxs.splice(0)) {
+    stopDocs(ctx)
+    closeFilesState(ctx.db)
+  }
+  wordFile.sent.length = 0
   await Promise.all(open.services.splice(0).map((s) => s.stop().catch(() => {})))
   await Promise.all(open.convex.splice(0).map((c) => c.close()))
   for (const d of open.dirs.splice(0)) rmSync(d, { recursive: true, force: true })
@@ -109,7 +128,7 @@ async function rig(o: { ownerSaid?: string[]; routineRunId?: string } = {}) {
   open.services.push(service)
   const db = new DatabaseSync(':memory:')
   db.exec('CREATE TABLE sessions (id TEXT PRIMARY KEY, title TEXT NOT NULL)')
-  db.exec('CREATE TABLE workspaces (id TEXT PRIMARY KEY, name TEXT NOT NULL, path TEXT NOT NULL)')
+  db.exec('CREATE TABLE workspaces (id TEXT PRIMARY KEY, name TEXT NOT NULL, path TEXT NOT NULL, kind TEXT, sector TEXT)')
   db.prepare('INSERT INTO sessions (id, title) VALUES (?, ?)').run('t1', 'Northside PT kickoff')
   docs.ensure(db)
   const converted: Job[] = []
@@ -124,9 +143,10 @@ async function rig(o: { ownerSaid?: string[]; routineRunId?: string } = {}) {
     canvas: {
       paneOf: (id: string) => id,
       get: (id: string) => (id === 'i0' ? { id: 'i0', sessionId: 't1', kind: 'document', source: null } : null),
-      replace: () => ({ id: 'i9' })
+      replace: () => ({ id: 'i9' }),
+      onReplaced: () => () => {}
     },
-    threads: { ownerSaid: (_: string, quote: string) => (o.ownerSaid ?? []).some((said) => said.includes(quote)) },
+    threads: { ownerSaid: (_: string, quote: string, about?: readonly string[]) => (o.ownerSaid ?? []).some((said) => said.includes(quote) && (!about || about.some((name) => said.toLowerCase().includes(name.toLowerCase())))) },
     lifeos: { connected: () => false, owner: () => ({ query: async () => null, mutation: async () => null }) },
     service: { internal: (route: string, body: unknown) => post(config.socketPath, route, body), url: (route: string) => `ws://127.0.0.1:${service.port}${route}` },
     // LibreOffice stands in: every Word file handed to it is kept, and it hands back bytes of its own.
@@ -169,7 +189,7 @@ async function rig(o: { ownerSaid?: string[]; routineRunId?: string } = {}) {
     return client
   }
   const privateDir = join(config.dataDir, 'private-branches')
-  return { dir, work, library, ctx, tool, ask, call, make, text, branches, second, service, converted, docxIn, privateDir }
+  return { dir, work, library, db, ctx, tool, ask, call, make, text, branches, second, service, converted, docxIn, privateDir }
 }
 
 const stateText = (c: CollaborationClient) => Buffer.from(Y.encodeStateAsUpdate(c.document)).toString('latin1')
@@ -227,7 +247,7 @@ describe('a .tcdoc others can open', () => {
   })
 
   it('asked in his own words, the change is written at once', async () => {
-    const r = await rig({ ownerSaid: [`Add a line: ${SUGGESTED} with finance`] })
+    const r = await rig({ ownerSaid: [`In the run of show, add a line: ${SUGGESTED} with finance`] })
     const { path } = await r.make(join(r.library, 'Run of show.tcdoc'))
     const said = await r.tool('doc_write', { file: path, markdown: AFTER, because: 'asked', quote: `${SUGGESTED} with finance` })
     expect(said).toEqual({ text: 'Wrote 1 section.', error: false })
@@ -245,6 +265,57 @@ describe('a .tcdoc others can open', () => {
     expect(said.text).toMatch(/A routine writes to what others share only under a grant/)
     expect(await r.text(shared.path)).not.toContain(SUGGESTED)
     expect(await r.branches(shared.path)).toHaveLength(1)
+  })
+})
+
+describe("the document kept for a Word file of another computer", () => {
+  /** A Teams Word file opened in a Files tab: its document in the workspace's own folder, the record naming it (files/word.ts), saved by itself. */
+  async function kept(r: Awaited<ReturnType<typeof rig>>) {
+    ensureFilesTables(r.db)
+    r.db.prepare(`INSERT INTO workspaces (id, name, path, kind, sector) VALUES ('ws1', 'RecWell', ?, 'work', 'purdue')`).run(r.work)
+    const source = await r.make(join(r.work, 'Plan.tcdoc'))
+    r.db
+      .prepare(`INSERT INTO work_files_word (workspace_id, host, path, vm, name, version, sha, doc, doc_at, saved_at, saved_doc_at, at, auto) VALUES ('ws1', 'env_mac', '/Teams/General/Plan.docx', 0, 'Plan.docx', 'v0', 'sha', ?, ?, NULL, NULL, ?, 1)`)
+      .run(source.path, Math.round(statSync(source.path).mtimeMs), Date.now())
+    return source
+  }
+  /** The autosave, run as if the document had been still for its pause. */
+  const autosave = async (r: Awaited<ReturnType<typeof rig>>) => {
+    await r.service.collab.flush()
+    await autosaveWords(r.ctx, Date.now() + 10_000)
+  }
+  const sentText = (): string[] => wordFile.sent.map((data) => docxXml(new Uint8Array(data)))
+
+  it('is shared to the window and the tools, though it lies in his own folder', async () => {
+    const r = await rig()
+    const source = await kept(r)
+    expect(await r.ask<DocOpen>('docs', 'work.docs.open', { source })).toMatchObject({ shared: true, mode: 'suggests' })
+    expect((await r.tool('doc_comment', { file: source.path, quote: 'Shadow the front desk', body: 'Why?' })).error).toBe(true)
+    // By its real path: a link to the folder names the same document; another document there is his own.
+    symlinkSync(r.work, join(r.dir, 'Work link'))
+    expect(madeFromShared(r.ctx, { at: 'file', host: 'env_box', path: join(r.dir, 'Work link', 'Plan.tcdoc') })).toBe(true)
+    expect(madeFromShared(r.ctx, { at: 'file', host: 'env_box', path: join(r.work, 'Mine.tcdoc') })).toBe(false)
+  })
+
+  it("an agent's own write and format wait as suggestions, the autosave carries none of them, and only his accept reaches the Word file", async () => {
+    const r = await rig()
+    const source = await kept(r)
+    const wrote = await r.tool('doc_write', { file: source.path, markdown: AFTER, because: 'own' })
+    expect(wrote.text).toMatch(/others share this document/)
+    const formatted = await r.tool('doc_format', { file: source.path, on: { quote: 'Shadow the front desk' }, run: { bold: true }, because: 'own' })
+    expect(formatted.text).toMatch(/^Suggested formatting/)
+    expect(await r.text(source.path)).not.toContain(SUGGESTED)
+    await autosave(r)
+    // His own edit goes by itself; what the agent suggested stays out of it.
+    await r.service.collab.writeMarkdown(fileDocName(source.path), 'owner', md(BEFORE, 'Bring the keys'), { path: source.path })
+    await autosave(r)
+    expect(sentText().some((xml) => xml.includes('Bring the keys'))).toBe(true)
+    for (const xml of sentText()) expect(xml).not.toContain(SUGGESTED)
+    // His accept is his own edit: the next autosave carries it.
+    const b = (await r.branches(source.path)).find((x) => x.diff.rows.length && x.authors[0] === 'agent:env_box:t1')!
+    await r.call('/internal/history/decide', { file: source.path, branchId: b.id, which: 'all', accept: true, fence: { sectors: 'all' } })
+    await autosave(r)
+    expect(sentText().at(-1)).toContain(SUGGESTED)
   })
 })
 
