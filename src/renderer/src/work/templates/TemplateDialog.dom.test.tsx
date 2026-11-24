@@ -112,6 +112,8 @@ describe("New from a template", () => {
     const fields = within(dialog).getAllByRole("textbox");
     expect(fields.map((f) => dialog.querySelector(`label[for="${f.id}"]`)!.textContent)).toEqual(["Home", "Away", "Site"]);
     expect(document.activeElement).toBe(fields[0]);
+    // A value takes no more than the wire carries.
+    expect(fields.map((f) => f.getAttribute("maxlength"))).toEqual(["2000", "2000", "2000"]);
     const create = within(dialog).getByRole("button", { name: "Create" });
     expect(create.hasAttribute("disabled")).toBe(false);
     // The swap is a fade of the arriving step, and none under reduced motion.

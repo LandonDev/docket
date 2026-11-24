@@ -16,7 +16,9 @@ import { makeZip, partText, readZip, writeZip } from '../zip'
  * `slides_new` makes, with one field then split over three runs the way
  * PowerPoint leaves a typed `{{Client}}`. `link.pptx` is not made here: it
  * was written once with python-pptx (a text box of three paragraphs, two
- * runs with links, `{{Client}}` beside one), for the fill's link test.
+ * runs with links, `{{Client}}` beside one), for the fill's link test;
+ * `cell-link.pptx` the same way (a 2×2 table, a cell with `{{Client}}`
+ * then a linked run).
  * Dummy names only.
  */
 

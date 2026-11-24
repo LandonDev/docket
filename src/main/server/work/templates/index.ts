@@ -4,9 +4,8 @@ import { TemplatesRequestSchemas } from '@shared/contract-work-templates'
 import { handled, NOT_HANDLED, type Handled } from '@shared/work'
 import type { Caller, WorkCtx, WorkModule } from '../modules'
 import { makeFromShelf } from './make'
-import { OUT_OF_REACH } from './place'
 import { fieldsOfSource, moveTemplate, removeTemplate, renameTemplate, saveTemplate, unhideTemplates } from './save'
-import { jobDir, listTemplates, reachesFile, workspaceOf } from './shelf'
+import { jobDir, listTemplates, reachesFile, reachWorkspace } from './shelf'
 import { ensureTemplatesTables, TemplatesStore } from './store'
 import { templateTools } from './tools'
 
@@ -24,9 +23,7 @@ const PARAMS = new Map(TemplatesRequestSchemas.map((s) => [s.shape.method.value 
 const params = <M extends Method>(req: ClientRequest, method: M): Extract<z.infer<(typeof TemplatesRequestSchemas)[number]>, { method: M }>['params'] => PARAMS.get(method)!.parse((req as { params?: unknown }).params ?? {}) as never
 
 /** A remote key reads a shelf only of a workspace whose folder it may reach: the answer names files there. */
-function reach(ctx: WorkCtx, by: Caller, workspaceId: string): void {
-  if (by.kind === 'remote' && !by.peer && !ctx.reaches(by, workspaceOf(ctx, workspaceId).path)) throw new Error(OUT_OF_REACH)
-}
+const reach = (ctx: WorkCtx, by: Caller, workspaceId: string): void => void reachWorkspace(ctx, by, workspaceId)
 
 export async function templatesHandle(req: ClientRequest, ctx: WorkCtx, by: Caller, signal?: AbortSignal): Promise<Handled> {
   switch (req.method as string) {

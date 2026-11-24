@@ -1,16 +1,18 @@
 import { existsSync, mkdirSync, readdirSync, symlinkSync } from 'node:fs'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import type { ToolCtx } from '../modules'
+import { handled } from '@shared/work'
+import type { ToolCtx, WorkModule } from '../modules'
 import { NEEDS_APPROVE, setThreadsMayWrite } from '../files/policy'
 import { setCloudDir } from '../office/files/library'
 import { makeFromTemplate } from './api'
 import { makeFromShelf } from './make'
 import { SHARED_HELD } from './place'
-import { removeTemplate, saveTemplate } from './save'
-import { listTemplates, NoTemplateError, sharedDir } from './shelf'
+import { moveTemplate, removeTemplate, renameTemplate, saveTemplate, SHELF_UNREAD } from './save'
+import { listTemplates, NoTemplateError, OUT_OF_REACH, sharedDir } from './shelf'
 import { templateTools } from './tools'
-import { docx, HOST, makeRig, phone, thread, window, WS, type Rig } from './testkit'
+import { docx, HOST, makeRig, phone, pptx, thread, window, WS, type Rig } from './testkit'
+import { makeZip } from './zip'
 
 /*
  * The hold and the fence (docs/agents/work-templates.md "Who may write where"): a file made or saved by a thread,
@@ -134,5 +136,79 @@ describe('the shelf reads only inside the job', () => {
     mkdirSync(sharedDir(rig.ctx), { recursive: true })
     symlinkSync(secret, join(sharedDir(rig.ctx), 'Secret.docx'))
     expect(listTemplates(rig.ctx, WS).templates.map((t) => t.name)).not.toContain('Secret')
+  })
+})
+
+describe('a deck whose file others can open', () => {
+  it('is said shared on every job the fill hands the runner, so it never leaves this host', async () => {
+    rig.put(join(cloudJob(), 'Templates', 'Pitch.pptx'), pptx('Pitch for {{Client}}'))
+    await makeFromShelf(rig.ctx, window, { workspaceId: CLOUD_WS, template: 'Pitch', fields: { Client: 'Acme' }, today: '2026-11-23' }, { pillars: () => [] })
+    expect(rig.jobs.map((j) => [j.to, j.shared])).toEqual([['deckinfo', true]])
+  })
+
+  it('leaves the runner to judge a deck of his own', async () => {
+    rig.put(join(rig.folder, 'Templates', 'Pitch.pptx'), pptx('Pitch for {{Client}}'))
+    await makeFromShelf(rig.ctx, window, { workspaceId: WS, template: 'Pitch', fields: { Client: 'Acme' }, today: '2026-11-23' }, { pillars: () => [] })
+    expect(rig.jobs.map((j) => [j.to, j.shared])).toEqual([['deckinfo', undefined]])
+  })
+})
+
+describe('a key, against the paths the shelf itself supplies', () => {
+  /** The job's Templates folder as a link to a private folder outside the key's roots and outside the job. */
+  const linkOut = (): string => {
+    const into = join(rig.outside, 'Private')
+    mkdirSync(into, { recursive: true })
+    symlinkSync(into, join(rig.folder, 'Templates'))
+    return into
+  }
+
+  it('saves nothing through a Templates folder that leads out of its reach', async () => {
+    const into = linkOut()
+    const source = rig.put(join(rig.folder, 'Letter.docx'), docx('{{To}}'))
+    await expect(saveTemplate(rig.ctx, phone, { workspaceId: WS, source: file(source) }, { pillars: () => [] })).rejects.toThrow(OUT_OF_REACH)
+    expect(filesIn(into)).toEqual([])
+  })
+
+  it('and his window saves nothing there either: the shelf would not show it', async () => {
+    const into = linkOut()
+    const source = rig.put(join(rig.folder, 'Letter.docx'), docx('{{To}}'))
+    await expect(saveTemplate(rig.ctx, window, { workspaceId: WS, source: file(source) }, { pillars: () => [] })).rejects.toThrow(SHELF_UNREAD)
+    expect(filesIn(into)).toEqual([])
+  })
+
+  it('moves nothing into such a Templates folder', async () => {
+    const into = linkOut()
+    rig.put(join(sharedDir(rig.ctx), 'Letter.docx'), docx('{{To}}'))
+    await expect(moveTemplate(rig.ctx, phone, WS, 'all:Letter.docx', false)).rejects.toThrow(OUT_OF_REACH)
+    expect(filesIn(into)).toEqual([])
+    expect(filesIn(sharedDir(rig.ctx))).toEqual(['Letter.docx'])
+  })
+
+  it('learns nothing of a shelf outside its fence, not even that a name is missing', async () => {
+    rig.roots = []
+    await expect(makeFromShelf(rig.ctx, phone, { workspaceId: WS, template: 'No such', today: '2026-11-23' }, { pillars: () => [] })).rejects.toThrow(OUT_OF_REACH)
+    await expect(renameTemplate(rig.ctx, phone, WS, 'No such', 'X')).rejects.toThrow(OUT_OF_REACH)
+    await expect(moveTemplate(rig.ctx, phone, WS, 'No such', true)).rejects.toThrow(OUT_OF_REACH)
+  })
+})
+
+describe('a key that makes from a document for all jobs', () => {
+  it('gets it filled: the Word export is the host\'s own read of the entry the make admitted', async () => {
+    rig.put(join(sharedDir(rig.ctx), 'Letter.tcdoc'), makeZip({ 'preview.md': 'Dear {{Client}}' }))
+    const callers: string[] = []
+    // The export's own fence, standing in: a key may not name a file in the host's own data.
+    const formats: WorkModule = {
+      id: 'formats',
+      ensure() {},
+      handle: async (_req, _ctx, by) => {
+        callers.push(by.kind)
+        if (by.kind === 'remote') throw new Error('That is outside what this key may reach.')
+        return handled({ name: 'Letter.docx', data: Buffer.from(docx('Dear {{Client}}')).toString('base64'), warnings: [] })
+      }
+    }
+    const made = await makeFromShelf(rig.ctx, phone, { workspaceId: WS, template: 'all:Letter.tcdoc', fields: { Client: 'Acme' }, today: '2026-11-23' }, { pillars: () => [formats] })
+    expect(callers).toEqual(['local'])
+    expect(made).toMatchObject({ unfilled: [] })
+    expect(made.source).toEqual(file(join(rig.folder, 'Letter - Acme.docx')))
   })
 })

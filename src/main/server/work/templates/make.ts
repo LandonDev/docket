@@ -5,13 +5,14 @@ import { join } from 'node:path'
 import type { FolderRef } from '@shared/work/files'
 import { errorText } from '@shared/work/ids'
 import { dayOf, fieldKey, fieldValues, filledValues, madeTitle, type TemplateForm, type TemplateMade } from '@shared/work/templates'
+import { sharedOf } from '../files/policy'
 import type { Caller, WorkCtx } from '../modules'
 import { fillDeck } from './deckFill'
 import { lookOf, type LookOf } from './look'
 import { fillOffice, isOfficeForm, scanOffice, type OfficeForm } from './ooxml'
 import { OUT_OF_REACH, placeFile, type Pillars } from './place'
 import { exportWord } from './save'
-import { ownerName, reachesFile, resolveTemplate, scratchRoot, tcdocEveryField, type ShelfEntry } from './shelf'
+import { ownerName, reachesFile, reachWorkspace, resolveTemplate, scratchRoot, SHELF_READ, tcdocEveryField, type ShelfEntry } from './shelf'
 
 /**
  * Making a file from a template (docs/agents/work-templates.md "Making a
@@ -46,7 +47,7 @@ export const GONE = (name: string): string => `The file of the template "${name}
  * whole beside the copy and only then takes its place, so a write cut short (a full disk) leaves the copy as it
  * was, never a file cut short that would be placed as made.
  */
-async function fill(ctx: Pick<WorkCtx, 'convert' | 'log'>, entry: ShelfEntry, form: OfficeForm, scratch: string, values: ReadonlyMap<string, string>, today: string, signal?: AbortSignal): Promise<void> {
+async function fill(ctx: Pick<WorkCtx, 'convert' | 'log' | 'db' | 'host' | 'dataDir'>, entry: ShelfEntry, form: OfficeForm, scratch: string, values: ReadonlyMap<string, string>, today: string, signal?: AbortSignal): Promise<void> {
   const out = `${scratch}.filled.${form}`
   try {
     if (form === 'docx' || form === 'xlsx') {
@@ -57,7 +58,7 @@ async function fill(ctx: Pick<WorkCtx, 'convert' | 'log'>, entry: ShelfEntry, fo
       }
     } else {
       // The slides pillar writes the deck: to a second file, which then takes the scratch copy's place.
-      const said = await fillDeck(ctx, scratch, out, values, signal)
+      const said = await fillDeck(ctx, scratch, out, values, signal, sharedOf(ctx, entry.source))
       if (said.filled) await rename(out, scratch)
       for (const w of said.warnings) ctx.log(`templates: ${entry.name}: ${w}`)
     }
@@ -87,7 +88,7 @@ function unfilledOf(form: TemplateForm, scratch: string): string[] {
  * export, so it is filled as every Word file is and the made file is Word. Where the export does not answer it is
  * the plain copy, its fields named in `unfilled`.
  */
-async function scratchOf(ctx: WorkCtx, by: Caller, entry: ShelfEntry, dir: string, deps: MakeDeps): Promise<{ scratch: string; form: TemplateForm }> {
+async function scratchOf(ctx: WorkCtx, entry: ShelfEntry, dir: string, deps: MakeDeps): Promise<{ scratch: string; form: TemplateForm }> {
   const copy = async (form: TemplateForm): Promise<string> => {
     const scratch = join(dir, `template.${form}`)
     try {
@@ -101,7 +102,10 @@ async function scratchOf(ctx: WorkCtx, by: Caller, entry: ShelfEntry, dir: strin
   if (entry.form !== 'tcdoc' || !tcdocEveryField(entry.path).length) return { scratch: await copy(entry.form), form: entry.form }
   const word = join(dir, 'template.docx')
   try {
-    await exportWord(ctx, by, entry.source, word, { ...(deps.pillars ? { pillars: deps.pillars } : {}), ...(deps.signal ? { signal: deps.signal } : {}) })
+    // The host's own read of the one entry this make already admitted for its caller (a key's reach of the workspace,
+    // and of a job's file): a template for all jobs lies in the host's own data, which no key's fence names, and the
+    // export would refuse the key there though the make may copy it. Nothing is written by the export.
+    await exportWord(ctx, SHELF_READ, entry.source, word, { ...(deps.pillars ? { pillars: deps.pillars } : {}), ...(deps.signal ? { signal: deps.signal } : {}) })
     return { scratch: word, form: 'docx' }
   } catch (err) {
     if (deps.signal?.aborted) throw err
@@ -112,10 +116,12 @@ async function scratchOf(ctx: WorkCtx, by: Caller, entry: ShelfEntry, dir: strin
 }
 
 export async function makeFromShelf(ctx: WorkCtx, by: Caller, ask: MakeAsk, deps: MakeDeps = {}): Promise<TemplateMade> {
+  // The workspace's fence before its shelf is read: a key outside it learns no template's name, not even that one is missing.
+  reachWorkspace(ctx, by, ask.workspaceId)
   const { shelf, entry } = resolveTemplate(ctx, ask.workspaceId, ask.template)
   const { workspace } = shelf
   // A key names a template by id, never by path: what it may reach is asked of the folders the make reads and writes.
-  if (by.kind === 'remote' && !by.peer && (!ctx.reaches(by, workspace.path) || (entry.where === 'job' && !reachesFile(ctx, by, entry.path)))) throw new Error(OUT_OF_REACH)
+  if (by.kind === 'remote' && !by.peer && entry.where === 'job' && !reachesFile(ctx, by, entry.path)) throw new Error(OUT_OF_REACH)
   if (!existsSync(entry.path)) throw new Error(GONE(entry.name))
 
   const today = ask.today ?? dayOf((deps.now ?? (() => new Date()))())
@@ -127,7 +133,7 @@ export async function makeFromShelf(ctx: WorkCtx, by: Caller, ask: MakeAsk, deps
   const dir = join(scratchRoot(ctx), randomUUID())
   await mkdir(dir, { recursive: true })
   try {
-    const { scratch, form } = await scratchOf(ctx, by, entry, dir, deps)
+    const { scratch, form } = await scratchOf(ctx, entry, dir, deps)
     if (isOfficeForm(form)) await fill(ctx, entry, form, scratch, values, dateSaid ? '' : today, deps.signal)
     // A job's own look: none yet (look.ts). When there is one, its theme is swapped into the scratch file here.
     void (deps.look ?? lookOf)(ctx, workspace.id)

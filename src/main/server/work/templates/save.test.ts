@@ -1,4 +1,4 @@
-import { existsSync, readdirSync, readFileSync, renameSync } from 'node:fs'
+import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, symlinkSync } from 'node:fs'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import type { ClientRequest } from '@shared/contract'
@@ -6,9 +6,9 @@ import type { CanvasItem } from '@shared/work'
 import { handled } from '@shared/work'
 import type { WorkModule } from '../modules'
 import { OUT_OF_REACH } from './place'
-import { CHANGED, ELSEWHERE, fieldsOfSource, moveTemplate, NOT_A_TEMPLATE, PEER_CONFIRM, removeTemplate, renameTemplate, saveTemplate, STARTER_FIXED, unhideTemplates } from './save'
+import { CHANGED, ELSEWHERE, LINKED, fieldsOfSource, moveTemplate, NOT_A_TEMPLATE, PEER_CONFIRM, removeTemplate, renameTemplate, saveTemplate, STARTER_FIXED, unhideTemplates } from './save'
 import { listTemplates, sharedDir } from './shelf'
-import { docx, HOST, makeRig, OTHER, phone, window, WS, xlsx, type Rig } from './testkit'
+import { docx, HOST, imported, makeRig, OTHER, phone, window, WS, xlsx, type Rig } from './testkit'
 import { makeZip } from './zip'
 
 let rig: Rig
@@ -318,7 +318,7 @@ describe('a name the shelf would never show', () => {
 describe('a Word template and the document made of it', () => {
   const pair = () => {
     rig.put(join(rig.folder, 'Templates', 'Game report.docx'), docx('Old {{Home}}'))
-    rig.put(join(rig.folder, 'Templates', 'Game report.tcdoc'), makeZip({ 'preview.md': 'Edited {{Home}}' }))
+    rig.put(join(rig.folder, 'Templates', 'Game report.tcdoc'), imported('Edited {{Home}}', 'Game report.docx'))
   }
 
   it('are renamed together', async () => {
@@ -355,5 +355,60 @@ describe('a Word template and the document made of it', () => {
     const asked = await removeTemplate(rig.ctx, window, WS, 'Game report', null, { pillars: none })
     expect(await removeTemplate(rig.ctx, window, WS, 'Game report', asked.version!, { pillars: none })).toEqual({})
     expect(shelfFiles()).toEqual([])
+  })
+})
+
+describe('a Word file and a document of one name that were never one', () => {
+  const unrelated = () => {
+    rig.put(join(rig.folder, 'Templates', 'Letter.docx'), docx('Dear {{To}}'))
+    rig.put(join(rig.folder, 'Templates', 'Letter.tcdoc'), makeZip({ 'preview.md': 'His own {{Client}}' }))
+  }
+
+  it('are removed one at a time: the Word file is never in the document\'s delete or Trash', async () => {
+    unrelated()
+    const asked = await removeTemplate(rig.ctx, window, WS, 'job:Letter.tcdoc', null, { pillars: none })
+    expect(await removeTemplate(rig.ctx, window, WS, 'job:Letter.tcdoc', asked.version!, { pillars: none })).toEqual({})
+    expect(shelfFiles()).toEqual(['Letter.docx'])
+    rig.put(join(rig.folder, 'Templates', 'Letter.tcdoc'), makeZip({ 'preview.md': 'His own {{Client}}' }))
+    const seen: ClientRequest[] = []
+    const files: WorkModule = { id: 'files', ensure() {}, handle: async (req) => (req.method === 'work.files.places' ? handled({ places: [{ id: 'folder', can: ['trash'] }] }) : (seen.push(req), handled({ entries: [], refused: [], trashed: ['t1'], op: 'op' }))) }
+    await removeTemplate(rig.ctx, window, WS, 'job:Letter.tcdoc', null, { pillars: () => [files] })
+    expect((seen[0] as { params: { refs: unknown[] } }).params.refs).toEqual([file(join(rig.folder, 'Templates', 'Letter.tcdoc'))])
+  })
+
+  it('are renamed and moved one at a time', async () => {
+    unrelated()
+    await renameTemplate(rig.ctx, window, WS, 'job:Letter.tcdoc', 'Notes')
+    expect(shelfFiles()).toEqual(['Letter.docx', 'Notes.tcdoc'])
+    await moveTemplate(rig.ctx, window, WS, 'job:Letter.docx', true)
+    expect(shelfFiles()).toEqual(['Notes.tcdoc'])
+    expect(readdirSync(sharedDir(rig.ctx))).toEqual(['Letter.docx'])
+  })
+})
+
+describe('a file named with an upper-case extension', () => {
+  it('is renamed and moved, and found under the name it was given', async () => {
+    rig.put(join(rig.folder, 'Templates', 'LETTER.DOCX'), docx('{{To}}'))
+    expect(await renameTemplate(rig.ctx, window, WS, 'job:LETTER.DOCX', 'Memo')).toMatchObject({ id: 'job:Memo.DOCX', name: 'Memo' })
+    expect(await moveTemplate(rig.ctx, window, WS, 'job:Memo.DOCX', true)).toMatchObject({ id: 'all:Memo.DOCX', where: 'all' })
+    expect(readdirSync(sharedDir(rig.ctx))).toEqual(['Memo.DOCX'])
+  })
+})
+
+describe('a template that is a link', () => {
+  it('is not moved to another folder, where a relative link would lead elsewhere or nowhere', async () => {
+    const target = rig.put(join(rig.folder, 'Forms', 'Letter.docx'), docx('{{To}}'))
+    mkdirSync(join(rig.folder, 'Templates'), { recursive: true })
+    symlinkSync(join('..', 'Forms', 'Letter.docx'), join(rig.folder, 'Templates', 'Letter.docx'))
+    await expect(moveTemplate(rig.ctx, window, WS, 'job:Letter.docx', true)).rejects.toThrow(LINKED)
+    expect(readFileSync(join(rig.folder, 'Templates', 'Letter.docx')).equals(readFileSync(target))).toBe(true)
+    expect(existsSync(sharedDir(rig.ctx)) ? readdirSync(sharedDir(rig.ctx)) : []).toEqual([])
+  })
+
+  it('is still renamed beside where it is: it leads where it led', async () => {
+    rig.put(join(rig.folder, 'Forms', 'Letter.docx'), docx('{{To}}'))
+    mkdirSync(join(rig.folder, 'Templates'), { recursive: true })
+    symlinkSync(join('..', 'Forms', 'Letter.docx'), join(rig.folder, 'Templates', 'Letter.docx'))
+    expect(await renameTemplate(rig.ctx, window, WS, 'job:Letter.docx', 'Memo')).toMatchObject({ id: 'job:Memo.docx', fields: ['To'] })
   })
 })

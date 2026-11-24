@@ -9,8 +9,8 @@ import { LIBREOFFICE_CONVERTERS } from '../formats'
 import { convertersOf, JobRunner, type ConvertJob, type ConvertResult } from '../formats/jobs'
 import { SLIDES_CONVERTERS } from '../slides/deck'
 import { deckOps, fillDeck, type DeckRead } from './deckFill'
-import { scanOffice } from './ooxml'
-import { partText, readZip } from './zip'
+import { deckCellRuns, scanOffice } from './ooxml'
+import { makeZip, partText, readZip } from './zip'
 
 /*
  * A deck's fill: the edits it asks of the slides pillar, with a converter
@@ -42,13 +42,45 @@ const DECK: DeckRead = {
 }
 
 describe('deckOps', () => {
-  it('asks one text op for each shape that holds a field with a value, every paragraph of the shape in it', () => {
+  it('asks one text op for each shape read without its runs, every paragraph of the shape in it, and leaves a cell read without its runs', () => {
     expect(deckOps(DECK, VALUES)).toEqual<SlideOp[]>([
       { op: 'text', slide: 256, shape: 2, paragraphs: ['Pitch for Acme & Co'] },
-      { op: 'text', slide: 256, shape: 3, paragraphs: ['Dummy Esports · November 23, 2026', 'Second line', '{{Budget}} stays'] },
-      { op: 'cell', slide: 300, shape: 7, row: 0, col: 1, text: 'Acme & Co' },
-      { op: 'cell', slide: 300, shape: 7, row: 1, col: 1, text: 'By Sam Dummy' }
+      { op: 'text', slide: 256, shape: 3, paragraphs: ['Dummy Esports · November 23, 2026', 'Second line', '{{Budget}} stays'] }
     ])
+  })
+
+  it("fills a table's cell run by run, by its row and column, so a link later in the cell keeps its run", () => {
+    const cellRuns = [[[{ runs: [{ text: 'Item' }] }], [{ runs: [{ text: '{{client}}' }] }, { runs: [{ text: 'Read the report' }] }]]]
+    const deck: DeckRead = { slides: [{ id: 300, shapes: [{ id: 7, text: '', cells: [['Item', '{{client}}\nRead the report']], cellRuns }] }] }
+    expect(deckOps(deck, VALUES)).toEqual<SlideOp[]>([
+      {
+        op: 'runs',
+        slide: 300,
+        shape: 7,
+        row: 0,
+        col: 1,
+        paragraphs: [
+          { from: 0, runs: [{ text: 'Acme & Co', from: [0, 0] }] },
+          { from: 1, runs: [{ text: 'Read the report', from: [1, 0] }] }
+        ]
+      }
+    ])
+  })
+
+  it('leaves an edit the slides pillar would refuse, and sends the rest of the batch', () => {
+    const long = 'x'.repeat(19_990)
+    const deck: DeckRead = {
+      slides: [
+        {
+          id: 1,
+          shapes: [
+            { id: 1, text: `${long}{{Client}}`, paragraphs: [{ runs: [{ text: `${long}{{Client}}` }] }] },
+            { id: 2, text: 'Pitch for {{Client}}', paragraphs: [{ runs: [{ text: 'Pitch for {{Client}}' }] }] }
+          ]
+        }
+      ]
+    }
+    expect(deckOps(deck, VALUES).map((op) => op.op === 'runs' && op.shape)).toEqual([2])
   })
 
   it('asks nothing of a deck whose fields have no value', () => {
@@ -88,6 +120,29 @@ describe('deckOps', () => {
 
   it('leaves a shape whose text was read at the cap, since its end may be cut', () => {
     expect(deckOps({ slides: [{ id: 1, shapes: [{ id: 1, text: `{{X}}${'a'.repeat(20_000)}` }] }] }, fieldValues({ X: 'x' }))).toEqual([])
+  })
+})
+
+describe("a deck's table cells, read in its own XML", () => {
+  const P = 'xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"'
+  const cell = (body: string) => `<a:tc><a:txBody><a:bodyPr/>${body}</a:txBody></a:tc>`
+  const deck = makeZip({
+    'ppt/presentation.xml': `<p:presentation ${P}><p:sldIdLst><p:sldId id="300" r:id="rId9"/></p:sldIdLst></p:presentation>`,
+    'ppt/_rels/presentation.xml.rels': '<Relationships><Relationship Id="rId9" Type="slide" Target="slides/slide4.xml"/></Relationships>',
+    'ppt/slides/slide4.xml': `<p:sld ${P}><p:cSld><p:spTree><p:graphicFrame><p:nvGraphicFramePr><p:cNvPr id="7" name="Table"/></p:nvGraphicFramePr><a:graphic><a:graphicData><a:tbl><a:tr h="1">${cell('<a:p><a:r><a:t>Item</a:t></a:r></a:p>')}${cell('<a:p><a:pPr/><a:r><a:rPr lang="en-US"/><a:t>{{Cli</a:t></a:r><a:r><a:t>ent}}</a:t></a:r></a:p><a:p><a:r><a:rPr><a:hlinkClick r:id="rId2"/></a:rPr><a:t>Read &amp; see</a:t></a:r><a:br/><a:fld id="{1}" type="slidenum"><a:t>4</a:t></a:fld></a:p><a:p/>')}</a:tr></a:tbl></a:graphicData></a:graphic></p:graphicFrame></p:spTree></p:cSld></p:sld>`
+  })
+
+  it('are each paragraph\'s runs, links and fields among them, keyed by the slide and shape ids the read gives', () => {
+    expect(deckCellRuns(deck).get('300/7')).toEqual([
+      [
+        [{ runs: [{ text: 'Item' }] }],
+        [{ runs: [{ text: '{{Cli' }, { text: 'ent}}' }] }, { runs: [{ text: 'Read & see' }, { text: '\n' }, { text: '4' }] }, { runs: [] }]
+      ]
+    ])
+  })
+
+  it('are none for bytes that are no deck', () => {
+    expect(deckCellRuns(new Uint8Array([1, 2, 3])).size).toBe(0)
   })
 })
 
@@ -181,4 +236,16 @@ describe.skipIf(!DATA)('fillDeck on python-pptx', () => {
     const texts = [...slide.matchAll(/<a:t>([^<]*)<\/a:t>/g)].map((m) => m[1])
     expect(texts).toEqual(['Pitch for Acme &amp; Co', 'Read the report', 'Acme &amp; Co site: ', 'link'])
   })
+
+  it("keeps a table cell's link when it fills the field beside it", async () => {
+    // fixtures/cell-link.pptx, made once with python-pptx: a 2×2 table; one cell "{{Client}}" then a linked "Read the report", one "{{Name}}".
+    const input = join(dir, 'cell-link.pptx')
+    copyFileSync(join(dirname(fileURLToPath(import.meta.url)), 'fixtures', 'cell-link.pptx'), input)
+    const output = join(dir, 'cell-link-filled.pptx')
+    expect(await fillDeck({ convert: (job) => runner.convert(job) }, input, output, VALUES)).toEqual({ filled: true, warnings: [] })
+    const slide = partText(readZip(new Uint8Array(readFileSync(output))).find((p) => p.name === 'ppt/slides/slide1.xml')!)
+    expect(slide.match(/<a:hlinkClick\b/g)).toHaveLength(1)
+    expect([...slide.matchAll(/<a:t>([^<]*)<\/a:t>/g)].map((m) => m[1])).toEqual(['Client', 'Acme &amp; Co', 'Read the report', 'Lead', 'Sam Dummy'])
+  })
 })
+

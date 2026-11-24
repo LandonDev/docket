@@ -392,3 +392,66 @@ export function tcdocPreview(bytes: Uint8Array): string | null {
     return null
   }
 }
+
+/** Where a `.tcdoc` came from, as the document kind's import wrote it in the file's sidecar (`sidecar.json`'s `source`); null when it says nothing. */
+export function tcdocSource(bytes: Uint8Array): { name: string; format: string; importedAt: number } | null {
+  try {
+    const part = readZip(bytes).find((p) => p.name === 'sidecar.json')
+    const source = part ? (JSON.parse(partText(part)) as { source?: { name?: unknown; format?: unknown; importedAt?: unknown } }).source : undefined
+    if (!source || typeof source.name !== 'string' || typeof source.format !== 'string' || typeof source.importedAt !== 'number') return null
+    return { name: source.name, format: source.format, importedAt: source.importedAt }
+  } catch {
+    return null
+  }
+}
+
+/** One paragraph of a deck's text as the slides pillar's edit counts it: its runs, links and fields among them, each `a:br` a run of `\n`. */
+export interface DeckParagraph {
+  runs: Array<{ text: string }>
+}
+
+/**
+ * Every table cell's paragraphs in a deck, by `<slide id>/<shape id>`, then row and column, read from the slide
+ * parts as the slides pillar's edit names them (deckScript.ts `runs_in`: a paragraph's `a:r`, `a:br` and `a:fld`, in
+ * order; a cell by its row's `a:tc`). `pptx → deckinfo` gives a cell's text alone; this is what lets a cell be filled
+ * run by run. A deck that cannot be read gives none.
+ */
+export function deckCellRuns(bytes: Uint8Array): Map<string, DeckParagraph[][][]> {
+  const out = new Map<string, DeckParagraph[][][]>()
+  let parts: ZipEntry[]
+  try {
+    parts = readZip(bytes)
+  } catch {
+    return out
+  }
+  const deck = parts.find((p) => p.name === 'ppt/presentation.xml')
+  const rels = parts.find((p) => p.name === 'ppt/_rels/presentation.xml.rels')
+  if (!deck || !rels) return out
+  const target = new Map<string, string>()
+  for (const m of partText(rels).matchAll(/<Relationship\b[^>]*>/g)) {
+    const id = /\bId="([^"]*)"/.exec(m[0])?.[1]
+    const to = /\bTarget="([^"]*)"/.exec(m[0])?.[1]
+    if (id && to) target.set(id, to.startsWith('/') ? to.slice(1) : `ppt/${to}`)
+  }
+  for (const m of partText(deck).matchAll(/<p:sldId\b[^>]*>/g)) {
+    const slideId = /\bid="(\d+)"/.exec(m[0])?.[1]
+    const part = parts.find((p) => p.name === target.get(/\br:id="([^"]*)"/.exec(m[0])?.[1] ?? ''))
+    if (!slideId || !part) continue
+    for (const frame of partText(part).matchAll(/<p:graphicFrame\b[\s\S]*?<\/p:graphicFrame>/g)) {
+      const shapeId = /<p:cNvPr\b[^>]*\bid="(\d+)"/.exec(frame[0])?.[1]
+      const table = /<a:tbl\b[\s\S]*?<\/a:tbl>/.exec(frame[0])?.[0]
+      if (!shapeId || !table) continue
+      const rows = [...table.matchAll(/<a:tr\b[^>]*?(?:\/>|>([\s\S]*?)<\/a:tr>)/g)].map((row) =>
+        [...(row[1] ?? '').matchAll(/<a:tc\b[^>]*?(?:\/>|>([\s\S]*?)<\/a:tc>)/g)].map((cell) =>
+          [...(cell[1] ?? '').matchAll(/<a:p\b[^>]*?(?:\/>|>([\s\S]*?)<\/a:p>)/g)].map((para) => ({
+            runs: [...(para[1] ?? '').matchAll(/<a:(r|fld)\b[^>]*?(?:\/>|>([\s\S]*?)<\/a:\1>)|<a:br\b[^>]*?(?:\/>|>[\s\S]*?<\/a:br>)/g)].map((run) => ({
+              text: run[1] ? [...(run[2] ?? '').matchAll(/<a:t>([^<]*)<\/a:t>/g)].map((t) => unescapeXml(t[1]!)).join('') : '\n'
+            }))
+          }))
+        )
+      )
+      out.set(`${slideId}/${shapeId}`, rows)
+    }
+  }
+  return out
+}

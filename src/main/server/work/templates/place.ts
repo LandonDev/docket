@@ -9,7 +9,7 @@ import { freeName, PLACE, splitName, type FileVerb, type FolderRef } from '@shar
 import type { TemplateForm, TemplateKind } from '@shared/work/templates'
 import { admitWrite, sharedOf } from '../files/policy'
 import { WORK_MODULES, type Caller, type WorkCtx, type WorkModule } from '../modules'
-import type { WorkspaceRow } from './shelf'
+import { OUT_OF_REACH, type WorkspaceRow } from './shelf'
 
 /**
  * Where a file made from a template is put (docs/agents/work-templates.md
@@ -45,7 +45,7 @@ export type Pillars = () => readonly WorkModule[]
 const registry: Pillars = () => WORK_MODULES
 
 export const OWN_FOLDER_ONLY = 'A file from a template is made in this workspace\'s own folder: move it to a shared place in Files.'
-export const OUT_OF_REACH = "That workspace's folder is outside what this key may reach."
+export { OUT_OF_REACH }
 export const SHARED_HELD = 'Others can open that folder (Teams, OneDrive), so a thread cannot put a file there: he can, from the Templates view.'
 
 /** Files' own words for a verb it has not built (files/handle.ts): the one refusal that means "not yet", and not "no". */
@@ -120,6 +120,12 @@ const within = (path: string, dir: string): boolean => {
   return r === '' || (r !== '..' && !r.startsWith(`..${sep}`) && !isAbsolute(r))
 }
 
+/** Whether a remote key could name a folder itself, as written and where it really is: a link may lead it out of the key's roots. */
+export function reachesDir(ctx: Pick<WorkCtx, 'reaches'>, by: Caller, dir: string): boolean {
+  if (by.kind !== 'remote' || by.peer) return true
+  return ctx.reaches(by, dir) && ctx.reaches(by, real(dir))
+}
+
 /** The folder of the workspace a copy goes into; throws, in one sentence, for anywhere else. */
 export function ownTarget(ctx: Pick<WorkCtx, 'host'>, workspace: WorkspaceRow, into?: FolderRef): string {
   const root = real(workspace.path)
@@ -191,7 +197,7 @@ export function admitDirect(ctx: Pick<WorkCtx, 'db' | 'host' | 'dataDir'>, by: C
 /** Copies the scratch file into the workspace's own folder under a free name, never over another file. */
 export async function copyIntoOwn(ctx: PlaceCtx, by: Caller, ask: PlaceAsk): Promise<Placed> {
   const dir = ownTarget(ctx, ask.workspace, ask.into)
-  if (by.kind === 'remote' && !by.peer && !ctx.reaches(by, dir)) throw new Error(OUT_OF_REACH)
+  if (!reachesDir(ctx, by, dir)) throw new Error(OUT_OF_REACH)
   admitDirect(ctx, by, dir, 'make')
   const name = await copyNoReplace(ask.scratch, dir, `${ask.title}.${ask.form}`)
   return { source: { at: 'file', host: ctx.host as HostId, path: join(dir, name) }, title: splitName(name).stem }

@@ -1,8 +1,8 @@
 import { readFileSync, rmSync } from 'node:fs'
-import type { SlideOp } from '@shared/contract-work-slides'
+import { SlideOpSchema, type SlideOp } from '@shared/contract-work-slides'
 import { fieldMatches, fillText } from '@shared/work/templates'
 import type { WorkCtx } from '../modules'
-import { fillRuns } from './ooxml'
+import { deckCellRuns, fillRuns, type DeckParagraph } from './ooxml'
 
 /**
  * A deck's fields, filled by the slides pillar's own edit
@@ -12,14 +12,19 @@ import { fillRuns } from './ooxml'
  * pptxedit` with one `runs` op for each shape that holds a field: every
  * run of the shape is named by where it was read, so each keeps its own
  * look and link, and only the runs a field lay in change their words (as
- * Word's fill does, ooxml.ts `fillRuns`). A shape read without its runs
- * takes a `text` op, which gives a filled paragraph its first run's look;
- * a table's cell, one `cell` op.
+ * Word's fill does, ooxml.ts `fillRuns`). A table's cell takes the same
+ * op, by its row and column, from its runs read in the deck's own XML
+ * (`deckCellRuns`); a cell whose runs cannot be read is left, its fields
+ * named, since the plain cell edit would give each paragraph its first
+ * run's look. A shape read without its runs takes a `text` op. Every edit
+ * is held to the slides pillar's own schema before it is sent: one that
+ * would be refused (a value that makes a run too long) is left, and the
+ * rest of the batch goes in.
  */
 
 /** A deck as `pptx → deckinfo` answers it: only what the fill reads. A line break is a run of its own, `\n`. */
 export interface DeckRead {
-  slides: Array<{ id: number; shapes: Array<{ id: number; text: string; cells?: string[][]; paragraphs?: Array<{ runs: Array<{ text: string }> }> }> }>
+  slides: Array<{ id: number; shapes: Array<{ id: number; text: string; cells?: string[][]; paragraphs?: DeckParagraph[]; cellRuns?: DeckParagraph[][][] }> }>
 }
 
 /** What the slides pillar's read and edit carry at most: a shape past these is left as it is. */
@@ -70,8 +75,11 @@ export function deckOps(deck: DeckRead, values: ReadonlyMap<string, string>): Sl
       if (shape.cells) {
         shape.cells.forEach((row, r) =>
           row.forEach((cell, c) => {
-            // A cell read at the cap may be cut short: writing it back would lose its end.
-            if (cell.length < TEXT_MAX && holds(cell, flat)) ops.push({ op: 'cell', slide: slide.id, shape: shape.id, row: r, col: c, text: fillText(cell, flat) })
+            // A cell read at the cap may be cut short: writing it back would lose its end. One read without its runs is left.
+            if (cell.length >= TEXT_MAX || !holds(cell, flat)) return
+            const runs = shape.cellRuns?.[r]?.[c]
+            const paragraphs = runs ? filledRuns(runs, flat) : null
+            if (paragraphs) ops.push({ op: 'runs', slide: slide.id, shape: shape.id, row: r, col: c, paragraphs })
           })
         )
         continue
@@ -86,7 +94,17 @@ export function deckOps(deck: DeckRead, values: ReadonlyMap<string, string>): Sl
       if (paragraphs.length <= PARAGRAPHS_MAX && paragraphs.every((p) => p.length <= TEXT_MAX)) ops.push({ op: 'text', slide: slide.id, shape: shape.id, paragraphs })
     }
   }
-  return ops
+  // The edit refuses its whole batch for one op past its schema: such an op is left, and its fields stay named.
+  return ops.filter((op) => SlideOpSchema.safeParse(op).success)
+}
+
+/** A deck file's table cells, run by run; none when the file cannot be read, so every cell is left. */
+function cellRunsOf(path: string): ReturnType<typeof deckCellRuns> {
+  try {
+    return deckCellRuns(new Uint8Array(readFileSync(path)))
+  } catch {
+    return new Map()
+  }
 }
 
 /**
@@ -96,15 +114,25 @@ export function deckOps(deck: DeckRead, values: ReadonlyMap<string, string>): Sl
  * go in is left as it was and said in `warnings`; what is still a field
  * afterwards is the caller's to name (`scanOffice`).
  */
-export async function fillDeck(ctx: Pick<WorkCtx, 'convert'>, input: string, output: string, values: ReadonlyMap<string, string>, signal?: AbortSignal): Promise<{ filled: boolean; warnings: string[] }> {
+export async function fillDeck(ctx: Pick<WorkCtx, 'convert'>, input: string, output: string, values: ReadonlyMap<string, string>, signal?: AbortSignal, shared = false): Promise<{ filled: boolean; warnings: string[] }> {
+  // The input is a scratch copy, which says nothing of where its deck came from: a shared source's copy is said shared
+  // on every job, so the runner never carries it to another host (formats/jobs.ts `sharedJob`).
+  const where = shared ? { shared: true } : {}
   const read = `${output}.read.json`
   let deck: DeckRead
   try {
-    await ctx.convert({ from: 'pptx', to: 'deckinfo', input, output: read, ...(signal ? { signal } : {}) })
+    await ctx.convert({ from: 'pptx', to: 'deckinfo', input, output: read, ...where, ...(signal ? { signal } : {}) })
     deck = JSON.parse(readFileSync(read, 'utf8')) as DeckRead
   } finally {
     rmSync(read, { force: true })
   }
+  // A table cell's runs, which the read does not give, from the deck's own XML.
+  const cells = cellRunsOf(input)
+  for (const slide of deck.slides)
+    for (const shape of slide.shapes) {
+      const runs = shape.cells ? cells.get(`${slide.id}/${shape.id}`) : undefined
+      if (runs) shape.cellRuns = runs
+    }
   const ops = deckOps(deck, values)
   if (!ops.length) return { filled: false, warnings: [] }
   const warnings: string[] = []
@@ -115,7 +143,7 @@ export async function fillDeck(ctx: Pick<WorkCtx, 'convert'>, input: string, out
       const last = at + OPS_MAX >= ops.length
       const to = last ? output : `${output}.step${steps.length}.pptx`
       if (!last) steps.push(to)
-      const done = await ctx.convert({ from: 'pptx', to: 'pptxedit', input: from, output: to, options: { ops: ops.slice(at, at + OPS_MAX), strict: false }, ...(signal ? { signal } : {}) })
+      const done = await ctx.convert({ from: 'pptx', to: 'pptxedit', input: from, output: to, options: { ops: ops.slice(at, at + OPS_MAX), strict: false }, ...where, ...(signal ? { signal } : {}) })
       warnings.push(...done.warnings.filter((w) => !w.startsWith('note: ')))
       from = to
     }

@@ -1,5 +1,5 @@
 import { existsSync, readdirSync, readFileSync, realpathSync, statSync } from 'node:fs'
-import { join } from 'node:path'
+import { basename, join } from 'node:path'
 import type { TemplatesList } from '@shared/contract-work-templates'
 import type { HostId } from '@shared/work'
 import { splitName } from '@shared/work/files'
@@ -22,7 +22,7 @@ import {
 import { appRoot } from '../../appRoot'
 import { locate, within } from '../files/policy'
 import type { Caller, WorkCtx } from '../modules'
-import { isOfficeForm, scanOffice, tcdocPreview } from './ooxml'
+import { isOfficeForm, scanOffice, tcdocPreview, tcdocSource } from './ooxml'
 import { TemplatesStore } from './store'
 
 /**
@@ -46,6 +46,7 @@ export interface WorkspaceRow {
 }
 
 export const NO_WORKSPACE = 'That workspace is not a Work workspace on this computer.'
+export const OUT_OF_REACH = "That workspace's folder is outside what this key may reach."
 
 /** The Work workspace of this id on this host. Throws for any other. */
 export function workspaceOf(ctx: Pick<WorkCtx, 'db'>, id: string): WorkspaceRow {
@@ -160,8 +161,11 @@ const realOr = (path: string): string | null => {
     return null
   }
 }
-/** The caller for Files' door on what the shelf may read: his window's row, which asks the ctx nothing but the database and the host. */
-const SHELF_READ: Caller = { kind: 'local', caps: ['read'] }
+/**
+ * The host's own read of a file the shelf already admitted for its caller: his window's row, which Files' door asks
+ * nothing of but the database and the host. Never a caller's own: a key's, a thread's are judged before it is used.
+ */
+export const SHELF_READ: Caller = { kind: 'local', caps: ['read'] }
 
 /**
  * Whether a file of the job's Templates folder lies, by its real path, where Files' door lets the workspace reach:
@@ -176,11 +180,21 @@ function inJob(ctx: ShelfCtx, workspaceId: string, path: string): boolean {
   }
 }
 
+/** Whether the shelf reads a job's Templates folder where it really is: one not made yet is made inside the job. */
+export const jobShelfReads = (ctx: ShelfCtx, workspaceId: string, dir: string): boolean => !existsSync(dir) || inJob(ctx, workspaceId, dir)
+
 /** Whether a file lies, by its real path, inside a folder by its real path: a link out of the app's own folder is no template. */
 const inDir = (dir: string, path: string): boolean => {
   const at = realOr(path)
   const root = realOr(dir)
   return !!at && !!root && within(at, root)
+}
+
+/** A remote key reads or changes a workspace's shelf only where it may reach the workspace's folder. Throws the one refusal. */
+export function reachWorkspace(ctx: Pick<WorkCtx, 'db' | 'reaches'>, by: Caller, workspaceId: string): WorkspaceRow {
+  const workspace = workspaceOf(ctx, workspaceId)
+  if (by.kind === 'remote' && !by.peer && !ctx.reaches(by, workspace.path)) throw new Error(OUT_OF_REACH)
+  return workspace
 }
 
 /**
@@ -215,13 +229,29 @@ function readDir(ctx: ShelfCtx, store: TemplatesStore, where: TemplateWhere, dir
   return withTwins(out).sort(byName)
 }
 
-/** A `.tcdoc` beside a Word file of the same name stands for both (`ShelfEntry.twin`): one tile, the one with his edits. */
+/** Office's file systems keep a time to 2 seconds: a Word file written just before its import may read as just after it. */
+const CLOCK_SLACK_MS = 2_000
+
+/**
+ * Whether a `.tcdoc` was made of this Word file: its sidecar names the file, as a Word file, imported after the file
+ * was last written. A name alone proves nothing: his own document "Letter" beside an unrelated Letter.docx is two.
+ */
+export function madeOf(tcdoc: string, docx: string): boolean {
+  try {
+    const source = tcdocSource(new Uint8Array(readFileSync(tcdoc)))
+    return !!source && source.format === 'docx' && source.name === basename(docx) && statSync(docx).mtimeMs <= source.importedAt + CLOCK_SLACK_MS
+  } catch {
+    return false
+  }
+}
+
+/** A `.tcdoc` beside the Word file it was made of stands for both (`ShelfEntry.twin`): one tile, the one with his edits. Any other two of one name are two tiles. */
 function withTwins(entries: ShelfEntry[]): ShelfEntry[] {
   const docs = new Map(entries.filter((e) => e.form === 'tcdoc').map((e) => [e.name, e]))
   const out: ShelfEntry[] = []
   for (const e of entries) {
     const doc = e.form === 'docx' ? docs.get(e.name) : undefined
-    if (doc) doc.twin = e.path
+    if (doc && madeOf(doc.path, e.path)) doc.twin = e.path
     else out.push(e)
   }
   return out

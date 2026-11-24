@@ -10,7 +10,7 @@ import { GONE, makeFromShelf, type MakeAsk, type MakeDeps } from './make'
 import { paragraphsOf, unescapeXml } from './ooxml'
 import { OUT_OF_REACH } from './place'
 import { scratchRoot } from './shelf'
-import { docx, HOST, makeRig, OTHER, phone, pptx, thread, window, WS, type Rig } from './testkit'
+import { docx, HOST, imported, makeRig, OTHER, phone, pptx, thread, window, WS, type Rig } from './testkit'
 import { makeZip, partText, readZip } from './zip'
 
 let rig: Rig
@@ -99,7 +99,7 @@ describe('a Word template he edited', () => {
   // Edit opened Game report.docx; the document kind kept his edits in Game report.tcdoc beside it.
   const edited = () => {
     rig.put(join(rig.folder, 'Templates', 'Game report.docx'), docx('Old: {{Home}} v {{Away}} at {{Site}}'))
-    rig.put(join(rig.folder, 'Templates', 'Game report.tcdoc'), makeZip({ 'preview.md': 'Edited: {{Home}} v {{Away}} at {{Site}} by {{Name}}' }))
+    rig.put(join(rig.folder, 'Templates', 'Game report.tcdoc'), imported('Edited: {{Home}} v {{Away}} at {{Site}} by {{Name}}', 'Game report.docx'))
   }
   const exported: string[] = []
   const formats: WorkModule = {

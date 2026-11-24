@@ -3,7 +3,7 @@ import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { jobDir, listTemplates, NO_WORKSPACE, NoTemplateError, registerStarterTemplates, resolveTemplate, sharedDir, shelfOf, startersRoot, tcdocFields, workspaceOf } from './shelf'
 import { TemplatesStore } from './store'
-import { docx, makeRig, OTHER, pptx, WS, xlsx, type Rig } from './testkit'
+import { docx, imported, makeRig, OTHER, pptx, WS, xlsx, type Rig } from './testkit'
 import { makeZip } from './zip'
 
 let rig: Rig
@@ -233,9 +233,9 @@ describe('our own document', () => {
 describe('a Word template and the document made of it', () => {
   it('stand as one tile, the document, which asks what his edits ask', () => {
     own('Game report.docx', docx('Old {{Home}}'))
-    own('Game report.tcdoc', makeZip({ 'preview.md': 'Edited {{Home}} v {{Away}} at {{Site}}' }))
+    own('Game report.tcdoc', imported('Edited {{Home}} v {{Away}} at {{Site}}', 'Game report.docx'))
     all('Letter.docx', docx('{{To}}'))
-    all('Letter.tcdoc', makeZip({ 'preview.md': 'Dear {{To}} and {{Cc}}' }))
+    all('Letter.tcdoc', imported('Dear {{To}} and {{Cc}}', 'Letter.docx'))
     const list = listTemplates(rig.ctx, WS).templates
     expect(list.filter((t) => t.name === 'Game report')).toEqual([expect.objectContaining({ id: 'job:Game report.tcdoc', where: 'job', fields: ['Home', 'Away', 'Site'] })])
     expect(list.filter((t) => t.name === 'Letter')).toEqual([expect.objectContaining({ id: 'all:Letter.tcdoc', fields: ['To', 'Cc'] })])
@@ -246,7 +246,24 @@ describe('a Word template and the document made of it', () => {
 
   it('is found by name as the document', () => {
     own('Game report.docx', docx('Old {{Home}}'))
-    own('Game report.tcdoc', makeZip({ 'preview.md': 'Edited {{Home}}' }))
+    own('Game report.tcdoc', imported('Edited {{Home}}', 'Game report.docx'))
     expect(resolveTemplate(rig.ctx, WS, 'Game report').entry.id).toBe('job:Game report.tcdoc')
+  })
+})
+
+describe('a Word file and a document of one name that were never one', () => {
+  it('are two tiles: his own document "Letter" is not the Word file Letter.docx', () => {
+    own('Letter.docx', docx('Dear {{To}}'))
+    own('Letter.tcdoc', makeZip({ 'preview.md': 'His own {{Client}}' }))
+    expect(listTemplates(rig.ctx, WS).templates.filter((t) => t.name === 'Letter').map((t) => t.id).sort()).toEqual(['job:Letter.docx', 'job:Letter.tcdoc'])
+  })
+
+  it('are two tiles when the document was read from another Word file, or from this one before it was written again', () => {
+    own('Memo.docx', docx('{{To}}'))
+    own('Memo.tcdoc', imported('{{To}}', 'Other memo.docx'))
+    own('Note.docx', docx('{{To}}'))
+    own('Note.tcdoc', imported('{{To}}', 'Note.docx', Date.now() - 60_000))
+    expect(ids().filter((id) => /Memo|Note/.test(id)).sort()).toEqual(['job:Memo.docx', 'job:Memo.tcdoc', 'job:Note.docx', 'job:Note.tcdoc'])
+    expect(shelfOf(rig.ctx, WS).entries.some((e) => e.twin)).toBe(false)
   })
 })

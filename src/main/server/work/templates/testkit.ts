@@ -35,6 +35,13 @@ const A = 'xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"'
 /** A deck part with one text shape: enough for the scan, not for PowerPoint. */
 export const pptx = (text: string): Uint8Array => makeZip({ 'ppt/slides/slide1.xml': `<p:sld ${A}><p:sp><p:txBody><a:p><a:r><a:t>${text}</a:t></a:r></a:p></p:txBody></p:sp></p:sld>` })
 
+/**
+ * A `.tcdoc` the document kind made of a Word file, as its import writes it: the markdown preview, and the sidecar's
+ * `source` naming the Word file it was read from and when. `importedAt` defaults to now, after the Word file was written.
+ */
+export const imported = (preview: string, from: string, importedAt = Date.now()): Uint8Array =>
+  makeZip({ 'preview.md': preview, 'sidecar.json': `${JSON.stringify({ source: { name: from, format: 'docx', importedAt } })}\n` })
+
 export interface Rig {
   base: string
   /** the workspace's folder, by its real path */
