@@ -476,6 +476,22 @@ export function packageCsv(path: string, sheet?: string): string {
   return writeCsv(workbook, sheet)
 }
 
+/**
+ * The first formula whose value is not worked out (`unworkedIn`): on `sheet`, or on any sheet as `Sheet!A1` when none
+ * is named. Run in the sheet worker: a whole workbook is imported for it.
+ */
+export function packageUnworked(path: string, sheet?: string): string | null {
+  const { workbook } = importPackage(path)
+  const bytes = (): Uint8Array => new Uint8Array(readFileSync(path))
+  if (sheet !== undefined) return unworkedIn(workbook, bytes, sheet)
+  for (const id of workbook.sheetOrder) {
+    const name = workbook.sheets[id]?.name
+    const cell = name === undefined ? null : unworkedIn(workbook, bytes, name)
+    if (cell) return `${name}!${cell}`
+  }
+  return null
+}
+
 /** Why a sheet is not written out as text, in his words. */
 export const notWorkedOut = (cell: string): string => `The formula in ${cell} has no value worked out yet, so the sheet cannot be written as text.`
 

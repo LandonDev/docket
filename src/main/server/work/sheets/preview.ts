@@ -12,8 +12,7 @@ import { libreOffice } from '../formats/index'
 import type { Converter } from '../formats/jobs'
 import type { WorkCtx } from '../modules'
 import { chartsOf, heldOf, host, sharedPreviews, sharedPreviewsRoot, storeKey, type Held, type Sheets } from './held'
-import { importXlsx } from 'work-kit/sheet/xlsx'
-import { notWorkedOut, unworkedIn } from './jobs'
+import { notWorkedOut } from './jobs'
 import { workbookMap } from './patch/patch'
 import { readText, readZip, writeZip } from './patch/zip'
 import { factsOfPackage, factsOfWorkbook, fitOf, sheetDrops, sheetFor, type BookFacts } from './previewFacts'
@@ -233,6 +232,28 @@ export interface Book {
   store: PreviewStore
   /** where this call's scratch files go: a folder of its own inside the store's, removed after */
   scratch: string
+  /**
+   * An opened Excel file's first formula whose kept value cannot be trusted (`Sheet!A1`, or the cell on `sheet`), or
+   * null: asked of the sheet worker, never imported here (jobs.ts `packageUnworked`). Absent: nothing to ask.
+   */
+  unworked?: (sheet?: string) => Promise<string | null>
+}
+
+/** What a picture drawn from an opened Excel file's kept values says, when one of them cannot be trusted. */
+export const KEPT_VALUES = 'Its formulas show the values the file kept, which may be out of date'
+
+const unworkedSeen = new Map<string, string | null>()
+/** Asks the sheet worker once a content and sheet: the workbook is written to the call's scratch for it. */
+async function unworkedOf(jobs: Sheets['jobs'], scratch: string, bytes: Uint8Array, hash: string, sheet?: string): Promise<string | null> {
+  const key = `${hash}\u0000${sheet ?? ''}`
+  if (unworkedSeen.has(key)) return unworkedSeen.get(key)!
+  mkdirSync(scratch, { recursive: true, mode: 0o700 })
+  const at = join(scratch, `${randomUUID()}.xlsx`)
+  writeFileSync(at, bytes, { mode: 0o600 })
+  const got = await jobs.unworked(at, sheet)
+  unworkedSeen.set(key, got)
+  while (unworkedSeen.size > 64) unworkedSeen.delete(unworkedSeen.keys().next().value!)
+  return got
 }
 
 const facts = new Map<string, BookFacts>()
@@ -291,7 +312,7 @@ export async function bookOf(s: Sheets, item: CanvasItem): Promise<Book> {
       const { rev } = await s.packages.open(held.path)
       const bytes = new Uint8Array(readFileSync(s.packages.fileAt(held.path, rev)))
       const hash = hashOf(bytes)
-      return { ...base, bytes, hash, kind: held.path.toLowerCase().endsWith('.xlsm') ? 'xlsm' : 'xlsx', facts: factsFor(hash, () => factsOfPackage(bytes)), package: true, left: [] }
+      return { ...base, bytes, hash, kind: held.path.toLowerCase().endsWith('.xlsm') ? 'xlsm' : 'xlsx', facts: factsFor(hash, () => factsOfPackage(bytes)), package: true, left: [], unworked: (sheet) => unworkedOf(s.jobs, base.scratch, bytes, hash, sheet) }
     }
     const wb = await workbookOf(ctx, held.ref)
     const made = writeXlsxWhole(wb)
@@ -442,7 +463,7 @@ export async function fileOf(job: Job, format: SheetPreviewFormat, sheet?: strin
     // LibreOffice writes the values an opened Excel file keeps beside its formulas and works none out again: a sheet
     // whose kept values cannot be trusted (none, or the file asks to be calculated on load) is refused, as its Save
     // back and Export are (jobs.ts `packageCsv`), never drawn or written with an empty or an old field.
-    const cell = book.package ? unworkedIn(importXlsx(book.bytes).workbook, () => book.bytes, tab!.name) : null
+    const cell = (await book.unworked?.(tab!.name)) ?? null
     if (cell) throw new Error(notWorkedOut(cell))
     made = await convert(job, book.kind, format === 'csv' ? 'csv' : 'tsv', book.bytes, { filter: textFilter(format === 'csv' ? 44 : 9, at!) })
   }
@@ -541,6 +562,8 @@ export async function previewSheet(s: Sheets, item: CanvasItem, params: PreviewP
     try {
       const { format } = params
       const drops = (extra: (string | undefined)[] = []): string[] => [...new Set([...sheetDrops(format, book.facts, { package: book.package, left: book.left, ...(params.sheet ? { sheet: params.sheet } : {}) }), ...extra.filter((x): x is string => !!x)])]
+      // A picture of the kept values says when one cannot be trusted (CSV and TSV refuse it outright, in `fileOf`).
+      const kept = format === 'csv' || format === 'tsv' ? undefined : await keptWords(book)
       if (format === 'csv' || format === 'tsv') {
         const file = await fileOf(job, format, params.sheet)
         const text = readFileSync(book.store.fileOf(file), 'utf8').replace(/^\uFEFF/, '')
@@ -550,10 +573,10 @@ export async function previewSheet(s: Sheets, item: CanvasItem, params: PreviewP
       if (format === 'html') {
         const file = await fileOf(job, 'html')
         if (file.size > HTML_MAX) throw new Error(`This web page is ${Math.round(file.size / 1024 / 1024)} MB, too large to draw here.`)
-        return { kind: 'html', html: readFileSync(book.store.fileOf(file), 'utf8'), drops: drops() }
+        return { kind: 'html', html: readFileSync(book.store.fileOf(file), 'utf8'), drops: drops([kept]) }
       }
       const meta = await drawPaged(job, format, params.pages)
-      return { kind: 'paged', rev: meta.rev, size: meta.size, pages: meta.pages ?? 1, ...(meta.shown ? { shown: meta.shown } : {}), ...(meta.uncounted ? { uncounted: true as const } : {}), drawnBy: 'libreoffice', drops: drops([meta.note]), ...(meta.note ? { notes: [meta.note] } : {}) }
+      return { kind: 'paged', rev: meta.rev, size: meta.size, pages: meta.pages ?? 1, ...(meta.shown ? { shown: meta.shown } : {}), ...(meta.uncounted ? { uncounted: true as const } : {}), drawnBy: 'libreoffice', drops: drops([meta.note, kept]), ...(meta.note ? { notes: [meta.note] } : {}) }
     } finally {
       rmSync(book.scratch, { recursive: true, force: true })
     }
@@ -570,11 +593,18 @@ export async function exportPreview(s: Sheets, item: CanvasItem, params: { forma
     const book = await bookOf(s, item)
     try {
       const meta = await fileOf({ ctx: s.ctx, book }, params.format, params.sheet)
-      return { rev: meta.rev, size: meta.size, name: meta.name ?? `${book.stem}.${meta.ext}`, drops: sheetDrops(params.format, book.facts, { package: book.package, left: book.left, ...(params.sheet ? { sheet: params.sheet } : {}) }) }
+      // (an opened Excel file's own copy is the file itself: nothing in it was drawn from its kept values)
+      const kept = params.format === 'xlsx' && book.package ? undefined : await keptWords(book)
+      return { rev: meta.rev, size: meta.size, name: meta.name ?? `${book.stem}.${meta.ext}`, drops: [...sheetDrops(params.format, book.facts, { package: book.package, left: book.left, ...(params.sheet ? { sheet: params.sheet } : {}) }), ...(kept ? [kept] : [])] }
     } finally {
       rmSync(book.scratch, { recursive: true, force: true })
     }
   })
+}
+
+/** The words a picture drawn from untrustworthy kept values carries, or undefined. */
+async function keptWords(book: Book): Promise<string | undefined> {
+  return (await book.unworked?.()) ? KEPT_VALUES : undefined
 }
 
 /** `work.sheets.previewRead`: bytes of one kept render, for the sheet the item names alone. */

@@ -9,6 +9,7 @@ import type { ConvertJob, ConvertResult } from '../formats/jobs'
 import { runTool, type Toolchain } from '../formats/tools'
 import type { WorkCtx } from '../modules'
 import type { Sheets } from './held'
+import { packageUnworked } from './jobs'
 import { readText, readZip, writeZip } from './patch/zip'
 import { exportPreview, previewSheet, readSheetPreview, SHEET_PREVIEW_CONVERTERS, withoutBreaksUnderFit } from './preview'
 import { SOFFICE } from './testing'
@@ -51,7 +52,7 @@ async function convert(job: ConvertJob): Promise<ConvertResult> {
 }
 
 const ctx = (): WorkCtx => ({ dataDir: dir, host: 'env_test', convert } as unknown as WorkCtx)
-const sheets = (): Sheets => ({ ctx: ctx(), packages: { open: async () => ({ rev: 0 }), fileAt: (p: string) => p } } as unknown as Sheets)
+const sheets = (): Sheets => ({ ctx: ctx(), packages: { open: async () => ({ rev: 0 }), fileAt: (p: string) => p }, jobs: { unworked: async (path: string, sheet?: string) => packageUnworked(path, sheet) } } as unknown as Sheets)
 const itemOf = (path: string, id: string): CanvasItem => ({ id, sessionId: 'thread1', kind: 'sheet', title: path.split('/').pop()!, source: { at: 'file', host: 'env_test', path } }) as unknown as CanvasItem
 
 /** What one page draws: its size and its content streams, decoded. */

@@ -7,10 +7,12 @@ import type { CanvasItem } from '@shared/work'
 import type { ConvertJob, ConvertResult } from '../formats/jobs'
 import type { WorkCtx } from '../modules'
 import { sharedPreviews, sharedPreviewsRoot, type Sheets } from './held'
+import { packageUnworked } from './jobs'
 import { readText, readZip, writeZip } from './patch/zip'
 import {
   dropSharedPreviewsOf,
   exportPreview,
+  KEPT_VALUES,
   moreThan,
   sweepPreviewScratch,
   pageRangeFilter,
@@ -102,7 +104,10 @@ async function convert(job: ConvertJob): Promise<ConvertResult> {
 }
 
 const ctxOf = (): WorkCtx => ({ dataDir: dir, host: 'env_test', convert } as unknown as WorkCtx)
-const sheetsOf = (): Sheets => ({ ctx: ctxOf(), packages: { open: async () => ({ rev: 3 }), fileAt: (p: string) => p } } as unknown as Sheets)
+/** What the sheet worker was asked of a package's kept values: the import runs there, never in the host's own thread. */
+const asked: { path: string; sheet?: string }[] = []
+const workerJobs = { unworked: async (path: string, sheet?: string) => (asked.push({ path, ...(sheet === undefined ? {} : { sheet }) }), packageUnworked(path, sheet)) }
+const sheetsOf = (): Sheets => ({ ctx: ctxOf(), packages: { open: async () => ({ rev: 3 }), fileAt: (p: string) => p }, jobs: workerJobs } as unknown as Sheets)
 const itemOf = (path: string, host = 'env_test', id = 'item1'): CanvasItem => ({ id, sessionId: 'thread1', kind: 'sheet', title: 'Budget.xlsx', source: { at: 'file', host, path } }) as unknown as CanvasItem
 const book = (name: string): string => {
   const path = join(dir, 'files', name.split('/').pop()!)
@@ -242,7 +247,7 @@ describe('the formats', () => {
       // The PDF is drawn from the file the first job wrote.
       expect(got.kind).toBe('paged')
     }
-    const xls = await previewSheet(sheetsOf(), itemOf(book('tables.xlsx')), { format: 'xls' })
+    const xls = await previewSheet(sheetsOf(), itemOf(settled(book('tables.xlsx'))), { format: 'xls' })
     // tables.xlsx looks a target up with XLOOKUP, which a .xls reads as #NAME?.
     expect(xls.drops).toEqual(['2 tables become plain ranges', '1 formula uses a function Excel 97-2003 does not have'])
   })
@@ -261,13 +266,28 @@ describe('the formats', () => {
   it('draws no CSV or TSV, and exports none, of an opened Excel file whose kept values cannot be trusted', async () => {
     // Council r2 (Sol 11): LibreOffice writes the values the file keeps, and a save with no engine left them from before the edit.
     const path = book('formulas.xlsx')
+    asked.length = 0
     const words = 'The formula in B2 has no value worked out yet, so the sheet cannot be written as text.'
     await expect(previewSheet(sheetsOf(), itemOf(path), { format: 'csv', sheet: 'Calc' })).rejects.toThrow(words)
     await expect(previewSheet(sheetsOf(), itemOf(path), { format: 'tsv', sheet: 'Calc' })).rejects.toThrow(words)
     await expect(exportPreview(sheetsOf(), itemOf(path), { format: 'csv', sheet: 'Calc' })).rejects.toThrow(words)
     expect(jobs).toEqual([])
+    // Council r3 (Opus 1): asked of the sheet worker, once a content and sheet, never imported in the host's own thread.
+    expect(asked.filter((a) => a.sheet === 'Calc')).toHaveLength(1)
     // a sheet of values alone is drawn as it is
     expect(await previewSheet(sheetsOf(), itemOf(path), { format: 'csv', sheet: 'Data' })).toMatchObject({ kind: 'table' })
+  })
+
+  it('says on every drawn picture, and on its export, that the values the file kept may be out of date; an opened Excel file\'s own copy says nothing', async () => {
+    // Council r3 (Sol 9): Print and the other formats drew totals from before an edit as current.
+    const path = book('formulas.xlsx')
+    for (const format of ['pdf', 'xlsx', 'ods', 'xls'] as const) expect((await previewSheet(sheetsOf(), itemOf(path), { format })).drops).toContain(KEPT_VALUES)
+    expect((await previewSheet(sheetsOf(), itemOf(path), { format: 'html' })).drops).toContain(KEPT_VALUES)
+    expect((await exportPreview(sheetsOf(), itemOf(path), { format: 'pdf' })).drops).toContain(KEPT_VALUES)
+    expect((await exportPreview(sheetsOf(), itemOf(path), { format: 'xlsx' })).drops).not.toContain(KEPT_VALUES)
+    // a workbook whose kept values stand says none of it
+    const clean = settled(book('tables.xlsx'))
+    expect((await previewSheet(sheetsOf(), itemOf(clean), { format: 'pdf' })).drops).not.toContain(KEPT_VALUES)
   })
 
   it('draws the web page as its HTML', async () => {

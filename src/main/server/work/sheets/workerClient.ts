@@ -19,6 +19,7 @@ export type WorkerAsk = { id: number } & (
   | { op: 'compare'; from: string; to: string; max: number }
   | { op: 'graft'; original: string; written: string; output: string; ops: StructuralOp[] }
   | { op: 'csv'; path: string; sheet?: string }
+  | { op: 'unworked'; path: string; sheet?: string }
   | { op: 'compose'; ask: ComposeAsk }
   | { op: 'act'; ask: ActAsk }
   | { op: 'rules'; path: string }
@@ -35,6 +36,8 @@ export interface SheetJobs {
   graft(original: string, written: string, output: string, ops: StructuralOp[]): Promise<string[]>
   /** one sheet of a package as CSV */
   csv(path: string, sheet?: string): Promise<string>
+  /** the first formula of a package whose value is not worked out (jobs.ts `packageUnworked`), or null */
+  unworked(path: string, sheet?: string): Promise<string | null>
   /** a format an agent asked for, as the mutations the row's own press would make (compose.ts) */
   compose(ask: ComposeAsk): Promise<SheetMutationJson[]>
   /** a table or a page set-up an agent asked for, made by the grid's own handle on the sheet as it stands (acts.ts) */
@@ -100,6 +103,7 @@ export function workerJobs(fork: () => Child): SheetJobs {
     compare: (from, to, max) => call({ op: 'compare', from, to, max }),
     graft: (original, written, output, ops) => call({ op: 'graft', original, written, output, ops }),
     csv: (path, sheet) => call({ op: 'csv', path, ...(sheet === undefined ? {} : { sheet }) }),
+    unworked: (path, sheet) => call({ op: 'unworked', path, ...(sheet === undefined ? {} : { sheet }) }),
     compose: (ask) => call({ op: 'compose', ask }),
     act: (ask) => call({ op: 'act', ask }),
     rules: (path) => call({ op: 'rules', path }),
@@ -112,7 +116,7 @@ export function workerJobs(fork: () => Child): SheetJobs {
 
 /** The same jobs in this process: for tests, and for a host that has no utility processes. */
 export async function localJobs(): Promise<SheetJobs> {
-  const { comparePackages, graftPackage, importPackage, inspect, packageCsv, packageRules, readWorkbookRange, savePackage } = await import('./jobs')
+  const { comparePackages, graftPackage, importPackage, inspect, packageCsv, packageRules, packageUnworked, readWorkbookRange, savePackage } = await import('./jobs')
   const { formatMutations } = await import('./compose')
   const { colName } = await import('./a1')
   const { writeFileSync } = await import('node:fs')
@@ -127,6 +131,7 @@ export async function localJobs(): Promise<SheetJobs> {
     compare: async (from, to, max) => comparePackages(from, to, max),
     graft: async (original, written, output, ops) => graftPackage(original, written, output, ops),
     csv: async (path, sheet) => packageCsv(path, sheet),
+    unworked: async (path, sheet) => packageUnworked(path, sheet),
     compose: async (ask) => formatMutations(ask),
     act: async (ask) => (await import('./acts')).runAct(ask),
     rules: async (path) => packageRules(path),
