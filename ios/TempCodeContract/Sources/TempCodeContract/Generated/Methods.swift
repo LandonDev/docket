@@ -4543,12 +4543,14 @@ public enum Methods {
             public let branchId: String
             public let which: Which
             public let accept: Bool
+            public let editedAt: Int?
 
-            public init(source: CanvasSource, branchId: String, which: Which, accept: Bool) {
+            public init(source: CanvasSource, branchId: String, which: Which, accept: Bool, editedAt: Int? = nil) {
                 self.source = source
                 self.branchId = branchId
                 self.which = which
                 self.accept = accept
+                self.editedAt = editedAt
             }
         }
 

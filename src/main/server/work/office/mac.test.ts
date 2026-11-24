@@ -262,7 +262,7 @@ describe('Word edits', () => {
       running: () => true,
       documents: elements([d]),
       clearFormatting: (f: unknown) => void cleared.push(f),
-      executeFind: (f: unknown, opts: Record<string, unknown>) => {
+      executeFind: (_f: unknown, opts: Record<string, unknown>) => {
         finds.push(opts)
         const un = (x: unknown) => String(x).split('^^').join('^')
         t = o.does ? o.does(t) : t.split(un(opts.findText)).join(un(opts.replaceWith))

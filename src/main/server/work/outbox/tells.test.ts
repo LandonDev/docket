@@ -69,9 +69,9 @@ describe('the kinds', () => {
 })
 
 describe('a held change to a file others can open', () => {
-  const edit = (kind: string) => item({ kind, summary: 'Make the change in Brief.docx: Replace “Q3 draft” With “Q3 final”', payload: { name: 'Brief.docx', edit: { find: 'Q3 draft', replace: 'Q3 final' } } })
+  const edit = (kind: 'office.edit' | 'google.edit') => item({ kind, summary: 'Make the change in Brief.docx: Replace “Q3 draft” With “Q3 final”', payload: { name: 'Brief.docx', edit: { find: 'Q3 draft', replace: 'Q3 final' } } })
   it('is told, held or failed, with no file name and none of its words: a notice may reach a webhook or a phone before his press', () => {
-    for (const kind of ['office.edit', 'google.edit']) {
+    for (const kind of ['office.edit', 'google.edit'] as const) {
       told = []
       tellHeld(deps, edit(kind))
       tellFailed(deps, { ...edit(kind), state: 'failed', decidedAt: NOW - 1000, error: 'Word is not open.' })
