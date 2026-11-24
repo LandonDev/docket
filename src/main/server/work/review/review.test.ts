@@ -314,9 +314,9 @@ describe('the week_review tool', () => {
     rig.outbox.waiting = [held('hp', { createdAt: MON }), held('hc', { createdAt: MON, workspaceId: 'w-cosmic', sector: 'cosmic', summary: 'Post the patch notes to #announcements' })]
     const purdue = await run('t-purdue')
     expect(purdue).toContain('Week of Nov 16, Purdue.')
-    expect(purdue).toContain('On the calendar (measured): 1 h, 1 event')
-    expect(purdue).toContain('At the desk (an estimate, never a measure): about 15 m, from 1 message')
-    expect(purdue).toContain('Threads ran (measured; not his hours): 30 m')
+    expect(purdue).toContain('On the calendar (measured): 1 hr, 1 event')
+    expect(purdue).toContain('At the desk (an estimate, never a measure): about 15 min, from 1 message')
+    expect(purdue).toContain('Threads ran (measured; not his hours): 30 min')
     expect(purdue).toContain('Finished Order the new jerseys, Mon')
     expect(purdue).toContain('Send the travel forms, due Tue')
     expect(purdue).toContain('Post the bracket to #esports, held since Mon')

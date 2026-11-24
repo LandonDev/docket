@@ -33,7 +33,7 @@ describe("a step on the night the clocks go back", () => {
     const game = side("ev_a", "Late game", first, first + 3_600_000, ["propose"]);
     const call = side("ev_b", "Call", first - 15 * 60_000, first + 15 * 60_000, []);
     render(<StepForm clash={{ id: "ev_b-ev_a", kind: "overlap", a: call, b: game }} step={{ side: "b", way: "propose" }} pending={false} onBack={() => {}} onSend={() => {}} />);
-    expect(screen.getByRole("group", { name: "Late game" }).textContent).toContain("1:30 AM – second 1:30 AM");
+    expect(screen.getByRole("group", { name: "Late game" }).textContent).toContain("1:30 AM to second 1:30 AM");
     // Offered the quarter hour after the call ends: the first 1:45 AM to the second 1:45.
     expect((screen.getByLabelText("From") as HTMLInputElement).value).toBe("01:45");
     expect((screen.getByLabelText("To") as HTMLInputElement).value).toBe("01:45");
