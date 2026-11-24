@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { CarrierComputer } from '../../browser/box'
+import { formIdOf } from '@shared/work/msforms'
+import { addressOf } from './read'
 import { formsComputerOn } from './wire'
 
 /**
@@ -132,5 +134,21 @@ describe("the carrier's steps on the page its open made (review 16)", () => {
       { id: 't:T-folder', url: URL_ },
       { id: 't:T-pop', url: 'https://forms.cloud.microsoft/Pages/DesignPageV2.aspx?id=x', opener: 't:T-folder' }
     ])
+  })
+})
+
+describe("the carrier's read of a page's address", () => {
+  it("takes the page's whole address from Chromium, where the observation cuts it at 160 characters (P5)", async () => {
+    // A made form's builder: its address passes 160 characters once Forms adds its own words after the id, so the
+    // observation's address bar ends "…(+N chars)" and the id read from it was no id: every read stopped as another form.
+    const id = 'Ob0wQVN8nEGx5YdY1tY_IWOPFlgEi5FBgwZfJjGGCBhUN01GWVlFN05ZRDJWM0lGUjZBUjdXRTlENyQlQCN0PWcu'
+    const full = `https://forms.cloud.microsoft/Pages/DesignPageV2.aspx?subpage=design&id=${id}&topview=Preview`
+    const cut = `${[...full].slice(0, 160).join('')}…(+${full.length - 160} chars)`
+    const page = { window: 3, url: full, target: 'T-form' }
+    const body = `app "Chromium" · window "Untitled form" · 1280×800\n[1] window "Untitled form"\n  [2] input "Address and search bar" = ${JSON.stringify(cut)}\n  [3] button "Form title Untitled form Saved"`
+    const c: CarrierComputer = { ...computer({ before: [page], launch: () => {}, after: () => [page] }), run: async () => ({ isError: false, body, steps: [], shots: [] }) as never }
+    const screen = await formsComputerOn(c).read('t:T-form')
+    expect(addressOf(screen)).toBe(full)
+    expect(formIdOf(addressOf(screen)!)).toBe(id)
   })
 })

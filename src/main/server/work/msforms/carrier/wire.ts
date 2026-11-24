@@ -3,7 +3,7 @@ import { screenOfObservation, type Screen } from '@shared/computer/outward'
 import type { ComputerAction } from '@shared/computer/protocol'
 import type { MsFormFolder, MsFormWorkbook } from '@shared/contract-work-msforms'
 import { workbookNameOf } from '@shared/work/msforms'
-import { BOX_BROWSER_APP } from '../../browser/box/service'
+import { ADDRESS_NAME, BOX_BROWSER_APP } from '../../browser/box/service'
 import { BOX_OWNER_DRIVES, carrierComputer, type CarrierComputer } from '../../browser/box'
 import { librariesHere, vmLibrariesHere } from '../../files/places/libraries'
 import { workspaceHere } from '../../files/policy'
@@ -34,14 +34,25 @@ const refOf = (target: string): string => `t:${target}`
 const GONE = 'The page the carrier opened is gone. Nothing more was done on it.'
 const UNCHECKED = 'The carrier refused: it acts only on the read it checked, and the page was read again since. Nothing was done in Forms.'
 
+/** The screen with its address bar holding `url` whole, where it showed one; else the screen as it was. */
+export function withAddress(screen: Screen, url: string): Screen {
+  const bar = [...screen.elements.values()].find((e) => e.role === 'input' && e.name === ADDRESS_NAME)
+  if (!bar || !url || bar.value === url) return screen
+  const elements = new Map(screen.elements)
+  elements.set(bar.index, { ...bar, value: url })
+  return { ...screen, elements }
+}
+
 export function formsComputerOn(c: CarrierComputer): FormsComputer {
-  /** The window number a ref's page has now, by its target. */
-  const numberOf = async (ref: string): Promise<number> => {
+  /** A ref's page as Chromium lists it now, by its target: its window number and its whole address. */
+  const pageOf = async (ref: string): Promise<{ window: number; url: string }> => {
     const target = ref.startsWith('t:') ? ref.slice(2) : null
     const page = target ? (await c.pages()).find((p) => p.target === target) : undefined
     if (!page) throw new Error(GONE)
-    return page.window
+    return page
   }
+  /** The window number a ref's page has now, by its target. */
+  const numberOf = async (ref: string): Promise<number> => (await pageOf(ref)).window
   /** The last read of each page, as the screen it answered and the window number it was read at: an act runs only on it. */
   const checked = new Map<string, { screen: Screen; window: number }>()
   const read = async (ref: string): Promise<Screen> => {
@@ -58,9 +69,14 @@ export function formsComputerOn(c: CarrierComputer): FormsComputer {
     const screen = screenOfObservation(o.body ?? '', { bundleId: BOX_BROWSER_APP.bundleId, name: APP })
     if (!screen) throw new Error('The box browser\'s read of the page did not parse.')
     // the page is still the one read: a number given to another page meanwhile (a service started again) is no read of it
-    if ((await numberOf(ref)) !== n) throw new Error(GONE)
-    checked.set(ref, { screen, window: n })
-    return screen
+    const now = await pageOf(ref)
+    if (now.window !== n) throw new Error(GONE)
+    // The address bar's value is cut at 160 characters, and a form's builder passes that once Forms adds its own words
+    // after the id: the id read from the cut value is no id (P5: every read on the deployed box stopped as "another
+    // form"). The bar takes the page's whole address as Chromium lists it.
+    const whole = withAddress(screen, now.url)
+    checked.set(ref, { screen: whole, window: n })
+    return whole
   }
   return {
     async open(url) {
