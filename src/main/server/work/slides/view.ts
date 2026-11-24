@@ -7,6 +7,7 @@ import { canvasSourcePath, type CanvasItem, type CanvasSource } from '@shared/wo
 import { importReadOnly, slideImportExt, type SlideImportExt } from '@shared/work/slideFormats'
 import { errorText } from '@shared/work/ids'
 import { sharedOf } from '../files/policy'
+import { fileWritten, workingOn } from '../files/save'
 import { cachedSlidesMirror, mirrorUnreached } from '../google/deckMirror'
 import { madeFromShared } from '../formats/exporter'
 import { NoConverterError } from '../formats/jobs'
@@ -144,7 +145,10 @@ function chained<T>(key: string, fn: () => Promise<T>): Promise<T> {
 }
 /** The item's deck's one queue: every seat on a file waits in the same line. */
 export function serial<T>(ctx: Pick<WorkCtx, 'db' | 'host' | 'dataDir'>, item: CanvasItem, fn: () => Promise<T>): Promise<T> {
-  return chained(seatOf(ctx, item), fn)
+  const run = chained(seatOf(ctx, item), fn)
+  // Files waits for it before it judges a closed tab's copy clean (files/save.ts `workingOn`).
+  const path = filePathOf(item.source)
+  return path === null ? run : workingOn(path, run)
 }
 
 /** The LibreOffice kept running, where the host has one (set by the module when Work starts; null: every render starts its own). */
@@ -1039,6 +1043,8 @@ export function replaceKeeping(path: string, from: string, was: string): void {
   if (hashFile(real) !== was) throw new Error('The deck changed while this was being made. Nothing was written; look at it again.')
   chmodSync(from, statSync(real).mode & 0o7777)
   copyWhole(from, real)
+  // A Files tab's copy of another computer's deck is sent to its file now, with no ask of his window (files/copies.ts).
+  fileWritten(real)
 }
 
 /** Why changes could not be accepted: each by its title and slide, the rest were written. */

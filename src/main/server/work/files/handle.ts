@@ -14,6 +14,7 @@ import { fencedItem } from '../canvas/store'
 import type { Caller, WorkCtx } from '../modules'
 import { copyIn, threadsHolding } from '../office/files/handle'
 import { copyAllowed, fetchFile, whoOf } from '../office/files/library'
+import { copyWaits } from './copyKept'
 import { admitOwner, backsOf, copyAt, copyBack, copyClosing, copyKeep, copyRecord, copyReload, recordCopy, reopened, writeBack } from './copies'
 import { isGuestPath, vmFetch, vmList, vmStat, vmVerbs } from '../office/vm/files'
 import { fileMakerFor } from './hooks'
@@ -335,11 +336,11 @@ async function openCopy(ctx: WorkCtx, by: Caller, workspace: WorkspaceRow, p: Op
   // A copy is the file it is, with no app behind it; a copy of a library's sound is played, not transcribed.
   const kind = p.as ?? (kindOfEntry(name).kind === 'audio' ? 'file' : seatOf(name))
   const back = copySavesBack(kind, name)
-  // A copy whose changes have not reached its file (its tab closed, or the file's computer did not answer) is opened
-  // again as it is: it is never read over from the file while they wait.
+  // A copy whose changes have not reached its file (its tab closed, its computer did not answer, or its bytes are not
+  // what the file holds) is opened again as it is: it is never read over from the file while they wait.
   const kept = back ? copyRecord(ctx, workspace.id, file.host, file.path) : null
   let source: CanvasSource
-  if (kept && (kept.closed || kept.state !== 'ok') && existsSync(kept.copy) && copyAllowed(ctx.db, workspace.id)) {
+  if (kept && copyWaits(kept) && existsSync(kept.copy) && copyAllowed(ctx.db, workspace.id)) {
     source = { at: 'file', host: ctx.host, path: kept.copy }
     reopened(ctx, kept)
   } else {
@@ -528,7 +529,9 @@ async function readCopy(ctx: WorkCtx, by: Caller, p: { workspaceId: string; ref:
   const tab = filesState(ctx).tabs.list(p.workspaceId).tabs.find((t) => t.itemId === p.itemId)
   if (!tab?.copyOf) return null
   admitCaller(ctx, by, p.workspaceId)
-  if (by.kind !== 'local') throw new Error(LIBRARY_BYTES)
+  // His own window, here or reaching this host with a key that may approve (his Mac's window on the box), as a copy's
+  // save is his (copies.ts `admitOwner`); never a read key or another host.
+  if (by.kind !== 'local' && !(by.kind === 'remote' && by.caps.includes('approve'))) throw new Error(LIBRARY_BYTES)
   const item = ctx.canvas.get(p.itemId)
   const path = item ? canvasSourcePath(item.source) : null
   if (!item || item.sessionId !== filesPaneOf(p.workspaceId) || path === null || refKey(item.source) !== refKey(p.ref)) throw new Error('That tab holds no copy to read.')

@@ -21,7 +21,7 @@ import type { DockThread } from "./dockThread";
 import { dockShape, type ActRow, type EntryAct } from "./model";
 import { sendCopyBack, useDock, useDockWidth } from "./store";
 import { NameField, useSideOver } from "./rowParts";
-import { copyBackDue, copyLine, type HeaderLine } from "./fileText";
+import { copyBackDue, copyLine, type CopyAsk, type HeaderLine } from "./fileText";
 import { SaveActions, SaveLine } from "./SaveLine";
 import { SidePane, SideSash, sideWidth } from "./SideFile";
 
@@ -60,10 +60,11 @@ export interface CopyWords {
  * most two): Reload and Keep Both over a file that changed there, Keep Both over one that went, Retry where its
  * computer did not answer or refused. Reload drops what was not sent, so it asks first.
  */
-function savingCopyLine(kind: SavedLine | null, tab: FileTab, copy: CopyWords, reloaded: () => void): HeaderLine {
-  const line = copyLine(kind, tab.back!, copy.host);
+function savingCopyLine(kind: SavedLine | null, tab: FileTab, copy: CopyWords, ask: CopyAsk, reloaded: () => void, send: () => Promise<void>): HeaderLine {
+  const line = copyLine(kind, tab.back!, copy.host, Date.now(), ask);
   if (line.words === undefined) return line;
-  const retry = copy.send ? [{ id: "retry", label: "Retry", run: () => copy.send!().then(() => undefined) }] : [];
+  const retry = copy.send ? [{ id: "retry", label: "Retry", run: send }] : [];
+  if (ask.failed && tab.back!.is === "ok") return { ...line, actions: retry };
   const keep = copy.keepBoth ? [{ id: "keep", label: "Keep Both", run: copy.keepBoth }] : [];
   const reload = copy.reload
     ? [
@@ -258,9 +259,20 @@ export function FileTabView({
   // kind saves into the copy: for one that saves back the line says where its file stands; for one that does not,
   // its saving and saved say nothing of the file, and the frame's line says the changes stay here.
   const kindLine = feeds.saved;
+  // His window's own ask for a send: under way until the host answers, or refused in the host's words.
+  const [sendAsk, setSendAsk] = useState<CopyAsk>({});
+  const sendBack = useCallback(async (): Promise<void> => {
+    setSendAsk({ owed: true });
+    try {
+      await sendCopyBack(workspace.environmentId, workspace.id, tab.id);
+      setSendAsk({});
+    } catch (err: unknown) {
+      setSendAsk({ failed: err instanceof Error ? err.message : String(err) });
+    }
+  }, [workspace.environmentId, workspace.id, tab.id]);
   const line: HeaderLine | null =
     copy && tab.back
-      ? savingCopyLine(kindLine, tab, copy, () => setFresh((n) => n + 1))
+      ? savingCopyLine(kindLine, tab, copy, sendAsk, () => setFresh((n) => n + 1), sendBack)
       : copy
         ? kindLine && kindLine.state !== "saved" && kindLine.state !== "saving"
           ? kindLine
@@ -273,8 +285,8 @@ export function FileTabView({
     const was = lastLine.current;
     lastLine.current = kindLine;
     if (!saving || !copyBackDue(was, kindLine)) return;
-    void sendCopyBack(workspace.environmentId, workspace.id, tab.id).catch((err: unknown) => sayError(err, "The changes did not go back"));
-  }, [kindLine, saving, workspace.environmentId, workspace.id, tab.id]);
+    void sendBack();
+  }, [kindLine, saving, sendBack]);
   const [running, setRunning] = useState<string | null>(null);
   const runAction = (action: SavedAction): void => {
     if (running) return;

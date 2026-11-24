@@ -23,6 +23,16 @@ describe("the line of a copy that saves back", () => {
     for (const is of ["ok", "sending", "changed", "gone", "away", "refused"] as const) expect(words({ is, at: AT, detail: "x" })).not.toContain("·");
   });
 
+  it("never reads as saved while his window's ask is unanswered, and says the host's refusal of it", () => {
+    expect(copyLine({ state: "saved", at: AT }, { is: "ok", at: AT - 60_000 }, "the Windows VM", NOW, { owed: true }).words).toBe("Saving to the Windows VM…");
+    expect(copyLine({ state: "saved" }, { is: "ok" }, "MacBook", NOW, { owed: true }).state).toBe("saving");
+    const failed = copyLine({ state: "saved", at: AT }, { is: "ok", at: AT - 60_000 }, "MacBook", NOW, { failed: "the link dropped." });
+    expect(failed).toMatchObject({ state: "conflict", words: "Not saved to MacBook. The link dropped" });
+    // What the host says of the file wins over the window's own ask.
+    expect(copyLine(null, { is: "away" }, "MacBook", NOW, { failed: "x" }).words).toBe("MacBook is not answering. Changes wait here");
+    expect(copyLine(null, { is: "ok", at: AT }, "MacBook", NOW, {}).words).toBe("Saved to MacBook 1:52 PM");
+  });
+
   it("takes the foreground only where it needs him", () => {
     expect(copyLine(null, { is: "away" }, "MacBook").needs).toBe(true);
     expect(copyLine(null, { is: "changed" }, "MacBook").state).toBe("conflict");

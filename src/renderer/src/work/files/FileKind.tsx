@@ -9,6 +9,7 @@ import { refusalWords } from "../../lib/settingsHome";
 import { sessionStore } from "../../lib/tcserver/store";
 import { EmptyState } from "../../surfaces/SurfaceSkeleton";
 import { ItemSkeleton } from "../canvas/ItemBones";
+import { registerFlush } from "../canvas/flush";
 import type { CanvasBodyProps } from "../canvas/kind";
 import { FileSession } from "./fileSession";
 import { bytesOfBase64, whenWords } from "./fileText";
@@ -53,13 +54,16 @@ export function Body({ item, source, env, shell }: CanvasBodyProps<undefined>) {
       if (push.push === "work.files" && push.workspaceId === workspaceId && push.at !== undefined) look();
     });
     window.addEventListener("focus", look);
+    // A tab's close waits for what waits here (canvas/flush.ts).
+    const offFlush = registerFlush(item.id, () => session.flush());
     return () => {
       off();
+      offFlush();
       window.removeEventListener("focus", look);
       // A tab can close under the editor, from this window or another: what waits is sent.
       session.dispose();
     };
-  }, [session, env, workspaceId]);
+  }, [session, env, workspaceId, item.id]);
 
   useEffect(() => {
     shell.ready?.(view.is === "text" || view.is === "facts");

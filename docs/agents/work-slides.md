@@ -408,6 +408,16 @@ the file.
 - **A save he makes meanwhile is never overwritten**: the file is replaced
   only while it is still what was read (`replaceKeeping`), as every write
   is.
+- **Every write is said to Files** (`fileWritten`, files/save.ts): a Files
+  tab's copy of a deck on another computer of his, or in the Windows VM, is
+  sent to its file by the host as soon as the deck wrote it
+  (work-files.md "A copy saves back"), with no ask of his window. The deck's
+  queue for its file (`serial`) is work on that file (`workingOn`): a closed
+  tab's copy is judged only once it has ended.
+- **His words in an open box are sent before the tab closes.** The box
+  commits when the body unmounts, and the tab's close awaits that commit
+  (`registerFlush`, canvas/flush.ts), so the edit reaches the host while
+  the item still stands. Escape still puts the words back, by his press.
 - **A rename carries the line** (`handMoved`, with `fileMoved`).
 
 ### Shapes, slides and the deck

@@ -1,6 +1,6 @@
 import { filesPaneWorkspace } from '@shared/work'
 import type { ActKindDef, WorkModule } from '../modules'
-import { copySaved, retryWaiting, settleCopies } from './copies'
+import { copiesLeft, copySaved, retryWaiting, settleCopies } from './copies'
 import { closeFilesState, filesHandle, filesState, itemsGone, removeWorkspace } from './handle'
 import { onFileSaved } from './save'
 import { registerFileMoved } from './hooks'
@@ -114,7 +114,10 @@ export const files: WorkModule = {
   // An item of a Files pane closed by another way than its tab (the pane's own Close): its tab goes too.
   itemsRemoved(items, ctx) {
     const mine = items.filter((item) => filesPaneWorkspace(item.sessionId) !== null)
-    if (mine.length) itemsGone(ctx, mine.map((item) => item.id))
+    if (!mine.length) return
+    itemsGone(ctx, mine.map((item) => item.id))
+    // A copy's item went however it went: what waits in the copy is kept and sent, never dropped with it.
+    copiesLeft(ctx, mine)
   },
   workspaceRemoved(workspaceId, ctx) {
     removeWorkspace(ctx, workspaceId)

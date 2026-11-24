@@ -11,6 +11,7 @@ import { dayTime } from "../../lib/duration";
 import { bareKey, chordKey, modKey } from "../../lib/keys";
 import { IS_MAC } from "../../lib/platform";
 import { sayError } from "../canvas/frame";
+import { registerFlush } from "../canvas/flush";
 import type { CanvasBodyProps, CanvasShell, ReviewAdapter } from "../canvas/kind";
 import { pdfjsEngine, type PdfDoc, type PdfEngine } from "../pdf/engine";
 import { boxStyle } from "../pdf/layout";
@@ -196,8 +197,14 @@ export function SlidesBody({
   useOpenShow(env, item.id, canPresent(view) && !error, () => startPresenting(host, store, { from: "start", mode: "full" }, engine));
   const session = handOf(item.id, host, store);
   const hand = useSyncExternalStore(session.subscribe, session.get, session.get);
-  // A box open when the tab closes, or the item leaves, commits.
-  useEffect(() => () => void session.commit(), [session]);
+  // A box open when the tab closes, or the item leaves, commits; a tab's close waits for it (canvas/flush.ts).
+  useEffect(() => {
+    const off = registerFlush(item.id, () => session.commit());
+    return () => {
+      off();
+      void session.commit();
+    };
+  }, [session, item.id]);
   // A render whose bytes moved on mid-read asks for the view again, whose new revision reads afresh.
   const refresh = useCallback(() => void openDeck(host, store), [host, store]);
   const fileRender = useRender(host, "file", view?.renders.file ?? null, engine, refresh);

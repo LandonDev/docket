@@ -34,6 +34,7 @@ import { fetchHere, fileOf, openEntry, openInApp, type Busy } from "./open";
 import { ListBones, PageBar, PageView, type NoteFixes, type PageActs, type PageFind } from "./Page";
 import { useSideOpen, hasClosed, openAtSide, closeSide, openFileTab, rememberClosed, takeClosed, dropSearch, saveSearch, useHome, useSavedSearches, useSearchFilter, closeTab, firstPage, goTo, historyOf, keepBothCopy, moveTabs, openPageTab, reloadCopy, selectTab, sendCopyBack, teamRows, useDock, useListing, usePageLook, useReach, useSidebarFolded, useTabs, type ListFrom, type Reach } from "./store";
 import { closeCopyTab } from "./copyClose";
+import { flushItem } from "../canvas/flush";
 import { DragLabelLayer, dragging, dropVerb, ROWS_MIME, setDragging, setDragLabel } from "./rowParts";
 import { filesPanelId, TabRow } from "./TabRow";
 
@@ -373,6 +374,8 @@ function Place({ workspace, reach, again, startThread }: WorkViewProps & { reach
   };
   // A copy whose changes have not reached its file asks once before its tab closes (copyClose.ts).
   const closeOne = async (tabId: string): Promise<void> => {
+    // What the tab's kind still holds (a deck's open box, a text's waiting words) reaches the host before the item goes.
+    await flushItem(view.tabs.find((t) => t.id === tabId)?.itemId);
     const gone = view.tabs.find((t) => t.id === tabId);
     const done = (discard: boolean): Promise<void> => {
       remember(tabId);

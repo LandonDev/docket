@@ -1,9 +1,9 @@
 import { createHash, randomUUID } from 'node:crypto'
-import { constants, realpathSync, rmSync } from 'node:fs'
+import { constants, readFileSync, realpathSync, rmSync } from 'node:fs'
 import { open, readFile } from 'node:fs/promises'
 import { basename, dirname, join } from 'node:path'
 import type { CopyBack, FileOrigin, FileTab, WrittenBack } from '@shared/contract-work-files'
-import { filesPaneOf, type CanvasKind, type CanvasSource } from '@shared/work'
+import { filesPaneOf, type CanvasItem, type CanvasKind, type CanvasSource } from '@shared/work'
 import { COPY_ACROSS_MAX, freeName, splitName } from '@shared/work/files'
 import type { Caller, WorkCtx } from '../modules'
 import { copyAllowed } from '../office/files/library'
@@ -14,7 +14,7 @@ import { hostReadOf } from '../peer'
 import { admitChange, doorPlace, filesState, vmWhere } from './handle'
 import { forgetVmList, libraryKey } from './places/teams'
 import { admitCaller, admitWrite, locate, type DoorPlace } from './policy'
-import { saveCopy, saveFile, versionWord } from './save'
+import { saveCopy, saveFile, versionWord, workDone } from './save'
 import { guestChange, guestOp, vmReadVersioned, vmSave } from './vmVerbs'
 import { FileRefused, OpLost, versionOf } from './write'
 
@@ -165,6 +165,9 @@ async function deliver(ctx: WorkCtx, r: CopyRow, data: Buffer, keep: boolean): P
 
 /** One look: the copy's bytes as they lie, sent when they differ from what the file holds. */
 async function sendOnce(ctx: WorkCtx, id: string): Promise<void> {
+  // An editor's work on the copy under way (his last edit, sent as the tab closed) lands first: what it writes is sent.
+  const was = row(ctx, id)
+  if (was) await workDone(was.copy)
   const r = row(ctx, id)
   // A file that changed there, or went, waits for his Reload or Keep Both: nothing is sent over it.
   if (!r || r.state === 'changed' || r.state === 'gone') return
@@ -237,20 +240,64 @@ export function copySaved(ctx: WorkCtx, path: string): void {
 }
 
 /**
- * Copies whose computer did not answer are sent again once it does: another host when its link is up, the VM once
- * it is awake (a send never wakes it from here). A send a dead process left under way is tried again too.
+ * Copies whose changes have not reached their file are sent again once their computer answers: another host when its
+ * link is up, the VM once it is awake (a send never wakes it from here). That is a copy whose computer did not answer,
+ * a send a dead process left under way, a closed tab's copy, and one found at start to hold bytes its file does not.
  */
 export function retryWaiting(ctx: WorkCtx, hosts?: readonly string[]): void {
   const rows = ctx.db.prepare(`SELECT * FROM work_files_copies WHERE state IN ('away', 'sending') OR (closed = 1 AND state = 'ok')`).all() as unknown as CopyRow[]
-  if (!rows.length) return
+  const changed = changedAtStart.size ? (ctx.db.prepare(`SELECT * FROM work_files_copies WHERE state = 'ok' AND closed = 0`).all() as unknown as CopyRow[]).filter((r) => changedAtStart.has(r.id)) : []
+  if (!rows.length && !changed.length) return
   const up = new Set(hosts ?? hostReadOf(ctx)?.hosts() ?? [])
   const awake = vmState()?.state === 'awake'
-  for (const r of rows) if (!flights.has(r.id) && (r.vm ? awake : up.has(r.host))) void sendBack(ctx, r.id)
+  for (const r of [...rows, ...changed]) {
+    if (flights.has(r.id) || !(r.vm ? awake : up.has(r.host))) continue
+    changedAtStart.delete(r.id)
+    void sendBack(ctx, r.id)
+  }
 }
+/** Open copies found at start holding bytes their file does not: no window asked before the host stopped. */
+const changedAtStart = new Set<string>()
 
-/** At start: a send a dead process left under way did not land as far as this host knows; it waits as unanswered. */
+/**
+ * At start: a send a dead process left under way did not land as far as this host knows; it waits as unanswered. An
+ * open copy whose bytes differ from what its file holds (his edit, and the host stopped before it was sent) is sent
+ * as soon as its computer answers: nothing he changed waits on his window asking again.
+ */
 export function settleCopies(ctx: Pick<WorkCtx, 'db'>): void {
   ctx.db.prepare(`UPDATE work_files_copies SET state = 'away' WHERE state = 'sending'`).run()
+  const open = ctx.db.prepare(`SELECT id, copy, sent FROM work_files_copies WHERE state = 'ok' AND closed = 0`).all() as unknown as Pick<CopyRow, 'id' | 'copy' | 'sent'>[]
+  for (const r of open) {
+    try {
+      if (sha(readFileSync(r.copy)) !== r.sent) changedAtStart.add(r.id)
+    } catch {
+      // no copy: nothing of his is in it
+    }
+  }
+}
+
+/** A copy's item went: by its tab's close, or any other way (the pane's Close, a host's check of strays at start). */
+function copyLeft(ctx: WorkCtx, r: CopyRow): void {
+  ctx.db.prepare(`UPDATE work_files_copies SET closed = 1 WHERE id = ?`).run(r.id)
+  // The kind's last save may still be landing as its body goes: it is looked at once that has had time.
+  const later = setTimeout(() => void sendBack(ctx, r.id), copyTiming.grace)
+  later.unref?.()
+}
+
+/**
+ * Items of a Files pane went, however they went. A recorded copy among them is kept with its record and sent, and goes
+ * only once nothing waits in it (`letGo`): an item no tab shows any more never takes his unsent changes with it. A copy
+ * another open item still shows (Keep Both re-seated it) is left as it is.
+ */
+export function copiesLeft(ctx: WorkCtx, items: readonly CanvasItem[]): void {
+  const find = ctx.db.prepare(`SELECT * FROM work_files_copies WHERE copy = ?`)
+  for (const item of items) {
+    if (item.source.at !== 'file' || item.source.host !== ctx.host) continue
+    const r = find.get(real(item.source.path)) as CopyRow | undefined
+    if (!r) continue
+    const shown = ctx.canvas.forSession(item.sessionId).some((open) => open.id !== item.id && open.source.at === 'file' && real(open.source.path) === r.copy)
+    if (!shown) copyLeft(ctx, r)
+  }
 }
 
 // ── his window ────────────────────────────────────────────────────────
@@ -354,20 +401,14 @@ export async function copyKeep(ctx: WorkCtx, by: Caller, p: { workspaceId: strin
   }
 }
 
-/** A copy tab closes: with `discard` what waits goes with it; else the copy is kept and sent, then let go. */
+/** A copy tab closes: with `discard` what waits goes with it, now; else the copy is kept and sent, then let go. */
 export function copyClosing(ctx: WorkCtx, workspaceId: string, tab: FileTab | undefined, discard: boolean): void {
   const r = tab?.copyOf ? copyRecord(ctx, workspaceId, tab.copyOf.host, tab.copyOf.path) : null
   if (!r) return
-  if (discard) {
-    // He chose to drop what waits: the copy goes with its tab, now.
-    ctx.db.prepare(`DELETE FROM work_files_copies WHERE id = ?`).run(r.id)
-    rmSync(r.dir, { recursive: true, force: true })
-    return
-  }
-  ctx.db.prepare(`UPDATE work_files_copies SET closed = 1 WHERE id = ?`).run(r.id)
-  // The kind's last save may still be landing as its body goes: it is looked at once that has had time.
-  const later = setTimeout(() => void sendBack(ctx, r.id), copyTiming.grace)
-  later.unref?.()
+  if (!discard) return copyLeft(ctx, r)
+  // He chose to drop what waits: the copy goes with its tab, now.
+  ctx.db.prepare(`DELETE FROM work_files_copies WHERE id = ?`).run(r.id)
+  rmSync(r.dir, { recursive: true, force: true })
 }
 
 /** A copy a closed tab kept, opened again: the tab shows it with what waits in it, and it is a tab's again. */

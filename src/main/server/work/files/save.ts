@@ -1,4 +1,5 @@
 import { createHash, randomBytes } from 'node:crypto'
+import { realpathSync } from 'node:fs'
 import { chmod, lstat, open, readdir, readFile as readBytes, rename, stat, unlink } from 'node:fs/promises'
 import { basename, dirname, join } from 'node:path'
 import { freeName, splitName } from '@shared/work/files'
@@ -14,13 +15,54 @@ import { admitPath, FileRefused, makeFile, versionOf, withFileLocks, type WriteF
  */
 
 /**
- * Whoever hears that `saveFile` replaced a file, by its real path (a Files tab's copy that saves back, copies.ts).
- * Told after the file holds the new bytes; a listener's fault never fails the save.
+ * Whoever hears that a file's bytes were replaced, by its real path (a Files tab's copy that saves back, copies.ts):
+ * by `saveFile`, or by an editor that writes its file its own way (the deck's `replaceKeeping`), which says so through
+ * `fileWritten`. Told after the file holds the new bytes; a listener's fault never fails the save.
  */
 const savedListeners = new Set<(path: string) => void>()
 export function onFileSaved(fn: (path: string) => void): () => void {
   savedListeners.add(fn)
   return () => void savedListeners.delete(fn)
+}
+/**
+ * An editor's work on a file under way, by the file's path (the deck's queue for its file: an edit, an undo, an accept).
+ * A copy is judged clean or sent only once the work on it has ended (copies.ts `sendOnce`), so a close that comes
+ * while his last edit is still being written never takes the copy, or that edit, away.
+ */
+const working = new Map<string, Set<Promise<unknown>>>()
+const realOr = (path: string): string => {
+  try {
+    return realpathSync(path)
+  } catch {
+    return path
+  }
+}
+export function workingOn<T>(path: string, run: Promise<T>): Promise<T> {
+  const at = realOr(path)
+  const set = working.get(at) ?? new Set<Promise<unknown>>()
+  working.set(at, set)
+  const tracked = run.finally(() => {
+    set.delete(tracked)
+    if (!set.size && working.get(at) === set) working.delete(at)
+  })
+  set.add(tracked)
+  return run
+}
+/** Settles once no editor's work on the file is under way. */
+export async function workDone(path: string): Promise<void> {
+  const at = realOr(path)
+  for (let set = working.get(at); set?.size; set = working.get(at)) await Promise.allSettled([...set])
+}
+
+/** An editor replaced a file's bytes: whoever listens hears it (`onFileSaved`). */
+export function fileWritten(path: string): void {
+  for (const fn of savedListeners) {
+    try {
+      fn(path)
+    } catch {
+      // a listener's fault is its own
+    }
+  }
 }
 
 /**
@@ -142,13 +184,7 @@ export async function saveFile(fence: WriteFence, key: string, path: string, dat
     await dir?.sync().catch(() => {})
     await dir?.close()
     const after = await versionOf(real)
-    for (const fn of savedListeners) {
-      try {
-        fn(real)
-      } catch {
-        // a listener's fault is its own
-      }
-    }
+    fileWritten(real)
     return { version: versionWord(after), changed: Math.round(after.mtimeMs) }
   })
 }

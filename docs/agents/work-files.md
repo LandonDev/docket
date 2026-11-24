@@ -194,7 +194,7 @@ the first paint.
 | The file | Opens |
 |---|---|
 | on the workspace's host, a kind a canvas shows | in a tab (`work.files.open`); a cloud-only file is fetched first, its row saying "Downloading…". A library's Office file whose form an editor of ours edits in place (`registerFileMaker`'s `forms`: an .xlsx in the sheet editor, a .pptx in the deck editor) opens as the file it is and saves where it lies by version (`saveFile`); no Office app is started. Any other Office file there is seated on its app (`microsoft`), which the window then starts (`openFileTab`'s `seated`), before the tab is drawn |
-| on another computer of his, or in the Windows VM | in a tab, as a copy the host makes in the pane's own folder (`openCopy`), where Copy Teams files is on. A copy whose kind edits its bytes (the sheet's .xlsx and .xlsm, the deck's .pptx, the `file` kind's text: `copySavesBack`) saves back to the file where it lies, by version ("A copy saves back"); its header says where the file stands ("On MacBook", "Saved to MacBook 1:52 PM"). Any other copy's header says "A copy from MacBook. Changes stay here", with Open on MacBook. The copy goes when its tab closes, unless changes in it have not reached the file yet |
+| on another computer of his, or in the Windows VM | in a tab, as a copy the host makes in the pane's own folder (`openCopy`), where Copy Teams files is on. A copy whose kind edits its bytes (the sheet's .xlsx and .xlsm, the deck's .pptx, the `file` kind's text: `copySavesBack`) saves back to the file where it lies, by version ("A copy saves back"); its header says where the file stands ("On MacBook", "Saving to MacBook…", "Saved to MacBook 1:52 PM"). Any other copy's header says "A copy from MacBook. Changes stay here", with Open on MacBook. The copy goes when its tab closes, unless changes in it have not reached the file yet: those are kept and sent, and only his Discard drops them |
 | the same, with Copy Teams files off | refused in one toast, "Teams files open on MacBook for this workspace.", whose press Open copies here turns the switch on and opens it, and whose other press opens it on that computer |
 | a kind no canvas shows, in a library | in its own app on its computer (`work.office.filesOpen`) |
 | a kind no editor shows (a text or code file, a sound, a zip, anything else) | in a tab, as the `file` kind: text in an editor that saves as he types, a sound with Play, a zip as the list of what it holds, the rest as its facts with Download |
@@ -1621,14 +1621,16 @@ over a file that changed there.
   there as his own save of that library file (`admitChange` as `edit`, a peer only with its origin, a file of a
   library of that host, never its VM), then `saveFile` by the version. The VM: `vmSave`, the guest's versioned
   `files.write {path, data, expect}`. Landed, `version` and `sent` move and `saved_at` is set.
-- **Two things ask for a send, and both meet there.** `saveFile` replacing a recorded copy's path (`onFileSaved`
+- **Three things ask for a send, and all meet there.** `saveFile` replacing a recorded copy's path (`onFileSaved`
   in save.ts, which the module's start hears): the sheet's saves, and the `file` kind's text, whose
-  `work.files.write` of a copy now goes through the door to the copy. And his window: when a copy's kind goes from
-  saving to saved, or says a newer save time (`copyBackDue`), the tab asks `work.files.copyBack {workspaceId,
-  tabId}`. The deck saves by a rename of its own, so it rides the window's ask alone. The window's ask is his own
-  edit of that file: his window, or a key that may approve (`admitOwner` over `admitWrite`); a key without approve
-  is refused "Others can open that place: this key may not change it.", a read key by its capability, a thread by
-  `THREADS_BY_TOOLS`.
+  `work.files.write` of a copy goes through the door to the copy. An editor that writes its file its own way and
+  says so (`fileWritten` in save.ts): the deck's `replaceKeeping`, after every hand edit, undo, accept and restore,
+  so a deck's edit is sent by the host itself with no ask of the window. And his window: when a copy's kind goes
+  from saving to saved, or says a newer save time (`copyBackDue`), the tab asks `work.files.copyBack {workspaceId,
+  tabId}`. The window's ask is his own edit of that file: his window, or a key that may approve (`admitOwner` over
+  `admitWrite`); a key without approve is refused "Others can open that place: this key may not change it.", a read
+  key by its capability, a thread by `THREADS_BY_TOOLS`. The same key that may approve reads a text copy's words
+  (`readCopy`): his Mac's window on the box edits a library's text file as his window there does.
 - **The states**, on the tab (`FileTab.back`, `CopyBack`; every change bumps the tabs' revision, so each window
   asks the list again): `ok` (`at` when a send last landed), `sending`, `changed` (the file changed there: nothing
   is sent over it until he chooses), `gone`, `away` (its computer did not answer: the changes wait here), `refused`
@@ -1647,14 +1649,32 @@ over a file that changed there.
   folder. His press on a held suggestion writes the copy as his edit, and the window's ask sends it. What a thread
   writes through the sheet's tool where his own words asked it (`because: 'asked'` with his quote) is the sheet's
   own rule for a shared file, and goes back as his save would.
-- **Closing the tab.** A copy whose changes have not reached its file asks once (`closeCopyTab`, copyClose.ts):
-  "Changes to Roster.xlsx have not reached MacBook." with Keep trying and Discard while its computer does not
-  answer, Keep Both and Discard over a file that changed there, Discard alone where it was refused. Keep trying
-  closes the tab and keeps the copy and its record (`closed`; the office pillar's drop leaves its folder,
-  `copyKeptIn`) until the changes land, then lets both go; Discard (`tabClose {discard: true}`) drops them at once.
-  A closed tab's copy is looked at 3 s after the close, so a kind's last save has landed; opened again before it
-  goes, the tab shows the kept copy and nothing is read over it. Turning Copy Teams files off drops every copy and
-  its record, sent or not. Home's Waiting on you does not list a kept copy yet.
+- **Closing the tab.** What the tab's kind still holds is sent first: the close awaits the kind's own send
+  (`flushItem`, src/renderer/src/work/canvas/flush.ts, 8 s at most), a deck's open box with his words in it, a text
+  file's words waiting for their save. A copy whose changes have not reached its file then asks once
+  (`closeCopyTab`, copyClose.ts): "Changes to Roster.xlsx have not reached MacBook." with Keep trying and Discard
+  while its computer does not answer, Keep Both and Discard over a file that changed there, Discard alone where it
+  was refused. Keep trying closes the tab and keeps the copy and its record (`closed`) until the changes land, then
+  lets both go; Discard (`tabClose {discard: true}`) drops them at once. A closed tab's copy is looked at 3 s after
+  the close, and never before an editor's work on it under way has ended (`workingOn` and `workDone` in save.ts: the
+  deck's queue for its file), so his last edit, sent as the tab closed, lands in the copy and is sent; opened again
+  before it goes, the tab shows the kept copy and nothing is read over it.
+- **Nothing he changed is dropped in silence** (.temp-code/plans/landed/F-edits-lost.md). Only his Discard, his
+  Reload after its confirm, and a delete of the file after its confirm drop changes that have not reached the file.
+  - A copy's item that goes by any way (its tab's close, the pane's own Close, a stray the start's check drops) is
+    kept with its record and sent (`copiesLeft`, from the module's `itemsRemoved`); the office pillar's drop of a
+    closed item's folder leaves any folder a record names (`copyKeptIn`), so the order the pillars hear in never
+    matters. The copy goes with its record only once nothing waits in it (`letGo`).
+  - Opened again, a copy whose bytes are not what its file holds is shown as it is, never read over (`copyWaits`).
+  - At start an open copy holding bytes its file does not (the host stopped before it was sent) is sent once its
+    computer answers (`settleCopies`, `retryWaiting`).
+  - Turning Copy Teams files off drops every copy with nothing waiting; a copy whose changes have not reached their
+    file stays with its record and is sent and let go as any other (`dropCopyRecords` answers the folders kept,
+    `dropCopies` leaves them).
+  Home's Waiting on you does not list a kept copy yet.
+- **The header never reads as saved before the file holds it.** While his window's own ask is unanswered the line
+  says "Saving to MacBook…"; an ask the host refused says "Not saved to MacBook." and the reason, with Retry
+  (`copyLine`'s `CopyAsk`). What the host says of the file (not answering, changed there, refused) wins over it.
 
 ## What a pane owner changes for every kind
 

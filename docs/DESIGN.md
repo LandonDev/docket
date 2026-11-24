@@ -1769,7 +1769,11 @@ Around the canvas:
   (asked first, since it drops what was not sent) and Keep Both, "This
   file was moved or deleted on MacBook" with Keep Both, "MacBook is not
   answering. Changes wait here" with Retry, "MacBook refused the save."
-  and its sentence, with Retry. Closing such a tab while changes have not
+  and its sentence, with Retry, and "Not saved to MacBook." and the reason
+  with Retry where his window's own ask for a send failed. It never says
+  saved while his ask is unanswered: "Saving to MacBook…" until the host
+  answers. Closing such a tab sends what the kind still holds (a deck's
+  open box) first; closing it while changes have not
   reached the file asks once in the house confirm: "Changes to Roster.xlsx
   have not reached MacBook.", Cancel, Discard and Keep trying (Keep Both in
   its place over a file that changed there; Discard alone where it was

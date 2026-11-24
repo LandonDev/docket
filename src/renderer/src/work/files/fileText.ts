@@ -98,15 +98,26 @@ export const savedNeedsHim = (line: SavedLine): boolean => line.state === "confl
 /** A header line whose words the frame wrote itself (a copy's), and whether it needs him when its state alone would not say. */
 export type HeaderLine = SavedLine & { words?: string; needs?: boolean };
 
+/** What his window knows of its own ask for a send (FileTabView.tsx): one under way, or the host's refusal of it. */
+export interface CopyAsk {
+  owed?: boolean;
+  failed?: string;
+}
+
 /**
  * The line of a copy that saves back to its file on another computer (docs/DESIGN.md "The Files place"): where the
  * file is and whether it holds his changes, in the computer's own name. What the kind says of the copy itself
  * comes first where it is trouble here (its own conflict, read only, offline); its saving and saved are about the
  * copy, so the line says the file's instead. The presses are the frame's (FileTabView.tsx).
  */
-export function copyLine(kind: SavedLine | null, back: CopyBack, host: string, now = Date.now()): HeaderLine {
+export function copyLine(kind: SavedLine | null, back: CopyBack, host: string, now = Date.now(), ask: CopyAsk = {}): HeaderLine {
   if (kind && kind.state !== "saved" && kind.state !== "saving" && kind.state !== "copy") return kind;
-  if (kind?.state === "saving" || back.is === "sending") return { state: "saving", words: `Saving to ${host}…` };
+  // A save of his the host has not answered yet is no change in the file: it never reads as saved.
+  if (kind?.state === "saving" || back.is === "sending" || (ask.owed && back.is === "ok")) return { state: "saving", words: `Saving to ${host}…` };
+  if (ask.failed && back.is === "ok") {
+    const why = ask.failed.trim().replace(/\.$/, "");
+    return { state: "conflict", words: why ? `Not saved to ${host}. ${why[0]!.toUpperCase()}${why.slice(1)}` : `Not saved to ${host}` };
+  }
   switch (back.is) {
     case "changed":
       return { state: "conflict", words: `This file changed on ${host}` };

@@ -143,12 +143,24 @@ const copiesRoot = (dataDir: string): string => join(macBridgeLandingRoot(dataDi
 const safe = (id: string): string => id.replace(/[^A-Za-z0-9_-]/g, '_')
 export const copyDirOf = (dataDir: string, sessionId: string): string => join(copiesRoot(dataDir), safe(sessionId))
 
-/** Drops the copies of the owners given, or of every thread of a workspace and its Files pane. */
-export function dropCopies(ctx: Pick<WorkCtx, 'dataDir' | 'scopeOf'>, which: { sessions: string[] } | { workspaceId: string }): void {
+/**
+ * Drops the copies of the owners given, or of every thread of a workspace and its Files pane. `keep`: folders of a
+ * Files pane's copies whose changes have not reached their file (files/copyKept.ts `dropCopyRecords`), which stay.
+ */
+export function dropCopies(ctx: Pick<WorkCtx, 'dataDir' | 'scopeOf'>, which: { sessions: string[] } | { workspaceId: string }, keep: ReadonlySet<string> = new Set()): void {
   const root = copiesRoot(ctx.dataDir)
   if (!existsSync(root)) return
   const dirs = 'sessions' in which ? which.sessions.map(safe) : readdirSync(root).filter((dir) => dir === safe(filesPaneOf(which.workspaceId)) || ctx.scopeOf(dir)?.workspaceId === which.workspaceId)
-  for (const dir of dirs) rmSync(join(root, dir), { recursive: true, force: true })
+  for (const dir of dirs) {
+    const at = join(root, dir)
+    const kept = [...keep].filter((k) => dirname(k) === at || dirname(k) === realOr(at))
+    if (!kept.length) {
+      rmSync(at, { recursive: true, force: true })
+      continue
+    }
+    // A pane whose copies wait: each other copy's folder goes, those stay.
+    for (const name of readdirSync(at)) if (!kept.some((k) => basename(k) === name)) rmSync(join(at, name), { recursive: true, force: true })
+  }
 }
 
 /**
@@ -435,11 +447,9 @@ export async function filesHandle(req: ClientRequest, ctx: WorkCtx, by: Caller, 
       return handled({ on: copyAllowed(ctx.db, p.workspaceId as string) })
     case 'work.office.filesCopySet':
       setCopyAllowed(ctx.db, p.workspaceId as string, p.on as boolean)
-      // Turned off, the copies its threads hold go too, and with the Files tabs' copies what Files kept of them.
-      if (!p.on) {
-        dropCopies(ctx, { workspaceId: p.workspaceId as string })
-        dropCopyRecords(ctx.db, p.workspaceId as string)
-      }
+      // Turned off, the copies its threads hold go too, and with the Files tabs' copies what Files kept of them; a Files
+      // tab's copy whose changes have not reached its file stays until they do: only his Discard drops one.
+      if (!p.on) dropCopies(ctx, { workspaceId: p.workspaceId as string }, dropCopyRecords(ctx.db, p.workspaceId as string))
       return handled({ on: copyAllowed(ctx.db, p.workspaceId as string) })
     case 'work.office.filesThreads':
       return handled({ threads: threadsHolding(ctx, p.workspaceId as string, p.source as CanvasSource, (path) => by.kind !== 'remote' || !!by.peer || ctx.reaches(by, path)) })

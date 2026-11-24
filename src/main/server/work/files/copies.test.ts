@@ -6,13 +6,13 @@ import type { CopyBack, FilesOpened, FilesTabs } from '@shared/contract-work-fil
 import { canvasSourcePath, filesPaneOf } from '@shared/work'
 import { copySavesBack } from '@shared/work/files'
 import type { Caller } from '../modules'
-import { copyDirOf, filesHandle as officeHandle } from '../office/files/handle'
+import { copyDirOf, dropItemCopies, filesHandle as officeHandle } from '../office/files/handle'
 import { setCloudDir, setCopyAllowed } from '../office/files/library'
-import { copiesInFlight, copyRecord, copySaved, copyTiming, retryWaiting, sendBack, settleCopies } from './copies'
-import { closeFilesState, filesHandle } from './handle'
+import { copiesInFlight, copiesLeft, copyRecord, copySaved, copyTiming, retryWaiting, sendBack, settleCopies } from './copies'
+import { closeFilesState, filesHandle, itemsGone } from './handle'
 import { forgetLibraries } from './places/libraries'
 import { setThreadsMayWrite, sharedOf } from './policy'
-import { onFileSaved, saveFile, versionWord } from './save'
+import { fileWritten, onFileSaved, saveFile, versionWord, workingOn } from './save'
 import { approver, HOST, makeRig, phone, reader, thread, window, WS, type Rig } from './testkit'
 import { versionOf } from './write'
 
@@ -383,5 +383,122 @@ describe('a tab closed before its changes reached the file', () => {
     expect(copyRecord(box.ctx, WS, MAC, path)).toBeNull()
     expect(existsSync(copy)).toBe(false)
     await sendBack(box.ctx, 'gone')
+  })
+})
+
+/**
+ * No edit is dropped in silence (.temp-code/plans/landed/F-edits-lost.md): whatever takes a copy's item away, and
+ * whatever the host does at start or when Copy Teams files goes off, a copy whose changes have not reached its file
+ * stays with its record until they do. Only his Discard drops it.
+ */
+describe('a copy with changes that have not reached its file', () => {
+  /** The frame's removal hooks, the office pillar's first (the order that once took the folder). */
+  const removedHooks = (): void => {
+    for (const items of box.removed.splice(0)) {
+      dropItemCopies(box.ctx, items)
+      if (items.some((i) => i.sessionId === filesPaneOf(WS))) itemsGone(box.ctx, items.map((i) => i.id))
+      copiesLeft(box.ctx, items)
+    }
+  }
+
+  it("is sent by the host itself when a kind writes it its own way (the deck's replace), with no ask of his window", async () => {
+    const { path, copy } = await openFar('Kickoff.pptx', 'deck one')
+    writeFileSync(copy, 'deck two')
+    fileWritten(copy)
+    await settled()
+    expect(readFileSync(path, 'utf8')).toBe('deck two')
+    expect(writes()).toBe(1)
+  })
+
+  it("waits, as its tab closes, for the editor's work on it under way: his last edit lands and is sent, never let go first", async () => {
+    const { path, copy, tabId } = await openFar('Kickoff.pptx', 'deck one')
+    // The deck's write of his last words, sent as the tab closed, still being made when the close is judged.
+    let finish: () => void = () => {}
+    const work = workingOn(copy, new Promise<void>((resolve) => (finish = resolve)).then(() => {
+      writeFileSync(copy, 'deck with his words')
+      fileWritten(copy)
+    }))
+    await call('work.files.tabClose', { tabId })
+    await new Promise((r) => setTimeout(r, 20))
+    expect(existsSync(copy)).toBe(true)
+    expect(copyRecord(box.ctx, WS, MAC, path)).toMatchObject({ closed: 1 })
+    finish()
+    await work
+    await settled()
+    expect(readFileSync(path, 'utf8')).toBe('deck with his words')
+    expect(copyRecord(box.ctx, WS, MAC, path)).toBeNull()
+  })
+
+  it("keeps its copy when its item goes by another way than its tab's close, and sends it", async () => {
+    const { path, copy, item } = await openFar('Roster.xlsx', 'one')
+    macUp = false
+    writeFileSync(copy, 'his edit')
+    box.ctx.canvas.remove([item.id])
+    removedHooks()
+    expect(existsSync(copy)).toBe(true)
+    expect(copyRecord(box.ctx, WS, MAC, path)).toMatchObject({ closed: 1 })
+    macUp = true
+    retryWaiting(box.ctx, [MAC])
+    await settled()
+    expect(readFileSync(path, 'utf8')).toBe('his edit')
+    expect(copyRecord(box.ctx, WS, MAC, path)).toBeNull()
+    expect(existsSync(copy)).toBe(false)
+  })
+
+  it('keeps its folder from the office pillar\'s drop while its record stands, closed or not', async () => {
+    const { copy, item } = await openFar('Roster.xlsx', 'one')
+    dropItemCopies(box.ctx, [item])
+    expect(existsSync(copy)).toBe(true)
+  })
+
+  it('is never read over from the file when opened again while its bytes are not what the file holds', async () => {
+    const { path, copy, tabId } = await openFar('Roster.xlsx', 'one')
+    writeFileSync(copy, 'his unsent edit')
+    // The tab's row went with nothing told (a window's list behind, a stray dropped at start).
+    box.db.prepare(`DELETE FROM work_files_tabs WHERE id = ?`).run(tabId)
+    const again = await call<FilesOpened>('work.files.open', { ref: { at: 'file', host: MAC, path }, name: 'Roster.xlsx' })
+    expect(canvasSourcePath(again.item!.source)).toBe(copy)
+    expect(readFileSync(copy, 'utf8')).toBe('his unsent edit')
+    expect(far.filter((c) => c.verb === 'filesRead')).toHaveLength(1)
+  })
+
+  it('is sent after a restart once its computer answers, though no window asked before the host stopped', async () => {
+    const { path, copy } = await openFar('Notes.txt', 'one')
+    writeFileSync(copy, 'typed before the restart')
+    settleCopies(box.ctx)
+    retryWaiting(box.ctx, [MAC])
+    await settled()
+    expect(readFileSync(path, 'utf8')).toBe('typed before the restart')
+    expect(copyRecord(box.ctx, WS, MAC, path)).toMatchObject({ state: 'ok', closed: 0 })
+  })
+
+  it('stays when Copy Teams files goes off, and is sent; a copy with nothing waiting goes', async () => {
+    const waiting = await openFar('Roster.xlsx', 'one')
+    const clean = await openFar('Notes.txt', 'notes')
+    macUp = false
+    writeFileSync(waiting.copy, 'his edit')
+    await officeHandle({ id: '1', method: 'work.office.filesCopySet', params: { workspaceId: WS, on: false } } as never, box.ctx, window, () => null)
+    expect(readFileSync(waiting.copy, 'utf8')).toBe('his edit')
+    expect(copyRecord(box.ctx, WS, MAC, waiting.path)).not.toBeNull()
+    expect(copyRecord(box.ctx, WS, MAC, clean.path)).toBeNull()
+    expect(existsSync(clean.copy)).toBe(false)
+    macUp = true
+    await sendBack(box.ctx, copyRecord(box.ctx, WS, MAC, waiting.path)!.id)
+    expect(readFileSync(waiting.path, 'utf8')).toBe('his edit')
+  })
+})
+
+describe("his window on another computer of his (a key that may approve)", () => {
+  it("reads a text copy's words and saves them back; a read key reads none", async () => {
+    const { path, copy, tabId, item } = await openFar('Notes.txt', 'notes')
+    const read = await call<{ data: string; version: string; locked?: string }>('work.files.read', { ref: item.source, itemId: item.id, offset: 0, length: 1000 }, approver)
+    expect(Buffer.from(read.data, 'base64').toString()).toBe('notes')
+    expect(read.locked).toBeUndefined()
+    await expect(call('work.files.read', { ref: item.source, itemId: item.id, offset: 0, length: 1000 }, reader)).rejects.toThrow()
+    await call('work.files.write', { ref: item.source, text: 'notes, typed on his Mac', version: read.version }, approver)
+    await settled()
+    expect(readFileSync(path, 'utf8')).toBe('notes, typed on his Mac')
+    expect((await backOf(tabId))?.is).toBe('ok')
+    expect(readFileSync(copy, 'utf8')).toBe('notes, typed on his Mac')
   })
 })
