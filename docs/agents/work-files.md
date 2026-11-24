@@ -2121,7 +2121,9 @@ over a colleague's Word file but his own press.
 - **Opened again**, the Word file shows the same document (`keptDoc`): nothing is read over it from the file.
 - **His edits stay in the document.** The tab's `word` (`WordBack`) says how the Word file stands, and the header
   says it plainly: "The Word file in Teams has not changed" ("OneDrive" for his own), "Changes since 9:12 PM are not in
-  the Word file", "Saved to Teams as Word 9:12 PM".
+  the Word file", "Saved to MacBook as Word 9:12 PM": a save names the computer that holds the file, as a copy's
+  line does, and reads as in Teams only once OneDrive there says it has it (`wordLine`, then `cloudLine`). Before,
+  it said "Saved to Teams" while only that computer had the file (W-18).
 - **Save to Teams as Word** (`work.files.wordSave`, the header's one press while the Word file lacks his edits): one
   confirm, "Replace Plan.docx in Teams?", saying everyone who opens it sees his version, that Teams keeps its own
   version history and the file as it is now is kept in the workspace's folder, and what Word formatting the editor
@@ -2148,7 +2150,7 @@ over a colleague's Word file but his own press.
   itself only until its words are in its file, their live revisions read together, each within 2 s; saves run apart
   from the look, one a file, so a slow one (the VM waking) holds up no other document; a record whose document is gone
   and not in Files' Trash is let go. On 1.0.372 a look started every second over every record and waited on each save
-  in turn, and a new document's first save took three and a half minutes. The header says "Saving to Teams…" while his newest words are not in the file, then what OneDrive did with them
+  in turn, and a new document's first save took three and a half minutes. The header says "Saving to MacBook…" while his newest words are not in the file, then what OneDrive did with them
   ("Saved, uploading to Teams…", "In Teams 9:12 PM": "Saved is not uploaded" below), and "This file changed in Teams 9:12 PM" with Keep Both and Replace when stopped. The first time a Word
   file holds edits not in it, the window asks once: "Save Plan.docx to Teams as you work?", with what Word may change,
   Save automatically and Ask me each time (`askAutosave`, `work.files.wordAuto`); the file's menu changes it after.

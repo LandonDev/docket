@@ -39,6 +39,8 @@ export const STATE_LINES: Readonly<Record<string, readonly Line[]>> = {
     ["`Saved on ${computer}; OneDrive uploads it`", "answer"],
   ],
   [`${R}/files/wordSave.ts`]: [
+    ["`Saved to ${computer} ${whenWords(word.at, now)}`", "answer"],
+    ["`Saved to ${computer} as Word ${whenWords(word.at, now)}`", "answer"],
     ["`Saved beside it as ${got.copy.name}`", "answer"],
   ],
   [`${R}/formats/PreviewFrame.tsx`]: [

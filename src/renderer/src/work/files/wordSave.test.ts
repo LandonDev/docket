@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { cloudLine } from "./fileText";
 import { askAutosave, saveAsWord, serviceOf, WORD_LOSSES, wordLine } from "./wordSave";
 
 /** A Word file of another computer opened as its document: the header's words, and Save as Word's one confirm. */
@@ -9,9 +10,10 @@ const TAB = { name: "AD Screening 9-2", key: "lib:recwellsportprograms:Esports/A
 
 describe("the header of a Word file opened as its document", () => {
   it("says plainly whether the Word file holds his changes, by the service it lies in", () => {
-    expect(wordLine({ since: true }, "Teams", NOW).words).toBe("The Word file in Teams has not changed");
-    expect(wordLine({ since: true, at: AT }, "Teams", NOW).words).toBe("Changes since 9:12 PM are not in the Word file");
-    expect(wordLine({ since: false, at: AT }, "OneDrive", NOW)).toMatchObject({ state: "saved", words: "Saved to OneDrive as Word 9:12 PM" });
+    expect(wordLine({ since: true }, "Teams", "MacBook", NOW).words).toBe("The Word file in Teams has not changed");
+    expect(wordLine({ since: true, at: AT }, "Teams", "MacBook", NOW).words).toBe("Changes since 9:12 PM are not in the Word file");
+    // A save is said of the computer that holds the file: OneDrive has not said it has it.
+    expect(wordLine({ since: false, at: AT }, "OneDrive", "MacBook", NOW)).toMatchObject({ state: "saved", words: "Saved to MacBook as Word 9:12 PM" });
     expect(serviceOf(TAB)).toBe("Teams");
     expect(serviceOf({ key: "lib:mine:Notes.docx" })).toBe("OneDrive");
   });
@@ -63,9 +65,16 @@ describe("Save as Word", () => {
 
 describe("a Word file saved by itself", () => {
   it("says saving while his newest words are not in it, saved with the time once they are, and the change that stopped it", () => {
-    expect(wordLine({ since: true, auto: true }, "Teams", NOW)).toMatchObject({ state: "saving", words: "Saving to Teams…" });
-    expect(wordLine({ since: false, auto: true, at: AT }, "Teams", NOW)).toMatchObject({ state: "saved", words: "Saved to Teams 9:12 PM" });
-    expect(wordLine({ since: true, auto: true, at: AT, stopped: AT }, "OneDrive", NOW)).toMatchObject({ state: "conflict", words: "This file changed in OneDrive 9:12 PM" });
+    expect(wordLine({ since: true, auto: true }, "Teams", "the Windows VM", NOW)).toMatchObject({ state: "saving", words: "Saving to the Windows VM…" });
+    expect(wordLine({ since: false, auto: true, at: AT }, "Teams", "the Windows VM", NOW)).toMatchObject({ state: "saved", words: "Saved to the Windows VM 9:12 PM" });
+    expect(wordLine({ since: true, auto: true, at: AT, stopped: AT }, "OneDrive", "MacBook", NOW)).toMatchObject({ state: "conflict", words: "This file changed in OneDrive 9:12 PM" });
+  });
+
+  it("says Teams only once OneDrive has the file: before that, the computer that holds it", () => {
+    const line = wordLine({ since: false, auto: true, at: AT }, "Teams", "MacBook", NOW);
+    expect(cloudLine(line, undefined, "Teams", "MacBook", NOW).words).toBe("Saved to MacBook 9:12 PM");
+    expect(cloudLine(line, { is: "uploading", at: AT }, "Teams", "MacBook", NOW).words).toBe("Saved, uploading to Teams…");
+    expect(cloudLine(line, { is: "uploaded", at: AT }, "Teams", "MacBook", NOW).words).toBe("In Teams 9:12 PM");
   });
 
   it("asks once, naming what Word may change, and keeps his choice", async () => {

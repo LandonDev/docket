@@ -349,7 +349,7 @@ export function FileTabView({
   };
   const said: HeaderLine | null =
     copy && word && (!kindLine || kindLine.state === "saved" || kindLine.state === "saving")
-      ? { ...wordLine(word, serviceOf(tab)), ...(wordActions(word).length ? { actions: wordActions(word) } : {}) }
+      ? { ...wordLine(word, serviceOf(tab), copy.host), ...(wordActions(word).length ? { actions: wordActions(word) } : {}) }
       : copy && back
       ? savingCopyLine(kindLine, tab, back, copy, sendAsk, () => setFresh((n) => n + 1), () => sendBack())
       : copy

@@ -1788,7 +1788,8 @@ Around the canvas:
   wrote nothing into the copy reads "On MacBook". A Word file of another computer opened as its document says
   whether the Word file holds his edits ("The Word file in Teams has not
   changed", "Changes since 9:12 PM are not in the Word file", "Saved to
-  Teams as Word 9:12 PM", all muted), with one press while it does not,
+  MacBook as Word 9:12 PM", all muted; a save names the computer that
+  holds the file, as a copy's line does), with one press while it does not,
   Save to Teams as Word, asked in the house confirm ("Replace Plan.docx in
   Teams?", what Word formatting may change, Replace and Keep Both; over a
   file that changed there, one line says when, Keep Both holds the focus and

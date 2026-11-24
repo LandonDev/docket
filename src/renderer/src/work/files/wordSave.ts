@@ -17,13 +17,17 @@ export const serviceOf = (tab: Pick<FileTab, "key">): string => (tab.key?.starts
 /** The Word file's name, from where it lies. */
 export const wordName = (tab: Pick<FileTab, "copyOf" | "name">): string => tab.copyOf?.path.split(/[\\/]/).pop() || tab.name;
 
-/** The header's line: whether the Word file holds his changes. */
-export function wordLine(word: WordBack, service: string, now = Date.now()): HeaderLine {
+/**
+ * The header's line: whether the Word file holds his changes. A save is said of the computer that holds the file
+ * (`computer`, as a copy's line names it, fileText.ts `copyLine`): that is all a save knows. It reads as in Teams only
+ * once OneDrive there says it has the file (`cloudLine`, laid over this line).
+ */
+export function wordLine(word: WordBack, service: string, computer: string, now = Date.now()): HeaderLine {
   // Stopped: an autosave met a change made there; nothing goes until his press.
   if (word.stopped) return { state: "conflict", words: `This file changed in ${service} ${whenWords(word.stopped, now)}` };
   // Saving by itself: saving while his newest words are not in the file, saved with the time once they are.
-  if (word.auto) return word.since || !word.at ? { state: "saving", words: `Saving to ${service}…` } : { state: "saved", words: `Saved to ${service} ${whenWords(word.at, now)}` };
-  if (!word.since && word.at) return { state: "saved", words: `Saved to ${service} as Word ${whenWords(word.at, now)}` };
+  if (word.auto) return word.since || !word.at ? { state: "saving", words: `Saving to ${computer}…` } : { state: "saved", words: `Saved to ${computer} ${whenWords(word.at, now)}` };
+  if (!word.since && word.at) return { state: "saved", words: `Saved to ${computer} as Word ${whenWords(word.at, now)}` };
   if (word.at) return { state: "copy", words: `Changes since ${whenWords(word.at, now)} are not in the Word file` };
   return { state: "copy", words: `The Word file in ${service} has not changed` };
 }

@@ -2,16 +2,7 @@ import { describe, expect, it } from "vitest";
 import { STATE_LINES, type StateFact } from "@shared/work/stateLines";
 import { stateLineSources } from "./stateLineSources.test-support";
 
-const KNOWN: readonly { file: string; literal: string; fact: StateFact; wall: string }[] = [
-  {
-    file: "src/renderer/src/work/files/wordSave.ts", literal: "`Saved to ${service} ${whenWords(word.at, now)}`", fact: "queued",
-    wall: "W-18: Word autosave names the cloud service when only the keeper has confirmed the write and cloud status is absent",
-  },
-  {
-    file: "src/renderer/src/work/files/wordSave.ts", literal: "`Saved to ${service} as Word ${whenWords(word.at, now)}`", fact: "queued",
-    wall: "W-18: Save as Word names the cloud service under the same conditions",
-  },
-];
+const KNOWN: readonly { file: string; literal: string; fact: StateFact; wall: string }[] = [];
 
 function overclaims(literal: string, fact: StateFact): boolean {
   return /^`?(?:Saved|Sent)\b/.test(literal.trimStart()) && (fact === "queued" || fact === "stored token");
