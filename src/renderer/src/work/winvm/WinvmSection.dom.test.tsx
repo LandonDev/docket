@@ -12,7 +12,7 @@ vi.mock("../../lib/linkMay", async (original) => (await import("../../lib/linkMa
 const signInOnVm = vi.hoisted(() => vi.fn(async (_env: string) => ({ computer: "vm:windows", account: null, line: "" })));
 vi.mock("./signIn", () => ({ signInOnVm }));
 
-const h = vi.hoisted(() => ({ office: null as unknown, screen: "1280x800", state: null as unknown, points: [] as unknown[], calls: [] as { method: string; params: unknown }[], pushes: [] as ((p: unknown) => void)[], confirm: true }));
+const h = vi.hoisted(() => ({ office: null as unknown, screen: "1280x800", state: null as unknown, points: [] as unknown[], pointsFail: null as string | null, fail: {} as Record<string, string>, calls: [] as { method: string; params: unknown }[], pushes: [] as ((p: unknown) => void)[], confirm: true }));
 vi.mock("../../chrome/ConfirmDialog", async (original) => ({ ...(await original<typeof import("../../chrome/ConfirmDialog")>()), confirmAction: async () => h.confirm }));
 
 const at = (s: Partial<WinvmState>): WinvmState => ({ state: "asleep", step: null, error: null, cannot: null, sleepAfter: "30m", since: 1, ...s });
@@ -22,6 +22,8 @@ beforeEach(() => {
   h.screen = "1280x800";
   h.state = at({});
   h.points = [];
+  h.pointsFail = null;
+  h.fail = {};
   h.calls = [];
   h.pushes = [];
   h.confirm = true;
@@ -33,7 +35,8 @@ beforeEach(() => {
         request: async (method: string, params: unknown) => {
           h.calls.push({ method, params });
           if (method === "work.winvm.state") return h.state;
-          if (method === "work.winvm.points") return { points: h.points };
+          if (method === "work.winvm.points") return h.pointsFail ? Promise.reject(new Error(h.pointsFail)) : { points: h.points };
+          if (h.fail[method]) throw new Error(h.fail[method]);
           if (method === "work.office.vmStatus") return h.office ?? Promise.reject(new Error("not handled"));
           if (method === "work.office.filesLibraries") return { host: "box", libraries: [{ vm: true, kind: "channels" }], roots: [], off: [] };
           if (method === "work.winvm.settings") {
@@ -213,6 +216,36 @@ describe("the Windows VM in Settings → Work", () => {
     expect(onedriveLine(status({ onedrive: { kind: "vm", state: "no-libraries", account: "landon@purdue.edu" } }), 0)?.words).toBe("Signed in as landon@purdue.edu, no Teams library synced yet");
     expect(onedriveLine(status({ onedrive: { kind: "vm", state: "signed-out", account: null } }), null)).toEqual({ words: "Signed out", signIn: true });
     expect(onedriveLine(status({ onedrive: { kind: "vm", state: "not-set-up", account: null } }), null)).toBeNull();
+  });
+
+  it("says a failed read of the restore points with Retry, and None yet only after a true empty answer", async () => {
+    vi.spyOn(registry, "environment").mockImplementation((id: string) => ({ id, name: "The box" }) as never);
+    h.pointsFail = "No answer in 4 s";
+    render(<WinvmSection hosts={["box"]} />);
+    await flush();
+    expect(screen.getByText("The box did not answer. Try again once it is connected.")).toBeTruthy();
+    expect(screen.queryByText("None yet")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Restore points" })).toBeNull();
+    h.pointsFail = "work.winvm.points: socket hung";
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    await flush();
+    expect(screen.getByText("The box could not read the restore points.")).toBeTruthy();
+    h.pointsFail = null;
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    await flush();
+    expect(screen.getByText("None yet")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
+  });
+
+  it("says a refused press in his words, naming the computer, never the link's text", async () => {
+    vi.spyOn(registry, "environment").mockImplementation((id: string) => ({ id, name: "The box" }) as never);
+    h.fail["work.winvm.wake"] = "work.winvm.wake: guest door refused (code 7)";
+    render(<WinvmSection hosts={["box"]} />);
+    await flush();
+    fireEvent.click(screen.getByRole("button", { name: "Wake" }));
+    await flush();
+    expect(screen.getByText("The box did not wake the Windows VM.")).toBeTruthy();
+    expect(document.body.textContent).not.toContain("guest door");
   });
 
   it("offers OneDrive's sign-in once, on its row, and draws no Office row for a host that cannot say", async () => {

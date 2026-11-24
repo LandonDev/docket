@@ -9,13 +9,14 @@ const noop = (): void => undefined;
 const DAY = Date.UTC(2026, 10, 20, 15, 4);
 const signedIn: VmOfficeStatus = { office: { installed: true, version: "16.0", apps: ["excel", "word", "powerpoint", "outlook"], account: "landon@purdue.edu", licensed: true }, onedrive: { kind: "vm", state: "ok", account: "landon@purdue.edu" }, at: DAY };
 const signedOut: VmOfficeStatus = { office: { installed: true, version: "16.0", apps: ["excel", "word", "powerpoint"], account: null, licensed: null }, onedrive: { kind: "vm", state: "signed-out", account: null }, at: DAY };
-const states: { name: string; state: WinvmState; points: { id: string; name: string; at: number; by: "owner" | "keeper" }[] | null; error?: string; screen?: WinvmScreen; office?: { status: VmOfficeStatus; libraries: number | null } }[] = [
+const states: { name: string; state: WinvmState; points: { id: string; name: string; at: number; by: "owner" | "keeper" }[] | null; error?: string; pointsError?: string; screen?: WinvmScreen; office?: { status: VmOfficeStatus; libraries: number | null } }[] = [
   { name: "Not set up", state: at({ state: "none" }), points: [] },
   { name: "Setting up", state: at({ state: "setting-up", step: "Copying TempCode's helper into Windows" }), points: [] },
   { name: "Asleep, with points", state: at({ state: "asleep" }), points: [{ id: "p1", name: "Before setup", at: DAY, by: "keeper" }] },
   { name: "Awake, the larger screen picked", state: at({ state: "awake", sleepAfter: "2h" }), points: [], screen: "1920x1200" },
   { name: "Office and OneDrive signed in", state: at({ state: "asleep" }), points: [], office: { status: signedIn, libraries: 1 } },
   { name: "OneDrive signed out: the one sign-in", state: at({ state: "asleep" }), points: [], office: { status: signedOut, libraries: null } },
+  { name: "Restore points that could not be read: Retry, never None yet", state: at({ state: "asleep" }), points: null, pointsError: "The box could not read the restore points." },
   { name: "A wake that failed", state: at({ state: "asleep", error: "Windows did not answer in time; try again" }), points: [] },
 ];
 
@@ -25,7 +26,7 @@ export function WinvmStates() {
       {states.map((s) => (
         <figure key={s.name} className="m-0 flex flex-col gap-2">
           <figcaption className="text-xs text-muted-foreground">{s.name}</figcaption>
-          <WinvmView title="Windows VM" state={s.state} points={s.points} screen={s.screen ?? "1280x800"} error={s.error ?? null} pressing={false} onPress={noop} onSleepAfter={noop} onScreen={noop} onPoints={noop} office={s.office ?? null} signIn={{ busy: false, error: null, onPress: noop }} />
+          <WinvmView title="Windows VM" state={s.state} points={s.points} pointsError={s.pointsError ?? null} onRetryPoints={noop} screen={s.screen ?? "1280x800"} error={s.error ?? null} pressing={false} onPress={noop} onSleepAfter={noop} onScreen={noop} onPoints={noop} office={s.office ?? null} signIn={{ busy: false, error: null, onPress: noop }} />
         </figure>
       ))}
     </div>

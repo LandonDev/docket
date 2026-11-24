@@ -50,6 +50,7 @@ describe("an error as Work says it to him", () => {
     expect(says("work.office.filesCopy: env_X__8UrVItMkZbSL_UlWV3g refused")).toBe("");
     // A method that starts the line is raised to "Work." by `refusalWords`: still a method.
     expect(says("work.slides.show: no answer in 30 s")).toBe("");
+    expect(says("work.guests.forItem: socket hung")).toBe("");
     expect(says("could not write /srv/agents/temp-code-data/work/x.tmp")).toBe("");
     expect(workErrorWords(undefined)).toBe("");
   });

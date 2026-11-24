@@ -2,13 +2,14 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import type { OfficeApp, TeamsLibrariesAnswer, VmOfficeStatus } from "@shared/contract-work-office";
 import { WINVM_EVALUATION_ENDS, type WinvmPoint, type WinvmScreen, type WinvmSettings, type WinvmSleepAfter, type WinvmState } from "@shared/contract-work-winvm";
 import { ModalBody, ModalPanel } from "../../chrome/Modal";
-import { confirmAction, errorText } from "../../chrome/ConfirmDialog";
+import { confirmAction } from "../../chrome/ConfirmDialog";
 import { ChoiceSelect } from "../../components/choice-select";
 import { SettingSwitch } from "../../components/setting-switch";
 import { PageEmpty, PageError, PageRow, PageRowsSkeleton, PageSection } from "../../components/page";
 import { BusyLabel, Button } from "../../components/ui/button";
 import { Dialog } from "../../components/ui/dialog";
 import { registry } from "../../lib/connection";
+import { hostFailure } from "../../lib/hostFailure";
 import { hostName } from "../../lib/threadResources";
 import { dayTime } from "../../lib/duration";
 import { useLinkMay } from "../../lib/linkMay";
@@ -48,6 +49,8 @@ export function winvmRow(state: WinvmState): { words: string; press: "setup" | "
 }
 
 const PRESS_WORDS = { setup: "Set up", wake: "Wake", sleep: "Sleep" } as const;
+/** A refused or lost press, after the host's name: "The box did not wake the Windows VM." */
+const PRESS_FAILED = { setup: "did not start setting up the Windows VM", wake: "did not wake the Windows VM", sleep: "did not put the Windows VM to sleep" } as const;
 const SLEEP_AFTER: { value: WinvmSleepAfter; label: string }[] = [
   { value: "15m", label: "15 minutes" },
   { value: "30m", label: "30 minutes" },
@@ -118,6 +121,8 @@ export function WinvmSection({ hosts }: { hosts: readonly string[] }) {
 function WinvmHost({ env, named }: { env: string; named: boolean }) {
   const [state, setState] = useState<WinvmState | null>(null);
   const [points, setPoints] = useState<WinvmPoint[] | null>(null);
+  /** A failed read of the points: its own line with Retry, never "None yet". */
+  const [pointsError, setPointsError] = useState<string | null>(null);
   const [screen, setScreen] = useState<WinvmScreen | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [pressing, setPressing] = useState(false);
@@ -128,18 +133,25 @@ function WinvmHost({ env, named }: { env: string; named: boolean }) {
   const link = useMemo(() => registry.linkOf(env), [env]);
   const admin = useLinkMay(env, "work.winvm.settings");
   const operate = useLinkMay(env, "work.winvm.wake");
+  const loadPoints = useCallback((): void => {
+    setPointsError(null);
+    void link.request<{ points: WinvmPoint[] }>("work.winvm.points", {}).then(
+      (p) => setPoints(p.points),
+      (err: unknown) => {
+        setPoints(null);
+        setPointsError(hostFailure(env, err, "could not read the restore points"));
+      },
+    );
+  }, [link, env]);
   const load = useCallback((): void => {
     void link.request<WinvmState>("work.winvm.state", {}).then(
       (s) => {
         setState(s);
         setError(null);
       },
-      (err: unknown) => setError(errorText(err)),
+      (err: unknown) => setError(hostFailure(env, err, "could not read the Windows VM")),
     );
-    void link.request<{ points: WinvmPoint[] }>("work.winvm.points", {}).then(
-      (p) => setPoints(p.points),
-      () => setPoints([]),
-    );
+    loadPoints();
     // The screen size is read with the settings, the admin rule: a key that may not change it never asks.
     if (admin)
       void link.request<WinvmSettings>("work.winvm.settings", {}).then(
@@ -157,12 +169,15 @@ function WinvmHost({ env, named }: { env: string; named: boolean }) {
       ([status, libraries]) => setOffice({ status, libraries }),
       () => setOffice(null),
     );
-  }, [link, admin]);
+  }, [link, env, admin, loadPoints]);
   useEffect(() => {
     load();
     const offPush = link.onPush((push) => {
       if (push.push === "work.winvm") setState(push.state as WinvmState);
-      if (push.push === "work.winvm.points") setPoints(push.points as WinvmPoint[]);
+      if (push.push === "work.winvm.points") {
+        setPoints(push.points as WinvmPoint[]);
+        setPointsError(null);
+      }
     });
     const offOpen = link.onOpen(load);
     return () => {
@@ -200,7 +215,7 @@ function WinvmHost({ env, named }: { env: string; named: boolean }) {
       await link.request(`work.winvm.${verb}`, {});
       setError(null);
     } catch (err) {
-      setError(errorText(err));
+      setError(hostFailure(env, err, PRESS_FAILED[verb], true));
     } finally {
       setPressing(false);
     }
@@ -210,7 +225,7 @@ function WinvmHost({ env, named }: { env: string; named: boolean }) {
       setState({ ...state, sleepAfter });
       await link.request("work.winvm.settings", { sleepAfter });
     } catch (err) {
-      setError(errorText(err));
+      setError(hostFailure(env, err, "did not save the change", true));
       load();
     }
   };
@@ -220,7 +235,7 @@ function WinvmHost({ env, named }: { env: string; named: boolean }) {
     try {
       await signInOnVm(env);
     } catch (err) {
-      setSignInError(errorText(err));
+      setSignInError(hostFailure(env, err, "did not open the sign-in"));
     } finally {
       setSigningIn(false);
     }
@@ -230,7 +245,7 @@ function WinvmHost({ env, named }: { env: string; named: boolean }) {
       setScreen(next);
       await link.request("work.winvm.settings", { screen: next });
     } catch (err) {
-      setError(errorText(err));
+      setError(hostFailure(env, err, "did not save the change", true));
       load();
     }
   };
@@ -240,6 +255,8 @@ function WinvmHost({ env, named }: { env: string; named: boolean }) {
         title={title}
         state={state}
         points={points}
+        pointsError={pointsError}
+        onRetryPoints={loadPoints}
         screen={screen}
         error={error}
         pressing={pressing}
@@ -260,6 +277,9 @@ export interface WinvmViewProps {
   title: string;
   state: WinvmState;
   points: readonly WinvmPoint[] | null;
+  /** the points' read failed, in his words: the row says so with Retry */
+  pointsError?: string | null;
+  onRetryPoints?: () => void;
   /** the guest's screen size; null until the host has said */
   screen: WinvmScreen | null;
   error: string | null;
@@ -276,7 +296,7 @@ export interface WinvmViewProps {
 }
 
 /** The section, pure: the machine's row and, once it is set up, when it sleeps, its points, the edition and Office. */
-export function WinvmView({ title, state, points, screen, error, pressing, onPress, onSleepAfter, onScreen, onPoints, office, signIn, may = { admin: true, operate: true } }: WinvmViewProps) {
+export function WinvmView({ title, state, points, pointsError, onRetryPoints, screen, error, pressing, onPress, onSleepAfter, onScreen, onPoints, office, signIn, may = { admin: true, operate: true } }: WinvmViewProps) {
   const row = winvmRow(state);
   const press = row.press && (row.press === "setup" ? may.admin : may.operate) ? row.press : null;
   const officeRow = office ? officeLine(office.status) : null;
@@ -316,11 +336,21 @@ export function WinvmView({ title, state, points, screen, error, pressing, onPre
               <ChoiceSelect size="sm" label="Screen size" value={screen} options={SCREENS} onChange={(v) => onScreen(v as WinvmScreen)} />
             </PageRow>
           ) : null}
-          <PageRow
-            title="Restore points"
-            description={points === null ? undefined : points.length === 0 ? "None yet" : `${points.length} kept, the last ${dayTime(Math.max(...points.map((p) => p.at)))}`}
-            {...(may.admin || may.operate ? { onOpen: onPoints, openLabel: "Restore points" } : {})}
-          />
+          {pointsError ? (
+            <PageRow title="Restore points" error={pointsError}>
+              {onRetryPoints ? (
+                <Button variant="ghost" size="sm" onClick={onRetryPoints}>
+                  Retry
+                </Button>
+              ) : null}
+            </PageRow>
+          ) : (
+            <PageRow
+              title="Restore points"
+              description={points === null ? undefined : points.length === 0 ? "None yet" : `${points.length} kept, the last ${dayTime(Math.max(...points.map((p) => p.at)))}`}
+              {...(may.admin || may.operate ? { onOpen: onPoints, openLabel: "Restore points", openDisabled: points === null } : {})}
+            />
+          )}
           <PageRow title="Edition" description={evaluationLine(WINVM_EVALUATION_ENDS)} />
           {officeRow ? (
             <PageRow title="Office" description={officeRow.words} error={pressOn === "office" ? (signIn?.error ?? undefined) : undefined}>
@@ -348,13 +378,13 @@ function PointsDialog({ env, state, points, admin, onClose }: { env: string; sta
   const [error, setError] = useState<string | null>(null);
   const asleep = state.state === "asleep";
   const link = registry.linkOf(env);
-  const run = async (which: string, method: string, params: object): Promise<void> => {
+  const run = async (which: string, method: string, params: object, act: string): Promise<void> => {
     setBusy(which);
     try {
       await link.request(method, params);
       setError(null);
     } catch (err) {
-      setError(errorText(err));
+      setError(hostFailure(env, err, act, true));
     } finally {
       setBusy(null);
     }
@@ -366,7 +396,7 @@ function PointsDialog({ env, state, points, admin, onClose }: { env: string; sta
       action: "Go back",
       danger: true,
     });
-    if (ok) await run(`back:${point.id}`, "work.winvm.point.restore", { id: point.id });
+    if (ok) await run(`back:${point.id}`, "work.winvm.point.restore", { id: point.id }, "did not go back to the point");
   };
   const sorted = [...points].sort((a, b) => b.at - a.at);
   return (
@@ -382,7 +412,7 @@ function PointsDialog({ env, state, points, admin, onClose }: { env: string; sta
                   <Button variant="ghost" size="sm" disabled={!asleep || busy !== null} onClick={() => void goBack(point)}>
                     <BusyLabel busy={busy === `back:${point.id}`} label="Go back…" />
                   </Button>
-                  <Button variant="ghost" size="sm" disabled={busy !== null} onClick={() => void run(`delete:${point.id}`, "work.winvm.point.delete", { id: point.id })}>
+                  <Button variant="ghost" size="sm" disabled={busy !== null} onClick={() => void run(`delete:${point.id}`, "work.winvm.point.delete", { id: point.id }, "did not delete the point")}>
                     <BusyLabel busy={busy === `delete:${point.id}`} label="Delete" />
                   </Button>
                 </div>
@@ -391,7 +421,7 @@ function PointsDialog({ env, state, points, admin, onClose }: { env: string; sta
           ))}
           {error ? <PageError>{error}</PageError> : null}
           <div className="flex justify-end pt-3">
-            <Button variant="secondary" size="sm" disabled={!asleep || busy !== null} onClick={() => void run("save", "work.winvm.point.save", {})}>
+            <Button variant="secondary" size="sm" disabled={!asleep || busy !== null} onClick={() => void run("save", "work.winvm.point.save", {}, "did not save a point")}>
               <BusyLabel busy={busy === "save"} label="Save a point" />
             </Button>
           </div>
