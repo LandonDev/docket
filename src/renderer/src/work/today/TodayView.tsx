@@ -424,11 +424,18 @@ export function hostFailureWords(error: string, name: string): string {
 function PageLine({ word, detail, failed = false, action }: { word: string; detail?: string; failed?: boolean; action?: { label: string; run: () => void | Promise<void> } }) {
   const [running, setRunning] = useState(false);
   return (
-    <div data-view-state={failed ? "failed" : "needs"} role="status" className={cn("min-h-8 items-center px-3 leading-5", ROW_GRID)}>
+    <div data-view-state={failed ? "failed" : "needs"} role="status" className={cn("min-h-8 items-center px-3 py-1 leading-5", ROW_GRID)}>
       <span className="flex h-5 items-center justify-center">{failed ? <StatusMark state="failed" word={false} aria-hidden /> : null}</span>
-      {/* Cut on a narrow page, the detail is a Tab stop with its whole words in a tip (the canvas's `CutDetail`). */}
-      {failed ? <StatusMark state="failed" glyph={false} word={word} detail={detail ? <CutDetail text={detail} /> : undefined} className="min-w-0" /> : <span className="min-w-0 truncate text-xs text-muted-foreground">{word}</span>}
-      <span className="col-span-2 flex justify-end">
+      {/* Cut on a narrow page, the detail is a Tab stop with its whole words in a tip (the canvas's `CutDetail`). A muted
+          line is the state itself: it wraps, never cut, and with no press it takes the columns the press would have. */}
+      {failed ? (
+        <StatusMark state="failed" glyph={false} word={word} detail={detail ? <CutDetail text={detail} /> : undefined} className="min-w-0" />
+      ) : (
+        <span data-page-line-words className={cn("min-w-0 text-xs text-pretty text-muted-foreground", !action && "col-span-3")}>
+          {word}
+        </span>
+      )}
+      <span className={cn("col-span-2 flex justify-end", !failed && !action && "hidden")}>
         {action ? (
           <Button
             variant="ghost"

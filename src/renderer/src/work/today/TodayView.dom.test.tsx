@@ -332,6 +332,27 @@ describe("Today", () => {
     expect(line.querySelector('[data-view-state="failed"]')).toBeNull();
   });
 
+  /** Council round 4 (Opus Today 1, Sol Today 2): at 400 a muted reason is never cut; with no press it spans the press's columns. */
+  it("wraps a muted LifeOS line, never cut, and gives it the empty press columns when it has no press", () => {
+    const wordsOf = (reach: LifeosDown): HTMLElement => {
+      cleanup();
+      render(<TodayPageView model={{ kind: "day", blocks: [{ kind: "lifeos", reach }], offline: [], keys: [] }} hostName={() => "The box"} lifeosHost="The box" onRetryLifeos={vi.fn()} />);
+      return document.querySelector<HTMLElement>(`[data-today-lifeos="${reach}"] [data-page-line-words]`)!;
+    };
+    for (const reach of ["withheld", "pairing", "off"] as const) {
+      const words = wordsOf(reach);
+      expect(words.className, reach).not.toContain("truncate");
+      expect(words.className, reach).toContain("col-span-3");
+      // The press's own columns are gone, so the words have the whole row.
+      expect(words.nextElementSibling?.className, reach).toContain("hidden");
+    }
+    // With Sign in at its end, the words wrap in the titles' column and the press keeps its columns.
+    const refused = wordsOf("refused");
+    expect(refused.className).not.toContain("truncate");
+    expect(refused.className).not.toContain("col-span-3");
+    expect(refused.nextElementSibling?.textContent).toBe("Sign in");
+  });
+
   /** Council round 4: the host's own silence (Sol P1, Opus P2) and the host named (Opus P3). */
   it("names the computer Today reads LifeOS through: its silence is the red line with Retry, its Work off and its key withheld say which", () => {
     const retry = vi.fn();
