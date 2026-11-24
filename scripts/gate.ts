@@ -214,6 +214,7 @@ const BRIDGE_PATHS = [...COMPUTER_PATHS, 'src/main/server/remote/**', 'src/main/
  *  `src/renderer/src/lib/*Guard.test.ts` or `scripts/*guard*.test.ts` must
  *  join the list (gate.test.ts). */
 export const GUARD_TESTS = [
+  'src/renderer/src/lib/accessGuard.test.ts',
   'src/renderer/src/lib/busyLabelGuard.test.ts',
   'src/renderer/src/lib/colourGuard.test.ts',
   'src/renderer/src/lib/depthGuard.test.ts',

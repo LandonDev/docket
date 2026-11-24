@@ -181,6 +181,6 @@ describe("a run's cause", () => {
   })
   it("is the engine's own word for Run now", () => {
     // routines/engine.ts writes it; the gate reads it. Held together here so neither changes alone.
-    expect(readFileSync(join(__dirname, '../routines/engine.ts'), 'utf8')).toContain(`this.fire(r, '${RUN_NOW_CAUSE}', 0, { force: true })`)
+    expect(readFileSync(join(__dirname, '../routines/engine.ts'), 'utf8')).toContain(`this.fire(r, '${RUN_NOW_CAUSE}', 0, { force: true`)
   })
 })

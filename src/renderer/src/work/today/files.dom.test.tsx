@@ -18,6 +18,7 @@ const world = vi.hoisted(() => ({
 vi.mock("../../lib/connection", async (original) => ({
   ...(await original<typeof import("../../lib/connection")>()),
   registry: {
+    has: () => true,
     linkOf: (env: string) => ({
       environmentId: env,
       connected: true,
