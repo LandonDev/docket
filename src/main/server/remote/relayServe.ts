@@ -263,7 +263,8 @@ export class RelayServer {
           keyId: a.principal.keyId,
           name: `${a.principal.name} via ${env.name}`,
           audience: a.principal.audience,
-          caps: a.principal.caps
+          caps: a.principal.caps,
+          via: env.id
         }
         this.deps.attach(socket, principal)
         this.log(`${env.name}: lane ${a.socketId} open for key ${a.principal.keyId} (${a.principal.caps.join(',')})`)
@@ -295,7 +296,8 @@ export class RelayServer {
           keyId: a.principal.keyId,
           name: `${a.principal.name} via ${env.name}`,
           audience: a.principal.audience,
-          caps: a.principal.caps
+          caps: a.principal.caps,
+          via: env.id
         }
         try {
           const result = await callFacade({ ...this.deps.facade(), principal }, a.name, a.arguments ?? {})

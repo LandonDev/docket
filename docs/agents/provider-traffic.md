@@ -210,7 +210,9 @@ routed to (aliax-core's `forward`). Two listeners:
   has an owner environment (absent = this machine) and only the owner ever
   presents a refresh token; other hosts hold access-only copies kept fresh
   over the main process's own peer links (`src/main/server/remote/peers.ts`,
-  `accountSync.ts`; RPCs `accounts.push`/`accounts.pull`, admin only).
+  `accountSync.ts`; RPCs `accounts.push` (the giver's key alone, `give`) and
+  `accounts.pull` (admin, or a given computer's device key; with `takeOver`,
+  `give`), every receive path through devices/admission.ts).
   When `accounts.push` adds a profile, the host rebuilds the routing snapshot
   and sends the pending profile update to the gateway child before it answers.
   The vault's save hook drops cached credentials before the profile row is

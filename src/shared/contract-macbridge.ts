@@ -642,7 +642,9 @@ export const MacBridgeRequestSchemas = [
         .object({ release: z.number().int(), version: z.string(), sha: z.string().nullable(), platform: z.string(), headless: z.boolean().optional() })
         .optional(),
       /** The host's screen and power state at register time (src/main/presence.ts). */
-      presence: MacPresenceSchema.optional()
+      presence: MacPresenceSchema.optional(),
+      /** A given computer's proof (contract-devices.ts): its device key's signature over the box's devices.challenge nonce and `from`. */
+      proof: z.string().max(200).optional()
     })
   ),
   request(

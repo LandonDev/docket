@@ -219,7 +219,7 @@ describe('RelayServer', () => {
     const { server, call, attached, principal, requests } = make()
     expect(await call('relay.open', { socketId: 's1', principal })).toEqual({ ok: true, contract: CONTRACT_VERSION })
     expect(attached).toHaveLength(1)
-    expect(attached[0].principal).toEqual({ kind: 'remote', keyId: 'k1', name: 'Phone via The box', audience: 'client', caps: ['read', 'operate'] })
+    expect(attached[0].principal).toEqual({ kind: 'remote', keyId: 'k1', name: 'Phone via The box', audience: 'client', caps: ['read', 'operate'], via: 'env_box' })
     // attach()'s hello was swallowed: nothing went back yet
     await tick()
     expect(requests.filter((r) => r.method === 'relay.frames')).toEqual([])

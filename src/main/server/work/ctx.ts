@@ -1,7 +1,7 @@
 import { createHmac, randomBytes, timingSafeEqual } from 'node:crypto'
 import type { DatabaseSync } from 'node:sqlite'
 import { z } from 'zod'
-import { allows, CAPABILITIES, principalCaps, type Principal as SocketPrincipal } from '@shared/capabilities'
+import { allows, LOCAL_CAPS, principalCaps, type Principal as SocketPrincipal } from '@shared/capabilities'
 import type { ClientRequest, CreateSessionParams } from '@shared/contract'
 import type { WorkPush } from '@shared/contract-work'
 import type { ProjectMeta, WorkspaceMeta } from '@shared/domain'
@@ -242,7 +242,7 @@ export interface Work extends WorkAdmission {
   close(): void
 }
 
-const callerOf = (principal: SocketPrincipal): Caller => (principal.kind === 'local' ? { kind: 'local', caps: CAPABILITIES } : { kind: 'remote', caps: principal.caps, keyId: principal.keyId })
+const callerOf = (principal: SocketPrincipal): Caller => (principal.kind === 'local' ? { kind: 'local', caps: LOCAL_CAPS } : { kind: 'remote', caps: principal.caps, keyId: principal.keyId })
 
 export function startWork(deps: WorkDeps, modules: WorkModule[] = WORK_MODULES): Work {
   // The registry is filled by a load, never by importing it: without one the default list would be silently empty.

@@ -131,7 +131,12 @@ describe('add-on grants across hosts', () => {
     const [sent] = pushesOf(box)
     expect(sent).toMatchObject({ service: 'addon', mode: 'handoff', profile: { name: 'ad_a', accountId: 'ad_a', owner: 'env_box', static: false } })
     expect(hasRefresh('addon', sent.blob)).toBe(true)
-    expect(box.request.mock.calls.filter((c) => c[0] === 'accounts.released').map((c) => c[1])).toEqual([{ from: 'env_mac', service: 'addon', accountId: 'ad_a' }])
+    // The release names the handoff the push carried and the grant it handed over.
+    const pushedId = (box.request.mock.calls.find((c) => c[0] === 'accounts.push')![1] as { handoffId?: string }).handoffId
+    expect(pushedId).toBeTruthy()
+    expect(box.request.mock.calls.filter((c) => c[0] === 'accounts.released').map((c) => c[1])).toEqual([
+      { from: 'env_mac', service: 'addon', accountId: 'ad_a', handoffId: pushedId, refreshFingerprint: refreshFingerprint('addon', sent.blob) }
+    ])
     // The Mac keeps an access copy that names the box, with its client and port for a sign-in again.
     const left = vault.readSecret('addon', 'ad_a')!
     expect(hasRefresh('addon', left)).toBe(false)
@@ -142,10 +147,10 @@ describe('add-on grants across hosts', () => {
     // The box's side of the same exchange, in its own vault.
     const onClaimed = vi.fn()
     const boxHost = host('env_box', [], { onClaimed })
-    expect(await boxHost.sync.handlePush('env_mac', sent)).toMatchObject({ ok: true, saved: true, owner: 'env_mac', refreshFingerprint: refreshFingerprint('addon', sent.blob) })
+    expect(await boxHost.sync.handlePush('env_mac', sent, 'H1')).toMatchObject({ ok: true, saved: true, owner: 'env_mac', refreshFingerprint: refreshFingerprint('addon', sent.blob) })
     expect(vault.profiles('addon')[0]).toMatchObject({ owner: 'env_mac', static: false })
     expect(onClaimed).not.toHaveBeenCalled()
-    expect(boxHost.sync.handleReleased('env_mac', { service: 'addon', accountId: 'ad_a' })).toEqual({ ok: true })
+    expect(boxHost.sync.handleReleased('env_mac', { service: 'addon', accountId: 'ad_a', handoffId: 'H1', refreshFingerprint: refreshFingerprint('addon', sent.blob)! })).toEqual({ ok: true })
     expect(onClaimed).toHaveBeenCalledWith('addon', 'ad_a')
     expect(vault.profiles('addon')[0]).toMatchObject({ owner: 'env_box' })
     expect(hasRefresh('addon', vault.readSecret('addon', 'ad_a')!)).toBe(true)
