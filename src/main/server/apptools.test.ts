@@ -600,4 +600,7 @@ it("a thread a pillar narrowed (a mail chat) keeps only the listed bridge calls:
   for (const method of ['app.updateNotes', 'app.addonFind', 'app.addonCall', 'app.workCall', 'app.workTools'])
     expect(bridgeCallRefusal(method, as('chat'), info, denied), method).toBeNull()
   expect(bridgeCallRefusal('app.startThread', as('plain'), info, denied)).toBeNull()
+  // the Mac bridge's own calls: none for a narrowed thread, its token's as before for another
+  for (const method of ['mac.run', 'mac.writeFile', 'mac.jobStart']) expect(bridgeCallRefusal(method, { sessionId: 'chat' }, info, denied), method).toBe(`forbidden: ${method} is not available to this thread`)
+  expect(bridgeCallRefusal('mac.run', { sessionId: 'plain' }, info, denied)).toBeNull()
 })

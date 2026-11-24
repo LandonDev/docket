@@ -261,8 +261,10 @@ export function hasAppBridge(): boolean {
  * bridge set up, every app.* call is. Other methods pass.
  */
 export function bridgeCallRefusal(method: string, params: unknown, info: AppBridgeInfo | null = bridge, denied: (sessionId: string) => readonly string[] = harnessDeniedOf): string | null {
-  if (!method.startsWith('app.')) return null
   const { sessionId, appToken } = (params ?? {}) as { sessionId?: unknown; appToken?: unknown }
+  // The Mac bridge's calls (mac.run, mac.writeFile, …) are its own token's; a narrowed thread makes none of them.
+  if (method.startsWith('mac.')) return typeof sessionId === 'string' && denied(sessionId).length ? `forbidden: ${method} is not available to this thread` : null
+  if (!method.startsWith('app.')) return null
   if (typeof sessionId !== 'string' || !info?.tokens.check(sessionId, appToken)) return `forbidden: ${method} needs the calling thread's own app token`
   // A thread a pillar narrowed (a mail chat) keeps only the calls narrowing.ts lists: no thread or agent of its own, no app or desktop change.
   return denied(sessionId).length ? narrowedMethodRefusal(method) : null

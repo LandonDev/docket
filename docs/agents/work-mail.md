@@ -494,7 +494,12 @@ press. The host side (`src/main/server/work/mail/chat/`):
   notes and decisions, citations): no other thread's words (no thread list
   or read, no `work_search`), no Files verb (listing a place asks his Mac,
   the Windows VM or Google Drive), no page tool (a page may fetch from the
-  web), no thread, agent, add-on, skill, desktop or Mac
+  web), no thread, agent, add-on, skill, desktop or Mac; of the harness's
+  own tools only `ToolSearch` and `TodoWrite` (`NARROWED_BUILTINS`, an
+  allow-list: no `Read`, which has no path fence, no `Monitor`); LifeOS as
+  Claude Code sees an add-on (`mcp__app__lifeos__…`), judged call by call;
+  over the bridge no `mac.*` call; a thread that moves to another host
+  takes its row (a `mail-chats` move module), so it is narrowed there too
   (`narrowedToolRefusal` on Claude Code's fence, `narrowedMethodRefusal` in
   the app bridge's `bridgeCallRefusal`, work/narrowing.ts). A module whose
   check throws leaves the thread narrowed (`DENIED_UNCHECKED`). The registry

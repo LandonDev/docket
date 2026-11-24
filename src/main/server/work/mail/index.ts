@@ -156,6 +156,8 @@ export async function sendMailNow(ctx: WorkCtx, by: Caller, id: string): Promise
 }
 
 export function ensureMailTables(db: DatabaseSync): void {
+  // The mail chats' table first: a fault in another of the pillar's tables must never leave a mail chat unnarrowed.
+  ensureChatTables(db)
   // A draft opened once beside its thread is never opened again: a closed item stays closed.
   db.exec(`CREATE TABLE IF NOT EXISTS work_mail_opened (
     draft_id TEXT PRIMARY KEY,
@@ -163,7 +165,6 @@ export function ensureMailTables(db: DatabaseSync): void {
     at INTEGER NOT NULL
   )`)
   ensureWaitingTables(db)
-  ensureChatTables(db)
 }
 
 /** Opens each new draft a thread of this host made as a mail item beside that thread, once. */

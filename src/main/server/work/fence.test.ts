@@ -270,7 +270,9 @@ describe('Claude: the driver\'s spawn', () => {
       expect(chat.disallowedTools).toEqual(expect.arrayContaining([...WORK_DENIED_TOOLS, ...narrowed]))
       const fence = chat.hooks!.PreToolUse![0].hooks[0]
       for (const tool of narrowed) expect(await fence({ tool_name: tool } as never, undefined, { signal: new AbortController().signal }), tool).toMatchObject({ hookSpecificOutput: { permissionDecision: 'deny' } })
-      expect(await fence({ tool_name: 'Read' } as never, undefined, { signal: new AbortController().signal })).toEqual({ continue: true })
+      // A narrowed thread keeps only the built-ins narrowing.ts lists: no Read with no path fence of its own.
+      expect(await fence({ tool_name: 'ToolSearch' } as never, undefined, { signal: new AbortController().signal })).toEqual({ continue: true })
+      expect(await fence({ tool_name: 'Read' } as never, undefined, { signal: new AbortController().signal })).toMatchObject({ hookSpecificOutput: { permissionDecision: 'deny' } })
       const plain = await spawnOptions({ id: 'wf-plain', scope: 'work' })
       for (const tool of narrowed) expect(plain.disallowedTools, tool).not.toContain(tool)
       // a code thread is never asked

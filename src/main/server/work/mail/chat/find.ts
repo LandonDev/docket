@@ -1,3 +1,4 @@
+import { registerMoveModule, tableMoveModule } from '../../../sessionMove'
 import type { DatabaseSync } from 'node:sqlite'
 import type { MailChatFound } from '@shared/contract-work-mail'
 import type { MailChatKind } from '@shared/work/mailChat'
@@ -22,6 +23,8 @@ export interface MailChatRow {
 let known: DatabaseSync | null = null
 
 export function ensureChatTables(db: DatabaseSync): void {
+  // First, so a fault below never leaves a mail chat read as an ordinary thread (the harness's denial reads it).
+  known = db
   db.exec(`CREATE TABLE IF NOT EXISTS work_mail_chats (
     session_id TEXT PRIMARY KEY,
     workspace_id TEXT NOT NULL,
@@ -30,7 +33,8 @@ export function ensureChatTables(db: DatabaseSync): void {
     created_at INTEGER NOT NULL
   )`)
   db.exec('CREATE INDEX IF NOT EXISTS work_mail_chats_by_mail ON work_mail_chats (workspace_id, mail_thread_id, created_at)')
-  known = db
+  // A thread that moves to another host takes its row, so it is a mail chat there too.
+  registerMoveModule(db, tableMoveModule('mail-chats', 'work_mail_chats'))
 }
 
 type Row = { session_id: string; workspace_id: string; kind: string; mail_thread_id: string | null }

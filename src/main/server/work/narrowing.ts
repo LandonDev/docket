@@ -64,12 +64,21 @@ export const NARROWED_BRIDGE_METHODS: readonly string[] = [
   'app.workCancel'
 ]
 
-/** Why a narrowed thread may not call this Claude Code MCP tool (`mcp__<server>__<tool>`), or null; a built-in is not this check's. */
+/**
+ * The harness's own tools a narrowed thread keeps: finding a deferred tool (LifeOS's are) and its own list. An
+ * allow-list, so a built-in a CLI adds later (one that runs a command or opens a socket) is refused until named here.
+ */
+export const NARROWED_BUILTINS: readonly string[] = ['ToolSearch', 'TodoWrite']
+
+/**
+ * Why a narrowed thread may not call this Claude Code tool, or null. An add-on's tool on the app server
+ * (`mcp__app__lifeos__…`) is the add-on gate's to judge call by call (`callRefusal`); LifeOS's alone passes here.
+ */
 export function narrowedToolRefusal(toolName: string): string | null {
-  if (!toolName.startsWith('mcp__')) return null
+  if (!toolName.startsWith('mcp__')) return NARROWED_BUILTINS.includes(toolName) ? null : `${toolName} is not available in this thread.`
   const [server, ...rest] = toolName.slice('mcp__'.length).split('__')
   const tool = rest.join('__')
-  if (server === 'app' ? NARROWED_APP_TOOLS.includes(tool) : NARROWED_SERVERS.includes(server!)) return null
+  if (server === 'app' ? NARROWED_APP_TOOLS.includes(tool) || tool.startsWith('lifeos__') : NARROWED_SERVERS.includes(server!)) return null
   return `${toolName} is not available in this thread.`
 }
 
