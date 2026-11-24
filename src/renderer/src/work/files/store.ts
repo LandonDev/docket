@@ -532,11 +532,16 @@ export function useTabs(link: string, workspaceId: string, hosted: boolean, firs
   );
   useEffect(() => {
     if (!hosted) return void localTabs(link, workspaceId, first);
+    firstPages.set(key, first);
     void loadTabs(link, workspaceId, first);
     const host = registry.linkOf(link);
     const offPush = host.onPush((push) => {
       // The push names the new revision alone: the list is asked for, and comes cut to what this window may see.
-      if (push.push === "work.files" && push.workspaceId === workspaceId && push.tabs !== undefined && push.tabs !== tabsOf(link, workspaceId).rev) void loadTabs(link, workspaceId, first);
+      if (push.push !== "work.files" || push.workspaceId !== workspaceId || push.tabs === undefined || push.tabs === tabsOf(link, workspaceId).rev) return;
+      // A change of this window's own is out: its answer brings the list, and only a newer revision is asked after it.
+      const out = changing.get(key);
+      if (out) return void (out.rev = Math.max(out.rev, push.tabs));
+      void loadTabs(link, workspaceId, first);
     });
     // A socket that came back may have missed a push.
     const offOpen = host.onOpen(() => void loadTabs(link, workspaceId, first));
@@ -559,15 +564,33 @@ export function selectTab(link: string, workspaceId: string, tabId: string): voi
   writeTabs(entry, { selected: tabId });
 }
 
+/** This window's own changes to a workspace's tabs that are out, and the newest revision a push named meanwhile. */
+const changing = new Map<string, { count: number; rev: number }>();
+/** Each shown workspace's first page, for a list asked again after a change (an empty place gets it as its first tab). */
+const firstPages = new Map<string, FilePage>();
+
 /** A change to the tabs: shown at once, sent to the host, and put right by the host's answer (or its list again, when it refused). */
 async function change(link: string, workspaceId: string, guess: FileTab[] | null, method: string, params: Record<string, unknown>, show?: (answer: FilesTabs & { tabId?: string }) => string | undefined): Promise<FilesTabs & { tabId?: string }> {
   const entry = tabsOf(link, workspaceId);
   if (guess) writeTabs(entry, { tabs: guess, selected: selectedAfter(entry.tabs, guess, entry.selected) });
+  const key = tabsKey(link, workspaceId);
+  const out = changing.get(key) ?? { count: 0, rev: -1 };
+  out.count++;
+  changing.set(key, out);
+  const done = (): void => {
+    if (--out.count) return;
+    changing.delete(key);
+    // A push named a revision past what the answers brought: the list is asked for once.
+    const first = firstPages.get(key);
+    if (first && out.rev > tabsOf(link, workspaceId).rev) void loadTabs(link, workspaceId, first);
+  };
   try {
     const answer = await ask<FilesTabs & { tabId?: string }>(link, method, { workspaceId, ...params });
     putTabs(link, workspaceId, answer, show?.(answer));
+    done();
     return answer;
   } catch (error) {
+    done();
     await ask<FilesTabs>(link, "work.files.tabs", { workspaceId }).then(
       (answer) => putTabs(link, workspaceId, { ...answer, rev: Math.max(answer.rev, tabsOf(link, workspaceId).rev) }),
       () => undefined,
@@ -732,6 +755,8 @@ export function resetFilesStore(): void {
   listingRound.clear();
   listingListeners.clear();
   keepHears.clear();
+  changing.clear();
+  firstPages.clear();
   homes.clear();
   look = null;
   windowId = null;

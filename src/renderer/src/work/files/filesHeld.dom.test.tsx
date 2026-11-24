@@ -47,7 +47,7 @@ vi.mock("../shell/actions", () => ({
   linkIdOfHost: () => null,
 }));
 
-const { listingsKept, resetFilesStore, useHome, useListing, useReach } = await import("./store");
+const { goTo, listingsKept, resetFilesStore, useHome, useListing, useReach, useTabs } = await import("./store");
 const { LISTING_FRESH_MS, LISTING_KEEP_MOST, LISTING_KEEP_MS } = await import("./keep");
 
 const workspace = { id: "w1", environmentId: "box", path: "/w", name: "Dummy Esports", kind: "work", sector: "purdue" } as unknown as WorkspaceMeta;
@@ -229,5 +229,35 @@ describe("the folders the window keeps", () => {
     await waitFor(() => expect(listingsKept().listings).toBe(0));
     const again = renderHook(() => useListing(libFrom, at("/cloud/General")));
     expect(again.result.current.entries).toEqual([]);
+  });
+});
+
+describe("Back's own tab change", () => {
+  const first = { at: { at: "place" as const, id: "folder" }, name: "Dummy Esports" };
+  const tab = (rev: number, path: string) => ({ tabs: [{ id: "t1", kind: "page", name: "A", page: { at: at(path), name: "A" } }], rev });
+  it("asks for the tabs no more for its own push, and once for a newer one that came while it was out", async () => {
+    let answer!: (v: unknown) => void;
+    net.answer = (method) =>
+      method === "work.files.tabs" ? Promise.resolve(tab(1, "/w/A")) : method === "work.files.tabSet" ? new Promise((resolve) => (answer = resolve)) : Promise.resolve(null);
+    const view = renderHook(() => useTabs("box", "w1", true, first));
+    await waitFor(() => expect(view.result.current.loaded).toBe(true));
+    expect(asked("work.files.tabs")).toBe(1);
+    // Back: the tab's page is set on the host; the host's push for it lands before its answer.
+    const went = goTo("box", "w1", "t1", { at: at("/w/B"), name: "B" });
+    push({ push: "work.files", workspaceId: "w1", tabs: 2 });
+    await act(async () => {
+      answer(tab(2, "/w/B"));
+      await went;
+    });
+    expect(asked("work.files.tabs")).toBe(1);
+    // A push past the answer, while another is out: asked once, after it.
+    const again = goTo("box", "w1", "t1", { at: at("/w/C"), name: "C" });
+    push({ push: "work.files", workspaceId: "w1", tabs: 4 });
+    push({ push: "work.files", workspaceId: "w1", tabs: 5 });
+    await act(async () => {
+      answer(tab(3, "/w/C"));
+      await again;
+    });
+    await waitFor(() => expect(asked("work.files.tabs")).toBe(2));
   });
 });
