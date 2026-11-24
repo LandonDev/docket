@@ -20,16 +20,22 @@
  *    app or page included, and ⇧⌘D in a mail app;
  *  - Space or Return with the focus on such a control.
  *  - a step that writes in a co-authoring editor: another person can see
- *    each change as it is made.
+ *    each change as it is made;
+ *  - a click, Return or Space on a page's own outward control
+ *    (`PAGE_OUTWARD`: Microsoft Forms made, sent or opened in Excel from
+ *    SharePoint, Excel for the web and Forms' results), read with its kind.
  *
  * What this cannot catch, in the same class as the unfenced shell: a click
  * by position on a control the screen reader gives no name (a canvas app,
  * a remote desktop, a picture of a button); a control named for something
  * off the list; an act split so that no single call reads as outward; a
  * web address opened in a browser whose page acts on being fetched (a
- * one-click unsubscribe link). The hold does not claim otherwise.
+ * one-click unsubscribe link); a page's outward control named off
+ * `PAGE_OUTWARD` or drawn with no name, or a listed one a redesign renamed.
+ * The hold does not claim otherwise.
  */
 import { sha256Hex } from '../sha256'
+import { FORMS_HOSTS, isFormsHost } from '../work/msforms'
 import { parseKeyCombo, parseObservation, type Modifier } from './observation'
 import type { ComputerAction } from './protocol'
 import { menuPathSegments } from './tools'
@@ -245,6 +251,56 @@ export const COAUTHOR_HOSTS: readonly string[] = ['docs.google.com', '*.sharepoi
 export const COAUTHOR_APP_BUNDLES: readonly string[] = ['com.microsoft.Word', 'com.microsoft.Excel', 'com.microsoft.Powerpoint']
 export const COAUTHOR_EXES: readonly string[] = ['winword.exe', 'excel.exe', 'powerpnt.exe']
 
+/** The confirm kinds a page's own outward control is held as (policy.ts `CONFIRM_KIND_INFO`). */
+export type PageOutwardKind = 'send' | 'access'
+
+/**
+ * A control a page names for an outward act that no verb of `OUTWARD_VERBS` carries, or carries with too little to
+ * say: Microsoft Forms reached from SharePoint and Excel for the web, which stay open to agents as Files' and
+ * Office's pages (docs/agents/work-msforms.md). A control fits by the page's host and path, its own role and name,
+ * and where it sits: inside a menu or control named in `within` (or with that one expanded on the screen), or in a
+ * dialog whose words match `dialog`. A click on it, by element, position or name, and Return or Space with the
+ * focus on it are held with the window's picture.
+ */
+export interface PageOutward {
+  /** a host fits itself; `*.x` fits x's subdomains */
+  hosts: readonly string[]
+  /** the address's path (and query) must match */
+  path: RegExp
+  /** the control's name, as `norm` reads it */
+  name: string
+  roles: readonly string[]
+  /** a menu or control it sits in, or one expanded on the screen, by name as `norm` reads it */
+  within?: readonly string[]
+  /** a dialog or sheet it sits in, by its name or the words inside it */
+  dialog?: RegExp
+  /** the act's word on the card */
+  label: string
+  kind: PageOutwardKind
+}
+
+const SHAREPOINT = ['*.sharepoint.com']
+/** Excel for the web: in a SharePoint or OneDrive document's own page, or on Office's hosts. */
+const EXCEL_WEB = ['*.sharepoint.com', 'onedrive.live.com', 'excel.cloud.microsoft', 'excel.officeapps.live.com', 'excel.office.com']
+/** A SharePoint site's library pages, a OneDrive's included. */
+const LIBRARY_PATH = /^\/(sites|teams|personal)\/|^\/:[a-z]:\/|\/forms\/[^/]*\.aspx|\/_layouts\/15\/(onedrive|viewlsts)\.aspx|\/shared(%20| )documents/i
+/** Excel's own page: a workbook opened in Excel for the web. */
+const EXCEL_PATH = /^\/:x:\/|\/_layouts\/15\/(doc|doc2|xlviewer|wopiframe2?)\.aspx|^\/x\/|^\/(edit|view)\.aspx|^\/$|^\/(launch|open|we)\b/i
+const MENU_ROLES = ['menu item', 'button', 'link', 'menu button', 'radio', 'checkbox']
+
+export const PAGE_OUTWARD: readonly PageOutward[] = [
+  // a SharePoint library's Create or upload (New on older pages) → Forms survey: a form made in the library, its link the team's
+  { hosts: SHAREPOINT, path: LIBRARY_PATH, name: 'forms survey', roles: MENU_ROLES, within: ['create or upload', 'new', 'create'], label: 'Create a form', kind: 'access' },
+  // the library's Forms command → Create new form
+  { hosts: SHAREPOINT, path: LIBRARY_PATH, name: 'create new form', roles: MENU_ROLES, within: ['forms'], label: 'Create a form', kind: 'access' },
+  // Excel for the web: Insert → Forms → New Form, and Send Form
+  { hosts: EXCEL_WEB, path: EXCEL_PATH, name: 'new form', roles: MENU_ROLES, within: ['forms'], label: 'Create a form', kind: 'access' },
+  { hosts: EXCEL_WEB, path: EXCEL_PATH, name: 'send form', roles: MENU_ROLES, within: ['forms'], label: 'Send', kind: 'send' },
+  // Forms' results: Open results in Excel, and the Continue of its dialog, which makes the workbook in his library
+  { hosts: FORMS_HOSTS, path: /^\//, name: 'open results in excel', roles: MENU_ROLES, label: 'Open results in Excel', kind: 'access' },
+  { hosts: FORMS_HOSTS, path: /^\//, name: 'continue', roles: ['button', 'link'], dialog: /\bexcel\b|\bworkbook\b|open results/i, label: 'Open results in Excel', kind: 'access' }
+]
+
 export interface ScreenElement {
   index: number
   role: string
@@ -278,6 +334,8 @@ export interface OutwardRead {
   on: string
   /** no grant may be made from it: commands run as written and co-authors see edits live */
   grantable?: false
+  /** the confirm kind a page's own outward control carries (`PAGE_OUTWARD`): `send` or `access` */
+  kind?: PageOutwardKind
 }
 
 /**
@@ -541,19 +599,90 @@ const sends = (screen: Screen, e: ScreenElement, verbs: readonly string[] = OUTW
   return verb && !cookieButton(e, verb) && !navForward(screen, e, verb) ? verb : null
 }
 
-/** The outward control a click on `index` carries out: the element itself, or the control it sits in. */
-function outwardControl(screen: Screen, index: number, verbs: readonly string[] = OUTWARD_VERBS): { element: ScreenElement; verb: string } | null {
+/** The outward control a click on `index` carries out: the element itself, or the control it sits in. A page's own (`PAGE_OUTWARD`) says its label and kind. */
+function outwardControl(screen: Screen, index: number, verbs: readonly string[] = OUTWARD_VERBS): { element: ScreenElement; label: string; kind?: PageOutwardKind } | null {
   const self = screen.elements.get(index)
   if (!self) return null
   // A field's name is its label ("Send to:"), not what a click on it does.
   const chain = [...(TEXT_ROLES.includes(self.role) ? [] : [self]), ...ancestors(screen, index).filter(pressable)]
+  const page = pageAddress(screen)
   for (const e of chain) {
+    const own = page ? pageControl(screen, e, page) : null
+    if (own) return { element: e, label: own.label, kind: own.kind }
     // A control the read shows disabled is held all the same: the call's own typing may have enabled it since.
     const verb = sends(screen, e, verbs, true)
-    if (verb) return { element: e, verb }
+    if (verb) return { element: e, label: cap(verb) }
   }
   return null
 }
+
+/** A browser window's page address as its address bar reads it now; null outside a browser or with no address read. */
+function pageAddress(screen: Screen): URL | null {
+  if (!isBrowser(screen.app)) return null
+  const value = addressField(screen)?.value?.trim().split(/\s/)[0]
+  if (!value) return null
+  try {
+    const url = new URL(/^[a-z][a-z0-9+.-]*:\/\//i.test(value) ? value : `https://${value}`)
+    return url.hostname.includes('.') ? url : null
+  } catch {
+    return null
+  }
+}
+
+/** A host fits a listed one and its subdomains; `*.x` fits x's subdomains alone. */
+const onHost = (host: string, list: readonly string[]): boolean => list.some((h) => (h.startsWith('*.') ? host.endsWith(h.slice(1)) : host === h || host.endsWith(`.${h}`)))
+/** A page control's kind, spread into a read. */
+const kindOf = (hit: { kind?: PageOutwardKind }): { kind?: PageOutwardKind } => (hit.kind ? { kind: hit.kind } : {})
+
+/** The `PAGE_OUTWARD` entry a control is, on the page at `url`, or null. */
+function pageControl(screen: Screen, e: ScreenElement, url: URL): PageOutward | null {
+  const name = norm(ownName(e) ?? labelsOf(screen, e) ?? '')
+  if (!name) return null
+  const host = url.hostname.toLowerCase()
+  const where = decodeURIComponent(url.pathname) + url.search
+  for (const entry of PAGE_OUTWARD) {
+    if (entry.name !== name || !entry.roles.includes(e.role) || !onHost(host, entry.hosts) || !entry.path.test(where)) continue
+    if (entry.within && !withinOne(screen, e, entry.within)) continue
+    if (entry.dialog && !inDialog(screen, e, entry.dialog)) continue
+    return entry
+  }
+  return null
+}
+
+/** Whether a control sits in a menu or control by one of these names, or one by such a name is expanded on the screen: a page's menu is often drawn apart from its button. */
+function withinOne(screen: Screen, e: ScreenElement, names: readonly string[]): boolean {
+  if (ancestors(screen, e.index).some((a) => names.includes(norm(a.name ?? '')))) return true
+  return [...screen.elements.values()].some((x) => x.index !== e.index && x.states.includes('expanded') && names.includes(norm(x.name ?? '')))
+}
+
+/** Whether a control sits in a dialog or sheet whose name, or the words inside it, match. */
+function inDialog(screen: Screen, e: ScreenElement, words: RegExp): boolean {
+  return ancestors(screen, e.index).some(
+    (a) => ['dialog', 'sheet', 'alert', 'alert dialog'].includes(a.role) && (words.test(a.name ?? '') || under(screen, a.index).some((x) => ['text', 'heading'].includes(x.role) && words.test(x.name ?? x.value ?? '')))
+  )
+}
+
+/** The few words and icons inside a control with no name of its own: what names it, as `verbOf` reads it. */
+function labelsOf(screen: Screen, e: ScreenElement): string | null {
+  if (e.name !== undefined || !pressable(e)) return null
+  const labels = under(screen, e.index)
+    .filter((x) => ['text', 'image', 'heading'].includes(x.role))
+    .map((x) => x.name ?? (x.role === 'image' ? undefined : x.value))
+    .filter((label): label is string => !!label?.trim())
+  return labels.length && labels.length <= 3 ? labels.join(' ') : null
+}
+
+/**
+ * The Forms host a browser window shows, read from its address bar, or null: in a Work thread a Mac's or a PC's
+ * computer step on such a page is refused (computer/run.ts), since only the msform tools reach Forms.
+ */
+export function formsPageHost(screen: Screen | null): string | null {
+  const url = screen ? pageAddress(screen) : null
+  return url && isFormsHost(url.hostname) ? url.hostname.toLowerCase() : null
+}
+
+/** Whether an app is a browser, or a page installed as an app of its own: its page's host decides what a step does. */
+export const isBrowserApp = (app: Screen['app']): boolean => isBrowser(app)
 
 /** The deepest element whose frame holds a point: what a click by position lands on. */
 function elementAt(screen: Screen, point: readonly number[]): number | null {
@@ -751,7 +880,7 @@ function sheetDefault(screen: Screen, within: number | null, live: boolean): { l
  * What Return, a typed line break or `confirm` carries out with the focus
  * on `at` (null: nobody knows where the focus is).
  */
-function returnSends(screen: Screen, at: number | null, how: ReturnHow = {}): { label: string; on: string } | null {
+function returnSends(screen: Screen, at: number | null, how: ReturnHow = {}): { label: string; on: string; kind?: PageOutwardKind } | null {
   const { chord = false, typed = false } = how
   const field = at !== null ? (screen.elements.get(at) ?? null) : null
   const mail = mailPlace(screen)
@@ -765,7 +894,7 @@ function returnSends(screen: Screen, at: number | null, how: ReturnHow = {}): { 
   if (!text) {
     // The focus on a control: Return and Space press it, and nothing beside it.
     const hit = outwardControl(screen, field.index)
-    if (hit) return { label: cap(hit.verb), on: say(hit.element) }
+    if (hit) return { label: hit.label, on: say(hit.element), ...kindOf(hit) }
     if (!CONTAINER_ROLES.includes(field.role)) return null
     // The focus on the window, a page or a sheet itself: an open sheet or dialog takes Return for its default.
     const open = sheetDefault(screen, ['window', 'web area'].includes(field.role) ? null : field.index, typed)
@@ -832,8 +961,16 @@ export function readOutward(steps: readonly ComputerAction[], screen: Screen | n
   // a command line runs whatever is written or clicked in it: held before anything else is read
   const console = consoleRead(steps, screen)
   if (console) return console
+  // SharePoint and Excel for the web are co-authoring pages too: Return or Space on a page's own outward control
+  // (`PAGE_OUTWARD`) is held with its kind, not as an edit
   const coauthor = coauthorRead(steps, screen)
-  if (coauthor) return coauthor
+  const read = scanOutward(steps, screen, pointer)
+  if (coauthor && !(read?.kind && read.step <= coauthor.step)) return coauthor
+  return read
+}
+
+/** `readOutward` past the command line and the co-author's edit: the first step that presses, picks or keys an outward control. */
+function scanOutward(steps: readonly ComputerAction[], screen: Screen | null, pointer: PointerAt): OutwardRead | null {
   const at = (p: PointerAt): number | null => (!p || 'named' in p ? null : 'element' in p ? p.element : screen ? elementAt(screen, p.coordinate) : null)
   /** where the pointer is now, by element and by a name it was moved to: a button press with no target lands there */
   let pointerOn: number | null = at(pointer)
@@ -865,6 +1002,9 @@ export function readOutward(steps: readonly ComputerAction[], screen: Screen | n
     }
     const acts = CLICKS.includes(a.action) || (a.action === 'perform' && a.name !== 'raise' && a.name !== 'show menu' && a.name !== 'scroll to visible')
     if (acts && a.named !== undefined && !(a.action === 'perform' && a.name === 'confirm')) {
+      // A page's own outward control by its name (`PAGE_OUTWARD`): any element the name may find, read with its kind.
+      const page = screen && a.element === undefined && a.coordinate === undefined ? namedElements(screen, a.named).map((i) => outwardControl(screen, i)).find((hit) => hit?.kind) : undefined
+      if (page) return { step, why: 'control', label: page.label, on: say(page.element), ...kindOf(page) }
       const verb = outwardVerb(a.named)
       if (verb && !cookieName(a.named, verb)) return { step, why: 'control', label: cap(verb), on: JSON.stringify(a.named) }
     }
@@ -884,7 +1024,7 @@ export function readOutward(steps: readonly ComputerAction[], screen: Screen | n
       const to = a.element ?? (a.coordinate ? elementAt(screen, a.coordinate) : null)
       const a1 = from !== null ? outwardControl(screen, from) : null
       const a2 = to !== null ? outwardControl(screen, to) : null
-      if (a1 && a2 && a1.element.index === a2.element.index) return { step, why: 'control', label: cap(a2.verb), on: say(a2.element) }
+      if (a1 && a2 && a1.element.index === a2.element.index) return { step, why: 'control', label: a2.label, on: say(a2.element), ...kindOf(a2) }
       pointerOn = to
       pointerName = null
     }
@@ -897,7 +1037,7 @@ export function readOutward(steps: readonly ComputerAction[], screen: Screen | n
       const candidates = lands !== null && lands !== undefined ? [lands] : byName !== null ? namedElements(screen, byName) : []
       let hit: ReturnType<typeof outwardControl> = null
       for (const i of candidates) if ((hit = outwardControl(screen, i))) break
-      if (hit) return { step, why: byPoint || targetless ? 'position' : 'control', label: cap(hit.verb), on: say(hit.element) }
+      if (hit) return { step, why: byPoint || targetless ? 'position' : 'control', label: hit.label, on: say(hit.element), ...kindOf(hit) }
       // `confirm` on a field commits it as Return does.
       if (a.action === 'perform' && a.name === 'confirm') {
         for (const to of keyTargets(a)) {
@@ -927,11 +1067,11 @@ export function readOutward(steps: readonly ComputerAction[], screen: Screen | n
           const newLine = !chord && combo.modifiers.length > 0 && onText
           if (combo.key === 'Return' && !newLine) {
             const sent = returnSends(screen, to, { chord, typed })
-            if (sent) return { step, why: chord ? 'chord' : 'key', label: sent.label, on: `${chord ? a.text : 'Return'} in ${sent.on}` }
+            if (sent) return { step, why: chord ? 'chord' : 'key', label: sent.label, on: `${chord ? a.text : 'Return'} in ${sent.on}`, ...kindOf(sent) }
           }
           if (combo.key === 'space' && combo.modifiers.length === 0 && !onText) {
             const sent = returnSends(screen, to, { typed })
-            if (sent) return { step, why: 'key', label: sent.label, on: `Space in ${sent.on}` }
+            if (sent) return { step, why: 'key', label: sent.label, on: `Space in ${sent.on}`, ...kindOf(sent) }
           }
         }
       }
@@ -942,7 +1082,7 @@ export function readOutward(steps: readonly ComputerAction[], screen: Screen | n
         // A typed line break is Return; a typed space presses a control the focus is known to be on.
         if (/[\r\n]/.test(a.text ?? '') || (/ /.test(a.text ?? '') && to !== null && !onText && !CONTAINER_ROLES.includes(screen.elements.get(to)?.role ?? ''))) {
           const sent = returnSends(screen, to, { typed: true, text: true })
-          if (sent) return { step, why: 'typed', label: sent.label, on: `${/[\r\n]/.test(a.text ?? '') ? 'a line break' : 'a space'} typed in ${sent.on}` }
+          if (sent) return { step, why: 'typed', label: sent.label, on: `${/[\r\n]/.test(a.text ?? '') ? 'a line break' : 'a space'} typed in ${sent.on}`, ...kindOf(sent) }
         }
       }
     }

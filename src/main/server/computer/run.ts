@@ -30,7 +30,7 @@ import { CONFIRM_KIND_INFO, type ConfirmNeed } from '@shared/computer/policy'
 import { formatHeldLine } from '@shared/computer/scheduleRules'
 import { LOCAL_CARD_WORDS, READER_WAIT_WORDS, UNREAD_WORDS } from '@shared/computer/heldCalls'
 import { awayVerdict } from '@shared/away'
-import { RUN_BOX_EXES, clicksBlind, cutFields, heldTargets, isCutValue, withValues, namedKeysUnplaced, needsFreshRead, pointerAfter, readOutward, restage, screenMark, screenOfBook, screenOfObservation, type HeldTarget, type OutwardRead, type PointerAt, type Screen } from '@shared/computer/outward'
+import { RUN_BOX_EXES, clicksBlind, cutFields, formsPageHost, heldTargets, isBrowserApp, isCutValue, withValues, namedKeysUnplaced, needsFreshRead, pointerAfter, readOutward, restage, screenMark, screenOfBook, screenOfObservation, type HeldTarget, type OutwardRead, type PointerAt, type Screen } from '@shared/computer/outward'
 import type { PermissionPolicy, SessionMeta } from '@shared/events'
 import type { ApprovalRequest } from '../drivers/types'
 import { computerAxWaits, planBatch, stoppedBefore, type AxWaitRows } from './batchPlan'
@@ -67,6 +67,7 @@ import { landShot, nextShotNumber } from './shots'
 import type { SessionTierGate, TierDecision, TierGateContext } from './tierGate'
 import type { Admitted, SettingsStore, TierVerdicts } from './verdicts'
 import type { CallTiming } from '@shared/computer/bridgeTiming'
+import { isFormsUrl } from '@shared/work/msforms'
 
 /**
  * One computer call, start to end (docs/computer-protocol.md "Sessions" and
@@ -177,6 +178,9 @@ export const HELD_UNAVAILABLE =
 export const HELD_STALE = 'the window no longer holds what was shown when this was held'
 export const HELD_PARTIAL = "refused: a field's text is longer than the window's read shows, and it could not be read whole, so nothing could bind what would go. Nothing was sent. Read the window with computer_observe and try again."
 export const HELD_UNREAD = 'refused: the window could not be read just now, and in a Work thread nothing acts on a window the host has not read. Read it with computer_observe and try again.'
+/** Microsoft Forms is reached only through the msform tools' own browser (docs/agents/work-msforms.md): a Work thread's step on a Forms page, or its open of a Forms address, is refused. */
+export const FORMS_STEP_REFUSED = 'refused: Microsoft Forms pages are reached only through the msform tools; nothing was pressed.'
+export const FORMS_OPEN_REFUSED = 'refused: Microsoft Forms pages are reached only through the msform tools; nothing was opened.'
 export const HELD_UNPLACED = "refused: a step names an element or a point the window does not have, so it cannot be kept for the owner's press as it would run. Read the window and name what to act on."
 export const AWAY_PASSWORD = 'denied: the person is away, and text goes into a password field only with them there; finish around it and name it in your report'
 
@@ -540,11 +544,17 @@ async function runChecked(
   // with no window read (it closed), the service has no id to hold text into a named window to: refused as before
   if (!ctx.pressed && args.window && blindText && !app()?.window) return refused('no_observation', noReadForTextLine(args.app!, args.window))
 
+  // A Work thread's acts are judged by the host, whatever the model flagged (below, once the app is pinned): one the
+  // host reads as outward, or the model flagged, is kept for the owner's press and asks no card. So the flag is no card here.
+  const work = ctx.work === true || host.registry.get(threadId)?.scope === 'work'
+
   // an app no call may touch, or an item that is no page, file or folder: refused before the card
   if (tool === 'computer_apps') {
     const line =
       (typeof args.launch === 'string' ? refusedLaunch(args.launch, !!host.vm) : null) ?? (openOf(args).map((item) => refusedOpenItem(item, !!host.vm)).find((l) => l !== null) ?? null)
     if (line) return refusalOf(line)
+    // a Work thread opens no Forms page: only the msform tools reach Forms
+    if (work && openOf(args).some(isFormsUrl)) return refusal(FORMS_OPEN_REFUSED)
   }
   // in the Windows VM the Windows key is his: Win+R and Win+X are ways to a command line
   if (host.vm) {
@@ -623,9 +633,6 @@ async function runChecked(
       ...(ctx.reader ? { reader: ctx.reader } : {})
     }
   }
-  // A Work thread's acts are judged by the host, whatever the model flagged (below, once the app is pinned): one the
-  // host reads as outward, or the model flagged, is kept for the owner's press and asks no card. So the flag is no card here.
-  const work = ctx.work === true || host.registry.get(threadId)?.scope === 'work'
   const flag = (tool !== 'computer_observe' ? (args.confirm as { kind: ConfirmNeed['kind']; what: string } | undefined) : undefined) ?? null
   const need = needsApproval(tool, work ? ({ ...args, confirm: undefined } as typeof args) : args, permission, hostNeed)
   /** The card, where the call needs one: null to go on, else the answer of a call that was not allowed. */
@@ -831,6 +838,8 @@ async function runChecked(
         const read = obs ? screenOfObservation(obs.text, identity) : null
         // A field that cannot be read whole cannot be checked against what he was shown: stale, nothing sent.
         const screen = read ? await wholeFields(read, obs?.epoch) : null
+        // A page that has become a Forms page since he was shown it is no place to press
+        if (formsPageHost(read)) return refusal(FORMS_STEP_REFUSED)
         const staged = screen ? restage(steps, ctx.pressed.targets, ctx.pressed.mark, screen, t.pointer ?? null) : null
         if (!obs || !staged) return { ...refusal(HELD_STALE), stale: true } as ComputerToolOutcome
         remember(t, args.app!, obs)
@@ -851,13 +860,16 @@ async function runChecked(
         const unread = !!screen && steps.some((s) => actionElements(s).some((i) => !screen!.elements.has(i)))
         // Explorer and Task Manager own the boxes that run what is typed: their window's title is read now, never the book's
         const runBoxApp = RUN_BOX_EXES.includes(identity.bundleId?.toLowerCase() ?? '')
-        if (acting && (!screen || unread || runBoxApp || needsFreshRead(steps, pointer, identity))) {
+        // A browser's page is read now, never the book's: its address says whether the tab is on Forms now
+        if (acting && (!screen || unread || runBoxApp || isBrowserApp(identity) || needsFreshRead(steps, pointer, identity))) {
           const obs = await fresh(false)
           const now = obs ? screenOfObservation(obs.text, identity) : null
           // Never judged against a stale book or an empty screen: a read that failed holds nothing back, so nothing runs.
           if (!now) return refusal(HELD_UNREAD)
           screen = now
         }
+        // Forms is reached only through the msform tools: no step of a Work thread on its pages, held or run
+        if (acting && formsPageHost(screen)) return refusal(FORMS_STEP_REFUSED)
         // A key or text to an element by a name the window does not hold once, as the service picks it: nobody can say where it goes.
         if (acting && screen && namedKeysUnplaced(steps, screen)) return refusal(HELD_UNPLACED)
         // a fresh read carries its window's title, which tells the Run box and Task Manager's "Create new task" from the rest of their apps (consoleRead)

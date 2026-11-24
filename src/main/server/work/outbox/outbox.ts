@@ -1,4 +1,5 @@
 import type { GrantOffer, HeldWhy, OutboxGrant, OutboxItem } from '@shared/contract-work-outbox'
+import { hasFormLink, payloadText } from '@shared/work/msforms'
 import { ACT_PILLAR, errorText, NotBuilt, PILLAR_MILESTONE, type ActKind, type ActResult, type HeldItem, type HeldRef } from '@shared/work'
 import type { ActCtx, ActKindDef, WorkCtx } from '../modules'
 import { canonical } from '../../addonStore'
@@ -26,9 +27,20 @@ import { discardedNote, failedNote, queuedNote, sentNote, staleNote } from './wo
 type LifeosRef = Extract<HeldRef, { at: 'lifeos' }>
 
 export const NO_GRANT_FROM_CONSOLE = 'refused: this act runs in a command line, which no grant may cover; it waits for your press every time'
+export const NO_GRANT_FROM_FORM_LINK = "refused: this act carries a Microsoft form's link, which no grant may cover; it waits for your press every time"
 
-/** An act the host read as one no grant may cover (a command line's, `consoleRead`): it waits for his press every time. */
-export const notGrantable = (payload: unknown): boolean => (payload as { read?: { grantable?: unknown } | null } | null)?.read?.grantable === false
+/** Whether an act's payload holds a Microsoft form's link people answer at (shared/work/msforms.ts). */
+const carriesFormLink = (payload: unknown): boolean => hasFormLink(payloadText(payload))
+
+/**
+ * An act no grant may cover, so it waits for his press every time and earns no offer: one the host read as no
+ * grant's (a command line's, `consoleRead`; a co-author's edit), or one whose words hold a Microsoft form's link,
+ * whatever its kind (`mail.send`, `chat.reply`, any later one): the link reaches people only on his press.
+ */
+export const notGrantable = (payload: unknown): boolean => (payload as { read?: { grantable?: unknown } | null } | null)?.read?.grantable === false || carriesFormLink(payload)
+
+/** The refusal a grant made from such an act answers. */
+export const notGrantableWords = (payload: unknown): string => (carriesFormLink(payload) ? NO_GRANT_FROM_FORM_LINK : NO_GRANT_FROM_CONSOLE)
 
 /** What lifeosHeld.ts answers for the items LifeOS holds. */
 
@@ -305,7 +317,7 @@ export class Outbox {
     if (item.state === 'discarded' || item.state === 'stale') throw new Error('refused: a grant is made from an item that waits or went, not from one that was dropped')
     const def = this.def(item.kind)
     if (!def.matcher || !def.matches) throw new Error(`refused: ${item.kind} is always held; no grant can be made for it`)
-    if (notGrantable(item.payload)) throw new Error(NO_GRANT_FROM_CONSOLE)
+    if (notGrantable(item.payload)) throw new Error(notGrantableWords(item.payload))
     const payload = def.payload.parse(item.payload)
     const seal = this.seals.get(item.kind)
     const parsed = seal ? def.matcher.parse(seal(def.matcher.parse(matcher) as never, payload as never)) : def.matcher.parse(matcher)

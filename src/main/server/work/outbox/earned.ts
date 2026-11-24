@@ -372,7 +372,7 @@ export interface RunDeps {
   granted(row: HeldRow): boolean
   /** whether an open offer still stands (outbox.ts) */
   stands(offer: StoredOffer): boolean
-  /** an act the host read as no grant's (a command line's) */
+  /** an act no grant may cover: one the host read as no grant's (a command line's), or one carrying a Microsoft form's link (outbox.ts) */
   notGrantable(payload: unknown): boolean
   now(): number
 }

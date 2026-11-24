@@ -370,6 +370,16 @@ of the tool. For mail, every recipient (copied and blind-copied too) must be a
 person or an exact domain the grant names. A computer act takes no grant.
 Away makes none, and no agent can.
 
+**No grant sends a Microsoft form's link.** `notGrantable` (outbox.ts) also
+answers true for any act whose payload's words hold a form's link people
+answer at (`hasFormLink(payloadText(payload))`, src/shared/work/msforms.ts: a
+Forms host's `ResponsePage.aspx?…id=` or a `forms.office.com/r/` short link,
+in a mail's text or html, a chat reply, an add-on call's arguments, any
+kind). So no standing grant on `mail.send`, `chat.reply` or any later kind
+sends it, a grant asked for from one is refused
+(`NO_GRANT_FROM_FORM_LINK`), and such a send earns no offer and breaks the
+run it falls in: the link reaches people only on his press.
+
 ### Offered grants
 
 He need not think of a grant: one he has earned is offered
@@ -492,6 +502,23 @@ people can open. Each edit waits for the owner's press, and no grant
 covers it. For Office files, use the Office tools such as
 `office_doc_edit`, which check sharing and hold shared changes.
 
+**A page's own outward controls.** Some pages name an outward act with
+words no verb carries. `PAGE_OUTWARD` (outward.ts) lists them by the page's
+host and path, the control's role and name, and where it sits (inside a
+menu or control by name, or with that one expanded on the screen; or in a
+dialog by its words). Today it lists Microsoft Forms reached from pages that
+stay open to agents: a SharePoint library's Create or upload → Forms
+survey, the library's Forms → Create new form, Excel for the web's Insert →
+Forms → New Form and Send Form, and Forms' results' Open results in Excel
+with its dialog's Continue. A click on one (by element, position or name)
+and Return or Space with the focus on it are held with the window's
+picture, the read carrying its kind: `send` for Send Form, `access` for the
+rest. Return or Space on one is read so before the co-author's edit rule,
+since SharePoint and Excel are co-authoring pages. The verbs stay as they
+were: Send Form on any other page is still a plain Send. Forms' own pages
+are not driven at all: a Work thread's step there is refused
+([computer-use.md](computer-use.md) "Microsoft Forms is not a page to drive").
+
 **What this cannot catch**, in the same class as the shell: a click by
 position on a control the screen reader gives no name (a canvas app, a
 remote desktop, a picture of a button); a control named off the list; an
@@ -499,7 +526,10 @@ act split so that no single call reads as outward; a web address whose page
 acts on being fetched. The editor rule needs a listed app or a readable
 address on a listed host. It judges the page before the call, so a batch
 that switches pages before an edit can escape the check. It checks the
-listed key chords and input steps. A wrong match costs one press.
+listed key chords and input steps. A wrong match costs one press. On a
+SharePoint or Excel page: an outward control named off `PAGE_OUTWARD` or
+drawn with no name; a redesign that renames a listed control (the canary is
+how we learn); and the shell, as everywhere.
 
 **A command line in Windows** (the Windows VM, and a Work thread on any
 Windows host). A Windows desktop has more ways to a command line than a

@@ -189,6 +189,20 @@ why and the measured headline.
   judged on the Mac (`hold.work` on `mac.computer`) and answers
   `HELD_UNAVAILABLE` when outward; the box sends such an act only to a Mac
   that offers `computer-hold`.
+- **Microsoft Forms is not a page to drive.** Only the msform tools reach
+  Forms (docs/agents/work-msforms.md). In a Work thread, on a Mac or a PC
+  (and in the Windows VM), every step that sends input to a browser takes a
+  fresh read of the window first, and a step on a tab whose address is a
+  Forms host (`FORMS_HOSTS`, outward.ts `formsPageHost`) is refused,
+  nothing held and nothing run (`FORMS_STEP_REFUSED` in run.ts); so is an
+  owner's press on a held call whose tab has since become a Forms page. A
+  `computer_apps` open of a Forms address is refused before anything goes
+  to the service (`FORMS_OPEN_REFUSED`). Both read "refused: … nothing was
+  pressed / opened". A code thread is untouched. It needs the address bar
+  in the read: a Forms page in a window that shows none (a page installed
+  as an app, full screen with the bar hidden) is not caught. SharePoint and Excel for
+  the web stay open; their Forms controls are held (`PAGE_OUTWARD`,
+  [work-outbox.md](work-outbox.md) "Computer use").
 - **The page.** Settings → Computer use (surfaces/settings/Computer.tsx;
   Mac desktop only, `macOnly` in lib/settings.ts): the service with Try
   again while down, Take the screen after (`computer.sessionIdleMs`, in

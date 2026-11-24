@@ -5,7 +5,7 @@ import type { SessionMeta } from '@shared/events'
 import type { ActKind } from '@shared/work'
 import { earn, earnedOf, EarnedStore, ensureEarnedTables, EARN_AT, EARN_DAYS, sameWords, wordsOf, type RunDeps } from './earned'
 import { outbox as outboxModule, NOT_A_PERSON } from './index'
-import { NO_SUCH_OFFER, sameAs } from './outbox'
+import { NO_SUCH_OFFER, notGrantable, sameAs } from './outbox'
 import { adminKey, approveKey, cast, makeRig, readKey, type Rig } from './rig'
 import type { HeldRow } from './store'
 
@@ -123,7 +123,7 @@ describe('the run', () => {
     routineOf: (id) => routines[id] ?? null,
     granted: () => granted,
     stands: () => standing,
-    notGrantable: (p) => (p as { read?: { grantable?: boolean } }).read?.grantable === false,
+    notGrantable,
     now: () => now
   })
   /** One act he decided, its first sight kept as the thread wrote it unless `edited`. */
@@ -275,6 +275,18 @@ describe('the run', () => {
     for (let i = 0; i < EARN_AT; i++) expect(press({ to: ['ops@purdue.edu'], payload: { ...mail(['ops@purdue.edu']), read: { grantable: false } } })).toBeNull()
     granted = true
     for (let i = 0; i < EARN_AT; i++) expect(press({ to: ['lee@purdue.edu'] })).toBeNull()
+  })
+
+  it("none from a mail that carries a Microsoft form's link, and such a send breaks the person's run", () => {
+    const form = 'Please answer https://forms.cloud.microsoft/Pages/ResponsePage.aspx?id=AbCdEfGhIjKlMnOpQrStUvWx by Friday.'
+    for (let i = 0; i < EARN_AT * 2; i++) expect(press({ payload: mail(['dana@purdue.edu'], { text: form }) })).toBeNull()
+    // a short link in the html alone counts as well
+    const short = mail(['sam@purdue.edu'])
+    short.message.html = '<p><a href="https://forms.office.com/r/Ab12Cd34">the form</a></p>'
+    for (let i = 0; i < EARN_AT - 1; i++) press({ to: ['sam@purdue.edu'] })
+    expect(press({ to: ['sam@purdue.edu'], payload: short })).toBeNull()
+    for (let i = 0; i < EARN_AT - 1; i++) expect(press({ to: ['sam@purdue.edu'] })).toBeNull()
+    expect(press({ to: ['sam@purdue.edu'] })).not.toBeNull()
   })
 
   it('a computer act earns nothing, however often he presses it as it was read', () => {

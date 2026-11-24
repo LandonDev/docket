@@ -7,9 +7,11 @@ import {
   CHAT_APP_BUNDLES,
   CHAT_APP_NAMES,
   OUTWARD_VERBS,
+  PAGE_OUTWARD,
   clicksBlind,
   coauthorRead,
   cutFields,
+  formsPageHost,
   heldTargets,
   landsByPosition,
   namedKeysUnplaced,
@@ -1543,5 +1545,91 @@ describe("a Windows dialog's navigation", () => {
   it('still holds a Forward that sends, with no navigation key in its name', () => {
     const mail = screen(`app "Outlook" · window "Inbox" · 900×600\n[1] window "Inbox"\n  [2] button "Forward"`, { bundleId: 'outlook.exe', name: 'Outlook' })
     expect(readOutward(steps({ action: 'left_click', element: 2 }), mail)).toMatchObject({ label: 'Forward' })
+  })
+})
+
+describe("a page's own outward controls: Microsoft Forms from SharePoint and Excel", () => {
+  const LIBRARY = 'https://purdue0.sharepoint.com/sites/RecWell/Shared%20Documents/Forms/AllItems.aspx'
+  const WORKBOOK = 'https://purdue0.sharepoint.com/:x:/r/sites/RecWell/_layouts/15/Doc.aspx?sourcedoc=%7B1%7D&action=edit'
+  const RESULTS = 'https://forms.cloud.microsoft/Pages/DesignPageV2.aspx?subpage=design&id=AbCdEfGhIjKlMnOpQrStUvWx&analysis=true'
+  /** A browser on `url` with one control `[6]` inside `[5]`, under `[4]`, each line as given; the control has a frame for a click by position. */
+  const page = (url: string, opener: string, box: string, control: string, app = CHROME) =>
+    screen(
+      `app "${app.name}" · window "Page" · 1280×800 · focused [6]
+[1] window "Page" @0,0 1280×800
+  [2] input "Address and search bar" = ${JSON.stringify(url)} @200,10 800×30
+  [3] web area "Page" @0,50 1280×750
+    [4] ${opener} @20,60 160×30
+    [5] ${box} @20,90 300×200
+      [6] ${control} focused @30,100 200×30
+        [7] text ${JSON.stringify(control.split('"')[1])} @40,105 100×20`,
+      app
+    )
+  const CASES = [
+    { name: 'Forms survey', url: LIBRARY, opener: 'menu button "Create or upload" expanded', box: 'menu "Create or upload"', control: 'menu item "Forms survey"', kind: 'access', label: 'Create a form' },
+    { name: 'Create new form', url: LIBRARY, opener: 'menu button "Forms" expanded', box: 'menu "Forms"', control: 'menu item "Create new form"', kind: 'access', label: 'Create a form' },
+    { name: 'New Form', url: WORKBOOK, opener: 'tab "Insert" selected', box: 'menu "Forms"', control: 'menu item "New Form"', kind: 'access', label: 'Create a form' },
+    { name: 'Send Form', url: WORKBOOK, opener: 'tab "Insert" selected', box: 'menu "Forms"', control: 'menu item "Send Form"', kind: 'send', label: 'Send' },
+    { name: 'Open results in Excel', url: RESULTS, opener: 'heading "Responses"', box: 'group "Results"', control: 'button "Open results in Excel"', kind: 'access', label: 'Open results in Excel' },
+    { name: 'Continue', url: RESULTS, opener: 'heading "Responses"', box: 'dialog "Open results in Excel"', control: 'button "Continue"', kind: 'access', label: 'Open results in Excel' }
+  ] as const
+
+  it('lists each name once, with the kind send or access', () => {
+    expect(PAGE_OUTWARD.map((e) => e.name)).toEqual(['forms survey', 'create new form', 'new form', 'send form', 'open results in excel', 'continue'])
+    for (const e of PAGE_OUTWARD) expect(['send', 'access']).toContain(e.kind)
+  })
+
+  describe.each(CASES)('$name', ({ name, url, opener, box, control, kind, label }) => {
+    const here = page(url, opener, box, control)
+    const ways = [
+      ['a click on it', { action: 'left_click', element: 6 }],
+      ['a click on the words inside it', { action: 'left_click', element: 7 }],
+      ['a click by position', { action: 'left_click', coordinate: [60, 110] }],
+      ['a click by its name', { action: 'left_click', named: name }],
+      ['a press by its name', { action: 'perform', named: name, name: 'press' }],
+      ['Return on it', { action: 'key', text: 'Return' }],
+      ['Space on it', { action: 'key', text: 'space' }]
+    ] as const
+    it.each(ways)('holds %s, with the kind', (_, a) => {
+      expect(readOutward(steps(a), here)).toMatchObject({ step: 0, label, kind })
+    })
+
+    it('is not held on another host, nor by its name alone elsewhere', () => {
+      const elsewhere = page('https://example.com/sites/RecWell/Shared%20Documents/Forms/AllItems.aspx', opener, box, control)
+      for (const [, a] of ways) expect(readOutward(steps(a), elsewhere)?.kind).toBeUndefined()
+    })
+  })
+
+  it('needs the menu it sits in, or the dialog that says Excel', () => {
+    expect(readOutward(steps({ action: 'left_click', element: 6 }), page(LIBRARY, 'button "Share"', 'group "Tiles"', 'menu item "Forms survey"'))).toBeNull()
+    expect(readOutward(steps({ action: 'left_click', element: 6 }), page(WORKBOOK, 'tab "Insert" selected', 'menu "Tables"', 'menu item "New Form"'))).toBeNull()
+    expect(readOutward(steps({ action: 'left_click', element: 6 }), page(RESULTS, 'heading "Responses"', 'dialog "Leave this page?"', 'button "Continue"'))).toBeNull()
+    // a menu drawn apart from its button counts while that button is expanded
+    const apart = page(LIBRARY, 'menu button "Create or upload" expanded', 'menu', 'menu item "Forms survey"')
+    expect(readOutward(steps({ action: 'left_click', element: 6 }), apart)).toMatchObject({ label: 'Create a form', kind: 'access' })
+    expect(readOutward(steps({ action: 'left_click', element: 6 }), page(LIBRARY, 'menu button "Create or upload" collapsed', 'menu', 'menu item "Forms survey"'))).toBeNull()
+  })
+
+  it("is held before a co-author's edit: Return on SharePoint's Forms survey reads as its kind, typing in a workbook stays an edit", () => {
+    const here = page(LIBRARY, 'menu button "Create or upload" expanded', 'menu "Create or upload"', 'menu item "Forms survey"')
+    expect(readOutward(steps({ action: 'key', text: 'Return' }), here)).toMatchObject({ why: 'key', kind: 'access' })
+    expect(readOutward(steps({ action: 'type', text: 'x' }), here)).toMatchObject({ why: 'coauthor', label: 'Edit' })
+    expect(readOutward(steps({ action: 'type', text: 'x' }, { action: 'key', text: 'Return' }), here)).toMatchObject({ why: 'coauthor', step: 0 })
+  })
+
+  it('leaves the verbs as they were: Send Form off Excel is still a Send, with no kind', () => {
+    const plain = page('https://example.com/app', 'tab "Insert" selected', 'menu "Forms"', 'menu item "Send Form"')
+    expect(readOutward(steps({ action: 'left_click', element: 6 }), plain)).toEqual({ step: 0, why: 'control', label: 'Send', on: 'menu item "Send Form"' })
+    expect(outwardVerb('Send')).toBe('send')
+    expect(outwardVerb('Create new form')).toBeNull()
+  })
+
+  it("names the Forms host a browser shows, and no other page's", () => {
+    expect(formsPageHost(page(RESULTS, 'heading "Responses"', 'group "Results"', 'button "Open results in Excel"'))).toBe('forms.cloud.microsoft')
+    expect(formsPageHost(page('forms.office.com/r/Ab12Cd34', 'heading "x"', 'group', 'button "Submit"'))).toBe('forms.office.com')
+    expect(formsPageHost(page(LIBRARY, 'heading "x"', 'group', 'button "x"'))).toBeNull()
+    expect(formsPageHost(page('https://forms.office.com.example.com/', 'heading "x"', 'group', 'button "x"'))).toBeNull()
+    expect(formsPageHost(page(RESULTS, 'heading "x"', 'group', 'button "x"', TEXTEDIT))).toBeNull()
+    expect(formsPageHost(null)).toBeNull()
   })
 })

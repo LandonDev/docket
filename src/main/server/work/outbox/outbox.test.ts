@@ -8,7 +8,7 @@ import { outbox as outboxModule, NOT_A_PERSON } from './index'
 import { adminKey, approveKey, cast, FAKE_SPEC, fakeSpec, LIFEOS_MCP, makeRig, person, readKey, until, type Rig } from './rig'
 import { ActNotSent } from './kinds'
 import { ROUTINE_UNKNOWN } from './ctx'
-import { MAY_HAVE_GONE } from './outbox'
+import { MAY_HAVE_GONE, NO_GRANT_FROM_FORM_LINK } from './outbox'
 import { INTERRUPTED } from './store'
 import { REFUSED_OFF } from './words'
 
@@ -471,6 +471,17 @@ describe('a standing grant', () => {
     await rig.claudeCall('t-chat', g2.id, 'echo', { channel: '#team' })
     expect(rig.downstream).toHaveLength(1)
     expect((await rig.waiting()).map((i) => i.state)).toEqual(['held', 'held', 'held', 'held', 'held', 'held'])
+  })
+
+  it("never covers an act that carries a Microsoft form's link: a standing grant leaves it held, and none is made from it", async () => {
+    const slack = await rig.addon('slack', 'ws-purdue')
+    const link = 'https://forms.office.com/r/Ab12Cd34'
+    await rig.claudeCall('t-work', slack.id, 'echo', { text: 'plain', channel: '#team' })
+    await grant((await rig.waiting())[0]!, { addonId: slack.id, tool: 'echo' })
+    expect(text(await rig.claudeCall('t-work', slack.id, 'echo', { text: `Answer it at ${link}`, channel: '#team' }))).toMatch(/^Held as item/)
+    expect(rig.downstream).toEqual([])
+    const linked = (await rig.waiting()).find((i) => JSON.stringify(i.payload).includes(link))!
+    await expect(grant(linked, { addonId: slack.id, tool: 'echo' })).rejects.toThrow(NO_GRANT_FROM_FORM_LINK)
   })
 
   it('removed, holds again; and it never fits once the add-on points at another server', async () => {

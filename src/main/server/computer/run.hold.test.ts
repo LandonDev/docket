@@ -1,7 +1,7 @@
 import { existsSync } from 'node:fs'
 import { afterEach, describe, expect, it } from 'vitest'
 import { cutValue } from '@shared/computer/observation'
-import { configureComputerHold, configureOwnerDrives, HELD_PARTIAL, HELD_STALE, HELD_UNAVAILABLE, HELD_UNPLACED, HELD_UNREAD, type HeldComputerCall } from './run'
+import { configureComputerHold, configureOwnerDrives, FORMS_OPEN_REFUSED, FORMS_STEP_REFUSED, HELD_PARTIAL, HELD_STALE, HELD_UNAVAILABLE, HELD_UNPLACED, HELD_UNREAD, type HeldComputerCall } from './run'
 import type { ComputerToolOutcome } from './result'
 import { computerHarness, type ComputerHarness } from './runHarness'
 import { IDLE_CLOSE_MS } from './sessions'
@@ -864,5 +864,60 @@ describe('Take over, when Work cannot answer', () => {
     const { h } = await thread('code')
     expect((await click(h, PLAIN)).isError).toBe(false)
     expect(acts(h)).toBe(1)
+  })
+})
+
+describe('Microsoft Forms in a Work thread', () => {
+  const FORM = 'https://forms.cloud.microsoft/Pages/DesignPageV2.aspx?subpage=design&id=AbCdEfGhIjKlMnOpQrStUvWx'
+
+  it("refuses a step on a page whose fresh address is a Forms host, though the thread's own read was of another page, and sends nothing", async () => {
+    useHold()
+    const { h, shown, app } = await thread('work', 'auto', { address: 'https://purdue0.sharepoint.com/sites/RecWell' })
+    shown.address = FORM
+    for (const a of [{ action: 'left_click', element: PLAIN }, { action: 'key', text: 'Down' }, { action: 'type', text: 'Which night?' }]) {
+      const o = await h.run('computer_act', { app, ...a })
+      expect(o).toMatchObject({ isError: true, body: FORMS_STEP_REFUSED })
+    }
+    expect(FORMS_STEP_REFUSED).toMatch(/^refused: .*nothing was pressed\.$/)
+    expect(acts(h)).toBe(0)
+    expect(held).toHaveLength(0)
+    expect(h.cards).toHaveLength(0)
+  })
+
+  it('runs the same plain click once the tab is off Forms, and a code thread is as it was', async () => {
+    useHold()
+    const work = await thread('work', 'auto', { address: FORM })
+    work.shown.address = 'https://purdue0.sharepoint.com/sites/RecWell'
+    expect((await click(work.h, PLAIN, {}, work.app)).isError).toBe(false)
+    expect(acts(work.h)).toBe(1)
+    const code = await thread('code', 'auto', { address: FORM })
+    expect((await click(code.h, PLAIN, {}, code.app)).isError).toBe(false)
+    expect(acts(code.h)).toBe(1)
+  })
+
+  it("refuses a held press once the page has become a Forms page, and sends nothing", async () => {
+    useHold()
+    const { h, shown, app } = await thread('work', 'auto', { address: 'https://purdue0.sharepoint.com/sites/RecWell', send: true })
+    await click(h, SEND, {}, app)
+    expect(held).toHaveLength(1)
+    shown.address = FORM
+    expect(await held[0].carryOut()).toMatchObject({ isError: true, body: FORMS_STEP_REFUSED })
+    expect(acts(h)).toBe(0)
+  })
+
+  it('refuses a computer_apps open of a Forms address before anything is sent; a code thread opens it', async () => {
+    useHold()
+    const h = make()
+    h.set('t1', { permission: 'auto', scope: 'work' })
+    for (const open of [[FORM], ['/tmp/a.pdf', 'https://forms.office.com/r/Ab12Cd34']]) {
+      expect(await h.run('computer_apps', { launch: 'Google Chrome', open })).toMatchObject({ isError: true, body: FORMS_OPEN_REFUSED })
+    }
+    expect(FORMS_OPEN_REFUSED).toMatch(/^refused: .*nothing was opened\.$/)
+    expect(h.requests()).toEqual([])
+    expect(held).toHaveLength(0)
+    const code = make()
+    code.set('t1', { permission: 'auto' })
+    await code.run('computer_apps', { launch: 'Google Chrome', open: [FORM] })
+    expect(code.requests().filter((r) => r.method === 'apps.launch').map((r) => r.params.open)).toEqual([[FORM]])
   })
 })
