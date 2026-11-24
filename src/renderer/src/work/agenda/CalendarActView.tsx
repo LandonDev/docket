@@ -7,7 +7,7 @@ import { Skeleton } from "../../components/ui/skeleton";
 import { addDays, startOfDay } from "work-kit/views/lib/agenda";
 import { type LifeosSession, reopenLifeos, useLifeosQuery, useLifeosSession } from "../shell/lifeos";
 import { openConnections } from "../shell/open";
-import { downOf, downPress, downWords, type LifeosDown } from "../today/lifeosDown";
+import { downOf, downPress, downWords, type LifeosDown } from "../shell/lifeosDown";
 import { dayLines, opFields, opStart, type CalendarOp, type DayEvent } from "./calendarAct";
 
 /**

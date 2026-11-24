@@ -1,4 +1,4 @@
-import { sessionFailure, sessionWaits, type LifeosSession } from "../shell/lifeos";
+import { sessionFailure, sessionWaits, type LifeosSession } from "./lifeos";
 
 /**
  * A LifeOS session that cannot read and is not on its way, by its true state, with the words and the one press the

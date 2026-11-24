@@ -17,7 +17,7 @@ import { openConnections } from "../shell/open";
 import { useMinute } from "../tasks/minute";
 import { CutDetail } from "../canvas/QuietLine";
 import { useTodayEnv } from "./env";
-import { downPress, downWords, type LifeosDown } from "./lifeosDown";
+import { downPress, downWords, type LifeosDown } from "../shell/lifeosDown";
 import { HeldSheet } from "./HeldSheet";
 import { foldKey, foldOf, page, type ShownSection, type TodayPage } from "./model";
 import { openAddWorkspace } from "./open";

@@ -124,7 +124,7 @@ import { forgetEach, readState, TIMED_OUT, useEachWorkspace } from "./read";
 import { comeBack, leave, openHeld, putAnswer, resetToday, toastUp, todayNow } from "./store";
 import { ROW_GRID, TITLE_EDGE } from "./TodayRow";
 import { hostFailureWords, TodayPageView, View } from "./TodayView";
-import type { LifeosDown } from "./lifeosDown";
+import type { LifeosDown } from "../shell/lifeosDown";
 import type { TodaySource } from "./types";
 
 const mail = (id: string, to: string, subject: string, extra: Partial<OutboxItem> = {}): OutboxItem => ({

@@ -165,7 +165,7 @@ nothing.
   (`useStableRows(rows, ways)`), so no row on the page acts through one
   that is gone.
 - While no host can read LifeOS, its sections give way to one line where the
-  first stood, in the session's true state (`reachOf`, `today/lifeosDown.ts`)
+  first stood, in the session's true state (`reachOf`, `shell/lifeosDown.ts`)
   and the view frame's words (`sessionFailure`): "LifeOS did not answer" with
   Retry; "Not signed in to LifeOS" or "LifeOS refused this host's sign-in"
   with Sign in (Settings → Connections); a sign-in that waits for his

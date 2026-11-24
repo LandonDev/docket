@@ -1,5 +1,5 @@
 import type { SectorKey } from "@shared/work";
-import type { LifeosDown } from "./lifeosDown";
+import type { LifeosDown } from "../shell/lifeosDown";
 import type { TodayAnswer, TodayFailure, TodayMark, TodayRow, TodaySection, TodaySource, TodayWorkspace } from "./types";
 
 /**
