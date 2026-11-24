@@ -174,9 +174,6 @@ export const STATE_LINES: Readonly<Record<string, readonly Line[]>> = {
   [`${R}/today/TodayView.tsx`]: [
     ["All clear", "read"],
   ],
-  [`${R}/today/held.ts`]: [
-    ["Sending", "queued"],
-  ],
   [`${R}/winvm/WinvmSection.tsx`]: [
     ["`Signed in as ${place.account ?? \"you\"}${place.state === \"no-libraries\" ? \", no Teams library synced yet\" : count}`", "read"],
   ],
