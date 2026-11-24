@@ -27,6 +27,9 @@ vi.mock("./actions", async (original) => ({
     if (reads.fail) throw new Error("The host did not answer");
     return { mayUseDesktop: [], model: null, reasoning: null, voice: false };
   },
+  // The box knows the PC paired to it alone; this window (the Mac's) has no link to it.
+  hostDesktops: async () => [{ id: "env_pc", name: "PURDUE-LT", platform: "win32" }],
+  localHostId: async () => "env_mac",
 }));
 
 const { WorkSettingsBody, WorkWorkspacePage } = await import("./settings");
@@ -61,5 +64,13 @@ describe("Settings → Work", () => {
     await act(async () => void (await new Promise((r) => setTimeout(r, 0))));
     expect(reads.asked).toBe(2);
     expect(screen.queryByText("The host did not answer")).toBeNull();
+  });
+
+  it("draws Computer use on a PC the workspace's host knows, though this window has no link to it", async () => {
+    reads.fail = false;
+    vi.spyOn(registry, "linkOf").mockReturnValue({ environmentId: "env_box", connected: true, request: vi.fn(async () => ({ lifeos: { state: "signed-out" }, keys: [] })), onPush: () => () => {}, onOpen: () => () => {} } as never);
+    render(<WorkWorkspacePage workspaceId="ws" />);
+    await act(async () => void (await new Promise((r) => setTimeout(r, 0))));
+    expect(screen.getByRole("switch", { name: "Computer use on PURDUE-LT" })).toBeTruthy();
   });
 });

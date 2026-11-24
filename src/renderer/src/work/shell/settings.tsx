@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type FormEvent } from "react";
-import type { SectorKey, WorkspaceWorkSettings } from "@shared/work";
+import type { SectorKey, WorkDesktop, WorkspaceWorkSettings } from "@shared/work";
 import type { LifeosKeyState, LifeosState, LifeosStatus } from "@shared/contract-work-lifeos";
 import { SectorDot } from "../../chrome/WorkspaceGlyph";
 import { ThreadDefaultsEditor } from "../../chrome/ThreadDefaultsDialog";
@@ -28,7 +28,7 @@ import { HouseRules } from "../rules/HouseRules";
 import { captureKeyApi, CaptureKeyRow } from "../capture/CaptureKeyRow";
 import { WaitingSection } from "../mail/WaitingSection";
 import { StartPlacesSection } from "../clashes/StartPlaces";
-import { hostIdOfLink, isDesktop, linkIdOfHost, linkSector, localHostId, sectorName, SECTORS, setWorkHome, setWorkspaceSettings, workHome, workspaceSettings } from "./actions";
+import { desktopRows, hostDesktops, hostIdOfLink, isDesktop, linkIdOfHost, linkSector, localHostId, sectorName, SECTORS, setWorkHome, setWorkspaceSettings, workHome, workspaceSettings } from "./actions";
 import { useLifeosQuery, useLifeosSession, useLifeosStatus } from "./lifeos";
 
 /**
@@ -252,14 +252,17 @@ export function WorkWorkspacePage({ workspaceId }: { workspaceId: string }) {
   // Retry on a failed read asks again; a refused switch keeps its own line with no Retry (the switch is the retry).
   const [attempt, setAttempt] = useState(0);
   const [localHost, setLocalHost] = useState<string | null>(null);
+  // The desktops the workspace's host knows that this window may have no link to (a PC registered with the box).
+  const [far, setFar] = useState<WorkDesktop[]>([]);
   useEffect(() => void localHostId().then(setLocalHost), []);
   useEffect(() => {
     if (!workspace) return;
     let live = true;
-    workspaceSettings(workspace).then(
-      (value) => {
+    Promise.all([workspaceSettings(workspace), hostDesktops(workspace)]).then(
+      ([value, known]) => {
         if (!live) return;
         setSettings(value);
+        setFar(known);
         setError(null);
       },
       (err: unknown) => live && setError(errorText(err)),
@@ -270,7 +273,7 @@ export function WorkWorkspacePage({ workspaceId }: { workspaceId: string }) {
   }, [workspace?.id, workspace?.environmentId, attempt]);
   if (!workspace) return null;
   const host = environments.find((e) => e.id === workspace.environmentId);
-  const desktops = environments.filter((e) => isDesktop(e.platform));
+  const desktops = desktopRows(environments, far, localHost);
   const key = keyLine(status?.keys.find((k) => k.workspaceId === workspace.id));
   /** The desktops it may use other than its own host: where a Teams file lies that a copy would bring here. */
   const otherDesktops = (list: readonly string[]): string[] => list.filter((id) => id !== workspace.environmentId && id !== hostIdOfLink(workspace.environmentId, localHost));
@@ -307,8 +310,8 @@ export function WorkWorkspacePage({ workspaceId }: { workspaceId: string }) {
         <PageRow title="Threads run on" description={host?.name ?? workspace.environmentId} />
         {settings ? (
           desktops.map((desktop) => (
-            <PageRow key={desktop.id} title={`Computer use on ${desktop.name}`}>
-              <SettingSwitch label={`Computer use on ${desktop.name}`} on={settings.mayUseDesktop.includes(hostIdOfLink(desktop.id, localHost)) || settings.mayUseDesktop.includes(desktop.id)} onChange={(next) => allow(desktop.id, next)} />
+            <PageRow key={desktop.host} title={`Computer use on ${desktop.name}`}>
+              <SettingSwitch label={`Computer use on ${desktop.name}`} on={settings.mayUseDesktop.includes(desktop.host) || settings.mayUseDesktop.includes(desktop.link)} onChange={(next) => allow(desktop.link, next)} />
             </PageRow>
           ))
         ) : error ? null : (
@@ -331,7 +334,7 @@ export function WorkWorkspacePage({ workspaceId }: { workspaceId: string }) {
           />
         ) : null}
         {settings && host && otherDesktops(settings.mayUseDesktop).length ? (
-          <TeamsCopyRow workspace={workspace} hostName={host.name} desktops={otherDesktops(settings.mayUseDesktop).map((id) => environments.find((e) => e.id === (linkIdOfHost(id, localHost) ?? id))?.name ?? id)} />
+          <TeamsCopyRow workspace={workspace} hostName={host.name} desktops={otherDesktops(settings.mayUseDesktop).map((id) => environments.find((e) => e.id === (linkIdOfHost(id, localHost) ?? id))?.name ?? far.find((d) => d.id === id)?.name ?? id)} />
         ) : null}
         {error ? (
           <PageError

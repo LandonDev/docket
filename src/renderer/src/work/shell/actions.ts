@@ -1,5 +1,5 @@
 import type { ProjectMeta, WorkspaceMeta as WireWorkspaceMeta } from "@shared/domain";
-import type { SectorKey, WorkspaceWorkSettings } from "@shared/work";
+import type { SectorKey, WorkDesktop, WorkspaceWorkSettings } from "@shared/work";
 import type { LifeosStatus } from "@shared/contract-work-lifeos";
 import { LOCAL_ENVIRONMENT_ID, registry } from "../../lib/connection";
 import type { Environment } from "../../lib/connection/types";
@@ -100,6 +100,29 @@ export async function allowComputers(workspace: Pick<WorkspaceMeta, "id" | "envi
   const missing = desktops.map((d) => d.host).filter((id) => !settings.mayUseDesktop.includes(id));
   if (!missing.length && (!opts.vm || settings.windowsVm)) return settings;
   return setWorkspaceSettings(workspace, { mayUseDesktop: [...settings.mayUseDesktop, ...missing], ...(opts.vm ? { windowsVm: true } : {}) });
+}
+
+/** The desktops a workspace's host knows (`work.desktops`), a PC registered with the box among them; a host too old to answer lists none. */
+export function hostDesktops(workspace: Pick<WorkspaceMeta, "environmentId">): Promise<WorkDesktop[]> {
+  return registry
+    .linkOf(workspace.environmentId)
+    .request<WorkDesktop[]>("work.desktops", {})
+    .then(
+      (list) => (Array.isArray(list) ? list : []),
+      () => [],
+    );
+}
+
+/**
+ * The "Computer use on <host>" rows: the window's own desktops, then each desktop the workspace's host knows that
+ * the window has none for (the Mac's window, a PC paired to the box alone). The host's list waits for this
+ * machine's id, so this machine is never drawn twice.
+ */
+export function desktopRows(environments: readonly Pick<Environment, "id" | "name" | "platform">[], far: readonly WorkDesktop[], local: string | null): { link: string; host: string; name: string }[] {
+  const mine = environments.filter((e) => isDesktop(e.platform)).map((e) => ({ link: e.id, host: hostIdOfLink(e.id, local), name: e.name }));
+  if (!local) return mine;
+  const drawn = new Set(mine.map((d) => d.host));
+  return [...mine, ...far.filter((d) => !drawn.has(d.id)).map((d) => ({ link: d.id, host: d.id, name: d.name }))];
 }
 
 export function workspaceSettings(workspace: Pick<WorkspaceMeta, "id" | "environmentId">): Promise<WorkspaceWorkSettings> {

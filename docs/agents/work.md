@@ -221,6 +221,7 @@ Settings → Work.
   link registers on its peer link) is not added to a workspace made
   before: the host lists it in `work.desktops` (`knownDesktops`, the same
   three sources, named), which a window reads beside its own environments
+  (`hostDesktops`, `desktopRows` in work/shell/actions.ts)
   for the "Computer use on <desktop>" rows, so he switches it on from any
   window. The window's own row carries its platform (`localEnvironment`,
   preload's `process.platform`), so a PC's window lists This PC. Tests:
