@@ -302,6 +302,7 @@ host does with it:
 - `calendar.op` goes through LifeOS's `calendarOps` the same way
   ([work-agenda.md](work-agenda.md)); a LifeOS deployment without them
   answers `not built … (milestone 24)`.
+The act's own result, which a thread's Results list keeps, says the same: "Queued to send to Dana Lee: Budget" for a mail and "Queued in LifeOS: Add Walk the ballroom" for a calendar change (`mailSendKind.execute`, `calendarOpKind.execute`), never "Sent to" or "Added" at the press.
 
 ## The press, grants, and who may decide
 

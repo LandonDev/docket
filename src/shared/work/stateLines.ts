@@ -236,7 +236,8 @@ export const STATE_LINES: Readonly<Record<string, readonly Line[]>> = {
     ["Signed in", "stored token"],
   ],
   [`${H}/outbox/lifeosHeld.ts`]: [
-    ["Added ", "queued"],
+    ["Queued to send to", "queued"],
+    ["`Queued in LifeOS: ${calendarWords(p).summary}`", "queued"],
   ],
   [`${H}/outbox/outbox.ts`]: [
     ["Queued to send", "queued"],

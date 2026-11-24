@@ -199,18 +199,6 @@ export function calendarWords(p: CalendarOpPayload): { summary: string; verb: st
   return { summary: summary.slice(0, 240), verb: 'Send' }
 }
 
-/** What a sent act did, in the past tense, for its Sent row and its Result. */
-const pastOf = (summary: string): string =>
-  summary
-    .replace(/^Invite /, 'Invited ')
-    .replace(/^Add /, 'Added ')
-    .replace(/^Change /, 'Changed ')
-    .replace(/^Accept /, 'Accepted ')
-    .replace(/^Decline /, 'Declined ')
-    .replace(/^Answer maybe/, 'Answered maybe')
-    .replace(/^Propose /, 'Proposed ')
-    .replace(/^Cancel /, 'Cancelled ')
-
 /** LifeOS's function names, in one place (architecture §4.3; `calendarOps` is milestone 24's and answers "not built" until it is deployed). */
 export const LIFEOS_HELD_FNS = {
   mailHeld: 'outboxHeld:held',
@@ -606,7 +594,8 @@ export const mailSendKind: ActKindDef<MailSendPayload, MailSendMatcher> = {
     }
     else if (!['queued', 'sending', 'sent'].includes(now.row.status)) throw new ActStale(`LifeOS holds this mail as ${now.row.status}`)
     // Already queued, sending or sent: it went by another hand (LifeOS's own app); nothing is sent twice.
-    return { summary: mailWords(p).summary.replace(/^Send to/, 'Sent to'), ref: { at: 'lifeos', table: 'outbox', id: p.id } }
+    // What the thread's Results keep: LifeOS took it and holds it for his undo time, so it is queued, not yet sent (confirmed.ts reads when it went).
+    return { summary: mailWords(p).summary.replace(/^Send to/, 'Queued to send to'), ref: { at: 'lifeos', table: 'outbox', id: p.id } }
   },
   wayBack: () => null
 }
@@ -645,7 +634,8 @@ export const calendarOpKind: ActKindDef<CalendarOpPayload, CalendarOpMatcher> = 
       // LifeOS checks it again in the send's own transaction, so an edit after this read never goes on this press (milestone 50's hold review, 20).
       await owner.mutation(LIFEOS_HELD_FNS.calendarSend, { id: p.id, cause, editedAt: p.editedAt })
     } else if (!['queued', 'sending', 'done'].includes(now.status ?? '')) throw new ActStale(`LifeOS holds this calendar change as ${now.status}`)
-    return { summary: pastOf(calendarWords(p).summary), ref: { at: 'lifeos', table: 'calendarOps', id: p.id } }
+    // Queued until the calendar takes it: the Results row claims no more than that.
+    return { summary: `Queued in LifeOS: ${calendarWords(p).summary}`, ref: { at: 'lifeos', table: 'calendarOps', id: p.id } }
   },
   wayBack: () => null
 }

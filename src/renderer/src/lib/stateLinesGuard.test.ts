@@ -4,10 +4,6 @@ import { stateLineSources } from "./stateLineSources.test-support";
 
 const KNOWN: readonly { file: string; literal: string; fact: StateFact; wall: string }[] = [
   {
-    file: "src/main/server/work/outbox/lifeosHeld.ts", literal: "Sent to", fact: "queued",
-    wall: "W-13: thread Results takes the act's summary before LifeOS confirms the send",
-  },
-  {
     file: "src/renderer/src/work/files/wordSave.ts", literal: "`Saved to ${service} ${whenWords(word.at, now)}`", fact: "queued",
     wall: "W-18: Word autosave names the cloud service when only the keeper has confirmed the write and cloud status is absent",
   },
