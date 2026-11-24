@@ -13,7 +13,8 @@ import { pressesFor, sharedOf } from '../files/policy'
 import { Toolchain } from '../formats/tools'
 import { ensureImported, importedHeld, importedOf, isSharedImport, type ImportedFrom } from './formatsIn'
 import { sharedCsvCache, sharedCsvReadOnly, throughCsv } from './formatsInCsv'
-import { fullEditorHere } from './fullEditor'
+import { fullEditorHere, reachOf } from './fullEditor'
+import { servesPublic } from '../service/config'
 import type { Caller, WorkCtx } from '../modules'
 import { excelStore } from '../office/excel'
 import { excelRefOf, type ExcelRef } from '../office/grid'
@@ -335,7 +336,7 @@ export async function viewOf(s: Sheets, item: CanvasItem): Promise<SheetView> {
       ...changesOf(s, key),
       ...(written ? { written } : {}),
       // The switch goes to the full editor where this host runs it (the box), else to desktop Excel.
-      ...(st.inspected.reach ? { reach: { ...st.inspected.reach, to: fullEditorHere(s.ctx.dataDir) ? 'full' : 'excel' } } : {}),
+      ...(st.inspected.reach ? { reach: reachOf(st.inspected.reach, fullEditorHere(s.ctx.dataDir), servesPublic()) } : {}),
       ...(st.inspected.readOnly ? { readOnly: st.inspected.readOnly } : {}),
       ...(st.inspected.date1904 ? { date1904: true } : {}),
       ...(st.saveError ? { saveError: st.saveError } : {}),

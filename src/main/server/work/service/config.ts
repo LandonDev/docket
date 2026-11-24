@@ -30,6 +30,14 @@ export function isIsolatedInstance(env: NodeJS.ProcessEnv = process.env): boolea
 }
 
 /**
+ * Whether this host's pages reach beyond it at all: the box behind its tunnel, or a proof that names its origin
+ * (`TEMP_CODE_WORK_PUBLIC_ORIGIN`). Any other host's service answers on loopback alone, which no phone opens.
+ */
+export function servesPublic(env: NodeJS.ProcessEnv = process.env): boolean {
+  return !!env.TEMP_CODE_WORK_PUBLIC_ORIGIN || (process.platform === 'linux' && !isIsolatedInstance(env))
+}
+
+/**
  * The public listener's port: `TEMP_CODE_WORK_PORT` if set, else 7695 for
  * an installed host (the box included), else 0 (any free port) for an
  * isolated instance, so two dev instances never fight over one.

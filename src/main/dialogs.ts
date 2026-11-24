@@ -1,5 +1,6 @@
 import { app, BrowserWindow, dialog, ipcMain, shell } from 'electron'
 import { homedir } from 'node:os'
+import { carry } from './fullEditorCarry'
 import {
   askBoxOptions,
   messageBoxOptions,
@@ -72,6 +73,10 @@ export function registerDialogs(): void {
 
   ipcMain.handle('shell:open-url', async (_e, url: string) => {
     await shell.openExternal(String(url))
+  })
+  // The box's full editor, carried on a loopback origin of its own (fullEditorCarry.ts), then opened in the browser.
+  ipcMain.handle('full-editor:open', async (_e, address: string) => {
+    await shell.openExternal(await carry(String(address)))
   })
 
   ipcMain.handle('app:version', () => app.getVersion())

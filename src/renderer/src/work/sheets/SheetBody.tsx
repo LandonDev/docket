@@ -29,6 +29,7 @@ import { useWorkCommands } from "../formats/command";
 import { Preview } from "../formats/PreviewFrame";
 import { sheetPreviewSource } from "./preview";
 import { ExcelWaits } from "./excelWaits";
+import { reachHere } from "./fullHere";
 import { useSaveToGoogle } from "./toGoogle";
 import { ShareButton } from "../guests/Share";
 import { registerFlush } from "../canvas/flush";
@@ -698,7 +699,7 @@ export function Bar(props: Props) {
   if (failed) return null;
   // Only a LifeOS sheet shares; Share is whole or gone, hidden in the narrow bar before it could be cut. An opened
   // Excel file says what waits in Excel, in words that give way before any control does.
-  if (view && book) return guestSource(props.source) ? <BarShare {...props} way={shareWayOf(sync)} /> : <ExcelWaits reach={view.reach} store={view.store} />;
+  if (view && book) return guestSource(props.source) ? <BarShare {...props} way={shareWayOf(sync)} /> : <ExcelWaits reach={reachHere(view.reach, props.env)} store={view.store} />;
   return <Skeleton className="h-3 w-30" />;
 }
 
@@ -750,7 +751,7 @@ function BarShare(props: Props & { way: ShareWay }) {
  */
 export function TabEnd(props: Props) {
   const sync = syncFor(props);
-  const reach = useSheetSync(sync).view?.reach;
+  const reach = reachHere(useSheetSync(sync).view?.reach, props.env);
   // The host may start the full editor before it answers: the pressed side spins until then.
   const [opening, setOpening] = useState(false);
   if (!reach) return null;

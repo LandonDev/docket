@@ -239,7 +239,7 @@ export const sheets: WorkModule = {
         // Google's own editor, in the system browser.
         if (held.at === 'google') return handled({ opened: true as const, url: await (await import('../google/grid')).webLink(ctx, held.ref) })
         if (held.at !== 'package') throw new Error('This sheet opens only here for now.')
-        if (fullEditorHere(ctx.dataDir)) return handled({ opened: true as const, url: await openFull(ctx, item!, held.path, by, req.params.scheme) })
+        if (fullEditorHere(ctx.dataDir)) return handled({ opened: true as const, ...(await openFull(ctx, item!, held.path, by, { scheme: req.params.scheme, carry: req.params.carry })) })
         // (Excel opens the file itself, not the copy made of an .xls or .ods)
         await openInExcel(held.from?.path ?? held.path)
         return handled({ opened: true as const })

@@ -147,6 +147,8 @@ export interface SheetReach {
   parts: string[]
   /** where the switch goes: desktop Excel for a Microsoft file or any he opens in Excel; Google's own editor, in the system browser, for a Google spreadsheet; the full editor on the box otherwise */
   to: 'excel' | 'google' | 'full'
+  /** the full editor's page reaches beyond its host (the box behind its tunnel), so a desktop on another computer can carry it; absent, it opens only in a window on its host */
+  carried?: true
 }
 
 /** What the agent last wrote directly, for the bar's written line and its Undo. */
@@ -310,8 +312,8 @@ export const SheetsRequestSchemas = [
   request('work.sheets.restore', z.object({ itemId, rev: z.number().int().min(0) })),
   /** → { itemId }: a new sheet in the thread's canvas: a LifeOS sheet when the thread's workspace is linked to a sector, else a `.tcsheet` file */
   request('work.sheets.create', z.object({ sessionId: z.string().min(1).max(100), title: z.string().min(1).max(200) })),
-  /** → { opened: true, url? }: opens the file in the app `SheetView.reach.to` names (desktop Excel for a package; the full editor on the box answers its page's `url`, which the canvas opens); refused where that app is not on this host. `scheme` is the theme the asking window wears: the full editor opens in it, and follows the browser's system where none is sent (the phone) */
-  request('work.sheets.switch', z.object({ itemId, scheme: z.enum(['dark', 'light']).optional() })),
+  /** → { opened: true, url?, carry? }: opens the file in the app `SheetView.reach.to` names (desktop Excel for a package; the full editor on the box answers its page's `url` to a window on the box, which the canvas opens, and to another computer's desktop that sends `carry: true` the page's `carry` address, which its app carries on a loopback origin of its own); refused where that app is not on this host. `scheme` is the theme the asking window wears: the full editor opens in it, and follows the browser's system where none is sent (the phone) */
+  request('work.sheets.switch', z.object({ itemId, scheme: z.enum(['dark', 'light']).optional(), carry: z.boolean().optional() })),
   /**
    * → { path, left? }: the sheet written out; `left` names what the file could not hold ("the names"). `xlsx`: a new package from the sheet (a LifeOS sheet, a
    * `.tcsheet`, a sheet read from a .csv), beside the .csv or among the item's own files. `csv`: one

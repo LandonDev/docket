@@ -185,6 +185,8 @@ export const webApi: Api = {
       window.open(url, "_blank", "noopener");
       return done();
     },
+    // The full editor is carried by the desktop app alone: a browser is never offered it (work/sheets/fullHere.ts).
+    openFullEditor: () => needsDesktop("The full editor"),
     dockBadge: () => done(),
     confirmQuit: done,
     declineQuit: noop,

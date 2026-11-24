@@ -3,7 +3,8 @@ import type { SheetImportAct, SheetImportDone } from "@shared/work/sheetFormats"
 import type { ObjectIds } from "@shared/work/sheets";
 import { isLightScheme } from "../../lib/appearance";
 import { registry } from "../../lib/connection";
-import { openUrl } from "../../lib/native";
+import { openFullEditor, openUrl } from "../../lib/native";
+import { canCarryFullEditor } from "./fullHere";
 
 /**
  * The host's side of a sheet item, as its canvas uses it
@@ -74,8 +75,11 @@ export function linkSheetHost(environmentId: string, itemId: string): SheetHost 
     switchApp: async () => {
       // The full editor is a page of its own. From a light window it opens light; from a dark one it
       // follows the browser's system, as it did (dark is held: docs/agents/appearance.md).
-      const { url } = await call<{ opened: true; url?: string }>("work.sheets.switch", isLightScheme() ? { scheme: "light" } : {});
+      // From another computer the box answers the page's address for this app to carry on a loopback origin of its own.
+      const carry = canCarryFullEditor();
+      const { url, carry: address } = await call<{ opened: true; url?: string; carry?: string }>("work.sheets.switch", { ...(isLightScheme() ? { scheme: "light" } : {}), ...(carry ? { carry: true } : {}) });
       if (url) await openUrl(url);
+      else if (address) await openFullEditor(address);
     },
     onPush: (listener) =>
       link().onPush((push) => {

@@ -7,7 +7,7 @@ import { pressesFor, sharedOf } from '../files/policy'
 import type { Caller, WorkCtx } from '../modules'
 import { ActNotSent } from '../outbox/kinds'
 import { WORK_OWNER_NAME_SETTING } from '../preamble'
-import { isIsolatedInstance } from '../service/config'
+import { isIsolatedInstance, servesPublic } from '../service/config'
 import { canonicalPath, serviceOf, ServedElsewhere } from '../service/ctx'
 import type { ServiceSupervisor } from '../service/supervisor'
 import type { ServiceProject } from '../service/wire'
@@ -63,13 +63,8 @@ export function publicOrigin(ctx: Pick<WorkCtx, 'service'>, env: NodeJS.ProcessE
   }
 }
 
-/**
- * Whether a phone can reach this host's hosted pages at all: the box behind its tunnel, or a proof that
- * names its origin. Any other host's service answers on loopback alone, which no phone opens.
- */
-export function servesPublic(env: NodeJS.ProcessEnv = process.env): boolean {
-  return !!env.TEMP_CODE_WORK_PUBLIC_ORIGIN || (process.platform === 'linux' && !isIsolatedInstance(env))
-}
+/** Whether a phone can reach this host's hosted pages at all (service/config.ts). */
+export { servesPublic }
 
 export const guestUrl = (origin: string, id: string, secret: string): string => `${origin}/g/${id}#k=${secret}`
 

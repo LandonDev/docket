@@ -5,10 +5,11 @@ import { connect, type AddressInfo } from 'node:net'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { cacheControlOf, fullEditorRoute, forwardedHeaders } from '../../service/routes/fullEditor'
+import { cacheControlOf, fullEditorRoute, forwardedHeaders, reachesEditor } from '../../service/routes/fullEditor'
 import type { RouteCtx } from '../../service/routes/route'
 import { FullEditor, signHs256, uiThemeOf, verifyHs256, type FullOpen, type SavedTo } from './editor'
-import { fullEditorOrigin, openFull } from './index'
+import { closeCarriers, carry } from '../../../../fullEditorCarry'
+import { fullEditorOf, openFull, reachOf } from './index'
 import { EDITOR_PATHS, FULL_ROUTE, editorPage, lookupSocketOf } from './wire'
 
 /**
@@ -364,14 +365,19 @@ describe('the full editor\'s pieces', () => {
     expect(cacheControlOf('/sdkjs/cell/sdk-all.js', undefined)).toBe('no-store')
   })
 
-  it('opens for the owner\'s other devices only on an origin of its own, never the remote UI\'s', () => {
-    const settings = new Map<string, string>([['remote.publicOrigin', 'https://tempcode.example']])
-    const ctx = { db: { prepare: () => ({ get: (k: string) => (settings.has(k) ? { value: settings.get(k)! } : undefined) }) } } as never
-    expect(fullEditorOrigin(ctx, {})).toBeNull()
-    expect(fullEditorOrigin(ctx, { TEMP_CODE_FULL_EDITOR_ORIGIN: 'https://tempcode.example' })).toBeNull()
-    expect(fullEditorOrigin(ctx, { TEMP_CODE_FULL_EDITOR_ORIGIN: 'https://sheets.tempcode.example/' })).toBe('https://sheets.tempcode.example')
-    settings.set('work.fullEditor.origin', 'https://full.tempcode.example')
-    expect(fullEditorOrigin(ctx, {})).toBe('https://full.tempcode.example')
+  it('lets a request through the tunnel reach the editor only from the desktop\'s carrier, on a loopback origin', () => {
+    expect(reachesEditor({ host: '127.0.0.1:7695' })).toBe(true)
+    expect(reachesEditor({ host: 'tempcode.example', 'cf-ray': 'r' })).toBe(false)
+    expect(reachesEditor({ host: 'tempcode.example', 'cf-connecting-ip': '1.2.3.4', 'x-tempcode-carry': 'https://evil.example' })).toBe(false)
+    expect(reachesEditor({ host: 'tempcode.example', 'cf-ray': 'r', 'x-tempcode-carry': 'http://127.0.0.1:51234' })).toBe(true)
+    const h = forwardedHeaders({ host: 'tempcode.example', 'x-forwarded-proto': 'https', 'x-tempcode-carry': 'http://127.0.0.1:51234' }, 'T')
+    expect(h).toEqual({ host: 'tempcode.example', 'x-forwarded-host': '127.0.0.1:51234/w/full/T', 'x-forwarded-proto': 'http' })
+  })
+
+  it('offers the switch to another computer only where the box\'s page reaches beyond it', () => {
+    expect(reachOf({ parts: ['a pivot table'] }, true, true)).toEqual({ parts: ['a pivot table'], to: 'full', carried: true })
+    expect(reachOf({ parts: ['a pivot table'] }, true, false)).toEqual({ parts: ['a pivot table'], to: 'full' })
+    expect(reachOf({ parts: ['macros'] }, false, true)).toEqual({ parts: ['macros'], to: 'excel' })
   })
 
   it('hands the docservice none of the caller\'s credentials', () => {
@@ -390,7 +396,68 @@ describe('the full editor\'s pieces', () => {
     const item = { id: 'i1', title: 'R.xlsx' } as never
     await expect(openFull(ctx, item, '/x.xlsx', { kind: 'model', caps: ['read', 'operate', 'approve', 'admin'], sessionId: 't1' })).rejects.toThrow('a thread cannot open it')
     await expect(openFull(ctx, item, '/x.xlsx', { kind: 'remote', caps: ['read', 'operate'] })).rejects.toThrow('owner\'s own devices')
-    const noOrigin = { service: { url: () => 'http://127.0.0.1:1/w/full/' }, db: { prepare: () => ({ get: () => undefined }) } } as never
-    await expect(openFull(noOrigin, item, '/x.xlsx', { kind: 'remote', caps: ['read', 'operate', 'approve', 'admin'] })).rejects.toThrow('no address of its own')
+    const admin = { kind: 'remote' as const, caps: ['read', 'operate', 'approve', 'admin'] }
+    // A host whose pages reach no farther than itself, and an older desktop that cannot carry it: one plain sentence each, no path.
+    await expect(openFull(ctx, item, '/x.xlsx', admin, { carry: true }, { TEMP_CODE_USER_DATA: '/tmp/elsewhere' })).rejects.toThrow(/^The full editor opens only in a window on the box\.$/)
+    await expect(openFull(ctx, item, '/x.xlsx', admin, {}, { TEMP_CODE_WORK_PUBLIC_ORIGIN: 'https://tempcode.example' })).rejects.toThrow(/^Update TempCode on this computer to open the full editor from here\.$/)
+  })
+
+  it('answers another computer the page on the box\'s public origin, which the desktop carries on a loopback origin of its own', async () => {
+    const ctx = { db: {}, dataDir: dir, service: { url: () => `${base}/w/full/` }, enabled: () => true, log: (l: string) => logs.push(l) } as never
+    const seams = (fe as unknown as { deps: object }).deps
+    fullEditorOf(ctx, seams as never)
+    const admin = { kind: 'remote' as const, caps: ['read', 'operate', 'approve', 'admin'] }
+    const answer = await openFull(ctx, { id: 'i1', title: 'Report.xlsx' } as never, workbook(), admin, { carry: true }, { TEMP_CODE_WORK_PUBLIC_ORIGIN: base })
+    expect(answer).toEqual({ carry: expect.stringMatching(new RegExp(`^${base}/w/full/[0-9a-f]{64}/$`)) })
+    const local = await openFull(ctx, { id: 'i1', title: 'Report.xlsx' } as never, join(dir, 'Report.xlsx'), { kind: 'local', caps: [] })
+    expect(local).toEqual({ url: `${base}/w/full/${(answer as { carry: string }).carry.split('/')[5]}/` })
+    await fullEditorOf(ctx).stop('test over')
+  })
+
+  it('reaches the editor through the tunnel only by the carrier, whose loopback origin the editor\'s links name', async () => {
+    const token = await fe.open({ path: workbook(), itemId: 'i1', title: 'Report.xlsx' })
+    // As the tunnel delivers it: Cloudflare's headers on the remote UI's hostname.
+    const tunnel = { Host: 'tempcode.example', 'CF-Ray': 'r1', 'CF-Connecting-IP': '1.2.3.4' }
+    expect((await get(`/w/full/${token}/`, tunnel)).status).toBe(404)
+    expect((await get(`/w/full/${token}/web-apps/apps/api/documents/api.js`, tunnel)).status).toBe(404)
+    try {
+      const page = await carry(`${base}/w/full/${token}/`)
+      expect(page).toMatch(new RegExp(`^http://127\\.0\\.0\\.1:\\d+/w/full/${token}/$`))
+      const via = new URL(page)
+      const at = (path: string, headers: Record<string, string> = {}): Promise<{ status: number; body: string; headers: Record<string, unknown> }> =>
+        new Promise((resolve, reject) => {
+          request(`${via.origin}${path}`, { headers }, (res) => {
+            let body = ''
+            res.on('data', (c) => (body += c))
+            res.on('end', () => resolve({ status: res.statusCode ?? 0, body, headers: res.headers }))
+          }).on('error', reject).end()
+        })
+      const shown = await at(`/w/full/${token}/`, tunnel)
+      expect(shown.status).toBe(200)
+      expect(shown.body).toContain(`/w/full/${token}/web-apps/apps/api/documents/api.js`)
+      const api = await at(`/w/full/${token}/web-apps/apps/api/documents/api.js`, tunnel)
+      expect(api.status).toBe(200)
+      expect(api.headers['x-seen-host']).toBe(`${via.host}/w/full/${token}`)
+      // Nothing else of the box goes through the carrier.
+      expect((await at(`/w/open`)).status).toBe(404)
+      expect((await at(`/w/full/${'a'.repeat(64)}/`)).status).toBe(404)
+      // The editor's socket too.
+      const got = await new Promise<string>((resolve, reject) => {
+        const sock = connect(Number(via.port), '127.0.0.1', () => sock.write(`GET /w/full/${token}/doc/k/c/?EIO=4&transport=websocket HTTP/1.1\r\nHost: x\r\nCF-Ray: r1\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n\r\n`))
+        let text = ''
+        sock.on('data', (c) => {
+          text += c.toString()
+          if (text.includes('\r\n\r\n') && !text.includes('ping')) sock.write('ping')
+          if (text.endsWith('ping')) {
+            sock.destroy()
+            resolve(text)
+          }
+        })
+        sock.on('error', reject)
+      })
+      expect(got).toMatch(/^HTTP\/1\.1 101/)
+    } finally {
+      await closeCarriers()
+    }
   })
 })

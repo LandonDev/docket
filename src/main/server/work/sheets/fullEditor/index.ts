@@ -1,7 +1,8 @@
+import type { SheetReach } from '@shared/contract-work-sheets'
 import type { CanvasItem } from '@shared/work'
 import { Toolchain } from '../../formats/tools'
 import type { Caller, WorkCtx } from '../../modules'
-import { servicePaths } from '../../service/config'
+import { servesPublic, servicePaths } from '../../service/config'
 import { FullEditor, type FullEditorDeps } from './editor'
 
 /**
@@ -61,34 +62,40 @@ async function reload(ctx: WorkCtx, itemId: string): Promise<void> {
   }
 }
 
-/**
- * The address the owner's other devices open the editor on. It must be an
- * origin of its own: ONLYOFFICE's code on the remote UI's origin could use
- * the owner's session there. So it is never `remote.publicOrigin`, only
- * `TEMP_CODE_FULL_EDITOR_ORIGIN` or the `work.fullEditor.origin` setting (a
- * hostname the tunnel sends to the Work service's `/w/full/` alone).
- */
-export function fullEditorOrigin(ctx: Pick<WorkCtx, 'db'>, env: NodeJS.ProcessEnv = process.env): string | null {
-  const read = (key: string): string | null => (ctx.db.prepare('SELECT value FROM settings WHERE key = ?').get(key) as { value: string } | undefined)?.value || null
-  const origin = (env.TEMP_CODE_FULL_EDITOR_ORIGIN || read('work.fullEditor.origin'))?.replace(/\/+$/, '') ?? null
-  if (!origin) return null
-  const shared = [read('remote.publicOrigin'), read('remote.learnedOrigin')].some((o) => o && new URL(o).host === new URL(origin).host)
-  return shared ? null : origin
+/** The switch's reach on this host: the full editor where it runs here, carried to another computer where this host's pages reach beyond it; desktop Excel elsewhere. */
+export function reachOf(reach: { parts: string[] }, full: boolean, carried: boolean): SheetReach {
+  return full ? { ...reach, to: 'full', ...(carried ? { carried: true as const } : {}) } : { ...reach, to: 'excel' }
 }
 
+/** What a press answers: the page itself for a window on this host, or the page a desktop on another computer carries on a loopback port of its own. */
+export type FullAnswer = { url: string } | { carry: string }
+
 /**
- * Opens a workbook in the full editor for the owner and answers the page's
- * address: this host's loopback for a window on this host, else the address
- * the owner's own devices reach it by. Never for a thread, and never for a
- * key short of admin (a guest has none at all).
+ * Opens a workbook in the full editor for the owner. A window on this host
+ * gets the page on this host's loopback. Another computer's window gets the
+ * page's address on this host's public origin, which its app carries on a
+ * loopback origin of its own (src/main/fullEditorCarry.ts) and opens there:
+ * ONLYOFFICE's code never runs on the remote UI's origin, where it could use
+ * the owner's session, and the route refuses it there (routes/fullEditor.ts).
+ * Never for a thread, and never for a key short of admin (a guest has none).
  */
-export async function openFull(ctx: WorkCtx, item: CanvasItem, path: string, by: Caller, scheme?: 'dark' | 'light'): Promise<string> {
+export async function openFull(
+  ctx: WorkCtx,
+  item: CanvasItem,
+  path: string,
+  by: Caller,
+  opts: { scheme?: 'dark' | 'light'; carry?: boolean } = {},
+  env: NodeJS.ProcessEnv = process.env
+): Promise<FullAnswer> {
   if (by.kind === 'model') throw new Error('The full editor is the owner\'s: a thread cannot open it.')
   if (by.kind === 'remote' && !by.caps.includes('admin')) throw new Error('The full editor opens only on the owner\'s own devices.')
+  if (by.kind === 'remote' && !servesPublic(env)) throw new Error('The full editor opens only in a window on the box.')
+  if (by.kind === 'remote' && !opts.carry) throw new Error('Update TempCode on this computer to open the full editor from here.')
   // The route is the Work service's: it must be running before a token is worth anything.
   const local = ctx.service.url('/w/full/')
-  const origin = by.kind === 'local' ? local.replace(/\/w\/full\/$/, '') : fullEditorOrigin(ctx)
-  if (!origin) throw new Error('The full editor has no address of its own on this host yet, so it opens only in a window on this host (docs/agents/work-sheets.md, "The full editor").')
-  const token = await fullEditorOf(ctx).open({ path, itemId: item.id, title: item.title, ...(scheme ? { scheme } : {}) })
-  return `${origin}/w/full/${token}/`
+  const token = await fullEditorOf(ctx).open({ path, itemId: item.id, title: item.title, ...(opts.scheme ? { scheme: opts.scheme } : {}) })
+  if (by.kind !== 'remote') return { url: `${local}${token}/` }
+  // The guests' public origin (the tunnel's hostname), loaded on the press alone.
+  const { publicOrigin } = await import('../../guests/links')
+  return { carry: `${publicOrigin(ctx, env)}/w/full/${token}/` }
 }

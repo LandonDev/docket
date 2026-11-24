@@ -55,15 +55,36 @@ export async function lookupToken(ctx: RouteCtx, token: string, now = Date.now()
   return found
 }
 
-/** The request's headers as the docservice should see them: our token's prefix as its host, nothing of the caller's credentials. */
+/**
+ * The loopback origin a desktop on another computer carries the editor on (src/main/fullEditorCarry.ts names it in
+ * `x-tempcode-carry`), or null. A browser cannot set the header on a page it navigates to, and a script of another
+ * origin cannot send it here without a preflight this route never answers.
+ */
+export function carriedOrigin(headers: IncomingHttpHeaders): string | null {
+  const v = headers['x-tempcode-carry']
+  return typeof v === 'string' && /^http:\/\/127\.0\.0\.1:\d{1,5}$/.test(v) ? v : null
+}
+
+/**
+ * Whether a request may reach the editor. One that came through the tunnel (Cloudflare names it) arrives on the remote
+ * UI's hostname, where ONLYOFFICE's code could use the owner's session: it passes only from the desktop's carrier,
+ * which shows the page on its own loopback origin. A window on this host asks the loopback listener directly.
+ */
+export function reachesEditor(headers: IncomingHttpHeaders): boolean {
+  const tunnelled = headers['cf-ray'] !== undefined || headers['cf-connecting-ip'] !== undefined
+  return !tunnelled || carriedOrigin(headers) !== null
+}
+
+/** The request's headers as the docservice should see them: our token's prefix as its host (the carrier's loopback origin, when carried), nothing of the caller's credentials. */
 export function forwardedHeaders(headers: IncomingHttpHeaders, token: string): Record<string, string | string[]> {
   const out: Record<string, string | string[]> = {}
   for (const [k, v] of Object.entries(headers)) {
-    if (v === undefined || k === 'cookie' || k === 'authorization' || k.startsWith('x-forwarded-') || k.startsWith('cf-')) continue
+    if (v === undefined || k === 'cookie' || k === 'authorization' || k === 'x-tempcode-carry' || k.startsWith('x-forwarded-') || k.startsWith('cf-')) continue
     out[k] = v
   }
-  const proto = headers['x-forwarded-proto'] === 'https' ? 'https' : 'http'
-  out['x-forwarded-host'] = `${headers.host ?? 'localhost'}/w/full/${token}`
+  const carried = carriedOrigin(headers)
+  const proto = carried ? 'http' : headers['x-forwarded-proto'] === 'https' ? 'https' : 'http'
+  out['x-forwarded-host'] = `${carried ? new URL(carried).host : (headers.host ?? 'localhost')}/w/full/${token}`
   out['x-forwarded-proto'] = proto
   return out
 }
@@ -93,6 +114,7 @@ export const fullEditorRoute: PublicRoute = {
   async http(req, res, ctx, m) {
     const token = m[1]!
     const rest = m[2] ?? '/'
+    if (!reachesEditor(req.headers)) return sendText(res, 404, 'not found')
     const found = await lookupToken(ctx, token)
     if (!found) return sendText(res, 404, 'not found')
     if (rest === '/') {
@@ -127,7 +149,7 @@ export const fullEditorRoute: PublicRoute = {
     const token = m[1]!
     const rest = m[2] ?? '/'
     void lookupToken(ctx, token).then((found) => {
-      if (!found || !EDITOR_PATHS.test(rest)) return refuseUpgrade(socket, 404, 'not found')
+      if (!found || !EDITOR_PATHS.test(rest) || !reachesEditor(req.headers)) return refuseUpgrade(socket, 404, 'not found')
       const up = connect(found.socket)
       up.on('error', () => socket.destroy())
       socket.on('error', () => up.destroy())

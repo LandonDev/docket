@@ -1494,15 +1494,41 @@ owner's alone, unmodified, a separate server (architecture §12.1). Code in
   workbook kept at the tunnel's edge would outlive its token). The route
   asks the lookup socket only when this user owns it.
 - **Its address.** A window on the box opens
-  `http://127.0.0.1:<service port>/w/full/<token>/`. The owner's other
-  devices open it on an origin of its own, never the remote UI's
-  (`tempcode.landonhale.com`): ONLYOFFICE's code there could use the
-  owner's session on that origin. The origin is `TEMP_CODE_FULL_EDITOR_ORIGIN`
-  or the `work.fullEditor.origin` setting; one equal to the remote UI's host
-  is refused, and with none the press says the editor opens only in a window
-  on the box. It needs a hostname of its own in the tunnel (the owner's
-  step): an ingress rule for, say, `full.tempcode.landonhale.com` with
-  `path: ^/w/full/` to the installed host's Work port (7695).
+  `http://127.0.0.1:<service port>/w/full/<token>/`. Another computer's
+  window (his Mac's, by an admin key) never opens it on the remote UI's
+  origin (`tempcode.landonhale.com`), where ONLYOFFICE's code could use the
+  owner's session. Its desktop app carries it instead (src/main/fullEditorCarry.ts):
+  the press sends `carry: true`, the box answers `{carry: <public
+  origin>/w/full/<token>/}` (`openFull`, the guests' `publicOrigin`, over the
+  tunnel's existing `^/(g|w|f)/` rule to the Work port), and the app's main
+  process serves that one page on a loopback port of its own,
+  `http://127.0.0.1:<port>/w/full/<token>/`, an origin of its own, and opens
+  it in the browser. The carrier passes only the paths under that token,
+  WebSocket upgrades included, and names its loopback origin in
+  `x-tempcode-carry` on each; the route then gives the docservice that origin
+  as `X-Forwarded-Host`, so the editor's own links come back through the
+  carrier. A request that came through the tunnel (Cloudflare's `cf-ray` or
+  `cf-connecting-ip`) without that header is answered 404
+  (`reachesEditor`), so the page never runs on the remote UI's origin. A
+  browser cannot set the header on a page it navigates to, and another
+  origin's script cannot send it without a preflight the route never
+  answers. A carrier closes after 30 minutes with nothing through it and no
+  socket open. Before 2026-11-24 the page needed a hostname of its own
+  (`TEMP_CODE_FULL_EDITOR_ORIGIN`, `work.fullEditor.origin`) that was never
+  set, so from his Mac the switch was offered and always refused; both are
+  gone.
+- **Offered where it opens.** The view's `reach` says `carried: true` where
+  the box's pages reach beyond it (`servesPublic`: the box behind its tunnel,
+  or a proof's `TEMP_CODE_WORK_PUBLIC_ORIGIN`). The window draws the switch,
+  and its "opens in the full editor" line, only in the desktop app, and from
+  another computer only with `carried` and an admin key
+  (work/sheets/fullHere.ts `reachHere`); a browser, the phone and a key short
+  of admin are never offered it. What a caller can still reach is one plain
+  sentence: a thread ("a thread cannot open it"), a key short of admin, a
+  host whose pages stay on it ("The full editor opens only in a window on
+  the box."), an older desktop that sends no `carry` ("Update TempCode on
+  this computer to open the full editor from here."). Documents and decks
+  have no full editor: their switch is Word's or PowerPoint's.
 - **Saves** come to the storage server's callback, signed by the
   docservice (checked HS256, the document's key matched). The status-6
   save made with Save and the status-2 save made after everyone leaves are

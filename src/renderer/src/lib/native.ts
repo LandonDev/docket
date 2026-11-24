@@ -590,6 +590,11 @@ export function openUrl(url: string): Promise<void> {
   return api().app.openUrl(url);
 }
 
+/** The box's full editor at the address it answered, carried on a loopback origin of this app's own and opened in the browser (src/main/fullEditorCarry.ts). */
+export function openFullEditor(address: string): Promise<void> {
+  return api().app.openFullEditor(address);
+}
+
 // ── Updates ────────────────────────────────────────────────────────────────
 
 /** Main's update status: release numbers, not semver; the app relaunches
