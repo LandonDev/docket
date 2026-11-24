@@ -356,6 +356,13 @@ Copy the reported verdicts into the sorted table and check the control for
 each refusal. The `/ui` column uses a read pairing. Check the browser shim
 when a preload call changes.
 
+**State lines.** A line that starts with a state word such as “Saved”,
+“Sent” or “Signed in” needs an entry in `src/shared/work/stateLines.ts`
+with the fact the code reads. The guard checks that each entry still has
+a line in Work and that “Saved” and “Sent” have stronger facts than a queue
+entry or a stored token. The save tests hold one write open while another
+edit comes in and check the line for text files, sheets and decks.
+
 ## Mirrors follow LifeOS
 
 A mirror is the TempCode project that holds a Work workspace's threads

@@ -9,7 +9,7 @@ export function sourcePaths(dir: string): string[] {
   return readdirSync(join(REPO, dir), { withFileTypes: true }).flatMap((entry) => {
     const path = `${dir}/${entry.name}`;
     if (entry.isDirectory()) return SKIP.test(entry.name) ? [] : sourcePaths(path);
-    return /\.[cm]?tsx?$/.test(path) && !/\.(?:d|test|preview|fixtures?|proofs?)\.[cm]?tsx?$/.test(path) ? [path] : [];
+    return !/^(?:fixtures?|testkit)\.[cm]?tsx?$/i.test(entry.name) && /\.[cm]?tsx?$/.test(path) && !/\.(?:d|test|preview|fixtures?|proofs?)\.[cm]?tsx?$/.test(path) ? [path] : [];
   }).sort();
 }
 

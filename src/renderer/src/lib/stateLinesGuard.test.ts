@@ -1,0 +1,45 @@
+import { describe, expect, it } from "vitest";
+import { STATE_LINES, type StateFact } from "@shared/work/stateLines";
+import { stateLineSources } from "./stateLineSources.test-support";
+
+const KNOWN: readonly { file: string; literal: string; fact: StateFact; wall: string }[] = [
+  {
+    file: "src/main/server/work/outbox/lifeosHeld.ts", literal: "Sent to", fact: "queued",
+    wall: "W-13: thread Results takes the act's summary before LifeOS confirms the send",
+  },
+  {
+    file: "src/renderer/src/work/files/wordSave.ts", literal: "`Saved to ${service} ${whenWords(word.at, now)}`", fact: "queued",
+    wall: "W-18: Word autosave names the cloud service when only the keeper has confirmed the write and cloud status is absent",
+  },
+  {
+    file: "src/renderer/src/work/files/wordSave.ts", literal: "`Saved to ${service} as Word ${whenWords(word.at, now)}`", fact: "queued",
+    wall: "W-18: Save as Word names the cloud service under the same conditions",
+  },
+];
+
+function overclaims(literal: string, fact: StateFact): boolean {
+  return /^`?(?:Saved|Sent)\b/.test(literal.trimStart()) && (fact === "queued" || fact === "stored token");
+}
+
+describe("Work state lines", () => {
+  it("lists every state line with the fact it reads and keeps the known walls current", () => {
+    const lines = stateLineSources();
+    const hits: string[] = [];
+    function take(file: string, literal: string, fact: StateFact, wall?: string): void {
+      const i = lines.findIndex((line) => line.file === file && line.literal === literal);
+      if (i === -1) {
+        hits.push(`Unused ${wall ? "wall" : "state line"}: ${file}: ${literal}${wall ? ` (${wall})` : ""}`);
+        return;
+      }
+      const [{ at }] = lines.splice(i, 1);
+      if (!wall && overclaims(literal, fact)) hits.push(`${at}: reword ${literal}, its fact is ${fact}`);
+      if (wall && !overclaims(literal, fact)) hits.push(`${at}: remove the exception for ${wall}`);
+    }
+    for (const { file, literal, fact, wall } of KNOWN) take(file, literal, fact, wall);
+    for (const [file, rows] of Object.entries(STATE_LINES)) {
+      for (const [literal, fact] of rows) take(file, literal, fact);
+    }
+    for (const { at, literal } of lines) hits.push(`${at}: classify ${JSON.stringify(literal)}`);
+    expect(hits).toEqual([]);
+  });
+});
