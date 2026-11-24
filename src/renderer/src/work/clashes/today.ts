@@ -21,8 +21,11 @@ const MINUTE = 60_000;
  * The marks at `now`: a clash only while it is his to settle (`liveClashes`, as the Agenda drops it), worded
  * under the day Today shows, so the other event's time takes its weekday when it began on another day.
  */
-export function clashMarks(range: LifeosRange | undefined, env: Pick<TodayEnv, "day" | "workspaceOf" | "lifeos">, now: number): TodayMark[] {
-  const list = marksOf(listFrom(range, (sector) => env.workspaceOf(sector)?.workspaceId));
+export function clashMarks(range: LifeosRange | undefined, env: Pick<TodayEnv, "day" | "workspaces" | "lifeos">, now: number): TodayMark[] {
+  // A side's workspace is one on the host whose session reads the clash, the host the dialog opens on: as the
+  // dialog's own read names them, so Running late is never offered for a job only another host holds.
+  const host = env.lifeos.environmentId;
+  const list = marksOf(listFrom(range, (sector) => env.workspaces.find((w) => w.sector === sector && w.environmentId === host)?.workspaceId));
   const marks = new Map<string, TodayMark>();
   for (const [eventId, of] of liveClashes(list.clashes, now)) {
     const first = of[0];

@@ -109,6 +109,26 @@ export interface LifeosRange {
   leaves: LifeosLeave[]
 }
 
+/** An event with no end, or an end before its start, runs this long in LifeOS's clash rule (its `CLASH_NO_END_MS`). */
+export const CLASH_NO_END_MS = 3_600_000
+
+/** An event's end as LifeOS's clash rule counts it (its `eventEnd`): the row's own end when that is not before its start, else an hour on. */
+export const clashEnd = (event: { startsAt: number; endsAt?: number | undefined }): number =>
+  event.endsAt !== undefined && event.endsAt >= event.startsAt ? event.endsAt : event.startsAt + CLASH_NO_END_MS
+
+/**
+ * Whether an event's row, read again (`events:get`), still has the times a clash's side showed: its start, and
+ * its end as the clash rule counts it, so an end taken away reads as an hour on (a change) and an event that
+ * never had one is not refused for ever. A row with no start says nothing either way: undefined.
+ */
+export function sameTimes(row: { startsAt?: number | undefined; endsAt?: number | undefined }, side: { startsAt: number; endsAt: number }): boolean | undefined {
+  if (typeof row.startsAt !== 'number') return undefined
+  return row.startsAt === side.startsAt && clashEnd({ startsAt: row.startsAt, endsAt: row.endsAt }) === side.endsAt
+}
+
+/** Whether someone else is on an event with an address, as LifeOS's clash rule says `guests`: a change on its calendar is mailed to them. */
+export const hasGuests = (row: { attendees?: readonly { address: string }[] | undefined }): boolean => row.attendees?.some((a) => a.address.includes('@')) ?? false
+
 /** A job's Work workspace where the reader is, when it has one. */
 type HomeOf = (sector: SectorKey) => string | undefined
 

@@ -389,8 +389,8 @@ fresh), `outbox.offer` (waits), kept in step by `ctx.tell.only`.
 
 ## Tonight's builds
 
-As found on master on 2026-11-23. Clashes (`clashes.new`, `by` only for a
-clash today), money (`money.confirm`), review (`review.ready`, its page
+As found on master on 2026-11-23. Clashes (`clashes.new`, `by` the later
+event's start on every clash), money (`money.confirm`), review (`review.ready`, its page
 and week as the target) and messages (`messages.new`, the conversation as
 the target) tell for themselves, each with its kind listed on its own
 module. Prep hands a read: the two sources above.

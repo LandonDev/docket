@@ -128,6 +128,27 @@ describe("the Clash dialog", () => {
     expect(addDays(startOfDay(block.endsAt), 1)).toBeGreaterThan(addDays(startOfDay(T0), 1));
   });
 
+  it("widens its read when the block grows, so the meeting moved inside the longer block stays a clash", async () => {
+    const block = side("ev_a", "Training", -18 * 24, 20 * 24, { sector: "purdue" });
+    const view = (clash: Clash) => {
+      marks.now = marksOf({ clashes: [clash], leaves: [] });
+      return <ClashDialog ask={{ id: "ev_a-ev_b", environmentId: "box", clash: overlap(block, game([])) }} onClose={() => {}} />;
+    };
+    const { rerender } = render(view(overlap(block, game([]))));
+    await settle();
+    expect(marks.asked[2]).toBe(addDays(startOfDay(block.endsAt), 1));
+    // The block now runs ten days longer, and the dialog shows its new end: the read reaches its new last day.
+    const longer = { ...block, endsAt: block.endsAt + 10 * 24 * HOUR };
+    rerender(view(overlap(longer, game([]))));
+    await settle();
+    expect(marks.asked[2]).toBe(addDays(startOfDay(longer.endsAt), 1));
+    // The game moves eight days on, inside the longer block: still a clash on screen.
+    rerender(view(overlap(longer, { ...game([]), startsAt: T0 + 8 * 24 * HOUR, endsAt: T0 + 8 * 24 * HOUR + 2 * HOUR })));
+    await settle();
+    expect(screen.getByRole("dialog", { name: "Two things at once" })).toBeTruthy();
+    expect(marks.asked[2]).toBe(addDays(startOfDay(longer.endsAt), 1));
+  });
+
   it("shows a long title and a long place whole, wrapped, with no tip a keyboard could not reach", async () => {
     const title = "Quarterly planning and budget review with every department head and the visiting auditors";
     const place = "https://meet.example.com/a-very-long-room-name-with-no-space-to-break-at-anywhere-in-it";
@@ -333,7 +354,7 @@ describe("the Clash dialog", () => {
     expect((screen.getByLabelText("To") as HTMLInputElement).value).toBe("13:15");
     fireEvent.click(screen.getByRole("button", { name: "Send" }));
     await settle();
-    expect(wire.calls[0]).toEqual({ method: "work.clashes.answer", params: { eventId: "ev_a", way: "propose", start: T0 - 105 * 60_000, end: T0 + 15 * 60_000, seen: [{ eventId: "ev_a", startsAt: T0, endsAt: T0 + 2 * HOUR }, { eventId: "ev_b", startsAt: T0 + HOUR, endsAt: T0 + 3 * HOUR }] } });
+    expect(wire.calls[0]).toEqual({ method: "work.clashes.answer", params: { eventId: "ev_a", way: "propose", start: T0 - 105 * 60_000, end: T0 + 15 * 60_000, seen: [{ eventId: "ev_a", startsAt: T0, endsAt: T0 + 2 * HOUR, guests: false }, { eventId: "ev_b", startsAt: T0 + HOUR, endsAt: T0 + 3 * HOUR, guests: false }] } });
     expect(toasts.said[0]?.words).toBe("Proposing a new time for Staff meeting…");
   });
 
@@ -350,7 +371,7 @@ describe("the Clash dialog", () => {
     expect(screen.getByText("Next day")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Move" }));
     await settle();
-    expect(wire.calls[0]).toEqual({ method: "work.clashes.answer", params: { eventId: "ev_b", way: "move", start: T0 + 10.5 * HOUR, end: T0 + 12 * HOUR, seen: [{ eventId: "ev_a", startsAt: T0, endsAt: T0 + 2 * HOUR }, { eventId: "ev_b", startsAt: T0 + HOUR, endsAt: T0 + 3 * HOUR }] } });
+    expect(wire.calls[0]).toEqual({ method: "work.clashes.answer", params: { eventId: "ev_b", way: "move", start: T0 + 10.5 * HOUR, end: T0 + 12 * HOUR, seen: [{ eventId: "ev_a", startsAt: T0, endsAt: T0 + 2 * HOUR, guests: false }, { eventId: "ev_b", startsAt: T0 + HOUR, endsAt: T0 + 3 * HOUR, guests: false }] } });
   });
 
   it("moves his own event to the time he sets, with no note to send", async () => {
@@ -362,7 +383,7 @@ describe("the Clash dialog", () => {
     fireEvent.change(screen.getByLabelText("To"), { target: { value: "19:30" } });
     fireEvent.click(screen.getByRole("button", { name: "Move" }));
     await settle();
-    expect(wire.calls[0]).toEqual({ method: "work.clashes.answer", params: { eventId: "ev_b", way: "move", start: T0 + 5 * HOUR, end: T0 + 6.5 * HOUR, seen: [{ eventId: "ev_a", startsAt: T0, endsAt: T0 + 2 * HOUR }, { eventId: "ev_b", startsAt: T0 + HOUR, endsAt: T0 + 3 * HOUR }] } });
+    expect(wire.calls[0]).toEqual({ method: "work.clashes.answer", params: { eventId: "ev_b", way: "move", start: T0 + 5 * HOUR, end: T0 + 6.5 * HOUR, seen: [{ eventId: "ev_a", startsAt: T0, endsAt: T0 + 2 * HOUR, guests: false }, { eventId: "ev_b", startsAt: T0 + HOUR, endsAt: T0 + 3 * HOUR, guests: false }] } });
   });
 
   it("says a move is done only when the host wrote it in LifeOS; one handed to a calendar's sender is under way", async () => {
@@ -535,7 +556,7 @@ describe("the Clash dialog", () => {
     expect(mail.to).toEqual(["ws_ref"]);
   });
 
-  it("drafts nothing when the later job's workspace is not in the window, and says so", async () => {
+  it("drafts nothing when the later job's workspace is not on this host, and says so", async () => {
     lifeos.attendees = [{ address: "dana@example.com" }];
     show(overlap(meeting(["decline", "propose"]), game(["move", "late"], { workspaceId: "ws_gone" })));
     await settle();
@@ -561,6 +582,33 @@ describe("the Clash dialog", () => {
     fireEvent.click(screen.getByRole("button", { name: "Running late…" }));
     await settle();
     expect(mail.drafts).toHaveLength(1);
+  });
+
+  it("counts an end taken away as an hour on, as the clash rule does: drafts nothing for it, and drafts for an event that never had one", async () => {
+    lifeos.attendees = [{ address: "dana@example.com" }];
+    // Shown 2:00 to 4:00; the reply has the same start and no end, which the rule runs to 3:00.
+    lifeos.times = { startsAt: T0 + HOUR } as never;
+    show(overlap());
+    await settle();
+    fireEvent.click(screen.getByRole("button", { name: "Running late…" }));
+    await settle();
+    expect(mail.drafts).toEqual([]);
+    cleanup();
+    // A game with no end in either read: the clash ran it an hour, and the reply agrees.
+    show(overlap(meeting(["decline", "propose"]), game(["move", "late"], { endsAt: T0 + 2 * HOUR })));
+    await settle();
+    fireEvent.click(screen.getByRole("button", { name: "Running late…" }));
+    await settle();
+    expect(mail.drafts).toHaveLength(1);
+  });
+
+  it("says with a move whether the step told of guests, so the host can refuse one a guest was added to since", async () => {
+    show(overlap(meeting(["decline", "propose"]), game(["move", "late"], { guests: true })));
+    await settle();
+    fireEvent.click(screen.getByRole("button", { name: "Move…" }));
+    fireEvent.click(screen.getByRole("button", { name: "Move" }));
+    await settle();
+    expect((wire.calls[0]?.params as { seen: { guests: boolean }[] }).seen.map((s) => s.guests)).toEqual([false, true]);
   });
 
   it("quiets the clash with This is fine, and Undo brings it back", async () => {

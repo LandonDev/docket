@@ -1,6 +1,6 @@
 import { makeFunctionReference } from "convex/server";
 import { useEffect, useRef, useState, type FormEvent } from "react";
-import { clashTitle, driveLine, timeNear, type Clash, type ClashAnswered, type ClashSide, type ClashWay } from "@shared/work/clashes";
+import { clashTitle, driveLine, sameTimes, timeNear, type Clash, type ClashAnswered, type ClashSide, type ClashWay } from "@shared/work/clashes";
 import { addDays, startOfDay } from "work-kit/views/lib/agenda";
 import { formatDayHeading } from "work-kit/views/lib/format";
 import { DialogFooter, ErrorLine } from "../../chrome/ConfirmDialog";
@@ -57,15 +57,23 @@ function lateMail(environmentId: string, workspaceId: string, draft: MailtoDraft
   return true;
 }
 
+/** The day after the later of the later event's start and the earlier event's end: as far as the dialog's read must reach for the pair to stay in it. */
+const reachOf = (clash: Clash) => addDays(startOfDay(Math.max(clash.b.startsAt, clash.a.endsAt)), 1);
+
 export function ClashDialog({ ask, onClose }: { ask: ClashAsk; onClose: () => void }) {
   // The fortnight from the earlier event's day when the opener handed the clash over, else from today, as every opener reads.
   // Whole local days (a day is 23 or 25 hours when the clocks change). A fortnight, not the pair's own day or two: an event of the pair that moves to another day and still clashes must stay in the read, or the dialog would call the clash gone.
   const first = startOfDay(ask.clash ? ask.clash.a.startsAt : Date.now());
   // And through the later event's own day and the earlier one's last when those lie past the fortnight (a block of weeks, and something in its third): the read must hold the pair the opener showed, and the pair still, while the later one moves anywhere inside the block.
-  const [from, to] = [first, Math.max(addDays(first, 14), ask.clash ? addDays(startOfDay(Math.max(ask.clash.b.startsAt, ask.clash.a.endsAt)), 1) : 0)];
-  const marks = useClashes(ask.environmentId, from, to);
+  // The end only grows: a block the live read shows longer widens the read to its new last day, and what the read last said for certain stays on screen until the wider one answers.
+  const [to, setTo] = useState(() => Math.max(addDays(first, 14), ask.clash ? reachOf(ask.clash) : 0));
+  const marks = useClashes(ask.environmentId, first, to);
   // The pair in either order: when one of the two moves to start first and they still clash, it is the same clash under a flipped id.
   const live = [...marks.clashes.values()].flat().find((c) => c.id === ask.id || c.id === flipped(ask.id));
+  const reach = live ? reachOf(live) : 0;
+  useEffect(() => {
+    if (reach > to) setTo(reach);
+  }, [reach, to]);
   const [pending, setPending] = useState(false);
   // His own press may be what ends the clash ("This is fine", a decline): the dialog keeps the clash it showed while that press is out and while it closes, and never turns to "No longer a clash" under his hand.
   const [settled, setSettled] = useState(false);
@@ -274,9 +282,8 @@ function Body({
     answered(session.client.query(eventGet, { id: clash.b.eventId })).then(
       (event: { sector?: string; startsAt?: number; endsAt?: number; attendees?: { address: string }[] } | null) => {
         setPending(false);
-        // The reply may know of a change the screen has not drawn yet: the event's job and times are read from it too, so a move the live read has yet to bring drafts no old minutes.
-        const b = latest.current.b;
-        if ((event?.sector !== undefined && event.sector !== clash.b.sector) || (event?.startsAt !== undefined && event.startsAt !== b.startsAt) || (event?.endsAt !== undefined && event.endsAt !== b.endsAt)) return setBusy(null);
+        // The reply may know of a change the screen has not drawn yet: the event's job and times are read from it too, so a move the live read has yet to bring drafts no old minutes. Its end counts as the clash rule counts it (`sameTimes`): an end taken away is an hour on.
+        if ((event?.sector !== undefined && event.sector !== clash.b.sector) || (event && sameTimes(event, latest.current.b) === false)) return setBusy(null);
         // The pair changed while the people were read (its times, its drive, or the later event's job), or stopped being a clash: the minutes he pressed for are no longer the minutes, or the Mail no longer the job's. The dialog shows the pair as it is, or that it is gone, and the press is his again.
         // Nor is a line drafted for an event that ended in the wait: its Running late is gone from the dialog by then.
         if (left.current || latest.current.b.endsAt <= Date.now() || stampOf(latest.current) !== pressed) return setBusy(null);
@@ -309,7 +316,7 @@ function Body({
           setRefused(null);
           setPending(true);
           // A time goes with the pair it was offered from (the step holds Send once the pair on screen changes): the host reads both again and refuses a pair a calendar changed that has not reached the window yet.
-          const seen = params.start !== undefined ? { seen: [clash.a, clash.b].map(({ eventId, startsAt, endsAt }) => ({ eventId, startsAt, endsAt })) } : {};
+          const seen = params.start !== undefined ? { seen: [clash.a, clash.b].map(({ eventId, startsAt, endsAt, guests }) => ({ eventId, startsAt, endsAt, guests: Boolean(guests) })) } : {};
           link.request("work.clashes.answer", { eventId: step.eventId, way: step.way, ...params, ...seen }, { lane: "ui" }).then(
             (reply: unknown) => {
               done(doneWords(step.way, clash[side].title, (reply as ClashAnswered | null)?.queued ?? true));

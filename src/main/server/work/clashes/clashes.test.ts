@@ -1,5 +1,5 @@
 import { DatabaseSync } from 'node:sqlite'
-import { beforeEach, describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { CLASHES_CAPS, ClashesRequestSchemas } from '@shared/contract-work-clashes'
 import { requiredCapability } from '@shared/capabilities'
 import type { ClientRequest } from '@shared/contract'
@@ -58,6 +58,9 @@ beforeEach(() => {
   add.run('ws-purdue', 'Purdue', '/w/Purdue', 'work', 'purdue', 1)
   add.run('ws-life', 'Life', '/w/Life', 'work', 'life', 2)
   add.run('repo', 'temp-code', '/w/repo', 'code', 'cosmic', 3)
+  // The thread 't1' as a Work Chat's row: no workspace, no project.
+  db.exec('CREATE TABLE sessions (id TEXT PRIMARY KEY, workspace_id TEXT, project_id TEXT)')
+  db.prepare('INSERT INTO sessions VALUES (?, ?, ?)').run('t1', null, null)
   clashes.ensure(db)
   calls = []
   subs = []
@@ -254,6 +257,33 @@ describe('his answer', () => {
     expect(calls.map((c) => c.fn)).toEqual(['events:get'])
   })
 
+  it('counts an end taken away as an hour on, as the clash rule does, and never refuses an event that had none in either read', async () => {
+    const seen = [
+      { eventId: 'e_staff', startsAt: at(16), endsAt: at(17) },
+      { eventId: 'e_game', startsAt: at(17, 30), endsAt: at(19, 30) }
+    ]
+    const events: Record<string, unknown> = { e_staff: { startsAt: at(16), endsAt: at(17) }, e_game: { source: 'gcal', startsAt: at(17, 30) } }
+    answers['events:get'] = (args) => events[args.id as string] ?? null
+    // The game's end was taken away: the rule now runs it to 6:30, not 7:30.
+    await expect(call('work.clashes.answer', { eventId: 'e_staff', way: 'propose', start: at(14), end: at(15), seen })).rejects.toThrow(/^These events changed\./)
+    // A game that never had an end: the clash ran it an hour, and so does the row read again.
+    const noEnd = [seen[0]!, { eventId: 'e_game', startsAt: at(17, 30), endsAt: at(18, 30) }]
+    await call('work.clashes.answer', { eventId: 'e_staff', way: 'propose', start: at(14), end: at(15), seen: noEnd })
+    expect(calls.map((c) => c.fn).slice(-2)).toEqual(['calendarOps:save', 'calendarOps:send'])
+  })
+
+  it('refuses a move the step said tells no one, of an event a guest was added to since, and moves one whose guests it named', async () => {
+    const game = { source: 'gcal', startsAt: at(17, 30), endsAt: at(19, 30), attendees: [{ address: 'room-204' }, { address: 'dana@example.com' }] }
+    answers['events:get'] = (args) => (args.id === 'e_game' ? game : { startsAt: at(16), endsAt: at(17) })
+    const seen = (guests: boolean) => [
+      { eventId: 'e_staff', startsAt: at(16), endsAt: at(17), guests: false },
+      { eventId: 'e_game', startsAt: at(17, 30), endsAt: at(19, 30), guests }
+    ]
+    await expect(call('work.clashes.answer', { eventId: 'e_game', way: 'move', start: at(18), end: at(20), seen: seen(false) })).rejects.toThrow(/^This event has guests now, and a move tells them\./)
+    expect(calls.some((c) => c.fn === 'calendarOps:save')).toBe(false)
+    expect(await call('work.clashes.answer', { eventId: 'e_game', way: 'move', start: at(18), end: at(20), seen: seen(true) })).toEqual({ queued: true })
+  })
+
   it("refuses a thread's call whatever its key holds, and a key without approve, before LifeOS is asked", async () => {
     await expect(call('work.clashes.answer', { eventId: 'e_staff', way: 'decline' }, MODEL)).rejects.toThrow('Only the owner answers a clash')
     await expect(call('work.clashes.answer', { eventId: 'e_staff', way: 'decline' }, REMOTE)).rejects.toThrow('Only the owner answers a clash')
@@ -334,14 +364,33 @@ describe('clashes_list', () => {
   })
 
   it('refuses a Work thread with no Work home: it reads no job, as a Work Chat would every one', async () => {
-    db.exec('CREATE TABLE sessions (id TEXT PRIMARY KEY, workspace_id TEXT, project_id TEXT)')
-    db.prepare('INSERT INTO sessions VALUES (?, ?, ?)').run('t1', 'repo', null)
+    db.prepare("UPDATE sessions SET workspace_id = 'repo' WHERE id = 't1'").run()
     const out = await run(scope(null, null), { sector: 'purdue' })
     expect(out).toEqual({ text: 'This thread belongs to no Work workspace, so it reads no job.', error: true })
     expect(calls.filter((c) => c.fn === 'clashes:range')).toEqual([])
     // A Work Chat (its row names no workspace) still reads the job it names.
     db.prepare("UPDATE sessions SET workspace_id = NULL WHERE id = 't1'").run()
     expect((await run(scope(null, null), { sector: 'purdue' })).error).toBe(false)
+  })
+
+  it('lets a thread name a job only once its row is read as a Work Chat: a row it cannot read, or none, reads no job', async () => {
+    const refused = { text: 'This thread belongs to no Work workspace, so it reads no job.', error: true }
+    db.prepare("DELETE FROM sessions WHERE id = 't1'").run()
+    expect(await run(scope(null, null), { sector: 'purdue' })).toEqual(refused)
+    db.exec('DROP TABLE sessions')
+    expect(await run(scope(null, null), { sector: 'purdue' })).toEqual(refused)
+    expect(calls.filter((c) => c.fn === 'clashes:range')).toEqual([])
+  })
+
+  it('reads to his midnight that many days on, across the night the clocks go back', async () => {
+    vi.useFakeTimers({ toFake: ['Date'], now: Date.UTC(2026, 9, 31, 16) })
+    try {
+      await run(scope('purdue', 'ws-purdue'), { days: 2 })
+    } finally {
+      vi.useRealTimers()
+    }
+    // Oct 31 at midnight EDT to Nov 2 at midnight EST: 49 hours, not 48.
+    expect(calls.filter((c) => c.fn === 'clashes:range').at(-1)?.args).toEqual({ from: Date.UTC(2026, 9, 31, 4), to: Date.UTC(2026, 10, 2, 5) })
   })
 
   it('says so when there are none', async () => {
@@ -429,6 +478,54 @@ describe('the tell', () => {
     expect(decide(told[0]!, 'clock', at(8, 0, 27))).toBe('now')
     // one two weeks out waits for the digest that comes before it
     expect(decide({ by: at(18, 0, 30) }, 'clock', at(8, 0, 27))).toBe('wait')
+    stop()
+  })
+
+  it('tells a clash kept from before the upgrade once more, so its row gains the date and the deadline', async () => {
+    // Told by the last build: a stamp with no version, and a row with no deadline.
+    const old = JSON.stringify([staff.startsAt, staff.endsAt, staff.location, game.startsAt, game.endsAt, game.location])
+    db.prepare('INSERT INTO work_clashes_told (key, stamp, told_at) VALUES (?, ?, ?)').run('clash:e_staff-e_game', old, at(8))
+    const stop = watchClashes(ctx, () => at(9))
+    await flush()
+    subs.at(-1)!.on(range(driveClash))
+    await flush()
+    expect(told).toEqual([expect.objectContaining({ key: 'clash:e_staff-e_game', detail: 'Thu, Nov 26, 5:30 PM, Ref and Purdue', by: at(17, 30) })])
+    // and only once: the stamp it keeps now is this build's
+    subs.at(-1)!.on(range(driveClash, overlapClash))
+    await flush()
+    expect(told.map((t) => t.key)).toEqual(['clash:e_staff-e_game', 'clash:e_lunch-e_call'])
+    stop()
+  })
+
+  it('never tells a pair whose later event is over, and takes one back once it is', async () => {
+    let now = at(9)
+    const stop = watchClashes(ctx, () => now)
+    await flush()
+    subs.at(-1)!.on(range(driveClash))
+    await flush()
+    expect(told.map((t) => t.key)).toEqual(['clash:e_staff-e_game'])
+    // 8:00 PM: the game ended at 7:30, and the read from the start of today still holds the pair.
+    now = at(20)
+    subs.at(-1)!.on(range(driveClash))
+    await flush()
+    expect(done).toEqual(['clash:e_staff-e_game'])
+    expect(rows()).toEqual([])
+    // A first run after it is over (Work just turned on) tells nothing: its deadline has passed.
+    subs.at(-1)!.on(range({ ...driveClash, b: { ...game, location: 'Gym B' } }))
+    await flush()
+    expect(told).toHaveLength(1)
+    stop()
+  })
+
+  it("opens the Agenda on the later event, in its own job's workspace when this host has one", async () => {
+    db.prepare('INSERT INTO workspaces VALUES (?, ?, ?, ?, ?, ?)').run('ws-ref', 'Ref', '/w/Ref', 'work', 'ref', 4)
+    // A block of two weeks from Nov 16 over the game on the 26th: the block's week would hold no clash.
+    const block = { ...driveClash, kind: 'overlap' as const, a: { ...staff, startsAt: at(9, 0, 16), endsAt: at(17, 0, 27) } }
+    const stop = watchClashes(ctx, () => at(9))
+    await flush()
+    subs.at(-1)!.on(range(block))
+    await flush()
+    expect(told[0]).toMatchObject({ workspaceId: 'ws-purdue', open: { view: 'agenda', workspaceId: 'ws-ref', at: 'e_game' } })
     stop()
   })
 

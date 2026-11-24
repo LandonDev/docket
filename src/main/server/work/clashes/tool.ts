@@ -50,15 +50,16 @@ export function clashText(c: LifeosClash, own: SectorKey, zone: string): string 
 }
 
 /**
- * A Work thread with no Work home (work-scope.md, "A thread with no Work home"): its row names a
- * workspace or project that is not a Work workspace's. Its scope has no workspace, as a Work Chat's
- * has none, but it reaches no job (as docs/tools.ts `orphaned`).
+ * Whether the thread is known to be a Work Chat, the one kind of Work thread that names a job: its scope has no
+ * workspace and its row was read and names neither a workspace nor a project. A row that names one is a thread
+ * with no Work home (work-scope.md, "A thread with no Work home"), which reaches no job; a row that cannot be
+ * read is not known to be a chat, so it reaches none either.
  */
-function orphaned(ctx: ToolCtx): boolean {
+function knownChat(ctx: ToolCtx): boolean {
   if (ctx.scope.workspaceId) return false
   try {
     const row = ctx.db.prepare('SELECT workspace_id AS w, project_id AS p FROM sessions WHERE id = ?').get(ctx.sessionId) as { w?: string | null; p?: string | null } | undefined
-    return !!(row?.w || row?.p)
+    return !!row && !row.w && !row.p
   } catch {
     return false
   }
@@ -79,14 +80,15 @@ export const clashesListTool: WorkTool = {
     const own = ctx.scope.sector
     if (own && a.sector && a.sector !== own) return fail(`This thread reads only the ${own} job's clashes.`)
     if (!own && ctx.scope.workspaceId) return fail('This workspace is linked to no LifeOS sector.')
-    if (!own && orphaned(ctx)) return fail('This thread belongs to no Work workspace, so it reads no job.')
+    if (!own && !knownChat(ctx)) return fail('This thread belongs to no Work workspace, so it reads no job.')
     const sector = own ?? a.sector
     if (!sector) return fail('Name the job: a Work Chat belongs to none.')
     const days = Math.min(14, Math.max(1, a.days ?? 7))
     try {
       const zone = await zoneOf(ctx)
       const from = startOfDay(Date.now(), zone)
-      const range = await rangeOf(ctx, from, from + days * DAY)
+      // To his midnight that many days on: a day the clocks change is 23 or 25 hours.
+      const range = await rangeOf(ctx, from, startOfDay(from + days * DAY + DAY / 2, zone))
       const mine = (range?.clashes ?? []).filter((c) => c.a.sector === sector || c.b.sector === sector)
       const head = `${label(sector)}'s clashes over the next ${days === 1 ? 'day' : `${days} days`}, times in ${zone}:`
       return workText(mine.length ? [head, ...mine.map((c) => clashText(c, sector, zone))].join('\n') : `No clashes for ${label(sector)} over the next ${days === 1 ? 'day' : `${days} days`}.`)

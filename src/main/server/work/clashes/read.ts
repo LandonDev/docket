@@ -1,5 +1,5 @@
 import type { ClashLeave, ClashMiles } from '@shared/contract-work-clashes'
-import { clashFrom, leaveFrom, listFrom, milesOf, type Clash, type ClashAnswered, type ClashList, type ClashStop, type LifeosClash, type LifeosRange } from '@shared/work/clashes'
+import { clashFrom, hasGuests, leaveFrom, listFrom, milesOf, sameTimes, type Clash, type ClashAnswered, type ClashList, type ClashStop, type LifeosClash, type LifeosRange } from '@shared/work/clashes'
 
 export type { LifeosClash, LifeosLeave, LifeosRange, LifeosSide } from '@shared/work/clashes'
 import { errorText, type SectorKey } from '@shared/work/ids'
@@ -92,6 +92,8 @@ export interface ClashSeen {
   startsAt: number
   endsAt: number
   location?: string | undefined
+  /** a time's: whether the step said the event's guests hear of it */
+  guests?: boolean | undefined
 }
 
 /** `work.clashes.waive`: on, the clash goes quiet; off brings it back. On, what he saw goes with it, and LifeOS refuses a pair that has changed since. */
@@ -114,6 +116,8 @@ export interface Answer {
 
 /** A time offered from a pair that has changed since: the step keeps its form and says to look again. */
 export const PAIR_CHANGED = 'These events changed. Go back for a new time.'
+/** A move the step said tells no one, of an event someone with an address was added to since. */
+export const GUESTS_ADDED = 'This event has guests now, and a move tells them. Go back to look again.'
 
 export const NOT_HIS = 'Only the owner answers a clash, from the Clash dialog. Draft the act with draft_calendar_op instead; it waits in the Outbox for his press.'
 
@@ -139,13 +143,16 @@ export async function answer(ctx: WorkCtx, a: Answer, by: Caller): Promise<Clash
   if (end <= start) throw new Error('The end must come after the start.')
   // The time was offered from the pair as the step showed it: a calendar that moved either event since (and has
   // not reached the window yet) may have made it clash anew, so the pair is read again here before anything goes.
-  type Event = { source?: string; startsAt?: number; endsAt?: number; arriveByAt?: number; leaveByAt?: number }
+  // A row's end is counted as the clash rule counts it (`sameTimes`): an end taken away is an hour on, a change.
+  type Event = { source?: string; startsAt?: number; endsAt?: number; arriveByAt?: number; leaveByAt?: number; attendees?: { address: string }[] }
   const read = new Map<string, Event | null>()
   for (const s of a.seen ?? []) {
     const now = await asked(() => owner.query<Event | null>('events:get', { id: s.eventId }))
     read.set(s.eventId, now)
     if (!now) throw new Error('That event is no longer in LifeOS.')
-    if (now.startsAt !== s.startsAt || (typeof now.endsAt === 'number' && now.endsAt !== s.endsAt)) throw new Error(PAIR_CHANGED)
+    if (sameTimes(now, s) !== true) throw new Error(PAIR_CHANGED)
+    // The step said the move tells no one: a guest added since would be mailed by its calendar unwarned.
+    if (a.way === 'move' && s.eventId === a.eventId && s.guests === false && hasGuests(now)) throw new Error(GUESTS_ADDED)
   }
   if (a.way === 'propose') return send('propose', { proposedStart: start, proposedEnd: end, ...comment })
   const event = read.has(a.eventId) ? read.get(a.eventId) : await asked(() => owner.query<Event | null>('events:get', { id: a.eventId }))

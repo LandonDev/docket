@@ -34,7 +34,7 @@ afterEach(() => {
 
 const env: TodayEnv = {
   day: { from: now - 5 * HOUR, to: now + 19 * HOUR },
-  workspaces: [],
+  workspaces: [{ environmentId: "box", workspaceId: "ws_ref", sector: "ref", name: "Ref", path: "/", open: true }],
   lifeos: { environmentId: "box", sector: null, client: null, state: "connected" } as never,
   workspaceOf: (sector) => (sector === "ref" ? ({ environmentId: "box", workspaceId: "ws_ref", sector, name: "Ref", path: "/", open: true } as never) : null),
 };
@@ -76,6 +76,15 @@ describe("clashes on Today", () => {
     void answer.marks?.[0]?.act?.run();
     expect(clashAsk.get()).toMatchObject({ id: "ev_meeting-ev_game", environmentId: "box", clash: { b: { workspaceId: "ws_ref" } } });
     expect(clashAsk.get()?.clash?.a.workspaceId).toBeUndefined();
+  });
+
+  it("names a job's workspace only on the host whose session read the clash, where the dialog opens", () => {
+    // Today reads LifeOS on the box; Ref's workspace is on the Mac alone.
+    const mac = { ...env, workspaces: [{ environmentId: "mac", workspaceId: "ws_ref_mac", sector: "ref", name: "Ref", path: "/", open: true }], workspaceOf: () => ({ environmentId: "mac", workspaceId: "ws_ref_mac" }) as never } as TodayEnv;
+    const answer = answerOf({ status: "ready", value: range() }, mac);
+    void answer.marks?.[0]?.act?.run();
+    expect(clashAsk.get()).toMatchObject({ environmentId: "box" });
+    expect(clashAsk.get()?.clash?.b.workspaceId).toBeUndefined();
   });
 
   it("says the first of several clashes and how many more", () => {
