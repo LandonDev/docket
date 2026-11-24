@@ -29,11 +29,27 @@ export function parseCarry(address: string): { upstream: URL; base: string } | n
 
 /** Headers a hop must not pass on (RFC 9110 7.6.1), and what the carrier sets itself. */
 const HOP = new Set(['connection', 'keep-alive', 'proxy-connection', 'proxy-authorization', 'te', 'trailer', 'transfer-encoding', 'upgrade', 'host', 'x-tempcode-carry'])
+/** A cookie of 127.0.0.1 is any loopback server's (cookies keep no port): none goes to the box, nor any credential. */
+const PRIVATE = new Set(['cookie', 'authorization'])
+
+/** What the box answers, as the browser should get it: a redirect kept on the carrier's origin, no cookie, no wider service worker. */
+export function downstreamHeaders(headers: IncomingHttpHeaders, upstream: URL, origin: string): IncomingHttpHeaders {
+  const out: IncomingHttpHeaders = { ...headers }
+  delete out['set-cookie']
+  delete out['service-worker-allowed']
+  const to = typeof out.location === 'string' ? out.location : undefined
+  if (to && /^[a-z][a-z0-9+.-]*:/i.test(to)) {
+    // An absolute redirect to the box's own origin comes back through the carrier; one anywhere else is not followed.
+    if (to.startsWith(`${upstream.origin}/`)) out.location = origin + to.slice(upstream.origin.length)
+    else delete out.location
+  }
+  return out
+}
 
 /** The browser's request as the box should get it: to the box's host, naming the loopback origin it is shown on. */
 export function upstreamHeaders(headers: IncomingHttpHeaders, upstream: URL, origin: string, upgrade = false): Record<string, string | string[]> {
   const out: Record<string, string | string[]> = {}
-  for (const [k, v] of Object.entries(headers)) if (v !== undefined && !HOP.has(k)) out[k] = v
+  for (const [k, v] of Object.entries(headers)) if (v !== undefined && !HOP.has(k) && !PRIVATE.has(k)) out[k] = v
   out.host = upstream.host
   out['x-tempcode-carry'] = origin
   if (upgrade) {
@@ -43,8 +59,15 @@ export function upstreamHeaders(headers: IncomingHttpHeaders, upstream: URL, ori
   return out
 }
 
-/** A path the carrier passes: the page's own token's, nothing else of the box. */
-export const carries = (base: string, url: string | undefined): boolean => !!url && (url.startsWith(base) || url === base.slice(0, -1))
+/** A path the carrier passes: the page's own token's, nothing else of the box, and nothing a hop could read as another path (dot segments, an escaped slash or dot, a backslash). */
+export const carries = (base: string, url: string | undefined): boolean =>
+  !!url && (url.startsWith(base) || url === base.slice(0, -1)) && !/(?:^|\/)\.{1,2}(?:\/|\?|$)|%2e|%2f|%5c|\\/i.test(url.split('?')[0]!)
+
+/** Who may write or open a socket through it: the page itself (a browser names its origin); a request of another origin is not passed. */
+export const ownOrigin = (origin: string | undefined, own: string): boolean => origin === undefined || origin === own
+
+/** A request named for the carrier's own address: another name that resolves here (DNS rebinding) is not served. */
+export const ownHost = (host: string | undefined, port: number): boolean => host === `127.0.0.1:${port}`
 
 /** An idle carrier closes: the box lets an open go after fifteen minutes unloaded, and the page itself keeps a socket open. */
 export const CARRY_IDLE_MS = 30 * 60_000
@@ -94,14 +117,17 @@ async function start(target: { upstream: URL; base: string }, opts: { idleMs?: n
   const port = Number(upstream.port) || (secure ? 443 : 80)
   const c: Carried = { server: createServer(), url: '', last: now(), sockets: new Set() }
   const origin = (): string => new URL(c.url).origin
+  const port0 = (): number => Number(new URL(c.url).port)
 
   c.server.on('request', (req: IncomingMessage, res) => {
     c.last = now()
-    if (!carries(base, req.url)) return void res.writeHead(404, { 'Content-Type': 'text/plain' }).end('not found')
+    const reading = req.method === 'GET' || req.method === 'HEAD'
+    if (!carries(base, req.url) || !ownHost(req.headers.host, port0()) || (!reading && !ownOrigin(req.headers.origin, origin())))
+      return void res.writeHead(404, { 'Content-Type': 'text/plain' }).end('not found')
     const up = (secure ? httpsRequest : httpRequest)(
       { host: upstream.hostname, port, path: req.url, method: req.method, headers: upstreamHeaders(req.headers, upstream, origin()), servername: upstream.hostname },
       (answer) => {
-        res.writeHead(answer.statusCode ?? 502, answer.headers)
+        res.writeHead(answer.statusCode ?? 502, downstreamHeaders(answer.headers, upstream, origin()))
         answer.pipe(res)
       }
     )
@@ -115,7 +141,7 @@ async function start(target: { upstream: URL; base: string }, opts: { idleMs?: n
 
   c.server.on('upgrade', (req: IncomingMessage, socket: Socket, head: Buffer) => {
     c.last = now()
-    if (!carries(base, req.url)) return void socket.end('HTTP/1.1 404 Not Found\r\nConnection: close\r\n\r\n')
+    if (!carries(base, req.url) || !ownHost(req.headers.host, port0()) || !ownOrigin(req.headers.origin, origin())) return void socket.end('HTTP/1.1 404 Not Found\r\nConnection: close\r\n\r\n')
     const up: Socket = secure ? tlsConnect({ host: upstream.hostname, port, servername: upstream.hostname }) : netConnect({ host: upstream.hostname, port })
     c.sockets.add(socket)
     socket.on('close', () => c.sockets.delete(socket))

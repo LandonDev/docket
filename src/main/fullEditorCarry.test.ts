@@ -1,7 +1,7 @@
 import { createServer, request, type IncomingHttpHeaders, type Server } from 'node:http'
 import type { AddressInfo } from 'node:net'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { carries, carry, closeCarriers, parseCarry, upstreamHeaders } from './fullEditorCarry'
+import { carries, carry, closeCarriers, downstreamHeaders, ownHost, ownOrigin, parseCarry, upstreamHeaders } from './fullEditorCarry'
 
 /** The carrier with a stand-in box behind it; the real route behind it is in work/sheets/fullEditor/fullEditor.test.ts. */
 const TOKEN = 'ab'.repeat(32)
@@ -46,11 +46,28 @@ describe('the full editor carried from the box', () => {
     expect(carries(`/w/full/${TOKEN}/`, `/w/full/${TOKEN}/sdkjs/x.js?v=1`)).toBe(true)
     expect(carries(`/w/full/${TOKEN}/`, `/w/full/${'cd'.repeat(32)}/`)).toBe(false)
     expect(carries(`/w/full/${TOKEN}/`, '/api/hello')).toBe(false)
+    // Nothing a hop could normalize into another path of the box.
+    for (const sly of ['../../api/hello', './x', 'a/%2e%2e/b', 'a%2Fb', 'a\\b', '..']) expect(carries(`/w/full/${TOKEN}/`, `/w/full/${TOKEN}/${sly}`)).toBe(false)
+    expect(carries(`/w/full/${TOKEN}/`, `/w/full/${TOKEN}/doc/k/c/?EIO=4&x=../y`)).toBe(true)
+    expect(ownOrigin(undefined, 'http://127.0.0.1:5000')).toBe(true)
+    expect(ownOrigin('http://127.0.0.1:5000', 'http://127.0.0.1:5000')).toBe(true)
+    expect(ownOrigin('https://evil.example', 'http://127.0.0.1:5000')).toBe(false)
   })
 
   it('sends the box its own host and names the loopback origin, passing on no hop headers', () => {
-    const h = upstreamHeaders({ host: '127.0.0.1:5000', connection: 'keep-alive', 'x-tempcode-carry': 'forged', accept: '*/*' }, new URL('https://tempcode.example'), 'http://127.0.0.1:5000')
+    const h = upstreamHeaders({ host: '127.0.0.1:5000', connection: 'keep-alive', 'x-tempcode-carry': 'forged', cookie: 'other=1', authorization: 'Bearer x', accept: '*/*' }, new URL('https://tempcode.example'), 'http://127.0.0.1:5000')
     expect(h).toEqual({ accept: '*/*', host: 'tempcode.example', 'x-tempcode-carry': 'http://127.0.0.1:5000' })
+    expect(ownHost('127.0.0.1:5000', 5000)).toBe(true)
+    expect(ownHost('evil.example:5000', 5000)).toBe(false)
+    expect(ownHost(undefined, 5000)).toBe(false)
+  })
+
+  it('keeps a redirect on its own origin and passes on no cookie and no wider service worker', () => {
+    const up = new URL('https://tempcode.example')
+    const own = 'http://127.0.0.1:5000'
+    expect(downstreamHeaders({ location: `https://tempcode.example/w/full/${TOKEN}/x`, 'set-cookie': ['a=1'], 'service-worker-allowed': '/' }, up, own)).toEqual({ location: `${own}/w/full/${TOKEN}/x` })
+    expect(downstreamHeaders({ location: 'https://elsewhere.example/' }, up, own)).toEqual({})
+    expect(downstreamHeaders({ location: 'x/y' }, up, own)).toEqual({ location: 'x/y' })
   })
 
   it('serves the page on a loopback origin of its own and forwards the page\'s paths alone, one carrier a page', async () => {

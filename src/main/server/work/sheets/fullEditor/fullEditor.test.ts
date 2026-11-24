@@ -151,12 +151,14 @@ describe.skipIf(process.platform !== 'linux')('the full editor', () => {
     expect(page.headers['content-security-policy']).toMatch(/script-src 'self' 'nonce-[^']+'; .*frame-ancestors 'none'/)
     expect(page.headers['x-frame-options']).toBe('DENY')
 
-    const api = await get(`/w/full/${token}/web-apps/apps/api/documents/api.js`, { Host: 'tempcode.example', Cookie: 'tc_session=secret' })
+    // Under any name but this host's loopback, and with no carrier, the editor is not reached.
+    expect((await get(`/w/full/${token}/web-apps/apps/api/documents/api.js`, { Host: 'tempcode.example' })).status).toBe(404)
+    const api = await get(`/w/full/${token}/web-apps/apps/api/documents/api.js`, { Cookie: 'tc_session=secret' })
     expect(api.status).toBe(200)
     expect(api.body).toBe('api')
     // The editor's own frames are this origin's; its links come back through the token's prefix.
     expect(api.headers['x-frame-options']).toBe('SAMEORIGIN')
-    expect(api.headers['x-seen-host']).toBe(`tempcode.example/w/full/${token}`)
+    expect(api.headers['x-seen-host']).toBe(`${new URL(base).host}/w/full/${token}`)
     expect(api.headers['cache-control']).toBe('no-store')
 
     expect((await get(`/w/full/${token}/info/info.json`)).status).toBe(404)
@@ -262,7 +264,7 @@ describe.skipIf(process.platform !== 'linux')('the full editor', () => {
     const token = await fe.open({ path: workbook(), itemId: 'i1', title: 'Report.xlsx' })
     const port = (listener.address() as AddressInfo).port
     const got = await new Promise<string>((resolve, reject) => {
-      const sock = connect(port, '127.0.0.1', () => sock.write(`GET /w/full/${token}/doc/k/c/?EIO=4&transport=websocket HTTP/1.1\r\nHost: h\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nCookie: tc_session=x\r\n\r\n`))
+      const sock = connect(port, '127.0.0.1', () => sock.write(`GET /w/full/${token}/doc/k/c/?EIO=4&transport=websocket HTTP/1.1\r\nHost: 127.0.0.1\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nCookie: tc_session=x\r\n\r\n`))
       let text = ''
       sock.on('data', (c) => {
         text += c.toString()
@@ -277,7 +279,7 @@ describe.skipIf(process.platform !== 'linux')('the full editor', () => {
     expect(got).toMatch(/^HTTP\/1\.1 101/)
     expect(got).toContain('X-Seen-Path: /doc/k/c/?EIO=4&transport=websocket')
     const refused = await new Promise<string>((resolve) => {
-      const sock = connect(port, '127.0.0.1', () => sock.write(`GET /w/full/${token}/info/x HTTP/1.1\r\nHost: h\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n\r\n`))
+      const sock = connect(port, '127.0.0.1', () => sock.write(`GET /w/full/${token}/info/x HTTP/1.1\r\nHost: 127.0.0.1\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n\r\n`))
       sock.on('data', (c) => resolve(c.toString()))
     })
     expect(refused).toMatch(/^HTTP\/1\.1 404/)
@@ -368,10 +370,13 @@ describe('the full editor\'s pieces', () => {
   it('lets a request through the tunnel reach the editor only from the desktop\'s carrier, on a loopback origin', () => {
     expect(reachesEditor({ host: '127.0.0.1:7695' })).toBe(true)
     expect(reachesEditor({ host: 'tempcode.example', 'cf-ray': 'r' })).toBe(false)
+    // Closed by default: the remote UI's hostname with no Cloudflare header at all is still refused.
+    expect(reachesEditor({ host: 'tempcode.example' })).toBe(false)
+    expect(reachesEditor({ host: '127.0.0.1:7695', 'cf-ray': 'r' })).toBe(false)
     expect(reachesEditor({ host: 'tempcode.example', 'cf-connecting-ip': '1.2.3.4', 'x-tempcode-carry': 'https://evil.example' })).toBe(false)
     expect(reachesEditor({ host: 'tempcode.example', 'cf-ray': 'r', 'x-tempcode-carry': 'http://127.0.0.1:51234' })).toBe(true)
-    const h = forwardedHeaders({ host: 'tempcode.example', 'x-forwarded-proto': 'https', 'x-tempcode-carry': 'http://127.0.0.1:51234' }, 'T')
-    expect(h).toEqual({ host: 'tempcode.example', 'x-forwarded-host': '127.0.0.1:51234/w/full/T', 'x-forwarded-proto': 'http' })
+    const h = forwardedHeaders({ host: 'tempcode.example', 'x-forwarded-proto': 'https', 'cloudfront-forwarded-proto': 'https', forwarded: 'proto=https', 'x-tempcode-carry': 'http://127.0.0.1:51234' }, 'T')
+    expect(h).toEqual({ host: '127.0.0.1:51234', 'x-forwarded-host': '127.0.0.1:51234/w/full/T', 'x-forwarded-proto': 'http' })
   })
 
   it('offers the switch to another computer only where the box\'s page reaches beyond it', () => {
@@ -432,10 +437,13 @@ describe('the full editor\'s pieces', () => {
             res.on('end', () => resolve({ status: res.statusCode ?? 0, body, headers: res.headers }))
           }).on('error', reject).end()
         })
-      const shown = await at(`/w/full/${token}/`, tunnel)
+      // The browser names the carrier's own address; the carrier passes Cloudflare's headers on as the tunnel would add them.
+      const cf = { 'CF-Ray': 'r1', 'CF-Connecting-IP': '1.2.3.4' }
+      expect((await at(`/w/full/${token}/`, { ...cf, Host: 'rebound.example' })).status).toBe(404)
+      const shown = await at(`/w/full/${token}/`, cf)
       expect(shown.status).toBe(200)
       expect(shown.body).toContain(`/w/full/${token}/web-apps/apps/api/documents/api.js`)
-      const api = await at(`/w/full/${token}/web-apps/apps/api/documents/api.js`, tunnel)
+      const api = await at(`/w/full/${token}/web-apps/apps/api/documents/api.js`, cf)
       expect(api.status).toBe(200)
       expect(api.headers['x-seen-host']).toBe(`${via.host}/w/full/${token}`)
       // Nothing else of the box goes through the carrier.
@@ -443,7 +451,7 @@ describe('the full editor\'s pieces', () => {
       expect((await at(`/w/full/${'a'.repeat(64)}/`)).status).toBe(404)
       // The editor's socket too.
       const got = await new Promise<string>((resolve, reject) => {
-        const sock = connect(Number(via.port), '127.0.0.1', () => sock.write(`GET /w/full/${token}/doc/k/c/?EIO=4&transport=websocket HTTP/1.1\r\nHost: x\r\nCF-Ray: r1\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n\r\n`))
+        const sock = connect(Number(via.port), '127.0.0.1', () => sock.write(`GET /w/full/${token}/doc/k/c/?EIO=4&transport=websocket HTTP/1.1\r\nHost: ${via.host}\r\nCF-Ray: r1\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n\r\n`))
         let text = ''
         sock.on('data', (c) => {
           text += c.toString()

@@ -1507,13 +1507,23 @@ owner's alone, unmodified, a separate server (architecture §12.1). Code in
   WebSocket upgrades included, and names its loopback origin in
   `x-tempcode-carry` on each; the route then gives the docservice that origin
   as `X-Forwarded-Host`, so the editor's own links come back through the
-  carrier. A request that came through the tunnel (Cloudflare's `cf-ray` or
-  `cf-connecting-ip`) without that header is answered 404
-  (`reachesEditor`), so the page never runs on the remote UI's origin. A
-  browser cannot set the header on a page it navigates to, and another
-  origin's script cannot send it without a preflight the route never
-  answers. A carrier closes after 30 minutes with nothing through it and no
-  socket open. Before 2026-11-24 the page needed a hostname of its own
+  carrier (the docservice's `Host` too). Without that header the route
+  answers only a request addressed to this host's loopback listener and not
+  through the tunnel (`reachesEditor`: closed by default, so a request on the
+  remote UI's hostname is refused with or without Cloudflare's headers), and
+  the page never runs on the remote UI's origin. A browser cannot set the
+  header on a page it navigates to, and another origin's script cannot send
+  it without a preflight the route never answers. The route drops every
+  forwarded-protocol header the caller sent (`Forwarded`, `X-Forwarded-*`,
+  `*-Forwarded-Proto`). The carrier serves only requests named for its own
+  `127.0.0.1:<port>` (no other name that resolves there), refuses dot
+  segments, escaped slashes and backslashes in a path, takes a socket or a
+  write only from its own origin, sends the box no cookie or credential
+  (a cookie of 127.0.0.1 is any loopback server's), keeps a redirect to the
+  box on its own origin and drops one anywhere else, and passes on no
+  `Set-Cookie` or `Service-Worker-Allowed`. It closes after 30 minutes with
+  nothing through it and no socket open. Reviewed by GPT-6.2 Sol before it
+  landed (`F-close-and-full-editor/full-editor/review.md`). Before 2026-11-24 the page needed a hostname of its own
   (`TEMP_CODE_FULL_EDITOR_ORIGIN`, `work.fullEditor.origin`) that was never
   set, so from his Mac the switch was offered and always refused; both are
   gone.

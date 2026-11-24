@@ -65,25 +65,31 @@ export function carriedOrigin(headers: IncomingHttpHeaders): string | null {
   return typeof v === 'string' && /^http:\/\/127\.0\.0\.1:\d{1,5}$/.test(v) ? v : null
 }
 
+/** A request addressed to this host's loopback listener itself, as a window on this host asks it. */
+const loopbackHost = (host: string | undefined): boolean => !!host && /^(?:127\.0\.0\.1|localhost)(?::\d{1,5})?$/.test(host)
+
 /**
- * Whether a request may reach the editor. One that came through the tunnel (Cloudflare names it) arrives on the remote
- * UI's hostname, where ONLYOFFICE's code could use the owner's session: it passes only from the desktop's carrier,
- * which shows the page on its own loopback origin. A window on this host asks the loopback listener directly.
+ * Whether a request may reach the editor. Anything that does not name this host's loopback address (the tunnel's
+ * hostname above all, the remote UI's, where ONLYOFFICE's code could use the owner's session) passes only from the
+ * desktop's carrier, which shows the page on its own loopback origin. Closed by default: a request the tunnel
+ * delivers without Cloudflare's own headers is still not addressed to loopback.
  */
 export function reachesEditor(headers: IncomingHttpHeaders): boolean {
+  if (carriedOrigin(headers) !== null) return true
   const tunnelled = headers['cf-ray'] !== undefined || headers['cf-connecting-ip'] !== undefined
-  return !tunnelled || carriedOrigin(headers) !== null
+  return !tunnelled && loopbackHost(headers.host)
 }
 
 /** The request's headers as the docservice should see them: our token's prefix as its host (the carrier's loopback origin, when carried), nothing of the caller's credentials. */
 export function forwardedHeaders(headers: IncomingHttpHeaders, token: string): Record<string, string | string[]> {
   const out: Record<string, string | string[]> = {}
   for (const [k, v] of Object.entries(headers)) {
-    if (v === undefined || k === 'cookie' || k === 'authorization' || k === 'x-tempcode-carry' || k.startsWith('x-forwarded-') || k.startsWith('cf-')) continue
+    if (v === undefined || k === 'cookie' || k === 'authorization' || k === 'x-tempcode-carry' || k === 'forwarded' || k.startsWith('x-forwarded-') || k.startsWith('cf-') || k.endsWith('-forwarded-proto')) continue
     out[k] = v
   }
   const carried = carriedOrigin(headers)
   const proto = carried ? 'http' : headers['x-forwarded-proto'] === 'https' ? 'https' : 'http'
+  if (carried) out.host = new URL(carried).host
   out['x-forwarded-host'] = `${carried ? new URL(carried).host : (headers.host ?? 'localhost')}/w/full/${token}`
   out['x-forwarded-proto'] = proto
   return out
