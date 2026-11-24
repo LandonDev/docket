@@ -4,6 +4,7 @@ import type { CopyBack, FileTab } from "@shared/contract-work-files";
 import type { OfficeLiveOf } from "@shared/contract-work-office";
 import { filesPaneOf, type CanvasItem, type CanvasKind, type ContextChip } from "@shared/work";
 import { kindOfEntry } from "@shared/work/files";
+import { templateFormOf } from "@shared/work/templates";
 import { Maximize2, Minimize2, MoreHorizontal, X } from "../../chrome/icons";
 import { RowsMenu, type MenuRow } from "../../chrome/menuRows";
 import { Tip, TruncateTip } from "../../components/tip";
@@ -11,6 +12,7 @@ import { Button } from "../../components/ui/button";
 import { Progress } from "../../components/ui/progress";
 import { loadToast } from "../../components/ui/toaster";
 import { registry } from "../../lib/connection";
+import { useLinkMay } from "../../lib/linkMay";
 import { shortcutFor } from "../../lib/settings";
 import { shell as appShell } from "../../stores/shell";
 import type { WorkspaceMeta } from "../../lib/tcserver/types";
@@ -28,6 +30,7 @@ import { leaveLive } from "../office/live/leave";
 import { LiveControl, useLiveOf, type LiveDesktop } from "../office/live/LiveControl";
 import { APP_NAME, liveSourceOf, switchTo, type LiveSetAnswer } from "../office/live/liveSwitch";
 import { Ask, History } from "../icons";
+import { saveAsTemplate, workTemplatePort } from "../templates/open";
 import { KindGlyph } from "./KindGlyph";
 import { Dock, DockSash } from "./Dock";
 import type { DockThread } from "./dockThread";
@@ -391,14 +394,19 @@ export function FileTabView({
   // linked files stand in the document's own bar (DocLinks.tsx), under this header; the document's body draws the sheet.
   const meta = useWorkspaceOf(workspace.environmentId, workspace.id);
   const wordable = !!meta && item?.kind === "document";
+  // Save as Template…: a file the shelf can keep (Word, Excel, PowerPoint, our own document or sheet as a file) that lies on
+  // the workspace's own host, where the shelf copies it. A copy of a file from elsewhere is not offered: its file is not here.
+  const mayTemplate = useLinkMay(workspace.environmentId, "work.templates.save");
+  const template = meta && item && !copy && item.source.at === "file" && templateFormOf(tab.name) && mayTemplate && workTemplatePort.get() ? item.source : null;
   const rows: MenuRow[] = [
     ...verbs.flatMap((row): MenuRow[] => [
       ...(row.rule ? ([{ kind: "sep" }] satisfies MenuRow[]) : []),
       { kind: "item", id: row.act, label: row.label, ...(row.refused ? { disabled: true, reason: row.refused } : {}), ...(row.danger ? { danger: true } : {}) },
     ]),
-    ...(manage?.download || wordable ? ([{ kind: "sep" }] satisfies MenuRow[]) : []),
+    ...(manage?.download || wordable || template ? ([{ kind: "sep" }] satisfies MenuRow[]) : []),
     ...(manage?.download ? ([{ kind: "item", id: "download", label: "Download" }] satisfies MenuRow[]) : []),
     ...(wordable ? ([{ kind: "item", id: "save-as", label: "Save As…" }] satisfies MenuRow[]) : []),
+    ...(template ? ([{ kind: "item", id: "save-template", label: "Save as Template…" }] satisfies MenuRow[]) : []),
     { kind: "sep" },
     { kind: "item", id: "full", label: full ? "Leave Full Window" : "Full Window", icon: full ? Minimize2 : Maximize2 },
     { kind: "item", id: "close", label: "Close Tab", icon: X, shortcut: shortcutFor("Files (Work)", "Close Tab") },
@@ -481,6 +489,7 @@ export function FileTabView({
           if (id === "full") return setFull(!full);
           if (id === "download") return manage?.download?.();
           if (id === "save-as" && item) return openSaveAs(item.id);
+          if (id === "save-template" && template) return void saveAsTemplate({ workspaceId: workspace.id, source: template });
           if (id === "rename") return setRenaming(true);
           manage?.run(id as EntryAct);
         }}

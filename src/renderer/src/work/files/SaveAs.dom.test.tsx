@@ -115,6 +115,28 @@ describe("Save As… in a Files tab", () => {
   });
 });
 
+describe("Save as Template… in a Files tab", () => {
+  it("is a row of a file the shelf can keep, and asks the Templates dialog for that file; a text file and a copy have none", async () => {
+    const { workTemplatePort } = await import("../templates/open");
+    const asked: unknown[] = [];
+    workTemplatePort.set({ open: () => undefined, save: (ask) => void asked.push(ask) });
+    try {
+      show("file", "Notes.md", "Notes.md");
+      expect(within(await openMenu("Notes.md")).queryByRole("menuitem", { name: "Save as Template…" })).toBeNull();
+      cleanup();
+      // A copy of a file from another computer: its file is not on this host, so the shelf cannot copy it.
+      render(<FileTabView tab={tab("Agenda.docx")} item={item("document", "/scratch/Agenda.docx", "Agenda")} panelId="p" workspace={META} where="General" copy={{ host: "Mac", place: "General" } as never} onClose={() => undefined} />);
+      expect(within(await openMenu("Agenda.docx")).queryByRole("menuitem", { name: "Save as Template…" })).toBeNull();
+      cleanup();
+      show("document", "Agenda.docx", "Agenda");
+      fireEvent.click(within(await openMenu("Agenda.docx")).getByRole("menuitem", { name: "Save as Template…" }));
+      expect(asked).toEqual([{ workspaceId: "w1", source: { at: "file", host: "env_box", path: "/w/Agenda.docx" } }]);
+    } finally {
+      workTemplatePort.set(null);
+    }
+  });
+});
+
 describe("the Save As… sheet", () => {
   it("offers the host's own formats and Word first, opens on the places, and offers no Save until a folder is picked", async () => {
     const dialog = await sheet();
