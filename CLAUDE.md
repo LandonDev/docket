@@ -164,6 +164,7 @@ section's text as it was when CLAUDE.md was split (2026-11-11).
 - **Muse Code** — provider `muse`, one `muse serve` per thread over the Muse
   Session Protocol (src/main/server/drivers/muse.ts), config dirs per account
   and skills scope. [docs/agents/muse-code.md](docs/agents/muse-code.md)
+- **Computers from the giver** — `give` and `device` caps, the giver record (devices/). [docs/agents/pc-setup.md](docs/agents/pc-setup.md)
 - **Remote access** — the fixed-port listener behind the tunnel
   (src/main/server/remote/listener.ts), keys and capabilities, the path fence,
   pairing, `/ui`. [docs/agents/remote-access.md](docs/agents/remote-access.md)
