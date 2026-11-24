@@ -6,6 +6,7 @@ import { Textarea } from "@renderer/components/ui/textarea";
 import { DOC_FONTS } from "@renderer/work/docs/fonts";
 import { Comment } from "@renderer/work/icons";
 import { openingView, openingZoom, PAGES_FROM } from "./opening";
+import { endingSocket } from "./ending";
 import { commentLeft } from "./place";
 import { OpenFailed, commentsOnPage, type Opened, type Session } from "./session";
 import { guestThreads } from "./threads";
@@ -54,11 +55,14 @@ export function DocPage({ session, opened, scheme, onGone }: { session: Session;
     },
     [session],
   );
+  // The host closes the socket of a link it revoked: asked once, a link that is gone ends the page at once and takes
+  // the document off the screen, for a reader too, whose editor shows no trouble once the text is in.
+  const socket = useMemo(() => endingSocket(() => void session.refresh().catch((err: unknown) => err instanceof OpenFailed && err.why === "gone" && goneRef.current())), [session]);
   const adapters = useMemo<Partial<EditorAdapters>>(
     () => ({
       // Every token the editor asks for (on connect, and every minute) asks the service again:
       // a link revoked or ended answers "gone" there, and the page says so.
-      collab: { url: session.socketUrl(opened), getToken: () => fresh(), offline: false },
+      collab: { url: session.socketUrl(opened), getToken: () => fresh(), offline: false, socket },
       threads: threads?.adapter ?? null,
       identity: {
         me: { id: opened.me, name: opened.name ?? "You", avatarUrl: null },
@@ -67,7 +71,7 @@ export function DocPage({ session, opened, scheme, onGone }: { session: Session;
         },
       },
     }),
-    [session, opened, threads, fresh],
+    [session, opened, threads, fresh, socket],
   );
   const wide = useWide(MEASURE + MARGIN + 64);
   // Flow or Pages, and Pages' zoom: what the page's width says as it opens, then his own pick in the row. A later resize changes nothing.

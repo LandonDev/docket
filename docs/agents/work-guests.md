@@ -214,8 +214,14 @@ edit", "until Dec 18", the guest's initials), then the owner's own editor
 dark by the browser's setting. What a link may not do is not drawn. A comment
 link gets its own small bar over selected words, since the editor draws none
 on a text it only reads. The page asks the service again with every token
-the editor asks for, so a revoked link's page says "This link no longer opens
-anything" within about a second and a half. The other states: too many
+the editor asks for, and when the host closes the document's socket as
+revoked (4403, `ending.ts` `endingSocket`, the editor's `collab.socket`): a
+link that is gone then ends the page at once, its document off the screen,
+for an Edit, Comment or View link alike. A reader's editor shows no trouble
+once the text is in, so without that close the open page kept the document
+(W-46). A sheet's page ends on its own socket's 4403; a project's page,
+which has no socket, on its next ask (every 15 s and when the window comes
+forward). Each says "This link no longer opens anything". The other states: too many
 tries, cannot be reached (Try again), loading bones. The sheet sends one
 batch of its own `sheet.mutation.*` ops at a time from the acknowledged
 revision, typed text as plain values.

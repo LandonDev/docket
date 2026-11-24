@@ -40,7 +40,11 @@ vi.mock("work-kit/editor", async (original) => ({
   DocumentEditor: (props: Record<string, unknown>) => (editors.push(props), (<div data-fake-editor />)),
 }));
 
+const revoked = vi.hoisted(() => [] as (() => void)[]);
+vi.mock("./ending", () => ({ endingSocket: (on: () => void) => (revoked.push(on), class {}) }));
+
 const { DocPage } = await import("./DocPage");
+const { OpenFailed } = await import("./session");
 import type { Opened, Session } from "./session";
 
 const WIDTH = window.innerWidth;
@@ -206,5 +210,25 @@ describe("a document on the guest's page", () => {
     expect(column.style.getPropertyValue("--doc-column")).toBe("736px");
     // No inline measure: one would win over the stage's rule.
     expect(column.style.maxWidth).toBe("");
+  });
+});
+
+describe("a link revoked while its page is open", () => {
+  it("ends the page at once for every role when the host closes the socket and the service says the link is gone; a refusal in passing keeps it", async () => {
+    for (const role of ["edit", "comment", "view"] as const) {
+      revoked.length = 0;
+      let gone = 0;
+      let answer: Error = new OpenFailed("gone");
+      const on = { ...session, refresh: async () => Promise.reject(answer) } as unknown as Session;
+      render(<main><DocPage session={on} opened={opened(role)} scheme="light" onGone={() => void gone++} /></main>);
+      answer = new Error("offline");
+      revoked.at(-1)!();
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(gone).toBe(0);
+      answer = new OpenFailed("gone");
+      revoked.at(-1)!();
+      await waitFor(() => expect(gone).toBe(1));
+      cleanup();
+    }
   });
 });
