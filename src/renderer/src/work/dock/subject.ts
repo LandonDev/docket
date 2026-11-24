@@ -1,5 +1,6 @@
 import type { ContextChip } from "@shared/work";
 import type { Session } from "../../lib/session";
+import type { CreateFold, FoldedItemsFailed } from "../../lib/tcserver/commands";
 
 /**
  * What a docked chat is about (docs/agents/work-files.md "Ask", work-mail.md "The chat beside the mail"): a file tab,
@@ -21,6 +22,10 @@ export interface DockSubject {
   find(): Promise<string | null>;
   /** Run by the first send, between the thread's create and its message. */
   hold?(sessionId: string): Promise<void>;
+  /** `hold` as data, for a host that runs it inside the create with the message (commands.ts `createDraft`): one request. */
+  fold?(): CreateFold;
+  /** What of the folded step's items did not open there, said as `hold` says it. */
+  onItemsFailed?(failed: FoldedItemsFailed): void;
   /** A hold that fails stops the send ("The chat did not start"), and runs again before the next. */
   mustHold?: boolean;
   /** Changes a new draft as it is made (Mail's starts on Claude where the default harness cannot be narrowed). */

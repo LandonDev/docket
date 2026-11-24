@@ -233,6 +233,7 @@ export class Transport {
           caps: frame.caps,
           ...(frame.key ? { key: frame.key } : {}),
           ...(frame.build ? { build: frame.build } : {}),
+          ...(frame.features ? { features: frame.features } : {}),
         };
         this.state = "open";
         this.clearHelloTimer();

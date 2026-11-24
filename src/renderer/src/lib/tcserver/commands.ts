@@ -1,12 +1,13 @@
 import { REASONING_LEVELS } from "@server/shared/catalog";
 import { nativeModelId } from "../models";
-import { bridgeNewThread, bridgesNewThreads } from "../macBridge";
+import { bridgeFor, bridgeNewThread, bridgesNewThreads } from "../macBridge";
 import { DRAFT_TITLE_MAX, accessParams, type Attachment, type Block, type RuntimeMode, type Session } from "../session";
 import { policyForMode } from "./access";
 import { needsUpload, uploadAttachment } from "../attachmentUpload";
 import { registry, type Link } from "../connection";
 import { sessionStore } from "./store";
 import { chipPort } from "../contextChips";
+import type { CreateSessionReply } from "@shared/contract";
 import type {
   AgentType,
   CreateSessionInput,
@@ -131,8 +132,22 @@ export function draftTitleOf(session: Pick<Session, "draftTitle">): string {
   return (session.draftTitle ?? "").replace(/\s+/g, " ").trim().slice(0, DRAFT_TITLE_MAX);
 }
 
+/** The steps a draft's first send may hand its host inside the create (`session.create`'s `items`, `mailAdopt`). */
+export type CreateFold = Pick<CreateSessionInput, "items" | "mailAdopt">;
+/** What the host could not open of a folded create's items: said as the step itself would have said it. */
+export type FoldedItemsFailed = NonNullable<CreateSessionReply["itemsFailed"]>;
+
+type AfterCreate = {
+  run: () => Promise<void>;
+  must: boolean;
+  /** The step as data the host runs itself; absent, the step runs here and the create cannot carry the message. */
+  fold?: () => CreateFold;
+  /** Told what of a folded step's items did not open. */
+  onItemsFailed?: (failed: FoldedItemsFailed) => void;
+};
+
 /** Create the draft on the server if needed; returns its meta. */
-const created = new Map<string, { run: () => Promise<void>; must: boolean }>();
+const created = new Map<string, AfterCreate>();
 
 /**
  * Work a draft needs done once it is a thread and before its first message
@@ -145,8 +160,8 @@ const created = new Map<string, { run: () => Promise<void>; must: boolean }>();
  * chat, work/mail/chat).
  */
 export const afterCreate = {
-  set(sessionId: string, run: () => Promise<void>, opts: { must?: boolean } = {}): void {
-    created.set(sessionId, { run, must: !!opts.must });
+  set(sessionId: string, run: () => Promise<void>, opts: { must?: boolean; fold?: AfterCreate["fold"]; onItemsFailed?: AfterCreate["onItemsFailed"] } = {}): void {
+    created.set(sessionId, { run, must: !!opts.must, ...(opts.fold ? { fold: opts.fold } : {}), ...(opts.onItemsFailed ? { onItemsFailed: opts.onItemsFailed } : {}) });
   },
   clear(sessionId: string): void {
     created.delete(sessionId);
@@ -173,16 +188,57 @@ export const afterCreate = {
 };
 
 export async function ensureCreated(session: Session): Promise<SessionMeta> {
+  return (await createDraft(session)).meta;
+}
+
+/** Whether `environmentId`'s host runs a draft's first-send steps inside its create (capabilities.ts HOST_FEATURES). */
+export function hostFoldsCreate(environmentId: string): boolean {
+  return registry.statusOf(environmentId).lastHello?.features?.includes("create.steps") ?? false;
+}
+
+type FirstSend = { text: string; attachments: ServerAttachment[] };
+
+/** The draft's first message, its files, and the steps between its create and its message, for one `session.create`;
+ *  null when they cannot ride it: an older host, a draft with no foldable step, or a run setting the create does not take. */
+async function foldOf(
+  session: Session,
+  environmentId: string,
+  first: FirstSend | undefined,
+): Promise<(CreateFold & Pick<CreateSessionInput, "firstMessage" | "attachments" | "bridge">) | null> {
+  if (!first || !first.text.trim() || !hostFoldsCreate(environmentId)) return null;
+  // Fast and ultrafast are set after the create (`session.tune`): the first turn would start without them.
+  if (session.modelSettings.ultrafast === "true" || session.modelSettings.fast === "true") return null;
+  // Only a draft whose step can ride the create folds (a dock's: work/dock); any other first send is create, then send.
+  const step = created.get(session.id);
+  if (!step?.fold) return null;
+  const steps = step.fold();
+  const bridge = await bridgeFor(environmentId).catch(() => null);
+  return {
+    firstMessage: first.text,
+    ...(first.attachments.length ? { attachments: first.attachments } : {}),
+    ...(steps.items?.length ? { items: steps.items } : {}),
+    ...(steps.mailAdopt ? { mailAdopt: steps.mailAdopt } : {}),
+    ...(bridge ? { bridge } : {}),
+  };
+}
+
+/**
+ * The draft made a thread, once. With `first`, and a host that can, the create carries the first message and the
+ * steps between the create and the message, and the host runs them all (`sent`: nothing is left to send). A must step
+ * that fails there stops the message and keeps the thread; the step then runs here before the next send.
+ */
+async function createDraft(session: Session, first?: FirstSend): Promise<{ meta: SessionMeta; sent: boolean }> {
   const existing = sessionStore.metaOf(session.id);
   if (existing) {
     // A must step that failed on the first send runs again before this one goes.
     if (afterCreate.pending(session.id)) await afterCreate.run(session.id);
-    return existing;
+    return { meta: existing, sent: false };
   }
   // A tab opened on an id whose meta has not come is a thread that exists
   // somewhere, never a draft: creating it would mint a second one.
   if (sessionStore.isProvisional(session.id)) throw new Error("This thread is still loading");
   const link = linkOfSession(session);
+  const fold = await foldOf(session, link.environmentId, first);
   // What the draft's first send was about (lib/contextChips.ts): the host links the thread to it.
   const about = chipPort.get()?.about(session.id);
   const wire = await link.request<WireSessionMeta>("session.create", {
@@ -206,8 +262,19 @@ export async function ensureCreated(session: Session): Promise<SessionMeta> {
     // A Work Chat's draft asks for Work; a Work workspace's thread is stamped by its workspace.
     ...(session.scope === "work" && !session.workspaceId && !session.projectId ? { scope: "work" as const } : {}),
     ...(about ? { about } : {}),
+    // The first send whole, for a host that runs its steps (`foldOf`): one request before the host has the turn.
+    ...(fold ?? {}),
   });
-  const meta: SessionMeta = { ...wire, environmentId: link.environmentId };
+  const { itemsFailed, ...made } = wire as CreateSessionReply;
+  const meta: SessionMeta = { ...made, environmentId: link.environmentId };
+  if (fold) {
+    // The host stored the message and ran the steps before it answered: the rows load as any thread's.
+    const step = created.get(session.id);
+    created.delete(session.id);
+    sessionStore.adopt(meta);
+    if (itemsFailed?.length) step?.onItemsFailed?.(itemsFailed);
+    return { meta, sent: true };
+  }
   sessionStore.adopt(meta, { created: true });
   // A thread made on another host gets this Mac's bridge when this Mac's policy for that host allows it (lib/macBridge.ts).
   await bridgeNewThread(link.environmentId, session.id);
@@ -217,7 +284,7 @@ export async function ensureCreated(session: Session): Promise<SessionMeta> {
   } else if (session.modelSettings.fast === "true") {
     await link.request("session.tune", { sessionId: session.id, fast: true });
   }
-  return meta;
+  return { meta, sent: false };
 }
 
 /** Send a turn; resolves when the turn has settled. */
@@ -239,7 +306,9 @@ export async function send(
   const files = [...(await toServerAttachments(link.environmentId, attachments, session.id)), ...(extra?.attachments ?? [])];
   // A draft he picked no model on runs on what the host chose at the create: its first send switches nothing.
   const picked = !!sessionStore.metaOf(session.id) || !!session.modelPicked;
-  const meta = await ensureCreated(session);
+  // A draft's first send rides its create when its host takes it whole (`createDraft`).
+  const { meta, sent } = await createDraft(session, extra?.newPass ? undefined : { text, attachments: files });
+  if (sent) return sessionStore.waitIdle(session.id);
   const model = nativeModelId(session.model);
   const reasoning = reasoningOf(session);
   await link.request("session.send", {

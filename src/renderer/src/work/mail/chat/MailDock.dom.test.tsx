@@ -23,7 +23,7 @@ vi.mock("../../../lib/connection", async (original) => {
     },
     onPush: () => () => undefined,
   });
-  return { ...(await original<typeof import("../../../lib/connection")>()), registry: { linkOf, link: linkOf, has: () => true, environments: () => [], onLink: () => () => undefined } };
+  return { ...(await original<typeof import("../../../lib/connection")>()), registry: { linkOf, link: linkOf, has: () => true, environments: () => [], onLink: () => () => undefined, statusOf: () => ({ lastHello: null }) } };
 });
 vi.mock("../../../surfaces/threadChat", () => ({
   useSessionActions: () => ({ onSubmit: (id: string, text: string) => calls.push({ method: "submit", params: { id, text } }) }),
@@ -217,6 +217,7 @@ describe("the chat beside the mail", () => {
     await waitFor(() => expect(mailDockPort.get()).toBeNull());
   });
 
+  // A host whose hello names no `create.steps` (this mock's): the window's own three steps (dock/fold.test.ts has the one-trip fold).
   it("makes the thread about the mail at the first send, marks it a mail chat, and only then sends", async () => {
     mount();
     act(() => patch(ID(), { chat: true, threadId: threads[0].id }));

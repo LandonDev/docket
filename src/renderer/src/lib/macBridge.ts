@@ -383,6 +383,15 @@ export async function bridgeNewThread(environmentId: string, sessionId: string):
   }
 }
 
+/** The Mac a thread made on this host takes the bridge of at its create (`session.create`'s `bridge`), or null when
+ *  this Mac's policy for that host is off or its own id is not known: the same rule as `bridgeNewThread`. */
+export async function bridgeFor(environmentId: string): Promise<{ macPeer: string } | null> {
+  if (!(await bridgesNewThreads(environmentId))) return null
+  if (!store.getState().localId) await loadLocal()
+  const macPeer = store.getState().localId
+  return macPeer ? { macPeer } : null
+}
+
 /** Whether a thread made on this host gets this Mac's bridge (its policy is not off). */
 export async function bridgesNewThreads(environmentId: string): Promise<boolean> {
   if (!bridgeableEnvironment(environmentId)) return false

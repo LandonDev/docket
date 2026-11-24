@@ -88,6 +88,8 @@ export function mailDockSubject(workspace: DockWorkspace, subject: MailChatSubje
         ...(subject.mailThreadId ? { mailThreadId: subject.mailThreadId } : {}),
       });
     },
+    // The adopt as data: the host marks the thread a mail chat inside the create, before the message.
+    fold: () => ({ mailAdopt: { workspaceId: workspace.id, kind: subject.kind, ...(subject.mailThreadId ? { mailThreadId: subject.mailThreadId } : {}) } }),
     mustHold: true,
     seed: onClaude,
   };

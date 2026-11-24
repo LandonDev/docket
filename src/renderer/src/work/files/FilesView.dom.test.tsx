@@ -55,6 +55,8 @@ vi.mock("../../lib/connection", async (original) => {
       environment: (id: string) => (hosts.has(id) ? { id, name: (hosts.get(id) as Host).name, platform: (hosts.get(id) as Host).platform } : undefined),
       environments: () => [...hosts].map(([id, h]) => ({ id, name: (h as Host).name, platform: (h as Host).platform })),
       onLink: () => () => undefined,
+      // A host whose hello names no `create.steps`: the dock's first send is create, open, send (dock/fold.test.ts has the fold).
+      statusOf: () => ({ lastHello: null }),
     },
   };
 });

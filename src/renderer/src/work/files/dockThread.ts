@@ -62,6 +62,14 @@ export function fileSubject(workspace: Workspace, tab: FileTab, item: CanvasItem
       return file ? ((await heldBy(workspace, file, true))?.sessionId ?? null) : null;
     },
     hold: (sessionId) => holdFile(workspace, tab, item, sessionId),
+    // `holdFile` as data: the host makes the copy and opens the item itself, inside the create.
+    fold: () => {
+      const file = fileOf(tab, item);
+      return { items: [tab.copyOf && file ? { kind: item.kind, source: file, title: item.title, copy: true } : { kind: item.kind, source: item.source, title: item.title }] };
+    },
+    onItemsFailed: (failed) => {
+      for (const one of failed) say(`${tab.name || item.title} did not open in the chat`, new Error(one.error));
+    },
   };
 }
 

@@ -48,6 +48,8 @@ export type Hello = {
   key?: { id: string; name: string };
   /** What the host runs (release number, version, commit, platform), for the deploy-drift mark. */
   build?: BuildFacts;
+  /** What the host takes beyond the contract number (capabilities.ts HOST_FEATURES); absent on an older host. */
+  features?: string[];
 };
 
 /**

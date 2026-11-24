@@ -1,7 +1,7 @@
 import type { ContextChip } from "@shared/work";
 import type { Session } from "../../lib/session";
 import { chipPort } from "../../lib/contextChips";
-import { afterCreate } from "../../lib/tcserver/commands";
+import { afterCreate, type CreateFold } from "../../lib/tcserver/commands";
 import { draftPicks, dockDraftKey, projectDrafts, sessionFromDraft } from "../../lib/projectDrafts";
 import { sessionStore } from "../../lib/tcserver/store";
 import { workDockPort } from "../../lib/workSwitch";
@@ -49,7 +49,18 @@ export async function dockThread(workspace: DockWorkspace, subject: DockSubject)
 }
 
 /** The drafts the docks made this run: the session to put back in the open set, its subject's chips, and its first send's step. */
-const drafts = new Map<string, { session: Session; chips: readonly ContextChip[]; chipIn: DockSubject["chipIn"]; hold: () => Promise<void>; must: boolean }>();
+const drafts = new Map<
+  string,
+  {
+    session: Session;
+    chips: readonly ContextChip[];
+    chipIn: DockSubject["chipIn"];
+    hold: () => Promise<void>;
+    must: boolean;
+    fold?: () => CreateFold;
+    onItemsFailed?: DockSubject["onItemsFailed"];
+  }
+>();
 /** Drafts whose composer has held the subject's lead chip, and those he took it off: a chip he took off is not put back. */
 const chipSeen = new Set<string>();
 const chipTaken = new Set<string>();
@@ -95,7 +106,9 @@ function draftFor(workspace: DockWorkspace, subject: DockSubject, again: string 
   const { hold } = subject;
   // A composer's hold runs only while its lead chip is still on the composer: he took it off, so the thread is not about it.
   const run = (): Promise<void> => (!hold || chipTaken.has(session.id) ? Promise.resolve() : hold(session.id));
-  drafts.set(session.id, { session, chips: subject.chips, chipIn: subject.chipIn, hold: run, must: !!subject.mustHold });
+  // The same step as data, under the same rule, for a host that runs it inside the create.
+  const fold = subject.fold ? (): CreateFold => (chipTaken.has(session.id) ? {} : subject.fold!()) : undefined;
+  drafts.set(session.id, { session, chips: subject.chips, chipIn: subject.chipIn, hold: run, must: !!subject.mustHold, fold, onItemsFailed: subject.onItemsFailed });
   // In the store before the dock draws it, so nothing asks a host for an id no host has.
   sessionStore.mutate((prev) => [...prev.filter((s) => s.id !== session.id), session]);
   putChips(session.id);
@@ -132,7 +145,7 @@ export function enterDock(id: string): void {
     sessionStore.reseedDrafts();
   }
   putChips(id);
-  afterCreate.set(id, draft.hold, { must: draft.must });
+  afterCreate.set(id, draft.hold, { must: draft.must, fold: draft.fold, onItemsFailed: draft.onItemsFailed });
 }
 
 /**
