@@ -99,7 +99,9 @@ A workbook from a mail (`{at: 'mail'}`: .xlsx, .xlsm or .csv) is held as the fil
   opened is kept for good and the newest 30 after it. A change on disk we did
   not make (told by the file's size, time and inode, so a workbook of the
   same length renamed in with the same time counts; a copy written into the
-  same inode that keeps the length and the time does not) is a revision of
+  same inode that keeps the length and the time does not; a save's own
+  stamp is read through one open descriptor and only from the bytes it
+  wrote, `stampOfWritten`) is a revision of
   its own (`by: 'file'`), seen when something
   asks the host (an edit, a push, a reopen): an open grid shows the older
   workbook until then, and reloads when it asks. Restore puts a kept copy

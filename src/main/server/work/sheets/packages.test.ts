@@ -6,7 +6,7 @@ import { afterAll, beforeEach, describe, expect, it } from 'vitest'
 import { importXlsx } from 'work-kit/sheet/xlsx'
 import { RULES_SET } from '@shared/work/sheets'
 import { SET_RANGE_VALUES } from './mutations'
-import { ensurePackageTables, PackageStore, PACKAGE_UNIT } from './packages'
+import { ensurePackageTables, PackageStore, PACKAGE_UNIT, stampOfWritten } from './packages'
 import { localJobs } from './workerClient'
 
 const CORPUS = join(__dirname, 'harness/corpus')
@@ -259,6 +259,22 @@ describe('an opened package', () => {
     expect((await import('node:fs')).statSync(path).size).toBe(size)
     expect(await store.edit(path, 0, [set(data, 1, 0, { v: 7 })], 'owner')).toEqual({ conflict: true, rev: 1 })
     expect(store.history(path)[0]).toMatchObject({ rev: 1, by: 'file' })
+  })
+
+  it('takes a save\'s stamp only from the bytes it wrote: a file renamed in just after, of the same length and time, is a change from outside', async () => {
+    // Council r3 (Sol 8): the save read the stamp after a rename and gave its revision the replacement's inode.
+    const { createHash } = await import('node:crypto')
+    const fs = await import('node:fs')
+    const ours = readFileSync(path)
+    const st = fs.statSync(path)
+    const version = `${ours.length}:${Math.round(st.mtimeMs)}:${createHash('sha256').update(ours).digest('hex')}`
+    expect(stampOfWritten(path, version)).toBe(`${st.size}:${Math.round(st.mtimeMs)}:${st.ino}`)
+    const theirs = Buffer.from(ours)
+    theirs[theirs.length - 1] = theirs[theirs.length - 1]! ^ 0xff
+    writeFileSync(`${path}.incoming`, theirs)
+    utimesSync(`${path}.incoming`, st.mtime, st.mtime)
+    fs.renameSync(`${path}.incoming`, path)
+    expect(stampOfWritten(path, version)).toBe(`${st.size}:${Math.round(st.mtimeMs)}:-`)
   })
 
   it('reads a stamp kept before the file\'s identity was in it as the same file: no revision of its own', async () => {

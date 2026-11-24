@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto'
 import { tmpdir } from 'node:os'
-import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs'
+import { closeSync, copyFileSync, existsSync, fstatSync, mkdirSync, mkdtempSync, openSync, readFileSync, readdirSync, realpathSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import type { DatabaseSync } from 'node:sqlite'
 import { basename, dirname, join } from 'node:path'
 import type { SheetCellDiff, SheetMutationJson, SheetRevision } from '@shared/contract-work-sheets'
@@ -84,6 +84,23 @@ const stampOf = (path: string): string => {
   const st = statSync(path)
   return `${st.size}:${Math.round(st.mtimeMs)}:${st.ino}`
 }
+/**
+ * The stamp of the file a save just wrote (`version`, the door's `size:mtime:sha`): read through one open descriptor,
+ * so the inode and the bytes are one file's, and taken only when those bytes are the ones written. A file renamed in
+ * after the save (a sync's, of the same length and time) leaves a stamp no look will find: a change from outside.
+ */
+export function stampOfWritten(target: string, version: string): string {
+  const [size, mtime, sha] = version.split(':')
+  const fd = openSync(target, 'r')
+  try {
+    const st = fstatSync(fd)
+    const ours = createHash('sha256').update(readFileSync(fd)).digest('hex') === sha
+    return ours ? `${st.size}:${Math.round(st.mtimeMs)}:${st.ino}` : `${size}:${mtime}:-`
+  } finally {
+    closeSync(fd)
+  }
+}
+
 /** Whether a kept stamp names the file now: a stamp kept before the file's identity was in it (size and time) is read by those two. */
 const sameStamp = (kept: string, now: string): boolean => kept === now || (kept.split(':').length === 2 && now.startsWith(`${kept}:`))
 
@@ -472,11 +489,7 @@ export class PackageStore {
       rmSync(copy, { force: true })
       throw new ChangedOutside()
     }
-    // A version word is `size:mtime:sha`: its first two parts begin the stamp, and the file's identity is read now, only
-    // while it is still that write; a sync that landed in between leaves a stamp no look will find (a change from outside).
-    const wrote = got.version.split(':').slice(0, 2).join(':')
-    const now = stampOf(target)
-    return now.startsWith(`${wrote}:`) ? now : `${wrote}:-`
+    return stampOfWritten(target, got.version)
   }
 
   /** Reads the cells of an A1 range as the package holds them now. */
