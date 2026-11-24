@@ -733,7 +733,11 @@ library's delete goes to the computer's own bin and Trash keeps only its row
   2 GB across disks is refused in its sentence. A file a thread is writing
   in is refused ("A thread is writing in this file. Try when it is done.").
   A Files tab on the file, or on anything in the folder, is closed first,
-  its item with it. The answer's `trashed` holds the row ids: Undo is a
+  its item with it. His window sends what such a tab still holds before it
+  asks (acts.ts `trash`, `unsavedIn` through canvas/flush.ts, the close's
+  bounded wait), so Trash and Put Back keep his last words; a tab whose
+  words failed or ran late asks first ("Changes to Notes.txt are not
+  saved." Delete Anyway), and Cancel deletes nothing. The answer's `trashed` holds the row ids: Undo is a
   `restore` of them. The same `op` again answers the same and moves nothing.
 - **The Trash lens** (`list {at: {at:'place', id:'trash'}}`) lists the
   workspace's `held` rows, newest first, 500 at most: `key: 'trash:<id>'`,

@@ -7,6 +7,7 @@ import { loadToast } from "../../components/ui/toaster";
 import { blobSource } from "../../lib/attachmentUpload";
 import { registry } from "../../lib/connection";
 import { workErrorWords } from "../../lib/workErrorWords";
+import { flushItem } from "../canvas/flush";
 import { carryRefusal, doneWords, refusedWords, type PlaceCopy } from "./model";
 import { closeTab, tabsNow } from "./store";
 
@@ -166,7 +167,17 @@ export function tabsOn(tabs: readonly FileTab[], entries: readonly FileEntry[]):
 export const unsentIn = (tabs: readonly FileTab[]): boolean => tabs.some((t) => !!t.back && UNSENT.has(t.back.is));
 
 /**
- * Delete: to Trash, or in a place others can open to its computer's own bin, said in one toast with Undo. A place
+ * What these open tabs still hold, sent to their files first (canvas/flush.ts, as a close does): the name of one whose
+ * words did not go in, or whose send was still on its way at the wait's end; null when every tab's went.
+ */
+export async function unsavedIn(tabs: readonly FileTab[]): Promise<string | null> {
+  const sent = await Promise.all(tabs.map(async (t) => ((await flushItem(t.itemId).catch(() => "failed" as const)) === "sent" ? null : t.name)));
+  return sent.find((name) => name !== null) ?? null;
+}
+
+/**
+ * Delete: to Trash, or in a place others can open to its computer's own bin, said in one toast with Undo. What an open
+ * tab on it still holds is sent first, so Trash keeps his last words; words that did not go in are asked about. A place
  * others can open asks first, naming what goes and who can open it, and says when a copy of it holds changes not sent.
  */
 export async function trash(of: ActsOf, copy: PlaceCopy, entries: readonly FileEntry[]): Promise<boolean> {
@@ -175,11 +186,12 @@ export async function trash(of: ActsOf, copy: PlaceCopy, entries: readonly FileE
   if (no) return (failed("Nothing was deleted", new Error(no.text)), false);
   const question = questionFor(copy.place, "trash", entries[0]);
   const open = tabsOn(tabsNow(of.home, of.workspaceId), entries);
+  const unsaved = await unsavedIn(open);
   if (question) {
     const ask = deleteAsk(copy.place, entries.map((e) => e.name));
-    const body = unsentIn(open) ? `${ask.body} Changes in its open copy that have not reached it are lost.` : ask.body;
-    if (!(await confirmAction({ title: ask.title, body, action: "Delete", danger: true }))) return false;
-  }
+    const lost = unsaved ? " Changes in its open tab that are not saved are lost." : unsentIn(open) ? " Changes in its open copy that have not reached it are lost." : "";
+    if (!(await confirmAction({ title: ask.title, body: ask.body + lost, action: "Delete", danger: true }))) return false;
+  } else if (unsaved && !(await confirmAction({ title: `Changes to ${unsaved} are not saved.`, body: "Delete it anyway? They will be lost.", action: "Delete Anyway", danger: true }))) return false;
   try {
     const done = await registry.linkOf(copy.link).request<FileDone>("work.files.trash", { workspaceId: of.workspaceId, refs: entries.map(refOf), op: opId(), ...(question ? { asked: true } : {}) }, longWait(copy));
     const ids = done.trashed ?? [];
