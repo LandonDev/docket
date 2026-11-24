@@ -1,6 +1,6 @@
 import { ConvexProvider, useMutation } from "convex/react";
 import { makeFunctionReference } from "convex/server";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { SectorKey } from "@shared/work";
 import { DialogFooter, ErrorLine } from "../../chrome/ConfirmDialog";
 import { Field } from "../../chrome/DialogField";
@@ -35,10 +35,16 @@ type Writes = { add: (args: Record<string, unknown>) => Promise<unknown>; undo: 
 function Live({ onWrites }: { onWrites: (writes: Writes | null) => void }) {
   const add = useMutation(create);
   const undo = useMutation(takeBack);
+  // One lasting pair over the newest callers: a caller made anew by a render must not hand the form new writes, which
+  // would draw it again, and so on without end.
+  const latest = useRef({ add, undo });
   useEffect(() => {
-    onWrites({ add, undo });
+    latest.current = { add, undo };
+  });
+  useEffect(() => {
+    onWrites({ add: (args) => latest.current.add(args), undo: (args) => latest.current.undo(args) });
     return () => onWrites(null);
-  }, [add, undo, onWrites]);
+  }, [onWrites]);
   return null;
 }
 

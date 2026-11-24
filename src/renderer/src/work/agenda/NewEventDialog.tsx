@@ -1,6 +1,6 @@
 import { ConvexProvider, useConvex, useMutation, useQuery, type ConvexReactClient } from "convex/react";
 import { makeFunctionReference } from "convex/server";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { SectorKey } from "@shared/work";
 import { DialogFooter, ErrorLine } from "../../chrome/ConfirmDialog";
 import { Field } from "../../chrome/DialogField";
@@ -43,10 +43,21 @@ function Live({ onWrites, onSources }: { onWrites: (writes: Writes | null) => vo
   useEffect(() => {
     if (sources !== undefined) onSources(sources);
   }, [sources, onSources]);
+  // One lasting set over the newest callers and client (NewTaskDialog's `Live` says why).
+  const latest = useRef({ saveOp, sendOp, convex });
   useEffect(() => {
-    onWrites({ saveOp, sendOp, convex });
+    latest.current = { saveOp, sendOp, convex };
+  });
+  useEffect(() => {
+    onWrites({
+      saveOp: (args) => latest.current.saveOp(args),
+      sendOp: (args) => latest.current.sendOp(args),
+      get convex() {
+        return latest.current.convex;
+      },
+    });
     return () => onWrites(null);
-  }, [saveOp, sendOp, convex, onWrites]);
+  }, [onWrites]);
   return null;
 }
 
