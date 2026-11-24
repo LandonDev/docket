@@ -1,5 +1,5 @@
 {
-  "n": 375,
-  "notes": "The polish pass over Work: one type scale and one name per thing everywhere; failures said in plain words in the middle of the pane, naming the computer; tabs that stay still under the pointer; Money, People, Routines, Plays, dashboards and forms tidied; a chat docked beside a mail or a file keeps its transcript and its draft; the last walls from the journeys closed.",
-  "ts": 1795537256302
+  "n": 376,
+  "notes": "Files on a mapped network drive are fast: a folder is read once with no per-file calls, paths are resolved once, and a file is hashed once (on 1.0.375 a 300-file folder over a slow link did not list in 30 seconds); the polish build's council fixes across Work; Waiting on, Money, Today and Settings say failures plainly.",
+  "ts": 1795546595283
 }
