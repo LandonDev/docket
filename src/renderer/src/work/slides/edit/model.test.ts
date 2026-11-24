@@ -176,6 +176,10 @@ describe("the typing box's model", () => {
     expect(kept[0].runs.map((r) => r.from)).toEqual([[0, 0], undefined, undefined]);
     expect(kept[1].from).toBeUndefined();
     expect(kept[1].runs[0]).not.toHaveProperty("from");
+    // What loses its place keeps its look by setting it: "comes" stays bold, the second paragraph its level and bullet.
+    expect(kept[0].runs[1].set).toMatchObject({ bold: true, size: 40 });
+    expect(kept[1].set).toMatchObject({ level: 1, align: "center", list: "bullet" });
+    expect(kept[1].runs[0].set).toMatchObject({ font: "Arial", size: 20, color: "FF0000", bold: false });
     expect(model).toHaveLength(2);
     expect(sameWords(shape(), shape())).toBe(true);
     expect(sameWords(shape(), shorter)).toBe(false);

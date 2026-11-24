@@ -426,15 +426,16 @@ export const sameWords = (a: DeckShape | undefined, b: DeckShape | undefined): b
 
 /**
  * His words kept over a shape that changed under him: each `from` that the
- * new words still have stays, the others go (those runs take their
- * paragraph's first look from the host), and what he set stays.
+ * new words still have stays, the others go, and what he set stays. A run or
+ * a paragraph that loses its `from` keeps its look by setting it all, as
+ * `renumber` does: the host would give it its paragraph's first look.
  */
 export function rebase(model: Model, shape: DeckShape): Model {
   const paras = shape.paragraphs ?? [];
   return model.map(({ from, ...para }) => ({
     ...para,
-    ...(from !== undefined && from < paras.length ? { from } : {}),
-    runs: para.runs.map((run) => (run.from && paras[run.from[0]]?.runs[run.from[1]] ? run : { text: run.text, look: run.look, set: run.set })),
+    ...(from !== undefined && from < paras.length ? { from } : from !== undefined ? { set: { level: para.level, align: para.align, list: para.list, ...para.set } } : {}),
+    runs: para.runs.map((run) => (run.from && paras[run.from[0]]?.runs[run.from[1]] ? run : { text: run.text, look: run.look, set: run.from ? { ...lookSet(run.look), ...run.set } : run.set })),
   }));
 }
 
