@@ -40,7 +40,7 @@ export function fakeProvider(lent: { token: string; uuid: string; email: string 
     if (url.pathname === '/api/oauth/profile') return who ? json(200, { account: { uuid: who.uuid, email: who.email }, organization: { uuid: 'org-fake', name: 'Fake', rate_limit_tier: 'default_claude_max_5x' } }) : json(401, {})
     json(404, { error: 'not here' })
   })
-  return new Promise((ok) => server.listen(PORTS.fake, '127.0.0.1', () => ok(server)))
+  return new Promise((ok, no) => (server.once('error', no), server.listen(PORTS.fake, '127.0.0.1', () => ok(server))))
 }
 
 /** A plain feed: every file in `dir` by its name (latest.yml and the installer). */
@@ -52,7 +52,7 @@ export function feedServer(dir: string): Promise<Server> {
     res.writeHead(200, { 'content-length': String(statSync(file).size) })
     createReadStream(file).pipe(res)
   })
-  return new Promise((ok) => server.listen(PORTS.feed, '127.0.0.1', () => ok(server)))
+  return new Promise((ok, no) => (server.once('error', no), server.listen(PORTS.feed, '127.0.0.1', () => ok(server))))
 }
 
 const vaultDir = (s: StandIn): string => join(s.data, 'aliax')
