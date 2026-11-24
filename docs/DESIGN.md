@@ -1769,9 +1769,11 @@ Around the canvas:
   under it, a sound's Play, a zip's listing, else its facts in one comma
   sentence and the one sentence that says why there is no picture. Tab
   stays on its own controls, and closing it gives the list its focus back.
-  It opens with one scale from 0.96 and a fade over `--dur-base`, follows
-  the arrows with no motion, and closes at once on Space, Escape or a
-  press outside. A file kept in the cloud shows its facts and Download
+  Opened by Space it appears at once (a key's act never animates, as a
+  picker opened by a key); opened by a press it plays one scale from 0.96
+  and a fade over `--dur-base`, a fade alone over `--dur-fast` under
+  reduced motion. It follows the arrows with no motion, and closes at once
+  on Space, Escape or a press outside. A file kept in the cloud shows its facts and Download
   and Look: nothing downloads without that press.
   **New** is the bar's one primary button: a menu of what the place
   makes (Document, Sheet, Deck, Text File, Folder), Upload Files…, and a

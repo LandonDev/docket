@@ -65,17 +65,29 @@ describe("the shelf", () => {
     expect(tile.className).not.toMatch(/scale/);
   });
 
-  it("holds the loaded tile's shape while the shelf loads: the plate, then a 14px square 8px from the name's bar", () => {
+  it("holds the loaded tile's shape while the shelf loads: the plate, then the name's bar on its 20px line", () => {
     render(<ShelfSkeleton layout="page" />);
     const bone = document.querySelector("[data-bone-tile]")!;
     const line = bone.lastElementChild!;
-    expect(line.className.split(" ")).toEqual(expect.arrayContaining(["h-5", "items-center", "gap-2"]));
-    expect(line.firstElementChild!.className.split(" ")).toContain("size-3.5");
-    // The real tile's line: the same height and gap, so nothing shifts when it lands.
+    expect(line.className.split(" ")).toEqual(expect.arrayContaining(["h-5", "items-center"]));
+    expect(line.children).toHaveLength(1);
+    // The real tile's line: the same height, so nothing shifts when it lands.
     cleanup();
     render(<Shelf groups={groups} layout="page" making={null} onPress={() => {}} />);
     const real = document.querySelector('[data-tile="job:Crew memo.docx"] [data-tile-name]')!.parentElement!;
-    expect(real.className.split(" ")).toEqual(expect.arrayContaining(["h-5", "items-center", "gap-2"]));
+    expect(real.className.split(" ")).toEqual(expect.arrayContaining(["h-5", "items-center"]));
+  });
+
+  it("draws a tile at rest as a Files tile with no picture, never as loading bones: the kind's glyph large on the stage, no bars", () => {
+    render(<Shelf groups={groups} layout="page" making={null} onPress={() => {}} />);
+    for (const plate of document.querySelectorAll<HTMLElement>("[data-plate]")) {
+      expect(plate.className.split(" ")).toEqual(expect.arrayContaining(["bg-(--stage)", "place-items-center"]));
+      expect(plate.children).toHaveLength(1);
+      expect(plate.firstElementChild!.hasAttribute("data-kind-glyph")).toBe(true);
+      expect(plate.firstElementChild!.getAttribute("class")!.split(" ")).toContain("size-10");
+    }
+    // The name's line says the kind no second time.
+    expect(document.querySelector("[data-tile-name]")!.parentElement!.querySelector("[data-kind-glyph]")).toBeNull();
   });
 
   it("presses through the shared Button laid over the whole tile, its ring inside the tile's edge", () => {
@@ -86,12 +98,12 @@ describe("the shelf", () => {
     for (const cls of ["absolute", "inset-0", "rounded-[inherit]", "p-0"]) expect(press.className.split(" ")).toContain(cls);
   });
 
-  it("sets the kind's glyph 8px from the name, on the page and in the dialog", () => {
+  it("sets the kind's glyph on the plate, on the page and in the dialog", () => {
     const { rerender } = render(<Shelf groups={groups} layout="page" making={null} onPress={() => {}} />);
-    const line = () => document.querySelector('[data-tile="job:Crew memo.docx"] [data-tile-name]')!.parentElement!;
-    expect(line().className.split(" ")).toContain("gap-2");
+    const glyph = () => document.querySelector('[data-tile="job:Crew memo.docx"] [data-plate] [data-kind-glyph]');
+    expect(glyph()).not.toBeNull();
     rerender(<Shelf groups={groups} layout="dialog" making={null} onPress={() => {}} />);
-    expect(line().className.split(" ")).toContain("gap-2");
+    expect(glyph()).not.toBeNull();
   });
 
   it("gives a cut name its whole as the press's tip, and none to a name that fits", async () => {
@@ -208,7 +220,7 @@ describe("the shelf", () => {
     expect(onMenu.mock.calls[0]).toEqual(["rename", TEMPLATES[0]]);
   });
 
-  it("tints each kind's glyph as Files does, and nothing else: the plate, the name and the wait stay untinted", () => {
+  it("tints each kind's glyph as Files does, and nothing else: the plate's ground, the name and the wait stay untinted", () => {
     vi.useFakeTimers();
     const { rerender } = render(<Shelf groups={groups} layout="page" making={null} onPress={() => {}} />);
     const tints: Record<string, string> = { "job:Crew memo.docx": "text-kind-doc", "starter:ref/season-log": "text-kind-sheet", "all:Pitch.pptx": "text-kind-slides" };
@@ -218,7 +230,7 @@ describe("the shelf", () => {
       expect(glyph.getAttribute("class")!.split(" ")).toContain(tint);
       // One tinted element on the tile: its glyph.
       expect([...tile.querySelectorAll("*")].filter((el) => /\btext-kind-/.test(el.getAttribute("class") ?? ""))).toEqual([glyph]);
-      expect(tile.querySelector("[data-plate]")!.outerHTML).not.toMatch(/kind-/);
+      expect(tile.querySelector("[data-tile-name]")!.parentElement!.outerHTML).not.toMatch(/kind-/);
     }
     rerender(<Shelf groups={groups} layout="page" making="job:Crew memo.docx" onPress={() => {}} />);
     act(() => void vi.advanceTimersByTime(SPIN_AFTER_MS));
@@ -241,7 +253,7 @@ describe("the shelf", () => {
     render(<Shelf groups={groups} layout="page" making={null} onPress={() => {}} menuFor={menuRows} onMenu={() => {}} />);
     const tile = document.querySelector('[data-tile="starter:ref/season-log"]')!;
     const more = tile.querySelector("[data-tile-more]")!;
-    expect(more.className.split(" ")).toEqual(expect.arrayContaining(["bg-card", "rounded-md"]));
+    expect(more.className.split(" ")).toEqual(expect.arrayContaining(["bg-(--stage)", "rounded-md"]));
     expect(tile.className.split(" ")).not.toContain("bg-foreground/5");
     fireEvent.click(screen.getByRole("button", { name: "More for Season log" }));
     await screen.findAllByRole("menuitem");

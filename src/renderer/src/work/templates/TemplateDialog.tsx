@@ -78,8 +78,9 @@ export const TOP_ANCHORED = "top-[12%] translate-y-0 starting:translate-y-1 max-
 /** The swap's fade, on the step that arrives; none under reduced motion. */
 const ARRIVE = "flex min-h-0 flex-col transition-opacity duration-(--dur-fast) ease-(--ease-out) starting:opacity-0 motion-reduce:transition-none";
 
-/** Focus that has not moved since the dialog opened: on nothing, on the dialog, or on the Cancel it lands on while the shelf loads. */
-const unmoved = (el: Element | null): boolean => !el || el === document.body || el.getAttribute("role") === "dialog" || el.matches("[data-dialog-cancel]");
+/** Focus that has not moved since the dialog opened: on nothing, on the dialog, or on the Cancel or × it lands on while the shelf loads. */
+const unmoved = (el: Element | null): boolean =>
+  !el || el === document.body || el.getAttribute("role") === "dialog" || el.matches("[data-dialog-cancel]") || el.matches('[role="dialog"] > header [aria-label="Close"]');
 
 /** The dialog's one scroller (chrome/Modal.tsx). */
 const scrollerOf = (el: Element | null): HTMLElement | null => el?.closest<HTMLElement>(".overflow-y-auto") ?? null;
@@ -247,8 +248,9 @@ export function TemplateSteps({
           </div>
         )}
       </ModalBody>
-      {/* While a tile's file is made, Cancel waits with Escape and the backdrop. A long folder name wraps to be read whole. */}
-      <DialogFooter note={kept ? <span className="whitespace-normal [overflow-wrap:anywhere]">Kept in {kept}</span> : undefined} onCancel={onClose} busy={making !== null} />
+      {/* A picker of tiles: × and Escape close it, so a footer stands only to say where the file is kept, with its
+          Cancel. While a tile's file is made, Cancel waits with ×, Escape and the backdrop. A long folder name wraps. */}
+      {kept ? <DialogFooter note={<span className="whitespace-normal [overflow-wrap:anywhere]">Kept in {kept}</span>} onCancel={onClose} busy={making !== null} /> : null}
     </div>
   );
 }

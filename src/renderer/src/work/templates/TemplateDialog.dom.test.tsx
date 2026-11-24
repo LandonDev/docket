@@ -73,14 +73,15 @@ afterEach(() => {
 });
 
 describe("New from a template", () => {
-  it("shows the two groups under its title, with Cancel and no Kept in line when no folder was given", async () => {
+  it("shows the two groups under its title, with no footer when no folder was given: × closes a picker of tiles", async () => {
     render(<TemplateDialog env="box" workspaceId="ws" onClose={() => {}} />);
     await settle();
     const dialog = screen.getByRole("dialog");
     expect(within(dialog).getByRole("heading", { name: "New from a template" })).toBeTruthy();
     expect(within(dialog).getByRole("region", { name: "Dummy Esports" })).toBeTruthy();
     expect(dialog.querySelector("[data-footer-note]")).toBeNull();
-    expect(within(dialog).getByRole("button", { name: "Cancel" })).toBeTruthy();
+    expect(within(dialog).queryByRole("button", { name: "Cancel" })).toBeNull();
+    expect(within(dialog).getByRole("button", { name: "Close" })).toBeTruthy();
     expect(within(dialog).queryByRole("button", { name: "Create" })).toBeNull();
   });
 
@@ -88,6 +89,7 @@ describe("New from a template", () => {
     render(<TemplateDialog env="box" workspaceId="ws" into={{ at: "file", host: "box", path: "/w/Dummy Esports/Invoices" }} onClose={() => {}} />);
     await settle();
     expect(screen.getByRole("dialog").querySelector("[data-footer-note]")!.textContent).toBe("Kept in Invoices");
+    expect(screen.getByRole("button", { name: "Cancel" })).toBeTruthy();
   });
 
   it("makes a template with no fields on one press, in the given folder with the window's own day, opens it in Files and closes", async () => {
@@ -215,15 +217,16 @@ describe("New from a template", () => {
     expect(screen.getByRole("button", { name: "Crew memo" })).toBeTruthy();
   });
 
-  it("holds Cancel too while a tile's file is made", async () => {
+  it("holds Cancel and × too while a tile's file is made", async () => {
     let done: (v: unknown) => void = () => {};
     host.answer = (method) => (method === "work.templates.list" ? { templates: [MEMO, REPORT], hidden: 0 } : method === "work.templates.make" ? new Promise((r) => (done = r)) : {});
-    render(<TemplateDialog env="box" workspaceId="ws" onClose={() => {}} />);
+    render(<TemplateDialog env="box" workspaceId="ws" into={{ at: "file", host: "box", path: "/w/Dummy Esports/Invoices" }} onClose={() => {}} />);
     await settle();
     expect(screen.getByRole("button", { name: "Cancel" }).hasAttribute("disabled")).toBe(false);
     fireEvent.click(screen.getByRole("button", { name: "Crew memo" }));
     await settle();
     expect(screen.getByRole("button", { name: "Cancel" }).hasAttribute("disabled")).toBe(true);
+    expect(screen.getByRole("button", { name: "Close" }).hasAttribute("disabled")).toBe(true);
     await act(async () => done(MADE));
   });
 

@@ -16,12 +16,12 @@ import { KIND_WORD, type ShelfGroup } from "./model";
 /**
  * The shelf's tiles (docs/agents/work-templates.md "The screens"), one part for
  * the Templates view and the "New from a template" dialog: two groups, each a
- * 12px muted label over a grid of tiles. A tile is the file's picture, then the
- * kind's glyph 8px from the name on one 13px line, cut to it, the whole name the
- * press's tip while it is cut. It aligns to the grid's edge (6px of padding
+ * 12px muted label over a grid of tiles. A tile is the file's picture (the
+ * kind's glyph large on the stage, as a Files tile with no picture), then the
+ * name on one 13px line, cut to it, the whole name the press's tip while it is cut. It aligns to the grid's edge (6px of padding
  * against a -6px margin), washes 5% on hover and steps to 12% at once while
  * pressed, as every row with its open control laid over it does (`ROW_HOLDS`),
- * never scaling, and draws the ring inside on focus; the glyph turns to a
+ * never scaling, and draws the ring inside on focus; the plate's glyph turns to a
  * spinner only when a make takes over `SPIN_AFTER_MS`. Arrows walk the tiles,
  * Return makes. On the page a tile also has its menu: a right-click, or the ⋯
  * that shows on hover and on focus, takes no pointer until then, and stays while
@@ -32,59 +32,17 @@ import { KIND_WORD, type ShelfGroup } from "./model";
 export const SPIN_AFTER_MS = 150;
 
 
-/** The widths of a drawn page's lines, as shares of the line: enough of a rhythm to read as writing. */
-const LINES = ["w-[92%]", "w-[78%]", "w-[86%]", "w-[58%]"] as const;
-const MORE_LINES = ["w-[88%]", "w-[70%]"] as const;
-/** A drawn sheet's rows: the bar in each cell, as a share of the cell. The first row is the head. */
-const CELLS = [
-  ["w-[64%]", "w-[52%]", "w-[58%]", "w-[46%]"],
-  ["w-[72%]", "w-[40%]", "w-[62%]", "w-[50%]"],
-  ["w-[56%]", "w-[66%]", "w-[44%]", "w-[60%]"],
-  ["w-[68%]", "w-[48%]", "w-[70%]", "w-[42%]"],
-  ["w-[60%]", "w-[58%]", "w-[52%]", "w-[64%]"],
-  ["w-[74%]", "w-[44%]", "w-[60%]", "w-[54%]"],
-] as const;
-
 /**
- * The picture area of a template: a small drawing of what its kind is, in the
- * tile's own measure (container units), until Files' thumbnails land and take
- * its place. A document is a heading and lines of writing, a sheet a grid with
- * a head row, a deck a title slide. It says the kind at a glance and shows no
- * glyph: the glyph is on the name's line, once.
+ * The picture area of a template, as a Files tile draws a file with no picture
+ * of its own (docs/DESIGN.md "The Files place"): the stage, the kind's glyph
+ * large in its tint in the middle, until Files' thumbnails land and take its
+ * place. While a make waits past `SPIN_AFTER_MS` the spinner stands where the
+ * glyph was. The name's line under it carries no glyph: the kind is said once.
  */
-export function Plate({ kind }: { kind: TemplateKind }) {
+export function Plate({ kind, spin = false }: { kind: TemplateKind; spin?: boolean }) {
   return (
-    <span data-plate={kind} aria-hidden className="@container relative block aspect-[4/3] w-full overflow-hidden rounded-md bg-card outline-1 -outline-offset-1 outline-image-outline">
-      {kind === "document" ? (
-        <span className="absolute inset-0 flex flex-col gap-[4.5cqw] px-[11cqw] pt-[11cqw]">
-          <span className="mb-[1cqw] block h-[3.6cqw] w-[46%] flex-none rounded-[2px] bg-foreground/40" />
-          {LINES.map((w) => (
-            <span key={w} className={cn("block h-[2.4cqw] flex-none rounded-[2px] bg-foreground/15", w)} />
-          ))}
-          <span className="mt-[2cqw] block h-[3cqw] w-[30%] flex-none rounded-[2px] bg-foreground/40" />
-          {MORE_LINES.map((w) => (
-            <span key={w} className={cn("block h-[2.4cqw] flex-none rounded-[2px] bg-foreground/15", w)} />
-          ))}
-        </span>
-      ) : kind === "sheet" ? (
-        <span className="absolute top-[9cqw] right-0 bottom-0 left-[9cqw] flex flex-col border-t border-l border-border">
-          {CELLS.map((row, r) => (
-            <span key={r} className="grid h-[11cqw] flex-none grid-cols-[2fr_1fr_1fr_1fr] border-b border-border">
-              {row.map((w, c) => (
-                <span key={c} className="flex items-center border-r border-border px-[12%]">
-                  <span className={cn("block h-[2.4cqw] rounded-[2px]", r === 0 ? "bg-foreground/40" : "bg-foreground/15", w)} />
-                </span>
-              ))}
-            </span>
-          ))}
-        </span>
-      ) : (
-        <span className="absolute inset-0 flex flex-col justify-center gap-[3cqw] px-[11cqw]">
-          <span className="mb-[1cqw] block h-[1.4cqw] w-[12cqw] flex-none rounded-[1px] bg-foreground/40" />
-          <span className="block h-[5.2cqw] w-[62%] flex-none rounded-[2px] bg-foreground/40" />
-          <span className="block h-[2.6cqw] w-[40%] flex-none rounded-[2px] bg-foreground/15" />
-        </span>
-      )}
+    <span data-plate={kind} aria-hidden className="grid aspect-[4/3] w-full place-items-center overflow-hidden rounded-md bg-(--stage) outline-1 -outline-offset-1 outline-image-outline">
+      {spin ? <Spinner aria-hidden className="size-4 text-muted-foreground" /> : <KindGlyph kind={kind} className="size-10 shrink-0" />}
     </span>
   );
 }
@@ -167,11 +125,10 @@ function Tile({
         press
       )}
       <span className="pointer-events-none relative flex min-w-0 flex-col gap-1.5">
-        <Plate kind={template.kind} />
-        <span className="flex h-5 min-w-0 items-center gap-2 text-[13px] leading-5 text-foreground">
-          {/* The kind's glyph in its tint, drawn by the one part that draws it (docs/DESIGN.md "File kind tints": a
-              template's tile is a file's tile, and only its glyph takes the colour). The wait is no kind: muted. */}
-          {spin ? <Spinner aria-hidden className="size-3.5 text-muted-foreground" /> : <KindGlyph kind={template.kind} className="size-3.5 shrink-0" />}
+        {/* The kind's glyph in its tint, on the plate, drawn by the one part that draws it (docs/DESIGN.md "File kind
+            tints": a template's tile is a file's tile, and only its glyph takes the colour). The wait is no kind: muted. */}
+        <Plate kind={template.kind} spin={spin} />
+        <span className="flex h-5 min-w-0 items-center text-[13px] leading-5 text-foreground">
           <span ref={caption} data-tile-name="" className="min-w-0 truncate">
             {template.name}
           </span>
@@ -179,8 +136,8 @@ function Tile({
       </span>
       {menu ? (
         // Over the plate: no pointer until it shows, and shown while its menu is open.
-        // On the plate's own ground (card), so it hides the drawing under it; on a plain plate it reads as nothing.
-        <span data-tile-more="" className={cn("absolute top-3 right-3 rounded-md bg-card", held ? "pointer-events-auto opacity-100" : reveal("item", { row: true, overlay: true }))}>
+        // On the plate's own ground (the stage), so it reads as part of the plate.
+        <span data-tile-more="" className={cn("absolute top-3 right-3 rounded-md bg-(--stage)", held ? "pointer-events-auto opacity-100" : reveal("item", { row: true, overlay: true }))}>
           <Button
             variant="ghost"
             size="icon-xs"
@@ -325,11 +282,10 @@ export function ShelfSkeleton({ layout, count = 6 }: { layout: ShelfLayout; coun
       <Skeleton className="h-4 w-24" />
       <div className={GRID[layout]}>
         {Array.from({ length: count }, (_, i) => (
-          // The loaded tile's shape: the plate, then the glyph's 14px square 8px from the name's bar.
+          // The loaded tile's shape: the plate, then the name's bar on its 20px line.
           <div key={i} data-bone-tile="" className="flex min-w-0 flex-col gap-1.5">
             <Skeleton className="aspect-[4/3] w-full rounded-md" />
-            <span className="flex h-5 min-w-0 items-center gap-2">
-              <Skeleton className="size-3.5 shrink-0 rounded-sm" />
+            <span className="flex h-5 min-w-0 items-center">
               <Skeleton className="h-3 rounded-sm" style={{ width: `${[64, 48, 72, 56, 40, 60][i % 6]}%` }} />
             </span>
           </div>

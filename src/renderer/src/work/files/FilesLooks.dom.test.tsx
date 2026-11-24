@@ -673,4 +673,17 @@ describe("after the council's first round", () => {
     expect(parts).toEqual(["", "Esports", " Staff, General"]);
     expect(where.querySelector(".sr-only")!.textContent).toBe("Esports Staff, General");
   });
+
+  it("appears at once when Space opens it, and keeps a fade alone under reduced motion for a press", async () => {
+    draw({});
+    fireEvent.click(row("Plan.pdf"));
+    fireEvent.keyDown(list(), { key: " " });
+    const layer = screen.getByRole("dialog", { name: "Quick Look: Plan.pdf" });
+    // A key's act never animates: no entrance, no transition.
+    expect(layer.className).not.toMatch(/starting:|transition/);
+    const { ENTRANCE } = await import("./QuickLook");
+    const parts = ENTRANCE.split(" ");
+    expect(parts).toEqual(expect.arrayContaining(["starting:scale-[0.96]", "starting:opacity-0", "duration-(--dur-base)", "motion-reduce:transition-opacity", "motion-reduce:duration-(--dur-fast)"]));
+    expect(parts).not.toContain("motion-reduce:transition-none");
+  });
 });

@@ -13,9 +13,14 @@ import type { PictureFrom } from "./previews";
  * Quick Look (docs/DESIGN.md "The Files place"): Space on a selection. A layer over the page shows the file read
  * only: its pages, its picture or a player, with its name, where it is kept, and Open. The list under it keeps
  * the keyboard: the arrows walk it and the layer follows with no motion; Space or Escape closes, and so does a
- * press outside. It opens with one short scale and fade, never on the arrow keys, and mounts no editor. Tab stays
+ * press outside. Opened by Space it appears at once (a key's act never animates, as a picker opened by a key);
+ * opened by a press it plays one short scale and fade, a fade alone under reduced motion. It never moves on the
+ * arrow keys, and mounts no editor. Tab stays
  * on its own controls (the arrows still walk the list from them), and closing gives the list its focus back.
  */
+
+/** The entrance a press plays: a scale from 0.96 and a fade; under reduced motion the fade alone, quicker. */
+export const ENTRANCE = "transition-[opacity,scale] duration-(--dur-base) ease-(--ease-out) starting:scale-[0.96] starting:opacity-0 motion-reduce:transition-opacity motion-reduce:duration-(--dur-fast)";
 
 /** What Tab stops on inside the layer. */
 const STOPS = "button:not([disabled]), a[href], video[controls], audio[controls], [tabindex]:not([tabindex='-1'])";
@@ -29,6 +34,7 @@ export function QuickLook({
   onClose,
   onFetch,
   still = false,
+  pressed = false,
 }: {
   entry: FileEntry;
   /** where it is kept, in words */
@@ -39,6 +45,8 @@ export function QuickLook({
   onFetch?(entry: FileEntry): Promise<void>;
   /** drawn open from the first paint (a preview page): it does not play its entrance */
   still?: boolean;
+  /** opened by a press, not by Space: it plays its entrance */
+  pressed?: boolean;
 }) {
   const layer = useRef<HTMLDivElement | null>(null);
   // The element that had focus when the layer opened: the list, which keeps the keyboard.
@@ -82,7 +90,7 @@ export function QuickLook({
         onKeyDown={walk}
         role="dialog"
         aria-label={`Quick Look: ${entry.name}`}
-        className={`flex h-full max-h-[760px] w-full max-w-[1000px] flex-col overflow-hidden rounded-xl bg-popover text-popover-foreground shadow-overlay ring-1 ring-border ${still ? "" : "transition-[opacity,scale] duration-(--dur-base) ease-(--ease-out) motion-reduce:transition-none starting:scale-[0.96] starting:opacity-0"}`}
+        className={`flex h-full max-h-[760px] w-full max-w-[1000px] flex-col overflow-hidden rounded-xl bg-popover text-popover-foreground shadow-overlay ring-1 ring-border ${pressed && !still ? ENTRANCE : ""}`}
       >
         <div className="flex h-11 shrink-0 items-center gap-2 border-b border-border ps-3 pe-2">
           <KindGlyph kind={entry.kind} />
