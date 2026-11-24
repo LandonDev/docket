@@ -307,13 +307,14 @@ section's text as it was when CLAUDE.md was split (2026-11-11).
   fonts (`work/formats/fonts.ts`: Office names drawn with work-kit's free twins), and the conversion
   runner's `+renderer` formats, `ready`, his press and the shared-file rule.
   [docs/agents/work-editors.md](docs/agents/work-editors.md)
-- **Work: money** — receipts to a ledger by job (pillar 60, one of Work's pillars): the ledger is
-  `Money/Ledger.tcsheet` in the workspace's own folder, made and written through the service's
-  `/internal/sheet/*` and read by header name; `src/shared/work/money.ts` holds the rules, the sums and the
-  one receipt parser; every way in waits in `work_money_inbox` and only his accept writes a row; a receipt is
-  read by RapidOCR from the Docling tool folder, never a model; pay and miles from the calendar, a year's
-  export, an invoice as a page the window prints; no act kind, every write refused for a thread;
-  `bun run script:e2e-money`. [docs/agents/work-money.md](docs/agents/work-money.md)
+- **Work: money** — receipts to a ledger by job (pillar 60): `Money/Ledger.tcsheet` in the workspace's
+  folder, read by header name; rules and sums in `src/shared/work/money.ts`;
+  every way in waits in `work_money_inbox` for his accept; RapidOCR reads a receipt, never a model; no act kind,
+  threads write nothing; `bun run script:e2e-money`. [docs/agents/work-money.md](docs/agents/work-money.md)
+- **Microsoft Forms in Work** — pillar 65 `msforms`: real Forms made, opened, collected and read; only the box
+  browser's carrier drives Forms (`CARRIER_ONLY_HOSTS`),
+  `msform.make` and `msform.publish` are held, answers live in memory alone, Purdue's withhold.
+  [docs/agents/work-msforms.md](docs/agents/work-msforms.md)
 - **work-kit** — the private package shared with LifeOS, pinned as a devDependency at
   `git+https://www.github.com/LandonDev/work-kit.git#<sha>` (bun cannot fetch a private
   `github:` spec), kept out of the app by electron-builder; scripts/workKitPin.test.ts.

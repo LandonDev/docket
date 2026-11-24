@@ -175,6 +175,12 @@ takes eight; a deleted job takes its rows with it
 (`workspaceRemoved`).
 `SEARCH_RECENTS = 0` turns the list off.
 
+A pillar's own source of note: Microsoft forms (`msformSearch`, msforms/search.ts, kind `msform`, label "Microsoft
+forms"): forms by title from the table and answers by a word or a name from what was read into memory, never read
+for a search; a thread is narrowed to its job first and a Work Chat gets titles alone; "Answers to 2 forms are not
+read yet" is its quiet line. A Purdue routine's thread gets no answer hit. `@` offers forms by title as `msform` chips
+(work-msforms.md "Answers as data in Work").
+
 ## The sources this pillar brings
 
 `search/sources/`, each small, each on what exists. `OWN_SOURCES`

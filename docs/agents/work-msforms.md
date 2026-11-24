@@ -1,0 +1,151 @@
+# Microsoft Forms in Work (the `msforms` pillar)
+
+Real Microsoft Forms, used from inside Work (plan `.temp-code/plan-0OohUT4FyDgY.md`, the trial
+`.temp-code/plans/ms-forms/trial.md`). The form, its sign-in and its answers workbook stay Microsoft's and the
+tenant's; everything around them is ours. Nothing here calls Graph, a Forms API or Forms' own `/formapi`: the page is
+read through its accessibility tree, and the answers from the workbook Forms keeps in the form's folder.
+
+Pillar 65 (`PILLAR_MILESTONE.msforms`), beside our own `forms`. Code: `src/main/server/work/msforms/`,
+`src/renderer/src/work/msforms/`, `src/shared/contract-work-msforms.ts`, `src/shared/work/msforms.ts` (pure rules).
+Wire `work.msforms.*`, push `work.msforms`, tools `msform_*`, act kinds `msform.make` and `msform.publish`, canvas and
+chip kind `msform`, view `forms`.
+
+## Where each part runs
+
+- **The page he sees**: the real Forms builder in the Office-live guest (a fenced `<webview>`), on the tenant's
+  Office-live session `persist:office-live-<tenant>`, so one sign-in serves Word, Excel and Forms. The window asks a
+  Forms ticket with `{forms: {tenant, formId, page}}` and main builds the address itself (work-office-live.md "The
+  fence"). The kind's body (`MsFormCanvas.tsx`) mounts `LiveBody`; a Files tab tells it whether the chat lies over the
+  tab through `LiveCover` (office/live/cover.ts).
+- **The agent's hands**: the box's own Chromium, driven only by the carrier (below).
+- **The answers**: the workbook Forms makes in the form's folder, read through the same box browser into memory.
+- Microsoft forms are offered only on a host with the box browser's carrier (`msCarrier()`) and a SharePoint library
+  (`offeredHere`; `work.msforms.list` answers `offered`). Elsewhere New offers our own form alone.
+
+## The row
+
+`work_msforms` (msforms/store.ts), one a form, keyed by `(workspace_id, form_id)`: the tenant, the sector it was made
+in, the title, its folder `{libraryId, path, siteUrl, label}`, its workbook once known, its state (`draft`,
+`collecting`, `closed`), the mode (`suggests`, `writes`), the settings as last read, the questions, `rev`, the read
+times, `count`, `last_id`, the check schedule, waiting suggestions, a held publish, who made it, the account the page
+named, what the carrier last could not finish, when it closed. `work_msforms_versions` keeps the question list per
+rev (Question history). The builder and response addresses are made from the id (`builderOf`, `respondOf`), never
+stored. **No answer, respondent name or address is a column anywhere** (the data rule below).
+
+## The one reach check
+
+`formReach(ctx, by, ask)` (msforms/reach.ts), asked by every method, tool, search source, People read, dashboard and
+Files seat before any lookup: a thread's job is its session's (`scopeOf`), never what it named; a thread with no job
+(a Work Chat, a code thread) is refused before a form is looked up; the form must be the job's, made in the job's
+current sector, in a library this host still reaches for that caller (`librariesFor`: the disk's, and the VM's only
+where the caller may use the VM). A refusal to a thread names nothing: "refused: a Microsoft form's answers are read
+only from a thread of the form's own job; nothing was read." `formsReached` lists only what `formReach` would pass.
+
+## The carrier: the only hands on Forms
+
+msforms/carrier/. `CARRIER_ONLY_HOSTS` (browser/box/service.ts, work-browser.md) closes Forms' hosts to every session
+but the carrier's own (`carrierSession`, made by host code alone through `carrierComputer()`); a Mac's Work thread is
+refused a step on a Forms page and a `computer_apps` open of one (computer-use.md). So no generic agent tool reaches
+Forms: the `msform_*` tools are the only way, and branching, file upload, Ranking, Likert, themes and quizzes are his
+to do in the page.
+
+- **Operations, not steps** (ops.ts): `make`, `write`, `settings`, `collect`, `audience`, `close`, `count`, `pull`,
+  `prefill`, each a fixed program run one at a time (wire.ts's queue) on a fresh carrier session ended after it.
+- **Each runs under an authorization** (types.ts `authorize`, `checkAuth`) bound to the host, workspace, form (or
+  folder), operation, a digest of its payload and the form's `rev`, from a grantor allowed it (`OPS_BY`): his press
+  (`owner`), a claimed held act's execute (`act`), the pillar under Agent writes on a draft, a closing end date and a
+  close (`pillar`, never a reopen), the poller (`count`, `pull`).
+- **The guard** (guard.ts): per operation, the controls it may press by role, name and the names above them; `NEVER`
+  (Send, Copy link, Shorten URL, the collaborate and duplicate links, Move to a group, Delete all responses, a summary
+  link, Quick import, template cards, the creates other than Forms survey, Print, Delete); toggles that turn answers on
+  or widen who can answer only where that is the act; keys Tab and Shift-Tab alone.
+- **The trial's rules** (steps.ts): windows by id; a fresh read before each step, an index never reused across reads;
+  Tab to commit, never Escape or Return; Required set on every new question; at most one retry after a fresh read.
+- **Reading a form** (read.ts `formOf`): the trial's names (a question at rest "N. Question title <title> <type>
+  [Required to answer]", the Settings toggles, the Collect responses link, the Responses count). Tested on fixtures
+  in the trial's words and on a fake Forms page (carrier/fakePage.ts) the real operations drive.
+- **A stop says what was done** (`CarrierStop`): "Did 1 of 3 changes (added "Phone"); the next … did not take …". The
+  row keeps the page as the stop read it and `stopped` shows on the form's state line.
+
+## Making a form
+
+His New → Form in a Teams or OneDrive folder of Files (Page.tsx; `formKindsFor` in work/msforms/newForm.ts) offers
+"Microsoft Form" and "TempCode Form"; the Forms view's New asks for the place. `work.msforms.make` runs at once: the
+carrier opens the folder's library page, Create or upload → Forms survey, follows the new window to its id, turns
+**Accept responses off first** and reads it back, then names the form, adds what was asked and sets who can answer
+(org only, record names, one answer each by default). If the first step fails the row keeps the form as a draft that
+may take answers and says "The form was made but may take answers: no one has its link. Open it and turn off Accept
+responses, or delete it." The new form opens in its Files tab (`registerRefSeat('msform')`, files/hooks.ts).
+
+An agent's make (`msform_create`) is always held as `msform.make`: a form made in a Team shows to its members at
+once. `from` makes the questions from our form, a document, a sheet's header row or a template (msforms/makers,
+work-forms.md "Make this a Microsoft form"); `collect: true` also collects at the same press.
+
+## The hold
+
+- `msform.publish` (`collect`, `audience`, `reopen`) and `msform.make` have no matcher: no grant carries them, Away
+  releases none, and an earned offer never forms. The press reads the form fresh and is stale when its rev moved or the
+  page's questions or settings are not the held words; Collect responses reads the link and never sends it.
+- Not held: his own close and reopen, an agent's close, a closing end date, his edits in the page, his New.
+- An agent's change to a collecting form always waits for his Accept; on a draft the mode decides, and Agent writes
+  runs only after a fresh read shows Accept responses off. Waiting changes are said in words on the bar's stepper.
+- **The link goes out only on his press**: his Copy, the QR he shows, Mail the link (Mail's composer, his Send).
+  `notGrantable` refuses a grant on any act whose words hold a form's link (`hasFormLink`, work-outbox.md).
+- SharePoint's Forms survey and Create new form, Excel's New Form and Send Form, and Forms' Open results in Excel are
+  outward on their pages (`PAGE_OUTWARD`, work-outbox.md), so a generic agent step there is held.
+
+## Reading answers
+
+msforms/answers/. A read is the Responses view's count first (cheap); when it moved, or the memory holds no rows, the
+pull: Open results in Excel (and its first-use Continue) kept open so Forms writes its rows, then from a second
+window on the folder's site page SharePoint REST by the file's id (its parent must still be the form's folder, else
+the read is refused and the workbook not stored), waiting for Modified to move and stand still, then the bytes into
+memory; both windows close and what the browser stored for those origins is cleared. `answersOf` (parse.ts) finds
+`OfficeForms.Table` and reads it by header name: `Id`, `Start time`, `Completion time`, `Email`, `Name`, then each
+question by title. Past 5,000 rows the newest are kept and the summary line says so. A timeout keeps the last rows,
+marked stale ("as of").
+
+The poller (`startAnswersPoller`) checks a collecting form by its schedule (every hour by default, every 15 minutes,
+or only when he looks), skips while he drives the box browser, and never reads a draft.
+
+**The data rule.** Answers live in memory alone (answers/cache.ts: one entry a form, dropped after 30 minutes unshown,
+at the form's removal and at restart). Work's database, logs, tells, pushes, task titles and the computer journal hold
+no answer, respondent name or address; only fixed sentences reach `stopped` and errors. What remains on the box is
+what opening any Teams file leaves: the box browser's own HTTP cache. An answer a thread reads stays in that thread's
+transcript, as anything a thread reads does.
+
+## Answers as data in Work
+
+- **Responses half** of the kind: our forms' table (forms/responses.tsx), "as of" once when old, Refresh, ticked rows
+  to Ask; Who hasn't answered (NotAnswered.tsx) against People of the sector or pasted addresses.
+- **Forms view** (`forms`): ours and Microsoft's, newest first; a row opens its form.
+- **Digest**: "3 new responses to <form>" (`msforms.responses`, key `msforms:<formId>`), done when he opens Responses.
+- **Today**: the Responses section, one row per form with unseen answers.
+- **Routines**: a trigger "When someone answers <form>" and the job `msforms.tasks`, one LifeOS task per new answer,
+  titled with no name (work-routines.md).
+- **People**: an Answered section and `person_page`'s line (`work.msforms.byPerson`), matched by lower-cased address,
+  never across sectors.
+- **Dashboards**: `msform:<form id>` with `count`, `option:<question>`, `day` (work-dashboards.md).
+- **Search and `@`**: forms by title, answers by a word or a name from memory only (a Work Chat gets titles alone);
+  the `msform` chip opens the form by its source.
+
+## Purdue
+
+`MSFORM_UNATTENDED_WITHHELD = ['purdue']` (src/shared/work/msforms.ts): a thread a routine started (its scope's
+`routineRunId`) is refused every answer read of a Purdue form, whatever trigger or Run now started it: "refused: a
+routine's thread does not read Purdue answers: they go to no AI tool without the owner's press. Nothing was read."
+Saving a Purdue routine on a form's answers that would start a thread is refused, offering the job instead. His own
+asks are not withheld. Purdue's policy VII.A.5 is why; empty the list to lift it.
+
+## The agent's tools
+
+`msform_list`, `msform_read`, `msform_answers`, `msform_find` (reads), `msform_create` (held), `msform_edit`,
+`msform_settings`, `msform_publish` (held), `msform_close` (close runs, reopen held). msforms/tools.ts.
+
+## What it will not do
+
+No API, no `/formapi`, no form page of ours, no proxy, no re-hosted answers, no answer in Work's own stores. A redesign
+of Microsoft's page breaks the agent's steps until fixed; `scripts/proof-msforms-canary.ts` (by hand) names the first
+step that broke.
+
+## Proofs
