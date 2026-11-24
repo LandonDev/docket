@@ -518,7 +518,7 @@ edits none of these.
 Pillar ids, in mount order: `outbox, canvas, lifeos, routines, rules, mail,
 messages, tasks, agenda, docs, history, formats, sheets, office, google, guests, pdf,
 slides, media, frameio, meetings, forms, dashboards, browser, projects,
-winvm, capture, files, prep, money, search, clashes, templates` (the Windows VM's keeper: [work-winvm.md](work-winvm.md); capture from anywhere,
+winvm, capture, files, prep, money, search, review, clashes, templates, digest` (the Windows VM's keeper: [work-winvm.md](work-winvm.md); capture from anywhere,
 [work-capture.md](work-capture.md); the Files place, [work-files.md](work-files.md); meeting prep and follow-up,
 [work-prep.md](work-prep.md); one search for everything,
 [work-search.md](work-search.md); clashes across jobs,
@@ -530,7 +530,12 @@ map to pillars once (`CANVAS_PILLAR`), act kinds too (`ACT_PILLAR`).
 
 ### Names
 
-- A method is `work.<pillar>.<verb>`, with the capability a key needs, or
+- A method is `work.<pillar>.<verb>` (or `work.<pillar>.<group>.<verb>`:
+  `work.office.addin.*`, `work.office.live.*`, `work.mail.chat.*`,
+  `work.slides.show.*`, `work.winvm.point.*`; Office's Teams files and
+  Routines' plays are camel verbs instead, `work.office.filesOpen`,
+  `work.routines.playStart`; the bridge and a workspace's or project's Work
+  settings are core: `work.workspace.*`, `work.project.*`), with the capability a key needs, or
   `local` for one only this machine's own window may call (a sign-in that
   opens a browser here). A push is `work.<pillar>` or
   `work.<pillar>.<what>`. A table is `work_<pillar>_*`. A tool is lower
@@ -845,58 +850,118 @@ has no message yet, for a pillar that marks a thread before its first turn.
   page that loads nothing.
   `tsconfig.web.json` includes `src/hosted`.
 
+## What each pillar answers
+
+Three of a module's fields speak for the pillar outside its own screens:
+`health`, the rows of Settings → Connections ([work-connections.md](work-connections.md)); `tells`,
+the news it gives the digest through `ctx.tell` ([work-digest.md](work-digest.md)); and `search`
+and `mentions`, what Work search and the composer's `@` find
+([work-search.md](work-search.md), [work-canvas.md](work-canvas.md) "Mentions"). Many pillars have
+none of their own because another pillar answers for them; the table says
+which. Backticked names are the module's own, as `WORK_MODULES` holds them
+(work/pillarTable.test.ts loads every module and fails when a row and its
+module differ); the words after them name who answers for the rest.
+
+Work search takes, for each kind, the first source that answers it: a
+module's `search`, then the search pillar's own (`OWN_SOURCES`,
+work/search/index.ts: `person`, `mail`, `task`, `event`, `doc`, `project`
+from LifeOS in search/sources/lifeos.ts, `file` from search/sources/files.ts
+and LifeOS's files, `thread` from search/sources/threads.ts), then a
+module's `mentions` for a kind still untaken (`listSources`, search/run.ts).
+
+| Pillar | Health | Tells | Search | `@` |
+|---|---|---|---|---|
+| outbox | — | `outbox.held`, `outbox.failed`, `outbox.offer` | — (its `@` kind is found through it) | `held` |
+| canvas | — | — | — (its `@` kind) | `item` |
+| lifeos | yes: LifeOS, Mail and calendar (for mail, agenda, tasks, people, prep) | — | — (the search pillar's LifeOS sources) | `task`, `mail`, `event`, `project`, `person`, `doc` |
+| routines | — | — (the digest's: routine done, failed, stuck, asks) | — (its `@` kind) | `routine` |
+| rules | — | — | — | — |
+| mail | — (lifeos's Mail and calendar) | — (the digest's: waiting, missed) | — (the search pillar's `mail`) | — (lifeos's `mail`) |
+| messages | yes: Chat | `messages.new` | `message`, `chat` | `chat` |
+| tasks | — (lifeos) | — | — (the search pillar's `task`) | — (lifeos's `task`) |
+| agenda | — (lifeos) | — | — (the search pillar's `event`) | — (lifeos's `event`) |
+| docs | — (guests' Work service) | — (the digest's: a guest's edit) | — (the search pillar's `doc` and `file`) | — (lifeos's `doc`, files' `file`) |
+| history | — | — | — | — |
+| formats | yes: Tools | — | — | — |
+| sheets | — (guests' Work service) | — | — (the search pillar's `file`) | — (files' `file`) |
+| office | yes: Office (the add-in, Office in the VM, Office for the web), Files (OneDrive, OneDrive in the VM) | — | — (Files' sources) | — |
+| google | yes: Google | — | — | — |
+| guests | yes: Work service | — (the digest's: a guest's edit) | — | — |
+| pdf | — | — | — | — |
+| slides | — | — | — | — |
+| media | — | — | — | — |
+| frameio | yes: Frame.io, with lapses | — | — | — |
+| meetings | — | — | — | — |
+| forms | — | — | — | — |
+| dashboards | — | — | — | — |
+| browser | yes: Browser, Windows VM (the standing machine, the evaluation), with lapses | — | — | — |
+| projects | — (lifeos) | — | — (the search pillar's `project`) | `card` |
+| winvm | — (browser's Windows VM, office's VM rows) | — (the digest's: a failed VM job) | — | — |
+| capture | — | — (the digest's: unsorted captures) | — | — |
+| files | — (office's Files, google) | — (held file acts: outbox's) | — (the search pillar's `file`) | `file` |
+| prep | — (lifeos) | — (the digest's: starting, ready) | — | — |
+| money | — | `money.confirm` | `money` | — |
+| search | — | — | its own sources, above | — |
+| review | — | `review.ready` | — | — |
+| clashes | — | `clashes.new` | — | — |
+| templates | — | — | — | — |
+| digest | — | `routines.done`, `routines.failed`, `routines.stuck`, `routines.asks`, `connections.ending`, `mail.waiting`, `mail.missed`, `docs.guest`, `capture.unsorted`, `winvm.failed`, `prep.starting`, `prep.ready` (read from those pillars by digest/sources/) | — | — |
+
 ## How a pillar registers
 
-The mail pillar, as its thread would write it. Nothing outside these files
-changes.
+Shown on the clashes pillar, one of the smallest: a wire of five methods, a
+push, a tool, a tell and a table. Each part below is its real code, cut to
+the lines that register it.
 
 ```ts
-// src/shared/contract-work-mail.ts
-import { z } from 'zod'
-import { request, type CapsOf, type RelayOf } from './work/wire'
-
-export const MailRequestSchemas = [
-  /** → { unread: number } */
-  request('work.mail.unread', z.object({ workspaceId: z.string() }))
+// src/shared/contract-work-clashes.ts: the wire, its capabilities, its relay rows
+export const ClashesRequestSchemas = [
+  /** → ClashList */
+  request('work.clashes.list', z.object({ from: at, to: at })),
+  request('work.clashes.leave', z.object({ eventId: id })),
+  request('work.clashes.miles', z.object({ workspaceId: z.string().min(1), from: ClashStopSchema, to: ClashStopSchema })),
+  request('work.clashes.waive', z.object({ id, on: z.boolean(), seen: seenSchema.optional() })),
+  request('work.clashes.answer', z.object({ eventId: id, way: z.enum(['decline', 'propose', 'move']), /* … */ }))
 ] as const
-export type MailPush = { push: 'work.mail'; workspaceId: string; unread: number }
-export const MAIL_CAPS = { 'work.mail.unread': 'read' } satisfies CapsOf<typeof MailRequestSchemas>
-export const MAIL_RELAY = {} satisfies RelayOf<typeof MailRequestSchemas>
+export type ClashesPush = { push: 'work.clashes' }
+export const CLASHES_CAPS = {
+  'work.clashes.list': 'read',
+  'work.clashes.leave': 'read',
+  'work.clashes.miles': 'read',
+  'work.clashes.waive': 'operate',
+  'work.clashes.answer': 'approve'
+} satisfies CapsOf<typeof ClashesRequestSchemas>
+export const CLASHES_RELAY = {} satisfies RelayOf<typeof ClashesRequestSchemas>
 ```
 
 ```ts
-// src/main/server/work/mail/index.ts
-import { z } from 'zod'
-import { handled, NOT_HANDLED, workText } from '@shared/work'
-import type { WorkModule } from '../modules'
-
-export const mail: WorkModule = {
-  id: 'mail',
-  ensure(db) {
-    db.exec(`CREATE TABLE IF NOT EXISTS work_mail_seen (workspace_id TEXT PRIMARY KEY, at INTEGER NOT NULL)`)
-  },
+// src/main/server/work/clashes/index.ts: the module
+export const clashes: WorkModule = {
+  id: 'clashes',
+  tells: [{ kind: 'clashes.new', group: 'clashes', name: 'Clashes' }],
+  ensure: ensureClashes, // CREATE TABLE IF NOT EXISTS work_clashes_*
+  start: (ctx) => watchClashes(ctx), // reads LifeOS, pushes `work.clashes`, `ctx.tell`s each new clash
+  tools: () => [clashesListTool], // clashes_list, read-only
   async handle(req, ctx, by) {
-    if (req.method === 'work.mail.unread') return handled({ unread: await unread(ctx, req.params.workspaceId) })
-    return NOT_HANDLED
-  },
-  tools: (scope) => [
-    {
-      name: 'mail_search',
-      description: 'Search this workspace\'s mail.',
-      input: z.object({ query: z.string() }),
-      readOnly: true,
-      run: async (args, ctx) => workText(await search(ctx, ctx.scope, (args as { query: string }).query))
+    switch (req.method) {
+      case 'work.clashes.list':
+        return handled(await listClashes(ctx, req.params.from, req.params.to))
+      // … leave, miles, waive, answer
     }
-  ],
-  start(ctx) {
-    const off = ctx.lifeos.subscribe('mail.unread', {}, (n: number) => ctx.push({ push: 'work.mail', workspaceId: '…', unread: n }))
-    return off
-  },
-  sessionsRemoved(ids, ctx) {
-    // drop what this module kept for the deleted threads
+    return NOT_HANDLED
   }
 }
 ```
+
+A new pillar also takes one line in each shared file that mounts every
+pillar, a foundation change its landing note asks for (below): its id in
+`PILLAR_IDS` and its milestone in `PILLAR_MILESTONE` (src/shared/work/ids.ts);
+its schemas in `WorkRequestSchemas`, its push in `WorkPush`, its caps in
+`WORK_CAPS` and its row in `WORK_PILLAR_CONTRACTS` (src/shared/contract-work.ts);
+its loader in `PILLAR_LOADERS` (work/modules.ts); and a tell group in
+`TELL_GROUPS` (src/shared/work/tell.ts) if none of those fits. The window's
+side (a view, a canvas kind, an act view) registers in the renderer's own
+tables ("A view registers" above, the seam table).
 
 That gives the pillar a table at the next boot, a method behind the
 capability its row names (and relayed to a Mac that hosts the workspace), a
