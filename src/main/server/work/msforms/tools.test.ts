@@ -270,6 +270,20 @@ describe('Work search and @', () => {
     expect(hits).toEqual([expect.objectContaining({ chip: { kind: 'msform', label: 'Spring sign-up', ref: { at: 'msform', host: 'env_test', workspaceId: 'w1', formId: view.formId, tenant: 'purdue0' } } })])
     expect(await msformMentions.search('spring', { work: true, workspaceId: null, sectors: 'all', sessionId: 'chat' }, work.ctx)).toEqual([])
   })
+
+  it('a form whose library left reach gives Search no title and no cached answer, and @ no chip', async () => {
+    const { msformMentions, msformSearch } = await import('./search')
+    const view = await aForm({ state: 'collecting' })
+    carrier.forms.get(view.formId)!.count = 1
+    carrier.pullBytes = formsWorkbook(['Which night?', 'Anything else?'], madeUpAnswers(1, () => ['Monday', 'Spring snacks']))
+    await tool('msform_answers', { form: view.formId })
+    expect((await msformSearch.search(ask({ kind: 'local' }, 'snacks').ask as never, work.ctx)).length).toBe(1)
+    // the synced library goes: the answers stay cached, but nothing of the form is said
+    libs.list = []
+    expect(await msformSearch.search(ask({ kind: 'local' }, 'snacks').ask as never, work.ctx)).toEqual([])
+    expect(await msformSearch.search(ask({ kind: 'local' }, 'spring').ask as never, work.ctx)).toEqual([])
+    expect(await msformMentions.search('spring', { work: true, workspaceId: 'w1', sectors: ['purdue'], sessionId: 't1' }, work.ctx)).toEqual([])
+  })
 })
 
 describe('the review’s tool fixes', () => {

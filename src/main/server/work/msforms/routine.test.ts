@@ -1,10 +1,16 @@
 import { DatabaseSync } from 'node:sqlite'
-import { beforeEach, describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { MSFORM_WITHHELD_WORDS } from '@shared/work/msforms'
 import { TriggerSchema, type Trigger, type TriggerRange } from '@shared/work'
 import type { Caller } from '../modules'
 import { emitNewAnswers } from './events'
-import {
+
+/** The libraries this host reaches: the forms' own, until a test takes it away. */
+const libs = vi.hoisted(() => ({ list: [{ id: 'box~recwell', host: 'env_test', path: '/libs/RecWell', web: 'https://purdue0.sharepoint.com/sites/RecWell/Shared Documents/', found: true }] as unknown[] }))
+vi.mock('../files/places/libraries', () => ({ librariesHere: () => libs.list, vmLibrariesHere: () => [], forgetLibraries: () => {} }))
+const RECWELL = libs.list
+
+const {
   answerTaskKey,
   checkpointOf,
   ensureMsformJobs,
@@ -15,11 +21,11 @@ import {
   MSFORM_TASKS_MOST,
   msformRoutineRefusal,
   msformTrigger,
-  setTriggerDb,
+  setTriggerReach,
   WITHHELD_ROUTINE
-} from './routine'
-import { ensureMsformsTables, MsformsStore } from './store'
-import { answersWithheld, refuseWithheld, routineWithheld } from './withhold'
+} = await import('./routine')
+const { ensureMsformsTables, MsformsStore } = await import('./store')
+const { answersWithheld, refuseWithheld, routineWithheld } = await import('./withhold')
 
 /**
  * A Microsoft form's answers as a routine's trigger and job (routine.ts), and Purdue's withhold, on an in-memory
@@ -34,6 +40,7 @@ let db: DatabaseSync
 let lifeos: { tasks: Map<string, { title: string; description: string; sector: string }>; writes: number; failAt: number | null; up: boolean }
 const ctx = () => ({
   db,
+  host: 'env_test',
   lifeos: {
     connected: () => lifeos.up,
     owner: () => ({
@@ -72,6 +79,7 @@ beforeEach(() => {
   ensureMsformsTables(db)
   ensureMsformJobs(db)
   lifeos = { tasks: new Map(), writes: 0, failAt: null, up: true }
+  libs.list = RECWELL
 })
 
 const range = (fromId: number, toId: number): TriggerRange => ({ formId: FORM, fromId, toId })
@@ -85,11 +93,9 @@ describe('the trigger', () => {
 
   it("says the form's title, and fires once per new range with a count and the range alone", () => {
     form()
-    setTriggerDb(db)
+    setTriggerReach({ db, host: 'env_test' } as never)
     expect(msformTrigger.at).toBe('msform')
     expect(msformTrigger.words(trigger())).toBe('When someone answers Esports tryouts')
-    setTriggerDb(null)
-    expect(msformTrigger.words(trigger())).toBe('When someone answers the form')
     const fired: [string, TriggerRange | undefined][] = []
     const off = msformTrigger.arm(trigger(), (cause, r) => fired.push([cause, r]), {})
     const at = { workspaceId: 'ws-purdue', formId: FORM, title: 'Esports tryouts', count: 2, at: 5 }
@@ -105,6 +111,29 @@ describe('the trigger', () => {
       ['2 new responses to Esports tryouts', { formId: FORM, fromId: 1, toId: 2 }],
       ['1 new response to Esports tryouts', { formId: FORM, fromId: 3, toId: 3 }]
     ])
+  })
+
+  it('names and fires on a form only while it is still reached: its library gone, or the pillar not running, gives no title and starts nothing', () => {
+    form()
+    setTriggerReach({ db, host: 'env_test' } as never)
+    const fired: unknown[] = []
+    const off = msformTrigger.arm(trigger(), (cause) => fired.push(cause), {})
+    const at = { workspaceId: 'ws-purdue', formId: FORM, title: 'Esports tryouts', count: 1, at: 5 }
+    libs.list = []
+    expect(msformTrigger.words(trigger())).toBe('When someone answers the form')
+    emitNewAnswers({ ...at, added: 1, fromId: 10, toId: 10 })
+    expect(fired).toEqual([])
+    libs.list = RECWELL
+    // the job moved to another sector: its form is no longer the job's
+    db.prepare(`UPDATE workspaces SET sector = 'ref' WHERE id = 'ws-purdue'`).run()
+    emitNewAnswers({ ...at, added: 1, fromId: 11, toId: 11 })
+    expect(fired).toEqual([])
+    db.prepare(`UPDATE workspaces SET sector = 'purdue' WHERE id = 'ws-purdue'`).run()
+    setTriggerReach(null)
+    expect(msformTrigger.words(trigger())).toBe('When someone answers the form')
+    emitNewAnswers({ ...at, added: 1, fromId: 12, toId: 12 })
+    expect(fired).toEqual([])
+    off()
   })
 
   it('arms nothing for another kind of file', () => {
@@ -164,6 +193,14 @@ describe('the job msforms.tasks', () => {
     expect(await run()).toMatchObject({ words: 'Filed 5 tasks for new answers to Esports tryouts' })
   })
 
+  it('files no task for a form whose library left reach', async () => {
+    form({ lastId: 2 })
+    libs.list = []
+    await expect(run(range(1, 2))).rejects.toThrow('not in this job')
+    expect(lifeos.writes).toBe(0)
+    expect(msformRoutineRefusal({ db, host: 'env_test' } as never, { workspaceId: 'ws-purdue', trigger: trigger(), job: MSFORM_TASKS_JOB })).toBe(FORM_NOT_IN_WORKSPACE)
+  })
+
   it('refuses another trigger, another job, a form gone or moved sector, and LifeOS away, writing nothing', async () => {
     form({ lastId: 2 })
     await expect(run(range(1, 2), { on: 'schedule', rrule: 'FREQ=DAILY', tz: 'UTC' })).rejects.toThrow("runs on a Microsoft form's answers")
@@ -181,21 +218,21 @@ describe('the job msforms.tasks', () => {
 describe('saving a routine on a form', () => {
   it("refuses another job's form, and the job with no form", () => {
     form()
-    expect(msformRoutineRefusal(db, { workspaceId: 'ws-cosmic', trigger: trigger(), job: MSFORM_TASKS_JOB })).toBe(FORM_NOT_IN_WORKSPACE)
-    expect(msformRoutineRefusal(db, { workspaceId: 'ws-purdue', trigger: trigger('ws-purdue', 'Missing_form_id_000000000'), job: MSFORM_TASKS_JOB })).toBe(FORM_NOT_IN_WORKSPACE)
-    expect(msformRoutineRefusal(db, { workspaceId: 'ws-purdue', trigger: { on: 'schedule', rrule: 'FREQ=DAILY', tz: 'UTC' }, job: MSFORM_TASKS_JOB })).toBe(JOB_NEEDS_FORM)
-    expect(msformRoutineRefusal(db, { workspaceId: 'ws-purdue', trigger: { on: 'schedule', rrule: 'FREQ=DAILY', tz: 'UTC' }, job: null })).toBeNull()
+    expect(msformRoutineRefusal({ db, host: 'env_test' } as never, { workspaceId: 'ws-cosmic', trigger: trigger(), job: MSFORM_TASKS_JOB })).toBe(FORM_NOT_IN_WORKSPACE)
+    expect(msformRoutineRefusal({ db, host: 'env_test' } as never, { workspaceId: 'ws-purdue', trigger: trigger('ws-purdue', 'Missing_form_id_000000000'), job: MSFORM_TASKS_JOB })).toBe(FORM_NOT_IN_WORKSPACE)
+    expect(msformRoutineRefusal({ db, host: 'env_test' } as never, { workspaceId: 'ws-purdue', trigger: { on: 'schedule', rrule: 'FREQ=DAILY', tz: 'UTC' }, job: MSFORM_TASKS_JOB })).toBe(JOB_NEEDS_FORM)
+    expect(msformRoutineRefusal({ db, host: 'env_test' } as never, { workspaceId: 'ws-purdue', trigger: { on: 'schedule', rrule: 'FREQ=DAILY', tz: 'UTC' }, job: null })).toBeNull()
   })
 
   it("refuses a Purdue form's routine that starts a thread with the withhold's words, offering the job; the job saves, and another sector's thread saves", () => {
     form()
-    expect(msformRoutineRefusal(db, { workspaceId: 'ws-purdue', trigger: trigger(), job: null })).toBe(WITHHELD_ROUTINE)
+    expect(msformRoutineRefusal({ db, host: 'env_test' } as never, { workspaceId: 'ws-purdue', trigger: trigger(), job: null })).toBe(WITHHELD_ROUTINE)
     expect(WITHHELD_ROUTINE.startsWith(MSFORM_WITHHELD_WORDS)).toBe(true)
     expect(WITHHELD_ROUTINE).toContain('File a task for each answer')
-    expect(msformRoutineRefusal(db, { workspaceId: 'ws-purdue', trigger: trigger(), job: MSFORM_TASKS_JOB })).toBeNull()
+    expect(msformRoutineRefusal({ db, host: 'env_test' } as never, { workspaceId: 'ws-purdue', trigger: trigger(), job: MSFORM_TASKS_JOB })).toBeNull()
     db.prepare('DELETE FROM work_msforms').run()
     form({ workspaceId: 'ws-cosmic', sector: 'cosmic' })
-    expect(msformRoutineRefusal(db, { workspaceId: 'ws-cosmic', trigger: trigger('ws-cosmic'), job: null })).toBeNull()
+    expect(msformRoutineRefusal({ db, host: 'env_test' } as never, { workspaceId: 'ws-cosmic', trigger: trigger('ws-cosmic'), job: null })).toBeNull()
     expect(routineWithheld('purdue', true)).toBe(true)
     expect(routineWithheld('purdue', false)).toBe(false)
     expect(routineWithheld('cosmic', true)).toBe(false)

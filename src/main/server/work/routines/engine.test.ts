@@ -4,7 +4,7 @@ import { parseSchedule, scheduleRrule, scheduleWords, type RoutineRun } from '@s
 import type { SessionMeta } from '@shared/events'
 import type { WorkPush } from '@shared/contract-work'
 import type { Trigger, TriggerSource } from '@shared/work'
-import { RoutinesEngine, LIFEOS_SINCE, noteOwnWrite, type EngineDeps, type HostJob, type LifeosEvent } from './engine'
+import { RoutinesEngine, LIFEOS_SINCE, noteOwnWrite, OTHER_JOB, type EngineDeps, type HostJob, type LifeosEvent } from './engine'
 import type { RoutinesHost } from './host'
 import { dueCount, nextAt } from './schedule'
 import { ensureRoutineTables, type NewRoutine } from './store'
@@ -678,23 +678,28 @@ describe('a routine that runs a host job', () => {
     expect(runs(id)[0]).toMatchObject({ state: 'quiet', folded: 2 })
   })
 
-  it("hands the job its trigger and the range a Microsoft form's answers fired with, once per new range; Run now hands no range", async () => {
-    const { msformTrigger } = await import('../msforms/routine')
-    const { emitNewAnswers } = await import('../msforms/events')
-    rig.sources = [msformTrigger]
+  it("hands the job its trigger and the range its source fired with; Run now hands no range", async () => {
+    let fire: ((cause: string, range?: Record<string, unknown>) => void) | null = null
+    rig.sources = [{ on: 'file', at: 'msform', words: () => 'When someone answers Tryouts', arm: (_t, f) => ((fire = f), () => {}) }]
     const ON_FORM: Trigger = { on: 'file', source: { at: 'msform', workspaceId: 'ws-purdue', formId: 'F1' }, by: 'someone-else' }
     const id = addJob({ trigger: ON_FORM, job: 'review.make' })
     await tickAt(at(16, '09:00'))
-    const news = { workspaceId: 'ws-purdue', formId: 'F1', title: 'Tryouts', count: 2, at: 1 }
-    emitNewAnswers({ ...news, added: 2, fromId: 1, toId: 2 })
-    await rig.engine.drain()
-    emitNewAnswers({ ...news, added: 2, fromId: 1, toId: 2 })
+    fire!('2 new responses to Tryouts', { formId: 'F1', fromId: 1, toId: 2 })
     await rig.engine.drain()
     expect(calls).toEqual([{ workspaceId: 'ws-purdue', firedAt: rig.clock.now, trigger: ON_FORM, range: { formId: 'F1', fromId: 1, toId: 2 } }])
     expect(runs(id)[0]).toMatchObject({ cause: '2 new responses to Tryouts', state: 'quiet' })
     await rig.engine.runNow(rig.engine.store.get(id)!)
     await rig.engine.drain()
     expect(calls[1]).toEqual({ workspaceId: 'ws-purdue', firedAt: rig.clock.now, trigger: ON_FORM })
+  })
+
+  it("never arms a trigger on another workspace's form, and says so", async () => {
+    const armed: unknown[] = []
+    rig.sources = [{ on: 'file', at: 'msform', words: () => 'When someone answers Tryouts', arm: (t) => (armed.push(t), () => {}) }]
+    const id = addJob({ trigger: { on: 'file', source: { at: 'msform', workspaceId: 'ws-cosmic', formId: 'F1' }, by: 'someone-else' }, job: 'review.make' })
+    await tickAt(at(16, '09:00'))
+    expect(armed).toEqual([])
+    expect(rig.engine.store.get(id)!.lastWords).toBe(OTHER_JOB)
   })
 
   it('at boot, a job run the stop cut off reads failed', async () => {

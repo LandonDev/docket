@@ -70,6 +70,18 @@ export function formReach(ctx: FormReachCtx, by: Caller, ask: { workspaceId?: st
   return { workspace, row, library }
 }
 
+/**
+ * The one reach check's own tests of a form row, for a place that has no caller's job to ask about (Search's cached
+ * answers, `@`, a routine's trigger and job): made in the job's current sector, in a library still reached here.
+ * `by`, when there is one, narrows the libraries to the caller's (the VM's only where it may use the VM).
+ */
+export function formAdmitted(ctx: Pick<WorkCtx, 'db' | 'host'>, row: Pick<MsFormRow, 'sector' | 'folder'>, jobSector: string | null, by?: Caller): boolean {
+  if ((row.sector ?? null) !== (jobSector ?? null)) return false
+  // (with a caller, `ctx` is a whole context: the VM's libraries are the caller's only where it may use the VM)
+  const libraries = by ? librariesFor(ctx as FormReachCtx, by) : [...librariesHere(ctx), ...vmLibrariesHere(ctx)]
+  return libraries.some((l) => l.id === row.folder.libraryId)
+}
+
 /** The forms of the caller's job it may reach, newest first: a list never names a form `formReach` would refuse. */
 export function formsReached(ctx: FormReachCtx, by: Caller, workspaceId?: string | null): { workspace: WorkspaceRow; rows: MsFormRow[] } {
   const workspace = jobOf(ctx, by, workspaceId)

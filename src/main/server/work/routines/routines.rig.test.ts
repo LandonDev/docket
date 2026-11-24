@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ROUTINES_CAPS, type RoutineRow } from '@shared/contract-work-routines'
 import type { OutboxGrant, OutboxItem } from '@shared/contract-work-outbox'
 import type { SessionMeta } from '@shared/events'
@@ -10,6 +10,7 @@ import { routinesHost, type RoutinesHost } from './host'
 import { routines, routinesEngine, routinesSeams } from './index'
 import { hostZone, zoneName } from '../clock'
 import { msforms } from '../msforms/index'
+import { setTriggerReach } from '../msforms/routine'
 import { MsformsStore } from '../msforms/store'
 import { MSFORM_WITHHELD_WORDS } from '@shared/work/msforms'
 
@@ -20,6 +21,9 @@ import { MSFORM_WITHHELD_WORDS } from '@shared/work/msforms'
  * the owner set to Runs, no thread makes or starts a routine on its own,
  * and a routine's held act goes only on one of that routine's own grants.
  */
+
+/** The libraries this host reaches, as the Microsoft form cases need them: its form's own. */
+vi.mock('../files/places/libraries', () => ({ librariesHere: () => [{ id: 'lib', host: 'env_test', path: '/libs/RecWell', found: true }], vmLibrariesHere: () => [], forgetLibraries: () => {} }))
 
 let rig: Rig
 const clock = { now: Date.parse('2026-11-16T09:00:00-05:00') }
@@ -223,8 +227,15 @@ describe("a routine on a Microsoft form's answers", () => {
     WORK_MODULES.push(msforms)
     msforms.ensure!(rig.work.ctx.db)
     new MsformsStore(rig.work.ctx.db).create({ workspaceId: 'ws-purdue', formId: FORM, tenant: 'purdue0', sector: 'purdue', title: 'Esports tryouts', folder: { libraryId: 'lib', path: 'Esports', siteUrl: 'https://purdue0.sharepoint.com/sites/RecWell' }, madeBy: 'owner' })
+    // the job as the host's database holds it, which the form's reach reads (the rig keeps its workspaces in memory)
+    rig.work.ctx.db.prepare(`INSERT OR REPLACE INTO workspaces (id, name, path, git, created_at, kind, sector) VALUES ('ws-purdue', 'Purdue', '/w/purdue', 0, 1, 'work', 'purdue')`).run()
+    // (the pillar is not started here: its trigger is told where it runs)
+    setTriggerReach(rig.work.ctx)
   })
-  afterEach(() => void WORK_MODULES.splice(WORK_MODULES.indexOf(msforms), 1))
+  afterEach(() => {
+    setTriggerReach(null)
+    WORK_MODULES.splice(WORK_MODULES.indexOf(msforms), 1)
+  })
 
   it("refuses a Purdue form's routine that starts a thread with the withhold's words, offering the job, and saves the job", async () => {
     await expect(save({})).rejects.toThrow(MSFORM_WITHHELD_WORDS)

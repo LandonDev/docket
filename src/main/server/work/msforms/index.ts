@@ -7,7 +7,7 @@ import { authFor, carrierOrRefuse, get, history, holdPublish, list, make, markSe
 import { forgetWorkspaceAnswers } from './answers/cache'
 import { refreshAnswers, responsesOf, signInNeeded, startAnswersPoller } from './answers/read'
 import { formReach, MsformsError } from './reach'
-import { ensureMsformJobs, msformTasksJob, msformTrigger, removeMsformJobs, setTriggerDb } from './routine'
+import { ensureMsformJobs, msformTasksJob, msformTrigger, removeMsformJobs, setTriggerReach } from './routine'
 import { ensureMsformsTables, MsformsStore } from './store'
 import { registerRefSeat } from '../files/hooks'
 import { refKey } from '@shared/work/files'
@@ -129,8 +129,6 @@ export const msforms: WorkModule = {
     ensureMsformsTables(db)
     ensureWorkbookIndex(db)
     ensureMsformJobs(db)
-    // the trigger's words read a form's title here, Work on or off
-    setTriggerDb(db)
   },
   async handle(req, ctx, by) {
     // A method the contract does not list is the router's to call not built.
@@ -151,10 +149,13 @@ export const msforms: WorkModule = {
   tells: [RESPONSES_TELL],
   jobs: [msformTasksJob],
   start(ctx) {
+    // a routine's trigger names and fires on a form only while it is still reached here (routine.ts `admittedForm`)
+    setTriggerReach(ctx)
     const off = ctx.held.onDecided((item) => settled(ctx, item))
     const poller = startAnswersPoller(ctx)
     const told = onNewAnswers((e) => tellNewAnswers(ctx, e))
     return () => {
+      setTriggerReach(null)
       off()
       poller()
       told()

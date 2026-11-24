@@ -1,10 +1,11 @@
 import { MENTION_PER_KIND } from '@shared/work/mentions'
 import type { SearchHit } from '@shared/work/search'
-import type { MentionSource, WorkCtx } from '../modules'
+import type { Caller, MentionSource, WorkCtx } from '../modules'
 import type { SearchSource } from '../search/source'
 import { cachedAnswers } from './answers/cache'
 import { MsformsStore, type MsFormRow } from './store'
 import { answersWithheld } from './withhold'
+import { formAdmitted, librariesFor } from './reach'
 
 /**
  * Microsoft forms in Work search (docs/agents/work-msforms.md "Search and
@@ -38,12 +39,14 @@ export const msformSearch: SearchSource = {
     const jobs = model ? ask.reach.workspaces.filter((w) => !scope?.workspaceId || w.id === scope.workspaceId) : ask.reach.workspaces
     const answers = !model || !!scope?.workspaceId
     const store = new MsformsStore(ctx.db)
+    // A form `formReach` would refuse now (its library left reach) gives no title and no cached answer.
+    const reached = new Set(librariesFor(ctx, ask.by).map((l) => l.id))
     const hits: SearchHit[] = []
     let unread = 0
     for (const job of jobs) {
       for (const row of store.list(job.id)) {
-        // A form made in another sector than the job's now is not the job's.
-        if ((row.sector ?? null) !== (job.sector ?? null)) continue
+        // A form made in another sector than the job's now is not the job's, nor one in a library no longer reached.
+        if ((row.sector ?? null) !== (job.sector ?? null) || !reached.has(row.folder.libraryId)) continue
         if (holds(row.title)) hits.push({ key: `msform:${row.workspaceId}:${row.formId}`, kind: 'msform', title: row.title, detail: row.state === 'draft' ? 'Microsoft form, draft' : `Microsoft form, ${row.count} response${row.count === 1 ? '' : 's'}`, at: row.updatedAt, workspaceId: row.workspaceId, open: openOf(ctx, row) })
         if (!answers || row.state === 'draft' || answersWithheld(ctx, ask.by, row.sector)) continue
         const kept = cachedAnswers(row.workspaceId, row.formId)
@@ -79,9 +82,11 @@ export const msformMentions: MentionSource = {
     if (!reach.work || !reach.workspaceId) return []
     const job = ctx.db.prepare('SELECT sector FROM workspaces WHERE id = ?').get(reach.workspaceId) as { sector: string | null } | undefined
     const words = text.toLowerCase().split(/\s+/).filter(Boolean)
+    // as the thread would reach it (a draft with no thread yet: as its job's threads do, no VM)
+    const by = { kind: 'model', caps: [], sessionId: reach.sessionId ?? undefined } as Caller
     return new MsformsStore(ctx.db)
       .list(reach.workspaceId)
-      .filter((r) => (r.sector ?? null) === (job?.sector ?? null) && words.every((w) => r.title.toLowerCase().includes(w)))
+      .filter((r) => formAdmitted(ctx, r, job?.sector ?? null, by) && words.every((w) => r.title.toLowerCase().includes(w)))
       .slice(0, MENTION_PER_KIND)
       .map((r) => ({ chip: { kind: 'msform', label: r.title, ref: { at: 'msform', host: ctx.host, workspaceId: r.workspaceId, formId: r.formId, tenant: r.tenant } }, detail: 'Microsoft form', at: r.updatedAt }))
   }

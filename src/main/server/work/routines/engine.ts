@@ -65,6 +65,9 @@ export interface LifeosEvent {
   at: number
 }
 
+/** What a routine whose trigger names another workspace's thing says, armed on nothing. */
+export const OTHER_JOB = "Waiting: what it watches is another job's"
+
 /** A registered job as the engine runs it: its pillar's `RoutineJob` with the context bound. */
 export interface HostJob {
   name: string
@@ -589,6 +592,15 @@ export class RoutinesEngine {
     }
     for (const [id, r] of want) {
       if (this.armed.has(id)) continue
+      // A source that names its own workspace (a Microsoft form's) arms only on the routine's: another job's is never watched.
+      const named = r.trigger.on === 'file' && 'workspaceId' in r.trigger.source ? r.trigger.source.workspaceId : null
+      if (named !== null && named !== r.workspaceId) {
+        if (r.lastWords !== OTHER_JOB) {
+          this.store.setLastWords(id, OTHER_JOB)
+          this.changed(r)
+        }
+        continue
+      }
       const source = r.trigger.on === 'file' ? fileSourceFor(r.trigger, sources) : null
       if (!source) {
         if (r.lastWords === null) {

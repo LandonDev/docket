@@ -4,7 +4,8 @@ import type { Trigger, TriggerRange, TriggerSource } from '@shared/work'
 import type { RoutineJob, RoutineJobAt, WorkCtx } from '../modules'
 import { workspaceHere } from '../files/policy'
 import { onNewAnswers } from './events'
-import { MsformsStore } from './store'
+import { formAdmitted } from './reach'
+import { MsformsStore, type MsFormRow } from './store'
 import { routineWithheld } from './withhold'
 
 /**
@@ -40,10 +41,23 @@ export function rangeOf(range: TriggerRange | undefined, formId: string): Answer
   return { formId, fromId: r.fromId!, toId: r.toId! }
 }
 
-/** The host's database, set by the module's `ensure`: the trigger's words read a form's title from it. */
-let words: DatabaseSync | null = null
-export function setTriggerDb(db: DatabaseSync | null): void {
-  words = db
+/** The host while the pillar runs: a trigger's words and firing ask whether its form is still reached here (none while Work is off: no title). */
+let reachHere: Pick<WorkCtx, 'db' | 'host'> | null = null
+export function setTriggerReach(ctx: Pick<WorkCtx, 'db' | 'host'> | null): void {
+  reachHere = ctx
+}
+
+/**
+ * The form a trigger names, only while it passes the one reach check's own tests on its workspace (the sector it was
+ * made in, its library still reached here: reach.ts `formAdmitted`); null otherwise, or while the pillar does not run.
+ */
+function admittedForm(t: Trigger): MsFormRow | null {
+  const form = formOf(t)
+  const ctx = reachHere
+  if (!form || !ctx) return null
+  const row = new MsformsStore(ctx.db).get(form.workspaceId, form.formId)
+  const job = workspaceHere(ctx.db, form.workspaceId)
+  return row && job && formAdmitted(ctx, row, job.sector) ? row : null
 }
 
 /**
@@ -54,8 +68,8 @@ export const msformTrigger: TriggerSource = {
   on: 'file',
   at: 'msform',
   words(t) {
-    const form = formOf(t)
-    const title = form && words ? new MsformsStore(words).get(form.workspaceId, form.formId)?.title : undefined
+    // the title only of a form still reached (`admittedForm`); else no title at all
+    const title = admittedForm(t)?.title
     return `When someone answers ${title ?? 'the form'}`
   },
   arm(t, fire) {
@@ -64,6 +78,8 @@ export const msformTrigger: TriggerSource = {
     let last = 0
     return onNewAnswers((e) => {
       if (e.workspaceId !== form.workspaceId || e.formId !== form.formId || e.added <= 0 || e.toId <= last) return
+      // checked again at each firing: a form whose library left reach, or whose job changed sector, starts nothing
+      if (!admittedForm(t)) return
       last = e.toId
       const range: AnswersRange = { formId: form.formId, fromId: Math.max(e.fromId, 1), toId: e.toId }
       fire(answersCause(e.title, e.added), range as unknown as TriggerRange)
@@ -116,13 +132,14 @@ const NO_FORM = 'That Microsoft form is not in this job.'
  * checkpoint only once LifeOS answers with the task it made; a failure stops the run there, and the next run files
  * from it. A gap in the workbook's `Id`s (an answer deleted in Forms) still gets its task.
  */
-export async function fileAnswerTasks(ctx: Pick<WorkCtx, 'db' | 'lifeos'>, at: RoutineJobAt, now: () => number = Date.now): Promise<{ words: string; open?: { place: string; item: string } }> {
+export async function fileAnswerTasks(ctx: Pick<WorkCtx, 'db' | 'host' | 'lifeos'>, at: RoutineJobAt, now: () => number = Date.now): Promise<{ words: string; open?: { place: string; item: string } }> {
   const form = formOf(at.trigger)
   if (!form) throw new Error(NOT_A_FORM)
   if (form.workspaceId !== at.workspaceId) throw new Error(NO_FORM)
   const row = new MsformsStore(ctx.db).get(form.workspaceId, form.formId)
   // the form's answers stay in the sector it was made in: a job moved to another sector files nothing (reach.ts)
-  if (!row || (row.sector ?? null) !== (workspaceHere(ctx.db, form.workspaceId)?.sector ?? null)) throw new Error(NO_FORM)
+  const job = workspaceHere(ctx.db, form.workspaceId)
+  if (!row || !job || !formAdmitted(ctx, row, job.sector)) throw new Error(NO_FORM)
   if (!row.sector) throw new Error(NO_SECTOR)
   const open = { place: 'forms', item: row.formId }
   const range = rangeOf(at.range, row.formId)
@@ -176,12 +193,14 @@ export const WITHHELD_ROUTINE = `${MSFORM_WITHHELD_WORDS} Choose “File a task 
  * routine's own workspace, and a form of a withheld sector (Purdue) takes only a routine that starts no thread;
  * `msforms.tasks` runs only on a form. Null when it may be saved.
  */
-export function msformRoutineRefusal(db: DatabaseSync, ask: { workspaceId: string; trigger: Trigger; job: string | null }): string | null {
+export function msformRoutineRefusal(ctx: Pick<WorkCtx, 'db' | 'host'>, ask: { workspaceId: string; trigger: Trigger; job: string | null }): string | null {
   const form = formOf(ask.trigger)
   if (!form) return ask.job === MSFORM_TASKS_JOB ? JOB_NEEDS_FORM : null
   if (form.workspaceId !== ask.workspaceId) return FORM_NOT_IN_WORKSPACE
-  const row = new MsformsStore(db).get(form.workspaceId, form.formId)
-  if (!row) return FORM_NOT_IN_WORKSPACE
+  const row = new MsformsStore(ctx.db).get(form.workspaceId, form.formId)
+  const job = workspaceHere(ctx.db, form.workspaceId)
+  // the one reach check's own tests: the sector it was made in, its library still reached
+  if (!row || !job || !formAdmitted(ctx, row, job.sector)) return FORM_NOT_IN_WORKSPACE
   // a routine with no job starts a thread
   return routineWithheld(row.sector, !ask.job) ? WITHHELD_ROUTINE : null
 }

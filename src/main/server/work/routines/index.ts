@@ -135,7 +135,7 @@ async function handle(req: ClientRequest, ctx: WorkCtx, by: Caller): Promise<Ret
         if (play!.takes.length) refuse(`“${play!.name}” takes ${play!.takes.join(', ')}: a routine runs only a play that takes nothing`)
       } else if (!q.prompt) refuse('say what it does, or pick a play for it to run')
       // A Microsoft form's answers: the form's own job, and never a thread on a Purdue form's (msforms/routine.ts)
-      const formRefusal = msformRoutineRefusal(ctx.db, { workspaceId: q.workspaceId, trigger: t.trigger, job })
+      const formRefusal = msformRoutineRefusal(ctx, { workspaceId: q.workspaceId, trigger: t.trigger, job })
       if (formRefusal) throw new Error(formRefusal)
       const fields = { workspaceId: q.workspaceId, projectId: q.projectId ?? null, kind: kindOf(q.ends), name: q.name, prompt: q.prompt, playId: q.playId ?? null, job, model: q.model ?? null, reasoning: q.reasoning ?? null, trigger: t.trigger, ends: q.ends, nextAt: t.nextAt, cursor: t.cursor }
       const saved = q.id ? (mine(q.id), store.update(q.id, fields)!) : store.create({ ...fields, createdBy: 'owner' }, now)
