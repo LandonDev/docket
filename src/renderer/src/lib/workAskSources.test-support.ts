@@ -14,7 +14,7 @@ const isMethod = (text: string): boolean => /^[a-z][\w]*(?:\.[\w]+)+$/.test(text
 const SHARED: Record<string, readonly string[]> = {
   "attachmentUpload.ts": ["attachmentSettings", "hostSource", "uploadFile"],
   "computerSessions.ts": ["load", "stopComputer"],
-  "tcserver/commands.ts": ["ensureCreated", "send", "toServerAttachments", "readAttachment"],
+  "tcserver/commands.ts": ["createDraft", "ensureCreated", "send", "toServerAttachments", "readAttachment"],
   "tcserver/workspaces.ts": ["saveDefaults"],
   "tcserver/projects.ts": ["renameProject", "setProjectAccounts", "setWorkspaceAccounts"],
   "macBridge.ts": ["refreshMacBridgeHosts", "refreshMacBridgeLoad", "setMacBridgeComputer", "setMacBridgeLoadLimit", "setMacBridgePolicy", "setMacBridgeLimits", "setMacBridgeShared"],
