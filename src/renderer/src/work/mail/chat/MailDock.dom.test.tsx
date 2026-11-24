@@ -42,7 +42,8 @@ vi.mock("../../../surfaces/SessionPane", () => ({ LoadLine: () => null }));
 
 const { MailClientProvider, MailKitProvider } = await import("work-kit/mail");
 const { corpusThreads, createFixtureMailClient } = await import("work-kit/mail/fixtures");
-const { MailScreen, patch, showMail } = await import("../MailView");
+const { chatSeat, MailScreen, patch, showMail } = await import("../MailView");
+const { MAIL_CHAT } = await import("@shared/work/mailChat");
 const { tempcodeMailKit } = await import("../kit");
 const { resetDocks } = await import("../../dock/dockThread");
 const { resetContextChips, takeContextChips } = await import("../../canvas/chips");
@@ -94,6 +95,26 @@ const dock = (): HTMLElement | null => document.querySelector("[data-mail-dock]"
 const head = (): string => dock()?.querySelector("h3")?.textContent ?? "";
 const dockId = (): string => dock()?.getAttribute("data-mail-dock") ?? "";
 const cmdL = (): void => void fireEvent.keyDown(window, { key: "l", metaKey: IS_MAC, ctrlKey: !IS_MAC });
+
+describe("the chat while it is off", () => {
+  it("gives Mail no seat for it, so the reader's toolbar has no Ask and ⌘L does nothing", async () => {
+    expect(MAIL_CHAT.on).toBe(false);
+    expect(chatSeat(workspace, "life")).toBeUndefined();
+    const client = createFixtureMailClient({ write: async ({ run }) => run(), instant: true, threads: corpusThreads() });
+    render(
+      <MailClientProvider client={client}>
+        <MailKitProvider kit={tempcodeMailKit}>
+          <MailScreen id={ID()} onOpenTask={() => undefined} chat={chatSeat(workspace, "life")} />
+        </MailKitProvider>
+      </MailClientProvider>,
+    );
+    act(() => patch(ID(), { threadId: threads[0].id }));
+    await waitFor(() => expect(document.querySelector("[data-mail-pane]")!.textContent).toContain(threads[0].subject));
+    expect(screen.queryByRole("button", { name: "Ask" })).toBeNull();
+    act(() => cmdL());
+    expect(dock()).toBeNull();
+  });
+});
 
 describe("the chat beside the mail", () => {
   it("opens and closes with Ask at the reader's toolbar's end and with ⌘L", async () => {

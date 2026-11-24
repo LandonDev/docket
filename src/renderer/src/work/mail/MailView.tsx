@@ -97,8 +97,13 @@ function MailPageBody({ workspace, startThread, env, sector }: WorkViewProps) {
   const files = useMemo(() => ({ env, onAsk: (chip: ContextChip) => askChat(id, chip) }), [env, id]);
   // Waiting on's Draft a nudge: the host starts a thread that drafts it, and the thread opens.
   const nudge = useCallback((thread: { id: string }) => void startNudge(env, id, thread.id), [env, id]);
-  const chat = useMemo(() => (mailChatWithheld(sector as SectorKey) ? undefined : { workspace: { id, environmentId: env, path: workspace.path } }), [id, env, workspace.path, sector]);
+  const chat = useMemo(() => chatSeat({ id, environmentId: env, path: workspace.path }, sector as SectorKey), [id, env, workspace.path, sector]);
   return <MailScreen id={id} onOpenTask={openTask} onStartThread={start} files={files} onNudge={nudge} chat={chat} />;
+}
+
+/** Where the chat beside the mail is made, or none: while the chat is off (`MAIL_CHAT.on`) or the job is withheld, Mail has no Ask and no ⌘L. */
+export function chatSeat(workspace: { id: string; environmentId: string; path: string }, sector: SectorKey | null): { workspace: { id: string; environmentId: string; path: string } } | undefined {
+  return mailChatWithheld(sector) ? undefined : { workspace };
 }
 
 /** The toggle over the reader, when an attachment shares the pane with it. */

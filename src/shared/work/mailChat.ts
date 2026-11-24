@@ -53,7 +53,15 @@ export function workAllowed(tool: string): boolean {
   return !MAIL_CHAT_POWERS.narrow || (MAIL_CHAT_POWERS.work as readonly string[]).includes(tool)
 }
 
-export const mailChatWithheld = (sector: SectorKey | null | undefined): boolean => sector != null && MAIL_CHAT_WITHHELD.includes(sector)
+/**
+ * The chat beside the mail at all: off, no Ask in the reader's toolbar or the ticked head, ⌘L does nothing in Mail,
+ * and the host marks no thread a mail chat (adopt is refused, so the window's first send never goes). Held off until
+ * its second review's findings land; turned on in that landing.
+ */
+export const MAIL_CHAT = { on: false }
+
+/** Whether a job is kept from the chat: every job while the chat is off, else a sector in `MAIL_CHAT_WITHHELD`. */
+export const mailChatWithheld = (sector: SectorKey | null | undefined): boolean => !MAIL_CHAT.on || (sector != null && MAIL_CHAT_WITHHELD.includes(sector))
 
 const id = z.string().min(1).max(64)
 const words = (n: number) => z.string().trim().min(1).max(n)

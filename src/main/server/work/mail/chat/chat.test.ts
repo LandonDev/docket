@@ -2,14 +2,14 @@ import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { z } from 'zod'
 import { LOCAL_PRINCIPAL } from '@shared/capabilities'
 import type { ClientRequest } from '@shared/contract'
 import type { AddonRow } from '@shared/contract-addons'
 import type { SessionMeta } from '@shared/events'
 import type { WorkScope } from '@shared/work'
-import { lifeosAllowed, mailOfferOf, MAIL_CHAT_POWERS, MAIL_CHAT_REFUSAL, MAIL_CHAT_WITHHELD, workAllowed } from '@shared/work/mailChat'
+import { lifeosAllowed, mailChatWithheld, mailOfferOf, MAIL_CHAT, MAIL_CHAT_POWERS, MAIL_CHAT_REFUSAL, MAIL_CHAT_WITHHELD, workAllowed } from '@shared/work/mailChat'
 import { openDb, Store } from '../../../db'
 import type { SessionRegistry } from '../../../sessions'
 import type { WorkPartDeps } from '../../ctx'
@@ -87,6 +87,24 @@ function fakeCtx(answers: Record<string, unknown> = {}) {
 
 /** LifeOS's `mail:thread`: mail `m-life` in life, `m-cosmic` in cosmic, nothing else. */
 const mailThread = ({ id }: { id: string }) => (id === 'm-life' || id === 'm-life-2' ? { thread: { _id: id, sector: 'life' } } : id === 'm-cosmic' ? { thread: { _id: id, sector: 'cosmic' } } : null)
+
+// The chat is held off on master (MAIL_CHAT.on); these tests prove it as it runs when on.
+beforeAll(() => void (MAIL_CHAT.on = true))
+afterAll(() => void (MAIL_CHAT.on = false))
+
+describe('the chat while it is off', () => {
+  it('marks no thread a mail chat: adopt is refused, as for a withheld job', async () => {
+    MAIL_CHAT.on = false
+    try {
+      const { ctx } = fakeCtx({ 'mail:thread': mailThread })
+      await expect(adoptChat(ctx, owner, { workspaceId: 'ws', sessionId: 'chat', kind: 'box' })).rejects.toThrow(WITHHELD)
+      expect(chatRow(ctx.db, 'chat')).toBeNull()
+      expect(mailChatWithheld('life')).toBe(true)
+    } finally {
+      MAIL_CHAT.on = true
+    }
+  })
+})
 
 describe('work.mail.chat.adopt', () => {
   it('marks a fresh root Work thread of the workspace as a chat about a mail of its sector, and ends the harness its create started', async () => {
