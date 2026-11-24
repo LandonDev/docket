@@ -1,6 +1,6 @@
 import { useEffect, useState, useSyncExternalStore } from "react";
 import { THUMB_SIZES, type FileArchive, type FileBytes, type FilePreview } from "@shared/contract-work-files";
-import type { FileEntry } from "@shared/work/files";
+import { kindOfEntry, type EntryKind, type FileEntry } from "@shared/work/files";
 import { workErrorWords } from "../../lib/workErrorWords";
 import { filesLink } from "./farLink";
 import { bytesOfBase64, decodeText, triedAsText } from "./fileText";
@@ -244,6 +244,25 @@ export function usePreviewPage(from: PictureFrom | null, entry: FileEntry | null
 // ── an archive's listing ──────────────────────────────────────────────
 
 export type ArchiveView = { is: "loading" } | { is: "list"; entries: FileArchive["entries"]; more: boolean } | { is: "failed"; why: string };
+
+/** One row of a zip's listing: its last name, how deep it lies (a level a folder it is in), and its glyph's kind. */
+export interface ArchiveRow {
+  key: string;
+  name: string;
+  depth: number;
+  kind: EntryKind;
+  dir: boolean;
+  size: number;
+}
+
+/** A zip's entries as rows: each by its last name, nested a level a folder above it, so a folder is named once. */
+export function archiveRows(entries: FileArchive["entries"]): ArchiveRow[] {
+  return entries.map((entry) => {
+    const steps = entry.name.split("/").filter(Boolean);
+    const name = steps.at(-1) ?? entry.name;
+    return { key: entry.name, name, depth: Math.max(0, steps.length - 1), kind: entry.dir ? "folder" : kindOfEntry(name).kind, dir: entry.dir, size: entry.size };
+  });
+}
 
 /** What a zip holds, as its own directory names it: asked once for a file while it is shown. Nothing is extracted. */
 export function useArchive(from: PictureFrom | null, entry: FileEntry | null, enabled = true): ArchiveView {

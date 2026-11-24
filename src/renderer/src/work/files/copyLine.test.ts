@@ -130,7 +130,7 @@ describe("the line of a save into a Teams or OneDrive library: saved is not uplo
   });
 
   it("says where the bytes are when the computer cannot tell", () => {
-    expect(told({ is: "unknown", at: AT })).toMatchObject({ state: "saved", words: "Saved on the Windows VM; OneDrive uploads it" });
+    expect(told({ is: "unknown", at: AT })).toMatchObject({ state: "saved", words: "Saved to the Windows VM. OneDrive uploads it" });
   });
 
   it("says not uploaded yet past the wait, with what he can do", () => {

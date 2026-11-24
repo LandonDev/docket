@@ -425,7 +425,7 @@ it('reads a named sheet cell in shared, inline and numeric form', () => {
 it('only accepts a saved claim after Enter when the holder has the cell', () => {
   expect(falseSaveLine('On This Mac', false, false)).toBe(false)
   expect(falseSaveLine('Saving to This Mac…', true, false)).toBe(false)
-  expect(falseSaveLine('Saved on This Mac; OneDrive uploads it', true, false)).toBe(true)
+  expect(falseSaveLine('Saved to This Mac. OneDrive uploads it', true, false)).toBe(true)
   expect(falseSaveLine('Saved to This Mac 4:24 AM', true, true)).toBe(false)
 })
 

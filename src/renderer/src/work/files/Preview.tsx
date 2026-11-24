@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import type { FileBytes } from "@shared/contract-work-files";
 import { ENTRY_KIND_WORDS, extOf, type FileEntry } from "@shared/work/files";
+import { TruncateTip } from "../../components/tip";
 import { BusyLabel, Button } from "../../components/ui/button";
 import { Skeleton } from "../../components/ui/skeleton";
 import { formatBytes } from "../../lib/attachmentUpload";
@@ -9,7 +10,7 @@ import { workErrorWords } from "../../lib/workErrorWords";
 import { filesLink } from "./farLink";
 import { bytesOfBase64 } from "./fileText";
 import { KindGlyph } from "./KindGlyph";
-import { pageWidth, readsAsText, useArchive, usePreviewPage, useTextHead, type ArchiveView, type PictureFrom } from "./previews";
+import { archiveRows, pageWidth, readsAsText, useArchive, usePreviewPage, useTextHead, type ArchiveView, type PictureFrom } from "./previews";
 
 /**
  * A file shown read only (docs/DESIGN.md "The Files place", Quick Look's renderer): its pages, its picture, a
@@ -154,12 +155,13 @@ export function ArchiveList({ view }: { view: ArchiveView }) {
   if (!view.entries.length) return <p className="p-6 text-center text-[13px] text-muted-foreground">Nothing is listed in it.</p>;
   return (
     <div data-files-archive role="list" aria-label="In this archive" className="flex w-full max-w-2xl flex-col p-2">
-      {view.entries.map((row) => (
-        <div key={row.name} role="listitem" className="flex h-7 shrink-0 items-center gap-2 px-2 text-[13px]">
-          <KindGlyph kind={row.dir ? "folder" : "other"} tinted={row.dir} />
-          <span className="min-w-0 flex-1 truncate text-foreground" style={{ direction: "rtl", textAlign: "left" }}>
-            <bdi>{row.name}</bdi>
-          </span>
+      {/* Each entry by its last name, 16px a level under its folder (the sidebar's step). */}
+      {archiveRows(view.entries).map((row) => (
+        <div key={row.key} role="listitem" className="flex h-7 shrink-0 items-center gap-2 pe-2 text-[13px]" style={{ paddingInlineStart: 8 + row.depth * 16 }}>
+          <KindGlyph kind={row.kind} />
+          <TruncateTip text={row.name}>
+            <span className="min-w-0 flex-1 truncate text-foreground">{row.name}</span>
+          </TruncateTip>
           {row.dir ? null : <span className="shrink-0 text-xs text-muted-foreground tabular-nums">{formatBytes(row.size)}</span>}
         </div>
       ))}

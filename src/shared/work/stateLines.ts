@@ -39,7 +39,7 @@ export const STATE_LINES: Readonly<Record<string, readonly Line[]>> = {
     ["Saved", "answer"],
     ["`Saved to ${host} ${whenWords(back.at, now)}`", "held === writes"],
     ["`Saved, uploading to ${service}…`", "answer"],
-    ["`Saved on ${computer}; OneDrive uploads it`", "answer"],
+    ["`Saved to ${computer}. OneDrive uploads it`", "answer"],
   ],
   [`${R}/files/wordSave.ts`]: [
     ["`Saved to ${computer} ${whenWords(word.at, now)}`", "answer"],

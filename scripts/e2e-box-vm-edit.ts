@@ -247,7 +247,7 @@ async function openForward(): Promise<boolean> {
   return up
 }
 /** A saved line, as 1.0.370 says it or as a build that tells the upload says it ("Saved, uploading…", "In OneDrive 4:10 AM"). */
-const savedLine = (line: string): boolean => /Saved to the Windows VM|In OneDrive \d|Saved, uploading to OneDrive|Saved on the Windows VM; OneDrive uploads it/.test(line)
+const savedLine = (line: string): boolean => /Saved to the Windows VM|In OneDrive \d|Saved, uploading to OneDrive/.test(line)
 
 /**
  * OneDrive's own record of the file in the VM, as the sync client last heard it from the server: its eTag

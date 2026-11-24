@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from "vitest";
 import type { FileEntry, FilePlace } from "@shared/work/files";
-import { forgetPictures, mayPicture, mayReadText, pageWidth, readsAsText, thumbPx, wholeChars, type PictureFrom } from "./previews";
+import { archiveRows, forgetPictures, mayPicture, mayReadText, pageWidth, readsAsText, thumbPx, wholeChars, type PictureFrom } from "./previews";
 
 const place = (over: Partial<FilePlace> = {}): FilePlace => ({ id: "folder", kind: "folder", name: "Dummy Esports", shared: false, state: { state: "ok" }, root: { at: "file", host: "h", path: "/w" }, can: [], ...over }) as FilePlace;
 const from = (over: Partial<FilePlace> = {}, wire: "files" | "office" = "files"): PictureFrom => ({ workspaceId: "ws", copy: { link: "box", place: place(over), wire } });
@@ -61,5 +61,24 @@ describe("a text file's first lines", () => {
     // Cut inside the three-byte tick.
     const tick = bytes.indexOf(0xe2);
     expect(new TextDecoder("utf-8", { fatal: true }).decode(wholeChars(bytes.subarray(0, tick + 2)))).toBe("café ");
+  });
+});
+
+describe("a zip's listing", () => {
+  it("names each entry by its last name, a level under each folder above it, and a folder once", () => {
+    const rows = archiveRows([
+      { name: "art/", size: 0, dir: true },
+      { name: "art/poster-final.png", size: 2_000_000, dir: false },
+      { name: "art/raw/stage.psd", size: 10, dir: false },
+      { name: "readme.txt", size: 5, dir: false },
+    ]);
+    expect(rows.map((r) => [r.name, r.depth, r.kind])).toEqual([
+      ["art", 0, "folder"],
+      ["poster-final.png", 1, "picture"],
+      ["stage.psd", 2, "picture"],
+      ["readme.txt", 0, "text"],
+    ]);
+    // Each row keeps its whole path as its key: two files of one name in two folders stay two rows.
+    expect(new Set(rows.map((r) => r.key)).size).toBe(4);
   });
 });

@@ -175,7 +175,7 @@ export function cloudLine(line: HeaderLine, cloud: CloudBack | undefined, servic
     case "late":
       return { ...line, state: "offline", words: `Not uploaded to ${service} yet. ${LATE_WHY[cloud.why ?? "paused"](computer)}`, needs: true };
     default:
-      return { ...line, state: "saved", words: `Saved on ${computer}; OneDrive uploads it` };
+      return { ...line, state: "saved", words: `Saved to ${computer}. OneDrive uploads it` };
   }
 }
 

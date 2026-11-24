@@ -271,7 +271,7 @@ describe("a file no editor here shows", () => {
     disk.files.set("/w/Events/Assets.zip", { text: "PK", version: 1, changed: AT } satisfies Kept);
     show("/w/Events/Assets.zip");
     const listing = await screen.findByRole("list", { name: "In this archive" });
-    expect([...listing.querySelectorAll("[role=listitem]")].map((row) => row.textContent)).toEqual(["art/", "art/poster.png2 KB"]);
+    expect([...listing.querySelectorAll("[role=listitem]")].map((row) => row.textContent)).toEqual(["art", "poster.png2 KB"]);
     expect(listing.textContent).toContain("It holds more than are listed here.");
     expect(disk.calls.some((c) => c.method === "work.files.read")).toBe(false);
   });

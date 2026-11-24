@@ -165,7 +165,7 @@ export function FileHeader({
   end?: ReactNode;
 }) {
   return (
-    <header data-files-header className={`relative flex h-12 shrink-0 items-center gap-2.5 border-b border-border pe-2 ${leave ? "ps-20" : "ps-3"}`}>
+    <header data-files-header className={`@container/file-head relative flex h-12 shrink-0 items-center gap-2.5 border-b border-border pe-2 ${leave ? "ps-20" : "ps-3"}`}>
       <KindGlyph kind={kindOfEntry(name).kind} />
       <div className="flex min-w-0 flex-1 flex-col">
         {rename?.on ? (
@@ -212,10 +212,11 @@ export function FileHeader({
           </Button>
         </Tip>
       ) : null}
-      {/* A pressed toggle is `muted` and flat: the raised button's own layer would hide a fill under it. */}
-      <Button variant={ask.pressed ? "ghost" : "secondary"} size="sm" className="shrink-0 aria-pressed:bg-muted" aria-pressed={ask.pressed} disabled={ask.disabled} onClick={ask.run}>
+      {/* A pressed toggle is `muted` and flat: the raised button's own layer would hide a fill under it. Under 480px of
+          header Ask is its glyph alone, so the file's name and its line keep room beside the line's presses. */}
+      <Button variant={ask.pressed ? "ghost" : "secondary"} size="sm" aria-label="Ask" className="shrink-0 aria-pressed:bg-muted" aria-pressed={ask.pressed} disabled={ask.disabled} onClick={ask.run}>
         <Ask />
-        Ask
+        <span className="hidden @[480px]/file-head:inline">Ask</span>
       </Button>
       {progress != null ? <Progress aria-label={note ?? "Loading"} value={progress} className="absolute inset-x-0 -bottom-px gap-0 [&_[data-slot=progress-track]]:rounded-none" /> : null}
     </header>
