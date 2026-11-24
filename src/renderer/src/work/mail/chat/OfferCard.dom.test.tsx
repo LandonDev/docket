@@ -26,9 +26,11 @@ vi.mock("convex/react", () => ({
     };
   },
 }));
-const toasts = vi.hoisted(() => [] as { message: string; action?: { label: string; onClick(): void } }[]);
+const toasts = vi.hoisted(() => [] as { message: string; action?: { label: string; onClick(): void }; error?: true; description?: string }[]);
 vi.mock("../../../components/ui/toaster", () => {
-  const toast = Object.assign((message: string, opts?: { action?: { label: string; onClick(): void } }) => void toasts.push({ message, action: opts?.action }), { error: (message: string) => void toasts.push({ message }) });
+  const toast = Object.assign((message: string, opts?: { action?: { label: string; onClick(): void } }) => void toasts.push({ message, action: opts?.action }), {
+    error: (message: string, opts?: { description?: string }) => void toasts.push({ message, error: true, ...(opts?.description ? { description: opts.description } : {}) }),
+  });
   return { loadToast: async () => toast, toast };
 });
 const submits = vi.hoisted(() => [] as string[]);
@@ -52,6 +54,10 @@ const message = { kind: "mail", accountId: "a1", threadId: "t1", mode: "reply", 
 const batches: { ids: string[]; act: unknown }[] = [];
 /** How LifeOS answers a bulk act: the card's write goes through Mail's own `write`, as the LifeOS client's batch does. */
 let batchAnswer: () => Promise<unknown> = async () => null;
+/** How LifeOS answers the bulk act's Undo. */
+let undoAnswer: () => Promise<unknown> = async () => null;
+/** How LifeOS answers a draft's discard. */
+let discardAnswer: () => Promise<string> = async () => "quoted";
 let stranger: { cc: { name?: string; address: string }[]; bcc: { address: string }[] } | null = null;
 const discarded: string[] = [];
 const saved: unknown[] = [];
@@ -62,7 +68,7 @@ const client = {
   useOutboxActions: () => ({
     discard: async (id: string) => {
       discarded.push(id);
-      return "quoted";
+      return discardAnswer();
     },
     save: async (args: unknown) => {
       saved.push(args);
@@ -73,7 +79,7 @@ const client = {
   useMailActions: () => ({
     batch: (threads: readonly ThreadSummary[], act: unknown) => {
       batches.push({ ids: threads.map((t) => t.id), act });
-      void write({ run: batchAnswer, failed: "archive", message: "Archived" });
+      void write({ run: batchAnswer, failed: "archive", message: "Archived", undo: () => undoAnswer() });
     },
     makeTask: (threadId: string, draft: unknown) => void made.push({ threadId, draft }),
   }),
@@ -92,6 +98,8 @@ beforeEach(() => {
   views.length = 0;
   batches.length = 0;
   batchAnswer = async () => null;
+  undoAnswer = async () => null;
+  discardAnswer = async () => "quoted";
   discarded.length = 0;
   saved.length = 0;
   made.length = 0;
@@ -165,13 +173,40 @@ describe("a draft", () => {
   it("is discarded with Undo, which saves it again", async () => {
     draw({ draft: { draftId: "d1" } });
     fireEvent.click(screen.getByRole("button", { name: "Discard draft" }));
-    expect(document.querySelector("[data-draft-state]")!.textContent).toBe("Discarded");
+    await waitFor(() => expect(document.querySelector("[data-draft-state]")!.textContent).toBe("Discarded"));
     await waitFor(() => expect(toasts.map((t) => t.message)).toContain("Draft discarded"));
     expect(discarded).toEqual(["d1"]);
     act(() => toasts.find((t) => t.message === "Draft discarded")!.action!.onClick());
     await waitFor(() => expect(saved).toEqual([{ message, quote: "quoted" }]));
     // The card follows the draft saved again.
     await waitFor(() => expect(document.querySelector("[data-draft-state]")!.textContent).toBe("Draft"));
+  });
+
+  it("says Discarded only once LifeOS dropped it, and holds its presses while it asks", async () => {
+    let answer!: (quote: string) => void;
+    discardAnswer = () => new Promise((resolve) => (answer = resolve));
+    draw({ draft: { draftId: "d1" } });
+    fireEvent.click(screen.getByRole("button", { name: "Discard draft" }));
+    // On its way: the state is still the draft's, both presses wait, and the press can not be sent twice.
+    expect(document.querySelector("[data-draft-state]")!.textContent).toBe("Draft");
+    expect(screen.getByRole("button", { name: "Discard draft" }).hasAttribute("disabled")).toBe(true);
+    expect(screen.getByRole("button", { name: "Put in reply" }).hasAttribute("disabled")).toBe(true);
+    fireEvent.click(screen.getByRole("button", { name: "Discard draft" }));
+    expect(discarded).toEqual(["d1"]);
+    await act(async () => answer("quoted"));
+    expect(document.querySelector("[data-draft-state]")!.textContent).toBe("Discarded");
+    expect(screen.queryByRole("button", { name: "Discard draft" })).toBeNull();
+  });
+
+  it("stays a draft with its presses when LifeOS refused the discard", async () => {
+    let refuse!: (err: Error) => void;
+    discardAnswer = () => new Promise((_, reject) => (refuse = reject));
+    draw({ draft: { draftId: "d1" } });
+    fireEvent.click(screen.getByRole("button", { name: "Discard draft" }));
+    await act(async () => refuse(new Error("draft is locked")));
+    expect(document.querySelector("[data-draft-state]")!.textContent).toBe("Draft");
+    expect(screen.getByRole("button", { name: "Discard draft" }).hasAttribute("disabled")).toBe(false);
+    await waitFor(() => expect(toasts).toContainEqual({ message: "Couldn't discard the draft", error: true, description: "Draft is locked" }));
   });
 });
 
@@ -260,6 +295,31 @@ describe("rows to act on", () => {
     fireEvent.click(screen.getByRole("button", { name: "Archive 1" }));
     await waitFor(() => expect(document.body.textContent).toMatch(/Archived 1, \d/));
     expect(screen.queryByRole("alert")).toBeNull();
+    // The card said the refusal; no toast says it again.
+    expect(toasts.filter((t) => t.error)).toEqual([]);
+  });
+
+  it("give the rows back once the toast's Undo went through, and keep Archived while it is refused", async () => {
+    draw({ rows: { act: "archive", title: "Archive 2 notices", threadIds: ["t1", "t2"] } });
+    fireEvent.click(await screen.findByRole("button", { name: "Archive 2" }));
+    await waitFor(() => expect(document.body.textContent).toMatch(/Archived 2, \d/));
+    // An Undo LifeOS refused leaves the card's word true: the mail is still archived.
+    undoAnswer = async () => Promise.reject(new Error("no"));
+    await waitFor(() => expect(toasts.find((t) => t.message === "Archived")?.action).toBeTruthy());
+    await act(async () => toasts.find((t) => t.message === "Archived")!.action!.onClick());
+    expect(document.body.textContent).toMatch(/Archived 2, \d/);
+    expect(toasts).toContainEqual({ message: "Undo did not go through", error: true });
+    // A second act, whose Undo goes through: the rows are his again, unticked by nothing, the press back.
+    cleanup();
+    toasts.length = 0;
+    undoAnswer = async () => null;
+    draw({ rows: { act: "archive", title: "Archive 2 notices", threadIds: ["t1", "t2"] } });
+    fireEvent.click(await screen.findByRole("button", { name: "Archive 2" }));
+    await waitFor(() => expect(toasts.find((t) => t.message === "Archived")?.action).toBeTruthy());
+    await act(async () => toasts.find((t) => t.message === "Archived")!.action!.onClick());
+    await waitFor(() => expect(screen.getByRole("button", { name: "Archive 2" })).toBeTruthy());
+    expect(document.body.textContent).not.toMatch(/Archived/);
+    expect(screen.getAllByRole("checkbox").some((box) => box.getAttribute("aria-disabled") === "true" || box.hasAttribute("data-disabled"))).toBe(false);
   });
 
   it("say a lost answer as uncertain, never as done", async () => {
@@ -268,6 +328,18 @@ describe("rows to act on", () => {
     fireEvent.click(await screen.findByRole("button", { name: "Archive 1" }));
     expect((await screen.findByRole("alert")).textContent).toMatch(/did not confirm the change/);
     expect(document.body.textContent).not.toMatch(/Archived/);
+  });
+});
+
+describe("a Mail act no screen waits on", () => {
+  it("fails in one toast that names the act, with the reason under it when it is plain", async () => {
+    await write({ run: async () => Promise.reject(new Error("thread is gone")), failed: "mark it read" });
+    await write({ run: async () => Promise.reject(new Error("[CONVEX M(mail:archive)] Server Error")), failed: "archive" });
+    await waitFor(() => expect(toasts).toHaveLength(2));
+    expect(toasts).toEqual([
+      { message: "Did not mark it read", error: true, description: "Thread is gone" },
+      { message: "Did not archive", error: true },
+    ]);
   });
 });
 

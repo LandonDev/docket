@@ -51,7 +51,8 @@ export function RowsCard({ rows }: { rows: Rows }) {
   const actions = client.useMailActions();
   const [threads, setThreads] = useState<Record<string, ThreadSummary | null>>({});
   const [unticked, setUnticked] = useState<ReadonlySet<string>>(() => (TRIAGE_TICKED ? new Set() : new Set(rows.threadIds)));
-  // The act's own answer drives the card: "Archived 3" only once LifeOS took the write; a refusal gives the rows back with why.
+  // The act's own answer drives the card: "Archived 3" only once LifeOS took the write; a refusal gives the rows back with why,
+  // and so does a confirmed Undo, with no line.
   const [state, setState] = useState<{ at: "busy" } | { at: "done"; n: number; when: number } | { at: "refused"; why: string } | null>(null);
   const act = batchOf(rows);
   const ticked = rows.threadIds.filter((id) => threads[id] && !unticked.has(id));
@@ -68,7 +69,13 @@ export function RowsCard({ rows }: { rows: Rows }) {
         ticked.map((id) => threads[id]!),
         act,
       ),
-    ).then((answer) => setState(answer.ok ? { at: "done", n, when: Date.now() } : { at: "refused", why: workErrorWords(answer.error, { write: true }) || refusedLine(rows.act, n) }));
+    ).then((answer) => {
+      if (!answer.ok) return setState({ at: "refused", why: workErrorWords(answer.error, { write: true }) || refusedLine(rows.act, n) });
+      const when = Date.now();
+      setState({ at: "done", n, when });
+      // The toast's Undo put them back: the card says so by giving the rows back, as before the press.
+      void answer.undone?.then(() => setState((was) => (was?.at === "done" && was.when === when ? null : was)));
+    });
   };
   return (
     <div data-mail-offer="rows" className={CARD}>

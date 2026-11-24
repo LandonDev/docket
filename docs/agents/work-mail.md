@@ -254,7 +254,9 @@ for the session by its address in the store: a face seen once is there
 from the first frame, and one that fails falls back to initials.
 
 TempCode's kit: toasts through its own stack (Undo where the write has
-one; `z` takes back the last such act while its toast still could), a link
+one; `z` takes back the last such act while its toast still could; a
+failed act is one red toast naming it, "Did not archive", with the reason
+under it when `workErrorWords` finds it plain), a link
 from a mail opened outside only as http, https, mailto or tel, initials
 faces, a sector mark by name and never a bare row dot (the
 screens hold one sector), its key hints, its theme. A draft a thread wrote
@@ -607,12 +609,15 @@ docs/DESIGN.md "The Mail view"):
   when the card had to tell, opening the mail it answers; a new mail or a
   forward has Open in Mail instead, into the full composer, "In the
   composer" once there; his own open reply stays in Drafts with Undo; Discard
-  with Undo), a rewrite (Take closes his reply, settles it with
+  spins while LifeOS has it and says "Discarded" only once it dropped the
+  draft, with Undo), a rewrite (Take closes his reply, settles it with
   `compose.settleProposal` and opens it again; one that changed since says
   so with Ask again), rows (ticked to start, `TRIAGE_TICKED`; one press
   runs Mail's own bulk act with its Undo; the card says "Archived 3" only
   once LifeOS took the write, read through `answerOf` (writeAnswer.ts) on
-  Mail's own `write`, and a refusal gives the rows back with why; a row the
+  Mail's own `write`, and a refusal gives the rows back with why, said on
+  the card alone, no toast; the toast's Undo, once LifeOS took it, gives the
+  rows back too (`undone` on the answer); a row the
   job's mail does not hold has no tick), a task (New task filled in, filed by Mail's Make task
   when it names a mail) and an event (New event filled in,
   `NewEventDialog.initial`). Nothing sends, schedules or archives but his

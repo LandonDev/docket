@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useMailClient } from "work-kit/mail";
 import { Tip } from "../../../components/tip";
-import { Button } from "../../../components/ui/button";
+import { BusyLabel, Button } from "../../../components/ui/button";
 import { loadToast } from "../../../components/ui/toaster";
 import { workErrorWords } from "../../../lib/workErrorWords";
 import { openWorkView } from "../../../lib/workSwitch";
@@ -29,7 +29,7 @@ function Who({ who }: { who: Address }) {
 /**
  * A draft the chat wrote, as he will send it: whom it goes to, its words, and where it stands, read live from
  * LifeOS. Put in reply opens it in Mail's reply box under the mail it answers; Send stays the composer's, through
- * the hold. Discard drops it, with Undo.
+ * the hold. Discard drops it, with Undo: the card says Discarded only once LifeOS dropped it.
  */
 export function DraftCard({ draftId, at }: { draftId: string; at: OfferAt }) {
   const client = useMailClient();
@@ -41,13 +41,15 @@ export function DraftCard({ draftId, at }: { draftId: string; at: OfferAt }) {
   const outbox = client.useOutboxActions();
   const page = usePage(at.workspaceId);
   const [all, setAll] = useState(false);
-  const [gone, setGone] = useState(false);
+  // Discard's press: busy while LifeOS has it, gone only once LifeOS dropped the draft.
+  const [gone, setGone] = useState<"busy" | "done" | null>(null);
+  const busy = gone === "busy";
   if (doc === undefined) return <CardBones />;
   const message = doc?.message;
   const inReply = page.compose && "open" in page.compose && (page.compose.open as { kind?: string; id?: string }).kind === "row" && (page.compose.open as { id?: string }).id === shownId;
   const reply = message?.mode === "reply" || message?.mode === "replyAll";
   // A reply goes in the mail's reply box; a new mail or a forward opens in Mail's full composer, and the card says so.
-  const state = gone || !doc ? "Discarded" : (sentState(doc) ?? (inReply ? (reply ? "In your reply" : "In the composer") : "Draft"));
+  const state = gone === "done" || !doc ? "Discarded" : (sentState(doc) ?? (inReply ? (reply ? "In your reply" : "In the composer") : "Draft"));
   // Whom it goes to is the rows' to say, each in full: the head names only what kind of mail it is.
   const title = message ? (reply ? "Reply" : message.mode === "forward" ? "Forward" : "New mail") : "A draft";
   const found = message ? strangers({ to: message.to, cc: message.cc, bcc: message.bcc }, message.threadId ? (thread === undefined ? null : (thread?.messages ?? [])) : null) : null;
@@ -55,7 +57,7 @@ export function DraftCard({ draftId, at }: { draftId: string; at: OfferAt }) {
   const line = found && (message?.threadId && thread === undefined ? found.bcc.length > 0 : true) ? strangersLine(found) : null;
   const lines = (message?.text ?? "").trimEnd().split("\n");
   const long = lines.length > LINES;
-  const open = !gone && !!doc && doc.status === "draft";
+  const open = gone !== "done" && !!doc && doc.status === "draft";
 
   const put = (): void => {
     // A draft whose recipients the card had to tell about opens in the full composer, its To, Cc and Bcc rows in view.
@@ -66,10 +68,11 @@ export function DraftCard({ draftId, at }: { draftId: string; at: OfferAt }) {
     if (his) void loadToast().then((toast) => toast("Your reply is kept in Drafts", { action: { label: "Undo", onClick: () => patch(at.workspaceId, his) } }));
   };
   const discard = (): void => {
-    if (!message) return;
-    setGone(true);
+    if (!message || busy) return;
+    setGone("busy");
     outbox.discard(shownId).then(
-      (quote) =>
+      (quote) => {
+        setGone("done");
         void loadToast().then((toast) =>
           toast("Draft discarded", {
             action: {
@@ -78,15 +81,16 @@ export function DraftCard({ draftId, at }: { draftId: string; at: OfferAt }) {
                 void outbox.save({ message, quote }).then(
                   (id) => {
                     setRestored(id);
-                    setGone(false);
+                    setGone(null);
                   },
                   async (err: unknown) => (await loadToast()).error("Couldn't bring the draft back", { description: workErrorWords(err) || undefined }),
                 ),
             },
           }),
-        ),
+        );
+      },
       async (err: unknown) => {
-        setGone(false);
+        setGone(null);
         (await loadToast()).error("Couldn't discard the draft", { description: workErrorWords(err) || undefined });
       },
     );
@@ -136,13 +140,13 @@ export function DraftCard({ draftId, at }: { draftId: string; at: OfferAt }) {
       ) : null}
       {open ? (
         <div className={FOOT}>
-          <Button variant="secondary" size="sm" onClick={put} disabled={!!inReply}>
+          <Button variant="secondary" size="sm" onClick={put} disabled={!!inReply || busy}>
             {reply ? "Put in reply" : "Open in Mail"}
           </Button>
           <span className="flex-1" />
           <Tip label="Discard draft">
-            <Button variant="ghost" size="icon-sm" aria-label="Discard draft" className="text-muted-foreground" onClick={discard}>
-              <Trash />
+            <Button variant="ghost" size="icon-sm" aria-label="Discard draft" aria-busy={busy || undefined} className="text-muted-foreground" disabled={busy} onClick={discard}>
+              {busy ? <BusyLabel busy label="" /> : <Trash />}
             </Button>
           </Tip>
         </div>

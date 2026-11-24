@@ -4,7 +4,7 @@
  * answer rides on the write itself: `answerOf` runs an act, and the first write that act starts through `write`
  * (client.ts) hands back what it came to.
  */
-export type WriteAnswer = { ok: true } | { ok: false; error: unknown };
+export type WriteAnswer = { ok: true; /** settles once the write's Undo went through; absent when it has none */ undone?: Promise<void> } | { ok: false; error: unknown };
 
 let slot: ((answer: Promise<WriteAnswer>) => void) | null = null;
 

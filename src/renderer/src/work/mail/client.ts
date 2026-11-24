@@ -89,14 +89,17 @@ export function undoLast(): void {
 }
 
 /**
- * Every write a screen makes: its toast on success, with Undo where it has one, and its own words on failure. A
- * screen that waits on the write's answer (`answerOf`, writeAnswer.ts) is told it too.
+ * Every write a screen makes: its toast on success, with Undo where it has one, and on failure one toast that names
+ * the act ("Did not archive") with the reason under it when it is plain. A screen that waits on the write's answer
+ * (`answerOf`, writeAnswer.ts) is told it, and told again when its Undo went through; a refusal is then that screen's
+ * to say, so no toast says it twice.
  */
 export const write: MailWrite = async ({ run, failed, message, undo }) => {
   const tell = claimAnswer();
   try {
     const result = await run();
-    tell?.({ ok: true });
+    let undone: (() => void) | null = null;
+    tell?.({ ok: true, ...(undo ? { undone: new Promise<void>((resolve) => (undone = resolve)) } : {}) });
     if (message) {
       void loadToast().then((toast) => {
         if (!undo) return void toast(message);
@@ -104,7 +107,10 @@ export const write: MailWrite = async ({ run, failed, message, undo }) => {
         const back = (): void => {
           if (done) return;
           done = true;
-          void undo(result).catch(() => toast.error("Undo did not go through"));
+          void undo(result).then(
+            () => undone?.(),
+            () => toast.error("Undo did not go through"),
+          );
         };
         last = { undo: back, until: Date.now() + UNDO_FOR_MS };
         toast(message, { duration: UNDO_FOR_MS, action: { label: "Undo", onClick: back } });
@@ -113,10 +119,13 @@ export const write: MailWrite = async ({ run, failed, message, undo }) => {
     return result;
   } catch (error) {
     tell?.({ ok: false, error });
-    void loadToast().then((toast) => toast.error(failed));
+    if (!tell) void loadToast().then((toast) => toast.error(failedLine(failed), { description: workErrorWords(error, { write: true }) || undefined }));
     return undefined;
   }
 };
+
+/** A failed act's title, from the verb work-kit hands over ("archive", "mark it read"): "Did not archive". */
+export const failedLine = (failed: string): string => `Did not ${failed}`;
 
 function wrapClient(env: string, inner: MailClient): MailClient {
   return {
