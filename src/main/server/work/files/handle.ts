@@ -683,21 +683,20 @@ export function placeRoot(ctx: WorkCtx, by: Caller, workspaceId: string, id: str
   return found.place.root
 }
 
-const LIBRARY_BYTES = SHARED_BYTES
 const VM_BYTES = 'A file in the Windows VM is read as its copy. Open it first.'
 
 /** The roots a file's bytes are read or replaced within: the folder or the library it was located in. A file in the VM is no file of this disk. */
 function bytesFence(ctx: WorkCtx, by: Caller, at: Located): { roots: string[]; path: string } {
   // The workspace's own folder kept where others open it (OneDrive, a network share) is read as a library is.
   if (at.in === 'folder') {
-    if (by.kind !== 'local' && locatedShared(ctx, at)) throw new Error(LIBRARY_BYTES)
+    if (by.kind !== 'local' && locatedShared(ctx, at)) throw new Error(SHARED_BYTES)
     return { roots: [at.root], path: at.path }
   }
   if (at.in === 'drive') throw new Error('A Google file is read in its own tab, from Google.')
   if (at.in !== 'library') throw new Error('A place is listed, not read.')
   if (at.library.vm) throw new Error(VM_BYTES)
   // A shared library's bytes go to his own window alone: never to a thread, a remote key or another host by this door.
-  if (by.kind !== 'local') throw new Error(LIBRARY_BYTES)
+  if (by.kind !== 'local') throw new Error(SHARED_BYTES)
   return { roots: [at.library.path], path: at.path }
 }
 
@@ -709,7 +708,7 @@ async function readCopy(ctx: WorkCtx, by: Caller, p: { workspaceId: string; ref:
   admitCaller(ctx, by, p.workspaceId)
   // His own window, here or reaching this host with a key that may approve (his Mac's window on the box), as a copy's
   // save is his (copies.ts `admitOwner`); never a read key or another host.
-  if (by.kind !== 'local' && !(by.kind === 'remote' && by.caps.includes('approve'))) throw new Error(LIBRARY_BYTES)
+  if (by.kind !== 'local' && !(by.kind === 'remote' && by.caps.includes('approve'))) throw new Error(SHARED_BYTES)
   const item = ctx.canvas.get(p.itemId)
   const path = item ? canvasSourcePath(item.source) : null
   if (!item || item.sessionId !== filesPaneOf(p.workspaceId) || path === null || refKey(item.source) !== refKey(p.ref)) throw new Error('That tab holds no copy to read.')
@@ -771,7 +770,7 @@ export async function writeBytes(ctx: WorkCtx, by: Caller, p: { workspaceId: str
     throw err
   }
   if (at.in === 'library' && at.library.vm) {
-    if (by.kind !== 'local') throw new Error(LIBRARY_BYTES)
+    if (by.kind !== 'local') throw new Error(SHARED_BYTES)
     return vmSave(ctx, p.workspaceId, vmWhere(ctx, by, at), p.data, p.version, randomUUID())
   }
   const { roots, path } = bytesFence(ctx, by, at)
@@ -788,7 +787,7 @@ export function vmWhere(ctx: WorkCtx, by: Caller, at: Located & { in: 'library' 
 
 /** His edits kept beside a file in the VM that changed under them: "Name (mine).ext" in its folder there, never over anything. Answers its guest path. */
 async function vmSaveCopy(dir: VmWhere, name: string, data: Uint8Array, by: Caller): Promise<string> {
-  if (by.kind !== 'local') throw new Error(LIBRARY_BYTES)
+  if (by.kind !== 'local') throw new Error(SHARED_BYTES)
   const names = new Set((await vmList(dir.library.library, dir.path)).map((e) => e.name.toLowerCase()))
   const { stem, ext } = splitName(name)
   const free = freeName(`${stem} (mine)${ext}`, (n) => names.has(n.toLowerCase()))
@@ -1047,7 +1046,7 @@ export async function filesHandle(req: ClientRequest, ctx: WorkCtx, by: Caller, 
       let bytes: FileBytes
       if (at.in === 'library' && at.library.vm) {
         // A file in the VM, read through its helper for his own window, with the version a save there checks; never one kept in the cloud (that would download it).
-        if (by.kind !== 'local') throw new Error(LIBRARY_BYTES)
+        if (by.kind !== 'local') throw new Error(SHARED_BYTES)
         const e = await vmStat(at.library.id, at.path, signal)
         if (e.kind === 'folder') throw new Error('That is not a file.')
         if (!e.local) throw new Error('This file is kept in the cloud. Download it first.')
