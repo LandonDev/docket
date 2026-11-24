@@ -284,7 +284,11 @@ What a kind should know:
   file's header in the Files place reads it. Call it as `shell.saved?.(…)`:
   a kind saves as he works, says `conflict` with Reload and Keep mine as a
   copy when the file changed under it, and flushes when its body unmounts,
-  since a tab can close under it from another window).
+  since a tab can close under it from another window. The `file` kind's text
+  (files/fileSession.ts) that could not reach the host says `offline` with
+  Retry, and goes again by itself when the link opens again (`reopened`, on
+  the link's `onOpen`): saving, then saved, or `conflict` where the file
+  changed meanwhile).
   The calls: `openHistory()` opens a `history` item on the
   same source; `ask(chip)` puts a chip in the thread's composer, unfolding
   the thread first, as the selection bar's Ask does; `held(ref)` opens a held act where held acts are shown

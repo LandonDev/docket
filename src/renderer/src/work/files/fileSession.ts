@@ -9,7 +9,8 @@ import { bytesOfBase64, decodeText, encodeText, triedAsText, whenWords, type Tex
  * or as its facts, and saved as he types. There is no save press. A change waits `SAVE_AFTER_MS` for the next
  * one, then goes to the host with the version this window read; the host writes it only over that version, so a
  * second writer is never written over: the line says the file changed, with Reload and Keep mine as a copy. A
- * save that cannot reach the host waits here and says how many changes wait. Closing the tab sends what waits.
+ * save that cannot reach the host waits here and says how many changes wait, and goes again on Retry or when the
+ * link to the host opens again. Closing the tab sends what waits.
  */
 
 export const SAVE_AFTER_MS = 700;
@@ -176,7 +177,14 @@ export class FileSession {
         this.line(textOf(err));
       }
     })();
+    // Under way: a line that said the words wait says they are going (a copy's send-back follows its saving to saved).
+    this.line();
     return this.saving;
+  }
+
+  /** The link to the host opened again: what waited for it is sent, by the version it read, as a save always is. */
+  reopened(): Promise<void> {
+    return this.draft !== null && !this.conflicted && !this.disposed ? this.flush() : Promise.resolve();
   }
 
   /** The file as it is on the host now, in place of what is here. */

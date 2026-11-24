@@ -21,7 +21,7 @@ interface Kept {
   gone?: boolean;
   locked?: string;
 }
-const disk = vi.hoisted(() => ({ files: new Map<string, unknown>(), calls: [] as { method: string; params: Record<string, unknown> }[], pushes: new Set<(push: Record<string, unknown>) => void>() }));
+const disk = vi.hoisted(() => ({ files: new Map<string, unknown>(), calls: [] as { method: string; params: Record<string, unknown> }[], pushes: new Set<(push: Record<string, unknown>) => void>(), opens: new Set<() => void>(), down: false }));
 const kept = (path: string): Kept => disk.files.get(path) as Kept;
 
 vi.mock("../../lib/connection", async (original) => {
@@ -32,6 +32,7 @@ vi.mock("../../lib/connection", async (original) => {
     connected: true,
     request: async (method: string, params: Record<string, unknown> = {}) => {
       disk.calls.push({ method, params });
+      if (disk.down) throw new Error("not connected");
       if (method === "work.files.read") {
         const file = disk.files.get(pathOf(params.ref)) as Kept | undefined;
         if (!file || file.gone) throw new Error("Notes.md is not there any more.");
@@ -65,7 +66,7 @@ vi.mock("../../lib/connection", async (original) => {
       throw new Error(`unexpected ${method}`);
     },
     onPush: (listener: (push: Record<string, unknown>) => void) => (disk.pushes.add(listener), () => disk.pushes.delete(listener)),
-    onOpen: () => () => undefined,
+    onOpen: (listener: () => void) => (disk.opens.add(listener), () => disk.opens.delete(listener)),
     onClose: () => () => undefined,
   });
   return { ...(await original<typeof import("../../lib/connection")>()), registry: { linkOf, link: linkOf, has: () => true, environment: () => undefined, environments: () => [], onLink: () => () => undefined } };
@@ -101,6 +102,8 @@ beforeEach(() => {
   disk.files.clear();
   disk.calls.length = 0;
   disk.pushes.clear();
+  disk.opens.clear();
+  disk.down = false;
   disk.files.set("/w/Events/Notes.md", { text: "first line\n", version: 1, changed: AT } satisfies Kept);
 });
 afterEach(() => {
@@ -182,6 +185,19 @@ describe("a text file in a tab", () => {
     fireEvent.change(field, { target: { value: "typed, then closed\n" } });
     shown.unmount();
     await waitFor(() => expect(kept("/w/Events/Notes.md").text).toBe("typed, then closed\n"));
+  });
+
+  it("sends the words typed while the link was down once it opens again", async () => {
+    show("/w/Events/Notes.md");
+    const field = await screen.findByRole("textbox", { name: "Notes.md" });
+    await waitFor(() => expect(line()).toContain("Saved"));
+    disk.down = true;
+    fireEvent.change(field, { target: { value: "typed while away\n" } });
+    await waitFor(() => expect(line()).toBe("Offline. 1 change waits here"), { timeout: SAVE_AFTER_MS + 1500 });
+    disk.down = false;
+    act(() => disk.opens.forEach((listener) => listener()));
+    await waitFor(() => expect(line()).toBe("Saved 1:53 PM in Events"));
+    expect(kept("/w/Events/Notes.md").text).toBe("typed while away\n");
   });
 
   it("is read only where the host would refuse a save, and says why in the line", async () => {

@@ -148,6 +148,39 @@ describe("a text file open", () => {
     expect(h.words()).toBe("Saved 1:53 PM in Events");
   });
 
+  it("sends what waited when the link opens again: the line goes from waiting to saving to saved", async () => {
+    const h = standIn("first\n");
+    await h.session.load();
+    h.setDown(true);
+    h.session.edit("first\ntyped while away\n");
+    await h.fire();
+    expect(h.words()).toBe("Offline. 1 change waits here");
+    h.setDown(false);
+    const sent = h.session.reopened();
+    expect(h.words()).toBe("Saving…");
+    await sent;
+    expect(h.file.text).toBe("first\ntyped while away\n");
+    expect(h.calls.filter((c) => c.method === "work.files.write").at(-1)!.params).toMatchObject({ version: "v1" });
+    expect(h.words()).toBe("Saved 1:53 PM in Events");
+    // Nothing waits: a later reopen sends nothing.
+    const before = h.calls.length;
+    await h.session.reopened();
+    expect(h.calls).toHaveLength(before);
+  });
+
+  it("asks before a reopen writes over a change made there meanwhile", async () => {
+    const h = standIn("first\n");
+    await h.session.load();
+    h.setDown(true);
+    h.session.edit("mine\n");
+    await h.fire();
+    h.theirs("theirs\n");
+    h.setDown(false);
+    await h.session.reopened();
+    expect(h.file.text).toBe("theirs\n");
+    expect(h.words()).toBe("This file changed at 2:04 PM");
+  });
+
   it("takes a change made elsewhere at once when nothing waits here, and says so when something does", async () => {
     const h = standIn("first\n");
     await h.session.load();

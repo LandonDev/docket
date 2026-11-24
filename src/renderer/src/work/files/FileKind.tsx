@@ -51,9 +51,12 @@ export function Body({ item, source, env, shell }: CanvasBodyProps<undefined>) {
     void session.load();
     // A change in the file's folder, and the window coming forward, are when a second writer shows.
     const look = (): void => void session.check();
-    const off = registry.linkOf(env).onPush((push) => {
+    const link = registry.linkOf(env);
+    const off = link.onPush((push) => {
       if (push.push === "work.files" && push.workspaceId === workspaceId && push.at !== undefined) look();
     });
+    // Words typed while the link was down wait here: they go when it opens again.
+    const offOpen = link.onOpen(() => void session.reopened());
     window.addEventListener("focus", look);
     // A tab's close waits for what waits here (canvas/flush.ts); words still here after the send (refused, or the file
     // changed under them) fail it, so the close asks before they go.
@@ -63,6 +66,7 @@ export function Body({ item, source, env, shell }: CanvasBodyProps<undefined>) {
     });
     return () => {
       off();
+      offOpen();
       offFlush();
       window.removeEventListener("focus", look);
       // A tab can close under the editor, from this window or another: what waits is sent.
