@@ -456,8 +456,8 @@ function traceSync(path: string): { marks: { at: number; sync: string }[]; stop(
   void (async () => {
     while (on) {
       try {
-        const e = (await guestCall('files.stat', { path })) as { sync?: string }
-        const sync = e.sync ?? '(none)'
+        const e = (await guestCall('files.stat', { path })) as { synced?: boolean }
+        const sync = e.synced === undefined ? '(none)' : e.synced ? 'in' : 'pending'
         if (marks.at(-1)?.sync !== sync) marks.push({ at: Date.now(), sync })
       } catch {
         /* the file is being replaced: the next look */
@@ -543,10 +543,19 @@ async function teamsDocumentCase(): Promise<void> {
   proofFolder = dir
   const listed = (path: string): string[] => box<{ entries: { name: string }[] }>('work.files.list', { workspaceId: WS, at: { at: 'file', host: boxId, path } }).entries.map((e) => e.name)
   if (!check('a "TempCode proof" folder is made in the Teams library', await until('the folder', 60_000, () => listed(channel!.root.path).includes(folder)))) return
+  const heading = (): Promise<string> => ev<string>(`[...document.querySelectorAll('[aria-current="page"], nav [data-crumb], h1, h2')].filter((e) => e.getClientRects().length).map((e) => e.textContent.trim()).join(' / ')`)
+  let toFolderTries = 0
   const toFolder = async (): Promise<boolean> => {
+    // A closed file tab leaves the view on a neighbour: the folder's own page when it is the one shown.
+    if ((await heading()).includes(folder) && (await centre('button', 'New'))) return true
     await press('button, a, [role="button"], [role="link"], div', 'RecWell')
     await sleep(1500)
-    await pressRow('Team RecWell')
+    const channel = await pressRow('Team RecWell')
+    if (!channel) {
+      // Why the place did not show its channel: what the view shows, as a picture and in words.
+      await shot(`27-recwell-row-${++toFolderTries}`)
+      log(`the RecWell place did not list Team RecWell: heading "${await heading()}"; rows ${JSON.stringify(await ev<string[]>(`[...document.querySelectorAll('[data-files-row]')].slice(0, 8).map((e) => e.textContent.trim().slice(0, 40))`))}; line "${await saveLine()}"`)
+    }
     await until('the channel', 60_000, async () => !!(await centre('button', 'New')))
     const ok = await pressRow(folder)
     await until('the folder page', 30_000, async () => !!(await centre('button', 'New')))
@@ -587,11 +596,16 @@ async function teamsDocumentCase(): Promise<void> {
       const sync = traceSync(path)
       await traceLines()
       const rounds = [`Bracket ${STAMP.slice(-4)} finals`, ' round two', ' round three']
+      const typedAt: number[] = []
       for (const [i, text] of rounds.entries()) {
         await typeIn(text)
+        typedAt.push(Date.now())
         const word = text.trim().split(' ').at(-1)!
         const landed = await until(`save ${i + 1} in the Teams file`, 120_000, () => words().includes(word))
         const told = await until('In Teams', 90_000, async () => inTeams(await saveLine()))
+        // His last keystroke to the header's Saved (uploading or In Teams), from the window's own trace.
+        const savedAt = (await linesSeen()).find((l) => l.at > typedAt[i]! && /Saved, uploading to Teams|In Teams \d/.test(l.t))?.at
+        log(`save ${i + 1}: keystroke to Saved ${savedAt ? ((savedAt - typedAt[i]!) / 1000).toFixed(1) + ' s' : 'never'}`)
         if (i === 0) await shot('21-teams-doc-in-teams')
         // SharePoint writes its own parts into it about half a second after the upload, and they come down.
         const back = await until('SharePoint\'s rewrite comes down', 30_000, () => rewritten(path))
@@ -679,6 +693,11 @@ async function teamsDocumentCase(): Promise<void> {
       check(`a real change made in the VM still stops the ${kind === 'Deck' ? 'deck' : 'workbook'}'s send: the header says it changed, and the file keeps the change`, halted && !holds(bytesAt(p), 3), await saveLine())
     }
     await closeTabByX(n)
+    // Its last edit never reached the file (the change made there stopped it): closing asks first, and the dummy's is dropped.
+    if (await until('the close question', 5_000, () => ev<boolean>(`!!document.querySelector('[role="alertdialog"]')`))) {
+      log(`closing asks: ${await ev<string>(`document.querySelector('[role="alertdialog"]').textContent`)}`)
+      await press('[role="alertdialog"] button', 'Discard')
+    }
     await sleep(2000)
   }
 
@@ -956,8 +975,11 @@ try {
 
   // 4. A Word file: a dummy .docx put in the folder by the guest's own helper (New offers no Word file in the VM).
   if (process.env.WORD !== '0') {
-    await wordCase()
-    await newDocumentCase()
+    if (process.env.SKIP_MINE === '1') check("this run's forward to the VM's helper opens (the VM is awake)", await openForward())
+    else {
+      await wordCase()
+      await newDocumentCase()
+    }
     if (process.env.SKIP_TEAMS !== '1') await teamsDocumentCase()
   }
 
