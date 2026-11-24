@@ -30,10 +30,15 @@ const drop = (dir: string, names: ReadonlyArray<string | null>): void => {
 }
 const packName = (): string => `${Date.now().toString().padStart(15, '0')}-${randomUUID().slice(0, 8)}.pack`
 
-/** Whether the shape a box's edit names still holds the words its `from`s were read from (`was`). */
+/**
+ * Whether the shape a box's edit names still holds the words its `from`s were read from (`was`): run by run where the
+ * window sends its runs (a look changed elsewhere cuts a run in two with the words alike), else a paragraph's words.
+ */
 function sameWords(info: DeckInfo, op: Extract<SlideOp, { op: 'runs' }>): boolean {
   const shape = info.slides.find((s) => s.id === op.slide)?.shapes.find((s) => s.id === op.shape)
-  return !!shape && JSON.stringify((shape.paragraphs ?? []).map((p) => p.runs.map((r) => r.text).join(''))) === JSON.stringify(op.was)
+  const paras = shape?.paragraphs ?? []
+  const was = op.was ?? []
+  return !!shape && paras.length === was.length && was.every((w, i) => (typeof w === 'string' ? w === paras[i].runs.map((r) => r.text).join('') : JSON.stringify(w) === JSON.stringify(paras[i].runs.map((r) => r.text))))
 }
 
 /**

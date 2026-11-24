@@ -239,7 +239,7 @@ describe("typing on a slide", () => {
     fireEvent.pointerDown(document.body);
     await waitFor(() => expect(edits()).toHaveLength(1));
     expect(edits()[0]).toEqual([
-      { op: "runs", slide: 3, shape: 2, was: ["Who comes"], paragraphs: [{ from: 0, runs: [{ text: "Who ", from: [0, 0] }, { text: "comes ", from: [0, 1] }, { text: "today", from: [0, 1], italic: true }] }] },
+      { op: "runs", slide: 3, shape: 2, was: [["Who ", "comes"]], paragraphs: [{ from: 0, runs: [{ text: "Who ", from: [0, 0] }, { text: "comes ", from: [0, 1] }, { text: "today", from: [0, 1], italic: true }] }] },
     ]);
   });
 
@@ -324,7 +324,7 @@ describe("typing on a slide", () => {
     await waitFor(() => expect(edits()).toHaveLength(1));
     // The first run is still the new words' first run; the second has no run there any more.
     // It names the words it is now put over, so the host writes it only while they are still there.
-    expect(edits()[0]).toEqual([{ op: "runs", slide: 3, shape: 2, was: ["Who goes"], paragraphs: [{ from: 0, runs: [{ text: "Who now ", from: [0, 0] }, { text: "comes" }] }] }]);
+    expect(edits()[0]).toEqual([{ op: "runs", slide: 3, shape: 2, was: [["Who goes"]], paragraphs: [{ from: 0, runs: [{ text: "Who now ", from: [0, 0] }, { text: "comes" }] }] }]);
   });
 
   it("Return makes a paragraph, Shift-Return a line break, a paste is plain text, and ⌘Z in the box is the box's own", async () => {

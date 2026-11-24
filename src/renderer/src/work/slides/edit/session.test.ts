@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { DeckStore } from "../deck";
 import { deckView, fakeDeckHost, slide, textShape } from "../testkit";
-import { insertText } from "./model";
+import { deleteRange, insertText } from "./model";
 import { HandSession, TYPING_SAVE_MS } from "./session";
 
 vi.mock("../../canvas/frame", () => ({ sayError: () => undefined }));
@@ -168,7 +168,7 @@ describe("each send of a box names the runs its words lie in now", () => {
     session.typed(model, { from: end, to: end });
   }
   const lastRuns = (host: ReturnType<typeof deck>["host"]) => {
-    const ops = host.calls.filter(([name]) => name === "edit").at(-1)![1] as Array<{ op: string; paragraphs: Array<{ from?: number; runs: Array<{ text: string; from?: [number, number]; bold?: boolean }> }>; was?: string[] }>;
+    const ops = host.calls.filter(([name]) => name === "edit").at(-1)![1] as Array<{ op: string; paragraphs: Array<{ from?: number; runs: Array<{ text: string; from?: [number, number]; bold?: boolean }> }>; was?: string[][] }>;
     return ops[0];
   };
 
@@ -187,7 +187,7 @@ describe("each send of a box names the runs its words lie in now", () => {
       const op = lastRuns(host);
       // "Budget" is the file's third paragraph now: its level, bullet and look come from there, never from "Hiring".
       expect(op.paragraphs[2]).toMatchObject({ from: 2, runs: [{ text: "Budget review", from: [2, 0] }] });
-      expect(op.was).toEqual(["Agenda", "Hiring", "Budget"]);
+      expect(op.was).toEqual([["Agenda"], ["Hiring"], ["Budget"]]);
       expect(host.view.slides[0].shapes[0].paragraphs![2]).toMatchObject({ level: 1, list: "bullet", runs: [{ text: "Budget review", size: 20 }] });
     } finally {
       vi.useRealTimers();
@@ -214,6 +214,34 @@ describe("each send of a box names the runs its words lie in now", () => {
       const op = lastRuns(host);
       expect(op.paragraphs[0].runs).toEqual([{ text: "Hello", from: [0, 0], bold: true }, { text: " world!", from: [0, 1] }]);
       expect(host.view.slides[0].shapes[0].paragraphs![0].runs.map((r) => [r.text, !!r.bold])).toEqual([["Hello", true], [" world!", false]]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("words taken out, kept, then brought back with the box's Undo keep their look: a bold run and a bulleted paragraph", async () => {
+    vi.useFakeTimers();
+    try {
+      const mixed = textShape(2, [
+        { level: 0, align: "left", list: "none", runs: [{ text: "Hello ", size: 24 }, { text: "World", size: 24, bold: true }] },
+        { level: 1, align: "left", list: "bullet", runs: [{ text: "Budget", size: 20 }] },
+      ]);
+      const { host, session, slide: s } = deck(mixed);
+      session.open(s, mixed, "end");
+      // "World" and the bulleted "Budget" go; the 2 s save writes "Hello " alone.
+      const { model, at } = deleteRange(session.get().box!.model, { from: [0, 6], to: [1, 6] });
+      session.typed(model, { from: at, to: at });
+      await vi.advanceTimersByTimeAsync(TYPING_SAVE_MS);
+      expect(host.view.slides[0].shapes[0].paragraphs!.map((p) => p.runs.map((r) => r.text).join(""))).toEqual(["Hello "]);
+      // ⌘Z in the box brings them back; the next send names no run of the file for them, so it sets their look.
+      session.undo();
+      await session.commit();
+      const op = lastRuns(host) as unknown as { paragraphs: Array<{ level?: number; list?: string; runs: Array<{ text: string; bold?: boolean; size?: number }> }> };
+      expect(op.paragraphs[0].runs[1]).toMatchObject({ text: "World", bold: true, size: 24 });
+      expect(op.paragraphs[1]).toMatchObject({ level: 1, list: "bullet" });
+      const written = host.view.slides[0].shapes[0].paragraphs!;
+      expect(written[0].runs.map((r) => [r.text, !!r.bold])).toEqual([["Hello ", false], ["World", true]]);
+      expect([written[1].level, written[1].list]).toEqual([1, "bullet"]);
     } finally {
       vi.useRealTimers();
     }

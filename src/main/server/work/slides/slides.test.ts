@@ -1970,6 +1970,21 @@ describe('his own edits to a deck', () => {
     expect(calls.filter((c) => c === 'pptxstep')).toHaveLength(1)
   })
 
+  it("refuses a box's words over a look changed in PowerPoint that cut a run in two, the words alike", async () => {
+    const shaped = (runs: string[]): SlideInfo => slide(256, 'One', { shapes: [{ id: 3, name: 'Body 2', kind: 'text', placeholder: 'body', bbox: [0.05, 0.25, 0.95, 0.9], text: runs.join(''), paragraphs: [{ level: 0, align: 'left', list: 'none', runs: runs.map((text) => ({ text })) }] }] })
+    writeFileSync(path, fakeBytes({ ...FAKE_DECK, slides: [shaped(['About One']), ...FAKE_DECK.slides.slice(1)] }))
+    const item = openDeck(fileSource(path))
+    await call('work.slides.open', { itemId: item.id })
+    // "About" made bold in PowerPoint: two runs, the same words.
+    const saved = fakeBytes({ ...FAKE_DECK, slides: [shaped(['About', ' One']), ...FAKE_DECK.slides.slice(1)] })
+    writeFileSync(path, saved)
+    const box = (was: string[][]): SlideOp => ({ op: 'runs', slide: 256, shape: 3, was, paragraphs: [{ from: 0, runs: [{ text: 'About One, typed', from: [0, 0] }] }] })
+    await expect(call('work.slides.edit', { itemId: item.id, ops: [box([['About One']])] })).rejects.toThrow('The deck changed while this was being made')
+    expect(readFileSync(path, 'utf8')).toBe(saved)
+    await call('work.slides.edit', { itemId: item.id, ops: [box([['About', ' One']])] })
+    expect(calls.filter((c) => c === 'pptxstep')).toHaveLength(1)
+  })
+
   it("a read of the deck is no work on its file: a copy's send never waits behind the window's reads, and waits for his edit", async () => {
     const { workDone } = await import('../files/save')
     const item = openDeck(fileSource(path))
