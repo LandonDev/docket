@@ -31,8 +31,14 @@ The native clicker is built and has no way in yet: "The clicker" below.
 - The page and its frame act on the item as the host last pushed it
   (`ReaderFile.live`, from `work.canvas`): a file renamed or moved on the
   host is titled, previewed, asked about, commented and reviewed at its new
-  path. Once the host's list no longer holds the item (closed, its tab gone)
-  the page fails closed: no More rows, no Ask, no comments or changes. A
+  path; the kind's view is built from that item too (so Ask's chip for a page
+  or picked words names the new path) and is made anew when it moves. Once
+  the host's list no longer holds the item (closed, its tab gone) the page
+  fails closed: no More rows, no Ask, no comments or changes, and a page that
+  saw the item listed closes (`ReaderFile.presence`). From Files, Quick Look
+  stands in for a refused document only while the item is still at the
+  entry's path, and the file is seated once (back from a thread or Page
+  Preview nothing is asked again). A
   comment sent before the move's push arrives still names the old path; the
   host's check of a comment write against its item is not built yet.
 - A tap on a page, a slide or a picture hides the navigation bar and the

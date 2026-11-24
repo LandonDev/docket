@@ -53,6 +53,8 @@ struct FileItemScreen: View {
         .navigationTitle(ReaderVerbs.title(entry.name))
         .navigationBarTitleDisplayMode(.inline)
         .task(id: round) {
+            // Seated once: back from a thread or Page Preview it asks nothing again (no second ticket, no tab reopened).
+            guard item == nil else { return }
             // A document or sheet goes to the hosted editor: its web view is made ready while the file is seated.
             if [.document, .sheet].contains(entry.kind) { HostedWebPool.shared.warm() }
             do {
@@ -67,8 +69,10 @@ struct FileItemScreen: View {
     }
 
     /// Quick Look for a file-kept document or sheet, read only: what shows where the hosted editor will not.
+    /// Only while the item is still at the path the entry names: moved on the host, the host's own words show instead.
     private var fallback: AnyView? {
         guard let place, FilesRules.original(entry, place: place) == .readOnly else { return nil }
+        guard let item, ReaderFile.current(item, in: client.work.canvas.items[item.sessionId]).source == entry.ref else { return nil }
         return AnyView(FileQuickLookScreen(client: client, workspaceId: workspaceId, entry: entry, original: .readOnly, place: place))
     }
 }

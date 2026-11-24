@@ -30,6 +30,8 @@ struct FileReaderPage: View {
     /// The file's comments and the changes that wait on it (`ReaderFrame` fills it).
     @State private var file: ReaderFile?
     @State private var sheet: ReaderSheet?
+    /// The host's list has held the item open: once it no longer does, the page closes.
+    @State private var listed = false
 
     /// The item as the host last pushed it (a file moved there is read, previewed and asked about at its new path),
     /// nil once the host's list no longer holds it: then More and Ask offer nothing.
@@ -60,7 +62,9 @@ struct FileReaderPage: View {
     var body: some View {
         GeometryReader { proxy in
             ReaderFrame(client: client, item: item, commands: commands, file: $file, sheet: $sheet, immersive: immersive) {
-                ItemBodyView(client: client, item: item, ask: askTarget == nil ? nil : { asking = $0 })
+                // The kind's view reads, and builds Ask's chips, from the item at its present path; a move gives it a new view.
+                ItemBodyView(client: client, item: live ?? item, ask: askTarget == nil ? nil : { asking = $0 })
+                    .id(ReaderFile.Identity(live ?? item))
                     // A paper kind keeps the reading measure in a wide column; the hosted editor takes the whole width.
                     .frame(maxWidth: sizeClass == .regular && ReaderVerbs.keepsMeasure(item) ? ReaderMetrics.measure : .infinity)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -70,6 +74,10 @@ struct FileReaderPage: View {
             .onChange(of: proxy.safeAreaInsets.top, initial: true) { _, top in if !immersive { restingTop = top } }
         }
             .background(Surface.chrome)
+            // Closed on another screen, or its tab gone: the page goes with it, and nothing of it stays mounted.
+            .onChange(of: ReaderFile.presence(item, in: client.work.canvas.items[item.sessionId]), initial: true) { _, now in
+                if now == .listed { listed = true } else if now == .gone, listed { dismiss() }
+            }
             .environment(commands)
             // The bar leaves and returns on the fade the foot takes.
             .environment(\.readerTap, ReaderVerbs.immerses(item) ? { withAnimation(Motion.base) { immersive.toggle() } } : nil)

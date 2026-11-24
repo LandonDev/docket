@@ -471,6 +471,15 @@ private let s3 = suggestion("g3", set: "cs2", row: 0, col: 26, base: #"{"v":"Dra
         #expect(ReaderFile.live(opened, in: [moved]) == moved)
         let closed = try JSONDecoder().decode(CanvasItem.self, from: Data(#"{"id":"i9","sessionId":"s1","workspaceId":"w1","kind":"document","title":"Trip","source":{"at":"file","host":"env_box","path":"/w/Trip.tcdoc"},"state":"closed","position":0,"rev":2,"createdAt":1,"updatedAt":2}"#.utf8))
         #expect(ReaderFile.live(opened, in: [closed]) == nil)
+        // The page closes on a list that held the item and then does not; a list not heard yet closes nothing.
+        #expect(ReaderFile.presence(opened, in: nil) == .unheard)
+        #expect(ReaderFile.presence(opened, in: [moved]) == .listed)
+        #expect(ReaderFile.presence(opened, in: [closed]) == .gone)
+        #expect(ReaderFile.presence(opened, in: []) == .gone)
+        // Ask's chip for picked words names the live item's path, never the one the page opened with.
+        guard case .canvasSource(let chipSource) = ChipWords.selection(in: ReaderFile.current(opened, in: [moved]), quote: "Page 6").ref else { Issue.record("no source"); return }
+        #expect(chipSource == moved.source)
+        #expect(ChipWords.message([ChipWords.selection(in: ReaderFile.current(opened, in: [moved]), quote: "Page 6")], text: "what changed?").contains("Trip 2.tcdoc"))
 
         guard case .document(let source)? = ReaderFile.parts(ReaderFile.current(opened, in: [moved])).review else { Issue.record("no review"); return }
         #expect(source == moved.source)

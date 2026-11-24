@@ -44,6 +44,18 @@ public final class ReaderFile {
         return listed.first { $0.id == item.id && $0.state == .open }
     }
 
+    /// Where the host's list stands on an item: not heard yet, holding it open, or without it (closed, its tab gone).
+    public enum Presence: Equatable, Sendable {
+        case unheard, listed, gone
+    }
+
+    /// The item's presence in its thread's list. A page that saw it `listed` and then sees it `gone` closes: a list
+    /// that never held it yet (one read before the item was seated) closes nothing.
+    public static func presence(_ item: CanvasItem, in listed: [CanvasItem]?) -> Presence {
+        guard let listed else { return .unheard }
+        return listed.contains { $0.id == item.id && $0.state == .open } ? .listed : .gone
+    }
+
     /// What a file takes, by its kind and where it is kept.
     public static func parts(_ item: CanvasItem) -> (review: WorkReview.Subject?, comments: CanvasSource?) {
         switch item.kind {
