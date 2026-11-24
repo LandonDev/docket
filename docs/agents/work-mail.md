@@ -490,9 +490,11 @@ press. The host side (`src/main/server/work/mail/chat/`):
   in a mail chat." and `MAIL_CHAT_REFUSAL`. `harnessDenied` takes
   `MAIL_CHAT_POWERS.harness` (`Bash`, `Write`, `Edit`, `NotebookEdit`,
   `WebFetch`, `WebSearch`, `Task`, `Workflow`, `DesignSync`). Being narrowed, it reaches beyond its
-  harness only the Work tools, LifeOS and five app tools (reading threads,
-  its notes and decisions, citations): no page tool (a page may fetch from
-  the web), no thread, agent, add-on, skill, desktop or Mac
+  harness only the Work tools on its list, LifeOS and three app tools (its
+  notes and decisions, citations): no other thread's words (no thread list
+  or read, no `work_search`), no Files verb (listing a place asks his Mac,
+  the Windows VM or Google Drive), no page tool (a page may fetch from the
+  web), no thread, agent, add-on, skill, desktop or Mac
   (`narrowedToolRefusal` on Claude Code's fence, `narrowedMethodRefusal` in
   the app bridge's `bridgeCallRefusal`, work/narrowing.ts). A module whose
   check throws leaves the thread narrowed (`DENIED_UNCHECKED`). The registry
@@ -524,6 +526,11 @@ press. The host side (`src/main/server/work/mail/chat/`):
   under the options the driver builds and an API host that is nobody's,
   lists no `Bash`, `Write`, `Edit`, `NotebookEdit`, `WebFetch` or
   `WebSearch` for the chat and all of them for an ordinary Work thread.
+
+The live proof: `env -u ELECTRON_RUN_AS_NODE bun scripts/e2e-mail-chat.ts` after `electron-vite build` (one
+isolated instance, no LifeOS, no model): the harness a create boots is ended by adopt, the mail chat's first turn's
+CLI denies the shell, the web, file writes and subagents while an ordinary Work thread's does not, and the bridge
+refuses the chat's thread, agent, page, add-on and thread-read calls.
 
 The window side (`src/renderer/src/work/mail/chat/`, the lazy chunks
 `work-mail-chat`, `work-mail-offer` and `work-lifeos-chip`; the look is

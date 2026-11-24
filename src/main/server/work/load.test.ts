@@ -108,6 +108,9 @@ describe('the host code around Work', () => {
       const eager = [...source(file).matchAll(/^import (type )?[^\n]*? from '(\.[^']*)'/gm)].filter((m) => !m[1]).map((m) => m[2])
       expect(eager, file).toEqual([])
     }
+    // the narrowing the app tools reach through orchestration.ts loads the registry alone, and asks loaded pillars inside a guard
+    const narrowing = [...source('work/narrowing.ts').matchAll(/^import (type )?[^\n]*? from '(\.[^']*)'/gm)].filter((m) => !m[1]).map((m) => m[2])
+    expect(narrowing).toEqual(['./modules'])
     // the registry re-exports the helper and names each pillar only inside its own loader
     expect(source('work/modules.ts')).toContain("export { inputShapeOf } from './toolInput'")
     for (const id of PILLAR_IDS) expect(source('work/modules.ts')).toContain(`${id}: () => import('./${id}').then((m) => m.${id})`)

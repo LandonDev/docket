@@ -87,7 +87,7 @@ export function DraftCard({ draftId, at }: { draftId: string; at: OfferAt }) {
         <div className="px-3 pb-3">
           <p className={`text-[13px] leading-5 break-words whitespace-pre-wrap text-foreground select-text ${all || !long ? "" : "line-clamp-12"}`}>{message.text.trimEnd()}</p>
           {long && !all ? (
-            <button type="button" className="mt-1 text-xs text-muted-foreground outline-none hover:text-foreground focus-visible:text-foreground" onClick={() => setAll(true)}>
+            <button type="button" className="mt-1 text-xs text-muted-foreground hover:text-foreground focus-visible:text-foreground" onClick={() => setAll(true)}>
               Show all
             </button>
           ) : null}

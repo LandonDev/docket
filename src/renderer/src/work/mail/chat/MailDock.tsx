@@ -130,7 +130,7 @@ function Starters({ sessionId, rows }: { sessionId: string; rows: string[] }) {
           key={text}
           type="button"
           onClick={() => send(text)}
-          className="flex h-8 items-center rounded-md px-2 text-start text-[13px] text-muted-foreground transition-colors duration-(--dur-fast) ease-(--ease-out) outline-none hover:text-foreground focus-visible:text-foreground focus-visible:ring-2 focus-visible:ring-ring motion-reduce:transition-none"
+          className="flex h-8 items-center rounded-md px-2 text-start text-[13px] text-muted-foreground transition-colors duration-(--dur-fast) ease-(--ease-out) hover:text-foreground focus-visible:text-foreground motion-reduce:transition-none"
         >
           {text}
         </button>

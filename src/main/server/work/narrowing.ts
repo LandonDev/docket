@@ -46,20 +46,17 @@ export function harnessDeniedOf(sessionId: string, modules: readonly WorkModule[
 
 /**
  * What a narrowed thread (one some pillar's `harnessDenied` names anything for) may reach beyond its harness: the
- * Work tools and LifeOS, both checked call by call (`callRefusal`), and of the app's own tools only reading threads,
- * its notes and decisions, and citations. No page tool (a page may fetch from the web), no thread or agent, no
+ * Work tools and LifeOS, both checked call by call (`callRefusal`), and of the app's own tools only its notes and
+ * decisions and citations: no other thread's words. No page tool (a page may fetch from the web), no thread or agent, no
  * add-on or skill change, no desktop and no Mac: refused by server and name on Claude Code's fence, by method on the
  * app bridge.
  */
-export const NARROWED_APP_TOOLS: readonly string[] = ['app_list_threads', 'app_read_thread', 'update_notes', 'note_decision', 'cite_source']
+export const NARROWED_APP_TOOLS: readonly string[] = ['update_notes', 'note_decision', 'cite_source']
 export const NARROWED_SERVERS: readonly string[] = [WORK_TOOL_SERVER, 'lifeos']
 export const NARROWED_BRIDGE_METHODS: readonly string[] = [
-  'app.listThreads',
-  'app.readThread',
   'app.updateNotes',
   'app.noteDecision',
   'app.citeSource',
-  'app.addonList',
   'app.addonFind',
   'app.addonCall',
   'app.workTools',

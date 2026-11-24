@@ -595,9 +595,9 @@ it("a thread a pillar narrowed (a mail chat) keeps only the listed bridge calls:
   const info = { port: 4321, scriptPath: '/b.mjs', command: 'node', env: {}, tokens }
   const denied = (id: string) => (id === 'chat' ? ['Bash'] : [])
   const as = (id: string) => ({ sessionId: id, appToken: tokens.tokenFor(id) })
-  for (const method of ['app.startThread', 'app.spawnAgent', 'app.addonRemove', 'app.addonAdd', 'app.skillWrite', 'app.computer', 'app.archiveThreads', 'app.mergeBranch', 'app.htmlPreview', 'app.htmlRender'])
+  for (const method of ['app.listThreads', 'app.readThread', 'app.addonList', 'app.startThread', 'app.spawnAgent', 'app.addonRemove', 'app.addonAdd', 'app.skillWrite', 'app.computer', 'app.archiveThreads', 'app.mergeBranch', 'app.htmlPreview', 'app.htmlRender'])
     expect(bridgeCallRefusal(method, as('chat'), info, denied), method).toBe(`forbidden: ${method} is not available to this thread`)
-  for (const method of ['app.listThreads', 'app.readThread', 'app.updateNotes', 'app.addonCall', 'app.workCall', 'app.workTools'])
+  for (const method of ['app.updateNotes', 'app.addonFind', 'app.addonCall', 'app.workCall', 'app.workTools'])
     expect(bridgeCallRefusal(method, as('chat'), info, denied), method).toBeNull()
   expect(bridgeCallRefusal('app.startThread', as('plain'), info, denied)).toBeNull()
 })

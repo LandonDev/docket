@@ -152,12 +152,14 @@ describe('work.mail.chat.adopt', () => {
     }
   })
 
-  it('answers the same when asked again for the same subject, even after the first message, and refuses another subject', async () => {
-    const { ctx, threads } = fakeCtx({ 'mail:thread': mailThread })
+  it('answers the same when asked again for the same subject, even after the first message, rearming again, and refuses another subject', async () => {
+    const { ctx, threads, rearmed } = fakeCtx({ 'mail:thread': mailThread })
     const ask = { workspaceId: 'ws', sessionId: 'chat', kind: 'mail' as const, mailThreadId: 'm-life' }
     await adoptChat(ctx, owner, ask, 1)
     threads.chat!.written = true
     await expect(adoptChat(ctx, owner, ask, 2)).resolves.toEqual({ ok: true })
+    // Asked again (a host that stopped between the row and the rearm), it ends a harness again; rearm leaves a thread with a message alone.
+    expect(rearmed).toEqual(['chat', 'chat'])
     await expect(adoptChat(ctx, owner, { ...ask, mailThreadId: 'm-life-2' })).rejects.toThrow(OTHER_SUBJECT)
     expect(ctx.db.prepare('SELECT COUNT(*) AS n, MIN(created_at) AS at FROM work_mail_chats').get()).toEqual({ n: 1, at: 1 })
   })
@@ -228,7 +230,9 @@ const REFUSED_WORK = [
   'meeting_notes', 'form_create', 'form_read', 'form_edit', 'form_publish', 'form_close', 'dashboard_create', 'dashboard_read', 'dashboard_add',
   'dashboard_refresh', 'browser_open', 'browser_needs_you', 'browser_sources', 'project_link_item', 'files_open', 'files_make', 'files_move',
   'files_copy', 'files_trash', 'files_undo', 'prep_read', 'prep_today', 'prep_write', 'prep_follow_up', 'money_read', 'money_add', 'money_receipt',
-  'week_review', 'clashes_list', 'template_list', 'template_make', 'template_save', 'work_connections'
+  'week_review', 'clashes_list', 'template_list', 'template_make', 'template_save', 'work_connections',
+  // other threads' words, and places on his Mac, the Windows VM and Google Drive
+  'work_search', 'files_places', 'files_list', 'files_search'
 ]
 /** Work tools refused by their prefix: the Windows VM's computer tools, named after the computer-use specs. */
 const REFUSED_WORK_PREFIX = ['windows_']

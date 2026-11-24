@@ -1,4 +1,3 @@
-import { harnessDeniedOf, narrowedMethodRefusal } from './work/narrowing'
 import { z } from 'zod'
 import { BatchStepSpecSchema } from '@shared/contract-batch'
 import { NOTE_DECISION_DESCRIPTION, NOTE_DECISION_MAX_CHARS, NOTE_DECISION_PARAMS, NOTE_DECISION_TOOL_NAME } from '@shared/away'
@@ -120,7 +119,9 @@ import {
   WORK_THREAD_TYPES,
   workHomeOf,
   workHomeOfSession,
-  WorkRefused
+  WorkRefused,
+  harnessDeniedOf,
+  narrowedMethodRefusal
 } from './orchestration'
 import { CROSS_HOST_EVENTS_MAX, type ThreadEventsResult } from '@shared/contract-crosshost'
 

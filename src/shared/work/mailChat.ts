@@ -24,8 +24,11 @@ export const MAIL_CHAT_POWERS = {
    * `delete_mail_draft`: LifeOS deletes any draft, his own half-written replies too; the card's Discard is his.
    */
   lifeosWrites: ['draft_mail', 'update_mail_draft'],
-  /** Work tools by name. */
-  work: ['mail_offer', 'mail_waiting', 'person_page', 'work_search', 'files_places', 'files_list', 'files_search', 'doc_read', 'doc_find'],
+  /**
+   * Work tools by name. Not `work_search` (it finds other threads' words), nor the Files verbs (listing a place asks
+   * his Mac, the Windows VM or Google Drive).
+   */
+  work: ['mail_offer', 'mail_waiting', 'person_page', 'doc_read', 'doc_find'],
   /**
    * A harness's own tools a mail chat never has: no shell, no file writes, no web, no subagent or workflow of its own, no design sync. Being
    * narrowed, it also keeps only the app tools work/narrowing.ts lists (no thread, agent, add-on or desktop change).

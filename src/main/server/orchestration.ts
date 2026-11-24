@@ -52,6 +52,10 @@ import { OUTSIDE_FENCE, scopeFactsOf, withinFence } from './work/scope'
 // Work's scope rule for the app tools (apptools.ts), which may load nothing under work/ itself. work/scope.ts is
 // the host's own rule, not a pillar: it imports no pillar, not the registry and not the mount (work/scope.test.ts).
 export { farWorkHomeOf, mayUseFarDesktop, OUTSIDE_FENCE, scopeFactsOf, withinFence, WORK_THREAD_TYPES, workHomeOf, workHomeOfSession, WorkRefused } from './work/scope'
+// A narrowed thread's rule for the app bridge (apptools.ts). work/narrowing.ts loads only the module registry, which
+// names each pillar behind a lazy loader, and asks the loaded ones inside a guard: a pillar's fault narrows the
+// thread at a call, never stops the host at boot (work/load.test.ts).
+export { harnessDeniedOf, narrowedMethodRefusal } from './work/narrowing'
 
 
 /**

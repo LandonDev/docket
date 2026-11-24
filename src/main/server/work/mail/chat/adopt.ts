@@ -47,7 +47,11 @@ export async function adoptChat(ctx: WorkCtx, by: Caller, p: Adopt, now = Date.n
   const had = chatRow(ctx.db, p.sessionId)
   if (had) {
     // Asked again (a retry after a lost answer): the same subject answers the same, whatever the thread holds now.
-    if (had.workspaceId === p.workspaceId && had.kind === p.kind && had.mailThreadId === mailThreadId) return { ok: true }
+    if (had.workspaceId === p.workspaceId && had.kind === p.kind && had.mailThreadId === mailThreadId) {
+      // A host that stopped between the row and the rearm: end any harness again before the first send.
+      await ctx.threads.rearm(p.sessionId)
+      return { ok: true }
+    }
     throw new Error(OTHER_SUBJECT)
   }
   if (!ctx.threads.fresh(p.sessionId)) throw new Error(NOT_FRESH)
@@ -55,7 +59,10 @@ export async function adoptChat(ctx: WorkCtx, by: Caller, p: Adopt, now = Date.n
   // Read again after the wait on LifeOS: a second press may have written the row meanwhile.
   const raced = chatRow(ctx.db, p.sessionId)
   if (raced) {
-    if (raced.kind === p.kind && raced.mailThreadId === mailThreadId) return { ok: true }
+    if (raced.kind === p.kind && raced.mailThreadId === mailThreadId) {
+      await ctx.threads.rearm(p.sessionId)
+      return { ok: true }
+    }
     throw new Error(OTHER_SUBJECT)
   }
   if (!ctx.threads.fresh(p.sessionId)) throw new Error(NOT_FRESH)
