@@ -35,6 +35,8 @@ import { attach, type Cdp } from './lib/packagedApp'
 
 const REPO = resolve(import.meta.dir, '..')
 const KEEP = process.env.TC_E2E_KEEP === '1'
+/** `--nine`: after the run, the window proof of the Files nine (.temp-code/plans/landed/F-files-nine.md). */
+const NINE = process.argv.includes('--nine')
 const outArg = process.argv.indexOf('--out')
 let failures = 0
 const check = (name: string, ok: boolean, detail = ''): boolean => {
@@ -91,6 +93,12 @@ if (existsSync(join(TOOLS, 'state.json'))) {
   }
 }
 
+// mac's bin (`gio trash` on this Linux stand-in) refuses while this file exists: a bin that will not take the file.
+const binRefuses = join(root, 'bin-refuses')
+const fakeBin = join(root, 'fake-bin')
+mkdirSync(fakeBin, { recursive: true })
+writeFileSync(join(fakeBin, 'gio'), `#!/bin/sh\nif [ -e '${binRefuses}' ]; then echo 'Unable to trash: the bin refused (proof)' >&2; exit 1; fi\nexec /usr/bin/gio "$@"\n`, { mode: 0o755 })
+
 function launch(inst: Inst, windowed: boolean): void {
   const env: Record<string, string> = {
     ...(process.env as Record<string, string>),
@@ -107,7 +115,8 @@ function launch(inst: Inst, windowed: boolean): void {
     TEMP_CODE_WORK_ROOT: inst.work,
     AGENT_CLI_CREDENTIAL_STORE: 'file',
     NODE_ENV: 'production',
-    SHELL: '/bin/bash'
+    SHELL: '/bin/bash',
+    ...(inst.name === 'mac' ? { PATH: `${fakeBin}:${process.env.PATH ?? '/usr/bin:/bin'}` } : {})
   }
   for (const key of Object.keys(env)) if (/^TEMP_CODE_(HUB|APNS)_/.test(key)) delete env[key]
   delete env.ELECTRON_RUN_AS_NODE
@@ -445,10 +454,142 @@ try {
       await shot(`${tag}-2-asked`)
       const keepWord = await ev<string>(`[...document.querySelectorAll('[role="alertdialog"] button')].map((b) => b.textContent.trim()).join(' / ')`)
       log(`${tag}: the close offers ${keepWord}`)
-      await press('[role="alertdialog"] button', 'Keep trying') || (await press('[role="alertdialog"] button', 'Keep Both'))
+      // A bridge set off is mac's refusal, said with its reason, not silence: the close offers Cancel and Discard, and
+      // what he typed stays in the tab until he turns the bridge on and presses Retry. A copy whose computer does not
+      // answer at all offers Keep trying, and is sent once it answers.
+      const refused = /refused/i.test(await saveLine())
+      if (refused) check(`${tag}: Cancel keeps the tab and what it holds`, (await press('[role="alertdialog"] button', 'Cancel')) && (await until('the tab stays', 5_000, async () => !!(await tabNamed('Notes.txt')))))
+      else await press('[role="alertdialog"] button', 'Keep trying')
       await rpc(mac, 'macBridge.policy.set', { environmentId: boxId, policy: 'read+run' })
-      const sent = await until("mac's file holds the words once it answers", 90_000, () => readFileSync(files.text, 'utf8').includes(words.trim()))
-      check(`${tag}: Keep trying sends them once mac answers again`, sent, JSON.stringify(readFileSync(files.text, 'utf8')))
+      // Retry once the dialog has gone (its fading backdrop takes a press), and again while the line still says refused.
+      await until('the dialog goes', 5_000, async () => !(await ev<boolean>('!!document.querySelector(\'[role="alertdialog"]\')')))
+      const sent = await until("mac's file holds the words once it answers", 90_000, async () => {
+        if (readFileSync(files.text, 'utf8').includes(words.trim())) return true
+        if (refused && /refused/i.test(await saveLine())) await press('button', 'Retry', 1, 2_000)
+        await sleep(2_000)
+        return false
+      })
+      check(`${tag}: ${refused ? 'Retry' : 'Keep trying'} sends them once mac takes them again`, sent, JSON.stringify(readFileSync(files.text, 'utf8')))
+    }
+  }
+
+  // 8. The Files nine, in the window (`--nine`): a copy renamed from its own tab then edited, a delete the bin refuses,
+  // and words in a deck's box when the window closes at once. Close during a slow save is proven by the host's tests
+  // (copies.test.ts): no step here can hold mac's answer without stopping the window it drives.
+  if (NINE) {
+    const editor = async (): Promise<{ x: number; y: number } | null> => centre('[data-files-file] .cm-content, [data-files-file] textarea, [data-files-file] [contenteditable="true"]')
+    const typeAtEnd = async (words: string): Promise<void> => {
+      const at = (await editor())!
+      await click(at.x, at.y)
+      await ev(`(() => { const el = document.activeElement; if (el && 'selectionStart' in el) { el.selectionStart = el.selectionEnd = el.value.length } })()`)
+      await typeKeys(words)
+    }
+    const menuRow = async (label: string): Promise<boolean> => {
+      const at = await until(label, 5_000, async () => !!(await ev<boolean>(`!![...document.querySelectorAll('[role="menuitem"]')].find((e) => e.textContent.trim().startsWith(${JSON.stringify(label)}))`)))
+      if (!at) return false
+      const xy = await ev<{ x: number; y: number }>(`(() => { const r = [...document.querySelectorAll('[role="menuitem"]')].find((e) => e.textContent.trim().startsWith(${JSON.stringify(label)})).getBoundingClientRect(); return { x: Math.round(r.x + r.width / 2), y: Math.round(r.y + r.height / 2) }; })()`)
+      await click(xy.x, xy.y)
+      return true
+    }
+    const renamed = join(general, 'Notes 2026.txt')
+
+    // Fault 1: renamed from the copy tab's own header, his next words reach the renamed file, never a "(mine)" one.
+    {
+      const tag = 'nine rename'
+      if (!(await tabNamed('Notes.txt'))) {
+        await libraryTab()
+        await openRow('Notes.txt')
+      } else await press('[role="tab"]', 'Notes.txt')
+      if (check(`${tag}: the text file's copy is open`, await until('the editor', 30_000, async () => !!(await editor())))) {
+        check(`${tag}: its More menu offers Rename`, (await press('button[aria-label="More for Notes.txt"]', undefined)) && (await menuRow('Rename')))
+        const field = await until('the name field', 5_000, () => ev<boolean>(`!!document.querySelector('input[aria-label^="Rename"]')`))
+        if (check(`${tag}: the name opens for typing`, field)) {
+          await ev(`(() => { const f = document.querySelector('input[aria-label^="Rename"]'); f.focus(); f.select(); })()`)
+          await cdp!.send('Input.insertText', { text: 'Notes 2026.txt' })
+          await enter()
+          check(`${tag}: mac's file takes the new name`, await until('renamed on mac', 15_000, () => existsSync(renamed) && !existsSync(files.text)), readdirSync(general).join(', '))
+          check(`${tag}: the tab's copy follows the file to its new name`, await until('copyOf follows', 15_000, async () => (await tabs()).some((t) => t.copyOf?.path === renamed)), JSON.stringify((await tabs()).map((t) => [t.name, t.copyOf?.path])))
+          await shot('nine-1-renamed')
+          const words = ` after the rename ${Date.now() % 1000}`
+          await typeAtEnd(words)
+          check(`${tag}: his next words reach the renamed file`, await until('the renamed file holds them', 20_000, () => existsSync(renamed) && readFileSync(renamed, 'utf8').includes(words.trim())), existsSync(renamed) ? JSON.stringify(readFileSync(renamed, 'utf8')) : 'gone')
+          check(`${tag}: no "(mine)" file is made beside it`, !readdirSync(general).some((n) => n.includes('(mine)')), readdirSync(general).join(', '))
+          check(`${tag}: the header says it is saved there`, await until('saved there', 10_000, savedThere), await saveLine())
+          await shot('nine-2-renamed-saved')
+        }
+      }
+    }
+
+    // Fault 7: a delete the bin refuses keeps the tab and the words its copy has not sent; they go once mac takes them.
+    {
+      const tag = 'nine refused delete'
+      const name = 'Notes 2026.txt'
+      if (check(`${tag}: the renamed file's tab is open`, !!(await tabNamed(name)) && (await until('the editor', 20_000, async () => !!(await editor()))))) {
+        await rpc(mac, 'macBridge.policy.set', { environmentId: boxId, policy: 'off' })
+        const words = ` unsent ${Date.now() % 1000}`
+        await typeAtEnd(words)
+        check(`${tag}: the words wait in the copy`, await until('not saved there', 30_000, async () => /refused|not answering|not saved/i.test(await saveLine())), await saveLine())
+        writeFileSync(binRefuses, '')
+        check(`${tag}: Delete is in the tab's menu`, (await press(`button[aria-label="More for ${name}"]`, undefined)) && (await menuRow('Delete')))
+        const asked = await until('the delete asks', 10_000, () => ev<boolean>('!!document.querySelector(\'[role="alertdialog"]\')'))
+        const words2 = asked ? await ev<string>(`document.querySelector('[role="alertdialog"]')?.textContent ?? ''`) : ''
+        await shot('nine-3-delete-asked')
+        if (asked) await press('[role="alertdialog"] button', 'Delete')
+        check(`${tag}: the refusal is said`, await until('a toast', 15_000, async () => (await toasts()).some((t) => /Nothing was deleted/.test(t))), `${JSON.stringify(await toasts())}; asked "${words2}"`)
+        await shot('nine-4-delete-refused')
+        check(`${tag}: mac's file stays`, existsSync(renamed))
+        const tab = await tabNamed(name)
+        check(`${tag}: the tab stays, its words still waiting`, !!tab && !!tab.back && tab.back.is !== 'ok', JSON.stringify(tab))
+        rmSync(binRefuses, { force: true })
+        await rpc(mac, 'macBridge.policy.set', { environmentId: boxId, policy: 'read+run' })
+        await press('button', 'Retry', 1, 10_000)
+        check(`${tag}: the words reach mac's file once it takes them`, await until('mac has them', 90_000, () => readFileSync(renamed, 'utf8').includes(words.trim())), JSON.stringify(readFileSync(renamed, 'utf8')))
+      }
+    }
+
+    // Fault 4: words typed into a box on a deck's slide, and the window closed at once (the frame's ×, through main's
+    // close and the window's persist): box's copy holds them, and mac's file once mac is back.
+    {
+      const tag = 'nine window close'
+      // The deck made from New: its title box takes words, as section 5 showed.
+      await libraryTab()
+      await openRow('Testing.pptx')
+      await until('the deck draws', 60_000, () => ev<boolean>(`!!document.querySelector('[data-slides-shapes] [data-shape]')`))
+      await sleep(800)
+      let typing = false
+      for (const [fx, fy] of [[0.5, 0.3], [0.5, 0.55], [0.5, 0.7], [0.13, 0.46]] as const) {
+        const box = await ev<{ x: number; y: number; w: number; h: number } | null>(`(() => { const l = document.querySelector('[data-slides-shapes]'); if (!l) return null; const r = l.getBoundingClientRect(); return { x: r.x, y: r.y, w: r.width, h: r.height }; })()`)
+        if (!box) break
+        await click(Math.round(box.x + box.w * fx), Math.round(box.y + box.h * fy))
+        if (!(await until('a shape is picked', 2_000, () => ev<boolean>(`!!document.querySelector('[data-shape][aria-pressed="true"]')`)))) continue
+        await enter()
+        if ((typing = await until('the box opens', 3_000, () => ev<boolean>(`!!document.querySelector('[data-slide-typing][data-phase="typing"]')`)))) break
+      }
+      if (check(`${tag}: a box on the slide opens for his words`, typing)) {
+        const words = `Closing words ${Date.now() % 1000}`
+        await typeKeys(words)
+        await shot('nine-5-typed-then-close')
+        // At once: well inside the box's 2 s pause, so only the close's own send can carry them.
+        void ev('window.api.win.close()').catch(() => undefined)
+        const pane = join(box.data, 'attachments', 'teams-files', `filespane_${ws.id}`)
+        const copyHolds = (): boolean => {
+          if (!existsSync(pane)) return false
+          for (const dir of readdirSync(pane)) {
+            const f = join(pane, dir, 'Testing.pptx')
+            if (existsSync(f) && unzip(f, 'ppt/slides/slide1.xml').includes(words)) return true
+          }
+          return false
+        }
+        const deck = join(general, 'Testing.pptx')
+        const onBox = await until("box's copy holds the words", 20_000, () => copyHolds() || unzip(deck, 'ppt/slides/slide1.xml').includes(words))
+        check(`${tag}: the words typed just before the window closed reach box`, onBox)
+        cdp?.close()
+        cdp = null
+        // mac's window closed its last window, so mac quit; started again, box sends what waits.
+        await until('mac is gone', 20_000, () => { try { process.kill(mac.proc!.pid!, 0); return false } catch { return true } })
+        launch(mac, true)
+        check(`${tag}: once mac is back, its file holds them`, await until("mac's deck holds them", 180_000, () => unzip(deck, 'ppt/slides/slide1.xml').includes(words)))
+      }
     }
   }
 } catch (err) {
