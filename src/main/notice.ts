@@ -6,10 +6,10 @@ import { BrowserWindow, ipcMain, Notification, type WebContents } from 'electron
  * while the app is not in front. The toast in the window says the same and
  * stays; this is for a person looking at another app.
  *
- * A window asks with `app:notice {key, title, body, silent?}`. Main shows
- * it only while no app window is focused, once per key across windows, and
- * again when its words change (silent unless the ask holds news: the window
- * says which); a click brings a window that asked forward and tells it which
+ * A window asks with `app:notice {key, title, body, silent?, telling?}`. Main
+ * shows it only while no app window is focused, once per key across windows,
+ * and again when its words or its telling change (silent unless the ask holds
+ * news: the window says which); a click brings a window that asked forward and tells it which
  * key
  * (`app:notice-open`). `app:notice-close {key}` lets go of this window's
  * ask: the notification is taken back once no window still asks for it.
@@ -22,6 +22,8 @@ export interface NoticeAsk {
   body: string
   /** the digest's: no sound */
   silent?: boolean
+  /** which tellings it says: a new one in the same words is shown again, and two windows asking the same one show it once */
+  telling?: string
 }
 
 /**
@@ -35,6 +37,9 @@ export function noticeStep(said: string | undefined, words: string, anyFocused: 
   if (said === words) return 'keep'
   return anyFocused ? 'withdraw' : 'replace'
 }
+
+/** What an ask says, as `noticeStep` compares it: its words and the tellings behind them. */
+export const noticeWords = (ask: NoticeAsk): string => `${ask.title}\n${ask.body}\n${ask.telling ?? ''}`
 
 const text = (value: unknown, max: number): string => (typeof value === 'string' ? value.replace(/\s+/g, ' ').trim().slice(0, max) : '')
 /** At most two lines, each cleaned as one. */
@@ -60,7 +65,8 @@ export function readAsk(value: unknown): NoticeAsk | null {
   const title = text(v.title, 120)
   const body = lines(v.body, 300)
   if (!key || !title || !body) return null
-  return { key, title, body, ...(v.silent === true ? { silent: true } : {}) }
+  const telling = keyOf(v.telling)
+  return { key, title, body, ...(v.silent === true ? { silent: true } : {}), ...(telling ? { telling } : {}) }
 }
 
 /**
@@ -99,7 +105,6 @@ export function registerNotices(): void {
   const watched = new Set<number>()
   /** What each shown one says. */
   const words = new Map<string, string>()
-  const wordsOf = (ask: NoticeAsk): string => `${ask.title}\n${ask.body}`
   const withdraw = (key: string): void => {
     const notification = shown.get(key)
     if (!notification) return
@@ -122,14 +127,14 @@ export function registerNotices(): void {
     claims.add(ask.key, e.sender.id)
     watch(e.sender)
     const anyFocused = BrowserWindow.getAllWindows().some((w) => w.isFocused())
-    const step = noticeStep(shown.has(ask.key) ? words.get(ask.key) : undefined, wordsOf(ask), anyFocused)
+    const step = noticeStep(shown.has(ask.key) ? words.get(ask.key) : undefined, noticeWords(ask), anyFocused)
     if (step === 'keep') return
     if (step !== 'show') withdraw(ask.key)
     if (step === 'withdraw') return
     // Whether it sounds is the window's to say: it knows which of the things in it he has heard already.
     const notification = new Notification({ title: ask.title, body: ask.body, silent: ask.silent === true })
     shown.set(ask.key, notification)
-    words.set(ask.key, wordsOf(ask))
+    words.set(ask.key, noticeWords(ask))
     const forget = (): void => {
       if (shown.get(ask.key) !== notification) return
       shown.delete(ask.key)

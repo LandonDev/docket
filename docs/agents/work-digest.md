@@ -59,20 +59,28 @@ ctx.tell.quiet(sessionId)         // this thread started on its own: its done, f
 - Each look (30 s, while Work is on) the host reads every row with a `by`
   still ahead that he was never told of at once, whatever digest it is in:
   one whose clock has come inside the window is told at once.
+  A host that slept through a row's clock tells it when it wakes: the read
+  reaches back a day (`LATE_MS`), as a due row does.
 - A row is marked told only when a deliverer took it. With none, the row
   is kept as due, and the first look with a deliverer sends every due row
-  whose `by` has not passed by more than a day (`LATE_MS`).
+  whose `by` has not passed by more than a day (`LATE_MS`) and whose group
+  his level, as it stands then, still calls `now` for; one he set to wait
+  since waits.
+- A key told again in the same words, filed under another job (a
+  workspace linked to its sector since), moves the row to that job and is
+  not news again.
 
 ## The ledger
 
 `work/digest/store.ts`, on each host, 30 days (`KEEP_DAYS`), pruned at each
-digest:
+digest time, a day made or not (every window hears a `gone` for each row
+dropped):
 
 | Table | Holds |
 |---|---|
 | `work_digest_tells` | one row a tell: `id`, `key` (unique when set), `kind`, `grp`, `workspace_id`, `sector`, `title`, `detail`, `open` (JSON), `by_at`, `at`, `due`, `day`, `told_at` |
 | `work_digest_days` | one row a digest made: `day`, `made_at`, `seen_at`, `count` |
-| `work_digest_settings` | `at` ("08:00"), `zone`, `levels` (only the groups he changed), `handled` (the last digest time looked at) |
+| `work_digest_settings` | `at` ("08:00"), `zone`, `levels` (only the groups he changed), `handled` (the last digest time looked at), `owed` (the day whose notice no deliverer has taken yet; empty once one has) |
 | `work_digest_quiet` | threads that started on their own (`ctx.tell.quiet`) |
 
 How a row stands is read from its columns: `told_at` set is `now`, else a
@@ -87,14 +95,22 @@ the day's list and not in its count. A day with nothing that waited makes
 nothing and sends nothing. A time missed while the host was down or asleep
 is made once at start, late; a day is never made twice
 (`work_digest_days.day`), and its time is marked handled only once the day
-is made, so a stop while its sources are read loses none. A tell whose
+is made, so a stop while its sources are read loses none. The slot marked
+handled, the day and its rows stamped, the 30 days pruned and the day's
+notice owed are one write (`DigestStore.atomically`); a make that finds
+its slot handled already (another look made it) makes and sends nothing.
+The day's notice stays owed until the deliverer takes it: a host whose
+notifier is not built yet (late in boot) sends it at the first look that
+has one, and one he has already seen on a desktop is not sent. A tell whose
 clock passed more than a day ago does not interrupt (`LATE_MS`). A change of the time or the zone misses nothing:
 a digest time it puts in the past is not made late.
 
 The time is a wall time in a zone (`clock.ts`, over the routines pillar's
-`nextAt`). The zone is the last desktop's: a window sends
-`work.digest.here {zone}` and the host keeps the newest. Until one has
-said, the host's own zone.
+`nextAt`). The zone is the desktop he uses: the window in front sends
+`work.digest.here {zone}` when it comes to the front, and when a link opens
+or a host turns on while it is in front; a window in the background says
+nothing, so its reconnect never takes the clock from the one he uses. The
+host keeps the newest. Until one has said, the host's own zone.
 
 ## The wire
 
@@ -102,14 +118,18 @@ said, the host's own zone.
 
 | Method | Needs | Answers |
 |---|---|---|
-| `work.digest.list {day?, since?}` | read | `{days, rows, waiting, groups}` |
+| `work.digest.list {day?, since?}` | read | `{days, rows, waiting, groups}`; asked when a day is due here and not made yet, it makes it first and answers once the day's sources are read (`listMade`), so a linked host asking at its own digest time is not answered from a ledger a source pass is still filling |
 | `work.digest.get` | read | `{at, zone, levels, nextAt, setAt?}` (`setAt`: when each field, the time and a group each, was last set on this host; the phone's schema leaves it out) |
 | `work.digest.set {at?, levels?, setAt?}` | admin | the settings. `setAt` names when each field in the write was set, for a write that brings a host to what another holds: the host stamps the field with that time and leaves alone one it holds a newer setting of |
 | `work.digest.here {zone}` | operate | null |
 | `work.digest.seen {day}` | operate | null |
 
 Push `{push: 'work.digest', day?, row?, gone?, settings?}` to sockets that
-hold `read`. The relay carries every method.
+hold `read`, but a row about a held item (group `held`, or a target in the
+Outbox) only to sockets that hold `approve`, as the Outbox's own push goes
+(`pushNeed` in ctx.ts): it names a draft's recipients and subject, which a
+read-only key reads when it asks and is never sent unasked. The relay
+carries every method.
 
 ## Telling the phone
 
@@ -169,12 +189,16 @@ or `{key, tell, by?, open?}`.
   and its id sorts before every host it has saved. At its time it asks each
   host it can reach, whichever side dialed (`hostReadOf` in work/peer.ts:
   the transport Work's cross-host calls ride, under the far host's bridge
-  policy as a read), for `work.digest.list` with a five second limit
+  policy as a read), for `work.digest.list` (which the far host answers once
+  its own day's sources are read) with a five second limit
   (`PEER_WAIT_MS`) and adds the rows that waited there, a key two hosts
   hold counted once. It asks even on a day it has nothing of its own, so a
   Mac's jobs are not left unsaid because the box has none. A Mac whose
   bridge is off for the box is not counted. A Mac that was asleep makes its
-  day when it wakes and sends no phone digest.
+  day when it wakes and sends no phone digest. The rule does not ask
+  whether the sender has Work on: a desktop with Work on that saved a Linux
+  host with Work off sends nothing, and that host makes no day (left for
+  the owner: the election would need each saved host's switch).
 - **The gate.** `Notifier.setGate(gate)`: asked before a thread's notice
   goes out; true keeps it back. With none set, or one that throws, every
   notice is today's (a test compares them field for field).
@@ -192,15 +216,17 @@ is in the first paint (`scripts/entryGraph.test.ts`, `check:bundle`).
 |---|---|
 | `store.ts` | each Work host's ledger and settings, asked when its link opens and kept by the `work.digest` push; `mergeRows` (one row a key across hosts, the one told at once winning), `mergeDays` (hosts' days of one date are one, seen once any is); `markSeen`, `setDigest` (written to every Work host); the settings shown are each field's newest across the hosts (`newestSettings`), and after a host is read the fields it missed are written to it, each stamped with when it was set (`staleSettings`, `align`: never under a write of his own, never on a push, and a field no host says when it was set is left alone), so two changes that reached different hosts both stand, and an older stamp is repaired though the value already matches (going back to an earlier choice is a new edit); `hostsHold` ends a row's refusal line once each host that refused is known to hold what he asked for; `openDigestSheet`; sends `work.digest.here` |
 | `notice.ts` | pure: `digestNotice` (the unseen days and their line: what waited when each day was made on the row's own host, a row whose clock came due later included; a thing done since is gone from it, as from the list), `onlyToday`, `openInterrupts` (told, a day old at most, not closed here), `nowToasts` (one a row, a fold past three), `systemNotices`, `listSections`, `rowWhen`, `emptyLine`, `unansweredLine`, `refusedLine` |
-| `open.ts` | pure: `routeOf` turns a `TellOpen` into a route (`thread`, `view` with `at` in that view's own field, `place`, `outbox` with the page's item key, `settings`), `go` runs it |
+| `open.ts` | pure: `routeOf` turns a `TellOpen` into a route (`thread`, `view` with `at` in that view's own field: Agenda's and Prep's event, Mail's mail, Tasks' task, Projects' project, People's person, Messages' conversation (`chat`); `file`, a guest's edit's LifeOS document or sheet (`at: 'lifeos:docs:<id>'`); `place` with its moment; `outbox` with the page's item key; `settings`), `go` runs it and answers false when nothing opened |
 | `DigestHost.tsx` | the two toasts through `useToastSync`, their system notifications, the routes, the sheet's mount |
 | `DigestSheet.tsx` | the list (`DigestList`) in a 480px `Sheet` |
 | `SettingsSection.tsx` | Settings → Work → Digest |
 
 - The digest's toast opens `digestOpensPort.get()` when one is registered
-  (Today) and the one unseen day is today (`onlyToday`: Today shows that
-  day alone); with an older day unseen too it opens the sheet, which holds
-  every day. Opening or closing it marks every unseen day seen on every
+  (Today), the one unseen day is today (`onlyToday`: Today shows that
+  day alone) and Today has a row for every thing it counts (`todayShows` in
+  today.ts: the also rows, held items and failed sends, waiting mail, chat
+  and the review, and a meeting, its prep or a clash only when its clock
+  falls today); else it opens the sheet, which holds every day. Opening or closing it marks every unseen day seen on every
   host that holds it, so each window's toast goes with the push. A mark
   whose host did not answer (its link was down) is kept in localStorage
   (`work.digest.seen.pending`), read as seen meanwhile and said again when
@@ -214,16 +240,26 @@ is in the first paint (`scripts/entryGraph.test.ts`, `check:bundle`).
   and when it was told (`tellingOf`; `work.digest.dismissed`, the newest
   200), so the same thing told again later shows again, and shared across windows by
   the storage event, so a reload does not bring it back.
-- A view of a workspace the window is not in: the window moves there
-  first (`onOpenWorkspace`), and the view opens once it has.
+- A view: every overlay closes (`shell.closeOverlays`, Settings among
+  them: a press from Settings → Work → Digest, or a toast over Settings,
+  must not open behind it), the window enters the job's workspace as its
+  rail row does (`workEnterPort`, else `project.enterWorkspace`), and the
+  view opens on the thing. A guest's edit opens its document or sheet in a
+  Files tab of the job (`openInFiles`); a target from a host a release
+  behind, with no document named, stands on the LifeOS place. A job this
+  window does not list opens nothing, and the press opens the list.
 - A held item opens the Outbox on that item: `wantOutboxItem(key)` in
   work/outbox/store.ts, which the Outbox page takes once its list holds it.
-- A `{place}` target opens through `shell.openWorkPlace` once Today's frame
-  is on master; until then it opens the list.
+- A `{place}` target opens through `openWorkPlaceAt` (lib/workPlaceAt.ts)
+  once its row is on the rail, at the moment it names (the review's week);
+  until then it opens the list.
 - **The system notification.** `src/main/notice.ts`: `app:notice {key,
-  title, body, silent?}` and `app:notice-close {key}`; main shows an
+  title, body, silent?, telling?}` and `app:notice-close {key}`; main shows an
   Electron `Notification` only while no app window is focused, once per key
-  across windows, and again when its words change (`noticeStep`); the body
+  across windows, and again when its words or its tellings change
+  (`noticeStep` over `noticeWords`: a deadline brought forward is a new
+  telling in the same words, and sounds; two windows asking one telling
+  show it once); the body
   keeps two lines, a thing's title and its detail, and the fold's names
   every open one (`nowLine`, newest first). Whether it sounds is the
   window's to say: a notice sounds only when it holds a telling not heard
@@ -268,7 +304,8 @@ same words, so it is not news again.
 - `guests` (docs): each document whose last edit since the last digest (a
   day, before the first) was a guest's, from `work.docs.find`'s `lastBy`, at
   digest time; `guest-edit:<entry key>:<day>`, "A guest edited Pricing
-  notes" (the list names no guest), opens Docs.
+  notes" (the list names no guest), opens the document or sheet itself in
+  Files (`open.at` is the entry key, `lifeos:docs:<id>`).
 - `capture`: captures waiting in Life's "Unsorted", one row a day,
   `capture-unsorted:<day>`, "4 captures to sort", opening Tasks in the
   Life workspace, at digest time. The capture pillar files and reads
@@ -277,14 +314,20 @@ same words, so it is not news again.
   and counts those whose source channel is "Unsorted", the channel
   capture/file.ts files them under.
 - `prep.starting` (prep, which tells nothing itself): each minute,
-  `work.prep.upcoming` for the next ten minutes; a meeting that begins
-  within them is "Budget review starts at 2:00 PM" with its start as `by`,
+  `work.prep.upcoming` for the next twenty minutes, read at most each
+  five and filtered to the next ten at each beat; a meeting that begins
+  within ten is "Budget review starts at 2:00 PM" with its start as `by`,
   so it interrupts; `prep:<eventId>:<startsAt>`, the same on every host
   that holds the job, opening the meeting's page. Once it has begun it
   leaves the read, and its row and toast go (`prefix: 'prep:'`).
 - `prep.ready` (prep): at digest time, a brief that is ready for a meeting
   in the next day, "Prep is ready for Budget review";
   `prep-ready:<eventId>:<day>`. It waits.
+- `scheduled` (mail): a mail he scheduled that did not go, from LifeOS's
+  Scheduled list on the owner session, each 5 minutes;
+  `mail-missed:<id>`, '"Budget" did not go at 7:00 AM on Nov 23' (the date
+  always, so a read the next day says the same words and the row is not in
+  a second digest), opening Mail. It waits.
 - `winvm`: a failure only he can fix, from `work.winvm.state` each 5
   minutes, under `winvm:`. Only a setup that failed before it made the disk
   (`none` with an `error`) is told, `winvm:setup`, its reason the detail,
@@ -325,7 +368,11 @@ rules; nothing about the wire is the phone's own.
   "Nothing Since Oct 24", when empty; VoiceOver says a row's job before its
   title (`DigestModel.spoken`); "The Mac did not answer" at the foot for a host whose
   read failed. Opening it sends `work.digest.seen` for every day no host has
-  seen, to every host that holds it. Home has a **Digest** row after the
+  seen, to every host that holds it; a mark whose host did not answer is
+  kept (`WorkDigest.pendingSeen`, in memory), laid over every read and said
+  again on the next socket, so a reconnect never brings the day back
+  unseen. A host whose Work turns on while the list is open is read then
+  (the screen's read is keyed by the hosts' ids). Home has a **Digest** row after the
   Outbox, with no count, while any host has Work on.
 - **A tap on a notice.** `PushTarget` reads `tc.work` (Push/PushTarget.swift,
   `route`): `{key, digest}` opens the Digest; `{key, tell, open?}` opens a held
@@ -373,7 +420,10 @@ the notice's body), group `results`.
   answers a promise; `RUN_NOW_CAUSE` is the engine's own word and a test
   holds the two together.
 - A thread he has typed in himself is his own from then on
-  (`writtenByOwner`): its notices go as any thread's.
+  (`writtenByOwner`): its notices go as any thread's. Both that and the
+  switch are asked again once a run's cause is read: Work turned off, or
+  he took the thread over, while it was read, and the notice goes. The gate
+  keeps a notice only when the ledger kept its tell.
 - `needs_you` passes: a question or an approval reaches him at once with
   Allow and Deny (`ROUTINE_ASKS_WAIT` in rule.ts flips that). A held act's
   notice is the Outbox's own tell and passes.
@@ -385,12 +435,24 @@ the notice's body), group `results`.
 
 docs/agents/work-outbox.md "How he is told": `outbox.held` (waits unless
 its kind has a clock, `ActKindDef.by`), `outbox.failed` (interrupts while
-fresh), `outbox.offer` (waits), kept in step by `ctx.tell.only`.
+fresh), `outbox.offer` (waits), kept in step by `syncTells`
+(outbox/tells.ts). Each sync tells every held item, failed send and offer
+as it stands now: one the ledger holds in the same words changes nothing,
+so nothing rings twice, while one first read at boot (LifeOS's drafts made
+while the host was down) or edited to an earlier time is told. A failed
+send is keyed by its attempt (`unsent:<ref>@<decidedAt>`, the press's
+time), so a retry that fails again is a new failure he hears of, and the
+sync retires the last attempt's row; a LifeOS item has no press here and
+keeps one key. Nothing held or failed is withdrawn from a list as long as
+the read allows (`WAITING_MAX`, 500): it may be cut short.
 
 ## Tonight's builds
 
 As found on master on 2026-11-23. Clashes (`clashes.new`, `by` the later
-event's start on every clash), money (`money.confirm`), review (`review.ready`, its page
+event's start for every clash, since master e0d652805: so a clash rings at
+once when its later event starts before the next digest plus two hours,
+which is at the digest's time on its day, or at the digest's time the day
+before for one that starts within two hours after a digest), money (`money.confirm`), review (`review.ready`, its page
 and week as the target) and messages (`messages.new`, the conversation as
 the target) tell for themselves, each with its kind listed on its own
 module. Prep hands a read: the two sources above.

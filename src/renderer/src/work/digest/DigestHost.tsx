@@ -6,13 +6,15 @@ import { systemNotice } from "../../lib/native";
 import { useWorkspaces } from "../../lib/tcserver/workspaces";
 import { normalizeProjectPath } from "../../lib/recents";
 import { workPlaceRow } from "../../lib/workPlaces";
-import { digestOpensPort, openWorkView, workOpenPort } from "../../lib/workSwitch";
+import { openWorkPlaceAt } from "../../lib/workPlaceAt";
+import { digestOpensPort, openWorkView, workEnterPort, workOpenPort } from "../../lib/workSwitch";
 import { project } from "../../stores/project";
 import { shell } from "../../stores/shell";
 import { wantOutboxItem } from "../outbox/store";
 import { DigestSheet } from "./DigestSheet";
 import { DIGEST_TOAST, digestNotice, nowToasts, onlyToday, openInterrupts, systemNotices, tellingOf, type NowToast } from "./notice";
 import { go, routeOf, type Routes } from "./open";
+import { todayShows } from "./today";
 import { markSeen, openDigestSheet, setTellOpener, useDigest, useDigestSheetOpen } from "./store";
 
 /**
@@ -83,21 +85,38 @@ export function DigestHost() {
     });
   }, []);
 
-  const routes = useMemo<Routes>(
-    () => ({
+  const routes = useMemo<Routes>(() => {
+    /** The job's workspace, entered as a press on its rail row does, with every overlay closed; null: not in this window. */
+    const enter = (workspaceId: string) => {
+      const workspace = workspaces.find((w) => w.id === workspaceId);
+      if (!workspace) return null;
+      shell.closeOverlays();
+      const toRail = workEnterPort.get();
+      if (toRail) toRail(workspace.path);
+      else project.enterWorkspace(normalizeProjectPath(workspace.path));
+      return workspace;
+    };
+    return {
       thread: (sessionId) => workOpenPort.get()?.(sessionId),
-      // The window moves to the job's workspace and opens the view on the thing, as a row of Today does (work/today/open.ts `goTo`).
+      // The window moves to the job's workspace and opens the view on the thing, as a row of Today does (work/today/open.ts
+      // `goTo`). Settings closes first: a press from its Digest section, or a toast over it, must not open behind it.
       view: (wanted) => {
-        const workspace = workspaces.find((w) => w.id === wanted.workspaceId);
-        if (!workspace) return;
-        shell.closeViews();
-        project.enterWorkspace(normalizeProjectPath(workspace.path));
-        openWorkView(wanted);
+        const workspace = enter(wanted.workspaceId);
+        if (workspace) openWorkView(wanted);
+        return !!workspace;
       },
-      // A page above the workspaces, once its row is on the rail: until then there is no such page.
-      place: (id) => {
+      // A guest's edit: the document itself, in a Files tab of the job (the host names the tab by the document's title).
+      file: (workspaceId, ref) => {
+        const workspace = enter(workspaceId);
+        if (workspace) void import("../files/openFrom").then(({ openInFiles }) => openInFiles(workspace, { ref, name: "Untitled" })).catch(() => openWorkView({ workspaceId, view: "files" }));
+        return !!workspace;
+      },
+      // A page above the workspaces, once its row is on the rail: until then there is no such page. A moment it names
+      // (the review's week) is where the page opens.
+      place: (id, at) => {
         if (!workPlaceRow(id)) return false;
-        shell.openWorkPlace(id);
+        const moment = at === undefined ? NaN : Number(at);
+        openWorkPlaceAt(id, Number.isFinite(moment) ? moment : undefined);
         return true;
       },
       outbox: (item) => {
@@ -105,9 +124,8 @@ export function DigestHost() {
         shell.openOutbox();
       },
       settings: (section) => requestSettings(section),
-    }),
-    [workspaces],
-  );
+    };
+  }, [workspaces]);
   const routesRef = useRef(routes);
   routesRef.current = routes;
 
@@ -122,12 +140,15 @@ export function DigestHost() {
   );
   /**
    * The digest's press. Every unseen day is seen, so he must land where all of them show: Today when the one
-   * unseen day is today (Today shows that day alone), else the list, which holds every day.
+   * unseen day is today and Today has a row for each thing it counts (Today shows that day alone, and not
+   * tomorrow's prep or next week's clash), else the list, which holds every day.
    */
   const digest = useMemo(() => digestNotice(view), [view]);
   const openDigest = useCallback(() => {
     if (digest) markSeen(digest.days);
-    const today = digest && onlyToday(digest.days, Date.now()) ? digestOpens() : null;
+    const now = Date.now();
+    const onToday = !!digest && onlyToday(digest.days, now) && digest.rows.every((r) => todayShows(r, digest.days[0]!.day));
+    const today = onToday ? digestOpens() : null;
     if (today) today();
     else openDigestSheet(true);
   }, [digest]);
@@ -202,8 +223,9 @@ export function DigestHost() {
   const system = useMemo(() => systemNotices(digest, toasts, (row) => heard.current.has(tellingOf(row)) || (row.toldAt ?? 0) < openedAt.current), [digest, toasts]);
   const asked = useRef(new Map<string, string>());
   useEffect(() => {
-    // Its words: asked again when either line changes, so the notice says what the toast says.
-    const next = new Map(system.map((n) => [n.key, `${n.title}\n${n.body}`]));
+    // Its words: asked again when either line changes, so the notice says what the toast says; and when what it tells
+    // changes in the same words (a deadline brought forward), so that telling sounds.
+    const next = new Map(system.map((n) => [n.key, `${n.title}\n${n.body}\n${n.telling ?? ""}`]));
     for (const key of asked.current.keys()) if (!next.has(key)) void systemNotice.close(key);
     for (const notice of system) if (asked.current.get(notice.key) !== next.get(notice.key)) void systemNotice.show(notice);
     asked.current = next;

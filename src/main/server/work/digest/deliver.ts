@@ -70,15 +70,19 @@ const within = <T>(wait: Promise<T>, ms: number, otherwise: T): Promise<T> =>
     )
   })
 
-export function makeDeliverer(deps: DeliverDeps): Deliverer & { digestSent(day: DigestDay, rows: LedgerRow[]): Promise<void> } {
-  const digestSent = async (day: DigestDay, rows: LedgerRow[]): Promise<void> => {
-    if (!deps.sendsDigest()) return
+export function makeDeliverer(deps: DeliverDeps): Deliverer & { digestSent(day: DigestDay, rows: LedgerRow[]): Promise<boolean> } {
+  /** False: no notifier yet, so the day is offered again later (ctx.ts `offerOwed`). */
+  const digestSent = async (day: DigestDay, rows: LedgerRow[]): Promise<boolean> => {
+    if (!deps.sendsDigest()) return true
+    if (!deps.notifier()) return false
     const far = await Promise.all(deps.peers(day.day).map((ask) => within(ask, PEER_WAIT_MS, [] as TellRow[])))
     const all = mergeByKey([rows, ...far])
     const notifier = deps.notifier()
-    if (!notifier || all.length === 0) return
+    if (!notifier) return false
+    if (all.length === 0) return true
     const key = `digest:${day.day}`
     notifier.work({ ...digestWords(all.length, all, jobOf), urgent: false, work: { key, digest: day.day } })
+    return true
   }
   return {
     now(row, open) {
@@ -99,7 +103,7 @@ export function makeDeliverer(deps: DeliverDeps): Deliverer & { digestSent(day: 
       // A banner on a phone cannot be taken back; the next interrupt's body names only what is still open.
     },
     digest(day, rows) {
-      void digestSent(day, rows).catch((err: unknown) => deps.log(`digest: the day's notice was not sent: ${errorText(err)}`))
+      return digestSent(day, rows).catch((err: unknown) => (deps.log(`digest: the day's notice was not sent: ${errorText(err)}`), true))
     },
     digestSent
   }

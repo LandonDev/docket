@@ -36,17 +36,16 @@ export interface GateDeps {
   ownerWrote(sessionId: string): boolean
   /** whether he started this run himself; null: it cannot be learned */
   pressed(runId: string, workspaceId: string | null): Promise<boolean | null>
-  tell(t: Tell): void
+  /** false: the ledger did not keep it (Work went off), so the notice goes as any thread's */
+  tell(t: Tell): boolean
   log(line: string): void
 }
 
 const KIND: Record<'finished' | 'failed' | 'stuck', string> = { finished: 'routines.done', failed: 'routines.failed', stuck: 'routines.stuck' }
 
 export function makeGate(deps: GateDeps): NoticeGate {
-  const take = (notice: ThreadNotice, session: SessionMeta, kind: string): true => {
+  const take = (notice: ThreadNotice, session: SessionMeta, kind: string): boolean =>
     deps.tell({ kind, workspaceId: deps.workspaceOf(session.id), title: notice.title, detail: notice.body, key: `thread:${session.id}`, open: { thread: session.id } })
-    return true
-  }
   return (notice, session) => {
     if (!deps.enabled()) return false
     // Roots only, and only Work's: a code thread, or a subagent, is never the digest's.
@@ -63,7 +62,8 @@ export function makeGate(deps: GateDeps): NoticeGate {
     if (quiet) return take(notice, session, kind)
     // A run he started with Run now is his own press, and answers him as any thread does.
     return deps.pressed(runId!, deps.workspaceOf(session.id)).then(
-      (pressed) => (pressed === false ? take(notice, session, kind) : false),
+      // Asked again after the wait: Work turned off, or he took the thread over, while the cause was read.
+      (pressed) => (pressed === false && deps.enabled() && !deps.ownerWrote(session.id) ? take(notice, session, kind) : false),
       (err: unknown) => {
         deps.log(`digest: a run's cause could not be read, so its notice goes: ${errorText(err)}`)
         return false

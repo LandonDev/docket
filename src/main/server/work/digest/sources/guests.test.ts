@@ -55,8 +55,8 @@ describe('the guests source', () => {
       NOW - 20 * HOUR
     )
     expect(await guests.read(env, NOW)).toEqual([
-      { kind: 'docs.guest', workspaceId: 'ws-unify', title: 'A guest edited Pricing notes', key: 'guest-edit:lifeos:docs:d1:2026-11-23', open: { view: 'docs', workspaceId: 'ws-unify' } },
-      { kind: 'docs.guest', workspaceId: 'ws-ref', title: 'A guest edited Game schedule', key: 'guest-edit:lifeos:docs:d4:2026-11-23', open: { view: 'docs', workspaceId: 'ws-ref' } }
+      { kind: 'docs.guest', workspaceId: 'ws-unify', title: 'A guest edited Pricing notes', key: 'guest-edit:lifeos:docs:d1:2026-11-23', open: { view: 'docs', workspaceId: 'ws-unify', at: 'lifeos:docs:d1' } },
+      { kind: 'docs.guest', workspaceId: 'ws-ref', title: 'A guest edited Game schedule', key: 'guest-edit:lifeos:docs:d4:2026-11-23', open: { view: 'docs', workspaceId: 'ws-ref', at: 'lifeos:docs:d4' } }
     ])
     expect(env.calls[0]).toEqual({ method: 'work.docs.find', params: { workspaceId: 'ws-unify', refresh: true } })
   })

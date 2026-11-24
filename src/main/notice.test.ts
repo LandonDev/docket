@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest'
 
 vi.mock('electron', () => ({ BrowserWindow: {}, ipcMain: {}, Notification: {} }))
 
-import { Claims, noticeStep, readAsk } from './notice'
+import { Claims, noticeStep, noticeWords, readAsk } from './notice'
 
 describe('readAsk', () => {
   it('takes a key, a title and a body, each cut; the body keeps two lines, a title and its detail', () => {
@@ -21,6 +21,13 @@ describe('readAsk', () => {
     expect(readAsk({ key: 'k', title: 7, body: 'b' })).toBeNull()
     // silent is the digest's alone: anything but true sounds
     expect(readAsk({ key: 'k', title: 'Work', body: 'b', silent: 'yes' })).toEqual({ key: 'k', title: 'Work', body: 'b' })
+  })
+  it('keeps the telling, so the same thing told again in the same words is a new notice, and the same telling from two windows is one', () => {
+    const first = readAsk({ key: 'work-now:k:held:1', title: 'Purdue', body: 'Held: Invite to Budget review', telling: 'held:1@100' })!
+    const again = readAsk({ key: 'work-now:k:held:1', title: 'Purdue', body: 'Held: Invite to Budget review', telling: 'held:1@200' })!
+    expect(first.telling).toBe('held:1@100')
+    expect(noticeStep(noticeWords(first), noticeWords(again), false)).toBe('replace')
+    expect(noticeStep(noticeWords(first), noticeWords({ ...first }), false)).toBe('keep')
   })
 })
 

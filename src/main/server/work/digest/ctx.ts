@@ -32,8 +32,11 @@ export interface Deliverer {
   now(row: LedgerRow, open: LedgerRow[]): boolean
   /** A row he was told of at once is no longer true; `open` is what is still open. */
   gone(row: LedgerRow, open: LedgerRow[]): void
-  /** The day's one notice, of the rows that waited. */
-  digest(day: DigestDay, rows: LedgerRow[]): void
+  /**
+   * The day's one notice, of the rows that waited. False, or a promise of false: nobody could take it yet, and the
+   * day is offered again at a later look; anything else settles it (sent, nothing to say, or another host sends).
+   */
+  digest(day: DigestDay, rows: LedgerRow[]): Promise<boolean> | boolean | void
 }
 
 export interface DigestDeps {
@@ -67,6 +70,8 @@ export class Digest {
   making: Promise<void> = Promise.resolve()
   /** The digest time whose day is being made now, so a second look starts no second make. */
   private makingAt: number | null = null
+  /** A day's notice is being handed on now, so a second look offers it no second time. */
+  private offering = false
   private readonly unknown = new Set<string>()
   private readonly clock: () => number
 
@@ -213,7 +218,14 @@ export class Digest {
     let again = true
     if (prev) {
       const same = prev.kind === said.kind && prev.title === title && (prev.detail ?? '') === detail && prev.by === by && JSON.stringify(prev.open ?? null) === JSON.stringify(said.open ?? null)
-      if (same) return prev
+      if (same) {
+        if (prev.workspaceId === said.workspaceId && prev.sector === said.sector) return prev
+        // Only the job it is filed under changed (a workspace linked to its sector since): the row follows, its telling stays.
+        const moved: LedgerRow = { ...prev, group: said.group, workspaceId: said.workspaceId, sector: said.sector }
+        this.store.put(moved)
+        this.pushRow(moved)
+        return moved
+      }
       if (prev.toldAt != null) {
         // He was told at once already: the words follow, and he hears again only when its clock moved earlier.
         again = retold(prev, said)
@@ -283,12 +295,19 @@ export class Digest {
           this.store.put({ ...row, due: false })
           continue
         }
+        // He set its group to wait since it was owed: it waits, and no notice goes.
+        if (decide(row, this.levelOf(row.group), this.nextAt(now)) !== 'now') {
+          this.store.put({ ...row, due: false })
+          continue
+        }
         const next = this.tellNow(row, now)
         if (!next.due) this.pushRow(next)
       }
     }
+    this.offerOwed()
     const next = this.nextAt(now)
-    for (const row of this.store.clocked(now)) {
+    // From a day back: a host asleep through a row's clock still tells it when it wakes, as a due row that late is.
+    for (const row of this.store.clocked(now - LATE_MS)) {
       if (decide(row, this.levelOf(row.group), next) !== 'now') continue
       const told = this.tellNow(row, now)
       if (!told.due) this.pushRow(told)
@@ -302,17 +321,27 @@ export class Digest {
     this.makingAt = at
     const day = dayOf(this.zone(), at)
     const make = (): void => {
-      this.store.setSetting('handled', String(at))
       this.makingAt = null
-      const made = makeDay(this.store, day, this.clock())
-      if (made) this.o.push({ push: 'work.digest', day: made.day })
-      try {
+      let made: ReturnType<typeof makeDay> = null
+      let dropped: string[] = []
+      // One write: the slot handled, the day and its rows stamped, the 30 days kept and the day's notice owed. A stop
+      // part way leaves the slot unhandled, to be made whole at the next start.
+      this.store.atomically(() => {
+        // Another look made this slot while the sources were read (a restart in between): nothing is made or sent twice.
+        if (Number(this.store.setting('handled') ?? NaN) >= at) return
+        const madeAt = this.clock()
+        this.store.setSetting('handled', String(at))
+        made = makeDay(this.store, day, madeAt)
+        // Kept at each digest time, a day made or not: a ledger whose rows all interrupted still drops old words.
+        dropped = this.store.prune(madeAt)
         // A day this host has nothing for is still handed on: the host that sends the phone's digest adds what
         // its linked hosts hold, and a Mac's jobs must not go unsaid because the box has none of its own.
-        this.deliverer?.digest(made?.day ?? { day, madeAt: this.clock(), seenAt: null, count: 0 }, made?.rows ?? [])
-      } catch (err) {
-        this.o.log(`digest: the day's notice was not sent: ${errorText(err)}`)
-      }
+        this.store.setSetting('owed', day)
+      })
+      for (const id of dropped) this.o.push({ push: 'work.digest', gone: id })
+      const done = made as ReturnType<typeof makeDay>
+      if (done) this.o.push({ push: 'work.digest', day: done.day })
+      this.offerOwed()
     }
     if (!this.beforeDay) return make()
     // What is told only at the digest's time is read first; a source that fails holds nothing up.
@@ -320,6 +349,36 @@ export class Digest {
       .catch((err: unknown) => this.o.log(`digest: what is read at the digest's time failed: ${errorText(err)}`))
       .then(make)
       .catch((err: unknown) => this.o.log(`digest: the day was not made: ${errorText(err)}`))
+  }
+  /**
+   * The day's notice, owed until someone takes it: a host that made its day before its notifier was built (late in
+   * boot) sends it at the first look that has one. One he has already seen on a desktop is not sent.
+   */
+  private offerOwed(): void {
+    const day = this.store.setting('owed')
+    if (!day || this.offering || !this.deliverer) return
+    const made = this.store.day(day)
+    const settle = (): void => {
+      if (this.store.setting('owed') === day) this.store.setSetting('owed', '')
+    }
+    if (made?.seenAt != null) return settle()
+    const rows = made ? this.store.rows({ day }).filter((r) => r.toldAt == null) : []
+    this.offering = true
+    let answer: ReturnType<Deliverer['digest']>
+    try {
+      answer = this.deliverer.digest(made ?? { day, madeAt: this.clock(), seenAt: null, count: 0 }, rows)
+    } catch (err) {
+      answer = false
+      this.o.log(`digest: the day's notice was not sent: ${errorText(err)}`)
+    }
+    void Promise.resolve(answer)
+      .then((sent) => {
+        if (sent !== false) settle()
+      })
+      .catch((err: unknown) => this.o.log(`digest: the day's notice was not sent: ${errorText(err)}`))
+      .finally(() => {
+        this.offering = false
+      })
   }
   private pushRow(row: LedgerRow): void {
     this.o.push({ push: 'work.digest', row: wireRow(row) })
@@ -348,6 +407,18 @@ export class Digest {
       groups: groupsListed(this.o.modules())
     }
   }
+  /**
+   * The list once a day due now is made, its sources read: a linked host that asks at its own digest time is not
+   * answered from a ledger a source pass is still filling (deliver.ts waits on the answer within its limit).
+   */
+  async listMade(o: { day?: string; since?: number } = {}): Promise<DigestList> {
+    if (this.o.enabled()) {
+      const handled = Number(this.store.setting('handled') ?? NaN)
+      if (Number.isFinite(handled) && lastDigest(this.at(), this.zone(), this.clock()) > handled) this.guarded()
+      await this.making
+    }
+    return this.list(o)
+  }
   seen(day: string): void {
     const before = this.store.day(day)
     if (!before || before.seenAt != null) return
@@ -358,6 +429,13 @@ export class Digest {
     for (const id of this.store.removeWorkspace(workspaceId)) this.o.push({ push: 'work.digest', gone: id })
   }
 }
+
+/**
+ * Who a push may reach unasked. A row about a held item names a draft's recipients and subject, so it goes only to
+ * the keys that may decide one, as the Outbox's own push does (outbox/index.ts); a read-only key reads it when it
+ * asks (`work.digest.list`). Everything else, and a `gone` (an id alone), reaches every key that may read.
+ */
+export const pushNeed = (p: DigestPush): 'read' | 'approve' => (p.row && (p.row.group === 'held' || (!!p.row.open && 'held' in p.row.open)) ? 'approve' : 'read')
 
 /** A ledger row as the wire carries it. */
 export const wireRow = ({ due: _due, ...row }: LedgerRow): Omit<LedgerRow, 'due'> => row
@@ -384,7 +462,7 @@ export const tellPart: CtxPart<'tell'> = (ctx, deps) => {
   }
   let digest: Digest | null = null
   try {
-    digest = new Digest({ db: deps.db, host: deps.environmentId, enabled: () => ctx.enabled(), log: (line) => ctx.log(line), push: (p) => ctx.push(p, { need: 'read' }), modules: () => WORK_MODULES })
+    digest = new Digest({ db: deps.db, host: deps.environmentId, enabled: () => ctx.enabled(), log: (line) => ctx.log(line), push: (p) => ctx.push(p, { need: pushNeed(p) }), modules: () => WORK_MODULES })
     // The notifier is built late in boot: until then nothing takes a row, and it is kept as due.
     digest.deliverer = makeDeliverer({
       notifier: () => deps.notifier?.() ?? null,
@@ -419,7 +497,7 @@ export const tellPart: CtxPart<'tell'> = (ctx, deps) => {
       pressed: runPressed(ctx, () => WORK_MODULES),
       // He wrote in the thread himself: it is his from then on (events.ts `writtenByOwner`).
       ownerWrote: (sessionId) => deps.registry.eventsAfter(sessionId, 0).some((row) => row.event.type === 'user-text' && !!row.event.by && writtenByOwner(row.event.by)),
-      tell: (t) => void made.tell(t),
+      tell: (t) => made.tell(t) != null,
       log: (line) => ctx.log(line)
     })
     let gated: Notifier | null = null

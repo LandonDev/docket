@@ -27,6 +27,8 @@ const jobsOf = (rows: readonly TellRow[]): string[] => rows.flatMap((r) => (r.se
 export interface DigestNotice {
   /** every day he has not opened, newest first */
   days: MergedDay[];
+  /** the rows it counts */
+  rows: HostRow[];
   line: string;
 }
 
@@ -48,7 +50,7 @@ export function digestNotice(view: { days: readonly MergedDay[]; rows: readonly 
   };
   const rows = view.rows.filter((r) => r.day !== null && byDay.has(r.day) && (r.toldAt === null || r.toldAt > madeFor(r)));
   if (rows.length === 0) return null;
-  return { days, line: digestLine(rows.length, jobsOf(rows)) };
+  return { days, rows, line: digestLine(rows.length, jobsOf(rows)) };
 }
 
 /** Whether the unseen days are today alone: only then does Today, which shows today alone, show all the notice spoke for. */
@@ -84,6 +86,8 @@ export interface SystemNotice {
   title: string;
   body: string;
   silent?: boolean;
+  /** which tellings it says (`tellingOf`): the same thing told again in the same words is still a new notice */
+  telling?: string;
 }
 
 /**
@@ -99,7 +103,7 @@ export function systemNotices(digest: DigestNotice | null, toasts: readonly NowT
     const one = toast.rows.length === 1 ? toast.rows[0]! : null;
     // Folded: every open one by name, newest first, as the phone's banner says it (`nowLine`); the toast keeps its short count.
     const body = one ? (toast.detail ? `${toast.title}\n${toast.detail}` : toast.title) : nowLine([...toast.rows].reverse().map((r) => r.title));
-    out.push({ key: toast.id, title: one?.sector ? sectorName(one.sector) : "Work", body, ...(toast.rows.every(heard) ? { silent: true } : {}) });
+    out.push({ key: toast.id, title: one?.sector ? sectorName(one.sector) : "Work", body, telling: toast.rows.map(tellingOf).join(" "), ...(toast.rows.every(heard) ? { silent: true } : {}) });
   }
   return out;
 }

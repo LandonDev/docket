@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import type { TellRow } from "@shared/work/tell";
-import { ALSO_GROUPS, alsoRows } from "./today";
+import { ALSO_GROUPS, alsoRows, todayShows } from "./today";
 
 /** What the digest adds to Today: only the groups no section of Today reads for itself. */
 
@@ -47,6 +47,27 @@ describe("the digest's rows on Today", () => {
   it("leave out another day's digest, and what was told before today began", () => {
     const rows = [row({ day: "2026-11-23", title: "Yesterday's" }), row({ day: null, how: "waiting", at: at(23, 22), title: "Late last night" })];
     expect(alsoRows({ rows }, DAY, () => {})).toEqual([]);
+  });
+  it("say a time from last evening with its day, never as if it were today's", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(at(24, 8, 30));
+    try {
+      const rows = [row({ at: at(23, 21), title: "Nightly crash triage" }), row({ at: at(24, 7, 15), title: "Morning summary" })];
+      const [last, morning] = alsoRows({ rows }, DAY, () => {});
+      // Nov 23, 2026 is a Monday
+      expect(last!.when).toMatch(/^Mon /);
+      expect(morning!.when).not.toMatch(/^(Mon|Tue) /);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+  it("say which tells Today has a row for: its own sections' kinds and the also rows, a meeting or clash only on its day", () => {
+    expect(todayShows({ group: "results", kind: "routines.done" }, "2026-11-24")).toBe(true);
+    expect(todayShows({ group: "held", kind: "outbox.failed" }, "2026-11-24")).toBe(true);
+    expect(todayShows({ group: "meetings", kind: "prep.ready", by: at(24, 14) }, "2026-11-24")).toBe(true);
+    expect(todayShows({ group: "meetings", kind: "prep.ready", by: at(25, 10) }, "2026-11-24")).toBe(false);
+    expect(todayShows({ group: "clashes", kind: "clashes.new", by: at(27, 9) }, "2026-11-24")).toBe(false);
+    expect(todayShows({ group: "meetings", kind: "something.new" }, "2026-11-24")).toBe(false);
   });
   it("a row's press is the tell's own target", () => {
     const open = vi.fn();

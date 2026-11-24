@@ -159,9 +159,9 @@ export class DigestStore {
   due(): LedgerRow[] {
     return this.all('WHERE due = 1 ORDER BY at')
   }
-  /** Rows with a clock still ahead that he was never told at once, whatever digest they are in. */
-  clocked(now: number): LedgerRow[] {
-    return this.all('WHERE by_at IS NOT NULL AND by_at > ? AND told_at IS NULL AND due = 0 ORDER BY by_at', now)
+  /** Rows with a clock after `since` that he was never told at once, whatever digest they are in. */
+  clocked(since: number): LedgerRow[] {
+    return this.all('WHERE by_at IS NOT NULL AND by_at > ? AND told_at IS NULL AND due = 0 ORDER BY by_at', since)
   }
   /** Rows he was told at once, a day old at most, whose clock has not passed since: the interrupts still open. A clock already past when it was told (a send that failed) stays open for the day. */
   openNow(now: number): LedgerRow[] {
@@ -176,11 +176,24 @@ export class DigestStore {
     this.db.prepare('DELETE FROM work_digest_tells WHERE workspace_id = ?').run(workspaceId)
     return ids
   }
-  /** Drops what is older than the ledger keeps; a row whose clock is still ahead stays. */
-  prune(now: number): void {
+  /** Drops what is older than the ledger keeps; a row whose clock is still ahead stays. Answers the rows dropped. */
+  prune(now: number): string[] {
     const before = now - KEEP_DAYS * DAY_MS
+    const ids = (this.db.prepare('SELECT id FROM work_digest_tells WHERE at < ? AND (by_at IS NULL OR by_at < ?)').all(before, now) as { id: string }[]).map((r) => r.id)
     this.db.prepare('DELETE FROM work_digest_tells WHERE at < ? AND (by_at IS NULL OR by_at < ?)').run(before, now)
     this.db.prepare('DELETE FROM work_digest_days WHERE made_at < ?').run(before)
+    return ids
+  }
+  /** Runs `work` as one write: all of it is kept, or none. */
+  atomically(work: () => void): void {
+    this.db.exec('BEGIN')
+    try {
+      work()
+      this.db.exec('COMMIT')
+    } catch (err) {
+      this.db.exec('ROLLBACK')
+      throw err
+    }
   }
 
   // ── days ────────────────────────────────────────────────────────────

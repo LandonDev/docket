@@ -224,7 +224,7 @@ const api = {
     dockBadge: (count: number): Promise<void> => ipcRenderer.invoke('app:dock-badge', count),
     /** A system notification while no window is in front, once per key (src/main/notice.ts); `onOpen` hears the key of the one he clicked. */
     notice: {
-      show: (ask: { key: string; title: string; body: string; silent?: boolean }): Promise<void> => ipcRenderer.invoke('app:notice', ask),
+      show: (ask: { key: string; title: string; body: string; silent?: boolean; telling?: string }): Promise<void> => ipcRenderer.invoke('app:notice', ask),
       close: (key: string): Promise<void> => ipcRenderer.invoke('app:notice-close', key),
       onOpen: (cb: (key: string) => void): (() => void) => {
         const listener = (_e: unknown, key: string): void => cb(key)

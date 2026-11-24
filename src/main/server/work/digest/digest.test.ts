@@ -9,7 +9,7 @@ import type { TellKind } from '@shared/work/tell'
 import type { WorkPartDeps } from '../ctx'
 import type { WorkCtx } from '../modules'
 import { digest as digestModule } from '.'
-import { Digest, digestOf, tellPart, type Deliverer } from './ctx'
+import { Digest, digestOf, pushNeed, tellPart, type Deliverer } from './ctx'
 import { DIGEST_TELLS } from './rule'
 import type { LedgerRow } from './store'
 
@@ -154,6 +154,38 @@ describe('a tell nobody can deliver yet', () => {
   })
 })
 
+describe('an interrupt owed and not yet sent', () => {
+  it('follows the level he set since: a group set to wait sends nothing when the notifier comes', () => {
+    held({ by: at(23, '14:00'), key: 'held:1' })
+    rig.digest.set({ levels: { held: 'digest' } })
+    rig.digest.deliverer = rig.deliverer
+    rig.digest.tick()
+    expect(rig.sent.now).toEqual([])
+    expect(rig.digest.store.byKey('held:1')).toMatchObject({ how: 'waiting', due: false, toldAt: null })
+  })
+})
+
+describe('a clock slept through', () => {
+  beforeEach(() => {
+    rig.digest.deliverer = rig.deliverer
+    rig.digest.tick()
+  })
+  it('is told when the host wakes, within a day of it; past that it waits for the digest', () => {
+    // A noon invite on the 24th waits for the 8:00 digest; the host sleeps through 8:00 and noon.
+    held({ key: 'held:noon', by: at(24, '12:00') })
+    expect(rig.sent.now).toEqual([])
+    rig.clock.now = at(24, '12:05')
+    rig.digest.tick()
+    expect(rig.digest.store.byKey('held:noon')).toMatchObject({ how: 'now', toldAt: rig.clock.now })
+    // one whose clock passed more than a day before the host woke is not rung
+    held({ key: 'held:long', by: at(25, '12:00') })
+    rig.clock.now = at(26, '12:30')
+    rig.digest.tick()
+    expect(rig.digest.store.byKey('held:long')?.toldAt).toBeNull()
+    expect(rig.sent.now).toHaveLength(1)
+  })
+})
+
 describe('the same key', () => {
   beforeEach(() => {
     rig.digest.deliverer = rig.deliverer
@@ -192,6 +224,17 @@ describe('the same key', () => {
     held({ key: 'clash:1', by: at(23, '13:00'), title: 'Earlier now' })
     expect(rig.sent.now).toHaveLength(2)
     expect(rig.digest.store.byKey('clash:1')?.toldAt).toBe(rig.clock.now)
+  })
+  it('filed under a job it had no workspace for before: the row follows, and it is not news again', () => {
+    const first = rig.digest.tell({ kind: 'outbox.held', workspaceId: null, title: 'Not sent: Re: budget', key: 'unsent:x', by: at(23, '09:00') })!
+    expect(first).toMatchObject({ how: 'now', sector: null })
+    rig.pushes.length = 0
+    rig.clock.now += HOUR
+    const moved = rig.digest.tell({ kind: 'outbox.held', workspaceId: 'ws-cosmic', title: 'Not sent: Re: budget', key: 'unsent:x', by: at(23, '09:00') })!
+    expect(moved).toMatchObject({ id: first.id, workspaceId: 'ws-cosmic', sector: 'cosmic', at: first.at, toldAt: first.toldAt, how: 'now' })
+    expect(rig.sent.now).toHaveLength(1)
+    expect(rig.digest.store.byKey('unsent:x')?.sector).toBe('cosmic')
+    expect(rig.pushes).toEqual([{ push: 'work.digest', row: expect.objectContaining({ id: first.id, sector: 'cosmic' }) }])
   })
   it('done: the row goes, every window hears, and a notice he had is withdrawn', () => {
     const waited = held({ key: 'held:1' })!
@@ -341,6 +384,80 @@ describe('the day', () => {
     await rig.digest.making
     expect(rig.digest.list().days).toHaveLength(1)
   })
+  it("the day's notice is owed until a notifier takes it, and is sent once, at a later look", async () => {
+    held()
+    const answers = [false, true]
+    const offered: string[] = []
+    rig.digest.deliverer = { ...rig.deliverer, digest: (day) => (offered.push(day.day), Promise.resolve(answers.shift() ?? true)) }
+    rig.clock.now = at(24, '08:00')
+    rig.digest.tick()
+    await rig.digest.making
+    await new Promise((r) => setTimeout(r, 0))
+    expect(offered).toEqual(['2026-11-24'])
+    rig.clock.now += 30_000
+    rig.digest.tick()
+    await new Promise((r) => setTimeout(r, 0))
+    expect(offered).toEqual(['2026-11-24', '2026-11-24'])
+    rig.clock.now += 30_000
+    rig.digest.tick()
+    await new Promise((r) => setTimeout(r, 0))
+    expect(offered).toHaveLength(2)
+  })
+  it('an owed notice of a day he has already seen on a desktop is not sent', async () => {
+    held()
+    const offered: string[] = []
+    rig.digest.deliverer = { ...rig.deliverer, digest: (day) => (offered.push(day.day), false) }
+    rig.clock.now = at(24, '08:00')
+    rig.digest.tick()
+    rig.digest.seen('2026-11-24')
+    rig.clock.now += 30_000
+    rig.digest.tick()
+    await new Promise((r) => setTimeout(r, 0))
+    expect(offered).toEqual(['2026-11-24'])
+    expect(rig.digest.store.setting('owed')).toBe('')
+  })
+  it('is made in one write: a fault part way leaves the slot to be made whole at the next look', () => {
+    held()
+    const prune = rig.digest.store.prune.bind(rig.digest.store)
+    rig.digest.store.prune = () => {
+      throw new Error('disk full')
+    }
+    rig.clock.now = at(24, '08:00')
+    expect(() => rig.digest.tick()).toThrow('disk full')
+    expect(rig.digest.list().days).toEqual([])
+    expect(rig.digest.list().waiting).toBe(1)
+    rig.digest.store.prune = prune
+    rig.clock.now += 30_000
+    rig.digest.tick()
+    expect(rig.digest.list().days).toMatchObject([{ day: '2026-11-24', count: 1 }])
+    expect(rig.sent.digest).toHaveLength(1)
+  })
+  it('keeps the 30 days at each digest time even when nothing waited, and every window hears what went', () => {
+    const old = { ...held({ key: 'old', by: at(23, '10:30') })!, at: at(23, '10:00') - 40 * 24 * HOUR, by: at(23, '10:00') - 40 * 24 * HOUR }
+    rig.digest.store.put(old)
+    rig.pushes.length = 0
+    rig.clock.now = at(24, '08:00')
+    rig.digest.tick()
+    expect(rig.digest.list().days).toEqual([])
+    expect(rig.digest.store.byKey('old')).toBeNull()
+    expect(rig.pushes).toContainEqual({ push: 'work.digest', gone: old.id })
+  })
+  it('a linked host that asks at its digest time is answered once the sources are read', async () => {
+    held()
+    let release: () => void = () => {}
+    rig.digest.beforeDay = () =>
+      new Promise<void>((done) => (release = done)).then(() => {
+        rig.digest.tell({ kind: 'review.ready', workspaceId: 'ws-purdue', title: 'A guest edited Pricing' })
+      })
+    rig.clock.now = at(24, '08:00')
+    // the other host asks before this one's own look has come round
+    const asked = rig.digest.listMade({})
+    await new Promise((r) => setTimeout(r, 0))
+    release()
+    const list = await asked
+    expect(list.rows.map((r) => r.title).sort()).toEqual(['A guest edited Pricing', 'Send to Dana Reyes: Re: budget'])
+    expect(list.days).toMatchObject([{ day: '2026-11-24', count: 2 }])
+  })
   it('a clock long past when it is first told does not ring: it waits for the digest', () => {
     const row = held({ key: 'old', by: at(21, '09:00') })!
     expect(row).toMatchObject({ how: 'waiting', due: false })
@@ -446,6 +563,22 @@ describe('the wire', () => {
     c.tell({ kind: 'outbox.held', workspaceId: 'ws-cosmic', title: 'Another' })
     digestModule.workspaceRemoved!('ws-cosmic', c)
     expect((await call<DigestList>(c, 'work.digest.list', {})).rows).toEqual([])
+  })
+  it("a held item's row reaches only the keys that may decide it; the rest, and a gone, reach every key that may read", () => {
+    const needs: { push: DigestPush; need?: string }[] = []
+    const c = { db: rig.db, host: 'env_box', enabled: () => true, log: () => {}, push: (p: DigestPush, to?: { need?: string }) => void needs.push({ push: p, need: to?.need }) } as unknown as WorkCtx
+    Object.assign(c, tellPart(c, { db: rig.db, environmentId: 'env_box', whileOn: () => {} } as unknown as WorkPartDeps))
+    c.tell({ kind: 'outbox.held', workspaceId: 'ws-cosmic', title: 'Held: Send to Dana Reyes: Re: budget', key: 'held:host:1', open: { held: { at: 'host', id: '1' } } })
+    c.tell({ kind: 'review.ready', workspaceId: 'ws-cosmic', title: 'The week is ready', key: 'review:1' })
+    c.tell.done('held:host:1')
+    expect(needs.map((n) => [n.push.row?.title ?? (n.push.gone ? 'gone' : '?'), n.need])).toEqual([
+      ['Held: Send to Dana Reyes: Re: budget', 'approve'],
+      ['The week is ready', 'read'],
+      ['gone', 'read']
+    ])
+    // by its group alone too: a failed send names the draft as a held one does
+    expect(pushNeed({ push: 'work.digest', row: { group: 'held' } as never })).toBe('approve')
+    expect(pushNeed({ push: 'work.digest', day: { day: '2026-11-24', madeAt: 0, seenAt: null, count: 2 } })).toBe('read')
   })
   it('the module makes its tables, starts only its own look, and lists its kinds', () => {
     expect(digestModule.id).toBe('digest')

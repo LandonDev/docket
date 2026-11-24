@@ -39,7 +39,7 @@ describe('the missed scheduled mail source', () => {
       {
         kind: 'mail.missed',
         workspaceId: 'ws-purdue',
-        title: '"Budget" did not go at 8:00 AM',
+        title: '"Budget" did not go at 8:00 AM on Nov 24',
         detail: 'Not sent: its time passed. Reconnect the account',
         key: 'mail-missed:ob1',
         open: { view: 'mail', workspaceId: 'ws-purdue' }
@@ -48,9 +48,12 @@ describe('the missed scheduled mail source', () => {
     expect(scheduled).toMatchObject({ pillar: 'mail', prefix: 'mail-missed:' })
   })
 
-  it('names the day when it was not today, and a mail with no subject', async () => {
-    const [tell] = (await scheduled.read(envOf([row({ sendAt: Date.parse('2026-11-23T14:00:00Z'), message: { kind: 'mail', subject: ' ' } })]), NOW)) as { title: string }[]
-    expect(tell?.title).toBe('A scheduled mail did not go at Mon 8:00 AM')
+  it('says the same words read today or tomorrow, so one already in a digest is not news again; a mail with no subject', async () => {
+    const env = envOf([row({ sendAt: Date.parse('2026-11-23T14:00:00Z'), message: { kind: 'mail', subject: ' ' } })])
+    const [today] = (await scheduled.read(env, Date.parse('2026-11-23T15:00:00Z'))) as { title: string }[]
+    const [tomorrow] = (await scheduled.read(env, NOW)) as { title: string }[]
+    expect(today?.title).toBe('A scheduled mail did not go at 8:00 AM on Nov 23')
+    expect(tomorrow?.title).toBe(today?.title)
     expect(missedTitle('Lunch', '9:00 AM')).toBe('"Lunch" did not go at 9:00 AM')
   })
 

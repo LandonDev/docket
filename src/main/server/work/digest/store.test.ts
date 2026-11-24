@@ -128,15 +128,15 @@ describe('a day', () => {
 })
 
 describe('the 30 days', () => {
-  it('prunes at each digest what is older, keeping a row whose clock is still ahead', () => {
+  it('prunes what is older, keeping a row whose clock is still ahead, and names what it dropped', () => {
     const now = 100 * DAY
     store.put(row({ at: now - (KEEP_DAYS + 1) * DAY, day: '2026-01-01' }))
     store.put(row({ at: now - (KEEP_DAYS + 1) * DAY, by: now + DAY, day: '2026-01-01' }))
     store.put(row({ at: now - DAY }))
     store.addDay({ day: '2026-01-01', madeAt: now - (KEEP_DAYS + 1) * DAY, seenAt: null, count: 2 })
-    makeDay(store, '2026-04-11', now)
+    expect(store.prune(now)).toEqual(['t1'])
     expect(store.rows().map((r) => r.id).sort()).toEqual(['t2', 't3'])
-    expect(store.days().map((d) => d.day)).toEqual(['2026-04-11'])
+    expect(store.days()).toEqual([])
   })
 })
 

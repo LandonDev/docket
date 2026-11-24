@@ -5,7 +5,7 @@ import { go, routeOf, type Routes } from "./open";
 /** Each place a tell can open, turned into the app's own route. */
 
 const route = (open?: TellOpen) => routeOf({ host: "box", ...(open ? { open } : {}) });
-const routes = (): Routes & Record<keyof Routes, ReturnType<typeof vi.fn>> => ({ thread: vi.fn(), view: vi.fn(), place: vi.fn(() => true), outbox: vi.fn(), settings: vi.fn() });
+const routes = (): Routes & Record<keyof Routes, ReturnType<typeof vi.fn>> => ({ thread: vi.fn(), view: vi.fn(() => true), file: vi.fn(() => true), place: vi.fn(() => true), outbox: vi.fn(), settings: vi.fn() });
 
 describe("routeOf", () => {
   it("a thread opens the thread", () => {
@@ -17,9 +17,14 @@ describe("routeOf", () => {
     expect(route({ view: "mail", workspaceId: "ws", at: "m1" })).toEqual({ to: "view", view: { workspaceId: "ws", view: "mail", mail: "m1" } });
     expect(route({ view: "tasks", workspaceId: "ws", at: "k1" })).toEqual({ to: "view", view: { workspaceId: "ws", view: "tasks", task: "k1" } });
     expect(route({ view: "people", workspaceId: "ws", at: "p1" })).toEqual({ to: "view", view: { workspaceId: "ws", view: "people", person: "p1" } });
+    expect(route({ view: "messages", workspaceId: "ws", at: "c1" })).toEqual({ to: "view", view: { workspaceId: "ws", view: "messages", chat: "c1" } });
     // a view that takes no place opens as it is
     expect(route({ view: "docs", workspaceId: "ws", at: "d1" })).toEqual({ to: "view", view: { workspaceId: "ws", view: "docs" } });
     expect(route({ view: "routines", workspaceId: "ws" })).toEqual({ to: "view", view: { workspaceId: "ws", view: "routines" } });
+  });
+  it("a guest's edit opens the document or sheet it names, in a Files tab of the job", () => {
+    expect(route({ view: "docs", workspaceId: "ws", at: "lifeos:docs:d1" })).toEqual({ to: "file", workspaceId: "ws", ref: { at: "lifeos", table: "docs", id: "d1" } });
+    expect(route({ view: "docs", workspaceId: "ws", at: "lifeos:sheets:s1" })).toEqual({ to: "file", workspaceId: "ws", ref: { at: "lifeos", table: "sheets", id: "s1" } });
   });
   it("a page above the workspaces opens by its id", () => {
     expect(route({ place: "review", at: "2026-11-16" })).toEqual({ to: "place", id: "review", at: "2026-11-16" });
@@ -53,8 +58,10 @@ describe("go", () => {
     expect(r.settings).toHaveBeenCalledWith("work");
     expect(r.place).toHaveBeenCalledWith("review", "2026-11-16");
   });
-  it("a page this build does not have opens nothing", () => {
-    const r = { ...routes(), place: vi.fn(() => false) };
+  it("a page this build does not have, or a job this window does not list, opens nothing", () => {
+    const r = { ...routes(), place: vi.fn(() => false), view: vi.fn(() => false), file: vi.fn(() => false) };
     expect(go({ to: "place", id: "review" }, r)).toBe(false);
+    expect(go({ to: "view", view: { workspaceId: "gone", view: "agenda" } }, r)).toBe(false);
+    expect(go({ to: "file", workspaceId: "gone", ref: { at: "lifeos", table: "docs", id: "d1" } }, r)).toBe(false);
   });
 });

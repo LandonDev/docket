@@ -210,8 +210,14 @@ export function loadDigest(): Promise<void> {
   return Promise.all([...workSwitch.hosts()].map(loadHost)).then(() => undefined);
 }
 
-/** The desktop he is at says its zone, so the digest follows it. A host that cannot take it (older, or this key may not operate) is left alone. */
-function sayHere(environmentId: string): void {
+/**
+ * The desktop he is at says its zone, so the digest follows it: the window in front, when it comes to the front and
+ * when a link opens or a host turns on while it is there. A window left open on another desktop says nothing when its
+ * link comes back, so it never takes the clock from the one he uses. A host that cannot take it (older, or this key
+ * may not operate) is left alone.
+ */
+function sayHere(environmentId: string, focused = typeof document === "undefined" || document.hasFocus()): void {
+  if (!focused) return;
   let zone = "";
   try {
     zone = Intl.DateTimeFormat().resolvedOptions().timeZone;
@@ -411,6 +417,12 @@ workSwitch.subscribe(() => {
   onBefore = new Set(now);
   changed();
 });
+
+// He came to this window: its zone is the one he is in.
+if (typeof window !== "undefined")
+  window.addEventListener("focus", () => {
+    for (const id of workSwitch.hosts()) sayHere(id, true);
+  });
 
 // Hosts already on and linked when this chunk lands.
 for (const id of workSwitch.hosts()) {

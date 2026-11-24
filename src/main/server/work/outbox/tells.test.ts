@@ -5,7 +5,7 @@ import type { Tell } from '@shared/work/tell'
 import type { ActKindDef, WorkCtx } from '../modules'
 import { OfficeCalendarSchema } from '../office/held'
 import { calendarOpKind } from './lifeosHeld'
-import { failedKey, heldKey, offerKey, OUTBOX_TELLS, syncTells, tellFailed, tellHeld, tellOffer, type TellsDeps, type TellsSource } from './tells'
+import { failedKey, heldKey, offerKey, OUTBOX_TELLS, syncTells, tellFailed, tellHeld, tellOffer, WAITING_MAX, type TellsDeps, type TellsSource } from './tells'
 
 /** What the Outbox tells through `ctx.tell`: a held item, a failed send, an offered grant, and the ledger kept in step. */
 
@@ -116,7 +116,14 @@ describe('a held item', () => {
 describe('a send that failed', () => {
   it('interrupts while it is fresh, since he believes it went: its clock is the moment it failed', () => {
     tellFailed(deps, item({ state: 'failed', decidedAt: NOW - 60_000, error: 'The mail server\n refused the recipient' }))
-    expect(told).toEqual([{ kind: 'outbox.failed', workspaceId: 'ws-purdue', title: 'Not sent: Send to Dana Reyes: Re: budget', detail: 'The mail server refused the recipient', key: 'unsent:host:h1', open: { held: { at: 'host', id: 'h1' }, thread: 't-work' }, by: NOW - 60_000 }])
+    expect(told).toEqual([{ kind: 'outbox.failed', workspaceId: 'ws-purdue', title: 'Not sent: Send to Dana Reyes: Re: budget', detail: 'The mail server refused the recipient', key: 'unsent:host:h1@' + (NOW - 60_000), open: { held: { at: 'host', id: 'h1' }, thread: 't-work' }, by: NOW - 60_000 }])
+  })
+  it('each press that fails again is its own failure: a retry that fails rings anew rather than reading as an edit', () => {
+    tellFailed(deps, item({ state: 'failed', decidedAt: NOW - 60_000 }))
+    tellFailed(deps, item({ state: 'failed', decidedAt: NOW - 1_000 }))
+    expect(told.map((t) => t.key)).toEqual([`unsent:host:h1@${NOW - 60_000}`, `unsent:host:h1@${NOW - 1_000}`])
+    // LifeOS's own: no press here, one key
+    expect(failedKey({ at: 'lifeos', table: 'outbox', id: 'ob1' })).toBe('unsent:lifeos:outbox:ob1')
   })
   it('a day old it waits for the digest: an old failure found at start is not rung as news', () => {
     tellFailed(deps, item({ state: 'failed', decidedAt: NOW - 25 * HOUR }))
@@ -136,31 +143,44 @@ describe('an offered grant', () => {
 
 describe('the ledger kept in step', () => {
   const source = (over: Partial<TellsSource> = {}): TellsSource => ({ waiting: () => [], offers: () => [], lifeosLoaded: () => ({ outbox: true, calendarOps: true }), ...over })
-  it('what left the Outbox is done, a failed send and an offer are told, each list by its own keys', () => {
+  it('what left the Outbox is done, a held item, a failed send and an offer are told, each list by its own keys', () => {
     const held = item()
     const mail = item({ ref: { at: 'lifeos', table: 'outbox', id: 'ob1' } })
     const failed = item({ ref: { at: 'host', id: 'h9' }, state: 'failed', decidedAt: NOW - 1 })
     const offer: GrantOffer = { id: 'go1', workspaceId: 'ws-purdue', kind: 'mail.send', label: 'Mail to Dana', routineId: null, from: { at: 'host', id: 'h3' }, count: 5, createdAt: NOW }
     syncTells(deps, source({ waiting: () => [held, mail, failed, item({ ref: { at: 'host', id: 'h4' }, state: 'sending' })], offers: () => [offer] }))
-    expect(told.map((t) => t.kind)).toEqual(['outbox.failed', 'outbox.offer'])
-    const kept = [heldKey(held.ref), heldKey(mail.ref)]
-    expect(only).toEqual([
-      ['held:host:', kept],
-      ['unsent:host:', [failedKey(failed.ref)]],
-      ['held:lifeos:outbox:', kept],
-      ['unsent:lifeos:outbox:', [failedKey(failed.ref)]],
-      ['held:lifeos:calendarOps:', kept],
-      ['unsent:lifeos:calendarOps:', [failedKey(failed.ref)]],
-      ['offer:', ['offer:go1']]
+    // a held item first read at boot is told (the ledger changes nothing for one it already holds in the same words)
+    expect(told.map((t) => [t.kind, t.key])).toEqual([
+      ['outbox.held', heldKey(held.ref)],
+      ['outbox.held', heldKey(mail.ref)],
+      ['outbox.failed', failedKey(failed.ref, failed.decidedAt)],
+      ['outbox.offer', 'offer:go1']
     ])
+    const kept = [heldKey(held.ref), heldKey(mail.ref)]
+    const unsent = [failedKey(failed.ref, failed.decidedAt)]
+    expect(only).toEqual([
+      ['offer:', ['offer:go1']],
+      ['held:host:', kept],
+      ['unsent:host:', unsent],
+      ['held:lifeos:outbox:', kept],
+      ['unsent:lifeos:outbox:', unsent],
+      ['held:lifeos:calendarOps:', kept],
+      ['unsent:lifeos:calendarOps:', unsent]
+    ])
+  })
+  it('a list as long as the read allows may be cut short: it tells, and withdraws nothing held or failed', () => {
+    const many = Array.from({ length: WAITING_MAX }, (_, n) => item({ ref: { at: 'host', id: `h${n}` } }))
+    syncTells(deps, source({ waiting: () => many }))
+    expect(told).toHaveLength(WAITING_MAX)
+    expect(only.map(([prefix]) => prefix)).toEqual(['offer:'])
   })
   it("a list LifeOS has not answered yet is left alone: a host that just came up withdraws nothing that still waits", () => {
     syncTells(deps, source({ lifeosLoaded: () => ({ outbox: true, calendarOps: false }) }))
-    expect(only.map(([prefix]) => prefix)).toEqual(['held:host:', 'unsent:host:', 'held:lifeos:outbox:', 'unsent:lifeos:outbox:', 'offer:'])
+    expect(only.map(([prefix]) => prefix)).toEqual(['offer:', 'held:host:', 'unsent:host:', 'held:lifeos:outbox:', 'unsent:lifeos:outbox:'])
     only = []
     // Work off: LifeOS is not watched at all
     syncTells(deps, source({ lifeosLoaded: () => null }))
-    expect(only.map(([prefix]) => prefix)).toEqual(['held:host:', 'unsent:host:', 'offer:'])
+    expect(only.map(([prefix]) => prefix)).toEqual(['offer:', 'held:host:', 'unsent:host:'])
   })
   it('never throws at the Outbox: a fault is logged', () => {
     const logs: string[] = []

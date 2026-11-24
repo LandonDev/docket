@@ -28,7 +28,7 @@ const deps = (): GateDeps => ({
     if (answer instanceof Error) throw answer
     return answer
   },
-  tell: (t) => void told.push(t),
+  tell: (t) => (told.push(t), on),
   log: (l) => void logs.push(l)
 })
 const thread = (over: Partial<SessionMeta> = {}): SessionMeta => ({ id: 't1', parentId: null, scope: 'work', title: 'Morning summary', routineRunId: 'run-1', ...over }) as SessionMeta
@@ -96,6 +96,26 @@ describe('a thread he took over by hand', () => {
     quiet.add('t1')
     expect(gate(notice('stuck', 'No output for 12m'), thread({ routineRunId: null }))).toBe(false)
     expect(told).toHaveLength(1)
+  })
+  it('while its cause is read: he takes it over, or Work goes off, and the notice goes as any thread does', async () => {
+    let answer!: (pressed: boolean) => void
+    const slow = { ...deps(), pressed: () => new Promise<boolean>((resolve) => (answer = resolve)) }
+    const gate = makeGate(slow)
+    const taken = gate(notice('finished', 'Done in 12m'), thread())
+    wrote.add('t1')
+    answer(false)
+    expect(await taken).toBe(false)
+    wrote.clear()
+    const off = gate(notice('finished', 'Done in 12m'), thread())
+    on = false
+    answer(false)
+    expect(await off).toBe(false)
+    expect(told).toEqual([])
+  })
+  it('a tell the ledger did not keep leaves the notice to go as any thread does', () => {
+    quiet.add('t1')
+    const gate = makeGate({ ...deps(), tell: () => false })
+    expect(gate(notice('finished', 'Done'), thread({ routineRunId: null }))).toBe(false)
   })
 })
 

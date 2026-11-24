@@ -23,7 +23,11 @@ const FRESH_MS = 24 * 3_600_000
 
 const refKey = (ref: HeldRef): string => (ref.at === 'host' ? `host:${ref.id}` : `lifeos:${ref.table}:${ref.id}`)
 export const heldKey = (ref: HeldRef): string => `held:${refKey(ref)}`
-export const failedKey = (ref: HeldRef): string => `unsent:${refKey(ref)}`
+/**
+ * A failed send, by attempt: a press stamps the item's `decidedAt`, so a retry that fails again is a new failure he
+ * hears of, and the sync retires the last attempt's row. A LifeOS item has no press here, and keeps one key.
+ */
+export const failedKey = (ref: HeldRef, decidedAt: number | null = null): string => `unsent:${refKey(ref)}${decidedAt != null ? `@${decidedAt}` : ''}`
 export const offerKey = (id: string): string => `offer:${id}`
 
 const oneLine = (text: string, max: number): string => {
@@ -82,7 +86,7 @@ export function tellFailed(deps: TellsDeps, item: OutboxItem): void {
     workspaceId: workspaceOf(deps, item),
     title: `Not sent: ${oneLine(item.summary, 140)}`,
     ...(item.error ? { detail: oneLine(item.error, 200) } : {}),
-    key: failedKey(item.ref),
+    key: failedKey(item.ref, item.decidedAt),
     open: openOf(item),
     ...(fresh ? { by: at } : {})
   })
@@ -101,25 +105,37 @@ export function tellOffer(deps: TellsDeps, offer: GrantOffer): void {
 }
 
 export interface TellsSource {
-  /** every item that waits: held, live, failed, being sent */
+  /** every item that waits: held, live, failed, being sent; at most `WAITING_MAX` */
   waiting(): OutboxItem[]
   offers(): GrantOffer[]
   /** which of LifeOS's lists the watcher has read since it began; null: none (Work is off) */
   lifeosLoaded(): { outbox: boolean; calendarOps: boolean } | null
 }
 
+/** How many waiting items the sync reads (outbox/ctx.ts asks for 500); a list that long may not be all of them. */
+export const WAITING_MAX = 500
+
 /**
  * The ledger made to agree with the Outbox: an item that left (sent,
- * discarded, stale, decided from another device) is done; a failed send and
- * an offer are told. What LifeOS holds is pruned only once its watch has
- * answered, so a host that just came up never withdraws what still waits.
+ * discarded, stale, decided from another device) is done; a held item, a
+ * failed send and an offer are told as they stand now (one the ledger
+ * already holds in the same words changes nothing, so nothing rings twice;
+ * one first read at boot, or edited to an earlier time, is told). What LifeOS
+ * holds is pruned only once its watch has answered, and nothing is pruned
+ * from a list that may be cut short, so a host never withdraws what still
+ * waits.
  */
 export function syncTells(deps: TellsDeps, source: TellsSource): void {
   try {
     const waiting = source.waiting()
     const held = waiting.filter((i) => i.state === 'held' || i.state === 'live')
     const failed = waiting.filter((i) => i.state === 'failed')
+    for (const item of held) tellHeld(deps, item)
     for (const item of failed) tellFailed(deps, item)
+    const offers = source.offers()
+    for (const offer of offers) tellOffer(deps, offer)
+    deps.ctx.tell.only('offer:', offers.map((o) => offerKey(o.id)))
+    if (waiting.length >= WAITING_MAX) return
     const loaded = source.lifeosLoaded()
     const tables: [string, boolean][] = [
       ['host:', true],
@@ -129,11 +145,8 @@ export function syncTells(deps: TellsDeps, source: TellsSource): void {
     for (const [table, known] of tables) {
       if (!known) continue
       deps.ctx.tell.only(`held:${table}`, held.map((i) => heldKey(i.ref)))
-      deps.ctx.tell.only(`unsent:${table}`, failed.map((i) => failedKey(i.ref)))
+      deps.ctx.tell.only(`unsent:${table}`, failed.map((i) => failedKey(i.ref, i.decidedAt)))
     }
-    const offers = source.offers()
-    for (const offer of offers) tellOffer(deps, offer)
-    deps.ctx.tell.only('offer:', offers.map((o) => offerKey(o.id)))
   } catch (err) {
     deps.ctx.log(`outbox: what it tells was not brought up to date: ${errorText(err)}`)
   }

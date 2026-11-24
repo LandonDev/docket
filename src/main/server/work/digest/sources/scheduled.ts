@@ -1,4 +1,5 @@
 import type { Tell } from '@shared/work/tell'
+import { dateIn, timeIn } from '../clock'
 import type { Source } from './index'
 
 /**
@@ -18,12 +19,11 @@ interface ScheduledRow {
   message?: { kind?: string; subject?: string }
 }
 
-/** "8:00 AM" on the digest's clock, or "Tue 8:00 AM" when it was another day. */
-function when(at: number, zone: string, now: number): string {
-  const day = (ms: number) => new Intl.DateTimeFormat('en-US', { timeZone: zone, year: 'numeric', month: 'numeric', day: 'numeric' }).format(ms)
-  const clock = new Intl.DateTimeFormat('en-US', { timeZone: zone, hour: 'numeric', minute: '2-digit' }).format(at)
-  return day(at) === day(now) ? clock : `${new Intl.DateTimeFormat('en-US', { timeZone: zone, weekday: 'short' }).format(at)} ${clock}`
-}
+/**
+ * "8:00 AM on Nov 23" on the digest's clock: the same words on every read, whatever day it is read on, so a mail
+ * already in one digest is not news again in the next (the ledger tells a row again when its words change).
+ */
+const when = (at: number, zone: string): string => `${timeIn(zone, at)} on ${dateIn(zone, at, at)}`
 
 export const missedTitle = (subject: string | undefined, at: string): string => {
   const words = subject?.trim()
@@ -36,7 +36,7 @@ export const scheduled: Source = {
   // A missed mail is worth knowing within minutes, not at tomorrow's digest.
   every: 5 * 60_000,
   prefix: 'mail-missed:',
-  async read(env, now) {
+  async read(env) {
     // LifeOS out of reach throws, so every row already told stays as it is rather than being called done.
     if (!env.ctx.lifeos.connected()) throw new Error('LifeOS is not connected')
     const rows = (await env.ctx.lifeos.owner().query<ScheduledRow[] | null>('compose:list', { view: 'scheduled' })) ?? []
@@ -47,7 +47,7 @@ export const scheduled: Source = {
         tells.push({
           kind: 'mail.missed',
           workspaceId: ws.id,
-          title: missedTitle(row.message.subject, typeof row.sendAt === 'number' ? when(row.sendAt, env.zone, now) : 'its time'),
+          title: missedTitle(row.message.subject, typeof row.sendAt === 'number' ? when(row.sendAt, env.zone) : 'its time'),
           ...(row.error ? { detail: row.error } : {}),
           key: `mail-missed:${row._id}`,
           open: { view: 'mail', workspaceId: ws.id }

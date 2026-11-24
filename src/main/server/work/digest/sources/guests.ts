@@ -34,7 +34,7 @@ export const guests: Source = {
       }
       for (const entry of found.entries) {
         if (entry.lastBy !== 'guest' || entry.editedAt <= since) continue
-        tells.push({ kind: 'docs.guest', workspaceId: ws.id, title: guestTitle(entry.title), key: `guest-edit:${entry.key}:${env.day}`, open: { view: 'docs', workspaceId: ws.id } })
+        tells.push({ kind: 'docs.guest', workspaceId: ws.id, title: guestTitle(entry.title), key: `guest-edit:${entry.key}:${env.day}`, open: { view: 'docs', workspaceId: ws.id, at: entry.key } })
       }
     }
     return tells

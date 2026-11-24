@@ -630,7 +630,7 @@ export const appshots = {
 /** System notifications while no app window is in front (src/main/notice.ts): Work's digest, and a thing that cannot
  *  wait. `onOpen` hears the key of the one he clicked. A browser at /ui raises none. */
 export const systemNotice = {
-  show: (ask: { key: string; title: string; body: string; silent?: boolean }): Promise<void> => api()?.app?.notice?.show(ask) ?? Promise.resolve(),
+  show: (ask: { key: string; title: string; body: string; silent?: boolean; telling?: string }): Promise<void> => api()?.app?.notice?.show(ask) ?? Promise.resolve(),
   close: (key: string): Promise<void> => api()?.app?.notice?.close(key) ?? Promise.resolve(),
   onOpen: (cb: (key: string) => void): (() => void) => api()?.app?.notice?.onOpen(cb) ?? (() => {}),
 };

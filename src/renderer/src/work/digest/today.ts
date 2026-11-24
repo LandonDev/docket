@@ -1,8 +1,7 @@
 import { useMemo } from "react";
 import type { TellGroup, TellRow } from "@shared/work/tell";
-import { clockTime } from "../../lib/duration";
 import type { TodayAnswer, TodayEnv, TodayRow, TodaySource } from "../today/types";
-import { nameOf } from "./notice";
+import { nameOf, rowWhen } from "./notice";
 import { loadHost, openTell, useDigest, type DigestView } from "./store";
 
 /**
@@ -21,6 +20,20 @@ import { loadHost, openTell, useDigest, type DigestView } from "./store";
 export const ALSO_GROUPS: readonly TellGroup[] = ["results", "ending", "system"];
 const ALSO_KINDS: readonly string[] = ["docs.guest"];
 
+/** Kinds a section of Today reads for itself, whatever day they were told: held items and failed sends, mail and chat waiting, the review. */
+const TODAY_OWN: readonly string[] = ["outbox.held", "outbox.failed", "mail.waiting", "messages.new", "review.ready"];
+/** Kinds Today shows only on their day: a meeting, its prep or a clash whose clock falls today. */
+const ON_ITS_DAY: readonly string[] = ["prep.starting", "prep.ready", "clashes.new"];
+
+/**
+ * Whether Today has a row for this tell on `today`: the digest's toast opens Today only when every row it counts
+ * is there (DigestHost), else the list, so opening the day never marks seen something he was not shown.
+ */
+export function todayShows(row: Pick<TellRow, "group" | "kind" | "by">, today: string): boolean {
+  if (ALSO_GROUPS.includes(row.group) || ALSO_KINDS.includes(row.kind) || TODAY_OWN.includes(row.kind)) return true;
+  return ON_ITS_DAY.includes(row.kind) && row.by !== undefined && localDay(row.by) === today;
+}
+
 const localDay = (ts: number): string => {
   const d = new Date(ts);
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
@@ -38,7 +51,8 @@ export function alsoRows(view: Pick<DigestView, "rows">, day: { from: number; to
       title: row.title,
       ...(row.detail ? { detail: row.detail } : {}),
       at: row.at,
-      when: clockTime(row.at),
+      // A row from last evening names its day, and a clock says "by …", as the sheet's rows do.
+      when: rowWhen(row, Date.now(), undefined, today),
       open: () => open(row),
     }));
 }

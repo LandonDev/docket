@@ -6,7 +6,8 @@ import type { DigestStore, LedgerRow } from './store'
  * holds yet is stamped with the day, and the day is counted by the rows
  * that waited (one he was told of at once is in the day's list and not in
  * its count). A day with nothing that waited makes nothing; a day is never
- * made twice.
+ * made twice. The 30 days are kept by the caller at each digest time, a day
+ * made or not (ctx.ts).
  */
 export function makeDay(store: DigestStore, day: string, now: number): { day: DigestDay; rows: LedgerRow[] } | null {
   if (store.day(day)) return null
@@ -19,6 +20,5 @@ export function makeDay(store: DigestStore, day: string, now: number): { day: Di
     day,
     rows.map((r) => r.id)
   )
-  store.prune(now)
   return { day: made, rows: waited.map((r) => ({ ...r, day, how: 'digest' as const })) }
 }

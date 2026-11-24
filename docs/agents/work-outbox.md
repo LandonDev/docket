@@ -564,15 +564,22 @@ digest's rule decides whether it interrupts:
   item, that notice goes out on the thread through `Notifier.held`, so the
   phone opens the Outbox item as it always did.
 - **A send that failed** is `outbox.failed`, "Not sent: …" with the error
-  as its second line, key `unsent:<ref>`. Its clock is the moment it
-  failed, so it interrupts: he believes it went. One found a day old (a
+  as its second line, key `unsent:<ref>@<decidedAt>` (the press it
+  failed on; a LifeOS item with no press here is `unsent:<ref>`), so a
+  retry that fails again is a new failure he hears of. Its clock is the
+  press, or for a LifeOS item its last change, so it interrupts: he
+  believes it went. One found a day old (a
   host that just came up) waits for the digest instead.
 - **A grant he has earned** is `outbox.offer` (group `system`), "You could
   stop holding …", opening the sent item it sits beside. It waits.
 - The ledger is kept in step 250 ms after any Outbox change (`syncTells`):
-  an item sent, discarded, stale or decided on another device is done
+  every held item, failed send and offer is told as it stands (the ledger
+  changes nothing for one it holds in the same words; a LifeOS draft first
+  read at boot, or an invite edited to an earlier time, is told), and an
+  item sent, discarded, stale or decided on another device is done
   (`ctx.tell.only`), so its row and its toast go. What LifeOS holds is
-  pruned only once its watch has answered (`loadedTables`).
+  pruned only once its watch has answered (`loadedTables`), and nothing is
+  pruned from a read of 500, which may be cut short.
 
 He can set held items louder or quieter in Settings → Work → Digest. The
 Outbox count in the rail and the thread's own row say what they always did.

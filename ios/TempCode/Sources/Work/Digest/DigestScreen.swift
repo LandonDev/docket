@@ -95,8 +95,9 @@ struct DigestScreen: View {
             }
         }
         .refreshable { await load(hosts) }
-        // The first open reads every host; from then on the pushes keep each ledger.
-        .task { await load(hosts.filter { $0.work.digest.ledger == nil }) }
+        // The first open reads every host, and a host whose Work turns on while the list is open is read then; from
+        // then on the pushes keep each ledger.
+        .task(id: hosts.map(\.environment.id)) { await load(hosts.filter { $0.work.digest.ledger == nil }) }
         // What he has on screen is seen: at the open, and for a day made while he looks.
         .task(id: screen.days.filter { $0.seenAt == nil }.map(\.day)) { await markSeen(screen.days) }
         .navigationTitle("Digest")

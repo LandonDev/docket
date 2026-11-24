@@ -4,7 +4,7 @@
  * two toasts, what a press opens, the system notifications, and the port
  * Today registers.
  */
-import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, render, renderHook, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const world = vi.hoisted(() => ({ current: null as unknown }));
@@ -43,9 +43,10 @@ import { OPEN_SETTINGS_EVENT } from "../../lib/monaco/debugTab";
 import { digestOpensPort, setWorkOn, workOpenPort, workSwitch, workViewNow } from "../../lib/workSwitch";
 import { shell, shellStore } from "../../stores/shell";
 import { WORK_PLACE_ROWS } from "../../lib/workPlaces";
+import { useWorkPlaceAt } from "../../lib/workPlaceAt";
 import { DigestHost, digestOpens, resetDismissed } from "./DigestHost";
 import { loadDigest, resetDigestStore } from "./store";
-import { push, resetWorld, tell, type World } from "./world.testkit";
+import { push, reopen, resetWorld, tell, type World } from "./world.testkit";
 
 const w = (): World => world.current as World;
 const shown = (): Shown[] => [...toasts.shown.values()] as Shown[];
@@ -73,6 +74,7 @@ beforeEach(() => {
   WORK_PLACE_ROWS.length = 0;
   shell.openWorkPlace(null);
   shell.closeOutbox();
+  shell.closeSettings();
   bridge.show.mockClear();
   bridge.close.mockClear();
   bridge.onOpen.mockClear();
@@ -136,6 +138,17 @@ describe("the digest's toast", () => {
     expect(w().calls.filter((c) => c.method === "work.digest.seen")).toHaveLength(2);
   });
 
+  it("opens the list, not Today, when Today has no row for something it counts: tomorrow's prep", async () => {
+    w().rows.set("box", [tell({ day: "2026-11-24", how: "digest" }), tell({ day: "2026-11-24", how: "digest", kind: "prep.ready", group: "meetings", title: "Prep is ready", by: at(25, 10) })]);
+    w().rows.set("mac", []);
+    const today = vi.fn();
+    digestOpensPort.set(today);
+    await mount();
+    await act(async () => shown()[0]!.action());
+    expect(today).not.toHaveBeenCalled();
+    expect(await screen.findByRole("heading", { name: "Digest" })).toBeTruthy();
+  });
+
   it("opens the list, not Today, when a day before today is unseen too: Today shows today alone, and every day is marked seen", async () => {
     const before = { day: "2026-11-23", madeAt: at(23, 8), seenAt: null, count: 1 };
     w().days.set("box", [day, before]);
@@ -185,6 +198,31 @@ describe("the digest's toast", () => {
   });
 });
 
+describe("the zone the digest's time is kept in", () => {
+  const said = () => w().calls.filter((c) => c.method === "work.digest.here").map((c) => c.env).sort();
+  it("is said by the window he comes to, to every host with Work on", async () => {
+    await mount();
+    w().calls.length = 0;
+    act(() => void window.dispatchEvent(new Event("focus")));
+    expect(said()).toEqual(["box", "mac"]);
+  });
+  it("is not said by a window in the background when its link comes back", async () => {
+    await mount();
+    const focus = vi.spyOn(document, "hasFocus");
+    try {
+      focus.mockReturnValue(false);
+      w().calls.length = 0;
+      act(() => reopen(w(), "box"));
+      expect(said()).toEqual([]);
+      focus.mockReturnValue(true);
+      act(() => reopen(w(), "box"));
+      expect(said()).toEqual(["box"]);
+    } finally {
+      focus.mockRestore();
+    }
+  });
+});
+
 describe("a page above the workspaces", () => {
   it("opens when its row is on the rail, and is the list until then", async () => {
     w().rows.set("box", [tell({ key: "review:2026-11-16", title: "This week's review is ready", how: "now", toldAt: at(24, 9), open: { place: "review" } })]);
@@ -200,6 +238,16 @@ describe("a page above the workspaces", () => {
     await mount();
     await act(async () => shown()[0]!.action());
     expect(shellStore.getState().workPlace).toBe("review");
+  });
+  it("opens the review on the week the row names", async () => {
+    WORK_PLACE_ROWS.push({ id: "review", label: "Review", order: 20, icon: (() => null) as never });
+    const week = at(16, 0);
+    w().rows.set("box", [tell({ key: "review:2026-11-16", title: "This week's review is ready", how: "now", toldAt: at(24, 9), open: { place: "review", at: String(week) } })]);
+    await mount();
+    const asked = renderHook(() => useWorkPlaceAt("review"));
+    await act(async () => shown()[0]!.action());
+    expect(shellStore.getState().workPlace).toBe("review");
+    expect(asked.result.current).toBe(week);
   });
 });
 
@@ -227,6 +275,25 @@ describe("an interrupt's toast", () => {
     toasts.shown.clear();
     await mount();
     expect(shown()).toEqual([]);
+  });
+
+  it("pressed while Settings is up, Settings closes and the view opens in front", async () => {
+    w().rows.set("box", [meeting()]);
+    workspaces.list = [{ id: "ws-purdue", path: "/work/Purdue", environmentId: "box", kind: "work", sector: "purdue" }];
+    await mount();
+    act(() => shell.openSettings("work"));
+    expect(shellStore.getState().settingsOpen).toBe(true);
+    await act(async () => shown()[0]!.action());
+    expect(shellStore.getState().settingsOpen).toBe(false);
+    expect(workViewNow()).toEqual({ workspaceId: "ws-purdue", view: "agenda", event: "ev1" });
+  });
+
+  it("a job this window does not list opens nothing, so the row is not taken as dealt with: the list opens", async () => {
+    w().rows.set("box", [meeting()]);
+    workspaces.list = [];
+    await mount();
+    await act(async () => shown()[0]!.action());
+    expect(await screen.findByRole("heading", { name: "Digest" })).toBeTruthy();
   });
 
   it("goes when the thing is done, without counting as closed by him", async () => {

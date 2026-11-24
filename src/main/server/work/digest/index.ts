@@ -27,7 +27,7 @@ export const digest: WorkModule = {
   async handle(req, ctx) {
     switch (req.method) {
       case 'work.digest.list':
-        return handled(host(ctx).list(req.params))
+        return handled(await host(ctx).listMade(req.params))
       case 'work.digest.get':
         return handled(host(ctx).settings())
       case 'work.digest.set':

@@ -16,6 +16,9 @@ public final class WorkDigest {
     public private(set) var error: String?
 
     @ObservationIgnored private let socket: TempCodeSocket
+    /// Days he opened here that the host has not taken yet, with when: said again on the next socket and laid over
+    /// every read until then, so a reconnect never brings back as unseen a day he saw (the desktop's `pendingSeen`).
+    @ObservationIgnored private var pendingSeen: [String: Double] = [:]
 
     init(socket: TempCodeSocket) {
         self.socket = socket
@@ -27,7 +30,9 @@ public final class WorkDigest {
             async let list = socket.request(Methods.WorkDigestList.self, .init())
             async let get = socket.request(Methods.WorkDigestGet.self, .init())
             let (answer, current) = try await (list, get)
-            ledger = DigestModel.Ledger(days: answer.days, rows: answer.rows, settings: current)
+            var read = DigestModel.Ledger(days: answer.days, rows: answer.rows, settings: current)
+            for (day, at) in pendingSeen { read.seen(day, at: at) }
+            ledger = read
             settings = current
             error = nil
         } catch {
@@ -50,8 +55,14 @@ public final class WorkDigest {
 
     /// He opened the digest with this day in it.
     public func seen(_ day: String) async {
-        ledger?.seen(day, at: Date.now.timeIntervalSince1970 * 1000)
-        _ = try? await socket.request(Methods.WorkDigestSeen.self, .init(day: day))
+        let at = pendingSeen[day] ?? Date.now.timeIntervalSince1970 * 1000
+        ledger?.seen(day, at: at)
+        pendingSeen[day] = at
+        // Kept until the host answers: a dropped link leaves it pending, said again by `reconnected`.
+        do {
+            _ = try await socket.request(Methods.WorkDigestSeen.self, .init(day: day))
+            pendingSeen[day] = nil
+        } catch {}
     }
 
     /// Writes the time or one group's level on this host; the host keeps only what differs from `clock`.
@@ -68,10 +79,12 @@ public final class WorkDigest {
         ledger = nil
         settings = nil
         error = nil
+        pendingSeen = [:]
     }
 
     /// A new socket: a ledger read before is read again; one never read waits for the screen.
     func reconnected() async {
+        for day in pendingSeen.keys.sorted() { await seen(day) }
         if ledger != nil || error != nil { await load() }
     }
 

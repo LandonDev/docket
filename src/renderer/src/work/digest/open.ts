@@ -9,6 +9,8 @@ import type { OpenWorkView } from "../../lib/workSwitch";
 export type Route =
   | { to: "thread"; sessionId: string }
   | { to: "view"; view: OpenWorkView }
+  /** a LifeOS document or sheet, in a Files tab of the job */
+  | { to: "file"; workspaceId: string; ref: { at: "lifeos"; table: "docs" | "sheets"; id: string } }
   | { to: "place"; id: string; at?: string }
   /** `item` is the Outbox's own key for the held item, when the host is known */
   | { to: "outbox"; item?: string }
@@ -17,14 +19,18 @@ export type Route =
   | { to: "none" };
 
 /** Which field of `openWorkView` a view takes its `at` in. */
-const VIEW_AT: Record<string, "event" | "mail" | "task" | "project" | "person"> = {
+const VIEW_AT: Record<string, "event" | "mail" | "task" | "project" | "person" | "chat"> = {
   agenda: "event",
   prep: "event",
   mail: "mail",
   tasks: "task",
   projects: "project",
   people: "person",
+  messages: "chat",
 };
+
+/** A guest's edit names its document as the docs pillar keys it: "lifeos:docs:<id>", "lifeos:sheets:<id>". */
+const LIFEOS_ENTRY = /^lifeos:(docs|sheets):(.+)$/;
 
 export function routeOf(row: Pick<TellRow, "open" | "host"> & { environmentId?: string }): Route {
   const open: TellOpen | undefined = row.open;
@@ -34,6 +40,8 @@ export function routeOf(row: Pick<TellRow, "open" | "host"> & { environmentId?: 
   if ("held" in open) return { to: "outbox", item: `${row.environmentId ?? row.host}:${open.held.at}:${open.held.id}` };
   if ("thread" in open) return { to: "thread", sessionId: open.thread };
   if ("view" in open) {
+    const entry = open.view === "docs" ? LIFEOS_ENTRY.exec(open.at ?? "") : null;
+    if (entry) return { to: "file", workspaceId: open.workspaceId, ref: { at: "lifeos", table: entry[1] as "docs" | "sheets", id: entry[2]! } };
     const view: OpenWorkView = { workspaceId: open.workspaceId, view: open.view };
     const field = VIEW_AT[open.view];
     if (open.at && field) view[field] = open.at;
@@ -46,7 +54,10 @@ export function routeOf(row: Pick<TellRow, "open" | "host"> & { environmentId?: 
 /** What runs a route: the app's own ways in, handed over by the host component. */
 export interface Routes {
   thread(sessionId: string): void;
-  view(view: OpenWorkView): void;
+  /** false: this window does not list the job */
+  view(view: OpenWorkView): boolean;
+  /** false: this window does not list the job */
+  file(workspaceId: string, ref: Extract<Route, { to: "file" }>["ref"]): boolean;
   /** false: this build has no such page */
   place(id: string, at?: string): boolean;
   outbox(item?: string): void;
@@ -60,8 +71,9 @@ export function go(route: Route, routes: Routes): boolean {
       routes.thread(route.sessionId);
       return true;
     case "view":
-      routes.view(route.view);
-      return true;
+      return routes.view(route.view);
+    case "file":
+      return routes.file(route.workspaceId, route.ref);
     case "place":
       return routes.place(route.id, route.at);
     case "outbox":
