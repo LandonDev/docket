@@ -522,6 +522,11 @@ export const sendCopyBack = (link: string, workspaceId: string, tabId: string): 
 export const saveWordFile = (link: string, workspaceId: string, tabId: string, keep: boolean, replace = false): Promise<WordSaved> =>
   ask<WordSaved>(link, "work.files.wordSave", { workspaceId, tabId, ...(keep ? { keep: true } : {}), ...(replace ? { replace: true } : {}) }, { timeoutMs: 180_000 });
 
+/** His choice for a Word file opened as its document: save it by itself, or ask each time (files/word.ts). */
+export async function setWordAuto(link: string, workspaceId: string, tabId: string, on: boolean): Promise<void> {
+  putTabs(link, workspaceId, await ask<FilesTabs>(link, "work.files.wordAuto", { workspaceId, tabId, on }));
+}
+
 /** Reload: the file as it is on its computer now, in the copy's place; what was not sent is dropped. */
 export async function reloadCopy(link: string, workspaceId: string, tabId: string): Promise<void> {
   putTabs(link, workspaceId, await ask<FilesTabs>(link, "work.files.copyReload", { workspaceId, tabId }));

@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { saveAsWord, serviceOf, WORD_LOSSES, wordLine } from "./wordSave";
+import { askAutosave, saveAsWord, serviceOf, WORD_LOSSES, wordLine } from "./wordSave";
 
 /** A Word file of another computer opened as its document: the header's words, and Save as Word's one confirm. */
 
@@ -59,4 +59,24 @@ describe("Save as Word", () => {
     expect(gone.save).toHaveBeenCalledTimes(1);
   });
 
+});
+
+describe("a Word file saved by itself", () => {
+  it("says saving while his newest words are not in it, saved with the time once they are, and the change that stopped it", () => {
+    expect(wordLine({ since: true, auto: true }, "Teams", NOW)).toMatchObject({ state: "saving", words: "Saving to Teams…" });
+    expect(wordLine({ since: false, auto: true, at: AT }, "Teams", NOW)).toMatchObject({ state: "saved", words: "Saved to Teams 9:12 PM" });
+    expect(wordLine({ since: true, auto: true, at: AT, stopped: AT }, "OneDrive", NOW)).toMatchObject({ state: "conflict", words: "This file changed in OneDrive 9:12 PM" });
+  });
+
+  it("asks once, naming what Word may change, and keeps his choice", async () => {
+    const set = vi.fn(async () => undefined);
+    const choose = vi.fn(async () => "action" as const);
+    expect(await askAutosave(TAB, { choose, set })).toBe(true);
+    expect(choose.mock.calls[0]![0]).toMatchObject({ action: "Save automatically", other: "Ask me each time" });
+    expect(choose.mock.calls[0]![0].body).toContain(WORD_LOSSES);
+    expect(set).toHaveBeenCalledWith(true);
+    const later = vi.fn(async () => null);
+    expect(await askAutosave(TAB, { choose: later, set })).toBeNull();
+    expect(set).toHaveBeenCalledTimes(1);
+  });
 });

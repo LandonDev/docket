@@ -33,15 +33,15 @@ describe('the form follows the place', () => {
 describe('what New offers', () => {
   it('offers only what opens ready to edit in the place', () => {
     expect(offersIn({ kind: 'folder' }, none)).toEqual(['document', 'sheet', 'deck', 'text', 'folder'])
-    expect(offersIn({ kind: 'teams' }, none)).toEqual(['text', 'folder'])
-    expect(offersIn({ kind: 'onedrive' }, none, true)).toEqual(['sheet', 'text', 'folder'])
+    expect(offersIn({ kind: 'teams' }, none)).toEqual(['document', 'text', 'folder'])
+    expect(offersIn({ kind: 'onedrive' }, none, true)).toEqual(['document', 'sheet', 'text', 'folder'])
     expect(offersIn({ kind: 'teams' }, (kind, form) => (kind === 'document' && form === 'docx') || (kind === 'slides' && form === 'pptx'))).toEqual(['document', 'deck', 'text', 'folder'])
-    expect(offersIn({ kind: 'teams' }, (kind, form) => kind === 'sheet' && form === 'xlsx')).toEqual(['sheet', 'text', 'folder'])
-    // A maker of our own forms does not make a library offer the kind.
-    expect(offersIn({ kind: 'teams' }, (_kind, form) => form === 'tcdoc' || form === 'tcsheet')).toEqual(['text', 'folder'])
+    expect(offersIn({ kind: 'teams' }, (kind, form) => kind === 'sheet' && form === 'xlsx')).toEqual(['document', 'sheet', 'text', 'folder'])
+    // A maker of our own forms does not make a library offer the kind; a document is Files' own blank Word file in every library.
+    expect(offersIn({ kind: 'teams' }, (_kind, form) => form === 'tcdoc' || form === 'tcsheet')).toEqual(['document', 'text', 'folder'])
     expect(offersIn({ kind: 'teams', vm: true }, () => true, true)).toEqual([])
     // In the VM where its helper makes things: a folder and a text file, an Office file where a maker writes it, and never for this host's Excel.
-    expect(offersIn({ kind: 'teams', vm: true, can: ['make'] }, () => false, true)).toEqual(['text', 'folder'])
+    expect(offersIn({ kind: 'teams', vm: true, can: ['make'] }, () => false, true)).toEqual(['document', 'text', 'folder'])
     expect(offersIn({ kind: 'teams', vm: true, can: ['make'] }, (kind, form) => kind === 'document' && form === 'docx')).toEqual(['document', 'text', 'folder'])
     expect(offersIn({ kind: 'recent' }, () => true)).toEqual([])
   })

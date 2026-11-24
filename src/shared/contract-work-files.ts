@@ -208,7 +208,9 @@ export const FilesRequestSchemas = [
    * file by the version it was read at, never over a file that changed there; `keep` puts it beside the file under
    * the keep-both name instead. His own edit of that file: his window, or a key that may approve.
    */
-  request('work.files.wordSave', z.object({ workspaceId: Workspace, tabId: z.string().max(100), keep: z.boolean().optional(), /** his press on Replace over a file that changed there */ replace: z.boolean().optional() })),
+  request('work.files.wordSave', z.object({ workspaceId: Workspace, tabId: z.string().max(100), keep: z.boolean().optional(), /** his press on Replace over a file that changed there */ replace: z.boolean().optional(), /** the window's own save after a pause in his typing */ auto: z.boolean().optional() })),
+  /** → FilesTabs: his choice for a Word file opened as its document: save it by itself (`on`), or ask each time. */
+  request('work.files.wordAuto', z.object({ workspaceId: Workspace, tabId: z.string().max(100), on: z.boolean() })),
   /**
    * → WrittenBack: a copy's bytes, sent by the workspace's host to the file's own host (its peer verb, never a
    * window's or a key's): written over the file by `version` alone, through the same door as his own save there,
@@ -337,6 +339,10 @@ export interface CopyBack {
 export interface WordBack {
   at?: number
   since: boolean
+  /** saves by itself after a pause in his typing: true; asks each time: false; not asked yet: absent */
+  auto?: boolean
+  /** an autosave met a change made there at this time: nothing is written until his Replace or Keep Both */
+  stopped?: number
 }
 /** What Save as Word answers: written over the file, the file changed there or went (nothing written), or kept beside it. */
 export type WordSaved = { at: number } | { conflict: { changed: number } | { gone: true } } | { copy: { name: string } }
@@ -449,6 +455,7 @@ export const FILES_CAPS = {
   'work.files.copyReload': 'operate',
   'work.files.copyKeep': 'operate',
   'work.files.wordSave': 'operate',
+  'work.files.wordAuto': 'operate',
   // Another host of his only: the workspace's host sending a copy back (its origin says his window's press).
   'work.files.writeBack': 'operate',
   'work.files.tabMove': 'operate',
@@ -489,6 +496,7 @@ export const FILES_RELAY = {
   'work.files.copyReload': 'screen',
   'work.files.copyKeep': 'screen',
   'work.files.wordSave': 'screen',
+  'work.files.wordAuto': 'screen',
   'work.files.writeBack': 'screen',
   'work.files.project': 'screen',
   'work.files.purge': 'never'

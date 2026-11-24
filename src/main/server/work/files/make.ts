@@ -34,14 +34,16 @@ export function formIn(place: Pick<FilePlace, 'kind'>, kind: FileMakeKind): File
 /**
  * What New offers in a place: only what opens ready to edit there. The workspace's folder takes every kind. A
  * library takes a folder and a text file always; a sheet where a maker writes `.xlsx` or this host has Excel
- * (Excel stands behind the grid); a document or a deck only once a maker writes `.docx` or `.pptx` in place.
+ * (Excel stands behind the grid); a document always, Files' own blank `.docx`; a deck once a maker writes `.pptx` in place.
  * In the Windows VM, where its helper makes things (`make` in the place's `can`), the same less this host's Excel,
  * which stands behind no file there. `has` answers whether a maker is registered for a canvas kind and form.
  */
 export function offersIn(place: Pick<FilePlace, 'kind' | 'vm'> & { can?: FilePlace['can'] }, has: (kind: CanvasKind, form: FileForm) => boolean, excel = false): FileMakeKind[] {
   if (place.kind === 'folder') return [...FILE_MAKE_KINDS]
   if (!isLibrary(place) || (place.vm && !place.can?.includes('make'))) return []
-  const ok: Record<FileMakeKind, boolean> = { document: has('document', 'docx'), sheet: (excel && !place.vm) || has('sheet', 'xlsx'), deck: has('slides', 'pptx'), text: true, folder: true }
+  // A document is Files' own blank Word file (resources/work-files/blank/blank.docx), which opens as the Word-backed
+  // document and saves by itself (word.ts): no maker is needed for it.
+  const ok: Record<FileMakeKind, boolean> = { document: true, sheet: (excel && !place.vm) || has('sheet', 'xlsx'), deck: has('slides', 'pptx'), text: true, folder: true }
   return FILE_MAKE_KINDS.filter((kind) => ok[kind])
 }
 

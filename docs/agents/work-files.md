@@ -1706,6 +1706,21 @@ over a colleague's Word file but his own press.
   are kept once as "Plan (before TempCode saved it).docx" in the workspace's folder (`keepOriginal`, the record's
   `original`). A file gone there offers Keep Both alone. His own edit: his window, or a key that may approve; a
   thread and a read key are refused, as for a copy.
+- **Saving by itself** (the owner's order of 2026-11-23). The record keeps his choice for the file (`auto`: not asked,
+  save by itself, ask each time). The host saves each Word file he chose, or one born here (its bytes still exactly
+  our blank, `bornHere`: New → Document), once its document has been still for 3 s (`autosaveWords`, every second
+  from the module's start, `wordTiming.pause`): the same save as his press, by version, never over a change made
+  there. Such a change stops autosave for that file (`stopped`, said on the tab's `word`) until his Replace or Keep
+  Both. The header says "Saving to Teams…" while his newest words are not in the file, "Saved to Teams 9:12 PM" once
+  they are, and "This file changed in Teams 9:12 PM" with Keep Both and Replace when stopped. The first time a Word
+  file holds edits not in it, the window asks once: "Save Plan.docx to Teams as you work?", with what Word may change,
+  Save automatically and Ask me each time (`askAutosave`, `work.files.wordAuto`); the file's menu changes it after.
+  Only his document's live text is written: a thread's change to it waits as a suggestion, and a thread or a read
+  key can neither save nor set the choice.
+- **New → Document in a library** makes Files' own blank Word file (resources/work-files/blank/blank.docx) in every
+  library place that carries `make` (a Mac's, the VM's, a PC's): named in place, it opens as the Word-backed document
+  and saves by itself with no notice, since it holds only what the editor makes (`offersIn`). In the workspace's own
+  folder New → Document still makes a `.tcdoc`.
 - **A document he only looked at** goes with its tab: one whose change time is still the one it was made with is
   deleted with its record (`wordsLeft`); one he changed is kept, in the workspace's folder, for the Word file's next
   open.

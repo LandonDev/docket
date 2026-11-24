@@ -70,6 +70,9 @@ export function ensureFilesTables(db: DatabaseSync): void {
   // over it (`original`, a file in the workspace's folder): added after the table was first made.
   const have = new Set((db.prepare(`PRAGMA table_info(work_files_word)`).all() as { name: string }[]).map((c) => c.name))
   for (const column of ['sha', 'original']) if (!have.has(column)) db.exec(`ALTER TABLE work_files_word ADD COLUMN ${column} TEXT`)
+  // Autosave (word.ts): his choice for the file (`auto`: null not asked yet, 1 save automatically, 0 ask each time), and
+  // when an autosave met a change made there (`stopped`): autosave waits for his press until then.
+  for (const column of ['auto', 'stopped']) if (!have.has(column)) db.exec(`ALTER TABLE work_files_word ADD COLUMN ${column} INTEGER`)
 }
 
 export const FILES_TABLES = ['work_files_tabs', 'work_files_revs', 'work_files_marks', 'work_files_trash', 'work_files_ops', 'work_files_names', 'work_files_kept', 'work_files_copies', 'work_files_word'] as const

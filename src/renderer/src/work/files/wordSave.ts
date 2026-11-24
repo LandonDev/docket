@@ -19,6 +19,10 @@ export const wordName = (tab: Pick<FileTab, "copyOf" | "name">): string => tab.c
 
 /** The header's line: whether the Word file holds his changes. */
 export function wordLine(word: WordBack, service: string, now = Date.now()): HeaderLine {
+  // Stopped: an autosave met a change made there; nothing goes until his press.
+  if (word.stopped) return { state: "conflict", words: `This file changed in ${service} ${whenWords(word.stopped, now)}` };
+  // Saving by itself: saving while his newest words are not in the file, saved with the time once they are.
+  if (word.auto) return word.since || !word.at ? { state: "saving", words: `Saving to ${service}…` } : { state: "saved", words: `Saved to ${service} ${whenWords(word.at, now)}` };
   if (!word.since && word.at) return { state: "saved", words: `Saved to ${service} as Word ${whenWords(word.at, now)}` };
   if (word.at) return { state: "copy", words: `Changes since ${whenWords(word.at, now)} are not in the Word file` };
   return { state: "copy", words: `The Word file in ${service} has not changed` };
@@ -65,4 +69,18 @@ export async function saveAsWord(
   if (again === null) return null;
   if (again === "other") return kept(await deps.save(true));
   return "at" in (await deps.save(false, true)) ? "saved" : null;
+}
+
+/** The first time a Word file would be saved by itself: one notice, what Word may lose, and his choice for the file. */
+export async function askAutosave(tab: Pick<FileTab, "copyOf" | "name" | "key">, deps: { choose: typeof confirmChoice; set(on: boolean): Promise<unknown> }): Promise<boolean | null> {
+  const service = serviceOf(tab);
+  const choice = await deps.choose({
+    title: `Save ${wordName(tab)} to ${service} as you work?`,
+    body: `Word formatting this editor does not keep may change: ${WORD_LOSSES}. ${service} keeps its own version history, and the Word file as it is now is kept in your workspace's folder.`,
+    action: "Save automatically",
+    other: "Ask me each time",
+  });
+  if (choice === null) return null;
+  await deps.set(choice === "action");
+  return choice === "action";
 }

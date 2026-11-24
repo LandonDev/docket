@@ -1,7 +1,7 @@
 import { filesPaneWorkspace } from '@shared/work'
 import type { ActKindDef, WorkModule } from '../modules'
 import { copiesLeft, copySaved, retryWaiting, settleCopies } from './copies'
-import { adoptWordCopies, wordFollowed, wordImportPlace, wordsLeft } from './word'
+import { adoptWordCopies, autosaveWords, wordFollowed, wordImportPlace, wordsLeft } from './word'
 import { closeFilesState, filesHandle, filesState, itemsGone, removeWorkspace } from './handle'
 import { onFileSaved } from './save'
 import { registerFileMoved, registerImportPlace } from './hooks'
@@ -102,6 +102,9 @@ export const files: WorkModule = {
     // A Word file of another computer becomes a document in the workspace's own folder, kept for its next open (word.ts).
     const offPlace = registerImportPlace((original, itemId) => wordImportPlace(ctx, original, itemId))
     const offFollowed = ctx.canvas.onReplaced((old, next) => wordFollowed(ctx, old, next))
+    // A Word file he chose to save by itself is written once his document has been still for a pause (word.ts).
+    const words = setInterval(() => void autosaveWords(ctx).catch((err) => ctx.log(`files: Word autosave failed: ${err instanceof Error ? err.message : String(err)}`)), 1000)
+    words.unref?.()
     const waiting = setInterval(() => {
       try {
         retryWaiting(ctx)
@@ -117,6 +120,7 @@ export const files: WorkModule = {
       offFollowed()
       clearInterval(daily)
       clearInterval(waiting)
+      clearInterval(words)
       closeFilesState(ctx.db)
     }
   },

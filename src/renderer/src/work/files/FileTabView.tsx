@@ -20,8 +20,8 @@ import { KindGlyph } from "./KindGlyph";
 import { Dock, DockSash } from "./Dock";
 import type { DockThread } from "./dockThread";
 import { dockShape, type ActRow, type EntryAct } from "./model";
-import { saveWordFile, sendCopyBack, useDock, useDockWidth } from "./store";
-import { saveAsWord, serviceOf, wordLine } from "./wordSave";
+import { saveWordFile, sendCopyBack, setWordAuto, useDock, useDockWidth } from "./store";
+import { askAutosave, saveAsWord, serviceOf, wordLine } from "./wordSave";
 import { NameField, useSideOver } from "./rowParts";
 import { copyBackDue, copyLine, type CopyAsk, type HeaderLine } from "./fileText";
 import { SaveActions, SaveLine } from "./SaveLine";
@@ -282,9 +282,24 @@ export function FileTabView({
       save: (keep, replace) => saveWordFile(workspace.environmentId, workspace.id, tab.id, keep, replace),
       said: (text) => void loadToast().then((toast) => toast.message(text)),
     }).then(() => undefined);
+  // The first time a Word file holds edits not in it: one notice, and his choice for the file (wordSave.ts).
+  const asked = useRef(false);
+  const word = tab.word;
+  useEffect(() => {
+    if (!copy || !word || word.auto !== undefined || !word.since || asked.current) return;
+    asked.current = true;
+    void askAutosave(tab, { choose: confirmChoice, set: (on) => setWordAuto(workspace.environmentId, workspace.id, tab.id, on) }).catch((err: unknown) => sayError(err, "The choice was not kept"));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [copy, word?.auto, word?.since]);
+  const wordActions = (w: NonNullable<typeof word>): SavedAction[] => {
+    const service = serviceOf(tab);
+    const save = (keep: boolean, replace = false): Promise<void> => saveWordFile(workspace.environmentId, workspace.id, tab.id, keep, replace).then(() => undefined);
+    if (w.stopped) return [{ id: "keep", label: "Keep Both", run: () => save(true) }, { id: "replace", label: "Replace", run: () => save(false, true) }];
+    return w.auto || !w.since ? [] : [{ id: "word", label: `Save to ${service} as Word`, run: saveWord }];
+  };
   const line: HeaderLine | null =
-    copy && tab.word && (!kindLine || kindLine.state === "saved" || kindLine.state === "saving")
-      ? { ...wordLine(tab.word, serviceOf(tab)), ...(tab.word.since ? { actions: [{ id: "word", label: `Save to ${serviceOf(tab)} as Word`, run: saveWord }] } : {}) }
+    copy && word && (!kindLine || kindLine.state === "saved" || kindLine.state === "saving")
+      ? { ...wordLine(word, serviceOf(tab)), ...(wordActions(word).length ? { actions: wordActions(word) } : {}) }
       : copy && tab.back
       ? savingCopyLine(kindLine, tab, copy, sendAsk, () => setFresh((n) => n + 1), sendBack)
       : copy
@@ -323,6 +338,8 @@ export function FileTabView({
     { kind: "sep" },
     { kind: "item", id: "full", label: full ? "Leave Full Window" : "Full Window", icon: full ? Minimize2 : Maximize2 },
     { kind: "item", id: "close", label: "Close Tab", icon: X, shortcut: shortcutFor("Files (Work)", "Close Tab") },
+    // A Word file's own choice: save it by itself, or ask each time.
+    ...(copy && tab.word ? ([{ kind: "sep" }, { kind: "item", id: "word-auto", label: tab.word.auto ? "Ask Before Saving to Word" : "Save to Word Automatically" }] satisfies MenuRow[]) : []),
   ];
   const [renaming, setRenaming] = useState(false);
   // Escape leaves the full window, unless a menu, a dialog or the thing holding the key took it first.
@@ -354,6 +371,7 @@ export function FileTabView({
         rows={rows}
         onPick={(id) => {
           if (id === "close") return onClose();
+          if (id === "word-auto") return void setWordAuto(workspace.environmentId, workspace.id, tab.id, !tab.word?.auto).catch((err: unknown) => sayError(err, "The choice was not kept"));
           if (id === "full") return setFull(!full);
           if (id === "download") return manage?.download?.();
           if (id === "rename") return setRenaming(true);

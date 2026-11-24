@@ -5,6 +5,7 @@ import type { FileTab, WordBack, WordSaved } from '@shared/contract-work-files'
 import { filesPaneWorkspace, type CanvasItem } from '@shared/work'
 import { extOf, freeName, splitName } from '@shared/work/files'
 import type { Caller, WorkCtx } from '../modules'
+import { blankOf } from './make'
 import { workspaceHere } from './policy'
 import { admitOwner, deliver, freshBytes, NOT_SAVING } from './copies'
 import { filesState } from './handle'
@@ -34,7 +35,23 @@ export interface WordRow {
   sha: string | null
   /** the Word file as it was before TempCode's first write over it, kept in the workspace's folder */
   original: string | null
+  auto: number | null
+  stopped: number | null
 }
+
+/** The sha256 of our own blank Word file (resources/work-files/blank/blank.docx): a file still exactly that was born here. */
+let blankSha: string | null | undefined
+function bornHere(sha: string): boolean {
+  if (blankSha === undefined) {
+    try {
+      blankSha = createHash('sha256').update(readFileSync(blankDocx())).digest('hex')
+    } catch {
+      blankSha = null
+    }
+  }
+  return blankSha === sha
+}
+const blankDocx = (): string => (blankOf('docx') as { from: string }).from
 
 /** His window: what the workspace's host itself sends as when the press was his. */
 const LOCAL: Caller = { kind: 'local', caps: ['read', 'operate', 'approve'] }
@@ -62,9 +79,11 @@ export function recordWord(ctx: Pick<WorkCtx, 'db'>, w: { workspaceId: string; h
   ctx.db
     .prepare(
       `INSERT INTO work_files_word (workspace_id, host, path, vm, name, version, sha, doc, doc_at, saved_at, saved_doc_at, at) VALUES (?, ?, ?, ?, ?, ?, ?, NULL, NULL, NULL, NULL, ?)
-       ON CONFLICT (workspace_id, host, path) DO UPDATE SET vm = excluded.vm, name = excluded.name, version = excluded.version, sha = excluded.sha, doc = NULL, doc_at = NULL, saved_at = NULL, saved_doc_at = NULL, at = excluded.at`
+       ON CONFLICT (workspace_id, host, path) DO UPDATE SET vm = excluded.vm, name = excluded.name, version = excluded.version, sha = excluded.sha, doc = NULL, doc_at = NULL, saved_at = NULL, saved_doc_at = NULL, stopped = NULL, at = excluded.at`
     )
     .run(w.workspaceId, w.host, w.path, w.vm ? 1 : 0, w.name, w.version, w.sha, Date.now())
+  // A Word file still exactly our blank (New → Document) holds only what our editor makes: it saves by itself, unasked.
+  if (bornHere(w.sha)) ctx.db.prepare(`UPDATE work_files_word SET auto = 1 WHERE workspace_id = ? AND host = ? AND path = ? AND auto IS NULL`).run(w.workspaceId, w.host, w.path)
 }
 
 /** The Files tab whose item is this one, if it shows a Word file's copy. */
@@ -139,7 +158,17 @@ export function wordBackOf(r: WordRow): WordBack | null {
   if (!r.doc) return null
   const now = mtime(r.doc)
   const since = r.saved_at === null || (now !== null && now !== r.saved_doc_at)
-  return { ...(r.saved_at ? { at: r.saved_at } : {}), since }
+  return { ...(r.saved_at ? { at: r.saved_at } : {}), since, ...(r.auto === null ? {} : { auto: r.auto === 1 }), ...(r.stopped ? { stopped: r.stopped } : {}) }
+}
+
+/** `work.files.wordAuto`: his choice for the file, kept on its record: save by itself, or ask each time. */
+export function wordAuto(ctx: WorkCtx, by: Caller, p: { workspaceId: string; tabId: string; on: boolean }): void {
+  const tab = filesState(ctx).tabs.list(p.workspaceId).tabs.find((t) => t.id === p.tabId)
+  const r = tab?.copyOf ? keptDoc(ctx, p.workspaceId, tab.copyOf.host, tab.copyOf.path) : null
+  if (!tab || !r) throw new Error(NOT_SAVING)
+  admitOwner(by, r)
+  ctx.db.prepare(`UPDATE work_files_word SET auto = ? WHERE workspace_id = ? AND host = ? AND path = ?`).run(p.on ? 1 : 0, r.workspace_id, r.host, r.path)
+  filesState(ctx).tabs.touch(p.workspaceId)
 }
 
 /**
@@ -189,11 +218,16 @@ function keepOriginal(ctx: WorkCtx, r: WordRow, data: Buffer): void {
  * over it. Before the first write over the file its bytes are kept in the workspace's folder. `keep` puts his
  * version beside the file instead.
  */
-export async function wordSave(ctx: WorkCtx, by: Caller, p: { workspaceId: string; tabId: string; keep?: boolean; replace?: boolean }): Promise<WordSaved> {
+export async function wordSave(ctx: WorkCtx, by: Caller, p: { workspaceId: string; tabId: string; keep?: boolean; replace?: boolean; auto?: boolean }): Promise<WordSaved> {
   const tab = filesState(ctx).tabs.list(p.workspaceId).tabs.find((t) => t.id === p.tabId)
   const r = tab?.copyOf ? keptDoc(ctx, p.workspaceId, tab.copyOf.host, tab.copyOf.path) : null
   if (!tab || !r) throw new Error(NOT_SAVING)
   admitOwner(by, r)
+  return saveRow(ctx, r, p)
+}
+
+/** One save of a Word file's document as Word, as `wordSave` and the host's autosave run it. */
+async function saveRow(ctx: WorkCtx, r: WordRow, p: { workspaceId: string; keep?: boolean; replace?: boolean; auto?: boolean }): Promise<WordSaved> {
   const row = { workspace_id: r.workspace_id, host: r.host, path: r.path, vm: r.vm, name: r.name, version: r.version }
   let version = r.version
   if (!p.keep) {
@@ -205,9 +239,19 @@ export async function wordSave(ctx: WorkCtx, by: Caller, p: { workspaceId: strin
       throw err
     }
     const same = now.version === r.version || (knownSha(r) !== null && shaOf(now.data) === knownSha(r))
-    if (!same && !p.replace) return { conflict: { changed: changedOf(now.version) } }
+    if (!same && !p.replace) {
+      // An autosave that meets a change made there stops for this file until his press: never a silent overwrite.
+      if (p.auto) {
+        ctx.db.prepare(`UPDATE work_files_word SET stopped = ? WHERE workspace_id = ? AND host = ? AND path = ?`).run(changedOf(now.version), r.workspace_id, r.host, r.path)
+        filesState(ctx).tabs.touch(p.workspaceId)
+      }
+      return { conflict: { changed: changedOf(now.version) } }
+    }
+    // An autosave goes only where he chose it and nothing stopped it.
+    if (p.auto && (r.auto !== 1 || r.stopped)) return { conflict: { changed: r.stopped ?? changedOf(now.version) } }
     version = now.version
-    keepOriginal(ctx, r, now.data)
+    // A file still exactly our blank holds nothing of anyone's to keep.
+    if (!bornHere(shaOf(now.data))) keepOriginal(ctx, r, now.data)
   }
   const { exportDoc } = await import('../formats/exporter')
   const out = await exportDoc(ctx, LOCAL, { source: { at: 'file', host: ctx.host, path: r.doc! }, format: 'docx' })
@@ -217,7 +261,36 @@ export async function wordSave(ctx: WorkCtx, by: Caller, p: { workspaceId: strin
   if ('conflict' in got) return { conflict: 'gone' in got.conflict ? { gone: true } : { changed: got.conflict.changed } }
   if ('copy' in got) return { copy: { name: got.copy.name } }
   const at = Date.now()
-  ctx.db.prepare(`UPDATE work_files_word SET version = ?, sha = ?, saved_at = ?, saved_doc_at = ? WHERE workspace_id = ? AND host = ? AND path = ?`).run(got.version, shaOf(data), at, docAt, r.workspace_id, r.host, r.path)
+  ctx.db.prepare(`UPDATE work_files_word SET version = ?, sha = ?, saved_at = ?, saved_doc_at = ?, stopped = NULL WHERE workspace_id = ? AND host = ? AND path = ?`).run(got.version, shaOf(data), at, docAt, r.workspace_id, r.host, r.path)
   filesState(ctx).tabs.touch(p.workspaceId)
   return { at }
+}
+
+/** How long his document must be still before the host saves it as Word by itself. */
+export const wordTiming = { pause: 3000 }
+const saving = new Set<string>()
+
+/**
+ * The host's autosave (the owner's order of 2026-11-23): every Word file he chose to save automatically, or one born
+ * here, whose document changed since its last save and has been still for a pause, is exported and written to its
+ * file by version, with no ask of any window. A change made there stops it for that file (`stopped`) until his press.
+ * Only his own document's live text is written: an agent's change to it waits as a suggestion until his press.
+ */
+export async function autosaveWords(ctx: WorkCtx, now = Date.now()): Promise<void> {
+  const rows = ctx.db.prepare(`SELECT * FROM work_files_word WHERE auto = 1 AND stopped IS NULL AND doc IS NOT NULL`).all() as unknown as WordRow[]
+  for (const r of rows) {
+    const at = mtime(r.doc!)
+    const key = `${r.workspace_id}\0${r.host}\0${r.path}`
+    if (at === null || saving.has(key) || now - at < wordTiming.pause) continue
+    const changed = r.saved_at === null ? at !== r.doc_at : at !== r.saved_doc_at
+    if (!changed) continue
+    saving.add(key)
+    try {
+      await saveRow(ctx, r, { workspaceId: r.workspace_id, auto: true })
+    } catch (err) {
+      ctx.log(`files: a Word file was not saved by itself: ${err instanceof Error ? err.message : String(err)}`)
+    } finally {
+      saving.delete(key)
+    }
+  }
 }

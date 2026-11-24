@@ -648,3 +648,11 @@ opens on the real box: the owner applies the tunnel rule
 (scripts/box/ingress.yml), and TempCode's setting `work.lifeos.jwks` holds
 LifeOS's public keys so the service trusts LifeOS's tokens (nothing
 publishes them yet). `blockDocs` is to go on only then.
+
+## A Word file of a Teams library
+
+A `.docx` opened from a library on another computer, or in the Windows VM, is read into a document kept in the
+workspace's own folder, and the Word file is written back as our Word export: on his press, or by itself once he
+chose that (or for a file New made here). The rules, the header's words and the first-time question are in
+work-files.md "A Word file from another computer".
+
