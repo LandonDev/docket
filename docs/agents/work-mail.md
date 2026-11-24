@@ -606,7 +606,12 @@ docs/DESIGN.md "The Mail view"):
   lib/tcserver/commands.ts), then `session.send`. A must step that fails
   stops the send ("The chat did not start"), keeps his words, and runs
   again before the next send of that id, so no message of a mail chat goes
-  before the host knows it is one.
+  before the host knows it is one. A host whose hello lists `create.steps`
+  gets all three in one request: the create carries `mailAdopt` and the
+  message, and the host adopts before it stores the message
+  (src/main/server/createSteps.ts); an adopt it refuses stops the message
+  and keeps the thread, and the window's step runs again before the next
+  send, as above.
 - **It follows him**: a move in the list, the reader's keys or the
   toolbar shows that subject's chat (the one shown this run, else the
   host's newest, else a draft that keeps what he typed). A mail opened by

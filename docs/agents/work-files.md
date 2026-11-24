@@ -362,7 +362,16 @@ control, takes it away.
 - **Which thread**: the one this tab's dock showed before this run, while
   it is a live thread; else the newest unarchived thread of the workspace
   that holds the file (`heldBy` over `work.files.threads`); else a
-  **draft**. App fills `workDockPort` (lib/workSwitch.ts): `draft(workspace,
+  **draft**. The dock draws its composer in its first commit and asks no
+  host first (`dockThreadNow`: the thread it showed before, else the draft,
+  planned while drawing and put in the store by `enterDock` in the same
+  commit). The subject's `find` runs behind it, once a subject a run
+  (`findThread`: at most `FOUND_KEPT` subjects, a failed ask asked again, an
+  answer he has archived since ignored), so a tab shown again asks nothing;
+  the thread it names takes the draft's place only while the draft holds no
+  words, files or rows (`draftIsEmpty`), in place, with no fade, the caret
+  kept in the composer. A thread whose rows are still coming draws them as
+  the transcript's skeleton over its live composer, as a tab's pane does. App fills `workDockPort` (lib/workSwitch.ts): `draft(workspace,
   id?)` answers a Session seeded as New thread seeds one, in the Work
   workspace, placed in no tab and never the workspace's New thread draft;
   the dock
@@ -389,8 +398,20 @@ control, takes it away.
   a tab included, which he may take off: the dock follows the draft's chips
   (`heedChips` on `chipPort`), and a chip he took off is not put back; the composer draws no draft row (folder, host, branch, type,
   Master thread, name: `draftRow: false`), since the dock decides them.
-- **The first send** goes the composer's normal way (App's `onSubmit`,
-  `commands.send`). In it, in this order: `session.create` (it names no file:
+- **The first send, in one request**: to a host whose hello lists
+  `create.steps` (capabilities.ts `HOST_FEATURES`), the dock's step rides
+  the create as data (`DockSubject.fold`, `afterCreate.set(id, run, {fold})`,
+  commands.ts `createDraft`): `session.create` carries the message
+  (`firstMessage`, `attachments`), the file to open (`items`, `copy: true`
+  for a file of another computer) and this Mac's bridge (`bridge`), and the
+  host runs them in the order below, each as the request the window would
+  have sent, under the key's capability and the path fence
+  (src/main/server/createSteps.ts, index.ts `runStep`), then stores the
+  message. A file that did not open comes back in `itemsFailed` and says so
+  as below. Before, the first message waited on four or five requests in a
+  row. An older host, a draft with fast set, or a draft whose step cannot
+  ride the create, goes the old way: the composer's normal way (App's
+  `onSubmit`, `commands.send`). In it, in this order: `session.create` (it names no file:
   `about` carries a LifeOS row alone, `createAbout` in work/canvas/chips.ts,
   since a library file's path is another computer's and the host's fence
   refuses one in a create; the chip's line leads the message), then the step the dock

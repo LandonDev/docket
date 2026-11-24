@@ -4156,6 +4156,33 @@ found the boot still in flight read `warm` or `cold`), so older spans
 count some new threads as live; the first send after a boot now reports
 how its handle came up.
 
+### Ask's first send in one request, and why Work threads still start cold
+
+A docked chat's first send (Ask beside a file or a mail) is one
+`session.create` to a host whose hello lists `create.steps`
+(`HOST_FEATURES`, src/shared/capabilities.ts): it carries the message and
+its files, the items the thread opens, the mail chat it becomes and the
+Mac bridge it takes, and the host runs them between the create and the
+message (src/main/server/createSteps.ts), each through the caller's key
+refusals, the path fence and the one dispatcher (index.ts `runStep`).
+Before, four or five requests went one after another before the host had
+the turn.
+
+The perf plan (M6) also asked for one warm Work-shaped handle pinned while
+a window shows a Work workspace. It is not built: a Work thread never
+adopts a warm process (drivers/claude.ts `warmable`, codex.ts the same
+line), because its CLI must read the Work root as its own spawn put it
+back (work-scope.md "No warm process"), and a process warmed minutes
+before read it as it stood then, while any Work thread of the scope, or a
+program one left running, could have changed its `settings.json` (hooks there run commands; `strictMcpConfig` cuts only
+MCP servers). A safe pin would need the root put back right before the
+warm spawn, every entry the fence names watched from that spawn to the
+adoption with any change refusing it, and the fence proof
+(work/fence.proof.test.ts) run through a warm adoption with the real CLI.
+For Claude the app's tools are an in-process server (apptools.ts
+`appToolsMcp`), so an adoption starts no MCP process either way; the
+`appToken` handover matters only to the stdio bridge of Codex and Muse.
+
 ### The provider wait, and a client that hangs up
 
 The working line says "Waiting for the provider, 25 s" when a request of

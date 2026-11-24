@@ -162,7 +162,10 @@ by the listener with this host's own id as `self` (server/index.ts, the id
 Work calls `ctx.host`).
 
 - **What is read.** `workSources` collects every `CanvasSource` in a Work
-  request's params (`session.create`: in `about`), each path with the
+  request's params (`session.create`: in `about`; its `items`, a draft's
+  folded first send, are fenced step by step as the `work.office.filesCopy`
+  and `work.canvas.open` the host runs for them, src/main/server/createSteps.ts,
+  and its `attachments` as a `session.send`'s), each path with the
   `host` its source names (null when it names none); `workSourcePaths` is
   the same list, paths alone. It reads `SOURCE_DEPTH_MAX` (64) levels deep;
   a deeper request is refused whole, never passed unread. A sheet's edit of

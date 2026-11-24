@@ -2035,8 +2035,11 @@ Around the canvas:
   back to 360). Its head is 32px, level with the kind's bar: the title at
   13px medium, then Open in its own tab (once it is a thread) and Close,
   24px ghost glyphs. Under it the transcript and the composer; the
-  transcript's skeleton until the thread is known, and a failed first read
-  its Retry line alone, the skeleton back when a retry starts. A host out
+  composer is there the moment the dock opens, and a thread's rows still
+  coming are the transcript's skeleton over it; a failed first read is its
+  Retry line alone over the composer, the skeleton back when a retry
+  starts. The thread from before, found behind a fresh draft, takes the
+  draft's place only while it is empty, in place, never a fade. A host out
   of reach is said once, in the connection line over the box; the field
   keeps its own placeholder and send waits (a code thread's field says it
   too). Where the tab's body
