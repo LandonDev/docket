@@ -54,7 +54,8 @@ export function viewOf(row: MsFormRow): MsFormView {
     signedInAs: row.signedInAs,
     updatedAt: row.updatedAt,
     unseen: Math.max(0, row.count - row.seenCount),
-    stopped: row.stopped,
+    // A draft whose last read says it takes answers says so whatever stopped last: an answers read clears its own stops, never this.
+    stopped: row.stopped ?? (row.state === 'draft' && row.settings.accepting ? MAY_TAKE_ANSWERS : null),
     closedAt: row.closedAt
   }
 }

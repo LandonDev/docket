@@ -124,6 +124,15 @@ describe('the row', () => {
     expect(row).toMatchObject({ state: 'draft', settings: { accepting: true } })
     expect(row.stopped).toContain('until Accept responses is off')
   })
+
+  it('keeps saying a draft may take answers after its answers are checked', async () => {
+    carrier.stopAt.make = 'accepting'
+    await expect(made()).rejects.toThrow('may take answers')
+    const [row] = new MsformsStore(db).list('w1')
+    await call('work.msforms.refresh', { workspaceId: 'w1', formId: row.formId }).catch(() => {})
+    const view = await call<MsFormView>('work.msforms.get', { workspaceId: 'w1', formId: row.formId })
+    expect(view.stopped).toContain('until Accept responses is off')
+  })
 })
 
 describe('the one reach check', () => {
