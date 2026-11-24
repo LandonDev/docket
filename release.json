@@ -1,5 +1,5 @@
 {
-  "n": 367,
-  "notes": "Work, Nov 23 evening (367): edits to a Teams or OneDrive file are no longer lost (words typed into a deck reach the file when its tab closes; a copy with unsent changes is never dropped; the header says Saving until the host confirms; a failed save says so with Retry); Delete works in Teams and OneDrive libraries (to the computer's own bin, asked once, with Undo; an agent's delete there is held); every publish adds the Windows installer; council fixes to Work search, Messages, Today, Templates and Meeting prep.",
-  "ts": 1795486263952
+  "n": 368,
+  "notes": "Work, Nov 23 late (368): a Word file from a Teams library keeps your edits (a document kept in the workspace's folder, the copy you already had open included) with Save to Teams as Word on your press; a workbook edit from your Mac's window reaches a workbook on the box (it was refused in 367); Send later in Mail's reply box and composer, in a named time zone, on your press alone, with a Scheduled place; a copy's Retry really sends again; council fixes to Money, Templates, Meeting prep, Review, Clashes, Today and Work search. The Mail chat is in the code but switched off until its review is done.",
+  "ts": 1795490967656
 }
