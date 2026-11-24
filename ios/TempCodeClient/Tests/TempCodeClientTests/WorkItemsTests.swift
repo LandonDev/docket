@@ -209,6 +209,24 @@ struct WorkItemsTests {
         #expect(RoutineBands.stamp(bands.watches[0]).hasPrefix("Until "))
     }
 
+    /// A Microsoft form as `work.msforms.list` answers it: the whole view, of which the phone reads six fields.
+    private func msform(_ state: String, count: Int, link: String?, formId: String = "Ob0wQVN8nEGx5YdY1tY_IQaWFXVrVqJA") throws -> MsFormPhoneRow {
+        let linked = link.map { "\"\($0)\"" } ?? "null"
+        let json = #"{"workspaceId":"w1","formId":"\#(formId)","tenant":"purdue0","title":"Spring sign-ups","state":"\#(state)","count":\#(count),"link":\#(linked),"mode":"suggests","questions":[]}"#
+        return try JSONDecoder().decode(MsFormPhoneRow.self, from: Data(json.utf8))
+    }
+
+    @Test func aMicrosoftFormOpensItsLinkWhileCollectingElseItsBuilder() throws {
+        let link = "https://forms.office.com/r/AbCd1234"
+        #expect(MsForms.url(try msform("collecting", count: 3, link: link))?.absoluteString == link)
+        #expect(MsForms.url(try msform("draft", count: 0, link: nil))?.absoluteString == "https://forms.cloud.microsoft/Pages/DesignPageV2.aspx?subpage=design&id=Ob0wQVN8nEGx5YdY1tY_IQaWFXVrVqJA")
+        #expect(MsForms.url(try msform("closed", count: 3, link: link))?.absoluteString.contains("DesignPageV2.aspx") == true)
+        #expect(MsForms.url(try msform("draft", count: 0, link: nil, formId: "x&Action=Create")) == nil)
+        #expect(MsForms.stamp(try msform("draft", count: 0, link: nil)) == "Draft")
+        #expect(MsForms.stamp(try msform("collecting", count: 1, link: link)) == "1 response")
+        #expect(MsForms.stamp(try msform("closed", count: 3, link: link)) == "Closed, 3 responses")
+    }
+
     @Test func aGuestLinkEndsBetweenAnHourAndAYear() {
         let now = Date(timeIntervalSince1970: 1_800_000_000)
         var draft = GuestLinkDraft(now: now)

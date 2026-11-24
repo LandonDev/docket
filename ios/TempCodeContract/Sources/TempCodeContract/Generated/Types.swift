@@ -7796,6 +7796,64 @@ public struct RoutinePhoneRow: Codable, Hashable, Sendable {
     }
 }
 
+public struct MsFormPhoneRow: Codable, Hashable, Sendable {
+    public enum State: RawRepresentable, Codable, Hashable, Sendable {
+        case draft
+        case collecting
+        case closed
+        /// A value this build does not know; `rawValue` keeps it.
+        case unknown(String)
+
+        public init(rawValue: String) {
+            switch rawValue {
+            case "draft": self = .draft
+            case "collecting": self = .collecting
+            case "closed": self = .closed
+            default: self = .unknown(rawValue)
+            }
+        }
+
+        public var rawValue: String {
+            switch self {
+            case .draft: "draft"
+            case .collecting: "collecting"
+            case .closed: "closed"
+            case .unknown(let value): value
+            }
+        }
+    }
+
+    public let formId: String
+    public let tenant: String
+    public let title: String
+    public let state: State
+    public let count: Int
+    public let link: String?
+
+    public init(formId: String, tenant: String, title: String, state: State, count: Int, link: String?) {
+        self.formId = formId
+        self.tenant = tenant
+        self.title = title
+        self.state = state
+        self.count = count
+        self.link = link
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case formId, tenant, title, state, count, link
+    }
+
+    public func encode(to encoder: any Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(formId, forKey: .formId)
+        try container.encode(tenant, forKey: .tenant)
+        try container.encode(title, forKey: .title)
+        try container.encode(state, forKey: .state)
+        try container.encode(count, forKey: .count)
+        try container.encode(link, forKey: .link)
+    }
+}
+
 public struct CaptureState: Codable, Hashable, Sendable {
     public let host: String
     public let last: String?

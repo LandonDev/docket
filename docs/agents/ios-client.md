@@ -979,6 +979,37 @@
   history holds the projects Swift (v35, v37 and on), so this milestone
   moved no pin.
 
+## Microsoft forms (the msforms build, 2026-11-24)
+
+- **The Forms row** in a Work workspace's head (`WorkViewRows`, after
+  Routines, the `checklist` glyph) pushes `.workView(view: "forms")`, which
+  `WorkViewScreen` draws as `MsFormsScreen` (Work/Items/MsFormsScreen.swift):
+  the job's Microsoft forms from `work.msforms.list`
+  (`client.work.canvas.msforms`), newest change first as the host keeps
+  them, one row a form, its title and how it stands as the stamp
+  (`MsForms.stamp`: "Draft", "3 responses", "Closed, 3 responses"). Pull
+  to read again; "No Forms" when there are none; the read's error with Try
+  Again.
+- **A tap opens it in Safari** (`MsForms.url`, TempCodeClient
+  Work/Items/MsForms.swift): the response link while it collects, else the
+  builder made from the form's id as the desktop's `builderOf` makes it; an
+  id outside Forms' alphabet opens nothing. The phone makes and changes no
+  form: that is the desktop's, where the hold applies.
+- **The wire**: `work.msforms.list` answers each form's whole view; the
+  contract (`MsFormsListPhoneSchema`, `MsFormPhoneRow` in wireSchemas.ts,
+  in scripts/gen-swift-contract.ts's SUBSET) names the six fields the phone
+  reads (`formId`, `tenant`, `title`, `state`, `count`, `link`), and the
+  decoder leaves the rest.
+- **Files**: a form a library folder lists (the `form` entry kind,
+  docs/agents/work-files.md "The seam with the editor builds") reads
+  "Microsoft form" with the `checklist` glyph (`FilesWords`, `FilesGlyph`).
+- Proven on the box: `MsForms.url` and `stamp` built with the generated
+  contract under Swift 6.4.2 and run against a whole view decoded as
+  `MsFormPhoneRow`; WorkItemsTests holds the same cases for the Mac.
+  `MsFormsScreen` is not yet run in the simulator, and the checked-in Xcode
+  project is xcodegen's from before it (the box has no xcodegen; the Mac's
+  build generates it from `project.yml`'s `Sources`).
+
 ## A voice note (capture from anywhere, 2026-11-20)
 
 - Home's microphone (while a host has Work on) opens `VoiceNoteSheet`: hold

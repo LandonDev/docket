@@ -191,4 +191,9 @@ public final class WorkCanvas {
     public func pause(_ routine: RoutinePhoneRow, _ paused: Bool) async throws -> RoutinePhoneRow {
         try await socket.request(Methods.WorkRoutinesPause.self, .init(id: routine.id, paused: paused))
     }
+
+    /// The job's Microsoft forms, newest change first, as its host keeps them.
+    public func msforms(_ workspaceId: String) async throws -> [MsFormPhoneRow] {
+        try await socket.request(Methods.WorkMsformsList.self, .init(workspaceId: workspaceId)).forms
+    }
 }

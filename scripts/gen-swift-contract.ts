@@ -544,6 +544,9 @@ export const SUBSET: SubsetEntry[] = [
   type('RoutinePhoneRow', W.RoutinePhoneRowSchema),
   method('work.routines.list', W.RoutinesListSchema),
   method('work.routines.pause', W.RoutinePhoneRowSchema),
+  // Microsoft forms: the job's forms, each opened in Safari (docs/agents/ios-client.md "Microsoft forms")
+  type('MsFormPhoneRow', W.MsFormPhoneRowSchema),
+  method('work.msforms.list', W.MsFormsListPhoneSchema),
   // capture from anywhere: the phone's voice note (docs/agents/work-capture.md "The phone")
   type('CaptureState', W.CaptureStateSchema),
   type('CaptureFiled', W.CaptureFiledSchema),

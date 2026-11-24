@@ -4769,6 +4769,26 @@ public enum Methods {
         public typealias Output = RoutinePhoneRow
     }
 
+    public enum WorkMsformsList: ContractMethod {
+        public static let name = "work.msforms.list"
+
+        public struct Params: Codable, Hashable, Sendable {
+            public let workspaceId: String
+
+            public init(workspaceId: String) {
+                self.workspaceId = workspaceId
+            }
+        }
+
+        public struct Output: Codable, Hashable, Sendable {
+            public let forms: [MsFormPhoneRow]
+
+            public init(forms: [MsFormPhoneRow]) {
+                self.forms = forms
+            }
+        }
+    }
+
     public enum WorkCaptureState: ContractMethod {
         public static let name = "work.capture.state"
 

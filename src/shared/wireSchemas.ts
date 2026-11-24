@@ -1512,6 +1512,19 @@ export const RoutinePhoneRowSchema = z.object({
   waiting: z.string().nullable()
 })
 export const RoutinesListSchema = z.object({ routines: z.array(RoutinePhoneRowSchema) })
+/**
+ * A Microsoft form as the phone lists it (`work.msforms.list`, which answers each form's whole view: the phone reads
+ * these fields of it). It opens in Safari: the response link while collecting, else the builder made from the id.
+ */
+export const MsFormPhoneRowSchema = z.object({
+  formId: z.string(),
+  tenant: z.string(),
+  title: z.string(),
+  state: z.enum(['draft', 'collecting', 'closed']),
+  count: z.number().int(),
+  link: z.string().nullable()
+})
+export const MsFormsListPhoneSchema = z.object({ forms: z.array(MsFormPhoneRowSchema) })
 /** A document's threads, branches, mode or last write changed: a screen holding it reads again. */
 export const WorkDocsPushSchema = push('work.docs', { doc: z.string(), threads: z.literal(true).optional(), branches: z.literal(true).optional() })
 /** Something landed on a sheet: a screen holding its item reads again. */

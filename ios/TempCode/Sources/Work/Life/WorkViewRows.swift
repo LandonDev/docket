@@ -5,7 +5,7 @@ import TempCodeContract
 
 /// The head of a Work workspace's screen (milestone 47): Mail, Tasks,
 /// Agenda and Projects (the projects plan's milestone 8) on the Home row
-/// grid, then Files (the files pillar's F9), then Routines, each opening its
+/// grid, then Files (the files pillar's F9), then Routines, then its Microsoft forms, each opening its
 /// screen. While LifeOS is out of reach the four LifeOS rows sit at half
 /// strength.
 struct WorkViewRows: View {
@@ -21,6 +21,7 @@ struct WorkViewRows: View {
         }
         WorkViewRow(title: "Files", symbol: "folder", route: route("files"), id: "work-view-files")
         WorkViewRow(title: "Routines", symbol: "clock.arrow.circlepath", route: route("routines"), id: "work-view-routines")
+        WorkViewRow(title: "Forms", symbol: "checklist", route: route("forms"), id: "work-view-forms")
     }
 
     private func route(_ view: String) -> Route {
@@ -62,7 +63,7 @@ struct WorkViewRow: View {
     }
 }
 
-/// Where a view row leads: the workspace's LifeOS screen, its Files, or its Routines.
+/// Where a view row leads: the workspace's LifeOS screen, its Files, its Microsoft forms, or its Routines.
 struct WorkViewScreen: View {
     @Environment(AppModel.self) private var model
     let environmentId: String
@@ -75,6 +76,8 @@ struct WorkViewScreen: View {
                 LifeViewScreen(host: WorkLifeHost.of(client, workspace: workspace), view: kind)
             } else if view == "files" {
                 FilesScreen(client: client, workspace: workspace)
+            } else if view == "forms" {
+                MsFormsScreen(client: client, workspace: workspace)
             } else {
                 RoutinesScreen(client: client, workspace: workspace)
             }
