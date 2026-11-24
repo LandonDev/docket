@@ -17,7 +17,7 @@
  */
 import { spawn, spawnSync, type ChildProcess } from 'node:child_process'
 import { appendFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
-import { createServer } from 'node:net'
+import { connect, createServer } from 'node:net'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { E2E_APP_TOKEN_SEED, withAppToken } from './lib/appToken'
@@ -211,14 +211,130 @@ async function pickAndOpenBox(): Promise<boolean> {
   return false
 }
 
+const WORD = `TempCode proof ${STAMP} word`
+const SOCKET = arg('--socket') ?? '/tmp/tc-vm-probe.sock'
+/** One call to the guest's helper through this run's own forward (as office/vm/link.ts makes one), for a dummy file alone. */
+function guestCall(verb: string, args: Record<string, unknown>): Promise<unknown> {
+  const token = readFileSync('/srv/agents/temp-code-data/winvm/token', 'utf8').trim()
+  return new Promise((resolve, reject) => {
+    const sock = connect(SOCKET)
+    let buf = ''
+    const timer = setTimeout(() => (sock.destroy(), reject(new Error(`no answer to ${verb}`))), 120_000)
+    sock.on('connect', () => sock.write(`${token}\n`))
+    sock.on('data', (d) => {
+      buf += d
+      let nl: number
+      while ((nl = buf.indexOf('\n')) >= 0) {
+        const line = buf.slice(0, nl).trim()
+        buf = buf.slice(nl + 1)
+        if (!line) continue
+        const f = JSON.parse(line) as { event?: string; id?: number; ok?: boolean; value?: unknown; error?: { message?: string } }
+        if (f.event === 'ready') sock.write(JSON.stringify({ id: 1, verb, args }) + '\n')
+        else if (f.id === 1) {
+          clearTimeout(timer)
+          sock.destroy()
+          if (f.ok) resolve(f.value)
+          else reject(new Error(f.error?.message ?? 'the helper failed'))
+        }
+      }
+    })
+    sock.on('error', (err) => (clearTimeout(timer), reject(err)))
+  })
+}
+const docText = async (): Promise<string> => ev(`(() => { const e = document.querySelector('[data-files-file] [contenteditable="true"]'); return e ? e.textContent : '' })()`)
+let forward: ChildProcess | null = null
+/** This run's own forward to the helper, as the admin over the standing machine's SSH: opened once the VM is awake. */
+async function openForward(): Promise<boolean> {
+  rmSync(SOCKET, { force: true })
+  forward = spawn('ssh', ['-i', '/srv/agents/win-vm/keys/id_ed25519', '-p', '22230', '-o', 'IdentitiesOnly=yes', '-o', 'BatchMode=yes', '-o', 'LogLevel=ERROR', '-o', 'UserKnownHostsFile=/srv/agents/win-vm/standing/known_hosts', '-o', 'ExitOnForwardFailure=yes', '-N', '-L', `${SOCKET}:127.0.0.1:47801`, 'tcadmin@127.0.0.1'], { stdio: 'ignore' })
+  return until('the forward', 30_000, () => spawnSync('test', ['-S', SOCKET]).status === 0)
+}
+async function wordCase(): Promise<void> {
+  const name = `${WORD}.docx`
+  if (!check("this run's forward to the VM's helper opens (the VM is awake)", await openForward())) return
+  await guestCall('files.write', { dir: oneDrive!.root.path, name, data: readFileSync(join(import.meta.dir, '..', 'resources', 'work-files', 'blank', 'blank.docx')).toString('base64'), op: crypto.randomUUID() })
+  check('a dummy Word file lies in My OneDrive in the VM', inVm(name))
+  await sleep(6000)
+  // The folder read again: away to Home and back, as he would.
+  await press('button, a, [role="button"], [role="link"], div', 'Home')
+  await sleep(1500)
+  await press('button, a, [role="button"], [role="link"], div', 'My OneDrive')
+  if (!check('it opens from its row', await pressRow(name))) return
+  const editor = await until('the document', 180_000, async () => !!(await centre('[data-files-file] [contenteditable="true"]')))
+  await until('the line', 20_000, async () => (await saveLine()).includes('Word file'))
+  const opened = await saveLine()
+  await shot('8-word-opened')
+  check('it opens as a document, and the header says the Word file has not changed', editor && opened.includes('The Word file in OneDrive has not changed'), opened)
+  const where = (): { path?: string } | undefined => {
+    const tab = box<{ tabs: { name: string; itemId?: string; key?: string }[] }>('work.files.tabs', { workspaceId: WS }).tabs.find((t) => t.key?.endsWith(name))
+    return box<{ items: { id: string; source: { path?: string } }[] }>('work.canvas.list', { sessionId: `filespane_${WS}` }).items.find((i) => i.id === tab?.itemId)?.source
+  }
+  log(`document: ${JSON.stringify(where())}`)
+  const ed = (await centre('[data-files-file] [contenteditable="true"]'))!
+  await click(ed.x, ed.y)
+  const words = `Agenda ${STAMP.slice(-4)} doors open`
+  await typeKeys(words)
+  await sleep(4000)
+  await shot('9-word-typed')
+  const kept = where()?.path ?? ''
+  await closeTabByX(name)
+  await until('the tab goes', 15_000, async () => !(await centre(`[data-files-tab-close][aria-label=${JSON.stringify(`Close ${name}`)}]`)))
+  await sleep(4000)
+  check('closed, the document he edited is kept in the workspace folder', kept.startsWith('/srv/agents/work/Work/Purdue/') && box<{ entries: { name: string }[] }>('work.files.list', { workspaceId: WS, at: { at: 'file', host: boxId, path: '/srv/agents/work/Work/Purdue' } }).entries.some((e) => kept.endsWith(`/${e.name}`)), kept)
+  check('it opens from its row again', await pressRow(name))
+  const again = await until('the same document with his words', 120_000, async () => (await docText()).includes(words))
+  check('opened again: the same document, with his words', again && where()?.path === kept, `${where()?.path}`)
+  // Save to OneDrive as Word: the question, then Replace.
+  check('the header offers Save to OneDrive as Word', await press('button', 'Save to OneDrive as Word'))
+  const asked = await until('the question', 10_000, () => ev<boolean>(`!!document.querySelector('[role="alertdialog"]')`))
+  const said = asked ? await ev<string>(`document.querySelector('[role="alertdialog"]').textContent`) : ''
+  await shot('10-word-save-question')
+  check('it asks first, naming what Word may change', asked && said.includes(`Replace ${name} in OneDrive?`) && said.includes('nested tables'), said)
+  await press('[role="alertdialog"] button', 'Replace')
+  const written = await until('the Word file in the VM holds his words', 120_000, () => partOf(bytesInVm(name), 'word/document.xml').includes(words.split(' ')[0]!) && partOf(bytesInVm(name), 'word/document.xml').includes('doors'))
+  await until('saved as Word', 20_000, async () => (await saveLine()).includes('Saved to OneDrive as Word'))
+  await shot('11-word-saved')
+  check('Replace writes the Word file in the VM: its bytes hold his words, the header says saved as Word', written, await saveLine())
+  // The file changed behind his back, then more words and Save again: never over it, Keep Both beside it.
+  const now = (await guestCall('files.read', { path: guest(name), offset: 0, length: 1, version: true })) as { version: string }
+  await guestCall('files.write', { path: guest(name), data: readFileSync(join(import.meta.dir, '..', 'resources', 'work-files', 'blank', 'blank.docx')).toString('base64'), expect: now.version, op: crypto.randomUUID() })
+  const ed2 = (await centre('[data-files-file] [contenteditable="true"]'))!
+  await click(ed2.x, ed2.y)
+  await typeKeys(' again')
+  await sleep(4000)
+  await press('button', 'Save to OneDrive as Word', { ms: 20_000 })
+  await until('the question', 10_000, () => ev<boolean>(`!!document.querySelector('[role="alertdialog"]')`))
+  await press('[role="alertdialog"] button', 'Replace')
+  const clash = await until('the second question', 60_000, async () => (await ev<string>(`document.querySelector('[role="alertdialog"]')?.textContent ?? ''`)).includes('changed in OneDrive'))
+  await shot('12-word-changed-there')
+  check('over a file that changed there it never writes, and offers Keep Both', clash && !partOf(bytesInVm(name), 'word/document.xml').includes('doors'))
+  await press('[role="alertdialog"] button', 'Keep Both')
+  const mine = `${WORD} (mine).docx`
+  const both = await until('his version beside it', 120_000, () => inVm(mine) && partOf(bytesInVm(mine), 'word/document.xml').includes('doors'))
+  check(`Keep Both puts his version beside it as "${mine}"`, both)
+  await closeTabByX(name)
+  await sleep(2000)
+  keptDocs.push(kept)
+}
+const keptDocs: string[] = []
+
 const cleanup = async (): Promise<void> => {
+  forward?.kill()
   // Every tab this run opened in his workspace goes; anything it made in the VM goes to its Recycle Bin.
   try {
     for (const t of tabsOfWs()) if (!before.has(t.id)) box('work.files.tabClose', { workspaceId: WS, tabId: t.id })
   } catch (err) {
     log(`tabs left: ${err}`)
   }
-  for (const name of [`${DECK}.pptx`, `${SHEET}.xlsx`]) {
+  for (const doc of keptDocs) {
+    try {
+      // The run's own document, removed outright: nothing of it is left in his workspace's folder or its Trash.
+      if (doc.startsWith('/srv/agents/work/Work/Purdue/TempCode proof ')) rmSync(doc, { force: true })
+    } catch (err) {
+      log(`could not delete ${doc}: ${String(err).slice(0, 200)}`)
+    }
+  }
+  for (const name of [`${DECK}.pptx`, `${SHEET}.xlsx`, `${WORD}.docx`, `${WORD} (mine).docx`]) {
     try {
       if (inVm(name)) box('work.files.trash', { workspaceId: WS, refs: [{ at: 'file', host: boxId, path: guest(name) }], op: crypto.randomUUID(), asked: true })
     } catch (err) {
@@ -338,18 +454,43 @@ try {
       const value = `Proof ${STAMP.slice(-4)}`
       await typeKeys(value)
       await key('Enter')
+      await sleep(150)
+      const right = await saveLine()
+      await shot('4-sheet-saving')
+      log(`header just after Return: ${right}`)
       const kept = await until('the VM workbook holds the value', 60_000, () => {
         const b = bytesInVm(`${SHEET}.xlsx`)
-        return partOf(b, 'xl/sharedStrings.xml').includes(value) || partOf(b, 'xl/worksheets/sheet1.xml').includes(value)
+        return partOf(b, '*').includes(value)
       })
       await until('saved line', 20_000, async () => (await saveLine()).startsWith('saved'))
       await shot('4-sheet-saved')
+      if (!kept) {
+        const b = bytesInVm(`${SHEET}.xlsx`)
+        const file = join(scratch, 'sheet-now.xlsx')
+        if (b) writeFileSync(file, b)
+        log(`the workbook in the VM now: ${b ? `${b.length} bytes; parts ${spawnSync('unzip', ['-Z1', file], { encoding: 'utf8' }).stdout.replace(/\n/g, ' ')}` : 'not read'}; the copy here: ${spawnSync('unzip', ['-p', box<{ items: { id: string; source: { path?: string } }[] }>('work.canvas.list', { sessionId: `filespane_${WS}` }).items.find((i) => i.source.path?.includes(SHEET))?.source.path ?? '/none'], { encoding: 'utf8' }).stdout.includes(value) ? 'holds the value' : 'lacks the value'}`)
+      }
       check('A1 typed and Return: the workbook in the VM holds the value, the header says saved', kept, await saveLine())
+      // A second cell, and the tab closed by its × at once.
+      await click(at.x, at.y + 22)
+      await sleep(300)
+      const second = `Second ${STAMP.slice(-3)}`
+      await typeKeys(second)
+      await key('Enter')
       await closeTabByX(`${SHEET}.xlsx`)
+      const closed = await until('the VM workbook holds the second value', 60_000, () => {
+        const b = bytesInVm(`${SHEET}.xlsx`)
+        return partOf(b, '*').includes(second)
+      })
+      check('a second cell, then the tab closed by its × at once: the workbook in the VM holds it', closed)
     }
   }
 
+  // 4. A Word file: a dummy .docx put in the folder by the guest's own helper (New offers no Word file in the VM).
+  if (process.env.WORD !== '0') await wordCase()
+
   // 3. Delete on the deck: the question, Cancel focused; confirmed, Trash; Undo puts it back.
+  if (process.env.SKIP_DELETE !== '1') {
   await until('the folder', 20_000, async () => !!(await centre('[data-files-row]')))
   if (await rowAt(`${DECK}.pptx`)) {
     await pressRow(`${DECK}.pptx`, 1)
@@ -378,6 +519,7 @@ try {
       check('Undo puts it back where it was', undone, JSON.stringify(await toasts()))
     }
   }
+}
 } catch (err) {
   check('the run finished', false, String((err as Error).stack ?? err))
   await shot('z-failed').catch(() => undefined)
