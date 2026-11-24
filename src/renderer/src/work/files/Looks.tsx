@@ -294,17 +294,24 @@ function Seat({ seat, entry, lead, onTab }: { seat: BesideSeatOf; entry: FileEnt
 
 /**
  * The seat's one bar: the way back, where saving stands, the line's presses and Open in a Tab. The bar has no ⋯, so
- * both of the line's presses are always drawn (a conflict's Keep Both beside Reload).
+ * both of the line's presses are always drawn (a conflict's Keep Both beside Reload). Under 520px of seat a line with
+ * presses (one that needs him) keeps the first row to itself, whole, and the presses take a second row at the end:
+ * the least fact gives way first, and here that is the bar's height, not the line.
  */
 export function SeatBar({ lead, saved, running, onRun, onTab }: { lead?: ReactNode; saved: HeaderLine | null | undefined; running: string | null; onRun(action: SavedAction): void; onTab(): void }) {
+  const presses = !!saved?.actions?.length;
   return (
-    <div className={`flex h-8 shrink-0 items-center gap-2 border-b border-border pe-2 ${lead ? "ps-1" : "ps-3"}`}>
-      {lead}
-      <div className="min-w-0 flex-1">{saved ? <SaveLine line={saved} where={null} /> : null}</div>
-      {saved?.actions?.length ? <SaveActions actions={saved.actions} busy={running} onRun={onRun} /> : null}
-      <Button variant="ghost" size="xs" className="shrink-0 text-muted-foreground" onClick={onTab}>
-        Open in a Tab
-      </Button>
+    <div data-files-seat-bar className="@container/seat-bar shrink-0 border-b border-border">
+      <div className={`flex min-h-8 flex-wrap items-center gap-x-2 gap-y-1 py-1 pe-2 ${lead ? "ps-1" : "ps-3"}`}>
+        {lead}
+        <div className="min-w-0 flex-1">{saved ? <SaveLine line={saved} where={null} /> : null}</div>
+        <div data-files-seat-presses className={`ms-auto flex shrink-0 items-center gap-2 ${presses ? "w-full justify-end @[520px]/seat-bar:w-auto" : ""}`}>
+          {presses ? <SaveActions actions={saved!.actions!} busy={running} onRun={onRun} /> : null}
+          <Button variant="ghost" size="xs" className="shrink-0 text-muted-foreground" onClick={onTab}>
+            Open in a Tab
+          </Button>
+        </div>
+      </div>
     </div>
   );
 }

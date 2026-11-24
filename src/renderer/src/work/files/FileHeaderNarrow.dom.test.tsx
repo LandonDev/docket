@@ -11,6 +11,7 @@ import type { SavedAction } from "../canvas/kind";
 
 const { FileHeader } = await import("./FileTabView");
 const { SaveActions, SaveLine, tuckedRows, TUCKED } = await import("./SaveLine");
+const { SeatBar } = await import("./Looks");
 
 let width = 400;
 class Measured {
@@ -127,5 +128,25 @@ describe("a cut save line", () => {
     const line = document.querySelector<HTMLElement>("[data-files-save-line]")!;
     expect(line.hasAttribute("tabindex")).toBe(false);
     expect(within(line).getByRole("button")).toBeTruthy();
+  });
+});
+
+describe("the Beside seat's bar", () => {
+  const presses = () => document.querySelector<HTMLElement>("[data-files-seat-presses]")!.className.split(" ");
+
+  it("gives a line that needs him the first row under 520px of seat, its presses a second row at the end", () => {
+    render(<SeatBar saved={{ state: "conflict", detail: "This file changed at 2:14 PM", actions }} running={null} onRun={() => undefined} onTab={() => undefined} />);
+    expect(document.querySelector("[data-files-seat-bar]")!.className.split(" ")).toContain("@container/seat-bar");
+    // The bar wraps; the presses fill a row of their own until the seat is 520px wide, then sit beside the line.
+    expect(document.querySelector("[data-files-seat-bar] > div")!.className.split(" ")).toContain("flex-wrap");
+    expect(presses()).toEqual(expect.arrayContaining(["w-full", "justify-end", "@[520px]/seat-bar:w-auto"]));
+    expect(screen.getByText("This file changed at 2:14 PM")).toBeTruthy();
+    for (const name of ["Reload", "Keep Both", "Open in a Tab"]) expect(screen.getByRole("button", { name })).toBeTruthy();
+  });
+
+  it("keeps one row where the line has no press", () => {
+    render(<SeatBar saved={{ state: "saved", at: Date.now() }} running={null} onRun={() => undefined} onTab={() => undefined} />);
+    expect(presses()).not.toContain("w-full");
+    expect(screen.getAllByRole("button").map((b) => b.textContent)).toEqual(["Open in a Tab"]);
   });
 });

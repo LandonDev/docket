@@ -608,8 +608,8 @@ export function FilesLongNames() {
 
 /**
  * The Beside seat's bar on a text file he edited that changed on disk: Reload and Keep Both are both drawn, since the
- * seat has no ⋯ to hold the second. At 480, at 320 (the narrowest seat beside the list: there the line is cut, whole
- * in its tooltip and a Tab stop), and at 400 where the list and the file take turns, with the way back.
+ * seat has no ⋯ to hold the second. At 600 on one row; at 320, the narrowest seat beside the list, and at 400 where the
+ * list and the file take turns (with the way back), the line has the first row to itself and the presses a second.
  */
 export function FilesBesideConflict() {
   const conflict = { state: "conflict" as const, detail: "This file changed at 2:14 PM", actions: [{ id: "reload", label: "Reload", run: noop }, { id: "keep", label: "Keep Both", run: noop }] };
@@ -621,7 +621,7 @@ export function FilesBesideConflict() {
   return (
     <div className="flex flex-col gap-8 p-6">
       {[
-        { width: 480, turns: false },
+        { width: 600, turns: false },
         { width: 320, turns: false },
         { width: 400, turns: true },
       ].map(({ width, turns }) => (
