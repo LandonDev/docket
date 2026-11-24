@@ -62,12 +62,16 @@ export function folderServerPath(folder: MsFormFolder, libraryWeb: string | null
   return [site.libraryPath, clean(folder.path)].filter(Boolean).join('/')
 }
 
-/** The folder's page in the library, where Create or upload offers Forms survey. */
+/**
+ * The folder's page in the library, where Create or upload offers Forms survey: a Team library's AllItems view, and
+ * on a personal site OneDrive's own page, since a OneDrive library's `Forms/AllItems.aspx` answers 404 (P5).
+ */
 export function folderPageOf(folder: MsFormFolder, libraryWeb: string | null): string | null {
   const server = folderServerPath(folder, libraryWeb)
   const site = siteOf(libraryWeb)
   if (!server || !site) return null
   const origin = new URL(site.siteUrl).origin
+  if (/^\/personal\//i.test(new URL(site.siteUrl).pathname)) return `${site.siteUrl}/_layouts/15/onedrive.aspx?id=${encodeURIComponent(server)}`
   return `${origin}${encodeURI(`${site.libraryPath}/Forms/AllItems.aspx`)}?id=${encodeURIComponent(server)}`
 }
 
