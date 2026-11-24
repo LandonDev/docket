@@ -74,11 +74,11 @@ the thing the walk changed.
 | --- | --- | --- |
 | J01 | B1, B2 | The holder’s slide XML contains the edited title after closing the tab. |
 | J02 | B1, B2 | The reopened grid and the holder’s workbook agree on A1. Each timed header reading agrees with the holder’s bytes. |
-| J06 | A, B2 | The holder’s new slide contains the text typed before closing mid-word. |
+| J06 | A, B2 | A: the holder’s new slide contains the text typed before closing mid-word. B2: a far library offers no New deck, and its folder stays as it was. |
 | J07 | B1, B2 | The holder’s text file contains the edit after closing the tab. |
 | J08 | A, B1, B2 | The reopened PDF shows the highlight (a highlight has no note by design). |
-| J13 | A, B2 | The renamed file alone holds the last edit. |
-| J15 | A, B2 | Trash puts a file back. Deleting a file with unsent edits preserves the words or warns before discarding them. |
+| J13 | A, B2 | A: the renamed file alone holds the last edit. B2: the open tab offers no Rename, and the file keeps its name and the edit. |
+| J15 | A, B2 | A: Trash puts a file back. Deleting a file with unsent edits preserves the words or warns before discarding them. B2: neither the row nor the open tab offers Delete, and the holder is as it was. |
 | J17 | A, B1, B2 | Each available tab or row action reaches its named result. |
 | J18 | A, B1, B2 | Name and content hits open. The search accounts for any library content it skipped. |
 | J19 | A, B2 | Starred and Recent both list the file after reload. |

@@ -19,6 +19,7 @@ import { honestAdding } from './J41-agenda-clash'
 import { ledgerHasReceipt } from './J45-receipt'
 import { routineThreadMatches } from './J47-routine'
 import { wearsLight } from './J59-light-windows'
+import { changed, notOffered } from './lib/far'
 import { headedResult } from './J60-browser-canvas'
 import { ownedDisplay } from './lib/capture'
 import { withheldWords } from './J55-connections'
@@ -735,6 +736,17 @@ it('compares all four defaults and the workspace and scope of the routine’s ow
   }
   expect(routineThreadMatches({ ...row, scope: 'code' }, 'w', defaults)).toBe(false)
   expect(routineThreadMatches(row, 'wrong', defaults)).toBe(false)
+})
+
+it('names the far library’s holder changes and refuses a verb it should not offer', () => {
+  expect(changed({ a: '1', b: '2' }, { a: '1', b: '2' })).toEqual([])
+  expect(changed({ a: '1', b: '2' }, { a: '1', b: '3', c: '4' })).toEqual(['b', 'c'])
+  expect(changed({ a: '1' }, {})).toEqual(['a'])
+  const item = (label: string, enabled = true) => ({ label, enabled, words: label })
+  expect(() => notOffered([item('Open'), item('Download')], 'Delete', 'The row menu')).not.toThrow()
+  expect(() => notOffered([item('Open'), item('Rename…')], 'Rename', 'The tab menu')).toThrow('The tab menu offers Rename in the far library')
+  // Listed but disabled is not offered.
+  expect(() => notOffered([item('Delete', false)], 'Delete', 'The row menu')).not.toThrow()
 })
 
 it('only sends the global shortcut to the X server owned by this isolated win', () => {

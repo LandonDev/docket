@@ -1,6 +1,7 @@
 import { existsSync, readFileSync, readdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { rowMenu, tabMenu } from './lib/actions'
+import { holderState, menuItems, notOffered, sameHolder } from './lib/far'
 import { replaceText, TEXT_EDITOR } from './lib/edit'
 import { openRow, rowAt } from './lib/files'
 import { fileAt, goPlace, showPlace } from './lib/place'
@@ -13,6 +14,7 @@ const DIRTY = 'Practice changes.txt'
 const BEFORE = 'Practice at noon'
 const DRAFT = 'Practice at dusk'
 const DIALOG = '[role="alertdialog"], [role="dialog"]'
+const far = new WeakMap<object, Record<string, string>>()
 
 async function confirmDelete(page: Window, file: string): Promise<string | null> {
   let dialog: string | null = null
@@ -55,7 +57,7 @@ export default journey({
       } catch (error) {
         await noteFailure(context, 'clean-delete', error)
       }
-    }),
+    }, ['A']),
     step('Put the first file back from Trash', async (context) => {
       const { page } = context.pair
       if (existsSync(join(context.folder, 'clean-delete.json'))) return
@@ -67,7 +69,7 @@ export default journey({
       } catch (error) {
         await noteFailure(context, 'put-back', error)
       }
-    }),
+    }, ['A']),
     step('Type in the second file and delete before its words reach the holder', async (context) => {
       const { page } = context.pair
       await goPlace(context)
@@ -86,7 +88,7 @@ export default journey({
       } catch (error) {
         await noteFailure(context, 'dirty-delete-refused', error)
       }
-    }),
+    }, ['A']),
     step('end: Trash restores the first file and deletion keeps or warns about the typed words', async (context) => {
       const { pair, folder } = context
       const failures: string[] = []
@@ -116,6 +118,26 @@ export default journey({
         if (!existsSync(file) || readFileSync(file, 'utf8') !== DRAFT) failures.push('Delete lost the typed words without warning')
       }
       if (failures.length) throw new Error(failures.join('. '))
-    })
+    }, ['A']),
+    // B2: Delete is not offered in a library on a third computer reached through the box, neither on a row nor on an open
+    // file's tab. That is honest as it stands; offering it is the owner's ruling. The walk asserts Delete takes no press
+    // in either menu (both grey it out) and nothing on the holder changed.
+    step('The far library’s row menu offers no Delete', async (context) => {
+      const { page } = context.pair
+      writeFileSync(fileAt(context, CLEAN), BEFORE)
+      writeFileSync(fileAt(context, DIRTY), BEFORE)
+      far.set(context, holderState(context))
+      await showPlace(context)
+      await rowMenu(page, CLEAN)
+      notOffered(await menuItems(page, { context, name: 'row-menu' }), 'Delete', 'The row menu')
+    }, ['B2']),
+    step('end: the open file’s menu offers no Delete and the holder is as it was', async (context) => {
+      const { page } = context.pair
+      await openRow(page, DIRTY)
+      await page.until('the text file’s original words', 15_000, () => page.eval(`document.querySelector(${JSON.stringify(TEXT_EDITOR)})?.textContent?.trim() === ${JSON.stringify(BEFORE)}`))
+      await tabMenu(page, DIRTY)
+      notOffered(await menuItems(page, { context, name: 'tab-menu' }), 'Delete', 'The open file’s menu')
+      sameHolder(context, far.get(context)!, 'end')
+    }, ['B2'])
   ]
 })
