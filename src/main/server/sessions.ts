@@ -1,3 +1,5 @@
+import type { EventsPage } from '@shared/wire'
+import type { EventWindow, RemoteEventRead } from './wire'
 import { nanoid } from 'nanoid'
 import { sweepThreadAttachments } from './attachmentUploads'
 import { attachmentDir } from './attachmentDir'
@@ -2611,8 +2613,10 @@ export class SessionRegistry {
     return this.store.events(sessionId, opts)
   }
 
-  /** The same page read on the reader worker, cut at 4 MiB (the local profile's `session.events`); a short page is not the end. */
-  eventsAsync(sessionId: string, opts: { afterSeq?: number; beforeSeq?: number; tail?: number; limit?: number }): Promise<EventRow[]> {
+  /** The log window read on the reader worker, with the profile's byte budget. */
+  eventsAsync(sessionId: string, opts: RemoteEventRead): Promise<EventsPage>
+  eventsAsync(sessionId: string, opts: EventWindow): Promise<EventRow[]>
+  eventsAsync(sessionId: string, opts: EventWindow | RemoteEventRead): Promise<EventRow[] | EventsPage> {
     return this.store.eventsAsync(sessionId, opts)
   }
 

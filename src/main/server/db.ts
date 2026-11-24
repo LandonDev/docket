@@ -11,7 +11,8 @@ import { timed } from './stalls'
 import { ftsQuery, THREADS_SQL, TURN_ROW_SQL, TurnIndex, turnText, WORK_ROWS_SQL, type BackfillOptions } from './turnIndex'
 import type { EventReader } from './dbWorkers'
 import { dirname } from 'node:path'
-import { seedRowJson } from './wire'
+import { encodedBytes, eventsPageAsync, projectRow, seedRowJson, type EventRead, type EventWindow, type RemoteEventRead } from './wire'
+import type { EventsPage } from '@shared/wire'
 import type { AgentEvent, EventRow, Failure, PreambleStamp, SessionMeta, SessionStatus } from '@shared/events'
 import type { ProjectMeta, WorkspaceMeta } from '@shared/domain'
 import type { StartOn } from '@shared/defaults'
@@ -1885,7 +1886,7 @@ export class Store {
 
   private eventPageSync(
     sessionId: string,
-    opts: { afterSeq?: number; beforeSeq?: number; tail?: number; limit?: number },
+    opts: EventRead,
     bounded: boolean
   ): EventRow[] {
     this.flushEvents()
@@ -1899,13 +1900,19 @@ export class Store {
     return step.value
   }
 
-  /** A 4 MiB page, with both boundary discovery and payload reads on the
-   * reader. A single row stays whole. A move or worker failure retries
-   * against the writer's current tier with the same cap. */
-  async eventsAsync(
-    sessionId: string,
-    opts: { afterSeq?: number; beforeSeq?: number; tail?: number; limit?: number } = {}
-  ): Promise<EventRow[]> {
+  /** Read boundaries and payload batches on the reader. Local callers get
+   * a 4 MiB page. Remote callers bound the projected rows across batches.
+   * A failed read or a tier move retries on the writer. */
+  eventsAsync(sessionId: string, opts: RemoteEventRead): Promise<EventsPage>
+  eventsAsync(sessionId: string, opts?: EventWindow): Promise<EventRow[]>
+  eventsAsync(sessionId: string, opts: EventWindow | RemoteEventRead): Promise<EventRow[] | EventsPage>
+  eventsAsync(sessionId: string, opts: EventWindow | RemoteEventRead = {}): Promise<EventRow[] | EventsPage> {
+    return 'remotePage' in opts
+      ? eventsPageAsync((read) => this.readEventRows(sessionId, read), opts.remotePage)
+      : this.readEventRows(sessionId, opts)
+  }
+
+  private async readEventRows(sessionId: string, opts: EventRead): Promise<EventRow[]> {
     this.flushEvents()
     if (!this.reader?.available) return this.eventPageSync(sessionId, opts, true)
     const table = this.eventsTable(sessionId)
@@ -1926,7 +1933,7 @@ export class Store {
   private *eventPageQueries(
     sessionId: string,
     table: string,
-    opts: { afterSeq?: number; beforeSeq?: number; tail?: number; limit?: number },
+    opts: EventRead,
     bounded: boolean
   ): Generator<{ sql: string; params: (string | number)[]; tail?: boolean }, EventRow[], PageRaw[]> {
     const afterSeq = opts.afterSeq ?? 0
@@ -1959,8 +1966,7 @@ export class Store {
     // Seek the next row by primary key and stop as soon as the byte cap is
     // reached. Unlike a window over the whole range, this never reads the
     // rest of a long log just to return its first page.
-    const rows = yield {
-      sql: `WITH RECURSIVE page(seq, ts, payload, bytes, n) AS (
+    const sql = `WITH RECURSIVE page(seq, ts, payload, bytes, n) AS (
         SELECT seq, ts, payload, length(CAST(payload AS BLOB)), 1 FROM (
           SELECT seq, ts, payload FROM ${table}
           WHERE session_id = ? AND seq >= ? AND seq < ? ORDER BY seq ${direction} LIMIT 1
@@ -1971,10 +1977,34 @@ export class Store {
           SELECT seq FROM ${table} WHERE session_id = ? AND seq ${comparison} p.seq AND seq >= ? AND seq < ?
           ORDER BY seq ${direction} LIMIT 1
         ) WHERE p.bytes < ? AND p.n < ?
-      ) SELECT seq, ts, payload FROM page WHERE n = 1 OR bytes <= ? ORDER BY seq`,
-      params: [sessionId, fromSeq, beforeSeq, sessionId, sessionId, fromSeq, beforeSeq, EVENT_PAGE_BYTES, limit, EVENT_PAGE_BYTES]
+      ) SELECT seq, ts, payload FROM page WHERE n = 1 OR bytes <= ? ORDER BY seq`
+    const page: EventRow[] = []
+    let bytes = 0
+    let low = fromSeq
+    let high = beforeSeq
+    while (page.length < limit) {
+      const rows = yield {
+        sql,
+        params: [sessionId, low, high, sessionId, sessionId, low, high, EVENT_PAGE_BYTES, limit - page.length, EVENT_PAGE_BYTES]
+      }
+      if (!rows.length) break
+      const decode = (r: PageRaw): EventRow => ({ sessionId, seq: r.seq, ts: r.ts, event: JSON.parse(r.payload) as AgentEvent })
+      if (opts.wireBytes === undefined) return rows.map(decode)
+      if (descending) rows.reverse()
+      for (const raw of rows) {
+        const row = projectRow(decode(raw))
+        bytes += encodedBytes(row) + 1
+        page.push(row)
+        // Keep one row over the limit so the page builder can distinguish a
+        // cut from EOF, including when the first row alone exceeds the cap.
+        if (page.length > 1 && bytes > opts.wireBytes) return descending ? page.reverse() : page
+      }
+      const last = rows[rows.length - 1].seq
+      if (descending) high = last
+      else low = last + 1
+      if (low >= high) break
     }
-    return rows.map((r) => ({ sessionId, seq: r.seq, ts: r.ts, event: JSON.parse(r.payload) as AgentEvent }))
+    return descending ? page.reverse() : page
   }
 
   /** The highest seq of a session's log, 0 when it has none: the counter

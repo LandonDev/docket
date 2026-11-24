@@ -260,10 +260,9 @@ export function boundRows(
   return { rows: kept, bytes, cut: count < rows.length }
 }
 
-/** What the page builder reads: the registry's two log reads. */
+/** What the page builder reads: the registry's synchronous log read. */
 export interface EventSource {
   events(sessionId: string, opts: { afterSeq?: number; beforeSeq?: number; tail?: number; limit?: number }): EventRow[]
-  eventsRange(sessionId: string, afterSeq: number, limit: number): EventRow[]
 }
 
 export interface EventsParams {
@@ -274,18 +273,15 @@ export interface EventsParams {
   limit?: number
 }
 
-/** One bounded page of a session's log for a remote connection, from the
- *  same request shape the local profile answers with the raw rows:
- *   - `tail` (cold open, or an older page with `beforeSeq`): the newest
- *     rows of the range, cut at TAIL_BYTES or HISTORY_PAGE_BYTES;
- *   - `afterSeq` alone (resume): the gap, or a fresh tail with `reset`
- *     when the gap passes RESUME_ROWS or RESUME_BYTES;
- *   - otherwise (a forward walk): from `afterSeq` up, cut at the page budget. */
-/** What `session.events` reads: the page source, whether this host shows
- *  the id at all, and the local profile's reader-worker read. */
-export interface EventsHost extends EventSource {
+/** The remote wire's byte budget applies after body projection. */
+export type EventWindow = Omit<EventsParams, 'sessionId'>
+export type EventRead = EventWindow & { wireBytes?: number }
+export type RemoteEventRead = { remotePage: EventWindow }
+
+export interface EventsHost {
   knows(sessionId: string): boolean
-  eventsAsync(sessionId: string, opts: { afterSeq?: number; beforeSeq?: number; tail?: number; limit?: number }): Promise<EventRow[]>
+  eventsAsync(sessionId: string, opts: RemoteEventRead): Promise<EventsPage>
+  eventsAsync(sessionId: string, opts: EventWindow): Promise<EventRow[]>
 }
 
 /** `session.events` for either profile. An id this host shows no row for
@@ -305,35 +301,57 @@ export async function sessionEvents(
   // A scan this ask makes on the loop names whose it was (`timed events tail scan 88ms profile=remote`).
   noteRequest('profile', profile)
   if (profile === 'local') return host.eventsAsync(params.sessionId, params)
-  const page = eventsPage(host, params)
+  const page = await host.eventsAsync(params.sessionId, { remotePage: params })
   return params.subscribe ? { ...page, subscribed: true } : page
 }
 
+export async function eventsPageAsync(readRows: (opts: EventRead) => Promise<EventRow[]>, params: EventWindow): Promise<EventsPage> {
+  const read = eventsPageReads(params)
+  let step = read.next()
+  while (!step.done) step = read.next(await readRows(step.value))
+  return step.value
+}
+
 export function eventsPage(source: EventSource, params: EventsParams): EventsPage {
-  const { sessionId } = params
+  const read = eventsPageReads(params)
+  let step = read.next()
+  while (!step.done) {
+    const { wireBytes: _wireBytes, ...opts } = step.value
+    const rows = source.events(params.sessionId, opts)
+    step = read.next(rows.map(projectRow))
+  }
+  return step.value
+}
+
+/** One page recipe for both callers. The reader can stop after the first
+ * projected row over the byte budget, which also tells us a page was cut. */
+function* eventsPageReads(params: EventWindow): Generator<EventRead, EventsPage, EventRow[]> {
   const afterSeq = params.afterSeq ?? 0
   if (params.tail && params.tail > 0) {
     const older = params.beforeSeq !== undefined
-    const raw = source.events(sessionId, {
+    const wireBytes = older ? HISTORY_PAGE_BYTES : TAIL_BYTES
+    const raw = yield {
       afterSeq,
       beforeSeq: params.beforeSeq,
-      tail: Math.min(params.tail, older ? HISTORY_PAGE_ROWS : TAIL_ROWS)
-    })
-    const { rows } = boundRows(raw.map(projectRow), older ? HISTORY_PAGE_BYTES : TAIL_BYTES, 'newest')
+      tail: Math.min(params.tail, older ? HISTORY_PAGE_ROWS : TAIL_ROWS),
+      wireBytes
+    }
+    const { rows } = boundRows(raw, wireBytes, 'newest')
     return { rows, moreBefore: rows.length > 0 && rows[0].seq > afterSeq + 1, moreAfter: false, reset: false }
   }
   if (afterSeq > 0 && params.beforeSeq === undefined && !params.limit) {
-    const raw = source.eventsRange(sessionId, afterSeq, RESUME_ROWS + 1)
+    const raw = yield { afterSeq, limit: RESUME_ROWS + 1, wireBytes: RESUME_BYTES }
     if (raw.length <= RESUME_ROWS) {
-      const { rows, cut } = boundRows(raw.map(projectRow), RESUME_BYTES, 'oldest')
+      const { rows, cut } = boundRows(raw, RESUME_BYTES, 'oldest')
       if (!cut) return { rows, moreBefore: false, moreAfter: false, reset: false }
     }
-    const { rows } = boundRows(source.events(sessionId, { tail: TAIL_ROWS }).map(projectRow), TAIL_BYTES, 'newest')
+    const tail = yield { tail: TAIL_ROWS, wireBytes: TAIL_BYTES }
+    const { rows } = boundRows(tail, TAIL_BYTES, 'newest')
     return { rows, moreBefore: rows.length > 0 && rows[0].seq > 1, moreAfter: false, reset: true }
   }
   const limit = Math.min(params.limit ?? HISTORY_PAGE_ROWS, HISTORY_PAGE_ROWS)
-  const raw = source.events(sessionId, { afterSeq, beforeSeq: params.beforeSeq, limit: limit + 1 })
-  const { rows, cut } = boundRows(raw.slice(0, limit).map(projectRow), HISTORY_PAGE_BYTES, 'oldest')
+  const raw = yield { afterSeq, beforeSeq: params.beforeSeq, limit: limit + 1, wireBytes: HISTORY_PAGE_BYTES }
+  const { rows, cut } = boundRows(raw.slice(0, limit), HISTORY_PAGE_BYTES, 'oldest')
   return { rows, moreBefore: false, moreAfter: cut || raw.length > limit, reset: false }
 }
 
