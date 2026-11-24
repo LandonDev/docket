@@ -50,6 +50,8 @@ export function pageWords(page: PrepPage): string {
   }
   if (doc.notes?.text) lines.push('', 'His notes:', doc.notes.text)
   section('Follow-up mail already waiting for his press in the Outbox', page.drafts.map((draft) => `“${draft.subject}”${draft.to.length ? ` to ${draft.to.join(', ')}` : ''}`))
+  // An empty list read from a failed lookup is not "no mail": a thread told so drafts none.
+  if (page.problems.includes('drafts')) lines.push('', 'Whether a follow-up mail already waits in the Outbox could not be read just now.')
   if (doc.after) {
     lines.push('', 'Outcome:')
     section('Summary', doc.after.summary.map(lineWords))
@@ -72,8 +74,11 @@ export function briefMessage(page: PrepPage): string {
   ].join('\n\n')
 }
 
-/** One mail a meeting: a second follow-up drafts none beside the one the page already lists. */
-const MAIL = 'If the page lists no follow-up mail already waiting, draft one to the people with addresses using draft_mail. It waits for his press. Never send it.'
+/**
+ * One mail a meeting: a second follow-up drafts none beside the one the page already lists, and the page is read
+ * again just before, since another thread may have drafted one since this one started.
+ */
+const MAIL = 'Just before any mail, call prep_read once more. If it lists a follow-up mail already waiting, or says it could not read whether one waits, draft none. Otherwise draft one to the people with addresses using draft_mail. It waits for his press. Never send it.'
 
 export function followMessage(page: PrepPage, opts: { recording?: boolean; document?: boolean } = {}): string {
   return [
@@ -94,6 +99,17 @@ export function followAgainMessage(page: PrepPage): string {
     'He asked for this meeting’s follow-up again. The page as it stands now:',
     pageWords(page),
     'Read the meeting beside you with meeting_read. Call prep_follow_up for this event with what was decided, what is still open, and the tasks. Suggest no task the page already lists as open, and no open question that a task you suggest settles. Write the tasks with prep_follow_up alone, and never call add_task.',
+    MAIL,
+    'End with the outcome as your last message.'
+  ].join('\n\n')
+}
+
+/** Told to a follow-up thread still at work when he changed his notes and pressed Follow up again: it started from the old ones. */
+export function followNotesMessage(page: PrepPage): string {
+  return [
+    'He changed his notes for this meeting after you started. The page as it stands now:',
+    pageWords(page),
+    'Write the outcome again from these notes with prep_follow_up for this event: what was decided, what is still open, and the tasks. Suggest no task the page already lists as open, and no open question that a task you suggest settles. Never call add_task.',
     MAIL,
     'End with the outcome as your last message.'
   ].join('\n\n')

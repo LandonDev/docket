@@ -1,14 +1,16 @@
+import { existsSync } from 'node:fs'
 import { PREP_UPCOMING_MAX_MS, PREP_WORKING_MS, type PrepAddedPerson, type PrepPage } from '@shared/contract-work-prep'
 import { errorText, handled, NOT_HANDLED, type CanvasSource } from '@shared/work'
 import type { Caller, WorkCtx, WorkModule } from '../modules'
 import { aheadOf, setAhead } from './ahead'
 import { decideTasks } from './after'
-import { eventOf, fileTitle, gather, meetingOf, notesFileOf, standing, startDoc, upcoming } from './gather'
+import { eventOf, fileTitle, gather, meetingOf, notesFileOf, ownAdditions, standing, startDoc, upcoming } from './gather'
 import { pagePushed, writePage } from './page'
-import { briefMessage, briefTitle, followAgainMessage, followMessage, followTitle } from './prompts'
+import { briefMessage, briefTitle, followAgainMessage, followMessage, followNotesMessage, followTitle } from './prompts'
 import { changeInOrder } from './serial'
-import { foldTitle, personKey } from './series'
 import { ensurePrepTables, PrepStore } from './store'
+import { notesDocMoved } from './moved'
+import { registerFileMoved } from '../files/hooks'
 import { prepPreamble, prepTools } from './tools'
 import { workspaceSector } from './workspace'
 
@@ -18,8 +20,12 @@ import { workspaceSector } from './workspace'
  * The pillar declares no act kind.
  */
 
-/** The starter the notes document is made from; his own template saved as "Meeting notes" takes its place (work-templates.md). */
-export const NOTES_TEMPLATE = 'any/meeting-notes'
+/**
+ * The template the notes document is made from, asked by its name: his own saved as "Meeting notes" (the job's,
+ * then all jobs') wins, and our starter `any/meeting-notes` is found by the same name when he has none
+ * (templates/shelf.ts `resolveTemplate`). Asked by the starter's key, ours would win over his.
+ */
+export const NOTES_TEMPLATE = 'Meeting notes'
 
 /** Refuse a thread’s own call to a person’s method. */
 export function mustBePerson(by: Caller): void {
@@ -30,30 +36,28 @@ export function mustBePerson(by: Caller): void {
 async function setPeople(ctx: WorkCtx, workspaceId: string, eventId: string, people: PrepAddedPerson[]): Promise<PrepPage> {
   const event = await eventOf(ctx, workspaceSector(ctx, workspaceId), eventId)
   const { row, last } = standing(new PrepStore(ctx.db), workspaceId, event)
-  // Someone the calendar itself lists is on the meeting already: never kept as his addition, which would follow the
-  // series to a day they are not invited. Typed in by their name or their address alone, they are that invitee still.
-  const attendees = event.attendees ?? []
-  const seen = new Set<string>(attendees.map((a) => a.address.trim().toLowerCase()).filter(Boolean))
-  const invitedNames = new Set(attendees.flatMap((a) => [a.address, a.name ?? '']).map(foldTitle).filter(Boolean))
-  const added = people.filter((p) => {
-    if (!p.address && invitedNames.has(foldTitle(p.name))) return false
-    const key = personKey(p)
-    return !seen.has(key) && Boolean(seen.add(key))
-  })
+  const added = ownAdditions(event, people)
   const now = Date.now()
   writePage(ctx, workspaceId, event, last, { ...(row?.doc ?? startDoc(last)), people: added }, now)
   return (await gather(ctx, workspaceId, eventId, now)).page
 }
 
-async function setNotes(ctx: WorkCtx, workspaceId: string, eventId: string, text: string, dropFile = false): Promise<PrepPage> {
+async function setNotes(ctx: WorkCtx, workspaceId: string, eventId: string, text: string, dropFile = false, itemId?: string): Promise<PrepPage> {
   const event = await eventOf(ctx, workspaceSector(ctx, workspaceId), eventId)
   const { row, last } = standing(new PrepStore(ctx.db), workspaceId, event)
   const at = Date.now()
   const doc = row?.doc ?? startDoc(last)
-  const words = text.trim()
   // A file that holds the notes stays when the words beside it change or go. A recording the window says never arrived
   // (or could not be read) goes; a document it was to take the place of stays.
   const { file, meetingItemId: held } = doc.notes ?? {}
+  if (dropFile && itemId) {
+    // One upload's own cleanup: it lets go of its meeting alone, and only while the page still names it. The words
+    // are the host's: another window may have kept newer ones than this dialog had.
+    if (held !== itemId) return (await gather(ctx, workspaceId, eventId, at)).page
+    text = doc.notes?.text ?? ''
+  }
+  if (dropFile && held) uploading.delete(held)
+  const words = text.trim()
   const meetingItemId = dropFile ? undefined : held
   const notes = words || file || meetingItemId ? { text: words, at, ...(file ? { file } : {}), ...(meetingItemId ? { meetingItemId } : {}) } : null
   // The thread started for that recording waits on a file that will never come: the page lets go of it, so the next
@@ -62,6 +66,18 @@ async function setNotes(ctx: WorkCtx, workspaceId: string, eventId: string, text
   writePage(ctx, workspaceId, event, last, { ...doc, notes }, at, dropFile && held ? { follow: null } : undefined)
   return (await gather(ctx, workspaceId, eventId, at)).page
 }
+
+/**
+ * The meetings handed to a window for its upload, and when: a second press (another window) while that upload runs
+ * gets none, so two files never go to one meeting. Let go when the window says the file never arrived; past the
+ * working bound a press starts a fresh thread anyway.
+ */
+const uploading = new Map<string, number>()
+function reserveUpload(itemId: string, now: number): void {
+  for (const [id, at] of uploading) if (now - at >= PREP_WORKING_MS) uploading.delete(id)
+  uploading.set(itemId, now)
+}
+const uploadRuns = (itemId: string, now: number): boolean => now - (uploading.get(itemId) ?? -Infinity) < PREP_WORKING_MS
 
 /**
  * Write in a document: the meeting's notes file, made from the job's Meeting
@@ -73,13 +89,15 @@ async function makeNotesDoc(ctx: WorkCtx, by: Caller, workspaceId: string, event
   const event = await eventOf(ctx, workspaceSector(ctx, workspaceId), eventId)
   const { row, last } = standing(new PrepStore(ctx.db), workspaceId, event)
   const kept = row?.doc.notes?.file
-  if (kept?.at === 'file') return { page: (await gather(ctx, workspaceId, eventId)).page, source: kept, title: fileTitle(kept.path) }
+  // A document he deleted is no file to answer: a new one is made in its place. (A rename is followed, `notesDocMoved`.)
+  if (kept?.at === 'file' && (kept.host !== ctx.host || existsSync(kept.path))) return { page: (await gather(ctx, workspaceId, eventId)).page, source: kept, title: fileTitle(kept.path) }
   // The templates pillar's own door for other pillars; loaded on the press, so prep loads without it.
   const { makeFromTemplate } = await import('../templates/api')
   const made = await makeFromTemplate(ctx, { workspaceId, template: NOTES_TEMPLATE, fields: { Meeting: event.title }, title: `${event.title} notes`, ...(today ? { today } : {}) }, by)
   const now = Date.now()
   const doc = row?.doc ?? startDoc(last)
-  writePage(ctx, workspaceId, event, last, { ...doc, notes: { text: doc.notes?.text ?? '', at: now, file: made.source } }, now)
+  // Beside what the notes already hold: a recording kept with them stays.
+  writePage(ctx, workspaceId, event, last, { ...doc, notes: { ...doc.notes, text: doc.notes?.text ?? '', at: now, file: made.source } }, now)
   return { page: (await gather(ctx, workspaceId, eventId, now)).page, source: made.source, title: made.source.at === 'file' ? fileTitle(made.source.path) : made.title }
 }
 
@@ -125,8 +143,22 @@ async function startThread(ctx: WorkCtx, workspaceId: string, eventId: string, k
   const replaced = !!recording && heldIs === 'unread'
   if (!opts.restart && !stale && !replaced && existing && startedAt != null && now - startedAt < PREP_WORKING_MS && (writtenAt === undefined || writtenAt < startedAt)) {
     // The thread still at work keeps its own meeting. A second file goes there only while that meeting is still empty
-    // (the first never arrived): one that holds a file is being read, and nothing is put in its place.
-    return { sessionId: existing, ...(held && (!recording || heldIs === 'empty') ? { itemId: held } : {}) }
+    // (the first never arrived) and no window's upload to it still runs: one that holds a file is being read, and
+    // nothing is put in its place.
+    const give = !!held && (!recording || (heldIs === 'empty' && !uploadRuns(held, now)))
+    if (recording && give) reserveUpload(held, now)
+    if (follow && !recording && page.doc.notes && page.doc.notes.at > startedAt) {
+      // He changed his notes after this thread started from the old ones: it is told, and writes the outcome again
+      // (`rewriteTasks` keeps what he ticked or dismissed). Its start time moves to now, so the same notes pressed
+      // again tell it nothing more.
+      try {
+        await ctx.threads.resume(existing, followNotesMessage(page))
+      } catch (err) {
+        throw new Error(`The follow-up thread could not be told of the new notes (${errorText(err)}). Open it from More.`)
+      }
+      writePage(ctx, workspaceId, event, last, page.doc, now, { follow: existing })
+    }
+    return { sessionId: existing, ...(give ? { itemId: held } : {}) }
   }
   if (follow && !recording && existing && held && heldIs === 'reads' && ctx.canvas.get(held)?.sessionId === ctx.canvas.paneOf(existing)) {
     // The notes are a recording beside the thread that stopped. A meeting is read only from its own pane, so the same
@@ -165,6 +197,7 @@ async function startThread(ctx: WorkCtx, workspaceId: string, eventId: string, k
   let itemId: string | undefined
   try {
     itemId = ctx.canvas.open(ctx.canvas.paneOf(sessionId), 'meeting', { at: 'thread' }, recording.name).id
+    reserveUpload(itemId, now)
   } finally {
     // The thread is his either way: the page names it even when the meeting could not be opened. A notes document
     // stays beside the recording, so a file that never arrives takes nothing with it.
@@ -177,6 +210,8 @@ async function startThread(ctx: WorkCtx, workspaceId: string, eventId: string, k
 export const prep: WorkModule = {
   id: 'prep',
   ensure: ensurePrepTables,
+  // His notes document renamed or moved in Files: the page follows it.
+  start: () => registerFileMoved(notesDocMoved),
   tools: prepTools,
   preamble: prepPreamble,
   async handle(req, ctx, by) {
@@ -208,8 +243,8 @@ export const prep: WorkModule = {
       }
       case 'work.prep.notes': {
         mustBePerson(by)
-        const { workspaceId, eventId, text, dropFile } = req.params
-        return handled({ page: await changeInOrder(ctx, [workspaceId, eventId], () => setNotes(ctx, workspaceId, eventId, text, dropFile === true)) })
+        const { workspaceId, eventId, text, dropFile, itemId } = req.params
+        return handled({ page: await changeInOrder(ctx, [workspaceId, eventId], () => setNotes(ctx, workspaceId, eventId, text, dropFile === true, itemId)) })
       }
       case 'work.prep.decide': {
         mustBePerson(by)

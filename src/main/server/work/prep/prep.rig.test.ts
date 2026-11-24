@@ -1,4 +1,4 @@
-import { mkdtempSync, mkdirSync, readdirSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdtempSync, mkdirSync, readdirSync, realpathSync, renameSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -11,7 +11,8 @@ import { canvas as canvasModule } from '../canvas/index'
 import { outbox as outboxModule } from '../outbox/index'
 import { adminKey, approveKey, makeRig, readKey, type Rig } from '../outbox/rig'
 import { AHEAD_ROUTINE } from './ahead'
-import { prep } from './index'
+import { NOTES_TEMPLATE, prep } from './index'
+import { notesDocMoved } from './moved'
 import { fileWait } from './tools'
 import { PrepStore } from './store'
 import { templates as templatesModule } from '../templates/index'
@@ -563,13 +564,18 @@ describe('a recording or a transcript as the notes', () => {
     expect(read).toContain('His notes:\nDana drives the van.')
   })
 
-  it('answers the thread still at work with its own meeting while that is still empty, and opens no second one', async () => {
+  it('gives a second file no meeting while the first upload to it still runs, and opens no second one', async () => {
     const starts = fakeStarts()
     const first = await record()
-    // the first file never arrived: the second goes where it was to go
-    expect(await record('again.m4a')).toEqual(first)
+    // another window's file while the first still goes up: no item, so two files never go to one meeting
+    expect(await record('again.m4a')).toEqual({ sessionId: first.sessionId })
     expect(starts).toHaveBeenCalledTimes(1)
     expect(rig.work.ctx.canvas.forSession('t-meeting-1')).toHaveLength(1)
+    // once that upload says its file never came, a file of his gets a thread and a meeting of its own
+    await rig.rpc('work.prep.notes', { ...params, text: '', dropFile: true, itemId: first.itemId })
+    const next = await record('again.m4a')
+    expect(next.itemId).toBeTruthy()
+    expect(next.itemId).not.toBe(first.itemId)
   })
 
   it('says nothing of a transcript in any push: a push carries ids and a revision alone', async () => {
@@ -753,9 +759,11 @@ describe('a recording that never arrived', () => {
     let got = await page()
     expect(got.doc.after?.by).toEqual([one.sessionId, two.sessionId])
     expect(got.drafts).toEqual([{ outboxId: 'ob1', subject: 'Staff sync follow-up', to: ['maya@x.test'] }])
-    await call('prep_follow_up', { event: 'ev1', summary: [{ text: 'The van and the forms are settled.' }] }, one.sessionId)
+    // the first thread answering late, after his newer press, is refused: it would replace the newer outcome
+    expect(words(await call('prep_follow_up', { event: 'ev1', summary: [{ text: 'Only the van.' }] }, one.sessionId))).toContain('A newer follow-up thread was started for this meeting')
     got = await page()
-    expect(got.doc.after?.by).toEqual([two.sessionId, one.sessionId])
+    expect(got.doc.after?.by).toEqual([one.sessionId, two.sessionId])
+    expect(got.doc.after?.summary).toEqual([{ text: 'The van and the forms are settled.' }])
     expect(got.drafts).toHaveLength(1)
   })
 
@@ -1022,5 +1030,180 @@ describe('a recording the host could not read', () => {
       expect((await follow()).sessionId).toBe(first.sessionId)
     })
     expect(starts).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('his newer words and presses win', () => {
+  const record = (name = 'Staff sync.m4a') => rig.rpc<{ sessionId: string; itemId?: string }>('work.prep.followUp', { ...params, recording: { name } })
+
+  it('tells the follow-up thread still at work when he changed his notes and pressed Follow up again; the same notes again tell it nothing', async () => {
+    const now = dateNow()
+    const starts = fakeStarts()
+    const resume = vi.spyOn(rig.work.ctx.threads, 'resume').mockResolvedValue(undefined)
+    await note('Dana drives the van.')
+    const first = await follow()
+    now.mockReturnValue(START + 60_000)
+    await note('Dana drives the van.\nTom owns the venue form.')
+    expect(await follow()).toEqual(first)
+    expect(starts).toHaveBeenCalledTimes(1)
+    expect(resume).toHaveBeenCalledTimes(1)
+    expect(resume.mock.calls[0]![0]).toBe(first.sessionId)
+    expect(resume.mock.calls[0]![1]).toContain('He changed his notes for this meeting after you started.')
+    expect(resume.mock.calls[0]![1]).toContain('Tom owns the venue form.')
+    now.mockReturnValue(START + 120_000)
+    expect(await follow()).toEqual(first)
+    expect(resume).toHaveBeenCalledTimes(1)
+  })
+
+  it('refuses a late outcome or brief from a thread his newer press replaced, and lets a thread the page never named write', async () => {
+    const now = dateNow()
+    fakeStarts()
+    await note('Dana drives the van.')
+    const one = await follow()
+    // past the working bound with nothing written: his press starts a second
+    now.mockReturnValue(START + PREP_WORKING_MS + 1)
+    const two = await follow()
+    expect(two.sessionId).not.toBe(one.sessionId)
+    await call('prep_follow_up', { event: 'ev1', summary: [{ text: 'Newer.' }], tasks: [{ title: 'Book bus' }] }, two.sessionId)
+    const late = await call('prep_follow_up', { event: 'ev1', summary: [{ text: 'Older.' }] }, one.sessionId)
+    expect(late.isError).toBe(true)
+    expect(words(late)).toContain('A newer follow-up thread was started for this meeting')
+    expect((await page()).doc.after).toMatchObject({ summary: [{ text: 'Newer.' }], tasks: [{ title: 'Book bus', state: 'proposed' }] })
+
+    const b1 = await rig.rpc<{ sessionId: string }>('work.prep.brief', { ...params, restart: true })
+    const b2 = await rig.rpc<{ sessionId: string }>('work.prep.brief', { ...params, restart: true })
+    await call('prep_write', { event: 'ev1', matters: [{ text: 'Newer brief.' }] }, b2.sessionId)
+    expect(words(await call('prep_write', { event: 'ev1', matters: [{ text: 'Older brief.' }] }, b1.sessionId))).toContain('A newer brief thread was started for this meeting')
+    expect((await page()).doc.brief?.matters).toEqual([{ text: 'Newer brief.' }])
+    // a thread the page never named (Prepare ahead's routine thread) still writes
+    expect((await call('prep_write', { event: 'ev1', matters: [{ text: 'From the routine.' }] })).isError).toBeFalsy()
+  })
+
+  it('keeps a dismissed suggestion dismissed though a rewrite between left it out, and an unchanged one its id', async () => {
+    fakeStarts()
+    await note('Dana drives the van.')
+    const { sessionId } = await follow()
+    const write = (tasks: { title: string; who?: string }[]) => call('prep_follow_up', { event: 'ev1', summary: [{ text: 'x' }], tasks }, sessionId)
+    await write([{ title: 'Book bus' }, { title: 'Send roster', who: 'Maya' }])
+    const before = (await page()).doc.after!.tasks
+    await decide('reject', before.find((t) => t.title === 'Book bus')!.id)
+    await write([{ title: 'Send roster', who: 'Maya' }])
+    await write([{ title: 'Book bus' }, { title: 'Send roster', who: 'Maya' }, { title: 'Send roster', who: 'Tom' }])
+    const tasks = (await page()).doc.after!.tasks
+    expect(tasks.filter((t) => t.title === 'Book bus' && t.state !== 'rejected')).toEqual([])
+    // the unchanged suggestion keeps its id (and so its filing key); the edited one is a new suggestion
+    const roster = before.find((t) => t.title === 'Send roster')!
+    const ids = tasks.filter((t) => t.title === 'Send roster').map((t) => t.id)
+    expect(ids[0]).toBe(roster.id)
+    expect(ids[1]).not.toBe(roster.id)
+  })
+
+  it('files once when LifeOS took a task but its answer was lost, and the outcome was rewritten before Retry', async () => {
+    fakeStarts()
+    await note('Dana drives the van.')
+    const { sessionId } = await follow()
+    await call('prep_follow_up', { event: 'ev1', summary: [{ text: 'x' }], tasks: [{ title: 'Book bus' }] }, sessionId)
+    const id = (await page()).doc.after!.tasks[0]!.id
+    // LifeOS makes it, and the answer never comes back
+    const create = lifeos.mutation.bind(lifeos)
+    const lost = vi.spyOn(lifeos, 'mutation').mockImplementationOnce(async (fn, args) => {
+      await create(fn, args)
+      throw new Error('LifeOS is unreachable')
+    })
+    expect((await decide('accept', id)).failed).toHaveLength(1)
+    lost.mockRestore()
+    await call('prep_follow_up', { event: 'ev1', summary: [{ text: 'y' }], tasks: [{ title: 'Book bus' }] }, sessionId)
+    expect((await page()).doc.after!.tasks[0]!.id).toBe(id)
+    expect((await decide('accept', id)).failed).toEqual([])
+    expect([...lifeos.tasks.values()].filter((t) => t.title === 'Book bus')).toHaveLength(1)
+  })
+
+  it('keeps the writer whose mail waits when a seventh writer comes', async () => {
+    fakeStarts()
+    await note('Dana drives the van.')
+    const first = await follow()
+    await call('prep_follow_up', { event: 'ev1', summary: [{ text: 'one' }] }, first.sessionId)
+    lifeos.outbox.push({ _id: 'ob1', status: 'draft', sector: 'purdue', origin: { threadId: first.sessionId }, message: { subject: 'Staff sync follow-up', to: [{ address: 'maya@x.test' }] } })
+    for (let i = 0; i < 6; i++) {
+      const next = await rig.rpc<{ sessionId: string }>('work.prep.followUp', { ...params, restart: true })
+      await call('prep_follow_up', { event: 'ev1', summary: [{ text: `again ${i}` }] }, next.sessionId)
+    }
+    const got = await page()
+    expect(got.doc.after!.by).toHaveLength(6)
+    expect(got.doc.after!.by![0]).toBe(first.sessionId)
+    expect(got.drafts.map((d) => d.outboxId)).toEqual(['ob1'])
+  })
+
+  it('keeps no invitee a thread lists as an added person, so the next meeting of the series does not inherit them', async () => {
+    await call('prep_write', { event: 'ev1', matters: [{ text: 'x' }], people: [{ name: 'Maya Chen', address: 'MAYA@x.test' }, { name: 'Tom Beck', address: 'tom@x.test' }] })
+    expect((await page()).doc.people).toEqual([{ name: 'Tom Beck', address: 'tom@x.test' }])
+  })
+
+  it('gives a second window’s file no meeting while the first upload runs, and a late failure of a replaced upload changes nothing', async () => {
+    fakeStarts()
+    await note('Typed in the first window.')
+    const first = await record()
+    expect((await record('other.m4a')).itemId).toBeUndefined()
+    // the first upload fails: only its own meeting goes, and the host keeps the words it holds over the window's older copy
+    await note('Newer words from another window.')
+    const after = (await rig.rpc<{ page: PrepPage }>('work.prep.notes', { ...params, text: 'Typed in the first window.', dropFile: true, itemId: first.itemId })).page
+    expect(after.doc.notes).toMatchObject({ text: 'Newer words from another window.' })
+    expect(after.doc.notes?.meetingItemId).toBeUndefined()
+    // a fresh upload, then the first window's cleanup arrives again: it names a meeting the page no longer holds
+    const second = await record()
+    const kept = (await rig.rpc<{ page: PrepPage }>('work.prep.notes', { ...params, text: '', dropFile: true, itemId: first.itemId })).page
+    expect(kept.doc.notes).toMatchObject({ text: 'Newer words from another window.', meetingItemId: second.itemId })
+    expect(kept.followSessionId).toBe(second.sessionId)
+  })
+})
+
+describe('the notes document and the page', () => {
+  let base: string
+  let folder: string
+  const doc = () => rig.rpc<{ page: PrepPage; source: { at: 'file'; host: string; path: string }; title: string }>('work.prep.notesDoc', { ...params, today: '2026-11-23' })
+  beforeEach(() => {
+    base = realpathSync(mkdtempSync(join(tmpdir(), 'tc-prep-doc2-')))
+    folder = join(base, 'Purdue')
+    mkdirSync(folder)
+    mkdirSync(join(base, 'starters', 'any'), { recursive: true })
+    writeFileSync(join(base, 'starters', 'any', 'Meeting notes.docx'), docx('{{Meeting}}', 'OURS'))
+    setStartersRoot(join(base, 'starters'))
+    rig.work.ctx.db.prepare('UPDATE workspaces SET path = ? WHERE id = ?').run(folder, 'ws-purdue')
+  })
+  afterEach(() => {
+    setStartersRoot(null)
+    rmSync(base, { recursive: true, force: true })
+  })
+
+  it('is made from his own Meeting notes template when the job has one', async () => {
+    mkdirSync(join(folder, 'Templates'))
+    writeFileSync(join(folder, 'Templates', 'Meeting notes.docx'), docx('{{Meeting}}', 'MINE'))
+    expect(existsSync((await doc()).source.path)).toBe(true)
+    // prep asks by the name, which finds his before ours
+    const { resolveTemplate } = await import('../templates/shelf')
+    expect(resolveTemplate(rig.work.ctx as never, 'ws-purdue', NOTES_TEMPLATE).entry.id).toBe('job:Meeting notes.docx')
+  })
+
+  it('keeps a recording already with the notes when the document is added, and the document when a recording is', async () => {
+    fakeStarts()
+    const { itemId } = await rig.rpc<{ sessionId: string; itemId?: string }>('work.prep.followUp', { ...params, recording: { name: 'Staff sync.m4a' } })
+    const made = await doc()
+    expect(made.page.doc.notes).toMatchObject({ file: made.source, meetingItemId: itemId })
+  })
+
+  it('follows his document when he renames it in Files, and makes a new one once he deleted it', async () => {
+    const made = await doc()
+    const moved = join(folder, 'Renamed notes.docx')
+    renameSync(made.source.path, moved)
+    const before = (await page()).rev
+    notesDocMoved(made.source, { ...made.source, path: moved }, { db: rig.work.ctx.db })
+    const got = await page()
+    expect(got.doc.notes?.file).toEqual({ ...made.source, path: moved })
+    expect(got.rev).toBe(before + 1)
+    expect((await doc()).source.path).toBe(moved)
+    rmSync(moved)
+    const fresh = await doc()
+    expect(fresh.source.path).not.toBe(moved)
+    expect(existsSync(fresh.source.path)).toBe(true)
   })
 })

@@ -27,7 +27,7 @@ import { shared, useShared } from "../tasks/store";
 import { useMinute } from "../tasks/minute";
 import type { WorkViewProps } from "../views/registry";
 import { ViewStateLine } from "../views/ViewStateLine";
-import { briefPrep, decidePrepTasks, followUpPrep, heldNotes, loadPrep, openWorkspaceFile, setPrepAhead, usePrep, usePrepHeld } from "./data";
+import { briefPrep, decidePrepTasks, followUpPrep, heldNotes, loadPrep, openNotesDoc, setPrepAhead, usePrep, usePrepHeld } from "./data";
 import {
   addTasksLabel,
   briefIsComing,
@@ -179,7 +179,8 @@ export function Head(props: WorkViewProps) {
       verb={verb}
       busy={busy}
       thread={pageThread(page) !== null}
-      again={!!page.doc.brief && !isOver(page.event, now) && verb !== "preparing"}
+      // Before the end, More always offers a brief the header does not: notes kept early take the header's place (Follow up), never the brief's.
+      brief={isOver(page.event, now) || verb === "preparing" || verb === "brief" ? null : page.doc.brief ? "again" : "brief"}
       notes={!!page.doc.notes}
       rest={proposed.length}
       ahead={page.aheadOffered ? page.aheadOn : null}
@@ -202,8 +203,8 @@ export interface PageVerbsProps {
   busy?: "brief" | "followUp" | null;
   /** the page has a thread to open */
   thread: boolean;
-  /** a brief stands and the meeting is still ahead: More offers Prepare again */
-  again: boolean;
+  /** the meeting is still ahead and the header holds no brief verb: More offers Brief me, or Prepare again once a brief stands */
+  brief: "brief" | "again" | null;
   notes: boolean;
   /** suggested tasks still waiting for his word */
   rest: number;
@@ -223,7 +224,7 @@ export interface PageVerbsProps {
 export function PageVerbs(p: PageVerbsProps) {
   const rows: MenuRow[] = [
     ...(p.thread ? [{ kind: "item" as const, id: "open", label: "Open thread" }] : []),
-    ...(p.again ? [{ kind: "item" as const, id: "again", label: "Prepare again" }] : []),
+    ...(p.brief ? [{ kind: "item" as const, id: "again", label: p.brief === "again" ? "Prepare again" : "Brief me" }] : []),
     { kind: "item", id: "people", label: "Add people…" },
     // The header already holds Add notes once the meeting is over.
     ...(p.verb === "addNotes" ? [] : [{ kind: "item" as const, id: "notes", label: p.notes ? "Edit notes…" : "Add notes…" }]),
@@ -356,14 +357,14 @@ export function View(props: WorkViewProps) {
         onOpenDraft={(draft) => openHeld({ at: "lifeos", table: "outbox", id: draft.outboxId }, props.env)}
         onOpenNotesFile={() => {
           const file = page.notesFile;
-          // Beside the thread that reads it, once there is one; a document not yet followed up opens beside a new thread.
+          // Beside the thread that reads it, once there is one; a document not yet followed up opens in a Files tab of this workspace.
           if (file?.itemId && page.followSessionId) {
             workOpenPort.get()?.(page.followSessionId);
             // On its own tab, whatever tab that thread's pane last showed.
             const { followSessionId } = page;
             const { itemId } = file;
             void import("../canvas/store").then(({ openItem }) => openItem(props.env, followSessionId, { itemId })).catch(() => undefined);
-          } else if (file?.kind === "document" && file.source?.at === "file") void openWorkspaceFile(props.env, { path: file.source.path, title: file.title }).catch(said);
+          } else if (file?.kind === "document" && file.source?.at === "file") void openNotesDoc(props.env, workspaceId, file.source).catch(said);
         }}
         onAhead={() =>
           setPrepAhead(props.env, workspaceId, eventId, true).then(
@@ -516,13 +517,13 @@ export function PrepPageBody({ page, faces, now = Date.now(), verb = null, offer
           <>
             <Section label="Decided" show={after.decisions.length > 0}>
               {after.decisions.map((line, i) => (
-                <LineRow key={i} text={line.text} onOpen={openLine(line)} />
+                <LineRow key={i} text={line.text} whole onOpen={openLine(line)} />
               ))}
             </Section>
             <ToDo tasks={shownTasks(after.tasks)} now={now} filing={filing} failed={stillFailed} onDecide={decide} onOpenTask={(id) => go("tasks", { task: id })} tickedAtFirst={tickedAtFirst} />
             <Section label="Open questions" show={after.questions.length > 0}>
               {after.questions.map((line, i) => (
-                <LineRow key={i} text={line.text} onOpen={openLine(line)} />
+                <LineRow key={i} text={line.text} whole onOpen={openLine(line)} />
               ))}
             </Section>
           </>
@@ -583,10 +584,10 @@ export function PrepPageBody({ page, faces, now = Date.now(), verb = null, offer
         {page.last ? (
           <Section label={lastLabel(page.last)} onOpenLabel={() => go("prep", { event: page.last!.eventId })}>
             {page.last.decided.map((line, i) => (
-              <LineRow key={`d${i}`} text={line.text} onOpen={openLine(line)} />
+              <LineRow key={`d${i}`} text={line.text} whole onOpen={openLine(line)} />
             ))}
             {page.last.open.map((line, i) => (
-              <LineRow key={`o${i}`} text={line.text} line="Left open" onOpen={openLine(line)} />
+              <LineRow key={`o${i}`} text={line.text} line="Left open" whole onOpen={openLine(line)} />
             ))}
             {page.last.tasks.map((task) => (
               <TaskRow key={task.id} task={task} line="Still to do" now={now} onOpen={() => go("tasks", { task: task.id })} />
@@ -945,11 +946,11 @@ function RowBox({ onOpen, className, children }: { onOpen: (() => void) | undefi
 }
 
 /** One line of the page: its words, a muted second line, a fact at the end. */
-function LineRow({ text, line, trail, wrap = false, onOpen }: { text: string; line?: string | undefined; trail?: string | undefined; /** the second line wraps, never cut */ wrap?: boolean; onOpen: (() => void) | undefined }) {
+function LineRow({ text, line, trail, wrap = false, whole = false, onOpen }: { text: string; line?: string | undefined; trail?: string | undefined; /** the second line wraps, never cut */ wrap?: boolean; /** a thing said (a decision, a question): its words wrap though the row opens its source, which may never say them */ whole?: boolean; onOpen: (() => void) | undefined }) {
   return (
-    <RowBox onOpen={onOpen}>
+    <RowBox onOpen={onOpen} className={whole ? "items-start" : undefined}>
       <span className="flex min-w-0 flex-1 flex-col gap-0.5">
-        <span className={cn("text-foreground", onOpen ? "truncate" : "text-pretty select-text")}>{text}</span>
+        <span className={cn("text-foreground", onOpen && !whole ? "truncate" : "text-pretty", !onOpen && "select-text")}>{text}</span>
         {line ? <span className={cn("text-xs text-muted-foreground", wrap ? "text-pretty" : "truncate")}>{line}</span> : null}
       </span>
       {trail ? <span className={TRAIL}>{trail}</span> : null}

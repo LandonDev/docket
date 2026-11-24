@@ -10,15 +10,15 @@ import {
   PrepLineSchema,
   PrepSuggestionSchema
 } from '@shared/contract-work-prep'
-import { errorText, workText, type WorkScope } from '@shared/work'
+import { errorText, workText, type SectorKey, type WorkScope } from '@shared/work'
 import type { ToolCtx, WorkTool } from '../modules'
 import { rewriteTasks } from './after'
-import { eventOf, gather, meetingOf, standing, startDoc, upcoming } from './gather'
+import { draftsOf, eventOf, gather, meetingOf, ownAdditions, standing, startDoc, upcoming } from './gather'
 import { writePage } from './page'
 import { pageWords } from './prompts'
 import { changeInOrder } from './serial'
 import { personKey } from './series'
-import { PrepStore } from './store'
+import { PrepStore, supersededOn, type PageRow } from './store'
 import { workspaceSector } from './workspace'
 
 const eventArg = { event: z.string().trim().min(1).max(200).optional() }
@@ -84,6 +84,30 @@ async function awaitRecording(ctx: ToolCtx, workspaceId: string, eventId: string
   }
 }
 
+/**
+ * A brief or an outcome from a thread a later press put another in the place of is not kept: his newer ask stands
+ * (a late answer would replace the newer thread's result and its suggestions). A thread the page never named, as
+ * Prepare ahead's routine thread, writes as before.
+ */
+function refuseReplaced(row: PageRow | null, kind: 'brief' | 'follow', sessionId: string): void {
+  if (supersededOn(row, kind, sessionId)) throw new Error(`A newer ${kind === 'brief' ? 'brief' : 'follow-up'} thread was started for this meeting, so this one's ${kind === 'brief' ? 'brief' : 'outcome'} is not kept. Stop here: write nothing more and draft no mail.`)
+}
+
+/**
+ * The threads an outcome names after this write, oldest first: every one that wrote it, so the mail an earlier one
+ * drafted stays on the page. Past the page's limit, the oldest that left no mail waiting go first; one whose mail
+ * could not be read is kept as if it had.
+ */
+async function writersOf(ctx: ToolCtx, sector: SectorKey, before: readonly string[], sessionId: string): Promise<string[]> {
+  const by = [...before.filter((id) => id !== sessionId), sessionId]
+  if (by.length <= PREP_WRITERS_MAX) return by
+  const client = ctx.lifeos.owner()
+  const holds = await Promise.all(by.slice(0, -1).map((id) => draftsOf(client, sector, id).then((drafts) => drafts.length > 0, () => true)))
+  let over = by.length - PREP_WRITERS_MAX
+  const kept = by.filter((_id, i) => i === by.length - 1 || holds[i] || over-- <= 0)
+  return kept.slice(-PREP_WRITERS_MAX)
+}
+
 const read = tool('prep_read', 'Read a meeting’s page. Pass its LifeOS event id or use the meeting linked to this thread. For the follow-up thread of a recording that is still being sent, it waits for the file.', z.object(eventArg), async ({ event }, ctx) => {
   const eventId = await toolEvent(ctx, event)
   const { workspaceId, sector } = toolWorkspace(ctx)
@@ -119,9 +143,11 @@ const write = tool(
       const { sector } = toolWorkspace(ctx)
       const event = await eventOf(ctx, sector, eventId)
       const { row, last } = standing(new PrepStore(ctx.db), workspaceId, event)
+      refuseReplaced(row, 'brief', ctx.sessionId)
       const doc = row?.doc ?? startDoc(last)
       const added = new Map(doc.people.map((person) => [personKey(person), person]))
-      for (const person of args.people ?? []) {
+      // Someone the calendar lists is not kept as an addition, as his own Add people keeps none.
+      for (const person of ownAdditions(event, args.people ?? [])) {
         const key = personKey(person)
         if (!added.has(key)) added.set(key, person)
       }
@@ -145,13 +171,13 @@ const followUp = tool(
       const { sector } = toolWorkspace(ctx)
       const event = await eventOf(ctx, sector, eventId)
       const { row, last } = standing(new PrepStore(ctx.db), workspaceId, event)
+      refuseReplaced(row, 'follow', ctx.sessionId)
       const doc = row?.doc ?? startDoc(last)
       const input = (args.tasks ?? []).map(({ due, ...task }) => ({ ...task, ...(due ? { due: dueAt(due) } : {}) }))
-      const { tasks, suggestionSeq } = rewriteTasks(input, doc.after?.tasks ?? [], row?.suggestionSeq ?? 0)
+      const { tasks, suggestionSeq, dismissed } = rewriteTasks(input, doc.after?.tasks ?? [], row?.suggestionSeq ?? 0, doc.after?.dismissed ?? [])
+      const by = await writersOf(ctx, sector, doc.after?.by ?? [], ctx.sessionId)
       const at = Date.now()
-      // Every thread that wrote the outcome is kept, so the mail an earlier one drafted stays on the page after this rewrite.
-      const by = [...(doc.after?.by ?? []).filter((id) => id !== ctx.sessionId), ctx.sessionId].slice(-PREP_WRITERS_MAX)
-      const after = { summary: args.summary ?? [], decisions: args.decisions ?? [], questions: args.questions ?? [], tasks, at, by }
+      const after = { summary: args.summary ?? [], decisions: args.decisions ?? [], questions: args.questions ?? [], tasks, at, by, ...(dismissed.length ? { dismissed } : {}) }
       writePage(ctx, workspaceId, event, last, { ...doc, after }, at, { suggestionSeq })
       return workText(`Kept the outcome for “${event.title}”. Suggested tasks wait for the owner on the meeting’s page.`)
     })

@@ -33,6 +33,10 @@ export function ensurePrepTables(db: DatabaseSync): void {
   if (!db.prepare("SELECT 1 FROM pragma_table_info('work_prep_pages') WHERE name = 'suggestion_seq'").get()) {
     db.exec('ALTER TABLE work_prep_pages ADD COLUMN suggestion_seq INTEGER NOT NULL DEFAULT 0')
   }
+  // The threads a later press put another in the place of, as `brief:<id>` and `follow:<id>`: their late writes are refused.
+  if (!db.prepare("SELECT 1 FROM pragma_table_info('work_prep_pages') WHERE name = 'superseded'").get()) {
+    db.exec("ALTER TABLE work_prep_pages ADD COLUMN superseded TEXT NOT NULL DEFAULT '[]'")
+  }
   db.exec('CREATE INDEX IF NOT EXISTS work_prep_pages_by_series ON work_prep_pages (workspace_id, series, starts_at)')
   // The Prepare-ahead routine a workspace's switch made, so the switch reads it again (and finds it gone).
   db.exec(`CREATE TABLE IF NOT EXISTS work_prep_ahead (
@@ -58,9 +62,17 @@ export interface PageRow {
   briefAt: number | null
   followSessionId: string | null
   followAt: number | null
+  /** the brief and follow-up threads a later press replaced, `brief:<id>` and `follow:<id>`, newest last */
+  superseded: string[]
   createdAt: number
   updatedAt: number
 }
+
+/** How many replaced threads a page remembers. */
+const SUPERSEDED_MAX = 40
+
+/** Whether a later press put another thread in this one's place for that part of the page: its write is not his latest ask. */
+export const supersededOn = (row: Pick<PageRow, 'superseded'> | null, kind: 'brief' | 'follow', sessionId: string): boolean => !!row?.superseded.includes(`${kind}:${sessionId}`)
 
 /** The event as a row keeps it: enough to list the page and find its series with no LifeOS call. */
 export interface PageEvent {
@@ -94,6 +106,7 @@ type Raw = {
   brief_at: number | null
   follow_session_id: string | null
   follow_at: number | null
+  superseded: string
   created_at: number
   updated_at: number
 }
@@ -128,6 +141,7 @@ const rowOf = (r: Raw): PageRow => ({
   briefAt: r.brief_at,
   followSessionId: r.follow_session_id,
   followAt: r.follow_at,
+  superseded: json<string[]>(r.superseded, []),
   createdAt: r.created_at,
   updatedAt: r.updated_at
 })
@@ -146,12 +160,17 @@ export class PrepStore {
     return rows.map(rowOf)
   }
 
-  /** Every page of these workspaces whose meeting begins before `to`, in one read. */
-  until(workspaceIds: readonly string[], to: number): PageRow[] {
+  /**
+   * The pages of these workspaces whose meeting begins in [from, to), and each workspace's `limit` pages before
+   * `from` (where a new page's last time is looked for), in one list newest first: a bounded read however many
+   * meetings he has prepared.
+   */
+  around(workspaceIds: readonly string[], from: number, to: number, limit = 400): PageRow[] {
     if (!workspaceIds.length) return []
     const marks = workspaceIds.map(() => '?').join(', ')
-    const rows = this.db.prepare(`SELECT * FROM work_prep_pages WHERE workspace_id IN (${marks}) AND starts_at < ? ORDER BY starts_at DESC`).all(...workspaceIds, to) as Raw[]
-    return rows.map(rowOf)
+    const inside = this.db.prepare(`SELECT * FROM work_prep_pages WHERE workspace_id IN (${marks}) AND starts_at >= ? AND starts_at < ?`).all(...workspaceIds, from, to) as Raw[]
+    const before = workspaceIds.flatMap((id) => this.db.prepare('SELECT * FROM work_prep_pages WHERE workspace_id = ? AND starts_at < ? ORDER BY starts_at DESC LIMIT ?').all(id, from, limit) as Raw[])
+    return [...inside, ...before].map(rowOf).sort((a, b) => b.startsAt - a.startsAt)
   }
 
   /**
@@ -166,13 +185,20 @@ export class PrepStore {
     const brief = options.brief !== undefined ? { id: options.brief, at: options.brief ? now : null } : { id: before?.briefSessionId ?? null, at: before?.briefAt ?? null }
     const follow = options.follow !== undefined ? { id: options.follow, at: options.follow ? now : null } : { id: before?.followSessionId ?? null, at: before?.followAt ?? null }
     const sequence = options.suggestionSeq ?? before?.suggestionSeq ?? 0
+    // A thread put out of its place by this write (a new one started, or the page let go of it) is remembered.
+    const replaced = (['brief', 'follow'] as const).flatMap((kind) => {
+      const was = kind === 'brief' ? before?.briefSessionId : before?.followSessionId
+      const next = options[kind]
+      return was && next !== undefined && next !== was ? [`${kind}:${was}`] : []
+    })
+    const superseded = JSON.stringify([...(before?.superseded ?? []).filter((id) => !replaced.includes(id)), ...replaced].slice(-SUPERSEDED_MAX))
     if (before) {
       this.db
         .prepare(
           `UPDATE work_prep_pages SET series = ?, title = ?, starts_at = ?, ends_at = ?, people_keys = ?, doc = ?, rev = rev + 1,
-           brief_session_id = ?, brief_at = ?, follow_session_id = ?, follow_at = ?, updated_at = ?, suggestion_seq = ? WHERE id = ?`
+           brief_session_id = ?, brief_at = ?, follow_session_id = ?, follow_at = ?, updated_at = ?, suggestion_seq = ?, superseded = ? WHERE id = ?`
         )
-        .run(event.series, event.title, event.startsAt, event.endsAt, JSON.stringify(event.peopleKeys), JSON.stringify(doc), brief.id, brief.at, follow.id, follow.at, now, sequence, before.id)
+        .run(event.series, event.title, event.startsAt, event.endsAt, JSON.stringify(event.peopleKeys), JSON.stringify(doc), brief.id, brief.at, follow.id, follow.at, now, sequence, superseded, before.id)
     } else {
       this.db
         .prepare(

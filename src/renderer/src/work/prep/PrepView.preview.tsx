@@ -131,7 +131,7 @@ const RECORDED: PrepPage = { ...FACTS, rev: 3, state: "after", followSessionId: 
 const UNREAD: PrepPage = { ...RECORDED, notesFile: { ...RECORDED.notesFile!, error: "The transcriber is not installed on this host." } };
 
 const none = () => {};
-const verbs = { thread: false, again: false, notes: false, rest: 0, ahead: null, onBrief: none, onFollowUp: none, onOpenThread: none, onNotes: none, onAddPeople: none, onThread: none, onDismissRest: none, onAhead: none } as const;
+const verbs = { thread: false, brief: null, notes: false, rest: 0, ahead: null, onBrief: none, onFollowUp: none, onOpenThread: none, onNotes: none, onAddPeople: none, onThread: none, onDismissRest: none, onAhead: none } as const;
 
 function Frame({ title, head, children }: { title: string | undefined; head?: ReactNode; children: ReactNode }) {
   return (
@@ -231,7 +231,7 @@ export function PrepPreview({ state = "facts" }: { state?: string }) {
   return (
     <Frame
       title={page.event.title}
-      head={<PageVerbs {...verbs} verb={verb} thread={!!page.briefSessionId} again={state === "briefed"} notes={after} rest={page.doc.after ? 3 : 0} ahead={page.aheadOffered ? page.aheadOn : null} />}
+      head={<PageVerbs {...verbs} verb={verb} thread={!!page.briefSessionId} brief={state === "briefed" ? "again" : null} notes={after} rest={page.doc.after ? 3 : 0} ahead={page.aheadOffered ? page.aheadOn : null} />}
     >
       <PrepPageBody
         page={page}

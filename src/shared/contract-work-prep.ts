@@ -26,6 +26,8 @@ export const PREP_NOTES_MAX = 60_000
 export const PREP_TASKS_MAX = 20
 /** How many of an outcome's writing threads a page remembers, for their follow-up mail. */
 export const PREP_WRITERS_MAX = 6
+/** How many dismissed suggestions an outcome remembers past the ones it still lists. */
+export const PREP_DISMISSED_MAX = 100
 /** The longest span `work.prep.upcoming` reads in one call. */
 export const PREP_UPCOMING_MAX_MS = 31 * 86_400_000
 
@@ -103,7 +105,9 @@ export const PrepDocSchema = z.object({
        * The threads that wrote it, oldest first, the newest six: a follow-up mail any of them drafted stays on the
        * page when a later follow-up rewrites the outcome. (One id alone in a page written before the list.)
        */
-      by: z.preprocess((v) => (typeof v === 'string' ? [v] : v), z.array(z.string()).max(PREP_WRITERS_MAX)).optional()
+      by: z.preprocess((v) => (typeof v === 'string' ? [v] : v), z.array(z.string()).max(PREP_WRITERS_MAX)).optional(),
+      /** the folded titles of suggestions he dismissed that a rewrite left out: suggested again, they stay dismissed */
+      dismissed: z.array(z.string().max(300)).max(PREP_DISMISSED_MAX).optional()
     })
     .nullable()
 })
@@ -111,7 +115,7 @@ export interface PrepDoc {
   people: PrepAddedPerson[]
   brief: { matters: PrepLine[]; agreed: PrepLine[]; files: PrepFileRef[]; at: number; by: string } | null
   notes: { text: string; at: number; file?: CanvasSource; meetingItemId?: string } | null
-  after: { summary: PrepLine[]; decisions: PrepLine[]; questions: PrepLine[]; tasks: PrepSuggestion[]; at: number; by?: string[] } | null
+  after: { summary: PrepLine[]; decisions: PrepLine[]; questions: PrepLine[]; tasks: PrepSuggestion[]; at: number; by?: string[]; dismissed?: string[] } | null
 }
 export const emptyPrepDoc = (): PrepDoc => ({ people: [], brief: null, notes: null, after: null })
 
@@ -309,9 +313,11 @@ export const PrepRequestSchemas = [
   request('work.prep.brief', z.object({ ...page, restart: z.boolean().optional() })),
   /**
    * Keeps his notes (empty text takes them back). A file that holds the notes stays beside the words, unless
-   * `dropFile`: the window says a recording never arrived or could not be read, so it is no notes. → { page }
+   * `dropFile`: the window says a recording never arrived or could not be read, so it is no notes. With `itemId`
+   * (the meeting its upload went to) only that meeting is let go, and only while the page still names it; the words
+   * the host holds stay, since another window may have kept newer ones. → { page }
    */
-  request('work.prep.notes', z.object({ ...page, text: z.string().max(PREP_NOTES_MAX), dropFile: z.boolean().optional() })),
+  request('work.prep.notes', z.object({ ...page, text: z.string().max(PREP_NOTES_MAX), dropFile: z.boolean().optional(), itemId: z.string().min(1).max(200).optional() })),
   /**
    * Starts the follow-up thread from the notes, or answers the one still working. With `recording`
    * (a recording or a transcript he picked) the host opens an empty meeting beside the new thread and

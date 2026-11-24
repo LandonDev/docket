@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { emptyPrepDoc, type PrepEvent, type PrepPage } from "@shared/contract-work-prep";
-import { addedKey, addTasksLabel, failedWhy, namesInvitee, briefIsComing, dayWords, draftLine, fileWhere, headVerb, isOver, lastLabel, meetingMark, moreWords, nobodyOn, notesLines, outcomeIsComing, pageThread, personLine, personTrail, pickable, problemWords, shownTasks, suggestionLine, taskLine, failedWords, returnPicks, samePeople, threadStopped, timeWords, uploadPercent, whenLine } from "./model";
+import { addedKey, addTasksLabel, failedWhy, fileNotes, notesToFollow, namesInvitee, briefIsComing, dayWords, draftLine, fileWhere, headVerb, isOver, lastLabel, meetingMark, moreWords, nobodyOn, notesLines, outcomeIsComing, pageThread, personLine, personTrail, pickable, problemWords, shownTasks, suggestionLine, taskLine, failedWords, returnPicks, samePeople, threadStopped, timeWords, uploadPercent, whenLine } from "./model";
 
 /** A meeting's page in words (docs/agents/work-prep.md "The page"): the comma line, each row's second line and what trails it. */
 
@@ -229,6 +229,22 @@ describe("the header's verb", () => {
     expect(headVerb(page({ followSessionId: "f", doc: { ...emptyPrepDoc(), notes, after } }), over, { ...idle, follow: "idle" })).toBeNull();
     // notes typed before the end lead to Follow up too
     expect(headVerb(page({ doc: { ...emptyPrepDoc(), notes } }), NOW, idle)).toBe("followUp");
+  });
+
+  it("counts a file as notes only while the page holds it readable: a meeting item that is gone asks for notes again", () => {
+    const over = at(15);
+    const source = { at: "file" as const, host: "box", path: "/w/notes.docx" };
+    const docOnly = page({ doc: { ...emptyPrepDoc(), notes: { text: "", at: 1, file: source } }, notesFile: { kind: "document", title: "notes.docx", source } });
+    expect([fileNotes(docOnly), notesToFollow(docOnly), headVerb(docOnly, over, idle)]).toEqual([true, true, "followUp"]);
+    const recording = { ...emptyPrepDoc(), notes: { text: "", at: 1, meetingItemId: "it1" } };
+    const ready = page({ doc: recording, notesFile: { kind: "meeting", itemId: "it1", title: "Staff sync.m4a" } });
+    expect([fileNotes(ready), headVerb(ready, over, idle)]).toEqual([true, "followUp"]);
+    const gone = page({ doc: recording, notesFile: null });
+    expect([fileNotes(gone), notesToFollow(gone), headVerb(gone, over, idle)]).toEqual([false, false, "addNotes"]);
+    const unread = page({ doc: recording, notesFile: { kind: "meeting", itemId: "it1", title: "Staff sync.m4a", error: "No transcriber." } });
+    expect([fileNotes(unread), headVerb(unread, over, idle)]).toEqual([false, "addNotes"]);
+    // words he typed are notes whatever became of a file
+    expect(notesToFollow(page({ doc: { ...recording, notes: { ...recording.notes, text: "Dana drives." } }, notesFile: null }))).toBe(true);
   });
 
   it("opens the follow-up's thread once there is one, else the brief's", () => {

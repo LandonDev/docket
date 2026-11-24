@@ -32,6 +32,10 @@ export class FakeLifeos implements LifeosClient {
   tasks = new Map<string, FakeTask>()
   /** `outbox` rows by the thread that made them (`compose:byOrigin`) */
   outbox: { _id: string; status: string; sector?: string; origin: { threadId: string }; message: { subject: string; to: { address: string; name?: string }[] } }[] = []
+  /** his mail accounts (`mail:accounts`): his own addresses */
+  accounts: { address?: string; identities?: { address?: string }[] }[] = []
+  /** threads whose `compose:byOrigin` read fails */
+  failingOrigins = new Set<string>()
   calls: { fn: string; args: Record<string, unknown> }[] = []
   /** fail every call of this function with this message */
   failing = new Map<string, string>()
@@ -109,7 +113,10 @@ export class FakeLifeos implements LifeosClient {
         return id as T
       }
       case 'compose:byOrigin':
+        if (this.failingOrigins.has(String(args.threadId))) throw new Error('LifeOS did not answer')
         return this.outbox.filter((r) => r.origin.threadId === args.threadId) as T
+      case 'mail:accounts':
+        return this.accounts as T
     }
     throw new Error(`no function ${fn}`)
   }

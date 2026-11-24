@@ -294,11 +294,44 @@ describe('what is coming', () => {
       { workspaceId: 'ws-purdue', sector: 'purdue', eventId: 'added1', title: 'Budget review', startsAt: day + 16 * 3_600_000, endsAt: day + 17 * 3_600_000, with: ['Dana Reyes'], state: 'none' }
     ])
     // one read of LifeOS, no query per person
-    expect(lifeos.calls.map((c) => c.fn)).toEqual(['events:range'])
+    expect(lifeos.calls.map((c) => c.fn)).toEqual(['events:range', 'mail:accounts'])
+  })
+
+  it('counts no meeting whose only attendee is one of his own addresses, and leaves him out of the names', async () => {
+    const { ctx, lifeos } = world()
+    const day = at('2026-11-23T00:00:00-05:00')
+    lifeos.accounts = [{ address: 'Me@Purdue.test', identities: [{ address: 'me@alias.test' }] }]
+    lifeos.event({ _id: 'solo', title: 'Desk time', startsAt: day + 9 * 3_600_000, attendees: [{ address: 'me@purdue.test', name: 'Me' }] })
+    lifeos.event({ _id: 'real', title: 'Budget', startsAt: day + 10 * 3_600_000, attendees: [{ address: 'me@alias.test', name: 'Me' }, { address: 'dana@x.test', name: 'Dana' }] })
+    const mine = async () => (await upcoming(ctx, day, day + 86_400_000, NOW)).filter((m) => m.eventId === 'solo' || m.eventId === 'real')
+    expect((await mine()).map((m) => [m.eventId, m.with])).toEqual([['real', ['Dana']]])
+    // his addresses unread: every attendee counts, as before
+    lifeos.failing.set('mail:accounts', 'LifeOS did not answer')
+    expect((await mine()).map((m) => m.eventId)).toEqual(['solo', 'real'])
+  })
+
+  it('reads the pages of its range and a bounded few before it, however many meetings he ever prepared', async () => {
+    const { store } = world()
+    const day = at('2026-11-23T00:00:00-05:00')
+    for (let i = 1; i <= 5; i++) store.write('ws-purdue', { id: `old${i}`, series: 's', title: 'Old', startsAt: day - i * 86_400_000, endsAt: null, peopleKeys: [] }, emptyPrepDoc, (doc) => doc, NOW)
+    store.write('ws-purdue', { id: 'in', series: 's', title: 'In', startsAt: day + 3_600_000, endsAt: null, peopleKeys: [] }, emptyPrepDoc, (doc) => doc, NOW)
+    store.write('ws-purdue', { id: 'later', series: 's', title: 'Later', startsAt: day + 3 * 86_400_000, endsAt: null, peopleKeys: [] }, emptyPrepDoc, (doc) => doc, NOW)
+    expect(store.around(['ws-purdue'], day, day + 86_400_000, 2).map((r) => r.eventId)).toEqual(['in', 'old1', 'old2'])
   })
 })
 
 describe('follow-up drafts', () => {
+  it('keeps the mail of every thread whose read answered when one fails, and names the part as not loaded', async () => {
+    const { ctx, lifeos, store } = world()
+    const after = { summary: [{ text: 'Settled.' }], decisions: [], questions: [], tasks: [], at: NOW, by: ['follow-1', 'follow-2'] }
+    store.write('ws-purdue', { id: 'ev1', series: 'series1', title: 'Staff sync', startsAt: NOW, endsAt: null, peopleKeys: [] }, emptyPrepDoc, (doc) => ({ ...doc, after }), NOW, { follow: 'follow-2' })
+    lifeos.outbox.push({ _id: 'first', status: 'draft', sector: 'purdue', origin: { threadId: 'follow-1' }, message: { subject: 'Staff sync follow-up', to: [{ address: 'tom@x.test' }] } })
+    lifeos.failingOrigins.add('follow-2')
+    const { page } = await gather(ctx, 'ws-purdue', 'ev1', NOW)
+    expect(page.drafts.map((d) => d.outboxId)).toEqual(['first'])
+    expect(page.problems).toContain('drafts')
+  })
+
   it('shows waiting drafts of this follow-up thread in its sector, including drafts with no sector set', async () => {
     const { ctx, lifeos, store } = world()
     store.write('ws-purdue', { id: 'ev1', series: 'series1', title: 'Staff sync', startsAt: NOW, endsAt: null, peopleKeys: [] }, emptyPrepDoc, (doc) => doc, NOW, { follow: 'follow-1' })

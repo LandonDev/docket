@@ -160,11 +160,22 @@ export function headVerb(
   if (!unread && works(page.followSessionId, threads.follow, page.followUntil, wrote(page.followStartedAt, doc.after?.at))) return "following";
   if (doc.after) return null;
   // Notes that are only that recording are no notes to follow up from (a press would read the same failure); words he typed or a notes document still are.
-  if (doc.notes && (!unread || doc.notes.text.trim() || doc.notes.file)) return "followUp";
+  if (notesToFollow(page)) return "followUp";
   if (isOver(page.event, now)) return "addNotes";
   if (works(page.briefSessionId, threads.brief, page.briefUntil, wrote(page.briefStartedAt, doc.brief?.at))) return "preparing";
   return doc.brief ? null : "brief";
 }
+
+/** Whether the page holds a file a follow-up reads as the notes: his notes document, or a meeting this host still has and could read. */
+export const fileNotes = (page: Pick<PrepPage, "doc" | "notesFile">): boolean =>
+  !!page.doc.notes && (!!page.doc.notes.file || (page.notesFile?.kind === "meeting" && !page.notesFile.error));
+
+/**
+ * Whether there are notes to follow up from: words he typed, or a file of them (`fileNotes`). A recording this host
+ * could not read, or a meeting item that is gone, is none: a press would read the same failure. The header and the
+ * Notes dialog's Follow up hold to this one rule; the host keeps the last word.
+ */
+export const notesToFollow = (page: Pick<PrepPage, "doc" | "notesFile">): boolean => !!page.doc.notes && (!!page.doc.notes.text.trim() || fileNotes(page));
 
 /** Whether the brief's place shows its bones: a thread is writing and nothing stands yet. */
 export const briefIsComing = (page: Pick<PrepPage, "doc">, verb: HeadVerb): boolean => verb === "preparing" && !page.doc.brief;

@@ -43,7 +43,7 @@ vi.mock("../../lib/attachmentUpload", async (original) => ({
 }));
 const outside = vi.hoisted(() => ({ opened: [] as unknown[] }));
 const files = vi.hoisted(() => ({ docs: [] as unknown[][] }));
-vi.mock("../files/openFrom", () => ({ openDocInFiles: async (...args: unknown[]) => void files.docs.push(args) }));
+vi.mock("../files/openFrom", () => ({ openDocInFiles: async (...args: unknown[]) => void files.docs.push(args), openInFiles: async (workspace: unknown, what: unknown) => void outside.opened.push({ workspace, what }) }));
 vi.mock("../canvas/openOutside", () => ({ openOutside: async (place: unknown, files: unknown) => void outside.opened.push({ place, files }) }));
 const held = vi.hoisted(() => ({ opened: [] as unknown[] }));
 vi.mock("../canvas/held", async (original) => ({ ...(await original<object>()), openHeld: (ref: unknown, env: string) => void held.opened.push({ ref, env }) }));
@@ -588,6 +588,14 @@ const BRIEF = { matters: [{ text: "Maya needs the seat list by Wednesday.", ref:
 const briefed = (over: Partial<PrepPage> = {}) => facts({ doc: { ...emptyPrepDoc(), brief: BRIEF }, rev: 2, state: "briefed", briefSessionId: "t-brief", ...over });
 
 describe("Brief me", () => {
+  it("stays in More before the meeting once notes kept early take the header's place", async () => {
+    host.page = facts({ rev: 1, state: "after", doc: { ...emptyPrepDoc(), notes: { text: "Ask Dana about the van.", at: 1 } } });
+    await mount();
+    expect(head().getByRole("button", { name: "Follow up" })).toBeTruthy();
+    await more("Brief me");
+    await vi.waitFor(() => expect(host.asked.some((a) => a.method === "work.prep.brief")).toBe(true));
+  });
+
   it("starts the thread on the host and stays on the page, which says Preparing where the brief will be", async () => {
     const opened: string[] = [];
     workOpenPort.set((id) => void opened.push(id));
@@ -1186,8 +1194,8 @@ describe("a recording or a transcript as the notes", () => {
     await choose(dialog, m4a());
     expect(dialog.getByText("The transcriber is not installed on box.")).toBeTruthy();
     expect(screen.getByRole("dialog", { name: "Notes" })).toBeTruthy();
-    // the file is no notes: the host is told to forget it, and what he typed (nothing here) stays as it was
-    expect(host.asked.find((a) => a.method === "work.prep.notes")!.params).toEqual({ workspaceId: "ws", eventId: "ev1", text: "", dropFile: true });
+    // the file is no notes: the host is told to forget this upload's own meeting, and keeps the words it holds
+    expect(host.asked.find((a) => a.method === "work.prep.notes")!.params).toEqual({ workspaceId: "ws", eventId: "ev1", text: "", dropFile: true, itemId: "it1" });
     expect((dialog.getByLabelText("Notes") as HTMLTextAreaElement).disabled).toBe(false);
   });
 
@@ -1265,15 +1273,29 @@ describe("a recording or a transcript as the notes", () => {
 describe("notes written in a document", () => {
   beforeEach(() => vi.setSystemTime(OVER));
 
-  it("makes the notes document on the host, opens it beside a new thread, and the header's verb becomes Follow up", async () => {
+  it("lets Follow up start from the document alone, with nothing typed in the field", async () => {
+    const source = { at: "file" as const, host: "box", path: "/work/purdue/Staff sync notes.docx" };
+    host.page = facts({ rev: 2, state: "after", doc: { ...emptyPrepDoc(), notes: { text: "", at: 1, file: source } }, notesFile: { kind: "document", title: "Staff sync notes.docx", source } });
+    await mount();
+    await more("Edit notes…");
+    const dialog = within(await screen.findByRole("dialog", { name: "Notes" }));
+    const go = dialog.getByRole("button", { name: "Follow up" }) as HTMLButtonElement;
+    expect(go.disabled).toBe(false);
+    await act(async () => fireEvent.click(go));
+    await vi.waitFor(() => expect(host.asked.some((a) => a.method === "work.prep.followUp")).toBe(true));
+  });
+
+  it("makes the notes document on the host, opens it in a Files tab of the meeting's own workspace, and the header's verb becomes Follow up", async () => {
     await mount();
     await act(async () => fireEvent.click(head().getByRole("button", { name: "Add notes" })));
     const dialog = within(await screen.findByRole("dialog", { name: "Notes" }));
     await act(async () => fireEvent.click(dialog.getByRole("button", { name: "Write in a document" })));
     await vi.waitFor(() => expect(outside.opened).toHaveLength(1));
+    // dated by the meeting's own day, not the day he pressed it
     expect(host.asked.find((a) => a.method === "work.prep.notesDoc")!.params).toEqual({ workspaceId: "ws", eventId: "ev1", today: "2026-11-23" });
-    // as a file dropped on a view opens: a new thread of the workspace, the file in place in its folder
-    expect(outside.opened).toEqual([{ place: { at: "new" }, files: [{ name: "Staff sync notes.docx", path: "/work/purdue/Staff sync notes.docx", origin: "box" }] }]);
+    // in place, in this meeting's workspace on its host: never the job that happens to be in front
+    const source = { at: "file", host: "box", path: "/work/purdue/Staff sync notes.docx" };
+    expect(outside.opened).toEqual([{ workspace: { id: "ws", environmentId: "box" }, what: { ref: source, name: "Staff sync notes.docx" } }]);
     // no follow-up started: the document is his to write in first
     expect(host.asked.some((a) => a.method === "work.prep.followUp")).toBe(false);
     await act(async () => openWorkView({ workspaceId: "ws", view: "prep", event: "ev1" }));

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { PrepPage } from '@shared/contract-work-prep'
-import { briefMessage, briefTitle, followAgainMessage, followMessage, followTitle, pageWords } from './prompts'
+import { briefMessage, briefTitle, followAgainMessage, followMessage, followNotesMessage, followTitle, pageWords } from './prompts'
 
 const at = Date.parse('2026-11-23T19:00:00Z')
 const home = 'https://example.com/roster'
@@ -88,7 +88,7 @@ describe('words for a prep thread', () => {
     expect(text.startsWith(pageWords(page))).toBe(true)
     expect(text).toContain('Use his notes. Call prep_follow_up')
     expect(text).toContain('Never call add_task.')
-    expect(text).toContain('If the page lists no follow-up mail already waiting, draft one to the people with addresses using draft_mail. It waits for his press. Never send it.')
+    expect(text).toContain('Just before any mail, call prep_read once more. If it lists a follow-up mail already waiting, or says it could not read whether one waits, draft none. Otherwise draft one to the people with addresses using draft_mail. It waits for his press. Never send it.')
     expect(text.endsWith('End with the outcome as your last message.')).toBe(true)
   })
   it('lists a follow-up mail that already waits, so a second follow-up drafts no second one', () => {
@@ -114,7 +114,20 @@ describe('words for a prep thread', () => {
     expect(text).toContain('open beside this thread as meeting it1. Read it with meeting_read.')
     expect(text).toContain('Read the meeting beside you with meeting_read. Call prep_follow_up')
     expect(text).toContain('never call add_task')
-    expect(text).toContain('If the page lists no follow-up mail already waiting, draft one to the people with addresses using draft_mail. It waits for his press. Never send it.')
+    expect(text).toContain('Just before any mail, call prep_read once more. If it lists a follow-up mail already waiting, or says it could not read whether one waits, draft none. Otherwise draft one to the people with addresses using draft_mail. It waits for his press. Never send it.')
+    expect(text.endsWith('End with the outcome as your last message.')).toBe(true)
+  })
+
+  it('says a mail lookup that failed is not knowing, never that no mail waits', () => {
+    expect(pageWords(page)).not.toContain('could not be read just now')
+    expect(pageWords({ ...page, drafts: [], problems: ['drafts'] })).toContain('Whether a follow-up mail already waits in the Outbox could not be read just now.')
+  })
+
+  it('tells a follow-up thread still at work that his notes changed, with the page as it stands', () => {
+    const text = followNotesMessage(page)
+    expect(text.startsWith('He changed his notes for this meeting after you started.')).toBe(true)
+    expect(text).toContain('His notes:\nMaya sends the roster.')
+    expect(text).toContain('Write the outcome again from these notes with prep_follow_up')
     expect(text.endsWith('End with the outcome as your last message.')).toBe(true)
   })
 })

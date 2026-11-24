@@ -1,4 +1,4 @@
-import { PREP_TASKS_MAX, type PrepSuggestion } from '@shared/contract-work-prep'
+import { PREP_DISMISSED_MAX, PREP_TASKS_MAX, type PrepSuggestion } from '@shared/contract-work-prep'
 import { errorText } from '@shared/work'
 import type { WorkCtx } from '../modules'
 import { fileTask } from './filing'
@@ -20,10 +20,20 @@ type Suggested = Omit<PrepSuggestion, 'id' | 'state' | 'lifeosTaskId'>
 
 const titleKey = (title: string) => foldTitle(title) || title.normalize('NFKC').trim().toLowerCase()
 
-/** Take the thread’s new suggestions and keep any decisions the owner already made. */
-export function rewriteTasks(input: Suggested[], prior: PrepSuggestion[], sequence: number): { tasks: PrepSuggestion[]; suggestionSeq: number } {
+const sameSuggestion = (a: Suggested, b: PrepSuggestion): boolean =>
+  a.title === b.title && (a.who ?? '') === (b.who ?? '') && a.due === b.due && (a.quote ?? '') === (b.quote ?? '')
+
+/**
+ * Take the thread’s new suggestions and keep any decisions the owner already made. A suggestion he dismissed stays
+ * dismissed though a rewrite between left it out (its folded title is kept in `dismissed`). One that waits for his
+ * tick and comes back unchanged keeps its id, so a filing LifeOS took but never answered keeps its key on Retry; an
+ * edited one is a new suggestion with a new id.
+ */
+export function rewriteTasks(input: Suggested[], prior: PrepSuggestion[], sequence: number, dismissedBefore: readonly string[] = []): { tasks: PrepSuggestion[]; suggestionSeq: number; dismissed: string[] } {
   let suggestionSeq = Math.max(sequence, ...prior.map((task) => Number(/^s(\d+)$/.exec(task.id)?.[1] ?? 0)))
   const settled = prior.filter((task) => task.state !== 'proposed')
+  const waiting = prior.filter((task) => task.state === 'proposed')
+  const dismissed = new Set(dismissedBefore)
   const kept = new Set<string>()
   const tasks: PrepSuggestion[] = []
   for (const task of input) {
@@ -32,15 +42,26 @@ export function rewriteTasks(input: Suggested[], prior: PrepSuggestion[], sequen
       if (kept.has(before.id)) continue
       kept.add(before.id)
       tasks.push(before)
+      continue
+    }
+    if (dismissed.has(titleKey(task.title))) continue
+    const same = waiting.find((item) => !kept.has(item.id) && sameSuggestion(task, item))
+    if (same) {
+      kept.add(same.id)
+      tasks.push(same)
     } else {
       tasks.push({ ...task, id: `s${++suggestionSeq}`, state: 'proposed' })
     }
   }
   for (const task of settled) {
-    if (task.state === 'filed' && !kept.has(task.id)) tasks.push(task)
+    if (kept.has(task.id)) continue
+    if (task.state === 'filed') tasks.push(task)
+    else dismissed.add(titleKey(task.title))
   }
   if (tasks.length > PREP_TASKS_MAX) throw new Error(`The page keeps its filed tasks. Suggest fewer tasks so the page has at most ${PREP_TASKS_MAX}.`)
-  return { tasks, suggestionSeq }
+  // A title the page still lists as dismissed is said there; the newest of the rest are kept.
+  const listed = new Set(tasks.filter((task) => task.state === 'rejected').map((task) => titleKey(task.title)))
+  return { tasks, suggestionSeq, dismissed: [...dismissed].filter((key) => !listed.has(key)).slice(-PREP_DISMISSED_MAX) }
 }
 
 /** File or reject only proposed tasks. Keep each successful filing before trying the next one. */

@@ -19,7 +19,7 @@ import { errorText, type SectorKey } from '@shared/work'
 import type { LifeosClient } from '../lifeos/ctx'
 import { WORK_MODULES, type Caller, type WorkCtx } from '../modules'
 import { aheadOf } from './ahead'
-import { lastOf, linksIn, personKey, seriesOf, subjectWords, type SeriesPage } from './series'
+import { foldTitle, lastOf, linksIn, personKey, seriesOf, subjectWords, type SeriesPage } from './series'
 import { PrepStore, type PageEvent, type PageRow } from './store'
 import { linkedWorkspaces, sectorWord, workspaceSector } from './workspace'
 
@@ -112,6 +112,23 @@ export function peopleOf(event: Pick<LifeEvent, 'attendees'>, added: readonly Pr
   return [...seen.values()]
 }
 
+/**
+ * The people of a list who are not on the event itself, each once: someone the calendar lists is on the meeting
+ * already, and never kept as an addition, which would follow the series to a day they are not invited. Named by
+ * their name or their address alone, they are that invitee still. The one rule for his Add people and a thread's
+ * `prep_write`.
+ */
+export function ownAdditions(event: Pick<LifeEvent, 'attendees'>, people: readonly PrepAddedPerson[]): PrepAddedPerson[] {
+  const attendees = event.attendees ?? []
+  const seen = new Set<string>(attendees.map((a) => a.address.trim().toLowerCase()).filter(Boolean))
+  const invitedNames = new Set(attendees.flatMap((a) => [a.address, a.name ?? '']).map(foldTitle).filter(Boolean))
+  return people.filter((p) => {
+    if (!p.address && invitedNames.has(foldTitle(p.name))) return false
+    const key = personKey(p)
+    return !seen.has(key) && Boolean(seen.add(key))
+  })
+}
+
 /** The event as a row keeps it. */
 export function pageEventOf(event: LifeEvent, people: readonly PrepPerson[]): PageEvent {
   return { id: event._id, series: seriesOf(event), title: event.title, startsAt: event.startsAt, endsAt: event.endsAt ?? null, peopleKeys: people.map(personKey) }
@@ -192,7 +209,8 @@ async function lastFacts(client: LifeosClient, sector: SectorKey, last: PageRow)
   return { last: { eventId: last.eventId, title: last.title, startsAt: last.startsAt, decided, open, tasks }, missed }
 }
 
-async function draftsOf(client: LifeosClient, sector: SectorKey, threadId: string): Promise<PrepDraft[]> {
+/** The follow-up mail a thread drafted that still waits in the Outbox. */
+export async function draftsOf(client: LifeosClient, sector: SectorKey, threadId: string): Promise<PrepDraft[]> {
   const rows = await client.query<DraftRow[]>('compose:byOrigin', { threadId })
   return rows
     .filter((r) => r.status === 'draft' && (r.sector === undefined || r.sector === sector))
@@ -325,13 +343,11 @@ export async function gather(ctx: WorkCtx, workspaceId: string, eventId: string,
         )
       : Promise.resolve(null),
     // The mail of every thread that wrote the outcome, and of the page's thread now: a later follow-up hides none of it.
-    Promise.all([...new Set([...(row?.doc.after?.by ?? []), row?.followSessionId].filter((id): id is string => !!id))].map((threadId) => draftsOf(client, sector, threadId))).then(
-      (lists) => lists.flat().filter((draft, i, all) => all.findIndex((d) => d.outboxId === draft.outboxId) === i),
-      () => {
-        problems.push('drafts')
-        return [] as PrepDraft[]
-      }
-    ),
+    // One thread's read that fails keeps the others' mail, and the part is named as not loaded.
+    Promise.allSettled([...new Set([...(row?.doc.after?.by ?? []), row?.followSessionId].filter((id): id is string => !!id))].map((threadId) => draftsOf(client, sector, threadId))).then((lists) => {
+      if (lists.some((l) => l.status === 'rejected')) problems.push('drafts')
+      return lists.flatMap((l) => (l.status === 'fulfilled' ? l.value : [])).filter((draft, i, all) => all.findIndex((d) => d.outboxId === draft.outboxId) === i)
+    }),
     aheadOf(ctx, workspaceId),
     clashLeave(ctx, event._id),
     notesFileOf(ctx, row?.doc.notes ?? null, row?.followSessionId)
@@ -383,16 +399,17 @@ export async function gather(ctx: WorkCtx, workspaceId: string, eventId: string,
 
 /**
  * The timed meetings with someone else on them in this host's linked Work
- * workspaces, soonest first, each with how ready its page is. One read of
- * LifeOS and one of the pages: no query per person, so Today and the digest
- * may ask often.
+ * workspaces, soonest first, each with how ready its page is. Two reads of
+ * LifeOS (the events and his own addresses) and a bounded one of the pages:
+ * no query per person, so Today and the digest may ask often.
  */
 export async function upcoming(ctx: WorkCtx, from: number, to: number, now = Date.now(), scope?: { workspaceId: string; sector: SectorKey }): Promise<PrepUpcoming[]> {
   const workspaces = scope ? new Map([[scope.sector, scope.workspaceId]]) : linkedWorkspaces(ctx)
   if (!workspaces.size || to <= from) return []
-  const events = await owner(ctx).query<LifeEvent[]>('events:range', { from, to, ...(scope ? { sector: scope.sector } : {}) })
+  const client = owner(ctx)
+  const [events, self] = await Promise.all([client.query<LifeEvent[]>('events:range', { from, to, ...(scope ? { sector: scope.sector } : {}) }), ownAddresses(client)])
   const store = new PrepStore(ctx.db)
-  const pages = store.until([...workspaces.values()], to)
+  const pages = store.around([...workspaces.values()], from, to)
   const meetings: PrepUpcoming[] = []
   for (const event of events) {
     const workspaceId = workspaces.get(event.sector)
@@ -400,7 +417,8 @@ export async function upcoming(ctx: WorkCtx, from: number, to: number, now = Dat
     const mine = pages.filter((p) => p.workspaceId === workspaceId)
     const row = mine.find((p) => p.eventId === event._id) ?? null
     const added = row ? row.doc.people : (lastOf(ownPage(event, row), mine)?.doc.people ?? [])
-    const people = peopleOf(event, added)
+    // He is no one else on his own meeting: an event whose only attendee is one of his addresses has no one on it.
+    const people = peopleOf(event, added).filter((p) => !p.address || !self.has(p.address))
     if (!people.length) continue
     meetings.push({
       workspaceId,
@@ -414,4 +432,22 @@ export async function upcoming(ctx: WorkCtx, from: number, to: number, now = Dat
     })
   }
   return meetings.sort((a, b) => a.startsAt - b.startsAt)
+}
+
+/**
+ * His own addresses, lower case, from his mail accounts (as Review reads them, review/gather/calendar.ts). A read
+ * that fails names none: every attendee then counts, as before.
+ */
+async function ownAddresses(client: LifeosClient): Promise<Set<string>> {
+  const out = new Set<string>()
+  try {
+    const accounts = await client.query<{ address?: string; identities?: { address?: string }[] }[]>('mail:accounts', {})
+    for (const a of accounts ?? []) {
+      if (a.address) out.add(a.address.trim().toLowerCase())
+      for (const i of a.identities ?? []) if (i.address) out.add(i.address.trim().toLowerCase())
+    }
+  } catch {
+    // The meetings still list; only his own name may stand among their people.
+  }
+  return out
 }

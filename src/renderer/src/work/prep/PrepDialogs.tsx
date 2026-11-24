@@ -13,11 +13,12 @@ import { Textarea } from "../../components/ui/textarea";
 import { modOrCtrl } from "../../lib/keys";
 import { refusalWords } from "../../lib/settingsHome";
 import { useSessionMetaValue } from "../../lib/tcserver/store";
+import { choose, workViewNow } from "../../lib/workSwitch";
 import { Face } from "../mail/face";
 import { findPeople, pictureOf, type DirectoryPerson } from "../people/model";
 import { useLifeosQuery, type LifeosQuery, type LifeosSession } from "../shell/lifeos";
-import { dropNotes, followUpFromFile, followUpPrep, heldNotes, holdNotes, keepPrepNotes, loadPrep, notesDocPrep, openWorkspaceFile, setPrepPeople } from "./data";
-import { addedKey, namesInvitee, NOTES_FILE_ACCEPT, pickable, returnPicks, samePeople, threadStopped, uploadPercent } from "./model";
+import { dropNotes, followUpFromFile, followUpPrep, heldNotes, holdNotes, keepPrepNotes, loadPrep, notesDocPrep, openNotesDoc, setPrepPeople } from "./data";
+import { addedKey, fileNotes, namesInvitee, NOTES_FILE_ACCEPT, pickable, returnPicks, samePeople, threadStopped, uploadPercent } from "./model";
 
 /**
  * The page's dialogs (docs/agents/work-prep.md "Dialogs"), a chunk of their
@@ -285,13 +286,19 @@ export function NotesDialog({ env, page, onClose }: { env: string; page: PrepPag
         error={error}
         onCancel={saveThenClose}
         onClose={onClose}
+        // His notes document or a recording the page holds are notes too: Follow up needs no typed words beside them.
+        files={fileNotes(page)}
         onFollowUp={(done) => run(() => followUpPrep(env, workspaceId, eventId, restart), done)}
         onFile={(file, done) => {
           setUpload({ name: file.name, progress: null });
           run(() => followUpFromFile(env, workspaceId, eventId, file, { onProgress: (progress) => setUpload({ name: file.name, progress }), restart, typed: text }), done);
         }}
-        // The document is his to write in: it opens beside a new thread, and the page keeps it as the notes.
-        onDocument={(done) => run(async () => openWorkspaceFile(env, await notesDocPrep(env, workspaceId, eventId)), done, "document")}
+        // The document is his to write in: it opens in a Files tab of this meeting's own workspace, dated by the meeting's day, and the page keeps it as the notes.
+        onDocument={(done) => {
+          // The press's own number: if he goes somewhere while the host makes it, it waits on the page's Notes row.
+          const chosen = { mine: choose(), before: workViewNow() };
+          run(async () => openNotesDoc(env, workspaceId, await notesDocPrep(env, workspaceId, eventId, page.event.startsAt), chosen), done, "document");
+        }}
       />
     </Modal>
   );
@@ -314,6 +321,7 @@ export function NotesForm({
   onFollowUp,
   onFile,
   onDocument,
+  files = false,
 }: {
   text: string;
   setText: (text: string) => void;
@@ -328,10 +336,12 @@ export function NotesForm({
   onFollowUp: (done: () => void) => void;
   onFile: (file: File, done: () => void) => void;
   onDocument: (done: () => void) => void;
+  /** the page already holds a file of the notes, so Follow up needs no words in the field */
+  files?: boolean;
 }) {
   const close = useModalClose();
   const input = useRef<HTMLInputElement>(null);
-  const empty = !text.trim();
+  const empty = !text.trim() && !files;
   const busy = pending !== null;
   // The work is done by the time this runs: the shell plays its exit, then the page forgets the dialog, so it can open again.
   const done = () => (close ? close(onClose) : onClose());

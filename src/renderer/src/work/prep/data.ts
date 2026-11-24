@@ -1,8 +1,10 @@
 import { useEffect, useMemo, useSyncExternalStore } from "react";
 import type { PrepAddedPerson, PrepAhead, PrepPage } from "@shared/contract-work-prep";
+import type { CanvasSource } from "@shared/work";
 import { attachmentSettings, blobSource, formatBytes, uploadFile, type UploadProgress } from "../../lib/attachmentUpload";
 import { registry } from "../../lib/connection";
 import { refusalWords } from "../../lib/settingsHome";
+import { stillChosen, type OpenWorkView } from "../../lib/workSwitch";
 
 /**
  * The window's copy of each meeting's page (the host's `work.prep.page`,
@@ -146,9 +148,13 @@ export function resetPrep(): void {
 export const briefPrep = async (environmentId: string, workspaceId: string, eventId: string, restart = false): Promise<string> =>
   (await ask<{ sessionId: string }>(environmentId, "work.prep.brief", { workspaceId, eventId, ...(restart ? { restart } : {}) })).sessionId;
 
-/** Keeps his notes with the page (empty text takes them back). `dropFile`: a recording that never arrived or could not be read is no notes. */
-export async function keepPrepNotes(environmentId: string, workspaceId: string, eventId: string, text: string, dropFile = false): Promise<void> {
-  holdPrep((await ask<{ page: PrepPage }>(environmentId, "work.prep.notes", { workspaceId, eventId, text, ...(dropFile ? { dropFile } : {}) })).page);
+/**
+ * Keeps his notes with the page (empty text takes them back). `dropItem`: the meeting an upload went to never got
+ * its file, or could not read it, so it is no notes; the host lets go of that meeting alone, and keeps the words it
+ * holds (another window may have kept newer ones than this one had).
+ */
+export async function keepPrepNotes(environmentId: string, workspaceId: string, eventId: string, text: string, dropItem?: string): Promise<void> {
+  holdPrep((await ask<{ page: PrepPage }>(environmentId, "work.prep.notes", { workspaceId, eventId, text, ...(dropItem ? { dropFile: true, itemId: dropItem } : {}) })).page);
 }
 
 /** Follow up: the host starts the follow-up thread from the notes, or answers the one still working. `restart`: the window knows that thread stopped. */
@@ -180,8 +186,8 @@ export async function followUpFromFile(
     const { meeting } = await ask<{ meeting: { status: string; error?: string | null } }>(environmentId, "work.meetings.start", { itemId, source: { at: "file", host: environmentId, path: landed.path } });
     if (meeting.status === "failed") throw new Error(meeting.error?.trim() || "This host could not read the file.");
   } catch (err) {
-    // The file never arrived, or the host could not read it: it is no notes. What he typed stays; the page offers Add notes or Follow up as before.
-    await keepPrepNotes(environmentId, workspaceId, eventId, opts.typed ?? "", true).catch(() => undefined);
+    // The file never arrived, or the host could not read it: this upload's meeting is no notes. What he typed stays; the page offers Add notes or Follow up as before.
+    await keepPrepNotes(environmentId, workspaceId, eventId, opts.typed ?? "", itemId).catch(() => undefined);
     throw err;
   } finally {
     void loadPrep(environmentId, workspaceId, eventId);
@@ -202,22 +208,35 @@ export async function setPrepAhead(environmentId: string, workspaceId: string, e
   await loadPrep(environmentId, workspaceId, eventId);
 }
 
+/** A day as the templates fill `{{Date}}` from it: "2026-11-20", on this window's clock. */
+export const localDay = (ms: number): string => {
+  const d = new Date(ms);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+};
+
 /**
  * Write in a document: the host makes the meeting's notes file from the job's
- * Meeting notes template and keeps it as the page's notes. Answers the file,
- * for the window to open.
+ * Meeting notes template and keeps it as the page's notes, dated by the
+ * meeting's own day (Friday's meeting written up on Monday says Friday).
+ * Answers the file, for the window to open.
  */
-export async function notesDocPrep(environmentId: string, workspaceId: string, eventId: string): Promise<{ path: string; title: string }> {
-  const d = new Date();
-  const today = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-  const out = await ask<{ page: PrepPage; source: { at: string; path?: string }; title: string }>(environmentId, "work.prep.notesDoc", { workspaceId, eventId, today });
+export async function notesDocPrep(environmentId: string, workspaceId: string, eventId: string, meetingAt: number): Promise<CanvasSource> {
+  const out = await ask<{ page: PrepPage; source: CanvasSource; title: string }>(environmentId, "work.prep.notesDoc", { workspaceId, eventId, today: localDay(meetingAt) });
   holdPrep(out.page);
-  if (out.source.at !== "file" || !out.source.path) throw new Error("The notes document is not a file this window can open.");
-  return { path: out.source.path, title: out.title };
+  if (out.source.at !== "file") throw new Error("The notes document is not a file this window can open.");
+  return out.source;
 }
 
-/** Opens a file of the workspace's folder in a new thread's canvas, as a file dropped on a view opens: nothing runs until he sends. */
-export async function openWorkspaceFile(environmentId: string, file: { path: string; title: string }): Promise<void> {
-  const { openOutside } = await import("../canvas/openOutside");
-  await openOutside({ at: "new" }, [{ name: file.title, path: file.path, origin: environmentId }]);
+/**
+ * Opens his notes document in a Files tab of the meeting's own workspace, through Files' way in from another screen
+ * (`openInFiles`): the file is opened where it is, in that workspace and no other, whichever job is in front by the
+ * time the host answers. `chosen`: the number the press took (`choose`) and the view it saw; when he has gone
+ * somewhere since, nothing opens, and the page's Notes row holds the document.
+ */
+export async function openNotesDoc(environmentId: string, workspaceId: string, source: CanvasSource, chosen?: { mine: number; before: OpenWorkView | null }): Promise<void> {
+  if (chosen && !stillChosen(chosen.mine, chosen.before, workspaceId)) return;
+  const { openInFiles } = await import("../files/openFrom");
+  await openInFiles({ id: workspaceId, environmentId }, { ref: source, name: source.at === "file" ? fileName(source.path) : "Notes" });
 }
+
+const fileName = (path: string): string => path.split(/[\\/]/).pop() || path;
