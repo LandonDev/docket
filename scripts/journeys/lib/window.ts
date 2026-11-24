@@ -1,5 +1,6 @@
 import { writeFileSync } from 'node:fs'
 import { attach, sleep, type Cdp } from '../../e2e-work-lib'
+import { AppOpenProof } from './appOpen'
 
 export async function until(label: string, ms: number, test: () => unknown | Promise<unknown>, signal?: AbortSignal): Promise<void> {
   const end = Date.now() + ms
@@ -35,6 +36,7 @@ const PUNCTUATION: Record<string, [string, number]> = {
 
 export class Window {
   readonly hostErrors: string[] = []
+  readonly appOpen = new AppOpenProof()
 
   private constructor(private readonly cdp: Cdp, private readonly signal: AbortSignal) {}
 
@@ -43,12 +45,15 @@ export class Window {
     const window = new Window(cdp, signal)
     try {
       cdp.onEvent((method, params) => {
-        if (method !== 'Network.webSocketFrameReceived') return
-        const payload = (params as { response?: { payloadData?: string } }).response?.payloadData
+        const sent = method === 'Network.webSocketFrameSent'
+        if (!sent && method !== 'Network.webSocketFrameReceived') return
+        const { requestId, response } = params as { requestId: string; response?: { payloadData?: string } }
+        const payload = response?.payloadData
         if (!payload?.startsWith('{')) return
         try {
-          const { ok, error } = JSON.parse(payload) as { ok?: boolean; error?: string }
-          if (ok === false && typeof error === 'string') window.hostErrors.push(error)
+          const frame = JSON.parse(payload)
+          window.appOpen.frame(requestId, sent, frame)
+          if (!sent && frame.ok === false && typeof frame.error === 'string') window.hostErrors.push(frame.error)
         } catch {
           // A frame from a socket other than the app's request link.
         }
@@ -74,14 +79,28 @@ export class Window {
     this.cdp.close()
   }
 
-  async click({ x, y }: Point, count = 1): Promise<void> {
+  async click({ x, y }: Point, count = 1, button: 'left' | 'right' = 'left'): Promise<void> {
     this.signal.throwIfAborted()
     await this.cdp.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x, y })
     for (let c = 1; c <= count; c++) {
       for (const type of ['mousePressed', 'mouseReleased']) {
-        await this.cdp.send('Input.dispatchMouseEvent', { type, x, y, button: 'left', clickCount: c })
+        await this.cdp.send('Input.dispatchMouseEvent', { type, x, y, button, clickCount: c })
       }
     }
+  }
+
+  async drag(from: Point, to: Point): Promise<void> {
+    this.signal.throwIfAborted()
+    await this.cdp.send('Input.dispatchMouseEvent', { type: 'mouseMoved', ...from })
+    await this.cdp.send('Input.dispatchMouseEvent', { type: 'mousePressed', ...from, button: 'left', buttons: 1, clickCount: 1 })
+    for (let part = 1; part <= 8; part++) {
+      await this.cdp.send('Input.dispatchMouseEvent', {
+        type: 'mouseMoved', buttons: 1,
+        x: from.x + (to.x - from.x) * part / 8,
+        y: from.y + (to.y - from.y) * part / 8
+      })
+    }
+    await this.cdp.send('Input.dispatchMouseEvent', { type: 'mouseReleased', ...to, button: 'left', clickCount: 1 })
   }
 
   centre(selector: string, text?: string): Promise<Point | null> {
@@ -129,13 +148,35 @@ export class Window {
     for (const char of text) await this.key(char === '\n' ? 'Enter' : char)
   }
 
+  async dismissPopups(): Promise<void> {
+    const visible = `[...document.querySelectorAll('[role="menu"], [role="dialog"], [role="alertdialog"]')].some((el) =>
+      el.getClientRects().length && !el.closest('[inert], [aria-hidden="true"]') && !el.hasAttribute('data-ending-style'))`
+    for (let tries = 0; tries < 3 && await this.eval(visible); tries++) await this.key('Escape')
+  }
+
+  async reload(): Promise<void> {
+    this.signal.throwIfAborted()
+    await this.cdp.send('Page.reload')
+  }
+
   async shot(path: string): Promise<void> {
     const { data } = await this.cdp.send('Page.captureScreenshot', { format: 'png' }) as { data: string }
     writeFileSync(path, Buffer.from(data, 'base64'))
   }
 
-  toasts(): Promise<string[]> {
-    return this.eval(`[...document.querySelectorAll('[data-sonner-toast]')].map((t) => t.textContent.trim())`)
+  toasts(newOnly = false): Promise<string[]> {
+    return this.eval(`[...document.querySelectorAll('[data-sonner-toast]')]
+      .filter((t) => !${newOnly} || !window.__journeyOldToasts?.has(t))
+      .map((t) => t.textContent.trim())`)
+  }
+
+  async watchToasts(): Promise<void> {
+    await this.eval(`window.__journeyOldToasts = new Set(document.querySelectorAll('[data-sonner-toast]'))`)
+  }
+
+  tabClosed(name: string): Promise<boolean> {
+    const selector = `[data-files-tab-close][aria-label=${JSON.stringify('Close ' + name)}]`
+    return this.eval(`!document.querySelector(${JSON.stringify(selector)})`)
   }
 
   saveLine(): Promise<string | null> {
@@ -147,6 +188,7 @@ export class Window {
       if (window.__journeyExports) return;
       const create = URL.createObjectURL.bind(URL);
       window.__journeyExports = new Map();
+      window.__journeyDownloads = new Map();
       URL.createObjectURL = (blob) => {
         const url = create(blob);
         if (blob instanceof Blob) window.__journeyExports.set(url, blob);
@@ -154,10 +196,24 @@ export class Window {
       };
       const click = HTMLAnchorElement.prototype.click;
       HTMLAnchorElement.prototype.click = function () {
-        if (!this.download || !window.__journeyExports.has(this.href)) click.call(this);
+        const blob = window.__journeyExports.get(this.href);
+        if (this.download && blob) window.__journeyDownloads.set(this.download, blob);
+        else click.call(this);
       };
     })()`)
-    await this.eval('window.__journeyExports.clear()')
+    await this.eval('window.__journeyExports.clear(); window.__journeyDownloads.clear()')
+  }
+
+  async downloaded(name: string): Promise<Buffer> {
+    let bytes: number[] | undefined
+    await this.until(name + ' download bytes', 12_000, async () => {
+      bytes = await this.eval(`(async () => {
+        const blob = window.__journeyDownloads.get(${JSON.stringify(name)});
+        return blob && Array.from(new Uint8Array(await blob.arrayBuffer()));
+      })()`)
+      return bytes
+    })
+    return Buffer.from(bytes!)
   }
 
   async exported(mime: string): Promise<Buffer> {

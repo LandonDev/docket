@@ -1,13 +1,23 @@
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, realpathSync, rmSync, statSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { parseArgs } from 'node:util'
+import j01 from './J01-deck-title'
+import j02 from './J02-workbook-close'
 import j05 from './J05-document-export'
+import j06 from './J06-new-deck'
+import j07 from './J07-library-text'
+import j08 from './J08-pdf-marks'
 import j10 from './J10-ask-a-pdf'
+import j13 from './J13-rename-open-file'
+import j15 from './J15-trash-and-restore'
+import j17 from './J17-file-actions'
+import j18 from './J18-file-search'
+import j19 from './J19-starred-recent'
 import { mainCheckout, saveResults, walk, type Results } from './lib/record'
 import { Pair, SHAPES, words } from './lib/shape'
 import { writeJourneysTable } from './table'
 
-export const JOURNEYS = [j05, j10]
+export const JOURNEYS = [j01, j02, j05, j06, j07, j08, j10, j13, j15, j17, j18, j19]
 
 export function options(args: string[]) {
   const { values } = parseArgs({

@@ -151,7 +151,7 @@ function kill(pid: number, signal: NodeJS.Signals): void {
 }
 
 /** desk has no CDP and only headless box writes server.json. Find desk's own local listener. */
-function deskPort(inst: Instance): number {
+async function deskPort(inst: Instance, seed: string): Promise<number> {
   const pids = new Set(instancePids(inst.data))
   const sockets = execFileSync('ss', ['-H', '-ltnp'], { encoding: 'utf8', timeout: 3000 })
   const ports = sockets.split('\n').flatMap((line) => {
@@ -159,9 +159,14 @@ function deskPort(inst: Instance): number {
     if (!match || !pids.has(Number(match[2]))) return []
     return [{ port: Number(match[1]), pid: Number(match[2]) }]
   })
-  const owner = ports.find(({ port }) => port === inst.remote)?.pid
-  const local = ports.filter(({ port, pid }) => pid === owner && port !== inst.remote && port !== inst.workPort)
-  return local.length === 1 ? local[0]!.port : 0
+  // The local listener can claim the requested remote port before the remote listener starts.
+  // Either way the local listener answers the app's own status request.
+  const candidates = ports.filter(({ port }) => port !== inst.workPort).sort((a, b) => Number(a.port === inst.remote) - Number(b.port === inst.remote))
+  for (const { port } of candidates) {
+    const status = await rpc<{ environmentId?: string }>({ ...inst, port }, 'remote.status', {}, seed, 1000).catch(() => null)
+    if (status?.environmentId) return port
+  }
+  return 0
 }
 
 export class Pair {
@@ -237,7 +242,7 @@ export class Pair {
       this.win.port ||= (await this.page.eval<number | null>('window.api?.getServerPort?.()')) ?? 0
       const file = join(this.box.data, 'server.json')
       if (!this.box.port && existsSync(file)) this.box.port = (JSON.parse(readFileSync(file, 'utf8')) as { port: number }).port
-      if (this.desk) this.desk.port ||= deskPort(this.desk)
+      if (this.desk) this.desk.port ||= await deskPort(this.desk, this.seed)
       return this.win.port && this.box.port && (!this.desk || this.desk.port)
     })
     await this.page.clickOn('[role="dialog"] button', 'Skip')

@@ -5,10 +5,14 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { expect, it, vi } from 'vitest'
 import { wordBodyLayout } from './J05-document-export'
+import { AppOpenProof } from './lib/appOpen'
 import { dummyLibrary, dummyPdf, fixtures, gioStub, holds } from './lib/files'
-import { mainCheckout, step, walk } from './lib/record'
+import { holderFolder } from './lib/place'
+import { explainsMissingContent } from './lib/search'
+import { cellValue, falseSaveLine } from './lib/sheet'
+import { mainCheckout, step, walk, type Context } from './lib/record'
 import { isolatedEnvironment, SHAPES, type Pair } from './lib/shape'
-import { until } from './lib/window'
+import { until, Window } from './lib/window'
 import { JOURNEYS, options, requireBuild } from './run'
 import { updateJourneysTable } from './table'
 
@@ -202,4 +206,93 @@ it('requires a body font and space between paragraphs in the Word styles', () =>
   expect(wordBodyLayout(old)).toEqual({ font: false, spacing: false })
   expect(wordBodyLayout(fixed)).toEqual({ font: true, spacing: true })
   expect(wordBodyLayout(fixed.replace('w:after="176"', 'w:line="384"'))).toEqual({ font: true, spacing: false })
+})
+
+
+it('routes the three shapes to separate holder folders', () => {
+  const base = { pair: { l1: '/run/win/General', l2: '/run/desk/General' }, workspace: { path: '/run/box/work', name: 'Practice' } }
+  expect(holderFolder({ ...base, shape: 'A' } as Context)).toBe('/run/box/work')
+  expect(holderFolder({ ...base, shape: 'B1' } as Context)).toBe('/run/win/General/Practice')
+  expect(holderFolder({ ...base, shape: 'B2' } as Context)).toBe('/run/desk/General/Practice')
+  expect(() => holderFolder({ ...base, pair: { l1: base.pair.l1 }, shape: 'B2' } as Context)).toThrow('No library for B2')
+})
+
+it('reads a named sheet cell in shared, inline and numeric form', () => {
+  const cells = '<c t="s" r="A1"><v>1</v></c><c r="B1" t="inlineStr"><is><t>Second</t></is></c><c r="A2"><v>42</v></c><c r="A3"/>'
+  const strings = '<si><t>Other</t></si><si><r><t xml:space="preserve">Blue </t></r><r><t>team</t></r></si>'
+  expect(cellValue(cells, strings, 'A1')).toBe('Blue team')
+  expect(cellValue(cells, strings, 'B1')).toBe('Second')
+  expect(cellValue(cells, strings, 'A2')).toBe('42')
+  expect(cellValue(cells, strings, 'A3')).toBeUndefined()
+  expect(cellValue(cells, strings, 'A10')).toBeUndefined()
+})
+
+it('only accepts a saved claim after Enter when the holder has the cell', () => {
+  expect(falseSaveLine('On This Mac', false, false)).toBe(false)
+  expect(falseSaveLine('Saving to This Mac…', true, false)).toBe(false)
+  expect(falseSaveLine('Saved on This Mac; OneDrive uploads it', true, false)).toBe(true)
+  expect(falseSaveLine('Saved to This Mac 4:24 AM', true, true)).toBe(false)
+})
+
+it('requires a search scope line about the omitted content', () => {
+  expect(explainsMissingContent(['Nothing found', 'LifeOS is signed out on This Mac.'])).toBe(false)
+  expect(explainsMissingContent(['Names only for Teams files.'])).toBe(true)
+  expect(explainsMissingContent(['The contents of this library were not searched.'])).toBe(true)
+})
+
+it('tracks a native open answer for the file and the socket that asked', () => {
+  const proof = new AppOpenProof()
+  proof.watch('/run/Practice.txt')
+  const open = (path: string) => ({ id: '1', method: 'work.office.filesOpen', params: { source: { path } } })
+  proof.frame('a', true, open('/run/Other.txt'))
+  proof.frame('a', false, { id: '1', ok: true, result: { opened: true } })
+  expect(proof.answer).toBeUndefined()
+  proof.frame('a', true, open('/run/Practice.txt'))
+  proof.frame('b', false, { id: '1', ok: true, result: { opened: true } })
+  expect(proof.answer).toBeUndefined()
+  proof.frame('a', false, { id: '1', ok: false, error: 'No app' })
+  expect(proof.answer).toEqual({ opened: false, error: 'No app' })
+  proof.watch('/run/Practice.txt')
+  proof.frame('a', true, open('/run/Practice.txt'))
+  proof.frame('a', false, { id: '1', ok: true, result: { opened: true } })
+  expect(proof.answer).toEqual({ opened: true })
+})
+
+it('drives the context menu and selection with mouse events, and reloads the page', async () => {
+  const send = vi.fn(async (_method: string, _params?: unknown) => undefined)
+  const page = Object.assign(Object.create(Window.prototype) as Window, {
+    cdp: { send }, signal: new AbortController().signal
+  })
+  await page.click({ x: 4, y: 5 }, 1, 'right')
+  expect(send.mock.calls).toContainEqual(['Input.dispatchMouseEvent', { type: 'mousePressed', x: 4, y: 5, button: 'right', clickCount: 1 }])
+  send.mockClear()
+  await page.drag({ x: 9, y: 10 }, { x: 17, y: 10 })
+  expect(send.mock.calls).toContainEqual(['Input.dispatchMouseEvent', { type: 'mouseMoved', x: 13, y: 10, buttons: 1 }])
+  expect(send.mock.calls.at(-1)).toEqual(['Input.dispatchMouseEvent', { type: 'mouseReleased', x: 17, y: 10, button: 'left', clickCount: 1 }])
+  await page.reload()
+  expect(send.mock.calls.at(-1)).toEqual(['Page.reload'])
+})
+
+it('reads only the bytes of the named anchor download', async () => {
+  const evaluate = vi.fn(async (_expression: string) => [66, 108, 117, 101])
+  const page = Object.assign(Object.create(Window.prototype) as Window, {
+    cdp: { eval: evaluate }, signal: new AbortController().signal
+  })
+  await expect(page.downloaded('Practice.txt')).resolves.toEqual(Buffer.from('Blue'))
+  expect(evaluate.mock.calls[0]?.[0]).toContain('window.__journeyDownloads.get("Practice.txt")')
+})
+
+
+it('keeps a new toast with the same words as an older toast', async () => {
+  const old = { textContent: 'Did not open' }
+  const fresh = { textContent: 'Did not open' }
+  let nodes = [old]
+  const namespace = {}
+  const page = Object.assign(Object.create(Window.prototype) as Window, {
+    cdp: { eval: async (expression: string) => new Function('window', 'document', 'return ' + expression)(namespace, { querySelectorAll: () => nodes }) }
+  })
+  await page.watchToasts()
+  nodes = [old, fresh]
+  await expect(page.toasts(true)).resolves.toEqual(['Did not open'])
+  await expect(page.toasts()).resolves.toEqual(['Did not open', 'Did not open'])
 })

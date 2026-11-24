@@ -24,7 +24,7 @@ It links to `box` so the workspace can use its files.
 - **B2** is for L2 on `desk`.
 - **V**, **S**, **K**, and **U** are for the Windows VM, sandbox LifeOS,
   a given computer's key, and a browser or guest page, in that order.
-  The first two journeys use A and B1.
+  The tier-1 Files journeys use A, B1 and B2.
 
 Build the worktree with `heavy bunx electron-vite build`, then run this
 from that worktree:
@@ -47,6 +47,28 @@ To add one, make a `scripts/journeys/JNN-<slug>.ts` file, export
 `journey({ id, title, tier, shapes, steps })`, and add it to `JOURNEYS`
 in `run.ts`. Give the last step a name that starts with `end:` and check
 the thing the walk changed.
+
+### Tier-1 Files journeys
+
+| Journey | Shapes | What it checks at the end |
+| --- | --- | --- |
+| J01 | B1, B2 | The holder’s slide XML contains the edited title after closing the tab. |
+| J02 | B1, B2 | The reopened grid and the holder’s workbook agree on A1. Each timed header reading agrees with the holder’s bytes. |
+| J06 | A, B2 | The holder’s new slide contains the text typed before closing mid-word. |
+| J07 | B1, B2 | The holder’s text file contains the edit after closing the tab. |
+| J08 | A, B2 | The reopened PDF shows the highlight and its note. |
+| J13 | A, B2 | The renamed file alone holds the last edit. |
+| J15 | A, B2 | Trash puts a file back. Deleting a file with unsent edits preserves the words or warns before discarding them. |
+| J17 | A, B1, B2 | Each available tab or row action reaches its named result. |
+| J18 | A, B1, B2 | Name and content hits open. The search accounts for any library content it skipped. |
+| J19 | A, B2 | Starred and Recent both list the file after reload. |
+
+Use the same list of IDs with `--shape A,B1`, then with `--shape B2 --desk`.
+Each library journey gets a new folder on its holder. The window reaches
+desk through box. J02 writes `save-lines.jsonl`, J17 writes `actions.jsonl`,
+and J18 writes `search.jsonl` and `search-outcomes.jsonl` beside the pictures.
+The Linux stand-ins can show a native Open in its app refusal. The journey
+records the refusal as a failure when the window offers that action.
 
 ## Running them
 

@@ -3,7 +3,7 @@ import { mkdirSync, writeFileSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import { words, type Cleanup, type Pair, type Shape } from './shape'
 
-type Context = {
+export type Context = {
   pair: Pair
   shape: Shape
   workspace: Awaited<ReturnType<Pair['workspace']>>
