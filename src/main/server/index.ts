@@ -25,12 +25,12 @@ import { networkRefusalOf, refusalCodeOf } from './failureKind'
 import { ClientRequestSchema, type ClientRequest, type ServerFrame, type ServerPush, type ServerResponse } from '@shared/contract'
 import type { SessionChanges, SessionPage } from '@shared/wire'
 import {
-  LOCAL_CAPS,
-  capabilityRefusal,
+  CAPABILITIES,
   CONTRACT_VERSION,
   LOCAL_PRINCIPAL,
   allows,
   principalCaps,
+  requiredCapability,
   type Principal
 } from '@shared/capabilities'
 import { loadEnvironmentId } from './remote/environment'
@@ -44,9 +44,6 @@ import { MasterReleaseWatcher } from '../deployDrift'
 import { usageSamples } from './usageSamples'
 import { AccountSync, accountSyncHooks } from './remote/accountSync'
 import { Peers } from './remote/peers'
-import { Givers } from './devices/giver'
-import { givenHostRefusal, relayedRefusal } from './devices/hostRules'
-import { DeviceIdentities } from './devices/identity'
 import { HarnessSync, handleHarness, harnessSyncDefault } from './remote/harnessSync'
 import { DeployTrigger, Publisher, handleHost, type HostJobs } from './hostJobs'
 import { MemorySync, handleMemory } from './remote/memorySync'
@@ -337,7 +334,7 @@ function requireWorkspacePath(path: string | undefined): string {
 
 /** Who a socket's request is from, as Work's modules read it (work/modules.ts `Caller`). */
 function workCaller(principal: Principal): WorkCaller {
-  return principal.kind === 'local' ? { kind: 'local', caps: LOCAL_CAPS } : { kind: 'remote', caps: principal.caps }
+  return principal.kind === 'local' ? { kind: 'local', caps: CAPABILITIES } : { kind: 'remote', caps: principal.caps }
 }
 
 /** Which rows are Work's, for the gate that keeps code settings off a Work project (workProjectGate.ts). */
@@ -735,8 +732,7 @@ export async function startServer(
     { store, environmentId },
     {
       onOpen: (id) => {
-        // The Mac claims the giver before its first sync after the upgrade, so its pushes are the giver's (devices/giver.ts).
-        void claimGiverOn(id).finally(() => void accountSync.syncWith(id))
+        void accountSync.syncWith(id)
         void accountSync.pushHeadroom(id)
         void harnessSync.syncWith(id, 'link-up')
         void memorySync.syncWith(id, 'link-up')
@@ -1509,27 +1505,6 @@ export async function startServer(
   }
   // Keys, pairings and tickets for the fixed port; made here because live video's sockets check their tickets with it.
   const remoteAuth = new RemoteAuth(db)
-  // The giver (devices/giver.ts): the one key that may introduce, hand off or withdraw an account;
-  // the first boot of this build ends older pairing offers so the claim below is the only way in.
-  const givers = new Givers(store, { getKey: (id) => remoteAuth.getKey(id), endOpenPairings: () => remoteAuth.endOpenPairings() })
-  givers.cutOver()
-  const deviceIdentity = new DeviceIdentities()
-  /**
-   * The Mac's claim on a box link, before each sync (devices/giver.ts): repeats
-   * answer ok, a refusal is logged and the sync runs either way. Only a Mac's
-   * desktop claims, so a PC that still holds an old admin key never becomes the giver.
-   */
-  const claimGiverOn = async (id: string): Promise<void> => {
-    if (process.platform !== 'darwin' || !hasDesktop()) return
-    const link = peers.get(id)
-    if (!link?.connected || !link.env.caps.includes('admin') || link.env.caps.includes('device')) return
-    try {
-      const answer = await link.request<{ ok: boolean; error?: string }>('devices.claimGiver', { identity: deviceIdentity.publicIdentity(), name: hostLabel() })
-      if (!answer.ok) console.log(`[devices] ${link.env.name}: not the giver (${answer.error})`)
-    } catch (err) {
-      console.log(`[devices] ${link.env.name}: giver claim failed (${(err as Error).message})`)
-    }
-  }
   // Live video (video/): one relay for this host's streams, their own sockets on both servers, and the
   // sources each part of the host adds (the box's browser, tc-computer's windows, another host's publish).
   const hasDesktop = (): boolean => options.desktop ?? personsDesktop()
@@ -2344,8 +2319,9 @@ export async function startServer(
       // TEMP_CODE_PEER_DELAY_MS (peerDelay.ts): a proof's slow box.
       if (PEER_DELAY_MS > 0) await peerDelay(principal.kind, PEER_DELAY_MS)
       if (principal.kind !== 'local') {
-        const refused = capabilityRefusal(givers.withGive(principal), req) ?? relayedRefusal(principal, req.method) ?? givenHostRefusal(principal, req.method)
-        if (refused) return sendFrame({ id: req.id, ok: false, error: refused })
+        const need = requiredCapability(req)
+        if (need === 'local') return sendFrame({ id: req.id, ok: false, error: `forbidden: ${req.method} is local-only` })
+        if (!allows(principal.caps, need)) return sendFrame({ id: req.id, ok: false, error: `forbidden: ${req.method} needs ${need}` })
       }
       // An app.* call answers as the thread it names: only with that thread's own bridge token (apptools.ts).
       const notOwn = bridgeCallRefusal(req.method, (raw as { params?: unknown }).params)
@@ -2499,13 +2475,6 @@ export async function startServer(
           if (served) return sendFrame({ id: req.id, ok: true, result: await served })
         }
         if (req.method === 'deploy.master') return sendFrame({ id: req.id, ok: true, result: masterRelease.current() })
-        // The giver (devices/giver.ts): the Mac's claim on its first link after the upgrade, the record, the box's own move.
-        if (req.method === 'devices.claimGiver') {
-          if (principal.kind !== 'remote') throw new Error('forbidden: devices.claimGiver is for another host\'s main process')
-          return sendFrame({ id: req.id, ok: true, result: givers.claim(principal, req.params.identity, req.params.name) })
-        }
-        if (req.method === 'devices.giver') return sendFrame({ id: req.id, ok: true, result: { giver: givers.giver(), upgradeAt: givers.upgradeAt() } })
-        if (req.method === 'devices.setGiver') return sendFrame({ id: req.id, ok: true, result: { giver: givers.set(req.params.keyId, undefined, req.params.name) } })
         // Work: the switch, the bridge's tool methods and every pillar's own methods, through the one mount.
         if (isWorkMethod(req.method)) {
           const worked = await work.handle(req, principal, workSocket)

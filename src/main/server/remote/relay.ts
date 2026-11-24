@@ -1,5 +1,5 @@
 import { randomBytes } from 'node:crypto'
-import { capabilityRefusal, type Principal } from '@shared/capabilities'
+import { allows, requiredCapability, type Principal } from '@shared/capabilities'
 import { ClientRequestSchema, type ClientRequest, type ServerFrame, type ServerPush } from '@shared/contract'
 import { shortHostName } from '@shared/hostNames'
 import {
@@ -408,8 +408,9 @@ export class HostRelay {
       return
     }
     const req = parsed.data
-    const refused = capabilityRefusal(lane.principal.caps, req)
-    if (refused) return this.send(lane, { id: req.id, ok: false, error: refused })
+    const need = requiredCapability(req)
+    if (need === 'local') return this.send(lane, { id: req.id, ok: false, error: `forbidden: ${req.method} is local-only` })
+    if (!allows(lane.principal.caps, need)) return this.send(lane, { id: req.id, ok: false, error: `forbidden: ${req.method} needs ${need}` })
     if ((RELAY_BOX_LOCAL as readonly string[]).includes(req.method)) {
       if (req.method === 'remote.push.activity') return this.send(lane, { id: req.id, ok: true, result: null })
       try {

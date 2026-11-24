@@ -418,11 +418,6 @@ export class RemoteAuth {
     return rows.map(pairingOf)
   }
 
-  /** End every open pairing offer (the giver cut-over, devices/giver.ts); returns how many. */
-  endOpenPairings(): number {
-    return Number(this.db.prepare(`DELETE FROM remote_pairings WHERE consumed_at IS NULL`).run().changes)
-  }
-
   revokePairing(id: string): boolean {
     return (
       this.db.prepare(`DELETE FROM remote_pairings WHERE id = ? AND consumed_at IS NULL`).run(id).changes > 0

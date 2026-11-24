@@ -18,34 +18,11 @@
 - Keys (remote/auth.ts): `tc_<id>.<secret>`, scrypt at rest, each with an
   audience (`client` for phones, browsers and desktops on `/ws` and `/api/*`;
   `mcp` for bots on `/mcp`, capped at read,operate) and a capability set from
-  read | operate | approve | admin | give | device. Every RPC has a row in
+  read | operate | approve | admin. Every RPC has a row in
   src/shared/capabilities.ts (`local` rows, every `app.*`, lsp, dap, idea,
   providers.update, fim and stall.report, never run for a remote caller);
   `session.create` with `permission: 'auto'` and `session.permission` need
-  approve. The gate is `capabilityRefusal`, run in `attach()` before any
-  handler and again on every relayed lane (remote/relay.ts).
-- **`admin` never implies `give` or `device`** (docs/agents/pc-setup.md).
-  `give` is credential control: `accounts.push`, `.confirm`, `.released`,
-  `.removed` and a pull with `takeOver`. No key row stores it: the box's
-  giver record names one key (devices/giver.ts), and that key acts with
-  `give` while the record stands. The Mac claims it on its first link after
-  the upgrade (`devices.claimGiver`: none set, an admin key made before the
-  upgrade stamp `devices.upgradeAt`; that first boot also ends every older
-  pairing offer); only `tc-local devices.setGiver` on the box moves it. The
-  box's admin keys on 2026-11-23: one, the Mac's.
-- **`device`** is a given computer's key: its admin-tier calls are the
-  `DEVICE_METHODS` allowlist (its peer link, presence, relayed lanes,
-  forwarded ports, cross-host reports, the account pull and headroom, the
-  rules exchange, its letters), `DEVICE_REFUSED` is refused whatever else
-  it holds (LifeOS tokens, add-on grant writes, `linear.setToken`), and the
-  rest follow its other caps (operate, approve), so its window still runs
-  box threads. `peers.ts` opens a link for an admin or a device key.
-- **The destination decides.** A relayed lane's principal carries `via`
-  (relayServe.ts); its host runs a request only when RELAY_METHODS carries
-  the method, whatever caps the box named (devices/hostRules.ts
-  `relayedRefusal`). `work.lifeos.setToken` is local-only. On a given
-  computer `GIVEN_HOST_LOCAL` (the LifeOS session, every credential method)
-  is refused to every remote principal.
+  approve. The gate runs in `attach()` before any handler.
 - The path fence (remote/fence.ts, R2 H1/H2): for every remote principal,
   each method that names a path or cwd (`fs.*`, `git.*`, `github.*`,
   `search.project`, `workspace.create`, `session.create`'s cwd, logo and

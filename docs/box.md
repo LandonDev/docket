@@ -636,17 +636,10 @@ temp-code `src/main/server/remote/{peers,accountSync}.ts`):
   until then.
 - **A host accepts account state only for accounts it already has.** What
   the box sends the Mac unasked (an `account` rotation push) or in answer to
-  a pull lands only on a row already on file, matched by account id alone
-  (an email that names another row is refused, devices/admission.ts), and
-  only from the owner it names; a peer cannot plant an account. A copy that
-  carries a refresh token is refused, never quietly stripped, unless it is a
-  handoff from the giver or the answer to the giver's own takeover. A new
-  account reaches a host only over `accounts.push` from the giver's key
-  (`give`, docs/agents/pc-setup.md): the Mac, to the box. A handoff names an
-  id, and its `accounts.released` or `accounts.confirm` must name the same id
-  and the grant's refresh fingerprint, or it is refused as stale. Neither
-  side hands out the grant its own CLI is signed in with, and a lineage
-  check that fails counts as that grant. A re-pair that kept the routes but
+  a pull lands only on a row already on file, matched by account id or
+  email, and only from the owner it names; a peer cannot plant an account.
+  A new account reaches a host only over `accounts.push` from a holder of
+  its admin key (the Mac, to the box). A re-pair that kept the routes but
   changed the key rebuilds the Mac's link (remote/peers.ts), so sync comes
   back after a revoked key.
 - **Removals follow the owner.** Remove an account on the Mac's Accounts

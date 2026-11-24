@@ -291,11 +291,8 @@ try {
   check('A: its stored copy holds the refresh token', readSecret(A)?.refreshToken === 'R1')
 
   // ── 2. B pairs as an admin host; A's main process links to B and pushes an access copy; B's own account never lands on A ──
-  const bKey = (await rpc(b, 'remote.keys.create', { name: 'A (e2e)', audience: 'client', caps: ['read', 'operate', 'approve', 'admin'] })) as { token: string; key: { id: string } }
+  const bKey = (await rpc(b, 'remote.keys.create', { name: 'A (e2e)', audience: 'client', caps: ['read', 'operate', 'approve', 'admin'] })) as { token: string }
   check('B: issued an admin key', typeof bKey?.token === 'string' && bKey.token.startsWith('tc_'))
-  // Only the giver's key introduces an account (devices/giver.ts). A Linux stand-in never claims it, and its
-  // key is newer than B's upgrade stamp, so B names it the giver itself, as tc-local devices.setGiver would.
-  await rpc(b, 'devices.setGiver', { keyId: bKey.key.id, name: 'A (e2e)' })
   await rpc(a, 'remote.environments.add', { url: `http://127.0.0.1:${B.remote}`, key: bKey.token, name: 'B' })
   await until('A links to B', 30_000, async () => (await snapshot(a)).peers?.[bEnv]?.connected === true)
   check('A: the main process holds a connected link to B', true)
