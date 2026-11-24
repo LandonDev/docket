@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto'
 import { WebSocket } from 'ws'
 import type { PeerState } from '@shared/accounts'
-import { allows } from '@shared/capabilities'
+import { opensPeerLink } from '@shared/capabilities'
 import type { ServerFrame, ServerPush } from '@shared/contract'
 import type { SavedEnvironment } from '@shared/contract-remote'
 import type { BuildFacts } from '@shared/deployDrift'
@@ -285,7 +285,7 @@ export class Peers {
   refresh(): void {
     const wanted = new Map(
       listEnvironments(this.ctx.store)
-        .filter((e) => allows(e.caps, 'admin'))
+        .filter((e) => opensPeerLink(e.caps))
         .map((e) => [e.id, e] as const)
     )
     for (const [id, link] of this.links) {

@@ -28,10 +28,15 @@
  *  - the owner goes down and the copy on A runs out: A reports the state and
  *    never presents a refresh token
  * Run: bun scripts/e2e-accounts-sync.ts   (build first: electron-vite build)
+ *   --behind: A plays a Mac one release behind (no giver claim, no handoff ids:
+ *   TEMP_CODE_E2E_OLD_WIRE) against a new B in its legacy stretch (A's key counts
+ *   as made before the upgrade: TEMP_CODE_DEVICES_UPGRADE_AT), and every check
+ *   below must pass the same.
  * Nothing here touches /Applications/TempCode.app, its userData, the real
  * Aliax vault, the real ~/.codex, the gateway marker or the Keychain.
  */
 import { randomBytes } from 'node:crypto'
+const BEHIND = process.argv.includes('--behind')
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { createServer, type IncomingMessage } from 'node:http'
 import { homedir, tmpdir } from 'node:os'
@@ -252,7 +257,7 @@ const until = async (label: string, ms: number, test: () => Promise<boolean> | b
 const logHas = (inst: Inst, text: string): boolean => existsSync(inst.log) && readFileSync(inst.log, 'utf8').includes(text)
 const logCount = (inst: Inst, text: string): number => (existsSync(inst.log) ? readFileSync(inst.log, 'utf8').split(text).length - 1 : 0)
 const rpc = (cdp: Cdp, method: string, params?: unknown): Promise<unknown> =>
-  cdp.eval(`window.__monocode.registry.linkOf('local').request(${JSON.stringify(method)}, ${JSON.stringify(params ?? null)})`)
+  cdp.eval(`window.__monocode.registry.linkOf('local').request(${JSON.stringify(method)}, ${JSON.stringify(params ?? {})})`)
 interface Profile {
   name: string
   owner?: string
@@ -277,9 +282,9 @@ async function connectWindow(inst: Inst, label: string): Promise<{ cdp: Cdp; env
   return { cdp, env }
 }
 
-launch(A)
+launch(A, BEHIND ? { TEMP_CODE_E2E_OLD_WIRE: '1' } : {})
 // B swallows its first answer to accounts.confirm: the takeover race below.
-launch(B, { TEMP_CODE_DROP_ANSWERS: 'accounts.confirm:1' })
+launch(B, { TEMP_CODE_DROP_ANSWERS: 'accounts.confirm:1', ...(BEHIND ? { TEMP_CODE_DEVICES_UPGRADE_AT: String(9e15) } : {}) })
 try {
   const { cdp: a, env: aEnv } = await connectWindow(A, 'A')
   const { cdp: b, env: bEnv } = await connectWindow(B, 'B')
@@ -291,8 +296,11 @@ try {
   check('A: its stored copy holds the refresh token', readSecret(A)?.refreshToken === 'R1')
 
   // ── 2. B pairs as an admin host; A's main process links to B and pushes an access copy; B's own account never lands on A ──
-  const bKey = (await rpc(b, 'remote.keys.create', { name: 'A (e2e)', audience: 'client', caps: ['read', 'operate', 'approve', 'admin'] })) as { token: string }
+  const bKey = (await rpc(b, 'remote.keys.create', { name: 'A (e2e)', audience: 'client', caps: ['read', 'operate', 'approve', 'admin'] })) as { token: string; key: { id: string } }
   check('B: issued an admin key', typeof bKey?.token === 'string' && bKey.token.startsWith('tc_'))
+  // Only the giver's key introduces an account (devices/giver.ts). A Linux stand-in never claims it, and its
+  // key is newer than B's upgrade stamp, so B names it the giver itself, as tc-local devices.setGiver would.
+  if (!BEHIND) await rpc(b, 'devices.setGiver', { keyId: bKey.key.id, name: 'A (e2e)' })
   await rpc(a, 'remote.environments.add', { url: `http://127.0.0.1:${B.remote}`, key: bKey.token, name: 'B' })
   await until('A links to B', 30_000, async () => (await snapshot(a)).peers?.[bEnv]?.connected === true)
   check('A: the main process holds a connected link to B', true)
@@ -301,7 +309,7 @@ try {
   check('B: the account arrived as a copy refreshed by A', onB?.owner === aEnv && !onB.static, JSON.stringify(onB))
   check('B: the copy carries no refresh token', readSecret(B)?.refreshToken === undefined && readSecret(B)?.accessToken === 'T1')
   check('A: still owns the grant', profileIn(await snapshot(a))?.owner === undefined && readSecret(A)?.refreshToken === 'R1')
-  await until('A refuses the account B offered on the pull', 30_000, () => logHas(A, `claude-code ${PLANTED} from B: refused (unknown-account)`))
+  await until('A refuses the account B offered on the pull', 30_000, () => logHas(A, `claude-code ${PLANTED} from ${bEnv}: not admitted (unknown-account)`))
   check('A: the account B shares that A never had is refused on the pull, and is not on file', profileIn(await snapshot(a), PLANTED) === undefined)
 
   // ── 3a. an old-version handoff: B's copy is fresher than the grant A sends; B says stale and A keeps its only refresh token ──
@@ -341,9 +349,12 @@ try {
   check('A: holds the new access token and still no refresh token', readSecret(A)?.accessToken === 'T3' && readSecret(A)?.refreshToken === undefined)
   const bReport = (await snapshot(b)).providers.claude.reports.find((r) => r.profileName === ACCOUNT)
   check('B: the usage poll after the rotation is healthy', bReport !== undefined && !bReport.expired, JSON.stringify(bReport))
+  // The admission check (devices/admission.ts) refuses it before it is applied; the pull's own refusals logged the same line, so wait for one more.
+  const stranger = `claude-code ${PLANTED} from ${bEnv}: not admitted (unknown-account)`
+  const strangersBefore = logCount(A, stranger)
   await control('expire?lineage=planted')
   await rpc(b, 'accounts.refresh', { provider: 'claude' })
-  await until('A refuses the pushed stranger', 30_000, () => logHas(A, `claude-code ${PLANTED}: ${bEnv} pushed an account this host never had; refused`))
+  await until('A refuses the pushed stranger', 30_000, () => logCount(A, stranger) > strangersBefore)
   check('fake: B rotated its own account', fake.presented.includes('PR1') && lineages.planted.refresh === 'PR2', JSON.stringify(fake.presented))
   check('A: the push of an account it never had was refused, and it is not on file', profileIn(await snapshot(a), PLANTED) === undefined)
 
@@ -372,7 +383,12 @@ try {
   const ws = (await rpc(b, 'workspace.create', { path: scratch })) as { id: string }
   await rpc(b, 'workspace.setAccounts', { workspaceId: ws.id, pins: { claude: EXTRA } })
   const thread = (await rpc(b, 'session.create', { cwd: scratch, workspaceId: ws.id, provider: 'claude', model: 'claude-haiku-5-5', title: 'pinned to the extra account' })) as { id: string }
-  await until('B: the thread shows the pinned account', 10_000, async () => (await sessionOn(b, thread.id))?.account === EXTRA)
+  // This check fails on master as it stands (2026-11-24, 353ab041f): it is recorded, and the proof goes on to the rest.
+  try {
+    await until('B: the thread shows the pinned account', 10_000, async () => (await sessionOn(b, thread.id))?.account === EXTRA)
+  } catch {
+    check('B: the thread shows the pinned account (fails on master too)', false, JSON.stringify(await sessionOn(b, thread.id)))
+  }
   const deleted = (await rpc(a, 'accounts.delete', { service: 'claude-code', name: EXTRA })) as { ok: boolean }
   check('A: the delete answered ok', deleted.ok === true, JSON.stringify(deleted))
   check('A: the snapshot no longer lists the account, with no refresh or sync asked for', profileIn(await snapshot(a), EXTRA) === undefined)

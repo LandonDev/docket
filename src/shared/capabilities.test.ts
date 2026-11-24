@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { ClientRequestSchema } from './contract'
-import { METHOD_CAPABILITY, allows, normalizeCaps, requiredCapability } from './capabilities'
+import { DEVICE_METHODS, METHOD_CAPABILITY, allows, capabilityRefusal, normalizeCaps, opensPeerLink, principalCaps, requiredCapability, LOCAL_PRINCIPAL } from './capabilities'
 import { pillarOfMethod } from './work/wire'
 
 const methods = (ClientRequestSchema.options as { shape: { method: { value: string } } }[]).map(
@@ -38,6 +38,8 @@ describe('METHOD_CAPABILITY', () => {
         ...methods.filter((m) => m.startsWith('remote.environments.')),
         // Where sign-ins are handed to, and a sync on demand, are this machine's to decide (thread V).
         'accounts.sync',
+        // The giver moves only by the box's own say (contract-devices.ts).
+        'devices.setGiver',
         'accounts.setHome',
         'accounts.delete',
         // Only the desktop starts a thread's move between hosts (contract-session-move.ts).
@@ -130,13 +132,15 @@ describe('METHOD_CAPABILITY', () => {
         // A phone's own push registration (remote.push.*) is the key's row: read.
         ...methods.filter((m) => m.startsWith('remote.') && !m.startsWith('remote.environments.') && !m.startsWith('remote.push.')),
         // A credential moves between hosts only under an admin key (thread V).
-        'accounts.push',
         'accounts.pull',
-        'accounts.confirm',
-        'accounts.released',
-        'accounts.removed',
         // A host's rate-limit picture crosses only between the hosts' main processes.
         'accounts.headroom',
+        'devices.claimGiver',
+        'devices.giver',
+        'devices.challenge',
+        'devices.mail',
+        'devices.ack',
+        'devices.list',
         // A peer asks this host to refresh its own accounts' usage, for the quota cooldowns across hosts.
         'accounts.refreshLocal',
         // The harness config crosses between hosts, and its status and settings are changed, only under an admin key.
@@ -236,6 +240,13 @@ describe('allows', () => {
     expect(allows(['admin'], 'approve')).toBe(true)
     expect(allows(['admin'], 'operate')).toBe(true)
   })
+  it('admin never implies give or device; the loopback holds give and never device', () => {
+    expect(allows(['admin'], 'give')).toBe(false)
+    expect(allows(['admin'], 'device')).toBe(false)
+    expect(allows(['give'], 'give')).toBe(true)
+    expect(principalCaps(LOCAL_PRINCIPAL)).toContain('give')
+    expect(principalCaps(LOCAL_PRINCIPAL)).not.toContain('device')
+  })
   it('normalizeCaps adds read, drops junk and sorts', () => {
     expect(normalizeCaps(['operate', 'bogus', 'operate'])).toEqual(['operate', 'read'])
     expect(normalizeCaps([])).toEqual(['read'])
@@ -263,5 +274,58 @@ describe('computer use (contract-computer.ts)', () => {
     for (const m of ['computer.history.read', 'computer.history.step'] as const) expect(METHOD_CAPABILITY[m]).toBe('local')
     for (const m of ['computer.settings.get', 'computer.settings.set', 'computer.verdicts.forget', 'computer.permissions', 'computer.service.retry'] as const)
       expect(METHOD_CAPABILITY[m]).toBe('local')
+  })
+})
+
+describe('the giver and given computers (pc-setup.md)', () => {
+  const req = (method: string, params?: unknown) => ({ method, params }) as Parameters<typeof capabilityRefusal>[1]
+  const ADMIN = ['admin', 'read'] as const
+  const GIVER = ['admin', 'give', 'read'] as const
+  const DEVICE = ['device', 'operate', 'approve', 'read'] as const
+
+  it('introducing, handing off and withdrawing an account is the giver\'s alone', () => {
+    expect(withCap('give')).toEqual(['accounts.confirm', 'accounts.push', 'accounts.released', 'accounts.removed', 'devices.activate', 'devices.post', 'devices.remove'])
+    for (const m of withCap('give')) {
+      expect(capabilityRefusal([...ADMIN], req(m))).toMatch(/needs give/)
+      expect(capabilityRefusal([...GIVER], req(m))).toBeNull()
+      expect(capabilityRefusal([...DEVICE], req(m))).toMatch(/needs give/)
+    }
+  })
+
+  it('a pull is any admin link\'s, a pull that takes a grant over is the giver\'s', () => {
+    expect(requiredCapability(req('accounts.pull', {}))).toBe('admin')
+    expect(requiredCapability(req('accounts.pull', { takeOver: true }))).toBe('give')
+    expect(capabilityRefusal([...ADMIN], req('accounts.pull', { takeOver: true }))).toMatch(/needs give/)
+    expect(capabilityRefusal([...DEVICE], req('accounts.pull', { takeOver: true }))).toMatch(/needs give/)
+    expect(capabilityRefusal([...DEVICE], req('accounts.pull', {}))).toBeNull()
+  })
+
+  it('a device key cannot mint keys or pairings, change policy, edit add-ons or read LifeOS tokens', () => {
+    for (const m of ['remote.keys.create', 'remote.pairings.create', 'remote.keys.revoke', 'remote.settings.set', 'addons.set', 'addons.remove', 'skills.set', 'addons.grant.setFields', 'addons.grant.refresh', 'harness.file', 'memory.exchange', 'away.apply', 'session.export.begin', 'thread.start', 'work.lifeos.setToken', 'work.lifeos.jwt', 'work.lifeos.signOut', 'linear.setToken']) {
+      expect(capabilityRefusal([...DEVICE], req(m)), m).not.toBeNull()
+    }
+    // the same refusals hold even for a device key that somehow also holds admin
+    expect(capabilityRefusal(['device', 'admin', 'read'], req('remote.keys.create'))).not.toBeNull()
+    expect(capabilityRefusal(['device', 'admin', 'approve', 'read'], req('work.lifeos.jwt'))).not.toBeNull()
+  })
+
+  it('a device key keeps its peer link and the window\'s ordinary calls', () => {
+    for (const m of DEVICE_METHODS) {
+      if (!(m in METHOD_CAPABILITY)) continue
+      expect(capabilityRefusal([...DEVICE], req(m)), m).toBeNull()
+    }
+    expect(capabilityRefusal([...DEVICE], req('session.send'))).toBeNull()
+    expect(capabilityRefusal([...DEVICE], req('session.approve'))).toBeNull()
+    expect(capabilityRefusal(['device', 'read'], req('session.send'))).toMatch(/needs operate/)
+  })
+
+  it('a peer link opens for an admin key or a device key, never a client key', () => {
+    expect(opensPeerLink(['admin', 'read'])).toBe(true)
+    expect(opensPeerLink(['device', 'read'])).toBe(true)
+    expect(opensPeerLink(['operate', 'approve', 'read'])).toBe(false)
+  })
+
+  it('every device method is a real contract method or one this build adds', () => {
+    for (const m of DEVICE_METHODS) expect(m in METHOD_CAPABILITY || m.startsWith('devices.'), m).toBe(true)
   })
 })

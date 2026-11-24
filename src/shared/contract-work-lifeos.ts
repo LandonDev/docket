@@ -81,7 +81,8 @@ export const LIFEOS_CAPS = {
   'work.lifeos.status': 'read',
   'work.lifeos.pairStart': 'admin',
   'work.lifeos.pairCancel': 'admin',
-  'work.lifeos.setToken': 'admin',
+  // Local only (pc-setup.md): a remote key never writes this host's LifeOS session, relayed or not.
+  'work.lifeos.setToken': 'local',
   'work.lifeos.signOut': 'admin',
   // A LifeOS JWT can do what the owner does there, his own send included: the press is approve's.
   'work.lifeos.jwt': 'approve',
@@ -89,4 +90,4 @@ export const LIFEOS_CAPS = {
 } satisfies CapsOf<typeof LifeosRequestSchemas>
 
 /** A device token is set on the host that keeps it, never carried through another; a JWT crosses to a far host only while its screen is unlocked. */
-export const LIFEOS_RELAY = { 'work.lifeos.setToken': 'never', 'work.lifeos.jwt': 'screen' } satisfies RelayOf<typeof LifeosRequestSchemas>
+export const LIFEOS_RELAY = { 'work.lifeos.jwt': 'screen' } satisfies RelayOf<typeof LifeosRequestSchemas>
