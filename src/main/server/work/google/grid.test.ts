@@ -1,5 +1,5 @@
 import { DatabaseSync } from 'node:sqlite'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { hashCells } from 'work-kit/sheet/source'
 import type { SheetMutationJson } from '@shared/contract-work-sheets'
 import type { WorkCtx } from '../modules'
@@ -101,6 +101,39 @@ describe('a Google Sheet in the grid', () => {
     const both = await Promise.all([oneReview(key, () => review(ctx, ref, { changeSet: twice.changeSet }, 'accept')), oneReview(key, () => review(ctx, ref, { changeSet: twice.changeSet }, 'accept'))])
     expect(both.map((b) => b.written)).toEqual([1, 0])
     expect(writes()).toBe(2)
+  })
+
+  it("writes an approved cell only where it stood: a row inserted above, or a tab replaced under its title, makes it a conflict", async () => {
+    cells().push(['Misc', null], ['Spare', null])
+    // Misc's cost (B6) is blank, and he approves 80 there.
+    const { changeSet } = await suggest(ctx, ref, 'agent:env_box:t1', 'tidy', [{ sheet: 'Q1', row: 4, col: 1, value: { v: 80 } }])
+    // A co-author inserts a row with a blank cost above Misc: the cell at that address is still blank, but it is Extra's.
+    cells().splice(4, 0, ['Extra', null])
+    expect(await review(ctx, ref, { changeSet }, 'accept')).toEqual({ written: 0, conflicts: 1 })
+    expect(writes()).toBe(0)
+    // A tab of the same title made again, its cells alike: another tab.
+    const again = await suggest(ctx, ref, 'agent:env_box:t1', 'tidy', [{ sheet: 'Q1', row: 5, col: 1, value: { v: 80 } }])
+    fake.files.get('sh1')!.sheet!.tabs[0] = { ...fake.files.get('sh1')!.sheet!.tabs[0]!, sheetId: 77 }
+    expect(await review(ctx, ref, { changeSet: again.changeSet }, 'accept')).toEqual({ written: 0, conflicts: 1 })
+    expect(writes()).toBe(0)
+    // Where it stood, with an edit elsewhere in its column since: written.
+    const third = await suggest(ctx, ref, 'agent:env_box:t1', 'tidy', [{ sheet: 'Q1', row: 5, col: 1, value: { v: 80 } }])
+    cells()[1]![1] = 1250
+    expect(await review(ctx, ref, { changeSet: third.changeSet }, 'accept')).toEqual({ written: 1, conflicts: 0 })
+    expect(cells()[5]).toEqual(['Misc', 80])
+  })
+
+  it('gives each suggestion its own id, two in the same millisecond on the same cell included', async () => {
+    const now = vi.spyOn(Date, 'now').mockReturnValue(1_800_000_000_000)
+    try {
+      const a = await suggest(ctx, ref, 'agent:env_box:t1', 'tidy', [{ sheet: 'Q1', row: 1, col: 1, value: { v: 1 } }])
+      const b = await suggest(ctx, ref, 'agent:env_box:t1', 'tidy', [{ sheet: 'Q1', row: 1, col: 1, value: { v: 2 } }])
+      expect(a.changeSet).not.toBe(b.changeSet)
+      const rows = ctx.db.prepare('SELECT change_set, proposed, state FROM work_sheets_suggestions WHERE store = ?').all('google:sh1') as { change_set: string; proposed: string; state: string }[]
+      expect(rows.map((r) => [r.change_set === a.changeSet ? 'a' : 'b', r.proposed, r.state]).sort()).toEqual([['a', '{"v":1}', 'rejected'], ['b', '{"v":2}', 'pending']])
+    } finally {
+      now.mockRestore()
+    }
   })
 
   it('is a SheetSource: reads with a hash, writes against it, refuses a stale base', async () => {

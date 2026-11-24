@@ -1,3 +1,4 @@
+import { createHash, randomBytes } from 'node:crypto'
 import type { SheetMutationJson } from '@shared/contract-work-sheets'
 import type { CanvasSource, Principal } from '@shared/work'
 import { hashCells, type SheetCell, type SheetChange, type SheetSource } from 'work-kit/sheet/source'
@@ -100,15 +101,17 @@ function cellOfApi(c: { userEnteredValue?: Record<string, unknown>; effectiveVal
   return v === null ? null : { v: v as SheetCell['v'] }
 }
 
-export function gridOf(json: GoogleSheetJson): { grid: Grid; order: string[]; sizes: Map<string, { rows: number; columns: number }>; capped: boolean } {
+export function gridOf(json: GoogleSheetJson): { grid: Grid; order: string[]; sizes: Map<string, { rows: number; columns: number }>; capped: boolean; ids: Map<string, number> } {
   const grid: Grid = new Map()
   const order: string[] = []
+  const ids = new Map<string, number>()
   const sizes = new Map<string, { rows: number; columns: number }>()
   let budget = GOOGLE_MAX_CELLS
   let capped = false
   for (const s of json.sheets ?? []) {
     const title: string = s.properties?.title ?? 'Sheet'
     order.push(title)
+    if (typeof s.properties?.sheetId === 'number') ids.set(title, s.properties.sheetId)
     const cells = new Map<string, SheetCell>()
     grid.set(title, cells)
     let rows = 0
@@ -133,7 +136,7 @@ export function gridOf(json: GoogleSheetJson): { grid: Grid; order: string[]; si
     }
     sizes.set(title, { rows, columns })
   }
-  return { grid, order, sizes, capped }
+  return { grid, order, sizes, capped, ids }
 }
 
 async function read(ctx: WorkCtx, ref: GoogleSheetRef): Promise<{ data: Buffer; grid: Grid; order: string[] }> {
@@ -177,6 +180,26 @@ interface CellWrite {
   col: number
   base: SheetCell | null
   value: SheetCell | null
+  /** where the cell stood when the agent suggested it (`targetOf`): absent for his own edit, and for a suggestion made before round 2 */
+  target?: string | null
+}
+
+/**
+ * Where a cell stands, past its value (round 2): its tab's numeric id, the other cells of its row (its label and
+ * the rest of its record) and its column's header (its first row's cell). A row or column inserted before it, or a
+ * tab replaced under the same title, leaves a blank at the old address that a value alone would take for the blank
+ * he approved; this does not. An edit elsewhere in its column changes nothing here; one in its own row does.
+ */
+export function targetOf(grid: Grid, ids: ReadonlyMap<string, number>, sheet: string, row: number, col: number): string {
+  const cells = grid.get(sheet) ?? new Map<string, SheetCell>()
+  const line: [number, unknown][] = []
+  for (const [name, cell] of cells) {
+    const at = parseA1(name)
+    if (at && at.startRow === row && at.startColumn !== col) line.push([at.startColumn, cell])
+  }
+  line.sort((a, b) => a[0] - b[0])
+  const header = row === 0 ? null : (cells.get(cellName(0, col)) ?? null)
+  return createHash('sha256').update(JSON.stringify([ids.get(sheet) ?? null, line, header])).digest('hex').slice(0, 32)
 }
 
 /**
@@ -185,10 +208,11 @@ interface CellWrite {
  */
 async function compareAndWrite(ctx: WorkCtx, ref: GoogleSheetRef, cells: readonly CellWrite[]): Promise<{ written: number; moved: CellWrite[] }> {
   const api = googleOf(ctx).api(ref.account)
-  const { grid, capped } = gridOf(await api.sheet(ref.fileId))
+  const { grid, capped, ids } = gridOf(await api.sheet(ref.fileId))
   // Past the cap some cells were never read, so a compare there would pass over what they hold.
   if (capped) throw new Error(`${ref.name} holds more than ${GOOGLE_MAX_CELLS.toLocaleString('en-US')} cells: change it in Google.`)
-  const moved = cells.filter((c) => !same(grid.get(c.sheet)?.get(cellName(c.row, c.col)) ?? null, c.base))
+  // Its value, and where it stands: a new blank at the old address of an approved blank is another cell.
+  const moved = cells.filter((c) => !same(grid.get(c.sheet)?.get(cellName(c.row, c.col)) ?? null, c.base) || (!!c.target && targetOf(grid, ids, c.sheet, c.row, c.col) !== c.target))
   if (moved.length) return { written: 0, moved }
   if (!cells.length) return { written: 0, moved: [] }
   await api.sheetWrite(
@@ -236,7 +260,8 @@ export async function review(ctx: WorkCtx, ref: GoogleSheetRef, which: Which, ve
     return { written: 0, conflicts: 0 }
   }
   const pending = picked.filter((p) => p.state === 'pending')
-  const cells = pending.map((p) => ({ sheet: p.sheet, row: p.row, col: p.col, base: p.base as SheetCell | null, value: p.proposed as SheetCell | null, id: p.id }))
+  const targets = store.targetsOf(key, pending.map((p) => p.id))
+  const cells = pending.map((p) => ({ sheet: p.sheet, row: p.row, col: p.col, base: p.base as SheetCell | null, value: p.proposed as SheetCell | null, id: p.id, target: targets.get(p.id) ?? null }))
   const idsOf = (xs: CellWrite[]) => xs.map((c) => (c as (typeof cells)[number]).id)
   // The cells that moved wait as conflicts; the rest still go together, as one batch.
   const moved = new Set<string>()
@@ -254,15 +279,16 @@ export async function review(ctx: WorkCtx, ref: GoogleSheetRef, which: Which, ve
 
 /** An agent's cells over the spreadsheet, as one change set of suggestions, each with what it saw there. */
 export async function suggest(ctx: WorkCtx, ref: GoogleSheetRef, by: Principal, reason: string | undefined, cells: { sheet: string; row: number; col: number; value: SheetCell | null }[]): Promise<{ changeSet: string; count: number }> {
-  const { grid, order } = gridOf(await googleOf(ctx).api(ref.account).sheet(ref.fileId))
+  const { grid, order, ids } = gridOf(await googleOf(ctx).api(ref.account).sheet(ref.fileId))
   for (const c of cells) if (!grid.has(c.sheet)) throw new Error(`There is no sheet "${c.sheet}": the sheets are ${order.map((s) => `"${s}"`).join(', ')}.`)
-  const changeSet = `cs-${Date.now().toString(36)}`
+  // Its own id each time: two suggestions in one millisecond never share one, so an id he was shown means one value.
+  const changeSet = `cs-${Date.now().toString(36)}${randomBytes(4).toString('hex')}`
   const count = new SuggestionStore(ctx.db).add(
     googleStore(ref.fileId),
     changeSet,
     by,
     reason,
-    cells.map((c) => ({ sheet: c.sheet, row: c.row, col: c.col, base: grid.get(c.sheet)!.get(cellName(c.row, c.col)) ?? null, proposed: c.value }))
+    cells.map((c) => ({ sheet: c.sheet, row: c.row, col: c.col, base: grid.get(c.sheet)!.get(cellName(c.row, c.col)) ?? null, proposed: c.value, target: targetOf(grid, ids, c.sheet, c.row, c.col) }))
   )
   bump(ref)
   return { changeSet, count }

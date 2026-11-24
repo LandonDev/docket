@@ -32,6 +32,12 @@ export function ensureSuggestionTables(db: DatabaseSync): void {
     PRIMARY KEY (store, id)
   )`)
   db.exec('CREATE INDEX IF NOT EXISTS work_sheets_suggestions_open ON work_sheets_suggestions (store, state)')
+  // Where a Google cell stood when suggested (round 2, google/grid.ts `targetOf`): null for any other store, and for a row made before.
+  try {
+    db.exec('ALTER TABLE work_sheets_suggestions ADD COLUMN target TEXT')
+  } catch {
+    // the column is there already
+  }
   db.exec(`CREATE TABLE IF NOT EXISTS work_sheets_prefs (
     store TEXT PRIMARY KEY,
     mode TEXT NOT NULL DEFAULT 'writes',
@@ -81,16 +87,27 @@ export class SuggestionStore {
   }
 
   /** One change set: a later suggestion on a cell still open replaces the earlier one there. */
-  add(store: string, changeSet: string, by: Principal, reason: string | undefined, cells: readonly { sheet: string; row: number; col: number; base: SheetCellJson | null; proposed: SheetCellJson | null }[]): number {
+  add(store: string, changeSet: string, by: Principal, reason: string | undefined, cells: readonly { sheet: string; row: number; col: number; base: SheetCellJson | null; proposed: SheetCellJson | null; target?: string }[]): number {
     const drop = this.db.prepare(`UPDATE work_sheets_suggestions SET state = 'rejected' WHERE store = ? AND sheet = ? AND row = ? AND col = ? AND state IN ${OPEN}`)
     const put = this.db.prepare(
-      `INSERT OR REPLACE INTO work_sheets_suggestions (store, id, change_set, by, reason, sheet, row, col, base, proposed, base_hash, state, at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?)`
+      `INSERT OR REPLACE INTO work_sheets_suggestions (store, id, change_set, by, reason, sheet, row, col, base, proposed, base_hash, state, at, target) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?)`
     )
     for (const c of cells) {
       drop.run(store, c.sheet, c.row, c.col)
-      put.run(store, `${changeSet}:${c.sheet}:${c.row}:${c.col}`, changeSet, by, reason ?? null, c.sheet, c.row, c.col, c.base === null ? null : JSON.stringify(c.base), c.proposed === null ? null : JSON.stringify(c.proposed), hashCells([content(c.base) as never]), this.now())
+      put.run(store, `${changeSet}:${c.sheet}:${c.row}:${c.col}`, changeSet, by, reason ?? null, c.sheet, c.row, c.col, c.base === null ? null : JSON.stringify(c.base), c.proposed === null ? null : JSON.stringify(c.proposed), hashCells([content(c.base) as never]), this.now(), c.target ?? null)
     }
     return cells.length
+  }
+
+  /** Where each of these suggestions' cells stood when suggested, where that was kept. */
+  targetsOf(store: string, ids: readonly string[]): Map<string, string> {
+    const get = this.db.prepare(`SELECT target FROM work_sheets_suggestions WHERE store = ? AND id = ?`)
+    const out = new Map<string, string>()
+    for (const id of ids) {
+      const t = (get.get(store, id) as { target: string | null } | undefined)?.target
+      if (t) out.set(id, t)
+    }
+    return out
   }
 
   /** The open suggestions `which` names. */

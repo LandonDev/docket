@@ -1086,10 +1086,15 @@ after he looked is not taken (past 5,000 ids it names the set or all, as
 before). One review of a sheet runs at a time (`oneReview`, sheets/index.ts):
 each picks what waits only once the last settled, so an Accept waiting on
 Google or Excel never writes what a Reject in another window dropped, and two
-Accepts never write the same rows. Not yet bound: the values he saw (a thread's
-same change set suggesting the same cell again keeps its id), and the target
-under a co-author's row insert or tab change, where a new blank at the old
-cell passes as the old blank (`compareAndWrite` compares values alone).
+Accepts never write the same rows. A Google Sheet suggestion keeps its own
+change set id (the millisecond and four random bytes, so two never share one)
+and where its cell stood (`target`, google/grid.ts `targetOf`: the tab's
+numeric id, the other cells of its row and its column's header), so a row
+inserted above, a column before it or a tab made again under its title leaves
+it a conflict, not a write into another cell; an edit elsewhere in its column
+changes nothing. A suggestion made before round 2 has no `target` and is
+compared by its value alone. Google takes no compare-and-write, so a change
+landing between the host's read and its write is not caught.
 
 `sheet_read`, `sheet_write`, `sheet_suggest`, `sheet_format`, `sheet_rule`,
 `sheet_table`, `sheet_page`, `sheet_note`, `sheet_chart`, `sheet_create` (tools.ts), cells in A1 (`a1.ts`), at most 10,000 cells a
