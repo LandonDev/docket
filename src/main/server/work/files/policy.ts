@@ -210,7 +210,8 @@ export function sharedOf(ctx: Pick<WorkCtx, 'db' | 'host' | 'dataDir'>, source: 
   if (isGuestPath(path) && process.platform !== 'win32') return true
   const at = realish(path)
   if (sharedKey(path) || sharedKey(at)) return true
-  if (librariesHere(ctx).some((library) => inside(at, library.path))) return true
+  // (A context with no database, as some pillars' tests make, has no list of libraries to read.)
+  if (ctx.db && librariesHere(ctx).some((library) => inside(at, library.path))) return true
   if (inside(at, cloudDirOf(ctx.host))) return true
   // What the app keeps for him is his own: a Files tab's copy that saves back is the file it saves to.
   if (inside(at, ctx.dataDir)) return isSavingCopy(ctx.db, at)
@@ -234,6 +235,14 @@ export function locatedShared(ctx: Pick<WorkCtx, 'db' | 'host' | 'dataDir'>, at:
   if (at.in === 'folder') return sharedOf(ctx, { at: 'file', host: ctx.host, path: at.path })
   return false
 }
+
+/**
+ * Whether a caller stands for his press on a file others can open: his window on this host, or a key he gave
+ * `approve`. Another host of his never does (a peer's call carries no press, work/peer.ts), nor a thread. Taking an
+ * agent's change into such a file, seeing what waits on it, and changing it from a key are for these callers alone.
+ */
+export const pressesFor = (by: Caller): boolean => by.kind === 'local' || (by.kind === 'remote' && !by.peer && by.caps.includes('approve'))
+export const NEEDS_PRESS = 'Others can open this file: only his own window, or a key that may approve, does that.'
 
 /** What the door needs to know of one end of a change. */
 export type DoorPlace = Pick<FilePlace, 'id' | 'kind' | 'name' | 'host' | 'env' | 'shared' | 'can' | 'state' | 'vm' | 'group'>

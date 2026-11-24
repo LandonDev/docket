@@ -11,6 +11,7 @@ import { dropView, dropWorkspaceViews, ensureViewsTable, findDocs, listViews, sa
 import { docTools } from './tools'
 import { guestNameOf } from '../guests/store'
 import { fetchedItemOfPath } from '../canvas/fetch'
+import { NEEDS_PRESS, pressesFor } from '../files/policy'
 
 /**
  * The docs pillar's server module (docs/agents/work-docs.md): the document
@@ -24,9 +25,18 @@ import { fetchedItemOfPath } from '../canvas/fetch'
  * `work.docs.find` and view methods stay for a window a release behind.
  */
 
-/** A screen at this host or a key that may operate edits; a read-only key views. A mail's attachment read as a document is viewed by everyone until he keeps it. */
-export const roleOf = (by: Caller, ctx?: WorkCtx, t?: DocTarget): 'edit' | 'view' =>
-  ctx && t?.at === 'file' && fetchedItemOfPath(ctx, t.path) ? 'view' : by.kind === 'local' || by.caps.includes('operate') ? 'edit' : 'view'
+/**
+ * A screen at this host or a key that may operate edits; a read-only key views. A document others can read is edited
+ * by his press alone (`pressesFor`: his window or a key that may approve), as Files' door asks of any change in such a
+ * place. A mail's attachment read as a document is viewed by everyone until he keeps it.
+ */
+export const roleOf = (by: Caller, ctx?: WorkCtx, t?: DocTarget, shared = false): 'edit' | 'view' =>
+  ctx && t?.at === 'file' && fetchedItemOfPath(ctx, t.path) ? 'view' : shared && !pressesFor(by) ? 'view' : by.kind === 'local' || by.caps.includes('operate') ? 'edit' : 'view'
+
+/** A change from a key to a document others can read: only his press. */
+async function pressOn(ctx: WorkCtx, by: Caller, t: DocTarget): Promise<void> {
+  if (!pressesFor(by) && othersOpen(ctx, t, await lifeosRow(ctx, t))) throw new Error(NEEDS_PRESS)
+}
 
 /** Words for each principal a document's rows and carets name. */
 export function namesFor(ctx: WorkCtx, principals: Iterable<string>): Record<string, string> {
@@ -64,7 +74,7 @@ async function opened(ctx: WorkCtx, by: Caller, t: DocTarget): Promise<DocOpen> 
     doc: t.doc,
     source: t.source,
     title: titleOf(t, row),
-    role: roleOf(by, ctx, t),
+    role: roleOf(by, ctx, t, shared),
     shared,
     mode: shared ? 'suggests' : modeOf(ctx, t.doc),
     written: docsOf(ctx).written.get(t.doc) ?? null,
@@ -77,7 +87,9 @@ async function opened(ctx: WorkCtx, by: Caller, t: DocTarget): Promise<DocOpen> 
 /** A collaboration token from this host's service; a LifeOS document served by another host says which. */
 async function tokenFor(ctx: WorkCtx, by: Caller, t: DocTarget): Promise<DocToken> {
   try {
-    const token = await ctx.service.token({ item: { doc: t.doc }, role: roleOf(by, ctx, t), principal: 'owner', source: t.source })
+    // Whether others read it is asked only of a caller that is not his press: his window edits whatever it is.
+    const shared = !pressesFor(by) && othersOpen(ctx, t, await lifeosRow(ctx, t))
+    const token = await ctx.service.token({ item: { doc: t.doc }, role: roleOf(by, ctx, t, shared), principal: 'owner', source: t.source })
     return { token, expiresAt: Date.now() + TOKEN_SECONDS * 1000 }
   } catch (err) {
     if (err instanceof ServedElsewhere) throw new Error(`served elsewhere: ${err.host}`)
@@ -124,6 +136,8 @@ export const docs: WorkModule = {
       }
       case 'work.docs.thread': {
         const t = await targetOf(ctx, by, req.method, req.params.source)
+        // A comment on a document others read reaches them at once.
+        await pressOn(ctx, by, t)
         const done = await changeThread(ctx, t, req.params.change, 'owner')
         s.push({ push: 'work.docs', doc: t.doc, threads: true }, pathOf(t))
         return handled(done)
@@ -136,6 +150,7 @@ export const docs: WorkModule = {
       case 'work.docs.rename': {
         const t = await targetOf(ctx, by, req.method, req.params.source)
         if (t.at !== 'lifeos') throw new Error('a .tcdoc is named by its file')
+        await pressOn(ctx, by, t)
         await ctx.lifeos.owner().mutation('docs:rename', { id: t.docId, title: req.params.title })
         return handled({ ok: true as const })
       }

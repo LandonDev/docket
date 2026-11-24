@@ -211,6 +211,11 @@ describe('an agent\'s suggestion on an Excel file others can open', () => {
     await expect(call('work.sheets.review', { itemId, which: { ids: [extra.id] }, verdict: 'reject' }, operate)).rejects.toThrow('this key may not change it')
     await expect(call('work.sheets.review', { itemId, which: 'all', verdict: 'reject' }, operate)).rejects.toThrow('this key may not change it')
     expect((await call<SheetView>('work.sheets.open', { itemId })).suggestions).toHaveLength(2)
+    // Another host of his is no press of his either (a peer's call carries read and operate at most): it sees and settles none of it.
+    const peer = { kind: 'remote', caps: ['read', 'operate'], peer: 'env_mac' } as never
+    await expect(sheets.handle!(req('work.sheets.review', { itemId, which: 'all', verdict: 'accept' }), work.ctx, peer)).rejects.toThrow('this key may not change it')
+    await expect(sheets.handle!(req('work.sheets.edit', { itemId, baseRev: 0, mutations: [typed] }), work.ctx, peer)).rejects.toThrow('this key may not change it')
+    expect(((await sheets.handle!(req('work.sheets.open', { itemId }), work.ctx, peer)) as { result: SheetView }).result.suggestions).toEqual([])
     expect(folder()).toEqual(before)
     const approve = { kind: 'remote', keyId: 'k2', name: 'Phone', audience: 'client', caps: ['read', 'operate', 'approve'] } as never
     expect((await call<SheetView>('work.sheets.review', { itemId, which: 'all', verdict: 'accept' }, approve)).suggestions).toEqual([])

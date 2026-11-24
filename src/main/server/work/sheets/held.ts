@@ -9,7 +9,7 @@ import { agentPrincipal, canvasSourcePath, type CanvasItem, type Principal } fro
 import { refKey } from '@shared/work/files'
 import { FenceError } from '../../remote/fence'
 import { fetchedFile } from '../canvas/fetch'
-import { sharedOf } from '../files/policy'
+import { pressesFor, sharedOf } from '../files/policy'
 import { Toolchain } from '../formats/tools'
 import { ensureImported, importedHeld, importedOf, isSharedImport, type ImportedFrom } from './formatsIn'
 import { sharedCsvCache, sharedCsvReadOnly, throughCsv } from './formatsInCsv'
@@ -397,8 +397,8 @@ export async function viewOf(s: Sheets, item: CanvasItem): Promise<SheetView> {
   }
 }
 
-/** Whether the caller is he who decides what waits on a sheet: at a screen of this host or of another host of his, or a key that could take it. */
-export const reviews = (by: Caller): boolean => by.kind === 'local' || (by.kind === 'remote' && (!!by.peer || by.caps.includes('approve')))
+/** Whether the caller is he who decides what waits on a sheet: at a screen of this host, or a key that could take it (`pressesFor`); never another host's call, which carries no press of his. */
+export const reviews = (by: Caller): boolean => pressesFor(by)
 
 /**
  * A view for one caller. On a sheet others can open, what an agent suggested is his alone to see

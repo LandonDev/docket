@@ -1,4 +1,5 @@
 import { mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
+import { NEEDS_PRESS } from '../files/policy'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
@@ -283,6 +284,9 @@ describe('the google wire', () => {
     fake.files.get('doc1')!.reach.add(ME)
     const { itemId } = await call<{ itemId: string }>('work.google.open', { sessionId: 's1', account: ME, fileId: 'doc1' })
     await expect(call('work.google.write', { itemId }, { kind: 'model', caps: [], sessionId: 's1' })).rejects.toThrow('google_doc_suggest')
+    // Nor a key without approve, nor another host of his: what goes to Google is before everyone it is shared with.
+    for (const by of [{ kind: 'remote', caps: ['read', 'operate'] }, { kind: 'remote', caps: ['read', 'operate'], peer: 'env_mac' }] as const)
+      await expect(call('work.google.write', { itemId }, by as never)).rejects.toThrow(NEEDS_PRESS)
   })
 })
 

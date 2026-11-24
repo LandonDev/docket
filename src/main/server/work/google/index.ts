@@ -1,4 +1,5 @@
 import type { GoogleAccounts, GoogleFileState, GooglePicked, GoogleWritten } from '@shared/contract-work-google'
+import { NEEDS_PRESS, pressesFor } from '../files/policy'
 import type { FilesOpened } from '@shared/contract-work-files'
 import { filesPaneWorkspace, handled, NOT_HANDLED, type CanvasItem, type CanvasKind } from '@shared/work'
 import { errorText } from '@shared/work/ids'
@@ -125,6 +126,8 @@ export const google: WorkModule = {
         return handled(await stateOf(ctx, googleItem(ctx, req.params.itemId)))
       case 'work.google.write': {
         if (!person(by)) throw new Error('Agents change a Doc with google_doc_suggest, which waits for the owner.')
+        // Writing the mirror to Google puts it before everyone the Doc is shared with: his press alone.
+        if (!pressesFor(by)) throw new Error(NEEDS_PRESS)
         const item = googleItem(ctx, req.params.itemId)
         if (item.source.mime !== GOOGLE_MIME.doc) throw new Error('Only a Doc is written from its mirror: a Sheet writes as he edits it.')
         const done: GoogleWritten = await writeDoc(ctx, googleOf(ctx), item.source)

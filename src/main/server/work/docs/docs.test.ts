@@ -18,6 +18,7 @@ import { servicePaths } from '../service/config'
 import { startFakeConvex, type FakeConvex } from '../service/fakeConvex'
 import { startWorkService, type RunningService } from '../service/serve'
 import type { ServiceConfig } from '../service/wire'
+import { NEEDS_PRESS } from '../files/policy'
 import { docs } from './index'
 import { createRelay, SOCKETS_MAX } from './relay'
 import { docsOf, stopDocs } from './state'
@@ -407,6 +408,26 @@ describe('opening a document', () => {
     expect(opened.schema).toBe(DOCUMENT_SCHEMA)
     expect(DOCUMENT_SCHEMA).toBeGreaterThanOrEqual(1)
     await expect(r.ask('work.docs.open', { source: r.source }, { kind: 'remote', caps: ['read'] })).rejects.toBeInstanceOf(FenceError)
+  })
+
+  it('a document others read is edited, commented on and renamed by his press alone: his window or a key that may approve', async () => {
+    const r = await rig()
+    r.convex.docs.set('kds', { _id: 'kds', sector: 'life', seq: 0, title: 'Plan', shared: true, markdown: '', plain: '' })
+    const source = { at: 'lifeos', table: 'docs', id: 'kds' } as const
+    const roles: string[] = []
+    ;(r.ctx as unknown as { service: Record<string, unknown> }).service.token = async (t: { role: string }) => (roles.push(t.role), 'tok')
+    const operator: Caller = { kind: 'remote', caps: ['read', 'operate'] }
+    const approver: Caller = { kind: 'remote', caps: ['read', 'operate', 'approve'] }
+    expect((await r.ask<DocOpen>('work.docs.open', { source }, operator)).role).toBe('view')
+    expect((await r.ask<DocOpen>('work.docs.open', { source }, approver)).role).toBe('edit')
+    expect((await r.ask<DocOpen>('work.docs.open', { source })).role).toBe('edit')
+    for (const by of [operator, approver, { kind: 'local', caps: [] } as Caller]) await r.ask('work.docs.token', { source }, by)
+    expect(roles).toEqual(['view', 'edit', 'edit'])
+    await expect(r.ask('work.docs.thread', { source, change: { op: 'create', body: '[]', quote: 'Plan' } }, operator)).rejects.toThrow(NEEDS_PRESS)
+    await expect(r.ask('work.docs.rename', { source, title: 'Other' }, operator)).rejects.toThrow(NEEDS_PRESS)
+    // One only he reads: a key that may operate edits it as before.
+    r.convex.docs.get('kds')!.shared = false
+    expect((await r.ask<DocOpen>('work.docs.open', { source }, operator)).role).toBe('edit')
   })
 
   it("the socket is relayed: a far window's frames reach the service and its answers come back", async () => {

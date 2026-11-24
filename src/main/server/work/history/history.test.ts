@@ -14,6 +14,7 @@ import { startFakeConvex, type FakeConvex } from '../service/fakeConvex'
 import { startWorkService, type RunningService } from '../service/serve'
 import type { ServiceConfig } from '../service/wire'
 import { history, namesFor } from './index'
+import { NEEDS_PRESS } from '../files/policy'
 
 /*
  * History end to end on this host: the Work service in process (its socket
@@ -68,10 +69,13 @@ async function rig() {
   const db = new DatabaseSync(':memory:')
   db.exec('CREATE TABLE sessions (id TEXT PRIMARY KEY, title TEXT NOT NULL)')
   db.prepare('INSERT INTO sessions (id, title) VALUES (?, ?)').run('t1', 'Venue for the spring LAN')
+  db.exec('CREATE TABLE work_office_files (key TEXT PRIMARY KEY, value TEXT NOT NULL)')
   const ctx = {
     db,
     host: 'env_box',
+    dataDir: join(dir, 'data'),
     reaches: (by: Caller) => by.kind !== 'remote',
+    lifeos: { owner: () => ({ query: async (_name: string, args: { id: string }) => convex.docs.get(args.id) ?? null }) },
     service: { internal: (route: string, body: unknown) => post(config.socketPath, route, body) }
   } as unknown as WorkCtx
   const ask = async <T,>(method: string, params: unknown, by: Caller = { kind: 'local', caps: [] }): Promise<T> => {
@@ -139,6 +143,32 @@ describe('history of a .tcdoc on this host', () => {
 })
 
 describe('who may ask', () => {
+  it("shows and settles an agent's branch on a shared document to his press alone: his window or a key that may approve", async () => {
+    const r = await rig()
+    r.convex.docs.set('kd4', { _id: 'kd4', sector: 'life', seq: 0, title: 'Plan', shared: false, markdown: '', plain: '' })
+    const fence = { sectors: 'all' }
+    await post(r.config.socketPath, '/internal/doc/write', { docId: 'kd4', markdown: md('# Plan', 'Alpha'), because: 'asked', botId: 'k', fence })
+    r.convex.docs.get('kd4')!.shared = true
+    await post(r.config.socketPath, '/internal/doc/write', { docId: 'kd4', markdown: md('# Plan', 'Alpha!'), because: 'own', origin: { host: 'env_box', threadId: 't1' }, fence })
+    const source = { at: 'lifeos', table: 'docs', id: 'kd4' } as const
+    const reader: Caller = { kind: 'remote', caps: ['read'] }
+    const operator: Caller = { kind: 'remote', caps: ['read', 'operate'] }
+    const peer: Caller = { kind: 'remote', caps: ['read', 'operate'], peer: 'env_mac' }
+    const approver: Caller = { kind: 'remote', caps: ['read', 'operate', 'approve'] }
+    for (const by of [reader, operator, peer]) {
+      await expect(r.ask('work.history.branches', { source }, by)).rejects.toThrow(NEEDS_PRESS)
+      await expect(r.ask('work.history.decide', { source, branchId: 'b', which: 'all', accept: true }, by)).rejects.toThrow(NEEDS_PRESS)
+    }
+    const { branches } = await r.ask<{ branches: { id: string }[] }>('work.history.branches', { source }, approver)
+    expect(branches).toHaveLength(1)
+    expect((await r.service.collab.read('kd4')).markdown).toBe('# Plan\n\nAlpha\n')
+    expect(await r.ask('work.history.decide', { source, branchId: branches[0]!.id, which: 'all', accept: true }, approver)).toEqual(expect.objectContaining({ left: 0 }))
+    expect((await r.service.collab.read('kd4')).markdown).toBe('# Plan\n\nAlpha!\n')
+    // On a document only he reads, a key that may operate decides as before.
+    r.convex.docs.get('kd4')!.shared = false
+    expect((await r.ask<{ branches: unknown[] }>('work.history.branches', { source }, operator)).branches).toEqual([])
+  })
+
   it("a remote key outside the fence is refused a file's history; a file on another host is named there; a mail is not a document", async () => {
     const r = await rig()
     const path = join(r.dir, 'x.tcdoc')

@@ -1,6 +1,6 @@
 import type { DatabaseSync } from 'node:sqlite'
 import { createHash } from 'node:crypto'
-import { chmodSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, renameSync, rmSync, statSync, symlinkSync, utimesSync, writeFileSync } from 'node:fs'
+import { chmodSync, copyFileSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, renameSync, rmSync, statSync, symlinkSync, utimesSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { PDFDocument } from 'pdf-lib'
@@ -40,6 +40,7 @@ vi.mock('../files/policy', async (original) => {
   return { ...real, sharedOf: (ctx: never, source: CanvasSource) => (source.at === 'file' && [...sharedPaths].some((p) => source.path.startsWith(p))) || real.sharedOf(ctx, source) }
 })
 
+import { NEEDS_PRESS } from '../files/policy'
 const { startWork } = await import('../ctx')
 const { canvas } = await import('../canvas')
 const { slides } = await import('.')
@@ -639,6 +640,29 @@ describe('the module, on a fake deck tool', () => {
       const made = await asCaller('work.slides.copyToEdit', { itemId: item.id }, { kind: 'remote', caps: ['read', 'operate', 'approve'] })
       expect(canvasStoreOf(db).get(made.itemId)?.source).toMatchObject({ path: join(root, 'Shared.pptx') })
       expect(readdirSync(library)).toEqual(['Shared.ppt'])
+    } finally {
+      sharedPaths.clear()
+    }
+  })
+
+  it('shows the proposed deck, and takes or drops an agent\'s change, on a deck others open to his press alone', async () => {
+    const root = workspaceFolder()
+    const library = join(root, 'Team')
+    mkdirSync(library)
+    const shared = join(library, 'Shared.pptx')
+    copyFileSync(path, shared)
+    sharedPaths.add(library)
+    try {
+      const item = openDeck(fileSource(shared))
+      await tool('slides_edit', { item: item.id, because: 'own', ops: [{ op: 'notes', slide: 256, text: 'Waits' }] })
+      expect((await call('work.slides.open', { itemId: item.id })).changes).toHaveLength(1)
+      for (const by of [{ kind: 'remote', caps: ['read', 'operate'] }, { kind: 'remote', caps: ['read', 'operate'], peer: 'env_mac' }] as const) {
+        await expect(asCaller('work.slides.review', { itemId: item.id, changes: 'all', verdict: 'accept' }, by as never)).rejects.toThrow(NEEDS_PRESS)
+        await expect(asCaller('work.slides.read', { itemId: item.id, which: 'proposed', offset: 0, length: 10 }, by as never)).rejects.toThrow(NEEDS_PRESS)
+      }
+      expect(new SlidesStore(db).pending(deckKey(item))).toHaveLength(1)
+      await asCaller('work.slides.review', { itemId: item.id, changes: 'all', verdict: 'reject' }, { kind: 'remote', caps: ['read', 'operate', 'approve'] })
+      expect(new SlidesStore(db).pending(deckKey(item))).toEqual([])
     } finally {
       sharedPaths.clear()
     }

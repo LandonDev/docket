@@ -6,7 +6,7 @@ import { SHEET_COMPARE_MAX, SHEET_LOAD_MAX, type SheetCellJson, type SheetMutati
 import { isObjectList, type ObjectIds, type RulesSetParams } from '@shared/work/sheets'
 import { filesPaneWorkspace, handled, NOT_HANDLED, type CanvasItem, type Principal } from '@shared/work'
 import { canvasItemDir } from '../canvas/store'
-import { sharedOf, workspaceHere } from '../files/policy'
+import { pressesFor, sharedOf, workspaceHere } from '../files/policy'
 import { registerFileMaker, registerFileMoved, registerFilePreviewer, registerFileWaiting, type FileMaker } from '../files/hooks'
 import { registerUploadBytes } from '../google/uploads'
 import type { Caller, WorkCtx, WorkModule } from '../modules'
@@ -327,11 +327,12 @@ export const SHEET_MAKER: FileMaker = {
 
 /**
  * A change to a sheet others can open, made with a remote key: only a key that may approve, as Files' door asks of any
- * change in such a place (files/policy.ts). His own window and another host of his are not held here.
+ * change in such a place (files/policy.ts). His own window is not held here; another host of his is, as a key with no
+ * approve: a peer's call carries no press of his (work/peer.ts).
  */
 export const NEEDS_APPROVE = 'Others can open this sheet: this key may not change it.'
 async function approves(s: Sheets, item: CanvasItem, by: Caller): Promise<void> {
-  if (by.kind !== 'remote' || by.peer || by.caps.includes('approve')) return
+  if (by.kind !== 'remote' || pressesFor(by)) return
   if ((await viewOf(s, item)).shared) throw new Error(NEEDS_APPROVE)
 }
 

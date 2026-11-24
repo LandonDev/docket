@@ -6,6 +6,8 @@ import { FenceError } from '../../remote/fence'
 import type { Caller, WorkCtx, WorkModule } from '../modules'
 import { canonicalPath } from '../service/ctx'
 import { guestNameOf } from '../guests/store'
+import { madeFromShared } from '../docs/target'
+import { NEEDS_PRESS, pressesFor } from '../files/policy'
 
 /**
  * The history pillar's server module (docs/agents/work-history.md): a
@@ -56,6 +58,19 @@ export function namesFor(ctx: WorkCtx, principals: Iterable<string>): Record<str
   return out
 }
 
+/**
+ * Whether others can read a document: a LifeOS document shared by a guest link, or a .tcdoc where `madeFromShared`
+ * says so. Asked only of a caller that is not his press (`pressesFor`); what cannot be read is taken as shared.
+ */
+async function othersRead(ctx: WorkCtx, source: CanvasSource): Promise<boolean> {
+  if (source.at !== 'lifeos') return madeFromShared(ctx, source)
+  try {
+    return !!(await ctx.lifeos.owner().query<{ shared?: boolean } | null>('docs:get', { id: source.id }))?.shared
+  } catch {
+    return true
+  }
+}
+
 const call = <T>(ctx: WorkCtx, route: string, body: Record<string, unknown>): Promise<T> => ctx.service.internal(`/internal/history/${route}`, body) as Promise<T>
 
 export const READ_ONLY = "This document is a mail's attachment, read only: keep it as a document of your own to decide its changes."
@@ -70,6 +85,12 @@ export const history: WorkModule = {
     if ((req.method === 'work.history.decide' || req.method === 'work.history.restore' || req.method === 'work.history.cut') && 'file' in at(req.params.source)) {
       const target = at(req.params.source) as { file: string }
       if (fetchedItemOfPath(ctx, target.file)) throw new Error(READ_ONLY)
+    }
+    // An agent's branch on a document others can read is shown to, and taken or dropped by, his press alone: his
+    // window or a key that may approve; never a read or operate key, another host of his or a thread.
+    if ((req.method === 'work.history.branches' || req.method === 'work.history.decide') && !pressesFor(by)) {
+      at(req.params.source)
+      if (await othersRead(ctx, req.params.source)) throw new Error(NEEDS_PRESS)
     }
     switch (req.method) {
       case 'work.history.versions': {
