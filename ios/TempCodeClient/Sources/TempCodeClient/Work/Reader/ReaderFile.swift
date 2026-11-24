@@ -40,10 +40,11 @@ public final class ReaderFile {
     public static func parts(_ item: CanvasItem) -> (review: WorkReview.Subject?, comments: CanvasSource?) {
         switch item.kind {
         case .document:
-            // The docs pillar keeps threads and branches for LifeOS's documents and for documents kept as files.
+            // The docs pillar keeps threads and branches for LifeOS's documents and for documents kept as `.tcdoc`
+            // files (docs/target.ts). A Word file is no source of its: asked, the host refuses, so it is not asked.
             switch item.source {
             case .lifeos(let row) where row.table == .docs || row.table == .projectDocs: return (.document(item.source), item.source)
-            case .file: return (.document(item.source), item.source)
+            case .file(let file) where file.path.lowercased().hasSuffix(".tcdoc"): return (.document(item.source), item.source)
             default: return (nil, nil)
             }
         case .sheet:

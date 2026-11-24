@@ -106,8 +106,8 @@ scripts/gen-swift-contract.ts): `work.docs.open`, `threads`, `thread`,
   it the sheet is read again, so its words stay only on rows still open. The
   sheet view names a sheet by Univer's id, not its tab, so an address reads
   "C4".
-- It works for LifeOS's documents and for documents and sheets kept as files
-  (`ReaderFile.parts`): the docs pillar keeps threads and branches for both.
+- It works for LifeOS's documents, for documents kept as `.tcdoc` files and
+  for sheets kept as files (`ReaderFile.parts`); not for a Word file.
 - The page's review row over a document or a sheet only counts and opens
   Review Changes (`DeckReviewRow` with `decides: false` in `ReaderFrame`):
   the hosted page draws no suggestion marks for the owner, so a decision there
@@ -147,7 +147,9 @@ opens the system's print sheet (`ReaderPrint`).
   words, which the phone shows in the file's place (`HostedFailure`): a Word
   or Excel file ("Edit it on your computer": the desktop's editor saves
   those), a file others can open, a computer that serves no public page.
-  Comments and review still work for it natively. A key that may only read
+  Comments and review still work natively for a `.tcdoc` it refuses; a Word
+  file has neither on the phone (`ReaderFile.parts`: the docs pillar keeps no
+  threads or branches for a `.docx`, docs/target.ts), so none is asked. A key that may only read
   is told so on any hosted item, a LifeOS row too (`HostedFailure.readOnly`):
   the ticket needs `operate`, and a Try Again would be refused for ever. A
   page already loaded asks no new ticket when it shows again (back from Page

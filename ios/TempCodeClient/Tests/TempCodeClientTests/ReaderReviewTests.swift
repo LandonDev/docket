@@ -443,6 +443,10 @@ private let s3 = suggestion("g3", set: "cs2", row: 0, col: 26, base: #"{"v":"Dra
         #expect(ReaderFile.Identity(opened) != ReaderFile.Identity(moved))
         guard case .document(let source)? = ReaderFile.parts(ReaderFile.current(opened, in: [moved])).review else { Issue.record("no review"); return }
         #expect(source == moved.source)
+        // A Word file is no source of the docs pillar's: no comments or review are asked for it.
+        let letter = try JSONDecoder().decode(CanvasItem.self, from: Data(#"{"id":"i10","sessionId":"s1","workspaceId":"w1","kind":"document","title":"Letter","source":{"at":"file","host":"env_box","path":"/w/Letter.docx"},"state":"open","position":0,"rev":1,"createdAt":1,"updatedAt":1}"#.utf8))
+        #expect(ReaderFile.parts(letter).review == nil)
+        #expect(ReaderFile.parts(letter).comments == nil)
     }
 
     @Test func `a cell's address reads as Excel writes it`() {
