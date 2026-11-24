@@ -5,7 +5,7 @@ import { createRequire } from 'node:module'
 import { dirname, join } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
 import { strFromU8, unzipSync } from 'fflate'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it } from 'vitest'
 import { createCollaborationClient, type CollaborationClient } from 'work-kit/collab'
 import { createCollabSigner, fileDocName, generateCollabKeys, TEMPCODE_COLLAB_AUDIENCE, type CollabSigner } from 'work-kit/collab-server'
 import * as Y from 'yjs'
@@ -17,7 +17,7 @@ import { formats } from '../formats/index'
 import { closeFilesState } from '../files/handle'
 import { ensureFilesTables } from '../files/tables'
 import { autosaveWords } from '../files/word'
-import { setCloudDir } from '../office/files/library'
+import { ensureFilesTables as ensureOfficeFiles, setCloudDir, setCopyAllowed } from '../office/files/library'
 import { servicePaths } from '../service/config'
 import { startFakeConvex, type FakeConvex } from '../service/fakeConvex'
 import { startWorkService, type RunningService } from '../service/serve'
@@ -28,16 +28,19 @@ import { madeFromShared } from './target'
 import { docTools } from './tools'
 
 /** A conversion job as `ctx.convert` takes and answers it. */
-// The Word file of another computer, as the autosave reads and writes it (files/copies.ts): what is written there is kept.
-const wordFile = vi.hoisted(() => ({ sent: [] as Buffer[] }))
-vi.mock('../files/copies', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('../files/copies')>()),
-  freshBytes: async () => ({ data: Buffer.from('word bytes'), version: `v${wordFile.sent.length}` }),
-  deliver: async (_ctx: unknown, _r: unknown, data: Buffer) => {
-    wordFile.sent.push(data)
-    return { version: `v${wordFile.sent.length}` }
+// The Word file of another computer, as the autosave reads and writes it over the host link (files/copies.ts
+// `freshBytes`, `deliver`, through `ctx.peer`): what is written there is kept.
+const wordFile = { sent: [] as Buffer[] }
+const peerOf = () => ({
+  async call(module: string, verb: string, args: { data?: string }) {
+    if (module === 'office' && verb === 'filesRead') return { data: Buffer.from('word bytes').toString('base64'), version: `v${wordFile.sent.length}` }
+    if (module === 'files' && verb === 'writeBack') {
+      wordFile.sent.push(Buffer.from(args.data ?? '', 'base64'))
+      return { version: `v${wordFile.sent.length}` }
+    }
+    throw new Error(`${module}.${verb} is not answered here`)
   }
-}))
+})
 
 type Job = { from: string; to: string; input: string; shared?: boolean; output: string }
 
@@ -141,6 +144,7 @@ async function rig(o: { ownerSaid?: string[]; routineRunId?: string } = {}) {
     dataDir: join(dir, 'data'),
     log: () => {},
     push: () => {},
+    peer: { call: () => peerOf() },
     reaches: (by: Caller) => by.kind !== 'remote',
     canvas: {
       paneOf: (id: string) => id,
@@ -282,6 +286,9 @@ describe("the document kept for a Word file of another computer", () => {
   /** A Teams Word file opened in a Files tab: its document in the workspace's own folder, the record naming it (files/word.ts), saved by itself. */
   async function kept(r: Awaited<ReturnType<typeof rig>>) {
     ensureFilesTables(r.db)
+    // The office pillar's settings a Word file's save reads: this workspace copies Teams files.
+    ensureOfficeFiles(r.db)
+    setCopyAllowed(r.db, 'ws1', true)
     r.db.prepare(`INSERT INTO workspaces (id, name, path, kind, sector) VALUES ('ws1', 'RecWell', ?, 'work', 'purdue')`).run(r.work)
     const source = await r.make(join(r.work, 'Plan.tcdoc'))
     r.db
