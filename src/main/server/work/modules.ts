@@ -93,6 +93,20 @@ export interface WorkModule {
   search?: SearchSource[]
   /** Joined, in module order, after the preamble's fixed head. */
   preamble?(scope: WorkScope): string | null
+  /**
+   * The pillar's say on one tool call of a thread, before it runs: words the model reads in place of the call's
+   * answer, or null. Asked of every module by both funnels every call passes (narrowing.ts `callRefusalOf`): the
+   * add-on catch (outbox/catch.ts), for every thread's add-on call and before the LifeOS row's run, and the Work
+   * tool mount (work/ctx.ts `tools.call`), which serves Claude's `work` server and the bridge's `app.workCall`.
+   * Any module's words refuse it. A throw refuses it too.
+   */
+  callRefusal?(ctx: WorkCtx, call: CallAsk): string | null
+  /**
+   * The harness's own tools this thread must not have (`Bash`, `WebFetch`), read once at its harness's start
+   * (narrowing.ts `harnessDeniedOf`): Claude Code adds them to its denied tools, Codex starts the thread read-only
+   * with no shell and no web. Called Work on or off.
+   */
+  harnessDenied?(sessionId: string): string[]
   /** Pollers and subscriptions. Never called while Work is off; its return stops them. */
   start?(ctx: WorkCtx): () => void
   /** Threads were deleted (a thread and its subagents): drop what the module kept for them. Called Work on or off. */
@@ -150,6 +164,18 @@ export interface MentionSource {
   lifeos?: boolean
   /** `by`: who asked, where the router knows it (`work.canvas.mentions`); a kind fenced by the caller (Files) answers nothing without one */
   search(text: string, reach: MentionReach, ctx: WorkCtx, by?: Caller): Promise<MentionHit[]>
+}
+
+/** One tool call as `callRefusal` sees it. */
+export interface CallAsk {
+  /** the calling thread (a subagent's own id: a module walks to its root if it must) */
+  sessionId: string
+  /** the add-on catch, or the Work tool mount */
+  via: 'addon' | 'work'
+  /** `lifeos` for the app's own LifeOS row, another add-on's row id, or `work` (WORK_TOOL_SERVER) */
+  server: string
+  /** the tool's own short name: `archive_mail`, `files_trash` */
+  tool: string
 }
 
 /** Who asked: a person at this host, a remote key, or a thread's own call through the bridge. */
@@ -253,6 +279,14 @@ export interface WorkCtx {
     resume(sessionId: string, notice: string): Promise<void>
     /** whether the owner typed this quote in the thread */
     ownerSaid(sessionId: string, quote: string): boolean
+    /** whether the thread is this host's and nobody has written in it yet: no message, so no turn */
+    fresh(sessionId: string): boolean
+    /**
+     * Ends the harness a fresh thread may have started at its create (the registry boots one eagerly), so the next
+     * send boots it under what the pillars say now (a mail chat's narrowing, its preamble part). A thread with a
+     * message in it is left alone.
+     */
+    rearm(sessionId: string): Promise<void>
   }
   /** milestone 6: the cross-host route for Work tools, over `peer.call` */
   peer(host: HostId): { call(module: PillarId, verb: string, args: unknown): Promise<unknown> }

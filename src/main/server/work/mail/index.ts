@@ -1,9 +1,10 @@
 import type { DatabaseSync } from 'node:sqlite'
 import type { MailSeen, MailSendAnswer } from '@shared/contract-work-mail'
 import type { OutboxItem } from '@shared/contract-work-outbox'
-import { errorText, handled, NOT_HANDLED } from '@shared/work'
+import { errorText, handled } from '@shared/work'
 import { WORK_MODULES, type Caller, type WorkCtx, type WorkModule } from '../modules'
 import { registerCanvasFetcher } from '../canvas/fetch'
+import { chatCallRefusal, chatHarnessDenied, chatPreambleOf, dropChats, ensureChatTables, handleChat, offerTool } from './chat'
 import { mailAttachmentFetcher } from './attachment'
 import { outgoingHtml } from './outgoing'
 import { withWaited } from './waited'
@@ -162,6 +163,7 @@ export function ensureMailTables(db: DatabaseSync): void {
     at INTEGER NOT NULL
   )`)
   ensureWaitingTables(db)
+  ensureChatTables(db)
 }
 
 /** Opens each new draft a thread of this host made as a mail item beside that thread, once. */
@@ -220,10 +222,13 @@ export const mail: WorkModule = {
         return handled(await setWaiting(ctx, by, workspaceId, { ...(days !== undefined ? { days } : {}), ...(routine !== undefined ? { routine } : {}) }))
       }
       default:
-        return NOT_HANDLED
+        return handleChat(req, ctx, by)
     }
   },
-  tools: (scope) => (scope.sector ? [waitingTool] : []),
+  // mail_offer's cards are harmless anywhere: it only shows one, after checking its ids.
+  tools: (scope) => (scope.sector ? [waitingTool, offerTool] : []),
+  callRefusal: chatCallRefusal,
+  harnessDenied: chatHarnessDenied,
   start(ctx) {
     // A mail's attachment opened in a canvas comes through the host, inside the pane's sector (attachment.ts).
     const offFetch = registerCanvasFetcher(mailAttachmentFetcher)
@@ -237,9 +242,10 @@ export const mail: WorkModule = {
       offDrops()
     }
   },
-  preamble: (scope) => (scope.sector ? `${PREAMBLE} ${WAITING_LINE}` : PREAMBLE),
+  preamble: (scope) => [scope.sector ? `${PREAMBLE} ${WAITING_LINE}` : PREAMBLE, chatPreambleOf(scope.sessionId)].filter(Boolean).join('\n\n'),
   sessionsRemoved(sessionIds, ctx) {
     const drop = ctx.db.prepare('DELETE FROM work_mail_opened WHERE session_id = ?')
     for (const id of sessionIds) drop.run(id)
+    dropChats(ctx.db, sessionIds)
   }
 }

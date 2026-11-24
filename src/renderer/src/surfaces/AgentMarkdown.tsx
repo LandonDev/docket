@@ -42,6 +42,18 @@ import { useLockOverscroll } from "../hooks/useLockOverscroll";
 import { useReportReveal } from "./revealDrain";
 import { useSmoothText } from "./smoothText";
 import { useRevealLead, useTranscriptHost } from "./transcriptSession";
+import { lifeosLinkOf, type LifeosLink } from "./lifeosLink";
+import { lifeosChipChunk } from "./chunks";
+
+/** A mail or a person an answer names (`#lifeos:` links), as a chip; its words alone until the chunk lands. */
+function LifeosLinkChip({ link, children }: { link: LifeosLink; children: ReactNode }) {
+  const Chip = lifeosChipChunk.loaded()?.LifeosChip;
+  const [, landed] = useState(0);
+  useEffect(() => {
+    if (!Chip) void lifeosChipChunk.load().then(() => landed((n) => n + 1), () => undefined);
+  }, [Chip]);
+  return Chip ? <Chip link={link}>{children}</Chip> : <span>{children}</span>;
+}
 
 const MERMAID_BASE_CONFIG = {
   startOnLoad: false,
@@ -121,6 +133,8 @@ function MarkdownLink({
   const threadHost = useTranscriptHost();
   const onSelectSession = useContext(SelectSessionContext);
   const threadId = threadIdFromHref(href);
+  const lifeos = lifeosLinkOf(href);
+  if (lifeos) return <LifeosLinkChip link={lifeos}>{children}</LifeosLinkChip>;
   const file = href && !threadId ? parseFileHref(href, cwd) : undefined;
 
   const anchor = (

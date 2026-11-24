@@ -15,6 +15,7 @@ import { currentActiveSession } from "../../stores/subscriptions";
 import { undoLast } from "./client";
 import { Face } from "./face";
 import { onMailto } from "./mailto";
+import { mailDockPort } from "./chat/port";
 import { mailChip } from "./model";
 import { playRunner } from "../routines/plays/runOn";
 import { EmptyState } from "../../surfaces/SurfaceSkeleton";
@@ -170,9 +171,19 @@ class Boundary extends Component<{ className?: string; onNotFound?: () => void; 
  * composer of the thread this window has open, as a chip, the same chip the
  * composer's own @ makes. With no thread open there is nothing to mention it
  * in, and the item is not drawn (Start thread, in the reader's More, makes one).
+ * While the chat beside the mail is open, the mail goes into that chat instead.
  */
 function MentionItem({ reference, plain }: { reference: MailReference; plain?: boolean }) {
   const thread = currentActiveSession();
+  // While the chat beside the mail is open, the mail goes into its composer.
+  const dock = mailDockPort.get();
+  if (dock)
+    return (
+      <DropdownMenuItem onClick={() => dock(mailChip(reference.id, reference.title))}>
+        {plain ? null : <AtSign />}
+        Mention in a thread
+      </DropdownMenuItem>
+    );
   if (!thread || thread.archived) return null;
   return (
     <DropdownMenuItem

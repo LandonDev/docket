@@ -21,7 +21,7 @@ vi.mock('./harness/child', async () => ({
 vi.mock('./binaries', () => ({ harnessEnv: async () => ({ PATH: process.env.PATH, FAKE_MUSE_SANDBOX: process.env.FAKE_MUSE_SANDBOX, FAKE_MUSE_RECORD: process.env.FAKE_MUSE_RECORD, TBH_MANAGED_HOOKS_PATH: process.env.TBH_MANAGED_HOOKS_PATH }) }))
 vi.mock('../apptools', () => ({ bridgeMcpConfig: () => ({ command: '/usr/bin/node', args: ['/app/bridge.mjs'], env: { TEMP_CODE_SESSION: 's1', TEMP_CODE_PORT: '1' } }) }))
 
-const { museDriver, FIRST_OUTPUT_MS } = await import('./muse')
+const { museDriver, FIRST_OUTPUT_MS, museNarrowRefusal } = await import('./muse')
 const { configureMuseDirs, configureMuseSkills } = await import('../museConfigDirs')
 
 const of = <T extends AgentEvent['type']>(events: AgentEvent[], type: T) => events.filter((e): e is Extract<AgentEvent, { type: T }> => e.type === type)
@@ -415,5 +415,12 @@ describe('the muse driver over the fake host', () => {
       configureMuseDirs(null)
       configureMuseSkills(null)
     }
+  })
+})
+
+describe('a thread a pillar narrowed (a mail chat)', () => {
+  it('is refused on Muse, which has no way to deny a built-in; any other thread is not', () => {
+    expect(museNarrowRefusal([])).toBeNull()
+    expect(museNarrowRefusal(['Bash', 'WebFetch'])).toBe('refused: Muse Code cannot be kept from Bash, WebFetch, which this thread may not use. Start it on Claude.')
   })
 })

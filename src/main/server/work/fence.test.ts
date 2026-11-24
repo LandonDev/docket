@@ -18,8 +18,9 @@ vi.mock('../drivers/binaries', async (importOriginal) => ({
 vi.mock('../endpoint', () => ({ routedEndpointFor: async () => ({ url: null }) }))
 
 const { claudeDriver, claudeExtraArgs, fenceWorkOptions, mcpServerOfTool, WORK_DENIED_TOOLS, workToolRefusal } = await import('../drivers/claude')
-const { CODEX_SYSTEM_CONFIG, CODEX_WORK_CONFIG, CODEX_WORK_OFF, codexWorkArgs, codexWorkHome, codexWorkRefusal, codexWorkThreadConfig, ensureCodexWorkHome, setCodexWorkHome } = await import('../drivers/codex')
+const { CODEX_SYSTEM_CONFIG, CODEX_WORK_CONFIG, CODEX_WORK_OFF, codexNarrowing, codexWorkArgs, codexWorkHome, codexWorkRefusal, codexWorkThreadConfig, ensureCodexWorkHome, setCodexWorkHome } = await import('../drivers/codex')
 const { WORK_STANDING_RULE } = await import('./preamble')
+const { WORK_MODULES } = await import('./modules')
 const { CLAUDE_ROOTS, CLAUDE_WORK_DROP, CLAUDE_WORK_LINKS, CLAUDE_WORK_ROOTS, CLAUDE_WORK_SETTINGS, claudeGenerationOfRoot, claudeSkillRootFor, configureClaudeSkillRoots, ensureClaudeWorkRoot } = await import('../skills/claudeRoots')
 
 /**
@@ -260,6 +261,25 @@ describe('Claude: the driver\'s spawn', () => {
     }
   })
 
+  it('a thread a pillar narrowed (a mail chat) is also denied its shell, file writes and web, by flag and by the fence; another Work thread is not', async () => {
+    const narrowed = ['Bash', 'Write', 'Edit', 'NotebookEdit', 'WebFetch', 'WebSearch']
+    const pillar = { id: 'mail', ensure: () => {}, harnessDenied: (id: string) => (id === 'wf-mail' ? narrowed : []) } as never
+    WORK_MODULES.push(pillar)
+    try {
+      const chat = await spawnOptions({ id: 'wf-mail', scope: 'work' })
+      expect(chat.disallowedTools).toEqual(expect.arrayContaining([...WORK_DENIED_TOOLS, ...narrowed]))
+      const fence = chat.hooks!.PreToolUse![0].hooks[0]
+      for (const tool of narrowed) expect(await fence({ tool_name: tool } as never, undefined, { signal: new AbortController().signal }), tool).toMatchObject({ hookSpecificOutput: { permissionDecision: 'deny' } })
+      expect(await fence({ tool_name: 'Read' } as never, undefined, { signal: new AbortController().signal })).toEqual({ continue: true })
+      const plain = await spawnOptions({ id: 'wf-plain', scope: 'work' })
+      for (const tool of narrowed) expect(plain.disallowedTools, tool).not.toContain(tool)
+      // a code thread is never asked
+      expect((await spawnOptions({ id: 'wf-mail' })).disallowedTools ?? []).not.toContain('Bash')
+    } finally {
+      WORK_MODULES.splice(WORK_MODULES.indexOf(pillar), 1)
+    }
+  })
+
   it('under a configured skills store, a Work thread reads the user tier of its Work root and a code thread its scope\'s', async () => {
     const person = join(tmp, 'person')
     mkdirSync(person, { recursive: true })
@@ -327,6 +347,12 @@ describe('Codex: the Work home, argv and thread config', () => {
     rmSync(join(person, 'auth.json'))
     ensureCodexWorkHome(home, person)
     expect(readdirSync(home).sort()).toEqual(['config.toml', 'sessions', 'skills'])
+  })
+
+  it('starts a narrowed thread (a mail chat) read-only with no escalation, no shell and no web; any other thread as before', () => {
+    expect(codexNarrowing([])).toBeNull()
+    expect(codexNarrowing(['Bash', 'Write', 'Edit', 'NotebookEdit', 'WebFetch', 'WebSearch'])).toEqual({ sandbox: 'read-only', approvalPolicy: 'never', features: { shell_tool: false }, webSearch: 'disabled' })
+    expect(codexNarrowing(['Write'])).toEqual({ sandbox: 'read-only', approvalPolicy: 'never', features: {}, webSearch: null })
   })
 
   it('the argv and the thread config say the same switches, and name the folder untrusted under both its names', () => {

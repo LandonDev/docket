@@ -180,7 +180,7 @@ export const heldPart: CtxPart<'held'> = (ctx, deps) => {
       const workspaceId = scope?.workspaceId ?? (root.projectId ? deps.registry.getProject(root.projectId)?.workspaceId : null) ?? root.workspaceId ?? null
       return { app: 'tempcode', threadId: root.id, host: ctx.host, ...(workspaceId ? { workspaceId } : {}), ...(routineRunOf(sessionId) ? { routineRunId: routineRunOf(sessionId)! } : {}) }
     }
-    const gate = makeAddonGate({ outbox, store, addons, sessions: deps.registry, mcpUrl, isWorkScope, originOf: origin, modules: () => WORK_MODULES, log: ctx.log })
+    const gate = makeAddonGate({ outbox, store, addons, sessions: deps.registry, mcpUrl, isWorkScope, originOf: origin, modules: () => WORK_MODULES, ctx, log: ctx.log })
     const door = deps.addonHost.setGate(gate)
     kinds.register(addonCallKind({ addons, ungated: (addonId, tool, args) => door.ungated(addonId, tool, args) }))
   }

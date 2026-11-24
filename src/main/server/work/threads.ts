@@ -142,7 +142,11 @@ export const threadsPart: CtxPart<'threads'> = (ctx, deps) => {
         // The app's own line, delivered as a report is: never a row that reads as the owner's message.
         registry.deliverAgentReport(sessionId, { agentId: 'work', title: 'Work', status: 'notice', text: notice })
       },
-      ownerSaid: (sessionId, quote) => ownerSaid(words, sessionId, quote)
+      ownerSaid: (sessionId, quote) => ownerSaid(words, sessionId, quote),
+      fresh: (sessionId) => !!registry.get(sessionId) && !registry.hasUserText(sessionId),
+      async rearm(sessionId) {
+        if (registry.get(sessionId) && !registry.hasUserText(sessionId)) await registry.restart(sessionId)
+      }
     }
   }
 }

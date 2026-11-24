@@ -118,32 +118,53 @@ export function draftTitleOf(session: Pick<Session, "draftTitle">): string {
 }
 
 /** Create the draft on the server if needed; returns its meta. */
-const created = new Map<string, () => Promise<void>>();
+const created = new Map<string, { run: () => Promise<void>; must: boolean }>();
 
 /**
  * Work a draft needs done once it is a thread and before its first message
  * goes, by draft id: the Files dock opens its file on the new thread here, so
- * the first turn already holds it (work/files/dockThread.ts). Run once; a failure is
- * the work's own to say, and the message still goes.
+ * the first turn already holds it (work/dock/dockThread.ts). Run once; a failure is
+ * the work's own to say, and the message still goes. A `must` step is
+ * different: a failure stops the send ("The chat did not start"), the step
+ * stays, and it runs again before the next send of that id, so the thread's
+ * first message never goes before the host knows what the thread is (Mail's
+ * chat, work/mail/chat).
  */
 export const afterCreate = {
-  set(sessionId: string, run: () => Promise<void>): void {
-    created.set(sessionId, run);
+  set(sessionId: string, run: () => Promise<void>, opts: { must?: boolean } = {}): void {
+    created.set(sessionId, { run, must: !!opts.must });
   },
   clear(sessionId: string): void {
     created.delete(sessionId);
   },
+  /** A must step is still waiting for this id. */
+  pending(sessionId: string): boolean {
+    return !!created.get(sessionId)?.must;
+  },
   async run(sessionId: string): Promise<void> {
     const work = created.get(sessionId);
     if (!work) return;
+    if (!work.must) {
+      created.delete(sessionId);
+      await work.run().catch(() => undefined);
+      return;
+    }
+    try {
+      await work.run();
+    } catch {
+      throw new Error("The chat did not start");
+    }
     created.delete(sessionId);
-    await work().catch(() => undefined);
   },
 };
 
 export async function ensureCreated(session: Session): Promise<SessionMeta> {
   const existing = sessionStore.metaOf(session.id);
-  if (existing) return existing;
+  if (existing) {
+    // A must step that failed on the first send runs again before this one goes.
+    if (afterCreate.pending(session.id)) await afterCreate.run(session.id);
+    return existing;
+  }
   // A tab opened on an id whose meta has not come is a thread that exists
   // somewhere, never a draft: creating it would mint a second one.
   if (sessionStore.isProvisional(session.id)) throw new Error("This thread is still loading");

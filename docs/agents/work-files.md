@@ -397,6 +397,9 @@ control, takes it away.
   shown tab's dock is open, and comes back when it closes (`sidebarFolds`).
 - No key opens it yet: ⌘L is the selection bar's Ask, and taking it in the
   Files map would need a new app command and an App case.
+- The dock's parts that know nothing of files live in `work/dock/` (the shell, the sash, the sizes, the draft and thread
+  choice behind `DockSubject`); Files' `Dock.tsx` and `dockThread.ts` are a file tab as one subject of it, and Mail's
+  chat is another (work-mail.md "The chat beside the mail").
 - The old wire (a workspace whose host keeps no tabs) still opens a file in
   a thread as before (`openInThread`); that is not Ask.
 

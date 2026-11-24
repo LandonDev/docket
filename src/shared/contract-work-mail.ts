@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import { request, type CapsOf, type RelayOf } from './work/wire'
+import { MAIL_CHAT_KINDS } from './work/mailChat'
 
 /**
  * The mail pillar's wire (docs/agents/work-mail.md). Its methods are
@@ -80,7 +81,24 @@ export const MailRequestSchemas = [
    * → MailWaiting: `days` is how many working days a mail that asked a question waits before it is listed
    * (LifeOS keeps it per sector); `routine` turns on or off the routine that drafts nudges by itself. A person's call only.
    */
-  request('work.mail.setWaiting', z.object({ workspaceId: z.string().min(1).max(64), days: z.number().int().min(1).max(30).optional(), routine: z.boolean().optional() }))
+  request('work.mail.setWaiting', z.object({ workspaceId: z.string().min(1).max(64), days: z.number().int().min(1).max(30).optional(), routine: z.boolean().optional() })),
+  /**
+   * → { ok: true }: marks a fresh Work thread as a mail chat (the chat beside the mail), before its first
+   * message goes. Refused for a thread's own call, a session that is not a root Work thread of the workspace
+   * on this host, one that has a turn already, a mail outside the workspace's sector, and a withheld sector.
+   * Asked again for the same session and subject, it answers the same.
+   */
+  request(
+    'work.mail.chat.adopt',
+    z.object({
+      workspaceId: z.string().min(1).max(64),
+      sessionId: z.string().min(1).max(64),
+      kind: z.enum(MAIL_CHAT_KINDS),
+      mailThreadId: z.string().min(1).max(64).optional()
+    })
+  ),
+  /** → { sessionIds }: the workspace's mail chats about this mail thread, newest first. */
+  request('work.mail.chat.find', z.object({ workspaceId: z.string().min(1).max(64), mailThreadId: z.string().min(1).max(64) }))
 ] as const
 
 /** A workspace's Waiting on: `days` null when LifeOS did not answer (`error` says why). */
@@ -98,6 +116,11 @@ export interface MailSendAnswer {
   via: 'hold' | 'owner'
 }
 
+/** `work.mail.chat.find`'s answer. */
+export interface MailChatFound {
+  sessionIds: string[]
+}
+
 export type MailPush = never
 
 export const MAIL_CAPS = {
@@ -107,6 +130,8 @@ export const MAIL_CAPS = {
   'work.mail.cancel': 'approve',
   'work.mail.nudge': 'operate',
   'work.mail.waiting': 'read',
-  'work.mail.setWaiting': 'admin'
+  'work.mail.setWaiting': 'admin',
+  'work.mail.chat.adopt': 'operate',
+  'work.mail.chat.find': 'read'
 } satisfies CapsOf<typeof MailRequestSchemas>
 export const MAIL_RELAY = {} satisfies RelayOf<typeof MailRequestSchemas>

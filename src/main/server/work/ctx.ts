@@ -12,6 +12,7 @@ import {
   NotBuilt,
   PILLAR_MILESTONE,
   pillarOfMethod,
+  WORK_TOOL_SERVER,
   workToolNameProblem,
   type Handled,
   type PillarId,
@@ -41,6 +42,7 @@ import { canvasPart } from './canvas/ctx'
 import { tellPart } from './digest/ctx'
 import { convertPart } from './formats/jobs'
 import { lifeosPart } from './lifeos/ctx'
+import { callRefusalOf } from './narrowing'
 import { WORK_LOAD_FAULTS, WORK_MODULES, workModulesAsked, type Caller, type PushTo, type ToolCtx, type WorkCtx, type WorkModule, type WorkSend, type WorkTool } from './modules'
 import type { HealthReport } from '@shared/work'
 import { checkHost, connectionsTool, lapsesOf, type HostHealth } from './health'
@@ -380,6 +382,9 @@ export function startWork(deps: WorkDeps, modules: WorkModule[] = WORK_MODULES):
       const mounted = tools.of(session)
       const tool = mounted?.tools.find((t) => t.name === name)
       if (!mounted || !tool) throw new Error(`unknown tool: ${name}`)
+      // A pillar may narrow one thread (a mail chat): asked before the arguments are read, whichever harness called.
+      const refusal = callRefusalOf(sound, ctx, { sessionId: session.id, via: 'work', server: WORK_TOOL_SERVER, tool: name })
+      if (refusal) return { content: [{ type: 'text', text: refusal }], isError: true }
       const parsed = tool.input.safeParse(args ?? {})
       if (!parsed.success) return { content: [{ type: 'text', text: `invalid arguments: ${parsed.error.message}` }], isError: true }
       // The caller's signal (the harness's cancel, the bridge's socket) or Work turning off, whichever comes first.

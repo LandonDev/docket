@@ -16,6 +16,7 @@ import { editModel, isEditBlock } from "./editModel";
 import { splitEditCards } from "./editCards";
 import { htmlRenderOf } from "./htmlRenderBlock";
 import { isComputerShotBlock } from "./computerShots";
+import { isMailOfferBlock } from "./mailOfferBlock";
 import { passActionsOf } from "../lib/turnClock";
 import { AGENT_TOOLS } from "./appTool";
 import { isOpenWait, isWaitCall, waitOutcomes } from "./agentSteps";
@@ -330,12 +331,13 @@ export function isHtmlRenderBlock(block: Block): boolean {
 
 /**
  * A completed call whose result is something to look at stands as its own
- * row where it settled, breaking the run: a published page, or a computer
- * call with a picture the model asked for (computerShots.ts). Running, it
- * folds into its group like any call and the working line tells it.
+ * row where it settled, breaking the run: a published page, a computer
+ * call with a picture the model asked for (computerShots.ts), or a mail
+ * chat's card (mailOfferBlock.ts). Running, it folds into its group like any
+ * call and the working line tells it.
  */
 export function standsAlone(block: Block): boolean {
-  return isHtmlRenderBlock(block) || isComputerShotBlock(block);
+  return isHtmlRenderBlock(block) || isComputerShotBlock(block) || isMailOfferBlock(block);
 }
 
 /** Empty reasoning and empty prose (a stream's placeholder) take no row. */

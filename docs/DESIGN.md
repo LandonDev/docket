@@ -1899,6 +1899,37 @@ Around the canvas:
   else a 14px glyph for a mailing list or a shared mailbox, else initials
   on `muted`, all inside the image outline. A picture that does not load
   gives way to the initials quietly.
+  **The chat beside the mail** (work/mail/chat/, on the dock lifted from
+  Files, work/dock/): Ask, a secondary small button with the Ask glyph at
+  the reader toolbar's right end (flat on `muted` while the chat is open),
+  an Ask glyph after Mark read in the ticked head, or ⌘L anywhere in Mail
+  (a live canvas selection's Ask keeps ⌘L) docks a chat at the view's
+  right edge, top to bottom, a hairline at its left and no shadow; Ask
+  again or Close takes it away at once, never a tween. It is 360px to
+  start (360 to 720, kept per window as `tc.mail.dockWidth`), the canvas
+  split's sash between (8px grab, the arrows, a double-click back to 360).
+  Mail lays out its list and reader in what it leaves, by its own rules:
+  at 640px or less of room they take turns; under 480px of room the chat
+  lies over the whole view, its head and Close where they were, the mail
+  under it inert. Its head is 44px, level with the list's head and the
+  reader's toolbar: what it is about at 13px medium (the open mail's
+  subject, "6 mails" for ticked rows, the mailbox or "Search: …"), then
+  Open in its own tab once it is a thread and Close, 24px ghost glyphs. No
+  chip sits in its composer: the head names the subject once. A fresh
+  draft shows at most three starters over the composer, 32px rows at 13px
+  in `muted-foreground` going to `foreground` under the pointer; they go
+  once he types. Its answers are cards in the transcript, 12px radius and
+  a hairline, no card inside one: a draft (a 36px head, "Reply to Dana
+  Lee" at 13px medium and its state at the end in 12px muted: Draft, In
+  your reply, Sent 2:14 PM, Discarded; the words at 13/20, twelve lines
+  then Show all; Put in reply, secondary, and Discard, a ghost trash
+  glyph); a rewrite of his reply (words taken out and put in, the review
+  tints; Take and Leave); rows to act on (36px rows: a tick, the subject
+  at 13px, the sender and the date at 12px muted; one press in the foot
+  names the count, "Archive 3"); a task or an event (one 44px row: a 14px
+  glyph, the title at 13px medium, one 12px muted line, Add…). A mail or a
+  person named in an answer is a 20px chip on `muted` at radius 6 with a
+  12px glyph.
   Mail's settings are flat groups of 44px rows under 13px semibold
   headings; a signature and an account open as dialogs in the one dialog
   shape (the title beside a quiet Close, a hairline over the footer), every

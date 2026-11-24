@@ -263,7 +263,7 @@ describe('mail_waiting, for a thread', () => {
   it('is read only, listed only to a thread with a sector, and refuses without one', async () => {
     expect(waitingTool.readOnly).toBe(true)
     const scope = (sector: string | null) => ({ sessionId: 't', workspaceId: 'ws', sector, host: 'box', away: false, routineRunId: null, shared: () => false }) as WorkScope
-    expect(mail.tools!(scope('purdue')).map((t) => t.name)).toEqual(['mail_waiting'])
+    expect(mail.tools!(scope('purdue')).map((t) => t.name)).toEqual(['mail_waiting', 'mail_offer'])
     expect(mail.tools!(scope(null))).toEqual([])
     const { ctx, calls } = fakeCtx({ 'mailWaits:list': { page: [row('a', 'purdue')] } })
     const answer = await waitingTool.run({}, { ...ctx, scope: scope('purdue'), sessionId: 't', signal: new AbortController().signal } as ToolCtx)

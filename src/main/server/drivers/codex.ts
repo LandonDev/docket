@@ -25,6 +25,7 @@ import { homedir } from 'node:os'
 import { sessionScopeOf } from '@shared/work/ids'
 import { harnessRoot } from '../skills/claudeRoots'
 import { WORK_STANDING_RULE } from '../work/preamble'
+import { harnessDeniedOf } from '../work/narrowing'
 import { codexSkillRoot, codexSkillScope, disableHomeSkillsArgs, homeSkillFiles, trackCodexSkills } from '../skills/codexSkills'
 import { COMPUTER_PICTURES_TEXT, MAX_IMAGE_PARTS, parseShotLine } from '@shared/computer/tools'
 import { addonCallOf } from '@shared/addonNames'
@@ -206,6 +207,23 @@ export function codexWorkThreadConfig(cwd: string): { project_root_markers: stri
     project_root_markers: [],
     projects: Object.fromEntries([...new Set([cwd, real])].map((dir) => [dir, { trust_level: 'untrusted' as const }])),
     features: workFeatures()
+  }
+}
+
+/**
+ * A thread a pillar narrowed (`WorkModule.harnessDenied`, a mail chat): Codex
+ * has no list of built-ins to deny, so the thread starts in the read-only
+ * sandbox, which has no network, with no escalation to ask for, no shell tool
+ * when `Bash` is denied and no web search when the web is. Null for any other
+ * thread, whose params stay what they were.
+ */
+export function codexNarrowing(denied: readonly string[]): { sandbox: 'read-only'; approvalPolicy: 'never'; features: Record<string, false>; webSearch: 'disabled' | null } | null {
+  if (!denied.length) return null
+  return {
+    sandbox: 'read-only',
+    approvalPolicy: 'never',
+    features: denied.includes('Bash') ? { shell_tool: false } : {},
+    webSearch: denied.includes('WebSearch') || denied.includes('WebFetch') ? 'disabled' : null
   }
 }
 
@@ -1220,11 +1238,13 @@ export const codexDriver: HarnessDriver = {
         // The Work home again, right before the thread starts: a warm process was spawned earlier, and codex reads config.toml at thread/start.
         if (workHome) ensureCodexWorkHome(workHome)
         const workConfig = work ? codexWorkThreadConfig(session.cwd) : null
+        // Read at every start, warm process or cold: thread params are this thread's own.
+        const narrow = work ? codexNarrowing(harnessDeniedOf(session.id)) : null
         const threadParams = {
           cwd: session.cwd,
           model: session.model,
-          approvalPolicy: APPROVAL_POLICY[session.permission],
-          sandbox: SANDBOX[session.permission],
+          approvalPolicy: narrow?.approvalPolicy ?? APPROVAL_POLICY[session.permission],
+          sandbox: narrow?.sandbox ?? SANDBOX[session.permission],
           // A Work thread's standing rule, where a compaction does not reach (work/preamble.ts).
           ...(work ? { developerInstructions: WORK_STANDING_RULE } : {}),
           config: {
@@ -1241,8 +1261,10 @@ export const codexDriver: HarnessDriver = {
               multi_agent: false,
               multi_agent_v2: false,
               ...(codexPluginsOff() ? { plugins: false } : {}),
-              ...(workConfig?.features ?? {})
+              ...(workConfig?.features ?? {}),
+              ...(narrow?.features ?? {})
             },
+            ...(narrow?.webSearch ? { web_search: narrow.webSearch } : {}),
             // The Work fence: this folder untrusted, no parent's project config.
             ...(workConfig ? { project_root_markers: workConfig.project_root_markers, projects: workConfig.projects } : {}),
             // Fast = OpenAI's priority service tier, Ultrafast = its

@@ -20,6 +20,8 @@ const NONE: readonly ContextChip[] = [];
 /** A composer holds a few things a message is about, not a list. */
 export const CHIPS_MAX = 8;
 const chips = new Map<string, readonly ContextChip[]>();
+/** Chips a draft's first send carries that sit in no composer: a docked chat whose head already names its subject (work/dock). */
+const sendChips = new Map<string, readonly ContextChip[]>();
 /** What a draft's first send was about, until its create takes it. */
 const abouts = new Map<string, ContextChip>();
 const listeners = new Set<() => void>();
@@ -56,12 +58,26 @@ export function removeContextChip(sessionId: string, index: number): void {
   put(sessionId, contextChipsOf(sessionId).filter((_, i) => i !== index));
 }
 
-/** The composer sent: its chips go with the message. A draft's first send keeps its first chip for the create. */
+/** The chips a draft's first send carries before its composer's own, unseen in the composer; null forgets them. */
+export function setSendChips(sessionId: string, next: readonly ContextChip[] | null): void {
+  if (next?.length) sendChips.set(sessionId, next);
+  else sendChips.delete(sessionId);
+}
+
+/**
+ * The composer sent: its chips go with the message. A draft's first send leads with the chips set for it
+ * (`setSendChips`) and keeps its first chip for the create.
+ */
 export function takeContextChips(sessionId: string, firstSend: boolean): readonly ContextChip[] {
-  const sent = contextChipsOf(sessionId);
+  const have = contextChipsOf(sessionId);
+  const lead = (firstSend && sendChips.get(sessionId)) || NONE;
+  const sent = lead.length ? [...lead, ...have.filter((c) => !lead.some((l) => same(l, c)))].slice(0, CHIPS_MAX) : have;
   if (sent.length === 0) return sent;
-  if (firstSend) abouts.set(sessionId, sent[0]);
-  put(sessionId, NONE);
+  if (firstSend) {
+    abouts.set(sessionId, sent[0]);
+    sendChips.delete(sessionId);
+  }
+  if (have.length) put(sessionId, NONE);
   return sent;
 }
 
@@ -115,6 +131,7 @@ export function useContextChips(sessionId: string | undefined): readonly Context
 export function resetContextChips(): void {
   chips.clear();
   abouts.clear();
+  sendChips.clear();
 }
 
 chipPort.set({

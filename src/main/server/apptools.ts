@@ -1,3 +1,4 @@
+import { harnessDeniedOf, narrowedMethodRefusal } from './work/narrowing'
 import { z } from 'zod'
 import { BatchStepSpecSchema } from '@shared/contract-batch'
 import { NOTE_DECISION_DESCRIPTION, NOTE_DECISION_MAX_CHARS, NOTE_DECISION_PARAMS, NOTE_DECISION_TOOL_NAME } from '@shared/away'
@@ -258,11 +259,12 @@ export function hasAppBridge(): boolean {
  * holds it. A caller naming another thread's id, or none, is refused; with no
  * bridge set up, every app.* call is. Other methods pass.
  */
-export function bridgeCallRefusal(method: string, params: unknown, info: AppBridgeInfo | null = bridge): string | null {
+export function bridgeCallRefusal(method: string, params: unknown, info: AppBridgeInfo | null = bridge, denied: (sessionId: string) => readonly string[] = harnessDeniedOf): string | null {
   if (!method.startsWith('app.')) return null
   const { sessionId, appToken } = (params ?? {}) as { sessionId?: unknown; appToken?: unknown }
-  if (typeof sessionId === 'string' && info?.tokens.check(sessionId, appToken)) return null
-  return `forbidden: ${method} needs the calling thread's own app token`
+  if (typeof sessionId !== 'string' || !info?.tokens.check(sessionId, appToken)) return `forbidden: ${method} needs the calling thread's own app token`
+  // A thread a pillar narrowed (a mail chat) keeps only the calls narrowing.ts lists: no thread or agent of its own, no app or desktop change.
+  return denied(sessionId).length ? narrowedMethodRefusal(method) : null
 }
 
 /** A Work thread reaches a Mac's desktop (the bridge's tools, bridged computer use) only when its workspace may use that Mac; any other thread as its bridge says. */

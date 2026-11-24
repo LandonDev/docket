@@ -1,0 +1,21 @@
+# bun --preload scripts/lib/electron-stub.ts src/main/server/work/mail/chat/proof/narrowing.ts
+# run 2026-11-23 8:00 PM CST on the box, branch mail-chat-host
+# adopt
+PASS  his window marks the fresh thread as a chat about the dummy mail
+# the add-on catch
+  mail chat, archive_mail → {"run":false,"result":{"content":[{"type":"text","text":"archive_mail is not available in a mail chat. In a mail chat you propose and he acts: offer it with mail_offer."}],"isError":true}}
+PASS  the mail chat's archive_mail is refused, with words that send it to mail_offer
+  mail chat, draft_mail → {"run":true,"args":{"threadId":"mt-dummy","body":"Thanks, that works.","origin":{"app":"tempcode","threadId":"mail-chat","host":"box","workspaceId":"ws-life"}}}
+PASS  the mail chat's draft_mail passes the gate, stamped with the chat as its origin
+  ordinary Work thread, archive_mail → {"run":true,"args":{"ids":["mt-dummy"]}}
+PASS  an ordinary Work thread's archive_mail still passes the gate (the control)
+# the harness
+  denied to the mail chat: Bash, Write, Edit, NotebookEdit, WebFetch, WebSearch; to the ordinary thread: nothing
+  the mail chat's CLI has: Task, DesignSync, EnterWorktree, ExitWorktree, Glob, Grep, PushNotification, Read, ReportFindings, Skill, TaskStop, ToolSearch, Workflow
+  the ordinary thread's CLI has: Task, Bash, DesignSync, Edit, EnterWorktree, ExitWorktree, Monitor, NotebookEdit, PushNotification, Read, ReportFindings, Skill, TaskStop, ToolSearch, WebFetch, WebSearch, Workflow, Write
+PASS  the ordinary Work thread's CLI has Bash (the control)
+PASS  the mail chat's CLI has no Bash
+PASS  the mail chat's CLI has no Write, Edit, NotebookEdit, WebFetch or WebSearch
+
+ALL PASSED
+# exit 0

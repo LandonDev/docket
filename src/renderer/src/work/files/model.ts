@@ -1,4 +1,5 @@
 import type { FileCrumb, FilePage, FilesPlaces, FileTab } from "@shared/contract-work-files";
+import { clampDock as clampDockIn, DOCK_FOLD_AT, DOCK_SIZE, dockMost as dockMostIn, dockShape as dockShapeIn, sidebarFolds } from "../dock/shapes";
 import { canvasSourcePath, type CanvasSource } from "@shared/work/canvas";
 import type { TeamsEntry, TeamsLibrariesAnswer, TeamsPlace } from "@shared/contract-work-office";
 import { kindOfEntry, PLACE, refKey, refusal, threadCanvasOf, type FileEntry, type FilePlace, type FileSort, type FileVerb, type FolderRef, type PlaceKind } from "@shared/work/files";
@@ -679,30 +680,21 @@ export const whereWords = (where: NonNullable<FileEntry["where"]>): string => [w
 // ── the chat docked beside a file ─────────────────────────────────────
 
 /**
- * The chat docked at the right of a file tab (docs/DESIGN.md "The Files place"): 360px to start, never narrower
- * (the chat's floor beside anything), never wider than 720px or than leaves the file 560px. Where the tab's body
- * cannot hold both, the chat lies over the whole body instead, its close control still at its head.
+ * The chat docked at the right of a file tab (docs/DESIGN.md "The Files place"): the shared dock's sizes
+ * (work/dock/shapes.ts), never leaving the file under 560px. Where the tab's body cannot hold both, the chat lies
+ * over the whole body instead, its close control still at its head.
  */
-export const DOCK = { width: 360, min: 360, max: 720, file: 560 } as const;
-/** Under this much view the sidebar folds itself away while a dock is open, and comes back when it closes. */
-export const DOCK_FOLD_AT = 900;
+export const DOCK = { ...DOCK_SIZE, file: 560 } as const;
+export { DOCK_FOLD_AT, sidebarFolds };
 
 /** The widest the dock may be in a body of `body` px (unmeasured, 0: the bound alone). */
-export const dockMost = (body = 0): number => (body > 0 ? Math.max(DOCK.min, Math.min(DOCK.max, body - DOCK.file)) : DOCK.max);
+export const dockMost = (body = 0): number => dockMostIn(body, DOCK.file);
 
 /** A dragged or kept width, held to the dock's bounds and to what the body leaves. */
-export function clampDock(width: number, body = 0): number {
-  return Math.round(Math.max(DOCK.min, Math.min(dockMost(body), Number.isFinite(width) ? width : DOCK.width)));
-}
+export const clampDock = (width: number, body = 0): number => clampDockIn(width, body, DOCK.file);
 
 /** How the dock sits in a tab's body of `body` px: beside the file at its width, or over it where the file would get under 560px. */
-export function dockShape(body: number, width: number): { over: true } | { over: false; width: number } {
-  if (body > 0 && body - DOCK.min < DOCK.file) return { over: true };
-  return { over: false, width: clampDock(width, body) };
-}
-
-/** Whether the sidebar folds itself away: under 640px of view always, under 900px while the shown tab's chat is docked. */
-export const sidebarFolds = (view: number, docked: boolean, foldAt: number): boolean => view > 0 && (view < foldAt || (docked && view < DOCK_FOLD_AT));
+export const dockShape = (body: number, width: number): { over: true } | { over: false; width: number } => dockShapeIn(body, width, DOCK.file);
 
 // ── Home and search pages ─────────────────────────────────────────────
 

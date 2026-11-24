@@ -19,6 +19,7 @@ import { realpathSync } from 'node:fs'
 import type { Attachment } from '@shared/events'
 import { sessionScopeOf } from '@shared/work/ids'
 import { bridgeMcpConfig } from '../apptools'
+import { harnessDeniedOf } from '../work/narrowing'
 import { expandSlashRefs } from '../slash'
 import { museConfigDirFor, museDirKind, museSkillsFor, museWorkDirs, museWorkRefusal, recaptureMuseDir, type MuseWorkDirs } from '../museConfigDirs'
 import { exitWords, spawnMuseHost, type MuseHost } from './harness/museHost'
@@ -69,6 +70,17 @@ import type { DriverCtx, DriverHandle, HarnessDriver, SendOpts } from './types'
  */
 export const museDriver: HarnessDriver = { id: 'muse', start }
 
+/**
+ * Why a thread a pillar narrowed (`WorkModule.harnessDenied`, a mail chat)
+ * cannot run on Muse, or null: the Muse Session Protocol has no way to deny
+ * a built-in (`SessionStartParams` takes a permission profile the host's
+ * catalog already holds, and none is a no-shell one), so the thread is
+ * refused rather than started with its shell.
+ */
+export function museNarrowRefusal(denied: readonly string[]): string | null {
+  return denied.length ? `refused: Muse Code cannot be kept from ${denied.join(', ')}, which this thread may not use. Start it on Claude.` : null
+}
+
 /** A message pushed this long ago with nothing back: the row errors and the registry re-queues it once. */
 export const FIRST_OUTPUT_MS = 60_000
 
@@ -85,6 +97,8 @@ async function start(ctx: DriverCtx): Promise<DriverHandle> {
   const work = sessionScopeOf(session) === 'work'
   const workRefusal = work ? museWorkRefusal() : null
   if (workRefusal) throw new Error(workRefusal)
+  const narrowRefusal = work ? museNarrowRefusal(harnessDeniedOf(session.id)) : null
+  if (narrowRefusal) throw new Error(narrowRefusal)
   const account = ctx.route?.account ?? null
   const workDirs = (): MuseWorkDirs => museWorkDirs(session.id, account, skills?.scope, skills?.pointer ?? null)
   let fence = work ? workDirs() : null

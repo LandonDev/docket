@@ -6,6 +6,7 @@ import { z } from 'zod'
 import { ClientRequestSchema, type ClientRequest } from '@shared/contract'
 import { ATTACHMENT_PARAMS, FENCED_PARAMS, FenceError, attachmentPaths, elsewherePath, expandPath, fenceDenied, fenceRequest, fencedPaths, guestPath, insideRoots, plainWindowsPath, requestBases, workSourcePaths } from './fence'
 import { isWorkMethod } from '@shared/work/wire'
+import { requiredCapability } from '@shared/capabilities'
 
 /** R2 H1/H2: the real-path fence every remote request passes before a handler runs. */
 let dir: string
@@ -297,6 +298,18 @@ describe('fenceRequest', () => {
     // nothing denied, nothing refused
     const open = req('fs.read', { projectId: 'p-data', path: 'computer/history/t1/steps/1.txt' })
     expect(() => fenceDenied(open, requestBases(open, project), [])).not.toThrow()
+  })
+
+  it("passes the mail chat's two window verbs, which name no file, under his key's caps: adopt operates, find reads", () => {
+    const adopt = req('work.mail.chat.adopt', { workspaceId: 'w1', sessionId: 's1', kind: 'mail', mailThreadId: 'm1' })
+    const find = req('work.mail.chat.find', { workspaceId: 'w1', mailThreadId: 'm1' })
+    for (const r of [adopt, find]) {
+      expect(ClientRequestSchema.safeParse(r).success, r.method).toBe(true)
+      expect(workSourcePaths(r), r.method).toEqual([])
+      expect(() => fenceRequest(r, []), r.method).not.toThrow()
+    }
+    expect(requiredCapability(adopt)).toBe('operate')
+    expect(requiredCapability(find)).toBe('read')
   })
 
   it('passes a request inside the roots and ignores methods without paths', () => {

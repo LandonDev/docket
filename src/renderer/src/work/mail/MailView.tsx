@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from "react";
 import { ConvexProvider } from "convex/react";
-import { Mailbox, MailClientProvider, MailKitProvider, useMailClient, useMailKit, type ComposeState, type MailBox, type MailNav, type MailTaskRequest } from "work-kit/mail";
+import { Mailbox, MailClientProvider, MailKitProvider, useMailClient, useMailKit, type ComposeState, type MailNav, type MailTaskRequest } from "work-kit/mail";
 import "work-kit/mail/styles.css";
 import "./mail.css";
 import { Skeleton } from "../../components/ui/skeleton";
@@ -15,6 +15,26 @@ import { CanvasSeat } from "../canvas/CanvasSeat";
 import { Mail as MailGlyph } from "../icons";
 import { placedKit } from "./files";
 import { mailChip } from "./model";
+import { defineChunk } from "../../lib/lazyChunk";
+import { Button } from "../../components/ui/button";
+import { Tip } from "../../components/tip";
+import { modKey } from "../../lib/keys";
+import { Ask as AskGlyph } from "../icons";
+import { mailChatWithheld } from "@shared/work/mailChat";
+import { mailChatSubject, type MailInView } from "./chat/subject";
+import { mailDockPort } from "./chat/port";
+import { BLANK, liveDraftIds, liveViews, pages, patch, showMail, usePage, type MailPage } from "./page";
+
+export { patch, showMail, type MailPage } from "./page";
+import { keepDockWidth, mailRoom, readDockWidth } from "./chat/layout";
+import { DOCK_SIZE } from "../dock/shapes";
+import { DockSash } from "../dock/DockSash";
+import { MAIL_BESIDE } from "./chat/layout";
+import type { SectorKey } from "@shared/work";
+
+/** The chat beside the mail, in a chunk of its own: it loads when he first asks. */
+export const mailChatChunk = defineChunk("work-mail-chat", () => import("./chat/MailDock"));
+const MailDock = mailChatChunk.surface("MailDock", <div className="min-h-0 flex-1" />);
 
 /**
  * The Mail view of a linked Work workspace (docs/agents/work-mail.md):
@@ -30,8 +50,6 @@ import { mailChip } from "./model";
 
 /** The list's width: its default, its bounds, and where the app keeps it. */
 export const LIST_WIDTH = { base: 296, min: 260, max: 480, key: "tc.mail.listWidth" } as const;
-/** The view's width at and under which the list and the open mail take turns. */
-const NARROW_AT = 640;
 
 export const clampList = (width: number): number => Math.min(LIST_WIDTH.max, Math.max(LIST_WIDTH.min, Math.round(width)));
 
@@ -42,37 +60,6 @@ function readListWidth(): number {
   } catch {
     return LIST_WIDTH.base;
   }
-}
-
-export interface MailPage {
-  account: string | null;
-  /** The mailbox the list shows. */
-  box: MailBox;
-  threadId: string | null;
-  sheetOpen: boolean;
-  compose: ComposeState | null;
-}
-
-const BLANK: MailPage = { account: null, box: "inbox", threadId: null, sheetOpen: false, compose: null };
-
-// What each workspace's Mail showed (its mailbox, the open mail, a mail being written), kept while the window lives, so coming back finds it as it was.
-const pages = new Map<string, MailPage>();
-const listeners = new Set<() => void>();
-
-/** Changes what a workspace's Mail shows. Exported for the preview page, which sets a scene. */
-export function patch(workspaceId: string, next: Partial<MailPage>): void {
-  pages.set(workspaceId, { ...(pages.get(workspaceId) ?? BLANK), ...next });
-  for (const listener of listeners) listener();
-}
-
-function usePage(workspaceId: string): MailPage {
-  return useSyncExternalStore(
-    (fn) => {
-      listeners.add(fn);
-      return () => void listeners.delete(fn);
-    },
-    () => pages.get(workspaceId) ?? BLANK,
-  );
 }
 
 const NO_TASKS: ReadonlySet<string> = new Set();
@@ -93,7 +80,7 @@ export function View(props: WorkViewProps) {
   );
 }
 
-function MailPageBody({ workspace, startThread, env }: WorkViewProps) {
+function MailPageBody({ workspace, startThread, env, sector }: WorkViewProps) {
   const id = workspace.id;
   const openTask = useCallback(() => openWorkView({ workspaceId: id, view: "tasks" }), [id]);
   const start = useCallback((mail: { id: string; subject: string }) => startThread(mailChip(mail.id, mail.subject)), [startThread]);
@@ -102,14 +89,15 @@ function MailPageBody({ workspace, startThread, env }: WorkViewProps) {
   const mail = wanted?.workspaceId === id && wanted.view === "mail" ? wanted.mail : undefined;
   useEffect(() => {
     if (!mail) return;
-    patch(id, { threadId: mail, compose: null });
+    showMail(id, mail);
     openWorkView({ workspaceId: id, view: "mail" });
   }, [id, mail]);
-  // A file of the open mail opens in the view's own pane beside the reader; Ask there starts a thread about it.
-  const files = useMemo(() => ({ env, onAsk: (chip: ContextChip) => startThread(chip) }), [env, startThread]);
+  // A file of the open mail opens in the view's own pane beside the reader; Ask there opens the chat with its selection.
+  const files = useMemo(() => ({ env, onAsk: (chip: ContextChip) => askChat(id, chip) }), [env, id]);
   // Waiting on's Draft a nudge: the host starts a thread that drafts it, and the thread opens.
   const nudge = useCallback((thread: { id: string }) => void startNudge(env, id, thread.id), [env, id]);
-  return <MailScreen id={id} onOpenTask={openTask} onStartThread={start} files={files} onNudge={nudge} />;
+  const chat = useMemo(() => (mailChatWithheld(sector as SectorKey) ? undefined : { workspace: { id, environmentId: env, path: workspace.path } }), [id, env, workspace.path, sector]);
+  return <MailScreen id={id} onOpenTask={openTask} onStartThread={start} files={files} onNudge={nudge} chat={chat} />;
 }
 
 /** The toggle over the reader, when an attachment shares the pane with it. */
@@ -122,8 +110,11 @@ export function MailScreen({
   onStartThread,
   files,
   onNudge,
+  chat,
 }: {
   id: string;
+  /** The chat beside the mail, where the window has a host to make it on. Absent (the preview, a withheld sector), no Ask. */
+  chat?: { workspace: { id: string; environmentId: string; path: string } };
   onOpenTask: () => void;
   onStartThread?: (mail: { id: string; subject: string }) => void;
   /** Waiting on's Draft a nudge, where the host has threads to write it. Absent (the preview), the row offers none. */
@@ -135,10 +126,13 @@ export function MailScreen({
   const kit = useMailKit();
   const pane = mailPaneOf(id);
   const env = files?.env;
+  const toggleChat = useCallback(() => patch(id, { chat: !(pages.get(id) ?? BLANK).chat, chatAt: null }), [id]);
   const placed = useMemo(() => {
-    const base = env ? placedKit(kit, { env, pane }) : kit;
-    return onNudge ? { ...base, nudge: onNudge } : env ? base : null;
-  }, [kit, env, pane, onNudge]);
+    let base = env ? placedKit(kit, { env, pane }) : kit;
+    if (onNudge) base = { ...base, nudge: onNudge };
+    if (chat) base = { ...base, paneEnd: () => <AskButton pressed={page.chat} onPress={toggleChat} />, bulkEnd: (ids: string[]) => <AskButton glyph pressed={page.chat} onPress={() => patch(id, { chat: true, chatAt: { box: page.box, threadId: null, subject: null, query: null, picked: ids } })} /> };
+    return base === kit ? null : base;
+  }, [kit, env, pane, onNudge, chat, page.chat, page.box, toggleChat, id]);
   const client = useMailClient();
   const accounts = client.useMailAccounts();
   const actions = client.useMailActions();
@@ -148,9 +142,10 @@ export function MailScreen({
       account: page.account,
       box: page.box,
       // Another mailbox is another list: the mail that was open belongs to the one he left.
-      setBox: (box) => patch(id, { box, threadId: null }),
+      setBox: (box) => patch(id, { box, threadId: null, chatAt: null }),
       threadId: page.threadId,
-      setThreadId: (threadId) => patch(id, { threadId }),
+      // His own move in the list or the reader: the chat follows it.
+      setThreadId: (threadId) => patch(id, { threadId, chatAt: null }),
       sheetOpen: page.sheetOpen,
     }),
     [id, page.account, page.box, page.threadId, page.sheetOpen],
@@ -165,16 +160,64 @@ export function MailScreen({
     [actions, onOpenTask],
   );
   const root = useRef<HTMLDivElement>(null);
-  const [narrow, setNarrow] = useState(false);
+  const [width, setWidth] = useState(0);
   useEffect(() => {
     const el = root.current;
     if (!el) return;
-    const measure = (): void => setNarrow(el.clientWidth > 0 && el.clientWidth <= NARROW_AT);
+    const measure = (): void => setWidth(el.clientWidth);
     measure();
     const watch = new ResizeObserver(measure);
     watch.observe(el);
     return () => watch.disconnect();
   }, []);
+  const open = !!chat && page.chat;
+  const [dockWidth, setDockWidth] = useState(() => readDockWidth(DOCK_SIZE.width));
+  const room = mailRoom(width, open, dockWidth);
+  const narrow = room.narrow;
+
+  // What Mail shows, as the chat reads it: the search, the ticked rows and his saved reply come from the kit.
+  const [view, setView] = useState<{ query: string | null; picked: string[]; draftId: string | null }>(NO_VIEW);
+  const onView = useCallback(
+    (next: { query: string | null; picked: string[]; draftId: string | null }) => {
+      liveDraftIds.set(id, next.draftId);
+      setView((was) => {
+        // A tick or a search is his own move: a chat held on a mail opened from a chip follows it again.
+        if ((was.query ?? "") !== (next.query ?? "") || was.picked.join(",") !== next.picked.join(",")) if ((pages.get(id) ?? BLANK).chatAt) patch(id, { chatAt: null });
+        return next;
+      });
+    },
+    [id],
+  );
+  const thread = client.useMailThread(open ? page.threadId : null);
+  const live: MailInView = { box: page.box, threadId: page.threadId, subject: thread?.thread.subject ?? null, query: view.query, picked: view.picked };
+  liveViews.set(id, live);
+  const about = page.chatAt ?? live;
+  const subject = useMemo(() => mailChatSubject(id, about), [id, about.box, about.threadId, about.subject, about.query, about.picked.join(",")]);
+
+  // ⌘L opens and closes the chat anywhere in Mail; a canvas selection's Ask takes it first.
+  useEffect(() => {
+    if (!chat) return;
+    const onKey = (event: KeyboardEvent): void => {
+      if (event.defaultPrevented || event.key.toLowerCase() !== "l" || event.altKey || event.shiftKey || !modKey(event)) return;
+      if (!root.current?.isConnected) return;
+      event.preventDefault();
+      toggleChat();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [chat, toggleChat]);
+  // While the chat is open, Mention in a thread puts a mail in its composer.
+  useEffect(() => {
+    if (!open) return;
+    mailDockPort.set((chip) => askChat(id, chip));
+    return () => mailDockPort.set(null);
+  }, [open, id]);
+  // Esc in the chat's composer gives the keys back to the list.
+  const onDockKey = (event: ReactKeyboardEvent): void => {
+    if (event.key !== "Escape" || !(event.target as HTMLElement).closest("[data-composer-input]")) return;
+    (event.target as HTMLElement).blur();
+    root.current?.querySelector<HTMLElement>("[data-mail-list] [tabindex='0'], [data-mail-list] button")?.focus();
+  };
   const onAsk = files?.onAsk;
   const frame = useCallback(
     ({ list, pane: reader }: { list: ReactNode; pane: ReactNode }) => (
@@ -193,12 +236,112 @@ export function MailScreen({
     ),
     [env, onAsk, pane],
   );
-  const box = <Mailbox nav={nav} accounts={accounts} compose={page.compose} setCompose={setCompose} openTaskIds={NO_TASKS} onTask={onTask} frame={frame} narrow={narrow} sectors={false} onStartThread={onStartThread} />;
+  const box = (
+    <Mailbox nav={nav} accounts={accounts} compose={page.compose} setCompose={setCompose} openTaskIds={NO_TASKS} onTask={onTask} frame={frame} narrow={narrow} sectors={false} onStartThread={onStartThread} onView={chat ? onView : undefined} />
+  );
+  const asked = useAsked(id);
   return (
-    <div ref={root} data-mail-kit className="tc-mail h-full min-h-0">
-      {placed ? <MailKitProvider kit={placed}>{box}</MailKitProvider> : box}
+    <div ref={root} data-mail-kit className="tc-mail relative flex h-full min-h-0">
+      <div data-mail-room="" inert={open && room.over ? true : undefined} className="h-full min-h-0 min-w-0 flex-1">
+        {placed ? <MailKitProvider kit={placed}>{box}</MailKitProvider> : box}
+      </div>
+      {open && chat ? (
+        <>
+          {room.over ? null : (
+            <DockSash
+              name="mail"
+              width={room.dock}
+              body={width}
+              beside={MAIL_BESIDE}
+              onWidth={(next, done) => {
+                setDockWidth(next);
+                if (done) keepDockWidth(next);
+              }}
+            />
+          )}
+          <div
+            data-mail-dock-seat={room.over ? "over" : "beside"}
+            onKeyDown={onDockKey}
+            style={room.over ? undefined : { width: room.dock }}
+            className={room.over ? "absolute inset-0 z-20 flex bg-background" : "flex shrink-0"}
+          >
+            <MailDock
+              workspace={chat.workspace}
+              subject={subject}
+              facts={startersFacts(about, thread, page, view)}
+              chip={asked.chip}
+              focus={asked.focus}
+              onChipTaken={asked.taken}
+              onClose={() => patch(id, { chat: false, chatAt: null })}
+            />
+          </div>
+        </>
+      ) : null}
     </div>
   );
+}
+
+const NO_VIEW = { query: null, picked: [] as string[], draftId: null };
+
+/** Chips asked into the chat (a selection's Ask), and whether its composer takes the caret, per workspace. */
+const askedChips = new Map<string, { chip: ContextChip | null; focus: boolean }>();
+const askListeners = new Set<() => void>();
+const NOT_ASKED = { chip: null, focus: false };
+
+/** Opens the chat beside the mail with a chip in its composer, the caret in it. */
+export function askChat(workspaceId: string, chip: ContextChip | null): void {
+  askedChips.set(workspaceId, { chip, focus: true });
+  patch(workspaceId, { chat: true });
+  for (const listener of askListeners) listener();
+}
+
+function useAsked(workspaceId: string): { chip: ContextChip | null; focus: boolean; taken(): void } {
+  const asked = useSyncExternalStore(
+    (fn) => {
+      askListeners.add(fn);
+      return () => void askListeners.delete(fn);
+    },
+    () => askedChips.get(workspaceId) ?? NOT_ASKED,
+  );
+  const taken = useCallback(() => {
+    askedChips.set(workspaceId, { chip: null, focus: (askedChips.get(workspaceId) ?? NOT_ASKED).focus });
+    for (const listener of askListeners) listener();
+  }, [workspaceId]);
+  return { ...asked, taken };
+}
+
+/** What the starters are made from: the open mail's other party, who wrote last, how long it is, his own reply. */
+function startersFacts(about: MailInView, thread: ReturnType<ReturnType<typeof useMailClient>["useMailThread"]>, page: MailPage, view: { draftId: string | null }) {
+  const messages = about.threadId && thread?.thread.id === about.threadId ? thread.messages : [];
+  const last = messages[messages.length - 1];
+  const other = [...messages].reverse().find((m) => !m.fromMe);
+  const firstName = other ? (other.from.name || other.from.address).trim().split(/[\s@]/)[0] || null : null;
+  return {
+    box: about.box,
+    query: about.query,
+    firstName,
+    wroteLast: !!last?.fromMe,
+    messageCount: messages.length,
+    replyOpen: !!page.compose && page.compose.threadId === about.threadId && !!view.draftId,
+  };
+}
+
+/** Ask, at the reader toolbar's right end: secondary, flat on `muted` while the chat is open; a glyph alone in the ticked head. */
+function AskButton({ pressed, onPress, glyph = false }: { pressed: boolean; onPress(): void; glyph?: boolean }) {
+  const button = (
+    <Button
+      variant={pressed ? "ghost" : glyph ? "ghost" : "secondary"}
+      size={glyph ? "icon-sm" : "sm"}
+      aria-label={glyph ? "Ask about these" : undefined}
+      aria-pressed={pressed}
+      className={glyph ? "shrink-0 text-muted-foreground aria-pressed:bg-muted" : "ms-1 shrink-0 aria-pressed:bg-muted"}
+      onClick={onPress}
+    >
+      <AskGlyph />
+      {glyph ? null : "Ask"}
+    </Button>
+  );
+  return glyph ? <Tip label="Ask about these">{button}</Tip> : button;
 }
 
 /** The room the reading pane keeps beside the list. */

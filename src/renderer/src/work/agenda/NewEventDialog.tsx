@@ -24,11 +24,25 @@ const sourcesList = makeFunctionReference<"query">("sources:list");
 const save = makeFunctionReference<"mutation">("calendarOps:save");
 const send = makeFunctionReference<"mutation">("calendarOps:send");
 
-export function NewEventDialog({ sector, startsAt, onClose }: { sector: SectorKey; startsAt: number | null; onClose: () => void }) {
+export function NewEventDialog({
+  sector,
+  startsAt,
+  initial,
+  onAdded,
+  onClose,
+}: {
+  sector: SectorKey;
+  startsAt: number | null;
+  /** what the form starts with (a mail chat's proposed event); he still saves it */
+  initial?: Partial<EventForm>;
+  /** after his Add went through */
+  onAdded?: () => void;
+  onClose: () => void;
+}) {
   const [pending, setPending] = useState(false);
   return (
     <Modal onClose={onClose} title="New event" size="sm" busy={pending}>
-      <Body sector={sector} startsAt={startsAt} onClose={onClose} pending={pending} setPending={setPending} />
+      <Body sector={sector} startsAt={startsAt} initial={initial} onAdded={onAdded} onClose={onClose} pending={pending} setPending={setPending} />
     </Modal>
   );
 }
@@ -42,7 +56,23 @@ const timeOf = (ms: number) => {
   return `${pad(d.getHours())}:${pad(d.getMinutes())}`;
 };
 
-function Body({ sector, startsAt, onClose, pending, setPending }: { sector: SectorKey; startsAt: number | null; onClose: () => void; pending: boolean; setPending: (p: boolean) => void }) {
+function Body({
+  sector,
+  startsAt,
+  initial,
+  onAdded,
+  onClose,
+  pending,
+  setPending,
+}: {
+  sector: SectorKey;
+  startsAt: number | null;
+  initial?: Partial<EventForm>;
+  onAdded?: () => void;
+  onClose: () => void;
+  pending: boolean;
+  setPending: (p: boolean) => void;
+}) {
   const close = useModalClose();
   const sources = useQuery(sourcesList, {}) as Source[] | undefined;
   const calendars = (sources ?? []).filter((s) => s.kind === "gcal" && s.enabled && s.sector === sector);
@@ -50,7 +80,7 @@ function Body({ sector, startsAt, onClose, pending, setPending }: { sector: Sect
   const sendOp = useMutation(send);
   // A slot picked in the week, else the next whole hour.
   const start = startsAt ?? Math.ceil(Date.now() / 3_600_000) * 3_600_000;
-  const [form, setForm] = useState<EventForm>({ title: "", day: dayOf(start), from: timeOf(start), to: timeOf(start + 3_600_000), where: "", invite: "" });
+  const [form, setForm] = useState<EventForm>({ title: "", day: dayOf(start), from: timeOf(start), to: timeOf(start + 3_600_000), where: "", invite: "", ...initial });
   const [calendar, setCalendar] = useState("");
   const [error, setError] = useState<string | null>(null);
   const patch = (p: Partial<EventForm>) => setForm((f) => ({ ...f, ...p }));
@@ -68,6 +98,7 @@ function Body({ sector, startsAt, onClose, pending, setPending }: { sector: Sect
       .then(
         () => {
           setPending(false);
+          onAdded?.();
           void loadToast().then((toast) => toast(asks ? `Invites sent: ${made.title}` : `Added ${made.title}`));
           close ? close(onClose) : onClose();
         },

@@ -41,6 +41,7 @@ import { macToolsHooks, withMacTools } from '../macTools'
 import { computerHooks } from '../computer/mcp'
 import { mayUseFarDesktop } from '../work/scope'
 import { WORK_STANDING_RULE } from '../work/preamble'
+import { harnessDeniedOf, narrowedToolRefusal } from '../work/narrowing'
 import { expandSlashRefs } from '../slash'
 import { resolveClaude } from './binaries'
 import { isMetaModel, type ProviderId } from '@shared/catalog'
@@ -568,6 +569,10 @@ export function workToolRefusal(toolName: string, servers: Readonly<Record<strin
  *    every permission mode.
  *  - the standing rule in the system prompt, where a compaction does not
  *    reach: whose word counts, and that nothing is sent by shell.
+ *  - `denied`: the built-ins a pillar takes from this one thread
+ *    (`WorkModule.harnessDenied`, a mail chat's shell, file writes and web),
+ *    denied the same two ways. A warm process spawned without them is not
+ *    adopted: its command line differs (warm.ts `warmKey`).
  *
  * A code thread never comes here: its options are what they were.
  */
@@ -576,13 +581,17 @@ export function fenceWorkOptions(
   session: { scope?: 'code' | 'work' },
   root: { work?: true } | null,
   /** Asked at each call: why the thread may not use another host's desktop right now (its workspace's setting may have changed since the spawn), or null. */
-  farDesktop: (toolName: string) => string | null = () => null
+  farDesktop: (toolName: string) => string | null = () => null,
+  /** Built-ins a pillar denies this thread alone, read at the spawn (narrowing.ts `harnessDeniedOf`). */
+  denied: readonly string[] = []
 ): Options {
   if (session.scope !== 'work') return options
   const servers = { ...(options.mcpServers ?? {}) }
+  // A narrowed thread (some pillar denies it anything) also keeps only the app tools narrowing.ts lists.
+  const deniedHere = (toolName: string): string | null => (denied.includes(toolName) ? `${toolName} is not available in this thread.` : denied.length ? narrowedToolRefusal(toolName) : null)
   const fence = async (hookInput: unknown): Promise<HookJSONOutput> => {
     const toolName = (hookInput as { tool_name?: unknown }).tool_name
-    const why = typeof toolName === 'string' ? (workToolRefusal(toolName, servers) ?? farDesktop(toolName)) : null
+    const why = typeof toolName === 'string' ? (deniedHere(toolName) ?? workToolRefusal(toolName, servers) ?? farDesktop(toolName)) : null
     if (!why) return { continue: true }
     return { continue: true, hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: why } }
   }
@@ -590,7 +599,7 @@ export function fenceWorkOptions(
   options.settingSources = root?.work ? ['user'] : []
   options.env = { ...(options.env ?? {}), ENABLE_CLAUDEAI_MCP_SERVERS: 'false' }
   options.hooks = { ...(options.hooks ?? {}), PreToolUse: [{ hooks: [fence] }, ...(options.hooks?.PreToolUse ?? [])] }
-  options.disallowedTools = [...new Set([...(options.disallowedTools ?? []), ...WORK_DENIED_TOOLS])]
+  options.disallowedTools = [...new Set([...(options.disallowedTools ?? []), ...WORK_DENIED_TOOLS, ...denied])]
   // The rule a compaction must not take: whose word counts, and that nothing leaves by shell (work/preamble.ts).
   const prompt = options.systemPrompt
   if (prompt && typeof prompt === 'object' && !Array.isArray(prompt) && 'preset' in prompt) options.systemPrompt = { ...prompt, append: prompt.append ? `${prompt.append}\n\n${WORK_STANDING_RULE}` : WORK_STANDING_RULE }
@@ -1933,7 +1942,7 @@ export const claudeDriver: HarnessDriver = {
       const far = toolName.startsWith('mcp__mac__') || (toolName.startsWith('mcp__app__computer') && !computerHooks.current?.available())
       if (!far) return null
       return mayUseFarDesktop(session, macToolsHooks.current?.macPeerOf(session.id).macPeer ?? null) ? null : `${toolName} is not available: this workspace may not use that Mac (its Work settings).`
-    })
+    }, session.scope === 'work' ? harnessDeniedOf(session.id) : [])
     // Every CLI spawn goes through the warm pool (claudeWarm.ts): a fresh
     // thread whose traffic our own gateway routes (the owner's, or no shim)
     // adopts the warm process of the SDK's exact spec when one waits, and

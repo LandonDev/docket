@@ -9,7 +9,8 @@ import { canonical, specDigest } from '../../addonStore'
 import type { AddonGate, GateAnswer, GatedCall } from '../../addons/addonHost'
 import type { AddonCallResult } from '../../addons/addonWire'
 import { errorResult } from '../../addons/downstream'
-import type { ActKindDef, WorkModule } from '../modules'
+import type { ActKindDef, WorkCtx, WorkModule } from '../modules'
+import { callRefusalOf } from '../narrowing'
 import { ActNotSent, ActStale } from './kinds'
 import { textOf, type Outbox } from './outbox'
 import { isLifeosRow, standingRule, toolDigest, type RuleAddons } from './rules'
@@ -99,6 +100,8 @@ export interface CatchDeps {
   /** where a thread's LifeOS drafts say they came from: the host's own stamp */
   originOf(sessionId: string): LifeosOrigin | null
   modules(): readonly WorkModule[]
+  /** what a module's `callRefusal` is asked with */
+  ctx: WorkCtx
   log(line: string): void
 }
 
@@ -106,6 +109,8 @@ interface Judged {
   verdict: Verdict
   why: HeldWhy
   lifeos: boolean
+  /** a pillar's words refusing the call for this thread (`WorkModule.callRefusal`), which the model reads */
+  refusal?: string
 }
 
 export function makeAddonGate(deps: CatchDeps): AddonGate {
@@ -124,8 +129,14 @@ export function makeAddonGate(deps: CatchDeps): AddonGate {
 
   const judge = (call: Omit<GatedCall, 'args'>, args: Record<string, unknown> | undefined): Judged => {
     const run: Judged = { verdict: 'run', why: 'rule', lifeos: false }
+    const lifeos = isLifeosRow(deps.addons, call.row, deps.mcpUrl())
+    // A pillar may narrow one thread (a mail chat): asked of every thread's call, before the LifeOS row's run and any rule.
+    if (call.sessionId !== null) {
+      const refusal = callRefusalOf(deps.modules(), deps.ctx, { sessionId: call.sessionId, via: 'addon', server: lifeos ? 'lifeos' : call.row.id, tool: call.tool }, deps.log)
+      if (refusal) return { verdict: 'refuse', why: 'pillar', lifeos, refusal }
+    }
     // The app's own LifeOS row, pointed at LifeOS: never held, whoever calls, and every thread's drafts are stamped.
-    if (isLifeosRow(deps.addons, call.row, deps.mcpUrl())) return { ...run, lifeos: true }
+    if (lifeos) return { ...run, lifeos: true }
     const host = call.sessionId === null
     // The host's own call for Work (a watch) on a row no Work thread reaches now, a global add-on no longer For Work:
     // outside Work's scope no rule of his stands, and with nobody to hold it for it is refused.
@@ -197,7 +208,7 @@ export function makeAddonGate(deps: CatchDeps): AddonGate {
     async decide(call) {
       const judged = judge(call, call.args)
       if (judged.verdict === 'run') return judged.lifeos ? { run: true, args: stamped(call) } : { run: true }
-      if (judged.verdict === 'refuse') return { run: false, result: errorResult(REFUSED_OFF) }
+      if (judged.verdict === 'refuse') return { run: false, result: errorResult(judged.refusal ?? REFUSED_OFF) }
       return held(call, judged.why)
     }
   }

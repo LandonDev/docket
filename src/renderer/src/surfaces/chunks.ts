@@ -22,6 +22,9 @@ export const terminalChunk = defineChunk("terminal", () => import("./TerminalVie
 export const threadViewsChunk = defineChunk("threadViews", () => import("./threads/threadViews"));
 /** An agent's HTML page in the transcript and the overlay. */
 export const htmlRenderChunk = defineChunk("htmlRender", () => import("./HtmlRenderFrame"));
+/** A mail chat's cards in the transcript (`mail_offer`), and the mail and person chips in its answers. */
+export const mailOfferChunk = defineChunk("work-mail-offer", () => import("../work/mail/chat/OfferCard"));
+export const lifeosChipChunk = defineChunk("work-lifeos-chip", () => import("../work/mail/chat/LifeosChip"));
 /** Images, media and their review (MediaViewer). */
 export const mediaChunk = defineChunk("media", () => import("./MediaViewer"));
 /** The full-window image viewer. */
@@ -130,6 +133,8 @@ export const allChunks = {
   terminalChunk,
   threadViewsChunk,
   htmlRenderChunk,
+  mailOfferChunk,
+  lifeosChipChunk,
   mediaChunk,
   lightboxChunk,
   releaseNotesChunk,

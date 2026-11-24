@@ -621,6 +621,36 @@ input that is not a `z.object` is left out and logged.
   loops must heed it. Arguments that do not fit the input come back as the
   tool's error.
 
+### Narrowing a thread
+
+A pillar may take powers from one thread (the mail chat is the first:
+[work-mail.md](work-mail.md) "The chat beside the mail"). Two seams on
+`WorkModule`, read through `work/narrowing.ts`:
+
+- `callRefusal(ctx, {sessionId, via, server, tool})` answers words the
+  model reads in place of the call's answer, or null. Both funnels every
+  tool call passes ask every module: the add-on catch
+  (`outbox/catch.ts` `makeAddonGate`, `via: 'addon'`, `server: 'lifeos'`
+  for the app's LifeOS row, else the row's id), for every thread's call and
+  before the LifeOS row's run; and the Work tool mount (`tools.call` in
+  work/ctx.ts, `via: 'work'`), which serves Claude's `work` server and the
+  bridge's `app.workCall`. The first module's words refuse it; a module
+  that throws refuses it too (`REFUSED_UNCHECKED`). The host's own call
+  with no thread is not asked.
+- `harnessDenied(sessionId)` names the harness's own tools the thread must
+  not have, read at its harness's start (`harnessDeniedOf`), Work on or
+  off. Claude Code adds them to the thread's denied tools and its fence
+  hook (`fenceWorkOptions`); a warm process spawned without them is never
+  adopted, since its command line differs (warm.ts `warmKey`). Codex has no
+  list to deny, so the thread starts in the read-only sandbox (no network)
+  with `approvalPolicy: 'never'`, no shell tool when `Bash` is denied and
+  `web_search = "disabled"` when the web is (`codexNarrowing`). Muse's
+  session protocol has no way to deny a built-in, so its driver refuses a
+  narrowed thread (`museNarrowRefusal`): start it on Claude.
+
+`ctx.threads.fresh(sessionId)` says whether a thread is this host's and
+has no message yet, for a pillar that marks a thread before its first turn.
+
 ## The build entries
 
 - `out/main/workService.js`, from `src/main/workServiceProcess.ts`: the Work
