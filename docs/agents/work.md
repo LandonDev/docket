@@ -28,6 +28,28 @@ with its six views, linking a workspace to a sector, and Settings → Work
 - **Code branches on a row, never on the switch**: `workspace.kind ===
   'work'`, `session.scope === 'work'`. The switch only decides whether Work
   things can be made, shown and started.
+- **No code parts on a Work thread or workspace** (the owner, 1.0.369: "still
+  references of code repos and git"). The window asks one rule,
+  src/renderer/src/lib/workRow.ts (`isWorkThread`, `isWorkWorkspace`,
+  `isWorkSession`, which counts a draft in a Work workspace before the host
+  stamps it; hooks in lib/useWorkSession.ts). By it: the right panel lists
+  only `WORK_SECTIONS` (Agents, Activity, Computer, Results, Notes; never
+  `CODE_SECTIONS`: Changes, Files, Build, Debug), even in a project with a
+  folder or a folder inside a repo; the composer's draft row has no branch
+  or project picker, the field's hint says no "build", and the checkpoint
+  strip (Review changes, Undo, Keep) is not drawn: a file's earlier
+  versions are its History; every type picker (the draft row, New thread,
+  the thread menu's Type, a Work master's Add thread) offers Chat and
+  Research alone (threadTypes.ts `WORK_THREAD_TYPES`, as the host's); the
+  title bar has no terminal row or project plan chip; the thread menu no
+  Dev server, and Resources… only when there is one; research options no
+  Worktree isolation; the move confirm no branch line; the menu bar no
+  Terminal rows (`CODE_ONLY_IDS`, lib/nativeMenuState.ts); the rail asks git
+  for no change counts (`railRowAsksGit`); the workspace menu draws no New
+  project; a Work project card no branch line. What its agent is told is
+  in [work-scope.md](work-scope.md) "No code words in a Work thread's
+  instructions". The surfaces left as they are, and why, are in
+  .temp-code/plans/landed/F-work-no-code.md.
 - While it is off: no module's `start` or `onPush` runs, nothing a part of
   the context keeps running is up, no tool is listed to any thread, and
   every pillar method answers `Work is off on this host`. `work.get` and
