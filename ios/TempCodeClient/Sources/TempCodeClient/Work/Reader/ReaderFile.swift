@@ -19,6 +19,23 @@ public final class ReaderFile {
         comments = parts.comments.map { WorkComments(work: work, source: $0) }
     }
 
+    /// An item and where it is kept: a file renamed or moved on the host is a new reader, so nothing is read from or
+    /// written to the old path, where another file may now stand.
+    public struct Identity: Hashable, Sendable {
+        public let id: String
+        public let source: CanvasSource
+        public init(_ item: CanvasItem) {
+            id = item.id
+            source = item.source
+        }
+    }
+
+    /// The item as the host last pushed it (`work.canvas`, whose list carries a moved file's new path), else as it was
+    /// handed over: a page holds the item it opened with, and the push is what says the file moved.
+    public static func current(_ item: CanvasItem, in listed: [CanvasItem]?) -> CanvasItem {
+        listed?.first { $0.id == item.id } ?? item
+    }
+
     /// What a file takes, by its kind and where it is kept.
     public static func parts(_ item: CanvasItem) -> (review: WorkReview.Subject?, comments: CanvasSource?) {
         switch item.kind {

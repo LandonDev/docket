@@ -401,6 +401,21 @@ private let s3 = suggestion("g3", set: "cs2", row: 0, col: 26, base: #"{"v":"Dra
         #expect(rig.work.canvas.preview(for: memo) == nil)
     }
 
+    @Test func `a file moved on the host is read and written at its new path, never the old one`() throws {
+        let item = { (path: String) in
+            try JSONDecoder().decode(CanvasItem.self, from: Data(#"{"id":"i9","sessionId":"s1","workspaceId":"w1","kind":"document","title":"Trip","source":{"at":"file","host":"env_box","path":"\#(path)"},"state":"open","position":0,"rev":1,"createdAt":1,"updatedAt":1}"#.utf8))
+        }
+        let opened = try item("/w/Trip.tcdoc")
+        let moved = try item("/w/Trip 2.tcdoc")
+        // Until the host has pushed a list, the page's own item stands.
+        #expect(ReaderFile.current(opened, in: nil) == opened)
+        // The push carries the new path: the reader takes it, and it is a different reader from the one at the old path.
+        #expect(ReaderFile.current(opened, in: [moved]) == moved)
+        #expect(ReaderFile.Identity(opened) != ReaderFile.Identity(moved))
+        guard case .document(let source)? = ReaderFile.parts(ReaderFile.current(opened, in: [moved])).review else { Issue.record("no review"); return }
+        #expect(source == moved.source)
+    }
+
     @Test func `a cell's address reads as Excel writes it`() {
         #expect(CellAddress.column(0) == "A")
         #expect(CellAddress.column(25) == "Z")
