@@ -11,6 +11,7 @@ import { portWire } from './server/gatewayWire'
  * pid is gone (gatewayChild.ts).
  */
 export function spawnGatewayChild(): GatewayChildLink {
+  // Kept at the server's priority (childPriority.ts lowers others): every provider request of every thread passes through it.
   const child = utilityProcess.fork(join(__dirname, 'gateway.js'), [], { serviceName: 'TempCode Gateway', stdio: 'inherit' })
   const { port1, port2 } = new MessageChannelMain()
   child.postMessage({ t: 'port' }, [port2])

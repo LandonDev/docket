@@ -1,7 +1,7 @@
-import { spawn } from 'node:child_process'
 import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { homedir, tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
+import { spawnLowered } from './childPriority'
 import { pathOf } from './loginShell'
 import { GATE_LOG_TAIL, isErrorLine, type GateStep } from '@shared/gate'
 import { trackChild } from './spawnBudget'
@@ -169,7 +169,8 @@ export function runGateStep(opts: GateRunOptions): Promise<GateRunResult> {
     let child
     try {
       if (opts.step === 'release') notes = writeNotesFile(opts.notes)
-      child = trackChild(spawn(bunBinary(env), gateCommand({ ...opts, notesFile: notes?.path }), { cwd: opts.cwd, env, stdio: ['ignore', 'pipe', 'pipe'] }))
+      // The gate, typecheck and release run below the server (childPriority.ts).
+      child = trackChild(spawnLowered('job')(bunBinary(env), gateCommand({ ...opts, notesFile: notes?.path }), { cwd: opts.cwd, env, stdio: ['ignore', 'pipe', 'pipe'] }))
     } catch (err) {
       notes?.remove()
       const msg = err instanceof Error ? err.message : String(err)

@@ -1,4 +1,4 @@
-import { spawn, type ChildProcess } from 'node:child_process'
+import type { ChildProcess } from 'node:child_process'
 import { existsSync, mkdirSync } from 'node:fs'
 import { readFile, stat } from 'node:fs/promises'
 import { homedir } from 'node:os'
@@ -21,6 +21,7 @@ import { branches, checkouts, currentBranch } from './git'
 import { execFileBudgeted as execFileP, spawnBudgeted, trackChild } from './spawnBudget'
 import { commandShell, shellLine } from './loginShell'
 import { adoptTree, killTree, treeSpawnOptions } from './procTree'
+import { spawnLowered } from './childPriority'
 
 /**
  * The Build rail's engine: one build per project at a time, run in the
@@ -380,9 +381,10 @@ export class BuildRunner {
     const env = { ...(await harnessEnv()), NO_COLOR: '1', TERM: 'dumb' }
     // Its own group so cancel() can kill the whole tree; tracked so quit kills it too.
     const shell = commandShell()
+    // A build runs below the server (childPriority.ts).
     const child = trackChild(
       adoptTree(
-        spawn(shell.file, shell.args(shellLine(build.command, shell)), {
+        spawnLowered('job')(shell.file, shell.args(shellLine(build.command, shell)), {
           cwd,
           env,
           ...treeSpawnOptions(),

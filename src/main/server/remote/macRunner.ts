@@ -1,6 +1,6 @@
-import { spawn } from 'node:child_process'
 import { MAC_RUN_OUTPUT_CAP, type MacRunResult } from '@shared/contract-macbridge'
 import { loginShell, pathOf, windowsCommand } from '../loginShell'
+import { spawnLowered } from '../childPriority'
 import { adoptTree, killTree, treeSpawnOptions } from '../procTree'
 import { trackChild } from '../spawnBudget'
 import { HeadTailOutput, ProgressPacer } from './peerStreams'
@@ -155,9 +155,10 @@ export function runMacCommand(opts: {
   const cap = opts.outputCap ?? MAC_RUN_OUTPUT_CAP
   const { file, args, options } = shellCall(opts, opts.shell)
   const startedAt = Date.now()
+  // A command run for a thread runs below the server (childPriority.ts), as its own Bash calls do.
   const child = adoptTree(
     trackChild(
-      spawn(file, args, {
+      spawnLowered('job')(file, args, {
         cwd: opts.cwd,
         env: opts.env ?? scrubbedEnv(),
         ...treeSpawnOptions(),

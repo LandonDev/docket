@@ -10,6 +10,7 @@ import type { InitializeResult } from '@muse-code/sdk/dist/src/msp'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { version as appVersion } from '../../../../../package.json'
+import { lowerCommand, placeLowered } from '../../childPriority'
 import { guardInstanceEnv, THREAD_MARK } from '../../processGuard'
 import { harnessEnv } from '../binaries'
 import { resolveMuseBinary } from './child'
@@ -104,9 +105,11 @@ export async function museEnv(opts: Pick<MuseHostOptions, 'sessionId' | 'configD
 export async function spawnMuseHost(opts: MuseHostOptions): Promise<MuseHost> {
   const museBin = opts.museBin ?? (await resolveMuseBinary()).path
   const env = await museEnv(opts)
+  // Below the server (childPriority.ts), as every harness.
+  const serve = lowerCommand('harness', museBin, ['serve', ...(opts.args ?? [])])
   const handshake = spawnMspConnection({
-    command: museBin,
-    args: ['serve', ...(opts.args ?? [])],
+    command: serve.file,
+    args: serve.args,
     cwd: opts.cwd,
     env,
     onStderr: opts.onStderr,
@@ -132,10 +135,13 @@ export async function spawnMuseHost(opts: MuseHostOptions): Promise<MuseHost> {
     return e
   })
   exit.catch(() => undefined)
+  // The SDK spawned it, so it joins the jobs cgroup once its pid is known (before it starts any tool).
+  const pid = pidOf(spawned)
+  placeLowered(pid)
   return {
     connection: spawned.connection,
     init: spawned.initializeResult,
-    pid: pidOf(spawned),
+    pid,
     alive: () => alive,
     exit,
     close: () => spawned.close().then(() => undefined, () => undefined)

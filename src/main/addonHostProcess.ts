@@ -1,6 +1,7 @@
 import { runAddonChild } from './server/addons/addonChild'
 import type { AddonWireMessage } from './server/addons/addonWire'
 import { portWire, type PortLike } from './server/gatewayWire'
+import { setupCgroupSplit } from './server/childPriority'
 
 /**
  * Entry of the add-on host's utility process (addonHostSpawn.ts forks it):
@@ -9,6 +10,9 @@ import { portWire, type PortLike } from './server/gatewayWire'
  * caught is logged redacted; it fails the add-on it names, else ends the
  * process and main respawns it.
  */
+// The add-on host stays at the server's priority (it only relays tool calls); the MCP servers it starts join main's jobs cgroup when there is one.
+setupCgroupSplit({ joinOnly: true })
+
 process.parentPort.once('message', (e) => {
   const [port] = e.ports
   if (!port) process.exit(1)

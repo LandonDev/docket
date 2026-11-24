@@ -172,6 +172,7 @@ import { backfillMirrors, cappedThreadDigest, stopMirrors } from './mirror'
 import { bootMark } from './boot'
 import { setLimitMissLog } from './limitText'
 import { setCodexBootFailureLog } from './drivers/codex'
+import { setupCgroupSplit } from './childPriority'
 import {
   BACKPRESSURE_BYTES,
   countPush,
@@ -648,6 +649,8 @@ export async function startServer(
   ]
   setLimitMissLog(join(options.dataDir ?? dirname(dbPath), 'logs'))
   setCodexBootFailureLog(join(options.dataDir ?? dirname(dbPath), 'logs'))
+  // Inert unless root delegated the service's cgroup (childPriority.ts); Linux only.
+  setupCgroupSplit()
   const logDir = join(options.dataDir ?? dirname(dbPath), 'logs')
   setStallLog(logDir)
   configureHostProfiler(logDir)

@@ -5,6 +5,7 @@ import { readFile } from 'node:fs/promises'
 import { request } from 'node:http'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { spawnLowered } from '../../../childPriority'
 
 /**
  * ONLYOFFICE Docs Community's `docservice`, run from the toolchain's
@@ -164,7 +165,8 @@ export class Docservice {
     const ds = join(this.o.toolDir, DS_ROOT)
     // Its log is kept beside its config, new each start, for whoever needs to see why it failed.
     const logFd = openSync(join(this.o.home, 'docservice.log'), 'w')
-    const child = (this.o.spawn ?? nodeSpawn)('./docservice', [], {
+    // The doc service runs below the server (childPriority.ts).
+    const child = (this.o.spawn ?? spawnLowered('tool'))('./docservice', [], {
       cwd: join(ds, 'server/DocService'),
       detached: true,
       stdio: ['ignore', logFd, 'pipe'],

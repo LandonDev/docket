@@ -20,5 +20,6 @@ export function sheetWorkerPath(): string | null {
 /** The worker as a utility process; null where no built worker is beside the main bundle (an esbuild-bundled proof). */
 export function appJobs(): SheetJobs | null {
   const path = sheetWorkerPath()
+  // Kept at the server's priority (childPriority.ts lowers others): a window waits on each of its answers as he edits a sheet.
   return path ? workerJobs(() => utilityProcess.fork(path, [], { serviceName: 'TempCode Sheets', stdio: 'inherit' })) : null
 }

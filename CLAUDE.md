@@ -167,7 +167,8 @@ section's text as it was when CLAUDE.md was split (2026-11-11).
   pairing, `/ui`. [docs/agents/remote-access.md](docs/agents/remote-access.md)
 - **The Linux agent host (the box)** — headless mode, `box-update`, deploy
   drift, harness and memory sync, the Mac bridge, dev servers, process guard,
-  threads across hosts, the relay, devices, restart resume, backups.
+  threads across hosts, the relay, devices, restart resume, backups; children
+  start below the server through `spawnLowered` (childPriority.ts).
   [docs/agents/linux-agent-host.md](docs/agents/linux-agent-host.md)
 - **The Windows build** — an NSIS installer and a zip for x64, unsigned, per user with no admin
   (`%LOCALAPPDATA%\Programs\TempCode`, data in `%LOCALAPPDATA%\temp-code`, the package's name); every Windows build

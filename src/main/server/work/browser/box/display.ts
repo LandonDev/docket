@@ -2,6 +2,7 @@ import { spawn as nodeSpawn, type ChildProcess } from 'node:child_process'
 import { randomBytes } from 'node:crypto'
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { spawnLowered } from '../../../childPriority'
 import type { Readable } from 'node:stream'
 import { videoToolsEnv, type VideoTools } from './videoSetting'
 
@@ -193,7 +194,8 @@ export class BoxXDisplay {
     const { width, height } = this.size
     writeFileSync(files.config, xorgConfig(width, height), { mode: 0o600 })
     const [cmd, args] = this.opts.command ? this.opts.command(tools.xorg, xorgArgs(files)) : [tools.xorg, xorgArgs(files)]
-    const child = (this.opts.spawn ?? nodeSpawn)(cmd, args, {
+    // The display runs below the server (childPriority.ts).
+    const child = (this.opts.spawn ?? spawnLowered('browser'))(cmd, args, {
       // The server needs nothing of this process's X, and gets none of it.
       env: { ...withoutDisplay(), ...videoToolsEnv(tools) },
       stdio: ['ignore', 'ignore', 'ignore', 'pipe'],

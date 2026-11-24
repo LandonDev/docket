@@ -1,4 +1,4 @@
-import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process'
+import type { ChildProcessWithoutNullStreams } from 'node:child_process'
 import { appendFile, mkdir } from 'node:fs/promises'
 import { join } from 'node:path'
 import { createInterface } from 'node:readline'
@@ -19,7 +19,7 @@ import { gateway } from '../gateway'
 import { observeCodexSnapshot } from '../gatewayObserve'
 import { serviceTierFor } from './codexTiers'
 import { THREAD_MARK } from '../processGuard'
-import { NICE_LEVEL } from '@shared/bashMarks'
+import { spawnLowered } from '../childPriority'
 import { existsSync, mkdirSync, readdirSync, readlinkSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { sessionScopeOf } from '@shared/work/ids'
@@ -256,9 +256,6 @@ function logBootFailure(entry: { session: string; cwd: string; account: string |
 }
 
 /** Lines from app-server's stderr that say nothing about why it died. */
-/** `ionice -c 3 nice -n 10` on a Linux host with ionice, `nice -n 10` on the Mac, nothing on Windows (no `nice` there): the prefix the app-server starts under. */
-export const lowered = (platform: NodeJS.Platform = process.platform): string[] =>
-  platform === 'win32' ? [] : [...(platform === 'linux' && existsSync('/usr/bin/ionice') ? ['/usr/bin/ionice', '-c', '3'] : []), 'nice', '-n', String(NICE_LEVEL)]
 
 const STDERR_NOISE = /rmcp::|rmcp_|^\s*$/
 
@@ -326,8 +323,8 @@ export class AppServerConn {
     // exists) and every build it runs inherits that. nice and ionice exec
     // into codex, so the pid the host tracks is the app-server's own.
     // On Windows the app-server and whatever it runs share a Job Object (procTree.ts), ended when it exits.
-    const [file, ...rest] = [...lowered(), binPath, ...args]
-    this.proc = adoptTree(spawn(file!, rest, { cwd, env, stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true }))
+    // Below the server (childPriority.ts), like every harness.
+    this.proc = adoptTree(spawnLowered('harness')(binPath, args, { cwd, env, stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true }))
     // stderr is read even when nobody wants it: an unread pipe stalls a
     // chatty child, and its tail is the only account of a boot that died.
     createInterface({ input: this.proc.stderr }).on('line', (line) => {

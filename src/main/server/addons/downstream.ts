@@ -1,4 +1,4 @@
-import { spawn, type ChildProcess } from 'node:child_process'
+import type { ChildProcess } from 'node:child_process'
 import { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { SSEClientTransport } from '@modelcontextprotocol/sdk/client/sse.js'
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js'
@@ -6,6 +6,7 @@ import { ReadBuffer, serializeMessage } from '@modelcontextprotocol/sdk/shared/s
 import type { Transport } from '@modelcontextprotocol/sdk/shared/transport.js'
 import type { JSONRPCMessage } from '@modelcontextprotocol/sdk/types.js'
 import { toolHintsOf } from '@shared/addons'
+import { spawnLowered } from '../childPriority'
 import { windowsCommand } from '../loginShell'
 import { adoptTree, killTree, treeSpawnOptions } from '../procTree'
 import type { AddonState, AddonStatus } from '@shared/contract-addons'
@@ -81,7 +82,8 @@ export class ProcessTransport implements Transport {
     return new Promise((resolve, reject) => {
       let spawned = false
       const [file, args, verbatim] = windowsCommand(this.opts.command, this.opts.args, this.opts.env)
-      const child = adoptTree(spawn(file, args, { env: this.opts.env, cwd: this.opts.cwd, ...treeSpawnOptions(), windowsVerbatimArguments: verbatim, stdio: ['pipe', 'pipe', 'pipe'] }))
+      // An add-on's MCP server runs below the server (childPriority.ts).
+      const child = adoptTree(spawnLowered('mcp')(file, args, { env: this.opts.env, cwd: this.opts.cwd, ...treeSpawnOptions(), windowsVerbatimArguments: verbatim, stdio: ['pipe', 'pipe', 'pipe'] }))
       this.child = child
       child.once('spawn', () => {
         spawned = true

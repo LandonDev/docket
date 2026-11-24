@@ -3,6 +3,7 @@ import { randomBytes } from 'node:crypto'
 import { existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import { createServer } from 'node:net'
 import { join } from 'node:path'
+import { spawnLowered } from '../../../childPriority'
 import { VIDEO_FPS } from '@shared/contract-video'
 import { displayEnv, type BoxDisplay } from './display'
 import { videoToolsEnv, type VideoTools } from './videoSetting'
@@ -182,7 +183,8 @@ export class BoxEngines {
     writeFileSync(tokenFile, token, { mode: 0o600 })
     const port = await (this.opts.port ?? freePort)()
     if (!existsSync(tools.viewer)) mkdirSync(tools.viewer, { recursive: true })
-    const child = (this.opts.spawn ?? nodeSpawn)(tools.engine, engineArgs({ port, tokenFile, viewer: tools.viewer }), {
+    // The video relay runs below the server (childPriority.ts).
+    const child = (this.opts.spawn ?? spawnLowered('browser'))(tools.engine, engineArgs({ port, tokenFile, viewer: tools.viewer }), {
       // its own display and libraries, and nothing of this process's display
       env: { ...displayEnv(display), ...videoToolsEnv(tools) },
       stdio: ['ignore', 'pipe', 'pipe']

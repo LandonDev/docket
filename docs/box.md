@@ -2310,9 +2310,9 @@ every host:
   2026-11-04 the main thread waited for the CPU 23% of the time behind 27
   tool JVMs at the same priority. The approval card and the Activity row
   show the command as written (`unwrapBashCommand` strips the prelude with
-  the marks). A codex app-server has no per-call hook, so the process
-  itself starts under `nice -n 10` (and `ionice -c 3` on Linux) and every
-  command it runs inherits that. The unit (`temp-code.service`) stays as
+  the marks). Every harness itself, and every other long-lived or heavy
+  child, starts lower too ("Child priority" below), so what a harness runs
+  without a per-call hook (a codex app-server's commands) inherits it. The unit (`temp-code.service`) stays as
   it is; the server's own threads should sit at `Nice=-5` so they also win
   against anything at nice 0 (a user's own shell on the box, a build the
   Mac bridge runs), which the admin sets with `systemctl edit
@@ -3750,6 +3750,63 @@ either host. Loop and push figures cover logged stall seconds only;
 in-flight depth counts the entries in the log, capped at twelve.
 `doctor.get` also answers with the last second's `loop` mean and max,
 its `ewmaMs`, and all `inFlight` requests with their method and age in ms.
+
+## Child priority: the server outranks what it starts
+
+On 2026-11-23 the box's server answered slowly because every child it
+started ran at its own priority, nice 0. Now one module,
+src/main/server/childPriority.ts, starts every long-lived or heavy child
+under `nice -n 10` and, on Linux, `ionice`; both exec their target, so the
+pid and /proc cmdline are the child's own (the process guard and procScan
+see the same processes) and its children inherit the lower priority. On the
+Mac only `nice -n 10`; on Windows nothing. Its kinds, `LOWERED`:
+
+- `harness`: every CLI and its warm pool (Claude through claudeWarm.ts,
+  Codex, Cursor, Muse, and OpenCode, Grok, Pi, omp and fx through
+  harness/child.ts).
+- `mcp`: an add-on's MCP server (addons/downstream.ts).
+- `job`: the gate, typecheck and release (gateRun.ts), the release scripts
+  (hostJobs.ts), batch steps, builds, the IntelliJ warm indexer off the
+  Mac, and the commands and jobs the Mac bridge runs for a thread.
+- `devServer`: devRuns.ts. `vm`: QEMU and swtpm (winvm/machine/daemons.ts).
+- `tool`: the resident LibreOffice and deck tool, the sheet doc service,
+  the meeting transcriber. A Formats tool run `gentle` was already lower
+  (nice 19, idle I/O) and stays so.
+- `browser`: the box's display, Chromium and video relay.
+- `terminal`: a PTY's shell.
+
+Jobs take the idle I/O class (`ionice -c 3`). Every other kind has someone
+waiting on it as it runs, so it takes best-effort level 7 (`-c 2 -n 7`):
+a busy disk slows a turn or a terminal but never stalls it outright.
+
+These stay at the server's priority, each saying why where it starts: the
+exec broker (its git, gh and ps answer the windows' reads), the gateway
+(every provider request), the Work service (hosted pages and editors), the
+sheet worker (each edit waits on it), the add-on host (it only relays; its
+MCP servers run lowered), the pool's language servers (they answer the
+editor as he types) and tc-computer (tool calls and the picture he watches).
+Short helpers (version probes, `ps`, `git status`) are left alone.
+
+A new site calls `spawnLowered(kind)` (or `lowerCommand` and
+`placeLowered` where it cannot take a spawn function, as node-pty);
+childPriority.test.ts lists every site and fails when one stops, and fails
+for a harness driver that starts a process without it.
+
+**The cgroup split, inert until root delegates.** With a root drop-in on
+the unit (`Delegate=cpu memory pids io`, `DelegateSubgroup=server`;
+.temp-code/plans/landed/F-box-slow/root-change.md) the server's tree sits in
+`temp-code.service/server` and the agents user owns the service's subtree.
+At boot (`setupCgroupSplit`, Linux only) the server reads /proc/self/cgroup;
+only when its path ends in `/server` and the parent's
+`cgroup.subtree_control` is writable does it enable `+cpu +memory +io`
+there (a controller the parent lacks is skipped), make `jobs` beside
+`server`, write `server/cpu.weight` 1000, `jobs/cpu.weight` 100,
+`server/memory.low` 4 GiB and `jobs/memory.high` 76 GiB, and move every
+lowered child into `jobs/cgroup.procs` right after it starts (what it forks
+later follows). The add-on host joins the same `jobs` for its MCP servers
+and writes nothing else. Every write is best effort: the first failure is
+logged once and children keep nice and ionice alone. Without the
+delegation (the box today, the Mac, Windows) nothing is written or made.
 
 ## The exec broker: main never forks a helper
 

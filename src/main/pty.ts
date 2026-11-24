@@ -6,6 +6,7 @@ import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { createRequire } from 'node:module'
 import { promisify } from 'node:util'
+import { lowerCommand, placeLowered } from './server/childPriority'
 import { harnessEnv } from './server/drivers/binaries'
 import { killTree } from './server/procTree'
 import {
@@ -221,7 +222,9 @@ async function spawn(owner: number, args: SpawnArgs): Promise<string | null> {
   env.HOME = homedir()
   env.PWD = cwd
 
-  const pty = forkPty(shell, shellArgs, {
+  // The terminal runs below the server (childPriority.ts): node-pty takes no spawn function, so the prefix and the cgroup move are made here.
+  const lowered = lowerCommand('terminal', shell, shellArgs)
+  const pty = forkPty(lowered.file, lowered.args, {
     name: 'xterm-256color',
     cwd,
     cols,
@@ -231,6 +234,8 @@ async function spawn(owner: number, args: SpawnArgs): Promise<string | null> {
     // re-encoding there would only cost work and mangle split code points.
     encoding: null
   })
+
+  placeLowered(pty.pid)
 
   const session: Session = {
     id: args.id,

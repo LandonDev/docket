@@ -1,7 +1,7 @@
-import { spawn } from 'node:child_process'
 import { existsSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { cpus } from 'node:os'
 import { isAbsolute, join } from 'node:path'
+import { spawnLowered } from '../../childPriority'
 import type { ConvertJob, ConvertRun, Converter } from '../formats/jobs'
 import { tailOf } from '../formats/tools'
 import { networkBlock, noNetwork, refusalOf, type NetworkBlock } from './egress'
@@ -121,7 +121,8 @@ export interface ChildSpec {
 export function runTranscriber(spec: ChildSpec): Promise<void> {
   return new Promise((resolve, reject) => {
     if (spec.signal.aborted) return reject(new Error('cancelled'))
-    const child = spawn(spec.cmd, spec.args, { cwd: spec.cwd, env: spec.env, stdio: ['ignore', 'pipe', 'pipe'], detached: process.platform !== 'win32' })
+    // The transcriber runs below the server (childPriority.ts).
+    const child = spawnLowered('tool')(spec.cmd, spec.args, { cwd: spec.cwd, env: spec.env, stdio: ['ignore', 'pipe', 'pipe'], detached: process.platform !== 'win32' })
     let err = ''
     let failed: string | null = null
     let stopped: 'cancelled' | 'timeout' | null = null

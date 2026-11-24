@@ -2,6 +2,7 @@ import { execFile, spawn as nodeSpawn, type ChildProcess } from 'node:child_proc
 import { chmodSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { delimiter, join } from 'node:path'
+import { spawnLowered } from '../../../childPriority'
 import { BoxXDisplay, DISPLAY_SCALE, PAGE_HEIGHT, PAGE_WIDTH, displayEnv, type BoxDisplay } from './display'
 import type { VideoTools } from './videoSetting'
 import { BoxWindowManager } from './xwm'
@@ -368,7 +369,8 @@ export class BoxChromium {
       }
     } else clearHeadedPrefs(this.profile)
     // A headed browser is handed its own display and nothing of this process's; a headless one needs none.
-    const child = (this.opts.spawn ?? nodeSpawn)(bin, args, { stdio: 'ignore', detached: true, ...(pair ? { env: displayEnv(pair) } : {}) })
+    // The browser runs below the server (childPriority.ts).
+    const child = (this.opts.spawn ?? spawnLowered('browser'))(bin, args, { stdio: 'ignore', detached: true, ...(pair ? { env: displayEnv(pair) } : {}) })
     this.child = child
     child.once('exit', () => {
       if (this.child !== child) return

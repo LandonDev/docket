@@ -282,6 +282,7 @@ export class ComputerConnection {
     const server = pipeName ? createServer() : null
     if (server && pipeName) await new Promise<void>((resolve) => server.once('error', () => resolve()).listen(pipeName, () => resolve()))
     const env = { ...(opts.env ?? process.env), ...(server?.listening && pipeName && token ? { [VIDEO_PIPE_ENV]: pipeName, [VIDEO_PIPE_TOKEN_ENV]: token } : {}) }
+    // Kept at the server's priority (childPriority.ts lowers others): it answers computer tools mid-turn and draws the picture he watches.
     const child = adoptTree(spawn(opts.bin, ['serve'], { stdio, env }))
     const conn = new ComputerConnection(child, opts)
     if (server?.listening && token) conn.listenPipe(server, token)

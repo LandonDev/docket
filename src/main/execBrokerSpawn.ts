@@ -11,6 +11,7 @@ import { brokerPort } from './server/execBrokerWire'
  * the port closes or main's pid is gone (execBrokerChild.ts).
  */
 export function spawnExecBrokerChild(): ExecBrokerLink {
+  // Kept at the server's priority (childPriority.ts lowers others): its git, gh and ps children answer the windows' own reads.
   const child = utilityProcess.fork(join(__dirname, 'execBroker.js'), [], { serviceName: 'TempCode Exec', stdio: 'inherit' })
   const { port1, port2 } = new MessageChannelMain()
   child.postMessage({ t: 'port', mainPid: process.pid }, [port2])

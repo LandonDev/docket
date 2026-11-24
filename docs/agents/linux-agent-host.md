@@ -311,8 +311,12 @@
   and the host SIGTERMs then SIGKILLs what still carries the call's mark
   when the call ends (never a harness, a ledger pid or a backgrounded
   call); the wrapped command also renices its own shell to 10 and idle
-  I/O (`NICE_PRELUDE`; a codex app-server starts under `nice -n 10`), so
-  tool builds never starve the server; every 10 s an orphan sweep (one read of /proc on Linux, one `ps`
+  I/O (`NICE_PRELUDE`), so
+  tool builds never starve the server; every harness, MCP server, job, dev
+  server, VM, resident tool, box browser and terminal starts under
+  `nice -n 10` and `ionice` too (src/main/server/childPriority.ts, an
+  opt-in jobs cgroup once root delegates the unit; docs/box.md "Child
+  priority"); every 10 s an orphan sweep (one read of /proc on Linux, one `ps`
   through the exec broker elsewhere, shared with a call end inside 2 s)
   kills a process of this user with no
   parent left that carries a thread's mark (`TEMP_CODE_THREAD`, `~t=`,

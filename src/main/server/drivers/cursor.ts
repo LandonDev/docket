@@ -1,9 +1,10 @@
-import { spawn, type ChildProcess } from 'node:child_process'
+import type { ChildProcess } from 'node:child_process'
 import { createInterface } from 'node:readline'
 import { modelInfo, type Reasoning } from '@shared/catalog'
 import type { Attachment, PermissionPolicy } from '@shared/events'
 import type { DriverCtx, DriverHandle, HarnessDriver } from './types'
 import { harnessEnv, resolveBinary } from './binaries'
+import { spawnLowered } from '../childPriority'
 import { expandSlashRefs } from '../slash'
 
 /**
@@ -218,7 +219,8 @@ export const cursorDriver: HarnessDriver = {
         ...(session.nativeId ? ['--resume', session.nativeId] : []),
         text
       ]
-      const p = spawn(binPath, args, { cwd: session.cwd, env, stdio: ['ignore', 'pipe', 'pipe'] })
+      // Below the server (childPriority.ts), as every harness.
+      const p = spawnLowered('harness')(binPath, args, { cwd: session.cwd, env, stdio: ['ignore', 'pipe', 'pipe'] })
       proc = p
       stoodDown = false
 

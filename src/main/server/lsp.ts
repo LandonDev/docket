@@ -23,7 +23,8 @@ import type { LspStatusRow } from '@shared/domain'
 import { harnessEnv, resolveAppBridgeLaunch } from './drivers/binaries'
 import { CRASH_WINDOW_MS, StderrTail, erroredEntryHolds, expiredBuildMessage } from './lspHealth'
 
-import { execFileBudgeted as execFileP, spawnTracked as spawn } from './spawnBudget'
+import { execFileBudgeted as execFileP, spawnTracked as spawn, trackChild } from './spawnBudget'
+import { spawnLowered } from './childPriority'
 import { commandPathArgv, loginShell } from './loginShell'
 
 /**
@@ -461,6 +462,7 @@ function evictForCap(lang: LspLang): void {
  * runs under the same real `node` (or `bun`) the app bridge found on the
  * login PATH; Electron-as-node stays the dev-only last resort.
  */
+// The pool's language servers stay at the server's priority (childPriority.ts lowers others): each answers the editor's requests as he types. The warm indexer (warmOne) runs lowered.
 async function spawnWeb(server: PoolServer): Promise<void> {
   const require2 = createRequire(import.meta.url)
   const bin = require2.resolve('@vtsls/language-server/bin/vtsls.js')
@@ -911,17 +913,15 @@ async function warmOne(job: WarmJob): Promise<void> {
   mkdirSync(system, { recursive: true })
   const bin = join(ideaDist(), 'bin', 'intellij-server')
   const args = ['--stdio', '--system-path', system]
-  // Background QoS: indexing never competes with the user's foreground.
+  // Background QoS: indexing never competes with the user's foreground (taskpolicy on the Mac, childPriority.ts elsewhere).
   const nice = existsSync('/usr/sbin/taskpolicy')
   const jdks = await discoverJdks()
   const sdk = jdks.find((r) => r.version >= 21) ?? jdks[0]
   const rootUri = pathToFileURL(job.cwd).toString()
   const buildTool = detectBuildTool(job.cwd)
 
-  const proc = spawn(nice ? '/usr/sbin/taskpolicy' : bin, nice ? ['-b', bin, ...args] : args, {
-    cwd: job.cwd,
-    env: { ...(await harnessEnv()), INTELLIJ_DATA_SHARING: 'none', IJ_JAVA_OPTIONS: '-Xmx3g -Djava.awt.headless=true' }
-  })
+  const options = { cwd: job.cwd, env: { ...(await harnessEnv()), INTELLIJ_DATA_SHARING: 'none', IJ_JAVA_OPTIONS: '-Xmx3g -Djava.awt.headless=true' } }
+  const proc = nice ? spawn('/usr/sbin/taskpolicy', ['-b', bin, ...args], options) : trackChild(spawnLowered('job')(bin, args, options))
   job.proc = proc
   const stderr = new StderrTail()
   proc.stderr?.on('data', (chunk: Buffer) => stderr.push(chunk))

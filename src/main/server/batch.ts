@@ -1,4 +1,3 @@
-import { spawn } from 'node:child_process'
 import { createInterface } from 'node:readline'
 import type { ClientRequest, SessionBatchResult } from '@shared/contract'
 import {
@@ -29,6 +28,7 @@ import { gateQueue, type GateQueue, type GateWait } from './gateQueue'
 import { runGateStep } from './gateRun'
 import { commandShell, posixShell, shellLine, type ShellSpec } from './loginShell'
 import { adoptTree, killTree, treeSpawnOptions } from './procTree'
+import { spawnLowered } from './childPriority'
 import { encodeAgentId, isRemoteAgentId } from '@shared/contract-crosshost'
 import type { RemoteBatchAction, RemoteChildRecord, RemoteLanding } from './crossHostAgents'
 import { branchOf, fastForwardFromOrigin, fastForwardMerge, fetchFastForward, revParse, type MergeResult } from './mergeBranch'
@@ -306,7 +306,8 @@ export const STALL_CHECK_MS = 60_000
 /** `run` through the login shell in `cwd`, detached so Stop kills the whole process group. */
 export function spawnShellStep(run: string, cwd: string, onLine: (line: string) => void, shellOrFile: ShellSpec | string = commandShell()): ShellRun {
   const shell = typeof shellOrFile === 'string' ? posixShell(shellOrFile) : shellOrFile
-  const child = adoptTree(spawn(shell.file, shell.args(shellLine(run, shell)), { cwd, ...treeSpawnOptions(), ...shell.options, stdio: ['ignore', 'pipe', 'pipe'], env: process.env }))
+  // A batch step runs below the server (childPriority.ts).
+  const child = adoptTree(spawnLowered('job')(shell.file, shell.args(shellLine(run, shell)), { cwd, ...treeSpawnOptions(), ...shell.options, stdio: ['ignore', 'pipe', 'pipe'], env: process.env }))
   for (const stream of [child.stdout, child.stderr]) {
     if (stream) createInterface({ input: stream }).on('line', onLine)
   }

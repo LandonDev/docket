@@ -1,4 +1,4 @@
-import { spawn, type ChildProcess } from 'node:child_process'
+import type { ChildProcess } from 'node:child_process'
 import { join } from 'node:path'
 import { nanoid } from 'nanoid'
 import type { DevRun, DevRunPush, DevTarget, DevServerStartResult } from '@shared/contract-devservers'
@@ -6,6 +6,7 @@ import type { ForwardedPort, PortForwardInfo } from '@shared/contract-ports'
 import { detectDevTargets } from './devTargets'
 import { commandShell, shellLine } from './loginShell'
 import { adoptTree, killTree, treeSpawnOptions } from './procTree'
+import { spawnLowered } from './childPriority'
 import { trackChild } from './spawnBudget'
 import type { SharedScanner } from './threadPorts'
 import { announcedPorts, byPort, descendants, validPort } from './threadPortsParse'
@@ -203,7 +204,8 @@ export class DevRuns {
     this.slots.set(s.run.id, s)
     const env = { ...(this.deps.env ? await this.deps.env() : process.env), BROWSER: 'none', FORCE_COLOR: '1' }
     const shell = commandShell()
-    const child = trackChild(adoptTree(spawn(shell.file, shell.args(shellLine(target.command, shell)), { cwd, env, ...treeSpawnOptions(), ...shell.options, stdio: ['ignore', 'pipe', 'pipe'] })))
+    // A dev server runs below the server (childPriority.ts).
+    const child = trackChild(adoptTree(spawnLowered('devServer')(shell.file, shell.args(shellLine(target.command, shell)), { cwd, env, ...treeSpawnOptions(), ...shell.options, stdio: ['ignore', 'pipe', 'pipe'] })))
     s.child = child
     s.run.pid = child.pid ?? null
     this.log(`${p.name}: ${target.name} ${target.script} started (pid ${s.run.pid ?? '?'})`)

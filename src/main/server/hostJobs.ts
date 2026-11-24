@@ -1,4 +1,4 @@
-import { spawn, execFile, type ChildProcess } from 'node:child_process'
+import { execFile, type ChildProcess } from 'node:child_process'
 import {
   accessSync,
   closeSync,
@@ -27,6 +27,7 @@ import {
 } from '@shared/contract-host'
 import { PhaseTracker, formatDuration, redProofsNotice } from '@shared/releasePhases'
 import { updatePhaseLine, type SelfUpdateOutcome } from '../updateTrigger'
+import { spawnLowered } from './childPriority'
 import { loginShell, withToolPath } from './loginShell'
 import { adoptTree, killTree, treeSpawnOptions } from './procTree'
 import { writeNotesFile } from './gateRun'
@@ -637,8 +638,9 @@ export function releaseCommand({ train = true }: { train?: boolean } = {}): stri
 function spawnReleaseScripts(opts: { cwd: string; notes: string; shell: string; env: NodeJS.ProcessEnv; train: boolean }): ChildProcess {
   const file = opts.train ? writeNotesFile(opts.notes) : null
   try {
+    // The release's build and publish run below the server (childPriority.ts).
     const child = trackChild(
-      adoptTree(spawn(opts.shell, ['-lc', releaseCommand({ train: opts.train })], {
+      adoptTree(spawnLowered('job')(opts.shell, ['-lc', releaseCommand({ train: opts.train })], {
         cwd: opts.cwd,
         env: file ? { ...opts.env, TC_RELEASE_NOTES_FILE: file.path } : opts.env,
         ...treeSpawnOptions(),

@@ -2,6 +2,7 @@ import { spawn } from 'node:child_process'
 import { existsSync, readFileSync, statSync } from 'node:fs'
 import { join } from 'node:path'
 import { z } from 'zod'
+import { placeLowered } from '../../childPriority'
 
 /**
  * The conversion toolchain on this host (docs/agents/work-formats.md, "The
@@ -245,6 +246,8 @@ export function runTool(cmd: string, args: string[], o: RunOpts = {}): Promise<R
       stdio: [o.input === undefined ? 'ignore' : 'pipe', 'pipe', 'pipe'],
       detached: process.platform !== 'win32'
     })
+    // A gentle tool already runs lower than childPriority.ts's kinds (nice 19, idle I/O); it joins the jobs cgroup with them.
+    if (o.gentle) placeLowered(child.pid)
     let out = ''
     const take = (d: Buffer): void => {
       out += d.toString()

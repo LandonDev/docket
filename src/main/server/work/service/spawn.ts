@@ -13,6 +13,7 @@ import type { ServiceChild } from './supervisor'
 export function spawnServiceChild(): ServiceChild {
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   const { utilityProcess } = require('electron') as typeof import('electron')
+  // Kept at the server's priority (childPriority.ts lowers others): it serves the hosted pages and editors a window has open.
   const child = utilityProcess.fork(join(appRoot(), 'out', 'main', 'workService.js'), [], { serviceName: 'TempCode Work', stdio: 'inherit' })
   return {
     post: (m) => child.postMessage(m),

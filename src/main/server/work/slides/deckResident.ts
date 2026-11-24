@@ -1,7 +1,7 @@
-import { spawn as nodeSpawn } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import { chmodSync, existsSync, mkdirSync, readdirSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { spawnLowered } from '../../childPriority'
 import { adoptTree, killTree, treeSpawnOptions } from '../../procTree'
 import { toolsRoot } from '../formats/tools'
 import { DECK_PY } from './deckScript'
@@ -171,7 +171,8 @@ export function createDeckResident(deps: DeckResidentDeps): DeckResident {
   const log = deps.log ?? (() => {})
   const spawn =
     deps.spawn ??
-    ((cmd: string, args: string[], opts: { cwd: string }) => adoptTree(nodeSpawn(cmd, args, { ...opts, stdio: ['pipe', 'pipe', 'pipe'], ...treeSpawnOptions() })))
+    // The deck tool runs below the server (childPriority.ts).
+    ((cmd: string, args: string[], opts: { cwd: string }) => adoptTree(spawnLowered('tool')(cmd, args, { ...opts, stdio: ['pipe', 'pipe', 'pipe'], ...treeSpawnOptions() })))
 
   let live: Live | null = null
   let busy = false

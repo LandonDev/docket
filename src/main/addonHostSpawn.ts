@@ -11,6 +11,7 @@ import { portWire } from './server/gatewayWire'
  * child also exits when the port closes or main's pid is gone.
  */
 export function spawnAddonHostChild(): AddonHostLink {
+  // Kept at the server's priority: it only relays tool calls; the MCP servers it starts run lowered (addons/downstream.ts, childPriority.ts).
   const child = utilityProcess.fork(join(__dirname, 'addonHost.js'), [], { serviceName: 'TempCode Add-ons', stdio: 'inherit' })
   const { port1, port2 } = new MessageChannelMain()
   child.postMessage({ t: 'port' }, [port2])

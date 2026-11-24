@@ -1,4 +1,5 @@
-import { spawn, type ChildProcess } from 'node:child_process'
+import type { ChildProcess } from 'node:child_process'
+import { spawnLowered } from '../childPriority'
 import { adoptTree } from '../procTree'
 import { createInterface } from 'node:readline'
 import { PassThrough } from 'node:stream'
@@ -37,8 +38,9 @@ const STDERR_LINES = 40
  */
 export function spawnClaude(spec: WarmSpec, signal: AbortSignal | undefined, label: string): ChildProcess {
   // On Windows the CLI and its tools share a Job Object (procTree.ts), ended when it exits.
+  // Below the server (childPriority.ts); the spec, which the pool matches on, stays plain.
   const proc = adoptTree(
-    spawn(spec.command, spec.args, {
+    spawnLowered('harness')(spec.command, spec.args, {
       cwd: spec.cwd,
       env: spec.env,
       stdio: ['pipe', 'pipe', 'pipe'],

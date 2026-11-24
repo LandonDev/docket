@@ -1,9 +1,10 @@
-import { spawn as nodeSpawn, execFile } from 'node:child_process'
+import { execFile } from 'node:child_process'
 import { randomBytes } from 'node:crypto'
 import { chmodSync, existsSync, lstatSync, mkdirSync, readdirSync, readlinkSync, renameSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { LIBREOFFICE_PROFILE } from '../formats'
+import { spawnLowered } from '../../childPriority'
 import { adoptTree, killTree, treeSpawnOptions } from '../../procTree'
 import { RESIDENT_PY } from './residentScript'
 
@@ -182,8 +183,9 @@ export function createResident(deps: ResidentDeps): Resident {
   const uid = deps.uid ?? process.getuid?.() ?? 0
   const spawn =
     deps.spawn ??
+    // LibreOffice runs below the server (childPriority.ts).
     ((cmd: string, args: string[], opts: { env: NodeJS.ProcessEnv; cwd: string }) =>
-      adoptTree(nodeSpawn(cmd, args, { ...opts, stdio: ['pipe', 'pipe', 'pipe'], ...treeSpawnOptions(platform) }), platform))
+      adoptTree(spawnLowered('tool')(cmd, args, { ...opts, stdio: ['pipe', 'pipe', 'pipe'], ...treeSpawnOptions(platform) }), platform))
   // Windows: no LibreOffice in the toolchain there, and its pipes are named another way; never proven, so never tried.
   const supported = platform === 'linux' || platform === 'darwin'
 

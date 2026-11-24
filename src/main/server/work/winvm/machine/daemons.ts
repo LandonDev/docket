@@ -2,9 +2,9 @@
  * Starting and stopping a machine's two daemons, QEMU and swtpm, the same from the rig's scripts and from a
  * server keeper. Plain node only: scripts/win-vm/vm.ts runs this under bun.
  */
-import { spawn } from 'node:child_process'
 import { accessSync, constants, cpSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { spawnLowered } from '../../../childPriority'
 import { daemonEnv, type RigConfig, type RigPaths } from './config'
 import { qemuArgs, swtpmArgs, type Machine } from './qemu'
 
@@ -70,10 +70,10 @@ export async function waitFor(what: string, timeoutSec: number, check: () => boo
   throw new Error(`timed out after ${timeoutSec} s waiting for ${what}`)
 }
 
-/** Runs a daemon's starter (it forks and returns); its own error output goes into the error. */
+/** Runs a daemon's starter (it forks and returns); its own error output goes into the error. QEMU and swtpm run below the server (childPriority.ts). */
 function startDaemon(name: string, [cmd, args]: [string, string[]]): Promise<void> {
   return new Promise((resolve, reject) => {
-    const child = spawn(cmd, args, { env: daemonEnv(), stdio: ['ignore', 'ignore', 'pipe'] })
+    const child = spawnLowered('vm')(cmd, args, { env: daemonEnv(), stdio: ['ignore', 'ignore', 'pipe'] })
     let err = ''
     child.stderr.on('data', (d: Buffer) => (err = (err + d.toString()).slice(-2000)))
     child.on('error', reject)

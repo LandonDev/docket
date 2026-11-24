@@ -1,6 +1,6 @@
 import { hostPath, readRemembers, workFloor } from './macBridgeRules'
 import type { MacDecideRemember } from '@shared/contract-macbridge-rules'
-import { spawn, type ChildProcess } from 'node:child_process'
+import type { ChildProcess } from 'node:child_process'
 import { EventEmitter } from 'node:events'
 import { randomBytes } from 'node:crypto'
 import { existsSync, statSync } from 'node:fs'
@@ -36,6 +36,7 @@ import {
 } from '@shared/contract-macjobs'
 import { realSpelling } from './fence'
 import { KILL_GRACE_MS, scrubbedEnv, shellCall, signalTree, type ShellCall } from './macRunner'
+import { lowerCommand, placeLowered, spawnLowered } from '../childPriority'
 import { adoptTree, killTree, treeSpawnOptions } from '../procTree'
 import { trackChild } from '../spawnBudget'
 
@@ -84,11 +85,11 @@ export type JobSpawner = (cmd: {
 const signalName = (n: number): string =>
   Object.entries(osConstants.signals).find(([, v]) => v === n)?.[0] ?? `SIG${n}`
 
-/** stdin, stdout and stderr as pipes (stdout and stderr merged), in a process group of its own. */
+/** stdin, stdout and stderr as pipes (stdout and stderr merged), in a process group of its own; below the server (childPriority.ts). */
 export const pipeSpawner: JobSpawner = ({ file, args, cwd, env, options }) => {
   const child = adoptTree(
     trackChild(
-      spawn(file, args, { cwd, env, ...treeSpawnOptions(), ...options, stdio: ['pipe', 'pipe', 'pipe'] })
+      spawnLowered('job')(file, args, { cwd, env, ...treeSpawnOptions(), ...options, stdio: ['pipe', 'pipe', 'pipe'] })
     )
   )
   const data: ((chunk: Buffer) => void)[] = []
@@ -131,7 +132,9 @@ export const ptySpawnerOf =
   (pty: NodePty, adopt: (child: ChildProcess) => unknown = (child) => adoptTree(child)): JobSpawner =>
   ({ file, args, cwd, env, options }) => {
     // ConPTY takes a whole command line as a string as written: cmd.exe's verbatim line stays whole.
-    const p = pty.spawn(file, options?.windowsVerbatimArguments ? args.join(' ') : args, {
+    // Below the server (childPriority.ts); on Windows the line is unchanged.
+    const lowered = lowerCommand('job', file, args)
+    const p = pty.spawn(lowered.file, options?.windowsVerbatimArguments ? lowered.args.join(' ') : lowered.args, {
       name: 'xterm',
       cols: 120,
       rows: 40,
@@ -141,6 +144,7 @@ export const ptySpawnerOf =
     })
     // Windows: the terminal's shell joins a Job Object of its own, ended when it exits, as a piped job's does
     // (procTree.ts adoptTree; nothing elsewhere, where the pty's session group serves).
+    placeLowered(p.pid)
     const exited = Object.assign(new EventEmitter(), { pid: p.pid })
     adopt(exited as unknown as ChildProcess)
     p.onExit(() => exited.emit('exit'))
