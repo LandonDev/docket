@@ -733,7 +733,7 @@ describe('a Word file of another computer', () => {
   const tabOf = async (tabId: string) => (await call<FilesTabs>('work.files.tabs', {})).tabs.find((t) => t.id === tabId)
   const closeAndHear = async (tabId: string) => {
     await call('work.files.tabClose', { tabId })
-    for (const items of box.removed.splice(0)) wordsLeft(box.ctx, items)
+    for (const items of box.removed.splice(0)) await wordsLeft(box.ctx, items)
   }
 
   it("becomes a document in the workspace's own folder, and the tab says the Word file has not changed", async () => {
@@ -789,6 +789,33 @@ describe('a Word file of another computer', () => {
     await closeAndHear(looked.tabId)
     expect(existsSync(looked.doc)).toBe(false)
     expect(wordRow(box.ctx, WS, MAC, looked.path)).toBeNull()
+  })
+
+  it('keeps a document typed into in the last second before its tab closed: judged by the live revision at the close, not the last look', async () => {
+    let rev = 'r0'
+    const asked: string[] = []
+    ;(box.ctx as { service: unknown }).service = { internal: async (path: string) => (asked.push(path), { rev }) }
+    const quick = await imported('Quick.docx', 'word bytes')
+    // The host's look saw it as made; he types "Approved" and closes within the second, before the next look.
+    await autosaveWords(box.ctx, 3_000_000)
+    rev = 'r1'
+    await closeAndHear(quick.tabId)
+    expect(existsSync(quick.doc)).toBe(true)
+    expect(wordRow(box.ctx, WS, MAC, quick.path)?.doc).toBe(quick.doc)
+    // The service was asked to store what the window sent before the judging.
+    expect(asked.indexOf('/internal/docs/stored')).toBeGreaterThanOrEqual(0)
+    expect(asked.lastIndexOf('/internal/docs/rev')).toBeGreaterThan(asked.indexOf('/internal/docs/stored'))
+  })
+
+  it('keeps the document when the service cannot say what it holds', async () => {
+    let rev = 'r0'
+    let down = false
+    ;(box.ctx as { service: unknown }).service = { internal: async () => { if (down) throw new Error('no service'); return { rev } } }
+    const kept = await imported('Kept.docx', 'word bytes')
+    await autosaveWords(box.ctx, 4_000_000)
+    down = true
+    await closeAndHear(kept.tabId)
+    expect(existsSync(kept.doc)).toBe(true)
   })
 
   it('never writes over a Word file that changed there: the conflict, then Keep Both beside it', async () => {
@@ -993,7 +1020,7 @@ describe('a Word file an older build opened, its document beside the copy with h
     await call('work.files.tabClose', { tabId: opened.tabId })
     for (const items of box.removed.splice(0)) {
       dropItemCopies(box.ctx, items)
-      wordsLeft(box.ctx, items)
+      await wordsLeft(box.ctx, items)
     }
     expect(readFileSync(doc, 'utf8')).toBe('{"his":"edits"}')
     const again = await call<FilesOpened>('work.files.open', { ref: { at: 'file', host: MAC, path: opened.path }, name: 'Screening.docx' })

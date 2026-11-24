@@ -2028,10 +2028,13 @@ over a colleague's Word file but his own press.
   library place that carries `make` (a Mac's, the VM's, a PC's): named in place, it opens as the Word-backed document
   and saves by itself with no notice, since it holds only what the editor makes (`offersIn`). In the workspace's own
   folder New → Document still makes a `.tcdoc`.
-- **A document he only looked at** goes with its tab: only one the host saw at the live revision it was made at,
-  never saved, with its file's time unchanged, is deleted with its record (`wordsLeft`). Anything else is kept, in the
-  workspace's folder, for the Word file's next open: one he typed into (his words live in the Work service before the
-  `.tcdoc` file is written), and one the host never looked at.
+- **A document he only looked at** goes with its tab: only one never saved, with its file's time unchanged, that the
+  host saw at the live revision it was made at, and whose live revision is still that one when asked at the close, is
+  deleted with its record (`wordsLeft`). The close first asks the service to store what any window sent it
+  (`/internal/docs/stored`), so a word typed in the last second, after the autosave's last look, counts; a service
+  that does not answer keeps the document. Anything else is kept, in the workspace's folder, for the Word file's next
+  open: one he typed into (his words live in the Work service before the `.tcdoc` file is written), and one the host
+  never looked at. The close of a remote key, a pane's removal and a thread's own close are judged the same way.
 
 ## Saved is not uploaded
 

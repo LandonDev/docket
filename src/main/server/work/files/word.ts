@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto'
+import { fileDocName } from 'work-kit/collab-server'
 import { existsSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import type { FileTab, WordBack, WordSaved } from '@shared/contract-work-files'
@@ -231,22 +232,39 @@ export function wordAuto(ctx: WorkCtx, by: Caller, p: { workspaceId: string; tab
 
 /**
  * Items of a Files pane went: a document made of a Word file that he never changed goes with its record (he only
- * looked); one he changed is kept with its record, for the Word file's next open.
+ * looked); one he changed is kept with its record, for the Word file's next open. Never changed is asked at the close:
+ * the service first stores what a window sent it, then its live revision must still be the one the document was made
+ * at. What the autosave saw last (once a second) only rules a document out; a service that does not answer keeps it.
  */
-export function wordsLeft(ctx: Pick<WorkCtx, 'db' | 'canvas'>, items: readonly CanvasItem[]): void {
+export async function wordsLeft(ctx: Pick<WorkCtx, 'db' | 'canvas' | 'service' | 'host' | 'log'>, items: readonly CanvasItem[]): Promise<void> {
   for (const item of items) {
     if (item.kind !== 'document' || item.source.at !== 'file') continue
     const r = ctx.db.prepare(`SELECT * FROM work_files_word WHERE doc = ?`).get(item.source.path) as WordRow | undefined
-    if (!r || ctx.canvas.forSession(item.sessionId).some((open) => open.id !== item.id && open.source.at === 'file' && open.source.path === r.doc)) continue
+    if (!r || shownElsewhere(ctx, item, r.doc!)) continue
     const now = mtime(r.doc!)
     if (now !== null && now !== r.doc_at) continue
-    // Only a document seen unchanged is let go: its live revision (the Work service's, where his words are as he types)
-    // still the one it was made at, and never saved. The file's time alone does not say he typed nothing.
+    // The file's time alone does not say he typed nothing, nor does the autosave's last look: his words are in the
+    // service as he types, and the last of them may have come after that look.
     const seen = seenRevs.get(keyOf(r))?.rev
     if (r.saved_rev !== null || r.base_rev === null || seen === undefined || seen !== r.base_rev) continue
+    let live: string
+    try {
+      await ctx.service.internal('/internal/docs/stored', { name: fileDocName(r.doc!), fence: { sectors: 'all' } })
+      live = await liveRev(ctx as WorkCtx, r.doc!)
+    } catch (err) {
+      ctx.log(`files: ${r.name}'s document is kept: the service could not say it is unchanged (${err instanceof Error ? err.message : String(err)})`)
+      continue
+    }
+    // Asked again after the wait: opened again meanwhile, saved, or written since, it stays.
+    const after = ctx.db.prepare(`SELECT * FROM work_files_word WHERE workspace_id = ? AND host = ? AND path = ?`).get(r.workspace_id, r.host, r.path) as WordRow | undefined
+    if (live !== r.base_rev || !after || after.doc !== r.doc || after.saved_rev !== null || mtime(r.doc!) !== now || shownElsewhere(ctx, item, r.doc!)) continue
     ctx.db.prepare(`DELETE FROM work_files_word WHERE workspace_id = ? AND host = ? AND path = ?`).run(r.workspace_id, r.host, r.path)
     if (now !== null) rmSync(r.doc!, { force: true })
   }
+}
+/** Whether another open item, in any pane, shows this document. */
+function shownElsewhere(ctx: Pick<WorkCtx, 'canvas'>, item: CanvasItem, doc: string): boolean {
+  return ctx.canvas.forSession(item.sessionId).some((open) => open.id !== item.id && open.source.at === 'file' && open.source.path === doc)
 }
 
 /** The sha256 of the bytes the Word file was read with: recorded at its open, or the copy an older build left beside the document. */

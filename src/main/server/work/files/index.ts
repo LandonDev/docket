@@ -144,7 +144,7 @@ export const files: WorkModule = {
     // A copy's item went however it went: what waits in the copy is kept and sent, never dropped with it.
     copiesLeft(ctx, mine)
     // A Word file's document he never changed goes; one he changed is kept for the file's next open (word.ts).
-    wordsLeft(ctx, mine)
+    void wordsLeft(ctx, mine).catch((err) => ctx.log(`files: a Word file's document was not judged: ${err instanceof Error ? err.message : String(err)}`))
   },
   workspaceRemoved(workspaceId, ctx) {
     removeWorkspace(ctx, workspaceId)

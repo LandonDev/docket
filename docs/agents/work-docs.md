@@ -66,7 +66,8 @@ every frame the editor has handed the socket and then `work.docs.send` with
 `stored: true`, answered once the service has applied what that socket sent
 and stored the document (`/internal/docs/stored`). So whatever judges the
 file after the close (a Word file's document he only looked at, files/word.ts
-`wordsLeft`) reads its change time as he left it. The route stores that
+`wordsLeft`, which also asks for the store and the live revision itself, for a
+close that did not come through a window's flush) reads its change time as he left it. The route stores that
 document alone, in its save turn, and reads its store's own answer
 (docs/storeBook.ts wraps the service's stores): a write that fails is a 503
 with the reason, never an ok. In the window the flush asks for the store
