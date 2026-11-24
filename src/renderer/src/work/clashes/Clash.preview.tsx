@@ -16,7 +16,9 @@ import { registry } from "../../lib/connection";
  * src/renderer/src/work/clashes/Clash.preview.tsx#ClashDialogPreview --props '{"state":"overlap"}'`
  * (`overlap`, `drive`, `about`, `plain`, `decline`, `propose`, `move`,
  * `sending`, `refused`, `cleared`, `loading`, `gone`, `down`: the box silent on its
- * LifeOS status, Running late's place holding the session's line) and `#ClashRowsPreview` (a day of
+ * LifeOS status, Running late's place holding the session's line; `hostdown`: the box signed out of LifeOS, no way out
+ * offered and one line under the events; `hostdown-step`: a decline he was typing when it dropped, Send held;
+ * `narrow`: a proposal's step in a 368px dialog, Day over From and To) and `#ClashRowsPreview` (a day of
  * the Agenda with a clash on two rows, a leave-by, and a row with none) and
  * `#ClashWeekPreview` (the Week with the clash's two events marked). The
  * dialog's own box, head and foot stand around the real parts, since a dialog
@@ -67,9 +69,9 @@ const CLASHES: Record<string, Clash> = {
 };
 
 /** The dialog's box, as `chrome/Modal` draws it at `sm`: title, the day under it, the close, then the body. */
-function Box({ title, day, children }: { title: string; day?: string | undefined; children: ReactNode }) {
+function Box({ title, day, narrow, children }: { title: string; day?: string | undefined; narrow?: boolean; children: ReactNode }) {
   return (
-    <div className="flex w-[448px] flex-col overflow-hidden rounded-2xl bg-popover text-sm leading-[22px] text-popover-foreground shadow-overlay ring-1 ring-border">
+    <div className="flex w-[448px] data-[narrow]:w-[368px] flex-col overflow-hidden rounded-2xl bg-popover text-sm leading-[22px] text-popover-foreground shadow-overlay ring-1 ring-border" data-narrow={narrow || undefined}>
       <header className="flex shrink-0 items-start gap-2 px-5 pt-5">
         <div className="min-w-0 flex-1">
           <h2 className="text-base font-semibold leading-6 tracking-[-0.01em]">{title}</h2>
@@ -94,6 +96,21 @@ export function ClashDialogPreview({ state = "overlap" }: { state?: string }) {
       </Box>
     );
   }
+  // The box signed out of LifeOS: its line (`DownLine`), the computer named, with the rule's press.
+  const hostDown = state === "hostdown" || state === "hostdown-step" ? <DownLine data-host-down session={{ environmentId: "local", sector: null, client: null, state: "signed-out" }} className="text-xs" /> : null;
+  if (hostDown) Object.assign(registry, { environment: (id: string) => ({ id, name: "The box" }) });
+  if (state === "hostdown-step")
+    return (
+      <Box title={clashTitle(CLASHES.overlap!)} day={day}>
+        <StepForm clash={CLASHES.overlap!} step={{ side: "a", way: "decline" }} pending={false} down={hostDown} onBack={noop} onSend={noop} />
+      </Box>
+    );
+  if (state === "narrow")
+    return (
+      <Box title={clashTitle(CLASHES.overlap!)} day={day} narrow>
+        <StepForm clash={CLASHES.overlap!} step={{ side: "a", way: "propose" }} pending={false} onBack={noop} onSend={noop} />
+      </Box>
+    );
   const step = state === "decline" || state === "propose" || state === "sending" || state === "refused" || state === "cleared" ? ("a" as const) : state === "move" ? ("b" as const) : null;
   if (step) {
     const clash = state === "move" ? CLASHES.drive! : CLASHES.overlap!;
@@ -110,7 +127,7 @@ export function ClashDialogPreview({ state = "overlap" }: { state?: string }) {
   const lateDown = state === "down" ? <DownLine session={{ environmentId: "local", sector: null, client: null, state: "unreachable", unanswered: true }} className="text-xs" /> : null;
   return (
     <Box title={clashTitle(clash)} day={day}>
-      <Events clash={clash} pending={false} busy={null} error={null} lateDown={lateDown} onClose={noop} onFine={noop} onWay={noop} />
+      <Events clash={clash} pending={false} busy={null} error={null} lateDown={lateDown} hostDown={hostDown} onClose={noop} onFine={noop} onWay={noop} />
     </Box>
   );
 }

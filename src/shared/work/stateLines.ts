@@ -165,9 +165,6 @@ export const STATE_LINES: Readonly<Record<string, readonly Line[]>> = {
   [`${R}/shell/ProjectSettings.tsx`]: [
     ["Done", "local"],
   ],
-  [`${R}/shell/settings.tsx`]: [
-    ["Signed in", "live session"],
-  ],
   [`${R}/tasks/NewTaskDialog.tsx`]: [
     ["`Added to ${jobNameNow(sector)}`", "answer"],
   ],

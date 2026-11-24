@@ -197,7 +197,7 @@ it ("read them with msform_answers"; the read-only judge's `readRefused`, workbo
 ## Answers as data in Work
 
 - **Responses half** of the kind: our forms' table (forms/responses.tsx), "as of" once when old, Refresh, ticked rows
-  to Ask; Who hasn't answered (NotAnswered.tsx) against People of the sector or pasted addresses.
+  to Ask; Who hasn't answered (NotAnswered.tsx) against People of the sector or pasted addresses; with the job's LifeOS session down it says `DownLine` in the people's place and keeps what he ticked and pasted, and Check, which needs no LifeOS, still works.
 - **Forms view** (`forms`): ours and Microsoft's, newest first; a row opens its form.
 - **Digest**: "3 new responses to <form>" (`msforms.responses`, key `msforms:<formId>`), done when he opens Responses.
 - **Today**: the Responses section, one row per form with unseen answers.

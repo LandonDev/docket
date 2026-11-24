@@ -24,7 +24,7 @@ import { resetOutboxStore, wantOutboxItem } from "./store";
  * changes open), `editing` (Edit in place), `stale` (an out-of-date change: Discard and Ask the thread again),
  * `scheduled` (a mail he timed: Cancel send and Send now), `done` (Done by day, with a discard's words, a put-away
  * out-of-date change and a phone's press), `loading` (the list's and the detail's bones), `grants` (the grants sheet over Sent), `kinds` (Waiting with a held item of six kinds; `pick` 0 is the
- * mail, 1 an invite, 5 a payload that could not be read, 6 a reply whose event LifeOS did not read; the calendar acts' LifeOS session did not answer), `kindsSilent` (the same, the host silent on its LifeOS status: the acts name it, with Retry), `longGuest` (`kinds` with `pick` 1: the invite, opened, with a guest whose long name and long address wrap in the column), `given` (Sent from a computer whose key may not grant) and `loadingAct` (Sent while the mail's own view loads).
+ * mail, 1 an invite, 5 a payload that could not be read, 6 a reply whose event LifeOS did not read; the calendar acts' LifeOS session did not answer), `kindsSilent` (the same, the host silent on its LifeOS status: the acts name it, with Retry), `unread` (`kinds` with the box signed out of LifeOS: the held mail could not be read whole, and its note says why with the computer named and Sign in), `longGuest` (`kinds` with `pick` 1: the invite, opened, with a guest whose long name and long address wrap in the column), `given` (Sent from a computer whose key may not grant) and `loadingAct` (Sent while the mail's own view loads).
  * Rendered by nothing in the app.
  */
 
@@ -219,6 +219,7 @@ type State =
   | "grants"
   | "kinds"
   | "kindsSilent"
+  | "unread"
   | "longGuest"
   | "given"
   | "loadingAct"
@@ -238,7 +239,7 @@ const DAY_PICK: Partial<Record<State, string>> = { day: "d_10", ticked: "d_10", 
 await Promise.all(Object.values(ACT_VIEWS).map((view) => view.chunk?.load()));
 let state: State = "offer";
 /** `kinds`, or `kindsSilent`: the same held items, the host silent on its LifeOS status. */
-const kinds = (): boolean => state === "kinds" || state === "kindsSilent" || state === "longGuest";
+const kinds = (): boolean => state === "kinds" || state === "kindsSilent" || state === "longGuest" || state === "unread";
 /** Which held change shows in the detail (the oldest waiting item is the one selected): 0 a Word replace, 1 a deck's two changes, 2 a Word insert, 3 a Doc's replace. */
 let pick = 0;
 /** The oldest waiting item is the one selected: the picked kind is made the oldest. */
@@ -271,6 +272,7 @@ const answers = (method: string, params: { show?: string; ref?: { id: string }; 
       if (state === "kinds" || state === "longGuest") return { lifeos: { state: "unreachable", since: at(20, 9, 58), error: "timed out" }, keys: [] };
       // In `kindsSilent` the host itself never answers its status: the acts' details name it, with Retry.
       if (state === "kindsSilent") throw Object.assign(new Error("No answer in 15 s"), { name: "TimeoutError" });
+      if (state === "unread") return { lifeos: { state: "signed-out" }, keys: [] };
       break;
     case "work.outbox.decide":
       // One row the host refuses, the rest go: what the summary's results look like.
@@ -286,6 +288,8 @@ const answers = (method: string, params: { show?: string; ref?: { id: string }; 
         return item === DANA ? { ...DANA, changed: { ...DANA.changed!, first: DANA_FIRST }, replied: { from: "Dana Lee", at: NOW - 12 * 60_000, line: "Can you add the hotel line before you send?" } } : item;
       }
       if (state === "done") return DONE.find((i) => i.ref.id === params.ref?.id) ?? DONE[0];
+      // The box's own LifeOS session, signed out, throws its words for the mail's full read.
+      if (state === "unread" && pick === 0) throw new Error("This host is not signed in to LifeOS");
       return kinds() ? pickedKinds()[pick] : state === "edits" ? waitingEdits()[pick] : sentList()[pick];
     }
   }
@@ -323,10 +327,10 @@ export function OutboxPreview({ state: s = "offer", pick: p = 0 }: { state?: Sta
     setWorkOn("local", true);
     if (s === "given") asGivenComputer({ on: ["local"] });
     // The host the acts read through, named as the app names it.
-    if (s === "kindsSilent") Object.assign(registry, { environment: (id: string) => ({ id, name: "The box" }) });
+    if (s === "kindsSilent" || s === "unread") Object.assign(registry, { environment: (id: string) => ({ id, name: "The box" }) });
     // A mail's own view still on its way: the bones it shows until then.
     if (s === "loadingAct") ACT_VIEWS["mail.send"] = { kind: "mail.send", chunk: defineChunk("preview-never", () => new Promise(() => {})) };
-    rememberOutboxTab(s === "edits" || s === "kinds" || s === "kindsSilent" || s === "longGuest" || s === "empty" || s === "failed" || s === "loading" || DAY_PICK[s] ? "waiting" : "done");
+    rememberOutboxTab(s === "edits" || s === "kinds" || s === "kindsSilent" || s === "unread" || s === "longGuest" || s === "empty" || s === "failed" || s === "loading" || DAY_PICK[s] ? "waiting" : "done");
     if (DAY_PICK[s]) wantOutboxItem(`local:${s === "stale" ? "host" : "lifeos"}:${DAY_PICK[s]}`);
   }
   // Each state's own press, once the page has drawn: the thread's Select 6, its Send 6, Show changes, Edit.

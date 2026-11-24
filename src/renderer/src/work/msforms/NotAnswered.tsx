@@ -13,6 +13,8 @@ import { useWorkspaces } from "../../lib/tcserver/workspaces";
 import { Face } from "../mail/face";
 import { findPeople, type DirectoryPerson } from "../people/model";
 import { useLifeosQuery, useLifeosSession } from "../shell/lifeos";
+import { downOf } from "../shell/lifeosDown";
+import { DownLine } from "../shell/DownLine";
 
 /**
  * Who hasn't answered (docs/agents/work-msforms.md "Who has not answered"):
@@ -120,7 +122,8 @@ export function NotAnsweredDialog({ env, workspaceId, answered, onClose }: { env
           <Field label={sector ? "Or paste addresses" : "Paste addresses"}>
             <Textarea value={pasted} onChange={(e) => setPasted(e.currentTarget.value)} rows={3} className="max-h-32 min-h-16 text-[13px]" spellCheck={false} {...(sector ? {} : { autoFocus: true })} />
           </Field>
-          <ErrorLine error={directory.status === "failed" ? `People did not load: ${directory.error}` : null} />
+          {/* The session dropped: its line with the rule's press, the ticks and pasted addresses kept; Check needs no LifeOS. */}
+          {sector && downOf(lifeos) ? <DownLine data-people-down session={lifeos} /> : <ErrorLine error={directory.status === "failed" ? `People did not load: ${directory.error}` : null} />}
         </ModalBody>
         <DialogFooter onCancel={onClose} confirmLabel="Check" disabled={!list.length} note={list.length ? `${list.length} on the list` : undefined} />
       </form>
