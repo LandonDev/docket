@@ -238,6 +238,13 @@ describe('the operations', () => {
     const steps = page.log.filter((l) => l.startsWith('click') || l.startsWith('type'))
     expect(steps.slice(0, 4)).toEqual(['click Create or upload', 'click Forms survey', 'click Settings', 'click Options for responses Accept responses'])
 
+    // New → Form (no questions): Settings is opened once, and the read keeps what the panel read back
+    const bare = new FakeForms()
+    const bareAsk = { ...ask, questions: [] }
+    const { read: bareRead } = await rig(bare).carrier.make(makeAuth({ ...payload, questions: [] }), bareAsk)
+    expect(bareRead).toMatchObject({ title: 'TempCode proof make', questions: [], settings: { accepting: false, orgOnly: true, recordName: true, onePerPerson: true } })
+    expect(bare.log.filter((l) => l === 'click Settings')).toHaveLength(1)
+
     const stuck = new FakeForms()
     stuck.stuck.add('Options for responses Accept responses')
     const err = await rig(stuck).carrier.make(makeAuth(payload), ask).catch((e) => e)
@@ -255,6 +262,18 @@ describe('the operations', () => {
     expect(late).toBeInstanceOf(CarrierStop)
     expect(late.message, late.message).toContain("the form title was not on the page")
     expect(late.formId).toMatch(/^FakeFormId/)
+
+    // a browser stopped part way (the box browser's memory cap, P5) still names the form, said by what was done
+    for (const [step, mayTake] of [['Settings', true], ['title field', false]] as const) {
+      const dies = new FakeForms()
+      dies.diesAfter = step
+      const gone = await rig(dies).carrier.make(makeAuth(payload), ask).catch((e) => e)
+      expect(gone, `dies after ${step}`).toBeInstanceOf(CarrierStop)
+      expect(gone.formId).toMatch(/^FakeFormId/)
+      if (mayTake) expect(gone.message).toContain('may take answers')
+      else expect(gone.message).toBe('made the form with Accept responses off; set who can answer; then the box browser stopped before the make finished. The form is in Forms as far as it got.')
+      if (!mayTake) expect(gone.read.settings.accepting).toBe(false)
+    }
 
     // its window is not closed while Forms still says it is saving (P1: a made form's title was lost that way)
     const slow = new FakeForms()

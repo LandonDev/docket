@@ -61,6 +61,9 @@ export class FakeForms implements FormsComputer {
   saving = 0
   /** the page never says the change is saved */
   neverSaves = false
+  /** the browser stops once a step of this name was taken (the box browser's memory cap, P5): every call after it fails */
+  diesAfter: string | null = null
+  private dead = false
   files = new Map<string, { UniqueId: string; Name: string; ServerRelativeUrl: string; TimeLastModified: string; bytes: Uint8Array }>()
 
   add(form: FakeFormState): void {
@@ -102,6 +105,7 @@ export class FakeForms implements FormsComputer {
   }
 
   async read(window: string): Promise<Screen> {
+    if (this.dead) throw new Error('The box browser could not read the page.')
     const page = this.pages.get(window)
     if (!page) throw new Error('no such window')
     const ui = this.ui.get(window)!
@@ -266,9 +270,11 @@ export class FakeForms implements FormsComputer {
         // A click elsewhere commits the question in edit, as Forms does.
         if (page?.kind === 'builder' && !/question title|option|Required|Multiple|Long|Add option|Delete|Move/.test(hit.what)) this.commit(this.forms.get(page.formId)!, this.ui.get(window)!)
         hit.run()
+        if (this.diesAfter === hit.what) this.dead = true
       } else if (action === 'type') {
         this.log.push(`type ${hit.what}: ${(s as { text: string }).text}`)
         hit.run((s as { text: string }).text)
+        if (this.diesAfter === hit.what) this.dead = true
       } else if (action === 'key') {
         const key = (s as { text: string }).text
         this.log.push(`key ${key} in ${hit.what}`)

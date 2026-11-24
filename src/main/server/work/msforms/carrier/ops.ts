@@ -4,7 +4,7 @@ import { builderOf, diffQuestions, formIdOf, isFormsUrl, isOther, MSFORM_NEW_SET
 import { ACCEPT_RESPONSES, countOf, formOf, formTitleButton, linkOf, questionInEdit, questionsOf, savingOf, settingsOf, SETTINGS_CLOSE, titleOf } from './read'
 import { click, first, isOn, one, Page, tab, typeInto, type FormsComputer } from './steps'
 import { RESPONSES_VIEW_MS } from './pull'
-import { CarrierRefused, CarrierStop, checkAuth, makePayload, pullPayload, readPayload, settingsPayload, type CarrierAuth, type CarrierOp, type FormRead, type MakeAsk, type MsCarrier, type PullAsk } from './types'
+import { CarrierBusy, CarrierRefused, CarrierSignIn, CarrierStop, checkAuth, makePayload, pullPayload, readPayload, settingsPayload, type CarrierAuth, type CarrierOp, type FormRead, type MakeAsk, type MsCarrier, type PullAsk } from './types'
 
 /**
  * The carrier's operations on the box browser (docs/agents/work-msforms.md
@@ -373,14 +373,14 @@ export function opsCarrier(deps: OpsDeps): MsCarrier {
           // The new form opens in a window the folder's page opened (Chromium's opener), or in the folder's page itself;
           // its id is in that page's address once Forms has made it. No other page is looked at: a Forms page another
           // tab opened meanwhile is never taken for this job's form (review 16).
-          for (let waited = 0; waited <= madeWait && !formId; waited += 1_000) {
+          for (let waited = 0; waited <= madeWait && !formId; waited += 250) {
             const mine = (await computer.windows()).filter((w) => w.id === folderWindow || w.opener === folderWindow)
             const made = mine.flatMap((w) => (isFormsUrl(w.url) && formIdOf(w.url) ? [{ id: formIdOf(w.url)!, window: w.id }] : []))
             if (made.length > 1) folder.stop("the folder's page opened more than one form, so none was taken")
             if (made.length === 1) {
               formId = made[0]!.id
               window = made[0]!.window
-            } else await computer.wait(1_000)
+            } else await computer.wait(250)
           }
         } finally {
           // the folder's page may itself be the form's now: then it stays open for the form's steps
@@ -388,60 +388,72 @@ export function opsCarrier(deps: OpsDeps): MsCarrier {
         }
         if (!formId || !window) throw new CarrierStop('Forms did not show the new form in time. It may have made one in the folder: look in Forms before trying again.', null, null)
         const page = new Page(computer, window, 'make', formId)
-        return closing(page, async () => {
-          const { got } = await page.until((s) => titleOf(s) !== '', mount)
-          // The welcome page has no title: nothing is pressed on it.
-          if (!got) page.stop('Forms opened its welcome page, not the new form; nothing was pressed there', { ...emptyRead(formId!), settings: { ...MSFORM_NEW_SETTINGS, accepting: true } })
-          // The first step on the new form: Accept responses off, read back.
-          ask.stage?.('setting')
-          try {
-            await openSettings(page)
-            await setToggle(page, ACCEPT_RESPONSES, false, 'Accept responses')
-          } catch (err) {
-            // the stop says a fixed sentence; what failed is for a proof's own log (TC_CARRIER_DEBUG)
-            if (process.env.TC_CARRIER_DEBUG) console.error('[carrier] make: Accept responses off failed:', err)
-            const read = formOf(page.last ?? (await page.read()), { formId: formId! })
-            throw new CarrierStop('The form was made but may take answers until Accept responses is off. Open it and turn that off, or delete it.', { ...read, formId: formId!, settings: { ...read.settings, accepting: true } })
-          }
-          page.done.push('made the form with Accept responses off')
-          await setAudience(page, ask.settings)
-          await setDate(page, 'Start date', ask.settings.startDate)
-          await setDate(page, 'End date', ask.settings.endDate)
-          page.done.push('set who can answer')
-          await page.act((x) => {
-            const close = one(x, BUTTON, SETTINGS_CLOSE)
-            return close ? [click(close)] : []
-          }, 'closing Settings')
-          // The title first, so the workbook takes it.
-          ask.stage?.('naming')
-          await page.act((x) => {
-            const b = formTitleButton(x)
-            return b ? [click(b)] : null
-          }, 'the form title')
-          const { got: field } = await page.until((x) => one(x, ['text area', 'input'], /^Form title$/), mount)
-          if (!field) page.stop('the form title did not open for typing', formOf(page.last!, { formId: formId! }))
-          await page.act((x) => {
-            const f = one(x, ['text area', 'input'], /^Form title$/)
-            return f ? [typeInto(f, ask.title), tab(f)] : null
-          }, 'the form title')
-          if (ask.description) {
-            await page.act((x) => {
-              const d = one(x, ['input', 'text area'], /^Form description$/)
-              return d ? [typeInto(d, ask.description), tab(d)] : null
-            }, 'the description')
-          }
-          page.done.push(`named it "${short(ask.title)}"`)
-          if (ask.questions.length) ask.stage?.('asking')
-          for (let i = 0; i < ask.questions.length; i++) {
+        try {
+          return await closing(page, async () => {
+            const { got } = await page.until((s) => titleOf(s) !== '', mount)
+            // The welcome page has no title: nothing is pressed on it.
+            if (!got) page.stop('Forms opened its welcome page, not the new form; nothing was pressed there', { ...emptyRead(formId!), settings: { ...MSFORM_NEW_SETTINGS, accepting: true } })
+            // The first step on the new form: Accept responses off, read back.
+            ask.stage?.('setting')
             try {
-              await addQuestion(page, ask.questions[i], i)
-            } catch {
-              const read = formOf(await page.read(), { formId: formId! })
-              throw new CarrierStop(`Made the form and added ${i} of ${ask.questions.length} questions; the next, "${short(ask.questions[i].title)}", did not show after Add. The form holds the first ${i}.`, read)
+              await openSettings(page)
+              await setToggle(page, ACCEPT_RESPONSES, false, 'Accept responses')
+            } catch (err) {
+              // the stop says a fixed sentence; what failed is for a proof's own log (TC_CARRIER_DEBUG)
+              if (process.env.TC_CARRIER_DEBUG) console.error('[carrier] make: Accept responses off failed:', err)
+              const read = formOf(page.last ?? (await page.read()), { formId: formId! })
+              throw new CarrierStop(MAY_TAKE_ANSWERS_STOP, { ...read, formId: formId!, settings: { ...read.settings, accepting: true } })
             }
-          }
-          return { read: await finalRead(page, formId!) }
-        })
+            page.done.push(ACCEPT_OFF_DONE)
+            await setAudience(page, ask.settings)
+            await setDate(page, 'Start date', ask.settings.startDate)
+            await setDate(page, 'End date', ask.settings.endDate)
+            page.done.push('set who can answer')
+            // the panel as set, read back: what the final read keeps for the toggles it no longer shows (Accept responses unread is on)
+            const panel = settingsOf(page.last ?? (await page.read()), { ...MSFORM_NEW_SETTINGS, accepting: true })
+            await page.act((x) => {
+              const close = one(x, BUTTON, SETTINGS_CLOSE)
+              return close ? [click(close)] : []
+            }, 'closing Settings')
+            // The title first, so the workbook takes it.
+            ask.stage?.('naming')
+            await page.act((x) => {
+              const b = formTitleButton(x)
+              return b ? [click(b)] : null
+            }, 'the form title')
+            const { got: field } = await page.until((x) => one(x, ['text area', 'input'], /^Form title$/), mount)
+            if (!field) page.stop('the form title did not open for typing', formOf(page.last!, { formId: formId! }))
+            await page.act((x) => {
+              const f = one(x, ['text area', 'input'], /^Form title$/)
+              return f ? [typeInto(f, ask.title), tab(f)] : null
+            }, 'the form title')
+            if (ask.description) {
+              await page.act((x) => {
+                const d = one(x, ['input', 'text area'], /^Form description$/)
+                return d ? [typeInto(d, ask.description), tab(d)] : null
+              }, 'the description')
+            }
+            page.done.push(`named it "${short(ask.title)}"`)
+            if (ask.questions.length) ask.stage?.('asking')
+            for (let i = 0; i < ask.questions.length; i++) {
+              try {
+                await addQuestion(page, ask.questions[i], i)
+              } catch {
+                const read = formOf(await page.read(), { formId: formId! })
+                throw new CarrierStop(`Made the form and added ${i} of ${ask.questions.length} questions; the next, "${short(ask.questions[i].title)}", did not show after Add. The form holds the first ${i}.`, read)
+              }
+            }
+            // With no questions (New → Form in Files) nothing can be left in edit: the builder is read once it has
+            // saved, its settings those the panel read back, so Settings is not opened a second time (about 4 s).
+            if (!ask.questions.length) {
+              const { screen } = await page.until((x) => !savingOf(x) && titleOf(x) !== '', mount)
+              return { read: formOf(screen, { formId: formId!, was: panel }) }
+            }
+            return { read: await finalRead(page, formId!) }
+          })
+        } catch (err) {
+          throw keptStop(page, formId, err)
+        }
       })
     },
 
@@ -583,6 +595,22 @@ export function shortens(now: string | undefined, next: string | undefined): boo
   return !Number.isNaN(c) && n < c
 }
 
+
+const ACCEPT_OFF_DONE = 'made the form with Accept responses off'
+const MAY_TAKE_ANSWERS_STOP = 'The form was made but may take answers until Accept responses is off. Open it and turn that off, or delete it.'
+
+/**
+ * A make that fails once Forms has made the form, in any way (the box browser stopped under its memory cap, a sign-in,
+ * his driving), names the form, so its row is kept and he sees it: a form in Forms that no row knows is one he can
+ * neither see nor delete from Work (P5: a browser stopped mid-make left one). Whether it may take answers is said
+ * from what the make had done.
+ */
+export function keptStop(page: Page, formId: string, err: unknown): CarrierStop {
+  if (err instanceof CarrierStop && err.formId) return err
+  if (!page.done.includes(ACCEPT_OFF_DONE)) return new CarrierStop(MAY_TAKE_ANSWERS_STOP, null, formId)
+  const why = err instanceof CarrierSignIn ? 'Microsoft asked for a sign-in' : err instanceof CarrierBusy ? 'the box browser was taken for driving' : 'the box browser stopped'
+  return new CarrierStop(`${page.done.join('; ')}; then ${why} before the make finished. The form is in Forms as far as it got.`, { ...emptyRead(formId), settings: { ...MSFORM_NEW_SETTINGS, accepting: false } }, formId)
+}
 
 const emptyRead = (formId: string): FormRead => ({ formId, title: '', description: '', questions: [], settings: MSFORM_NEW_SETTINGS, count: null, signedInAs: null, link: null })
 
