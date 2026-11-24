@@ -289,8 +289,8 @@ method can be given a small source here on `ask.ts`, as Files is.
   goes through Files' own door (`openInFiles`), which makes the tab on the
   job's host and then shows the Files view, unless he chose something else
   while a slow host made the tab (`choose` and `stillChosen`,
-  lib/workSwitch.ts: every Work view opened, every hit opened and every
-  thread opened from a Work view is a choice; so is leaving this job's view
+  lib/workSwitch.ts: every Work view opened, every hit opened, a thread
+  started about a hit and every thread opened from a Work view is a choice; so is leaving this job's view
   for a thread): then the tab waits in Files, behind the one shown, and the
   window stays with him.
 
@@ -373,9 +373,11 @@ for it.
   Chats" to the job alone (the picker has one scope while there is one
   job); a Work Chats thread among the job's rows says where it is.
 
-Transcript words are asked of the index one row a Work thread, its best
-(`perThread` on `Store.searchEvents`), so one long thread or another job's
-threads cannot fill the read; the reach is applied to those rows.
+Transcript words are asked of the index one row a Work thread, its best,
+among the threads in reach (`perThread` and `sessionIds` on
+`Store.searchEvents`, the notes read too): the reach is applied before the
+store's cap, so neither one long thread nor another job's many threads can
+fill the read.
 
 ## Proofs
 

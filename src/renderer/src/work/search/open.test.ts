@@ -17,6 +17,8 @@ const hit = (over: Partial<SearchHit> = {}): SearchHit => ({ key: "lifeos:mailTh
 
 function rig(selected: string[] = ["purdue"], over: Partial<OpenDeps> = {}) {
   const did: unknown[][] = [];
+  /** how many times the opener said "this is his latest choice" (lib/workSwitch.ts `choose`) */
+  const chosen = { n: 0 };
   const known = [ws("purdue"), ws("cosmic"), ws("mac-purdue", "mac")];
   const deps: OpenDeps = {
     workspace: (id) => known.find((w) => w.id === id),
@@ -29,10 +31,10 @@ function rig(selected: string[] = ["purdue"], over: Partial<OpenDeps> = {}) {
     startThread: (chip, w) => void did.push(["startThread", chip.label, w.id]),
     opened: (hostId, h) => void did.push(["opened", hostId, h.key]),
     clear: () => void did.push(["clear"]),
-    chose: () => {},
+    chose: () => void chosen.n++,
     ...over,
   };
-  return { did, deps };
+  return { did, deps, chosen };
 }
 
 describe("opening a hit", () => {
@@ -139,6 +141,17 @@ describe("a new thread about a hit", () => {
     const r = rig();
     expect(startAbout(hit({ chip, workspaceId: "cosmic" }), r.deps)).toBe(true);
     expect(r.did).toEqual([["clear"], ["startThread", "Budget for the LAN", "cosmic"]]);
+    // the draft is his latest choice: a file still on its way from a slow host does not come up over it
+    expect(r.chosen.n).toBe(1);
+  });
+  it("every hit opened is his latest choice, and one that opens nothing is none", async () => {
+    const r = rig();
+    await openHit(hit(), "box", r.deps);
+    await openHit(hit({ key: "thread:t1", kind: "thread", workspaceId: null, open: { to: "thread", sessionId: "t1" } }), "box", r.deps);
+    expect(r.chosen.n).toBe(2);
+    await openHit(hit({ workspaceId: "removed" }), "box", r.deps);
+    expect(startAbout(hit(), r.deps)).toBe(false);
+    expect(r.chosen.n).toBe(2);
   });
   it("is not offered for a kind that is no chip, a hit in no job, or a job that has gone", () => {
     const r = rig();

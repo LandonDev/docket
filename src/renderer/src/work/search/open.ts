@@ -144,6 +144,8 @@ export function startAbout(hit: SearchHit, over: Partial<OpenDeps> = {}): boolea
   const d = { ...live, ...over };
   const workspace = hit.workspaceId ? d.workspace(hit.workspaceId) : undefined;
   if (!hit.chip || !workspace) return false;
+  // His latest choice too: a file still on its way from a slow host must not come up over the draft.
+  d.chose();
   d.clear();
   d.startThread(hit.chip, workspace);
   return true;

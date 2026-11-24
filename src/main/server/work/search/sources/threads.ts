@@ -13,9 +13,9 @@ import type { SearchSource } from '../source'
  */
 
 /**
- * Threads read for one search, each by its best row (the host asks the index for one row a Work thread): the
- * store's own cap. The index knows no job, so the reach is applied here; with one row a thread, another job's
- * long thread cannot crowd a job's own threads out of the read.
+ * Threads read for one search, each by its best row: the store's own cap. The index knows no job, so the host
+ * is handed the threads in reach and asks for one row of each: neither another job's long thread nor its many
+ * threads (their rows or their notes) can crowd a job's own out of the read.
  */
 const WORDS_THREADS = 200
 
@@ -54,7 +54,9 @@ export const threadWords: SearchSource = {
     if (!host) return []
     const out: SearchHit[] = []
     const seen = new Set<string>()
-    for (const row of await host.words(ask.text, WORDS_THREADS)) {
+    // A subagent's thread is found by its words, so it is in the list; an archived one is not listed at all.
+    const within = host.threads().filter((t) => inReach(ask.reach, t.workspaceId)).map((t) => t.id)
+    for (const row of await host.words(ask.text, WORDS_THREADS, within)) {
       if (out.length > ask.limit) break
       // A thread's notes and its best row both answer: the first of them is the thread's hit.
       if (seen.has(row.sessionId)) continue

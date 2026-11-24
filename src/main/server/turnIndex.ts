@@ -330,7 +330,7 @@ export class TurnIndex {
    *  Binds: the MATCH expression, then the workspace id when asked. `work`
    *  holds it to Work threads (`sessions.scope`). The caller unions the two
    *  files and orders. */
-  matchSql(table: IndexTable, workspace: boolean, work = false): string {
+  matchSql(table: IndexTable, workspace: boolean, work = false, threads = false): string {
     // FTS5's auxiliary functions and MATCH take the table's own name, never
     // an alias; inside this SELECT `events_fts` is the one in `table`'s file.
     return `SELECT ti.session_id AS sessionId, (events_fts.rowid & ${SEQ_MASK}) AS seq, e.ts AS ts,
@@ -341,9 +341,12 @@ export class TurnIndex {
        JOIN turn_index ti ON ti.ordinal = (events_fts.rowid >> 32)
        JOIN ${table} e ON e.session_id = ti.session_id AND e.seq = (events_fts.rowid & ${SEQ_MASK})
        JOIN sessions s ON s.id = ti.session_id
-       WHERE events_fts MATCH ? ${workspace ? 'AND s.workspace_id = ?' : ''} ${work ? WORK_ROWS_SQL : ''}`
+       WHERE events_fts MATCH ? ${workspace ? 'AND s.workspace_id = ?' : ''} ${work ? WORK_ROWS_SQL : ''} ${threads ? THREADS_SQL('ti.session_id') : ''}`
   }
 }
+
+/** A search held to the threads named: one JSON list of ids as its parameter (Work search's reach, applied before the cap). */
+export const THREADS_SQL = (column: string): string => `AND ${column} IN (SELECT value FROM json_each(?))`
 
 /** A search held to Work threads: the row's own stamp, never a workspace's kind. */
 export const WORK_ROWS_SQL = `AND s.scope = 'work'`

@@ -28,8 +28,8 @@ export interface SearchHost {
   threads(): WorkThread[]
   /** One Work thread by id; null for a code thread or an unknown id. */
   thread(id: string): WorkThread | null
-  /** The transcript index, held to Work threads: best first. */
-  words(query: string, limit: number): Promise<SessionSearchHit[]>
+  /** The transcript index and the threads' notes, held to Work threads and to `within` (the threads in reach), one row a thread: best first. */
+  words(query: string, limit: number, within: readonly string[]): Promise<SessionSearchHit[]>
 }
 
 /** What the host part is made from: a test passes its own store and rows. */
@@ -37,7 +37,7 @@ export interface SearchHostDeps {
   sessions(): SessionMeta[]
   session(id: string): SessionMeta | null
   workspaceOfProject(projectId: string): string | null
-  searchEvents(o: { query: string; limit: number; scope: 'work'; perThread: true }): Promise<{ hits: SessionSearchHit[] }>
+  searchEvents(o: { query: string; limit: number; scope: 'work'; perThread: true; sessionIds: readonly string[] }): Promise<{ hits: SessionSearchHit[] }>
 }
 
 export function makeSearchHost(deps: SearchHostDeps): SearchHost {
@@ -60,8 +60,9 @@ export function makeSearchHost(deps: SearchHostDeps): SearchHost {
       const s = deps.session(id)
       return s && sessionScopeOf(s) === 'work' ? threadOf(s) : null
     },
-    // One row a Work thread, its best: the index ranks rows and knows no job, and one long thread must not fill the read.
-    words: async (query, limit) => (await deps.searchEvents({ query, limit, scope: 'work', perThread: true })).hits
+    // One row a Work thread, its best, among the threads in reach: the index ranks rows and knows no job, and neither
+    // one long thread nor another job's many threads may fill the read.
+    words: async (query, limit, within) => (within.length ? (await deps.searchEvents({ query, limit, scope: 'work', perThread: true, sessionIds: within })).hits : [])
   }
 }
 

@@ -125,6 +125,19 @@ describe('the words said in a thread', () => {
     const hits = await threadWords.search(ask('pizza', onlyPurdue, 10), {} as never)
     expect(hits.map((h) => h.key).sort()).toEqual(['thread:t-child', 'thread:t-project', 'thread:t-purdue'])
   })
+  it("are still found in one job when another job holds more matching threads than the store's cap, by their words or their notes: the reach is applied before the cap", async () => {
+    for (let i = 0; i < 210; i++) {
+      thread(`t-cosmic-${i}`, { title: `Cosmic ${i}`, scope: 'work', workspaceId: COSMIC, at: 100 + i })
+      store.setSessionNotes(`t-cosmic-${i}`, `pizza order ${i}`, 1000 + i)
+    }
+    // the plain Work read is all Cosmic's: 200 notes, newest first
+    const plain = await store.searchEvents({ query: 'pizza', scope: 'work', perThread: true })
+    expect(plain.hits.every((h) => h.sessionId.startsWith('t-cosmic'))).toBe(true)
+    const hits = await threadWords.search(ask('pizza', onlyPurdue, 10), {} as never)
+    expect(hits.map((h) => h.key).sort()).toEqual(['thread:t-child', 'thread:t-project', 'thread:t-purdue'])
+    // and a reach with no thread asks the store nothing
+    expect(await threadWords.search(ask('pizza', { workspaces: [{ id: 'ws-none', sector: null, name: 'None' }], chats: false, sessionId: null }, 10), {} as never)).toEqual([])
+  })
   it("ask the store for Work rows alone: the same search with no scope finds the code thread first", async () => {
     const all = await store.searchEvents({ query: 'pizza' })
     expect(all.hits.map((h) => h.sessionId)).toContain('t-code')
