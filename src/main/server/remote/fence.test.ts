@@ -426,7 +426,14 @@ describe("a file another host of his holds, named by a remote key (F-files-refus
     // A listing of a desktop the window has no link to, sent there (work/files/across.ts).
     ['work.files.across', (ref) => ({ workspaceId: 'w', host: MAC, method: 'work.files.stat', params: { refs: [ref] } })],
     // A far file renamed there: the workspace's records of its copy follow; nothing here is read (files/copies.ts).
-    ['work.files.copiesMoved', (ref) => ({ workspaceId: 'w', moves: [{ from: ref, to: ref }] })]
+    ['work.files.copiesMoved', (ref) => ({ workspaceId: 'w', moves: [{ from: ref, to: ref }] })],
+    // A delete of another host's file, sent to that host's own bin (work/files/across.ts `trashElsewhere`).
+    ['work.files.trash', (ref) => ({ workspaceId: 'w', refs: [ref], op: 'o' })],
+    // A rename, and a move inside that host, sent there (`changeElsewhere`).
+    ['work.files.rename', (ref) => ({ workspaceId: 'w', ref, name: 'x', op: 'o' })],
+    ['work.files.move', (ref) => ({ workspaceId: 'w', refs: [ref], to: ref, op: 'o' })],
+    // The same through the window's road to a desktop it cannot reach.
+    ['work.files.across', (ref) => ({ workspaceId: 'w', host: MAC, method: 'work.files.trash', params: { refs: [ref], op: 'o' } })]
   ]
 
   it("is that host's to fence in the verbs that send it there or keep it as words: this host's roots say nothing of it", () => {
@@ -467,6 +474,10 @@ describe("a file another host of his holds, named by a remote key (F-files-refus
       ['work.files.fetch', { workspaceId: 'w', ref: claimed }],
       ['work.files.copy', { workspaceId: 'w', refs: [claimed], to: at('/srv/work', BOX) }],
       ['work.files.copyTo', { workspaceId: 'w', refs: [claimed] }],
+      // A move of another host's file into a folder of this host, and a write: still fenced by this host's roots.
+      ['work.files.move', { workspaceId: 'w', refs: [claimed], to: at('/etc', BOX), op: 'o' }],
+      ['work.files.write', { workspaceId: 'w', ref: claimed, text: 'x', version: 'v' }],
+      ['work.files.purge', { workspaceId: 'w', refs: [claimed] }],
       ['work.office.filesCopyX', { sessionId: 's', source: claimed }],
       ['app.workCall', { sessionId: 's', token: 't', call: 1, tool: 'teams_open', args: { source: claimed } }]
     ] as [string, Record<string, unknown>][])

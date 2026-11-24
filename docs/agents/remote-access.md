@@ -183,8 +183,11 @@ Work calls `ctx.host`).
        over the host link, `copyIn`; that host holds the path to a library
        it syncs), `work.files.open` (the same copy, `openCopy`),
        `work.files.across` (a listing from that desktop; refused for this
-       host), and `work.files.saveAs` and `saveAsWord` (that host makes
-       the file in its own folder through its own door);
+       host), `work.files.saveAs` and `saveAsWord` (that host makes
+       the file in its own folder through its own door), and
+       `work.files.trash`, `rename` and `move` (sent to that host on his
+       press, a move only inside it: work/files/across.ts; `restore` names
+       Trash ids, no path);
      - kept or matched as words alone: `work.office.filesThreads` and
        `work.files.threads` (matched against the canvas's items),
        `work.files.tabOpen`, `tabSet`, `star` and `seen` (a tab or a mark

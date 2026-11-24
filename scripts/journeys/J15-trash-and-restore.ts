@@ -1,7 +1,6 @@
 import { existsSync, readFileSync, readdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { rowMenu, tabMenu } from './lib/actions'
-import { holderState, menuItems, notOffered, sameHolder } from './lib/far'
 import { replaceText, TEXT_EDITOR } from './lib/edit'
 import { openRow, rowAt } from './lib/files'
 import { fileAt, goPlace, showPlace } from './lib/place'
@@ -14,7 +13,6 @@ const DIRTY = 'Practice changes.txt'
 const BEFORE = 'Practice at noon'
 const DRAFT = 'Practice at dusk'
 const DIALOG = '[role="alertdialog"], [role="dialog"]'
-const far = new WeakMap<object, Record<string, string>>()
 
 async function confirmDelete(page: Window, file: string): Promise<string | null> {
   let dialog: string | null = null
@@ -119,25 +117,42 @@ export default journey({
       }
       if (failures.length) throw new Error(failures.join('. '))
     }, ['A']),
-    // B2: Delete is not offered in a library on a third computer reached through the box, neither on a row nor on an open
-    // file's tab. That is honest as it stands; offering it is the owner's ruling. The walk asserts Delete takes no press
-    // in either menu (both grey it out) and nothing on the holder changed.
-    step('The far library’s row menu offers no Delete', async (context) => {
+    // B2: a library on a third computer reached through the box. Delete goes through the box to that computer's own
+    // bin (files/across.ts), its Trash row kept there for the toast's Undo; an open copy's words that had not reached it
+    // are named in the question before anything goes.
+    step('Delete the far library’s file from its row: it goes to that computer’s bin, with Undo', async (context) => {
       const { page } = context.pair
-      writeFileSync(fileAt(context, CLEAN), BEFORE)
+      const clean = fileAt(context, CLEAN)
+      writeFileSync(clean, BEFORE)
       writeFileSync(fileAt(context, DIRTY), BEFORE)
-      far.set(context, holderState(context))
       await showPlace(context)
-      await rowMenu(page, CLEAN)
-      notOffered(await menuItems(page, { context, name: 'row-menu' }), 'Delete', 'The row menu')
+      try {
+        await rowMenu(page, CLEAN)
+        if (!await page.centre('[role="menuitem"]', 'Delete')) throw new Error('The far row menu does not allow Delete')
+        await page.press('menuitem', 'Delete')
+        await confirmDelete(page, clean)
+        await page.until('the far file to leave its folder', 20_000, () => !existsSync(clean))
+        // In that computer's own bin (this Linux stand-in's `gio trash`), with Undo offered. Linux's bin cannot put a
+        // thing back by path; a Mac's Trash and a PC's Recycle Bin can (files/across.test.ts, bin.test.ts).
+        const binned = readdirSync(context.pair.root).filter((name) => name.startsWith('trash.')).some((name) => existsSync(join(context.pair.root, name, CLEAN)))
+        if (!binned) throw new Error('The far file did not reach its computer’s bin')
+        await page.until('Undo on the delete', 8_000, async () => (await page.toasts()).some((t) => t.startsWith(`Deleted ${CLEAN}`) && t.endsWith('Undo')))
+      } catch (error) {
+        await noteFailure(context, 'far-delete', error)
+      }
     }, ['B2']),
-    step('end: the open file’s menu offers no Delete and the holder is as it was', async (context) => {
+    step('end: an open far file is deleted from its tab, the question naming its unsent words', async (context) => {
       const { page } = context.pair
+      if (existsSync(join(context.folder, 'far-delete.json'))) throw new Error('The far file could not be deleted from its row')
       await openRow(page, DIRTY)
       await page.until('the text file’s original words', 15_000, () => page.eval(`document.querySelector(${JSON.stringify(TEXT_EDITOR)})?.textContent?.trim() === ${JSON.stringify(BEFORE)}`))
       await tabMenu(page, DIRTY)
-      notOffered(await menuItems(page, { context, name: 'tab-menu' }), 'Delete', 'The open file’s menu')
-      sameHolder(context, far.get(context)!, 'end')
+      const file = fileAt(context, DIRTY)
+      if (!await page.centre('[role="menuitem"]', 'Delete')) throw new Error('The open far file’s menu does not allow Delete')
+      await page.press('menuitem', 'Delete')
+      await confirmDelete(page, file)
+      await page.until('the far file to reach its bin', 20_000, () => !existsSync(file))
+      await page.until('the deleted file’s tab to close', 10_000, () => page.tabClosed(DIRTY))
     }, ['B2'])
   ]
 })

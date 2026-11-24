@@ -5971,13 +5971,15 @@ public enum Methods {
             public let op: String
             public let origin: Origin?
             public let asked: Bool?
+            public let forGood: Bool?
 
-            public init(workspaceId: String, refs: [Ref], op: String, origin: Origin? = nil, asked: Bool? = nil) {
+            public init(workspaceId: String, refs: [Ref], op: String, origin: Origin? = nil, asked: Bool? = nil, forGood: Bool? = nil) {
                 self.workspaceId = workspaceId
                 self.refs = refs
                 self.op = op
                 self.origin = origin
                 self.asked = asked
+                self.forGood = forGood
             }
         }
 
@@ -5988,14 +5990,81 @@ public enum Methods {
         public static let name = "work.files.restore"
 
         public struct Params: Codable, Hashable, Sendable {
+            public enum Origin: Codable, Hashable, Sendable {
+                public struct Case0: Codable, Hashable, Sendable {
+                    public init() {}
+                }
+                public struct Case1: Codable, Hashable, Sendable {
+                    public struct Thing: Codable, Hashable, Sendable {
+                        public let key: String
+                        public let version: String
+                        public let shared: Bool?
+
+                        public init(key: String, version: String, shared: Bool? = nil) {
+                            self.key = key
+                            self.version = version
+                            self.shared = shared
+                        }
+                    }
+
+                    public let id: String
+                    public let digest: String
+                    public let things: [Thing]?
+                    public let into: String?
+                    public let intoShared: Bool?
+
+                    public init(id: String, digest: String, things: [Thing]? = nil, into: String? = nil, intoShared: Bool? = nil) {
+                        self.id = id
+                        self.digest = digest
+                        self.things = things
+                        self.into = into
+                        self.intoShared = intoShared
+                    }
+                }
+
+                case window(Case0)
+                case act(Case1)
+                /// A `from` this build does not know: the whole object, untouched.
+                case unknown(JSONValue)
+
+                private enum Tag: String, CodingKey {
+                    case from
+                }
+
+                public init(from decoder: any Decoder) throws {
+                    let tag = try decoder.container(keyedBy: Tag.self).decode(String.self, forKey: .from)
+                    switch tag {
+                    case "window": self = .window(try Case0(from: decoder))
+                    case "act": self = .act(try Case1(from: decoder))
+                    default: self = .unknown(try JSONValue(from: decoder))
+                    }
+                }
+
+                public func encode(to encoder: any Encoder) throws {
+                    switch self {
+                    case .window(let value): try Self.encode(tag: "window", value, to: encoder)
+                    case .act(let value): try Self.encode(tag: "act", value, to: encoder)
+                    case .unknown(let value): try value.encode(to: encoder)
+                    }
+                }
+
+                private static func encode(tag: String, _ value: some Encodable, to encoder: any Encoder) throws {
+                    var container = encoder.container(keyedBy: Tag.self)
+                    try container.encode(tag, forKey: .from)
+                    try value.encode(to: encoder)
+                }
+            }
+
             public let workspaceId: String
             public let ids: [String]
             public let op: String
+            public let origin: Origin?
 
-            public init(workspaceId: String, ids: [String], op: String) {
+            public init(workspaceId: String, ids: [String], op: String, origin: Origin? = nil) {
                 self.workspaceId = workspaceId
                 self.ids = ids
                 self.op = op
+                self.origin = origin
             }
         }
 

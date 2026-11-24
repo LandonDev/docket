@@ -136,8 +136,12 @@ export type FileAct = z.infer<typeof FileActSchema>
 /** The most base64 one copy sent back carries: a copy is made of a file of 48 MB at most (`COPY_ACROSS_MAX`). */
 export const COPY_DATA_MAX = Math.ceil((COPY_ACROSS_MAX * 4) / 3) + 4
 
-/** What a window may ask of a desktop it has no link to, through the workspace's own host: the listing alone. Opening a file there is a copy (`work.files.open`). */
-export const FILES_ACROSS = ['work.files.places', 'work.files.list', 'work.files.stat'] as const
+/**
+ * What a window may ask of a desktop it has no link to, through the workspace's own host: the listing, and on his own
+ * press a delete to that desktop's own bin, its Put back, and a rename or a move inside that desktop (files/across.ts).
+ * Opening a file there is a copy (`work.files.open`).
+ */
+export const FILES_ACROSS = ['work.files.places', 'work.files.list', 'work.files.stat', 'work.files.trash', 'work.files.restore', 'work.files.rename', 'work.files.move'] as const
 export type FilesAcross = (typeof FILES_ACROSS)[number]
 
 /** The edge of a picture a thumbnail is asked at: the grid's three tile sizes, at twice their pixels. */
@@ -293,9 +297,9 @@ export const FilesRequestSchemas = [
   /** → FileDone */
   request('work.files.copy', z.object({ workspaceId: Workspace, refs: z.array(FileRefSchema).min(1).max(100), to: FolderRefSchema, op: Op, origin: FileOriginSchema.optional(), asked: z.boolean().optional() })),
   /** → FileDone */
-  request('work.files.trash', z.object({ workspaceId: Workspace, refs: z.array(FileRefSchema).min(1).max(100), op: Op, origin: FileOriginSchema.optional(), asked: z.boolean().optional() })),
+  request('work.files.trash', z.object({ workspaceId: Workspace, refs: z.array(FileRefSchema).min(1).max(100), op: Op, origin: FileOriginSchema.optional(), asked: z.boolean().optional(), /** his yes to a delete for good, on a drive with no bin (`FilePlace.bin`) */ forGood: z.boolean().optional() })),
   /** → FileDone: puts Trash rows back where they were. */
-  request('work.files.restore', z.object({ workspaceId: Workspace, ids: z.array(z.string().max(100)).min(1).max(100), op: Op })),
+  request('work.files.restore', z.object({ workspaceId: Workspace, ids: z.array(z.string().max(160)).min(1).max(100), op: Op, origin: FileOriginSchema.optional() })),
   /** → { uploadId }: a file from a desktop or a phone into a folder; its bytes then go as `attachment.chunk`, `attachment.commit` or `attachment.abort` on that id. */
   request(
     'work.files.upload',

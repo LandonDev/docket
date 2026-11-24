@@ -1,5 +1,5 @@
 import type { TeamsLibrary } from '../contract-work-office'
-import { placeKey, type FilePlace, type PlaceState } from './files'
+import { noBinDrive, placeKey, type FilePlace, type PlaceState } from './files'
 
 /**
  * A Teams or OneDrive library as places of the Files place (docs/agents/work-files.md "The model"). A place is
@@ -46,7 +46,7 @@ export function vmCanOf(verbs: readonly string[] | null | undefined): FilePlace[
 
 /** The places one library holds: a team's channels, else the library as one place. `vmVerbs`: what the VM's helper says it has, for a library there. */
 export function placesIn(library: TeamsLibrary, state: PlaceState, vmVerbs?: readonly string[] | null): LibraryPlace[] {
-  const base = { host: library.vm ? 'Windows VM' : '', env: library.host, shared: true, can: library.vm ? vmCanOf(vmVerbs) : [...LIBRARY_CAN], state, web: library.web, ...(library.vm ? { vm: true } : {}) }
+  const base = { host: library.vm ? 'Windows VM' : '', env: library.host, shared: true, can: library.vm ? vmCanOf(vmVerbs) : [...LIBRARY_CAN], state, web: library.web, ...(library.vm ? { vm: true } : {}), ...(!library.vm && noBinDrive(library.path) ? { bin: false as const } : {}) }
   const one = (id: string, kind: FilePlace['kind'], name: string, top: string, key: string, group?: string): LibraryPlace => ({
     place: { ...base, id, kind, name, root: { at: 'file', host: library.host, path: top }, key, ...(group ? { group } : {}) },
     library,

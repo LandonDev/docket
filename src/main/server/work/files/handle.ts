@@ -31,7 +31,7 @@ import { DiskLister, entryOfRow, type DiskPage, type DiskRow } from './places/di
 import { winDirHost } from './places/winDir'
 import { folderEntry, folderName, folderPlace, folderTrail } from './places/folder'
 import { forgetLibraries } from './places/libraries'
-import { filesAcross } from './across'
+import { changeElsewhere, farHostOf, filesAcross, restoreElsewhere, trashElsewhere } from './across'
 import { forgetVmList, libraryEntry, libraryKey, libraryTrail, placeOfPath, placesIn, teamsPlaces, vmHas, vmPage, type LibraryPlace } from './places/teams'
 import { placeExtras } from './extras'
 import { admitCaller, admitWrite, changeDigest, isLifeosRef, locate, locatedShared, NEEDS_PRESS, NO_WORKSPACE, OWN_ONLY, pressesFor, SHARED_BYTES, sharedOf, PEER_LIBRARIES, within, workspaceHere, type DoorPlace, type Located, type WorkspaceRow } from './policy'
@@ -1029,7 +1029,26 @@ export async function filesHandle(req: ClientRequest, ctx: WorkCtx, by: Caller, 
     await driveAccounts(ctx, workspaceHere(ctx.db, p.workspaceId)?.sector ?? null)
   }
   // Put back is admitted for the whole selection before any of it runs: the LifeOS branch below puts its rows back first.
-  if (m === 'work.files.restore') await admitRestore(ctx, by, p.workspaceId, p.ids as string[])
+  // A delete, or its Put back, of files another host holds goes to that host, which keeps them in its own bin.
+  if (m === 'work.files.trash' && !namesDrive(p) && !(p.refs as FileRef[]).some(isLifeosRef)) {
+    const host = farHostOf(ctx, p.refs as FileRef[])
+    if (host) return handled(await trashElsewhere(ctx, by, host, p as never, (paths) => closeFarTabs(ctx, p.workspaceId, host, paths), signal))
+  }
+  if ((m === 'work.files.rename' || m === 'work.files.move') && !namesDrive(p)) {
+    const refs = m === 'work.files.rename' ? [p.ref as FileRef] : (p.refs as FileRef[])
+    const host = refs.some(isLifeosRef) ? null : farHostOf(ctx, refs)
+    if (host) {
+      const moved = (pairs: { from: string; to: string }[]): void => copiesMoved(ctx, by, { workspaceId: p.workspaceId, moves: pairs.map((x) => ({ from: { at: 'file', host, path: x.from }, to: { at: 'file', host, path: x.to } })) })
+      return handled(await changeElsewhere(ctx, by, host, m, p as never, moved, signal))
+    }
+  }
+  if (m === 'work.files.restore' && (p.ids as string[]).some((id) => id.startsWith('far:'))) {
+    const { done, here } = await restoreElsewhere(ctx, by, p as never, signal)
+    if (!here.length) return handled(done)
+    const rest = ((await filesHandle({ method: m, params: { ...p, ids: here } } as unknown as ClientRequest, ctx, by, signal)) as { result: FileDone }).result
+    return handled({ ...rest, entries: [...done.entries, ...rest.entries], refused: [...done.refused, ...rest.refused] })
+  }
+  if (m === 'work.files.restore') await admitRestore(ctx, by, p.workspaceId, p.ids as string[], p.origin as FileOrigin | undefined)
   if (m === 'work.files.across') return handled(await filesAcross(ctx, by, p as never, signal))
   const lifeos = await lifeosCase(ctx, by, m, p, signal)
   if (lifeos) return lifeos
@@ -1251,10 +1270,10 @@ export async function filesHandle(req: ClientRequest, ctx: WorkCtx, by: Caller, 
       if (namesDrive(p)) return handled(await driveTrash(ctx, by, ownRows(ctx, by, p.workspaceId), p.refs as FileRef[], p.op as string, p.origin as FileOrigin | undefined))
       // A library's delete may come for a workspace another host keeps (his window asks the file's own host): its row is kept here.
       binRows(ctx, by, p.workspaceId, { peer: true })
-      return handled(await trashFiles(ctx, by, p.workspaceId, p.refs as FileRef[], p.op as string))
+      return handled(await trashFiles(ctx, by, p.workspaceId, p.refs as FileRef[], p.op as string, { forGood: p.forGood === true }))
     case 'work.files.restore':
-      // Admitted, the whole selection, before the LifeOS branch (`admitRestore`).
-      return handled(await restoreRows(ctx, by, binRows(ctx, by, p.workspaceId), p.ids as string[], p.op as string))
+      // Admitted, the whole selection, before the LifeOS branch (`admitRestore`); another host asks it for his window.
+      return handled(await restoreRows(ctx, by, binRows(ctx, by, p.workspaceId, { peer: fromHisWindow(by, p.origin as FileOrigin | undefined) }), p.ids as string[], p.op as string))
     case 'work.files.purge': {
       const workspace = ownRows(ctx, by, p.workspaceId)
       if (by.kind === 'remote' && !by.caps.includes('approve')) throw new Error(MAY_NOT('empty Trash'))
@@ -1269,10 +1288,27 @@ export async function filesHandle(req: ClientRequest, ctx: WorkCtx, by: Caller, 
  * operate, and, for a caller that is not his press (`pressesFor`), no row others can open, since Put back changes such
  * a place as its delete did. One such row refuses the batch, before any of it is put back.
  */
-async function admitRestore(ctx: WorkCtx, by: Caller, workspaceId: string, ids: readonly string[]): Promise<void> {
-  binRows(ctx, by, workspaceId)
+/** Another host of his asking for his window's press (`origin: window`), as across.ts sends a delete's Put back. */
+const fromHisWindow = (by: Caller, origin?: FileOrigin): boolean => by.kind === 'remote' && !!by.peer && origin?.from === 'window'
+
+/** A delete another host's bin took: this workspace's copy tabs of those files close, what they held let go as his confirm said. */
+function closeFarTabs(ctx: WorkCtx, workspaceId: string, host: string, paths: readonly string[]): void {
+  const state = filesState(ctx)
+  const under = (path: string): boolean => paths.some((p) => path === p || path.startsWith(`${p}/`) || path.startsWith(`${p}\\`))
+  for (const tab of state.tabs.list(workspaceId).tabs) {
+    if (tab.kind !== 'file' || tab.copyOf?.host !== host || !under(tab.copyOf.path)) continue
+    copyClosing(ctx, workspaceId, tab, true)
+    state.tabs.tabClose(workspaceId, tab.id)
+  }
+}
+
+async function admitRestore(ctx: WorkCtx, by: Caller, workspaceId: string, ids: readonly string[], origin?: FileOrigin): Promise<void> {
+  const window = fromHisWindow(by, origin)
+  binRows(ctx, by, workspaceId, { peer: window })
   if (by.kind === 'remote' && !by.caps.includes('operate')) throw new Error(MAY_NOT('put files back'))
-  if (pressesFor(by)) return
+  // His press: his window, a key that may approve, or the workspace's host asking for his window (across.ts, which
+  // sends a Put back only on such a press).
+  if (pressesFor(by) || window) return
   const lifeos = ids.filter((id) => id.startsWith('lifeos:'))
   const rest = ids.filter((id) => !id.startsWith('lifeos:'))
   if ((await restoresShared(ctx, workspaceId, rest)) || (await lifeosTrashShared(ctx, by, workspaceId, lifeos))) throw new Error(NEEDS_PRESS)

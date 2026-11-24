@@ -11,6 +11,7 @@ const world = vi.hoisted(() => ({ calls: [] as { link: string; method: string; p
 
 vi.mock("../../lib/connection", () => ({
   registry: {
+    has: () => true,
     linkOf: (link: string) => ({
       request: async (method: string, params: Record<string, unknown>) => (world.calls.push({ link, method, params }), world.answers[method] ?? {}),
     }),

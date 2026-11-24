@@ -3,7 +3,7 @@ import { lstatSync, readdirSync, realpathSync, rmSync, statSync, type Stats } fr
 import { mkdir, rm } from 'node:fs/promises'
 import { basename, dirname, join, relative, sep } from 'node:path'
 import type { FileDone, FileRef } from '@shared/contract-work-files'
-import { freeName, kindOfEntry, LIST_PAGE_MAX, PLACE, refKey, refusal, type FileEntry } from '@shared/work/files'
+import { freeName, kindOfEntry, LIST_PAGE_MAX, noBinDrive, PLACE, refKey, refusal, type FileEntry } from '@shared/work/files'
 import type { Caller, WorkCtx } from '../modules'
 import { doorPlace, filesState } from './handle'
 import { libraryEntry, libraryKey, teamsPlaces, type LibraryPlace } from './places/teams'
@@ -186,7 +186,7 @@ async function trashOne(ctx: TrashCtx, workspace: WorkspaceRow, root: string, pa
 }
 
 /** `work.files.trash`: each ref, already through the door, to Trash. What could not go is said file by file. */
-export function trashFiles(ctx: LocateCtx, by: Caller, workspaceId: string, refs: FileRef[], op: string): Promise<FileDone> {
+export function trashFiles(ctx: LocateCtx, by: Caller, workspaceId: string, refs: FileRef[], op: string, o: { forGood?: boolean } = {}): Promise<FileDone> {
   return runOp(ctx.db, { id: op, workspaceId, verb: 'trash', refs }, async () => {
     const trashed: string[] = []
     const refused: FileDone['refused'] = []
@@ -207,7 +207,8 @@ export function trashFiles(ctx: LocateCtx, by: Caller, workspaceId: string, refs
         // A library on this host's disk: to this computer's own bin, from where OneDrive takes it to the library's.
         try {
           const { library } = doorPlace(ctx as WorkCtx, by, at)
-          trashed.push(await trashInLibrary(ctx, workspaceId, library!, at.path, op, i))
+          const id = await trashInLibrary(ctx, workspaceId, library!, at.path, op, i, binHere(), o)
+          if (id) trashed.push(id)
         } catch (e) {
           refused.push({ name: basename(at.path), text: textOf(e) })
         }
@@ -491,7 +492,7 @@ const sameDir = (a: string, b: string): boolean => a.replace(/[\\/]+$/, '').toLo
  * library's own recycle bin. A Files tab on it closes once the bin has taken it, never before: a bin that refuses
  * leaves the file, and the tab with the changes its copy has not sent. Answers the row's id.
  */
-export async function trashInLibrary(ctx: TrashCtx, workspaceId: string, library: LibraryPlace, path: string, op: string, i = 0, bin: SystemBin = binHere()): Promise<string> {
+export async function trashInLibrary(ctx: TrashCtx, workspaceId: string, library: LibraryPlace, path: string, op: string, i = 0, bin: SystemBin = binHere(), o: { forGood?: boolean } = {}): Promise<string | null> {
   if (sameDir(path, library.top) || sameDir(path, library.library.path)) throw new FileRefused('busy', PLACE_ITSELF)
   const keys = keysOf(ctx, library, path)
   if (keys.some(fileLocked)) throw new FileRefused('busy', WRITING)
@@ -509,7 +510,17 @@ export async function trashInLibrary(ctx: TrashCtx, workspaceId: string, library
       // A bin that failed after the thing left (a crash on its answer's way back) moved it all the same: the row stands, with no way back by path.
       if (lstatOr(path)) {
         dropRow(ctx, id)
-        throw e
+        // A mapped or network drive has no bin: gone for good, only on his yes to exactly that (`forGood`, the window's
+        // "Deleted from R: at once; it cannot be put back."), never on a delete asked of a bin.
+        if (library.place.bin !== false) throw e
+        if (!o.forGood) throw new FileRefused('busy', `${noBinDrive(path) ?? library.place.name} has no bin: a delete there cannot be put back, so it is asked as one.`)
+        rmSync(path, { recursive: true, force: false })
+        const workspace = workspaceHere(ctx.db, workspaceId)
+        if (workspace) closeTabsOn(ctx, workspace, keys)
+        dropName(ctx.db, workspaceId, keys[0]!)
+        filesState(ctx).lister.forget(dirname(path))
+        changed(ctx, workspaceId, null)
+        return null
       }
       ctx.log(`files: ${basename(path)} left for the bin, whose answer failed: ${textOf(e)}`)
       where = null

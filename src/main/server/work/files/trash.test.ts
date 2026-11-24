@@ -10,7 +10,8 @@ import { closeFilesState, filesState, THREADS_BY_TOOLS } from './handle'
 import { files } from './index'
 import { NEEDS_PRESS, workspaceHere } from './policy'
 import { approver, at, HOST, makeRig, peer, phone, thread, window, WS, type Rig } from './testkit'
-import { NOT_IN_TRASH, purgeOld, purgeRows, restoreRows, setSystemBin, settleTrash, trashAfterMove, trashRoot, TRASH_DAYS, type SystemBin } from './trash'
+import { NOT_IN_TRASH, purgeOld, purgeRows, restoreRows, setSystemBin, settleTrash, trashAfterMove, trashInLibrary, trashRoot, TRASH_DAYS, type SystemBin } from './trash'
+import { teamsPlaces } from './places/teams'
 import { withFileLocks } from './write'
 
 /** Trash for the workspace's own folder (trash.ts), through the module as a socket's requests reach it. */
@@ -416,6 +417,23 @@ describe("a delete in a library on this host's disk", () => {
     expect((await restore(own.trashed!, phone)).entries.map((e) => e.name)).toEqual(['notes.txt'])
     expect((await restore(lib.trashed!, approver)).entries.map((e) => e.name)).toEqual(['Plan.docx'])
     expect(readFileSync(plan, 'utf8')).toBe('word')
+  })
+
+  it('on a drive with no bin, deletes for good only on his yes to exactly that, keeping no row', async () => {
+    const plan = join(rig.team, 'General', 'Plan.docx')
+    const general = teamsPlaces(rig.ctx, window).places.find((p) => p.place.name === 'General')!
+    // A mapped drive: Windows' Recycle Bin will not take it, and the place says it has none.
+    const drive = { ...general, place: { ...general.place, bin: false as const } }
+    const refuses = bin({ refuse: 'Plan.docx would be deleted for good rather than kept in the Recycle Bin, so it was left where it is.' })
+    await expect(trashInLibrary(rig.ctx, WS, drive, plan, op(), 0, refuses)).rejects.toThrow(/has no bin: a delete there cannot be put back/)
+    expect(existsSync(plan)).toBe(true)
+    expect(await trashInLibrary(rig.ctx, WS, drive, plan, op(), 0, refuses, { forGood: true })).toBeNull()
+    expect(existsSync(plan)).toBe(false)
+    expect(rows()).toEqual([])
+    // A place with a bin is never deleted for good, whatever is asked.
+    const budget = join(rig.team, 'General', 'Budgets')
+    await expect(trashInLibrary(rig.ctx, WS, general, budget, op(), 0, refuses, { forGood: true })).rejects.toThrow(/Recycle Bin/)
+    expect(existsSync(budget)).toBe(true)
   })
 
   it('refuses in a plain sentence what the bin will not take, and leaves it', async () => {

@@ -1548,6 +1548,7 @@ export const FilePlaceSchema = z.object({
   key: z.string().optional(),
   group: z.string().optional(),
   vm: z.boolean().optional(),
+  bin: z.literal(false).optional(),
   web: z.string().nullable().optional(),
   count: z.number().optional(),
   makes: z.array(z.enum(MAKE_KINDS)).optional()

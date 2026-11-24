@@ -376,3 +376,26 @@ describe('a file in a message', () => {
     expect(chipsOf([folder], own)).toEqual({ refused: NO_FOLDER_CHIPS })
   })
 })
+
+describe('a drive with no bin', () => {
+  it('is a Windows drive other than C: or a network share; a Mac, Linux or C: path has its bin', async () => {
+    const { noBinDrive, deleteAsk } = await import('./files')
+    expect(noBinDrive('R:\\Shared\\Roster.xlsx')).toBe('R:')
+    expect(noBinDrive('r:/Shared')).toBe('R:')
+    expect(noBinDrive('\\\\nas\\team\\Roster.xlsx')).toBe('\\\\nas\\team')
+    expect(noBinDrive('C:\\Users\\l\\OneDrive\\Plan.docx')).toBeNull()
+    expect(noBinDrive('/Users/l/Library/CloudStorage/OneDrive-Dummy/Plan.docx')).toBeNull()
+    expect(noBinDrive('\\\\?\\C:\\Users')).toBeNull()
+    const r = { kind: 'teams' as const, name: 'Shared', bin: false as const, root: { at: 'file' as const, host: 'env_pc', path: 'R:\\Shared' } }
+    expect(deleteAsk(r, ['Roster.xlsx'])).toEqual({ title: 'Delete Roster.xlsx for good?', body: 'Deleted from R: at once; it cannot be put back.' })
+    expect(deleteAsk(r, ['a', 'b'])).toEqual({ title: 'Delete 2 items for good?', body: 'Deleted from R: at once; they cannot be put back.' })
+  })
+
+  it('marks a library place on such a drive, and none in the Windows VM', async () => {
+    const { placesIn } = await import('./filePlaces')
+    const lib = (path: string, vm = false) => ({ id: 'l', kind: 'folder', host: 'env_pc', path, team: 'Shared', library: null, channels: [], web: null, ...(vm ? { vm: true } : {}) }) as never
+    expect(placesIn(lib('R:\\Shared'), { state: 'ok' })[0]!.place.bin).toBe(false)
+    expect(placesIn(lib('C:\\Users\\l\\OneDrive - Purdue'), { state: 'ok' })[0]!.place.bin).toBeUndefined()
+    expect(placesIn(lib('D:\\Teams', true), { state: 'ok' }, ['files.outcome', 'files.recycle'])[0]!.place.bin).toBeUndefined()
+  })
+})

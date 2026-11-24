@@ -11,6 +11,7 @@ const world = vi.hoisted(() => ({ calls: [] as string[], tabs: [] as FileTab[], 
 
 vi.mock("../../lib/connection", () => ({
   registry: {
+    has: () => true,
     linkOf: () => ({
       request: async (method: string) => (world.calls.push(method), method === "work.files.trash" ? { entries: [], refused: [], trashed: ["t"], op: "o" } : { entries: [], refused: [], op: "o" }),
     }),

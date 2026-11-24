@@ -8285,11 +8285,12 @@ public struct FilePlace: Codable, Hashable, Sendable {
     public let key: String?
     public let group: String?
     public let vm: Bool?
+    public let bin: Bool?
     public let web: String?
     public let count: Double?
     public let makes: [Make]?
 
-    public init(id: String, kind: Kind, name: String, host: String, env: String, shared: Bool, can: [Can], state: State, root: FolderRef, key: String? = nil, group: String? = nil, vm: Bool? = nil, web: String? = nil, count: Double? = nil, makes: [Make]? = nil) {
+    public init(id: String, kind: Kind, name: String, host: String, env: String, shared: Bool, can: [Can], state: State, root: FolderRef, key: String? = nil, group: String? = nil, vm: Bool? = nil, bin: Bool? = nil, web: String? = nil, count: Double? = nil, makes: [Make]? = nil) {
         self.id = id
         self.kind = kind
         self.name = name
@@ -8302,6 +8303,7 @@ public struct FilePlace: Codable, Hashable, Sendable {
         self.key = key
         self.group = group
         self.vm = vm
+        self.bin = bin
         self.web = web
         self.count = count
         self.makes = makes

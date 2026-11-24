@@ -9,6 +9,7 @@ import { registry } from "../../lib/connection";
 import { workErrorWords } from "../../lib/workErrorWords";
 import { flushItem } from "../canvas/flush";
 import { carryRefusal, doneWords, refusedWords, type PlaceCopy } from "./model";
+import { filesLink } from "./farLink";
 import { closeTab, tabsNow } from "./store";
 
 /**
@@ -56,7 +57,7 @@ export async function renameTo(of: ActsOf, copy: PlaceCopy, entry: FileEntry, na
   // What an open tab on it holds goes in first; words still waiting follow the file to its new name.
   await unsavedIn(tabsOn(tabsNow(of.home, of.workspaceId), [entry]));
   try {
-    const done = await registry.linkOf(copy.link).request<FileDone>("work.files.rename", { workspaceId: of.workspaceId, ref: refOf(entry), name: next, op: opId() }, longWait(copy));
+    const done = await filesLink(copy.link).request<FileDone>("work.files.rename", { workspaceId: of.workspaceId, ref: refOf(entry), name: next, op: opId() }, longWait(copy));
     const made = done.entries[0];
     if (made) await copiesFollow(of, copy, [[entry, made]]);
     return made ?? null;
@@ -125,8 +126,7 @@ export async function carryTo(
   if (question && !(await confirmAction({ title: question.split("? ")[0]! + "?", body: question.split("? ").slice(1).join("? ") || undefined, action: verb === "move" ? "Move" : "Copy" }))) return false;
   if (verb === "move") await unsavedIn(tabsOn(tabsNow(of.home, of.workspaceId), entries));
   try {
-    const done = await registry
-      .linkOf(from.link)
+    const done = await filesLink(from.link)
       .request<FileDone>(`work.files.${verb}`, { workspaceId: of.workspaceId, refs: entries.map(refOf), to: to.at, op: opId(), ...(question ? { asked: true } : {}) }, longWait(from));
     if (verb === "move") await copiesFollow(of, from, movedPairs(entries, done));
     const samePlace = from.link === to.copy.link && from.place.id === to.copy.place.id;
@@ -190,13 +190,16 @@ export async function trash(of: ActsOf, copy: PlaceCopy, entries: readonly FileE
   const question = questionFor(copy.place, "trash", entries[0]);
   const open = tabsOn(tabsNow(of.home, of.workspaceId), entries);
   const unsaved = await unsavedIn(open);
-  if (question) {
+  // A drive with no bin (a mapped drive on his PC) is always asked: what goes there cannot be put back.
+  const forGood = copy.place.bin === false;
+  if (question || forGood) {
     const ask = deleteAsk(copy.place, entries.map((e) => e.name));
     const lost = unsaved ? " Changes in its open tab that are not saved are lost." : unsentIn(open) ? " Changes in its open copy that have not reached it are lost." : "";
     if (!(await confirmAction({ title: ask.title, body: ask.body + lost, action: "Delete", danger: true }))) return false;
   } else if (unsaved && !(await confirmAction({ title: `Changes to ${unsaved} are not saved.`, body: "Delete it anyway? They will be lost.", action: "Delete Anyway", danger: true }))) return false;
   try {
-    const done = await registry.linkOf(copy.link).request<FileDone>("work.files.trash", { workspaceId: of.workspaceId, refs: entries.map(refOf), op: opId(), ...(question ? { asked: true } : {}) }, longWait(copy));
+    // A desktop the window cannot reach is asked through the workspace's host (farLink.ts), which sends it there.
+    const done = await filesLink(copy.link).request<FileDone>("work.files.trash", { workspaceId: of.workspaceId, refs: entries.map(refOf), op: opId(), ...(question ? { asked: true } : {}), ...(forGood ? { forGood: true } : {}) }, longWait(copy));
     const ids = done.trashed ?? [];
     const gone = entries.length - done.refused.length;
     if (gone > 0) {
@@ -218,7 +221,7 @@ const HOME_PAGE = { name: "Home", at: { at: "place" as const, id: "home" } };
 export async function restore(of: ActsOf, link: string, ids: readonly string[]): Promise<boolean> {
   if (!ids.length) return false;
   try {
-    const done = await registry.linkOf(link).request<FileDone>("work.files.restore", { workspaceId: of.workspaceId, ids, op: opId() });
+    const done = await filesLink(link).request<FileDone>("work.files.restore", { workspaceId: of.workspaceId, ids, op: opId() });
     if (done.entries.length) said(doneWords("Put back", done.entries.map((e) => e.name)), { description: leftovers(done) });
     else failed("Nothing was put back", new Error(leftovers(done) ?? "Trash held none of them."));
     return done.entries.length > 0;

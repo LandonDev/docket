@@ -182,6 +182,8 @@ export interface FilePlace {
   group?: string
   /** it lies in the Windows VM its host keeps */
   vm?: boolean
+  /** a mapped or network drive (`R:`, `\\\\server\\share`): no bin takes a delete there, so it is for good (`noBinDrive`) */
+  bin?: false
   /** its address on the web, where he gave one */
   web?: string | null
   /** how many files a lens holds, where its row says (From mail) */
@@ -525,8 +527,24 @@ export function questionFor(place: AskedOf & Pick<FilePlace, 'group'>, verb: Fil
  * The words of his window's one question before a delete others will see (`questionFor` says whether it asks): the
  * thing by name, or how many, and who can open them, by the team or folder's own name.
  */
-export function deleteAsk(place: Pick<FilePlace, 'kind' | 'name' | 'group'>, names: readonly string[]): { title: string; body: string } {
+/**
+ * The drive a path lies on when it has no bin to take a delete: a Windows drive other than C: (how a mapped share
+ * reads, as `sharedKey` reads it) or a `\\\\server\\share`. Null on a path a bin takes from.
+ */
+export function noBinDrive(path: string): string | null {
+  const share = /^[\\/]{2}(?![?.][\\/])([^\\/]+)[\\/]+([^\\/]+)/.exec(path)
+  if (share) return `\\\\${share[1]}\\${share[2]}`
+  const letter = /^([a-bd-zA-BD-Z]):(?:[\\/]|$)/.exec(path)?.[1]
+  return letter ? `${letter.toUpperCase()}:` : null
+}
+
+export function deleteAsk(place: Pick<FilePlace, 'kind' | 'name' | 'group' | 'bin' | 'root'>, names: readonly string[]): { title: string; body: string } {
   const what = names.length === 1 ? names[0]! : `${names.length} items`
+  // A drive with no bin: what goes is gone, so that comes first.
+  if (place.bin === false) {
+    const drive = place.root.at === 'file' ? noBinDrive(place.root.path) : null
+    return { title: `Delete ${what} for good?`, body: `Deleted from ${drive ?? place.name} at once; ${names.length === 1 ? 'it' : 'they'} cannot be put back.` }
+  }
   const body = audienceOf(place, true)
   return { title: `Delete ${what} for everyone?`, body: names.length === 1 ? body : body.replace(/ it\.$/, ' them.') }
 }

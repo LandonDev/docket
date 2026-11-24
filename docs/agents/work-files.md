@@ -1477,7 +1477,7 @@ while its screen is unlocked.
 | `places {workspaceId}` | read | yes | this host's places and their state, `rev` (the tabs' revision) and `sources` (what stands between each source of Teams files and him). Never waits on a VM |
 | `list {workspaceId, at, cursor?, sort?, foldersOnly?}` | read | yes | one folder or lens, 500 entries and 512 KB a page at most; a folder that changed between pages answers `stale`. The first page carries `place` and `trail` |
 | `stat {workspaceId, refs}` | read | yes | the rows again with who last saved an Office file, 100 at most; null for one gone or out of reach |
-| `across {workspaceId, host, method, params}` | read | yes | `places`, `list` or `stat` of a desktop the window has no link to, asked of the workspace's host, which asks that desktop over `ctx.peer` ("A desktop the window cannot reach") |
+| `across {workspaceId, host, method, params}` | read | yes | `places`, `list` or `stat` of a desktop the window has no link to, and on his press `trash`, `restore`, `rename` or `move` there, asked of the workspace's host, which asks that desktop over `ctx.peer` ("A desktop the window cannot reach") |
 | `threads {workspaceId, ref}` | read | yes | the workspace's threads whose open items show the file |
 | `fetch {workspaceId, ref}` | read | screen | downloads a cloud-only file on its own host |
 | `tabs`, `open {ref, name?, as?, opener?, key?}`, `tabOpen {page, after?, first?}`, `tabClose`, `tabMove`, `tabSet` | read; operate | yes | the tabs and their items (below). `open` of a file on another host of his, or in the VM, makes its copy here |
@@ -1806,7 +1806,8 @@ His Mac's window (and any window) has no link to a PC that links only to the
 box. `useReach` (work/files/store.ts) asks such a desktop of a box workspace
 through the workspace's host: each id in `mayUseDesktop` the window has no
 link to goes through `filesLink` (work/files/farLink.ts), which sends
-`places`, `list` and `stat` as `work.files.across` and refuses anything else.
+`places`, `list`, `stat`, and on his press `trash`, `restore`, `rename` and
+`move`, as `work.files.across`, and refuses anything else.
 The box (files/across.ts) asks the desktop over `ctx.peer` as the workspace's
 Files pane, so `ctx.peer`'s own gate holds: the workspace may use that
 desktop, and the desktop is linked now. The desktop answers under its bridge
@@ -1814,11 +1815,35 @@ policy for the box and the peer rule (its libraries alone); its own
 always-ask rules stand. The box refuses a thread, another host, itself, and a
 desktop whose device binding is not live (`setLiveBinding`, filled in server
 index.ts by devices/binding.ts `mayRoute`: a given computer stopped or removed
-answers "That computer's link to this host is stopped or removed."). Places come back read only (`can` empty) and named as the box names
-that desktop (`name`). Opening a file there is the copy a Mac-held file gets
+answers "That computer's link to this host is stopped or removed."). Places come back with `trash`, `rename` and `move`
+alone of the changes, named as the box names that desktop (`name`).
+
+- **Delete, Rename and Move there** (2026-11-24, the owner: "Trying to delete a file says its on another host ask that
+  host, shouldn't happen"). On his press alone (his window, or a key that may approve; a thread never, `pressesFor`), the
+  box sends each to the desktop with `origin: {from: 'window'}`, so that desktop's door asks it as his
+  (`admitWrite`, the same question "Delete X for everyone?" first). A delete goes to that desktop's own bin (a Mac's
+  Trash, a PC's Recycle Bin through tc-office) and its Trash row is kept there; the toast's Undo, and Put back, go
+  the same road (`restore`, admitted there for his window's press, `fromHisWindow`). A move stays inside that desktop;
+  to another computer it is a copy, then a delete. A rename or a move re-points the workspace's copies of the file
+  (`copiesMoved`). A desktop not reachable says so in one line and nothing is changed. That desktop's Trash rows are
+  not in the box workspace's Trash list.
+- **Asked of the box by name** (a file tab's header or a merged row whose window copy lies on the box): a
+  `work.files.trash`, `rename` or `move` whose refs all name one other host is sent there the same way
+  (files/across.ts `trashElsewhere`, `changeElsewhere`), never refused with "That file is on another host"; its Trash
+  ids come back as `far:<host>:<id>`, so a Put back asked of the box goes to that host (`restoreElsewhere`); once that
+  bin took a file, the box's copy tabs of it close (`closeFarTabs`), the unsent words they held let go only after the
+  bin answered, as his confirm said. Files of two computers in one delete are refused: "Delete the files of one
+  computer at a time."
+- **A drive with no bin** (a mapped drive `R:` or a `\\server\share`, `noBinDrive` in shared/work/files.ts): its place
+  says `bin: false`; the window always asks, "Delete Roster.xlsx for good?" over "Deleted from R: at once; it cannot be
+  put back.", and sends `forGood`. That host still asks its bin first; only where the bin will not take it, and only
+  with `forGood`, it deletes for good and keeps no row (trash.ts `trashInLibrary`). Without `forGood` (an older window,
+  a thread's held delete) it refuses: "R: has no bin: a delete there cannot be put back, so it is asked as one."
+
+Opening a file there is the copy a Mac-held file gets
 from a box workspace (`work.files.open`, `copyIn`), which reads it through
 the bridge: the PC's Access for the box must be **Read** or more. A row's
-and a file tab's Rename, Move to…, Copy to… and Delete stay listed and
+and a file tab's Copy to… and New stay listed and
 greyed, as the place refuses them; their tooltip names the road, not the
 place's general sentence: "Purdue PC is reached through the box. Change
 its files on Purdue PC itself." (`farWhy`, model.ts; `far` on `actsFor`,
