@@ -1422,8 +1422,9 @@ Around the canvas:
   a 24px inset and **no title**: its first line is 12px muted and says when
   it was made ("So far, made 2:02 PM", "Made Fri 4:00 PM"), or a 12px
   spinner and "Making…" while Make again reads the week; a host that is
-  off is one more muted line there, a host that did not answer one red
-  line. **One Retry** asks every host again and sits at the end of the
+  off is one more muted line there, and so is a list read only in part
+  ("Not every held item could be read…", no Retry: asking again reads the
+  same cut list); a host or a source that did not answer is one red line. **One Retry** asks every host again and sits at the end of the
   first red line on the page (there, or a section's own), spinning while
   they answer. Three sections under 12px muted headings, 24px apart, in the order
   of a Friday: **Hours**, **Shipped**, **Slipped**. It shows a week, so it
@@ -1532,7 +1533,7 @@ Around the canvas:
     ("Its last answer is shown."). A slipped row whose source did not
     answer stands as last known with its presses off (a held item's Open
     stays), and one muted line under the red ones says "Slipped shows what
-    was last known.", unless a host's own line already said so. Nudge, as Follow up, is off where the job has no
+    was last known." unless a host's own line already said so. Nudge, as Follow up, is off where the job has no
     workspace this window can open. No comparison with the week
     before is drawn on anything unread, or on a host's answer from before.
     After a Retry the keyboard is back on Retry, or on the Hours heading

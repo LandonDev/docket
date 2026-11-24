@@ -753,7 +753,7 @@ export function mergeReview(
   // (`mergeKept`): they come from the home's part, else the first that has any, so a read that failed does not
   // empty the list it could not check.
   const ofKind = (kind: SlippedKind) => (part: ReviewPart): boolean => part.body.slipped.rows.some((r) => r.ref.kind === kind)
-  const rowsOf = (kind: SlippedKind, src: LifeosSource): ReviewPart | null => at[src] ?? parts.find((p) => p.environmentId === opts.home && ofKind(kind)(p)) ?? parts.find(ofKind(kind)) ?? null
+  const rowsOf = (kind: SlippedKind, src: Exclude<LifeosSource, 'any'>): ReviewPart | null => at[src] ?? parts.find((p) => p.environmentId === opts.home && ofKind(kind)(p)) ?? parts.find(ofKind(kind)) ?? null
   const rowsFrom: Record<Exclude<SlippedKind, 'held'>, ReviewPart | null> = { task: rowsOf('task', 'tasks'), mail: rowsOf('mail', 'mail'), meeting: rowsOf('meeting', 'meetings') }
   const slippedFrom = (part: ReviewPart): SlippedRow[] => part.body.slipped.rows.filter((r) => (r.ref.kind === 'held' ? true : part === rowsFrom[r.ref.kind]))
   for (const part of parts) for (const r of slippedFrom(part)) if (r.sector) seen(r.sector)
