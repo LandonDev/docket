@@ -178,9 +178,9 @@ is docs/IOS-DESIGN.md "The clicker").
 - Built against a wire of closures, with no host call in it:
   `ClickerWire { state, press }` (ios/TempCodeClient
   Work/Clicker/ClickerModel.swift). The host's wire for a show,
-  `work.slides.show.state`, `work.slides.show.press` and its push, is the
-  slides build's SLD9 (.temp-code/plans/editors/slides.md), which is not on
-  master.
+  `work.slides.show.state`, `work.slides.show.press` and its push (the slides
+  build's SLD9), is on master (contract-work-slides.ts, slides/clicker.ts);
+  the phone does not call it yet.
 - `ClickerModel` holds the show (`ClickerShow`: the deck's item and name, the
   slide from 1, the count, the notes and `notesSlide`, the slide they belong
   to, every slide's notes when the host sends them, `allNotes`, when it
@@ -203,8 +203,9 @@ is docs/IOS-DESIGN.md "The clicker").
 - `ClickerPanes` (Shell/ClickerPanes.swift) is the layout rule: stacked
   upright, split on its side and on the Duo unfolded, on the division band
   where it leaves room.
-- **No row on Home and no route** until a host has `work.slides.show.state`
-  and `press`. Then one adapter file maps the generated types onto
+- **No row on Home and no route.** The host's wire is there; whether the
+  clicker gets a way in is the owner's ruling (landing note, "For the owner"
+  6). Wired, one adapter file maps the generated types onto
   `ClickerWire` (state, press, the refusal's words through
   `ActionError.wrap`), the push feeds `ClickerModel.apply`, Home's Work
   section gains the Slideshow row while a show runs, and the deck's reader
