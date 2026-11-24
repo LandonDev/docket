@@ -62,7 +62,7 @@ describe("a screen's LifeOS session", () => {
     probe.unmount();
   });
 
-  it("closes soon after the last screen that read it goes, and at once when Work goes off", async () => {
+  it("closes 15 idle minutes after the last screen that read it goes, and at once when Work goes off", async () => {
     vi.useFakeTimers();
     fakeHost();
     setWorkOn("env_box", true);
@@ -71,7 +71,9 @@ describe("a screen's LifeOS session", () => {
     await act(() => vi.advanceTimersByTimeAsync(0));
     probe.unmount();
     expect(clients[0]!.closed).toBe(false);
-    await vi.advanceTimersByTimeAsync(5_000);
+    await vi.advanceTimersByTimeAsync(15 * 60_000 - 1);
+    expect(clients[0]!.closed).toBe(false);
+    await vi.advanceTimersByTimeAsync(1);
     expect(clients[0]!.closed).toBe(true);
     const again = mountProbe(<Reader sector={null} />);
     await act(() => vi.advanceTimersByTimeAsync(0));

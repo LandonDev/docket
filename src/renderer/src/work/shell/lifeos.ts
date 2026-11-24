@@ -1,4 +1,4 @@
-import { useEffect, useState, useSyncExternalStore } from "react";
+import { createContext, useContext, useEffect, useLayoutEffect, useMemo, useState, useSyncExternalStore } from "react";
 import { ConvexReactClient } from "convex/react";
 import { makeFunctionReference } from "convex/server";
 import { errorText, type SectorKey } from "@shared/work";
@@ -7,6 +7,7 @@ import { registry } from "../../lib/connection";
 import { linkMay } from "../../lib/linkMay";
 import { nameInLine } from "../../lib/hostWords";
 import { workSwitch } from "../../lib/workSwitch";
+import type { WorkspaceMeta } from "../../lib/tcserver/types";
 
 /**
  * Work's screens and LifeOS (docs/agents/work-lifeos.md "The states a
@@ -31,8 +32,51 @@ const unanswered = new Set<string>();
 function putStatus(environmentId: string, status: LifeosStatus): void {
   statuses.set(environmentId, status);
   unanswered.delete(environmentId);
+  rememberConnected(environmentId, status.lifeos.state === "connected");
+  // Signed out, refused, Work off, LifeOS unreachable: no session of the host stays open, kept or read, and no row it
+  // read stays kept. "connecting" is LifeOS on its way back at the host, which leaves both as they are.
+  if (status.lifeos.state !== "connected" && status.lifeos.state !== "connecting") {
+    for (const key of [...sessions.keys()]) if (key.startsWith(`${environmentId}|`) && sessions.get(key)?.client) closeSession(key);
+    dropKept(`${environmentId}|`);
+  }
   for (const listener of statusListeners) listener();
 }
+
+// ── the last status, across launches ─────────────────────────────────────
+
+/**
+ * The hosts whose last status said connected, kept across launches, so a launch asks for a session's JWT at once, side
+ * by side with the status ask, rather than after its answer (one round trip to the host, not two). The JWT's own answer
+ * says the state when it is not ok, and a status that says otherwise closes what it opened.
+ */
+const CONNECTED_KEY = "work.lifeos.connected.v1";
+let connectedHosts: Set<string> | null = null;
+
+function lastConnected(environmentId: string): boolean {
+  if (!connectedHosts) {
+    try {
+      const parsed = JSON.parse(globalThis.localStorage?.getItem(CONNECTED_KEY) ?? "[]") as unknown;
+      connectedHosts = new Set(Array.isArray(parsed) ? parsed.filter((id): id is string => typeof id === "string") : []);
+    } catch {
+      connectedHosts = new Set();
+    }
+  }
+  return connectedHosts.has(environmentId);
+}
+
+function rememberConnected(environmentId: string, on: boolean): void {
+  if (lastConnected(environmentId) === on) return;
+  if (on) connectedHosts!.add(environmentId);
+  else connectedHosts!.delete(environmentId);
+  try {
+    globalThis.localStorage?.setItem(CONNECTED_KEY, JSON.stringify([...connectedHosts!]));
+  } catch {
+    // unstored: the next launch asks the status first
+  }
+}
+
+/** The state a session opens by: the host's status, else connected while its last status in any launch was. */
+const openState = (environmentId: string): LifeosStateName | undefined => statuses.get(environmentId)?.lifeos.state ?? (lastConnected(environmentId) ? "connected" : undefined);
 
 function markUnanswered(environmentId: string, on: boolean): void {
   if (unanswered.has(environmentId) === on) return;
@@ -150,21 +194,51 @@ export interface LifeosSession {
 const sessions = new Map<string, LifeosSession>();
 const sessionListeners = new Set<Listener>();
 const keyOf = (environmentId: string, sector: SectorKey | null): string => `${environmentId}|${sector ?? "*"}`;
-/** Screens reading each session; at none it closes a moment later. */
+/** Screens reading each session; at none it is kept open, idle, until IDLE_CLOSE_MS pass or a newer session needs its place. */
 const readers = new Map<string, number>();
 const closing = new Map<string, ReturnType<typeof setTimeout>>();
 /** Bumped by every close: an answer that comes back after one is dropped. */
 const generations = new Map<string, number>();
-const CLOSE_AFTER_MS = 5_000;
+/**
+ * A job he returns to finds its session open (docs/agents/work-lifeos.md "Sessions kept"): one left by its last reader
+ * closes after 15 idle minutes, and at most KEEP_AT_MOST sessions with a client stay open, the least recently read
+ * without a reader closed first. A session a screen reads is never closed for room.
+ */
+const IDLE_CLOSE_MS = 15 * 60_000;
+const KEEP_AT_MOST = 8;
+/** Sessions by when a screen last took or left one, oldest first. */
+const touched = new Map<string, true>();
+/** The column's live queries each open session holds subscribed while it is open, so they read at once on a return. */
+const holds = new Map<string, Map<string, () => void>>();
+const HOLDS_AT_MOST = 8;
+
+function touch(key: string): void {
+  touched.delete(key);
+  touched.set(key, true);
+}
 
 function putSession(next: LifeosSession): void {
-  sessions.set(keyOf(next.environmentId, next.sector), next);
+  const key = keyOf(next.environmentId, next.sector);
+  const was = sessions.get(key);
+  sessions.set(key, next);
+  // A session gone down (signed out, refused, unreachable, withheld): the rows it read are no longer kept.
+  if (!next.client && !sessionWaits(next)) dropKept(`${key}|`);
+  if (next.client && !was?.client) {
+    touch(key);
+    if (!readers.get(key)) armIdle(key);
+    makeRoom();
+  }
   for (const listener of sessionListeners) listener();
 }
 
 /** Closes a session's client and forgets it; the next screen that asks opens it again. */
 function closeSession(key: string): void {
   generations.set(key, (generations.get(key) ?? 0) + 1);
+  clearTimeout(closing.get(key));
+  closing.delete(key);
+  for (const off of holds.get(key)?.values() ?? []) off();
+  holds.delete(key);
+  touched.delete(key);
   const open = sessions.get(key);
   if (!open) return;
   sessions.delete(key);
@@ -172,29 +246,69 @@ function closeSession(key: string): void {
   for (const listener of sessionListeners) listener();
 }
 
+/** Over KEEP_AT_MOST open sessions: the least recently read ones no screen reads now are closed. */
+function makeRoom(): void {
+  let open = [...sessions.values()].filter((s) => s.client).length;
+  for (const key of [...touched.keys()]) {
+    if (open <= KEEP_AT_MOST) return;
+    if (readers.get(key) || !sessions.get(key)?.client) continue;
+    closeSession(key);
+    open--;
+  }
+}
+
+function armIdle(key: string): void {
+  clearTimeout(closing.get(key));
+  closing.set(
+    key,
+    setTimeout(() => {
+      closing.delete(key);
+      if (!readers.get(key)) closeSession(key);
+    }, IDLE_CLOSE_MS),
+  );
+}
+
 function retain(key: string): () => void {
   clearTimeout(closing.get(key));
   closing.delete(key);
   readers.set(key, (readers.get(key) ?? 0) + 1);
+  touch(key);
   return () => {
     const left = (readers.get(key) ?? 1) - 1;
     readers.set(key, left);
     if (left > 0) return;
     readers.delete(key);
-    closing.set(
-      key,
-      setTimeout(() => {
-        closing.delete(key);
-        if (!readers.get(key)) closeSession(key);
-      }, CLOSE_AFTER_MS),
-    );
+    touch(key);
+    armIdle(key);
   };
 }
 
-// Work off on every host: no client of this window stays open to LifeOS.
+// Work off on every host: no client of this window stays open to LifeOS, and no row it read stays kept.
 workSwitch.subscribe(() => {
-  if (!workSwitch.anyOn()) for (const key of [...sessions.keys()]) closeSession(key);
+  if (workSwitch.anyOn()) return;
+  for (const key of [...sessions.keys()]) closeSession(key);
+  dropKept("");
 });
+
+/**
+ * The loaded catalog's Work workspaces (ReturnHost calls it on each change): a workspace removed, or linked to another
+ * sector, closes its sector's idle session and drops its rows. The all-sector session of a host goes with the host's
+ * last Work workspace.
+ */
+export function keepLifeosOf(workspaces: readonly Pick<WorkspaceMeta, "environmentId" | "kind" | "sector">[]): void {
+  const live = new Set<string>();
+  for (const w of workspaces) {
+    if (w.kind !== "work") continue;
+    live.add(keyOf(w.environmentId, null));
+    if (w.sector) live.add(keyOf(w.environmentId, w.sector as SectorKey));
+  }
+  const gone = new Set<string>();
+  for (const key of [...sessions.keys(), ...keptSessions()]) if (!live.has(key)) gone.add(key);
+  for (const key of gone) {
+    if (!readers.get(key)) closeSession(key);
+    dropKept(`${key}|`);
+  }
+}
 
 const jwtOf = (environmentId: string, sector: SectorKey | null): Promise<LifeosJwtAnswer> =>
   registry.linkOf(environmentId).request<LifeosJwtAnswer>("work.lifeos.jwt", sector ? { sector } : {});
@@ -222,11 +336,24 @@ function openSession(environmentId: string, sector: SectorKey | null): Promise<v
 async function askSession(environmentId: string, sector: SectorKey | null, key: string, generation: number): Promise<void> {
   if (sessions.get(key)?.client) return;
   // A close (a sign-out, Work off, the last screen gone) while the JWT was asked for wins over its answer.
-  const stale = (): boolean => (generations.get(key) ?? 0) !== generation || statuses.get(environmentId)?.lifeos.state !== "connected";
+  const stale = (): boolean => (generations.get(key) ?? 0) !== generation || openState(environmentId) !== "connected";
   // A key the host never hands its session to is not asked: the answer is a refusal, which is not silence.
   if (!linkMay(environmentId, "work.lifeos.jwt")) {
     putSession({ environmentId, sector, client: null, state: "unreachable", withheld: true });
     return;
+  }
+  // A launch's ask, made on the last status before this launch's is known, waits for the host's socket: the JWT then
+  // goes beside the status ask, never behind it.
+  if (!statuses.has(environmentId)) {
+    const link = registry.linkOf(environmentId);
+    if (!link.connected)
+      await new Promise<void>((resolve) => {
+        const off = link.onOpen(() => {
+          off();
+          resolve();
+        });
+      });
+    if (stale() || sessions.get(key)?.client) return;
   }
   let first: LifeosJwtAnswer;
   try {
@@ -271,12 +398,16 @@ export function useLifeosSession(environmentId: string, sector: SectorKey | null
   // already draws for one that did not answer. A later answer (a push, a reopened link, Retry) brings it back.
   const silent = useLifeosUnanswered(environmentId) && !status;
   const state = status?.lifeos.state ?? (silent ? "unreachable" : "connecting");
+  // Before this launch's status answers, a host whose last status said connected is asked for its JWT at once.
+  const ahead = !status && !silent && !!environmentId && lastConnected(environmentId);
   const key = keyOf(environmentId, sector);
   useEffect(() => (environmentId ? retain(key) : undefined), [environmentId, key]);
   useEffect(() => {
     if (!environmentId) return;
     const open = sessions.get(key);
-    if (state === "connected") {
+    if (ahead) {
+      void openSession(environmentId, sector);
+    } else if (state === "connected") {
       // A session that was down reads as on its way while its JWT is asked for: bones, not the old line.
       if (open && !open.client && open.state !== "connected") putSession({ environmentId, sector, client: null, state });
       void openSession(environmentId, sector);
@@ -284,7 +415,7 @@ export function useLifeosSession(environmentId: string, sector: SectorKey | null
       if (open?.client) closeSession(key);
       if (open?.client || open?.state !== state || !!open?.unanswered !== silent) putSession({ environmentId, sector, client: null, state, ...(silent ? { unanswered: true as const } : {}) });
     }
-  }, [environmentId, key, sector, state, silent]);
+  }, [environmentId, key, sector, state, silent, ahead]);
   const session = useSyncExternalStore(
     (fn) => {
       sessionListeners.add(fn);
@@ -292,7 +423,20 @@ export function useLifeosSession(environmentId: string, sector: SectorKey | null
     },
     () => sessions.get(key) ?? null,
   );
-  return session ?? { environmentId, sector, client: null, state, ...(silent ? { unanswered: true as const } : {}) };
+  // One object while nothing changes, so a reader that memoises on the session (Messages' live data) keeps its value.
+  const fallback = useMemo<LifeosSession>(() => ({ environmentId, sector, client: null, state, ...(silent ? { unanswered: true as const } : {}) }), [environmentId, sector, state, silent]);
+  return session ?? fallback;
+}
+
+/**
+ * Starts a workspace's session ahead of its screens: a launch that comes back on a Work view (work/shell/ReturnHost.tsx)
+ * asks for it beside the view's chunk, before the view mounts. Opened with no reader, it is kept as any other is.
+ */
+export function startLifeosSession(environmentId: string, sector: SectorKey | null): void {
+  // A host this window does not hold (yet) is left to the view's own session, which waits for it.
+  if (!environmentId || !registry.has(environmentId)) return;
+  watchLifeos(environmentId);
+  if (openState(environmentId) === "connected") void openSession(environmentId, sector);
 }
 
 /**
@@ -369,32 +513,184 @@ export function setLifeosSession(session: LifeosSession): void {
   putSession(session);
 }
 
-/** What a live query has: its rows, still loading, or the error LifeOS gave. */
-export type LifeosQuery<T> = { status: "loading" } | { status: "ready"; value: T } | { status: "failed"; error: string };
+/**
+ * What a live query has: its rows, still loading, or the error LifeOS gave. `kept` marks rows from the last-value cache,
+ * painted while the live answer is on its way; the region they stand in is `aria-busy` until it lands (`useKeptRegion`).
+ */
+export type LifeosQuery<T> = { status: "loading" } | { status: "ready"; value: T; kept?: true } | { status: "failed"; error: string };
 
-/** A live query as the session's owner, `name` as LifeOS names it (`projects:list`). Loading only while the session is on its way; a session that cannot read fails the query. */
-export function useLifeosQuery<T>(session: LifeosSession, name: string, args: Record<string, unknown>): LifeosQuery<T> {
-  const argsKey = JSON.stringify(args);
-  const [result, setResult] = useState<LifeosQuery<T>>({ status: "loading" });
-  const waits = sessionWaits(session);
-  useEffect(() => {
-    const client = session.client;
-    if (!client) {
-      setResult(waits ? { status: "loading" } : { status: "failed", error: sessionWords(session) });
-      return;
+// ── rows kept ──────────────────────────────────────────────────────────
+
+/**
+ * The last value each live query read, keyed `host|sector|name|args`, in this window's memory alone: a query that
+ * mounts again paints it while its live answer comes back (docs/agents/work-lifeos.md "Rows kept"). Reads only, never
+ * a send. At most KEPT_AT_MOST entries, the least recently read dropped first; dropped with a host's sign-out or any
+ * other state that is down, a session gone down, Work off, and a workspace removed.
+ */
+const kept = new Map<string, unknown>();
+const KEPT_AT_MOST = 64;
+const keptListeners = new Set<Listener>();
+
+function remember(cacheKey: string, value: unknown): void {
+  if (kept.get(cacheKey) === value) return;
+  kept.delete(cacheKey);
+  kept.set(cacheKey, value);
+  while (kept.size > KEPT_AT_MOST) kept.delete(kept.keys().next().value!);
+}
+
+/** Drops every kept row whose key starts with `prefix` ("" for all). */
+function dropKept(prefix: string): void {
+  let dropped = false;
+  for (const cacheKey of [...kept.keys()])
+    if (cacheKey.startsWith(prefix)) {
+      kept.delete(cacheKey);
+      dropped = true;
     }
-    const watch = client.watchQuery(makeFunctionReference<"query">(name), JSON.parse(argsKey) as Record<string, unknown>);
-    const read = (): void => {
+  if (dropped) for (const listener of keptListeners) listener();
+}
+
+/** The sessions (`host|sector`) that have rows kept. */
+function keptSessions(): string[] {
+  return [...new Set([...kept.keys()].map((cacheKey) => cacheKey.split("|", 2).join("|")))];
+}
+
+/** Holds a live query subscribed on its session while the session is open; the newest HOLDS_AT_MOST a session. */
+function holdQuery(sessionKey: string, cacheKey: string, watch: ReturnType<ConvexReactClient["watchQuery"]>): void {
+  const held = holds.get(sessionKey) ?? new Map<string, () => void>();
+  holds.set(sessionKey, held);
+  if (held.has(cacheKey)) return;
+  held.set(
+    cacheKey,
+    watch.onUpdate(() => {
       try {
         const value = watch.localQueryResult();
-        setResult(value === undefined ? { status: "loading" } : { status: "ready", value: value as T });
-      } catch (error) {
-        setResult({ status: "failed", error: error instanceof Error ? error.message : String(error) });
+        if (value !== undefined) remember(cacheKey, value);
+      } catch {
+        // the reader says the error
       }
-    };
-    read();
-    return watch.onUpdate(read);
-  }, [session.client, session.state, session.withheld, session.unanswered, session.environmentId, waits, name, argsKey]);
+    }),
+  );
+  if (held.size > HOLDS_AT_MOST) {
+    const [oldest, off] = held.entries().next().value!;
+    off();
+    held.delete(oldest);
+  }
+}
+
+/** A region of kept rows: its readers report a kept paint, and the region reads busy until each is live. */
+type KeptScope = { add(): () => void; busy(): boolean; subscribe(fn: Listener): () => void };
+const KeptScopeContext = createContext<KeptScope | null>(null);
+export const KeptRegion = KeptScopeContext.Provider;
+
+function keptScope(): KeptScope {
+  let count = 0;
+  const listeners = new Set<Listener>();
+  const say = (): void => {
+    for (const fn of listeners) fn();
+  };
+  return {
+    add() {
+      count++;
+      say();
+      return () => {
+        count--;
+        say();
+      };
+    },
+    busy: () => count > 0,
+    subscribe(fn) {
+      listeners.add(fn);
+      return () => void listeners.delete(fn);
+    },
+  };
+}
+
+/** A region's scope for `KeptRegion`, and whether a reader inside it still paints kept rows (its `aria-busy`). */
+export function useKeptRegion(): { scope: KeptScope; busy: boolean } {
+  const [scope] = useState(keptScope);
+  const busy = useSyncExternalStore(scope.subscribe, scope.busy, scope.busy);
+  return { scope, busy };
+}
+
+const LOADING = { status: "loading" } as const;
+
+/**
+ * One reader of one query on one client: what it reads now (the live result, else the kept one, else loading), one
+ * object for as long as that does not change.
+ */
+function queryReader<T>(client: ConvexReactClient | null, name: string, argsKey: string, cacheKey: string | null, failure: string | null, holdOn: string | null) {
+  const watch = client && failure === null ? client.watchQuery(makeFunctionReference<"query">(name), JSON.parse(argsKey) as Record<string, unknown>) : null;
+  let last: LifeosQuery<T> = LOADING;
+  const same = (next: LifeosQuery<T>): LifeosQuery<T> => {
+    if (next.status === last.status) {
+      if (next.status === "loading") return last;
+      if (next.status === "failed" && last.status === "failed" && next.error === last.error) return last;
+      if (next.status === "ready" && last.status === "ready" && next.value === last.value && next.kept === last.kept) return last;
+    }
+    return (last = next);
+  };
+  // Read again only after the client said something changed (or on subscribing): one snapshot between updates, even
+  // from a client that hands a new object on every read.
+  let dirty = true;
+  const keptOr = (): LifeosQuery<T> => (cacheKey && kept.has(cacheKey) ? same({ status: "ready", value: kept.get(cacheKey) as T, kept: true }) : same(LOADING));
+  return {
+    get(): LifeosQuery<T> {
+      if (failure !== null) return same({ status: "failed", error: failure });
+      if (!watch) return keptOr();
+      if (!dirty) return last;
+      dirty = false;
+      let value: unknown;
+      try {
+        value = watch.localQueryResult();
+      } catch (error) {
+        return same({ status: "failed", error: error instanceof Error ? error.message : String(error) });
+      }
+      if (value === undefined) return keptOr();
+      if (cacheKey) remember(cacheKey, value);
+      return same({ status: "ready", value: value as T });
+    },
+    subscribe(fn: Listener): () => void {
+      const changed = (): void => {
+        dirty = true;
+        fn();
+      };
+      keptListeners.add(changed);
+      dirty = true;
+      if (!watch) return () => void keptListeners.delete(changed);
+      // A hold is taken only on the session's own client: one a close already replaced holds nothing.
+      if (holdOn && cacheKey && sessions.get(holdOn)?.client === client) holdQuery(holdOn, cacheKey, watch);
+      const off = watch.onUpdate(changed);
+      return () => {
+        keptListeners.delete(changed);
+        off();
+      };
+    },
+  };
+}
+
+/** The option a column reader passes: its query held on its session while the session is open. */
+export const HOLD = { hold: true } as const;
+
+/**
+ * A live query as the session's owner, `name` as LifeOS names it (`projects:list`). Read in the first render: a result
+ * another reader holds paints at once, and else the last value this window read of it (`kept`) until the live answer
+ * lands. Loading only while the session is on its way with nothing kept; a session that cannot read fails the query.
+ * `hold` keeps the query subscribed on its session while the session is open (the column's facts and projects), so a
+ * return reads it live at once.
+ */
+export function useLifeosQuery<T>(session: LifeosSession, name: string, args: Record<string, unknown>, options?: { hold?: boolean }): LifeosQuery<T> {
+  const argsKey = JSON.stringify(args);
+  const client = session.client;
+  const failure = client || sessionWaits(session) ? null : sessionWords(session);
+  const sessionKey = session.environmentId ? keyOf(session.environmentId, session.sector) : null;
+  const cacheKey = sessionKey ? `${sessionKey}|${name}|${argsKey}` : null;
+  const holdOn = options?.hold ? sessionKey : null;
+  const reader = useMemo(() => queryReader<T>(client, name, argsKey, cacheKey, failure, holdOn), [client, name, argsKey, cacheKey, failure, holdOn]);
+  const result = useSyncExternalStore(reader.subscribe, reader.get, reader.get);
+  const scope = useContext(KeptScopeContext);
+  const keptPaint = result.status === "ready" && !!result.kept;
+  // A layout effect: the region reads busy in the same frame the kept rows first paint.
+  useLayoutEffect(() => (keptPaint && scope ? scope.add() : undefined), [keptPaint, scope]);
   return result;
 }
 
@@ -409,4 +705,9 @@ export function resetLifeos(): void {
   for (const timer of closing.values()) clearTimeout(timer);
   closing.clear();
   readers.clear();
+  touched.clear();
+  holds.clear();
+  kept.clear();
+  connectedHosts = null;
+  globalThis.localStorage?.removeItem(CONNECTED_KEY);
 }

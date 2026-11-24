@@ -7,7 +7,7 @@ import { openWorkView, setLifeosProjects, useWorkView, workColumnPort, workStart
 import { addContextChip, startAboutChip } from "../canvas/chips";
 import { rowOfView, type WorkViewDef, workViewRows } from "../views/registry";
 import { openLifeosProject } from "./actions";
-import { useLifeosQuery, useLifeosSession } from "./lifeos";
+import { HOLD, KeptRegion, useKeptRegion, useLifeosQuery, useLifeosSession } from "./lifeos";
 
 /** The statuses whose projects the column lists: what is still under way. */
 const LISTED = new Set(["backlog", "active", "paused"]);
@@ -32,9 +32,11 @@ export function columnProjects(rows: readonly LifeosProject[]): LifeosProjectRow
  * thread. An unlinked Work workspace has no rows and no LifeOS projects.
  */
 export function WorkColumnHead({ workspace }: { workspace: WorkspaceMeta }) {
+  // The rows' facts may paint as this window last read them: the head reads busy until each is live.
+  const kept = useKeptRegion();
   const sector = (workspace.sector ?? null) as SectorKey | null;
   const session = useLifeosSession(workspace.environmentId, sector);
-  const listed = useLifeosQuery<LifeosProject[]>(session, "projects:list", sector ? { sector } : {});
+  const listed = useLifeosQuery<LifeosProject[]>(session, "projects:list", sector ? { sector } : {}, HOLD);
   const rows = useMemo(() => (listed.status === "ready" ? columnProjects(listed.value) : null), [listed]);
   const shown = useWorkView();
 
@@ -52,11 +54,13 @@ export function WorkColumnHead({ workspace }: { workspace: WorkspaceMeta }) {
 
   if (!sector) return null;
   return (
-    <div className="flex flex-col gap-1 px-2 pt-2 pb-2">
-      {workViewRows().map((view) => (
-        <ViewRow key={view.id} view={view} workspace={workspace} sector={sector} selected={shown?.workspaceId === workspace.id && rowOfView(shown.view) === view.id} on={shown?.workspaceId === workspace.id && shown.view === view.id} />
-      ))}
-    </div>
+    <KeptRegion value={kept.scope}>
+      <div aria-busy={kept.busy || undefined} className="flex flex-col gap-1 px-2 pt-2 pb-2">
+        {workViewRows().map((view) => (
+          <ViewRow key={view.id} view={view} workspace={workspace} sector={sector} selected={shown?.workspaceId === workspace.id && rowOfView(shown.view) === view.id} on={shown?.workspaceId === workspace.id && shown.view === view.id} />
+        ))}
+      </div>
+    </KeptRegion>
   );
 }
 

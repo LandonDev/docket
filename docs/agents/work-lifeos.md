@@ -191,6 +191,53 @@ JWT ask is out a session at a time (`openSession`): Retry and the session's
 own opening share it, and a failure never takes the place of a client that
 reads.
 
+### Sessions kept
+
+A job he returns to finds its session open (work/shell/lifeos.ts, M1 of the
+perf pass). A session its last screen left stays open, idle, for 15 minutes
+(`IDLE_CLOSE_MS`), and at most 8 sessions with a client stay open
+(`KEEP_AT_MOST`): a ninth closes the least recently read one no screen reads
+now; a session a screen reads is never closed for room. All of them close
+when Work goes off on every host, and a host's close when its status says
+anything but connected or connecting (signed out, refused, off,
+unreachable). A workspace removed or linked to another sector closes its
+idle sector session (`keepLifeosOf`, called by `ReturnHost` on each catalog
+change; the all-sector `*` session goes with the host's last Work
+workspace). Agenda's clashes, Today and Work Chats read the kept `*`
+session. The column's five queries (`projects:list`, `mail:unread`,
+`tasks:list`, today's `events:range`, `chats:unread`) pass `HOLD`: each is
+held subscribed on its session while the session is open (at most 8 holds a
+session), so a return reads them live in its first render, and the Tasks
+view, which reads `tasks:list` through Convex's own `useQuery`, paints at
+once too. A switch back to a job thus asks the host nothing and LifeOS
+nothing before it paints.
+
+A launch asks for a session's JWT at once when the host's last status, in
+any launch, said connected (`work.lifeos.connected.v1` in localStorage, set
+and cleared by each status): the JWT goes out when the socket opens, beside
+the status ask, not behind it. A status that then says otherwise closes
+what it opened. `useLifeosSession` gives one object while nothing changes.
+
+### Rows kept
+
+`useLifeosQuery` reads in its first render (`useSyncExternalStore` over the
+client's watch): a result another reader holds paints at once. Under it, a
+last-value cache keyed `host|sector|name|args` (64 entries at most, least
+recently read dropped first, in this window's memory only) paints the rows
+this window last read while the live answer is on its way, the session's
+included; the result is `{status: "ready", value, kept: true}`. It holds
+reads only, never a send. It is dropped for a host whose status says
+anything but connected or connecting (a sign-out among them), for every
+host when Work goes off, for a session gone down (its JWT refused or
+unanswered), and for a workspace removed. A sector's session never paints
+another sector's rows. A region that shows kept rows reads `aria-busy`
+until each is live (`useKeptRegion` and `KeptRegion`: the view frame and
+the column's head); the live rows replace the kept ones in the same
+elements, with no fade and no chip. Tests: `shell/lifeosKept.dom.test.tsx`
+(counts of JWT asks and clients, first-commit reads, the drops, a change
+made elsewhere showing once the live answer lands) and
+`shell/ReturnHost.dom.test.tsx` (a launch's chunk and JWT before the view).
+
 ## What Files asks of LifeOS
 
 The Files place reads LifeOS through the host's own session

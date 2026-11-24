@@ -1,6 +1,6 @@
 import type { SectorKey } from "@shared/work";
 import type { WorkspaceMeta } from "../../lib/tcserver/types";
-import { useLifeosQuery, useLifeosSession } from "../shell/lifeos";
+import { HOLD, useLifeosQuery, useLifeosSession } from "../shell/lifeos";
 
 /**
  * The Mail row's fact (docs/DESIGN.md "The Work column": one muted trailing
@@ -17,6 +17,6 @@ export function unreadOf(rows: readonly { count: number }[]): string | null {
 
 export function useUnreadCount(workspace: WorkspaceMeta, sector: SectorKey): string | null {
   const session = useLifeosSession(workspace.environmentId, sector);
-  const rows = useLifeosQuery<{ count: number }[]>(session, "mail:unread", { view: "everything" });
+  const rows = useLifeosQuery<{ count: number }[]>(session, "mail:unread", { view: "everything" }, HOLD);
   return rows.status === "ready" ? unreadOf(rows.value) : null;
 }

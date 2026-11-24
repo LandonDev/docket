@@ -11,7 +11,7 @@ import { useSelectedWorkspaceIds } from "../../stores/project";
 import { StatusMark } from "../../components/ui/status";
 import { WORK_VIEWS, type WorkViewId, type WorkViewModule, type WorkViewProps } from "../views/registry";
 import { registry, useEnvironmentStatus } from "../../lib/connection";
-import { lifeosHostName, reopenLifeos, sessionFailure, sessionWords, useLifeosSession, useLifeosStatus } from "./lifeos";
+import { KeptRegion, lifeosHostName, reopenLifeos, sessionFailure, sessionWords, useKeptRegion, useLifeosSession, useLifeosStatus } from "./lifeos";
 import { startThreadAbout } from "./WorkColumn";
 import { openWorkSettings } from "./open";
 import { DOWN_PRESS_LABEL, useDownPress } from "./lifeosDown";
@@ -72,6 +72,8 @@ export function ViewFrame({ view, environmentId, workspaceId, sector }: { view: 
   const workspace = useWorkspaces().find((w) => w.id === workspaceId)!;
   const status = useLifeosStatus(environmentId);
   const session = useLifeosSession(environmentId, sector);
+  // The view may paint the rows this window last read while the live ones come back: the region is busy until they land.
+  const kept = useKeptRegion();
   const state: LifeosStateName | null = status?.lifeos.state ?? null;
   // The header's controls come from the chunk. The module is kept in state: read from the chunk while rendering it is a
   // constant to the React Compiler, so a first render before the chunk landed kept its null and the controls never showed.
@@ -154,6 +156,7 @@ export function ViewFrame({ view, environmentId, workspaceId, sector }: { view: 
       ref={region}
       role="region"
       aria-label={def.label}
+      aria-busy={kept.busy || undefined}
       // Headless, the region itself takes the focus the heading would have, and says the view's name.
       tabIndex={headless ? -1 : undefined}
       // A file dropped on a view opens in a new thread of the workspace (work/canvas/fileDrop.tsx).
@@ -206,11 +209,13 @@ export function ViewFrame({ view, environmentId, workspaceId, sector }: { view: 
             {...(signPress.press ? { action: { label: DOWN_PRESS_LABEL[signPress.press], onClick: () => setSigningIn(true) } } : signPress.elsewhere ? { line: signPress.elsewhere } : {})}
           />
         ) : (
-          <ViewBoundary label={def.label} onRetry={() => setAttempt((n) => n + 1)}>
-            <Suspense fallback={<ViewSkeleton label={def.label} />}>
-              <View {...props} />
-            </Suspense>
-          </ViewBoundary>
+          <KeptRegion value={kept.scope}>
+            <ViewBoundary label={def.label} onRetry={() => setAttempt((n) => n + 1)}>
+              <Suspense fallback={<ViewSkeleton label={def.label} />}>
+                <View {...props} />
+              </Suspense>
+            </ViewBoundary>
+          </KeptRegion>
         )}
       </div>
       {signingIn ? <SignInFor environmentId={environmentId} onClose={() => setSigningIn(false)} /> : null}

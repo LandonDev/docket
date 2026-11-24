@@ -1,7 +1,7 @@
 import type { SectorKey } from "@shared/work";
 import { clockTime } from "../../lib/duration";
 import type { WorkspaceMeta } from "../../lib/tcserver/types";
-import { useLifeosQuery, useLifeosSession } from "../shell/lifeos";
+import { HOLD, useLifeosQuery, useLifeosSession } from "../shell/lifeos";
 import { useMinute } from "./minute";
 
 /**
@@ -14,7 +14,7 @@ import { useMinute } from "./minute";
 /** "5": the sector's open tasks; none when there are none. */
 export function useOpenCount(workspace: WorkspaceMeta, sector: SectorKey): string | null {
   const session = useLifeosSession(workspace.environmentId, sector);
-  const rows = useLifeosQuery<unknown[]>(session, "tasks:list", { sector });
+  const rows = useLifeosQuery<unknown[]>(session, "tasks:list", { sector }, HOLD);
   return rows.status === "ready" && rows.value.length ? String(rows.value.length) : null;
 }
 
@@ -31,7 +31,7 @@ export function useNextEvent(workspace: WorkspaceMeta, sector: SectorKey): strin
   const now = useMinute();
   const day = new Date(now).setHours(0, 0, 0, 0);
   const session = useLifeosSession(workspace.environmentId, sector);
-  const rows = useLifeosQuery<Timed[]>(session, "events:range", { from: day, to: day + 86_400_000, sector });
+  const rows = useLifeosQuery<Timed[]>(session, "events:range", { from: day, to: day + 86_400_000, sector }, HOLD);
   const next = rows.status === "ready" ? nextToday(rows.value, now) : null;
   return next === null ? null : clockTime(next);
 }

@@ -249,7 +249,10 @@ Settings → Work.
   so a screen says so with Retry, `refreshLifeos`, never bones for good) and
   `useLifeosSession(env, sector)`, a `ConvexReactClient` of the screen's
   own on the address `work.lifeos.jwt` answers (approve), fed narrowed
-  JWTs; `useLifeosQuery(session, "module:fn", args)` is a live query.
+  JWTs; `useLifeosQuery(session, "module:fn", args)` is a live query, read
+  in its first render and painted from the window's last read while the live
+  answer comes back. Sessions stay open 15 idle minutes, 8 at most
+  ([work-lifeos.md](work-lifeos.md) "Sessions kept", "Rows kept").
 - **Settings**: a **Work** group after Threads holds the Work page, then
   (Work on) each Work workspace led by its dot; they leave the Workspaces
   group. The Work page (surfaces/settings/Work.tsx, then

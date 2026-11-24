@@ -1,6 +1,6 @@
 import type { SectorKey } from "@shared/work";
 import type { WorkspaceMeta } from "../../lib/tcserver/types";
-import { useLifeosQuery, useLifeosSession } from "../shell/lifeos";
+import { HOLD, useLifeosQuery, useLifeosSession } from "../shell/lifeos";
 
 /**
  * The Messages row's fact (docs/DESIGN.md "The Work column": one muted
@@ -13,6 +13,6 @@ export const unreadFact = (count: number | undefined): string | null => (count &
 
 export function useUnreadChats(workspace: WorkspaceMeta, sector: SectorKey): string | null {
   const session = useLifeosSession(workspace.environmentId, sector);
-  const unread = useLifeosQuery<{ count: number }>(session, "chats:unread", { sector });
+  const unread = useLifeosQuery<{ count: number }>(session, "chats:unread", { sector }, HOLD);
   return unread.status === "ready" ? unreadFact(unread.value.count) : null;
 }
