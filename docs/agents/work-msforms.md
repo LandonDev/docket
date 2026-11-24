@@ -114,6 +114,20 @@ no answer, respondent name or address; only fixed sentences reach `stopped` and 
 what opening any Teams file leaves: the box browser's own HTTP cache. An answer a thread reads stays in that thread's
 transcript, as anything a thread reads does.
 
+## Around the form
+
+- **Open the Workbook** (More, once the workbook exists; `work.msforms.workbook`): the workbook opens Live in Excel
+  in a Files tab, his own Excel-for-the-web open also syncing it. Opened Edit here, the sheet editor shows it read
+  only ("Microsoft Forms writes this workbook. Open it Live in Excel to change it.", msforms/workbook.ts through
+  `registerReadOnlyFile`), no save goes back from its copy, and the sheet and Office tools refuse to write it.
+- **Question History** (More; `work.msforms.history`): each change of the question list in words, newest first,
+  with when and who (the agent, him, or seen in the page).
+- **Files**: a library folder lists each form made in it as its own row (entry kind `form`, `registerFolderExtras`,
+  work-files.md), just before its workbook, whose row reads "Answers to <form>" and whose menu holds Open the Form.
+- **Connections**: one row a host with the carrier, "Microsoft Forms", signed in as the account the last pass read,
+  or Needs you when a pass met Microsoft's sign-in; the Office-live tenant row reads "Office and Forms for the web".
+- **The phone**: a Forms row lists the job's Microsoft forms (`work.msforms.list`) and opens each in Safari.
+
 ## Answers as data in Work
 
 - **Responses half** of the kind: our forms' table (forms/responses.tsx), "as of" once when old, Refresh, ticked rows
