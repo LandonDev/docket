@@ -99,7 +99,25 @@ counted from the tree's transcripts; unread), `asked`
   `WorkModule.triggers` whose source has `on: 'file'` and the same `at`
   (Excel's says `at: 'microsoft'`, Google's `at: 'google'`); a source with
   no `at` is never asked. With none for that place the row says "Waiting:
-  nothing watches files there yet".
+  nothing watches files there yet". A source's `fire(cause, range?)` may
+  hand an opaque `range` of what is new; the engine reads nothing in it and
+  passes it to the routine's job as `at.range` (below).
+- **A Microsoft form's answers** (`{on: 'file', source: {at: 'msform',
+  workspaceId, formId}, by: 'someone-else'}`; `MsformTriggerSource` in
+  shared/work/triggers.ts, a trigger's source only, never a canvas source).
+  The msforms pillar's source (msforms/routine.ts `msformTrigger`, on its
+  module's `triggers`) says "When someone answers <form>". It is armed on the
+  answers read's new-answers event (msforms/events.ts `onNewAnswers`) and
+  fires once per new range: "2 new responses to <form>", with the range
+  `{formId, fromId, toId}` (the workbook's `Id`s). A cause or a range never
+  holds an answer, a name or an address. On save (`work.routines.save`,
+  `msformRoutineRefusal`) the form must be the routine's own workspace's
+  ("refused: a routine on a Microsoft form's answers belongs to the form's
+  own job…"). A routine on a Purdue form's answers that would start a thread
+  (no job: a prompt or a play) is refused with the withhold's words, which
+  offer "File a task for each answer" (`routineWithheld`; work-msforms.md
+  "Purdue"). `msforms.tasks` runs only on a form. The routine form offers the
+  job's forms (`work.msforms.list`) in its File picker, a path otherwise.
 
 A routine may run a play (`play_id`, [work-plays.md](work-plays.md)): one
 of its workspace's plays that takes nothing, read afresh at each firing, its
@@ -116,14 +134,37 @@ a plain function a pillar registers on its module, `WorkModule.jobs`
 export type RoutineJob = {
   id: string   // '<pillar>.<what>', e.g. 'review.make'
   name: string // what the Routines view says it does: 'Your hours, what shipped and what slipped'
-  run(ctx: WorkCtx, at: { workspaceId: string; firedAt: number }): Promise<{ words: string; open?: RoutineJobOpen }>
+  run(ctx: WorkCtx, at: RoutineJobAt): Promise<{ words: string; open?: RoutineJobOpen }>
 }
+// what a run tells its job: the routine's trigger, and the range its source fired with
+export interface RoutineJobAt { workspaceId: string; firedAt: number; trigger?: Trigger; range?: TriggerRange }
 ```
 
+`at.trigger` is the routine's trigger and `at.range` what its source said
+is new when it fired. Run now, a schedule, and a firing folded into a run
+still going hand no range, so a job keeps its own checkpoint and reads a
+range as a hint.
+
 `words` is the run's one-line outcome (its summary and the routine's last
-words). `open` (`RoutineJobOpen`, `{place, at?}` in
+words). `open` (`RoutineJobOpen`, `{place, at?, item?}` in
 contract-work-routines.ts) is the page above the workspaces a run's row opens
-in place of a thread, stored in `work_routine_runs.open`.
+in place of a thread, stored in `work_routine_runs.open`; `item` names one
+thing on it by its own id.
+
+**`msforms.tasks`** ("Files a task for each new answer"; msforms/routine.ts
+`fileAnswerTasks`, no model) files one LifeOS task per new answer
+(`tasks:create` as the host, in the form's sector): "New answer to <form>",
+no name, keyed `msforms:<formId>:<Id>` so a retry or a restart files none
+twice. It files past its checkpoint (`work_msforms_jobs`, one row per form,
+made in the module's `ensure`) up to the range's end or the form's last
+`Id`, at most 100 a run (the words say how many wait). The checkpoint moves
+past an answer only once LifeOS answers with its task; a failed write stops
+the run there ("Filed 2 tasks, then LifeOS did not file the next: …").
+Before its first firing on a form, Run now files nothing for older answers
+and starts the checkpoint at the form's last `Id`. An `Id` Forms skipped (an
+answer deleted) still gets a task. Its run opens `{place: 'forms', item:
+formId}`; the row is a button once the Forms pillar sets
+`routineJobOpenPort`. A form whose job moved sector files nothing.
 
 The engine finds a job through `deps.job(id)` (index.ts binds it to
 `WORK_MODULES.flatMap(m => m.jobs ?? [])` and the context; a test hands its
@@ -143,7 +184,9 @@ and "Did not finish" for a raw error (`runWords`, routines/model.ts).
 Who may make one: only the owner, through `work.routines.save` (`admin`,
 refused for a thread's own call) with `job: '<id>'`, which must be a job some
 loaded pillar registers ("No such job: review.make"); its prompt may be empty,
-and it runs no play. A save that leaves `job` out keeps the one the routine
+and it runs no play. The form offers a job only beside its trigger (`FORM_JOBS`
+in routines/model.ts: "File a task for each answer" in Runs while a Microsoft
+form is picked); a job it cannot offer (the review's) is kept as it is. A save that leaves `job` out keeps the one the routine
 has; `job: null` drops it. `routine_propose` never sets one. The list carries
 `job` and `jobName` (absent when the job is not loaded on this host).
 

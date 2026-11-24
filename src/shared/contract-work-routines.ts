@@ -42,9 +42,11 @@ export type RoutineEnds = z.infer<typeof RoutineEndsSchema>
 /**
  * What a job run's row opens when pressed, in place of a thread: a page above
  * the workspaces (`place`, the pillar's own name for it, as `'review'`) and,
- * when the page has more than one, which (`at`, as a week's first ms).
+ * when the page has more than one, which (`at`, as a week's first ms), or
+ * the one thing on it by its own id (`item`: a Microsoft form's, for
+ * `msforms.tasks`, whose run opens the form's Responses).
  */
-export const RoutineJobOpenSchema = z.object({ place: z.string().min(1), at: z.number().optional() })
+export const RoutineJobOpenSchema = z.object({ place: z.string().min(1), at: z.number().optional(), item: z.string().optional() })
 export type RoutineJobOpen = z.infer<typeof RoutineJobOpenSchema>
 
 /** A routine as a screen lists it. */

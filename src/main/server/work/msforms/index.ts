@@ -7,6 +7,7 @@ import { get, history, holdPublish, list, make, markSeen, page, review, setCheck
 import { forgetWorkspaceAnswers } from './answers/cache'
 import { refreshAnswers, responsesOf, startAnswersPoller } from './answers/read'
 import { formReach, MsformsError } from './reach'
+import { ensureMsformJobs, msformTasksJob, msformTrigger, removeMsformJobs, setTriggerDb } from './routine'
 import { ensureMsformsTables, MsformsStore } from './store'
 import { registerRefSeat } from '../files/hooks'
 import { refKey } from '@shared/work/files'
@@ -99,6 +100,9 @@ export const msforms: WorkModule = {
   ensure(db) {
     ensureMsformsTables(db)
     ensureWorkbookIndex(db)
+    ensureMsformJobs(db)
+    // the trigger's words read a form's title here, Work on or off
+    setTriggerDb(db)
   },
   async handle(req, ctx, by) {
     // A method the contract does not list is the router's to call not built.
@@ -106,6 +110,9 @@ export const msforms: WorkModule = {
     return route(req, ctx, by)
   },
   acts: [msformPublishKind as ActKindDef, msformMakeKind as ActKindDef],
+  // "When someone answers <form>" (routine.ts): armed by the routines engine on the answers read's event
+  triggers: [msformTrigger],
+  jobs: [msformTasksJob],
   start(ctx) {
     const off = ctx.held.onDecided((item) => settled(ctx, item))
     const poller = startAnswersPoller(ctx)
@@ -117,5 +124,6 @@ export const msforms: WorkModule = {
   workspaceRemoved(workspaceId, ctx) {
     new MsformsStore(ctx.db).removeWorkspace(workspaceId)
     forgetWorkspaceAnswers(workspaceId)
+    removeMsformJobs(ctx.db, workspaceId)
   }
 }

@@ -50,6 +50,13 @@ export const EVERY_CHOICES = [
 
 export const EVENT_CHOICES = Object.entries(LIFEOS_TRIGGER_KINDS).map(([value, label]) => ({ value: value as LifeosTriggerKind, label }));
 
+/**
+ * The host jobs the form offers, each for the trigger it runs on (docs/agents/work-routines.md "A routine that runs a
+ * job"): today one, the Microsoft form's `msforms.tasks`. A job no choice here names (the review's) is kept as it is.
+ */
+export const FORM_JOBS = [{ value: "msforms.tasks", label: "File a task for each answer" }] as const;
+const formJob = (job: string | null | undefined): boolean => FORM_JOBS.some((j) => j.value === job);
+
 export interface RoutineForm {
   name: string;
   prompt: string;
@@ -66,6 +73,10 @@ export interface RoutineForm {
   /** the read's fixed arguments, as JSON */
   args: string;
   path: string;
+  /** a Microsoft form of the job, by Forms' id, in place of a file's path; "" for a path */
+  form: string;
+  /** a host job the form offers (`FORM_JOBS`), "" for none */
+  job: string;
   ends: EndsOn;
   /** "2026-11-24" */
   until: string;
@@ -78,7 +89,7 @@ const dateOf = (ms: number): string => {
 };
 
 export function blankForm(now = Date.now()): RoutineForm {
-  return { name: "", prompt: "", play: "", starts: "sched", days: "weekdays", at: "07:00", event: "mail.received", tool: "", every: "15", args: "{}", path: "", ends: "never", until: dateOf(now + 7 * 86_400_000) };
+  return { name: "", prompt: "", play: "", starts: "sched", days: "weekdays", at: "07:00", event: "mail.received", tool: "", every: "15", args: "{}", path: "", form: "", job: "", ends: "never", until: dateOf(now + 7 * 86_400_000) };
 }
 
 const daysOf = (days: readonly number[]): DaysChoice => {
@@ -91,7 +102,7 @@ const daysOf = (days: readonly number[]): DaysChoice => {
 
 /** A saved routine (or an agent's proposal) as the form shows it. */
 export function formOf(row: RoutineRow, now = Date.now()): RoutineForm {
-  const f: RoutineForm = { ...blankForm(now), name: row.name, prompt: row.prompt, play: row.playId ?? "" };
+  const f: RoutineForm = { ...blankForm(now), name: row.name, prompt: row.prompt, play: row.playId ?? "", job: formJob(row.job) ? row.job! : "" };
   const t = row.trigger;
   if (t.on === "schedule") {
     const s = parseSchedule(t.rrule);
@@ -111,14 +122,15 @@ export function formOf(row: RoutineRow, now = Date.now()): RoutineForm {
   } else {
     f.starts = "file";
     f.path = t.source.at === "file" ? t.source.path : "";
+    f.form = t.source.at === "msform" ? t.source.formId : "";
   }
   f.ends = row.ends.kind;
   if (row.ends.kind === "day") f.until = dateOf(row.ends.at);
   return f;
 }
 
-/** What a form saves, or the one thing wrong with it. `host` is the workspace's host, for a file there. */
-export function triggerOf(f: RoutineForm, host: string, tz: string): Trigger | string {
+/** What a form saves, or the one thing wrong with it. `host` is the workspace's host, for a file there; `workspaceId` the routine's, for its Microsoft form. */
+export function triggerOf(f: RoutineForm, host: string, tz: string, workspaceId = ""): Trigger | string {
   if (f.starts === "sched") {
     if (f.days.startsWith("m")) return { on: "schedule", rrule: scheduleRrule({ every: "minutes", interval: Number(f.days.slice(1)) }), tz };
     const m = /^(\d{1,2}):(\d{2})$/.exec(f.at);
@@ -139,6 +151,7 @@ export function triggerOf(f: RoutineForm, host: string, tz: string): Trigger | s
     if (!args || typeof args !== "object" || Array.isArray(args)) return "With is an object of the tool's arguments";
     return { on: "read", addon, tool, args, fire: "changed", everySec: Number(f.every) * 60 };
   }
+  if (f.form) return { on: "file", source: { at: "msform", workspaceId, formId: f.form }, by: "someone-else" };
   if (!f.path.trim()) return "Name the file";
   return { on: "file", source: { at: "file", host, path: f.path.trim() }, by: "someone-else" };
 }
@@ -158,7 +171,8 @@ export interface SaveParams {
   name: string;
   prompt: string;
   playId: string | null;
-  job?: string;
+  /** left out, the host keeps the routine's job; null drops it */
+  job?: string | null;
   trigger: Trigger;
   ends: RoutineEnds;
   model: string | null;
@@ -173,11 +187,15 @@ export interface SaveParams {
 export function saveParamsOf(f: RoutineForm, row: RoutineRow | null, o: { workspaceId: string; host: string; tz: string; touched: boolean }): SaveParams | string {
   const name = f.name.trim();
   if (!name) return "Give it a name";
-  if (!row?.job && !f.play && !f.prompt.trim()) return "Say what it does";
+  // A job the form cannot show (the review's) is kept as it is; the form's own jobs run only on their trigger.
+  const kept = row?.job && !formJob(row.job) ? row.job : null;
   // A schedule he edits stays in the zone it was made in: the window's own zone is for a new one.
   const tz = row?.trigger.on === "schedule" ? row.trigger.tz : o.tz;
-  const trigger = row && !o.touched ? row.trigger : triggerOf(f, o.host, tz);
+  const trigger = row && !o.touched ? row.trigger : triggerOf(f, o.host, tz, o.workspaceId);
   if (typeof trigger === "string") return trigger;
+  const onForm = trigger.on === "file" && trigger.source.at === "msform";
+  const job = kept ?? (onForm && f.job ? f.job : null);
+  if (!job && !f.play && !f.prompt.trim()) return "Say what it does";
   const ends = endsOf(f);
   if (typeof ends === "string") return ends;
   return {
@@ -186,8 +204,8 @@ export function saveParamsOf(f: RoutineForm, row: RoutineRow | null, o: { worksp
     projectId: row?.projectId ?? null,
     name,
     prompt: f.prompt.trim(),
-    playId: f.play || null,
-    ...(row?.job ? { job: row.job } : {}),
+    playId: job ? null : f.play || null,
+    ...(job ? { job } : row?.job ? { job: null } : {}),
     trigger,
     ends,
     model: row?.model ?? null,

@@ -22,6 +22,8 @@ import type {
   HostId,
   PillarId,
   SectorKey,
+  Trigger,
+  TriggerRange,
   TriggerSource,
   UndoSpec,
   Verdict,
@@ -136,8 +138,20 @@ export type RoutineJob = {
   id: string
   /** what the Routines view says it does, in plain words: 'Makes the week\'s review' */
   name: string
-  /** `words`: the run's one-line outcome. `open`: what the run's row opens when pressed. A throw fails the run with its message. */
-  run(ctx: WorkCtx, at: { workspaceId: string; firedAt: number }): Promise<{ words: string; open?: RoutineJobOpen }>
+  /**
+   * `words`: the run's one-line outcome. `open`: what the run's row opens when pressed. A throw fails the run with its message.
+   * `at.trigger` is the routine's trigger; `at.range` what its source said is new when it fired (absent for Run now, a
+   * schedule, or a firing folded into a run still going): a job keeps its own checkpoint and reads the range as a hint.
+   */
+  run(ctx: WorkCtx, at: RoutineJobAt): Promise<{ words: string; open?: RoutineJobOpen }>
+}
+
+/** What a routine's run tells its job. */
+export interface RoutineJobAt {
+  workspaceId: string
+  firedAt: number
+  trigger?: Trigger
+  range?: TriggerRange
 }
 
 /**

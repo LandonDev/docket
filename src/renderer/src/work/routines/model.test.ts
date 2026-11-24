@@ -118,3 +118,24 @@ describe("a routine that runs a host job", () => {
     expect(saveParamsOf({ ...blankForm(NOW), prompt: "x" }, null, o)).toBe("Give it a name");
   });
 });
+
+describe("a routine on a Microsoft form's answers", () => {
+  const o = { workspaceId: "ws", host: "env_box", tz: "UTC", touched: true };
+  const onForm = row({ name: "Sign-ups", prompt: "", job: "msforms.tasks", jobName: "Files a task for each new answer", trigger: { on: "file", source: { at: "msform", workspaceId: "ws", formId: "F1" }, by: "someone-else" } });
+
+  it("shows its form and its job, and saves both with no words", () => {
+    const f = formOf(onForm, NOW);
+    expect(f).toMatchObject({ starts: "file", form: "F1", job: "msforms.tasks", path: "" });
+    expect(triggerOf(f, "env_box", "UTC", "ws")).toEqual(onForm.trigger);
+    expect(saveParamsOf(f, onForm, o)).toMatchObject({ job: "msforms.tasks", playId: null, prompt: "", trigger: onForm.trigger });
+    expect(saveParamsOf({ ...blankForm(NOW), name: "New", starts: "file", form: "F2", job: "msforms.tasks" }, null, o)).toMatchObject({ job: "msforms.tasks", trigger: { source: { at: "msform", workspaceId: "ws", formId: "F2" } } });
+  });
+
+  it("drops the job once its words run in its place, or once the trigger is no form", () => {
+    expect(saveParamsOf({ ...formOf(onForm, NOW), job: "", prompt: "File a task per answer." }, onForm, o)).toMatchObject({ job: null, prompt: "File a task per answer." });
+    // a path in place of the form: the job runs only on a form, so the routine needs its words again
+    expect(saveParamsOf({ ...formOf(onForm, NOW), form: "", path: "/w/a.xlsx" }, onForm, o)).toBe("Say what it does");
+    expect(saveParamsOf({ ...blankForm(NOW), name: "x", prompt: "y", starts: "file", path: "/w/a.xlsx", job: "msforms.tasks" }, null, o)).not.toHaveProperty("job");
+  });
+});
+

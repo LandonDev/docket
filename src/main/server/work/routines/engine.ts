@@ -10,11 +10,11 @@ import {
   type RoutineRow,
   type RoutineRun
 } from '@shared/contract-work-routines'
-import { errorText, type Trigger, type TriggerSource } from '@shared/work'
+import { errorText, type Trigger, type TriggerRange, type TriggerSource } from '@shared/work'
 import { REASONING_LEVELS, type Reasoning } from '@shared/catalog'
 import type { SessionMeta } from '@shared/events'
 import type { AddonCallResult } from '../../addons/addonWire'
-import type { Caller, WorkCtx } from '../modules'
+import type { Caller, RoutineJobAt, WorkCtx } from '../modules'
 import type { LifeosHeld } from '../outbox/outbox'
 import { BUSY, type RoutinesHost } from './host'
 import { dueCount, nextAt } from './schedule'
@@ -68,7 +68,7 @@ export interface LifeosEvent {
 /** A registered job as the engine runs it: its pillar's `RoutineJob` with the context bound. */
 export interface HostJob {
   name: string
-  run(at: { workspaceId: string; firedAt: number }): Promise<{ words: string; open?: RoutineJobOpen }>
+  run(at: RoutineJobAt): Promise<{ words: string; open?: RoutineJobOpen }>
 }
 
 export interface EngineDeps {
@@ -327,7 +327,7 @@ export class RoutinesEngine {
    * The routine is read afresh: one paused, changed or removed since the
    * pass looked fires nothing. `force` (Run now) fires a paused one.
    */
-  async fire(seen: Routine, cause: string, folded = 0, o: { nextAt?: number | null; detail?: string; force?: boolean; by?: Caller } = {}): Promise<RoutineRun | null> {
+  async fire(seen: Routine, cause: string, folded = 0, o: { nextAt?: number | null; detail?: string; force?: boolean; by?: Caller; range?: TriggerRange } = {}): Promise<RoutineRun | null> {
     const r = this.store.get(seen.id)
     if (!r || r.proposed || r.ended || (!r.enabled && !o.force) || JSON.stringify(r.trigger) !== JSON.stringify(seen.trigger)) return null
     const now = this.now()
@@ -406,7 +406,7 @@ export class RoutinesEngine {
    * pass or Run now never waits on it. No thread: nothing is marked read or
    * unread and nothing held is counted. A job no loaded pillar has fails the run.
    */
-  private runJob(r: Routine, id: string, cause: string, folded: number, o: { nextAt?: number | null }): RoutineRun | null {
+  private runJob(r: Routine, id: string, cause: string, folded: number, o: { nextAt?: number | null; range?: TriggerRange }): RoutineRun | null {
     const firedAt = this.now()
     const run = this.store.newRun(r.id, firedAt, cause, folded, 'running', { ...(o.nextAt !== undefined ? { nextAt: o.nextAt } : {}) })
     if (r.once) this.store.end(r.id, 'Ran once')
@@ -420,7 +420,8 @@ export class RoutinesEngine {
     this.track(
       (async () => {
         try {
-          const done = await job.run({ workspaceId: r.workspaceId, firedAt })
+          // the routine's trigger and, when its source said one, what is new: the job's own checkpoint decides the rest
+          const done = await job.run({ workspaceId: r.workspaceId, firedAt, trigger: r.trigger, ...(o.range ? { range: o.range } : {}) })
           this.store.settle(run.id, 'quiet', done.words, done.open)
         } catch (err) {
           this.store.settle(run.id, 'failed', `Failed: ${errorText(err)}`)
@@ -597,7 +598,7 @@ export class RoutinesEngine {
         continue
       }
       try {
-        const off = source.arm(r.trigger, (cause) => this.track(this.fire(r, cause)), r.cursor)
+        const off = source.arm(r.trigger, (cause, range) => this.track(this.fire(r, cause, 0, range ? { range } : {})), r.cursor)
         this.armed.set(id, { spec: JSON.stringify(r.trigger), off })
       } catch (err) {
         this.store.setLastWords(id, `Waiting: ${errorText(err)}`)

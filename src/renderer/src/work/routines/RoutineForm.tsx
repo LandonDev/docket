@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import type { PlayRow, RoutineRow } from "@shared/contract-work-routines";
 import type { ToolRulesCard } from "@shared/contract-work-outbox";
+import type { MsFormView } from "@shared/contract-work-msforms";
 import { confirmAction, DialogFooter, ErrorLine } from "../../chrome/ConfirmDialog";
 import { Field, FieldRow } from "../../chrome/DialogField";
 import { Modal, ModalBody, useModalClose } from "../../chrome/Modal";
@@ -12,7 +13,7 @@ import { Skeleton } from "../../components/ui/skeleton";
 import { Textarea } from "../../components/ui/textarea";
 import { registry } from "../../lib/connection";
 import { workErrorWords } from "../../lib/workErrorWords";
-import { blankForm, DAY_CHOICES, EVENT_CHOICES, EVERY_CHOICES, formOf, saveParamsOf, type EndsOn, type RoutineForm, type StartsOn } from "./model";
+import { blankForm, DAY_CHOICES, EVENT_CHOICES, EVERY_CHOICES, FORM_JOBS, formOf, saveParamsOf, type EndsOn, type RoutineForm, type StartsOn } from "./model";
 
 type Props = {
   env: string;
@@ -95,6 +96,28 @@ function useRunnablePlays(env: string, workspaceId: string, current: string | nu
   return plays.filter((p) => !p.proposed && (p.takes.length === 0 || p.id === current)).map((p) => ({ value: p.id, label: p.name }));
 }
 
+/** The job's Microsoft forms a routine may watch for answers (docs/agents/work-msforms.md); none where the pillar does not answer. */
+function useJobForms(env: string, workspaceId: string): { value: string; label: string }[] | null {
+  const [forms, setForms] = useState<{ value: string; label: string }[] | null>(null);
+  useEffect(() => {
+    let live = true;
+    registry
+      .linkOf(env)
+      .request<{ forms: MsFormView[] }>("work.msforms.list", { workspaceId })
+      .then(
+        (r) => live && setForms((r.forms ?? []).map((f) => ({ value: f.formId, label: f.title }))),
+        () => live && setForms([]),
+      );
+    return () => {
+      live = false;
+    };
+  }, [env, workspaceId]);
+  return forms;
+}
+
+/** A job the Runs select offers is named apart from a play's id. */
+const JOB_VALUE = "job:";
+
 function Body({ env, workspaceId, row, onClose, onSaved, pending, setPending }: Props & { pending: boolean; setPending: (p: boolean) => void }) {
   const close = useModalClose();
   const [form, setForm] = useState<RoutineForm>(() => (row ? formOf(row) : blankForm()));
@@ -109,8 +132,13 @@ function Body({ env, workspaceId, row, onClose, onSaved, pending, setPending }: 
   };
   const tools = useRunsTools(env, workspaceId);
   const plays = useRunnablePlays(env, workspaceId, row?.playId ?? null);
-  // A routine that runs a host job has no words and no model to write: its form is when it runs.
-  const job = Boolean(row?.job);
+  const forms = useJobForms(env, workspaceId);
+  // A routine that runs a job the form cannot offer (the review's) has no words and no model to write: its form is when it runs.
+  const job = Boolean(row?.job) && !FORM_JOBS.some((j) => j.value === row?.job);
+  // On a Microsoft form's answers the Runs select also offers the form's jobs, and one picked needs no words.
+  const onForm = form.starts === "file" && Boolean(form.form);
+  const runsJob = onForm && Boolean(form.job);
+  const runs = [{ value: "", label: "What you write here" }, ...plays, ...(onForm ? FORM_JOBS.map((j) => ({ value: `${JOB_VALUE}${j.value}`, label: j.label })) : [])];
   const repeat = form.days.startsWith("m");
   const finish = (then: () => void) => (close ? close(then) : then());
 
@@ -161,12 +189,17 @@ function Body({ env, workspaceId, row, onClose, onSaved, pending, setPending }: 
         <Field label="Name">
           <Input autoFocus value={form.name} onChange={(e) => patch({ name: e.target.value })} placeholder="Morning sweep" autoComplete="off" />
         </Field>
-        {plays.length && !job ? (
+        {runs.length > 1 && !job ? (
           <Field label="Runs">
-            <ChoiceSelect label="Runs" value={form.play} options={[{ value: "", label: "What you write here" }, ...plays]} onChange={(play) => patch({ play })} />
+            <ChoiceSelect
+              label="Runs"
+              value={runsJob ? `${JOB_VALUE}${form.job}` : form.play}
+              options={runs}
+              onChange={(v) => (v.startsWith(JOB_VALUE) ? patch({ job: v.slice(JOB_VALUE.length), play: "" }) : patch({ play: v, job: "" }))}
+            />
           </Field>
         ) : null}
-        {job ? null : (
+        {job || runsJob ? null : (
           <Field label={form.play ? "Also" : "What to do"}>
             <Textarea rows={3} value={form.prompt} onChange={(e) => patch({ prompt: e.target.value })} placeholder={form.play ? "Anything this routine adds to the play" : "In your words"} />
           </Field>
@@ -213,9 +246,27 @@ function Body({ env, workspaceId, row, onClose, onSaved, pending, setPending }: 
               </>
             )
           ) : (
-            <Field label="File" hint="When someone else changes it">
-              <Input value={form.path} onChange={(e) => patchTrigger({ path: e.target.value })} placeholder="/Users/…/Travel budget.xlsx" spellCheck={false} autoComplete="off" className={MONO} />
-            </Field>
+            <>
+              {forms?.length || form.form ? (
+                <Field label="File" hint={form.form ? "When someone answers it" : undefined}>
+                  {forms === null ? (
+                    <Skeleton aria-label="Loading the forms" className="h-8 w-full rounded-lg" />
+                  ) : (
+                    <ChoiceSelect
+                      label="File"
+                      value={form.form}
+                      options={[{ value: "", label: "A file by its path" }, ...forms, ...(form.form && !forms.some((f) => f.value === form.form) ? [{ value: form.form, label: "The form it watched" }] : [])]}
+                      onChange={(id) => patchTrigger({ form: id, ...(id ? {} : { job: "" }) })}
+                    />
+                  )}
+                </Field>
+              ) : null}
+              {form.form ? null : (
+                <Field label={forms?.length ? "Path" : "File"} hint="When someone else changes it">
+                  <Input value={form.path} onChange={(e) => patchTrigger({ path: e.target.value })} placeholder="/Users/…/Travel budget.xlsx" spellCheck={false} autoComplete="off" className={MONO} />
+                </Field>
+              )}
+            </>
           )}
         </div>
         <div className="flex flex-col gap-3">

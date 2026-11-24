@@ -9,7 +9,7 @@ import { act, cleanup, fireEvent, render, screen } from "@testing-library/react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { RoutineRow } from "@shared/contract-work-routines";
 
-const host: { list: () => Promise<unknown>; runs: () => Promise<unknown>; plays: () => Promise<unknown>; asked: string[] } = { list: async () => ({ routines: [] }), runs: async () => ({ runs: [] }), plays: async () => ({ plays: [] }), asked: [] };
+const host: { list: () => Promise<unknown>; runs: () => Promise<unknown>; plays: () => Promise<unknown>; forms: () => Promise<unknown>; asked: string[] } = { list: async () => ({ routines: [] }), runs: async () => ({ runs: [] }), plays: async () => ({ plays: [] }), forms: async () => ({ forms: [], offered: true }), asked: [] };
 vi.mock("../../lib/connection", async (original) => ({
   ...(await original<object>()),
   useEnvironments: () => [{ id: "box", name: "The box", platform: "linux" }],
@@ -20,6 +20,7 @@ vi.mock("../../lib/connection", async (original) => ({
       request: (method: string) => {
         host.asked.push(method);
         if (method === "work.outbox.rules") return Promise.resolve({ addons: [] });
+        if (method === "work.msforms.list") return host.forms();
         return method === "work.routines.list" ? host.list() : method === "work.routines.plays" ? host.plays() : host.runs();
       },
     }),
@@ -69,6 +70,7 @@ beforeEach(() => {
   host.list = async () => ({ routines: [row()] });
   host.runs = async () => ({ runs: [] });
   host.plays = async () => ({ plays: [] });
+  host.forms = async () => ({ forms: [], offered: true });
 });
 afterEach(() => {
   cleanup();
@@ -240,6 +242,38 @@ describe("the Routines view", () => {
       // A page nobody knows is not a button.
       expect(screen.queryByRole("button", { name: /Made elsewhere/ })).toBeNull();
       expect(screen.getByText("Made elsewhere")).toBeTruthy();
+    });
+  });
+
+  describe("on a Microsoft form's answers", () => {
+    const onForm = () =>
+      row({ name: "Sign-ups", prompt: "", job: "msforms.tasks", jobName: "Files a task for each new answer", words: "When someone answers Sign-up", trigger: { on: "file", source: { at: "msform", workspaceId: "ws", formId: "F1" }, by: "someone-else" } });
+
+    it("names the form in the File picker and the job in Runs, and asks for no words", async () => {
+      host.list = async () => ({ routines: [onForm()] });
+      host.forms = async () => ({ forms: [{ formId: "F1", title: "Sign-up" }, { formId: "F2", title: "Feedback" }], offered: true });
+      render(<View {...props} />);
+      await settle();
+      fireEvent.click(screen.getByRole("button", { name: "Edit" }));
+      await settle();
+      expect(host.asked).toContain("work.msforms.list");
+      expect(screen.getByText("When someone answers it")).toBeTruthy();
+      expect(screen.getAllByText("Sign-up").length).toBeGreaterThan(0);
+      expect(screen.getAllByText("File a task for each answer").length).toBeGreaterThan(0);
+      expect(screen.queryByText("What to do")).toBeNull();
+      // no path while a form is picked
+      expect(screen.queryByPlaceholderText("/Users/…/Travel budget.xlsx")).toBeNull();
+    });
+
+    it("keeps the File field a path where the job has no forms", async () => {
+      host.list = async () => ({ routines: [row({ trigger: { on: "file", source: { at: "file", host: "box", path: "/w/a.xlsx" }, by: "someone-else" }, words: "When someone else changes it" })] });
+      render(<View {...props} />);
+      await settle();
+      fireEvent.click(screen.getByRole("button", { name: "Edit" }));
+      await settle();
+      expect((screen.getByPlaceholderText("/Users/…/Travel budget.xlsx") as HTMLInputElement).value).toBe("/w/a.xlsx");
+      expect(screen.queryByText("A file by its path")).toBeNull();
+      expect(screen.queryByText("File a task for each answer")).toBeNull();
     });
   });
 });

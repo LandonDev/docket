@@ -585,7 +585,7 @@ describe('a file another pillar watches', () => {
 describe('a routine that runs a host job', () => {
   const FRIDAYS_4PM: Trigger = { on: 'schedule', rrule: 'FREQ=WEEKLY;BYDAY=FR;BYHOUR=16;BYMINUTE=0', tz: TZ }
   const job = (run: HostJob['run']): HostJob => ({ name: "Makes the week's review", run })
-  const calls: { workspaceId: string; firedAt: number }[] = []
+  const calls: { workspaceId: string; firedAt: number; trigger?: Trigger; range?: unknown }[] = []
   beforeEach(() => {
     calls.length = 0
     rig.jobs.set(
@@ -603,7 +603,7 @@ describe('a routine that runs a host job', () => {
     await tickAt(at(20, '15:59'))
     expect(calls).toHaveLength(0)
     await tickAt(at(20, '16:00'))
-    expect(calls).toEqual([{ workspaceId: 'ws-purdue', firedAt: at(20, '16:00') }])
+    expect(calls).toEqual([{ workspaceId: 'ws-purdue', firedAt: at(20, '16:00'), trigger: FRIDAYS_4PM }])
     expect(rig.started).toEqual([])
     expect(runs(id)).toEqual([expect.objectContaining({ state: 'quiet', summary: 'Review made', sessionId: null, open: { place: 'review', at: at(16, '00:00') } })])
     expect(rig.engine.store.get(id)).toMatchObject({ lastState: 'quiet', lastWords: 'Review made', nextAt: at(27, '16:00') })
@@ -676,6 +676,25 @@ describe('a routine that runs a host job', () => {
     finish()
     await rig.engine.drain()
     expect(runs(id)[0]).toMatchObject({ state: 'quiet', folded: 2 })
+  })
+
+  it("hands the job its trigger and the range a Microsoft form's answers fired with, once per new range; Run now hands no range", async () => {
+    const { msformTrigger } = await import('../msforms/routine')
+    const { emitNewAnswers } = await import('../msforms/events')
+    rig.sources = [msformTrigger]
+    const ON_FORM: Trigger = { on: 'file', source: { at: 'msform', workspaceId: 'ws-purdue', formId: 'F1' }, by: 'someone-else' }
+    const id = addJob({ trigger: ON_FORM, job: 'review.make' })
+    await tickAt(at(16, '09:00'))
+    const news = { workspaceId: 'ws-purdue', formId: 'F1', title: 'Tryouts', count: 2, at: 1 }
+    emitNewAnswers({ ...news, added: 2, fromId: 1, toId: 2 })
+    await rig.engine.drain()
+    emitNewAnswers({ ...news, added: 2, fromId: 1, toId: 2 })
+    await rig.engine.drain()
+    expect(calls).toEqual([{ workspaceId: 'ws-purdue', firedAt: rig.clock.now, trigger: ON_FORM, range: { formId: 'F1', fromId: 1, toId: 2 } }])
+    expect(runs(id)[0]).toMatchObject({ cause: '2 new responses to Tryouts', state: 'quiet' })
+    await rig.engine.runNow(rig.engine.store.get(id)!)
+    await rig.engine.drain()
+    expect(calls[1]).toEqual({ workspaceId: 'ws-purdue', firedAt: rig.clock.now, trigger: ON_FORM })
   })
 
   it('at boot, a job run the stop cut off reads failed', async () => {

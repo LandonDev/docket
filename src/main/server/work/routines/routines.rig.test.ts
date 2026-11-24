@@ -9,6 +9,9 @@ import { WORK_MODULES, type WorkModule } from '../modules'
 import { routinesHost, type RoutinesHost } from './host'
 import { routines, routinesEngine, routinesSeams } from './index'
 import { hostZone, zoneName } from '../clock'
+import { msforms } from '../msforms/index'
+import { MsformsStore } from '../msforms/store'
+import { MSFORM_WITHHELD_WORDS } from '@shared/work/msforms'
 
 /**
  * Routines on the hold's own rig (work/outbox/rig.ts): a real add-on host
@@ -211,3 +214,30 @@ describe('a routine that runs a host job', () => {
     expect((await list()).find((r) => r.name === 'Sneaky')!.job).toBeUndefined()
   })
 })
+
+describe("a routine on a Microsoft form's answers", () => {
+  const FORM = 'Ob0wQVN8nEGx5YdY1tY_IQaWFXVrVqJAiq2zrvrF0001'
+  const onForm = (workspaceId = 'ws-purdue') => ({ on: 'file', source: { at: 'msform', workspaceId, formId: FORM }, by: 'someone-else' })
+  const save = (over: Record<string, unknown>) => rig.rpc<RoutineRow>('work.routines.save', { workspaceId: 'ws-purdue', name: 'Tryouts', prompt: 'File what came in.', trigger: onForm(), ends: { kind: 'never' }, ...over })
+  beforeEach(() => {
+    WORK_MODULES.push(msforms)
+    msforms.ensure!(rig.work.ctx.db)
+    new MsformsStore(rig.work.ctx.db).create({ workspaceId: 'ws-purdue', formId: FORM, tenant: 'purdue0', sector: 'purdue', title: 'Esports tryouts', folder: { libraryId: 'lib', path: 'Esports', siteUrl: 'https://purdue0.sharepoint.com/sites/RecWell' }, madeBy: 'owner' })
+  })
+  afterEach(() => void WORK_MODULES.splice(WORK_MODULES.indexOf(msforms), 1))
+
+  it("refuses a Purdue form's routine that starts a thread with the withhold's words, offering the job, and saves the job", async () => {
+    await expect(save({})).rejects.toThrow(MSFORM_WITHHELD_WORDS)
+    await expect(save({})).rejects.toThrow('File a task for each answer')
+    const made = await save({ prompt: '', job: 'msforms.tasks' })
+    expect(made).toMatchObject({ job: 'msforms.tasks', trigger: onForm(), words: 'When someone answers Esports tryouts' })
+    expect(await list()).toHaveLength(1)
+  })
+
+  it("refuses a form of another job, and the job with no form", async () => {
+    rig.workspace('ws-cosmic', { kind: 'work', sector: 'cosmic' } as never)
+    await expect(save({ workspaceId: 'ws-cosmic', prompt: '', job: 'msforms.tasks' })).rejects.toThrow("belongs to the form's own job")
+    await expect(save({ prompt: '', job: 'msforms.tasks', trigger: { on: 'lifeos', kinds: ['task.created'] } })).rejects.toThrow("runs on a Microsoft form's answers")
+  })
+})
+
