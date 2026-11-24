@@ -380,6 +380,29 @@ describe("the window", () => {
     await waitFor(() => expect(places.getByRole("button", { name: "Hide the folders of Dummy Esports" }).querySelector("svg")!.getAttribute("class")).toContain("rotate-90"));
   });
 
+  it("gives a place's name cut in the sidebar its whole text in a tooltip", async () => {
+    const wide = vi.spyOn(HTMLElement.prototype, "scrollWidth", "get").mockImplementation(function (this: HTMLElement) {
+      return this.textContent === "Esports Staff" && this.classList.contains("truncate") ? 400 : 0;
+    });
+    const narrow = vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockImplementation(function (this: HTMLElement) {
+      return this.textContent === "Esports Staff" && this.classList.contains("truncate") ? 100 : 0;
+    });
+    try {
+      const { tooltipChunk, warmTooltips } = await import("../../components/ui/tooltip");
+      await act(async () => {
+        await tooltipChunk.load();
+        warmTooltips();
+      });
+      await mount();
+      const places = screen.getByRole("navigation", { name: "Places" });
+      const name = within(places).getByText("Esports Staff");
+      expect(name.getAttribute("data-slot")).toBe("tooltip-trigger");
+    } finally {
+      wide.mockRestore();
+      narrow.mockRestore();
+    }
+  });
+
   it("marks itself for the app's key resolver and gives the tab row its own toolbar order", async () => {
     await mount();
     expect(document.querySelector("[data-files-view]")).not.toBeNull();

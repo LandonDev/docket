@@ -3,7 +3,9 @@ import type { FileTab } from "@shared/contract-work-files";
 import { parseGoTo, matchesName, nameWords, type GoToWhat } from "@shared/work/fileSearch";
 import { MAKE_WORDS, type FileEntry } from "@shared/work/files";
 import { Plus, Search } from "../../chrome/icons";
+import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
+import { Spinner } from "../../components/ui/spinner";
 import { registry } from "../../lib/connection";
 import { KindGlyph } from "./KindGlyph";
 import { whereWords } from "./model";
@@ -21,6 +23,9 @@ export type GoToRow =
   | { is: "tab"; tab: FileTab }
   | { is: "entry"; entry: FileEntry }
   | { is: "new"; what: GoToWhat; name: string };
+
+/** How long a lookup may take before the panel says it is still loading. */
+export const SLOW_MS = 250;
 
 const rowKey = (row: GoToRow): string => (row.is === "tab" ? `tab:${row.tab.id}` : row.is === "entry" ? `entry:${row.entry.key}` : `new:${row.what}`);
 
@@ -50,7 +55,9 @@ export function GoToField({
 }) {
   const [text, setText] = useState("");
   // The names the host answered, and the words they answer: the rows stay drawn while newer words are asked.
-  const [names, setNames] = useState<{ text: string | null; entries: readonly FileEntry[] }>({ text: null, entries: [] });
+  // A lookup that failed says so, with Retry, rather than reading as no match.
+  const [names, setNames] = useState<{ text: string | null; entries: readonly FileEntry[]; failed?: boolean }>({ text: null, entries: [] });
+  const [tries, setTries] = useState(0);
   const [at, setAt] = useState(0);
   // Return pressed before the names for his words came: it takes the first row once they do.
   const [waiting, setWaiting] = useState(false);
@@ -66,12 +73,26 @@ export function GoToField({
       .request<{ entries: FileEntry[] }>("work.files.names", { workspaceId, text })
       .then(
         (got) => mine === asked.current && setNames({ text, entries: got.entries }),
-        () => mine === asked.current && setNames({ text, entries: [] }),
+        () => mine === asked.current && setNames({ text, entries: [], failed: true }),
       );
-  }, [link, workspaceId, text]);
+  }, [link, workspaceId, text, tries]);
   const fresh = names.text === text || parseGoTo(text).kind === "new";
   const rows = useMemo(() => goToRows(text, tabs, names.entries), [text, tabs, names.entries]);
   const on = Math.min(at, Math.max(0, rows.length - 1));
+  // One muted row under the list says where the lookup stands: still asked, refused (with Retry), or no match for his words.
+  // A lookup still out after a beat says so; a quick one never flashes the row as he types.
+  const [slow, setSlow] = useState(false);
+  useEffect(() => {
+    setSlow(false);
+    if (fresh) return;
+    const timer = setTimeout(() => setSlow(true), SLOW_MS);
+    return () => clearTimeout(timer);
+  }, [fresh, text, tries]);
+  const status: "loading" | "failed" | "none" | null = !fresh ? (slow ? "loading" : null) : names.failed ? "failed" : !rows.length && text.trim() ? "none" : null;
+  const retry = (): void => {
+    setNames({ text: null, entries: [] });
+    setTries((n) => n + 1);
+  };
   const take = (row: GoToRow | undefined): void => {
     if (!row) return;
     onPick(row);
@@ -104,7 +125,7 @@ export function GoToField({
         ref={field}
         role="combobox"
         aria-label="Go to"
-        aria-expanded={rows.length > 0}
+        aria-expanded={rows.length > 0 || status !== null}
         aria-controls="files-goto-list"
         aria-activedescendant={rows[on] ? `files-goto-${on}` : undefined}
         value={text}
@@ -118,7 +139,7 @@ export function GoToField({
         onKeyDown={onKeyDown}
         onBlur={onClose}
       />
-      {rows.length ? (
+      {rows.length || status ? (
         // At least 360px where the bar has room, so a name is not cut to a word beside where it lives.
         <div id="files-goto-list" role="listbox" aria-label="Go to" className="absolute start-0 top-9 z-30 flex max-h-80 w-full min-w-[min(22.5rem,calc(100cqw-5rem))] flex-col overflow-x-hidden overflow-y-auto rounded-xl bg-popover p-1 text-popover-foreground shadow-overlay ring-1 ring-border">
           {rows.map((row, index) => {
@@ -143,6 +164,24 @@ export function GoToField({
               </div>
             );
           })}
+          {status === "loading" ? (
+            <div className="flex h-8 shrink-0 items-center gap-2 px-2 text-[13px] text-muted-foreground">
+              <Spinner className="size-3.5" />
+              <span aria-hidden>Loading…</span>
+            </div>
+          ) : status === "failed" ? (
+            <div role="alert" className="flex h-8 shrink-0 items-center gap-2 ps-2 text-[13px]">
+              <span className="min-w-0 flex-1 truncate text-destructive">Couldn't load names</span>
+              {/* Pressed before the field's blur would close the panel. */}
+              <Button variant="ghost" size="xs" onMouseDown={(event) => event.preventDefault()} onClick={retry}>
+                Retry
+              </Button>
+            </div>
+          ) : status === "none" ? (
+            <div role="status" className="flex h-8 shrink-0 items-center px-2 text-[13px] text-muted-foreground">
+              No matches
+            </div>
+          ) : null}
         </div>
       ) : null}
     </div>

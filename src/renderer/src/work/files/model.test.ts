@@ -613,7 +613,7 @@ describe("a folder's rows under headings", () => {
       ["Past 7 days", 1],
     ]);
     const where = { place: "p1", name: "Esports Staff", trail: ["Events"] };
-    expect(groupEntries([row("a.txt", "text", now, where), row("b.txt", "text", now)], "place", now).map((g) => g.title)).toEqual(["Esports Staff, Events", "Here"]);
+    expect(groupEntries([row("a.txt", "text", now, where), row("b.txt", "text", now)], "place", now).map((g) => g.title)).toEqual(["Esports Staff › Events", "Here"]);
   });
 });
 

@@ -8,6 +8,7 @@ import { Button } from "../../components/ui/button";
 import { DISCLOSURE_CHEVRON } from "../../components/ui/disclosure";
 import { ItemButton } from "../../components/ui/item";
 import { ROW_PRESS } from "../../components/ui/press";
+import { TruncateTip } from "../../components/tip";
 import { loadToast } from "../../components/ui/toaster";
 import { registry, LOCAL_ENVIRONMENT_ID } from "../../lib/connection";
 import { hostName } from "../../lib/threadResources";
@@ -135,7 +136,10 @@ function SideRow({
         }}
       >
         <span className={`flex shrink-0 text-muted-foreground ${down ? "opacity-50" : ""}`}>{icon}</span>
-        <span className="min-w-0 flex-1 truncate text-start text-foreground">{name}</span>
+        {/* A name cut in the 200px sidebar has its whole text in a tooltip, as the trail's folder does. */}
+        <TruncateTip text={name}>
+          <span className="min-w-0 flex-1 truncate text-start text-foreground">{name}</span>
+        </TruncateTip>
         {count ? <span className="shrink-0 text-xs text-muted-foreground tabular-nums">{count}</span> : null}
       </ItemButton>
       {fold ? (

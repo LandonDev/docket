@@ -892,7 +892,20 @@ export function PageView({
   if (note) body = <NoteEmpty note={note} fixes={fixes} />;
   else if (!listing || !listing.loaded || (!entries.length && listing.searching)) body = <ListBones compact={compact} />;
   else if (listing.error && !entries.length) body = listing.away ? null : <EmptyState title="This folder did not load" line={listing.error} action={way} />;
-  else if (!entries.length && filter) body = <EmptyState title="Nothing here by that name" line="Return searches every place." />;
+  else if (!entries.length && filter) body = (
+      // Clear filters puts the whole folder and its trail back; Return in the field still searches every place.
+      <EmptyState
+        title="Nothing here by that name"
+        line="Return searches every place."
+        action={{
+          label: "Clear filters",
+          onClick: () => {
+            setFilter("");
+            find?.setMode(null);
+          },
+        }}
+      />
+    );
   else if (!entries.length && results) body = <EmptyState title="Nothing found" line={gap ? `${gap.title}.` : listing.more ? "Some places are still being searched." : undefined} {...(gap?.fix ? { action: { label: "Retry", onClick: listing.retry } } : {})} />;
   else if (!entries.length)
     body =

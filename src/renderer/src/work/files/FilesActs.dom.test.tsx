@@ -342,7 +342,7 @@ describe("New", () => {
     await mount();
     fireEvent.click(screen.getByRole("button", { name: "New" }));
     const menu = await screen.findByRole("menu");
-    expect(within(menu).getAllByRole("menuitem").map((i) => i.textContent)).toEqual(["Document", "Sheet", "Deck", "Text file", "Folder", "Upload Files…"]);
+    expect(within(menu).getAllByRole("menuitem").map((i) => i.textContent)).toEqual(["Document", "Sheet", "Deck", "Text File", "Folder", "Upload Files…"]);
     expect(menu.textContent).toContain("Kept in Dummy Esports");
     fireEvent.click(within(menu).getByRole("menuitem", { name: "Folder" }));
     await waitFor(() => expect(calls("work.files.make")).toHaveLength(1));
@@ -363,7 +363,7 @@ describe("New", () => {
     fireEvent.click(within(screen.getByRole("navigation", { name: "Places" })).getByRole("button", { name: "General" }));
     await waitFor(() => expect(rows()).toEqual(["Agenda.docx"]));
     fireEvent.click(screen.getByRole("button", { name: "New" }));
-    expect(within(await screen.findByRole("menu")).getAllByRole("menuitem").map((i) => i.textContent)).toEqual(["Text file", "Folder"]);
+    expect(within(await screen.findByRole("menu")).getAllByRole("menuitem").map((i) => i.textContent)).toEqual(["Text File", "Folder"]);
   });
 });
 

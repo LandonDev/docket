@@ -461,6 +461,17 @@ describe("after the council's first round", () => {
     expect(img.className).not.toContain("max-h-full");
   });
 
+  it("offers Clear filters where the folder's filter matched nothing, and it puts the whole folder and the trail back", async () => {
+    listingSeams.fetch = async () => ({ entries: ENTRIES, place: "folder", trail: [{ name: "Dummy Esports", at: at("/w") }] });
+    const modes: (string | null)[] = [];
+    draw({ find: { link: "box", workspaceId: "w1", tabs: [], mode: "search", setMode: (mode) => void modes.push(mode), onGoTo: () => undefined, onSearch: () => undefined } });
+    fireEvent.change(document.querySelector<HTMLInputElement>("[data-files-bar] input")!, { target: { value: "zzz" } });
+    await screen.findByText("Nothing here by that name");
+    fireEvent.click(screen.getByRole("button", { name: "Clear filters" }));
+    expect(modes.at(-1)).toBeNull();
+    await waitFor(() => expect(row("Budget.xlsx")).toBeTruthy());
+  });
+
   it("draws the last column of Columns from the page's filtered rows, walks only them, and brings the row walked to into view", async () => {
     listingSeams.fetch = async () => ({ entries: ENTRIES, place: "folder", trail: [{ name: "Dummy Esports", at: at("/w") }] });
     const seen: string[] = [];

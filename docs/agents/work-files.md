@@ -615,7 +615,7 @@ whoever could name it.
 in the folder; a lens means the workspace's folder. The form follows the
 place:
 
-| Made in | Document | Sheet | Deck | Text file | Folder |
+| Made in | Document | Sheet | Deck | Text File | Folder |
 |---|---|---|---|---|---|
 | The workspace's folder | `.tcdoc` | `.tcsheet` | `.pptx` | `.md` | a folder |
 | A Teams library, OneDrive | `.docx` | `.xlsx` | `.pptx` | `.txt` | a folder |

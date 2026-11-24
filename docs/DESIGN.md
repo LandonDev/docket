@@ -1701,9 +1701,14 @@ Around the canvas:
   360px wide where the bar has room) lists the
   open tabs and recent files first, then names from every place, then
   "New sheet called …" when his words start with new; Return takes the
-  first row, the arrows walk, Escape puts the trail back. **Search** (`/`
+  first row, the arrows walk, Escape puts the trail back. One muted row
+  under the list says where the names stand: "Loading…" with a spinner once
+  a lookup takes past 250ms, "No matches" for words that match nothing,
+  "Couldn't load names" in `destructive` with Retry when the host refused.
+  **Search** (`/`
   or ⌘F) is a field in the trail's place that filters the folder shown as
-  he types; Return searches every place as a page of results whose second
+  he types (a filter that leaves nothing says "Nothing here by that name"
+  with Clear filters, which puts the folder and the trail back); Return searches every place as a page of results whose second
   column says where each file lives, under a 36px bar of filters (Kind,
   When it changed, Others can open, then More, a menu of Place, Project and
   Changed by as submenus and Needs review, its count in `muted-foreground`

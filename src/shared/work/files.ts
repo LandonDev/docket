@@ -191,7 +191,7 @@ export interface FilePlace {
 /** What New makes. */
 export const MAKE_KINDS = ['document', 'sheet', 'deck', 'text', 'folder'] as const
 export type MakeKind = (typeof MAKE_KINDS)[number]
-export const MAKE_WORDS: Record<MakeKind, string> = { document: 'Document', sheet: 'Sheet', deck: 'Deck', text: 'Text file', folder: 'Folder' }
+export const MAKE_WORDS: Record<MakeKind, string> = { document: 'Document', sheet: 'Sheet', deck: 'Deck', text: 'Text File', folder: 'Folder' }
 
 /** The one state a row shows, at most: its bytes are in the cloud, suggestions wait, someone is in it, a thread is writing it. */
 export type EntryState = { is: 'cloud' } | { is: 'suggestions'; count: number } | { is: 'present'; who: string } | { is: 'writing' }

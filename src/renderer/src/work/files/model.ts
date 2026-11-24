@@ -470,7 +470,7 @@ export interface EntryGroup {
  * the kind's name, so a sort by name does not scatter the headings.
  */
 export function groupEntries(entries: readonly FileEntry[], by: PageGroup, now: number): EntryGroup[] {
-  const title = (e: FileEntry): string => (by === "kind" ? (e.kind === "folder" ? "Folders" : KIND_GROUP_WORDS[e.kind]) : by === "date" ? dateGroup(e.changed, now) : e.where ? [e.where.name, ...e.where.trail].join(", ") : "Here");
+  const title = (e: FileEntry): string => (by === "kind" ? (e.kind === "folder" ? "Folders" : KIND_GROUP_WORDS[e.kind]) : by === "date" ? dateGroup(e.changed, now) : e.where ? whereWords(e.where) : "Here");
   const groups = new Map<string, FileEntry[]>();
   for (const entry of entries) {
     const key = title(entry);
