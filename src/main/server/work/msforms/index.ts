@@ -94,6 +94,11 @@ async function route(req: ClientRequest, ctx: WorkCtx, by: Caller): Promise<Hand
     }
     case 'work.msforms.refresh':
       return handled(await refreshAnswers(ctx, formReach(ctx, by, paramsOf('work.msforms.refresh', req))))
+    case 'work.msforms.survey': {
+      const p = paramsOf('work.msforms.survey', req)
+      const { startSurvey } = await import('./makers/survey')
+      return handled(await startSurvey(ctx, by, p.workspaceId, p.event))
+    }
     case 'work.msforms.prefill': {
       const p = paramsOf('work.msforms.prefill', req)
       const at = formReach(ctx, by, p)

@@ -17,6 +17,9 @@ const at = (hour: number, minute = 0, day = 23): number => new Date(2026, 10, da
 const NOW = at(9, 30);
 
 const host = vi.hoisted(() => ({
+  /** whether the host makes Microsoft forms (`work.msforms.list`'s `offered`) */
+  msforms: false,
+  surveys: [] as Record<string, unknown>[],
   asked: [] as { method: string; params: Record<string, unknown> }[],
   page: null as unknown,
   fails: null as string | null,
@@ -56,6 +59,9 @@ vi.mock("../../lib/connection", async (original) => ({
         return () => void host.pushes.splice(host.pushes.indexOf(fn), 1);
       },
       request: async (method: string, params: Record<string, unknown>) => {
+        // The Microsoft forms pillar's asks are kept apart: the page's own are what the other cases count.
+        if (method === "work.msforms.list") return { forms: [], offered: host.msforms };
+        if (method === "work.msforms.survey") return (host.surveys.push(params), { sessionId: "t-survey" });
         host.asked.push({ method, params });
         if (host.fails) throw new Error(host.fails);
         if (method === "work.prep.people" && host.slow) await host.slow;
@@ -122,6 +128,7 @@ vi.mock("../shell/lifeos", async (original) => ({
 const { View, Head, Title, PrepPageBody } = await import("./PrepView");
 const { resetPrep } = await import("./data");
 const { workOpenPort } = await import("../../lib/workSwitch");
+const { forgetOffered } = await import("../msforms/offer");
 // The dialogs are a chunk of their own: here before the first press, as a hover would have it.
 await import("./PrepDialogs");
 
@@ -186,6 +193,9 @@ beforeEach(() => {
   vi.useFakeTimers({ now: NOW, toFake: ["Date"] });
   started = [];
   host.asked = [];
+  host.msforms = false;
+  host.surveys = [];
+  forgetOffered();
   host.fails = null;
   host.page = facts();
   host.pushes = [];
@@ -820,6 +830,18 @@ describe("after the meeting", () => {
     fireEvent.change(dialog.getByLabelText("Notes"), { target: { value: "Dana drives the van." } });
     await act(async () => fireEvent.click(dialog.getByRole("button", { name: "Follow up" })));
     expect(host.asked.slice(1).map((a) => [a.method, a.params.text])).toEqual([["work.prep.notes", "Dana drives the van."], ["work.prep.followUp", undefined], ["work.prep.page", undefined]]);
+  });
+
+  it("offers Make a follow-up survey where the host makes Microsoft forms, and its press starts the thread and opens it", async () => {
+    host.msforms = true;
+    const opened: string[] = [];
+    workOpenPort.set((id) => void opened.push(id));
+    await mount();
+    expect(await moreRows()).toEqual(["Add people…", "New thread about this", "Make a follow-up survey", "Prepare meetings each morning"]);
+    await more("Make a follow-up survey");
+    expect(host.surveys).toEqual([{ workspaceId: "ws", event: "ev1" }]);
+    expect(opened).toEqual(["t-survey"]);
+    workOpenPort.set(null);
   });
 
   it("keeps what he typed when the dialog is closed any other way, and starts nothing", async () => {

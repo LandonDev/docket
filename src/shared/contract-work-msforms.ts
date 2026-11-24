@@ -148,8 +148,17 @@ export const MsformsRequestSchemas = [
   request('work.msforms.get', z.object(both)),
   /** What the window asks a Forms ticket with: the tenant and id, never an address. */
   request('work.msforms.page', z.object(both)),
-  /** His New → Microsoft form in a Teams folder: the carrier makes it at once. */
-  request('work.msforms.make', z.object({ workspaceId, folder: z.union([MsFormFolderSchema, z.object({ at: z.literal('file'), host: z.string().max(200), path: z.string().min(1).max(2000) })]), title: z.string().trim().min(1).max(90) })),
+  /** His New → Microsoft form in a Teams folder, or his Make this a Microsoft form with its questions: the carrier makes it at once. */
+  request(
+    'work.msforms.make',
+    z.object({
+      workspaceId,
+      folder: z.union([MsFormFolderSchema, z.object({ at: z.literal('file'), host: z.string().max(200), path: z.string().min(1).max(2000) })]),
+      title: z.string().trim().min(1).max(90),
+      description: z.string().max(1000).optional(),
+      questions: z.array(MsQuestionSchema).max(100).optional()
+    })
+  ),
   /** Holds Collect responses (`msform.publish`); the press is `work.outbox.send` on the answer's `ref`. */
   request('work.msforms.publish', z.object(both)),
   /** His close (open: false) or reopen. Not held: his own form. */

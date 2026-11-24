@@ -16,7 +16,8 @@ import { dayTime } from "../../lib/duration";
 import { EmptyState } from "../../surfaces/SurfaceSkeleton";
 import { sayError } from "../canvas/frame";
 import { OpenFailed } from "../canvas/FetchState";
-import type { CanvasBodyProps, CanvasShell, ReviewAdapter } from "../canvas/kind";
+import type { CanvasBodyProps, CanvasShell, MoreEntry, ReviewAdapter } from "../canvas/kind";
+import { useMakeMicrosoftForm } from "./MakeMicrosoftForm";
 import { Table } from "../icons";
 import { AddOption } from "./AddOption";
 import { AddQuestion } from "./AddQuestion";
@@ -121,7 +122,8 @@ export function Body(props: Props) {
   const suggestions = view?.suggestions;
   const current = resolvePick(suggestions ?? [], pick);
   const step = useCallback((n: number) => setPick({ id: suggestions?.[n]?.id ?? null, at: n }), [suggestions]);
-  useFeeds(shell, host, store, view, half, current, step, slot.edits !== null, slot.edits !== null && slot.saveError !== null);
+  const msform = useMakeMicrosoftForm({ env: props.env, workspaceId: item.workspaceId, body: view?.body ?? null });
+  useFeeds(shell, host, store, view, half, current, step, slot.edits !== null, slot.edits !== null && slot.saveError !== null, msform.row);
   const saveError = slot.saveError;
   const responsesError = half === "responses" ? slot.responsesError : null;
   const retryOpen = (): void => {
@@ -147,6 +149,7 @@ export function Body(props: Props) {
   if (!view) return <FormSkeleton />;
   return (
     <div data-form className="flex min-h-0 min-w-0 flex-1 flex-col">
+      {msform.dialog}
       {view.state === "closed" && view.closedAt ? <ClosedLine at={view.closedAt} reopen={() => run(host.close(true), store, "Couldn't reopen the form")} /> : null}
       {half === "questions" ? (
         <Questions key={view.itemId} view={view} host={host} store={store} current={current} onStep={step} />
@@ -187,6 +190,8 @@ function useFeeds(
   editing: boolean,
   /** the save that carries them failed: they stand until Retry lands them */
   refused: boolean,
+  /** Make this a Microsoft form, where the host makes them */
+  msform: MoreEntry | null = null,
 ): void {
   const mode = view?.mode;
   const published = view ? view.state !== "draft" : false;
@@ -235,10 +240,11 @@ function useFeeds(
   const sheet = view?.sheet;
   const title = view?.body.title;
   useEffect(() => {
-    if (!sheet || !title) return shell.more?.(null);
-    shell.more?.([{ id: "sheet", label: "Open responses as a sheet", icon: Table, run: () => host.openSheet(sheet, `${title}, responses`) }]);
+    const rows: MoreEntry[] = [...(sheet && title ? [{ id: "sheet", label: "Open responses as a sheet", icon: Table, run: () => host.openSheet(sheet, `${title}, responses`) }] : []), ...(msform ? [msform] : [])];
+    if (!rows.length) return shell.more?.(null);
+    shell.more?.(rows);
     return () => shell.more?.(null);
-  }, [shell, host, sheet, title]);
+  }, [shell, host, sheet, title, msform]);
 }
 
 // ── the bar ──────────────────────────────────────────────────────────

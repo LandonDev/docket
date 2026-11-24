@@ -134,7 +134,25 @@ The Work service serves it (`service/routes/form.ts`; the route list is in
   newer answer arriving on top keeps his ticks and Ask's quote on the
   responses he chose, and one gone from a new rev drops from them. It is
   read every 10 s while shown, and only when the sheet's rev moved.
-- More holds "Open responses as a sheet".
+- More holds "Open responses as a sheet", and "Make this a Microsoft form"
+  (below).
+
+### Make this a Microsoft form
+
+Our form's More offers it where the workspace's host makes Microsoft forms
+(`work.msforms.list`'s `offered`) and the form has a question
+(forms/MakeMicrosoftForm.tsx). It opens one small dialog, "Make a Microsoft
+form", with one Folder picker of the job's Teams and OneDrive places
+(`work.files.places`, kinds `teams` and `onedrive` with a `file` root:
+`useLibraryPlaces` in msforms/offer.ts, as the Forms view's New lists them).
+His Make runs `work.msforms.make` at once in that place with this form's
+title, its line and its questions in Forms' own types (`fromOurQuestion` in
+src/shared/work/msforms.ts: short → Text, long → Text with a long answer,
+choice → Choice, dropdown → Choice as a drop-down, section → Section), then
+opens the new form in its Files tab. A refusal stays in the dialog. Our form
+is left as it was, its answers too. A thread reaches the same from
+`msform_create` with `from: {form}` (msforms/makers, docs/agents/work-msforms.md
+"The makers"), which reads only its own job's forms.
 
 ## The tools
 

@@ -105,6 +105,16 @@ const namesOf = (t: DocTarget, asked: CanvasSource, item?: string): string[] => 
 type ServiceWrite = { mode: 'direct'; versionId?: string; beforeVersionId?: string; undoable?: boolean } | { mode: 'branch'; branchId: string; versionId: string }
 
 /** The sections a rewrite touched, for the "Wrote 2 sections" line: by heading when the text has them, else by paragraph. */
+/**
+ * A document's words as markdown, read as `doc_read` reads them (the thread's own canvas item, a LifeOS document of
+ * its sector, or a .tcdoc path), for another pillar's reader: the Microsoft form makers (msforms/makers/document.ts).
+ */
+export async function readDocMarkdown(ctx: ToolCtx, a: TargetArgs): Promise<{ title: string; markdown: string }> {
+  const { t, shared, fence, title } = await resolve(ctx, a)
+  const got = (await ctx.service.internal('/internal/docs/read', serviceTarget(t, shared, fence))) as { markdown: string }
+  return { title, markdown: got.markdown }
+}
+
 export function changedParts(before: string, after: string): { count: number; unit: 'section' | 'paragraph' } {
   const headed = /^#{1,6}\s/m.test(after)
   const parts = (md: string): string[] =>

@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import type { FilePlace, FolderRef } from "@shared/work/files";
-import type { FilesPlaces } from "@shared/contract-work-files";
+import type { FolderRef } from "@shared/work/files";
 import type { FormListRow, MsFormView } from "@shared/contract-work-msforms";
 import { Plus } from "../../chrome/icons";
 import { RowsMenu, type MenuRow } from "../../chrome/menuRows";
@@ -19,7 +18,7 @@ import { openWorkView, workOpenPort } from "../../lib/workSwitch";
 import type { WorkViewProps } from "../views/registry";
 import { mergeForms, rowLine } from "./model";
 import { FORM_KIND_WORDS } from "./newForm";
-import { useFormMaking } from "./useFormMaking";
+import { useFormMaking, useLibraryPlaces } from "./useFormMaking";
 
 /**
  * A Work workspace's Forms (docs/agents/work-msforms.md "Forms view"): one list of the job's forms, ours and
@@ -66,29 +65,9 @@ function useForms(env: string, workspaceId: string): [Load, () => void] {
   return [load, again];
 }
 
-/** The Teams and OneDrive places a Microsoft form may be made in, read when New opens. */
-function useLibraryPlaces(env: string, workspaceId: string, want: boolean): FilePlace[] {
-  const [places, setPlaces] = useState<FilePlace[]>([]);
-  useEffect(() => {
-    if (!want) return;
-    let on = true;
-    void registry
-      .linkOf(env)
-      .request<FilesPlaces>("work.files.places", { workspaceId })
-      .then(
-        (r) => on && setPlaces(r.places.filter((p) => (p.kind === "teams" || p.kind === "onedrive") && p.root.at === "file")),
-        () => undefined,
-      );
-    return () => {
-      on = false;
-    };
-  }, [env, workspaceId, want]);
-  return places;
-}
-
 export function Head({ env, workspace }: WorkViewProps) {
   const { offered, making, make } = useFormMaking(workspace);
-  const places = useLibraryPlaces(env, workspace.id, offered);
+  const places = useLibraryPlaces(env, workspace.id, offered) ?? [];
   const ms: MenuRow[] = offered && places.length ? [{ kind: "sub", id: "ms", label: FORM_KIND_WORDS.microsoft.label, items: places.map((p): MenuRow => ({ kind: "item", id: `in:${p.id}`, label: p.group && p.group !== p.name ? `${p.group}, ${p.name}` : p.name })) }] : [];
   const rows: MenuRow[] = [...ms, { kind: "item", id: "ours", label: FORM_KIND_WORDS.tempcode.label, description: ms.length ? FORM_KIND_WORDS.tempcode.line : undefined }];
   const pick = (id: string): void => {

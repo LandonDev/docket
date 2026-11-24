@@ -171,6 +171,18 @@ function once(ask: (acted: Acted) => Promise<ActAnswer>): (acted: Acted) => Prom
  * turns that one change `orphaned`. Any other failure (the sheet worker, a read of the file) is a
  * passing fault and leaves the change waiting.
  */
+/**
+ * A sheet's cells as text, read as `sheet_read` reads them (the thread's own canvas item, or an .xlsx, .xlsm, .csv or
+ * .tcsheet path), for another pillar's reader: the Microsoft form makers (msforms/makers/sheet.ts). Each cell by its
+ * address, so an empty cell the read leaves out keeps its column.
+ */
+export async function readSheetCells(ctx: ToolCtx, a: { item?: string; file?: string }, range: string): Promise<{ at: string; v?: unknown }[][]> {
+  const t = await targetOf(ctx, a, false)
+  const s = await sheetsOf(ctx)
+  const got = t.held.at === 'package' ? await s.packages.read(t.held.path, range) : await host(ctx, 'range', { sheet: t.held.ref, range })
+  return got.cells as { at: string; v?: unknown }[][]
+}
+
 export class Unplaced extends Error {}
 const placed = <T>(make: () => T): T => {
   try {

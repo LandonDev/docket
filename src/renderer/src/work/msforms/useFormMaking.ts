@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import type { MsFormView } from "@shared/contract-work-msforms";
 import type { WorkspaceMeta } from "../../lib/tcserver/types";
 import type { FolderRef } from "@shared/work/files";
@@ -6,6 +6,9 @@ import { registry } from "../../lib/connection";
 import { sayError } from "../canvas/frame";
 import { openFileTab, openMadeTab } from "../files/store";
 import type { FormKind } from "./newForm";
+import { MAKE_MS, useMsformsOffered } from "./offer";
+
+export { MAKE_MS, useLibraryPlaces, useMsformsOffered } from "./offer";
 
 /**
  * New → Form in the Files page (docs/agents/work-msforms.md "Making a form"): whether the workspace's host makes
@@ -13,37 +16,10 @@ import type { FormKind } from "./newForm";
  * made in Forms by the box browser (about a minute, said on the page's state line), then opens in its tab.
  */
 
-const offeredBy = new Map<string, Promise<boolean>>();
-const offeredOf = (env: string, workspaceId: string): Promise<boolean> => {
-  const key = `${env}\n${workspaceId}`;
-  let got = offeredBy.get(key);
-  if (!got) {
-    got = registry
-      .linkOf(env)
-      .request<{ offered: boolean }>("work.msforms.list", { workspaceId })
-      .then(
-        (r) => r.offered,
-        () => false,
-      );
-    offeredBy.set(key, got);
-  }
-  return got;
-};
-
-/** A Microsoft form takes a carrier pass on the box browser: the press waits this long for it. */
-const MAKE_MS = 240_000;
-
 export function useFormMaking(workspace: Pick<WorkspaceMeta, "id" | "environmentId">): { offered: boolean; making: boolean; make(kind: FormKind, at: FolderRef | null): Promise<void> } {
   const env = workspace.environmentId;
-  const [offered, setOffered] = useState(false);
+  const offered = useMsformsOffered(env, workspace.id);
   const [making, setMaking] = useState(false);
-  useEffect(() => {
-    let on = true;
-    void offeredOf(env, workspace.id).then((yes) => on && setOffered(yes));
-    return () => {
-      on = false;
-    };
-  }, [env, workspace.id]);
   const make = async (kind: FormKind, at: FolderRef | null): Promise<void> => {
     if (kind === "tempcode") {
       await openMadeTab(env, workspace.id, "work.forms.make", {}).then(

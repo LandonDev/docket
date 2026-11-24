@@ -26,6 +26,8 @@ import { sessionWaits, useLifeosQuery, type LifeosSession } from "../shell/lifeo
 import { shared, useShared } from "../tasks/store";
 import { useMinute } from "../tasks/minute";
 import type { WorkViewProps } from "../views/registry";
+import { registry } from "../../lib/connection";
+import { useMsformsOffered } from "../msforms/offer";
 import { ViewStateLine } from "../views/ViewStateLine";
 import { briefPrep, decidePrepTasks, followUpPrep, heldNotes, loadPrep, openNotesDoc, setPrepAhead, usePrep, usePrepHeld } from "./data";
 import {
@@ -165,6 +167,8 @@ export function Head(props: WorkViewProps) {
   const now = useMinute();
   const [busy, setBusy] = useState<"brief" | "followUp" | null>(null);
   const briefStatus = useSessionMetaValue(page?.briefSessionId, (meta) => meta.status);
+  // Asked only once the meeting is over, when More could offer the survey.
+  const surveys = useMsformsOffered(props.env, page && isOver(page.event, now) ? workspaceId : null);
   const followStatus = useSessionMetaValue(page?.followSessionId, (meta) => meta.status);
   if (!page || !eventId) return null;
   const openThread = (sessionId: string | null) => {
@@ -198,6 +202,14 @@ export function Head(props: WorkViewProps) {
       onNotes={() => openDialog("notes", eventId)}
       onAddPeople={() => openDialog("people", eventId)}
       onThread={() => props.startThread(eventChip(page.event))}
+      // A thread drafts the survey and the mail with its link; both wait for his press (work-msforms.md "The makers").
+      survey={surveys && isOver(page.event, now)}
+      onSurvey={() =>
+        void registry
+          .linkOf(props.env)
+          .request<{ sessionId: string }>("work.msforms.survey", { workspaceId, event: eventId })
+          .then((r) => openThread(r.sessionId), (err: unknown) => said(err, "The survey thread did not start"))
+      }
       onDismissRest={() => void decidePrepTasks(props.env, workspaceId, eventId, proposed.map((t) => t.id), "reject").catch(said)}
       // The offer is answered once the host has taken the switch; a refusal leaves it where it was.
       onAhead={(on) => void setPrepAhead(props.env, workspaceId, eventId, on).then(() => settleOffer(workspaceId), (err: unknown) => said(err))}
@@ -226,6 +238,9 @@ export interface PageVerbsProps {
   onThread: () => void;
   onDismissRest: () => void;
   onAhead: (on: boolean) => void;
+  /** Make a follow-up survey: offered once the meeting is over, where the host makes Microsoft forms */
+  survey?: boolean;
+  onSurvey?: () => void;
 }
 
 /** The header's end: the page's one verb for where the meeting stands, then More. */
@@ -238,9 +253,10 @@ export function PageVerbs(p: PageVerbsProps) {
     ...(p.verb === "addNotes" ? [] : [{ kind: "item" as const, id: "notes", label: p.notes ? "Edit notes…" : "Add notes…" }]),
     ...(p.rest > 0 ? [{ kind: "item" as const, id: "rest", label: "Dismiss the rest" }] : []),
     { kind: "item", id: "thread", label: "New thread about this" },
+    ...(p.survey ? [{ kind: "item" as const, id: "survey", label: "Make a follow-up survey" }] : []),
     ...(p.ahead === null ? [] : [{ kind: "sep" as const }, { kind: "item" as const, id: "ahead", label: AHEAD_LABEL, checked: p.ahead }]),
   ];
-  const pick: Record<string, () => void> = { open: p.onOpenThread, again: p.onBrief, people: p.onAddPeople, notes: p.onNotes, rest: p.onDismissRest, thread: p.onThread, ahead: () => p.onAhead(!p.ahead) };
+  const pick: Record<string, () => void> = { open: p.onOpenThread, again: p.onBrief, people: p.onAddPeople, notes: p.onNotes, rest: p.onDismissRest, thread: p.onThread, survey: () => p.onSurvey?.(), ahead: () => p.onAhead(!p.ahead) };
   return (
     <div className="flex items-center gap-1">
       {p.verb === "brief" ? (
