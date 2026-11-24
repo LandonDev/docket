@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto'
 import { mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
 import { NEEDS_PRESS } from '../files/policy'
 import { tmpdir } from 'node:os'
@@ -370,6 +371,22 @@ describe('the google tools', () => {
     ])
   })
 
+  it("decides a hold made in round 1's form of spots: on the deck as he was shown it, and on one changed elsewhere", async () => {
+    fake.addDeck(ME, 'deck7', 'Plan', [{ objectId: 's1', texts: [{ objectId: 't1', text: 'Q1 goals' }, { objectId: 't2', text: 'Budget' }] }])
+    const { itemId } = await call<{ itemId: string }>('work.google.open', { sessionId: 's1', account: ME, fileId: 'deck7' })
+    await run('google_slides_revise', { item: itemId, edits: [{ find: 'Q1', replace: 'Q2' }] })
+    const payload = held[0].payload as { edits: Record<string, unknown>[] }
+    expect(payload.edits[0]).toMatchObject({ spotsForm: 2 })
+    // The same hold as round 1 wrote it: its spots in that form, and no form named.
+    const v1 = createHash('sha256').update('t1:1').digest('hex').slice(0, 16)
+    const older = { ...payload, edits: [{ ...payload.edits[0], spots: v1, spotsForm: undefined }] }
+    // Another box changed: the deck moved on, the words stand where they did.
+    fake.files.get('deck7')!.deck!.slides[0]!.texts[1]!.text = 'Budget, final'
+    fake.files.get('deck7')!.deck!.rev++
+    await expect(googleEdit.execute(googleEdit.payload.parse(older), { ...ctx, item: { sessionId: 's1' } } as never)).resolves.toMatchObject({ summary: expect.stringMatching(/^Made the change in Plan/) })
+    expect(fake.files.get('deck7')!.deck!.slides[0]!.texts[0]!.text).toBe('Q2 goals')
+  })
+
   it('leaves a deck stale when its only match moved to another bullet of the same box', async () => {
     fake.addDeck(ME, 'deck8', 'Plan', [{ objectId: 's1', texts: [{ objectId: 't1', text: 'Q1 goals\nBudget' }] }])
     const { itemId } = await call<{ itemId: string }>('work.google.open', { sessionId: 's1', account: ME, fileId: 'deck8' })
@@ -456,7 +473,7 @@ describe('the google tools', () => {
     expect(text(got)).toMatch(/^Held for the owner: .*Nothing went to Google and nobody else sees it/)
     expect(JSON.stringify([...fake.files])).toBe(before)
     expect(fake.docSuggestions('doc2')).toEqual([])
-    expect(held).toEqual([expect.objectContaining({ kind: 'google.edit', payload: expect.objectContaining({ app: 'doc', fileId: 'doc2', edits: [{ find: 'March', replace: 'May', within: 'We ship in March.', tab: 't.0' }] }) })])
+    expect(held).toEqual([expect.objectContaining({ kind: 'google.edit', payload: expect.objectContaining({ app: 'doc', fileId: 'doc2', edits: [{ find: 'March', replace: 'May', within: 'We ship in March.', tab: 't.0', at: expect.any(Number) }] }) })])
     const payload = googleEdit.payload.parse(held[0].payload)
     expect(googleEdit.words(payload)).toEqual({ summary: 'Make the change in Brief: "March" to "May"', verb: 'Make the change' })
     await expect(googleEdit.execute(payload, { ...ctx, item: { sessionId: 's1' } } as never)).resolves.toMatchObject({ summary: 'Made the change in Brief' })

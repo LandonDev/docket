@@ -142,6 +142,31 @@ describe('a Google Doc in the document canvas', () => {
     await expect(writeEdits(googleOf(ctx), src, edits.map((e, i) => ({ ...e, within: judged.within[i], tab: judged.tabs[i] })), judged.revisionId)).resolves.toEqual({ moved: true })
   })
 
+  it('goes stale when the paragraph he was shown was moved within its tab, its words alike', async () => {
+    const edits = [{ find: 'tight', replace: 'fine' }]
+    const judged = await checkEdits(googleOf(ctx), src, edits)
+    const held = edits.map((e, i) => ({ ...e, within: judged.within[i], tab: judged.tabs[i], at: judged.at[i] }))
+    // A co-author moves "Budget is tight." below "Ask Dana.": the same words, in the same tab, in another place.
+    const chars = fake.files.get('doc1')!.doc!.chars
+    const text = chars.map((c) => c.c).join('')
+    const from = text.indexOf('Budget is tight.\n')
+    const moved = chars.splice(from, 'Budget is tight.\n'.length)
+    chars.push(...moved)
+    fake.editDoc('doc1', 1, '')
+    const now = fake.docText('doc1')
+    await expect(writeEdits(googleOf(ctx), src, held, judged.revisionId)).resolves.toEqual({ stale: '"tight" now stands in another passage than the one shown' })
+    expect(fake.docText('doc1')).toBe(now)
+  })
+
+  it('asks for a fresh hold where one made before its tab was kept meets a Doc of several tabs that changed', async () => {
+    const edits = [{ find: 'tight', replace: 'fine' }]
+    const judged = await checkEdits(googleOf(ctx), src, edits)
+    const older = edits.map((e, i) => ({ ...e, within: judged.within[i] }))
+    fake.editDoc('doc1', 1, 'Note: ')
+    // One tab: decided as before.
+    await expect(writeEdits(googleOf(ctx), src, older, judged.revisionId)).resolves.toEqual({ moved: true })
+  })
+
   it('keeps his unwritten edits when the Doc moved, and marks it behind', async () => {
     const mirror = await docMirror(ctx, googleOf(ctx), src)
     live = await fresh()

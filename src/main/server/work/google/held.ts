@@ -70,9 +70,21 @@ export const googleShare: ActKindDef<GoogleShare, GoogleShareMatcher> = {
 const FileId = z.string().regex(/^[A-Za-z0-9_-]{1,200}$/)
 const Replace = z.object({ find: z.string().min(1).max(5_000), replace: z.string().max(20_000) })
 /** A Doc's replace, with the paragraph that held the words when it was suggested. */
-const DocReplace = Replace.extend({ within: z.string().max(200_000).optional(), tab: z.string().max(200).optional() })
+const DocReplace = Replace.extend({
+  within: z.string().max(200_000).optional(),
+  tab: z.string().max(200).optional(),
+  /** the paragraph's place among the Doc's paragraphs then (round 2): the same words moved within a tab are another passage */
+  at: z.number().int().min(0).optional()
+})
 /** A deck's replace-all, with how many boxes held the words then. */
-const DeckReplace = Replace.extend({ boxes: z.number().int().min(1).optional(), on: z.array(z.number().int().min(1)).max(500).optional(), count: z.number().int().min(1).optional(), spots: z.string().max(100).optional() })
+const DeckReplace = Replace.extend({
+  boxes: z.number().int().min(1).optional(),
+  on: z.array(z.number().int().min(1)).max(500).optional(),
+  count: z.number().int().min(1).optional(),
+  spots: z.string().max(100).optional(),
+  /** `spots` in round 2's form, each box's words whole; without it a hold's `spots` may be in either form */
+  spotsForm: z.literal(2).optional()
+})
 
 /**
  * An agent's change to a Google file, kept on his host until he approves it (the owner's ruling of 2026-11-23):

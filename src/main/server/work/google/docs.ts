@@ -184,14 +184,14 @@ async function settle(g: Google, source: GoogleSource, current: Block[], kept: R
  * Google: the edits wait on his host as a held `google.edit` (the owner's ruling of 2026-11-23), so no suggestion
  * of the agent's is ever in the Doc for others to see. Answers the revision it was judged on.
  */
-export async function checkEdits(g: Google, source: GoogleSource, edits: readonly { find: string; replace: string }[]): Promise<{ revisionId: string; within: string[]; tabs: string[] }> {
+export async function checkEdits(g: Google, source: GoogleSource, edits: readonly { find: string; replace: string }[]): Promise<{ revisionId: string; within: string[]; tabs: string[]; at: number[] }> {
   const fresh = await g.api(source.account).doc(source.fileId)
   if (!fresh.revisionId) throw new GoogleError('Google lets this account read the Doc but not change it.', 'refused')
   const paragraphs = mapGoogleDoc(fresh).paragraphs
   const plan = planSuggest(paragraphs, edits)
   if ('error' in plan) throw new Error(plan.error)
   const at = edits.map((e) => paragraphs.find((p) => p.text.includes(e.find))!)
-  return { revisionId: fresh.revisionId, within: at.map((p) => p.text), tabs: at.map((p) => p.tabId) }
+  return { revisionId: fresh.revisionId, within: at.map((p) => p.text), tabs: at.map((p) => p.tabId), at: at.map((p) => paragraphs.indexOf(p)) }
 }
 
 /**
@@ -199,7 +199,7 @@ export async function checkEdits(g: Google, source: GoogleSource, edits: readonl
  * one `batchUpdate` bound to the revision just read. `stale` when a `find` no longer stands once; `moved` when
  * the Doc changed since the edits were judged, though each still stood once.
  */
-export function writeEdits(g: Google, source: GoogleSource, edits: readonly { find: string; replace: string; within?: string; tab?: string }[], judgedOn: string): Promise<{ stale: string } | { moved: boolean }> {
+export function writeEdits(g: Google, source: GoogleSource, edits: readonly { find: string; replace: string; within?: string; tab?: string; at?: number }[], judgedOn: string): Promise<{ stale: string } | { moved: boolean }> {
   return locked(source, async () => {
     const api = g.api(source.account)
     const fresh = await api.doc(source.fileId)
@@ -219,9 +219,12 @@ export function writeEdits(g: Google, source: GoogleSource, edits: readonly { fi
         ? undefined
         : edits.find((e) => {
             const p = paragraphs.find((x) => x.text.includes(e.find))
-            return (e.within !== undefined && p?.text !== e.within) || (e.tab !== undefined && p?.tabId !== e.tab)
+            return (e.within !== undefined && p?.text !== e.within) || (e.tab !== undefined && p?.tabId !== e.tab) || (e.at !== undefined && (p ? paragraphs.indexOf(p) : -1) !== e.at)
           })
     if (strayed) return { stale: `${quoted(strayed.find)} now stands in another passage than the one shown` }
+    // Held before its tab was kept, on a Doc of several tabs that moved since: where it stood cannot be told now.
+    const unplaced = fresh.revisionId === judgedOn || new Set(paragraphs.map((p) => p.tabId)).size < 2 ? undefined : edits.find((e) => e.tab === undefined)
+    if (unplaced) return { stale: `${quoted(unplaced.find)} was held before its place in the Doc was kept, and the Doc changed since: ask the thread again` }
     await api.docUpdate(source.fileId, plan.requests, { requiredRevisionId: fresh.revisionId })
     return { moved: fresh.revisionId !== judgedOn }
   })
