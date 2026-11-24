@@ -53,7 +53,8 @@ vi.mock("convex/react", async (original) => ({
   },
 }));
 
-const { Tasks } = await import("./TasksView");
+const { Tasks, dueMidLine } = await import("./TasksView");
+const { formatDue } = await import("work-kit/views/lib/format");
 const { newestOpenThread } = await import("./links");
 const { workOpenPort } = await import("../../lib/workSwitch");
 
@@ -81,6 +82,21 @@ describe("the Tasks view", () => {
     expect(screen.getByText("Spring LAN")).toBeTruthy();
     expect(screen.getAllByRole("heading", { level: 2 }).map((h) => h.textContent)).toEqual(["This week", "Waiting"]);
     expect(screen.getByText("Waiting on Sam Ortiz")).toBeTruthy();
+  });
+
+  it("says a late lead's due day in lower case after Due, as the rows' own label says it alone", () => {
+    const late: Task = { _id: "t0", title: "Confirm the bus", sector: "purdue", status: "todo", dueAt: due(-1, 9, 0) };
+    render(<Tasks client={fakeTasksClient([late, ...rows])} startThread={() => {}} />);
+    expect(screen.getByText("Due yesterday")).toBeTruthy();
+    expect(dueMidLine(due(1, 9, 0), now)).toBe("tomorrow");
+    expect(dueMidLine(due(0, 15, 0), now)).toBe(formatDue(due(0, 15, 0), now));
+  });
+
+  it("draws a one-line row at 32px, so it sits centred among the two-line rows", () => {
+    render(<Tasks client={fakeTasksClient(rows)} startThread={() => {}} />);
+    const row = screen.getByRole("button", { name: "Open Send Dana the budget" }).closest<HTMLElement>("[role=listitem]")!;
+    expect(row.className).toContain("min-h-8");
+    expect(row.className).not.toContain("min-h-11");
   });
 
   it("opens the sheet of a task a person's page asks for", async () => {

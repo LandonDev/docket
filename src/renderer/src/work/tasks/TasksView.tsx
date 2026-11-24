@@ -179,6 +179,12 @@ export function Tasks({
   );
 }
 
+/** A due time inside a line ("Due yesterday"): LifeOS's row label, its day word in lower case after "Due". */
+export function dueMidLine(ms: number, now: number): string {
+  const due = formatDue(ms, now);
+  return due === "Yesterday" || due === "Tomorrow" ? due.toLowerCase() : due;
+}
+
 /** A row's second line: who it waits on, else its project, else who asked. */
 function metaOf(task: Task, project: string | undefined): string | undefined {
   if (task.waitingOn) return `Waiting on ${task.waitingOn}`;
@@ -214,7 +220,7 @@ function Lead({
         {meta || task.dueAt !== undefined ? (
           <p className="flex min-w-0 items-baseline gap-1 text-xs text-muted-foreground">
             {meta ? <span className="min-w-0 truncate">{meta}</span> : null}
-            {task.dueAt !== undefined ? <span className={cn("shrink-0 tabular-nums", overdue ? "text-destructive" : "text-foreground")}>{meta ? ", " : ""}Due {formatDue(task.dueAt, now)}</span> : null}
+            {task.dueAt !== undefined ? <span className={cn("shrink-0 tabular-nums", overdue ? "text-destructive" : "text-foreground")}>{meta ? ", " : ""}Due {dueMidLine(task.dueAt, now)}</span> : null}
           </p>
         ) : null}
         <div className="mt-3 flex items-center gap-2">
@@ -334,7 +340,7 @@ const TaskRow = memo(function TaskRow({
   }, [ticked]);
   return (
     <ContextMenu>
-      <ContextMenuTrigger render={<div role="listitem" className={cn("group/row flex min-h-11 items-start gap-2 rounded-md px-3 py-1.5", ROW_HOLDS)} />}>
+      <ContextMenuTrigger render={<div role="listitem" className={cn("group/row flex min-h-8 items-start gap-2 rounded-md px-3 py-1.5", ROW_HOLDS)} />}>
         {/* The open control lies over the whole row, so keyboard focus rings the row; the tick and Start sit above it. */}
         <ItemButton data-row-open aria-label={`Open ${task.title}`} onClick={() => onOpen(task)} className={ROW_OPEN} />
         <Checkbox shape="round" className={cn("mt-0.5", ROW_CONTROLS)} checked={ticked} onCheckedChange={setTicked} aria-label={`Mark ${task.title} done`} />

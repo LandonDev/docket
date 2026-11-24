@@ -98,7 +98,7 @@ function Body({
       () => {
         setPending(false);
         onAdded?.();
-        void loadToast().then((toast) => toast(`Added to ${jobNameNow(sector)}`, { action: { label: "Undo", onClick: () => void undo({ key }).catch(() => toast.error("Couldn't undo")) } }));
+        void loadToast().then((toast) => toast(`Added to ${jobNameNow(sector)}`, { action: { label: "Undo", onClick: () => void undo({ key }).catch(() => toast.error("Did not undo")) } }));
         close ? close(onClose) : onClose();
       },
       (err: unknown) => {
