@@ -28,5 +28,6 @@ export const fixtures = [
   },
   { name: "No workspace for the file", props: { ...base, sector: "cosmic", files: [{ id: "a", name: "Loot table.xlsx", path: "/a" }], error: "No Cosmic workspace on this computer to keep the file in" } },
   { name: "LifeOS away", props: { ...base, text: "Call the ref assigner", status: "offline", canFile: true } },
+  { name: "The host did not answer", props: { ...base, text: "Call the ref assigner", status: "silent", host: "This Mac", onRetry: () => {}, canFile: true } },
   { name: "Dragging a file", props: { ...base, dragging: true } },
 ];

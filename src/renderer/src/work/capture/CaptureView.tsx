@@ -19,8 +19,12 @@ export interface CaptureViewProps {
   text: string;
   files: readonly DraftFile[];
   sector: SectorChoice;
-  /** offline: LifeOS does not answer here */
-  status: "ready" | "offline";
+  /** offline: not signed in to LifeOS here; silent: this computer's host did not answer the window's ask */
+  status: "ready" | "offline" | "silent";
+  /** this computer's name ("This Mac"), for a host that did not answer */
+  host?: string;
+  /** asks the host again (the page's refresh) */
+  onRetry?(): void;
   /** what stops this draft, or what the last try answered */
   error: string | null;
   /** a file is being dragged over the window */
@@ -77,6 +81,16 @@ export const CaptureView = forwardRef<HTMLTextAreaElement, CaptureViewProps>(fun
       {p.error ? (
         <div role="alert" className="px-4 pb-2">
           <ErrorLine error={p.error} />
+        </div>
+      ) : p.status === "silent" ? (
+        // A read that failed is not a sign-out: the computer named, Retry asks again, the draft and the presses stay.
+        <div role="alert" className="flex min-h-6 items-center gap-2 px-4 pb-2">
+          <ErrorLine error={`${p.host ?? "This computer"} did not answer`} />
+          {p.onRetry ? (
+            <Button variant="ghost" size="xs" onClick={p.onRetry}>
+              Retry
+            </Button>
+          ) : null}
         </div>
       ) : p.status === "offline" ? (
         <p className="px-4 pb-2 text-xs text-muted-foreground">Not signed in to LifeOS</p>

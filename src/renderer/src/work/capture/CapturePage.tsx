@@ -30,6 +30,9 @@ function cachedState(): CaptureState | null {
 
 const choiceOf = (last: SectorKey | null | undefined): SectorChoice => last ?? "unsorted";
 
+/** This computer as it names itself (`thisDesktopName`): the capture window has no main window's bridge to ask, so its own browser says. */
+const thisComputer = (): string => (/^win/i.test(navigator.platform) ? "This PC" : "This Mac");
+
 interface Draft {
   text: string;
   files: DraftFile[];
@@ -59,6 +62,8 @@ export function CapturePage({ host, bridge }: { host: CaptureHost; bridge: Captu
   const [state, setState] = useState<CaptureState | null>(cachedState);
   const [draft, setDraft] = useState<Draft>(() => ({ text: "", files: [], sector: choiceOf(cachedState()?.last) }));
   const [error, setError] = useState<string | null>(null);
+  // The state ask failed (this computer's host did not answer): a read that failed, never a sign-out. What was known stays.
+  const [silent, setSilent] = useState(false);
   const [dragging, setDragging] = useState(false);
   const field = useRef<HTMLTextAreaElement>(null);
   const root = useRef<HTMLDivElement>(null);
@@ -68,12 +73,13 @@ export function CapturePage({ host, bridge }: { host: CaptureHost; bridge: Captu
   const refresh = useCallback(() => {
     host.state().then(
       (next) => {
+        setSilent(false);
         setState(next);
         localStorage.setItem(STATE_KEY, JSON.stringify(next));
         // The last sector leads a fresh draft; one he already pointed somewhere keeps his pick.
         if (!touched.current) setDraft((d) => ({ ...d, sector: choiceOf(next.last) }));
       },
-      () => setState((s) => (s ? { ...s, connected: false } : { host: "", last: null, homes: [], connected: false })),
+      () => setSilent(true),
     );
   }, [host]);
 
@@ -218,7 +224,9 @@ export function CapturePage({ host, bridge }: { host: CaptureHost; bridge: Captu
         text={draft.text}
         files={draft.files}
         sector={draft.sector}
-        status={offline ? "offline" : "ready"}
+        status={silent ? "silent" : offline ? "offline" : "ready"}
+        host={thisComputer()}
+        onRetry={refresh}
         error={error}
         dragging={dragging}
         canFile={refusal === null}

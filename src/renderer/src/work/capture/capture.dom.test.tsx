@@ -194,6 +194,25 @@ describe("the capture window", () => {
     expect(screen.getByText("Not signed in to LifeOS")).toBeTruthy();
     expect((screen.getByText("Start thread").closest("button") as HTMLButtonElement).disabled).toBe(true);
   });
+
+  /** Council round 7 (Sol, the rest 2): a state ask that failed read "Not signed in to LifeOS", with the filing presses off. */
+  it("says a state ask that failed as this computer's silence, with Retry, and keeps the draft and the presses", async () => {
+    const real = state;
+    let asks = 0;
+    const failing: CaptureHost = { ...host(), state: () => (++asks === 1 ? Promise.reject(new Error("No answer in 15 s")) : Promise.resolve(real)) };
+    render(<CapturePage host={failing} bridge={bridge} />);
+    act(() => shown());
+    await flush();
+    fireEvent.change(field(), { target: { value: "Call the ref assigner" } });
+    expect(screen.queryByText("Not signed in to LifeOS")).toBeNull();
+    expect(screen.getByText(/^This (Mac|PC) did not answer$/)).toBeTruthy();
+    expect((screen.getByText("Start thread").closest("button") as HTMLButtonElement).disabled).toBe(false);
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    await flush();
+    expect(asks).toBe(2);
+    expect(screen.queryByText(/did not answer/)).toBeNull();
+    expect(field().value).toBe("Call the ref assigner");
+  });
 });
 
 describe("the draft", () => {

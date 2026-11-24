@@ -97,7 +97,10 @@ A frame change in the main process, kept small:
   dead key) owns every key until it ends; a dragged link or words land in the
   field as typed, only files are the window's. The last state
   the host gave is kept in localStorage, so the window is whole the instant
-  it shows. It wears Work's theme.
+  it shows. A state ask the host did not answer is not a sign-out: the line
+  says "This Mac did not answer" (This PC on Windows) with Retry, the page's
+  own refresh, and keeps the draft, the last state and both presses; "Not
+  signed in to LifeOS" is for a host that says so. It wears Work's theme.
 
 ## The phone: a voice note
 
