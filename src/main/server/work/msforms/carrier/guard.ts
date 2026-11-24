@@ -18,6 +18,8 @@ export interface Control {
   name: RegExp
   /** an ancestor's name must match (a menu item under its menu, a button in a dialog) */
   under?: RegExp
+  /** the element just before it, under the same parent, says these words (a control named by its file, not its verb) */
+  follows?: RegExp
   /** the dialog the control is in holds a heading of these words (a dialog with no name of its own) */
   inDialog?: RegExp
   /** a toggle that may only be turned this way: 'off' presses it only while it is on */
@@ -25,6 +27,8 @@ export interface Control {
 }
 
 const BUTTON = ['button', 'link', 'menu button', 'pop up button']
+/** The Responses view's line above the workbook it already made. */
+export const WORKBOOK_LINE = /^Analyze and explore up-to-date results in Excel\.?$/i
 const ITEM = ['menu item', 'button', 'link', 'option']
 const TOGGLE = ['checkbox', 'switch']
 const FIELD = ['input', 'text area', 'date', 'combo box']
@@ -100,6 +104,8 @@ const RESPONSES: Control[] = [
 ]
 const PULL: Control[] = [
   { roles: BUTTON, name: /^Open results in Excel$/i },
+  // once the workbook is made the view names it in place of the verb: "<title> <site> > <library>" after its line (P1)
+  { roles: BUTTON, name: /^.+ > .+$/, follows: WORKBOOK_LINE },
   // the first press's dialog has no name: its heading says "View your responses in Excel for the web" (P1)
   { roles: BUTTON, name: /^Continue$/i, inDialog: /in Excel for the web/i }
 ]
@@ -158,6 +164,10 @@ function matches(screen: Screen, e: ScreenElement, c: Control): boolean {
   if (!c.roles.includes(e.role) || !c.name.test(e.name ?? '')) return false
   if (c.under && !ancestors(screen, e).some((n) => c.under!.test(n))) return false
   if (c.inDialog && !dialogSays(screen, e, c.inDialog)) return false
+  if (c.follows) {
+    const before = [...screen.elements.values()].filter((x) => x.parent === e.parent && x.index !== e.index && x.index < e.index).sort((x, y) => y.index - x.index)[0]
+    if (!before || !c.follows.test(before.name ?? '')) return false
+  }
   if (c.only === 'off' && !isOn(e)) return false
   if (c.only === 'on' && isOn(e)) return false
   return true

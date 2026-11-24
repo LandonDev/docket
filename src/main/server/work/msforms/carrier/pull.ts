@@ -1,3 +1,5 @@
+import type { Screen, ScreenElement } from '@shared/computer/outward'
+import { WORKBOOK_LINE } from './guard'
 import { countOf } from './read'
 import { click, first, one, type FormsComputer, type Page } from './steps'
 import { CarrierStop, type PullAsk, type PulledWorkbook } from './types'
@@ -22,6 +24,15 @@ export const PULL_EVERY_MS = 5_000
 /** How long the Responses view may take to show its count (P1: about 20 s). */
 export const RESPONSES_VIEW_MS = 60_000
 const OPEN_IN_EXCEL = /^Open results in Excel$/i
+
+/** The button that names the workbook already made: the one right after the view's "Analyze and explore…" line. */
+export function workbookButton(screen: Screen): ScreenElement | null {
+  const all = [...screen.elements.values()]
+  const line = all.find((e) => WORKBOOK_LINE.test(e.name ?? ''))
+  if (!line) return null
+  const next = all.filter((e) => e.parent === line.parent && e.index > line.index).sort((a, b) => a.index - b.index)[0]
+  return next && next.role === 'button' && / > /.test(next.name ?? '') ? next : null
+}
 
 /** Forms' tip over the Responses view ("Everything you need to manage responses…"): its Got it, when it shows. */
 export async function dismissTip(page: Page): Promise<void> {
@@ -75,13 +86,15 @@ export async function pullWorkbook(deps: PullDeps, formId: string, ask: PullAsk)
     const results = await deps.openResponses()
     opened.push(results.window)
     // The Responses view loads for 20 s and more (P1), and draws "Open results in Excel" twice: the first is pressed.
-    const { got } = await results.until((x) => (countOf(x) === 0 ? 'none' : first(x, ['button', 'link'], OPEN_IN_EXCEL) ? 'open' : null), Math.max(deps.mount, RESPONSES_VIEW_MS))
+    // Once the workbook is made it names the workbook instead, a button after its line: that one is pressed.
+    const opener = (x: Screen) => first(x, ['button', 'link'], OPEN_IN_EXCEL) ?? workbookButton(x)
+    const { got } = await results.until((x) => (countOf(x) === 0 ? 'none' : opener(x) ? 'open' : null), Math.max(deps.mount, RESPONSES_VIEW_MS))
     if (got === 'none') return { unchanged: true }
     if (!got) results.stop('"Open results in Excel" was not on the Responses view')
     await dismissTip(results)
     const before = new Set((await computer.windows()).map((w) => w.id))
     await results.act((x) => {
-      const b = first(x, ['button', 'link'], OPEN_IN_EXCEL)
+      const b = opener(x)
       return b ? [click(b)] : null
     }, 'Open results in Excel')
     // The first press asks once: View your responses in Excel for the web … Continue.

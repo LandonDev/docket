@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { screenOfObservation } from '@shared/computer/outward'
-import { docIdOf, libraryRootOf, pullWorkbook } from './pull'
+import { guardStep } from './guard'
+import { docIdOf, libraryRootOf, pullWorkbook, workbookButton } from './pull'
 import { Page, type FormsComputer } from './steps'
 import { CarrierStop, type PullAsk } from './types'
 
@@ -48,6 +49,14 @@ describe('the pull', () => {
     const atRoot = await rig({ paths: ['/sites/RecWell/Shared Documents/TempCode proof make.xlsx'] }).run()
     expect(atRoot).toMatchObject({ workbook: { uniqueId: DOC, parentId: 'parent-1', serverPath: '/sites/RecWell/Shared Documents/TempCode proof make.xlsx' } })
     expect(await rig({ paths: ['/sites/RecWell/Shared Documents/TempCode proof folder/TempCode proof make.xlsx'] }).run()).toMatchObject({ workbook: { uniqueId: DOC } })
+  })
+
+  it('opens a workbook already made by its button in the view, after its line (P1)', async () => {
+    const made = screenOfObservation('app "Chromium" · window "Forms" · 1280×800\n[1] group "1 responses"\n[2] text "Analyze and explore up-to-date results in Excel."\n[3] button "TempCode proof make RecWell Owners > Shared Documents"\n[4] button "More options"', { bundleId: 'org.chromium.Chromium', name: 'Chromium' })!
+    expect(workbookButton(made)?.index).toBe(3)
+    expect(workbookButton(RESULTS)).toBeNull()
+    expect(() => guardStep('pull', made, { action: 'left_click', element: 3 } as never)).not.toThrow()
+    expect(() => guardStep('pull', made, { action: 'left_click', element: 4 } as never)).toThrow()
   })
 
   it('stops with no Excel window, a window that names no document, another form’s workbook, or a move during the wait', async () => {
