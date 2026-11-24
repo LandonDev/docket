@@ -183,6 +183,7 @@ export function launch(s: StandIn, headless: boolean): void {
   const electron = join(REPO, 'node_modules', '.bin', 'electron')
   const argv = ['xvfb-run', '-a', '-s', `-screen 0 1440x900x24 -nolisten tcp${process.env.RIG_FBDIR ? ` -fbdir ${process.env.RIG_FBDIR}` : ''}`, 'dbus-run-session', '--', electron, ...(process.env.RIG_INSPECT ? [`--inspect=${process.env.RIG_INSPECT}`] : []), '.']
   rmSync(join(s.data, 'server.json'), { force: true })
+  rmSync(join(s.data, 'rig-port.json'), { force: true })
   appendFileSync(s.log, `\n===== launch ${new Date().toISOString()}\n`)
   // Straight to the log file, never a pipe: a stand-in outlives the script that starts it, and a console write into a
   // closed pipe is an uncaught EPIPE that Electron answers with a modal dialog, freezing the main process.
@@ -202,7 +203,17 @@ export async function until(label: string, ms: number, test: () => Promise<boole
   console.log(`      timed out: ${label}`)
   return false
 }
-export const isUp = (s: StandIn): Promise<boolean> => until(`${s.name} up`, 150_000, () => existsSync(join(s.data, 'server.json')))
+/** Up: a headless instance writes server.json; a windowed one's port is read from its window over CDP, kept in rig-port.json. */
+export const isUp = (s: StandIn): Promise<boolean> =>
+  until(`${s.name} up`, 150_000, async () => {
+    if (existsSync(join(s.data, 'server.json'))) return true
+    if (!s.debug) return false
+    const w = await Window.attach(s.debug, 3_000)
+    const port = await w.eval<number | null>('window.api.getServerPort()').finally(() => w.close())
+    if (!port) return false
+    writeFileSync(join(s.data, 'rig-port.json'), JSON.stringify({ port }))
+    return true
+  }, 1_000)
 
 /** One request on a local socket (the implicit admin). */
 export function rpcAt<T = any>(port: number, method: string, params: unknown = {}, timeoutMs = 120_000): Promise<T> {
@@ -223,7 +234,7 @@ export function rpcAt<T = any>(port: number, method: string, params: unknown = {
   })
 }
 export const rpc = <T = any>(s: StandIn, method: string, params: unknown = {}, timeoutMs?: number): Promise<T> =>
-  rpcAt<T>((JSON.parse(readFileSync(join(s.data, 'server.json'), 'utf8')) as { port: number }).port, method, params, timeoutMs)
+  rpcAt<T>((JSON.parse(readFileSync(join(s.data, existsSync(join(s.data, 'server.json')) ? 'server.json' : 'rig-port.json'), 'utf8')) as { port: number }).port, method, params, timeoutMs)
 
 /** Every process a stand-in started (xvfb and electron children outlive their group), by its userData mark. */
 export async function stop(s: StandIn): Promise<void> {
