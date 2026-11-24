@@ -638,6 +638,47 @@ describe("the Clash dialog", () => {
     expect(mail.drafts).toEqual([expect.objectContaining({ body: "I'm running about 60 minutes late." })]);
   });
 
+  it("drafts nothing when the fresh reply shows he declined the earlier meeting, and says why", async () => {
+    lifeos.attendees = [{ address: "dana@example.com" }];
+    // Declined in Google; the times and place are as the screen has them, and the live read has not cleared the pair.
+    lifeos.earlier = { startsAt: T0, endsAt: T0 + 2 * HOUR, myResponse: "declined" };
+    show(overlap());
+    await settle();
+    fireEvent.click(screen.getByRole("button", { name: "Running late…" }));
+    await settle();
+    expect(mail.drafts).toEqual([]);
+    expect(screen.getByText("You declined Staff meeting, so this is no longer a clash")).toBeTruthy();
+    // A later event made all day no longer counts either.
+    lifeos.earlier = {};
+    lifeos.times = { allDay: true } as never;
+    fireEvent.click(screen.getByRole("button", { name: "Running late…" }));
+    await settle();
+    expect(mail.drafts).toEqual([]);
+    expect(screen.getByText("This is no longer a clash")).toBeTruthy();
+  });
+
+  it("says in one line why nothing was drafted when a fresh reply disagrees with the screen", async () => {
+    lifeos.attendees = [{ address: "dana@example.com" }];
+    lifeos.earlier = { startsAt: T0, endsAt: T0 + 75 * 60_000 };
+    show(overlap());
+    await settle();
+    fireEvent.click(screen.getByRole("button", { name: "Running late…" }));
+    await settle();
+    expect(mail.drafts).toEqual([]);
+    expect(screen.getByText("These events changed. Look at them again")).toBeTruthy();
+  });
+
+  it("says the event is gone when the later one was deleted while its people were read", async () => {
+    show(overlap());
+    await settle();
+    lifeos.held = Promise.resolve(null);
+    fireEvent.click(screen.getByRole("button", { name: "Running late…" }));
+    await settle();
+    expect(mail.drafts).toEqual([]);
+    expect(screen.getByText("That event is no longer in LifeOS")).toBeTruthy();
+    expect(screen.queryByText("Nobody on this event has an address")).toBeNull();
+  });
+
   it("says with a move whether the step told of guests, so the host can refuse one a guest was added to since", async () => {
     show(overlap(meeting(["decline", "propose"]), game(["move", "late"], { guests: true })));
     await settle();

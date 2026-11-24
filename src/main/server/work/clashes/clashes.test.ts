@@ -559,6 +559,58 @@ describe('the tell', () => {
     }
   })
 
+  it('takes back a told clash whose later event ended while the host was down, with LifeOS saying nothing', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval'] })
+    try {
+      let now = at(6)
+      const first = watchClashes(ctx, () => now)
+      await vi.advanceTimersByTimeAsync(5)
+      const dawn = { ...overlapClash, id: 'e_staff-e_game', a: { ...staff, startsAt: at(6, 30), endsAt: at(7) }, b: { ...game, startsAt: at(6, 45), endsAt: at(7) } }
+      const later = { ...overlapClash, id: 'e_lunch-e_call', a: { ...staff, eventId: 'e_lunch', startsAt: at(9), endsAt: at(10) }, b: { ...game, eventId: 'e_call', startsAt: at(9, 30), endsAt: at(10) } }
+      subs.at(-1)!.on(range(dawn, later))
+      await vi.advanceTimersByTimeAsync(5)
+      expect(told.map((t) => t.key)).toEqual(['clash:e_staff-e_game', 'clash:e_lunch-e_call'])
+      // The host stops at 6:10 and is back at 7:55; LifeOS never answers the new watcher.
+      first()
+      now = at(7, 55)
+      const second = watchClashes(ctx, () => now)
+      expect(done).toEqual(['clash:e_staff-e_game'])
+      expect(rows()).toEqual([{ key: 'clash:e_lunch-e_call' }])
+      // The other one goes at its own end, still with nothing from LifeOS.
+      now = at(10)
+      await vi.advanceTimersByTimeAsync(2 * 60 * 60_000 + 5 * 60_000)
+      expect(done).toEqual(['clash:e_staff-e_game', 'clash:e_lunch-e_call'])
+      expect(subs.at(-1)!.off).toBe(false)
+      second()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('takes a clash back at its end while a settings read hangs in the queue of its reads', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval'] })
+    try {
+      let now = at(6)
+      const stop = watchClashes(ctx, () => now)
+      await vi.advanceTimersByTimeAsync(5)
+      const dawn = { ...overlapClash, id: 'e_staff-e_game', a: { ...staff, startsAt: at(6, 30), endsAt: at(7) }, b: { ...game, startsAt: at(6, 45), endsAt: at(7) } }
+      subs.at(-1)!.on(range(dawn))
+      await vi.advanceTimersByTimeAsync(5)
+      expect(told).toHaveLength(1)
+      // The next answer waits on a settings read that never comes back.
+      answers['settings:get'] = () => new Promise(() => {})
+      subs.at(-1)!.on(range(dawn))
+      await vi.advanceTimersByTimeAsync(5)
+      now = at(7)
+      await vi.advanceTimersByTimeAsync(60 * 60_000)
+      expect(done).toEqual(['clash:e_staff-e_game'])
+      expect(rows()).toEqual([])
+      stop()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
   it('never tells a pair whose later event is over, and takes one back once it is', async () => {
     let now = at(9)
     const stop = watchClashes(ctx, () => now)

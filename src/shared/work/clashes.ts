@@ -132,6 +132,14 @@ export function sameEvent(
   return row.startsAt === side.startsAt && clashEnd({ startsAt: row.startsAt, endsAt: row.endsAt }) === side.endsAt && (!place || (row.location ?? '') === (side.location ?? ''))
 }
 
+/**
+ * Whether an event's row still counts toward a clash, by LifeOS's own rule (its `clashCounts`) as far as the row
+ * carries it: timed, shown, and not declined by him. The rule's last part, a decline or cancel of it on its way
+ * out, lives in LifeOS's calendar queue and not on the row.
+ */
+export const countsForClash = (row: { allDay?: boolean | undefined; hidden?: boolean | undefined; myResponse?: string | undefined }): boolean =>
+  !row.allDay && !row.hidden && row.myResponse !== 'declined'
+
 /** Whether someone else is on an event with an address, as LifeOS's clash rule says `guests`: a change on its calendar is mailed to them. */
 export const hasGuests = (row: { attendees?: readonly { address: string }[] | undefined }): boolean => row.attendees?.some((a) => a.address.includes('@')) ?? false
 

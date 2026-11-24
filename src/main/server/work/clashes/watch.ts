@@ -19,6 +19,29 @@ const ROLL_MS = 5 * 60_000
 
 export function ensureClashes(db: DatabaseSync): void {
   db.exec('CREATE TABLE IF NOT EXISTS work_clashes_told (key TEXT PRIMARY KEY, stamp TEXT NOT NULL, told_at INTEGER NOT NULL)')
+  // The later event's end, kept with the row, so a told clash is taken back at that end with no answer from LifeOS: after a restart, or while LifeOS is away.
+  const columns = db.prepare('PRAGMA table_info(work_clashes_told)').all() as { name: string }[]
+  if (!columns.some((c) => c.name === 'ends_at')) db.exec('ALTER TABLE work_clashes_told ADD COLUMN ends_at INTEGER')
+}
+
+/**
+ * Takes back every told clash whose later event has ended, by the end kept with its row: no LifeOS read, and
+ * nothing queued behind one, so a digest made after the end never says it. Nothing while Work is off, when the
+ * digest takes nothing back: the rows wait for the next look.
+ */
+export function sweepEnded(ctx: WorkCtx, now: number): void {
+  if (!ctx.enabled()) return
+  const ended = ctx.db.prepare('SELECT key FROM work_clashes_told WHERE ends_at IS NOT NULL AND ends_at <= ?').all(now) as { key: string }[]
+  const drop = ctx.db.prepare('DELETE FROM work_clashes_told WHERE key = ?')
+  for (const { key } of ended) {
+    try {
+      ctx.tell.done(key)
+    } catch (err) {
+      ctx.log(`clashes: an ended clash was not taken back: ${errorText(err)}`)
+      continue
+    }
+    drop.run(key)
+  }
 }
 
 export const tellKey = (id: string): string => `clash:${id}`
@@ -53,8 +76,11 @@ function openOf(c: LifeosClash, workspaceId: string, homes: ReadonlyMap<SectorKe
  */
 export function tellClashes(ctx: WorkCtx, clashes: readonly LifeosClash[], zone: string, now: number): void {
   const homes = homesOf(ctx)
-  const told = new Map((ctx.db.prepare('SELECT key, stamp FROM work_clashes_told').all() as { key: string; stamp: string }[]).map((r) => [r.key, r.stamp]))
-  const record = ctx.db.prepare('INSERT INTO work_clashes_told (key, stamp, told_at) VALUES (?, ?, ?) ON CONFLICT(key) DO UPDATE SET stamp = excluded.stamp, told_at = excluded.told_at')
+  const told = new Map((ctx.db.prepare('SELECT key, stamp, ends_at AS endsAt FROM work_clashes_told').all() as { key: string; stamp: string; endsAt: number | null }[]).map((r) => [r.key, r]))
+  const record = ctx.db.prepare(
+    'INSERT INTO work_clashes_told (key, stamp, told_at, ends_at) VALUES (?, ?, ?, ?) ON CONFLICT(key) DO UPDATE SET stamp = excluded.stamp, told_at = excluded.told_at, ends_at = excluded.ends_at'
+  )
+  const setEnd = ctx.db.prepare('UPDATE work_clashes_told SET ends_at = ? WHERE key = ?')
   const seen = new Set<string>()
   for (const c of clashes) {
     // A pair whose later event is over is settled, as the Agenda and Today drop it: never told (its deadline has
@@ -77,14 +103,19 @@ export function tellClashes(ctx: WorkCtx, clashes: readonly LifeosClash[], zone:
       key
     }
     const stamp = stampOf(tell)
-    if (told.get(key) === stamp) continue
+    const prev = told.get(key)
+    if (prev?.stamp === stamp) {
+      // Told as it is; its end is kept fresh all the same (the tell's words do not say it, a row told by the last build has none).
+      if (prev.endsAt !== c.b.endsAt) setEnd.run(c.b.endsAt, key)
+      continue
+    }
     try {
       ctx.tell(tell)
     } catch (err) {
       ctx.log(`clashes: a clash was not told: ${errorText(err)}`)
       continue
     }
-    record.run(key, stamp, now)
+    record.run(key, stamp, now, c.b.endsAt)
   }
   const drop = ctx.db.prepare('DELETE FROM work_clashes_told WHERE key = ?')
   for (const key of told.keys()) {
@@ -108,7 +139,6 @@ export function watchClashes(ctx: WorkCtx, now: () => number = Date.now): () => 
   let last = ''
   let chain: Promise<void> = Promise.resolve()
   let stopped = false
-  let kept: readonly LifeosClash[] = []
   let expiry: ReturnType<typeof setTimeout> | null = null
 
   const onRange = async (range: LifeosRange | null, mine: number): Promise<void> => {
@@ -120,31 +150,31 @@ export function watchClashes(ctx: WorkCtx, now: () => number = Date.now): () => 
     }
     zone = await zoneOf(ctx)
     if (stopped || mine !== generation) return
-    kept = range.clashes
-    tellClashes(ctx, kept, zone, now())
+    tellClashes(ctx, range.clashes, zone, now())
     expire()
     roll()
   }
   /**
-   * The last answer's clashes are looked at again when the first of their later events ends, with no answer from
-   * LifeOS needed: a pair that is over is taken back then, so a digest made after it never says it.
+   * A timer of the watcher's own, set at the first end kept with a told row: the rows that have ended are taken
+   * back then (`sweepEnded`), with no answer from LifeOS needed and outside the queue of its reads, so a settings
+   * read that hangs holds nothing up.
    */
   const expire = (): void => {
     if (expiry) clearTimeout(expiry)
     expiry = null
     if (stopped) return
     const at = now()
-    const next = Math.min(...kept.map((c) => c.b.endsAt).filter((end) => end > at))
-    if (!Number.isFinite(next)) return
+    const next = (ctx.db.prepare('SELECT MIN(ends_at) AS next FROM work_clashes_told WHERE ends_at > ?').get(at) as { next: number | null } | undefined)?.next
+    if (next == null) return
     expiry = setTimeout(() => {
       expiry = null
-      chain = chain
-        .then(() => {
-          if (stopped || !ctx.enabled()) return
-          tellClashes(ctx, kept, zone, now())
-          expire()
-        })
-        .catch((err: unknown) => ctx.log(`clashes: the watch failed: ${errorText(err)}`))
+      if (stopped) return
+      try {
+        sweepEnded(ctx, now())
+      } catch (err) {
+        ctx.log(`clashes: the watch failed: ${errorText(err)}`)
+      }
+      expire()
     }, Math.min(next - at, MAX_WAIT))
     expiry.unref?.()
   }
@@ -164,6 +194,9 @@ export function watchClashes(ctx: WorkCtx, now: () => number = Date.now): () => 
     subscribe()
   }
 
+  // What ended while the host was down goes before anything else, and the rest wait on their timer.
+  sweepEnded(ctx, now())
+  expire()
   subscribe()
   void zoneOf(ctx).then((z) => {
     zone = z

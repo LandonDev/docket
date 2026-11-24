@@ -152,9 +152,12 @@ kept under `TELL_VERSION`: a build that tells another way raises it, and each
 kept clash is told once more on its first read. A pair whose later event is
 over is never told, and one told is taken back once it is, as the Agenda and
 Today drop it (its deadline has passed, which the digest would take as at
-once). The watcher does not wait on LifeOS for that: a timer of its own looks
-at the last answer's clashes again when the first of their later events ends,
-so a digest made after a pair is over never says it:
+once). The watcher does not wait on LifeOS for that: each told row keeps its
+later event's end (`work_clashes_told.ends_at`), and `sweepEnded` takes back
+every row whose end has passed, when the watcher starts (a host back from a
+restart, with LifeOS quiet) and on a timer of its own set at the first end
+kept, outside the queue of its LifeOS reads (a settings read that hangs holds
+nothing up), so a digest made after a pair is over never says it:
 
 - `kind: 'clashes.new'`, `key: 'clash:<id>'`, the same on every host, so the
   digest shows one row for one clash.
@@ -203,8 +206,13 @@ The pillar has no view of its own and no row in the column.
   is given the same; if the two change or stop clashing while it reads, or
   the later event ends or changes job (Mail would open under the old one),
   or either reply has its event at other times or another place than the
-  screen (`sameEvent`), or the earlier event is gone, nothing is drafted and
-  the press is his again on the pair as it is). The subject names the later
+  screen (`sameEvent`), nothing is drafted and the press is his again on the
+  pair as it is, with "These events changed. Look at them again" in the
+  dialog's error line. Either event gone says "That event is no longer in
+  LifeOS"; either no longer counting toward a clash by LifeOS's rule
+  (`countsForClash`: timed, shown, not declined; a decline still in its
+  calendar queue is not on the row) says "You declined Staff meeting, so
+  this is no longer a clash", or "This is no longer a clash"). The subject names the later
   event by the title its reply has, which may be a rename the screen has yet
   to draw. The minutes short of a drive clash also rest on the later event's
   arrive-by, which a clash's side does not carry, so a change of that alone is

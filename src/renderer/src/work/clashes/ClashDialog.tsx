@@ -1,6 +1,6 @@
 import { makeFunctionReference } from "convex/server";
 import { useEffect, useRef, useState, type FormEvent } from "react";
-import { clashTitle, driveLine, sameEvent, timeNear, type Clash, type ClashAnswered, type ClashSide, type ClashWay } from "@shared/work/clashes";
+import { clashTitle, countsForClash, driveLine, sameEvent, timeNear, type Clash, type ClashAnswered, type ClashSide, type ClashWay } from "@shared/work/clashes";
 import { addDays, startOfDay } from "work-kit/views/lib/agenda";
 import { formatDayHeading } from "work-kit/views/lib/format";
 import { DialogFooter, ErrorLine } from "../../chrome/ConfirmDialog";
@@ -280,21 +280,26 @@ function Body({
     const stampOf = (c: Clash) => `${pairStamp(c)}|${c.b.eventId}|${c.b.sector}|${c.b.workspaceId ?? ""}`;
     const pressed = stampOf(clash);
     // Both events are read again: the line is built from the later event's title and people, and its minutes from both events' times and places (the drive is between them).
-    type Row = { sector?: string; title?: string; startsAt?: number; endsAt?: number; location?: string; attendees?: { address: string }[] } | null;
+    type Row = { sector?: string; title?: string; startsAt?: number; endsAt?: number; location?: string; allDay?: boolean; hidden?: boolean; myResponse?: string; attendees?: { address: string }[] } | null;
     const read = (id: string) => answered(session.client!.query(eventGet, { id })) as Promise<Row>;
     Promise.all([read(clash.b.eventId), read(clash.a.eventId)]).then(
       ([event, earlier]) => {
         setPending(false);
         // The replies may know of a change the screen has not drawn yet: the later event's job, and either event's times and place (`sameEvent`: an end counts as the clash rule counts it, so one taken away is an hour on). Any of them changed, or the earlier event gone, and the minutes he pressed for are no longer the minutes: nothing is drafted, and the press is his again once the dialog shows the pair as it is.
         const now = latest.current;
-        if ((event?.sector !== undefined && event.sector !== clash.b.sector) || earlier === null || (event && sameEvent(event, now.b) === false) || (earlier && sameEvent(earlier, now.a) === false)) return setBusy(null);
+        // Either event gone: there is nothing to be late to, or nothing he is late from.
+        if (event === null || earlier === null) return failed(null, "That event is no longer in LifeOS");
+        // Either event no longer counts toward a clash by LifeOS's rule (`countsForClash`): he declined it, or it was hidden or made all day. The pair is settled; a line saying he is late would be wrong.
+        const out = ([[earlier, now.a], [event, now.b]] as const).find(([row]) => !countsForClash(row));
+        if (out) return failed(null, out[0].myResponse === "declined" ? `You declined ${out[1].title}, so this is no longer a clash` : "This is no longer a clash");
+        if ((event.sector !== undefined && event.sector !== clash.b.sector) || sameEvent(event, now.b) === false || sameEvent(earlier, now.a) === false) return failed(null, "These events changed. Look at them again");
         // The pair changed while the people were read (its times, its drive, or the later event's job), or stopped being a clash: the minutes he pressed for are no longer the minutes, or the Mail no longer the job's. The dialog shows the pair as it is, or that it is gone, and the press is his again.
         // Nor is a line drafted for an event that ended in the wait: its Running late is gone from the dialog by then.
         if (left.current || now.b.endsAt <= Date.now() || stampOf(now) !== pressed) return setBusy(null);
-        const to = (event?.attendees ?? []).map((a) => a.address).filter((a) => a.includes("@"));
+        const to = (event.attendees ?? []).map((a) => a.address).filter((a) => a.includes("@"));
         if (!to.length) return failed(null, "Nobody on this event has an address");
         // The subject names the event as LifeOS has it now: a rename the screen has yet to draw is the name its people know.
-        const title = typeof event?.title === "string" && event.title.trim() ? event.title : now.b.title;
+        const title = typeof event.title === "string" && event.title.trim() ? event.title : now.b.title;
         if (!lateMail(environmentId, workspaceId, lateDraft({ ...now, b: { ...now.b, title } }, to, Date.now()))) return failed(null, "This job's workspace is not on this host");
         close ? close(onClose) : onClose();
       },
