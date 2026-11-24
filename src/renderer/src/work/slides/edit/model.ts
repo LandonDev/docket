@@ -371,41 +371,88 @@ export function runsOp(model: Model, slide: number, shape: number, was?: readonl
  * i is the edit's paragraph i, and a run is as many of the file's runs as it has pieces between line breaks, each
  * break one of them. Answers what moves every `from` a model of the box holds onto them, so the next send names the
  * runs its words now lie in: a run by the run it came from and what he set on it (two runs alike in both are written
- * alike), a paragraph likewise. One the edit did not write that way (words he took out, then brought back with the
- * box's Undo; a look on top that the written run does not have) names no run of the file any more: it keeps its look
- * by setting it all, as it is drawn, and a paragraph its level, alignment and list, so nothing falls back to the first
- * run's look or to whatever paragraph now stands at its place.
+ * alike), a paragraph likewise. One whose run or paragraph of the file was written, but with another look on top (his
+ * box's Undo took back a look the keep wrote), still names it, so it keeps all its own run held (a link, a raised
+ * letter, a custom mark, margins), and sets over it only what differs from what was written there. One whose source
+ * was not written at all (words taken out, then brought back) names nothing: it sets its whole look as drawn, a
+ * paragraph its level, alignment and list.
  */
 export function renumber(sent: Model): (model: Model) => Model {
   const runs = new Map<string, [number, number]>();
   const paras = new Map<string, number>();
+  /** Where each run and paragraph of the file was written, with the look the edit laid on it there. */
+  const runsOf = new Map<string, { at: [number, number]; set: RunLook }>();
+  const parasOf = new Map<string, { at: number; set: ParaLook }>();
   const runKey = (from: unknown, set: RunLook): string => JSON.stringify([from, wireLook(set)]);
   const paraKey = (from: unknown, set: ParaLook): string => JSON.stringify([from, PARA_KEYS.map((k) => set[k] ?? null)]);
   const first = <V>(map: Map<string, V>, key: string, value: V): void => void (map.has(key) || map.set(key, value));
   sent.forEach((para, p) => {
-    if (para.from !== undefined) first(paras, paraKey(para.from, para.set), p);
+    if (para.from !== undefined) {
+      first(paras, paraKey(para.from, para.set), p);
+      first(parasOf, String(para.from), { at: p, set: para.set });
+    }
     let at = 0;
     for (const run of para.runs) {
-      if (run.from) first(runs, runKey(run.from, run.set), [p, at] as [number, number]);
+      if (run.from) {
+        first(runs, runKey(run.from, run.set), [p, at] as [number, number]);
+        first(runsOf, JSON.stringify(run.from), { at: [p, at], set: run.set });
+      }
       const pieces = run.text.split(/[\n\v]/);
       at += pieces.length - 1 + pieces.filter(Boolean).length;
     }
   });
-  const run = (from: [number, number] | undefined, set: RunLook): [number, number] | undefined => (from ? runs.get(runKey(from, set)) : undefined);
+  /** A run moved onto where it was written: by its source and look, else by its source with the look it differs by, else none. */
+  const moveRun = (from: [number, number] | undefined, set: RunLook, look: RunLook): { from?: [number, number]; set: RunLook } => {
+    if (!from) return { set };
+    const same = runs.get(runKey(from, set));
+    if (same) return { from: same, set };
+    const there = runsOf.get(JSON.stringify(from));
+    return there ? { from: there.at, set: { ...lookOver(there.set, set, look), ...set } } : { set: { ...lookSet(look), ...set } };
+  };
   return (model) =>
     model.map(({ from, carry, ...para }) => {
-      const to = from === undefined ? undefined : paras.get(paraKey(from, para.set));
-      const carried = carry && run(carry.from, carry.set);
+      const same = from === undefined ? undefined : paras.get(paraKey(from, para.set));
+      const there = from === undefined || same !== undefined ? undefined : parasOf.get(String(from));
+      const moved = carry ? moveRun(carry.from, carry.set, para.look) : null;
       return {
         ...para,
-        ...(to !== undefined ? { from: to } : from !== undefined ? { set: { level: para.level, align: para.align, list: para.list, ...para.set } } : {}),
-        ...(carry ? { carry: { set: carried || !carry.from ? carry.set : { ...lookSet(para.look), ...carry.set }, ...(carried ? { from: carried } : {}) } } : {}),
+        ...(same !== undefined
+          ? { from: same }
+          : there
+            ? { from: there.at, set: { ...paraOver(there.set, para), ...para.set } }
+            : from !== undefined
+              ? { set: { level: para.level, align: para.align, list: para.list, ...para.set } }
+              : {}),
+        ...(moved ? { carry: { set: moved.set, ...(moved.from ? { from: moved.from } : {}) } } : {}),
         runs: para.runs.map(({ from: was, ...r }) => {
-          const now = run(was, r.set);
-          return now ? { ...r, from: now } : was ? { ...r, set: { ...lookSet(r.look), ...r.set } } : r;
+          const now = moveRun(was, r.set, r.look);
+          return { ...r, set: now.set, ...(now.from ? { from: now.from } : {}) };
         }),
       };
     });
+}
+
+/**
+ * What a run must set over the run of the file it names to look as drawn, where the edit wrote that run with `written`
+ * on top and the run now sets `set`: each part `written` set that `set` does not, put back as it is drawn.
+ */
+function lookOver(written: RunLook, set: RunLook, look: RunLook): RunLook {
+  const out: RunLook = {};
+  for (const key of LOOK_KEYS) {
+    if (written[key] === undefined || set[key] !== undefined) continue;
+    if (key === "bold" || key === "italic" || key === "underline") out[key] = !!look[key];
+    else if (key === "theme") out.theme = look.theme ?? null;
+    else if (look[key] !== undefined) (out as Record<string, unknown>)[key] = look[key];
+  }
+  if (out.color !== undefined && look.theme) out.theme = look.theme;
+  return out;
+}
+
+/** The same for a paragraph: its level, alignment or list where the edit wrote one it no longer sets. */
+function paraOver(written: ParaLook, para: Pick<EditPara, "level" | "align" | "list" | "set">): ParaLook {
+  const out: ParaLook = {};
+  for (const key of PARA_KEYS) if (written[key] !== undefined && para.set[key] === undefined) (out as Record<string, unknown>)[key] = para[key];
+  return out;
 }
 
 /** A look as one he set it all: what a run takes when it no longer names a run of the file to keep its look from. */
@@ -425,18 +472,47 @@ export const unchanged = (model: Model, initial: Model): boolean => JSON.stringi
 export const sameWords = (a: DeckShape | undefined, b: DeckShape | undefined): boolean => !!a && !!b && JSON.stringify(a.paragraphs) === JSON.stringify(b.paragraphs);
 
 /**
- * His words kept over a shape that changed under him: each `from` that the
- * new words still have stays, the others go, and what he set stays. A run or
- * a paragraph that loses its `from` keeps its look by setting it all, as
- * `renumber` does: the host would give it its paragraph's first look.
+ * His words kept over a shape that changed under him (`was` the words his `from`s were read from, `now` the shape as
+ * it is): each run and paragraph is moved onto the one of the new words that is the same (its words and its look, as
+ * the outline gives them; a paragraph whose words changed, by a run of it still there), in its own paragraph first, else
+ * the one alike anywhere; never onto whatever now stands at its old place (a run put in before it there by another save would lend it its look). What has no such one names
+ * nothing and keeps its look by setting it, as `renumber` does, and what he set stays.
  */
-export function rebase(model: Model, shape: DeckShape): Model {
-  const paras = shape.paragraphs ?? [];
-  return model.map(({ from, ...para }) => ({
-    ...para,
-    ...(from !== undefined && from < paras.length ? { from } : from !== undefined ? { set: { level: para.level, align: para.align, list: para.list, ...para.set } } : {}),
-    runs: para.runs.map((run) => (run.from && paras[run.from[0]]?.runs[run.from[1]] ? run : { text: run.text, look: run.look, set: run.from ? { ...lookSet(run.look), ...run.set } : run.set })),
-  }));
+export function rebase(model: Model, was: DeckShape | undefined, now: DeckShape): Model {
+  const olds = was?.paragraphs ?? [];
+  const news = now.paragraphs ?? [];
+  const paraWord = (p: DeckParagraph): string => JSON.stringify([p.runs.map((r) => r.text).join(""), p.level, p.align, p.list]);
+  const one = <T>(found: T[]): T | undefined => (found.length === 1 ? found[0] : undefined);
+  const para = (p: number): number | undefined => {
+    const old = olds[p];
+    if (!old) return undefined;
+    const pick = (found: number[]): number | undefined => (found.includes(p) ? p : one(found));
+    // The same paragraph, words and all; else, where words changed in it, the one of its level and list that still
+    // holds one of its runs as it was.
+    const alike = pick(news.flatMap((n, q) => (paraWord(n) === paraWord(old) ? [q] : [])));
+    if (alike !== undefined) return alike;
+    const runWords = new Set(old.runs.filter((r) => r.text).map((r) => JSON.stringify(r)));
+    return pick(news.flatMap((n, q) => (n.level === old.level && n.list === old.list && n.runs.some((x) => runWords.has(JSON.stringify(x))) ? [q] : [])));
+  };
+  const run = ([p, r]: [number, number]): [number, number] | undefined => {
+    const old = olds[p]?.runs[r];
+    if (!old) return undefined;
+    const word = JSON.stringify(old);
+    const alike = news.flatMap((n, q) => n.runs.flatMap((x, s) => (JSON.stringify(x) === word ? [[q, s] as [number, number]] : [])));
+    const home = alike.filter(([q, s]) => q === p && s === r);
+    return home[0] ?? one(alike.filter(([q]) => q === p)) ?? one(alike);
+  };
+  return model.map(({ from, ...p }) => {
+    const to = from === undefined ? undefined : para(from);
+    return {
+      ...p,
+      ...(to !== undefined ? { from: to } : from !== undefined ? { set: { level: p.level, align: p.align, list: p.list, ...p.set } } : {}),
+      runs: p.runs.map(({ from: at, ...r }) => {
+        const moved = at ? run(at) : undefined;
+        return moved ? { ...r, from: moved } : at ? { ...r, set: { ...lookSet(r.look), ...r.set } } : r;
+      }),
+    };
+  });
 }
 
 /** The look of the whole shape as one `format` edit sets it. */

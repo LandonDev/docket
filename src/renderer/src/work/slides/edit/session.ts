@@ -501,7 +501,7 @@ export class HandSession {
       this.set({ failure: { conflict: true, message: "The shape is no longer on the slide" } });
       return;
     }
-    const model = rebase(box.model, shape);
+    const model = rebase(box.model, box.shape, shape);
     this.setBox({ shape, initial: modelOf(shape, this.fallback()), model, drawn: model, conflict: false, paint: box.paint + 1, before: this.store.get().view?.renders.file?.rev ?? box.before });
     this.set({ failure: null });
   }

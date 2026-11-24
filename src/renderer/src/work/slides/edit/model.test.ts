@@ -168,18 +168,23 @@ describe("the typing box's model", () => {
     expect(unchanged(applyLook(looked, at(0, 0, 0, 3), { bold: false }).model, model)).toBe(false);
   });
 
-  it("keeps his words over a shape that changed under him, dropping each place the new words no longer have", () => {
+  it("keeps his words over a shape that changed under him, each run on the same run of the new words, never on what stands at its old place", () => {
     const model = splitParagraph(modelOf(shape(), FALLBACK), allOf(modelOf(shape(), FALLBACK))).model;
     const shorter = shape({ paragraphs: [{ level: 0, align: "left", list: "none", runs: [{ text: "Who", size: 40 }] }] });
-    const kept = rebase(insertText(modelOf(shape(), FALLBACK), at(1, 8), "!").model, shorter);
-    expect(kept[0].from).toBe(0);
-    expect(kept[0].runs.map((r) => r.from)).toEqual([[0, 0], undefined, undefined]);
-    expect(kept[1].from).toBeUndefined();
-    expect(kept[1].runs[0]).not.toHaveProperty("from");
-    // What loses its place keeps its look by setting it: "comes" stays bold, the second paragraph its level and bullet.
+    const kept = rebase(insertText(modelOf(shape(), FALLBACK), at(1, 8), "!").model, shape(), shorter);
+    // Nothing of the old words is in the new ones as it was: every run and paragraph names nothing and keeps its look.
+    expect(kept.map((p) => p.from)).toEqual([undefined, undefined]);
+    expect(kept[0].runs.map((r) => r.from)).toEqual([undefined, undefined, undefined]);
     expect(kept[0].runs[1].set).toMatchObject({ bold: true, size: 40 });
     expect(kept[1].set).toMatchObject({ level: 1, align: "center", list: "bullet" });
     expect(kept[1].runs[0].set).toMatchObject({ font: "Arial", size: 20, color: "FF0000", bold: false });
+    // Another save put a run in before "comes": it is followed to its new place, never lent the new run's look.
+    const before = shape();
+    const inserted = shape({ paragraphs: [{ ...before.paragraphs![0], runs: [before.paragraphs![0].runs[0], { text: "now ", font: "Arial", size: 12, italic: true }, ...before.paragraphs![0].runs.slice(1)] }, before.paragraphs![1]] });
+    const moved = rebase(insertText(modelOf(before, FALLBACK), at(1, 8), "!").model, before, inserted);
+    expect(moved.map((p) => p.from)).toEqual([0, 1]);
+    expect(moved[0].runs.map((r) => [r.text, r.from])).toEqual([["Who ", [0, 0]], ["comes", [0, 2]], ["\n", [0, 3]]]);
+    expect(moved[1].runs[0].from).toEqual([1, 0]);
     expect(model).toHaveLength(2);
     expect(sameWords(shape(), shape())).toBe(true);
     expect(sameWords(shape(), shorter)).toBe(false);
@@ -239,5 +244,28 @@ describe("a box's words once the host wrote them", () => {
     const before = renumber(sent)(words);
     // "Who " was taken out before the send: an undo that brings it back has no run of the file to name.
     expect(before[0].runs.map((r) => [r.text, r.from])).toEqual([["Who ", undefined], ["comes", [0, 0]], ["\n", [0, 1]]]);
+  });
+});
+
+describe("the box's Undo past a keep keeps what its run and paragraph of the file hold", () => {
+  it("a linked run made bold, kept, then undone still names its run and sets bold off, never the paragraph's first run", () => {
+    const linked = shape({ paragraphs: [{ level: 0, align: "left", list: "none", runs: [{ text: "Read ", size: 18 }, { text: "the report", size: 18 }, { text: " today", size: 18 }] }] });
+    const words = modelOf(linked, FALLBACK);
+    const sent = applyLook(words, at(0, 5, 0, 15), { bold: true }).model;
+    // His Undo in the box brings back the words as they were before the bold, which the keep wrote bold.
+    const back = renumber(sent)(words);
+    const op = runsOp(back, 3, 2);
+    expect(op.paragraphs[0].runs[1]).toEqual({ text: "the report", from: [0, 1], bold: false });
+    // What the keep wrote as it is sends nothing new.
+    expect(runsOp(renumber(sent)(sent), 3, 2).paragraphs[0].runs[1]).toEqual({ text: "the report", from: [0, 1], bold: true });
+  });
+
+  it("a paragraph with its own mark, centred, kept, then undone still names its paragraph and sends its alignment alone", () => {
+    const dashed = shape({ paragraphs: [{ level: 0, align: "left", list: "none", runs: [{ text: "Agenda", size: 18 }] }, { level: 1, align: "left", list: "bullet", runs: [{ text: "Budget", size: 18 }] }] });
+    const words = modelOf(dashed, FALLBACK);
+    const sent = applyPara(words, at(1, 0, 1, 6), { align: "center" });
+    const op = runsOp(renumber(sent)(words), 3, 2);
+    // no `list`: the paragraph keeps its own "–" mark and its margins; only what the Undo changed is set
+    expect(op.paragraphs[1]).toEqual({ from: 1, align: "left", runs: [{ text: "Budget", from: [1, 0] }] });
   });
 });
