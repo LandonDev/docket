@@ -1,5 +1,5 @@
 {
-  "n": 372,
-  "notes": "The box sees a linked PC's folders: a thread on the box reads your J: folder through the laptop, and Files lists it from the Mac; a new document in a Teams library keeps saving; Files loads on the box again and a release can no longer ship with it dead; Save As… for documents, linked; Word export keeps its spacing; export previews draw; set up a computer with one link (first landing).",
-  "ts": 1795516246867
+  "n": 373,
+  "notes": "Nine ways Files could lose or misplace an edit are closed (rename of an open copy, delete before the bin answers, quit or close mid-typing, close during a save, and more); Word in a Teams library saves quickly again and the header reaches \"In Teams\" once OneDrive has it; a PDF's marks stay with a file held on another computer; the phone app compiles with the new account rules; first fixes from the walls pass.",
+  "ts": 1795521194864
 }
