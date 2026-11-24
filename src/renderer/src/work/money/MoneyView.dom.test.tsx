@@ -260,26 +260,32 @@ describe("the Money view", () => {
       unobserve() {}
       disconnect() {}
     });
-    const seen = { forEach: (tell: (fn: () => void) => void) => watchers.filter((w) => w.at === document.querySelector("[aria-label='Money header']")).forEach((w) => tell(() => w.fn([]))) };
+    // The observer tells the header's content box, fractional, as the layout has it.
+    const resize = (width: number): void => watchers.filter((w) => w.at === document.querySelector("[aria-label='Money header']")).forEach((w) => w.fn([{ contentRect: { width } }]));
+    const choices = async (): Promise<string[]> => {
+      fireEvent.click(screen.getByRole("button", { name: "More" }));
+      await screen.findAllByRole("menuitem");
+      const said = screen.queryAllByRole("menuitemcheckbox").map((m) => m.textContent!);
+      fireEvent.keyDown(document.activeElement ?? document.body, { key: "Escape" });
+      await settle();
+      return said;
+    };
     try {
       mount();
       await settle();
-      const head = screen.getByRole("toolbar", { name: "Money header" });
+      // Sol round 4: a 543.75px header is 519.75px of content, so the toggle is hidden and More holds the choices.
+      act(() => resize(519.75));
+      expect(await choices()).toEqual(["Month", "Year"]);
       // Measured inside the header's padding, as its container query is (Sol round 3 P2): 532px is 508px of content.
-      Object.assign(head.style, { paddingLeft: "16px", paddingRight: "8px" });
-      Object.defineProperty(head, "clientWidth", { configurable: true, value: 532 });
-      act(() => seen.forEach((fn) => fn()));
+      act(() => resize(508));
       fireEvent.click(screen.getByRole("button", { name: "More" }));
       expect((await screen.findAllByRole("menuitemcheckbox")).map((m) => m.textContent)).toEqual(["Month", "Year"]);
       fireEvent.click(screen.getByRole("menuitemcheckbox", { name: "Year" }));
       await settle();
       expect(document.querySelector("[data-money-period]")?.textContent).toMatch(/^\d{4}$/);
-      // At 544px (520px of content) the toggle holds them and More does not say them twice.
-      Object.defineProperty(head, "clientWidth", { configurable: true, value: 544 });
-      act(() => seen.forEach((fn) => fn()));
-      fireEvent.click(screen.getByRole("button", { name: "More" }));
-      await screen.findAllByRole("menuitem");
-      expect(screen.queryAllByRole("menuitemcheckbox")).toEqual([]);
+      // At 520px of content the toggle holds them and More does not say them twice.
+      act(() => resize(520));
+      expect(await choices()).toEqual([]);
     } finally {
       vi.unstubAllGlobals();
     }

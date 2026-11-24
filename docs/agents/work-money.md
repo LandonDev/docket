@@ -540,8 +540,9 @@ the `work.money` push.
   carries both, and Month or Year leaves the
   header for two ticked rows at the head of More, so Add and More stay in
   sight. Both sides measure the header's content box against one 520px
-  (`WIDE_HEAD`, `headIsNarrow` in layout.ts; layout.test walks the widths
-  around it).
+  (`WIDE_HEAD`, `headIsNarrow` in layout.ts), More by ResizeObserver's
+  fractional width, never a rounded `clientWidth`; layout.test walks the
+  widths around it in quarter pixels.
 - Open ledger and a row's paperclip open the file in a Files tab
   (`work.money.open` or `receiptSource`, then `work.files.open` and the
   Files view): no thread is made for a file.

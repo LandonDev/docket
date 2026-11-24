@@ -64,18 +64,21 @@ export const openMoneyDialog = (dialog: MoneyDialog) => set({ dialog });
 export const setMoneyPeriod = (period: PeriodState) => set({ period });
 
 /**
- * Whether the view's header is under `NARROW_HEAD` wide: a hidden mark's row, measured inside its padding. The toggle
- * hides by the header's own container query (WIDE_HEAD), which measures the same content box; this says when More
- * takes its rows, on the same width (`headIsNarrow`).
+ * Whether the view's header is under `NARROW_HEAD` wide: a hidden mark's row, its content box as ResizeObserver gives
+ * it, fractional. The toggle hides by the header's own container query (WIDE_HEAD), which measures the same box; this
+ * says when More takes its rows, on the same width (`headIsNarrow`).
  */
 function useNarrowHead(): [(el: HTMLSpanElement | null) => void, boolean] {
   const [row, setRow] = useState<HTMLElement | null>(null);
   const [narrow, setNarrow] = useState(false);
   useEffect(() => {
     if (!row || typeof ResizeObserver === "undefined") return;
-    const measure = (): void => {
+    const measure = (entries?: readonly ResizeObserverEntry[]): void => {
+      const entry = entries?.[entries.length - 1];
+      if (entry) return setNarrow(headIsNarrow(entry.contentRect.width));
+      // Before the first observation: the laid-out box less its padding, fractional too (the header has no side border).
       const style = getComputedStyle(row);
-      setNarrow(headIsNarrow(row.clientWidth, parseFloat(style.paddingLeft) || 0, parseFloat(style.paddingRight) || 0));
+      setNarrow(headIsNarrow(row.getBoundingClientRect().width - (parseFloat(style.paddingLeft) || 0) - (parseFloat(style.paddingRight) || 0)));
     };
     measure();
     const watch = new ResizeObserver(measure);

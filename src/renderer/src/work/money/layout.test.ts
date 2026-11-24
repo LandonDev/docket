@@ -40,19 +40,18 @@ describe("Month or Year in the header or in More, never neither", () => {
     expect(cssWidth).toBe(NARROW_HEAD);
   });
 
-  it("walks the header's widths around the boundary: the toggle hides exactly where More takes its rows", () => {
-    // The frame's header: 16px of padding at the start, 8px at the end (WorkViewPage's `pl-4 pr-2`).
-    for (let client = NARROW_HEAD + 24 - 6; client <= NARROW_HEAD + 24 + 6; client++) {
-      const content = client - 24;
-      expect(headIsNarrow(client, 16, 8), `${client}px`).toBe(toggleHidden(content));
+  it("walks the header's content widths around the boundary in quarter pixels: the toggle hides exactly where More takes its rows", () => {
+    for (let content = NARROW_HEAD - 3; content <= NARROW_HEAD + 3; content += 0.25) {
+      expect(headIsNarrow(content), `${content}px`).toBe(toggleHidden(content));
     }
-    // Sol's width: 532px of header is 508px of content, so the toggle is hidden and More holds the choices.
-    expect(headIsNarrow(532, 16, 8)).toBe(true);
-    expect(headIsNarrow(544, 16, 8)).toBe(false);
-    expect(headIsNarrow(543, 16, 8)).toBe(true);
+    // Sol round 4: a 543.75px header is 519.75px of content (WorkViewPage's `pl-4 pr-2`): the toggle is hidden, so More
+    // holds the choices, where an integer clientWidth of 544 said it need not.
+    expect(headIsNarrow(543.75 - 24)).toBe(true);
+    expect(headIsNarrow(508)).toBe(true);
+    expect(headIsNarrow(520)).toBe(false);
   });
 
   it("holds nothing narrow for a header not laid out yet", () => {
-    expect(headIsNarrow(0, 16, 8)).toBe(false);
+    expect(headIsNarrow(0)).toBe(false);
   });
 });

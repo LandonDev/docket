@@ -2409,7 +2409,7 @@ Around the canvas:
   of words rather than cut beside Paid (whose name says both), and Month or Year moves to two
   ticked rows at the head of More, so Add and More stay in the header. The 520px is the header's
   content box, inside its padding, for both the toggle's container query and More's measure
-  (`headIsNarrow`), so at no width is the choice in neither. To confirm leads the column while anything waits: a
+  (`headIsNarrow`, on the fractional width), so at no width is the choice in neither. To confirm leads the column while anything waits: a
   row each, a 32px picture (6px corners on the image outline, the receipt
   glyph where there is none), who or the file's name in foreground with
   the date 4px after it in 12px muted (the year only when it is not this

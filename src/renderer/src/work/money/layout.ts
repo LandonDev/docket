@@ -46,9 +46,11 @@ export const WIDE_HEAD = "flex @max-[520px]/viewhead:hidden";
 export const NARROW_HEAD = 520;
 
 /**
- * Whether Month or Year has left the header for More: the header's content box, its padding taken off as the
- * container query does, under `NARROW_HEAD` (a width of 0 is a header not laid out yet). One boundary with WIDE_HEAD.
+ * Whether Month or Year has left the header for More: the header's content box, the box inside its padding the
+ * container query measures, under `NARROW_HEAD` (a width of 0 is a header not laid out yet). One boundary with
+ * WIDE_HEAD. The width is the layout's own, fractional (ResizeObserver's content box): an integer `clientWidth` rounds
+ * 543.75px up to 544 while the query hides the toggle at 519.75px of content.
  */
-export function headIsNarrow(clientWidth: number, paddingLeft: number, paddingRight: number): boolean {
-  return clientWidth > 0 && clientWidth - paddingLeft - paddingRight < NARROW_HEAD;
+export function headIsNarrow(contentWidth: number): boolean {
+  return contentWidth > 0 && contentWidth < NARROW_HEAD;
 }
