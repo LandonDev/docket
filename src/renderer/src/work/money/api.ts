@@ -167,9 +167,9 @@ export function withToast(run: () => Promise<unknown>): void {
 }
 
 /** A call on the workspace's host, with the host's refusal in its own words. */
-export async function request<T>(env: string, method: string, params: object): Promise<T> {
+export async function request<T>(env: string, method: string, params: object, o?: { timeoutMs?: number }): Promise<T> {
   try {
-    return await registry.linkOf(env).request<T>(method, params);
+    return await registry.linkOf(env).request<T>(method, params, o);
   } catch (err) {
     throw new Error(refusalWords(err) || "The host did not answer");
   }

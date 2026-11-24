@@ -485,6 +485,8 @@ describe('nothing here sends', () => {
     for (const method of MONEY_OWNER_ONLY) {
       const params = method === 'work.money.accept' || method === 'work.money.drop' ? { id: 'x' } : { workspaceId: 'ws-ref' }
       await expect(money.handle!(req(method, params), b.ctx, MODEL), method).rejects.toThrow('Only the owner')
+      // A call from another host is a thread's tool there: refused the same, whatever the bridge's policy grants.
+      await expect(money.handle!(req(method, params), b.ctx, { kind: 'remote', caps: ['read', 'operate'], peer: 'env_mac' }), method).rejects.toThrow('Only the owner')
     }
     // Every method that changes something is the owner's alone.
     const writes = Object.entries(MONEY_CAPS)

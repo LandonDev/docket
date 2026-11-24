@@ -87,8 +87,9 @@ const jobFor =
     p.workspaceId ? admit(ctx, by, method, p.workspaceId) : p.sector ? (reachable(ctx, by, method).find((ws) => ws.sector === p.sector) ?? null) : null
 
 async function handle(req: ClientRequest, ctx: WorkCtx, by: Caller, signal?: AbortSignal): Promise<Handled> {
-  // A thread's own call is refused before anything it sent is read.
-  if (by.kind === 'model' && MONEY_OWNER_ONLY.has(req.method)) throw new MoneyError(OWNER_ONLY)
+  // A thread's own call is refused before anything it sent is read; so is a call from another host, which only a
+  // thread's tool makes (`servePeerWork`): no thread writes the ledger, on this host or from another.
+  if ((by.kind === 'model' || by.peer) && MONEY_OWNER_ONLY.has(req.method)) throw new MoneyError(OWNER_ONLY)
   switch (req.method) {
     case 'work.money.state': {
       // A job's categories are its starting list and every word its ledger already uses, as the desktop offers them: a

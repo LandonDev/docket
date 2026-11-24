@@ -39,7 +39,8 @@ export interface ExportMade {
  * export's own: a retry that read fresh rows is a new export, and never answers an older kept summary. Refuses when nothing landed.
  */
 export async function runExport(env: string, workspaceId: string, choice: ExportChoice): Promise<ExportMade> {
-  const made = await request<MoneyExport>(env, "work.money.export", { workspaceId, ...choice });
+  // The Excel file waits on the conversion runner, which may be cold or queued: the 2 minutes a printed page has, not 30 seconds.
+  const made = await request<MoneyExport>(env, "work.money.export", { workspaceId, ...choice }, { timeoutMs: 2 * 60_000 });
   const key = newKey();
   const warnings = [...made.warnings];
   const files = [...made.files];
