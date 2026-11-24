@@ -21,7 +21,7 @@ import { writeMail } from "../mail/mailto";
 import { goTo } from "../today/open";
 import { useJobName } from "../jobName";
 import { useMinute } from "../tasks/minute";
-import { sessionFailure, sessionWaits, useLifeosSession } from "../shell/lifeos";
+import { sessionWaits, sessionWords, useLifeosSession } from "../shell/lifeos";
 import { useClashes } from "./mark";
 import { doneWords, fieldOf, formOf, freeAfter, hintsOf, lateDraft, pairStamp, WAY_LABEL, wayWords, whenOf, type TimeForm } from "./model";
 import type { ClashAsk } from "./open";
@@ -279,7 +279,7 @@ function Body({
     const workspaceId = clash.b.workspaceId;
     if (!workspaceId) return;
     // A session that cannot read says so: a press never ends in nothing.
-    if (!session.client) return setError(sessionWaits(session) ? "LifeOS is still connecting" : sessionFailure(session.state));
+    if (!session.client) return setError(sessionWaits(session) ? "LifeOS is still connecting" : sessionWords(session));
     setError(null);
     setPending(true);
     setBusy("late");

@@ -5,7 +5,7 @@ import { switchLine } from "../../surfaces/settings/Work";
 import { sectorName } from "./actions";
 import { columnProjects } from "./WorkColumn";
 import { keyLine, lifeosLine } from "./settings";
-import { addMenuRows, freeSectors, sectorMenuRows, sectorMenuShown } from "./WorkRailHost";
+import { addMenuRows, addMenuState, freeSectors, sectorMenuRows, sectorMenuShown } from "./WorkRailHost";
 import { rowOfView, TEMPLATES_ROW, WORK_VIEWS, workViewList, workViewRows } from "../views/registry";
 
 vi.mock("../../lib/linkMay", async (original) => (await import("../../lib/linkMay.testkit")).linkMayMock(await original()));
@@ -52,6 +52,18 @@ describe("the Work heading's + menu", () => {
     // Every sector taken: Without a sector alone.
     expect(ids(addMenuRows("connected", []))).toEqual(["work:add-unlinked"]);
   });
+
+  /** Council round 5 (Opus, the rail's Work menu): a host whose status went unanswered read "Connecting to LifeOS…" for good. */
+  it("reads a home host whose status went unanswered as down, with Retry, the computer named as the views name it", () => {
+    expect(addMenuState(null, { unanswered: true })).toBe("unreachable");
+    expect(addMenuState(null, {})).toBeNull();
+    const off = { lifeos: { state: "off" as const }, keys: [] };
+    expect(addMenuState(off, { unanswered: true })).toBe("off");
+    const [retry] = addMenuRows(addMenuState(null, { unanswered: true }), ["cosmic"], undefined, "The box did not answer");
+    expect(retry).toMatchObject({ id: "work:retry", label: "Retry", description: "The box did not answer" });
+    const [note] = addMenuRows("off", [], undefined, "Work is off on the box");
+    expect(note.kind === "note" && note.content).toMatchObject({ props: { children: "Work is off on the box" } });
+  });
 });
 
 describe("a code workspace's LifeOS sector submenu", () => {
@@ -79,9 +91,9 @@ describe("Settings → Work's lines", () => {
   it("says what the switch adds while off, nothing while every host agrees, and which hosts differ", () => {
     expect(switchLine(envs, new Set())).toBe("On adds the Outbox, Work Chats and your Work workspaces to the rail");
     expect(switchLine(envs, new Set(["local", "env_box"]))).toBeUndefined();
-    expect(switchLine(envs, new Set(["env_box"]))).toBe("On for tempcode-box, off for This Mac");
+    expect(switchLine(envs, new Set(["env_box"]))).toBe("On for tempcode-box, off for this Mac");
     // "the box" mid-line, as every Work line names it.
-    expect(switchLine([{ id: "env_box", name: "The box" }, { id: "local", name: "This Mac" }], new Set(["env_box"]))).toBe("On for the box, off for This Mac");
+    expect(switchLine([{ id: "env_box", name: "The box" }, { id: "local", name: "This Mac" }], new Set(["env_box"]))).toBe("On for the box, off for this Mac");
   });
 
   it("draws every LifeOS state a screen must draw", () => {

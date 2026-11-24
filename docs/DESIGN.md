@@ -608,7 +608,7 @@ the sector's word only where no workspace holds it); a picker of jobs is
 src/shared/work/duration.ts); a span of time "4:00 to 6:00 PM"; a leave
 time "Leave 4:22 PM"; where you are in a bar "1/8", "Page 1 of 14" where
 there is room. A host mid-line is lower case where its name is a common
-noun ("the box", `nameInLine`, lib/hostWords.ts). LifeOS signed out is
+noun ("the box", "this Mac", `nameInLine`, lib/hostWords.ts). LifeOS signed out is
 "Not signed in to LifeOS" with Sign in, where the host said signed out; a host that says only that LifeOS is "not connected" (any state but connected) reads "The box cannot use LifeOS now. See why under Settings, Connections." (`lib/workErrorWords.ts`). A conflict's second press is Keep
 Both; a mail's file is kept with Save to workspace; a proposal is Dismiss
 and Add (Add… when a dialog follows), and Not now only for a one-line
@@ -3954,6 +3954,20 @@ or menu, no match is one muted row, never `Empty`. A lazy surface falls back
 to a `SurfaceSkeleton` kind, and a small section's wait is `LoadingLine`
 (both in surfaces/SurfaceSkeleton.tsx, beside `EmptyState`). Text that is
 being produced shimmers (`WorkingText`); nothing else does.
+
+A LifeOS session that is down is said once on a screen, in the session's
+words with the computer named (`sessionWords`), and never again by a line
+of the body under it. Its one press is `downPress`'s (work/shell/lifeosDown.ts):
+Retry only where LifeOS or the host did not answer, and that Retry asks the
+host again (`reopenLifeos`), never a remount that reads the same session;
+Sign in where it is signed out or refused; none for a computer the host
+keeps LifeOS from, a sign-in that waits, or Work off. A part that stands in
+for what it could not read (a held act's details, a chat card) draws
+`DownLine`. While the session is down, no press whose dialog needs it is
+offered (a view's New task, New event, Add people), and a press made while
+it was on its way is dropped, never opened later by itself. A failed Retry
+is said once, by the line. A long computer name wraps; the red word is
+never cut (`StatusMark`'s `wrap`).
 
 ## Motion values
 

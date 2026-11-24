@@ -3,7 +3,7 @@ import { PageEmpty, PageError } from "../../components/page";
 import { BusyLabel, Button } from "../../components/ui/button";
 import { registry, useEnvironmentStatus } from "../../lib/connection";
 import { openConnections } from "../shell/open";
-import { refreshLifeos, reopenLifeos, sessionFailure, useLifeosStatus, useLifeosUnanswered, type LifeosSession } from "../shell/lifeos";
+import { lifeosHostName, refreshLifeos, reopenLifeos, sessionFailure, useLifeosStatus, useLifeosUnanswered, type LifeosSession } from "../shell/lifeos";
 
 /**
  * A settings section that needs LifeOS while it has no session (docs/DESIGN.md "One name a thing"): the bones while
@@ -25,6 +25,8 @@ export function LifeosLine({ session, waiting }: { session: Pick<LifeosSession, 
   const away = state === null && link.transport !== "open" && link.transport !== "connecting" && link.transport !== "reconnecting";
   const name = registry.environment(environmentId)?.name ?? "This host";
   const host = name.charAt(0).toUpperCase() + name.slice(1);
+  // The computer named mid-line as the views name it ("Work is off on the box"), "this host" for one the registry does not know.
+  const named = lifeosHostName(environmentId);
   // A Retry that is not answered either leaves the line as it is: it says so already.
   const retryWith = (ask: () => Promise<void>) => (): void => {
     setBusy(true);
@@ -35,11 +37,11 @@ export function LifeosLine({ session, waiting }: { session: Pick<LifeosSession, 
   if (away) return <Line words={`${host} is not connected`} press={{ label: "Retry", onClick: () => registry.retry(environmentId) }} />;
   // The link is open but the status ask went unanswered: nothing asks again until the link reopens, so no bones.
   if (state === null && unanswered) return <Failed words={`${host} did not answer`} busy={busy} onRetry={retryWith(() => refreshLifeos(environmentId))} />;
-  if (state === "off") return <Line words={sessionFailure("off")} />;
-  if (session.withheld) return <Line words={sessionFailure(session.state, true)} />;
+  if (state === "off") return <Line words={sessionFailure("off", false, named)} />;
+  if (session.withheld) return <Line words={sessionFailure(session.state, true, named)} />;
   // The session's own state counts too: its JWT can be refused or go unanswered while the host says connected.
   const signedOut = [state, session.state].find((s) => s === "signed-out" || s === "refused");
-  if (signedOut) return <Line words={sessionFailure(signedOut)} press={{ label: "Sign in", onClick: openConnections }} />;
+  if (signedOut) return <Line words={sessionFailure(signedOut, false, named)} press={{ label: "Sign in", onClick: openConnections }} />;
   if (state === "pairing") return <Line words={sessionFailure("pairing")} />;
   if (state === "unreachable" || session.state === "unreachable")
     return <Failed words={sessionFailure("unreachable")} busy={busy} onRetry={retryWith(() => reopenLifeos(environmentId, sector))} />;

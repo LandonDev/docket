@@ -14,6 +14,7 @@ const lifeos = vi.hoisted(() => ({
 }));
 vi.mock("../shell/lifeos", async (real) => ({
   sessionFailure: ((await real()) as typeof import("../shell/lifeos")).sessionFailure,
+  lifeosHostName: ((await real()) as typeof import("../shell/lifeos")).lifeosHostName,
   useLifeosSession: () => lifeos.state,
   useLifeosStatus: () => lifeos.status,
   useLifeosUnanswered: () => lifeos.unanswered,
@@ -84,7 +85,7 @@ describe("Mail's settings on the Work settings page", () => {
   it("tell a computer the host keeps LifeOS from so, with no Sign in", () => {
     at("unreachable", "connected", true);
     render(<Section environmentId="local" />);
-    expect(screen.getByText("This computer cannot read LifeOS through this host")).toBeTruthy();
+    expect(screen.getByText("This computer cannot read LifeOS through the box")).toBeTruthy();
     expect(screen.queryByRole("button")).toBeNull();
   });
 
@@ -115,7 +116,7 @@ describe("Mail's settings on the Work settings page", () => {
   it("say a refused sign-in as refused, with Sign in, and a sign-in that waits with no press", () => {
     at("refused", "refused");
     const first = render(<Section environmentId="local" />);
-    expect(screen.getByText("LifeOS refused this host's sign-in")).toBeTruthy();
+    expect(screen.getByText("LifeOS refused the box's sign-in")).toBeTruthy();
     expect(screen.getByRole("button", { name: "Sign in" })).toBeTruthy();
     first.unmount();
     at("pairing", "pairing");

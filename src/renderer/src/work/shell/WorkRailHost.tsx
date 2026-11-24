@@ -1,6 +1,6 @@
 import { useLayoutEffect, useMemo, useState, type FormEvent } from "react";
 import type { SectorKey } from "@shared/work";
-import type { LifeosStateName } from "@shared/contract-work-lifeos";
+import type { LifeosStateName, LifeosStatus } from "@shared/contract-work-lifeos";
 import { LogIn } from "../../chrome/icons";
 import type { MenuIcon, MenuRow } from "../../chrome/menuRows";
 import { SectorDot } from "../../chrome/WorkspaceGlyph";
@@ -23,7 +23,7 @@ import { TemplatesHost } from "../templates/TemplatesHost";
 import { ClashHost } from "../clashes/ClashHost";
 import { ReturnHost } from "./ReturnHost";
 import { createWorkWorkspace, linkSector, sectorName, SECTORS, workHome } from "./actions";
-import { refreshLifeos, useLifeosQuery, useLifeosSession, useLifeosStatus } from "./lifeos";
+import { refreshLifeos, sessionWords, useLifeosQuery, useLifeosSession, useLifeosStatus, type LifeosSession } from "./lifeos";
 
 /** The digest's toasts and its list (work/digest), in a chunk of their own: nothing of it loads until Work is on. */
 const DigestHost = workDigestChunk.surface("DigestHost");
@@ -48,8 +48,12 @@ export function freeSectors(workspaces: readonly Pick<WorkspaceMeta, "kind" | "s
   return order.filter((sector) => !taken.has(sector));
 }
 
-/** The Work heading's + menu (prototype add.html, "One click"): one row per free sector, then Without a sector. */
-export function addMenuRows(state: LifeosStateName | null, free: readonly string[], names?: ReadonlyMap<string, string>): MenuRow[] {
+/**
+ * The Work heading's + menu (prototype add.html, "One click"): one row per free sector, then Without a sector. `said` is
+ * the home session's own words for a state that is down (`sessionWords`: "The box did not answer", "Work is off on the
+ * box"), so the menu names the computer as every view does.
+ */
+export function addMenuRows(state: LifeosStateName | null, free: readonly string[], names?: ReadonlyMap<string, string>, said?: string): MenuRow[] {
   const top: MenuRow[] =
     state === "connected"
       ? free.map((sector) => ({ kind: "item", id: `work:add:${sector}`, label: sectorName(sector, names), icon: dotIcon(sector) }))
@@ -58,12 +62,19 @@ export function addMenuRows(state: LifeosStateName | null, free: readonly string
         : state === "pairing"
           ? [{ kind: "item", id: "work:signin", label: "Approve the LifeOS sign-in…", icon: LogIn }]
           : state === "unreachable"
-            ? [{ kind: "item", id: "work:retry", label: "Retry", description: "LifeOS did not answer" }]
+            ? [{ kind: "item", id: "work:retry", label: "Retry", description: said ?? "LifeOS did not answer" }]
             : state === "off"
-              ? [{ kind: "note", id: "work:off", content: <span className="text-muted-foreground">Work is off on this host</span> }]
+              ? [{ kind: "note", id: "work:off", content: <span className="text-muted-foreground">{said ?? "Work is off on this host"}</span> }]
               : [{ kind: "note", id: "work:connecting", content: <span className="text-muted-foreground">Connecting to LifeOS…</span> }];
   return [...top, ...(top.length ? [{ kind: "sep" } as const] : []), { kind: "item", id: "work:add-unlinked", label: "Without a sector…", icon: dotIcon(null) }];
 }
+
+/**
+ * The state the + menu reads for the home host: its status, else, for a host whose status ask went unanswered,
+ * unreachable, as every view says. Never "Connecting to LifeOS…" for a wait that has ended.
+ */
+export const addMenuState = (status: LifeosStatus | null, session: Pick<LifeosSession, "unanswered">): LifeosStateName | null =>
+  status?.lifeos.state ?? (session.unanswered ? "unreachable" : null);
 
 /** A code workspace's "LifeOS sector" submenu: None, then each sector, the linked one ticked. */
 /**
@@ -114,8 +125,9 @@ export function WorkRailHost({ onOpenWorkspace }: { onOpenWorkspace: (path: stri
   const hosts = useWorkHosts();
   const home = useMemo(() => workHome(environments), [environments, hosts]);
   const status = useLifeosStatus(home);
-  const state = status?.lifeos.state ?? null;
   const session = useLifeosSession(home ?? "", null);
+  const state = addMenuState(status, session);
+  const said = sessionWords(session);
   const listed = useLifeosQuery<{ key: string; label: string; order: number }[]>(session, "sectors:list", {});
   const names = useMemo(
     () => new Map(listed.status === "ready" ? listed.value.map((s) => [s.key, s.label] as const) : []),
@@ -132,7 +144,7 @@ export function WorkRailHost({ onOpenWorkspace }: { onOpenWorkspace: (path: stri
     const fail = (error: unknown): void => void loadToast().then((toast) => toast.error(errorText(error)));
     const workspaceAt = (path: string | null): WorkspaceMeta | undefined => (path ? workspaceByPath(workspaces, path) : undefined);
     workRailPort.set({
-      addRows: () => addMenuRows(state, freeSectors(workspaces, order), names),
+      addRows: () => addMenuRows(state, freeSectors(workspaces, order), names, said),
       sectorRows(path) {
         const workspace = workspaceAt(path);
         if (!workspace || !sectorMenuShown(workspace, hosts)) return [];
@@ -143,7 +155,8 @@ export function WorkRailHost({ onOpenWorkspace }: { onOpenWorkspace: (path: stri
       pick(action, path) {
         if (action === "work:signin") return openConnections();
         if (action === "work:retry") {
-          retryLifeos(home, fail);
+          // The host's silence is said already, by the menu's row and the line in Settings, Work, where the press goes: no toast then.
+          retryLifeos(home, session.unanswered ? () => {} : fail);
           return openWorkSettings();
         }
         if (action === "work:add-unlinked") return setNaming(true);
@@ -160,7 +173,7 @@ export function WorkRailHost({ onOpenWorkspace }: { onOpenWorkspace: (path: stri
       },
     });
     return () => workRailPort.set(null);
-  }, [home, hosts, names, onOpenWorkspace, order, state, workspaces]);
+  }, [home, hosts, names, onOpenWorkspace, order, state, said, session.unanswered, workspaces]);
 
   return (
     <>

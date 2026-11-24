@@ -65,7 +65,7 @@ const job = (environmentId: string, sector: TodayWorkspace["sector"], open = tru
 const JOBS = (["cosmic", "hypixel", "purdue", "ref", "unify", "life"] as const).map((sector) => job("box", sector));
 const fed = (section: TodaySection, answer: TodayAnswer): Fed => ({ source: { id: section.id, section }, answer });
 
-type State = "day" | "unfolded" | "bones" | "empty" | "hosts" | "refused" | "lifeos-down" | "unanswered" | "sign-in-refused" | "signed-out" | "withheld" | "pairing" | "clear" | "evening" | "pillars" | "long-job" | "no-jobs" | "sheet" | "sheet-next";
+type State = "day" | "unfolded" | "bones" | "empty" | "hosts" | "refused" | "lifeos-down" | "unanswered" | "unanswered-long" | "sign-in-refused" | "signed-out" | "withheld" | "pairing" | "clear" | "evening" | "pillars" | "long-job" | "no-jobs" | "sheet" | "sheet-next";
 
 /** A job by its workspace's name, as the rail says it. */
 
@@ -96,6 +96,7 @@ function modelOf(state: State) {
     case "lifeos-down":
       return page(FULL, opts("unreachable"));
     case "unanswered":
+    case "unanswered-long":
       return page(FULL, opts("unanswered"));
     case "sign-in-refused":
       return page(FULL, opts("refused"));
@@ -244,7 +245,7 @@ export function TodayPreview({ state = "day" }: { state?: State }) {
     <div className={`flex w-full flex-col overflow-hidden rounded-lg border border-border bg-background ${state === "clear" || state === "evening" || state === "no-jobs" ? "h-[360px]" : ""}`}>
       <PlaceFrame place="today" label="Today" icon={workPlaceRow("today")?.icon} head={<time className="text-xs tabular-nums text-muted-foreground">Mon, Nov 23</time>} besideRail onClose={noop}>
         <div className="flex min-h-0 flex-1 flex-col">
-          <TodayPageView model={modelOf(state)} hostName={(id) => HOSTS[id] ?? "A host"} jobName={(sector) => JOB_NAMES[sector] ?? sector} lifeosHost={HOSTS.box} onRetryLifeos={noop} />
+          <TodayPageView model={modelOf(state)} hostName={(id) => HOSTS[id] ?? "A host"} jobName={(sector) => JOB_NAMES[sector] ?? sector} lifeosHost={state === "unanswered-long" ? "Purdue Esports Office MacBook Pro" : HOSTS.box} onRetryLifeos={noop} />
         </div>
       </PlaceFrame>
     </div>

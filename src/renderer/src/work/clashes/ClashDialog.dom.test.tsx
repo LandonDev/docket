@@ -21,6 +21,7 @@ vi.mock("../../lib/connection", async (original) => {
 const mocked = (real: object) => ({
   ...real,
   registry: {
+    environment: () => ({ name: "The box" }),
     linkOf: () => ({
       request: (method: string, params: unknown) => {
         wire.calls.push({ method, params });
@@ -36,10 +37,10 @@ const mocked = (real: object) => ({
 });
 const marks = vi.hoisted(() => ({ now: null as unknown, asked: [] as unknown[] }));
 vi.mock("./mark", () => ({ useClashes: (...asked: unknown[]) => ((marks.asked = asked), marks.now) }));
-const lifeos = vi.hoisted(() => ({ attendees: [] as { address: string }[], gone: false, connecting: false, silent: false, held: null as Promise<unknown> | null, sector: undefined as string | undefined, times: null as { startsAt: number; endsAt: number } | null, title: undefined as string | undefined, earlier: {} as Record<string, unknown> | null }));
+const lifeos = vi.hoisted(() => ({ attendees: [] as { address: string }[], gone: false, unanswered: false, connecting: false, silent: false, held: null as Promise<unknown> | null, sector: undefined as string | undefined, times: null as { startsAt: number; endsAt: number } | null, title: undefined as string | undefined, earlier: {} as Record<string, unknown> | null }));
 vi.mock("../shell/lifeos", async (original) => ({
   ...(await original<object>()),
-  useLifeosSession: () => (lifeos.gone || lifeos.connecting ? { environmentId: "box", sector: null, state: lifeos.gone ? "unreachable" : "connecting", client: null } : { environmentId: "box", sector: null, state: "connected", client: { query: (_fn: unknown, args: { id: string }) => lifeos.held ?? (lifeos.silent ? new Promise<never>(() => {}) : Promise.resolve(args.id === "ev_a" ? lifeos.earlier : { attendees: lifeos.attendees, ...(lifeos.sector ? { sector: lifeos.sector } : {}), ...(lifeos.title ? { title: lifeos.title } : {}), ...lifeos.times })) } }),
+  useLifeosSession: () => (lifeos.gone || lifeos.connecting ? { environmentId: "box", sector: null, state: lifeos.gone ? "unreachable" : "connecting", client: null, ...(lifeos.unanswered ? { unanswered: true } : {}) } : { environmentId: "box", sector: null, state: "connected", client: { query: (_fn: unknown, args: { id: string }) => lifeos.held ?? (lifeos.silent ? new Promise<never>(() => {}) : Promise.resolve(args.id === "ev_a" ? lifeos.earlier : { attendees: lifeos.attendees, ...(lifeos.sector ? { sector: lifeos.sector } : {}), ...(lifeos.title ? { title: lifeos.title } : {}), ...lifeos.times })) } }),
 }));
 const toasts = vi.hoisted(() => ({ said: [] as { words: string; action?: { label: string; onClick: () => void } }[] }));
 vi.mock("../../components/ui/toaster", () => ({
@@ -784,7 +785,7 @@ describe("the Clash dialog", () => {
     expect(document.querySelector("[data-clash-step='b:move']")?.textContent).toContain("It moves on your calendar, and its guests are told the new time.");
   });
 
-  it("says why Running late cannot open when LifeOS is out of reach", async () => {
+  it("says why Running late cannot open when LifeOS is out of reach, the computer named as the frame names it", async () => {
     lifeos.gone = true;
     const onClose = show(overlap());
     await settle();
@@ -793,6 +794,15 @@ describe("the Clash dialog", () => {
     expect(screen.getByRole("alert").textContent).toBe("LifeOS did not answer");
     expect(mail.drafts).toEqual([]);
     expect(onClose).not.toHaveBeenCalled();
+    // Council round 5 (Sol P3): the host's own silence names the computer, as the frame's line does.
+    cleanup();
+    lifeos.unanswered = true;
+    show(overlap());
+    await settle();
+    fireEvent.click(screen.getByRole("button", { name: "Running late…" }));
+    await settle();
+    expect(screen.getByRole("alert").textContent).toBe("The box did not answer");
+    lifeos.unanswered = false;
   });
 
   it("lets go of Running late when LifeOS never answers: ten seconds on it says so and Close works again", async () => {

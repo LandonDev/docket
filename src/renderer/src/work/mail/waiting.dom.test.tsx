@@ -156,6 +156,27 @@ describe("the workspace's Waiting on", () => {
     expect(state.waiting.routine).toBe(true);
   });
 
+  /** Council round 5 (Sol Settings 1): a Retry the host did not answer took the known switch away with the days' row. */
+  it("keeps the known switch when the days' Retry is not answered: the failure and Retry stay on the days' row", async () => {
+    state.waiting = { days: null, routine: true, error: "LifeOS did not answer: LifeOS is unreachable" };
+    render(<WaitingSection workspace={WORKSPACE} />);
+    await settle();
+    state.fail.add("work.mail.waiting");
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    await settle();
+    expect(screen.getByRole("switch", { name: "Draft nudges by themselves" }).getAttribute("aria-checked")).toBe("true");
+    expect(screen.getByText("The box did not answer")).toBeTruthy();
+    expect(screen.queryByText("LifeOS did not answer")).toBeNull();
+    // Said once, on the days' row, with its Retry there: once answered, the days come back.
+    expect(screen.getAllByRole("button", { name: "Retry" })).toHaveLength(1);
+    state.fail.clear();
+    state.waiting = { days: 5, routine: true };
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    await settle();
+    expect(screen.getByLabelText("Count as waiting after").textContent).toContain("5 working days");
+    expect(screen.queryByText("The box did not answer")).toBeNull();
+  });
+
   it("lays an answer over what is shown half by half, by when its ask started", async () => {
     const { laidOver } = await import("./WaitingSection");
     const first = laidOver(null, 1, { days: null, routine: false, error: "x" }, { days: true, routine: true });

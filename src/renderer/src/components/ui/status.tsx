@@ -246,6 +246,7 @@ export function StatusMark({
   detail,
   still,
   glyph = true,
+  wrap = false,
   wordClassName,
   className,
   ...props
@@ -260,6 +261,8 @@ export function StatusMark({
   glyph?: boolean;
   /** The word's own class: a row that hides it when tight (a container query) keeps the glyph. */
   wordClassName?: string;
+  /** The word wraps, never cut: a state line whose word is the whole fact (a long computer's name) and has no tip. */
+  wrap?: boolean;
 }) {
   const text = word === true ? STATUS_WORD[state] : word === false ? null : word;
   const hasDetail = detail != null && detail !== "";
@@ -276,7 +279,7 @@ export function StatusMark({
       {/* One 14px box for every state, so a change of state never moves the word. */}
       {glyph ? <GlyphBox state={state} still={still} /> : null}
       {text !== null ? (
-        <span data-slot="status-word" className={cn("font-medium", hasDetail ? "shrink-0" : "min-w-0 truncate", wordClassName)}>
+        <span data-slot="status-word" className={cn("font-medium", wrap ? "min-w-0 text-pretty" : hasDetail ? "shrink-0" : "min-w-0 truncate", wordClassName)}>
           {text}
         </span>
       ) : null}

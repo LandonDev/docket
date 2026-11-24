@@ -1,0 +1,190 @@
+// @vitest-environment jsdom
+/**
+ * Council round 5, the sweep: every reader of a LifeOS session that is down holds to one rule (lifeosDown.ts). It says
+ * the state once, in the session's words with the computer named; its one press is `downPress`'s (Retry only for
+ * silence, Sign in for signed out or refused, none for a computer kept from LifeOS, a sign-in waiting or Work off);
+ * and no header press whose dialog needs the session is offered while it is down. Each reader is mounted on a real
+ * session, the host faked through the registry, in each down state.
+ */
+import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { ReactNode } from "react";
+import { registry } from "../../lib/connection";
+import { resetLifeos, useLifeosSession } from "./lifeos";
+import { downPress, type LifeosDown } from "./lifeosDown";
+
+vi.mock("../../lib/tcserver/workspaces", async (original) => ({
+  ...(await original<object>()),
+  useWorkspaces: () => [{ id: "ws", name: "Purdue Esports", environmentId: "env_box", sector: "purdue", kind: "work", path: "/w" }],
+}));
+vi.mock("convex/react", async (original) => ({ ...(await original<object>()), ConvexReactClient: class {} }));
+vi.mock("../../stores/project", async (original) => ({ ...(await original<object>()), useSelectedWorkspaceIds: () => ["ws"] }));
+const toasts = vi.hoisted(() => [] as string[]);
+vi.mock("../../components/ui/toaster", () => {
+  const toast = Object.assign(() => undefined, { error: (message: string) => void toasts.push(message) });
+  return { loadToast: async () => toast, toast };
+});
+
+const { ViewFrame } = await import("./WorkViewPage");
+const { DownLine } = await import("./DownLine");
+const { LifeosLine } = await import("../connections/LifeosLine");
+const { View: ChatReply } = await import("../messages/ChatReplyAct");
+const { View: CalendarAct } = await import("../agenda/CalendarActView");
+const { PageVerbs } = await import("../prep/PrepView");
+
+const NOW = Date.UTC(2026, 10, 24, 17);
+const connected = { lifeos: { state: "connected", ownerId: "landon", since: 1 }, keys: [] };
+const timeout = () => Object.assign(new Error("No answer in 15 s"), { name: "TimeoutError" });
+
+/** The host's status and the JWT's answer, for each down state. */
+const STATES: Record<LifeosDown, { status: () => Promise<unknown>; jwt?: () => Promise<unknown> }> = {
+  unreachable: { status: async () => connected, jwt: () => Promise.reject(new Error("socket closed")) },
+  unanswered: { status: () => Promise.reject(timeout()) },
+  withheld: { status: async () => connected, jwt: () => Promise.reject(new Error("forbidden: work.lifeos.jwt is not for a given computer")) },
+  "signed-out": { status: async () => ({ lifeos: { state: "signed-out" }, keys: [] }) },
+  refused: { status: async () => ({ lifeos: { state: "refused", error: "revoked" }, keys: [] }) },
+  pairing: { status: async () => ({ lifeos: { state: "pairing", expiresAt: NOW + 600_000 }, keys: [] }) },
+  off: { status: async () => ({ lifeos: { state: "off" }, keys: [] }) },
+};
+
+/** What each state says, the box named. */
+const WORDS: Record<LifeosDown, string> = {
+  unreachable: "LifeOS did not answer",
+  unanswered: "The box did not answer",
+  withheld: "This computer cannot read LifeOS through the box",
+  "signed-out": "Not signed in to LifeOS",
+  refused: "LifeOS refused the box's sign-in",
+  pairing: "The LifeOS sign-in waits for your approval",
+  off: "Work is off on the box",
+};
+const PRESS = { retry: "Retry", "sign-in": "Sign in" } as const;
+const DOWN = Object.keys(STATES) as LifeosDown[];
+
+let asked: string[] = [];
+function host(down: LifeosDown): void {
+  asked = [];
+  vi.spyOn(registry, "environment").mockReturnValue({ id: "env_box", name: "The box" } as never);
+  vi.spyOn(registry, "statusOf").mockReturnValue({ transport: "open" } as never);
+  vi.spyOn(registry, "linkOf").mockReturnValue({
+    environmentId: "env_box",
+    connected: true,
+    onPush: () => () => {},
+    onOpen: () => () => {},
+    request: vi.fn(async (method: string) => {
+      asked.push(method);
+      if (method === "work.lifeos.status") return STATES[down].status();
+      if (method === "work.lifeos.jwt") return (STATES[down].jwt ?? (() => new Promise(() => {})))();
+      return new Promise(() => {});
+    }),
+  } as never);
+}
+
+beforeEach(() => void vi.setSystemTime(NOW));
+afterEach(() => {
+  cleanup();
+  resetLifeos();
+  vi.useRealTimers();
+  vi.restoreAllMocks();
+  toasts.length = 0;
+});
+
+/** How many times the page says these words. */
+const times = (words: string): number => (document.body.textContent ?? "").split(words).length - 1;
+const presses = (root: ParentNode = document.body): string[] => [...root.querySelectorAll("button")].map((b) => b.textContent ?? "");
+const settle = async (): Promise<void> => {
+  for (let i = 0; i < 4; i++) await act(async () => void (await new Promise((r) => setTimeout(r, 0))));
+};
+
+/** A part that takes the session from its parent, mounted on the real one. */
+function OnSession({ sector, children }: { sector: "purdue" | null; children: (session: ReturnType<typeof useLifeosSession>) => ReactNode }) {
+  return <>{children(useLifeosSession("env_box", sector))}</>;
+}
+
+describe.each(DOWN)("a session %s", (down) => {
+  const words = WORDS[down];
+  const press = downPress(down);
+
+  it("in a part's place (a held act's details, a chat card): the words once, and downPress's one press", async () => {
+    host(down);
+    const { container } = render(<OnSession sector="purdue">{(session) => <DownLine session={session} />}</OnSession>);
+    await waitFor(() => expect(container.querySelector(`[data-session-down="${down}"]`)).toBeTruthy());
+    expect(times(words)).toBe(1);
+    expect(presses()).toEqual(press ? [PRESS[press]] : []);
+  });
+
+  it("in a held chat reply: the session's line in the quote's place, never \"could not be read\" with a Retry that remounts", async () => {
+    host(down);
+    const item = { kind: "chat.reply", sector: "purdue", payload: { chatId: "c1", source: "slack", chat: "Starboard Games", text: "On it" } };
+    render(<ChatReply item={item as never} env="env_box" />);
+    await waitFor(() => expect(document.querySelector(`[data-session-down="${down}"]`)).toBeTruthy());
+    expect(times(words)).toBe(1);
+    expect(document.querySelector("[data-answers]")).toBeNull();
+    expect(presses()).toEqual(press ? [PRESS[press]] : []);
+    // The hold does not move: the reply's words stand as they go.
+    expect(screen.getByText("On it")).toBeTruthy();
+  });
+
+  it("in a held calendar act: the session's line once, in the reads' place", async () => {
+    host(down);
+    const op = { id: "op1", kind: "update", eventId: "ev1", payload: { title: "Review", startsAt: NOW, endsAt: NOW + 3_600_000 } };
+    render(<CalendarAct item={{ kind: "calendar.op", payload: op, sector: "purdue" } as never} env="env_box" />);
+    await waitFor(() => expect(document.querySelector(`[data-session-down="${down}"]`)).toBeTruthy());
+    expect(times(words)).toBe(1);
+    expect(presses()).toEqual(press ? [PRESS[press]] : []);
+  });
+
+  it("in a settings section (LifeosLine): the words once, with the computer named, and the same press", async () => {
+    host(down);
+    render(<OnSession sector={null}>{(session) => <LifeosLine session={session} waiting={<span data-waiting />} />}</OnSession>);
+    await waitFor(() => expect(document.querySelector("[data-waiting]")).toBeNull());
+    await waitFor(() => expect(times(words)).toBe(1));
+    expect(presses()).toEqual(press ? [PRESS[press]] : []);
+  });
+
+  it.each(["tasks", "agenda", "people", "mail"] as const)("in the view frame (%s): said once, no second line under it, and no header press that needs the session", async (view) => {
+    host(down);
+    render(<ViewFrame view={view} environmentId="env_box" workspaceId="ws" sector="purdue" />);
+    await settle();
+    // Each view's chunk lands and draws its header and body: give it the time it takes.
+    await waitFor(() => expect(document.querySelector("[data-view-heading]")).toBeTruthy(), { timeout: 5000 });
+    await settle();
+    const region = screen.getByRole("region");
+    // The frame's own bodies: the sign-in's title and the kept computer's account are the frame's words for those states.
+    const said: Record<LifeosDown, string> = { ...WORDS, "signed-out": "Sign in to LifeOS", withheld: "This computer cannot read LifeOS here" };
+    expect(times(said[down])).toBe(1);
+    expect(document.querySelectorAll("[data-view-state=failed]").length).toBe(down === "unreachable" || down === "unanswered" ? 1 : 0);
+    expect(region.textContent).not.toMatch(/did not load/);
+    // The frame's sign-in shows the code of a sign-in that waits (its own dialog, unchanged); else downPress's press.
+    const frame = down === "pairing" ? ["Show the code"] : press ? [PRESS[press]] : [];
+    expect(presses(region).filter((label) => label === "Retry" || label === "Sign in" || label === "Show the code" || label === "Open Settings")).toEqual(frame);
+    // Nothing in the header opens a dialog the body cannot draw now, nor searches a list it cannot show.
+    expect(screen.queryByRole("button", { name: /New task|New event/ })).toBeNull();
+    expect(region.querySelector('[role="search"]')).toBeNull();
+    // Mail's head is its body's, drawn under the session alone: the frame's header stays, with its name.
+    if (view === "mail") expect(document.querySelector("[data-view-heading]")?.textContent).toBe("Mail");
+  });
+});
+
+describe("the view frame's Retry, not answered again", () => {
+  it("says it once: the line that names the host's silence stays, and no toast says it again", async () => {
+    host("unanswered");
+    render(<ViewFrame view="tasks" environmentId="env_box" workspaceId="ws" sector="purdue" />);
+    await waitFor(() => expect(document.querySelector("[data-view-state=failed]")?.textContent).toContain("The box did not answer"));
+    await act(async () => screen.getByRole("button", { name: "Retry" }).click());
+    await settle();
+    expect(asked.filter((m) => m === "work.lifeos.status").length).toBeGreaterThan(1);
+    expect(toasts).toEqual([]);
+    expect(times("The box did not answer")).toBe(1);
+  });
+});
+
+describe("a meeting's page with the session down", () => {
+  it("offers no Add people or notes, whose dialogs the page's body holds, and keeps the verbs the host runs alone", () => {
+    const noop = () => {};
+    const verbs = { busy: null, thread: true, brief: "brief" as const, notes: false, rest: 0, ahead: null, onBrief: noop, onFollowUp: noop, onOpenThread: noop, onNotes: noop, onAddPeople: noop, onThread: noop, onDismissRest: noop, onAhead: noop };
+    const { rerender } = render(<PageVerbs {...verbs} verb="addNotes" dialogs={false} />);
+    expect(screen.queryByRole("button", { name: "Add notes" })).toBeNull();
+    rerender(<PageVerbs {...verbs} verb="addNotes" />);
+    expect(screen.getByRole("button", { name: "Add notes" })).toBeTruthy();
+  });
+});

@@ -8,6 +8,7 @@ export const fixtures = [
   { name: "LifeOS refused one read", props: { state: "refused" } },
   { name: "LifeOS did not answer", props: { state: "lifeos-down" } },
   { name: "The box did not answer its LifeOS status", props: { state: "unanswered" } },
+  { name: "A computer with a long name did not answer", props: { state: "unanswered-long" } },
   { name: "Not signed in to LifeOS", props: { state: "signed-out" } },
   { name: "LifeOS refused the box's sign-in", props: { state: "sign-in-refused" } },
   { name: "This computer cannot read LifeOS through the box", props: { state: "withheld" } },

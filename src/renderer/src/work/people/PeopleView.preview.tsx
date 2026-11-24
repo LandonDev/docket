@@ -2,7 +2,8 @@ import type { ReactNode } from "react";
 import type { GuestLinkRow } from "@shared/contract-work-guests";
 import { Users } from "../../chrome/icons";
 import type { WorkspaceMeta } from "../../lib/tcserver/types";
-import { boxSilent, JOB, standUpView, ViewAt } from "../kit.preview";
+import { boxSilent, JOB, standUpView, Unsettled, ViewAt } from "../kit.preview";
+import { WORK_VIEWS } from "../views/registry";
 import { BackTitle, PageVerbs, PeopleList, PersonPageBody, setPlace } from "./PeopleView";
 import type { DirectoryPerson, PersonPage } from "./model";
 
@@ -72,18 +73,29 @@ function Frame({ title, head, children }: { title: ReactNode; head?: ReactNode; 
   );
 }
 
-let silent = false;
+/**
+ * `page-silent` stands its view up before the page draws, the chunk landed and the workspace listed: a static render
+ * reads the page once, so its body is never the chunk's loading rows. The other states draw their parts alone, on
+ * another workspace, and read none of it.
+ */
+async function standUpSilent(): Promise<void> {
+  standUpView("people", { "people:directory": PEOPLE, "mail:faces": [], "people:page": PAGE }, (method) => (method === "work.guests.list" ? [] : undefined));
+  setPlace(JOB.id, { person: "p1" });
+  boxSilent();
+  await WORK_VIEWS.people.chunk.load();
+  await new Promise((done) => setTimeout(done, 50));
+}
+await standUpSilent();
 
 export function PeoplePreview({ state = "list" }: { state?: string }) {
-  if (state === "page-silent") {
-    if (!silent) {
-      silent = true;
-      standUpView("people", { "people:directory": PEOPLE, "mail:faces": [], "people:page": PAGE }, (method) => (method === "work.guests.list" ? [] : undefined));
-      setPlace(JOB.id, { person: "p1" });
-      boxSilent();
-    }
-    return <ViewAt view="people" height={360} />;
-  }
+  if (state === "page-silent")
+    return (
+      <>
+        <ViewAt view="people" height={360} />
+        {/* The view's body lands after React's hold on a fallback: the page waits for it. */}
+        <Unsettled ms={500} />
+      </>
+    );
   if (state === "page" || state === "quiet") {
     const page = state === "page" ? PAGE : QUIET;
     return (

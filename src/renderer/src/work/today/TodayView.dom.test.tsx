@@ -372,6 +372,17 @@ describe("Today", () => {
     expect(line.textContent).toBe("LifeOS refused the box's sign-inSign in");
   });
 
+  /** Council round 5 (Sol Today 1): at 400 a long computer's name ran the red word past its track, cut with no tip. */
+  it("wraps the red word of a long computer's silence beside Retry, never cut", () => {
+    const name = "Purdue Esports Office MacBook Pro";
+    render(<TodayPageView model={{ kind: "day", blocks: [{ kind: "lifeos", reach: "unanswered" }], offline: [], keys: [] }} hostName={() => name} lifeosHost={name} onRetryLifeos={vi.fn()} />);
+    const word = document.querySelector<HTMLElement>('[data-today-lifeos="unanswered"] [data-slot="status-word"]')!;
+    expect(word.textContent).toBe(`${name} did not answer`);
+    expect(word.className).not.toContain("truncate");
+    expect(word.className).toContain("text-pretty");
+    expect(screen.getByRole("button", { name: "Retry" })).toBeTruthy();
+  });
+
   it("keeps a failed read's cut detail whole to the keyboard: the canvas's CutDetail", async () => {
     await loadOutbox();
     const failing: TodaySource = {

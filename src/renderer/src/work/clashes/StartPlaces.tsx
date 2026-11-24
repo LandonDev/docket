@@ -12,7 +12,7 @@ import { Spinner } from "../../components/ui/spinner";
 import { Switch } from "../../components/ui/switch";
 import { workErrorWords } from "../../lib/workErrorWords";
 import { sectorName } from "../shell/actions";
-import { sessionFailure, sessionWaits, useLifeosQuery, useLifeosSession, type LifeosSession } from "../shell/lifeos";
+import { sessionWaits, sessionWords, useLifeosQuery, useLifeosSession, type LifeosSession } from "../shell/lifeos";
 import { fieldsOf, formChanged, placeWords, rowLabel, sameField, savePatch, type JobStart, type StartPatch, type StartPlace, type StartPlaces, type StartTarget } from "./places";
 import { answered } from "./wait";
 
@@ -53,7 +53,7 @@ export function StartPlacesSection({ environmentId }: { environmentId: string })
         lookups={job?.lookups ?? false}
         // Save sends this one place alone, and waits for a read that is current, so he saves beside what LifeOS holds now.
         // A session still connecting is a wait like a read that is out, not a sign-out, and comes before what an earlier read said: a query keeps its last answer for a render after the session turns.
-        blocked={ready ? null : sessionWaits(session) ? "" : (failed ?? (connected ? "" : sessionFailure(session.state, session.withheld)))}
+        blocked={ready ? null : sessionWaits(session) ? "" : (failed ?? (connected ? "" : sessionWords(session)))}
         onClose={() => setOpen(null)}
       />
     ) : null;
@@ -125,7 +125,7 @@ function StartPlaceDialog({
   onClose: () => void;
 }) {
   const [pending, setPending] = useState<Pending>(null);
-  const send = (patch: StartPatch): Promise<unknown> => (session.client ? session.client.mutation(update, patch) : Promise.reject(new Error(sessionFailure(session.state, session.withheld))));
+  const send = (patch: StartPatch): Promise<unknown> => (session.client ? session.client.mutation(update, patch) : Promise.reject(new Error(sessionWords(session))));
   return (
     <Modal onClose={onClose} title={title} size="sm" busy={pending !== null}>
       <StartPlaceForm target={target} place={place} lookups={lookups} blocked={blocked} send={send} onClose={onClose} pending={pending} setPending={setPending} />

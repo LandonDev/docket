@@ -181,7 +181,12 @@ stayed open is down: the session is `unreachable` with `unanswered`, so
 cards and canvas, a held calendar act, a project's sheet) draws its line,
 "The box did not answer" (`sessionWords`), with Retry. Retry
 (`reopenLifeos`) asks the status again through `refreshLifeos`; that, the
-`work.lifeos` push or the link's next open brings the session back. One
+`work.lifeos` push or the link's next open brings the session back. Every
+reader holds a down session to one rule (docs/DESIGN.md "Loading and empty
+states"): said once, the computer named, `downPress`'s one press, no header
+press whose dialog needs the session; `shell/DownLine.tsx` is the line a held
+act or a chat card draws, and `shell/sessionDown.dom.test.tsx` mounts each
+reader in each down state. One
 JWT ask is out a session at a time (`openSession`): Retry and the session's
 own opening share it, and a failure never takes the place of a client that
 reads.

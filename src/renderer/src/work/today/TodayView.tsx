@@ -429,7 +429,8 @@ function PageLine({ word, detail, failed = false, action }: { word: string; deta
       {/* Cut on a narrow page, the detail is a Tab stop with its whole words in a tip (the canvas's `CutDetail`). A muted
           line is the state itself: it wraps, never cut, and with no press it takes the columns the press would have. */}
       {failed ? (
-        <StatusMark state="failed" glyph={false} word={word} detail={detail ? <CutDetail text={detail} /> : undefined} className="min-w-0" />
+        // The word is the state itself, a computer named in it: it wraps beside the press, never cut with no way to read it.
+        <StatusMark state="failed" glyph={false} wrap word={word} detail={detail ? <CutDetail text={detail} /> : undefined} className="min-w-0" />
       ) : (
         <span data-page-line-words className={cn("min-w-0 text-xs text-pretty text-muted-foreground", !action && "col-span-3")}>
           {word}

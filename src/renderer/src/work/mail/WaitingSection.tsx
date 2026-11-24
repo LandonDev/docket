@@ -24,7 +24,8 @@ import { lifeosStateOf, sessionFailure } from "../shell/lifeos";
 export const WAIT_DAYS = ["1", "2", "3", "5", "7", "10"] as const;
 const DAY_CHOICES = WAIT_DAYS.map((d) => ({ value: d, label: d === "1" ? "1 working day" : `${d} working days` }));
 
-type Load = { status: "loading" } | { status: "ready"; value: MailWaiting } | { status: "error"; error: string };
+/** `failed`: the request itself failed after a value was known; the value stays, and the failure is said on the days' row. */
+type Load = { status: "loading" } | { status: "ready"; value: MailWaiting; failed?: string } | { status: "error"; error: string };
 
 /**
  * The days' read failed while the switch's did not: the host sends LifeOS's reason inside the answer, after its own
@@ -96,7 +97,11 @@ function Waiting({ workspace }: { workspace: WorkspaceMeta }) {
       },
       (err: unknown) => {
         // A read that failed after a newer save answered leaves the section as that save left it.
-        if (live && !(shown.current && shown.current.routine > n)) setLoad({ status: "error", error: workErrorWords(err) || "The host did not answer" });
+        if (!live || (shown.current && shown.current.routine > n)) return;
+        const error = workErrorWords(err) || "The host did not answer";
+        // A Retry that failed keeps what was known, the routine's switch with it: the failure and Retry stay on the days'
+        // row. Only a first read with nothing known is the whole section's error.
+        setLoad(shown.current ? { status: "ready", value: shown.current.value, failed: error } : { status: "error", error });
       },
     ).finally(() => live && setRetrying(false));
     return () => {
@@ -118,6 +123,7 @@ function Waiting({ workspace }: { workspace: WorkspaceMeta }) {
   };
 
   const value = load.status === "ready" ? load.value : null;
+  const failed = load.status === "ready" ? load.failed : undefined;
   const retry = (
     <Button
       variant="ghost"
@@ -139,8 +145,8 @@ function Waiting({ workspace }: { workspace: WorkspaceMeta }) {
       ) : null}
       {value ? (
         <>
-          <PageRow title="Count as waiting after" error={value.error ? daysFailure(value.error) : undefined}>
-            {value.days === null && value.error ? (
+          <PageRow title="Count as waiting after" error={failed ?? (value.error ? daysFailure(value.error) : undefined)}>
+            {value.days === null && (value.error || failed) ? (
               // Asks the whole section again; the switch below stays as it was while it is out.
               retry
             ) : value.days !== null ? (

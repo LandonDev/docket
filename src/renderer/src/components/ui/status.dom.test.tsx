@@ -73,3 +73,19 @@ describe("StatusMark", () => {
     expect(detail(bare.container)).not.toContain("-ms-1");
   });
 });
+
+/** Council round 5: a state line's word that is the whole fact wraps; every other mark draws its word as before. */
+describe("StatusMark's wrap", () => {
+  it("leaves the word cut or kept whole as before by default, and wraps it only when asked", () => {
+    const wordOf = (el: ReturnType<typeof render>) => el.container.querySelector('[data-slot="status-word"]')!.className;
+    const cut = render(<StatusMark state="failed" word="The box did not answer" />);
+    expect(wordOf(cut)).toBe("font-medium min-w-0 truncate");
+    cut.unmount();
+    const kept = render(<StatusMark state="failed" word="LifeOS did not answer" detail="As of 3:04 PM" />);
+    expect(wordOf(kept)).toBe("font-medium shrink-0");
+    kept.unmount();
+    const wrapped = render(<StatusMark state="failed" wrap word="Purdue Esports Office MacBook Pro did not answer" />);
+    expect(wordOf(wrapped)).toBe("font-medium min-w-0 text-pretty");
+    wrapped.unmount();
+  });
+});
