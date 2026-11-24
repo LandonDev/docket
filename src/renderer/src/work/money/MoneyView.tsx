@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Bar, BarChart, CartesianGrid, Tooltip as ChartTooltip, XAxis, YAxis } from "recharts";
 import { receiptSource, type CalendarOffer, type MoneyProblem, type MoneyRead } from "@shared/contract-work-money";
 import { loadToast } from "../../components/ui/toaster";
@@ -23,7 +23,7 @@ import type { WorkViewProps } from "../views/registry";
 import { atOf, heard, markPaid, openBook, openBooks, openReceipt, useMoney, withToast } from "./api";
 import { ConfirmFlow } from "./ConfirmFlow";
 import { EntryDialog } from "./EntryDialog";
-import { CATEGORY_GRID, ENTRIES_TAIL, OWED_GRID } from "./layout";
+import { CATEGORY_GRID, ENTRIES_TAIL, NARROW_HEAD, NARROW_ONLY, OWED_GRID, WIDE_HEAD, WIDE_ONLY } from "./layout";
 import { filingToast, receiveFiles, sortFiles } from "./receive";
 import { ExportDialog } from "./ExportDialog";
 import { InvoiceDialog, invoiceTitle, type InvoiceKind } from "./InvoiceDialog";
@@ -63,6 +63,25 @@ export const openMoneyDialog = (dialog: MoneyDialog) => set({ dialog });
 /** Puts the view on a period (the preview, the tests). */
 export const setMoneyPeriod = (period: PeriodState) => set({ period });
 
+/**
+ * Whether the view's header is under `NARROW_HEAD` wide: a hidden mark's row, measured. The toggle hides by the
+ * header's own container query (WIDE_HEAD); this says when More takes its rows, on the same width.
+ */
+function useNarrowHead(): [(el: HTMLSpanElement | null) => void, boolean] {
+  const [row, setRow] = useState<HTMLElement | null>(null);
+  const [narrow, setNarrow] = useState(false);
+  useEffect(() => {
+    if (!row || typeof ResizeObserver === "undefined") return;
+    const measure = (): void => setNarrow(row.clientWidth > 0 && row.clientWidth < NARROW_HEAD);
+    measure();
+    const watch = new ResizeObserver(measure);
+    watch.observe(row);
+    return () => watch.disconnect();
+  }, [row]);
+  const mark = useCallback((el: HTMLSpanElement | null) => setRow(el?.parentElement ?? null), []);
+  return [mark, narrow];
+}
+
 export function Head({ env, workspace, sector }: WorkViewProps) {
   // The period is drawn only once the job is KNOWN to have money or something waiting: never before the first read lands, never on a job with none, never in a columns fault.
   const { period, bare: bareOf, landed: landedOf } = useShared(ui);
@@ -78,7 +97,17 @@ export function Head({ env, workspace, sector }: WorkViewProps) {
     // A purchase request asks Purdue leave to buy: only a Purdue job has one.
     ...(sector === "purdue" ? [{ kind: "item" as const, id: "request", label: "Purchase request…" }] : []),
   ];
+  // Under 520px Month or Year leaves the header for More, so Add and More stay in sight.
+  const [mark, narrow] = useNarrowHead();
+  const spanRows: MenuRow[] =
+    narrow && !bare
+      ? [
+          ...SPANS.map((s): MenuRow => ({ kind: "item", id: `span:${s.value}`, label: s.label, checked: unit === s.value })),
+          { kind: "sep" },
+        ]
+      : [];
   const moreRows: MenuRow[] = [
+    ...spanRows,
     { kind: "item", id: "ledger", label: "Open ledger" },
     { kind: "item", id: "mileage", label: "Open mileage log" },
     { kind: "sep" },
@@ -88,7 +117,12 @@ export function Head({ env, workspace, sector }: WorkViewProps) {
   return (
     <>
       {/* A job with no money has no period to step through. */}
-      {bare ? null : <ChoiceToggle label="Show" value={unit} options={SPANS} onChange={(span: Span) => set({ period: { ...period, span } })} />}
+      <span ref={mark} hidden />
+      {bare ? null : (
+        <div className={WIDE_HEAD}>
+          <ChoiceToggle label="Show" value={unit} options={SPANS} onChange={(span: Span) => set({ period: { ...period, span } })} />
+        </div>
+      )}
       {bare ? null : (
         <div className="flex items-center">
         <Button variant="ghost" size="icon-sm" aria-label={`Previous ${unit}`} onClick={() => set({ period: stepPeriod(period, -1) })}>
@@ -124,7 +158,8 @@ export function Head({ env, workspace, sector }: WorkViewProps) {
         align="end"
         rows={moreRows}
         onPick={(id) => {
-          if (id === "ledger" || id === "mileage") withToast(() => openBook(env, workspace.id, id));
+          if (id.startsWith("span:")) set({ period: { ...period, span: id.slice(5) as Span } });
+          else if (id === "ledger" || id === "mileage") withToast(() => openBook(env, workspace.id, id));
           else if (id === "rate") set({ dialog: { kind: "rate" } });
           else if (id === "export") set({ dialog: { kind: "export" } });
         }}
@@ -235,7 +270,7 @@ export function View({ env, workspace }: WorkViewProps) {
   else body = <Ledger env={env} workspaceId={workspace.id} read={read} label={periodLabel(period)} year={period.span === "year"} reload={reload} toConfirm={waits(read) ? toConfirm : null} />;
 
   return (
-    <div ref={root} data-money-view className="flex h-full min-h-0 flex-col">
+    <div ref={root} data-money-view className="@container/money flex h-full min-h-0 flex-col">
       {load.error ? <ViewStateLine word="Money did not load" detail={load.error} onRetry={reload} /> : null}
       {columns ? (
         columns.twice?.length ? (
@@ -651,7 +686,7 @@ function EntriesHead() {
       <TableRow>
         <TableHead className="w-24 first:pl-2">Date</TableHead>
         <TableHead>Who</TableHead>
-        <TableHead className="w-[26%]">Category</TableHead>
+        <TableHead className={cn("w-[26%]", WIDE_ONLY)}>Category</TableHead>
         <TableHead className="w-28 text-end">Amount</TableHead>
         <TableHead className={cn("last:pr-2", ENTRIES_TAIL)}>
           <span className="sr-only">Receipt</span>
@@ -679,8 +714,11 @@ function Entries({ env, workspaceId, read, rows }: { env: string; workspaceId: s
                 {row.date ? formatDay(row.date, false) : ""}
               </Button>
             </TableCell>
-            <TableCell className="max-w-0 truncate">{row.who}</TableCell>
-            <TableCell className="max-w-0 truncate text-muted-foreground">{row.category}</TableCell>
+            <TableCell className="max-w-0">
+              <span className="block truncate">{row.who}</span>
+              {row.category ? <span className={cn("truncate text-xs leading-4 text-muted-foreground", NARROW_ONLY)}>{row.category}</span> : null}
+            </TableCell>
+            <TableCell className={cn("max-w-0 truncate text-muted-foreground", WIDE_ONLY)}>{row.category}</TableCell>
             <TableCell className={cn("text-end", row.in && row.out ? "whitespace-normal" : null)}>
               {/* One form for every row, the dialog's: a row with money both ways reads "+$30.00 and $20.00", on two lines where it must. */}
               {rowMoney(row)}
@@ -749,7 +787,7 @@ function MoneySkeleton() {
                 <TableCell className="max-w-0">
                   <Skeleton className="h-3" style={{ width: `${w}%` }} />
                 </TableCell>
-                <TableCell className="max-w-0">
+                <TableCell className={cn("max-w-0", WIDE_ONLY)}>
                   <Skeleton className="h-3" style={{ width: `${w - 12}%` }} />
                 </TableCell>
                 <TableCell>

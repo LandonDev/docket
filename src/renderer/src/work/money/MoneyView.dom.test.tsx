@@ -244,6 +244,55 @@ describe("the Money view", () => {
     expect(await screen.findByRole("dialog", { name: "Export" })).toBeTruthy();
   });
 
+  it("under 520px moves Month or Year into More, so Add and More stay in the header", async () => {
+    // jsdom lays nothing out: the header's width is given, and the observer told it changed.
+    // Only the header's watcher is told: other parts' observers (the menu's) keep their own calls.
+    const watchers: { fn: (entries: unknown[]) => void; at: Element | null }[] = [];
+    vi.stubGlobal("ResizeObserver", class {
+      w: { fn: (entries: unknown[]) => void; at: Element | null };
+      constructor(fn: (entries: unknown[]) => void) {
+        this.w = { fn, at: null };
+        watchers.push(this.w);
+      }
+      observe(at: Element) {
+        this.w.at = at;
+      }
+      unobserve() {}
+      disconnect() {}
+    });
+    const seen = { forEach: (tell: (fn: () => void) => void) => watchers.filter((w) => w.at === document.querySelector("[aria-label='Money header']")).forEach((w) => tell(() => w.fn([]))) };
+    try {
+      mount();
+      await settle();
+      const head = screen.getByRole("toolbar", { name: "Money header" });
+      Object.defineProperty(head, "clientWidth", { configurable: true, value: 400 });
+      act(() => seen.forEach((fn) => fn()));
+      fireEvent.click(screen.getByRole("button", { name: "More" }));
+      expect((await screen.findAllByRole("menuitemcheckbox")).map((m) => m.textContent)).toEqual(["Month", "Year"]);
+      fireEvent.click(screen.getByRole("menuitemcheckbox", { name: "Year" }));
+      await settle();
+      expect(document.querySelector("[data-money-period]")?.textContent).toMatch(/^\d{4}$/);
+      // Wide, the toggle holds them and More does not say them twice.
+      Object.defineProperty(head, "clientWidth", { configurable: true, value: 800 });
+      act(() => seen.forEach((fn) => fn()));
+      fireEvent.click(screen.getByRole("button", { name: "More" }));
+      await screen.findAllByRole("menuitem");
+      expect(screen.queryAllByRole("menuitemcheckbox")).toEqual([]);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("under 520px folds Category into Who's second line (the view's container query)", async () => {
+    mount();
+    await settle();
+    expect(screen.getByRole("columnheader", { name: "Category" }).className).toContain("@max-[520px]/money:hidden");
+    const row = document.querySelector("[data-money-row]")!;
+    const second = row.querySelector("td:nth-child(2) span:nth-child(2)");
+    expect(second?.className).toContain("@max-[520px]/money:block");
+    expect(second?.textContent).toBe(row.querySelector("td:nth-child(3)")?.textContent);
+  });
+
   it("offers Purchase request… in Add only in a Purdue job", async () => {
     mount();
     await settle();
