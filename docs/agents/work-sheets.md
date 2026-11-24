@@ -1098,8 +1098,9 @@ lands in his own Drive, shared with nobody. Threads have no upload tool.
   live in the sheet's own store (the `.tcsheet` zip, LifeOS's ops and
   snapshots), reach a guest in the snapshot he loads, and nothing of them
   stays on the host. A picture that is no PNG, JPEG, GIF or BMP, one over
-  5 MB, or more than 25 MB a sheet, and a part the grid does not give, are
-  refused in words (`listMisfit`). History labels the op "Chart" or
+  5 MB, or more than 25 MB a sheet (each part the sheet still draws counted
+  once: one brought back by Redo with its bytes again is not counted twice),
+  and a part the grid does not give, are refused in words (`listMisfit`). History labels the op "Chart" or
   "Picture". The canvas sends a turn's lists after its other mutations
   (sync.ts `pendingObjects`): rows he put in move the objects on the host,
   and the list his grid then holds is laid over as the truth (an Undo of

@@ -84,21 +84,33 @@ function imageType(bytes: Buffer): string | null {
  * write and within the bounds; a part named here must be one the grid gives (`media:<id>`) or one the
  * sheet already keeps.
  */
-export function listMisfit(held: HeldObjects, m: SheetMutationJson): string | null {
+export function listMisfit(held: HeldObjects, m: SheetMutationJson, tabOf?: (sheetId: string) => string | undefined): string | null {
   const p = m.params as RulesSetParams
   if (typeof p.subUnitId !== 'string' || !Array.isArray(p.list)) return 'A chart or picture list names its sheet and holds a list.'
   if (p.kind !== 'pictures') return null
-  let total = 0
-  for (const m of held.media.values()) total += Math.floor((m.data.length * 3) / 4)
+  // What the sheet keeps once the list is laid, each part once: the other tabs' pictures, and this list's (a picture
+  // removed and brought back by Redo comes with its bytes again, and the bytes the host still holds of it count no more).
+  const tab = tabOf?.(p.subUnitId)
+  const sizes = new Map<string, number>()
+  const keptOf = (part: string): void => {
+    const got = held.media.get(part)
+    if (got) sizes.set(part, Math.floor((got.data.length * 3) / 4))
+  }
+  for (const x of held.objects.pictures) if (tab === undefined || x.sheet !== tab) keptOf(x.part)
   for (const entry of p.list as Array<Partial<PictureSpec> & { data?: unknown }>) {
     if (typeof entry?.part !== 'string') return 'A picture names its part.'
-    if (entry.data === undefined) continue
+    if (entry.data === undefined) {
+      keptOf(entry.part)
+      continue
+    }
     if (typeof entry.data !== 'string' || !MADE_PART.test(entry.part)) return 'A picture made here carries its bytes under its own part.'
     const bytes = Buffer.from(entry.data, 'base64')
     if (bytes.length > MEDIA_MAX) return `A picture can be at most ${MEDIA_MAX / 1024 / 1024} MB here.`
     if (!imageType(bytes)) return 'That picture is not a PNG, JPEG, GIF or BMP.'
-    total += bytes.length
+    sizes.set(entry.part, bytes.length)
   }
+  let total = 0
+  for (const size of sizes.values()) total += size
   return total > MEDIA_TOTAL_MAX ? `A sheet keeps at most ${MEDIA_TOTAL_MAX / 1024 / 1024} MB of pictures made here.` : null
 }
 

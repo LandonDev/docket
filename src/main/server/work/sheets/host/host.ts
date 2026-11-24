@@ -330,7 +330,7 @@ export class SheetHost {
       // A tab's chart or picture list is held to its shape and a made picture's bytes to their bounds, before anything is kept.
       const held = kept.get(o.engine)
       for (const m of ops) {
-        const why = held && isObjectList(m) ? listMisfit(held, m) : null
+        const why = held && isObjectList(m) ? listMisfit(held, m, (id) => o.engine.workbook.getSheetBySheetId(id)?.getSheetName()) : null
         if (why) throw new Error(why)
       }
       return this.commit(o, o.rev, [{ by, mutations: ops }])

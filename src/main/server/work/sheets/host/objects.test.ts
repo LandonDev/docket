@@ -13,7 +13,7 @@ import { createObjects } from '../../../../../../node_modules/work-kit/src/sheet
 import { TcsheetBackend } from './backends'
 import { SheetHost } from './host'
 import { GUEST_OPS, refusal } from './live'
-import { MEDIA_RESOURCE, mediaOf } from './objects'
+import { listMisfit, MEDIA_RESOURCE, MEDIA_TOTAL_MAX, mediaOf, type HeldObjects } from './objects'
 import { writeXlsxWhole } from '../writer'
 import { readMedia, readObjects } from 'work-kit/sheet/xlsx'
 import type { SheetRef } from './wire'
@@ -194,5 +194,23 @@ describe('charts and pictures on a sheet the service holds', () => {
     expect(Buffer.from(readMedia(bytes, file.pictures[0]!.part)!).equals(PNG)).toBe(true)
     // the picture whose image the sheet does not keep is said, not written
     expect(left).toEqual([{ what: 'pictures', sheet: 'Sheet1', why: 'A picture whose image this sheet does not keep is left out.' }])
+  })
+})
+
+describe('the pictures a sheet the service holds may keep', () => {
+  // A PNG's signature, then filler: 4.5 MiB, as the canvas sends it.
+  const png = (): string => Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), Buffer.alloc(4.5 * 1024 * 1024 - 8)]).toString('base64')
+  const anchor = { kind: 'oneCell' as const, from: { column: 0, row: 0, columnOffset: 0, rowOffset: 0 }, width: 1, height: 1 }
+  const picture = (n: number, sheet = 'Sheet1') => ({ id: `picture-${n}`, sheet, anchor, part: `media:${n}`, contentType: 'image/png' })
+  it('counts each part the sheet still draws once: a picture brought back by Redo, with its bytes again, is not counted twice', () => {
+    // Council r3 (Sol 7): five 4.5 MiB pictures, the fifth undone and saved then redone, read as 27 MiB over the 25 MiB bound.
+    const data = png()
+    const held: HeldObjects = { objects: { charts: [], pictures: [1, 2, 3, 4].map((n) => picture(n)), warnings: [] }, media: new Map([1, 2, 3, 4, 5].map((n) => [`media:${n}`, { type: 'image/png', data }])) }
+    const redo = { id: RULES_SET, params: { kind: 'pictures', subUnitId: 'sheet1', list: [...[1, 2, 3, 4].map((n) => picture(n)), { ...picture(5), data }] } }
+    expect(listMisfit(held, redo, () => 'Sheet1')).toBeNull()
+    expect(listMisfit(held, redo)).toBeNull()
+    // a sixth on top is over the bound
+    const six = { ...redo, params: { ...redo.params, list: [...redo.params.list, { ...picture(6), data }] } }
+    expect(listMisfit(held, six, () => 'Sheet1')).toBe(`A sheet keeps at most ${MEDIA_TOTAL_MAX / 1024 / 1024} MB of pictures made here.`)
   })
 })
