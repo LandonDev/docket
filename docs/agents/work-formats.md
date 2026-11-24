@@ -258,7 +258,9 @@ document is kept in the workspace's own folder (files/word.ts
 its live text to that file.
 The opener may be a pane owner as well as a thread (the Files place's tab):
 a dropped file's bytes are then kept in that pane's workspace folder, and
-the item it replaces is swapped through `ctx.canvas.replace`, so a Files tab
+the item it replaces is swapped through `ctx.canvas.replace` (only while that item is still open on the file the
+import read: one closed, or naming another file since, a rename imported again from there, makes the import drop its
+document and say so, `IMPORT_OVERTAKEN`, so one Word file never opens as two editable documents), so a Files tab
 follows to the document.
 - `.docx`: `readDocx`. `.odt`, `.rtf`, `.doc`: LibreOffice to `.docx`
   (`ctx.convert`, the toolchain's pairs), then the same reader. `.md`:

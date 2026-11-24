@@ -20,7 +20,7 @@ import { ensureThreadTables } from '../docs/threads'
 import { importFolderOf } from '../files/imports'
 import { madeFromShared } from './exporter'
 import { formats } from './index'
-import { droppedWords, freePath, safeName } from './importer'
+import { droppedWords, freePath, IMPORT_OVERTAKEN, safeName } from './importer'
 import { convertersOf, JobRunner } from './jobs'
 import { setPrinter } from './print'
 import { runTool, Toolchain } from './tools'
@@ -153,6 +153,29 @@ describe('a Word file opened in the canvas', () => {
     // A second import of the same file makes another document, never over the first.
     const again = await r.ask<ImportAnswer>('work.formats.import', { from: { at: 'source', source: { at: 'file', host: 'env_box', path: original } } })
     expect((again.source as { path: string }).path).toBe(join(r.work, 'review 3.tcdoc'))
+  })
+
+  it('an import its item no longer stands for (the file renamed while it was read, or the item closed) opens nothing and leaves no document', async () => {
+    const r = await rig()
+    const original = word(r)
+    const canvas = r.ctx.canvas as { get: (id: string) => unknown }
+    const was = canvas.get
+    // While it was read the file was renamed: the item names the new name now, and its own import runs from there.
+    canvas.get = (id: string) => (id === 'i0' ? { id: 'i0', sessionId: 't1', state: 'open', source: { at: 'file', host: 'env_box', path: join(r.work, 'review (final).docx') } } : was(id))
+    await expect(r.ask('work.formats.import', { sessionId: 't1', itemId: 'i0', from: { at: 'source', source: { at: 'file', host: 'env_box', path: original } } })).rejects.toThrow(IMPORT_OVERTAKEN)
+    expect(r.opened).toEqual([])
+    expect(r.closed).toEqual([])
+    expect(existsSync(join(r.work, 'review.tcdoc'))).toBe(false)
+    expect(r.ctx.db.prepare('SELECT rows FROM work_docs_threads WHERE doc = ?').get(fileDocName(join(r.work, 'review.tcdoc')))).toBeUndefined()
+    // Closed meanwhile: the same.
+    canvas.get = (id: string) => (id === 'i0' ? { id: 'i0', sessionId: 't1', state: 'closed', source: { at: 'file', host: 'env_box', path: original } } : was(id))
+    await expect(r.ask('work.formats.import', { sessionId: 't1', itemId: 'i0', from: { at: 'source', source: { at: 'file', host: 'env_box', path: original } } })).rejects.toThrow(IMPORT_OVERTAKEN)
+    expect(r.opened).toEqual([])
+    // Still open on the file it read: it takes the item's place.
+    canvas.get = (id: string) => (id === 'i0' ? { id: 'i0', sessionId: 't1', state: 'open', source: { at: 'file', host: 'env_box', path: original } } : was(id))
+    const got = await r.ask<ImportAnswer>('work.formats.import', { sessionId: 't1', itemId: 'i0', from: { at: 'source', source: { at: 'file', host: 'env_box', path: original } } })
+    expect(r.opened).toEqual([{ pane: 't1', source: got.source, title: 'review' }])
+    expect(r.closed).toEqual(['i0'])
   })
 
   it("a mail's attachment is read once into a .tcdoc beside its fetched copy, opens and closes nothing, and is viewed, not edited", async () => {

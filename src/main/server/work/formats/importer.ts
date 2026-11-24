@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { basename, dirname, extname, join } from 'node:path'
 import { fileDocName } from 'work-kit/collab-server'
 import type { Block, Imported } from 'work-kit/formats'
@@ -119,6 +119,15 @@ export async function readFile(ctx: WorkCtx, path: string, ext: string): Promise
   throw new Error(`a .${ext || '?'} file is not one a document can be made from`)
 }
 
+/** Said of an import its item no longer stands for: the file was renamed, moved or closed while it was read. */
+export const IMPORT_OVERTAKEN = 'This file was renamed, moved or closed while it was read, so what was read of it was dropped.'
+
+/** Whether an item's source is this file, by its canonical path. */
+const namesFile = (source: CanvasSource, path: string): boolean => {
+  const at = canvasSourcePath(source)
+  return !!at && canonicalPath(at) === path
+}
+
 export async function importFile(ctx: WorkCtx, by: Caller, params: ImportParams): Promise<ImportAnswer> {
   const from = params.from
   let name: string
@@ -168,7 +177,18 @@ export async function importFile(ctx: WorkCtx, by: Caller, params: ImportParams)
   let itemId: string | undefined
   // The document takes the place of the item it was made of, only in the same pane: a caller cannot close another
   // thread's items. A Files tab showing the old item follows to the new one.
-  if (params.sessionId) itemId = ctx.canvas.replace(ctx.canvas.paneOf(params.sessionId), params.itemId, 'document', source, stem).id
+  if (params.sessionId) {
+    const pane = ctx.canvas.paneOf(params.sessionId)
+    const old = params.itemId ? ctx.canvas.get(params.itemId) : null
+    // Overtaken while it was read: the item closed, or it names another file now (renamed or moved, and imported
+    // again from there). This document is dropped, so one Word file never opens as two editable documents.
+    if (from.at === 'source' && old && old.sessionId === pane && (old.state === 'closed' || (old.source && !namesFile(old.source, original!)))) {
+      rmSync(target, { force: true })
+      ctx.db.prepare('DELETE FROM work_docs_threads WHERE doc = ?').run(fileDocName(target))
+      throw new Error(IMPORT_OVERTAKEN)
+    }
+    itemId = ctx.canvas.replace(pane, params.itemId, 'document', source, stem).id
+  }
   ctx.log(`formats: imported ${name} as ${basename(target)} (${made.threads.length} threads, ${made.branches.length} authors of changes)`)
   return { source, title: stem, ...(itemId ? { itemId } : {}), warnings, outsiders: made.outsiders }
 }
