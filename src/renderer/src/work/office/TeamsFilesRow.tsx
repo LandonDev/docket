@@ -126,7 +126,7 @@ export function TeamsFilesRow({ link, title, host, editable }: { link: Link | nu
               </Tooltip>
             )
           }
-          description={added(row.library) ? row.folder : undefined}
+          description={row.library?.slow ? (added(row.library) ? `${row.folder} · ${row.library.slow}` : row.library.slow) : added(row.library) ? row.folder : undefined}
         >
           {editable ? (
             <div className="flex items-center gap-2">

@@ -240,3 +240,23 @@ describe('a folder read whole (a mapped drive on Windows)', () => {
     failing.close()
   })
 })
+
+describe('rows looked at closer', () => {
+  it('are looked at by a pool of at most STAT_AT_ONCE, every one of them', async () => {
+    const { stateRows, STAT_AT_ONCE } = await import('./disk')
+    let open = 0
+    let most = 0
+    const look = async (): Promise<never> => {
+      open++
+      most = Math.max(most, open)
+      await new Promise((next) => setTimeout(next, 1))
+      open--
+      return { mtimeMs: 5, size: 7, blocks: 0 } as never
+    }
+    const rows = Array.from({ length: 300 }, (_, i) => ({ name: `f${i}.docx`, dir: false, kind: 'document' as const }))
+    await stateRows('J:\\Bench', rows as never, undefined, look)
+    expect(most).toBe(STAT_AT_ONCE)
+    // On a mapped drive a row with no blocks is still here: it has no cloud.
+    expect(rows.every((r) => (r as { stated?: boolean; local?: boolean }).stated && (r as { local?: boolean }).local)).toBe(true)
+  })
+})

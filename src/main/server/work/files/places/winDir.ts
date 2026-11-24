@@ -102,8 +102,16 @@ export class WinDirHost {
   private ready: Promise<ChildProcess | null> | null = null
   private next = 1
   private readonly waiting = new Map<number, { done: (rows: WinDirRow[]) => void; fail: (err: Error) => void; timer: ReturnType<typeof setTimeout> }>()
-  /** Set once the helper could not be made: every read is the slow way until the app restarts. */
-  private broken = false
+  /** Why the helper could not be made, once that is known: every read is the slow way until the app restarts. */
+  private broken: string | null = null
+  /** Whether a helper has run here: what `doctor.get` and Settings say of the folders on mapped drives. */
+  private ran = false
+
+  /** How folders on mapped drives are read now. */
+  state(): { mode: 'one read' | 'row by row' | 'not started'; why?: string } {
+    if (this.broken !== null) return { mode: 'row by row', why: this.broken }
+    return { mode: this.ran ? 'one read' : 'not started' }
+  }
 
   constructor(private readonly deps: WinDirDeps = {}) {}
 
@@ -136,7 +144,7 @@ export class WinDirHost {
   }
 
   private start(): Promise<ChildProcess | null> {
-    if (this.broken) return Promise.resolve(null)
+    if (this.broken !== null) return Promise.resolve(null)
     this.ready ??= (async () => {
       const log = this.deps.log ?? ((line: string) => console.log(`[files] ${line}`))
       const exe = this.deps.exe ?? join(tmpdir(), `tempcode-dir-${createHash('sha256').update(DIR_HELPER_CS).digest('hex').slice(0, 12)}.exe`)
@@ -154,6 +162,7 @@ export class WinDirHost {
           }
         }
         const helper = (this.deps.spawnHelper ?? spawnDirHelper)(exe)
+        this.ran = true
         let buffer = ''
         helper.stdout?.setEncoding('utf8')
         helper.stdout?.on('data', (chunk: string) => {
@@ -180,8 +189,9 @@ export class WinDirHost {
         helper.once('exit', (code) => lost(`exited (${code})`))
         return helper
       } catch (err) {
-        log(`no folder helper (each row is looked at): ${err instanceof Error ? err.message : String(err)}`)
-        this.broken = true
+        const why = err instanceof Error ? err.message : String(err)
+        log(`no folder helper (each row is looked at): ${why}`)
+        this.broken = why.split('\n')[0]!.slice(0, 200)
         return null
       }
     })()
@@ -198,7 +208,22 @@ function spawnDirHelper(exe: string): ChildProcess {
   return helper
 }
 
+/** A run of the rig's bench may turn the helper off (`TEMP_CODE_DIR_HELPER=0`), under the harness marker alone. */
+const helperOff = (): boolean => process.env.TEMP_CODE_DIR_HELPER === '0' && !!process.env.TEMP_CODE_USER_DATA
+
 let host: WinDirHost | null = null
 /** The app's one helper (Windows only); a test passes its own. */
-export const winDirHost = (): WinDirHost => (host ??= new WinDirHost())
+export const winDirHost = (): WinDirHost => (host ??= helperOff() ? new WinDirHost({ compile: async () => Promise.reject(new Error('turned off for this run (TEMP_CODE_DIR_HELPER=0)')), exe: join(tmpdir(), 'tempcode-dir-off.exe') }) : new WinDirHost())
+
+/**
+ * How this host reads folders on mapped drives, in his words: Settings → Work under each such folder, and `doctor.get`.
+ * Null off Windows, where no folder needs the helper.
+ */
+export function folderReader(platform: NodeJS.Platform = process.platform, h: WinDirHost = winDirHost()): { mode: 'one read' | 'row by row' | 'not started'; words: string; why?: string } | null {
+  if (platform !== 'win32') return null
+  const now = h.state()
+  if (now.mode === 'row by row') return { mode: now.mode, words: 'Read row by row, which is slower: Windows did not let TempCode make its folder reader.', why: now.why }
+  if (now.mode === 'one read') return { mode: now.mode, words: 'Read in one go.' }
+  return { mode: now.mode, words: 'Read in one go from the first folder on it.' }
+}
 export const setWinDirHost = (h: WinDirHost | null): void => void (host = h)

@@ -1394,6 +1394,8 @@ export type DoctorGetResult = Record<z.infer<typeof providerEnum>, DoctorReport>
   watches?: { held: number; ceiling: number; roots: { root: string; held: number; partial: boolean }[] }
   /** Watches the kernel refused since boot (ENOSPC, EMFILE), each with what covers it instead (watchGuard.ts). */
   watchFailures?: { what: string; error: string; fallback: string; at: number }[]
+  /** Windows: how folders on mapped drives are read (files/places/winDir.ts): in one go by the folder reader, or row by row and why. */
+  folderReader?: { mode: 'one read' | 'row by row' | 'not started'; words: string; why?: string }
 }
 
 export type ServerResponse =

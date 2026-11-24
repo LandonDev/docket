@@ -21,6 +21,7 @@ import { makeBytes } from './verbs'
 import { farMoved } from './moved'
 import { guestChange, guestOp, vmReadVersioned, vmSave } from './vmVerbs'
 import { FileRefused, OpLost, versionOf } from './write'
+import { farBytes, type FarPiece } from '../office/files/handle'
 
 /**
  * A copy saves back (docs/agents/work-files.md "A copy saves back"). A Files tab's copy of a file on another
@@ -410,9 +411,9 @@ export async function freshBytes(ctx: WorkCtx, r: Pick<CopyRow, 'workspace_id' |
     return { data: Buffer.concat(parts), version: version! }
   }
   const far = ctx.peer.call({ scope: { sessionId: filesPaneOf(r.workspace_id), workspaceId: r.workspace_id }, signal } as never, r.host)
-  const got = (await far.call('office', 'filesRead', { source: ref, as: 'bytes' })) as { data: string; version?: string }
+  const got = await farBytes((params) => far.call('office', 'filesRead', { source: ref, as: 'bytes', ...params }) as Promise<FarPiece>)
   if (typeof got.version !== 'string') throw new Error('The other computer runs an older TempCode: update it to reload here.')
-  return { data: Buffer.from(got.data, 'base64'), version: got.version }
+  return { data: got.bytes, version: got.version }
 }
 
 /**

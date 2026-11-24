@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto'
 import { watch, type FSWatcher, type Stats } from 'node:fs'
-import { lstat, opendir, stat } from 'node:fs/promises'
+import { lstat, opendir, readdir, stat } from 'node:fs/promises'
 import { join } from 'node:path'
 import { compareEntries, DEFAULT_SORT, kindOfEntry, LIST_PAGE_BYTES, LIST_PAGE_MAX, type EntryKind, type FileEntry, type FileSort } from '@shared/work/files'
 import { noteWatchFailure } from '../../../watchGuard'
@@ -40,28 +40,32 @@ export const hiddenName = (name: string): boolean => name.startsWith('.') || nam
 export const bytesHere = (s: Pick<Stats, 'size' | 'blocks'>): boolean => s.size === 0 || s.blocks > 0
 
 /** How many rows are looked at closer at once. */
-const STAT_BATCH = 64
+export const STAT_AT_ONCE = 32
 
-async function stateRows(dir: string, rows: DiskRow[], signal?: AbortSignal): Promise<void> {
+export async function stateRows(dir: string, rows: DiskRow[], signal?: AbortSignal, look: (path: string) => Promise<Stats> = lstat): Promise<void> {
   const todo = rows.filter((r) => !r.stated)
-  for (let i = 0; i < todo.length; i += STAT_BATCH) {
-    if (signal?.aborted) throw new Error('cancelled')
-    await Promise.all(
-      todo.slice(i, i + STAT_BATCH).map(async (row) => {
-        try {
-          const s = await lstat(join(dir, row.name))
-          row.changed = Math.round(s.mtimeMs)
-          if (!row.dir) {
-            row.size = s.size
-            row.local = bytesHere(s)
-          }
-        } catch {
-          // Gone between the listing and the look: the row keeps its name and says nothing more.
+  const linked = driveOf(dir) !== null
+  // A pool of looks, each taking the next row as one ends: one slow row never holds the rest back, as a batch would.
+  let next = 0
+  const worker = async (): Promise<void> => {
+    while (next < todo.length) {
+      if (signal?.aborted) throw new Error('cancelled')
+      const row = todo[next++]!
+      try {
+        const s = await look(join(dir, row.name))
+        row.changed = Math.round(s.mtimeMs)
+        if (!row.dir) {
+          row.size = s.size
+          // A mapped or network drive keeps nothing in the cloud, whatever blocks its server reports.
+          row.local = linked || bytesHere(s)
         }
-        row.stated = true
-      })
-    )
+      } catch {
+        // Gone between the listing and the look: the row keeps its name and says nothing more.
+      }
+      row.stated = true
+    }
   }
+  await Promise.all(Array.from({ length: Math.min(STAT_AT_ONCE, todo.length) }, worker))
 }
 
 interface Snapshot {
@@ -209,6 +213,16 @@ export class DiskLister {
       return { at: this.now(), version: `${Math.round(before.mtimeMs)}:${rows.length}`, rows, sorted: '' }
     }
     const rows: DiskRow[] = []
+    if (driveOf(dir)) {
+      // A mapped drive with no folder reader: the folder in one read, names and types, never a name at a time.
+      for (const d of await readdir(dir, { withFileTypes: true })) {
+        if (hiddenName(d.name) || d.isSymbolicLink()) continue
+        const isDir = d.isDirectory()
+        if (!isDir && !d.isFile()) continue
+        rows.push({ name: d.name, dir: isDir, kind: isDir ? 'folder' : kindOfEntry(d.name).kind })
+      }
+      return { at: this.now(), version: `${Math.round(before.mtimeMs)}:${rows.length}`, rows, sorted: '' }
+    }
     const handle = await opendir(dir, { bufferSize: 256 })
     try {
       for await (const d of handle) {

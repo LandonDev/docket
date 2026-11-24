@@ -87,6 +87,8 @@ export interface TeamsLibrary {
   vm?: true
   /** a folder he added on a drive that is not there now (a network drive with the VPN down): listed, never read, its place not reachable */
   away?: true
+  /** a folder on a mapped drive of a Windows host, read row by row because its folder reader could not be made: the line Settings shows under it */
+  slow?: string
 }
 
 /**
@@ -201,6 +203,9 @@ export function teamsCanvasOf(entry: Pick<TeamsEntry, 'name' | 'path' | 'kind'>,
 /** The canvas kind each Office app's file opens as, in its app or live on the web. */
 export const APP_CANVAS = { excel: 'sheet', word: 'document', powerpoint: 'slides' } as const
 
+/** The most one piece of a file's bytes carries (`work.office.filesRead` with `offset`). */
+export const FILES_PIECE_MAX = 8 * 1024 * 1024
+
 export const OfficeLiveModeSchema = z.enum(['here', 'live'])
 export type OfficeLiveMode = z.infer<typeof OfficeLiveModeSchema>
 export type OfficeLiveApp = Extract<OfficeApp, 'word' | 'excel' | 'powerpoint'>
@@ -268,8 +273,12 @@ export const OfficeRequestSchemas = [
   request('work.office.filesSearch', z.object({ query: z.string().min(1).max(200), library: z.string().max(200).optional(), kind: z.enum(TEAMS_FILE_KINDS).optional() })),
   /** downloads a file OneDrive keeps in the cloud only, and answers it as it is now */
   request('work.office.filesFetch', z.object({ source: CanvasSourceSchema })),
-  /** a file's text (`text`), or its bytes as base64 (`bytes`, for a copy he allowed) */
-  request('work.office.filesRead', z.object({ source: CanvasSourceSchema, as: z.enum(['text', 'bytes']).default('text') })),
+  /**
+   * a file's text (`text`), or its bytes as base64 (`bytes`, for a copy he allowed): whole, or with `offset` the piece
+   * from there of at most `length` bytes, with the file's `size` and its version, so a copy streams in pieces with its
+   * progress said. A build before pieces leaves both out and answers the whole file.
+   */
+  request('work.office.filesRead', z.object({ source: CanvasSourceSchema, as: z.enum(['text', 'bytes']).default('text'), offset: z.number().int().min(0).optional(), length: z.number().int().min(1).max(FILES_PIECE_MAX).optional() })),
   /** opens a file in its own app on this host (Excel, Word, PowerPoint, Preview) */
   request('work.office.filesOpen', z.object({ source: CanvasSourceSchema })),
   /** A Files tab's remembered mode and where its shared Office file can open. */

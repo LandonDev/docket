@@ -1,8 +1,9 @@
 import { execFile } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import { closeSync, constants, existsSync, lstatSync, mkdirSync, openSync, readdirSync, realpathSync, rmSync, statSync, writeFileSync } from 'node:fs'
+import { stat } from 'node:fs/promises'
 import { basename, dirname, extname, join } from 'node:path'
-import { teamsAppOf, teamsKindOf, type TeamsEntry, type TeamsLibrary } from '@shared/contract-work-office'
+import { FILES_PIECE_MAX, teamsAppOf, teamsKindOf, type TeamsEntry, type TeamsLibrary } from '@shared/contract-work-office'
 import { canvasSourcePath, filesPaneOf, filesPaneWorkspace, handled, NOT_HANDLED, type CanvasItem, type CanvasSource, type Handled } from '@shared/work'
 import type { ClientRequest } from '@shared/contract'
 import { FenceError } from '../../../remote/fence'
@@ -12,9 +13,11 @@ import type { Caller, WorkCtx } from '../../modules'
 import { copyKeptIn, dropCopyRecords } from '../../files/copyKept'
 import { importFolderOf } from '../../files/imports'
 import { workspaceHere } from '../../files/policy'
-import { readWhole } from '../../files/save'
+import { readPiece, readWhole } from '../../files/save'
 import type { OfficeCarrier } from '../carrier'
 import { BYTES_MAX, copyAllowed, entryOf, fetchFile, foldersPlace, librariesOf, libraryOf, listFolder, offFolders, readText, rootsOf, searchLibraries, SEARCH_MAX, setCopyAllowed, setRoots } from './library'
+import { driveOf } from './reach'
+import { folderReader } from '../../files/places/winDir'
 import { zipEntries } from './zip'
 import { NOT_SET_UP } from '../../winvm/keeper'
 import { isGuestPath, lastReadFailure, missingLibraries, readVmBehind, refreshVm, resetSyncAsks, setWantedLibraries, storedStatus, vmBytes, vmFetch, vmLibraries, vmLibraryOf, vmList, vmOfficeStatus, vmOpen, vmPlace, vmSearch, vmStat, vmText, wantedLibraries } from '../vm/files'
@@ -105,7 +108,10 @@ async function librariesAnswer(ctx: WorkCtx, by: Caller, cached = false): Promis
   const folders = foldersPlace(ctx.host)
   // A folder he added himself is a library too: the place then has something to show.
   const places = [...(folders ? [own.some((l) => l.kind !== 'mine') && folders.state !== 'ok' ? { ...folders, state: 'ok' as const } : folders] : []), ...(vm.place ? [vm.place] : [])]
-  return { host: ctx.host, libraries: [...own, ...vm.libraries], roots: rootsOf(ctx.db), off: offFolders(ctx.db), places }
+  // A folder on a mapped drive read row by row (no folder reader here) says so, so a slow list is never a mystery.
+  const reader = own.some((l) => driveOf(l.path)) ? folderReader() : null
+  const mine = reader?.mode === 'row by row' ? own.map((l) => (driveOf(l.path) ? { ...l, slow: reader.words } : l)) : own
+  return { host: ctx.host, libraries: [...mine, ...vm.libraries], roots: rootsOf(ctx.db), off: offFolders(ctx.db), places }
 }
 
 /** Opens a file in its own app here: the Office carrier for an Office file, else the system's opener. A test hands its own. */
@@ -301,7 +307,7 @@ function writeCopy(dataDir: string, sessionId: string, dir: string, path: string
  * Copies a file from another host, or out of this host's Windows VM, into the owner's attachments here, when its
  * workspace allows it. The owner is a Work thread, or the Files pane of a Work workspace here (a file opened in a tab).
  */
-export async function copyIn(ctx: WorkCtx, sessionId: string, source: CanvasSource, signal?: AbortSignal): Promise<{ source: CanvasSource; entry: TeamsEntry; version?: string }> {
+export async function copyIn(ctx: WorkCtx, sessionId: string, source: CanvasSource, signal?: AbortSignal, progress?: (done: number, total: number) => void): Promise<{ source: CanvasSource; entry: TeamsEntry; version?: string }> {
   const pane = filesPaneWorkspace(sessionId)
   const scope = pane === null ? ctx.scopeOf(sessionId) : null
   if (pane === null && !scope) throw new Error(`thread ${sessionId} is not a Work thread here`)
@@ -320,8 +326,8 @@ export async function copyIn(ctx: WorkCtx, sessionId: string, source: CanvasSour
     const name = inVm.path.slice(inVm.path.lastIndexOf('\\') + 1)
     got = pane === null ? { name, bytes: await vmBytes(inVm.path, BYTES_MAX, signal) } : { name, ...(await vmVersioned(inVm.path, signal)) }
   } else {
-    const far = (await ctx.peer.call({ scope: scope ?? { sessionId, workspaceId }, signal }, source.host).call('office', 'filesRead', { source, as: 'bytes' })) as { name: string; data: string; version?: string }
-    got = { name: far.name, bytes: Buffer.from(far.data, 'base64'), ...(typeof far.version === 'string' ? { version: far.version } : {}) }
+    const far = await ctx.peer.call({ scope: scope ?? { sessionId, workspaceId }, signal }, source.host)
+    got = await farBytes((params) => far.call('office', 'filesRead', { source, as: 'bytes', ...params }) as Promise<FarPiece>, progress)
   }
   // One folder per source file, so two files of one name in one owner's copies never share a folder.
   const dir = copyFolderOf(ctx.dataDir, sessionId, source)
@@ -329,6 +335,56 @@ export async function copyIn(ctx: WorkCtx, sessionId: string, source: CanvasSour
   const path = join(dir, basename(got.name))
   writeCopy(ctx.dataDir, sessionId, dir, path, got.bytes)
   return { source: { at: 'file', host: ctx.host, path }, entry: entryOf('', path), ...(got.version ? { version: got.version } : {}) }
+}
+
+/** A piece of another host's file as its `filesRead` answers it; a build before pieces answers the whole file, with no `size`. */
+export type FarPiece = { name: string; data: string; version?: string; size?: number; end?: boolean }
+/** How much a piece of another host's file carries, and how many are asked at once: the link's round trip is paid once a piece, two pieces overlap it. */
+export const FAR_PIECE = 4 * 1024 * 1024
+const FAR_AHEAD = 2
+
+/**
+ * Another host's file read for a copy here, a piece at a time with two asked at once, so the bytes cross the link
+ * once and the caller can say how far it has got (`progress`). Every piece names the version it was read at: a file
+ * that changed while it was read is read once more, then refused. A host a build behind answers the whole file at once.
+ */
+export async function farBytes(ask: (params: { offset: number; length: number }) => Promise<FarPiece>, progress?: (done: number, total: number) => void): Promise<{ name: string; bytes: Buffer; version?: string }> {
+  // Each ask's failure is the caller's to see when it waits for it, never an unhandled one when a piece is let go.
+  const piece = (offset: number): Promise<FarPiece> => {
+    const got = ask({ offset, length: FAR_PIECE })
+    got.catch(() => undefined)
+    return got
+  }
+  for (let tries = 0; ; tries++) {
+    const head = await piece(0)
+    if (typeof head.size !== 'number' || typeof head.version !== 'string') return { name: head.name, bytes: Buffer.from(head.data, 'base64'), ...(typeof head.version === 'string' ? { version: head.version } : {}) }
+    const parts = [Buffer.from(head.data, 'base64')]
+    let done = parts[0]!.length
+    progress?.(done, head.size)
+    const offsets: number[] = []
+    for (let at = done; at < head.size; at += FAR_PIECE) offsets.push(at)
+    const asked: Promise<FarPiece>[] = []
+    let next = 0
+    const fill = (): void => {
+      while (asked.length < FAR_AHEAD && next < offsets.length) asked.push(piece(offsets[next++]!))
+    }
+    fill()
+    let same = true
+    while (asked.length) {
+      const got = await asked.shift()!
+      fill()
+      if (got.version !== head.version) {
+        same = false
+        break
+      }
+      const bytes = Buffer.from(got.data, 'base64')
+      parts.push(bytes)
+      done += bytes.length
+      progress?.(done, head.size)
+    }
+    if (same && done === head.size) return { name: head.name, bytes: Buffer.concat(parts), version: head.version }
+    if (tries) throw new Error(`${head.name} changed while it was read. Try again.`)
+  }
 }
 
 /** One read of the guest's piece of a file, with the version the helper reads (`size:mtime:sha256`). */
@@ -408,8 +464,11 @@ export async function filesHandle(req: ClientRequest, ctx: WorkCtx, by: Caller, 
         // Bytes leave this host only for another host of his making a copy its workspace allows (it checks its own switch).
         if (!by.peer) throw new Error('A file\'s bytes go only to another host of his, for a copy he allowed.')
         // The size is known before the download: a file too big to copy is never fetched for it.
-        if (statSync(path).size > BYTES_MAX) throw new Error(`${basename(path)} is over ${BYTES_MAX / 1024 / 1024} MB: open it in its app.`)
-        await fetchFile('', path, signal)
+        if ((await stat(path)).size > BYTES_MAX) throw new Error(`${basename(path)} is over ${BYTES_MAX / 1024 / 1024} MB: open it in its app.`)
+        // A piece at a time: the asker streams the copy and says how far it has got (files/copyIn).
+        if (typeof p.offset === 'number') return handled({ name: basename(path), ...(await readPiece(path, p.offset, Math.min(typeof p.length === 'number' ? p.length : FILES_PIECE_MAX, FILES_PIECE_MAX))) })
+        // A mapped drive keeps nothing in the cloud: the read below is the only one, never a whole read ahead of it.
+        if (!driveOf(path)) await fetchFile('', path, signal)
         // Its bytes and its version from one look: a copy that saves back names this version (files/copies.ts).
         const whole = await readWhole(path, BYTES_MAX)
         return handled({ name: basename(path), data: whole.data.toString('base64'), version: whole.version })

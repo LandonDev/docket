@@ -290,16 +290,30 @@ public struct WorkRoutinesPush: Codable, Hashable, Sendable {
 }
 
 public struct WorkFilesPush: Codable, Hashable, Sendable {
+    public struct Opening: Codable, Hashable, Sendable {
+        public let of: String
+        public let done: Double
+        public let total: Double
+
+        public init(of: String, done: Double, total: Double) {
+            self.of = of
+            self.done = done
+            self.total = total
+        }
+    }
+
     public let workspaceId: String
     public let at: String?
     public let tabs: Double?
     public let places: Bool?
+    public let opening: Opening?
 
-    public init(workspaceId: String, at: String? = nil, tabs: Double? = nil, places: Bool? = nil) {
+    public init(workspaceId: String, at: String? = nil, tabs: Double? = nil, places: Bool? = nil, opening: Opening? = nil) {
         self.workspaceId = workspaceId
         self.at = at
         self.tabs = tabs
         self.places = places
+        self.opening = opening
     }
 }
 

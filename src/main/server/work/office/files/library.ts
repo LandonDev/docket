@@ -8,7 +8,7 @@ import { teamsKindOf, type TeamsEntry, type TeamsFileKind, type TeamsLibrary, ty
 import { readMacOneDrive } from './macOneDrive'
 import { readWindowsOneDrive, type WindowsOneDriveMount } from './oneDrive'
 import { hostReal } from '../../../remote/fence'
-import { DRIVE_FRESH_MS, driveUp } from './reach'
+import { DRIVE_FRESH_MS, driveOf, driveUp } from './reach'
 import { zipEntries } from './zip'
 
 /**
@@ -374,7 +374,8 @@ export async function fetchFile(library: string, path: string, signal?: AbortSig
   const before = statSync(path)
   if (before.isDirectory()) throw new Error('That is a folder.')
   if (signal?.aborted) throw new Error('cancelled')
-  if (!isLocal(before)) {
+  // A mapped or network drive keeps nothing in the cloud: reading ahead would only read the file twice.
+  if (!isLocal(before) && !driveOf(path)) {
     await new Promise<void>((done, fail) => {
       const stream = createReadStream(path, { highWaterMark: 1024 * 1024 })
       const timer = setTimeout(() => stream.destroy(new Error('OneDrive did not download the file in 10 minutes.')), FETCH_MS)

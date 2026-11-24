@@ -2472,6 +2472,21 @@ share, listing a folder of 300 entries did not answer in 30 s and opening a 5 MB
 - **A file hashed once.** A file's version is its sha256 only off such a drive, and the hash is kept while
   its size and times stand (`versionOf`, write.ts): a file read in 4 MB pieces was hashed whole for each.
 
+- **A file opened from another computer crosses once, a piece at a time.** The workspace's host (the box,
+  for his laptop's R:) asks for the file in 4 MB pieces, two at once (`farBytes`, office/files/handle.ts;
+  `work.office.filesRead` with `offset` and `length`, `readPiece` in save.ts), each naming the version it
+  was read at: a file that changed while it was read is read once more, then refused. After each piece it
+  pushes how far it has got (`FilesPush.opening`, by a tag of the row's key, `openingTag`: never the path),
+  and the row that was pressed reads "Opening… 3.0 of 20 MB". A computer a build behind answers the whole
+  file at once, as before. The bound is the link's own rate: 5 MB at 8 Mbit/s is about 5 s, 20 MB about
+  21 s. A mapped drive's file is never read whole ahead of that read (no cloud there: `fetchFile` skips
+  it), and a mapped drive's rows always count as here, so the window never downloads one first.
+- **Which way a folder is read, said.** Without the folder reader (Windows refused to make it, or a
+  harness run turned it off with `TEMP_CODE_DIR_HELPER=0`), a folder on a mapped drive is one `readdir`
+  with types and its rows looked at by a pool of 32 (`stateRows`), and Settings → Work says under each
+  such folder "Read row by row, which is slower: Windows did not let TempCode make its folder reader."
+  `doctor.get` carries `folderReader` (`one read`, `row by row` with why, `not started`).
+
 What is kept, and where: listings in the host's memory a few seconds (`DiskLister`) and in the window's
 memory while it runs; resolved paths 30 s; nothing of a file's content past the open copy.
 

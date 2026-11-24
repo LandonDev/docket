@@ -8,7 +8,7 @@ import { isFileForm } from '@shared/work/fileForms'
 import type { FileBytes, FileCrumb, FileDone, FileOrigin, FilePage, FileRef, FileSaved, FilesListing, FilesOpened, FilesPlaces, FilesTabs, FileTab } from '@shared/contract-work-files'
 import { teamsCanvasOf, teamsKindOf } from '@shared/contract-work-office'
 import { canvasSourcePath, filesPaneOf, handled, NOT_HANDLED, type CanvasItem, type CanvasKind, type CanvasSource, type Handled } from '@shared/work'
-import { copySavesBack, DEFAULT_SORT, extOf, freeName, kindOfEntry, PLACE, refKey, refusal, seatOf, splitName, type FileEntry, type FilePlace, type FileSort, type FileVerb, type FolderRef } from '@shared/work/files'
+import { copySavesBack, DEFAULT_SORT, extOf, freeName, kindOfEntry, openingTag, PLACE, refKey, refusal, seatOf, splitName, type FileEntry, type FilePlace, type FileSort, type FileVerb, type FolderRef } from '@shared/work/files'
 import { sheetImportFormat } from '@shared/work/sheetFormats'
 import { fencedItem, itemPath } from '../canvas/store'
 import type { Caller, WorkCtx } from '../modules'
@@ -403,7 +403,10 @@ async function openCopy(ctx: WorkCtx, by: Caller, workspace: WorkspaceRow, p: Op
   return oneCopyAtATime(workspace.id, file, async () => {
     const again = tabNow()
     if (again) return again
-    const seat = await copySeat(ctx, workspace.id, file, name, p.as, signal)
+    // The row he pressed says how far the copy has got: by its key's tag, as the window makes it (`openingTag`).
+    const of = openingTag(p.key ?? keyNow())
+    const progress = (done: number, total: number): void => ctx.push({ push: 'work.files', workspaceId: workspace.id, opening: { of, done, total } }, { need: 'read' })
+    const seat = await copySeat(ctx, workspace.id, file, name, p.as, signal, progress)
     const key = keyNow()
     const { tabId, item } = state.tabs.openFile(workspace.id, { key, name, ...seat }, p.opener)
     state.marks.seen(workspace.id, key, { file: { at: 'file', ...file } }, name)
@@ -431,7 +434,7 @@ function freeKey(ctx: Pick<WorkCtx, 'db' | 'push' | 'log' | 'canvas'>, workspace
 }
 
 /** What a copy's tab shows: the Word file's kept document, the copy that waits, or a copy made now. */
-async function copySeat(ctx: WorkCtx, workspaceId: string, file: { host: string; path: string }, name: string, as: CanvasKind | undefined, signal?: AbortSignal): Promise<{ kind: CanvasKind; source: CanvasSource; copyOf: { host: string; path: string; vm?: boolean } }> {
+async function copySeat(ctx: WorkCtx, workspaceId: string, file: { host: string; path: string }, name: string, as: CanvasKind | undefined, signal?: AbortSignal, progress?: (done: number, total: number) => void): Promise<{ kind: CanvasKind; source: CanvasSource; copyOf: { host: string; path: string; vm?: boolean } }> {
   const vm = file.host === ctx.host
   const copyOf = { host: file.host, path: file.path, ...(vm ? { vm: true } : {}) }
   // A copy is the file it is, with no app behind it; a copy of a library's sound is played, not transcribed.
@@ -451,7 +454,7 @@ async function copySeat(ctx: WorkCtx, workspaceId: string, file: { host: string;
     return { kind, source: { at: 'file', host: ctx.host, path: waiting.copy }, copyOf }
   }
   // A copy is a file of its own: its marks are its own, so a thread that holds the original never takes its open.
-  const copy = await copyIn(ctx, filesPaneOf(workspaceId), { at: 'file', ...file }, signal)
+  const copy = await copyIn(ctx, filesPaneOf(workspaceId), { at: 'file', ...file }, signal, progress)
   // A kind that edits the copy's own bytes saves back to the file: the record holds where it lies and what it held.
   const path = (copy.source as { path: string }).path
   // the body as read, for SharePoint's own rewrite of it to be told from an edit (body.ts)

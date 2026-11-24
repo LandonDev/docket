@@ -177,6 +177,7 @@ import { handleCheckpoint } from './checkpointRpc'
 import { CheckpointTurns } from './checkpointTurns'
 import { watchStats } from './treewatch'
 import { watchFailures } from './watchGuard'
+import { folderReader as folderReaderNow } from './work/files/places/winDir'
 import { Linear, handleLinear } from './linear'
 import { GithubInbox, handleGithubInbox } from './githubInbox'
 import { SessionRegistry } from './sessions'
@@ -3041,7 +3042,8 @@ export async function startServer(
                 execBroker: execBroker.status(),
                 addonHost: addonHost.status(),
                 watches: watchStats(),
-                watchFailures: watchFailures()
+                watchFailures: watchFailures(),
+                ...(folderReaderNow() ? { folderReader: folderReaderNow()! } : {})
               } satisfies DoctorGetResult
             })
             break

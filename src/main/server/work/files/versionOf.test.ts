@@ -40,3 +40,29 @@ describe('a file read in pieces', () => {
     expect(driveOf('\\\\files\\esports\\Deck.pptx', 'C:')).toBe('\\\\files\\esports')
   })
 })
+
+describe('a piece of a file for a copy elsewhere', () => {
+  it('is the range asked, with the file size and the version it was read at', async () => {
+    const { readPiece, sameWord } = await import('./save')
+    const file = join(dir, 'Report.pdf')
+    writeFileSync(file, '0123456789')
+    const head = await readPiece(file, 0, 4)
+    const tail = await readPiece(file, 8, 4)
+    expect([Buffer.from(head.data, 'base64').toString(), head.size, head.end]).toEqual(['0123', 10, false])
+    expect([Buffer.from(tail.data, 'base64').toString(), tail.end]).toEqual(['89', true])
+    expect(tail.version).toBe(head.version)
+    // Read in pieces, the file is hashed once.
+    expect(reads.filter((p) => p === file)).toHaveLength(1)
+    expect(sameWord(head.version, head.version)).toBe(true)
+  })
+
+  it('names the same file when one version has no hash (a mapped drive), by its size and time', async () => {
+    const { sameWord } = await import('./save')
+    expect(sameWord('10:1700:', '10:1700:abc')).toBe(true)
+    expect(sameWord('10:1701:', '10:1700:abc')).toBe(false)
+    expect(sameWord('11:1700:', '10:1700:abc')).toBe(false)
+    // Both hashed: the hash decides, a time that only moved does not.
+    expect(sameWord('10:1701:abc', '10:1700:abc')).toBe(true)
+    expect(sameWord('10:1700:abd', '10:1700:abc')).toBe(false)
+  })
+})

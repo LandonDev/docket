@@ -1,6 +1,6 @@
 import type { FilesOpened, FileTab } from "@shared/contract-work-files";
 import { canvasSourcePath, type CanvasItem, type CanvasKind, type CanvasSource } from "@shared/work";
-import { kindOfEntry, type FileEntry } from "@shared/work/files";
+import { kindOfEntry, openingTag, type FileEntry } from "@shared/work/files";
 import { loadToast } from "../../components/ui/toaster";
 import { registry } from "../../lib/connection";
 import { platformOf } from "../../lib/hostPlatform";
@@ -126,12 +126,20 @@ export async function openEntry(entry: FileEntry, copy: PlaceCopy, from: OpenFro
     await openInApp(entry, copy, from);
     return null;
   }
+  let stopHearing: (() => void) | null = null;
   try {
     if (here) {
       await fetched(entry, copy, from);
       from.busy({ key: entry.key, word: "Opening…" });
     } else from.busy({ key: entry.key, word: entry.local === false ? "Downloading…" : "Opening…" });
     const ref = entry.ref;
+    // A file of another computer is copied to the workspace's host a piece at a time: the row says how far it has got.
+    const tag = openingTag(entry.key);
+    stopHearing = here
+      ? null
+      : registry.linkOf(workspaceLink).onPush((push) => {
+          if (push.push === "work.files" && push.workspaceId === from.workspace.id && push.opening?.of === tag) from.busy({ key: entry.key, word: openingWords(push.opening.done, push.opening.total) });
+        });
     const answer: FilesOpened = await openFileTab(workspaceLink, from.workspace.id, { ref, name: entry.name, key: entry.key }, from.opener, {
       ...(here ? {} : { timeoutMs: 660_000 }),
       // Excel, Word or PowerPoint is started only where the host seated the file on its app (`microsoft`): a form an
@@ -147,8 +155,15 @@ export async function openEntry(entry: FileEntry, copy: PlaceCopy, from: OpenFro
     failed(`${entry.name} did not open`, err);
     return null;
   } finally {
+    stopHearing?.();
     from.busy(null);
   }
+}
+
+/** How far a copy from another computer has got, in the words of the row that opened it. */
+export function openingWords(done: number, total: number): string {
+  const mb = (n: number): string => (n < 10 * 1024 * 1024 ? (n / 1024 / 1024).toFixed(1) : String(Math.round(n / 1024 / 1024)));
+  return `Opening… ${mb(done)} of ${mb(total)} MB`;
 }
 
 /** The file a tab shows, as its place names it: the item's own source, or for a copy the file it was made of. */

@@ -579,3 +579,18 @@ export const FILE_TEXT_MAX = 2 * 1024 * 1024
 /** The most entries, and bytes, one page of a listing carries. */
 export const LIST_PAGE_MAX = 500
 export const LIST_PAGE_BYTES = 512 * 1024
+
+/**
+ * A short tag of a row's key, for a push that says how far its open has got (`FilesPush.opening`): every window of the
+ * workspace hears the push, and a key names the file's path; the row that pressed it makes the same tag and knows it.
+ */
+export function openingTag(key: string): string {
+  let a = 0x811c9dc5
+  let b = 0x01000193
+  for (let i = 0; i < key.length; i++) {
+    const c = key.charCodeAt(i)
+    a = Math.imul(a ^ c, 0x01000193) >>> 0
+    b = Math.imul(b ^ c, 0x5bd1e995) >>> 0
+  }
+  return a.toString(36) + b.toString(36)
+}

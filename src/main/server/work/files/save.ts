@@ -85,6 +85,31 @@ export async function readWhole(path: string, max: number): Promise<{ data: Buff
   }
 }
 
+/**
+ * One piece of a file for a copy made on another host, with the file's size and its version (`versionOf`: hashed
+ * once while unchanged, never on a mapped drive), so the pieces of one copy are told apart from a file that changed
+ * while it was read: each piece names the version it was read at.
+ */
+export async function readPiece(path: string, offset: number, length: number): Promise<{ data: string; size: number; version: string; end: boolean }> {
+  const v = await versionOf(path)
+  const want = Math.max(0, Math.min(length, v.size - offset))
+  const buf = Buffer.alloc(want)
+  let got = 0
+  if (want) {
+    const file = await open(path, 'r')
+    try {
+      while (got < want) {
+        const { bytesRead } = await file.read(buf, got, want - got, offset + got)
+        if (!bytesRead) break
+        got += bytesRead
+      }
+    } finally {
+      await file.close()
+    }
+  }
+  return { data: buf.subarray(0, got).toString('base64'), size: v.size, version: versionWord(v), end: offset + got >= v.size }
+}
+
 /** The most one read answers. */
 export const READ_MAX = 4 * 1024 * 1024
 
@@ -97,9 +122,11 @@ export const versionWord = (v: Version): string => `${v.size}:${Math.round(v.mti
  */
 export function sameWord(now: string, expect: string): boolean {
   if (now === expect) return true
-  const [size, , sha] = now.split(':')
-  const [wantSize, , wantSha] = expect.split(':')
-  return !!sha && !!wantSha && size === wantSize && sha === wantSha
+  const [size, time, sha] = now.split(':')
+  const [wantSize, wantTime, wantSha] = expect.split(':')
+  if (sha && wantSha) return size === wantSize && sha === wantSha
+  // One side has no hash (a mapped drive is never hashed; a copy read before that rule names one): size and time.
+  return size === wantSize && time === wantTime
 }
 
 export interface FileBytes {
