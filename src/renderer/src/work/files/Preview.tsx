@@ -4,9 +4,9 @@ import { ENTRY_KIND_WORDS, extOf, type FileEntry } from "@shared/work/files";
 import { BusyLabel, Button } from "../../components/ui/button";
 import { Skeleton } from "../../components/ui/skeleton";
 import { formatBytes } from "../../lib/attachmentUpload";
-import { registry } from "../../lib/connection";
 import { dayTime } from "../../lib/duration";
 import { refusalWords } from "../../lib/settingsHome";
+import { filesLink } from "./farLink";
 import { bytesOfBase64 } from "./fileText";
 import { KindGlyph } from "./KindGlyph";
 import { pageWidth, readsAsText, useArchive, usePreviewPage, useTextHead, type ArchiveView, type PictureFrom } from "./previews";
@@ -174,7 +174,7 @@ export async function readWhole(from: PictureFrom, entry: FileEntry, signal: { s
   let version: string | undefined;
   for (let offset = 0; ; ) {
     if (signal.stopped) return null;
-    const got = await registry.linkOf(from.copy.link).request<FileBytes>("work.files.read", { workspaceId: from.workspaceId, ref: entry.ref, ...(itemId ? { itemId } : {}), offset, length: 4 * 1024 * 1024, ...(version ? { version } : {}) });
+    const got = await filesLink(from.copy.link).request<FileBytes>("work.files.read", { workspaceId: from.workspaceId, ref: entry.ref, ...(itemId ? { itemId } : {}), offset, length: 4 * 1024 * 1024, ...(version ? { version } : {}) });
     const bytes = bytesOfBase64(got.data);
     parts.push(bytes as BlobPart);
     version = got.version;

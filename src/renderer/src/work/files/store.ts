@@ -4,10 +4,11 @@ import type { TeamsEntry, TeamsLibrariesAnswer } from "@shared/contract-work-off
 import type { CanvasSource } from "@shared/work";
 import { DEFAULT_SORT, PLACE, refKey, sortEntries, type FileEntry, type FileSort, type FolderRef } from "@shared/work/files";
 import type { LibraryPlace } from "@shared/work/filePlaces";
-import { registry } from "../../lib/connection";
+import { LOCAL_ENVIRONMENT_ID, registry } from "../../lib/connection";
 import { refusalWords } from "../../lib/settingsHome";
 import type { WorkspaceMeta } from "../../lib/tcserver/types";
 import { linkIdOfHost, localHostId, windowDesktops, workspaceSettings } from "../shell/actions";
+import { filesLink, reachThrough } from "./farLink";
 import {
   clampDock,
   DOCK,
@@ -93,8 +94,12 @@ export function useReach(workspace: WorkspaceMeta, attempt: number): Reach | nul
     setReach(null);
     void (async () => {
       const [settings, local, desktops] = await Promise.all([workspaceSettings(workspace).catch(() => null), localHostId(), windowDesktops()]);
-      const allowed = (settings?.mayUseDesktop ?? []).map((id) => linkIdOfHost(id, local)).filter((id): id is string => id !== null);
-      const hosts = [...new Set([workspace.environmentId, ...allowed])].filter((id) => registry.has(id));
+      const mayUse = settings?.mayUseDesktop ?? [];
+      const allowed = mayUse.map((id) => linkIdOfHost(id, local)).filter((id): id is string => id !== null);
+      // A desktop this window has no link to (a PC linked only to the box) is asked through the workspace's own host.
+      const far = workspace.environmentId === LOCAL_ENVIRONMENT_ID ? [] : mayUse.filter((id) => linkIdOfHost(id, local) === null && id !== workspace.environmentId);
+      for (const id of far) reachThrough(id, workspace.environmentId, workspace.id);
+      const hosts = [...new Set([workspace.environmentId, ...allowed])].filter((id) => registry.has(id)).concat(far);
       if (!live) return;
       const windowsVm = !!settings?.windowsVm;
       const own = desktops.find((d) => d.link === workspace.environmentId);
@@ -129,8 +134,8 @@ export function useReach(workspace: WorkspaceMeta, attempt: number): Reach | nul
       const ask = (link: string): void => {
         const mine = (asked.get(link) ?? 0) + 1;
         asked.set(link, mine);
-        const name = registry.environment(link)?.name ?? link;
-        const desktop = desktops.some((d) => d.link === link);
+        let name = registry.environment(link)?.name ?? link;
+        const desktop = far.includes(link) || desktops.some((d) => d.link === link);
         const current = (): boolean => live && asked.get(link) === mine;
         const failed = (err: unknown): void => {
           if (!current()) return;
@@ -144,13 +149,14 @@ export function useReach(workspace: WorkspaceMeta, attempt: number): Reach | nul
         const landed = (answer: FilesPlaces, wire: "files" | "office"): void => {
           settle();
           if (!current()) return;
+          name = answer.name ?? name;
           reads.set(link, { link, name, desktop, wire, answer });
           paint();
           if (!reading(answer)) return;
           const timer = setTimeout(() => (timers.delete(timer), ask(link)), READING_AGAIN_MS);
           timers.add(timer);
         };
-        const host = registry.linkOf(link);
+        const host = filesLink(link);
         void host.request<FilesPlaces>("work.files.places", { workspaceId: workspace.id }).then(
           (answer) => landed(answer, "files"),
           (err: unknown) => {
@@ -170,7 +176,7 @@ export function useReach(workspace: WorkspaceMeta, attempt: number): Reach | nul
       for (const link of hosts) {
         ask(link);
         offs.push(
-          registry.linkOf(link).onPush((push) => {
+          filesLink(link).onPush((push) => {
             if (push.push === "work.office.files") ask(link);
             if (push.push === "work.files" && push.workspaceId === workspace.id && push.places) ask(link);
           }),
@@ -405,7 +411,7 @@ function putTabs(link: string, workspaceId: string, answer: FilesTabs, show?: st
   writeTabs(entry, { tabs: answer.tabs, rev: Math.max(answer.rev, entry.rev), loaded: true, local: false, selected });
 }
 
-const ask = <T,>(link: string, method: string, params: Record<string, unknown>, options?: { timeoutMs?: number }): Promise<T> => registry.linkOf(link).request<T>(method, params, options);
+const ask = <T,>(link: string, method: string, params: Record<string, unknown>, options?: { timeoutMs?: number }): Promise<T> => filesLink(link).request<T>(method, params, options);
 
 /** Fetch (or fetch again) the workspace's tabs from its host; an empty place gets its first tab, made once whichever window asks first. */
 export function loadTabs(link: string, workspaceId: string, first: FilePage): Promise<void> {
@@ -788,7 +794,7 @@ export function useListing(from: ListFrom | null, at: FolderRef, sort: FileSort 
     if (from.team || listingSeams.fetch) return;
     const watched = pushKey(from.copy, at);
     const lens = at.at === "place" && (at.id === PLACE.recent || at.id === PLACE.starred);
-    const off = registry.linkOf(from.copy.link).onPush((push) => {
+    const off = filesLink(from.copy.link).onPush((push) => {
       if (push.push !== "work.files" || push.workspaceId !== from.workspaceId) return;
       // A lens follows his marks, which change with the tabs he opens.
       if ((watched && push.at === watched) || (lens && push.tabs !== undefined)) void load(key, from, at, sort, false);

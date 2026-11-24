@@ -112,6 +112,8 @@ export interface HostRead {
   /** every other host with a live link to this one, whichever side dialed */
   hosts(): string[]
   read<T>(host: string, module: PillarId, verb: string, args: unknown): Promise<T>
+  /** another host as he names it, when this host has a link to it */
+  name?(host: string): string | null
 }
 const hostReads = new WeakMap<WorkCtx, HostRead>()
 export const hostReadOf = (ctx: WorkCtx): HostRead | undefined => hostReads.get(ctx)
@@ -137,6 +139,7 @@ export const peerPart: CtxPart<'peer'> = (ctx, deps) => {
   // its bridge policy for this one, as any call, and only a method a read key may call.
   hostReads.set(ctx, {
     hosts: () => (links?.reachable() ?? []).map((r) => r.id).filter((id) => id !== deps.environmentId),
+    name: (host) => deps.peers?.get(host)?.env.name ?? null,
     async read<T>(host: string, module: PillarId, verb: string, args: unknown): Promise<T> {
       const answer = await ask<WorkCallResult>(host, { environmentId: deps.environmentId, sessionId: 'work', title: 'Work', permission: 'safe' }, { kind: 'call', module, verb, args })
       if (!answer || typeof answer !== 'object' || !('work' in answer)) throw new Error('that host runs a build from before Work')

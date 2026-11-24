@@ -1345,6 +1345,7 @@ while its screen is unlocked.
 | `places {workspaceId}` | read | yes | this host's places and their state, `rev` (the tabs' revision) and `sources` (what stands between each source of Teams files and him). Never waits on a VM |
 | `list {workspaceId, at, cursor?, sort?, foldersOnly?}` | read | yes | one folder or lens, 500 entries and 512 KB a page at most; a folder that changed between pages answers `stale`. The first page carries `place` and `trail` |
 | `stat {workspaceId, refs}` | read | yes | the rows again with who last saved an Office file, 100 at most; null for one gone or out of reach |
+| `across {workspaceId, host, method, params}` | read | yes | `places`, `list` or `stat` of a desktop the window has no link to, asked of the workspace's host, which asks that desktop over `ctx.peer` ("A desktop the window cannot reach") |
 | `threads {workspaceId, ref}` | read | yes | the workspace's threads whose open items show the file |
 | `fetch {workspaceId, ref}` | read | screen | downloads a cloud-only file on its own host |
 | `tabs`, `open {ref, name?, as?, opener?, key?}`, `tabOpen {page, after?, first?}`, `tabClose`, `tabMove`, `tabSet` | read; operate | yes | the tabs and their items (below). `open` of a file on another host of his, or in the VM, makes its copy here |
@@ -1644,6 +1645,33 @@ from a release behind, a search hit or a notice a host a release behind
 sent, a kept Recent) is taken by the view frame (work/shell/WorkViewPage.tsx)
 and opened as `filesOfDocs` says: the document in a tab, or with none named
 the LifeOS place (`LIFEOS_PAGE`). A refusal still shows Files, with the toast.
+
+## A desktop the window cannot reach
+
+His Mac's window (and any window) has no link to a PC that links only to the
+box. `useReach` (work/files/store.ts) asks such a desktop of a box workspace
+through the workspace's host: each id in `mayUseDesktop` the window has no
+link to goes through `filesLink` (work/files/farLink.ts), which sends
+`places`, `list` and `stat` as `work.files.across` and refuses anything else.
+The box (files/across.ts) asks the desktop over `ctx.peer` as the workspace's
+Files pane, so `ctx.peer`'s own gate holds: the workspace may use that
+desktop, and the desktop is linked now. The desktop answers under its bridge
+policy for the box and the peer rule (its libraries alone); its own
+always-ask rules stand. The box refuses a thread, another host, itself, and a
+desktop `setLiveBinding` calls not live (the seam the device bindings fill;
+until then every linked host counts, a host link opening only over an admin
+key). Places come back read only (`can` empty) and named as the box names
+that desktop (`name`). Opening a file there is the copy a Mac-held file gets
+from a box workspace (`work.files.open`, `copyIn`), which reads it through
+the bridge: the PC's Access for the box must be **Read** or more. A desktop
+asleep, off its VPN or with TempCode closed answers nothing, and its places
+read as not reachable with one line. No push crosses: the desktop's places
+are asked again with the workspace's own.
+
+A thread on the box reaches the same folders with its own tools: `files_*`
+(files/tools.ts `hostsOf`) ask each desktop in `mayUseDesktop` over
+`ctx.peer`, and a change in a folder there is held as `file.act`. The phone
+lists the box's own places alone; it does not yet list a desktop's.
 
 ## A tab
 

@@ -27,6 +27,7 @@ import { dropSearch, savedSearches, saveSearch, searchFiles } from './search'
 import { DiskLister, entryOfRow, type DiskPage, type DiskRow } from './places/disk'
 import { folderEntry, folderName, folderPlace, folderTrail } from './places/folder'
 import { forgetLibraries } from './places/libraries'
+import { filesAcross } from './across'
 import { forgetVmList, libraryEntry, libraryKey, libraryTrail, placeOfPath, placesIn, teamsPlaces, vmPage, type LibraryPlace } from './places/teams'
 import { admitCaller, admitWrite, changeDigest, isLifeosRef, locate, locatedShared, NEEDS_PRESS, NO_WORKSPACE, OWN_ONLY, pressesFor, SHARED_BYTES, sharedOf, PEER_LIBRARIES, workspaceHere, type DoorPlace, type Located, type WorkspaceRow } from './policy'
 import { keepMail, lifeosPlace, lifeosPlaces, lifeosTrash, lifeosTrashShared, listLifeos, makeLifeos, moveLifeos, openLifeos, renameLifeos, restoreLifeos, setProject, statLifeos, trashLifeos, waitingRows, withProjects } from './places/lifeos'
@@ -940,6 +941,7 @@ export async function filesHandle(req: ClientRequest, ctx: WorkCtx, by: Caller, 
   }
   // Put back is admitted for the whole selection before any of it runs: the LifeOS branch below puts its rows back first.
   if (m === 'work.files.restore') await admitRestore(ctx, by, p.workspaceId, p.ids as string[])
+  if (m === 'work.files.across') return handled(await filesAcross(ctx, by, p as never, signal))
   const lifeos = await lifeosCase(ctx, by, m, p, signal)
   if (lifeos) return lifeos
   switch (m) {

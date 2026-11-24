@@ -306,10 +306,11 @@ export function guestPath(method: string, path: string, platform: NodeJS.Platfor
  * work/files/handle.ts `admitPage`, `markedOf`; `work.files.open` hands it to the same copy `filesCopy` makes,
  * `openCopy`, and never looks at the path here; `work.office.live.address` matches it to that host's list of libraries,
  * office/live/handle.ts `libraryFile`), and treats a source as this host's only when its `host` is this
- * host's own id. Listed one verb at a time, never a pillar whole; a verb that reads or changes a file here is never
- * among them. docs/agents/work-teams-files.md "Another host's file, from a remote key".
+ * host's own id. `work.files.across` sends a listing to the desktop its `host` names and is refused for this host
+ * (work/files/across.ts). Listed one verb at a time, never a pillar whole; a verb that reads or changes a file here is
+ * never among them. docs/agents/work-teams-files.md "Another host's file, from a remote key".
  */
-const ELSEWHERE_METHODS = /^work\.office\.files(Copy|Threads)$|^work\.office\.live\.address$|^work\.files\.(threads|open|tabOpen|tabSet|star|seen|saveAsWord)$/
+const ELSEWHERE_METHODS = /^work\.office\.files(Copy|Threads)$|^work\.office\.live\.address$|^work\.files\.(threads|open|tabOpen|tabSet|star|seen|saveAsWord|across)$/
 
 /**
  * A file another host holds (his Mac's OneDrive, named by the Mac's own path), in a verb `ELSEWHERE_METHODS` lists:

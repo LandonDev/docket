@@ -1,8 +1,8 @@
 import { useEffect, useState, useSyncExternalStore } from "react";
 import { THUMB_SIZES, type FileArchive, type FileBytes, type FilePreview } from "@shared/contract-work-files";
 import type { FileEntry } from "@shared/work/files";
-import { registry } from "../../lib/connection";
 import { refusalWords } from "../../lib/settingsHome";
+import { filesLink } from "./farLink";
 import { bytesOfBase64, decodeText, triedAsText } from "./fileText";
 import type { PlaceCopy, TileSize } from "./model";
 
@@ -89,8 +89,7 @@ async function flush(queueKey: string): Promise<void> {
     const entries = part.map(([, entry]) => entry);
     const got = await (previewSeams.thumbs
       ? previewSeams.thumbs(queue.from, entries, queue.size)
-      : registry
-          .linkOf(queue.from.copy.link)
+      : filesLink(queue.from.copy.link)
           .request<{ thumbs: (string | null)[] }>("work.files.thumbs", { workspaceId: queue.from.workspaceId, refs: entries.map((e) => e.ref), size: queue.size })
           .then((answer) => answer.thumbs)
     ).catch(() => null);
@@ -220,7 +219,7 @@ export function usePreviewPage(from: PictureFrom | null, entry: FileEntry | null
     let live = true;
     const ask = previewSeams.preview
       ? previewSeams.preview(from!, entry!, page, width)
-      : registry.linkOf(from!.copy.link).request<FilePreview>("work.files.preview", { workspaceId: from!.workspaceId, ref: entry!.ref, page, width }, { timeoutMs: 60_000 });
+      : filesLink(from!.copy.link).request<FilePreview>("work.files.preview", { workspaceId: from!.workspaceId, ref: entry!.ref, page, width }, { timeoutMs: 60_000 });
     void ask.then(
       (got) => {
         pages.set(key, "png" in got ? { is: "page", url: dataUrl(got.png), pages: got.pages, width: got.width, height: got.height } : { is: "none", why: got.none });
@@ -253,7 +252,7 @@ export function useArchive(from: PictureFrom | null, entry: FileEntry | null, en
   useEffect(() => {
     if (!key) return;
     let live = true;
-    const ask = previewSeams.archive ? previewSeams.archive(from!, entry!) : registry.linkOf(from!.copy.link).request<FileArchive>("work.files.archive", { workspaceId: from!.workspaceId, ref: entry!.ref });
+    const ask = previewSeams.archive ? previewSeams.archive(from!, entry!) : filesLink(from!.copy.link).request<FileArchive>("work.files.archive", { workspaceId: from!.workspaceId, ref: entry!.ref });
     void ask.then(
       (got) => live && setView({ key, view: { is: "list", entries: got.entries, more: got.more } }),
       (err: unknown) => live && setView({ key, view: { is: "failed", why: refusalWords(err) || "The host did not answer." } }),
@@ -310,7 +309,7 @@ export function useTextHead(from: PictureFrom | null, entry: FileEntry | null, e
     let live = true;
     const ask = previewSeams.head
       ? previewSeams.head(from!, entry!, TEXT_HEAD)
-      : registry.linkOf(from!.copy.link).request<FileBytes>("work.files.read", { workspaceId: from!.workspaceId, ref: entry!.ref, offset: 0, length: TEXT_HEAD });
+      : filesLink(from!.copy.link).request<FileBytes>("work.files.read", { workspaceId: from!.workspaceId, ref: entry!.ref, offset: 0, length: TEXT_HEAD });
     const done = (view: HeadView): void => {
       heads.set(key, view);
       if (heads.size > HEADS_KEPT) heads.delete(heads.keys().next().value!);

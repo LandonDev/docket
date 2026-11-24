@@ -133,6 +133,10 @@ export type FileAct = z.infer<typeof FileActSchema>
 /** The most base64 one copy sent back carries: a copy is made of a file of 48 MB at most (`COPY_ACROSS_MAX`). */
 export const COPY_DATA_MAX = Math.ceil((COPY_ACROSS_MAX * 4) / 3) + 4
 
+/** What a window may ask of a desktop it has no link to, through the workspace's own host: the listing alone. Opening a file there is a copy (`work.files.open`). */
+export const FILES_ACROSS = ['work.files.places', 'work.files.list', 'work.files.stat'] as const
+export type FilesAcross = (typeof FILES_ACROSS)[number]
+
 /** The edge of a picture a thumbnail is asked at: the grid's three tile sizes, at twice their pixels. */
 export const THUMB_SIZES = [192, 288, 416] as const
 
@@ -143,6 +147,13 @@ export const FilesRequestSchemas = [
   request('work.files.list', z.object({ workspaceId: Workspace, at: FolderRefSchema, cursor: z.string().max(4000).optional(), sort: FileSortSchema.optional(), foldersOnly: z.boolean().optional() })),
   /** → { entries: (FileEntry | null)[] }: the rows again with what a list leaves out (who last saved it), for the rows on screen; null for one that is gone or out of reach. */
   request('work.files.stat', z.object({ workspaceId: Workspace, refs: z.array(FileRefSchema).min(1).max(100) })),
+  /**
+   * → what `host` answers to `method` (places, a folder's page, the rows on screen): a desktop of his the window has
+   * no link to (a PC that links only to the box), asked of the workspace's own host, which asks it over its host
+   * link. Only for a desktop the workspace may use and whose binding is live; the desktop answers under its bridge
+   * policy for this host, as it answers any host of his. Places come with `name`, the desktop as he names it.
+   */
+  request('work.files.across', z.object({ workspaceId: Workspace, host: z.string().min(1).max(200), method: z.enum(FILES_ACROSS), params: z.record(z.string(), z.unknown()) })),
   /** → FilesHome: Waiting on you, Starred, Recent. */
   request('work.files.home', z.object({ workspaceId: Workspace })),
   /** → { entries: FileEntry[] }: Go to's list as he types: names this host has seen, recents first. */
@@ -300,6 +311,8 @@ export const FilesRequestSchemas = [
  */
 export interface FilesPlaces {
   host: string
+  /** the host as he names it: said by the host that asked it for him (`work.files.across`), for a window with no link to it */
+  name?: string
   places: FilePlace[]
   rev: number
   sources: TeamsPlace[]
@@ -477,6 +490,8 @@ export type FilesPush = { push: 'work.files'; workspaceId: string; at?: string; 
 
 export const FILES_CAPS = {
   'work.files.places': 'read',
+  // The far host checks what each method needs again, under its own bridge policy for this one.
+  'work.files.across': 'read',
   'work.files.list': 'read',
   'work.files.stat': 'read',
   'work.files.home': 'read',
