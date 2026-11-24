@@ -101,6 +101,8 @@ export const SCRIPTS = {
       else {
         var before = String(d.textObject.content()), f = d.textObject.findObject;
         n = before.split(a.edit.find).length - 1;
+        // As many places as his press was shown, read in this same call: else nothing is written.
+        if (a.expect != null && n !== a.expect) return JSON.stringify({ refused: 'The words stand in ' + n + ' places now, not the ' + a.expect + ' shown.' });
         if (n) {
           // His last Find's settings stay on Word's Find: every one is set here, and a ^ is found and put as itself
           // (Word reads ^c as his clipboard, ^& as what it found, ^p as a paragraph), as the Windows helper does.
@@ -122,7 +124,9 @@ export const SCRIPTS = {
     return JSON.stringify(out)`),
   // PowerPoint's own replace keeps each run's formatting (a box's content set whole takes the first run's for all of it),
   // as the Windows helper's TextRange.Replace does; `after` moves past the words it put in.
-  replaceSlideText: js(`var pp = app('Microsoft PowerPoint'), p = byKey(pp.presentations, a.pres), n = 0;
+  replaceSlideText: js(`var pp = app('Microsoft PowerPoint'), p = byKey(pp.presentations, a.pres), n = 0, found = 0;
+    // As many places as his press was shown, read in this same call: else nothing is written.
+    if (a.expect != null) { eachText(p, function(i, t){ found += String(t.content()).split(a.find).length - 1 }); if (found !== a.expect) return JSON.stringify({ refused: 'The words stand in ' + found + ' places now, not the ' + a.expect + ' shown.' }) }
     eachText(p, function(i, t){
       if (String(t.content()).indexOf(a.find) < 0) return;
       for (var k = 0, after = 0; k < 10000; k++) {
@@ -325,6 +329,12 @@ export const openFailure = (message: string): OfficeError =>
 const openWith = (args: string[]): Promise<void> =>
   new Promise((resolve, reject) => execFile('/usr/bin/open', args, (err) => (err ? reject(openFailure(err.message)) : resolve())))
 
+/** A script's count, or its refusal (it wrote nothing) as the carrier's `refused`. */
+const refusedOr = (got: number | { refused: string }): number => {
+  if (typeof got === 'object' && got && 'refused' in got) throw new OfficeError(got.refused, 'refused')
+  return got as number
+}
+
 export function macCarrier(deps: MacDeps = {}): OfficeCarrier {
   const osa = deps.osa ?? runOsa
   const installed = deps.installed ?? ((app: OfficeApp) => existsSync(appPath(app)))
@@ -430,10 +440,10 @@ export function macCarrier(deps: MacDeps = {}): OfficeCarrier {
       call('writeRange', { book, sheet, address, grid, formulas: grid.some((row) => row.some((c) => typeof c === 'string' && c.startsWith('='))) }),
     documents: () => call('documents', {}),
     readDocument: (doc) => call('readDocument', { doc }),
-    editDocument: (doc, edit, tracked) => call('editDocument', { doc, edit, tracked }),
+    editDocument: async (doc, edit, tracked, expect) => refusedOr(await call<number | { refused: string }>('editDocument', { doc, edit, tracked, ...(expect !== undefined ? { expect } : {}) })),
     presentations: () => call('presentations', {}),
     readSlides: (pres) => call('readSlides', { pres }),
-    replaceSlideText: (pres, find, replace) => call('replaceSlideText', { pres, find, replace }),
+    replaceSlideText: async (pres, find, replace, expect) => refusedOr(await call<number | { refused: string }>('replaceSlideText', { pres, find, replace, ...(expect !== undefined ? { expect } : {}) })),
     accounts: () => call('accounts', {}),
     listMail: (q) => call('listMail', q),
     readMail: (id) => call('readMail', { id }),

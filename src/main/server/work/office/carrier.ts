@@ -188,12 +188,13 @@ export interface OfficeCarrier {
   /** the document's paragraphs as text */
   readDocument(doc: string): Promise<string[]>
   /** `tracked`: made with Track Changes on, so it waits as a revision he accepts or rejects. Answers how many places changed. */
-  editDocument(doc: string, edit: DocEdit, tracked: boolean): Promise<number>
+  /** `expect`: how many places the find should hold; a carrier that checks refuses (`refused`) and writes nothing when it holds another number */
+  editDocument(doc: string, edit: DocEdit, tracked: boolean, expect?: number): Promise<number>
 
   presentations(): Promise<OfficeFile[]>
   readSlides(pres: string): Promise<SlideText[]>
   /** answers how many text runs changed */
-  replaceSlideText(pres: string, find: string, replace: string): Promise<number>
+  replaceSlideText(pres: string, find: string, replace: string, expect?: number): Promise<number>
 
   /** the addresses of Outlook's mail accounts */
   accounts(): Promise<string[]>

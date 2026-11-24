@@ -93,8 +93,15 @@ idea on a file others can open is kept on his host and shown only to him.
 - **His press** makes it a plain edit through the tool that reaches the
   file: on the host that holds it, in a file still open there. It is written
   only while the words stand where they did: the same number of places, the
-  same slides, and the same paragraphs or boxes holding them (`spots`; a hold
-  from before `spots` needs the whole text as it was, `base`); else stale
+  same slides, and the same paragraphs or boxes holding them, each in the same
+  place in the file (`placed`; a hold from before round 2 is judged by the
+  words of those paragraphs alone, `spots`, and one from before that by the
+  whole text, `base`). The carrier is told the count; the Mac's scripts read
+  the file again in the same call and write nothing on another count (stale).
+  The Windows helper and the add-in do not check it yet, so a match a
+  co-author adds between the host's read and theirs is still replaced there.
+  A short write is said in the result line and settles Sent, never offered
+  again. Else stale
   with the reason ("the words stand in 2 places now, not the 1 this was
   suggested for"), nothing written. A Google write is bound to the revision
   just read.

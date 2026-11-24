@@ -8,6 +8,7 @@ import type { ActCtx, ToolCtx, WorkCtx } from '../modules'
 import { ensureSuggestionTables, SuggestionStore } from '../sheets/suggestions'
 import { ensureExcelTables, excelStore, ExcelHelper } from './excel'
 import { ActNotSent, ActStale } from '../outbox/kinds'
+import { OfficeError } from './carrier'
 import { FakeOffice } from './fake'
 import { cleanMailHtml, keepOfficeMail, officeActs, OfficeCalendarSchema, OfficeEditSchema, OfficeMailSchema, type OfficeCalendarOp, type OfficeEdit, type OfficeMail } from './held'
 import { fileShared } from './shared'
@@ -452,9 +453,39 @@ describe("an agent's change to a shared document or deck, held (the owner's ruli
     await expect(press(held[1]!.payload)).rejects.toThrow('"Q1" stands in other boxes now than the ones shown')
     expect(office.decks.get(DECK)).toEqual([['Plan', 'Close Q1']])
     // A hold from before `spots` is judged on the whole text it read.
-    const { spots: _none, ...older } = doc
+    const { spots: _none, placed: _nor, ...older } = doc
     office.docs.set(DOC, { paragraphs: ['Budget: one.', 'Notes', 'Changed'], tracked: [] })
     await expect(press(older)).rejects.toThrow('other paragraphs')
+  })
+
+  it('leaves a change stale when its paragraph was moved whole to another place, and judges a hold from before by its own spots', async () => {
+    office.docs.set(DOC, { paragraphs: ['Budget: one.', 'Notes'], tracked: [] })
+    await run('office_doc_edit', { document: DOC, find: 'one', replace: 'two', because: 'own' })
+    const doc = held[0]!.payload as OfficeEdit
+    expect(doc.placed).toEqual(expect.any(String))
+    // The same paragraph, its words alike, now stands second.
+    office.docs.set(DOC, { paragraphs: ['Notes', 'Budget: one.'], tracked: [] })
+    await expect(press(doc)).rejects.toThrow('"one" stands in other paragraphs now than the ones shown')
+    expect(office.docs.get(DOC)!.paragraphs).toEqual(['Notes', 'Budget: one.'])
+    // A hold made before round 2 has no `placed`: decided as it was made, by the words of its paragraphs alone.
+    const { placed: _none, ...older } = doc
+    await expect(press(older)).resolves.toEqual({ summary: 'Changed Brief.docx' })
+    expect(office.docs.get(DOC)!.paragraphs).toEqual(['Notes', 'Budget: two.'])
+  })
+
+  it('is stale, nothing written, when the carrier finds another count than he was shown as it writes', async () => {
+    await run('office_doc_edit', { document: DOC, find: 'one', replace: 'two', because: 'own' })
+    const asked: unknown[] = []
+    const racing = Object.assign(Object.create(office), {
+      editDocument: async (_doc: string, _edit: unknown, _tracked: boolean, expect?: number) => {
+        asked.push(expect)
+        throw new OfficeError('The words stand in 2 places now, not the 1 shown.', 'refused')
+      }
+    })
+    const def = officeActs({ carrier: () => racing }).find((a) => a.kind === 'office.edit')!
+    await expect(def.execute(OfficeEditSchema.parse(held[0]!.payload), { host: 'env_mac' } as ActCtx)).rejects.toThrow(ActStale)
+    expect(asked).toEqual([1])
+    expect(office.docs.get(DOC)!.paragraphs).toEqual(['Draft one.'])
   })
 
   it('a file no longer open is not sent: open it and press again', async () => {

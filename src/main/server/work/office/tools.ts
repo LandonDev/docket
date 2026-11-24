@@ -8,7 +8,7 @@ import type { ToolCtx, WorkCtx, WorkTool } from '../modules'
 import { parseA1, rangeCells } from '../sheets/a1'
 import type { SuggestionStore } from '../sheets/suggestions'
 import { eventById, type OfficeCarrier } from './carrier'
-import { cleanMailHtml, fileRead, placesOf, spotsOf, textHash, type OfficeEdit } from './held'
+import { cleanMailHtml, fileRead, placedOf, placesOf, spotsOf, textHash, type OfficeEdit } from './held'
 import { cellOf, EXCEL_MAX_CELLS, excelStore, type ExcelHelper } from './excel'
 import { fileKey, fileShared, sharedKey } from './shared'
 
@@ -354,7 +354,8 @@ async function held(env: Env, app: OfficeEdit['app'], key: string, asked: string
   if ('find' in edit && places === 0) return workText('Nothing matched.')
   const name = fileName(key) || asked
   const spots = 'find' in edit ? spotsOf(texts, edit.find) : undefined
-  const item = env.ctx.held.create({ kind: 'office.edit', sessionId: env.sessionId, payload: { host: env.ctx.host, app, key, name, edit, places, base: textHash(texts), ...(on ? { on } : {}), ...(spots ? { spots } : {}), ...(env.vm ? { vm: true as const } : {}) } satisfies OfficeEdit })
+  const placed = 'find' in edit ? placedOf(texts, edit.find) : undefined
+  const item = env.ctx.held.create({ kind: 'office.edit', sessionId: env.sessionId, payload: { host: env.ctx.host, app, key, name, edit, places, base: textHash(texts), ...(on ? { on } : {}), ...(spots ? { spots, placed } : {}), ...(env.vm ? { vm: true as const } : {}) } satisfies OfficeEdit })
   return workText(`Others can open ${name}, so nothing in it changed: "${item.summary}" waits for the owner, and nobody else sees it. It is written only when he approves it.`)
 }
 
