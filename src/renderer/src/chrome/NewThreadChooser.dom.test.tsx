@@ -7,7 +7,8 @@ import { threadTuneChunk } from "../surfaces/chunks";
 
 // The tune view's rules come from the host; with none loaded it shows the instructions field alone.
 vi.mock("../lib/tcserver/rules", () => ({ useRulesScope: () => ({ scope: undefined, catalog: null }) }));
-vi.mock("../lib/tcserver/workspaces", () => ({ useWorkspaces: () => [] }));
+const catalog = vi.hoisted(() => ({ workspaces: [] as { id: string; environmentId: string; kind?: string }[] }));
+vi.mock("../lib/tcserver/workspaces", () => ({ useWorkspaces: () => catalog.workspaces }));
 
 beforeEach(() => {
   vi.spyOn(registry, "primary").mockReturnValue({ environmentId: "local" } as Link);
@@ -40,6 +41,16 @@ describe("NewThreadChooser", () => {
       "Orchestrate",
       "Research",
     ]);
+  });
+
+  it("a Work workspace starts a chat or research alone, the chat's hint free of code", async () => {
+    catalog.workspaces = [{ id: "job", environmentId: "local", kind: "work" }];
+    render(<NewThreadChooser workspaceId="job" empty={false} onStart={() => {}} />);
+    await click(screen.getByRole("button", { name: "New thread" }));
+    const dialog = await screen.findByRole("dialog");
+    expect([...dialog.querySelectorAll("[data-slot=item-title]")].map((t) => t.textContent)).toEqual(["Chat", "Research"]);
+    expect(dialog.textContent).not.toContain("code");
+    catalog.workspaces = [];
   });
 
   it("draws each type's row with its type's tinted glyph", async () => {

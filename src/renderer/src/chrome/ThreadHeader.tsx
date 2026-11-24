@@ -18,6 +18,7 @@ import { ThreadMenu } from "./ThreadMenu";
 import { useThreadHost } from "./ThreadHostChip";
 import { useThreadMenu } from "./useThreadMenu";
 import { useMasterIds } from "../lib/masterThread";
+import { useWorkSessionId } from "../lib/useWorkSession";
 
 /**
  * The deck title bar's thread surface: temp-code's strip and heading
@@ -108,6 +109,8 @@ export function ThreadHeader({
     onSetRules,
   });
   const host = useThreadHost(model.activeId);
+  // A Work thread in front: no terminal and no project plan, both a code project's.
+  const work = useWorkSessionId(model.activeId);
   const masterIds = useMasterIds();
   // The active chip sits on either row: a settled thread on screen is on the
   // shelf; on the home, with no strip, it is the bar's title.
@@ -151,7 +154,7 @@ export function ThreadHeader({
           <TooltipProvider>
             <div className="flex shrink-0 items-center gap-0.5">
               {standIns}
-              <ProjectPlanChip />
+              {work ? null : <ProjectPlanChip />}
               <AgentsCue threadId={model.activeId} room={panelRoom} />
               <ComputerCue threadId={model.activeId} room={panelRoom} />
               <ThreadMenu
@@ -162,7 +165,7 @@ export function ThreadHeader({
                 onOpen={() => menu.onOpenChange(model.activeId, true)}
                 running={running}
                 onPauseAll={onPauseAll}
-                terminal={{ onShow: onShowTerminal, onNew: onNewTerminal, active: projectTerminalActive }}
+                terminal={work ? { active: false } : { onShow: onShowTerminal, onNew: onNewTerminal, active: projectTerminalActive }}
                 recent={model.dormant}
                 onOpenRecent={onSelect}
                 archived={archived}

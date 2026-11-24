@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { chatsAriaLabel, projectMenuExtraItems, railFootRows, railTopRows, workspaceRowAriaLabel } from "./ProjectRail";
+import { chatsAriaLabel, projectMenuExtraItems, railFootRows, railRowAsksGit, railTopRows, workspaceRowAriaLabel } from "./ProjectRail";
 
 describe("workspaceRowAriaLabel", () => {
   it("reads the name alone when the workspace is quiet", () => {
@@ -112,5 +112,15 @@ describe("workspaceRowAriaLabel", () => {
       "alpha, working, 3 files changed, +12, -4",
     );
     expect(workspaceRowAriaLabel("alpha", false, false, { files: 0, additions: 0, deletions: 0 })).toBe("alpha");
+  });
+});
+
+describe("railRowAsksGit", () => {
+  it("asks for the selected code workspace alone, never the home or a Work workspace", () => {
+    expect(railRowAsksGit("/x/alpha", { kind: "code" })).toBe(true);
+    expect(railRowAsksGit("/x/alpha", undefined)).toBe(true);
+    expect(railRowAsksGit(null, { kind: "code" })).toBe(false);
+    expect(railRowAsksGit("~", undefined)).toBe(false);
+    expect(railRowAsksGit("/repo/jobs/purdue", { kind: "work" })).toBe(false);
   });
 });

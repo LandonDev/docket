@@ -17,6 +17,7 @@ import type { BatchAction } from "./threadBatch";
 import { batchCounts, type BatchCounts } from "./threadBatchMenu";
 import { isUnread } from "./threadStripModel";
 import { workFilePort, workSwitch } from "./workSwitch";
+import { isWorkSession } from "./workRow";
 
 /**
  * What the native menu bar shows for this window (src/shared/menuTree.ts):
@@ -54,7 +55,12 @@ export type MenuFacts = {
   editing?: string[];
   /** A live Office file's guest has the focus: Word owns its keys (src/shared/menuState.ts `LIVE_KEY_IDS`). */
   live?: boolean;
+  /** The focused thread is Work's (lib/workRow.ts): the code rows (`CODE_ONLY_IDS`) are not drawn. */
+  workThread?: boolean;
 };
+
+/** The menu bar's rows that belong to code alone: a Work thread in front draws none of them. */
+export const CODE_ONLY_IDS = ["new_terminal", "toggle_terminal"] as const;
 
 const FLEET_IDS: Record<BatchAction, string> = {
   pause: "pause_all_threads",
@@ -83,8 +89,9 @@ export function menuStateOf(f: MenuFacts): MenuState {
   for (const action of Object.keys(FLEET_IDS) as BatchAction[]) {
     if (f.counts[action] === 0) disabled.push(FLEET_IDS[action]);
   }
-  // Work's own rows (Go → Today) are drawn only while some host has Work on.
-  return { open, disabled, checked: { toggle_away: f.away }, ...(f.editing?.length ? { editing: f.editing } : {}), ...(f.live ? { live: true } : {}), ...(f.workOn ? {} : { hidden: [...WORK_ONLY_IDS] }) };
+  // Work's own rows (Go → Today) are drawn only while some host has Work on; code's only while a Work thread is not in front.
+  const hidden = [...(f.workOn ? [] : WORK_ONLY_IDS), ...(f.workThread ? CODE_ONLY_IDS : [])];
+  return { open, disabled, checked: { toggle_away: f.away }, ...(f.editing?.length ? { editing: f.editing } : {}), ...(f.live ? { live: true } : {}), ...(hidden.length ? { hidden } : {}) };
 }
 
 const EVERYWHERE = { kind: "all" } as const;
@@ -124,6 +131,7 @@ function readFacts(dock: { dockOpen: boolean; dockUsable: boolean }, caret?: Eve
     saveWord: workCommands.has("save_word"),
     editing: caret !== undefined ? editorHeld(caret) : typeof document === "undefined" ? [] : editorHeld(document.activeElement),
     live: liveFocused(caret !== undefined ? caret : typeof document === "undefined" ? null : document.activeElement),
+    workThread: !!focusedId && isWorkSession(sessionStore.get(focusedId) ?? sessionStore.metaOf(focusedId), catalog.workspaces),
   };
 }
 

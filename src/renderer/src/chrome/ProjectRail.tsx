@@ -122,6 +122,13 @@ const SettingsNav = settingsChunk.surface(
 import { Kbd } from "../components/ui/kbd";
 import { Skeleton } from "../components/ui/skeleton";
 import { StatusMark } from "../components/ui/status";
+import { isWorkWorkspace } from "../lib/workRow";
+
+/** Whether a rail row asks git for its change counts: only the selected one, never the home, and never a Work
+ *  workspace, whose folder is a job's even when it sits inside a repo. */
+export function railRowAsksGit(selectedPath: string | null, workspace: { kind?: string | null } | null | undefined): boolean {
+  return selectedPath !== null && selectedPath !== "~" && !isWorkWorkspace(workspace);
+}
 
 /** The folder picker's title when it adds a workspace (⌘O's says "Open project"). */
 export const ADD_WORKSPACE = "Add workspace";
@@ -991,7 +998,7 @@ function WorkspaceRow({
   const showEnd = dropping && sortable.toIndex! > sortable.fromIndex!;
   // Only the selected row asks git, on the bulk lane; the rest say nothing.
   const selected = selectedPath !== null;
-  const stats = useGitDiffStats(selectedPath, selected && selectedPath !== "~");
+  const stats = useGitDiffStats(selectedPath, railRowAsksGit(selectedPath, workspace));
   const changed = !!stats && (stats.additions > 0 || stats.deletions > 0);
 
   return (

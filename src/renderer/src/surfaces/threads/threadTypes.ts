@@ -84,6 +84,17 @@ export const AGENT_WORDS: Record<AgentType, string> = {
   explorer: "Explorer",
 };
 
+/** The types a Work thread may take; the host refuses the rest (work/scope.ts `WORK_THREAD_TYPES`). */
+export const WORK_THREAD_TYPES: readonly ThreadType[] = ["chat", "research"];
+
+/** The types a picker offers: a Work thread's two, else every one. */
+export const threadTypesFor = (work: boolean): readonly ThreadType[] => (work ? WORK_THREAD_TYPES : THREAD_TYPES);
+
+const WORK_CHAT_HINT = "Ask questions, talk a task through";
+
+/** A type's hint in a picker; a Work chat has no code to explore. */
+export const threadHintFor = (type: ThreadType, work: boolean): string => (work && type === "chat" ? WORK_CHAT_HINT : THREAD_HINTS[type]);
+
 export const THREAD_HINTS: Record<ThreadType, string> = {
   chat: "Ask questions, explore the code",
   planning: "Produce a plan document to implement from",

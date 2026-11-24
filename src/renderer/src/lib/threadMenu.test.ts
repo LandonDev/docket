@@ -233,3 +233,24 @@ describe("Save as a play…", () => {
     expect(ids(threadMenuRows(facts()))).not.toContain("save-play");
   });
 });
+
+describe("threadMenuRows for a Work thread", () => {
+  const typesOf = (rows: MenuRow[]) => {
+    const sub = row(rows, "type");
+    return sub && sub.kind === "sub" ? sub.items.map((item) => (item.kind === "item" ? item.id : "—")) : [];
+  };
+
+  it("offers Chat and Research alone, no Dev server, and no Resources… with nothing to remove", () => {
+    const work = threadMenuRows(facts({ work: true, dev: { open: false } }));
+    expect(typesOf(work)).toEqual(["type:chat", "type:research"]);
+    expect(ids(work)).not.toContain("dev");
+    expect(ids(work)).not.toContain("resources");
+    expect(row(threadMenuRows(facts({ work: true, resources: 1, removable: 1 })), "resources")).toMatchObject({ hint: "1" });
+  });
+
+  it("a code thread keeps every type, its Dev server and its Resources… row", () => {
+    const code = threadMenuRows(facts({ dev: { open: false } }));
+    expect(typesOf(code)).toEqual(["type:chat", "type:planning", "type:project-plan", "type:implementation", "type:orchestration", "type:research"]);
+    expect(ids(code)).toEqual(expect.arrayContaining(["dev", "resources"]));
+  });
+});

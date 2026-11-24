@@ -647,6 +647,9 @@ export const COMPOSER_FIELDS = [
   "threadType",
   "draftMaster",
   "draftTitle",
+  // Whether the thread is Work's (lib/workRow.ts isWorkSession): set once, never moved by a push.
+  "scope",
+  "workspaceId",
 ] as const satisfies readonly (keyof Session)[];
 
 /** Two sessions the composer draws alike (COMPOSER_FIELDS). */

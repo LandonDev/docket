@@ -15,6 +15,8 @@ vi.mock("../lib/threadMove", async (importOriginal) => ({
   moveThread: (...args: unknown[]) => moves.move!(...args),
 }));
 
+const scope = vi.hoisted(() => ({ work: false }));
+vi.mock("../lib/useWorkSession", () => ({ useWorkSessionId: () => scope.work }));
 import { MoveThreadConfirm, MoveToasts } from "./ThreadHostChip";
 
 afterEach(() => {
@@ -35,6 +37,19 @@ describe("the move confirm", () => {
   });
 });
 
+
+describe("the move confirm for a Work thread", () => {
+  it("says nothing of a branch and asks the host for none", async () => {
+    scope.work = true;
+    const threadMove = await import("../lib/threadMove");
+    const asked = vi.spyOn(threadMove, "previewMove");
+    render(<MoveThreadConfirm sessionId="s1" to="env_box" toName="box" fromName="This Mac" onClose={() => {}} />);
+    expect(await screen.findByText("Its subagents and pages move with it; undo history stays on This Mac.")).toBeTruthy();
+    expect(document.body.textContent).not.toMatch(/branch|uncommitted/i);
+    expect(asked).not.toHaveBeenCalled();
+    scope.work = false;
+  });
+});
 
 describe("the move confirm's verb", () => {
   it("runs the move inside the confirm: a refusal is its red line, never a toast, and the confirm stays", async () => {

@@ -6,7 +6,8 @@ import { useMasterIds } from "../lib/masterThread";
 import * as commands from "../lib/tcserver/commands";
 import { sessionStore } from "../lib/tcserver/store";
 import { workPlayPort } from "../lib/workSwitch";
-import { useProjects } from "../lib/tcserver/workspaces";
+import { useProjects, useWorkspaces } from "../lib/tcserver/workspaces";
+import { isWorkSession } from "../lib/workRow";
 import type { ThreadRules } from "@server/shared/rules";
 import type { SessionMeta, ThreadType } from "../lib/tcserver/types";
 import { threadMenuRows, type ThreadMenuExtra } from "../lib/threadMenu";
@@ -127,6 +128,7 @@ export function useThreadMenu(handlers: ThreadMenuHandlers = {}): ThreadMenuApi 
   const host = useThreadHost(target);
   const dev = useThreadDevServer(target);
   const masterIds = useMasterIds();
+  const workspaces = useWorkspaces();
   useEffect(() => startThreadResources(), []);
 
   const rowsFor = (id: string, extra?: ThreadMenuExtra): MenuRow[] => {
@@ -160,6 +162,7 @@ export function useThreadMenu(handlers: ThreadMenuHandlers = {}): ThreadMenuApi 
         dev: own ? dev : null,
         draft: sessionStore.isDraft(id),
         play: t.scope === "work" && !!t.workspaceId && !t.parentId && !!workPlayPort.get(),
+        work: isWorkSession(t, workspaces),
       },
       extra,
     );

@@ -7,7 +7,8 @@ import { RowsMenu, tidy, type MenuRow } from "./menuRows";
 type Props = {
   /** The workspace header's ⋯ button. */
   trigger: ReactElement;
-  onNewProject: () => void;
+  /** Absent in a Work workspace, which has no projects of its own to make: the row is not drawn. */
+  onNewProject?: () => void;
   onNewChat: () => void;
   /** Settled, seen, unpinned roots across the workspace (0 greys the item)
    *  and the per-type rows under the all-types one, read when the menu opens. */
@@ -24,6 +25,45 @@ type Props = {
   canNewProject: boolean;
 };
 
+/** The menu's rows, read when it opens. */
+export function workspaceMenuRows({
+  onNewProject,
+  dormant,
+  onWorkspaceSettings,
+  onThreadDefaults,
+  onOrchestration,
+  onPreamble,
+  onRemoveWorkspace,
+  canNewProject,
+}: Omit<Props, "trigger" | "onNewChat" | "onArchiveDormant" | "onArchiveDormantType">): MenuRow[] {
+  const { count: dormantCount, groups: dormantGroups } = dormant();
+  return tidy([
+    ...(onNewProject ? [{ kind: "item", id: "new-project", label: "New project", icon: FolderPlus, disabled: !canNewProject } satisfies MenuRow] : []),
+    { kind: "item", id: "new-chat", label: "New chat", icon: MessageSquarePlus },
+    { kind: "sep" },
+    {
+      kind: "item",
+      id: "archive-dormant",
+      label: dormantCount > 0 ? `Archive ${dormantCount} dormant thread${dormantCount === 1 ? "" : "s"}` : "Archive dormant threads",
+      icon: Archive,
+      disabled: dormantCount === 0,
+    },
+    ...dormantGroups.map((g): MenuRow => ({
+      kind: "item",
+      id: `archive-dormant:${g.type}`,
+      label: g.label,
+      icon: THREAD_MENU_ICONS[g.type as ThreadType] ?? Archive,
+    })),
+    { kind: "sep" },
+    ...(onThreadDefaults ? [{ kind: "item", id: "thread-defaults", label: "Thread defaults", icon: SlidersHorizontal } as const] : []),
+    ...(onOrchestration ? [{ kind: "item", id: "orchestration", label: "Orchestration", icon: Workflow } as const] : []),
+    ...(onPreamble ? [{ kind: "item", id: "preamble", label: "Preamble…", icon: FileText } as const] : []),
+    ...(onWorkspaceSettings ? [{ kind: "item", id: "settings", label: "Workspace settings", icon: Settings } as const] : []),
+    { kind: "sep" },
+    ...(onRemoveWorkspace ? [{ kind: "item", id: "remove", label: "Remove workspace", icon: X, danger: true } as const] : []),
+  ]);
+}
+
 /** The ⋯ menu on a workspace header. */
 export function WorkspaceMenu({
   trigger,
@@ -39,36 +79,10 @@ export function WorkspaceMenu({
   onRemoveWorkspace,
   canNewProject,
 }: Props) {
-  const rows = (): MenuRow[] => {
-    const { count: dormantCount, groups: dormantGroups } = dormant();
-    return tidy([
-      { kind: "item", id: "new-project", label: "New project", icon: FolderPlus, disabled: !canNewProject },
-      { kind: "item", id: "new-chat", label: "New chat", icon: MessageSquarePlus },
-      { kind: "sep" },
-      {
-        kind: "item",
-        id: "archive-dormant",
-        label: dormantCount > 0 ? `Archive ${dormantCount} dormant thread${dormantCount === 1 ? "" : "s"}` : "Archive dormant threads",
-        icon: Archive,
-        disabled: dormantCount === 0,
-      },
-      ...dormantGroups.map((g): MenuRow => ({
-        kind: "item",
-        id: `archive-dormant:${g.type}`,
-        label: g.label,
-        icon: THREAD_MENU_ICONS[g.type as ThreadType] ?? Archive,
-      })),
-      { kind: "sep" },
-      ...(onThreadDefaults ? [{ kind: "item", id: "thread-defaults", label: "Thread defaults", icon: SlidersHorizontal } as const] : []),
-      ...(onOrchestration ? [{ kind: "item", id: "orchestration", label: "Orchestration", icon: Workflow } as const] : []),
-      ...(onPreamble ? [{ kind: "item", id: "preamble", label: "Preamble…", icon: FileText } as const] : []),
-      ...(onWorkspaceSettings ? [{ kind: "item", id: "settings", label: "Workspace settings", icon: Settings } as const] : []),
-      { kind: "sep" },
-      ...(onRemoveWorkspace ? [{ kind: "item", id: "remove", label: "Remove workspace", icon: X, danger: true } as const] : []),
-    ]);
-  };
+  const rows = (): MenuRow[] =>
+    workspaceMenuRows({ onNewProject, dormant, onWorkspaceSettings, onThreadDefaults, onOrchestration, onPreamble, onRemoveWorkspace, canNewProject });
   const pick = (id: string) => {
-    if (id === "new-project") onNewProject();
+    if (id === "new-project") onNewProject?.();
     else if (id === "new-chat") onNewChat();
     else if (id === "archive-dormant") onArchiveDormant();
     else if (id.startsWith("archive-dormant:")) onArchiveDormantType?.(id.slice("archive-dormant:".length));

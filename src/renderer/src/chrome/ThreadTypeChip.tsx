@@ -8,6 +8,8 @@ export type ThreadTypeChipProps = {
   value: ThreadType;
   onChange: (type: ThreadType) => void;
   onClose?: () => void;
+  /** A Work thread or draft: only the types Work takes are offered. */
+  work?: boolean;
 };
 
 /** The draft row's 24px box, as its other pickers: the select's `sm` 28px

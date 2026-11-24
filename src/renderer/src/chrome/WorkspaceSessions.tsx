@@ -85,7 +85,8 @@ import { sessionPrefetch } from "../lib/sessionPrefetch";
 import { useSessionMetas } from "../lib/tcserver/store";
 import { usePlanReady } from "../hooks/usePlanReady";
 import type { ProjectMeta, WorkspaceMeta } from "../lib/tcserver/types";
-import { useWorkspaceCatalog, WORK_CHATS } from "../lib/tcserver/workspaces";
+import { useWorkspaceCatalog, useWorkspaces, WORK_CHATS } from "../lib/tcserver/workspaces";
+import { isWorkWorkspace } from "../lib/workRow";
 import { LIFEOS_CARD, openWorkView, useLifeosProjects, workColumnPort } from "../lib/workSwitch";
 import { loadToast } from "../components/ui/toaster";
 import { subagentRows, subagentRowsOpen, useSubagentRows } from "../stores/subagentRows";
@@ -948,7 +949,7 @@ export type ProjectCardViewProps = {
   name: string;
   branch: string | null | undefined;
   mode: ProjectMeta["mode"];
-  /** A LifeOS project's card (a Work workspace's): no branch line, it has no checkout. */
+  /** A Work workspace's project card (a LifeOS project's or not): no branch line, it has no checkout. */
   lifeos?: boolean;
   /** Newest activity; 0 shows no time. Its clock, and the working lines' elapsed, are leaves of their own (CardNowContext fixes them). */
   latest: number;
@@ -1136,6 +1137,8 @@ export const ProjectCard = memo(function ProjectCard({
   const { shown, hidden } = windowRows(all, requested, null);
   const batchScope: BatchScope = { kind: "projects", ids: [...new Set([project.id, ...(group.projectIds ?? [])])], name: project.name };
   const teardown = project.mode === "worktree" && Boolean(project.branch);
+  // A project of a Work workspace has no checkout to name, mirrored in LifeOS or not.
+  const inWork = isWorkWorkspace(useWorkspaces().find((w) => w.id === project.workspaceId));
 
   const dormant = () => dormantThreads(threads, lastSeen, seenFloor, rows.focusedTree);
   const menuRows = (): MenuRow[] => {
@@ -1195,7 +1198,7 @@ export const ProjectCard = memo(function ProjectCard({
       name={project.name}
       branch={project.branch}
       mode={project.mode}
-      lifeos={!!project.lifeosProjectId}
+      lifeos={!!project.lifeosProjectId || inWork}
       latest={latest}
       lines={shown}
       hidden={hidden}

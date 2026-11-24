@@ -12,7 +12,8 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "../components/ui/toolti
 import { cn } from "../lib/cn";
 import { normalizeTune } from "./threadTuneRules";
 import { threadTuneChunk } from "../surfaces/chunks";
-import { THREAD_HINTS, THREAD_LABELS, THREAD_START_LABELS, THREAD_TYPES } from "../surfaces/threads/threadTypes";
+import { THREAD_LABELS, THREAD_START_LABELS, threadHintFor, threadTypesFor } from "../surfaces/threads/threadTypes";
+import { isWorkWorkspace } from "../lib/workRow";
 import { TypeGlyph } from "../surfaces/threads/TypeGlyph";
 
 const TUNABLE: ReadonlySet<ThreadType> = new Set(["orchestration", "research"]);
@@ -33,6 +34,8 @@ export function NewThreadChooser({
   onStart: (threadType: ThreadType, tune: ThreadRules | null) => void;
 }) {
   const workspace = useWorkspaces().find((w) => w.id === workspaceId);
+  // A Work workspace starts only the types Work takes.
+  const work = isWorkWorkspace(workspace);
   // A new loose thread without a workspace belongs to this machine.
   const environmentId = workspaceId === null ? registry.primary().environmentId : workspace?.environmentId;
   const [open, setOpen] = useState(false);
@@ -134,7 +137,7 @@ export function NewThreadChooser({
             </div>
           </>
         ) : (
-          THREAD_TYPES.map((type) => {
+          threadTypesFor(work).map((type) => {
             const tunable = TUNABLE.has(type);
             return (
               <div key={type} className="group/row flex items-center rounded-lg hover:bg-muted">
@@ -148,7 +151,7 @@ export function NewThreadChooser({
                   </ItemMedia>
                   <ItemContent className="min-w-0">
                     <ItemTitle>{THREAD_START_LABELS[type] ?? THREAD_LABELS[type]}</ItemTitle>
-                    <ItemDescription className="mt-0.5">{THREAD_HINTS[type]}</ItemDescription>
+                    <ItemDescription className="mt-0.5">{threadHintFor(type, work)}</ItemDescription>
                   </ItemContent>
                 </ItemButton>
                 {tunable ? (

@@ -9,6 +9,8 @@ import { Switch } from "../components/ui/switch";
 import { Textarea } from "../components/ui/textarea";
 import { useRulesScope, type OrchestrationRules } from "../lib/tcserver/rules";
 import { normalizeTune } from "./threadTuneRules";
+import { isWorkWorkspace } from "../lib/workRow";
+import { useWorkspaces } from "../lib/tcserver/workspaces";
 
 export { isEmptyTune, normalizeTune } from "./threadTuneRules";
 
@@ -66,6 +68,9 @@ export function ThreadTune({
   workspaceId: string | null;
 }) {
   const { scope } = useRulesScope(environmentId, workspaceId);
+  // A Work workspace's agents never get a worktree: no switch for one.
+  const work = isWorkWorkspace(useWorkspaces().find((w) => w.id === workspaceId));
+  const switches = work ? SWITCHES.filter((s) => s.key !== "useWorktrees") : SWITCHES;
   const base = scope?.rules.conduct;
   const conduct = tune.conduct ?? {};
   const set = <K extends keyof ConductOverride>(key: K, value: ConductOverride[K]) =>
@@ -101,7 +106,7 @@ export function ThreadTune({
               onChange={(delegation) => set("delegation", delegation)}
             />
           </PageRow>
-          {SWITCHES.map((s) => (
+          {switches.map((s) => (
             <PageRow key={s.key} title={<Label text={s.label} overridden={s.key in conduct} onReset={() => reset(s.key)} />}>
               <Switch
                 aria-label={s.label}

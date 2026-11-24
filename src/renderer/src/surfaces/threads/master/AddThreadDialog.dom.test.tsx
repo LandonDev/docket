@@ -223,4 +223,12 @@ describe("AddThreadDialog", () => {
     await flush();
     expect(h.startThread.mock.calls[0][0]).toMatchObject({ threadType: "chat", masterId: "m" });
   });
+
+  it("a Work master's batch takes a chat or research alone, and starts on Chat", async () => {
+    render(<AddThreadDialog master={{ ...master, scope: "work" }} siblings={[]} onClose={() => {}} onAdded={() => {}} />);
+    await flush();
+    const types = within(screen.getByRole("group", { name: "Type" })).getAllByRole("button");
+    expect(types.map((b) => b.textContent)).toEqual(["Chat", "Research"]);
+    expect(types[0].getAttribute("aria-pressed")).toBe("true");
+  });
 });

@@ -21,6 +21,7 @@ import { retargetDraft, retargetLooseDraft } from "./DraftHostPicker";
 import { useToastSync } from "./toastSync";
 import { Server } from "./icons";
 import type { MenuRow } from "./menuRows";
+import { useWorkSessionId } from "../lib/useWorkSession";
 
 /**
  * The active thread's host for the thread menu (chrome/ThreadMenu.tsx):
@@ -118,7 +119,10 @@ export function MoveThreadConfirm({
   onClose: () => void;
 }): JSX.Element {
   const [preview, setPreview] = useState<SessionMovePreview | null | "error">(null);
+  // A Work thread carries no branch: the confirm says nothing of one, and the host is not asked.
+  const work = useWorkSessionId(sessionId);
   useEffect(() => {
+    if (work) return;
     let live = true;
     previewMove(sessionId).then(
       (p) => live && setPreview(p),
@@ -127,12 +131,12 @@ export function MoveThreadConfirm({
     return () => {
       live = false;
     };
-  }, [sessionId]);
+  }, [sessionId, work]);
   return (
     <ConfirmDialog
       title={`Move this thread to ${toName}?`}
       body={`Its subagents and pages move with it; undo history stays on ${fromName}.`}
-      note={<Facts parts={movePreviewParts(preview)} />}
+      note={work ? undefined : <Facts parts={movePreviewParts(preview)} />}
       confirmLabel="Move thread"
       onCancel={onClose}
       // The move runs inside the confirm: a refusal is its red line, not a toast.

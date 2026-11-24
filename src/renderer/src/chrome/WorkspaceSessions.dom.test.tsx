@@ -23,6 +23,13 @@ vi.mock('../lib/connection/status', async (importOriginal) => ({
   useEnvironments: () => hosts.environments
 }))
 
+/** The workspaces the cards read their kind from; none by default. */
+const catalog = vi.hoisted(() => ({ workspaces: [] as { id: string; environmentId: string; kind?: string }[] }))
+vi.mock('../lib/tcserver/workspaces', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../lib/tcserver/workspaces')>()),
+  useWorkspaces: () => catalog.workspaces
+}))
+
 /** The root owns each list's page count; this stands in for it. */
 function Paged({
   children
@@ -422,6 +429,19 @@ describe('a project card', () => {
     expect(fromMore).toContain('New chat')
     expect(fromMore).toContain('Delete project…')
     probe.unmount()
+  })
+
+  it('a project of a Work workspace draws no branch line, mirrored in LifeOS or not; a code project keeps its own', () => {
+    catalog.workspaces = [{ id: 'w1', environmentId: 'local', kind: 'work' }]
+    const work = mountProbe(projectCard([], { project: { branch: null } }))
+    expect(work.container.querySelector('[data-card-branch]')).toBeNull()
+    expect(work.container.textContent).not.toContain('local checkout')
+    work.unmount()
+    catalog.workspaces = [{ id: 'w1', environmentId: 'local', kind: 'code' }]
+    const code = mountProbe(projectCard([], { project: { branch: null } }))
+    expect(code.container.querySelector('[data-card-branch]')?.textContent).toBe('local checkout')
+    code.unmount()
+    catalog.workspaces = []
   })
 
   it("a Work project's menu has New chat, Open project, Project settings and the fleet rows: no Preamble, no rename, no archive, no delete", async () => {

@@ -348,7 +348,7 @@ function SidebarComponent({
                 </Button>
               }
               canNewProject={!!workspace && !isWork}
-              onNewProject={() => setNewProjectOpen(true)}
+              onNewProject={isWork ? undefined : () => setNewProjectOpen(true)}
               onNewChat={() => onNewChat?.(null)}
               dormant={() => {
                 const all = dormantNow();

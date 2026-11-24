@@ -41,6 +41,13 @@ describe("ThreadTypeChip", () => {
     );
   });
 
+  it("a Work thread lists Chat and Research alone, Chat with no code in its hint", async () => {
+    render(<ThreadTypeChip value="chat" onChange={() => {}} work />);
+    await open();
+    const options = await screen.findAllByRole("option");
+    expect(options.map((o) => o.textContent)).toEqual(["ChatAsk questions, talk a task through", "ResearchInvestigate with parallel explorers, produce a cited report"]);
+  });
+
   it("tints the trigger's glyph and every item's glyph with its type's colour", async () => {
     render(<ThreadTypeChip value="orchestration" onChange={() => {}} />);
     const trigger = screen.getByRole("combobox", { name: "Thread type" });

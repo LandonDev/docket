@@ -131,6 +131,8 @@ type Props = {
   hideProjectPicker?: boolean
   /** A draft's row of new-thread picks (DraftRow); false where the place decides them all (the Files dock). */
   draftRow?: boolean
+  /** A Work thread or draft (lib/workRow.ts): no branch, only Work's thread types, no build in the hint. */
+  work?: boolean
   context?: ContextUsage
   quoteRequest?: QuoteRequest
   initialDraft?: string
@@ -199,6 +201,7 @@ export function Composer({
   recents = [],
   hideProjectPicker = false,
   draftRow = true,
+  work = false,
   context,
   quoteRequest,
   initialDraft,
@@ -1013,7 +1016,9 @@ export function Composer({
                         ? 'Add context, or send to continue…'
                         : shell
                           ? 'How can I help you today?'
-                          : 'Ask, build, / for skills, @ for references…'
+                          : work
+                            ? 'Ask, / for skills, @ for references…'
+                            : 'Ask, build, / for skills, @ for references…'
                 }
                 className="composer-field relative max-h-40 min-w-0 flex-1 px-1 py-[3px] font-sans text-sm leading-[22px] text-foreground outline-none"
                 tokens={tokens}
@@ -1077,6 +1082,7 @@ export function Composer({
             branch={branch}
             sessionId={sessionId}
             hideProjectPicker={hideProjectPicker}
+            work={work}
             threadType={threadType}
             master={master}
             onMasterChange={onMasterChange}
@@ -1162,6 +1168,7 @@ export function DraftRow({
   branch,
   sessionId,
   hideProjectPicker,
+  work = false,
   threadType,
   onCwdChange,
   onChooseFolder,
@@ -1183,6 +1190,8 @@ export function DraftRow({
   branch?: string
   sessionId?: string
   hideProjectPicker?: boolean
+  /** A Work draft: no branch picker, only Work's thread types. */
+  work?: boolean
   threadType?: ThreadType | null
   onCwdChange: (cwd: string) => void
   onChooseFolder?: () => void
@@ -1199,7 +1208,7 @@ export function DraftRow({
     <Collapsible open={draft}>
       <CollapsibleContent>
         <div data-composer-draft-row className="flex h-7 min-w-0 items-center gap-1 px-1.5 pt-1 text-xs text-muted-foreground">
-          {hideProjectPicker ? null : (
+          {hideProjectPicker || work ? null : (
             <CwdPicker
               cwd={cwd}
               recents={recents}
@@ -1212,8 +1221,8 @@ export function DraftRow({
             />
           )}
           {sessionId && enabled ? <DraftHostPicker sessionId={sessionId} onClose={onClose} /> : null}
-          <BranchPicker cwd={cwd} branch={branch} enabled={enabled && !busy} onChange={onBranchChange} onClose={onClose} />
-          {threadType && onThreadTypeChange ? <ThreadTypeChip value={threadType} onChange={onThreadTypeChange} onClose={onClose} /> : null}
+          {work ? null : <BranchPicker cwd={cwd} branch={branch} enabled={enabled && !busy} onChange={onBranchChange} onClose={onClose} />}
+          {threadType && onThreadTypeChange ? <ThreadTypeChip value={threadType} onChange={onThreadTypeChange} onClose={onClose} work={work} /> : null}
           {threadType === 'chat' && master !== undefined && onMasterChange ? <MasterCheck checked={master} onChange={onMasterChange} /> : null}
           {draftTitle !== undefined && onDraftTitleChange ? <DraftTitleField value={draftTitle} onChange={onDraftTitleChange} onDone={onClose} /> : null}
         </div>

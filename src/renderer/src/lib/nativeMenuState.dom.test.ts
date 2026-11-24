@@ -65,6 +65,11 @@ describe("menuStateOf", () => {
     expect(menuStateOf(facts({ away: true })).checked).toEqual({ toggle_away: true });
   });
 
+  it("a Work thread in front draws no Terminal row; a code thread keeps both", () => {
+    expect(menuStateOf(facts({ workOn: true, workThread: true })).hidden).toEqual(["new_terminal", "toggle_terminal"]);
+    expect(menuStateOf(facts({ workOn: true, workThread: false })).hidden).toBeUndefined();
+  });
+
   it("hides Work's own rows (Go → Search Work…, Today) while no host has Work on, and names none hidden while one has", () => {
     expect(menuStateOf(facts({ workOn: false })).hidden).toEqual(["save_word", "search_work", "open_today"]);
     expect(menuStateOf(facts({ workOn: true })).hidden).toBeUndefined();

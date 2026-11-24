@@ -55,6 +55,7 @@ import { desktopOnly } from "../lib/nativeWeb";
 import { askOnGesture } from "../lib/preconnect";
 import { useKept } from "../lib/keptValue";
 import { macBridgeChunk, messageQueueChunk } from "./chunks";
+import { useWorkSession } from "../lib/useWorkSession";
 
 /** A box thread's waiting Mac bridge card, loaded once one waits. */
 const MacBridgeThreadCards = macBridgeChunk.surface("MacBridgeThreadCards");
@@ -165,6 +166,7 @@ export const ThreadComposer = memo(function ThreadComposer({
   onSent,
 }: ThreadComposerProps) {
   const workCwd = sessionWorkCwd(session);
+  const work = useWorkSession(session);
   const block = useEnvironmentBlock(session.environmentId);
   const macRequests = useMacBridgeRequests(session.environmentId, session.id);
   const paused = session.status === "paused";
@@ -208,6 +210,7 @@ export const ThreadComposer = memo(function ThreadComposer({
       recents={recents}
       hideProjectPicker={hideProjectPicker}
       draftRow={draftRow}
+      work={work}
       context={session.context}
       quoteRequest={quoteRequest}
       initialDraft={session.inboxCard || session.noteCard || session.handoffCard ? undefined : session.composerSeed}
@@ -237,7 +240,8 @@ export const ThreadComposer = memo(function ThreadComposer({
         ) : undefined
       }
     >
-      <SessionReview sessionId={id} cwd={workCwd} enabled={visible} busy={!!session.busy} onOpenDiff={onOpenDiff} />
+      {/* A Work thread's files go back through their History, never a turn's diff. */}
+      {work ? null : <SessionReview sessionId={id} cwd={workCwd} enabled={visible} busy={!!session.busy} onOpenDiff={onOpenDiff} />}
     </Composer>
   );
 });

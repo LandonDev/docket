@@ -22,7 +22,7 @@ import {
   Trash2,
   X,
 } from "../chrome/icons";
-import { THREAD_LABELS, THREAD_MENU_ICONS, THREAD_TYPES } from "../surfaces/threads/threadTypes";
+import { THREAD_LABELS, THREAD_MENU_ICONS, threadTypesFor } from "../surfaces/threads/threadTypes";
 import { masterMenuLabel } from "./masterThread";
 import type { SessionStatus, ThreadType } from "./tcserver/types";
 
@@ -67,6 +67,8 @@ export type ThreadMenuFacts = {
   draft?: boolean;
   /** A Work thread of a workspace, with Work on: Save as a play… (docs/agents/work-plays.md). */
   play?: boolean;
+  /** A Work thread or draft (lib/workRow.ts): Work's two types, no Dev server, Resources… only when it has some. */
+  work?: boolean;
 };
 
 export type ThreadMenuExtra = { open?: boolean; newPass?: boolean };
@@ -119,7 +121,7 @@ export function threadMenuRows(facts: ThreadMenuFacts, extra: ThreadMenuExtra = 
     icon: Layers,
     disabled: live,
     ...(live ? { reason: "Stop or wait for the turn to end" } : {}),
-    items: THREAD_TYPES.map((each) => ({
+    items: threadTypesFor(!!facts.work).map((each) => ({
       kind: "item",
       id: `type:${each}`,
       label: THREAD_LABELS[each],
@@ -155,15 +157,17 @@ export function threadMenuRows(facts: ThreadMenuFacts, extra: ThreadMenuExtra = 
     });
     if (on) rows.push({ kind: "item", id: "mac-bridge-rules", label: "Mac approvals…", icon: Lock });
   }
-  if (facts.dev) rows.push({ kind: "item", id: "dev", label: "Dev server", icon: Globe, checked: facts.dev.open });
+  if (facts.dev && !facts.work) rows.push({ kind: "item", id: "dev", label: "Dev server", icon: Globe, checked: facts.dev.open });
   if (facts.play && !facts.draft) rows.push({ kind: "item", id: "save-play", label: "Save as a play…", icon: ListPlus });
-  rows.push({
-    kind: "item",
-    id: "resources",
-    label: "Resources…",
-    icon: Blocks,
-    ...(facts.removable ? { hint: String(facts.removable) } : { disabled: true, reason: "Nothing to remove" }),
-  });
+  // A Work thread's resources are rare (a computer session); with none, the row is not drawn at all.
+  if (!facts.work || facts.removable)
+    rows.push({
+      kind: "item",
+      id: "resources",
+      label: "Resources…",
+      icon: Blocks,
+      ...(facts.removable ? { hint: String(facts.removable) } : { disabled: true, reason: "Nothing to remove" }),
+    });
   if (facts.projectId && !facts.parentId)
     rows.push({
       kind: "item",

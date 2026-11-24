@@ -3,7 +3,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from ".
 import { Tooltip, TooltipContent, TooltipTrigger } from "../components/ui/tooltip";
 import { PICKER_RUNTIME_MODES, RUNTIME_MODE_HINT, RUNTIME_MODE_LABEL, shownRuntimeMode, type RuntimeMode } from "../lib/session";
 import type { ThreadType } from "../lib/tcserver/types";
-import { THREAD_HINTS, THREAD_LABELS, THREAD_TYPES } from "../surfaces/threads/threadTypes";
+import { THREAD_LABELS, threadHintFor, threadTypesFor } from "../surfaces/threads/threadTypes";
 import { TypeGlyph } from "../surfaces/threads/TypeGlyph";
 import { ACCESS_ICONS, AccessValue, accessTriggerClass, type AccessPickerProps } from "./AccessPicker";
 import { ROW_SELECT_TRIGGER, type RowSelectProps } from "./ModelSettings";
@@ -73,12 +73,14 @@ export function AccessPickerSelect({ value: stored, onChange, onClose, quiet = f
   );
 }
 
-const TYPE_ITEMS = THREAD_TYPES.map((type) => ({ value: type, label: THREAD_LABELS[type] }));
+const typeItems = (work: boolean) => threadTypesFor(work).map((type) => ({ value: type, label: THREAD_LABELS[type] }));
+const TYPE_ITEMS = typeItems(false);
+const WORK_TYPE_ITEMS = typeItems(true);
 
-export function ThreadTypeSelect({ value, onChange, onClose, defaultOpen }: ThreadTypeChipProps & Opens) {
+export function ThreadTypeSelect({ value, onChange, onClose, defaultOpen, work = false }: ThreadTypeChipProps & Opens) {
   return (
     <Select
-      items={TYPE_ITEMS}
+      items={work ? WORK_TYPE_ITEMS : TYPE_ITEMS}
       value={value}
       defaultOpen={defaultOpen}
       onValueChange={(next) => {
@@ -95,12 +97,12 @@ export function ThreadTypeSelect({ value, onChange, onClose, defaultOpen }: Thre
       </SelectTrigger>
       {/* The composer takes the focus back itself, so the trigger must not. */}
       <SelectContent align="start" data-thread-type-picker finalFocus={onClose ? false : undefined} className="w-72 p-1">
-        {THREAD_TYPES.map((type) => (
+        {threadTypesFor(work).map((type) => (
           <SelectItem key={type} value={type} label={THREAD_LABELS[type]} className="items-start py-1.5">
             <TypeGlyph type={type} className="mt-0.5 size-3.5" />
             <span className="flex min-w-0 flex-col gap-0.5">
               <span>{THREAD_LABELS[type]}</span>
-              <span className="whitespace-normal text-xs text-muted-foreground">{THREAD_HINTS[type]}</span>
+              <span className="whitespace-normal text-xs text-muted-foreground">{threadHintFor(type, work)}</span>
             </span>
           </SelectItem>
         ))}

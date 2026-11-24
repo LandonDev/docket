@@ -17,7 +17,8 @@ import { useProjects, useWorkspaces } from "../../../lib/tcserver/workspaces";
 import { ChoiceSelect } from "../../../components/choice-select";
 import { ChoiceToggle } from "../../../components/choice-toggle";
 import { Textarea } from "../../../components/ui/textarea";
-import { THREAD_LABELS } from "../threadTypes";
+import { THREAD_LABELS, WORK_THREAD_TYPES } from "../threadTypes";
+import { isWorkThread } from "../../../lib/workRow";
 import { linkedHosts } from "./boardActions";
 
 /**
@@ -35,7 +36,7 @@ const NO_AFTER = "";
 
 export type AddThreadMaster = Pick<
   SessionMeta,
-  "id" | "environmentId" | "title" | "cwd" | "projectId" | "workspaceId" | "provider" | "model" | "reasoning" | "context1m"
+  "id" | "environmentId" | "title" | "cwd" | "projectId" | "workspaceId" | "provider" | "model" | "reasoning" | "context1m" | "scope"
 >;
 
 export type HostChoice = {
@@ -119,7 +120,10 @@ function AddThreadForm({
   pending,
   setPending,
 }: AddThreadProps & { pending: boolean; setPending: (pending: boolean) => void }) {
-  const [type, setType] = useState<ThreadType>("implementation");
+  // A Work master's batch holds Work threads: chats and research only.
+  const work = isWorkThread(master);
+  const types = work ? WORK_THREAD_TYPES : TYPES;
+  const [type, setType] = useState<ThreadType>(work ? "chat" : "implementation");
   const [choice, setChoice] = useState<{ harness: HarnessId; model: string }>({
     harness: master.provider as HarnessId,
     model: master.model,
@@ -243,7 +247,7 @@ function AddThreadForm({
         />
         <div className="flex flex-col">
           <FieldRow label="Type">
-            <ChoiceToggle label="Type" value={type} options={TYPES.map((t) => ({ value: t, label: THREAD_LABELS[t] }))} onChange={setType} />
+            <ChoiceToggle label="Type" value={type} options={types.map((t) => ({ value: t, label: THREAD_LABELS[t] }))} onChange={setType} />
           </FieldRow>
           <FieldRow label="Model">
             <span className="flex items-center" data-model-picker>
