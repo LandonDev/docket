@@ -55,7 +55,9 @@ while Work is on for some host).
   press, ghost on a row that works (Sign out). What he must do by hand is
   said in the line, with no button. A fix this window's key may not run on
   that host (`fixMethod` and `linkMay`: LifeOS's Sign in and Sign out on a
-  given computer) is not drawn.
+  given computer) is not drawn; on a row that needs him, a line under its
+  state says who can, by the act ("Sign in from a computer that manages the
+  box", `signInElsewhere`; else `managedElsewhere`).
 
 **What left Settings → Work.** "Where it runs" gave way to Connections: each
 host's LifeOS sign-in, the conversion tools (ToolchainRow, removed) and the
@@ -143,7 +145,7 @@ sessions have no end to read.
 
 | Pillar | Rows | Where |
 |---|---|---|
-| lifeos | `lifeos.signin` (Sign out working; Show the code… pairing; Sign in… signed out or refused; broken with no button while unreachable, since the session retries by itself), `lifeos.key:<workspace>` (a sector key that failed), `lifeos.answers` (`health:ping` failed), `lifeos.source:<id>` per enabled email, gcal or ics source, titled by its name and what it is ("Cosmic mail", "landon@cosmic.games calendar"; group Mail and calendar; carries its sector). An error is broken; idle with a reason (disconnected) needs him. Silence is judged as LifeOS's own health rule judges it (`SOURCE_SILENT_MINUTES`), by when it last checked in and only for a kind that checks in on every poll: mail after 10 minutes, an ICS feed after a day and an hour (`SOURCE_SILENT_MS`). A Google calendar reports only when its state changes, so its times say when LifeOS's worker last started: it is judged by its status and error alone | lifeos/health.ts |
+| lifeos | `lifeos.signin` (Sign out working; Show the code… pairing; Sign in… signed out or refused; broken with no button while unreachable, since the session retries by itself), `lifeos.key:<workspace>` (a sector key that failed), `lifeos.answers` (`health:ping` failed, or gave no answer in `LIFEOS_ANSWER_MS`, 6 s, under the frame's 10 s: "Did not answer", the sign-in row kept; Check again asks again), `lifeos.source:<id>` per enabled email, gcal or ics source, titled by its name and what it is ("Cosmic mail", "landon@cosmic.games calendar"; group Mail and calendar; carries its sector). An error is broken; idle with a reason (disconnected) needs him. Silence is judged as LifeOS's own health rule judges it (`SOURCE_SILENT_MINUTES`), by when it last checked in and only for a kind that checks in on every poll: mail after 10 minutes, an ICS feed after a day and an hour (`SOURCE_SILENT_MS`). A Google calendar reports only when its state changes, so its times say when LifeOS's worker last started: it is judged by its status and error alone | lifeos/health.ts |
 | google | `google.clientId` (the Picker's client id, Mac and Windows only), `google.consent:<account>` (Drive files allowed, else reconnect in LifeOS) | google/health.ts |
 | guests | `guests.service` (the Work service answers on its port), and on the box `guests.hosted` and `guests.links`: one GET each through the tunnel to `/w/hosted/` and a guest page, working only on a 200 carrying the service's own headers | guests/health.ts |
 | frameio | `frameio.signin` (as whom; ran out; never used here gives no row) | frameio/health.ts |

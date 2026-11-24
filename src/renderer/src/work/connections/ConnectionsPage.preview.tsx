@@ -1,6 +1,7 @@
 import type { HealthRow } from "@shared/work/health";
 import { Page } from "../../components/page";
 import { Button } from "../../components/ui/button";
+import { asGivenComputer } from "../kit.preview";
 import { ConnectionsView } from "./ConnectionsPage";
 import type { HostView } from "./model";
 
@@ -68,9 +69,32 @@ const HOSTS: Record<string, HostView[]> = {
     { id: "box", name: "the box", status: "ready", report: { host: "env_box", at: NOW, rows: BOX } },
     { id: "mac", name: "Mac", status: "failed", silent: false, error: "Work is off on Mac. Turn it on in Settings, Work." },
   ],
+  /** Seen from his laptop as a given computer: the box signed out of LifeOS (no Sign in, who can), and LifeOS silent on the Mac. */
+  given: [
+    { id: "box", name: "the box", status: "ready", report: { host: "env_box", at: NOW, rows: [r({ id: "lifeos.signin", group: "LifeOS", title: "LifeOS", state: "needs-you", line: "Not signed in on this host", fix: { kind: "page", label: "Sign in…", page: "lifeos-sign-in" } })] } },
+    {
+      id: "mac",
+      name: "Mac",
+      status: "ready",
+      report: {
+        host: "env_mac",
+        at: NOW,
+        rows: [
+          r({ id: "lifeos.signin", group: "LifeOS", title: "LifeOS", state: "working", line: "Signed in", fix: { kind: "run", label: "Sign out", method: "work.lifeos.signOut" } }),
+          r({ id: "lifeos.answers", group: "LifeOS", title: "LifeOS answers", state: "broken", line: "Did not answer" }),
+        ],
+      },
+    },
+  ],
 };
 
+let given = false;
+
 export function ConnectionsPreview({ hosts = "both" }: { hosts?: keyof typeof HOSTS }) {
+  if (hosts === "given" && !given) {
+    given = true;
+    asGivenComputer({ on: ["box", "mac"], computers: [{ id: "box", name: "The box", platform: "linux" }, { id: "mac", name: "Mac", platform: "darwin" }] });
+  }
   const checking = HOSTS[hosts]!.some((h) => h.status === "checking");
   const none = HOSTS[hosts]!.every((h) => h.status === "offline");
   return (

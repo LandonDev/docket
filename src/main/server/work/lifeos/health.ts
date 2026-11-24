@@ -97,8 +97,26 @@ export function sourceRow(s: LifeosSource, now: number): HealthRow | null {
   return { ...row, state: 'working', line: 'Synced', at: seen }
 }
 
+/**
+ * How long the ping and the sources' list may take: under the frame's `HEALTH_CHECK_MS`, so a LifeOS that stops
+ * answering is said by this pillar's own row (`lifeos.answers`), the sign-in row kept, never by one fault row in
+ * place of all of them. Check again asks again.
+ */
+export const LIFEOS_ANSWER_MS = 6_000
+
+class NoAnswer extends Error {}
+
+/** A query held to `ms`: past it, a `NoAnswer`. */
+function within<T>(query: Promise<T>, ms: number): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined
+  const late = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new NoAnswer(`no answer in ${ms / 1000} s`)), ms)
+  })
+  return Promise.race([query, late]).finally(() => clearTimeout(timer))
+}
+
 /** Every row, from the host's status and, while signed in, its owner's client. */
-export async function lifeosRows(o: { status: LifeosStatus; owner: LifeosClient; workspaceName: (id: string) => string | undefined; now: number }): Promise<HealthRow[]> {
+export async function lifeosRows(o: { status: LifeosStatus; owner: LifeosClient; workspaceName: (id: string) => string | undefined; now: number; answerMs?: number }): Promise<HealthRow[]> {
   const signIn = signInRow(o.status.lifeos)
   if (!signIn) return []
   const rows: HealthRow[] = [signIn]
@@ -111,9 +129,12 @@ export async function lifeosRows(o: { status: LifeosStatus; owner: LifeosClient;
     const title = key.workspaceId === WORK_HOME ? 'Work Chats' : (o.workspaceName(key.workspaceId) ?? key.workspaceId)
     rows.push({ id: `lifeos.key:${key.workspaceId}`, pillar: 'lifeos', group: 'LifeOS', title: `${title} key`, state: 'broken', line: key.error ? redact(key.error) : 'The key was not made; the next pass tries again', ...(key.sectors.length === 1 ? { sector: key.sectors[0] } : { personal: true as const }) })
   }
-  const [ping, sources] = await Promise.allSettled([o.owner.query('health:ping', {}), o.owner.query<LifeosSource[]>('sources:list', {})])
+  const ms = o.answerMs ?? LIFEOS_ANSWER_MS
+  const [ping, sources] = await Promise.allSettled([within(o.owner.query('health:ping', {}), ms), within(o.owner.query<LifeosSource[]>('sources:list', {}), ms)])
   if (ping.status === 'rejected') {
-    rows.push({ id: 'lifeos.answers', pillar: 'lifeos', group: 'LifeOS', title: 'LifeOS answers', state: 'broken', line: `Did not answer: ${redact(errorText(ping.reason))}` })
+    // Silence is said as silence; any other failure with its reason.
+    const line = ping.reason instanceof NoAnswer ? 'Did not answer' : `Did not answer: ${redact(errorText(ping.reason))}`
+    rows.push({ id: 'lifeos.answers', pillar: 'lifeos', group: 'LifeOS', title: 'LifeOS answers', state: 'broken', line })
     return rows
   }
   if (sources.status === 'rejected') {

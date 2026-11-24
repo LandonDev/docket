@@ -101,6 +101,26 @@ describe("Connections", () => {
     expect(screen.getByRole("button", { name: "Sign in to OneDrive" })).toBeTruthy();
   });
 
+  /** Council round 7 (Sol, Settings 2): the sign-in's press went from a row that needs him with no line saying who can. */
+  it("says who can under a row that needs him where this window may not make its fix, by the act, and under no working row", async () => {
+    testKey.current = GIVEN_KEY;
+    vi.spyOn(registry, "environment").mockReturnValue({ id: "box", name: "The box" } as never);
+    const request = vi.fn(async () => ({
+      host: "env_box",
+      at: 1,
+      rows: [
+        { id: "lifeos.signin", pillar: "lifeos", group: "LifeOS", title: "LifeOS", state: "needs-you", line: "Not signed in on this host", fix: { kind: "page", label: "Sign in…", page: "lifeos-sign-in" } },
+        { id: "lifeos.other", pillar: "lifeos", group: "LifeOS", title: "LifeOS on the Mac", state: "working", line: "Signed in", fix: { kind: "run", label: "Sign out", method: "work.lifeos.signOut" } },
+      ],
+    }));
+    vi.spyOn(registry, "linkOf").mockReturnValue({ request } as never);
+    render(<ConnectionsPage />);
+    await settle();
+    expect(screen.queryByRole("button", { name: "Sign in…" })).toBeNull();
+    expect(document.querySelectorAll("[data-who-can]").length).toBe(1);
+    expect(screen.getByText("Sign in from a computer that manages the box")).toBeTruthy();
+  });
+
   it("a row whose fix is OneDrive's sign-in on the Windows VM brings it up on the row's host, spinning meanwhile, then checks again", async () => {
     let release!: () => void;
     signInOnVm.mockImplementationOnce(() => new Promise((done) => (release = () => done({ computer: "vm:windows", account: null, line: "" }))));

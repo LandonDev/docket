@@ -9,7 +9,7 @@ import { StatusMark } from "../../components/ui/status";
 import { registry, useEnvironments, useEnvironmentStatuses } from "../../lib/connection";
 import { hostFailure } from "../../lib/hostFailure";
 import { nameInLine } from "../../lib/hostWords";
-import { useLinkMay } from "../../lib/linkMay";
+import { managedElsewhere, signInElsewhere, useLinkMay } from "../../lib/linkMay";
 import { requestSettings } from "../../lib/monaco/debugTab";
 import { openUrl } from "../../lib/native";
 import { workErrorWords } from "../../lib/workErrorWords";
@@ -160,8 +160,11 @@ function FixRow({ placed, now, onDone }: { placed: PlacedRow; now: number; onDon
   const { row, hostId } = placed;
   const mark = markOf(row.state);
   const usable = usableFix(row.fix, registry.primary().environmentId === hostId);
-  // A fix this window's key may not run on that host (LifeOS's sign-in and sign-out on a given computer) is not drawn.
+  // A fix this window's key may not run on that host (LifeOS's sign-in and sign-out on a given computer) is not drawn;
+  // on a row that needs him, a line says who can, by the act (`signInElsewhere` for LifeOS's sign-in), as every reader does.
   const fix = useLinkMay(hostId, fixMethod(usable) ?? "work.health") ? usable : null;
+  const hostName = registry.environment(hostId)?.name ?? "this host";
+  const whoCan = usable && !fix && row.state === "needs-you" ? (usable.kind === "page" && usable.page === "lifeos-sign-in" ? signInElsewhere(hostName) : managedElsewhere(hostName)) : null;
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [signingIn, setSigningIn] = useState(false);
@@ -187,7 +190,17 @@ function FixRow({ placed, now, onDone }: { placed: PlacedRow; now: number; onDon
   return (
     <>
       {/* A row that ends on a date is wide: under 480px of page its date and press take a line under the words, which keep their room. */}
-      <PageRow wide={Boolean(row.until)} title={placed.title} description={<StatusMark className={STATE_LINE} state={mark.state} word={mark.word} detail={row.at === undefined ? row.line : [row.line, syncWhen(row.at, now)].filter(Boolean).join(" ")} />} error={error ?? undefined}>
+      <PageRow
+        wide={Boolean(row.until)}
+        title={placed.title}
+        description={
+          <>
+            <StatusMark className={STATE_LINE} state={mark.state} word={mark.word} detail={row.at === undefined ? row.line : [row.line, syncWhen(row.at, now)].filter(Boolean).join(" ")} />
+            {whoCan ? <span data-who-can className="block">{whoCan}</span> : null}
+          </>
+        }
+        error={error ?? undefined}
+      >
         {row.until ? <span className="text-xs tabular-nums text-muted-foreground">{lapseLine(row.until, now)}</span> : null}
         {fix ? (
           <Button variant={fixVariant(row.state)} size="sm" disabled={busy} onClick={() => void press(fix)}>

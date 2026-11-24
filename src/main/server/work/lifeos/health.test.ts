@@ -2,7 +2,8 @@ import { describe, expect, it } from 'vitest'
 import type { LifeosState, LifeosStatus } from '@shared/contract-work-lifeos'
 import { WORK_HOME } from '@shared/work'
 import type { LifeosClient } from './ctx'
-import { lifeosRows, signInRow, SOURCE_SILENT_MS, sourceRow, sourceTitle, type LifeosSource } from './health'
+import { LIFEOS_ANSWER_MS, lifeosRows, signInRow, SOURCE_SILENT_MS, sourceRow, sourceTitle, type LifeosSource } from './health'
+import { HEALTH_CHECK_MS } from '../health'
 import { lifeos } from './index'
 import { ENROLLED_WORDS } from './keys'
 
@@ -149,6 +150,18 @@ describe('the rows of a host', () => {
       ['lifeos.answers', 'broken']
     ])
     expect(JSON.stringify(rows)).not.toContain(JWT)
+  })
+
+  /** Council round 7 (Sol, Settings 1): a ping that never answers ran the whole check past its time, and one fault row took the place of every LifeOS row. */
+  it('LifeOS silent: the ping is held to its own time, the sign-in row stays, and the answers row says it did not answer', async () => {
+    const silent: LifeosClient = { query: () => new Promise(() => {}), mutation: () => new Promise(() => {}), action: () => new Promise(() => {}) } as never
+    const rows = await lifeosRows({ status: status({ state: 'connected', ownerId: 'landon', since: NOW }), owner: silent, workspaceName: () => undefined, now: NOW, answerMs: 20 })
+    expect(rows.map((r) => [r.id, r.state])).toEqual([
+      ['lifeos.signin', 'working'],
+      ['lifeos.answers', 'broken']
+    ])
+    expect(rows[1]).toMatchObject({ title: 'LifeOS answers', line: 'Did not answer' })
+    expect(LIFEOS_ANSWER_MS).toBeLessThan(HEALTH_CHECK_MS)
   })
 
   it('the module answers for itself, and nothing on a ctx with no LifeOS host', async () => {
