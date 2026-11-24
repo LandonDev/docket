@@ -762,16 +762,20 @@ export function useDocument(host: DocHost, open: DocOpen): DocumentHandle {
       }),
     [host, open.doc, open.source, threads],
   );
+  const modeNow = useRef(mode);
+  modeNow.current = mode;
   const setMode = useMemo(
     () => async (next: DocMode) => {
+      // A change the host refused puts back the mode he had before the press, not the one the document opened with.
+      const was = modeNow.current;
       setModeState(next);
       try {
         setModeState((await host.mode(next)).mode);
       } catch {
-        setModeState(open.mode);
+        setModeState(was);
       }
     },
-    [host, open.mode],
+    [host],
   );
   return { host, threads, adapters, mode: open.shared ? "suggests" : mode, setMode, written };
 }

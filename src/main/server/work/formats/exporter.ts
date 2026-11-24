@@ -63,7 +63,7 @@ export async function exportDoc(ctx: WorkCtx, by: Caller, params: { source: Canv
   writeFileSync(input, Buffer.from(got.data ?? '', 'base64'))
   try {
     // The scratch copy says nothing of where its words came from: the job is told, so a shared document's never leaves this host.
-    const done = await ctx.convert({ from: 'docx', to: params.format, input, shared: madeFromShared(ctx, params.source) })
+    const done = await ctx.convert({ from: 'docx', to: params.format, input, shared: madeFromShared(ctx, t.source) || madeFromShared(ctx, params.source) })
     try {
       const data = readFileSync(done.output).toString('base64')
       return { name, data, warnings: [...warnings, ...done.warnings], ...held }

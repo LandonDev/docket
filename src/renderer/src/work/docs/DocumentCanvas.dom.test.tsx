@@ -5,7 +5,7 @@
  * open said once on the state line with nothing pulsing under it; Share only
  * on what can be shared; Ask's chip as the frame takes it.
  */
-import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, renderHook, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { CanvasItem } from "@shared/work";
 import type { CanvasShell, StatusLine } from "../canvas/kind";
@@ -25,7 +25,7 @@ vi.mock("../../lib/connection", () => ({
 const toasts = vi.hoisted(() => [] as string[]);
 vi.mock("../../components/ui/toaster", () => ({ loadToast: async () => ({ error: (m: string) => void toasts.push(m) }) }));
 
-const { Body, Bar, Scroller, TitleField, markOpen, selectionChip, useDocReview } = await import("./DocumentCanvas");
+const { Body, Bar, Scroller, TitleField, markOpen, selectionChip, useDocReview, useDocument } = await import("./DocumentCanvas");
 
 afterEach(cleanup);
 
@@ -58,6 +58,28 @@ describe("the document's body", () => {
     expect(opening.made - made).toBe(1);
     rerender(at({ ...FILE, path: "/w/Budget.tcdoc" }));
     expect(opening.made - made).toBe(2);
+  });
+});
+
+describe("the document's mode", () => {
+  it("a change the host refuses puts back the mode he had before the press", async () => {
+    let refuse = false;
+    const host = {
+      env: "box",
+      onPush: () => () => undefined,
+      threads: () => new Promise(() => undefined),
+      mode: async (mode: string) => {
+        if (refuse) throw new Error("not now");
+        return { mode };
+      },
+    } as never;
+    const open = { doc: "file:x", source: FILE, mode: "writes", shared: false, written: null, me: "owner", names: {} } as never;
+    const { result } = renderHook(() => useDocument(host, open));
+    await act(async () => result.current.setMode("suggests"));
+    expect(result.current.mode).toBe("suggests");
+    refuse = true;
+    await act(async () => result.current.setMode("writes"));
+    expect(result.current.mode).toBe("suggests");
   });
 });
 
