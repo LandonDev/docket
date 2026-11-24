@@ -214,3 +214,31 @@ describe('the operations', () => {
     expect(page.log.some((l) => /click (Send|Copy link|Shorten URL|Outlook)/.test(l))).toBe(false)
   })
 })
+
+describe('the review’s carrier fixes', () => {
+  it('an agent’s write stops when the page takes answers, read inside the same run', async () => {
+    const { page, carrier, auth } = rig()
+    page.add(form({ settings: { ...settings, accepting: true } }))
+    const before = structuredClone(page.forms.get('FakeFormId00000000000001')!.questions)
+    const changes = [{ op: 'remove' as const, at: 0 }]
+    const err = await carrier.write(auth('write', { changes, before }, { by: 'pillar' }), 'FakeFormId00000000000001', changes, before).catch((e) => e)
+    expect(err).toBeInstanceOf(CarrierStop)
+    expect(err.message).toContain('takes answers now')
+    expect(page.forms.get('FakeFormId00000000000001')!.questions).toHaveLength(1)
+  })
+
+  it('an agent’s end date on a form taking answers only shortens it', async () => {
+    const { shortens } = await import('./ops')
+    expect(shortens('12/10/2026', '12/1/2026')).toBe(true)
+    expect(shortens(undefined, '12/1/2026')).toBe(true)
+    expect(shortens('12/1/2026', '12/10/2026')).toBe(false)
+    expect(shortens('12/1/2026', undefined)).toBe(false)
+    expect(shortens('12/1/2026', 'soon')).toBe(false)
+    const { page, carrier, auth } = rig()
+    page.add(form({ settings: { ...settings, accepting: true, endDate: '12/1/2026' } }))
+    const later = { endDate: '12/31/2026' }
+    const err = await carrier.settings(auth('settings', later, { by: 'pillar' }), 'FakeFormId00000000000001', later).catch((e) => e)
+    expect(err).toBeInstanceOf(CarrierStop)
+    expect(page.forms.get('FakeFormId00000000000001')!.settings.endDate).toBe('12/1/2026')
+  })
+})

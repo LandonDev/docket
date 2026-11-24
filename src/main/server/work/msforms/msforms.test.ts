@@ -122,7 +122,7 @@ describe('the row', () => {
     await expect(made()).rejects.toThrow('may take answers')
     const [row] = new MsformsStore(db).list('w1')
     expect(row).toMatchObject({ state: 'draft', settings: { accepting: true } })
-    expect(row.stopped).toContain('turn off Accept responses')
+    expect(row.stopped).toContain('until Accept responses is off')
   })
 })
 

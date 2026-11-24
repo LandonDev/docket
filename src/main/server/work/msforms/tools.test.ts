@@ -271,3 +271,21 @@ describe('Work search and @', () => {
     expect(await msformMentions.search('spring', { work: true, workspaceId: null, sectors: 'all', sessionId: 'chat' }, work.ctx)).toEqual([])
   })
 })
+
+describe('the review’s tool fixes', () => {
+  it('a later end date on a form taking answers is held, not set', async () => {
+    const view = await aForm({ state: 'collecting' })
+    carrier.forms.get(view.formId)!.settings.endDate = '12/1/2026'
+    await tool('msform_read', { form: view.formId })
+    const r = await tool('msform_settings', { form: view.formId, endDate: '12/31/2026' })
+    expect(r.text).toContain('Held')
+    expect(carrier.forms.get(view.formId)!.settings.endDate).toBe('12/1/2026')
+  })
+
+  it('a read never makes a draft’s workbook: no pull for a draft but on his press', async () => {
+    const view = await aForm()
+    carrier.forms.get(view.formId)!.count = 1
+    await tool('msform_answers', { form: view.formId })
+    expect(carrier.calls.some((c) => c.op === 'pull')).toBe(false)
+  })
+})

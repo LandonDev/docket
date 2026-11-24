@@ -92,6 +92,12 @@ async function readOnce(ctx: MsCtx, at: Reached, o: { by: ReadBy; rows: boolean 
       kept.stale = false
       return announceRow(ctx, store.update(row.workspaceId, row.formId, { answersReadAt: Date.now(), stopped: null }))
     }
+    // The first "Open results in Excel" makes a workbook others in the folder can open: it runs only on his own press,
+    // or for a form that collects through his press. A draft's answers are never put in a workbook by a read.
+    if (!row.workbook && o.by !== 'owner' && row.state === 'draft') {
+      signIn = false
+      return announceRow(ctx, store.update(row.workspaceId, row.formId, { count }))
+    }
     const folderPath = folderServerPath(row.folder, at.library.web)
     if (!folderPath) throw new MsformsError(LIBRARY_GONE)
     const ask = { siteUrl: row.folder.siteUrl, folderServerPath: folderPath, uniqueId: row.workbook?.uniqueId ?? null, name: row.workbook?.name ?? workbookNameOf(row.title), lastModified: kept?.modified ?? null }

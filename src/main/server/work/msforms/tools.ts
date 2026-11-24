@@ -7,6 +7,7 @@ import type { Caller, ToolCtx, WorkTool } from '../modules'
 import { heldReceipt } from '../outbox/words'
 import { responsesOf } from './answers/read'
 import { CarrierRefused, CarrierStop } from './carrier/types'
+import { shortens } from './carrier/ops'
 import { announce, authFor, carrierOrRefuse, formWords, holdPublish, setOpen, storeRead, suggestionOf, writeChanges } from './forms'
 import { folderOf, libraryAt } from './place'
 import { formReach, formsReached, jobOf, librariesFor, MsformsError, type Reached } from './reach'
@@ -87,7 +88,8 @@ async function agentChanges(ctx: ToolCtx, at: Reached, changes: MsChange[], reas
   if (row.state === 'draft' && row.mode === 'writes') {
     const carrier = carrierOrRefuse()
     // "Agent writes" holds only while the form takes no answers: read so fresh.
-    const fresh = await carrier.read(authFor(ctx, row, 'write', 'pillar', { changes, before: row.questions }), row.formId)
+    // A Settings read: Accept responses as the panel shows it, and missing reads as on.
+    const fresh = await carrier.read(authFor(ctx, row, 'settings', 'pillar', { eligible: row.formId }), row.formId)
     if (!fresh.settings.accepting) {
       const next = await writeChanges(ctx, row, changes, 'pillar', by)
       announce(ctx, next)
@@ -225,7 +227,7 @@ export const msformsTools: WorkTool[] = [
         const questions = args.questions?.length ? (args.questions as MsQuestion[]) : made.questions
         const settings: MsFormSettings = { ...MSFORM_NEW_SETTINGS, ...args.settings, accepting: false }
         const description = args.description ?? made.description ?? ''
-        const payload: MsFormMake = { workspaceId: job.id, sessionId: ctx.sessionId, folder, title: args.title, description, questions, settings, collect: args.collect ?? false, content: formWords(args.title, questions, settings, description) }
+        const payload: MsFormMake = { workspaceId: job.id, sessionId: ctx.sessionId, folder, title: args.title, description, questions, settings, collect: args.collect ?? false, content: `${formWords(args.title, questions, settings, description)}\n\nMade in ${folder.label ?? folder.path}. In a Team's folder its members can see the form as soon as it is made.` }
         const item = ctx.held.create({ kind: 'msform.make', sessionId: ctx.sessionId, payload })
         return workText(heldReceipt(item, `Nothing was made in Forms yet: the form is made${args.collect ? ' and starts collecting responses' : ''} when he presses.`))
       })
@@ -261,10 +263,12 @@ export const msformsTools: WorkTool[] = [
         const { form: _f, ...patch } = args
         const { row } = at
         const audience = patch.orgOnly !== undefined || patch.recordName !== undefined || patch.onePerPerson !== undefined
-        const reopening = row.state === 'closed' && patch.startDate !== undefined
+        const reopening = row.state === 'closed' && (patch.startDate !== undefined || (patch.endDate !== undefined && !shortens(row.settings.endDate, patch.endDate)))
+        // On a form taking answers an agent's end date only shortens the window; a later one, or none, is held.
+        const extending = row.state === 'collecting' && patch.endDate !== undefined && !shortens(row.settings.endDate, patch.endDate)
         const wider = widens(row.settings, patch)
         // Held: who can answer on a form taking answers, any widening, a reopening date.
-        if (reopening || wider || (audience && row.state !== 'draft') || (row.state === 'draft' && row.mode === 'suggests' && (audience || patch.startDate !== undefined))) {
+        if (reopening || extending || wider || (audience && row.state !== 'draft') || (row.state === 'draft' && row.mode === 'suggests' && (audience || patch.startDate !== undefined))) {
           const settings = { ...row.settings, ...patch }
           const { held } = holdPublish(ctx, at, reopening ? 'reopen' : 'audience', settings, ctx.sessionId)
           return workText(held ? heldReceipt(held, 'No one can answer differently yet: it changes when he presses.') : 'That change already waits for the owner.')

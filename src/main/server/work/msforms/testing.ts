@@ -63,7 +63,7 @@ export class FakeCarrier implements MsCarrier {
     // The first step: Accept responses off.
     if (this.stopAt.make === 'accepting') {
       delete this.stopAt.make
-      throw new CarrierStop('The form was made but may take answers: no one has its link. Open it and turn off Accept responses, or delete it.', this.readOf(f))
+      throw new CarrierStop('The form was made but may take answers until Accept responses is off. Open it and turn that off, or delete it.', this.readOf(f))
     }
     f.title = ask.title
     f.description = ask.description

@@ -134,7 +134,7 @@ export function history(ctx: MsCtx, by: Caller, ask: { workspaceId: string; form
 const makeSettings = (s?: Partial<MsFormSettings>): MsFormSettings => ({ accepting: false, orgOnly: s?.orgOnly ?? true, recordName: s?.recordName ?? true, onePerPerson: s?.onePerPerson ?? true, ...(s?.startDate ? { startDate: s.startDate } : {}), ...(s?.endDate ? { endDate: s.endDate } : {}) })
 
 /** The sentence when a made form may still take answers. */
-export const MAY_TAKE_ANSWERS = 'The form was made but may take answers: no one has its link. Open it and turn off Accept responses, or delete it.'
+export const MAY_TAKE_ANSWERS = 'The form was made but may take answers until Accept responses is off. Open it and turn that off, or delete it.'
 
 /**
  * His New → Microsoft form, or the execute of a claimed `msform.make`: the

@@ -288,7 +288,8 @@ export function opsCarrier(deps: OpsDeps): MsCarrier {
   const finalRead = async (page: Page, formId: string, settings = true): Promise<FormRead> => {
     if (!settings) return formOf(await page.read(), { formId })
     const panel = await openSettings(page)
-    return formOf(panel, { formId })
+    // A toggle the panel does not show is read as on: an unread Accept responses never passes for off.
+    return formOf(panel, { formId, was: { ...MSFORM_NEW_SETTINGS, accepting: true } })
   }
 
   return {
@@ -336,7 +337,7 @@ export function opsCarrier(deps: OpsDeps): MsCarrier {
         } finally {
           await computer.close(folderWindow).catch(() => {})
         }
-        if (!formId || !window) throw new CarrierStop('Forms did not make a form from the folder. Nothing was made in Forms.', null, null)
+        if (!formId || !window) throw new CarrierStop('Forms did not show the new form in time. It may have made one in the folder: look in Forms before trying again.', null, null)
         const page = new Page(computer, window, 'make')
         return closing(page, async () => {
           const { got } = await page.until((s) => titleOf(s) !== '', mount)
@@ -348,7 +349,7 @@ export function opsCarrier(deps: OpsDeps): MsCarrier {
             await setToggle(page, /^Accept responses$/i, false, 'Accept responses')
           } catch {
             const read = formOf(page.last ?? (await page.read()), { formId: formId! })
-            throw new CarrierStop('The form was made but may take answers: no one has its link. Open it and turn off Accept responses, or delete it.', { ...read, formId: formId!, settings: { ...read.settings, accepting: true } })
+            throw new CarrierStop('The form was made but may take answers until Accept responses is off. Open it and turn that off, or delete it.', { ...read, formId: formId!, settings: { ...read.settings, accepting: true } })
           }
           page.done.push('made the form with Accept responses off')
           await setAudience(page, ask.settings)
@@ -395,6 +396,16 @@ export function opsCarrier(deps: OpsDeps): MsCarrier {
       return deps.exclusive(async () => {
         const page = await openBuilder(formId, 'write')
         return closing(page, async () => {
+          // An agent writes only a form that takes no answers, read so inside this very run.
+          if (auth.by === 'pillar') {
+            const panel = await openSettings(page)
+            const accept = one(panel, ['checkbox', 'switch'], /^Accept responses$/i)
+            if (!accept || isOn(accept)) page.stop('the form takes answers now (or its Settings did not say), so no change was made; it waits for the owner')
+            await page.act((x) => {
+              const close = one(x, BUTTON, /^(Close|Close settings)$/i)
+              return close ? [click(close)] : []
+            }, 'closing Settings')
+          }
           noDrift(page, before, 'no change')
           let list = [...before]
           for (let i = 0; i < changes.length; i++) {
@@ -423,6 +434,8 @@ export function opsCarrier(deps: OpsDeps): MsCarrier {
           // A closing end date is the one setting an agent sets on a form taking answers.
           const onlyEnd = Object.keys(patch).every((k) => k === 'endDate')
           if (auth.by === 'pillar' && now.accepting && !onlyEnd) page.stop('the form takes answers now, so its settings were not changed')
+          // An agent's end date only shortens the window; a later one, or none, waits for the owner.
+          if (auth.by === 'pillar' && now.accepting && !shortens(now.endDate, patch.endDate)) page.stop('a later end date, or none, lets more people answer, so it was not set; it waits for the owner')
           if (patch.orgOnly === false && now.orgOnly && auth.by === 'pillar') page.stop('who can answer is not widened without the owner\'s press')
           if (patch.orgOnly !== undefined || patch.recordName !== undefined || patch.onePerPerson !== undefined) await setAudience(page, { ...now, ...patch })
           if ('startDate' in patch) await setDate(page, 'Start date', patch.startDate)
@@ -514,6 +527,16 @@ export function opsCarrier(deps: OpsDeps): MsCarrier {
       })
     }
   }
+}
+
+/** Whether an end date moves the close earlier: a date where there was none, or an earlier one. Unreadable dates do not. */
+export function shortens(now: string | undefined, next: string | undefined): boolean {
+  if (!next) return false
+  const n = Date.parse(next)
+  if (Number.isNaN(n)) return false
+  if (!now) return true
+  const c = Date.parse(now)
+  return !Number.isNaN(c) && n < c
 }
 
 const escape = (s: string): string => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
