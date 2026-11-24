@@ -1,4 +1,4 @@
-import { copyFileSync } from 'node:fs'
+import { copyFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { openRow, unzip } from './lib/files'
 import { fileAt, showPlace } from './lib/place'
@@ -9,6 +9,7 @@ import { Window } from './lib/window'
 const NAME = 'Practice totals.xlsx'
 const VALUE = 'Practice tally'
 const PICK_CELL = 'iframe[name="frameEditor"]'
+const pause = (ms: number) => new Promise((done) => setTimeout(done, ms))
 
 export default journey({
   id: 'J22',
@@ -39,21 +40,25 @@ export default journey({
           const outside = frame.getBoundingClientRect();
           return { x: outside.x + inside.x + inside.width / 2, y: outside.y + inside.y + inside.height / 2 };
         })()`)))
+        // Driven as the product's own live proof drives it (fullEditor/live.test.ts `editThere`): the editor settles 3 s
+        // after its cell field names a cell, the value goes in after a pause, and the editor has 3 s to send its change
+        // before the window goes. Keys sent the moment the field named a cell did not take (2026-11-24 W9kob5: no A2 and
+        // no sent change in 30 s); with the settle they do (mhNNbt). What the editor said then is kept in full-editor.json.
+        await pause(3000)
         await editor.click(point!)
         await editor.key('Control+a')
         await editor.typeKeys('A1')
         await editor.key('Enter')
+        await pause(500)
         await editor.typeKeys(VALUE)
         await editor.key('Enter')
-        // Enter took the value: the selection is on A2. Then the editor sends its change to its server before the window
-        // goes (the live proof, fullEditor/live.test.ts, gives it 3 s; the editor's own word is used where it has one).
-        const typed = Date.now()
-        await editor.until('the edit taken and sent by the Full editor', 30_000, () => editor.eval<boolean>(`(() => {
+        await pause(3000)
+        writeFileSync(join(folder, 'full-editor.json'), JSON.stringify(await editor.eval(`(() => {
           const frame = document.querySelector(${JSON.stringify(PICK_CELL)});
-          if (frame?.contentDocument?.querySelector('#ce-cell-name')?.value !== 'A2') return false;
-          const api = frame.contentWindow?.Asc?.editor;
-          return typeof api?.asc_isDocumentModified === 'function' ? !api.asc_isDocumentModified() : Date.now() - ${typed} > 3000;
-        })()`))
+          const api = frame?.contentWindow?.Asc?.editor;
+          return { cell: frame?.contentDocument?.querySelector('#ce-cell-name')?.value ?? null,
+            modified: typeof api?.asc_isDocumentModified === 'function' ? api.asc_isDocumentModified() : null };
+        })()`), null, 2))
         await editor.shot(join(folder, 'full-editor.png'))
       } finally {
         try {
