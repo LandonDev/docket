@@ -11,7 +11,7 @@ import { useSelectedWorkspaceIds } from "../../stores/project";
 import { StatusMark } from "../../components/ui/status";
 import { WORK_VIEWS, type WorkViewId, type WorkViewModule, type WorkViewProps } from "../views/registry";
 import { registry, useEnvironmentStatus } from "../../lib/connection";
-import { KeptRegion, lifeosHostName, reopenLifeos, sessionFailure, sessionWords, useKeptRegion, useLifeosSession, useLifeosStatus } from "./lifeos";
+import { isSilence, KeptRegion, lifeosHostName, reopenLifeos, sessionFailure, sessionWords, useKeptRegion, useLifeosSession, useLifeosStatus } from "./lifeos";
 import { startThreadAbout } from "./WorkColumn";
 import { openWorkSettings } from "./open";
 import { DOWN_PRESS_LABEL, useDownPress } from "./lifeosDown";
@@ -74,7 +74,8 @@ export function ViewFrame({ view, environmentId, workspaceId, sector }: { view: 
   const session = useLifeosSession(environmentId, sector);
   // The view may paint the rows this window last read while the live ones come back: the region is busy until they land.
   const kept = useKeptRegion();
-  const state: LifeosStateName | null = status?.lifeos.state ?? null;
+  // The host's silence (`unanswered`) is the newest fact, over the state it gave before.
+  const state: LifeosStateName | null = session.unanswered ? "unreachable" : (status?.lifeos.state ?? null);
   // The header's controls come from the chunk. The module is kept in state: read from the chunk while rendering it is a
   // constant to the React Compiler, so a first render before the chunk landed kept its null and the controls never showed.
   const [loaded, setLoaded] = useState<WorkViewModule | null>(() => def.chunk.loaded());
@@ -87,6 +88,7 @@ export function ViewFrame({ view, environmentId, workspaceId, sector }: { view: 
     };
   }, [def, loaded]);
   const Head = loaded?.Head;
+  const Kept = loaded?.Kept;
   const Title = loaded?.Title;
   const props = useMemo<WorkViewProps>(
     () => ({ env: environmentId, workspace, sector, lifeos: session, startThread: (about, at) => startThreadAbout(about, at?.projectId ?? null, at?.cwd) }),
@@ -140,11 +142,11 @@ export function ViewFrame({ view, environmentId, workspaceId, sector }: { view: 
   const [retrying, setRetrying] = useState(false);
   const retry = (): void => {
     setRetrying(true);
-    // A Retry the host did not answer either is said once. The line says so already where it names the host's silence;
-    // over LifeOS's own ("LifeOS did not answer") the host's silence is a new fact, and one toast says it, alone.
+    // A Retry that fails is said once. The host's silence is said by the line, in the place of LifeOS's ("The box did
+    // not answer", `reopenLifeos`), with no toast beside it; any other cause, which no line says, by one toast.
     reopenLifeos(environmentId, sector)
       .catch((err: unknown) => {
-        if (session.unanswered) return;
+        if (isSilence(err)) return;
         void loadToast().then((toast) => toast.error(workErrorWords(err, { host: nameInLine(host) }) || sessionFailure("unanswered", false, host)));
       })
       .finally(() => setRetrying(false));
@@ -183,7 +185,7 @@ export function ViewFrame({ view, environmentId, workspaceId, sector }: { view: 
             word={silence}
             // A long computer name wraps beside Retry, never cut.
             wrap
-            detail={status?.lifeos.state === "unreachable" ? `As of ${clockTime(status.lifeos.since)}` : undefined}
+            detail={!session.unanswered && status?.lifeos.state === "unreachable" ? `As of ${clockTime(status.lifeos.since)}` : undefined}
             className="min-w-0 flex-1"
           />
           <Button variant="ghost" size="xs" disabled={retrying} onClick={retry}>
@@ -218,6 +220,8 @@ export function ViewFrame({ view, environmentId, workspaceId, sector }: { view: 
           </KeptRegion>
         )}
       </div>
+      {/* A form he has open stays through a session that drops: it is the frame's, not the body's. */}
+      {Kept && gated ? <Kept {...props} /> : null}
       {signingIn ? <SignInFor environmentId={environmentId} onClose={() => setSigningIn(false)} /> : null}
     </div>
   );

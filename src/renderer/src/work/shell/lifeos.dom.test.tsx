@@ -235,7 +235,8 @@ describe("a host's status that could not be read", () => {
     expect(sessionFailure("unanswered")).toBe("The host did not answer");
   });
 
-  it("never marks a host whose status is known, nor one that refused", async () => {
+  /** Council round 8 (Sol, Mail 1): the cached status hid a Retry the host did not answer. */
+  it("marks a host whose status is known once its Retry goes unanswered, until its next answer; never one that refused", async () => {
     resetLifeos();
     vi.spyOn(registry, "linkOf").mockReturnValue({ connected: true, onPush: () => () => {}, onOpen: () => () => {}, request: () => Promise.reject(new Error("Work is off on this host")) } as never);
     const { watchLifeos, refreshLifeos, useLifeosUnanswered } = await import("./lifeos");
@@ -245,6 +246,10 @@ describe("a host's status that could not be read", () => {
     expect(result.current).toBe(false);
     vi.spyOn(registry, "linkOf").mockReturnValue({ connected: true, request: () => Promise.reject(Object.assign(new Error("x"), { name: "TimeoutError" })) } as never);
     await act(() => expect(refreshLifeos("env_far")).rejects.toThrow());
+    expect(result.current).toBe(true);
+    // Its next answer clears the mark.
+    vi.spyOn(registry, "linkOf").mockReturnValue({ connected: true, request: async () => ({ lifeos: { state: "signed-out" }, keys: [] }) } as never);
+    await act(() => refreshLifeos("env_far"));
     expect(result.current).toBe(false);
   });
 });

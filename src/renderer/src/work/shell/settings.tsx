@@ -183,19 +183,29 @@ export function SignInDialog({ environmentId, state, onClose }: { environmentId:
   const [token, setToken] = useState("");
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // The code's ask that failed takes the bones' place, with Retry asking the same computer again (`asks`).
+  const [codeError, setCodeError] = useState<string | null>(null);
+  const [asks, setAsks] = useState(0);
   const { root, closeThen } = useClosingDialog(onClose, pending);
   const [now, setNow] = useState(() => Date.now());
 
   useEffect(() => {
     if (code) return;
     let live = true;
-    link
-      .request<{ code: string; expiresAt: number }>("work.lifeos.pairStart", {})
-      .then((answer) => live && setCode(answer), (err: unknown) => live && setError(failureWords(err, hostOf(environmentId), "did not start the sign-in")));
+    setCodeError(null);
+    link.request<{ code: string; expiresAt: number }>("work.lifeos.pairStart", {}).then(
+      (answer) => live && setCode(answer),
+      (err: unknown) => {
+        if (!live) return;
+        // The host's silence by the rule's words ("The box did not answer"); any other cause in Work's.
+        const silent = err instanceof Error && (err.name === "TimeoutError" || err.name === "ConnectionLostError");
+        setCodeError(silent ? sessionFailure("unanswered", false, hostOf(environmentId)) : failureWords(err, hostOf(environmentId), "did not start the sign-in"));
+      },
+    );
     return () => {
       live = false;
     };
-  }, [code, link]);
+  }, [code, link, asks, environmentId]);
   useEffect(() => {
     const timer = window.setInterval(() => setNow(Date.now()), 1000);
     return () => window.clearInterval(timer);
@@ -233,6 +243,11 @@ export function SignInDialog({ environmentId, state, onClose }: { environmentId:
             <div className="flex items-baseline justify-between gap-3">
               {code ? (
                 <span className="font-mono text-base font-medium leading-6 text-foreground tabular-nums">{code.code}</span>
+              ) : codeError ? (
+                // Bones are for an ask that is out: a failed one says so in the code's place, with Retry.
+                <p role="alert" data-code-failed className="min-w-0 text-xs leading-6 text-pretty text-destructive">
+                  {codeError}
+                </p>
               ) : (
                 // The code's own 24px line, a bone its width: nothing moves when it lands.
                 <div role="status" aria-label="Asking for a code" data-code-bone className="flex h-6 items-center">
@@ -243,6 +258,10 @@ export function SignInDialog({ environmentId, state, onClose }: { environmentId:
                 <span className="text-xs text-muted-foreground tabular-nums">
                   {left > 0 ? `${Math.floor(left / 60)}:${String(left % 60).padStart(2, "0")}` : "Expired"}
                 </span>
+              ) : codeError ? (
+                <Button variant="ghost" size="xs" className="-me-2 shrink-0" onClick={() => setAsks((n) => n + 1)}>
+                  Retry
+                </Button>
               ) : null}
             </div>
             {local ? (

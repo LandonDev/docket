@@ -110,9 +110,34 @@ describe("the view frame's Retry", () => {
     await flush();
     fail = true;
     fireEvent.click(await screen.findByRole("button", { name: "Retry" }));
+    // The line said LifeOS's silence; the host's own is the new fact, said once, by the line in its place, with no toast
+    // beside it (council round 8, Sol Mail 1).
+    await vi.waitFor(() => expect(document.querySelector("[data-view-state=failed]")?.textContent).toContain("The box did not answer"));
+    expect(document.querySelector("[data-view-state=failed]")?.textContent).not.toContain("LifeOS did not answer");
+    expect(toasts).toEqual([]);
+  });
+
+  it("says a Retry that failed for a cause no line says by one toast, in the host's words", async () => {
+    toasts.length = 0;
+    let fail = false;
+    vi.spyOn(registry, "environment").mockReturnValue({ name: "The box" } as never);
+    vi.spyOn(registry, "linkOf").mockReturnValue({
+      environmentId: "env_box",
+      connected: true,
+      onPush: () => () => {},
+      onOpen: () => () => {},
+      request: vi.fn(async (method: string) => {
+        if (method === "work.lifeos.status" && !fail) return { lifeos: { state: "connected", ownerId: "landon", since: 1 }, keys: [] };
+        throw new Error(method === "work.lifeos.status" ? "The connection to The box dropped" : "socket closed");
+      }),
+    } as never);
+    setLifeosStatus("env_box", { lifeos: { state: "connected", ownerId: "landon", since: 1 }, keys: [] });
+    render(<ViewFrame view="tasks" environmentId="env_box" workspaceId="ws" sector="purdue" />);
+    await flush();
+    await flush();
+    fail = true;
+    fireEvent.click(await screen.findByRole("button", { name: "Retry" }));
     await vi.waitFor(() => expect(toasts).toHaveLength(1));
-    // The line says LifeOS's silence; the host's own is the new fact, said once, alone.
-    expect(toasts[0]).toEqual({ message: "The box did not answer. Try again once it is connected." });
   });
 });
 

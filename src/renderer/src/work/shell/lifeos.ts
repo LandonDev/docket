@@ -5,7 +5,7 @@ import { errorText, type SectorKey } from "@shared/work";
 import type { LifeosJwtAnswer, LifeosStateName, LifeosStatus } from "@shared/contract-work-lifeos";
 import { registry } from "../../lib/connection";
 import { linkMay } from "../../lib/linkMay";
-import { nameInLine } from "../../lib/hostWords";
+import { lifeosDownWords } from "./lifeosWords";
 import { workSwitch } from "../../lib/workSwitch";
 import type { WorkspaceMeta } from "../../lib/tcserver/types";
 
@@ -85,10 +85,10 @@ function markUnanswered(environmentId: string, on: boolean): void {
   for (const listener of statusListeners) listener();
 }
 
-/** An answer that never came: a wait that ran out, or the link that dropped under the ask. */
-const isSilence = (err: unknown): boolean => {
+/** An answer that never came: a wait that ran out, or the link that dropped under the ask (by its name, or the link's words). */
+export const isSilence = (err: unknown): boolean => {
   const name = (err as { name?: string } | null)?.name;
-  return name === "ConnectionLostError" || name === "TimeoutError";
+  return name === "ConnectionLostError" || name === "TimeoutError" || /^no answer in \d/i.test((err as { message?: string } | null)?.message ?? "");
 };
 
 /** Ask one host for its LifeOS status, and keep it from the push from then on. */
@@ -101,13 +101,9 @@ export function watchLifeos(environmentId: string): void {
     link
       .request<LifeosStatus>("work.lifeos.status")
       .then((status) => putStatus(environmentId, status))
-      // A host that refused (Work off, or a build from before Work) says so: never "signed out", which asks for a sign-in
-      // that cannot help. An ask that went unanswered leaves the status unknown and is marked, so a screen says so
-      // with Retry (`useLifeosUnanswered`); the link's next open asks afresh on its own.
-      .catch((err: unknown) => {
-        if (!isSilence(err)) putStatus(environmentId, { lifeos: { state: "off" }, keys: [] });
-        else if (!statuses.has(environmentId)) markUnanswered(environmentId, true);
-      });
+      // A host that refused (Work off, or a build from before Work) says so: never "signed out", which asks for a
+      // sign-in that cannot help.
+      .catch((err: unknown) => (isSilence(err) ? unansweredAsk(environmentId, err) : putStatus(environmentId, { lifeos: { state: "off" }, keys: [] })));
   };
   const offPush = link.onPush((push) => {
     if (push.push === "work.lifeos") putStatus(environmentId, push.status);
@@ -120,18 +116,27 @@ export function watchLifeos(environmentId: string): void {
   });
 }
 
+/**
+ * A status ask that went unanswered marks the host (`useLifeosUnanswered`), so a screen says the host's silence with
+ * Retry, even over a status it answered before: that status is no longer known to be true, and a down session says the
+ * newest cause, never the cached one. Its next answer or push clears the mark; the link's next open asks afresh.
+ */
+function unansweredAsk(environmentId: string, err: unknown): void {
+  if (isSilence(err)) markUnanswered(environmentId, true);
+}
+
 /** Ask one host for its LifeOS status now (Retry on "LifeOS did not answer"); rejects when the host does not answer. */
 export async function refreshLifeos(environmentId: string): Promise<void> {
   watchLifeos(environmentId);
   try {
     putStatus(environmentId, await registry.linkOf(environmentId).request<LifeosStatus>("work.lifeos.status"));
   } catch (err) {
-    if (isSilence(err) && !statuses.has(environmentId)) markUnanswered(environmentId, true);
+    unansweredAsk(environmentId, err);
     throw err;
   }
 }
 
-/** Whether a host's status is unknown because its last ask went unanswered while its link stayed open: no bones then. */
+/** Whether a host's last status ask went unanswered while its link stayed open (no bones then), until its next answer or push. */
 export function useLifeosUnanswered(environmentId: string | null | undefined): boolean {
   return useSyncExternalStore(
     (fn) => {
@@ -154,6 +159,11 @@ export function useLifeosStatus(environmentId: string | null | undefined): Lifeo
   useEffect(() => {
     if (environmentId) watchLifeos(environmentId);
   }, [environmentId]);
+  return useLifeosStatusHeard(environmentId);
+}
+
+/** A host's LifeOS status as this window last heard it, asking nothing itself (the rail watches every Work host). */
+export function useLifeosStatusHeard(environmentId: string | null | undefined): LifeosStatus | null {
   return useSyncExternalStore(
     (fn) => {
       statusListeners.add(fn);
@@ -395,9 +405,11 @@ async function askSession(environmentId: string, sector: SectorKey | null, key: 
 export function useLifeosSession(environmentId: string, sector: SectorKey | null): LifeosSession {
   const status = useLifeosStatus(environmentId);
   // A status ask that went unanswered is no ask still out: the session is down, with the line and Retry every reader
-  // already draws for one that did not answer. A later answer (a push, a reopened link, Retry) brings it back.
-  const silent = useLifeosUnanswered(environmentId) && !status;
-  const state = status?.lifeos.state ?? (silent ? "unreachable" : "connecting");
+  // already draws for one that did not answer, over a cached failure too (a Retry the host did not answer says the host's
+  // silence, not LifeOS's). A session that reads goes on reading: its client talks to LifeOS, not the host. A later answer
+  // (a push, a reopened link, Retry) brings it back.
+  const silent = useLifeosUnanswered(environmentId) && status?.lifeos.state !== "connected";
+  const state = silent ? "unreachable" : (status?.lifeos.state ?? "connecting");
   // Before this launch's status answers, a host whose last status said connected is asked for its JWT at once.
   const ahead = !status && !silent && !!environmentId && lastConnected(environmentId);
   const key = keyOf(environmentId, sector);
@@ -408,14 +420,19 @@ export function useLifeosSession(environmentId: string, sector: SectorKey | null
     if (ahead) {
       void openSession(environmentId, sector);
     } else if (state === "connected") {
-      // A session that was down reads as on its way while its JWT is asked for: bones, not the old line.
-      if (open && !open.client && open.state !== "connected") putSession({ environmentId, sector, client: null, state });
+      // A computer kept from the session stays so: asking again is a refusal again.
+      if (open?.withheld) return;
+      // A session that was down reads as on its way while its JWT is asked for: bones, not the old line. Every fresh
+      // answer or push that says connected asks again for a session that is down (its JWT failed, or the host went
+      // silent under a Retry), so its line goes the moment the host answers, with no press; one that reads asks nothing.
+      if (open && !open.client && (open.state !== "connected" || open.unanswered)) putSession({ environmentId, sector, client: null, state });
       void openSession(environmentId, sector);
     } else {
       if (open?.client) closeSession(key);
       if (open?.client || open?.state !== state || !!open?.unanswered !== silent) putSession({ environmentId, sector, client: null, state, ...(silent ? { unanswered: true as const } : {}) });
     }
-  }, [environmentId, key, sector, state, silent, ahead]);
+    // `status` itself, not only its state: a fresh answer of the same state is the host back.
+  }, [environmentId, key, sector, state, silent, ahead, status]);
   const session = useSyncExternalStore(
     (fn) => {
       sessionListeners.add(fn);
@@ -452,20 +469,10 @@ export function sessionWaits(session: Pick<LifeosSession, "client" | "state">): 
 /**
  * What a session that cannot read says, in words: a query's error and the frame's line read it. `host` is the name of
  * the computer the session reads through ("The box"), so a state that is the host's names it ("Work is off on the
- * box"); with none it is "this host". `unanswered` is the host's own silence, said by its name.
+ * box"); with none it is "this host". `unanswered` is the host's own silence, said by its name. The words themselves
+ * are lifeosWords.ts's, which the capture window reads with no Convex client.
  */
-export function sessionFailure(state: LifeosStateName | "unanswered", withheld?: boolean, host?: string | null): string {
-  const at = host ? nameInLine(host) : "this host";
-  if (withheld) return `This computer cannot read LifeOS through ${at}`;
-  if (state === "unanswered") return `${host ?? "The host"} did not answer`;
-  // LifeOS's own silence, signed out and a sign-in that waits name the computer too where it is known; "Not signed in
-  // to LifeOS" and "LifeOS did not answer" stay at the head, the words the host's own text and `STATE_WORDS` share.
-  if (state === "unreachable") return host ? `LifeOS did not answer ${at}` : "LifeOS did not answer";
-  if (state === "refused") return `LifeOS refused ${at}'s sign-in`;
-  if (state === "off") return `Work is off on ${at}`;
-  if (state === "pairing") return host ? `The LifeOS sign-in on ${at} waits for your approval` : "The LifeOS sign-in waits for your approval";
-  return host ? `Not signed in to LifeOS on ${at}` : "Not signed in to LifeOS";
-}
+export const sessionFailure = lifeosDownWords;
 
 /** A host's name as the registry knows it ("The box"), or null for one it does not. */
 export const lifeosHostName = (environmentId: string): string | null => (environmentId && registry.environment(environmentId)?.name) || null;
@@ -500,9 +507,17 @@ const STATE_WORDS: [RegExp, LifeosStateName][] = [
  * the host says connected, and a status that did not change starts nothing.
  */
 export async function reopenLifeos(environmentId: string, sector: SectorKey | null): Promise<void> {
-  await refreshLifeos(environmentId);
-  if (statuses.get(environmentId)?.lifeos.state !== "connected") return;
   const key = keyOf(environmentId, sector);
+  try {
+    await refreshLifeos(environmentId);
+  } catch (err) {
+    // The host did not answer the Retry: a session that is down says so now, in place of the cause it gave before, until
+    // the host's next answer or push (which asks for the session again).
+    const open = sessions.get(key);
+    if (isSilence(err) && open && !open.client && !open.withheld && !open.unanswered) putSession({ ...open, unanswered: true });
+    throw err;
+  }
+  if (statuses.get(environmentId)?.lifeos.state !== "connected") return;
   // The old line goes: the session is on its way again, and openSession says what it finds.
   if (sessions.get(key) && !sessions.get(key)!.client) putSession({ environmentId, sector, client: null, state: "connected" });
   await openSession(environmentId, sector);

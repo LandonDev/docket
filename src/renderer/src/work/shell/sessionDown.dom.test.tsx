@@ -19,7 +19,16 @@ vi.mock("../../lib/tcserver/workspaces", async (original) => ({
   ...(await original<object>()),
   useWorkspaces: () => [{ id: "ws", name: "Purdue Esports", environmentId: "env_box", sector: "purdue", kind: "work", path: "/w" }],
 }));
-vi.mock("convex/react", async (original) => ({ ...(await original<object>()), ConvexReactClient: class {} }));
+vi.mock("convex/react", async (original) => ({
+  ...(await original<object>()),
+  ConvexReactClient: class {
+    url = "https://lifeos.test";
+    setAuth(): void {}
+    close(): Promise<void> {
+      return Promise.resolve();
+    }
+  },
+}));
 vi.mock("../../stores/project", async (original) => ({ ...(await original<object>()), useSelectedWorkspaceIds: () => ["ws"] }));
 const toasts = vi.hoisted(() => [] as string[]);
 vi.mock("../../components/ui/toaster", () => {
@@ -34,6 +43,7 @@ const { View: ChatReply } = await import("../messages/ChatReplyAct");
 const { View: CalendarAct } = await import("../agenda/CalendarActView");
 const { PageVerbs } = await import("../prep/PrepView");
 const { TodayPageView } = await import("../today/TodayView");
+const { WaitingSection } = await import("../mail/WaitingSection");
 
 const NOW = Date.UTC(2026, 10, 24, 17);
 const connected = { lifeos: { state: "connected", ownerId: "landon", since: 1 }, keys: [] };
@@ -327,5 +337,114 @@ describe("a meeting's page with the session down", () => {
     expect(screen.queryByRole("button", { name: "Add notes" })).toBeNull();
     rerender(<PageVerbs {...verbs} verb="addNotes" />);
     expect(screen.getByRole("button", { name: "Add notes" })).toBeTruthy();
+  });
+});
+
+/**
+ * A host whose answers change while a reader is on screen: its status, the session's ask and Waiting on's days are each
+ * read from `now`, and `push` says a new status the way the host's `work.lifeos` push does.
+ */
+function liveHost(now: { status: () => Promise<unknown>; jwt: () => Promise<unknown>; days?: () => Promise<unknown> }) {
+  asked = [];
+  const pushes = new Set<(push: { push: string; status: unknown }) => void>();
+  vi.spyOn(registry, "environment").mockReturnValue({ id: "env_box", name: "The box" } as never);
+  vi.spyOn(registry, "statusOf").mockReturnValue({ transport: "open" } as never);
+  vi.spyOn(registry, "linkOf").mockReturnValue({
+    environmentId: "env_box",
+    connected: true,
+    onPush: (fn: (push: { push: string; status: unknown }) => void) => (pushes.add(fn), () => void pushes.delete(fn)),
+    onOpen: () => () => {},
+    request: vi.fn(async (method: string) => {
+      asked.push(method);
+      if (method === "work.lifeos.status") return now.status();
+      if (method === "work.lifeos.jwt") return now.jwt();
+      if (method === "work.mail.waiting") return (now.days ?? (() => new Promise(() => {})))();
+      return new Promise(() => {});
+    }),
+  } as never);
+  return {
+    now,
+    push: async (status: unknown) => {
+      await act(async () => {
+        // A push is a fresh object off the wire, never the one an earlier answer gave.
+        for (const fn of [...pushes]) fn({ push: "work.lifeos", status: structuredClone(status) });
+      });
+      await settle();
+    },
+  };
+}
+const SIGNED_OUT = { lifeos: { state: "signed-out" }, keys: [] };
+const SILENT = { lifeos: { state: "unreachable", since: 1 }, keys: [] };
+const READS = { ok: true, url: "https://lifeos.test", jwt: "jwt" };
+
+/** Council round 8 (Sol, Mail 1): LifeOS did not answer the box, then the box itself did not answer his Retry. */
+describe("a Retry the host does not answer, over LifeOS's own silence", () => {
+  it("says the host's silence once, in place of the old cause, with no toast, in the frame and in a part's place", async () => {
+    const host = liveHost({ status: async () => SILENT, jwt: () => new Promise(() => {}) });
+    render(
+      <>
+        <ViewFrame view="tasks" environmentId="env_box" workspaceId="ws" sector="purdue" />
+        <OnSession sector="purdue">{(session) => <DownLine session={session} />}</OnSession>
+      </>,
+    );
+    await waitFor(() => expect(times(WORDS.unreachable)).toBe(2));
+    host.now.status = () => Promise.reject(timeout());
+    await act(async () => screen.getAllByRole("button", { name: "Retry" })[0]!.click());
+    await settle();
+    expect(times(WORDS.unreachable)).toBe(0);
+    expect(times(WORDS.unanswered)).toBe(2);
+    expect(toasts).toEqual([]);
+    // A fresh answer is the newest cause again.
+    await host.push(SILENT);
+    expect(times(WORDS.unanswered)).toBe(0);
+    expect(times(WORDS.unreachable)).toBe(2);
+  });
+
+  it("says a second failure for another cause by that cause, once: a session ask that failed, then the host silent", async () => {
+    const host = liveHost({ status: async () => connected, jwt: () => Promise.reject(new Error("socket closed")) });
+    render(<OnSession sector="purdue">{(session) => <DownLine session={session} />}</OnSession>);
+    await waitFor(() => expect(times(WORDS.unreachable)).toBe(1));
+    host.now.status = () => Promise.reject(timeout());
+    await act(async () => screen.getByRole("button", { name: "Retry" }).click());
+    await settle();
+    expect(times(WORDS.unreachable)).toBe(0);
+    expect(times(WORDS.unanswered)).toBe(1);
+    // The host answers again, connected: the session is asked for again, with no press, and reads.
+    host.now.status = async () => connected;
+    host.now.jwt = async () => READS;
+    await host.push(connected);
+    await waitFor(() => expect(document.querySelector("[data-session-down]")).toBeNull());
+  });
+});
+
+/** Council round 8 (Sol, Settings 1 P1, and the walk): a line stayed after the session came back. */
+describe("a session that comes back", () => {
+  it("drops the line with no press, in a part's place, the settings line, the frame and Waiting on, once he signs in", async () => {
+    const host = liveHost({
+      status: async () => SIGNED_OUT,
+      jwt: async () => ({ ok: false, state: "signed-out" }),
+      days: async () => ({ days: null, error: "LifeOS did not answer: Not signed in to LifeOS", routine: true }),
+    });
+    const workspace = { id: "ws", name: "Purdue Esports", environmentId: "env_box", sector: "purdue", kind: "work", path: "/w" };
+    render(
+      <>
+        <OnSession sector="purdue">{(session) => <DownLine session={session} />}</OnSession>
+        <OnSession sector={null}>{(session) => <LifeosLine session={session} waiting={<span data-waiting />} />}</OnSession>
+        <ViewFrame view="tasks" environmentId="env_box" workspaceId="ws" sector="purdue" />
+        <WaitingSection workspace={workspace as never} />
+      </>,
+    );
+    await waitFor(() => expect(times(WORDS["signed-out"])).toBe(4));
+    const daysAsked = asked.filter((m) => m === "work.mail.waiting").length;
+    // He approves the code: the host says connected, and every reader reads again.
+    host.now.status = async () => connected;
+    host.now.jwt = async () => READS;
+    host.now.days = async () => ({ days: 3, routine: true });
+    await host.push(connected);
+    await waitFor(() => expect(times(WORDS["signed-out"])).toBe(0));
+    expect(document.querySelector("[data-session-down]")).toBeNull();
+    // Waiting on read its days again, through its own ask, and shows them.
+    expect(asked.filter((m) => m === "work.mail.waiting").length).toBe(daysAsked + 1);
+    expect(screen.getByRole("combobox", { name: "Count as waiting after" })).toBeTruthy();
   });
 });

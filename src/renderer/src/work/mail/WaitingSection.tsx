@@ -11,7 +11,7 @@ import { useLinkMay } from "../../lib/linkMay";
 import { workErrorWords } from "../../lib/workErrorWords";
 import type { WorkspaceMeta } from "../../lib/tcserver/types";
 import type { LifeosStateName } from "@shared/contract-work-lifeos";
-import { lifeosHostName, lifeosStateOf, sessionFailure } from "../shell/lifeos";
+import { lifeosHostName, lifeosStateOf, sessionFailure, useLifeosStatus } from "../shell/lifeos";
 import { downIsSilence, useDownPress, type LifeosDown } from "../shell/lifeosDown";
 import { useDownAction } from "../shell/DownSignIn";
 
@@ -121,6 +121,17 @@ function Waiting({ workspace }: { workspace: WorkspaceMeta }) {
       live = false;
     };
   }, [env, workspace.id, attempt]);
+
+  // The host's LifeOS back (the sign-in approved, a Retry elsewhere, or by itself): a days' row that is down reads again,
+  // with no press, through the same numbered ask, so the switch keeps the value its last save gave it. Each fresh answer
+  // that says connected counts; a row that reads asks nothing.
+  const status = useLifeosStatus(env);
+  const back = status?.lifeos.state === "connected" ? status : null;
+  const isDown = useRef(false);
+  isDown.current = load.status === "error" || (load.status === "ready" && (!!load.failed || !!load.value.error));
+  useEffect(() => {
+    if (back && isDown.current) setAttempt((n) => n + 1);
+  }, [back]);
 
   const change = async (patch: { days?: number; routine?: boolean }, failed: string): Promise<boolean> => {
     const n = ++asked.current;

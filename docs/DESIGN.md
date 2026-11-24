@@ -1749,7 +1749,9 @@ Around the canvas:
   LifeOS on the box") muted, with the rule's press at the row's end; silence
   ("LifeOS did not answer the box") or a cause with no state in red, with
   Retry; the routine's switch under it stays usable. A Retry of it that the host does not
-  answer says so with the host named ("The box did not answer").
+  answer says so with the host named ("The box did not answer"). When that
+  host's LifeOS says connected again (his sign-in approved, or by itself)
+  the days are read again with no press.
 - **The Files place** (`work/files/`, the Files row): the finder with
   tabs, under the app's strip in the view's own frame. Three regions.
   The **sidebar** is 200px on `sidebar` with a hairline at its right, 8px
@@ -1928,7 +1930,8 @@ Around the canvas:
   press; a file shows once, in the first list it belongs to, and a list
   with nothing in it is left out. A row being opened shows the list's
   spinner and word; a row that says a state gives its date up first in a
-  narrow page.
+  narrow page (under 400px), and under 360px every row's date goes and a
+  state's words go with it, whole, as in a folder's list.
   A **file open as itself** has a 48px header: its kind's glyph in its
   tint, its name at 14px semibold, and under it one 12px muted line that
   says where it is kept ("In Events") or whose copy it is ("A copy from
@@ -4028,15 +4031,31 @@ the box waits for your approval", "LifeOS did not answer the box", and "The
 box did not answer" for its own silence, the session's ask as well as the
 status ask. `useDownPress` decides it, `downAction` names it; every reader
 takes it from there, the view frame's title, Connections' rows that need him,
-Waiting on's days and the rail's + menu too. A read that failed is never said
+Waiting on's days and the rail's + menu too, and Connections' LifeOS rows,
+worded by the window from the state the host names, each naming its
+computer once (in its line, else in its title) and LifeOS answers with Retry
+for that host alone. On Today a job's session on another host that is down
+is one line for the page a host and state, naming what every section left
+out ("Refereeing's meetings, tasks and mail left out"), its Retry asking
+that host alone. A read that failed is never said
 as a sign-out (Capture names this computer with Retry). A part that stands in
 for what it could not read (a held act's details, a chat card, Running
 late's place in a clash, the Start places dialog) draws
 `DownLine`. While the session is down, no press whose dialog needs it is
 offered (a view's New task, New event, Add people, a clash's Running late),
 and a press made while it was on its way is dropped, never opened later by
-itself. A failed Retry
-is said once, by the line. A long computer name wraps; the red word is
+itself. A form he has open over a view (New task, New event, Add people, a
+project's settings) is the frame's, not the body's (`WorkViewModule.Kept`):
+a session that drops keeps it and what he typed, says `DownLine` in it and
+holds its submit until the session is back. A failed Retry
+is said once, by the line, with the newest cause: a Retry the host does not
+answer says "The box did not answer" in the place of LifeOS's silence, until
+the host's next answer. When the session comes back every reader reads again
+and drops its line with no press: a fresh answer or push that says connected
+asks again for a session that is down, and Waiting on and Connections read
+again. The sign-in dialog's code ask that fails says so in the code's place
+with Retry, which asks the same computer again; bones are for an ask still
+out. A long computer name wraps; the red word is
 never cut (`StatusMark`'s `wrap`).
 
 ## Motion values
@@ -4157,8 +4176,13 @@ under a hairline: the job as a `ChoiceToggle` named "Job" (Unsorted first,
 then the six), and at the end Start thread (secondary, its key cap in
 muted ink: the one key not plain) and File (primary): a capture on
 its way shows nothing, since the window is already gone and the next draft
-starts empty. While the host says LifeOS is not connected, "Not signed in to
-LifeOS" sits muted in the red line's place and both buttons are off. A state
+starts empty. While the host says LifeOS cannot take a capture, the line
+says why in the rule's words, this computer named ("Not signed in to LifeOS
+on this Mac", "The LifeOS sign-in on this Mac waits for your approval",
+"LifeOS refused this Mac's sign-in", "Work is off on this Mac", "LifeOS is
+still connecting"), muted with no press, and both buttons are off; "LifeOS
+did not answer this Mac" is red with Retry. A host that names no state keeps
+"Not signed in to LifeOS". A state
 ask the host did not answer is not a sign-out: "This Mac did not answer" in
 the red line's place with Retry (the window's own refresh), the draft and
 both buttons kept. A drag of

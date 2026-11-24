@@ -253,6 +253,25 @@ describe("Sign in to LifeOS", () => {
     expect(screen.getByText("ABCD-1234")).toBeTruthy();
   });
 
+  /** Council round 8 (Sol, Settings 3): a code ask that timed out said its error under a bone still "Asking for a code". */
+  it("says a code ask the host did not answer in the code's place, never under bones, and Retry asks the same computer again", async () => {
+    vi.spyOn(registry, "environment").mockReturnValue({ id: "env_box", name: "The box" } as never);
+    const request = vi
+      .fn()
+      .mockImplementationOnce(() => Promise.reject(Object.assign(new Error("No answer in 15 s"), { name: "TimeoutError" })))
+      .mockImplementation(() => Promise.resolve({ code: "ABCD-1234", expiresAt: Date.now() + 60_000 }));
+    const linkOf = vi.spyOn(registry, "linkOf").mockReturnValue({ environmentId: "env_box", connected: true, request, onPush: () => () => {}, onOpen: () => () => {} } as never);
+    render(<SignInDialog environmentId="env_box" state={{ state: "signed-out" } as never} onClose={() => {}} />);
+    await act(() => Promise.resolve());
+    expect(screen.queryByRole("status", { name: "Asking for a code" })).toBeNull();
+    expect(screen.getByRole("alert").textContent).toBe("The box did not answer");
+    await act(async () => screen.getByRole("button", { name: "Retry" }).click());
+    expect(request).toHaveBeenCalledTimes(2);
+    expect(linkOf.mock.calls.every(([id]) => id === "env_box")).toBe(true);
+    expect(screen.getByText("ABCD-1234")).toBeTruthy();
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+
   it("offers no token at /ui, where this window's own link is a key's and the token is local-only", async () => {
     testKey.current = OWNER_KEY;
     host(registry.primaryEnvironmentId);
