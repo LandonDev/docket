@@ -133,7 +133,9 @@ under its top thread's job. A turn running when the week began is counted
 from the week's start (the thread's last status in the 400 rows before),
 and a span with no rows of its own counts whole for a turn open across it.
 A turn still open at the span's end is closed by the first status in the 400
-short rows after it: one that came after the cut runs to the cut (Sunday
+short rows after it that is not a working one (`starting` then `running`, as
+a host's start writes them, is one open turn, as inside the span): one that
+came after the cut runs to the cut (Sunday
 11:40 PM to Monday 12:20 AM counts its 20 minutes in the old week); with none,
 it runs to the end while the thread works now, else to its last row of any
 kind, a tool's output too (a host that stopped mid-turn never wrote the
@@ -204,9 +206,11 @@ a slice is sized by bytes and a long row is never loaded.
   (`ReviewBody.prepped`). The window drops a meeting any part names (in a
   week that is over it reads as dealt with since): a meeting put off on the
   box and followed up in the Mac's Prep leaves Slipped, though only the box
-  holds the mark. A Prep that fails leaves `LEFT.prep`, and every meeting, on
-  any part, stands as last known with its presses waiting. A meeting put
-  off from more than 31 days before the cut is not asked of Prep.
+  holds the mark. A Prep that fails leaves `LEFT.prep`, and so does a host
+  with Prep and a job whose LifeOS is out (Prep reads LifeOS too); every
+  meeting, on any part, then stands as last known with its presses waiting.
+  A meeting put off from more than 31 days before the cut is not asked of
+  Prep.
 
 **The presses** go through `work.review.settle {row, how, tz, sector?}` on
 the row's host: the host LifeOS's rows were read from (which keeps the
@@ -219,7 +223,9 @@ week's memory of it, and put back only while the task still has the date the
 press wrote, else "It has changed since"; no token when that read failed;
 `mailWaits:putBack`; the mark removed, or the mark that
 stood before it put back whole, since a put-off meeting is in this week by
-that older mark), held in memory for
+that older mark, and only while the mark this press wrote still stands: a
+later press in another window is his newer decision, and an older token
+says "It has changed since"), held in memory for
 half an hour and good once (`work.review.undo`). A nudge is a draft, held
 like every draft, and is started only while the thread's wait is the row's
 own (`mailWaits:get`, its `since`). Next week or Stop waiting on a wait that
@@ -277,7 +283,10 @@ mail pillar reaches routines.
   line says so in place of "not counted" (`LEFT.calendarKept`: "The calendar
   did not answer, so the hours count what it said when last read.";
   `lifeosKept`, `tasksKept`, `mailKept`), and the calendar's fact and key show
-  with it, so the words and the figure agree.
+  with it, so the words and the figure agree. A source neither read held is
+  said as not read: a Friday whose calendar failed, looked back on with
+  LifeOS down, says "LifeOS did not answer, so what it said when last read is
+  shown." and "The calendar did not answer."
 
 Two windows asking for one week at once share one read.
 
@@ -328,15 +337,29 @@ under the `work-places` frame.
   `work.review` push and when a host's link comes back (a week is on record
   as asked for before any host answers, so a host that links later fills it
   in, after the zone is asked again). `settleHost` picks the host of a
-  press. LifeOS's facts are taken a source at a time (the calendar, tasks,
-  mail, and the meetings judged from both), each from a part that answered
-  that source: one that answered this time before one kept from an earlier
-  answer (`ReviewPart.stale`), then the one whose own LifeOS reads failed
-  least, the home first at a tie. So the box's tasks and the Mac's calendar
-  both stand when each failed the other, each row keeps the host it was read
-  on (its press goes there), and a LifeOS line stays only while no part
-  answered its source; facts from an answer from before call nothing empty
-  (`known`). Every job the window knows of is listed (`knownJobs`), one
+  press. Each part names the LifeOS lists it read whole and as of when
+  (`ReviewBody.read`: the calendar, sent mail, answers, finished tasks, tasks
+  and waits past due, the meetings judged; a kept read standing in carries
+  its own moment; `readsOf` reads a body from before by its lines). The
+  window takes each list only from a part that read it: one that read it
+  this time before one kept from an earlier answer, its own read before a
+  kept one standing in, then the home, then the newest. So the box's sent
+  mail and the Mac's answers both stand when each failed the other, each row
+  keeps the host it was read on (its press goes there), and a LifeOS line
+  stays while a list it speaks of went unread. The meetings are listed from
+  the home whenever it answers: his marks and the meetings they carry live
+  there, so another host's rows would bring back one he dismissed and lose
+  one he put off; a home that could not judge them lists them as last known,
+  and `LEFT.meetings` says so where no other line does. Once a week is over,
+  its tasks and waits come from a part that kept the week's own list (made
+  inside it) before one that looks it up for the first time and knows only
+  what is open now; another part's whole read of the same list checks the
+  kept rows that part could not. "Nothing" on the calendar (`known.calendar`)
+  stands only on a calendar read this time to the end of the span counted; a
+  calendar counted for less (a kept read, or one a later host's answer moved
+  the span past) still shows its fact and the bar's key
+  (`known.calendarCounted`), and states its time, never its "Nothing". A
+  list no part read is said as not read, never as empty. Every job the window knows of is listed (`knownJobs`), one
   whose only host is off too, in the rail's own order (`railWorkspaces`: the
   pinned rows first, then the rail's saved list, a job on two hosts at its
   first row's place; a drag or a pin while the page is open is followed:
@@ -354,7 +377,8 @@ under the `work-places` frame.
   read later keeps its later desk points, and the calendar is cut to the read
   of the part it came from. The week before is compared only over the span
   every part covers: this week to the oldest read, the week before to the
-  oldest cut. A host names a week by its first moment in its own zone; the
+  oldest cut, and while the week runs both to the same length of time (a
+  week with a clock change in it is 167 or 169 hours long). A host names a week by its first moment in its own zone; the
   window finds it from that week's middle (`weekNamed`), in the page, Today's
   row and the header, so a Tokyo host's Monday is not a New York window's
   Sunday, and a host marks seen the week of its own that begins before the

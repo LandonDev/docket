@@ -32,7 +32,7 @@ const ROW = "grid grid-cols-[1rem_minmax(0,9rem)_minmax(0,1fr)_8.25rem_0.75rem] 
 
 /** A bar's part as the closing line shows it: a 12px piece of the bar, its height and its corner (a square would draw as a dot, and read as a bullet). */
 const KEY = "h-2 w-3 shrink-0 rounded-sm @max-[30rem]/page:hidden";
-const WHOLE = { calendar: true, desk: true };
+const WHOLE = { calendar: true, calendarCounted: true, desk: true };
 /** "Nothing seen", in the bar's and the total's place; a narrow page has no bar column, so it keeps to the total's. */
 const NOTHING = "col-span-2 text-end text-[13px] leading-5 text-muted-foreground @max-[30rem]/page:col-span-1";
 
@@ -56,7 +56,7 @@ export function Hours({
   /** Money's sums by job; a job with none has no line */
   money?: ReadonlyMap<string, JobMoney>;
   /** what was read: a job with no hours says "nothing" only of that, and no calendar fact is stated with the calendar unread */
-  known?: { calendar: boolean; desk: boolean };
+  known?: { calendar: boolean; calendarCounted: boolean; desk: boolean };
   /** a linked host has not answered yet: a job with no hours so far waits, and claims nothing */
   pending?: boolean;
   /** the sources that did not answer, each one line */
