@@ -35,7 +35,10 @@ The native clicker is built and has no way in yet: "The clicker" below.
   or picked words names the new path) and is made anew when it moves. Once
   the host's list no longer holds the item (closed, its tab gone) the page
   fails closed: no More rows, no Ask, no comments or changes, and a page that
-  saw the item listed closes (`ReaderFile.presence`). From Files, Quick Look
+  saw the item listed closes (`ReaderFile.presence`). The page reads its
+  item's list once as it shows (`WorkCanvas.load`): pushes sent while the
+  phone was away are lost, and seating a file the desktop already had open
+  sends none. From Files, Quick Look
   stands in for a refused document only while the item is still at the
   entry's path, and the file is seated once (back from a thread or Page
   Preview nothing is asked again). A

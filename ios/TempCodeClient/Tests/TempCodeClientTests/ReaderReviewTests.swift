@@ -506,6 +506,24 @@ private let s3 = suggestion("g3", set: "cs2", row: 0, col: 26, base: #"{"v":"Dra
         #expect(ReaderFile.parts(letter).comments == nil)
     }
 
+    @Test func `a list held from before is read again, and an item it lacked is listed`() async throws {
+        let rig = try ReaderRig()
+        let fake = await rig.open()
+        let item = try JSONDecoder().decode(CanvasItem.self, from: Data(#"{"id":"i9","sessionId":"pane1","workspaceId":"w1","kind":"document","title":"Budget","source":{"at":"file","host":"env_box","path":"/w/Budget.tcdoc"},"state":"open","position":0,"rev":1,"createdAt":1,"updatedAt":1}"#.utf8))
+        // A push from before the phone was away, without the item the desktop opened since.
+        fake.deliver(#"{"push":"work.canvas","sessionId":"pane1","items":[]}"#)
+        #expect(await rig.until { rig.work.canvas.items["pane1"] != nil })
+        #expect(ReaderFile.presence(item, in: rig.work.canvas.items["pane1"]) == .gone)
+        // The page reads its list once as it shows.
+        let load = Task { await rig.work.canvas.load("pane1") }
+        let list = try #require(await rig.next(fake, "work.canvas.list"))
+        #expect(list.params == .object(["sessionId": .string("pane1")]))
+        fake.answer(id: list.id, result: #"{"items":[{"id":"i9","sessionId":"pane1","workspaceId":"w1","kind":"document","title":"Budget","source":{"at":"file","host":"env_box","path":"/w/Budget.tcdoc"},"state":"open","position":0,"rev":1,"createdAt":1,"updatedAt":1}]}"#)
+        await load.value
+        #expect(ReaderFile.presence(item, in: rig.work.canvas.items["pane1"]) == .listed)
+        #expect(ReaderFile.live(item, in: rig.work.canvas.items["pane1"]) == item)
+    }
+
     @Test func `Page Preview of a moved file draws the new path, never the old one`() async throws {
         let rig = try ReaderRig()
         let fake = await rig.open()

@@ -74,6 +74,9 @@ struct FileReaderPage: View {
             .onChange(of: proxy.safeAreaInsets.top, initial: true) { _, top in if !immersive { restingTop = top } }
         }
             .background(Surface.chrome)
+            // Its list read once as the page shows: pushes sent while the phone was away were lost, and a file the desktop
+            // already had open was seated with no push, so a list held from before would read the item as gone.
+            .task { await client.work.canvas.load(item.sessionId) }
             // Closed on another screen, or its tab gone: the page goes with it, and nothing of it stays mounted.
             .onChange(of: ReaderFile.presence(item, in: client.work.canvas.items[item.sessionId]), initial: true) { _, now in
                 if now == .listed { listed = true } else if now == .gone, listed { dismiss() }
