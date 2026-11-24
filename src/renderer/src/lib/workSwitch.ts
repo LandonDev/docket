@@ -252,6 +252,18 @@ export function openWorkView(next: OpenWorkView | null): void {
 /** The view open now, read outside React. */
 export const workViewNow = (): OpenWorkView | null => openView;
 
+/**
+ * For a door that waits on a host before it shows its view (Files making a tab on a slow host): whether he has
+ * gone somewhere else since `before`, the view open when the wait began. Another view opened, or this
+ * workspace's view left for a thread, is his own move, and the door then shows nothing. A view of another
+ * workspace that went away is the window entering this one (WorkViewSurface), not a move of his.
+ */
+export function movedOnSince(before: OpenWorkView | null, workspaceId: string): boolean {
+  if (openView === before) return false;
+  if (openView === null) return before?.workspaceId === workspaceId;
+  return true;
+}
+
 export function useWorkView(): OpenWorkView | null {
   const read = (): OpenWorkView | null => openView;
   return useSyncExternalStore(workSwitch.subscribe, read, read);

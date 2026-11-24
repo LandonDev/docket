@@ -20,3 +20,14 @@ export function holdStill(o: { rowTop: number; was: number; scrollHeight: number
   if (scrollTop === 0) return { scrollTop, height: null };
   return { scrollTop, height: Math.max(0, Math.min(o.cap, o.scrollHeight - scrollTop)) };
 }
+
+/**
+ * Whether the highlighted row is out of sight: less than half of it inside the box, as after a scroll by the
+ * trackpad, which moves the list and not the highlight. Return then brings the row back before anything opens.
+ * `top` is the row's place in the list. A box with no height (nothing laid out) hides nothing.
+ */
+export function outOfSight(row: { top: number; height: number }, box: { scrollTop: number; height: number }): boolean {
+  if (box.height <= 0) return false;
+  const seen = Math.min(row.top + row.height, box.scrollTop + box.height) - Math.max(row.top, box.scrollTop);
+  return seen < row.height / 2;
+}

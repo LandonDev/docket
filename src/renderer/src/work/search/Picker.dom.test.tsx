@@ -371,6 +371,29 @@ describe("Work search", () => {
     expect(list().scrollTop).toBe(0);
   });
 
+  it("Return brings back a highlighted row he scrolled out of sight, and only the next Return opens it", async () => {
+    await mount();
+    await type("budget");
+    // four kinds of four rows under their headings: twenty rows of list in a box that shows thirteen and a half
+    await land(asks.length - 1, answer([group("mail", "Mail", Array.from({ length: 4 }, (_, i) => hit(`m${i}`, "mail"))), group("thread", "Threads", Array.from({ length: 4 }, (_, i) => hit(`thread:t${i}`, "thread"))), group("task", "Tasks", Array.from({ length: 4 }, (_, i) => hit(`t${i}`, "task"))), group("person", "People", Array.from({ length: 4 }, (_, i) => hit(`p${i}`, "person")))]));
+    Object.defineProperty(list(), "clientHeight", { configurable: true, value: CAP });
+    const first = list().querySelector<HTMLElement>('[data-row="hit:p0"]')!;
+    const shown = vi.fn(() => void (list().scrollTop = 0));
+    first.scrollIntoView = shown;
+    // he scrolls to the end by the trackpad: the highlight stays on the first row, now above the box
+    await act(async () => {
+      list().scrollTop = 6 * ROW;
+      fireEvent.scroll(list());
+    });
+    expect(selected()).toBe("hit:p0");
+    await press("Enter");
+    expect(shown).toHaveBeenCalledWith({ block: "nearest" });
+    expect(opened.hits).toEqual([]);
+    expect(onClose).not.toHaveBeenCalled();
+    await press("Enter");
+    expect(opened.hits).toEqual([{ key: "p0", host: "box" }]);
+  });
+
   it("the row's menu holds the key it shows: ⌘↩ starts the thread while the menu is open on a row", async () => {
     await mount();
     await type("budget");

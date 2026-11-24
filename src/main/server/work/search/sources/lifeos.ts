@@ -1,4 +1,4 @@
-import { mentionExcerpt, mentionMatches, type ContextChip } from '@shared/work'
+import { mentionExcerpt, mentionExcerptAt, mentionMatches, type ContextChip } from '@shared/work'
 import { refKey } from '@shared/work/files'
 import { fileKey, lifeosKey, reachSectors, workspaceOfSector, type SearchHit, type SearchReach } from '@shared/work/search'
 import type { WorkCtx } from '../../modules'
@@ -283,7 +283,7 @@ export const project = source<Project>({
     kind: 'project',
     title: p.name,
     // Found by what it is about and not by its name: the line says why.
-    ...(p.description && !mentionMatches(text, p.name) ? { snippet: mentionExcerpt(p.description, 160) } : {}),
+    ...(p.description && !mentionMatches(text, p.name) ? { snippet: mentionExcerptAt(p.description, text, 160) } : {}),
     workspaceId,
     open: view('projects', { project: p._id }),
     chip: lifeosChip('project', 'projects', p._id, p.name, mentionExcerpt(p.description))

@@ -266,11 +266,19 @@ method can be given a small source here on `ask.ts`, as Files is.
   `SPIN_FOR_MS` (300); the truth it steadies is `data-out` on the picker's
   status line, which the live proof waits on. `hold.ts` is the rule that keeps a row he moved to in its place:
   the scroller moves by what landed above it, and its box is no taller than
-  the rows from there down.
-- `open.ts`: Return. The window enters the hit's job when it is in another
-  (`project.enterWorkspace`), the thing opens by its `open`, and the hit's
-  host is told (`work.search.opened`). A file goes through
-  `work.files.open`, then the Files view.
+  the rows from there down. `outOfSight` is the rule for Return on a row he
+  has scrolled away from by the trackpad (the highlight does not follow a
+  scroll): less than half of the row in the box, and that Return only
+  brings the row back; the next one opens it.
+- `open.ts`: Return. A page over the threads (Today, Review, the Inbox)
+  closes first, for every kind, a thread too. The window enters the hit's
+  job when it is in another (`project.enterWorkspace`), the thing opens by
+  its `open`, and the hit's host is told (`work.search.opened`). A file
+  goes through Files' own door (`openInFiles`), which makes the tab on the
+  job's host and then shows the Files view, unless he went elsewhere while
+  a slow host made the tab (`movedOnSince`, lib/workSwitch.ts: another view
+  opened, or this job's view left for a thread): then the tab waits in
+  Files and the window stays with him.
 
 ## For agents
 
@@ -338,15 +346,13 @@ for it.
 
 ## Known faults
 
-Open when the council was ended (2026-11-23), none fixed:
+- A file whose host is slow to make its tab still shows the Files place
+  over a thread, when he was on a thread at Return and only changed to
+  another thread while he waited: the window's tabs are not read by
+  `movedOnSince`.
 
-- Return opens the highlighted row even when he has scrolled it out of
-  sight by the trackpad with his words unchanged.
-- A file whose host is slow to make its tab shows the Files place when the
-  call returns, even if he has opened something else in that job since
-  (`open.ts`, and `openInFiles` itself).
-- A project found by a word past the first 160 characters of its
-  description shows no matched word on its row.
+A project found by a word late in a long description shows the line cut
+round that word (`mentionExcerptAt`, src/shared/work/mentions.ts).
 
 ## Proofs
 

@@ -28,7 +28,7 @@ export interface OpenDeps {
   enter(workspace: WorkspaceMeta): void;
   view(next: OpenWorkView): void;
   thread(sessionId: string, seq?: number): void;
-  /** Files' own door (work/files/openFrom.ts): the file in a tab of the job, shown; a refusal is thrown */
+  /** Files' own door (work/files/openFrom.ts): the file in a tab of the job, and the Files place shown unless he went elsewhere meanwhile; a refusal is thrown */
   file(workspace: WorkspaceMeta, file: { ref: CanvasSource; name: string }): Promise<void>;
   held(id: string, hostId: string): void;
   startThread(chip: ContextChip, workspace: WorkspaceMeta): void;
@@ -91,7 +91,9 @@ export async function openHit(hit: SearchHit, hostId: string, over: Partial<Open
   const open = hit.open;
 
   if (open.to === "thread") {
-    // A thread carries its own place: the window follows it there.
+    // A thread carries its own place: the window follows it there. A page over the threads (Today, Review, the
+    // Inbox) leaves first, as for every other kind: the app's thread door closes none, and the thread would open under it.
+    d.clear();
     d.thread(open.sessionId, open.seq);
     d.opened(hostId, hit);
     return "opened";
@@ -109,7 +111,9 @@ export async function openHit(hit: SearchHit, hostId: string, over: Partial<Open
   const file = open.to === "file" ? { ref: open.ref, name: open.name } : docOf(open);
   if (file) {
     // The window moves at once, as for any view, so Return is answered before the job's host has made the tab
-    // (a trip over the network for a job on another computer); the file then opens as a Files tab there, shown.
+    // (a trip over the network for a job on another computer); the file then opens as a Files tab there. Files'
+    // door shows the Files place itself, and only if he has not gone elsewhere while the host was slow: this
+    // opener shows nothing after the wait.
     d.clear();
     if (!d.selected().includes(workspace.id)) d.enter(workspace);
     try {
@@ -117,7 +121,6 @@ export async function openHit(hit: SearchHit, hostId: string, over: Partial<Open
     } catch {
       return "failed";
     }
-    d.view({ workspaceId: workspace.id, view: "files" });
     d.opened(hostId, hit);
     return "opened";
   }

@@ -69,19 +69,20 @@ describe("opening a hit", () => {
   it("a thread opens through the app's own door, at the row the words are in: the window follows the thread", async () => {
     const r = rig();
     expect(await openHit(hit({ key: "thread:t1", kind: "thread", workspaceId: null, open: { to: "thread", sessionId: "t1", seq: 14 } }), "box", r.deps)).toBe("opened");
-    expect(r.did).toEqual([["thread", "t1", 14], ["opened", "box", "thread:t1"]]);
+    // a page over the threads (Today, Review, the Inbox) leaves first, or the thread opens under it
+    expect(r.did).toEqual([["clear"], ["thread", "t1", 14], ["opened", "box", "thread:t1"]]);
   });
   it("a file opens as a Files tab of its job through Files' own door, then the Files view; a refusal opens nothing", async () => {
     const ref = { at: "file", host: "box", path: "/w/cosmic/Budget.xlsx" };
     const file = hit({ key: "file:k1", kind: "file", workspaceId: "cosmic", open: { to: "file", ref, name: "Budget.xlsx" } });
     const r = rig(["purdue"]);
     expect(await openHit(file, "box", r.deps)).toBe("opened");
-    // the window moves at once; the tab is made on the job's host, and then the Files place shows it
+    // the window moves at once; the tab is made on the job's host by Files' door, which shows the Files place itself
+    // (or not, when he went elsewhere while a slow host made the tab): the opener shows nothing after the wait
     expect(r.did).toEqual([
       ["clear"],
       ["enter", "/w/cosmic"],
       ["file", "cosmic", { ref, name: "Budget.xlsx" }],
-      ["view", { workspaceId: "cosmic", view: "files" }],
       ["opened", "box", "file:k1"],
     ]);
     const refused = rig(["purdue"], { file: async () => Promise.reject(new Error("refused")) });
@@ -93,7 +94,7 @@ describe("opening a hit", () => {
     for (const open of [{ to: "chip", chip: { kind: "doc", label: "Plan", ref } }, { to: "view", view: "docs", with: { doc: { id: "d1", title: "Plan" } } }] as SearchHit["open"][]) {
       const r = rig(["purdue"]);
       expect(await openHit(hit({ key: "lifeos:docs:d1", open }), "box", r.deps)).toBe("opened");
-      expect(r.did).toEqual([["clear"], ["file", "purdue", { ref, name: "Plan" }], ["view", { workspaceId: "purdue", view: "files" }], ["opened", "box", "lifeos:docs:d1"]]);
+      expect(r.did).toEqual([["clear"], ["file", "purdue", { ref, name: "Plan" }], ["opened", "box", "lifeos:docs:d1"]]);
     }
   });
   it("a hit that came through a mention source opens as its chip does: a task in Tasks on that task, a card in Projects, a held act in the Outbox, a routine in Routines", async () => {
@@ -118,7 +119,8 @@ describe("opening a hit", () => {
       { workspaceId: "purdue", view: "agenda", event: "e1" },
       { workspaceId: "purdue", view: "people", person: "p1" },
       { workspaceId: "purdue", view: "projects", project: "j1" },
-      { workspaceId: "purdue", view: "files" },
+      // a document goes through Files' door, which shows the Files place itself (the test above)
+      undefined,
       { workspaceId: "purdue", view: "routines" },
     ]);
     const held = rig();

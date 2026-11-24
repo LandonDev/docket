@@ -3,7 +3,7 @@ import { mkdtempSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
-import { mentionExcerpt, mentionMatches, MENTION_PER_KIND, type MentionReach } from '@shared/work'
+import { mentionExcerpt, mentionExcerptAt, mentionMatches, MENTION_PER_KIND, type MentionReach } from '@shared/work'
 import type { MentionSource, WorkCtx, WorkModule } from '../modules'
 import { lifeosMentions } from '../lifeos/mentions'
 import { outboxMentions } from '../outbox/mentions'
@@ -56,6 +56,21 @@ describe('the words typed', () => {
     expect(mentionExcerpt('  a\n\nb  ')).toBe('a b')
     expect(mentionExcerpt('')).toBeUndefined()
     expect(mentionExcerpt('x'.repeat(400))?.length).toBe(280)
+  })
+
+  it('cut an excerpt round the word that found it, when the start does not show it', () => {
+    const long = `${'alpha beta '.repeat(20)}the Café budget is here ${'gamma delta '.repeat(20)}`
+    // accents and case aside, as the match is made; begun at a word, marked as cut at both ends, never longer than asked
+    const cut = mentionExcerptAt(long, 'cafe', 80)!
+    expect(cut).toMatch(/^…(alpha|beta) .*Café budget.*…$/)
+    expect(cut.length).toBeLessThanOrEqual(80)
+    // a word the start already shows, no word found, and a short text: the plain excerpt
+    expect(mentionExcerptAt(long, 'alpha', 80)).toBe(mentionExcerpt(long, 80))
+    expect(mentionExcerptAt(long, 'nowhere', 80)).toBe(mentionExcerpt(long, 80))
+    expect(mentionExcerptAt('  a\n\nb  ', 'b')).toBe('a b')
+    expect(mentionExcerptAt('', 'b')).toBeUndefined()
+    // the end of the text: no mark after it
+    expect(mentionExcerptAt(`${'x '.repeat(100)}last word`, 'last', 40)).toMatch(/^….*last word$/)
   })
 })
 

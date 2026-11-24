@@ -1,9 +1,11 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-const opened = vi.hoisted(() => ({ calls: [] as unknown[][], pages: [] as unknown[][], fail: null as Error | null }));
+const opened = vi.hoisted(() => ({ calls: [] as unknown[][], pages: [] as unknown[][], fail: null as Error | null, slow: null as (() => void) | null }));
 vi.mock("./store", () => ({
   openFileTab: async (...args: unknown[]) => {
     opened.calls.push(args);
+    // What he does while a slow host makes the tab.
+    opened.slow?.();
     if (opened.fail) throw opened.fail;
     return { rev: 1, tabs: [], tabId: "t1" };
   },
@@ -24,6 +26,7 @@ afterEach(() => {
   opened.pages.length = 0;
   toasts.length = 0;
   opened.fail = null;
+  opened.slow = null;
   openWorkView(null);
 });
 
@@ -34,6 +37,30 @@ describe("opening a file from another screen", () => {
   it("opens it in a Files tab on the workspace's host, then shows the Files place: no thread is made", async () => {
     await openInFiles(workspace, { ref, name: "Budget.xlsx" });
     expect(opened.calls).toEqual([["box", "w1", { ref, name: "Budget.xlsx" }]]);
+    expect(workViewNow()).toEqual({ workspaceId: "w1", view: "files" });
+  });
+
+  it("leaves the window where he went while a slow host made the tab: a mail opened meanwhile is not covered by Files", async () => {
+    opened.slow = () => openWorkView({ workspaceId: "w1", view: "mail", mail: "m1" });
+    await openInFiles(workspace, { ref, name: "Budget.xlsx" });
+    expect(opened.calls).toHaveLength(1);
+    expect(workViewNow()).toEqual({ workspaceId: "w1", view: "mail", mail: "m1" });
+  });
+
+  it("leaves him on a thread he went back to from this workspace's view; a view of another workspace that the move cleared is no move of his", async () => {
+    openWorkView({ workspaceId: "w1", view: "tasks" });
+    opened.slow = () => openWorkView(null);
+    await openInFiles(workspace, { ref, name: "Budget.xlsx" });
+    expect(workViewNow()).toBeNull();
+
+    openWorkView({ workspaceId: "other", view: "tasks" });
+    await openInFiles(workspace, { ref, name: "Budget.xlsx" });
+    expect(workViewNow()).toEqual({ workspaceId: "w1", view: "files" });
+
+    // the view he was on, still open: Files shows
+    openWorkView({ workspaceId: "w1", view: "tasks" });
+    opened.slow = null;
+    await openInFiles(workspace, { ref, name: "Budget.xlsx" });
     expect(workViewNow()).toEqual({ workspaceId: "w1", view: "files" });
   });
 

@@ -234,6 +234,13 @@ describe('projects', () => {
     // found by what it is about, not by its name: the line says why; one found by its name carries none
     expect([hits[0].snippet, hits[1].snippet]).toEqual(['The budget and the venue', undefined])
   })
+  it('found by a word late in a long description shows the line round that word', async () => {
+    const rig = makeRig()
+    rig.rows['projects:list'] = [{ _id: 'j4', sector: 'purdue', name: 'Spring LAN', description: `${'Seats and tables for the hall. '.repeat(8)}The sponsor pays for the trophies. ${'More notes. '.repeat(10)}` }]
+    const [hit] = await project.search(ask('sponsor'), rig.ctx)
+    expect(hit.snippet).toMatch(/^….*sponsor pays.*…$/)
+    expect(hit.snippet!.length).toBeLessThanOrEqual(160)
+  })
   it('of a sector outside the reach never come back', async () => {
     const rig = makeRig()
     rig.rows['projects:list'] = rows

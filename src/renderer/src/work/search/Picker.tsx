@@ -21,7 +21,7 @@ import { useWorkHosts } from "../../lib/workSwitch";
 import { useSelectedWorkspaceIds } from "../../stores/project";
 import { Calendar, Card, Chat, Cloud, Doc, Mail, Person, Project, Table, Task } from "../icons";
 import { liveDeps, SearchController } from "./controller";
-import { holdStill } from "./hold";
+import { holdStill, outOfSight } from "./hold";
 import { askHost, jobOfWorkspace, jobsOf, searchHosts, type Job } from "./hosts";
 import { activeOf, busy, isOption, rowsOf, type Option, type Row } from "./model";
 import { canStartAbout, openHit, startAbout } from "./open";
@@ -200,7 +200,16 @@ export function WorkSearch({ seed, onClose }: { seed: WorkSearchSeed; onClose: (
     if (e.key === "Enter") {
       e.preventDefault();
       const row = options.find((option) => option.id === active);
-      if (row) take(row, { thread: modOrCtrl(e) });
+      if (!row) return;
+      // He scrolled the list by the trackpad and the highlighted row went out of sight: this Return brings it back,
+      // and the next one opens it. Return never opens a row he cannot see.
+      const box = document.getElementById(LIST_ID);
+      const el = box?.querySelector<HTMLElement>(`[data-row="${CSS.escape(row.id)}"]`);
+      if (box && el && outOfSight({ top: el.offsetTop, height: el.offsetHeight }, { scrollTop: box.scrollTop, height: box.clientHeight })) {
+        el.scrollIntoView({ block: "nearest" });
+        return;
+      }
+      take(row, { thread: modOrCtrl(e) });
       return;
     }
     // The key in the field goes out by the door, as the menu's accelerator does: one press, one flip.
