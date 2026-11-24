@@ -277,6 +277,19 @@ describe('the box browser', () => {
     expect(treeRssMb(10, proc)).toBe(4)
   })
 
+  it("counts each process's share of the memory they share, not each process's whole resident set", () => {
+    const proc = tmp()
+    // Three renderers mapping the same 600 MB: VmRSS says 600 each, Pss says each holds a third of it.
+    const add = (pid: number, ppid: number, rssKb: number, pssKb: number) => {
+      mkdirSync(join(proc, String(pid)))
+      writeFileSync(join(proc, String(pid), 'status'), `Name:\tx\nPPid:\t${ppid}\nVmRSS:\t${rssKb} kB\n`)
+      writeFileSync(join(proc, String(pid), 'smaps_rollup'), `00400000-ffffffff ---p 00000000 00:00 0 [rollup]\nRss:\t${rssKb} kB\nPss:\t${pssKb} kB\n`)
+    }
+    add(10, 1, 200 * 1024, 100 * 1024)
+    for (const pid of [11, 12, 13]) add(pid, 10, 600 * 1024, 200 * 1024)
+    expect(treeRssMb(10, proc)).toBe(700)
+  })
+
   const bin = findChromium()
   it.runIf(!!bin && process.platform === 'linux')('starts once, stops when idle, and starts again on use', async () => {
     const root = tmp()

@@ -212,7 +212,12 @@ export function isChromeForTesting(bin: string): Promise<boolean> {
   return new Promise((resolve) => execFile(bin, ['--version'], { timeout: 10_000 }, (err, stdout) => resolve(!err && /for testing/i.test(stdout))))
 }
 
-/** Resident memory of `pid` and every process under it, in MB, read from /proc. */
+/**
+ * Memory of `pid` and every process under it, in MB, read from /proc: each process's proportional share (Pss in
+ * smaps_rollup), so a page Chromium's processes share counts once among them, not once a process as VmRSS does
+ * (a headed browser with three pages read 2,053 MB of RSS at about half that of Pss, and was stopped mid-make).
+ * VmRSS where a kernel has no smaps_rollup.
+ */
 export function treeRssMb(pid: number, proc = '/proc'): number {
   const children = new Map<number, number[]>()
   const rss = new Map<number, number>()
@@ -221,7 +226,14 @@ export function treeRssMb(pid: number, proc = '/proc'): number {
     try {
       const status = readFileSync(join(proc, name, 'status'), 'utf8')
       const ppid = Number(/^PPid:\s+(\d+)/m.exec(status)?.[1] ?? 0)
-      rss.set(Number(name), Number(/^VmRSS:\s+(\d+)/m.exec(status)?.[1] ?? 0))
+      let pss: number | null = null
+      try {
+        const m = /^Pss:\s+(\d+)/m.exec(readFileSync(join(proc, name, 'smaps_rollup'), 'utf8'))
+        if (m) pss = Number(m[1])
+      } catch {
+        // no smaps_rollup here, or not ours to read
+      }
+      rss.set(Number(name), pss ?? Number(/^VmRSS:\s+(\d+)/m.exec(status)?.[1] ?? 0))
       children.set(ppid, [...(children.get(ppid) ?? []), Number(name)])
     } catch {
       // gone between the listing and the read

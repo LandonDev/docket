@@ -228,9 +228,9 @@ prefill (`Get Pre-filled URL`) reached the form's fields, but Forms never showed
 menu, the wire and the carrier no longer offer one (2026-11-24).
 
 Open, found by the proofs:
-- The box browser's 2 GB cap (`MEMORY_CAP_MB`, chromium.ts, the sum of each process's VmRSS) stopped it with a Forms
-  page, a SharePoint page and a third open (2,053 and 2,784 MB; the PSS was about half). The proof raised it for
-  itself; on the host a make or a pull can be stopped part way.
+- The box browser's 2 GB cap (`MEMORY_CAP_MB`, chromium.ts) stopped it with a Forms page, a SharePoint page and a
+  third open (2,053 and 2,784 MB of summed VmRSS; the PSS was about half), so a make or a pull could stop part way.
+  The cap now counts each process's Pss (`treeRssMb` reads smaps_rollup), where shared pages count once.
 - After each pull the box browser's Chromium quit (no stop logged; the cause was not found). The next carrier call
   met a fresh browser whose Forms page signs in again for several seconds, and failed once. Since this proof the
   service tells the host's sessions of the new browser (`apps/changed`), so the call after that works.
