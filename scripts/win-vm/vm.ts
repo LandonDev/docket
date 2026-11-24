@@ -5,7 +5,7 @@
  *
  *   fetch                             download the evaluation ISO from Microsoft and Git for Windows
  *   install [--force]                 build the base image from the ISO (unattended, about 15 min)
- *   up [--keep | --from NAME] [--no-wait]   boot a fresh overlay on the base (or a snapshot, or resume the last run)
+ *   up [--keep | --from NAME] [--no-wait] [--guestfwd 10.0.2.N:PORT=BOXPORT]   boot a fresh overlay on the base (or a snapshot, or resume the last run)
  *   down [--force]                    shut Windows down and stop the machine
  *   status                            whether it runs, its ports, and the evaluation's days left
  *   ssh [-a] [--ps] [CMD...]          a command as the standard user (-a: the admin); `winver` answers who and what
@@ -26,6 +26,7 @@ import { ADMIN_USER, GIT, ISO_URL, STANDARD_USER, instanceName, locksFor, onTheB
 import { keepLiveTpm, qemuPid as qemuPidOf, saveTpm, startQemu as startQemuOf, startTpm as startTpmOf, stopTpm as stopTpmOf, waitFor as waitForOf } from '../../src/main/server/work/winvm/machine/daemons'
 import { WINVER_SCRIPT, psStdin, runInSessionScript } from '../../src/main/server/work/winvm/machine/guest'
 import { powerdown, qmp, quit, screendump, sendKey } from '../../src/main/server/work/winvm/machine/qmp'
+import { parseGuestFwd, type GuestFwd } from '../../src/main/server/work/winvm/machine/qemu'
 import { makePassword, renderAnswerFile } from './answer'
 
 const SCRIPT = fileURLToPath(import.meta.url)
@@ -90,8 +91,8 @@ function desktopUp(user = STANDARD_USER): boolean {
 
 // ---- the machine -----------------------------------------------------------------------------------------
 
-async function startQemu(disk: string, vars: string, install?: { iso: string; configDir: string }): Promise<void> {
-  const pid = await startQemuOf(c, p, { disk, vars, install }).catch((e: Error) => die(e.message))
+async function startQemu(disk: string, vars: string, install?: { iso: string; configDir: string }, guestfwd: GuestFwd[] = []): Promise<void> {
+  const pid = await startQemuOf(c, p, { disk, vars, install, guestfwd }).catch((e: Error) => die(e.message))
   log(`${machineName()} is up (pid ${pid}): ${c.cpus} cores, ${c.memory}, ssh on 127.0.0.1:${c.sshPort}`)
 }
 
@@ -207,7 +208,7 @@ function isoInfo(): { file: string; sha256: string } {
   return { file: p.iso, sha256: readFileSync(sumFile, 'utf8').split(/\s+/)[0] }
 }
 
-async function up(mode: { keep: boolean; from: string | null; wait: boolean }): Promise<void> {
+async function up(mode: { keep: boolean; from: string | null; wait: boolean; guestfwd: GuestFwd[] }): Promise<void> {
   const pid = qemuPid()
   if (pid !== null) die(`already running (pid ${pid}); down.sh first, or use it as it is`)
   // The standing machine keeps its disk: up resumes it, and makes it from the base the first time.
@@ -234,7 +235,7 @@ async function up(mode: { keep: boolean; from: string | null; wait: boolean }): 
   }
   try {
     await startTpm(tpmFrom)
-    await startQemu(p.runDisk, p.runVars)
+    await startQemu(p.runDisk, p.runVars, undefined, mode.guestfwd)
     if (!mode.wait) return
     await waitFor('ssh', 300, () => sshOk(STANDARD_USER))
     await waitFor(`${STANDARD_USER}'s desktop`, 180, () => desktopUp())
@@ -440,9 +441,15 @@ async function main(): Promise<number> {
       await install(!!flags(argv, { '--force': 'bool' })['--force'])
       return 0
     case 'up': {
-      const f = flags(argv, { '--keep': 'bool', '--from': 'value', '--no-wait': 'bool' })
+      const f = flags(argv, { '--keep': 'bool', '--from': 'value', '--no-wait': 'bool', '--guestfwd': 'value' })
       if (f['--keep'] && f['--from']) die('--keep resumes the last run; --from starts a fresh one; not both')
-      await up({ keep: !!f['--keep'], from: f['--from'] ? snapshotName(f['--from'] as string) : null, wait: !f['--no-wait'] })
+      let guestfwd: GuestFwd[] = []
+      try {
+        guestfwd = f['--guestfwd'] ? [parseGuestFwd(f['--guestfwd'] as string)] : []
+      } catch (e) {
+        die((e as Error).message)
+      }
+      await up({ keep: !!f['--keep'], from: f['--from'] ? snapshotName(f['--from'] as string) : null, wait: !f['--no-wait'], guestfwd })
       return 0
     }
     case 'down':

@@ -8,7 +8,7 @@ import { makePassword, renderAnswerFile, xmlEscape } from './answer'
 import { daemonEnv, instanceName, locksFor, onTheBase, rigConfig, rigPaths, snapshotName } from '../../src/main/server/work/winvm/machine/config'
 import { keepLiveTpm, kvmWrapped, liveTpmIsNewer } from '../../src/main/server/work/winvm/machine/daemons'
 import { encodePowerShell, PS_STDIN_MAX, psQuote, psStdin, runInSessionScript, waitedProgramScript, winQuote } from '../../src/main/server/work/winvm/machine/guest'
-import { qemuArgs, swtpmArgs } from '../../src/main/server/work/winvm/machine/qemu'
+import { parseGuestFwd, qemuArgs, swtpmArgs } from '../../src/main/server/work/winvm/machine/qemu'
 import { Qmp, qmp, screendump, sendKey } from '../../src/main/server/work/winvm/machine/qmp'
 
 const cfg = rigConfig({ WINVM_DIR: '/srv/x/win-vm' }, 999)
@@ -210,6 +210,15 @@ describe('qemuArgs', () => {
     const fwds = net.split(',').filter((s) => s.startsWith('hostfwd='))
     expect(fwds).toEqual(['hostfwd=tcp:127.0.0.1:22220-:22', 'hostfwd=tcp:127.0.0.1:9333-:9333'])
     expect(joined).not.toMatch(/tap|bridge|0\.0\.0\.0/)
+  })
+
+  it('a guestfwd for one run reaches only the box loopback, one nc per connection', () => {
+    const fwd = parseGuestFwd('10.0.2.100:445=44500')
+    expect(fwd).toEqual({ guest: '10.0.2.100:445', port: 44500 })
+    const net = qemuArgs(cfg, paths, { disk: paths.runDisk, vars: paths.runVars, guestfwd: [fwd] }).find((a) => a.startsWith('user,'))!
+    expect(net.split(',').filter((s) => s.startsWith('guestfwd='))).toEqual(['guestfwd=tcp:10.0.2.100:445-cmd:/usr/bin/nc 127.0.0.1 44500'])
+    // The gateway, DNS, the guest itself, other networks and odd ports are refused.
+    for (const bad of ['10.0.2.2:445=1', '10.0.2.3:53=1', '10.0.2.15:445=1', '192.168.1.5:445=1', '10.0.2.100:445=0', '10.0.2.100:445=127.0.0.1:1', '10.0.2.100:445=1;rm']) expect(() => parseGuestFwd(bad)).toThrow()
   })
 
   it('applies the caps, Secure Boot firmware, the TPM and QMP, with no display', () => {

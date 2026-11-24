@@ -6,7 +6,28 @@ export interface Machine {
   install?: InstallMedia
   /** QEMU's own window on an X display (the standing machine's picture); none by default */
   window?: VmWindow
+  /** Guest-to-box forwards for one run (`up.sh --guestfwd`): a connection to `guest` reaches 127.0.0.1:`port` on the box. */
+  guestfwd?: GuestFwd[]
 }
+
+export interface GuestFwd {
+  /** an address in the user network's 10.0.2.0/24 and a port, e.g. 10.0.2.100:445 */
+  guest: string
+  /** the box's own port it reaches, on 127.0.0.1 only */
+  port: number
+}
+
+/** `10.0.2.100:445=44500`, refused unless the guest side is in 10.0.2.0/24 and not the gateway, DNS or the guest itself. */
+export function parseGuestFwd(text: string): GuestFwd {
+  const m = /^(10\.0\.2\.(\d{1,3})):(\d{1,5})=(\d{1,5})$/.exec(text.trim())
+  const host = Number(m?.[2])
+  const ports = [Number(m?.[3]), Number(m?.[4])]
+  if (!m || host < 4 || host > 254 || host === 15 || ports.some((n) => n < 1 || n > 65535)) throw new Error(`--guestfwd ${text}: give 10.0.2.N:PORT=BOXPORT (N 4 to 254, not 15)`)
+  return { guest: `${m[1]}:${ports[0]}`, port: ports[1]! }
+}
+
+/** One guestfwd: each connection starts its own `nc` to the box's loopback, so the forward takes any number of them. */
+const guestFwdArg = (f: GuestFwd): string => `guestfwd=tcp:${f.guest}-cmd:/usr/bin/nc 127.0.0.1 ${f.port}`
 
 /** The guest's screen in QEMU's GTK window: the display QEMU draws on comes in its environment (DISPLAY). */
 export interface VmWindow {
@@ -39,8 +60,8 @@ export interface InstallMedia {
  * pointer input, user-mode networking with forwards bound to 127.0.0.1 only, no display (QMP takes screenshots) unless
  * it is given a window.
  */
-export function qemuArgs(c: RigConfig, p: RigPaths, { disk, vars, install, window }: Machine): string[] {
-  const fwd = [`hostfwd=tcp:127.0.0.1:${c.sshPort}-:22`, ...(c.cdpPort === null ? [] : [`hostfwd=tcp:127.0.0.1:${c.cdpPort}-:${c.cdpPort}`])]
+export function qemuArgs(c: RigConfig, p: RigPaths, { disk, vars, install, window, guestfwd = [] }: Machine): string[] {
+  const fwd = [`hostfwd=tcp:127.0.0.1:${c.sshPort}-:22`, ...(c.cdpPort === null ? [] : [`hostfwd=tcp:127.0.0.1:${c.cdpPort}-:${c.cdpPort}`]), ...guestfwd.map(guestFwdArg)]
   const args = [
     '-name', `${c.process},process=${c.process}`,
     '-machine', 'q35,smm=on,accel=kvm',
