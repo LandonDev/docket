@@ -79,8 +79,9 @@ export function Body(props: Props) {
   const pictureInput = useRef<HTMLInputElement>(null);
 
   useEffect(() => sync.start(), [sync]);
-  // A tab's close sends what waits and waits for the host's answer before the item goes (canvas/flush.ts).
-  useEffect(() => registerFlush(item.id, () => sync.flushed()), [item.id, sync]);
+  // A tab's close sends what waits and waits for the host's answer before the item goes (canvas/flush.ts); an edit that
+  // did not save rejects it, so a switch that would replace the item (`flushedItem`) stops.
+  useEffect(() => registerFlush(item.id, () => sync.written()), [item.id, sync]);
   useEffect(() => {
     let live = true;
     setPrepared(null);

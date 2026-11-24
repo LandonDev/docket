@@ -637,7 +637,10 @@ or onto another), and whole rows or columns dragged (`move-rows`,
   refused, and never reached the file. A cell still open in the editor is
   ended first, keeping what he typed (`GridLink.commit`: Univer's
   `endEditingAsync(true)`). A body unmounted by another tab picked still
-  sends only what was committed.
+  sends only what was committed. The registered flush is
+  `SheetSync.written`: an edit that did not save rejects it, so a switch
+  that would replace the item (`flushedItem`, the live Office switch) stops,
+  while a close goes on as before.
 - **A reload holds the grid.** While catch-up reads the file again (a rule's
   list landed, a shared workbook's edit, a change from outside), the grid is
   `reloading` and takes no edit: what he typed before it is sent first, and

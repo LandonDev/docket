@@ -57,7 +57,7 @@ vi.mock("work-kit/sheet", async (original) => ({
 import { CanvasSeat } from "../canvas/CanvasSeat";
 import { contextChipsOf, resetContextChips } from "../canvas/chips";
 import { resetCanvasStore } from "../canvas/store";
-import { flushItem } from "../canvas/flush";
+import { flushedItem, flushItem } from "../canvas/flush";
 
 const ITEM: CanvasItem = canvasItem("s1", { kind: "sheet", title: "Nationals travel budget.xlsx", source: { at: "file", host: "local", path: "/work/budget.xlsx" } });
 const BOOK = workbookOf([
@@ -688,6 +688,16 @@ describe("the sheet kind", () => {
     grid.typing = set(3, 1, 1200);
     await act(() => flushItem(ITEM.id));
     expect(edits()).toEqual([{ baseRev: 3, mutations: [set(3, 1, 1200)] }]);
+  });
+
+  it("answers a switch that would replace the item that his edit did not save, and a close goes on all the same", async () => {
+    open(sheetView({ store: "package", rev: 3, row: ROW_ALL }));
+    await gridUp();
+    sheetHost.nextEdit = { refuse: "That cell is locked" };
+    act(() => grid.edit(set(1, 1, 15)));
+    expect(await act(() => flushedItem(ITEM.id))).toBe(false);
+    await act(() => flushItem(ITEM.id));
+    expect(edits()).toHaveLength(1);
   });
 
   it("keeps an opened Excel file's Couldn't save after a later edit lands: the refused one is still not in the file", async () => {
