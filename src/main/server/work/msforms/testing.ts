@@ -119,16 +119,29 @@ export class FakeCarrier implements MsCarrier {
     f.settings.accepting = open
     return { read: this.readOf(f) }
   }
+  /** the next counts throw this */
+  countThrows: Error | null = null
   async count(auth: CarrierAuth, formId: string) {
+    this.check(auth, 'count', formId, { formId })
     this.calls.push({ op: 'count', formId, by: auth.by })
+    if (this.countThrows) throw this.countThrows
     const f = this.form(formId)
     return { count: f.count, read: this.readOf(f) }
   }
   pullBytes: Uint8Array | null = null
-  async pull(auth: CarrierAuth, formId: string, _ask: PullAsk) {
+  /** the next pulls throw this (a timeout, a stop, a sign-in) */
+  pullThrows: Error | null = null
+  /** where the workbook is said to be: a test moves it */
+  pullPath = '/sites/RecWell/Shared Documents/Esports/x.xlsx'
+  /** what each pull was asked */
+  asks: PullAsk[] = []
+  async pull(auth: CarrierAuth, formId: string, ask: PullAsk) {
+    this.check(auth, 'pull', formId, { formId, siteUrl: ask.siteUrl, folder: ask.folderServerPath })
     this.calls.push({ op: 'pull', formId, by: auth.by })
+    this.asks.push(ask)
+    if (this.pullThrows) throw this.pullThrows
     if (!this.pullBytes) return { unchanged: true as const }
-    return { workbook: { uniqueId: 'fce429aa-7efc-4bac-93c5-6219e85183f4', parentId: 'parent-1', serverPath: '/sites/RecWell/Shared Documents/Esports/x.xlsx', name: 'x.xlsx' }, bytes: this.pullBytes, modified: '2026-11-24T17:22:33Z' }
+    return { workbook: { uniqueId: 'fce429aa-7efc-4bac-93c5-6219e85183f4', parentId: 'parent-1', serverPath: this.pullPath, name: this.pullPath.split('/').pop()! }, bytes: this.pullBytes, modified: '2026-11-24T17:22:33Z' }
   }
   async prefill(auth: CarrierAuth, formId: string, values: Record<string, string>) {
     this.calls.push({ op: 'prefill', formId, by: auth.by })

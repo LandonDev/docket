@@ -4,10 +4,14 @@ import { handled, NOT_HANDLED, type Handled } from '@shared/work'
 import type { ActKindDef, Caller, WorkCtx, WorkModule } from '../modules'
 import { msformMakeKind, msformPublishKind, settled } from './acts'
 import { get, history, holdPublish, list, make, markSeen, page, review, setCheck, setMode, setOpen } from './forms'
+import { forgetWorkspaceAnswers } from './answers/cache'
+import { refreshAnswers, responsesOf, startAnswersPoller } from './answers/read'
 import { formReach, MsformsError } from './reach'
 import { ensureMsformsTables, MsformsStore } from './store'
 import { registerRefSeat } from '../files/hooks'
 import { refKey } from '@shared/work/files'
+import { ensureWorkbookIndex } from './workbook'
+import { refuseWithheld } from './withhold'
 
 // A form opens in a Files tab by its own source, after the one reach check (files/hooks.ts `registerRefSeat`).
 registerRefSeat('msform', async (ctx, by, ask) => {
@@ -16,7 +20,6 @@ registerRefSeat('msform', async (ctx, by, ask) => {
   const source = { at: 'msform' as const, host: ctx.host, workspaceId: row.workspaceId, formId: row.formId, tenant: row.tenant }
   return { key: refKey(source), name: row.title, kind: 'msform', source }
 })
-import { ensureWorkbookIndex } from './workbook'
 
 /**
  * The Microsoft Forms pillar's server module (docs/agents/work-msforms.md):
@@ -78,6 +81,13 @@ async function route(req: ClientRequest, ctx: WorkCtx, by: Caller): Promise<Hand
       const p = paramsOf('work.msforms.review', req)
       return handled(await review(ctx, formReach(ctx, by, p), p.accept, p.reject))
     }
+    case 'work.msforms.responses': {
+      const at = formReach(ctx, by, paramsOf('work.msforms.responses', req))
+      refuseWithheld(ctx, by, at.row.sector)
+      return handled(await responsesOf(ctx, at, by))
+    }
+    case 'work.msforms.refresh':
+      return handled(await refreshAnswers(ctx, formReach(ctx, by, paramsOf('work.msforms.refresh', req))))
     case 'work.msforms.seen':
       return handled(markSeen(ctx, formReach(ctx, by, paramsOf('work.msforms.seen', req))))
   }
@@ -97,9 +107,15 @@ export const msforms: WorkModule = {
   },
   acts: [msformPublishKind as ActKindDef, msformMakeKind as ActKindDef],
   start(ctx) {
-    return ctx.held.onDecided((item) => settled(ctx, item))
+    const off = ctx.held.onDecided((item) => settled(ctx, item))
+    const poller = startAnswersPoller(ctx)
+    return () => {
+      off()
+      poller()
+    }
   },
   workspaceRemoved(workspaceId, ctx) {
     new MsformsStore(ctx.db).removeWorkspace(workspaceId)
+    forgetWorkspaceAnswers(workspaceId)
   }
 }

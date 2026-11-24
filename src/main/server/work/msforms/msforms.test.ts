@@ -5,12 +5,15 @@ import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vites
 import { LOCAL_PRINCIPAL } from '@shared/capabilities'
 import { ClientRequestSchema, type ClientRequest } from '@shared/contract'
 import type { WorkPush } from '@shared/contract-work'
-import type { MsFormView } from '@shared/contract-work-msforms'
+import type { MsFormResponses, MsFormView } from '@shared/contract-work-msforms'
 import type { OutboxItem } from '@shared/contract-work-outbox'
 import type { SessionMeta } from '@shared/events'
 import type { WorkScope } from '@shared/work'
 import { openDb, Store } from '../../db'
 import type { SessionRegistry } from '../../sessions'
+import { MSFORM_WITHHELD_WORDS } from '@shared/work/msforms'
+import { ensureBrowserTables } from '../browser/drive'
+import { formsWorkbook, madeUpAnswers } from './answers/testWorkbook'
 import { FakeCarrier, TEST_LIBRARY } from './testing'
 
 /**
@@ -43,6 +46,9 @@ const { configureMsCarrier } = await import('./carrier/types')
 const { MsformsStore } = await import('./store')
 const { NOT_THIS_JOB } = await import('./reach')
 const { WORK_MODULES } = await import('../modules')
+const { MOVED, pollAnswers, READ_FAILED, resetAnswerReads, signInNeeded } = await import('./answers/read')
+const { CarrierBusy, CarrierSignIn, CarrierStop } = await import('./carrier/types')
+const { onNewAnswers } = await import('./events')
 WORK_MODULES.push(msforms)
 afterAll(() => void WORK_MODULES.splice(WORK_MODULES.indexOf(msforms), 1))
 
@@ -51,6 +57,7 @@ let db: ReturnType<typeof openDb>
 let work: ReturnType<typeof startWork>
 let carrier: FakeCarrier
 const pushes: WorkPush[] = []
+const logs: string[] = []
 const sessions = new Map<string, SessionMeta>()
 const registry = { get: (id: string) => sessions.get(id) ?? null, onRemoved: () => () => {}, onWorkspaceDeleted: () => () => {} } as unknown as SessionRegistry
 
@@ -67,6 +74,8 @@ beforeEach(async () => {
   db.prepare("INSERT INTO workspaces (id, name, path, created_at, kind, sector) VALUES ('w1', 'Purdue Esports', ?, 0, 'work', 'purdue')").run(dir)
   db.prepare("INSERT INTO workspaces (id, name, path, created_at, kind, sector) VALUES ('w2', 'Cosmic', ?, 0, 'work', 'cosmic')").run(dir)
   pushes.length = 0
+  logs.length = 0
+  resetAnswerReads()
   scopes.clear()
   scopes.set('t1', { workspaceId: 'w1', sector: 'purdue' })
   scopes.set('t2', { workspaceId: 'w2', sector: 'cosmic' })
@@ -74,7 +83,7 @@ beforeEach(async () => {
   libs.list = [TEST_LIBRARY]
   carrier = new FakeCarrier('w1')
   configureMsCarrier(carrier)
-  work = startWork({ db, store: new Store(db), registry, environmentId: 'env_test', dataDir: dir, log: () => {}, remoteFence: { roots: () => [dir], denied: () => [] } }, [outbox, msforms])
+  work = startWork({ db, store: new Store(db), registry, environmentId: 'env_test', dataDir: dir, log: (line: string) => void logs.push(line), remoteFence: { roots: () => [dir], denied: () => [] } }, [outbox, msforms])
   work.pushes.onPush((p) => pushes.push(p))
   await call('work.set', { enabled: true })
 })
@@ -249,5 +258,193 @@ describe('who can answer, held', () => {
     const sent = await call<OutboxItem>('work.outbox.send', { ref: held!.ref })
     expect(sent.state).toBe('sent')
     expect(carrier.forms.get(view.formId)!.settings).toMatchObject({ orgOnly: false, accepting: false })
+  })
+})
+
+describe('the answers read', () => {
+  const Q = [{ title: 'Which night?', type: 'choice' as const, options: ['Mon', 'Tue'], required: true }]
+  /** Made-up answers whose words a test then looks for everywhere Work keeps anything. */
+  const SECRET = ['Zorble-7Q', 'Quandle-3X', 'Mon-Plinth']
+  const book = (n: number) => formsWorkbook(['Which night?'], madeUpAnswers(n, (i) => [SECRET[i % SECRET.length]!]))
+  const ask = (formId: string) => ({ workspaceId: 'w1', formId })
+  /** A collecting form with `n` answers in Forms and its workbook. */
+  const collecting = async (n: number): Promise<MsFormView> => {
+    const view = await made()
+    new MsformsStore(db).update('w1', view.formId, { state: 'collecting', questions: Q })
+    carrier.forms.get(view.formId)!.count = n
+    carrier.pullBytes = book(n)
+    carrier.calls.length = 0
+    return view
+  }
+  const ops = () => carrier.calls.map((c) => c.op)
+  const answers = (n: number) => {
+    carrier.pullBytes = book(n)
+    for (const f of carrier.forms.values()) f.count = n
+  }
+
+  it('reads on his Refresh, keeps the workbook once its place checks, and says the new answers by Id', async () => {
+    const view = await collecting(2)
+    const heard: unknown[] = []
+    const off = onNewAnswers((e) => heard.push(e))
+    try {
+      const got = await call<MsFormResponses>('work.msforms.refresh', ask(view.formId))
+      expect(got).toMatchObject({ count: 2, cut: false, stale: false, none: false })
+      expect(got.rows.map((r) => r[0])).toEqual(['2', '1'])
+      expect(got.columns.map((c) => c.label)).toEqual(['Id', 'Start time', 'Completion time', 'Email', 'Name', 'Which night?'])
+      expect(carrier.asks[0]).toMatchObject({ uniqueId: null, name: 'Spring LAN sign-up.xlsx', folderServerPath: '/sites/RecWell/Shared Documents/Esports', lastModified: null })
+      const row = new MsformsStore(db).get('w1', view.formId)!
+      expect(row).toMatchObject({ count: 2, lastId: 2, workbook: { libraryId: TEST_LIBRARY.id, path: 'Esports/x.xlsx', uniqueId: 'fce429aa-7efc-4bac-93c5-6219e85183f4', parentId: 'parent-1', name: 'x.xlsx' } })
+      expect(row.answersReadAt).not.toBeNull()
+      expect(heard).toEqual([expect.objectContaining({ formId: view.formId, added: 2, count: 2, fromId: 1, toId: 2 })])
+      expect(pushes.some((p) => (p as { push: string; view?: MsFormView }).push === 'work.msforms' && (p as { view?: MsFormView }).view?.count === 2)).toBe(true)
+      // the next read finds it by its id, and only the answers past the last are new
+      answers(3)
+      await call('work.msforms.refresh', ask(view.formId))
+      expect(carrier.asks[1]).toMatchObject({ uniqueId: 'fce429aa-7efc-4bac-93c5-6219e85183f4', lastModified: '2026-11-24T17:22:33Z' })
+      expect(heard[1]).toMatchObject({ added: 1, fromId: 3, toId: 3 })
+    } finally {
+      off()
+    }
+  })
+
+  it('stops at the count when it is unchanged and the rows are kept; with none kept it reads in full', async () => {
+    const view = await collecting(2)
+    await call('work.msforms.refresh', ask(view.formId))
+    carrier.calls.length = 0
+    await call('work.msforms.refresh', ask(view.formId))
+    expect(ops()).toEqual(['count'])
+    resetAnswerReads()
+    carrier.calls.length = 0
+    const got = await call<MsFormResponses>('work.msforms.refresh', ask(view.formId))
+    expect(ops()).toEqual(['count', 'pull'])
+    expect(got.rows).toHaveLength(2)
+  })
+
+  it('answers from memory while the last read is fresh, and reads first when it is older than two minutes', async () => {
+    const view = await collecting(1)
+    await call('work.msforms.responses', ask(view.formId))
+    carrier.calls.length = 0
+    expect((await call<MsFormResponses>('work.msforms.responses', ask(view.formId))).rows).toHaveLength(1)
+    expect(ops()).toEqual([])
+    new MsformsStore(db).update('w1', view.formId, { answersReadAt: Date.now() - 3 * 60_000 })
+    await call('work.msforms.responses', ask(view.formId))
+    expect(ops()).toEqual(['count'])
+  })
+
+  it('a timeout keeps the last rows, marked stale, and its own words go nowhere', async () => {
+    const view = await collecting(2)
+    await call('work.msforms.refresh', ask(view.formId))
+    answers(3)
+    carrier.pullThrows = new Error(`Navigation timeout of 30000 ms exceeded at ${SECRET[0]}`)
+    await expect(call('work.msforms.refresh', ask(view.formId))).rejects.toThrow(READ_FAILED)
+    const got = await call<MsFormResponses>('work.msforms.responses', ask(view.formId))
+    expect(got).toMatchObject({ stale: true, count: 2 })
+    expect(got.rows).toHaveLength(2)
+    expect(new MsformsStore(db).get('w1', view.formId)).toMatchObject({ count: 2, lastId: 2, stopped: READ_FAILED })
+    // a carrier stop says its own sentence, and the rows stay stale
+    carrier.pullThrows = new CarrierStop('SharePoint did not give the workbook. The answers were not read.', null)
+    await expect(call('work.msforms.refresh', ask(view.formId))).rejects.toThrow('SharePoint did not give the workbook')
+    carrier.pullThrows = null
+    expect(await call<MsFormResponses>('work.msforms.refresh', ask(view.formId))).toMatchObject({ stale: false, count: 3 })
+  })
+
+  it('refuses a workbook that is not in the form’s folder, and does not keep it', async () => {
+    const view = await collecting(1)
+    carrier.pullPath = '/sites/RecWell/Shared Documents/Elsewhere/x.xlsx'
+    await expect(call('work.msforms.refresh', ask(view.formId))).rejects.toThrow(MOVED)
+    expect(new MsformsStore(db).get('w1', view.formId)).toMatchObject({ workbook: null, count: 0, stopped: MOVED })
+    await expect(call('work.msforms.responses', ask(view.formId))).rejects.toThrow(MOVED)
+  })
+
+  it('a sign-in marks Connections "Needs you" until a read gets through', async () => {
+    const view = await collecting(1)
+    carrier.pullThrows = new CarrierSignIn()
+    await expect(call('work.msforms.refresh', ask(view.formId))).rejects.toThrow('sign-in')
+    expect(signInNeeded()).toBe(true)
+    carrier.pullThrows = null
+    await call('work.msforms.refresh', ask(view.formId))
+    expect(signInNeeded()).toBe(false)
+  })
+
+  it("a thread reads its own job's answers; a routine's thread is withheld Purdue's", async () => {
+    const view = await collecting(1)
+    const own = (await asThread('t1', 'work.msforms.responses', ask(view.formId))) as { result: MsFormResponses }
+    expect(own.result.rows).toHaveLength(1)
+    await expect(asThread('t2', 'work.msforms.responses', ask(view.formId))).rejects.toThrow(NOT_THIS_JOB)
+    scopes.set('r1', { workspaceId: 'w1', sector: 'purdue', routineRunId: 'run1' })
+    await expect(asThread('r1', 'work.msforms.responses', ask(view.formId))).rejects.toThrow(MSFORM_WITHHELD_WORDS)
+    await expect(asThread('t1', 'work.msforms.refresh', ask(view.formId))).rejects.toThrow('only the owner')
+  })
+
+  it('the poller checks each collecting form on its schedule, waits out a busy carrier, and never while he drives', async () => {
+    const view = await collecting(1)
+    const t0 = Date.now()
+    await pollAnswers(work.ctx, t0)
+    expect(ops()).toEqual(['count', 'pull'])
+    carrier.calls.length = 0
+    await pollAnswers(work.ctx, t0 + 30 * 60_000)
+    expect(ops()).toEqual([])
+    await pollAnswers(work.ctx, t0 + 61 * 60_000)
+    expect(ops()).toEqual(['count'])
+    // a busy carrier: nothing is marked tried, so the next tick goes again
+    carrier.calls.length = 0
+    carrier.countThrows = new CarrierBusy('busy')
+    await pollAnswers(work.ctx, t0 + 125 * 60_000)
+    carrier.countThrows = null
+    await pollAnswers(work.ctx, t0 + 126 * 60_000)
+    // the busy try, then the next tick's
+    expect(ops()).toEqual(['count', 'count'])
+    // only when he looks, a draft, and while he drives: nothing
+    carrier.calls.length = 0
+    new MsformsStore(db).update('w1', view.formId, { check: 'look' })
+    await pollAnswers(work.ctx, t0 + 500 * 60_000)
+    new MsformsStore(db).update('w1', view.formId, { check: 'quarter', state: 'draft' })
+    await pollAnswers(work.ctx, t0 + 600 * 60_000)
+    new MsformsStore(db).update('w1', view.formId, { state: 'collecting' })
+    ensureBrowserTables(db)
+    db.prepare("INSERT INTO work_browser_drive (session_id, driver, since) VALUES ('pane', 'owner', 0)").run()
+    await pollAnswers(work.ctx, t0 + 700 * 60_000)
+    expect(ops()).toEqual([])
+  })
+
+  it('the data rule: no answer, name or address reaches the database, a log line, a tell or a push, through a read, an error, a timeout and a restart', async () => {
+    const heard: unknown[] = []
+    const off = onNewAnswers((e) => heard.push(e))
+    const words = [...SECRET, 'Dummy Person 1', 'dummy1@example.test', 'dummy2@example.test']
+    const everything = (): string => {
+      const tables = (db.prepare("SELECT name FROM sqlite_master WHERE type = 'table'").all() as { name: string }[]).map((t) => t.name)
+      const rows = tables.map((t) => JSON.stringify(db.prepare(`SELECT * FROM "${t}"`).all()))
+      return [...rows, ...logs, JSON.stringify(pushes), JSON.stringify(heard)].join('\n')
+    }
+    const clean = () => {
+      const all = everything()
+      for (const w of words) expect(all.includes(w), w).toBe(false)
+    }
+    try {
+      const view = await collecting(3)
+      // a read
+      expect((await call<MsFormResponses>('work.msforms.refresh', ask(view.formId))).rows.flat()).toContain(SECRET[0])
+      clean()
+      // an error whose own words quote a made-up answer
+      answers(4)
+      carrier.pullThrows = new Error(`Unexpected cell ${SECRET[1]} from dummy2@example.test`)
+      await expect(call('work.msforms.refresh', ask(view.formId))).rejects.toThrow(READ_FAILED)
+      clean()
+      // a timeout
+      carrier.pullThrows = new CarrierStop('The workbook did not show in the form\'s folder. The answers were not read.', null)
+      await expect(call('work.msforms.refresh', ask(view.formId))).rejects.toThrow('did not show')
+      clean()
+      // a restart: a fresh module state reads again, and still keeps nothing
+      carrier.pullThrows = null
+      work.close()
+      resetAnswerReads()
+      work = startWork({ db, store: new Store(db), registry, environmentId: 'env_test', dataDir: dir, log: (line: string) => void logs.push(line), remoteFence: { roots: () => [dir], denied: () => [] } }, [outbox, msforms])
+      work.pushes.onPush((p) => pushes.push(p))
+      const again = await call<MsFormResponses>('work.msforms.responses', ask(view.formId))
+      expect(again.rows).toHaveLength(4)
+      clean()
+    } finally {
+      off()
+    }
   })
 })
