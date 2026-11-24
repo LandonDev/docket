@@ -68,10 +68,10 @@ describe('the names', () => {
     for (const n of Object.values(PILLAR_MILESTONE)) expect(n).toBeGreaterThan(5)
   })
   it('maps the canvas kinds to their pillars once', () => {
-    expect([...CANVAS_KINDS]).toEqual(['mail', 'document', 'sheet', 'pdf', 'slides', 'media', 'browser', 'history', 'meeting', 'form', 'dashboard', 'file'])
+    expect([...CANVAS_KINDS]).toEqual(['mail', 'document', 'sheet', 'pdf', 'slides', 'media', 'browser', 'history', 'meeting', 'form', 'dashboard', 'file', 'msform'])
     expect(CANVAS_PILLAR).toEqual({
       mail: 'mail', document: 'docs', sheet: 'sheets', pdf: 'pdf', slides: 'slides', media: 'media',
-      browser: 'browser', history: 'history', meeting: 'meetings', form: 'forms', dashboard: 'dashboards', file: 'files'
+      browser: 'browser', history: 'history', meeting: 'meetings', form: 'forms', dashboard: 'dashboards', file: 'files', msform: 'msforms'
     })
   })
   it('lists the eighteen act kinds, each with the pillar that shows it', () => {

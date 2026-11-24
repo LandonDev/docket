@@ -13,6 +13,7 @@ import { registerRefSeat } from '../files/hooks'
 import { refKey } from '@shared/work/files'
 import { ensureWorkbookIndex } from './workbook'
 import { refuseWithheld } from './withhold'
+import { MSFORMS_PREAMBLE, msformsTools } from './tools'
 
 // A form opens in a Files tab by its own source, after the one reach check (files/hooks.ts `registerRefSeat`).
 registerRefSeat('msform', async (ctx, by, ask) => {
@@ -110,6 +111,8 @@ export const msforms: WorkModule = {
     return route(req, ctx, by)
   },
   acts: [msformPublishKind as ActKindDef, msformMakeKind as ActKindDef],
+  tools: () => msformsTools,
+  preamble: () => MSFORMS_PREAMBLE,
   // "When someone answers <form>" (routine.ts): armed by the routines engine on the answers read's event
   triggers: [msformTrigger],
   jobs: [msformTasksJob],

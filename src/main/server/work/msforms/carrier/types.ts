@@ -15,11 +15,11 @@ export type CarrierOp = (typeof CARRIER_OPS)[number]
 /** Who granted the run: his press through the owner RPC, a claimed held act's execute, the pillar under "Agent writes" on a draft, or the poller. */
 export type CarrierBy = 'owner' | 'act' | 'pillar' | 'poller'
 
-/** Which operations each grantor may authorize. The pillar writes only a draft's questions and settings; the poller only reads. */
+/** Which operations each grantor may authorize. The pillar writes only a draft's questions and settings, sets a closing end date, and closes (never reopens); the poller only reads. */
 export const OPS_BY: Record<CarrierBy, readonly CarrierOp[]> = {
   owner: ['make', 'write', 'settings', 'collect', 'audience', 'close', 'count', 'pull', 'prefill'],
   act: ['make', 'write', 'settings', 'collect', 'audience', 'close'],
-  pillar: ['write', 'settings'],
+  pillar: ['write', 'settings', 'close'],
   poller: ['count', 'pull']
 }
 

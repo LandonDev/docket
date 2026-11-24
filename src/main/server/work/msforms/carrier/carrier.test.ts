@@ -133,7 +133,7 @@ describe('the authorization', () => {
     await expect(carrier.write(auth('write', { changes, before }, { formId: 'FakeFormId00000000000099' }), 'FakeFormId00000000000001', changes, before)).rejects.toThrow('another form')
     await expect(carrier.write(auth('settings', { changes, before }), 'FakeFormId00000000000001', changes, before)).rejects.toThrow(CarrierRefused)
     await expect(carrier.write(auth('write', { changes: [], before }), 'FakeFormId00000000000001', changes, before)).rejects.toThrow('not what was authorized')
-    expect(() => auth('close', { open: false }, { by: 'pillar' })).toThrow(CarrierRefused)
+    expect(() => auth('collect', {}, { by: 'pillar' })).toThrow(CarrierRefused)
     expect(page.log).toEqual([])
   })
 })

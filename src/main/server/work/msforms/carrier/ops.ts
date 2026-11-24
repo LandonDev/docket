@@ -420,7 +420,9 @@ export function opsCarrier(deps: OpsDeps): MsCarrier {
           const panel = await openSettings(page)
           const now = settingsOf(panel)
           // An agent's settings run only on a draft: Accept responses must read off.
-          if (auth.by === 'pillar' && now.accepting) page.stop('the form takes answers now, so its settings were not changed')
+          // A closing end date is the one setting an agent sets on a form taking answers.
+          const onlyEnd = Object.keys(patch).every((k) => k === 'endDate')
+          if (auth.by === 'pillar' && now.accepting && !onlyEnd) page.stop('the form takes answers now, so its settings were not changed')
           if (patch.orgOnly === false && now.orgOnly && auth.by === 'pillar') page.stop('who can answer is not widened without the owner\'s press')
           if (patch.orgOnly !== undefined || patch.recordName !== undefined || patch.onePerPerson !== undefined) await setAudience(page, { ...now, ...patch })
           if ('startDate' in patch) await setDate(page, 'Start date', patch.startDate)
@@ -473,6 +475,7 @@ export function opsCarrier(deps: OpsDeps): MsCarrier {
 
     async close(auth, formId, open) {
       authorized(auth, 'close', formId, { open })
+      if (open && auth.by === 'pillar') throw new CarrierRefused('The carrier refused: an agent\'s reopen waits for the owner\'s press. Nothing was done in Forms.')
       return deps.exclusive(async () => {
         const page = await openBuilder(formId, 'close')
         return closing(page, async () => {
