@@ -44,6 +44,10 @@ describe("the words and rules", () => {
   it("paper, names, sources and bytes", () => {
     expect(paperFor("en-US")).toBe("Letter");
     expect(paperFor("en-GB")).toBe("A4");
+    expect(paperFor("zh-Hans-CN")).toBe("A4");
+    // No region named: his paper, not A4 by the want of a suffix.
+    expect(paperFor("en")).toBe("Letter");
+    expect(paperFor("")).toBe("Letter");
     expect(fileStem('Q3: "plan"/draft')).toBe("Q3 plan draft");
     expect(importable("notes.MD")).toBe(true);
     expect(importable("photo.png")).toBe(false);

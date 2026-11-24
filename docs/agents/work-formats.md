@@ -318,7 +318,9 @@ out and counted, and `ExportAnswer` and `PreviewAnswer` carry the count as
 work-docs.md "Agent suggestions stay private"). OpenDocument and RTF are that Word file through
 LibreOffice. The measured losses are in work-docs.md under Preview. HTML is made in the window
 (`htmlDocument`, from the editor's blocks); PDF is the same page laid out for
-paper (A4, or Letter in a US-style locale) and printed by
+paper (`paperFor`: A4 where the locale names a region that uses it, Letter
+where it names a Letter region or no region at all, a bare "en"; the host's
+own default with no paper named is Letter too) and printed by
 `work.formats.print` (`operate`) in a hidden Electron window with no script
 and no network (`print.ts`; a test hands in its own printer). A LifeOS
 document another host serves is asked of that host.

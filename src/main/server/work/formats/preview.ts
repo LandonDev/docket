@@ -215,7 +215,7 @@ export async function previewDoc(ctx: WorkCtx, by: Caller, params: PreviewParams
   const dir = folderOf(ctx, t, params.itemId, params.source)
   if (format === 'pdf') {
     if (params.html === undefined) throw new Error('a PDF preview needs its print page')
-    const paper = params.paper ?? 'A4'
+    const paper = params.paper ?? 'Letter'
     const rev = revOf(format, params.html, '\u0000', paper)
     const kept = keptRender(dir, format, rev)
     if (kept) return kept

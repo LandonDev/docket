@@ -169,17 +169,17 @@ describe('a PDF preview', () => {
     const again = await r.ask<PreviewAnswer>('work.formats.preview', { source, itemId: 'i0', format: 'pdf', html: '<p>one</p>' })
     expect(again).toEqual(first)
     expect(r.prints).toHaveLength(1)
-    // Paper is part of what it was made from.
-    const letter = await r.ask<PreviewAnswer>('work.formats.preview', { source, itemId: 'i0', format: 'pdf', html: '<p>one</p>', paper: 'Letter' })
-    expect(letter.rev).not.toBe(first.rev)
+    // Paper is part of what it was made from; with none named it is his, Letter.
+    const a4 = await r.ask<PreviewAnswer>('work.formats.preview', { source, itemId: 'i0', format: 'pdf', html: '<p>one</p>', paper: 'A4' })
+    expect(a4.rev).not.toBe(first.rev)
     const changed = await r.ask<PreviewAnswer>('work.formats.preview', { source, itemId: 'i0', format: 'pdf', html: '<p>two</p>' })
     expect(changed.rev).not.toBe(first.rev)
     expect(r.prints).toHaveLength(3)
     await expect(r.read({ source, itemId: 'i0', rev: first.rev, offset: 0, length: 10 })).rejects.toThrow(/^that preview is gone: draw it again$/)
-    // Another window may still show the Letter pages: it prints those, not the new draw it never saw.
-    expect((await r.read({ source, itemId: 'i0', rev: letter.rev, offset: 0, length: 5 })).length).toBe(5)
+    // Another window may still show the A4 pages: it prints those, not the new draw it never saw.
+    expect((await r.read({ source, itemId: 'i0', rev: a4.rev, offset: 0, length: 5 })).length).toBe(5)
     expect(readdirSync(join(previewsRoot(r.data), 't1', 'i0', sourceKey(source))).sort()).toEqual(
-      [`pdf.${changed.rev}.json`, `pdf.${changed.rev}.pdf`, `pdf.${letter.rev}.json`, `pdf.${letter.rev}.pdf`].sort()
+      [`pdf.${changed.rev}.json`, `pdf.${changed.rev}.pdf`, `pdf.${a4.rev}.json`, `pdf.${a4.rev}.pdf`].sort()
     )
   })
 })

@@ -80,7 +80,8 @@ export async function exportDoc(ctx: WorkCtx, by: Caller, params: { source: Canv
 }
 
 export async function printPage(ctx: WorkCtx, params: { name: string; html: string; paper?: 'A4' | 'Letter' }): Promise<ExportAnswer> {
-  const { pdf, warnings } = await printToPdf(params.html, { paper: params.paper ?? 'A4', dir: scratchDir(ctx) })
+  // No paper named: his, Letter (every window names one; a caller that does not is never handed A4 by default).
+  const { pdf, warnings } = await printToPdf(params.html, { paper: params.paper ?? 'Letter', dir: scratchDir(ctx) })
   const stem = safeName(params.name).replace(/\.pdf$/i, '')
   return { name: `${stem}.pdf`, data: Buffer.from(pdf).toString('base64'), warnings }
 }

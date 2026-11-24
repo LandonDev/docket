@@ -6,9 +6,14 @@ import type { CanvasSource } from "@shared/work";
  * "Import and export"), apart from React so a test reads them.
  */
 
-/** The paper a print page asks for: US Letter where the locale's paper is, A4 elsewhere. */
+/**
+ * The paper a print page asks for: A4 where the locale names a region that uses it, US Letter where it names one
+ * that uses Letter, and Letter too where it names no region at all (a bare "en", as a browser set to plain English
+ * says it): his paper, never A4 by the want of a suffix.
+ */
 export function paperFor(locale: string): "A4" | "Letter" {
-  return /-(US|CA|MX|PH|CL|CO|VE|GT|PR)\b/i.test(locale) ? "Letter" : "A4";
+  const region = /[-_]([A-Za-z]{2})\b/.exec(locale)?.[1];
+  return !region || /^(US|CA|MX|PH|CL|CO|VE|GT|PR)$/i.test(region) ? "Letter" : "A4";
 }
 
 const MIME: Record<ExportFormat, string> = {
