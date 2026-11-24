@@ -1024,7 +1024,10 @@ lands in his own Drive, shared with nobody. Threads have no upload tool.
   same path holding other bytes than it last read or wrote (its inode, size
   and time: a newer workbook OneDrive put there). The proposals' side file is
   keyed by the workbook's real path, so a link that names another workbook
-  after a restart finds none of them. (A guest
+  after a restart finds none of them, and names the archive they were made
+  over (its stamp, written again at each write here): read cold over another
+  archive at that path (put there while the host was down) they turn
+  `orphaned`, to be dropped, never accepted into it. (A guest
   pass bound to the resolved file is the guests pillar's, guests/links.ts.)
 - history lists the ops; compare and restore replay from the nearest
   snapshot in a second engine;

@@ -339,12 +339,23 @@ export class TcsheetBackend implements SheetBackend {
     this.read()
     return join(this.side, `${createHash('sha256').update(this.bound ?? this.path).digest('hex').slice(0, 24)}.json`)
   }
-  /** The suggestions waiting over the file. One a file written before the rule still carries is taken out of it here. */
+  /**
+   * The suggestions waiting over the file. One a file written before the rule still carries is taken out of it here.
+   * The side file names the archive they were made over (its stamp, written again at each write here): read cold over
+   * another (a workbook put at the same path while the host was down, or a side file from before this rule), they can
+   * no longer be shown to stand where the agent saw them, and wait only to be dropped (`orphaned`).
+   */
   private waiting(): StoredSuggestion[] {
     if (this.proposed) return this.proposed
     const at = this.sideFile()
-    this.proposed = at && existsSync(at) ? (JSON.parse(readFileSync(at, 'utf8')) as StoredSuggestion[]) : []
+    const kept = at && existsSync(at) ? (JSON.parse(readFileSync(at, 'utf8')) as StoredSuggestion[] | { file: string; list: StoredSuggestion[] }) : null
     const t = this.read()
+    if (!kept) this.proposed = []
+    else if (!Array.isArray(kept) && kept.file === this.stamp) this.proposed = kept.list
+    else {
+      const list = Array.isArray(kept) ? kept : kept.list
+      this.keep(list.map((x) => (x.state === 'pending' || x.state === 'conflict' ? { ...x, state: 'orphaned' as const } : x)))
+    }
     if (t.suggestions.length) {
       const known = new Set(this.proposed.map((s) => s.id))
       this.keep([...this.proposed, ...t.suggestions.filter((s) => !known.has(s.id))])
@@ -366,7 +377,7 @@ export class TcsheetBackend implements SheetBackend {
     if (!list.length) return rmSync(at, { force: true })
     mkdirSync(dirname(at), { recursive: true })
     const tmp = `${at}.${randomUUID()}.tmp`
-    writeFileSync(tmp, JSON.stringify(list), { mode: 0o600 })
+    writeFileSync(tmp, JSON.stringify({ file: this.stamp, list }), { mode: 0o600 })
     renameSync(tmp, at)
   }
   private write(t: Tcsheet): void {
@@ -374,6 +385,8 @@ export class TcsheetBackend implements SheetBackend {
     writeTcsheet(at, t)
     this.held = t
     this.stamp = stampOf(at)
+    // (the side file names the archive as it now stands)
+    if (this.proposed?.length) this.keep(this.proposed)
   }
 
   async load(): Promise<Loaded> {

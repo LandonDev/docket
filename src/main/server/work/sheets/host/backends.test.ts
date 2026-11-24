@@ -66,4 +66,24 @@ describe('a .tcsheet reached through a link', () => {
     // The workbook they were made over still has them, by any name that reaches it.
     expect(await new TcsheetBackend(join(base, 'Mine', 'Budget.tcsheet'), side).suggestions()).toEqual([expect.objectContaining({ id: 'cs1:Sheet1:1:1' })])
   })
+
+  it('a workbook put at the same path while the host was down does not take the old proposals: they wait only to be dropped', async () => {
+    // Council r2 (Sol 2): a cold open read the replacement, then the path's proposals, and Accept could write them into it.
+    const base = mkdtempSync(join(tmpdir(), 'tc-tcsheet-'))
+    dirs.push(base)
+    const side = join(base, 'side')
+    const path = join(base, 'Budget.tcsheet')
+    TcsheetBackend.create(path, 'Budget')
+    const cell = { sheet: 'Sheet1', row: 1, col: 1, base: null, proposed: { v: 42 } }
+    const first = new TcsheetBackend(path, side)
+    await first.addSuggestions('cs1', 'agent:box:t1', undefined, [cell])
+    // his own write after it keeps them his: the side file names the archive as it now stands
+    const { rev } = await first.load()
+    await first.append(rev, [{ by: 'owner', mutations: [] }])
+    expect((await new TcsheetBackend(path, side).suggestions()).map((x) => x.state)).toEqual(['pending'])
+    // the host is down; another workbook comes to stand at the same path
+    TcsheetBackend.create(join(base, 'incoming.tcsheet'), 'Payroll')
+    renameSync(join(base, 'incoming.tcsheet'), path)
+    expect((await new TcsheetBackend(path, side).suggestions()).map((x) => x.state)).toEqual(['orphaned'])
+  })
 })
