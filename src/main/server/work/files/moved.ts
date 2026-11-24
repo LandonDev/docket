@@ -192,6 +192,56 @@ function moveDocs(db: DatabaseSync, pairs: readonly [string, string][]): void {
 }
 
 /**
+ * What a copy of the file hangs on follows it (copies.ts, word.ts, saveAs.ts): a copy tab's `copyOf`, the copy's
+ * record, a Word file's record and the file a Save As link writes, each by the host and path the file lies at, and the
+ * body last read of it. A moved `.tcdoc` keeps its Word file and its links (`doc`). Without this, his next edit of a
+ * renamed file was sent to the old path and kept beside it as "(mine)". Tables a database lacks are skipped.
+ */
+function moveCopies(db: DatabaseSync, host: string, from: string, to: string, pairs: readonly [string, string][], only?: string): string[] {
+  const sep = sepOf(from)
+  const changed = new Set<string>()
+  const rename = (path: string, name: string): string => (path === from && name === basename(from.replaceAll('\\', '/')) ? basename(to.replaceAll('\\', '/')) : name)
+  for (const table of ['work_files_copies', 'work_files_word', 'work_files_links', 'work_files_bodies'] as const) {
+    if (!hasTable(db, table)) continue
+    const named = table !== 'work_files_bodies'
+    const rows = db.prepare(`SELECT rowid AS rid, workspace_id, path${named ? ', name' : ''} FROM ${table} WHERE host = ?`).all(host) as { rid: number; workspace_id: string; path: string; name?: string }[]
+    for (const row of rows) {
+      const path = under(row.path, from, to, sep)
+      if (path === null || (only && row.workspace_id !== only)) continue
+      // A stale row already under the new path (a file since gone from there) gives way to the one that moved.
+      if (table !== 'work_files_links') db.prepare(`DELETE FROM ${table} WHERE workspace_id = ? AND host = ? AND path = ? AND rowid != ?`).run(row.workspace_id, host, path, row.rid)
+      if (named) db.prepare(`UPDATE ${table} SET path = ?, name = ? WHERE rowid = ?`).run(path, rename(row.path, row.name!), row.rid)
+      else db.prepare(`UPDATE ${table} SET path = ? WHERE rowid = ?`).run(path, row.rid)
+      changed.add(row.workspace_id)
+    }
+  }
+  for (const table of ['work_files_word', 'work_files_links'] as const) {
+    if (!hasTable(db, table)) continue
+    const set = db.prepare(`UPDATE ${table} SET doc = ? WHERE doc = ?`)
+    for (const [a, b] of pairs) set.run(b, a)
+  }
+  if (hasTable(db, 'work_files_tabs')) {
+    const set = db.prepare(`UPDATE work_files_tabs SET page = ?, updated_at = ? WHERE workspace_id = ? AND id = ?`)
+    for (const row of db.prepare(`SELECT workspace_id, id, page FROM work_files_tabs WHERE kind = 'file'`).all() as { workspace_id: string; id: string; page: string }[]) {
+      if (only && row.workspace_id !== only) continue
+      let page: { name?: string; copyOf?: { host: string; path: string; vm?: boolean } }
+      try {
+        page = JSON.parse(row.page)
+      } catch {
+        continue
+      }
+      const copyOf = page?.copyOf
+      if (!copyOf || copyOf.host !== host || typeof copyOf.path !== 'string') continue
+      const path = under(copyOf.path, from, to, sep)
+      if (path === null) continue
+      set.run(JSON.stringify({ ...page, copyOf: { ...copyOf, path }, ...(copyOf.path === from && typeof page.name === 'string' ? { name: rename(from, page.name) } : {}) }), Date.now(), row.workspace_id, row.id)
+      changed.add(row.workspace_id)
+    }
+  }
+  return [...changed]
+}
+
+/**
  * Carries everything that hangs on a moved file or folder, in one savepoint: every registered pillar's hook
  * (`registerFileMoved`, once per file: a folder's files each), the documents pillar's rows, the source of every
  * canvas item that names it or lies under it (and a media version's or a meeting's recording), his marks and the
@@ -219,7 +269,8 @@ export function fileMoved(ctx: Pick<WorkCtx, 'db' | 'dataDir' | 'host' | 'canvas
       const under = `${from.key.replace(/[\\%_]/g, (c) => `\\${c}`)}${keySep(from.key, from.path) === '\\' ? '\\\\' : '/'}%`
       db.prepare(`DELETE FROM work_files_names WHERE ref_key = ? OR ref_key LIKE ? ESCAPE '\\'`).run(from.key, under)
     }
-    const tabs = moveTabs(db, host, from, to).map((workspaceId) => {
+    const copied = moveCopies(db, host, from.path, to.path, pairs)
+    const tabs = [...new Set([...moveTabs(db, host, from, to), ...copied])].map((workspaceId) => {
       db.prepare(`INSERT INTO work_files_revs (workspace_id, rev) VALUES (?, 1) ON CONFLICT (workspace_id) DO UPDATE SET rev = rev + 1`).run(workspaceId)
       return { workspaceId, rev: (db.prepare(`SELECT rev FROM work_files_revs WHERE workspace_id = ?`).get(workspaceId) as { rev: number }).rev }
     })
@@ -245,4 +296,22 @@ export function fileMoved(ctx: Pick<WorkCtx, 'db' | 'dataDir' | 'host' | 'canvas
     }
   }
   return result
+}
+
+/**
+ * A file of another host moved there (his window renamed or moved it through that host's own door): the workspace's
+ * copies of it here follow, so his next edit is sent to where the file now lies (copies.ts `copiesMoved`). Only the
+ * records of `workspaceId`; nothing is read or written on any disk. Answers whether anything here hung on it.
+ */
+export function farMoved(db: DatabaseSync, workspaceId: string, host: string, from: string, to: string): boolean {
+  db.exec(`SAVEPOINT ${SAVEPOINT}`)
+  try {
+    const changed = moveCopies(db, host, from, to, [], workspaceId)
+    db.exec(`RELEASE ${SAVEPOINT}`)
+    return changed.length > 0
+  } catch (err) {
+    db.exec(`ROLLBACK TO ${SAVEPOINT}`)
+    db.exec(`RELEASE ${SAVEPOINT}`)
+    throw err
+  }
 }

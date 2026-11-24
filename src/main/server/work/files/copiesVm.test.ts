@@ -51,6 +51,12 @@ describe.skipIf(process.platform === 'win32')('a copy of a file in the Windows V
         return { data: f!.data, size: Buffer.from(f!.data, 'base64').length, eof: true, ...(args.version ? { version: versionIn(f!.path), changed: f!.modified } : {}) }
       case 'files.list':
         return [...disk.values()].filter((e) => e.path.slice(0, e.path.lastIndexOf('\\')).toLowerCase() === String(args.dir).toLowerCase()).map((e) => ({ name: e.path.slice(e.path.lastIndexOf('\\') + 1), path: e.path, dir: false, size: 1, modified: e.modified, local: true, link: false }))
+      case 'files.rename': {
+        const to = `${String(args.path).slice(0, String(args.path).lastIndexOf('\\'))}\\${args.name}`
+        disk.delete(f!.path.toLowerCase())
+        disk.set(to.toLowerCase(), { ...f!, path: to })
+        return { entry: { name: args.name, path: to, dir: false, size: 1, modified: f!.modified, local: true, link: false } }
+      }
       case 'files.write': {
         writes.push(args)
         if (args.dir) {
@@ -131,6 +137,22 @@ describe.skipIf(process.platform === 'win32')('a copy of a file in the Windows V
     expect(Buffer.from(disk.get(ROSTER.toLowerCase())!.data, 'base64').toString()).toBe('edited here')
     expect(copyRecord(rig.ctx, WS, HOST, ROSTER)!.version).toBe(versionIn(ROSTER))
     expect((await back(tabId))?.is).toBe('ok')
+  })
+
+  it('renamed while its tab is open, keeps saving to the renamed file: no "(mine)" file, and the renamed row opens the same tab', async () => {
+    const { copy, tabId } = await open()
+    await call('work.files.rename', { ref: { at: 'file', host: HOST, path: ROSTER }, name: 'Roster 2026.xlsx', op: 'op-rename' })
+    const renamed = `${GENERAL}\\Roster 2026.xlsx`
+    expect(copyRecord(rig.ctx, WS, HOST, ROSTER)).toBeNull()
+    expect(copyRecord(rig.ctx, WS, HOST, renamed)).toMatchObject({ name: 'Roster 2026.xlsx' })
+    const tab = (await call<FilesTabs>('work.files.tabs', {})).tabs.find((t) => t.id === tabId)
+    expect(tab).toMatchObject({ name: 'Roster 2026.xlsx', copyOf: { host: HOST, path: renamed, vm: true } })
+    await save(copy, 'edited after the rename')
+    expect(Buffer.from(disk.get(renamed.toLowerCase())!.data, 'base64').toString()).toBe('edited after the rename')
+    expect([...disk.keys()].some((k) => k.includes('(mine)'))).toBe(false)
+    expect((await back(tabId))?.is).toBe('ok')
+    const again = await call<FilesOpened>('work.files.open', { ref: { at: 'file', host: HOST, path: renamed }, name: 'Roster 2026.xlsx' })
+    expect(again.tabId).toBe(tabId)
   })
 
   it('is the conflict when the guest\'s file changed: it is left as it was, and Keep Both writes his beside it there', async () => {

@@ -654,7 +654,28 @@ file under a moved folder:
   share them;
 - his marks (`work_files_marks`, by key: a star and a recent follow), and
   the tabs (`work_files_tabs`: a file tab's key and name, a page tab that
-  stands in a moved folder), under a new revision.
+  stands in a moved folder), under a new revision;
+- what a copy of the file hangs on (`moveCopies`): a copy tab's `copyOf`
+  and name, the copy's record (`work_files_copies`), a Word file's record
+  (`work_files_word`), a Save As link's file (`work_files_links`) and the
+  body last read of it (`work_files_bodies`), by host and path, a guest path
+  in the VM among them; and a moved `.tcdoc`'s Word file and links (`doc`),
+  so a renamed kept document still saves to its Word file and still counts
+  as shared (docs/target.ts `keptForWord`). Before, a copy tab renamed from
+  its own header sent his next edit to the old path and kept it beside the
+  renamed file as "(mine)" (.temp-code/plans/landed/F-files-nine.md, 1).
+
+A file of another host (his Mac's OneDrive, from a box workspace) moves on
+that host, whose own `fileMoved` knows nothing of the copy the workspace's
+host keeps. So his window, once a rename or a move it asked of that host
+lands, tells the workspace's host where each thing went
+(`work.files.copiesMoved`, acts.ts `copiesFollow`, only when a tab holds a
+copy of it); the host re-points that workspace's records of the copy
+(`farMoved`), his own act only (his window or a key that may approve),
+never for a file of its own and never across two hosts. Nothing is read or
+written on a disk there, and a record pointed at the wrong file still
+writes only over the version it read. The fence lets a remote key name the
+other host's paths in this verb alone (`ELSEWHERE_METHODS`).
 
 A fault anywhere rolls the savepoint back and the file is moved back. Once
 it lands, each owner's canvas list is said again (`ctx.canvas.announce`)

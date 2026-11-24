@@ -18,6 +18,7 @@ import { saveCopy, saveFile, versionWord, workDone } from './save'
 import { uploadWrote } from './uploads'
 import { keepBody, sameBody } from './body'
 import { makeBytes } from './verbs'
+import { farMoved } from './moved'
 import { guestChange, guestOp, vmReadVersioned, vmSave } from './vmVerbs'
 import { FileRefused, OpLost, versionOf } from './write'
 
@@ -449,6 +450,27 @@ export async function copyKeep(ctx: WorkCtx, by: Caller, p: { workspaceId: strin
     const item = ctx.canvas.get(tab.itemId)
     if (item) ctx.canvas.replace(item.sessionId, item.id, item.kind, item.source, made.name)
   }
+}
+
+/**
+ * `work.files.copiesMoved`: his window renamed or moved files of another host through that host's door; the
+ * workspace's copies of them here (the tab's `copyOf`, the copy's record, a Word file's record, a Save As link) follow
+ * to where each now lies. His own act: his window, or a key that may approve. A move of this host's own files carries
+ * itself (`fileMoved`), so only another host's are taken. Nothing is read or written on a disk: a record pointed at
+ * another file still writes only over the version it read, so a wrong pair can never write over that file.
+ */
+export function copiesMoved(ctx: WorkCtx, by: Caller, p: { workspaceId: string; moves: { from: CanvasSource | { at: string }; to: CanvasSource | { at: string } }[] }): void {
+  admitCaller(ctx, by, p.workspaceId)
+  let any = false
+  for (const m of p.moves) {
+    if (m.from.at !== 'file' || m.to.at !== 'file') continue
+    const from = m.from as Extract<CanvasSource, { at: 'file' }>
+    const to = m.to as Extract<CanvasSource, { at: 'file' }>
+    if (from.host !== to.host || from.host === ctx.host || from.path === to.path) continue
+    admitOwner(by, { name: basename(to.path), host: to.host })
+    any = farMoved(ctx.db, p.workspaceId, from.host, from.path, to.path) || any
+  }
+  if (any) said(ctx, p.workspaceId)
 }
 
 /** A copy tab closes: with `discard` what waits goes with it, now; else the copy is kept and sent, then let go. */

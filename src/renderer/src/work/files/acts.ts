@@ -54,11 +54,29 @@ export async function renameTo(of: ActsOf, copy: PlaceCopy, entry: FileEntry, na
   if (!next || next === entry.name) return null;
   try {
     const done = await registry.linkOf(copy.link).request<FileDone>("work.files.rename", { workspaceId: of.workspaceId, ref: refOf(entry), name: next, op: opId() }, longWait(copy));
-    return done.entries[0] ?? null;
+    const made = done.entries[0];
+    if (made) await copiesFollow(of, copy, [[entry, made]]);
+    return made ?? null;
   } catch (err) {
     failed(`${entry.name} was not renamed`, err);
     return null;
   }
+}
+
+/**
+ * A file of another host renamed or moved there: the workspace's own host keeps its open copy, which follows to where
+ * the file now lies, so his next edit is sent there (files/copies.ts `copiesMoved`). A host of this host's own carries
+ * its copies itself. An older workspace host that does not know the verb leaves the copy as it was.
+ */
+async function copiesFollow(of: ActsOf, copy: PlaceCopy, pairs: readonly [FileEntry, FileEntry][]): Promise<void> {
+  if (copy.link === of.home) return;
+  const moves = pairs.flatMap(([was, now]) => {
+    const from = refOf(was);
+    const to = refOf(now);
+    return from.at === "file" && to.at === "file" && from.path !== to.path ? [{ from, to }] : [];
+  });
+  if (!moves.length || !tabsOn(tabsNow(of.home, of.workspaceId), pairs.map(([was]) => was)).length) return;
+  await registry.linkOf(of.home).request("work.files.copiesMoved", { workspaceId: of.workspaceId, moves }).catch(() => undefined);
 }
 
 /** The folder a move's rows came from, where its Undo puts them back. */
@@ -82,6 +100,7 @@ export async function carryTo(of: ActsOf, verb: "move" | "copy", from: PlaceCopy
     const done = await registry
       .linkOf(from.link)
       .request<FileDone>(`work.files.${verb}`, { workspaceId: of.workspaceId, refs: entries.map(refOf), to: to.at, op: opId(), ...(question ? { asked: true } : {}) }, longWait(from));
+    if (verb === "move") await copiesFollow(of, from, entries.flatMap((e) => done.entries.filter((d) => d.name === e.name).slice(0, 1).map((d) => [e, d] as [FileEntry, FileEntry])));
     const samePlace = from.link === to.copy.link && from.place.id === to.copy.place.id;
     const undo = verb === "move" && back && samePlace ? () => void carryTo(of, "move", to.copy, done.entries, { copy: from, at: back.at, name: back.name }) : undefined;
     if (done.entries.length) said(doneWords(verb === "move" ? "Moved" : "Copied", done.entries.map((e) => e.name), to.name), { description: leftovers(done), ...(undo ? { undo } : {}) });

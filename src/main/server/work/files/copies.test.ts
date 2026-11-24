@@ -314,6 +314,35 @@ describe('his save goes back to the file', () => {
   })
 })
 
+describe('a file renamed or moved on its computer while its copy is open', () => {
+  it("follows it once his window says where it went: his next edit reaches the renamed file, no \"(mine)\" file is made, and the renamed row opens the same tab", async () => {
+    const { path, copy, tabId } = await openFar('Roster.xlsx', 'one')
+    // His window renamed it through the Mac's own door (the Mac's verbs), then tells the workspace's host.
+    const renamed = join(dirname(path), 'Roster 2026.xlsx')
+    const done = (await filesHandle({ id: 'r', method: 'work.files.rename', params: { workspaceId: WS, ref: { at: 'file', host: MAC, path }, name: 'Roster 2026.xlsx', op: 'op-r' } } as never, mac.ctx, window)) as { result: { entries: { ref: unknown }[] } }
+    expect(done.result.entries[0]!.ref).toEqual({ at: 'file', host: MAC, path: renamed })
+    await call('work.files.copiesMoved', { moves: [{ from: { at: 'file', host: MAC, path }, to: { at: 'file', host: MAC, path: renamed } }] })
+    expect((await call<FilesTabs>('work.files.tabs', {})).tabs.find((t) => t.id === tabId)).toMatchObject({ name: 'Roster 2026.xlsx', copyOf: { host: MAC, path: renamed } })
+    await editorSaves(copy, 'two')
+    await settled()
+    expect(readFileSync(renamed, 'utf8')).toBe('two')
+    expect(readdirSync(dirname(path)).filter((n) => n.includes('(mine)'))).toEqual([])
+    expect(await backOf(tabId)).toMatchObject({ is: 'ok', writes: 1, held: 1 })
+    const again = await call<FilesOpened>('work.files.open', { ref: { at: 'file', host: MAC, path: renamed }, name: 'Roster 2026.xlsx' })
+    expect(again.tabId).toBe(tabId)
+  })
+
+  it("is re-pointed only by his own act, and never for a file of this host or a pair across two hosts", async () => {
+    const { path } = await openFar('Roster.xlsx', 'one')
+    const moves = [{ from: { at: 'file', host: MAC, path }, to: { at: 'file', host: MAC, path: `${path}.x` } }]
+    await expect(call('work.files.copiesMoved', { moves }, thread('t1'))).rejects.toThrow('files_* tools')
+    await expect(call('work.files.copiesMoved', { moves }, phone)).rejects.toThrow('this key may not change it')
+    await expect(call('work.files.copiesMoved', { moves }, reader)).rejects.toThrow('this key may not change it')
+    await call('work.files.copiesMoved', { moves: [{ from: { at: 'file', host: MAC, path }, to: { at: 'file', host: HOST, path: `${path}.x` } }] })
+    expect(copyRecord(box.ctx, WS, MAC, path)).not.toBeNull()
+  })
+})
+
 describe('a file that changed on its computer', () => {
   it('is never written over: the line says it changed, Reload takes theirs, Keep Both saves his beside it', async () => {
     const { path, copy, tabId } = await openFar('Roster.xlsx', 'ours')

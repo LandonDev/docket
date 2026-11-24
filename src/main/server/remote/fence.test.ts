@@ -424,7 +424,9 @@ describe("a file another host of his holds, named by a remote key (F-files-refus
     // A file of another host opens in a Files tab as the copy `filesCopy` makes (work/files/handle.ts `openCopy`): the path is never looked at here.
     ['work.files.open', (ref) => ({ workspaceId: 'w', ref })],
     // A listing of a desktop the window has no link to, sent there (work/files/across.ts).
-    ['work.files.across', (ref) => ({ workspaceId: 'w', host: MAC, method: 'work.files.stat', params: { refs: [ref] } })]
+    ['work.files.across', (ref) => ({ workspaceId: 'w', host: MAC, method: 'work.files.stat', params: { refs: [ref] } })],
+    // A far file renamed there: the workspace's records of its copy follow; nothing here is read (files/copies.ts).
+    ['work.files.copiesMoved', (ref) => ({ workspaceId: 'w', moves: [{ from: ref, to: ref }] })]
   ]
 
   it("is that host's to fence in the verbs that send it there or keep it as words: this host's roots say nothing of it", () => {

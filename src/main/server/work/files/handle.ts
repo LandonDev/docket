@@ -19,7 +19,7 @@ import { copyWaits } from './copyKept'
 import { linkAct, linksOf, saveAs } from './saveAs'
 import { saveAsWord } from './saveAsWord'
 import { isWordFile, keptDoc, recordWord, wordAuto, wordBacksOf, wordRow, wordSave } from './word'
-import { admitOwner, backsOf, copyAt, copyBack, copyClosing, copyKeep, copyRecord, copyReload, recordCopy, reopened, writeBack } from './copies'
+import { admitOwner, backsOf, copiesMoved, copyAt, copyBack, copyClosing, copyKeep, copyRecord, copyReload, recordCopy, reopened, writeBack } from './copies'
 import { cloudOf, seedUpload, uploadedHere } from './uploads'
 import { keepBody } from './body'
 import { isGuestPath, vmFetch, vmList, vmStat, vmVerbs } from '../office/vm/files'
@@ -805,7 +805,7 @@ const held = (verdict: 'run' | 'hold'): void => {
 const MAY_NOT = (what: string): string => `This key may not ${what}.`
 /** A thread changes files only through the `files_*` tools (files/tools.ts), which give a run its Result and Undo and hold a shared change: never by the wire. */
 export const THREADS_BY_TOOLS = 'A thread changes files with the files_* tools.'
-const CHANGES: ReadonlySet<string> = new Set(['make', 'rename', 'move', 'copy', 'trash', 'upload', 'write', 'restore', 'purge', 'project', 'copyBack', 'copyReload', 'copyKeep', 'wordSave', 'wordAuto', 'writeBack', 'saveAsWord', 'saveAs', 'linkAct'].map((v) => `work.files.${v}`))
+const CHANGES: ReadonlySet<string> = new Set(['make', 'rename', 'move', 'copy', 'trash', 'upload', 'write', 'restore', 'purge', 'project', 'copyBack', 'copiesMoved', 'copyReload', 'copyKeep', 'wordSave', 'wordAuto', 'writeBack', 'saveAsWord', 'saveAs', 'linkAct'].map((v) => `work.files.${v}`))
 /** Whether an operation id is in the journal already (`runOp` then answers it, and checks it is the same change). */
 const journalled = (db: DatabaseSync, op: string, workspaceId: string, verb: FileVerb): boolean => !!db.prepare(`SELECT 1 FROM work_files_ops WHERE id = ? AND workspace_id = ? AND verb = ?`).get(op, workspaceId, verb)
 /** How many rows each of Home's lists shows. */
@@ -1111,6 +1111,10 @@ export async function filesHandle(req: ClientRequest, ctx: WorkCtx, by: Caller, 
     case 'work.files.copyBack':
       ownRows(ctx, by, p.workspaceId)
       return handled(await copyBack(ctx, by, p as never))
+    case 'work.files.copiesMoved':
+      ownRows(ctx, by, p.workspaceId)
+      copiesMoved(ctx, by, p as never)
+      return handled(tabsFor(ctx, by, p.workspaceId))
     case 'work.files.copyReload':
       ownRows(ctx, by, p.workspaceId)
       await copyReload(ctx, by, p as never, signal)

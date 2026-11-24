@@ -14,6 +14,8 @@ import { closeFilesState } from './handle'
 import { registerFileMoved } from './hooks'
 import { files } from './index'
 import { movedSource } from './moved'
+import { keptDoc } from './word'
+import { madeFromShared } from '../docs/target'
 import { at, HOST, makeRig, window, WS, type Rig } from './testkit'
 
 /** Rename and move carry what hangs on a file (docs/agents/work-files.md "New, rename, move and copy"). */
@@ -117,6 +119,25 @@ describe('the rows other pillars keep by a path', () => {
     const want = [fileDocName(inFolder('Show.tcdoc')), fileDocName(inFolder('Shows', 'Spring LAN', 'Notes.tcdoc'))].sort()
     expect(docs('work_docs_threads')).toEqual(want)
     expect(docs('work_docs_mode')).toEqual(want)
+  })
+
+  it("keeps a Word file's document and a Save As link with a renamed .tcdoc: the document still saves to its Word file and still counts as shared", async () => {
+    const doc = inFolder('Plan.tcdoc')
+    writeFileSync(doc, '{}')
+    rig.db.prepare(`INSERT INTO work_files_word (workspace_id, host, path, vm, name, version, doc, doc_at, at) VALUES (?, 'env_mac', '/Users/dummy/OneDrive/Plan.docx', 0, 'Plan.docx', 'v1', ?, 1, 1)`).run(WS, doc)
+    rig.db.prepare(`INSERT INTO work_files_links (id, workspace_id, doc, format, host, path, name, place, version, sha, made_at) VALUES ('l1', ?, ?, 'pdf', 'env_mac', '/Users/dummy/OneDrive/Plan.pdf', 'Plan.pdf', 'OneDrive', 'v1', 's', 1)`).run(WS, doc)
+    await rename(doc, 'Plan 2026.tcdoc')
+    const moved = inFolder('Plan 2026.tcdoc')
+    expect(keptDoc(rig.ctx, WS, 'env_mac', '/Users/dummy/OneDrive/Plan.docx')?.doc).toBe(moved)
+    expect(madeFromShared(rig.ctx, at(moved))).toBe(true)
+    expect((rig.db.prepare(`SELECT doc FROM work_files_links WHERE id = 'l1'`).get() as { doc: string }).doc).toBe(moved)
+  })
+
+  it("re-points a Save As link whose file here is renamed: the next linked write goes to the new name", async () => {
+    writeFileSync(inFolder('Plan.pdf'), 'pdf')
+    rig.db.prepare(`INSERT INTO work_files_links (id, workspace_id, doc, format, host, path, name, place, version, sha, made_at) VALUES ('l2', ?, '/x/Plan.tcdoc', 'pdf', ?, ?, 'Plan.pdf', 'Folder', 'v1', 's', 1)`).run(WS, HOST, inFolder('Plan.pdf'))
+    await rename(inFolder('Plan.pdf'), 'Plan final.pdf')
+    expect(rig.db.prepare(`SELECT path, name FROM work_files_links WHERE id = 'l2'`).get()).toEqual({ path: inFolder('Plan final.pdf'), name: 'Plan final.pdf' })
   })
 
   it("re-points a media version's file and a meeting's recording, which those pillars play from", async () => {

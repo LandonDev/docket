@@ -227,6 +227,12 @@ export const FilesRequestSchemas = [
    * edit of that file: his window, or a key that may approve. Answers how sending stands once this send is done.
    */
   request('work.files.copyBack', z.object({ workspaceId: Workspace, tabId: z.string().max(100) })),
+  /**
+   * → FilesTabs: files of another host his window renamed or moved there; the workspace's copies of them (a tab's
+   * `copyOf`, the copy's, Word's and Save As's records) follow to where each now lies. His own act: his window, or a
+   * key that may approve. Nothing is read or written on a disk.
+   */
+  request('work.files.copiesMoved', z.object({ workspaceId: Workspace, moves: z.array(z.object({ from: FileRefSchema, to: FileRefSchema })).min(1).max(100) })),
   /** → FilesTabs: the file as it is on its computer now, in the copy's place; what was not sent is dropped. */
   request('work.files.copyReload', z.object({ workspaceId: Workspace, tabId: z.string().max(100) })),
   /** → FilesTabs: his copy saved beside the file that changed, under the keep-both name, and the tab shows that file now. */
@@ -552,6 +558,7 @@ export const FILES_CAPS = {
   'work.files.tabClose': 'operate',
   // His own edit of the file the copy is of: `approve` too, since others can open it (files/copies.ts).
   'work.files.copyBack': 'operate',
+  'work.files.copiesMoved': 'operate',
   'work.files.copyReload': 'operate',
   'work.files.copyKeep': 'operate',
   'work.files.wordSave': 'operate',
