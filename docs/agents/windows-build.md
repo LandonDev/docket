@@ -244,8 +244,13 @@ real thread or a warm harness across the update (milestone 13); the real product
 - `bun scripts/e2e-win-install.ts --url <the release's setup.exe>` in the rig as the standard user:
   the download (10 s), the silent install (104 s), nothing under Program Files, the Start menu entry,
   `claude.exe --version`, `tc-computer.exe version` on the desktop, the app on the desktop with its
-  data in `%LOCALAPPDATA%\temp-code`, its server up. `--installer <file>` does the same with a build
-  of ours.
+  data in `%LOCALAPPDATA%\temp-code`, its server up, its update check of the real feed clean; a
+  Claude thread answered one turn, and its `computer_apps` call made the app start `tc-computer.exe`
+  out of the install folder. `--installer <file>` does the same with a build of ours.
+- The turn needed the account saved (`window.aliax.capture('claude-code')`) and then the app started
+  again: before the restart the gateway answered "no saved account" (its process holds the account
+  list main gave it at start). Whether adding an account on the Accounts page has the same gap on
+  Windows was not tried.
 - The update from 1.0.365 to 1.0.366 (`e2e-updater.ts --win --busy`, two copies of master's head):
   check, download, Restart to update with a bundled `claude.exe` running out of the install folder,
   the new app back in 82 s (it was six to eight minutes before the slim bundle).

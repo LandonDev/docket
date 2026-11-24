@@ -218,6 +218,16 @@ async function run(): Promise<void> {
     // The gateway runs a turn only on an account the app saved (Accounts, or this call).
     const captured = await cdp.eval<{ ok?: boolean; error?: string }>("window.aliax.capture('claude-code')").catch((e: Error) => ({ ok: false, error: e.message }))
     check('the lent account is saved in the app (Accounts)', captured?.ok !== false, JSON.stringify(captured).slice(0, 160))
+    // The gateway reads the saved accounts when it starts: start the app again so it holds this one.
+    await ps('Get-Process TempCode -EA 0 | Stop-Process -Force -EA 0; Start-Sleep 4')
+    for (const t of extraTunnels.splice(0)) t.kill()
+    const again = await guest([vm('run-in-session'), `${APP_DIR}\\TempCode.exe`], 120_000)
+    check('the app starts again with the account saved', again.code === 0, again.out.slice(0, 120))
+    const restarted = await attach(CDP, 180_000)
+    await sleep(5000)
+    const nextPort = await restarted.eval<number | null>('window.api.getServerPort()')
+    extraTunnels.push(openTunnel([`${SERVER_LOCAL}:127.0.0.1:${nextPort}`]))
+    await sleep(3000)
     const meta = await rpc<{ id: string }>('session.create', { provider: 'claude', cwd: `${GUEST_HOME}\\tc-proof`, title: 'Windows install proof', threadType: 'chat', permission: 'auto' })
     await rpc('session.send', { sessionId: meta.id, text: 'Reply with exactly WIN-INSTALL-OK and nothing else.', model: 'claude-sonnet-5-5', reasoning: 'low' })
     type Ev = { seq: number; event: { type: string; text?: string; message?: string } }
