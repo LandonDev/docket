@@ -4,8 +4,9 @@ import type { ObjectChange, SheetObjects } from "work-kit/sheet";
 import { AUTO_FIT, forPackage, isObjectList, latestRules, ruleKinds, SHEET_MOVES, sheetStopWords, type ObjectIds, type RulesSetParams, type SheetRuleKind } from "@shared/work/sheets";
 import { cellText, holds } from "./model";
 import { FileIds, listChanges, listMedia, MadePictures, objectListOf, pictureAdded, tabList } from "./objects";
-import { EDIT_MAX, fromBase64, LOAD_MAX, type SheetHost, type SheetPushed } from "./host";
+import { EDIT_MAX, fromBase64, LOAD_MAX, type LoadAnswer, type SheetHost, type SheetPushed } from "./host";
 import { CloseRefused } from "../canvas/flush";
+import { onItemsGone } from "../canvas/gone";
 
 /**
  * One sheet item's sync with its host (docs/agents/work-sheets.md): the
@@ -63,6 +64,8 @@ export interface SheetSyncState {
   current: number;
   /** goes up whenever a cell changes, for what reads the grid (a chart) */
   tick: number;
+  /** a book of more than one piece is on its way: the bytes read of it so far, of its size; null otherwise */
+  loading: { at: number; size: number } | null;
 }
 
 /** A workbook as it was read, with its charts and pictures and their bytes by part where it holds any (an Excel file's own; absent elsewhere). */
@@ -80,6 +83,10 @@ const CLEAR = { v: null, t: null, f: null, si: null, p: null, s: null, custom: n
 /** How long edits gather before they are sent. */
 export const EDIT_WAIT = 150;
 const CONFLICT_TRIES = 5;
+/** How many of a book's pieces after the first are asked for at once. */
+export const LOAD_AT_ONCE = 3;
+/** How many books of tabs not shown are kept, so a tab shown again draws its book without reading it again. */
+export const KEPT_BOOKS = 2;
 /** Univer's own bookkeeping after an edit (the heights it works out again from what a row holds): nothing a file keeps, so never sent and never said. */
 const BOOKKEEPING = new Set(["sheet.mutation.set-worksheet-row-auto-height"]);
 
@@ -143,7 +150,7 @@ interface Laid {
 }
 
 export class SheetSync {
-  state: SheetSyncState = { view: null, failed: null, book: null, sendError: null, saving: false, savedAt: null, reloading: false, stopped: null, current: 0, tick: 0 };
+  state: SheetSyncState = { view: null, failed: null, book: null, sendError: null, saving: false, savedAt: null, reloading: false, stopped: null, current: 0, tick: 0, loading: null };
   /** the op the grid stands at */
   rev = 0;
   private readonly mine = new Set<number>();
@@ -181,6 +188,15 @@ export class SheetSync {
   private owed = false;
   /** each edit of his dropped or refused on its way (said once then), and why: what an action waiting on `written` reads */
   private lost = { n: 0, why: "" };
+  /**
+   * The book as it was read, at the revision it stands at, never handed to a grid: a grid changes the workbook it draws
+   * in place, so each one draws a copy (`drawn`), and a tab shown again draws this one again without reading it.
+   */
+  private kept: { book: Book; rev: number } | null = null;
+  /** work under way in `run` */
+  private busy = 0;
+  /** its item closed while a body still held it: let go at the release */
+  gone = false;
 
   constructor(
     readonly host: SheetHost,
@@ -188,6 +204,8 @@ export class SheetSync {
   ) {}
 
   get = (): SheetSyncState => this.state;
+  /** A body shows the item now. */
+  isShown = (): boolean => this.live > 0;
   subscribe = (listener: () => void): (() => void) => {
     this.listeners.add(listener);
     return () => this.listeners.delete(listener);
@@ -197,56 +215,78 @@ export class SheetSync {
     for (const listener of this.listeners) listener();
   }
 
-  /** Opens the item and loads its workbook; what it returns lets go. A body that comes back opens it again. */
+  /**
+   * Opens the item and loads its workbook; what it returns lets go. A body that comes back to a book still kept draws
+   * it again and asks only what landed since (`work.sheets.since`), reading the file again only when the host says to.
+   */
   start(): () => void {
     if (this.live++ === 0) {
-      this.offPush = this.host.onPush((push) => this.pushed(push));
-      void this.open();
+      unkeep(this);
+      this.listen();
+      if (this.kept) this.again();
+      else void this.open();
     }
     return () => {
       if (--this.live > 0) return;
-      this.offPush?.();
-      this.offPush = null;
       this.flush();
+      if (this.gone) forget(this);
+      else if (this.kept) keep(this);
+      else this.dropBook();
     };
+  }
+
+  /** Follows what lands on the item: while a body shows it, and while its book is kept. */
+  private listen(): void {
+    this.offPush ??= this.host.onPush((push) => this.pushed(push));
   }
 
   /** Opens again from nothing: Retry after a failure. */
   async open(): Promise<void> {
     this.set({ failed: null });
     try {
-      const view = await this.host.open();
+      // The first piece of the book comes with the view (`first`), so a book of one piece is one request.
+      const { first, ...view } = await this.host.open(true);
       this.view(view);
-      await this.load(view.rev);
+      await this.load(view.rev, first);
     } catch (error) {
-      this.set({ failed: message(error, "The host did not answer") });
+      this.set({ failed: message(error, "The host did not answer"), loading: null });
     }
   }
 
-  private async load(rev: number): Promise<void> {
-    const parts: Uint8Array[] = [];
-    let size = Infinity;
-    let at = 0;
-    let format: "xlsx" | "snapshot" = "snapshot";
-    let stood = rev;
-    while (at < size) {
-      const frame = await this.host.load(rev, at, LOAD_MAX);
-      const bytes = fromBase64(frame.data);
-      size = frame.size;
-      format = frame.format;
-      stood = frame.rev;
-      parts.push(bytes);
-      at += bytes.length;
-      if (bytes.length === 0) break;
+  /**
+   * Reads the book at `rev`: its first piece (carried by the open when it came with it), then the rest a few at a time,
+   * each into its place, with what has come said for a book of more than one piece.
+   */
+  private async load(rev: number, first?: LoadAnswer): Promise<void> {
+    const head = first && first.rev === rev ? first : await this.host.load(rev, 0, LOAD_MAX);
+    const start = fromBase64(head.data);
+    const size = Math.max(head.size, start.length);
+    const whole = new Uint8Array(size);
+    whole.set(start, 0);
+    const offsets: number[] = [];
+    if (start.length > 0) for (let at = start.length; at < size; at += LOAD_MAX) offsets.push(at);
+    let got = start.length;
+    if (offsets.length) this.set({ loading: { at: got, size } });
+    try {
+      await inTurns(offsets, LOAD_AT_ONCE, async (at) => {
+        const bytes = fromBase64((await this.host.load(rev, at, LOAD_MAX)).data);
+        if (bytes.length !== Math.min(LOAD_MAX, size - at)) throw new Error("The workbook did not come whole. Try again");
+        whole.set(bytes, at);
+        got += bytes.length;
+        this.set({ loading: { at: got, size } });
+      });
+    } finally {
+      if (this.state.loading) this.set({ loading: null });
     }
-    const whole = new Uint8Array(at);
-    let offset = 0;
-    for (const part of parts) {
-      whole.set(part, offset);
-      offset += part.length;
-    }
-    const book = await this.decode(whole, format);
-    this.rev = stood;
+    const book = await this.decode(got === size ? whole : whole.subarray(0, got), head.format);
+    this.kept = { book, rev: head.rev };
+    this.reset(head.rev);
+    this.set({ book: this.drawn() });
+  }
+
+  /** What a grid drawn afresh starts from: the revision of the book it draws, and nothing of the last grid's. */
+  private reset(rev: number): void {
+    this.rev = rev;
     this.mine.clear();
     this.dropQueue();
     this.detach();
@@ -254,7 +294,40 @@ export class SheetSync {
     this.sentMedia = new Set();
     this.fileIds = new FileIds();
     this.pendingObjects = [];
-    this.set({ book: { ...book, key: ++this.books } });
+  }
+
+  /** The kept book as the next grid draws it: a copy of its workbook and objects, which that grid may change. */
+  private drawn(): Book & { key: number } {
+    const { book } = this.kept!;
+    return { ...book, workbook: structuredClone(book.workbook), ...(book.objects ? { objects: structuredClone(book.objects) } : {}), key: ++this.books };
+  }
+
+  /**
+   * A body came back to a kept book. It is drawn again once nothing is on its way (a send of the last grid's edits lands
+   * first), and the grid then asks what landed since the book's revision, his own edits among them, since the copy holds
+   * none of them. Edits that wait to be sent, or a grid held still, read the file again instead.
+   */
+  private again(): void {
+    const redraw = async (): Promise<void> => {
+      if (!this.kept || this.queue.length > 0 || this.state.sendError || this.locks > 0 || this.state.failed) return this.open();
+      this.reset(this.kept.rev);
+      this.owed = false;
+      this.behind = true;
+      this.set({ book: this.drawn() });
+    };
+    if (this.busy === 0) void redraw();
+    else {
+      this.set({ book: null });
+      void this.run(redraw);
+    }
+  }
+
+  /** The kept book goes, and with it what follows the item: the next body reads the file again. */
+  dropBook(): void {
+    this.offPush?.();
+    this.offPush = null;
+    this.kept = null;
+    if (this.state.book) this.set({ book: null });
   }
 
   /** A new view: the stepper stays on its change where it can, and the cells follow the suggestions. */
@@ -529,7 +602,11 @@ export class SheetSync {
 
   /** One thing at a time with the host, in order: a send, a catch-up, a load. */
   private run(work: () => Promise<void>): Promise<void> {
-    this.chain = this.chain.then(work).catch(() => undefined);
+    this.busy++;
+    this.chain = this.chain
+      .then(work)
+      .catch(() => undefined)
+      .finally(() => void this.busy--);
     return this.chain;
   }
 
@@ -816,7 +893,41 @@ const listKey = (m: SheetMutationJson): string => `${(m.params as RulesSetParams
 
 export const useSheetSync = (sync: SheetSync): SheetSyncState => useSyncExternalStore(sync.subscribe, sync.get, sync.get);
 
+/** Runs `work` on each of `items`, at most `most` at once; rejects with the first failure, once the ones under way end. */
+export async function inTurns<T>(items: readonly T[], most: number, work: (item: T) => Promise<void>): Promise<void> {
+  let next = 0;
+  let failed: unknown = null;
+  const lane = async (): Promise<void> => {
+    while (next < items.length && failed === null) {
+      const item = items[next++]!;
+      await work(item).catch((error: unknown) => void (failed ??= error));
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(most, items.length) }, lane));
+  if (failed !== null) throw failed;
+}
+
+/** The syncs of the items open in this window, by `${env}\n${itemId}`. */
 const syncs = new Map<string, SheetSync>();
+/** The syncs whose body is not shown and whose book is kept, the most recently left last (`KEPT_BOOKS` at most). */
+const keptOrder: SheetSync[] = [];
+
+function unkeep(sync: SheetSync): void {
+  const at = keptOrder.indexOf(sync);
+  if (at >= 0) keptOrder.splice(at, 1);
+}
+/** A body let its sync go: the book is kept, and the oldest kept past `KEPT_BOOKS` drops its own. */
+function keep(sync: SheetSync): void {
+  unkeep(sync);
+  keptOrder.push(sync);
+  while (keptOrder.length > KEPT_BOOKS) keptOrder.shift()!.dropBook();
+}
+/** An item that closed: its sync and its book go. */
+function forget(sync: SheetSync): void {
+  unkeep(sync);
+  sync.dropBook();
+  for (const [key, held] of syncs) if (held === sync) syncs.delete(key);
+}
 
 /** The one sync of an item in this window, shared by its body, bar and tab-row parts. */
 export function syncOf(key: string, make: () => SheetSync): SheetSync {
@@ -828,7 +939,27 @@ export function syncOf(key: string, make: () => SheetSync): SheetSync {
   return sync;
 }
 
+/**
+ * The items the host says closed: their syncs go, a book with them (also the one of a file others can open). A sync a
+ * body still holds goes when the body lets it go; its last edits were flushed before the close (canvas/flush.ts).
+ */
+export function forgetItems(itemIds: readonly string[]): void {
+  const gone = new Set(itemIds);
+  for (const [key, sync] of [...syncs]) {
+    if (!gone.has(key.slice(key.indexOf("\n") + 1))) continue;
+    sync.gone = true;
+    if (!sync.isShown()) forget(sync);
+  }
+}
+onItemsGone(forgetItems);
+
+/** For tests: the syncs held, and the books kept for tabs not shown. */
+export const sheetSyncCount = (): number => syncs.size;
+export const keptBookCount = (): number => keptOrder.length;
+
 /** For tests and previews: every item starts again. */
 export function resetSheetSyncs(): void {
+  for (const sync of syncs.values()) sync.dropBook();
   syncs.clear();
+  keptOrder.length = 0;
 }

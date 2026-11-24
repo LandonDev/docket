@@ -279,8 +279,11 @@ export interface SheetExportAnswer {
 }
 
 export const SheetsRequestSchemas = [
-  /** → SheetView */
-  request('work.sheets.open', z.object({ itemId })),
+  /**
+   * → SheetView. `first`: the answer also carries `first`, the book's first piece as `work.sheets.load` answers it at
+   * the view's `rev` (offset 0, `SHEET_LOAD_MAX`), when the host can read it; absent, the canvas loads it itself.
+   */
+  request('work.sheets.open', z.object({ itemId, first: z.literal(true).optional() })),
   /**
    * → { data: base64, size, rev, format }: the workbook's bytes as the view's `rev` stands, by range.
    * `xlsx`: the package, for `importXlsx` (work-kit/sheet/xlsx). `snapshot`: Univer's workbook as JSON text.

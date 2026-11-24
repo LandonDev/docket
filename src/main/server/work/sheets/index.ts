@@ -146,19 +146,17 @@ export const sheets: WorkModule = {
       await ensureImported(ctx, held)
     }
     switch (req.method) {
-      case 'work.sheets.open':
-        return handled(viewFor(await viewOf(s, item!), by))
+      case 'work.sheets.open': {
+        const view = viewFor(await viewOf(s, item!), by)
+        if (!req.params.first) return handled(view)
+        // The book's first piece rides the view, so a book of one piece opens in one request. One this host cannot read
+        // now is left out: the window's own load asks again, and says why.
+        const first = await loadPiece(ctx, item!, view.rev, 0, SHEET_LOAD_MAX).catch(() => null)
+        return handled(first ? { ...view, first } : view)
+      }
       case 'work.sheets.load': {
-        const held = heldOf(item!, ctx.dataDir)
         const { rev, offset, length } = req.params
-        if (held.at === 'package') return handled({ ...readRange(s.packages.fileAt(held.path, rev), offset, length), rev, format: 'xlsx' as const })
-        if (held.at === 'excel' || held.at === 'google') {
-          const all = held.at === 'excel' ? await (await import('../office/grid')).snapshot(ctx, held.ref, rev) : await (await import('../google/grid')).snapshot(ctx, held.ref, rev)
-          return handled({ data: all.subarray(offset, offset + length).toString('base64'), size: all.length, rev, format: 'snapshot' as const })
-        }
-        const got = await host(ctx, 'snapshot', { sheet: held.ref, rev, offset, length })
-        if (sharedCsvOf(ctx, held)) drawnCsv.set(item!.id, sharedCsvOf(ctx, held)!)
-        return handled({ data: got.data, size: got.size, rev, format: 'snapshot' as const })
+        return handled(await loadPiece(ctx, item!, rev, offset, length))
       }
       case 'work.sheets.since': {
         const held = heldOf(item!, ctx.dataDir)
@@ -473,6 +471,20 @@ function free(path: string): string {
   let out = path
   for (let i = 2; existsSync(out); i++) out = `${path.slice(0, -ext.length)} (${i})${ext}`
   return out
+}
+
+/** One piece of the workbook's bytes as `rev` stands (`work.sheets.load`, and the first piece `work.sheets.open {first}` carries). */
+async function loadPiece(ctx: WorkCtx, item: CanvasItem, rev: number, offset: number, length: number): Promise<{ data: string; size: number; rev: number; format: 'xlsx' | 'snapshot' }> {
+  const s = await sheetsOf(ctx)
+  const held = heldOf(item, ctx.dataDir)
+  if (held.at === 'package') return { ...readRange(s.packages.fileAt(held.path, rev), offset, length), rev, format: 'xlsx' as const }
+  if (held.at === 'excel' || held.at === 'google') {
+    const all = held.at === 'excel' ? await (await import('../office/grid')).snapshot(ctx, held.ref, rev) : await (await import('../google/grid')).snapshot(ctx, held.ref, rev)
+    return { data: all.subarray(offset, offset + length).toString('base64'), size: all.length, rev, format: 'snapshot' as const }
+  }
+  const got = await host(ctx, 'snapshot', { sheet: held.ref, rev, offset, length })
+  if (sharedCsvOf(ctx, held)) drawnCsv.set(item.id, sharedCsvOf(ctx, held)!)
+  return { data: got.data, size: got.size, rev, format: 'snapshot' as const }
 }
 
 /** The workbook a service-held sheet stands at now (or at `at`), read in frames. */

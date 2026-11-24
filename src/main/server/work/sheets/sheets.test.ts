@@ -9,7 +9,7 @@ import { readObjectsResource } from 'work-kit/sheet/engine'
 import { LOCAL_PRINCIPAL } from '@shared/capabilities'
 import { ClientRequestSchema, type ClientRequest } from '@shared/contract'
 import type { WorkPush } from '@shared/contract-work'
-import { SHEET_ROW, type SheetView } from '@shared/contract-work-sheets'
+import { SHEET_LOAD_MAX, SHEET_ROW, type SheetView } from '@shared/contract-work-sheets'
 import type { SessionMeta } from '@shared/events'
 import type { CanvasSource, WorkScope } from '@shared/work'
 import { openDb, Store } from '../../db'
@@ -113,6 +113,15 @@ describe('a package in the canvas', () => {
     const b = await call<{ data: string }>('work.sheets.load', { itemId, rev: 0, offset: 1000, length: size })
     expect(a).toMatchObject({ size, format: 'xlsx' })
     expect(Buffer.concat([Buffer.from(a.data, 'base64'), Buffer.from(b.data, 'base64')]).equals(readFileSync(path))).toBe(true)
+  })
+
+  it('carries the book\'s first piece with the view when asked, the same bytes a load answers', async () => {
+    const plain = await call<SheetView & { first?: unknown }>('work.sheets.open', { itemId })
+    expect(plain.first).toBeUndefined()
+    const view = await call<SheetView & { first?: { data: string; size: number; rev: number; format: string } }>('work.sheets.open', { itemId, first: true })
+    const load = await call<{ data: string; size: number; rev: number; format: string }>('work.sheets.load', { itemId, rev: view.rev, offset: 0, length: SHEET_LOAD_MAX })
+    expect(view.first).toEqual(load)
+    expect(Buffer.from(view.first!.data, 'base64').equals(readFileSync(path))).toBe(true)
   })
 
   it('saves the owner\'s edit, pushes the new rev, and takes an edit made one revision behind', async () => {

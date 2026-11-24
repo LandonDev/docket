@@ -1,6 +1,7 @@
 import { useSyncExternalStore } from "react";
 import type { CanvasItem, CanvasKind, CanvasSource } from "@shared/work";
 import { registry } from "../../lib/connection";
+import { itemsGone } from "./gone";
 
 /**
  * The renderer's copy of each thread's canvas items (the host's
@@ -102,6 +103,8 @@ function putItems(sessionId: string, items: readonly CanvasItem[], opened?: stri
   const selected = opened && items.some((item) => item.id === opened) ? opened : selectedAfter(prev.items, items, prev.selected);
   // A kind's kept state goes only once the host says the item closed: a close it refuses puts the tab back as it was.
   if (confirmed) for (const id of [...kept.keys()]) if (prev.items.some((item) => item.id === id) && !items.some((item) => item.id === id)) kept.delete(id);
+  // What a kind keeps of an item outside its body goes too (canvas/gone.ts).
+  if (confirmed) itemsGone(prev.items.filter((item) => !items.some((i) => i.id === item.id)).map((item) => item.id));
   write(sessionId, { items, loaded: true, selected, folded });
 }
 
@@ -160,6 +163,7 @@ export async function closeItem(environmentId: string, sessionId: string, itemId
   try {
     await registry.linkOf(environmentId).request("work.canvas.close", { itemId });
     kept.delete(itemId);
+    itemsGone([itemId]);
   } catch (error) {
     await loadCanvas(environmentId, sessionId);
     throw error;

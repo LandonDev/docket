@@ -1,0 +1,22 @@
+// @vitest-environment jsdom
+import { cleanup, render, screen } from "@testing-library/react";
+import { afterEach, describe, expect, it } from "vitest";
+import { SheetSkeleton } from "./SheetBody";
+
+afterEach(cleanup);
+
+describe("the sheet's bones while its book comes", () => {
+  it("a book of more than one piece shows how much has come in the formula bar's place, with its value", () => {
+    render(<SheetSkeleton loading={{ at: 4 * 1024 * 1024, size: 10 * 1024 * 1024 }} name="Budget.xlsx" />);
+    const bar = screen.getByRole("progressbar", { name: "Getting Budget.xlsx" });
+    expect(bar.getAttribute("aria-valuenow")).toBe(String(4 * 1024 * 1024));
+    expect(bar.getAttribute("aria-valuemax")).toBe(String(10 * 1024 * 1024));
+    expect(screen.getByText("4.0 of 10.0 MB")).toBeTruthy();
+    expect(screen.getByLabelText("Loading").getAttribute("aria-busy")).toBe("true");
+  });
+
+  it("a book of one piece shows the bones alone", () => {
+    render(<SheetSkeleton />);
+    expect(screen.queryByRole("progressbar")).toBeNull();
+  });
+});

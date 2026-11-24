@@ -5,7 +5,7 @@ import type { GridSelection, GridState, ObjectAdd, ObjectChange, ObjectAnchor, O
 import { readFormat, styleOf } from "work-kit/sheet/format";
 import type { SheetGrid } from "./grid";
 import type { ObjectIds } from "@shared/work/sheets";
-import type { ReviewWhich, SheetHost, SheetOp, SheetPushed } from "./host";
+import { LOAD_MAX, type ReviewWhich, type SheetHost, type SheetOp, type SheetPushed } from "./host";
 import type { Workbook } from "./sync";
 
 /**
@@ -71,6 +71,8 @@ export type FakeSheetHost = SheetHost & {
   /** what `imported` answers for a copy of another format: a refusal in the host's words, or what the format left behind */
   importRefusal?: string;
   importDrops?: string[];
+  /** How many opens carried the book's first piece. */
+  inline: number;
   /** Set: open never answers (the loading state). */
   hold: boolean;
   /** Set: the next edit answers these ids (a save that named charts or pictures anew), or is refused in these words. */
@@ -81,8 +83,10 @@ export function fakeSheetHost(initial: SheetView, workbook: Workbook | { workboo
   const listeners = new Set<(push: SheetPushed) => void>();
   const text = JSON.stringify(workbook);
   const pick = (which: ReviewWhich) => (s: SheetSuggestion) => which === "all" || ("ids" in which ? which.ids.includes(s.id) : s.changeSet === which.changeSet);
+  const piece = (rev: number, offset: number, length: number) => ({ data: toBase64(text.slice(offset, offset + length)), size: text.length, rev, format: "snapshot" as const });
   const host: FakeSheetHost = {
     calls: [],
+    inline: 0,
     view: initial,
     rev: initial.rev,
     ops: [],
@@ -99,14 +103,24 @@ export function fakeSheetHost(initial: SheetView, workbook: Workbook | { workboo
     push(push) {
       for (const listener of listeners) listener(push);
     },
-    async open() {
+    async open(first) {
       host.calls.push(["open", null]);
       if (host.hold) return new Promise<SheetView>(() => undefined);
-      return { ...host.view, rev: host.rev };
+      // The first piece that rides the open is read as the host reads it, and logged as the load it stands for; `inline`
+      // counts them. One the host cannot read is left out, as the host leaves it: the window's own load says why.
+      const view = { ...host.view, rev: host.rev };
+      if (!first) return view;
+      try {
+        const got = await host.load(host.rev, 0, LOAD_MAX);
+        host.inline++;
+        return { ...view, first: got };
+      } catch {
+        return view;
+      }
     },
     async load(rev, offset, length) {
       host.calls.push(["load", { rev, offset, length }]);
-      return { data: toBase64(text.slice(offset, offset + length)), size: text.length, rev, format: "snapshot" as const };
+      return piece(rev, offset, length);
     },
     async since(rev) {
       host.calls.push(["since", rev]);

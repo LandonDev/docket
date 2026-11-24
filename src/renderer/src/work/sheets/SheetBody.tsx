@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { bodyFailureWords } from "../canvas/CanvasPane";
-import { OpenFailed } from "../canvas/FetchState";
+import { OpenFailed, progressWords } from "../canvas/FetchState";
 import type { SheetView } from "@shared/contract-work-sheets";
 import type { SheetImportAct, SheetImportDone } from "@shared/work/sheetFormats";
 import { patternProblem, reviewMarks, RulesSheet, SheetToolbar, type ChartSpec, type GridSelection, type RuleKind, type RulesView, type SheetControl, type SheetHandle, type SheetMark } from "work-kit/sheet";
 import { ChartBar } from "../../chrome/icons";
 import { loadToast } from "../../components/ui/toaster";
 import { BusyLabel } from "../../components/ui/button";
+import { Progress } from "../../components/ui/progress";
 import { Skeleton } from "../../components/ui/skeleton";
 import { Tabs, TabsIndicator, TabsList, TabsTrigger, TABS_PILL_TRIGGER } from "../../components/ui/tabs";
 import { dayTime } from "../../lib/duration";
@@ -200,7 +201,7 @@ export function Body(props: Props) {
     if (state.failed) void sync.open();
   };
   if (failed) return <OpenFailed kind="sheet" why={failed} onRetry={retry} />;
-  if (!view || !book || prepared !== true || faces !== book.key) return <SheetSkeleton />;
+  if (!view || !book || prepared !== true || faces !== book.key) return <SheetSkeleton loading={book ? null : state.loading} name={view?.name ?? item.title} />;
   const Canvas = grid.Canvas;
   return (
     <div
@@ -653,13 +654,24 @@ const BONE_ROWS: Array<[number, boolean]> = [
   [40, true],
 ];
 
-/** Loading: the sheet's own shape, the formula bar, the lettered grid and the sheet tabs, with bones where the words will be. */
-export function SheetSkeleton() {
+/**
+ * Loading: the sheet's own shape, the formula bar, the lettered grid and the sheet tabs, with bones where the words will
+ * be. A book of more than one piece on its way (`loading`) puts a 4px bar with how much has come in the formula bar's
+ * bone, as a fetched attachment's first line does.
+ */
+export function SheetSkeleton({ loading = null, name }: { loading?: { at: number; size: number } | null; name?: string } = {}) {
   return (
     <div aria-busy="true" aria-label="Loading" className="flex min-h-0 flex-1 flex-col overflow-hidden">
       <div className="flex h-8 flex-none items-center gap-2 border-b border-border pr-3 pl-2">
         <span className="h-6 w-18 flex-none rounded-md border border-input" />
-        <Skeleton className="h-3 w-24" />
+        {loading ? (
+          <div className="flex h-3 w-1/2 min-w-48 items-center gap-2">
+            <Progress aria-label={name ? `Getting ${name}` : "Getting the sheet"} value={loading.at} max={loading.size} className="flex-1" />
+            <span className="shrink-0 text-xs leading-none text-muted-foreground tabular-nums">{progressWords(loading.at, loading.size)}</span>
+          </div>
+        ) : (
+          <Skeleton className="h-3 w-24" />
+        )}
       </div>
       <div className="min-h-0 flex-1 overflow-hidden">
         <div className="flex h-6 border-b border-border bg-sidebar">

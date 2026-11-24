@@ -40,7 +40,8 @@ export interface SheetPushed {
 }
 
 export interface SheetHost {
-  open(): Promise<SheetView>;
+  /** `first`: the book's first piece comes with the view (`work.sheets.open {first: true}`), where the host can read it. */
+  open(first?: boolean): Promise<SheetView & { first?: LoadAnswer }>;
   load(rev: number, offset: number, length: number): Promise<LoadAnswer>;
   since(rev: number): Promise<SinceAnswer>;
   /** `ids`: the charts and pictures the save wrote that the file now names otherwise */
@@ -63,7 +64,7 @@ export function linkSheetHost(environmentId: string, itemId: string): SheetHost 
   const link = (): ReturnType<typeof registry.linkOf> => registry.linkOf(environmentId);
   const call = <T>(method: string, params: Record<string, unknown> = {}): Promise<T> => link().request<T>(method, { itemId, ...params });
   return {
-    open: () => call("work.sheets.open"),
+    open: (first) => call("work.sheets.open", first ? { first: true } : {}),
     load: (rev, offset, length) => call("work.sheets.load", { rev, offset, length }),
     since: (rev) => call("work.sheets.since", { rev }),
     edit: (baseRev, mutations) => call("work.sheets.edit", { baseRev, mutations }),
