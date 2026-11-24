@@ -98,4 +98,15 @@ describe("a slide's media", () => {
     expect(mediaFile(deps.dir, slides[1], 3)).toBeNull()
     expect(mediaFile(deps.dir, slides[1], 4)).not.toBeNull()
   })
+
+  it('never lets go of a clip the revision it made names, however many it has', async () => {
+    const { deps } = rig({ '257/3': MP4, '257/4': WAV })
+    await makeMedia(deps, slides)
+    const old = readdirSync(deps.dir).find((f) => f.endsWith('.play') && readFileSync(join(deps.dir, f)).equals(MP4))!
+    utimesSync(join(deps.dir, old), new Date(0), new Date(0))
+    // The oldest clip is this revision's own: it stays, and only others make room.
+    pruneMedia(deps.dir, 1, new Set([old]))
+    expect(mediaFile(deps.dir, slides[1], 3)).not.toBeNull()
+    expect(mediaFile(deps.dir, slides[1], 4)).toBeNull()
+  })
 })

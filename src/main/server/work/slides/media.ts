@@ -140,12 +140,13 @@ export async function makeMedia(deps: MediaDeps, slides: readonly MediaSlide[], 
       }
     }
   }
-  if (made) pruneMedia(deps.dir, MEDIA_KEPT)
+  // Room is made from other revisions' clips: every clip this one names stays, however many it has.
+  if (made) pruneMedia(deps.dir, MEDIA_KEPT, new Set(slides.flatMap((s) => s.shapes.flatMap((sh) => (sh.kind === 'media' ? (mediaFile(deps.dir, s, sh.id)?.path.split(/[\\/]/).pop() ?? []) : [])))))
   return made
 }
 
-/** Keeps the newest `keep` playable files and the notes that name them. */
-export function pruneMedia(dir: string, keep: number): void {
+/** Keeps the newest `keep` playable files besides those `spare` names, and the notes that name what stays. */
+export function pruneMedia(dir: string, keep: number, spare: ReadonlySet<string> = new Set()): void {
   let names: string[]
   try {
     names = readdirSync(dir)
@@ -159,8 +160,8 @@ export function pruneMedia(dir: string, keep: number): void {
       return 0
     }
   }
-  const files = names.filter((f) => f.endsWith('.play')).sort((a, b) => at(b) - at(a))
-  const gone = new Set(files.slice(keep))
+  const files = names.filter((f) => f.endsWith('.play') && !spare.has(f)).sort((a, b) => at(b) - at(a))
+  const gone = new Set(files.slice(Math.max(0, keep - spare.size)))
   for (const f of gone) rmSync(join(dir, f), { force: true })
   for (const f of names.filter((n) => n.endsWith('.json'))) {
     try {

@@ -2572,6 +2572,30 @@ describe("a show's builds and clips, made in the background", () => {
     expect(readdirSync(join(dir, 'canvas', 't2', b.id, 'pages')).length).toBeGreaterThan(0)
   })
 
+  it('a step picture or clip let go to make room after its job ended is made again, never called failed', async () => {
+    await host(realPdfs)
+    const path = join(dir, 'Built.pptx')
+    writeFileSync(path, fakeBytes(BUILT))
+    const item = openDeck(fileSource(path))
+    await showOf(item.id)
+    await vi.waitFor(async () => {
+      const done = (await showOf(item.id)).slides[1]
+      expect([!!done.steps![0].pic, !!done.media![0].file]).toEqual([true, true])
+    })
+    // The pages folder at its limit lets the step picture go, and the media folder the clip.
+    const shown = (await showOf(item.id)).slides[1]
+    const pages = join(deckCache(dir, deckKey(item)), 'pages')
+    for (const f of readdirSync(pages).filter((f) => f.startsWith(shown.steps![0].pic!.rev))) rmSync(join(pages, f))
+    const media = join(deckCache(dir, deckKey(item)), 'media')
+    for (const f of readdirSync(media).filter((f) => f.endsWith('.play'))) rmSync(join(media, f))
+    const after = (await showOf(item.id)).slides[1]
+    expect(after.steps![0].missing).toBe('making')
+    await vi.waitFor(async () => {
+      const again = (await showOf(item.id)).slides[1]
+      expect([!!again.steps![0].pic, !!again.media![0].file]).toEqual([true, true])
+    })
+  })
+
   it("keeps a shared library's step pictures and clips in the item's own folder, and marks every job so none leaves the host", async () => {
     await host(realPdfs)
     const team = join(dir, 'Esports Staff')

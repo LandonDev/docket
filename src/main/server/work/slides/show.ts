@@ -26,7 +26,14 @@ export async function showOf(ctx: Ctx, item: CanvasItem, signal?: AbortSignal): 
     const media = await deckDir(ctx, item, 'media')
     prepareShow(ctx, item, deck)
     // A step picture not kept yet is still being made while this revision's job runs; once it has ended, it failed.
-    const job = running.get(showKey(ctx, item))
+    // One the done job made, or found made, may since have been let go to make room (prunePages): that is no failure,
+    // and the job makes it again.
+    let job = running.get(showKey(ctx, item))
+    if (job?.hash === hash && job.done && missingOf(pages, media, file).some((k) => !job!.left.has(k))) {
+      stopShow(showKey(ctx, item))
+      prepareShow(ctx, item, deck)
+      job = running.get(showKey(ctx, item))
+    }
     const making = job?.hash === hash && !job.done
     let changed = 0
     const slides = file.info.slides.map((s, i): ShowSlide => {
@@ -88,13 +95,14 @@ export const mediaPath = (ctx: Ctx, item: CanvasItem, rev: string): Promise<stri
  * The background job of each deck, for one revision of its file: a newer revision stops the older's. It stays once
  * done, so a revision is made once while the app runs; one that failed is tried again at its next change.
  */
-const running = new Map<string, { hash: string; stop: AbortController; done: boolean }>()
+const running = new Map<string, { hash: string; stop: AbortController; done: boolean; left: ReadonlySet<string> }>()
 
-/** Whether a deck still lacks a step picture or a playable media file. */
-function lacks(pages: string, media: string, file: Built): boolean {
+/** What a deck still lacks: each step picture by its key, each playable media file by `media:<slide>:<shape>`. */
+function missingOf(pages: string, media: string, file: Built): string[] {
   // Step pictures need a picture of the deck; clips do not.
-  if (file.pdf && stepJobs(file.info.slides, (key) => existsSync(join(pages, `${key}.pdf`))).length) return true
-  return file.info.slides.some((s) => s.draws && s.shapes.some((sh) => sh.kind === 'media' && !mediaFile(media, s, sh.id)))
+  const out = file.pdf ? stepJobs(file.info.slides, (key) => existsSync(join(pages, `${key}.pdf`))).flatMap((j) => j.slides.map((s) => s.key)) : []
+  for (const s of file.info.slides) if (s.draws) for (const sh of s.shapes) if (sh.kind === 'media' && !mediaFile(media, s, sh.id)) out.push(`media:${s.id}:${sh.id}`)
+  return out
 }
 
 /** Tells every seat on the deck that more of its show is ready. */
@@ -117,14 +125,17 @@ export function prepareShow(ctx: Ctx, item: CanvasItem, deck: Pick<Deck, 'hash' 
   const was = running.get(key)
   if (was?.hash === deck.hash) return
   const stop = new AbortController()
-  const job = { hash: deck.hash, stop, done: false }
+  // `left`: what the job could not make, once it has ended; anything else missing later was let go after it.
+  const job = { hash: deck.hash, stop, done: false, left: new Set<string>() as ReadonlySet<string> }
   was?.stop.abort()
   running.set(key, job)
   let worked = false
+  let pages = ''
+  let media = ''
   void (async () => {
-    const pages = await deckDir(ctx, item, 'pages')
-    const media = await deckDir(ctx, item, 'media')
-    if (!lacks(pages, media, deck.file)) return
+    pages = await deckDir(ctx, item, 'pages')
+    media = await deckDir(ctx, item, 'media')
+    if (!missingOf(pages, media, deck.file).length) return
     worked = true
     const copy = await scratch(ctx, item, 'show')
     try {
@@ -170,6 +181,7 @@ export function prepareShow(ctx: Ctx, item: CanvasItem, deck: Pick<Deck, 'hash' 
       if (!stop.signal.aborted) console.warn(`slides: the show's pictures were not made: ${err instanceof Error ? err.message : String(err)}`)
     })
     .finally(() => {
+      if (!stop.signal.aborted && pages) job.left = new Set(missingOf(pages, media, deck.file))
       job.done = true
       // A show still waiting on a step that was not made is told, so it says so rather than wait on it.
       if (worked && !stop.signal.aborted) tellReady(ctx, item, deck.hash)
