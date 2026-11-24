@@ -6,6 +6,7 @@
  * run from one held item to the next, the folds, and a source that throws.
  */
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { useMemo } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { OutboxItem } from "@shared/contract-work-outbox";
 
@@ -22,6 +23,7 @@ const world = vi.hoisted(() => ({
   getHeld: null as Promise<void> | null,
   workspaces: [] as { id: string; environmentId: string; name: string; path: string; kind?: string; sector?: string | null }[],
   open: new Set(["box", "mac"]),
+  owed: 0,
 }));
 
 vi.mock("../../lib/connection", async (original) => {
@@ -33,6 +35,8 @@ vi.mock("../../lib/connection", async (original) => {
     onClose: () => () => undefined,
     request: async (method: string, params: Record<string, unknown> = {}) => {
       world.calls.push({ env, method, params });
+      // As the real link does for a read that is not safe to queue: a host whose link is down refuses at once.
+      if (!world.open.has(env)) throw new Error("not connected");
       const items = world.items.get(env) ?? [];
       const find = () => items.find((i) => i.ref.id === (params.ref as { id: string }).id)!;
       const now = Date.now();
@@ -56,6 +60,8 @@ vi.mock("../../lib/connection", async (original) => {
           return find();
         case "work.lifeos.status":
           return { lifeos: { state: "signed-out" }, keys: [] };
+        case "work.test.owed":
+          return { n: world.owed };
       }
       throw new Error(`unknown ${method}`);
     },
@@ -110,7 +116,7 @@ import { loadOutbox, resetOutboxStore } from "../outbox/store";
 import { source as held } from "./held";
 import { toastAnchor } from "../../lib/toastAnchor";
 import { nextHeld } from "./HeldSheet";
-import { TIMED_OUT } from "./read";
+import { TIMED_OUT, useEachWorkspace } from "./read";
 import { comeBack, leave, openHeld, putAnswer, resetToday, toastUp, todayNow } from "./store";
 import { ROW_GRID, TITLE_EDGE } from "./TodayRow";
 import { View } from "./TodayView";
@@ -158,6 +164,7 @@ beforeEach(() => {
   world.listHeld = null;
   world.workspaces = [...JOBS];
   world.open = new Set(["box", "mac"]);
+  world.owed = 0;
   moved();
   setWorkOn("box", true);
   setWorkOn("mac", true);
@@ -345,15 +352,19 @@ describe("Today", () => {
     expect(screen.queryByText("All clear")).toBeNull();
   });
 
-  it("names an offline host once, at the page's foot", async () => {
+  it("names an offline host once, at the page's foot, and no section blames it for a read its link refused", async () => {
     world.open = new Set(["box"]);
     moved();
     world.items.set("box", [mail("o1", "Marcus Bell", "Sponsor deck")]);
     await loadOutbox();
+    // The Outbox asked the Mac too, and its link said "not connected".
+    expect(world.calls.some((c) => c.env === "mac" && c.method === "work.outbox.list")).toBe(true);
     render(<View onClose={() => {}} />);
     const lines = document.querySelectorAll("[data-today-offline]");
     expect(lines).toHaveLength(1);
     expect(lines[0]!.textContent).toBe("Mac is offline.");
+    expect(document.querySelectorAll('[data-view-state="failed"]')).toHaveLength(0);
+    expect(document.body.textContent).not.toContain("not connected");
   });
 
   it("folds Waiting on you at five rows; its line unfolds the rest in place and stays unfolded", async () => {
@@ -612,7 +623,36 @@ describe("a source", () => {
     render(<View onClose={() => {}} />);
     await waitFor(() => expect(todayNow().broken.map((s) => s.id)).toEqual(["review"]));
     expect(screen.queryByText("All clear")).toBeNull();
-    expect(section("also").querySelector('[data-view-state="failed"]')!.textContent).toBe("Today could not show this");
+    // Under Also the line names what is missing: two broken sources there are two lines.
+    expect(section("also").querySelector('[data-view-state="failed"]')!.textContent).toBe("Today could not show the weekly review");
+  });
+
+  it("that reads hosts paints the rows it had in the first frame of a reopen, before any host is asked again", async () => {
+    world.owed = 2;
+    const owed: TodaySource = {
+      id: "money",
+      section: { id: "money", title: "Owed", order: 60, empty: "", fold: 5 },
+      use(env) {
+        const read = useEachWorkspace<{ n: number }>(env, "work.test.owed", (w) => ({ workspaceId: w.workspaceId }));
+        return useMemo(
+          () => ({
+            rows: read.answers.flatMap(({ workspace, value }) => Array.from({ length: value.n }, (_, i) => ({ key: `money:${workspace.workspaceId}:${i}`, section: "money", sector: workspace.sector, title: `Owed ${workspace.workspaceId} ${i}`, open: () => {} }))),
+            loading: read.loading,
+            failed: read.failed,
+          }),
+          [read],
+        );
+      },
+    };
+    await loadOutbox();
+    resetToday([held, owed]);
+    const { unmount } = render(<View onClose={() => {}} />);
+    await waitFor(() => expect(rowTitles()).toHaveLength(4));
+    unmount();
+    render(<View onClose={() => {}} />);
+    // The fresh read has asked no host yet: the rows it had stand, with no bones over them.
+    expect(rowTitles()).toHaveLength(4);
+    expect(section("money").querySelector('[role="status"][aria-busy]')).toBeNull();
   });
 
   it("whose read failed with no section of its own says so under Also, with its Retry, and the page is not clear", async () => {

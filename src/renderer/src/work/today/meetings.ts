@@ -103,10 +103,10 @@ export function meetingRows(events: readonly MeetingEvent[], day: { from: number
 const IDLE: LifeosSession = { environmentId: "", sector: null, client: null, state: "off" };
 const NO_PEOPLE: readonly DirectoryPerson[] = [];
 
-/** One sector's people, read only while a job holds the sector. Always the same hooks. */
-function usePeopleOf(env: TodayEnv, sector: SectorKey): readonly DirectoryPerson[] {
+/** One sector's people, read only while a job holds the sector, through the session its meetings were read through. Always the same hooks. */
+function usePeopleOf(env: TodayEnv, sector: SectorKey, sessionOf: (sector: SectorKey) => LifeosSession): readonly DirectoryPerson[] {
   const held = env.workspaces.some((w) => w.sector === sector);
-  const read = useLifeosQuery<DirectoryPerson[]>(held ? env.lifeos : IDLE, "people:directory", { sector });
+  const read = useLifeosQuery<DirectoryPerson[]>(held ? sessionOf(sector) : IDLE, "people:directory", { sector });
   return held && read.status === "ready" ? read.value : NO_PEOPLE;
 }
 
@@ -117,12 +117,12 @@ function useMeetings(env: TodayEnv): TodayAnswer {
   const now = useMinute();
   const { from, to } = env.day;
   const read = useLifeosRows<MeetingEvent[], MeetingEvent>(env, "events:range", useMemo(() => ({ from, to: dayAfter(from, 2) }), [from]), pick, idOf);
-  const cosmic = usePeopleOf(env, "cosmic");
-  const hypixel = usePeopleOf(env, "hypixel");
-  const purdue = usePeopleOf(env, "purdue");
-  const ref = usePeopleOf(env, "ref");
-  const unify = usePeopleOf(env, "unify");
-  const life = usePeopleOf(env, "life");
+  const cosmic = usePeopleOf(env, "cosmic", read.sessionOf);
+  const hypixel = usePeopleOf(env, "hypixel", read.sessionOf);
+  const purdue = usePeopleOf(env, "purdue", read.sessionOf);
+  const ref = usePeopleOf(env, "ref", read.sessionOf);
+  const unify = usePeopleOf(env, "unify", read.sessionOf);
+  const life = usePeopleOf(env, "life", read.sessionOf);
   const built = useMemo(() => {
     if (!read.rows) return null;
     const people: Record<SectorKey, readonly DirectoryPerson[]> = { cosmic, hypixel, purdue, ref, unify, life };

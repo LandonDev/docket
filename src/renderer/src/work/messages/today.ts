@@ -4,7 +4,10 @@ import type { MessagesUnansweredAnswer } from "@shared/contract-work-messages";
 import type { ChatWaiting } from "@shared/work/messages";
 import { loadToast } from "../../components/ui/toaster";
 import { Chat } from "../icons";
+import type { LifeosSession } from "../shell/lifeos";
+import { shown } from "../today/lifeos";
 import { goTo } from "../today/open";
+import { comeBack, leave } from "../today/store";
 import { useEachWorkspace } from "../today/read";
 import type { TodayAnswer, TodayEnv, TodayRow, TodaySection, TodaySource, TodayWorkspace } from "../today/types";
 import { rowTime } from "./model";
@@ -40,6 +43,8 @@ function rowOf(workspace: TodayWorkspace, chat: ChatWaiting, now: number, markRe
     key: chatKey(chat.chatId),
     section: SECTION.id,
     sector: workspace.sector,
+    // The workspace its host answered for: where two hosts hold the sector under two names, the one the press opens.
+    job: workspace.name,
     title,
     ...(chat.text ? { detail: chat.text } : {}),
     // Newest first in a section that orders ascending.
@@ -51,21 +56,31 @@ function rowOf(workspace: TodayWorkspace, chat: ChatWaiting, now: number, markRe
   };
 }
 
+/**
+ * Mark read from a row. His read mark is LifeOS's own: written on the page's
+ * one session, as the view writes it on a job's. The row leaves by his act
+ * as any row does (store.ts `leave`), and is back as it was if the write
+ * fails, with a toast the page counts (lifeos.ts `shown`).
+ */
+export async function markChatRead(client: LifeosSession["client"], chatId: string): Promise<void> {
+  const key = chatKey(chatId);
+  leave(key);
+  try {
+    if (!client) throw new Error("LifeOS is not connected");
+    await client.mutation(makeFunctionReference<"mutation">("chats:markRead"), { id: chatId });
+  } catch {
+    comeBack(key);
+    (await loadToast()).error("Couldn't mark it read", shown().options);
+  }
+}
+
 function useWaiting(env: TodayEnv): TodayAnswer {
   const each = useEachWorkspace<MessagesUnansweredAnswer>(env, "work.messages.unanswered", (w) => ({ workspaceId: w.workspaceId }), { push: "work.messages" });
   const client = env.lifeos.client;
-  return useMemo(() => {
-    // His read mark is LifeOS's own: written on the page's one session, as the view writes it on a job's.
-    const markRead = async (chatId: string): Promise<void> => {
-      try {
-        if (!client) throw new Error("LifeOS is not connected");
-        await client.mutation(makeFunctionReference<"mutation">("chats:markRead"), { id: chatId });
-      } catch {
-        (await loadToast()).error("Couldn't mark it read");
-      }
-    };
-    return { rows: waitingRows(each.answers, Date.now(), markRead), loading: each.loading, failed: each.failed };
-  }, [each, client]);
+  return useMemo(
+    () => ({ rows: waitingRows(each.answers, Date.now(), (chatId) => markChatRead(client, chatId)), loading: each.loading, failed: each.failed }),
+    [each, client],
+  );
 }
 
 export const source: TodaySource = { id: "messages", section: SECTION, use: useWaiting };

@@ -5,8 +5,11 @@ import type { TodayWorkspace } from "../today/types";
 const went = vi.hoisted(() => [] as unknown[]);
 vi.mock("../today/open", () => ({ goTo: (workspace: unknown, target: unknown) => void went.push([workspace, target]) }));
 vi.mock("../today/read", () => ({ useEachWorkspace: () => ({ answers: [], loading: false, failed: [] }) }));
+const toasts = vi.hoisted(() => [] as unknown[][]);
+vi.mock("../../components/ui/toaster", () => ({ loadToast: async () => ({ error: (...args: unknown[]) => void toasts.push(args) }) }));
 
-const { chatKey, source, waitingRows } = await import("./today");
+const { chatKey, markChatRead, source, waitingRows } = await import("./today");
+const { resetToday, todayNow } = await import("../today/store");
 const { TODAY_SOURCES } = await import("../today/sources");
 
 /** Messages on Today: the conversations that wait on his answer, from every job. Made-up people. */
@@ -62,5 +65,25 @@ describe("Messages on Today", () => {
     expect(row!.acts?.map((a) => a.label)).toEqual(["Mark read"]);
     await row!.acts![0]!.run();
     expect(read).toEqual(["c1"]);
+  });
+
+  it("names the very workspace its host answered for", () => {
+    const [row] = waitingRows([{ workspace: { ...job("ws-a", "cosmic", "mac"), name: "Cosmic (Mac)" }, value: { rows: [chat("c1")] } }], now, () => {});
+    expect(row!.job).toBe("Cosmic (Mac)");
+  });
+
+  it("Mark read takes the row off as his act, and puts it back with a counted toast when the write fails", async () => {
+    resetToday([]);
+    const mutation = vi.fn(async () => null);
+    await markChatRead({ mutation } as never, "c1");
+    expect(mutation).toHaveBeenCalledWith(expect.anything(), { id: "c1" });
+    expect(todayNow().leaving.has(chatKey("c1"))).toBe(true);
+    resetToday([]);
+    await markChatRead({ mutation: async () => Promise.reject(new Error("no")) } as never, "c2");
+    expect(todayNow().leaving.has(chatKey("c2"))).toBe(false);
+    expect(toasts.at(-1)?.[0]).toBe("Couldn't mark it read");
+    // Counted while it is up, so a narrow column gives it its strip.
+    expect(todayNow().toastsUp).toBe(1);
+    expect(toasts.at(-1)?.[1]).toMatchObject({ onDismiss: expect.any(Function), onAutoClose: expect.any(Function) });
   });
 });

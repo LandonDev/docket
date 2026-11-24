@@ -35,6 +35,8 @@ export type EachOptions = {
   timeoutMs?: number;
   /** A test's links. */
   linkOf?: (environmentId: string) => Link;
+  /** What the asks depend on beside the jobs (the day): when it changes, every job is asked again. */
+  again?: unknown;
 };
 
 /** The read with no React: `set` the jobs and it asks; `subscribe` and `snapshot` for what has come back. */
@@ -48,6 +50,8 @@ export function eachWorkspace<T>(method: string, opts: EachOptions = {}) {
   let order: string[] = [];
   let cached: EachAnswer<T> | null = null;
   let closed = false;
+  /** Whether it was handed its jobs: before that nothing was asked, and it is not known to hold nothing. */
+  let started = false;
 
   const changed = (): void => {
     cached = null;
@@ -115,6 +119,7 @@ export function eachWorkspace<T>(method: string, opts: EachOptions = {}) {
     /** The jobs to read and how to ask each. A new job, and one whose host's link opened, is asked; one that left is forgotten. */
     set(workspaces: readonly TodayWorkspace[], params: (workspace: TodayWorkspace) => unknown): void {
       closed = false;
+      started = true;
       paramsOf = params;
       order = workspaces.map(keyOf);
       const live = new Set(order);
@@ -143,6 +148,10 @@ export function eachWorkspace<T>(method: string, opts: EachOptions = {}) {
     retry(environmentId: string): void {
       askHost(environmentId);
     },
+    /** Every job asked again (what it asks for moved: the day turned); an answer to the last ask is dropped. */
+    again(): void {
+      for (const key of slots.keys()) ask(key);
+    },
     subscribe(listener: () => void): () => void {
       listeners.add(listener);
       return () => void listeners.delete(listener);
@@ -158,7 +167,8 @@ export function eachWorkspace<T>(method: string, opts: EachOptions = {}) {
       }
       cached = {
         answers: live.filter((slot) => slot.has).map((slot) => ({ workspace: slot.workspace, value: slot.value as T })),
-        loading: live.some((slot) => slot.workspace.open && slot.pending && !slot.has && !slot.error),
+        // A read that failed and is asked again (Retry) is out, though it says neither its answer nor its fault.
+        loading: !started || live.some((slot) => slot.workspace.open && slot.pending && (!slot.has || slot.error !== null)),
         failed: [...failed.values()],
       };
       return cached;
@@ -187,5 +197,11 @@ export function useEachWorkspace<T>(env: TodayEnv, method: string, paramsOf: (wo
     read.set(env.workspaces, (workspace) => params.current(workspace));
   }, [read, env.workspaces]);
   useEffect(() => () => read.close(), [read]);
+  const asked = useRef(opts.again);
+  useEffect(() => {
+    if (Object.is(asked.current, opts.again)) return;
+    asked.current = opts.again;
+    read.again();
+  }, [read, opts.again]);
   return useSyncExternalStore(read.subscribe, read.snapshot, read.snapshot);
 }

@@ -1,4 +1,4 @@
-import { memo, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { memo, useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { BusyLabel, Button } from "../../components/ui/button";
 import { Checkbox } from "../../components/ui/checkbox";
 import { ItemButton } from "../../components/ui/item";
@@ -114,6 +114,9 @@ export const TodayRowView = memo(function TodayRowView({ row, job, leaving = fal
   const stop = current ? 0 : -1;
   // A title or a second line the column cuts is said whole on hover and focus, only while it is cut.
   const words = useTruncated(`${row.title}\n${row.detail ?? ""}`);
+  // The row's name is its title and second line; its job and its time are read after it, as he sees them.
+  const id = useId();
+  const told = [job ? `${id}-job` : "", row.when || row.whenLine ? `${id}-when` : ""].filter(Boolean).join(" ");
   return (
     <div
       role="listitem"
@@ -136,6 +139,7 @@ export const TodayRowView = memo(function TodayRowView({ row, job, leaving = fal
         data-roving-key={row.key}
         tabIndex={stop}
         aria-label={row.detail ? `${row.title}, ${row.detail}` : row.title}
+        aria-describedby={told || undefined}
         onClick={row.open}
         onKeyDown={
           tick
@@ -170,11 +174,11 @@ export const TodayRowView = memo(function TodayRowView({ row, job, leaving = fal
         {job ? (
           <>
             <SectorDot sector={row.sector} className="-ms-1" />
-            <span className="min-w-0 truncate">{job}</span>
+            <span id={`${id}-job`} className="min-w-0 truncate">{job}</span>
           </>
         ) : null}
       </span>
-      <span className={cn("flex min-w-0 flex-col items-end text-xs tabular-nums", ROW_SHOWS, gives)}>
+      <span id={`${id}-when`} className={cn("flex min-w-0 flex-col items-end text-xs tabular-nums", ROW_SHOWS, gives)}>
         {row.when ? <span className={cn("leading-5 whitespace-nowrap", row.late ? "text-destructive" : "text-muted-foreground")}>{row.when}</span> : null}
         {row.whenLine ? <span className="leading-4 font-medium whitespace-nowrap text-foreground">{row.whenLine}</span> : null}
       </span>

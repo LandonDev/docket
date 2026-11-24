@@ -17,8 +17,10 @@ type Loaded = { id: string; source: TodaySource };
 export type TodayState = {
   /** The sources that loaded, in the registry's order. */
   sources: readonly Loaded[];
-  /** Sources that threw while they ran: no longer run, and each said on the page, which is never clear without them. */
+  /** Sources that threw while they ran, or did not load: no longer run, and each said on the page, which is never clear without them. */
   broken: readonly Loaded[];
+  /** Sources still loading: they draw nothing yet, and the page is not clear while one is out. */
+  pending: readonly string[];
   answers: ReadonlyMap<string, TodayAnswer>;
   folds: Folds;
   /** The key of the held row whose sheet is open. */
@@ -36,7 +38,7 @@ export type TodayState = {
 };
 
 const NONE: ReadonlySet<string> = new Set();
-let state: TodayState = { sources: [], broken: [], answers: new Map(), folds: NO_FOLDS, held: null, heldDone: 0, leaving: NONE, closing: NONE, gone: NONE, toastsUp: 0 };
+let state: TodayState = { sources: [], broken: [], pending: [], answers: new Map(), folds: NO_FOLDS, held: null, heldDone: 0, leaving: NONE, closing: NONE, gone: NONE, toastsUp: 0 };
 let scrollTop = 0;
 let focusKey: string | null = null;
 const listeners = new Set<() => void>();
@@ -60,8 +62,17 @@ export function useTodayState(): TodayState {
 /** A source that has never answered is still to answer: its section draws bones. */
 const WAITING: TodayAnswer = { loading: true };
 
-/** What a source that threw answers from then on: nothing, and one line that says so. */
-const BROKEN: TodayAnswer = { rows: [], failed: [{ environmentId: "", error: "", said: "Today could not show this" }] };
+/**
+ * What a source that threw answers from then on: nothing, and one line that
+ * says so. In its own section "this" is that section; under Also the line
+ * names what is missing (`what` in the registry), so two such lines are two.
+ */
+export function brokenAnswer(source: Pick<TodaySource, "id" | "section">): TodayAnswer {
+  const what = source.section ? "this" : (TODAY_SOURCES.find((entry) => entry.id === source.id)?.what ?? "everything");
+  return { rows: [], failed: [{ environmentId: "", error: source.id, said: `Today could not show ${what}` }] };
+}
+const broke = new WeakMap<Pick<TodaySource, "id">, TodayAnswer>();
+const brokenOf = (source: Pick<TodaySource, "id" | "section">): TodayAnswer => broke.get(source) ?? broke.set(source, brokenAnswer(source)).get(source)!;
 
 /** The answers the store kept from before a source read again: their rows are a whole answer, not half of one. */
 const keptAnswers = new WeakSet<TodayAnswer>();
@@ -75,9 +86,11 @@ export function fedOf(s: TodayState): Fed[] {
       const answer = s.answers.get(source.id) ?? WAITING;
       return { source, answer, ...(keptAnswers.has(answer) ? { kept: true } : {}) };
     }),
-    ...s.broken.map(({ source }) => ({ source, answer: BROKEN })),
+    ...s.broken.map(({ source }) => ({ source, answer: brokenOf(source) })),
+    // Not loaded yet: no section to draw, but a source still out, so the page is not clear (model.ts `page`).
+    ...s.pending.map((id) => ({ source: { id }, answer: WAITING })),
   ];
-  return s.broken.length ? fed.sort((a, b) => at(a.source.id) - at(b.source.id)) : fed;
+  return s.broken.length || s.pending.length ? fed.sort((a, b) => at(a.source.id) - at(b.source.id)) : fed;
 }
 
 // ── the sources ────────────────────────────────────────────────────────────
@@ -89,21 +102,30 @@ let loading: Promise<void> | null = null;
 function seat(loaded: Loaded): void {
   const order = TODAY_SOURCES.map((entry) => entry.id);
   const sources = [...state.sources.filter((s) => s.id !== loaded.id), loaded].sort((a, b) => order.indexOf(a.id) - order.indexOf(b.id));
-  set({ sources });
+  set({ sources, pending: state.pending.filter((id) => id !== loaded.id) });
+}
+
+/** A source whose chunk did not load: said as one that threw, so the page is never clear without it. */
+function unloaded(id: string, error: unknown): void {
+  console.warn(`[today] the ${id} source did not load`, error);
+  const stub: TodaySource = { id, use: () => ({}) };
+  set({ broken: [...state.broken.filter((s) => s.id !== id), { id, source: stub }], pending: state.pending.filter((p) => p !== id) });
 }
 
 /**
  * Loads every registered source, each on its own: one that fails to load is
- * left out and logged, and the page shows the rest. Resolves once all have
- * settled, or after a moment, so a source that never loads holds up nothing.
+ * left out and logged, and the page says it could not show it. Resolves once
+ * all have settled, or after a moment, so a source that is slow to load
+ * holds up no other; until it lands the page is not "All clear".
  */
 export function loadSources(): Promise<void> {
+  if (!loading) set({ pending: TODAY_SOURCES.map((entry) => entry.id).filter((id) => !state.sources.some((s) => s.id === id)) });
   loading ??= Promise.race([
     Promise.all(
       TODAY_SOURCES.map((entry) =>
         entry.load().then(
           (module) => seat({ id: entry.id, source: module.source }),
-          (error: unknown) => console.warn(`[today] the ${entry.id} source did not load`, error),
+          (error: unknown) => unloaded(entry.id, error),
         ),
       ),
     ).then(() => undefined),
@@ -138,7 +160,8 @@ export function putAnswer(id: string, answer: TodayAnswer): void {
   if (handed.get(id) === answer) return;
   handed.set(id, answer);
   const had = state.answers.get(id);
-  const keeps = !!answer.loading && answer.rows === undefined && !!had?.rows;
+  // A read on hosts that is out again answers its empty list while it waits: that is not a whole answer either.
+  const keeps = !!answer.loading && !answer.rows?.length && !!had?.rows?.length;
   const kept: TodayAnswer = keeps ? { ...answer, rows: had!.rows!, ...(had!.marks ? { marks: had!.marks } : {}), ...(had!.note ? { note: had!.note } : {}) } : answer;
   if (keeps) keptAnswers.add(kept);
   const answers = new Map(state.answers).set(id, kept);
@@ -189,8 +212,15 @@ export function comeBack(key: string): void {
   set({ leaving: without(state.leaving, key), closing: without(state.closing, key), gone: without(state.gone, key) });
 }
 
-/** How long a toast is counted at most: one that never says it left (a stack cleared at once) frees its place by itself. */
+/**
+ * How often a toast that has not said it left is looked for. Sonner says so
+ * for a close, a time that ran out and a dismiss by code, and the page for a
+ * press on its action; this is for any way out it missed. A toast he holds
+ * under the pointer, or a loading one, is still in the document, and keeps
+ * its place until it is not.
+ */
 const TOAST_MAX_MS = 12_000;
+const toastShows = (): boolean => typeof document !== "undefined" && !!document.querySelector("[data-sonner-toast]");
 
 /** One of the page's toasts is up; call what it returns once, when the toast leaves. */
 export function toastUp(): () => void {
@@ -201,7 +231,11 @@ export function toastUp(): () => void {
     clearTimeout(timer);
     set({ toastsUp: Math.max(0, state.toastsUp - 1) });
   };
-  const timer = setTimeout(down, TOAST_MAX_MS);
+  const look = (): void => {
+    if (toastShows()) timer = setTimeout(look, TOAST_MAX_MS);
+    else down();
+  };
+  let timer = setTimeout(look, TOAST_MAX_MS);
   set({ toastsUp: state.toastsUp + 1 });
   return down;
 }
@@ -248,5 +282,5 @@ export function resetToday(sources?: readonly TodaySource[]): void {
   handed.clear();
   for (const timer of timers.values()) clearTimeout(timer);
   timers.clear();
-  set({ sources: (sources ?? []).map((source) => ({ id: source.id, source })), broken: [], answers: new Map(), folds: NO_FOLDS, held: null, heldDone: 0, leaving: NONE, closing: NONE, gone: NONE, toastsUp: 0 });
+  set({ sources: (sources ?? []).map((source) => ({ id: source.id, source })), broken: [], pending: [], answers: new Map(), folds: NO_FOLDS, held: null, heldDone: 0, leaving: NONE, closing: NONE, gone: NONE, toastsUp: 0 });
 }

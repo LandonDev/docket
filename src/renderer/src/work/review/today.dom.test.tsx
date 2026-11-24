@@ -17,8 +17,11 @@ const env = (hosts: [string, boolean][]): TodayEnv =>
   ({ day: { from: FRIDAY, to: FRIDAY + DAY }, workspaces: hosts.map(([environmentId, open], i) => ({ environmentId, workspaceId: `w${i}`, sector: "purdue", name: "Purdue", path: "/w", open })), lifeos: {}, workspaceOf: () => null }) as unknown as TodayEnv;
 
 let rows: TodayRow[] = [];
+let loading = false;
 function Probe({ e }: { e: TodayEnv }) {
-  rows = source.use(e).rows ?? [];
+  const answer = source.use(e);
+  rows = answer.rows ?? [];
+  loading = !!answer.loading;
   return null;
 }
 const settle = () => act(async () => void (await new Promise((r) => setTimeout(r, 0))));
@@ -32,6 +35,27 @@ afterEach(() => {
 });
 
 describe("the review on Today", () => {
+  it("is loading until every linked host with a job has answered, so the page is not All clear before it knows", async () => {
+    resetReviewStore({ zone: TZ });
+    let answer!: (v: unknown) => void;
+    vi.spyOn(registry, "linkOf").mockImplementation(
+      (id) =>
+        ({
+          request: () => (id === "box" ? Promise.resolve(null) : new Promise((resolve) => (answer = resolve))),
+          onPush: () => () => {},
+        }) as never,
+    );
+    render(<Probe e={env([["box", true], ["mac", true]])} />);
+    expect(loading).toBe(true);
+    await settle();
+    // The box said it has none; the Mac is still out.
+    expect(loading).toBe(true);
+    await act(async () => answer({ from: WEEK.from, madeAt: FRIDAY }));
+    await settle();
+    expect(loading).toBe(false);
+    expect(rows).toHaveLength(1);
+  });
+
   it("is one of Today's sources, loaded on its own", async () => {
     const mine = TODAY_SOURCES.find((s) => s.id === "review")!;
     expect((await mine.load()).source).toBe(source);

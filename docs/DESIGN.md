@@ -2438,7 +2438,8 @@ own selected fill is a card's fill at rest in light.
   many times a day.
 - **One column**, 720px at most, 24px in. Sections are a 12px medium muted
   heading (28px) over their rows, 24px apart, in a fixed order: Waiting on
-  you, Meetings, Due, Waiting on others, Changed by others. What is blocked
+  you, Meetings, Due, Waiting on others, Messages, Changed by others, Owed,
+  Also (the last two only while they hold something). What is blocked
   on his press comes first; the page is grouped by need, never by job.
 - **One row grid for the whole page**: a 16px lead, the title with an
   optional 12px second line, the job (its sector's dot and its name, 12px
@@ -2524,9 +2525,13 @@ own selected fill is a card's fill at rest in light.
   facts' edge; that section never says "nothing" beside it. A job no
   signed-in host can read says so with no Retry ("No signed-in host can
   read Ref's tasks"); a read that failed in a source with no section, and a
-  source that broke ("Today could not show this"), are said under Also, and
-  the page is never clear over either. An offline host
-  is one 12px muted line at the page's foot ("Mac is offline."). While no
+  source that broke ("Today could not show this" in its own section, "Today
+  could not show clashes" under Also, naming what is missing), are said
+  under Also, once each, and the page is never clear over either. An
+  offline host is one 12px muted line at the page's foot ("Mac is
+  offline."), and nothing more: no section draws a failed line for a read
+  its link refused, and a section that reads LifeOS says nothing while no
+  linked host holds a job. While no
   host can reach LifeOS its sections give way to one line on the same grid:
   "LifeOS did not answer" with Retry, or the plain muted "Not signed in to
   LifeOS" with Sign in.

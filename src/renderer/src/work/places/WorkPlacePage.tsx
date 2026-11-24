@@ -31,18 +31,21 @@ export function WorkPlacePage({ place, besideRail = false, onClose, onToggleSide
   usePageEscape(() => onCloseRef.current(), { fields: "blur" });
   // The header's end comes from the chunk, kept in state: read from the chunk while rendering it is a constant to the
   // React Compiler, so a first render before the chunk landed would keep its null (work/shell/WorkViewPage.tsx).
-  const [loaded, setLoaded] = useState<WorkPlaceModule | null>(() => chunk?.loaded() ?? null);
+  // Kept with the place it is of: the frame stays mounted when he goes from one place straight to another, and the
+  // last place's header must not stand over the next one's body.
+  const [kept, setKept] = useState<{ place: string; module: WorkPlaceModule | null }>(() => ({ place, module: chunk?.loaded() ?? null }));
+  const loaded = kept.place === place ? kept.module : (chunk?.loaded() ?? null);
   useEffect(() => {
     if (loaded || !chunk) return;
     let live = true;
     void chunk.load().then(
-      (module) => live && setLoaded(module),
+      (module) => live && setKept({ place, module }),
       () => {},
     );
     return () => {
       live = false;
     };
-  }, [chunk, loaded]);
+  }, [chunk, loaded, place]);
   if (!chunk) return null;
   const Head = loaded?.Head;
   const View = chunk.surface("View", <PlaceSkeleton label={label} />);

@@ -189,6 +189,27 @@ describe("page", () => {
     expect(day.kind === "day" && day.blocks.map((b) => b.kind === "section" && [b.section.id, b.section.failed.length])).toEqual([["held", 0], ["due", 0], ["also", 1]]);
   });
 
+  it("names a host whose link is not open once at the foot, and draws no failed read of its in any section", () => {
+    // The Outbox and the digest ask every host with Work on: one that is offline fails at once with "not connected".
+    const notConnected = [{ environmentId: "pc", error: "not connected" }];
+    const all = [fed("held", HELD, { rows: [], failed: notConnected }), fed("digest", undefined, { rows: [], failed: notConnected }), fed("due", DUE, { rows: [], failed: [{ environmentId: "box", error: "x" }] })];
+    const day = page(all, { jobs, lifeos: "ok", open: new Set(["box"]) });
+    expect(day.kind).toBe("day");
+    if (day.kind !== "day") return;
+    expect(day.blocks.map((b) => b.kind === "section" && [b.section.id, b.section.failed.map((f) => f.environmentId)])).toEqual([["held", []], ["due", ["box"]]]);
+    // Not a job's host, but its read failed: named once with the others.
+    expect(day.offline).toEqual(["pc"]);
+    // A failure that names no host (a source that threw) stays where it is.
+    const thrown = page([fed("review", undefined, { rows: [], failed: [{ environmentId: "", error: "review", said: "Today could not show the weekly review" }] })], { jobs, lifeos: "ok", open: new Set(["box"]) });
+    expect(thrown.kind === "day" && thrown.blocks.map((b) => b.kind === "section" && b.section.failed.length)).toEqual([1]);
+  });
+
+  it("draws one line where two sources say the same of one host", () => {
+    const same = { environmentId: "box", error: "x", said: "LifeOS could not read clashes" };
+    const [also] = merge([fed("clashes", undefined, { failed: [same] }), fed("other", undefined, { failed: [{ ...same }] })]);
+    expect(also!.failed).toHaveLength(1);
+  });
+
   it("a section is partial only when its source answered rows with a read still out, never while it reads again what it had", () => {
     const rows = [row("task:1", "due")];
     const of = (extra: object) => page([{ source: { id: "due", section: DUE }, answer: { rows, loading: true }, ...extra }], { jobs, lifeos: "ok" });
@@ -213,6 +234,12 @@ describe("page", () => {
     expect(day.keys).toEqual(["held:1"]);
     const out = page(all, { jobs, lifeos: "signed-out" });
     expect(out.kind === "day" && out.blocks[1]).toEqual({ kind: "lifeos", reach: "signed-out" });
+  });
+
+  it("with no linked host to read LifeOS through, its sections say nothing: the foot names the hosts, and the page is not clear", () => {
+    const away = [job("box", "purdue", false)];
+    const day = page([fed("held", HELD, { rows: [] }), fed("meetings", MEETINGS, {}), fed("due", DUE, {})], { jobs: away, lifeos: "offline" });
+    expect(day.kind === "day" && [day.blocks.map((b) => b.kind === "section" && b.section.id), day.offline]).toEqual([["held"], ["box"]]);
   });
 
   it("draws bones for a LifeOS section while the session is on its way, and its kept rows if it has them", () => {

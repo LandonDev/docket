@@ -111,7 +111,9 @@ export function merge(fed: readonly Fed[], gone: ReadonlySet<string> = NO_KEYS):
       section.rows.push(lay(row, marks.get(row.key) ?? []));
     }
     const own = source.section ? sections.get(source.section.id) : undefined;
-    if (answer.failed?.length) (own ?? sections.get(ALSO.id)!).failed.push(...answer.failed);
+    // The same line twice (two sources that say one thing of one host) is drawn once.
+    const into = (own ?? sections.get(ALSO.id)!).failed;
+    for (const f of answer.failed ?? []) if (!into.some((g) => g.environmentId === f.environmentId && g.said === f.said && g.error === f.error)) into.push(f);
     if (!own) continue;
     if (answer.loading) own.loading = true;
     if (answer.loading && answer.rows !== undefined && !kept) own.partial = true;
@@ -179,8 +181,8 @@ export function fold(section: MergedSection, folds: Folds = NO_FOLDS): ShownSect
   };
 }
 
-/** Whether the one LifeOS session can be read: `waiting` while it is on its way. */
-export type LifeosReach = "ok" | "waiting" | "unreachable" | "signed-out";
+/** Whether the one LifeOS session can be read: `waiting` while it is on its way; `offline` while no host that holds a job is linked. */
+export type LifeosReach = "ok" | "waiting" | "unreachable" | "signed-out" | "offline";
 
 export type Block = { kind: "section"; section: ShownSection } | { kind: "lifeos"; reach: "unreachable" | "signed-out" };
 
@@ -209,6 +211,25 @@ const done = (s: ShownSection): boolean =>
   s.failed.length === 0 && (s.state === "empty" || (s.state === "rows" && !s.pending && s.more === 0 && s.rows.every((row) => row.past)));
 
 /**
+ * A read that failed because its host's link is not open is no fault of the
+ * host's and nothing Retry can mend (the Outbox and the digest ask every
+ * host with Work on, and the link refuses at once): it is taken out of its
+ * section, and the host is named once at the page's foot with the others
+ * that are offline. A failure that names no host (a source that threw) stays.
+ */
+function apart(fed: readonly Fed[], open: ReadonlySet<string>): { fed: Fed[]; away: string[] } {
+  const away: string[] = [];
+  const closed = (f: TodayFailure): boolean => f.environmentId !== "" && !open.has(f.environmentId);
+  const out = fed.map((one) => {
+    const failed = one.answer.failed;
+    if (!failed?.some(closed)) return one;
+    for (const f of failed) if (closed(f)) away.push(f.environmentId);
+    return { ...one, answer: { ...one.answer, failed: failed.filter((f) => !closed(f)) } };
+  });
+  return { fed: out, away };
+}
+
+/**
  * The whole page. While no host can read LifeOS, the sections that read it
  * give way to one line in the first one's place. "All clear" is said only
  * when every source answered whole, none failed, no host is offline and
@@ -216,14 +237,20 @@ const done = (s: ShownSection): boolean =>
  * that draws nothing while it waits (a section with no empty line, rows for
  * Also) counts too: it may yet bring a row.
  */
-export function page(fed: readonly Fed[], opts: { jobs: readonly TodayWorkspace[]; lifeos: LifeosReach; folds?: Folds; gone?: ReadonlySet<string> }): TodayPage {
+export function page(fed: readonly Fed[], opts: { jobs: readonly TodayWorkspace[]; lifeos: LifeosReach; folds?: Folds; gone?: ReadonlySet<string>; open?: ReadonlySet<string> }): TodayPage {
   if (opts.jobs.length === 0) return { kind: "no-jobs" };
   const down = opts.lifeos === "unreachable" || opts.lifeos === "signed-out" ? opts.lifeos : null;
+  const { fed: reached, away } = opts.open ? apart(fed, opts.open) : { fed, away: [] };
   const blocks: Block[] = [];
   let said = false;
-  for (const section of merge(fed, opts.gone)) {
+  for (const section of merge(reached, opts.gone)) {
     if (down && section.def.lifeos) {
       if (!said) blocks.push({ kind: "lifeos", reach: down });
+      said = true;
+      continue;
+    }
+    // No linked host to read LifeOS through: the foot names the hosts, and the sections that read it say nothing more.
+    if (opts.lifeos === "offline" && section.def.lifeos) {
       said = true;
       continue;
     }
@@ -231,11 +258,11 @@ export function page(fed: readonly Fed[], opts: { jobs: readonly TodayWorkspace[
     const waiting = opts.lifeos === "waiting" && !!section.def.lifeos;
     blocks.push({ kind: "section", section: fold(waiting ? { ...section, loading: true } : section, opts.folds) });
   }
-  const offline = offlineHosts(opts.jobs);
+  const offline = [...new Set([...offlineHosts(opts.jobs), ...away])];
   const shown = blocks.flatMap((b) => (b.kind === "section" ? [b.section] : []));
   // LifeOS out of reach matters only where a section reads it: `said` is set when one gave way.
   const drawn = new Set(shown.map((s) => s.id));
-  const out = fed.some(({ source, answer }) => !!answer.loading && !(source.section && drawn.has(source.section.id)));
+  const out = reached.some(({ source, answer }) => !!answer.loading && !(source.section && drawn.has(source.section.id)));
   if (!said && !out && offline.length === 0 && shown.every(done)) {
     const line = shown.find((s) => s.note)?.note;
     return { kind: "clear", ...(line ? { line } : {}) };

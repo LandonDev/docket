@@ -19,14 +19,15 @@ const NONE: ReadonlySet<string> = new Set();
  * shows twice, and a host that is slow or off holds up nothing.
  */
 
-export function useTodayEnv(): { env: TodayEnv; reach: LifeosReach; lifeosHost: string | null; retryLifeos: (() => Promise<void>) | undefined } {
+export function useTodayEnv(): { env: TodayEnv; reach: LifeosReach; lifeosHost: string | null; retryLifeos: (() => Promise<void>) | undefined; open: ReadonlySet<string> } {
   const catalog = useWorkspaces();
   const workHosts = useWorkHosts();
   const statuses = useEnvironmentStatuses();
   const environments = useEnvironments();
   // The hosts whose link is open, as one string: a status that changes in any other way moves nothing here.
   const openKey = [...statuses].filter(([, s]) => s.transport === "open").map(([id]) => id).join("|");
-  const jobs = useMemo(() => jobsOf(catalog, workHosts, new Set(openKey ? openKey.split("|") : [])), [catalog, workHosts, openKey]);
+  const open = useMemo<ReadonlySet<string>>(() => new Set(openKey ? openKey.split("|") : []), [openKey]);
+  const jobs = useMemo(() => jobsOf(catalog, workHosts, open), [catalog, workHosts, open]);
   const home = useMemo(() => workHome(environments), [environments, workHosts]);
   // One host's session is read. A host found signed out or out of reach gives way to the next that holds a job;
   // the set is forgotten when the hosts change and on Retry, so a host that came back is tried again.
@@ -57,5 +58,5 @@ export function useTodayEnv(): { env: TodayEnv; reach: LifeosReach; lifeosHost: 
         : undefined,
     [host, hosts, hostsKey],
   );
-  return { env, reach: reachOf(lifeos, host), lifeosHost: host, retryLifeos };
+  return { env, reach: reachOf(lifeos, host), lifeosHost: host, retryLifeos, open };
 }

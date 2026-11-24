@@ -30,8 +30,8 @@ describe("Money on Today", () => {
       "2026-11-23",
     );
     expect(rows.map(({ open: _open, ...row }) => row)).toEqual([
-      { key: "money:box:ws-ref:4", section: "money", sector: "ref", title: "West Side HS", detail: "Owes you $80.00", at: Date.parse("2026-11-07T12:00:00"), when: "16 days" },
-      { key: "money:mac:ws-purdue:2", section: "money", sector: "purdue", title: "Entry", detail: "You owe $45.00" },
+      { key: "money:box:ws-ref:4", section: "money", sector: "ref", job: "Ref", title: "West Side HS", detail: "Owes you $80.00", at: Date.parse("2026-11-07T12:00:00"), when: "16 days" },
+      { key: "money:mac:ws-purdue:2", section: "money", sector: "purdue", job: "Purdue", title: "Entry", detail: "You owe $45.00" },
     ]);
     expect(JSON.stringify(rows)).not.toContain("confirm");
   });
@@ -43,7 +43,14 @@ describe("Money on Today", () => {
 
   it("says a job whose ledger cannot be read, in place of showing it as owed nothing", () => {
     const rows = owedRows([{ workspace: ref, value: { rows: [], toConfirm: 0, problems: ["ws-ref"] } }]);
-    expect(rows.map(({ open: _open, ...row }) => row)).toEqual([{ key: "money:box:ws-ref:problem", section: "money", sector: "ref", title: "Ref", detail: "The ledger's columns changed, so what is owed is not known" }]);
+    // The job column names the job; the title says what is wrong, so the job is not said twice.
+    expect(rows.map(({ open: _open, ...row }) => row)).toEqual([{ key: "money:box:ws-ref:problem", section: "money", sector: "ref", job: "Ref", title: "What is owed is not known", detail: "The ledger's columns changed" }]);
+  });
+
+  it("names the very workspace its host answered for, where two hosts hold the sector under two names", () => {
+    const other: TodayWorkspace = { ...ref, environmentId: "mac", workspaceId: "ws-ref-mac", name: "Refereeing" };
+    const [row] = owedRows([{ workspace: other, value: owed([{ workspaceId: "ws-ref-mac", sector: "ref", row: 1, who: "Central HS", what: "", amount: 100, since: null, way: "toHim", reimburse: false, both: false }]) }]);
+    expect(row.job).toBe("Refereeing");
   });
 
   it("opens the row's own job in the Money view", () => {

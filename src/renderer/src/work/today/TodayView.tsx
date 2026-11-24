@@ -40,10 +40,10 @@ export function Head(_props: WorkPlaceProps) {
 }
 
 export function View(_props: WorkPlaceProps) {
-  const { env, reach, retryLifeos } = useTodayEnv();
+  const { env, reach, retryLifeos, open } = useTodayEnv();
   const state = useTodayState();
   const environments = useEnvironments();
-  const model = useMemo(() => page(fedOf(state), { jobs: env.workspaces, lifeos: reach, folds: state.folds, gone: state.gone }), [state, env.workspaces, reach]);
+  const model = useMemo(() => page(fedOf(state), { jobs: env.workspaces, lifeos: reach, folds: state.folds, gone: state.gone, open }), [state, env.workspaces, reach, open]);
   const hostName = (id: string): string => environments.find((e) => e.id === id)?.name ?? "A host";
   // A job has one name everywhere: its workspace's, as the rail and the held sheet say it.
   const jobName = (sector: SectorKey): string => env.workspaceOf(sector)?.name ?? sectorName(sector);
@@ -279,7 +279,7 @@ function Section({
     <section aria-label={section.title} data-today-section={section.id} className="mt-6 flex flex-col first:mt-0">
       <h2 className="flex h-7 items-center px-3 text-xs font-medium text-muted-foreground">{section.title}</h2>
       {section.failed.map((failure) => (
-        <HostLine key={`${failure.environmentId}:${failure.said ?? ""}`} failure={failure} name={hostName(failure.environmentId)} />
+        <HostLine key={`${failure.environmentId}:${failure.said ?? ""}:${failure.error}`} failure={failure} name={hostName(failure.environmentId)} />
       ))}
       {section.state === "bones" ? (
         <Bones label={section.title} shape={section.bones} />
@@ -294,7 +294,11 @@ function Section({
           ))}
           {section.more > 0 ? <FoldLine which="more" section={section.id} label={`${section.more} more`} stop={stop} /> : null}
           {/* A read some job needs is still out: the rows that came are usable, and one bone says more may come. */}
-          {section.partial ? <Bones label={`more of ${section.title}`} shape={section.bones} rows={1} /> : null}
+          {section.partial ? (
+            <div role="listitem">
+              <Bones label={`more of ${section.title}`} shape={section.bones} rows={1} />
+            </div>
+          ) : null}
         </div>
       )}
       {section.note ? <p className={cn("flex min-h-8 items-center pe-3 text-[13px] text-muted-foreground", TITLE_EDGE)}>{section.note}</p> : null}
@@ -310,7 +314,7 @@ function Section({
 function FoldLine({ which, section, label, stop }: { which: "more" | "earlier"; section: string; label: string; stop: string | null }) {
   const key = foldKey(which, section);
   return (
-    <div className={ROW_SLOT}>
+    <div role="listitem" className={ROW_SLOT}>
       <ItemButton
         size="xs"
         aria-expanded={false}

@@ -1,5 +1,6 @@
 import { clashLine, leaveLine, listFrom, type LifeosRange } from "@shared/work/clashes";
 import { useLifeosQuery } from "../shell/lifeos";
+import { sessionDown } from "../today/lifeos";
 import { useMinute } from "../tasks/minute";
 import type { TodayMark, TodaySource } from "../today/types";
 import { marksOf } from "./model";
@@ -21,7 +22,12 @@ export const source: TodaySource = {
     const read = useLifeosQuery<LifeosRange>(env.lifeos, "clashes:range", { from: env.day.from, to: env.day.to });
     const now = useMinute();
     if (read.status === "loading") return { loading: true };
-    if (read.status === "failed") return { failed: [{ environmentId: env.lifeos.environmentId, error: read.error }] };
+    if (read.status === "failed") {
+      // A session that is down is the page's one line ("Not signed in to LifeOS"), never a second one under Also.
+      if (sessionDown(env.lifeos)) return {};
+      // LifeOS refused the read: no host is at fault, and its own words are not his.
+      return { failed: [{ environmentId: env.lifeos.environmentId, error: read.error, said: "LifeOS could not read clashes" }] };
+    }
     const { clashes, leaves } = marksOf(listFrom(read.value, (sector) => env.workspaceOf(sector)?.workspaceId));
     const marks = new Map<string, TodayMark>();
     for (const [eventId, of] of clashes) {

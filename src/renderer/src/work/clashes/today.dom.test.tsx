@@ -40,11 +40,11 @@ const game = side("ev_game", "ref", "Varsity Basketball", 3, 2);
 const range = (more: Partial<LifeosRange> = {}): LifeosRange => ({ clashes: [{ id: "ev_meeting-ev_game", kind: "overlap", a: meeting as never, b: game as never }], leaves: [], ...more });
 
 /** The source's answer, read through a component, since `use` is a hook. */
-function answerOf(value: unknown): TodayAnswer {
+function answerOf(value: unknown, on: TodayEnv = env): TodayAnswer {
   lifeos.answer = value;
   let answer: TodayAnswer = {};
   function Probe() {
-    answer = source.use(env);
+    answer = source.use(on);
     return null;
   }
   render(<Probe />);
@@ -115,8 +115,15 @@ describe("clashes on Today", () => {
     expect(answer.marks?.map((m) => m.key)).toEqual(["event:ev_late"]);
   });
 
-  it("says it is loading until LifeOS answers, and names the host when the read fails", () => {
+  it("says it is loading until LifeOS answers; a read LifeOS refused is said in plain words, blaming no host", () => {
     expect(answerOf({ status: "loading" })).toEqual({ loading: true });
-    expect(answerOf({ status: "failed", error: "LifeOS did not answer" })).toEqual({ failed: [{ environmentId: "box", error: "LifeOS did not answer" }] });
+    expect(answerOf({ status: "failed", error: "[CONVEX Q(clashes:range)] Server Error" })).toEqual({
+      failed: [{ environmentId: "box", error: "[CONVEX Q(clashes:range)] Server Error", said: "LifeOS could not read clashes" }],
+    });
+  });
+
+  it("says nothing when the session is down: the page's own line already says so", () => {
+    const signedOut = { ...env, lifeos: { environmentId: "box", sector: null, client: null, state: "signed-out" } as never };
+    expect(answerOf({ status: "failed", error: "Not signed in to LifeOS" }, signedOut)).toEqual({});
   });
 });

@@ -32,6 +32,16 @@ describe("Today's store", () => {
     expect(fedOf(todayNow())[0]!.answer).toEqual({ rows: [] });
   });
 
+  it("a read on hosts that is out again with an empty list keeps the rows it had: a reopen is not a day with none", () => {
+    putAnswer("due", { rows: [row("owed:1")] });
+    // A fresh read's first answer, before any host was asked.
+    putAnswer("due", { rows: [], loading: true });
+    expect(fedOf(todayNow())[0]).toMatchObject({ kept: true, answer: { loading: true, rows: [{ key: "owed:1" }] } });
+    // A whole answer with none is believed.
+    putAnswer("due", { rows: [] });
+    expect(fedOf(todayNow())[0]!.answer).toEqual({ rows: [] });
+  });
+
   it("the same answer again wakes no one", () => {
     const answer = { rows: [row("task:1")] };
     putAnswer("due", answer);

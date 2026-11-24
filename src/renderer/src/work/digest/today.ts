@@ -11,7 +11,8 @@ import { loadHost, openTell, useDigest, type DigestView } from "./store";
  * items, meetings, tasks, waiting mail, files, clashes, chat and money from
  * their own pillars, so those are left out here and nothing shows twice. A
  * routine's result, a sign-in about to end, a guest's edit, an offered
- * grant, the Windows VM: these are told only through the digest, so their
+ * grant, the Windows VM, a receipt to confirm (Money's section on Today
+ * lists only what is owed): these are told only through the digest, so their
  * rows go in Today's existing `also` section. No section of the digest's
  * own.
  */
@@ -19,8 +20,6 @@ import { loadHost, openTell, useDigest, type DigestView } from "./store";
 /** The groups no section of Today reads. `people` is Today's own (waiting mail, chat) but for a guest's edit. */
 export const ALSO_GROUPS: readonly TellGroup[] = ["results", "ending", "system"];
 const ALSO_KINDS: readonly string[] = ["docs.guest"];
-/** A receipt to confirm is Money's own section on Today, though its group is `results`. */
-const NOT_ALSO: readonly string[] = ["money.confirm"];
 
 const localDay = (ts: number): string => {
   const d = new Date(ts);
@@ -31,7 +30,7 @@ const localDay = (ts: number): string => {
 export function alsoRows(view: Pick<DigestView, "rows">, day: { from: number; to: number }, open: (row: TellRow) => void): TodayRow[] {
   const today = localDay(day.from);
   return view.rows
-    .filter((r) => (r.day === today || (r.day === null && r.at >= day.from && r.at < day.to)) && !NOT_ALSO.includes(r.kind) && (ALSO_GROUPS.includes(r.group) || ALSO_KINDS.includes(r.kind)))
+    .filter((r) => (r.day === today || (r.day === null && r.at >= day.from && r.at < day.to)) && (ALSO_GROUPS.includes(r.group) || ALSO_KINDS.includes(r.kind)))
     .map((row) => ({
       key: `tell:${nameOf(row)}`,
       section: "also",

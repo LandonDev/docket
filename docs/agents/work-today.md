@@ -175,37 +175,17 @@ that exports `source`, and add one line to `TODAY_SOURCES` in
 `src/renderer/src/work/today/sources.ts`. The types are
 `work/today/types.ts`.
 
+Money's (`work/money/today.ts`, trimmed) is the pattern for rows that live
+on hosts:
+
 ```ts
-// src/renderer/src/work/money/today.ts
-import { useMemo } from "react";
-import { openWorkView } from "../../lib/workSwitch";
-import { useEachWorkspace } from "../today/read";
-import type { TodayAnswer, TodayEnv, TodaySource } from "../today/types";
-
-type Owed = { rows: { row: string; who: string; amount: string; since: number }[] };
-
 function useOwed(env: TodayEnv): TodayAnswer {
-  const read = useEachWorkspace<Owed>(env, "work.money.owed", (w) => ({ workspaceId: w.workspaceId }), { push: "work.money" });
-  return useMemo(
-    () => ({
-      rows: read.answers.flatMap(({ workspace, value }) =>
-        value.rows.map((r) => ({
-          key: `owed:${r.row}`,
-          section: "money",
-          sector: workspace.sector,
-          title: `${r.who} owes ${r.amount}`,
-          at: r.since,
-          open: () => openWorkView({ workspaceId: workspace.workspaceId, view: "money" }),
-        })),
-      ),
-      loading: read.loading,
-      failed: read.failed,
-    }),
-    [read],
-  );
+  const read = useEachWorkspace<MoneyOwed>(env, "work.money.owed", (w) => ({ workspaceId: w.workspaceId }), { push: "work.money" });
+  return useMemo(() => ({ rows: owedRows(read.answers), loading: read.loading, failed: read.failed }), [read]);
 }
 
-export const source: TodaySource = { id: "money", section: { id: "money", title: "Money", order: 60, empty: "No one owes you" }, use: useOwed };
+// Each row names the workspace its host answered for (`job: workspace.name`) and opens it (`goTo`).
+export const source: TodaySource = { id: "money", section: { id: "money", title: "Owed", order: 60, empty: "", fold: 5 }, use: useOwed };
 ```
 
 - A **row** is a thing in a section: `key` (`<kind>:<stable id>`; the same
@@ -236,19 +216,35 @@ export const source: TodaySource = { id: "money", section: { id: "money", title:
 - A read that did not come back is a `failed` entry `{environmentId, error,
   said?, retry?}`: the page says "<host> did not answer", with `error`
   beside it unless it is the wait running out (`TIMED_OUT`, today/read.ts);
-  `said` is the whole line in its place.
+  `said` is the whole line in its place, for a read no host is at fault
+  for ("LifeOS could not read clashes"). A failure from a host whose link
+  is not open is no section's line: `page` takes it out and names the host
+  once at the foot (model.ts `apart`), since its link refused at once and
+  Retry cannot mend it. The same line from two sources is drawn once. A
+  source that reads LifeOS says nothing of its own while the session is
+  down (`sessionDown`): the page's one LifeOS line says it.
 - `useEachWorkspace(env, method, paramsOf, {push})` (today/read.ts) is the
   read for rows that live on hosts: one call per Work workspace on every
   host with Work on, each on its own, six seconds at most, asked again on
   the named push and when a link opens. It answers what has come back so
-  far; a host whose link is not open is skipped.
+  far; a host whose link is not open is skipped. It is `loading` until it
+  is handed its jobs, and while a failed read is asked again by Retry, so
+  neither is taken for a job with nothing. `again` names what the asks
+  depend on beside the jobs: when it changes every job is asked again
+  (Prep passes the day, so midnight asks for the new one).
 - A row his own act takes off the page calls `leave(key)` (today/store.ts)
   and `comeBack(key)` if the act fails or he undoes it.
-- A source that fails to load is left out and logged. One that throws
-  while it runs is run no more and said on the page in one line ("Today
-  could not show this", in its section or under Also): the page shows the
-  rest and is never "All clear" over it. A read that failed in a source
-  with no section is said under Also the same way.
+- A source still loading draws nothing and keeps the page from "All
+  clear" (`pending` in today/store.ts). One that fails to load, or throws
+  while it runs, is run no more and said on the page in one line: "Today
+  could not show this" in its own section, or under Also with what is
+  missing, from the registry's `what` ("Today could not show clashes").
+  The page shows the rest and is never "All clear" over it. A read that
+  failed in a source with no section is said under Also the same way.
+  Prep drops its failures on purpose (a mark is only an extra, and a
+  missing one makes no row look done). The review is `loading` until each
+  linked host with a job has answered; a host that refuses
+  `work.review.ready` (one from before the review) has no review to name.
 
 Row keys Today makes: `held:<environmentId>:<ref.at>:<ref.id>`,
 `event:<id>`, `task:<id>`, `mail:<id>`, `file:<FileEntry.key>`.
@@ -267,7 +263,8 @@ one day). `TodayView.tsx` draws it; `TodayRow.tsx` is the one row grid.
 | A section has never answered, or a read some job needs is still out | its heading and three bones in its rows' shape |
 | A section is empty | its heading and one muted line |
 | Every source answered, nothing left (ended meetings are not left, folded or open) | "All clear", over "Nothing needs you today." or what tomorrow starts with |
-| A host with jobs is offline | one muted line at the foot for each ("Mac is offline.") |
+| A host with jobs is offline, or a read failed because a host's link is not open | one muted line at the foot for each ("Mac is offline."), and no failed line for it in any section |
+| No host that holds a job is linked | the foot's lines; the LifeOS sections draw nothing (`offline` reach) |
 | A host did not answer in time | a line in the section it feeds, on the rows' grid, with Retry |
 | LifeOS refused one read | "LifeOS could not read tasks" in that section, with Retry |
 | No host can reach LifeOS | one line in place of the LifeOS sections |
@@ -293,8 +290,10 @@ Toasts: the titles' column at the page's foot is the toast anchor
 (lib/toastAnchor.ts), so a toast covers neither a tick nor a verb, and the
 list ends with a runway so its last row scrolls clear. In the narrow column
 the page's own toasts (`act`, counted in the store's `toastsUp`) get a
-strip under the list while one is up. While the held sheet is open the
-anchor stands down.
+strip under the list while one is up: until the toast says it left, or,
+for a way out it did not say, until no toast is left in the document (one
+held under the pointer, or a loading one, keeps it). While the held sheet
+is open the anchor stands down.
 
 ## Speed
 
@@ -302,7 +301,9 @@ anchor stands down.
   the sources are loaded with the page's chunk (`ready`), so Waiting on you
   paints at once. Every source's last answer is kept in `today/store.ts`
   for the life of the window, and a source that is reading again keeps the
-  rows it had, so a reopen paints them and the live read corrects them.
+  rows it had (one that answers `loading` with no rows, as a fresh host
+  read does before it asks), so a reopen paints them and the live read
+  corrects them.
 - **Kept warm** (`today/warm.tsx`). The sources are hooks, so something must
   be mounted for them to run: the page runs them while it is open, and a
   root of their own, in no document, runs them for ten minutes after it

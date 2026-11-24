@@ -107,6 +107,39 @@ describe("eachWorkspace", () => {
     expect(read.snapshot().failed).toEqual([]);
   });
 
+  it("is loading before it is handed its jobs: nothing asked is not nothing there", () => {
+    const read = eachWorkspace("work.files.changed", { linkOf });
+    expect(read.snapshot()).toMatchObject({ answers: [], loading: true, failed: [] });
+    read.set([], paramsOf);
+    expect(read.snapshot().loading).toBe(false);
+  });
+
+  it("a failed read asked again by Retry is out again: loading until it answers, so the page is not clear meanwhile", async () => {
+    const read = eachWorkspace<{ n: number }>("work.money.owed", { linkOf });
+    read.set([job("box", "w1")], paramsOf);
+    box.asked[0]!.reject(new Error("refused"));
+    await flush();
+    expect(read.snapshot()).toMatchObject({ loading: false, failed: [{ environmentId: "box" }] });
+    read.snapshot().failed[0]!.retry?.();
+    expect(read.snapshot()).toMatchObject({ loading: true, failed: [] });
+    box.asked[1]!.resolve({ n: 1 });
+    await flush();
+    expect(read.snapshot()).toMatchObject({ loading: false, failed: [] });
+  });
+
+  it("asks every job again when told what it asks for moved (the day turned), dropping a late answer to the last ask", async () => {
+    let day = "mon";
+    const read = eachWorkspace<{ day: string }>("work.prep.upcoming", { linkOf });
+    read.set([job("box", "w1")], () => ({ day }));
+    day = "tue";
+    read.again();
+    expect(box.asked.map((a) => a.params)).toEqual([{ day: "mon" }, { day: "tue" }]);
+    box.asked[0]!.resolve({ day: "mon" });
+    box.asked[1]!.resolve({ day: "tue" });
+    await flush();
+    expect(read.snapshot().answers.map((a) => a.value)).toEqual([{ day: "tue" }]);
+  });
+
   it("names a host once however many of its jobs failed, with the host's own words", async () => {
     const read = eachWorkspace("work.files.changed", { linkOf });
     read.set([job("box", "w1"), job("box", "w2")], paramsOf);

@@ -32,9 +32,9 @@ export function pickHost(hosts: readonly string[], wanting: ReadonlySet<string>)
 /** A session that cannot read and is not on its way: signed out, refused, unreachable, off. */
 export const sessionDown = (session: Pick<LifeosSession, "client" | "state">): boolean => !session.client && !sessionWaits(session);
 
-/** Whether the session can be read, as the page says it. */
+/** Whether the session can be read, as the page says it. No open host holds a job: `offline`, which the page's foot already says. */
 export function reachOf(session: Pick<LifeosSession, "client" | "state">, host: string | null): LifeosReach {
-  if (!host) return "unreachable";
+  if (!host) return "offline";
   if (session.client) return "ok";
   if (sessionWaits(session)) return "waiting";
   return session.state === "signed-out" || session.state === "refused" || session.state === "pairing" ? "signed-out" : "unreachable";

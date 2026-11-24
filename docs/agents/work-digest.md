@@ -406,8 +406,9 @@ no section of Today reads, the digest adds through Today's own seam:
 `src/renderer/src/work/digest/today.ts` is a `TodaySource` with no section
 of its own, listed in `TODAY_SOURCES`; its rows go in Today's `also`
 section, from today's digest and what was told since, in the groups
-`results`, `ending` and `system` and a guest's edit, less what Money shows
-itself (`money.confirm`); each row's press is the tell's own target
+`results`, `ending` and `system` and a guest's edit, a receipt to confirm
+(`money.confirm`) among them, since Money's section on Today lists only
+what is owed; each row's press is the tell's own target
 (`openTell`). The sheet stays as the record of earlier days, opened from
 Settings and Go → Digest. Today has no phone page, so the phone keeps its
 own screen.

@@ -102,6 +102,19 @@ describe("the meetings source", () => {
     ]);
   });
 
+  it("reads a sector's people through the session its meetings came through: the first session lacks that sector", async () => {
+    // The box's session covers purdue alone; ref's meetings and its people are read on the Mac, narrowed to ref.
+    convex.answer("auth:caller", { sectors: ["purdue"] }).answer("events:range", EVENTS.filter((e) => e.sector === "purdue")).answer("people:directory", []);
+    const mac = new FakeConvex()
+      .answer("events:range", [{ ...EVENTS[1]!, attendees: [{ address: "lee@example.org" }] }])
+      .answer("people:directory", [{ _id: "p2", name: "Lee Park", emails: ["lee@example.org"] }]);
+    fakeSession("mac", mac, "ref");
+    const env = envNow();
+    const { result } = renderHook(() => meetings.use(env));
+    await vi.waitFor(() => expect(rowOf(result.current.rows, "event:e2")?.detail).toBe("With Lee Park"));
+    expect(mac.reads.filter((r) => r.name === "people:directory").map((r) => r.args.sector)).toEqual(["ref"]);
+  });
+
   it("the live line moves with the minute, and only the row it belongs to is a new row", async () => {
     convex.answer("events:range", EVENTS);
     const env = envNow();

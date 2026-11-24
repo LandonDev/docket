@@ -39,8 +39,8 @@ describe("the host whose LifeOS session Today reads", () => {
     expect(reachOf({ client: null, state: "pairing" }, "box")).toBe("signed-out");
     expect(reachOf({ client: null, state: "unreachable" }, "box")).toBe("unreachable");
     expect(reachOf({ client: null, state: "off" }, "box")).toBe("unreachable");
-    // No host with an open link holds a job: nothing can reach LifeOS.
-    expect(reachOf({ client: null, state: "connecting" }, null)).toBe("unreachable");
+    // No linked host holds a job: the page's foot says so, not LifeOS.
+    expect(reachOf({ client: null, state: "connecting" }, null)).toBe("offline");
   });
 });
 

@@ -30,7 +30,8 @@ export function prepMarks(answers: readonly { workspace: TodayWorkspace; value: 
 }
 
 function usePrepMarks(env: TodayEnv): TodayAnswer {
-  const read = useEachWorkspace<Upcoming>(env, "work.prep.upcoming", () => ({ from: env.day.from, to: env.day.to }), { push: "work.prep" });
+  // At midnight the range moves with no push: every job is asked for the new day (`again`).
+  const read = useEachWorkspace<Upcoming>(env, "work.prep.upcoming", () => ({ from: env.day.from, to: env.day.to }), { push: "work.prep", again: env.day.from });
   return useMemo(() => ({ marks: prepMarks(read.answers) }), [read.answers]);
 }
 

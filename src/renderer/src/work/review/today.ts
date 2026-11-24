@@ -64,6 +64,8 @@ export const source: TodaySource = {
       };
     }, [hosts]);
     const newest = Object.values(ready).reduce<NonNullable<ReviewReady> | null>((best, r) => (r && (!best || r.from > best.from) ? r : best), null);
-    return { rows: newest ? [readyRow(newest, env.day.from, reviewZone())] : [] };
+    // Until every host asked has answered, a review may yet be waiting: the page is not "All clear" before it knows.
+    const out = hosts !== "" && hosts.split("\n").some((id) => !(id in ready));
+    return { rows: newest ? [readyRow(newest, env.day.from, reviewZone())] : [], ...(out ? { loading: true } : {}) };
   },
 };

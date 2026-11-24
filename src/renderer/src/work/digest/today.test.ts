@@ -37,9 +37,12 @@ describe("the digest's rows on Today", () => {
       row({ group: "review", kind: "review.ready", title: "This week's review is ready" }),
       row({ group: "people", kind: "mail.waiting", title: "3 sent mails have no answer" }),
       row({ group: "people", kind: "messages.new", title: "New chat from Dana Reyes" }),
-      row({ group: "results", kind: "money.confirm", title: "2 receipts to confirm" }),
     ];
     expect(alsoRows({ rows }, DAY, () => {})).toEqual([]);
+  });
+  it("keep a receipt to confirm: Money's section on Today lists only what is owed", () => {
+    const rows = [row({ group: "results", kind: "money.confirm", title: "A receipt to confirm", open: { view: "money", workspaceId: "w1" } })];
+    expect(alsoRows({ rows }, DAY, () => {}).map((r) => [r.section, r.title])).toEqual([["also", "A receipt to confirm"]]);
   });
   it("leave out another day's digest, and what was told before today began", () => {
     const rows = [row({ day: "2026-11-23", title: "Yesterday's" }), row({ day: null, how: "waiting", at: at(23, 22), title: "Late last night" })];
