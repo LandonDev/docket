@@ -247,6 +247,31 @@ describe('an opened package', () => {
     expect(store.history(path)[0]).toMatchObject({ rev: 1, by: 'file', label: 'Changed outside TempCode' })
   })
 
+  it('takes a workbook of the same length put there with the same time for another file: a revision of its own, and an edit made before it is refused', async () => {
+    // Council r2 (Sol 3): size and time alone were the stamp, so this replacement passed as the open workbook and took its edit.
+    const data = (await store.open(path)).inspected.sheets[0].id
+    const { mtime, size } = (await import('node:fs')).statSync(path)
+    // a sync's rename: a new file of the same size and time (here its bytes too: no look at the contents is needed)
+    const incoming = `${path}.incoming`
+    writeFileSync(incoming, readFileSync(path))
+    utimesSync(incoming, mtime, mtime)
+    ;(await import('node:fs')).renameSync(incoming, path)
+    expect((await import('node:fs')).statSync(path).size).toBe(size)
+    expect(await store.edit(path, 0, [set(data, 1, 0, { v: 7 })], 'owner')).toEqual({ conflict: true, rev: 1 })
+    expect(store.history(path)[0]).toMatchObject({ rev: 1, by: 'file' })
+  })
+
+  it('reads a stamp kept before the file\'s identity was in it as the same file: no revision of its own', async () => {
+    const db = new DatabaseSync(':memory:')
+    ensurePackageTables(db)
+    const old = new PackageStore(db, await localJobs(), join(scratch, `old-${n}`), () => engine)
+    await old.open(path)
+    const st = (await import('node:fs')).statSync(path)
+    db.prepare('UPDATE work_sheets_files SET stamp = ? WHERE path = ?').run(`${st.size}:${Math.round(st.mtimeMs)}`, path)
+    expect(old.since(path, 0)).toEqual({ rev: 0, ops: [] })
+    expect((db.prepare('SELECT stamp FROM work_sheets_files').get() as { stamp: string }).stamp.split(':')).toHaveLength(3)
+  })
+
   it('writes an agent\'s cells in A1, keeps what they held, and takes the write back', async () => {
     await store.open(path)
     const w = await store.writeCells(path, [{ at: 'A2', v: 7 }, { at: "'Data'!A3", f: 'A2*2' }], 'agent:h:t', 'Wrote 2 cells', 'w1')

@@ -97,7 +97,10 @@ A workbook from a mail (`{at: 'mail'}`: .xlsx, .xlsm or .csv) is held as the fil
   mutations, who, when, a label) and a copy of the package under
   `<userData>/sheets/files/<hash of the path>/<rev>.xlsx`; the copy as first
   opened is kept for good and the newest 30 after it. A change on disk we did
-  not make is a revision of its own (`by: 'file'`), seen when something
+  not make (told by the file's size, time and inode, so a workbook of the
+  same length renamed in with the same time counts; a copy written into the
+  same inode that keeps the length and the time does not) is a revision of
+  its own (`by: 'file'`), seen when something
   asks the host (an edit, a push, a reopen): an open grid shows the older
   workbook until then, and reloads when it asks. Restore puts a kept copy
   back byte for byte as a new revision.

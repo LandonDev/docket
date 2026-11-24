@@ -75,11 +75,17 @@ export interface SharedPlace {
   is(path: string): boolean
 }
 
-/** The file's stamp: what tells a change made outside us. */
+/**
+ * The file's stamp: what tells a change made outside us. Its size and time, and which file it is (its inode): a
+ * workbook of the same length put there with the same time by a rename (a sync's, a copy's) is another file. (Not the
+ * inode's change time: a mode or an attribute the system sets would read as a change.)
+ */
 const stampOf = (path: string): string => {
   const st = statSync(path)
-  return `${st.size}:${Math.round(st.mtimeMs)}`
+  return `${st.size}:${Math.round(st.mtimeMs)}:${st.ino}`
 }
+/** Whether a kept stamp names the file now: a stamp kept before the file's identity was in it (size and time) is read by those two. */
+const sameStamp = (kept: string, now: string): boolean => kept === now || (kept.split(':').length === 2 && now.startsWith(`${kept}:`))
 
 interface FileRow {
   path: string
@@ -226,7 +232,11 @@ export class PackageStore {
       this.db.prepare('INSERT INTO work_sheets_files (path, rev, stamp) VALUES (?, 0, ?)').run(path, stamp)
       return this.row(path)!
     }
-    if (row.stamp === stamp) return row
+    if (sameStamp(row.stamp, stamp)) {
+      // (a stamp kept before the file's identity was in it takes it now, with no revision of its own)
+      if (row.stamp !== stamp) this.db.prepare('UPDATE work_sheets_files SET stamp = ? WHERE path = ?').run(stamp, path)
+      return row.stamp === stamp ? row : this.row(path)!
+    }
     const rev = row.rev + 1
     // (a shared workbook's copies go with its tab and at each start: the folder is made again)
     mkdirSync(this.dir(path), { recursive: true })
@@ -255,7 +265,7 @@ export class PackageStore {
   fileAt(path: string, rev: number): string {
     const row = this.row(path)
     if (!row) throw new Error('Open the sheet first.')
-    if (rev === row.rev && existsSync(path) && stampOf(path) === row.stamp) return path
+    if (rev === row.rev && existsSync(path) && sameStamp(row.stamp, stampOf(path))) return path
     const copy = this.copyOf(path, rev)
     if (!existsSync(copy)) throw new Error('That version of the file is no longer kept: open the sheet again.')
     return copy
@@ -407,7 +417,7 @@ export class PackageStore {
       mkdirSync(dirname(made), { recursive: true })
       // The file as the patch read it: the door replaces it only while it is still this.
       const expect = versionWord(await versionOf(target))
-      if (stampOf(path) !== row.stamp) throw new ChangedOutside()
+      if (!sameStamp(row.stamp, stampOf(path))) throw new ChangedOutside()
       await write(target, made)
       stamp = await this.put(path, target, new Uint8Array(readFileSync(made)), expect, rev)
     } catch (err) {
@@ -458,8 +468,11 @@ export class PackageStore {
       rmSync(copy, { force: true })
       throw new ChangedOutside()
     }
-    // A version word is `size:mtime:sha`: its first two parts are the stamp.
-    return got.version.split(':').slice(0, 2).join(':')
+    // A version word is `size:mtime:sha`: its first two parts begin the stamp, and the file's identity is read now, only
+    // while it is still that write; a sync that landed in between leaves a stamp no look will find (a change from outside).
+    const wrote = got.version.split(':').slice(0, 2).join(':')
+    const now = stampOf(target)
+    return now.startsWith(`${wrote}:`) ? now : `${wrote}:-`
   }
 
   /** Reads the cells of an A1 range as the package holds them now. */
@@ -546,7 +559,7 @@ export class PackageStore {
       const next = row.rev + 1
       let stamp: string
       try {
-        if (stampOf(path) !== row.stamp) throw new ChangedOutside()
+        if (!sameStamp(row.stamp, stampOf(path))) throw new ChangedOutside()
         stamp = await this.put(path, target, new Uint8Array(readFileSync(copy)), expect, next)
       } catch (err) {
         if (err instanceof ChangedOutside) throw new Error('The file changed outside TempCode just now: open it again and restore.')
