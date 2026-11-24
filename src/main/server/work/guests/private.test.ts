@@ -154,7 +154,10 @@ describe('a styled document over a guest link', () => {
     await until('a new page synced', () => late.provider.isSynced)
     expect(late.document.getMap('page').get('schema')).toBe(2)
     const refused = r.connect(socket, r.guestToken, { schema: 1 })
-    await new Promise((resolve) => setTimeout(resolve, 600))
+    const laterRefusals: string[] = []
+    refused.provider.on('authenticationFailed', ({ reason }: { reason: string }) => laterRefusals.push(reason))
+    await until('the later page refused', () => laterRefusals.length > 0)
+    expect(laterRefusals[0]).toBe('Forbidden: the document is schema 2')
     expect(refused.provider.isSynced).toBe(false)
     expect(refused.document.getMap('page').size).toBe(0)
     expect(stateText(refused)).not.toContain('Doors open')

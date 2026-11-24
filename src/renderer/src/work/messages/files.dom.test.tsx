@@ -58,7 +58,7 @@ describe("a message's files", () => {
   });
 
   it("draws a stored picture in place from a blob, in its own shape, and no web address is in the page", async () => {
-    const stored: ChatMessage = { _id: "pic", who: { name: "Ana Ruiz", me: false }, text: "[file: map.png]", sentAt: Date.now(), files: [{ _id: "f1", name: "map.png", contentType: "image/png", width: 1600, height: 900, status: "stored", url: "https://lifeos.example.dev/api/storage/abc" }] };
+    const stored: ChatMessage = { _id: "pic", who: { name: "Ana Ruiz", me: false }, text: "[file: map.png]", sentAt: Date.UTC(2026, 10, 23, 17), files: [{ _id: "f1", name: "map.png", contentType: "image/png", width: 1600, height: 900, status: "stored", url: "https://lifeos.example.dev/api/storage/abc" }] };
     mount({ messages: { ...MESSAGES, c_art: [stored] } }, "c_art");
     await act(async () => {});
     const picture = within(block("pic")).getByRole("img", { name: "map.png" }) as HTMLImageElement;

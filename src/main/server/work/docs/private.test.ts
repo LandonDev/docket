@@ -305,10 +305,10 @@ describe("the document kept for a Word file of another computer", () => {
     return source
   }
   /** The autosave, run as if the document had been still for its pause: it sees the live revision, then a pause later saves. */
-  let clock = Date.now()
+  let clock = 0
   const autosave = async (r: Awaited<ReturnType<typeof rig>>) => {
     await r.service.collab.flush()
-    clock += 60_000
+    clock = Math.max(clock, Date.now()) + 60_000
     await autosaveWords(r.ctx, clock)
     await autosaveWords(r.ctx, clock + 10_000)
   }

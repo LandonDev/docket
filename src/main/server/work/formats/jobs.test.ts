@@ -1,4 +1,5 @@
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, utimesSync, writeFileSync } from 'node:fs'
+import { shiftMtime } from '../mtime.testkit'
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
@@ -219,8 +220,7 @@ describe('a job on this host', () => {
     const fresh = join(dataDir, 'work-tools', 'jobs', 'fresh')
     mkdirSync(old, { recursive: true })
     mkdirSync(fresh, { recursive: true })
-    const twoDaysAgo = (Date.now() - 2 * 86_400_000) / 1000
-    utimesSync(old, twoDaysAgo, twoDaysAgo)
+    shiftMtime(old, -2 * 86_400_000)
     runner.sweep()
     expect(existsSync(old)).toBe(false)
     expect(existsSync(fresh)).toBe(true)

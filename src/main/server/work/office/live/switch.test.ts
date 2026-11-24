@@ -1,4 +1,5 @@
-import { existsSync, readFileSync, rmSync, utimesSync, writeFileSync } from 'node:fs'
+import { shiftMtime } from '../../mtime.testkit'
+import { existsSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { METHOD_CAPABILITY } from '@shared/capabilities'
@@ -246,7 +247,7 @@ describe('Edit here → Live', () => {
   it('asks over a file that changed there, and with Keep Both saves his beside it, then goes live on that file', async () => {
     const { path, copy, tabId, item } = await openFar('Roster.xlsx', 'workbook')
     writeFileSync(path, 'a colleague saved')
-    utimesSync(path, new Date(), new Date(Date.now() + 5000))
+    shiftMtime(path, 5000)
     await edit(copy!, 'his edit')
     await settled()
     expect(await set(tabId)).toEqual({ is: 'ask', why: 'changed', words: 'Roster.xlsx changed on its computer since you opened it. Keep Both saves your changes beside it.' })
@@ -299,7 +300,7 @@ describe('Edit here → Live', () => {
     }
     const touch = (doc: string, bytes: string, ahead: number) => {
       writeFileSync(doc, bytes)
-      utimesSync(doc, new Date(), new Date(Date.now() + ahead))
+      shiftMtime(doc, ahead)
     }
 
     it('asks when it holds edits the Word file has not', async () => {

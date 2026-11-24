@@ -182,8 +182,8 @@ describe("the lists", () => {
     expect(decidedWords({ verb: "Reset", kind: "computer.act", decidedBy: "owner" })).toBe("Pressed Reset by you");
     // a computer act's verb is its control's own word (milestone 50's council, round 8)
     for (const [verb, past] of [["Drop class", "Dropped class"], ["Transfer", "Transferred"], ["Ship order", "Shipped order"], ["Commit", "Committed"], ["Sell", "Sold"], ["Leave meeting", "Left meeting"], ["Withdraw", "Withdrew"], ["Stop", "Stopped"], ["Open", "Opened"], ["Visit", "Visited"], ["Fix", "Fixed"], ["Show", "Showed"], ["Sign", "Signed"], ["Join", "Joined"]]) expect(pastOf(verb!)).toBe(past);
-    expect(grantLine("mail.send", Date.now())).toBe("Made today from a held mail");
     const now = new Date(2026, 10, 19, 12).getTime();
+    expect(grantLine("mail.send", now - 60_000, now)).toBe("Made today from a held mail");
     expect([dayOf(now - 3_600_000, now), dayOf(now - 86_400_000, now), dayOf(now - 3 * 86_400_000, now)]).toEqual(["Today", "Yesterday", "Earlier"]);
   });
 });

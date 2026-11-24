@@ -5,7 +5,8 @@
  * as a chip, and Done through the client.
  */
 import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { workTestClock } from "../testClock";
 import { fakeTasksClient, type Task } from "work-kit/views";
 import { keepPlace } from "../shell/place";
 import { returnOf } from "../../lib/workReturn";
@@ -56,14 +57,20 @@ const { Tasks } = await import("./TasksView");
 const { newestOpenThread } = await import("./links");
 const { workOpenPort } = await import("../../lib/workSwitch");
 
-afterEach(cleanup);
+beforeEach(() => void vi.useFakeTimers({ now, toFake: ["Date"] }));
+afterEach(() => {
+  cleanup();
+  vi.useRealTimers();
+});
 // jsdom draws no layout: the picker's keyboard list scrolls its pick into view.
 Element.prototype.scrollIntoView ??= () => {};
 
-const now = Date.now();
+const now = workTestClock();
+const local = new Date(now);
+const due = (days: number, hour: number, minute: number) => new Date(local.getFullYear(), local.getMonth(), local.getDate() + days, hour, minute).getTime();
 const rows: Task[] = [
-  { _id: "t1", title: "Book the ballroom", sector: "purdue", status: "todo", projectId: "p1", dueAt: now + 3_600_000 },
-  { _id: "t2", title: "Send Dana the budget", sector: "purdue", status: "todo", dueAt: now + 3 * 86_400_000 },
+  { _id: "t1", title: "Book the ballroom", sector: "purdue", status: "todo", projectId: "p1", dueAt: due(0, 23, 59) },
+  { _id: "t2", title: "Send Dana the budget", sector: "purdue", status: "todo", dueAt: due(3, 12, 0) },
   { _id: "t3", title: "Approve the scrim schedule", sector: "purdue", status: "waiting", waitingOn: "Sam Ortiz" },
 ];
 
@@ -91,7 +98,8 @@ describe("the Tasks view", () => {
   });
 
   it("marks a row done after its tick holds, through the client", async () => {
-    vi.useFakeTimers();
+    vi.useRealTimers();
+    vi.useFakeTimers({ now });
     const client = fakeTasksClient(rows);
     render(<Tasks client={client} startThread={() => {}} />);
     fireEvent.click(screen.getByRole("checkbox", { name: "Mark Send Dana the budget done" }));
@@ -184,7 +192,8 @@ describe("the Tasks view", () => {
   });
 
   it("spins Start alone while it waits for the notes, Cancel live, and after five seconds starts with the title alone", async () => {
-    vi.useFakeTimers({ shouldAdvanceTime: true });
+    vi.useRealTimers();
+    vi.useFakeTimers({ now, shouldAdvanceTime: true });
     const startThread = vi.fn();
     const notes = code.detail;
     code.detail = undefined;

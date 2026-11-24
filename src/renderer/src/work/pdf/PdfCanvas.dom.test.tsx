@@ -54,9 +54,14 @@ function kinds(): Record<string, CanvasKindDef> {
   return { ...CANVAS, pdf: { ...CANVAS.pdf, chunk: defineChunk("test-pdf", () => module) } };
 }
 
-async function open(view: PdfView, options: { password?: string } = {}) {
+async function open(view: PdfView, options: { password?: string; firstPaint?: Promise<void> } = {}) {
   pdfHost = fakePdfHost(view);
   const doc = fakeDoc(FILE);
+  const paint = doc.paint.bind(doc);
+  doc.paint = async (...args) => {
+    if (args[0] === 1) await options.firstPaint;
+    return paint(...args);
+  };
   engine = fakeEngine(doc, options);
   host.current = fakeHost([ITEM], host as never);
   const r = render(
@@ -98,12 +103,15 @@ const pages = () => [...document.querySelectorAll<HTMLElement>("[data-pdf-page]"
 
 describe("the PDF kind", () => {
   it("draws the pages near the top as paper and counts them in the pager", async () => {
-    const { doc } = await open(pdfView());
+    const paint = Promise.withResolvers<void>();
+    const { doc } = await open(pdfView(), { firstPaint: paint.promise });
     // Each part arrives on its own beat (the column, the bar once the kind's chunk is in, the mode once the file opens): wait for each.
     await waitFor(() => expect(pages()[0]).toBe(1));
     await waitFor(() => expect(document.querySelector("[data-pdf-pager]")?.textContent).toBe("1/14"));
-    await waitFor(() => expect(doc.painted).toContain(1));
+    expect(doc.painted).not.toContain(1);
+    await act(async () => paint.resolve());
     await waitFor(() => expect(document.querySelector('[data-pdf-page="1"]')?.textContent).toContain("Page 1"));
+    expect(doc.painted).toContain(1);
     expect(await screen.findByRole("button", { name: /Agent suggests/ })).toBeTruthy();
     // Settled: only a window of the 14 pages is mounted, and a file this short has no thumbnail rail.
     expect(pages().length).toBeLessThan(FILE.length);
@@ -265,7 +273,7 @@ describe("the PDF kind", () => {
   });
 
   it("shows what the agent wrote directly with its Undo, in the stepper's place", async () => {
-    await open(pdfView({ mode: "writes", written: { id: "w1", text: "Filled 5 fields", at: Date.now() } }));
+    await open(pdfView({ mode: "writes", written: { id: "w1", text: "Filled 5 fields", at: Date.UTC(2026, 10, 23, 17) } }));
     const written = await found("[data-canvas-written]");
     expect(written.textContent).toContain("Filled 5 fields");
     fireEvent.click(within(written).getByRole("button", { name: "Undo" }));
@@ -333,11 +341,12 @@ describe("a file the host stops sending", () => {
   it("says so with Retry, and Retry opens it again", async () => {
     pdfHost = fakePdfHost(pdfView());
     let tries = 0;
+    let fail: (() => void) | undefined;
     engine = {
       open: async (file) => {
         if (++tries === 1) {
           // pdf.js opened, then a range it needed never came.
-          setTimeout(() => file.onFail?.("The host stopped sending this file."), 0);
+          fail = () => file.onFail?.("The host stopped sending this file.");
         }
         return fakeDoc(FILE);
       },
@@ -348,6 +357,8 @@ describe("a file the host stops sending", () => {
         <div />
       </CanvasSeat>,
     );
+    await waitFor(() => expect(pages()[0]).toBe(1));
+    await act(async () => fail!());
     expect(await screen.findByText("The host stopped sending this file.")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Retry" }));
     await waitFor(() => expect(pages()[0]).toBe(1));
@@ -392,7 +403,7 @@ describe("the bar and failures", () => {
     );
     await found("[data-pdf-bar-bone]");
     await waitFor(() => expect(land).not.toBeNull());
-    act(() => land!(fakeDoc(FILE)));
+    await act(async () => land!(fakeDoc(FILE)));
     await waitFor(() => expect(document.querySelector("[data-pdf-pager]")?.textContent).toBe("1/14"));
     expect(document.querySelector("[data-pdf-bar-bone]")).toBeNull();
   });

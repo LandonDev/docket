@@ -1,7 +1,8 @@
-import { chmodSync, copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, statSync, utimesSync, writeFileSync } from 'node:fs'
+import { shiftMtime } from '../mtime.testkit'
+import { chmodSync, copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { importXlsx } from 'work-kit/sheet/xlsx'
 import { refKey } from '@shared/work/files'
 import { doorPlace, openAs } from '../files/handle'
@@ -10,6 +11,7 @@ import { locate, sharedOf } from '../files/policy'
 import { previewScratch } from '../files/preview'
 import { libraryKey } from '../files/places/teams'
 import { at, HOST, makeRig, window, WS, type Rig } from '../files/testkit'
+import * as saves from '../files/save'
 import { withFileLocks } from '../files/write'
 import { fileKey, sharedCopies } from './held'
 import { SHEET_MAKER } from './index'
@@ -116,7 +118,7 @@ describe('a save into a library\'s workbook', () => {
         const got = await real.save(path, output, edits, dir, formats)
         // a co-author's save syncs down while ours is made
         writeFileSync(book, other)
-        utimesSync(book, new Date(), new Date(Date.now() + 9_000))
+        shiftMtime(book, 9_000)
         return got
       }
     })
@@ -139,16 +141,27 @@ describe('a save into a library\'s workbook', () => {
     const s = await store()
     const sheet = (await s.open(book)).inspected.sheets[0]!.id
     const order: string[] = []
-    let release!: () => void
-    // Files holds the file's lock, by the key its own save takes
+    const locked = Promise.withResolvers<void>()
+    const release = Promise.withResolvers<void>()
+    // Files holds the file's lock, by the key its own save takes.
     const files = libraryKey(doorPlace(rig.ctx, window, locate(rig.ctx, window, WS, at(book), 'work.files.write')).library!, book)
-    const held = withFileLocks([files], () => new Promise<void>((done) => (release = () => (order.push('files'), done()))))
+    const held = withFileLocks([files], async () => {
+      locked.resolve()
+      await release.promise
+      order.push('files')
+    })
+    await locked.promise
+    const save = vi.spyOn(saves, 'saveFile')
     const saving = s.edit(book, 0, [set(sheet, 1, 0, { v: 7 })], 'owner').then((got) => (order.push('sheet'), got))
-    await new Promise((r) => setTimeout(r, 400))
-    expect(order).toEqual([])
-    expect(valueAt(book, 1, 0)).not.toBe(7)
-    release()
-    await held
+    try {
+      await expect.poll(() => save.mock.calls[0]?.[1], { timeout: 5000 }).toBe(files)
+      expect(order).toEqual([])
+      expect(valueAt(book, 1, 0)).not.toBe(7)
+    } finally {
+      save.mockRestore()
+      release.resolve()
+      await held
+    }
     expect(await saving).toEqual({ rev: 1 })
     expect(order).toEqual(['files', 'sheet'])
   })

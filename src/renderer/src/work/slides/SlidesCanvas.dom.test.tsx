@@ -942,7 +942,7 @@ describe("the slides kind", () => {
   });
 
   it("shows what the agent wrote directly with its Undo", async () => {
-    open(deckView({ mode: "writes", written: { id: "w1", text: "Wrote notes for 12 slides", at: Date.now() } }));
+    open(deckView({ mode: "writes", written: { id: "w1", text: "Wrote notes for 12 slides", at: Date.UTC(2026, 10, 23, 17) } }));
     const written = await found("[data-canvas-written]");
     expect(written.textContent).toContain("Wrote notes for 12 slides");
     fireEvent.click(within(written).getByRole("button", { name: "Undo" }));

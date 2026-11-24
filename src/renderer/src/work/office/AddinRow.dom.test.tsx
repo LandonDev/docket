@@ -1,11 +1,16 @@
 // @vitest-environment jsdom
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+const NOW = Date.UTC(2026, 10, 23, 17);
 import type { OfficeAddinKey } from "@shared/contract-work-office";
 import type { Link } from "../../lib/connection/link";
 import { AddinRow, addinLine } from "./AddinRow";
 
-afterEach(cleanup);
+beforeEach(() => void vi.setSystemTime(NOW));
+afterEach(() => {
+  cleanup();
+  vi.useRealTimers();
+});
 
 const KEY: OfficeAddinKey = { id: "k1", name: "Excel on the web", app: "excel", createdAt: 1, seenAt: 1, live: true };
 
@@ -18,7 +23,7 @@ function fakeLink(keys: OfficeAddinKey[]) {
     request: (method: string, params: unknown) => {
       calls.push({ method, params });
       if (method === "work.office.addin.list") return Promise.resolve({ keys: [...keys] });
-      if (method === "work.office.addin.pair") return Promise.resolve({ code: "K7M2Q9XP", expiresAt: Date.now() + 5 * 60_000 });
+      if (method === "work.office.addin.pair") return Promise.resolve({ code: "K7M2Q9XP", expiresAt: NOW + 5 * 60_000 });
       if (method === "work.office.addin.remove") {
         keys.splice(keys.findIndex((k) => k.id === (params as { id: string }).id), 1);
         return Promise.resolve({ removed: true });
@@ -33,7 +38,7 @@ describe("addinLine", () => {
   it("says whether it is connected, else when it last was", () => {
     expect(addinLine({ live: true, seenAt: 1 })).toBe("Connected");
     expect(addinLine({ live: false, seenAt: null })).toBe("Not connected yet");
-    expect(addinLine({ live: false, seenAt: Date.now() - 3 * 3600_000 })).toBe("Last connected 3h ago");
+    expect(addinLine({ live: false, seenAt: NOW - 3 * 3600_000 })).toBe("Last connected 3h ago");
   });
 });
 
@@ -44,7 +49,7 @@ describe("AddinRow", () => {
     expect(screen.getByText("Not paired")).toBeTruthy();
     await act(async () => fireEvent.click(screen.getByRole("button", { name: "Pair…" })));
     expect(await screen.findByText("K7M2Q9XP")).toBeTruthy();
-    expect(screen.getByText(/^[45]:\d\d$/)).toBeTruthy();
+    expect(screen.getByText("5:00")).toBeTruthy();
     expect(calls.map((c) => c.method)).toEqual(["work.office.addin.list", "work.office.addin.pair"]);
   });
 

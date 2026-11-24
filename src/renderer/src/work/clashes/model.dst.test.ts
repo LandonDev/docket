@@ -1,5 +1,6 @@
 // The clock changes, in a zone that has them: the times a step offers are the instants it sends, and its "Next day" is true.
 // The zone is set before any date is read; vitest runs each file in its own process (pool: forks), so no other test sees it.
+const incomingZone = process.env.TZ;
 process.env.TZ = "America/New_York";
 
 import { afterAll, describe, expect, it } from "vitest";
@@ -12,7 +13,8 @@ const FIRST_1_30 = Date.UTC(2026, 10, 1, 5, 30);
 const SECOND_1_30 = Date.UTC(2026, 10, 1, 6, 30);
 
 afterAll(() => {
-  delete process.env.TZ;
+  if (incomingZone === undefined) delete process.env.TZ;
+  else process.env.TZ = incomingZone;
 });
 
 describe("a step's times when the clocks change", () => {

@@ -48,7 +48,7 @@ const readKey: Principal = { kind: 'remote', keyId: 'k', name: 'phone', audience
 const approveKey: Principal = { kind: 'remote', keyId: 'k2', name: 'phone', audience: 'client', caps: ['read', 'operate', 'approve'] } as Principal
 
 function workspace(id: string, extra: Partial<WorkspaceMeta> = {}): WorkspaceMeta {
-  const w = { id, name: id, path: join(dir, id), git: false, createdAt: Date.now(), ...extra } as WorkspaceMeta
+  const w = { id, name: id, path: join(dir, id), git: false, createdAt: Date.UTC(2026, 10, 23, 17), ...extra } as WorkspaceMeta
   store.insertWorkspace(w)
   return w
 }

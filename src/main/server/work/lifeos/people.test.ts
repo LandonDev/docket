@@ -1,5 +1,5 @@
 import { DatabaseSync } from 'node:sqlite'
-import { beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { WorkScope } from '@shared/work'
 import { workClock } from '../clock'
 import type { ToolCtx, WorkCtx } from '../modules'
@@ -7,13 +7,16 @@ import { ensureGuestTables, GUEST_LINKS_TABLE } from '../guests/store'
 import { lifeos } from '.'
 import { linksNamed, pageText, personPageTool, resolvePerson } from './people'
 
+const NOW = new Date(2026, 10, 23, 12).getTime()
+beforeEach(() => void vi.setSystemTime(NOW))
+afterEach(() => vi.useRealTimers())
+
 /*
  * person_page on a LifeOS that stands in: who it finds, the sector it reads
  * (the thread's own, never another), the guest links it asks LifeOS about,
  * and the page it answers.
  */
 
-const NOW = Date.now()
 const people = [
   { _id: 'p_maya', name: 'Maya Chen', emails: ['maya@school.edu'], lastAt: NOW - 1000 },
   { _id: 'p_tom', name: 'Tom Beck', emails: ['tom@school.edu'] },

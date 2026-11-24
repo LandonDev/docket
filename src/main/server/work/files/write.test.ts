@@ -463,16 +463,18 @@ describe('the journal', () => {
   })
 
   it('marks a run a dead process left failed, at boot', async () => {
-    db.prepare(`INSERT INTO work_files_ops (id, workspace_id, verb, refs, state, at) VALUES ('op1', 'w1', 'rename', ?, 'running', ?)`).run(JSON.stringify(op.refs), Date.now())
+    db.prepare(`INSERT INTO work_files_ops (id, workspace_id, verb, refs, state, at) VALUES ('op1', 'w1', 'rename', ?, 'running', ?)`).run(JSON.stringify(op.refs), 1)
     expect(settleOps(db)).toBe(1)
     await expect(runOp(db, op, async () => 1)).rejects.toThrow('The app stopped before this finished.')
   })
 
   it('drops rows older than a week', async () => {
-    const now = Date.now()
+    const now = Date.UTC(2026, 10, 23, 17)
     await runOp(db, op, async () => 1)
     await runOp(db, { ...op, id: 'op2' }, async () => 2)
-    db.prepare(`UPDATE work_files_ops SET at = ? WHERE id = 'op1'`).run(now - 8 * 24 * 60 * 60 * 1000)
+    const date = db.prepare(`UPDATE work_files_ops SET at = ? WHERE id = ?`)
+    date.run(now - 8 * 24 * 60 * 60 * 1000, 'op1')
+    date.run(now, 'op2')
     expect(pruneOps(db, now)).toBe(1)
     expect((db.prepare(`SELECT id FROM work_files_ops`).all() as { id: string }[]).map((r) => r.id)).toEqual(['op2'])
   })

@@ -23,7 +23,7 @@ describe('the capture source', () => {
       } as never
     }
   }
-  const read = (l: ReturnType<typeof lifeos>) => capture.read({ ...env(['life']), ctx: l.ctx, modules: [], call: () => Promise.reject(new Error('unused')), zone: 'America/Chicago', since: 0 }, Date.now())
+  const read = (l: ReturnType<typeof lifeos>) => capture.read({ ...env(['life']), ctx: l.ctx, modules: [], call: () => Promise.reject(new Error('unused')), zone: 'America/Chicago', since: 0 }, Date.UTC(2026, 10, 23, 17))
 
   it("counts Life's open tasks that came in as Unsorted, read as the owner from LifeOS, only when a digest is made", async () => {
     const l = lifeos([{ source: { channel: 'Unsorted' } }, { source: { channel: 'Capture' } }, { source: { channel: 'Unsorted' } }, { source: null }, {}])

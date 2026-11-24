@@ -121,7 +121,6 @@ d('take over on a headless box browser', () => {
     expect(await host.rows.stop('w1')).toBe(false)
 
     // the picture goes on under the same preview, from a session of the service that only looks
-    await sleep(300)
     const before = frames.length
     await until(() => frames.length > before + 1)
     expect(frames.at(-1)!.preview).toBe(started.preview)

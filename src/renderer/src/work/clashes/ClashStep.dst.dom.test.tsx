@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 /** A way out's step on the day the clocks go forward: a time he types into the hour they skip is refused at its field, and nothing goes. */
 // The zone is set before any date of the test is read; vitest runs each file in its own process (pool: forks).
+const incomingZone = process.env.TZ;
 process.env.TZ = "America/New_York";
 
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
@@ -19,7 +20,8 @@ afterEach(() => {
   vi.useRealTimers();
 });
 afterAll(() => {
-  delete process.env.TZ;
+  if (incomingZone === undefined) delete process.env.TZ;
+  else process.env.TZ = incomingZone;
 });
 
 describe("a step on the night the clocks go back", () => {

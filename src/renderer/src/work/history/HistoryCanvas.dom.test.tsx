@@ -7,6 +7,7 @@
  */
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+const NOW = Date.UTC(2026, 10, 23, 17);
 import { diffBlocks, type BlockLike } from "work-kit/formats/diff";
 import type { HistoryVersion } from "@shared/contract-work-history";
 import type { CanvasItem } from "@shared/work";
@@ -25,8 +26,8 @@ const OLD = [p("h", "Morning", "heading"), p("a", "8:00 AM Setup crew at the loa
 const NEW = [p("h", "Morning", "heading"), p("a", "7:30 AM Setup crew at the loading dock", "bulletListItem"), p("n", "8:30 AM Check-in opens", "bulletListItem"), p("b", "9:00 AM Doors open"), table("Sam Ortiz")];
 const AGENT = "agent:env_box:t1";
 const VERSIONS: HistoryVersion[] = [
-  { id: "v2", at: Date.now() - 60_000, cause: "agent-turn", by: [AGENT], kept: "snapshot" },
-  { id: "v1", at: Date.now() - 3_600_000, cause: "named", label: "Wrote the morning", by: ["owner"], kept: "snapshot" },
+  { id: "v2", at: NOW - 60_000, cause: "agent-turn", by: [AGENT], kept: "snapshot" },
+  { id: "v1", at: NOW - 3_600_000, cause: "named", label: "Wrote the morning", by: ["owner"], kept: "snapshot" },
 ];
 
 const host = vi.hoisted(() => ({
@@ -92,6 +93,7 @@ import { layoutOf, type HistoryState } from "./HistoryCanvas";
 const ITEM: CanvasItem = canvasItem("h1", { kind: "history", title: "Spring LAN run of show", source: { at: "file", host: "local", path: "/work/Run of show.tcdoc" } });
 
 beforeEach(async () => {
+  vi.setSystemTime(NOW);
   Element.prototype.scrollIntoView ??= () => undefined;
   globalThis.ResizeObserver ??= class {
     observe() {}
@@ -110,7 +112,10 @@ beforeEach(async () => {
   host.toasts = [];
   await new Promise<void>((done) => openMenus(done));
 });
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  vi.useRealTimers();
+});
 
 async function seat(state?: HistoryState) {
   // Each test its own source, so the history store's answers do not carry over.
@@ -182,7 +187,7 @@ describe("the history canvas", () => {
 
   it("a branch waits for him: the frame's stepper steps it, Accept takes the current row", async () => {
     const diff = diffBlocks(OLD, NEW);
-    host.branches = [{ id: "b1", baseVersionId: "v2", authors: [AGENT], label: "Suggestions", at: 1, editedAt: Date.now(), diff }];
+    host.branches = [{ id: "b1", baseVersionId: "v2", authors: [AGENT], label: "Suggestions", at: 1, editedAt: NOW, diff }];
     const { container } = await seat();
     await waitFor(() => expect(screen.getByText("Waiting for you")).toBeTruthy());
     fireEvent.click(screen.getByText("3 changes"));
@@ -198,7 +203,7 @@ describe("the history canvas", () => {
 
   it("a page-only suggestion has one step with words and sends the page id", async () => {
     const diff = { ...diffBlocks(OLD, OLD), page: ["Margins become 0.5 in left and right"] };
-    host.branches = [{ id: "b1", baseVersionId: "v2", authors: [AGENT], label: "Suggestions", at: 1, editedAt: Date.now(), diff }];
+    host.branches = [{ id: "b1", baseVersionId: "v2", authors: [AGENT], label: "Suggestions", at: 1, editedAt: NOW, diff }];
     const { container } = await seat();
     fireEvent.click(await screen.findByText("1 change"));
     expect(await screen.findByText("Margins become 0.5 in left and right")).toBeTruthy();
@@ -264,7 +269,7 @@ describe("the history canvas", () => {
   });
 
   it("draws a waiting branch as one list button, with the item's focus ring", async () => {
-    host.branches = [{ id: "b1", baseVersionId: "v2", authors: [AGENT], label: "Suggestions", at: 1, editedAt: Date.now(), diff: diffBlocks(OLD, NEW) }];
+    host.branches = [{ id: "b1", baseVersionId: "v2", authors: [AGENT], label: "Suggestions", at: 1, editedAt: NOW, diff: diffBlocks(OLD, NEW) }];
     await seat();
     const row = (await screen.findByText("3 changes")).closest("button")!;
     expect(row.getAttribute("data-slot")).toBe("item");

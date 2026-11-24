@@ -1,3 +1,4 @@
+import { setTimeout as delay } from 'node:timers/promises'
 import { EventEmitter } from 'node:events'
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -13,6 +14,19 @@ const tmp = () => {
   return d
 }
 afterEach(() => dirs.splice(0).forEach((d) => rmSync(d, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 })))
+
+/** The browser can exit outside the test runner's timeout. Bound the event wait so finally can stop it. */
+async function waitForStop(stopped: Promise<string>): Promise<string> {
+  const timer = new AbortController()
+  try {
+    return await Promise.race([
+      stopped,
+      delay(10_000, undefined, { signal: timer.signal }).then(() => { throw new Error('Chromium did not report a stop') })
+    ])
+  } finally {
+    timer.abort()
+  }
+}
 
 describe('the box browser', () => {
   it('finds the newest Playwright Chromium when none is named or on PATH', () => {
@@ -208,14 +222,17 @@ describe('the box browser', () => {
   it('launches nothing when it is stopped while it asks the binary what it is, and leaves no display behind', async () => {
     const fake = fakeBrowser()
     const display = fakeDisplay()
-    let asked!: () => void
-    const answer = new Promise<boolean>((resolve) => (asked = () => resolve(true)))
-    const b = new BoxChromium({ root: tmp(), bin: () => '/bin/chromium', spawn: fake.spawn, video: () => TOOLS, makeDisplay: display.make, manage: async () => ({ close: () => {} }) as unknown as BoxWindowManager, testing: () => answer })
+    const asked = Promise.withResolvers<void>()
+    const answer = Promise.withResolvers<boolean>()
+    const b = new BoxChromium({ root: tmp(), bin: () => '/bin/chromium', spawn: fake.spawn, video: () => TOOLS, makeDisplay: display.make, manage: async () => ({ close: () => {} }) as unknown as BoxWindowManager, testing: () => { asked.resolve(); return answer.promise } })
     const starting = b.endpoint()
     const failed = expect(starting).rejects.toThrow('stopped as it started')
-    for (let i = 0; i < 50 && !display.state.started; i++) await new Promise((r) => setTimeout(r, 5))
-    await b.stop()
-    asked()
+    try {
+      await Promise.race([asked.promise, starting])
+    } finally {
+      await b.stop()
+      answer.resolve(true)
+    }
     await failed
     expect(fake.calls).toEqual([])
     expect(display.state).toEqual({ started: 1, stopped: 1 })
@@ -264,32 +281,37 @@ describe('the box browser', () => {
   it.runIf(!!bin && process.platform === 'linux')('starts once, stops when idle, and starts again on use', async () => {
     const root = tmp()
     const b = new BoxChromium({ root, bin: () => bin, idleMs: 300 })
-    const stops: string[] = []
-    b.onStop((why) => stops.push(why))
-    const [a, c] = await Promise.all([b.endpoint(), b.endpoint()])
-    expect(a).toBe(c)
-    expect(a).toMatch(/^ws:\/\/127\.0\.0\.1:\d+\/devtools\/browser\//)
-    expect(readFileSync(join(b.profile, 'DevToolsActivePort'), 'utf8')).toContain('/devtools/browser/')
-    await new Promise((r) => setTimeout(r, 600))
-    expect(b.running).toBe(false)
-    expect(stops).toEqual(['idle'])
-    expect(await b.endpoint()).not.toBe(a)
-    await b.stop()
+    const stopped = new Promise<string>((resolve) => b.onStop(resolve))
+    try {
+      const [a, c] = await Promise.all([b.endpoint(), b.endpoint()])
+      expect(a).toBe(c)
+      expect(a).toMatch(/^ws:\/\/127\.0\.0\.1:\d+\/devtools\/browser\//)
+      expect(readFileSync(join(b.profile, 'DevToolsActivePort'), 'utf8')).toContain('/devtools/browser/')
+      expect(await waitForStop(stopped)).toBe('idle')
+      expect(b.running).toBe(false)
+      expect(await b.endpoint()).not.toBe(a)
+    } finally {
+      await b.stop()
+    }
   }, 30_000)
 
   it.runIf(!!bin && process.platform === 'linux')('never launches after a stop that overtook its start', async () => {
     const b = new BoxChromium({ root: tmp(), bin: () => bin })
     const starting = b.endpoint()
-    void b.stop()
+    const stopped = b.stop()
     await expect(starting).rejects.toThrow(/stopped as it started/)
+    await stopped
     expect(b.running).toBe(false)
   }, 30_000)
 
   it.runIf(!!bin && process.platform === 'linux')('is stopped when it passes its memory cap', async () => {
     const b = new BoxChromium({ root: tmp(), bin: () => bin, capMb: 10, rssMb: () => 11, watchMs: 50 })
     const stopped = new Promise<string>((r) => b.onStop(r))
-    await b.endpoint()
-    expect(await stopped).toBe('memory')
-    await b.stop()
+    try {
+      await b.endpoint()
+      expect(await waitForStop(stopped)).toBe('memory')
+    } finally {
+      await b.stop()
+    }
   }, 30_000)
 })

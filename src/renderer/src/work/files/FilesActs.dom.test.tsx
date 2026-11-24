@@ -498,16 +498,19 @@ describe("a name pressed again", () => {
   it("starts its rename on a slow second press on the selected name; a quick second press is a double click, which opens", async () => {
     await mount();
     const nameOf = (file: string): HTMLElement => row(file).querySelector<HTMLElement>("[data-files-name]")!;
-    const now = Date.now();
+    const now = Date.UTC(2026, 10, 23, 17);
     const clock = vi.spyOn(Date, "now").mockReturnValue(now);
-    fireEvent.click(nameOf("notes.txt"));
-    clock.mockReturnValue(now + 120);
-    fireEvent.click(nameOf("notes.txt"));
-    expect(screen.queryByRole("textbox", { name: "Rename notes.txt" })).toBeNull();
-    clock.mockReturnValue(now + 1200);
-    fireEvent.click(nameOf("notes.txt"));
-    expect(await screen.findByRole("textbox", { name: "Rename notes.txt" })).toBeTruthy();
-    clock.mockRestore();
+    try {
+      fireEvent.click(nameOf("notes.txt"));
+      clock.mockReturnValue(now + 120);
+      fireEvent.click(nameOf("notes.txt"));
+      expect(screen.queryByRole("textbox", { name: "Rename notes.txt" })).toBeNull();
+      clock.mockReturnValue(now + 1200);
+      fireEvent.click(nameOf("notes.txt"));
+      expect(await screen.findByRole("textbox", { name: "Rename notes.txt" })).toBeTruthy();
+    } finally {
+      clock.mockRestore();
+    }
   });
 });
 

@@ -1,4 +1,5 @@
-import { existsSync, readdirSync, readFileSync, unlinkSync, utimesSync, writeFileSync } from 'node:fs'
+import { shiftMtime } from '../mtime.testkit'
+import { existsSync, readdirSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { CHANGED, moveTemplate, MOVED_UNDER, removeTemplate, renameTemplate } from './save'
@@ -197,8 +198,7 @@ describe('a delete whose name cannot be taken', () => {
     const doc = rig.put(join(rig.folder, 'Templates', 'Game report.tcdoc'), imported('Edited {{Home}}', 'Game report.docx'))
     const word = rig.put(join(rig.folder, 'Templates', 'Game report.docx'), docx('Old {{Home}}'))
     // The Word file is written before the import, as Edit leaves it.
-    const old = new Date(Date.now() - 60_000)
-    utimesSync(word, old, old)
+    shiftMtime(word, -(60_000))
     const before = [readFileSync(doc), readFileSync(word)]
     const asked = await removeTemplate(rig.ctx, window, WS, 'job:Game report.tcdoc', null, { pillars: () => [] })
     // The editor holds the document open: its name cannot be taken.

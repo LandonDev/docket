@@ -1,9 +1,10 @@
 // @vitest-environment jsdom
 /** An event's row opens its meeting's page (work/prep): Prepare until the event is over, Follow up after, on the row and in its right-click. Opening starts no thread. */
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { workTestClock } from "../testClock";
 
-const now = Date.now();
+const now = workTestClock();
 vi.mock("../shell/lifeos", async (original) => ({ ...(await original<object>()), useLifeosQuery: () => ({ status: "loading" }) }));
 vi.mock("convex/react", async (original) => ({ ...(await original<object>()), ConvexProvider: ({ children }: { children: unknown }) => children }));
 const events = vi.hoisted(() => ({ rows: [] as unknown[] }));
@@ -15,16 +16,23 @@ const { openWorkView, workViewNow } = await import("../../lib/workSwitch");
 
 if (!Element.prototype.getAnimations) Element.prototype.getAnimations = () => [];
 
+beforeEach(() => {
+  vi.useFakeTimers({ now, toFake: ["Date"] });
+  localStorage.clear();
+  resetAgendaPlace();
+});
 afterEach(() => {
   cleanup();
   openWorkView(null);
+  resetAgendaPlace();
+  vi.useRealTimers();
 });
 
 const started: unknown[] = [];
 const props = { env: "box", workspace: { id: "ws", environmentId: "box" }, sector: "purdue", lifeos: { client: {}, state: "connected" }, startThread: (chip: unknown) => void started.push(chip) } as never;
 const HOUR = 3_600_000;
-// Both today: one that ended an hour ago, one that starts in an hour.
-const over = { _id: "ev-over", title: "Staff sync", sector: "purdue", startsAt: now - 2 * HOUR, endsAt: now - HOUR, allDay: false };
+// Keep the past event on today even in the just-after-midnight run.
+const over = { _id: "ev-over", title: "Staff sync", sector: "purdue", startsAt: now - 4 * 60_000, endsAt: now - 3 * 60_000, allDay: false };
 const ahead = { _id: "ev-ahead", title: "Budget review", sector: "purdue", startsAt: now + HOUR, endsAt: now + 2 * HOUR, allDay: false };
 
 describe("Agenda's way to a meeting's page", () => {
@@ -55,8 +63,8 @@ describe("Agenda's way to a meeting's page", () => {
   });
 
   it("uses the page's own end rule for the verb, so the row and the page never disagree about an event with no end", async () => {
-    // Timed, no end, began half an hour ago: Agenda's own rule calls it past at once; the page gives it an hour.
-    const running = { _id: "ev-running", title: "Stand-up", sector: "purdue", startsAt: now - HOUR / 2, allDay: false };
+    // Timed, no end, began two minutes ago: Agenda's own rule calls it past at once; the page gives it an hour.
+    const running = { _id: "ev-running", title: "Stand-up", sector: "purdue", startsAt: now - 2 * 60_000, allDay: false };
     events.rows = [running, over];
     render(<View {...props} />);
     await act(async () => {});
@@ -84,6 +92,5 @@ describe("Agenda's way to a meeting's page", () => {
     view.unmount();
     expect(agendaPlace.get().day).not.toBe(nextWeek);
     expect(agendaPlace.get().view).toBe("list");
-    resetAgendaPlace();
   });
 });

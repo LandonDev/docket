@@ -8,6 +8,7 @@
  */
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { workTestClock } from "../testClock";
 import type { GrantOffer, OutboxGrant, OutboxItem } from "@shared/contract-work-outbox";
 
 type Call = { env: string; method: string; params: Record<string, unknown> };
@@ -21,6 +22,7 @@ const world = vi.hoisted(() => ({
   quote: null as string | null,
   getFails: false,
   // a send the host has not answered yet: it answers when the test lets it
+  grantId: 0,
   sendHeld: null as Promise<void> | null,
   // a press LifeOS takes: the host stores it sent and says what LifeOS said of each (by item id; "*" for all)
   sendSaid: {} as Record<string, "queued" | "confirmed" | "drafts" | "gone">,
@@ -60,7 +62,7 @@ vi.mock("../../lib/connection", async (original) => {
           Object.assign(find(), { payload: params.payload, updatedAt: now });
           return find();
         case "work.outbox.grant": {
-          const grant = { id: `g${now}`, workspaceId: "ws1", kind: "mail.send", matcher: params.matcher, label: String(params.label), madeFrom: params.from, routineId: null, createdAt: now, removedAt: null } as OutboxGrant;
+          const grant = { id: `g${++world.grantId}`, workspaceId: "ws1", kind: "mail.send", matcher: params.matcher, label: String(params.label), madeFrom: params.from, routineId: null, createdAt: now, removedAt: null } as OutboxGrant;
           world.grants.set(env, [...(world.grants.get(env) ?? []), grant]);
           return grant;
         }
@@ -69,7 +71,7 @@ vi.mock("../../lib/connection", async (original) => {
         case "work.outbox.takeOffer": {
           const offer = (world.offers.get(env) ?? []).find((o) => o.id === params.id)!;
           world.offers.set(env, (world.offers.get(env) ?? []).filter((o) => o !== offer));
-          const grant = { id: `g${now}`, workspaceId: offer.workspaceId, kind: offer.kind, matcher: {}, label: offer.label, madeFrom: offer.from, routineId: null, createdAt: now, removedAt: null } as OutboxGrant;
+          const grant = { id: `g${++world.grantId}`, workspaceId: offer.workspaceId, kind: offer.kind, matcher: {}, label: offer.label, madeFrom: offer.from, routineId: null, createdAt: now, removedAt: null } as OutboxGrant;
           world.grants.set(env, [...(world.grants.get(env) ?? []), grant]);
           return grant;
         }
@@ -152,8 +154,12 @@ const addonCall: OutboxItem = {
   payload: { addonId: "a1", addon: "Slack", tool: "post_message", words: "Post message", arguments: { channel: "staff", text: "Spring LAN is set" }, specDigest: "d" },
 };
 
+const now = workTestClock();
+
 beforeEach(() => {
+  vi.useFakeTimers({ now, toFake: ["Date"] });
   world.calls = [];
+  world.grantId = 0;
   world.items = new Map([
     ["box", [mail("o1", "Dana Lee", "Budget"), mail("o2", "Sam Ortiz", "Scrims"), mail("o3", "Events booking", "Ballroom")]],
     // a copy: a press marks the host's row sent, and the next test must find it held again
@@ -172,6 +178,7 @@ beforeEach(() => {
 });
 afterEach(() => {
   cleanup();
+  vi.useRealTimers();
   resetTestKey();
 });
 

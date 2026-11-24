@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 /** A canvas tab's whole title: the tab is the tip's trigger, so the arrow keys' focus shows it, and only a cut title has one. */
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { tooltipChunk, warmTooltips } from "../../components/ui/tooltip";
 import { CanvasTabs } from "./CanvasTabs";
 import { canvasItem, drivenKinds } from "./testkit";
@@ -49,11 +49,16 @@ describe("a canvas tab's title", () => {
     const { restore } = await tabs(false);
     try {
       const tab = screen.getByRole("tab", { name: LONG });
-      fireEvent.keyDown(document, { key: "Tab" });
-      tab.focus();
-      fireEvent.focus(tab);
-      await new Promise((r) => setTimeout(r, 900));
-      expect(tips()).not.toContain(LONG);
+      vi.useFakeTimers();
+      try {
+        fireEvent.keyDown(document, { key: "Tab" });
+        tab.focus();
+        fireEvent.focus(tab);
+        await act(async () => vi.advanceTimersByTimeAsync(900));
+        expect(tips()).not.toContain(LONG);
+      } finally {
+        vi.useRealTimers();
+      }
     } finally {
       restore();
     }

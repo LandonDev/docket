@@ -50,8 +50,8 @@ vi.mock("../../lib/connection", async (original) => {
         const picture = host.picture === "none" ? null : { mimeType: "image/png", width: 16, height: 10, ...(host.picture === "bytes" ? { data: "AAAA" } : {}) };
         return { ...host.items[0], payload: { ...(host.items[0]!.payload as object), picture } };
       }
-      if (method === "work.outbox.send") return { ...host.items[0], state: "sent", decidedAt: Date.now() };
-      if (method === "work.outbox.discard") return { ...host.items[0], state: "discarded", decidedAt: Date.now() };
+      if (method === "work.outbox.send") return { ...host.items[0], state: "sent", decidedAt: Date.UTC(2026, 10, 23, 17) };
+      if (method === "work.outbox.discard") return { ...host.items[0], state: "discarded", decidedAt: Date.UTC(2026, 10, 23, 17) };
       throw new Error(`unexpected ${method}`);
     },
     onPush: (fn: (p: unknown) => void) => (host.pushes.push(fn), () => undefined),
@@ -219,19 +219,24 @@ describe("the browser's bar", () => {
     expect(primary.parentElement!.className).toContain("min-w-0");
     expect(screen.getByRole("button", { name: "Discard" }).className.split(/\s+/)).toContain("shrink-0");
     const tip = () => document.querySelector('[data-slot="tooltip-content"]');
-    const hover = async () => {
+    const hover = () => {
       fireEvent.pointerEnter(primary, { pointerType: "mouse" });
       fireEvent.mouseEnter(primary);
       fireEvent.mouseMove(primary);
-      await act(() => new Promise((resolve) => setTimeout(resolve, 700)));
     };
     const leave = () => {
       fireEvent.pointerLeave(primary, { pointerType: "mouse" });
       fireEvent.mouseLeave(primary);
     };
     // Words that fit show no tip.
-    await hover();
-    expect(tip()).toBeNull();
+    vi.useFakeTimers();
+    try {
+      hover();
+      await act(async () => vi.advanceTimersByTimeAsync(700));
+      expect(tip()).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
     leave();
     // The pane narrows and the words are cut: the same button, focus kept, now with its tip.
     primary.focus();
@@ -240,7 +245,7 @@ describe("the browser's bar", () => {
     resize(primary);
     expect(screen.getByRole("button", { name })).toBe(primary);
     expect(document.activeElement).toBe(primary);
-    await hover();
+    hover();
     await waitFor(() => expect(tip()?.textContent).toBe(name));
     leave();
     // Wide again: still the same button, and no tip.

@@ -1,4 +1,5 @@
-import { copyFileSync, mkdtempSync, readFileSync, rmSync, utimesSync, writeFileSync } from 'node:fs'
+import { shiftMtime } from '../mtime.testkit'
+import { copyFileSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -203,7 +204,7 @@ describe('a package in the canvas', () => {
     await tool('sheet_suggest', { item: itemId, cells: [{ at: 'A5', v: 9 }] })
     // Excel saves the file with rows inserted: no cell is where the agent saw it for sure.
     copyFileSync(join(CORPUS, 'formats.xlsx'), path)
-    utimesSync(path, new Date(), new Date(Date.now() + 5_000))
+    shiftMtime(path, 5_000)
     view = await call<SheetView>('work.sheets.open', { itemId })
     expect(view.suggestions.map((s) => s.state)).toEqual(['orphaned'])
     await expect(call('work.sheets.review', { itemId, which: { ids: [view.suggestions[0].id] }, verdict: 'accept' })).rejects.toThrow(/changed since/)
@@ -218,7 +219,7 @@ describe('a package in the canvas', () => {
     const spy = vi.spyOn(PackageStore.prototype, 'cellsAt').mockImplementationOnce(async function (this: InstanceType<typeof PackageStore>, ...args: Parameters<typeof real>) {
       const got = await real.apply(this, args)
       copyFileSync(join(CORPUS, 'formats.xlsx'), path)
-      utimesSync(path, new Date(), new Date(Date.now() + 5_000))
+      shiftMtime(path, 5_000)
       return got
     })
     try {

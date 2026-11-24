@@ -1,4 +1,5 @@
-import { existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, statSync, utimesSync, writeFileSync } from 'node:fs'
+import { shiftMtime } from '../mtime.testkit'
+import { existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, statSync, writeFileSync } from 'node:fs'
 import { basename, dirname, join } from 'node:path'
 import { strToU8, zipSync } from 'fflate'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -805,7 +806,7 @@ describe('a Word file of another computer', () => {
     expect(readFileSync(path, 'utf8')).toBe('word export')
     expect((await tabOf(tabId))?.word).toEqual({ at: saved.at, since: false })
     writeFileSync(doc, '{"doc":2}')
-    utimesSync(doc, new Date(), new Date(Date.now() + 5000))
+    shiftMtime(doc, 5000)
     // A document file's time alone is no edit: the live revision says what is unsaved.
     expect((await tabOf(tabId))?.word).toEqual({ at: saved.at, since: false })
   })
@@ -813,7 +814,7 @@ describe('a Word file of another computer', () => {
   it('keeps his edited document when the tab closes, and opens it again for the Word file, reading nothing over it', async () => {
     const { doc, tabId, path } = await imported('Plan.docx', 'word bytes')
     writeFileSync(doc, '{"doc":"his edit"}')
-    utimesSync(doc, new Date(), new Date(Date.now() + 5000))
+    shiftMtime(doc, 5000)
     await closeAndHear(tabId)
     expect(readFileSync(doc, 'utf8')).toBe('{"doc":"his edit"}')
     const reads = far.filter((c) => c.verb === 'filesRead').length
@@ -903,13 +904,13 @@ describe('a Word file of another computer', () => {
       expect((await call<{ at?: number }>('work.files.wordSave', { tabId })).at).toBeGreaterThan(0)
       // half a second after OneDrive's upload, the file comes back with SharePoint's parts in it
       writeFileSync(path, part('Agenda doors', { 'customXml/item1.xml': '<ct/>', 'docProps/custom.xml': '<c/>' }))
-      utimesSync(path, new Date(), new Date(Date.now() + 2000))
+      shiftMtime(path, 2000)
       exported.data = part('Agenda doors kickoff')
       expect((await call<{ at?: number }>('work.files.wordSave', { tabId })).at).toBeGreaterThan(0)
       expect(readFileSync(path).equals(part('Agenda doors kickoff'))).toBe(true)
       // a colleague's words in it are a change made there, SharePoint's parts or not
       writeFileSync(path, part('a colleague saved', { 'customXml/item1.xml': '<ct/>' }))
-      utimesSync(path, new Date(), new Date(Date.now() + 4000))
+      shiftMtime(path, 4000)
       exported.data = part('Agenda doors kickoff late')
       expect((await call<{ conflict?: unknown }>('work.files.wordSave', { tabId })).conflict).toBeTruthy()
     } finally {
@@ -919,7 +920,7 @@ describe('a Word file of another computer', () => {
 
   it('is never called changed when only its version moved (a sync touched it, its bytes the same)', async () => {
     const { tabId, path } = await imported('Plan.docx', 'word bytes')
-    utimesSync(path, new Date(), new Date(Date.now() + 60_000))
+    shiftMtime(path, 60_000)
     const got = await call<{ at?: number }>('work.files.wordSave', { tabId })
     expect(got.at).toBeGreaterThan(0)
     expect(readFileSync(path, 'utf8')).toBe('word export')
@@ -944,7 +945,7 @@ describe('a Word file of another computer', () => {
   it("Replace goes over the change its dialog named, never one made there after: that one is said again", async () => {
     const { tabId, path } = await imported('Brief.docx', 'word bytes')
     writeFileSync(path, 'a colleague saved')
-    utimesSync(path, new Date(), new Date(Date.now() - 60_000))
+    shiftMtime(path, -60_000)
     const clash = await call<{ conflict?: { changed: number } }>('work.files.wordSave', { tabId })
     // Another save lands there while his dialog is open.
     writeFileSync(path, 'and saved again')

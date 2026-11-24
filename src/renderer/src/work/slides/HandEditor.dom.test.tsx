@@ -491,8 +491,8 @@ describe("History", () => {
   it("lists the kept versions newest first, marks the first, and Restore puts one back", async () => {
     open(handView());
     deckHost.kept = [
-      { id: "v2", at: Date.now() - 60_000, size: 10, first: false },
-      { id: "v1", at: Date.now() - 3_600_000, size: 10, first: true },
+      { id: "v2", at: Date.UTC(2026, 10, 23, 17) - 60_000, size: 10, first: false },
+      { id: "v1", at: Date.UTC(2026, 10, 23, 17) - 3_600_000, size: 10, first: true },
     ];
     const bar = await found("[data-canvas-bar]");
     fireEvent.click(within(bar).getByRole("button", { name: "History" }));

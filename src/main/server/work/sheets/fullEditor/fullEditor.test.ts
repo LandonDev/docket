@@ -1,5 +1,6 @@
+import { shiftMtime } from '../../mtime.testkit'
 import { spawn } from 'node:child_process'
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, utimesSync, writeFileSync, chmodSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync, chmodSync } from 'node:fs'
 import { createServer, request, type Server } from 'node:http'
 import { connect, type AddressInfo } from 'node:net'
 import { tmpdir } from 'node:os'
@@ -207,8 +208,7 @@ describe.skipIf(process.platform !== 'linux')('the full editor', () => {
     expect((await get(`/w/full/${token}/`)).status).toBe(200)
     expect(await callback(signed, { key: config.id, status: 2, url: `http://127.0.0.1:1/cache/files/data/k/output.xlsx` })).toEqual({ error: 0 })
     expect(saved).toHaveLength(2)
-    await new Promise((r) => setTimeout(r, 2100))
-    expect((await get(`/w/full/${token}/`)).status).toBe(404)
+    await expect.poll(async () => (await get(`/w/full/${token}/`)).status, { timeout: 5000 }).toBe(404)
   })
 
   it('never overwrites a file changed outside the editor meanwhile: the save goes beside it', async () => {
@@ -216,7 +216,7 @@ describe.skipIf(process.platform !== 'linux')('the full editor', () => {
     const token = await fe.open({ path, itemId: 'i1', title: 'Report.xlsx' })
     const open = (fe as unknown as { opens: Map<string, FullOpen> }).opens.get(token)!
     writeFileSync(path, 'Excel saved this')
-    utimesSync(path, new Date(), new Date(Date.now() + 5000))
+    shiftMtime(path, 5000)
     expect(await callback(fe.configOf(open), { key: open.id, status: 6, url: 'http://x/cache/files/a/output.xlsx' })).toEqual({ error: 0 })
     expect(readFileSync(path, 'utf8')).toBe('Excel saved this')
     expect(saved).toEqual([])

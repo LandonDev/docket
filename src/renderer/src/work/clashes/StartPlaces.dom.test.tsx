@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 /** Settings → Work, Start places: seven rows from LifeOS, each opening a dialog whose Save sends `settings:update` with that one place alone. */
-import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { getFunctionName } from "convex/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { StartPlaces } from "./places";
@@ -147,7 +147,7 @@ describe("Start places", () => {
     fireEvent.change(within(dialog).getByLabelText("Address"), { target: { value: "3 Court St" } });
     await save(dialog);
     expect(lifeos.sent).toEqual([{ name: "settings:update", args: { startFor: { sector: "ref", address: "3 Court St" } } }]);
-    await act(async () => void (await new Promise((r) => setTimeout(r, 400))));
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
     expect(screen.queryByRole("dialog")).toBeNull();
   });
 
@@ -169,7 +169,7 @@ describe("Start places", () => {
     let dialog = await open("Change Cosmic");
     expect(within(dialog).queryByRole("button", { name: "Use home" })).toBeNull();
     fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
-    await act(async () => void (await new Promise((r) => setTimeout(r, 400))));
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
     dialog = await open("Change Hypixel");
     fireEvent.click(within(dialog).getByRole("switch"));
     fireEvent.click(within(dialog).getByRole("button", { name: "Use home" }));

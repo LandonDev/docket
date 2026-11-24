@@ -147,7 +147,7 @@ d('the Outlook on the web carrier, against a page in Outlook\'s shapes', () => {
     const id = await carrier.createEvent({ subject: 'Sync', start: '2026-11-20T15:00:00Z', end: '2026-11-20T15:30:00Z', location: 'Room 2', attendees: ['owner@example.com'] })
     expect(owa.events.find((e) => e.id === id)).toMatchObject({ subject: 'Sync', attendees: ['owner@example.com'], invitations: true })
     const day = 86_400_000
-    const at = (ms: number) => new Date(Date.now() + ms).toISOString()
+    const at = (ms: number) => new Date(Date.UTC(2026, 10, 23, 17) + ms).toISOString()
     owa.events.push({ id: 'inv-1', uid: 'UID-ABC', subject: 'Review', start: at(day), end: at(day + 3_600_000), location: '', organizer: 'boss@contoso.com', attendees: [], response: 'NoResponseReceived', invitations: false })
     owa.events.push({ id: 'inv-2', uid: 'UID-ABCD', subject: 'Other', start: at(day), end: at(day + 3_600_000), location: '', organizer: 'boss@contoso.com', attendees: [], response: 'NoResponseReceived', invitations: false })
     expect(await carrier.eventByUid('UID-ABC')).toBe('inv-1')
@@ -164,7 +164,10 @@ d('the Outlook on the web carrier, against a page in Outlook\'s shapes', () => {
     const { sessionId } = await cdp.send<{ sessionId: string }>('Target.attachToTarget', { targetId: tab, flatten: true })
     // the same stand-in under another origin: a page anywhere but Outlook's own
     await cdp.send('Page.navigate', { url: owa.url.replace('127.0.0.1', 'localhost') }, sessionId)
-    await new Promise((r) => setTimeout(r, 500))
+    await expect.poll(async () => {
+      const { targetInfos } = await cdp.send<{ targetInfos: { targetId: string; url: string }[] }>('Target.getTargets', {}, undefined, 2000)
+      return targetInfos.find((target) => target.targetId === tab)?.url
+    }, { timeout: 5000 }).toBe(owa.url.replace('127.0.0.1', 'localhost'))
     cdp.close()
     const before = owa.calls.length
     await carrier.listMail({ folder: 'sent', limit: 1 })

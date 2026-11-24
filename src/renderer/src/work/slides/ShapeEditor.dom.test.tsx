@@ -259,12 +259,17 @@ describe("the keys on a picked shape", () => {
   it("a shape on a slide a suggestion changes neither moves nor goes", async () => {
     const view = handView();
     const { shape, layer } = await t.stage({ ...view, slides: [{ ...view.slides[0], change: "c1", tint: "add" }, view.slides[1]], changes: [{ id: "c1", kind: "changed", slideId: 3, label: "", edits: [], by: "agent:local:t1" }] });
-    act(() => shape(5).focus());
-    fireEvent.keyDown(shape(5), { key: "ArrowRight" });
-    fireEvent.keyDown(shape(5), { key: "Delete" });
-    expect(layer.querySelectorAll("[data-slide-selection] [data-handle]")).toHaveLength(0);
-    await new Promise((done) => setTimeout(done, 500));
-    expect(t.edits()).toEqual([]);
+    vi.useFakeTimers();
+    try {
+      act(() => shape(5).focus());
+      fireEvent.keyDown(shape(5), { key: "ArrowRight" });
+      fireEvent.keyDown(shape(5), { key: "Delete" });
+      expect(layer.querySelectorAll("[data-slide-selection] [data-handle]")).toHaveLength(0);
+      await act(async () => vi.advanceTimersByTimeAsync(500));
+      expect(t.edits()).toEqual([]);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("an agent's suggested move or added shape is tinted where it now lies, from the host's boxes, and the stepper's words are the host's", async () => {

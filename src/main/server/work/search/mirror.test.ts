@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { SearchReach } from '@shared/work/search'
 import type { WorkCtx } from '../modules'
 import { search } from './index'
@@ -6,6 +6,10 @@ import { makeMirror, mirror, setMirror } from './mirror'
 import { listSources, runSearch, tierOf } from './run'
 import { event, lifeosSources, openTask, person, task } from './sources/lifeos'
 import { COSMIC, everywhere, makeRig, onlyPurdue, PURDUE, window } from './testkit'
+
+const NOW = new Date(2026, 10, 23, 12).getTime()
+beforeEach(() => void vi.setSystemTime(NOW))
+afterEach(() => vi.useRealTimers())
 
 /**
  * Answers at once: people, open tasks and events held in memory by live
@@ -32,7 +36,7 @@ function live(rig: ReturnType<typeof makeRig>) {
   return { ctx, subs, send }
 }
 const ask = (text: string, reach: SearchReach = everywhere, limit = 4) => ({ text, reach, limit, by: window, signal: new AbortController().signal })
-const now = Date.now()
+const now = NOW
 const PEOPLE = [
   { _id: 'p1', name: 'Dana Kim', sectors: ['purdue'], identities: [{ kind: 'email', value: 'dana.kim@example.edu' }] },
   { _id: 'p2', name: 'Dana Ref', sectors: ['ref'] }
@@ -64,7 +68,7 @@ describe('the mirror', () => {
   it('is cold until each list arrives, then holds it, and follows every change', () => {
     const rig = makeRig()
     const { ctx, send } = live(rig)
-    const m = makeMirror(ctx, { every: () => () => {} })
+    const m = makeMirror(ctx, { now: () => NOW, every: () => () => {} })
     expect([m.people(), m.tasks(), m.events()]).toEqual([null, null, null])
     send('people:list', PEOPLE)
     expect(m.people()).toHaveLength(2)
@@ -81,7 +85,7 @@ describe('the mirror', () => {
     const { ctx, send } = live(rig)
     let up = true
     ;(ctx.lifeos as { connected(): boolean }).connected = () => up
-    const m = makeMirror(ctx, { every: () => () => {} })
+    const m = makeMirror(ctx, { now: () => NOW, every: () => () => {} })
     send('people:list', PEOPLE)
     expect(m.people()).toHaveLength(2)
     up = false
@@ -111,7 +115,7 @@ describe('the mirror', () => {
   it('stops every live query and forgets what it held', () => {
     const rig = makeRig()
     const { ctx, subs, send } = live(rig)
-    const m = makeMirror(ctx, { every: () => () => {} })
+    const m = makeMirror(ctx, { now: () => NOW, every: () => () => {} })
     send('people:list', PEOPLE)
     m.stop()
     expect(subs.every((s) => s.off)).toBe(true)
@@ -133,7 +137,7 @@ describe('the mirror', () => {
 describe('the sources, with the mirror warm', () => {
   const warm = (rig: ReturnType<typeof makeRig>) => {
     const l = live(rig)
-    const m = makeMirror(l.ctx, { every: () => () => {} })
+    const m = makeMirror(l.ctx, { now: () => NOW, every: () => () => {} })
     setMirror(m)
     l.send('people:list', PEOPLE)
     l.send('tasks:list', TASKS)
@@ -171,7 +175,7 @@ describe('the sources, with the mirror cold or lost', () => {
   it('ask LifeOS as before while a list has not arrived', async () => {
     const rig = makeRig()
     const l = live(rig)
-    setMirror(makeMirror(l.ctx, { every: () => () => {} }))
+    setMirror(makeMirror(l.ctx, { now: () => NOW, every: () => () => {} }))
     rig.rows['people:list'] = PEOPLE
     rig.rows['events:range'] = EVENTS
     expect([tierOf(person, l.ctx), tierOf(event, l.ctx)]).toEqual(['network', 'network'])
@@ -187,7 +191,7 @@ describe('the sources, with the mirror cold or lost', () => {
     const l = live(rig)
     let up = true
     ;(l.ctx.lifeos as { connected(): boolean }).connected = () => up
-    setMirror(makeMirror(l.ctx, { every: () => () => {} }))
+    setMirror(makeMirror(l.ctx, { now: () => NOW, every: () => () => {} }))
     l.send('people:list', PEOPLE)
     l.send('events:range', EVENTS)
     expect(tierOf(person, l.ctx)).toBe('instant')

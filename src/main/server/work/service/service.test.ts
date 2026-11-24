@@ -84,8 +84,10 @@ const token = async (r: Rig, claims: Partial<CollabClaims> & { doc: string }, se
 function connect(r: Rig, name: string, tok: string) {
   const closes: string[] = []
   const client = createCollaborationClient({ documentName: name, token: tok, url: `ws://127.0.0.1:${r.service.port}/w/doc/${name}`, offline: false, onClose: (why) => closes.push(why) })
+  const refusals: string[] = []
+  client.provider.on('authenticationFailed', ({ reason }: { reason: string }) => refusals.push(reason))
   open.clients.push(client)
-  return { client, closes }
+  return { client, closes, refusals }
 }
 const synced = (c: CollaborationClient) => c.provider.isSynced && !c.provider.hasUnsyncedChanges
 const probe = (c: CollaborationClient) => c.document.getText('probe').toString()
@@ -298,8 +300,8 @@ describe('live documents', () => {
       ['another key', (await other.sign({ doc: 'kd3', role: 'edit', principal: 'owner' }, 60)).token]
     ]
     for (const [what, tok] of tokens) {
-      const { client } = connect(r, 'kd3', tok)
-      await sleep(400)
+      const { client, refusals } = connect(r, 'kd3', tok)
+      await until(`the socket refused ${what}`, () => refusals.length > 0)
       expect(client.provider.isSynced, what).toBe(false)
     }
     expect(r.convex.calls).not.toContain('docs:get')
@@ -323,8 +325,8 @@ describe('live documents', () => {
   it('a host that does not serve LifeOS documents refuses their sockets and reads the stored state instead', async () => {
     const r = await rig({ here: false })
     addDoc(r, 'kd6', { markdown: '# Stored', plain: 'Stored', seq: 4 })
-    const { client } = connect(r, 'kd6', await token(r, { doc: 'kd6' }))
-    await sleep(400)
+    const { client, refusals } = connect(r, 'kd6', await token(r, { doc: 'kd6' }))
+    await until('the socket refused on the non-serving host', () => refusals.length > 0)
     expect(client.provider.isSynced).toBe(false)
     const read = await call(r.config.socketPath, '/internal/doc/read', { docId: 'kd6', fence })
     expect(read).toEqual({ status: 200, body: { markdown: '# Stored', plain: 'Stored', seq: 4, stored: true } })

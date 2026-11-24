@@ -363,7 +363,6 @@ describe("the media canvas", () => {
       fireEvent.pointerEnter(full, { pointerType: "mouse" });
       fireEvent.mouseEnter(full);
       fireEvent.mouseMove(full);
-      await new Promise((r) => setTimeout(r, 500));
     });
     expect((await screen.findByText("Full screen", { selector: "[data-slot=tooltip-content] *, [data-slot=tooltip-content]" })).closest("[data-slot=tooltip-content]")).toBeTruthy();
   });

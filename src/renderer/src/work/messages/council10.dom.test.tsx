@@ -165,7 +165,7 @@ describe("Discard and the host's answer", () => {
 
 describe("the keeper", () => {
   it("hands the keys from a picture's byte Try again to the picture that takes the line's place", async () => {
-    const stored: ChatMessage = { _id: "pic", who: { name: "Ana Ruiz", me: false }, text: "", sentAt: Date.now(), files: [{ _id: "f1", name: "map.png", contentType: "image/png", width: 800, height: 600, status: "stored", url: "https://lifeos.example.dev/api/storage/map" }] };
+    const stored: ChatMessage = { _id: "pic", who: { name: "Ana Ruiz", me: false }, text: "", sentAt: Date.UTC(2026, 10, 23, 17), files: [{ _id: "f1", name: "map.png", contentType: "image/png", width: 800, height: 600, status: "stored", url: "https://lifeos.example.dev/api/storage/map" }] };
     mount({ messages: { ...MESSAGES, c_art: [stored] } }, "c_art");
     await flush();
     fireEvent.error(within(block("pic")!).getByRole("img"));

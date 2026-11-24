@@ -1,4 +1,5 @@
-import { chmodSync, copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, renameSync, statSync, utimesSync, writeFileSync } from 'node:fs'
+import { shiftMtime } from '../mtime.testkit'
+import { chmodSync, copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, renameSync, statSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
@@ -97,7 +98,7 @@ const written = (path: string, format: string): Uint8Array => {
 }
 const zipOf = (files: Record<string, string>): Uint8Array =>
   writeZip({ entries: [], byName: new Map(), comment: new Uint8Array() } as never, new Map(), new Set(), new Map(Object.entries(files).map(([name, text]) => [name, new TextEncoder().encode(text)])))
-const later = (path: string, ms = 5000): void => utimesSync(path, new Date(), new Date(Date.now() + ms))
+const later = (path: string, ms = 5000): void => shiftMtime(path, ms)
 
 describe('which files open as a copy, and where the copy lies', () => {
   it('an .xls, an .ods and a .tsv do, by their ending in any case; an .xlsx and a .csv do not', () => {
@@ -303,7 +304,7 @@ describe('Save back: the copy written as the format it was', () => {
     expect(valueIn(written(path, 'xls'))).toBe('first')
     // the file changes again outside: the copy holds an edit that never went back, so it is kept, not read again
     writeFileSync(path, 'their newer workbook')
-    utimesSync(path, new Date(), new Date(Date.now() + 9_000))
+    shiftMtime(path, 9_000)
     await ensureImported(rig.ctx, held)
     expect(valueIn(new Uint8Array(readFileSync(held.path)))).toBe('later')
     expect(importedOf(held)!.stale).toBe(true)

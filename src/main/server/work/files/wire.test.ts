@@ -1,6 +1,6 @@
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ClientRequestSchema } from '@shared/contract'
 import { besideSeatId as seatId, type FilesListing, type FilesOpened, type FilesPlaces, type FilesTabs } from '@shared/contract-work-files'
 import { canvasSourcePath, filesPaneOf, type CanvasItem } from '@shared/work'
@@ -126,7 +126,7 @@ describe('list', () => {
   it('pushes a folder a tab shows when a name in it changes, only to callers that could name it', async () => {
     await call<FilesListing>('work.files.list', { at: at(join(rig.folder, 'Events')) })
     writeFileSync(join(rig.folder, 'Events', 'New.txt'), 'x')
-    await new Promise((r) => setTimeout(r, 400))
+    await expect.poll(() => rig.pushes.filter(({ p }) => p.push === 'work.files').length).toBe(1)
     const said = rig.pushes.filter(({ p }) => p.push === 'work.files')
     expect(said).toHaveLength(1)
     expect(said[0]!.p).toEqual({ push: 'work.files', workspaceId: WS, at: `file:${HOST}:${join(rig.folder, 'Events')}` })
@@ -558,9 +558,15 @@ describe('a deleted workspace', () => {
 describe('the journal at boot', () => {
   it('marks a change a dead process left running as failed, and drops rows past a week', async () => {
     const put = rig.db.prepare(`INSERT INTO work_files_ops (id, workspace_id, verb, refs, state, result, at) VALUES (?, ?, 'rename', '[]', ?, NULL, ?)`)
-    put.run('left-running', WS, 'running', Date.now())
-    put.run('old-done-row', WS, 'done', Date.now() - 8 * 24 * 60 * 60 * 1000)
-    files.start!(rig.ctx)()
+    const now = Date.UTC(2026, 10, 23, 17)
+    put.run('left-running', WS, 'running', now)
+    put.run('old-done-row', WS, 'done', now - 8 * 24 * 60 * 60 * 1000)
+    const clock = vi.spyOn(Date, 'now').mockReturnValue(now)
+    try {
+      files.start!(rig.ctx)()
+    } finally {
+      clock.mockRestore()
+    }
     expect(rig.db.prepare(`SELECT id, state FROM work_files_ops ORDER BY id`).all()).toEqual([{ id: 'left-running', state: 'failed' }])
   })
 })

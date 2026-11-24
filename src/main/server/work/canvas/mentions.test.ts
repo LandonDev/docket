@@ -118,7 +118,7 @@ describe('LifeOS things', () => {
       { _id: 'm1', sector: 'cosmic', subject: 'Ballroom', senders: ['Dana'] },
       { _id: 'm2', sector: 'purdue', subject: 'Re: Ballroom', snippet: 'We can hold it', senders: ['Sam'], lastMessageAt: 5 }
     ],
-    'events:range': [{ _id: 'e1', sector: 'purdue', title: 'Ballroom walk-through', startsAt: Date.now() + 86_400_000, location: 'Union' }],
+    'events:range': [{ _id: 'e1', sector: 'purdue', title: 'Ballroom walk-through', startsAt: Date.UTC(2026, 10, 24, 17), location: 'Union' }],
     'projects:list': [
       { _id: 'p1', sector: 'purdue', name: 'Spring ballroom LAN' },
       { _id: 'p2', sector: 'life', name: 'Ballroom dancing' }

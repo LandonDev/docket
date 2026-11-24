@@ -1,11 +1,21 @@
 // @vitest-environment jsdom
 /** The Agenda's header: in a narrow Week or Month view, the period stays in TempCode's own header, short. */
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+const NOW = new Date(2026, 10, 23, 12);
 
+const { resetAgendaPlace } = await import("./place");
 const { Head, shortMonth, shortWeek } = await import("./AgendaView");
 
-afterEach(cleanup);
+beforeEach(() => {
+  vi.setSystemTime(NOW);
+  localStorage.clear();
+  resetAgendaPlace();
+});
+afterEach(() => {
+  cleanup();
+  vi.useRealTimers();
+});
 
 describe("the Agenda's header", () => {
   it("keeps a short period in the Week and Month views under a 640px header, beside the full period wider", () => {
@@ -14,18 +24,16 @@ describe("the Agenda's header", () => {
     expect(container.querySelector("[data-agenda-short-period]")).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Month" }));
     const short = container.querySelector("[data-agenda-short-period]")!;
-    expect(short.textContent).toBe(shortMonth(Date.now()));
+    expect(short.textContent).toBe(shortMonth(NOW.getTime()));
     // Drawn only while the header is narrow, where the full period hides.
     expect(short.className).toContain("@min-[40rem]/viewhead:hidden");
     fireEvent.click(screen.getByRole("button", { name: "Next month" }));
-    const next = new Date();
-    next.setDate(1);
-    next.setMonth(next.getMonth() + 1);
+    const next = new Date(2026, 11, 1);
     expect(container.querySelector("[data-agenda-short-period]")!.textContent).toBe(shortMonth(next.getTime()));
     // The week view keeps a short period too.
     fireEvent.click(screen.getByRole("button", { name: "Week" }));
     fireEvent.click(screen.getByRole("button", { name: "Today" }));
-    expect(container.querySelector("[data-agenda-short-period]")!.textContent).toBe(shortWeek(Date.now()));
+    expect(container.querySelector("[data-agenda-short-period]")!.textContent).toBe(shortWeek(NOW.getTime()));
   });
 
   it("names a narrow week short: its first and last day, the month once within a month", () => {

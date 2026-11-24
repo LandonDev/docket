@@ -1,5 +1,6 @@
 // A zone whose clocks go back half an hour: the repeated time is found by the clock itself, not by an hour's shift.
 // The zone is set before any date is read; vitest runs each file in its own process (pool: forks), so no other test sees it.
+const incomingZone = process.env.TZ;
 process.env.TZ = "Australia/Lord_Howe";
 
 import { afterAll, describe, expect, it } from "vitest";
@@ -9,7 +10,8 @@ import { hintsOf, spanOf } from "./model";
 const MINUTE = 60_000;
 
 afterAll(() => {
-  delete process.env.TZ;
+  if (incomingZone === undefined) delete process.env.TZ;
+  else process.env.TZ = incomingZone;
 });
 
 describe("a step's times where the clocks go back half an hour", () => {

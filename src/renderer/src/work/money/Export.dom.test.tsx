@@ -6,6 +6,7 @@
  */
 import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+const NOW = new Date(2026, 10, 23, 12);
 
 const host: { asked: { method: string; params: Record<string, unknown> }[]; answer: (method: string, params: Record<string, unknown>) => unknown } = { asked: [], answer: () => null };
 vi.mock("../../lib/connection", async (original) => ({
@@ -30,10 +31,11 @@ const { staleSummary } = await import("@shared/work/money");
 const settle = () => act(async () => void (await new Promise((r) => setTimeout(r, 0))));
 const asked = (method: string) => host.asked.filter((a) => a.method === method).map((a) => a.params);
 const folder = { at: "file", host: "box", path: "/home/ref/Refereeing/Money/Tax 2026" };
-const year = new Date().getFullYear();
+const year = 2026;
 let generation = 0;
 
 beforeEach(() => {
+  vi.setSystemTime(NOW);
   host.asked.length = 0;
   host.answer = (method, params) => {
     if (method === "work.money.export") return { folder, files: [`Ledger ${params.year}.csv`, `Ledger ${params.year}.xlsx`], summary: params.pdf ? { name: `Summary ${params.year}`, html: "<p>sums</p>" } : null, warnings: [], replaced: false, generation: ++generation };
@@ -43,7 +45,10 @@ beforeEach(() => {
   };
   toast.mockClear();
 });
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  vi.useRealTimers();
+});
 
 async function exportWith(uncheck: string[] = []) {
   render(<ExportDialog env="box" workspaceId="ws" year={year} onClose={() => {}} />);

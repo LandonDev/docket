@@ -82,8 +82,7 @@ d('the box browser headed, driven by two threads', () => {
     await run('w1', 'computer_observe', { app: 'Chromium' })
     expect(pages.get('w1')).toBeTruthy()
     await rig.stage.watch(pages.get('w1')!)
-    await sleep(300)
-    expect(pixelAt(await seen(), 640, 400)).toBe(COLOURS.red)
+    await expect.poll(async () => pixelAt(await seen(), 640, 400), { timeout: 5000 }).toBe(COLOURS.red)
   }, 60_000)
 
   it('another thread opens, reads, pictures and acts on its own page, and the watched page stays on top', async () => {
@@ -130,7 +129,7 @@ d('the box browser headed, driven by two threads', () => {
 
   it('while he drives the watched page, a read of the other still leaves his on top, toolbar and all', async () => {
     await rig.stage.drive(pages.get('w1')!)
-    await sleep(600)
+    await expect.poll(async () => pixelAt(await seen(), 640, 5), { timeout: 5000 }).not.toBe(COLOURS.red)
     const read = await run('w2', 'computer_observe', { app: 'Chromium', window: 'pressed', screenshot: true })
     expect(read.isError, read.body ?? '').toBe(false)
     const now = await seen()

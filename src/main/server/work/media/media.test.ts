@@ -429,8 +429,11 @@ describe.skipIf(!TOOLS)('the media pillar on a real ffmpeg', () => {
     const off = work.pushes.onPush((p) => heard.push(p))
     await call('work.media.note', { itemId: tab, anchor: { versionId: first.versions[0].id, frame: 3 }, body: 'from the tab' })
     await tool('media_note', { item: thread, at: 5, text: 'from the thread' })
-    await new Promise((r) => setTimeout(r, 800))
-    off()
+    try {
+      await expect.poll(() => heard.flatMap((p) => p.push === 'work.media' ? [p.itemId] : [])).toEqual(expect.arrayContaining([thread, tab]))
+    } finally {
+      off()
+    }
     // Earlier items may still be pushing as their proxies finish: both of these are heard.
     const pushed = heard.flatMap((p) => (p.push === 'work.media' ? [p.itemId] : []))
     expect(pushed).toContain(thread)

@@ -1,5 +1,6 @@
+import { shiftMtime } from '../mtime.testkit'
 import { createHash } from 'node:crypto'
-import { chmodSync, existsSync, readdirSync, readFileSync, renameSync, statSync, utimesSync, writeFileSync } from 'node:fs'
+import { chmodSync, existsSync, readdirSync, readFileSync, renameSync, statSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { sharedOf } from '../files/policy'
@@ -171,7 +172,7 @@ describe('a shared .csv saved through to its file', () => {
     const sheet = open()
     await apply(sheet, 0, [typedAt(2, 0, 'Bob')])
     writeFileSync(csv, 'name,hours\r\nTheirs,9\r\n')
-    utimesSync(csv, new Date(), new Date(Date.now() + 5000))
+    shiftMtime(csv, 5000)
     await expect(apply(sheet, 1, [typedAt(2, 0, 'Mine')])).rejects.toThrow('Roster.csv changed in its folder, so this edit was not saved')
     expect(readFileSync(csv, 'utf8')).toBe('name,hours\r\nTheirs,9\r\n')
     expect((await host.open({ tcsheet: sheet })).rev).toBe(1)
@@ -211,7 +212,7 @@ describe('a shared .csv saved through to its file', () => {
     const sheet = open()
     door.after = () => {
       writeFileSync(csv, 'name,hours\r\nTheirs,1\r\n')
-      utimesSync(csv, new Date(), new Date(Date.now() + 5000))
+      shiftMtime(csv, 5000)
     }
     try {
       await throughCsv(rig.ctx, sheet, async () => host.apply({ tcsheet: sheet }, 0, [typedAt(2, 0, 'Bob')] as never, 'owner'))
@@ -241,7 +242,7 @@ describe('a shared .csv saved through to its file', () => {
   it('a suggestion changes no cell, so it never goes through to the file, even on a cache the file has moved past', async () => {
     const sheet = open()
     writeFileSync(csv, 'name,hours\r\nTheirs,9\r\n')
-    utimesSync(csv, new Date(), new Date(Date.now() + 5000))
+    shiftMtime(csv, 5000)
     const asked: string[] = []
     Object.assign(rig.ctx.service, { internal: async (route: string) => (asked.push(route), { rev: 0, count: 1 }) })
     const { host: hostCall } = await import('./held')
@@ -270,7 +271,7 @@ describe('a shared .csv saved through to its file', () => {
     expect(sharedCsvReadOnly(plain)).toBeNull()
     if (process.getuid?.() !== 0) {
       chmodSync(plain, 0o440)
-      utimesSync(plain, new Date(), new Date(Date.now() + 9000))
+      shiftMtime(plain, 9000)
       expect(sharedCsvReadOnly(plain)).toBe(CSV_NO_WRITE)
     }
   })

@@ -825,7 +825,7 @@ describe("the frame a kind drives through its shell", () => {
     }
   });
 
-  async function historyIn(narrow: boolean) {
+  async function historyIn(narrow: boolean, holdTimers = false) {
     // The tooltips wake only once no control holds the focus and no press is held (an earlier test's composer and tab press may).
     (document.activeElement as HTMLElement | null)?.blur();
     fireEvent.pointerUp(document);
@@ -841,6 +841,7 @@ describe("the frame a kind drives through its shell", () => {
     const history = within(view.container.querySelector<HTMLElement>("[data-canvas-bar]")!).getByRole("button", { name: "History" });
     // The container query hides the word in a narrow bar; jsdom draws no CSS, so the test hides it as the query would.
     if (narrow) within(history).getByText("History").style.display = "none";
+    if (holdTimers) vi.useFakeTimers();
     for (const pass of [0, 1]) {
       fireEvent.pointerEnter(history);
       fireEvent.mouseEnter(history);
@@ -862,9 +863,13 @@ describe("the frame a kind drives through its shell", () => {
   });
 
   it("gives History no tip while its word shows", async () => {
-    const tip = await historyIn(false);
-    await new Promise((r) => setTimeout(r, 900));
-    expect(tip()).toBeNull();
+    try {
+      const tip = await historyIn(false, true);
+      await act(async () => vi.advanceTimersByTimeAsync(900));
+      expect(tip()).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("keeps one step in the narrow bar: the next change, and from the last back round to the first", async () => {

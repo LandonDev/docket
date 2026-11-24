@@ -1,7 +1,8 @@
 // @vitest-environment jsdom
 /** A Work view that throws is its own error with Retry, which mounts it again; never the window's. */
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+const NOW = Date.UTC(2026, 10, 23, 17);
 import { registry } from "../../lib/connection";
 import { resetLifeos, setLifeosStatus } from "./lifeos";
 
@@ -19,7 +20,9 @@ const { openWorkView } = await import("../../lib/workSwitch");
 const { WORK_VIEWS } = await import("../views/registry");
 const { defineChunk } = await import("../../lib/lazyChunk");
 
+beforeEach(() => void vi.setSystemTime(NOW));
 afterEach(() => {
+  vi.useRealTimers();
   cleanup();
   resetLifeos();
   vi.restoreAllMocks();
@@ -106,7 +109,7 @@ describe("what stands between a view and LifeOS", () => {
     fireEvent.click(screen.getByRole("button", { name: "Sign in" }));
     await vi.waitFor(() => expect(screen.getByRole("dialog")).toBeTruthy(), { timeout: 5000 });
     view.unmount();
-    setLifeosStatus("env_box", { lifeos: { state: "pairing", code: "ABCD-1234", expiresAt: Date.now() + 60_000 }, keys: [] });
+    setLifeosStatus("env_box", { lifeos: { state: "pairing", code: "ABCD-1234", expiresAt: NOW + 60_000 }, keys: [] });
     render(<ViewFrame view="tasks" environmentId="env_box" workspaceId="ws" sector="purdue" />);
     await flush();
     expect(screen.getByText("The LifeOS sign-in waits for your approval")).toBeTruthy();

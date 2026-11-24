@@ -975,21 +975,21 @@ describe("the sheet kind", () => {
   });
 
   it("offers Undo on the written line only for an opened Excel file", async () => {
-    open(sheetView({ store: "lifeos", mode: "writes", written: { id: "w1", text: "Changed 6 cells", at: Date.now() } }));
+    open(sheetView({ store: "lifeos", mode: "writes", written: { id: "w1", text: "Changed 6 cells", at: Date.UTC(2026, 10, 23, 17) } }));
     await gridUp();
     expect(await screen.findByText(/Changed 6 cells/)).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Undo" })).toBeNull();
   });
 
   it("a format or a rule the agent wrote is said with no Undo on the line: the sheet's own Undo and History take it back", async () => {
-    open(sheetView({ mode: "writes", written: { id: "w1", text: "Bold on A1:B1", at: Date.now(), undo: false } }));
+    open(sheetView({ mode: "writes", written: { id: "w1", text: "Bold on A1:B1", at: Date.UTC(2026, 10, 23, 17), undo: false } }));
     await gridUp();
     expect(await screen.findByText(/Bold on A1:B1/)).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Undo" })).toBeNull();
   });
 
   it("shows what the agent wrote directly, with Undo, and its mode", async () => {
-    open(sheetView({ mode: "writes", written: { id: "w1", text: "Changed 6 cells", at: Date.now() } }));
+    open(sheetView({ mode: "writes", written: { id: "w1", text: "Changed 6 cells", at: Date.UTC(2026, 10, 23, 17) } }));
     await gridUp();
     expect(await screen.findByText(/Changed 6 cells/)).toBeTruthy();
     expect(screen.getByRole("button", { name: /Agent writes/ })).toBeTruthy();

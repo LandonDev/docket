@@ -1,11 +1,15 @@
 import { DatabaseSync } from 'node:sqlite'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { OutboxItem } from '@shared/contract-work-outbox'
 import type { WorkCtx } from '../modules'
 import { opFields } from '../../../../renderer/src/work/agenda/calendarAct'
 import { CalendarFieldsSchema, CalendarOpMatcherSchema, calendarGrantFits, calendarWords, type CalendarOpPayload, type LifeosHeldItems } from '../outbox/lifeosHeld'
 import { cast, makeRig, type Rig } from '../outbox/rig'
 import { ensureAgenda, recordPlain } from './index'
+
+const NOW = new Date(2026, 10, 23, 12).getTime()
+beforeEach(() => void vi.setSystemTime(NOW))
+afterEach(() => vi.useRealTimers())
 
 /**
  * Calendar acts LifeOS holds for this host's threads (milestone 24's
@@ -23,7 +27,7 @@ beforeEach(async () => {
   rig = await makeRig()
   cast(rig)
   rig.lifeos.missing.clear()
-  rig.lifeos.events.set('ev_1', { _id: 'ev_1', title: 'Big Ten league call', startsAt: Date.now() + 86_400_000 })
+  rig.lifeos.events.set('ev_1', { _id: 'ev_1', title: 'Big Ten league call', startsAt: NOW + 86_400_000 })
   await settled()
 })
 afterEach(async () => {
@@ -226,7 +230,7 @@ describe('a plain hold', () => {
     ensureAgenda(db)
     return { db, host: 'env_box', scopeOf: (id: string) => (id === 't-work' ? ({ workspaceId: 'ws', sector: 'purdue' } as never) : null), results: { add: (r: unknown) => void added.push(r) } } as unknown as WorkCtx
   }
-  const op = (over: Record<string, unknown> = {}) => ({ _id: 'op_1', _creationTime: Date.now() + 1000, kind: 'create', plain: true, status: 'done', account: 'landon@purdue.edu', payload: { title: 'Focus' }, origin: { host: 'env_box', threadId: 't-work' }, ...over })
+  const op = (over: Record<string, unknown> = {}) => ({ _id: 'op_1', _creationTime: NOW + 1000, kind: 'create', plain: true, status: 'done', account: 'landon@purdue.edu', payload: { title: 'Focus' }, origin: { host: 'env_box', threadId: 't-work' }, ...over })
 
   it("is a Result of this host's thread, recorded once", () => {
     const added: unknown[] = []

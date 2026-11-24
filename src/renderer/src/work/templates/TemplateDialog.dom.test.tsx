@@ -10,7 +10,8 @@
  */
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { dayOf, type Template } from "@shared/work/templates";
+const NOW = new Date(2026, 10, 23, 12);
+import type { Template } from "@shared/work/templates";
 
 const host: { asked: { method: string; params: Record<string, unknown> }[]; answer: (method: string, params: Record<string, unknown>) => unknown } = { asked: [], answer: () => null };
 /** The link's socket opening: what a host read asks again on. */
@@ -60,12 +61,16 @@ const settle = () => act(async () => void (await new Promise((r) => setTimeout(r
 const asked = (method: string) => host.asked.filter((a) => a.method === method).map((a) => a.params);
 
 beforeEach(() => {
+  vi.setSystemTime(NOW);
   host.asked.length = 0;
   toasted.length = 0;
   opened.mockReset();
   host.answer = (method) => (method === "work.templates.list" ? { templates: [MEMO, REPORT], hidden: 0 } : method === "work.templates.make" ? MADE : method === "work.files.open" ? { tabs: [] } : null);
 });
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  vi.useRealTimers();
+});
 
 describe("New from a template", () => {
   it("shows the two groups under its title, with Cancel and no Kept in line when no folder was given", async () => {
@@ -92,7 +97,7 @@ describe("New from a template", () => {
     await settle();
     fireEvent.click(screen.getByRole("button", { name: "Crew memo" }));
     await settle();
-    expect(asked("work.templates.make")).toEqual([{ workspaceId: "ws", template: "job:Crew memo.docx", into, today: dayOf(new Date()) }]);
+    expect(asked("work.templates.make")).toEqual([{ workspaceId: "ws", template: "job:Crew memo.docx", into, today: "2026-11-23" }]);
     await waitFor(() => expect(opened).toHaveBeenCalledWith({ workspaceId: "ws", view: "files" }));
     expect(asked("work.files.open")).toEqual([{ workspaceId: "ws", ref: MADE.source }]);
     // Through Files' own way in, with the file's name for its tab.
@@ -158,7 +163,7 @@ describe("New from a template", () => {
     expect(asked("work.templates.make")).toEqual([]);
     fireEvent.keyDown(site!, { key: "Enter" });
     await settle();
-    expect(asked("work.templates.make")).toEqual([{ workspaceId: "ws", template: "starter:ref/game-report", fields: { Home: "North" }, today: dayOf(new Date()) }]);
+    expect(asked("work.templates.make")).toEqual([{ workspaceId: "ws", template: "starter:ref/game-report", fields: { Home: "North" }, today: "2026-11-23" }]);
   });
 
   it("holds the fields read only while making, Create spinning, and shows the host's refusal in its words as one red line", async () => {

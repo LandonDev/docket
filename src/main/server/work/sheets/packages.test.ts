@@ -1,3 +1,4 @@
+import { shiftMtime } from '../mtime.testkit'
 import { copyFileSync, existsSync, mkdtempSync, rmSync, utimesSync, writeFileSync, readFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -76,7 +77,7 @@ describe('an opened package', () => {
     await store.edit(path, 0, [set(data, 1, 0, { v: 2 })], 'owner')
     expect(await store.edit(path, 0, [set(data, 2, 0, { v: 3 })], 'owner')).toEqual({ rev: 2 })
     writeFileSync(path, readFileSync(path))
-    utimesSync(path, new Date(), new Date(Date.now() + 9_000))
+    shiftMtime(path, 9_000)
     const before = readFileSync(path)
     expect(await store.edit(path, 2, [set(data, 3, 0, { v: 4 })], 'owner')).toEqual({ conflict: true, rev: 3 })
     expect(readFileSync(path).equals(before)).toBe(true)
@@ -91,7 +92,7 @@ describe('an opened package', () => {
         seen.push((await store.cellsAt(path, [{ sheet: data, row: 1, col: 0 }]))[0].cell?.v)
         // the co-author's save lands just after the check
         writeFileSync(path, readFileSync(path))
-        utimesSync(path, new Date(), new Date(Date.now() + 9_000))
+        shiftMtime(path, 9_000)
         return { mutations: [set(data, 1, 0, { v: 5 })], label: 'Accepted 1 change' }
       }
     })
@@ -152,7 +153,7 @@ describe('an opened package', () => {
           const got = await jobs.save(p, out, edits, dir)
           // Excel saves while the worker patches.
           writeFileSync(path, readFileSync(join(CORPUS, 'formats.xlsx')))
-          utimesSync(path, new Date(), new Date(Date.now() + 7_000))
+          shiftMtime(path, 7_000)
           return got
         }
       },
@@ -256,7 +257,7 @@ describe('an opened package', () => {
   it('takes a change made outside as its own revision, and tells the grids to reload', async () => {
     await store.open(path)
     writeFileSync(path, readFileSync(join(CORPUS, 'formats.xlsx')))
-    utimesSync(path, new Date(), new Date(Date.now() + 5_000))
+    shiftMtime(path, 5_000)
     expect(store.since(path, 0)).toEqual({ rev: 1, reload: true })
     expect(store.history(path)[0]).toMatchObject({ rev: 1, by: 'file', label: 'Changed outside TempCode' })
   })
@@ -342,7 +343,7 @@ describe('an opened package', () => {
     await store.open(path)
     await store.writeCells(path, [{ at: 'A2', v: 7 }], 'agent:h:t', 'Wrote A2', 'w1')
     writeFileSync(path, readFileSync(path))
-    utimesSync(path, new Date(), new Date(Date.now() + 9_000))
+    shiftMtime(path, 9_000)
     const theirs = readFileSync(path)
     await expect(store.undo(path, 'w1')).rejects.toThrow('The file was restored or changed since: that write can no longer be taken back.')
     expect(readFileSync(path).equals(theirs)).toBe(true)

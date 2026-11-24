@@ -1,3 +1,4 @@
+import { shiftMtime } from '../mtime.testkit'
 import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, statSync, truncateSync, utimesSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { deflateRawSync, gzipSync } from 'node:zlib'
@@ -344,8 +345,7 @@ describe('his own places: kept on disk', () => {
     await via(mine('Poster.png'))
     await via(mine('notes.txt'))
     const dir = previewsDir(rig.dataDir)
-    const past = new Date(Date.now() - 20 * 24 * 60 * 60 * 1000)
-    for (const name of readdirSync(dir)) utimesSync(join(dir, name), past, past)
+    for (const name of readdirSync(dir)) shiftMtime(join(dir, name), -20 * 24 * 60 * 60 * 1000)
     expect(await via(mine('Poster.png'))).toBe('cache')
     await prunePreviews(rig.dataDir, { days: 10 })
     expect(readdirSync(dir)).toHaveLength(1)

@@ -2,7 +2,7 @@ import { copyFileSync, existsSync, mkdirSync, mkdtempSync, rmSync, symlinkSync }
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
-import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
 import { LOCAL_PRINCIPAL } from '@shared/capabilities'
 import { VIDEO_CLOSE, type VideoOpenAnswer } from '@shared/contract-video'
 import type { SessionMeta } from '@shared/events'
@@ -34,11 +34,13 @@ const d = bin && tools ? describe : describe.skip
 class Viewer implements ViewerSocket {
   bufferedAmount = 0
   readonly frames: Frame[] = []
+  lastFrameAt = 0
   closed: { code: number; reason: string } | null = null
   private say: ((data: Buffer, isBinary: boolean) => void) | null = null
   private readonly closers: (() => void)[] = []
   send(bytes: Uint8Array): void {
     const frame = parseFrame(bytes)
+    this.lastFrameAt = performance.now()
     this.frames.push({ ...frame, data: frame.data.slice() })
     this.say?.(Buffer.from(encodeAck(frame.generation, frame.sequence, 0)), true)
   }
@@ -61,12 +63,8 @@ class Viewer implements ViewerSocket {
 }
 
 const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms))
-const until = async (what: () => boolean, ms = 8_000): Promise<void> => {
-  const end = Date.now() + ms
-  while (!what()) {
-    if (Date.now() > end) throw new Error('timed out')
-    await sleep(20)
-  }
+const until = async (what: () => boolean | Promise<boolean>, label = 'video state'): Promise<void> => {
+  await expect.poll(what, { interval: 20, timeout: 8_000, message: label }).toBe(true)
 }
 /** A page that repaints every frame, with a field that takes the keyboard. */
 const moving = (title: string): string =>
@@ -77,7 +75,7 @@ const SIGN_IN = `<!doctype html><title>Sign in</title><body style="margin:0"><fo
   <input id="p" name="password" type="password" autocomplete="current-password" style="position:fixed;left:40px;top:100px;width:300px;height:30px">
   <button style="position:fixed;left:40px;top:160px;width:120px;height:30px">Sign in</button></form>`
 const WELCOME = '<!doctype html><title>Welcome</title><body style="margin:0"><h1>Signed in</h1><input id="i">'
-const still = (title: string): string => `<!doctype html><title>${title}</title><body style="margin:0;background:rgb(30,60,200)"><input id="i" autofocus>`
+const still = (title: string): string => `<!doctype html><title>${title}</title><body style="margin:0;background:rgb(30,60,200)"><input id="i">`
 
 d('live video of the box browser, end to end', () => {
   let dataDir: string
@@ -89,6 +87,7 @@ d('live video of the box browser, end to end', () => {
   let stopWork: () => void
   let cdp: Cdp
   const minted: StreamClaim[] = []
+  const viewers: Viewer[] = []
   const me = { principal: LOCAL_PRINCIPAL, connection: {}, connectionId: '1' }
 
   const run = (threadId: string, tool: string, args: Record<string, unknown>) => host.sessions.run({ threadId, permission: () => 'auto' }, tool, args)
@@ -97,16 +96,24 @@ d('live video of the box browser, end to end', () => {
     const answer = await rpc.open({ threadId, maxEdge: 1280, ...more }, me)
     if (!answer.ok) throw new Error(`video.open refused: ${answer.reason}`)
     const viewer = new Viewer()
+    viewers.push(viewer)
     expect(relay.attach(minted.at(-1)!, viewer)).toBe(true)
     return { answer, viewer }
   }
-  const pageValue = async (title: string): Promise<{ value: string; size: string }> => {
-    const { targetInfos } = await cdp.send<{ targetInfos: { targetId: string; type: string; title: string }[] }>('Target.getTargets')
-    const target = targetInfos.find((t) => t.type === 'page' && t.title === title)!
-    const { sessionId } = await cdp.send<{ sessionId: string }>('Target.attachToTarget', { targetId: target.targetId, flatten: true })
-    const r = await cdp.send<{ result: { value: { value: string; size: string } } }>('Runtime.evaluate', { expression: '({ value: document.getElementById("i").value, size: innerWidth + "x" + innerHeight })', returnByValue: true }, sessionId)
-    return r.result.value
+  const readPage = async <T,>(title: string, expression: string): Promise<T> => {
+    const { targetInfos } = await cdp.send<{ targetInfos: { targetId: string; type: string; title: string }[] }>('Target.getTargets', {}, undefined, 2_000)
+    const target = targetInfos.find((t) => t.type === 'page' && t.title === title)
+    if (!target) throw new Error(`No Chromium page named ${title}`)
+    const { sessionId } = await cdp.send<{ sessionId: string }>('Target.attachToTarget', { targetId: target.targetId, flatten: true }, undefined, 2_000)
+    try {
+      const r = await cdp.send<{ result: { value: T } }>('Runtime.evaluate', { expression, returnByValue: true }, sessionId, 2_000)
+      return r.result.value
+    } finally {
+      await cdp.send('Target.detachFromTarget', { sessionId }, undefined, 2_000)
+    }
   }
+  const pageValue = (title: string) => readPage<{ value: string; size: string }>(title, '({ value: document.getElementById("i").value, size: innerWidth + "x" + innerHeight })')
+
 
   beforeAll(async () => {
     dataDir = mkdtempSync(join(tmpdir(), 'tc-box-video-'))
@@ -143,6 +150,11 @@ d('live video of the box browser, end to end', () => {
     cdp = await Cdp.open(await host.browser.endpoint())
   }, 90_000)
 
+  afterEach(async () => {
+    for (const viewer of viewers.splice(0)) viewer.leave()
+    await until(() => relay.list().length === 0, "the test streams close")
+  })
+
   afterAll(async () => {
     cdp?.close()
     relay?.shutdown()
@@ -168,9 +180,9 @@ d('live video of the box browser, end to end', () => {
     // and its SPS says no frame is reordered: a hardware decoder holds its output for a stream that does not say so
     // (found on the Mac's own encoder), and a viewer that draws nothing acks nothing
     expect(spsReorder(first.data)).toEqual({ restriction: true, reorder: 0 })
-    const before = viewer.frames.length
-    await sleep(1_500)
-    const perSecond = (viewer.frames.length - before) / 1.5
+    const period = 1_500_000 // capture timestamps are in microseconds
+    await until(() => viewer.frames.at(-1)!.timestamp >= first.timestamp + period, '1.5 seconds of captured frames')
+    const perSecond = (viewer.frames.filter((f) => f.timestamp < first.timestamp + period).length - 1) / 1.5
     expect(perSecond).toBeGreaterThan(30)
     // in order, one connection, each stamped with when it was captured
     const sequences = viewer.frames.map((f) => f.sequence)
@@ -189,7 +201,8 @@ d('live video of the box browser, end to end', () => {
   it('a still page sends its first picture and then nothing', async () => {
     const { viewer } = await watch('w2', { take: true })
     await until(() => viewer.frames.length > 0)
-    await sleep(1_000)
+    // Wait until the sharpening frames stop arriving before measuring silence.
+    await until(() => performance.now() - viewer.lastFrameAt >= 1_000, 'still picture settles')
     const settled = viewer.frames.length
     await sleep(1_500)
     // a few frames sharpen a picture that came to rest; then silence
@@ -231,8 +244,7 @@ d('live video of the box browser, end to end', () => {
     // nothing of his to stop: Hand back is how it ends
     expect(await host.rows.stop('w1')).toBe(false)
     // the page shows the browser's toolbar: shorter, as wide
-    await sleep(600)
-    expect((await pageValue('moving')).size).toMatch(/^1280x7[0-4]\d$/)
+    await until(async () => /^1280x7[0-4]\d$/.test((await pageValue('moving')).size), 'the browser toolbar opens')
   }, 60_000)
 
   it('takes his pointer and keys on a drive stream, in the page he drives', async () => {
@@ -249,12 +261,10 @@ d('live video of the box browser, end to end', () => {
       viewer.input({ type: 'keyDown', key })
       viewer.input({ type: 'keyUp', key })
     }
-    await until(() => false, 600).catch(() => {})
-    expect((await pageValue('moving')).value).toBe('hi')
+    await until(async () => (await pageValue('moving')).value === 'hi', 'the page receives both keys')
     // his paste goes through the display's clipboard
     await rpc.paste({ stream: relay.list()[0].id, text: ' there, ünïcode' }, me)
-    await sleep(500)
-    expect((await pageValue('moving')).value).toBe('hi there, ünïcode')
+    await until(async () => (await pageValue('moving')).value === 'hi there, ünïcode', 'the page receives the clipboard')
     // and a moment later the clipboard is empty: the same keys paste nothing
     await sleep(1_600)
     for (const [type, key] of [['keyDown', 224], ['keyDown', 25], ['keyUp', 25], ['keyUp', 224]] as const) viewer.input({ type, key })
@@ -267,9 +277,8 @@ d('live video of the box browser, end to end', () => {
     new DriveStore(db).drive('w1', 'agent')
     boxDriveChanged('w1', false)
     await until(() => host.stage.driving === null)
-    await sleep(600)
-    expect((await pageValue('moving')).size).toBe('1280x800')
-    expect(relay.list()[0]).toMatchObject({ scope: 'watch' })
+    await until(async () => (await pageValue('moving')).size === '1280x800', 'the browser toolbar closes')
+    await until(() => relay.list()[0]?.scope === 'watch', 'the stream returns to watch')
     viewer.input({ type: 'keyDown', key: 29 })
     viewer.input({ type: 'keyUp', key: 29 })
     await sleep(300)
@@ -289,7 +298,7 @@ d('live video of the box browser, end to end', () => {
     const { viewer } = await watch('w3', { drive: true, take: true })
     expect(relay.list().find((s) => s.thread === 'w3')).toMatchObject({ scope: 'drive' })
     await until(() => viewer.frames.length > 0)
-    await sleep(600)
+    await until(async () => /^1280x7[0-4]\d$/.test((await pageValue('Sign in')).size), 'the sign-in toolbar opens')
     const click = (x: number, y: number): void => {
       // the browser's toolbar is 87 of the 800 lines while he drives
       const at = { x: x / 1280, y: (87 + y) / 800 }
@@ -303,21 +312,20 @@ d('live video of the box browser, end to end', () => {
         viewer.input({ type: 'keyUp', key })
       }
     }
+    const focused = () => readPage<string>('Sign in', 'document.activeElement.id')
     click(100, 55)
-    await sleep(200)
+    await until(async () => (await focused()) === 'i', 'the username field has focus')
     type(4, 15) // a, l
+    await until(async () => (await pageValue('Sign in')).value === 'al', 'the username arrives')
     click(100, 115)
-    await sleep(200)
+    await until(async () => (await focused()) === 'p', 'the password field has focus')
     type(22, 8, 6, 21, 8, 23) // s, e, c, r, e, t
-    await sleep(200)
-    const { targetInfos } = await cdp.send<{ targetInfos: { targetId: string; type: string; title: string }[] }>('Target.getTargets')
-    const target = targetInfos.find((t) => t.type === 'page' && t.title === 'Sign in')!
-    const { sessionId } = await cdp.send<{ sessionId: string }>('Target.attachToTarget', { targetId: target.targetId, flatten: true })
-    const typed = await cdp.send<{ result: { value: string } }>('Runtime.evaluate', { expression: 'document.getElementById("i").value + "/" + document.getElementById("p").value.length', returnByValue: true }, sessionId)
-    expect(typed.result.value).toBe('al/6')
+    const typed = () => readPage<string>('Sign in', 'document.getElementById("i").value + "/" + document.getElementById("p").value.length')
+    await until(async () => (await typed()) === 'al/6', 'both sign-in fields hold the typed values')
     type(40) // Enter
-    await until(() => site.posts.includes('/welcome'))
-    // Nothing offers to keep the password: only the page is in front of the display's curtain, a moment later too
+    await until(() => site.posts.includes('/welcome'), 'the form posts')
+    await until(async () => (await readPage<string>('Welcome', 'document.querySelector("h1").textContent')) === 'Signed in', 'the submitted form navigates')
+    // A bounded observation after navigation gives a password prompt time to appear.
     await sleep(1_500)
     const wm = host.browser.wm!
     expect(await wm.shown(false)).toHaveLength(1)

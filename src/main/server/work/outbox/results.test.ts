@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { z } from 'zod'
 import type { WorkResult } from '@shared/contract-work-outbox'
 import type { SessionMeta } from '@shared/events'
@@ -82,13 +82,19 @@ describe('ctx.results', () => {
   })
 
   it('answers every result since a time, for the return from Away', async () => {
-    await boot()
-    rig.work.ctx.results.add({ sessionId: 't-work', kind: 'task', summary: 'Before' })
-    const since = Date.now() + 1
-    await new Promise((r) => setTimeout(r, 5))
-    rig.work.ctx.results.add({ sessionId: 't-work', kind: 'task', summary: 'After' })
-    const { results } = await rig.rpc<{ results: WorkResult[] }>('work.outbox.results', { since })
-    expect(results.map((r) => r.summary)).toEqual(['After'])
+    const before = Date.UTC(2026, 10, 23, 17)
+    const since = before + 1
+    const clock = vi.spyOn(Date, 'now').mockReturnValue(before)
+    try {
+      await boot()
+      rig.work.ctx.results.add({ sessionId: 't-work', kind: 'task', summary: 'Before' })
+      clock.mockReturnValue(since + 1)
+      rig.work.ctx.results.add({ sessionId: 't-work', kind: 'task', summary: 'After' })
+      const { results } = await rig.rpc<{ results: WorkResult[] }>('work.outbox.results', { since })
+      expect(results.map((r) => r.summary)).toEqual(['After'])
+    } finally {
+      clock.mockRestore()
+    }
   })
 })
 

@@ -1,6 +1,7 @@
+import { shiftMtime } from '../mtime.testkit'
 import { spawnSync } from 'node:child_process'
 import { EventEmitter } from 'node:events'
-import { chmodSync, copyFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, utimesSync, writeFileSync } from 'node:fs'
+import { chmodSync, copyFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import JSZip from 'jszip'
@@ -475,9 +476,8 @@ describe('the script in its folder', () => {
     const fresh = join(folder, 'deck-fedcba9876543210.py')
     const notOurs = join(folder, 'notes.txt')
     for (const f of [other, fresh, notOurs]) writeFileSync(f, 'x')
-    const old = new Date(Date.now() - 25 * 60 * 60_000)
-    utimesSync(other, old, old)
-    utimesSync(notOurs, old, old)
+    shiftMtime(other, -25 * 60 * 60_000)
+    shiftMtime(notOurs, -25 * 60 * 60_000)
     expect(scriptIn(folder)).toBe(script)
     expect(statSync(script).mtimeMs).toBe(made)
     expect(readdirSync(folder).sort()).toEqual([script, fresh, notOurs].map((p) => p.slice(folder.length + 1)).sort())

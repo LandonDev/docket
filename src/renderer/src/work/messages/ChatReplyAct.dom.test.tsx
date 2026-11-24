@@ -133,7 +133,7 @@ describe("the held reply's view", () => {
   });
 
   it("naming nothing in a conversation of only his own words, quotes his newest there as You, the message LifeOS will answer", () => {
-    const at = Date.now();
+    const at = Date.UTC(2026, 10, 23, 17);
     lifeos.chat = { ...CHATS.find((c) => c._id === "c_design")!, lastInId: undefined, lastFromMe: true };
     lifeos.page = [
       { _id: "o2", who: { name: "Alex Kim", me: true }, text: "Ship it Friday?", sentAt: at, files: [] },
@@ -146,7 +146,7 @@ describe("the held reply's view", () => {
   });
 
   it("skips his replies still on their way or failed: the quote is the newest stored message of his", () => {
-    const at = Date.now();
+    const at = Date.UTC(2026, 10, 23, 17);
     lifeos.chat = { ...CHATS.find((c) => c._id === "c_design")!, lastInId: undefined, lastFromMe: true };
     lifeos.page = [
       { _id: "q1", who: { name: "Alex Kim", me: true }, text: "Queued words", sentAt: at, files: [], reply: { outboxId: "ob1", status: "queued" } },

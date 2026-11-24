@@ -261,8 +261,8 @@ describe('a Word file and a document of one name that were never one', () => {
   it('are two tiles when the document was read from another Word file, or from this one before it was written again', () => {
     own('Memo.docx', docx('{{To}}'))
     own('Memo.tcdoc', imported('{{To}}', 'Other memo.docx'))
-    own('Note.docx', docx('{{To}}'))
-    own('Note.tcdoc', imported('{{To}}', 'Note.docx', Date.now() - 60_000))
+    const note = own('Note.docx', docx('{{To}}'))
+    own('Note.tcdoc', imported('{{To}}', 'Note.docx', statSync(note).mtimeMs - 60_000))
     expect(ids().filter((id) => /Memo|Note/.test(id)).sort()).toEqual(['job:Memo.docx', 'job:Memo.tcdoc', 'job:Note.docx', 'job:Note.tcdoc'])
     expect(shelfOf(rig.ctx, WS).entries.some((e) => e.twin)).toBe(false)
   })

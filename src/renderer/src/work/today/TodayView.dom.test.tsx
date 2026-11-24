@@ -8,6 +8,7 @@
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { useMemo } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { workTestClock } from "../testClock";
 import type { OutboxItem } from "@shared/contract-work-outbox";
 
 type Call = { env: string; method: string; params: Record<string, unknown> };
@@ -174,7 +175,10 @@ const rowTitles = (root: ParentNode = document) => [...root.querySelectorAll("[d
 const section = (id: string) => document.querySelector<HTMLElement>(`[data-today-section="${id}"]`)!;
 const moved = () => (registry as unknown as { moved(): void }).moved();
 
+const now = workTestClock();
+
 beforeEach(() => {
+  vi.useFakeTimers({ now, toFake: ["Date"] });
   world.calls.length = 0;
   world.items.clear();
   world.listDown.clear();
@@ -194,6 +198,7 @@ beforeEach(() => {
 });
 afterEach(() => {
   cleanup();
+  vi.useRealTimers();
   workSwitch.reset();
   vi.restoreAllMocks();
 });
@@ -788,7 +793,8 @@ describe("a source", () => {
     fireEvent.click(within(row).getByRole("button", { name: "Northfield Parks owes 420" }));
     expect(opened).toHaveBeenCalledTimes(1);
     // The tick holds a moment so it reads, then runs.
-    vi.useFakeTimers();
+    vi.useRealTimers();
+    vi.useFakeTimers({ now });
     try {
       fireEvent.click(within(row).getByRole("checkbox", { name: "Mark paid" }));
       expect(done).not.toHaveBeenCalled();
@@ -908,7 +914,8 @@ describe("a row that leaves", () => {
   it("by his own act fades where it stands, inert; then its place closes; then it is gone and focus is on the row that took its place", async () => {
     render(<View onClose={() => {}} />);
     await waitFor(() => expect(document.activeElement?.getAttribute("data-roving-key")).toBe("owed:1"));
-    vi.useFakeTimers();
+    vi.useRealTimers();
+    vi.useFakeTimers({ now });
     try {
       act(() => leave("owed:1"));
       const first = slot("owed:1")!;

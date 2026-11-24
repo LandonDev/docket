@@ -116,7 +116,7 @@ describe("a file he asked to open", () => {
   });
 
   it("a picture still on its way opens once its bytes are stored", async () => {
-    const pic: ChatMessage = { _id: "pic", who: { name: "Ana Ruiz", me: false }, text: "", sentAt: Date.now(), files: [{ _id: "f1", name: "banner.png", contentType: "image/png", width: 800, height: 400, status: "wanted" }] };
+    const pic: ChatMessage = { _id: "pic", who: { name: "Ana Ruiz", me: false }, text: "", sentAt: Date.UTC(2026, 10, 23, 17), files: [{ _id: "f1", name: "banner.png", contentType: "image/png", width: 800, height: 400, status: "wanted" }] };
     const { data } = mount({ messages: { ...MESSAGES, c_art: [pic] } }, "c_art");
     await flush();
     const button = within(block("pic")!).getByRole("button", { name: "View banner.png" });

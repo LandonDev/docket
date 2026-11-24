@@ -1,5 +1,4 @@
-import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
-import { request } from 'node:http'
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { createRequire } from 'node:module'
 import { dirname, join } from 'node:path'
@@ -24,6 +23,7 @@ import { droppedWords, freePath, IMPORT_OVERTAKEN, safeName } from './importer'
 import { convertersOf, JobRunner } from './jobs'
 import { setPrinter } from './print'
 import { runTool, Toolchain } from './tools'
+import { closeFormatRig, post, TEST_SECRET as SECRET } from './testkit'
 
 /*
  * Import and export on this host: the Work service in process (its socket
@@ -37,31 +37,12 @@ import { runTool, Toolchain } from './tools'
 const REAL = process.env.TEMP_CODE_WORK_TOOLS_DATA
 // work-kit's Word corpus, wherever the package is installed.
 const CORPUS = join(dirname(createRequire(import.meta.url).resolve('work-kit/formats/docx')), 'corpus')
-const SECRET = 'f'.repeat(43)
 const open: { dirs: string[]; services: RunningService[]; convex: FakeConvex[] } = { dirs: [], services: [], convex: [] }
 
 afterEach(async () => {
   setPrinter(null)
-  await Promise.all(open.services.splice(0).map((s) => s.stop().catch(() => {})))
-  await Promise.all(open.convex.splice(0).map((c) => c.close()))
-  for (const d of open.dirs.splice(0)) rmSync(d, { recursive: true, force: true })
+  await closeFormatRig(open)
 })
-
-function post(socketPath: string, path: string, body: unknown): Promise<unknown> {
-  return new Promise((resolve, reject) => {
-    const req = request({ socketPath, path, method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${SECRET}` } }, (res) => {
-      const chunks: Buffer[] = []
-      res.on('data', (c: Buffer) => chunks.push(c))
-      res.on('end', () => {
-        const parsed = JSON.parse(Buffer.concat(chunks).toString() || '{}') as { error?: string }
-        if ((res.statusCode ?? 500) >= 400) reject(new Error(parsed.error ?? `HTTP ${res.statusCode}`))
-        else resolve(parsed)
-      })
-    })
-    req.on('error', reject)
-    req.end(JSON.stringify(body))
-  })
-}
 
 async function rig() {
   const dir = mkdtempSync(join(tmpdir(), 'm21-formats-'))
@@ -114,7 +95,16 @@ async function rig() {
     },
     lifeos: { connected: () => false, owner: () => ({ query: async () => null, mutation: async () => null }) },
     service: { internal: (route: string, body: unknown) => post(config.socketPath, route, body) },
-    convert: (job: Parameters<JobRunner['convert']>[0]) => runner.convert(job)
+    convert: async (job: Parameters<JobRunner['convert']>[0]) => {
+      if (!REAL) return runner.convert(job)
+      const deadline = AbortSignal.timeout(job.from === 'pdf' ? 180_000 : 45_000)
+      const signal = job.signal ? AbortSignal.any([job.signal, deadline]) : deadline
+      try {
+        return await runner.convert({ ...job, signal })
+      } catch (error) {
+        throw new Error(`Convert ${job.from} to ${job.to}: ${String(error)}`, { cause: error })
+      }
+    }
   } as unknown as WorkCtx
   const ask = async <T,>(method: string, params: unknown, by: Caller = { kind: 'local', caps: [] }): Promise<T> => {
     const done = await formats.handle!({ id: '1', method, params } as ClientRequest, ctx, by)
@@ -308,8 +298,8 @@ describe.skipIf(!REAL)('through the real LibreOffice, pymupdf4llm and Docling (T
     // Each page as a picture in a new PDF: what a scanner makes.
     const scan = join(r.work, 'scanned.pdf')
     const py = new Toolchain(REAL!).bin('pdf-tools')!
-    const made = await runTool(py, ['-I', '-c', 'import sys, pypdfium2 as p\nd = p.PdfDocument(sys.argv[1])\nim = [d[i].render(scale=200/72).to_pil().convert("L") for i in range(2)]\nim[0].save(sys.argv[2], save_all=True, append_images=im[1:], resolution=200)', pdf.output, scan])
-    expect(made.code).toBe(0)
+    const made = await runTool(py, ['-I', '-c', 'import sys, pypdfium2 as p\nd = p.PdfDocument(sys.argv[1])\nim = [d[i].render(scale=200/72).to_pil().convert("L") for i in range(2)]\nim[0].save(sys.argv[2], save_all=True, append_images=im[1:], resolution=200)', pdf.output, scan], { timeoutMs: 30_000 })
+    expect(made.code, `Render scanned fixture: ${made.out}`).toBe(0)
     const got = await r.ask<ImportAnswer>('work.formats.import', { from: { at: 'source', source: { at: 'file', host: 'env_box', path: scan } } })
     expect(got.warnings).toContain('Read from the page pictures by OCR: check the words.')
     const md = ((await r.post('/internal/docs/read', { file: (got.source as { path: string }).path, fence: { sectors: 'all' } })) as { markdown: string }).markdown

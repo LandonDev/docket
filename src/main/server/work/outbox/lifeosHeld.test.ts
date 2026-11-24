@@ -466,7 +466,7 @@ describe('a grant made from a LifeOS-held mail', () => {
     // the next draft to Dana goes when the watcher first sees it; one to Dana and a stranger does not, nor one from another workspace's thread
     rig.workspace('ws-cosmic', { kind: 'work', sector: 'cosmic' } as never)
     rig.thread('t-cosmic', { scope: 'work', workspaceId: 'ws-cosmic' } as Partial<SessionMeta>)
-    const at = Date.now() + 5
+    const at = g.createdAt + 5
     const fits = rig.lifeos.draft({ to: ['Dana@Purdue.edu'], subject: 'second', at })
     rig.lifeos.draft({ to: ['dana@purdue.edu', 'stranger@gmail.com'], subject: 'with a stranger', at })
     rig.lifeos.draft({ to: ['dana@purdue.edu'], cc: ['stranger@gmail.com'], subject: 'copied to a stranger', at })
@@ -497,7 +497,7 @@ describe('a grant made from a LifeOS-held mail', () => {
     await settled()
     const g = await rig.rpc<OutboxGrant>('work.outbox.grant', { from: (await list()).items[0]!.ref, matcher: { domains: ['purdue.edu'] } })
     expect(g.routineId).toBe('routine-a')
-    const at = Date.now() + 5
+    const at = g.createdAt + 5
     const next = rig.lifeos.draft({ subject: 'digest 2', threadId: 't-a2', routineRunId: 'run-a2', at })
     rig.lifeos.draft({ subject: 'other routine', threadId: 't-b1', routineRunId: 'run-b1', at })
     rig.lifeos.draft({ subject: 'by hand', threadId: 't-work', at })

@@ -1,4 +1,5 @@
-import { readdirSync, readFileSync, renameSync, utimesSync, writeFileSync } from 'node:fs'
+import { shiftMtime } from '../mtime.testkit'
+import { readdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { handled } from '@shared/work'
@@ -71,8 +72,7 @@ describe('a lone document this pillar moved beside an older Word file of its nam
     // A document read from a Word file named Letter.docx, which is not this one.
     rig.put(join(templates(), 'Letter.tcdoc'), imported('His own {{Client}}', 'Letter.docx'))
     const theirs = rig.put(join(sharedDir(rig.ctx), 'Letter.docx'), docx('Dear {{To}}'))
-    const old = new Date(Date.now() - 86_400_000)
-    utimesSync(theirs, old, old)
+    shiftMtime(theirs, -(86_400_000))
     const bytes = readFileSync(theirs)
     await moveTemplate(rig.ctx, window, WS, 'job:Letter.tcdoc', true)
     expect(named('Letter').map((t) => t.id).sort()).toEqual(['all:Letter.docx', 'all:Letter.tcdoc'])
@@ -85,8 +85,7 @@ describe('a lone document this pillar moved beside an older Word file of its nam
   it('and a lone Word file renamed beside a document of its name is not joined to it either', async () => {
     rig.put(join(templates(), 'Memo.tcdoc'), imported('{{To}}', 'Memo.docx'))
     rig.put(join(templates(), 'Draft.docx'), docx('{{To}}'))
-    const old = new Date(Date.now() - 86_400_000)
-    utimesSync(join(templates(), 'Draft.docx'), old, old)
+    shiftMtime(join(templates(), 'Draft.docx'), -(86_400_000))
     await renameTemplate(rig.ctx, window, WS, 'job:Draft.docx', 'Memo')
     expect(named('Memo').map((t) => t.id).sort()).toEqual(['job:Memo.docx', 'job:Memo.tcdoc'])
   })
@@ -108,8 +107,7 @@ describe('a pair this pillar renamed, then saved in the document kind', () => {
   it('and two files this pillar kept apart stay apart after the document is saved', async () => {
     rig.put(join(templates(), 'Memo.tcdoc'), imported('{{To}}', 'Memo.docx'))
     rig.put(join(templates(), 'Draft.docx'), docx('{{To}}'))
-    const old = new Date(Date.now() - 86_400_000)
-    utimesSync(join(templates(), 'Draft.docx'), old, old)
+    shiftMtime(join(templates(), 'Draft.docx'), -(86_400_000))
     await renameTemplate(rig.ctx, window, WS, 'job:Draft.docx', 'Memo')
     // The import's record names Memo.docx and the Word file is older: by name and time alone the two would be joined.
     editorSaves(join(templates(), 'Memo.tcdoc'), imported('{{To}} edited', 'Memo.docx'))

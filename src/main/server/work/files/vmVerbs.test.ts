@@ -61,10 +61,11 @@ describe.skipIf(process.platform === 'win32')('the Windows VM changed through it
   }
   const dirOf = (p: string) => p.slice(0, p.lastIndexOf('\\'))
 
+  const now = Date.UTC(2026, 10, 23, 17)
   const status = (verbs?: string[], mount = TOP) =>
     rig.db.prepare(`INSERT OR REPLACE INTO work_office_files (key, value) VALUES ('vm:status', ?)`).run(
       JSON.stringify({
-        at: Date.now(),
+        at: now,
         status: { onedrive: { installed: true, running: true, account: 'a@dummy.edu' }, mounts: [{ path: mount, type: 'team', web: null }], office: { installed: true, version: null, apps: [], account: null, licensed: null }, ...(verbs ? { verbs } : {}) },
         tops: { [TOP]: ['Events', 'General'] }
       })
@@ -161,6 +162,7 @@ describe.skipIf(process.platform === 'win32')('the Windows VM changed through it
   const op = () => `op-0000-${++ops}`
 
   beforeEach(() => {
+    vi.setSystemTime(now)
     rig = makeRig()
     calls = []
     journal = new Map()
@@ -178,6 +180,7 @@ describe.skipIf(process.platform === 'win32')('the Windows VM changed through it
     setVmCall((verb, args) => guest(verb, (args ?? {}) as Record<string, unknown>))
   })
   afterEach(() => {
+    vi.useRealTimers()
     setVmCall(null)
     setThreadsMayWrite(false)
     closeFilesState(rig.db)

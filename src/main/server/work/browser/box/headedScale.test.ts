@@ -105,7 +105,7 @@ d.each([
     // the window he watches is in front of the curtain, and it is the screen
     const [front] = await rig.browser.wm!.shown()
     expect(front).toBeDefined()
-    await sleep(500)
+    await expect.poll(async () => pixelAt(await seen(), width / 2, 10), { timeout: 5000 }).toBe(COLOURS.red)
     const engine = await seen()
     expect([engine.width, engine.height]).toEqual([width, height])
     expect(pixelAt(engine, width / 2, 10)).toBe(COLOURS.red)
@@ -116,7 +116,7 @@ d.each([
     const watched = rig.stage.watching!
     const sid = await attach(watched)
     await cdp.send('Runtime.evaluate', { expression: `window.open(${JSON.stringify(`${site.url}/blue`)}, '_blank', 'popup,width=400,height=300')`, userGesture: true }, sid)
-    await sleep(1_500)
+    await expect.poll(async () => pixelAt(await seen(), width / 2, height / 2), { timeout: 5000 }).toBe(COLOURS.blue)
     expect(logs.filter((l) => /no window/.test(l))).toEqual([])
     const now = await seen()
     expect(pixelAt(now, width / 2, height / 2)).toBe(COLOURS.blue)

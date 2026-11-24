@@ -88,7 +88,7 @@ describe("the Windows VM in Settings → Work", () => {
   });
 
   it("wakes it, sets when it sleeps, and goes back to a point only after a confirm", async () => {
-    h.points = [{ id: "p1", name: "Before setup", at: Date.now() - 60_000, by: "keeper" } satisfies WinvmPoint];
+    h.points = [{ id: "p1", name: "Before setup", at: Date.UTC(2026, 10, 23, 17) - 60_000, by: "keeper" } satisfies WinvmPoint];
     render(<WinvmSection hosts={["box"]} />);
     await flush();
     fireEvent.click(screen.getByRole("button", { name: "Wake" }));
@@ -118,7 +118,7 @@ describe("the Windows VM in Settings → Work", () => {
     expect(screen.queryByRole("button", { name: "Set up" })).toBeNull();
     v.unmount();
     h.state = at({ state: "asleep" });
-    h.points = [{ id: "p1", name: "Before setup", at: Date.now() - 60_000, by: "keeper" } satisfies WinvmPoint];
+    h.points = [{ id: "p1", name: "Before setup", at: Date.UTC(2026, 10, 23, 17) - 60_000, by: "keeper" } satisfies WinvmPoint];
     render(<WinvmSection hosts={["box"]} />);
     await flush();
     // the setting stands as words; the admin read of the settings is never asked

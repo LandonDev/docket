@@ -1,6 +1,6 @@
+import { shiftMtime } from '../mtime.testkit'
 import { spawnSync } from 'node:child_process'
-import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, utimesSync, writeFileSync } from 'node:fs'
-import { request } from 'node:http'
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, statSync, utimesSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { createRequire } from 'node:module'
 import { dirname, join } from 'node:path'
@@ -28,6 +28,7 @@ import * as jobRunner from './jobs'
 import { convertersOf, JobRunner, pressed, type ConvertJob, type Converter } from './jobs'
 import { setPrinter } from './print'
 import { Toolchain } from './tools'
+import { closeFormatRig, post, TEST_SECRET as SECRET } from './testkit'
 
 /*
  * A document's Preview on this host: the Work service in process for the
@@ -36,32 +37,13 @@ import { Toolchain } from './tools'
  */
 
 const CORPUS = join(dirname(createRequire(import.meta.url).resolve('work-kit/formats/docx')), 'corpus')
-const SECRET = 'f'.repeat(43)
 const open: { dirs: string[]; services: RunningService[]; convex: FakeConvex[] } = { dirs: [], services: [], convex: [] }
 
 afterEach(async () => {
   setPrinter(null)
   vi.restoreAllMocks()
-  await Promise.all(open.services.splice(0).map((s) => s.stop().catch(() => {})))
-  await Promise.all(open.convex.splice(0).map((c) => c.close()))
-  for (const d of open.dirs.splice(0)) rmSync(d, { recursive: true, force: true })
+  await closeFormatRig(open)
 })
-
-function post(socketPath: string, path: string, body: unknown): Promise<unknown> {
-  return new Promise((resolve, reject) => {
-    const req = request({ socketPath, path, method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${SECRET}` } }, (res) => {
-      const chunks: Buffer[] = []
-      res.on('data', (c: Buffer) => chunks.push(c))
-      res.on('end', () => {
-        const parsed = JSON.parse(Buffer.concat(chunks).toString() || '{}') as { error?: string }
-        if ((res.statusCode ?? 500) >= 400) reject(new Error(parsed.error ?? `HTTP ${res.statusCode}`))
-        else resolve(parsed)
-      })
-    })
-    req.on('error', reject)
-    req.end(JSON.stringify(body))
-  })
-}
 
 // pdf-lib stamps a new PDF with the second it was made in: two made a second apart are the same size
 // and not the same bytes. A fixed date, so "the printed page" is one file whenever it is made.
@@ -362,8 +344,7 @@ describe('one page for Files', () => {
       expect(r.jobs.map((j) => [j.from, j.to])).toEqual([['docx', 'pdf'], ['pdf', 'png'], ['pdf', 'png']])
       // Nothing of it is on disk between the two asks: the PDF waits in memory.
       expect(readdirSync(join(r.data, 'formats', 'scratch'))).toEqual([])
-      const later = new Date(Date.now() + 5000)
-      utimesSync(word, later, later)
+      shiftMtime(word, 5000)
       await draw(ref(word), { page: 1, width: 256 })
       expect(r.jobs.map((j) => j.to)).toEqual(['pdf', 'png', 'png', 'pdf', 'png'])
     } finally {
@@ -555,8 +536,8 @@ const mupdf = REAL ? new Toolchain(REAL).bin('pymupdf4llm') : null
 describe.skipIf(!REAL || !mupdf)('through the real LibreOffice (TEMP_CODE_WORK_TOOLS_DATA)', () => {
   /** A PDF's pages as PyMuPDF reads them: each page's words. */
   const pagesOf = (file: string): string[] => {
-    const run = spawnSync(mupdf!, ['-c', 'import sys, json, pymupdf\ndoc = pymupdf.open(sys.argv[1])\nprint(json.dumps([page.get_text() for page in doc]))', file], { encoding: 'utf8' })
-    if (run.status !== 0) throw new Error(run.stderr)
+    const run = spawnSync(mupdf!, ['-c', 'import sys, json, pymupdf\ndoc = pymupdf.open(sys.argv[1])\nprint(json.dumps([page.get_text() for page in doc]))', file], { encoding: 'utf8', timeout: 20_000 })
+    if (run.error || run.status !== 0) throw new Error(`PyMuPDF reading ${file}: ${run.error ?? run.stderr}`)
     return JSON.parse(run.stdout) as string[]
   }
   const para = (text: string) => ({ id: text.slice(0, 8), type: 'paragraph', props: {}, content: [{ type: 'text', text, styles: {} }], children: [] })
@@ -567,7 +548,9 @@ describe.skipIf(!REAL || !mupdf)('through the real LibreOffice (TEMP_CODE_WORK_T
     const runner = new JobRunner({ host: 'env_box', dataDir: r.data, converters: convertersOf([formats], () => {}), tools: new Toolchain(REAL!), log: () => {} })
     const jobs: { from: string; to: string; input: string; output: string }[] = []
     ;(r.ctx as { convert: unknown }).convert = async (job: Parameters<JobRunner['convert']>[0]) => {
-      const done = await runner.convert(job)
+      const done = await runner.convert({ ...job, signal: job.signal ? AbortSignal.any([job.signal, AbortSignal.timeout(45_000)]) : AbortSignal.timeout(45_000) }).catch((error: unknown) => {
+        throw new Error(`LibreOffice ${job.from} to ${job.to}: ${String(error)}`, { cause: error })
+      })
       jobs.push({ from: job.from, to: job.to, input: job.input, output: done.output })
       return done
     }

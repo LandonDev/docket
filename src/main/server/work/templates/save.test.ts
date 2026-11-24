@@ -1,4 +1,5 @@
-import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, symlinkSync, utimesSync } from 'node:fs'
+import { shiftMtime } from '../mtime.testkit'
+import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, symlinkSync } from 'node:fs'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import type { ClientRequest } from '@shared/contract'
@@ -364,8 +365,7 @@ describe('a Word template and the document made of it', () => {
   it('never delete an older Word file the shelf joined to a document by name and time alone, the first time it saw them', async () => {
     // A document read from another job's Letter.docx, put beside this job's own, older Letter.docx by hand.
     const theirs = rig.put(join(rig.folder, 'Templates', 'Letter.docx'), docx('Dear {{To}}'))
-    const old = new Date(Date.now() - 86_400_000)
-    utimesSync(theirs, old, old)
+    shiftMtime(theirs, -(86_400_000))
     const bytes = readFileSync(theirs)
     rig.put(join(rig.folder, 'Templates', 'Letter.tcdoc'), imported('His own {{Client}}', 'Letter.docx'))
     expect(listTemplates(rig.ctx, WS).templates.filter((t) => t.name === 'Letter').map((t) => t.id)).toEqual(['job:Letter.tcdoc'])

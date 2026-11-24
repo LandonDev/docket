@@ -63,11 +63,15 @@ afterEach(() => {
 })
 
 const env = () => ({ PATH: `${join(dir, 'bin')}:/usr/bin:/bin`, HOME: dir })
+const ready = (log = 'watcher.log') => expect.poll(() => {
+  const path = join(dir, log)
+  return existsSync(path) && readFileSync(path, 'utf8').includes(`watching QEMU ${qemu.pid}`)
+}, { timeout: 5000 }).toBe(true)
 
 describe('the stop watcher', () => {
   it('on the stop signal asks the guest to hibernate as the admin, waits for QEMU to exit, and keeps the TPM', async () => {
     const pid = startWatcher(join(dir, 'watcher.sh'), join(dir, 'watcher.log'), spec(), env())!
-    await sleep(300)
+    await ready()
     process.kill(pid, 'SIGTERM')
     expect(await exited(pid)).toBe(true)
     const args = readFileSync(join(dir, 'ssh.args'), 'utf8')
@@ -82,9 +86,9 @@ describe('the stop watcher', () => {
   it('a second signal does not cut the hibernate short', async () => {
     writeFileSync(join(dir, 'bin', 'ssh'), `#!/bin/bash\necho "$@" > ${join(dir, 'ssh.args')}\n(sleep 0.6; kill "$(cat ${join(dir, 'qemu.pid')})") &\n`)
     const pid = startWatcher(join(dir, 'watcher.sh'), join(dir, 'watcher.log'), spec(), env())!
-    await sleep(300)
+    await ready()
     process.kill(pid, 'SIGTERM')
-    await sleep(100)
+    await expect.poll(() => existsSync(join(dir, 'ssh.args')), { timeout: 5000 }).toBe(true)
     process.kill(pid, 'SIGTERM')
     expect(await exited(pid)).toBe(true)
     expect(existsSync(join(dir, 'run-tpm'))).toBe(true)
@@ -92,7 +96,7 @@ describe('the stop watcher', () => {
 
   it('exits by itself when QEMU exits on its own, asking nothing of the guest', async () => {
     const pid = startWatcher(join(dir, 'watcher.sh'), join(dir, 'watcher.log'), spec(), env())!
-    await sleep(300)
+    await ready()
     qemu.kill('SIGTERM')
     expect(await exited(pid, 4000)).toBe(true)
     expect(existsSync(join(dir, 'ssh.args'))).toBe(false)
@@ -102,7 +106,7 @@ describe('the stop watcher', () => {
   it('says so when QEMU outlives its wait (the stop will cut its power)', async () => {
     writeFileSync(join(dir, 'bin', 'ssh'), '#!/bin/bash\nexit 255\n')
     const pid = startWatcher(join(dir, 'watcher.sh'), join(dir, 'watcher.log'), { ...spec(), waitSec: 0.5 }, env())!
-    await sleep(300)
+    await ready()
     process.kill(pid, 'SIGTERM')
     expect(await exited(pid)).toBe(true)
     expect(readFileSync(join(dir, 'watcher.log'), 'utf8')).toContain('QEMU still runs')
@@ -121,7 +125,7 @@ describe('the stop watcher', () => {
     const config = join(dir, 'xorg.conf')
     const x = display(config)
     const pid = startWatcher(join(dir, 'watcher.sh'), join(dir, 'watcher.log'), { ...spec(), display: { pid: x.pid!, config } }, env())!
-    await sleep(300)
+    await ready()
     process.kill(pid, 'SIGTERM')
     expect(await exited(pid)).toBe(true)
     expect(await exited(x.pid!, 2000)).toBe(true)
@@ -132,7 +136,7 @@ describe('the stop watcher', () => {
     kids.push(qemu)
     const y = display(config)
     const again = startWatcher(join(dir, 'watcher2.sh'), join(dir, 'watcher2.log'), { ...spec(), display: { pid: y.pid!, config } }, env())!
-    await sleep(300)
+    await ready('watcher2.log')
     qemu.kill('SIGTERM')
     expect(await exited(again, 4000)).toBe(true)
     expect(await exited(y.pid!, 2000)).toBe(true)
@@ -141,7 +145,7 @@ describe('the stop watcher', () => {
   it('never ends a process that is not the display it was started beside', async () => {
     const other = display(join(dir, 'another.conf'))
     const pid = startWatcher(join(dir, 'watcher.sh'), join(dir, 'watcher.log'), { ...spec(), display: { pid: other.pid!, config: join(dir, 'xorg.conf') } }, env())!
-    await sleep(300)
+    await ready()
     qemu.kill('SIGTERM')
     expect(await exited(pid, 4000)).toBe(true)
     expect(await exited(other.pid!, 500)).toBe(false)
@@ -157,10 +161,11 @@ describe('the daemons start with the stop signals blocked', () => {
     const [cmd, args] = stopBlocked('sleep', ['300'])
     const p = spawn(cmd, args, { stdio: 'ignore' })
     kids.push(p)
-    await sleep(300)
-    const blocked = BigInt('0x' + /SigBlk:\s+([0-9a-f]+)/.exec(readFileSync(`/proc/${p.pid}/status`, 'utf8'))![1])
-    // SIGHUP 1, SIGINT 2, SIGTERM 15: bits 0, 1, 14
-    expect(blocked & 0x4003n).toBe(0x4003n)
+    // SIGHUP 1, SIGINT 2, SIGTERM 15: bits 0, 1, 14.
+    await expect.poll(() => {
+      const blocked = /SigBlk:\s+([0-9a-f]+)/.exec(readFileSync(`/proc/${p.pid}/status`, 'utf8'))
+      return BigInt('0x' + (blocked?.[1] ?? '0')) & 0x4003n
+    }, { timeout: 5000 }).toBe(0x4003n)
     for (const sig of ['SIGTERM', 'SIGINT', 'SIGHUP'] as const) p.kill(sig)
     expect(await exited(p.pid!, 500)).toBe(false)
     p.kill('SIGKILL')

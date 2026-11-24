@@ -10,6 +10,7 @@
  */
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+const NOW = new Date(2026, 10, 23, 12);
 import type { CalendarOffer, MoneyRead, ToConfirm } from "@shared/contract-work-money";
 import type { Period } from "@shared/work/money";
 
@@ -60,6 +61,7 @@ function mount() {
 }
 
 beforeEach(() => {
+  vi.setSystemTime(NOW);
   host.asked.length = 0;
   host.read = (p) => readOf(p);
   host.answer = (method) => (method === "work.money.entry" || method === "work.money.paid" || method === "work.money.accept" ? { ok: true, ref: "r", row: 2 } : method === "work.money.state" ? { host: "box", jobs: [] } : null);
@@ -69,7 +71,10 @@ beforeEach(() => {
   URL.createObjectURL ??= () => "blob:x";
   URL.revokeObjectURL ??= () => {};
 });
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  vi.useRealTimers();
+});
 
 describe("Owed", () => {
   it("leads a cost to be paid back with what it was for, the seller after it, and never as the seller owing him", async () => {
@@ -108,11 +113,11 @@ describe("To confirm", () => {
     await settle();
     expect(within(screen.getByRole("region", { name: "To confirm" })).getByRole("heading", { name: "From the calendar" })).toBeTruthy();
     cleanup();
-    host.read = (p) => readOf(p, undefined, { toConfirm: [waiting("a", { fields: { amount: 4210, date: `${new Date().getFullYear()}-03-04`, who: "Corner Fuel", category: null } })] });
+    host.read = (p) => readOf(p, undefined, { toConfirm: [waiting("a", { fields: { amount: 4210, date: `2026-03-04`, who: "Corner Fuel", category: null } })] });
     mount();
     await settle();
     expect((document.querySelector("[data-to-confirm=a]") as HTMLElement).textContent).toContain("Mar 4");
-    expect((document.querySelector("[data-to-confirm=a]") as HTMLElement).textContent).not.toContain(String(new Date().getFullYear()));
+    expect((document.querySelector("[data-to-confirm=a]") as HTMLElement).textContent).not.toContain("2026");
   });
 });
 

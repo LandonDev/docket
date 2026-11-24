@@ -686,7 +686,7 @@ describe('the relay', () => {
     expect(relay.docs()).toEqual(new Set())
     const idle = relay.connect(`ws://127.0.0.1:${port}/x`, 'd2')
     now = 120_000
-    await new Promise((resolve) => setTimeout(resolve, 5_200))
+    await expect.poll(() => relay.docs().has('d2'), { timeout: 7000 }).toBe(false)
     expect(() => relay.send(idle, [])).toThrow(/closed/)
     // A waiting recv hears the host stop at once.
     const waiting = relay.connect(`ws://127.0.0.1:${port}/x`, 'd3')

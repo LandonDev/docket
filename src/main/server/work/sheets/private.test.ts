@@ -1,5 +1,6 @@
+import { shiftMtime } from '../mtime.testkit'
 import { createHash } from 'node:crypto'
-import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, renameSync, rmSync, utimesSync, writeFileSync } from 'node:fs'
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -883,7 +884,7 @@ describe('a .csv and an export in a folder others can open', () => {
     const view = await call<SheetView>('work.sheets.open', { itemId })
     await call('work.sheets.load', { itemId, rev: view.rev, offset: 0, length: 1_000_000 })
     writeFileSync(csv, 'name\nNew\nAda\nBo\n')
-    utimesSync(csv, new Date(), new Date(Date.now() + 5_000))
+    shiftMtime(csv, 5_000)
     const typed = { id: 'sheet.mutation.set-range-values', params: { unitId: 'workbook', subUnitId: 'sheet1', cellValue: { 1: { 0: { v: 'Ada Lovelace' } } } } }
     expect(await call('work.sheets.edit', { itemId, baseRev: view.rev, mutations: [typed] })).toEqual({ conflict: true, rev: 0 })
     expect(readFileSync(csv, 'utf8')).toBe('name\nNew\nAda\nBo\n')

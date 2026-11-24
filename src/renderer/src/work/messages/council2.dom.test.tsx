@@ -157,9 +157,9 @@ describe("the conversation's read mark and its newest row", () => {
   it("quotes 'Writer: words' whole, for the line to cut", () => {
     const long = "A very long first message that runs well past eighty characters so the line, not the code, decides where it stops";
     const lines: ChatMessage[] = [
-      { _id: "q1", who: { name: "Mia Chen", me: false }, text: long, sentAt: Date.now() - 60_000, files: [] },
-      { _id: "q2", who: { name: "Theo Park", me: false }, text: "Between", sentAt: Date.now() - 50_000, files: [] },
-      { _id: "q3", who: { name: "Ana Ruiz", me: false }, text: "Agreed", sentAt: Date.now() - 40_000, files: [], replyTo: { who: "Mia Chen", text: long } },
+      { _id: "q1", who: { name: "Mia Chen", me: false }, text: long, sentAt: Date.UTC(2026, 10, 23, 17) - 60_000, files: [] },
+      { _id: "q2", who: { name: "Theo Park", me: false }, text: "Between", sentAt: Date.UTC(2026, 10, 23, 17) - 50_000, files: [] },
+      { _id: "q3", who: { name: "Ana Ruiz", me: false }, text: "Agreed", sentAt: Date.UTC(2026, 10, 23, 17) - 40_000, files: [], replyTo: { who: "Mia Chen", text: long } },
     ].reverse();
     mount({ messages: { ...MESSAGES, c_design: lines } }, "c_design");
     expect(block("q3").textContent).toContain(`Mia Chen: ${long}`);
@@ -168,7 +168,7 @@ describe("the conversation's read mark and its newest row", () => {
 
 describe("pictures that will not draw", () => {
   it("falls to the failure line with Try again and Open in Slack when the bytes do not decode, and draws again", async () => {
-    const stored: ChatMessage = { _id: "pic", who: { name: "Ana Ruiz", me: false }, text: "", sentAt: Date.now(), files: [{ _id: "f1", name: "map.png", contentType: "image/png", width: 800, height: 600, status: "stored", url: "https://lifeos.example.dev/api/storage/map" }] };
+    const stored: ChatMessage = { _id: "pic", who: { name: "Ana Ruiz", me: false }, text: "", sentAt: Date.UTC(2026, 10, 23, 17), files: [{ _id: "f1", name: "map.png", contentType: "image/png", width: 800, height: 600, status: "stored", url: "https://lifeos.example.dev/api/storage/map" }] };
     mount({ messages: { ...MESSAGES, c_art: [stored] } }, "c_art");
     await flush();
     fireEvent.error(within(block("pic")).getByRole("img"));
@@ -183,8 +183,8 @@ describe("pictures that will not draw", () => {
   it("reads one address once, however many pictures draw it", async () => {
     const file = { _id: "f1", name: "same.png", contentType: "image/png", width: 400, height: 300, status: "stored" as const, url: "https://lifeos.example.dev/api/storage/same" };
     const two: ChatMessage[] = [
-      { _id: "p2", who: { name: "Ana Ruiz", me: false }, text: "", sentAt: Date.now(), files: [{ ...file, _id: "f2" }] },
-      { _id: "p1", who: { name: "Ana Ruiz", me: false }, text: "", sentAt: Date.now() - 1000, files: [file] },
+      { _id: "p2", who: { name: "Ana Ruiz", me: false }, text: "", sentAt: Date.UTC(2026, 10, 23, 17), files: [{ ...file, _id: "f2" }] },
+      { _id: "p1", who: { name: "Ana Ruiz", me: false }, text: "", sentAt: Date.UTC(2026, 10, 23, 17) - 1000, files: [file] },
     ];
     mount({ messages: { ...MESSAGES, c_art: two } }, "c_art");
     await flush();

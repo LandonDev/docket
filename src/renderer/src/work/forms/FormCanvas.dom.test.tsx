@@ -86,8 +86,8 @@ function fakeFormHost(start: FormView) {
     save: vi.fn(async (_rev: number, body: FormBody) => set({ ...v, rev: v.rev + 1, body })),
     review: vi.fn(async (which: { ids: string[] } | "all") => set({ ...v, suggestions: which === "all" ? [] : v.suggestions.filter((s) => !which.ids.includes(s.id)) })),
     mode: vi.fn(async (mode: FormView["mode"]) => set({ ...v, mode })),
-    publish: vi.fn(async () => set({ ...v, state: "open", link: "https://tempcode.landonhale.com/f/AbCdEfGhIjKlMnOp", publishedAt: Date.now() })),
-    close: vi.fn(async (open: boolean) => set({ ...v, state: open ? "open" : "closed", closedAt: open ? null : Date.now() })),
+    publish: vi.fn(async () => set({ ...v, state: "open", link: "https://tempcode.landonhale.com/f/AbCdEfGhIjKlMnOp", publishedAt: Date.UTC(2026, 10, 23, 17) })),
+    close: vi.fn(async (open: boolean) => set({ ...v, state: open ? "open" : "closed", closedAt: open ? null : Date.UTC(2026, 10, 23, 18) })),
     responses: vi.fn(async () => RESPONSES),
     openSheet: vi.fn(async () => undefined),
     watch: () => () => undefined,
@@ -266,17 +266,22 @@ describe("the form kind", () => {
     await found("[data-form]");
     fireEvent.click(screen.getByRole("button", { name: "Add question" }));
     const dialog = await screen.findByRole("dialog", { name: "Add question" });
-    // Nothing reaches the form while he writes it: no save, no placeholder question.
-    fireEvent.change(screen.getByRole("textbox", { name: "Question" }), { target: { value: "Team name" } });
-    await new Promise((r) => setTimeout(r, 700));
-    expect(formHost.save).not.toHaveBeenCalled();
-    expect(document.querySelectorAll("[data-q]")).toHaveLength(3);
-    expect(dialog.textContent).not.toContain("Not saved");
-    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
-    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
-    await new Promise((r) => setTimeout(r, 700));
-    expect(formHost.save).not.toHaveBeenCalled();
-    expect(document.querySelectorAll("[data-q]")).toHaveLength(3);
+    vi.useFakeTimers();
+    try {
+      // Nothing reaches the form while he writes it: no save, no placeholder question.
+      fireEvent.change(screen.getByRole("textbox", { name: "Question" }), { target: { value: "Team name" } });
+      await act(async () => vi.advanceTimersByTimeAsync(700));
+      expect(formHost.save).not.toHaveBeenCalled();
+      expect(document.querySelectorAll("[data-q]")).toHaveLength(3);
+      expect(dialog.textContent).not.toContain("Not saved");
+      fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+      await act(async () => vi.advanceTimersByTimeAsync(700));
+      expect(screen.queryByRole("dialog")).toBeNull();
+      expect(formHost.save).not.toHaveBeenCalled();
+      expect(document.querySelectorAll("[data-q]")).toHaveLength(3);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("Add makes one question with what he typed, at once", async () => {

@@ -1,9 +1,10 @@
 // @vitest-environment jsdom
 /** An event's attendees who are the sector's people are named on its List row, and a name opens their page in People. */
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { workTestClock } from "../testClock";
 
-const now = Date.now();
+const now = workTestClock();
 const lifeos = vi.hoisted(() => ({ asked: [] as unknown[] }));
 vi.mock("../shell/lifeos", async (original) => ({
   ...(await original<object>()),
@@ -27,11 +28,20 @@ const events = vi.hoisted(() => ({ rows: [] as unknown[] }));
 vi.mock("../tasks/client", async (original) => ({ ...(await original<object>()), viewsClients: () => ({ agenda: { useEvents: () => events.rows } }) }));
 
 const { View } = await import("./AgendaView");
+const { resetAgendaPlace } = await import("./place");
 const { openWorkView, workViewNow } = await import("../../lib/workSwitch");
 
+beforeEach(() => {
+  vi.useFakeTimers({ now, toFake: ["Date"] });
+  localStorage.clear();
+  lifeos.asked.length = 0;
+  resetAgendaPlace();
+});
 afterEach(() => {
   cleanup();
   openWorkView(null);
+  resetAgendaPlace();
+  vi.useRealTimers();
 });
 
 const props = { env: "box", workspace: { id: "ws", environmentId: "box" }, sector: "purdue", lifeos: { client: {}, state: "connected" }, startThread: () => {} } as never;

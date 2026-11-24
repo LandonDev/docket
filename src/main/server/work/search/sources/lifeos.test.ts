@@ -1,8 +1,12 @@
-import { describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { SearchReach } from '@shared/work/search'
 import { tierOf } from '../run'
 import { COSMIC, everywhere, makeRig, onlyPurdue, PURDUE, window } from '../testkit'
 import { doc, event, EVENTS_AHEAD_DAYS, EVENTS_BACK_DAYS, eventsInOrder, eventsWindow, lifeosSources, mail, person, project, task, taskKeysIn } from './lifeos'
+
+const NOW = new Date(2026, 10, 23, 12).getTime()
+beforeEach(() => void vi.setSystemTime(NOW))
+afterEach(() => vi.useRealTimers())
 
 /**
  * LifeOS's kinds, against a LifeOS in memory with made-up rows of three
@@ -138,7 +142,7 @@ describe('tasks', () => {
 })
 
 describe('events', () => {
-  const now = Date.now()
+  const now = NOW
   const rows = [
     { _id: 'e1', sector: 'purdue', title: 'Budget review', startsAt: now + 3 * DAY, location: 'Córdova 120' },
     { _id: 'e2', sector: 'purdue', title: 'Budget kickoff', startsAt: now - 2 * DAY },
@@ -157,8 +161,8 @@ describe('events', () => {
     expect(hits[1]).toMatchObject({ detail: 'Córdova 120', at: rows[0].startsAt, open: { to: 'view', view: 'agenda', with: { event: 'e1' } } })
     const { from, to } = rig.asked[0].args as { from: number; to: number }
     expect(rig.asked[0].fn).toBe('events:range')
-    expect(Math.round((now - from) / DAY)).toBe(EVENTS_BACK_DAYS)
-    expect(Math.round((to - now) / DAY)).toBe(EVENTS_AHEAD_DAYS)
+    expect((now - from) / DAY).toBe(EVENTS_BACK_DAYS)
+    expect((to - now) / DAY).toBe(EVENTS_AHEAD_DAYS)
     expect([EVENTS_BACK_DAYS, EVENTS_AHEAD_DAYS]).toEqual([30, 120])
     expect(eventsWindow(1000 * DAY)).toEqual({ from: 970 * DAY, to: 1120 * DAY })
   })

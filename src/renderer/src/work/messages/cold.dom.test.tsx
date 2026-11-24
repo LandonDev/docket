@@ -54,7 +54,7 @@ describe("the view from a cold start", () => {
     const live: LifeosSession = {
       ...opening,
       state: "connected",
-      client: client({ "chats:list": { page: CHATS.slice(0, 3), isDone: true, continueCursor: "" }, "chats:unread": { count: 1 }, "sources:list": [{ _id: "s", kind: "slack", label: "Starboard Games", status: "ok", lastSyncAt: Date.now(), enabled: true }] }),
+      client: client({ "chats:list": { page: CHATS.slice(0, 3), isDone: true, continueCursor: "" }, "chats:unread": { count: 1 }, "sources:list": [{ _id: "s", kind: "slack", label: "Starboard Games", status: "ok", lastSyncAt: Date.UTC(2026, 10, 23, 17), enabled: true }] }),
     };
     act(() => view.rerender(<View {...props(live)} />));
     expect(screen.getAllByRole("option")).toHaveLength(3);

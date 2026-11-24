@@ -12,10 +12,10 @@ import type { WorkViewProps } from "../views/registry";
 
 if (!Element.prototype.getAnimations) Element.prototype.getAnimations = () => [];
 
-const NOW = Date.now();
+const NOW = new Date(2026, 10, 23, 12).getTime();
 const lifeos = vi.hoisted(() => ({ asked: [] as { name: string; args: Record<string, unknown> }[], page: null as unknown, directoryFails: false }));
 const directory = [
-  { _id: "p_maya", name: "Maya Chen", emails: ["maya@school.edu"], lastAt: Date.now() - 3_600_000 },
+  { _id: "p_maya", name: "Maya Chen", emails: ["maya@school.edu"], lastAt: NOW - 3_600_000 },
   { _id: "p_tom", name: "Tom Beck", emails: ["tom@school.edu"] },
 ];
 vi.mock("../shell/lifeos", async (original) => ({
@@ -71,6 +71,7 @@ const mount = () =>
   );
 
 beforeEach(() => {
+  vi.setSystemTime(NOW);
   started = [];
   lifeos.asked = [];
   lifeos.page = mayaPage;
@@ -80,6 +81,7 @@ beforeEach(() => {
   setPlace("ws", { person: null, query: "" });
 });
 afterEach(() => {
+  vi.useRealTimers();
   cleanup();
   openWorkView(null);
 });

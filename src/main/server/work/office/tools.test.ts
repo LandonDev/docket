@@ -59,7 +59,7 @@ const text = (r: WorkToolResult): string => r.content.map((c) => (c.type === 'te
 
 beforeEach(() => {
   office = new FakeOffice()
-  const soon = new Date(Date.now() + 864e5).toISOString()
+  const soon = '2026-11-24T17:00:00.000Z'
   office.calendar.push({ id: 'ev-9', subject: 'Standup', start: soon, end: soon, location: '', organizer: 'lee@example.com', attendees: ['me@example.com'], response: '' })
   office.addBook(SHARED, { Sheet1: { A1: 'Q1', B1: 100 } })
   office.addBook(MINE, { Sheet1: { A1: 1 } })

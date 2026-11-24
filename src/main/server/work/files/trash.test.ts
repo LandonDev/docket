@@ -311,7 +311,7 @@ describe('the boot check', () => {
 describe('the 30-day purge', () => {
   it('empties rows held longer than 30 days, bytes and all, and keeps the rest', async () => {
     const { trashed } = await trash([join(rig.folder, 'notes.txt'), join(rig.folder, 'Budget.xlsx')])
-    const now = Date.now()
+    const now = rows().find((row) => row.id === trashed![1])!.held_at!
     rig.db.prepare(`UPDATE work_files_trash SET held_at = ? WHERE id = ?`).run(now - TRASH_DAYS * 24 * 60 * 60 * 1000 - 1, trashed![0])
     expect(await purgeOld(rig.ctx, now)).toBe(1)
     expect(rows().map((r) => r.name)).toEqual(['Budget.xlsx'])

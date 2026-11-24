@@ -1,6 +1,7 @@
+import { shiftMtime } from '../mtime.testkit'
 import type { DatabaseSync } from 'node:sqlite'
 import { createHash } from 'node:crypto'
-import { chmodSync, copyFileSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, renameSync, rmSync, statSync, symlinkSync, utimesSync, writeFileSync } from 'node:fs'
+import { chmodSync, copyFileSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, renameSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { basename, join } from 'node:path'
 import { PDFDocument } from 'pdf-lib'
@@ -428,8 +429,7 @@ describe('the module, on a fake deck tool', () => {
     await call('work.slides.open', { itemId: item.id })
     expect(importsMade()).toBe(1)
     // Touched with the same bytes: read again by its hash, not converted.
-    const later = new Date(Date.now() + 5000)
-    utimesSync(original, later, later)
+    shiftMtime(original, 5000)
     await call('work.slides.open', { itemId: item.id })
     expect(importsMade()).toBe(1)
     // Saved again elsewhere (LibreOffice, Keynote): a new snapshot, and a new picture of it.

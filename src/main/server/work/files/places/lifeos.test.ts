@@ -1,6 +1,6 @@
 import { existsSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ClientRequestSchema } from '@shared/contract'
 import type { FileDone, FilesHome, FilesListing, FilesOpened, FilesPlaces } from '@shared/contract-work-files'
 import type { CanvasSource } from '@shared/work'
@@ -21,12 +21,15 @@ import { kindOfFile } from '@shared/work/docFind'
 import { refKey } from '@shared/work/files'
 import { forgetLifeos, GONE, LIFEOS_DOWN, lifeosPlace, listedProjects, NOT_IN_SECTOR, PROJECT_IN_PROJECTS, repointLinks, type MailPart } from './lifeos'
 
+const NOW = new Date(2026, 10, 23, 12).getTime()
+beforeEach(() => void vi.setSystemTime(NOW))
+afterEach(() => vi.useRealTimers())
+
 /**
  * LifeOS as a place of Files, From mail and a project's lens (places/lifeos.ts), through the module as a socket's
  * requests reach it, against a LifeOS in memory. Dummy names only.
  */
 
-const NOW = Date.now()
 const DAY = 86_400_000
 
 interface Item {
@@ -122,7 +125,7 @@ class FakeLifeos {
       case 'docs:remove':
       case 'sheets:remove':
         if (!this.trashLive) throw new Error("Could not find public function for 'docs:remove'")
-        row(table).deletedAt = Date.now()
+        row(table).deletedAt = NOW
         return null
       case 'docs:restore':
       case 'sheets:restore':

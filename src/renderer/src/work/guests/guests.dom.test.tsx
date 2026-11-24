@@ -6,7 +6,8 @@
  * own editor shows it: a `javascript:` link and a hostile paste.
  */
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+const NOW = Date.UTC(2026, 10, 23, 17);
 import { DocumentEditor, EditorAdaptersProvider, EditorKitProvider, type AnyEditor } from "work-kit/editor";
 import type { GuestLinkRow } from "@shared/contract-work-guests";
 import type { HeldItem } from "@shared/work";
@@ -61,15 +62,17 @@ const LINK: GuestLinkRow = {
   source: { at: "lifeos", table: "docs", id: "kd1" },
   title: "Run of show",
   role: "edit",
-  createdAt: Date.now(),
-  expiresAt: Date.now() + 5 * 86_400_000,
+  createdAt: NOW,
+  expiresAt: NOW + 5 * 86_400_000,
   revokedAt: null,
   by: "owner",
   lastOpenedAt: null,
   open: 1,
 };
 
+beforeEach(() => void vi.setSystemTime(NOW));
 afterEach(() => {
+  vi.useRealTimers();
   cleanup();
   calls.list.length = 0;
   calls.links = [];
@@ -104,7 +107,7 @@ describe("Share", () => {
     const made = calls.list.find((c) => c.method === "work.guests.create")!;
     expect(made.params).toMatchObject({ source: { at: "lifeos", table: "docs", id: "kd1" }, title: "Run of show", name: "Dana Lee", role: "comment" });
     // Thirty days unless he picks.
-    expect(Math.round(((made.params.expiresAt as number) - Date.now()) / 86_400_000)).toBe(30);
+    expect(Math.round(((made.params.expiresAt as number) - NOW) / 86_400_000)).toBe(30);
     expect(screen.getByText("Link for Dana Lee")).toBeTruthy();
     expect(screen.getByText(/shown only now/)).toBeTruthy();
   });
@@ -249,7 +252,7 @@ describe("the held request and the audit list", () => {
 
   it("lists every link, live first, a revoked one muted with no Revoke", async () => {
     const { GuestLinksSection } = await import("./GuestLinksSection");
-    calls.links = [{ ...LINK, id: "old", name: "Maya Chen", revokedAt: Date.now() - 1000, open: 0 }, LINK];
+    calls.links = [{ ...LINK, id: "old", name: "Maya Chen", revokedAt: NOW - 1000, open: 0 }, LINK];
     render(<GuestLinksSection hosts={["box"]} />);
     await screen.findByText("Sam Ortiz");
     const names = screen.getAllByText(/Sam Ortiz|Maya Chen/).map((n) => n.textContent);

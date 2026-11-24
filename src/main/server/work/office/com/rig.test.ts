@@ -61,6 +61,7 @@ const vcalId = (uid: string): string => {
   return Buffer.concat([head, Buffer.from('vCal-Uid'), Buffer.from([1, 0, 0, 0]), Buffer.from(uid), Buffer.from([0])]).toString('hex').toUpperCase()
 }
 
+const calendarBase = Date.UTC(2026, 10, 23, 17)
 const SEED = {
   accounts: ['owner@purdue.edu', 'owner@example.com'],
   books: [
@@ -77,7 +78,7 @@ const SEED = {
     { id: '43', account: 'owner@purdue.edu', from: 'kim@example.com', subject: 'Lunch', at: '2026-11-18T12:00:00.000Z', to: ['owner@purdue.edu'], text: 'Noon?' }
   ],
   events: [
-    { id: 'ev-9', subject: 'Standup', start: new Date(Date.now() + 864e5).toISOString(), end: new Date(Date.now() + 864e5 + 9e5).toISOString(), organizer: 'Dana', global: vcalId('abc-123@example.com'), attendees: ['owner@purdue.edu'], response: 5 }
+    { id: 'ev-9', subject: 'Standup', start: new Date(calendarBase + 864e5).toISOString(), end: new Date(calendarBase + 864e5 + 9e5).toISOString(), organizer: 'Dana', global: vcalId('abc-123@example.com'), attendees: ['owner@purdue.edu'], response: 5 }
   ]
 }
 
@@ -407,7 +408,7 @@ describe.skipIf(!RIG)('tc-office.exe over the recorded COM surface (the rig)', (
 
     it('an invitation is sent only by its execute, and one found by its calendar UID is answered with his comment', async () => {
       const cal = officeActs({ carrier: () => carrier }).find((a) => a.kind === 'office.calendar.op')!
-      const start = new Date(Math.floor(Date.now() / 36e5) * 36e5 + 2 * 36e5).toISOString()
+      const start = new Date(calendarBase + 2 * 36e5).toISOString()
       const end = new Date(Date.parse(start) + 18e5).toISOString()
       await cal.execute(OfficeCalendarSchema.parse({ host: 'env_pc', op: 'create', event: { account: 'owner@purdue.edu', subject: 'Review', start, end, attendees: ['dana@example.com'] } }), actCtx)
       expect((await state()).sent).toEqual([{ invite: 'Review', to: 'dana@example.com', meeting: 1 }])
@@ -417,7 +418,7 @@ describe.skipIf(!RIG)('tc-office.exe over the recorded COM surface (the rig)', (
       expect(await carrier.eventByUid('nobody@example.com')).toBeNull()
       await carrier.answerEvent(id!, 'decline', 'Out that day')
       expect((await state()).answers).toEqual([{ id: 'ev-9', response: 4, noUi: true, sent: true, body: 'Out that day' }])
-      const listed = await carrier.events(new Date().toISOString(), new Date(Date.now() + 3 * 864e5).toISOString())
+      const listed = await carrier.events(new Date(calendarBase).toISOString(), new Date(calendarBase + 3 * 864e5).toISOString())
       expect(listed.find((e) => e.subject === 'Standup')).toMatchObject({ id: 'ev-9', organizer: 'Dana', attendees: ['owner@purdue.edu'], response: 'declined' })
       expect(listed.find((e) => e.subject === 'Review')).toMatchObject({ start, end, attendees: ['dana@example.com'] })
     })

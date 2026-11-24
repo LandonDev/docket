@@ -538,7 +538,7 @@ describe("tabs", () => {
     render(<View {...props} />);
     await waitFor(() => expect(calls(mac, "work.files.places")).toHaveLength(1));
     await waitFor(() => expect(document.querySelector("[data-files-view]:not([data-loading])")).not.toBeNull());
-    land();
+    await act(async () => land());
     await waitFor(() => expect(rows()).toContain("Budget.xlsx"));
     fireEvent.doubleClick(row("Budget.xlsx"));
     await waitFor(() => expect(tabNames()).toEqual(["Dummy Esports", "Budget.xlsx"]));
@@ -549,7 +549,7 @@ describe("tabs", () => {
   });
 
   it("opens a file in a tab once its host answers after first missing its deadline", async () => {
-    vi.useFakeTimers({ shouldAdvanceTime: true });
+    vi.useFakeTimers();
     try {
       const box = newHost();
       const answer = box.answer.bind(box);
@@ -564,10 +564,12 @@ describe("tabs", () => {
         return answer(method, params);
       };
       hosts.set("box", box);
-      render(<View {...props} />);
-      await vi.advanceTimersByTimeAsync(60_000);
-      await waitFor(() => expect(document.querySelector("[data-files-view]:not([data-loading])")).not.toBeNull());
-      land();
+      await act(async () => { render(<View {...props} />); });
+      expect(first).toBe(false);
+      await act(async () => vi.advanceTimersByTimeAsync(60_000));
+      expect(document.querySelector("[data-files-view]:not([data-loading])")).not.toBeNull();
+      vi.useRealTimers();
+      await act(async () => land());
       await waitFor(() => expect(rows()).toContain("Budget.xlsx"));
       fireEvent.doubleClick(row("Budget.xlsx"));
       await waitFor(() => expect(tabNames()).toEqual(["Dummy Esports", "Budget.xlsx"]));
