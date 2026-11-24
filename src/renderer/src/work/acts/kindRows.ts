@@ -1,6 +1,6 @@
 /**
- * The kinds that keep the generic view, read in his words beside the generic
- * reader (outbox/model.ts `payloadView`): a form's publish, a Google share, a
+ * Held kinds read in his words, by their own views (ActParts.tsx, ChangeView.tsx)
+ * and by the generic one beside its reader (outbox/model.ts `payloadView`): a form's publish, a Google share, a
  * Frame.io comment or version, a Teams post, a computer act, an agent's change
  * to a shared file (`office.edit`, `google.edit`). Each says what goes and nothing
  * the host keeps for itself: no ids, revisions, paths or raw JSON. A kind not
@@ -189,7 +189,7 @@ export function stepRows(args: Rec, targets: unknown): { label: string; value: s
 const EDIT_APP: Record<string, string> = { word: "Word", powerpoint: "PowerPoint", doc: "Google Docs", slides: "Google Slides" };
 
 /** Words as they go: a value with nothing to see (spaces, breaks, a zero-width space) is quoted with its escapes, so it never reads as nothing. */
-const shown = (v: string): string => (v.replace(/\p{Cf}/gu, "").trim() ? v : visible(v));
+export const shown = (v: string): string => (v.replace(/\p{Cf}/gu, "").trim() ? v : visible(v));
 
 /** The sentence of a paragraph that holds the words, whole: it starts after the last stop (and any closing quote or
  * bracket) and space before them, and ends at the first stop with a space or the paragraph's end after it, looking

@@ -798,7 +798,7 @@ LifeOS item's Send carries `rev` = its `updatedAt` as shown.
   plain text; where the payload has html the body is read from it, every
   link with its target and every image with its source (`htmlWords`), an
   add-on call's arguments are shown whole, and a payload its kind cannot
-  read says "Its details could not be read."), over one bar: Discard, Edit, and a split Send whose menu
+  read says "Its details could not be read."; the kind views below), over one bar: Discard, Edit, and a split Send whose menu
   makes the grant ("Send and stop holding" › the grant's name;
   `grantFor` in model.ts: a mail fixes its account and every recipient, an
   add-on call its server and tool, a computer act takes none). Sent groups
@@ -894,10 +894,37 @@ while it waits. The phone also makes a grant from a held item's Send menu
 (`work.outbox.grant`, the desktop's `grantFor`), opens a thread's held call
 in place, and shows a thread's Results with Undo.
 
+## Kind views
+
+Each kind's view is its own lazy chunk in its pillar's folder, named in that
+pillar's `act.ts`, and draws the thing as it will arrive. Its words come from
+`kindRows` (acts/kindRows.ts), so every rule there holds: words exactly as
+they go, words that read alike quoted with their escapes, no ids, paths or raw
+JSON. A payload a view cannot read takes the generic view, so nothing that
+goes is hidden. The shared parts are in acts/ActParts.tsx and acts/ChangeView.tsx.
+
+- `teams.post` (browser/TeamsPostActView.tsx): the post under a 12px line
+  that names its chat, his name over its words.
+- `chat.reply` (messages/ChatReplyAct.tsx): the same shape; the place line
+  is the service and the conversation, and the message it answers is quoted
+  over his name.
+- `office.edit`, `google.edit` (office/EditActView.tsx,
+  google/EditActView.tsx): the app and account, then one block per change,
+  parted by hairlines: where, the words taken out muted and struck, the words
+  that take their place.
+- `share.google`, `form.publish`, `frameio.post` (google/ShareActView.tsx,
+  forms/PublishActView.tsx, frameio/PostActView.tsx): their rows on the 72px
+  label column, then any body under a hairline.
+- `msform.make`, `msform.publish` (msforms/FormActView.tsx): the form in
+  words as the host wrote it from what the press checks.
+
+No held kind carries a sheet's cells yet; when one does, its view is a
+Cell, Now, After table.
+
 ## Not built here
 
-A view of its own for every act kind: mail, the calendar, a guest link and
-a file act have one, every other kind shows in the generic view. The held line opens the Outbox
+A view of its own for a portal's submit, an Outlook mail, a computer act and
+an add-on call: they show in the generic view. The held line opens the Outbox
 but does not select its item. A box thread's computer act
 held on a Mac and pressed from the box. A held row moving with its thread
 to another host: it stays on the host that held it. A card skipped for a

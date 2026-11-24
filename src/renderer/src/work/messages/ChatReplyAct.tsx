@@ -3,6 +3,7 @@ import { SOURCE_NAME, type ChatDetail, type ChatMessage, type ChatRow, type Chat
 import { CornerDownRight } from "../../chrome/icons";
 import { Button } from "../../components/ui/button";
 import { Skeleton } from "../../components/ui/skeleton";
+import { PlaceLine, PostedAs } from "../acts/ActParts";
 import type { ActViewProps } from "../acts/registry";
 import { useLifeosQuery, useLifeosSession, type LifeosQuery } from "../shell/lifeos";
 import { downOf } from "../shell/lifeosDown";
@@ -88,10 +89,10 @@ export function answerOf(reply: Pick<ChatReplyPayload, "replyTo">, detail: Lifeo
 }
 
 /**
- * A thread's held reply in the Outbox (`chat.reply`): to whom and where it
- * goes ("Slack, Starboard Games"), the message it answers as one quoted line,
- * then its words exactly as they go. The conversation is read from LifeOS on
- * the item's own sector; until it answers, the payload's own words stand and a
+ * A thread's held reply in the Outbox (`chat.reply`): where it lands
+ * ("Slack, Starboard Games, Dana Lee"), then the reply as it will show there:
+ * the message it answers as one quoted line, his name, its words exactly.
+ * The conversation is read from LifeOS on the item's own sector; until it answers, the payload's own words stand and a
  * line of bones holds the quote's place. A quote that could not be read offers
  * Retry, which reads afresh. A session that is down says so once in the
  * quote's place, with its own press (`DownLine`: Retry there asks the host for
@@ -125,7 +126,7 @@ function Reads({ item, env, retry }: ActViewProps & { retry: () => void }) {
   return <ReplyBody reply={reply} chat={ready(detail)?.chat} answered={answerOf(reply, detail, page, missing ? byId : null)} onRetry={retry} />;
 }
 
-/** The held reply as he reads it before his press: to whom, where, what it answers, its words. */
+/** The held reply as it will show once sent: where it lands, what it answers, his name and its words. */
 export function ReplyBody({
   reply,
   chat,
@@ -140,50 +141,51 @@ export function ReplyBody({
   /** the LifeOS session's own line, in the quote's place, while it is down */
   down?: ReactNode;
 }) {
-  // In a direct chat the writer is left out when it is the one the reply goes to, named on the To line already; his own
+  // In a direct chat the writer is left out when it is the one the reply goes to, named on the place line already; his own
   // words still say "You".
   const named = chat?.kind === "direct" && answered !== null && typeof answered === "object" && answered.who === (reply.to ?? reply.chat);
+  // Where it lands, as a place is named across Work, the service first: "Slack, Starboard Games, #design-review". Whom a
+  // thread's reply answers is the quote's writer.
+  const place = `${chat ? chatFact(chat) : SOURCE_NAME[reply.source]}, ${reply.chat}`;
   return (
-    <div data-slot="act-payload" className="flex min-w-0 flex-col gap-4">
-      <dl className="grid grid-cols-[72px_minmax(0,1fr)] gap-x-3 gap-y-1.5 text-[13px] leading-5">
-        <dt className="truncate text-muted-foreground">To</dt>
-        <dd className="min-w-0 break-words text-foreground">{reply.to ?? reply.chat}</dd>
-        <dt className="truncate text-muted-foreground">In</dt>
-        <dd className="min-w-0 break-words text-foreground">{chat ? chatFact(chat) : SOURCE_NAME[reply.source]}</dd>
-      </dl>
-      <div className="flex flex-col gap-2 border-t border-border pt-4">
-        {/* The quote's slot holds its place through every state. */}
-        <div data-quote-slot role="group" aria-label="The message it answers" className="empty:hidden">
-          {down ? (
-            down
-          ) : answered === "loading" ? (
-            <div data-answers="loading" aria-hidden className="flex h-5 items-center gap-1.5">
-              <Skeleton className="size-3 rounded-sm" />
-              <Skeleton className="h-2.5 w-[60%]" />
-            </div>
-          ) : answered === "gone" || answered === "unreadable" ? (
-            <p data-answers={answered} className="flex h-5 min-w-0 items-center gap-1.5 text-xs text-muted-foreground">
-              <CornerDownRight aria-hidden className="size-3 shrink-0" />
-              {answered === "gone" ? "The message it answers is no longer here" : "The message it answers could not be read"}
-              {answered === "unreadable" && onRetry ? (
-                <Button variant="ghost" size="xs" className="ms-1" onClick={onRetry}>
-                  Retry
-                </Button>
-              ) : null}
-            </p>
-          ) : answered ? (
-            <p data-answers className="flex h-5 min-w-0 items-center gap-1.5 text-xs text-muted-foreground">
-              <CornerDownRight aria-hidden className="size-3 shrink-0" />
-              {/* "Dana Lee: words", cut where the line ends. */}
-              <span className="min-w-0 truncate">
-                {named ? null : <span className="font-medium">{answered.who}: </span>}
-                {answered.text.replace(/\s+/g, " ").trim()}
-              </span>
-            </p>
-          ) : null}
-        </div>
-        <div className="whitespace-pre-wrap break-words text-sm leading-[22px] text-foreground">{reply.text}</div>
-      </div>
+    <div data-slot="act-payload" className="flex min-w-0 flex-col gap-3">
+      <PlaceLine>{place}</PlaceLine>
+      {/* The quote's slot holds its place through every state. */}
+      <PostedAs
+        above={
+          <div data-quote-slot role="group" aria-label="The message it answers" className="empty:hidden">
+            {down ? (
+              down
+            ) : answered === "loading" ? (
+              <div data-answers="loading" aria-hidden className="flex h-5 items-center gap-1.5">
+                <Skeleton className="size-3 rounded-sm" />
+                <Skeleton className="h-2.5 w-[60%]" />
+              </div>
+            ) : answered === "gone" || answered === "unreadable" ? (
+              <p data-answers={answered} className="flex h-5 min-w-0 items-center gap-1.5 text-xs text-muted-foreground">
+                <CornerDownRight aria-hidden className="size-3 shrink-0" />
+                {answered === "gone" ? "The message it answers is no longer here" : "The message it answers could not be read"}
+                {answered === "unreadable" && onRetry ? (
+                  <Button variant="ghost" size="xs" className="ms-1" onClick={onRetry}>
+                    Retry
+                  </Button>
+                ) : null}
+              </p>
+            ) : answered ? (
+              <p data-answers className="flex h-5 min-w-0 items-center gap-1.5 text-xs text-muted-foreground">
+                <CornerDownRight aria-hidden className="size-3 shrink-0" />
+                {/* "Dana Lee: words", cut where the line ends. */}
+                <span className="min-w-0 truncate">
+                  {named ? null : <span className="font-medium">{answered.who}: </span>}
+                  {answered.text.replace(/\s+/g, " ").trim()}
+                </span>
+              </p>
+            ) : null}
+          </div>
+        }
+      >
+        {reply.text}
+      </PostedAs>
     </div>
   );
 }

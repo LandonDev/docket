@@ -44,16 +44,17 @@ afterEach(() => {
 const item = (payload: unknown): HeldItem =>
   ({ ref: { at: "host", id: "h1" }, kind: "chat.reply", workspaceId: "ws", sessionId: "s1", sector: "cosmic", summary: "", verb: "Send", account: null, state: "held", payload, createdAt: 1, decidedBy: null, decidedAt: null }) as HeldItem;
 
+const place = () => document.querySelector("[data-place]")!.textContent;
+
 describe("the held reply's view", () => {
   it("is the kind's own view, not the generic one", () => {
     expect(ACT_VIEWS["chat.reply"].chunk).not.toBeNull();
   });
 
-  it("says to whom and where, quotes what it answers, then the words exactly", () => {
+  it("says where it lands, quotes what it answers, then his name and the words exactly", () => {
     render(<View env="box" item={item({ chatId: "c_dana", source: "slack", chat: "Dana Lee", text: "Thursday works.\nI'll send it Wednesday." })} />);
-    const [to, where] = screen.getAllByRole("definition");
-    expect(to!.textContent).toBe("Dana Lee");
-    expect(where!.textContent).toBe("Slack, Starboard Games");
+    expect(place()).toBe("Slack, Starboard Games, Dana Lee");
+    expect(document.querySelector("[data-posted]")!.textContent).toMatch(/You/);
     expect(document.querySelector("[data-answers]")!.textContent).toMatch(/^Also, the art team wants/);
     expect(screen.getByText(/Thursday works\./).textContent).toBe("Thursday works.\nI'll send it Wednesday.");
     expect(lifeos.asked.find((q) => q.name === "chats:get")?.args).toEqual({ id: "c_dana" });
@@ -61,14 +62,14 @@ describe("the held reply's view", () => {
 
   it("quotes the message a Slack thread reply names", () => {
     render(<View env="box" item={item({ chatId: "c_design", replyTo: "c_design_m1", source: "slack", chat: "#design-review", to: "Ana Ruiz", text: "Agreed." })} />);
-    expect(screen.getAllByRole("definition")[0]!.textContent).toBe("Ana Ruiz");
+    expect(place()).toBe("Slack, Starboard Games, #design-review");
     expect(document.querySelector("[data-answers]")!.textContent).toMatch(/^Ana Ruiz: Love the rarity sort/);
   });
 
   it("stands on the payload's own words while LifeOS has not answered", () => {
     lifeos.answer = false;
     render(<View env="box" item={item({ chatId: "c_dana", source: "slack", chat: "Dana Lee", text: "Yes" })} />);
-    expect(screen.getAllByRole("definition")[1]!.textContent).toBe("Slack");
+    expect(place()).toBe("Slack, Dana Lee");
     // A line of bones holds the quote's place, so the words do not move when it comes.
     expect(document.querySelector("[data-answers]")!.getAttribute("data-answers")).toBe("loading");
   });

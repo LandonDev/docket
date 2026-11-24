@@ -1,11 +1,11 @@
+import { defineChunk } from "../../lib/lazyChunk";
 import type { ActViews } from "../acts/registry";
 
 /**
  * How the frameio pillar's held acts are shown (`frameio.post`;
- * docs/agents/work-frameio.md). A stub: `chunk: null` draws the Outbox's
- * generic view (the act's summary and its payload as text) until the pillar's
- * milestone gives the kind a view of its own.
+ * docs/agents/work-frameio.md): a comment's file, time, marks and words, or a
+ * version's stack, file and size.
  */
 export const frameioActs = {
-  "frameio.post": { kind: "frameio.post", chunk: null },
+  "frameio.post": { kind: "frameio.post", chunk: defineChunk("work-frameio-act", () => import("./PostActView")) },
 } satisfies ActViews;

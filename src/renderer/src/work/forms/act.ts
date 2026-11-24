@@ -1,11 +1,10 @@
+import { defineChunk } from "../../lib/lazyChunk";
 import type { ActViews } from "../acts/registry";
 
 /**
  * How the forms pillar's held acts are shown (`form.publish`;
- * docs/agents/work-forms.md). A stub: `chunk: null` draws the Outbox's
- * generic view (the act's summary and its payload as text) until the pillar's
- * milestone gives the kind a view of its own.
+ * docs/agents/work-forms.md): how many questions, then the form in words.
  */
 export const formsActs = {
-  "form.publish": { kind: "form.publish", chunk: null },
+  "form.publish": { kind: "form.publish", chunk: defineChunk("work-forms-act", () => import("./PublishActView")) },
 } satisfies ActViews;

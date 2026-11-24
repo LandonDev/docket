@@ -664,13 +664,13 @@ describe("the Outbox", () => {
     await open();
     fireEvent.click(screen.getByText("Post in Teams to Esports staff"));
     await waitFor(() => expect(screen.getByRole("heading", { level: 1 }).textContent).toBe("Post in Teams"));
-    // Esports staff once in the detail: the In row.
+    // Esports staff once in the detail: the post's place line, once its view has loaded.
     const detail = document.querySelector("[data-outbox-detail]") as HTMLElement;
-    expect(detail.textContent!.split("Esports staff").length - 1).toBe(1);
+    await waitFor(() => expect(detail.textContent!.split("Esports staff").length - 1).toBe(1));
     // The list names who and how first, the file under it.
     fireEvent.click(screen.getByText("Share with dana@purdue.edu (can edit)"));
     await waitFor(() => expect(screen.getByRole("heading", { level: 1 }).textContent).toBe("Share Budget.xlsx"));
-    expect(detail.textContent!.split("dana@purdue.edu").length - 1).toBe(1);
+    await waitFor(() => expect(detail.textContent!.split("dana@purdue.edu").length - 1).toBe(1));
     expect(document.querySelector("[data-outbox-list]")!.textContent).toContain("Budget.xlsx");
     // The list keeps the whole summary.
     expect(document.querySelector("[data-outbox-list]")!.textContent).toContain("Esports staff");
