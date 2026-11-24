@@ -12,6 +12,9 @@ import { fakeDoc, fakeEngine } from "../../pdf/testkit";
 import { Audience, PRESENT_IDLE_MS } from "./Audience";
 import { mirrorLook, openFramePlace, type ShowPlace, type Surface } from "./places";
 import { Presenter } from "./Presenter";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+import { declarations } from "../../../lib/colourMath";
 import { RENDER_CHANGED } from "../deck";
 import { RETRY_FIRST_MS, showRunning, startShow, type ShowHost, type ShowNative } from "./Show";
 import { NOTES_DEFAULT, showReducer, startShowState, type ShowAct, type ShowState, type Slide } from "./state";
@@ -206,6 +209,21 @@ describe("the presenter's view", () => {
     // The current slide is 528 wide at 864: the column is 288 and the insets and the gap 48.
     expect(root.querySelector<HTMLElement>("[data-show-now] [data-show-picture]")!.style.width).toBe("528px");
     expect(root.querySelector<HTMLElement>("[data-show-next] [data-show-picture]")!.style.width).toBe("288px");
+  });
+
+  it("draws the slides' edge over their layers, from a token that is clear in dark and the picture outline in light", async () => {
+    const { root } = mount(startShowState(deck(12), "start"));
+    await waitFor(() => expect(shownPage(root.querySelector("[data-show-now]")!)).toBe("1"));
+    for (const at of ["[data-show-now]", "[data-show-next]"]) {
+      const picture = root.querySelector<HTMLElement>(`${at} [data-show-picture]`)!;
+      const edge = picture.lastElementChild as HTMLElement;
+      expect(edge.hasAttribute("data-slide-edge")).toBe(true);
+      // Above the layers (0 to 2) and what lies over them (3).
+      expect(edge.className.split(" ")).toEqual(expect.arrayContaining(["z-[4]", "ring-1", "ring-inset", "ring-(--slide-edge)"]));
+    }
+    const css = readFileSync(join(__dirname, "../../../index.css"), "utf8");
+    expect(declarations(css, ":root").get("--slide-edge")).toBe("transparent");
+    expect(declarations(css, "html.theme-light").get("--slide-edge")).toBe("var(--image-outline)");
   });
 
   it("a press on the slide or on the next picture advances; the strip jumps; Blank and End show do as they say", async () => {
@@ -517,6 +535,22 @@ describe("a show", () => {
     await waitFor(() => expect(text(places.presenter, "[data-show-place]")).toBe("13/13"));
     expect(host.shows).toBe(2);
     await act(async () => handle.end());
+  });
+
+  it("never puts a wire method or a program's name on the room's screen: a timed-out read and a deck with no picture in his words", async () => {
+    const host = showHost(showDeck(3, { renderError: "There is no picture of the slides: LibreOffice is not installed on this host or on one it reaches." } as never));
+    const { places, handle } = await start({ host });
+    await waitFor(() => expect(text(places.audience, "[data-show-error]")).toBe("The computer that draws this file is missing the tools for it. Install them under Settings, Connections, Conversion tools."));
+    expect(text(places.presenter, "[data-show-error]")).not.toContain("LibreOffice");
+    await act(async () => handle.end());
+    cleanup();
+    const slow = showHost(showDeck(3));
+    slow.show = async () => {
+      throw new Error("work.slides.show: no answer in 30 s");
+    };
+    const second = await start({ host: slow });
+    await waitFor(() => expect(text(second.places.audience, "[data-show-error]")).toBe("The deck did not load."));
+    await act(async () => second.handle.end());
   });
 
   it("says why when the deck cannot be read, in both windows, and asks again by itself; Escape still ends it", async () => {

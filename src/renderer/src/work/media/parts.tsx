@@ -5,6 +5,7 @@ import { TypeGlyph } from "../../surfaces/threads/TypeGlyph";
 import { BusyLabel, Button } from "../../components/ui/button";
 import { Textarea } from "../../components/ui/textarea";
 import { Face } from "../mail/face";
+import { workErrorWords } from "../../lib/workErrorWords";
 
 /** Small parts the media canvas's views share: who wrote a note, the box drawn on a picture, and the comment field. */
 
@@ -138,7 +139,8 @@ export function CommentPopover({ rect, about, onSave, onClose }: { rect: DOMRect
       setBody("");
       onClose();
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      // A host's reason in his words (`workErrorWords`); a line never written for him gives way to the act's own.
+      setError(workErrorWords(err) || "The comment did not post.");
     } finally {
       setBusy(false);
     }

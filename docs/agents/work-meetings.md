@@ -178,7 +178,9 @@ write for Undo.
   import carry its meetings.
 - A meeting still transcribing when its host stops says so at the next start
   of Work: "It stopped when <host> restarted. The recording is fine." with
-  Try again (`recover`).
+  Try again (`recover`); `<host>` is the computer as it calls itself
+  (`hostLabel`), never its id, and the window says the line through
+  `workErrorWords`.
 - No file of the meeting is written apart from the player's copy: there is no
   export of the transcript yet.
 

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
+import { renderDetail } from "./renderWords";
 import type { Bbox } from "@shared/contract-work-pdf";
 import type { DeckShape, DeckSlide, DeckView, SlideChange } from "@shared/contract-work-slides";
 import { KEYNOTE_EXPORT } from "@shared/work/slideFormats";
@@ -11,7 +12,6 @@ import { dayTime } from "../../lib/duration";
 import { bareKey, chordKey, modKey } from "../../lib/keys";
 import { IS_MAC } from "../../lib/platform";
 import { useLinkMay } from "../../lib/linkMay";
-import { workErrorWords } from "../../lib/workErrorWords";
 import { sayError } from "../canvas/frame";
 import { registerFlush } from "../canvas/flush";
 import type { CanvasBodyProps, CanvasShell, ReviewAdapter } from "../canvas/kind";
@@ -126,14 +126,7 @@ export function changeIndex(view: DeckView, key: string | null): number {
   return slide?.change ? view.changes.findIndex((c) => c.id === slide.change) : -1;
 }
 
-/**
- * The host's reason a deck has no picture, without the words the state
- * line's own word already says ("There is no picture of the slides: …").
- */
-export function renderDetail(error: string): string {
-  const rest = error.replace(/^There is no picture of the slides:\s*/, "");
-  return workErrorWords(rest.charAt(0).toUpperCase() + rest.slice(1));
-}
+export { renderDetail } from "./renderWords";
 
 /** The slide to show for a change: where it lands, else the place it leaves. */
 export function slideOfChange(view: DeckView, change: SlideChange): DeckSlide | undefined {

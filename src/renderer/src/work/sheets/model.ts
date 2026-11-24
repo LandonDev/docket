@@ -83,7 +83,7 @@ export function sheetChanges(suggestions: readonly SheetSuggestion[], sheetOrder
 /** What the formula bar says while the stepper is on a format or a rule: its words, the agent's reason, and why it can only be dropped when it can. */
 export function saidLine(said: ProposedChange): string {
   const why = said.reason ? ` (${said.reason})` : "";
-  return said.state === "orphaned" ? `${said.words}${why}. Rows or columns changed since: reject it` : `Suggested: ${said.words}${why}`;
+  return said.state === "orphaned" ? `${said.words}${why}. Rows or columns changed since: reject it` : `${said.words}${why}`;
 }
 
 /** A cell as the formula bar would show it: its formula, else its value; "empty" for nothing. */

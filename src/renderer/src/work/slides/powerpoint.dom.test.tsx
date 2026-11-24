@@ -5,7 +5,7 @@
  * host the window has no name for must offer nothing, never throw: a throw in the canvas takes the whole Files
  * place down ("Files did not load: unknown environment").
  */
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { DeckView } from "@shared/contract-work-slides";
 import type { CanvasSource } from "@shared/work";
@@ -29,7 +29,7 @@ vi.mock("../../lib/connection", async (original) => {
   return { ...real, registry };
 });
 
-import { forgetPowerPoint, hostOf, openInPowerPoint, presentInPowerPoint, useInPowerPoint, useOpening } from "./powerpoint";
+import { forgetPowerPoint, hostOf, InPowerPoint, openInPowerPoint, presentInPowerPoint, useInPowerPoint, useOpening } from "./powerpoint";
 
 const VIEW = { slides: [] } as unknown as DeckView;
 const deckOn = (host: string): CanvasSource => ({ at: "file", host, path: "/work/deck.pptx" });
@@ -83,6 +83,20 @@ describe("a deck's computer, as this window names it", () => {
     await expect(presentInPowerPoint(source, "local")).rejects.toThrow("PowerPoint did not answer");
     await openInPowerPoint("item", source, "local");
     await waitFor(() => expect(screen.getByTestId("probe").textContent).toContain("failed"));
+  });
+
+  it("fills the pane with each state, and words a failure as every viewer does, with Retry", async () => {
+    const source = deckOn("env_elsewhere");
+    const retry = vi.fn();
+    render(<InPowerPoint itemId="item" onRetry={retry} />);
+    await openInPowerPoint("item", source, "local");
+    const failed = await waitFor(() => document.querySelector<HTMLElement>("[data-in-powerpoint='failed']")!);
+    // A content-width item of the deck's preview row still fills it, so the words stand in the pane's middle.
+    expect(failed.className.split(" ")).toEqual(expect.arrayContaining(["flex-1", "size-full"]));
+    expect(screen.getByText("Couldn't open it in PowerPoint")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Try again" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    expect(retry).toHaveBeenCalled();
   });
 
   it("asks a saved host by its own id, and the thread's host for a deck with no host of its own", async () => {

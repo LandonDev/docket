@@ -414,7 +414,8 @@ describe("the bar and failures", () => {
     const open = pdfHost.open;
     let tries = 0;
     pdfHost.open = async () => {
-      if (++tries === 1) throw new Error("The host did not answer");
+      // The wire's own words: the shared failure says them as every viewer does (`OpenFailed`, `workErrorWords`).
+      if (++tries === 1) throw new Error("No answer in 4 s");
       return open();
     };
     engine = fakeEngine(fakeDoc(FILE));
@@ -424,7 +425,9 @@ describe("the bar and failures", () => {
         <div />
       </CanvasSeat>,
     );
-    expect(await screen.findByText("The host did not answer")).toBeTruthy();
+    expect(await screen.findByText("That computer did not answer. Try again once it is connected.")).toBeTruthy();
+    expect(document.querySelector("[data-canvas-failed]")!.textContent).toContain("Couldn't open this PDF");
+    expect(screen.queryByText("No answer in 4 s")).toBeNull();
     await waitFor(() => expect(document.querySelector("[data-pdf-bar-bone]")).toBeNull());
     fireEvent.click(screen.getByRole("button", { name: "Retry" }));
     await waitFor(() => expect(pages()[0]).toBe(1));

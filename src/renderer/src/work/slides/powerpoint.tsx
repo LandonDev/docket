@@ -5,6 +5,7 @@ import { effectsChanged } from "@shared/work/deckShow";
 import type { CanvasSource } from "@shared/work";
 import { Spinner } from "../../components/ui/spinner";
 import { registry } from "../../lib/connection";
+import { workErrorWords } from "../../lib/workErrorWords";
 import { EmptyState } from "../../surfaces/SurfaceSkeleton";
 import { sayError } from "../canvas/frame";
 import type { InPowerPointAsk } from "./Present";
@@ -149,7 +150,7 @@ export function InPowerPoint({ itemId, onRetry }: { itemId: string; onRetry(): v
   const opening = useOpening(itemId);
   if (opening?.state === "opening")
     return (
-      <div data-in-powerpoint="opening" className="grid h-full place-items-center">
+      <div data-in-powerpoint="opening" className="grid size-full flex-1 place-items-center">
         <span className="flex items-center gap-2 text-[13px] leading-5 text-muted-foreground">
           <Spinner className="size-3.5" />
           Opening in PowerPoint…
@@ -158,13 +159,14 @@ export function InPowerPoint({ itemId, onRetry }: { itemId: string; onRetry(): v
     );
   if (opening?.state === "failed")
     return (
-      <div data-in-powerpoint="failed" className="flex h-full">
-        <EmptyState title="Couldn't open it in PowerPoint" line={opening.error} action={{ label: "Try again", onClick: onRetry }} />
+      <div data-in-powerpoint="failed" className="flex size-full flex-1">
+        <EmptyState title="Couldn't open it in PowerPoint" {...(workErrorWords(opening.error) ? { line: workErrorWords(opening.error) } : {})} action={{ label: "Retry", onClick: onRetry }} />
       </div>
     );
   return (
     // A noun, centred as every empty pane is: a verb here read as a press that did nothing. The tab row's switch is the way back.
-    <div data-in-powerpoint="open" className="flex h-full">
+    // Each state fills the pane, also as a content-width item of the deck's preview row (DeckPreviewLayer).
+    <div data-in-powerpoint="open" className="flex size-full flex-1">
       <EmptyState title="In PowerPoint" />
     </div>
   );

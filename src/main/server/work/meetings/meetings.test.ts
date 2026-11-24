@@ -9,6 +9,7 @@ import type { Meeting, MeetingRecordingRange } from '@shared/contract-work-meeti
 import type { SessionMeta } from '@shared/events'
 import type { CanvasSource, SectorKey, WorkScope } from '@shared/work'
 import { setAttachmentDirContext } from '../../attachmentDir'
+import { hostLabel } from '../../../hostLabel'
 import { openDb, Store } from '../../db'
 import type { SessionRegistry } from '../../sessions'
 import type { ConvertJob, ConvertResult } from '../formats/jobs'
@@ -259,7 +260,9 @@ describe('a meeting from a recording', () => {
     db.prepare(`UPDATE work_meetings SET status = 'transcribing' WHERE item_id = ?`).run(item.id)
     boot()
     await call('work.set', { enabled: true })
-    expect(await get(item.id)).toMatchObject({ status: 'failed', error: 'It stopped when env_test restarted. The recording is fine.' })
+    // The computer as it calls itself, never its id.
+    expect(await get(item.id)).toMatchObject({ status: 'failed', error: `It stopped when ${hostLabel()} restarted. The recording is fine.` })
+    expect((await get(item.id)).error).not.toContain('env_test')
   })
 
   it('a file that is gone, or is neither a recording nor a transcript, fails with a sentence', async () => {

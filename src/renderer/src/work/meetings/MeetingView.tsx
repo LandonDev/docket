@@ -8,6 +8,7 @@ import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "../../componen
 import { Skeleton } from "../../components/ui/skeleton";
 import { Spinner } from "../../components/ui/spinner";
 import { Tip, TruncateTip } from "../../components/tip";
+import { workErrorWords } from "../../lib/workErrorWords";
 import { Lifeos, TaskAdd } from "../icons";
 import { dueOf, markRuns, progressLine, speakerName, timeOf, waveBars, type FindHit } from "./model";
 import { SPEEDS, type Player, type Speed } from "./player";
@@ -392,7 +393,8 @@ export function Failed({ meeting, onRetry, title }: { meeting: Pick<Meeting, "fr
       <Alert variant="error" data-meeting-failed>
         <AlertTitle>{title ?? (meeting.from === "transcript" ? "Could not read the transcript" : "Could not transcribe")}</AlertTitle>
         <AlertDescription>
-          <p>{meeting.error}</p>
+          {/* The host's reason in his words (`workErrorWords`); a line never written for him leaves the title alone. */}
+          {workErrorWords(meeting.error) ? <p>{workErrorWords(meeting.error)}</p> : null}
           <Button
             variant="secondary"
             size="xs"

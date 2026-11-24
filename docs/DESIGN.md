@@ -2982,7 +2982,7 @@ set by hand.
 - **A format or a rule an agent proposes** changes no cell's value, so it
   sits in no cell: it steps with the cell changes in the bar's stepper,
   its range marked as a waiting change is, and while the stepper is on it
-  the formula bar says it in words ("Suggested: Bold, yellow fill on
+  the formula bar says it in words ("Bold, yellow fill on
   B2:B9"). One whose rows or columns moved since says so there and can
   only be rejected.
 
@@ -3074,7 +3074,10 @@ the room sees, and the presenter's view. One state moves both.
   and a 288px column of "Next" (with "Build 2 of 4" at its line's end when
   the next press is a build) over the next press's picture, then the notes.
   Labels are 12px medium muted, 8px over their picture; a picture is a
-  slide at radius 4 on `image-outline`. A press on either picture is a
+  slide at radius 4 on `image-outline`, the edge drawn over the picture's
+  layers (`--slide-edge`: the outline in light, clear in dark, which is
+  held). A host's reason on either window is in his words, never a
+  program's name or a method. A press on either picture is a
   next press. On the last slide Next is the matte with "End of show"; at
   the end it is a `muted` box, "A press closes the show". While the screen
   is blank the current slide dims to 45%.

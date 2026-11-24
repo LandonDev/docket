@@ -1572,7 +1572,7 @@ conflict caught up with `since`, pushes), `grid.ts` (work-kit's
   cell suggestions in the bar's stepper (`sheetChanges`, model.ts), after
   the cells, in the order they were made. Its range is marked as a waiting
   change is, and while the stepper is on it the formula bar says it
-  (`saidLine`: "Suggested: Bold, yellow fill on B2:B9", with the agent's
+  (`saidLine`: "Bold, yellow fill on B2:B9", with the agent's
   reason); a name, which sits in no cell, is said the same way. Accept and
   Reject call `work.sheets.review` with its id.
 - What an Excel export could not hold is said in Preview's "In this

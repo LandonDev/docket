@@ -251,6 +251,15 @@ describe("the meeting canvas", () => {
     await waitFor(() => expect(host.calls.filter((c) => c.method === "work.meetings.start")).toHaveLength(2));
   });
 
+  it("could not transcribe never shows a host's id: a line never written for him leaves the title alone", async () => {
+    const { container } = await seat(null);
+    await waitFor(() => expect(host.calls.filter((c) => c.method === "work.meetings.start")).toHaveLength(1));
+    await act(async () => push(sampleMeeting({ status: "failed", rev: 9, segments: [], error: "It stopped when env_k3Jd9sLq2 restarted. The recording is fine." })));
+    await waitFor(() => expect(container.querySelector("[data-meeting-failed]")).toBeTruthy());
+    expect(container.querySelector("[data-meeting-failed]")!.textContent).not.toContain("env_");
+    expect(container.querySelector("[data-meeting-failed]")!.textContent).toContain("Could not transcribe");
+  });
+
   it("a mail's recording starts once its file has come to the host, as a file of his does", async () => {
     const MAIL = { ...ITEM, title: "Voice memo.m4a", source: { at: "mail", threadId: "mt1", messageId: "mm1", partId: "2", name: "Voice memo.m4a" } } as CanvasItem;
     host.meeting = null;

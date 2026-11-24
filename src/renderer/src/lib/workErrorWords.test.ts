@@ -48,6 +48,8 @@ describe("an error as Work says it to him", () => {
   it("answers nothing for a line never written for him, so the act's own line shows", () => {
     expect(says("TypeError: Cannot read properties of undefined (reading 'path')\n    at open (/app/out/main/index.js:1:1)")).toBe("");
     expect(says("work.office.filesCopy: env_X__8UrVItMkZbSL_UlWV3g refused")).toBe("");
+    // A method that starts the line is raised to "Work." by `refusalWords`: still a method.
+    expect(says("work.slides.show: no answer in 30 s")).toBe("");
     expect(says("could not write /srv/agents/temp-code-data/work/x.tmp")).toBe("");
     expect(workErrorWords(undefined)).toBe("");
   });

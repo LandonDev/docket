@@ -5,6 +5,7 @@ import type { DatabaseSync } from 'node:sqlite'
 import type { Meeting, MeetingVoice } from '@shared/contract-work-meetings'
 import { errorText, type CanvasItem, type CanvasSource } from '@shared/work'
 import { attachmentDir } from '../../attachmentDir'
+import { hostLabel } from '../../../hostLabel'
 import type { WorkCtx } from '../modules'
 import { onPipelineEvents } from './events'
 import { fileTask, taskExists } from './filing'
@@ -346,10 +347,10 @@ export class Meetings {
     }
   }
 
-  /** Meetings a process that is gone left mid-transcription: each says so, with Try again. */
+  /** Meetings a process that is gone left mid-transcription: each says so, with Try again, naming the computer as it calls itself (never its id). */
   recover(ctx: WorkCtx): void {
     for (const row of this.store.transcribing()) {
-      if (!this.jobs.has(row.itemId)) this.failed(ctx, row.itemId, `It stopped when ${ctx.host} restarted. The recording is fine.`)
+      if (!this.jobs.has(row.itemId)) this.failed(ctx, row.itemId, `It stopped when ${hostLabel()} restarted. The recording is fine.`)
     }
   }
 

@@ -8,7 +8,7 @@ import { GroupInput, Input, InputGroup } from "../../components/ui/input";
 import { Skeleton } from "../../components/ui/skeleton";
 import { dayTime } from "../../lib/duration";
 import { modOrCtrl } from "../../lib/keys";
-import { EmptyState } from "../../surfaces/SurfaceSkeleton";
+import { OpenFailed } from "../canvas/FetchState";
 import { Tip } from "../../components/tip";
 import { sayError } from "../canvas/frame";
 import type { CanvasBodyProps, CanvasShell, ReviewAdapter } from "../canvas/kind";
@@ -101,10 +101,10 @@ export function PdfBody({ item: canvasItem, source, shell, host, pdf: item, widt
     else setPad(true);
   };
 
-  if (viewError) return <EmptyState title="Couldn't open this PDF" line={viewError} action={{ label: "Retry", onClick: item.retry }} />;
+  if (viewError) return <OpenFailed kind="pdf" why={viewError} onRetry={item.retry} />;
   if (!view || doc.phase === "loading") return <PageSkeleton />;
   if (doc.phase === "password") return <Locked wrong={doc.wrong} onOpen={item.unlock} />;
-  if (doc.phase === "failed") return <EmptyState title="Couldn't open this PDF" line={doc.message} action={{ label: "Retry", onClick: item.retry }} />;
+  if (doc.phase === "failed") return <OpenFailed kind="pdf" why={doc.message} onRetry={item.retry} />;
   return (
     <>
       <Column

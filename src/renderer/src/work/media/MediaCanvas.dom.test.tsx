@@ -14,7 +14,7 @@ import type { CanvasItem } from "@shared/work";
 import { openMenus } from "../../chrome/menuRows";
 import type { CanvasShell, ReviewAdapter } from "../canvas/kind";
 
-const host = vi.hoisted(() => ({ view: null as unknown as MediaView, calls: [] as Array<{ method: string; params: Record<string, unknown> }>, viewFails: null as string | null, hold: false }));
+const host = vi.hoisted(() => ({ view: null as unknown as MediaView, calls: [] as Array<{ method: string; params: Record<string, unknown> }>, viewFails: null as string | null, noteFails: undefined as string | undefined, hold: false }));
 vi.mock("../../lib/connection", async (original) => {
   const link = {
     environmentId: "local",
@@ -27,6 +27,7 @@ vi.mock("../../lib/connection", async (original) => {
         return host.view;
       }
       if (method === "work.media.note") {
+        if (host.noteFails) throw new Error(host.noteFails);
         const note: MediaNote = { id: `n${host.view.notes.length + 1}`, itemId: host.view.itemId, kind: "comment", anchor: params.anchor as MediaNote["anchor"], body: String(params.body), by: "owner", state: "kept", resolved: false, createdAt: 9, updatedAt: 9 };
         host.view = { ...host.view, notes: [...host.view.notes, note], rev: host.view.rev + 1 };
         return note;
@@ -128,6 +129,21 @@ describe("the media canvas", () => {
     fireEvent.click(row);
     await waitFor(() => expect(seeks.to).toEqual([984]));
     await waitFor(() => expect(row.getAttribute("aria-current")).toBe("true"));
+  });
+
+  it("says a comment that did not post in his words, never the host's raw line", async () => {
+    await mount();
+    host.noteFails = "work.media.note: no answer in 30 s";
+    try {
+      fireEvent.click(screen.getByRole("button", { name: "Comment at this frame" }));
+      const field = await screen.findByRole("textbox", { name: "Comment" });
+      fireEvent.change(field, { target: { value: "Title card" } });
+      fireEvent.keyDown(field, { key: "Enter" });
+      expect(await screen.findByText("The comment did not post.")).toBeTruthy();
+      expect(screen.queryByText(/work\.media/i)).toBeNull();
+    } finally {
+      host.noteFails = undefined;
+    }
   });
 
   it("feeds the agent's waiting notes to the stepper: a step goes to the note's frame, Accept makes it the person's", async () => {

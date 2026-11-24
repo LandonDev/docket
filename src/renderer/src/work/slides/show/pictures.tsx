@@ -219,6 +219,8 @@ export function SlidePicture({ doc, page, ahead = null, aheadDoc, width, ratio =
       })}
       {!doc && !waiting && title ? <div className="absolute inset-0 grid place-items-center overflow-hidden p-2 text-center text-xs leading-4 text-muted-foreground">{title}</div> : null}
       {children ? <div className="absolute inset-0 z-[3]">{children}</div> : null}
+      {/* The edge over every layer: the picture's own outline lies under them, and a white slide on a white page had none. */}
+      <div aria-hidden data-slide-edge className="pointer-events-none absolute inset-0 z-[4] rounded-[inherit] ring-1 ring-(--slide-edge) ring-inset" />
     </div>
   );
 }

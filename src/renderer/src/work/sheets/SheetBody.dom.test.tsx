@@ -1315,6 +1315,24 @@ describe("the sheet kind", () => {
     expect(screen.queryByText("Read only")).toBeNull();
   });
 
+  it("says a grid whose code did not load in his words, never the loader's line with its address", async () => {
+    sheetHost = fakeSheetHost(sheetView(), BOOK);
+    grid = fakeGrid();
+    grid.prepare = async () => {
+      throw new TypeError("Failed to fetch dynamically imported module: tempcode-app://app/assets/univer-Cks5VlAV.js");
+    };
+    host.current = fakeHost([ITEM], host as never);
+    render(
+      <CanvasSeat session={{ id: "t1", environmentId: "local" }} kinds={kinds() as never}>
+        <div />
+      </CanvasSeat>,
+    );
+    expect(await screen.findByText("Couldn't open this sheet")).toBeTruthy();
+    const failed = document.querySelector("[data-canvas-failed]")!;
+    expect(failed.textContent).toContain("Its viewer did not load");
+    expect(failed.textContent).not.toContain("assets");
+  });
+
   it("Retry after the grid's own code failed to load fetches it again, and the grid then opens", async () => {
     sheetHost = fakeSheetHost(sheetView(), BOOK);
     grid = fakeGrid();
@@ -1707,11 +1725,11 @@ describe("a format or a rule an agent proposed", () => {
 
     fireEvent.click(within(bar).getByRole("button", { name: "Next change" }));
     await waitFor(() => expect(cell("B2").dataset.mark).toBe("current"));
-    expect(document.querySelector("[data-sheet-was]")?.textContent).toBe("Suggested: Bold, yellow fill on B2:C3 (the totals)");
+    expect(document.querySelector("[data-sheet-was]")?.textContent).toBe("Bold, yellow fill on B2:C3 (the totals)");
 
     // a name sits in no cell: the bar still says it
     fireEvent.click(within(bar).getByRole("button", { name: "Next change" }));
-    await waitFor(() => expect(document.querySelector("[data-sheet-was]")?.textContent).toBe("Suggested: The name Budgeted for E2:E5"));
+    await waitFor(() => expect(document.querySelector("[data-sheet-was]")?.textContent).toBe("The name Budgeted for E2:E5"));
     expect(cell("B2").dataset.mark).toBe("pending");
 
     fireEvent.click(within(bar).getByRole("button", { name: "Accept" }));

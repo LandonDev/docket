@@ -422,7 +422,7 @@ describe("the slides kind", () => {
     expect(await screen.findByText("Couldn't open it in PowerPoint")).toBeTruthy();
     expect(screen.getByText("Microsoft PowerPoint is not installed on this Mac.")).toBeTruthy();
     host.office.fail = null;
-    fireEvent.click(screen.getByRole("button", { name: "Try again" }));
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
     expect(await screen.findByText("In PowerPoint", { selector: "[data-slot=empty-title]" })).toBeTruthy();
     expect(host.office.calls.filter((c) => c.method === "work.office.switch")).toHaveLength(2);
   });

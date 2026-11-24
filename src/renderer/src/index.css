@@ -288,6 +288,9 @@
   --pr-code-type: var(--warning);
   --slide-stage: transparent;
   --slide-stage-inset: 0px;
+  /* The presenter's Now and Next have no edge drawn over their pictures here, as before; in light a white slide on
+     the white page takes the picture outline over its layers (show/pictures.tsx). */
+  --slide-edge: transparent;
   /* A raster add-on mark drawn light on clear sits on a matte tile in light;
      on dark's menu it needs none. */
   --mark-tile: transparent;
@@ -405,6 +408,7 @@ html.theme-light {
   --pr-code-type: var(--muted-foreground);
   --slide-stage: var(--stage);
   --slide-stage-inset: 16px;
+  --slide-edge: var(--image-outline);
   /* A document's sheet in light: the page itself, with a firmer rule. */
   --page: var(--background);
   --page-rule: color-mix(in srgb, var(--foreground) 30%, transparent);

@@ -7,6 +7,8 @@ import { TooltipContainerProvider } from "../../../components/ui/tooltip";
 import { pdfjsEngine, type PdfDoc, type PdfEngine } from "../../pdf/engine";
 import { Audience } from "./Audience";
 import { RENDER_CHANGED } from "../deck";
+import { DECK_NOT_LOADED, NO_PICTURE, renderDetail } from "../renderWords";
+import { workErrorWords } from "../../../lib/workErrorWords";
 import { openFramePlace, openWindowPlace, type ShowPlace, type Surface } from "./places";
 import { Presenter } from "./Presenter";
 import { pdfShowHost, type PdfBytes } from "./pdfShow";
@@ -230,7 +232,8 @@ function ShowRoot({ ask, places: opened, native, onOver }: { ask: ShowAsk; place
       drawn.current = deck.rev;
       retry.current.wait = RETRY_FIRST_MS;
       setDoc(opened);
-      setError(deck.renderError ?? null);
+      // The host's reason in his words: no program's name or wire method on the room's screen (renderWords.ts).
+      setError(deck.renderError ? renderDetail(deck.renderError) || NO_PICTURE : null);
       setLost(false);
       setState((was) => (was ? showReducer(was, { t: "deck", slides: deck.slides }) : startShowState(deck.slides, ask.from)));
       setReads((n) => n + 1);
@@ -242,7 +245,7 @@ function ShowRoot({ ask, places: opened, native, onOver }: { ask: ShowAsk; place
       // The file moved on while it was read: read it as it is now, at once.
       if (message === RENDER_CHANGED) return void load();
       if (held.current) setLost(true);
-      else setError(message);
+      else setError(workErrorWords(message) || DECK_NOT_LOADED);
       const wait = retry.current.wait;
       retry.current.wait = Math.min(RETRY_MOST_MS, wait * 2);
       retry.current.timer = setTimeout(() => void load(), wait);

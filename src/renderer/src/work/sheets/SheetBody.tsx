@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { bodyFailureWords } from "../canvas/CanvasPane";
+import { OpenFailed } from "../canvas/FetchState";
 import type { SheetView } from "@shared/contract-work-sheets";
 import type { SheetImportAct, SheetImportDone } from "@shared/work/sheetFormats";
 import { patternProblem, reviewMarks, RulesSheet, SheetToolbar, type ChartSpec, type GridSelection, type RuleKind, type RulesView, type SheetControl, type SheetHandle, type SheetMark } from "work-kit/sheet";
@@ -15,7 +17,6 @@ import { Tip } from "../../components/tip";
 import { Input } from "../../components/ui/input";
 import { chordKey, ctrlOnly } from "../../lib/keys";
 import { IS_MAC } from "../../lib/platform";
-import { EmptyState } from "../../surfaces/SurfaceSkeleton";
 import { sayError } from "../canvas/frame";
 import { Export, Share } from "../icons";
 import type { CanvasBodyProps, CanvasShell, MoreEntry, ReviewAdapter } from "../canvas/kind";
@@ -87,7 +88,8 @@ export function Body(props: Props) {
     setPrepared(null);
     grid.prepare().then(
       () => live && setPrepared(true),
-      (error: unknown) => live && setPrepared(error instanceof Error && error.message ? error.message : "The grid did not load"),
+      // The grid's code that did not load is said in his words, never as the loader's line with its asset address.
+      (error: unknown) => live && setPrepared(bodyFailureWords(error) || "The grid did not load"),
     );
     return () => {
       live = false;
@@ -195,7 +197,7 @@ export function Body(props: Props) {
     if (typeof prepared === "string") setTries((n) => n + 1);
     if (state.failed) void sync.open();
   };
-  if (failed) return <EmptyState title="Couldn't open this sheet" line={failed} action={{ label: "Retry", onClick: retry }} />;
+  if (failed) return <OpenFailed kind="sheet" why={failed} onRetry={retry} />;
   if (!view || !book || prepared !== true || faces !== book.key) return <SheetSkeleton />;
   const Canvas = grid.Canvas;
   return (
