@@ -5,7 +5,8 @@ import { SwapIcon } from "../../motion/IconSwap";
 import { Share as ShareGlyph } from "../icons";
 import { ModalPanel, useClosingDialog } from "../../chrome/Modal";
 import { Field, FieldRow } from "../../chrome/DialogField";
-import { DialogFooter, ErrorLine, errorText } from "../../chrome/ConfirmDialog";
+import { DialogFooter, ErrorLine } from "../../chrome/ConfirmDialog";
+import { hostFailure } from "../../lib/hostFailure";
 import { ChoiceSelect } from "../../components/choice-select";
 import { BusyLabel, Button } from "../../components/ui/button";
 import { Dialog } from "../../components/ui/dialog";
@@ -101,7 +102,7 @@ function ItemLinks({ env, source, layout, onNew }: { env: string; source: GuestS
             setHome(got.env);
             setRows((got.value ?? []).filter((l) => isLive(l)));
           },
-          (err: unknown) => setError(errorText(err)),
+          (err: unknown) => setError(hostFailure(env, err, "could not list the guest links")),
         )
         .finally(() => setRetrying(false));
     },
@@ -116,7 +117,7 @@ function ItemLinks({ env, source, layout, onNew }: { env: string; source: GuestS
       await guestsCall(home, "work.guests.revoke", { linkId: id });
       setRows((now) => now?.filter((l) => l.id !== id) ?? null);
     } catch (err) {
-      setRefused(errorText(err));
+      setRefused(hostFailure(home, err, "did not revoke the link", true));
     } finally {
       setRevoking(null);
     }
@@ -169,7 +170,7 @@ export function LinkRows({
           {/* Revoke takes the facts' place on hover (docs/DESIGN.md "Hover reveal"). */}
           <span className="relative flex shrink-0 items-center justify-end">
             <span className={cn("text-xs text-muted-foreground tabular-nums", revoking === l.id ? "opacity-0" : yields("row"))}>
-              {project ? `until ${shortDay(l.expiresAt)}` : `${ROLE_WORDS[l.role]}, ${shortDay(l.expiresAt)}`}
+              {project ? `until ${shortDay(l.expiresAt)}` : `${ROLE_WORDS[l.role]}, until ${shortDay(l.expiresAt)}`}
             </span>
             <span className={cn("absolute end-0", revoking === l.id ? "opacity-100" : reveal("row", { row: true, overlay: true }))}>
               <Button variant="ghost" size="xs" aria-label={`Revoke ${l.name}'s link`} disabled={revoking !== null} onClick={() => onRevoke(l.id)}>
@@ -284,7 +285,7 @@ function NewLinkDialog({ env, source, title, onMade, onClose }: { env: string; s
       setMade(got.value);
       onMade?.();
     } catch (err) {
-      setError(errorText(err));
+      setError(hostFailure(env, err, "did not make the link", true));
     } finally {
       setPending(false);
     }

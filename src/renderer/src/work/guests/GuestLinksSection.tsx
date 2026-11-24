@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useState } from "react";
-import { confirmAction, errorText } from "../../chrome/ConfirmDialog";
+import { confirmAction } from "../../chrome/ConfirmDialog";
 import { PageEmpty, PageError, PageRow, PageRowsSkeleton, PageSection } from "../../components/page";
 import { BusyLabel, Button } from "../../components/ui/button";
 import { reveal } from "../../components/ui/reveal";
 import { loadToast } from "../../components/ui/toaster";
 import { cn } from "../../lib/cn";
 import { registry } from "../../lib/connection";
+import { hostFailure } from "../../lib/hostFailure";
 import { copyText } from "../../lib/clipboard";
 import { clockTime } from "../../lib/duration";
 import { Face } from "../mail/face";
@@ -32,23 +33,19 @@ export function GuestLinksSection({ hosts }: { hosts: readonly string[] }) {
   const [revoking, setRevoking] = useState<string | null>(null);
   const key = hosts.join(",");
 
-  const load = useCallback(
-    (): Promise<void> =>
-      Promise.allSettled(
-      key
-        .split(",")
-        .filter(Boolean)
-        .map((env) => guestsCall<GuestLinkRow[]>(env, "work.guests.list", {}).then(({ env: there, value }) => value.map((link) => ({ env: there, link })))),
+  const load = useCallback((): Promise<void> => {
+    const envs = key.split(",").filter(Boolean);
+    return Promise.allSettled(
+      envs.map((env) => guestsCall<GuestLinkRow[]>(env, "work.guests.list", {}).then(({ env: there, value }) => value.map((link) => ({ env: there, link })))),
     ).then((all) => {
       const now = Date.now();
       // Two hosts sent to the one that serves the links read the same rows: each link once.
       const byId = new Map(all.flatMap((r) => (r.status === "fulfilled" ? r.value : [])).map((row) => [row.link.id, row]));
       setRows([...byId.values()].sort((a, b) => Number(isLive(b.link, now)) - Number(isLive(a.link, now)) || b.link.createdAt - a.link.createdAt));
-      setFailed([...new Set(all.flatMap((r) => (r.status === "rejected" ? [errorText(r.reason)] : [])))]);
+      setFailed([...new Set(all.flatMap((r, i) => (r.status === "rejected" ? [hostFailure(envs[i], r.reason, "could not list its guest links")] : [])))]);
       setError(null);
-    }),
-    [key],
-  );
+    });
+  }, [key]);
   useEffect(() => void load(), [load]);
   // A failed host's Retry spins while the hosts are asked again, and takes no second press meanwhile.
   const [retrying, setRetrying] = useState(false);
@@ -89,7 +86,7 @@ export function GuestLinksSection({ hosts }: { hosts: readonly string[] }) {
       const toast = await loadToast();
       toast.success("Copied the new address");
     } catch (err) {
-      setError(errorText(err));
+      setError(hostFailure(env, err, "did not replace the address", true));
     } finally {
       setRevoking(null);
     }
@@ -101,7 +98,7 @@ export function GuestLinksSection({ hosts }: { hosts: readonly string[] }) {
       await registry.linkOf(env).request("work.guests.revoke", { linkId: id });
       void load();
     } catch (err) {
-      setError(errorText(err));
+      setError(hostFailure(env, err, "did not revoke the link", true));
     } finally {
       setRevoking(null);
     }
@@ -130,9 +127,13 @@ export function GuestLinksSection({ hosts }: { hosts: readonly string[] }) {
       {rows?.map(({ env, link }) => {
         const live = isLive(link);
         return (
-          <PageRow key={link.id} media={<Face name={link.name} size="row" />} title={link.name} description={describe(link, live)} className={live ? undefined : "opacity-60"}>
+          <PageRow key={link.id} media={<Face name={link.name} size="row" />} title={link.name} description={describe(link, live)} className={cn("relative", live ? undefined : "opacity-60")}>
             {live ? (
-              <div data-guest-actions="" className={cn("flex shrink-0 items-center gap-1", revoking?.endsWith(link.id) ? "opacity-100" : reveal("item", { row: true }))}>
+              // The presses lie over the row's end on hover and keep no room at rest, so the facts take the row's width.
+              <div
+                data-guest-actions=""
+                className={cn("absolute end-0 top-1/2 flex -translate-y-1/2 items-center gap-1 bg-background ps-2", revoking?.endsWith(link.id) ? "opacity-100" : reveal("item", { row: true, overlay: true }))}
+              >
                 <Button variant="ghost" size="sm" disabled={revoking !== null} onClick={() => void replace(env, link.id, link.name)}>
                   <BusyLabel busy={revoking === `copy:${link.id}`} label="Replace address…" />
                 </Button>

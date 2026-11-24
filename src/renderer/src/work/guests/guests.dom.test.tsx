@@ -12,6 +12,7 @@ import { DocumentEditor, EditorAdaptersProvider, EditorKitProvider, type AnyEdit
 import type { GuestLinkRow } from "@shared/contract-work-guests";
 import type { HeldItem } from "@shared/work";
 
+const NAMES: Record<string, string> = { box: "The box", win: "Windows PC" };
 const calls = vi.hoisted(() => ({ list: [] as { env: string; method: string; params: Record<string, unknown> }[], links: [] as unknown[], failOnce: false, down: new Set<string>(), downWords: {} as Record<string, string>, revokeGate: null as Promise<void> | null, revokeRefusal: null as string | null, listGate: null as Promise<void> | null, itemGate: null as Promise<void> | null }));
 vi.mock("../../lib/connection", async (original) => {
   const linkOf = (env: string) => ({
@@ -41,7 +42,7 @@ vi.mock("../../lib/connection", async (original) => {
       throw new Error(`unexpected ${method}`);
     },
   });
-  return { ...(await original<typeof import("../../lib/connection")>()), registry: { linkOf, onLink: () => () => undefined } };
+  return { ...(await original<typeof import("../../lib/connection")>()), registry: { linkOf, onLink: () => () => undefined, environment: (id: string) => (NAMES[id] ? { id, name: NAMES[id] } : undefined) } };
 });
 
 const confirm = vi.hoisted(() => ({ answer: true, asked: [] as { title: string; body?: string; action: string }[] }));
@@ -89,6 +90,8 @@ describe("Share", () => {
     render(<ShareButton env="mac" source={{ at: "lifeos", table: "docs", id: "kd1" }} title="Run of show" />);
     fireEvent.click(screen.getByRole("button", { name: "Share" }));
     await screen.findByText("Sam Ortiz");
+    // Until when, said as the section and the made link's dialog say it.
+    expect(screen.getByText(/^Edit, until \w{3} \d+$/)).toBeTruthy();
     // A list's avatar: 24px, as Settings' list draws it.
     expect(document.querySelector("[data-face]")!.getAttribute("data-face")).toBe("row");
     // Asked of the Mac, answered by the box.
@@ -134,6 +137,16 @@ describe("Share", () => {
     fireEvent.click(screen.getByRole("button", { name: "Retry" }));
     await screen.findByText("Sam Ortiz");
     expect(screen.queryByText("LifeOS did not answer")).toBeNull();
+  });
+
+  it("says a raw failure of the popover's read in his words, never the method", async () => {
+    const { ShareButton } = await import("./Share");
+    calls.down.add("box");
+    calls.downWords = { box: "work.guests.forItem: no answer from the link" };
+    render(<ShareButton env="box" source={{ at: "lifeos", table: "docs", id: "kd1" }} title="Run of show" />);
+    fireEvent.click(screen.getByRole("button", { name: "Share" }));
+    expect(await screen.findByText("The box could not list the guest links.")).toBeTruthy();
+    expect(document.body.textContent).not.toContain("work.guests");
   });
 
   it("keeps Retry's row, its focus and the error while it asks, busy, and takes no second press", async () => {
@@ -261,7 +274,21 @@ describe("the held request and the audit list", () => {
     expect(screen.getByText(/revoked/)).toBeTruthy();
     expect(screen.getAllByRole("button", { name: "Revoke" })).toHaveLength(1);
     // Copy new address and Revoke wait for the row's hover.
-    expect(document.querySelector("[data-guest-actions]")!.className).toContain("group-hover/item:opacity-100");
+    // They lie over the row's end and keep no room at rest, so the facts take the row's width.
+    const actions = document.querySelector("[data-guest-actions]")!;
+    expect(actions.className).toContain("group-hover/item:opacity-100");
+    expect(actions.className).toContain("absolute");
+    expect(actions.className).toContain("pointer-events-none");
+  });
+
+  it("says a host's raw failure in his words, naming the computer", async () => {
+    const { GuestLinksSection } = await import("./GuestLinksSection");
+    calls.links = [LINK];
+    calls.down.add("win");
+    calls.downWords = { win: "work.guests.list: socket hung" };
+    render(<GuestLinksSection hosts={["box", "win"]} />);
+    expect(await screen.findByText("Windows PC could not list its guest links.")).toBeTruthy();
+    expect(document.body.textContent).not.toContain("work.guests");
   });
 
   it("keeps the links one host gave when another does not answer, with Retry, and lists a link read through two hosts once", async () => {
