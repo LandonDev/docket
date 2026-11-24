@@ -202,6 +202,9 @@ describe('ctx.threads.ownerSaid: a quote the owner typed', () => {
     // A file chip's reference is its JSON, its parentheses written as \u0028 and \u0029.
     await send(thread.id, 'About this file: Budget (2).tcdoc ({"at":"file","host":"env_box","path":"/w/Budget \\u00282\\u0029.tcdoc"})\n\nput the totals in bold please')
     await send(thread.id, 'In /w/Run of show.tcdoc please move the doors to seven')
+    // A longer file name that starts with another's: it names only itself. A sentence's full stop after a path still ends it.
+    await send(thread.id, 'In /w/Plan.tcdoc.old.tcdoc set the venue to the north hall')
+    await send(thread.id, 'Put the totals in bold in /w/Sheet notes.tcdoc.')
     const said = (quote: string, about: string[]): boolean => work.ctx.threads.ownerSaid(thread.id, quote, about)
     expect(said('move the keynote to 2:00 PM', ['/w/Travel Plan.tcdoc'])).toBe(true)
     // "Plan" stands inside "Travel Plan", and a path inside a longer one: neither names this document.
@@ -216,6 +219,9 @@ describe('ctx.threads.ownerSaid: a quote the owner typed', () => {
     expect(said('put the totals in bold please', ['/w/Budget (2).tcdoc'])).toBe(true)
     expect(said('please move the doors to seven', ['/w/Run of show.tcdoc'])).toBe(true)
     expect(said('please move the doors to seven', ['/w/run of show.tcdoc'])).toBe(false)
+    expect(said('set the venue to the north hall', ['/w/Plan.tcdoc'])).toBe(false)
+    expect(said('set the venue to the north hall', ['/w/Plan.tcdoc.old.tcdoc'])).toBe(true)
+    expect(said('Put the totals in bold in', ['/w/Sheet notes.tcdoc'])).toBe(true)
     expect(said('change doors to 6:30 PM for everyone', ['kd7q2x'])).toBe(true)
     expect(said('change doors to 6:30 PM for everyone', ['kd7q2'])).toBe(false)
     // a name too short to say which document was meant binds nothing

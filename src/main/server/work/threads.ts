@@ -92,13 +92,19 @@ export function typedWords(text: string): string {
 /** The shortest name of a thing that binds a message to it: a shorter one is in too many messages to say which thing was meant. */
 export const OWNER_NAME_MIN = 3
 
-/** Where a name may start and end in a message: never inside a longer word, path or id ("/a/w/Plan.tcdoc" is not "/w/Plan.tcdoc"). */
-const BEFORE = /[\s("'“‘«[{,]/
-const AFTER = /[\s)"'”’»\]},.;:!?]/
+/**
+ * Where a name may start and end in a message: never inside a longer word, path or id ("/a/w/Plan.tcdoc" is not
+ * "/w/Plan.tcdoc", nor is "/w/Plan.tcdoc.old.tcdoc"). It ends at a space, the text's end or a closing mark; a
+ * sentence's own mark after it (".", ",", "?") only when a space, a closing mark or the end follows that too.
+ */
+const BEFORE = /[\s("'“‘«[{,`]/
+const CLOSES = /[\s)"'”’»\]}`]/
+const STOPS = /[.,;:!?]/
+const endsAt = (text: string, end: number): boolean =>
+  end === text.length || CLOSES.test(text[end]!) || (STOPS.test(text[end]!) && (end + 1 === text.length || CLOSES.test(text[end + 1]!)))
 const namedIn = (text: string, name: string): boolean => {
   for (let at = text.indexOf(name); at !== -1; at = text.indexOf(name, at + 1)) {
-    const end = at + name.length
-    if ((at === 0 || BEFORE.test(text[at - 1]!)) && (end === text.length || AFTER.test(text[end]!))) return true
+    if ((at === 0 || BEFORE.test(text[at - 1]!)) && endsAt(text, at + name.length)) return true
   }
   return false
 }
