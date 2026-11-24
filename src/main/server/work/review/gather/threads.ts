@@ -40,10 +40,12 @@ export const ROW_MOST = 256 * 1024
 const STATUS_MOST = 400
 /** How far back, in rows, the read looks for the status a thread was in when the span began. */
 const LOOK_BACK = 400
+/** How far on, in rows, the read looks past the span's end for the status that closed a turn still open there. */
+const LOOK_AHEAD = 400
 
 type SessionRow = { id: string; parent_id: string | null; workspace_id: string | null; cold: number | null; routine_run_id: string | null; master_id: string | null; started_by: string | null; status: string; created_at: number; updated_at: number }
 type Statement = ReturnType<DatabaseSync['prepare']>
-type Statements = { ends: Statement; probe: Statement; prior: Statement; heads: Statement; read: Statement }
+type Statements = { ends: Statement; probe: Statement; prior: Statement; next: Statement; lastBefore: Statement; heads: Statement; read: Statement }
 type EventRow = { seq: number; ts: number; t: string | null; st: string | null; bk: string | null; bo: number | null }
 
 const WORKING = new Set(['running', 'starting'])
@@ -103,6 +105,10 @@ export async function scanThreads(db: DatabaseSync, week: Span, before: Span | n
         probe: db.prepare(`SELECT seq, ts FROM ${table} WHERE session_id = ? AND seq >= ? ORDER BY seq LIMIT 1`),
         // Only short rows are looked at, so a tool's output in the rows before the span is never loaded.
         prior: db.prepare(`SELECT json_extract(payload, '$.status') AS st FROM ${table} WHERE session_id = ? AND seq >= ? AND seq < ? AND length(payload) <= ${STATUS_MOST} AND json_extract(payload, '$.type') = 'status' ORDER BY seq DESC LIMIT 1`),
+        // The first status at or past the span's end, among short rows a bounded way on: what closed a turn open there.
+        next: db.prepare(`SELECT ts, json_extract(payload, '$.status') AS st FROM ${table} WHERE session_id = ? AND seq >= ? AND seq < ? AND length(payload) <= ${STATUS_MOST} AND json_extract(payload, '$.type') = 'status' ORDER BY seq LIMIT 1`),
+        // The time of the last row before the span's end, of any kind (a tool's output too), by its key alone.
+        lastBefore: db.prepare(`SELECT ts FROM ${table} WHERE session_id = ? AND seq < ? ORDER BY seq DESC LIMIT 1`),
         heads: db.prepare(`SELECT seq, length(payload) AS n FROM ${table} WHERE session_id = ? AND seq >= ? AND seq < ? ORDER BY seq LIMIT ${HEADS}`),
         read: db.prepare(
           `SELECT seq, ts, json_extract(payload, '$.type') AS t, json_extract(payload, '$.status') AS st, json_extract(payload, '$.by.kind') AS bk, json_extract(payload, '$.by.owner') AS bo
@@ -139,20 +145,32 @@ export async function scanThreads(db: DatabaseSync, week: Span, before: Span | n
     }
     const first = await seqAt(lo)
     const last = await seqAt(hi)
-    if (first >= last) continue
 
-    // A row before F1 says nothing of who wrote it: it counts only where no model could have written.
-    const legacy = s === root && !s.parent_id && !s.routine_run_id && !s.master_id && !s.started_by && !(farOwner.get(`${FAR_OWNER_PREFIX}${s.id}`) as { value?: string } | undefined)?.value
-
-    // Whether the thread was working when the span began: its last status in the rows just before.
+    // Whether the thread was working when the span began: its last status in the rows just before. A span with no
+    // rows of its own still counts, whole, for a turn that was open across it.
     const prior = st.prior.get(s.id, Math.max(ends.a, first - LOOK_BACK), first) as { st: string | null } | undefined
     let since: number | null = prior?.st && WORKING.has(prior.st) ? lo : null
     await pace()
-    let lastTs = lo
+    if (first >= last && since === null) continue
+
+    // A row before F1 says nothing of who wrote it: it counts only where no model could have written.
+    const legacy = s === root && !s.parent_id && !s.routine_run_id && !s.master_id && !s.started_by && !(farOwner.get(`${FAR_OWNER_PREFIX}${s.id}`) as { value?: string } | undefined)?.value
     const worked = (from: number, to: number): void => {
       const a = Math.max(from, week.from)
       const b = Math.min(to, week.to)
       if (b > a) ranMs.set(job, (ranMs.get(job) ?? 0) + (b - a))
+    }
+    /**
+     * Where a turn still open at the span's end ends: past the span when the status that closed it came after the
+     * cut (it ran across Sunday midnight); to the span's end while the thread works now; else at its last row in
+     * the span, of any kind (a host that stopped mid-turn never wrote the status that ends it, and a tool's output
+     * is still the turn at work).
+     */
+    const openEnd = (): number => {
+      const next = st.next.get(s.id, last, last + LOOK_AHEAD) as { ts: number; st: string | null } | undefined
+      if (next?.st && !WORKING.has(next.st)) return next.ts
+      if (!next && WORKING.has(s.status)) return week.to
+      return (st.lastBefore.get(s.id, last) as { ts: number } | undefined)?.ts ?? lo
     }
 
     for (let at = first; at < last; ) {
@@ -183,7 +201,6 @@ export async function scanThreads(db: DatabaseSync, week: Span, before: Span | n
       const began = performance.now()
       const rows = bytes > 0 ? (st.read.all(s.id, at, end) as unknown as EventRow[]) : []
       for (const r of rows) {
-        lastTs = r.ts
         if (r.t === 'user-text') {
           const his = r.bk === null ? legacy : r.bk === 'owner' || (r.bk === 'key' && !!r.bo)
           if (!his) continue
@@ -205,9 +222,11 @@ export async function scanThreads(db: DatabaseSync, week: Span, before: Span | n
       at = end
       await pace(rows.length > 0 || bytes > 0)
     }
-    // Still working when the rows ran out: to the span's end if the thread works now, else to its last row (a
-    // thread whose host stopped mid-turn never wrote the status that ends it).
-    if (since !== null) worked(since, WORKING.has(s.status) ? week.to : lastTs)
+    // Still working when the rows ran out (`openEnd` says to when), each read bounded.
+    if (since !== null) {
+      worked(since, openEnd())
+      await pace()
+    }
   }
   await pace(true)
   facts.ran = [...ranMs.entries()].sort((a, b) => a[0] - b[0])

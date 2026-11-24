@@ -44,6 +44,13 @@ type HostWeek = { body: ReviewBody | null; error: string | null; loaded: boolean
 const weeks = new Map<number, Map<string, HostWeek>>();
 /** Money's own sums for each week, a host at a time: read beside the review, never in its way. */
 const money = new Map<number, Map<string, MoneySums["rows"]>>();
+/**
+ * The hosts whose Money read failed for a week (a timeout, or a host that has answered Money before): a job with a
+ * ledger there shows no sum, since the other hosts' share is not the job's. A host from before Money, which never
+ * answered it, simply has none.
+ */
+const moneyFailed = new Map<number, Set<string>>();
+const moneyAnswered = new Set<string>();
 /** The weeks Make again is reading now. */
 const making = new Set<number>();
 const listeners = new Set<() => void>();
@@ -174,11 +181,20 @@ function loadHostMoney(environmentId: string, week: ReviewWeek): void {
         let hosts = money.get(week.from);
         if (!hosts) money.set(week.from, (hosts = new Map()));
         hosts.set(environmentId, got?.rows ?? []);
+        moneyAnswered.add(environmentId);
+        moneyFailed.get(week.from)?.delete(environmentId);
         changed();
       },
-      // A read that failed says nothing of now: the sums it answered before are dropped, never shown as current.
-      () => {
-        if (money.get(week.from)?.delete(environmentId)) changed();
+      // A read that failed says nothing of now: the sums it answered before are dropped, never shown as current, and
+      // the host's jobs show none until it answers.
+      (err: unknown) => {
+        money.get(week.from)?.delete(environmentId);
+        if (err instanceof TimeoutError || moneyAnswered.has(environmentId)) {
+          let failed = moneyFailed.get(week.from);
+          if (!failed) moneyFailed.set(week.from, (failed = new Set()));
+          failed.add(environmentId);
+        }
+        changed();
       },
     );
 }
@@ -255,6 +271,12 @@ function moneyOf(from: number, parts: readonly ReviewPart[]): Map<JobKey, JobMon
       const have = out.get(key) ?? { in: 0, out: 0 };
       out.set(key, { in: have.in + row.in, out: have.out + row.out });
     }
+  }
+  // A host whose read failed: every job it holds a workspace of shows no sum.
+  for (const environmentId of moneyFailed.get(from) ?? []) {
+    if (!workSwitch.hosts().has(environmentId) || !linked(environmentId)) continue;
+    for (const w of workspaceStore.getSnapshot().workspaces) if (w.kind === "work" && w.environmentId === environmentId) broken.add(jobKey(hostOf.get(environmentId) ?? environmentId, { workspaceId: w.id, sector: w.sector ?? null }));
+    for (const part of parts) if (part.environmentId === environmentId) for (const j of part.body.jobs) broken.add(jobKey(part.body.host, j));
   }
   for (const key of broken) out.delete(key);
   return out;
@@ -382,6 +404,8 @@ export async function loadRoutine(): Promise<(NonNullable<ReviewRoutine> & { env
 export function resetReviewStore(opts: { now?: () => number; zone?: string | null } = {}): void {
   weeks.clear();
   money.clear();
+  moneyFailed.clear();
+  moneyAnswered.clear();
   making.clear();
   loading.clear();
   zone = opts.zone ?? null;

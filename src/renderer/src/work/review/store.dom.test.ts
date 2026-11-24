@@ -435,6 +435,27 @@ describe("money", () => {
     await new Promise((r) => setTimeout(r, 0));
     expect([...reviewNow(WEEK).money]).toEqual([]);
   });
+
+  it("shows no sum for a job while one of its hosts' Money read timed out, the other host's share standing alone", async () => {
+    const answer = links["env-box"]!.answer;
+    links["env-box"]!.answer = (method, params) => (method === "work.money.sums" ? { rows: [{ workspaceId: "w-cosmic", sector: "cosmic", in: 100_00, out: 0, owedToHim: 0, heOwes: 0, miles: 0, currency: "USD" }] } : answer(method, params));
+    const mac = links["env-mac"]!.answer;
+    links["env-mac"]!.answer = (method, params) => (method === "work.money.sums" ? { rows: [{ workspaceId: "m-cosmic", sector: "cosmic", in: 50_00, out: 0, owedToHim: 0, heOwes: 0, miles: 0, currency: "USD" }] } : mac(method, params));
+    await loadZone();
+    await loadWeek(WEEK);
+    await new Promise((r) => setTimeout(r, 0));
+    expect([...reviewNow(WEEK).money]).toEqual([["cosmic", { in: 150_00, out: 0 }]]);
+    // Both stay linked; the Mac's next Money call times out. The box's $100 is not Cosmic's sum.
+    links["env-mac"]!.answer = (method, params) => (method === "work.money.sums" ? new TimeoutError("work.money.sums", 30_000) : mac(method, params));
+    await loadWeek(WEEK);
+    await new Promise((r) => setTimeout(r, 0));
+    expect([...reviewNow(WEEK).money]).toEqual([]);
+    // It answers again: the line is back.
+    links["env-mac"]!.answer = (method, params) => (method === "work.money.sums" ? { rows: [{ workspaceId: "m-cosmic", sector: "cosmic", in: 50_00, out: 0, owedToHim: 0, heOwes: 0, miles: 0, currency: "USD" }] } : mac(method, params));
+    await loadWeek(WEEK);
+    await new Promise((r) => setTimeout(r, 0));
+    expect([...reviewNow(WEEK).money]).toEqual([["cosmic", { in: 150_00, out: 0 }]]);
+  });
 });
 
 describe("seen, and the routine", () => {

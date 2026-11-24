@@ -172,6 +172,29 @@ describe('how long the threads worked', () => {
     expect((await scan()).ran).toEqual([[0, 30 * MIN + 20 * MIN]])
   })
 
+  it('counts a turn across the week’s end to the cut when its closing status came after it, with only a tool’s output in the week', async () => {
+    // Sunday 11:40 PM to Monday 12:20 AM, read after it settled: the thread is idle now.
+    rig.session('edge', { status: 'idle' })
+    rig.status('edge', WEEK.to - 20 * MIN, 'running')
+    rig.event('edge', WEEK.to - 5 * MIN, { type: 'tool-result', callId: 'c1', output: 'made-up output' })
+    rig.status('edge', WEEK.to + 20 * MIN, 'idle')
+    expect((await scan()).ran).toEqual([[0, 20 * MIN]])
+  })
+
+  it('counts a quiet week whole for a turn open across it: no row of its own in the span', async () => {
+    rig.session('quiet', { status: 'idle' })
+    rig.status('quiet', WEEK.from - HOUR, 'running')
+    rig.status('quiet', WEEK.to + HOUR, 'idle')
+    expect((await scan()).ran).toEqual([[0, WEEK.to - WEEK.from]])
+  })
+
+  it('ends an interrupted turn at its last row of any kind, a tool’s output too', async () => {
+    rig.session('stop', { status: 'stopped' })
+    rig.status('stop', T, 'running')
+    rig.event('stop', T + 12 * MIN, { type: 'tool-result', callId: 'c1', output: 'made-up output' })
+    expect((await scan()).ran).toEqual([[0, 12 * MIN]])
+  })
+
   it('ends a turn its host never closed at the thread’s last row, not at the week’s end', async () => {
     rig.session('cut', { status: 'stopped' })
     rig.status('cut', T, 'running')
