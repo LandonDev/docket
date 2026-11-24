@@ -318,6 +318,7 @@ export function opsCarrier(deps: OpsDeps): MsCarrier {
       if (!('folder' in auth.target)) throw new CarrierRefused('The carrier refused: a make names a folder. Nothing was done in Forms.')
       checkAuth(auth, { host: deps.host, workspaceId, target: auth.target, op: 'make', payload: { title: ask.title, description: ask.description, questions: ask.questions, settings: ask.settings, folder: auth.target.folder }, rev: 0 })
       return deps.exclusive(async () => {
+        ask.stage?.('opening')
         const before = new Set((await computer.windows()).map((w) => w.id))
         const folderWindow = await computer.open(ask.folderUrl)
         const folder = new Page(computer, folderWindow, 'make')
@@ -326,6 +327,7 @@ export function opsCarrier(deps: OpsDeps): MsCarrier {
         try {
           const { got } = await folder.until((s) => one(s, BUTTON, /^(Create or upload|New)$/i), mount)
           if (!got) folder.stop('the folder\'s "Create or upload" was not on its page, so no form was made')
+          ask.stage?.('making')
           await folder.act((x) => {
             const b = one(x, BUTTON, /^(Create or upload|New)$/i)
             return b ? [click(b)] : null
@@ -357,6 +359,7 @@ export function opsCarrier(deps: OpsDeps): MsCarrier {
           // The welcome page has no title: nothing is pressed on it.
           if (!got) page.stop('Forms opened its welcome page, not the new form; nothing was pressed there', { ...emptyRead(formId!), settings: { ...MSFORM_NEW_SETTINGS, accepting: true } })
           // The first step on the new form: Accept responses off, read back.
+          ask.stage?.('setting')
           try {
             await openSettings(page)
             await setToggle(page, ACCEPT_RESPONSES, false, 'Accept responses')
@@ -376,6 +379,7 @@ export function opsCarrier(deps: OpsDeps): MsCarrier {
             return close ? [click(close)] : []
           }, 'closing Settings')
           // The title first, so the workbook takes it.
+          ask.stage?.('naming')
           await page.act((x) => {
             const b = formTitleButton(x)
             return b ? [click(b)] : null
@@ -393,6 +397,7 @@ export function opsCarrier(deps: OpsDeps): MsCarrier {
             }, 'the description')
           }
           page.done.push(`named it "${short(ask.title)}"`)
+          if (ask.questions.length) ask.stage?.('asking')
           for (let i = 0; i < ask.questions.length; i++) {
             try {
               await addQuestion(page, ask.questions[i], i)

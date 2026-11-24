@@ -834,7 +834,7 @@ function FolderPage({
   const [look] = usePageLook(page.at);
   const listing = useListing(from, page.at, look.sort ?? DEFAULT_SORT);
   const may = useLinksMay();
-  const { offered: msOffered, making: makingForm, make: makeAForm } = useFormMaking(workspace);
+  const { offered: msOffered, making: makingForm, stage: formStage, make: makeAForm } = useFormMaking(workspace);
   const noTeams = page.at.at === "place" && page.at.id === "teams";
   const lost = !from && !team && !noTeams && !reach.waiting;
   const trail = team ? [{ name: page.name, at: page.at }] : trailOf(found?.row ?? null, listing?.trail ?? []);
@@ -853,6 +853,7 @@ function FolderPage({
           forms: ((twin) => ({
             ...formKindsFor(copy.place, { sameHost: copy.link === workspace.environmentId, offered: msOffered, twin: !!twin }),
             making: makingForm,
+            stage: formStage,
             // A library another computer holds is made in through the workspace host's copy of it.
             make: (kind) => makeAForm(kind, twin ? formFolderOf(page.at.at === "file" ? page.at : copy.place.root, copy, twin) : page.at.at === "file" ? page.at : copy.place.root),
           }))(twinOf(found?.row?.copies ?? [copy], copy, workspace.environmentId)),

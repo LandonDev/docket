@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto'
+import type { MsMakeStage } from '@shared/contract-work-msforms'
 import type { MsAnyQuestion, MsChange, MsFormSettings, MsQuestion } from '@shared/work/msforms'
 
 /**
@@ -125,6 +126,8 @@ export interface MakeAsk {
   description: string
   questions: MsQuestion[]
   settings: MsFormSettings
+  /** told as each stage starts, for the window that pressed it */
+  stage?(stage: MsMakeStage): void
 }
 
 /** Where the workbook is, as the place check passes it. */

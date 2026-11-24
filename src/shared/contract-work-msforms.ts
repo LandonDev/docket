@@ -156,7 +156,9 @@ export const MsformsRequestSchemas = [
       folder: z.union([MsFormFolderSchema, z.object({ at: z.literal('file'), host: z.string().max(200), path: z.string().min(1).max(2000) })]),
       title: z.string().trim().min(1).max(90),
       description: z.string().max(1000).optional(),
-      questions: z.array(MsQuestionSchema).max(100).optional()
+      questions: z.array(MsQuestionSchema).max(100).optional(),
+      /** his press: the same key asked again answers the make it started, never a second form */
+      op: z.string().regex(/^[A-Za-z0-9_-]{8,64}$/).optional()
     })
   ),
   /** Holds Collect responses (`msform.publish`); the press is `work.outbox.send` on the answer's `ref`. */
@@ -184,6 +186,10 @@ export const MsformsRequestSchemas = [
 ] as const
 
 export type MsformsPush = { push: 'work.msforms'; workspaceId: string; formId: string; view: MsFormView | null }
+/** Where a make stands in Forms, for the window that pressed it: the folder's page opening, the form made, Settings, the title, the questions. */
+export const MS_MAKE_STAGES = ['opening', 'making', 'setting', 'naming', 'asking'] as const
+export type MsMakeStage = (typeof MS_MAKE_STAGES)[number]
+export type MsformsMakingPush = { push: 'work.msforms.making'; workspaceId: string; op: string; stage: MsMakeStage }
 
 /** The owner's methods: a thread's own call is refused, it goes through the tools where the hold applies. */
 export const MSFORMS_OWNER_ONLY: ReadonlySet<string> = new Set([

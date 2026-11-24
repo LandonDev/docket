@@ -76,6 +76,10 @@ carrier opens the folder's library page, Create or upload → Forms survey, foll
 (org only, record names, one answer each by default). If the first step fails the row keeps the form as a draft that
 may take answers and says "The form was made but may take answers: no one has its link. Open it and turn off Accept
 responses, or delete it." The new form opens in its Files tab (`registerRefSeat('msform')`, files/hooks.ts).
+While it runs, the page's state line says the stage the host pushes (`work.msforms.making`: opening, making,
+setting, naming, asking; `MAKE_STAGE_WORDS` in useFormMaking.ts). Each press carries a key (`op`): the same key asked
+again, by a window whose wait ran out, answers the make already under way or just done (kept 10 minutes), never a
+second form.
 
 A library another computer holds (his Mac's OneDrive copy of RecWell) takes a Microsoft form through the box's own
 copy of the same library (`twinOf`, `formFolderOf`): the window asks the make for the same folder in the box's (or its

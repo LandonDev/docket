@@ -55,8 +55,13 @@ export class FakeCarrier implements MsCarrier {
     checkAuth(auth, { host: this.host, workspaceId: this.workspaceId, target: { formId }, op, payload, rev: auth.rev })
   }
 
+  /** a make waits on this once Forms is asked (a test holds it to ask again meanwhile) */
+  makeGate: Promise<void> = Promise.resolve()
   async make(auth: CarrierAuth, ask: MakeAsk) {
     this.calls.push({ op: 'make', formId: null, by: auth.by })
+    ask.stage?.('opening')
+    ask.stage?.('making')
+    await this.makeGate
     const formId = `${FORM_A.slice(0, 40)}${String(++this.next).padStart(4, '0')}`
     const f: FakeForm = { formId, title: 'Untitled form', description: '', questions: [], settings: { ...MSFORM_NEW_SETTINGS, accepting: true, onePerPerson: false }, count: 0 }
     this.forms.set(formId, f)
@@ -65,6 +70,8 @@ export class FakeCarrier implements MsCarrier {
       delete this.stopAt.make
       throw new CarrierStop('The form was made but may take answers until Accept responses is off. Open it and turn that off, or delete it.', this.readOf(f))
     }
+    ask.stage?.('setting')
+    ask.stage?.('naming')
     f.title = ask.title
     f.description = ask.description
     f.questions = [...ask.questions]

@@ -151,6 +151,23 @@ describe('the one reach check', () => {
     expect((await call<{ forms: MsFormView[] }>('work.msforms.list', { workspaceId: 'w1' })).forms).toEqual([])
   })
 
+  it("answers his press asked again with the make it started, never a second form, and tells each stage", async () => {
+    let open!: () => void
+    carrier.makeGate = new Promise((r) => (open = r))
+    const ask = { workspaceId: 'w1', folder: { libraryId: TEST_LIBRARY.id, path: 'Esports' }, title: 'Spring LAN sign-up', op: 'press000001' }
+    const first = call<MsFormView>('work.msforms.make', ask)
+    const again = call<MsFormView>('work.msforms.make', ask)
+    await new Promise((r) => setTimeout(r, 0))
+    open()
+    const [a, b] = await Promise.all([first, again])
+    expect(b.formId).toBe(a.formId)
+    expect(carrier.calls.filter((c) => c.op === 'make')).toHaveLength(1)
+    expect(pushes.filter((p) => p.push === 'work.msforms.making').map((p) => (p as { stage: string }).stage)).toEqual(['opening', 'making', 'setting', 'naming'])
+    // Another press is another form.
+    await call('work.msforms.make', { ...ask, op: 'press000002' })
+    expect(carrier.calls.filter((c) => c.op === 'make')).toHaveLength(2)
+  })
+
   it('a thread calling an owner method is refused', async () => {
     const view = await made()
     for (const [method, extra] of [

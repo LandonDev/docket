@@ -1,5 +1,5 @@
 import { randomBytes } from 'node:crypto'
-import type { FormListRow, MsFormHistoryRow, MsFormMake, MsFormPublish, MsFormView, MsSuggestion } from '@shared/contract-work-msforms'
+import type { FormListRow, MsFormHistoryRow, MsFormMake, MsFormPublish, MsFormView, MsMakeStage, MsSuggestion } from '@shared/contract-work-msforms'
 import type { HeldItem } from '@shared/work/acts'
 import type { Principal } from '@shared/work/ids'
 import { applyChange, changeWords, diffQuestions, isOther, questionWords, respondOf, settingsWords, type MsAnyQuestion, type MsChange, type MsFormCheck, type MsFormSettings } from '@shared/work/msforms'
@@ -142,12 +142,25 @@ export const MAY_TAKE_ANSWERS = 'The form was made but may take answers until Ac
  * names it and adds what was asked. The row is stored as soon as the id is
  * known, so a stop part way still leaves the form findable.
  */
-export async function make(
-  ctx: MsCtx,
-  by: Caller,
-  ask: { workspaceId: string; folder: { libraryId: string; path: string } | { at: 'file'; host: string; path: string }; title: string; description?: string; questions?: MsFormMake['questions']; settings?: Partial<MsFormSettings> },
-  grant: { by: 'owner' | 'act'; madeBy: Principal }
-): Promise<MsFormView> {
+type MakeAsked = { workspaceId: string; folder: { libraryId: string; path: string } | { at: 'file'; host: string; path: string }; title: string; description?: string; questions?: MsFormMake['questions']; settings?: Partial<MsFormSettings>; op?: string }
+
+/** Makes under way or just done, by his press's key: the same press asked again (a window that gave up waiting) answers this make. */
+const pressed = new Map<string, Promise<MsFormView>>()
+export const PRESS_KEPT_MS = 10 * 60_000
+
+export function make(ctx: MsCtx, by: Caller, ask: MakeAsked, grant: { by: 'owner' | 'act'; madeBy: Principal }): Promise<MsFormView> {
+  if (!ask.op) return makeOnce(ctx, by, ask, grant)
+  const key = `${ask.workspaceId}\n${ask.op}`
+  const was = pressed.get(key)
+  if (was) return was
+  const op = ask.op
+  const got = makeOnce(ctx, by, ask, grant, (stage) => ctx.push({ push: 'work.msforms.making', workspaceId: ask.workspaceId, op, stage }))
+  pressed.set(key, got)
+  setTimeout(() => pressed.delete(key), PRESS_KEPT_MS).unref?.()
+  return got
+}
+
+async function makeOnce(ctx: MsCtx, by: Caller, ask: MakeAsked, grant: { by: 'owner' | 'act'; madeBy: Principal }, stage?: (s: MsMakeStage) => void): Promise<MsFormView> {
   const carrier = carrierOrRefuse()
   const workspace = jobOf(ctx, by, ask.workspaceId)
   const libraries = librariesFor(ctx, by)
@@ -166,7 +179,7 @@ export async function make(
     store.get(workspace.id, formId) ??
     store.create({ workspaceId: workspace.id, formId, tenant: folder.tenant, sector: workspace.sector, title: ask.title, folder: { libraryId: folder.libraryId, path: folder.path, siteUrl: folder.siteUrl, label: folder.label }, madeBy: grant.madeBy })
   try {
-    const { read } = await carrier.make(auth, { workspaceId: workspace.id, folderUrl, title: ask.title, description: ask.description ?? '', questions: ask.questions ?? [], settings })
+    const { read } = await carrier.make(auth, { workspaceId: workspace.id, folderUrl, title: ask.title, description: ask.description ?? '', questions: ask.questions ?? [], settings, ...(stage ? { stage } : {}) })
     const row = keep(read.formId)
     // A draft only once a fresh read shows Accept responses off.
     return announce(ctx, storeRead(ctx, row, read, { by: grant.madeBy, state: 'draft', stopped: read.settings.accepting ? MAY_TAKE_ANSWERS : null }))

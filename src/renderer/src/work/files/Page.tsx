@@ -488,7 +488,7 @@ export interface PageActs {
   /** New: makes a thing of the kind here; answers it, to select and name */
   make(kind: MakeKind): Promise<FileEntry | null>;
   /** New → Form: the kinds this place offers and the make, which opens the form in a tab (work/msforms/newForm.ts) */
-  forms?: { kinds: readonly FormKind[]; /** a Microsoft form cannot be made here: the off row's line */ refused?: string; make(kind: FormKind): Promise<void>; /** a Microsoft form is being made in Forms: about a minute */ making: boolean };
+  forms?: { kinds: readonly FormKind[]; /** a Microsoft form cannot be made here: the off row's line */ refused?: string; make(kind: FormKind): Promise<void>; /** a Microsoft form is being made in Forms */ making: boolean; /** where that make stands, in words */ stage?: string | null };
   rename(entry: FileEntry, name: string): Promise<FileEntry | null>;
   /** Move to… and Copy to…: the dialog that picks the folder */
   carry(verb: "move" | "copy", entries: readonly FileEntry[]): void;
@@ -626,12 +626,12 @@ function BulkBar({ count, rows, onAsk, onAct, onClear }: { count: number; rows: 
   );
 }
 
-/** A Microsoft form being made in Forms on the box browser, in the state line's place: it takes about a minute. */
-function MakingLine() {
+/** A Microsoft form being made in Forms on the box browser, in the state line's place: the stage it is at. */
+function MakingLine({ stage }: { stage: string }) {
   return (
     <div data-files-making role="status" className="flex min-h-8 min-w-0 shrink-0 items-center gap-2 border-b border-border bg-background px-3 py-1 text-[13px] leading-5">
       <Spinner className="size-3 shrink-0" />
-      <span className="min-w-0 truncate text-foreground">Making the form in Forms…</span>
+      <span className="min-w-0 truncate text-foreground">{stage}</span>
     </div>
   );
 }
@@ -997,7 +997,7 @@ export function PageView({
   const line = acts?.uploading ? (
     <UploadLine progress={acts.uploading} onCancel={acts.cancelUpload} />
   ) : acts?.forms?.making ? (
-    <MakingLine />
+    <MakingLine stage={acts.forms.stage ?? "Making the form…"} />
   ) : listing?.error && listing.away ? (
     // The word says it did not answer; the detail says what is still shown, as the asleep line does, never the same again.
     <ViewStateLine word={`${copy?.host ?? "The host"} did not answer`} {...(entries.length && listing.asOf ? { detail: `This is the list from ${clockTime(listing.asOf)}.` } : {})} onRetry={listing.lostPage ? listing.loadMore : listing.retry} />
