@@ -397,8 +397,11 @@ function ShowRoot({ ask, places: opened, native, onOver }: { ask: ShowAsk; place
     }),
     [mediaUrls, plays, audience],
   );
-  // The place whose picture the room has seen painted: the slideshow's, or the presenter's view when it runs alone.
-  const [seen, setSeen] = useState<string | null>(null);
+  // The place whose picture the room has seen painted, and which picture it was: the slideshow's, or the presenter's
+  // view when it runs alone. A picture of the same place drawn again (the file changed) is another picture.
+  const [seen, setSeen] = useState<{ key: string; doc: PdfDoc; page: number } | null>(null);
+  // The place whose picture could not be painted where the room sees it.
+  const [unpainted, setUnpainted] = useState<string | null>(null);
   const stage = useMemo<ShowStage>(
     () => ({
       pictureOf: (slide, step): Picture => {
@@ -414,7 +417,8 @@ function ShowRoot({ ask, places: opened, native, onOver }: { ask: ShowAsk; place
       motion: moved.motion,
       motionKey: moved.key,
       media,
-      shown: (key, where) => void ((where === "audience" || !audience) && setSeen(key)),
+      shown: (key, where, drawn) => void ((where === "audience" || !audience) && setSeen({ key, ...drawn })),
+      failed: (key, where) => void ((where === "audience" || !audience) && setUnpainted(key)),
     }),
     [stepDocs, doc, moved.motion, moved.key, media, host.step, audience],
   );
@@ -422,7 +426,8 @@ function ShowRoot({ ask, places: opened, native, onOver }: { ask: ShowAsk; place
   // "Advance after": one clock for both windows, counted again at each place the show reaches, from when its picture
   // is painted where the room sees it: a step still waiting for its picture, or still painting, holds the clock too.
   const here = state ? shown.slides[shown.at] : undefined;
-  const painted = !!here && !stage.pictureOf(here, shown.step).waiting && seen === placeKey;
+  const picture = here ? stage.pictureOf(here, shown.step) : null;
+  const painted = !!picture && !picture.waiting && seen?.key === placeKey && seen.doc === picture.doc && seen.page === picture.page;
   const wait = state && painted ? autoAfter(state) : null;
   const atNow = state?.at;
   const stepNow = state?.step;
@@ -433,7 +438,12 @@ function ShowRoot({ ask, places: opened, native, onOver }: { ask: ShowAsk; place
   }, [wait, atNow, stepNow, dispatch]);
   // A step whose picture could not be made, or read, is held for the room; the presenter is told why.
   const stepNowAt = here?.steps?.[shown.step];
-  const undrawn = stepNowAt?.missing === "failed" || (stepNowAt?.pic && stepDocs.get(stepNowAt.pic.rev) === "failed") ? "This build could not be drawn here. The room keeps the picture before it." : null;
+  const undrawn =
+    stepNowAt?.missing === "failed" || (stepNowAt?.pic && stepDocs.get(stepNowAt.pic.rev) === "failed")
+      ? "This build could not be drawn here. The room keeps the picture before it."
+      : unpainted === placeKey && !painted
+        ? "This slide could not be drawn here. The room keeps the picture before it."
+        : null;
 
   return (
     <StageContext.Provider value={stage}>

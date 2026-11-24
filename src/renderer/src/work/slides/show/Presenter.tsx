@@ -101,7 +101,9 @@ export function Presenter({ state, dispatch, doc, loading = false, error = null,
   const stage = useStage();
   const key = stage?.motionKey;
   const tell = stage?.shown;
-  const shown = useCallback(() => void (key !== undefined && tell?.(key, "presenter")), [key, tell]);
+  const shown = useCallback((drawn: { doc: PdfDoc; page: number }) => void (key !== undefined && tell?.(key, "presenter", drawn)), [key, tell]);
+  const fail = stage?.failed;
+  const failed = useCallback(() => void (key !== undefined && fail?.(key, "presenter")), [key, fail]);
   const here = pictureOf(slide, state.step);
   const coming = nextSlide ? pictureOf(nextSlide, next.kind === "build" ? next.step : 0) : null;
   return (
@@ -182,6 +184,7 @@ export function Presenter({ state, dispatch, doc, loading = false, error = null,
                 motion={stage?.motion ?? null}
                 motionKey={stage?.motionKey}
                 onShown={shown}
+                onFailed={failed}
               >
                 <SlideMedia slide={slide} step={state.step} surface="presenter" width={now_.width} height={now_.height} />
               </SlidePicture>

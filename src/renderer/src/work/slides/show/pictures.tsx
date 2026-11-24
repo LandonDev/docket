@@ -48,7 +48,23 @@ export function fit(room: { width: number; height: number }, aspect: number): { 
  * over the main window's (the engine reads the main window's): a slideshow
  * on a projector is painted for the projector.
  */
-const Layer = memo(function Layer({ doc, page, width, ratio, shown, onPainted }: { doc: PdfDoc; page: number; width: number; ratio: number; shown: boolean; onPainted(drawn: { doc: PdfDoc; page: number }): void }) {
+const Layer = memo(function Layer({
+  doc,
+  page,
+  width,
+  ratio,
+  shown,
+  onPainted,
+  onFailed,
+}: {
+  doc: PdfDoc;
+  page: number;
+  width: number;
+  ratio: number;
+  shown: boolean;
+  onPainted(drawn: { doc: PdfDoc; page: number }): void;
+  onFailed(drawn: { doc: PdfDoc; page: number }): void;
+}) {
   const host = useRef<HTMLDivElement>(null);
   useEffect(() => hold(doc, page), [doc, page]);
   useEffect(() => {
@@ -56,13 +72,14 @@ const Layer = memo(function Layer({ doc, page, width, ratio, shown, onPainted }:
     if (!el || width <= 0) return;
     const job = new AbortController();
     const scale = (width * ratio) / (doc.size(page).width * CSS_PER_POINT);
-    // A paint refused (the render was replaced under it) leaves what the layer holds: the picture before stays up.
+    // A paint refused (the render was replaced under it) leaves what the layer holds: the picture before stays up. One
+    // that failed is said, so whoever shows it can say why the picture before stays.
     doc.paint(page, el, scale, null, job.signal).then(
       () => void (job.signal.aborted || onPainted({ doc, page })),
-      () => undefined,
+      () => void (job.signal.aborted || onFailed({ doc, page })),
     );
     return () => job.abort();
-  }, [doc, page, width, ratio, onPainted]);
+  }, [doc, page, width, ratio, onPainted, onFailed]);
   return <div ref={host} data-show-page={page} aria-hidden="true" className={`absolute inset-0 ${shown ? "" : "invisible"}`} />;
 });
 
@@ -106,8 +123,10 @@ export interface SlidePictureProps {
   /** the slide's title, drawn while there is no picture of it */
   title?: string;
   className?: string;
-  /** told once the picture asked for is painted, so a clock waits for what the room sees */
-  onShown?(): void;
+  /** told once the picture asked for is painted, with which it is, so a clock waits for what the room sees */
+  onShown?(drawn: { doc: PdfDoc; page: number }): void;
+  /** told when the picture asked for could not be painted: the one before stays up */
+  onFailed?(): void;
 }
 
 /** One page of one render: the same page of the render that replaces it is another layer. */
@@ -128,7 +147,7 @@ const nameOf = (doc: PdfDoc): number => names.get(doc) ?? (names.set(doc, ++name
  * picture outlives its render, so a save mid-talk never blanks the room's
  * screen).
  */
-export function SlidePicture({ doc, page, ahead = null, aheadDoc, width, ratio = 1, title = "", className = "", waiting = false, motion = null, motionKey, children, onShown }: SlidePictureProps) {
+export function SlidePicture({ doc, page, ahead = null, aheadDoc, width, ratio = 1, title = "", className = "", waiting = false, motion = null, motionKey, children, onShown, onFailed }: SlidePictureProps) {
   const [painted, setPainted] = useState<readonly Drawn[]>([]);
   const [last, setLast] = useState<Drawn | null>(null);
   const [onPainted] = useState(() => (drawn: Drawn): void => setPainted((was) => (was.some((d) => same(d, drawn)) ? was : [...was, drawn])));
@@ -140,9 +159,17 @@ export function SlidePicture({ doc, page, ahead = null, aheadDoc, width, ratio =
   useEffect(() => {
     if (wantedDone && wanted && !same(wanted, last)) setLast(wanted);
   });
+  const wantedDoc = wanted?.doc;
+  const wantedPage = wanted?.page;
   useEffect(() => {
-    if (wantedDone) onShown?.();
-  }, [wantedDone, onShown]);
+    if (wantedDone && wantedDoc && wantedPage !== undefined) onShown?.({ doc: wantedDoc, page: wantedPage });
+  }, [wantedDone, wantedDoc, wantedPage, onShown]);
+  const [failedDraws, setFailedDraws] = useState<readonly Drawn[]>([]);
+  const [onPaintFailed] = useState(() => (drawn: Drawn): void => setFailedDraws((was) => (was.some((d) => same(d, drawn)) ? was : [...was, drawn])));
+  const wantedFailed = !!wanted && failedDraws.some((d) => same(d, wanted));
+  useEffect(() => {
+    if (wantedFailed) onFailed?.();
+  }, [wantedFailed, onFailed]);
   const nextDoc = aheadDoc ?? doc;
   const next: Drawn | null = nextDoc && typeof ahead === "number" && ahead >= 1 && ahead <= nextDoc.pages ? { doc: nextDoc, page: ahead } : null;
 
@@ -186,7 +213,7 @@ export function SlidePicture({ doc, page, ahead = null, aheadDoc, width, ratio =
         const z = same(d, shown) ? 2 : same(d, leaving) ? 1 : 0;
         return (
           <div key={key} data-layer={key} className="absolute inset-0" style={{ zIndex: z }}>
-            <Layer doc={d.doc} page={d.page} width={width} ratio={ratio} shown={same(d, shown) || same(d, leaving)} onPainted={onPainted} />
+            <Layer doc={d.doc} page={d.page} width={width} ratio={ratio} shown={same(d, shown) || same(d, leaving)} onPainted={onPainted} onFailed={onPaintFailed} />
           </div>
         );
       })}

@@ -822,6 +822,44 @@ describe("a show's builds, its own clock and its clips", () => {
     await act(async () => handle.end());
   });
 
+  it("says a slide whose picture could not be painted, and holds its clock", async () => {
+    const host = showHost(showDeck(2, { slides: deck(2, { 1: { transition: { kind: "fade", ms: 500, after: 30 } } }) }));
+    const places: Record<string, ReturnType<typeof place>> = {};
+    const doc = pages(2);
+    const broken = { ...doc, paint: async () => Promise.reject(new Error("the canvas is gone")) };
+    let handle!: Awaited<ReturnType<typeof startShow>>;
+    await act(async () => {
+      handle = await startShow({ host, title: "Deck", from: "start", mode: "windowed", engine: { open: async () => broken }, native: null, open: (surface) => (places[surface] = place(surface)) });
+    });
+    await waitFor(() => expect(within(places.presenter.body).getByRole("status").textContent).toBe("This slide could not be drawn here. The room keeps the picture before it."));
+    await new Promise((r) => setTimeout(r, 80));
+    expect(text(places.presenter, "[data-show-place]")).toBe("1 / 2");
+    await act(async () => handle.end());
+  });
+
+  it("counts a slide's time again from the new picture when the file changes under it, never from the old one's paint", async () => {
+    const slides = deck(3, { 1: { transition: { kind: "fade", ms: 500, after: 150 } } });
+    const host = showHost(showDeck(3, { slides }));
+    const places: Record<string, ReturnType<typeof place>> = {};
+    let paint!: () => void;
+    const painting = new Promise<void>((go) => (paint = go));
+    const later = pages(3);
+    const slow = { ...later, paint: (...a: Parameters<typeof later.paint>) => painting.then(() => later.paint(...a)) };
+    const engine = { open: async (file: { size: number }) => (file.size === 2000 ? slow : pages(3)) };
+    let handle!: Awaited<ReturnType<typeof startShow>>;
+    await act(async () => {
+      handle = await startShow({ host, title: "Deck", from: "start", mode: "windowed", engine, native: null, open: (surface) => (places[surface] = place(surface)) });
+    });
+    await waitFor(() => expect(seen(places.audience)).toBe("Slide 1"));
+    // The file changes: the same place, a new picture still painting.
+    act(() => host.change(showDeck(3, { slides, rev: "r2", render: { rev: "f2", size: 2000, pages: 3 } })));
+    await new Promise((r) => setTimeout(r, 300));
+    expect(text(places.presenter, "[data-show-place]")).toBe("1 / 3");
+    await act(async () => paint());
+    await waitFor(() => expect(text(places.presenter, "[data-show-place]")).toBe("2 / 3"));
+    await act(async () => handle.end());
+  });
+
   it("moves on by itself after a slide's time, in both windows", async () => {
     const { places, handle } = await start(deck(3, { 1: { transition: { kind: "fade", ms: 500, after: 30 } } }));
     await waitFor(() => expect(text(places.presenter, "[data-show-place]")).toBe("2 / 3"));

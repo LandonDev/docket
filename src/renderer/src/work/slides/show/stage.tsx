@@ -27,8 +27,10 @@ export interface ShowStage {
   motion: ShowMotion;
   motionKey: string;
   media: MediaRun | null;
-  /** the room's picture of the place `key` is painted: in the slideshow, or the presenter's view when it runs alone */
-  shown?(key: string, where: "audience" | "presenter"): void;
+  /** the room's picture of the place `key` is painted, with which picture: in the slideshow, or the presenter's view when it runs alone */
+  shown?(key: string, where: "audience" | "presenter", drawn: { doc: PdfDoc; page: number }): void;
+  /** the room's picture of the place `key` could not be painted */
+  failed?(key: string, where: "audience" | "presenter"): void;
 }
 
 export const StageContext = createContext<ShowStage | null>(null);
@@ -46,7 +48,8 @@ type Opened = PdfDoc | "opening" | "failed";
 
 /**
  * Each step picture a show is near (the slide shown and the next press's), opened from the host by its `rev` and
- * let go once the show has moved two slides on. A picture that fails to read is the slide's own page from then on.
+ * let go once the show has moved two slides on. A picture that fails to read is held for the room like one not made
+ * (Show.tsx), never the slide whole.
  */
 export function useStepDocs(engine: PdfEngine, read: ((rev: string, offset: number, length: number) => Promise<Uint8Array>) | undefined, near: ReadonlyArray<{ rev: string; size: number }>): ReadonlyMap<string, Opened> {
   const [docs, setDocs] = useState<ReadonlyMap<string, Opened>>(new Map());

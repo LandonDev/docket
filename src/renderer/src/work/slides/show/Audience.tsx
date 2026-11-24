@@ -64,7 +64,9 @@ export function Audience({ state, dispatch, doc, error = null, ratio = 1, picks 
   const stage = useStage();
   const key = stage?.motionKey;
   const tell = stage?.shown;
-  const shown = useCallback(() => void (key !== undefined && tell?.(key, "audience")), [key, tell]);
+  const shown = useCallback((drawn: { doc: PdfDoc; page: number }) => void (key !== undefined && tell?.(key, "audience", drawn)), [key, tell]);
+  const fail = stage?.failed;
+  const failed = useCallback(() => void (key !== undefined && fail?.(key, "audience")), [key, fail]);
   const here = pictureOf(slide, state.step);
   // The next press's picture, painted ahead under this one: a build of this slide, or the next slide as it comes.
   const ahead = next.kind === "build" ? pictureOf(slide, next.step) : next.kind === "slide" ? pictureOf(state.slides[next.at], 0) : null;
@@ -120,6 +122,7 @@ export function Audience({ state, dispatch, doc, error = null, ratio = 1, picks 
             motion={stage?.motion ?? null}
             motionKey={stage?.motionKey}
             onShown={shown}
+            onFailed={failed}
           >
             <SlideMedia slide={slide} step={state.step} surface="audience" width={size.width} height={Math.round(size.width / aspectOf(doc, slide.page))} presses={picks} />
           </SlidePicture>
