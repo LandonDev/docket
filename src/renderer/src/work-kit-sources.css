@@ -101,6 +101,7 @@
 @source "../../../node_modules/work-kit/src/format/keys.ts";
 @source "../../../node_modules/work-kit/src/format/layer.tsx";
 @source "../../../node_modules/work-kit/src/format/theme.ts";
+@source "../../../node_modules/work-kit/src/formats/classic.ts";
 @source "../../../node_modules/work-kit/src/formats/clipboard/index.ts";
 @source "../../../node_modules/work-kit/src/formats/diff/carry.ts";
 @source "../../../node_modules/work-kit/src/formats/diff/index.ts";

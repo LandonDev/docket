@@ -500,6 +500,23 @@ for as long as the document is the same one:
   value. Both kept the person's tracked insertion, the footnote,
   font, size, highlight, underline, Title style, paragraph spacing, two
   columns, and the header and footer with their page fields.
+- **The Word file is spaced as the document.** A styled document's Word file
+  carries its own styles: Normal's face, size, line and room as the defaults
+  every paragraph takes, each named style's own, a paragraph's own spacing on
+  it alone. A classic document's (one he has not styled, a new one among
+  them) is spaced as its PDF: work-kit's `CLASSIC_LOOK` holds the numbers the
+  print page is drawn with and the Word writer reads the same ones. Calibri
+  11 pt on a 1.6 line with 0.8 em under a paragraph, the headings' sizes and
+  room, a list's lines together with the page's room after its last, a
+  quote's bar, code's box, the print's margins (22 mm and 20 mm). Until
+  2026-11-24 a classic Word file had no spacing at all and fell back to
+  Times New Roman. Read back, the spacing lands in the styles, never in every
+  paragraph; a Word file's own spacing is kept on an export and on a save in
+  place. Line height is written as Word's multiple of the line
+  (`lineRule="auto"`), which Word and LibreOffice take as a multiple of the
+  font's own line (about 1.22 of the size for Calibri), where the page takes
+  it of the size: so a Word file's lines stand taller than the PDF's
+  (LibreOffice 26.8.3: a body line 21.5 pt against the PDF's 17.6 pt).
 - **Print…** hands the PDF to this computer's own PDF viewer, which prints
   it (`work/formats/printOut.ts`, work-editors.md "Print"): the render
   Preview shows, so what goes to paper is the pages he checked. In
