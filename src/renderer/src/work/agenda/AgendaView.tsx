@@ -79,8 +79,9 @@ export function Head({ workspace }: WorkViewProps) {
       {view !== "list" ? (
         <>
           <span className="hidden truncate text-[13px] text-muted-foreground tabular-nums @min-[40rem]/viewhead:inline">{formatPeriod(view, day, weekStart)}</span>
-          {/* Narrow, the grids show weekdays and dates alone: the period stays here, short, so Previous and Next never lose the date. */}
-          <span data-agenda-short-period className="truncate text-[13px] text-muted-foreground tabular-nums @min-[40rem]/viewhead:hidden">
+          {/* Narrow, the grids show weekdays and dates alone: the period stays here, short and whole (the view's name gives way
+              before it, since the column already names the view), so Previous and Next never lose the date. */}
+          <span data-agenda-short-period className="shrink-0 text-[13px] whitespace-nowrap text-muted-foreground tabular-nums @min-[40rem]/viewhead:hidden">
             {view === "month" ? shortMonth(day) : shortWeek(day)}
           </span>
           {/* Under 26rem of header, Today gives way so the short period keeps its room: Previous and Next stay. */}

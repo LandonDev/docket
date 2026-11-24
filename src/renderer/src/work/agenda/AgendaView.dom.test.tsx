@@ -41,6 +41,8 @@ describe("the Agenda's header", () => {
     const { container } = render(<Head {...({ workspace: { id: "ws" } } as never)} />);
     fireEvent.click(screen.getByRole("button", { name: "Week" }));
     expect(screen.getByRole("button", { name: "Today" }).className).toContain("@max-[26rem]/viewhead:hidden");
+    // The short period is never cut: the view's name gives way before it.
+    expect(container.querySelector("[data-agenda-short-period]")!.className).toContain("shrink-0");
     expect(container.querySelector('[data-agenda-views="toggle"]')!.className).toContain("hidden @min-[40rem]/viewhead:flex");
     const select = container.querySelector('[data-agenda-views="select"]')!;
     expect(select.className).toContain("@min-[40rem]/viewhead:hidden");
