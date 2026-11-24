@@ -22,6 +22,33 @@ export interface ShowRemote {
   press(showId: string, act: ShowPressAct, rev: number, at?: number): Promise<ShowPressAnswer>;
   /** a show of this deck changed, began or ended (null) */
   onLive(listener: (showId: string, live: ShowLive | null) => void): () => void;
+  /** the wire came back after a cut, so pushes may have been missed */
+  onOpen?(listener: () => void): () => void;
+}
+
+/**
+ * A remote whose press answers are told as the push would tell them: a press dropped as the show moved on or ended
+ * answers with the show as it is (null once it ended), so a clicker that missed a push while its socket was down
+ * catches up with its next press instead of pressing a stale show, or a dead one, again and again.
+ */
+export function withPressAnswers(remote: ShowRemote): ShowRemote {
+  const heard = new Set<(showId: string, live: ShowLive | null) => void>();
+  return {
+    ...remote,
+    press: async (showId, act, rev, at) => {
+      const answer = await remote.press(showId, act, rev, at);
+      if ("dropped" in answer) for (const listener of heard) listener(showId, answer.live);
+      return answer;
+    },
+    onLive: (listener) => {
+      heard.add(listener);
+      const off = remote.onLive(listener);
+      return () => {
+        heard.delete(listener);
+        off();
+      };
+    },
+  };
 }
 
 /** A held call is answered within 20 s by the host; past a minute it is the socket that failed. */
@@ -29,7 +56,7 @@ const RUN_TIMEOUT_MS = 60_000;
 
 export function linkShowRemote(environmentId: string, itemId: string): ShowRemote {
   const link = (): ReturnType<typeof registry.linkOf> => registry.linkOf(environmentId);
-  return {
+  return withPressAnswers({
     itemId,
     run: (showId, live, answered) => link().request("work.slides.show.run", { itemId, showId, live, ...(answered ? { answered } : {}) }, { timeoutMs: RUN_TIMEOUT_MS, retry: false }),
     state: async () => (await link().request<{ shows: ShowLive[] }>("work.slides.show.state", { itemId })).shows,
@@ -38,7 +65,8 @@ export function linkShowRemote(environmentId: string, itemId: string): ShowRemot
       link().onPush((push) => {
         if (push.push === "work.slides.show" && push.itemId === itemId) listener(push.showId, push.live);
       }),
-  };
+    onOpen: (listener) => link().onOpen(listener),
+  });
 }
 
 /** The show's public state, as a clicker sees it; `rev` is the caller's. */
@@ -185,13 +213,18 @@ export function useLiveShows(remote: ShowRemote | null): ShowLive[] {
         return next ? [...rest, next] : rest;
       }),
     );
-    remote.state().then(
-      (got) => live && setShows(got),
-      () => undefined,
-    );
+    const read = (): void =>
+      void remote.state().then(
+        (got) => live && setShows(got),
+        () => undefined,
+      );
+    read();
+    // Back after a cut: the pushes it missed are read whole.
+    const offOpen = remote.onOpen?.(read) ?? (() => undefined);
     return () => {
       live = false;
       off();
+      offOpen();
     };
   }, [remote]);
   return shows;

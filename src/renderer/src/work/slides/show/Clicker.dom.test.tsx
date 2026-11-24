@@ -11,7 +11,7 @@ import { useState } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ShowLive, ShowPress, ShowPressAct, ShowPressAnswer } from "@shared/contract-work-slides";
 import { Clicker, CLICKER_WIDTH, useClickerShow } from "./Clicker";
-import { actOf, liveOf, usePublish, type LiveState, type ShowRemote } from "./remote";
+import { actOf, liveOf, usePublish, withPressAnswers, type LiveState, type ShowRemote } from "./remote";
 import { showReducer, startShowState, type ShowState, type Slide } from "./state";
 import { startTimer } from "./timer";
 
@@ -37,6 +37,7 @@ function fakeRemote() {
   const runs: Array<{ showId: string; live: LiveState | null; answered?: { seq: number; applied: boolean } }> = [];
   const waiting: Array<(answer: { press: ShowPress | null }) => void> = [];
   const listeners = new Set<(showId: string, live: ShowLive | null) => void>();
+  const opens = new Set<() => void>();
   let shows: ShowLive[] = [];
   const remote: ShowRemote = {
     itemId: "deck1",
@@ -50,6 +51,7 @@ function fakeRemote() {
       return { applied: true, live: null };
     },
     onLive: (fn) => (listeners.add(fn), () => listeners.delete(fn)),
+    onOpen: (fn) => (opens.add(fn), () => void opens.delete(fn)),
   };
   return {
     remote,
@@ -58,6 +60,7 @@ function fakeRemote() {
     waiting,
     set: (next: ShowLive[]) => (shows = next),
     push: (showId: string, l: ShowLive | null) => listeners.forEach((fn) => fn(showId, l)),
+    reopen: () => opens.forEach((fn) => fn()),
   };
 }
 
@@ -217,6 +220,27 @@ describe("the deck's item at phone width", () => {
     act(() => wire.push("show-abc12345", null));
     expect(document.querySelector("[data-clicker]")).toBeNull();
     expect(document.querySelector("[data-canvas]")).toBeTruthy();
+  });
+
+  it("catches up with a show it missed the push of: a press dropped as it moved or ended, and the wire coming back", async () => {
+    const wire = fakeRemote();
+    wire.set([live()]);
+    let answer: ShowPressAnswer = { dropped: "moved", live: live({ slide: 6, rev: 9 }) };
+    wire.remote.press = async () => answer;
+    const remote = withPressAnswers(wire.remote);
+    render(<Seat remote={remote} />);
+    expect(await screen.findByRole("region", { name: "Clicker: Sponsor deck" })).toBeTruthy();
+    // The show moved on while his socket was down: his press is dropped, and its answer brings him there.
+    await act(async () => void fireEvent.click(document.querySelector("[data-clicker-next]")!));
+    expect(document.querySelector("[data-clicker-place]")!.textContent).toBe("6 / 12");
+    // It ended meanwhile: the next press's answer takes the clicker away.
+    answer = { dropped: "ended", live: null };
+    await act(async () => void fireEvent.click(document.querySelector("[data-clicker-next]")!));
+    expect(document.querySelector("[data-clicker]")).toBeNull();
+    // A show begun while the wire was cut is read once it comes back.
+    wire.set([live({ slide: 2, rev: 11 })]);
+    await act(async () => wire.reopen());
+    expect(document.querySelector("[data-clicker-place]")!.textContent).toBe("2 / 12");
   });
 
   it("stays the canvas on a wide page", async () => {
