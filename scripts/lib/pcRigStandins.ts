@@ -9,7 +9,7 @@
  * credentials file into G's vault and never printed; the proof's own Remove takes it back from the PC.
  */
 import { randomBytes } from 'node:crypto'
-import { createReadStream, existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
+import { createReadStream, existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { createServer as createHttp, type Server } from 'node:http'
 import { homedir } from 'node:os'
 import { basename, join } from 'node:path'
@@ -83,6 +83,9 @@ export interface Standins {
 
 /** Starts and wires the stand-ins; G holds the box as the giver and its Work signed in to the stand-in LifeOS. */
 export async function startStandins(root: string, opts: { lifeosToken: string; feedDir: string; log: (m: string) => void }): Promise<Standins> {
+  // Each run starts from nothing: no database, vault or workspace of a run before it.
+  rmSync(root, { recursive: true, force: true })
+  mkdirSync(root, { recursive: true })
   const lent = lentSignIn()
   const fake = await fakeProvider(lent)
   const feed = await feedServer(opts.feedDir)
@@ -90,6 +93,21 @@ export async function startStandins(root: string, opts: { lifeosToken: string; f
   const lifeosUrl = `http://127.0.0.1:${PORTS.lifeos}`
   const box = standIn(root, 'box', PORTS.box, { headless: true, env: { TEMP_CODE_FAKE_PROVIDERS: fakeUrl, TEMP_CODE_REMOTE_TRACE: '1', TEMP_CODE_LIFEOS_URL: lifeosUrl } })
   const mac = standIn(root, 'mac', PORTS.mac, { headless: false, debug: PORTS.macDebug, env: { TEMP_CODE_FAKE_PROVIDERS: fakeUrl, TEMP_CODE_BUILD_PLATFORM: 'darwin', TEMP_CODE_LIFEOS_URL: lifeosUrl } })
+  const close = async (): Promise<void> => {
+    await stop(mac)
+    await stop(box)
+    fake.close()
+    feed.close()
+  }
+  try {
+    return await wire()
+  } catch (err) {
+    // Nothing it started outlives a start that failed.
+    await close()
+    throw err
+  }
+
+  async function wire(): Promise<Standins> {
   launch(box, true)
   if (!(await isUp(box))) throw new Error('the stand-in box did not start')
   await rpc(box, 'remote.settings.set', { publicOrigin: `http://10.0.2.2:${PORTS.box}` })
@@ -112,11 +130,7 @@ export async function startStandins(root: string, opts: { lifeosToken: string; f
     box,
     mac,
     workspace: ws.id,
-    close: async () => {
-      await stop(mac)
-      await stop(box)
-      fake.close()
-      feed.close()
-    }
+    close
+  }
   }
 }
