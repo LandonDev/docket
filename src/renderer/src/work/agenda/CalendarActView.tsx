@@ -2,10 +2,12 @@ import type { ActViewProps } from "../acts/registry";
 import { SectorDot } from "../../chrome/WorkspaceGlyph";
 import { cn } from "../../lib/cn";
 import { useState } from "react";
-import { Button } from "../../components/ui/button";
+import { BusyLabel, Button } from "../../components/ui/button";
 import { Skeleton } from "../../components/ui/skeleton";
 import { addDays, startOfDay } from "work-kit/views/lib/agenda";
-import { type LifeosSession, useLifeosQuery, useLifeosSession } from "../shell/lifeos";
+import { type LifeosSession, reopenLifeos, useLifeosQuery, useLifeosSession } from "../shell/lifeos";
+import { openConnections } from "../shell/open";
+import { downOf, downPress, downWords, type LifeosDown } from "../today/lifeosDown";
 import { dayLines, opFields, opStart, type CalendarOp, type DayEvent } from "./calendarAct";
 
 /**
@@ -44,6 +46,10 @@ function Body({ op, event, session, sector, read = "none", onRetry }: Props & { 
   const fields = opFields(op, event);
   // The facts only the event can give: while it is read, their bones; once the read failed or found nothing, a line says so.
   const missing = (["Event", "When"] as const).filter((label) => !fields.some((f) => f.label === label));
+  // A session that cannot read fails every query at once, and a query's Retry asks the same session again: the
+  // session's own line and press take both reads' places, once. The hold is untouched: this is what he reads.
+  const down = downOf(session);
+  const reads = (read !== "none" && missing.length > 0) || from !== null;
   return (
     <div data-slot="act-payload" className="flex min-w-0 flex-col gap-5">
       <dl className="grid grid-cols-[72px_minmax(0,1fr)] gap-x-3 gap-y-1.5 text-[13px] leading-5">
@@ -65,7 +71,8 @@ function Body({ op, event, session, sector, read = "none", onRetry }: Props & { 
         ))}
       </dl>
       {read === "loading" && missing.length ? <span role="status" className="sr-only">Reading the event</span> : null}
-      {(read === "failed" || read === "gone") && missing.length ? (
+      {down && reads ? <SessionLine down={down} environmentId={session.environmentId} /> : null}
+      {!down && (read === "failed" || read === "gone") && missing.length ? (
         <p data-event-read={read} className="flex min-h-7 items-center gap-2 text-[13px] text-muted-foreground">
           {read === "failed" ? "Couldn't read the event" : "The event is no longer in LifeOS"}
           {read === "failed" && onRetry ? (
@@ -75,8 +82,38 @@ function Body({ op, event, session, sector, read = "none", onRetry }: Props & { 
           ) : null}
         </p>
       ) : null}
-      {from !== null ? <DayRead op={op} event={event} session={session} sector={sector} from={from} /> : null}
+      {from !== null && !down ? <DayRead op={op} event={event} session={session} sector={sector} from={from} /> : null}
     </div>
+  );
+}
+
+/**
+ * The LifeOS session itself is down: its state in the shared words (`downWords`), with the one press that can help.
+ * Retry asks the host for the session again, and the reads start once it has one; Sign in opens Settings → Connections.
+ */
+function SessionLine({ down, environmentId }: { down: LifeosDown; environmentId: string }) {
+  const [busy, setBusy] = useState(false);
+  const press = downPress(down);
+  const retry = (): void => {
+    setBusy(true);
+    // A Retry that is not answered either leaves the line as it is: it says so already.
+    void reopenLifeos(environmentId, null)
+      .catch(() => {})
+      .finally(() => setBusy(false));
+  };
+  return (
+    <p data-session-down={down} className="flex min-h-7 items-center gap-2 text-[13px] text-muted-foreground">
+      {downWords(down)}
+      {press === "retry" ? (
+        <Button variant="ghost" size="xs" disabled={busy} onClick={retry}>
+          <BusyLabel busy={busy} label="Retry" />
+        </Button>
+      ) : press === "sign-in" ? (
+        <Button variant="ghost" size="xs" onClick={openConnections}>
+          Sign in
+        </Button>
+      ) : null}
+    </p>
   );
 }
 

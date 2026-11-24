@@ -17,7 +17,7 @@ import { resetOutboxStore } from "./store";
  * mail LifeOS has not yet said went (`queued`: queued twelve minutes on, sent,
  * back in drafts). Also: `empty` (nothing waits), `failed` (Waiting with a send that failed, its reason in
  * the row and the detail), `grants` (the grants sheet over Sent), `kinds` (Waiting with a held item of six kinds; `pick` 0 is the
- * mail, 1 an invite, 5 a payload that could not be read, 6 a reply whose event LifeOS did not read), `given` (Sent from a computer whose key may not grant) and `loadingAct` (Sent while the mail's own view loads).
+ * mail, 1 an invite, 5 a payload that could not be read, 6 a reply whose event LifeOS did not read; the calendar acts' LifeOS session did not answer), `given` (Sent from a computer whose key may not grant) and `loadingAct` (Sent while the mail's own view loads).
  * Rendered by nothing in the app.
  */
 
@@ -180,6 +180,10 @@ const answers = (method: string, params: { show?: string } = {}): unknown => {
       return { offers: state === "offer" || state === "given" ? [OFFER] : [] };
     case "work.outbox.results":
       return { results: [] };
+    case "work.lifeos.status":
+      // The held calendar acts read LifeOS: in `kinds` its session did not answer, so their details say so once, with Retry.
+      if (state === "kinds") return { lifeos: { state: "unreachable", since: at(20, 9, 58), error: "timed out" }, keys: [] };
+      break;
     case "work.outbox.get":
       return state === "failed" ? FAILED : state === "kinds" ? pickedKinds()[pick] : state === "edits" ? waitingEdits()[pick] : sentList()[pick];
   }

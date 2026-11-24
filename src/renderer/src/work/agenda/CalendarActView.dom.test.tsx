@@ -3,10 +3,19 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-const day = vi.hoisted(() => ({ fail: true, loading: false, asked: 0, event: "none" as "none" | "loading" | "failed" | "gone" | "ready" }));
+const day = vi.hoisted(() => ({
+  fail: true,
+  loading: false,
+  asked: 0,
+  event: "none" as "none" | "loading" | "failed" | "gone" | "ready",
+  // The session's own state: connected and on its way unless a test says it is down.
+  session: { state: "connected", withheld: false } as { state: string; withheld: boolean },
+  reopened: [] as string[],
+}));
 vi.mock("../shell/lifeos", async (original) => ({
   ...(await original<object>()),
-  useLifeosSession: () => ({ environmentId: "box", sector: null, client: null, state: "connected" }),
+  useLifeosSession: () => ({ environmentId: "box", sector: null, client: null, state: day.session.state, ...(day.session.withheld ? { withheld: true } : {}) }),
+  reopenLifeos: async (env: string) => void day.reopened.push(env),
   useLifeosQuery: (_s: unknown, name: string) => {
     if (name === "events:get") {
       if (day.event === "loading") return { status: "loading" };
@@ -18,7 +27,9 @@ vi.mock("../shell/lifeos", async (original) => ({
     return day.fail ? { status: "failed", error: "Server error" } : { status: "ready", value: [{ _id: "e1", title: "Scrim night", sector: "purdue", startsAt: Date.UTC(2026, 10, 21, 15), allDay: false }] };
   },
 }));
+vi.mock("../shell/open", () => ({ openConnections: vi.fn() }));
 const { View } = await import("./CalendarActView");
+const { openConnections } = await import("../shell/open");
 
 afterEach(cleanup);
 
@@ -91,5 +102,50 @@ describe("a held invite's guests", () => {
     expect(screen.getByText("dana.lee@purdue.edu").className).toContain("text-muted-foreground");
     // An address alone is the guest's only name: drawn in the row's ink.
     expect(screen.getByText("sam@arena.com").className).not.toContain("text-muted-foreground");
+  });
+});
+
+describe("a held reply whose LifeOS session is down", () => {
+  const reply = { id: "op2", kind: "accept", eventId: "ev1", account: "landon@unify.dev" };
+  const draw = () => render(<View item={{ kind: "calendar.op", payload: reply, sector: "unify" } as never} env="box" />);
+  afterEach(() => {
+    day.event = "none";
+    day.session = { state: "connected", withheld: false };
+    day.reopened = [];
+  });
+
+  it("says the session's state once, in place of both reads, with Retry that asks the host for the session again", () => {
+    // The queries fail with the session's words, as a session that cannot read fails them.
+    day.event = "failed";
+    day.fail = true;
+    day.session = { state: "unreachable", withheld: false };
+    const { container } = draw();
+    expect(container.querySelector("[data-event-read]")).toBeNull();
+    expect(container.querySelector("[data-day-failed]")).toBeNull();
+    const line = container.querySelector("[data-session-down=unreachable]")!;
+    expect(line.textContent).toBe("LifeOS did not answerRetry");
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    expect(day.reopened).toEqual(["box"]);
+    // The reply itself still reads whole.
+    expect(screen.getByText("Yes")).toBeTruthy();
+  });
+
+  it("offers no Retry where asking again cannot help, and Sign in where a sign-in is missing", () => {
+    day.event = "failed";
+    day.session = { state: "unreachable", withheld: true };
+    const { container, unmount } = draw();
+    expect(container.querySelector("[data-session-down=withheld]")!.textContent).toBe("This computer cannot read LifeOS through this host");
+    expect(screen.queryByRole("button")).toBeNull();
+    unmount();
+    day.session = { state: "pairing", withheld: false };
+    const pairing = draw();
+    expect(pairing.container.querySelector("[data-session-down=pairing]")!.textContent).toBe("The LifeOS sign-in waits for your approval");
+    expect(screen.queryByRole("button")).toBeNull();
+    pairing.unmount();
+    day.session = { state: "signed-out", withheld: false };
+    const out = draw();
+    expect(out.container.querySelector("[data-session-down=signed-out]")!.textContent).toBe("Not signed in to LifeOSSign in");
+    fireEvent.click(screen.getByRole("button", { name: "Sign in" }));
+    expect(openConnections).toHaveBeenCalledTimes(1);
   });
 });
