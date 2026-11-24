@@ -19,13 +19,13 @@ import { FakeCarrier, TEST_LIBRARY } from './testing'
  * methods, and Collect responses and an agent's make held for his press.
  */
 
-const scopes = vi.hoisted(() => new Map<string, { workspaceId: string | null; sector: string | null; routineRunId?: string | null }>())
+const scopes = vi.hoisted(() => new Map<string, { workspaceId: string | null; sector: string | null; routineRunId?: string | null; away?: boolean }>())
 vi.mock('../scope', async (orig) => ({
   ...(await orig<typeof import('../scope')>()),
   scopePart: () => ({
     scopeOf: (id: string): WorkScope | null => {
       const s = scopes.get(id)
-      return s ? { sessionId: id, workspaceId: s.workspaceId, sector: s.sector, host: 'env_test', away: false, routineRunId: s.routineRunId ?? null, shared: () => false } : null
+      return s ? { sessionId: id, workspaceId: s.workspaceId, sector: s.sector, host: 'env_test', away: s.away ?? false, routineRunId: s.routineRunId ?? null, shared: () => false } : null
     },
     createWorkspace: async () => {
       throw new Error('not in this test')
@@ -195,5 +195,59 @@ describe('Collect responses, held', () => {
     expect(closed.state).toBe('closed')
     const open = await call<MsFormView>('work.msforms.close', { workspaceId: 'w1', formId: view.formId, open: true })
     expect(open.state).toBe('collecting')
+  })
+})
+
+describe("an agent's make, held", () => {
+  const payload = (collect: boolean) => ({
+    workspaceId: 'w1',
+    sessionId: 't1',
+    folder: { libraryId: TEST_LIBRARY.id, path: 'Esports', siteUrl: 'https://purdue0.sharepoint.com/sites/RecWell' },
+    title: 'Spring LAN survey',
+    description: '',
+    questions: [{ title: 'Which night?', type: 'choice', options: ['Mon', 'Tue'], required: true }],
+    settings: { accepting: false, orgOnly: true, recordName: true, onePerPerson: true },
+    collect,
+    content: 'Spring LAN survey'
+  })
+
+  it('stays held while he is away, takes no grant, and makes nothing until his press', async () => {
+    scopes.set('t1', { workspaceId: 'w1', sector: 'purdue', away: true })
+    const item = work.ctx.held.create({ kind: 'msform.make', sessionId: 't1', payload: payload(false) })
+    expect(item.state).toBe('held')
+    await expect(call('work.outbox.grant', { ref: item.ref, label: 'always' })).rejects.toThrow()
+    expect(carrier.calls).toEqual([])
+    const sent = await call<OutboxItem>('work.outbox.send', { ref: item.ref })
+    expect(sent.state).toBe('sent')
+    const [row] = new MsformsStore(db).list('w1')
+    expect(row).toMatchObject({ state: 'draft', title: 'Spring LAN survey', madeBy: 'agent:env_test:t1' })
+    expect(row.questions).toHaveLength(1)
+  })
+
+  it('with collect, makes and collects in one press', async () => {
+    const item = work.ctx.held.create({ kind: 'msform.make', sessionId: 't1', payload: payload(true) })
+    const sent = await call<OutboxItem>('work.outbox.send', { ref: item.ref })
+    expect(sent.state).toBe('sent')
+    const [row] = new MsformsStore(db).list('w1')
+    expect(row.state).toBe('collecting')
+    expect(carrier.calls.map((c) => c.op)).toEqual(['make', 'read', 'collect'])
+  })
+})
+
+describe('who can answer, held', () => {
+  it('changes only who can answer and keeps Accept responses as it was', async () => {
+    const view = await withQuestion()
+    const { ref } = await call<{ ref: OutboxItem['ref'] }>('work.msforms.publish', { workspaceId: 'w1', formId: view.formId })
+    await call('work.outbox.send', { ref })
+    await call('work.msforms.close', { workspaceId: 'w1', formId: view.formId, open: false })
+    const { holdPublish } = await import('./forms')
+    const { formReach } = await import('./reach')
+    const at = formReach(work.ctx, { kind: 'local', caps: [] }, { workspaceId: 'w1', formId: view.formId })
+    const wider = { ...at.row.settings, orgOnly: false }
+    const { held } = holdPublish(work.ctx, at, 'audience', wider, 't1')
+    expect(held!.state).toBe('held')
+    const sent = await call<OutboxItem>('work.outbox.send', { ref: held!.ref })
+    expect(sent.state).toBe('sent')
+    expect(carrier.forms.get(view.formId)!.settings).toMatchObject({ orgOnly: false, accepting: false })
   })
 })
