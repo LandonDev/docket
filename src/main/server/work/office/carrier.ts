@@ -188,13 +188,13 @@ export interface OfficeCarrier {
   /** the document's paragraphs as text */
   readDocument(doc: string): Promise<string[]>
   /** `tracked`: made with Track Changes on, so it waits as a revision he accepts or rejects. Answers how many places changed. */
-  /** `expect`: how many places the find should hold; a carrier that checks refuses (`refused`) and writes nothing when it holds another number */
-  editDocument(doc: string, edit: DocEdit, tracked: boolean, expect?: number): Promise<number>
+  /** `bound`: what his press was shown (`WriteBound`); a carrier that checks refuses (`refused`) and writes nothing when the file holds otherwise */
+  editDocument(doc: string, edit: DocEdit, tracked: boolean, bound?: WriteBound): Promise<number>
 
   presentations(): Promise<OfficeFile[]>
   readSlides(pres: string): Promise<SlideText[]>
   /** answers how many text runs changed */
-  replaceSlideText(pres: string, find: string, replace: string, expect?: number): Promise<number>
+  replaceSlideText(pres: string, find: string, replace: string, bound?: WriteBound): Promise<number>
 
   /** the addresses of Outlook's mail accounts */
   accounts(): Promise<string[]>
@@ -230,6 +230,17 @@ export interface OfficeCarrier {
 }
 
 /** A refusal in words the agent and the screen show as they are. */
+/**
+ * A held change as the press was shown it, for the carrier to check in the same step that writes (round 3): how many
+ * places hold the words, and each paragraph (Word) or text box (PowerPoint) that holds them by its place in the
+ * file's own order and its words. The Mac's scripts and the add-in read the file again and refuse on any difference;
+ * the Windows helper is sent it and does not check it yet (native code, docs/agents/work-office.md "Not proven").
+ */
+export interface WriteBound {
+  places: number
+  at: [number, string][]
+}
+
 export class OfficeError extends Error {
   constructor(
     message: string,
@@ -242,6 +253,12 @@ export class OfficeError extends Error {
   ) {
     super(message)
   }
+}
+
+/** A carrier's count, or the refusal it answered (it wrote nothing) as the carrier's `refused`. */
+export const refusedOr = (got: unknown): number => {
+  if (typeof got === 'object' && got && 'refused' in got) throw new OfficeError(String((got as { refused: unknown }).refused), 'refused')
+  return got as number
 }
 
 export const APP_NAMES: Record<OfficeApp, string> = {

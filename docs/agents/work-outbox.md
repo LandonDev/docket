@@ -96,12 +96,16 @@ idea on a file others can open is kept on his host and shown only to him.
   same slides, and the same paragraphs or boxes holding them, each in the same
   place in the file (`placed`; a hold from before round 2 is judged by the
   words of those paragraphs alone, `spots`, and one from before that by the
-  whole text, `base`). The carrier is told the count; the Mac's scripts read
-  the file again in the same call and write nothing on another count (stale).
-  The Windows helper and the add-in do not check it yet, so a match a
-  co-author adds between the host's read and theirs is still replaced there.
-  A short write is said in the result line and settles Sent, never offered
-  again. Else stale
+  whole text, `base`). The carrier is handed what the press was shown
+  (`WriteBound`, office/carrier.ts: the count and each holding paragraph or box
+  by its place and its words), through every wrapper (`withAddin` included, as
+  his Mac runs it). The Mac's scripts and the add-in read the file again in the
+  same step that writes and write nothing on another count or another place
+  (stale). The Windows helper is sent it and does not check it yet (native
+  code, built in the guest), so a match a co-author adds or moves between the
+  host's read and its own is still replaced there. A short write is said in the
+  result line and settles Sent, never offered again; the Mac counts a box as
+  changed only once none of the words is left in it. Else stale
   with the reason ("the words stand in 2 places now, not the 1 this was
   suggested for"), nothing written. A Google write is bound to the revision
   just read.

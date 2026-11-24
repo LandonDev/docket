@@ -343,10 +343,11 @@ export function comCarrier(deps: ComDeps = {}): ComCarrier {
     writeRange: (book, sheet, address, grid: OfficeCell[][]) => call('writeRange', { book, sheet, address, grid }),
     documents: () => call('documents', {}),
     readDocument: (doc) => call('readDocument', { doc }),
-    editDocument: (doc, edit, tracked) => call('editDocument', { doc, edit, tracked }),
+    // The binding goes to the helper, which does not check it yet (native code, work-office.md "Not proven").
+    editDocument: (doc, edit, tracked, bound) => call('editDocument', { doc, edit, tracked, ...(bound ? { bound } : {}) }),
     presentations: () => call('presentations', {}),
     readSlides: (pres) => call('readSlides', { pres }),
-    replaceSlideText: (pres, find, replace) => call('replaceSlideText', { pres, find, replace }),
+    replaceSlideText: (pres, find, replace, bound) => call('replaceSlideText', { pres, find, replace, ...(bound ? { bound } : {}) }),
     accounts: () => call('accounts', {}),
     listMail: (q) => call('listMail', q),
     readMail: (id) => call('readMail', { id }),

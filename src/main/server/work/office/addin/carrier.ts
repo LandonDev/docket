@@ -1,5 +1,5 @@
 import type { OfficeApp, OfficeAppState, OfficeCell } from '@shared/contract-work-office'
-import { OfficeError, type OfficeCarrier, type OfficeFile, type RangeGrid, type SlideText, type WorkbookInfo } from '../carrier'
+import { OfficeError, refusedOr, type OfficeCarrier, type OfficeFile, type RangeGrid, type SlideText, type WorkbookInfo } from '../carrier'
 import type { AddinApp, AddinHub } from './hub'
 import { openOfficeWeb } from './web'
 
@@ -79,9 +79,9 @@ export function withAddin(desktop: OfficeCarrier | null, hub: () => AddinHub | n
       const a = via('word', doc)
       return a ? ((await a.call('word.read', {})) as string[]) : orDesktop('That document').readDocument(doc)
     },
-    async editDocument(doc, edit, tracked) {
+    async editDocument(doc, edit, tracked, bound) {
       const a = via('word', doc)
-      return a ? ((await a.call('word.edit', { edit, tracked })) as number) : orDesktop('That document').editDocument(doc, edit, tracked)
+      return a ? refusedOr(await a.call('word.edit', { edit, tracked, ...(bound ? { bound } : {}) })) : orDesktop('That document').editDocument(doc, edit, tracked, bound)
     },
 
     async presentations() {
@@ -92,9 +92,9 @@ export function withAddin(desktop: OfficeCarrier | null, hub: () => AddinHub | n
       const a = via('powerpoint', pres)
       return a ? ((await a.call('slides.read', {})) as SlideText[]) : orDesktop('That presentation').readSlides(pres)
     },
-    async replaceSlideText(pres, find, replace) {
+    async replaceSlideText(pres, find, replace, bound) {
       const a = via('powerpoint', pres)
-      return a ? ((await a.call('slides.replace', { find, replace })) as number) : orDesktop('That presentation').replaceSlideText(pres, find, replace)
+      return a ? refusedOr(await a.call('slides.replace', { find, replace, ...(bound ? { bound } : {}) })) : orDesktop('That presentation').replaceSlideText(pres, find, replace, bound)
     },
 
     accounts: () => (desktop ? desktop.accounts() : Promise.resolve([])),

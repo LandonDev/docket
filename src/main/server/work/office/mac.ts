@@ -4,7 +4,7 @@ import { copyFileSync, existsSync, mkdirSync, readdirSync, rmSync } from 'node:f
 import { homedir } from 'node:os'
 import { extname, join } from 'node:path'
 import { OFFICE_APPS, type OfficeAllowed, type OfficeApp, type OfficeCell } from '@shared/contract-work-office'
-import { APP_NAMES, isPasswordLocked, lockedWords, OfficeError, type OfficeCarrier, type RenderApp, type RenderAsk, type RenderDone } from './carrier'
+import { APP_NAMES, isPasswordLocked, lockedWords, OfficeError, refusedOr, type OfficeCarrier, type RenderApp, type RenderAsk, type RenderDone } from './carrier'
 import { OSA_TIMEOUT_MS, OsaTimeout, runOsa, type Osa } from './osa'
 
 /**
@@ -39,6 +39,8 @@ function posix(n){ n = String(n); if (!/^[^\\/:]+:/.test(n) || /^https?:/i.test(
   return (vol === boot ? '' : '/Volumes/' + vol) + '/' + parts.map(function(c){ return c.replace(/\\//g, ':') }).join('/') }
 function same(a, b){ var t = function(x){ return String(x).replace(/^\\/private(?=\\/(tmp|var|etc)\\/)/, '') }; return t(a) === t(b) }
 function byKey(coll, key){ var n = coll.length || 0; for (var i = 0; i < n; i++) { var x = coll[i]; if (same(posix(x.fullName()), key) || x.name() === key) return x } throw new Error('Nothing open named ' + key + '. (-1728)') }
+// Each paragraph or box that holds the words, by its place and its words: as the host's boundOf (held.ts) gives them.
+function spotsIn(texts, find){ var out = []; for (var i = 0; i < texts.length; i++) if (texts[i].indexOf(find) >= 0) out.push([i, texts[i]]); return out }
 // Each text box of a deck, slide by slide and shape by shape; a shape with no text frame (a picture, a line) is passed over.
 function eachText(p, fn){ for (var i = 0; i < p.slides.length; i++) { var sl = p.slides[i]; for (var k = 0; k < sl.shapes.length; k++) { var h = sl.shapes[k], t;
   try { if (!h.hasTextFrame()) continue; t = h.textFrame.textRange; t.content() } catch (e) { continue } fn(i, t) } } }
@@ -101,8 +103,12 @@ export const SCRIPTS = {
       else {
         var before = String(d.textObject.content()), f = d.textObject.findObject;
         n = before.split(a.edit.find).length - 1;
-        // As many places as his press was shown, read in this same call: else nothing is written.
-        if (a.expect != null && n !== a.expect) return JSON.stringify({ refused: 'The words stand in ' + n + ' places now, not the ' + a.expect + ' shown.' });
+        // What his press was shown, read again in this same call: as many places, in the same paragraphs at the same
+        // places in the document. Else nothing is written.
+        if (a.bound) {
+          if (n !== a.bound.places) return JSON.stringify({ refused: 'The words stand in ' + n + ' places now, not the ' + a.bound.places + ' shown.' });
+          if (JSON.stringify(spotsIn(before.split('\\r'), a.edit.find)) !== JSON.stringify(a.bound.at)) return JSON.stringify({ refused: 'The words stand in other paragraphs now than the ones shown.' });
+        }
         if (n) {
           // His last Find's settings stay on Word's Find: every one is set here, and a ^ is found and put as itself
           // (Word reads ^c as his clipboard, ^& as what it found, ^p as a paragraph), as the Windows helper does.
@@ -125,8 +131,13 @@ export const SCRIPTS = {
   // PowerPoint's own replace keeps each run's formatting (a box's content set whole takes the first run's for all of it),
   // as the Windows helper's TextRange.Replace does; `after` moves past the words it put in.
   replaceSlideText: js(`var pp = app('Microsoft PowerPoint'), p = byKey(pp.presentations, a.pres), n = 0, found = 0;
-    // As many places as his press was shown, read in this same call: else nothing is written.
-    if (a.expect != null) { eachText(p, function(i, t){ found += String(t.content()).split(a.find).length - 1 }); if (found !== a.expect) return JSON.stringify({ refused: 'The words stand in ' + found + ' places now, not the ' + a.expect + ' shown.' }) }
+    // What his press was shown, read again in this same call: as many places, in the same boxes at the same places in
+    // the deck. Else nothing is written.
+    if (a.bound) {
+      var texts = []; eachText(p, function(i, t){ var c = String(t.content()); texts.push(c); found += c.split(a.find).length - 1 });
+      if (found !== a.bound.places) return JSON.stringify({ refused: 'The words stand in ' + found + ' places now, not the ' + a.bound.places + ' shown.' });
+      if (JSON.stringify(spotsIn(texts, a.find)) !== JSON.stringify(a.bound.at)) return JSON.stringify({ refused: 'The words stand in other boxes now than the ones shown.' });
+    }
     eachText(p, function(i, t){
       if (String(t.content()).indexOf(a.find) < 0) return;
       for (var k = 0, after = 0; k < 10000; k++) {
@@ -134,7 +145,9 @@ export const SCRIPTS = {
         if (!hit) break;
         after = Number(hit.offset()) + Number(hit.length()) - 1;
       }
-      n++ });
+      // A box counts as changed only once none of the words is left in it (the loop's limit can stop short); where the
+      // new words hold the old, what is left cannot be told, and the box counts as it did.
+      if (a.replace.indexOf(a.find) >= 0 || String(t.content()).indexOf(a.find) < 0) n++ });
     return JSON.stringify(n)`),
   accounts: js(`var o = app('Microsoft Outlook'); var accs = [].concat(all(o.exchangeAccounts()), all(o.imapAccounts()), all(o.popAccounts()));
     return JSON.stringify(accs.map(function(x){ return String(x.emailAddress()) }).filter(Boolean))`),
@@ -329,11 +342,6 @@ export const openFailure = (message: string): OfficeError =>
 const openWith = (args: string[]): Promise<void> =>
   new Promise((resolve, reject) => execFile('/usr/bin/open', args, (err) => (err ? reject(openFailure(err.message)) : resolve())))
 
-/** A script's count, or its refusal (it wrote nothing) as the carrier's `refused`. */
-const refusedOr = (got: number | { refused: string }): number => {
-  if (typeof got === 'object' && got && 'refused' in got) throw new OfficeError(got.refused, 'refused')
-  return got as number
-}
 
 export function macCarrier(deps: MacDeps = {}): OfficeCarrier {
   const osa = deps.osa ?? runOsa
@@ -440,10 +448,10 @@ export function macCarrier(deps: MacDeps = {}): OfficeCarrier {
       call('writeRange', { book, sheet, address, grid, formulas: grid.some((row) => row.some((c) => typeof c === 'string' && c.startsWith('='))) }),
     documents: () => call('documents', {}),
     readDocument: (doc) => call('readDocument', { doc }),
-    editDocument: async (doc, edit, tracked, expect) => refusedOr(await call<number | { refused: string }>('editDocument', { doc, edit, tracked, ...(expect !== undefined ? { expect } : {}) })),
+    editDocument: async (doc, edit, tracked, bound) => refusedOr(await call<number | { refused: string }>('editDocument', { doc, edit, tracked, ...(bound ? { bound } : {}) })),
     presentations: () => call('presentations', {}),
     readSlides: (pres) => call('readSlides', { pres }),
-    replaceSlideText: async (pres, find, replace, expect) => refusedOr(await call<number | { refused: string }>('replaceSlideText', { pres, find, replace, ...(expect !== undefined ? { expect } : {}) })),
+    replaceSlideText: async (pres, find, replace, bound) => refusedOr(await call<number | { refused: string }>('replaceSlideText', { pres, find, replace, ...(bound ? { bound } : {}) })),
     accounts: () => call('accounts', {}),
     listMail: (q) => call('listMail', q),
     readMail: (id) => call('readMail', { id }),

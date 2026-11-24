@@ -161,7 +161,20 @@
             }
             var found = body.search(a.edit.find, { matchCase: true })
             found.load('items')
+            // What his press was shown, read again in this same run: as many places, in the same paragraphs at the
+            // same places. Else nothing is written (TempCode reads `refused` as a stale press).
+            var ps = a.bound ? body.paragraphs : null
+            if (ps) ps.load('items/text')
             return context.sync().then(function () {
+              var refused = a.bound ? boundRefusal(ps.items.map(function (p) {
+                return p.text
+              }), found.items.length, a.edit.find, a.bound, 'paragraphs') : null
+              if (refused) {
+                if (mode) doc.changeTrackingMode = was
+                return context.sync().then(function () {
+                  return { refused: refused }
+                })
+              }
               found.items.forEach(function (r) {
                 r.insertText(a.edit.replace, 'Replace')
               })
@@ -184,6 +197,20 @@
         return env.PowerPoint.run(function (context) {
           return slideTexts(context).then(function (slides) {
             var n = 0
+            // What his press was shown, read again in this same run: as many places, in the same boxes at the same
+            // places. Else nothing is written.
+            if (a.bound) {
+              var texts = []
+              var found = 0
+              slides.forEach(function (s) {
+                s.ranges.forEach(function (r) {
+                  texts.push(r.text)
+                  found += r.text.split(a.find).length - 1
+                })
+              })
+              var refused = boundRefusal(texts, found, a.find, a.bound, 'boxes')
+              if (refused) return { refused: refused }
+            }
             slides.forEach(function (s) {
               s.ranges.forEach(function (r) {
                 if (a.find && r.text.indexOf(a.find) >= 0) {
@@ -198,6 +225,19 @@
           })
         })
       }
+    }
+
+    // Each paragraph or box that holds the words, by its place and its words, as TempCode's host gives them (held.ts boundOf).
+    function spotsIn(texts, find) {
+      var out = []
+      for (var i = 0; i < texts.length; i++) if (texts[i].indexOf(find) >= 0) out.push([i, texts[i]])
+      return out
+    }
+    // Why the file no longer holds what his press was shown, or null: as many places, in the same paragraphs or boxes.
+    function boundRefusal(texts, places, find, bound, what) {
+      if (places !== bound.places) return 'The words stand in ' + places + ' places now, not the ' + bound.places + ' shown.'
+      if (JSON.stringify(spotsIn(texts, find)) !== JSON.stringify(bound.at)) return 'The words stand in other ' + what + ' now than the ones shown.'
+      return null
     }
 
     function slideTexts(given) {

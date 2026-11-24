@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto'
 import { z } from 'zod'
 import type { ActKindDef, WorkCtx } from '../modules'
 import { ActNotSent, ActStale } from '../outbox/kinds'
-import { eventById, OfficeError, type OfficeCarrier } from './carrier'
+import { eventById, OfficeError, type OfficeCarrier, type WriteBound } from './carrier'
 import { changeWords, counted, elsewhereWords, goneWords, quoted, reachWords } from '@shared/work/changeWords'
 import { fileKey } from './shared'
 
@@ -135,6 +135,8 @@ export const spotsOf = (texts: readonly string[], find: string): string => textH
 /** `spotsOf` with each paragraph's or box's place in the file: one moved whole, its words alike, is another spot. */
 export const placedOf = (texts: readonly string[], find: string): string =>
   createHash('sha256').update(JSON.stringify(texts.flatMap((t, i) => (t.includes(find) ? [[i, t]] : [])))).digest('hex').slice(0, 32)
+/** Each paragraph or box that holds the words, by its place in the file and its words: what a carrier checks at its write. */
+export const boundOf = (texts: readonly string[], find: string): [number, string][] => texts.flatMap((t, i): [number, string][] => (t.includes(find) ? [[i, t]] : []))
 /** How many places hold the words. */
 export const placesOf = (texts: readonly string[], find: string): number => texts.reduce((n, t) => n + t.split(find).length - 1, 0)
 export const clip = (s: string, n = 60): string => (s.length > n ? `${s.slice(0, n - 1)}…` : s)
@@ -281,12 +283,12 @@ export function officeActs(deps: HeldDeps): ActKindDef[] {
           throw new ActStale(`${p.name} changed since: ${elsewhereWords(p.edit.find, p.app === 'word' ? 'paragraphs' : 'boxes')}. Nothing was changed.`)
       }
       let n: number
-      // The carrier is told how many places it should find; one that checks (the Mac's scripts) writes nothing when a
-      // co-author added or took one between this read and its own.
-      const expect = 'find' in p.edit ? p.places : undefined
+      // The carrier is told what his press was shown, as this read found it: one that checks (the Mac's scripts, the
+      // add-in) reads again in its own write and writes nothing when a co-author added, took or moved a match since.
+      const bound: WriteBound | undefined = 'find' in p.edit ? { places: p.places, at: boundOf(texts, p.edit.find) } : undefined
       try {
-        if (p.app === 'word') n = await c.editDocument(key, p.edit, false, expect)
-        else if ('find' in p.edit) n = await c.replaceSlideText(key, p.edit.find, p.edit.replace, expect)
+        if (p.app === 'word') n = await c.editDocument(key, p.edit, false, bound)
+        else if ('find' in p.edit) n = await c.replaceSlideText(key, p.edit.find, p.edit.replace, bound)
         else throw new ActStale('PowerPoint takes only a find and replace')
       } catch (err) {
         if (err instanceof OfficeError && err.code === 'refused') throw new ActStale(`${p.name} changed as it was written: ${err.message} Nothing was changed.`)

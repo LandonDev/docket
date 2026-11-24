@@ -477,14 +477,14 @@ describe("an agent's change to a shared document or deck, held (the owner's ruli
     await run('office_doc_edit', { document: DOC, find: 'one', replace: 'two', because: 'own' })
     const asked: unknown[] = []
     const racing = Object.assign(Object.create(office), {
-      editDocument: async (_doc: string, _edit: unknown, _tracked: boolean, expect?: number) => {
-        asked.push(expect)
+      editDocument: async (_doc: string, _edit: unknown, _tracked: boolean, bound?: unknown) => {
+        asked.push(bound)
         throw new OfficeError('The words stand in 2 places now, not the 1 shown.', 'refused')
       }
     })
     const def = officeActs({ carrier: () => racing }).find((a) => a.kind === 'office.edit')!
     await expect(def.execute(OfficeEditSchema.parse(held[0]!.payload), { host: 'env_mac' } as ActCtx)).rejects.toThrow(ActStale)
-    expect(asked).toEqual([1])
+    expect(asked).toEqual([{ places: 1, at: [[0, 'Draft one.']] }])
     expect(office.docs.get(DOC)!.paragraphs).toEqual(['Draft one.'])
   })
 

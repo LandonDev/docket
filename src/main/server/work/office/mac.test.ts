@@ -284,10 +284,17 @@ describe('Word edits', () => {
     // Word changed one of the two: the press says so, never "changed" whatever Word did.
     const short = word('one, one', { does: (t) => t.replace('one', 'two') })
     expect(runScript('editDocument', { doc: 'a.docx', edit: { find: 'one', replace: 'two' }, tracked: false }, short.apps)).toBe(1)
-    // Told how many places his press was shown, the script reads them again in the same call and writes nothing on another count.
-    const moved = word('one, one, one')
-    expect(runScript('editDocument', { doc: 'a.docx', edit: { find: 'one', replace: 'two' }, tracked: false, expect: 2 }, moved.apps)).toEqual({ refused: 'The words stand in 3 places now, not the 2 shown.' })
-    expect([moved.finds, moved.text()]).toEqual([[], 'one, one, one'])
+    // Told what his press was shown, the script reads it again in the same call and writes nothing on another count,
+    nor when a match moved to another paragraph with the count alike; as shown, it writes.
+    const added = word('one, one, one')
+    expect(runScript('editDocument', { doc: 'a.docx', edit: { find: 'one', replace: 'two' }, tracked: false, bound: { places: 2, at: [[0, 'one, one, one']] } }, added.apps)).toEqual({ refused: 'The words stand in 3 places now, not the 2 shown.' })
+    expect([added.finds, added.text()]).toEqual([[], 'one, one, one'])
+    const moved = word('Plan\rBudget: one')
+    expect(runScript('editDocument', { doc: 'a.docx', edit: { find: 'one', replace: 'two' }, tracked: false, bound: { places: 1, at: [[0, 'Plan: one']] } }, moved.apps)).toEqual({ refused: 'The words stand in other paragraphs now than the ones shown.' })
+    expect(moved.finds).toEqual([])
+    const shown = word('Plan: one\rBudget')
+    expect(runScript('editDocument', { doc: 'a.docx', edit: { find: 'one', replace: 'two' }, tracked: false, bound: { places: 1, at: [[0, 'Plan: one']] } }, shown.apps)).toBe(1)
+    expect(shown.text()).toBe('Plan: two\rBudget')
     // When the new words hold the old, a different result cannot be counted: -1.
     const odd = word('ab ab', { does: (t) => t.replace('ab', 'abab') })
     expect(runScript('editDocument', { doc: 'a.docx', edit: { find: 'ab', replace: 'abc' }, tracked: false }, odd.apps)).toBe(-1)
@@ -330,13 +337,33 @@ describe('PowerPoint decks', () => {
       ;(box.textFrame.textRange as unknown as { content: string }).content = s.slice(0, at) + o.replaceWhat + s.slice(at + o.findWhat.length)
       return { offset: () => at + 1, length: () => o.replaceWhat.length }
     }
-    // Told another count than the deck holds now: refused, nothing replaced.
-    expect(runScript('replaceSlideText', { pres: 'deck-test.pptx', find: 'Q1', replace: 'Q2', expect: 2 }, { 'Microsoft PowerPoint': app })).toEqual({ refused: 'The words stand in 3 places now, not the 2 shown.' })
+    // Told another count than the deck holds now, or the same count in another box: refused, nothing replaced.
+    const at: [number, string][] = [[0, 'Q1 plan, Q1 done'], [2, 'See Q1']]
+    expect(runScript('replaceSlideText', { pres: 'deck-test.pptx', find: 'Q1', replace: 'Q2', bound: { places: 2, at } }, { 'Microsoft PowerPoint': app })).toEqual({ refused: 'The words stand in 3 places now, not the 2 shown.' })
+    expect(runScript('replaceSlideText', { pres: 'deck-test.pptx', find: 'Q1', replace: 'Q2', bound: { places: 3, at: [[0, 'Q1 plan, Q1 done'], [1, 'See Q1']] } }, { 'Microsoft PowerPoint': app })).toEqual({ refused: 'The words stand in other boxes now than the ones shown.' })
     expect(asked).toEqual([])
-    expect(runScript('replaceSlideText', { pres: 'deck-test.pptx', find: 'Q1', replace: 'Q2', expect: 3 }, { 'Microsoft PowerPoint': app })).toBe(2)
+    expect(runScript('replaceSlideText', { pres: 'deck-test.pptx', find: 'Q1', replace: 'Q2', bound: { places: 3, at } }, { 'Microsoft PowerPoint': app })).toBe(2)
     expect([a.read(), b.read()]).toEqual(['Q2 plan, Q2 done', 'See Q2'])
     // Each call past the words it put in; never the box's content set whole (that flattens its runs).
     expect(asked.map((o) => [o.after, o.matchCase, o.wholeWords])).toEqual([[0, true, false], [2, true, false], [11, true, false], [0, true, false], [6, true, false]])
+  })
+
+  it('counts a box as changed only once none of the words is left in it, so a loop stopped short is a short write', () => {
+    const a = shape('Q1 Q1')
+    const d = deck([[a]])
+    const app = ppt(d)['Microsoft PowerPoint'] as Record<string, unknown>
+    // A PowerPoint that stops after one replace in the box, as the loop's limit would.
+    let left = 1
+    app.replace = (range: { content: () => string }, o: { findWhat: string; replaceWhat: string; after: number }) => {
+      if (left-- <= 0) return null
+      const s = range.content()
+      const at = s.indexOf(o.findWhat, o.after)
+      if (at < 0) return null
+      ;(a.textFrame.textRange as unknown as { content: string }).content = s.slice(0, at) + o.replaceWhat + s.slice(at + o.findWhat.length)
+      return { offset: () => at + 1, length: () => o.replaceWhat.length }
+    }
+    expect(runScript('replaceSlideText', { pres: 'deck-test.pptx', find: 'Q1', replace: 'Q2' }, { 'Microsoft PowerPoint': app })).toBe(0)
+    expect(a.read()).toBe('Q2 Q1')
   })
 })
 

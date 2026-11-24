@@ -201,7 +201,8 @@ describe('a held edit on a live file', () => {
     expect([woke, vmWord.opened.length, peer.length]).toEqual([0, 0, 0])
 
     expect(await press(carrier, vmWord)).toEqual({ summary: 'Changed TempCode proof live 1.docx' })
-    expect(ops.at(-1)).toEqual({ op: 'word.edit', args: { edit: { find: 'one', replace: 'two' }, tracked: false } })
+    // with what his press was shown, which the add-in reads again before it writes
+    expect(ops.at(-1)).toEqual({ op: 'word.edit', args: { edit: { find: 'one', replace: 'two' }, tracked: false, bound: { places: 1, at: [[0, 'Draft one.']] } } })
     expect(doc.paragraphs).toEqual(['Draft two.'])
     expect(vmWord.log.some((l) => l.verb === 'editDocument')).toBe(false)
   })
