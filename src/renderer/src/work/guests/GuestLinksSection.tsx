@@ -8,7 +8,8 @@ import { cn } from "../../lib/cn";
 import { registry } from "../../lib/connection";
 import { copyText } from "../../lib/clipboard";
 import { clockTime } from "../../lib/duration";
-import { Avatar, MadeLinkDialog } from "./Share";
+import { Face } from "../mail/face";
+import { MadeLinkDialog } from "./Share";
 import { guestsCall, isLive, ROLE_WORDS, shortDay, type GuestLinkRow } from "./api";
 
 /**
@@ -129,7 +130,7 @@ export function GuestLinksSection({ hosts }: { hosts: readonly string[] }) {
       {rows?.map(({ env, link }) => {
         const live = isLive(link);
         return (
-          <PageRow key={link.id} media={<Avatar name={link.name} size="list" />} title={link.name} description={describe(link, live)} className={live ? undefined : "opacity-60"}>
+          <PageRow key={link.id} media={<Face name={link.name} size="row" />} title={link.name} description={describe(link, live)} className={live ? undefined : "opacity-60"}>
             {live ? (
               <div data-guest-actions="" className={cn("flex shrink-0 items-center gap-1", revoking?.endsWith(link.id) ? "opacity-100" : reveal("item", { row: true }))}>
                 <Button variant="ghost" size="sm" disabled={revoking !== null} onClick={() => void replace(env, link.id, link.name)}>

@@ -59,3 +59,20 @@ describe("the type scale guard", () => {
     expect(off).toEqual([]);
   });
 });
+
+describe("Work's type scale guard", () => {
+  // docs/DESIGN.md "Type scale" and plan 3.1's table: in Work a literal size is 11 (a label, a key cap, an initial),
+  // 13 (a row, the chrome) or 15 (a document's body); 12, 14, 16 and 18 are the named steps; nothing is above text-lg.
+  // The clicker is a phone page, read at arm's length, with its own sizes.
+  const PHONE_PAGES = new Set(["work/slides/show/Clicker.tsx"]);
+  const work = files.filter(({ file }) => file.startsWith("work/") && !file.endsWith(".preview.tsx") && !PHONE_PAGES.has(file));
+
+  it("Work's sizes are on the scale", () => {
+    const off: string[] = [];
+    for (const { file, text } of work) {
+      for (const m of text.matchAll(/(?<![\w-])text-\[(\d+(?:\.\d+)?)px\]/g)) if (!["11", "13", "15"].includes(m[1]!)) off.push(`${file}: ${m[0]}`);
+      for (const m of text.matchAll(/(?<![\w-])text-(?:xl|[2-9]xl)(?![\w-])/g)) off.push(`${file}: ${m[0]}`);
+    }
+    expect(off).toEqual([]);
+  });
+});

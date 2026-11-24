@@ -115,7 +115,7 @@ function Reads({ item, env, retry }: ActViewProps & { retry: () => void }) {
   const target = reply?.replyTo ?? ready(detail)?.chat?.lastInId;
   const missing = Boolean(target) && (page.status === "failed" || (page.status === "ready" && !page.value.page.some((m) => m._id === target)));
   const byId = useLifeosQuery<RawMessage>(missing ? session : { ...session, client: null, state: "connecting" }, "rawMessages:get", { id: target ?? "" });
-  if (!reply) return <div data-slot="act-payload" className="text-sm text-muted-foreground">This reply could not be read</div>;
+  if (!reply) return <div data-slot="act-payload" className="text-[13px] leading-5 text-muted-foreground">This reply could not be read</div>;
   return <ReplyBody reply={reply} chat={ready(detail)?.chat} answered={answerOf(reply, detail, page, missing ? byId : null)} onRetry={retry} />;
 }
 

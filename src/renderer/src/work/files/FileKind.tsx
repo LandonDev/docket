@@ -177,9 +177,9 @@ export function Facts({ name, entry, why, env, workspaceId, itemId, source }: { 
     <>
       <KindGlyph kind={kind} className="size-10 shrink-0" />
       <div className="flex max-w-md min-w-0 flex-col gap-1">
-        {facts ? <p className="text-sm text-muted-foreground">{facts}</p> : null}
-        {why ? <p className="text-sm text-muted-foreground">{why}</p> : null}
-        {entry === null ? <p className="text-sm text-muted-foreground">It is not where it was.</p> : null}
+        {facts ? <p className="text-[13px] leading-5 text-muted-foreground">{facts}</p> : null}
+        {why ? <p className="text-[13px] leading-5 text-muted-foreground">{why}</p> : null}
+        {entry === null ? <p className="text-[13px] leading-5 text-muted-foreground">It is not where it was.</p> : null}
       </div>
       {ways}
     </>

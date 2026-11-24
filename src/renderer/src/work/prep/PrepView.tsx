@@ -861,8 +861,8 @@ function ToDo({
   return (
     <section aria-label="To do" className="mt-6">
       <h2 className="mb-1 text-xs font-medium text-muted-foreground">To do</h2>
-      {/* At the measure the notes and the brief read at (65ch of 14px): a tint the column's whole width would shout. */}
-      <div role="list" className="flex max-w-[65ch] flex-col gap-0.5 text-sm">
+      {/* At the measure the notes and the brief read at (65ch of 14px, said here in the rows' 13px): a tint the column's whole width would shout. */}
+      <div role="list" className="flex max-w-[calc(65ch*14/13)] flex-col gap-0.5 text-[13px] leading-5">
         {tasks.map((task) => {
           const line = suggestionLine(task);
           // Why LifeOS did not take it, on the task's own row: it wraps, so it is whole at any width, and each task keeps its own.

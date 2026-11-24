@@ -16,6 +16,7 @@ import { TypeGlyph } from "../../surfaces/threads/TypeGlyph";
 import { sayError } from "../canvas/frame";
 import type { CanvasBodyProps, CanvasShell, MoreEntry } from "../canvas/kind";
 import { History } from "../icons";
+import { Face } from "../mail/face";
 import { PAGE_CHANGE_ID } from "../docs/review";
 import { CompareDoc, CompareSkeleton, type Layout } from "./Compare";
 import { historyActions, useBranches, useCompare, useVersions } from "./store";
@@ -48,11 +49,6 @@ export interface HistoryState {
 /** Side by side from 420px a side. */
 export const SIDE_BY_SIDE_FROM = 840;
 
-const initials = (name: string): string => {
-  const words = name.trim().split(/\s+/);
-  return ((words[0]?.[0] ?? "") + (words[1]?.[0] ?? "")).toUpperCase();
-};
-
 /** Who did something, as a list row names them: two names, then how many more. */
 export function whoWords(by: readonly string[], names: Record<string, string>): string {
   const all = [...new Set(by.map((p) => names[p] ?? "Someone"))];
@@ -82,19 +78,15 @@ export function versionWords(v: HistoryVersion, all: readonly HistoryVersion[]):
   return CAUSE_WORDS[v.cause];
 }
 
-/** 24px: a person's initials on `muted`, or the thread's glyph for an agent. */
-function Face({ principal, name }: { principal: string | undefined; name: string }) {
+/** 24px: a person's face (`Face`), or the thread's glyph for an agent. */
+function Author({ principal, name }: { principal: string | undefined; name: string }) {
   if (principal?.startsWith("agent:"))
     return (
       <span aria-hidden className="grid size-6 shrink-0 place-items-center rounded-full bg-muted outline-1 -outline-offset-1 outline-(--image-outline)">
         <TypeGlyph type="chat" className="size-3.5" />
       </span>
     );
-  return (
-    <span aria-hidden className="grid size-6 shrink-0 place-items-center rounded-full bg-muted text-[9px] font-semibold text-muted-foreground outline-1 -outline-offset-1 outline-(--image-outline)">
-      {initials(name)}
-    </span>
-  );
+  return <Face name={name} size="row" />;
 }
 
 /** The width the body has, for the layout chosen by width. */
@@ -143,7 +135,7 @@ function VersionRow({ v, all, names, now, shared, picked, picking, onPick, onCom
       <span className={cn("flex", !(picking || picked) && reveal("row", { row: true }))}>
         <Checkbox aria-label={`Pick the ${dayTime(v.at)} version`} checked={picked} onCheckedChange={onPick} />
       </span>
-      <Face principal={v.by[0]} name={who} />
+      <Author principal={v.by[0]} name={who} />
       <span className="flex min-w-0 grow flex-col gap-0.5">
         <span className={cn("truncate text-[13px] leading-5", now && "font-semibold")}>{who}</span>
         <span className="truncate text-xs leading-4 text-muted-foreground">{versionWords(v, all)}</span>
@@ -171,7 +163,7 @@ function BranchRow({ b, names, onOpen }: { b: HistoryBranch; names: Record<strin
   return (
     <ItemButton onClick={onOpen} className="min-h-[52px] flex-nowrap p-2 text-[13px] hover:bg-[color-mix(in_srgb,var(--foreground)_5%,transparent)]">
       <span className="w-4 shrink-0" />
-      <Face principal={b.authors[0]} name={who} />
+      <Author principal={b.authors[0]} name={who} />
       <span className="flex min-w-0 grow flex-col gap-0.5">
         <span className="truncate text-[13px] leading-5">{b.label.startsWith("Restore") ? "Restore, waiting for you" : who}</span>
         <span className="truncate text-xs leading-4 text-muted-foreground">{n === 1 ? "1 change" : `${n} changes`}</span>

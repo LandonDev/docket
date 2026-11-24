@@ -90,7 +90,7 @@ describe("Share", () => {
     fireEvent.click(screen.getByRole("button", { name: "Share" }));
     await screen.findByText("Sam Ortiz");
     // A list's avatar: 24px, as Settings' list draws it.
-    expect(document.querySelector("[data-avatar]")!.getAttribute("data-avatar")).toBe("list");
+    expect(document.querySelector("[data-face]")!.getAttribute("data-face")).toBe("row");
     // Asked of the Mac, answered by the box.
     expect(calls.list.map((c) => `${c.env}:${c.method}`)).toEqual(["mac:work.guests.forItem", "box:work.guests.forItem"]);
     fireEvent.click(screen.getByRole("button", { name: "Revoke Sam Ortiz's link" }));
@@ -304,7 +304,7 @@ describe("the held request and the audit list", () => {
     calls.links = [LINK];
     render(<GuestLinksSection hosts={["box"]} />);
     await screen.findByText("Sam Ortiz");
-    expect((document.querySelector("[data-avatar]") as HTMLElement).getAttribute("data-avatar")).toBe("list");
+    expect((document.querySelector("[data-face]") as HTMLElement).getAttribute("data-face")).toBe("row");
     confirm.answer = false;
     await act(async () => fireEvent.click(screen.getByRole("button", { name: "Replace address…" })));
     expect(confirm.asked.at(-1)!.body).toMatch(/^.+'s current address stops opening\. The new one is copied for you to send\.$/);

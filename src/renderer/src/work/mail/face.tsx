@@ -7,9 +7,10 @@ import { News } from "../icons";
 
 /**
  * The one face of a person in Work (docs/DESIGN.md "The Mail view": a face is
- * one avatar everywhere). Mail's kit hands it to the shared mail screens, and
- * People draws it at its own sizes; it lives apart from the kit so a screen
- * that draws faces does not load the mail client to do it.
+ * one avatar everywhere). Mail's kit hands it to the shared mail screens; People,
+ * the canvas bar, media notes, History, Share and the projects kit draw it at their
+ * own sizes; it lives apart from the kit so a screen that draws faces does not load
+ * the mail client to do it.
  */
 
 const initials = (name: string | undefined): string =>
@@ -21,13 +22,14 @@ const initials = (name: string | undefined): string =>
     .map((part) => part[0]!.toUpperCase())
     .join("");
 
-/** Mail's four sizes, and `page`: the 40px face that heads a person's page. */
-export type FaceSize = NonNullable<MailFaceProps["size"]> | "page";
+/** Mail's four sizes; `bar`, the 20px face in a canvas bar and a note; `page`, the 40px face that heads a person's page. */
+export type FaceSize = NonNullable<MailFaceProps["size"]> | "bar" | "page";
 
 // Initials are the 11px label step (docs/DESIGN.md "Type scale"), medium, at every size that holds two letters or one; the page's are 13px.
 const FACE: Record<FaceSize, string> = {
   line: "size-4 text-[11px] font-medium",
   chip: "size-[18px] text-[11px] font-medium",
+  bar: "size-5 text-[11px] font-medium",
   row: "size-6 text-[11px] font-medium",
   head: "size-7 text-[11px] font-medium",
   page: "size-10 text-[13px] font-medium",
@@ -74,20 +76,23 @@ export function useFacePicture(url: string | undefined): string | undefined {
 
 /**
  * A face in a circle on `muted` (docs/DESIGN.md, avatars): 40px heading a person's page, 28px beside
- * an open message's sender, 24px in a list row, 18px in a recipient chip and a fold row. It is the
- * person's picture where LifeOS holds one; else a glyph for a mailing list or a shared mailbox; else
- * initials (the two small sizes hold one letter, which reads at 11px; two would not). A picture that
- * fails to load gives way to what would have stood there, quietly.
+ * an open message's sender, 24px in a list row, 20px in a bar, 18px in a recipient chip and a fold
+ * row, 16px on a line. It is the person's picture where LifeOS holds one (`picture`, read as bytes) or
+ * one the page may draw as it is (`src`: a collaborator's avatar); else a glyph for a mailing list or a
+ * shared mailbox; else initials (the three sizes under 24px hold one letter, which reads at 11px; two
+ * would not). A picture that fails to load gives way to what would have stood there, quietly.
  */
-export function Face({ name, picture, mark, size = "row", className }: Omit<MailFaceProps, "size"> & { size?: FaceSize }) {
+export function Face({ name, picture, src: given, mark, size = "row", className }: Omit<MailFaceProps, "size"> & { size?: FaceSize; src?: string | undefined }) {
   const letters = initials(name);
-  const src = useFacePicture(picture);
+  const read = useFacePicture(given ? undefined : picture);
+  const src = given ?? read;
   const [broken, setBroken] = useState<string | null>(null);
-  const small = size === "chip" || size === "line";
+  const small = size === "chip" || size === "line" || size === "bar";
   const Mark = mark === "list" ? News : mark === "group" ? Users : null;
   return (
     <span
       aria-hidden
+      data-face={size}
       className={cn(
         "inline-grid shrink-0 place-items-center overflow-hidden rounded-full bg-muted text-muted-foreground outline-1 -outline-offset-1 outline-(--image-outline)",
         FACE[size],

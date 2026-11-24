@@ -4,13 +4,9 @@ import { LazyPopover } from "../../chrome/menuRows";
 import { TypeGlyph } from "../../surfaces/threads/TypeGlyph";
 import { BusyLabel, Button } from "../../components/ui/button";
 import { Textarea } from "../../components/ui/textarea";
+import { Face } from "../mail/face";
 
 /** Small parts the media canvas's views share: who wrote a note, the box drawn on a picture, and the comment field. */
-
-const initials = (name: string): string => {
-  const words = name.trim().split(/\s+/);
-  return ((words[0]?.[0] ?? "") + (words[1]?.[0] ?? "")).toUpperCase();
-};
 
 /** A note's author as a reader names them: the person, an agent, or the review service's own name for them. */
 export function authorOf(note: Pick<MediaNote, "by" | "external">): { name: string; agent: boolean } {
@@ -20,7 +16,7 @@ export function authorOf(note: Pick<MediaNote, "by" | "external">): { name: stri
   return { name: note.by.split(":").slice(1).join(":") || note.by, agent: false };
 }
 
-/** 20px: initials on `muted` for a person, the thread's glyph for an agent. */
+/** 20px: a person's face (`Face`), the thread's glyph for an agent. */
 export function Author({ note }: { note: Pick<MediaNote, "by" | "external"> }) {
   const who = authorOf(note);
   if (who.agent)
@@ -29,11 +25,7 @@ export function Author({ note }: { note: Pick<MediaNote, "by" | "external"> }) {
         <TypeGlyph type="chat" className="size-3" />
       </span>
     );
-  return (
-    <span aria-hidden className="grid size-5 place-items-center overflow-hidden rounded-full bg-muted text-[9px] font-semibold text-muted-foreground outline-1 -outline-offset-1 outline-(--image-outline)">
-      {who.name === "You" ? "Y" : initials(who.name)}
-    </span>
-  );
+  return <Face name={who.name} size="bar" />;
 }
 
 const clamp01 = (v: number): number => Math.max(0, Math.min(1, v));

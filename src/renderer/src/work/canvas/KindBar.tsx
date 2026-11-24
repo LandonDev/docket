@@ -6,6 +6,7 @@ import { BusyLabel, Button } from "../../components/ui/button";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../../components/ui/tooltip";
 import { loadToast } from "../../components/ui/toaster";
 import { Download, History } from "../icons";
+import { Face } from "../mail/face";
 import { sayError, type Feeds } from "./frame";
 import type { CanvasMode, Presence, ReviewAdapter, WrittenLine } from "./kind";
 
@@ -127,26 +128,14 @@ export function KindBar({
   );
 }
 
-const initials = (name: string): string => {
-  const words = name.trim().split(/\s+/);
-  return ((words[0]?.[0] ?? "") + (words[1]?.[0] ?? "")).toUpperCase();
-};
-
-/** A person as a 20px disc: their picture, else their initials. */
+/** A person as a 20px face (`Face`): their picture, else their initial. */
 function Person({ person, lapped }: { person: Presence; lapped: boolean }) {
   return (
     <Tooltip>
       <TooltipTrigger
-        render={
-          <span
-            data-person={person.id}
-            className={`grid size-5 shrink-0 place-items-center overflow-hidden rounded-full bg-muted text-[9px] font-semibold text-muted-foreground outline-1 -outline-offset-1 outline-(--image-outline) ${
-              lapped ? "-ms-1.5 shadow-[0_0_0_2px_var(--background)]" : ""
-            }`}
-          />
-        }
+        render={<span data-person={person.id} className={`grid size-5 shrink-0 rounded-full ${lapped ? "-ms-1.5 shadow-[0_0_0_2px_var(--background)]" : ""}`} />}
       >
-        {person.image ? <img src={person.image} alt="" className="size-full object-cover" /> : initials(person.name)}
+        <Face name={person.name} src={person.image} size="bar" />
       </TooltipTrigger>
       <TooltipContent>{person.name}</TooltipContent>
     </Tooltip>

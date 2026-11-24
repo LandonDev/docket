@@ -86,7 +86,7 @@ export function QuickLook({
       >
         <div className="flex h-11 shrink-0 items-center gap-2 border-b border-border ps-3 pe-2">
           <KindGlyph kind={entry.kind} />
-          <span className="min-w-0 truncate text-[13px] font-medium text-foreground">{entry.name}</span>
+          <span className="min-w-0 truncate text-sm leading-5 font-semibold text-foreground">{entry.name}</span>
           {/* One line tall: the first word goes to a hidden second line when it does not fit beside the name. */}
           <span data-files-quicklook-where className="flex h-4 min-w-0 flex-1 flex-wrap overflow-hidden text-xs leading-4 text-muted-foreground">
             <span className="sr-only">{where}</span>

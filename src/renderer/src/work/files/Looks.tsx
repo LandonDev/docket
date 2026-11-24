@@ -179,7 +179,7 @@ export function DetailsPane({ from, entry, onOpen, className }: { from: PictureF
         <div className="grid h-40 w-full max-w-64 shrink-0 place-items-center rounded-md bg-(--stage) p-2 outline-1 -outline-offset-1 outline-(--image-outline)">
           {text ? <TextThumb key={entry.key} from={from!} entry={entry} /> : <Thumb from={from} entry={entry} tile={208} glyph="size-10" />}
         </div>
-        <h3 className="max-w-64 text-center text-sm leading-5 font-medium break-words text-foreground">{entry.name}</h3>
+        <h3 className="max-w-64 text-center text-sm leading-5 font-semibold break-words text-foreground">{entry.name}</h3>
         <dl className="grid w-full max-w-64 grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-xs">
           {factRows(entry).map(([label, value]) => (
             <div key={label} className="contents">

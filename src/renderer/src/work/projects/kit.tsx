@@ -16,6 +16,7 @@ import { marksAtRest } from "../../lib/threadStripModel";
 import { workOpenPort } from "../../lib/workSwitch";
 import { registry } from "../../lib/connection";
 import { ProjectShare } from "../guests/Share";
+import { Face as PersonFace } from "../mail/face";
 import { openLifeosProject } from "../shell/actions";
 import { Doc, File, Link, Table } from "../icons";
 import { useLinkedThread } from "../tasks/links";
@@ -65,28 +66,8 @@ const toast: ProjectsKit["toast"] = ({ message, state, action }) =>
 
 const failed = (error: unknown): void => toast({ message: error instanceof Error ? error.message : String(error), state: "error" });
 
-const initials = (name: string): string =>
-  name
-    .replace(/<[^>]*>|["']/g, "")
-    .split(/[\s@._-]+/)
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((part) => part[0]!.toUpperCase())
-    .join("");
-
-/** A person or an agent as initials on `muted` in a circle (docs/DESIGN.md, avatars). */
-const Face: ProjectsKit["Face"] = ({ name, size, className }) => (
-  <span
-    aria-hidden
-    className={cn(
-      "inline-grid shrink-0 place-items-center rounded-full bg-muted font-semibold text-muted-foreground outline-1 -outline-offset-1 outline-(--image-outline)",
-      size === 16 ? "size-4 text-[7px]" : "size-5 text-[8px]",
-      className,
-    )}
-  >
-    {initials(name)}
-  </span>
-);
+/** A person or an agent as Work's one face (`Face`): 16px on a line, 20px in a row's bar. */
+const Face: ProjectsKit["Face"] = ({ name, size, className }) => <PersonFace name={name} size={size === 16 ? "line" : "bar"} className={className} />;
 
 const SECTOR_NAMES: Record<string, string> = { cosmic: "Cosmic", hypixel: "Hypixel", purdue: "Purdue", ref: "Ref", unify: "Unify", life: "Life" };
 

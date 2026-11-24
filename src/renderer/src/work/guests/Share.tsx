@@ -12,6 +12,7 @@ import { Dialog } from "../../components/ui/dialog";
 import { Input } from "../../components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "../../components/ui/popover";
 import { Skeleton } from "../../components/ui/skeleton";
+import { Face } from "../mail/face";
 import { ToggleGroup, ToggleGroupItem } from "../../components/ui/toggle-group";
 import { copyText } from "../../lib/clipboard";
 import { cn } from "../../lib/cn";
@@ -163,7 +164,7 @@ export function LinkRows({
       {rows?.length === 0 && layout === "menu" ? <p className="flex h-9 items-center px-2 text-[13px] text-muted-foreground">Only you can open this</p> : null}
       {rows?.map((l) => (
         <div key={l.id} className="group/row flex h-9 min-w-0 items-center gap-2 rounded-lg px-2 text-[13px] hover:bg-foreground/5">
-          <Avatar name={l.name} size="list" />
+          <Face name={l.name} size="row" />
           <span className="min-w-0 flex-1 truncate">{l.name}</span>
           {/* Revoke takes the facts' place on hover (docs/DESIGN.md "Hover reveal"). */}
           <span className="relative flex shrink-0 items-center justify-end">
@@ -208,23 +209,6 @@ export function LinkRows({
         </div>
       )}
     </div>
-  );
-}
-
-/** Initials on `muted` (DESIGN.md "Avatars"): 20px in a bar, `list` 24px in a list. */
-export function Avatar({ name, size = "bar" }: { name: string; size?: "bar" | "list" }) {
-  const words = name.trim().split(/\s+/);
-  return (
-    <span
-      aria-hidden
-      data-avatar={size}
-      className={cn(
-        "grid shrink-0 place-items-center rounded-full bg-muted text-[9px] font-semibold text-muted-foreground outline-1 -outline-offset-1 outline-(--image-outline)",
-        size === "list" ? "size-6" : "size-5",
-      )}
-    >
-      {((words[0]?.[0] ?? "") + (words[1]?.[0] ?? "")).toUpperCase()}
-    </span>
   );
 }
 
