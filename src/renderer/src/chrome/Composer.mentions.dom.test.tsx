@@ -21,7 +21,7 @@ vi.mock("../work/canvas/mentions", async (importOriginal) => {
   // The host is the fake; where the thread is and the rows are the chunk's own.
   const askWorkMentions = async (env: string, sessionId: string, text: string) => {
     const draft = real.mentionPlace(sessionId);
-    return draft ? real.resultOf(await search(env, sessionId, text, draft), !!draft.work) : null;
+    return draft ? real.resultOf(await search(env, sessionId, text, draft), !!draft.work, Date.now(), env) : null;
   };
   return { ...real, askWorkMentions };
 });
@@ -122,15 +122,19 @@ describe("@ in a Work thread", () => {
     expect([...container.querySelectorAll("[data-mention]")].map((r) => r.getAttribute("data-mention"))).toEqual(["task", "mail"]);
   });
 
-  it("says so in one muted row when LifeOS could not be searched", async () => {
+  it("says so in one muted row when LifeOS could not be searched, in its state's words (council round 9)", async () => {
+    const { resetLifeos, setLifeosStatus } = await import("../work/shell/lifeos");
     sessionStore.adopt(meta("w2", { scope: "work" }));
     setWorkOn("env_a", true);
+    // The host is only signed out: said as that, never as a LifeOS that cannot be reached.
+    setLifeosStatus("env_a", { lifeos: { state: "signed-out" }, keys: [] } as never);
     search.mockResolvedValue({ hits: [answer.hits[2]], failed: ["task", "mail"] });
     const { container } = render(<Composer {...props("w2")} />);
     const field = container.querySelector<HTMLElement>("[data-composer-input]")!;
     field.focus();
     type(field, "@");
-    await waitFor(() => expect(container.querySelector("[data-command-note]")?.textContent).toBe("Couldn't reach LifeOS"));
+    await waitFor(() => expect(container.querySelector("[data-command-note]")?.textContent).toMatch(/^Not signed in to LifeOS/));
+    resetLifeos();
   });
 });
 

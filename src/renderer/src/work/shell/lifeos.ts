@@ -477,6 +477,20 @@ export const sessionFailure = lifeosDownWords;
 /** A host's name as the registry knows it ("The box"), or null for one it does not. */
 export const lifeosHostName = (environmentId: string): string | null => (environmentId && registry.environment(environmentId)?.name) || null;
 
+/**
+ * Why a host could not search or read its LifeOS for a reader that only knows it failed (the composer's @, a play's
+ * picker), in the rule's words from the state this window last heard of that host, its computer named: the host's own
+ * silence, "LifeOS is still connecting", a state that is down, or, for a host that says connected (or nothing yet),
+ * LifeOS's silence. Read once, asking nothing.
+ */
+export function lifeosHeardWords(environmentId: string): string {
+  const host = lifeosHostName(environmentId);
+  if (unanswered.has(environmentId)) return sessionFailure("unanswered", false, host);
+  const state = statuses.get(environmentId)?.lifeos.state;
+  if (state === "connecting") return "LifeOS is still connecting";
+  return sessionFailure(!state || state === "connected" ? "unreachable" : state, false, host);
+}
+
 /** What a session that cannot read says, its computer named (`sessionFailure`). */
 export function sessionWords(session: Pick<LifeosSession, "environmentId" | "state" | "withheld" | "unanswered">): string {
   return sessionFailure(session.unanswered ? "unanswered" : session.state, session.withheld, lifeosHostName(session.environmentId));

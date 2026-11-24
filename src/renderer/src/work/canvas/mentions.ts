@@ -3,6 +3,7 @@ import { registry } from "../../lib/connection";
 import { sessionStore } from "../../lib/tcserver/store";
 import { workspaceStore } from "../../lib/tcserver/workspaces";
 import { addContextChip } from "./chips";
+import { mentionFailWords } from "./mentionFail";
 import { CHIP_GLYPH } from "./ComposerChips";
 import { Layers, type IconComponent } from "../../chrome/icons";
 
@@ -49,7 +50,6 @@ const GROUP: Record<ChipKind, string> = {
   file: "Files",
   msform: "Microsoft forms",
 };
-const LIFEOS_KINDS: readonly ChipKind[] = ["task", "mail", "event", "project", "card", "person", "doc", "chat"];
 
 const time = new Intl.DateTimeFormat(undefined, { hour: "numeric", minute: "2-digit" });
 const day = new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric" });
@@ -93,7 +93,7 @@ export async function askWorkMentions(env: string, sessionId: string, text: stri
   if (!draft) return null;
   try {
     const answer = await registry.linkOf(env).request<MentionAnswer>("work.canvas.mentions", { sessionId, text, draft });
-    return resultOf(answer, draft.work);
+    return resultOf(answer, draft.work, Date.now(), env);
   } catch {
     return { rows: [], lead: !!draft.work, failed: "Couldn't search Work" };
   }
@@ -105,14 +105,15 @@ export function rowsStillMatching(rows: readonly WorkMentionRow[], text: string)
   return rows.filter((row) => words.every((word) => row.hit.chip.label.toLowerCase().includes(word)));
 }
 
-export function resultOf(answer: MentionAnswer, lead = false, now = Date.now()): WorkMentionResult {
+/** `env` is the host asked: a LifeOS it could not search is said in its state's words, that computer named. */
+export function resultOf(answer: MentionAnswer, lead = false, now = Date.now(), env = ""): WorkMentionResult {
   const rows = answer.hits.map((hit) => ({
     hit,
     group: GROUP[hit.chip.kind] ?? "More",
     Glyph: CHIP_GLYPH[hit.chip.kind] ?? Layers,
     ...(hit.at ? { when: whenWords(hit.at, now) } : {}),
   }));
-  const failed = answer.failed.length === 0 ? null : answer.failed.every((k) => LIFEOS_KINDS.includes(k)) ? "Couldn't reach LifeOS" : "Couldn't search everything";
+  const failed = mentionFailWords(answer.failed, env);
   return { rows, lead, failed };
 }
 

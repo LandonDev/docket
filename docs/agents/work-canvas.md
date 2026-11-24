@@ -579,7 +579,12 @@ which loads the first time and decides whether the thread may mention
 Work's things at all (`mentionPlace`). The last answer
 stays on screen until the next lands, so the list never empties under the
 typing; until the first, one muted row says Loading…, and a kind that could
-not be searched says so in one muted row ("Couldn't reach LifeOS"). Each
+not be searched says so in one muted row: LifeOS's kinds alone in the
+host's LifeOS state as this window last heard it, its computer named
+(`mentionFailWords`, canvas/mentionFail.ts, `lifeosHeardWords`: "Not signed in
+to LifeOS on the box", "LifeOS is still connecting", "LifeOS did not answer
+the box"), else "Couldn't search everything". Run a play…'s picker says the
+same, muted. Each
 kind is a group under its name with its glyph, a muted fact (a sender, a
 place, the canvas kind) and a time; in a Work thread they lead the list,
 in a code thread they follow the files, threads and notes. Enter or a click

@@ -12,6 +12,7 @@ import { Spinner } from "../../../components/ui/spinner";
 import { Textarea } from "../../../components/ui/textarea";
 import { registry } from "../../../lib/connection";
 import { workErrorWords } from "../../../lib/workErrorWords";
+import { mentionFailWords } from "../../canvas/mentionFail";
 import { startPlay, usePlays } from "./data";
 import { alsoLine, pickerKinds, playsFor, startInputs, TAKE_LABEL, takesLeft, today } from "./model";
 
@@ -181,7 +182,8 @@ function Inputs({ env, workspaceId, chip, play, onClose, pending, setPending }: 
 /** One thing the play takes, found as the composer's @ finds it, in this workspace's reach. */
 function Picker({ env, workspaceId, take, first, chip, onChip }: { env: string; workspaceId: string; take: PlayTake; first: boolean; chip: ContextChip | undefined; onChip: (c: ContextChip | undefined) => void }) {
   const [query, setQuery] = useState("");
-  const [answer, setAnswer] = useState<{ hits: MentionHit[] } | { error: string } | null>(null);
+  // `note`: what the search left out, said as the composer's @ says it (muted); `error`: the host's own failure (red).
+  const [answer, setAnswer] = useState<{ hits: MentionHit[] } | { error: string } | { note: string } | null>(null);
   useEffect(() => {
     if (chip) return;
     let live = true;
@@ -192,7 +194,7 @@ function Picker({ env, workspaceId, take, first, chip, onChip }: { env: string; 
           .linkOf(env)
           .request<MentionAnswer>("work.canvas.mentions", { sessionId: `play-${workspaceId}`, draft: { workspaceId, work: true }, text: query, kinds: pickerKinds(take) })
           .then(
-            (a) => live && setAnswer(a.failed?.length && !a.hits?.length ? { error: "Couldn't reach LifeOS" } : { hits: a.hits ?? [] }),
+            (a) => live && setAnswer(a.failed?.length && !a.hits?.length ? { note: mentionFailWords(a.failed, env)! } : { hits: a.hits ?? [] }),
             (err: unknown) => live && setAnswer({ error: workErrorWords(err) || "The host did not answer" }),
           ),
       query ? 120 : 0,
@@ -225,6 +227,8 @@ function Picker({ env, workspaceId, take, first, chip, onChip }: { env: string; 
           <Skeleton className="mx-2 my-1.5 h-4 w-1/2" />
         ) : "error" in answer ? (
           <p className="px-2 py-1.5 text-xs text-destructive">{answer.error}</p>
+        ) : "note" in answer ? (
+          <p data-picker-note className="px-2 py-1.5 text-xs text-muted-foreground">{answer.note}</p>
         ) : answer.hits.length === 0 ? (
           <p className="px-2 py-1.5 text-xs text-muted-foreground">No {label.toLowerCase()} matches</p>
         ) : (

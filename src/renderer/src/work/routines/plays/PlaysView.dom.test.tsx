@@ -11,7 +11,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { PlayRow } from "@shared/contract-work-routines";
 import type { ContextChip } from "@shared/work";
 
-const host: { plays: PlayRow[]; asked: { method: string; params: unknown }[]; answer: (method: string, params: unknown) => unknown } = { plays: [], asked: [], answer: () => null };
+const host: { plays: PlayRow[]; asked: { method: string; params: unknown }[]; answer: (method: string, params: unknown) => unknown; mentions?: unknown } = { plays: [], asked: [], answer: () => null };
 vi.mock("../../../lib/connection", async (original) => ({
   ...(await original<object>()),
   registry: {
@@ -21,7 +21,7 @@ vi.mock("../../../lib/connection", async (original) => ({
       request: async (method: string, params: unknown) => {
         host.asked.push({ method, params });
         if (method === "work.routines.plays") return { plays: host.plays };
-        if (method === "work.canvas.mentions") return { hits: [], failed: [] };
+        if (method === "work.canvas.mentions") return host.mentions ?? { hits: [], failed: [] };
         return host.answer(method, params);
       },
     }),
@@ -169,6 +169,28 @@ describe("Run a play… on a mail", () => {
     fireEvent.click(screen.getByRole("button", { name: /Game assignment/ }));
     await settle();
     expect(asked("work.routines.playStart")).toEqual([{ id: "a", inputs: { chips: [mail] } }]);
+  });
+});
+
+describe("Run a play…'s picker when LifeOS could not be searched (council round 9)", () => {
+  it("says the host's state with the computer named, muted, and that not everything was searched when a host kind failed too", async () => {
+    const { resetLifeos, setLifeosStatus } = await import("../../shell/lifeos");
+    setLifeosStatus("box", { lifeos: { state: "signed-out" }, keys: [] } as never);
+    host.plays = [play({ id: "t", name: "Task follow-up", takes: ["mail", "task"] })];
+    host.mentions = { hits: [], failed: ["task"] };
+    try {
+      render(<RunDialog env="box" workspaceId="ws" chip={mail} onClose={() => {}} />);
+      await settle();
+      fireEvent.click(screen.getByRole("button", { name: /Task follow-up/ }));
+      await settle();
+      const note = document.querySelector("[data-picker-note]")!;
+      expect(note.textContent).toBe("Not signed in to LifeOS on the box");
+      expect(note.className).toContain("text-muted-foreground");
+      expect(screen.queryByText("Couldn't reach LifeOS")).toBeNull();
+    } finally {
+      host.mentions = undefined;
+      resetLifeos();
+    }
   });
 });
 
