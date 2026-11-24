@@ -344,7 +344,12 @@ export class SetupThisPc {
   private async runLifeos(codes: LifeosCodes | null = this.readCodes()): Promise<void> {
     const s = this.saved()
     if (!s || !codes) return
-    const missing = codes.missing ? `${s.giver}'s Work is not signed in to LifeOS. Sign in there, then make a new link.` : null
+    const missing =
+      codes.missing === 'failed'
+        ? `LifeOS did not prepare a sign-in for this computer on ${s.giver}. Make a new link there.`
+        : codes.missing
+          ? `${s.giver}'s Work is not signed in to LifeOS. Sign in there, then make a new link.`
+          : null
     if (this.stepState('lifeos') !== null && this.stepState('lifeos') !== 'done') {
       await this.once('lifeos', async () => {
         if (missing || !codes.codes?.desktop || !codes.owner) return this.report('lifeos', 'failed', missing ?? 'The giver sent no LifeOS sign-in')

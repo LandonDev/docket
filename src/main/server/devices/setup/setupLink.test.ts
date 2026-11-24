@@ -28,7 +28,7 @@ const memorySecrets = () => {
 
 /** The box, the giver (a Mac) and one computer being set up, wired in memory; HTTP is a fake fetch onto the box's routes. */
 const worlds: { pc: SetupThisPc }[] = []
-async function makeWorld(opts: { platform?: NodeJS.Platform; lifeos?: LifeosGrant | null; envId?: string; consoleLogs?: boolean; taken?: (envId: string) => boolean } = {}) {
+async function makeWorld(opts: { platform?: NodeJS.Platform; lifeos?: LifeosGrant | null | 'throws'; envId?: string; consoleLogs?: boolean; taken?: (envId: string) => boolean } = {}) {
   const quiet = opts.consoleLogs ? undefined : () => {}
   const box = await makeBox()
   const setup = new SetupPairings(box.db, { auth: box.auth, bindings: box.bindings, toGiver: (p) => box.toGiver.push(p), taken: opts.taken, finishRemoval: (e) => void box.farewell.finish(e), now: () => box.clock.now, log: quiet })
@@ -72,7 +72,10 @@ async function makeWorld(opts: { platform?: NodeJS.Platform; lifeos?: LifeosGran
     secrets: giverSecrets,
     store: giverStore,
     computers: giverDevices,
-    lifeos: async () => (opts.lifeos === undefined ? { enrollment: 'enr_1', owner: 'owner_1', codes: LIFEOS_CODES } : opts.lifeos),
+    lifeos: async () => {
+      if (opts.lifeos === 'throws') throw new Error('LifeOS did not prepare the sign-in: Server Error')
+      return opts.lifeos === undefined ? { enrollment: 'enr_1', owner: 'owner_1', codes: LIFEOS_CODES } : opts.lifeos
+    },
     workOn: () => true,
     addDesktop: async (w, env) => void desktops.push([w, env]),
     push: (p) => giverPushes.push(p),
@@ -276,6 +279,26 @@ describe('the setup link', () => {
     expect(w.pc.state()!.steps.map((s) => s.step)).toEqual(['link', 'allow', 'accounts', 'work', 'folders'])
     expect(w.installs).toEqual([])
     expect(w.workSignIns).toHaveLength(1)
+  })
+
+  it("says LifeOS did not prepare the sign-in when asking it failed, and that the Mac is not signed in only when it is not", async () => {
+    for (const [lifeos, words] of [
+      ['throws', "LifeOS did not prepare a sign-in for this computer on Landon's MacBook. Make a new link there."],
+      [null, "Landon's MacBook's Work is not signed in to LifeOS. Sign in there, then make a new link."]
+    ] as const) {
+      const w = await makeWorld({ lifeos })
+      const { link, pairingId } = await w.giver.make({ name: 'PC', items: ALL, workspaces: [] })
+      await w.pc.start(link)
+      await w.joined()
+      await w.giver.allow(pairingId)
+      await vi.waitFor(() => expect(allowState(w)).toBe('done'))
+      w.deliver()
+      await w.settle()
+      const steps = w.pc.state()!.steps
+      expect(steps.find((s) => s.step === 'lifeos')).toMatchObject({ state: 'failed', reason: words })
+      expect(steps.find((s) => s.step === 'work')).toMatchObject({ state: 'failed', reason: words })
+      expect(w.installs).toEqual([])
+    }
   })
 
   it('says when a used link was used, and that an ended link ended', async () => {

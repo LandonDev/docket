@@ -305,11 +305,14 @@ export class SetupLinks {
     const pairingId = r.pairingId
     const c = r.claim!
     let lifeos: LifeosGrant | null = null
+    // Null: this Mac's Work holds no LifeOS session. A throw: LifeOS was asked and did not prepare the sign-in.
+    let lifeosFailed = false
     if (r.items.lifeos) {
       try {
         lifeos = await this.deps.lifeos(r.name)
         if (lifeos) this.update(pairingId, { attempt: { at: r.attempt!.at, enrollment: lifeos.enrollment } })
       } catch (err) {
+        lifeosFailed = true
         this.log(`setup link ${pairingId}: LifeOS sign-in not prepared (${(err as Error).message})`)
       }
     }
@@ -318,7 +321,7 @@ export class SetupLinks {
     const extra: Record<string, unknown> = {
       box: { envId: boxEnvId, origin: r.origin },
       giver: { envId: this.deps.environmentId, name: this.deps.giverName() },
-      ...(r.items.lifeos ? { lifeos: lifeos ? { owner: lifeos.owner, codes: lifeos.codes, reader: r.items.reader } : { missing: 'not-signed-in' } } : {})
+      ...(r.items.lifeos ? { lifeos: lifeos ? { owner: lifeos.owner, codes: lifeos.codes, reader: r.items.reader } : { missing: lifeosFailed ? 'failed' : 'not-signed-in' } } : {})
     }
     await this.deps.computers.activate(c.envId, extra)
   }
