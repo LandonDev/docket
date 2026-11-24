@@ -113,15 +113,6 @@ const MAKE: Control[] = [
   { roles: BUTTON, name: /^(Create or upload|New)$/i },
   { roles: ITEM, name: /^(?:xlsx\s+)?Forms survey$/i }
 ]
-const PREFILL: Control[] = [
-  { roles: BUTTON, name: /^More form settings$/i },
-  { roles: ITEM, name: /^Get Pre-?filled URL$/i },
-  { roles: BUTTON, name: /^Start Now$/i },
-  // the page it opens says "<title> (Prefill)" (P2, 2026-11-24)
-  { roles: [...FIELD, 'radio', 'checkbox'], name: /.+/, under: /Pre-?fill(ed)?\b|Question title|^\d+\./i },
-  { roles: BUTTON, name: /^Get Prefilled Link$/i }
-]
-
 /** What each operation may press. */
 export const ALLOWED: Record<CarrierOp, readonly Control[]> = {
   make: [...MAKE, ...SETTINGS_PANEL, ...ACCEPT_OFF, ...TITLE, ...QUESTIONS, ...NARROW, ...DATES],
@@ -131,8 +122,7 @@ export const ALLOWED: Record<CarrierOp, readonly Control[]> = {
   audience: [...SETTINGS_PANEL, ...NARROW, ...WIDEN],
   close: [...SETTINGS_PANEL, ...ACCEPT_OFF, ...ACCEPT_ON],
   count: RESPONSES,
-  pull: [...RESPONSES, ...PULL],
-  prefill: PREFILL
+  pull: [...RESPONSES, ...PULL]
 }
 
 /** Keys an operation may press: Tab commits (Escape drops an edit, Return in an option field takes a suggestion chip). */

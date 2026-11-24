@@ -180,9 +180,7 @@ export const MsformsRequestSchemas = [
   /** The forms each address answered, from what was read (People's Answered). */
   request('work.msforms.byPerson', z.object({ workspaceId, emails: z.array(z.string().max(320)).min(1).max(50) })),
   /** A meeting's follow-up survey: starts a Work thread about the event. */
-  request('work.msforms.survey', z.object({ workspaceId, event: z.string().min(1).max(200) })),
-  /** A prefilled link for the values he typed, read from Forms' own Get Pre-filled URL. */
-  request('work.msforms.prefill', z.object({ ...both, values: z.record(z.string().max(80), z.string().max(500)) }))
+  request('work.msforms.survey', z.object({ workspaceId, event: z.string().min(1).max(200) }))
 ] as const
 
 export type MsformsPush = { push: 'work.msforms'; workspaceId: string; formId: string; view: MsFormView | null }
@@ -198,7 +196,6 @@ export const MSFORMS_OWNER_ONLY: ReadonlySet<string> = new Set([
   'work.msforms.refresh',
   'work.msforms.seen',
   'work.msforms.survey',
-  'work.msforms.prefill',
   'work.msforms.workbook'
 ])
 
@@ -218,8 +215,7 @@ export const MSFORMS_CAPS = {
   'work.msforms.history': 'read',
   'work.msforms.workbook': 'operate',
   'work.msforms.byPerson': 'read',
-  'work.msforms.survey': 'operate',
-  'work.msforms.prefill': 'operate'
+  'work.msforms.survey': 'operate'
 } satisfies CapsOf<typeof MsformsRequestSchemas>
 export const MSFORMS_RELAY = {} satisfies RelayOf<typeof MsformsRequestSchemas>
 

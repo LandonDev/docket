@@ -85,7 +85,6 @@ function hostOf(state: State): MsFormHost {
     responses: () => Promise.resolve(RESPONSES),
     refresh: same,
     seen: same,
-    prefill: async () => ({ link: `https://forms.cloud.microsoft/Pages/ResponsePage.aspx?id=${FORM}` }),
     history: async () => [{ rev: 2, at: Date.now() - 3_600_000, by: "agent:env:t1", words: ['Add a Date "When?", required'] }],
     workbook: async () => ({ ref: { at: "file", host: "env", path: "/RecWell/Esports/Spring intramural sign-up.xlsx" }, name: "Spring intramural sign-up.xlsx" }),
     watch: () => () => undefined,

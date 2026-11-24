@@ -3,7 +3,7 @@ import { MSFORMS_OWNER_ONLY, MsformsRequestSchemas } from '@shared/contract-work
 import { handled, NOT_HANDLED, type Handled } from '@shared/work'
 import type { ActKindDef, Caller, WorkCtx, WorkModule } from '../modules'
 import { msformMakeKind, msformPublishKind, settled } from './acts'
-import { authFor, carrierOrRefuse, get, history, holdPublish, list, make, markSeen, page, review, setCheck, setMode, setOpen } from './forms'
+import { get, history, holdPublish, list, make, markSeen, page, review, setCheck, setMode, setOpen } from './forms'
 import { forgetWorkspaceAnswers } from './answers/cache'
 import { refreshAnswers, responsesOf, signInNeeded, startAnswersPoller } from './answers/read'
 import { formReach, MsformsError } from './reach'
@@ -104,12 +104,6 @@ async function route(req: ClientRequest, ctx: WorkCtx, by: Caller): Promise<Hand
       const p = paramsOf('work.msforms.survey', req)
       const { startSurvey } = await import('./makers/survey')
       return handled(await startSurvey(ctx, by, p.workspaceId, p.event))
-    }
-    case 'work.msforms.prefill': {
-      const p = paramsOf('work.msforms.prefill', req)
-      const at = formReach(ctx, by, p)
-      const carrier = carrierOrRefuse()
-      return handled(await carrier.prefill(authFor(ctx, at.row, 'prefill', 'owner', p.values), at.row.formId, p.values))
     }
     case 'work.msforms.seen': {
       const view = markSeen(ctx, formReach(ctx, by, paramsOf('work.msforms.seen', req)))

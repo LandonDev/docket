@@ -53,7 +53,7 @@ const HISTORY: MsFormHistoryRow[] = [
 
 function hostOf(view: MsFormView): MsFormHost {
   const same = () => vi.fn(async () => view);
-  return { get: same(), collect: same(), close: same(), mode: same(), check: same(), review: same(), responses: vi.fn(), refresh: same(), seen: same(), prefill: vi.fn(), history: vi.fn(async () => HISTORY), workbook: vi.fn(async () => FILE), watch: () => () => undefined } as unknown as MsFormHost;
+  return { get: same(), collect: same(), close: same(), mode: same(), check: same(), review: same(), responses: vi.fn(), refresh: same(), seen: same(), history: vi.fn(async () => HISTORY), workbook: vi.fn(async () => FILE), watch: () => () => undefined } as unknown as MsFormHost;
 }
 let n = 0;
 function draw(view: MsFormView) {

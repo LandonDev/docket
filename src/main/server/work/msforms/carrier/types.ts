@@ -9,7 +9,7 @@ import type { MsAnyQuestion, MsChange, MsFormSettings, MsQuestion } from '@share
  * and the form's `rev`. Nothing a model writes reaches a click.
  */
 
-export const CARRIER_OPS = ['make', 'write', 'settings', 'collect', 'audience', 'close', 'count', 'pull', 'prefill'] as const
+export const CARRIER_OPS = ['make', 'write', 'settings', 'collect', 'audience', 'close', 'count', 'pull'] as const
 export type CarrierOp = (typeof CARRIER_OPS)[number]
 
 /** Who granted the run: his press through the owner RPC, a claimed held act's execute, the pillar under "Agent writes" on a draft, or the poller. */
@@ -17,7 +17,7 @@ export type CarrierBy = 'owner' | 'act' | 'pillar' | 'poller'
 
 /** Which operations each grantor may authorize. The pillar writes only a draft's questions and settings, sets a closing end date, and closes (never reopens); the poller only reads. */
 export const OPS_BY: Record<CarrierBy, readonly CarrierOp[]> = {
-  owner: ['make', 'write', 'settings', 'collect', 'audience', 'close', 'count', 'pull', 'prefill'],
+  owner: ['make', 'write', 'settings', 'collect', 'audience', 'close', 'count', 'pull'],
   act: ['make', 'write', 'settings', 'collect', 'audience', 'close'],
   pillar: ['write', 'settings', 'close'],
   poller: ['count', 'pull']
@@ -160,7 +160,6 @@ export interface MsCarrier {
   count(auth: CarrierAuth, formId: string): Promise<{ count: number; read: FormRead }>
   /** presses Open results in Excel (and its first-use Continue), then reads the workbook's bytes from the site page */
   pull(auth: CarrierAuth, formId: string, ask: PullAsk): Promise<{ workbook: PulledWorkbook; bytes: Uint8Array; modified: string } | { unchanged: true }>
-  prefill(auth: CarrierAuth, formId: string, values: Record<string, string>): Promise<{ link: string }>
 }
 
 let carrier: MsCarrier | null = null

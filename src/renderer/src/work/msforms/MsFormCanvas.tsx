@@ -17,7 +17,7 @@ import { LiveBody } from "../office/live/LiveBody";
 import { LiveCover } from "../office/live/cover";
 import { liveAskUrl, liveLayer } from "../office/live/layer";
 import { linkMsFormHost, type MsFormHost } from "./host";
-import { PrefillDialog, QrDialog } from "./Share";
+import { QrDialog } from "./Share";
 import { HistoryDialog } from "./History";
 import { History, Mail, QrCode, Table } from "../icons";
 import { openInFiles } from "../files/openFrom";
@@ -50,7 +50,7 @@ interface Slot {
   /** the guest changed under him: the agent wrote while he was typing */
   changed: boolean;
   /** a dialog More opened */
-  dialog: "prefill" | "history" | null;
+  dialog: "history" | null;
 }
 class Store {
   private slot: Slot;
@@ -252,7 +252,6 @@ function useChrome(shell: CanvasShell, host: MsFormHost, store: Store, view: MsF
         : []),
       ...(state === "collecting" && link
         ? [
-            { id: "prefill", label: "Get a Prefilled Link…", icon: Copy, run: () => store.set({ dialog: "prefill" }) },
             {
               id: "mail",
               label: "Mail the Link…",
@@ -318,7 +317,6 @@ export function Bar(props: Props) {
           </Button>
         </span>
       ) : null}
-      {dialog === "prefill" ? <PrefillDialog view={view} make={(values) => host.prefill(values)} onClose={() => store.set({ dialog: null })} /> : null}
       {dialog === "history" ? <HistoryDialog title={view.title} load={host.history} onClose={() => store.set({ dialog: null })} /> : null}
     </>
   );

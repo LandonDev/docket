@@ -143,11 +143,4 @@ export class FakeCarrier implements MsCarrier {
     if (!this.pullBytes) return { unchanged: true as const }
     return { workbook: { uniqueId: 'fce429aa-7efc-4bac-93c5-6219e85183f4', parentId: 'parent-1', serverPath: this.pullPath, name: this.pullPath.split('/').pop()! }, bytes: this.pullBytes, modified: '2026-11-24T17:22:33Z' }
   }
-  async prefill(auth: CarrierAuth, formId: string, values: Record<string, string>) {
-    this.calls.push({ op: 'prefill', formId, by: auth.by })
-    const q = Object.entries(values)
-      .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`)
-      .join('&')
-    return { link: `https://forms.cloud.microsoft/Pages/ResponsePage.aspx?id=${formId}&${q}` }
-  }
 }

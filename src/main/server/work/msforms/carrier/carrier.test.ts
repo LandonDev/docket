@@ -103,10 +103,6 @@ describe('the guard', () => {
     refuses('pull', screen('[4] button "Continue"'), 4)
   })
 
-  it('lets prefill type into a question of the page Forms names "<title> (Prefill)" (P2)', () => {
-    const pre = screen('[1] web area "TempCode proof make (Prefill)"\n  [2] input "2. Write a dummy word Immersive Reader Single line text."')
-    expect(() => guardStep('prefill', pre, { action: 'type', element: 2, text: 'Zorble' } as ComputerAction)).not.toThrow()
-  })
 
   it("words a refusal without the page's own words (review 21)", () => {
     const err = (() => {

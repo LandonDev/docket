@@ -531,15 +531,6 @@ export function opsCarrier(deps: OpsDeps): MsCarrier {
       authorized(auth, 'pull', formId, { formId, siteUrl: ask.siteUrl, folder: ask.folderServerPath })
       const { pullWorkbook } = await import('./pull')
       return deps.exclusive(() => pullWorkbook({ computer, mount, openResponses: () => openBuilder(formId, 'pull', '&analysis=true') }, formId, ask))
-    },
-
-    async prefill(auth, formId, values) {
-      authorized(auth, 'prefill', formId, values)
-      const { prefillLink } = await import('./prefill')
-      return deps.exclusive(async () => {
-        const page = await openBuilder(formId, 'prefill')
-        return closing(page, () => prefillLink(page, formId, values, mount))
-      })
     }
   }
 }
