@@ -106,6 +106,7 @@ export function Body(props: Props) {
 
   useReloadOnChange(item.id, view, store);
   useChrome(shell, host, store, view, changed, item.id);
+  const current = useReview(shell, host, store, view, half);
   useEffect(() => {
     shell.ready?.(!!view);
   }, [shell, view]);
@@ -113,7 +114,48 @@ export function Body(props: Props) {
   if (error && !view) return <OpenFailed kind="msform" why={error} onRetry={() => void host.get().then((v) => store.set({ view: v, error: null }), () => undefined)} />;
   if (!view) return <FormBone />;
   if (half === "responses") return <Responses view={view} host={host} item={item} shell={shell} />;
-  return <LiveBody itemId={item.id} ask={{ forms: { tenant: view.tenant, formId: view.formId, page: "design" } }} app="forms" covered={cover.covered} full={cover.full} />;
+  const waiting = view.suggestions[current];
+  const guest = <LiveBody itemId={item.id} ask={{ forms: { tenant: view.tenant, formId: view.formId, page: "design" } }} app="forms" covered={cover.covered} full={cover.full} />;
+  if (!waiting) return guest;
+  return (
+    <div className="flex min-h-0 flex-1 flex-col">
+      {/* The change the stepper stands on, in words: Forms' own page cannot outline it. */}
+      <div data-msform-change className="flex min-h-8 shrink-0 items-center gap-2 border-b border-border px-3 py-1 text-[13px] leading-5">
+        <span className="min-w-0 truncate text-foreground">{waiting.words}</span>
+        {waiting.reason ? <span className="min-w-0 truncate text-muted-foreground">{waiting.reason}</span> : null}
+      </div>
+      {guest}
+    </div>
+  );
+}
+
+/**
+ * An agent's waiting changes on the frame's stepper (docs/DESIGN.md "Microsoft form"): Accept runs the carrier's write
+ * with exactly that change, Reject drops it, Accept all and Reject all take every one. Only on the Form half.
+ */
+function useReview(shell: CanvasShell, host: MsFormHost, store: Store, view: MsFormView | null, half: Half): number {
+  const [current, setCurrent] = useState(0);
+  const suggestions = view?.suggestions;
+  const at = suggestions?.length ? Math.min(current, suggestions.length - 1) : 0;
+  useEffect(() => {
+    if (!suggestions?.length || half !== "form") return shell.review(null);
+    const ids = (w: number | { group: string } | "all"): string[] => (typeof w === "number" ? [suggestions[w]?.id].filter((x): x is string => !!x) : suggestions.map((s) => s.id));
+    const decide = (accept: string[], reject: string[], failed: string): Promise<void> =>
+      host.review(accept, reject).then(
+        (v) => store.set({ view: v }),
+        (err: unknown) => sayError(err, failed),
+      );
+    shell.review({
+      groups: [{ id: "form", label: "Questions", by: suggestions[0]!.by, count: suggestions.length }],
+      index: at,
+      count: suggestions.length,
+      step: setCurrent,
+      accept: (w) => decide(ids(w), [], "Couldn't make the change in Forms"),
+      reject: (w) => decide([], ids(w), "Couldn't reject the change"),
+    });
+    return () => shell.review(null);
+  }, [shell, host, store, suggestions, half, at]);
+  return at;
 }
 
 /**

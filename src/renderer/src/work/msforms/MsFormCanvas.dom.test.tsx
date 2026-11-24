@@ -144,3 +144,26 @@ describe("the sums", () => {
     ]);
   });
 });
+
+describe("an agent's waiting changes", () => {
+  it("are stepped from the bar's stepper, said in words above the page, and Accept runs exactly that change", async () => {
+    const view: MsFormView = {
+      ...BASE,
+      suggestions: [
+        { id: "s1", change: { op: "add", question: { title: "When?", type: "date", required: true } }, words: 'Add a Date "When?", required', reason: "Dana asked for a date", by: "agent:env:t1", at: 0 },
+        { id: "s2", change: { op: "remove", at: 0 }, words: 'Remove "Which night works?"', by: "agent:env:t1", at: 0 },
+      ],
+    };
+    const host = hostOf(view);
+    const p = props(host);
+    render(<Body {...p} />);
+    expect(await screen.findByText('Add a Date "When?", required')).toBeTruthy();
+    expect(screen.getByText("Dana asked for a date")).toBeTruthy();
+    const review = (p.shell.review as ReturnType<typeof vi.fn>).mock.calls.map((c) => c[0]).filter(Boolean).at(-1);
+    expect(review).toMatchObject({ count: 2, index: 0 });
+    await act(async () => void (await review.accept(0)));
+    expect(host.review).toHaveBeenCalledWith(["s1"], []);
+    await act(async () => void (await review.reject("all")));
+    expect(host.review).toHaveBeenLastCalledWith([], ["s1", "s2"]);
+  });
+});
