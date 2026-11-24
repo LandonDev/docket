@@ -3,20 +3,23 @@ import type { ClientRequest } from "@shared/contract";
 import type { HealthFix, HealthReport } from "@shared/work/health";
 import { lapseLine } from "@shared/work/health";
 import { syncWhen } from "@shared/work/messages";
-import { errorText } from "../../chrome/ConfirmDialog";
 import { PageActions, PageRow, PageRowsSkeleton, PageSection } from "../../components/page";
 import { BusyLabel, Button } from "../../components/ui/button";
+import { Skeleton } from "../../components/ui/skeleton";
 import { StatusMark } from "../../components/ui/status";
 import { registry, useEnvironments, useEnvironmentStatuses } from "../../lib/connection";
+import { hostFailure } from "../../lib/hostFailure";
+import { nameInLine } from "../../lib/hostWords";
 import { useLinkMay } from "../../lib/linkMay";
 import { requestSettings } from "../../lib/monaco/debugTab";
 import { openUrl } from "../../lib/native";
+import { workErrorWords } from "../../lib/workErrorWords";
 import { useWorkHosts } from "../../lib/workSwitch";
 import { AddinRow } from "../office/AddinRow";
 import { SignInDialog } from "../shell/settings";
 import { useLifeosStatus } from "../shell/lifeos";
 import { signInOnVm } from "../winvm/signIn";
-import { fixVariant, markOf, sectionsOf, unchecked, usableFix, type HostView, type PlacedRow } from "./model";
+import { checkDetail, fixVariant, markOf, sectionsOf, unchecked, usableFix, type HostView, type PlacedRow } from "./model";
 
 /**
  * Settings → Connections (docs/agents/work-connections.md): every sign-in
@@ -43,7 +46,7 @@ export function ConnectionsPage() {
       const report = await withDeadline(registry.linkOf(id).request<HealthReport>("work.health", {}), CHECK_DEADLINE_MS);
       next = { id, name, status: "ready", report };
     } catch (err) {
-      next = { id, name, status: "failed", error: errorText(err) };
+      next = { id, name, status: "failed", error: checkDetail(workErrorWords(err, { host: nameInLine(name) })) };
     }
     setViews((all) => ({ ...all, [id]: next.status === "failed" ? { ...next, report: viewReport(all[id]) } : next }));
   }, []);
@@ -69,10 +72,12 @@ export function ConnectionsPage() {
 
   const shown: HostView[] = hosts.map((h) => (linked(h.id) ? (views[h.id] ?? { id: h.id, name: h.name, status: "checking" }) : { id: h.id, name: h.name, status: "offline" }));
   const checking = shown.some((h) => h.status === "checking");
+  // With no host linked there is nothing to ask: Check again is off, and each host's row says it is offline.
+  const none = !shown.some((h) => h.status !== "offline");
   return (
     <>
       <PageActions>
-        <Button variant="ghost" size="sm" disabled={checking} onClick={checkAll}>
+        <Button variant="ghost" size="sm" disabled={checking || none} onClick={checkAll}>
           <BusyLabel busy={checking} label="Check again" />
         </Button>
       </PageActions>
@@ -93,6 +98,9 @@ function withDeadline<T>(promise: Promise<T>, ms: number): Promise<T> {
   });
 }
 
+/** A row's state line as a block in the description, its detail wrapping: a narrow window cuts none of the fix's words. */
+const STATE_LINE = "flex [&>[data-slot=status-detail]]:whitespace-normal";
+
 /** The page as the hosts' answers leave it: what the preview and the test draw. */
 export function ConnectionsView({ hosts, onRecheck, now = Date.now() }: { hosts: readonly HostView[]; onRecheck: (hostId: string) => void; now?: number }) {
   const sections = sectionsOf(hosts);
@@ -106,7 +114,7 @@ export function ConnectionsView({ hosts, onRecheck, now = Date.now() }: { hosts:
             host.status === "offline" ? (
               <PageRow key={host.id} title={host.name} description={<StatusMark state="stopped" word="Offline" detail="Checked when it is back" />} />
             ) : (
-              <PageRow key={host.id} title={host.name} description={<StatusMark state="failed" word="Did not answer" detail={host.status === "failed" ? host.error : undefined} />}>
+              <PageRow key={host.id} title={host.name} description={<StatusMark className={STATE_LINE} state="failed" word="Did not answer" detail={host.status === "failed" ? host.error : undefined} />}>
                 <Button variant="ghost" size="sm" onClick={() => onRecheck(host.id)}>
                   Retry
                 </Button>
@@ -116,15 +124,21 @@ export function ConnectionsView({ hosts, onRecheck, now = Date.now() }: { hosts:
         </PageSection>
       ) : null}
       {sections.map((section) => (
-        <PageSection key={section.group} title={section.group}>
+        <PageSection key={section.group} title={section.titled ? section.group : undefined} aria-label={section.titled ? undefined : section.group}>
           {section.rows.map((placed) => (
             <ConnectionRow key={placed.key} placed={placed} now={now} onDone={() => onRecheck(placed.hostId)} />
           ))}
         </PageSection>
       ))}
       {waiting.length && !sections.length ? (
+        // A heading's bone over the rows, as the first section lands; most rows have no press, so the bones draw none.
         <PageSection>
-          <PageRowsSkeleton rows={6} description control="button" />
+          <div aria-hidden className="flex h-5 items-center">
+            <Skeleton className="h-3 w-16" />
+          </div>
+          <div className="mt-2">
+            <PageRowsSkeleton rows={6} description control="none" />
+          </div>
         </PageSection>
       ) : null}
     </>
@@ -158,7 +172,7 @@ function FixRow({ placed, now, onDone }: { placed: PlacedRow; now: number; onDon
   const [signingIn, setSigningIn] = useState(false);
   const press = async (fix: HealthFix): Promise<void> => {
     setError(null);
-    if (fix.kind === "open") return void openUrl(fix.url).catch((err: unknown) => setError(errorText(err)));
+    if (fix.kind === "open") return void openUrl(fix.url).catch((err: unknown) => setError(workErrorWords(err) || "The page did not open."));
     if (fix.kind === "page") {
       if (fix.page === "lifeos-sign-in") return setSigningIn(true);
       if (fix.page.startsWith("settings:")) return requestSettings(fix.page.slice("settings:".length) as never);
@@ -170,14 +184,14 @@ function FixRow({ placed, now, onDone }: { placed: PlacedRow; now: number; onDon
       else await registry.linkOf(hostId).request(fix.method, fix.params ?? {});
       onDone();
     } catch (err) {
-      setError(errorText(err));
+      setError(hostFailure(hostId, err, "did not finish it", true));
     } finally {
       setBusy(false);
     }
   };
   return (
     <>
-      <PageRow title={placed.title} description={<StatusMark state={mark.state} word={mark.word} detail={row.at === undefined ? row.line : [row.line, syncWhen(row.at, now)].filter(Boolean).join(" ")} />} error={error ?? undefined}>
+      <PageRow title={placed.title} description={<StatusMark className={STATE_LINE} state={mark.state} word={mark.word} detail={row.at === undefined ? row.line : [row.line, syncWhen(row.at, now)].filter(Boolean).join(" ")} />} error={error ?? undefined}>
         {row.until ? <span className="text-xs tabular-nums text-muted-foreground">{lapseLine(row.until, now)}</span> : null}
         {fix ? (
           <Button variant={fixVariant(row.state)} size="sm" disabled={busy} onClick={() => void press(fix)}>

@@ -23,6 +23,7 @@ vi.mock("../winvm/signIn", () => ({ signInOnVm }));
 vi.mock("../../lib/linkMay", async (original) => (await import("../../lib/linkMay.testkit")).linkMayMock(await original()));
 const { GIVEN_KEY, resetTestKey, testKey } = await import("../../lib/linkMay.testkit");
 const { ConnectionsPage } = await import("./ConnectionsPage");
+const { Page } = await import("../../components/page");
 
 const settle = () => act(async () => void (await new Promise((r) => setTimeout(r, 0))));
 
@@ -139,7 +140,39 @@ describe("Connections", () => {
     render(<ConnectionsPage />);
     await settle();
     expect(screen.getByText("Did not answer")).toBeTruthy();
-    expect(screen.getByText("Work is off on this host")).toBeTruthy();
+    expect(screen.getByText("Work is off on the box. Turn it on in Settings, Work.")).toBeTruthy();
     expect(screen.getByRole("button", { name: "Retry" })).toBeTruthy();
+  });
+
+  it("says a host that did not answer once, with no detail that says it again", async () => {
+    vi.spyOn(registry, "linkOf").mockReturnValue({ request: vi.fn(async () => Promise.reject(new Error("No answer in 4 s"))) } as never);
+    render(<ConnectionsPage />);
+    await settle();
+    expect(screen.getByText("Did not answer")).toBeTruthy();
+    expect(document.body.textContent).not.toMatch(/did not answer.*did not answer/i);
+  });
+
+  it("turns Check again off while no host is linked, the rows saying each is offline", async () => {
+    links.box = "offline";
+    vi.spyOn(registry, "linkOf").mockReturnValue({ request: vi.fn() } as never);
+    // Check again sits on the page's title line, so the page is drawn around it.
+    render(
+      <Page title="Connections">
+        <ConnectionsPage />
+      </Page>,
+    );
+    await settle();
+    expect(screen.getAllByText("Offline")).toHaveLength(2);
+    expect((screen.getByRole("button", { name: "Check again" }) as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it("lets a row's state line wrap in a narrow window, never cutting the fix's words", async () => {
+    const request = vi.fn(async () => ({ host: "env_box", at: 1, rows: [{ id: "google", pillar: "google", group: "Google", title: "Google", state: "broken", line: "Google refused the token: sign in again in LifeOS" }] }));
+    vi.spyOn(registry, "linkOf").mockReturnValue({ request } as never);
+    render(<ConnectionsPage />);
+    await settle();
+    const mark = screen.getByText("Broken").closest("[data-slot=status-mark]")!;
+    expect(mark.className).toContain("[&>[data-slot=status-detail]]:whitespace-normal");
+    expect(mark.className.split(" ")).toContain("flex");
   });
 });

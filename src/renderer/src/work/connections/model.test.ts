@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { HealthRow } from "@shared/work/health";
-import { fixVariant, markOf, sectionsOf, unchecked, usableFix, type HostView } from "./model";
+import { checkDetail, fixVariant, markOf, sectionsOf, unchecked, usableFix, type HostView } from "./model";
 
 const row = (over: Partial<HealthRow>): HealthRow => ({ id: "x", pillar: "office", group: "Office", title: "Excel", state: "working", ...over });
 const ready = (id: string, name: string, rows: HealthRow[]): HostView => ({ id, name, status: "ready", report: { host: id, at: 0, rows } });
@@ -24,7 +24,7 @@ describe("sectionsOf", () => {
   it("shows a row two hosts give alike once: a LifeOS source both hosts read", () => {
     const source = row({ id: "lifeos.source:1", group: "Mail and calendar", title: "Purdue mail", line: "Synced 2:02 PM", sector: "purdue", shared: true });
     const sections = sectionsOf([ready("box", "the box", [source]), ready("mac", "Mac", [{ ...source }])]);
-    expect(sections).toEqual([{ group: "Mail and calendar", rows: [expect.objectContaining({ hostId: "box", title: "Purdue mail" })] }]);
+    expect(sections).toEqual([{ group: "Mail and calendar", titled: true, rows: [expect.objectContaining({ hostId: "box", title: "Purdue mail" })] }]);
   });
 
   it("never folds a host's own rows, nor a row with a fix: each press belongs to its host", () => {
@@ -46,6 +46,18 @@ describe("sectionsOf", () => {
 });
 
 describe("the rest of the page's words", () => {
+  it("draws no heading over a group whose one row has its name", () => {
+    const sections = sectionsOf([ready("box", "the box", [row({ id: "frameio", group: "Frame.io", title: "Frame.io" }), row({ id: "excel", group: "Tools", title: "Excel" })])]);
+    expect(sections.map((s) => [s.group, s.titled])).toEqual([["Tools", true], ["Frame.io", false]]);
+  });
+
+  it("says a failed check's cause once: nothing after Did not answer that says it again", () => {
+    expect(checkDetail("The host did not answer")).toBeUndefined();
+    expect(checkDetail("The box did not answer. Try again once it is connected.")).toBeUndefined();
+    expect(checkDetail("")).toBeUndefined();
+    expect(checkDetail("Work is off on the box. Turn it on in Settings, Work.")).toBe("Work is off on the box. Turn it on in Settings, Work.");
+  });
+
   it("lists only the hosts that could not be checked", () => {
     const hosts: HostView[] = [ready("box", "the box", []), { id: "mac", name: "Mac", status: "offline" }, { id: "pc", name: "PC", status: "failed", error: "Work is off on this host" }];
     expect(unchecked(hosts).map((h) => h.id)).toEqual(["mac", "pc"]);

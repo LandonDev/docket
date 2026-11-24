@@ -24,16 +24,25 @@ while Work is on for some host).
   which every signed-in host reads the same from LifeOS) is shown once when
   two hosts give it alike. A host's own row is never folded, nor one with a
   fix, whose press belongs to its host. A title two hosts both give is told
-  apart by its host ("LifeOS on Mac"), and only then.
+  apart by its host ("LifeOS on Mac"), and only then. A group whose one
+  row has the group's own name (Frame.io, Windows VM, Work service) has no
+  heading over it.
+- A row's state line wraps in a narrow window: the line after the word is
+  the fix he needs, so none of it is cut.
 - The Office add-in's row is the add-in's own control (`AddinRow`): Pair…
   and each paired add-in with Remove live here and nowhere else.
 - A host this window is not linked to now sits under **Hosts** as Offline
   ("Checked when it is back"), never as broken, and is checked the moment
   its link opens. A host that refuses (Work off there, an older build) is
-  "Did not answer" with its reason and Retry.
+  "Did not answer" with its reason in his words (`workErrorWords`) and
+  Retry; one that ran out of time has no reason after the word, which
+  would only say it again (`checkDetail`).
 - **Check again** (the page's one ghost verb) runs every linked host's
   checks again. The checks run when the page opens and on that press; never
   on a timer. While a host checks again its rows stay where they are.
+  With no host linked it is off, and each host's row says Offline.
+- The first check draws a heading's bone over six row bones with no
+  press, so the first section lands where they stood.
 - The fix is the button at the row's end: raised on a row that needs a
   press, ghost on a row that works (Sign out). What he must do by hand is
   said in the line, with no button. A fix this window's key may not run on

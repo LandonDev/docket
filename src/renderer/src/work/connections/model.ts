@@ -14,7 +14,7 @@ export type HostView =
   | { id: string; name: string; status: "checking"; report?: HealthReport }
   | { id: string; name: string; status: "ready"; report: HealthReport }
   | { id: string; name: string; status: "offline" }
-  | { id: string; name: string; status: "failed"; error: string; report?: HealthReport };
+  | { id: string; name: string; status: "failed"; error?: string; report?: HealthReport };
 
 export interface PlacedRow {
   key: string;
@@ -25,7 +25,9 @@ export interface PlacedRow {
 }
 
 export interface Section {
+  /** the heading; none where the group's one row has the group's own name ("Frame.io" over "Frame.io") */
   group: string;
+  titled: boolean;
   rows: PlacedRow[];
 }
 
@@ -62,7 +64,15 @@ export function sectionsOf(hosts: readonly HostView[]): Section[] {
     list.push({ key: one.key, hostId: one.hostId, title: shared ? `${one.row.title} on ${nameInLine(one.hostName)}` : one.row.title, row: one.row });
     byGroup.set(one.row.group, list);
   }
-  return [...byGroup.entries()].map(([group, rows], order) => ({ group, rows, order })).sort((a, b) => rank(a.group) - rank(b.group) || a.order - b.order).map(({ group, rows }) => ({ group, rows }));
+  return [...byGroup.entries()].map(([group, rows], order) => ({ group, rows, order })).sort((a, b) => rank(a.group) - rank(b.group) || a.order - b.order).map(({ group, rows }) => ({ group, titled: !(rows.length === 1 && rows[0]!.title === group), rows }));
+}
+
+/**
+ * A failed check's detail after the row's "Did not answer", in his words (`workErrorWords` already applied): none
+ * where it would only say that again ("The host did not answer"), so one fact is said once.
+ */
+export function checkDetail(words: string): string | undefined {
+  return words && !/\bdid not answer\b/i.test(words) ? words : undefined;
 }
 
 /** The hosts that could not be checked: offline, or refused. */

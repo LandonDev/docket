@@ -53,16 +53,27 @@ const HOSTS: Record<string, HostView[]> = {
     { id: "box", name: "the box", status: "checking" },
     { id: "mac", name: "Mac", status: "checking" },
   ],
+  /** Neither host linked: Check again is off, and each row says why. */
+  offline: [
+    { id: "box", name: "the box", status: "offline" },
+    { id: "mac", name: "Mac", status: "offline" },
+  ],
+  /** The Mac's check ran out of time: Did not answer, said once. */
+  macFailed: [
+    { id: "box", name: "the box", status: "ready", report: { host: "env_box", at: NOW, rows: BOX } },
+    { id: "mac", name: "Mac", status: "failed" },
+  ],
 };
 
 export function ConnectionsPreview({ hosts = "both" }: { hosts?: keyof typeof HOSTS }) {
   const checking = HOSTS[hosts]!.some((h) => h.status === "checking");
+  const none = HOSTS[hosts]!.every((h) => h.status === "offline");
   return (
     <Page
       title="Connections"
       description="Each host's sign-ins and helpers."
       actions={
-        <Button variant="ghost" size="sm" disabled={checking}>
+        <Button variant="ghost" size="sm" disabled={checking || none}>
           Check again
         </Button>
       }
