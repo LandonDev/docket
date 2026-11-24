@@ -1,7 +1,7 @@
 import { randomBytes } from 'node:crypto'
 import { chmodSync, existsSync, mkdirSync, unlinkSync, writeFileSync } from 'node:fs'
 import { createCollabSigner, generateCollabKeys, TEMPCODE_COLLAB_AUDIENCE, type CollabSigner, type TrustedIssuer } from 'work-kit/collab-server'
-import type { FromService, LifeosServer, ServiceConfig, ServiceLink, ServiceProject, ToService } from './wire'
+import type { DocRevision, FromService, LifeosServer, ServiceConfig, ServiceLink, ServiceProject, ToService } from './wire'
 
 /**
  * Main's side of the Work service (docs/agents/work-service.md): forks the
@@ -44,6 +44,7 @@ export type ServiceState = 'off' | 'starting' | 'running' | 'waiting'
 const MAX_BACKOFF = 30_000
 
 export class ServiceSupervisor {
+  private readonly docListeners = new Set<(notice: DocRevision) => void>()
   private child: ServiceChild | null = null
   private wanted = false
   private stateNow: ServiceState = 'off'
@@ -127,6 +128,11 @@ export class ServiceSupervisor {
     return lifeos ? [...this.issuers, lifeos] : this.issuers
   }
 
+  onDocRevision(listener: (notice: DocRevision) => void): () => void {
+    this.docListeners.add(listener)
+    return () => void this.docListeners.delete(listener)
+  }
+
   private fork(): void {
     if (!this.wanted || !this.signer) return
     const epoch = ++this.epoch
@@ -168,6 +174,9 @@ export class ServiceSupervisor {
           (jwt) => reply({ t: 'jwt', id: m.id, jwt }),
           (err: Error) => reply({ t: 'jwt', id: m.id, error: err.message })
         )
+      } else if (m.t === 'doc-revision' && this.child === child && this.wanted) {
+        const { doc, rev, loaded } = m
+        for (const listener of this.docListeners) listener({ doc, rev, loaded })
       } else if (m.t === 'log') this.deps.log(`[work-service] ${m.line}`)
       else if (m.t === 'fault') this.deps.log(`[work-service] fault: ${m.message}`)
     })

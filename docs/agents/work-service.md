@@ -47,6 +47,10 @@ responses it writes to sheets.
   refuses writes with the name of the host that serves them. A `.tcdoc` is
   served by the host it is on.
 
+The service posts `doc-revision` to main with a file-backed document's path and
+live revision. It sends the revision on load and when a Yjs edit changes it.
+Word and linked-file autosaves use those notices and a 30-second sweep.
+
 ## Where it listens
 
 | What | Where |

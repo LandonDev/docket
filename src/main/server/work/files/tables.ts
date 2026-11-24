@@ -75,6 +75,7 @@ export function ensureFilesTables(db: DatabaseSync): void {
     workspace_id TEXT NOT NULL, host TEXT NOT NULL, path TEXT NOT NULL, vm INTEGER NOT NULL DEFAULT 0, name TEXT NOT NULL,
     version TEXT NOT NULL, doc TEXT, doc_at INTEGER, saved_at INTEGER, saved_doc_at INTEGER, at INTEGER NOT NULL,
     PRIMARY KEY (workspace_id, host, path))`)
+  db.exec(`CREATE INDEX IF NOT EXISTS work_files_word_by_doc ON work_files_word (doc)`)
   // The sha256 of the bytes the copy was read with (`sha`), and the Word file as it was before TempCode's first write
   // over it (`original`, a file in the workspace's folder): added after the table was first made.
   const have = new Set((db.prepare(`PRAGMA table_info(work_files_word)`).all() as { name: string }[]).map((c) => c.name))
@@ -93,6 +94,7 @@ export function ensureFilesTables(db: DatabaseSync): void {
     version TEXT NOT NULL, sha TEXT NOT NULL, saved_rev TEXT, saved_at INTEGER,
     state TEXT NOT NULL DEFAULT 'ok', changed_at INTEGER, detail TEXT, tried_at INTEGER, made_at INTEGER NOT NULL)`)
   db.exec(`CREATE INDEX IF NOT EXISTS work_files_links_by_doc ON work_files_links (workspace_id, doc)`)
+  db.exec(`CREATE INDEX IF NOT EXISTS work_files_links_by_source ON work_files_links (doc, state)`)
 }
 
 export const FILES_TABLES = ['work_files_tabs', 'work_files_revs', 'work_files_marks', 'work_files_trash', 'work_files_ops', 'work_files_names', 'work_files_kept', 'work_files_copies', 'work_files_bodies', 'work_files_word', 'work_files_links'] as const

@@ -1,9 +1,8 @@
-import { createHash } from 'node:crypto'
 import { isAbsolute } from 'node:path'
-import * as Y from 'yjs'
 import { DOCUMENT_FRAGMENT, findQuote, setThreadMark } from 'work-kit/collab'
 import { fileDocName, readDocument, writeMarkdown, type CollabContext, type CollabFile } from 'work-kit/collab-server'
 import type { BlockDiff } from 'work-kit/formats/diff'
+import { docStateRev } from '../service/docRevision'
 import { docIn, fenceOf, servingHere, str } from '../service/routes/internal'
 import { RouteError, type InternalRoute, type RouteCtx } from '../service/routes/route'
 import { documentStyleLines } from './formatDescription'
@@ -57,13 +56,10 @@ function principalOf(body: Record<string, unknown>): string {
   return p
 }
 
-/** A document's state as one word: its Yjs snapshot (state vector and delete set) hashed; any edit moves it, a deletion alone included. */
-const stateRev = (doc: Y.Doc): string => createHash('sha256').update(Y.encodeSnapshot(Y.snapshot(doc))).digest('hex').slice(0, 32)
-
 /** The live document's state word now. */
 async function liveRev(ctx: RouteCtx, t: Target): Promise<string> {
   let rev = ''
-  await ctx.collab.edit(t.name, 'owner', (doc) => void (rev = stateRev(doc)), t.file)
+  await ctx.collab.edit(t.name, 'owner', (doc) => void (rev = docStateRev(doc)), t.file)
   return rev
 }
 
@@ -159,9 +155,9 @@ export const docsRoutes: InternalRoute[] = [
           (doc) => {
             const fragment = doc.getXmlFragment(DOCUMENT_FRAGMENT)
             if (revision !== undefined && revisionOf(readDocument(fragment).markdown) !== revision) return void (stale = true)
-            prior = stateRev(doc)
+            prior = docStateRev(doc)
             changed = writeMarkdown(fragment, markdown).changed
-            left = stateRev(doc)
+            left = docStateRev(doc)
           },
           t.file
         )

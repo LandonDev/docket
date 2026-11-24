@@ -99,6 +99,17 @@ describe('the store', () => {
     expect(store().forWorkspace('w1', { open: true, most: 1 }).map((i) => i.id)).toEqual([old.id])
   })
 
+  it.each([false, true])('uses the workspace index with open=%s', (open) => {
+    const prepare = vi.spyOn(db, 'prepare')
+    store().forWorkspace('w1', { open, panes: true })
+    const sql = prepare.mock.calls[0][0]
+    prepare.mockRestore()
+    const plan = db.prepare(`EXPLAIN QUERY PLAN ${sql}`).all('w1', 1000).map((r) => r.detail).join('\n')
+    expect(plan).toContain('SEARCH work_canvas_items USING INDEX work_canvas_items_by_workspace')
+    expect(plan).not.toContain('SCAN work_canvas_items')
+    if (open) expect(plan).not.toContain('TEMP B-TREE')
+  })
+
   it("`{ at: 'thread' }` twice is two items, each with its own folder; a close keeps the row and the folder", () => {
     const a = store().open('t1', { kind: 'document', source: { at: 'thread' }, title: 'Draft' })
     const b = store().open('t1', { kind: 'document', source: { at: 'thread' }, title: 'Draft' })

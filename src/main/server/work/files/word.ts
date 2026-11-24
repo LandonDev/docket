@@ -6,6 +6,7 @@ import type { FileTab, WordBack, WordSaved } from '@shared/contract-work-files'
 import { filesPaneOf, filesPaneWorkspace, type CanvasItem } from '@shared/work'
 import { extOf, freeName, splitName } from '@shared/work/files'
 import type { Caller, WorkCtx } from '../modules'
+import type { DocRevision } from '../service/wire'
 import { blankOf } from './make'
 import { workspaceHere } from './policy'
 import { admitOwner, deliver, freshBytes, NOT_SAVING } from './copies'
@@ -54,8 +55,7 @@ export async function liveRev(ctx: WorkCtx, doc: string): Promise<string> {
   return ((await ctx.service.internal('/internal/docs/rev', serviceTarget(target, false, 'all'))) as { rev: string }).rev
 }
 /**
- * Whether every word of a Word file's document is in the Word file, asked now and never from what the autosave saw last
- * (it looks once a second, and only at a document a tab shows): the Work service's live revision, where his words are
+ * Whether every word of a Word file's document is in the Word file, asked now and never from what the autosave saw last: the Work service's live revision, where his words are
  * as he types, against the one last written to the Word file or read from it. With no revision to compare, or no
  * service that answers, the document's file is all there is: unchanged since it was made, or since its last save.
  * A caller that deletes the document asks this first (office/live/switch.ts).
@@ -74,14 +74,18 @@ export async function wordsAllInFile(ctx: WorkCtx, r: WordRow): Promise<boolean>
   return at !== null && mtime(r.doc) === at
 }
 /** The live revision each kept document was last seen at, and since when, by its record's key. */
-const seenRevs = new Map<string, { rev: string; at: number }>()
+const seenRevs = new Map<string, { doc: string; rev: string; at: number }>()
 const keyOf = (r: Pick<WordRow, 'workspace_id' | 'host' | 'path'>): string => `${r.workspace_id}\0${r.host}\0${r.path}`
-/** Whether the document holds edits the Word file has not: by its live revision once seen, never by the file's time. */
+function seenWord(r: WordRow): { doc: string; rev: string; at: number } | undefined {
+  const seen = seenRevs.get(keyOf(r))
+  return seen?.doc === r.doc ? seen : undefined
+}
+
+/** Whether the document holds edits the Word file has not: by its live revision once seen. */
 function editsSince(r: WordRow): boolean {
-  const seen = seenRevs.get(keyOf(r))?.rev
+  const seen = seenWord(r)?.rev
   const written = r.saved_rev ?? r.base_rev
-  // A document an older build made (no base) holds his edits until its first save; one not yet seen is not called changed.
-  if (written === null) return r.doc_at === null
+  if (written === null && r.doc_at === null) return true
   return seen !== undefined && seen !== written
 }
 
@@ -125,7 +129,7 @@ export function recordWord(ctx: Pick<WorkCtx, 'db'>, w: { workspaceId: string; h
   ctx.db
     .prepare(
       `INSERT INTO work_files_word (workspace_id, host, path, vm, name, version, sha, doc, doc_at, saved_at, saved_doc_at, at) VALUES (?, ?, ?, ?, ?, ?, ?, NULL, NULL, NULL, NULL, ?)
-       ON CONFLICT (workspace_id, host, path) DO UPDATE SET vm = excluded.vm, name = excluded.name, version = excluded.version, sha = excluded.sha, doc = NULL, doc_at = NULL, saved_at = NULL, saved_doc_at = NULL, stopped = NULL, at = excluded.at`
+       ON CONFLICT (workspace_id, host, path) DO UPDATE SET vm = excluded.vm, name = excluded.name, version = excluded.version, sha = excluded.sha, doc = NULL, doc_at = NULL, saved_at = NULL, saved_doc_at = NULL, saved_rev = NULL, base_rev = NULL, stopped = NULL, at = excluded.at`
     )
     .run(w.workspaceId, w.host, w.path, w.vm ? 1 : 0, w.name, w.version, w.sha, Date.now())
   // A Word file still exactly our blank (New → Document) holds only what our editor makes: it saves by itself, unasked.
@@ -234,7 +238,7 @@ export function wordAuto(ctx: WorkCtx, by: Caller, p: { workspaceId: string; tab
  * Items of a Files pane went: a document made of a Word file that he never changed goes with its record (he only
  * looked); one he changed is kept with its record, for the Word file's next open. Never changed is asked at the close:
  * the service first stores what a window sent it, then its live revision must still be the one the document was made
- * at. What the autosave saw last (once a second) only rules a document out; a service that does not answer keeps it.
+ * at. What the autosave saw last only rules a document out; a service that does not answer keeps it.
  */
 export async function wordsLeft(ctx: Pick<WorkCtx, 'db' | 'canvas' | 'service' | 'host' | 'log'>, items: readonly CanvasItem[]): Promise<void> {
   for (const item of items) {
@@ -245,7 +249,7 @@ export async function wordsLeft(ctx: Pick<WorkCtx, 'db' | 'canvas' | 'service' |
     if (now !== null && now !== r.doc_at) continue
     // The file's time alone does not say he typed nothing, nor does the autosave's last look: his words are in the
     // service as he types, and the last of them may have come after that look.
-    const seen = seenRevs.get(keyOf(r))?.rev
+    const seen = seenWord(r)?.rev
     if (r.saved_rev !== null || r.base_rev === null || seen === undefined || seen !== r.base_rev) continue
     let live: string
     try {
@@ -259,6 +263,7 @@ export async function wordsLeft(ctx: Pick<WorkCtx, 'db' | 'canvas' | 'service' |
     const after = ctx.db.prepare(`SELECT * FROM work_files_word WHERE workspace_id = ? AND host = ? AND path = ?`).get(r.workspace_id, r.host, r.path) as WordRow | undefined
     if (live !== r.base_rev || !after || after.doc !== r.doc || after.saved_rev !== null || mtime(r.doc!) !== now || shownElsewhere(ctx, item, r.doc!)) continue
     ctx.db.prepare(`DELETE FROM work_files_word WHERE workspace_id = ? AND host = ? AND path = ?`).run(r.workspace_id, r.host, r.path)
+    seenRevs.delete(keyOf(r))
     if (now !== null) rmSync(r.doc!, { force: true })
   }
 }
@@ -311,11 +316,11 @@ function keepOriginal(ctx: WorkCtx, r: WordRow, data: Buffer): void {
 export async function wordSave(ctx: WorkCtx, by: Caller, p: { workspaceId: string; tabId: string; keep?: boolean; replace?: boolean; seen?: number; auto?: boolean }): Promise<WordSaved> {
   const r = recordOfWordTab(ctx, p.workspaceId, p.tabId)
   admitOwner(by, r)
-  return saveRow(ctx, r, p)
+  return (await saveRow(ctx, r, p))!
 }
 
 /** One save of a Word file's document as Word, as `wordSave` and the host's autosave run it. */
-async function saveRow(ctx: WorkCtx, r: WordRow, p: { workspaceId: string; keep?: boolean; replace?: boolean; seen?: number; auto?: boolean }): Promise<WordSaved> {
+async function saveRow(ctx: WorkCtx, r: WordRow, p: { workspaceId: string; keep?: boolean; replace?: boolean; seen?: number; auto?: boolean }, observed?: { rev: string; current: () => boolean }): Promise<WordSaved | undefined> {
   const row = { workspace_id: r.workspace_id, host: r.host, path: r.path, vm: r.vm, name: r.name, version: r.version }
   let version = r.version
   if (!p.keep) {
@@ -326,6 +331,7 @@ async function saveRow(ctx: WorkCtx, r: WordRow, p: { workspaceId: string; keep?
       if (/not there any more|gone|not found|No file/i.test(err instanceof Error ? err.message : String(err))) return { conflict: { gone: true } }
       throw err
     }
+    if (observed && !observed.current()) return
     // the same version, the same bytes, or only SharePoint's own rewrite of them after an upload (body.ts)
     const same = now.version === r.version || (knownSha(r) !== null && shaOf(now.data) === knownSha(r)) || sameBody(ctx, r, now.data)
     // His Replace covers the change its dialog named (`seen`), never one made there after he read it.
@@ -346,8 +352,9 @@ async function saveRow(ctx: WorkCtx, r: WordRow, p: { workspaceId: string; keep?
   // The revision written is the one read before the export: an edit after it keeps the file behind, and is saved next.
   // Read after, an edit landing during the export would be marked saved with words the file never got.
   const docAt = mtime(r.doc!)
-  const writtenRev = await liveRev(ctx, r.doc!).catch(() => null)
+  const writtenRev = observed?.rev ?? await liveRev(ctx, r.doc!).catch(() => null)
   const { exportDoc } = await import('../formats/exporter')
+  if (observed && !observed.current()) return
   const out = await exportDoc(ctx, LOCAL, { source: { at: 'file', host: ctx.host, path: r.doc! }, format: 'docx' })
   const data = Buffer.from(out.data, 'base64')
   const got = await deliver(ctx, { ...row, version }, data, !!p.keep)
@@ -363,76 +370,92 @@ async function saveRow(ctx: WorkCtx, r: WordRow, p: { workspaceId: string; keep?
 export const wordTiming = { pause: 3000, read: 2000 }
 const saving = new Set<string>()
 
-/**
- * The host's autosave (the owner's order of 2026-11-23): every Word file he chose to save automatically, or one born
- * here, whose document changed since its last save and has been still for a pause, is exported and written to its
- * file by version, with no ask of any window. A change made there stops it for that file (`stopped`) until his press.
- * Only his own document's live text is written: an agent's change to it waits as a suggestion until his press.
- */
-export async function autosaveWords(ctx: WorkCtx, now = Date.now()): Promise<void> {
-  // One look at a time: on 1.0.372 a look started every second whatever the last was doing, and they piled up.
+function wordRows(ctx: WorkCtx, doc: string): WordRow[] {
+  return ctx.db.prepare(`SELECT * FROM work_files_word WHERE doc = ?`).all(doc) as unknown as WordRow[]
+}
+
+function observeWord(ctx: WorkCtx, r: WordRow, rev: string, now: number, baseline: boolean): void {
+  const was = seenWord(r)
+  if (was?.rev === rev) return
+  const dirty = editsSince(r)
+  seenRevs.set(keyOf(r), { doc: r.doc!, rev, at: now })
+  if (baseline && r.base_rev === null && r.saved_rev === null && r.doc_at !== null && !was && mtime(r.doc!) === r.doc_at) {
+    ctx.db.prepare(`UPDATE work_files_word SET base_rev = ? WHERE workspace_id = ? AND host = ? AND path = ?`).run(rev, r.workspace_id, r.host, r.path)
+    r.base_rev = rev
+  }
+  if (dirty !== editsSince(r)) filesState(ctx).tabs.touch(r.workspace_id)
+}
+
+export function noteWordRevision(ctx: WorkCtx, { doc, rev, loaded }: DocRevision, now: number): boolean {
+  let dirty = false
+  for (const row of wordRows(ctx, doc)) {
+    observeWord(ctx, row, rev, now, !!loaded)
+    if (row.auto === 1 && !row.stopped && editsSince(row)) dirty = true
+  }
+  return dirty
+}
+
+export async function saveWordRevision(ctx: WorkCtx, doc: string, now: number, active: () => boolean): Promise<void> {
+  await saveDueWords(ctx, wordRows(ctx, doc), now, active)
+}
+
+/** The backstop also drops Word records whose document is gone and outside Files' Trash. */
+export async function autosaveWords(ctx: WorkCtx, now = Date.now(), found?: (notice: DocRevision) => void): Promise<void> {
   if (looking) return
   looking = true
-  const due: WordRow[] = []
+  const looked: WordRow[] = []
   try {
     const rows = ctx.db.prepare(`SELECT * FROM work_files_word WHERE doc IS NOT NULL`).all() as unknown as WordRow[]
-    const looked: WordRow[] = []
     for (const r of rows) {
-      const key = keyOf(r)
-      // A record whose document is gone (and not in Files' Trash, where Restore brings it back) holds nothing to save: it goes.
       if (!existsSync(r.doc!)) {
         const trashed = ctx.db.prepare(`SELECT 1 FROM work_files_trash WHERE was_at = ? OR instr(ref, ?) > 0 LIMIT 1`).get(r.doc, r.doc)
         if (!trashed) {
           ctx.db.prepare(`DELETE FROM work_files_word WHERE workspace_id = ? AND host = ? AND path = ?`).run(r.workspace_id, r.host, r.path)
-          seenRevs.delete(key)
+          seenRevs.delete(keyOf(r))
         }
         continue
       }
-      // A document a tab shows; else one that saves by itself, looked at once, then only while it holds words its Word file has not.
       const shown = ctx.canvas.forSession(filesPaneOf(r.workspace_id)).some((i) => i.source.at === 'file' && i.source.path === r.doc)
-      if (!shown && (r.auto !== 1 || (seenRevs.has(key) && !editsSince(r)))) continue
+      if (!shown && (r.auto !== 1 || (!found && seenWord(r) && !editsSince(r)))) continue
       looked.push(r)
     }
-    // Read together, each within its own wait: one slow read holds up no other.
-    const revs = await Promise.all(looked.map((r) => withinWait(liveRev(ctx, r.doc!), wordTiming.read).catch(() => null)))
-    for (const [i, r] of looked.entries()) {
-      const rev = revs[i]
-      if (rev === null || rev === undefined) continue
-      const key = keyOf(r)
-      const was = seenRevs.get(key)
-      if (was?.rev !== rev) {
-        seenRevs.set(key, { rev, at: now })
-        // A document made of the Word file: what it held when first seen is what the file holds.
-        if (r.base_rev === null && r.saved_rev === null && r.doc_at !== null && !was) {
-          ctx.db.prepare(`UPDATE work_files_word SET base_rev = ? WHERE workspace_id = ? AND host = ? AND path = ?`).run(rev, r.workspace_id, r.host, r.path)
-          r.base_rev = rev
-        }
-        filesState(ctx).tabs.touch(r.workspace_id)
-      }
-      if (r.auto !== 1 || r.stopped || saving.has(key) || !editsSince(r)) continue
-      // His typing has paused: the revision on screen has held still for the pause.
-      if (now - seenRevs.get(key)!.at < wordTiming.pause) continue
-      due.push(r)
-    }
+    await Promise.all(looked.map(async (r) => {
+      const before = seenWord(r)
+      const rev = await withinWait(liveRev(ctx, r.doc!), wordTiming.read).catch(() => null)
+      if (rev === null || before !== seenWord(r)) return
+      if (found) found({ doc: r.doc!, rev, loaded: true })
+      else observeWord(ctx, r, rev, now, true)
+    }))
   } finally {
     looking = false
   }
-  // Saves go on their own, one a file: a slow one (the VM waking, its helper being made) holds up no look.
-  await Promise.all(
-    due.map(async (r) => {
-      const key = keyOf(r)
-      saving.add(key)
-      try {
-        await saveRow(ctx, r, { workspaceId: r.workspace_id, auto: true })
-      } catch (err) {
-        ctx.log(`files: a Word file was not saved by itself: ${err instanceof Error ? err.message : String(err)}`)
-      } finally {
-        saving.delete(key)
-      }
-    })
-  )
+  if (!found) await saveDueWords(ctx, looked, now)
 }
 let looking = false
+
+async function saveDueWords(ctx: WorkCtx, rows: WordRow[], now: number, active = () => true): Promise<void> {
+  await Promise.all(rows.map(async (r) => {
+    const key = keyOf(r)
+    const seen = seenWord(r)
+    if (!seen || now - seen.at < wordTiming.pause || r.auto !== 1 || r.stopped || saving.has(key) || !editsSince(r)) return
+    saving.add(key)
+    try {
+      await saveRow(ctx, r, { workspaceId: r.workspace_id, auto: true }, {
+        rev: seen.rev,
+        current: () => {
+          if (!active() || seen !== seenWord(r)) return false
+          const latest = wordRow(ctx, r.workspace_id, r.host, r.path)
+          return latest?.doc === r.doc && latest.version === r.version && latest.auto === 1 && !latest.stopped
+        }
+      })
+    } catch (err) {
+      ctx.log(`files: a Word file was not saved by itself: ${err instanceof Error ? err.message : String(err)}`)
+    } finally {
+      saving.delete(key)
+    }
+  }))
+}
+
 /** A read that has not answered in `ms` is no answer this look. */
 const withinWait = <T>(p: Promise<T>, ms: number): Promise<T> =>
   new Promise((resolve, reject) => {

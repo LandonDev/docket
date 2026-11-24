@@ -607,7 +607,7 @@ The server keeps a thread's canvas items in one table and pushes the open list o
 
 ### The table
 
-`work_canvas_items`, made by the module's `ensure` at every boot, Work on or off, with an index on `(session_id, state, position)`:
+`work_canvas_items`, made by the module's `ensure` at every boot, Work on or off, with indexes on `(session_id, state, position)` and `(workspace_id, state, updated_at)`:
 
 | Column | Meaning |
 |---|---|

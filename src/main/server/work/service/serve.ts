@@ -20,11 +20,12 @@ import { WebSocketServer } from 'ws'
 import { PrivateBranchStore } from '../history/privateBranches'
 import { notServedWords } from './config'
 import { storeBook } from '../docs/storeBook'
+import { docStateRev } from './docRevision'
 import { INTERNAL_ROUTES, routeFor } from './routes'
 import { refuseUpgrade, RouteError, sendJson, sendText, type RouteCtx } from './routes/route'
 // By its path, as every module this process reaches: the service's bundle and its boundary test follow relative imports.
 import { projectionLists } from '../../../../shared/work/guestProjection'
-import type { ServiceConfig, ServiceLink, ServiceProject } from './wire'
+import type { DocRevision, ServiceConfig, ServiceLink, ServiceProject } from './wire'
 import { queuedHistory } from '../history/hostQueue'
 
 /**
@@ -43,6 +44,7 @@ export interface ServiceIo {
   /** An unfenced LifeOS device JWT for the owner, from main. */
   jwt(): Promise<string>
   log(line: string): void
+  docRevision?(notice: DocRevision): void
 }
 
 export interface RunningService {
@@ -169,6 +171,25 @@ export async function startWorkService(initial: ServiceConfig, io: ServiceIo): P
     presenceName: (c) => (c.link ? ((links.get(c.link) as { guest?: { name?: string } } | undefined)?.guest?.name ?? 'A guest') : null),
     log: io.log
   })
+  let recoveringJournals = false
+  if (io.docRevision) {
+    const post = io.docRevision
+    collab.hocuspocus.configuration.extensions.push({
+      async afterLoadDocument({ document, context }) {
+        const doc = context?.file?.path as string | undefined
+        if (!doc) return
+        let rev = docStateRev(document)
+        // A replayed journal is already dirty and cannot seed a clean Word baseline.
+        post({ doc, rev, ...(recoveringJournals ? {} : { loaded: true }) })
+        document.on('update', () => {
+          const next = docStateRev(document)
+          if (rev === next) return
+          rev = next
+          post({ doc, rev })
+        })
+      }
+    })
+  }
   // Versions and branches are kept where the document is: LifeOS's rows, or inside the .tcdoc (milestone 19),
   // but an agent's branch of a .tcdoc on this host's own disk, never in the file (history/privateBranches.ts).
   const lifeosVersions = new ConvexVersionStore(convex)
@@ -276,7 +297,14 @@ export async function startWorkService(initial: ServiceConfig, io: ServiceIo): P
   // for documents nobody has opened since: stored now, and tried again every minute.
   let recovering: Promise<unknown> = Promise.resolve()
   const recover = (): void => {
-    recovering = recovering.then(() => collab.recover()).catch((err: Error) => io.log(`recovering the journal failed: ${err.message}`))
+    recovering = recovering.then(async () => {
+      recoveringJournals = true
+      try {
+        await collab.recover()
+      } finally {
+        recoveringJournals = false
+      }
+    }).catch((err: Error) => io.log(`recovering the journal failed: ${err.message}`))
   }
   recover()
   const recovery = setInterval(recover, 60_000)

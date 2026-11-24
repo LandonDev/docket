@@ -39,6 +39,7 @@ export function ensureCanvasTables(db: DatabaseSync): void {
     position INTEGER NOT NULL, rev INTEGER NOT NULL DEFAULT 0,
     created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL)`)
   db.exec(`CREATE INDEX IF NOT EXISTS work_canvas_items_by_session ON work_canvas_items (session_id, state, position)`)
+  db.exec(`CREATE INDEX IF NOT EXISTS work_canvas_items_by_workspace ON work_canvas_items (workspace_id, state, updated_at)`)
 }
 
 interface Row {

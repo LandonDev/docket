@@ -7,6 +7,9 @@ import type { Caller } from '../modules'
 import { filesHandle as officeHandle } from '../office/files/handle'
 import { setCloudDir, setCopyAllowed } from '../office/files/library'
 import { closeFilesState, filesHandle } from './handle'
+import { startFileAutosaves } from './autosave'
+import { liveRev, wordTiming } from './word'
+import type { DocRevision } from '../service/wire'
 import { forgetLibraries } from './places/libraries'
 import { setThreadsMayWrite } from './policy'
 import { autosaveLinks, linkTiming, resetLinkState } from './saveAs'
@@ -25,7 +28,7 @@ vi.mock('../formats/exporter', () => ({
   exportDoc: async (_ctx: unknown, _by: unknown, p: { format: string; source: unknown }) => (doc.exported.push(p.source), { name: `Plan.${p.format}`, data: Buffer.from(`${p.format} ${doc.text}`).toString('base64'), warnings: [] })
 }))
 vi.mock('../formats/preview', () => ({ fileDocumentPdf: async () => Buffer.from(`pdf ${doc.text}`) }))
-vi.mock('./word', async (real) => ({ ...(await real<typeof import('./word')>()), liveRev: async () => doc.rev }))
+vi.mock('./word', async (real) => ({ ...(await real<typeof import('./word')>()), liveRev: vi.fn(async () => doc.rev) }))
 vi.mock('../docs/target', async (real) => ({ ...(await real<typeof import('../docs/target')>()), targetOf: async () => ({}), titleOf: () => 'Plan', lifeosRow: async () => null, madeFromShared: () => false }))
 
 const MAC = 'env_mac'
@@ -94,6 +97,65 @@ const save = (params: Record<string, unknown>, by?: Caller) => call<SavedAs>('wo
 beforeEach(async () => void (await call('work.files.open', { ref: source() })))
 
 describe('Save As… formats', () => {
+  it('ten idle ticks read no revisions, a revision post saves once, and the 30 s sweep catches a missed post', async () => {
+    await save({ at: { at: 'place', id: 'folder' } })
+    const insertWord = box.db.prepare(`INSERT INTO work_files_word
+      (workspace_id, host, path, name, version, doc, at, auto, base_rev) VALUES (?, ?, ?, ?, '', ?, 0, 1, ?)`)
+    const insertLink = box.db.prepare(`INSERT INTO work_files_links
+      SELECT ?, workspace_id, ?, format, host, ?, vm, name, place, computer, version, sha, saved_rev, saved_at, state, changed_at, detail, tried_at, made_at
+      FROM work_files_links WHERE name = 'Plan.docx' AND path = ?`)
+    const target = join(box.folder, 'Plan.docx')
+    for (let i = 0; i < 5; i++) {
+      const path = join(box.folder, `idle-${i}.tcdoc`)
+      writeFileSync(path, '{}')
+      insertWord.run(WS, HOST, `word-${i}.docx`, 'Idle', path, 'r1')
+      insertLink.run(`link-${i}`, path, `linked-${i}.docx`, target)
+    }
+    const workRev = vi.fn(async () => ({ rev: 'r1' }))
+    Object.assign(box.ctx, { service: { internal: workRev } })
+    const linkRev = vi.mocked(liveRev)
+    linkRev.mockClear()
+    let post!: (notice: DocRevision) => void
+    vi.useFakeTimers()
+    const start = Date.now()
+    const stop = startFileAutosaves(box.ctx, (receive) => (post = receive, () => {}))
+    try {
+      const baseline = doc.exported.length
+      for (let tick = 0; tick < 10; tick++) await vi.advanceTimersByTimeAsync(1000)
+      expect(workRev).not.toHaveBeenCalled()
+      expect(linkRev).not.toHaveBeenCalled()
+      expect(doc.exported).toHaveLength(baseline)
+
+      doc.text = 'two'
+      doc.rev = 'r2'
+      post({ doc: source().path, rev: doc.rev })
+      post({ doc: source().path, rev: doc.rev })
+      expect((await links())[0]?.state).toBe('saving')
+      await vi.advanceTimersByTimeAsync(wordTiming.pause - 1)
+      expect(doc.exported).toHaveLength(baseline)
+      await vi.advanceTimersByTimeAsync(1)
+      await vi.waitFor(() => expect(readFileSync(target, 'utf8')).toBe('docx two'))
+      expect(doc.exported).toHaveLength(baseline + 1)
+      expect(workRev).not.toHaveBeenCalled()
+      expect(linkRev).not.toHaveBeenCalled()
+
+      // Leave the idle links at their saved revision so only the real link needs a write.
+      linkRev.mockImplementation(async (_ctx, path) => path === source().path ? doc.rev : 'r1')
+      doc.text = 'three'
+      doc.rev = 'r3'
+      await vi.advanceTimersByTimeAsync(start + 30_000 - Date.now())
+      expect(linkRev).toHaveBeenCalledTimes(6)
+      expect(workRev).toHaveBeenCalledTimes(5)
+      await vi.advanceTimersByTimeAsync(wordTiming.pause)
+      await vi.waitFor(() => expect(readFileSync(target, 'utf8')).toBe('docx three'))
+      expect(doc.exported).toHaveLength(baseline + 2)
+    } finally {
+      stop()
+      linkRev.mockImplementation(async () => doc.rev)
+      vi.useRealTimers()
+    }
+  })
+
   it("are the exporter's own, and PDF", async () => {
     const real = await vi.importActual<typeof import('../formats/exporter')>('../formats/exporter')
     expect([...SAVE_AS_IDS].filter((f) => f !== 'pdf').sort()).toEqual([...real.EXPORT_FORMATS].sort())

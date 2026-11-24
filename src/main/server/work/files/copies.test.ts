@@ -17,12 +17,20 @@ import { NEEDS_PRESS, setThreadsMayWrite, sharedOf } from './policy'
 import { fileWritten, onFileSaved, saveFile, versionWord, workingOn } from './save'
 import { approver, HOST, makeRig, phone, reader, thread, window, WS, type Rig } from './testkit'
 import { versionOf } from './write'
+import { startFileAutosaves } from './autosave'
+import type { DocRevision } from '../service/wire'
 import { adoptWordCopies, autosaveWords, wordFollowed, wordImportPlace, wordRow, wordsLeft, wordTiming } from './word'
 import { forgetUploads, lookAll, setUploadReader } from './uploads'
 
 // Save as Word writes the Work service's Word export; here a stand-in's bytes.
-const exported = vi.hoisted(() => ({ data: null as Buffer | null, during: null as (() => void) | null }))
-vi.mock('../formats/exporter', () => ({ exportDoc: async () => (exported.during?.(), { name: 'Plan.docx', data: (exported.data ?? Buffer.from('word export')).toString('base64'), warnings: [] }) }))
+const exported = vi.hoisted(() => ({ data: null as Buffer | null, during: null as (() => void | Promise<void>) | null }))
+vi.mock('../formats/exporter', () => ({
+  exportDoc: async () => {
+    const data = (exported.data ?? Buffer.from('word export')).toString('base64')
+    await exported.during?.()
+    return { name: 'Plan.docx', data, warnings: [] }
+  }
+}))
 
 /**
  * A copy saves back (copies.ts): two hosts, the workspace's (`env_box`) and his Mac (`env_mac`) with a dummy Teams
@@ -1088,6 +1096,60 @@ describe('a Word file saved by itself', () => {
     exported.during = null
     await autosaveWords(box.ctx, 4_100_000)
     expect((await tabOf(tabId))?.word).toMatchObject({ since: true })
+  })
+
+  it('a revision posted during an export stays dirty and gets its own Word save', async () => {
+    const { path, doc, tabId } = await opened('Live.docx', BLANK)
+    const readRev = vi.spyOn(box.ctx.service, 'internal')
+    vi.useFakeTimers()
+    let post!: (notice: DocRevision) => void
+    const stop = startFileAutosaves(box.ctx, (receive) => (post = receive, () => {}))
+    let release!: () => void
+    let releaseSecond!: () => void
+    let began!: () => void
+    const exporting = new Promise<void>((resolve) => { began = resolve })
+    const first = new Promise<void>((resolve) => { release = resolve })
+    const second = new Promise<void>((resolve) => { releaseSecond = resolve })
+    let exports = 0
+    exported.during = () => {
+      if (++exports !== 1) return second
+      began()
+      return first
+    }
+    try {
+      post({ doc, rev: 'r0', loaded: true })
+      exported.data = Buffer.from('first edit')
+      post({ doc, rev: 'r1' })
+      await vi.advanceTimersByTimeAsync(wordTiming.pause - 1)
+      expect(exports).toBe(0)
+      await vi.advanceTimersByTimeAsync(1)
+      await exporting
+      exported.data = Buffer.from('second edit')
+      post({ doc, rev: 'r2' })
+      await vi.advanceTimersByTimeAsync(wordTiming.pause)
+      expect(exports).toBe(1)
+      expect((await tabOf(tabId))?.word?.since).toBe(true)
+      release()
+      await vi.waitFor(() => {
+        expect(wordRow(box.ctx, WS, MAC, path)?.saved_rev).toBe('r1')
+        expect(readFileSync(path, 'utf8')).toBe('first edit')
+      })
+      expect((await tabOf(tabId))?.word?.since).toBe(true)
+      releaseSecond()
+      await vi.advanceTimersByTimeAsync(1)
+      await vi.waitFor(() => expect(wordRow(box.ctx, WS, MAC, path)?.saved_rev).toBe('r2'))
+      expect(exports).toBe(2)
+      expect(readFileSync(path, 'utf8')).toBe('second edit')
+      expect((await tabOf(tabId))?.word?.since).toBe(false)
+      expect(readRev).not.toHaveBeenCalled()
+    } finally {
+      release()
+      releaseSecond()
+      stop()
+      exported.during = null
+      exported.data = null
+      vi.useRealTimers()
+    }
   })
 
   it("a Word file of someone's saves by itself only once he chose it, and stops at a change made there until his press", async () => {

@@ -15,7 +15,7 @@ import { WORK_OFF } from '../scope'
 import { canonicalPath, serviceOf, serviceSeamsFor, ServedElsewhere } from './ctx'
 import { startWorkService, type RunningService } from './serve'
 import type { ServiceChild } from './supervisor'
-import type { FromService, ToService } from './wire'
+import type { DocRevision, FromService, ToService } from './wire'
 
 /*
  * `ctx.service` as the host builds it: the part forks the service inside
@@ -55,7 +55,8 @@ function inProcess(spawned: Child[]): () => ServiceChild {
         if (m.t === 'config')
           startWorkService(m.config, {
             jwt: () => new Promise((resolve) => (asked.set(++n, resolve), emit({ t: 'jwt?', id: n }))),
-            log: () => {}
+            log: () => {},
+            docRevision: (notice) => emit({ t: 'doc-revision', ...notice })
           }).then(
             (s) => {
               running = s
@@ -163,6 +164,34 @@ describe('ctx.service', () => {
     await until('stopped', () => serviceOf(work.ctx)?.state() === 'off' && !existsSync(secret))
     expect(existsSync(join(dataDir(work), 'work-service.sock'))).toBe(false)
     expect(() => work.ctx.service.url('/w/doc/x')).toThrow(WORK_OFF)
+  })
+
+  it('posts file revisions through the parent port for edits and deletions, with the same revision as a live read', async () => {
+    const spawned: Child[] = []
+    const work = host('env_a', spawned)
+    work.settings.set({ enabled: true })
+    const supervisor = serviceOf(work.ctx)!
+    await until('running', () => supervisor.state() === 'running')
+    const file = join(dataDir(work), 'Revisions.tcdoc')
+    const name = fileDocName(file)
+    const notices: DocRevision[] = []
+    const off = supervisor.onDocRevision((notice) => notices.push(notice))
+    const collab = spawned[0].service()!.collab
+    const read = () => work.ctx.service.internal('/internal/docs/rev', { file, fence: { sectors: 'all' } })
+    const moved = () => notices.filter((notice) => !notice.loaded)
+    try {
+      await collab.edit(name, 'owner', (doc) => doc.getText('probe').insert(0, 'abc'), { path: file })
+      expect(moved()).toEqual([{ doc: file, ...(await read() as { rev: string }), loaded: undefined }])
+      await collab.edit(name, 'owner', (doc) => doc.getText('probe').delete(1, 1), { path: file })
+      expect(moved()).toHaveLength(2)
+      expect(moved()[1]).toMatchObject({ doc: file, ...(await read() as { rev: string }) })
+      expect(moved()[1].rev).not.toBe(moved()[0].rev)
+      off()
+      await collab.edit(name, 'owner', (doc) => doc.getText('probe').insert(0, 'd'), { path: file })
+      expect(moved()).toHaveLength(2)
+    } finally {
+      off()
+    }
   })
 
   it("hands the service the owner's zone at start and when it changes", async () => {

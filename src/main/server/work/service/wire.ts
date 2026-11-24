@@ -62,9 +62,13 @@ export type ToService =
   | { t: 'jwt'; id: number; jwt?: string; error?: string }
   | { t: 'stop' }
 
+/** A file-backed document's live revision. The first notice is from loading it. */
+export type DocRevision = { doc: string; rev: string; loaded?: true }
+
 /** Service → main. */
 export type FromService =
   | { t: 'ready'; port: number }
+  | ({ t: 'doc-revision' } & DocRevision)
   | { t: 'jwt?'; id: number }
   | { t: 'log'; line: string }
   | { t: 'fault'; message: string }

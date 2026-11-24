@@ -49,7 +49,7 @@ parent.on('message', (event: { data: unknown }) => {
   if (m.t === 'config') {
     if (running || starting) return
     starting = true
-    startWorkService(m.config, { jwt, log: (line) => send({ t: 'log', line }) }).then(
+    startWorkService(m.config, { jwt, log: (line) => send({ t: 'log', line }), docRevision: (notice) => send({ t: 'doc-revision', ...notice }) }).then(
       (service) => {
         running = service
         if (heldLinks) service.setLinks(heldLinks)

@@ -2136,14 +2136,12 @@ picks, and stays linked to that file: each later edit is written to it.
   at, its bytes' sha, the document's live revision written to it (`saved_rev`) and how it stands (`ok`, `waiting`,
   `changed`, `gone`, `refused`). Only a `.tcdoc` of this host links (its live revision is the Work service's); a LifeOS
   or Google document saves as a copy. A document may have several links.
-- **Each later edit reaches the file** (`autosaveLinks`, every second from the module's start): the rule of the Word
-  file's autosave (word.ts), reused: the document's live revision (`liveRev`, `/internal/docs/rev`) against the one
-  last written, so Saved is said only of what is on screen; once it has held still for 3 s (`linkTiming.pause`) the
+- **Each later edit reaches the file.** The Work service posts the document's revision to main, which compares it
+  with the one last written. Once the revision has held still for 3 s (`wordTiming.pause`), the
   host exports the format again and writes it over the file by the version last written: this host's disk and VM
   through the door as `edit` (`writeBytes`, handle.ts, the editor save's own path), another computer through its
-  `writeBack` (`deliver`, copies.ts). The revision written is the one read before the export, so an edit during it is
-  written next. A document no item shows is looked at every 30 s (an edit from the phone's page). A PDF is written
-  whole.
+  `writeBack` (`deliver`, copies.ts). The receipt records the revision captured before the export. An edit during the export stays dirty and
+  gets its own save. The same notice handles edits from a phone with no desktop tab open. A PDF is written whole.
 - **An agent only suggests on a linked document** (docs/target.ts `othersOpen`, `linkedOut`): the link writes each
   edit to a file others can open with no press of his, so an agent's own write waits as a suggestion and the link
   carries none of it before his accept, as for a Word file's kept document. A renamed linked `.tcdoc` keeps its links
@@ -2200,19 +2198,17 @@ over a colleague's Word file but his own press.
   thread and a read key are refused, as for a copy.
 - **Saving by itself** (the owner's order of 2026-11-23). The record keeps his choice for the file (`auto`: not asked,
   save by itself, ask each time). The host saves each Word file he chose, or one born here (its bytes still exactly
-  our blank, `bornHere`: New → Document), once its document's live revision has held still for 3 s (`autosaveWords`,
-  every second from the module's start, `wordTiming.pause`). The revision is the Work service's own
+  our blank, `bornHere`: New → Document), once its document's live revision has held still for 3 s (`wordTiming.pause`). The revision is the Work service's own
   (`/internal/docs/rev`, a hash of the document's Yjs snapshot: its state vector and delete set, so a deletion alone moves it), never the `.tcdoc` file's time: the file is written
   only now and then while the words he types live in the service, and the export reads the live text, so a save
   writes what is on screen. The header's `since` is the same rule (`editsSince`: the live revision against the one
   last written, `saved_rev`, or the one it was made at, `base_rev`), so Saved is said only of the revision on
   screen. The save is the same as his press, by version, never over a change made
   there. Such a change stops autosave for that file (`stopped`, said on the tab's `word`) until his Replace or Keep
-  Both. The host looks once a second, one look at a time (`autosaveWords`): the documents a tab shows, and one saving by
-  itself only until its words are in its file, their live revisions read together, each within 2 s; saves run apart
-  from the look, one a file, so a slow one (the VM waking) holds up no other document; a record whose document is gone
-  and not in Files' Trash is let go. On 1.0.372 a look started every second over every record and waited on each save
-  in turn, and a new document's first save took three and a half minutes. The header says "Saving to MacBook…" while his newest words are not in the file, then what OneDrive did with them
+  Both. The Work service posts the file's live revision to main. Main queues one save per document and keeps
+  a newer edit pending through any export already under way. One sweep every 30 s checks for missed notices
+  and retries linked files whose place was away. It also drops Word records for documents gone from both disk
+  and Files' Trash. The header says "Saving to MacBook…" while his newest words are not in the file, then what OneDrive did with them
   ("Saved, uploading to Teams…", "In Teams 9:12 PM": "Saved is not uploaded" below), and "This file changed in Teams 9:12 PM" with Keep Both and Replace when stopped. The first time a Word
   file holds edits not in it, the window asks once: "Save Plan.docx to Teams as you work?", with what Word may change,
   Save automatically and Ask me each time (`askAutosave`, `work.files.wordAuto`); the file's menu changes it after.
@@ -2225,8 +2221,7 @@ over a colleague's Word file but his own press.
 - **A document he only looked at** goes with its tab: only one never saved, with its file's time unchanged, that the
   host saw at the live revision it was made at, and whose live revision is still that one when asked at the close, is
   deleted with its record (`wordsLeft`). The close first asks the service to store what any window sent it
-  (`/internal/docs/stored`), so a word typed in the last second, after the autosave's last look, counts; a service
-  that does not answer keeps the document. Anything else is kept, in the workspace's folder, for the Word file's next
+  (`/internal/docs/stored`), so the final edit counts. If the service cannot confirm the revision, the host keeps the document. Anything else is kept, in the workspace's folder, for the Word file's next
   open: one he typed into (his words live in the Work service before the `.tcdoc` file is written), one the host
   never looked at, and one any other open item shows (a thread's pane too). The close of a remote key, a pane's
   removal and a thread's own close are judged the same way.

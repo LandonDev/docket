@@ -13,7 +13,8 @@ import { admitCaller, locate, workspaceHere } from './policy'
 import { versionWord } from './save'
 import { makeBytes, makeFolderRef } from './verbs'
 import { vmReadVersioned } from './vmVerbs'
-import { liveRev } from './word'
+import { liveRev, wordTiming } from './word'
+import type { DocRevision } from '../service/wire'
 import { runOp, versionOf } from './write'
 
 /**
@@ -39,7 +40,10 @@ const NOT_OPEN_HERE = 'That document is not open in this workspace.'
 /** His window: what the host itself writes as for a link his press made. */
 const LOCAL: Caller = { kind: 'local', caps: ['read', 'operate', 'approve'] }
 /** How long his document must be still before a linked file is written again, and how long a place that did not answer waits. */
-export const linkTiming = { pause: 3000, retry: 30_000, idle: 30_000 }
+export const linkTiming = {
+  get pause() { return wordTiming.pause },
+  retry: 30_000
+}
 
 export interface LinkRow {
   id: string
@@ -223,7 +227,7 @@ export async function saveAs(
 
 const inFlight = new Set<string>()
 /** Each linked document's live revision when last seen, and since when: the pause is counted from it. */
-const seenRevs = new Map<string, { rev: string; at: number; looked: number }>()
+const seenRevs = new Map<string, { rev: string; at: number }>()
 
 /** How a link stands for the header: the record's state, and whether the document holds words the file does not yet. */
 function viewOf(r: LinkRow): DocLink {
@@ -322,36 +326,50 @@ async function writeLink(ctx: WorkCtx, r: LinkRow, rev: string | null): Promise<
   }
 }
 
-/**
- * The host's loop (every second): each linked document whose live revision moved since its files were written, and
- * has held still for the pause, is written to each of its files. A document no item shows is looked at only now and
- * then (an edit from the phone's page); a place that did not answer is tried again after a wait.
- */
-export async function autosaveLinks(ctx: WorkCtx, now = Date.now()): Promise<void> {
-  const rows = ctx.db.prepare(`SELECT * FROM work_files_links WHERE state IN ('ok', 'waiting')`).all() as unknown as LinkRow[]
-  const byDoc = new Map<string, LinkRow[]>()
-  for (const r of rows) byDoc.set(r.doc, [...(byDoc.get(r.doc) ?? []), r])
-  for (const [doc, links] of byDoc) {
-    const workspaceId = links[0]!.workspace_id
-    const was = seenRevs.get(doc)
-    const shown = ctx.canvas.forWorkspace(workspaceId, { open: true, panes: true }).some((i) => i.source.at === 'file' && i.source.path === doc)
-    if (!shown && was && now - was.looked < linkTiming.idle) continue
-    let rev: string
-    try {
-      rev = await liveRev(ctx, doc)
-    } catch {
-      continue
-    }
-    if (was?.rev !== rev) {
-      seenRevs.set(doc, { rev, at: now, looked: now })
-      // The header says Saving… from the first edit the files do not hold.
-      if (links.some((r) => r.saved_rev !== rev)) filesState(ctx).tabs.touch(workspaceId)
-    } else was.looked = now
-    const still = now - seenRevs.get(doc)!.at >= linkTiming.pause
-    for (const r of links) {
-      if (r.saved_rev === rev || !still || inFlight.has(r.id)) continue
-      if (r.state === 'waiting' && now - (r.tried_at ?? 0) < linkTiming.retry) continue
-      await writeLink(ctx, r, rev)
+function linkRows(ctx: WorkCtx, doc: string): LinkRow[] {
+  return ctx.db.prepare(`SELECT * FROM work_files_links WHERE doc = ? AND state IN ('ok', 'waiting')`).all(doc) as unknown as LinkRow[]
+}
+
+function observeLinks(ctx: WorkCtx, doc: string, links: LinkRow[], rev: string, now: number): boolean {
+  const prior = seenRevs.get(doc)?.rev
+  const dirty = links.filter((r) => r.saved_rev !== rev)
+  if (prior !== rev) {
+    seenRevs.set(doc, { rev, at: now })
+    const changed = links.filter((r) => (prior !== undefined && prior !== r.saved_rev) !== (rev !== r.saved_rev))
+    for (const workspaceId of new Set(changed.map((r) => r.workspace_id))) filesState(ctx).tabs.touch(workspaceId)
+  }
+  return dirty.some((r) => r.state === 'ok' || now - (r.tried_at ?? 0) >= linkTiming.retry)
+}
+
+export function noteLinkRevision(ctx: WorkCtx, { doc, rev }: DocRevision, now: number): boolean {
+  const links = linkRows(ctx, doc)
+  return links.length > 0 && observeLinks(ctx, doc, links, rev, now)
+}
+
+export async function saveLinkRevision(ctx: WorkCtx, doc: string, now: number, active = () => true): Promise<void> {
+  const seen = seenRevs.get(doc)
+  if (!seen || now - seen.at < wordTiming.pause) return
+  for (const r of linkRows(ctx, doc)) {
+    if (!active() || seen !== seenRevs.get(doc)) return
+    if (r.saved_rev === seen.rev || inFlight.has(r.id)) continue
+    if (r.state === 'waiting' && now - (r.tried_at ?? 0) < linkTiming.retry) continue
+    const latest = rowOf(ctx, r.id)
+    if (latest?.doc === doc && latest.version === r.version && latest.state === r.state) await writeLink(ctx, latest, seen.rev)
+  }
+}
+
+/** A recoverable missed notification or a linked place that was away gets another look. */
+export async function autosaveLinks(ctx: WorkCtx, now = Date.now(), found?: (notice: DocRevision) => void): Promise<void> {
+  const docs = ctx.db.prepare(`SELECT DISTINCT doc FROM work_files_links WHERE state IN ('ok', 'waiting')`).all() as { doc: string }[]
+  for (const { doc } of docs) {
+    const before = seenRevs.get(doc)
+    const rev = await liveRev(ctx, doc).catch(() => null)
+    if (rev === null || before !== seenRevs.get(doc)) continue
+    if (found) found({ doc, rev })
+    else {
+      const links = linkRows(ctx, doc)
+      observeLinks(ctx, doc, links, rev, now)
+      await saveLinkRevision(ctx, doc, now)
     }
   }
 }
