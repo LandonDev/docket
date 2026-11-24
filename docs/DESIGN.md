@@ -1787,7 +1787,8 @@ Around the canvas:
   Teams as Word 9:12 PM", all muted), with one press while it does not,
   Save to Teams as Word, asked in the house confirm ("Replace Plan.docx in
   Teams?", what Word formatting may change, Replace and Keep Both; over a
-  file that changed there, Keep Both alone). Closing such a tab sends what the kind still holds (a deck's
+  file that changed there, one line says when, Keep Both holds the focus and
+  Replace stays his press; over one gone, Keep Both alone). Closing such a tab sends what the kind still holds (a deck's
   open box) first; closing it while changes have not
   reached the file asks once in the house confirm: "Changes to Roster.xlsx
   have not reached MacBook.", Cancel, Discard and Keep trying (Keep Both in
@@ -1800,7 +1801,9 @@ Around the canvas:
   a thread; the `file` kind shows a text or code file in an editor that
   saves as he types, a sound with Play, a zip as its facts over the list
   of what it holds, and anything else as its facts (one comma sentence;
-  the header already names it) with Download and Open in its app. Opening a file makes no thread, and the thread is never the
+  the header already names it) with Download and Open in its app; a Drive
+  file no editor here reads (a picked PDF or workbook) has Open in Drive
+  alone. Opening a file makes no thread, and the thread is never the
   first thing he sees.
   A **shared Office file** (.docx, .xlsx, .xlsm, .pptx in a library) has one
   more control before ⋯: a ghost menu button named by the mode the tab is in,

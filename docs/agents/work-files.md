@@ -201,7 +201,8 @@ the first paint.
 | a PDF, picture, video or deck on this computer a thread already holds | in a tab: the tab and the thread share its marks and its state, kept by the file ("Marks kept by the file"; a deck's by `deckKey`, docs/agents/work-slides.md "Kept by the deck, not the item") |
 | a copy of another computer's file that a thread already holds | in a tab of its own, as any copy: the copy is a file of its own, with marks of its own |
 | a Google deck a thread already holds | in that thread, folded (`held`): a Google deck is no file of this disk, so its state is kept by item. The only open the host answers with `held` |
-| anything, where the workspace's host keeps no tabs | as before tabs: in a new thread's canvas, the thread folded away |
+| a Drive file that is no Google file (a picked PDF or workbook) | in a tab, as the `file` kind's facts (`googleSeatOf {facts: true}`), with Open in Drive alone: its bytes are not read here, and the google pillar keeps no row of it |
+| anything, where the workspace's host keeps no tabs | in its own app where it lies (`work.office.filesOpen`): no thread is made for it |
 
 **A folder's shapes** (`PAGE_SHAPES` in model.ts; the window keeps each
 folder's own, `PageLook`). List; Grid (tiles at 96, 144 or 208px); Columns
@@ -434,7 +435,10 @@ store.ts): a host that has not said its places yet, or missed the 4 s
 deadline, is still asked for its tabs and a file there opens in a tab,
 and tabs the window kept alone give way to the host's when they come.
 Before 2026-11-23 a window whose other computer answered first kept its
-own tabs for good and opened every file in a new thread.
+own tabs for good and opened every file in a new thread. Until 2026-11-24 a
+file of a workspace whose host is a release behind opened in a new thread's
+canvas, so a thread stood before he sent anything; it now opens in its own
+app where it lies (`openWay` answers `app`).
 
 ## One door for every change
 
@@ -681,7 +685,12 @@ library's delete goes to the computer's own bin and Trash keeps only its row
   in, or to the folder's top when that folder is gone, under a name nobody
   has there ("notes (restored).txt", then "notes (restored) 2.txt"); each
   entry's `where` says where it went. Then the row and its Trash folder go.
-  A move that fails returns the row to `held`.
+  A move that fails returns the row to `held`. A key that may operate puts
+  back his own files; a row of a library (it is in that computer's bin), one
+  whose folder others can open by its real path, or a Drive file Drive says
+  is shared (asked then; no answer counts as shared) needs his window or a
+  key that may approve, as its delete did (`pressesFor`): a batch with one
+  such row is refused whole, "Others can open this file: …", and nothing moves.
 - **Empty Trash** (`purge`, `approve`, never relayed) claims rows `held` →
   `purging` the same way, removes their bytes, then the rows; with no `ids`,
   every held row of the workspace. A restore and a purge racing for one row
@@ -862,8 +871,9 @@ asked for.
   pages of 500 by the disk's own keyset cursor (`cutPage`); a folder that
   changed between pages answers `stale`. A Google type's kind is read from
   its type (a Doc named "Plan v1.2" has no extension). Anything else (a
-  picked .xlsx or .pdf) is listed as `other`: it opens only in Google Drive,
-  so no row draws it as a kind an editor here shows and then refuses it. `by` is Drive's last modifier. The trail is the place, then the
+  picked .xlsx or .pdf) is listed as `other`: no editor here reads it, so no
+  row draws it as a kind an editor shows. It opens in a tab as its facts, with
+  Open in Drive. `by` is Drive's last modifier. The trail is the place, then the
   folders above (eight at most) that TempCode can see. `stat` asks Drive
   again; what it may not see, or what is in the bin, is null.
 - **Who else can open a thing** (`othersCan`, `itemShared`): Drive says it
@@ -919,10 +929,12 @@ asked for.
   `work.google.open {sessionId: filesPaneOf(workspaceId), account, fileId}`
   goes the same way and answers its item and tab. The google pillar keeps its
   row and polls the file's version while it is open (`googleSeated`). A deck
-  a thread already shows opens in that thread. Anything else Drive holds says
-  "Scan.pdf opens in Google Drive: it is not a Doc, a Sheet or a Slides
-  deck.", and is listed as `other`. A thread's `files_open` opens a Google
-  file beside the thread.
+  a thread already shows opens in that thread. Anything else Drive holds is
+  listed as `other` and opens as the `file` kind's facts (`googleSeatOf` with
+  `facts`, no row polled), whose one press is Open in Drive
+  (`drive.google.com/file/d/<id>/view`). A thread's `files_open` opens a
+  Google file beside the thread, and says "Scan.pdf opens in Google Drive: it
+  is not a Doc, a Sheet or a Slides deck." of anything else.
 
 Not yet: Drive in search and Go to (a Drive listing does not feed the names
 table), a copy, an upload, and a tab's title after a rename (its key
@@ -1303,7 +1315,7 @@ while its screen is unlocked.
 | `fetch {workspaceId, ref}` | read | screen | downloads a cloud-only file on its own host |
 | `tabs`, `open {ref, name?, as?, opener?, key?}`, `tabOpen {page, after?, first?}`, `tabClose`, `tabMove`, `tabSet` | read; operate | yes | the tabs and their items (below). `open` of a file on another host of his, or in the VM, makes its copy here |
 | `star {ref, name, on}`, `seen {ref, name}` | operate | yes | his marks |
-| `copyBack {tabId}`, `copyReload {tabId}`, `copyKeep {tabId}` | operate, and his own edit (`approve` for a key) | screen | a copy that saves back: send it if it differs (`CopyBack`), read the file into it again, keep his beside the file ("A copy saves back"). `tabClose {tabId, discard}` drops a copy's changes not yet sent |
+| `copyBack {tabId}`, `copyReload {tabId}`, `copyKeep {tabId}` | operate, and his own edit (`approve` for a key) | screen | a copy that saves back: send it if it differs (`CopyBack`), read the file into it again, keep his beside the file ("A copy saves back"). `tabClose {tabId, discard}` drops a copy's changes not yet sent, `approve` for a key |
 | `writeBack {ref, data, version, copy?, into?, origin}` | operate; another host of his only | screen | run where the file lies: `saveFile` by version, or with `copy` beside it under the keep-both name, or with `into` a new file in `ref`'s folder under a free name (`WrittenBack`) |
 | `saveAsWord {source, at, name?, op}` | operate, and `approve` where others can open the folder | screen | a document exported as Word and made a new .docx in the folder ("Save as Word to a folder"): `SavedAsWord {name, ref}` |
 | `make {at, kind, name?, from?}`, `rename {ref, name}`, `move {refs, to}`, `copy {refs, to}` | operate, and `approve` where others can open the place | screen | `FileDone`: the things as they are now, and a `refused` row with its sentence for each one that could not be done ("New, rename, move and copy") |
@@ -1311,7 +1323,7 @@ while its screen is unlocked.
 | `restore`, `purge` | operate; approve | screen; never | the workspace's own rows; not built |
 | `make`, `rename`, `move`, `copy` | operate, and `approve` where others can open the place | screen | located and passed through the door, then "Files cannot … yet" |
 | `trash {refs, op}` | operate, and `approve` where others can open the place | screen | each ref through the door first (one refused refuses all), then to Trash ("Trash"); answers `FileDone` with `trashed`, the row ids Undo passes to `restore` |
-| `restore {ids, op}`, `purge {ids?}` | operate; approve | screen; never | the workspace's own rows ("Trash"): `FileDone` with what came back and where; `{ purged }` |
+| `restore {ids, op}`, `purge {ids?}` | operate, and `approve` where others can open what comes back; approve | screen; never | the workspace's own rows ("Trash"): `FileDone` with what came back and where; `{ purged }` |
 | `upload {at, name, size, sha256, op}` | operate, and `approve` where others can open the place | screen | `{ uploadId }`; the bytes then go as `attachment.chunk` and `attachment.commit` ("Upload") |
 | `home`, `names`, `search`, `searches`, `saveSearch`, `dropSearch`, `read`, `preview`, `thumbs` | | | declared; not built |
 | `home {workspaceId}` | read | yes | Waiting on you (held file acts and this host's files with suggestions waiting: "Agents"; then LifeOS rows with suggestions waiting and mail's files not kept, and a key without `approve` gets no mail's), Starred and Recent, 12 each. Not a thread's or a peer's |
@@ -1627,13 +1639,15 @@ folder or a lens) and file tabs.
 - An item that takes another's place (`CanvasStore.replace`: a Word file
   opened as a document becomes the `.tcdoc` made of it) is followed by its
   tab (`TabStore.follow`); the tab's key stays the file he opened.
-- **One file, one writer of its marks.** A deck's review state is kept by
-  item, so a deck a thread already holds is not given a second seat: `open`
-  answers `held: { sessionId, itemId }` and the window shows that thread's
-  item. A PDF's marks and a picture's or video's notes are kept by the file
-  (below), so those open in a tab while a thread holds them, and the two
-  share one set. A copy of another computer's file (`openCopy`) is a file of
-  its own, so for a copy all three kinds still go to the thread.
+- **One file, one writer of its marks.** A Google deck's review state is
+  kept by item (it is no file of this disk), so a Google deck a thread
+  already holds is not given a second seat: `open` answers
+  `held: { sessionId, itemId }` and the window shows that thread's item. A
+  deck on a disk keeps its state by the file (`deckKey`), and a PDF's marks
+  and a picture's or video's notes are kept by the file (below), so those
+  open in a tab while a thread holds them, and the two share one set. A copy
+  of another computer's file (`openCopy`) is a file of its own: it opens in a
+  tab of its own, with marks of its own.
 - **Marks kept by the file** (canvas/fileKey.ts). The pdf and media
   pillars add `file_key` to each of their tables: the item's workspace and
   its file's `refKey`. Two items of one workspace on one file read and write
@@ -1681,7 +1695,9 @@ over a file that changed there.
   with the version beside the bytes (`readWhole` in save.ts: a stat, the read, a stat, the hash of exactly those
   bytes); a host a release behind answers none, so its copies keep their old line. A copy out of the VM is read in
   4 MB pieces with the helper's version on each (`vmVersioned`, office/files/handle.ts); a piece of another version
-  is read once more, then refused.
+  is read once more, then refused. A file's copy is made, or read again for a reseat, one at a time
+  (`oneCopyAtATime`, handle.ts: `copyIn` writes one path a file), and an open that waited looks for the tab first:
+  two windows opening the file at once get one tab, and the second never reads the file over an edit the first took.
 - **One send** (`sendBack`): reads the copy as it lies and sends it only when its hash differs from `sent`. One send
   a copy is in flight; one asked while it runs runs once after it, reading the copy then, so the newest bytes go
   once. Another host: the peer verb `work.files.writeBack {ref, data, version, origin: {from: 'window'}}`, admitted
@@ -1734,7 +1750,8 @@ over a file that changed there.
   (`closeCopyTab`, copyClose.ts): "Changes to Roster.xlsx have not reached MacBook." with Keep trying and Discard
   while its computer does not answer, Keep Both and Discard over a file that changed there, Discard alone where it
   was refused. Keep trying closes the tab and keeps the copy and its record (`closed`) until the changes land, then
-  lets both go; Discard (`tabClose {discard: true}`) drops them at once. A closed tab's copy is looked at 3 s after
+  lets both go; Discard (`tabClose {discard: true}`) drops them at once, and only from his window or a key that may
+  approve (`pressesFor`), as Reload: another key's Discard is refused and the tab stays. A closed tab's copy is looked at 3 s after
   the close, and never before an editor's work on it under way has ended (`workingOn` and `workDone` in save.ts: the
   deck's queue for its file), so his last edit, sent as the tab closed, lands in the copy and is sent; opened again
   before it goes, the tab shows the kept copy and nothing is read over it.
@@ -1941,8 +1958,7 @@ system.
 | Caller | Reaches |
 |---|---|
 | this host's window | every place of the workspace on this host; for a workspace that lives on another host, this host's libraries |
-| a thread (`model`) | its own workspace's places (a Work Chat none); the VM only where its workspace turns it on; never the tabs, the marks or `open`; a change only through the `files_*` tools |
-| a thread (`model`) | its own workspace's places (a Work Chat none); the VM only where its workspace turns it on; never the tabs, the marks, `open`, `preview` or `thumbs`; no change until F5 |
+| a thread (`model`) | its own workspace's places (a Work Chat none); the VM only where its workspace turns it on; never the tabs, the marks, `open`, or a picture from `preview` or `thumbs`; a change only through the `files_*` tools |
 | another host of his (`peer`) | the libraries alone, under this host's bridge policy; no tab, no mark, no Google Drive; a change only with its origin, a copy sent back (`writeBack`) among them, which needs the policy's read+run |
 | a remote key | what the listener's fence lets it name (`ctx.reaches`, by the real path): the workspace's folder, and the VM's libraries by the guest-path rule. A Mac's own libraries stay out of a key's reach. A Google Drive of the workspace only for a key that may name the workspace's folder |
 

@@ -600,14 +600,14 @@ come, with bones under them for the rest, under a 20 s deadline
 (`SEARCH_DEADLINE_MS`: the VM walks its disk for up to 15 s); it fails only
 when no host answered.
 
-Opening a file (`openWay`): a cloud-only file shows Downloading… in its row
-first, then Opening…. **The file takes the pane**: it opens through the
-canvas store's `openItem`, shown and selected at once, with the thread
-folded away beside it (`setFolded`), its conversation toggle one press away;
-never a new chat's empty composer first (`showFile`, FilesView.tsx). **One
-file, one thread**: the workspace's host first answers
-`work.office.filesThreads {workspaceId, source}` (`threadsHolding`,
-files/handle.ts), the threads whose open items show that file, newest first:
+Opening a file (`openWay`, docs/agents/work-files.md "Opening a file"): a
+cloud-only file shows Downloading… in its row first, then Opening…. **The
+file takes the pane**: it opens in a Files tab of its own, with no thread;
+Ask docks a chat beside it, and a thread is made only once he sends. **One
+file, one thread**: Ask first asks the workspace's host
+`work.files.threads {workspaceId, ref}` (`threadsHolding`,
+office/files/handle.ts; `work.office.filesThreads {workspaceId, source}` on
+the old wire), the threads whose open items show that file, newest first:
 the file in place, its Office app's file, the copy he allowed (by its
 folder, the hash of the source), or the `.tcdoc` a Word, OpenDocument,
 RTF, markdown or text file became beside it (`Name.tcdoc`, `Name 2.tcdoc`,
@@ -619,16 +619,13 @@ count, however many closed ones changed since. A file in the Windows VM is
 named by the guest's path, so the method is one of the listener fence's
 Teams files verbs (`GUEST_METHODS`, remote/fence.ts). Reusing a thread whose
 item is Excel's, Word's or PowerPoint's brings that app forward again. The first of them this window knows and that is not archived is
-shown again with that item, and nothing is copied or made; a host from
-before the method answers none. Otherwise, on the workspace's own host it opens in a new thread of
-the workspace, titled for the file, in that thread's canvas (and an Office
-file in its app, which stands behind the item), the thread made only once
-everything else worked; with the copy he allowed, from the copy, and a thread
-whose copy failed is deleted again; otherwise in its app where it lies, which
-downloads it itself. A file in the Windows VM never opens in the canvas on its
-own host: as a copy he allowed, else in its app in the VM (seen on the
-Computers page); a read of one may wake the VM, so its reads wait up to two
-minutes. A failure is one toast.
+the dock's thread; a host from before the method answers none. A file of
+another computer opens as a copy he allowed, else in its app where it lies,
+which downloads it itself; so does every file where the workspace's host is
+a release behind and keeps no tabs (no thread is made for it). A file in the
+Windows VM never opens in the canvas on its own host: as a copy he allowed,
+else in its app in the VM (seen on the Computers page); a read of one may
+wake the VM, so its reads wait up to two minutes. A failure is one toast.
 
 ## Settings
 
