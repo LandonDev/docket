@@ -54,6 +54,9 @@ export interface BrowserProbe {
   now(): number
 }
 
+/** A site of the box browser that is not signed in: what he does (msforms' row says the same). */
+export const BOX_SIGN_IN = "Not signed in. Copy your Mac's logins to the box, or sign in from a thread's browser."
+
 /** The sites Work drives in the box's browser, each by the hosts and names of its sign-in cookies. */
 export const SITES = [
   {
@@ -102,7 +105,7 @@ function boxRows(p: BrowserProbe): HealthRow[] {
     const who = site.id === 'outlook' ? p.owaAccount(box.root) : null
     // An unreadable store (none yet, or held by the browser) leaves the marker to answer.
     if (live || (cookies === null && who)) rows.push({ ...base, state: 'working', line: who ? `Signed in as ${who}` : 'Signed in', ...(who ? { personal: true as const } : {}) })
-    else rows.push({ ...base, state: 'needs-you', line: "Not signed in. Copy your Mac's logins to the box, or sign in from a thread's browser." })
+    else rows.push({ ...base, state: 'needs-you', line: BOX_SIGN_IN })
   }
   return rows
 }

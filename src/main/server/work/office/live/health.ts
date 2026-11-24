@@ -3,7 +3,7 @@ import { join } from 'node:path'
 import type { HealthRow } from '@shared/work/health'
 
 /**
- * Settings → Connections for live Office files (docs/agents/work-office-live.md "Signing in"): one row per tenant
+ * Settings → Connections for live Office files and Microsoft forms (one session a tenant serves both) (docs/agents/work-office-live.md "Signing in"): one row per tenant
  * session on this computer (`persist:office-live-<tenant>`, src/main/officeLive.ts). It is signed in while Entra's
  * persistent cookie is there and in date, and needs him once it lapses; Sign out clears that session alone. Only
  * the cookie's name and end are read, never its value. A host with no window (the box) has no such session.
@@ -24,7 +24,7 @@ const ENTRA = /^(ESTSAUTHPERSISTENT|ESTSAUTH)$/
 export function liveRow(tenant: string, cookies: readonly LiveCookie[], now: number): HealthRow {
   const ends = cookies.filter((c) => ENTRA.test(c.name)).map((c) => (c.expirationDate ? c.expirationDate * 1000 : Infinity))
   const until = ends.length ? Math.max(...ends) : 0
-  const base = { id: `office.live:${tenant}`, pillar: 'office', group: 'Office', title: `Office for the web, ${tenant}`, personal: true } as const
+  const base = { id: `office.live:${tenant}`, pillar: 'office', group: 'Office', title: `Office and Forms for the web, ${tenant}`, personal: true } as const
   if (until > now)
     return {
       ...base,

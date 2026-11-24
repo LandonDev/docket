@@ -5126,6 +5126,7 @@ public enum Methods {
                     case audio
                     case text
                     case archive
+                    case form
                     case other
                     /// A value this build does not know; `rawValue` keeps it.
                     case unknown(String)
@@ -5142,6 +5143,7 @@ public enum Methods {
                         case "audio": self = .audio
                         case "text": self = .text
                         case "archive": self = .archive
+                        case "form": self = .form
                         case "other": self = .other
                         default: self = .unknown(rawValue)
                         }
@@ -5159,6 +5161,7 @@ public enum Methods {
                         case .audio: "audio"
                         case .text: "text"
                         case .archive: "archive"
+                        case .form: "form"
                         case .other: "other"
                         case .unknown(let value): value
                         }

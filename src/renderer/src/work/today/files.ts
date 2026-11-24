@@ -3,6 +3,7 @@ import type { EntryKind, FileEntry } from "@shared/work/files";
 import { dayTime } from "../../lib/duration";
 import { loadToast } from "../../components/ui/toaster";
 import { Doc, File, Media, Pdf, Slides, Table, Video, Volume } from "../icons";
+import { ListChecks } from "../../chrome/icons";
 import { openInFiles } from "../files/openFrom";
 import { goTo } from "./open";
 import { useEachWorkspace } from "./read";
@@ -35,6 +36,7 @@ const GLYPH: Record<EntryKind, NonNullable<TodayRow["lead"]>> = {
   audio: lead(Volume),
   text: lead(Doc),
   archive: lead(File),
+  form: lead(ListChecks),
   other: lead(File),
 };
 

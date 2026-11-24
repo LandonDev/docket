@@ -23,7 +23,7 @@ import { admitOwner, backsOf, copiesMoved, copyAt, copyBack, copyClosing, copyKe
 import { cloudOf, seedUpload, uploadedHere } from './uploads'
 import { keepBody } from './body'
 import { isGuestPath, vmFetch, vmList, vmStat, vmVerbs } from '../office/vm/files'
-import { chooseSeat, fileMakerFor, refSeatFor } from './hooks'
+import { chooseSeat, fileMakerFor, folderExtrasHooks, refSeatFor } from './hooks'
 import { MarkStore, type Mark, type Marked } from './marks'
 import { feedListing, forgetGonePlaces, listedLibraries, namesAnswer, placeOf, whereOf } from './names'
 import { dropSearch, savedSearches, saveSearch, searchFiles } from './search'
@@ -32,7 +32,8 @@ import { winDirHost } from './places/winDir'
 import { folderEntry, folderName, folderPlace, folderTrail } from './places/folder'
 import { forgetLibraries } from './places/libraries'
 import { filesAcross } from './across'
-import { forgetVmList, libraryEntry, libraryKey, libraryTrail, placeOfPath, placesIn, teamsPlaces, vmPage, type LibraryPlace } from './places/teams'
+import { forgetVmList, libraryEntry, libraryKey, libraryTrail, placeOfPath, placesIn, teamsPlaces, vmHas, vmPage, type LibraryPlace } from './places/teams'
+import { placeExtras } from './extras'
 import { admitCaller, admitWrite, changeDigest, isLifeosRef, locate, locatedShared, NEEDS_PRESS, NO_WORKSPACE, OWN_ONLY, pressesFor, SHARED_BYTES, sharedOf, PEER_LIBRARIES, within, workspaceHere, type DoorPlace, type Located, type WorkspaceRow } from './policy'
 import { keepMail, lifeosPlace, lifeosPlaces, lifeosTrash, lifeosTrashShared, listLifeos, makeLifeos, moveLifeos, openLifeos, renameLifeos, restoreLifeos, setProject, statLifeos, trashLifeos, waitingRows, withProjects } from './places/lifeos'
 import { READ_MAX, readFile, saveCopy, saveFile } from './save'
@@ -287,7 +288,10 @@ async function list(ctx: WorkCtx, by: Caller, p: { workspaceId: string; at: Fold
       }
     })
   }
-  const entries = page.rows.map((row) => libraryEntry(place!, path, row))
+  const rows = page.rows.map((row) => libraryEntry(place!, path, row))
+  // A pillar's own rows in the folder (a Microsoft form just before its answers workbook): never in a list of folders.
+  const extras = p.foldersOnly || page.stale ? [] : folderExtrasHooks().flatMap((fn) => fn(ctx, { workspaceId: p.workspaceId, library, path }))
+  const entries = placeExtras(rows, extras, { first, inFolder: (name) => (library.vm ? vmHas(library, path, name) : existsSync(join(path, name))) })
   return listing(page, withMarks(state, p.workspaceId, entries), first ? { place: place!.place.id, trail: libraryTrail(place!, path), ...(place!.place.state.at && place!.place.state.state !== 'ok' ? { asOf: place!.place.state.at } : {}) } : {})
 }
 

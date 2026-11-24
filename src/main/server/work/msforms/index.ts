@@ -5,13 +5,17 @@ import type { ActKindDef, Caller, WorkCtx, WorkModule } from '../modules'
 import { msformMakeKind, msformPublishKind, settled } from './acts'
 import { authFor, carrierOrRefuse, get, history, holdPublish, list, make, markSeen, page, review, setCheck, setMode, setOpen } from './forms'
 import { forgetWorkspaceAnswers } from './answers/cache'
-import { refreshAnswers, responsesOf, startAnswersPoller } from './answers/read'
+import { refreshAnswers, responsesOf, signInNeeded, startAnswersPoller } from './answers/read'
 import { formReach, MsformsError } from './reach'
 import { ensureMsformJobs, msformTasksJob, msformTrigger, removeMsformJobs, setTriggerDb } from './routine'
 import { ensureMsformsTables, MsformsStore } from './store'
 import { registerRefSeat } from '../files/hooks'
 import { refKey } from '@shared/work/files'
 import { ensureWorkbookIndex, workbookFile } from './workbook'
+// (registers its rows in Files' library folders when it loads)
+import './folder'
+import { formsRows } from './health'
+import { msCarrier } from './carrier/types'
 import { refuseWithheld } from './withhold'
 import { MSFORMS_PREAMBLE, msformsTools } from './tools'
 import { msformMentions, msformSearch } from './search'
@@ -134,6 +138,10 @@ export const msforms: WorkModule = {
     return route(req, ctx, by)
   },
   acts: [msformPublishKind as ActKindDef, msformMakeKind as ActKindDef],
+  // Connections: one row on the host whose box browser carries Forms, signed in as the last read saw, or Needs you.
+  health: {
+    check: async (ctx) => formsRows(ctx.db, { carrier: msCarrier() !== null, signIn: signInNeeded() })
+  },
   tools: () => msformsTools,
   search: [msformSearch],
   mentions: [msformMentions],

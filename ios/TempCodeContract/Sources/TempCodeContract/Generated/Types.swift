@@ -8254,6 +8254,7 @@ public struct FileEntry: Codable, Hashable, Sendable {
         case audio
         case text
         case archive
+        case form
         case other
         /// A value this build does not know; `rawValue` keeps it.
         case unknown(String)
@@ -8270,6 +8271,7 @@ public struct FileEntry: Codable, Hashable, Sendable {
             case "audio": self = .audio
             case "text": self = .text
             case "archive": self = .archive
+            case "form": self = .form
             case "other": self = .other
             default: self = .unknown(rawValue)
             }
@@ -8287,6 +8289,7 @@ public struct FileEntry: Codable, Hashable, Sendable {
             case .audio: "audio"
             case .text: "text"
             case .archive: "archive"
+            case .form: "form"
             case .other: "other"
             case .unknown(let value): value
             }
@@ -8413,6 +8416,15 @@ public struct FileEntry: Codable, Hashable, Sendable {
             self.verb = verb
         }
     }
+    public struct AnswersTo: Codable, Hashable, Sendable {
+        public let title: String
+        public let ref: CanvasSource
+
+        public init(title: String, ref: CanvasSource) {
+            self.title = title
+            self.ref = ref
+        }
+    }
 
     public let key: String
     public let ref: CanvasSource?
@@ -8432,8 +8444,9 @@ public struct FileEntry: Codable, Hashable, Sendable {
     public let fresh: Bool?
     public let starred: Bool?
     public let held: Held?
+    public let answersTo: AnswersTo?
 
-    public init(key: String, ref: CanvasSource?, folder: FolderRef?, name: String, kind: Kind, size: Double? = nil, changed: Double? = nil, revision: String? = nil, by: String? = nil, local: Bool? = nil, shared: Bool? = nil, state: State? = nil, `where`: Where? = nil, project: Project? = nil, madeBy: String? = nil, fresh: Bool? = nil, starred: Bool? = nil, held: Held? = nil) {
+    public init(key: String, ref: CanvasSource?, folder: FolderRef?, name: String, kind: Kind, size: Double? = nil, changed: Double? = nil, revision: String? = nil, by: String? = nil, local: Bool? = nil, shared: Bool? = nil, state: State? = nil, `where`: Where? = nil, project: Project? = nil, madeBy: String? = nil, fresh: Bool? = nil, starred: Bool? = nil, held: Held? = nil, answersTo: AnswersTo? = nil) {
         self.key = key
         self.ref = ref
         self.folder = folder
@@ -8452,10 +8465,11 @@ public struct FileEntry: Codable, Hashable, Sendable {
         self.fresh = fresh
         self.starred = starred
         self.held = held
+        self.answersTo = answersTo
     }
 
     private enum CodingKeys: String, CodingKey {
-        case key, ref, folder, name, kind, size, changed, revision, by, local, shared, state, `where`, project, madeBy, fresh, starred, held
+        case key, ref, folder, name, kind, size, changed, revision, by, local, shared, state, `where`, project, madeBy, fresh, starred, held, answersTo
     }
 
     public func encode(to encoder: any Encoder) throws {
@@ -8478,6 +8492,7 @@ public struct FileEntry: Codable, Hashable, Sendable {
         try container.encodeIfPresent(fresh, forKey: .fresh)
         try container.encodeIfPresent(starred, forKey: .starred)
         try container.encodeIfPresent(held, forKey: .held)
+        try container.encodeIfPresent(answersTo, forKey: .answersTo)
     }
 }
 

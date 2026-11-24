@@ -113,6 +113,13 @@ export async function vmPage(library: TeamsLibrary, dir: string, o: { sort?: Fil
   return cutPage(rows, { tag: key, version: kept.version, sort, cursor: o.cursor })
 }
 
+/** Whether a VM folder as last listed holds a file of this name (no guest call: false when it was not listed). */
+export function vmHas(library: TeamsLibrary, dir: string, name: string): boolean {
+  const kept = vmKept.get(`${library.id}\u0000${dir.toLowerCase()}`)
+  const low = name.toLowerCase()
+  return !!kept?.rows.some((r) => !r.dir && r.name.toLowerCase() === low)
+}
+
 /** A test starts with nothing kept. */
 export const forgetVmLists = (): void => vmKept.clear()
 /** A folder in the VM that changed: the next page of it asks the guest again. */

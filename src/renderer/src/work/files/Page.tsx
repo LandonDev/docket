@@ -43,6 +43,8 @@ import {
   TILE_SIZES,
   TILE_WORDS,
   whereWords,
+  answersWords,
+  formEntryOf,
   type ActRow,
   type EntryAct,
   type FilesNote,
@@ -332,7 +334,7 @@ export function FileList({
             <RowState entry={entry} />
           )}
         </span>
-        <span className={`${COL_BY} truncate text-xs text-muted-foreground`}>{entry.where ? whereWords(entry.where) : (entry.madeBy ?? entry.by ?? "")}</span>
+        <span className={`${COL_BY} truncate text-xs text-muted-foreground`}>{entry.where ? whereWords(entry.where) : entry.answersTo ? answersWords(entry.answersTo) : (entry.madeBy ?? entry.by ?? "")}</span>
         <span className={`${COL_CHANGED} text-xs text-muted-foreground tabular-nums`}>{entry.changed ? dayTime(entry.changed) : ""}</span>
       </div>
     );
@@ -845,6 +847,7 @@ export function PageView({
     const one = on[0];
     if (!one) return;
     if (act === "open") return open(one);
+    if (act === "open-form") return one.answersTo ? open(formEntryOf(one.answersTo)) : undefined;
     if (act === "reveal") return onReveal?.(one);
     if (!acts) return;
     if (act === "open-tab") return acts.openTab(one);

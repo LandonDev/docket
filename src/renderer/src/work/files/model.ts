@@ -495,6 +495,7 @@ const KIND_GROUP_WORDS: Record<FileEntry["kind"], string> = {
   audio: "Audio",
   text: "Text",
   archive: "Archives",
+  form: "Microsoft forms",
   other: "Other files",
 };
 
@@ -586,7 +587,7 @@ export function pickedAmong(now: Picked, order: readonly string[]): Picked {
 // ── a file's and a folder's menu ──────────────────────────────────────
 
 /** What a row's menu, the bulk bar and the keys can ask. */
-export type EntryAct = "open" | "open-tab" | "open-side" | "reveal" | "keep" | "project-out" | "open-app" | "rename" | "move" | "copy" | "star" | "unstar" | "delete" | "restore" | "purge";
+export type EntryAct = "open" | "open-form" | "open-tab" | "open-side" | "reveal" | "keep" | "project-out" | "open-app" | "rename" | "move" | "copy" | "star" | "unstar" | "delete" | "restore" | "purge";
 
 export interface ActRow {
   act: EntryAct;
@@ -625,9 +626,13 @@ export function actsFor(
     return why && o.far ? farWhy(o.far) : why;
   };
   const each = (verb: FileVerb): string | undefined => entries.map((e) => no(verb, e)).find((text) => text !== undefined);
+  // A Microsoft form listed in its folder is no file: it opens, and nothing else is done to it here.
+  if (entries.some((e) => e.kind === "form")) return one ? [{ act: "open", label: "Open" }] : [];
   const rows: ActRow[] = [];
   if (one) {
     rows.push({ act: "open", label: "Open" });
+    // A form's answers workbook opens the form too.
+    if (one.answersTo) rows.push({ act: "open-form", label: "Open the Form" });
     if (one.folder && o.tabs) rows.push({ act: "open-tab", label: "Open in New Tab" });
     // Only a file on a disk can sit at a tab's side today: a LifeOS document or a Drive file opens in a tab of its own.
     if (!one.folder && o.side && one.ref?.at === "file") rows.push({ act: "open-side", label: "Open to the Side" });
@@ -786,3 +791,9 @@ export const savedIdOf = (at: FolderRef): string | null => (at.at === "place" &&
 export function carryRefusal(from: FilePlace, verb: "move" | "copy", entry: FileEntry | null | undefined, to: FilePlace): Refusal | null {
   return refusal(from, verb, entry, to) ?? (from.env !== to.env ? { text: `${verb === "move" ? "Move" : "Copy"} between computers is not available yet.` } : null);
 }
+
+/** A form's answers workbook, as its row says it: "Answers to Spring sign-up". */
+export const answersWords = (answersTo: NonNullable<FileEntry["answersTo"]>): string => `Answers to ${answersTo.title}`;
+
+/** The form a workbook's row names, as a row of its own to open. */
+export const formEntryOf = (answersTo: NonNullable<FileEntry["answersTo"]>): FileEntry => ({ key: refKey(answersTo.ref), ref: answersTo.ref, folder: null, name: answersTo.title, kind: "form" });

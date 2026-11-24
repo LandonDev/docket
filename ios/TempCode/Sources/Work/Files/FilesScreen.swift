@@ -433,6 +433,7 @@ enum FilesGlyph {
         case .audio: "waveform"
         case .text: "doc.plaintext"
         case .archive: "archivebox"
+        case .form: "checklist"
         case .other, .unknown: "doc"
         }
     }

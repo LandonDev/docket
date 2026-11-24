@@ -168,7 +168,7 @@ export interface TeamsEntry {
 }
 
 /** The Files grammar's kinds (src/shared/work/files.ts, the one table of file types) in the words the Teams tools have always used. */
-const TEAMS_KIND: Record<EntryKind, TeamsFileKind> = { folder: 'folder', document: 'document', sheet: 'workbook', deck: 'deck', pdf: 'pdf', picture: 'picture', video: 'video', audio: 'audio', text: 'text', archive: 'other', other: 'other' }
+const TEAMS_KIND: Record<EntryKind, TeamsFileKind> = { folder: 'folder', document: 'document', sheet: 'workbook', deck: 'deck', pdf: 'pdf', picture: 'picture', video: 'video', audio: 'audio', text: 'text', archive: 'other', form: 'other', other: 'other' }
 
 /** The extensions of a kind, and every extension that has one: the guest's search filters by them. */
 export const teamsExtsOf = (kind: TeamsFileKind): string[] => ENTRY_KINDS.filter((k) => TEAMS_KIND[k] === kind && k !== 'archive').flatMap((k) => extsOfKind(k))

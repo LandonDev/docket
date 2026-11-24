@@ -1,6 +1,8 @@
 import type { DatabaseSync } from 'node:sqlite'
 import type { CanvasKind, CanvasSource } from '@shared/work'
 import type { FileForm } from '@shared/work/fileForms'
+import type { FileEntry } from '@shared/work/files'
+import type { TeamsLibrary } from '@shared/contract-work-office'
 import type { Caller, WorkCtx } from '../modules'
 
 /**
@@ -93,7 +95,23 @@ export type SeatChooser = (ctx: WorkCtx, by: Caller, ask: SeatAsk, signal?: Abor
  */
 export type RefSeat = (ctx: WorkCtx, by: Caller, ask: SeatAsk) => Promise<Omit<Seat, 'file' | 'copyOf'>>
 
+/**
+ * A row a pillar adds to a library folder as Files lists it (msforms: each Microsoft form made in that folder). `entry`
+ * is the row, of its own kind and source. `before` names the file in the folder it goes just before (the form's
+ * answers workbook), which takes `answersTo`; null, or a name the folder does not hold, puts it at the head of the
+ * folder's files on the listing's first page.
+ */
+export interface FolderExtra {
+  entry: FileEntry
+  before: string | null
+  answersTo?: NonNullable<FileEntry['answersTo']>
+}
+
+/** The rows a pillar adds to one folder of a library this host reaches: `path` is the folder where it lies (a guest path in the VM). */
+export type FolderExtras = (ctx: Pick<WorkCtx, 'db' | 'host'>, folder: { workspaceId: string; library: TeamsLibrary; path: string }) => FolderExtra[]
+
 const makers = new Map<CanvasKind, FileMaker>()
+const folderExtras = new Set<FolderExtras>()
 const refSeats = new Map<CanvasSource['at'], RefSeat>()
 /** What a file that opens only to read says: the editor's line to him, and the refusal a thread's change of it gets. */
 export interface ReadOnlyFile {
@@ -159,6 +177,13 @@ export function registerReadOnlyFile(fn: ReadOnlyJudge): () => void {
   return () => void readOnlyJudges.delete(fn)
 }
 export const readOnlyHooks = (): readonly ReadOnlyJudge[] => [...readOnlyJudges]
+
+/** One more pillar that adds rows to a library folder's listing; every one registered is asked. Returns its off. */
+export function registerFolderExtras(fn: FolderExtras): () => void {
+  folderExtras.add(fn)
+  return () => void folderExtras.delete(fn)
+}
+export const folderExtrasHooks = (): readonly FolderExtras[] => [...folderExtras]
 
 /** The one pillar that may seat a file before Files does (a later one replaces the earlier). Returns its off. */
 export function registerSeatChooser(fn: SeatChooser): () => void {

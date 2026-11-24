@@ -1,5 +1,5 @@
 import type { EntryKind } from "@shared/work/files";
-import { Archive, File, FileText, Folder, type IconComponent } from "../../chrome/icons";
+import { Archive, File, FileText, Folder, ListChecks, type IconComponent } from "../../chrome/icons";
 import { Doc, Media, Pdf, Slides, Table, Video, Volume } from "../icons";
 
 /** The glyph for each kind of file. */
@@ -14,10 +14,11 @@ export const KIND_ICON: Record<EntryKind, IconComponent> = {
   audio: Volume,
   text: FileText,
   archive: Archive,
+  form: ListChecks,
   other: File,
 };
 
-/** Each kind's tint (docs/DESIGN.md "File kind tints"). Archive and other have none of their own, so they stay muted. */
+/** Each kind's tint (docs/DESIGN.md "File kind tints"). Archive, a Microsoft form and other have none of their own, so they stay muted. */
 export const KIND_TINT: Record<EntryKind, string> = {
   folder: "text-kind-folder",
   document: "text-kind-doc",
@@ -29,6 +30,7 @@ export const KIND_TINT: Record<EntryKind, string> = {
   audio: "text-kind-audio",
   text: "text-kind-text",
   archive: "text-muted-foreground",
+  form: "text-muted-foreground",
   other: "text-muted-foreground",
 };
 

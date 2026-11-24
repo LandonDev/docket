@@ -13,7 +13,7 @@ import type { CanvasKind, CanvasSource, ContextChip } from './canvas'
 export const PROSE_EXTS = ['md', 'markdown', 'txt'] as const
 
 /** What a row is, as its glyph and its kind's word say it. */
-export const ENTRY_KINDS = ['folder', 'document', 'sheet', 'deck', 'pdf', 'picture', 'video', 'audio', 'text', 'archive', 'other'] as const
+export const ENTRY_KINDS = ['folder', 'document', 'sheet', 'deck', 'pdf', 'picture', 'video', 'audio', 'text', 'archive', 'form', 'other'] as const
 export type EntryKind = (typeof ENTRY_KINDS)[number]
 export const ENTRY_KIND_WORDS: Record<EntryKind, string> = {
   folder: 'Folder',
@@ -26,6 +26,8 @@ export const ENTRY_KIND_WORDS: Record<EntryKind, string> = {
   audio: 'Audio',
   text: 'Text',
   archive: 'Archive',
+  /** a Microsoft form made in a library folder: a row a pillar adds to the listing (hooks.ts `registerFolderExtras`), no file */
+  form: 'Microsoft form',
   other: 'File'
 }
 
@@ -226,6 +228,8 @@ export interface FileEntry {
   starred?: boolean
   /** Home's Waiting on you: a thread's change to it waits in the Outbox for his press (a held `file.act`); the row opens that item */
   held?: { id: string; verb: 'make' | 'rename' | 'move' | 'copy' | 'trash' }
+  /** a Microsoft form's answers workbook: the row reads "Answers to <title>", and its menu opens the form by `ref` */
+  answersTo?: { title: string; ref: CanvasSource }
 }
 
 /** One place two computers may both hold: a team or site and a folder or library of it, as either OneDrive layout names it ("RecWell-TeamRecWell" on a Mac is "RecWell" + "Team RecWell" under Windows). */

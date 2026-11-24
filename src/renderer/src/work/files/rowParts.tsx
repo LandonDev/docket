@@ -119,7 +119,8 @@ export interface RowDrag {
 export function dragProps(drag: RowDrag | undefined, entry: FileEntry): Record<string, unknown> {
   if (!drag) return {};
   return {
-    draggable: drag.from,
+    // A Microsoft form is no file: it is listed beside its workbook, never carried.
+    draggable: drag.from && entry.kind !== "form",
     onDragStart: (event: DragEvent) => drag.onStart(entry, event),
     onDragEnd: () => drag.onEnd(),
     ...(entry.folder

@@ -2398,6 +2398,18 @@ pillar calls, all landed:
   `open` before any copy is made; null leaves it to Files. The office pillar's live module answers it for a shared
   Office file remembered as Live (work-teams-files.md "Live Office addresses and memory"). `reseat` in handle.ts
   opens a tab's file again as `open` would, in the same tab, for Live → Edit here.
+- `registerFolderExtras` (`files/hooks.ts`): rows a pillar adds to a library folder as `list` reads it
+  (handle.ts, placed by `placeExtras` in files/extras.ts). Each `FolderExtra` is an `entry` of its own kind and
+  source and the file it goes `before`: on the page that holds that file, just before it, and that file takes the
+  extra's `answersTo`. One that names no file of the folder (none yet, or moved away: `existsSync` on a disk, the
+  last listing in the VM, `vmHas`) goes at the head of the folder's files on the first page; a list of folders alone
+  (`foldersOnly`) takes none. msforms registers one (msforms/folder.ts `formsInFolder`): each Microsoft form made in
+  that folder, of the listing workspace and its sector, is a row of the `form` entry kind ("Microsoft form", the
+  ListChecks glyph, muted, as archive and other are; the phone's `checklist`) whose `ref` is its `msform` source, just
+  before its answers workbook. The workbook's row says "Answers to <form>" where who changed it goes (`answersWords`)
+  and its menu holds Open the Form (`open-form`, `formEntryOf`). A form's row only opens: no rename, move, copy,
+  delete or drag, since it is no file (model.ts `actsFor`, rowParts.ts `dragProps`). Tests: files/extras.test.ts,
+  msforms/folder.test.ts (a listing past `LIST_PAGE_MAX`), renderer files/formRows.test.ts.
 
 One change was made in the slides build's folder beyond the three the seam
 names: `slides/index.ts` and its store take `itemsRemoved`, so a deck's rows

@@ -398,6 +398,7 @@ enum FilesWords {
         case .audio: "Audio"
         case .text: "Text"
         case .archive: "Archive"
+        case .form: "Microsoft form"
         case .other, .unknown: "File"
         }
     }

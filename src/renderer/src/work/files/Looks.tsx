@@ -18,7 +18,7 @@ import { sayError, useFrame } from "../canvas/frame";
 import { ItemSkeleton } from "../canvas/ItemBones";
 import type { SavedAction } from "../canvas/kind";
 import { KindGlyph } from "./KindGlyph";
-import { factOf } from "./model";
+import { answersWords, factOf } from "./model";
 import { FilePreviewPane } from "./Preview";
 import { mayReadText, useTextHead, useThumb, type PictureFrom } from "./previews";
 import { dragProps, howOf, NameField, onNameOf, RowState, stepHow, type ShapeProps } from "./rowParts";
@@ -428,7 +428,7 @@ export function FileBeside({
     const mine = busy?.key === entry.key;
     const over = drag?.over === entry.key;
     // Under the name: the one state in words, else who changed it; a row with neither is one line, centred.
-    const who = entry.madeBy ?? entry.by;
+    const who = entry.answersTo ? answersWords(entry.answersTo) : (entry.madeBy ?? entry.by);
     const second: ReactNode = mine ? (
       busy!.word
     ) : entry.state?.is === "writing" ? (
