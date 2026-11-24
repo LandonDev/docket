@@ -22,7 +22,7 @@ type StepResult = {
   hostErrors?: string[]
   evidenceErrors?: string[]
 }
-export type JourneyResult = { id: string; title: string; shape: Shape; steps: StepResult[]; notRun?: 'no sandbox' }
+export type JourneyResult = { id: string; title: string; shape: Shape; steps: StepResult[]; cleanup?: Cleanup; notRun?: 'no sandbox' }
 export type Results = { journeys: JourneyResult[]; error?: string; cleanup?: Cleanup }
 
 export function step(name: string, run: Step['run'], shapes?: readonly Shape[]): Step {

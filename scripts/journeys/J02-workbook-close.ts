@@ -22,6 +22,22 @@ async function readLine(context: Context, moment: string, committed: boolean): P
   }) + '\n')
 }
 
+export async function finishWorkbookClose(page: Context['pair']['page'], name: string): Promise<void> {
+  // DESIGN.md, The Files place: a copy still sending can ask once. Keep trying closes the tab and preserves the edit.
+  const dialog = '[role="alertdialog"], [role="dialog"]'
+  const answer = '[role="alertdialog"] button, [role="dialog"] button'
+  let needsChoice = false
+  await page.until('the workbook tab to close or ask to keep trying', 10_000, async () => {
+    if (await page.tabClosed(name)) return true
+    needsChoice = await page.eval(`[...document.querySelectorAll(${JSON.stringify(dialog)})].some((el) =>
+      el.innerText.includes(${JSON.stringify('Changes to ' + name + ' have not reached ')}))`) &&
+      !!await page.centre(answer, 'Keep trying')
+    return needsChoice
+  })
+  if (needsChoice) await page.clickOn(answer, 'Keep trying')
+  await page.until('the workbook tab to close', 10_000, () => page.tabClosed(name))
+}
+
 export default journey({
   id: 'J02',
   title: 'Close a workbook at once and check its save line and cell',
@@ -48,7 +64,7 @@ export default journey({
     }),
     step('end: the reopened sheet and its holder have A1 and the save lines were true', async (context) => {
       const { page } = context.pair
-      await page.until('the workbook tab to close', 10_000, () => page.tabClosed(NAME))
+      await finishWorkbookClose(page, NAME)
       await openRow(page, NAME)
       await page.until('the reopened worksheet', 45_000, () => a1Point(page))
       await readLine(context, 'reopened', true)

@@ -131,18 +131,22 @@ export class Window {
     await this.clickOn(selector, exactText)
   }
 
-  async clickOn(selector: string, text?: string): Promise<void> {
+  async steadyPoint(label: string, read: () => Promise<Point | null>, timeout = 20_000): Promise<Point> {
     let at: Point | null = null
-    // Pressed where it rests, as a person presses: a control still on its way (a sent bubble flying to its place, a
-    // sheet sliding in) is read again until two reads a moment apart agree.
-    await this.until(text ?? selector, 20_000, async () => {
-      const first = await this.centre(selector, text)
+    // Move the pointer before the second hit test: hover can shift the control or reveal another one.
+    await this.until(label, timeout, async () => {
+      const first = await read()
       if (!first) return false
+      await this.hover(first)
       await sleep(60)
-      const then = await this.centre(selector, text)
+      const then = await read()
       return then && then.x === first.x && then.y === first.y ? (at = then) : false
     })
-    await this.click(at!)
+    return at!
+  }
+
+  async clickOn(selector: string, text?: string): Promise<void> {
+    await this.click(await this.steadyPoint(text ?? selector, () => this.centre(selector, text)))
   }
 
   async key(chord: string): Promise<void> {

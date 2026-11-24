@@ -10,6 +10,7 @@ import { dummyLibrary, gioStub } from './files'
 import { seedFakeAccount, startFakeProvider, type MailReplyFixture } from './fakeProvider'
 import { until, Window } from './window'
 import { relay } from './relay'
+import { settingsOpen } from './settings'
 import { FIRST_MAIL, ZONE } from './lifeosSeed'
 import type { Sandbox } from './lifeos'
 
@@ -48,10 +49,10 @@ export function isolatedEnvironment(source: NodeJS.ProcessEnv): NodeJS.ProcessEn
   return Object.fromEntries(Object.entries(source).filter(([key]) => /^(PATH|LANG|LC_[A-Z_]+)$/.test(key)))
 }
 
-async function instance(root: string, name: Seat): Promise<Instance> {
+async function instance(root: string, tmpRoot: string, name: Seat): Promise<Instance> {
   const home = join(root, name + '-home')
   const data = join(root, name + '-data')
-  const tmp = join(root, name + '-tmp')
+  const tmp = join(tmpRoot, name)
   const work = join(home, 'work')
   for (const dir of [home, data, tmp, work, join(data, 'no-vm'), join(home, '.claude'), join(home, '.codex')]) mkdirSync(dir, { recursive: true })
   return {
@@ -195,6 +196,7 @@ export class Pair {
   private readonly instances: Instance[] = []
   private window?: Window
   private winRelay?: Awaited<ReturnType<typeof relay>>
+  private tmpRoot?: string
   private chromiumTmp?: string
   private launchOptions: LaunchOptions = {}
   private bin = ''
@@ -258,9 +260,11 @@ export class Pair {
   }
 
   async open(withDesk: boolean, name: string, options: { fake?: boolean; hosted?: boolean; guests?: boolean; guestTheme?: boolean; cut?: boolean; sector?: string; capture?: boolean; localTools?: boolean; chromium?: string; zone?: string; browser?: boolean } = {}): Promise<Workspace> {
-    this.win = await instance(this.root, 'win')
-    this.box = await instance(this.root, 'box')
-    this.desk = withDesk ? await instance(this.root, 'desk') : undefined
+    // Electron's singleton uses a Unix socket under TMPDIR. Keep its path short even when evidence is nested.
+    const tmpRoot = this.tmpRoot = mkdtempSync('/tmp/tcj-')
+    this.win = await instance(this.root, tmpRoot, 'win')
+    this.box = await instance(this.root, tmpRoot, 'box')
+    this.desk = withDesk ? await instance(this.root, tmpRoot, 'desk') : undefined
     this.instances.push(this.win, this.box, ...(this.desk ? [this.desk] : []))
     this.l1 = dummyLibrary(this.win.home, 'Journey Teams L1')
     if (this.desk) this.l2 = dummyLibrary(this.desk.home, 'Journey Teams L2')
@@ -356,6 +360,7 @@ export class Pair {
   async showWork(workspace: Workspace, view: string, page = this.page): Promise<void> {
     const rail = 'nav [data-rail-path] button'
     await page.dismissPopups()
+    if (await settingsOpen(page)) await page.press('button', 'Back')
     if (!await page.centre(rail + '[aria-current="true"]', workspace.name)) await page.clickOn(rail, workspace.name)
     await page.until(workspace.name + ' selected', 15_000, () => page.centre(rail + '[aria-current="true"]', workspace.name))
     const label = '[data-rail-row] > button > span.truncate'
@@ -475,7 +480,8 @@ export class Pair {
 
   async deviceWindow(): Promise<Window> {
     if (this.givenWindow) return this.givenWindow
-    const giver = this.giver = await instance(this.root, 'giver')
+    if (!this.tmpRoot) throw new Error('Start the Work instances before giving a computer')
+    const giver = this.giver = await instance(this.root, this.tmpRoot, 'giver')
     this.instances.push(giver)
     this.start(giver, this.bin, this.launchOptions)
     await until('the giver’s listener', 30_000, async () => (giver.port = await deskPort(giver, this.seed)), this.abort.signal)
@@ -489,7 +495,7 @@ export class Pair {
       const { giver } = await this.rpc<{ giver: { identity?: Identity['identity'] } | null }>(this.box, 'devices.giver')
       return giver?.identity?.signPublic === from.identity.signPublic
     }, this.abort.signal)
-    const inst = this.givenInstance = await instance(this.root, 'given')
+    const inst = this.givenInstance = await instance(this.root, this.tmpRoot, 'given')
     this.instances.push(inst)
     this.start(inst, this.bin, this.launchOptions)
     const page = await Window.attach(inst.debug!, this.abort.signal)
@@ -618,7 +624,9 @@ export class Pair {
         await sleep(100)
       }
       result.remainingPids = instancePids(this.root)
-      if (this.chromiumTmp && !result.remainingPids.length) rmSync(this.chromiumTmp, { recursive: true, force: true })
+      if (!result.remainingPids.length) {
+        for (const temp of [this.tmpRoot, this.chromiumTmp]) if (temp) rmSync(temp, { recursive: true, force: true })
+      }
       result.portsChecked = [...this.ports].sort((a, b) => a - b)
       result.remainingPorts = listeners().map(portOf).filter(port => this.ports.has(port))
       if (result.remainingPorts.length) result.errors.push('Listeners remain on ports ' + result.remainingPorts.join(', '))

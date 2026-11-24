@@ -1,12 +1,12 @@
 import { writeFileSync } from 'node:fs'
 import { join } from 'node:path'
-import type { HealthReport, HealthState } from '../../src/shared/work/health'
+import type { HealthReport, HealthRow, HealthState } from '../../src/shared/work/health'
 import { journey, step, type Context } from './lib/record'
 
 const SETTINGS = '[data-app-settings]'
 const PAGE_ROW = `${SETTINGS} [data-slot="page-row"]`
 const VIEWS = ['Mail', 'Messages', 'Tasks', 'Projects', 'Agenda', 'People'] as const
-const MARK: Record<HealthState, string> = { working: 'Working', broken: 'Broken', 'needs-you': 'Needs you' }
+const MARK: Record<HealthState, string> = { working: 'done', broken: 'failed', 'needs-you': 'waiting' }
 const PREP_EVENT = 'Open the equipment cupboard'
 
 async function connections({ pair }: Context): Promise<void> {
@@ -30,6 +30,14 @@ export function withheldWords(line: string): boolean {
   return line.includes('This computer cannot read LifeOS here') && !/did not answer/i.test(line)
 }
 
+type DrawnRow = { title: string; state?: string; detail?: string; words: string }
+
+export function connectionMatches(row: HealthRow, seen: DrawnRow): boolean {
+  if (seen.title !== row.title && !seen.title.startsWith(row.title + ' on ')) return false
+  if (row.id === 'office.addin') return seen.words.includes('Pair')
+  return seen.state === MARK[row.state] && (!row.line || seen.detail?.includes(row.line) === true)
+}
+
 export default journey({
   id: 'J55',
   title: 'Check Connections, sign out and back in, and read from a given computer',
@@ -41,18 +49,22 @@ export default journey({
       await connections(context)
       if (await status(context) !== 'connected' || !(await pair.sandbox!.query<unknown>('health:ping'))) throw new Error('The sandbox is not connected')
       const reports = await Promise.all([pair.win, pair.box].map((inst) => pair.rpc<HealthReport>(inst, 'work.health', {}, 27_000)))
-      await pair.page.until('Connections to show the hosts’ rows', 28_000, async () => {
-        const drawn = await pair.page.eval<{ title: string; words: string }[]>(`[...document.querySelectorAll(${JSON.stringify(PAGE_ROW)})].map(
-          (row) => ({ title: row.querySelector('[data-slot="item-title"]')?.innerText ?? '', words: row.innerText }))`)
-        const expected = reports.flatMap(({ rows }) => rows)
-        const matches = (row: HealthReport['rows'][number], seen: typeof drawn[number]) =>
-          (seen.title === row.title || seen.title.startsWith(row.title + ' on ')) &&
-          (row.id === 'office.addin' ? seen.words.includes('Pair') : seen.words.includes(MARK[row.state]) && seen.words.includes(row.line))
-        const agrees = expected.every((row) => drawn.some((seen) => matches(row, seen))) &&
-          drawn.every((seen) => expected.some((row) => matches(row, seen)))
-        if (agrees) writeFileSync(join(folder, 'connections.json'), JSON.stringify({ reports, drawn }, null, 2))
-        return agrees
-      })
+      const expected = reports.flatMap(({ rows }) => rows)
+      let drawn: DrawnRow[] = []
+      try {
+        await pair.page.until('Connections to show the hosts’ rows', 28_000, async () => {
+          drawn = await pair.page.eval<DrawnRow[]>(`[...document.querySelectorAll(${JSON.stringify(PAGE_ROW)})].map((row) => ({
+            title: row.querySelector('[data-slot="item-title"]')?.innerText ?? '',
+            state: row.querySelector('[data-slot="status-mark"]')?.dataset.state,
+            detail: row.querySelector('[data-slot="status-detail"]')?.innerText,
+            words: row.innerText
+          }))`)
+          return expected.every(row => drawn.some(seen => connectionMatches(row, seen))) &&
+            drawn.every(seen => expected.some(row => connectionMatches(row, seen)))
+        })
+      } finally {
+        writeFileSync(join(folder, 'connections.json'), JSON.stringify({ reports, drawn }, null, 2))
+      }
     }, ['S']),
     step('Sign box out and check the row and each LifeOS view', async (context) => {
       const { pair, workspace } = context

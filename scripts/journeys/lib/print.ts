@@ -8,7 +8,7 @@ export function printViewer(bin: string): void {
     'set -eu',
     'root="$(dirname -- "$(dirname -- "$0")")"',
     '[[ "$#" == 1 ]]',
-    '[[ "$1" == "$root/"*-tmp/TempCode-print/*/*.pdf && -f "$1" ]]',
+    '[[ "$1" == "${TMPDIR:?}/TempCode-print/"*/*.pdf && -f "$1" ]]',
     'printf "%s\n" "$1" >> "$root/print-viewer.log"',
     ''
   ].join('\n'), { mode: 0o755 })

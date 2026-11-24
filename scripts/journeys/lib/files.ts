@@ -69,15 +69,15 @@ export function rowAt(page: Window, name: string): Promise<{ x: number; y: numbe
       const r = row.getBoundingClientRect();
       const x = r.x + Math.min(12, r.width / 2), y = r.y + r.height / 2;
       if (row.contains(document.elementFromPoint(x, y))) return { x, y };
+      if (r.width && r.height) row.scrollIntoView({ block: 'nearest', inline: 'nearest' });
     }
     return null;
   })()`)
 }
 
 export async function openRow(page: Window, name: string): Promise<void> {
-  let point: Awaited<ReturnType<typeof rowAt>> = null
-  await page.until(name + ' row', 30_000, async () => (point = await rowAt(page, name)))
-  await page.click(point!, 2)
+  const point = await page.steadyPoint(name + ' row', () => rowAt(page, name), 30_000)
+  await page.click(point, 2)
 }
 
 export async function closeTab(page: Window, name: string): Promise<void> {

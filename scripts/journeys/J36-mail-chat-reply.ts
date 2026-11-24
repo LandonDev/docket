@@ -2,13 +2,14 @@ import type { MailChatFound } from '../../src/shared/contract-work-mail'
 import { COMPOSE, composeRow, type MailRow } from './lib/mailJourney'
 import { evidence, MAIL_PANE, newThread, openMail, see, sendPrompt } from './lib/lifeosJourney'
 import { journey, step, type Context } from './lib/record'
+import { hostRows } from './lib/thread'
 
 const SUBJECT = 'Spring LAN cables'
 const PROMPT = 'Draft a reply about the spare cables'
 const REPLY = 'I will bring two spare cables to the east room.'
 const DOCK = '[data-mail-dock-seat]'
 const CARD = DOCK + ' [data-mail-offer="draft"]'
-const state = new WeakMap<Context, string>()
+const state = new WeakMap<Context, { id: string; sessionId: string }>()
 
 export default journey({
   id: 'J36', title: 'Ask beside a mail, hold the draft, and approve it', tier: 2, shapes: ['S'],
@@ -33,7 +34,7 @@ export default journey({
         })
         await see(pair.page, CARD, REPLY)
         await see(pair.page, CARD + ' [data-draft-state]', 'Draft')
-        state.set(context, row!._id)
+        state.set(context, { id: row!._id, sessionId })
         await pair.page.shot(context.folder + '/offered-draft.png')
         evidence(context, 'offered-draft', { sessionId, row })
       } finally {
@@ -42,8 +43,26 @@ export default journey({
     }),
     step('end: put the offered draft in reply and approve that same row', async (context) => {
       const { pair } = context
-      const id = state.get(context)!
-      await pair.page.clickOn(CARD + ' button', 'Put in reply')
+      const { id, sessionId } = state.get(context)!
+      try {
+        await pair.page.clickOn(CARD + ' button', 'Put in reply')
+      } catch (error) {
+        const [dock, host, draft] = await Promise.allSettled([
+          pair.page.eval(`(() => {
+            const seat = document.querySelector(${JSON.stringify(DOCK)});
+            const thread = window.__monocode.sessionStore.get(${JSON.stringify(sessionId)});
+            return {
+              id: seat?.querySelector('[data-mail-dock]')?.getAttribute('data-mail-dock'),
+              loading: seat?.querySelector('[data-transcript-loading]')?.getAttribute('data-transcript-loading'),
+              loaded: thread?.loaded, phase: thread?.load?.phase, blocks: thread?.blocks.length
+            };
+          })()`),
+          hostRows(pair, 'SELECT status, (SELECT count(*) FROM events WHERE session_id = sessions.id) AS events FROM sessions WHERE id = ?', sessionId),
+          composeRow(context, id)
+        ])
+        evidence(context, 'unavailable-draft-control', { sessionId, dock, host, draft })
+        throw error
+      }
       await see(pair.page, COMPOSE, REPLY)
       if ((await composeRow(context, id)).status !== 'draft') throw new Error('Putting the reply in Mail changed the held row')
       await pair.page.clickOn(COMPOSE + ' button', 'Send')

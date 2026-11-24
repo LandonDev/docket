@@ -7,18 +7,16 @@ use. The Milestone 49 results record what the original runs proved.
 ## Journeys
 
 A journey walks Work as a person would. It ends by checking the file, a row
-on its host, or what the window shows. The run uses dummy files, a fresh
-workspace for each walk, and loopback provider addresses. J12 uses a local
-stand-in that answers with fixed words. The other walks do not need a reply.
-Each instance has its own home, app data, CLI config, and empty VM path.
-Runs without LifeOS can use a read-only mount of the shared work tools.
-Sandbox runs use only their own files and credentials.
+on its host, or what the window shows. Every walk starts fresh for its
+journey and shape. It gets its own workspace, instances, dummy files, and
+loopback provider addresses. Each instance has an isolated home, app data,
+CLI config, temporary files, and empty VM path.
 
-One pair serves the whole run. `win` is the window under xvfb. It holds
-the dummy Teams library L1 and reaches the Work workspace on the headless
-`box` through a key made for the run. `--desk` adds a third instance
-with library L2. It has its own window under xvfb and no debug port.
-It links to `box` so the workspace can use its files.
+`win` is the window under xvfb. It holds the dummy Teams library L1 and
+reaches the Work workspace on the headless `box` with a key made for the
+walk. B2 and `--desk` start a third instance with library L2. It has its
+own window under xvfb and links to `box` so the workspace can use its files.
+Walks that need shared work tools use a read-only mount.
 
 - **A** opens a file in the workspace's own folder on `box`.
 - **B1** opens a file from L1 on `win`.
@@ -28,20 +26,18 @@ It links to `box` so the workspace can use its files.
   The tier-1 shell and hold journeys also use K and U.
   The tier-2 LifeOS journeys use S. J55 also uses K to check a given computer’s key.
 
-When any selected journey uses LifeOS, the runner starts one Convex
-sandbox. It copies LifeOS from the local `origin/main` ref and work-kit
-from the commit LifeOS pins. It keeps the source cache under
-`.temp-code/journeys/.lifeos-cache/` and gives each run a fresh database,
-file store, admin key, and JWT keys. It lists and checks the deployment
-environment before it mints a device token or writes fixtures.
+Each walk that uses LifeOS starts a loopback Convex sandbox. The runner
+copies LifeOS from the local `origin/main` ref and work-kit from the commit
+LifeOS pins. The source cache is under `.temp-code/journeys/.lifeos-cache/`.
+Each sandbox has a fresh database, file store, admin key, and JWT keys.
+The runner checks the deployment environment before minting a device token
+or writing fixtures.
 
-Every instance connects to the same loopback sandbox. Only box receives
-the device token. The window asks box for a sector JWT, then checks for
-Spring LAN mail in the Purdue workspace. Journeys that call a LifeOS draft tool start its tool
-listener as well, with access only to the sandbox backend. The sandbox
-runs no delivery worker. Queued mail stays queued and calendar writes
-wait for a provider. The seed data includes local events that can move
-without a calendar provider.
+Box signs in to the sandbox. Capture also signs in on win. In shape S, the
+window checks for Spring LAN mail in the Purdue workspace before the walk's
+own steps. Walks that call a LifeOS draft tool start its local tool listener.
+The sandbox runs no delivery worker. Queued mail and calendar writes wait
+for a provider. The seed includes events that can move without a provider.
 
 Build the worktree with `heavy bunx electron-vite build`, then run this
 from that worktree:
@@ -52,15 +48,17 @@ HEAVY_MAX_MIN=40 /srv/agents/work/temp-code/.temp-code/bin/heavy bun run journey
 
 Use `--list` to see the walks, `--shape A,B1` to pick file locations,
 or `--tier 1` to pick a tier. `--only` runs journeys in the order given.
-A failed step ends that walk, and the run moves on to the next one. A run
-that cannot start its sandbox records `not run: no sandbox`. Any failure
-gives the command a non-zero exit. The run revokes its keys, stops its
-instances and sandbox, and checks for leftover processes and listeners.
-`--keep` keeps the scratch data for a closer look.
+A failed step ends that walk. The runner revokes its keys, stops its
+instances and sandbox, and checks for leftover processes and listeners
+before starting the next walk. A walk that cannot start its sandbox
+records `not run: no sandbox`. Any failure gives the command a non-zero
+exit. `--keep` keeps the app and sandbox data for a closer look.
 
-Find `results.json`, the instance logs and each failed step's picture
-under `.temp-code/journeys/<run>/` in the main checkout. The runner
-also updates the Journeys table in `.temp-code/plans/landed/POLISH-work.md`.
+Find `results.json` under `.temp-code/journeys/<run>/` in the main checkout.
+It includes cleanup proof for each walk and for the run. The walk folders
+hold the host logs and screenshots. After a complete run with verified
+teardown, the runner updates its walk rows in the Journeys table in
+`.temp-code/plans/landed/POLISH-work.md`.
 Use `--no-table` to keep the results in the run folder alone.
 
 To add one, make a `scripts/journeys/JNN-<slug>.ts` file, export
@@ -73,7 +71,7 @@ the thing the walk changed.
 | Journey | Shapes | What it checks at the end |
 | --- | --- | --- |
 | J01 | B1, B2 | The holder’s slide XML contains the edited title after closing the tab. |
-| J02 | B1, B2 | The reopened grid and the holder’s workbook agree on A1. Each timed header reading agrees with the holder’s bytes. |
+| J02 | B1, B2 | Press × right after committing A1, and choose Keep trying if Work asks. The reopened grid and holder agree on A1, and each timed header reading agrees with the holder’s bytes. |
 | J06 | A, B2 | A: the holder’s new slide contains the text typed before closing mid-word. B2: a far library offers no New deck, and its folder stays as it was. |
 | J07 | B1, B2 | The holder’s text file contains the edit after closing the tab. |
 | J08 | A, B1, B2 | The reopened PDF shows the highlight (a highlight has no note by design). |
@@ -96,8 +94,8 @@ records the refusal as a failure when the window offers that action.
 | --- | --- | --- |
 | J03 | B1, B2 | The holder's workbook has a chart part and the PDF has pages and more than one stream. Both shapes start with a blank workbook on the holder. |
 | J04 | B1 | The new Word file and reopened editor have both paragraphs. An untouched Word file leaves both folders as they were after close. |
-| J09 | A, B1 | The picture has a natural size, the players load, and the reopened video shows the comment at its stored frame. |
-| J11 | A, B1 | Closing the side files returns the space to the chat and keeps the first file and draft visible. |
+| J09 | A, B1 | The picture has a natural size and the reopened video shows its comment at the stored frame. The workspace sound plays. The library sound opens in its own app on Mac or Windows, or gives the native-app refusal on the Linux stand-in. |
+| J11 | A | Closing the side files returns the space to the chat and keeps the first file and draft visible. |
 | J12 | B1 | A sent file chip opens the same tab as the Files row. The workspace and library together have one copy. |
 | J14 | A, B1 | The original tab edits the file after two moves. An offered cross-computer copy holds those edits. |
 | J16 | A | The desktop drop and File → Open File… both open in their kind and put their bytes in the workspace folder. |

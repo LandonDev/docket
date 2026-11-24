@@ -21,7 +21,16 @@ export function wordsIn(page: Window, selector: string): Promise<string> {
 }
 
 export async function see(page: Window, selector: string, words: string): Promise<void> {
-  await page.until(words, 12_000, async () => (await wordsIn(page, selector)).includes(words))
+  await page.until(words, 12_000, () => page.eval(`(() => {
+    const inactive = '[inert], [aria-hidden="true"]';
+    const drawn = (el) => el.getClientRects().length && !el.closest(inactive);
+    return [...document.querySelectorAll(${JSON.stringify(selector)})].some((el) => {
+      if (el.closest(inactive)) return false;
+      // A canvas seat uses display: contents. Its tabs draw even though the seat has no box.
+      const visible = drawn(el) || (getComputedStyle(el).display === 'contents' && [...el.querySelectorAll('*')].some(drawn));
+      return visible && (el.innerText ?? '').includes(${JSON.stringify(words)});
+    });
+  })()`))
 }
 
 export async function mailbox(page: Window, box: string): Promise<void> {

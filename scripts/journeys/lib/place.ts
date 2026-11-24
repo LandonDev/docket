@@ -39,6 +39,8 @@ export async function goPlace(context: Context): Promise<void> {
   await page.clickOn('[data-files-sidebar] button', context.shape === 'B1' ? 'Journey Teams L1' : 'Journey Teams L2')
   await openRow(page, 'General')
   await openRow(page, context.workspace.name)
+  await page.until(context.workspace.name + ' folder to open', 15_000, () =>
+    page.eval(`document.querySelector('[data-files-bar] [aria-current="page"]')?.textContent.trim() === ${JSON.stringify(context.workspace.name)}`))
 }
 
 export async function selectFolderTab(context: Context): Promise<void> {

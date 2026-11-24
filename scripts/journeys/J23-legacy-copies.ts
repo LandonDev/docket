@@ -102,6 +102,8 @@ async function visit(context: Context, kind: Kind): Promise<void> {
       await page.until('the edit in the copy’s A1', 10_000, async () => await shownA1(page) === EDIT)
     }
     if (kind === 'doc') {
+      // A Word copy from Teams asks once how to save. Keep the edit on the explicit Save As path.
+      if (context.shape === 'B1') await page.clickOn('[role="alertdialog"] button, [role="dialog"] button', 'Ask me each time')
       // The editor holds a Word file's live text in a TempCode document. Save the changed copy as Word.
       await saveWordCopy(context, copy.slice(0, -'.docx'.length), true)
     }

@@ -25,9 +25,26 @@ export default journey({
     step('Make a weekday 7 AM routine in America/New_York', async (context) => {
       const { pair, workspace } = context
       const { page } = pair
+      await page.eval(`document.addEventListener('click', (event) => {
+        const button = event.target?.closest?.('button');
+        if (button?.textContent.trim() !== 'New routine') return;
+        const view = button.closest('[role="region"][aria-label="Routines"]');
+        window.__journeyRoutinePress = {
+          trusted: event.isTrusted,
+          shellLoading: !!view?.querySelector('[data-surface-skeleton]'),
+          listLoading: !!view?.querySelector('[aria-label="Loading routines"]'),
+          empty: view?.innerText.includes('No routines yet')
+        };
+      }, { capture: true })`)
       await pair.showWork(workspace, 'Routines')
       await page.press('button', 'New routine')
-      await field(page, 'Name', NAME)
+      try {
+        await field(page, 'Name', NAME)
+      } catch (error) {
+        const press = await page.eval('window.__journeyRoutinePress ?? null').catch(() => null)
+        json(context, 'routine-press', press)
+        throw error
+      }
       await field(page, 'What to do', 'Read the dummy practice list.')
       await page.clickOn('[role="dialog"] button', 'Create')
       await page.until('the saved schedule on screen and on box', 18_000, async () =>

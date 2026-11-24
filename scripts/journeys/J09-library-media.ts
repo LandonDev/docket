@@ -1,16 +1,41 @@
-import { copyFileSync, existsSync, readFileSync, writeFileSync } from 'node:fs'
+import { copyFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { closeTab, openRow } from './lib/files'
 import { fixtureTool } from './lib/fixtures'
 import { fileAt, showPlace } from './lib/place'
 import { journey, step } from './lib/record'
-import { words } from './lib/shape'
+import type { AppOpenProof } from './lib/appOpen'
+import type { Window } from './lib/window'
 
 const PICTURE = 'Practice picture.png'
 const VIDEO = 'Practice clip.mp4'
 const SOUND = 'Practice sound.wav'
 const NOTE = 'Check this frame'
 const NOTE_ROW = '[data-media-notes] [data-note]'
+
+const NATIVE_REFUSAL = 'A file opens in its app on a Mac or a Windows PC.'
+
+export function soundAppOpened(platform: string, answer: AppOpenProof['answer'], toasts: string[]): boolean {
+  if (!answer) return false
+  if (platform !== 'linux') {
+    if (!answer.opened) throw new Error(answer.error ?? 'The system did not open the sound')
+    return true
+  }
+  if (answer.opened || answer.error !== NATIVE_REFUSAL) throw new Error(answer.error ?? 'The Linux stand-in did not give its native-app refusal')
+  return toasts.some(line => line.includes(SOUND + ' did not open') && line.includes(NATIVE_REFUSAL))
+}
+
+export async function scrubFrame(page: Window): Promise<number> {
+  const slider = '[role="slider"][aria-label="Frame"]'
+  const shownFrame = () => page.eval<number>(`Number(document.querySelector(${JSON.stringify(slider)})?.getAttribute('aria-valuenow'))`)
+  await page.clickOn(slider)
+  let middle = 0
+  await page.until('the clicked frame to draw', 12_000, async () => (middle = await shownFrame()) > 0)
+  await page.key('ArrowRight')
+  const next = middle + 1
+  await page.until('the next frame to draw', 12_000, async () => await shownFrame() === next)
+  return next
+}
 
 export default journey({
   id: 'J09',
@@ -33,11 +58,7 @@ export default journey({
       const { page } = pair
       await openRow(page, VIDEO)
       await page.until('a loaded video with a duration', 55_000, () => page.eval(`[...document.querySelectorAll('video')].some((v) => v.readyState >= 2 && Number.isFinite(v.duration) && v.duration > 0)`))
-      await page.clickOn('[role="slider"][aria-label="Frame"]')
-      await page.key('ArrowRight')
-      const shownFrame = () => page.eval<number>(`Number(document.querySelector('[role="slider"][aria-label="Frame"]')?.getAttribute('aria-valuenow'))`)
-      await page.until('the scrubbed frame to draw', 12_000, async () => await shownFrame() > 0)
-      const frame = await shownFrame()
+      const frame = await scrubFrame(page)
       await page.press('button', 'Comment at this frame')
       await page.clickOn('textarea', 'Comment')
       await page.typeKeys(NOTE)
@@ -55,9 +76,22 @@ export default journey({
       await closeTab(page, VIDEO)
       await page.until('the video tab to close', 10_000, () => page.tabClosed(VIDEO))
     }),
-    step('Open the sound and check its player is ready', async (context) => {
+    step('Open the sound and check the player or the library’s native app answer', async (context) => {
       const { pair, folder } = context
       const { page } = pair
+      if (context.shape === 'B1') {
+        // The Files docs send this library sound to its own computer's app. The Linux stand-in promises a refusal.
+        const platform = await page.eval<string>('window.api.platform')
+        await page.watchToasts()
+        page.appOpen.watch(fileAt(context, SOUND))
+        await openRow(page, SOUND)
+        await page.until('the system app’s answer for the library sound', 12_000, async () =>
+          soundAppOpened(platform, page.appOpen.answer, await page.toasts(true)))
+        if (!await page.tabClosed(SOUND)) throw new Error('The native app open left a Files tab')
+        writeFileSync(join(folder, 'sound.json'), JSON.stringify({ platform, answer: page.appOpen.answer, toasts: await page.toasts(true) }))
+        await page.shot(join(folder, 'sound.png'))
+        return
+      }
       await page.eval(`(() => {
         const Audio = window.__journeyOriginalAudio = window.Audio;
         window.__journeyAudio = [];
@@ -68,14 +102,7 @@ export default journey({
         }});
       })()`)
       try {
-        await page.watchToasts()
-        page.appOpen.watch(fileAt(context, SOUND))
         await openRow(page, SOUND)
-        await page.until('the sound player’s Play control', 25_000, async () => {
-          const answer = page.appOpen.answer
-          if (answer) throw new Error(answer.error ?? (answer.opened ? 'The library opens the sound in a system app, with no player in Files' : 'The system did not open the sound'))
-          return page.centre('[data-meeting-player] button', 'Play')
-        })
         await page.clickOn('[data-meeting-player] button', 'Play')
         const sound = () => page.eval<{ ready: number; duration: number } | null>(`(() => {
           const a = [...document.querySelectorAll('audio'), ...window.__journeyAudio].find((a) => a.readyState >= 2 && Number.isFinite(a.duration) && a.duration > 0);
@@ -83,11 +110,6 @@ export default journey({
         })()`)
         await page.until('the sound player ready with its duration', 65_000, sound)
         writeFileSync(join(folder, 'sound.json'), JSON.stringify(await sound()))
-      } catch (error) {
-        await page.shot(join(folder, 'sound.png'))
-        writeFileSync(join(folder, 'sound-error.json'), JSON.stringify({
-          error: words(error), toasts: await page.toasts(), saveLine: await page.saveLine(), hostErrors: pair.hostErrors
-        }))
       } finally {
         await page.eval('window.Audio = window.__journeyOriginalAudio; delete window.__journeyOriginalAudio; delete window.__journeyAudio')
       }
@@ -96,12 +118,10 @@ export default journey({
         await page.until('the sound tab to close', 10_000, () => page.tabClosed(SOUND))
       }
     }),
-    step('end: the video still shows the timed comment after reopening and the sound played', async ({ pair, folder }) => {
+    step('end: after the sound check the reopened video still shows the timed comment', async ({ pair }) => {
       const { page } = pair
       await openRow(page, VIDEO)
       await page.until('the reopened video and timed comment', 30_000, () => page.eval(`[...document.querySelectorAll('${NOTE_ROW}')].some((row) => row.textContent.includes(${JSON.stringify(NOTE)}) && row.querySelector('time')?.textContent)`))
-      const failure = join(folder, 'sound-error.json')
-      if (existsSync(failure)) throw new Error(JSON.parse(readFileSync(failure, 'utf8')).error)
     })
   ]
 })

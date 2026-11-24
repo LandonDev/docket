@@ -7,6 +7,9 @@ import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { expect, it, vi } from 'vitest'
+import { finishWorkbookClose } from './J02-workbook-close'
+import { waitForWordRevision } from './J04-library-word'
+import { scrubFrame, soundAppOpened } from './J09-library-media'
 import { guestAddress } from './J20-guest-link'
 import { queuedAge } from './J32-held-mail'
 import { earlySent } from './J33-mail-undo'
@@ -22,9 +25,10 @@ import { broken, expected, wearsDark, wearsLight } from './J59-light-windows'
 import { changed, notOffered } from './lib/far'
 import { headedResult } from './J60-browser-canvas'
 import { ownedDisplay } from './lib/capture'
-import { withheldWords } from './J55-connections'
+import { connectionMatches, withheldWords } from './J55-connections'
 import { assertSandboxKeys } from './lib/lifeos'
 import { FIRST_MAIL, SECOND_MAIL, seedDay, seedDeadline, seedLifeos } from './lib/lifeosSeed'
+import { see } from './lib/lifeosJourney'
 import { composeRow } from './lib/mailJourney'
 import { wordBodyLayout } from './J05-document-export'
 import { desktopDrop, rowDrop } from './lib/drop'
@@ -33,17 +37,18 @@ import { BROWSER_PROMPT, fakeMessage, mailReplyTool, seedFakeAccount, startFakeP
 import { pdfFacts } from './lib/preview'
 import { letterPaper, printViewer } from './lib/print'
 import { AppOpenProof } from './lib/appOpen'
-import { closeSelectedFile, dummyLibrary, dummyPdf, fixtures, gioStub, holds } from './lib/files'
+import { closeSelectedFile, dummyLibrary, dummyPdf, fixtures, gioStub, holds, rowAt } from './lib/files'
 import { holderFolder, selectFolderTab } from './lib/place'
 import { explainsMissingContent, searchVerdict } from './lib/search'
 import { cellValue, falseSaveLine } from './lib/sheet'
 import { relay } from './lib/relay'
 import { wordFixture } from './lib/wordAddin'
+import * as threadProof from './lib/thread'
 import { toolCall } from './lib/thread'
 import { mainCheckout, step, walk, type Context } from './lib/record'
 import { isolatedEnvironment, SHAPES, type Pair } from './lib/shape'
 import { until, Window } from './lib/window'
-import { boxChromium, JOURNEYS, options, requireBuild } from './run'
+import { appendCleanup, boxChromium, JOURNEYS, options, requireBuild, walkSetup } from './run'
 import { updateJourneysTable } from './table'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
@@ -79,7 +84,7 @@ it('never spreads the launch shell environment before filtering it', () => {
 it('filters by id, shape and tier and only adds desk when asked or needed', () => {
   const picks = options(['--only', 'J05,J10', '--shape', 'A,B1', '--tier', '1'])
   expect(picks.jobs.map(({ spec, shape }) => [spec.id, shape])).toEqual([['J05', 'A'], ['J10', 'A'], ['J10', 'B1']])
-  expect(picks.desk).toBe(false)
+  expect(walkSetup(picks.jobs[0]!, picks.desk).desk).toBe(false)
   expect(options(['--only', 'J10', '--shape', 'B1', '--list', '--keep', '--desk'])).toMatchObject({ list: true, keep: true, desk: true })
   expect(() => options(['--only', 'J05', '--shape', 'B1'])).toThrow('No journeys match')
   expect(() => options(['--shape', 'wrong'])).toThrow('Unknown shape')
@@ -87,17 +92,23 @@ it('filters by id, shape and tier and only adds desk when asked or needed', () =
   expect(() => options(['--tier', '0'])).toThrow('positive integer')
 })
 
-it('starts one sandbox for a selected S journey, including its given-computer walk', () => {
-  expect(options(['--only', 'J10']).sandbox).toBe(false)
-  const selected = options(['--only', 'J40,J33', '--no-table'])
-  expect(selected.jobs.map(({ spec, shape }) => [spec.id, shape])).toEqual([['J40', 'S'], ['J33', 'S']])
-  expect(selected.sandbox).toBe(true)
+it('plans a sandbox and launch options for each walk without borrowing settings from neighboring walks', () => {
+  const selected = options(['--only', 'J02,J20,J22,J55,J60', '--no-table'])
+  const plan = Object.fromEntries(selected.jobs.map(job => [job.spec.id + ' ' + job.shape, walkSetup(job, selected.desk)]))
   expect(selected.noTable).toBe(true)
-  expect(options(['--only', 'J55', '--shape', 'K'])).toMatchObject({ sandbox: true })
-  for (const id of ['J35', 'J50']) expect(options(['--only', id, '--shape', 'A'])).toMatchObject({ sandbox: true })
-  const runner = readFileSync(join(HERE, 'run.ts'), 'utf8')
-  expect(runner.match(/await startSandbox\(/g)).toHaveLength(1)
-  expect(runner).toMatch(/if \(flags\.sandbox\)[\s\S]+await startSandbox\([\s\S]+not run: no sandbox/)
+  expect(plan['J02 B1']).toMatchObject({ sandbox: false, desk: false, launch: { guests: false, browser: false } })
+  expect(plan['J02 B2']).toMatchObject({ sandbox: false, desk: true })
+  expect(plan['J20 S']).toMatchObject({ sandbox: true, seededMail: true, launch: { guests: true, hosted: false } })
+  expect(plan['J22 A']).toMatchObject({ sandbox: false, launch: { hosted: true, guests: false } })
+  expect(plan['J55 K']).toMatchObject({ sandbox: true, seededMail: false })
+  expect(plan['J60 A']).toMatchObject({ sandbox: false, launch: { fake: true, browser: true } })
+  for (const job of options(['--only', 'J35,J50', '--shape', 'A']).jobs) expect(walkSetup(job).sandbox).toBe(true)
+})
+
+it('keeps cleanup proof from each walk and checks a reused port once in the run summary', () => {
+  const first = { revoked: ['first'], remainingPids: [], portsChecked: [1200, 1300], remainingPorts: [], errors: [] }
+  appendCleanup(first, { revoked: ['second'], remainingPids: [99], portsChecked: [1190, 1200], remainingPorts: [1190], errors: ['listener still up'] })
+  expect(first).toEqual({ revoked: ['first', 'second'], remainingPids: [99], portsChecked: [1190, 1200, 1300], remainingPorts: [1190], errors: ['listener still up'] })
 })
 
 it('reads tracked source and points deployment, applications, and tool traffic at the sandbox', () => {
@@ -107,7 +118,7 @@ it('reads tracked source and points deployment, applications, and tool traffic a
   for (const code of [source, launcher, tools]) {
     expect(code).not.toMatch(/lifeos(?:-mcp)?\.landonhale\.com|lifeos-deploy|\bsudo\b/)
   }
-  expect(source).toMatch(/dirname\(run\) !== runs/)
+  expect(source).toMatch(/dirname\(dirname\(walk\)\) !== runs/)
   expect(source).toMatch(/git\(repo, \['archive', '--output', tar, rev, '--', \.\.\.files\]\)/)
   expect(source).toMatch(/await list\(\)[\s\S]+assertSandboxKeys\(names,[\s\S]+await mintDevice\(\)[\s\S]+await seedLifeos\(/)
   expect(source).toMatch(/CONVEX_SELF_HOSTED_URL: url, CONVEX_SELF_HOSTED_ADMIN_KEY: adminKey/)
@@ -125,7 +136,7 @@ it('reads tracked source and points deployment, applications, and tool traffic a
 
 it('uses the sandbox for both guest walks and keeps its configured guest origin', () => {
   expect(options(['--only', 'J20']).jobs.map(({ shape }) => shape)).toEqual(['S', 'U'])
-  expect(options(['--only', 'J20', '--shape', 'U'])).toMatchObject({ sandbox: true })
+  expect(walkSetup(options(['--only', 'J20', '--shape', 'U']).jobs[0]!).sandbox).toBe(true)
   const outside = new URL('http://192.0.2.8:4000/g/link123#k=fake')
   const loopback = new URL('http://127.0.0.1:4000/g/link123#k=fake')
   expect(guestAddress(outside, outside.origin, 'link123')).toBe(true)
@@ -547,14 +558,18 @@ it('records only local Electron print files in the viewer stand-in', () => {
   const root = mkdtempSync(join(tmpdir(), 'journeys-print-'))
   try {
     const bin = join(root, 'bin')
-    const printed = join(root, 'win-tmp', 'TempCode-print', 'practice', 'Print.pdf')
+    const temp = join(root, 'short', 'win')
+    const printed = join(temp, 'TempCode-print', 'practice', 'Print.pdf')
     mkdirSync(bin)
     mkdirSync(dirname(printed), { recursive: true })
     writeFileSync(printed, dummyPdf())
     printViewer(bin)
     const viewer = join(bin, 'xdg-open')
-    expect(() => execFileSync(viewer, [join(root, 'Print.pdf')])).toThrow()
-    execFileSync(viewer, [printed])
+    const outside = join(root, 'Print.pdf')
+    writeFileSync(outside, dummyPdf())
+    const options = { env: { PATH: process.env.PATH, TMPDIR: temp } }
+    expect(() => execFileSync(viewer, [outside], options)).toThrow()
+    execFileSync(viewer, [printed], options)
     expect(readFileSync(join(root, 'print-viewer.log'), 'utf8')).toBe(printed + '\n')
   } finally {
     rmSync(root, { recursive: true, force: true })
@@ -646,7 +661,7 @@ it('puts the fake profile and its sealed credential in the run vault', () => {
 it('runs K and U without desk and can keep the shared table untouched', () => {
   const picks = options(['--only', 'J20,J54', '--shape', 'K,U', '--no-table'])
   expect(picks.jobs.map(({ spec, shape }) => [spec.id, shape])).toEqual([['J20', 'U'], ['J54', 'K']])
-  expect(picks.desk).toBe(false)
+  expect(walkSetup(picks.jobs[0]!, picks.desk).desk).toBe(false)
   expect(picks.noTable).toBe(true)
   const context = { workspace: { path: '/tmp/dummy' } } as Context
   for (const shape of ['K', 'U'] as const) expect(holderFolder({ ...context, shape })).toBe('/tmp/dummy')
@@ -714,9 +729,8 @@ it('registers the last nine walks and gives documents, Capture and guest pages a
   expect(tier.jobs.map(({ spec, shape }) => spec.id + ' ' + shape)).toEqual([
     'J43 A', 'J45 A', 'J46 A', 'J47 A', 'J48 A', 'J49 A', 'J59 A', 'J59 U', 'J60 A'
   ])
-  expect(options(['--only', 'J48,J49']).sandbox).toBe(true)
-  expect(options(['--only', 'J59', '--shape', 'U']).sandbox).toBe(true)
-  expect(options(['--only', 'J43,J45,J46,J47,J60']).sandbox).toBe(false)
+  for (const job of options(['--only', 'J48,J49,J59']).jobs) expect(walkSetup(job).sandbox).toBe(true)
+  for (const job of options(['--only', 'J43,J45,J46,J47,J60']).jobs) expect(walkSetup(job).sandbox).toBe(false)
 })
 
 it('requires the receipt Ref, vendor and numeric amount together in the ledger', () => {
@@ -843,4 +857,128 @@ it('holds the dummy Browser turn while letting other fake model calls finish', a
     release()
     vi.unstubAllGlobals()
   }
+})
+
+it('presses Keep trying on a pending workbook close and still waits for the tab to go', async () => {
+  const tabClosed = vi.fn().mockResolvedValueOnce(false).mockResolvedValueOnce(true)
+  const clickOn = vi.fn()
+  const page = {
+    tabClosed, clickOn, eval: vi.fn().mockResolvedValue(true), centre: vi.fn().mockResolvedValue({ x: 5, y: 9 }),
+    until: async (_label: string, _ms: number, test: () => Promise<unknown>) => { expect(await test()).toBeTruthy() }
+  } as unknown as Window
+  await finishWorkbookClose(page, 'Practice.xlsx')
+  expect(clickOn).toHaveBeenCalledExactlyOnceWith(expect.any(String), 'Keep trying')
+  expect(tabClosed).toHaveBeenCalledTimes(2)
+  clickOn.mockClear()
+  tabClosed.mockResolvedValue(true)
+  await finishWorkbookClose(page, 'Already closed.xlsx')
+  expect(clickOn).not.toHaveBeenCalled()
+})
+
+it('requires the native refusal and the matching toast for the library recording on Linux', () => {
+  const error = 'A file opens in its app on a Mac or a Windows PC.'
+  const refusal = { opened: false, error }
+  expect(soundAppOpened('linux', undefined, [])).toBe(false)
+  expect(soundAppOpened('linux', refusal, [error])).toBe(false)
+  expect(soundAppOpened('linux', refusal, ['Practice sound.wav did not open' + error])).toBe(true)
+  expect(() => soundAppOpened('linux', { opened: false, error: 'File not found' }, [])).toThrow('File not found')
+  expect(soundAppOpened('win32', { opened: true }, [])).toBe(true)
+  expect(() => soundAppOpened('darwin', refusal, [])).toThrow(error)
+})
+
+it('checks the Connections status and detail independently of the status word', () => {
+  const row = { id: 'lifeos.signin', pillar: 'lifeos', group: 'LifeOS', title: 'LifeOS', state: 'working', line: 'Signed in' } as const
+  const seen = { title: 'LifeOS on box', state: 'done', detail: 'Signed in', words: 'LifeOS on box Ready Signed in' }
+  expect(connectionMatches(row, seen)).toBe(true)
+  expect(connectionMatches(row, { ...seen, words: 'Ready', detail: 'Needs a key' })).toBe(false)
+  expect(connectionMatches(row, { ...seen, state: 'waiting' })).toBe(false)
+})
+
+it('rechecks the hit after hovering before it clicks a moving control', async () => {
+  const before = { x: 50, y: 60 }
+  const after = { x: 80, y: 90 }
+  const page = Object.assign(Object.create(Window.prototype) as Window, {
+    centre: vi.fn().mockResolvedValueOnce(before).mockResolvedValue(after),
+    hover: vi.fn(),
+    click: vi.fn(),
+    until: (label: string, ms: number, check: () => Promise<unknown>) => until(label, ms, check)
+  })
+  await page.clickOn('button', 'Open')
+  expect(page.hover.mock.calls).toEqual([[before], [after]])
+  expect(page.click).toHaveBeenCalledExactlyOnceWith(after)
+})
+
+it('looks for the chip in every rendered composer and ignores inactive seats', async () => {
+  const shell = (innerText: string, inactive = false) => ({
+    getClientRects: () => ({ length: 1 }), closest: () => inactive, innerText
+  })
+  const contents = { ...shell('Attachment'), getClientRects: () => [], querySelectorAll: () => [shell('Attachment')] }
+  const document = { querySelectorAll: vi.fn().mockReturnValue([shell('Ask'), shell('Spring LAN tables'), shell('Old room', true), contents]) }
+  const getComputedStyle = () => ({ display: 'contents' })
+  const page = {
+    eval: (expression: string) => Promise.resolve(
+      new Function('document', 'getComputedStyle', 'return ' + expression)(document, getComputedStyle)),
+    until: async (label: string, _ms: number, check: () => Promise<unknown>) => {
+      if (!await check()) throw new Error(label)
+    }
+  } as Window
+  await expect(see(page, '[data-composer]', 'Spring LAN tables')).resolves.toBeUndefined()
+  await expect(see(page, '[data-composer]', 'Old room')).rejects.toThrow('Old room')
+  await expect(see(page, '[data-canvas-seat]', 'Attachment')).resolves.toBeUndefined()
+})
+
+it('scrolls a Files row into view and only returns a point that hits that row', async () => {
+  const scrollIntoView = vi.fn()
+  const row = {
+    querySelectorAll: () => [{ childElementCount: 0, textContent: 'Roster.xlsx' }],
+    getBoundingClientRect: () => ({ x: 8, y: 40, width: 200, height: 20 }),
+    contains: (hit: unknown) => hit === row,
+    scrollIntoView
+  }
+  const document = {
+    querySelectorAll: () => [row],
+    elementFromPoint: vi.fn().mockReturnValueOnce(null).mockReturnValueOnce(row)
+  }
+  const page = {
+    eval: (expression: string) => Promise.resolve(new Function('document', 'return ' + expression)(document))
+  } as Window
+  expect(await rowAt(page, 'Roster.xlsx')).toBeNull()
+  expect(scrollIntoView).toHaveBeenCalledExactlyOnceWith({ block: 'nearest', inline: 'nearest' })
+  expect(await rowAt(page, 'Roster.xlsx')).toEqual({ x: 20, y: 50 })
+})
+
+it('waits for the host to record the Word baseline before exercising close', async () => {
+  const library = mkdtempSync(join(tmpdir(), 'journey-word-ready-'))
+  const rows = vi.spyOn(threadProof, 'hostRows')
+    .mockResolvedValueOnce([{ base_rev: null }])
+    .mockResolvedValueOnce([{ base_rev: 'observed' }])
+  const page = {
+    until: async (_label: string, _ms: number, check: () => Promise<unknown>) => {
+      expect(await check()).toBeNull()
+      expect(await check()).toBe('observed')
+    }
+  }
+  const context = { pair: { l1: library, page }, shape: 'B1', workspace: { id: 'job', name: 'Practice' } } as unknown as Context
+  try {
+    await waitForWordRevision(context, 'Read only visit.docx')
+    expect(rows).toHaveBeenCalledTimes(2)
+    expect(rows).toHaveBeenLastCalledWith(context.pair, expect.stringContaining('SELECT base_rev'), 'job', join(library, 'Practice', 'Read only visit.docx'))
+  } finally {
+    rows.mockRestore()
+    rmSync(library, { recursive: true, force: true })
+  }
+})
+
+it('waits for the scrubbed frame and then the next frame before recording the note anchor', async () => {
+  const frames = [0, 48, 48, 49]
+  const key = vi.fn(() => expect(frames).toEqual([48, 49]))
+  const page = {
+    clickOn: vi.fn(), key, eval: vi.fn(() => frames.shift()),
+    until: async (_label: string, _ms: number, check: () => Promise<boolean>) => {
+      expect(await check()).toBe(false)
+      expect(await check()).toBe(true)
+    }
+  } as unknown as Window
+  await expect(scrubFrame(page)).resolves.toBe(49)
+  expect(key).toHaveBeenCalledExactlyOnceWith('ArrowRight')
 })

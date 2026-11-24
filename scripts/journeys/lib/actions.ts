@@ -2,9 +2,8 @@ import { rowAt } from './files'
 import type { Window } from './window'
 
 export async function rowMenu(page: Window, name: string): Promise<void> {
-  let at: Awaited<ReturnType<typeof rowAt>> = null
-  await page.until(name + ' row', 20_000, async () => (at = await rowAt(page, name)))
-  await page.click(at!, 1, 'right')
+  const at = await page.steadyPoint(name + ' row', () => rowAt(page, name))
+  await page.click(at, 1, 'right')
   await page.until('the row menu', 5000, () => page.eval('!!document.querySelector("[role=menuitem]")'))
 }
 

@@ -51,8 +51,8 @@ export default journey({
       if (!target) throw new Error('LifeOS has no cupboard event')
       await page.until('the original clash beside the projector event', 12_000, () => page.eval(`[...document.querySelectorAll(${JSON.stringify(AGENDA + ' [role="listitem"]')})]
         .some((row) => row.innerText.includes(${JSON.stringify(MOVED_EVENT)}) && row.innerText.includes(${JSON.stringify(FIRST_CLASH)}))`))
-      const at = await page.centre(`${AGENDA} [role="listitem"] span`, MOVED_EVENT)
-      if (!at) throw new Error('The projector event is outside the Agenda list')
+      const at = await page.steadyPoint('the projector event in Agenda', () =>
+        page.centre(`${AGENDA} [role="listitem"] span`, MOVED_EVENT))
       await page.click(at, 1, 'right')
       await page.press('menuitem', 'Show clash')
       await page.clickOn('[data-clash-dialog] [data-way$=":move"]', 'Move…')

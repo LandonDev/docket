@@ -18,7 +18,10 @@ export default journey({
     step('Open a text file held on desk', async (context) => {
       writeFileSync(fileAt(context, NAME), BEFORE)
       await showPlace(context)
-      await openRow(context.pair.page, NAME)
+      const { page } = context.pair
+      await openRow(page, NAME)
+      await page.until('the desk copy to open before cutting its holder', 15_000, () =>
+        page.eval(`document.querySelector('[data-files-file] .cm-content')?.textContent === ${JSON.stringify(BEFORE)}`))
     }),
     step('Stop desk and read the folder’s away notice and Retry', async (context) => {
       const { pair, folder } = context

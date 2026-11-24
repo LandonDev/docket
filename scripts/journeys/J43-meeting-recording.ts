@@ -64,23 +64,9 @@ export default journey({
       const row = (await meeting(context))!
       const { segments } = JSON.parse(row.doc) as { segments: { id: string; text: string }[] }
       await page.catchExports()
-      // The meeting pane's own More, at the end of its title row: the chat's row in the column has a More of its own.
-      const markMore = () => page.eval<boolean>(`(() => {
-        const title = [...document.querySelectorAll('[data-canvas-title], [data-view-title]')].find((el) => el.textContent.trim() === 'Practice meeting')?.getBoundingClientRect();
-        document.querySelector('[data-journey-more]')?.removeAttribute('data-journey-more');
-        const more = title && [...document.querySelectorAll('button[aria-label="More"]')].find((button) => {
-          const at = button.getBoundingClientRect();
-          return at.x > title.right && Math.abs(at.y + at.height / 2 - (title.y + title.height / 2)) < 16;
-        });
-        more?.setAttribute('data-journey-more', '');
-        return !!more;
-      })()`)
-      const opened = () => page.eval<boolean>('!!document.querySelector("[role=menuitem]")')
-      await page.until('the meeting pane’s More', 12_000, markMore)
-      // One press, as he gives it: the first press on the pane's cold More opens its menu (W49: the header's tooltip
-      // provider no longer swaps under it, components/ui/tooltip.tsx).
-      await page.clickOn('[data-journey-more]')
-      await page.until('the pane’s menu on the first press', 5000, opened)
+      // One press on the meeting pane's own More (W49). The chat has a More of its own.
+      await page.clickOn('[data-board] [data-view-actions] button[aria-label="More"]')
+      await page.until('the pane’s menu on the first press', 5000, () => page.eval('!!document.querySelector("[role=menuitem]")'))
       json(context, 'more-menu', await page.eval(`[...document.querySelectorAll('[role="menuitem"]')].map((item) => item.innerText.trim())`))
       await page.press('menuitem', 'Export transcript')
       const text = (await page.downloaded(TRANSCRIPT)).toString('utf8')

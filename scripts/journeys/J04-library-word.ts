@@ -5,6 +5,7 @@ import { closeSelectedFile, holds, openRow } from './lib/files'
 import { fileAt, holderFolder, showPlace } from './lib/place'
 import { journey, step, type Context } from './lib/record'
 import { words } from './lib/shape'
+import { hostRows } from './lib/thread'
 
 const STEM = 'Practice instructions'
 const NAME = STEM + '.docx'
@@ -25,6 +26,16 @@ async function readSave(context: Context, moment: string) {
   return { line, first, last }
 }
 
+export async function waitForWordRevision(context: Context, name: string): Promise<void> {
+  const { pair, workspace } = context
+  const file = fileAt(context, name)
+  await pair.page.until('the host to see the Word document’s initial revision', 15_000, async () => {
+    const [row] = await hostRows<{ base_rev: string | null }>(pair,
+      'SELECT base_rev FROM work_files_word WHERE workspace_id = ? AND path = ?', workspace.id, file)
+    return row?.base_rev
+  })
+}
+
 export default journey({
   id: 'J04',
   title: 'Make and reopen a Teams Word document, then visit another without editing',
@@ -43,6 +54,7 @@ export default journey({
       await page.until('the Word package on the library holder', 12_000, () => existsSync(fileAt(context, NAME)))
       await openRow(page, NAME)
       await focusDocument(page)
+      await waitForWordRevision(context, NAME)
       await readSave(context, 'opened')
     }),
     step('Type two paragraphs and compare the save line with the holder', async (context) => {
@@ -86,6 +98,8 @@ export default journey({
       const before = listings(context)
       await openRow(page, LOOK)
       await page.until('the untouched Word editor', 35_000, () => page.centre(DOC_EDITOR))
+      // The Files docs say a never-edited copy goes with its tab once the host has seen its initial revision.
+      await waitForWordRevision(context, LOOK)
       const line = (await readSave(context, 'untouched Word file open')).line
       const during = listings(context)
       await closeSelectedFile(page)

@@ -40,8 +40,8 @@ function backendBinary(): string {
   throw new Error('No cached convex-local-backend binary')
 }
 
-async function checkoutCopy(folder: string, env: NodeJS.ProcessEnv, signal?: AbortSignal): Promise<string> {
-  const root = join(dirname(dirname(folder)), '.lifeos-cache')
+async function checkoutCopy(folder: string, runs: string, env: NodeJS.ProcessEnv, signal?: AbortSignal): Promise<string> {
+  const root = join(runs, '.lifeos-cache')
   mkdirSync(root, { recursive: true })
   if (realpathSync(root) !== root) throw new Error('The sandbox cache must be inside the journeys directory')
   const options = { cwd: folder, env, signal, timeout: 30_000 }
@@ -187,11 +187,11 @@ async function startMcp(folder: string, siteUrl: string, env: NodeJS.ProcessEnv,
   }
 }
 
-export async function startSandbox(runFolder: string, signal?: AbortSignal, tools = false): Promise<Sandbox> {
+export async function startSandbox(walkFolder: string, signal?: AbortSignal, tools = false): Promise<Sandbox> {
   const runs = join(mainCheckout(resolve(import.meta.dir, '../../..')), '.temp-code/journeys')
-  const run = realpathSync(runFolder)
-  if (dirname(run) !== runs) throw new Error('LifeOS sandbox requires its own journey run folder')
-  const folder = join(run, 'lifeos')
+  const walk = realpathSync(walkFolder)
+  if (dirname(dirname(walk)) !== runs || walk !== walkFolder) throw new Error('LifeOS sandbox requires its own journey walk folder')
+  const folder = join(walk, 'lifeos')
   mkdirSync(folder, { mode: 0o700 })
   const home = join(folder, 'home')
   mkdirSync(home)
@@ -203,7 +203,7 @@ export async function startSandbox(runFolder: string, signal?: AbortSignal, tool
     CONVEX_PROVISION_HOST: OFFLINE
   }
   const binary = backendBinary()
-  const backend = await checkoutCopy(folder, env, signal)
+  const backend = await checkoutCopy(folder, runs, env, signal)
   const port = await freePort()
   let sitePort = await freePort()
   while (port === sitePort) sitePort = await freePort()
