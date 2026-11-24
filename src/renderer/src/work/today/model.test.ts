@@ -265,7 +265,7 @@ describe("page", () => {
     const out = page(all, { jobs, lifeos: "signed-out" });
     expect(out.kind === "day" && out.blocks[1]).toEqual({ kind: "lifeos", reach: "signed-out" });
     // The line keeps the session's true state, so it says each in its own words.
-    for (const reach of ["withheld", "pairing", "refused", "off"] as const) {
+    for (const reach of ["withheld", "pairing", "refused", "off", "unanswered"] as const) {
       const one = page(all, { jobs, lifeos: reach });
       expect(one.kind === "day" && one.blocks[1]).toEqual({ kind: "lifeos", reach });
     }

@@ -65,6 +65,30 @@ describe("the view frame's line", () => {
   });
 });
 
+/** Council round 4 (Sol P1s, Opus P2): a host whose first status ask timed out on an open link is down, in every view. */
+describe("a host that did not answer its status", () => {
+  it.each(["tasks", "agenda", "people", "mail"] as const)("%s: the frame's line names the computer with Retry and nothing pulses; Retry's answer takes the line away", async (view) => {
+    let status: () => Promise<unknown> = () => Promise.reject(Object.assign(new Error("No answer in 15 s"), { name: "TimeoutError" }));
+    vi.spyOn(registry, "environment").mockReturnValue({ name: "The box" } as never);
+    // The link is open: the host is not away, it only did not answer.
+    vi.spyOn(registry, "statusOf").mockReturnValue({ transport: "open" } as never);
+    vi.spyOn(registry, "linkOf").mockReturnValue({
+      environmentId: "env_box",
+      connected: true,
+      onPush: () => () => {},
+      onOpen: () => () => {},
+      request: vi.fn(async (method: string) => (method === "work.lifeos.status" ? status() : Promise.reject(new Error("socket closed")))),
+    } as never);
+    render(<ViewFrame view={view} environmentId="env_box" workspaceId="ws" sector="purdue" />);
+    await vi.waitFor(() => expect(document.querySelector("[data-view-state=failed]")?.textContent).toContain("The box did not answer"));
+    await vi.waitFor(() => expect(document.querySelector("[aria-busy], [data-slot=skeleton]")).toBeNull(), { timeout: 5000 });
+    status = async () => ({ lifeos: { state: "signed-out" }, keys: [] });
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    await vi.waitFor(() => expect(screen.getByText("Sign in to LifeOS")).toBeTruthy());
+    expect(document.querySelector("[data-view-state=failed]")).toBeNull();
+  });
+});
+
 describe("the view frame's Retry", () => {
   it("says a failed Retry in the host's words, never its raw text", async () => {
     toasts.length = 0;

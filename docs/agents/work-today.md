@@ -166,12 +166,16 @@ nothing.
   that is gone.
 - While no host can read LifeOS, its sections give way to one line where the
   first stood, in the session's true state (`reachOf`, `shell/lifeosDown.ts`)
-  and the view frame's words (`sessionFailure`): "LifeOS did not answer" with
-  Retry; "Not signed in to LifeOS" or "LifeOS refused this host's sign-in"
-  with Sign in (Settings → Connections); a sign-in that waits for his
-  approval, Work off, and a computer the host keeps LifeOS from ("This
-  computer cannot read LifeOS through this host") with no press, since none
-  can help. A held calendar act's details use the same helper.
+  and the view frame's words (`sessionFailure`, naming the host the session
+  reads through): "LifeOS did not answer", or "The box did not answer" when
+  the host's own status ask went unanswered (`unanswered`), with Retry; "Not
+  signed in to LifeOS" or "LifeOS refused the box's sign-in" with Sign in
+  (Settings → Connections); a sign-in that waits for his approval, "Work is
+  off on the box", and a computer the host keeps LifeOS from ("This computer
+  cannot read LifeOS through the box") with no press, since none can help.
+  A held calendar act's details use the same helper. A muted line with no
+  press wraps across the job and time columns; one with Sign in wraps in
+  the titles' column.
 - A failed read's muted detail, cut on a narrow page, is a Tab stop with its
   whole words in a tip (the canvas's `CutDetail`).
 

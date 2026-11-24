@@ -418,5 +418,16 @@ describe("a card whose LifeOS session failed", () => {
     expect(pressOf({ state: "off" })).toEqual(["Work is off on this host", "Open Settings"]);
     // A computer kept from LifeOS has nothing to press that would mend it.
     expect(pressOf({ state: "unreachable", withheld: true })).toEqual(["This computer cannot read LifeOS through this host"]);
+    // Council round 4 (Sol P1): a host whose status went unanswered is down, named by the registry, with Retry.
+    expect(pressOf({ state: "unreachable", unanswered: true })).toEqual(["The host did not answer", "Retry"]);
+  });
+
+  it("names the computer that did not answer, as the registry names it", async () => {
+    const { registry } = await import("../../../lib/connection");
+    const named = vi.spyOn(registry, "environment").mockReturnValue({ name: "The box" } as never);
+    const { container, unmount } = render(<SessionLine session={{ state: "unreachable", unanswered: true }} env="local" sector="life" />);
+    expect(container.textContent).toBe("The box did not answerRetry");
+    unmount();
+    named.mockRestore();
   });
 });

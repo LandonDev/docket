@@ -40,6 +40,8 @@ describe("the host whose LifeOS session Today reads", () => {
     expect(reachOf({ client: null, state: "pairing" }, "box")).toBe("pairing");
     expect(reachOf({ client: null, state: "unreachable" }, "box")).toBe("unreachable");
     expect(reachOf({ client: null, state: "unreachable", withheld: true }, "box")).toBe("withheld");
+    // The host's status went unanswered: down, never waiting (council round 4).
+    expect(reachOf({ client: null, state: "unreachable", unanswered: true }, "box")).toBe("unanswered");
     expect(reachOf({ client: null, state: "off" }, "box")).toBe("off");
     // No linked host holds a job: the page's foot says so, not LifeOS.
     expect(reachOf({ client: null, state: "connecting" }, null)).toBe("offline");

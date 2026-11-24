@@ -120,12 +120,14 @@ export function ChatNewMail() {
   );
 }
 
-/** A card whose LifeOS session failed: why, with the press that mends it. */
+/** A card whose LifeOS session failed: why, with the press that mends it; the last, a host that did not answer its LifeOS status, by name. */
 export function ChatSessionFailed() {
+  Object.assign(registry, { environment: (id: string) => ({ id, name: "The box" }) });
   return (
     <div className="flex w-[560px] flex-col gap-4 p-6">
       <SessionLine session={{ state: "signed-out" }} env="local" sector="unify" />
       <SessionLine session={{ state: "unreachable" }} env="local" sector="unify" />
+      <SessionLine session={{ state: "unreachable", unanswered: true }} env="local" sector="unify" />
     </div>
   );
 }

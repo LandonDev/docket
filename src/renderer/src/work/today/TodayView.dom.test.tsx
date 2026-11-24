@@ -332,6 +332,25 @@ describe("Today", () => {
     expect(line.querySelector('[data-view-state="failed"]')).toBeNull();
   });
 
+  /** Council round 4: the host's own silence (Sol P1, Opus P2) and the host named (Opus P3). */
+  it("names the computer Today reads LifeOS through: its silence is the red line with Retry, its Work off and its key withheld say which", () => {
+    const retry = vi.fn();
+    const lineOf = (reach: LifeosDown): HTMLElement => {
+      cleanup();
+      render(<TodayPageView model={{ kind: "day", blocks: [{ kind: "lifeos", reach }], offline: [], keys: [] }} hostName={() => "The box"} lifeosHost="The box" onRetryLifeos={retry} />);
+      return document.querySelector<HTMLElement>(`[data-today-lifeos="${reach}"]`)!;
+    };
+    let line = lineOf("unanswered");
+    expect(line.querySelector('[data-view-state="failed"]')).not.toBeNull();
+    expect(line.textContent).toBe("The box did not answerRetry");
+    fireEvent.click(within(line).getByRole("button", { name: "Retry" }));
+    expect(retry).toHaveBeenCalledTimes(1);
+    expect(lineOf("off").textContent).toBe("Work is off on the box");
+    expect(lineOf("withheld").textContent).toBe("This computer cannot read LifeOS through the box");
+    line = lineOf("refused");
+    expect(line.textContent).toBe("LifeOS refused the box's sign-inSign in");
+  });
+
   it("keeps a failed read's cut detail whole to the keyboard: the canvas's CutDetail", async () => {
     await loadOutbox();
     const failing: TodaySource = {

@@ -38,7 +38,7 @@ export const sessionDown = (session: Pick<LifeosSession, "client" | "state">): b
  * already says. A session that is down keeps its true state (`downOf`): a computer the host keeps LifeOS from, or a
  * sign-in that waits for his approval, is never said as silence or as signed out.
  */
-export function reachOf(session: Pick<LifeosSession, "client" | "state" | "withheld">, host: string | null): LifeosReach {
+export function reachOf(session: Pick<LifeosSession, "client" | "state" | "withheld" | "unanswered">, host: string | null): LifeosReach {
   if (!host) return "offline";
   if (session.client) return "ok";
   return downOf(session) ?? "waiting";

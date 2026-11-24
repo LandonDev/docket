@@ -13,7 +13,7 @@ import { WORK_VIEWS, type WorkViewId, type WorkViewModule, type WorkViewProps } 
 import { registry, useEnvironmentStatus } from "../../lib/connection";
 import { managedElsewhere, useLinkMay } from "../../lib/linkMay";
 import { openWorkSettings } from "./open";
-import { reopenLifeos, useLifeosSession, useLifeosStatus } from "./lifeos";
+import { lifeosHostName, reopenLifeos, sessionFailure, sessionWords, useLifeosSession, useLifeosStatus } from "./lifeos";
 import { startThreadAbout } from "./WorkColumn";
 import { clockTime } from "../../lib/duration";
 import { workErrorWords } from "../../lib/workErrorWords";
@@ -99,7 +99,9 @@ export function ViewFrame({ view, environmentId, workspaceId, sector }: { view: 
   const gated = def.readsLifeos;
   // The session's own state counts too: its JWT can be refused or go unanswered while the host says connected.
   const signedOut = gated && (state === "signed-out" || state === "refused" || session.state === "signed-out" || session.state === "refused");
+  // A host whose status ask went unanswered on an open link is down too (`unanswered`): its own name and Retry.
   const unreachable = gated && (state === "unreachable" || session.state === "unreachable");
+  const silence = sessionWords(session);
   // The host answers, but this computer's key is never handed its LifeOS session (a given computer's): not silence, and Retry cannot help.
   const withheld = gated && !!session.withheld;
   // A sign-in he started and has not approved yet, and a host whose Work is off: each says so, with its own press.
@@ -129,7 +131,7 @@ export function ViewFrame({ view, environmentId, workspaceId, sector }: { view: 
   const retry = (): void => {
     setRetrying(true);
     reopenLifeos(environmentId, sector)
-      .catch((err: unknown) => void loadToast().then((toast) => toast.error("LifeOS did not answer", { description: workErrorWords(err, { host: nameInLine(host) }) || undefined })))
+      .catch((err: unknown) => void loadToast().then((toast) => toast.error(silence, { description: workErrorWords(err, { host: nameInLine(host) }) || undefined })))
       .finally(() => setRetrying(false));
   };
   return (
@@ -162,7 +164,7 @@ export function ViewFrame({ view, environmentId, workspaceId, sector }: { view: 
         <div data-view-state="failed" role="status" className="flex min-h-8 min-w-0 shrink-0 items-center gap-2 border-b border-border px-3 py-1 text-[13px] leading-5">
           <StatusMark
             state="failed"
-            word="LifeOS did not answer"
+            word={silence}
             detail={status?.lifeos.state === "unreachable" ? `As of ${clockTime(status.lifeos.since)}` : undefined}
             className="min-w-0 flex-1"
           />
@@ -180,7 +182,7 @@ export function ViewFrame({ view, environmentId, workspaceId, sector }: { view: 
           <EmptyState title="This computer cannot read LifeOS here" line={`${host} keeps its LifeOS sign-in to itself. Open ${def.label} from a computer that manages ${nameInLine(host)}.`} />
         ) : signedOut || pairing ? (
           <EmptyState
-            title={pairing ? "The LifeOS sign-in waits for your approval" : state === "refused" || session.state === "refused" ? "LifeOS refused this host's sign-in" : "Sign in to LifeOS"}
+            title={pairing ? "The LifeOS sign-in waits for your approval" : state === "refused" || session.state === "refused" ? sessionFailure("refused", false, lifeosHostName(environmentId)) : "Sign in to LifeOS"}
             {...(maySignIn ? { action: { label: pairing ? "Show the code" : "Sign in", onClick: () => setSigningIn(true) } } : { line: managedElsewhere(host) })}
           />
         ) : (

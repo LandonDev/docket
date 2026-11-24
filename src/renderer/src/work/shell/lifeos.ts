@@ -5,6 +5,7 @@ import { errorText, type SectorKey } from "@shared/work";
 import type { LifeosJwtAnswer, LifeosStateName, LifeosStatus } from "@shared/contract-work-lifeos";
 import { registry } from "../../lib/connection";
 import { linkMay } from "../../lib/linkMay";
+import { nameInLine } from "../../lib/hostWords";
 import { workSwitch } from "../../lib/workSwitch";
 
 /**
@@ -139,6 +140,11 @@ export interface LifeosSession {
    * `work.lifeos.jwt` is in `DEVICE_REFUSED`). Not silence: Retry cannot help, and the frame says so.
    */
   withheld?: true;
+  /**
+   * The host itself did not answer its status ask while its link stayed open (`useLifeosUnanswered`): the session is
+   * down as `unreachable`, never waiting, and its words name the computer ("The box did not answer"), not LifeOS.
+   */
+  unanswered?: true;
 }
 
 const sessions = new Map<string, LifeosSession>();
@@ -235,18 +241,24 @@ async function openSession(environmentId: string, sector: SectorKey | null): Pro
 /** The LifeOS session a screen reads through; opened once the host says it is connected, closed when it is not, and soon after the last screen that read it goes. */
 export function useLifeosSession(environmentId: string, sector: SectorKey | null): LifeosSession {
   const status = useLifeosStatus(environmentId);
-  const state = status?.lifeos.state ?? "connecting";
+  // A status ask that went unanswered is no ask still out: the session is down, with the line and Retry every reader
+  // already draws for one that did not answer. A later answer (a push, a reopened link, Retry) brings it back.
+  const silent = useLifeosUnanswered(environmentId) && !status;
+  const state = status?.lifeos.state ?? (silent ? "unreachable" : "connecting");
   const key = keyOf(environmentId, sector);
   useEffect(() => (environmentId ? retain(key) : undefined), [environmentId, key]);
   useEffect(() => {
     if (!environmentId) return;
-    if (state === "connected") void openSession(environmentId, sector);
-    else {
-      const open = sessions.get(key);
+    const open = sessions.get(key);
+    if (state === "connected") {
+      // A session that was down reads as on its way while its JWT is asked for: bones, not the old line.
+      if (open && !open.client && open.state !== "connected") putSession({ environmentId, sector, client: null, state });
+      void openSession(environmentId, sector);
+    } else {
       if (open?.client) closeSession(key);
-      if (open?.client || open?.state !== state) putSession({ environmentId, sector, client: null, state });
+      if (open?.client || open?.state !== state || !!open?.unanswered !== silent) putSession({ environmentId, sector, client: null, state, ...(silent ? { unanswered: true as const } : {}) });
     }
-  }, [environmentId, key, sector, state]);
+  }, [environmentId, key, sector, state, silent]);
   const session = useSyncExternalStore(
     (fn) => {
       sessionListeners.add(fn);
@@ -254,7 +266,7 @@ export function useLifeosSession(environmentId: string, sector: SectorKey | null
     },
     () => sessions.get(key) ?? null,
   );
-  return session ?? { environmentId, sector, client: null, state };
+  return session ?? { environmentId, sector, client: null, state, ...(silent ? { unanswered: true as const } : {}) };
 }
 
 /**
@@ -267,14 +279,28 @@ export function sessionWaits(session: Pick<LifeosSession, "client" | "state">): 
   return !session.client && (session.state === "connecting" || session.state === "connected");
 }
 
-/** What a session that cannot read says, in words: a query's error and the frame's line read it. */
-export function sessionFailure(state: LifeosStateName, withheld?: boolean): string {
-  if (withheld) return "This computer cannot read LifeOS through this host";
+/**
+ * What a session that cannot read says, in words: a query's error and the frame's line read it. `host` is the name of
+ * the computer the session reads through ("The box"), so a state that is the host's names it ("Work is off on the
+ * box"); with none it is "this host". `unanswered` is the host's own silence, said by its name.
+ */
+export function sessionFailure(state: LifeosStateName | "unanswered", withheld?: boolean, host?: string | null): string {
+  const at = host ? nameInLine(host) : "this host";
+  if (withheld) return `This computer cannot read LifeOS through ${at}`;
+  if (state === "unanswered") return `${host ?? "The host"} did not answer`;
   if (state === "unreachable") return "LifeOS did not answer";
-  if (state === "refused") return "LifeOS refused this host's sign-in";
-  if (state === "off") return "Work is off on this host";
+  if (state === "refused") return `LifeOS refused ${at}'s sign-in`;
+  if (state === "off") return `Work is off on ${at}`;
   if (state === "pairing") return "The LifeOS sign-in waits for your approval";
   return "Not signed in to LifeOS";
+}
+
+/** A host's name as the registry knows it ("The box"), or null for one it does not. */
+export const lifeosHostName = (environmentId: string): string | null => (environmentId && registry.environment(environmentId)?.name) || null;
+
+/** What a session that cannot read says, its computer named (`sessionFailure`). */
+export function sessionWords(session: Pick<LifeosSession, "environmentId" | "state" | "withheld" | "unanswered">): string {
+  return sessionFailure(session.unanswered ? "unanswered" : session.state, session.withheld, lifeosHostName(session.environmentId));
 }
 
 /**
@@ -305,8 +331,8 @@ export async function reopenLifeos(environmentId: string, sector: SectorKey | nu
   await refreshLifeos(environmentId);
   if (statuses.get(environmentId)?.lifeos.state !== "connected") return;
   const key = keyOf(environmentId, sector);
-  const was = sessions.get(key);
-  if (was && !was.client) putSession({ ...was, state: "connected" });
+  // The old line goes: the session is on its way again, and openSession says what it finds.
+  if (sessions.get(key) && !sessions.get(key)!.client) putSession({ environmentId, sector, client: null, state: "connected" });
   await openSession(environmentId, sector);
 }
 
@@ -326,7 +352,7 @@ export function useLifeosQuery<T>(session: LifeosSession, name: string, args: Re
   useEffect(() => {
     const client = session.client;
     if (!client) {
-      setResult(waits ? { status: "loading" } : { status: "failed", error: sessionFailure(session.state, session.withheld) });
+      setResult(waits ? { status: "loading" } : { status: "failed", error: sessionWords(session) });
       return;
     }
     const watch = client.watchQuery(makeFunctionReference<"query">(name), JSON.parse(argsKey) as Record<string, unknown>);
@@ -340,7 +366,7 @@ export function useLifeosQuery<T>(session: LifeosSession, name: string, args: Re
     };
     read();
     return watch.onUpdate(read);
-  }, [session.client, session.state, waits, name, argsKey]);
+  }, [session.client, session.state, session.withheld, session.unanswered, session.environmentId, waits, name, argsKey]);
   return result;
 }
 

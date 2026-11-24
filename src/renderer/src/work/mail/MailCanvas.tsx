@@ -14,7 +14,7 @@ import { EmptyState, SurfaceSkeleton } from "../../surfaces/SurfaceSkeleton";
 import type { CanvasBodyProps, CanvasShell } from "../canvas/kind";
 import { openConnections, openWorkSettings } from "../shell/open";
 import { sentState } from "./sentState";
-import { reopenLifeos, sessionFailure, sessionWaits, useLifeosSession } from "../shell/lifeos";
+import { reopenLifeos, sessionWaits, sessionWords, useLifeosSession } from "../shell/lifeos";
 import { RuleLine } from "../rules/RuleLine";
 import { mailClientFor } from "./client";
 import { placedKit } from "./files";
@@ -40,17 +40,19 @@ export function Body({ item, source, env, shell }: CanvasBodyProps) {
   const sector = (workspace?.sector ?? null) as SectorKey | null;
   const lifeos = useLifeosSession(env, sector);
   const unreachable = lifeos.state === "unreachable";
+  // LifeOS's silence, or the host's own ("The box did not answer").
+  const silence = sessionWords(lifeos);
   useEffect(() => {
     // Retry asks the host's status afresh and, once it says connected, this sector's session again: watching a host already
     // watched starts nothing. A retry that fails leaves the line as it is; the spinner stopping is the answer.
     const retry = (): Promise<void> => reopenLifeos(env, sector).catch(() => undefined);
-    shell.statusLine(unreachable ? { tone: "failed", word: "LifeOS did not answer", detail: "The draft is kept there", action: { label: "Retry", run: retry } } : null);
-  }, [shell, unreachable, env, sector]);
+    shell.statusLine(unreachable ? { tone: "failed", word: silence, detail: "The draft is kept there", action: { label: "Retry", run: retry } } : null);
+  }, [shell, unreachable, silence, env, sector]);
   // A file of the mail it answers opens as another item of this pane (files.ts).
   const kit = useMemo(() => placedKit(tempcodeMailKit, { env, pane: item.sessionId }), [env, item.sessionId]);
   if (source.at !== "lifeos" || source.table !== "outbox") return <EmptyState title="This mail could not be shown" />;
-  if (lifeos.state === "off") return <EmptyState title="Work is off on this host" action={{ label: "Open Settings", onClick: openWorkSettings }} />;
-  if (lifeos.state === "signed-out" || lifeos.state === "pairing" || lifeos.state === "refused") return <EmptyState title={sessionFailure(lifeos.state, lifeos.withheld)} action={{ label: "Sign in", onClick: openConnections }} />;
+  if (lifeos.state === "off") return <EmptyState title={sessionWords(lifeos)} action={{ label: "Open Settings", onClick: openWorkSettings }} />;
+  if (lifeos.state === "signed-out" || lifeos.state === "pairing" || lifeos.state === "refused") return <EmptyState title={sessionWords(lifeos)} action={{ label: "Sign in", onClick: openConnections }} />;
   // LifeOS did not answer: the state line says so once, and the draft last read stays, read only; with none read, nothing pulses under the line.
   if (!lifeos.client) {
     if (sessionWaits(lifeos)) return <SurfaceSkeleton kind="column" label="Loading the mail" />;

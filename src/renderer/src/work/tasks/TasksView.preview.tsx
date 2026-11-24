@@ -1,11 +1,14 @@
 // A preview page for `bun run ui:preview src/renderer/src/work/tasks/TasksView.preview.tsx#TasksPreview --props '{"state":"list"}'`:
 // the Tasks view under its header, over a LifeOS that answers from made-up tasks. States: `list` (the lead, This
 // week, Later, Waiting), `long` (a long title and project), `loading`, `empty`, `sheet` (a task's sheet open) and
-// `new` (New task). Rendered by nothing in the app.
+// `new` (New task), and `unanswered` (the box's link is open but its LifeOS status ask went unanswered: the frame's
+// line with Retry, nothing pulsing under it). Rendered by nothing in the app.
+import { registry } from "../../lib/connection";
+import { resetLifeos, setLifeosUnanswered } from "../shell/lifeos";
 import { keepPlace } from "../shell/place";
 import { JOB, standUpView, usePress, ViewAt } from "../kit.preview";
 
-type State = "list" | "long" | "loading" | "empty" | "sheet" | "new";
+type State = "list" | "long" | "loading" | "empty" | "sheet" | "new" | "unanswered";
 
 const NOW = Date.now();
 const HOUR = 3_600_000;
@@ -40,6 +43,14 @@ export function TasksPreview({ state = "list" }: { state?: State }) {
     standUpView("tasks", { "tasks:list": rows, "projects:list": PROJECTS, "tasks:get": DETAIL, "workLinks:byEntity": [] });
     // The visit opens on the sheet the workspace kept.
     if (state === "sheet") keepPlace(JOB.id, "tasks", { task: "t6" });
+    if (state === "unanswered") {
+      resetLifeos();
+      setLifeosUnanswered(JOB.environmentId);
+      // The box's link is open, so the host is not away: it only did not answer.
+      const open = { ...registry.statusOf(JOB.environmentId), transport: "open" } as ReturnType<typeof registry.statusOf>;
+      const statusOf = registry.statusOf.bind(registry);
+      Object.assign(registry, { statusOf: (id: string) => (id === JOB.environmentId ? open : statusOf(id)), environment: (id: string) => ({ id, name: "The box" }) });
+    }
   }
   // New task is the header's own press.
   usePress(state === "new" ? "[data-view-heading] ~ button" : null, 80);

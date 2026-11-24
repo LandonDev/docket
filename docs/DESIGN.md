@@ -2778,10 +2778,13 @@ own selected fill is a card's fill at rest in light.
   its link refused, and a section that reads LifeOS says nothing while no
   linked host holds a job. While no
   host can reach LifeOS its sections give way to one line on the same grid,
-  in the session's true state: "LifeOS did not answer" in red with Retry;
-  the plain muted "Not signed in to LifeOS" (or the refused sign-in) with
-  Sign in; a sign-in that waits, Work off, and a computer the host keeps
-  LifeOS from, muted with no press. A cut detail is a Tab stop with its
+  in the session's true state, the computer it reads through named: "LifeOS
+  did not answer", or "The box did not answer" for a host whose status ask
+  went unanswered, in red with Retry; the plain muted "Not signed in to
+  LifeOS" (or "LifeOS refused the box's sign-in") with Sign in; a sign-in
+  that waits, "Work is off on the box", and "This computer cannot read
+  LifeOS through the box", muted with no press. A muted line with no press
+  wraps across the columns the press would take, never cut. A cut detail is a Tab stop with its
   whole words in a tip.
 - **Keys.** Every row and every fold line is one list and one tab stop: ↑ ↓
   Home End move, Enter opens the row or the fold, Space ticks a task; the

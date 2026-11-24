@@ -22,7 +22,7 @@ import { useProjects } from "../../lib/tcserver/workspaces";
 import { useAccounts } from "../../stores/accounts";
 import { dialogsChunk } from "../../surfaces/chunks";
 import { ProjectSharing } from "../guests/Share";
-import { reopenLifeos, sessionFailure, sessionWaits, useLifeosQuery, useLifeosSession } from "./lifeos";
+import { reopenLifeos, sessionWaits, sessionWords, useLifeosQuery, useLifeosSession } from "./lifeos";
 
 // The rules dialog rides the dialogs chunk, as it does for a code project: asked for at the press on Edit.
 const PreambleDialog = dialogsChunk.surface("PreambleDialog");
@@ -194,10 +194,10 @@ export function WorkProjectSettings({ project: opened, workspace, onClose }: { p
         .catch(() => {})
         .finally(() => setRetrying(false));
     };
-    if (session.client) return { status: "failed", line: listed.status === "failed" ? listed.error : sessionFailure(session.state, session.withheld), retry };
+    if (session.client) return { status: "failed", line: listed.status === "failed" ? listed.error : sessionWords(session), retry };
     // Asking again helps only when LifeOS did not answer. Signed out is mended in Settings, Work, and the line names the sign-in.
-    if (session.state === "unreachable") return { status: "failed", line: sessionFailure(session.state, session.withheld), retry };
-    return { status: "failed", line: session.state === "refused" ? sessionFailure(session.state, session.withheld) : "Sign in to LifeOS to change its name or state" };
+    if (session.state === "unreachable") return { status: "failed", line: sessionWords(session), retry };
+    return { status: "failed", line: session.state === "refused" ? sessionWords(session) : "Sign in to LifeOS to change its name or state" };
   }, [lifeosId, row, listed, session, retrying, workspace.environmentId, sector]);
 
   // null follows what is saved, so a rename that lands from elsewhere shows until he types.
@@ -237,7 +237,7 @@ export function WorkProjectSettings({ project: opened, workspace, onClose }: { p
     setError(null);
     try {
       if (lifeosId && (nameDirty || stateDirty)) {
-        if (!session.client) throw new Error(sessionFailure(session.state, session.withheld));
+        if (!session.client) throw new Error(sessionWords(session));
         await session.client.mutation(makeFunctionReference<"mutation">("projects:update"), {
           id: lifeosId,
           patch: { ...(nameDirty ? { name: name.trim() } : {}), ...(stateDirty ? { status: state } : {}) },
@@ -259,7 +259,7 @@ export function WorkProjectSettings({ project: opened, workspace, onClose }: { p
   };
 
   const remove = async () => {
-    if (!session.client || !lifeosId) throw new Error(sessionFailure(session.state, session.withheld));
+    if (!session.client || !lifeosId) throw new Error(sessionWords(session));
     // The host archives the mirror once LifeOS's list no longer holds the project and none of its threads works.
     await session.client.mutation(makeFunctionReference<"mutation">("projects:remove"), { id: lifeosId });
   };

@@ -5,7 +5,7 @@ import { useState } from "react";
 import { BusyLabel, Button } from "../../components/ui/button";
 import { Skeleton } from "../../components/ui/skeleton";
 import { addDays, startOfDay } from "work-kit/views/lib/agenda";
-import { type LifeosSession, reopenLifeos, useLifeosQuery, useLifeosSession } from "../shell/lifeos";
+import { type LifeosSession, lifeosHostName, reopenLifeos, useLifeosQuery, useLifeosSession } from "../shell/lifeos";
 import { openConnections } from "../shell/open";
 import { downOf, downPress, downWords, type LifeosDown } from "../shell/lifeosDown";
 import { dayLines, opFields, opStart, type CalendarOp, type DayEvent } from "./calendarAct";
@@ -103,7 +103,7 @@ function SessionLine({ down, environmentId }: { down: LifeosDown; environmentId:
   };
   return (
     <p data-session-down={down} className="flex min-h-7 items-center gap-2 text-[13px] text-muted-foreground">
-      {downWords(down)}
+      {downWords(down, lifeosHostName(environmentId))}
       {press === "retry" ? (
         <Button variant="ghost" size="xs" disabled={busy} onClick={retry}>
           <BusyLabel busy={busy} label="Retry" />

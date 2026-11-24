@@ -9,12 +9,12 @@ const day = vi.hoisted(() => ({
   asked: 0,
   event: "none" as "none" | "loading" | "failed" | "gone" | "ready",
   // The session's own state: connected and on its way unless a test says it is down.
-  session: { state: "connected", withheld: false } as { state: string; withheld: boolean },
+  session: { state: "connected", withheld: false } as { state: string; withheld: boolean; unanswered?: boolean },
   reopened: [] as string[],
 }));
 vi.mock("../shell/lifeos", async (original) => ({
   ...(await original<object>()),
-  useLifeosSession: () => ({ environmentId: "box", sector: null, client: null, state: day.session.state, ...(day.session.withheld ? { withheld: true } : {}) }),
+  useLifeosSession: () => ({ environmentId: "box", sector: null, client: null, state: day.session.state, ...(day.session.withheld ? { withheld: true } : {}), ...(day.session.unanswered ? { unanswered: true } : {}) }),
   reopenLifeos: async (env: string) => void day.reopened.push(env),
   useLifeosQuery: (_s: unknown, name: string) => {
     if (name === "events:get") {
@@ -128,6 +128,24 @@ describe("a held reply whose LifeOS session is down", () => {
     expect(day.reopened).toEqual(["box"]);
     // The reply itself still reads whole.
     expect(screen.getByText("Yes")).toBeTruthy();
+  });
+
+  /** Council round 4 (Sol P1): the host's status went unanswered, so the session is down, never bones for good. */
+  it("names the computer that did not answer its status, with Retry, in place of the event's bones", async () => {
+    const { registry } = await import("../../lib/connection");
+    const named = vi.spyOn(registry, "environment").mockReturnValue({ name: "The box" } as never);
+    day.event = "failed";
+    day.session = { state: "unreachable", withheld: false, unanswered: true };
+    const { container } = draw();
+    expect(container.querySelector("[data-field-bones]")).toBeNull();
+    expect(container.querySelector("[data-session-down=unanswered]")!.textContent).toBe("The box did not answerRetry");
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    expect(day.reopened).toEqual(["box"]);
+    // Work off and a computer kept from LifeOS name the computer too.
+    cleanup();
+    day.session = { state: "off", withheld: false };
+    expect(draw().container.querySelector("[data-session-down=off]")!.textContent).toBe("Work is off on the box");
+    named.mockRestore();
   });
 
   it("offers no Retry where asking again cannot help, and Sign in where a sign-in is missing", () => {

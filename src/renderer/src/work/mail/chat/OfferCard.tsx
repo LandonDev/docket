@@ -10,7 +10,7 @@ import { useSessionMeta } from "../../../lib/tcserver/store";
 import { useWorkspaces } from "../../../lib/tcserver/workspaces";
 import { useTranscriptHost, useTranscriptSession } from "../../../surfaces/transcriptSession";
 import { BusyLabel, Button } from "../../../components/ui/button";
-import { reopenLifeos, sessionFailure, sessionWaits, useLifeosSession, type LifeosSession } from "../../shell/lifeos";
+import { reopenLifeos, sessionWaits, sessionWords, useLifeosSession, type LifeosSession } from "../../shell/lifeos";
 import { openConnections, openWorkSettings } from "../../shell/open";
 import { mailClientFor } from "../client";
 import { tempcodeMailKit } from "../kit";
@@ -74,9 +74,9 @@ function OfferSession({ sessionId, env, children }: { sessionId: string; env: st
 
 /**
  * Why the card cannot draw, with the press that mends it, as the mail canvas beside it offers: Sign in when LifeOS is
- * signed out, Open Settings when Work is off, Retry when LifeOS did not answer. A computer kept from LifeOS has none.
+ * signed out, Open Settings when Work is off, Retry when LifeOS or the host did not answer. A computer kept from LifeOS has none.
  */
-export function SessionLine({ session, env, sector }: { session: Pick<LifeosSession, "state" | "withheld">; env: string; sector: SectorKey }) {
+export function SessionLine({ session, env, sector }: { session: Pick<LifeosSession, "state" | "withheld" | "unanswered">; env: string; sector: SectorKey }) {
   const [retrying, setRetrying] = useState(false);
   const { state, withheld } = session;
   const retry = (): void => {
@@ -95,7 +95,7 @@ export function SessionLine({ session, env, sector }: { session: Pick<LifeosSess
         : { label: "Retry", run: retry };
   return (
     <div data-offer-session className="flex min-h-7 items-center gap-2 text-xs text-muted-foreground">
-      <span className="min-w-0">{sessionFailure(state, withheld)}</span>
+      <span className="min-w-0">{sessionWords({ ...session, environmentId: env })}</span>
       {press ? (
         <Button variant="ghost" size="xs" disabled={retrying} onClick={press.run}>
           <BusyLabel busy={retrying} label={press.label} />

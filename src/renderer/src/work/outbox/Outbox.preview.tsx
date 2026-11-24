@@ -17,7 +17,7 @@ import { resetOutboxStore } from "./store";
  * mail LifeOS has not yet said went (`queued`: queued twelve minutes on, sent,
  * back in drafts). Also: `empty` (nothing waits), `failed` (Waiting with a send that failed, its reason in
  * the row and the detail), `grants` (the grants sheet over Sent), `kinds` (Waiting with a held item of six kinds; `pick` 0 is the
- * mail, 1 an invite, 5 a payload that could not be read, 6 a reply whose event LifeOS did not read; the calendar acts' LifeOS session did not answer), `given` (Sent from a computer whose key may not grant) and `loadingAct` (Sent while the mail's own view loads).
+ * mail, 1 an invite, 5 a payload that could not be read, 6 a reply whose event LifeOS did not read; the calendar acts' LifeOS session did not answer), `kindsSilent` (the same, the host silent on its LifeOS status: the acts name it, with Retry), `given` (Sent from a computer whose key may not grant) and `loadingAct` (Sent while the mail's own view loads).
  * Rendered by nothing in the app.
  */
 
@@ -151,11 +151,13 @@ const GRANTS: OutboxGrant[] = [
   { id: "g2", workspaceId: "ws", kind: "calendar.op", matcher: {}, label: "Changes to events on the Esports calendar", madeFrom: SENT[1]!.ref, routineId: "r1", createdAt: at(15, 16), removedAt: null },
 ];
 
-type State = "offer" | "plain" | "edits" | "queued" | "empty" | "failed" | "grants" | "kinds" | "given" | "loadingAct";
+type State = "offer" | "plain" | "edits" | "queued" | "empty" | "failed" | "grants" | "kinds" | "kindsSilent" | "given" | "loadingAct";
 
 // Each kind draws its act in a chunk of its own: landed before the first render, as a warm window draws them.
 await Promise.all(Object.values(ACT_VIEWS).map((view) => view.chunk?.load()));
 let state: State = "offer";
+/** `kinds`, or `kindsSilent`: the same held items, the host silent on its LifeOS status. */
+const kinds = (): boolean => state === "kinds" || state === "kindsSilent";
 /** Which held change shows in the detail (the oldest waiting item is the one selected): 0 a Word replace, 1 a deck's two changes, 2 a Word insert, 3 a Doc's replace. */
 let pick = 0;
 /** The oldest waiting item is the one selected: the picked kind is made the oldest. */
@@ -171,7 +173,7 @@ const answers = (method: string, params: { show?: string } = {}): unknown => {
       return [];
     case "work.outbox.list":
       if (params.show === "decided") return { items: state === "empty" ? [] : sentList() };
-      if (state === "kinds") return { items: pickedKinds(), waiting: KINDS.length };
+      if (kinds()) return { items: pickedKinds(), waiting: KINDS.length };
       if (state === "failed") return { items: [FAILED], waiting: 1 };
       return state === "edits" ? { items: waitingEdits(), waiting: EDITS.length } : { items: [], waiting: 0 };
     case "work.outbox.grants":
@@ -183,9 +185,11 @@ const answers = (method: string, params: { show?: string } = {}): unknown => {
     case "work.lifeos.status":
       // The held calendar acts read LifeOS: in `kinds` its session did not answer, so their details say so once, with Retry.
       if (state === "kinds") return { lifeos: { state: "unreachable", since: at(20, 9, 58), error: "timed out" }, keys: [] };
+      // In `kindsSilent` the host itself never answers its status: the acts' details name it, with Retry.
+      if (state === "kindsSilent") throw Object.assign(new Error("No answer in 15 s"), { name: "TimeoutError" });
       break;
     case "work.outbox.get":
-      return state === "failed" ? FAILED : state === "kinds" ? pickedKinds()[pick] : state === "edits" ? waitingEdits()[pick] : sentList()[pick];
+      return state === "failed" ? FAILED : kinds() ? pickedKinds()[pick] : state === "edits" ? waitingEdits()[pick] : sentList()[pick];
   }
   throw new Error(`no ${method}`);
 };
@@ -217,9 +221,11 @@ export function OutboxPreview({ state: s = "offer", pick: p = 0 }: { state?: Sta
     resetOutboxStore();
     setWorkOn("local", true);
     if (s === "given") asGivenComputer({ on: ["local"] });
+    // The host the acts read through, named as the app names it.
+    if (s === "kindsSilent") Object.assign(registry, { environment: (id: string) => ({ id, name: "The box" }) });
     // A mail's own view still on its way: the bones it shows until then.
     if (s === "loadingAct") ACT_VIEWS["mail.send"] = { kind: "mail.send", chunk: defineChunk("preview-never", () => new Promise(() => {})) };
-    rememberOutboxTab(s === "edits" || s === "kinds" || s === "empty" || s === "failed" ? "waiting" : "sent");
+    rememberOutboxTab(s === "edits" || s === "kinds" || s === "kindsSilent" || s === "empty" || s === "failed" ? "waiting" : "sent");
   }
   // Grants is the header's own press.
   usePressNamed(s === "grants" ? "Grants" : null, 80);

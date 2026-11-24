@@ -174,6 +174,15 @@ code. A key paired at the pairing dialog's default (`operate`) gets no JWT.
 `link` writes the sector through `registry.setWorkspaceSector`, which sends
 the `workspaces` push, so every client's rail and menus see it.
 
+A window's session (work/shell/lifeos.ts `useLifeosSession`) waits only
+while an ask is out. A host whose status ask went unanswered while its link
+stayed open is down: the session is `unreachable` with `unanswered`, so
+`sessionWaits` is false and every reader (the view frame, Today, Mail's
+cards and canvas, a held calendar act, a project's sheet) draws its line,
+"The box did not answer" (`sessionWords`), with Retry. Retry
+(`reopenLifeos`) asks the status again through `refreshLifeos`; that, the
+`work.lifeos` push or the link's next open brings the session back.
+
 ## What Files asks of LifeOS
 
 The Files place reads LifeOS through the host's own session

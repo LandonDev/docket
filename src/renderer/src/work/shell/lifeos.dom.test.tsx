@@ -160,6 +160,74 @@ describe("a host's status that could not be read", () => {
     expect(result.current).toEqual({ status: connected, unanswered: false });
   });
 
+  /** Council round 4 (Opus P2, Sol P1): the session itself is down while the host's status went unanswered, never waiting. */
+  it("reads a host whose status went unanswered as down, named, with Retry; a push, a reopened link or Retry brings it back", async () => {
+    resetLifeos();
+    const silent = () => Promise.reject(Object.assign(new Error("no answer in 15 s"), { name: "TimeoutError" }));
+    let status: () => Promise<unknown> = silent;
+    let push: ((p: unknown) => void) | null = null;
+    let open: (() => void) | null = null;
+    vi.spyOn(registry, "environment").mockReturnValue({ name: "The box" } as never);
+    vi.spyOn(registry, "linkOf").mockReturnValue({
+      connected: true,
+      onPush: (fn: (p: unknown) => void) => ((push = fn), () => {}),
+      onOpen: (fn: () => void) => ((open = fn), () => {}),
+      request: (method: string) => (method === "work.lifeos.status" ? status() : answer()),
+    } as never);
+    const { reopenLifeos, sessionWords } = await import("./lifeos");
+    const { downOf, downPress, downWords } = await import("./lifeosDown");
+    const { result } = renderHook(() => useLifeosSession("env_far", "purdue"));
+    await act(flush);
+    const down = result.current;
+    expect([down.state, down.unanswered, sessionWaits(down)]).toEqual(["unreachable", true, false]);
+    expect(sessionWords(down)).toBe("The box did not answer");
+    expect(downOf(down)).toBe("unanswered");
+    expect([downWords("unanswered", "The box"), downPress("unanswered")]).toEqual(["The box did not answer", "retry"]);
+    // A query on it fails at once with the same words: no reader keeps its bones.
+    const query = renderHook(() => useLifeosQuery(result.current, "tasks:list", {}));
+    await act(flush);
+    expect(query.result.current).toEqual({ status: "failed", error: "The box did not answer" });
+    query.unmount();
+
+    // The host's push answers: the session opens.
+    await act(async () => push!({ push: "work.lifeos", status: connected }));
+    await act(flush);
+    expect([result.current.state, !!result.current.client, result.current.unanswered]).toEqual(["connected", true, undefined]);
+
+    // From the start again: a reopened link asks afresh, and its answer opens the session.
+    resetLifeos();
+    status = silent;
+    const again = renderHook(() => useLifeosSession("env_far", null));
+    await act(flush);
+    expect(again.result.current.unanswered).toBe(true);
+    status = () => Promise.resolve(connected);
+    await act(async () => open!());
+    await act(flush);
+    expect(!!again.result.current.client).toBe(true);
+
+    // And once more by Retry: the status asked again through refreshLifeos, then the session reopened.
+    resetLifeos();
+    status = silent;
+    const third = renderHook(() => useLifeosSession("env_far", "purdue"));
+    await act(flush);
+    expect(third.result.current.unanswered).toBe(true);
+    status = () => Promise.resolve(connected);
+    await act(() => reopenLifeos("env_far", "purdue"));
+    await act(flush);
+    expect([third.result.current.state, !!third.result.current.client]).toEqual(["connected", true]);
+  });
+
+  it("names the computer a down session reads through, and says this host for one it does not know", async () => {
+    const { sessionFailure } = await import("./lifeos");
+    expect(sessionFailure("off", false, "The box")).toBe("Work is off on the box");
+    expect(sessionFailure("unreachable", true, "The box")).toBe("This computer cannot read LifeOS through the box");
+    expect(sessionFailure("refused", false, "MacBook")).toBe("LifeOS refused MacBook's sign-in");
+    expect(sessionFailure("unanswered", false, "MacBook")).toBe("MacBook did not answer");
+    expect(sessionFailure("unreachable", false, "The box")).toBe("LifeOS did not answer");
+    expect(sessionFailure("off")).toBe("Work is off on this host");
+    expect(sessionFailure("unanswered")).toBe("The host did not answer");
+  });
+
   it("never marks a host whose status is known, nor one that refused", async () => {
     resetLifeos();
     vi.spyOn(registry, "linkOf").mockReturnValue({ connected: true, onPush: () => () => {}, onOpen: () => () => {}, request: () => Promise.reject(new Error("Work is off on this host")) } as never);

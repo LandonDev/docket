@@ -17,7 +17,7 @@ import { openConnections } from "../shell/open";
 import { useMinute } from "../tasks/minute";
 import { CutDetail } from "../canvas/QuietLine";
 import { useTodayEnv } from "./env";
-import { downPress, downWords, type LifeosDown } from "../shell/lifeosDown";
+import { downIsSilence, downPress, downWords, type LifeosDown } from "../shell/lifeosDown";
 import { HeldSheet } from "./HeldSheet";
 import { foldKey, foldOf, page, type ShownSection, type TodayPage } from "./model";
 import { openAddWorkspace } from "./open";
@@ -44,7 +44,7 @@ export function Head(_props: WorkPlaceProps) {
 }
 
 export function View(_props: WorkPlaceProps) {
-  const { env, reach, retryLifeos, open } = useTodayEnv();
+  const { env, reach, lifeosHost, retryLifeos, open } = useTodayEnv();
   const state = useTodayState();
   const environments = useEnvironments();
   const model = useMemo(() => page(fedOf(state), { jobs: env.workspaces, lifeos: reach, folds: state.folds, gone: state.gone, open }), [state, env.workspaces, reach, open]);
@@ -84,6 +84,7 @@ export function View(_props: WorkPlaceProps) {
           model={model}
           hostName={hostName}
           jobName={jobName}
+          lifeosHost={lifeosHost ? hostName(lifeosHost) : null}
           onRetryLifeos={retryLifeos}
           leaving={state.leaving}
           closing={state.closing}
@@ -128,6 +129,7 @@ export function TodayPageView({
   model,
   hostName,
   jobName = sectorName,
+  lifeosHost = null,
   onRetryLifeos,
   leaving = NO_KEYS,
   closing = NO_KEYS,
@@ -138,6 +140,8 @@ export function TodayPageView({
   hostName: (environmentId: string) => string;
   /** A row's job, as the rail names it. */
   jobName?: (sector: SectorKey) => string;
+  /** The computer Today reads LifeOS through, by name ("The box"): the LifeOS line names it. */
+  lifeosHost?: string | null;
   onRetryLifeos?: (() => void | Promise<void>) | undefined;
   /** Rows on their way out by his own act: fading, then their place closing. */
   leaving?: ReadonlySet<string>;
@@ -219,7 +223,7 @@ export function TodayPageView({
           <Section key={block.section.id} section={block.section} hostName={hostName} jobName={jobName} phaseOf={phaseOf} stop={stop} />
         ) : (
           <div key="lifeos" data-today-lifeos={block.reach} className="mt-6 first:mt-0">
-            <LifeosLine down={block.reach} retry={onRetryLifeos} />
+            <LifeosLine down={block.reach} host={lifeosHost} retry={onRetryLifeos} />
           </div>
         ),
       )}
@@ -374,13 +378,13 @@ function Bones({ label, shape, rows = 3 }: { label: string; shape?: TodaySection
 
 /**
  * The page's one line while the LifeOS session is down, in its true state's shared words and with the one press that
- * can help (`downPress`): silence is the failed line with Retry; a sign-in missing or refused is muted with Sign in;
+ * can help (`downPress`): silence, LifeOS's or the host's, is the failed line with Retry; a sign-in missing or refused is muted with Sign in;
  * a sign-in that waits for his approval, Work off and a computer the host keeps LifeOS from are muted, with none.
  */
-function LifeosLine({ down, retry }: { down: LifeosDown; retry: (() => void | Promise<void>) | undefined }) {
+function LifeosLine({ down, host, retry }: { down: LifeosDown; host: string | null; retry: (() => void | Promise<void>) | undefined }) {
   const press = downPress(down);
   const action = press === "sign-in" ? { label: "Sign in", run: openConnections } : press === "retry" && retry ? { label: "Retry", run: retry } : undefined;
-  return <PageLine failed={down === "unreachable"} word={downWords(down)} action={action} />;
+  return <PageLine failed={downIsSilence(down)} word={downWords(down, host)} action={action} />;
 }
 
 /**
