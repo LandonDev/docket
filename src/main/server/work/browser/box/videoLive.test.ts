@@ -130,7 +130,7 @@ d('live video of the box browser, end to end', () => {
       registry: {
         get: (id: string) => ({ id, permission: 'auto', scope: 'work' }) as unknown as SessionMeta,
         requestApproval: async () => true,
-        awayOn: () => false,
+        awayFor: () => false,
         rootSessionOf: (id: string) => (id === 'sub' ? 'w1' : id),
         onMeta: () => {},
         onRemoved: () => {}

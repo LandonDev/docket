@@ -61,7 +61,7 @@ d('take over on a headless box browser', () => {
       registry: {
         get: (id: string) => ({ id, permission: 'auto', scope: 'work' }) as unknown as SessionMeta,
         requestApproval: async () => true,
-        awayOn: () => false,
+        awayFor: () => false,
         rootSessionOf: (id: string) => (id.startsWith('sub') ? 'w1' : id),
         onMeta: () => {},
         onRemoved: () => {}

@@ -62,7 +62,7 @@ export function MenuBar({ onCommand, disabled }: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [disabled, answered],
   );
-  const away = useAway().enabled;
+  const away = useAway();
   const [open, setOpen] = useState(false);
   const [activeMenu, setActiveMenu] = useState<string | null>(null);
   const barRef = useRef<HTMLDivElement>(null);
@@ -226,7 +226,7 @@ export function MenuBar({ onCommand, disabled }: Props) {
                 {key}
               </Button>
             }
-            rows={() => rowsOf(menu, off, { toggle_away: away })}
+            rows={() => rowsOf(menu, off, { away_code: away.code, away_work: away.work })}
             onPick={handlePick}
             onOpenChange={(next) => {
               if (next) setActiveMenu(key);

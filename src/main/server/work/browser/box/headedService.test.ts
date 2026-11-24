@@ -60,7 +60,7 @@ d('the box browser headed, driven by two threads', () => {
     })
     sessions = new ComputerSessions({
       service,
-      registry: { get: (id) => ({ id, permission: 'auto', scope: 'work' }) as unknown as SessionMeta, requestApproval: async () => true, awayOn: () => false },
+      registry: { get: (id) => ({ id, permission: 'auto', scope: 'work' }) as unknown as SessionMeta, requestApproval: async () => true, awayFor: () => false },
       store: { getSetting: () => null, setSetting: () => {} } as never,
       dataDir: join(root, 'computer'),
       landing: (id) => join(root, 'landing', id),

@@ -335,7 +335,8 @@ export function ownerDesktops(
 
 export const scopePart: ScopePart = (ctx, deps) => {
   const facts = scopeFactsOf(deps.registry)
-  const here = { host: deps.environmentId, away: () => deps.away?.enabled ?? false }
+  // A Work scope's `away` is the Work switch alone: the Code switch never speaks for a Work thread.
+  const here = { host: deps.environmentId, away: () => deps.away?.on('work') ?? false }
   // The add-on registry reads a thread's scope from here: a Work thread sees its workspace's rows and the global ones marked for Work.
   configureAddonScope({
     scopeOf: (session) => workAddonScope(facts, session),

@@ -42,7 +42,7 @@ d('the hold on the box browser', () => {
     })
     sessions = new ComputerSessions({
       service,
-      registry: { get: (id) => (metas.get(id) as SessionMeta) ?? null, requestApproval: async () => true, awayOn: () => false },
+      registry: { get: (id) => (metas.get(id) as SessionMeta) ?? null, requestApproval: async () => true, awayFor: () => false },
       store: { getSetting: () => null, setSetting: () => {} } as never,
       dataDir: join(root, 'computer'),
       landing: (id) => join(root, 'landing', id),

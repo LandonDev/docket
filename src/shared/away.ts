@@ -2,16 +2,101 @@ import { z } from 'zod'
 
 // Away from computer (src/main/server/away.ts): the person's own state, one
 // copy per host, mirrored both ways over the peer links (remote/awaySync.ts),
-// newest wins. While it is on, threads decide without asking.
+// newest wins. Two switches, one per kind of thread: while a kind's is on,
+// threads of that kind decide without asking. A thread's kind is its row's
+// scope (`sessions.scope`, stamped once at create): Work, or else Code.
+
+/** The kinds of thread Away is switched for, each by itself. */
+export const AWAY_KINDS = ['code', 'work'] as const
+export type AwayKind = (typeof AWAY_KINDS)[number]
 
 export const AwayStateSchema = z.object({
+  /**
+   * Both kinds are away. Kept for a window, a phone or a peer one release
+   * behind, which reads only this: an old reader believes he is away only
+   * when no kind of thread still asks him.
+   */
   enabled: z.boolean(),
+  /** Away for Code threads; absent from an older host, which means `enabled`. */
+  code: z.boolean().optional(),
+  /** Away for Work threads; absent from an older host, which means `enabled`. */
+  work: z.boolean().optional(),
+  /** When Code's switch last flipped; absent from an older host, which means `at`. */
+  codeAt: z.number().optional(),
+  /** When Work's switch last flipped; absent from an older host, which means `at`. */
+  workAt: z.number().optional(),
   /** When it last flipped (epoch ms); 0 for a host that never flipped. */
   at: z.number(),
   /** The environment id of the host where it flipped. */
   by: z.string()
 })
 export type AwayState = z.infer<typeof AwayStateSchema>
+
+/** Each kind's switch. A state from an older host has `enabled` alone: it was away for both or for neither. */
+export type AwayKinds = Record<AwayKind, boolean>
+
+export const awayKindsOf = (state: AwayState): AwayKinds => ({
+  code: state.code ?? state.enabled,
+  work: state.work ?? state.enabled
+})
+
+/** When each kind last flipped. A state from an older host has `at` alone: both flipped then. */
+export const awayStampsOf = (state: AwayState): Record<AwayKind, number> => ({
+  code: state.codeAt ?? state.at,
+  work: state.workAt ?? state.at
+})
+
+/** A state with both switches and their stamps written out, and `enabled` the old readers' "both". */
+export const awayStateOf = (kinds: AwayKinds, at: number, by: string, stamps: Record<AwayKind, number> = { code: at, work: at }): AwayState => ({
+  enabled: kinds.code && kinds.work,
+  code: kinds.code,
+  work: kinds.work,
+  codeAt: stamps.code,
+  workAt: stamps.work,
+  at,
+  by
+})
+
+/**
+ * Two hosts' states as one, each kind by its own stamp, newest wins: a peer
+ * that flipped Code later than this host flipped Work takes Code from the
+ * peer and keeps Work here, so a flip of one kind never carries a stale value
+ * of the other.
+ */
+export function mergeAway(current: AwayState, incoming: AwayState): AwayState {
+  const mine = awayKindsOf(current)
+  const theirs = awayKindsOf(incoming)
+  const mineAt = awayStampsOf(current)
+  const theirsAt = awayStampsOf(incoming)
+  const kinds = { ...mine }
+  const stamps = { ...mineAt }
+  for (const kind of AWAY_KINDS) {
+    if (theirsAt[kind] <= mineAt[kind]) continue
+    kinds[kind] = theirs[kind]
+    stamps[kind] = theirsAt[kind]
+  }
+  const newer = incoming.at > current.at
+  return awayStateOf(kinds, Math.max(current.at, incoming.at), newer ? incoming.by : current.by, stamps)
+}
+
+/** The kind of a thread, from its row: a Work thread is stamped `scope: 'work'`; every other thread is Code. */
+export const awayKindOf = (scope: string | null | undefined): AwayKind => (scope === 'work' ? 'work' : 'code')
+
+/** Whether a thread of this scope is away under this state. */
+export const isAwayFor = (state: AwayState, scope: string | null | undefined): boolean => awayKindsOf(state)[awayKindOf(scope)]
+
+/** Whether any kind is away. */
+export const anyAway = (state: AwayState): boolean => {
+  const k = awayKindsOf(state)
+  return k.code || k.work
+}
+
+/** The kinds whose switch differs between two states. */
+export const awayKindsChanged = (from: AwayState, to: AwayState): AwayKind[] => {
+  const a = awayKindsOf(from)
+  const b = awayKindsOf(to)
+  return AWAY_KINDS.filter((k) => a[k] !== b[k])
+}
 
 /** This host's tally of the stretch: how many decisions each thread made while away. */
 export const AwayDecidedSchema = z.object({
@@ -20,10 +105,8 @@ export const AwayDecidedSchema = z.object({
 })
 export type AwayDecided = z.infer<typeof AwayDecidedSchema>
 
-export const AWAY_OFF_STATE: AwayState = { enabled: false, at: 0, by: '' }
+export const AWAY_OFF_STATE: AwayState = { enabled: false, code: false, work: false, at: 0, by: '' }
 
-/** A state from elsewhere wins only when it is newer; equal times keep what is here. */
-export const isNewerAway = (incoming: AwayState, current: AwayState): boolean => incoming.at > current.at
 
 /** note_decision (apptools.ts, the codex bridge's copy in scripts/app-mcp-bridge.mjs): one decision the thread made without the person. */
 export const NOTE_DECISION_TOOL_NAME = 'note_decision'

@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { AwaySnapshot } from "@server/shared/contract-away";
-import { attachAwayLink, awayEnabled, awayStore, onAwayPush, resetAwayForTest } from "./away";
+import { attachAwayLink, awayKinds, awayStore, onAwayPush, resetAwayForTest, setAway } from "./away";
 import { registry } from "./connection/registry";
 import type { ServerPush } from "./tcserver/types";
 
@@ -43,18 +43,42 @@ describe("the away store", () => {
     const local = fakeLink(registry.primaryEnvironmentId, snap(false, 0));
     attachAwayLink(local.link);
     awayStore.setState({ pending: { enabled: true, at: 50, by: "" } });
-    expect(awayEnabled()).toBe(true);
+    expect(awayKinds()).toEqual({ code: true, work: true });
     local.push(snap(false, 40));
     expect(awayStore.getState().pending).not.toBeNull();
     local.push(snap(true, 60));
     expect(awayStore.getState().pending).toBeNull();
-    expect(awayEnabled()).toBe(true);
+    expect(awayKinds()).toEqual({ code: true, work: true });
   });
 
   it("reads another host's state apart from this machine's", () => {
     const box = fakeLink("env_box", snap(false, 0));
     attachAwayLink(box.link);
     box.push(snap(true, 5));
-    expect(awayEnabled()).toBe(false);
+    expect(awayKinds()).toEqual({ code: false, work: false });
+  });
+
+  it("reads an older host's `enabled` alone as both kinds", () => {
+    const local = fakeLink(registry.primaryEnvironmentId, snap(false, 0));
+    attachAwayLink(local.link);
+    local.push(snap(true, 5));
+    expect(awayKinds()).toEqual({ code: true, work: true });
+  });
+
+  it("sets one kind and names only it, with `enabled` for an older host", async () => {
+    let held = { code: false, work: true };
+    const request = vi.fn(async (_m: string, p: { code?: boolean; work?: boolean }) => {
+      held = { code: p.code ?? held.code, work: p.work ?? held.work };
+      return { state: { enabled: held.code && held.work, ...held, at: 9, by: "env_mac" } };
+    });
+    vi.spyOn(registry, "linkOf").mockReturnValue({ request } as never);
+    awayStore.setState({ hosts: { [registry.primaryEnvironmentId]: { state: { enabled: false, code: false, work: true, at: 1, by: "env_mac" }, decided: { since: 1, threads: [] } } } });
+    const flip = setAway({ code: true });
+    expect(awayKinds()).toEqual({ code: true, work: true });
+    await flip;
+    expect(request).toHaveBeenCalledWith("away.set", { enabled: true, code: true });
+    await setAway({ work: false });
+    expect(request).toHaveBeenLastCalledWith("away.set", { enabled: false, work: false });
+    vi.restoreAllMocks();
   });
 });

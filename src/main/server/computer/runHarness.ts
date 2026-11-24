@@ -63,7 +63,7 @@ export function computerHarness(
         cards.push({ threadId, req, decide: resolve })
         req.signal?.addEventListener('abort', () => resolve(false), { once: true })
       }),
-    awayOn: () => away
+    awayFor: () => away
   }
   const service = new ComputerService({ dataDir, env: { ...process.env, FAKE_LOG: log, ...opts.env }, bin: () => fakeServiceBin(), log: () => undefined })
   let gate: SessionTierGate | undefined = opts.gate

@@ -34,7 +34,7 @@ import {
 import { hostErrorLine } from '@shared/computer/hostErrors'
 import type { ComputerToolCall } from '@shared/computer/tools'
 import { needsApproval } from '@shared/computer/words'
-import { awayVerdict } from '@shared/away'
+import { awayKindOf, awayVerdict, type AwayKind } from '@shared/away'
 import { MAC_AWAY_REFUSAL } from '../awayPrompts'
 import type { ComputerToolOutcome } from '../computer/result'
 import { abortedLine, AWAY_PASSWORD, type ComputerToolContext } from '../computer/run'
@@ -91,13 +91,14 @@ export type ComputerRequestShape = Omit<MacBridgeRequest, 'id' | 'createdAt' | '
 export interface MacComputerBridge {
   policyOf(envId: string): MacBridgePolicy
   computerOf(envId: string): boolean
-  away(): boolean
+  /** Is the person at this Mac away for threads of this kind (its own Away state). */
+  away(kind: AwayKind): boolean
   askComputer(
     shape: ComputerRequestShape,
     until: number,
     callId?: string,
-    /** Away denies this card at the flip instead of allowing it (MacBridge.awayChanged): a money act */
-    opts?: { awayDenies?: boolean }
+    /** Away denies this card at the flip instead of allowing it (MacBridge.awayChanged): a money act; `awayKind` the box thread's kind, whose switch alone decides it */
+    opts?: { awayDenies?: boolean; awayKind?: AwayKind }
   ): { id: string; answer: Promise<{ allow: boolean; outcome: MacBridgeOutcome; byAway?: true }> }
   /** Finish a card (allowed, denied, expired): MacBridge.ask leaves an allowed request pending for its caller to finish. */
   finishCard(id: string, outcome: MacBridgeOutcome): void
@@ -167,6 +168,8 @@ interface KeyState {
   key: string
   envId: string
   threadId: string
+  /** the box thread's kind for Away, by its box's word (its scope, or the call's Work hold) */
+  kind: AwayKind
   turn: string | null
   live: LiveState | null
   calls: Map<string, CallState>
@@ -344,6 +347,12 @@ export class MacComputer {
     this.states.clear()
   }
 
+  /** Is the person away for the box thread behind this key: its own kind's switch; a key with no call yet reads away only when both kinds are. */
+  awayFor(key: string): boolean {
+    const st = this.states.get(key)
+    return st ? this.deps.bridge.away(st.kind) : this.deps.bridge.away('code') && this.deps.bridge.away('work')
+  }
+
   // ── one call ───────────────────────────────────────────────────────
 
   private async call(
@@ -359,6 +368,8 @@ export class MacComputer {
     if (call.threadId !== thread.id) throw new Error('refused: the call names another thread')
     const key = macComputerKey(env.id, thread.id)
     const line = (decision: string): void => this.log(`${env.name} (${env.id}) thread=${thread.id} mac.computer ${call.tool} → ${decision}`)
+    // Away by the box thread's own kind: a Work thread's call reads the Work switch alone, a code thread's the Code switch.
+    const kind = awayKindOf(thread.scope === 'work' || hold?.work ? 'work' : null)
 
     // policy, then the switch, then whether this Mac can serve it at all
     if (this.deps.bridge.policyOf(env.id) === 'off') {
@@ -377,13 +388,13 @@ export class MacComputer {
     }
     // Away allows every card but a money act's: that one is refused before anything waits
     const awayDenies = awayVerdict({ what: 'computer', kind: (call.args as { confirm?: { kind?: string } }).confirm?.kind }, 'code') === 'deny'
-    if (awayDenies && this.deps.bridge.away() && needsApproval(call.tool, call.args as Parameters<typeof needsApproval>[1], call.permission).ask) {
+    if (awayDenies && this.deps.bridge.away(kind) && needsApproval(call.tool, call.args as Parameters<typeof needsApproval>[1], call.permission).ask) {
       line('refused (away, spends money)')
       throw new Error(MAC_AWAY_REFUSAL)
     }
 
     const checkedAt = this.clock.now()
-    const st = this.stateOf(key, env.id, thread.id)
+    const st = this.stateOf(key, env.id, thread.id, kind)
     st.readsFront = features?.includes('front') === true
     const callId = ctx.callId ?? `local_${++localCalls}`
     const own: CallState = { controller: new AbortController(), away: false, awayDenies, awayDenied: false, progress: null, reading: true, out: 0, waiters: new Set() }
@@ -525,7 +536,7 @@ export class MacComputer {
       own.awayDenied = true
       if (!own.awayDenies) own.awayPassword = true
     }
-    if (this.deps.bridge.away()) {
+    if (this.deps.bridge.away(st.kind)) {
       if (denies) {
         deny()
         line(own.awayDenies ? 'card denied (away, spends money)' : 'card denied (away, password field)')
@@ -551,7 +562,7 @@ export class MacComputer {
       },
       until,
       callId,
-      denies ? { awayDenies: true } : {}
+      { awayKind: st.kind, ...(denies ? { awayDenies: true } : {}) }
     )
     st.asking = approvalLine('computer', input, req.title)
     own.progress?.poke()
@@ -618,10 +629,11 @@ export class MacComputer {
 
   // ── inside ─────────────────────────────────────────────────────────
 
-  private stateOf(key: string, envId: string, threadId: string): KeyState {
+  private stateOf(key: string, envId: string, threadId: string, kind: AwayKind): KeyState {
     let st = this.states.get(key)
+    if (st) st.kind = kind
     if (!st) {
-      st = { key, envId, threadId, turn: null, live: null, calls: new Map(), asking: null, held: null, provisional: null }
+      st = { key, envId, threadId, kind, turn: null, live: null, calls: new Map(), asking: null, held: null, provisional: null }
       this.states.set(key, st)
     }
     return st

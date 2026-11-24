@@ -1,5 +1,5 @@
 import type { ServerPush } from '@shared/contract'
-import { isNewerAway, type AwayState } from '@shared/away'
+import type { AwayState } from '@shared/away'
 import type { AwaySnapshot } from '@shared/contract-away'
 import type { AwayService } from '../away'
 import type { Peers } from './peers'
@@ -14,8 +14,14 @@ import type { Peers } from './peers'
  *  - a peer's `away` push (the box sends one to every socket on each change,
  *    so a flip at its /ui reaches every Mac) is applied when newer and never
  *    sent back to where it came from;
- *  - on link-up each side reads the other's state and the older one takes
- *    the newer.
+ *  - on link-up each side reads the other's state and takes its newer kinds.
+ *
+ * Newest wins kind by kind (`codeAt`, `workAt`; `mergeAway`): a flip of Code
+ * made before this host heard another's flip of Work never undoes it.
+ *
+ * The state carries both kinds' switches and `enabled` (both on), so a peer
+ * one release behind takes "both" from it and sends `enabled` alone back,
+ * which this side reads as both kinds at that value (AwayService.apply).
  */
 export interface AwaySyncDeps {
   away: Pick<AwayService, 'get' | 'apply' | 'onChange'>
@@ -36,8 +42,8 @@ export class AwaySync {
 
   start(): void {
     if (this.off) return
-    this.off = this.deps.away.onChange((snapshot, stateChanged) => {
-      if (stateChanged) this.send(snapshot.state)
+    this.off = this.deps.away.onChange((snapshot, changed) => {
+      if (changed.length) this.send(snapshot.state)
     })
   }
 
@@ -51,10 +57,11 @@ export class AwaySync {
     const link = this.deps.peers.get(id)
     if (!link?.connected) return
     try {
+      // Each side takes the other's newer kinds (AwayService.apply merges kind by kind), so a kind flipped on
+      // each side while apart keeps both flips.
       const theirs = (await link.request<AwaySnapshot>('away.get')).state
-      const mine = this.deps.away.get().state
-      if (isNewerAway(theirs, mine)) this.applyFrom(id, theirs)
-      else if (isNewerAway(mine, theirs)) await link.request('away.apply', { state: mine })
+      this.applyFrom(id, theirs)
+      await link.request('away.apply', { state: this.deps.away.get().state })
     } catch (err) {
       this.log(`${link.env.name}: ${err instanceof Error ? err.message : String(err)}`)
     }

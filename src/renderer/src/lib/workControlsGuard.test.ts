@@ -58,7 +58,7 @@ const WORK = {
   threadMenu: ["save-play"],
   header: [],
   panel: ["results"],
-  nativeMenu: ["open_file", "save_word", "export", "print", "search_work", "open_today", "open_digest"],
+  nativeMenu: ["open_file", "save_word", "export", "print", "search_work", "open_today", "open_digest", "away_work"],
 } as const;
 
 /** Both kinds. */
@@ -75,7 +75,7 @@ const SHARED = {
     "go_to_file", "toggle_sidebar", "toggle_panel", "toggle_message_list", "split_right", "split_down", "focus_left", "focus_right",
     "focus_up", "focus_down", "force_reload", "zoom_in", "zoom_out", "zoom_reset", "open_search", "back_tab", "forward_tab", "prev_tab",
     "next_tab", "prev_environment", "next_environment", "open_inbox", "open_computers", "open_notes", "open_model_picker", "mark_all_read",
-    "toggle_away", "pause_all_threads", "resume_all_threads", "stop_all_threads", "archive_done_threads", "whats_new", "show_logs",
+    "away_code", "pause_all_threads", "resume_all_threads", "stop_all_threads", "archive_done_threads", "whats_new", "show_logs",
     "profile_host",
   ],
 } as const;

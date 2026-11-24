@@ -1,10 +1,12 @@
+import { useSyncExternalStore } from "react";
 import { useStore } from "zustand";
 import { createStore } from "zustand/vanilla";
-import type { AwayDecided, AwayState } from "@server/shared/away";
+import { awayKindsOf, awayStateOf, AWAY_OFF_STATE, type AwayDecided, type AwayKind, type AwayKinds, type AwayState } from "@server/shared/away";
 import type { AwaySnapshot } from "@server/shared/contract-away";
 import { loadToast } from "../components/ui/toaster";
 import { registry } from "./connection/registry";
 import type { EnvLink } from "./connection/link";
+import { currentPlaceKind, onPlaceKind } from "./placeScheme";
 
 /**
  * Away from computer (src/shared/away.ts): the person's own state, one copy
@@ -12,7 +14,8 @@ import type { EnvLink } from "./connection/link";
  * and its tally of decisions come from one `away.get` when its link opens and
  * from every `away` push after. The rail's row (chrome/AwayRow.tsx) and the
  * menu read this machine's host (at /ui, the page's host); the return toast
- * (chrome/AwayReturn.tsx) reads every host's tally, live pushes only.
+ * (chrome/AwayReturn.tsx) reads every host's tally, live pushes only. Two
+ * switches, Code threads and Work threads, each on or off by itself.
  */
 
 export type HostAway = AwaySnapshot;
@@ -92,29 +95,41 @@ export function startAway(): void {
   });
 }
 
+const shown = (s: State): AwayState => s.pending ?? s.hosts[registry.primaryEnvironmentId]?.state ?? AWAY_OFF_STATE;
+
 /** This machine's Away (the page's host at /ui): the flip in flight, else the host's word. */
-export function useAway(): { enabled: boolean; at: number } {
-  const enabled = useStore(awayStore, (s) => (s.pending ?? s.hosts[registry.primaryEnvironmentId]?.state)?.enabled ?? false);
-  const at = useStore(awayStore, (s) => (s.pending ?? s.hosts[registry.primaryEnvironmentId]?.state)?.at ?? 0);
-  return { enabled, at };
+export function useAway(): AwayKinds & { at: number } {
+  const code = useStore(awayStore, (s) => awayKindsOf(shown(s)).code);
+  const work = useStore(awayStore, (s) => awayKindsOf(shown(s)).work);
+  const at = useStore(awayStore, (s) => shown(s).at);
+  return { code, work, at };
 }
 
 /** Read now, outside React (the menu, a command). */
-export function awayEnabled(): boolean {
-  const s = awayStore.getState();
-  return (s.pending ?? s.hosts[registry.primaryEnvironmentId]?.state)?.enabled ?? false;
+export function awayKinds(): AwayKinds {
+  return awayKindsOf(shown(awayStore.getState()));
+}
+
+/** The kind of the place this window is on, live: what the rail's press flips. */
+export function usePlaceAwayKind(): AwayKind {
+  return useSyncExternalStore(onPlaceKind, currentPlaceKind);
 }
 
 /**
- * The person's flip: shown at once, stamped by the host. A refusal (a key
+ * The person's flip of one kind or both: shown at once, stamped by the host.
+ * It names only the kinds it changes, so a window that has not heard
+ * another's flip never sets the other kind back; and `enabled` (both on, as
+ * this window sees it) for a host one release behind, which reads that alone
+ * and which a current host ignores while a kind is named. A refusal (a key
  * without approve, a host from before Away) puts the row back and says so.
  */
-export async function setAway(enabled: boolean): Promise<void> {
-  const flip: AwayState = { enabled, at: Date.now(), by: "" };
+export async function setAway(change: Partial<AwayKinds>): Promise<void> {
+  const kinds = { ...awayKinds(), ...change };
+  const flip = awayStateOf(kinds, Date.now(), "");
   awayStore.setState({ pending: flip });
   try {
     const link = registry.linkOf(registry.primaryEnvironmentId);
-    const { state } = await link.request<{ state: AwayState }>("away.set", { enabled });
+    const { state } = await link.request<{ state: AwayState }>("away.set", { enabled: kinds.code && kinds.work, ...change });
     // The push follows with the tally; until it lands the answer is the state.
     const now = awayStore.getState();
     if (now.pending !== flip) return;
@@ -123,13 +138,13 @@ export async function setAway(enabled: boolean): Promise<void> {
   } catch {
     if (awayStore.getState().pending !== flip) return;
     awayStore.setState({ pending: null });
-    void loadToast().then((toast) => toast.error(enabled ? "Couldn't turn Away on" : "Couldn't turn Away off"));
+    void loadToast().then((toast) => toast.error("Couldn't change Away"));
   }
 }
 
-/** The menu's and the keyboard's toggle. */
-export function toggleAway(): void {
-  void setAway(!awayEnabled());
+/** Flip one kind: the place's own when none is named (the rail's press). */
+export function toggleAway(kind: AwayKind = currentPlaceKind()): void {
+  void setAway({ [kind]: !awayKinds()[kind] });
 }
 
 /** How many threads a tally holds that decided at least once. */

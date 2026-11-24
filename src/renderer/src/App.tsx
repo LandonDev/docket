@@ -3267,7 +3267,8 @@ export default function App() {
         case "resume_all_threads": return go(() => void requestThreadBatch("resume", EVERYWHERE, () => selectionFor(EVERYWHERE)));
         case "stop_all_threads": return go(() => void requestThreadBatch("stop", EVERYWHERE, () => selectionFor(EVERYWHERE)));
         case "archive_done_threads": return go(() => void requestThreadBatch("archiveDone", EVERYWHERE, () => selectionFor(EVERYWHERE)));
-        case "toggle_away": return go(toggleAway);
+        case "away_code": return go(() => toggleAway("code"));
+        case "away_work": return go(() => toggleAway("work"));
         case "open_notes": return go(a.onOpenNotes);
         // Work's digest, the list of all it told him (work/digest): with Work off there is none.
         case "open_digest": return go(() => void (workSwitch.anyOn() ? workDigestChunk.load().then((m) => m.openDigestSheet()) : null));

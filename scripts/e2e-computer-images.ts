@@ -179,7 +179,7 @@ try {
           registry: {
             get: (id) => registry.get(id),
             requestApproval: (id, req) => registry.requestApproval(id, req),
-            awayOn: () => false
+            awayFor: () => false
           },
           store,
           dataDir: caseDir,

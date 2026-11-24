@@ -120,14 +120,14 @@ const untilAborted = (r: Run): Promise<ComputerToolOutcome> =>
     r.ctx.signal?.addEventListener('abort', done, { once: true })
   })
 
-function setup(opts: { unavailable?: string | null; away?: { on: boolean }; policy?: string; computer?: boolean; maxComputer?: number; dataDir?: string } = {}) {
+function setup(opts: { unavailable?: string | null; away?: { on: boolean; kinds?: { code: boolean; work: boolean } }; policy?: string; computer?: boolean; maxComputer?: number; dataDir?: string } = {}) {
   const settings = new Map<string, string>([[`${POLICY_PREFIX}${ENV}`, opts.policy ?? 'read']])
   if (opts.computer !== false) settings.set(`${COMPUTER_SWITCH_PREFIX}${ENV}`, 'on')
   if (opts.maxComputer) settings.set(`${MAX_COMPUTER_PREFIX}${ENV}`, String(opts.maxComputer))
   const fake = fakeHost()
   const pushes: MacBridgePush[] = []
   const lines: string[] = []
-  const away = opts.away ?? { on: false }
+  const away: { on: boolean; kinds?: { code: boolean; work: boolean } } = opts.away ?? { on: false }
   const mb = new MacBridge({
     environmentId: 'env_mac',
     store: { getSetting: (k) => settings.get(k) ?? null, setSetting: (k, v) => (v === null ? settings.delete(k) : settings.set(k, v)) },
@@ -137,7 +137,7 @@ function setup(opts: { unavailable?: string | null; away?: { on: boolean }; poli
     home: tmpdir(),
     log: (l) => lines.push(l),
     load: { sample: () => ({ load: 0, cores: 8 }), intervalMs: 0 },
-    away: () => away.on,
+    away: (kind: 'code' | 'work') => (away.kinds ? away.kinds[kind] : away.on),
     computerHost: () => fake.host,
     computerUnavailable: () => (opts.unavailable === undefined ? null : opts.unavailable),
     ...(opts.dataDir ? { computerLanding: (key: string) => bridgedLanding(opts.dataDir!, key) } : {})
@@ -146,14 +146,14 @@ function setup(opts: { unavailable?: string | null; away?: { on: boolean }; poli
   const progress: { thread: string; row: ComputerSessionRow }[] = []
   let callSeq = 0
   const call = (
-    args: { tool?: ComputerToolCall['tool']; args?: Record<string, unknown>; permission?: PermissionPolicy; turn?: string; thread?: string; deadlineMs?: number; callId?: string; hold?: unknown } = {}
+    args: { tool?: ComputerToolCall['tool']; args?: Record<string, unknown>; permission?: PermissionPolicy; turn?: string; thread?: string; scope?: 'work'; deadlineMs?: number; callId?: string; hold?: unknown } = {}
   ): Promise<ComputerPeerAnswer> => {
     const thread = args.thread ?? 's1'
     const callId = args.callId ?? `c${++callSeq}`
     return mb.handle(
       'mac.computer',
       {
-        thread: { id: thread, title: `thread ${thread}` },
+        thread: { id: thread, title: `thread ${thread}`, ...(args.scope ? { scope: args.scope } : {}) },
         args: {
           call: { tool: args.tool ?? 'computer_observe', args: args.args ?? { app: 'TextEdit' }, threadId: thread, permission: args.permission ?? 'auto' },
           turn: args.turn ?? 'boot:1',
@@ -316,6 +316,33 @@ describe('MacComputer: the card', () => {
     expect(s.cards()).toHaveLength(0)
   })
 
+  it('Away for Code allows a code thread\'s card and leaves a Work thread\'s for him, until Work is away too', async () => {
+    const s = setup({ away: { on: false, kinds: { code: true, work: false } } })
+    expect(await s.call({ ...click, thread: 'c1' })).toMatchObject({ isError: false, away: true })
+    const work = s.settle(s.call({ ...click, thread: 'w1', scope: 'work' }))
+    await until(() => s.cards().length === 1, "the Work thread's card")
+    // A flip of Code again decides nothing of Work's.
+    s.mb.awayChanged(['code'])
+    await new Promise((r) => setTimeout(r, 20))
+    expect(s.cards()).toHaveLength(1)
+    s.away.kinds = { code: true, work: true }
+    s.mb.awayChanged(['work'])
+    expect(await work).toMatchObject({ ok: true, value: { isError: false, away: true } })
+  })
+
+  it('Away for Work allows a Work thread\'s card and leaves a code thread\'s for him', async () => {
+    const s = setup({ away: { on: false, kinds: { code: false, work: true } } })
+    expect(await s.call({ ...click, thread: 'w1', scope: 'work' })).toMatchObject({ isError: false, away: true })
+    const code = s.settle(s.call({ ...click, thread: 'c1' }))
+    await until(() => s.cards().length === 1, "the code thread's card")
+    s.mb.awayChanged(['work'])
+    await new Promise((r) => setTimeout(r, 20))
+    expect(s.cards()).toHaveLength(1)
+    s.away.kinds = { code: true, work: true }
+    s.mb.awayChanged(['code'])
+    expect(await code).toMatchObject({ ok: true, value: { away: true } })
+  })
+
   it("Away denies a card the run raised with awayDenies (a Work thread's text into a password field), as it is made and at the flip", async () => {
     const s = setup({ away: { on: true } })
     s.fake.setPasswordCard(true)
@@ -325,7 +352,7 @@ describe('MacComputer: the card', () => {
     const waiting = s.settle(s.call({ ...click, thread: 's2' }))
     await until(() => s.cards().length === 1, 'the card')
     s.away.on = true
-    s.mb.awayChanged(true)
+    s.mb.awayChanged(['code', 'work'])
     expect(await waiting).toEqual({ ok: false, error: AWAY_PASSWORD })
     expect(s.cards()).toHaveLength(0)
   })
@@ -336,7 +363,7 @@ describe('MacComputer: the card', () => {
     const paid = s.settle(s.call({ ...click, permission: 'auto', thread: 's2', args: { ...click.args, confirm: { kind: 'pay', what: 'Buy' } } }))
     await until(() => s.cards().length === 2, 'both cards')
     s.away.on = true
-    s.mb.awayChanged(true)
+    s.mb.awayChanged(['code', 'work'])
     expect(await p).toMatchObject({ isError: false, away: true })
     expect(await paid).toEqual({ ok: false, error: MAC_AWAY_REFUSAL })
     expect(s.cards()).toHaveLength(0)

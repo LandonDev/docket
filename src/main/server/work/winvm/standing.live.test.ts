@@ -66,7 +66,7 @@ d('the windows_* tools on the standing Windows VM', () => {
       registry: {
         get: (id) => rig.sessions.get(id) ?? null,
         requestApproval: async () => true,
-        awayOn: () => rig.away.enabled,
+        awayFor: () => rig.away.enabled,
         rootSessionOf: (id) => id,
         onMeta: () => {},
         onRemoved: () => {}

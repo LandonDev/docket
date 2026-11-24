@@ -20,7 +20,7 @@ const facts = (over: Partial<MenuFacts> = {}): MenuFacts => ({
   dockUsable: true,
   unread: 1,
   counts: { pause: 1, resume: 1, stop: 1, archiveDone: 1 },
-  away: false,
+  away: { code: false, work: false },
   workFile: true,
   workOn: true,
   print: true,
@@ -34,9 +34,9 @@ describe("menuStateOf", () => {
     expect(menuStateOf(facts({ sidebarOpen: true, panel: "open", dockOpen: true, messageList: true }))).toEqual({
       open: ["toggle_sidebar", "toggle_panel", "toggle_terminal", "toggle_message_list"],
       disabled: [],
-      checked: { toggle_away: false },
+      checked: { away_code: false, away_work: false },
     });
-    expect(menuStateOf(facts())).toEqual({ open: [], disabled: [], checked: { toggle_away: false } });
+    expect(menuStateOf(facts())).toEqual({ open: [], disabled: [], checked: { away_code: false, away_work: false } });
   });
 
   it("names ⌘W Close Pane while the active tab is split", () => {
@@ -61,8 +61,9 @@ describe("menuStateOf", () => {
     expect(menuStateOf(facts({ counts: { ...NONE, resume: 2 } })).disabled).not.toContain("resume_all_threads");
   });
 
-  it("ticks Away from Computer while Away is on", () => {
-    expect(menuStateOf(facts({ away: true })).checked).toEqual({ toggle_away: true });
+  it("ticks each kind's Away row while that kind is away", () => {
+    expect(menuStateOf(facts({ away: { code: true, work: false } })).checked).toEqual({ away_code: true, away_work: false });
+    expect(menuStateOf(facts({ away: { code: false, work: true } })).checked).toEqual({ away_code: false, away_work: true });
   });
 
   it("a Work thread in front draws no Terminal row and neither of Go's symbol rows; a code thread keeps them all", () => {
@@ -70,8 +71,8 @@ describe("menuStateOf", () => {
     expect(menuStateOf(facts({ workOn: true, workThread: false })).hidden).toBeUndefined();
   });
 
-  it("hides Work's own rows (Go → Search Work…, Today) while no host has Work on, and names none hidden while one has", () => {
-    expect(menuStateOf(facts({ workOn: false })).hidden).toEqual(["save_word", "search_work", "open_today"]);
+  it("hides Work's own rows (Go → Search Work…, Today, Away for Work Threads) while no host has Work on, and names none hidden while one has", () => {
+    expect(menuStateOf(facts({ workOn: false })).hidden).toEqual(["save_word", "search_work", "open_today", "away_work"]);
     expect(menuStateOf(facts({ workOn: true })).hidden).toBeUndefined();
   });
 
@@ -279,20 +280,20 @@ describe("publishMenuState", () => {
     expect(send.mock.calls[0][0].disabled).toContain("toggle_panel");
   });
 
-  it("ticks Away from Computer as this machine's Away store moves", () => {
+  it("ticks each kind's Away row as this machine's Away store moves", () => {
     resetAwayForTest();
     const send = vi.fn();
     const publisher = publishMenuState(() => ({ dockOpen: false, dockUsable: true }), send);
-    expect(send.mock.calls[0][0].checked).toEqual({ toggle_away: false });
-    const host = { state: { enabled: true, at: 5, by: "env_mac" }, decided: { since: 5, threads: [] } };
+    expect(send.mock.calls[0][0].checked).toEqual({ away_code: false, away_work: false });
+    const host = { state: { enabled: false, code: true, work: false, at: 5, by: "env_mac" }, decided: { since: 5, threads: [] } };
     awayStore.setState({ hosts: { [registry.primaryEnvironmentId]: host } });
     vi.advanceTimersByTime(MENU_STATE_THROTTLE_MS);
     expect(send).toHaveBeenCalledTimes(2);
-    expect(send.mock.calls[1][0].checked).toEqual({ toggle_away: true });
+    expect(send.mock.calls[1][0].checked).toEqual({ away_code: true, away_work: false });
     // The flip in flight wins over the host's last word.
-    awayStore.setState({ pending: { enabled: false, at: 6, by: "" } });
+    awayStore.setState({ pending: { enabled: false, code: false, work: true, at: 6, by: "" } });
     vi.advanceTimersByTime(MENU_STATE_THROTTLE_MS);
-    expect(send.mock.calls[2][0].checked).toEqual({ toggle_away: false });
+    expect(send.mock.calls[2][0].checked).toEqual({ away_code: false, away_work: true });
     publisher.stop();
     resetAwayForTest();
   });

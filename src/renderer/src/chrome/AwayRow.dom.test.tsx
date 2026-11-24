@@ -7,7 +7,8 @@ import { TooltipProvider } from "../components/ui/tooltip";
 import { awayStore, resetAwayForTest } from "../lib/away";
 import { registry } from "../lib/connection/registry";
 import { clockTime } from "../lib/duration";
-import { AwayRow, awayTooltip } from "./AwayRow";
+import { setWorkOn } from "../lib/workSwitch";
+import { AwayRow, awayLabel, awayMenuRows, awayTooltip, pickAway } from "./AwayRow";
 import { RailFoot } from "./ProjectRail";
 
 const toast = vi.hoisted(() => ({ error: vi.fn(), call: vi.fn() }));
@@ -18,11 +19,17 @@ vi.mock("../components/ui/toaster", async (importOriginal) => ({
 vi.mock("./UsageMeter", () => ({ UsageMeter: () => null }));
 vi.mock("./UpdateRow", () => ({ UpdateRow: () => null, useUpdateRowState: () => null }));
 vi.mock("./SignInRow", () => ({ SignInRow: () => null, useSignInTarget: () => null }));
+const place = vi.hoisted(() => ({ kind: "code" as "code" | "work", listeners: new Set<() => void>() }));
+vi.mock("../lib/placeScheme", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../lib/placeScheme")>()),
+  currentPlaceKind: () => place.kind,
+  onPlaceKind: (l: () => void) => (place.listeners.add(l), () => place.listeners.delete(l)),
+}));
 
 /** A primary link that answers `away.set` as `answer` says. */
-function primaryLink(answer: (enabled: boolean) => Promise<unknown>) {
-  const request = vi.fn((method: string, params: { enabled: boolean }) =>
-    method === "away.set" ? answer(params.enabled) : Promise.reject(new Error("no")),
+function primaryLink(answer: (enabled: boolean, params: { code?: boolean; work?: boolean }) => Promise<unknown>) {
+  const request = vi.fn((method: string, params: { enabled: boolean; code?: boolean; work?: boolean }) =>
+    method === "away.set" ? answer(params.enabled, params) : Promise.reject(new Error("no")),
   );
   vi.spyOn(registry, "linkOf").mockReturnValue({ request } as never);
   return request;
@@ -37,6 +44,8 @@ const track = () => document.querySelector<HTMLElement>("[data-slot=away-track]"
 const glyph = () => switchRow().querySelector<HTMLElement>("svg")!.parentElement!;
 
 beforeEach(() => {
+  place.kind = "code";
+  setWorkOn(registry.primaryEnvironmentId, false);
   resetAwayForTest();
   vi.spyOn(registry, "onLink").mockReturnValue(() => {});
 });
@@ -72,18 +81,18 @@ describe("AwayRow", () => {
   });
 
   it("flips at once on a press, Space or Enter, and stays when the host agrees", async () => {
-    const request = primaryLink(async (enabled) => ({ state: { enabled, at: 2_000, by: "env_mac" } }));
+    const request = primaryLink(async (enabled, p) => ({ state: { enabled, code: p.code, work: false, at: 2_000, by: "env_mac" } }));
     render(<AwayRow />);
     fireEvent.keyDown(switchRow(), { key: " " });
     fireEvent.click(switchRow());
     expect(switchRow().getAttribute("aria-checked")).toBe("true");
-    expect(request).toHaveBeenCalledWith("away.set", { enabled: true });
+    expect(request).toHaveBeenCalledWith("away.set", { enabled: false, code: true });
     await act(async () => {});
     expect(switchRow().getAttribute("aria-checked")).toBe("true");
     fireEvent.keyDown(switchRow(), { key: "Enter" });
     fireEvent.click(switchRow());
     expect(switchRow().getAttribute("aria-checked")).toBe("false");
-    expect(request).toHaveBeenLastCalledWith("away.set", { enabled: false });
+    expect(request).toHaveBeenLastCalledWith("away.set", { enabled: false, code: false });
   });
 
   it("rolls back with a toast when the host refuses", async () => {
@@ -91,11 +100,11 @@ describe("AwayRow", () => {
     render(<AwayRow />);
     fireEvent.click(switchRow());
     expect(switchRow().getAttribute("aria-checked")).toBe("true");
-    await waitFor(() => expect(toast.error).toHaveBeenCalledWith("Couldn't turn Away on"));
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith("Couldn't change Away"));
     expect(switchRow().getAttribute("aria-checked")).toBe("false");
     act(() => awayStore.setState({ hosts: host(true) }));
     fireEvent.click(switchRow());
-    await waitFor(() => expect(toast.error).toHaveBeenCalledWith("Couldn't turn Away off"));
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith("Couldn't change Away"));
     expect(switchRow().getAttribute("aria-checked")).toBe("true");
   });
 
@@ -126,3 +135,73 @@ describe("AwayRow", () => {
     expect(read("../components/ui/switch.tsx")).toContain("./switch-track");
   });
 });
+
+describe("AwayRow by kind, with Work on", () => {
+  const state = (code: boolean, work: boolean, at = 1_000) => ({
+    [registry.primaryEnvironmentId]: { state: { enabled: code && work, code, work, at, by: "env_mac" }, decided: { since: at, threads: [] } },
+  });
+  const theSwitch = () => screen.getByRole("switch");
+  let held = { code: false, work: false };
+  beforeEach(() => {
+    held = { code: false, work: false };
+    setWorkOn(registry.primaryEnvironmentId, true);
+  });
+
+  it("names the kinds away in words in each of the four states", () => {
+    expect(awayLabel({ code: false, work: false })).toBe("Away from computer");
+    expect(awayLabel({ code: true, work: false })).toBe("Away for Code");
+    expect(awayLabel({ code: false, work: true })).toBe("Away for Work");
+    expect(awayLabel({ code: true, work: true })).toBe("Away for both");
+    render(<AwayRow />);
+    act(() => awayStore.setState({ hosts: state(false, true) }));
+    expect(theSwitch().textContent).toBe("Away for Work");
+    // In a code place the switch is Code's: off, while the words say Work is away.
+    expect(theSwitch().getAttribute("aria-checked")).toBe("false");
+  });
+
+  it("a press in a code place flips Code alone; in a Work place, Work alone", async () => {
+    const request = primaryLink(async (_e, p) => {
+      held = { code: p.code ?? held.code, work: p.work ?? held.work };
+      return { state: { enabled: held.code && held.work, ...held, at: 2_000, by: "env_mac" } };
+    });
+    act(() => awayStore.setState({ hosts: state(false, false) }));
+    const { unmount } = render(<AwayRow />);
+    fireEvent.click(theSwitch());
+    expect(request).toHaveBeenLastCalledWith("away.set", { enabled: false, code: true });
+    await act(async () => {});
+    unmount();
+    place.kind = "work";
+    render(<AwayRow />);
+    fireEvent.click(theSwitch());
+    expect(request).toHaveBeenLastCalledWith("away.set", { enabled: true, work: true });
+  });
+
+  it("its menu ticks each kind and offers Both and Off, each doing what it says", async () => {
+    expect(awayMenuRows({ code: true, work: false })).toEqual([
+      { kind: "item", id: "code", label: "Code threads", checked: true },
+      { kind: "item", id: "work", label: "Work threads", checked: false },
+      { kind: "sep" },
+      { kind: "item", id: "both", label: "Both", disabled: false },
+      { kind: "item", id: "off", label: "Off", disabled: false },
+    ]);
+    const request = primaryLink(async (_e, p) => {
+      held = { code: p.code ?? held.code, work: p.work ?? held.work };
+      return { state: { enabled: held.code && held.work, ...held, at: 2_000, by: "env_mac" } };
+    });
+    act(() => awayStore.setState({ hosts: state(false, false) }));
+    pickAway("work");
+    expect(request).toHaveBeenLastCalledWith("away.set", { enabled: false, work: true });
+    pickAway("both");
+    expect(request).toHaveBeenLastCalledWith("away.set", { enabled: true, code: true, work: true });
+    pickAway("off");
+    expect(request).toHaveBeenLastCalledWith("away.set", { enabled: false, code: false, work: false });
+    await act(async () => {});
+  });
+
+  it("says in its tip which kind the press flips", () => {
+    expect(awayTooltip(false, 0, "code")).toBe("Code threads decide without asking you");
+    const at = new Date(2026, 10, 5, 14, 14).getTime();
+    expect(awayTooltip(true, at, "work")).toBe(`Work threads away since ${clockTime(at)}`);
+  });
+});
+

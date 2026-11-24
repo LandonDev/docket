@@ -187,7 +187,8 @@ export const AWAY_PASSWORD = 'denied: the person is away, and text goes into a p
 export interface ComputerRegistry {
   get(sessionId: string): SessionMeta | null
   requestApproval(sessionId: string, req: ApprovalRequest): Promise<boolean>
-  awayOn(): boolean
+  /** Is the person away for this thread's kind (sessions.ts awayFor; a box thread's key on the Mac: MacComputer.awayFor). */
+  awayFor(threadId: string): boolean
 }
 
 export interface AppState {
@@ -664,7 +665,7 @@ async function runChecked(
     if (!allowed) {
       const stopped = abortedLine(signal)
       if (stopped) return refusal(stopped)
-      if (awayDenies && host.registry.awayOn()) return work ? { ...refusal(AWAY_PASSWORD), refused: 'denied' } : refused('away')
+      if (awayDenies && host.registry.awayFor(threadId)) return work ? { ...refusal(AWAY_PASSWORD), refused: 'denied' } : refused('away')
       return refused('denied')
     }
     const after = abortedLine(signal)

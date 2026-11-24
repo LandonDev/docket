@@ -62,7 +62,7 @@ d('a flagged submit in Edge on a Windows PC, held in the Outbox until his press'
     const service = new ComputerService({ dataDir, bin: () => 'tc-computer.exe', spawn: rigSpawn(LOCAL_PORT, token ?? '', GUEST_DATA, dataDir) })
     sessions = new ComputerSessions({
       service,
-      registry: { get: (id) => rig.sessions.get(id) ?? null, requestApproval: async () => true, awayOn: () => rig.away.enabled },
+      registry: { get: (id) => rig.sessions.get(id) ?? null, requestApproval: async () => true, awayFor: () => rig.away.enabled },
       store: { getSetting: () => null, setSetting: () => {} } as never,
       dataDir,
       landing: (id) => join(rig.dir, 'landing', id),
@@ -72,7 +72,7 @@ d('a flagged submit in Edge on a Windows PC, held in the Outbox until his press'
     rig.thread('t-vm', { scope: 'work', workspaceId: 'ws-purdue' } as never)
     vmSessions = new ComputerSessions({
       service,
-      registry: { get: (id) => rig.sessions.get(id) ?? null, requestApproval: async () => true, awayOn: () => rig.away.enabled },
+      registry: { get: (id) => rig.sessions.get(id) ?? null, requestApproval: async () => true, awayFor: () => rig.away.enabled },
       store: { getSetting: () => null, setSetting: () => {} } as never,
       dataDir,
       landing: (id) => join(rig.dir, 'landing', id),

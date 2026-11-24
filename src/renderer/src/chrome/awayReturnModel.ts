@@ -1,4 +1,4 @@
-import type { AwayDecided } from "@server/shared/away";
+import { anyAway, type AwayDecided } from "@server/shared/away";
 import type { AwayPushListener } from "../lib/away";
 
 /** A thread that decided without the person, on its host. */
@@ -27,7 +27,8 @@ export function decidedThreadsOf(tallies: ReadonlyMap<string, AwayDecided>): Awa
 }
 
 /**
- * The return: a live push turning a host's Away from on to off opens a
+ * The return: a live push turning a host's last kind of Away off (the
+ * stretch's end: Code, Work or both were away, now neither is) opens a
  * window of `AWAY_RETURN_GATHER_MS`, and each host's tally that lands in it
  * (the host that flipped, then its peers as the flip reaches them) joins
  * one list, handed to `show` each time it holds a thread. The state at a
@@ -42,13 +43,13 @@ export function createAwayReturn(
   let until = -Infinity;
   let tallies = new Map<string, AwayDecided>();
   return (environmentId, before, after) => {
-    const returned = before?.state.enabled === true && !after.state.enabled;
+    const returned = !!before && anyAway(before.state) && !anyAway(after.state);
     if (returned && now() > until) {
       until = now() + AWAY_RETURN_GATHER_MS;
       tallies = new Map();
     }
     // A host still away (or away again) has nothing to report yet.
-    if (now() > until || after.state.enabled) return;
+    if (now() > until || anyAway(after.state)) return;
     tallies.set(environmentId, after.decided);
     const threads = decidedThreadsOf(tallies);
     if (threads.length > 0 || always()) show(threads, tallies);

@@ -339,7 +339,7 @@ const pinned = new Set(['textedit', 'com.apple.textedit'])
 let gate: SessionTierGate | null = null
 const sessions = new ComputerSessions({
   service: svc,
-  registry: { get: (id) => registry.get(id), requestApproval: (id, req) => registry.requestApproval(id, req), awayOn: () => registry.awayOn() },
+  registry: { get: (id) => registry.get(id), requestApproval: (id, req) => registry.requestApproval(id, req), awayFor: (id) => registry.awayFor(id) },
   store,
   dataDir: join(dataDir, 'computer'),
   landing: (id) => join(WORK, 'landing', id),
@@ -353,7 +353,7 @@ const makeScheduler = (askAfterMs?: number): SessionScheduler => {
     service: svc,
     idle: personIdle,
     presence: staticPresence({ screen: 'unlocked', power: 'awake' }),
-    awayOn: () => registry.awayOn(),
+    awayOn: (id) => registry.awayFor(id),
     getSetting: (k) => store.getSetting(k),
     held: (t, l) => {
       registry.setToolHold(t, l)

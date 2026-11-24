@@ -88,7 +88,7 @@ beforeEach(() => {
     registry: {
       get: (id) => ({ id, title: titles[id], status: 'running', permission: 'auto', archived: false }) as unknown as SessionMeta,
       requestApproval: async () => true,
-      awayOn: () => false,
+      awayFor: () => false,
       rootSessionOf: (id) => id,
       onMeta: (fn) => metaListeners.push(fn),
       onRemoved: () => {}

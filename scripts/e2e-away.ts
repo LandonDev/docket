@@ -37,8 +37,8 @@ const away = new AwayService({
   environmentId: 'env_e2e'
 })
 registry.away = away
-away.onChange((snapshot, changed) => {
-  if (changed) registry.awayChanged(snapshot.state.enabled)
+away.onChange((_snapshot, changed) => {
+  if (changed.length) registry.awayChanged(changed)
 })
 
 let failures = 0
@@ -92,7 +92,7 @@ const thread = (title: string, permission: 'auto' | 'safe' = 'auto') =>
 
 // ── 1. a question while away ────────────────────────────────────────────
 console.log('\n[1] a question while away never becomes a card')
-away.set(true)
+away.set({ enabled: true })
 const asker = await thread('Away asker')
 const statuses: string[] = []
 const offMeta = registry.onMeta((m) => {
@@ -156,7 +156,7 @@ handle.send = (text, ...rest) => {
   sent.push(text)
   return send(text, ...rest)
 }
-away.set(false)
+away.set({ enabled: false })
 check('the running turn was told the person is back', sent.some((t) => t.startsWith('<away state="off">')), sent.join(' | ').slice(0, 200))
 await waitFor(worker.id, isSettle)
 check('the worker finished its turn', rows(worker.id).some((e) => e.type === 'turn-complete'))

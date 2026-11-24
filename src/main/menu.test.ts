@@ -184,15 +184,18 @@ describe('menu state', () => {
     expect(row('View', 'toggle_terminal').label).toBe('Hide Terminal')
   })
 
-  it('builds Away from Computer as a checkbox, ticked as the window says', () => {
+  it('builds Away for each kind as a checkbox, each ticked as the window says', () => {
     const c = contents(1)
     vi.mocked(BrowserWindow.getFocusedWindow).mockReturnValue(windowOf(c))
-    expect(row('Threads', 'toggle_away')).toMatchObject({ type: 'checkbox', checked: false, label: 'Away from Computer' })
-    menuModule.receiveMenuState(c as never, { open: [], disabled: [], checked: { toggle_away: true, junk: 'yes' } })
-    expect(row('Threads', 'toggle_away')).toMatchObject({ type: 'checkbox', checked: true })
+    expect(row('Threads', 'away_code')).toMatchObject({ type: 'checkbox', checked: false, label: 'Away for Code Threads' })
+    menuModule.receiveMenuState(c as never, { open: [], disabled: [], checked: { away_code: true, away_work: false, junk: 'yes' } })
+    expect(row('Threads', 'away_code')).toMatchObject({ type: 'checkbox', checked: true })
+    // Work's row shows once the window hides none of Work's rows (some host has Work on).
+    expect(row('Threads', 'away_work')).toMatchObject({ type: 'checkbox', checked: false, label: 'Away for Work Threads' })
     expect(row('Threads', 'mark_all_read').type).toBeUndefined()
-    menuModule.receiveMenuState(c as never, { open: [], disabled: [], checked: { toggle_away: false } })
-    expect(row('Threads', 'toggle_away').checked).toBe(false)
+    menuModule.receiveMenuState(c as never, { open: [], disabled: [], checked: { away_code: false, away_work: true } })
+    expect(row('Threads', 'away_code').checked).toBe(false)
+    expect(row('Threads', 'away_work').checked).toBe(true)
   })
 
   it('keeps a live Office file\'s focus, and only a true one', () => {

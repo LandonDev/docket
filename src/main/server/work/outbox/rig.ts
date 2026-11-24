@@ -280,7 +280,8 @@ export interface Rig {
   tells: Tell[]
   told: { done: string[] }
   logs: string[]
-  away: { enabled: boolean }
+  /** Away as the rig's tests flip it: `enabled` is both kinds (a Work thread reads `on('work')`). */
+  away: { enabled: boolean; on(kind: 'code' | 'work'): boolean }
   sessions: Map<string, SessionMeta>
   workspaces: Map<string, WorkspaceMeta>
   cards: { sessionId: string; toolName: string; decide: (allow: boolean) => void }[]
@@ -338,7 +339,7 @@ export async function makeRig(opts: { modules?: WorkModule[]; reuse?: { dir: str
   const logs: string[] = []
   const pushes: WorkPush[] = []
   const cards: Rig['cards'] = []
-  const away = { enabled: false }
+  const away = { enabled: false, on: (_kind: 'code' | 'work') => away.enabled }
   const removed: ((ids: string[]) => void)[] = []
   const gone: ((id: string) => void)[] = []
   const registry = {

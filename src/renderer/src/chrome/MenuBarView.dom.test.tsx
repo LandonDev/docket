@@ -175,12 +175,13 @@ describe("MenuBar while a menu is open", () => {
 });
 
 describe("rowsOf", () => {
-  it("ticks Away from Computer as a checkbox row, and nothing else", () => {
+  it("ticks each kind's Away row as a checkbox row, and nothing else", () => {
     const threads = inAppMenus(MENU_TREE).find((m) => m.label === "Threads")!;
-    const away = (checked: boolean) => rowsOf(threads, new Set(), { toggle_away: checked }).find((r) => r.kind === "item" && r.id === "toggle_away");
-    expect(away(true)).toMatchObject({ label: "Away from Computer", checked: true });
-    expect(away(false)).toMatchObject({ checked: false });
-    const others = rowsOf(threads, new Set(), { toggle_away: true }).filter((r) => r.kind === "item" && r.id !== "toggle_away");
+    const row = (id: string, checked: Record<string, boolean>) => rowsOf(threads, new Set(), checked).find((r) => r.kind === "item" && r.id === id);
+    expect(row("away_code", { away_code: true, away_work: false })).toMatchObject({ label: "Away for Code Threads", checked: true });
+    expect(row("away_work", { away_code: true, away_work: false })).toMatchObject({ label: "Away for Work Threads", checked: false });
+    expect(row("away_work", { away_work: true })).toMatchObject({ checked: true });
+    const others = rowsOf(threads, new Set(), { away_code: true, away_work: true }).filter((r) => r.kind === "item" && r.id !== "away_code" && r.id !== "away_work");
     for (const row of others) expect(row).not.toHaveProperty("checked");
   });
 });

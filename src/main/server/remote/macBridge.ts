@@ -47,6 +47,7 @@ import { servePeerCall, type LinkRequest } from './peerCalls'
 import { serveMacWrite, writeFoldersOf } from './macBridgeWrite'
 import type { MacWriteFileResult } from '@shared/contract-macbridge'
 import { threadRunsUnattended, workMustAsk, type MacCallThread } from '@shared/contract-macbridge'
+import { awayKindOf, type AwayKind } from '@shared/away'
 import type { MacBridgeActivity, MacBridgeCall, MacCancelArgs, MacCancelResult, MacHeldArgs } from '@shared/contract-macbridge'
 import { isMacJobPeerMethod, isMacPausePeerMethod, type MacPeerMethod } from '@shared/contract-macjobs'
 import { isCrossHostPeerMethod } from '@shared/contract-crosshost'
@@ -170,8 +171,8 @@ export interface MacBridgeDeps {
   load?: { sample?: () => LoadSample; intervalMs?: number }
   /** Mac-local threads a host started here that are live now (crossHostThreads.ts); counts toward `macBridge.maxThreads.<envId>`. */
   liveThreads?: (envId: string) => number
-  /** The person is away from the computer (away.ts): a call that would ask them is allowed at once, quiet and remembered nowhere, and its reply marked (`ctx.markAway`). */
-  away?: () => boolean
+  /** The person is away from the computer for threads of this kind (away.ts): a call from a box thread of that kind that would ask them is allowed at once, quiet and remembered nowhere, and its reply marked (`ctx.markAway`). */
+  away?: (kind: AwayKind) => boolean
   /** What peer.register says of this host besides its offers: its hostname, build and presence (remote/relayServe.ts registration). */
   registration?: () => { name: string; presence: import('@shared/contract-relay').MacPresence; build?: import('@shared/deployDrift').BuildFacts }
   /**
@@ -372,6 +373,8 @@ interface Pending {
   awayDenies?: boolean
   /** Away leaves this card waiting for the owner: a Work thread's command on the always-ask list. */
   awayKeeps?: boolean
+  /** The asking box thread's kind: only that kind's switch decides this card at the flip; none named, only both. */
+  awayKind?: AwayKind
   stop?: () => void
   timer: NodeJS.Timeout
   /** The box's `peer.call` id this request serves: what a `mac.cancel` names. */
@@ -845,8 +848,14 @@ export class MacBridge {
     this.standingListeners.get(id)?.(held)
   }
 
-  private awayOn(): boolean {
-    return this.deps.away?.() ?? false
+  /** Both kinds away: the reading for a card that names no thread kind. */
+  private awayBoth(): boolean {
+    return (this.deps.away?.('code') ?? false) && (this.deps.away?.('work') ?? false)
+  }
+
+  /** Is the person at this Mac away for this box thread's kind (its `scope`, by its box's word). */
+  private awayOn(thread: Pick<MacCallThread, 'scope'>): boolean {
+    return this.deps.away?.(awayKindOf(thread.scope)) ?? false
   }
 
   /**
@@ -854,10 +863,11 @@ export class MacBridge {
    * would no longer be asked, allowed (denied for a money act, `awayDenies`),
    * with nothing remembered. Its call reads `byAway` and marks its reply.
    */
-  awayChanged(enabled: boolean): void {
-    if (!enabled) return
+  awayChanged(turnedOn: readonly AwayKind[]): void {
+    if (!turnedOn.length) return
     for (const p of [...this.pendingById.values()]) {
       if (p.request.status !== 'pending' || p.request.quiet || p.awayKeeps) continue
+      if (p.awayKind ? !turnedOn.includes(p.awayKind) : !(this.deps.away?.('code') && this.deps.away?.('work'))) continue
       this.log(`${p.request.hostName}: ${p.request.method} ${p.awayDenies ? 'denied' : 'allowed'} (away turned on)`)
       p.decide(!p.awayDenies, false, true)
     }
@@ -873,7 +883,7 @@ export class MacBridge {
     until: number,
     quiet = false,
     callId?: string,
-    opts: { awayDenies?: boolean; awayKeeps?: boolean } = {}
+    opts: { awayDenies?: boolean; awayKeeps?: boolean; awayKind?: AwayKind } = {}
   ): {
     id: string
     answer: Promise<MacAnswer>
@@ -907,6 +917,7 @@ export class MacBridge {
           ...(callId ? { callId } : {}),
           ...(opts.awayDenies ? { awayDenies: true } : {}),
           ...(opts.awayKeeps ? { awayKeeps: true } : {}),
+          ...(opts.awayKind ? { awayKind: opts.awayKind } : {}),
           decide: (allow, remember, byAway) => {
             if (settled) return
             settled = true
@@ -1102,7 +1113,7 @@ export class MacBridge {
       // A paused thread's read goes only where it needs no prompt: nobody asks the person for a thread that is not running.
       line('refused (paused)')
       throw new Error(REFUSED_PAUSED)
-    } else if (this.awayOn()) {
+    } else if (this.awayOn(thread)) {
       // Nobody is at the Mac to ask: allowed once, secrets too, and never remembered as a folder.
       line('allowed (away)')
       markAway()
@@ -1123,7 +1134,8 @@ export class MacBridge {
         },
         Math.min(Date.now() + MAC_APPROVAL_WAIT_MS, ctx.deadlineAt - REPLY_MARGIN_MS),
         false,
-        ctx.callId
+        ctx.callId,
+        { awayKind: awayKindOf(thread.scope) }
       )
       const decision = await answer
       if (!decision.allow) {
@@ -1173,7 +1185,7 @@ export class MacBridge {
     // Full access on the box: decided at once, as a remembered command is.
     const unattended = threadRunsUnattended(thread) && !mustAsk
     // Away: what would prompt is admitted the same way, always quiet, and never remembered.
-    const away = !rule && !unattended && !mustAsk && this.awayOn()
+    const away = !rule && !unattended && !mustAsk && this.awayOn(thread)
     const shown = runPresentation({
       remembered: !!rule,
       unattended: unattended || away,
@@ -1197,7 +1209,7 @@ export class MacBridge {
       askUntil,
       !shown.prompt && (shown.quiet || away),
       callId,
-      mustAsk ? { awayKeeps: true } : {}
+      { awayKind: awayKindOf(thread.scope), ...(mustAsk ? { awayKeeps: true } : {}) }
     )
     const remembered = !shown.prompt
     const decision = remembered
@@ -1254,9 +1266,10 @@ export class MacBridge {
   /** mac.run background: true and the calls on its job; the card is mac.run's, marked interactive. */
   get jobs(): MacJobs {
     this.jobsInstance ??= new MacJobs({
-      ask: (shape, until, remembered, callId, markAway, mustAsk) => {
+      ask: (shape, until, remembered, callId, markAway, mustAsk, awayKind) => {
         // Away admits what would prompt as a remembered job is, always quiet, remembering nothing. Not a Work thread's always-ask command.
-        const away = !remembered && !mustAsk && this.awayOn()
+        // Only the box thread's own kind's switch counts; a start that names none needs both.
+        const away = !remembered && !mustAsk && (awayKind ? this.deps.away?.(awayKind) ?? false : this.awayBoth())
         if (away) {
           this.log(`${shape.hostName}: mac.jobStart allowed (away)`)
           markAway?.()
@@ -1268,7 +1281,7 @@ export class MacBridge {
           until,
           away || (remembered && !this.showRunningOf(shape.environmentId)),
           callId,
-          mustAsk ? { awayKeeps: true } : {}
+          { ...(awayKind ? { awayKind } : {}), ...(mustAsk ? { awayKeeps: true } : {}) }
         )
         if (remembered || away) this.pendingById.get(asked.id)?.decide(true, false)
         return {
@@ -1308,7 +1321,7 @@ export class MacBridge {
       bridge: {
         policyOf: (envId) => this.policyOf(envId),
         computerOf: (envId) => this.computerOf(envId),
-        away: () => this.deps.away?.() ?? false,
+        away: (kind) => this.deps.away?.(kind) ?? false,
         askComputer: (shape, until, callId, opts) => this.ask(shape, until, false, callId, opts),
         finishCard: (id, outcome) => this.finish(id, outcome),
         openLive: (shape, stop) => this.openLive(shape, stop),
@@ -1387,7 +1400,7 @@ export class MacBridge {
   /** mac.writeFile (macBridgeWrite.ts): this bridge's prompt and log, the policy read raw (a level above read this build does not know writes). */
   private writeFile(
     env: { id: string; name: string },
-    thread: { id: string; title: string },
+    thread: { id: string; title: string; scope?: 'work' },
     args: unknown,
     deadlineAt: number,
     callId: string | undefined,
@@ -1404,13 +1417,13 @@ export class MacBridge {
         remembered: writeFoldersOf(this, env.id, thread.id),
         ask: (shape, until) => {
           // Away: a quiet request, allowed at once, remembering nothing.
-          if (this.awayOn()) {
+          if (this.awayOn(thread)) {
             markAway()
-            const asked = this.ask(shape, until, true, callId)
+            const asked = this.ask(shape, until, true, callId, { awayKind: awayKindOf(thread.scope) })
             this.pendingById.get(asked.id)?.decide(true, false, true)
             return asked
           }
-          const asked = this.ask(shape, until, false, callId)
+          const asked = this.ask(shape, until, false, callId, { awayKind: awayKindOf(thread.scope) })
           return {
             id: asked.id,
             answer: asked.answer.then((d) => {

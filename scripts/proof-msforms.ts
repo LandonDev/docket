@@ -86,7 +86,7 @@ const registry = {
   // the carrier for a Work thread and refuse it Forms, as it refuses a thread). The proof's one thread is a code thread.
   get: (_id: string) => null as unknown as SessionMeta,
   requestApproval: async () => false,
-  awayOn: () => false,
+  awayFor: () => false,
   rootSessionOf: (id: string) => id,
   onMeta: () => {},
   onRemoved: () => () => {},

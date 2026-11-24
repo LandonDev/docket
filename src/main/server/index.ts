@@ -1123,8 +1123,8 @@ export async function startServer(
   const macBridge = new MacBridge({
     environmentId,
     store,
-    // While the person is away, a call that would ask them here is refused at once.
-    away: () => away.enabled,
+    // While the person is away for the calling thread's kind, a call that would ask them here is decided at once.
+    away: (kind) => away.on(kind),
     managedRoots: () => managedRoots(),
     environments: () => listEnvironments(store).map((e) => ({ id: e.id, name: e.name })),
     link: (id) => {
@@ -1276,7 +1276,7 @@ export async function startServer(
       const r = await peerCalls.call<MacRunResult>(
         hostId,
         'mac.run',
-        { thread: { id: thread.id, title: thread.title, permission: thread.permission }, args: { argv, cwd, timeoutMs: 120_000 } },
+        { thread: { id: thread.id, title: thread.title, permission: thread.permission, ...(thread.scope === 'work' ? { scope: 'work' as const } : {}) }, args: { argv, cwd, timeoutMs: 120_000 } },
         MAC_APPROVAL_WAIT_MS + 120_000 + 5_000
       )
       return { exitCode: r.exitCode, stdout: r.stdout, stderr: r.stderr }
@@ -1526,9 +1526,11 @@ export async function startServer(
       unavailable: () => computerUnavailable()
     })
     const pin = options.computerResolveApp ?? computerPinFromEnv()
+    // Away by the calling thread's kind: a box thread's key on this Mac reads its box's word (MacComputer.awayFor), a thread here its row's scope.
+    const computerAwayFor = (id: string): boolean => (parseMacComputerKey(id) ? macBridge.computer.awayFor(id) : registry.awayFor(id))
     const sessions = new ComputerSessions({
       service,
-      registry: { get: (id) => registry.get(id), requestApproval: (id, req) => registry.requestApproval(id, req), awayOn: () => registry.awayOn() },
+      registry: { get: (id) => registry.get(id), requestApproval: (id, req) => registry.requestApproval(id, req), awayFor: computerAwayFor },
       store,
       dataDir: computerData,
       // A box thread's pictures (its session keyed by box and thread) land apart, only to be read back to the box.
@@ -1555,7 +1557,7 @@ export async function startServer(
         service,
         idle: options.personIdle,
         presence,
-        awayOn: () => registry.awayOn(),
+        awayOn: computerAwayFor,
         getSetting: (key) => store.getSetting(key),
         held: (threadId, line) => {
           // the status line says the hold only while someone reads the call (computer/pending.ts)
@@ -2208,10 +2210,11 @@ export async function startServer(
   registry.admission = admission
   // Away from computer: the threads read it at spawn, and every flip reaches the running turns.
   registry.away = away
-  away.onChange((snapshot, stateChanged) => {
-    if (stateChanged) {
-      registry.awayChanged(snapshot.state.enabled)
-      macBridge.awayChanged(snapshot.state.enabled)
+  // Each thread hears only its own kind's switch (awayKindOf its scope).
+  away.onChange((_snapshot, changed) => {
+    if (changed.length) {
+      registry.awayChanged(changed)
+      macBridge.awayChanged(changed.filter((kind) => away.on(kind)))
     }
   })
   // Warm processes count against memory, never the cap: none spawn under the floor.
@@ -3883,7 +3886,7 @@ export async function startServer(
             sendFrame({ id: req.id, ok: true, result: away.get() })
             break
           case 'away.set':
-            sendFrame({ id: req.id, ok: true, result: { state: away.set(req.params.enabled) } })
+            sendFrame({ id: req.id, ok: true, result: { state: away.set(req.params) } })
             break
           case 'away.apply': {
             const applied = away.apply(req.params.state)

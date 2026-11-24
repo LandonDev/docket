@@ -30,7 +30,7 @@ import { batchChildIds, runSessionBatch, type SessionBatchAction } from './sessi
 import { ThreadScheduler, type QueuedLine } from './scheduler'
 import type { Admission } from './admission'
 import type { AwayService } from './away'
-import { awayVerdict } from '@shared/away'
+import { awayKindOf, awayVerdict, type AwayKind } from '@shared/away'
 import { AWAY_APPROVAL_REPLY, AWAY_MECHANICS, AWAY_QUESTION_REPLY, awayBlock } from './awayPrompts'
 import { approvalLine } from '@shared/approvalLine'
 import { CATALOG, clampReasoning, modelInfo, resolveModel, supportsContext1m, visibleModels, type ProviderId } from '@shared/catalog'
@@ -738,7 +738,7 @@ export class SessionRegistry {
   /** The running cap and the memory floor (admission.ts). Set by the server; null runs uncapped. */
   admission: Pick<Admission, 'cap' | 'memoryLow'> | null = null
   /** Away from computer (away.ts). Set by the server; null is never away. */
-  away: Pick<AwayService, 'enabled' | 'count'> | null = null
+  away: Pick<AwayService, 'on' | 'count'> | null = null
   /** What each live harness was last told about away (awayPrompts.ts): its
    *  spawn's mechanics, a whisper, or a catch-up ahead of its next turn. A
    *  harness with no entry was told nothing, which reads as off. */
@@ -3350,7 +3350,7 @@ export class SessionRegistry {
       }
       const preamble = parts.filter(Boolean).join('\n\n')
       // The preamble carried the away mechanics (and the block, while away is on).
-      if (preamble.includes(AWAY_MECHANICS)) this.awayToldAs.set(sessionId, this.awayOn())
+      if (preamble.includes(AWAY_MECHANICS)) this.awayToldAs.set(sessionId, this.awayFor(sessionId))
       if (preamble) {
         const note = retyped
           ? `The user CHANGED this thread's type mid-conversation. The instructions below REPLACE the ones this thread opened with — earlier turns may follow the old shape; from this message on, follow these.\n\n`
@@ -3928,7 +3928,8 @@ export class SessionRegistry {
     // Nobody is there to answer: allowed at once (denied for a computer act
     // that spends money, and for what a Work thread may not do without the
     // owner: awayVerdict), one quiet row says what was decided. No card.
-    if (this.awayOn()) {
+    // Only this thread's own kind's switch counts (awayFor).
+    if (this.awayFor(sessionId)) {
       const allow = !req.awayDenies && this.awayAllows(sessionId, req.toolName)
       this.awayNotice(sessionId, allow ? 'allowed' : 'approval', approvalLine(req.toolName, req.input, req.title))
       return Promise.resolve(allow)
@@ -4818,7 +4819,7 @@ export class SessionRegistry {
         // claude reads the away state into its system prompt at this spawn
         // (mechanicsFor); every other harness reads it in its first message,
         // or not at all on a resume, so its next turn catches up.
-        if (meta.provider === 'claude') this.awayToldAs.set(sessionId, this.awayOn())
+        if (meta.provider === 'claude') this.awayToldAs.set(sessionId, this.awayFor(sessionId))
         else this.awayToldAs.delete(sessionId)
         return driver.start({
           // Drivers seed goal state from here (resume dedup, watcher init).
@@ -5872,7 +5873,7 @@ export class SessionRegistry {
         return true
       }
     }
-    if (!this.awayOn()) return false
+    if (!this.awayFor(sessionId)) return false
     if (event.type !== 'question-request' && event.type !== 'approval-request') return false
     const marks = this.deciding.get(sessionId) ?? new Set<string>()
     marks.add(event.requestId)
@@ -5962,13 +5963,15 @@ export class SessionRegistry {
     return 'ok'
   }
 
-  /** The flip to away: every card already waiting is answered the same way
-   *  (allowed, unless it is a money act raised with awayDenies). Their rows
-   *  were written, so they resolve where they stand. A `run-skip` card
-   *  allowed is Run now. */
-  private answerWaitingCards(): void {
+  /** The flip to away for a kind: every card already waiting on a thread of
+   *  that kind is answered the same way (allowed, unless it is a money act
+   *  raised with awayDenies). Their rows were written, so they resolve where
+   *  they stand. A `run-skip` card allowed is Run now. A thread of the other
+   *  kind keeps its card. */
+  private answerWaitingCards(kinds: readonly AwayKind[]): void {
     for (const sessionId of this.handles.keys()) {
       if (this.store.getSession(sessionId)?.status !== 'waiting') continue
+      if (!kinds.includes(this.awayKind(sessionId)) || !this.awayFor(sessionId)) continue
       for (const req of this.store.unresolvedRequests(sessionId, AWAY_SWEEP_ROWS)) {
         if (req.type === 'question-request') {
           this.awayNotice(sessionId, 'question', questionLine(req.questions))
@@ -5982,26 +5985,46 @@ export class SessionRegistry {
     }
   }
 
-  awayOn(): boolean {
-    return this.away?.enabled ?? false
+  /** A thread's kind for Away, from its row's scope; a thread this host does not hold has none. */
+  private awayKind(sessionId: string): AwayKind {
+    return awayKindOf(this.get(sessionId)?.scope)
+  }
+
+  /**
+   * Is the person away for THIS thread: its own kind's switch (Code, or Work
+   * for a thread stamped `scope: 'work'`). An id this host holds no row for
+   * reads away only when both kinds are: the reading that never answers for
+   * him where one kind still asks.
+   */
+  awayFor(sessionId: string): boolean {
+    const away = this.away
+    if (!away) return false
+    const meta = this.get(sessionId)
+    return meta ? away.on(awayKindOf(meta.scope)) : away.on('code') && away.on('work')
   }
 
   private awayCatchUp(sessionId: string): string {
-    const now = this.awayOn()
+    const now = this.awayFor(sessionId)
     if ((this.awayToldAs.get(sessionId) ?? false) === now) return ''
     this.awayToldAs.set(sessionId, now)
     return awayBlock(now)
   }
 
-  /** Away flipped (away.ts): every running turn hears it now; every other
-   *  thread at its next turn (takeNotices) or its next spawn (mechanicsFor).
-   *  Turning on also answers the cards already waiting. */
-  awayChanged(enabled: boolean): void {
-    this.notedDecisions.clear()
-    if (enabled) this.answerWaitingCards()
+  /** Away flipped for these kinds (away.ts): every running turn of a kind
+   *  that changed hears its own kind's state now; every other thread of it
+   *  at its next turn (takeNotices) or its next spawn (mechanicsFor). A
+   *  thread of a kind that did not change hears nothing. Turning a kind on
+   *  also answers that kind's cards already waiting. */
+  awayChanged(changed: readonly AwayKind[]): void {
+    for (const sessionId of [...this.notedDecisions.keys()]) {
+      if (changed.includes(this.awayKind(sessionId))) this.notedDecisions.delete(sessionId)
+    }
+    this.answerWaitingCards(changed)
     for (const [sessionId, handle] of this.handles) {
+      if (!changed.includes(this.awayKind(sessionId))) continue
       const status = this.store.getSession(sessionId)?.status
       if (status !== 'running' && status !== 'starting' && status !== 'waiting') continue
+      const enabled = this.awayFor(sessionId)
       if ((this.awayToldAs.get(sessionId) ?? false) === enabled) continue
       this.awayToldAs.set(sessionId, enabled)
       this.lastActivity.set(sessionId, Date.now())

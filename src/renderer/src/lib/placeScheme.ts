@@ -44,6 +44,16 @@ let dissolve: { skipTransition(): void } | null = null;
 /** The kind of place this window is on. */
 export const currentPlaceKind = (): PlaceKind => kind;
 
+const kindListeners = new Set<() => void>();
+/** Hear each move to another kind of place (the rail's Away row reads it). */
+export function onPlaceKind(listener: () => void): () => void {
+  kindListeners.add(listener);
+  return () => {
+    kindListeners.delete(listener);
+  };
+}
+
+
 /** Main keeps the window's theme and kind with its geometry: the next launch
  *  opens with that backing colour and that class (src/main/windows.ts). The
  *  web /ui has no main to tell. */
@@ -111,6 +121,7 @@ function moveTo(next: PlaceKind): void {
   if (next === kind) return;
   kind = next;
   savePlaceKind(next);
+  for (const listener of kindListeners) listener();
   // The window's address names its kind for boot.js: kept in step, so a reload paints this place's theme first.
   try {
     const here = new URL(window.location.href);

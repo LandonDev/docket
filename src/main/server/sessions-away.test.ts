@@ -61,7 +61,14 @@ let root: string
 let db: ReturnType<typeof openDb>
 let store: Store
 let registry: SessionRegistry
-const away = { enabled: false, count: vi.fn() }
+/** `enabled` flips both kinds, as the tests before Away by kind did; `kinds` set one by one. */
+const away = {
+  enabled: false,
+  kinds: null as { code: boolean; work: boolean } | null,
+  on: (kind: 'code' | 'work'): boolean => (away.kinds ? away.kinds[kind] : away.enabled),
+  count: vi.fn()
+}
+const BOTH = ['code', 'work'] as const
 
 beforeEach(async () => {
   sends.clear()
@@ -70,6 +77,7 @@ beforeEach(async () => {
   approvals.length = 0
   knobs.resolves = true
   away.enabled = false
+  away.kinds = null
   away.count.mockClear()
   root = await mkdtemp(join(tmpdir(), 'tc-away-reg-'))
   db = openDb(join(root, 'test.db'))
@@ -180,7 +188,7 @@ describe('a flip', () => {
     running(live)
     settle(idle)
     away.enabled = true
-    registry.awayChanged(true)
+    registry.awayChanged(BOTH)
     await flush()
     expect(sent(live).at(-1)).toBe(AWAY_ON)
     expect(sent(idle)).toHaveLength(1)
@@ -190,7 +198,7 @@ describe('a flip', () => {
     const id = await startThread()
     settle(id)
     away.enabled = true
-    registry.awayChanged(true)
+    registry.awayChanged(BOTH)
     await registry.send(id, 'next')
     await flush()
     expect(sent(id)[1].startsWith(AWAY_ON)).toBe(true)
@@ -201,9 +209,9 @@ describe('a flip', () => {
     const id = await startThread()
     settle(id)
     away.enabled = true
-    registry.awayChanged(true)
+    registry.awayChanged(BOTH)
     away.enabled = false
-    registry.awayChanged(false)
+    registry.awayChanged(BOTH)
     await registry.send(id, 'next')
     await flush()
     expect(sent(id)[1]).not.toContain('<away')
@@ -213,10 +221,10 @@ describe('a flip', () => {
     const id = await startThread()
     running(id)
     away.enabled = true
-    registry.awayChanged(true)
+    registry.awayChanged(BOTH)
     settle(id)
     away.enabled = false
-    registry.awayChanged(false)
+    registry.awayChanged(BOTH)
     await registry.send(id, 'next')
     await flush()
     expect(sent(id).at(-1)!.startsWith(AWAY_OFF)).toBe(true)
@@ -226,7 +234,7 @@ describe('a flip', () => {
     const id = await startThread()
     settle(id)
     away.enabled = true
-    registry.awayChanged(true)
+    registry.awayChanged(BOTH)
     registry.deliverAgentReport(id, { agentId: 'child', title: 'Child', status: 'idle', text: '<subagent-report>done</subagent-report>' })
     await flush()
     expect(sent(id).at(-1)!.startsWith(AWAY_ON)).toBe(true)
@@ -375,7 +383,7 @@ describe('the host answers for an away person', () => {
     ctx(a).emit(approval('a1'))
     ctx(a).emit({ type: 'status', status: 'waiting', detail: 'awaiting approval' })
     away.enabled = true
-    registry.awayChanged(true)
+    registry.awayChanged(BOTH)
     await flush()
     expect(answers).toEqual([{ sessionId: q, requestId: 'q1', answers: [[AWAY_QUESTION_REPLY], [AWAY_QUESTION_REPLY]] }])
     expect(approvals).toEqual([{ sessionId: a, requestId: 'a1', allow: true, reason: undefined }])
@@ -393,7 +401,7 @@ describe('the host answers for an away person', () => {
     await flush()
     expect(store.getSession(run)!.status).toBe('waiting')
     away.enabled = true
-    registry.awayChanged(true)
+    registry.awayChanged(BOTH)
     await expect(runNow).resolves.toBe(true)
     await expect(paid).resolves.toBe(false)
     expect(rows(run).filter((e) => e.type === 'notice').map((e) => (e as { away?: { kind: string } }).away?.kind)).toEqual(['allowed'])
@@ -463,7 +471,7 @@ describe('the host answers for an away person, in a Work thread', () => {
     const fromCode = ctx(code).requestApproval({ requestId: 'c1', toolName: 'addon_add', title: 'Add the add-on github', input: {} })
     await flush()
     away.enabled = true
-    registry.awayChanged(true)
+    registry.awayChanged(BOTH)
     await expect(fromWork).resolves.toBe(false)
     await expect(fromCode).resolves.toBe(true)
     expect(noticeKinds(work)).toEqual(['approval'])
@@ -489,5 +497,94 @@ describe('a noted decision', () => {
       { type: 'notice', kind: 'away', message: 'Chose port 3000: the README names it', away: { kind: 'decision', text: 'Chose port 3000: the README names it' } }
     ])
     expect(away.count).toHaveBeenCalledWith(id)
+  })
+})
+
+describe('Away by kind', () => {
+  async function startWork(provider: 'claude' | 'codex' = 'claude'): Promise<string> {
+    store.setSetting(WORK_SETTING_KEY, JSON.stringify({ enabled: true }))
+    const path = join(root, 'Work', 'purdue')
+    await mkdir(path, { recursive: true })
+    const purdue = registry.listWorkspaces().find((w) => w.kind === 'work') ?? (await registry.createWorkspace(path, 'purdue', { kind: 'work', sector: 'purdue' }))
+    const s = await registry.create({ threadType: 'chat', workspaceId: purdue.id, provider })
+    expect(s.scope).toBe('work')
+    await registry.send(s.id, 'draft the reply')
+    await flush()
+    return s.id
+  }
+  const cards = (id: string): number => rows(id).filter((e) => e.type === 'approval-request').length
+
+  it('Code only: a Code thread\'s card is allowed and recorded, a Work thread\'s still asks him', async () => {
+    const code = await startThread()
+    const work = await startWork()
+    running(code)
+    running(work)
+    away.kinds = { code: true, work: false }
+    await expect(ctx(code).requestApproval({ toolName: 'Bash', title: 'Run ls?', input: { command: 'ls' } })).resolves.toBe(true)
+    ctx(work).emit(approval('w1'))
+    ctx(work).emit({ type: 'status', status: 'waiting', detail: 'awaiting approval' })
+    const asked = ctx(work).requestApproval({ requestId: 'w2', toolName: 'Bash', title: 'Run ls?', input: { command: 'ls' } })
+    await flush()
+    expect(away.count).toHaveBeenCalledWith(code)
+    expect(away.count).not.toHaveBeenCalledWith(work)
+    expect(cards(work)).toBe(2)
+    expect(approvals).toEqual([])
+    await registry.approve(work, 'w2', false)
+    await expect(asked).resolves.toBe(false)
+  })
+
+  it('Work only: a Work thread\'s card is allowed and recorded, a Code thread\'s question still asks him', async () => {
+    const code = await startThread()
+    const work = await startWork('codex')
+    running(code)
+    running(work)
+    away.kinds = { code: false, work: true }
+    ctx(work).emit(approval('w1'))
+    ctx(code).emit(question('q1'))
+    await flush()
+    expect(approvals).toEqual([{ sessionId: work, requestId: 'w1', allow: true, reason: undefined }])
+    expect(answers).toEqual([])
+    expect(rows(code).some((e) => e.type === 'question-request')).toBe(true)
+    expect(away.count).toHaveBeenCalledWith(work)
+    expect(away.count).not.toHaveBeenCalledWith(code)
+  })
+
+  it('a flip of one kind tells only threads of that kind, and answers only their waiting cards', async () => {
+    const code = await startThread()
+    const work = await startWork()
+    running(code)
+    running(work)
+    const fromCode = ctx(code).requestApproval({ requestId: 'c1', toolName: 'Bash', title: 'Run ls?', input: {} })
+    const fromWork = ctx(work).requestApproval({ requestId: 'w1', toolName: 'Bash', title: 'Run ls?', input: {} })
+    await flush()
+    away.kinds = { code: true, work: false }
+    registry.awayChanged(['code'])
+    await flush()
+    await expect(fromCode).resolves.toBe(true)
+    expect(sent(code).at(-1)).toBe(AWAY_ON)
+    expect(sent(work).some((t) => t.includes('<away'))).toBe(false)
+    expect(cards(work)).toBe(1)
+    away.kinds = { code: true, work: true }
+    registry.awayChanged(['work'])
+    await flush()
+    await expect(fromWork).resolves.toBe(true)
+    expect(sent(work).at(-1)).toBe(AWAY_ON)
+    // The Code thread already heard on: the Work flip says nothing more to it.
+    expect(sent(code).filter((t) => t === AWAY_ON)).toHaveLength(1)
+  })
+
+  it('a thread hears its own kind\'s state at its start', async () => {
+    away.kinds = { code: false, work: true }
+    const code = await startThread('codex')
+    const work = await startWork('codex')
+    expect(sent(code)[0]).not.toContain('<away state="on">')
+    expect(sent(work)[0]).toContain('<away state="on">')
+  })
+
+  it('an id this host holds no row for reads away only while both kinds are', () => {
+    away.kinds = { code: true, work: false }
+    expect(registry.awayFor('nobody')).toBe(false)
+    away.kinds = { code: true, work: true }
+    expect(registry.awayFor('nobody')).toBe(true)
   })
 })

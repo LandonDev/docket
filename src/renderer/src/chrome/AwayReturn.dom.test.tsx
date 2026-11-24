@@ -80,6 +80,21 @@ describe("createAwayReturn", () => {
     expect(show).not.toHaveBeenCalled();
   });
 
+  it("comes back only when the last kind turns off, not when one of two does", () => {
+    const show = vi.fn();
+    const push = createAwayReturn(show, () => 0);
+    const kinds = (code: boolean, work: boolean, at: number, threads: { sessionId: string; count: number }[] = []): AwaySnapshot => ({
+      state: { enabled: code && work, code, work, at, by: "env_mac" },
+      decided: { since: 1, threads },
+    });
+    // Both → Code only: still away for Code, nothing to show.
+    push("local", kinds(true, true, 1), kinds(true, false, 2, [{ sessionId: "a", count: 1 }]));
+    expect(show).not.toHaveBeenCalled();
+    // Code only → off: the stretch ends.
+    push("local", kinds(true, false, 2), kinds(false, false, 3, [{ sessionId: "a", count: 1 }]));
+    expect(show).toHaveBeenCalledWith([{ environmentId: "local", sessionId: "a", count: 1 }], expect.any(Map));
+  });
+
   it("with Work on, hands on every host's tally even when no thread decided: Work's list has held and written too", () => {
     const show = vi.fn();
     const push = createAwayReturn(show, () => 0, () => true);

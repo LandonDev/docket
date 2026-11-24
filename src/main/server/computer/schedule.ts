@@ -64,8 +64,8 @@ export interface SessionSchedulerOptions {
   service: Pick<ComputerService, 'request' | 'onNotification'>
   idle: PersonIdleSource
   presence: PresenceSource
-  /** the Away switch (registry.awayOn) */
-  awayOn: () => boolean
+  /** the Away switch of this thread's kind (registry.awayFor) */
+  awayOn: (threadId: string) => boolean
   /** `computer.sessionIdleMs`, read at every check */
   getSetting: (key: string) => string | null
   /** A thread's held line, or null when it ends: the registry's status detail and the computer row's words. */
@@ -135,6 +135,7 @@ export class SessionSlot {
 }
 
 interface ThreadState {
+  threadId: string
   /** Run now, or the call's own card naming the session: valid until the person's next input */
   leaseFrom: number | null
   /** apps whose card was Skipped (or timed out) this turn */
@@ -338,7 +339,7 @@ export class SessionScheduler implements SessionTierGate {
   private state(threadId: string): ThreadState {
     let st = this.threads.get(threadId)
     if (!st) {
-      st = { leaseFrom: null, skipped: new Set(), heldDown: false, heldExpiresAt: 0, heldTimer: null, inCall: false, interruptedInCall: false, restoring: null, line: null }
+      st = { threadId, leaseFrom: null, skipped: new Set(), heldDown: false, heldExpiresAt: 0, heldTimer: null, inCall: false, interruptedInCall: false, restoring: null, line: null }
       this.threads.set(threadId, st)
     }
     return st
@@ -350,7 +351,7 @@ export class SessionScheduler implements SessionTierGate {
       now: this.clock.now(),
       idleS: this.opts.idle.getSystemIdleTime(),
       presence: { screen, power },
-      awaySwitch: this.opts.awayOn(),
+      awaySwitch: this.opts.awayOn(st.threadId),
       sessionIdleMs: sessionIdleMs(this.opts.getSetting(SESSION_IDLE_SETTING)),
       leaseFrom: st.leaseFrom
     })
@@ -360,7 +361,7 @@ export class SessionScheduler implements SessionTierGate {
     const { screen, power } = this.opts.presence.snapshot()
     return frontFreedom({
       presence: { screen, power },
-      awaySwitch: this.opts.awayOn(),
+      awaySwitch: this.opts.awayOn(st.threadId),
       mode: activeApp(this.opts.getSetting(ACTIVE_APP_SETTING)),
       session: this.freedom(st)
     })

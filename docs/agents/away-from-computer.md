@@ -1,15 +1,45 @@
 # Away from computer: threads finish without the person
 
-- The state is the person's, one copy per host: `{ enabled, at, by }` and
-  the stretch's tally of decisions per thread in the settings table
-  (`away`, `away:decided`; src/main/server/away.ts `AwayService`,
-  src/shared/away.ts). `away.get` (read), `away.set` (approve: it answers
-  every thread's approvals), `away.apply` (admin, the peer leg) and the
-  `away` push (src/shared/contract-away.ts). No home host: the Mac sends a
+- The state is the person's, one copy per host, and has two switches: Code
+  threads and Work threads, each on or off by itself (none, Code only, Work
+  only, both). It is `{ enabled, code, work, at, by }` and the stretch's
+  tally of decisions per thread in the settings table (`away`,
+  `away:decided`; src/main/server/away.ts `AwayService`, src/shared/away.ts).
+  `enabled` is true only while both kinds are away: it is what a window, a
+  phone or a peer one release behind reads. `away.get` (read), `away.set`
+  (approve: `{ code?, work? }` sets each kind named and leaves the other;
+  `{ enabled }` alone, an older client's, sets both), `away.apply` (admin,
+  the peer leg) and the `away` push (src/shared/contract-away.ts). A row an
+  older build wrote, or an older peer's state, has `enabled` alone and reads
+  as both kinds at that value: a host that was away is away for both, off is
+  off for both. Each kind keeps its own stamp (`codeAt`, `workAt`) and a
+  peer's state merges kind by kind, newest wins (`mergeAway`), so a flip of
+  one kind on one host never brings back a stale value of the other. The
+  tally's stretch runs while any kind is away: the first kind on starts it,
+  the last one off ends it. No home host: the Mac sends a
   flip to every link, applies the box's push when newer and never sends it
   back, and link-up settles both ways, newest wins
   (remote/awaySync.ts; docs/box.md "Away from computer: one state on every
   host"). Only a person turns it off.
+- **Each thread by its own kind.** A thread's kind is its row's scope
+  (`sessions.scope`, stamped once at create: a Work workspace's thread, a
+  Work Chat and anything a Work thread starts are `work`; every other thread
+  is Code; `awayKindOf` in src/shared/away.ts). Everything below asks "is
+  THIS thread away", its kind's switch alone: `SessionRegistry.awayFor`
+  (sessions.ts), `awayNow(session)` (orchestration.ts, the spawn's
+  mechanics), the Mac bridge by the calling box thread's `scope`
+  (macBridge.ts `awayOn(thread)`, macJobs.ts, macComputer.ts `st.kind`), the
+  computer session tier per thread (`SessionScheduler` `awayOn(threadId)`),
+  and a Work scope's `away` (work/scope.ts: the Work switch). A flip tells
+  only threads of the kind that changed, and answers only that kind's
+  waiting cards (`awayChanged(kinds)` on the registry and the Mac bridge).
+  Away for Code never makes a Work thread's ask go unasked, nor the reverse.
+- Readers with no thread in hand take "both must be on", the reading that
+  never answers for him where one kind still asks: `awayFor` of an id this
+  host holds no row for; `MacComputer.awayFor` of a key with no call yet; a
+  Mac card that names no kind at the flip. An old client's `away.get` reads
+  `enabled`, the same "both". The return toast and the review read the
+  stretch: they come when the last kind turns off.
 - The words (src/main/server/awayPrompts.ts): `AWAY_MECHANICS` rides every
   prompt beside the steer rule (claude's system prompt through
   `mechanicsFor`, other harnesses' first message through threads.ts), with
@@ -53,17 +83,36 @@
   `approval` is a denial, "Skipped while away", `allowed` "Allowed while
   away", drawn with the open lock) that counts toward the tally.
 - The app: the rail foot's Away row above Settings (chrome/AwayRow.tsx, a
-  switch on lib/away.ts, its track from components/ui/switch-track.ts),
-  Threads → Away from Computer (a checkbox row, `MenuState.checked`), the
-  away notice line folded into the run, and on the way back one toast
-  "Decided without you in N threads" with Review (chrome/AwayReturn.tsx,
-  AwayReviewDialog in the dialogs chunk). The phone only decodes the rows.
+  switch on lib/away.ts, its track from components/ui/switch-track.ts). Its
+  press flips the kind of the place the window is on (Code in a code place,
+  Work in a Work place, lib/placeScheme.ts `onPlaceKind`), its track shows
+  that kind, and its label names the kinds away in words ("Away for Code",
+  "Away for Work", "Away for both", or "Away from computer" while
+  none is). Its context menu (right-click, the menu key) holds "Code
+  threads" and "Work threads" with their ticks, then Both and Off. While no
+  host has Work on, the row is Code's alone and has no menu: nothing sets
+  Work by implication, since a Work thread keeps its scope when Work goes
+  off. A flip names only the kinds it changes (`setAway`), so a window that
+  missed another's flip never sets the other kind back; `enabled` rides
+  along for an older host and a current one reads it only when no kind is
+  named (`flipKinds`). Every Mac call a Work thread makes says `scope:
+  'work'`, its background jobs' too (macTools.ts). Threads → Away for Code Threads and Away for
+  Work Threads (checkbox rows, `MenuState.checked`; the Work row is
+  `workOnly`), the away notice line folded into the run, and on the way
+  back one toast "Decided without you in N threads" with Review
+  (chrome/AwayReturn.tsx, AwayReviewDialog in the dialogs chunk). The phone
+  decodes the rows and keeps one switch that sets both (WorkHost.swift
+  `setAway`, `away.set { enabled }`); it reads on only while both are.
 - Proof: `bun run script:e2e-away` (a haiku thread asks a question while
   away and finishes without a card; a safe-mode haiku thread's Bash write
   is allowed with no card; a flip off reaches a running turn); unit tests
   away, awaySync, sessions-away, macBridge, macBridgeWrite, macJobs,
   macTools, peerCalls, macComputer, computer/bridge, approval, schedule,
-  the drivers' allows and denials, AwayRow.dom, AwayReturn.dom.
+  the drivers' allows and denials, AwayRow.dom, AwayReturn.dom; by kind,
+  each direction: away (four states, migration, the old wire),
+  sessions-away "Away by kind", macBridge, macComputer, schedule, lib/away,
+  nativeMenuState, menuTree. The window proof: `bun scripts/e2e-away-by-kind.ts`
+  (.temp-code/plans/landed/F-away-by-kind.md).
 - **A Work thread** (docs/agents/work-outbox.md) decides and carries on,
   and nothing it does leaves. `awayVerdict(ask, scope)` (src/shared/away.ts)
   answers by the scope of the thread that asks: a code thread as above; a

@@ -197,7 +197,9 @@ export const MENU_TREE: MenuSection[] = [
       sep,
       cmd('mark_all_read', 'Mark All Read'),
       sep,
-      cmd('toggle_away', 'Away from Computer', undefined, { checkbox: true }),
+      // Away from computer, one switch a kind of thread (docs/agents/away-from-computer.md).
+      cmd('away_code', 'Away for Code Threads', undefined, { checkbox: true }),
+      cmd('away_work', 'Away for Work Threads', undefined, { checkbox: true, workOnly: true }),
       sep,
       cmd('pause_all_threads', 'Pause All'),
       cmd('resume_all_threads', 'Resume All'),

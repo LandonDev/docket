@@ -4798,11 +4798,19 @@ public enum HeldRef: Codable, Hashable, Sendable {
 
 public struct AwayState: Codable, Hashable, Sendable {
     public let enabled: Bool
+    public let code: Bool?
+    public let work: Bool?
+    public let codeAt: Double?
+    public let workAt: Double?
     public let at: Double
     public let by: String
 
-    public init(enabled: Bool, at: Double, by: String) {
+    public init(enabled: Bool, code: Bool? = nil, work: Bool? = nil, codeAt: Double? = nil, workAt: Double? = nil, at: Double, by: String) {
         self.enabled = enabled
+        self.code = code
+        self.work = work
+        self.codeAt = codeAt
+        self.workAt = workAt
         self.at = at
         self.by = by
     }

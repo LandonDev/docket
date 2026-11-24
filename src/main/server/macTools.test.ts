@@ -33,6 +33,13 @@ import {
   type PeerCallHandler
 } from './remote/peerCalls'
 
+/** Set: the Work thread's workspace may use the Mac (its Work settings name it). */
+const farDesktop = vi.hoisted(() => ({ allow: false }))
+vi.mock('./work/scope', async (importOriginal) => {
+  const real = await importOriginal<typeof import('./work/scope')>()
+  return { ...real, mayUseFarDesktop: (...a: Parameters<typeof real.mayUseFarDesktop>) => farDesktop.allow || real.mayUseFarDesktop(...a) }
+})
+
 const dir = mkdtempSync(join(tmpdir(), 'tc-mactools-'))
 afterAll(() => rmSync(dir, { recursive: true, force: true }))
 
@@ -237,6 +244,25 @@ describe('MacTools gate', () => {
     tools.setThread('root', null)
     expect(reboots).toEqual(['root', 'root'])
     expect(() => tools.setThread('ghost', 'env_mac')).toThrow(/unknown session/)
+  })
+
+  it("says a Work thread's scope on every call that may ask the Mac, a background job's and its resources' included: the Mac's Away reads the Work switch for it", async () => {
+    farDesktop.allow = true
+    try {
+      const sent: { method: string; thread: unknown }[] = []
+      const { tools, tokens } = setup(async (method, params) => {
+        sent.push({ method, thread: (params as { thread: unknown }).thread })
+        return method === 'mac.jobStart' ? { jobId: 'j1', pty: false } : 'ok'
+      })
+      tools.setThread('work', 'env_mac')
+      const token = tokens.tokenFor('work')
+      await tools.call('work', token, 'mac.readFile', { path: '/x' })
+      await tools.call('work', token, 'mac.run', { argv: ['ls'], background: true })
+      expect(sent.map((c) => c.method)).toEqual(['mac.readFile', 'mac.jobStart'])
+      for (const c of sent) expect(c.thread).toMatchObject({ id: 'work', scope: 'work' })
+    } finally {
+      farDesktop.allow = false
+    }
   })
 
   it("refuses a Work thread's every Mac call, the bridge's included, while its workspace may not use that Mac, and asks the Mac nothing", async () => {

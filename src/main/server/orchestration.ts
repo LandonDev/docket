@@ -38,6 +38,7 @@ import {
   type OrchestrationRules
 } from '@shared/rules'
 import type { EventRow, SessionMeta } from '@shared/events'
+import { awayKindOf } from '@shared/away'
 import { plainStatus } from '@shared/statusWords'
 import { watchPhrase } from '@shared/watch'
 import type { SessionRegistry } from './sessions'
@@ -1557,13 +1558,13 @@ export function masterPinNotice(master: boolean): string {
 export function mechanicsFor(session: SessionMeta): string {
   // COMPUTER_MECHANICS rides here for claude alone: a codex or Muse thread reads it in its first message (sessions.ts)
   const computer = session.provider === 'claude' ? computerMechanicsFor(session) : ''
-  const base = `${orchestratorMechanics(rulesFor(session), policyRole(session), notesMechanicsFor(session))}\n\n${awayMechanics(awayNow())}${computer ? `\n\n${computer}` : ''}`
+  const base = `${orchestratorMechanics(rulesFor(session), policyRole(session), notesMechanicsFor(session))}\n\n${awayMechanics(awayNow(session))}${computer ? `\n\n${computer}` : ''}`
   return isMasterSession(session) ? `${base}\n\n${MASTER_MECHANICS}` : base
 }
 
-/** Is the person away right now (away.ts, on the registry)? A spawn reads it into its mechanics. */
-export function awayNow(): boolean {
-  return registry?.away?.enabled ?? false
+/** Is the person away right now for this thread's kind (away.ts, on the registry; Work by its row's scope, else Code)? A spawn reads it into its mechanics. */
+export function awayNow(session: Pick<SessionMeta, 'scope'>): boolean {
+  return registry?.away?.on(awayKindOf(session.scope)) ?? false
 }
 
 /** Prompt appended to an orchestrator's system prompt: fixed mechanics

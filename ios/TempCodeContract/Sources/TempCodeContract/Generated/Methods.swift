@@ -6182,10 +6182,14 @@ public enum Methods {
         public static let name = "away.set"
 
         public struct Params: Codable, Hashable, Sendable {
-            public let enabled: Bool
+            public let enabled: Bool?
+            public let code: Bool?
+            public let work: Bool?
 
-            public init(enabled: Bool) {
+            public init(enabled: Bool? = nil, code: Bool? = nil, work: Bool? = nil) {
                 self.enabled = enabled
+                self.code = code
+                self.work = work
             }
         }
 

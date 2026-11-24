@@ -458,7 +458,8 @@ export class MacTools {
           macPeer,
           method,
           {
-            thread: { id: session.id, title: session.title, permission: session.permission },
+            // A Work thread says so: the Mac's Away judges it by the Work switch, and its floor keeps asking (macJobs.ts).
+            thread: { id: session.id, title: session.title, permission: session.permission, ...(session.scope === 'work' ? { scope: 'work' as const } : {}) },
             args
           },
           deadlineMs,

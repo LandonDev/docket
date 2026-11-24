@@ -1055,9 +1055,12 @@ Proof: the memory step of `bun run script:e2e-harness-sync`.
 
 Away from computer is the person's state, not a project's, so every host
 keeps its own copy and they agree by time. Each host stores
-`{ enabled, at, by }` in its settings table (`away`, src/main/server/away.ts)
-beside the stretch's tally of decisions per thread (`away:decided`, reset
-when away turns on). There is no home host: a flip must work while the box is
+`{ enabled, code, work, at, by }` in its settings table (`away`,
+src/main/server/away.ts): one switch for Code threads, one for Work threads,
+and `enabled` true only while both are on, for a peer one release behind. A
+peer's state with `enabled` alone reads as both kinds at that value. Beside
+it sits the stretch's tally of decisions per thread (`away:decided`, reset
+when the first kind turns on). There is no home host: a flip must work while the box is
 out of reach.
 
 The Mac drives it over the links it holds (`src/main/server/remote/awaySync.ts`):
@@ -1070,8 +1073,11 @@ The Mac drives it over the links it holds (`src/main/server/remote/awaySync.ts`)
 - On link-up each side reads the other's `away.get`, and the older side takes
   the newer state. A flip made while the box was down reaches it here.
 
-Wall clocks decide, so a skew of seconds matters only for flips seconds
-apart; the next link-up settles it. `away.set` needs approve, since it
+Newest wins kind by kind: each switch keeps its own stamp (`codeAt`,
+`workAt`; `mergeAway` in src/shared/away.ts), and a link-up merges both ways,
+so a Code flip made on the Mac before it heard the box's Work flip never
+undoes it. Wall clocks decide, so a skew of seconds matters only for flips
+seconds apart; the next link-up settles it. `away.set` needs approve, since it
 answers approvals for every thread. Proof: `remote/awaySync.test.ts` (a flip
 with the box down then up, the box's flip reaching two Macs, no echo).
 

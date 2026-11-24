@@ -3,7 +3,7 @@ import { useEffect } from "react";
 import { EMPTY_MENU_STATE, sameMenuState, WORK_ONLY_IDS, type MenuState } from "@shared/menuState";
 import { shellStore } from "../stores/shell";
 import { editorHeld, workCommands } from "./appCommands";
-import { awayEnabled, awayStore } from "./away";
+import { awayKinds, awayStore } from "./away";
 import { workspaceTabsStore } from "../stores/workspace";
 import { leafIds } from "./layout";
 import { threadsToMarkRead } from "./markRead";
@@ -39,8 +39,8 @@ export type MenuFacts = {
   dockUsable: boolean;
   unread: number;
   counts: BatchCounts;
-  /** This machine's Away is on (lib/away.ts). */
-  away: boolean;
+  /** This machine's Away, each kind (lib/away.ts). */
+  away: { code: boolean; work: boolean };
   workFile: boolean;
   /** Some host has Work on: Search Work… has somewhere to look, the digest a list to open, and Work's own rows (Go → Today) are drawn. */
   workOn?: boolean;
@@ -94,7 +94,7 @@ export function menuStateOf(f: MenuFacts): MenuState {
   }
   // Work's own rows (Go → Today) are drawn only while some host has Work on; code's only while a Work thread is not in front.
   const hidden = [...(f.workOn ? [] : WORK_ONLY_IDS), ...(f.workThread ? CODE_ONLY_IDS : [])];
-  return { open, disabled, checked: { toggle_away: f.away }, ...(f.editing?.length ? { editing: f.editing } : {}), ...(f.live ? { live: true } : {}), ...(hidden.length ? { hidden } : {}) };
+  return { open, disabled, checked: { away_code: f.away.code, away_work: f.away.work }, ...(f.editing?.length ? { editing: f.editing } : {}), ...(f.live ? { live: true } : {}), ...(hidden.length ? { hidden } : {}) };
 }
 
 const EVERYWHERE = { kind: "all" } as const;
@@ -125,7 +125,7 @@ function readFacts(dock: { dockOpen: boolean; dockUsable: boolean }, caret?: Eve
     split: !!active && leafIds(active.layout).length > 1,
     unread,
     counts: batchCounts(metas, { catalog, lastSeen, floor, scope: EVERYWHERE, now: Date.now() }),
-    away: awayEnabled(),
+    away: awayKinds(),
     workFile: workFilePort.get()?.can() ?? false,
     workOn: workSwitch.anyOn(),
     today: shellStore.getState().workPlace === "today",

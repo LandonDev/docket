@@ -227,8 +227,8 @@ section's text as it was when CLAUDE.md was split (2026-11-11).
 - **Thread notes** — `notes.md` per thread, `update_notes`, the reminders, host
   lines that never start a turn (src/main/server/threadNotes.ts,
   notesPrompts.ts). [docs/agents/thread-notes.md](docs/agents/thread-notes.md)
-- **Away from computer** — one state per host, questions answered and approvals
-  allowed while away (src/main/server/away.ts).
+- **Away from computer** — a Code and a Work switch per host, each thread by
+  its kind's: questions answered, approvals allowed (away.ts).
   [docs/agents/away-from-computer.md](docs/agents/away-from-computer.md)
 - **Add-ons** — MCP servers every harness reaches through the `app` server,
   one copy on the box, grants in aliax-core (src/main/server/addons/).

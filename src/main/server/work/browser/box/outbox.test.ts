@@ -39,7 +39,7 @@ d('a submit on the box, held in the Outbox until his press', () => {
     })
     sessions = new ComputerSessions({
       service,
-      registry: { get: (id) => rig.sessions.get(id) ?? null, requestApproval: async () => true, awayOn: () => rig.away.enabled },
+      registry: { get: (id) => rig.sessions.get(id) ?? null, requestApproval: async () => true, awayFor: () => rig.away.enabled },
       store: { getSetting: () => null, setSetting: () => {} } as never,
       dataDir: join(rig.dir, 'box', 'computer'),
       landing: (id) => join(rig.dir, 'landing', id),

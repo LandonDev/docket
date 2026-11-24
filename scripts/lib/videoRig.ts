@@ -77,7 +77,7 @@ export async function startVideoRig(opts: { root: string; work: string; trace: s
   const settings = new Map<string, string>(policy.settings)
   const sessions = new ComputerSessions({
     service,
-    registry: { get: () => null, requestApproval: async () => true, awayOn: () => false },
+    registry: { get: () => null, requestApproval: async () => true, awayFor: () => false },
     store: { getSetting: (k) => settings.get(k) ?? null, setSetting: (k, v) => (v === null ? settings.delete(k) : settings.set(k, v)) },
     dataDir: join(work, 'data'),
     landing: (id) => join(work, 'landing', id),

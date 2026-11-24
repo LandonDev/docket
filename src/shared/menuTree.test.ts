@@ -152,7 +152,8 @@ describe('menu tree', () => {
       '—',
       ['Mark All Read'],
       '—',
-      ['Away from Computer'],
+      ['Away for Code Threads'],
+      ['Away for Work Threads'],
       '—',
       ['Pause All'],
       ['Resume All'],
@@ -266,8 +267,8 @@ describe('resolveMenu', () => {
     const state = (open: string[], disabled: string[], checked: Record<string, boolean> = {}) => ({ open, disabled, checked })
     expect(sameMenuState(state(['a', 'b'], []), state(['b', 'a'], []))).toBe(true)
     expect(sameMenuState(state(['a'], []), state(['a'], ['b']))).toBe(false)
-    expect(sameMenuState(state([], [], { toggle_away: false }), state([], []))).toBe(true)
-    expect(sameMenuState(state([], [], { toggle_away: true }), state([], []))).toBe(false)
+    expect(sameMenuState(state([], [], { away_code: false }), state([], []))).toBe(true)
+    expect(sameMenuState(state([], [], { away_code: true }), state([], []))).toBe(false)
   })
 
   describe('while a live Office file has the focus', () => {
@@ -371,18 +372,20 @@ describe('resolveMenu', () => {
     })
   })
 
-  it('ticks Away from Computer, in its own group after Mark All Read, as the window says', () => {
+  it('ticks Away for each kind, in its own group after Mark All Read, as the window says', () => {
     const threads = MENU_TREE.find((s) => s.label === 'Threads')!.items
-    const at = threads.findIndex((i) => i.kind === 'command' && i.id === 'toggle_away')
+    const at = threads.findIndex((i) => i.kind === 'command' && i.id === 'away_code')
     expect(threads[at - 2]).toMatchObject({ kind: 'command', id: 'mark_all_read' })
     expect(threads[at - 1].kind).toBe('separator')
-    expect(threads[at + 1].kind).toBe('separator')
-    expect(threads[at]).toMatchObject({ label: 'Away from Computer', checkbox: true })
-    expect(MENU_COMMANDS.find((c) => c.id === 'toggle_away')!.accelerator).toBeUndefined()
-    const ticked = (checked: Record<string, boolean>) =>
-      (find(resolveMenu(MENU_TREE, { open: [], disabled: [], checked }), 'toggle_away') as { checked?: boolean }).checked
-    expect(ticked({ toggle_away: true })).toBe(true)
-    expect(ticked({})).toBe(false)
+    expect(threads[at]).toMatchObject({ label: 'Away for Code Threads', checkbox: true })
+    expect(threads[at + 1]).toMatchObject({ id: 'away_work', label: 'Away for Work Threads', checkbox: true, workOnly: true })
+    expect(threads[at + 2].kind).toBe('separator')
+    const ticked = (id: string, checked: Record<string, boolean>) =>
+      (find(resolveMenu(MENU_TREE, { open: [], disabled: [], checked }), id) as { checked?: boolean }).checked
+    expect(ticked('away_code', { away_code: true })).toBe(true)
+    expect(ticked('away_work', { away_code: true })).toBe(false)
+    expect(ticked('away_work', { away_work: true })).toBe(true)
+    expect(ticked('away_code', {})).toBe(false)
     expect((find(resolveMenu(MENU_TREE, EMPTY_MENU_STATE), 'mark_all_read') as { checked?: boolean }).checked).toBeUndefined()
   })
 })

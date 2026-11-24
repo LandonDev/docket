@@ -333,7 +333,7 @@ async function run(): Promise<void> {
   setSessionTierGate(REFUSE_SESSION_TIER)
   const sessions = new ComputerSessions({
     service: svc,
-    registry: { get: (id) => reg.get(id), requestApproval: (id, req) => reg.requestApproval(id, req), awayOn: () => reg.awayOn() },
+    registry: { get: (id) => reg.get(id), requestApproval: (id, req) => reg.requestApproval(id, req), awayFor: (id) => reg.awayFor(id) },
     store,
     dataDir: join(dataDir, 'computer'),
     landing: (id) => join(WORK, 'landing', id),

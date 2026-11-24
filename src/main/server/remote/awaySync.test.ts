@@ -58,9 +58,9 @@ describe('AwaySync', () => {
     const clock = { t: 1_000 }
     const box = host('env_box', clock)
     const m = mac('env_mac', box, clock)
-    m.away.set(true)
+    m.away.set({ enabled: true })
     await flush()
-    expect(box.get().state).toEqual({ enabled: true, at: 1_000, by: 'env_mac' })
+    expect(box.get().state).toMatchObject({ enabled: true, code: true, work: true, at: 1_000, by: 'env_mac' })
   })
 
   it('flips with the box down, and the box takes it on link-up', async () => {
@@ -68,28 +68,28 @@ describe('AwaySync', () => {
     const box = host('env_box', clock)
     const m = mac('env_mac', box, clock)
     m.link.connected = false
-    m.away.set(true)
+    m.away.set({ enabled: true })
     await flush()
-    expect(m.away.enabled).toBe(true)
-    expect(box.enabled).toBe(false)
+    expect(m.away.on('code')).toBe(true)
+    expect(box.on('code')).toBe(false)
     m.link.connected = true
     await m.sync.linkUp('env_box')
-    expect(box.get().state).toEqual({ enabled: true, at: 1_000, by: 'env_mac' })
+    expect(box.get().state).toMatchObject({ enabled: true, code: true, work: true, at: 1_000, by: 'env_mac' })
   })
 
   it('takes the box state on link-up when the box flipped later', async () => {
     const clock = { t: 1_000 }
     const box = host('env_box', clock)
     const m = mac('env_mac', box, clock)
-    m.away.set(true)
+    m.away.set({ enabled: true })
     await flush()
     m.link.connected = false
     clock.t = 2_000
-    box.set(false)
-    expect(m.away.enabled).toBe(true)
+    box.set({ enabled: false })
+    expect(m.away.on('code')).toBe(true)
     m.link.connected = true
     await m.sync.linkUp('env_box')
-    expect(m.away.get().state).toEqual({ enabled: false, at: 2_000, by: 'env_box' })
+    expect(m.away.get().state).toMatchObject({ enabled: false, code: false, work: false, at: 2_000, by: 'env_box' })
   })
 
   it("carries the box's flip to two Macs", async () => {
@@ -97,19 +97,19 @@ describe('AwaySync', () => {
     const box = host('env_box', clock)
     const a = mac('env_mac_a', box, clock)
     const b = mac('env_mac_b', box, clock)
-    box.set(true)
+    box.set({ enabled: true })
     await flush()
-    expect(a.away.get().state).toEqual({ enabled: true, at: 1_000, by: 'env_box' })
-    expect(b.away.get().state).toEqual({ enabled: true, at: 1_000, by: 'env_box' })
+    expect(a.away.get().state).toMatchObject({ enabled: true, code: true, work: true, at: 1_000, by: 'env_box' })
+    expect(b.away.get().state).toMatchObject({ enabled: true, code: true, work: true, at: 1_000, by: 'env_box' })
   })
 
   it("never sends a peer's state back to it", async () => {
     const clock = { t: 1_000 }
     const box = host('env_box', clock)
     const m = mac('env_mac', box, clock)
-    box.set(true)
+    box.set({ enabled: true })
     await flush()
-    expect(m.away.enabled).toBe(true)
+    expect(m.away.on('code')).toBe(true)
     expect(m.link.calls).not.toContain('away.apply')
   })
 
@@ -117,14 +117,48 @@ describe('AwaySync', () => {
     const clock = { t: 5_000 }
     const box = host('env_box', clock)
     const m = mac('env_mac', box, clock)
-    m.away.set(true)
+    m.away.set({ enabled: true })
     expect(m.sync.onPeerPush('env_box', { push: 'away', state: { enabled: false, at: 4_000, by: 'env_box' }, decided: { since: 0, threads: [] } })).toBe(true)
-    expect(m.away.enabled).toBe(true)
+    expect(m.away.on('code')).toBe(true)
   })
 
   it('passes other pushes on', () => {
     const clock = { t: 1 }
     const m = mac('env_mac', host('env_box', clock), clock)
     expect(m.sync.onPeerPush('env_box', { push: 'resync' })).toBe(false)
+  })
+
+  it('carries one kind alone both ways, and an older peer reads it as "both"', async () => {
+    const clock = { t: 1_000 }
+    const box = host('env_box', clock)
+    const m = mac('env_mac', box, clock)
+    m.away.set({ work: true })
+    await flush()
+    expect(box.kinds()).toEqual({ code: false, work: true })
+    // What a peer one release behind reads: `enabled` alone, false while one kind still asks him.
+    expect(box.get().state.enabled).toBe(false)
+    clock.t = 2_000
+    box.set({ code: true })
+    expect(m.away.kinds()).toEqual({ code: true, work: true })
+  })
+
+  it('keeps each kind\'s newest flip: a Code flip made before hearing a Work flip never undoes it', async () => {
+    const clock = { t: 1_000 }
+    const box = host('env_box', clock)
+    const m = mac('env_mac', box, clock)
+    m.away.set({ code: true, work: true })
+    await flush()
+    expect(box.kinds()).toEqual({ code: true, work: true })
+    // The link drops; the box turns Work off, then the Mac, not having heard, turns Code off.
+    m.link.connected = false
+    clock.t = 2_000
+    box.set({ work: false })
+    clock.t = 3_000
+    m.away.set({ code: false })
+    expect(m.away.kinds()).toEqual({ code: false, work: true })
+    m.link.connected = true
+    await m.sync.linkUp('env_box')
+    expect(box.kinds()).toEqual({ code: false, work: false })
+    expect(m.away.kinds()).toEqual({ code: false, work: false })
   })
 })

@@ -14,6 +14,7 @@ import {
   type MacCallThread
 } from '@shared/contract-macbridge'
 import { threadRunsUnattended, workMustAsk } from '@shared/contract-macbridge'
+import { awayKindOf, type AwayKind } from '@shared/away'
 import {
   MAC_JOB_IDLE_MS,
   MAC_JOB_MAX_PER_THREAD,
@@ -268,7 +269,9 @@ export interface MacJobsDeps {
     /** The start was allowed because the person is away: its reply is marked. */
     markAway?: () => void,
     /** A Work thread's command on the always-ask list: Away leaves its card for the owner. */
-    mustAsk?: boolean
+    mustAsk?: boolean,
+    /** The box thread's kind: only that kind's Away switch admits the start. */
+    awayKind?: AwayKind
   ) => {
     id: string
     answer: Promise<{ allow: boolean; remember: MacDecideRemember; outcome: MacBridgeOutcome }>
@@ -427,7 +430,8 @@ export class MacJobs {
       remembered,
       callId,
       markAway,
-      mustAsk
+      mustAsk,
+      awayKindOf(thread.scope)
     )
     const decision = await answer
     if (!decision.allow) {

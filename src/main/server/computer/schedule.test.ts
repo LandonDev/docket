@@ -111,7 +111,7 @@ function world() {
       req.signal?.addEventListener('abort', () => resolve(false), { once: true })
     })
   const opts: { askAfterMs?: number } = {}
-  const make = (o: { askAfterMs?: number } = opts): SessionScheduler =>
+  const make = (o: { askAfterMs?: number; awayOn?: (threadId: string) => boolean } = opts): SessionScheduler =>
     new SessionScheduler({
       service: service as never,
       idle,
@@ -257,6 +257,19 @@ describe('admission', () => {
     expect(linesOf(w)).toContain('Waiting for the Mac to be free')
     await w.clock.advance(3_000)
     expect(await held).toMatchObject({ admit: true, via: 'switch', waitedMs: 7_000 })
+  })
+
+  it("reads the asking thread's own Away switch: away for one kind frees only that kind's threads", async () => {
+    const w = world()
+    // Only the thread `code1` is of a kind that is away (sessions.ts awayFor, by its row's scope).
+    const s = w.make({ awayOn: (threadId: string) => threadId === 'code1' })
+    scheds.push(s)
+    w.idleFor(12_000)
+    expect(await s.request(reqOf(w, 'code1'))).toMatchObject({ admit: true, via: 'switch' })
+    let admitted = false
+    void s.request(reqOf(w, 'work1')).then(() => (admitted = true), () => {})
+    await w.clock.advance(5_000)
+    expect(admitted).toBe(false)
   })
 
   it('holds a present person in full access, says so, and admits once they go away', async () => {

@@ -169,7 +169,7 @@ describe('asText', () => {
   })
 })
 
-function bridge(opts: { managed?: string[]; load?: { load: number; cores: number }; away?: { on: boolean }; run?: ConstructorParameters<typeof MacBridge>[0]['run'] } = {}) {
+function bridge(opts: { managed?: string[]; load?: { load: number; cores: number }; away?: { on: boolean; kinds?: { code: boolean; work: boolean } }; run?: ConstructorParameters<typeof MacBridge>[0]['run'] } = {}) {
   const settings = new Map<string, string>()
   const pushes: MacBridgePush[] = []
   const lines: string[] = []
@@ -188,7 +188,7 @@ function bridge(opts: { managed?: string[]; load?: { load: number; cores: number
     shell: '/bin/sh',
     log: (l) => lines.push(l),
     load: { sample: () => ({ ...sample }), intervalMs: 0 },
-    ...(opts.away ? { away: () => opts.away!.on } : {}),
+    ...(opts.away ? { away: (kind: 'code' | 'work') => (opts.away!.kinds ? opts.away!.kinds[kind] : opts.away!.on) } : {}),
     ...(opts.run ? { run: opts.run } : {})
   })
   mb.subscribe((p) => pushes.push(p))
@@ -816,6 +816,57 @@ describe('MacBridge while the person is away', () => {
     await expect(marked(b, 'mac.run', { argv: ['/bin/echo', 'hi'], cwd: shared })).rejects.toThrow(/not run commands/)
   })
 
+  /** The card a thread's call shows, once it has. */
+  const asking = async (b: ReturnType<typeof bridge>, sessionId: string): Promise<MacBridgeRequest> => {
+    for (let i = 0; i < 200; i++) {
+      const r = b.requests().find((q) => q.sessionId === sessionId && q.status === 'pending' && !q.quiet)
+      if (r) return r
+      await new Promise((ok) => setTimeout(ok, 5))
+    }
+    throw new Error('no card')
+  }
+
+  it('Code only: a code thread\'s read is allowed and marked, a Work thread\'s still asks; Work only, the reverse', async () => {
+    const away = { on: false, kinds: { code: true, work: false } }
+    const b = bridge({ away })
+    b.mb.setPolicy('env_box', 'read')
+    const code = await marked<MacReadFileResult>(b, 'mac.readFile', { path: join(elsewhere, 'secret.txt') }, { id: 's1', title: 'code' })
+    expect(code).toMatchObject({ away: true, result: { content: 'private' } })
+    const work = marked<MacReadFileResult>(b, 'mac.readFile', { path: join(elsewhere, 'secret.txt') }, { id: 'w1', title: 'work', scope: 'work' })
+    const card = await asking(b, 'w1')
+    expect(card).toMatchObject({ kind: 'read', status: 'pending' })
+    expect(card.quiet).toBeFalsy()
+    b.mb.decide(card.id, false, false)
+    await expect(work).rejects.toThrow()
+    away.kinds = { code: false, work: true }
+    const work2 = await marked<MacReadFileResult>(b, 'mac.readFile', { path: join(elsewhere, 'secret.txt') }, { id: 'w1', title: 'work', scope: 'work' })
+    expect(work2).toMatchObject({ away: true })
+    const code2 = marked<MacReadFileResult>(b, 'mac.readFile', { path: join(elsewhere, 'secret.txt') }, { id: 's1', title: 'code' })
+    const card2 = await asking(b, 's1')
+    expect(card2).toMatchObject({ kind: 'read', status: 'pending' })
+    b.mb.decide(card2.id, false, false)
+    await expect(code2).rejects.toThrow()
+  })
+
+  it('a flip of one kind decides only that kind\'s waiting prompts', async () => {
+    const away = { on: false, kinds: { code: false, work: false } }
+    const b = bridge({ away })
+    b.mb.setPolicy('env_box', 'read')
+    const code = marked<MacReadFileResult>(b, 'mac.readFile', { path: join(elsewhere, 'secret.txt') }, { id: 's1', title: 'code' })
+    const work = marked<MacReadFileResult>(b, 'mac.readFile', { path: join(elsewhere, 'secret.txt') }, { id: 'w1', title: 'work', scope: 'work' })
+    await b.nextRequest(1)
+    let codeDone = false
+    void code.then(() => (codeDone = true), () => (codeDone = true))
+    away.kinds = { code: false, work: true }
+    b.mb.awayChanged(['work'])
+    expect(await work).toMatchObject({ away: true })
+    await new Promise((r) => setTimeout(r, 20))
+    expect(codeDone).toBe(false)
+    away.kinds = { code: true, work: true }
+    b.mb.awayChanged(['code'])
+    expect(await code).toMatchObject({ away: true })
+  })
+
   it('Away turning on allows the prompts already waiting, marks their calls and remembers nothing', async () => {
     const away = { on: false }
     const b = bridge({ away })
@@ -824,7 +875,7 @@ describe('MacBridge while the person is away', () => {
     const read = marked<MacReadFileResult>(b, 'mac.readFile', { path: join(elsewhere, 'secret.txt') }, { id: 's2', title: 't2' })
     await b.nextRequest(1)
     away.on = true
-    b.mb.awayChanged(true)
+    b.mb.awayChanged(['code', 'work'])
     expect(await run).toMatchObject({ away: true, result: { stdout: 'later\n' } })
     expect(await read).toMatchObject({ away: true, result: { content: 'private' } })
     expect(b.mb.rules.list()).toEqual([])
@@ -842,7 +893,7 @@ describe('MacBridge while the person is away', () => {
     expect(card).toMatchObject({ kind: 'run', status: 'pending' })
     expect(card.quiet).toBeFalsy()
     // turning Away on (again) answers every other waiting prompt and leaves this one
-    b.mb.awayChanged(true)
+    b.mb.awayChanged(['code', 'work'])
     await new Promise((r) => setTimeout(r, 20))
     expect(b.requests().find((r) => r.id === card.id)?.status).toBe('pending')
     b.mb.decide(card.id, false, false)
