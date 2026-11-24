@@ -101,7 +101,7 @@ export async function admitDrive(ctx: WorkCtx, by: Caller, verb: FileVerb, p: Dr
       entry: { name: thing.name, kind, shared: thing.shared || !!to?.shared },
       asked: p.asked,
       origin: p.origin,
-      digest: changeDigest({ verb, refs: p.refs, to: p.to, name: p.name })
+      digest: changeDigest({ workspaceId: p.workspaceId, verb, refs: p.refs, to: p.to, name: p.name, kind: (p as { kind?: string }).kind })
     })
     if (got === 'hold') verdict = 'hold'
   }

@@ -9,6 +9,8 @@ import { ensureResults, resultsOf } from './results'
 import { rulesCard, setRules } from './rules'
 import { ensureEarnedTables } from './earned'
 import { ensureOutboxTables } from './store'
+import { PRIVATE_CHANGE_KINDS, summaryFor } from './words'
+import { pressesFor } from '../files/policy'
 import { outboxMentions } from './mentions'
 
 /**
@@ -53,6 +55,15 @@ export function unreviewedCount(host: OutboxHost): number {
     n += card.unreviewed
   }
   return n
+}
+
+/**
+ * An item as this caller may see it: a held change to a file others can open says only that it waits, with no
+ * payload, to a caller that is not his press (a read or operate key), as the Outbox's own push goes only to `approve`.
+ */
+export function seenBy(by: Caller, item: OutboxItem): OutboxItem {
+  if (pressesFor(by) || !PRIVATE_CHANGE_KINDS.has(item.kind)) return item
+  return { ...item, summary: summaryFor(item), payload: null, result: item.result ? { summary: item.result.summary } : null }
 }
 
 /** A computer act's picture, read for one item: the list never carries it. */
@@ -100,10 +111,12 @@ export const outbox: WorkModule = {
     const host = hostOf(ctx)
     const box = host.outbox
     switch (req.method) {
-      case 'work.outbox.list':
-        return handled(box.list(req.params ?? {}))
+      case 'work.outbox.list': {
+        const listed = box.list(req.params ?? {})
+        return handled({ ...listed, items: listed.items.map((item) => seenBy(by, item)) })
+      }
       case 'work.outbox.get':
-        return handled(await withPicture(host, await box.get(req.params.ref)))
+        return handled(seenBy(by, await withPicture(host, await box.get(req.params.ref))))
       case 'work.outbox.send':
         mustBePerson(by, 'approve')
         return handled(await box.send(req.params.ref, { ...(req.params.rev !== undefined ? { rev: req.params.rev } : {}), ...(req.params.again ? { again: true } : {}), ...(req.params.many ? { many: true } : {}), by: person(by) }))

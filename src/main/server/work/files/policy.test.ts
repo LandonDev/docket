@@ -210,7 +210,7 @@ describe('the door: each cell of the callers\' table', () => {
   it("never runs a thread's own idea in a place others can open, whatever verb it is and whatever the request claims", () => {
     setThreadsMayWrite(true)
     const shared: DoorPlace = { ...TEAM, can: ALL }
-    const digest = changeDigest({ verb: 'edit', refs: [at('/lib/General/Spring budget.xlsx')] })
+    const digest = changeDigest({ workspaceId: WS, verb: 'edit', refs: [at('/lib/General/Spring budget.xlsx')] })
     const claims = [{}, { asked: true }, { origin: { from: 'window' as const } }, { asked: true, origin: { from: 'act' as const, id: 'h1', digest }, digest }]
     for (const verb of ALL) {
       for (const claim of claims) {
@@ -246,13 +246,17 @@ describe('the door: each cell of the callers\' table', () => {
 
   it("runs a held act's change only when the act was for exactly this change", () => {
     const refs = [at('/lib/General/Spring budget.xlsx')]
-    const digest = changeDigest({ verb: 'move', refs, to: at('/lib/Events') })
+    const digest = changeDigest({ workspaceId: WS, verb: 'move', refs, to: at('/lib/Events') })
     expect(admitWrite(peer, { verb: 'move', from: TEAM, entry: FILE, origin: { from: 'act', id: 'h1', digest }, digest })).toBe('run')
-    const other = changeDigest({ verb: 'move', refs, to: at('/lib/General/Budgets') })
+    const other = changeDigest({ workspaceId: WS, verb: 'move', refs, to: at('/lib/General/Budgets') })
     expect(() => admitWrite(peer, { verb: 'move', from: TEAM, entry: FILE, origin: { from: 'act', id: 'h1', digest: other }, digest })).toThrow(PEER_WRONG_ACT)
     expect(() => admitWrite(peer, { verb: 'move', from: TEAM, entry: FILE, origin: { from: 'act', id: 'h1', digest } })).toThrow(PEER_WRONG_ACT)
-    expect(changeDigest({ verb: 'rename', refs, name: 'a' })).not.toBe(changeDigest({ verb: 'rename', refs, name: 'b' }))
-    expect(changeDigest({ verb: 'trash', refs })).not.toBe(changeDigest({ verb: 'copy', refs }))
+    expect(changeDigest({ workspaceId: WS, verb: 'rename', refs, name: 'a' })).not.toBe(changeDigest({ workspaceId: WS, verb: 'rename', refs, name: 'b' }))
+    expect(changeDigest({ workspaceId: WS, verb: 'trash', refs })).not.toBe(changeDigest({ workspaceId: WS, verb: 'copy', refs }))
+    // A held New is for one kind of file in one workspace: another kind, or the same change for another workspace, is another act.
+    const make = { workspaceId: WS, verb: 'make' as const, refs: [at('/lib/General')], name: 'Agenda' }
+    expect(changeDigest({ ...make, kind: 'text' })).not.toBe(changeDigest({ ...make, kind: 'sheet' }))
+    expect(changeDigest({ ...make, kind: 'text' })).not.toBe(changeDigest({ ...make, kind: 'text', workspaceId: 'w2' }))
   })
 
   it("says the grammar's own refusal before any caller's row, for every caller", () => {

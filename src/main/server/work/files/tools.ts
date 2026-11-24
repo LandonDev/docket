@@ -235,7 +235,7 @@ export const fileActKind: ActKindDef<FileAct, never> = {
     // A history import or a thread moved to another workspace leaves this act behind: it is stale, not carried.
     const scope = act.scopeOf(item.sessionId)
     if (!scope || scope.workspaceId !== p.workspaceId) throw new ActStale(STALE.moved)
-    if (changeDigest({ verb: p.verb, refs: p.request.refs, to: p.request.to, name: p.request.name }) !== p.digest) throw new ActStale(STALE.digest)
+    if (changeDigest({ workspaceId: p.workspaceId, verb: p.verb, refs: p.request.refs, to: p.request.to, name: p.request.name, kind: p.request.kind }) !== p.digest) throw new ActStale(STALE.digest)
     const signal = AbortSignal.timeout(5 * 60_000)
     const toolCtx = { ...act, scope, sessionId: item.sessionId, signal } as ToolCtx
     // The fence and the facts, again, on the file's own host: the thread must still reach each thing as it was.
@@ -370,7 +370,7 @@ function hold(ctx: ToolCtx, workspaceId: string, a: Asked, things: FileEntry[]):
     verb,
     op: `act:${randomUUID()}`,
     request: { ...a.request, refs: [...a.request.refs] },
-    digest: changeDigest({ verb, refs: a.request.refs, to: a.request.to, name: a.request.name }),
+    digest: changeDigest({ workspaceId, verb, refs: a.request.refs, to: a.request.to, name: a.request.name, kind: a.request.kind }),
     things: things.map((e) => ({ key: e.key, name: e.name, version: versionOfEntry(e), shared: !!e.shared })),
     from: whereOf(place, verb === 'make' ? (a.paths[0] ?? '') : dirOfWords(a.paths[0] ?? '')),
     ...(a.into ? { into: { ...whereOf(a.into.named.place, a.into.words), key: a.into.entry.key, shared: !!a.into.entry.shared } } : {}),

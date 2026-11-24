@@ -52,6 +52,18 @@ describe('the office wire', () => {
     expect(office.sent).toEqual([])
   })
 
+  it("takes a key's word that he asked for a change to a shared file only from a key that may approve", async () => {
+    const URL = 'https://contoso.sharepoint.com/Brief.docx'
+    office.docs.set(URL, { paragraphs: ['Draft one.'], tracked: [] })
+    const write = (by: Caller) => call('work.office.write', { tool: 'office_doc_edit', args: { document: URL, find: 'one', replace: 'two', because: 'asked', quote: 'change one to two' }, asked: true }, by)
+    await write({ kind: 'remote', caps: ['read', 'operate'] })
+    expect(office.docs.get(URL)).toEqual({ paragraphs: ['Draft one.'], tracked: [] })
+    expect(held).toEqual([expect.objectContaining({ kind: 'office.edit', sessionId: null })])
+    await write({ kind: 'remote', caps: ['read', 'operate', 'approve'] })
+    expect(office.docs.get(URL)).toEqual({ paragraphs: ['Draft two.'], tracked: [] })
+    expect(held).toHaveLength(1)
+  })
+
   it('brings a file forward only where the caller could name it', async () => {
     const src = (path: string) => ({ source: { at: 'microsoft', host: 'env_mac', app: 'excel', name: 'B.xlsx', ref: { kind: 'path', path } } })
     await call('work.office.switch', src('/Users/o/B.xlsx'))

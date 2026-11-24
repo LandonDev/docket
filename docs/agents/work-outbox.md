@@ -110,6 +110,31 @@ idea on a file others can open is kept on his host and shown only to him.
   "hosted" only by a Microsoft URL; a LifeOS bot's comment on a document a
   guest link shows reaches the guest. Each is its build's to close.
 
+### Who stands for his press on a shared file
+
+One rule, `pressesFor` (files/policy.ts): his window on this host, or a key
+he gave `approve`. A read or operate key, another host's call (a peer never
+carries `approve`, work/peer.ts) and a thread do not. On a file others can
+open, every way an agent's change is seen or taken asks it:
+
+- History's `branches` and `decide` on a shared document (a guest-linked
+  LifeOS document, a `.tcdoc` `madeFromShared` calls shared).
+- Docs: the token is view-only for a key that is not his press, and
+  `work.docs.thread` and `work.docs.rename` are refused there.
+- Google: `work.google.write`, the mirror sent to Google.
+- Sheets: `work.sheets.review`, `edit` and the view's waiting suggestions
+  (`approves`, `reviews`), another host's call included.
+- Slides: `work.slides.review` and the proposed deck's picture
+  (`which: 'proposed'`) on a shared deck.
+- Office: `work.office.write`'s `asked` counts from a key only where it may
+  approve; from an operate key the change is held here (no thread). Another
+  host's `asked` is what its own thread's words said there, judged there.
+- The Outbox: `work.outbox.list` and `get` give a caller that is not his
+  press an `office.edit` or `google.edit` item as `a change to a file others
+  can open`, with no payload. Its notice (held or failed), and so its
+  digest row and a webhook's line, says the same, with the item's link: no
+  file name, no words (`PRIVATE_CHANGE_KINDS`, outbox/words.ts).
+
 ## Add-on tools: the rule he sets
 
 A server's hints (`readOnlyHint` and the rest) are its own word. They are

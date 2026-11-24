@@ -2,7 +2,7 @@ import type { GrantOffer, OutboxItem } from '@shared/contract-work-outbox'
 import { errorText, type HeldRef } from '@shared/work'
 import type { Tell, TellKind } from '@shared/work/tell'
 import type { ActKindDef, WorkCtx } from '../modules'
-import { heldNotice } from './words'
+import { heldNotice, summaryFor } from './words'
 
 /**
  * What the Outbox tells him, through `ctx.tell` and nothing else
@@ -73,7 +73,7 @@ function byOf(deps: TellsDeps, item: Pick<OutboxItem, 'kind' | 'payload'>): numb
 export function tellHeld(deps: TellsDeps, item: OutboxItem): void {
   if (item.state !== 'held' && item.state !== 'live') return
   const by = byOf(deps, item)
-  deps.ctx.tell({ kind: 'outbox.held', workspaceId: workspaceOf(deps, item), title: heldNotice(item.summary), key: heldKey(item.ref), open: openOf(item), ...(by !== undefined ? { by } : {}) })
+  deps.ctx.tell({ kind: 'outbox.held', workspaceId: workspaceOf(deps, item), title: heldNotice(summaryFor(item)), key: heldKey(item.ref), open: openOf(item), ...(by !== undefined ? { by } : {}) })
 }
 
 /** A send that failed and still waits on him: at once while it is fresh, in the digest once it is a day old. */
@@ -90,7 +90,7 @@ export function tellFailed(deps: TellsDeps, item: OutboxItem): void {
   deps.ctx.tell({
     kind: 'outbox.failed',
     workspaceId: workspaceOf(deps, item),
-    title: `Not sent: ${oneLine(item.summary, 140)}`,
+    title: `Not sent: ${oneLine(summaryFor(item), 140)}`,
     ...(item.error ? { detail: oneLine(item.error, 200) } : {}),
     key,
     open: openOf(item),

@@ -1,4 +1,5 @@
 import type { OfficeStatus } from '@shared/contract-work-office'
+import { pressesFor } from '../files/policy'
 import { agentPrincipal, handled, NOT_HANDLED, type Principal, type TriggerSource } from '@shared/work'
 import { errorText } from '@shared/work/ids'
 import { FenceError } from '../../remote/fence'
@@ -184,7 +185,11 @@ export const office: WorkModule = {
         // Another host of his reaches a file in this host's Teams libraries too (the Teams files' own fence).
         if (by.kind === 'remote' && key !== null && !/^https?:\/\//i.test(key) && !ctx.reaches(by, key) && !(by.peer && libraryOf(librariesOf(ctx.db, ctx.host), key))) throw new FenceError(req.method)
         const write = req.method === 'work.office.write' ? req.params : null
-        const env: Env = { ctx, ...here, by: peerPrincipal(write?.by, by, ctx.host), sessionId: by.kind === 'model' ? (by.sessionId ?? null) : null, asked: write?.asked ?? false }
+        // "He asked for this" from a key stands for his press only where the key may approve (files/policy.ts
+        // `pressesFor`); from an operate key a change to a file others open is held here, as a thread's would be.
+        // Another host of his sends what its own thread's words said (office/tools.ts), judged there.
+        const asked = (write?.asked ?? false) && (by.kind !== 'remote' || !!by.peer || pressesFor(by))
+        const env: Env = { ctx, ...here, by: peerPrincipal(write?.by, by, ctx.host), sessionId: by.kind === 'model' ? (by.sessionId ?? null) : null, asked }
         return handled(await runHere(t, req.params.args, env))
       }
       case 'work.office.switch': {

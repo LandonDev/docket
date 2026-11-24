@@ -46,3 +46,13 @@ export const staleNote = (row: Pick<HeldRow, 'n' | 'summary' | 'error'>): string
 
 /** The notice a phone or a desktop shows for a new held item: "Held", then the act in his words. Never a raw tool name. */
 export const heldNotice = (summary: string): string => `Held: ${cut(summary, 140)}`
+
+/**
+ * The held kinds whose words are an agent's proposed change to a file others can open (`office.edit`, `google.edit`):
+ * what they would write is shown to his press alone (files/policy.ts `pressesFor`). A notice, a digest row, a webhook
+ * and a caller that may not approve read this instead, with the item's link: no file name, no old words, no new ones.
+ */
+export const PRIVATE_CHANGE_KINDS: ReadonlySet<string> = new Set(['office.edit', 'google.edit'])
+export const PRIVATE_CHANGE = 'a change to a file others can open'
+/** The words a notice or a caller that may not approve gets for an item: its own, or the plain line for a private change. */
+export const summaryFor = (item: { kind: string; summary: string }): string => (PRIVATE_CHANGE_KINDS.has(item.kind) ? PRIVATE_CHANGE : item.summary)

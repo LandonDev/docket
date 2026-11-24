@@ -1012,7 +1012,9 @@ contract-work-files.ts; pillar `files`). Verbs `make`, `rename`, `move`,
   word is Make, Rename, Move or Copy.
 - **The payload binds** the workspace, the file's own host, the operation
   id (`act:<uuid>`), the request exactly as the verb will be sent and its
-  digest (`changeDigest`), each thing's key and version (`size:changed:`,
+  digest (`changeDigest`: the workspace, the verb, the refs, where they go,
+  the name and, for New, the kind; an act held before the workspace and kind
+  were bound goes stale on its press), each thing's key and version (`size:changed:`,
   from its place's listing: no byte of a shared file is read for it; for
   `make`, the folder) and whether others could open it (`shared`, as its
   place said), where they are now and where they go in words, the

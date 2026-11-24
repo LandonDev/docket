@@ -2,7 +2,8 @@ import { beforeEach, describe, expect, it } from 'vitest'
 import { z } from 'zod'
 import type { GrantOffer, OutboxItem } from '@shared/contract-work-outbox'
 import type { Tell } from '@shared/work/tell'
-import type { ActKindDef, WorkCtx } from '../modules'
+import type { ActKindDef, Caller, WorkCtx } from '../modules'
+import { seenBy } from './index'
 import { OfficeCalendarSchema } from '../office/held'
 import { calendarOpKind } from './lifeosHeld'
 import { failedKey, heldKey, offerKey, OUTBOX_TELLS, syncTells, tellFailed, tellHeld, tellOffer, WAITING_MAX, type TellsDeps, type TellsSource } from './tells'
@@ -64,6 +65,32 @@ describe('the kinds', () => {
       ['outbox.failed', 'held'],
       ['outbox.offer', 'system']
     ])
+  })
+})
+
+describe('a held change to a file others can open', () => {
+  const edit = (kind: string) => item({ kind, summary: 'Make the change in Brief.docx: Replace “Q3 draft” With “Q3 final”', payload: { name: 'Brief.docx', edit: { find: 'Q3 draft', replace: 'Q3 final' } } })
+  it('is told, held or failed, with no file name and none of its words: a notice may reach a webhook or a phone before his press', () => {
+    for (const kind of ['office.edit', 'google.edit']) {
+      told = []
+      tellHeld(deps, edit(kind))
+      tellFailed(deps, { ...edit(kind), state: 'failed', decidedAt: NOW - 1000, error: 'Word is not open.' })
+      expect(told.map((t) => t.title)).toEqual(['Held: a change to a file others can open', 'Not sent: a change to a file others can open'])
+      expect(JSON.stringify(told)).not.toMatch(/Brief|Q3/)
+      expect(told[0]!.open).toEqual({ held: { at: 'host', id: 'h1' }, thread: 't-work' })
+    }
+  })
+  it('is shown whole only to his press: a read or operate key, or another host, gets that it waits and nothing of it', () => {
+    const shown = edit('office.edit')
+    for (const by of [{ kind: 'remote', caps: ['read'] }, { kind: 'remote', caps: ['read', 'operate'] }, { kind: 'remote', caps: ['read', 'operate'], peer: 'env_mac' }] as Caller[]) {
+      const seen = seenBy(by, shown)
+      expect(seen).toMatchObject({ summary: 'a change to a file others can open', payload: null, ref: shown.ref, state: 'held' })
+      expect(JSON.stringify(seen)).not.toMatch(/Brief|Q3/)
+    }
+    for (const by of [{ kind: 'local', caps: [] }, { kind: 'remote', caps: ['read', 'operate', 'approve'] }] as Caller[]) expect(seenBy(by, shown)).toBe(shown)
+    // Every other kind is listed as before.
+    const mail = item()
+    expect(seenBy({ kind: 'remote', caps: ['read'] }, mail)).toBe(mail)
   })
 })
 

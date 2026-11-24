@@ -256,10 +256,13 @@ export const NEEDS_APPROVE = 'Others can open that place: this key may not chang
 export const PEER_NO_ORIGIN = 'A change from another host of his must say where it began.'
 export const PEER_WRONG_ACT = 'That held act is not for this change.'
 
-/** The digest that binds a held act to exactly one change: its verb, the things it names, where they go and the name they take. */
-export function changeDigest(change: { verb: FileVerb; refs: readonly unknown[]; to?: unknown; name?: string }): string {
+/**
+ * The digest that binds a held act to exactly one change: its workspace, its verb, the things it names, where they go,
+ * the name they take and, for New, the kind it makes. A host that runs a held act for another checks it before it runs.
+ */
+export function changeDigest(change: { workspaceId: string; verb: FileVerb; refs: readonly unknown[]; to?: unknown; name?: string; kind?: string }): string {
   return createHash('sha256')
-    .update(JSON.stringify([change.verb, change.refs, change.to ?? null, change.name ?? null]))
+    .update(JSON.stringify([change.workspaceId, change.verb, change.refs, change.to ?? null, change.name ?? null, change.kind ?? null]))
     .digest('hex')
 }
 
