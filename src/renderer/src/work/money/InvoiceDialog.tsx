@@ -171,7 +171,8 @@ function Body({ env, workspaceId, kind, onClose, onCreated, pending, setPending 
       }}
     >
       {!form ? (
-        <ModalBody aria-busy="true" aria-label="Loading">
+        // Busy only while it loads: a lookup that failed says so, and is no longer loading.
+        <ModalBody aria-busy={error ? undefined : "true"} aria-label={error ? undefined : "Loading"}>
           {error ? (
             <ErrorLine error={error} />
           ) : (

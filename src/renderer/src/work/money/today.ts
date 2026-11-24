@@ -29,7 +29,8 @@ export function owedRows(answers: ReturnType<typeof useEachWorkspace<MoneyOwed>>
         sector: workspace.sector,
         job: workspace.name,
         title: "What is owed is not known",
-        detail: "The ledger's columns changed",
+        // The wire names the job, not the cause (its columns, a link out of the job, a read that failed): said as it is known.
+        detail: "The ledger could not be read",
         open: () => goTo(workspace, { view: "money" }),
       }),
     ),

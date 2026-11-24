@@ -51,7 +51,7 @@ describe("Money on Today", () => {
   it("says a job whose ledger cannot be read, in place of showing it as owed nothing", () => {
     const rows = owedRows([{ workspace: ref, value: { rows: [], toConfirm: 0, problems: ["ws-ref"] } }]);
     // The job column names the job; the title says what is wrong, so the job is not said twice.
-    expect(rows.map(({ open: _open, ...row }) => row)).toEqual([{ key: "money:box:ws-ref:problem", section: "money", sector: "ref", job: "Ref", title: "What is owed is not known", detail: "The ledger's columns changed" }]);
+    expect(rows.map(({ open: _open, ...row }) => row)).toEqual([{ key: "money:box:ws-ref:problem", section: "money", sector: "ref", job: "Ref", title: "What is owed is not known", detail: "The ledger could not be read" }]);
   });
 
   it("names the very workspace its host answered for, where two hosts hold the sector under two names", () => {

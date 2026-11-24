@@ -61,6 +61,17 @@ async function open(kind: "invoice" | "request" = "invoice") {
 }
 
 describe("an invoice", () => {
+  it("is no longer marked loading once the number lookup failed: it says why", async () => {
+    host.answer = (method) => {
+      if (method === "work.money.invoiceNext") throw new Error("The ledger's columns changed.");
+      return null;
+    };
+    const { dialog } = await open();
+    expect(dialog.querySelector('[aria-busy="true"]')).toBeNull();
+    expect(within(dialog).queryByLabelText("Loading")).toBeNull();
+    expect(dialog.textContent).toContain("The ledger's columns changed.");
+  });
+
   it("takes its number and due date from the host's next, and adds up its lines", async () => {
     const { dialog } = await open();
     expect(host.asked[0]).toEqual({ method: "work.money.invoiceNext", params: { workspaceId: "ws", kind: "invoice" } });
