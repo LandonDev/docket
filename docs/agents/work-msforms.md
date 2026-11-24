@@ -148,4 +148,23 @@ No API, no `/formapi`, no form page of ours, no proxy, no re-hosted answers, no 
 of Microsoft's page breaks the agent's steps until fixed; `scripts/proof-msforms-canary.ts` (by hand) names the first
 step that broke.
 
+## What it cannot catch
+
+Said plainly, from the built-code review (`.temp-code/plans/ms-forms/review-built.md`; what was fixed and what was
+declined, with why, is `review-built-answer.md` beside it):
+
+- A page the box browser shows that follows a link or a redirect to a Forms address on its own reaches Forms before
+  the fence's next check; only the steps after it are refused. A Forms page framed inside another site is not fenced.
+- A batch of computer steps is read for outward controls on its first screen; a control a later step mounts (a menu's
+  Forms survey) is read only by the page's own `PAGE_OUTWARD` names when that step runs.
+- On a Mac, a Work thread can still look at a Forms page already open in his browser; it cannot act on it or open one.
+- The window asks a Forms ticket with a tenant and an id; main checks their shape, not that the host made the form.
+  The renderer is our own code and a guest cannot ask for tickets.
+- A copy of a Forms workbook made from another computer's OneDrive, or kept under a name it had before a move, is not
+  known as a Forms workbook on a host without the form's row.
+- An answer he or a thread put in a thread's words stays in that thread's transcript, which other threads of the job
+  may read as they read any thread.
+- The shell, as everywhere (work-browser.md: a thread's shell could reach the box browser's DevTools port).
+- A redesign of Microsoft's page that renames a listed control; the canary is how we learn.
+
 ## Proofs
