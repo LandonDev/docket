@@ -3,6 +3,8 @@ import { X } from "../../chrome/icons";
 import { Page } from "../../components/page";
 import { Button } from "../../components/ui/button";
 import { setLifeosSession, setLifeosStatus } from "../shell/lifeos";
+import { DownLine } from "../shell/DownLine";
+import { registry } from "../../lib/connection";
 import { StartPlaceForm, StartPlacesSection } from "./StartPlaces";
 import type { StartPlaces } from "./places";
 
@@ -40,7 +42,11 @@ setLifeosSession({
 
 const none = (): void => {};
 
-export function StartPlacesPreview({ state = "section" }: { state?: "section" | "dialog" | "blocked" | "waiting" }) {
+/** The box's LifeOS status unanswered, for the `down` dialog: the session's line in the dialog, its Retry with it. */
+const DOWN = { environmentId: ENV, sector: null, client: null, state: "unreachable", unanswered: true } as const;
+
+export function StartPlacesPreview({ state = "section" }: { state?: "section" | "dialog" | "blocked" | "waiting" | "down" }) {
+  if (state === "down") Object.assign(registry, { environment: (id: string) => ({ id, name: "The box" }) });
   if (state !== "section") {
     const purdue = PLACES.jobs[2]!;
     return (
@@ -52,7 +58,7 @@ export function StartPlacesPreview({ state = "section" }: { state?: "section" | 
               <X />
             </Button>
           </header>
-          <StartPlaceForm target="purdue" place={purdue} lookups={purdue.lookups} blocked={state === "blocked" ? "LifeOS did not answer" : state === "waiting" ? "" : null} send={async () => null} onClose={none} pending={null} setPending={none} />
+          <StartPlaceForm target="purdue" place={purdue} lookups={purdue.lookups} blocked={state === "blocked" ? "LifeOS did not answer" : state === "waiting" ? "" : state === "down" ? "The box did not answer" : null} down={state === "down" ? <DownLine session={DOWN} /> : null} send={async () => null} onClose={none} pending={null} setPending={none} />
         </div>
       </div>
     );

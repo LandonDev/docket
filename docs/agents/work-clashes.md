@@ -199,7 +199,9 @@ The pillar has no view of its own and no row in the column.
 - `ClashDialog.tsx`: the two events and the drive, the ways out each allows,
   each way's one step. Decline, a proposed time and a move go through
   `work.clashes.answer`; "This is fine" through `work.clashes.waive`, with
-  Undo on its toast. Running late reads both events again (`events:get`,
+  Undo on its toast. While the LifeOS session is down Running late is not
+  offered: its place holds the session's line (`DownLine`, its press by the
+  shared rule), and the other ways stay. Running late reads both events again (`events:get`,
   given ten seconds by `answered` in `clashes/wait.ts`: Convex's own call
   has no end, and the dialog is locked while it is out; a Start place Save
   is given the same; if the two change or stop clashing while it reads, or
@@ -333,7 +335,10 @@ while it reads, the read's error in a red line if it fails.
   when another comes in. The dialog stands
   on what the reads last gave whole, so it and what he typed stay when a
   read fails, the session drops or a read is out; Save waits until the
-  reads are current again, so he saves beside what LifeOS holds now. Why LifeOS
+  reads are current again, so he saves beside what LifeOS holds now. A session
+  that is down says so in the alert by the shared rule (`DownLine`: its words, the
+  computer named, and its press, Retry asking the host again), so the dialog has
+  its own way back and what he typed stays. Why LifeOS
   cannot be read now shows in the alert before an earlier Save's refusal,
   and a read that is merely out, or a session still connecting
   (`sessionWaits`), says "Waiting for LifeOS…" as a status.

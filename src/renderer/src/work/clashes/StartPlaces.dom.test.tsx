@@ -238,6 +238,12 @@ describe("Start places", () => {
     await act(async () => {});
     expect(typed()).toBe("12 Oak Ct");
     expect(saveOff()).toBe(true);
+    // Council round 6 (Sol P1): the session's line and its Retry are in the dialog, not only behind it, and a Retry
+    // leaves the form as he typed it.
+    const down = within(screen.getByRole("dialog")).getByRole("alert");
+    expect(down.querySelector("[data-start-down]")?.textContent).toBe("LifeOS did not answerRetry");
+    await act(async () => within(down).getByRole("button", { name: "Retry" }).click());
+    expect(typed()).toBe("12 Oak Ct");
 
     lifeos.state = "connected";
     lifeos.loading = true;

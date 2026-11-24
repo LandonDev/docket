@@ -8,12 +8,15 @@ import type { AgendaEvent } from "../tasks/client";
 import { Empty, Events, StepForm } from "./ClashDialog";
 import { workspaceStore } from "../../lib/tcserver/workspaces";
 import { answerAs } from "../kit.preview";
+import { DownLine } from "../shell/DownLine";
+import { registry } from "../../lib/connection";
 
 /**
  * Clashes, still, for `bun run ui:preview
  * src/renderer/src/work/clashes/Clash.preview.tsx#ClashDialogPreview --props '{"state":"overlap"}'`
  * (`overlap`, `drive`, `about`, `plain`, `decline`, `propose`, `move`,
- * `sending`, `refused`, `cleared`, `loading`, `gone`) and `#ClashRowsPreview` (a day of
+ * `sending`, `refused`, `cleared`, `loading`, `gone`, `down`: the box silent on its
+ * LifeOS status, Running late's place holding the session's line) and `#ClashRowsPreview` (a day of
  * the Agenda with a clash on two rows, a leave-by, and a row with none) and
  * `#ClashWeekPreview` (the Week with the clash's two events marked). The
  * dialog's own box, head and foot stand around the real parts, since a dialog
@@ -103,9 +106,11 @@ export function ClashDialogPreview({ state = "overlap" }: { state?: string }) {
     );
   }
   const clash = CLASHES[state] ?? CLASHES.overlap!;
+  if (state === "down") Object.assign(registry, { environment: (id: string) => ({ id, name: "The box" }) });
+  const lateDown = state === "down" ? <DownLine session={{ environmentId: "local", sector: null, client: null, state: "unreachable", unanswered: true }} className="text-xs" /> : null;
   return (
     <Box title={clashTitle(clash)} day={day}>
-      <Events clash={clash} pending={false} busy={null} error={null} onClose={noop} onFine={noop} onWay={noop} />
+      <Events clash={clash} pending={false} busy={null} error={null} lateDown={lateDown} onClose={noop} onFine={noop} onWay={noop} />
     </Box>
   );
 }

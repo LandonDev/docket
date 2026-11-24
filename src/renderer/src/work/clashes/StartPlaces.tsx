@@ -13,6 +13,8 @@ import { Switch } from "../../components/ui/switch";
 import { workErrorWords } from "../../lib/workErrorWords";
 import { sectorName } from "../shell/actions";
 import { sessionWaits, sessionWords, useLifeosQuery, useLifeosSession, type LifeosSession } from "../shell/lifeos";
+import { downOf } from "../shell/lifeosDown";
+import { DownLine } from "../shell/DownLine";
 import { fieldsOf, formChanged, placeWords, rowLabel, sameField, savePatch, type JobStart, type StartPatch, type StartPlace, type StartPlaces, type StartTarget } from "./places";
 import { answered } from "./wait";
 
@@ -128,7 +130,17 @@ function StartPlaceDialog({
   const send = (patch: StartPatch): Promise<unknown> => (session.client ? session.client.mutation(update, patch) : Promise.reject(new Error(sessionWords(session))));
   return (
     <Modal onClose={onClose} title={title} size="sm" busy={pending !== null}>
-      <StartPlaceForm target={target} place={place} lookups={lookups} blocked={blocked} send={send} onClose={onClose} pending={pending} setPending={setPending} />
+      <StartPlaceForm
+        target={target}
+        place={place}
+        lookups={lookups}
+        blocked={blocked}
+        down={downOf(session) ? <DownLine data-start-down session={session} /> : null}
+        send={send}
+        onClose={onClose}
+        pending={pending}
+        setPending={setPending}
+      />
     </Modal>
   );
 }
@@ -147,6 +159,7 @@ export function StartPlaceForm({
   pending,
   setPending,
   blocked = null,
+  down = null,
   error: shownError = null,
 }: {
   target: StartTarget;
@@ -158,6 +171,8 @@ export function StartPlaceForm({
   setPending: (pending: Pending) => void;
   /** LifeOS cannot be read just now (why, in words; empty while a read is merely out, which the form says as a wait): the form keeps what he typed and Save waits. */
   blocked?: string | null;
+  /** The LifeOS session is down: its line by the rule (`DownLine`, with its press), in the place of `blocked`'s words. */
+  down?: ReactNode;
   /** A refusal to show from the start: the preview's seam. */
   error?: string | null;
 }) {
@@ -238,7 +253,9 @@ export function StartPlaceForm({
         ) : null}
         {/* One line at a time: why LifeOS cannot be read now, before what it said of an earlier Save; and the wait, while a read is out. An earlier Save's words stand only while the form still differs from what LifeOS holds: once a Save that timed out is seen to have landed, there is nothing left to save again. */}
         <div role="alert" className="empty:hidden">
-          <ErrorLine error={blocked === "" ? null : blocked || (formChanged(saved, form) ? error : null)} />
+          {/* A session that is down says so by the rule, with its press (Retry asks the host again), here in the dialog
+              and not only in the section behind it: the form stays mounted, what he typed with it. */}
+          {down ?? <ErrorLine error={blocked === "" ? null : blocked || (formChanged(saved, form) ? error : null)} />}
         </div>
         <div role="status" className="empty:hidden">
           {blocked === "" ? (

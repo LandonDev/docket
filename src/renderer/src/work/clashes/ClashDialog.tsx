@@ -1,5 +1,5 @@
 import { makeFunctionReference } from "convex/server";
-import { useEffect, useRef, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { clashTitle, countsForClash, driveLine, sameEvent, timeNear, type Clash, type ClashAnswered, type ClashSide, type ClashWay } from "@shared/work/clashes";
 import { addDays, startOfDay } from "work-kit/views/lib/agenda";
 import { formatDayHeading } from "work-kit/views/lib/format";
@@ -22,6 +22,8 @@ import { goTo } from "../today/open";
 import { useJobName } from "../jobName";
 import { useMinute } from "../tasks/minute";
 import { sessionWaits, sessionWords, useLifeosSession } from "../shell/lifeos";
+import { downOf } from "../shell/lifeosDown";
+import { DownLine } from "../shell/DownLine";
 import { useClashes } from "./mark";
 import { doneWords, fieldOf, formOf, freeAfter, hintsOf, lateDraft, pairStamp, WAY_LABEL, wayWords, whenOf, type TimeForm } from "./model";
 import type { ClashAsk } from "./open";
@@ -355,7 +357,9 @@ function Body({
     );
   }
 
-  return <Events clash={clash} pending={pending} busy={busy} error={error} onClose={onClose} onFine={fine} onWay={(side, way) => (setError(null), way === "late" ? late() : setStep({ eventId: clash[side].eventId, way }))} bodyRef={body} />;
+  // A session that is down: Running late, which reads it, is not offered, and the session's line stands in its place.
+  const lateDown = downOf(session) ? <DownLine data-late-down session={session} className="text-xs" /> : null;
+  return <Events clash={clash} pending={pending} busy={busy} error={error} lateDown={lateDown} onClose={onClose} onFine={fine} onWay={(side, way) => (setError(null), way === "late" ? late() : setStep({ eventId: clash[side].eventId, way }))} bodyRef={body} />;
 }
 
 /** The two events in time order with the drive between them, the ways out under each, and the foot. */
@@ -364,6 +368,7 @@ export function Events({
   pending,
   busy,
   error,
+  lateDown = null,
   onClose,
   onFine,
   onWay,
@@ -373,6 +378,8 @@ export function Events({
   pending: boolean;
   busy: "fine" | "late" | null;
   error: string | null;
+  /** The LifeOS session is down: Running late's place holds its line (`DownLine`), and the other ways stay. */
+  lateDown?: ReactNode;
   onClose: () => void;
   onFine: () => void;
   onWay: (side: Side, way: ClashWay) => void;
@@ -386,16 +393,19 @@ export function Events({
     // An event that is over allows none: a decline of a game he has just refereed helps no one. Running late is the later event's, which is not over while its clash shows.
     if (event.endsAt <= now) return null;
     // Running late needs Mail in that job's workspace on this host.
-    const can = event.can.filter((way) => way !== "late" || (side === "b" && Boolean(event.workspaceId)));
-    if (!can.length) return null;
+    const offered = event.can.filter((way) => way !== "late" || (side === "b" && Boolean(event.workspaceId)));
+    const held = lateDown && offered.includes("late") ? lateDown : null;
+    const can = held ? offered.filter((way) => way !== "late") : offered;
+    if (!can.length && !held) return null;
     return (
-      <span className="mt-2 flex flex-wrap gap-2">
+      <div className="mt-2 flex flex-wrap items-center gap-2">
         {can.map((way) => (
           <Button key={way} data-way={`${side}:${way}`} variant="outline" size="sm" disabled={pending} onClick={() => onWay(side, way)}>
             {way === "late" ? <BusyLabel busy={busy === "late"} label={WAY_LABEL.late} /> : WAY_LABEL[way]}
           </Button>
         ))}
-      </span>
+        {held}
+      </div>
     );
   };
   return (

@@ -785,23 +785,25 @@ describe("the Clash dialog", () => {
     expect(document.querySelector("[data-clash-step='b:move']")?.textContent).toContain("It moves on your calendar, and its guests are told the new time.");
   });
 
-  it("says why Running late cannot open when LifeOS is out of reach, the computer named as the frame names it", async () => {
+  it("holds the session's line in Running late's place while LifeOS is down, the computer named, and keeps the other ways", async () => {
+    // Council round 6 (Sol P1): a press that could only fail is not offered; the line and its Retry stand in its place.
     lifeos.gone = true;
     const onClose = show(overlap());
     await settle();
-    fireEvent.click(screen.getByRole("button", { name: "Running late…" }));
-    await settle();
-    expect(screen.getByRole("alert").textContent).toBe("LifeOS did not answer");
+    expect(screen.queryByRole("button", { name: "Running late…" })).toBeNull();
+    expect(document.querySelector("[data-late-down]")?.textContent).toContain("LifeOS did not answer");
+    expect(document.querySelector("[data-late-down]")?.querySelector("button")?.textContent).toBe("Retry");
+    expect(screen.getByRole("button", { name: "Move…" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "This is fine" })).toBeTruthy();
     expect(mail.drafts).toEqual([]);
     expect(onClose).not.toHaveBeenCalled();
-    // Council round 5 (Sol P3): the host's own silence names the computer, as the frame's line does.
+    // The host's own silence names the computer, as the frame's line does.
     cleanup();
     lifeos.unanswered = true;
     show(overlap());
     await settle();
-    fireEvent.click(screen.getByRole("button", { name: "Running late…" }));
-    await settle();
-    expect(screen.getByRole("alert").textContent).toBe("The box did not answer");
+    expect(screen.queryByRole("button", { name: "Running late…" })).toBeNull();
+    expect(document.querySelector("[data-late-down]")?.textContent).toContain("The box did not answer");
     lifeos.unanswered = false;
   });
 
