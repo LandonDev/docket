@@ -187,12 +187,13 @@ describe("the meeting canvas", () => {
   });
 
   it("a task LifeOS would not take stays waiting, and the state line says why with Retry", async () => {
+    // The host's "not connected" is any state but connected: the line never claims he is signed out.
     host.decide = () => ({ meeting: host.meeting, failed: [{ id: "a1", error: "LifeOS is not connected on this host." }] });
     const { container } = await seat(sampleMeeting({ notes: SAMPLE_NOTES }));
     const bar = await waitFor(() => container.querySelector("[data-canvas-bar]") as HTMLElement);
     await waitFor(() => expect(within(bar).getByText("1/3")).toBeTruthy());
     fireEvent.click(within(bar).getByRole("button", { name: "Accept" }));
-    await waitFor(() => expect(container.querySelector("[data-canvas-state=failed]")?.textContent).toContain("LifeOS is not connected on this host."));
+    await waitFor(() => expect(container.querySelector("[data-canvas-state=failed]")?.textContent).toContain("cannot use LifeOS now. See why under Settings, Connections."));
     expect(screen.getByRole("button", { name: "Retry" })).toBeTruthy();
   });
 

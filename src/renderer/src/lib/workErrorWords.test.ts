@@ -28,7 +28,9 @@ describe("an error as Work says it to him", () => {
     ["not a name a preview is kept under", "This preview is gone. Close it and open it again from the file's tab."],
     ["That preview is gone: draw it again.", "This preview is gone. Close it and open it again from the file's tab."],
     ["LifeOS is not signed in on this host", "Not signed in to LifeOS on the box. Sign in under Settings, Connections."],
-    ["LifeOS is not connected on this computer.", "Not signed in to LifeOS on the box. Sign in under Settings, Connections."],
+    // "Not connected" is any state but connected (signed out, waiting, LifeOS silent): it never claims signed out.
+    ["LifeOS is not connected on this computer.", "The box cannot use LifeOS now. See why under Settings, Connections."],
+    ["LifeOS is signed out", "Not signed in to LifeOS on the box. Sign in under Settings, Connections."],
     ["LibreOffice is not installed on this host or on one it reaches.", "The box is missing the tools that draw and read this file. Install them under Settings, Connections, Conversion tools."],
     ["ffprobe is not installed on this host", "The box is missing the tools that draw and read this file. Install them under Settings, Connections, Conversion tools."],
     ["no such guest link on this host", "This link is not on the box. Look for it on the computer that made it."],

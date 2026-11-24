@@ -147,7 +147,7 @@ describe("the capture window", () => {
     await flush();
     expect(bridge.failed).toHaveBeenCalled();
     expect(field().value).toBe("Keep me\nTyped since");
-    expect(screen.getByRole("alert").textContent).toBe("Not signed in to LifeOS on this computer. Sign in under Settings, Connections.");
+    expect(screen.getByRole("alert").textContent).toBe("This computer cannot use LifeOS now. See why under Settings, Connections.");
   });
 
   it("files a second capture while the first is on its way, each with its own key", async () => {

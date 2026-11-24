@@ -609,7 +609,7 @@ src/shared/work/duration.ts); a span of time "4:00 to 6:00 PM"; a leave
 time "Leave 4:22 PM"; where you are in a bar "1/8", "Page 1 of 14" where
 there is room. A host mid-line is lower case where its name is a common
 noun ("the box", `nameInLine`, lib/hostWords.ts). LifeOS signed out is
-"Not signed in to LifeOS" with Sign in. A conflict's second press is Keep
+"Not signed in to LifeOS" with Sign in, where the host said signed out; a host that says only that LifeOS is "not connected" (any state but connected) reads "The box cannot use LifeOS now. See why under Settings, Connections." (`lib/workErrorWords.ts`). A conflict's second press is Keep
 Both; a mail's file is kept with Save to workspace; a proposal is Dismiss
 and Add (Add… when a dialog follows), and Not now only for a one-line
 offer it puts off. Connections' healthy word is Ready, since Working is a

@@ -53,7 +53,10 @@ const RULES: Rule[] = [
   [/left no output$/i, () => "The conversion made no file. Open the original and export again."],
   [/not a name a preview is kept under|that item is not open|that preview is gone/i, () => "This preview is gone. Close it and open it again from the file's tab."],
   // LifeOS, guests, the Windows VM.
-  [/lifeos did not start|lifeos is not signed in|lifeos is not connected|lifeos is signed out/i, (c) => `Not signed in to LifeOS on ${c.host}. Sign in under Settings, Connections.`],
+  // Signed out is said only where the host said so. "Not connected" is the host's word for any state but connected
+  // (signed out, a sign-in waiting, LifeOS not answering), so it reads as that: the cause and its fix are on Connections.
+  [/lifeos is not signed in|lifeos is signed out/i, (c) => `Not signed in to LifeOS on ${c.host}. Sign in under Settings, Connections.`],
+  [/lifeos did not start|lifeos is not connected/i, (c) => `${c.Host} cannot use LifeOS now. See why under Settings, Connections.`],
   // A tool a host draws or reads files with, named by its program: what he can do, never the program's name.
   [/\b(libreoffice|soffice|python-pptx|ffmpeg|ffprobe)\b[^.]*\bnot installed\b/i, (c) => `${c.named ? `${c.Host} is missing the tools that draw and read this file.` : "The computer that draws this file is missing the tools for it."} Install them under Settings, Connections, Conversion tools.`],
   [/^no such guest link\b/i, (c) => `This link is not on ${c.host}. Look for it on the computer that made it.`],
