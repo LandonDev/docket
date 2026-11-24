@@ -41,35 +41,42 @@ export function SummaryList({
   lead,
   rows,
   onToggle,
+  onOpen,
   host,
 }: {
-  /** One sentence of what the press does, or what it did. */
-  head: string;
+  /** One sentence of what the press does, or what it did; null when the caller draws its own (a request's card). */
+  head: string | null;
   /** A facts line over the head (a request's job, thread and time). */
   facts?: ReactNode;
   /** One line under the head (a request's "You asked: …"). */
   lead?: ReactNode;
   rows: readonly SummaryRow[];
   onToggle?: (item: HostItem, on: boolean) => void;
+  /** A row opened in place (a request's changed row asks its host for a fresh receipt). */
+  onOpen?: (item: HostItem) => void;
   /** The host's name, for an item's notes ("Takes the box's screen"). */
   host?: (item: HostItem) => string;
 }) {
   const [open, setOpen] = useState<ReadonlySet<string>>(new Set());
-  const flip = (key: string) =>
+  const flip = (key: string, item: HostItem) => {
+    if (!open.has(key)) onOpen?.(item);
     setOpen((prev) => {
       const next = new Set(prev);
       if (next.has(key)) next.delete(key);
       else next.add(key);
       return next;
     });
+  };
   return (
     <div data-outbox-summary className="flex flex-col">
       {facts}
-      <h1 aria-live="polite" className={cn("text-base font-semibold leading-6 tracking-[-0.01em] text-balance", facts && "mt-1")}>
-        {head}
-      </h1>
+      {head !== null ? (
+        <h1 aria-live="polite" className={cn("text-base font-semibold leading-6 tracking-[-0.01em] text-balance", facts && "mt-1")}>
+          {head}
+        </h1>
+      ) : null}
       {lead ? <div className="mt-2 text-[13px] leading-5 text-muted-foreground">{lead}</div> : null}
-      <ul className="mt-3 flex flex-col">
+      <ul className={cn("flex flex-col", (head !== null || lead) && "mt-3")}>
         {rows.map((row) => {
           const key = itemKey(row.item);
           const { act, about } = rowWords(row.item);
@@ -87,7 +94,7 @@ export function SummaryList({
                 <span data-summary-act className={cn("min-w-0 shrink truncate", dim && "text-muted-foreground")}>{act}</span>
                 {about ? <span data-summary-about className="min-w-0 flex-1 shrink-[100] truncate text-muted-foreground @max-[40rem]/outbox:hidden">{about}</span> : <span className="flex-1" />}
                 <Side row={row} />
-                <Button variant="ghost" size="icon-xs" aria-label={opened ? `Close ${act}` : `Open ${act}`} aria-expanded={opened} className="shrink-0 text-muted-foreground" onClick={() => flip(key)}>
+                <Button variant="ghost" size="icon-xs" aria-label={opened ? `Close ${act}` : `Open ${act}`} aria-expanded={opened} className="shrink-0 text-muted-foreground" onClick={() => flip(key, row.item)}>
                   <ChevronRight className={cn(DISCLOSURE_CHEVRON, opened && "rotate-90")} />
                 </Button>
               </div>

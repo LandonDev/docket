@@ -35,6 +35,8 @@ const world = vi.hoisted(() => ({
   refuse: {} as Record<string, string>,
   // what `get` adds to an item (changed.first, replied)
   extra: {} as Record<string, Partial<OutboxItem>>,
+  // a thread's open requests, by host
+  requests: new Map<string, unknown[]>(),
 }));
 
 vi.mock("../../lib/connection", async (original) => {
@@ -57,6 +59,10 @@ vi.mock("../../lib/connection", async (original) => {
           return { items: params.show === "done" || params.show === "decided" ? done : waiting, waiting: waiting.filter((i) => i.state !== "scheduled" && i.state !== "sending").length };
         }
         case "work.outbox.decide": {
+          if (params.request) {
+            const r = (world.requests.get(env) ?? []).find((x) => (x as { id: string }).id === params.request) as Record<string, unknown>;
+            return { request: { ...r, state: "answered", answeredBy: "owner", answeredAt: now } };
+          }
           world.decides.push({ env, items: params.items as never });
           if (world.decideDown) throw new Error("No answer in 15 s");
           const results = (params.items as { ref: { id: string }; do: string; reason?: string; at?: number; zone?: string }[]).map((d) => {
@@ -69,6 +75,10 @@ vi.mock("../../lib/connection", async (original) => {
           });
           return { results };
         }
+        case "work.outbox.requests":
+          return { requests: world.requests.get(env) ?? [] };
+        case "work.outbox.request.get":
+          return (world.requests.get(env) ?? []).find((r) => (r as { id: string }).id === params.id);
         case "work.outbox.askAgain":
           Object.assign(find(), { dismissedAt: now, reason: "out of date" });
           return find();
@@ -212,6 +222,7 @@ beforeEach(() => {
   world.decideDown = false;
   world.refuse = {};
   world.extra = {};
+  world.requests = new Map();
   workSwitch.reset();
   setWorkOn("box", true);
   setWorkOn("mac", true);
@@ -452,7 +463,7 @@ describe("the Outbox", () => {
     const pop = field.closest("[data-slot=popover-content]") as HTMLElement;
     await act(async () => fireEvent.click(within(pop).getByRole("button", { name: "Discard" })));
     expect(world.calls.filter((c) => c.method === "work.outbox.discard").map((c) => c.params)).toEqual([
-      { ref: { at: "lifeos", table: "outbox", id: "o1" }, reason: "She paid yesterday. Thank her instead.", via: "outbox" },
+      { ref: { at: "lifeos", table: "outbox", id: "o1" }, rev: 500, reason: "She paid yesterday. Thank her instead.", via: "outbox" },
     ]);
   });
 
@@ -538,6 +549,8 @@ describe("the Outbox", () => {
       ["box", ["o2"]],
       ["mac", ["h9"]],
     ]);
+    // A press that spans hosts is many on each host: a one-item part earns no grant offer.
+    expect(world.calls.filter((c) => c.method === "work.outbox.decide").every((c) => c.params.many === true)).toBe(true);
   });
 
   it("makes a grant only from an item's Send menu, lists it, and removes it", async () => {
@@ -1152,5 +1165,64 @@ describe("the Outbox, rebuilt around how he decides", () => {
     await waitFor(() => expect(screen.getAllByText("Send to Dana Lee").length).toBeGreaterThan(0), { timeout: 5000 });
     // No title known for the thread here: the facts say nothing of it rather than a bare "from".
     expect(detail().querySelector("header")!.textContent).not.toMatch(/from\s*$/);
+  });
+});
+
+describe("a thread's request in the Outbox", () => {
+  const asking = () => ({
+    id: "r1",
+    n: 3,
+    sessionId: "t1",
+    workspaceId: "ws1",
+    sector: "purdue",
+    quote: "send Dana's and Sam's mails",
+    head: "Send 2 mails",
+    state: "open",
+    createdAt: Date.now() - 60_000,
+    expiresAt: Date.now() + 86_400_000,
+    answeredBy: null,
+    answeredAt: null,
+    rows: ["o1", "o2"].map((id) => ({ ref: { at: "lifeos", table: "outbox", id }, do: "send", item: world.items.get("box")!.find((i) => i.ref.id === id), changed: false, open: true, receipt: `rc-${id}` })),
+  });
+
+  it("leads Waiting with Asked in threads, one row a request, and lists its items under it alone", async () => {
+    world.requests.set("box", [asking()]);
+    render(<OutboxView besideRail onClose={() => undefined} />);
+    fireEvent.click(screen.getByRole("tab", { name: "Waiting" }));
+    await waitFor(() => expect(document.querySelector('[data-outbox-section="asked"]')).toBeTruthy(), { timeout: 5000 });
+    const sections = [...document.querySelectorAll("[data-outbox-section]")];
+    expect(sections[0]!.getAttribute("data-outbox-section")).toBe("asked");
+    expect(sections[0]!.querySelectorAll("li")).toHaveLength(1);
+    expect(sections[0]!.textContent).toContain("Send 2 mails");
+    // Dana's and Sam's mails are the request's; only the third still sits under its thread.
+    const rest = sections.slice(1).map((s) => s.textContent).join(" ");
+    expect(rest).not.toContain("Send to Dana Lee");
+    expect(rest).not.toContain("Send to Sam Ortiz");
+    expect(rest).toContain("Send to Events booking");
+    // Its detail is the same summary, with Not now and Send 2.
+    fireEvent.click(within(sections[0] as HTMLElement).getByText("Send 2 mails"));
+    const detail = document.querySelector("[data-outbox-detail]") as HTMLElement;
+    await waitFor(() => expect(within(detail).getByRole("button", { name: "Send 2" })).toBeTruthy());
+    expect(within(detail).getByRole("button", { name: "Not now" })).toBeTruthy();
+    expect(detail.textContent).toContain("You asked: “send Dana's and Sam's mails”");
+    await act(async () => fireEvent.keyDown(document.querySelector("[data-work-outbox]")!, { key: "Enter", ctrlKey: true, metaKey: false }));
+    await act(async () => fireEvent.keyDown(document.querySelector("[data-work-outbox]")!, { key: "Enter", metaKey: true, ctrlKey: false }));
+    expect(world.calls.filter((c) => c.method === "work.outbox.decide").map((c) => c.params)).toEqual([{ request: "r1", receipts: ["rc-o1", "rc-o2"] }]);
+  });
+
+  it("an untouched page picks a request that comes to lead, though the items came first", async () => {
+    rememberOutboxTab("waiting");
+    render(<OutboxView besideRail onClose={() => undefined} />);
+    await waitFor(() => expect(screen.getAllByText("Send to Dana Lee").length).toBeGreaterThan(0), { timeout: 5000 });
+    world.requests.set("box", [asking()]);
+    const { loadRequests } = await import("./requests");
+    await act(async () => loadRequests("box"));
+    await waitFor(() => expect(within(document.querySelector("[data-outbox-detail]") as HTMLElement).getByRole("button", { name: "Send 2" })).toBeTruthy());
+  });
+
+  it("opens on an item asked for by its host's number, as the transcript's held line asks", async () => {
+    wantOutboxItem({ environmentId: "mac", n: 1 });
+    render(<OutboxView besideRail onClose={() => undefined} />);
+    await waitFor(() => expect(document.querySelector('[data-outbox-list] [aria-current="true"]')?.textContent).toContain("Post message with Slack"), { timeout: 5000 });
   });
 });

@@ -5,6 +5,8 @@ import { loadToast } from "../../components/ui/toaster";
 import { StatusMark } from "../../components/ui/status";
 import { Outbox } from "../../chrome/icons";
 import { shell } from "../../stores/shell";
+import { wantOutbox } from "../../lib/outboxWant";
+import { useTranscriptHost } from "../transcriptSession";
 import type { ApprovalDecision } from "../../lib/harness";
 import { cn } from "../../lib/cn";
 import { type Block } from "../../lib/session";
@@ -39,15 +41,19 @@ export function heldOf(block: Pick<Block, "tool" | "approval">): { n: number; ac
 /**
  * The held line under a Work thread's call (docs/DESIGN.md "Held is not
  * Needs you"): the Outbox glyph in the row's glyph column, "Held" then the
- * act in his words, muted; it opens the Outbox. Never amber, never a card:
- * the turn went on.
+ * act in his words, muted; it opens the Outbox on that item (its host's
+ * number, the thread's host). Never amber, never a card: the turn went on.
  */
-function HeldLine({ act }: { act: string }) {
+function HeldLine({ n, act }: { n: number; act: string }) {
+  const host = useTranscriptHost();
   return (
     <button
       type="button"
       data-slot="held"
-      onClick={() => shell.openOutbox()}
+      onClick={() => {
+        if (host) wantOutbox({ environmentId: host, n });
+        shell.openOutbox();
+      }}
       className="flex min-h-7 in-data-[table]:min-h-8 min-w-0 items-center gap-2 in-data-[table]:px-3 text-left font-sans text-[13px] leading-5 text-muted-foreground outline-none hover:text-foreground focus-visible:text-foreground"
     >
       <span className="flex w-3.5 shrink-0 justify-center">
@@ -88,7 +94,7 @@ export function ApprovalCard({
   const [sent, setSent] = useState<ApprovalDecision | null>(null);
   if (!approval) {
     const held = heldOf(block);
-    return held ? <HeldLine act={held.act} /> : null;
+    return held ? <HeldLine n={held.n} act={held.act} /> : null;
   }
   const decide = (decision: ApprovalDecision) => {
     if (sent) return;

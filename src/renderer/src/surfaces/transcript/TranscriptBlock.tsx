@@ -6,8 +6,9 @@ import { HTML_RENDER_COLUMN_WIDTH, htmlRenderFrameHeight, type HtmlRenderReferen
 import { Skeleton } from "../../components/ui/skeleton";
 import type { ApprovalDecision } from "../../lib/harness";
 import { TodoListBlock } from "../TodoListBlock";
-import { htmlRenderChunk, mailOfferChunk } from "../chunks";
+import { htmlRenderChunk, mailOfferChunk, workOutboxChunk } from "../chunks";
 import { isMailOfferBlock } from "../mailOfferBlock";
+import { isOutboxRequestBlock } from "../outboxRequestBlock";
 import { htmlRenderOf } from "../htmlRenderBlock";
 import { type Block } from "../../lib/session";
 import { AgentMarkdown } from "../AgentMarkdown";
@@ -50,6 +51,8 @@ export function HtmlPagePlaceholder({ reference: given }: { reference?: HtmlRend
 export const HtmlRenderRow = htmlRenderChunk.surface("HtmlRenderRow", <HtmlPagePlaceholder />);
 /** A mail chat's card (`mail_offer`), drawn by the mail pillar's chunk. */
 const MailOfferRow = mailOfferChunk.surface("MailOfferRow", <Skeleton className="h-24 w-full rounded-xl" />);
+/** A thread's request for his press (`outbox_request`), drawn by the Outbox's chunk. */
+const OutboxRequestRow = workOutboxChunk.surface("OutboxRequestRow", <Skeleton className="h-28 w-full rounded-xl" />);
 
 export const TranscriptBlock = memo(function TranscriptBlock({
   block,
@@ -97,6 +100,10 @@ export const TranscriptBlock = memo(function TranscriptBlock({
 
   if (isMailOfferBlock(block)) {
     return <MailOfferRow block={block} />;
+  }
+
+  if (isOutboxRequestBlock(block)) {
+    return <OutboxRequestRow block={block} />;
   }
 
   // A computer call with a picture the model asked for: its line, then the picture.

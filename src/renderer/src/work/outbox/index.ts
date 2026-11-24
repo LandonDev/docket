@@ -10,5 +10,7 @@ export { HeldDetail } from "./HeldDetail";
 export { HostRetry, KindGlyph, rowWords } from "./parts";
 // The summary list: the Outbox's ticks, and a thread's request (its card and its detail).
 export { SummaryList, type SummaryRow } from "./SummaryList";
+// A thread's request: its card under the thread's call, and the same body in the Outbox.
+export { OutboxRequestRow, RequestCard } from "./RequestCard";
 export { ResultsSection } from "./ResultsSection";
 export { AwayReturnWork, gatherAway } from "./AwayList";

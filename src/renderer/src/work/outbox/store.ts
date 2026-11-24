@@ -6,6 +6,8 @@ import { setOutboxFailed, setOutboxWaiting, workSwitch } from "../../lib/workSwi
 import { applyResult, reloadResults, resetResults } from "./results";
 import { workErrorWords } from "../../lib/workErrorWords";
 import { itemFailWords } from "./failWords";
+import { subscribeOutboxWant, wantOutbox, wantedOutbox, type OutboxWant } from "../../lib/outboxWant";
+import { loadRequests, resetRequests } from "./requests";
 
 /**
  * The Outbox as the screens read it (docs/agents/work-outbox.md): one list
@@ -129,6 +131,8 @@ export function loadHost(environmentId: string): Promise<void> {
     });
   loading.set(environmentId, load);
   loadOffers(environmentId);
+  // A thread's requests are read with its list: Asked in threads leads Waiting.
+  void loadRequests(environmentId);
   return load;
 }
 
@@ -206,7 +210,10 @@ export type PressVia = "outbox" | "today" | "phone" | "mail";
 export async function discardItem(item: HostItem, opts: { reason?: string; via?: PressVia } = {}): Promise<OutboxItem> {
   const reason = opts.reason?.trim().slice(0, 500);
   try {
-    return await registry.linkOf(item.environmentId).request<OutboxItem>("work.outbox.discard", { ref: item.ref, ...(reason ? { reason } : {}), ...(opts.via ? { via: opts.via } : {}) });
+    // `rev`: what he saw; a row that moved since is refused rather than put away unseen.
+    return await registry
+      .linkOf(item.environmentId)
+      .request<OutboxItem>("work.outbox.discard", { ref: item.ref, rev: item.updatedAt, ...(reason ? { reason } : {}), ...(opts.via ? { via: opts.via } : {}) });
   } finally {
     void loadHost(item.environmentId);
   }
@@ -228,7 +235,7 @@ export async function askAgain(item: HostItem): Promise<OutboxItem> {
 export async function cancelScheduled(item: HostItem): Promise<boolean> {
   try {
     const link = registry.linkOf(item.environmentId);
-    if (item.state === "scheduled") return (await link.request<OutboxItem>("work.outbox.cancelSend", { ref: item.ref })).state === "held";
+    if (item.state === "scheduled") return (await link.request<OutboxItem>("work.outbox.cancelSend", { ref: item.ref, rev: item.updatedAt })).state === "held";
     return (await link.request<{ back: boolean }>("work.mail.cancel", { id: item.ref.id })).back;
   } finally {
     void loadHost(item.environmentId);
@@ -238,7 +245,7 @@ export async function cancelScheduled(item: HostItem): Promise<boolean> {
 /** Send a timed send now, rather than at its time. */
 export async function sendNow(item: HostItem): Promise<OutboxItem> {
   try {
-    return await registry.linkOf(item.environmentId).request<OutboxItem>("work.outbox.sendNow", { ref: item.ref });
+    return await registry.linkOf(item.environmentId).request<OutboxItem>("work.outbox.sendNow", { ref: item.ref, rev: item.updatedAt });
   } finally {
     void loadHost(item.environmentId);
   }
@@ -360,7 +367,8 @@ export async function decideMany(items: readonly HostItem[], choice: DecideDo, o
       try {
         const { results } = await registry
           .linkOf(environmentId)
-          .request<{ results: DecisionResult[] }>("work.outbox.decide", { items: list.map(decision), ...(opts.via ? { via: opts.via } : {}) });
+          // A press that spans hosts is many on each host, so a part of one item earns no grant offer.
+          .request<{ results: DecisionResult[] }>("work.outbox.decide", { items: list.map(decision), ...(byHost.size > 1 ? { many: true } : {}), ...(opts.via ? { via: opts.via } : {}) });
         list.forEach((item, i) => mine.set(`${environmentId}:${item.ref.at}:${item.ref.id}`, results[i] ?? { ref: item.ref, ok: false, error: "No answer for it" }));
       } catch (err) {
         for (const item of list) mine.set(`${environmentId}:${item.ref.at}:${item.ref.id}`, { ref: item.ref, ok: false, error: errorText(err) });
@@ -376,28 +384,22 @@ export async function decideMany(items: readonly HostItem[], choice: DecideDo, o
 
 // ── an item asked for from outside ───────────────────────────────────────
 
-let wanted: string | null = null;
-const wantedListeners = new Set<() => void>();
-/** A notice's press asks the Outbox page for one item, by the page's own key (`<host>:<ref.at>:<ref.id>`); the page picks it once it holds it, then clears this. */
-export function wantOutboxItem(key: string | null): void {
-  if (wanted === key) return;
-  wanted = key;
-  for (const listener of wantedListeners) listener();
+/**
+ * A notice's press asks the Outbox page for one item or request (lib/outboxWant.ts, the first paint's door): by the
+ * page's own key (`<host>:<ref.at>:<ref.id>`, `request:<host>:<id>`) or by its host's number. The page picks it once it
+ * holds it, then clears this.
+ */
+export function wantOutboxItem(want: OutboxWant | null): void {
+  wantOutbox(want);
 }
-export function useWantedOutboxItem(): string | null {
-  return useSyncExternalStore(
-    (listener) => {
-      wantedListeners.add(listener);
-      return () => void wantedListeners.delete(listener);
-    },
-    () => wanted,
-    () => wanted,
-  );
+export function useWantedOutboxItem(): OutboxWant | null {
+  return useSyncExternalStore(subscribeOutboxWant, wantedOutbox, wantedOutbox);
 }
 
 /** Test seam. */
 export function resetOutboxStore(): void {
-  wanted = null;
+  wantOutbox(null);
+  resetRequests();
   hosts.clear();
   loading.clear();
   again.clear();

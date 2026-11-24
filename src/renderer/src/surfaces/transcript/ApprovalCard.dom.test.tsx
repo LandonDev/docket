@@ -5,6 +5,9 @@ import type { Block } from "../../lib/session";
 import { approvalDetailOf } from "../../lib/approvalDetail";
 import { ApprovalCard, heldOf } from "./ApprovalCard";
 import { shellStore } from "../../stores/shell";
+import { TranscriptSessionContext } from "../transcriptSession";
+import { sessionStore } from "../../lib/tcserver/store";
+import { wantedOutbox, wantOutbox } from "../../lib/outboxWant";
 import { ApprovalControls } from "./Approval";
 
 const approval = (name: string, input: unknown, decided?: "allow" | "deny", auto?: boolean): Block => ({
@@ -190,6 +193,22 @@ describe("the held line", () => {
     expect(container.querySelector('[data-state="waiting"]')).toBeNull();
     fireEvent.click(screen.getByRole("button"));
     expect(shellStore.getState().outboxViewOpen).toBe(true);
+  });
+
+  it("opens the Outbox on its own item: the host's number on the thread's host", () => {
+    const host = vi.spyOn(sessionStore, "environmentOf").mockReturnValue("box");
+    try {
+      render(
+        <TranscriptSessionContext.Provider value="s1">
+          <ApprovalCard block={held(line)} />
+        </TranscriptSessionContext.Provider>,
+      );
+      fireEvent.click(screen.getByRole("button"));
+      expect(wantedOutbox()).toEqual({ environmentId: "box", n: 12 });
+    } finally {
+      host.mockRestore();
+      wantOutbox(null);
+    }
   });
 });
 

@@ -5,7 +5,10 @@ import { ItemButton } from "../../components/ui/item";
 import { reveal, yields } from "../../components/ui/reveal";
 import { Skeleton } from "../../components/ui/skeleton";
 import { StatusMark } from "../../components/ui/status";
-import { ChevronDown } from "../../chrome/icons";
+import { ChevronDown, Outbox } from "../../chrome/icons";
+import { storeTitleOf } from "../../lib/threadMentions";
+import { requestKey, type HostRequest } from "./requests";
+import { heldWhen } from "./when";
 import { SectorDot } from "../../chrome/WorkspaceGlyph";
 import { cn } from "../../lib/cn";
 import { clockTime } from "../../lib/duration";
@@ -92,6 +95,8 @@ export function ListSkeleton() {
 
 export function WaitingList({
   sections,
+  requests = [],
+  onPickRequest,
   current,
   stop,
   ticked,
@@ -103,6 +108,9 @@ export function WaitingList({
   onExpand,
 }: {
   sections: Section<HostItem>[];
+  /** Asked in threads: one row per open request, before every section; its items are not listed again. */
+  requests?: HostRequest[];
+  onPickRequest?: (request: HostRequest) => void;
   /** The picked row, highlighted; null while rows are ticked (the detail is their summary). */
   current: string | null;
   /** The row that holds the list's one tab stop. */
@@ -119,6 +127,29 @@ export function WaitingList({
   const ticking = ticked.size > 0;
   return (
     <div className="flex flex-col p-1" data-outbox-waiting data-ticking={ticking ? "" : undefined}>
+      {requests.length ? (
+        <section aria-label="Asked in threads" data-outbox-section="asked">
+          <Heading className="ps-2 font-medium text-muted-foreground">Asked in threads</Heading>
+          <ul className="flex flex-col gap-0.5">
+            {requests.map((request) => {
+              const key = requestKey(request);
+              return (
+                <Row
+                  key={key}
+                  rowKey={key}
+                  stop={stop === key}
+                  current={current === key}
+                  act={request.head}
+                  about={storeTitleOf(request.sessionId) ?? null}
+                  side={heldWhen(request.createdAt, now)}
+                  onPick={() => onPickRequest?.(request)}
+                  lead={<Outbox className="size-3.5 text-muted-foreground" />}
+                />
+              );
+            })}
+          </ul>
+        </section>
+      ) : null}
       {sections.map((section) => {
         const fold = section.items.length > FOLD_AT && !expanded.has(section.key);
         const shown = fold ? section.items.slice(0, FOLD_SHOWS) : section.items;

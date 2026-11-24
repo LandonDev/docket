@@ -240,6 +240,23 @@ describe("waiting on you", () => {
     expect(rows.find((r) => r.title.includes("4") || r.detail === "Out of date")?.detail).toBe("Out of date");
   });
 
+  it("shows a thread's open request as one row, first, and leaves its items out", async () => {
+    const { wantedOutbox, wantOutbox } = await import("../../lib/outboxWant");
+    const listed = [item("o1", "box", "ws1", at(23, 7)), item("o2", "box", "ws1", at(23, 8))];
+    const request = {
+      id: "r1", n: 3, sessionId: "t1", workspaceId: "ws1", sector: "purdue", quote: "send Dana's", head: "Send 1 mail", state: "open" as const,
+      createdAt: at(23, 9), expiresAt: at(24, 9), answeredBy: null, answeredAt: null, environmentId: "box",
+      rows: [{ ref: listed[0]!.ref, do: "send" as const, changed: false, open: true, receipt: "rc" }],
+    };
+    const rows = heldRows(listed, at(23, 9, 30), () => "Purdue Esports", [request]);
+    expect(rows.map((r) => r.title)).toEqual(["Send 1 mail", rows[1]!.title]);
+    expect(rows).toHaveLength(2);
+    expect(rows[0]!.key).toBe("held:request:box:r1");
+    rows[0]!.open!();
+    expect(wantedOutbox()).toBe("request:box:r1");
+    wantOutbox(null);
+  });
+
   it("names an item's place as its sheet does: Work Chats for an item of no workspace", () => {
     const nameOf = (environmentId: string, workspaceId: string) => (workspaceId === "ws1" ? `${environmentId}'s Purdue` : undefined);
     expect(placeOf({ environmentId: "box", workspaceId: "ws1" }, nameOf)).toBe("box's Purdue");

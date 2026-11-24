@@ -8,7 +8,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testi
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { OutboxItem, WorkResult } from "@shared/contract-work-outbox";
 
-const world = vi.hoisted(() => ({ calls: [] as { method: string; params: Record<string, unknown> }[], items: [] as OutboxItem[], results: [] as WorkResult[], writesDown: false, listDown: false, resultsDown: false, resultsGate: null as Promise<void> | null }));
+const world = vi.hoisted(() => ({ calls: [] as { method: string; params: Record<string, unknown> }[], items: [] as OutboxItem[], results: [] as WorkResult[], writesDown: false, listDown: false, resultsDown: false, resultsGate: null as Promise<void> | null, requests: [] as unknown[] }));
 
 vi.mock("../../lib/connection", async (original) => {
   const link = {
@@ -22,6 +22,7 @@ vi.mock("../../lib/connection", async (original) => {
       if (method === "work.outbox.list" && world.listDown) throw new Error("socket closed");
       if (method === "work.outbox.list") return params.show === "decided" ? { items: [] } : { items: world.items, waiting: world.items.length };
       if (method === "work.outbox.grants") return { grants: [] };
+      if (method === "work.outbox.requests") return { requests: world.requests };
       if (method === "work.outbox.results" && params.since !== undefined && world.writesDown) throw new Error("socket closed");
       if (method === "work.outbox.results" && params.since === undefined) {
         if (world.resultsGate) await world.resultsGate;
@@ -68,6 +69,7 @@ beforeEach(() => {
   world.listDown = false;
   world.resultsDown = false;
   world.resultsGate = null;
+  world.requests = [];
   world.items = [held("h1", "held", "Post message with Slack: “Standup at 10”"), held("h2", "failed", "Post message with Slack: “Lunch”")];
   world.results = [result("r1", "Added Dietary needs", true), result("r2", "Sent to Dana Lee", false, { ref: { held: { at: "lifeos", id: "o1" } } })];
   workSwitch.reset();
@@ -156,6 +158,25 @@ describe("the return from Away", () => {
     client.mockRestore();
     // Held is never amber
     expect(dialog.querySelector('[data-state="waiting"]')).toBeNull();
+  });
+
+  it("counts a thread's open request as one held row, its items not again, and Open shows it in the Outbox", async () => {
+    world.requests = [
+      { id: "r1", n: 3, sessionId: "t1", workspaceId: "ws1", sector: "purdue", quote: "post the standup", head: "Post 1 message", state: "open", createdAt: 2_000, expiresAt: 90_000, answeredBy: null, answeredAt: null, rows: [{ ref: { at: "host", id: "h1" }, do: "send", changed: false, open: true, receipt: "rc" }] },
+    ];
+    const found = await gatherAway([{ environmentId: "box", decided: { since: 1_500, threads: [] } }], 3_000);
+    expect(found!.line).toBe("Held 1, 1 failed");
+    const onOpenOutbox = vi.fn();
+    render(<AwayReturnWork report={found!.report} onClose={() => undefined} onOpenSession={() => undefined} onOpenOutbox={onOpenOutbox} />);
+    const held = within(await screen.findByRole("dialog")).getByRole("region", { name: "Held" });
+    expect(held.textContent).toContain("Post 1 message");
+    // h1 is the request's: no workspace row counts it again.
+    expect(held.textContent).not.toContain("1 waiting");
+    fireEvent.click(within(held).getByRole("button", { name: "Open" }));
+    expect(onOpenOutbox).toHaveBeenCalled();
+    const { wantedOutbox, wantOutbox } = await import("../../lib/outboxWant");
+    expect(wantedOutbox()).toBe("request:box:r1");
+    wantOutbox(null);
   });
 
   it("keeps a failed read of the writes as a partial read with one Retry, never an empty list", async () => {

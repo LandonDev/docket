@@ -26,6 +26,8 @@ import { WORK_CHATS_KEY } from "./model";
 import { DetailSkeleton, HostRetry } from "./parts";
 import { loadOutbox, offerFrom, useOutbox, useWantedOutboxItem, wantOutboxItem, type HostItem } from "./store";
 import { pressMany, TickedDetail, type Batch } from "./Ticked";
+import { RequestCard } from "./RequestCard";
+import { askedItemKeys, requestKey, useOpenRequests } from "./requests";
 import { doneDays, FOLD_AT, FOLD_SHOWS, itemKey, tickable, waitingSections } from "./waiting";
 
 export { HeldDetail } from "./HeldDetail";
@@ -147,42 +149,60 @@ export function OutboxView({ besideRail = false, onClose, onToggleSidebar, onOpe
 
   // A row's held time and a scheduled row's time read against the minute it is.
   const now = useSlowClock(true) || Date.now();
-  const sections = useMemo(() => waitingSections(outbox.waiting, places, now), [outbox.waiting, places, now]);
+  // Asked in threads leads Waiting; an item an open request lists is under its request, not again under its thread.
+  const requests = useOpenRequests();
+  const waitingItems = useMemo(() => {
+    const asked = askedItemKeys(requests);
+    return asked.size ? outbox.waiting.filter((item) => !asked.has(itemKey(item))) : outbox.waiting;
+  }, [outbox.waiting, requests]);
+  const sections = useMemo(() => waitingSections(waitingItems, places, now), [waitingItems, places, now]);
   const days = useMemo(() => doneDays(outbox.done, now), [outbox.done, now]);
   const flat = useMemo(() => (tab === "waiting" ? sections.flatMap((s) => s.items) : days.flatMap((d) => d.items)), [tab, sections, days]);
   // The rows on screen, in order, with each fold's "N more": what ↑ and ↓ step through.
   const visible = useMemo(
     () =>
       tab === "waiting"
-        ? sections.flatMap((s) => (s.items.length > FOLD_AT && !expanded.has(s.key) ? [...s.items.slice(0, FOLD_SHOWS).map(itemKey), `more:${s.key}`] : s.items.map(itemKey)))
+        ? [...requests.map(requestKey), ...sections.flatMap((s) => (s.items.length > FOLD_AT && !expanded.has(s.key) ? [...s.items.slice(0, FOLD_SHOWS).map(itemKey), `more:${s.key}`] : s.items.map(itemKey)))]
         : days.flatMap((d) => d.items.map(itemKey)),
-    [tab, sections, days, expanded],
+    [tab, sections, days, expanded, requests],
   );
 
   // The detail shows only the item he picked: one that left under him (sent elsewhere, a grant) leaves the detail
   // empty, never the next item under the Send he was about to press.
   const current = selected === null ? null : (flat.find((item) => itemKey(item) === selected) ?? null);
-  const first = flat[0] ? itemKey(flat[0]) : null;
+  // A request picked stays on screen once answered or put away: its card says how it ended.
+  const pickedRequest = tab === "waiting" && selected?.startsWith("request:") ? /^request:(.+):([^:]+)$/.exec(selected) : null;
+  const first = visible.find((k) => !k.startsWith("more:")) ?? null;
+  // The page picks the first row by itself; until he touches the page, a request that comes to lead (read a moment
+  // after the lists) takes that pick. Once he has clicked or pressed a key, nothing moves under his hand.
+  const touched = useRef(false);
   useEffect(() => {
-    if (selected === null && first !== null) setSelected(first);
+    if (first !== null && (selected === null || (!touched.current && first.startsWith("request:") && selected !== first))) setSelected(first);
   }, [selected, first]);
   // An item a notice asked for (the digest's press): picked once a list holds it, in the tab that holds it.
   const wanted = useWantedOutboxItem();
   useEffect(() => {
     if (!wanted) return;
-    const held = outbox.waiting.some((item) => itemKey(item) === wanted) ? "waiting" : outbox.done.some((item) => itemKey(item) === wanted) ? "done" : null;
+    // A request is picked at once: its card reads it from its host. An item by its host's number ("Held as item 12") is
+    // found by that number on that host.
+    const byNumber = (i: HostItem) => typeof wanted !== "string" && i.environmentId === wanted.environmentId && i.n === wanted.n;
+    const numbered = typeof wanted === "string" ? null : (outbox.waiting.find(byNumber) ?? outbox.done.find(byNumber) ?? null);
+    const key = typeof wanted === "string" ? wanted : numbered && itemKey(numbered);
+    if (!key) return;
+    const held = key.startsWith("request:") || outbox.waiting.some((item) => itemKey(item) === key) ? "waiting" : outbox.done.some((item) => itemKey(item) === key) ? "done" : null;
     // Not held yet is not "gone": the lists the page opens with may be from before the item was made.
     if (!held) return;
+    touched.current = true;
     setTab(held);
-    setSelected(wanted);
+    setSelected(key);
     setOpened(true);
     clearTicks();
     // A wanted item past its group's fold opens the fold.
-    const section = sections.find((s) => s.items.some((i) => itemKey(i) === wanted));
+    const section = sections.find((s) => s.items.some((i) => itemKey(i) === key));
     if (section) setExpanded((prev) => new Set(prev).add(section.key));
     wantOutboxItem(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- picked once, when the item first shows
-  }, [wanted, outbox]);
+  }, [wanted, outbox, requests]);
   useEffect(() => () => wantOutboxItem(null), []);
 
   // Ticks hold only items still waiting that a tick may take.
@@ -277,7 +297,8 @@ export function OutboxView({ besideRail = false, onClose, onToggleSidebar, onOpe
 
   // An empty list is clear only when every host answered: a host that failed is named above with its Retry.
   const down = outbox.errors.length;
-  const shown = tab === "waiting" ? outbox.waiting : outbox.done;
+  // What the tab lists: Waiting's open requests count with its items.
+  const shownCount = tab === "waiting" ? outbox.waiting.length + requests.length : outbox.done.length;
   const emptyWords = !outbox.complete ? (
     <EmptyState title="Not known yet" line={down === 1 ? "Shown once it answers." : down > 1 ? "Shown once they answer." : "Shown once every host answers."} />
   ) : tab === "waiting" ? (
@@ -287,7 +308,15 @@ export function OutboxView({ besideRail = false, onClose, onToggleSidebar, onOpe
   );
 
   return (
-    <div ref={page} role="region" aria-label="Outbox" data-work-outbox onKeyDown={onKeyDown} className="flex min-h-0 min-w-0 flex-1 flex-col text-foreground">
+    <div
+      ref={page}
+      role="region"
+      aria-label="Outbox"
+      data-work-outbox
+      onKeyDownCapture={() => (touched.current = true)}
+      onPointerDownCapture={() => (touched.current = true)}
+      onClickCapture={() => (touched.current = true)}
+      onKeyDown={onKeyDown} className="flex min-h-0 min-w-0 flex-1 flex-col text-foreground">
       <div className="flex h-10 shrink-0 select-none items-center border-b border-border" data-tauri-drag-region="deep">
         {IS_MAC && !besideRail ? <div className="w-[78px] shrink-0" /> : null}
         {besideRail ? null : <OverlayNav onBack={onClose} onToggleSidebar={onToggleSidebar} />}
@@ -347,9 +376,9 @@ export function OutboxView({ besideRail = false, onClose, onToggleSidebar, onOpe
             className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-none"
             onFocus={(e) => setFocused((e.target as HTMLElement).getAttribute(ROW_ATTR))}
           >
-            {!outbox.loaded && shown.length === 0 ? (
+            {!outbox.loaded && shownCount === 0 ? (
               <ListSkeleton />
-            ) : shown.length === 0 ? (
+            ) : shownCount === 0 ? (
               // Narrow, the list is the pane on screen: an empty list says so here (the detail's copy is hidden then).
               <div data-outbox-empty="list" className="hidden h-full @max-[40rem]/outbox:flex">
                 {emptyWords}
@@ -357,6 +386,12 @@ export function OutboxView({ besideRail = false, onClose, onToggleSidebar, onOpe
             ) : tab === "waiting" ? (
               <WaitingList
                 sections={sections}
+                requests={requests}
+                onPickRequest={(request) => {
+                  setSelected(requestKey(request));
+                  setOpened(true);
+                  clearTicks();
+                }}
                 current={ticking ? null : selected}
                 stop={stop}
                 ticked={ticked}
@@ -404,10 +439,20 @@ export function OutboxView({ besideRail = false, onClose, onToggleSidebar, onOpe
               }}
               commands={commands}
             />
-          ) : !outbox.loaded && shown.length === 0 ? (
+          ) : pickedRequest ? (
+            <RequestCard
+              key={selected!}
+              frame="page"
+              environmentId={pickedRequest[1]!}
+              id={pickedRequest[2]!}
+              host={(item) => hostName(item.environmentId)}
+              onOpenSession={onOpenSession}
+              commands={commands}
+            />
+          ) : !outbox.loaded && shownCount === 0 ? (
             <DetailSkeleton />
           ) : !current ? (
-            shown.length > 0 ? (
+            shownCount > 0 ? (
               <EmptyState title="No longer waiting" line="Another press or device decided it." />
             ) : (
               <div data-outbox-empty="detail" className="flex h-full">

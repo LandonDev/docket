@@ -1,5 +1,6 @@
 import { useState } from "react";
 import type { AwayDecided } from "@shared/away";
+import { needsHim } from "@shared/work";
 import { BusyLabel, Button } from "../../components/ui/button";
 import { DialogFooter } from "../../chrome/ConfirmDialog";
 import { Modal, ModalBody } from "../../chrome/Modal";
@@ -7,13 +8,15 @@ import { StatusMark } from "../../components/ui/status";
 import { TruncateTip } from "../../components/tip";
 import { loadToast } from "../../components/ui/toaster";
 import { SectorDot } from "../../chrome/WorkspaceGlyph";
+import { Outbox } from "../../chrome/icons";
 import { useEnvironments } from "../../lib/connection";
 import { workSwitch } from "../../lib/workSwitch";
 import { storeTitleOf } from "../../lib/threadMentions";
 import { useWorkspaces } from "../../lib/tcserver/workspaces";
 import { AWAY_HEADING, awayLine, awaySections, byWorkspace, spanWords, WORK_CHATS_KEY, type AwayCounts } from "./model";
 import { resultsSince, undoResult, type HostResult } from "./results";
-import { loadHost, outboxNow, useOutbox, type HostItem } from "./store";
+import { loadHost, outboxNow, useOutbox, wantOutboxItem, type HostItem } from "./store";
+import { askedItemKeys, loadRequests, openRequestsNow, requestKey, useOpenRequests } from "./requests";
 import { rowWords } from "./OutboxView";
 import { itemFailWords, pressFailWords } from "./failWords";
 
@@ -67,8 +70,9 @@ export async function gatherAway(hosts: readonly AwayHost[], now = Date.now()): 
   const parts = await Promise.all(
     hosts.map(async (h) => {
       if (!workSwitch.hosts().has(h.environmentId)) return [];
-      const [, written] = await Promise.all([
+      const [, , written] = await Promise.all([
         loadHost(h.environmentId),
+        loadRequests(h.environmentId),
         since > 0 ? writesOf(h.environmentId, since, now).catch(() => (unread.push(h.environmentId), [] as HostResult[])) : Promise.resolve([] as HostResult[]),
       ]);
       return written;
@@ -78,9 +82,12 @@ export async function gatherAway(hosts: readonly AwayHost[], now = Date.now()): 
   // loadHost resolves either way and keeps a host's failure beside its last lists: a down Outbox is named, not read as empty.
   const outboxDown = outboxRead.errors.map((e) => e.environmentId).filter((id) => hosts.some((h) => h.environmentId === id));
   // A down host's last lists are stale: they are not counted as what waits now.
-  const waiting = outboxRead.waiting.filter((i) => !outboxDown.includes(i.environmentId));
+  // The one count (needsHim): a send under way or one he timed is not waiting on him. An open request is one.
+  const requests = openRequestsNow().filter((r) => !outboxDown.includes(r.environmentId));
+  const asked = askedItemKeys(requests);
+  const waiting = outboxRead.waiting.filter((i) => !outboxDown.includes(i.environmentId) && needsHim(i) && !asked.has(`${i.environmentId}:${i.ref.at}:${i.ref.id}`));
   const failed = waiting.filter((i) => i.state === "failed").length;
-  const held = waiting.length - failed;
+  const held = waiting.length - failed + requests.length;
   const decided = hosts.flatMap((h) => h.decided.threads.filter((t) => t.count > 0).map((t) => ({ environmentId: h.environmentId, sessionId: t.sessionId, count: t.count })));
   const counts: AwayCounts = { held, failed, decided: decided.reduce((n, d) => n + d.count, 0), written: parts.flat().length };
   // A down Outbox is said in the toast too: beside what else happened, or alone.
@@ -118,7 +125,9 @@ export function AwayReturnWork({
   const environments = useEnvironments();
   // The Outbox's own failure, read live: a down host's stale lists are left out, and its line has Retry.
   const down = outbox.errors.map((e) => e.environmentId);
-  const answered = outbox.waiting.filter((i) => !down.includes(i.environmentId));
+  const requests = useOpenRequests().filter((r) => !down.includes(r.environmentId));
+  const asked = askedItemKeys(requests);
+  const answered = outbox.waiting.filter((i) => !down.includes(i.environmentId) && needsHim(i) && !asked.has(`${i.environmentId}:${i.ref.at}:${i.ref.id}`));
   const held = answered.filter((i) => i.state !== "failed");
   const failed = answered.filter((i) => i.state === "failed");
   const [writes, setWrites] = useState<{ written: HostResult[]; unread: string[] }>({ written: report.written, unread: report.unread });
@@ -139,7 +148,7 @@ export function AwayReturnWork({
     await Promise.all(down.map((env) => loadHost(env)));
     setRereadingOutbox(false);
   };
-  const counts: AwayCounts = { held: held.length || down.length, failed: failed.length, decided: report.decided.length, written: writes.written.length || writes.unread.length };
+  const counts: AwayCounts = { held: held.length + requests.length || down.length, failed: failed.length, decided: report.decided.length, written: writes.written.length || writes.unread.length };
   const nameOf = (environmentId: string, workspaceId: string | null) =>
     !workspaceId || workspaceId === WORK_CHATS_KEY ? "Work Chats" : (workspaces.find((w) => w.environmentId === environmentId && w.id === workspaceId)?.name ?? "A Work workspace");
   const hostOf = (environmentId: string) => (environments.length > 1 ? environments.find((e) => e.id === environmentId)?.name : undefined);
@@ -153,6 +162,21 @@ export function AwayReturnWork({
             <h2 className="flex h-7 items-center text-xs font-medium text-muted-foreground">{AWAY_HEADING[section]}</h2>
             {section === "held" ? (
               <>
+                {/* A thread's request is one row; Open shows it in the Outbox, where his press answers it. */}
+                {requests.map((request) => (
+                  <Row key={requestKey(request)} media={<Outbox className="size-3.5 text-muted-foreground" />} title={request.head} line={storeTitleOf(request.sessionId) ? `Asked in ${storeTitleOf(request.sessionId)}` : null}>
+                    <Button
+                      variant="ghost"
+                      size="xs"
+                      onClick={() => {
+                        wantOutboxItem(requestKey(request));
+                        onOpenOutbox();
+                      }}
+                    >
+                      Open
+                    </Button>
+                  </Row>
+                ))}
                 {byWorkspace(held).map((group) => (
                   <Row
                     key={group.key}

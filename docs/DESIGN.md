@@ -1516,7 +1516,11 @@ Around the canvas:
   moment", and its Done record keeps a picture. A press's toast carries Undo
   only where the act allows it (a LifeOS mail LifeOS still holds, a kind
   whose Result has a way back); "Sent mail cannot be taken back" stands in
-  for a way back. A mail or calendar act LifeOS holds after the press says
+  for a way back. Asked in threads leads Waiting when a thread asked for
+  his press: one row a request (the Outbox glyph, its head sentence, the
+  thread, when it asked), and an item a request lists sits under it alone;
+  its detail is the request card's body in the detail's column, Not now at
+  the bar's start and the press at its end. A mail or calendar act LifeOS holds after the press says
   "Queued in LifeOS" with its age on its row, its detail and its toast, never
   sent. Grants are a sheet. The right panel gains Results (the `outbox`
   glyph, two groups). Each kind draws its own payload view; a view on its
@@ -4292,7 +4296,7 @@ list items and into a nested list, 20px above a heading and 4px under it,
 list hangs its text at 22px, like a row's words.
 
 The lines that remain: the hairline of one card (a row's opened body, a code
-block, a table, a question, failure or held-review card, the composer), the
+block, a table, a question, failure, held-review or request card, the composer), the
 rules between a table's rows and the title bar's bottom border. None between
 turns and none between rows; inside an open group a hairline parts two
 table rows and nothing else. A blockquote is a 2px
@@ -4357,6 +4361,22 @@ age under its last closing line, on every surface; in a pane it opens the
 Activity section.
 An approval card carries the amber glyph and its two buttons, not the
 word; the call's row above it keeps its tool icon, so the mark shows once.
+A thread's request for his press (its `outbox_request` call) stands in
+the call's place as the question's frame (a hairline on `card`, 12px
+corners, 16px inset): the Outbox glyph, muted, never amber (held is not
+Needs you), the head sentence at 14px medium, "You asked: "…"" muted under
+it on the head's text column, the summary list (36px rows parted by
+hairlines: tick, kind glyph, act, what it is about, a side word, a chevron
+that opens the item in place), then Not now and the press (Send N, Discard
+N, Approve N when the actions mix) at its foot, right-aligned. A row
+rewritten since the thread asked starts unticked with "Changed since
+asked" and takes its tick only once he opens it. Pressed, each row shows
+its result where its tick was; then the head sums them ("Sent 1, 1 not
+sent") and the foot says "by you at 9:41 AM" with Send again for what did
+not go. Not now, a request that ran out and a refused ask are one muted
+line where the card was (the Outbox glyph, "Not now", "No longer open",
+"Not asked" with the first sentence of why). A held line ("Held Send to
+…") opens the Outbox on its own item.
 In an open table the waiting approval is a 40px row, 6px round its raised
 buttons, so their drop clears the table's clipped frame. A thought is no row: while it streams with words the working
 line says "Thinking" with the block's seconds 4px after it, tabular and
@@ -4379,8 +4399,8 @@ buttons showing on hover or keyboard focus; a turn the person stopped
 closes on "Stopped" instead, with the same buttons. Every notice (a gate, a review, a compaction, a
 pass, a batch, a second opinion asked of another harness) is one muted
 line with a glyph, a lead in medium weight and its details as one muted
-comma run after it ("Release passed on master, release-277"); a phrase stays whole in the run, so a lead that needs its preposition keeps it ("Gate failed on") and a label ends in ":" ("Answered Approach: Fast, Small"); only a held review and a failure
-are cards. A compaction is one line that counts from its start, takes
+comma run after it ("Release passed on master, release-277"); a phrase stays whole in the run, so a lead that needs its preposition keeps it ("Gate failed on") and a label ends in ":" ("Answered Approach: Fast, Small"); only a held review, a failure and a
+thread's request for his press are cards. A compaction is one line that counts from its start, takes
 its outcome in place and reads "Compaction stopped" when its turn ended
 without one; its lead and details follow the same rule ("Context compacted
 414K → 3.6K, 1m 29s"). The host's steps of the agent's work fold into the run they sit

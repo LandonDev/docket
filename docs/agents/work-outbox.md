@@ -1036,7 +1036,27 @@ LifeOS item's Send carries `rev` = its `updatedAt` as shown.
 - **The held line** (`heldOf` and `HeldLine` in
   surfaces/transcript/ApprovalCard.tsx): under a call whose answer is "Held
   as item N: …", one muted line, the Outbox glyph, "Held" then the act; it
-  opens the Outbox.
+  opens the Outbox on that item (`wantOutbox({environmentId, n})` through
+  lib/outboxWant.ts, the first paint's door, with the thread's host).
+- **A thread's request** (`RequestCard.tsx`, `requests.ts`): the
+  transcript draws an `outbox_request` call (`isOutboxRequestBlock`,
+  surfaces/outboxRequestBlock.ts, the parse in the chunk) as the card from
+  the Outbox's chunk, reading the request from the host its result names
+  (`request.get`) and kept current by the `work.outbox.request` push. A row
+  with a receipt starts ticked; a changed one starts unticked, "Changed
+  since asked", and opening it asks `request.view` for a fresh receipt, then
+  he ticks it. His press is `decide({request, receipts})` with the ticked
+  rows' receipts alone (Send N, Discard N, Approve N when the actions mix);
+  Not now is `decline`. Results land per row; then "by you at 9:41 AM" and
+  Send again for rows that did not go (an ordinary Outbox press). Not now,
+  void and a refused ask are one muted line. Never the warning colour
+  (RequestCard.dom.test.tsx holds it). The Outbox lists open requests first,
+  in **Asked in threads** (one row each, its items not again under their
+  thread); its detail is the same body with the bar (Not now, the press,
+  ⌘↩). An untouched page picks a request that comes to lead. Today's
+  Waiting on you and the return from Away read `needsHim` and show an open
+  request as one row that opens it in the Outbox (`wantOutboxItem('request:<host>:<id>')`),
+  its items left out.
 - **Back from Away** (`AwayList.tsx`, mounted by chrome/AwayReturn.tsx):
   while a host has Work on, Away turning off gathers each host's tally for
   three seconds, then reads each Work host's Outbox and its writes since
@@ -1133,8 +1153,7 @@ Cell, Now, After table.
 ## Not built here
 
 A view of its own for a portal's submit, an Outlook mail, a computer act and
-an add-on call: they show in the generic view. The held line opens the Outbox
-but does not select its item. A box thread's computer act
+an add-on call: they show in the generic view. A box thread's computer act
 held on a Mac and pressed from the box. A held row moving with its thread
 to another host: it stays on the host that held it. A card skipped for a
 Claude thread's add-on call that will be held (in `safe` it asks, then

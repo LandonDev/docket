@@ -3,7 +3,11 @@ import { needsHim, type SectorKey } from "@shared/work";
 import { useWorkspaces } from "../../lib/tcserver/workspaces";
 import { WORK_CHATS_KEY } from "../outbox/model";
 import { KindGlyph, rowWords } from "../outbox/OutboxView";
-import { loadHost, loadOutbox, useOutbox, type HostItem } from "../outbox/store";
+import { loadHost, loadOutbox, useOutbox, wantOutboxItem, type HostItem } from "../outbox/store";
+import { askedItemKeys, requestKey, useOpenRequests, type HostRequest } from "../outbox/requests";
+import { Outbox } from "../../chrome/icons";
+import { storeTitleOf } from "../../lib/threadMentions";
+import { shell } from "../../stores/shell";
 import { heldWhen } from "../outbox/when";
 import { openHeld } from "./store";
 import type { TodayAnswer, TodayEnv, TodayRow, TodaySection, TodaySource } from "./types";
@@ -46,9 +50,36 @@ export function placeOf(item: Pick<HostItem, "environmentId" | "workspaceId">, n
  * workspace for one sector under different names, and the row must name
  * the one its sheet will.
  */
-export function heldRows(waiting: readonly HostItem[], now = Date.now(), jobOf: (item: HostItem) => string | undefined = () => undefined): TodayRow[] {
+export function heldRows(
+  waiting: readonly HostItem[],
+  now = Date.now(),
+  jobOf: (item: Pick<HostItem, "environmentId" | "workspaceId">) => string | undefined = () => undefined,
+  requests: readonly HostRequest[] = [],
+): TodayRow[] {
+  // A thread's open request is one row, and opens the Outbox on it; the items it lists are not listed again.
+  const asked = askedItemKeys(requests);
+  const askedRows: TodayRow[] = requests.map((request) => {
+    const key = `held:${requestKey(request)}`;
+    const job = jobOf(request);
+    const thread = storeTitleOf(request.sessionId);
+    return {
+      key,
+      section: SECTION.id,
+      sector: (request.sector as SectorKey | null) ?? null,
+      ...(job ? { job } : {}),
+      title: request.head,
+      ...(thread ? { detail: `Asked in ${thread}` } : {}),
+      at: request.createdAt,
+      when: heldWhen(request.createdAt, now),
+      lead: REQUEST_LEAD,
+      open: () => {
+        wantOutboxItem(requestKey(request));
+        shell.openOutbox();
+      },
+    };
+  });
   // The one count (shared/work/outboxCount.ts): a send under way or one he scheduled is not his to decide again.
-  return waiting.filter((item) => needsHim(item)).map((item) => {
+  return [...askedRows, ...waiting.filter((item) => needsHim(item) && !asked.has(`${item.environmentId}:${item.ref.at}:${item.ref.id}`)).map((item) => {
     const key = heldKey(item);
     const job = jobOf(item);
     const { act, about } = rowWords(item);
@@ -66,11 +97,15 @@ export function heldRows(waiting: readonly HostItem[], now = Date.now(), jobOf: 
       lead: leadOf(item.kind),
       open: () => openHeld(key),
     };
-  });
+  })];
 }
+
+/** A request's lead: the Outbox's own glyph, muted as every held row's (never amber). */
+const REQUEST_LEAD: TodayRow["lead"] = { kind: "glyph", glyph: ({ className }) => createElement(Outbox, { className: `size-3.5 text-muted-foreground ${className ?? ""}` }) };
 
 function useHeld(env: TodayEnv): TodayAnswer {
   const outbox = useOutbox();
+  const requests = useOpenRequests();
   useEffect(() => {
     void loadOutbox();
   }, []);
@@ -80,12 +115,12 @@ function useHeld(env: TodayEnv): TodayAnswer {
   const day = env.day.from;
   return useMemo(
     () => ({
-      rows: heldRows(outbox.waiting, Date.now(), (item) => placeOf(item, (environmentId, workspaceId) => catalog.find((w) => w.environmentId === environmentId && w.id === workspaceId)?.name)),
+      rows: heldRows(outbox.waiting, Date.now(), (item) => placeOf(item, (environmentId, workspaceId) => catalog.find((w) => w.environmentId === environmentId && w.id === workspaceId)?.name), requests),
       loading: !outbox.loaded,
       failed: outbox.errors.map((e) => ({ ...e, retry: () => loadHost(e.environmentId) })),
     }),
     // eslint-disable-next-line react-hooks/exhaustive-deps -- `day`: the rows' times are read again when the day turns
-    [outbox, catalog, day],
+    [outbox, catalog, day, requests],
   );
 }
 
