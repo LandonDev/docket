@@ -209,7 +209,7 @@ describe("the Templates view", () => {
     expect(asked("work.templates.unhide")).toEqual([{ workspaceId: "ws", template: LOG.id }]);
 
     fireEvent.contextMenu(screen.getByRole("button", { name: "Crew memo" }));
-    fireEvent.click(await screen.findByRole("menuitem", { name: "Remove" }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Delete" }));
     await settle();
     const confirm = screen.getByRole("alertdialog");
     expect(within(confirm).getByRole("heading").textContent).toBe("Delete “Crew memo”?");
@@ -228,18 +228,31 @@ describe("the Templates view", () => {
     render(<View {...props} />);
     await settle();
     fireEvent.contextMenu(screen.getByRole("button", { name: "Weekly" }));
-    fireEvent.click(await screen.findByRole("menuitem", { name: "Remove" }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Delete" }));
     await settle();
     expect(within(screen.getByRole("alertdialog")).getByText("It goes from every job on this computer.")).toBeTruthy();
   });
 
-  it("gives each menu row its glyph and sets his own Remove apart as the one red row", async () => {
+  it("names the box as it is mid-line when the window is on another computer", async () => {
+    host.primary = "mac";
+    const WEEKLY = tpl("all:Weekly.docx", "Weekly");
+    list = { templates: [MEMO, WEEKLY], hidden: 0 };
+    host.answer = (method) => (method === "work.templates.list" ? list : method === "work.templates.remove" ? { confirm: true } : {});
+    render(<View {...props} />);
+    await settle();
+    fireEvent.contextMenu(screen.getByRole("button", { name: "Weekly" }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Delete" }));
+    await settle();
+    expect(within(screen.getByRole("alertdialog")).getByText("It goes from every job on the box.")).toBeTruthy();
+  });
+
+  it("gives each menu row its glyph and sets his own Delete apart as the one red row", async () => {
     render(<View {...props} />);
     await settle();
     fireEvent.contextMenu(screen.getByRole("button", { name: "Crew memo" }));
     const items = await screen.findAllByRole("menuitem");
     expect(items.every((i) => i.querySelector("svg"))).toBe(true);
-    const remove = screen.getByRole("menuitem", { name: "Remove" });
+    const remove = screen.getByRole("menuitem", { name: "Delete" });
     expect(remove.previousElementSibling?.getAttribute("role")).toBe("separator");
     expect(remove.getAttribute("data-variant") ?? remove.className).toMatch(/destructive/);
   });
@@ -249,7 +262,7 @@ describe("the Templates view", () => {
     render(<View {...props} />);
     await settle();
     fireEvent.contextMenu(screen.getByRole("button", { name: "Crew memo" }));
-    fireEvent.click(await screen.findByRole("menuitem", { name: "Remove" }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Delete" }));
     await settle();
     expect(screen.queryByRole("alertdialog")).toBeNull();
     expect(toasts.map((t) => [t.title, t.options?.action?.label])).toEqual([["Moved to Trash", "Undo"]]);
@@ -309,10 +322,16 @@ describe("the Templates view", () => {
     expect(asked("work.templates.save")).toEqual([{ workspaceId: "ws", source: { at: "file", host: "box", path: "/w/Desktop/Budget.xlsx" } }]);
   });
 
-  it("from a window away from the workspace's host, says why at Add… without opening the picker, and refuses a drag where he can see it", async () => {
+  it("from a window away from the workspace's host, greys Add… with why, never opens the picker, and refuses a drag where he can see it", async () => {
     host.primary = "mac";
     picked.paths = ["/Users/sam/Budget.xlsx"];
     picked.calls = 0;
+    (document.activeElement as HTMLElement | null)?.blur();
+    fireEvent.pointerUp(document);
+    await act(async () => {
+      await tooltipChunk.load();
+      warmTooltips();
+    });
     render(
       <>
         <Head {...props} />
@@ -320,11 +339,22 @@ describe("the Templates view", () => {
       </>,
     );
     await settle();
-    fireEvent.click(screen.getByRole("button", { name: "Add…" }));
+    // Greyed, with the same reason a drop is refused for, the box named as it is mid-line.
+    const add = screen.getByRole("button", { name: "Add…" }) as HTMLButtonElement;
+    expect(add.disabled).toBe(true);
+    const far = document.querySelector<HTMLElement>("[data-templates-add-far]")!;
+    expect(far.getAttribute("tabindex")).toBe("0");
+    expect(far.getAttribute("data-slot")).toBe("tooltip-trigger");
+    await act(async () => {
+      far.focus();
+      await new Promise((r) => setTimeout(r, 50));
+    });
+    expect(document.querySelector('[data-slot="tooltip-content"]')?.textContent).toBe("Only a file on the box can be added for now");
+    fireEvent.click(add);
     await settle();
     expect(picked.calls).toBe(0);
     expect(asked("work.templates.save")).toEqual([]);
-    expect(toasts).toEqual([{ kind: "error", title: "Only a file on The box can be added for now" }]);
+    expect(toasts).toEqual([]);
     const view = document.querySelector("[data-templates-view]")!;
     const data = { types: ["Files"], files: [new File(["x"], "Budget.xlsx")], dropEffect: "copy" };
     fireEvent.dragEnter(view, { dataTransfer: data });
@@ -571,7 +601,7 @@ describe("the Templates view", () => {
     render(<View {...props} />);
     await settle();
     fireEvent.contextMenu(screen.getByRole("button", { name: "Weekly" }));
-    expect((await screen.findAllByRole("menuitem")).map((i) => i.textContent)).toEqual(["New from this", "Edit a copy", "Rename…", "Only in Dummy Esports", "Remove"]);
+    expect((await screen.findAllByRole("menuitem")).map((i) => i.textContent)).toEqual(["New from this", "Edit a copy", "Rename…", "Only in Dummy Esports", "Delete"]);
     fireEvent.click(screen.getByRole("menuitem", { name: "Edit a copy" }));
     await settle();
     expect(asked("work.templates.save")).toEqual([{ workspaceId: "ws", template: WEEKLY.id, name: "Weekly" }]);
@@ -600,7 +630,7 @@ describe("the Templates view", () => {
       await settle();
     };
     await pick("Crew memo", "Use in all jobs");
-    await pick("Crew memo", "Remove");
+    await pick("Crew memo", "Delete");
     await pick("Crew memo", "Edit");
     fireEvent.click(screen.getByRole("button", { name: "More" }));
     fireEvent.click(await screen.findByRole("menuitem", { name: "Show hidden" }));
@@ -624,7 +654,7 @@ describe("the Templates view", () => {
     render(<View {...props} />);
     await settle();
     fireEvent.contextMenu(screen.getByRole("button", { name: "Crew memo" }));
-    fireEvent.click(await screen.findByRole("menuitem", { name: "Remove" }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Delete" }));
     await settle();
     const lists = () => asked("work.templates.list").length;
     const before = lists();

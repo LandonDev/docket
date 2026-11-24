@@ -4,10 +4,11 @@ import type { Template } from "@shared/work/templates";
 import { Briefcase, Copy, Eye, FilePlus, Globe, Minus, MoreHorizontal, Pencil, TextCursor, Trash2 } from "../../chrome/icons";
 import { ConfirmDialog } from "../../chrome/ConfirmDialog";
 import { RowsMenu, type MenuRow } from "../../chrome/menuRows";
-import { TruncateTip } from "../../components/tip";
+import { Tip, TruncateTip } from "../../components/tip";
 import { BusyLabel, Button } from "../../components/ui/button";
 import { loadToast } from "../../components/ui/toaster";
 import { registry } from "../../lib/connection";
+import { nameInLine } from "../../lib/hostWords";
 import { pickFiles } from "../../lib/fs";
 import { getPathForFile } from "../../lib/native";
 import { EmptyState } from "../../surfaces/SurfaceSkeleton";
@@ -61,7 +62,7 @@ const failed = (title: string) => (err: unknown) => void loadToast().then((toast
 /** Why this window cannot add a file to the shelf: the workspace lives on another host. Null when it can. */
 function farReason(env: string): string | null {
   if (env === registry.primary().environmentId) return null;
-  return `Only a file on ${registry.environment(env)?.name ?? "the workspace's host"} can be added for now`;
+  return `Only a file on ${nameInLine(registry.environment(env)?.name ?? "the workspace's host")} can be added for now`;
 }
 
 /** A file to add: its name, and its path on this computer when it has one. */
@@ -111,6 +112,8 @@ const pickAndAdd = async (env: string, workspaceId: string): Promise<void> => {
 
 export function Head({ env, workspace }: WorkViewProps) {
   const { hidden, failed: down, adding } = useHead(workspace.id);
+  // From a window away from the workspace's host the press could only be refused, as a drop is: greyed, with why.
+  const far = farReason(env);
   return (
     // Add… is the header's last control and never moves: the ⋯ for hidden starters arrives before it.
     <span className="flex items-center gap-1">
@@ -127,9 +130,19 @@ export function Head({ env, workspace }: WorkViewProps) {
           onPick={() => void unhideStarters(env, workspace.id).catch(failed("Starters were not shown"))}
         />
       ) : null}
-      <Button variant="ghost" size="sm" disabled={adding || down} onClick={() => void pickAndAdd(env, workspace.id)}>
-        <BusyLabel busy={adding} label="Add…" />
-      </Button>
+      {far ? (
+        <Tip label={far}>
+          <span data-templates-add-far="" tabIndex={0} className="focus-ring inline-flex rounded-lg">
+            <Button variant="ghost" size="sm" disabled>
+              Add…
+            </Button>
+          </span>
+        </Tip>
+      ) : (
+        <Button variant="ghost" size="sm" disabled={adding || down} onClick={() => void pickAndAdd(env, workspace.id)}>
+          <BusyLabel busy={adding} label="Add…" />
+        </Button>
+      )}
     </span>
   );
 }
@@ -151,7 +164,7 @@ function pathOf(file: File): string | null {
 /** "It goes from every job on this computer." for a template of All jobs; nothing for one of this job. */
 function deleteLine(template: Template, env: string): string | undefined {
   if (template.where !== "all") return undefined;
-  const here = env === registry.primary().environmentId ? "this computer" : (registry.environment(env)?.name ?? "its host");
+  const here = env === registry.primary().environmentId ? "this computer" : nameInLine(registry.environment(env)?.name ?? "its host");
   return `It goes from every job on ${here}.`;
 }
 

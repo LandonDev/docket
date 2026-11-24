@@ -71,7 +71,7 @@ export function tileMenu(template: Template, jobName: string): TileRow[] {
       ? { kind: "item", id: "move", label: "Use in all jobs", glyph: "everywhere" }
       : { kind: "item", id: "move", label: `Only in ${jobName}`, glyph: "job" },
     { kind: "sep" },
-    { kind: "item", id: "remove", label: "Remove", glyph: "delete", danger: true },
+    { kind: "item", id: "remove", label: "Delete", glyph: "delete", danger: true },
   ];
 }
 

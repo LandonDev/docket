@@ -213,7 +213,7 @@ describe("the shelf", () => {
     expect(more.parentElement!.className).toContain("group-hover/item:pointer-events-auto");
     fireEvent.click(more);
     const items = await screen.findAllByRole("menuitem");
-    expect(items.map((i) => i.textContent)).toEqual(["New from this", "Edit", "Rename…", "Use in all jobs", "Remove"]);
+    expect(items.map((i) => i.textContent)).toEqual(["New from this", "Edit", "Rename…", "Use in all jobs", "Delete"]);
     // Its menu open, the ⋯ stays shown and takes the pointer.
     expect(more.parentElement!.className.split(" ")).toEqual(expect.arrayContaining(["opacity-100", "pointer-events-auto"]));
     fireEvent.click(screen.getByRole("menuitem", { name: "Rename…" }));

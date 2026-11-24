@@ -61,14 +61,14 @@ describe("a tile's menu", () => {
 
   it("offers his own Edit, Rename… and the move that fits its group, then Remove set apart as the one red row", () => {
     const rows = tileMenu(tpl("job:Crew memo.docx", "Crew memo"), "Dummy Esports");
-    expect(labels(rows)).toEqual(["New from this", "Edit", "Rename…", "Use in all jobs", "—", "Remove"]);
+    expect(labels(rows)).toEqual(["New from this", "Edit", "Rename…", "Use in all jobs", "—", "Delete"]);
     expect(rows.filter((r) => r.kind === "item" && r.danger).map((r) => (r.kind === "item" ? r.id : ""))).toEqual(["remove"]);
     expect(labels(tileMenu(tpl("all:Weekly.docx", "Weekly"), "Dummy Esports"))).toContain("Only in Dummy Esports");
   });
 
   it("offers Edit a copy on a template for all jobs, which Files cannot open where it lies, in the same order", () => {
     const rows = tileMenu(tpl("all:Weekly.docx", "Weekly"), "Dummy Esports");
-    expect(labels(rows)).toEqual(["New from this", "Edit a copy", "Rename…", "Only in Dummy Esports", "—", "Remove"]);
+    expect(labels(rows)).toEqual(["New from this", "Edit a copy", "Rename…", "Only in Dummy Esports", "—", "Delete"]);
     expect(rows.find((r) => r.kind === "item" && r.id === "edit")).toMatchObject({ glyph: "copy" });
     expect([tpl("job:a.docx", "a"), tpl("all:b.docx", "b"), tpl("starter:ref/c", "c")].map(editsACopy)).toEqual([false, true, true]);
   });
