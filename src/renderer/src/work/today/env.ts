@@ -30,7 +30,7 @@ export function useTodayEnv(): { env: TodayEnv; reach: LifeosReach; lifeosHost: 
   const jobs = useMemo(() => jobsOf(catalog, workHosts, open), [catalog, workHosts, open]);
   const home = useMemo(() => workHome(environments), [environments, workHosts]);
   // One host's session is read. A host found signed out or out of reach gives way to the next that holds a job;
-  // the set is forgotten when the hosts change and on Retry, so a host that came back is tried again.
+  // the set is forgotten when the hosts change, so a host that came back is tried again.
   const hosts = useMemo(() => lifeosHosts(jobs, home), [jobs, home]);
   const hostsKey = hosts.join("|");
   const [wanting, setWanting] = useState<{ key: string; ids: ReadonlySet<string> }>({ key: hostsKey, ids: NONE });
@@ -48,15 +48,8 @@ export function useTodayEnv(): { env: TodayEnv; reach: LifeosReach; lifeosHost: 
     () => ({ day: { from, to }, workspaces: jobs, lifeos, workspaceOf: (sector: SectorKey) => workspaceFor(sector, jobs, home) }),
     [from, to, jobs, lifeos, home],
   );
-  const retryLifeos = useMemo(
-    () =>
-      host
-        ? async () => {
-            setWanting({ key: hostsKey, ids: NONE });
-            await reopenLifeos(hosts[0] ?? host, null);
-          }
-        : undefined,
-    [host, hosts, hostsKey],
-  );
+  // Retry asks the computer the line names, and keeps it while the ask is out: the hosts passed over stay passed over,
+  // so the line never jumps to another computer's state under his press.
+  const retryLifeos = useMemo(() => (host ? () => reopenLifeos(host, null) : undefined), [host]);
   return { env, reach: reachOf(lifeos, host), lifeosHost: host, retryLifeos, open };
 }
