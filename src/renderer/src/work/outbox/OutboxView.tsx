@@ -33,7 +33,8 @@ import { byWorkspace, dayOf, decidedWords, EDITABLE, grantFor, offerLine, pastOf
 import { heldWhen } from "./when";
 import { loadResults, undoResult, useResults } from "./results";
 import { OfferLine } from "./OfferLine";
-import { discardItem, fetchItem, grantAndSend, loadHost, loadOutbox, notSentWords, offerAfterPress, offerFrom, sendItem, sendMany, useOutbox, useWantedOutboxItem, wantOutboxItem, wentOut, type HostItem, type HostOffer } from "./store";
+import { ownZone, scheduleLine } from "work-kit/mail/lib/zones";
+import { cancelScheduled, discardItem, fetchItem, grantAndSend, loadHost, loadOutbox, notSentWords, offerAfterPress, offerFrom, sendItem, sendMany, useOutbox, useWantedOutboxItem, wantOutboxItem, wentOut, type HostItem, type HostOffer } from "./store";
 
 const MIN_WIDTH = 240;
 const MAX_WIDTH = 420;
@@ -129,6 +130,10 @@ export function KindGlyph({ kind, className }: { kind: ActKind; className?: stri
 }
 
 const toast = (line: string) => void loadToast().then((t) => t(line));
+
+/** A mail he scheduled, said as the mail itself says it: his zone's time, and the zone he picked where it reads another clock. */
+const scheduledWords = (item: HostItem): string | null =>
+  item.scheduledFor === undefined ? null : `Scheduled for ${scheduleLine(item.scheduledFor, ownZone(), item.scheduledZone)}`;
 const toastError = (line: string) => void loadToast().then((t) => t.error(line));
 /** What a press says when it completed a run: the line of the grant it earned, with Review, which opens the item in Sent. */
 const toastEarned = (line: string, offer: HostOffer, review: () => void) =>
@@ -469,12 +474,12 @@ function WaitingList({
                         <time className="shrink-0 text-xs tabular-nums text-muted-foreground">{timeOf(item.createdAt)}</time>
                       </span>
                       <span className="truncate text-xs leading-4 text-muted-foreground">
-                        {item.state === "failed" ? (item.error ?? "Couldn't send") : item.state === "sending" ? "Sending" : (about ?? item.account ?? "")}
+                        {item.state === "failed" ? (item.error ?? "Couldn't send") : scheduledWords(item) ?? (item.state === "sending" ? "Sending" : (about ?? item.account ?? ""))}
                       </span>
                     </ItemButton>
                     {/* The glyph column: the kind's glyph, which gives way to the tick on hover, and to every tick while any row is ticked. */}
                     <span className={cn("pointer-events-none absolute start-2 top-2.5 grid size-4 place-items-center", batchable(item) && (ticking ? "opacity-0" : yields("row")))}>
-                      {item.state === "failed" ? <StatusMark state="failed" word={false} /> : item.state === "sending" ? <StatusMark state="working" word={false} /> : <KindGlyph kind={item.kind} />}
+                      {item.state === "failed" ? <StatusMark state="failed" word={false} /> : item.state === "sending" && item.scheduledFor === undefined ? <StatusMark state="working" word={false} /> : <KindGlyph kind={item.kind} />}
                     </span>
                     {batchable(item) ? (
                       <span className={cn("absolute start-2 top-2.5 grid size-4 place-items-center", !ticking && reveal("row", { row: true, overlay: true }))}>
@@ -689,6 +694,17 @@ export function HeldDetail({
     }
   };
   const waiting = pressable(item);
+  const unschedule = async () => {
+    setBusy("discard");
+    setRefused(null);
+    try {
+      toast((await cancelScheduled(item)) ? "Back in drafts" : "Already sent");
+    } catch (err) {
+      sayFailed(errorText(err));
+    } finally {
+      setBusy(null);
+    }
+  };
   return (
     <>
       <div className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-none">
@@ -702,6 +718,7 @@ export function HeldDetail({
             </div>
           ) : null}
           {item.kind === "computer.act" ? <p className="text-[13px] leading-5 text-muted-foreground">Takes {host}'s screen for a moment.</p> : null}
+          {item.scheduledFor !== undefined ? <p className="text-[13px] leading-5 text-muted-foreground tabular-nums">{scheduledWords(item)}</p> : null}
           {unread ? (
             <p role="alert" className="flex items-baseline gap-2 text-[13px] leading-5">
               <span className="text-destructive">The mail did not load</span>
@@ -717,6 +734,15 @@ export function HeldDetail({
           {item.kind === "computer.act" ? <KeptPicture item={item} picture={picture} /> : null}
         </div>
       </div>
+      {item.scheduledFor !== undefined ? (
+        // His press already sent it for its time: the one verb left is to take it back.
+        <VerbBar>
+          <span className="flex-1" />
+          <Button variant="secondary" size="sm" disabled={busy !== null} onClick={() => void unschedule()}>
+            <BusyLabel busy={busy === "discard"} label="Cancel send" />
+          </Button>
+        </VerbBar>
+      ) : (
       <VerbBar>
         <Button variant="ghost" size="sm" disabled={!waiting || busy !== null} onClick={() => void press("discard")}>
           <BusyLabel busy={busy === "discard"} label="Discard" />
@@ -756,6 +782,7 @@ export function HeldDetail({
           </span>
         )}
       </VerbBar>
+      )}
       {editing ? <EditDialog item={item} onClose={() => setEditing(false)} /> : null}
     </>
   );

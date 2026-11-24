@@ -4,8 +4,9 @@ import type { OutboxItem } from '@shared/contract-work-outbox'
 import type { CanvasItem } from '@shared/work'
 import { loadWorkModules, type WorkCtx } from '../modules'
 import { outbox as outboxModule } from '../outbox'
+import { SCHEDULED_BY_HIM } from '../outbox/outbox'
 import { cast, makeRig, readKey as reader, type Rig } from '../outbox/rig'
-import { CHANGED, ELSEWHERE, ensureMailTables, HELD_NOT_SCHEDULED, mail, openDrafts, stillSeen, type MailRow } from '.'
+import { CHANGED, ELSEWHERE, ensureMailTables, mail, openDrafts, stillSeen, type MailRow } from '.'
 import { outgoingHtml } from './outgoing'
 
 /**
@@ -217,12 +218,70 @@ describe('Send from TempCode', () => {
     expect((sends()[0]!.args.message as { html: string }).html).toBe('<p>See you</p>')
   })
 
-  it("refuses a schedule on a thread's draft, another host's draft, and anyone who may not approve", async () => {
+  it("schedules a thread's draft on his press as his own mail, with its zone and the reply tick, never through the hold", async () => {
+    const held = rig.lifeos.draft()
+    rig.lifeos.fire()
+    await settled()
+    const at = Date.now() + 3_600_000
+    const answer = await rig.rpc('work.mail.send', { id: held, seen: seenOf(held), sendAt: at, sendZone: 'America/New_York', cancelIfReply: true })
+    expect(answer).toEqual({ id: held, via: 'owner' })
+    expect(sends()).toHaveLength(1)
+    expect(sends()[0]!.args).toMatchObject({ id: held, cause: 'press', sendAt: at, sendZone: 'America/New_York', cancelIfReply: true })
+    expect(sends()[0]!.args).not.toHaveProperty('immediate')
+  })
+
+  it("shows a thread's draft he scheduled in the Outbox with its time, offered to no grant, and Cancel takes it back", async () => {
+    const held = rig.lifeos.draft()
+    rig.lifeos.fire()
+    await settled()
+    const at = Date.now() + 3_600_000
+    await rig.rpc('work.mail.send', { id: held, seen: seenOf(held), sendAt: at, sendZone: 'America/New_York' })
+    await settled()
+    const listed = await rig.rpc<{ items: OutboxItem[] }>('work.outbox.list', {})
+    const item = listed.items.find((i) => i.ref.at === 'lifeos' && i.ref.id === held)
+    expect(item).toMatchObject({ state: 'sending', scheduledFor: at, scheduledZone: 'America/New_York' })
+    // Nothing a grant or the Outbox's Send could press: it is not waiting on him.
+    await expect(rig.rpc('work.outbox.send', { ref: item!.ref, rev: item!.updatedAt })).rejects.toThrow(SCHEDULED_BY_HIM)
+    await expect(rig.rpc('work.outbox.discard', { ref: item!.ref })).rejects.toThrow(SCHEDULED_BY_HIM)
+    expect(sends()).toHaveLength(1)
+    expect(await rig.rpc('work.mail.cancel', { id: held })).toEqual({ back: true })
+    await settled()
+    const after = (await rig.rpc<{ items: OutboxItem[] }>('work.outbox.list', {})).items.find((i) => i.ref.at === 'lifeos' && i.ref.id === held)
+    expect(after?.state).toBe('held')
+    expect(after?.scheduledFor).toBeUndefined()
+  })
+
+  it('moves a scheduled mail and sends one now on his press alone', async () => {
+    const id = rig.lifeos.draft()
+    const row = rig.lifeos.rows.get(id)! as Record<string, unknown>
+    Object.assign(row, { status: 'queued', scheduled: true, sendAt: Date.now() + 3_600_000 })
+    const later = Date.now() + 7_200_000
+    expect(await rig.rpc('work.mail.reschedule', { id, sendAt: later, sendZone: 'Europe/London' })).toBeNull()
+    expect(rig.lifeos.calls.at(-1)).toEqual({ fn: 'compose:reschedule', args: { id, sendAt: later, sendZone: 'Europe/London' } })
+    const { sendAt } = await rig.rpc<{ sendAt: number }>('work.mail.sendNow', { id })
+    expect(sendAt).toBeGreaterThan(Date.now())
+    expect(rig.lifeos.calls.at(-1)?.fn).toBe('compose:sendNow')
+    // No thread, routine or bot moves a time or makes a scheduled mail go: a model caller is refused before LifeOS hears of it.
+    const model = { kind: 'model' as const, caps: ['read', 'operate', 'approve', 'admin'], sessionId: 't-work' }
+    const before = rig.lifeos.calls.length
+    for (const req of [
+      { method: 'work.mail.reschedule', params: { id, sendAt: later } },
+      { method: 'work.mail.sendNow', params: { id } },
+      { method: 'work.mail.cancel', params: { id } },
+      { method: 'work.mail.send', params: { id, seen: seenOf(id), sendAt: later } }
+    ]) {
+      await expect(mail.handle!({ id: '1', ...req } as never, rig.work.ctx, model as never)).rejects.toThrow('only a person can send mail')
+    }
+    await expect(rig.rpc('work.mail.sendNow', { id }, reader)).rejects.toThrow()
+    expect(rig.lifeos.calls.length).toBe(before)
+  })
+
+  it("refuses another host's draft, and anyone who may not approve", async () => {
     const held = rig.lifeos.draft()
     const far = rig.lifeos.draft({ host: 'env_mac' })
     rig.lifeos.fire()
     await settled()
-    await expect(rig.rpc('work.mail.send', { id: held, seen: seenOf(held), sendAt: Date.now() + 60_000 })).rejects.toThrow(HELD_NOT_SCHEDULED)
+    await expect(rig.rpc('work.mail.send', { id: far, seen: seenOf(far), sendAt: Date.now() + 60_000 })).rejects.toThrow(ELSEWHERE)
     await expect(rig.rpc('work.mail.send', { id: far, seen: seenOf(far) })).rejects.toThrow(ELSEWHERE)
     await expect(rig.rpc('work.mail.send', { id: held, seen: seenOf(held) }, reader)).rejects.toThrow()
     await expect(rig.rpc('work.mail.send', { id: 'ob_none', seen: seenOf(held) })).rejects.toThrow('LifeOS has no such mail')

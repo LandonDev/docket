@@ -28,7 +28,6 @@ export interface MailRow {
 }
 
 const NOT_A_PERSON = 'only a person can send mail'
-export const HELD_NOT_SCHEDULED = 'A draft a thread made goes now or not at all. Send it now, or schedule it from LifeOS.'
 export const ELSEWHERE = 'A thread on another host made this draft. Send it from that host.'
 export const NOT_QUEUED = 'This mail did not go: the Outbox had already recorded an earlier send of it. Open the Outbox and send it from there.'
 export const CHANGED = 'The draft changed after you pressed Send. Look at it again, then send.'
@@ -82,7 +81,23 @@ function mustApprove(by: Caller): void {
  * his own mail and goes as his `compose.send`. The HTML is cleaned by the
  * outgoing rules on both roads (the hold's `mail.send` cleans its own).
  */
-export async function sendMail(ctx: WorkCtx, by: Caller, id: string, seen: MailSeen, sendAt?: number, waited = false): Promise<MailSendAnswer> {
+/** A time he picked: when, the zone he picked it in, and on a reply whether to hold it if they write first. */
+export interface MailTime {
+  sendAt: number
+  sendZone?: string | undefined
+  cancelIfReply?: boolean | undefined
+}
+
+const timeArgs = (time: MailTime | undefined) =>
+  time
+    ? {
+        sendAt: time.sendAt,
+        ...(time.sendZone !== undefined ? { sendZone: time.sendZone } : {}),
+        ...(time.cancelIfReply !== undefined ? { cancelIfReply: time.cancelIfReply } : {})
+      }
+    : {}
+
+export async function sendMail(ctx: WorkCtx, by: Caller, id: string, seen: MailSeen, time?: MailTime, waited = false): Promise<MailSendAnswer> {
   mustApprove(by)
   const owner = ctx.lifeos.owner()
   const got = await owner.query<{ row: MailRow } | null>('compose:get', { id })
@@ -90,9 +105,10 @@ export async function sendMail(ctx: WorkCtx, by: Caller, id: string, seen: MailS
   if (!row || row.message?.kind !== 'mail') throw new Error('LifeOS has no such mail')
   // Anyone may have written between the composer's save and this read (the thread's agent, another app): what goes is what he saw.
   if (!stillSeen(row.message, seen)) throw new Error(CHANGED)
-  if (row.origin?.app === 'tempcode') {
-    if (row.origin.host !== ctx.host) throw new Error(ELSEWHERE)
-    if (sendAt !== undefined) throw new Error(HELD_NOT_SCHEDULED)
+  // His press with a time on a thread's draft is his own send for that instant: it goes as his mail, scheduled,
+  // and LifeOS takes the draft as his. A grant never names a time, and LifeOS refuses one from it besides.
+  if (row.origin?.app === 'tempcode' && row.origin.host !== ctx.host) throw new Error(ELSEWHERE)
+  if (row.origin?.app === 'tempcode' && !time) {
     const outbox = WORK_MODULES.find((m) => m.id === 'outbox')
     if (!outbox?.handle) throw new Error('the Outbox is not running on this host')
     const rev = Math.round(row.editedAt ?? row._creationTime)
@@ -115,8 +131,27 @@ export async function sendMail(ctx: WorkCtx, by: Caller, id: string, seen: MailS
   if (row.status !== 'draft') throw new Error(`LifeOS holds this mail as ${row.status}`)
   const message = { ...row.message, html: outgoingHtml(String(row.message.html ?? '')) }
   // The row as it was read and compared a moment ago: LifeOS refuses the send if it was edited since.
-  await owner.mutation('compose:send', { id, message, cause: 'press', ...(sendAt !== undefined ? { sendAt } : {}), ...(typeof row.editedAt === 'number' ? { editedAt: row.editedAt } : {}) })
+  await owner.mutation('compose:send', { id, message, cause: 'press', ...timeArgs(time), ...(typeof row.editedAt === 'number' ? { editedAt: row.editedAt } : {}) })
   return { id, via: 'owner' }
+}
+
+/** His press moves a scheduled mail: another time or zone, still scheduled. */
+export async function rescheduleMail(ctx: WorkCtx, by: Caller, id: string, time: MailTime): Promise<null> {
+  mustApprove(by)
+  await ctx.lifeos.owner().mutation('compose:reschedule', { id, ...timeArgs(time) })
+  return null
+}
+
+/** His press takes a scheduled mail back to a draft, as the Outbox's Cancel send does. */
+export async function cancelMail(ctx: WorkCtx, by: Caller, id: string): Promise<{ back: boolean }> {
+  mustApprove(by)
+  return { back: await ctx.lifeos.owner().mutation<boolean>('compose:cancel', { id }) }
+}
+
+/** His press sends a scheduled mail now, after LifeOS's undo time. */
+export async function sendMailNow(ctx: WorkCtx, by: Caller, id: string): Promise<{ sendAt: number }> {
+  mustApprove(by)
+  return { sendAt: await ctx.lifeos.owner().mutation<number>('compose:sendNow', { id }) }
 }
 
 export function ensureMailTables(db: DatabaseSync): void {
@@ -163,7 +198,19 @@ export const mail: WorkModule = {
   async handle(req, ctx, by) {
     switch (req.method) {
       case 'work.mail.send':
-        return handled(await sendMail(ctx, by, req.params.id, req.params.seen, req.params.sendAt, req.params.waited === true))
+      {
+        const { id, seen, sendAt, sendZone, cancelIfReply, waited } = req.params
+        const time = sendAt !== undefined ? { sendAt, sendZone, cancelIfReply } : undefined
+        return handled(await sendMail(ctx, by, id, seen, time, waited === true))
+      }
+      case 'work.mail.reschedule': {
+        const { id, sendAt, sendZone, cancelIfReply } = req.params
+        return handled(await rescheduleMail(ctx, by, id, { sendAt, sendZone, cancelIfReply }))
+      }
+      case 'work.mail.sendNow':
+        return handled(await sendMailNow(ctx, by, req.params.id))
+      case 'work.mail.cancel':
+        return handled(await cancelMail(ctx, by, req.params.id))
       case 'work.mail.nudge':
         return handled(await startNudge(ctx, by, req.params.workspaceId, req.params.threadId))
       case 'work.mail.waiting':

@@ -1877,9 +1877,21 @@ Around the canvas:
   with one value edge, the editor, and a foot bar with Attach, Picture,
   the formatting row, Saved, Discard and the one primary, Send. A draft a
   thread wrote opens under one line: the amber mark, "Drafted in" and the
-  thread's name in medium, Open thread. Its Send has no menu and shows
-  one toast, "Sending to …" over a 3px track that empties across the undo
-  time, with Undo; nothing has gone until the track is empty.
+  thread's name in medium, Open thread. Its Send shows one toast,
+  "Sending to …" over a 3px track that empties across the undo time, with
+  Undo; nothing has gone until the track is empty.
+  Send's chevron is the app's 28px menu: a time the draft carries first,
+  then the presets with their time muted and tabular at the row's end, Pick
+  date and time…, and on a reply the checkbox row "Cancel if they reply
+  first". The picker is a popover from the Send group: the calendar, then
+  under a hairline the time (112px) and the zone side by side, one 12px
+  muted tabular line saying when it goes (both zones only when their clocks
+  differ), and the tick to the left of the one primary, Schedule. A
+  scheduled mail in a thread's foot keeps a message's header: quiet xs Send
+  now, Edit and Cancel send, then its time as a quiet button that opens the
+  same picker (Move); under the recipients one muted line when they replied
+  since or a try is being repeated. In Scheduled a row they replied to
+  carries a 12px reply glyph before its time.
   A face is one avatar everywhere in Mail (a list row at 24px, a message's
   header at 28px, a fold row and a recipient's chip at 18px): the person's
   picture where LifeOS holds one (read from LifeOS's store as bytes, never

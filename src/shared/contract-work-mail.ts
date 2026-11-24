@@ -35,15 +35,39 @@ export const MailSeenSchema = z.object({
 })
 export type MailSeen = z.infer<typeof MailSeenSchema>
 
+/** An IANA zone name: "America/Chicago", "UTC". */
+const ZoneSchema = z.string().max(64).regex(/^[A-Za-z][A-Za-z0-9_+-]*(\/[A-Za-z0-9_+-]+)*$/)
+
 export const MailRequestSchemas = [
   /**
    * → { id, via }: sends the `outbox` row as LifeOS holds it now, only if it still says what the
-   * composer saved (`seen`: who it goes to, the subject and the words). `sendAt` schedules the
-   * owner's own mail; a held draft goes now or not at all. `waited`: the window already waited
+   * composer saved (`seen`: who it goes to, the subject and the words). `sendAt` schedules it, in
+   * `sendZone` (the IANA zone he picked it in), held back if they reply first with
+   * `cancelIfReply`: his own mail as it is, a held draft as his own from then on (his press with a
+   * time is his send for that instant). `waited`: the window already waited
    * out the undo time for this held draft (the composer's toast, with Undo), so LifeOS need not
    * queue it a second time. It means nothing for his own mail, which keeps LifeOS's queue.
    */
-  request('work.mail.send', z.object({ id: z.string().min(1).max(64), sendAt: z.number().int().positive().optional(), seen: MailSeenSchema, waited: z.boolean().optional() })),
+  request(
+    'work.mail.send',
+    z.object({
+      id: z.string().min(1).max(64),
+      sendAt: z.number().int().positive().optional(),
+      sendZone: ZoneSchema.optional(),
+      cancelIfReply: z.boolean().optional(),
+      seen: MailSeenSchema,
+      waited: z.boolean().optional()
+    })
+  ),
+  /** → null: his press moves a scheduled mail to another time or zone; it stays scheduled. */
+  request(
+    'work.mail.reschedule',
+    z.object({ id: z.string().min(1).max(64), sendAt: z.number().int().positive(), sendZone: ZoneSchema.optional(), cancelIfReply: z.boolean().optional() })
+  ),
+  /** → { sendAt }: his press sends a scheduled mail now; it goes after LifeOS's undo time, so Undo still takes it back. */
+  request('work.mail.sendNow', z.object({ id: z.string().min(1).max(64) })),
+  /** → { back }: his press takes a scheduled mail back to a draft; false when it is already on its way. */
+  request('work.mail.cancel', z.object({ id: z.string().min(1).max(64) })),
   /**
    * → { sessionId }: his press on Waiting on's Draft a nudge. Starts a Work thread in the workspace, linked
    * to the mail, that drafts a follow-up in that mail thread; the draft is held as every draft is. A thread's
@@ -78,6 +102,9 @@ export type MailPush = never
 
 export const MAIL_CAPS = {
   'work.mail.send': 'approve',
+  'work.mail.reschedule': 'approve',
+  'work.mail.sendNow': 'approve',
+  'work.mail.cancel': 'approve',
   'work.mail.nudge': 'operate',
   'work.mail.waiting': 'read',
   'work.mail.setWaiting': 'admin'

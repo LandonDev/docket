@@ -3058,12 +3058,16 @@ public enum Methods {
 
             public let id: String
             public let sendAt: Int?
+            public let sendZone: String?
+            public let cancelIfReply: Bool?
             public let seen: Seen
             public let waited: Bool?
 
-            public init(id: String, sendAt: Int? = nil, seen: Seen, waited: Bool? = nil) {
+            public init(id: String, sendAt: Int? = nil, sendZone: String? = nil, cancelIfReply: Bool? = nil, seen: Seen, waited: Bool? = nil) {
                 self.id = id
                 self.sendAt = sendAt
+                self.sendZone = sendZone
+                self.cancelIfReply = cancelIfReply
                 self.seen = seen
                 self.waited = waited
             }

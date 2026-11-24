@@ -236,6 +236,9 @@ interface OutboxDoc {
   sector?: string
   error?: string
   editedAt?: number
+  sendAt?: number
+  scheduled?: boolean
+  sendZone?: string
   origin?: { app?: string; threadId?: string; host?: string; workspaceId?: string; routineRunId?: string }
   proposed?: { subject?: string; text?: string; by?: string }
 }
@@ -420,6 +423,8 @@ export class LifeosHeldItems implements LifeosHeld {
         this.seen.add(key)
         // A draft made while a fitting grant stood goes at once; any other is told as held. What was already
         // waiting when the host came up is offered to the grants and told to nobody a second time.
+        // A mail he scheduled was his press already: it is offered to no grant and told to nobody.
+        if (item.scheduledFor !== undefined) continue
         await outbox.offer(item, { quiet: first })
       }
       if (what === 'mail') await this.settleInterrupted(listed)
@@ -452,7 +457,9 @@ export class LifeosHeldItems implements LifeosHeld {
   }
 
   private mailItem(row: OutboxDoc, quote?: string): OutboxItem | null {
-    if (row.message?.kind !== 'mail' || (row.status !== 'draft' && row.status !== 'failed')) return null
+    // A mail he scheduled stays listed with its time and Cancel until it goes; it waits on nobody, so it is `sending`.
+    const scheduled = row.status === 'queued' && row.scheduled === true && typeof row.sendAt === 'number'
+    if (row.message?.kind !== 'mail' || (row.status !== 'draft' && row.status !== 'failed' && !scheduled)) return null
     const payload = MailSendPayloadSchema.safeParse({ id: row._id, status: row.status, message: row.message, ...(row.error ? { error: row.error } : {}), ...(row.proposed ? { proposed: row.proposed } : {}), ...(quote ? { quote } : {}), ...(typeof row.editedAt === 'number' ? { editedAt: row.editedAt } : {}) })
     if (!payload.success) return null
     const words = mailWords(payload.data)
@@ -468,7 +475,8 @@ export class LifeosHeldItems implements LifeosHeld {
       summary: words.summary,
       verb: words.verb,
       account: payload.data.message.from?.address ?? null,
-      state: row.status === 'failed' ? 'failed' : 'held',
+      state: row.status === 'failed' ? 'failed' : scheduled ? 'sending' : 'held',
+      ...(scheduled ? { scheduledFor: row.sendAt as number, ...(typeof row.sendZone === 'string' ? { scheduledZone: row.sendZone } : {}) } : {}),
       payload: payload.data,
       createdAt: Math.round(row._creationTime),
       decidedBy: null,

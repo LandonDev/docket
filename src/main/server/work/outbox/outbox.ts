@@ -107,6 +107,8 @@ export const EDITABLE_KINDS: readonly ActKind[] = ['mail.send', 'addon.call', 't
 export const NOT_EDITABLE = 'This act cannot be changed here; change it where it was made, and it is held again.'
 export const NO_SUCH_ITEM = 'no such held item on this host'
 export const CHANGED_SINCE = 'This item changed since you opened it. Look at it again before you decide.'
+/** A mail he scheduled was his press already: the Outbox neither sends nor discards it, only Cancel send takes it back. */
+export const SCHEDULED_BY_HIM = 'You scheduled this mail: it goes at its time. Cancel send takes it back to a draft.'
 export const MAY_HAVE_GONE = 'This may have gone already: the last send did not say how it ended. Check Sent first, and choose Send again only if it is not there.'
 export const NO_SUCH_OFFER = 'There is no such offer on this host, or it was already decided.'
 export const REV_NEEDED = 'refused: a press on an item LifeOS holds names what was read (`rev`), so what goes is what was shown'
@@ -221,6 +223,7 @@ export class Outbox {
       // What goes is what LifeOS holds now, and only if that is what he was shown.
       if (opts.rev === undefined) throw new Error(REV_NEEDED)
       const live = await this.readLifeos(ref)
+      if (live.scheduledFor !== undefined) throw new Error(SCHEDULED_BY_HIM)
       // A calendar act binds its event as it was listed to the screens: an event changed since is refused, and the listing
       // catches up (its revision moves on, so every older view is refused too) (milestone 50's hold review, 29).
       if (live.kind === 'calendar.op') {
@@ -249,6 +252,7 @@ export class Outbox {
     let row = this.store.byRef(ref)
     if (ref.at === 'lifeos' && (!row || PRESSABLE.includes(row.state))) {
       const live = await this.readLifeos(ref)
+      if (live.scheduledFor !== undefined) throw new Error(SCHEDULED_BY_HIM)
       // The log records what was discarded as LifeOS holds it now, not as an earlier decision left it.
       if (row && PRESSABLE.includes(row.state)) row = this.store.edit(row.id, { payload: live.payload, summary: live.summary, verb: live.verb, account: live.account }) ?? row
       row ??= this.adopt(live)

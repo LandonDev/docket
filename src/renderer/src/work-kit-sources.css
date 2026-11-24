@@ -131,6 +131,7 @@
 @source "../../../node_modules/work-kit/src/mail/compose/quote-frame.tsx";
 @source "../../../node_modules/work-kit/src/mail/compose/recipient-field.tsx";
 @source "../../../node_modules/work-kit/src/mail/compose/remind-button.tsx";
+@source "../../../node_modules/work-kit/src/mail/compose/schedule-picker.tsx";
 @source "../../../node_modules/work-kit/src/mail/compose/send-button.tsx";
 @source "../../../node_modules/work-kit/src/mail/compose/thread-foot.tsx";
 @source "../../../node_modules/work-kit/src/mail/compose/use-reply-source.ts";
@@ -172,6 +173,7 @@
 @source "../../../node_modules/work-kit/src/mail/lib/snooze.ts";
 @source "../../../node_modules/work-kit/src/mail/lib/waiting.ts";
 @source "../../../node_modules/work-kit/src/mail/lib/window.ts";
+@source "../../../node_modules/work-kit/src/mail/lib/zones.ts";
 @source "../../../node_modules/work-kit/src/mail/list-head.tsx";
 @source "../../../node_modules/work-kit/src/mail/load-more.tsx";
 @source "../../../node_modules/work-kit/src/mail/mailbox.tsx";

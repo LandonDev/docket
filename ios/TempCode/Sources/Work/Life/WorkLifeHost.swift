@@ -203,7 +203,7 @@ final class WorkLifeHost: LifeActions {
             accountId: message.accountId,
             from: message.from.map { Methods.WorkMailSend.Params.Seen.From(name: $0.name, address: $0.address) }
         )
-        let answer = try await client.work.sendMail(draftId: send.draftId, seen: seen, sendAt: send.sendAt)
+        let answer = try await client.work.sendMail(draftId: send.draftId, seen: seen, sendAt: send.sendAt, sendZone: send.sendZone)
         if answer.via == .hold { return "Waiting in the Outbox" }
         return send.sendAt == nil ? "Sending" : "Scheduled"
     }

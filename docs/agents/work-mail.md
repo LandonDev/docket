@@ -49,11 +49,14 @@ older client) is refused for a row that has either, so nothing goes unseen:
   `origin.host` this host) goes through the hold: the mail module calls the
   Outbox's own `work.outbox.send {ref, rev}` with the row's edit time as
   `rev`, so the run-once claim, the Sent record and the linked task
-  (`ctx.links.completeFor`, with the thread link) are the hold's. Such a
-  draft goes now or not at all: a `sendAt` is refused.
+  (`ctx.links.completeFor`, with the thread link) are the hold's. His
+  press with a time on such a draft is his own send for that instant: it
+  goes as his `compose:send` (below) and LifeOS takes the draft as his
+  (`ownerTouched`); the hold runs nothing.
 - **A draft another host's thread made** is refused: send it from that host.
 - **Anything else is his own mail** and goes as his `compose:send` with
-  `cause: 'press'`, at `sendAt` when he chose a time.
+  `cause: 'press'`, at `sendAt` in `sendZone` when he chose a time
+  ("Send later" below).
 
 **Undo for a held draft is a wait in the window.** The hold has no queue to
 pull a mail back from, so for a draft that goes through it the composer
@@ -74,7 +77,7 @@ time. A press from the Outbox page, a grant's send and the phone's run in
 calls of their own, find no mark whoever wins the claim, and keep LifeOS's
 queue and its Undo; LifeOS takes `immediate` only with `cause: 'press'`
 named, and makes a grant's send wait the undo time whatever time it names.
-A held draft has no Send later.
+A held draft's Send later goes as his own scheduled mail ("Send later").
 
 **One wait a draft.** A second Send on the same draft, or the draft opened
 again in the composer, ends the wait it had (work-kit `held-send.ts`), so
@@ -97,6 +100,60 @@ Either way LifeOS records the send as his, from this host's device session
 (`sentFrom` is the session's client; a minted proof session reads "from a
 minted sign-in"). A thread's key never sends: `send_mail` is refused by
 LifeOS for a draft-only key.
+
+## Send later
+
+Send's chevron (work-kit `SendButton`) lists, after Send and archive on a
+reply: a time the draft already carries (`suggestedSend`: an agent's
+"Suggested time", or "Its time before" when he took a scheduled mail back
+to edit), This afternoon while the morning lasts, Tomorrow morning and
+Monday morning at 8 on his own clock, Pick date and time…, and on a reply
+the tick "Cancel if they reply first" (off by default), which rides with
+whichever time he picks. Pick date and time… is the calendar, a time in
+quarter hours and a zone: his own first (`ownZone()`, the desktop's), the
+recipients' zone when he picked one for them before (kept on this device by
+address, `rememberZone`), then the common ones; under them one line says
+when it goes, "Tue 8:00 AM Central · 9:00 AM Eastern" when the zone picked
+reads another clock (`scheduleLine`). The rules are work-kit's
+`src/mail/lib/zones.ts` on `fromWall`: a wall time the clocks skip moves on
+by the gap (2:30 reads 3:30, and the line says so), one that happens twice
+takes the first, and a time picked across a change keeps its wall time
+(`zones.test.ts`). The instant and the zone's name are kept on the row
+(`sendAt`, `sendZone`).
+
+The host carries every press: `work.mail.send {…, sendAt, sendZone,
+cancelIfReply}`, `work.mail.reschedule` (the time on a scheduled mail is a
+button that opens the same picker), `work.mail.sendNow` (goes after
+LifeOS's undo time, with Undo) and `work.mail.cancel`, each `approve` with
+a model caller refused (`mustApprove`). No grant names a time: the hold's
+`mail.send` never passes one and LifeOS refuses `sendAt` with
+`cause: 'grant'`. A thread never schedules: LifeOS's `send_mail` takes no
+time and refuses a key that names one, and its `draft_mail` takes
+`suggest_send_at` and `suggest_zone`, kept on the draft as
+`suggestedSend {at, zone?, by}` for him to pick or not (the shape a chat
+pane may use too). Away releases nothing of it.
+
+LifeOS times it (lifeos docs/BRIEF.md "Send later"): `schedule.fire` on
+Convex's own scheduler at the instant, the box worker's send lane within
+two seconds, claimed once and stamped before the provider call; a route
+that is down is tried again every two minutes inside a 15-minute grace,
+then the mail fails, stays in Scheduled first, and LifeOS raises its
+`send-failed` alert. Work's digest tells it too (`mail.missed`,
+digest/sources/scheduled.ts, a row a mail until he sends it again or takes
+it back). A message from someone else in the thread after he scheduled a
+reply marks it (`replyAt`: the list row's reply glyph, a line under the
+mail); with the tick it goes back to Drafts at once, its time kept, and
+LifeOS says so.
+
+A scheduled mail shows in Scheduled (one account's or all, as the other
+boxes), in its thread's foot with Send now, Edit (back to a draft, opened)
+and Cancel send, and in the Outbox when a thread drafted it: state
+`sending` with `scheduledFor` and `scheduledZone`, "Scheduled for …", one
+verb, Cancel send; the Outbox's Send and Discard refuse it
+(`SCHEDULED_BY_HIM`). The phones read it too (LifeKit `ScheduleTime`):
+Scheduled and the thread's foot show the two-zone line with Cancel, a tap
+offers Edit or Cancel Send, and the phone's own Send later carries the
+device's zone; the phone has no zone picker, Send now or Move.
 
 ## The outgoing rules
 

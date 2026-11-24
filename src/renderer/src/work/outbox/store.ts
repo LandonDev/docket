@@ -200,6 +200,15 @@ export async function discardItem(item: HostItem): Promise<OutboxItem> {
   }
 }
 
+/** Cancel send on a mail he scheduled: LifeOS takes it back to a draft, which waits on him again. False when it is already on its way. */
+export async function cancelScheduled(item: HostItem): Promise<boolean> {
+  try {
+    return (await registry.linkOf(item.environmentId).request<{ back: boolean }>("work.mail.cancel", { id: item.ref.id })).back;
+  } finally {
+    void loadHost(item.environmentId);
+  }
+}
+
 export async function editItem(item: HostItem, payload: unknown): Promise<OutboxItem> {
   try {
     const after = await registry.linkOf(item.environmentId).request<OutboxItem>("work.outbox.edit", { ref: item.ref, payload });

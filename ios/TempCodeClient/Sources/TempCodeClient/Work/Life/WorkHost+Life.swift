@@ -19,8 +19,9 @@ extension WorkHost {
 
     /// The press on a saved draft from any screen: the host sends it as LifeOS holds it, only if it
     /// still says what the composer saved. A thread's draft goes through the hold (`via: hold`).
-    public func sendMail(draftId: String, seen: Methods.WorkMailSend.Params.Seen, sendAt: Date? = nil) async throws -> Methods.WorkMailSend.Output {
-        try await socket.request(Methods.WorkMailSend.self, .init(id: draftId, sendAt: sendAt.map { Int(($0.timeIntervalSince1970 * 1000).rounded()) }, seen: seen))
+    /// A time goes with the IANA zone it was picked in (`sendZone`), so his screens can say it in both.
+    public func sendMail(draftId: String, seen: Methods.WorkMailSend.Params.Seen, sendAt: Date? = nil, sendZone: String? = nil) async throws -> Methods.WorkMailSend.Output {
+        try await socket.request(Methods.WorkMailSend.self, .init(id: draftId, sendAt: sendAt.map { Int(($0.timeIntervalSince1970 * 1000).rounded()) }, sendZone: sendAt == nil ? nil : sendZone, seen: seen))
     }
 
     /// The rule proposals a sent draft gave rise to: the line under it.

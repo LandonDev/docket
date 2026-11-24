@@ -37,11 +37,18 @@ export function sendThroughHost(env: string, actions: OutboxActions): OutboxActi
     ...actions,
     send: async (args) => {
       const id = args.waited && args.id ? args.id : await actions.save(args);
-      const answer = await registry.linkOf(env).request<MailSendAnswer>("work.mail.send", { id, seen: seenOf(args.message), ...(args.sendAt !== undefined ? { sendAt: args.sendAt } : {}), ...(args.waited ? { waited: true } : {}) });
+      // A time he picked goes with its zone and the reply tick; his press with a time is his own send for that instant.
+      const time = args.sendAt !== undefined ? { sendAt: args.sendAt, ...(args.sendZone ? { sendZone: args.sendZone } : {}), ...(args.cancelIfReply !== undefined ? { cancelIfReply: args.cancelIfReply } : {}) } : {};
+      const answer = await registry.linkOf(env).request<MailSendAnswer>("work.mail.send", { id, seen: seenOf(args.message), ...time, ...(args.waited ? { waited: true } : {}) });
       if (answer.via === "hold") heldSends.add(id);
       return id;
     },
     cancel: (id) => (heldSends.has(id) ? Promise.resolve(false) : actions.cancel(id)),
+    // Moving a scheduled mail and sending it now are presses too: the host carries them out, never this window.
+    reschedule: async (id, time) => {
+      await registry.linkOf(env).request("work.mail.reschedule", { id, sendAt: time.sendAt, ...(time.sendZone ? { sendZone: time.sendZone } : {}), ...(time.cancelIfReply !== undefined ? { cancelIfReply: time.cancelIfReply } : {}) });
+    },
+    sendNow: async (id) => (await registry.linkOf(env).request<{ sendAt: number }>("work.mail.sendNow", { id })).sendAt,
     // A failed mail one of this host's threads made is sent again by the hold, on what the thread's foot showed him;
     // any other is his own and LifeOS queues it again.
     retry: async (id, row) => {

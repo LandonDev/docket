@@ -37,6 +37,9 @@ export interface OutboxItem extends HeldItem {
   proposed?: boolean
   /** a failed send whose end nobody knows: it may have gone, so the screen asks him to check Sent and offers "Send again" (`send({again: true})`), never a plain Send */
   outcomeUnknown?: boolean
+  /** a mail he scheduled (state `sending` until it goes): when it goes, and the IANA zone he picked the time in */
+  scheduledFor?: number
+  scheduledZone?: string
   updatedAt: number
 }
 export const OutboxItemSchema = HeldItemSchema.extend({
@@ -48,6 +51,9 @@ export const OutboxItemSchema = HeldItemSchema.extend({
   routineRunId: z.string().nullable(),
   proposed: z.boolean().optional(),
   outcomeUnknown: z.boolean().optional(),
+  /** a mail he scheduled: when it goes, and the IANA zone he picked the time in */
+  scheduledFor: z.number().int().optional(),
+  scheduledZone: z.string().optional(),
   updatedAt: z.number().int()
 })
 

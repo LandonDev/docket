@@ -127,7 +127,8 @@ export class FakeOutboxLifeos implements LifeosClient {
 
   /** What `outboxHeld.held({host})` answers now. */
   held(host: string): Record<string, unknown>[] {
-    return [...this.rows.values()].filter((r) => (r.status === 'draft' || r.status === 'failed') && (r.origin as { host?: string } | undefined)?.host === host)
+    // As outboxHeld:held: drafts, failed sends, and mail he scheduled.
+    return [...this.rows.values()].filter((r) => (r.status === 'draft' || r.status === 'failed' || (r.status === 'queued' && r.scheduled === true)) && (r.origin as { host?: string } | undefined)?.host === host)
   }
 
   /** Fire the live queries, as Convex does when a row changes. */
@@ -156,9 +157,28 @@ export class FakeOutboxLifeos implements LifeosClient {
       case 'compose:send': {
         if (!row) throw new Error('not found')
         if (row.status !== 'draft') throw new Error('This mail is no longer a draft.')
-        Object.assign(row, { status: 'queued', message: args.message, cause: args.cause, sentFrom: 'tempcode' })
+        Object.assign(row, { status: 'queued', message: args.message, cause: args.cause, sentFrom: 'tempcode', ...(args.sendAt !== undefined ? { sendAt: args.sendAt, scheduled: true, sendZone: args.sendZone } : {}) })
         this.fire()
         return args.id as T
+      }
+      case 'compose:reschedule': {
+        if (!row || row.status !== 'queued' || !row.scheduled) throw new Error('This mail is no longer scheduled.')
+        Object.assign(row, { sendAt: args.sendAt, sendZone: args.sendZone })
+        this.fire()
+        return null as T
+      }
+      case 'compose:cancel': {
+        if (!row || row.status !== 'queued') return false as T
+        Object.assign(row, { status: 'draft', sendAt: undefined, scheduled: undefined, sendZone: undefined })
+        this.fire()
+        return true as T
+      }
+      case 'compose:sendNow': {
+        if (!row || row.status !== 'queued' || !row.scheduled) throw new Error('This mail is no longer scheduled.')
+        const sendAt = Date.now() + 10_000
+        Object.assign(row, { sendAt, scheduled: undefined, sendZone: undefined })
+        this.fire()
+        return sendAt as T
       }
       case 'compose:retry': {
         if (!row || row.status !== 'failed') throw new Error('this mail has not failed')

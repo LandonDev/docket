@@ -42,6 +42,7 @@ export const DIGEST_TELLS: TellKind[] = [
   { kind: 'routines.asks', group: 'results', name: 'A routine asks' },
   { kind: 'connections.ending', group: 'ending', name: 'A sign-in or licence is about to end' },
   { kind: 'mail.waiting', group: 'people', name: 'Sent mail with no answer' },
+  { kind: 'mail.missed', group: 'results', name: 'A scheduled mail did not go' },
   { kind: 'docs.guest', group: 'people', name: 'A guest edited a document' },
   { kind: 'capture.unsorted', group: 'system', name: 'Captures to sort' },
   { kind: 'winvm.failed', group: 'system', name: 'The Windows VM needs you' },
