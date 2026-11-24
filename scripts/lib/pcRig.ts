@@ -153,7 +153,7 @@ export interface StandIn {
 export function standIn(root: string, name: string, remote: number, opts: { headless: boolean; debug?: number; env?: Record<string, string> }): StandIn {
   const base = join(root, name)
   const s: StandIn = { name, root: base, home: join(base, 'home'), data: join(base, 'data'), log: join(root, `${name}.log`), remote, debug: opts.debug ?? null, env: opts.env ?? {} }
-  for (const d of [s.home, s.data, join(base, 'tmp'), join(s.home, '.claude'), join(s.home, '.codex'), join(base, 'work')]) mkdirSync(d, { recursive: true })
+  for (const d of [s.home, s.data, join(base, 'tmp'), join(s.home, '.claude'), join(s.home, '.codex'), join(base, 'work'), join(base, 'winvm-none')]) mkdirSync(d, { recursive: true })
   return s
 }
 
@@ -170,6 +170,8 @@ export function launch(s: StandIn, headless: boolean): void {
     TEMP_CODE_REMOTE_PORT: String(s.remote),
     TEMP_CODE_ALIAX_DATA_DIR: join(s.data, 'aliax'),
     TEMP_CODE_WORK_ROOT: join(s.root, 'work'),
+    // An empty folder for the Windows VM's files: an isolated instance must never see, wake or hibernate the real standing VM.
+    WINVM_DIR: join(s.root, 'winvm-none'),
     TEMP_CODE_CLAIM_SHIM: '0',
     TEMP_CODE_GATEWAY_ROLE: 'owner',
     CLAUDE_CONFIG_DIR: join(s.home, '.claude'),
