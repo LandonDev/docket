@@ -1,5 +1,5 @@
 {
-  "n": 370,
-  "notes": "Word files from Teams save by themselves from what is on screen and are never deleted with their tab while your words may be in them; New → Document works in a Teams library; Save as Word to… a folder you pick; a Work workspace reopens where you left it; no code or git parts in Work threads; a close × on every file beside a chat; real Office live in a Files tab (Edit here or Live, per file); sheet and Files fixes from the review; a refused file watch never stops the box starting.",
-  "ts": 1795504739372
+  "n": 371,
+  "notes": "A Word file, deck or workbook in a Teams library keeps saving by itself after its first upload; the header says uploading, then \"In Teams\" once OneDrive has it; every new chat and thread starts in your default access; account rules for many computers; the test suite is green again; council fixes across documents, sheets, slides, Files and held changes.",
+  "ts": 1795512773086
 }
