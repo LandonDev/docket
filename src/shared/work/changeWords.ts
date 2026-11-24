@@ -98,4 +98,4 @@ export const reachWords = (words: string, now: number, shown: number, unit: 'pla
 export const goneWords = (words: string, from: string): string => `${quoted(words)} is no longer in ${from}`
 
 /** A stale press's reason when the words stand elsewhere than he was shown: other slides, or other boxes. */
-export const elsewhereWords = (words: string, what: 'slides' | 'boxes'): string => `${quoted(words)} stands in other ${what} now than the ones shown`
+export const elsewhereWords = (words: string, what: 'slides' | 'boxes' | 'paragraphs'): string => `${quoted(words)} stands in other ${what} now than the ones shown`

@@ -102,6 +102,8 @@ export const OfficeEditSchema = z.object({
   base: z.string().max(100),
   /** a PowerPoint replace's slides that held the words then, for the card */
   on: z.array(z.number().int().min(1)).max(500).optional(),
+  /** a replace's `spotsOf`: the paragraphs or boxes that held the words then, so words moved with the count alike are told apart */
+  spots: z.string().max(100).optional(),
   /** held through Office in the Windows VM: his press goes there, never to this host's desktop Office */
   vm: z.literal(true).optional()
 })
@@ -119,6 +121,12 @@ export async function fileRead(c: OfficeCarrier, app: OfficeEdit['app'], key: st
   return { texts: slides.flatMap((s) => s.texts), on: (find) => slides.filter((s) => s.texts.some((t) => t.includes(find))).map((s) => s.index) }
 }
 export const textHash = (texts: readonly string[]): string => createHash('sha256').update(JSON.stringify(texts)).digest('hex')
+/**
+ * The paragraphs (Word) or text boxes (PowerPoint) that hold the words, as one hash, in order. Word's and PowerPoint's
+ * replace reaches every match wherever it stands: a co-author who moved the only match to another paragraph, or to
+ * another box on the same slide, leaves the count as it was and this not.
+ */
+export const spotsOf = (texts: readonly string[], find: string): string => textHash(texts.filter((t) => t.includes(find))).slice(0, 32)
 /** How many places hold the words. */
 export const placesOf = (texts: readonly string[], find: string): number => texts.reduce((n, t) => n + t.split(find).length - 1, 0)
 export const clip = (s: string, n = 60): string => (s.length > n ? `${s.slice(0, n - 1)}…` : s)
@@ -260,13 +268,21 @@ export function officeActs(deps: HeldDeps): ActKindDef[] {
         const now = placesOf(texts, p.edit.find)
         if (now === 0) throw new ActStale(`${p.name} changed since: ${goneWords(p.edit.find, p.app === 'word' ? 'the document' : 'the deck')}. Nothing was changed.`)
         if (now !== p.places) throw new ActStale(`${p.name} changed since: ${reachWords(p.edit.find, now, p.places, 'place')}. Nothing was changed.`)
+        // The same count in other paragraphs or boxes is not what he was shown. A hold from before `spots` is judged on the whole text it read.
+        if (p.spots !== undefined ? spotsOf(texts, p.edit.find) !== p.spots : textHash(texts) !== p.base)
+          throw new ActStale(`${p.name} changed since: ${elsewhereWords(p.edit.find, p.app === 'word' ? 'paragraphs' : 'boxes')}. Nothing was changed.`)
       }
       let n: number
       if (p.app === 'word') n = await c.editDocument(key, p.edit, false)
       else if ('find' in p.edit) n = await c.replaceSlideText(key, p.edit.find, p.edit.replace)
       else throw new ActStale('PowerPoint takes only a find and replace')
-      // What the app says it changed, when that is not what he was shown.
-      const short = 'find' in p.edit && p.app === 'word' && n !== p.places ? (n < 0 ? `. ${app} changed it otherwise than shown: look at the file` : `. ${app} changed ${n} of the ${counted(p.places, 'place')}`) : ''
+      // What the app says it changed, when that is not what he was shown: Word counts places, PowerPoint boxes.
+      const boxes = 'find' in p.edit ? texts.filter((t) => t.includes((p.edit as { find: string }).find)).length : 0
+      const short = !('find' in p.edit)
+        ? ''
+        : p.app === 'word'
+          ? n === p.places ? '' : n < 0 ? `. ${app} changed it otherwise than shown: look at the file` : `. ${app} changed ${n} of the ${counted(p.places, 'place')}`
+          : n === boxes ? '' : `. ${app} changed ${n} of the ${counted(boxes, 'box')}`
       return { summary: `Changed ${p.name}${short}` }
     },
     wayBack: () => null

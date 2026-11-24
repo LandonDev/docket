@@ -433,6 +433,30 @@ describe("an agent's change to a shared document or deck, held (the owner's ruli
     expect(office.docs.get(DOC)).toEqual({ paragraphs: ['one and one'], tracked: [] })
   })
 
+  it('leaves a change stale when a co-author moved its words to another paragraph or box, the count alike', async () => {
+    office.docs.set(DOC, { paragraphs: ['Budget: one.', 'Notes'], tracked: [] })
+    await run('office_doc_edit', { document: DOC, find: 'one', replace: 'two', because: 'own' })
+    const doc = held[0]!.payload as OfficeEdit
+    expect(doc.spots).toEqual(expect.any(String))
+    // The only match now stands in another paragraph: Word's replace would change words he never saw.
+    office.docs.set(DOC, { paragraphs: ['Budget: TBD.', 'Notes: one'], tracked: [] })
+    await expect(press(doc)).rejects.toThrow('"one" stands in other paragraphs now than the ones shown')
+    expect(office.docs.get(DOC)!.paragraphs).toEqual(['Budget: TBD.', 'Notes: one'])
+    // A line added elsewhere leaves its paragraph as it was: written.
+    office.docs.set(DOC, { paragraphs: ['Budget: one.', 'Notes', 'A co-author wrote this.'], tracked: [] })
+    await expect(press(doc)).resolves.toEqual({ summary: 'Changed Brief.docx' })
+    // On one slide, from one box to another.
+    office.decks.set(DECK, [['Q1 plan', 'Close']])
+    await run('office_slides_replace', { deck: DECK, find: 'Q1', replace: 'Q2', because: 'own' })
+    office.decks.set(DECK, [['Plan', 'Close Q1']])
+    await expect(press(held[1]!.payload)).rejects.toThrow('"Q1" stands in other boxes now than the ones shown')
+    expect(office.decks.get(DECK)).toEqual([['Plan', 'Close Q1']])
+    // A hold from before `spots` is judged on the whole text it read.
+    const { spots: _none, ...older } = doc
+    office.docs.set(DOC, { paragraphs: ['Budget: one.', 'Notes', 'Changed'], tracked: [] })
+    await expect(press(older)).rejects.toThrow('other paragraphs')
+  })
+
   it('a file no longer open is not sent: open it and press again', async () => {
     await run('office_doc_edit', { document: DOC, find: 'one', replace: 'two', because: 'own' })
     office.docs.delete(DOC)
