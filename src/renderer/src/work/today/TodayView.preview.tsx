@@ -59,14 +59,15 @@ const WAITING_ROWS = [
 ];
 const FILE_ROWS = [row("file:1", "files", "purdue", "FY27 budget.xlsx", { detail: "Dana Reyes", when: "Sun 9:14 PM", lead: glyph(File), at: 1 })];
 
-const job = (environmentId: string, sector: TodayWorkspace["sector"], open = true): TodayWorkspace => ({ environmentId, workspaceId: `${environmentId}-${sector}`, sector, name: sector, path: `/w/${sector}`, open });
+// A workspace is named as the rail names it, so a row that names its own job (Messages, Owed) reads as the rest.
+const JOB_NAMES: Record<string, string> = { cosmic: "CosmicGames", hypixel: "Hypixel", purdue: "Purdue Esports", ref: "Refereeing", unify: "UnifyPlatforms", life: "Life" };
+const job = (environmentId: string, sector: TodayWorkspace["sector"], open = true): TodayWorkspace => ({ environmentId, workspaceId: `${environmentId}-${sector}`, sector, name: JOB_NAMES[sector] ?? sector, path: `/w/${sector}`, open });
 const JOBS = (["cosmic", "hypixel", "purdue", "ref", "unify", "life"] as const).map((sector) => job("box", sector));
 const fed = (section: TodaySection, answer: TodayAnswer): Fed => ({ source: { id: section.id, section }, answer });
 
 type State = "day" | "unfolded" | "bones" | "empty" | "hosts" | "refused" | "lifeos-down" | "signed-out" | "clear" | "evening" | "pillars" | "no-jobs" | "sheet" | "sheet-next";
 
 /** A job by its workspace's name, as the rail says it. */
-const JOB_NAMES: Record<string, string> = { cosmic: "CosmicGames", hypixel: "Hypixel", purdue: "Purdue Esports", ref: "Refereeing", unify: "UnifyPlatforms", life: "Life" };
 
 const FULL = [fed(HELD, { rows: HELD_ROWS }), fed(MEETINGS, { rows: MEETING_ROWS }), fed(DUE, { rows: DUE_ROWS }), fed(WAITING, { rows: WAITING_ROWS }), fed(FILES, { rows: FILE_ROWS })];
 const ALL_FOLDS: Folds = { more: new Set(["due"]), earlier: new Set(["meetings"]) };

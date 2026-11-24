@@ -287,7 +287,7 @@ one day). `TodayView.tsx` draws it; `TodayRow.tsx` is the one row grid.
 | A section has never answered, or a read some job needs is still out | its heading and three bones in its rows' shape |
 | A section is empty | its heading and one muted line |
 | Every source answered, nothing left (ended meetings are not left, folded or open) | "All clear", over "Nothing needs you today." or what tomorrow starts with |
-| A host with jobs is offline, or a read failed because a host's link is not open | one muted line at the foot for each ("Mac is offline."), and no failed line for it in any section |
+| A host with jobs is offline, or a read failed because a host's link is not open | one muted line at the foot for each ("Mac is offline."), on the titles' edge, and no failed line for it in any section |
 | No host that holds a job is linked | the foot's lines; the LifeOS sections draw nothing (`offline` reach) |
 | A host did not answer in time | a line in the section it feeds, on the rows' grid, with Retry |
 | LifeOS refused one read | "LifeOS could not read tasks" in that section, with Retry |
@@ -307,8 +307,10 @@ the first row when the page opens, and where he left it when he comes back
 page.
 
 Width: `TodayRow.tsx` holds the grid. In a column under 480px (the window
-at its least beside the rail and the Chats column) the inset, the gaps and
-the two trailing columns narrow together (`@container/today`).
+at its least beside the rail and the Chats column) the inset and the gaps
+narrow, the job's column keeps its dot alone, its name leading the second
+line in medium ("Purdue Esports" 4px before "November hosting"), and the
+fact's column is 72px, so the title gets the room (`@container/today`).
 
 Toasts: the titles' column at the page's foot is the toast anchor
 (lib/toastAnchor.ts), so a toast covers neither a tick nor a verb, and the

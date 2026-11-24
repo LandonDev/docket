@@ -16,11 +16,16 @@ import type { TodayAct, TodayRow } from "./types";
  * over an optional second line, the job (its dot and its name), then the
  * trailing fact. Every title on the page starts at one left edge. In a
  * column under 480px (the window at its least beside the rail and the Chats
- * column) the gaps and the two trailing tracks narrow together (the job to
- * 56px, the fact to 72px, which still holds "Sun 9:14 PM"), so the title
- * keeps the room: `TODAY_COLUMN` names the container they measure.
+ * column) the gaps narrow and the job's track keeps its dot alone (16px):
+ * its name leads the second line (`NARROW_JOB`), so a title is never cut to
+ * make room for a job cut to four letters; the fact's track is 72px, which
+ * still holds "Sun 9:14 PM". `TODAY_COLUMN` names the container they measure.
  */
-export const ROW_GRID = "grid grid-cols-[16px_minmax(0,1fr)_112px_80px] gap-x-3 @max-[30rem]/today:grid-cols-[16px_minmax(0,1fr)_56px_72px] @max-[30rem]/today:gap-x-2";
+export const ROW_GRID = "grid grid-cols-[16px_minmax(0,1fr)_112px_80px] gap-x-3 @max-[30rem]/today:grid-cols-[16px_minmax(0,1fr)_16px_72px] @max-[30rem]/today:gap-x-2";
+/** The job's name in its column: gone under 480px, where it leads the second line instead. */
+const WIDE_JOB = "@max-[30rem]/today:hidden";
+/** The job's name at the head of the second line, under 480px alone: medium where the line's detail is regular, 4px before it. */
+const NARROW_JOB = "hidden font-medium @max-[30rem]/today:inline";
 /** Where a title starts, for a line that is not a row (a fold, an empty line): the row's inset, the lead and the gap. */
 export const TITLE_EDGE = "ps-10 @max-[30rem]/today:ps-9";
 /** The page's column: the container the grid measures, and the inset that narrows with it. */
@@ -168,13 +173,23 @@ export const TodayRowView = memo(function TodayRowView({ row, job, leaving = fal
         <span data-row-title className={cn("truncate text-[13px] leading-5 transition-colors duration-(--dur-fast) motion-reduce:transition-none", ticked ? "text-muted-foreground line-through" : row.past ? "text-muted-foreground" : "text-foreground")}>
           {row.title}
         </span>
-        {row.detail ? <span className={cn("truncate text-xs leading-4", row.detailLate ? "text-destructive" : "text-muted-foreground")}>{row.detail}</span> : null}
+        {row.detail || job ? (
+          // Under 480px the job's name leads this line; a row with no detail has the line only there.
+          <span data-row-detail className={cn("truncate text-xs leading-4 text-muted-foreground", !row.detail && "hidden @max-[30rem]/today:block")}>
+            {job ? (
+              <span aria-hidden data-row-job className={NARROW_JOB}>
+                {job}
+              </span>
+            ) : null}
+            {row.detail ? <span className={cn(job && "@max-[30rem]/today:ms-1", row.detailLate && "text-destructive")}>{row.detail}</span> : null}
+          </span>
+        ) : null}
       </span>
       <span className={cn("flex h-5 min-w-0 items-center gap-1 text-xs text-muted-foreground", ROW_SHOWS, gives)}>
         {job ? (
           <>
-            <SectorDot sector={row.sector} className="-ms-1" />
-            <span id={`${id}-job`} className="min-w-0 truncate">{job}</span>
+            <SectorDot sector={row.sector} className="-ms-1 @max-[30rem]/today:ms-0" />
+            <span id={`${id}-job`} className={cn("min-w-0 truncate", WIDE_JOB)}>{job}</span>
           </>
         ) : null}
       </span>

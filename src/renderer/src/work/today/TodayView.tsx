@@ -224,7 +224,7 @@ export function TodayPageView({
         ),
       )}
       {model.offline.length > 0 ? (
-        <div className="mt-6 flex flex-col gap-1 px-3 text-xs leading-4 text-muted-foreground">
+        <div className={cn("mt-6 flex flex-col gap-1 pe-3 text-xs leading-4 text-muted-foreground", TITLE_EDGE)}>
           {model.offline.map((id) => (
             <p key={id} data-today-offline={id}>
               {hostName(id)} is offline.

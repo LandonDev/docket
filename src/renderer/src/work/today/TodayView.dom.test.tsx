@@ -225,6 +225,29 @@ describe("Today", () => {
     expect(told[1]).toMatch(/\S/);
   });
 
+  it("under 480px keeps the job's dot alone in its column and leads the second line with its name, so the title keeps the room", async () => {
+    world.items.set("box", [mail("o1", "Marcus Bell", "Sponsor deck")]);
+    await loadOutbox();
+    render(<View onClose={() => {}} />);
+    const row = document.querySelector<HTMLElement>("[data-today-row]")!;
+    // The job's track is the dot's 16px there, its name gone from the column.
+    expect(ROW_GRID).toContain("@max-[30rem]/today:grid-cols-[16px_minmax(0,1fr)_16px_72px]");
+    const column = row.querySelector('[data-sector="purdue"]')!.nextElementSibling!;
+    expect(column.textContent).toBe("Purdue Esports");
+    expect(column.className).toContain("@max-[30rem]/today:hidden");
+    // The second line names it first, in medium, 4px before the detail, drawn only there and read once.
+    const line = row.querySelector<HTMLElement>("[data-row-detail]")!;
+    const lead = line.querySelector<HTMLElement>("[data-row-job]")!;
+    expect(line.firstElementChild).toBe(lead);
+    expect(lead.textContent).toBe("Purdue Esports");
+    expect(lead.className).toContain("hidden");
+    expect(lead.className).toContain("@max-[30rem]/today:inline");
+    expect(lead.className).toContain("font-medium");
+    expect(lead.getAttribute("aria-hidden")).toBe("true");
+    expect(lead.nextElementSibling!.textContent).toBe("Sponsor deck");
+    expect(lead.nextElementSibling!.className).toContain("@max-[30rem]/today:ms-1");
+  });
+
   it("draws bones only for a section that has never answered, beside the rows of one that has; then its empty line", async () => {
     let release!: () => void;
     world.listHeld = new Promise<void>((resolve) => (release = resolve));
@@ -411,6 +434,8 @@ describe("Today", () => {
     const lines = document.querySelectorAll("[data-today-offline]");
     expect(lines).toHaveLength(1);
     expect(lines[0]!.textContent).toBe("Mac is offline.");
+    // It starts on the titles' edge, as the empty and failed lines do.
+    for (const cls of TITLE_EDGE.split(" ")) expect(lines[0]!.parentElement!.className).toContain(cls);
     expect(document.querySelectorAll('[data-view-state="failed"]')).toHaveLength(0);
     expect(document.body.textContent).not.toContain("not connected");
   });

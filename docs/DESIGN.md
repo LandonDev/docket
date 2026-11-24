@@ -2618,8 +2618,10 @@ own selected fill is a card's fill at rest in light.
   row is 32px, a two-line row 48px, rows 2px apart, 6px radius; hover is
   `foreground/5`, a press `foreground/12`, at once. In a column under 480px
   (the window at its least, beside the rail and the Chats column) the page's
-  inset is 12px, the gaps 8px, the job column 56px and the fact's 72px, so the
-  title keeps the room (`@container/today`).
+  inset is 12px, the gaps 8px, the job's column the dot's 16px and the fact's
+  72px: the job's name leads the second line in medium, 4px before its detail
+  (a row with none has the name alone there), so the title gets the room and
+  no job is cut to four letters (`@container/today`).
 - **The lead** is the row's own control or its kind: a round `Checkbox` on a
   task (its ring at rest in `muted-foreground`: on the page's own ground
   the field border is too faint to find), the Outbox's kind glyph on a held item, the file's kind on a file,
@@ -2700,7 +2702,7 @@ own selected fill is a card's fill at rest in light.
   could not show clashes" under Also, naming what is missing), are said
   under Also, once each, and the page is never clear over either. An
   offline host is one 12px muted line at the page's foot ("Mac is
-  offline."), and nothing more: no section draws a failed line for a read
+  offline."), on the titles' edge, and nothing more: no section draws a failed line for a read
   its link refused, and a section that reads LifeOS says nothing while no
   linked host holds a job. While no
   host can reach LifeOS its sections give way to one line on the same grid:
