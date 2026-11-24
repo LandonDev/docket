@@ -210,12 +210,33 @@ export function sharedOf(ctx: Pick<WorkCtx, 'db' | 'host' | 'dataDir'>, source: 
   if (isGuestPath(path) && process.platform !== 'win32') return true
   const at = realish(path)
   if (sharedKey(path) || sharedKey(at)) return true
+  return placeShared(ctx, at)
+}
+
+/**
+ * The places this host knows others open, by a real path: a listed library, the cloud folder, and a Files tab's copy
+ * that saves back to a file others can open (what else lies in the app's data folder is his own). `sharedOf` adds the
+ * spelling rules (`sharedKey`) on top; this alone is what a code project's file tree is held to (`fsPathRefusal`).
+ */
+function placeShared(ctx: Pick<WorkCtx, 'db' | 'host' | 'dataDir'>, at: string): boolean {
   // (A context with no database, as some pillars' tests make, has no list of libraries to read.)
   if (ctx.db && librariesHere(ctx).some((library) => inside(at, library.path))) return true
   if (inside(at, cloudDirOf(ctx.host))) return true
   // What the app keeps for him is his own: a Files tab's copy that saves back is the file it saves to.
   if (inside(at, ctx.dataDir)) return isSavingCopy(ctx.db, at)
   return false
+}
+
+/** Whether a real path lies in a Work workspace's folder on this host; a code workspace is none of Work's business. */
+function inWorkWorkspace(db: DatabaseSync | undefined, at: string): boolean {
+  if (!db) return false
+  let rows: { path: string }[]
+  try {
+    rows = db.prepare(`SELECT path FROM workspaces WHERE kind = 'work' AND path != ''`).all() as { path: string }[]
+  } catch {
+    return false
+  }
+  return rows.some((r) => inside(at, r.path))
 }
 
 /** Whether a real path lies in a folder, by the folder's own real path; a folder that is not there holds nothing. */
@@ -349,7 +370,10 @@ export function fsPathRefusal(ctx: Pick<WorkCtx, 'db' | 'host' | 'dataDir'>, met
   if (!paths || !params || typeof params !== 'object') return null
   for (const path of paths(params as Record<string, string>)) {
     if (typeof path !== 'string' || !path) continue
-    if (sharedOf(ctx, { at: 'file', host: ctx.host, path: realish(path) })) return FS_SHARED
+    const at = realish(path)
+    // A place this host knows others open, wherever it is; a disk that only reads as shared by its spelling (a mounted
+    // volume, a Windows drive other than C:) only inside a Work workspace: a code project there is outside the hold.
+    if (placeShared(ctx, at) || (inWorkWorkspace(ctx.db, at) && sharedOf(ctx, { at: 'file', host: ctx.host, path: at }))) return FS_SHARED
   }
   return null
 }

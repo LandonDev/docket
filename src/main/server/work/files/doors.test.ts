@@ -100,4 +100,32 @@ describe("a remote key's generic fs.* write", () => {
     expect(fsPathRefusal(rig.ctx, 'fs.readText', { path: join(general, 'Plan.docx') })).toBeNull()
     expect(fsPathRefusal(rig.ctx, 'fs.listPath', { path: general })).toBeNull()
   })
+
+  it("leaves a code project's tree alone on a disk that only reads as shared by its name, and holds it in a Work workspace", () => {
+    // A remote window saving, making, renaming, deleting, copying and moving in a code project on a mounted disk or a
+    // PC's D: drive: outside every Work workspace, outside the hold.
+    for (const root of ['/Volumes/SSD/app', 'D:/code/app', 'D:\\code\\app']) {
+      const file = `${root}/src/x.ts`
+      for (const [method, params] of [
+        ['fs.writeText', { path: file, content: 'x' }],
+        ['fs.createPath', { parent: root, name: 'lib', isDir: true }],
+        ['fs.renamePath', { path: file, name: 'y.ts' }],
+        ['fs.deletePath', { path: file }],
+        ['fs.copyPath', { from: file, destParent: root }],
+        ['fs.movePath', { from: file, destParent: root }]
+      ] as const)
+        expect(fsPathRefusal(rig.ctx, method, params), `${method} ${JSON.stringify(params)}`).toBeNull()
+    }
+    // A code workspace in a folder named for OneDrive is the code side's too.
+    const synced = join(rig.outside, 'OneDrive - Dummy U', 'Esports Ops')
+    mkdirSync(synced, { recursive: true })
+    rig.db.prepare(`INSERT INTO workspaces (id, name, path, kind, sector) VALUES ('code2', 'App', ?, 'code', NULL)`).run(synced)
+    expect(fsPathRefusal(rig.ctx, 'fs.writeText', { path: join(synced, 'x.ts'), content: 'x' })).toBeNull()
+    // The same folder as a Work workspace is shared by its name, as round 1 made it: a key changes it through Files.
+    rig.db.prepare(`UPDATE workspaces SET kind = 'work', sector = 'purdue' WHERE id = 'code2'`).run()
+    expect(fsPathRefusal(rig.ctx, 'fs.writeText', { path: join(synced, 'x.ts'), content: 'x' })).toBe(FS_SHARED)
+    expect(fsPathRefusal(rig.ctx, 'fs.createPath', { parent: synced, name: 'Drafts', isDir: true })).toBe(FS_SHARED)
+    // And a listed library is refused wherever the caller names it from.
+    expect(fsPathRefusal(rig.ctx, 'fs.writeText', { path: join(rig.team, 'General', 'Plan.docx'), content: 'x' })).toBe(FS_SHARED)
+  })
 })
