@@ -36,8 +36,19 @@ export const TO_CONFIRM_GRID = "grid-cols-[2rem_minmax(0,1fr)_6rem_108px]";
 export const WIDE_ONLY = "@max-[520px]/money:hidden";
 export const NARROW_ONLY = "hidden @max-[520px]/money:block";
 
-/** Month or Year in the 40px header, hidden under 520px (the frame's `viewhead` container). */
+/**
+ * Month or Year in the 40px header, hidden under 520px of the header's content box (the frame's `viewhead`
+ * container: a container query measures the box inside its padding, and Tailwind's `@max-` is `width < 520px`).
+ */
 export const WIDE_HEAD = "flex @max-[520px]/viewhead:hidden";
 
-/** The header's width under which Month or Year moves into More, so Add and More stay in sight. */
+/** The header's content width under which Month or Year moves into More, so Add and More stay in sight. */
 export const NARROW_HEAD = 520;
+
+/**
+ * Whether Month or Year has left the header for More: the header's content box, its padding taken off as the
+ * container query does, under `NARROW_HEAD` (a width of 0 is a header not laid out yet). One boundary with WIDE_HEAD.
+ */
+export function headIsNarrow(clientWidth: number, paddingLeft: number, paddingRight: number): boolean {
+  return clientWidth > 0 && clientWidth - paddingLeft - paddingRight < NARROW_HEAD;
+}

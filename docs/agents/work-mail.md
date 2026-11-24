@@ -463,6 +463,12 @@ makes a new one if he deleted it there. No grant is made: each draft it
 writes is held ([work-routines.md](work-routines.md)). Both are
 `work.mail.setWaiting`, admin: a window whose key may not call it
 (`linkMay`, [work.md](work.md) "The switch") is not shown the section.
+When LifeOS cannot read the days the host still answers, with the switch and
+`error` ("LifeOS did not answer: <reason>" whatever the cause); the window
+words the row from the reason (`daysFailure`, through `lifeosStateOf` and
+`sessionFailure`): "Not signed in to LifeOS" for a sign-out, "LifeOS did not
+answer" only for a wait, else "LifeOS could not read the waiting time", with
+Retry at the row's end.
 
 **A reply drops an unsent nudge.** When someone else's message ends a wait,
 LifeOS deletes, in the same write, every draft an agent made in that mail

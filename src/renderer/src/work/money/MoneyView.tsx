@@ -23,7 +23,7 @@ import type { WorkViewProps } from "../views/registry";
 import { atOf, heard, markPaid, openBook, openBooks, openReceipt, useMoney, withToast } from "./api";
 import { ConfirmFlow } from "./ConfirmFlow";
 import { EntryDialog } from "./EntryDialog";
-import { CATEGORY_GRID, ENTRIES_TAIL, NARROW_HEAD, NARROW_ONLY, OWED_FACT, OWED_GRID, OWED_LINE, WIDE_HEAD, WIDE_ONLY } from "./layout";
+import { CATEGORY_GRID, ENTRIES_TAIL, headIsNarrow, NARROW_ONLY, OWED_FACT, OWED_GRID, OWED_LINE, WIDE_HEAD, WIDE_ONLY } from "./layout";
 import { filingToast, receiveFiles, sortFiles } from "./receive";
 import { ExportDialog } from "./ExportDialog";
 import { InvoiceDialog, invoiceTitle, type InvoiceKind } from "./InvoiceDialog";
@@ -64,15 +64,19 @@ export const openMoneyDialog = (dialog: MoneyDialog) => set({ dialog });
 export const setMoneyPeriod = (period: PeriodState) => set({ period });
 
 /**
- * Whether the view's header is under `NARROW_HEAD` wide: a hidden mark's row, measured. The toggle hides by the
- * header's own container query (WIDE_HEAD); this says when More takes its rows, on the same width.
+ * Whether the view's header is under `NARROW_HEAD` wide: a hidden mark's row, measured inside its padding. The toggle
+ * hides by the header's own container query (WIDE_HEAD), which measures the same content box; this says when More
+ * takes its rows, on the same width (`headIsNarrow`).
  */
 function useNarrowHead(): [(el: HTMLSpanElement | null) => void, boolean] {
   const [row, setRow] = useState<HTMLElement | null>(null);
   const [narrow, setNarrow] = useState(false);
   useEffect(() => {
     if (!row || typeof ResizeObserver === "undefined") return;
-    const measure = (): void => setNarrow(row.clientWidth > 0 && row.clientWidth < NARROW_HEAD);
+    const measure = (): void => {
+      const style = getComputedStyle(row);
+      setNarrow(headIsNarrow(row.clientWidth, parseFloat(style.paddingLeft) || 0, parseFloat(style.paddingRight) || 0));
+    };
     measure();
     const watch = new ResizeObserver(measure);
     watch.observe(row);

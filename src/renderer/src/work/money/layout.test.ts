@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { CATEGORY_GRID, ENTRIES_TAIL, NARROW_ONLY, OWED_GRID, TO_CONFIRM_GRID, WIDE_ONLY } from "./layout";
+import { CATEGORY_GRID, ENTRIES_TAIL, headIsNarrow, NARROW_HEAD, NARROW_ONLY, OWED_GRID, TO_CONFIRM_GRID, WIDE_HEAD, WIDE_ONLY } from "./layout";
 
 /** The px a class string's last track (or width), wide and under 520px. */
 const wide = (cls: string): number => Number(/(\d+)px\](?:\s|$)/.exec(cls.split(" ")[0])?.[1] ?? NaN);
@@ -27,5 +27,32 @@ describe("one right edge for money", () => {
   it("swaps Category's column for Who's second line on one width", () => {
     expect(WIDE_ONLY).toBe("@max-[520px]/money:hidden");
     expect(NARROW_ONLY).toContain("@max-[520px]/money:block");
+  });
+});
+
+/** Sol round 3 P2: the toggle hid at a width where More did not yet hold Month and Year. One boundary for both. */
+describe("Month or Year in the header or in More, never neither", () => {
+  // The container query: hidden while the content box is under the width WIDE_HEAD names (Tailwind's `@max-` is `<`).
+  const cssWidth = Number(/@max-\[(\d+)px\]\/viewhead:hidden/.exec(WIDE_HEAD)?.[1] ?? NaN);
+  const toggleHidden = (content: number): boolean => content < cssWidth;
+
+  it("names one width in the CSS and the script", () => {
+    expect(cssWidth).toBe(NARROW_HEAD);
+  });
+
+  it("walks the header's widths around the boundary: the toggle hides exactly where More takes its rows", () => {
+    // The frame's header: 16px of padding at the start, 8px at the end (WorkViewPage's `pl-4 pr-2`).
+    for (let client = NARROW_HEAD + 24 - 6; client <= NARROW_HEAD + 24 + 6; client++) {
+      const content = client - 24;
+      expect(headIsNarrow(client, 16, 8), `${client}px`).toBe(toggleHidden(content));
+    }
+    // Sol's width: 532px of header is 508px of content, so the toggle is hidden and More holds the choices.
+    expect(headIsNarrow(532, 16, 8)).toBe(true);
+    expect(headIsNarrow(544, 16, 8)).toBe(false);
+    expect(headIsNarrow(543, 16, 8)).toBe(true);
+  });
+
+  it("holds nothing narrow for a header not laid out yet", () => {
+    expect(headIsNarrow(0, 16, 8)).toBe(false);
   });
 });

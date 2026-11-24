@@ -265,15 +265,17 @@ describe("the Money view", () => {
       mount();
       await settle();
       const head = screen.getByRole("toolbar", { name: "Money header" });
-      Object.defineProperty(head, "clientWidth", { configurable: true, value: 400 });
+      // Measured inside the header's padding, as its container query is (Sol round 3 P2): 532px is 508px of content.
+      Object.assign(head.style, { paddingLeft: "16px", paddingRight: "8px" });
+      Object.defineProperty(head, "clientWidth", { configurable: true, value: 532 });
       act(() => seen.forEach((fn) => fn()));
       fireEvent.click(screen.getByRole("button", { name: "More" }));
       expect((await screen.findAllByRole("menuitemcheckbox")).map((m) => m.textContent)).toEqual(["Month", "Year"]);
       fireEvent.click(screen.getByRole("menuitemcheckbox", { name: "Year" }));
       await settle();
       expect(document.querySelector("[data-money-period]")?.textContent).toMatch(/^\d{4}$/);
-      // Wide, the toggle holds them and More does not say them twice.
-      Object.defineProperty(head, "clientWidth", { configurable: true, value: 800 });
+      // At 544px (520px of content) the toggle holds them and More does not say them twice.
+      Object.defineProperty(head, "clientWidth", { configurable: true, value: 544 });
       act(() => seen.forEach((fn) => fn()));
       fireEvent.click(screen.getByRole("button", { name: "More" }));
       await screen.findAllByRole("menuitem");

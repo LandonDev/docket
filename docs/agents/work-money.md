@@ -539,7 +539,9 @@ the `work.money` push.
   one run of words (`OWED_LINE`), never cut beside a live Paid, whose name
   carries both, and Month or Year leaves the
   header for two ticked rows at the head of More, so Add and More stay in
-  sight.
+  sight. Both sides measure the header's content box against one 520px
+  (`WIDE_HEAD`, `headIsNarrow` in layout.ts; layout.test walks the widths
+  around it).
 - Open ledger and a row's paperclip open the file in a Files tab
   (`work.money.open` or `receiptSource`, then `work.files.open` and the
   Files view): no thread is made for a file.

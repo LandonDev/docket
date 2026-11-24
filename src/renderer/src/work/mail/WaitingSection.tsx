@@ -9,6 +9,7 @@ import { registry } from "../../lib/connection";
 import { useLinkMay } from "../../lib/linkMay";
 import { workErrorWords } from "../../lib/workErrorWords";
 import type { WorkspaceMeta } from "../../lib/tcserver/types";
+import { lifeosStateOf, sessionFailure } from "../shell/lifeos";
 
 /**
  * A Work workspace's Waiting on (docs/agents/work-mail.md "Waiting on"), on its
@@ -24,6 +25,17 @@ export const WAIT_DAYS = ["1", "2", "3", "5", "7", "10"] as const;
 const DAY_CHOICES = WAIT_DAYS.map((d) => ({ value: d, label: d === "1" ? "1 working day" : `${d} working days` }));
 
 type Load = { status: "loading" } | { status: "ready"; value: MailWaiting } | { status: "error"; error: string };
+
+/**
+ * The days' read failed while the switch's did not: the host sends LifeOS's reason inside the answer, after its own
+ * "LifeOS did not answer:" whatever the cause. Said from the true cause in the shared LifeOS line's words
+ * (`sessionFailure`): signed out reads as signed out, and "did not answer" is kept for an answer that never came.
+ */
+export function daysFailure(error: string): string {
+  const state = lifeosStateOf(error.replace(/^LifeOS did not answer:\s*/i, ""));
+  if (state === "connecting") return "LifeOS is still connecting";
+  return state ? sessionFailure(state) : "LifeOS could not read the waiting time";
+}
 
 const ask = (env: string, method: string, params: Record<string, unknown>): Promise<MailWaiting> => registry.linkOf(env).request<MailWaiting>(method, params);
 
@@ -59,32 +71,32 @@ function Waiting({ workspace }: { workspace: WorkspaceMeta }) {
   };
 
   const value = load.status === "ready" ? load.value : null;
+  const retry = (
+    <Button
+      variant="ghost"
+      size="sm"
+      disabled={retrying}
+      onClick={() => {
+        setRetrying(true);
+        setAttempt((n) => n + 1);
+      }}
+    >
+      <BusyLabel busy={retrying} label="Retry" />
+    </Button>
+  );
   return (
     <PageSection title="Waiting on">
       {load.status === "loading" ? <PageRowsSkeleton rows={2} control="switch" /> : null}
       {load.status === "error" ? (
-        <PageError
-          action={
-            <Button
-              variant="ghost"
-              size="sm"
-              disabled={retrying}
-              onClick={() => {
-                setRetrying(true);
-                setAttempt((n) => n + 1);
-              }}
-            >
-              <BusyLabel busy={retrying} label="Retry" />
-            </Button>
-          }
-        >
-          {load.error}
-        </PageError>
+        <PageError action={retry}>{load.error}</PageError>
       ) : null}
       {value ? (
         <>
-          <PageRow title="Count as waiting after" error={value.error}>
-            {value.days !== null ? (
+          <PageRow title="Count as waiting after" error={value.error ? daysFailure(value.error) : undefined}>
+            {value.days === null && value.error ? (
+              // Asks the whole section again; the switch below stays as it was while it is out.
+              retry
+            ) : value.days !== null ? (
               <ChoiceSelect
                 label="Count as waiting after"
                 size="sm"

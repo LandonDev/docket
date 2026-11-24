@@ -6,15 +6,21 @@ import { WaitingSection } from "./WaitingSection";
 /**
  * A Work workspace's Waiting on over one fixed host, for `bun run ui:preview
  * src/renderer/src/work/mail/WaitingSection.preview.tsx#WaitingPreview --props '{"state":"off"}'`:
- * `off` (as it ships), `on`, `lifeos` (LifeOS did not answer), `loading`.
+ * `off` (as it ships), `on`, `lifeos` (LifeOS did not answer, with Retry), `signedout` (LifeOS signed out on the
+ * host: the days' row says so in the shared LifeOS line's words), `loading`.
  * Rendered by nothing in the app.
  */
 
-type State = "off" | "on" | "lifeos" | "loading";
+type State = "off" | "on" | "lifeos" | "signedout" | "loading";
 let state: State = "off";
 
-const answer = (): MailWaiting =>
-  state === "on" ? { days: 5, routine: true, routineId: "r1" } : state === "lifeos" ? { days: null, routine: false, error: "LifeOS did not answer: the box is unreachable" } : { days: 3, routine: false };
+// The host's own words for each (src/main/server/work/mail/waiting.ts): one prefix for every cause.
+const ANSWERS: Partial<Record<State, MailWaiting>> = {
+  on: { days: 5, routine: true, routineId: "r1" },
+  lifeos: { days: null, routine: false, error: "LifeOS did not answer: LifeOS is unreachable" },
+  signedout: { days: null, routine: false, error: "LifeOS did not answer: This host is not signed in to LifeOS" },
+};
+const answer = (): MailWaiting => ANSWERS[state] ?? { days: 3, routine: false };
 
 const link = {
   environmentId: "local",
