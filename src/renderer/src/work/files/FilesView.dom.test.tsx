@@ -75,8 +75,11 @@ vi.mock("../../chrome/ConfirmDialog", async (original) => ({
 vi.mock("../winvm/signIn", () => ({ openVm: vi.fn(), signInOnVm: vi.fn(async () => undefined) }));
 // A file's own viewer is each kind's business: here the pane says only which item it was handed.
 vi.mock("../canvas/CanvasPane", () => ({
-  CanvasPane: ({ item, onAsk, shell, historyOpen }: { item: { title: string; kind: string }; onAsk?(selection: unknown): void; shell?: { openHistory(): void }; historyOpen?: boolean }) => (
+  CanvasPane: ({ item, onAsk, shell, historyOpen, barLead, barEnd }: { item: { title: string; kind: string }; onAsk?(selection: unknown): void; shell?: { openHistory(): void }; historyOpen?: boolean; barLead?: React.ReactNode; barEnd?: React.ReactNode }) => (
     <>
+      {/* A side file's head rides in its kind's bar, as the real pane draws it. */}
+      {barLead}
+      {barEnd}
       <div data-testid="pane">{`${item.kind}: ${item.title}`}</div>
       {/* The bar's History, as the real pane draws it: a document's, while its History is not open beside it. */}
       {item.kind === "document" && !historyOpen ? (
