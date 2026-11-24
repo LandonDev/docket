@@ -951,6 +951,22 @@ describe("the sheet kind", () => {
     expect(edits()).toHaveLength(1);
   });
 
+  it("reads the sheet again when a press's only batch fails after taking part of it, and says the failure", async () => {
+    // Council r4 (Sol 5): with no earlier view to lay, the window kept the review from before the press.
+    open(sheetView({ rev: 3, suggestions: [suggestion("s1", 1, 1), suggestion("s2", 2, 1)] }));
+    await gridUp();
+    sheetHost.review = async () => {
+      sheetHost.view = { ...sheetHost.view, suggestions: [suggestion("s2", 2, 1)] };
+      throw new Error("The formats and rules were taken; the cells were not: That cell is a table's header");
+    };
+    const opens = () => sheetHost.calls.filter((c) => c[0] === "open").length;
+    const before = opens();
+    fireEvent.click(await screen.findByRole("button", { name: "More" }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Accept all" }));
+    await waitFor(() => expect(toasts.said).toContain("The formats and rules were taken; the cells were not: That cell is a table's header"));
+    await waitFor(() => expect(opens()).toBeGreaterThan(before));
+  });
+
   it("names the grid's own workbook in an op it brings in", async () => {
     open(sheetView({ rev: 3 }));
     await gridUp();

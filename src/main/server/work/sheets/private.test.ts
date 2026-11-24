@@ -398,6 +398,22 @@ describe('a format or a rule an agent proposes on an Excel file others can open'
     expect(view.suggestions.map((x) => x.state)).toEqual(['conflict'])
   })
 
+  it('a press whose rule lands and whose cell the writer refuses settles what landed, then says what did not', async () => {
+    // Council r4 (Sol 5): the cell writer refused after the rule landed, and the press threw before its view and clean-up.
+    await tool('sheet_rule', { item: itemId, rule: { kind: 'highlight', range: 'Data!A2:A9', when: 'greater', value: 100, look: { colour: '#C00000' } }, because: 'own' })
+    await tool('sheet_suggest', { item: itemId, cells: [{ at: 'Data!B2', f: '=SEQUENCE(3)' }] })
+    const view = await call<SheetView>('work.sheets.open', { itemId })
+    await expect(call('work.sheets.review', { itemId, which: { ids: [...view.changes!.map((c) => c.id), ...view.suggestions.map((x) => x.id)] }, verdict: 'accept' })).rejects.toThrow(
+      'The formats and rules were taken; the cells were not: A formula with SEQUENCE is not saved in an Excel file yet. Make it in Excel'
+    )
+    expect(rulesOf(book(), 'SHEET_CONDITIONAL_FORMATTING_PLUGIN')).toHaveLength(1)
+    const after = await call<SheetView>('work.sheets.open', { itemId })
+    expect(after.changes).toBeUndefined()
+    expect(after.suggestions.map((x) => x.state)).toEqual(['pending'])
+    // what he decided left this host's database with his press
+    expect((db.prepare(`SELECT COUNT(*) AS n FROM work_sheets_changes WHERE state = 'accepted'`).get() as { n: number }).n).toBe(0)
+  })
+
   it('his accept lays each as his own ordinary edit; a reject leaves nothing anywhere', async () => {
     await tool('sheet_format', { item: itemId, range: 'Data!A2:B3', format: { bold: true, fill: '#FFF2CC' }, because: 'own' })
     await tool('sheet_rule', { item: itemId, rule: { kind: 'highlight', range: 'Data!A2:A9', when: 'greater', value: 100, look: { colour: '#C00000' } }, because: 'own' })

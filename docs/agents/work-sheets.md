@@ -1207,8 +1207,12 @@ cell, format or rule); of what they send, what can be taken is written and
 the rest marked, and the answer is the view: a press is refused in words
 only when it took nothing (a press that laid a format or a rule settles
 its cells from what they are, refusing none), so a press that changed the
-file never answers as if it had failed. A batch that fails after others
-landed lays the last view answered before its words. With nothing on
+file never answers as if it had failed. Cells the writer refuses in a
+press that took a format or a rule (a table's header, a spill) are said
+after the press is settled and what was decided cleared ("The formats and
+rules were taken; the cells were not: …"). A batch that fails after others
+landed lays the last view answered before its words; a first batch that
+fails reads the sheet again. With nothing on
 screen that can be accepted, Accept all says "Nothing here can be accepted:
 reject these". One review of a sheet runs at a time (`oneReview`, sheets/index.ts):
 each picks what waits only once the last settled, so an Accept waiting on

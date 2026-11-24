@@ -507,7 +507,9 @@ function useFeeds(
       try {
         for (const which of reviewBatches(list, w, verdict)) view = await host.review(which, verdict);
       } catch (error) {
+        // (a first batch that took part of the press and failed answers no view: the sheet is read again)
         if (view) sync.view(view);
+        else void host.open().then((next) => sync.view(next), () => undefined);
         throw error;
       }
       return view ?? Promise.reject(new Error(verdict === "accept" ? "Nothing here can be accepted: reject these" : "Nothing on screen to decide."));

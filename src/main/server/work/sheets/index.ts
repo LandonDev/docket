@@ -188,25 +188,33 @@ export const sheets: WorkModule = {
         await approves(s, item!, by)
         // One review of a sheet at a time: each picks what waits only once the last one settled, so an Accept waiting on
         // Google or Excel never writes what a Reject in another window dropped meanwhile, nor two Accepts the same rows.
+        // What the cells of a press that already took a format or a rule could not take (the writer refused them): said
+        // after the press is settled, its view laid and what was decided cleared, never in place of them.
+        let failed: unknown = null
         await oneReview(key, async () => {
           // A format or a rule the agent proposed is this host's own row: taken, it is laid as his edit; dropped, it is gone.
           const mine = held.at === 'package' || held.at === 'service' ? await reviewChanges(s, held, key, req.params.which, req.params.verdict, principalOf(ctx, by)) : false
           // A press that took a format or a rule settles its cells from what they are: one changed since is marked, never
           // a failure after the rule landed. One of cells alone that can take none is refused in words.
           const alone = mine === false
-          if (mine === 'only') {
-            // (the ids named no cell suggestion)
-          } else if (held.at === 'package') await reviewPackage(s, held.path, key, req.params.which, req.params.verdict, principalOf(ctx, by), alone)
-          else if (held.at === 'excel') await (await import('../office/grid')).review(ctx, held.ref, req.params.which, req.params.verdict, principalOf(ctx, by))
-          // An accepted set goes to Google as one write (google/grid.ts).
-          else if (held.at === 'google') await (await import('../google/grid')).review(ctx, held.ref, req.params.which, req.params.verdict)
-          else {
-            let which = req.params.which
-            if (!alone && req.params.verdict === 'accept' && which !== 'all' && 'ids' in which) {
-              const pending = new Set((await host(ctx, 'open', { sheet: held.ref })).suggestions.filter((x) => x.state === 'pending').map((x) => x.id))
-              which = { ids: which.ids.filter((id) => pending.has(id)) }
+          try {
+            if (mine === 'only') {
+              // (the ids named no cell suggestion)
+            } else if (held.at === 'package') await reviewPackage(s, held.path, key, req.params.which, req.params.verdict, principalOf(ctx, by), alone)
+            else if (held.at === 'excel') await (await import('../office/grid')).review(ctx, held.ref, req.params.which, req.params.verdict, principalOf(ctx, by))
+            // An accepted set goes to Google as one write (google/grid.ts).
+            else if (held.at === 'google') await (await import('../google/grid')).review(ctx, held.ref, req.params.which, req.params.verdict)
+            else {
+              let which = req.params.which
+              if (!alone && req.params.verdict === 'accept' && which !== 'all' && 'ids' in which) {
+                const pending = new Set((await host(ctx, 'open', { sheet: held.ref })).suggestions.filter((x) => x.state === 'pending').map((x) => x.id))
+                which = { ids: which.ids.filter((id) => pending.has(id)) }
+              }
+              if (which === 'all' || !('ids' in which) || which.ids.length) await host(ctx, 'review', { sheet: held.ref, which, verdict: req.params.verdict })
             }
-            if (which === 'all' || !('ids' in which) || which.ids.length) await host(ctx, 'review', { sheet: held.ref, which, verdict: req.params.verdict })
+          } catch (err) {
+            if (alone) throw err
+            failed = err
           }
         })
         await announce(s, item!)
@@ -216,6 +224,7 @@ export const sheets: WorkModule = {
           s.suggestions.prune(key)
           s.changes.prune(key)
         }
+        if (failed) throw new Error(`The formats and rules were taken; the cells were not: ${failed instanceof Error ? failed.message : String(failed)}`)
         return handled(viewFor(after, by))
       }
       case 'work.sheets.mode': {
