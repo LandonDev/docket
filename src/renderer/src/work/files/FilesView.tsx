@@ -11,6 +11,7 @@ import { ROW_PRESS } from "../../components/ui/press";
 import { loadToast } from "../../components/ui/toaster";
 import { registry, LOCAL_ENVIRONMENT_ID } from "../../lib/connection";
 import { leaveLive } from "../office/live/leave";
+import { liveSourceOf } from "../office/live/liveSwitch";
 import { filesPort, type FilesCommand } from "../../lib/filesKeys";
 import { refusalWords } from "../../lib/settingsHome";
 import { invoke } from "../../lib/native";
@@ -950,7 +951,8 @@ function OpenFile({
   const far = tab.copyOf ? reach.reads.find((r) => r.answer?.host === tab.copyOf!.host) : undefined;
   const farCopy = far && tab.copyOf ? reach.sidebar.rows.flatMap((r) => r.copies).find((c) => c.link === far.link && !!c.place.vm === !!tab.copyOf!.vm) : undefined;
   const link = workspace.environmentId;
-  const copy = tab.copyOf
+  // A live tab keeps the file's origin in copyOf (for Edit here), but it is no copy: Office for the web holds the file itself.
+  const copy = tab.copyOf && !liveSourceOf(item)
     ? {
         host: copyHostOf(tab, reach),
         ...(farCopy ? { openThere: () => void openInApp({ name: tab.name, key: tab.key ?? tab.id, ref: { at: "file", host: tab.copyOf!.host, path: tab.copyOf!.path } }, farCopy, { busy: () => undefined }) } : {}),
