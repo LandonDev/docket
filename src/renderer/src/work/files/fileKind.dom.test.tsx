@@ -200,6 +200,20 @@ describe("a text file in a tab", () => {
     expect(kept("/w/Events/Notes.md").text).toBe("typed while away\n");
   });
 
+  it("follows a rename made while it is open: the next words go to the renamed file", async () => {
+    const shown = show("/w/Events/Notes.md");
+    const field = await screen.findByRole("textbox", { name: "Notes.md" });
+    await waitFor(() => expect(line()).toContain("Saved"));
+    // The host renamed it and re-pointed the item (files/moved.ts).
+    disk.files.set("/w/Events/Practice.md", kept("/w/Events/Notes.md"));
+    disk.files.delete("/w/Events/Notes.md");
+    shown.rerender(<FileTabView tab={tab("Practice.md")} item={item("/w/Events/Practice.md", { title: "Practice.md" })} panelId="p" workspace={workspace} where="Events" copy={null} onClose={() => undefined} />);
+    fireEvent.change(field, { target: { value: "typed after the rename\n" } });
+    await waitFor(() => expect(kept("/w/Events/Practice.md").text).toBe("typed after the rename\n"), { timeout: SAVE_AFTER_MS + 1500 });
+    expect(writes().at(-1)).toMatchObject({ ref: { path: "/w/Events/Practice.md" }, version: "v1" });
+    await waitFor(() => expect(line()).toBe("Saved 1:53 PM in Events"));
+  });
+
   it("is read only where the host would refuse a save, and says why in the line", async () => {
     disk.files.set("/cloud/General/Agenda.md", { text: "team text\n", version: 1, changed: AT, locked: "Files in the Windows VM cannot be changed from here yet. Open it there." } satisfies Kept);
     show("/cloud/General/Agenda.md");

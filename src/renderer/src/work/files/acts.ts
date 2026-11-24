@@ -53,6 +53,8 @@ export async function makeIn(of: ActsOf, copy: PlaceCopy, at: FolderRef, kind: M
 export async function renameTo(of: ActsOf, copy: PlaceCopy, entry: FileEntry, name: string): Promise<FileEntry | null> {
   const next = name.trim();
   if (!next || next === entry.name) return null;
+  // What an open tab on it holds goes in first; words still waiting follow the file to its new name.
+  await unsavedIn(tabsOn(tabsNow(of.home, of.workspaceId), [entry]));
   try {
     const done = await registry.linkOf(copy.link).request<FileDone>("work.files.rename", { workspaceId: of.workspaceId, ref: refOf(entry), name: next, op: opId() }, longWait(copy));
     const made = done.entries[0];
@@ -121,6 +123,7 @@ export async function carryTo(
   if (no) return didNot(new Error(no.text));
   const question = questionFor(from.place, verb, entries[0], to.copy.place);
   if (question && !(await confirmAction({ title: question.split("? ")[0]! + "?", body: question.split("? ").slice(1).join("? ") || undefined, action: verb === "move" ? "Move" : "Copy" }))) return false;
+  if (verb === "move") await unsavedIn(tabsOn(tabsNow(of.home, of.workspaceId), entries));
   try {
     const done = await registry
       .linkOf(from.link)

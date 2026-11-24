@@ -63,7 +63,7 @@ export class FileSession {
 
   constructor(
     private readonly host: FileSessionHost,
-    private readonly of: FileSessionOf,
+    private of: FileSessionOf,
   ) {}
 
   subscribe = (fn: () => void): (() => void) => {
@@ -222,6 +222,21 @@ export class FileSession {
     this.gone = entry === null;
     if (entry?.changed) this.changed = entry.changed;
     this.line();
+  }
+
+  /**
+   * The file was renamed or moved, and its item now names where it lies (files/moved.ts): saves go there, by the
+   * version read, which a rename keeps. A save the old path answered as gone, or a look that found it gone, is
+   * undone: what waits is sent to the new path.
+   */
+  follow(source: CanvasSource): void {
+    if (JSON.stringify(source) === JSON.stringify(this.of.source)) return;
+    this.of = { ...this.of, source };
+    if (!this.conflicted || !this.gone) return;
+    this.conflicted = false;
+    this.gone = false;
+    if (this.draft !== null) void this.flush();
+    else this.line();
   }
 
   /** The tab closed, here or from another window: what waits is sent, and nothing more is said. */

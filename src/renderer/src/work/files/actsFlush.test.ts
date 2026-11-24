@@ -1,6 +1,7 @@
 /**
- * A delete from his window while a tab on the file still holds words (acts.ts `trash`): what the tab holds goes to the
- * file first, so Trash and Put Back keep his last words; words that did not go in are asked about before the delete.
+ * A delete or a rename from his window while a tab on the file still holds words (acts.ts `trash`, `renameTo`): what
+ * the tab holds goes to the file first, so Trash and Put Back keep his last words and a rename carries them; words
+ * that did not go in are asked about before a delete.
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { FileTab } from "@shared/contract-work-files";
@@ -11,7 +12,7 @@ const world = vi.hoisted(() => ({ calls: [] as string[], tabs: [] as FileTab[], 
 vi.mock("../../lib/connection", () => ({
   registry: {
     linkOf: () => ({
-      request: async (method: string) => (world.calls.push(method), method === "work.files.trash" ? { entries: [], refused: [], trashed: ["t"], op: "o" } : {}),
+      request: async (method: string) => (world.calls.push(method), method === "work.files.trash" ? { entries: [], refused: [], trashed: ["t"], op: "o" } : { entries: [], refused: [], op: "o" }),
     }),
   },
 }));
@@ -19,7 +20,7 @@ vi.mock("./store", () => ({ tabsNow: () => world.tabs, closeTab: vi.fn() }));
 vi.mock("../../chrome/ConfirmDialog", () => ({ confirmAction: async (ask: { title: string; body?: string }) => (world.asked.push(ask), world.answer) }));
 vi.mock("../../components/ui/toaster", () => ({ loadToast: async () => ({ message: vi.fn(), error: vi.fn() }) }));
 
-const { trash } = await import("./acts");
+const { renameTo, trash } = await import("./acts");
 const { registerFlush } = await import("../canvas/flush");
 
 const W = "/w/Events/Notes.txt";
@@ -56,5 +57,12 @@ describe("a delete of a file whose tab still holds words", () => {
     expect(await trash(of, folder, [entry])).toBe(true);
     off();
     expect(world.calls).toEqual(["work.files.trash"]);
+  });
+
+  it("sends what the tab holds before a rename, so nothing typed just before it is lost", async () => {
+    const off = registerFlush("i1", async () => void world.calls.push("flush"));
+    await renameTo(of, folder, entry, "Practice.txt");
+    off();
+    expect(world.calls).toEqual(["flush", "work.files.rename"]);
   });
 });

@@ -12,7 +12,9 @@ const AT = (h: number, m: number): number => new Date(2026, 10, 23, h, m).getTim
 
 /** A host holding one file: versions are counted, a write names the version it read. */
 function standIn(start: string, o: { locked?: string; name?: string } = {}) {
-  const file = { text: start, version: 1, changed: AT(13, 52), gone: false };
+  const file = { text: start, version: 1, changed: AT(13, 52), gone: false, path: `/w/${o.name ?? "Notes.md"}` };
+  /** The file is not at the path a call names: deleted, or renamed away from it. */
+  const goneFrom = (params: Record<string, unknown>): boolean => file.gone || ((params.ref ?? (params.refs as unknown[])?.[0]) as { path: string }).path !== file.path;
   const lines: (SavedLine | null)[] = [];
   const said: string[] = [];
   const calls: { method: string; params: Record<string, unknown> }[] = [];
@@ -23,10 +25,10 @@ function standIn(start: string, o: { locked?: string; name?: string } = {}) {
       calls.push({ method, params });
       if (down) throw new Error("not connected");
       if (method === "work.files.read") return { data: b64(file.text), size: Buffer.byteLength(file.text), version: `v${file.version}`, changed: file.changed, end: true, ...(o.locked ? { locked: o.locked } : {}) } as T;
-      if (method === "work.files.stat") return { entries: [file.gone ? null : { key: "k", ref: null, folder: null, name: o.name ?? "Notes.md", kind: "text", size: Buffer.byteLength(file.text), changed: file.changed }] } as T;
+      if (method === "work.files.stat") return { entries: [goneFrom(params) ? null : { key: "k", ref: null, folder: null, name: o.name ?? "Notes.md", kind: "text", size: Buffer.byteLength(file.text), changed: file.changed }] } as T;
       if (method === "work.files.write") {
         if (params.copy) return { copy: { key: "c", ref: null, folder: null, name: "Notes (mine).md", kind: "text" } } as T;
-        if (file.gone) return { conflict: { gone: true } } satisfies FileSaved as T;
+        if (goneFrom(params)) return { conflict: { gone: true } } satisfies FileSaved as T;
         if (params.version !== `v${file.version}`) return { conflict: { version: `v${file.version}`, changed: file.changed } } satisfies FileSaved as T;
         file.text = params.text as string;
         file.version += 1;
@@ -129,6 +131,24 @@ describe("a text file open", () => {
     const line = h.lines.at(-1)!;
     expect(savedWords(line, "Events", NOW)).toBe("This file was moved or deleted");
     expect(line.actions?.map((a) => a.label)).toEqual(["Keep mine as a copy"]);
+  });
+
+  it("follows a rename: what is typed after it goes to the renamed file, by the version it read", async () => {
+    const h = standIn("first\n");
+    await h.session.load();
+    h.file.path = "/w/Revised.md";
+    // Typed before the window heard of the rename: the old path answers gone.
+    h.session.edit("first\nsecond\n");
+    await h.fire();
+    expect(h.words()).toBe("This file was moved or deleted");
+    h.session.follow({ at: "file", host: "box", path: "/w/Revised.md" });
+    await h.session.flush();
+    expect(h.file.text).toBe("first\nsecond\n");
+    expect(h.words()).toBe("Saved 1:53 PM in Events");
+    h.session.edit("first\nsecond\nthird\n");
+    await h.fire();
+    expect(h.calls.filter((c) => c.method === "work.files.write").at(-1)!.params).toMatchObject({ ref: { path: "/w/Revised.md" }, version: "v2" });
+    expect(h.file.text).toBe("first\nsecond\nthird\n");
   });
 
   it("holds changes here while the host is out of reach, says how many wait, and sends them on Retry", async () => {

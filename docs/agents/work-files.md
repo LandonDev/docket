@@ -687,6 +687,15 @@ file under a moved folder:
   its own header sent his next edit to the old path and kept it beside the
   renamed file as "(mine)" (.temp-code/plans/landed/F-files-nine.md, 1).
 
+His window sends what an open tab on the file holds before it asks for the
+rename or the move (acts.ts `unsavedIn`, the delete's own send), and the
+open text's session follows its item's new `source` (fileSession.ts
+`follow`): his next words go to the new path by the version he read, which
+a rename keeps. A save the old path answered "moved or deleted" in between
+is sent again to the new path. Before, a plain file renamed from its open
+tab kept only the words from before the rename, and closing asked to lose
+the rest.
+
 A file of another host (his Mac's OneDrive, from a box workspace) moves on
 that host, whose own `fileMoved` knows nothing of the copy the workspace's
 host keeps. So his window, once a rename or a move it asked of that host

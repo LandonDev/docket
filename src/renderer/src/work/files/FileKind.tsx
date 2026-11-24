@@ -41,9 +41,13 @@ export function Body({ item, source, env, shell }: CanvasBodyProps<undefined>) {
       },
       { workspaceId, itemId: item.id, source, name: item.title },
     );
-    // One session for the item's life: its source never changes under one id.
+    // One session for the item's life: a rename or move re-points it (`follow`, below).
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [env, item.id, workspaceId]);
+  // A rename or a move re-points the item (files/moved.ts): the session saves to where the file now lies.
+  const sourceKey = JSON.stringify(source);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => session?.follow(source), [session, sourceKey]);
   const view = useSyncExternalStore(session?.subscribe ?? noSubscribe, session?.getSnapshot ?? loadingView);
 
   useEffect(() => {
