@@ -1,13 +1,46 @@
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { binRefused, FOLDER_GONE, MAC_TRASH, macBin, macTrashAnswer, NOT_IN_TRASH_BIN, restoredName, moveOnto } from './bin'
+import { runInNewContext } from 'node:vm'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { binRefused, FOLDER_GONE, MAC_TRASH, macBin, macTrashAnswer, NOT_IN_TRASH_BIN, restoredName } from './bin'
+
+vi.mock('node:fs', async (importOriginal) => {
+  const fs = await importOriginal<typeof import('node:fs')>()
+  return { ...fs, lstatSync: vi.fn(fs.lstatSync) }
+})
+
+vi.mock('node:child_process', async (importOriginal) => {
+  const child = await importOriginal<typeof import('node:child_process')>()
+  if (process.platform === 'darwin') return child
+  const fs = await vi.importActual<typeof import('node:fs')>('node:fs')
+  return {
+    ...child,
+    // Run the same script on Linux, with a stand-in for the Darwin system call.
+    execFile: (file: string, args: string[], _opts: unknown, done: (err: Error | null, stdout: string) => void) => {
+      expect(file).toBe('/usr/bin/osascript')
+      expect(args.slice(0, 3)).toEqual(['-l', 'JavaScript', '-e'])
+      const result = runInNewContext(args[3] + '\nrun(argv)', {
+        argv: args.slice(4),
+        ObjC: { bindFunction: (name: string) => expect(name).toBe('renamex_np') },
+        $: {
+          renamex_np(from: string, to: string, flags: number) {
+            expect(flags).toBe(4)
+            if (fs.lstatSync(to, { throwIfNoEntry: false })) return -1
+            fs.renameSync(from, to)
+            return 0
+          }
+        }
+      })
+      done(null, String(result))
+    }
+  }
+})
 
 /** The Mac's bin (bin.ts): the Trash's answer read, its refusal said, and Put back by path on a scratch folder. */
 
 describe("the Mac's Trash", () => {
-  it('asks Foundation from AppleScriptObjC, never JXA, whose out-parameters crash osascript', () => {
+  it('asks Foundation to trash an item through AppleScriptObjC', () => {
     expect(MAC_TRASH[0]).toBe('use framework "Foundation"')
     expect(MAC_TRASH.join('\n')).toContain('trashItemAtURL:')
     expect(MAC_TRASH.join('\n')).not.toContain('ObjC.import')
@@ -38,7 +71,10 @@ describe('Put back from the Trash by path', () => {
     mkdirSync(join(dir, 'Trash'))
     mkdirSync(join(dir, 'Library'))
   })
-  afterEach(() => rmSync(dir, { recursive: true, force: true }))
+  afterEach(() => {
+    vi.mocked(lstatSync).mockReset()
+    rmSync(dir, { recursive: true, force: true })
+  })
 
   it('goes back where it was, beside a new one as "(restored)", and never twice', async () => {
     const bin = macBin()
@@ -51,24 +87,36 @@ describe('Put back from the Trash by path', () => {
     await expect(bin.back!(join(dir, 'Trash', 'Plan.docx'), join(dir, 'Library', 'Plan.docx'), 'op')).rejects.toThrow(NOT_IN_TRASH_BIN)
   })
 
-  it('never writes over a file that took the name between the look and the move: it goes beside it as "(restored)"', async () => {
-    const from = join(dir, 'Trash', 'Plan.docx')
-    const to = join(dir, 'Library', 'Plan.docx')
-    writeFileSync(from, 'his')
-    // OneDrive syncs a file in under the name after it was seen free.
-    writeFileSync(to, 'synced in')
-    expect(moveOnto(from, to)).toBe(false)
-    expect([readFileSync(to, 'utf8'), readFileSync(from, 'utf8')]).toEqual(['synced in', 'his'])
-    // A free name takes it, and the Trash's copy goes.
-    expect(moveOnto(from, join(dir, 'Library', 'Plan (restored).docx'))).toBe(true)
-    expect(readFileSync(join(dir, 'Library', 'Plan (restored).docx'), 'utf8')).toBe('his')
+  it.each(['file', 'folder'])('keeps a %s that appears between the name check and Put Back', async (kind) => {
+    const name = kind === 'folder' ? 'Budgets' : 'Plan.docx'
+    const from = join(dir, 'Trash', name)
+    const to = join(dir, 'Library', name)
+    const sibling = join(dir, 'Library', restoredName(name, 1))
+    if (kind === 'folder') {
+      mkdirSync(from)
+      writeFileSync(join(from, 'saved.txt'), 'in Trash')
+    } else writeFileSync(from, 'in Trash')
+
+    const fs = await vi.importActual<typeof import('node:fs')>('node:fs')
+    let syncedInode: number | undefined
+    vi.mocked(lstatSync).mockImplementation(((path: string) => {
+      if (path !== to || syncedInode !== undefined) return fs.lstatSync(path)
+      try {
+        return fs.lstatSync(path)
+      } catch (err) {
+        if (kind === 'folder') mkdirSync(to)
+        else writeFileSync(to, 'from sync')
+        syncedInode = statSync(to).ino
+        throw err
+      }
+    }) as typeof lstatSync)
+
+    expect(await macBin().back!(from, to, 'op')).toBe(sibling)
+    expect(syncedInode).toBeDefined()
+    expect(statSync(to).ino).toBe(syncedInode)
+    if (kind === 'file') expect(readFileSync(to, 'utf8')).toBe('from sync')
+    expect(readFileSync(kind === 'folder' ? join(sibling, 'saved.txt') : sibling, 'utf8')).toBe('in Trash')
     expect(existsSync(from)).toBe(false)
-    // Where a link cannot be made (another volume) the move still happens, by rename; a folder always goes by rename.
-    writeFileSync(from, 'again')
-    expect(moveOnto(from, join(dir, 'Library', 'Other.docx'), () => { throw Object.assign(new Error('EXDEV'), { code: 'EXDEV' }) })).toBe(true)
-    mkdirSync(join(dir, 'Trash', 'Budgets'))
-    expect(moveOnto(join(dir, 'Trash', 'Budgets'), join(dir, 'Library', 'Budgets'))).toBe(true)
-    expect(existsSync(join(dir, 'Library', 'Budgets'))).toBe(true)
   })
 
   it('refuses where the folder it was in is gone', async () => {

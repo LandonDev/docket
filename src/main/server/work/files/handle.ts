@@ -245,7 +245,7 @@ async function list(ctx: WorkCtx, by: Caller, p: { workspaceId: string; at: Fold
     if (at.id === PLACE.trash) {
       // Trash holds files, not folders to go into: a folder in it is one row.
       const workspace = ownRows(ctx, by, p.workspaceId)
-      return { entries: p.foldersOnly ? [] : trashEntries(ctx, by, workspace), place: at.id, trail: [{ name: 'Trash', at: { at: 'place', id: at.id } }] }
+      return { entries: p.foldersOnly ? [] : await trashEntries(ctx, by, workspace), place: at.id, trail: [{ name: 'Trash', at: { at: 'place', id: at.id } }] }
     }
     // A place's top is its root folder: listed as that folder.
     at = locate(ctx, by, p.workspaceId, placeRoot(ctx, by, p.workspaceId, at.id), method)

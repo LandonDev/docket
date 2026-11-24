@@ -218,36 +218,93 @@ export async function vmReadVersioned(path: string, offset: number, length: numb
   return { data: got.data, size: got.size, version: got.version, changed: got.changed, end: got.eof }
 }
 
+export interface VmTrashRef {
+  at: 'file'
+  host: string
+  path: string
+  bin?: string
+  /** The helper's operation id, kept before the request goes out. */
+  recycleOp?: string
+}
+
+type Recycled = { bin?: string }
+type RecycleOutcome =
+  | { state: 'done'; verb: string; value: Recycled }
+  | { state: 'failed'; verb: string; message: string }
+  | { state: 'running'; verb: string }
+  | { state: 'unknown' }
+
+async function recycleOutcome(op: string, opts?: { wake?: boolean; signal?: AbortSignal }): Promise<RecycleOutcome> {
+  try {
+    const got = (await vmCall('files.outcome', { op }, opts)) as RecycleOutcome
+    if (got.state === 'unknown' || got.verb === 'files.recycle') return got
+    throw new Error('The helper journal answered for another change.')
+  } catch (err) {
+    throw new OpLost(message(err))
+  }
+}
+
+/** Called under the file's lock when the helper has confirmed the delete. */
+function keepRecycled(ctx: WorkCtx, workspaceId: string, w: VmWhere, id: string, ref: VmTrashRef, got: Recycled): void {
+  ctx.db
+    .prepare("UPDATE work_files_trash SET ref = ?, state = 'held', held_at = COALESCE(held_at, ?) WHERE id = ? AND state = 'moving'")
+    .run(JSON.stringify({ ...ref, bin: got.bin || undefined }), Date.now(), id)
+  const workspace = workspaceHere(ctx.db, workspaceId)
+  if (workspace) closeTabsOn(ctx, workspace, [w.key, refKey(ref)], '\\')
+  dropName(ctx.db, workspaceId, w.key)
+  said(ctx, workspaceId, w.library, [dirOf(w.path)])
+}
+
+/** Settle a pending delete from the helper's journal, without asking the VM to wake or change a file. */
+export async function settleVmRecycle(ctx: WorkCtx, workspaceId: string, w: VmWhere, id: string, ref: VmTrashRef, signal: AbortSignal): Promise<void> {
+  const op = ref.recycleOp
+  if (!op || fileLocked(w.key)) return
+  await withFileLocks([w.key], async () => {
+    if (!ctx.db.prepare("SELECT 1 FROM work_files_trash WHERE id = ? AND state = 'moving'").get(id)) return
+    const got = await recycleOutcome(op, { wake: false, signal }).catch(() => null)
+    if (got?.state === 'done') keepRecycled(ctx, workspaceId, w, id, ref, got.value)
+    else if (got?.state === 'failed') ctx.db.prepare("DELETE FROM work_files_trash WHERE id = ? AND state = 'moving'").run(id)
+  })
+}
+
 /**
- * A delete in the VM: to the Windows Recycle Bin, from where OneDrive takes it to the library's own bin; never
- * deleted for good (the helper refuses where Windows would). A row with `provider: 'onedrive'` and no bytes here is
- * kept for each, with where the helper says it lies in the bin (`bin` in its ref), so Trash lists it and Put back
- * takes it out again (`vmRestore`). A Files tab on it, or its copy's tab, closes once the bin has taken it, never
- * before: a helper that refuses leaves the file, and the tab with the changes its copy has not sent.
+ * A delete in the VM goes to the Windows Recycle Bin. Keep a pending Trash row and the helper op through lost
+ * replies, so a retry can settle it by that same id. Tabs and copies close only when the helper confirms the move.
  */
 export async function vmRecycle(ctx: WorkCtx, workspaceId: string, w: VmWhere, op: string, i: number): Promise<string> {
   if (isTop(w)) throw new FileRefused('busy', 'A place itself cannot be deleted.')
   if (fileLocked(w.key)) throw new FileRefused('busy', WRITING)
   return withFileLocks([w.key], async () => {
-    const id = randomUUID()
-    const file = { at: 'file', host: ctx.host, path: w.path }
-    ctx.db
-      .prepare(`INSERT INTO work_files_trash (id, workspace_id, ref, name, place, was_at, state, deleted_at, by, provider) VALUES (?, ?, ?, ?, ?, ?, 'moving', ?, 'owner', 'onedrive')`)
-      .run(id, workspaceId, JSON.stringify(file), baseOf(w.path), w.place.id, JSON.stringify({ ...file, path: dirOf(w.path) }), Date.now())
-    let got: { bin?: string }
+    const recycleOp = guestOp(op, i)
+    const rows = ctx.db
+      .prepare("SELECT id, state, ref FROM work_files_trash WHERE workspace_id = ? AND provider = 'onedrive' AND (state = 'moving' OR json_extract(ref, '$.recycleOp') = ?)")
+      .all(workspaceId, recycleOp) as { id: string; state: string; ref: string }[]
+    const previous = rows
+      .map((row) => ({ ...row, ref: JSON.parse(row.ref) as VmTrashRef }))
+      .filter(({ ref }) => ref.recycleOp && ref.host === ctx.host && sameGuest(ref.path, w.path))
+    const same = previous.find(({ ref }) => ref.recycleOp === recycleOp)
+    if (same?.state === 'held') return same.id
+    const pending = same?.state === 'moving' ? same : previous.find((row) => row.state === 'moving')
+    const id = pending?.id ?? randomUUID()
+    const helperOp = pending?.ref.recycleOp ?? recycleOp
+    const ref: VmTrashRef = pending?.ref ?? { at: 'file', host: ctx.host, path: w.path, recycleOp }
+    if (!pending) {
+      const parent = { at: 'file', host: ctx.host, path: dirOf(w.path) }
+      ctx.db
+        .prepare(`INSERT INTO work_files_trash (id, workspace_id, ref, name, place, was_at, state, deleted_at, by, provider) VALUES (?, ?, ?, ?, ?, ?, 'moving', ?, 'owner', 'onedrive')`)
+        .run(id, workspaceId, JSON.stringify(ref), baseOf(w.path), w.place.id, JSON.stringify(parent), Date.now())
+    }
+    let got: Recycled
     try {
-      got = await guestChange<{ bin?: string }>('files.recycle', { path: w.path, op: guestOp(op, i) })
+      const outcome = pending ? await recycleOutcome(helperOp) : null
+      if (outcome?.state === 'running') throw new OpLost('The Recycle Bin has not confirmed that delete yet. Try again.')
+      if (outcome?.state === 'failed') throw new Error(outcome.message)
+      got = outcome?.state === 'done' ? outcome.value : await guestChange<Recycled>('files.recycle', { path: ref.path, op: helperOp })
     } catch (err) {
-      // Refused or lost, no row stands for it: the same id again asks the guest, which answers what it did, and that makes the row.
-      ctx.db.prepare(`DELETE FROM work_files_trash WHERE id = ?`).run(id)
+      if (!(err instanceof OpLost)) ctx.db.prepare("DELETE FROM work_files_trash WHERE id = ? AND state = 'moving'").run(id)
       throw err
     }
-    const workspace = workspaceHere(ctx.db, workspaceId)
-    if (workspace) closeTabsOn(ctx, workspace, [w.key, refKey({ at: 'file', host: ctx.host, path: w.path })], '\\')
-    dropName(ctx.db, workspaceId, w.key)
-    if (got?.bin) ctx.db.prepare(`UPDATE work_files_trash SET ref = ? WHERE id = ?`).run(JSON.stringify({ ...file, bin: got.bin }), id)
-    ctx.db.prepare(`UPDATE work_files_trash SET state = 'held', held_at = COALESCE(held_at, ?) WHERE id = ? AND state = 'moving'`).run(Date.now(), id)
-    said(ctx, workspaceId, w.library, [dirOf(w.path)])
+    keepRecycled(ctx, workspaceId, w, id, ref, got)
     return id
   })
 }

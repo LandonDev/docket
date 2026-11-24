@@ -3,8 +3,10 @@ import { basename, dirname, join, relative } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { ClientRequestSchema } from '@shared/contract'
 import type { FileDone, FilesListing, FilesOpened, FilesTabs } from '@shared/contract-work-files'
+import { refKey } from '@shared/work/files'
 import type { Caller } from '../modules'
-import { closeFilesState, THREADS_BY_TOOLS } from './handle'
+import { copyRecord, recordCopy } from './copies'
+import { closeFilesState, filesState, THREADS_BY_TOOLS } from './handle'
 import { files } from './index'
 import { NEEDS_PRESS, workspaceHere } from './policy'
 import { approver, at, HOST, makeRig, peer, phone, thread, window, WS, type Rig } from './testkit'
@@ -469,6 +471,35 @@ describe("a delete in a library on this host's disk", () => {
     expect((await call<FilesTabs>('work.files.tabs', {})).tabs.some((t) => t.kind === 'file' && t.name === 'Plan.docx')).toBe(true)
     await asked([plan])
     expect((await call<FilesTabs>('work.files.tabs', {})).tabs.some((t) => t.kind === 'file' && t.name === 'Plan.docx')).toBe(false)
+  })
+
+  it('keeps an unsent copy and its tab until the disk library bin takes the original', async () => {
+    const path = join(rig.team, 'General', 'Plan.docx')
+    const copyDir = join(rig.dataDir, 'open-copy')
+    mkdirSync(copyDir)
+    const copy = join(copyDir, 'Plan.docx')
+    writeFileSync(copy, 'unsent edits')
+    const copyOf = { host: HOST, path }
+    const tabs = filesState(rig.ctx).tabs
+    const { tabId } = tabs.openFile(WS, { key: refKey(at(path)), name: 'Plan.docx', kind: 'file', source: at(copy), copyOf })
+    recordCopy(rig.ctx, { workspaceId: WS, ...copyOf, vm: false, copy, name: 'Plan.docx', kind: 'file', version: '1', sha256: 'original' })
+    rig.db.prepare("UPDATE work_files_copies SET state = 'refused', writes = 1 WHERE copy = ?").run(copy)
+    const record = copyRecord(rig.ctx, WS, HOST, path)
+    const tab = () => tabs.list(WS).tabs.find((t) => t.id === tabId)
+
+    setSystemBin(bin({ refuse: 'The volume has no Trash.' }))
+    expect(await asked([path])).toMatchObject({ trashed: [], refused: [{ name: 'Plan.docx' }] })
+    expect(readFileSync(path, 'utf8')).toBe('word')
+    expect(copyRecord(rig.ctx, WS, HOST, path)).toEqual(record)
+    expect(readFileSync(copy, 'utf8')).toBe('unsent edits')
+    expect(tab()).toMatchObject({ copyOf })
+
+    setSystemBin(bin())
+    expect(await asked([path])).toMatchObject({ trashed: [expect.any(String)], refused: [] })
+    expect(existsSync(path)).toBe(false)
+    expect(copyRecord(rig.ctx, WS, HOST, path)).toBeNull()
+    expect(existsSync(copy)).toBe(false)
+    expect(tab()).toBeUndefined()
   })
 
   it('runs for a workspace another host keeps, his window asking the file\'s own host, and puts it back there', async () => {

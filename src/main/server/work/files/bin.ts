@@ -1,5 +1,5 @@
 import { execFile } from 'node:child_process'
-import { linkSync, lstatSync, renameSync, unlinkSync, type Stats } from 'node:fs'
+import { lstatSync, type Stats } from 'node:fs'
 import { basename, dirname, extname, join } from 'node:path'
 
 /**
@@ -62,10 +62,27 @@ export function restoredName(name: string, i: number): string {
 export const NOT_IN_TRASH_BIN = 'That is not in the Trash any more.'
 export const FOLDER_GONE = 'The folder it was in is gone. Put it back from the Trash.'
 
-/**
- * The Mac's Trash. Put back is a rename from where the Trash said the thing lies to the folder it was in, under its
- * own name or the first free "(restored)" one; the name is looked at just before, under the file's lock.
- */
+const FROM_MAC_TRASH = 'The item could not be put back here. Put it back from the Trash.'
+
+// Darwin's RENAME_EXCL (0x4) rejects an existing destination in the same syscall, even for an empty folder.
+// The system JavaScript bridge passes two C strings and reads an int. There are no out-parameters.
+const MAC_MOVE = [
+  'ObjC.bindFunction("renamex_np", ["int", ["string", "string", "unsigned int"]])',
+  'function run(argv) { return $.renamex_np(argv[0], argv[1], 4) }'
+].join('\n')
+
+function macMoveExclusive(from: string, to: string): Promise<boolean> {
+  return new Promise((resolve, reject) =>
+    execFile('/usr/bin/osascript', ['-l', 'JavaScript', '-e', MAC_MOVE, from, to], { timeout: 60_000 }, (err, stdout) => {
+      if (err) return reject(new Error(FROM_MAC_TRASH, { cause: err }))
+      const status = String(stdout).trim()
+      if (status === '0' || status === '-1') return resolve(status === '0')
+      reject(new Error(FROM_MAC_TRASH))
+    })
+  )
+}
+
+/** The Mac's Trash. Put Back uses an exclusive rename, retrying with a "(restored)" name if another item is there. */
 export function macBin(): SystemBin {
   return {
     put: (path) =>
@@ -84,31 +101,15 @@ export function macBin(): SystemBin {
       for (let i = 0; i < 20; i++) {
         const at = join(dir, i === 0 ? basename(to) : restoredName(basename(to), i))
         if (lstatOr(at)) continue
-        if (moveOnto(bin, at)) return at
+        if (await macMoveExclusive(bin, at)) return at
+        if (lstatOr(at)) continue
+        if (!lstatOr(bin)) throw new Error(NOT_IN_TRASH_BIN)
+        if (!lstatOr(dir)?.isDirectory()) throw new Error(FOLDER_GONE)
+        throw new Error(FROM_MAC_TRASH)
       }
       throw new Error(`Too many things named like ${basename(to)} are there already.`)
     }
   }
-}
-
-/**
- * A thing moved to a name only if nothing has it. A rename replaces a file that is there, and OneDrive can sync one
- * in between the look and the rename; so a file goes by a hard link, which a taken name refuses, and its old name is
- * then dropped. A folder goes by rename (which never replaces a file, or a folder that holds anything), as does a
- * file where a link cannot be made (another volume, a cloud folder that refuses links). False: the name was taken.
- */
-export function moveOnto(from: string, to: string, link: typeof linkSync = linkSync): boolean {
-  if (lstatOr(from)?.isFile()) {
-    try {
-      link(from, to)
-      unlinkSync(from)
-      return true
-    } catch (err) {
-      if ((err as NodeJS.ErrnoException).code === 'EEXIST') return false
-    }
-  }
-  renameSync(from, to)
-  return true
 }
 
 /** Linux's own bin (`gio trash`), which never deletes for good; it cannot be asked to put a thing back by path. */

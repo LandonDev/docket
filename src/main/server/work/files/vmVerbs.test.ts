@@ -1,14 +1,17 @@
-import { readFileSync } from 'node:fs'
+import { existsSync, readFileSync, writeFileSync } from 'node:fs'
 import { NAME_TAKEN } from './write'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ClientRequestSchema } from '@shared/contract'
-import type { FileDone, FilesPlaces } from '@shared/contract-work-files'
+import type { FileDone, FilesOpened, FilesListing, FilesPlaces, FilesTabs } from '@shared/contract-work-files'
+import { canvasSourcePath } from '@shared/work'
 import { vmCanOf } from '@shared/work/filePlaces'
 import type { Caller } from '../modules'
 import { fenceRequest, FenceError } from '../../remote/fence'
 import { setVmCall, VmUnreachable } from '../office/vm/link'
 import { setVmState } from '../office/vm/office'
+import { setCopyAllowed } from '../office/files/library'
+import { copyRecord } from './copies'
 import { closeFilesState } from './handle'
 import { files } from './index'
 import { forgetVmLists } from './places/teams'
@@ -43,6 +46,7 @@ describe.skipIf(process.platform === 'win32')('the Windows VM changed through it
   /** the stand-in's own journal: an op answered once */
   let journal: Map<string, unknown>
   let lose: number
+  let refuseRecycle: boolean
   /** the stand-in's Recycle Bin: where each thing lies there, and the path it had */
   let recycled: Map<string, { path: string; f: { path: string; dir: boolean; data: string; modified: number } }>
 
@@ -57,11 +61,11 @@ describe.skipIf(process.platform === 'win32')('the Windows VM changed through it
   }
   const dirOf = (p: string) => p.slice(0, p.lastIndexOf('\\'))
 
-  const status = (verbs?: string[]) =>
+  const status = (verbs?: string[], mount = TOP) =>
     rig.db.prepare(`INSERT OR REPLACE INTO work_office_files (key, value) VALUES ('vm:status', ?)`).run(
       JSON.stringify({
         at: Date.now(),
-        status: { onedrive: { installed: true, running: true, account: 'a@dummy.edu' }, mounts: [{ path: TOP, type: 'team', web: null }], office: { installed: true, version: null, apps: [], account: null, licensed: null }, ...(verbs ? { verbs } : {}) },
+        status: { onedrive: { installed: true, running: true, account: 'a@dummy.edu' }, mounts: [{ path: mount, type: 'team', web: null }], office: { installed: true, version: null, apps: [], account: null, licensed: null }, ...(verbs ? { verbs } : {}) },
         tops: { [TOP]: ['Events', 'General'] }
       })
     )
@@ -73,6 +77,10 @@ describe.skipIf(process.platform === 'win32')('the Windows VM changed through it
     const lost = lose > 0 && verb.startsWith('files.') && verb !== 'files.list' && verb !== 'files.stat'
     if (lost) lose--
     const op = args.op as string | undefined
+    if (verb === 'files.outcome') {
+      if (lost) throw new VmUnreachable('the link dropped')
+      return journal.has(op!) ? { state: 'done', verb: 'files.recycle', value: journal.get(op!) } : { state: 'unknown' }
+    }
     if (op && journal.has(op)) {
       if (lost) throw new VmUnreachable('the link dropped')
       return journal.get(op)
@@ -113,6 +121,7 @@ describe.skipIf(process.platform === 'win32')('the Windows VM changed through it
           return { entry: entryOf(to) }
         }
         case 'files.recycle': {
+          if (refuseRecycle) throw new Error('The Recycle Bin refused the file.')
           const path = args.path as string
           const bin = `C:\\$Recycle.Bin\\S-1-5-21\\$R${journal.size}`
           recycled.set(bin, { path, f: disk.get(path.toLowerCase())! })
@@ -141,6 +150,11 @@ describe.skipIf(process.platform === 'win32')('the Windows VM changed through it
     const out = await files.handle!({ id: '1', method, params: { workspaceId: WS, ...params } } as never, rig.ctx, by)
     return (out as { result: T }).result
   }
+  const paired = <T>(method: string, params: Record<string, unknown>) => {
+    fenceRequest(ClientRequestSchema.parse({ id: '1', method, params: { workspaceId: WS, ...params } }), rig.roots, [], [], HOST)
+    return call<T>(method, params, approver)
+  }
+  const trashAt = { at: 'place', id: 'trash' }
   /** the calls that change something (reads and the status read behind an answer are left out) */
   const changes = () => calls.filter((c) => !['files.list', 'files.stat', 'files.read', 'guest.status'].includes(c.verb))
   let ops = 0
@@ -152,6 +166,7 @@ describe.skipIf(process.platform === 'win32')('the Windows VM changed through it
     journal = new Map()
     recycled = new Map()
     lose = 0
+    refuseRecycle = false
     disk = new Map()
     put(`${GENERAL}\\Plan.txt`, false, 'first')
     put(`${GENERAL}\\Budgets`, true)
@@ -379,14 +394,52 @@ describe.skipIf(process.platform === 'win32')('the Windows VM changed through it
       expect(rig.db.prepare(`SELECT 1 FROM work_files_trash`).get()).toBeUndefined()
     })
 
-    it("lets his window on another computer see and put back what it deleted there: a guest path is judged as the door judges it, not by this disk's roots", async () => {
-      const done = await call<FileDone>('work.files.trash', { refs: [at(`${GENERAL}\\Plan.txt`)], op: op(), asked: true }, approver)
-      expect(done.trashed).toHaveLength(1)
-      const listed = (await call<{ entries: { name: string }[] }>('work.files.list', { at: { at: 'place', id: 'trash' } }, approver)).entries
-      expect(listed.map((e) => e.name)).toEqual(['Plan.txt'])
-      const back = await call<FileDone>('work.files.restore', { ids: done.trashed, op: op() }, approver)
-      expect(back.entries.map((e) => e.name)).toEqual(['Plan.txt'])
-      expect(disk.has(`${GENERAL}\\Plan.txt`.toLowerCase())).toBe(true)
+    it('lets a paired key list and undo its VM delete through the OneDrive mount fence', async () => {
+      const path = `${GENERAL}\\Plan.txt`
+      expect(rig.ctx.reaches(approver, path)).toBe(false)
+      const done = await paired<FileDone>('work.files.trash', { refs: [at(path)], op: op(), asked: true })
+      expect(done.refused).toEqual([])
+      const id = done.trashed![0]!
+      const list = () => paired<FilesListing>('work.files.list', { at: trashAt })
+      const undo = () => paired<FileDone>('work.files.restore', { ids: [id], op: op() })
+      expect((await list()).entries).toMatchObject([{ key: `trash:${id}`, name: 'Plan.txt' }])
+
+      status(VERBS, `${TOP} other`)
+      expect((await list()).entries).toEqual([])
+      expect(await undo()).toMatchObject({ entries: [], refused: [{ name: id, text: 'That is not in Trash any more.' }] })
+      expect(changes().some((c) => c.verb === 'files.restore')).toBe(false)
+
+      status(VERBS)
+      expect(await undo()).toMatchObject({ entries: [{ name: 'Plan.txt' }], refused: [] })
+      expect(disk.has(path.toLowerCase())).toBe(true)
+      expect(recycled.size).toBe(0)
+    })
+
+    it('keeps an unsent copy and its tab until the Recycle Bin takes the original', async () => {
+      const path = `${GENERAL}\\Plan.txt`
+      setCopyAllowed(rig.db, WS, true)
+      const opened = await call<FilesOpened>('work.files.open', { ref: at(path), name: 'Plan.txt' })
+      const copy = canvasSourcePath(opened.item!.source)!
+      writeFileSync(copy, 'unsent edits')
+      rig.db.prepare("UPDATE work_files_copies SET state = 'refused', writes = 1 WHERE copy = ?").run(copy)
+      const record = copyRecord(rig.ctx, WS, HOST, path)
+      expect(record?.state).toBe('refused')
+      const tab = async () => (await call<FilesTabs>('work.files.tabs', {})).tabs.find((t) => t.id === opened.tabId)
+
+      refuseRecycle = true
+      const remove = () => call<FileDone>('work.files.trash', { refs: [at(path)], op: op(), asked: true })
+      expect(await remove()).toMatchObject({ trashed: [], refused: [{ name: 'Plan.txt', text: 'The Recycle Bin refused the file.' }] })
+      expect(disk.has(path.toLowerCase())).toBe(true)
+      expect(copyRecord(rig.ctx, WS, HOST, path)).toEqual(record)
+      expect(readFileSync(copy, 'utf8')).toBe('unsent edits')
+      expect(await tab()).toMatchObject({ copyOf: { host: HOST, path, vm: true } })
+
+      refuseRecycle = false
+      expect(await remove()).toMatchObject({ trashed: [expect.any(String)], refused: [] })
+      expect(disk.has(path.toLowerCase())).toBe(false)
+      expect(copyRecord(rig.ctx, WS, HOST, path)).toBeNull()
+      expect(existsSync(copy)).toBe(false)
+      expect(await tab()).toBeUndefined()
     })
 
     it('puts a deleted folder back beside a new one of its name, and a helper without the verb says where to put it back', async () => {
@@ -413,6 +466,84 @@ describe.skipIf(process.platform === 'win32')('the Windows VM changed through it
         .run(WS, JSON.stringify(at(`${GENERAL}\\Plan.txt`)), JSON.stringify(at(GENERAL)))
       await settleTrash(rig.ctx)
       expect(rig.db.prepare(`SELECT 1 FROM work_files_trash WHERE id = 'r1'`).get()).toBeUndefined()
+    })
+
+    it('keeps a VM delete pending across lost replies and restart, then recovers Undo from the helper journal', async () => {
+      const path = `${GENERAL}\\Plan.txt`
+      const id = op()
+      const helperOp = `tc-files:${id}:0`
+      const remove = () => paired<FileDone>('work.files.trash', { refs: [at(path)], op: id, asked: true })
+      lose = 3
+      await expect(remove()).rejects.toThrow('The Windows VM is unreachable')
+      const pending = () => rig.db.prepare("SELECT id, state, json_extract(ref, '$.recycleOp') AS op FROM work_files_trash").get()
+      const row = pending() as { id: string }
+      expect(row).toMatchObject({ id: expect.any(String), state: 'moving', op: helperOp })
+      expect(disk.has(path.toLowerCase())).toBe(false)
+      expect(recycled.size).toBe(1)
+      await settleTrash(rig.ctx)
+      expect(pending()).toEqual(row)
+
+      const list = () => paired<FilesListing>('work.files.list', { at: trashAt })
+      expect((await list()).entries).toEqual([])
+      expect(pending()).toEqual(row)
+      expect((await list()).entries).toMatchObject([{ key: `trash:${row.id}`, name: 'Plan.txt' }])
+      expect(await remove()).toMatchObject({ trashed: [row.id], refused: [] })
+      expect(changes().filter((c) => c.verb === 'files.recycle').map((c) => c.args.op)).toEqual([helperOp, helperOp])
+      expect(await paired<FileDone>('work.files.restore', { ids: [row.id], op: op() })).toMatchObject({ entries: [{ name: 'Plan.txt' }], refused: [] })
+      expect(pending()).toBeUndefined()
+    })
+
+    it('uses the pending VM delete when the paired window retries with a new operation id', async () => {
+      const path = `${GENERAL}\\Notes.txt`
+      const remove = (id: string) => paired<FileDone>('work.files.trash', { refs: [at(path)], op: id, asked: true })
+      const id = op()
+      lose = 2
+      await expect(remove(id)).rejects.toThrow('The Windows VM is unreachable')
+      const row = rig.db.prepare('SELECT id FROM work_files_trash').get() as { id: string }
+      expect(await remove(op())).toMatchObject({ trashed: [row.id], refused: [] })
+      expect(changes().filter((c) => c.verb === 'files.recycle').map((c) => c.args.op)).toEqual([`tc-files:${id}:0`, `tc-files:${id}:0`])
+      expect(recycled.size).toBe(1)
+    })
+
+    it('keeps an unknown delete pending and resends only its original helper id on a confirmed retry', async () => {
+      const path = `${GENERAL}\\Notes.txt`
+      const sent: unknown[] = []
+      setVmCall(async (verb, args) => {
+        if (verb === 'files.recycle') {
+          sent.push(args?.op)
+          if (sent.length <= 2) throw new VmUnreachable('the request did not arrive')
+        }
+        return guest(verb, args ?? {})
+      })
+      const id = op()
+      const remove = (id: string) => paired<FileDone>('work.files.trash', { refs: [at(path)], op: id, asked: true })
+      await expect(remove(id)).rejects.toThrow('The Windows VM is unreachable')
+      expect((await paired<FilesListing>('work.files.list', { at: trashAt })).entries).toEqual([])
+      expect(disk.has(path.toLowerCase())).toBe(true)
+      expect(sent).toEqual([`tc-files:${id}:0`, `tc-files:${id}:0`])
+
+      expect(await remove(op())).toMatchObject({ trashed: [expect.any(String)], refused: [] })
+      expect(sent).toEqual(Array(3).fill(`tc-files:${id}:0`))
+      expect(recycled.size).toBe(1)
+    })
+
+    it('drops a pending row only when the helper confirms its refusal', async () => {
+      const path = `${GENERAL}\\Plan.txt`
+      const id = op()
+      setVmCall(async (verb, args, opts) => {
+        if (verb === 'files.recycle') throw new VmUnreachable('the refusal did not arrive')
+        if (verb === 'files.outcome') {
+          expect(args).toEqual({ op: `tc-files:${id}:0` })
+          expect(opts?.wake).toBe(false)
+          return { state: 'failed', verb: 'files.recycle', message: 'The Recycle Bin refused the file.' }
+        }
+        return guest(verb, args ?? {})
+      })
+      await expect(paired('work.files.trash', { refs: [at(path)], op: id, asked: true })).rejects.toThrow('The Windows VM is unreachable')
+      expect(rig.db.prepare("SELECT state FROM work_files_trash").get()).toMatchObject({ state: 'moving' })
+      expect((await paired<FilesListing>('work.files.list', { at: trashAt })).entries).toEqual([])
+      expect(rig.db.prepare('SELECT 1 FROM work_files_trash').get()).toBeUndefined()
+      expect(disk.has(path.toLowerCase())).toBe(true)
     })
 
     it('is asked again by the same id, which the guest answers without doing it twice', async () => {

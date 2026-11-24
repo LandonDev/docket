@@ -7,7 +7,7 @@ import { freeName, kindOfEntry, LIST_PAGE_MAX, PLACE, refKey, refusal, type File
 import type { Caller, WorkCtx } from '../modules'
 import { doorPlace, filesState } from './handle'
 import { libraryEntry, libraryKey, teamsPlaces, type LibraryPlace } from './places/teams'
-import { vmRecycle, vmRestore } from './vmVerbs'
+import { settleVmRecycle, vmRecycle, vmRestore, type VmTrashRef, type VmWhere } from './vmVerbs'
 import { gioBin, macBin, type SystemBin } from './bin'
 import { desktopHelper } from '../office/index'
 import { copyClosing } from './copies'
@@ -110,8 +110,7 @@ async function settleMoving(ctx: TrashCtx, row: TrashRow): Promise<'held' | 'und
   }
   const source = lstatOr(pathOf(row.ref))
   if (row.provider) {
-    // A delete in the Windows VM that a dead process left half asked: this disk cannot tell whether it reached the
-    // Recycle Bin there, so no row stands for it (the file is in its folder or in the bin, never lost).
+    // Older VM rows have no helper id to check. The file is either in its folder or in the bin.
     const guest = isGuestPath(pathOf(row.ref)) && process.platform !== 'win32'
     if (source || guest) dropRow(ctx, row.id)
     else holdRow(ctx, row.id, 'moving')
@@ -238,22 +237,53 @@ export function trashAfterMove(ctx: TrashCtx, workspace: WorkspaceRow, path: str
   })
 }
 
-/**
- * Whether a caller could name where a row's file lay: a remote key hears of no row it could not. A Drive row is the
- * workspace's, which a key reaches by its folder (`locate`). A row of a file in the Windows VM is judged as the door
- * judges that file (`locate`: a VM library is any window's of his), never by this disk's roots: a guest path is no
- * path here, and judged by the roots his own Mac's window could delete a VM file and then neither see it in Trash
- * nor put it back.
- */
-const visible = (ctx: Pick<WorkCtx, 'reaches'>, by: Caller, row: TrashRow, workspace?: Pick<WorkspaceRow, 'path'>): boolean =>
-  by.kind !== 'remote' || !!by.peer || (inDriveBin(row) ? !!workspace && ctx.reaches(by, workspace.path) : inVm(row) || ctx.reaches(by, pathOf(row.ref)))
-const inVm = (row: TrashRow): boolean => row.provider === 'onedrive' && isGuestPath(pathOf(row.ref)) && process.platform !== 'win32'
+/** A library row for the Windows VM, including older rows that have no saved helper operation id. */
+function vmTrashRef(row: TrashRow): VmTrashRef | null {
+  if (row.provider !== 'onedrive' || process.platform === 'win32') return null
+  const ref = JSON.parse(row.ref) as VmTrashRef
+  return isGuestPath(ref.path) ? ref : null
+}
+
+/** Stored VM paths pass the same mount check as the original delete. */
+function locateVmTrash(ctx: LocateCtx, by: Caller, row: TrashRow, ref: VmTrashRef) {
+  try {
+    const at = locate(ctx, by, row.workspace_id, ref, 'work.files.trash')
+    return at.in === 'library' && at.library.vm ? at : null
+  } catch {
+    return null
+  }
+}
+
+/** A remote key hears of no row it could not name. Drive rows are reached by the workspace folder. */
+function visible(ctx: LocateCtx, by: Caller, row: TrashRow, workspace: WorkspaceRow): boolean {
+  if (by.kind !== 'remote' || by.peer) return true
+  if (inDriveBin(row)) return ctx.reaches(by, workspace.path)
+  const ref = vmTrashRef(row)
+  return ref ? !!locateVmTrash(ctx, by, row, ref) : ctx.reaches(by, pathOf(row.ref))
+}
+
+/** Give lost replies one bounded, read-only look at the helper's journal before listing Trash. */
+async function settlePendingVmTrash(ctx: LocateCtx, by: Caller, workspaceId: string): Promise<void> {
+  const rows = ctx.db.prepare("SELECT * FROM work_files_trash WHERE workspace_id = ? AND state = 'moving' AND provider = 'onedrive'").all(workspaceId) as unknown as TrashRow[]
+  const signal = AbortSignal.timeout(2_000)
+  for (const row of rows) {
+    if (signal.aborted) break
+    const ref = vmTrashRef(row)
+    if (!ref?.recycleOp) continue
+    const at = locateVmTrash(ctx, by, row, ref)
+    if (!at) continue
+    const { place, library } = doorPlace(ctx as WorkCtx, by, at)
+    const w: VmWhere = { path: at.path, place, library: library!, key: libraryKey(library!, at.path) }
+    await settleVmRecycle(ctx as WorkCtx, workspaceId, w, row.id, ref, signal)
+  }
+}
 
 /** The folders from the workspace's top down to `dir`, by name. */
 const trailOf = (root: string, dir: string): string[] => relative(root, dir).split(sep).filter((part) => part && part !== '..')
 
 /** The Trash lens: the workspace's held rows, newest first, as rows that name where each was. */
-export function trashEntries(ctx: LocateCtx, by: Caller, workspace: WorkspaceRow): FileEntry[] {
+export async function trashEntries(ctx: LocateCtx, by: Caller, workspace: WorkspaceRow): Promise<FileEntry[]> {
+  await settlePendingVmTrash(ctx, by, workspace.id)
   const rows = ctx.db.prepare(`SELECT * FROM work_files_trash WHERE workspace_id = ? AND state = 'held' ORDER BY deleted_at DESC, id LIMIT ?`).all(workspace.id, LIST_PAGE_MAX) as unknown as TrashRow[]
   const root = workspace.path ? rootOf(workspace) : ''
   // A row of a delete in a library (the Windows VM's, or one on this disk) names its place and the folders below that place's top.
@@ -320,7 +350,7 @@ async function putBack(ctx: TrashCtx, workspace: WorkspaceRow, root: string, row
 }
 
 /** `work.files.restore`: Put back. A row of another workspace, one not held, or one the caller could not name, is that id's refusal. */
-export function restoreRows(ctx: TrashCtx & Pick<WorkCtx, 'reaches'>, by: Caller, workspace: WorkspaceRow, ids: string[], op: string): Promise<FileDone> {
+export function restoreRows(ctx: LocateCtx, by: Caller, workspace: WorkspaceRow, ids: string[], op: string): Promise<FileDone> {
   return runOp(ctx.db, { id: op, workspaceId: workspace.id, verb: 'restore', refs: ids }, async () => {
     // A library row needs no folder here: its file goes back from the computer's own bin.
     let root: string | null = null
@@ -351,7 +381,7 @@ async function purgeClaimed(ctx: TrashCtx, row: Pick<TrashRow, 'id' | 'workspace
 }
 
 /** `work.files.purge`: Empty Trash for the workspace, or only `ids`. Only a row this call claimed is removed. */
-export async function purgeRows(ctx: TrashCtx & Pick<WorkCtx, 'reaches'>, by: Caller, workspace: WorkspaceRow, ids?: string[]): Promise<{ purged: number }> {
+export async function purgeRows(ctx: LocateCtx, by: Caller, workspace: WorkspaceRow, ids?: string[]): Promise<{ purged: number }> {
   const asked = ids ?? (ctx.db.prepare(`SELECT id FROM work_files_trash WHERE workspace_id = ? AND state = 'held'`).all(workspace.id) as { id: string }[]).map((r) => r.id)
   let purged = 0
   for (const id of asked) {
@@ -386,8 +416,10 @@ export async function settleTrash(ctx: TrashCtx): Promise<{ held: number; undone
   const rows = ctx.db.prepare(`SELECT * FROM work_files_trash WHERE state IN ('moving', 'restoring', 'purging')`).all() as unknown as TrashRow[]
   for (const row of rows) {
     try {
-      if (row.state === 'moving') out[await settleMoving(ctx, row)]++
-      else if (row.state === 'purging') {
+      if (row.state === 'moving') {
+        // The next Trash listing can read the helper's journal. Starting Files does not ask the VM.
+        if (!vmTrashRef(row)?.recycleOp) out[await settleMoving(ctx, row)]++
+      } else if (row.state === 'purging') {
         await purgeClaimed(ctx, row)
         out.purged++
       } else if (!row.provider && lstatOr(join(binOf(ctx.dataDir, row.workspace_id, row.id), row.name)) === null) {

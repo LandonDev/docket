@@ -711,9 +711,11 @@ library's delete goes to the computer's own bin and Trash keeps only its row
 - **The Trash lens** (`list {at: {at:'place', id:'trash'}}`) lists the
   workspace's `held` rows, newest first, 500 at most: `key: 'trash:<id>'`,
   `ref` and `folder` null, `changed` the time of the delete, `where` the
-  place and the folders it was in. A remote key sees no row whose file it
-  could not have named. `places` gives Trash after Starred to the
-  workspace's own callers, never to a thread or another host.
+  place and the folders it was in. A remote key can see and put back only
+  the rows it could name. The host checks a VM row against the same
+  OneDrive mounts as its delete, a disk row against the disk fence, and a
+  Drive row by whether the key can reach the workspace's folder.
+  `places` gives Trash after Starred to the workspace's own callers.
 - **Put back** (`restore`) claims each row by `UPDATE … SET state =
   'restoring' WHERE id = ? AND workspace_id = ? AND state = 'held'`: only
   the caller whose UPDATE changed the row goes on. Another workspace's row,
@@ -802,24 +804,17 @@ key, or from the bar for many.
   kept here.
 - **Undo and Put back** (`restore`): a row with `bin` goes back from there
   to the path it had, never over anything ("Plan (restored).docx" beside one
-  of its name). A Mac moves it back from the Trash (`macBin().back`) by a
-  move that refuses a taken name (`moveOnto`: a hard link then the old name
-  dropped, so a file OneDrive syncs in between the look and the move is
-  never written over; a rename for a folder, or where no link can be made); the
-  VM and a PC ask the helper's `files.restore`, which moves the bin's `$R`
-  item only when the bin's own `$I` record names that same path, then drops
+  of its name). A Mac uses an exclusive rename for files and folders
+  (`renamex_np` with `RENAME_EXCL`). If sync takes a candidate name during
+  Put Back, the host tries the next name. When the volume refuses the move,
+  the item stays in the Trash. The VM and a PC ask the helper's
+  `files.restore`, which moves the bin's `$R` item only when the bin's
+  own `$I` record names that same path, then drops
   the record, as Explorer's Restore does. Gone from the bin: "That is not in
   the Trash any more." or "…Recycle Bin any more."; its folder gone: "The
   folder it was in is gone. Put it back from the Trash."; a helper built
   before `files.restore`: "Put it back from the Recycle Bin in the Windows
   VM."; a row with no `bin`: "Put it back from the recycle bin."
-- **Who sees a row.** A remote key hears of no Trash row it could not have
-  named (`visible`, trash.ts): by this disk's roots for a file of this disk,
-  by the workspace's folder for a Drive row, and for a file of the Windows
-  VM as the door judges that file (a VM library is any window's of his): a
-  guest path is no path of this disk, and judged by the roots his Mac's
-  window could delete a VM file and then neither see it in Trash nor put it
-  back.
 - **Another host's workspace.** His window asks the file's own host, even
   for a workspace another host keeps (a Mac's OneDrive from a box
   workspace): that host keeps the row (`binRows` in handle.ts gives such a
@@ -875,15 +870,19 @@ verbs and their journal) and holds both ends to OneDrive's mounts again.
   `files.recycle`, the Windows Recycle Bin, never a delete for good; a
   `work_files_trash` row with `provider: 'onedrive'`, no bytes here and the
   bin's path, listed in Trash under its place's name and folders; Put back
-  and Undo are `files.restore` (`vmRestore`). A row a dead process left
-  `moving` is dropped at boot (this disk cannot tell where the file is; it is
-  in its folder or the bin).
+  and Undo are `files.restore` (`vmRestore`). The host writes the helper's
+  operation id in the row before asking the bin. A pending row with that
+  id survives a restart.
 - **A lost answer.** Each thing is asked under the guest operation id
   `tc-files:<op>:<n>` (`guestOp`). An answer lost on the way back is asked
   once more with the same id, which the guest's journal answers without doing
-  it twice; lost again, the change throws `OpLost`, which `runOp` keeps no
-  row for, so the caller's same `op` asks the guest again and gets what the
-  first did.
+  it twice. If both replies fail, the change throws `OpLost` and `runOp`
+  lets the caller try the same `op` again. A delete keeps its pending Trash
+  row and helper id even if the window tries again with a fresh `op`.
+  The next Trash listing checks `files.outcome` without waking the VM.
+  A confirmed delete holds the row for Undo and closes the tabs. A
+  confirmed refusal drops the row. While the outcome is unknown, the
+  row stays pending and the tabs and copies stay open.
 - **Who.** His window; a remote key with `approve` (every VM place is one
   others can open), and the listener passes the guest path for `make`,
   `rename`, `move` and `trash` (`GUEST_METHODS`); a thread is refused until
