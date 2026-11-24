@@ -22,8 +22,10 @@ const ALSO_KINDS: readonly string[] = ["docs.guest"];
 
 /** Kinds a section of Today reads for itself, whatever day they were told: held items and failed sends, mail and chat waiting, the review. */
 const TODAY_OWN: readonly string[] = ["outbox.held", "outbox.failed", "mail.waiting", "messages.new", "review.ready"];
-/** Kinds Today shows only on their day: a meeting, its prep or a clash whose clock falls today. */
-const ON_ITS_DAY: readonly string[] = ["prep.starting", "prep.ready", "clashes.new"];
+/** Kinds Today shows only on their day: a meeting or a clash whose clock falls today. A ready brief carries no clock (sources/prep.ts), so it always opens the list. */
+const ON_ITS_DAY: readonly string[] = ["prep.starting", "clashes.new"];
+/** Today draws one review, the newest unopened (review/today.ts). */
+const REVIEW = "review.ready";
 
 /**
  * Whether Today has a row for this tell on `today`: the digest's toast opens Today only when every row it counts
@@ -32,6 +34,11 @@ const ON_ITS_DAY: readonly string[] = ["prep.starting", "prep.ready", "clashes.n
 export function todayShows(row: Pick<TellRow, "group" | "kind" | "by">, today: string): boolean {
   if (ALSO_GROUPS.includes(row.group) || ALSO_KINDS.includes(row.kind) || TODAY_OWN.includes(row.kind)) return true;
   return ON_ITS_DAY.includes(row.kind) && row.by !== undefined && localDay(row.by) === today;
+}
+
+/** Whether Today has a row for every tell the day's toast counts: each shown, and no more reviews than the one it draws. */
+export function todayShowsAll(rows: readonly Pick<TellRow, "group" | "kind" | "by">[], today: string): boolean {
+  return rows.every((r) => todayShows(r, today)) && rows.filter((r) => r.kind === REVIEW).length <= 1;
 }
 
 const localDay = (ts: number): string => {

@@ -216,6 +216,8 @@ export function loadDigest(): Promise<void> {
  * link comes back, so it never takes the clock from the one he uses. A host that cannot take it (older, or this key
  * may not operate) is left alone.
  */
+/** When this window last came to the front: said with its zone, and said the same again on a reconnect. */
+let focusedAt = Date.now();
 function sayHere(environmentId: string, focused = typeof document === "undefined" || document.hasFocus()): void {
   if (!focused) return;
   let zone = "";
@@ -224,7 +226,7 @@ function sayHere(environmentId: string, focused = typeof document === "undefined
   } catch {
     return;
   }
-  if (zone) void registry.linkOf(environmentId).request("work.digest.here", { zone }).catch(() => {});
+  if (zone) void registry.linkOf(environmentId).request("work.digest.here", { zone, at: focusedAt }).catch(() => {});
 }
 
 // ── seen, until the host has heard ───────────────────────────────────────
@@ -421,6 +423,7 @@ workSwitch.subscribe(() => {
 // He came to this window: its zone is the one he is in.
 if (typeof window !== "undefined")
   window.addEventListener("focus", () => {
+    focusedAt = Date.now();
     for (const id of workSwitch.hosts()) sayHere(id, true);
   });
 

@@ -15,7 +15,9 @@ vi.mock("../../lib/connection", async (original) => {
 });
 
 type Shown = { id: string; kind: "plain" | "warning"; text: string; description?: string; action: () => void; dismiss: () => void };
-const toasts = vi.hoisted(() => ({ shown: new Map<string, unknown>() }));
+const toasts = vi.hoisted(() => ({ shown: new Map<string, unknown>(), errors: [] as string[] }));
+const files = vi.hoisted(() => ({ open: null as null | ((...a: unknown[]) => Promise<void>) }));
+vi.mock("../files/openFrom", () => ({ openInFiles: (...a: unknown[]) => files.open!(...a) }));
 vi.mock("../../components/ui/toaster", async (original) => {
   const show =
     (kind: "plain" | "warning") =>
@@ -24,6 +26,7 @@ vi.mock("../../components/ui/toaster", async (original) => {
     };
   const api = Object.assign(show("plain"), {
     warning: show("warning"),
+    error: (text: string) => void toasts.errors.push(text),
     // as sonner: taking a toast away calls its onDismiss too
     dismiss: (id: string) => {
       const had = toasts.shown.get(id) as { dismiss: () => void } | undefined;
@@ -40,7 +43,7 @@ vi.mock("../../lib/tcserver/workspaces", async (original) => ({ ...(await origin
 vi.mock("../../stores/project", async (original) => ({ ...(await original<object>()), project: { enterWorkspace: (path: string) => void workspaces.entered.push(path) } }));
 
 import { OPEN_SETTINGS_EVENT } from "../../lib/monaco/debugTab";
-import { digestOpensPort, setWorkOn, workOpenPort, workSwitch, workViewNow } from "../../lib/workSwitch";
+import { choose, digestOpensPort, openWorkView, setWorkOn, workOpenPort, workSwitch, workViewNow } from "../../lib/workSwitch";
 import { shell, shellStore } from "../../stores/shell";
 import { WORK_PLACE_ROWS } from "../../lib/workPlaces";
 import { useWorkPlaceAt } from "../../lib/workPlaceAt";
@@ -139,7 +142,21 @@ describe("the digest's toast", () => {
   });
 
   it("opens the list, not Today, when Today has no row for something it counts: tomorrow's prep", async () => {
-    w().rows.set("box", [tell({ day: "2026-11-24", how: "digest" }), tell({ day: "2026-11-24", how: "digest", kind: "prep.ready", group: "meetings", title: "Prep is ready", by: at(25, 10) })]);
+    w().rows.set("box", [tell({ day: "2026-11-24", how: "digest" }), tell({ day: "2026-11-24", how: "digest", kind: "prep.ready", group: "meetings", title: "Prep is ready" })]);
+    w().rows.set("mac", []);
+    const today = vi.fn();
+    digestOpensPort.set(today);
+    await mount();
+    await act(async () => shown()[0]!.action());
+    expect(today).not.toHaveBeenCalled();
+    expect(await screen.findByRole("heading", { name: "Digest" })).toBeTruthy();
+  });
+
+  it("opens the list, not Today, when it counts two weeks' reviews: Today draws the newest alone", async () => {
+    w().rows.set("box", [
+      tell({ day: "2026-11-24", how: "digest", kind: "review.ready", group: "review", title: "Last week's review is ready", key: "review:1", open: { place: "review", at: "1" } }),
+      tell({ day: "2026-11-24", how: "digest", kind: "review.ready", group: "review", title: "This week's review is ready", key: "review:2", open: { place: "review", at: "2" } }),
+    ]);
     w().rows.set("mac", []);
     const today = vi.fn();
     digestOpensPort.set(today);
@@ -215,8 +232,13 @@ describe("the zone the digest's time is kept in", () => {
       act(() => reopen(w(), "box"));
       expect(said()).toEqual([]);
       focus.mockReturnValue(true);
+      act(() => void window.dispatchEvent(new Event("focus")));
+      const at = (w().calls.at(-1)!.params as { at: number }).at;
+      w().calls.length = 0;
       act(() => reopen(w(), "box"));
       expect(said()).toEqual(["box"]);
+      // the same moment it came to the front, not the reconnect's: the host keeps the latest across desktops
+      expect(w().calls.find((c) => c.method === "work.digest.here")!.params).toMatchObject({ at });
     } finally {
       focus.mockRestore();
     }
@@ -248,6 +270,44 @@ describe("a page above the workspaces", () => {
     await act(async () => shown()[0]!.action());
     expect(shellStore.getState().workPlace).toBe("review");
     expect(asked.result.current).toBe(week);
+  });
+});
+
+describe("a guest's edit that does not open", () => {
+  const guest = () => tell({ key: "guest-edit:lifeos:docs:d1:2026-11-24", kind: "docs.guest", group: "people", workspaceId: "ws-purdue", sector: "purdue", title: "A guest edited Pricing notes", how: "now", toldAt: at(24, 9), open: { view: "docs", workspaceId: "ws-purdue", at: "lifeos:docs:d1" } });
+  let refuse: (err: Error) => void = () => {};
+  beforeEach(() => {
+    toasts.errors.length = 0;
+    workspaces.list = [{ id: "ws-purdue", path: "/work/Purdue", environmentId: "box", kind: "work", sector: "purdue" }];
+    files.open = () => {
+      choose();
+      return new Promise<void>((_, reject) => (refuse = reject));
+    };
+  });
+  it("says why and shows Files while the press is still his latest choice", async () => {
+    w().rows.set("box", [guest()]);
+    await mount();
+    await act(async () => shown()[0]!.action());
+    await settle();
+    await act(async () => refuse(new Error("That host runs an older build")));
+    await settle();
+    expect(workViewNow()).toMatchObject({ workspaceId: "ws-purdue", view: "files" });
+    expect(toasts.errors).toEqual(["It did not open"]);
+  });
+  it("keeps a thread he opened while it waited: no Files over it, no word", async () => {
+    w().rows.set("box", [guest()]);
+    await mount();
+    await act(async () => shown()[0]!.action());
+    await settle();
+    // he opens a thread while the host makes the tab
+    act(() => {
+      choose();
+      openWorkView(null);
+    });
+    await act(async () => refuse(new Error("That host runs an older build")));
+    await settle();
+    expect(workViewNow()).toBeNull();
+    expect(toasts.errors).toEqual([]);
   });
 });
 

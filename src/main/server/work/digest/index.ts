@@ -33,7 +33,7 @@ export const digest: WorkModule = {
       case 'work.digest.set':
         return handled(host(ctx).set(req.params))
       case 'work.digest.here':
-        return handled(host(ctx).here(req.params.zone))
+        return handled(host(ctx).here(req.params.zone, req.params.at))
       case 'work.digest.seen':
         return handled(host(ctx).seen(req.params.day))
     }

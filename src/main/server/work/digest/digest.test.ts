@@ -1,15 +1,18 @@
 import { DatabaseSync } from 'node:sqlite'
-import { beforeEach, describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { requiredCapability } from '@shared/capabilities'
 import type { ClientRequest } from '@shared/contract'
 import { ClientRequestSchema } from '@shared/contract'
 import { DIGEST_CAPS, DigestRequestSchemas, type DigestList, type DigestPush, type DigestSettings } from '@shared/contract-work-digest'
 import type { DigestDay } from '@shared/contract-work-digest'
-import type { TellKind } from '@shared/work/tell'
+import type { NoticeWork, Tell, TellKind } from '@shared/work/tell'
 import type { WorkPartDeps } from '../ctx'
 import type { WorkCtx } from '../modules'
 import { digest as digestModule } from '.'
-import { Digest, digestOf, pushNeed, tellPart, type Deliverer } from './ctx'
+import { Digest, digestOf, LIST_WAIT_MS, peerDays, pushNeed, tellPart, type Deliverer } from './ctx'
+import { makeDeliverer, ofDay, PEER_WAIT_MS } from './deliver'
+import { tellFailed, type TellsDeps } from '../outbox/tells'
+import type { OutboxItem } from '@shared/contract-work-outbox'
 import { DIGEST_TELLS } from './rule'
 import type { LedgerRow } from './store'
 
@@ -249,6 +252,24 @@ describe('the same key', () => {
   })
 })
 
+describe('a send that fails again at once', () => {
+  it('is one banner on the phone, naming the one item and opening it, not two attempts of it', () => {
+    const work: { body: string; work: NoticeWork }[] = []
+    rig.digest.deliverer = makeDeliverer({ notifier: () => ({ work: (n: (typeof work)[number]) => void work.push(n), held: () => {} }) as never, sendsDigest: () => true, peers: () => [], log: () => {} })
+    const tell = Object.assign((t: Tell) => void rig.digest.tell(t), { done: (k: string) => rig.digest.done(k), only: (p: string, k: readonly string[]) => rig.digest.only(p, k), quiet: () => {} })
+    const deps: TellsDeps = { ctx: { tell, log: () => {} } as never, kindOf: () => undefined, workspaces: () => [{ id: 'ws-cosmic', kind: 'work', sector: 'cosmic' }], now: () => rig.clock.now }
+    const item = { ref: { at: 'host', id: 'h1' }, kind: 'addon.call', workspaceId: 'ws-cosmic', sessionId: null, sector: 'cosmic', summary: 'Send to Dana Reyes: Re: budget', state: 'failed', error: 'The server refused it', decidedAt: rig.clock.now - 60_000, updatedAt: rig.clock.now - 60_000 } as unknown as OutboxItem
+    tellFailed(deps, item)
+    // he presses Send again and it fails within the Outbox's 250 ms sync
+    rig.clock.now += 5_000
+    tellFailed(deps, { ...item, decidedAt: rig.clock.now - 1_000, updatedAt: rig.clock.now - 1_000 })
+    expect(work).toHaveLength(2)
+    expect(work[1]!.body).toBe('Not sent: Send to Dana Reyes: Re: budget\nThe server refused it')
+    expect(work[1]!.work).toMatchObject({ open: { held: { at: 'host', id: 'h1' } } })
+    expect(rig.digest.list().rows.filter((r) => r.title.startsWith('Not sent'))).toHaveLength(1)
+  })
+})
+
 describe('a set told by its keys', () => {
   it('only: of the rows under a prefix, those no longer named are done, and no other row is touched', () => {
     rig.digest.deliverer = rig.deliverer
@@ -322,6 +343,16 @@ describe('the day', () => {
     held()
     rig.digest.start({ interval: false })()
     expect(rig.sent.digest).toHaveLength(1)
+  })
+  it('keeps the zone of the window that came to the front last: an older one reconnecting does not take it back', () => {
+    const t = rig.clock.now
+    rig.digest.here('America/New_York', t + 1_000)
+    rig.digest.here('America/Los_Angeles', t + 2_000)
+    // the Mac, left in front since t + 1,000, says it again when its link comes back
+    rig.digest.here('America/New_York', t + 1_000)
+    expect(rig.digest.zone()).toBe('America/Los_Angeles')
+    rig.digest.here('America/Chicago', t + 3_000)
+    expect(rig.digest.zone()).toBe('America/Chicago')
   })
   it("follows the zone of the desktop he last used, not the host's", () => {
     held()
@@ -458,6 +489,46 @@ describe('the day', () => {
     const list = await asked
     expect(list.rows.map((r) => r.title).sort()).toEqual(['A guest edited Pricing', 'Send to Dana Reyes: Re: budget'])
     expect(list.days).toMatchObject([{ day: '2026-11-24', count: 2 }])
+  })
+  it('a linked host whose sources are slow still answers inside the asker\'s limit, with what waited', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    try {
+      held()
+      // a source that takes longer than the asker waits
+      rig.digest.beforeDay = () => new Promise<void>(() => {})
+      rig.clock.now = at(24, '08:00')
+      let list: DigestList | null = null
+      void rig.digest.listMade({ day: '2026-11-24' }).then((l) => void (list = l))
+      await vi.advanceTimersByTimeAsync(LIST_WAIT_MS)
+      expect(LIST_WAIT_MS).toBeLessThan(PEER_WAIT_MS)
+      expect(ofDay(list!, '2026-11-24').map((r) => r.title)).toEqual(['Send to Dana Reyes: Re: budget'])
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+  it("asked for a day it has made, a linked host answers that day's rows alone: one told since waits for its next day", async () => {
+    held({ title: 'In the day' })
+    rig.clock.now = at(24, '08:00')
+    rig.digest.tick()
+    held({ title: 'Told after the day was made' })
+    expect(ofDay(await rig.digest.listMade({ day: '2026-11-24' }), '2026-11-24').map((r) => r.title)).toEqual(['In the day'])
+    // the next day, that row is the next day's
+    rig.clock.now = at(25, '07:59')
+    expect(ofDay(await rig.digest.listMade({ day: '2026-11-25' }), '2026-11-25').map((r) => r.title)).toEqual(['Told after the day was made'])
+  })
+  it('asked for a day it handled with nothing in it, a linked host counts no row told since', async () => {
+    rig.clock.now = at(24, '08:00')
+    rig.digest.tick()
+    expect(rig.digest.list().days).toEqual([])
+    held({ title: 'Told after the slot' })
+    expect(ofDay(await rig.digest.listMade({ day: '2026-11-24' }), '2026-11-24')).toEqual([])
+  })
+  it('the sender asks each linked host for the day by name', async () => {
+    const asked: unknown[] = []
+    const far = { hosts: () => ['env_mac'], read: async <T,>(host: string, module: string, verb: string, args: unknown): Promise<T> => (asked.push([host, module, verb, args]), { days: [], rows: [], waiting: 0, groups: [] } as T) }
+    await Promise.all(peerDays(far, '2026-11-24'))
+    expect(asked).toEqual([['env_mac', 'digest', 'list', { day: '2026-11-24' }]])
+    expect(peerDays(undefined, '2026-11-24')).toEqual([])
   })
   it('a clock long past when it is first told does not ring: it waits for the digest', () => {
     const row = held({ key: 'old', by: at(21, '09:00') })!

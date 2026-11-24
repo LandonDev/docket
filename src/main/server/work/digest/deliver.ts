@@ -39,7 +39,11 @@ const jobOf = (row: Pick<TellRow, 'sector'>): string | null => jobFromSector(row
 /** The same on every host that tells the same thing: the row's key, its id when it has none. */
 const nameOf = (row: Pick<TellRow, 'id' | 'key'>): string => row.key ?? row.id
 
-/** What a linked host holds for the day: its rows that waited, in that day's digest or not stamped yet (its own look may come seconds after ours). */
+/**
+ * What a linked host holds for the day: its rows that waited, in that day's digest or not stamped yet (its own look
+ * may come seconds after ours). Asked with the day, a host that has made it answers that day's rows alone (ctx.ts
+ * `listMade`), so a row it was told after its day was made is left for its next day, not counted in two.
+ */
 export const ofDay = (list: Pick<DigestList, 'rows'>, day: string): TellRow[] => list.rows.filter((r) => r.toldAt == null && (r.day === day || r.day === null))
 
 /** One list from several hosts, a key two of them hold counted once (a row with no key is its own). */
@@ -70,15 +74,19 @@ const within = <T>(wait: Promise<T>, ms: number, otherwise: T): Promise<T> =>
     )
   })
 
-export function makeDeliverer(deps: DeliverDeps): Deliverer & { digestSent(day: DigestDay, rows: LedgerRow[]): Promise<boolean> } {
-  /** False: no notifier yet, so the day is offered again later (ctx.ts `offerOwed`). */
-  const digestSent = async (day: DigestDay, rows: LedgerRow[]): Promise<boolean> => {
+export function makeDeliverer(deps: DeliverDeps): Deliverer & { digestSent(day: DigestDay, rows: LedgerRow[], stillOwed?: () => boolean): Promise<boolean> } {
+  /**
+   * False: no notifier yet, or it threw, so the day is offered again later (ctx.ts `offerOwed`). `stillOwed` is asked
+   * once the linked hosts have answered: a day he opened while they were read sends nothing.
+   */
+  const digestSent = async (day: DigestDay, rows: LedgerRow[], stillOwed: () => boolean = () => true): Promise<boolean> => {
     if (!deps.sendsDigest()) return true
     if (!deps.notifier()) return false
     const far = await Promise.all(deps.peers(day.day).map((ask) => within(ask, PEER_WAIT_MS, [] as TellRow[])))
     const all = mergeByKey([rows, ...far])
     const notifier = deps.notifier()
     if (!notifier) return false
+    if (!stillOwed()) return true
     if (all.length === 0) return true
     const key = `digest:${day.day}`
     notifier.work({ ...digestWords(all.length, all, jobOf), urgent: false, work: { key, digest: day.day } })
@@ -102,8 +110,9 @@ export function makeDeliverer(deps: DeliverDeps): Deliverer & { digestSent(day: 
     gone() {
       // A banner on a phone cannot be taken back; the next interrupt's body names only what is still open.
     },
-    digest(day, rows) {
-      return digestSent(day, rows).catch((err: unknown) => (deps.log(`digest: the day's notice was not sent: ${errorText(err)}`), true))
+    digest(day, rows, stillOwed) {
+      // A fault leaves the day owed: the next look offers it again.
+      return digestSent(day, rows, stillOwed).catch((err: unknown) => (deps.log(`digest: the day's notice was not sent: ${errorText(err)}`), false))
     },
     digestSent
   }

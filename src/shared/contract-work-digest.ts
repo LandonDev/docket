@@ -35,7 +35,8 @@ export const DigestRequestSchemas = [
    */
   request('work.digest.set', z.object({ at: DigestAtSchema.optional(), levels: DigestLevelsSchema.optional(), setAt: DigestSetAtSchema.optional() })),
   /** → null: the zone of the desktop he is at; the host keeps the newest, so the digest follows the desktop he last used */
-  request('work.digest.here', z.object({ zone: z.string().min(1).max(64) })),
+  /** `at`: when that desktop's window last came to the front; the host keeps the zone of the latest */
+  request('work.digest.here', z.object({ zone: z.string().min(1).max(64), at: z.number().int().nonnegative().optional() })),
   /** → null: he opened that day's digest; every window's notice of it goes */
   request('work.digest.seen', z.object({ day: DigestDaySchema }))
 ] as const

@@ -1546,7 +1546,8 @@ Around the canvas:
   besides. The day's digest is one plain toast, "Digest: 9 things in
   Cosmic, Purdue and Ref", with Open and a close; it stays until he opens
   or closes it on any device. Open lands where all it spoke for shows:
-  Today when the one unseen day is today, else the list. A thing that cannot wait is one toast a
+  Today when the one unseen day is today and Today has a row for each
+  thing it counts, else the list. A thing that cannot wait is one toast a
   thing in the waiting voice (the amber mark), its title the tell's own
   sentence and its detail the second line, with Open and a close; it goes
   when the thing is done, opened or closed, and past three at once they

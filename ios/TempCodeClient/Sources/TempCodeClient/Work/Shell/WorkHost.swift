@@ -139,7 +139,13 @@ public final class WorkHost: CaptureHost {
         case .work(let value):
             let was = isOn
             settings = value.settings
-            if !isOn { clear() } else if !was { Task { await self.refreshOutbox(); await self.refreshLifeos() } }
+            if !isOn {
+                clear()
+            } else if !was {
+                Task { await self.refreshOutbox(); await self.refreshLifeos() }
+                // A day he saw while Work was off here is said now.
+                Task { await self.digest.reconnected() }
+            }
         case .workOutbox(let value):
             waiting = value.waiting
             unreviewed = value.unreviewed
@@ -358,7 +364,7 @@ public final class WorkHost: CaptureHost {
 
     public func setWork(_ enabled: Bool) async throws {
         settings = try await socket.request(Methods.WorkSet.self, .init(enabled: enabled))
-        if isOn { await refreshOutbox(); await refreshLifeos() } else { clear() }
+        if isOn { await refreshOutbox(); await refreshLifeos(); await digest.reconnected() } else { clear() }
     }
 
     public func grants() async throws -> [OutboxGrant] {

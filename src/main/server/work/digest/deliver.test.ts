@@ -172,6 +172,29 @@ describe("the day's digest", () => {
   })
 })
 
+describe("the day's notice that does not go", () => {
+  it('a notifier that throws leaves the day owed: the next look offers it again', async () => {
+    let fail = true
+    const sent: unknown[] = []
+    const { deliverer, logs } = rig({ notifier: () => ({ work: (x) => (fail ? (() => { throw new Error('APNs refused') })() : void sent.push(x)), held: () => {} }) })
+    expect(await deliverer.digest(DAY, [row()])).toBe(false)
+    expect(logs).toEqual(["digest: the day's notice was not sent: APNs refused"])
+    fail = false
+    expect(await deliverer.digest(DAY, [row()])).toBe(true)
+    expect(sent).toHaveLength(1)
+  })
+  it('a day he opened while the linked hosts were read sends no banner', async () => {
+    let answer: (rows: TellRow[]) => void = () => {}
+    let owed = true
+    const { deliverer, work } = rig({ peers: () => [new Promise<TellRow[]>((r) => (answer = r))] })
+    const sent = deliverer.digest(DAY, [row()], () => owed)
+    owed = false
+    answer([])
+    expect(await sent).toBe(true)
+    expect(work).toEqual([])
+  })
+})
+
 describe('what a linked host holds for the day', () => {
   it('is its rows that waited, in that day or not stamped yet; one he was told of at once is not counted', () => {
     const rows = [row({ day: '2026-11-24' }), row({ day: null }), row({ day: '2026-11-23' }), row({ day: '2026-11-24', toldAt: 5 }), row({ day: null, toldAt: 5 })]

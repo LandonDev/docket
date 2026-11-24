@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import type { TellRow } from "@shared/work/tell";
-import { ALSO_GROUPS, alsoRows, todayShows } from "./today";
+import { ALSO_GROUPS, alsoRows, todayShows, todayShowsAll } from "./today";
 
 /** What the digest adds to Today: only the groups no section of Today reads for itself. */
 
@@ -64,10 +64,16 @@ describe("the digest's rows on Today", () => {
   it("say which tells Today has a row for: its own sections' kinds and the also rows, a meeting or clash only on its day", () => {
     expect(todayShows({ group: "results", kind: "routines.done" }, "2026-11-24")).toBe(true);
     expect(todayShows({ group: "held", kind: "outbox.failed" }, "2026-11-24")).toBe(true);
-    expect(todayShows({ group: "meetings", kind: "prep.ready", by: at(24, 14) }, "2026-11-24")).toBe(true);
-    expect(todayShows({ group: "meetings", kind: "prep.ready", by: at(25, 10) }, "2026-11-24")).toBe(false);
+    expect(todayShows({ group: "meetings", kind: "prep.starting", by: at(24, 14) }, "2026-11-24")).toBe(true);
+    // a ready brief carries no clock: Today cannot place it, so the list opens
+    expect(todayShows({ group: "meetings", kind: "prep.ready" }, "2026-11-24")).toBe(false);
     expect(todayShows({ group: "clashes", kind: "clashes.new", by: at(27, 9) }, "2026-11-24")).toBe(false);
     expect(todayShows({ group: "meetings", kind: "something.new" }, "2026-11-24")).toBe(false);
+  });
+  it("count no more reviews than the one Today draws", () => {
+    const review = { group: "review" as const, kind: "review.ready" };
+    expect(todayShowsAll([review, { group: "results", kind: "routines.done" }], "2026-11-24")).toBe(true);
+    expect(todayShowsAll([review, review], "2026-11-24")).toBe(false);
   });
   it("a row's press is the tell's own target", () => {
     const open = vi.fn();

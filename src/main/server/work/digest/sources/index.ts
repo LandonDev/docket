@@ -27,12 +27,16 @@ export interface SourceEnv {
   zone: string
   /** when this host last made a digest; 0: never */
   since: number
+  /** what a source keeps between reads on this host (a cutoff per job), in the digest's own settings */
+  kept?: { get(key: string): number | null; set(key: string, value: number): void }
 }
 
 export interface SourceRead {
   tells: Tell[]
   /** the keys under `prefix` that are still true; absent: the tells' own keys */
   keep?: string[]
+  /** run once its tells are kept, and only while Work is on: a cutoff moves past what was told, never past what was not */
+  done?(): void
 }
 
 export interface Source {
@@ -58,6 +62,7 @@ export interface SourcesDeps {
   day(now: number): string
   zone(): string
   since(): number
+  kept?: SourceEnv['kept']
 }
 
 export class Sources {
@@ -85,7 +90,8 @@ export class Sources {
       workspaces: () => ctx.db.prepare("SELECT id, name, sector FROM workspaces WHERE kind = 'work' AND sector IS NOT NULL ORDER BY created_at").all() as unknown as { id: string; name: string; sector: string }[],
       day: this.deps.day(now),
       zone: this.deps.zone(),
-      since: this.deps.since()
+      since: this.deps.since(),
+      ...(this.deps.kept ? { kept: this.deps.kept } : {})
     }
   }
 
@@ -97,9 +103,10 @@ export class Sources {
     this.running.add(source.id)
     try {
       const read = await source.read(this.env(now), now)
-      const { tells, keep } = Array.isArray(read) ? { tells: read, keep: undefined } : read
+      const { tells, keep, done } = Array.isArray(read) ? { tells: read, keep: undefined, done: undefined } : read
       for (const tell of tells) ctx.tell(tell)
       if (source.prefix) ctx.tell.only(source.prefix, keep ?? tells.flatMap((t) => (t.key ? [t.key] : [])))
+      if (done && ctx.enabled()) done()
       this.failing.delete(source.id)
     } catch (err) {
       if (!this.failing.has(source.id)) ctx.log(`digest: the ${source.id} source was not read: ${errorText(err)}`)

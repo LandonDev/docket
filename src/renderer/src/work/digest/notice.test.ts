@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { TellRow } from "@shared/work/tell";
-import { digestNotice, emptyLine, FOLD_PAST, listSections, nameOf, nowToasts, onlyToday, openInterrupts, refusedLine, rowWhen, systemNotices, tellingOf, unansweredLine } from "./notice";
+import { digestNotice, emptyLine, FOLD_PAST, listSections, nameOf, nowToasts, onlyToday, openInterrupts, refusedLine, rowWhen, systemNotices, tellingOf, tellingsOf, unansweredLine } from "./notice";
 import type { MergedDay } from "./store";
 
 /** What the desktop shows of the digest, as rules over made-up rows. */
@@ -98,6 +98,16 @@ describe("an interrupt", () => {
 });
 
 describe("the system notifications", () => {
+  it("say a long fold's tellings as a short fingerprint of the whole list, so one deadline moved is still a new notice", () => {
+    const many = Array.from({ length: 40 }, (_, i) => row({ key: `held:lifeos:outbox:${"x".repeat(30)}${i}`, how: "now", toldAt: 1_000 + i }));
+    const moved = many.map((r, i) => (i === 17 ? { ...r, toldAt: 9_999 } : r));
+    const a = systemNotices(null, nowToasts(many))[0]!;
+    const b = systemNotices(null, nowToasts(moved))[0]!;
+    expect(a.body).toBe(b.body);
+    expect(a.telling!.length).toBeLessThan(1_000);
+    expect(a.telling).not.toBe(b.telling);
+    expect(tellingsOf(many)).toBe(tellingsOf([...many]));
+  });
   it("say the same two things: the digest silent under Work, an interrupt under its job in the app's voice", () => {
     const a = row({ key: "prep:1", sector: "purdue", title: "Budget review starts at 2:00 PM", detail: "With Dana Reyes", how: "now", toldAt: 1 });
     const digest = digestNotice({ days: [day("2026-11-24")], rows: [row({ day: "2026-11-24", how: "digest" })] });

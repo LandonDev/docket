@@ -103,6 +103,24 @@ private func away(_ enabled: Bool, at: Int, since: Int, decided: Int = 0) -> Str
         #expect(rig.work.waiting == 0)
     }
 
+    @Test func `a day seen that its host did not take is said again when Work comes back on`() async throws {
+        let rig = try WorkRig()
+        let fake = await rig.open()
+        fake.answer(id: try #require(await rig.request(fake, "work.get")), result: #"{"enabled":true}"#)
+        fake.answer(id: try #require(await rig.request(fake, "away.get")), result: away(false, at: 1_000, since: 0))
+        fake.answer(id: try #require(await rig.request(fake, "work.outbox.list")), result: #"{"items":[],"waiting":0}"#)
+        #expect(await rig.until { rig.work.listed })
+        // He opens the day; the host does not take the mark.
+        let seen = Task { await rig.work.digest.seen("2026-11-24") }
+        fake.refuse(id: try #require(await rig.request(fake, "work.digest.seen")), error: "the link dropped")
+        await seen.value
+        // Work goes off on a desktop, then on again: the mark is said again.
+        fake.deliver(#"{"push":"work","settings":{"enabled":false}}"#)
+        #expect(await rig.until { !rig.work.isOn })
+        fake.deliver(#"{"push":"work","settings":{"enabled":true}}"#)
+        #expect(await rig.until { fake.sentRequests.filter { $0.method == "work.digest.seen" }.count == 2 })
+    }
+
     @Test func `a host that does not answer keeps the switch it had, from the last launch`() async throws {
         let rig = try WorkRig(knownOn: true)
         #expect(rig.work.isOn)

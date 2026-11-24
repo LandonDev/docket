@@ -122,6 +122,9 @@ describe('a send that failed', () => {
     tellFailed(deps, item({ state: 'failed', decidedAt: NOW - 60_000 }))
     tellFailed(deps, item({ state: 'failed', decidedAt: NOW - 1_000 }))
     expect(told.map((t) => t.key)).toEqual([`unsent:host:h1@${NOW - 60_000}`, `unsent:host:h1@${NOW - 1_000}`])
+    // each time, the item's other attempts are retired first, and the key from before attempts had one
+    expect(only.at(-1)).toEqual(['unsent:host:h1@', [`unsent:host:h1@${NOW - 1_000}`]])
+    expect(done).toEqual(['unsent:host:h1', 'unsent:host:h1'])
     // LifeOS's own: no press here, one key
     expect(failedKey({ at: 'lifeos', table: 'outbox', id: 'ob1' })).toBe('unsent:lifeos:outbox:ob1')
   })
@@ -159,6 +162,8 @@ describe('the ledger kept in step', () => {
     const kept = [heldKey(held.ref), heldKey(mail.ref)]
     const unsent = [failedKey(failed.ref, failed.decidedAt)]
     expect(only).toEqual([
+      // the failed item's earlier attempts go before its new one is told
+      ['unsent:host:h9@', unsent],
       ['offer:', ['offer:go1']],
       ['held:host:', kept],
       ['unsent:host:', unsent],

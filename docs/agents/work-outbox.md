@@ -566,7 +566,8 @@ digest's rule decides whether it interrupts:
 - **A send that failed** is `outbox.failed`, "Not sent: …" with the error
   as its second line, key `unsent:<ref>@<decidedAt>` (the press it
   failed on; a LifeOS item with no press here is `unsent:<ref>`), so a
-  retry that fails again is a new failure he hears of. Its clock is the
+  retry that fails again is a new failure he hears of; the earlier attempt's
+  row goes before it is told, so the banner names the one item. Its clock is the
   press, or for a LifeOS item its last change, so it interrupts: he
   believes it went. One found a day old (a
   host that just came up) waits for the digest instead.

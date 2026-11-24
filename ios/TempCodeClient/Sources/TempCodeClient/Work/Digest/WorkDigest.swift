@@ -74,12 +74,12 @@ public final class WorkDigest {
         return next
     }
 
-    /// Work went off on the host.
+    /// Work went off on the host. The ledger goes; a seen mark the host has not taken does not.
     func clear() {
         ledger = nil
         settings = nil
         error = nil
-        pendingSeen = [:]
+        // A day he saw that the host has not taken stays pending through Work off: said when Work is on again.
     }
 
     /// A new socket: a ledger read before is read again; one never read waits for the screen.

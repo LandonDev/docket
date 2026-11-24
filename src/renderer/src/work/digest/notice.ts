@@ -61,6 +61,28 @@ export function onlyToday(days: readonly Pick<MergedDay, "day">[], now: number):
 /** What a closed or opened interrupt is kept under: the thing and when it was told, so the same thing told again later (a send that fails a second time) shows again. */
 export const tellingOf = (row: Pick<TellRow, "key" | "host" | "id" | "toldAt">): string => `${nameOf(row)}@${row.toldAt ?? 0}`;
 
+/** Two 32-bit FNV-1a passes with different seeds: a fingerprint, not a secret. */
+function fingerprint(text: string): string {
+  let a = 0x811c9dc5;
+  let b = 0x01000193;
+  for (let i = 0; i < text.length; i++) {
+    const c = text.charCodeAt(i);
+    a = Math.imul(a ^ c, 0x01000193) >>> 0;
+    b = Math.imul(b ^ c, 0x0100019d) >>> 0;
+  }
+  return `${a.toString(36)}${b.toString(36)}`;
+}
+
+/**
+ * Which tellings a system notice says, short enough to cross to main whole (src/main/notice.ts keeps a telling of
+ * 1,000 characters at most): the list itself while it is short, else a fingerprint of the whole ordered list, so a
+ * long fold whose one deadline moved is still a new notice.
+ */
+export function tellingsOf(rows: readonly Pick<TellRow, "key" | "host" | "id" | "toldAt">[]): string {
+  const joined = rows.map(tellingOf).join(" ");
+  return joined.length <= 200 ? joined : `${rows.length}#${fingerprint(joined)}`;
+}
+
 /** The interrupts still worth a toast: told at once, within a day, and not dismissed or opened in this window. Oldest first. */
 export function openInterrupts(view: Pick<DigestView, "rows">, dismissed: ReadonlySet<string>, now: number): TellRow[] {
   return view.rows.filter((r) => r.toldAt !== null && now - r.toldAt < NOW_KEEP_MS && !dismissed.has(tellingOf(r))).sort((a, b) => a.toldAt! - b.toldAt!);
@@ -103,7 +125,7 @@ export function systemNotices(digest: DigestNotice | null, toasts: readonly NowT
     const one = toast.rows.length === 1 ? toast.rows[0]! : null;
     // Folded: every open one by name, newest first, as the phone's banner says it (`nowLine`); the toast keeps its short count.
     const body = one ? (toast.detail ? `${toast.title}\n${toast.detail}` : toast.title) : nowLine([...toast.rows].reverse().map((r) => r.title));
-    out.push({ key: toast.id, title: one?.sector ? sectorName(one.sector) : "Work", body, telling: toast.rows.map(tellingOf).join(" "), ...(toast.rows.every(heard) ? { silent: true } : {}) });
+    out.push({ key: toast.id, title: one?.sector ? sectorName(one.sector) : "Work", body, telling: tellingsOf(toast.rows), ...(toast.rows.every(heard) ? { silent: true } : {}) });
   }
   return out;
 }

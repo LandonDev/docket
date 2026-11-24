@@ -7,14 +7,16 @@ import { useWorkspaces } from "../../lib/tcserver/workspaces";
 import { normalizeProjectPath } from "../../lib/recents";
 import { workPlaceRow } from "../../lib/workPlaces";
 import { openWorkPlaceAt } from "../../lib/workPlaceAt";
-import { digestOpensPort, openWorkView, workEnterPort, workOpenPort } from "../../lib/workSwitch";
+import { choose, digestOpensPort, openWorkView, stillChosen, workEnterPort, workOpenPort, workViewNow } from "../../lib/workSwitch";
+import { loadToast } from "../../components/ui/toaster";
+import { refusalWords } from "../../lib/settingsHome";
 import { project } from "../../stores/project";
 import { shell } from "../../stores/shell";
 import { wantOutboxItem } from "../outbox/store";
 import { DigestSheet } from "./DigestSheet";
 import { DIGEST_TOAST, digestNotice, nowToasts, onlyToday, openInterrupts, systemNotices, tellingOf, type NowToast } from "./notice";
 import { go, routeOf, type Routes } from "./open";
-import { todayShows } from "./today";
+import { todayShowsAll } from "./today";
 import { markSeen, openDigestSheet, setTellOpener, useDigest, useDigestSheetOpen } from "./store";
 
 /**
@@ -106,10 +108,23 @@ export function DigestHost() {
         return !!workspace;
       },
       // A guest's edit: the document itself, in a Files tab of the job (the host names the tab by the document's title).
+      // A refusal is said, and Files shown, only while this press is still his latest choice (`stillChosen`): a thread he
+      // opened while the host made the tab keeps the window.
       file: (workspaceId, ref) => {
         const workspace = enter(workspaceId);
-        if (workspace) void import("../files/openFrom").then(({ openInFiles }) => openInFiles(workspace, { ref, name: "Untitled" })).catch(() => openWorkView({ workspaceId, view: "files" }));
-        return !!workspace;
+        if (!workspace) return false;
+        const mine = choose();
+        const before = workViewNow();
+        void import("../files/openFrom").then(({ openInFiles }) => {
+          const current = stillChosen(mine, before, workspaceId);
+          // openInFiles takes the next number as it starts: still the latest at its end means nothing was chosen since.
+          return openInFiles(workspace, { ref, name: "Untitled" }).catch((err: unknown) => {
+            if (!current || !stillChosen(mine + 1, before, workspaceId)) return;
+            openWorkView({ workspaceId, view: "files" });
+            void loadToast().then((toast) => toast.error("It did not open", { description: refusalWords(err) || undefined }));
+          });
+        });
+        return true;
       },
       // A page above the workspaces, once its row is on the rail: until then there is no such page. A moment it names
       // (the review's week) is where the page opens.
@@ -147,7 +162,7 @@ export function DigestHost() {
   const openDigest = useCallback(() => {
     if (digest) markSeen(digest.days);
     const now = Date.now();
-    const onToday = !!digest && onlyToday(digest.days, now) && digest.rows.every((r) => todayShows(r, digest.days[0]!.day));
+    const onToday = !!digest && onlyToday(digest.days, now) && todayShowsAll(digest.rows, digest.days[0]!.day);
     const today = onToday ? digestOpens() : null;
     if (today) today();
     else openDigestSheet(true);

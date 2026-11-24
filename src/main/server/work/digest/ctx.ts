@@ -4,13 +4,13 @@ import { DIGEST_FIELDS, type DigestDay, type DigestField, type DigestList, type 
 import { writtenByOwner } from '@shared/events'
 import { errorText } from '@shared/work/ids'
 import { DEFAULT_AT, DEFAULT_LEVEL } from '@shared/work/digest'
-import { DETAIL_MAX, TELL_GROUPS, TELL_LEVELS, TITLE_MAX, tellLine, TellOpenSchema, type Tell, type TellGroup, type TellKind, type TellLevel } from '@shared/work/tell'
+import { DETAIL_MAX, TELL_GROUPS, TELL_LEVELS, TITLE_MAX, tellLine, TellOpenSchema, type Tell, type TellGroup, type TellKind, type TellLevel, type TellRow } from '@shared/work/tell'
 import type { CtxPart } from '../ctx'
 import { WORK_MODULES, type WorkCtx } from '../modules'
-import { hostReadOf } from '../peer'
+import { hostReadOf, type HostRead } from '../peer'
 import { dayOf, knownZone, lastDigest, nextDigest, zoneOr } from './clock'
 import type { Notifier } from '../../remote/notifier'
-import { makeDeliverer, ofDay } from './deliver'
+import { makeDeliverer, ofDay, PEER_WAIT_MS } from './deliver'
 import { makeGate, runPressed } from './gate'
 import { makeDay } from './make'
 import { decide, groupsByKind, groupsListed, LATE_MS, retold } from './rule'
@@ -36,8 +36,11 @@ export interface Deliverer {
    * The day's one notice, of the rows that waited. False, or a promise of false: nobody could take it yet, and the
    * day is offered again at a later look; anything else settles it (sent, nothing to say, or another host sends).
    */
-  digest(day: DigestDay, rows: LedgerRow[]): Promise<boolean> | boolean | void
+  digest(day: DigestDay, rows: LedgerRow[], stillOwed?: () => boolean): Promise<boolean> | boolean | void
 }
+
+/** How long a linked host's read of the list waits for this host's day to be made: inside the asker's own limit (`PEER_WAIT_MS`). */
+export const LIST_WAIT_MS = PEER_WAIT_MS - 1_000
 
 export interface DigestDeps {
   db: DatabaseSync
@@ -143,9 +146,17 @@ export class Digest {
     this.o.push({ push: 'work.digest', settings })
     return settings
   }
-  /** The desktop he is at says its zone; the newest is kept. */
-  here(zone: string): void {
+  /**
+   * The desktop he is at says its zone, with when its window came to the front (`at`): the zone of the latest is
+   * kept, so a window left in front on another desktop, reconnecting later, does not take it back. A desktop that
+   * says no time is taken as now.
+   */
+  here(zone: string, at?: number): void {
     if (!knownZone(zone)) throw new Error(`unknown time zone: ${zone}`)
+    const when = typeof at === 'number' && Number.isFinite(at) ? at : this.clock()
+    const kept = Number(this.store.setting('zoneAt') ?? NaN)
+    if (Number.isFinite(kept) && kept > when) return
+    this.store.setSetting('zoneAt', String(when))
     if (this.store.setting('zone') === zone) return
     this.store.setSetting('zone', zone)
     this.settled()
@@ -366,7 +377,7 @@ export class Digest {
     this.offering = true
     let answer: ReturnType<Deliverer['digest']>
     try {
-      answer = this.deliverer.digest(made ?? { day, madeAt: this.clock(), seenAt: null, count: 0 }, rows)
+      answer = this.deliverer.digest(made ?? { day, madeAt: this.clock(), seenAt: null, count: 0 }, rows, () => this.store.setting('owed') === day && this.store.day(day)?.seenAt == null)
     } catch (err) {
       answer = false
       this.o.log(`digest: the day's notice was not sent: ${errorText(err)}`)
@@ -415,14 +426,22 @@ export class Digest {
   }
   /**
    * The list once a day due now is made, its sources read: a linked host that asks at its own digest time is not
-   * answered from a ledger a source pass is still filling (deliver.ts waits on the answer within its limit).
+   * answered from a ledger a source pass is still filling. The wait is held inside the asker's limit
+   * (`LIST_WAIT_MS`): past it the list is answered as it stands, its waiting rows among it, rather than not at all.
+   *
+   * `day`: that day's rows alone once this host has made that day's slot; until then every row, the waiting ones
+   * counted by the asker (deliver.ts `ofDay`). So a row told here after its day was made waits for the next one.
    */
   async listMade(o: { day?: string; since?: number } = {}): Promise<DigestList> {
+    const handled = (): number => Number(this.store.setting('handled') ?? NaN)
     if (this.o.enabled()) {
-      const handled = Number(this.store.setting('handled') ?? NaN)
-      if (Number.isFinite(handled) && lastDigest(this.at(), this.zone(), this.clock()) > handled) this.guarded()
-      await this.making
+      if (Number.isFinite(handled()) && lastDigest(this.at(), this.zone(), this.clock()) > handled()) this.guarded()
+      let timer: ReturnType<typeof setTimeout> | undefined
+      await Promise.race([this.making, new Promise<void>((done) => void (timer = setTimeout(done, LIST_WAIT_MS)))])
+      clearTimeout(timer)
     }
+    // A day asked for that this host has not made yet: every row, so the asker counts the waiting ones too.
+    if (o.day && !(Number.isFinite(handled()) && dayOf(this.zone(), handled()) >= o.day)) return this.list({ since: o.since })
     return this.list(o)
   }
   seen(day: string): void {
@@ -445,6 +464,10 @@ export const pushNeed = (p: DigestPush): 'read' | 'approve' => (p.row && (p.row.
 
 /** A ledger row as the wire carries it. */
 export const wireRow = ({ due: _due, ...row }: LedgerRow): Omit<LedgerRow, 'due'> => row
+
+/** Each linked host's rows for `day`, asked with the day, so one that has made it answers that day's rows alone (`listMade`). */
+export const peerDays = (far: Pick<HostRead, 'hosts' | 'read'> | undefined, day: string): Promise<TellRow[]>[] =>
+  (far?.hosts() ?? []).map((host) => far!.read<DigestList>(host, 'digest', 'list', { day }).then((list) => ofDay(list, day)))
 
 const hosts = new WeakMap<WorkCtx, Digest>()
 /** The digest of a context, for its module and its sources; undefined when the part could not be made. */
@@ -475,10 +498,7 @@ export const tellPart: CtxPart<'tell'> = (ctx, deps) => {
       sendsDigest: () => deps.sendsDigest?.() ?? true,
       // Each reachable Work host's own ledger, over the transport Work's cross-host calls ride (work/peer.ts): the
       // hosts this one dials and the ones that dialed it, so the box reaches a Mac it has not saved.
-      peers: (day) => {
-        const far = hostReadOf(ctx)
-        return (far?.hosts() ?? []).map((host) => far!.read<DigestList>(host, 'digest', 'list', {}).then((list) => ofDay(list, day)))
-      },
+      peers: (day) => peerDays(hostReadOf(ctx), day),
       log: (line) => ctx.log(line)
     })
     hosts.set(ctx, digest)
@@ -490,7 +510,14 @@ export const tellPart: CtxPart<'tell'> = (ctx, deps) => {
       sources: SOURCES,
       day: (now) => dayOf(made.zone(), lastDigest(made.at(), made.zone(), now)),
       zone: () => made.zone(),
-      since: () => made.store.days()[0]?.madeAt ?? 0
+      since: () => made.store.days()[0]?.madeAt ?? 0,
+      kept: {
+        get: (key) => {
+          const value = Number(made.store.setting(`source:${key}`) ?? NaN)
+          return Number.isFinite(value) ? value : null
+        },
+        set: (key, value) => made.store.setSetting(`source:${key}`, String(value))
+      }
     })
     made.beats.push((now) => sources.beat(now))
     made.beforeDay = (now) => sources.beforeDay(now)

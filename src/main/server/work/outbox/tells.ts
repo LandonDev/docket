@@ -81,12 +81,18 @@ export function tellFailed(deps: TellsDeps, item: OutboxItem): void {
   if (item.state !== 'failed') return
   const at = item.decidedAt ?? item.updatedAt
   const fresh = (deps.now?.() ?? Date.now()) - at < FRESH_MS
+  const key = failedKey(item.ref, item.decidedAt)
+  // An earlier attempt of the same item is no longer true: it goes first, so the banner names one failure, not two.
+  if (item.decidedAt != null) {
+    deps.ctx.tell.only(`${failedKey(item.ref)}@`, [key])
+    deps.ctx.tell.done(failedKey(item.ref))
+  }
   deps.ctx.tell({
     kind: 'outbox.failed',
     workspaceId: workspaceOf(deps, item),
     title: `Not sent: ${oneLine(item.summary, 140)}`,
     ...(item.error ? { detail: oneLine(item.error, 200) } : {}),
-    key: failedKey(item.ref, item.decidedAt),
+    key,
     open: openOf(item),
     ...(fresh ? { by: at } : {})
   })
