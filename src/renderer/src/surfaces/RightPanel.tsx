@@ -37,7 +37,7 @@ import { useComputerSection } from "../lib/computerSection";
 import { ActivitySection } from "./threads/ActivitySection";
 import { computerChunk, workOutboxChunk } from "./chunks";
 import { resultsListed, useResults } from "../work/outbox/results";
-import { useWorkSession } from "../lib/useWorkSession";
+import { useWorkSession } from "../lib/workRow";
 import { FleetList } from "./threads/fleet/FleetPanel";
 import { NotesBody } from "./threads/NotesPanel";
 import { SessionActionsContext } from "./threadChat";

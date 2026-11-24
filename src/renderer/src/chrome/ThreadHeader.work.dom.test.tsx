@@ -8,7 +8,7 @@ import type { ReactNode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 const scope = vi.hoisted(() => ({ work: false }));
-vi.mock("../lib/useWorkSession", () => ({ useWorkSessionId: () => scope.work }));
+vi.mock("../lib/workRow", () => ({ useWorkSessionId: () => scope.work }));
 vi.mock("./useThreadMenu", () => ({ useThreadMenu: () => ({ rowsFor: () => [], onPick: () => {}, onOpenChange: () => {}, dialogs: null }) }));
 vi.mock("./ThreadHostChip", () => ({ useThreadHost: () => ({ host: null }) }));
 vi.mock("../lib/masterThread", () => ({ useMasterIds: () => new Set<string>() }));

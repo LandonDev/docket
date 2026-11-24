@@ -18,7 +18,7 @@ import { ThreadMenu } from "./ThreadMenu";
 import { useThreadHost } from "./ThreadHostChip";
 import { useThreadMenu } from "./useThreadMenu";
 import { useMasterIds } from "../lib/masterThread";
-import { useWorkSessionId } from "../lib/useWorkSession";
+import { useWorkSessionId } from "../lib/workRow";
 
 /**
  * The deck title bar's thread surface: temp-code's strip and heading

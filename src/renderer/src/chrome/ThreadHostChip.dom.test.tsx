@@ -16,7 +16,7 @@ vi.mock("../lib/threadMove", async (importOriginal) => ({
 }));
 
 const scope = vi.hoisted(() => ({ work: false }));
-vi.mock("../lib/useWorkSession", () => ({ useWorkSessionId: () => scope.work }));
+vi.mock("../lib/workRow", () => ({ useWorkSessionId: () => scope.work }));
 import { MoveThreadConfirm, MoveToasts } from "./ThreadHostChip";
 
 afterEach(() => {

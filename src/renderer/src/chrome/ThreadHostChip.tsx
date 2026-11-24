@@ -21,7 +21,7 @@ import { retargetDraft, retargetLooseDraft } from "./DraftHostPicker";
 import { useToastSync } from "./toastSync";
 import { Server } from "./icons";
 import type { MenuRow } from "./menuRows";
-import { useWorkSessionId } from "../lib/useWorkSession";
+import { useWorkSessionId } from "../lib/workRow";
 
 /**
  * The active thread's host for the thread menu (chrome/ThreadMenu.tsx):

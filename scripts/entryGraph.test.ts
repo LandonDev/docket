@@ -11,8 +11,9 @@ import { chainTo, entryGraph, keptImports, RENDERER_ENTRY } from './entry-graph'
  */
 /** A module of Work's by name (workSwitch.ts, useWorkMentions.ts), not a workspace's or a working mark's. */
 const WORK_GLUE = /\/(use)?work(?!space|ing|tree)[^/]*$/i
-/** Their source, 21.8 kB on 2026-11-23, with room for a row or two. */
-const WORK_GLUE_BYTES = 26_000
+/** Their source, 21.8 kB on 2026-11-23, with room for a row or two; 1 kB more on 2026-11-24 for lib/workRow.ts,
+ *  the one rule by which the shell's own chrome (composer, title bar, panel, menus) hides its code parts for Work. */
+const WORK_GLUE_BYTES = 27_000
 
 describe('the renderer entry, read from source', () => {
   const root = resolve(__dirname, '..')

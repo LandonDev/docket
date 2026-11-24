@@ -55,7 +55,7 @@ import { desktopOnly } from "../lib/nativeWeb";
 import { askOnGesture } from "../lib/preconnect";
 import { useKept } from "../lib/keptValue";
 import { macBridgeChunk, messageQueueChunk } from "./chunks";
-import { useWorkSession } from "../lib/useWorkSession";
+import { useWorkSession } from "../lib/workRow";
 
 /** A box thread's waiting Mac bridge card, loaded once one waits. */
 const MacBridgeThreadCards = macBridgeChunk.surface("MacBridgeThreadCards");
