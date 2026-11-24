@@ -465,6 +465,8 @@ const dirOfWords = (words: string): string => words.split('/').slice(0, -1).join
 
 const UNDO_GONE = 'That change is not one this thread can undo: it is unknown here, or older than a week.'
 const UNDO_STALE = (name: string): string => `${name} changed since, so it was left as it is.`
+/** The door answered `hold`: the place became one others can open since the change, so an Undo would change it for them. */
+const UNDO_SHARED = 'Others can open it now, so the owner changes it back himself.'
 
 /** The inverse of a change a `files_*` tool ran in his own place, refused for any file that is no longer the one the change left. */
 async function undo(ctx: ToolCtx, workspaceId: string, op: string): Promise<WorkToolResult> {
@@ -491,13 +493,13 @@ async function undo(ctx: ToolCtx, workspaceId: string, op: string): Promise<Work
   const method = 'work.files.undo'
   if (row.verb === 'make' || row.verb === 'copy') {
     const refs = left.map(refOfEntry)
-    admitChange(ctx, me, 'trash', { workspaceId, refs }, method)
+    if (admitChange(ctx, me, 'trash', { workspaceId, refs }, method) === 'hold') return fail(UNDO_SHARED)
     return answerOf('Put in Trash', await trashFiles(ctx, me, workspaceId, refs, back), left.map((e) => e.name))
   }
   if (row.verb === 'rename') {
     const was = asked.ref ? canvasSourcePath(asked.ref as CanvasSource) ?? (asked.ref as { path?: string }).path : null
     if (!was || !left[0]) return fail(UNDO_GONE)
-    admitChange(ctx, me, 'rename', { workspaceId, refs: [refOfEntry(left[0])], name: basename(was) }, method)
+    if (admitChange(ctx, me, 'rename', { workspaceId, refs: [refOfEntry(left[0])], name: basename(was) }, method) === 'hold') return fail(UNDO_SHARED)
     return answerOf('Renamed back', await renameVerb(ctx, me, { workspaceId, op: back, ref: refOfEntry(left[0]), name: basename(was) }, method))
   }
   if (row.verb === 'move') {
@@ -511,7 +513,11 @@ async function undo(ctx: ToolCtx, workspaceId: string, op: string): Promise<Work
         continue
       }
       const to: FolderRef = { at: 'file', host: ctx.host, path: dir }
-      admitChange(ctx, me, 'move', { workspaceId, refs: [refOfEntry(e)], to }, method)
+      // Others can open it, or the folder it went back to, now: the owner changes it back himself.
+      if (admitChange(ctx, me, 'move', { workspaceId, refs: [refOfEntry(e)], to }, method) === 'hold') {
+        out.refused.push({ name: e.name, text: UNDO_SHARED })
+        continue
+      }
       const got = await moveVerb(ctx, me, { workspaceId, op: `${back}:${out.entries.length + out.refused.length}`, refs: [refOfEntry(e)], to }, method)
       out.entries.push(...got.entries)
       out.refused.push(...got.refused)
@@ -547,7 +553,7 @@ async function undoDrive(ctx: ToolCtx, workspaceId: string, verb: string, done: 
   const stale = left.filter((e, i) => !now.entries[i] || now.entries[i]!.key !== e.key || now.entries[i]!.name !== e.name || (e.kind !== 'folder' && versionOfEntry(now.entries[i]!) !== versionOfEntry(e)))
   if (stale.length) return fail(stale.map((e) => UNDO_STALE(e.name)).join(' '))
   const ownOnly = async (v: FileVerb, p: { refs: FileRef[]; to?: FolderRef; name?: string }): Promise<void> => {
-    if ((await admitDrive(ctx, me, v, { workspaceId, ...p }, method)).verdict === 'hold') throw new Error('Others can open it now, so the owner changes it back himself.')
+    if ((await admitDrive(ctx, me, v, { workspaceId, ...p }, method)).verdict === 'hold') throw new Error(UNDO_SHARED)
   }
   if (verb === 'make' || verb === 'copy') {
     const workspace = workspaceHere(ctx.db, workspaceId)

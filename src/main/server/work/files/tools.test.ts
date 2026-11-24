@@ -197,6 +197,21 @@ describe('in his own place a change runs at once, with Undo', () => {
     expect(await call('files_undo', { op: 'window-op-123' }, ctx)).toMatchObject({ isError: true })
   })
 
+  it('stops an Undo where the place became one others can open since the change, leaving it as it is', async () => {
+    const ctx = toolCtx(workCtx())
+    const made = await call('files_make', { place: 'folder', path: 'Events', kind: 'text', name: 'Run sheet' }, ctx)
+    const renamed = await call('files_move', { place: 'folder', paths: ['Events/Poster.png'], name: 'Poster v2.png' }, ctx)
+    // He adds the Events folder as a team's library: what the thread made there is the team's to see now.
+    setRoots(rig.db, [{ folder: join(rig.folder, 'Events') }])
+    forgetLibraries(rig.db)
+    for (const done of [made, renamed]) {
+      const back = await call('files_undo', { op: (done.structuredContent as { undo: { op: string } }).undo.op }, ctx)
+      expect(back).toMatchObject({ isError: true, text: 'Others can open it now, so the owner changes it back himself.' })
+    }
+    expect(readdirSync(join(rig.folder, 'Events')).sort()).toEqual(['Poster v2.png', 'Run sheet.md', 'Spring LAN'])
+    expect(outbox.store.list({})).toEqual([])
+  })
+
   it("undoes only the calling thread's own change: another thread of the workspace is told it is not one it can undo", async () => {
     rig.scopes.set('t3', { workspaceId: WS })
     const moved = await call('files_move', { place: 'folder', paths: ['notes.txt'], to: { place: 'folder', path: 'Events' } }, toolCtx(workCtx()))
