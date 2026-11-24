@@ -5,6 +5,7 @@ import { AUTO_FIT, forPackage, isObjectList, latestRules, ruleKinds, SHEET_MOVES
 import { cellText, holds } from "./model";
 import { FileIds, listChanges, listMedia, MadePictures, objectListOf, tabList } from "./objects";
 import { EDIT_MAX, fromBase64, LOAD_MAX, type SheetHost, type SheetPushed } from "./host";
+import { CloseRefused } from "../canvas/flush";
 
 /**
  * One sheet item's sync with its host (docs/agents/work-sheets.md): the
@@ -31,8 +32,8 @@ export interface GridLink {
   formula(sheet: string, row: number, col: number): string | null;
   /** takes back the grid's last command: how a change its store cannot keep is stopped as he makes it */
   undo(): void | Promise<unknown>;
-  /** ends the cell editor, keeping what he typed in it: an open cell is his edit too; absent in a grid with no editor */
-  commit?(): Promise<unknown>;
+  /** ends the cell editor, keeping what he typed in it (an open cell is his edit too): false when it stays open (the grid refused the value); absent in a grid with no editor */
+  commit?(): Promise<boolean>;
   /** every command he runs in the grid, as it ends; absent in a grid that cannot say (each turn is then taken for one) */
   onCommand?(listener: (id: string) => void): () => void;
   /** a style the grid names by its own id, as the style itself; null when it knows none by that id */
@@ -172,6 +173,8 @@ export class SheetSync {
   private gather: (() => void) | null = null;
   /** ops from elsewhere are being laid on the grid: the objects it moves under them are not his change */
   private applying = false;
+  /** each edit of his dropped or refused on its way (said once then), and why: what an action waiting on `written` reads */
+  private lost = { n: 0, why: "" };
 
   constructor(
     readonly host: SheetHost,
@@ -400,6 +403,11 @@ export class SheetSync {
     this.set({ stopped: { why, n: (this.state.stopped?.n ?? 0) + 1 } });
   }
 
+  /** An edit of his that will not reach the file: counted for what waits on `written`. */
+  private drop(why: string): void {
+    this.lost = { n: this.lost.n + 1, why };
+  }
+
   private detach(): void {
     this.offGrid?.();
     this.offGrid = null;
@@ -427,24 +435,35 @@ export class SheetSync {
    * (canvas/flush.ts), so his last edit is in the file before the item goes, never sent after it to a sheet that is gone.
    * A cell still open in the grid's editor is ended first, keeping what he typed: it is an edit he made.
    */
-  async flushed(): Promise<void> {
-    try {
-      await this.grid?.commit?.();
-    } catch {
-      // (a grid that cannot end its editor still sends what it has)
-    }
+  async flushed(): Promise<boolean> {
+    const ended = await this.endEditor();
     this.flush();
-    return this.chain;
+    await this.chain;
+    return ended;
+  }
+
+  /** Ends a cell still open in the grid's editor, keeping what he typed: false when it stays open or could not be ended. */
+  private async endEditor(): Promise<boolean> {
+    try {
+      return (await this.grid?.commit?.()) !== false;
+    } catch {
+      return false;
+    }
   }
 
   /**
    * Settles once every edit of his is in the file, or rejects in his words when one is not: what reads the file
-   * (Preview, Save back, Save as Excel) waits on it, so it never reads the workbook from before his last edit.
+   * (Preview, Save back, Save as Excel, the switch that replaces the item) waits on it, so it never reads the workbook
+   * without an edit he made, dropped on its way or refused. What would be lost with the tab (an open cell the grid kept
+   * open, edits waiting for Retry) refuses its close too (`CloseRefused`); an edit that can no longer be saved does not.
    */
   async written(): Promise<void> {
-    await this.flushed();
+    const lost = this.lost.n;
+    if (!(await this.flushed())) throw new CloseRefused("The cell being typed in is not saved yet: finish it, or press Esc to drop it");
     const error = this.state.sendError;
-    if (error) throw new Error(`Your last edit is not saved: ${error}`);
+    if (error && this.queue.length > 0) throw new CloseRefused(`An edit is not saved yet: ${error}. Retry it first`);
+    if (error) throw new Error(`An edit is not saved: ${error}`);
+    if (this.lost.n !== lost) throw new Error(`An edit is not saved: ${this.lost.why}`);
   }
 
   /**
@@ -514,6 +533,7 @@ export class SheetSync {
         // said once, as a change stopped at the press, and the book read again from the file so the object is as it was.
         // What waits after it goes first.
         this.set({ reloading: true, stopped: { why: message(error, "The host did not answer"), n: (this.state.stopped?.n ?? 0) + 1 } });
+        this.drop(message(error, "The host did not answer"));
         try {
           if (this.queue.length > 0) await this.send();
           await this.open();
@@ -527,6 +547,7 @@ export class SheetSync {
         // The words are said once, as for a change stopped at the press, and the book is read again from its file.
         this.queue = [];
         this.set({ saving: false, stopped: { why: message(error, "The host did not answer"), n: (this.state.stopped?.n ?? 0) + 1 } });
+        this.drop(message(error, "The host did not answer"));
         // (the grid is let go whether or not the book could be read again: a host that is gone must not leave it locked)
         try {
           await this.open();
@@ -562,6 +583,9 @@ export class SheetSync {
     this.behind = false;
     const answer = await this.host.since(this.rev);
     if ("reload" in answer) {
+      // A cell still open in the editor is ended first, keeping what he typed, against the book it was typed on: it goes
+      // with what waits (or is named with it below). The workbook is not yet locked, which would refuse the end.
+      const ended = await this.endEditor();
       // The grid takes no edit until the file is drawn again: one made meanwhile would be in neither.
       this.set({ reloading: true });
       try {
@@ -574,10 +598,16 @@ export class SheetSync {
           const lost = [...refused, ...this.queue];
           this.queue = [];
           this.set({ saving: false, stopped: { why: notSavedWords(lost, (id) => grid.objects?.sheetName(id) ?? this.state.book?.workbook.sheets?.[id]?.name), n: (this.state.stopped?.n ?? 0) + 1 } });
+          this.drop("the file changed before it was saved");
         } else {
           // What waits goes first: the host moves an edit through what it missed (a rule's list, a shared workbook's
           // edit), and refuses one the file can no longer take, which is then said (above).
           await this.send();
+        }
+        // A cell the grid kept open (it refused the value) is gone with the book: said once.
+        if (!ended) {
+          this.set({ stopped: { why: "The file was read again while a cell was open, so what was typed there is not saved. Type it again.", n: (this.state.stopped?.n ?? 0) + 1 } });
+          this.drop("a cell was open as the file was read again");
         }
         // (a send that met a conflict has read the file again already)
         if (this.books === books) await this.load(answer.rev);

@@ -233,6 +233,8 @@ export interface FakeGrid extends SheetGrid {
   formulas: Map<string, string>;
   /** a cell still open in the cell editor: ending it (`commit`) makes it his edit, as the real grid's Return does */
   typing: SheetMutationJson | null;
+  /** set: the editor stays open at `commit` (the grid refused the value) */
+  keepsEditor: boolean;
   /** The person selects a range, A1. */
   select(a1: string): void;
   /** Whether something listens for the person's edits: the body has attached. */
@@ -585,6 +587,7 @@ export function fakeGrid(options: { selection?: string; rows?: number; columns?:
     onApply: null,
     formulas: new Map(),
     typing: null,
+    keepsEditor: false,
     Canvas: FakeCanvas,
     fonts: async (workbook) => void grid.fontsAsked.push(workbook),
     font: async () => undefined,
@@ -597,9 +600,11 @@ export function fakeGrid(options: { selection?: string; rows?: number; columns?:
       formula: (sheet, row, col) => grid.formulas.get(at(sheet, row, col)) ?? null,
       undo: () => void grid.undone++,
       commit: async () => {
+        if (grid.keepsEditor) return false;
         const open = grid.typing;
         grid.typing = null;
         if (open) grid.edit(open);
+        return true;
       },
       ...(options.commands ? { onCommand: (listener: (id: string) => void) => (commandListeners.add(listener), () => commandListeners.delete(listener)) } : {}),
       style: (id) => grid.styles.get(id) ?? null,

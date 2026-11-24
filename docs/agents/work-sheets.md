@@ -639,12 +639,18 @@ or onto another), and whole rows or columns dragged (`move-rows`,
   `endEditingAsync(true)`). A body unmounted by another tab picked still
   sends only what was committed. The registered flush is
   `SheetSync.written`: an edit that did not save rejects it, so a switch
-  that would replace the item (`flushedItem`, the live Office switch) stops,
-  while a close goes on as before.
+  that would replace the item (`flushedItem`, the live Office switch) stops.
+  A close is refused (`CloseRefused`, Files says the tab did not close) only
+  where the tab holds what would go with it: a cell the grid kept open (it
+  refused the value), or edits that wait for Retry; an edit refused for good
+  goes with the tab as before.
 - **A reload holds the grid.** While catch-up reads the file again (a rule's
   list landed, a shared workbook's edit, a change from outside), the grid is
-  `reloading` and takes no edit: what he typed before it is sent first, and
-  nothing is typed into a book about to be replaced.
+  `reloading` and takes no edit: a cell still open in the editor is ended
+  first, against the book it was typed on (a locked workbook would refuse
+  it), what he typed before it is sent first, and nothing is typed into a
+  book about to be replaced. A cell the grid keeps open (it refused the
+  value) is said once as the book goes.
 - **A conflict that reads the file again** (the file changed outside
   TempCode, a restore, rows moved elsewhere, a list replaced) sends the
   refused batch no more, nor what waited behind it: its cells named the
@@ -653,8 +659,9 @@ or onto another), and whole rows or columns dragged (`move-rows`,
   more. Make it again.", `notSavedWords`), and the grid shows the file.
 - **What reads the file waits for his last edit.** Preview's draws and
   exports, Save back and Save as Excel await `SheetSync.written`, which
-  ends the open cell, sends what waits and rejects in words when an edit of
-  his did not save.
+  ends the open cell, sends what waits and rejects in words ("An edit is not
+  saved: …") when an edit of his did not save: one refused, one a conflict
+  dropped on its way (`lost`), a cell the grid kept open.
 - **Not proven.** None of this was opened in real Excel: the proof files
   (each case's file before and after, with the cells and values Excel
   should show, `manifest.json`) wait for a live proof; the first thing to

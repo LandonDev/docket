@@ -154,7 +154,7 @@ describe("the sheet's PreviewSource", () => {
     await source.draw("pdf", { signal: new AbortController().signal });
     await source.export("pdf");
     expect(order).toEqual(["written", "work.sheets.preview", "written", "work.sheets.previewExport", "work.sheets.previewRead"]);
-    refused = "Your last edit is not saved: That cell is locked";
+    refused = "An edit is not saved: That cell is locked";
     await expect(source.draw("pdf", { signal: new AbortController().signal })).rejects.toThrow(refused);
     expect(order.filter((m) => m === "work.sheets.preview")).toHaveLength(1);
   });
