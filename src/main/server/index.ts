@@ -845,7 +845,8 @@ export async function startServer(
   // either side (`linkedCopies` below is this host's project.ensureLinked).
   const projectLinker = new ProjectLinker({
     environmentId,
-    platform: hostPlatform(),
+    platform: build.platform,
+    headless: build.headless,
     registry,
     peers,
     ensureLinked: (args) => ensureLinked(linkedCopies, args),
@@ -855,7 +856,7 @@ export async function startServer(
   // A linked project's settings live on its home, the box
   // (remote/projectSettingsSync.ts): this host follows the home's copy and
   // sends every settings write of such a project there.
-  const projectSettings = new ProjectSettingsSync({ environmentId, platform: hostPlatform(), registry, store, peers })
+  const projectSettings = new ProjectSettingsSync({ environmentId, platform: build.platform, headless: build.headless, registry, store, peers })
   projectSettings.start()
   // Orchestration rules and thread defaults: one copy, on the same home
   // (remote/rulesSync.ts); and what each linked host runs, which a spawn
@@ -864,7 +865,8 @@ export async function startServer(
   setPeerCatalogs(peerCatalogs)
   const rulesSync = new RulesSync({
     environmentId,
-    platform: hostPlatform(),
+    platform: build.platform,
+    headless: build.headless,
     registry,
     store,
     peers,

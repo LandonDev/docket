@@ -1,7 +1,7 @@
 import type { ServerPush } from '@shared/contract'
 import type { WorkspaceMeta } from '@shared/domain'
 import { ThreadDefaultsSchema, type ThreadDefaults } from '@shared/defaults'
-import { settingsHomeOf } from '@shared/projectLinks'
+import { headlessOf, settingsHomeOf, type HostBuild } from '@shared/projectLinks'
 import { OrchestrationRulesSchema, type OrchestrationRules } from '@shared/rules'
 import type { Peers } from './peers'
 
@@ -16,8 +16,11 @@ import type { Peers } from './peers'
  *    it whenever a rule or default changes) and every 5 minutes, it reads the
  *    home's value of every scope and writes it here when it differs.
  *  - seeds once: a scope this host has never synced with the home takes THIS
- *    host's value onto the home first (the person edited the rules on the
- *    Mac before there was one copy); the home owns it from then on.
+ *    host's value onto the home first, but only where the home holds none of
+ *    its own (the person edited the rules on the Mac before there was one
+ *    copy). A home that has its own copy keeps it and this host follows, so
+ *    a fresh PC's defaults never write over the box's (`seed`). The home owns
+ *    it from then on.
  *  - routes writes (`forward`): `rules.set` / `defaults.set` for a shared
  *    scope goes to the home and the home's value is written back here; a home
  *    out of reach refuses with nothing written. A workspace with no copy on
@@ -39,6 +42,8 @@ export const SEEDED_KEY = 'rules-sync:seeded:'
 
 interface PeerRecord {
   platform: string | null
+  /** headlessOf the peer's last hello; absent from a record older than the field */
+  headless?: boolean | null
   workspaces: { id: string; linkId: string }[]
 }
 
@@ -47,6 +52,8 @@ type Link = NonNullable<ReturnType<Peers['get']>>
 export interface RulesSyncDeps {
   environmentId: string
   platform: string
+  /** This host runs headless (buildInfo.ts hostHeadless); absent, `platform` decides as for an older build. */
+  headless?: boolean
   registry: {
     listWorkspaces(): WorkspaceMeta[]
     getOrchestrationRules(workspaceId: string | null): OrchestrationRules | null
@@ -196,9 +203,7 @@ export class RulesSync {
     const seeded = new Set(this.seeded(id))
     for (const scope of this.sharedScopes(id)) {
       if (!seeded.has(scope.key)) {
-        for (const kind of this.kinds) {
-          await link.request(kind.set, { workspaceId: scope.peer, [kind.field]: kind.read(scope.local) })
-        }
+        for (const kind of this.kinds) await this.seed(link, kind, scope)
         seeded.add(scope.key)
         this.deps.store.setSetting(`${SEEDED_KEY}${id}`, JSON.stringify([...seeded]))
         this.log(`${link.env.name}: seeded ${scope.key}`)
@@ -206,6 +211,15 @@ export class RulesSync {
       }
       for (const kind of this.kinds) await this.follow(link, kind, scope)
     }
+  }
+
+  /** A scope's first sync: a home holding its own value keeps it and this
+   *  host follows; only where it holds none does this host's value go there. */
+  private async seed(link: Link, kind: Kind, scope: Scope): Promise<void> {
+    const res = await link.request<{ overridden?: boolean }>(kind.get, { workspaceId: scope.peer })
+    const mine = kind.read(scope.local)
+    if (res.overridden) return this.follow(link, kind, scope)
+    if (mine !== null) await link.request(kind.set, { workspaceId: scope.peer, [kind.field]: mine })
   }
 
   /** The home's value of one scope, written here when it differs. An answer
@@ -256,8 +270,10 @@ export class RulesSync {
   }
 
   private remember(id: string, workspaces: WorkspaceMeta[]): void {
+    const build = this.deps.peers.get(id)?.build
     const record: PeerRecord = {
-      platform: this.deps.peers.get(id)?.build?.platform ?? this.record(id)?.platform ?? null,
+      platform: build?.platform ?? this.record(id)?.platform ?? null,
+      headless: headlessOf(build) ?? this.record(id)?.headless ?? null,
       workspaces: workspaces.filter((w) => w.linkId).map((w) => ({ id: w.id, linkId: w.linkId! }))
     }
     const raw = JSON.stringify(record)
@@ -268,11 +284,13 @@ export class RulesSync {
   homeOf(): string {
     const copies = [{ environmentId: this.deps.environmentId }]
     for (const link of this.deps.peers.all()) if (this.record(link.id)) copies.push({ environmentId: link.id })
-    return (
-      settingsHomeOf(copies, (id) =>
-        id === this.deps.environmentId ? this.deps.platform : (this.deps.peers.get(id)?.build?.platform ?? this.record(id)?.platform ?? undefined)
-      ) ?? this.deps.environmentId
-    )
+    return settingsHomeOf(copies, this.buildOf) ?? this.deps.environmentId
+  }
+
+  /** A host's hello build: this host's own, a peer's live one, else what its last pull recorded. */
+  private buildOf = (id: string): HostBuild | null => {
+    if (id === this.deps.environmentId) return { platform: this.deps.platform, headless: this.deps.headless }
+    return this.deps.peers.get(id)?.build ?? this.record(id)
   }
 
   /** The global scope and every local workspace whose link the peer holds too (storeSync.ts reads the same). */

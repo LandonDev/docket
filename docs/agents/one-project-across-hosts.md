@@ -62,10 +62,14 @@ names the far child).
   `ensureLinked` first, and `app_start_thread` with `environmentId` admits a
   `projectId` the far host lacks.
 - **Settings live on the box.** The settings home of a link is its copy on
-  the host whose hello `build.platform` is not `darwin` (two of one platform:
-  the environment id sorting first; `settingsHomeOf`; `hostPlatform()` in
-  src/main/buildInfo.ts is the one platform read, `TEMP_CODE_BUILD_PLATFORM`
-  its seam for an isolated instance). `project.settings.get` (read) answers
+  the headless host: the one whose hello says `build.headless` (an older
+  build without the field counts when its platform is `linux`; a host not
+  heard from yet counts as a box, below one heard to be headless). A desktop
+  of any platform, a Mac, a PC or a Linux desktop, is home only when no copy
+  sits on such a host; among several of one kind, the environment id sorting
+  first (`settingsHomeOf`, `headlessOf`). `hostHeadless()` in
+  src/main/buildInfo.ts is the one read of this host's own; a platform played
+  through `TEMP_CODE_BUILD_PLATFORM` other than `linux` is a desktop. `project.settings.get` (read) answers
   one bundle (name, archived, preamble, pins, review, plans, build, turn
   pass, `updatedAt`), `project.settings.set` (admin) writes it whole; every
   existing setter stamps `settings_updated_at` and pushes `projects`. The
@@ -111,7 +115,7 @@ names the far child).
   connected host with a copy, else the named one offline; the draft
   rebuild's `preferredHost` reads the same). "New threads start on" is
   `box` (a host that is not a Mac, `startOnHostOf` in
-  src/shared/projectLinks.ts, `settingsHomeOf`'s rule) or `mac`: the global
+  src/shared/projectLinks.ts, still read by platform) or `mac`: the global
   value is `ThreadDefaults.startOn` (absent = the box; only the global set's
   counts; its row on Settings → Thread defaults shows with two or more
   hosts), a project's own is `ProjectMeta.startOn` (`projects.start_on`,

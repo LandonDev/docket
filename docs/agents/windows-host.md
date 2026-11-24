@@ -178,6 +178,13 @@ desktop it is, with that platform's rules. The tool names stay `mac_*`.
   (`MEMORY_NO_WINDOWS`): its path map is POSIX only. Moving a thread between a Windows host and the
   box maps no paths (sessionMove.ts and crossHostThreads.ts read POSIX roots), so a moved thread
   keeps its old paths in its text.
+- **Settings follow the box.** A PC is never the settings home of rules, thread
+  defaults, project settings, skills, add-ons or link ids while the box holds a
+  copy, whichever id sorts first (`settingsHomeOf` reads `build.headless`, not
+  the platform). Its first sync never writes its own values over the box's:
+  where the box holds a value, the PC takes it (rulesSync.ts `seed`;
+  projectSettingsSync.ts seeds only a home that never stamped; storeSync.ts
+  adds only rows the box lacks by id and name).
 - **The harness CLIs.** Claude, Codex and Muse resolve with PATHEXT and npm shims as M13 built it.
   Every harness child gets `CLAUDE_CODE_GIT_BASH_PATH` when Git for Windows' bash.exe is found,
   per-user installs included (`withGitBash`, drivers/binaries.ts). `CODEX_CA_CERTIFICATE` alone is

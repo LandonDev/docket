@@ -185,6 +185,15 @@ describe('the seed', () => {
     expect(box.addons.list()).toHaveLength(1)
     expect(logs.some((l) => l.includes(theirs.id) && l.includes(mine.id))).toBe(true)
   })
+
+  it('a row the home holds by id is never written over by this host\'s copy: this host takes the home\'s', async () => {
+    const theirs = box.addons.set(addon(), you)
+    mac.addons.put({ ...theirs, spec: { ...spec, args: ['stale'] } })
+    await sync.syncWith(BOX)
+    expect(link.calls).not.toContain('addons.set')
+    expect(box.addons.get(theirs.id)).toEqual(theirs)
+    expect(mac.addons.get(theirs.id)).toEqual(theirs)
+  })
 })
 
 describe('forward', () => {

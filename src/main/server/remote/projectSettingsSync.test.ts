@@ -20,7 +20,7 @@ interface World {
     id: string
     env: { id: string; name: string }
     connected: boolean
-    build: { platform: string } | null
+    build: { platform: string; headless?: boolean } | null
     calls: string[]
     request: <T>(method: string, params?: unknown) => Promise<T>
   }
@@ -36,15 +36,16 @@ function host(id: string, project: string, path: string, linkId: string | null):
   return { db, store, registry: new SessionRegistry(store) }
 }
 
-function world(opts: { macLinked?: boolean } = {}): World {
-  const mac = host(MAC, 'p-mac', '/Users/me/IdeaProjects/temp-code', opts.macLinked === false ? null : LINK)
+/** `me`, `platform`, `headless`: the follower's own id and hello (a Mac by default). */
+function world(opts: { macLinked?: boolean; me?: string; platform?: string; headless?: boolean } = {}): World {
+  const mac = host(opts.me ?? MAC, 'p-mac', '/Users/me/IdeaProjects/temp-code', opts.macLinked === false ? null : LINK)
   const box = host(BOX, 'p-box', '/srv/agents/work/temp-code', LINK)
   const b = box.registry
   const link: World['link'] = {
     id: BOX,
     env: { id: BOX, name: 'box' },
     connected: true,
-    build: { platform: 'linux' },
+    build: { platform: 'linux', headless: true },
     calls: [],
     async request<T>(method: string, params?: unknown): Promise<T> {
       if (!link.connected) throw new Error('box is not connected')
@@ -77,8 +78,9 @@ function world(opts: { macLinked?: boolean } = {}): World {
   }
   const peers = { get: (id: string) => (id === BOX ? link : undefined), all: () => [link] }
   const sync = new ProjectSettingsSync({
-    environmentId: MAC,
-    platform: 'darwin',
+    environmentId: opts.me ?? MAC,
+    platform: opts.platform ?? 'darwin',
+    headless: opts.headless,
     registry: mac.registry,
     store: mac.store,
     peers: peers as never,
@@ -175,6 +177,18 @@ describe('the settings home', () => {
   it('names the box over the Mac', async () => {
     await w.sync.syncWith(BOX)
     expect(w.sync.homeOf(LINK)).toBe(BOX)
+  })
+
+  it('a PC whose id sorts first is never the home, and its settings never write over the box\'s', async () => {
+    w.sync.close()
+    w.dbs.forEach((db) => db.close())
+    w = world({ me: 'env_a_pc', platform: 'win32', headless: false })
+    w.box.setProjectSettings('p-box', bundle(w.box, { preamble: 'BOX' }), 5_000)
+    w.mac.setProjectSettings('p-mac', { ...w.mac.getProjectSettings('p-mac'), preamble: 'PC' }, 9_000)
+    await w.sync.syncWith(BOX)
+    expect(w.sync.homeOf(LINK)).toBe(BOX)
+    expect(w.link.calls).not.toContain('project.settings.set')
+    expect(w.box.getProjectSettings('p-box').preamble).toBe('BOX')
   })
 
   it('a write with the home reachable lands on the home, and the copy follows with its stamp', async () => {

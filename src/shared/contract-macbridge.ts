@@ -639,7 +639,7 @@ export const MacBridgeRequestSchemas = [
       name: z.string().max(120).optional(),
       /** What the host runs (deployDrift.ts BuildFacts; declared inline: wireSchemas.ts is never imported here). */
       build: z
-        .object({ release: z.number().int(), version: z.string(), sha: z.string().nullable(), platform: z.string() })
+        .object({ release: z.number().int(), version: z.string(), sha: z.string().nullable(), platform: z.string(), headless: z.boolean().optional() })
         .optional(),
       /** The host's screen and power state at register time (src/main/presence.ts). */
       presence: MacPresenceSchema.optional()

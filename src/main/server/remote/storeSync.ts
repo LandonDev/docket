@@ -9,8 +9,8 @@ import type { Scope } from './rulesSync'
 
 /**
  * The add-on registry and the skills store live on the box, the settings
- * home RulesSync names (`settingsHomeOf`: the copy whose platform is not
- * darwin), one copy of each shared scope: the global rows and each
+ * home RulesSync names (`settingsHomeOf`: the copy on the headless host,
+ * never a desktop's while the box holds one), one copy of each shared scope: the global rows and each
  * workspace both hosts hold (paired by the workspace's `linkId`). This runs
  * on the host holding the admin peer link (the Mac), for both tables:
  *
@@ -23,7 +23,9 @@ import type { Scope } from './rulesSync'
  *    follow, each row of it the home lacks by id goes to the home with its
  *    id and writers (a workspace linked after the first sync keeps its rows
  *    this way). A name the home already uses in that scope is the home's:
- *    the row here is dropped with one log line naming both ids.
+ *    the row here is dropped with one log line naming both ids. A row the
+ *    home holds is never written over, so a fresh PC's store never replaces
+ *    the box's.
  *  - routes writes (`forward`): a write to a shared scope goes to the home,
  *    and the home's answer lands here; a home out of reach refuses with
  *    nothing written. A scope the home has no copy of stays this host's

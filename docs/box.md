@@ -4424,9 +4424,9 @@ assumes no platform, so whichever host holds a link runs it for that link.
   paired workspaces; the oldest row when a host has two of a key), and
   decides each pair with `decideLink`: a side with an id gives it to the
   other, neither mints one, and on a conflict the settings home's id wins.
-  The home is the copy off darwin (`settingsHomeOf`; a peer whose hello did
-  not name its platform counts as the box), so the box's id wins whichever
-  side runs the linker. Then one `registry.linkCatalog` here and one
+  The home is the copy on the headless host (`settingsHomeOf`; a peer not
+  heard from yet counts as the box), so the box's id wins whichever side
+  runs the linker, a Mac or a PC. Then one `registry.linkCatalog` here and one
   `catalog.link` there, each only when it has rows to stamp. A second run
   with nothing new reads twice and writes nothing.
 - **What it never does.** It never removes a link: a row whose partner is
@@ -4481,8 +4481,10 @@ ways:
 
 A linked project (one `linkId` on its copy on each host) keeps its settings
 on one copy, its settings home: `settingsHomeOf` in
-`src/shared/projectLinks.ts` names the copy whose host is not a Mac (by the
-hello's `build.platform`), else the host whose id sorts first. The settings
+`src/shared/projectLinks.ts` names the copy on the headless host (the
+hello's `build.headless`; an older build counts when it runs `linux`), else
+the host whose id sorts first. A Mac, a PC or a Linux desktop never wins over
+the box. The settings
 are one bundle (`project.settings.get` / `.set`): name, archived, preamble,
 account pins, review, plans, build, turn pass and where new threads start
 (`startOn`, `project.setStartOn`), with the time one of them
@@ -4525,8 +4527,7 @@ something says otherwise (src/renderer/src/lib/projectHostChoice.ts
 `chooseCopy`): the host of the thread on screen when that thread is in the
 project, else the host "New threads start on" names when it has a copy and
 its link is open, else another connected host with a copy. The value is
-`box` (a host that is not a Mac, by the hello's `build.platform`, the
-`settingsHomeOf` rule) or `mac`. Settings → Thread defaults holds the global
+`box` (a host that is not a Mac, by the hello's `build.platform`) or `mac`. Settings → Thread defaults holds the global
 one as `startOn` on the global set (one copy, on the box, below; it shows
 once a second host is saved); a project overrides it from its settings
 sheet's New threads section (`project.setStartOn`, kept in the bundle above),
@@ -4546,7 +4547,9 @@ host's own workspace id>` for an override) and the thread defaults
 (`src/main/server/remote/rulesSync.ts`). The Mac follows it on link-up, on the
 box's `workspaces` push and every 5 minutes; it seeds each shared scope (the
 global set, and each workspace both hosts hold, met by its `linkId`) from its
-own value once (`rules-sync:seeded:<envId>`), and sends every `rules.set` /
+own value once (`rules-sync:seeded:<envId>`), but only where the box holds no
+value of its own: where it does, this host takes the box's, so a fresh PC's
+defaults never replace the box's global rules. It sends every `rules.set` /
 `defaults.set` of a shared scope to the box, writing the box's answer back. A
 pull whose read went out before such a write never writes its older answer
 over it. The box keeps a rule for a model it cannot run: Muse Wonder Full's

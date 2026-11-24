@@ -16,6 +16,8 @@ export interface BuildFacts {
   sha: string | null
   /** `process.platform` of the host: darwin publishes, win32 updates from the feed, anything else deploys. */
   platform: string
+  /** The host runs headless (headless.ts): the box. Absent from an older build. The settings home reads it (projectLinks.ts `settingsHomeOf`). */
+  headless?: boolean
 }
 
 /** Master's release.json as the Mac last read it (src/main/deployDrift.ts). */

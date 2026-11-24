@@ -874,12 +874,13 @@ export const CreatedPairingSchema = z.object({
 
 // ── the HTTP side of pairing (remote/listener.ts) ───────────────────────
 
-/** What a host runs (src/shared/deployDrift.ts BuildFacts): release.json `n`, `1.0.N`, the commit, the platform. */
+/** What a host runs (src/shared/deployDrift.ts BuildFacts): release.json `n`, `1.0.N`, the commit, the platform, whether it is headless. */
 export const BuildFactsSchema = z.object({
   release: z.number().int(),
   version: z.string(),
   sha: z.string().nullable(),
-  platform: z.string()
+  platform: z.string(),
+  headless: z.boolean().optional()
 })
 
 /** The relay's host rows (contract-relay.ts HostPresence): a host reachable through this one and its state. */

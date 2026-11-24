@@ -15,11 +15,13 @@ const row = (environmentId: string, id: string, linkId?: string): ProjectMeta =>
   ...(linkId ? { linkId } : {})
 })
 
-// Slots: `local` is this Mac (host env_mac); env_box and env_box2 are boxes.
+// Slots: `local` is this Mac (host env_mac); env_box and env_box2 are boxes (older builds: linux, no headless field).
 const facts = (over: { platforms?: Record<string, string | undefined>; offline?: string[] } = {}): HostFacts => ({
   hostIdOf: (slot) => (slot === 'local' ? 'env_mac' : slot),
-  platformOf: (slot) =>
-    over.platforms && slot in over.platforms ? over.platforms[slot] : slot === 'local' ? 'darwin' : 'linux',
+  buildOf: (slot) => {
+    const platform = over.platforms && slot in over.platforms ? over.platforms[slot] : slot === 'local' ? 'darwin' : 'linux'
+    return platform ? { platform } : undefined
+  },
   nameOf: (slot) => (slot === 'local' ? 'this Mac' : slot.replace('env_', '')),
   isOpen: (slot) => !(over.offline ?? []).includes(slot)
 })
@@ -53,6 +55,13 @@ describe('resolveProjectHome', () => {
     expect(resolveProjectHome(a, [a, b], facts()).home).toBe(b)
     const mac = row('local', 'p3', 'pl_1')
     expect(resolveProjectHome(mac, [mac, a], facts({ platforms: { env_box2: undefined } })).home).toBe(a)
+  })
+
+  it('a PC copy beside the box is never the home, whichever id sorts first', () => {
+    const pc = row('env_a_pc', 'p1', 'pl_1')
+    const box = row('env_box', 'p2', 'pl_1')
+    const pcFacts = facts({ platforms: { env_a_pc: 'win32' } })
+    expect(resolveProjectHome(pc, [pc, box], pcFacts).home).toBe(box)
   })
 
   it('a home whose link is down blocks with the reason', () => {

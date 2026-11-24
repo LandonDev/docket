@@ -4,7 +4,7 @@ import { REASONING_LEVELS } from './catalog'
 /**
  * "New threads start on": which copy of a project linked across hosts a new
  * thread starts in when nothing on screen decides it. `box` is a host that is
- * not a Mac (the rule `settingsHomeOf` reads), `mac` a Mac. The global value
+ * not a Mac (`startOnHostOf`, by platform), `mac` a Mac. The global value
  * rides the thread defaults (one copy, on the box); a project may override it
  * (`ProjectMeta.startOn`, `project.setStartOn`).
  */

@@ -2,7 +2,7 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
 import { afterEach, describe, expect, it } from 'vitest'
-import { aboutPanelOptions, buildInfo, bundledBuildSha, checkoutRootOf, checkoutSha, COPYRIGHT, readBuildSha } from './buildInfo'
+import { aboutPanelOptions, buildFacts, buildInfo, bundledBuildSha, checkoutRootOf, checkoutSha, COPYRIGHT, hostHeadless, readBuildSha } from './buildInfo'
 import release from '../../release.json'
 
 const A = 'a'.repeat(40)
@@ -83,6 +83,20 @@ describe('buildInfo', () => {
     const info = buildInfo(d)
     expect(info).toEqual({ release: release.n, version: `1.0.${release.n}`, sha: B })
     expect(buildInfo().sha).toBeNull()
+  })
+})
+
+describe('hostHeadless', () => {
+  it('is the headless switch, and a played Mac or PC is always a desktop', () => {
+    expect(hostHeadless({ TEMP_CODE_HEADLESS: '1' })).toBe(true)
+    expect(hostHeadless({ TEMP_CODE_HEADLESS: '0' })).toBe(false)
+    expect(hostHeadless({ TEMP_CODE_HEADLESS: '1', TEMP_CODE_BUILD_PLATFORM: 'linux' })).toBe(true)
+    expect(hostHeadless({ TEMP_CODE_HEADLESS: '1', TEMP_CODE_BUILD_PLATFORM: 'darwin' })).toBe(false)
+    expect(hostHeadless({ TEMP_CODE_HEADLESS: '1', TEMP_CODE_BUILD_PLATFORM: 'win32' })).toBe(false)
+  })
+  it('rides in the hello build', () => {
+    expect(buildFacts(undefined, 'win32', false)).toMatchObject({ platform: 'win32', headless: false })
+    expect(buildFacts(undefined, 'linux', true)).toMatchObject({ platform: 'linux', headless: true })
   })
 })
 

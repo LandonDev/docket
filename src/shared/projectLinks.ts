@@ -157,20 +157,37 @@ export function decideLink(
   return { linkId: mint(), local: true, peer: true }
 }
 
+/** What a host's hello says of it that the settings home reads (deployDrift.ts BuildFacts). */
+export interface HostBuild {
+  platform?: string | null
+  headless?: boolean | null
+}
+
 /**
- * The settings home of a link: the copy on the box, which is the host whose
- * platform is not darwin; two copies of one platform, the host whose id
- * sorts first. `platformOf` answers a host's hello `build.platform`
- * (undefined until heard: counted as not darwin, since only a Mac says so).
+ * Whether a host is headless (the box), as its hello's build says: the
+ * `headless` field, else, from a build older than the field, a linux host
+ * (only the box ran linux then). Undefined until the host is heard from.
+ */
+export function headlessOf(build: HostBuild | null | undefined): boolean | undefined {
+  if (typeof build?.headless === 'boolean') return build.headless
+  return build?.platform ? build.platform === 'linux' : undefined
+}
+
+/**
+ * The settings home of a link: the copy on a headless host (the box). A
+ * desktop of any platform (a Mac, a PC, a Linux desktop) is home only when
+ * no copy sits on a headless host or on one not heard from yet, which
+ * counts as a box. Among several of one kind, the id that sorts first.
+ * `buildOf` answers a host's hello `build`.
  */
 export function settingsHomeOf(
   copies: readonly { environmentId: string }[],
-  platformOf: (environmentId: string) => string | undefined
+  buildOf: (environmentId: string) => HostBuild | null | undefined
 ): string | null {
   if (copies.length === 0) return null
   const ids = [...new Set(copies.map((c) => c.environmentId))].sort()
-  const boxes = ids.filter((id) => platformOf(id) !== 'darwin')
-  return (boxes.length ? boxes : ids)[0]
+  const kind = (id: string): boolean | undefined => headlessOf(buildOf(id))
+  return ids.find((id) => kind(id) === true) ?? ids.find((id) => kind(id) === undefined) ?? ids[0]
 }
 
 /**

@@ -2239,8 +2239,9 @@ host nothing names it.
 
 **Project settings live on the box.** The project settings sheet reads and
 saves the settings home's copy (`ProjectLinks.target`, the desktop's
-`settingsHomeOf`: the copy off `darwin`; two of one platform, the
-environment id that sorts first; a host not yet heard from counts as a box),
+older `settingsHomeOf`: the copy off `darwin`; two of one platform, the
+environment id that sorts first; a host not yet heard from counts as a box;
+the desktop now reads `build.headless` instead, and the phone does not yet),
 whichever copy's menu opened it: the phone pairs with the box directly, and a
 relayed Mac's copy goes through the box anyway. A linked project's last
 footer says "Saved on box". While the home is out of reach the sheet says why

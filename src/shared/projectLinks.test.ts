@@ -8,6 +8,8 @@ import {
   newWorkspaceLinkId,
   projectMatchKey,
   settingsHomeOf,
+  headlessOf,
+  type HostBuild,
   workspaceMatchKey,
   type LinkableProject,
   type LinkableWorkspace
@@ -104,19 +106,47 @@ describe('decideLink', () => {
 })
 
 describe('settingsHomeOf', () => {
-  const platforms: Record<string, string | undefined> = { env_mac: 'darwin', env_box: 'linux', env_box2: 'linux' }
-  const platformOf = (id: string): string | undefined => platforms[id]
-  it('is the copy off darwin', () => {
-    expect(settingsHomeOf([{ environmentId: 'env_mac' }, { environmentId: 'env_box' }], platformOf)).toBe('env_box')
-    expect(settingsHomeOf([{ environmentId: 'env_box' }, { environmentId: 'env_mac' }], platformOf)).toBe('env_box')
+  const builds: Record<string, HostBuild | undefined> = {
+    env_mac: { platform: 'darwin', headless: false },
+    env_box: { platform: 'linux', headless: true },
+    env_box2: { platform: 'linux', headless: true },
+    env_a_pc: { platform: 'win32', headless: false },
+    env_a_desk: { platform: 'linux', headless: false },
+    env_old_box: { platform: 'linux' },
+    env_old_mac: { platform: 'darwin' }
+  }
+  const buildOf = (id: string): HostBuild | undefined => builds[id]
+  const home = (...ids: string[]): string | null => settingsHomeOf(ids.map((environmentId) => ({ environmentId })), buildOf)
+  it('is the copy on the headless host', () => {
+    expect(home('env_mac', 'env_box')).toBe('env_box')
+    expect(home('env_box', 'env_mac')).toBe('env_box')
   })
-  it('two copies of one platform: the id that sorts first', () => {
-    expect(settingsHomeOf([{ environmentId: 'env_box2' }, { environmentId: 'env_box' }], platformOf)).toBe('env_box')
-    expect(settingsHomeOf([{ environmentId: 'env_mac' }, { environmentId: 'env_mac0' }], (id) => (id.startsWith('env_mac') ? 'darwin' : undefined))).toBe('env_mac')
+  it('a win32 desktop never becomes home beside the box, whichever id sorts first', () => {
+    expect(home('env_a_pc', 'env_box')).toBe('env_box')
+    expect(home('env_a_pc', 'env_mac', 'env_box')).toBe('env_box')
   })
-  it('a host not yet heard from counts as a box; one copy is its own home; none is null', () => {
-    expect(settingsHomeOf([{ environmentId: 'env_mac' }, { environmentId: 'env_unknown' }], platformOf)).toBe('env_unknown')
-    expect(settingsHomeOf([{ environmentId: 'env_mac' }], platformOf)).toBe('env_mac')
-    expect(settingsHomeOf([], platformOf)).toBeNull()
+  it('a linux desktop never becomes home beside the box', () => {
+    expect(home('env_a_desk', 'env_box')).toBe('env_box')
+  })
+  it('a build older than the headless field: linux is the box, darwin a desktop', () => {
+    expect(headlessOf({ platform: 'linux' })).toBe(true)
+    expect(headlessOf({ platform: 'win32' })).toBe(false)
+    expect(headlessOf(undefined)).toBeUndefined()
+    expect(home('env_a_pc', 'env_old_box')).toBe('env_old_box')
+    expect(home('env_old_mac', 'env_old_box')).toBe('env_old_box')
+  })
+  it('two headless copies: the id that sorts first; desktops alone: the same', () => {
+    expect(home('env_box2', 'env_box')).toBe('env_box')
+    expect(home('env_mac', 'env_a_pc')).toBe('env_a_pc')
+  })
+  it('a host not yet heard from counts as a box, below one heard to be headless', () => {
+    expect(home('env_mac', 'env_unknown')).toBe('env_unknown')
+    expect(home('env_a_pc', 'env_unknown')).toBe('env_unknown')
+    expect(home('env_box', 'env_0unknown')).toBe('env_box')
+  })
+  it('one copy is its own home; none is null', () => {
+    expect(home('env_mac')).toBe('env_mac')
+    expect(home('env_a_pc')).toBe('env_a_pc')
+    expect(home()).toBeNull()
   })
 })

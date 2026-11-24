@@ -1,12 +1,13 @@
 import type { ServerPush } from '@shared/contract'
 import type { ProjectMeta } from '@shared/domain'
-import { ProjectSettingsBundleSchema, settingsHomeOf, type ProjectSettingsBundle } from '@shared/projectLinks'
+import { headlessOf, ProjectSettingsBundleSchema, settingsHomeOf, type HostBuild, type ProjectSettingsBundle } from '@shared/projectLinks'
 import type { Peers } from './peers'
 
 /**
  * Project settings live on the box (docs/box.md "One project across hosts:
  * settings live on the box"). A linked project's settings home is the copy
- * `settingsHomeOf` names: the box's, when one copy is on a Mac. This module
+ * `settingsHomeOf` names: the copy on the headless host (the box), never a
+ * desktop's while the box holds one. This module
  * runs on the host that holds the admin peer link (the Mac) and does two
  * things, both for a linked project whose home is a peer:
  *
@@ -30,9 +31,11 @@ export const PROJECT_SETTINGS_PERIOD_MS = 5 * 60_000
 export const PROJECT_SETTINGS_DEBOUNCE_MS = 500
 export const PEER_KEY = 'project-settings-sync:peer:'
 
-/** What this host remembers of a peer: its platform and its linked projects. */
+/** What this host remembers of a peer: its platform, whether it is headless and its linked projects. */
 interface PeerRecord {
   platform: string | null
+  /** headlessOf the peer's last hello; absent from a record older than the field */
+  headless?: boolean | null
   projects: { id: string; workspaceId: string; linkId: string; name: string }[]
 }
 
@@ -42,6 +45,8 @@ export interface ProjectSettingsSyncDeps {
   environmentId: string
   /** This host's `process.platform`. */
   platform: string
+  /** This host runs headless (buildInfo.ts hostHeadless); absent, `platform` decides as for an older build. */
+  headless?: boolean
   registry: {
     listProjects(): ProjectMeta[]
     getProject(projectId: string): ProjectMeta | null
@@ -198,6 +203,7 @@ export class ProjectSettingsSync {
     const link = this.deps.peers.get(id)
     const record: PeerRecord = {
       platform: link?.build?.platform ?? this.record(id)?.platform ?? null,
+      headless: headlessOf(link?.build) ?? this.record(id)?.headless ?? null,
       projects: projects
         .filter((p) => p.linkId)
         .map((p) => ({ id: p.id, workspaceId: p.workspaceId, linkId: p.linkId!, name: p.name }))
@@ -206,9 +212,9 @@ export class ProjectSettingsSync {
     if (raw !== this.deps.store.getSetting(`${PEER_KEY}${id}`)) this.deps.store.setSetting(`${PEER_KEY}${id}`, raw)
   }
 
-  private platformOf = (id: string): string | undefined => {
-    if (id === this.deps.environmentId) return this.deps.platform
-    return this.deps.peers.get(id)?.build?.platform ?? this.record(id)?.platform ?? undefined
+  private buildOf = (id: string): HostBuild | null => {
+    if (id === this.deps.environmentId) return { platform: this.deps.platform, headless: this.deps.headless }
+    return this.deps.peers.get(id)?.build ?? this.record(id)
   }
 
   /** The environment id of a link's settings home among this host and the peers holding a copy. */
@@ -217,7 +223,7 @@ export class ProjectSettingsSync {
     for (const link of this.deps.peers.all()) {
       if (this.record(link.id)?.projects.some((p) => p.linkId === linkId)) copies.push({ environmentId: link.id })
     }
-    return settingsHomeOf(copies, this.platformOf) ?? this.deps.environmentId
+    return settingsHomeOf(copies, this.buildOf) ?? this.deps.environmentId
   }
 
   /**

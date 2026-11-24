@@ -50,7 +50,7 @@ describe('startOnHostOf', () => {
     expect(startOnHostOf(copies, (id) => platforms[id], 'box')).toBe('env_box')
     expect(startOnHostOf(copies, (id) => platforms[id], 'mac')).toBe('env_mac')
     expect(startOnHostOf([{ environmentId: 'env_mac' }], (id) => platforms[id], 'box')).toBeNull()
-    // A host not heard from yet counts as not a Mac, as settingsHomeOf reads it.
+    // A host not heard from yet counts as not a Mac, as the settings home reads it.
     expect(startOnHostOf([{ environmentId: 'env_new' }], (id) => platforms[id], 'box')).toBe('env_new')
   })
 })

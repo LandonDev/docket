@@ -268,16 +268,18 @@ public struct BuildFacts: Codable, Hashable, Sendable {
     public let version: String
     public let sha: String?
     public let platform: String
+    public let headless: Bool?
 
-    public init(release: Int, version: String, sha: String?, platform: String) {
+    public init(release: Int, version: String, sha: String?, platform: String, headless: Bool? = nil) {
         self.release = release
         self.version = version
         self.sha = sha
         self.platform = platform
+        self.headless = headless
     }
 
     private enum CodingKeys: String, CodingKey {
-        case release, version, sha, platform
+        case release, version, sha, platform, headless
     }
 
     public func encode(to encoder: any Encoder) throws {
@@ -286,6 +288,7 @@ public struct BuildFacts: Codable, Hashable, Sendable {
         try container.encode(version, forKey: .version)
         try container.encode(sha, forKey: .sha)
         try container.encode(platform, forKey: .platform)
+        try container.encodeIfPresent(headless, forKey: .headless)
     }
 }
 

@@ -32,7 +32,7 @@ interface World {
     id: string
     env: { id: string; name: string }
     connected: boolean
-    build: { platform: string } | null
+    build: { platform: string; headless?: boolean } | null
     calls: string[]
     /** Methods the box answers as an older build would: unknown. */
     unknown: Set<string>
@@ -55,15 +55,17 @@ function host(id: string, path: string, linked: boolean): { db: ReturnType<typeo
   return { db, store, registry: new SessionRegistry(store) }
 }
 
-function world(opts: { macLinked?: boolean } = {}): World {
-  const mac = host(MAC, '/Users/me/IdeaProjects/temp-code', opts.macLinked !== false)
+/** `me`, `platform`, `headless`: the follower's own id and hello (a Mac by default). */
+function world(opts: { macLinked?: boolean; me?: string; platform?: string; headless?: boolean } = {}): World {
+  const me = opts.me ?? MAC
+  const mac = host(me, '/Users/me/IdeaProjects/temp-code', opts.macLinked !== false)
   const box = host(BOX, '/srv/agents/work/temp-code', true)
   const b = box.registry
   const link: World['link'] = {
     id: BOX,
     env: { id: BOX, name: 'box' },
     connected: true,
-    build: { platform: 'linux' },
+    build: { platform: 'linux', headless: true },
     calls: [],
     unknown: new Set(),
     hold: null,
@@ -105,8 +107,9 @@ function world(opts: { macLinked?: boolean } = {}): World {
   const peerCatalogs = new PeerCatalogs(mac.store)
   const logs: string[] = []
   const sync = new RulesSync({
-    environmentId: MAC,
-    platform: 'darwin',
+    environmentId: me,
+    platform: opts.platform ?? 'darwin',
+    headless: opts.headless,
     registry: mac.registry,
     store: mac.store,
     peers: peers as never,
@@ -206,6 +209,51 @@ describe('one copy on the box', () => {
     await w.sync.syncWith(BOX)
     expect(w.sync.homeFor(null)).toEqual({ name: 'box', online: true })
     expect(w.sync.homeFor(`w-${MAC}`)).toBeNull()
+  })
+})
+
+describe('a PC beside the box', () => {
+  const PC = 'env_a_pc' // sorts before env_box
+  const pc = (): World => {
+    w.sync.close()
+    w.dbs.forEach((db) => db.close())
+    return world({ me: PC, platform: 'win32', headless: false })
+  }
+
+  it('is never the home, though its id sorts first', async () => {
+    w = pc()
+    await w.sync.syncWith(BOX)
+    expect(w.sync.homeOf()).toBe(BOX)
+    expect(w.sync.homeFor(null)).toEqual({ name: 'box', online: true })
+  })
+
+  it('a fresh PC never writes its defaults over the box’s global rules and defaults; it follows them', async () => {
+    w = pc()
+    const boxRules = withModel(DEFAULT_RULES, 'codex:gpt-6-astra', { approved: false })
+    const boxDefaults = { provider: 'codex', model: '', reasoning: 'high', permission: 'auto' } as const
+    w.box.setOrchestrationRules(null, boxRules)
+    w.box.setThreadDefaults(null, boxDefaults)
+    w.box.setOrchestrationRules(`w-${BOX}`, boxRules)
+    // The PC's own global defaults, made before it ever linked: the box's copy still wins.
+    w.mac.setThreadDefaults(null, { provider: 'claude', model: '', reasoning: 'low', permission: 'auto' })
+    await w.sync.syncWith(BOX)
+    expect(w.link.calls).not.toContain('rules.set')
+    expect(w.link.calls).not.toContain('defaults.set')
+    expect(w.box.getOrchestrationRules(null)).toEqual(boxRules)
+    expect(w.box.getThreadDefaults(null)).toEqual(boxDefaults)
+    expect(w.mac.getOrchestrationRules(null)).toEqual(boxRules)
+    expect(w.mac.getThreadDefaults(null)).toEqual(boxDefaults)
+    expect(w.mac.getOrchestrationRules(`w-${PC}`)).toEqual(boxRules)
+  })
+
+  it('a box with no copy of its own takes the PC’s; a PC with none sends nothing', async () => {
+    w = pc()
+    const mine = withModel(DEFAULT_RULES, 'codex:gpt-6-astra', { approved: true })
+    w.mac.setOrchestrationRules(null, mine)
+    await w.sync.syncWith(BOX)
+    expect(w.box.getOrchestrationRules(null)).toEqual(mine)
+    expect(w.link.calls.filter((c) => c === 'defaults.set')).toHaveLength(0)
+    expect(w.box.getThreadDefaults(null)).toBeNull()
   })
 })
 

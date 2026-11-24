@@ -5,6 +5,7 @@ import { version as appVersion } from '../../package.json'
 import type { BuildFacts } from '../shared/deployDrift'
 import { versionLine } from '../shared/codeUpdate'
 import { codeBoot } from './codeBoot'
+import { isHeadless } from './headless'
 
 /**
  * What this process runs: the release number every green master commit
@@ -120,9 +121,18 @@ export function hostPlatform(env: NodeJS.ProcessEnv = process.env): string {
   return env.TEMP_CODE_BUILD_PLATFORM?.trim() || process.platform
 }
 
-/** The hello's `build`: this build plus the platform that decides how it is brought up to master. */
-export function buildFacts(appPath?: string, platform: string = hostPlatform()): BuildFacts {
-  return { ...buildInfo(appPath), platform }
+/** Whether this host is headless as the hello says it (the settings home
+ *  reads it, projectLinks.ts `settingsHomeOf`). A platform played through
+ *  `TEMP_CODE_BUILD_PLATFORM` plays the desktop too: only a played linux
+ *  host may be headless, so a proof's Mac on the box is never the home. */
+export function hostHeadless(env: NodeJS.ProcessEnv = process.env): boolean {
+  const played = env.TEMP_CODE_BUILD_PLATFORM?.trim()
+  return isHeadless(env) && (!played || played === 'linux')
+}
+
+/** The hello's `build`: this build plus the platform that decides how it is brought up to master, and whether it is headless. */
+export function buildFacts(appPath?: string, platform: string = hostPlatform(), headless: boolean = hostHeadless()): BuildFacts {
+  return { ...buildInfo(appPath), platform, headless }
 }
 
 /** Where a checkout's package.json lives for a path inside it (tests and tools). */

@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import { settingsHomeOf } from "@server/shared/projectLinks";
+import { settingsHomeOf, type HostBuild } from "@server/shared/projectLinks";
 import { LOCAL_ENVIRONMENT_ID, registry } from "./connection/registry";
 import { thisDesktopInLine } from "./native";
 import { useEnvironmentStatuses } from "./connection/status";
@@ -18,10 +18,10 @@ import type { ProjectCleanup, ProjectMeta, WorkspaceMeta } from "./tcserver/type
 
 /** What the resolution needs to know about the registry slots the copies sit on. */
 export interface HostFacts {
-  /** The host's own id (its hello's), which `settingsHomeOf` sorts and reads platforms by. */
+  /** The host's own id (its hello's), which `settingsHomeOf` sorts and reads builds by. */
   hostIdOf(slot: string): string;
-  /** The host's hello `build.platform`; undefined until heard. */
-  platformOf(slot: string): string | undefined;
+  /** The host's hello `build` (its platform, whether it is headless); undefined until heard. */
+  buildOf(slot: string): HostBuild | undefined;
   /** The host by name, for a sentence: "box", "this Mac", "this PC". */
   nameOf(slot: string): string;
   /** The host's link is open now. */
@@ -56,7 +56,7 @@ export function resolveProjectHome(project: ProjectMeta, projects: readonly Proj
   const slotOfHost = new Map(copies.map((c) => [facts.hostIdOf(c.environmentId), c.environmentId]));
   const homeHost = settingsHomeOf(
     copies.map((c) => ({ environmentId: facts.hostIdOf(c.environmentId) })),
-    (hostId) => facts.platformOf(slotOfHost.get(hostId) ?? hostId),
+    (hostId) => facts.buildOf(slotOfHost.get(hostId) ?? hostId),
   );
   const home = copies.find((c) => facts.hostIdOf(c.environmentId) === homeHost) ?? self;
   const hostName = facts.nameOf(home.environmentId);
@@ -67,7 +67,7 @@ export function resolveProjectHome(project: ProjectMeta, projects: readonly Proj
 /** The registry as HostFacts: hellos for ids and platforms, the saved names, the transport. */
 export const liveHostFacts: HostFacts = {
   hostIdOf: (slot) => registry.statusOf(slot).lastHello?.environmentId ?? slot,
-  platformOf: (slot) => registry.statusOf(slot).lastHello?.build?.platform,
+  buildOf: (slot) => registry.statusOf(slot).lastHello?.build,
   nameOf: (slot) => (slot === LOCAL_ENVIRONMENT_ID ? thisDesktopInLine() : (registry.environment(slot)?.name ?? slot)),
   isOpen: (slot) => registry.statusOf(slot).transport === "open",
 };

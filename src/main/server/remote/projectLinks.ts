@@ -10,6 +10,7 @@ import {
   newWorkspaceLinkId,
   settingsHomeOf,
   type CatalogLinkArgs,
+  type HostBuild,
   type EnsureLinkedArgs,
   type LinkableProject,
   type LinkableWorkspace,
@@ -50,7 +51,7 @@ export const LINK_PERIOD_MS = 5 * 60_000
 export interface LinkerLink {
   id: string
   connected: boolean
-  build: { platform: string } | null
+  build: HostBuild | null
   request<T = unknown>(method: string, params?: unknown): Promise<T>
 }
 
@@ -58,6 +59,8 @@ export interface ProjectLinkerDeps {
   environmentId: string
   /** This host's `process.platform`. */
   platform?: string
+  /** This host runs headless (buildInfo.ts hostHeadless); absent, `platform` decides as for an older build. */
+  headless?: boolean
   registry: {
     listWorkspaces(): WorkspaceMeta[]
     listProjects(): ProjectMeta[]
@@ -219,8 +222,8 @@ export class ProjectLinker {
       const localPr = this.deps.registry.listProjects()
       const me = this.deps.environmentId
       const platform = this.deps.platform ?? process.platform
-      // The peer's platform is its hello's; unheard counts as a box (settingsHomeOf).
-      const home = settingsHomeOf([{ environmentId: me }, { environmentId: id }], (env) => (env === me ? platform : link.build?.platform))
+      // The peer's build is its hello's; unheard counts as a box (settingsHomeOf).
+      const home = settingsHomeOf([{ environmentId: me }, { environmentId: id }], (env) => (env === me ? { platform, headless: this.deps.headless } : link.build))
       const peerIsHome = home === id
       const mint = this.deps.mint ?? { workspace: newWorkspaceLinkId, project: newProjectLinkId }
 

@@ -106,7 +106,7 @@ function linkTo(id: string, peer: ReturnType<typeof catalog>, platform: string |
   return link
 }
 
-function setup(opts: { me?: string; platform?: string; peerId?: string; peerPlatform?: string | null } = {}) {
+function setup(opts: { me?: string; platform?: string; headless?: boolean; peerId?: string; peerPlatform?: string | null } = {}) {
   const local = catalog()
   const peer = catalog()
   const link = linkTo(opts.peerId ?? BOX, peer, opts.peerPlatform === undefined ? 'linux' : opts.peerPlatform)
@@ -114,6 +114,7 @@ function setup(opts: { me?: string; platform?: string; peerId?: string; peerPlat
   const linker = new ProjectLinker({
     environmentId: opts.me ?? MAC,
     platform: opts.platform ?? 'darwin',
+    headless: opts.headless,
     registry: local,
     peers: { get: (id) => (id === link.id ? link : undefined), all: () => [link] },
     ensureLinked: (args) => local.ensureLinked(args),
@@ -237,6 +238,15 @@ describe('ProjectLinker: deciding', () => {
     expect(peer.workspaces[0].linkId).toBe('wl_box')
     expect(local.workspaces[0].linkId).toBe('wl_box')
     expect(local.calls).toEqual([])
+  })
+
+  it("a PC whose id sorts first still takes the box's id on a conflict", async () => {
+    const { local, peer, linker } = setup({ me: 'env_a_pc', platform: 'win32', headless: false })
+    local.workspaces.push(ws('wp', '/p/shop', 1, { linkId: 'wl_pc' }))
+    peer.workspaces.push(ws('wb', '/b/shop', 1, { linkId: 'wl_box' }))
+    await linker.run(BOX)
+    expect(local.workspaces[0].linkId).toBe('wl_box')
+    expect(peer.calls).toEqual([])
   })
 
   it('counts a peer whose platform is unknown as the box', async () => {

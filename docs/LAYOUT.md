@@ -741,8 +741,8 @@ only for remote callers).
 ### Project dialogs on a linked project
 
 A project whose `linkId` another host's row shares keeps its settings on
-one copy, the box's (`settingsHomeOf`; `lib/projectHome.ts` resolves it
-from the catalog and each host's hello). The dialogs act on that copy over
+one copy, the box's (`settingsHomeOf`, the headless host's; `lib/projectHome.ts`
+resolves it from the catalog and each host's hello `build`). The dialogs act on that copy over
 its host's link, so a Mac whose own copy has not pulled the box's last edit
 never shows the old values:
 
