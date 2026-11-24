@@ -243,14 +243,25 @@ is in the first paint (`scripts/entryGraph.test.ts`, `check:bundle`).
   close read what it stands for at the press (`live` in DigestHost.tsx):
   the same words may have come to mean another telling of a thing, or
   another host's row of the same day.
-- An interrupt he closed or opened, and one he heard, is kept by the thing
-  told: its key and its clock (`tellingOf`, `key@by`), never when a host
-  told it (`work.digest.dismissed` in localStorage, the newest 200, shared
-  across windows by the storage event, so a reload does not bring it back).
-  Two hosts' copies of one meeting are one telling: closed on one, the
-  other stays closed, and it sounds once. A deadline brought forward is a
-  new telling, and a send that fails again is a new key (its attempt), so
-  each shows again.
+- When two tellings are the same (notice.ts `marked`): a telling under a
+  key he closed, opened or heard is the same one unless its clock moved
+  earlier, or it has a clock where the one he closed had none (the host's
+  own `retold` rule); a key no host holds any more is forgotten, so the
+  next telling under it is new. A mark is the key and the clock he closed
+  it at (`tellingOf`, `key@by`), never when a host told it, kept in
+  localStorage (`work.digest.closed`, the newest 200, shared across windows
+  by the storage event, so a reload does not bring it back); the marks he
+  heard are kept in the window. Once every Work host has answered whole, a
+  mark whose key no host's rows hold is dropped (`forgetGone`: a withdrawal
+  everywhere, while a dropped link keeps its rows). So two hosts' copies of
+  one meeting are one telling, closed and heard once; a failure that turns
+  a day old and loses its clock is still the one he closed; a deadline
+  brought forward, a send that fails again (a new key) and a message after
+  he read the conversation (its tell withdrawn) each show and sound. The
+  releases before kept marks in `work.digest.dismissed` as `key@toldAt` or
+  `key@by`: each counts for the live row it names from the first paint and
+  is carried into `work.digest.closed` once every host has answered
+  (`carryLegacy`); the rest are dropped.
 - A view: every overlay closes (`shell.closeOverlays`, Settings among
   them: a press from Settings → Work → Digest, or a toast over Settings,
   must not open behind it), the window enters the job's workspace as its
@@ -317,7 +328,9 @@ written in the zone the key was first told in (`zoneOf`: the frame keeps
 each source's keys' zones as `source:zones:<source>`, the newest 500), so
 a desktop in another zone does not rewrite a told thing into news. A
 source that keeps a cutoff (`kept`) moves it only on a read that was whole
-and carried no error, once its tells are kept (`SourceRead.done`).
+and carried no error, and only past tells the ledger kept: the frame hands
+each tell to the ledger through `SourcesDeps.tell`, which answers whether
+it was kept, and `SourceRead.done(accepted)` hears which keys were.
 `capture` and `waiting` key by the day on purpose: what they tell is the
 day's count.
 
@@ -333,7 +346,8 @@ day's count.
   day, before the first) was a guest's, from `work.docs.find`'s `lastBy`, at
   digest time, each job from its own last whole read (`kept`, in the
   digest's settings as `source:guests.since:<workspaceId>`, moved only once
-  that read's tells are kept): a job whose list failed, came back in part,
+  every tell of that job's read was kept by the ledger, else written at the
+  time it read from): a job whose list failed, came back in part,
   or came back with LifeOS's error beside it (`FindAnswer.lifeos`) is read
   from the same time at the next digest, so its edit is told late, not
   lost; `guest-edit:<entry key>:<editedAt>`, the document and its edit, so

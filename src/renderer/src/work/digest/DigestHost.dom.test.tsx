@@ -6,6 +6,7 @@
  */
 import { act, cleanup, render, renderHook, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from "vitest";
+import type { TellRow } from "@shared/work/tell";
 
 const world = vi.hoisted(() => ({ current: null as unknown }));
 vi.mock("../../lib/connection", async (original) => {
@@ -332,6 +333,72 @@ describe("a guest's edit that does not open", () => {
   });
 });
 
+describe("a telling he closed, and the next one under its key", () => {
+  const message = (over: Partial<TellRow> = {}) => tell({ key: "messages:c1", kind: "messages.new", group: "people", title: "Dana wrote in #budget", how: "now", toldAt: at(24, 9), ...over });
+  it("told, closed, withdrawn, told again: the new message shows and sounds", async () => {
+    const first = message();
+    w().rows.set("box", [first]);
+    w().rows.set("mac", []);
+    await mount();
+    await act(async () => shown()[0]!.dismiss());
+    await waitFor(() => expect(shown()).toEqual([]));
+    // he reads the conversation: the tell is withdrawn on the host
+    await act(async () => push(w(), "box", { gone: first.id }));
+    await settle();
+    bridge.show.mockClear();
+    // Dana writes again
+    await act(async () => push(w(), "box", { row: message({ id: "t-again", toldAt: at(24, 10) }) }));
+    await waitFor(() => expect(shown().map((t) => t.text)).toEqual(["Dana wrote in #budget"]));
+    expect(bridge.show).toHaveBeenCalledWith(expect.not.objectContaining({ silent: true }));
+  });
+  it("two hosts' copies of one meeting are one telling: closed on one, the other's stays closed and silent", async () => {
+    const box = tell({ key: "prep:ev1:1", kind: "prep.starting", group: "meetings", title: "Budget review starts at 2:00 PM", how: "now", toldAt: at(24, 10), by: at(24, 14) });
+    w().rows.set("box", [box]);
+    w().rows.set("mac", []);
+    await mount();
+    await act(async () => shown()[0]!.dismiss());
+    await waitFor(() => expect(shown()).toEqual([]));
+    bridge.show.mockClear();
+    await act(async () => push(w(), "mac", { row: { ...box, id: "m1", host: "mac", toldAt: at(24, 10, 2) } }));
+    // the box's copy goes, the Mac's still holds the key: still the one he closed
+    await act(async () => push(w(), "box", { gone: box.id }));
+    await settle();
+    expect(shown()).toEqual([]);
+    expect(bridge.show).not.toHaveBeenCalled();
+  });
+  it("a failure he closed that turns a day old and loses its clock stays closed; a deadline brought forward shows", async () => {
+    const failed = tell({ key: "unsent:lifeos:outbox:ob1", kind: "outbox.failed", group: "held", title: "Not sent: Re: budget", how: "now", toldAt: at(24, 9), by: at(24, 8, 59) });
+    w().rows.set("box", [failed]);
+    w().rows.set("mac", []);
+    await mount();
+    await act(async () => shown()[0]!.dismiss());
+    await waitFor(() => expect(shown()).toEqual([]));
+    // the ledger keeps the telling; its clock is dropped by age
+    await act(async () => push(w(), "box", { row: { ...failed, by: undefined } }));
+    await settle();
+    expect(shown()).toEqual([]);
+    const invite = tell({ key: "held:lifeos:calendarOps:op1", kind: "outbox.held", group: "held", title: "Held: Invite to Budget review", how: "now", toldAt: at(24, 9), by: at(24, 15) });
+    await act(async () => push(w(), "box", { row: invite }));
+    await waitFor(() => expect(shown()).toHaveLength(1));
+    await act(async () => shown()[0]!.dismiss());
+    await waitFor(() => expect(shown()).toEqual([]));
+    await act(async () => push(w(), "box", { row: { ...invite, toldAt: at(24, 10), by: at(24, 13) } }));
+    await waitFor(() => expect(shown()).toHaveLength(1));
+  });
+  it("a toast closed on the release before this one stays closed; a new telling under its key shows", async () => {
+    const meeting = tell({ key: "prep:ev1:1", kind: "prep.starting", group: "meetings", title: "Budget review starts at 2:00 PM", how: "now", toldAt: at(24, 9, 30), by: at(24, 14) });
+    // the old release kept "key@toldAt"
+    localStorage.setItem("work.digest.dismissed", JSON.stringify([`k:prep:ev1:1@${at(24, 9, 30)}`, `k:messages:c1@${at(24, 8)}`]));
+    w().rows.set("box", [meeting, message({ toldAt: at(24, 9, 45) })]);
+    w().rows.set("mac", []);
+    await mount();
+    await settle();
+    expect(shown().map((t) => t.text)).toEqual(["Dana wrote in #budget"]);
+    expect(JSON.parse(localStorage.getItem("work.digest.closed") ?? "[]")).toEqual([`k:prep:ev1:1@${at(24, 14)}`]);
+    expect(localStorage.getItem("work.digest.dismissed")).toBeNull();
+  });
+});
+
 describe("an interrupt's toast", () => {
   const meeting = () => tell({ key: "prep:ev1", sector: "purdue", workspaceId: "ws-purdue", title: "Budget review starts at 2:00 PM", detail: "With Dana Reyes", how: "now", toldAt: at(24, 10), by: at(24, 14), open: { view: "agenda", workspaceId: "ws-purdue", at: "ev1" } });
 
@@ -384,7 +451,7 @@ describe("an interrupt's toast", () => {
     await act(async () => push(w(), "box", { gone: row.id }));
     await waitFor(() => expect(shown()).toEqual([]));
     expect(bridge.close).toHaveBeenCalledWith("work-now:k:prep:ev1");
-    expect(localStorage.getItem("work.digest.dismissed")).toBeNull();
+    expect(localStorage.getItem("work.digest.closed")).toBeNull();
   });
 
   it("a thread opens the thread, a held item the Outbox, a settings section Settings", async () => {

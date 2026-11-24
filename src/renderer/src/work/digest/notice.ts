@@ -59,11 +59,50 @@ export function onlyToday(days: readonly Pick<MergedDay, "day">[], now: number):
 }
 
 /**
- * What a closed, opened or heard interrupt is kept under: the thing told, its key and its clock, never when a host
- * told it. Two hosts' copies of one meeting are one telling, so closing it on one closes it on the other and it
- * sounds once; a deadline brought forward is a new telling, and a send that fails again is a new key (its attempt).
+ * The rule for when two tellings are the same (docs/agents/work-digest.md "Telling him on the desktop"): a telling
+ * under a key he closed, opened or heard is the same one unless its clock moved earlier, or it has a clock where
+ * the one he closed had none (the host's own `retold` rule); a key no host holds any more is forgotten, so the
+ * next telling under it is new. So two hosts' copies of one meeting are one telling, a failure that turns a day old
+ * and loses its clock is still the one he closed, a deadline brought forward is new, and a message after he read the
+ * conversation (its tell withdrawn) is new.
+ *
+ * A mark is the key and the clock he closed it at (`tellingOf`), never when a host told it.
  */
 export const tellingOf = (row: Pick<TellRow, "key" | "host" | "id" | "by">): string => `${nameOf(row)}@${row.by ?? ""}`;
+
+/** A mark's key and clock; the key may hold "@" itself (a failed send's attempt), the clock never does. */
+function markOf(mark: string): { name: string; by: number | null } {
+  const at = mark.lastIndexOf("@");
+  const by = at < 0 ? "" : mark.slice(at + 1);
+  return { name: at < 0 ? mark : mark.slice(0, at), by: by === "" ? null : Number(by) };
+}
+
+/** Whether `row` is a telling he already closed, opened or heard, by the rule above. */
+export function marked(marks: ReadonlySet<string>, row: Pick<TellRow, "key" | "host" | "id" | "by">): boolean {
+  const name = nameOf(row);
+  for (const mark of marks) {
+    const m = markOf(mark);
+    if (m.name !== name) continue;
+    const newer = row.by != null && (m.by == null || row.by < m.by);
+    if (!newer) return true;
+  }
+  return false;
+}
+
+/** The marks of keys some host still holds; null when nothing was forgotten. A key no host holds was withdrawn everywhere, so its next telling is new. */
+export function forgetGone(marks: ReadonlySet<string>, rows: readonly Pick<TellRow, "key" | "host" | "id">[]): Set<string> | null {
+  const held = new Set(rows.map(nameOf));
+  const kept = [...marks].filter((mark) => held.has(markOf(mark).name));
+  return kept.length === marks.size ? null : new Set(kept);
+}
+
+/**
+ * Marks saved by the releases before this one, in `work.digest.dismissed`: "key@toldAt" (before round 3) and
+ * "key@by" (round 3). Each carries forward as this release's mark for the live row it names; the rest are dropped.
+ */
+export function carryLegacy(legacy: ReadonlySet<string>, rows: readonly TellRow[]): string[] {
+  return rows.flatMap((row) => (row.toldAt !== null && (legacy.has(`${nameOf(row)}@${row.toldAt}`) || legacy.has(tellingOf(row))) ? [tellingOf(row)] : []));
+}
 
 /** Two 32-bit FNV-1a passes with different seeds: a fingerprint, not a secret. */
 function fingerprint(text: string): string {
@@ -89,7 +128,7 @@ export function tellingsOf(rows: readonly Pick<TellRow, "key" | "host" | "id" | 
 
 /** The interrupts still worth a toast: told at once, within a day, and not dismissed or opened in this window. Oldest first. */
 export function openInterrupts(view: Pick<DigestView, "rows">, dismissed: ReadonlySet<string>, now: number): TellRow[] {
-  return view.rows.filter((r) => r.toldAt !== null && now - r.toldAt < NOW_KEEP_MS && !dismissed.has(tellingOf(r))).sort((a, b) => a.toldAt! - b.toldAt!);
+  return view.rows.filter((r) => r.toldAt !== null && now - r.toldAt < NOW_KEEP_MS && !marked(dismissed, r)).sort((a, b) => a.toldAt! - b.toldAt!);
 }
 
 export interface NowToast {

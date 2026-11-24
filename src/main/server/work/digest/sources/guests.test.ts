@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import type { FindEntry } from '@shared/work/docFind'
 import type { Tell } from '@shared/work/tell'
 import { guests, guestTitle } from './guests'
-import type { SourceEnv, SourceRead } from './index'
+import { Sources, type SourceEnv, type SourceRead } from './index'
 
 const NOW = Date.parse('2026-11-23T08:00:00Z')
 const HOUR = 3_600_000
@@ -88,7 +88,7 @@ describe('the guests source', () => {
     const monday = { ...envOf({ 'ws-unify': new Error('LifeOS timed out'), 'ws-ref': [] }, NOW - 24 * HOUR), kept: store }
     const first = (await guests.read(monday, NOW)) as SourceRead
     expect(first.tells).toEqual([])
-    first.done!()
+    first.done!(() => true)
     // Ref moves to its read; Unify stays where it read from
     expect(Object.fromEntries(kept)).toEqual({ 'guests.since:ws-unify': String(NOW - 24 * HOUR), 'guests.since:ws-ref': String(NOW) })
     // Tuesday 8:00: the day was made Monday, after the guest's edit; Unify's list answers now
@@ -96,7 +96,7 @@ describe('the guests source', () => {
     const second = (await guests.read(tuesday, NOW + 24 * HOUR)) as SourceRead
     // Unify looks back to Monday's day before; Ref only to its own read on Monday
     expect(second.tells.map((t) => t.title)).toEqual(['A guest edited Pricing notes'])
-    second.done!()
+    second.done!(() => true)
     expect(kept.get('guests.since:ws-unify')).toBe(String(NOW + 24 * HOUR))
   })
   it("reads LifeOS's error beside a list as a read that was not whole: the cutoff stays, so the edit is told when LifeOS answers", async () => {
@@ -104,7 +104,7 @@ describe('the guests source', () => {
     const store = { get: (k: string) => kept.get(k) ?? null, set: (k: string, v: string) => void kept.set(k, v) }
     // Docs catches the LifeOS failure and answers it beside an empty, "complete" list
     const monday = { ...envOf({ 'ws-unify': { entries: [], complete: true, lifeos: 'LifeOS timed out' }, 'ws-ref': [] }, NOW - 24 * HOUR), kept: store }
-    ;((await guests.read(monday, NOW)) as SourceRead).done!()
+    ;((await guests.read(monday, NOW)) as SourceRead).done!(() => true)
     expect(kept.get('guests.since:ws-unify')).toBe(String(NOW - 24 * HOUR))
     const tuesday = { ...envOf({ 'ws-unify': [entry('d1', 'Pricing notes', NOW - 2 * HOUR, 'guest')], 'ws-ref': [] }, NOW), kept: store }
     expect((await tellsOf(tuesday, NOW + 24 * HOUR)).map((t) => t.title)).toEqual(['A guest edited Pricing notes'])
@@ -115,10 +115,38 @@ describe('the guests source', () => {
     const edit = entry('d1', 'Pricing notes', NOW - 2 * HOUR, 'guest')
     const partial = { ...envOf({ 'ws-unify': { entries: [edit], complete: false }, 'ws-ref': [] }, NOW - 24 * HOUR), day: '2026-11-23', kept: store }
     const first = (await guests.read(partial, NOW)) as SourceRead
-    first.done!()
+    first.done!(() => true)
     const whole = { ...envOf({ 'ws-unify': [edit], 'ws-ref': [] }, NOW), day: '2026-11-24', kept: store }
     const second = (await guests.read(whole, NOW + 24 * HOUR)) as SourceRead
     expect(second.tells.map((t) => t.key)).toEqual(first.tells.map((t) => t.key))
     expect(first.tells).toHaveLength(1)
+  })
+  it("moves a job's cutoff only past what the ledger kept: a tell that did not reach it is told at the next read", async () => {
+    const kept = new Map<string, string>()
+    const edit = entry('d1', 'Pricing notes', NOW - 2 * HOUR, 'guest')
+    const docs = { id: 'docs', handle: async () => ({ handled: true, result: { entries: [edit], projects: [], hits: [], complete: true } }) }
+    const ctx = { db: { prepare: () => ({ all: () => [WORKSPACES[0]] }) }, enabled: () => true, log: () => {}, tell: Object.assign(() => {}, { only: () => {} }) }
+    const told: string[] = []
+    let ledgerUp = false
+    const frame = (since: number) =>
+      new Sources({
+        ctx: ctx as never,
+        modules: () => [docs] as never,
+        sources: [guests],
+        day: () => '2026-11-23',
+        zone: () => 'America/Chicago',
+        since: () => since,
+        // the settings store works throughout
+        kept: { get: (k) => kept.get(k) ?? null, set: (k, v) => void kept.set(k, v) },
+        // the ledger's insert fails the first time
+        tell: (t) => (ledgerUp ? (told.push(t.title), true) : false)
+      })
+    await frame(NOW - 24 * HOUR).beforeDay(NOW)
+    expect(kept.get('guests.since:ws-unify')).toBe(String(NOW - 24 * HOUR))
+    // the next digest: the day was made at NOW, after the edit; the ledger takes it now
+    ledgerUp = true
+    await frame(NOW).beforeDay(NOW + 24 * HOUR)
+    expect(told).toEqual(['A guest edited Pricing notes'])
+    expect(kept.get('guests.since:ws-unify')).toBe(String(NOW + 24 * HOUR))
   })
 })

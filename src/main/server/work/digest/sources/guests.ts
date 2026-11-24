@@ -32,12 +32,16 @@ export const guests: Source = {
     const tells: Tell[] = []
     /** each job's cutoff once its tells are kept: the read's time after a whole read, else the one it read from */
     const next = new Map<string, number>()
+    const from = new Map<string, number>()
+    const keys = new Map<string, string[]>()
     for (const ws of env.workspaces()) {
       // Each job from its own last whole read: a job whose read failed today looks back to then tomorrow, so an edit
       // made while its list could not be read is told late rather than never.
       const kept = Number(env.kept?.get(keptKey(ws.id)) ?? NaN)
       const since = Number.isFinite(kept) ? kept : fallback
       next.set(ws.id, since)
+      from.set(ws.id, since)
+      keys.set(ws.id, [])
       let found: FindAnswer
       try {
         found = await env.call<FindAnswer>('work.docs.find', { workspaceId: ws.id, refresh: true })
@@ -51,10 +55,18 @@ export const guests: Source = {
         if (entry.lastBy !== 'guest' || entry.editedAt <= since) continue
         // Keyed by the document and its edit: the same edit read again, by a partial read today and a whole one
         // tomorrow, or in the seconds between the digest's time and LifeOS's answer, is the same row, never news twice.
-        tells.push({ kind: 'docs.guest', workspaceId: ws.id, title: guestTitle(entry.title), key: `guest-edit:${entry.key}:${entry.editedAt}`, open: { view: 'docs', workspaceId: ws.id, at: entry.key } })
+        const key = `guest-edit:${entry.key}:${entry.editedAt}`
+        keys.get(ws.id)!.push(key)
+        tells.push({ kind: 'docs.guest', workspaceId: ws.id, title: guestTitle(entry.title), key, open: { view: 'docs', workspaceId: ws.id, at: entry.key } })
       }
     }
-    return { tells, done: () => next.forEach((at, id) => env.kept?.set(keptKey(id), String(at))) }
+    return {
+      tells,
+      // A job whose every tell the ledger kept moves on; one with a tell it did not keep stays where it read from,
+      // written down so a later digest's time does not stand in for it.
+      done: (accepted) =>
+        next.forEach((at, id) => env.kept?.set(keptKey(id), String(keys.get(id)!.every(accepted) ? at : from.get(id)!)))
+    }
   }
 }
 

@@ -48,8 +48,11 @@ export interface SourceRead {
   tells: Tell[]
   /** the keys under `prefix` that are still true; absent: the tells' own keys */
   keep?: string[]
-  /** run once its tells are kept, and only while Work is on: a cutoff moves past what was told, never past what was not */
-  done?(): void
+  /**
+   * Run after its tells were handed to the ledger, while Work is on: `accepted` answers which keys the ledger kept,
+   * so a cutoff moves past what was kept and never past a tell that did not reach it.
+   */
+  done?(accepted: (key: string) => boolean): void
 }
 
 export interface Source {
@@ -76,6 +79,8 @@ export interface SourcesDeps {
   zone(): string
   since(): number
   kept?: Kept
+  /** Tells one, answering whether the ledger kept it (ctx.ts); absent: `ctx.tell`, taken as kept. */
+  tell?(t: Tell): boolean
 }
 
 export class Sources {
@@ -129,7 +134,11 @@ export class Sources {
       const pinned = this.zones(source)
       const read = await source.read({ ...env, zoneOf: (key) => pinned[key] ?? env.zone }, now)
       const { tells, keep, done } = Array.isArray(read) ? { tells: read, keep: undefined, done: undefined } : read
-      for (const tell of tells) ctx.tell(tell)
+      const accepted = new Set<string>()
+      for (const tell of tells) {
+        const kept = this.deps.tell ? this.deps.tell(tell) : (ctx.tell(tell), true)
+        if (kept && tell.key) accepted.add(tell.key)
+      }
       if (source.prefix) ctx.tell.only(source.prefix, keep ?? tells.flatMap((t) => (t.key ? [t.key] : [])))
       if (this.deps.kept && ctx.enabled()) {
         // Each key told keeps the zone it was first told in; the newest ZONES_MAX are remembered.
@@ -138,7 +147,7 @@ export class Sources {
         const entries = Object.entries(next)
         this.deps.kept.set(`zones:${source.id}`, JSON.stringify(Object.fromEntries(entries.slice(-ZONES_MAX))))
       }
-      if (done && ctx.enabled()) done()
+      if (done && ctx.enabled()) done((key) => accepted.has(key))
       this.failing.delete(source.id)
     } catch (err) {
       if (!this.failing.has(source.id)) ctx.log(`digest: the ${source.id} source was not read: ${errorText(err)}`)

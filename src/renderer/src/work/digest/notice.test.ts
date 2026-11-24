@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { TellRow } from "@shared/work/tell";
-import { digestNotice, emptyLine, FOLD_PAST, listSections, nameOf, nowToasts, onlyToday, openInterrupts, refusedLine, rowWhen, systemNotices, tellingOf, tellingsOf, unansweredLine } from "./notice";
+import { carryLegacy, digestNotice, emptyLine, FOLD_PAST, forgetGone, listSections, marked, nameOf, nowToasts, onlyToday, openInterrupts, refusedLine, rowWhen, systemNotices, tellingOf, tellingsOf, unansweredLine } from "./notice";
 import type { MergedDay } from "./store";
 
 /** What the desktop shows of the digest, as rules over made-up rows. */
@@ -84,6 +84,33 @@ describe("an interrupt", () => {
     const invite = row({ key: "held:lifeos:calendarOps:op1", how: "now", toldAt: at(23, 9), by: at(23, 15) });
     const sooner = { ...invite, toldAt: at(23, 11), by: at(23, 14) };
     expect(openInterrupts({ rows: [sooner] }, new Set([tellingOf(invite)]), now)).toHaveLength(1);
+  });
+  it("is the same telling unless its clock moved earlier, or it has one where the closed one had none", () => {
+    const told = row({ key: "unsent:lifeos:outbox:ob1", how: "now", toldAt: at(23, 10), by: at(23, 10) });
+    const marks = new Set([tellingOf(told)]);
+    // a day old, its clock dropped: the same one
+    expect(marked(marks, { ...told, by: undefined })).toBe(true);
+    // a later clock: the same one (the host does not tell it again either)
+    expect(marked(marks, { ...told, by: at(23, 12) })).toBe(true);
+    // an earlier clock: new
+    expect(marked(marks, { ...told, by: at(23, 9) })).toBe(false);
+    // closed with no clock, told with one: new
+    expect(marked(new Set([tellingOf({ ...told, by: undefined })]), told)).toBe(false);
+  });
+  it("forgets a key no host holds any more, so the next telling under it is new; a key some host holds keeps its mark", () => {
+    const first = row({ key: "messages:c1", how: "now", toldAt: at(23, 10) });
+    const marks = new Set([tellingOf(first), tellingOf(row({ key: "prep:ev1:1", by: at(23, 14) }))]);
+    const kept = forgetGone(marks, [row({ key: "prep:ev1:1", host: "mac" })])!;
+    expect([...kept]).toEqual([`k:prep:ev1:1@${at(23, 14)}`]);
+    expect(marked(kept, { ...first, id: "again", toldAt: at(23, 11) })).toBe(false);
+    expect(forgetGone(kept, [row({ key: "prep:ev1:1" })])).toBeNull();
+  });
+  it("carries forward a mark the release before saved, for the live row it names, in either old form", () => {
+    const meeting = row({ key: "prep:ev1:1", how: "now", toldAt: at(23, 9), by: at(23, 14) });
+    const message = row({ key: "messages:c1", how: "now", toldAt: at(23, 11) });
+    // before round 3: key@toldAt; round 3: key@by. A new telling under the message's key (another toldAt) is not carried.
+    expect(carryLegacy(new Set([`k:prep:ev1:1@${at(23, 9)}`, `k:messages:c1@${at(23, 8)}`]), [meeting, message])).toEqual([tellingOf(meeting)]);
+    expect(carryLegacy(new Set([`k:prep:ev1:1@${at(23, 14)}`]), [meeting])).toEqual([tellingOf(meeting)]);
   });
   it("closed on one host's copy, the same meeting told by another host stays closed, and is heard once", () => {
     const box = row({ key: "prep:ev1:1", host: "box", how: "now", toldAt: at(23, 10), by: at(23, 14) });

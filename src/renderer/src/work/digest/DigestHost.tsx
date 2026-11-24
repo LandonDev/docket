@@ -14,7 +14,7 @@ import { project } from "../../stores/project";
 import { shell } from "../../stores/shell";
 import { wantOutboxItem } from "../outbox/store";
 import { DigestSheet } from "./DigestSheet";
-import { DIGEST_TOAST, digestNotice, nowToasts, onlyToday, openInterrupts, systemNotices, tellingOf, type NowToast } from "./notice";
+import { carryLegacy, DIGEST_TOAST, digestNotice, forgetGone, marked, nowToasts, onlyToday, openInterrupts, systemNotices, tellingOf, type NowToast } from "./notice";
 import { go, routeOf, type Routes } from "./open";
 import { todayShowsAll } from "./today";
 import { markSeen, openDigestSheet, setTellOpener, useDigest, useDigestSheetOpen } from "./store";
@@ -31,13 +31,16 @@ import { markSeen, openDigestSheet, setTellOpener, useDigest, useDigestSheetOpen
  *                  when the thing is done, opened or closed.
  */
 
-const DISMISSED_KEY = "work.digest.dismissed";
+/** His closed and opened interrupts, as marks (notice.ts `tellingOf`, read by `marked`). */
+const DISMISSED_KEY = "work.digest.closed";
+/** Where the releases before this one kept them, in their own forms: carried forward once rows are read (`carryLegacy`). */
+const LEGACY_KEY = "work.digest.dismissed";
 /** A thing told longer than this before the window opened was heard already: its notice is shown without a sound. */
 const HEARD_BEFORE_MS = 60_000;
 
-function readDismissed(): Set<string> {
+function readDismissed(key = DISMISSED_KEY): Set<string> {
   try {
-    const raw = JSON.parse(localStorage.getItem(DISMISSED_KEY) ?? "[]") as unknown;
+    const raw = JSON.parse(localStorage.getItem(key) ?? "[]") as unknown;
     return new Set(Array.isArray(raw) ? raw.filter((k): k is string => typeof k === "string") : []);
   } catch {
     return new Set();
@@ -66,7 +69,10 @@ export function DigestHost() {
   const view = useDigest();
   const sheetOpen = useDigestSheetOpen();
   const workspaces = useWorkspaces();
-  const [dismissed, setDismissed] = useState(readDismissed);
+  const [dismissed, setDismissed] = useState(() => readDismissed());
+  const [legacy, setLegacy] = useState(() => readDismissed(LEGACY_KEY));
+  // What he has heard here, as marks: a telling sounds once (`marked`).
+  const heard = useRef(new Set<string>());
   // The minute hand: an interrupt a day old leaves on its own.
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
@@ -77,6 +83,7 @@ export function DigestHost() {
   useEffect(() => {
     const onStorage = (e: StorageEvent): void => {
       if (e.key === DISMISSED_KEY) setDismissed(readDismissed());
+      if (e.key === LEGACY_KEY) setLegacy(readDismissed(LEGACY_KEY));
     };
     window.addEventListener("storage", onStorage);
     return () => window.removeEventListener("storage", onStorage);
@@ -178,7 +185,33 @@ export function DigestHost() {
     return () => setTellOpener(null);
   }, [openRow]);
 
-  const toasts = useMemo(() => nowToasts(openInterrupts(view, dismissed, now)), [view, dismissed, now]);
+  // Marks the release before this one saved count for the live rows they name, from the first paint (`carryLegacy`).
+  const closed = useMemo(() => (legacy.size ? new Set([...dismissed, ...carryLegacy(legacy, view.rows)]) : dismissed), [dismissed, legacy, view]);
+  // Once every Work host has answered whole: the old marks are kept in this release's form, and a key no host holds
+  // any more (withdrawn everywhere, not a link that dropped: a dropped link keeps its rows) forgets its marks, so the
+  // next telling under it is new.
+  useEffect(() => {
+    if (!view.loaded || view.errors.length > 0) return;
+    if (legacy.size) {
+      writeDismissed(closed);
+      try {
+        localStorage.removeItem(LEGACY_KEY);
+      } catch {
+        // nothing kept, nothing to drop
+      }
+      setLegacy(new Set());
+      setDismissed(new Set(closed));
+      return;
+    }
+    const kept = forgetGone(dismissed, view.rows);
+    if (kept) {
+      writeDismissed(kept);
+      setDismissed(kept);
+    }
+    const heardKept = forgetGone(heard.current, view.rows);
+    if (heardKept) heard.current = heardKept;
+  }, [view, legacy, closed, dismissed]);
+  const toasts = useMemo(() => nowToasts(openInterrupts(view, closed, now)), [view, closed, now]);
   const openToast = useCallback(
     (toast: NowToast) => {
       if (toast.rows.length === 1) return openRow(toast.rows[0]!);
@@ -238,9 +271,8 @@ export function DigestHost() {
   // The same two things as system notifications, for a person looking at another app (src/main/notice.ts).
   // A telling sounds once, when its notice is first asked; what was told before this window opened is not news to
   // the ear. So a fold that loses a thing, or breaks up into its things, is shown again without a sound.
-  const heard = useRef(new Set<string>());
   const openedAt = useRef(Date.now() - HEARD_BEFORE_MS);
-  const system = useMemo(() => systemNotices(digest, toasts, (row) => heard.current.has(tellingOf(row)) || (row.toldAt ?? 0) < openedAt.current), [digest, toasts]);
+  const system = useMemo(() => systemNotices(digest, toasts, (row) => marked(heard.current, row) || (row.toldAt ?? 0) < openedAt.current), [digest, toasts]);
   const asked = useRef(new Map<string, string>());
   useEffect(() => {
     // Its words: asked again when either line changes, so the notice says what the toast says; and when what it tells
@@ -282,6 +314,7 @@ export function DigestHost() {
 export function resetDismissed(): void {
   try {
     localStorage.removeItem(DISMISSED_KEY);
+    localStorage.removeItem(LEGACY_KEY);
   } catch {
     // no store, nothing kept
   }

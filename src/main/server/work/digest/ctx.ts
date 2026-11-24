@@ -514,6 +514,15 @@ export const tellPart: CtxPart<'tell'> = (ctx, deps) => {
       kept: {
         get: (key) => made.store.setting(`source:${key}`),
         set: (key, value) => made.store.setSetting(`source:${key}`, value)
+      },
+      // Whether the ledger kept it: a source's cutoff moves only past what was kept (`SourceRead.done`).
+      tell: (t) => {
+        try {
+          return made.tell(t) != null
+        } catch (err) {
+          ctx.log(`digest: a source's tell was not kept: ${errorText(err)}`)
+          return false
+        }
       }
     })
     made.beats.push((now) => sources.beat(now))
