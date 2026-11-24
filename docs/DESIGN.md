@@ -1868,8 +1868,9 @@ Around the canvas:
   have not reached MacBook.", Cancel, Discard and Keep trying (Keep Both in
   its place over a file that changed there; Discard alone where it was
   refused); at the right ⋯ and Ask (secondary,
-  the Ask glyph; flat on `muted` while its chat is open; its glyph alone under 480px of header, so the name and
-  its line keep room beside two presses). The name is a press that renames it in place. ⋯ holds
+  the Ask glyph; flat on `muted` while its chat is open; its glyph alone under 480px of header, and there the line's second
+  press is the first row of ⋯, so the name and its line keep room beside the first; a line cut even so has its whole
+  words in a tooltip). The name is a press that renames it in place. ⋯ holds
   its row's verbs (one greyed says why in its tooltip: on a computer this window reaches only through another host,
   "Purdue PC is reached through the box. Change its files on Purdue PC itself."), then Download, Save As… (a
   document) and Save as Template… (a file the template shelf keeps), then Full Window and Close Tab. Full Window fills
@@ -1910,7 +1911,11 @@ Around the canvas:
   back to 360). Its head is 32px, level with the kind's bar: the title at
   13px medium, then Open in its own tab (once it is a thread) and Close,
   24px ghost glyphs. Under it the transcript and the composer; the
-  transcript's skeleton until the thread is known. Where the tab's body
+  transcript's skeleton until the thread is known, and a failed first read
+  its Retry line alone, the skeleton back when a retry starts. A host out
+  of reach is said once, in the connection line over the box; the field
+  keeps its own placeholder and send waits (a code thread's field says it
+  too). Where the tab's body
   cannot keep the file at 440px beside it, the dock lies over the whole
   body instead, its head and Close where they were. Under 900px of view
   the sidebar folds itself while the dock is open and comes back when it

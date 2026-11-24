@@ -206,6 +206,8 @@ export const ThreadComposer = memo(function ThreadComposer({
     <Composer
       enabled={visible}
       blocked={block.text}
+      // In a Work thread the connection line over the box says why once; a code thread's field still says it too.
+      blockedSaid={!!work && !!block.degraded}
       focused={focused}
       hotkeys={hotkeys}
       shell={shell}

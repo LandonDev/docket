@@ -184,7 +184,8 @@ function DockChat({ sessionId, environmentId, focus, top }: { sessionId: string;
     return (
       <div className="flex min-h-0 flex-1 flex-col" data-transcript-loading={session?.load?.phase ?? "loading"}>
         {session?.load ? <LoadLine name={block.name} load={session.load} onRetry={() => sessionStore.retryLoad(sessionId)} /> : null}
-        <Bones />
+        {/* A failed read is its Retry line alone: the bones say a load is under way, and come back when a retry starts. */}
+        {session?.load?.phase === "failed" ? null : <Bones />}
       </div>
     );
   return <DockThreadView session={session} focus={focus} top={top} />;

@@ -160,6 +160,8 @@ export function CanvasPane({
   kinds = CANVAS,
   tabbed = false,
   historyOpen = false,
+  barLead,
+  barEnd,
 }: {
   item: CanvasItem;
   environmentId: string;
@@ -171,6 +173,9 @@ export function CanvasPane({
   tabbed?: boolean;
   /** The item's History shows beside it already (a Files tab): its bar offers no second way in. */
   historyOpen?: boolean;
+  /** The bar's first and last parts, where the pane is a second file beside a tab's own (SideFile): its head rides in the bar. */
+  barLead?: ReactNode;
+  barEnd?: ReactNode;
 }) {
   const def = kindDefOf(kinds, item.kind);
   const module = useKindModule(def.chunk);
@@ -198,6 +203,8 @@ export function CanvasPane({
         onDownload={fetched && !waiting ? () => downloadItem(environmentId, item) : undefined}
         onKeep={fetched && !waiting && item.workspaceId ? () => keepItem(environmentId, item.id) : undefined}
         onHistory={def.history && !historyOpen && module && !fetched && feeds.ready !== false ? shell.openHistory : undefined}
+        lead={barLead}
+        end={barEnd}
       />
       {feeds.status ? <StateLine line={feeds.status} /> : null}
       <div data-canvas-body className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-auto">

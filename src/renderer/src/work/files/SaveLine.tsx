@@ -1,4 +1,6 @@
 import type { ReactNode } from "react";
+import type { MenuRow } from "../../chrome/menuRows";
+import { TruncateTip } from "../../components/tip";
 import { BusyLabel, Button } from "../../components/ui/button";
 import type { SavedAction } from "../canvas/kind";
 import { savedNeedsHim, savedWords, type HeaderLine } from "./fileText";
@@ -25,22 +27,40 @@ export function SaveLine({ line, where, onShowFolder }: { line: HeaderLine; wher
       </>
     );
   }
+  // Cut in a narrow header, the whole line is in its tooltip: the line that needs him is never lost to an ellipsis.
   return (
-    <p data-files-save-line={line.state} {...(needs ? { role: "status" } : {})} className={`min-w-0 truncate text-xs leading-4 ${needs ? "text-foreground" : "text-muted-foreground"}`}>
-      {text}
-    </p>
+    <TruncateTip text={words}>
+      <p data-files-save-line={line.state} {...(needs ? { role: "status" } : {})} className={`min-w-0 truncate text-xs leading-4 ${needs ? "text-foreground" : "text-muted-foreground"}`}>
+        {text}
+      </p>
+    </TruncateTip>
   );
 }
 
-/** The line's presses, at the header's end before the file's menu: at most two, the first the one he most likely wants. */
-export function SaveActions({ actions, busy, onRun }: { actions: readonly SavedAction[]; busy: string | null; onRun(action: SavedAction): void }) {
+/** Narrower than this, a file's header keeps the line's first press alone and its second is a row of ⋯ (`tuckedRows`). */
+export const HEAD_NARROW = 480;
+
+/**
+ * The line's presses, at the header's end before the file's menu: at most two, the first the one he most likely
+ * wants. Under 480px of header the second is drawn in ⋯ instead, so the name and the line keep room to be read.
+ */
+export function SaveActions({ actions, busy, onRun, tuck = true }: { actions: readonly SavedAction[]; busy: string | null; onRun(action: SavedAction): void; /** false where no file header holds them (a side file's bar): both presses always drawn */ tuck?: boolean }) {
   return (
     <>
       {actions.slice(0, 2).map((action, index) => (
-        <Button key={action.id} variant={index === 0 ? "secondary" : "ghost"} size="xs" className="shrink-0" disabled={busy !== null} onClick={() => onRun(action)}>
+        <Button key={action.id} variant={index === 0 ? "secondary" : "ghost"} size="xs" className={index === 0 || !tuck ? "shrink-0" : "hidden shrink-0 @[480px]/file-head:inline-flex"} disabled={busy !== null} onClick={() => onRun(action)}>
           <BusyLabel busy={busy === action.id} label={action.label} />
         </Button>
       ))}
     </>
   );
+}
+
+/** The id of the ⋯ row that stands for the line's second press in a narrow header. */
+export const TUCKED = "save-line:second";
+
+/** The file's menu with the line's second press first, where the header is too narrow to draw it. */
+export function tuckedRows(rows: readonly MenuRow[], actions: readonly SavedAction[] | undefined, narrow: boolean, busy: string | null): MenuRow[] {
+  const second = narrow ? actions?.[1] : undefined;
+  return second ? [{ kind: "item", id: TUCKED, label: second.label, disabled: busy !== null }, { kind: "sep" }, ...rows] : [...rows];
 }

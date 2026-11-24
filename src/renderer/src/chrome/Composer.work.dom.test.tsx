@@ -33,9 +33,10 @@ const row = (work: boolean) =>
     />,
   );
 
-const field = (work: boolean) =>
+const field = (work: boolean, block: { blocked?: string; blockedSaid?: boolean } = {}) =>
   render(
     <Composer
+      {...block}
       focused={false}
       harness="claude"
       model="claude-opus-5-5"
@@ -73,5 +74,14 @@ describe("the composer for a Work thread", () => {
     expect(work).toContain("Ask, / for skills, @ for references…");
     expect(work).not.toContain("build");
     expect(code).toContain("Ask, build, / for skills, @ for references…");
+  });
+
+  it("a block said in the line over the box leaves the field its placeholder; unsaid, the field says it, as for code", () => {
+    const said = field(true, { blocked: "The box is offline", blockedSaid: true })!.outerHTML;
+    cleanup();
+    const unsaid = field(false, { blocked: "The box is offline" })!.outerHTML;
+    expect(said).toContain("Ask, / for skills, @ for references…");
+    expect(said).not.toContain("The box is offline");
+    expect(unsaid).toContain("The box is offline");
   });
 });

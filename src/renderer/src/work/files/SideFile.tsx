@@ -16,8 +16,9 @@ import { SaveActions, SaveLine } from "./SaveLine";
 
 /**
  * The second file of a tab (docs/DESIGN.md "The Files place", two files side by side): Open to the Side puts it at
- * the right of the tab's own file with a hairline sash between. It has a 32px head of its own (its kind's glyph,
- * its name, where saving stands, and its own close), then its kind's bar and body as in a tab. It is in no tab of
+ * the right of the tab's own file with a hairline sash between. Its kind's glyph, its name and where saving stands
+ * lead its kind's bar and its own close ends it (`KindBar` lead and end), so it is one 32px row level with the bar
+ * of the file beside it; then its body as in a tab. It is in no tab of
  * its own, and closing it leaves the tab as it was.
  */
 
@@ -75,21 +76,27 @@ export function SidePane({
       .finally(() => setRunning(null));
   };
   const name = side.name || item?.title || "File";
+  // Its glyph, name and save line lead its kind's bar and its close ends it: one 32px row, level with the bar of the
+  // file beside it. Until the item comes, the same row stands alone over the bones.
+  const lead = (
+    <>
+      {glyph ?? <KindGlyph kind={kindOfEntry(name).kind} />}
+      <TruncateTip text={name}>
+        <h3 className="min-w-0 shrink truncate text-[13px] leading-5 font-medium text-foreground">{name}</h3>
+      </TruncateTip>
+      {feeds.saved ? <SaveLine line={feeds.saved} where={null} /> : null}
+      {feeds.saved?.actions?.length ? <SaveActions actions={feeds.saved.actions} busy={running} onRun={run} tuck={false} /> : null}
+    </>
+  );
+  const close = (
+    <Tip label="Close">
+      <Button variant="ghost" size="icon-xs" data-files-side-close aria-label={`Close ${name}`} className="-me-1 shrink-0 text-muted-foreground" onClick={onClose}>
+        <X />
+      </Button>
+    </Tip>
+  );
   return (
     <section data-files-side={side.key} aria-label={name} className={`flex min-h-0 min-w-0 flex-col bg-background ${width ? "shrink-0" : "flex-1"}`} style={width ? { width } : undefined}>
-      <header className="flex h-8 shrink-0 items-center gap-2 border-b border-border ps-3 pe-1">
-        {glyph ?? <KindGlyph kind={kindOfEntry(name).kind} />}
-        <TruncateTip text={name}>
-          <h3 className="min-w-0 shrink truncate text-[13px] leading-5 font-medium text-foreground">{name}</h3>
-        </TruncateTip>
-        <div className="min-w-0 flex-1">{feeds.saved ? <SaveLine line={feeds.saved} where={null} /> : null}</div>
-        {feeds.saved?.actions?.length ? <SaveActions actions={feeds.saved.actions} busy={running} onRun={run} /> : null}
-        <Tip label="Close">
-          <Button variant="ghost" size="icon-xs" data-files-side-close aria-label={`Close ${name}`} className="shrink-0 text-muted-foreground" onClick={onClose}>
-            <X />
-          </Button>
-        </Tip>
-      </header>
       {item ? (
         <CanvasPane
           key={item.id}
@@ -97,6 +104,8 @@ export function SidePane({
           environmentId={workspace.environmentId}
           feeds={feeds}
           shell={shell}
+          barLead={lead}
+          barEnd={close}
           {...(kinds ? { kinds } : {})}
           onAsk={(selection: CanvasSelection) => {
             shell.selection(null);
@@ -105,7 +114,14 @@ export function SidePane({
           }}
         />
       ) : (
-        <ItemSkeleton />
+        <>
+          <header className="flex h-8 shrink-0 items-center gap-2 border-b border-border ps-3 pe-2">
+            {lead}
+            <span className="flex-1" />
+            {close}
+          </header>
+          <ItemSkeleton />
+        </>
       )}
     </section>
   );

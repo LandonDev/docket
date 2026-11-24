@@ -89,9 +89,15 @@ export function KindBar({
   onHistory,
   onDownload,
   onKeep,
+  lead,
+  end,
 }: {
   feeds: Feeds;
   tools?: ReactNode;
+  /** what stands first in the bar, before the people: a second file's glyph, name and save line (SideFile), so its head and its bar are one row */
+  lead?: ReactNode;
+  /** what stands last, after the stepper: that file's close */
+  end?: ReactNode;
   onHistory?: () => void;
   onDownload?: () => Promise<void>;
   /** Save to workspace: a copy in the workspace's folder; answers the name it took there. */
@@ -99,7 +105,7 @@ export function KindBar({
 }) {
   const slot = useRef<HTMLDivElement | null>(null);
   const tight = useTight(slot, !!tools);
-  const others = barShown(feeds, false, !!onHistory || !!onDownload || !!onKeep);
+  const others = !!lead || !!end || barShown(feeds, false, !!onHistory || !!onDownload || !!onKeep);
   if (!others && !tools) return null;
   const review = feeds.review && feeds.review.count > 0 ? feeds.review : null;
   return (
@@ -108,6 +114,11 @@ export function KindBar({
         data-canvas-bar
         className={`@container/bar flex h-8 min-w-0 shrink-0 items-center gap-2 overflow-hidden border-b border-border bg-background pr-2 pl-3 text-xs text-muted-foreground ${others ? "" : BAR_TOOLS_ONLY}`}
       >
+        {lead ? (
+          <div data-canvas-bar-lead className="flex min-w-0 shrink-[2] items-center gap-2">
+            {lead}
+          </div>
+        ) : null}
         <People people={feeds.presence} />
         {feeds.mode ? <Mode mode={feeds.mode} /> : null}
         {/* The kind's tools take the free room, and are clipped to it: a tool given `ms-auto` sits at the end, before History and the stepper. */}
@@ -122,6 +133,7 @@ export function KindBar({
           {onKeep ? <KeepButton run={onKeep} /> : null}
           {onHistory ? <HistoryButton onClick={onHistory} /> : null}
           {review ? <Stepper review={review} /> : feeds.written ? <Written line={feeds.written} /> : null}
+          {end}
         </div>
       </div>
     </TooltipProvider>

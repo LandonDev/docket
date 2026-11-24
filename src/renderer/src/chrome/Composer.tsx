@@ -166,6 +166,8 @@ type Props = {
   topSlot?: ReactNode
   /** Why a message cannot go right now (the thread's host is unreachable): shown in place of the placeholder, send waits. */
   blocked?: string | null
+  /** The block is said in the connection line over the box (a Work thread): the field keeps its own placeholder, send still waits. */
+  blockedSaid?: boolean
   /** What kind of thread this is; absent hides the chip (subagent children). */
   threadType?: ThreadType | null
   onThreadTypeChange?: (type: ThreadType) => void
@@ -187,6 +189,7 @@ const metaProvider = (meta: SessionMeta): string => meta.provider
 export function Composer({
   enabled = true,
   blocked = null,
+  blockedSaid = false,
   focused,
   hotkeys = false,
   shell = false,
@@ -1012,7 +1015,7 @@ export function Composer({
               <ComposerInput
                 ref={inputRef}
                 placeholder={
-                  blocked
+                  blocked && !blockedSaid
                     ? blocked
                     : inboxCard
                     ? 'Add a note, or send to start…'

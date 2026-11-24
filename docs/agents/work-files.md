@@ -315,9 +315,10 @@ On the host it is `work.files.open {side: <tabId>}`: the tab's row keeps
 twice: a file a tab of its own holds moves there with its item (that tab's
 row goes, the item stays), one at another tab's side or in a Beside seat
 moves too, a tab's own file is not put beside itself, and opening a file
-that is at a tab's side answers that tab. The side has a 32px head of its
-own (its name, where saving stands, its close) and the kind's bar and body
-under it; `tabClose {tabId, side: true}` closes it alone, and closing the
+that is at a tab's side answers that tab. The side's name, where saving
+stands and its close ride in its kind's bar (`KindBar`'s `lead` and `end`,
+through `CanvasPane`'s `barLead` and `barEnd`), one 32px row level with the
+bar of the file beside it, and its body under it; `tabClose {tabId, side: true}` closes it alone, and closing the
 tab closes both. The side follows a rename, lets go of a file that went to
 Trash or whose item was closed another way, is kept through the boot
 check, and a remote key is told of no side it could not name. Each half

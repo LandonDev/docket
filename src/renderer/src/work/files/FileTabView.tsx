@@ -39,7 +39,7 @@ import { saveWordFile, sendCopyBack, setWordAuto, useDock, useDockWidth } from "
 import { askAutosave, saveAsWord, serviceOf, wordLine } from "./wordSave";
 import { NameField, useSideOver } from "./rowParts";
 import { cloudLine, copyBackDue, copyLine, isCopyBack, newestBack, type CopyAsk, type HeaderLine } from "./fileText";
-import { SaveActions, SaveLine } from "./SaveLine";
+import { HEAD_NARROW, SaveActions, SaveLine, TUCKED, tuckedRows } from "./SaveLine";
 import { SidePane, SideSash, sideWidth } from "./SideFile";
 import { openSaveAs } from "./saveAsPort";
 import { useWorkspaceOf } from "./workspaceOf";
@@ -164,8 +164,24 @@ export function FileHeader({
   /** a control before ⋯ (a shared Office file's Edit here or Live) */
   end?: ReactNode;
 }) {
+  // Under 480px of header the line's second press is a row of ⋯ (SaveActions hides its button at the same width).
+  const [narrow, setNarrow] = useState(false);
+  const head = useRef<HTMLElement>(null);
+  useEffect(() => {
+    const el = head.current;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(([entry]) => setNarrow(!!entry && entry.contentRect.width < HEAD_NARROW));
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
+  const actions = line?.actions?.length && !note ? line.actions : undefined;
+  const menuRows = tuckedRows(rows, actions, narrow, running);
+  const pick = (id: string): void => {
+    if (id === TUCKED && actions?.[1]) return onRun(actions[1]);
+    onPick(id);
+  };
   return (
-    <header data-files-header className={`@container/file-head relative flex h-12 shrink-0 items-center gap-2.5 border-b border-border pe-2 ${leave ? "ps-20" : "ps-3"}`}>
+    <header ref={head} data-files-header className={`@container/file-head relative flex h-12 shrink-0 items-center gap-2.5 border-b border-border pe-2 ${leave ? "ps-20" : "ps-3"}`}>
       <KindGlyph kind={kindOfEntry(name).kind} />
       <div className="flex min-w-0 flex-1 flex-col">
         {rename?.on ? (
@@ -191,13 +207,13 @@ export function FileHeader({
           <p className="min-w-0 truncate text-xs leading-4 text-muted-foreground">In {where}</p>
         ) : null}
       </div>
-      {line?.actions?.length && !note ? <SaveActions actions={line.actions} busy={running} onRun={onRun} /> : null}
+      {actions ? <SaveActions actions={actions} busy={running} onRun={onRun} /> : null}
       {end}
       <RowsMenu
         label="File"
         align="end"
-        rows={rows}
-        onPick={onPick}
+        rows={menuRows}
+        onPick={pick}
         tip={{ label: "More" }}
         trigger={
           <Button variant="ghost" size="icon-sm" aria-label={`More for ${name}`} className="shrink-0 text-muted-foreground">
