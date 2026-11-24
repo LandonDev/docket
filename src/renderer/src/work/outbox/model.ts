@@ -1,5 +1,7 @@
 import type { GrantOffer, OutboxItem } from "@shared/contract-work-outbox";
 import type { ActKind } from "@shared/work";
+import type { ThreadState } from "../../components/ui/status";
+import { minuteAge } from "../../lib/duration";
 
 /**
  * The Outbox's words and shapes, with no React (docs/agents/work-outbox.md,
@@ -44,10 +46,32 @@ export function timeOf(at: number, now = Date.now()): string {
 
 /** Who decided a sent act, in his words: "Sent by you", "Sent from your phone", "Sent by the grant Mail to Dana Lee". */
 export function decidedWords(item: Pick<OutboxItem, "decidedBy" | "verb"> & { kind?: string }, grantLabel?: string | null): string {
-  const past = pastOf(item.verb, item.kind);
-  if (item.decidedBy?.startsWith("grant:")) return grantLabel ? `${past} by the grant ${grantLabel}` : `${past} by a grant`;
-  if (item.decidedBy === "owner:remote") return `${past} from another device`;
-  return `${past} by you`;
+  return `${pastOf(item.verb, item.kind)} ${byWords(item, grantLabel)}`;
+}
+
+/** Who decided, alone: "by you", "from another device", "by the grant Mail to Dana Lee". */
+export function byWords(item: Pick<OutboxItem, "decidedBy">, grantLabel?: string | null): string {
+  if (item.decidedBy?.startsWith("grant:")) return grantLabel ? `by the grant ${grantLabel}` : "by a grant";
+  if (item.decidedBy === "owner:remote") return "from another device";
+  return "by you";
+}
+
+/**
+ * A mail or calendar act the host stored sent, in the one wording the Sent row, its detail and a press's toast share,
+ * while LifeOS has not said it went: "Queued in LifeOS" with its age as of LifeOS's last word, or that it is back in
+ * LifeOS's drafts, or gone from LifeOS. Null once LifeOS says it went, and for every other act: those read Sent.
+ */
+export function lifeosWords(item: Pick<OutboxItem, "state" | "lifeos" | "queuedAsOf" | "decidedAt">): { state: Extract<ThreadState, "queued" | "stopped">; word: string; detail: string | null } | null {
+  if (item.state !== "sent") return null;
+  if (item.lifeos === "queued") return { state: "queued", word: "Queued in LifeOS", detail: `for ${minuteAge((item.queuedAsOf ?? 0) - (item.decidedAt ?? item.queuedAsOf ?? 0))}` };
+  if (item.lifeos === "drafts") return { state: "stopped", word: "Back in drafts in LifeOS", detail: null };
+  if (item.lifeos === "gone") return { state: "stopped", word: "No longer in LifeOS", detail: null };
+  return null;
+}
+/** The same, as one line: "Queued in LifeOS for 12m". */
+export function lifeosLine(item: Parameters<typeof lifeosWords>[0]): string | null {
+  const words = lifeosWords(item);
+  return words ? (words.detail ? `${words.word} ${words.detail}` : words.word) : null;
 }
 
 /** "Send" → "Sent", "Post" → "Posted", "Make link" → "Made link". */

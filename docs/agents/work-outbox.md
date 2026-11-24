@@ -255,10 +255,33 @@ host does with it:
   carries LifeOS's `editedAt` as read with the item; the press refuses a row
   whose edit time has moved and names that time to `compose:send` and
   `compose:retry`, which compare it again inside the write.
-- **Sent** means LifeOS took it: the host reports a mail sent only once
-  LifeOS has the row queued, sending or sent (`NOT_QUEUED` otherwise, with
-  words), so a draft an earlier send left behind is never called sent. If
-  LifeOS's own lane then fails, the item comes back `failed`.
+- **Sent, and what LifeOS says of it.** The host stores the row `sent` once
+  LifeOS took the act (mail's composer checks LifeOS has the row queued,
+  sending or sent, `NOT_QUEUED` otherwise), as it always has: no state,
+  claim or press changed. But LifeOS then holds a mail for his undo time and
+  a calendar act until the calendar takes it, so the screens and the thread
+  say so. `confirmed.ts` reads LifeOS's own row (`compose:get`,
+  `calendarOps:get`) for each LifeOS row stored `sent` within a day and not
+  yet confirmed: at most 20 a pass (those never read first, newest first,
+  then the least lately read, so none starves), each read under a 10 s
+  deadline, one pass at a time (a row whose read has not come back is not
+  asked again; a read that fails is no answer), right after a row is stored
+  sent, when the watch lists a sent row again, then every 5 s while one is
+  under two minutes old and every 30 s after. It keeps the answer in `work_outbox_lifeos_said` and
+  never calls a send, `execute`, a claim or a settle. The wire item carries
+  it as `lifeos` (`queued`, `confirmed`, `drafts`, `gone`) and, while
+  queued, `queuedAsOf` (when LifeOS last said so; the press, before the
+  first read). A row never read and decided over a day ago carries neither
+  and reads as it always did; one last read queued a day ago is asked no
+  more and keeps reading queued, its age as of that read. If LifeOS's own
+  lane then fails, the item comes back `failed` (`failSent`) and its thread
+  is told so (`Outbox.toldFailed`).
+- **What the thread is told.** For `mail.send` and `calendar.op` the tell
+  at the press is `queuedNote` (words.ts): queued in LifeOS, goes after his
+  undo time unless he takes it back (a calendar act: once the calendar
+  takes it), and told if LifeOS cannot send it. The linked task completes at
+  the same moment as before, with "Queued to send: …" in place of "Sent:
+  …".
 - **A press from Mail's composer** on a held draft has already waited out
   the undo time in the window (work-mail.md "Undo for a held draft"): that
   one call carries `waited`, and only then does the hold ask LifeOS to send
@@ -289,7 +312,8 @@ keys with approve.
 
 A sent act completes the thread's linked LifeOS task
 (`ctx.links.completeFor`, the thread at the top of the tree), once, and
-keeps owing it while LifeOS is out of reach. A call held only because its
+keeps owing it while LifeOS is out of reach; a mail or calendar act's reason
+reads "Queued to send: …", since LifeOS still holds it. A call held only because its
 add-on was never reviewed completes nothing. The thread hears how its act
 ended as the app's own note: an add-on call and a computer act wake it with
 what came back; the rest are told quietly ahead of its next turn.
@@ -588,7 +612,14 @@ LifeOS item's Send carries `rev` = its `updatedAt` as shown.
   tabs over the list; Waiting grouped by workspace (sector dot, name, and
   "Send N" when more than one can go), each row the act and what it is
   about, its kind's glyph giving way to a tick on hover; ticked rows send
-  together. The detail is who, where and when, the act's name, then its
+  together. A mail or calendar act LifeOS has not yet said went sits in Sent,
+  as every sent row does, in one wording (`lifeosWords` in model.ts) on its
+  row, its detail and the press's toast: "Queued in LifeOS for 12m" with the
+  queued mark, "Back in drafts in LifeOS" or "No longer in LifeOS"; its
+  title keeps the act's own verb ("Send to Dana Lee"), and its detail says
+  who and when ("by you at 9:31 AM") with no line about taking it back. It
+  reads Sent once LifeOS says sent (a calendar act's done). The detail is
+  who, where and when, the act's name, then its
   payload exactly as it goes (`work/acts/ActView.tsx`: the kind's own view
   from `ACT_VIEWS`, else `GenericActView`, its fields and its body as
   plain text; where the payload has html the body is read from it, every

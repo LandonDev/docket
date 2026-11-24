@@ -4,9 +4,10 @@ import { errorText, NotBuilt, type HeldRef } from '@shared/work'
 import type { ActKindDef, WorkCtx } from '../modules'
 import { outgoingHtml } from '../mail/outgoing'
 import { takeWaited } from '../mail/waited'
+import { LifeosConfirmations, type SentFact } from './confirmed'
 import { ActStale } from './kinds'
 import { shownEvent, type LifeosHeld, type Outbox } from './outbox'
-import { INTERRUPTED } from './store'
+import { INTERRUPTED, type HeldRow } from './store'
 
 /**
  * The mail and calendar acts LifeOS holds for this host's threads
@@ -21,7 +22,9 @@ import { INTERRUPTED } from './store'
  *  - the two act kinds, `mail.send` and `calendar.op`, whose `execute` is
  *    the owner's own send in LifeOS on the host's device session;
  *  - a grant made before a draft and fitting it sends the draft when the
- *    watcher first sees it; every other new draft raises the held notice.
+ *    watcher first sees it; every other new draft raises the held notice;
+ *  - what LifeOS says of an act stored sent (confirmed.ts): read only, so
+ *    the screens say "Queued in LifeOS" until LifeOS says it went.
  *
  * Every press goes through `work.outbox.send`, never from a screen to
  * LifeOS, so the run-once claim, the linked task and the record of who
@@ -261,15 +264,41 @@ export class LifeosHeldItems implements LifeosHeld {
   /** each act's event as last read: what the screens show and the press checks (milestone 50's hold review, 29) */
   private readonly eventFacts = new Map<string, { startsAt?: number; endsAt?: number; location?: string }>()
 
-  constructor(private readonly deps: LifeosHeldDeps) {}
+  private readonly said: LifeosConfirmations
+
+  constructor(private readonly deps: LifeosHeldDeps) {
+    this.said = new LifeosConfirmations({
+      ctx: deps.ctx,
+      changed: (id) => {
+        const row = deps.outbox.store.get(id)
+        if (row) deps.outbox.changed(deps.outbox.wire(row))
+      }
+    })
+  }
+
+  sentFact(row: HeldRow): SentFact | undefined {
+    return this.said.fact(row)
+  }
+
+  /** One pass of the reads behind `sentFact`, now (single-flight with the pass's own clock). */
+  readSent(): Promise<void> {
+    return this.said.pass()
+  }
 
   /** Watch LifeOS while Work is on. Returns its stop. The subscriptions come back by themselves after a reconnect. */
   start(): () => void {
     const { ctx } = this.deps
+    // A LifeOS act just stored sent is asked about at once; the rest on the pass's own clock.
+    const offSent = this.deps.outbox.store.onChange((row) => {
+      if (row.state === 'sent' && row.runKey.startsWith('lifeos:')) void this.said.pass()
+    })
+    this.said.start()
     const offMail = ctx.lifeos.subscribe<OutboxDoc[]>(LIFEOS_HELD_FNS.mailHeld, { host: ctx.host }, (rows) => void this.took('mail', rows ?? []))
     // Until LifeOS has calendar writes this subscription fails quietly and lists nothing.
     const offCalendar = ctx.lifeos.subscribe<Record<string, unknown>[]>(LIFEOS_HELD_FNS.calendarHeld, { host: ctx.host }, (rows) => void this.took('calendar', rows ?? []))
     return () => {
+      offSent()
+      this.said.stop()
       offMail()
       offCalendar()
       this.mail = []
@@ -413,12 +442,19 @@ export class LifeosHeldItems implements LifeosHeld {
       const first = this.first[what]
       this.first[what] = false
       const listed = new Set<string>()
+      let ask = false
       for (const item of items) {
         const key = keyOf(item.ref)
         listed.add(key)
         const row = outbox.store.byRef(item.ref)
-        // A send this host recorded as gone came back failed in LifeOS's own lane: it waits on him again.
-        if (row?.state === 'sent' && item.state === 'failed') outbox.store.failSent(row.id, item.error ?? 'LifeOS could not send it')
+        // A row stored sent that LifeOS lists again (a draft he took back, a failed send) is asked about now.
+        if (row?.state === 'sent') ask = true
+        // A send this host recorded as gone came back failed in LifeOS's own lane: it waits on him again, and its thread,
+        // told the act was queued, hears that it failed.
+        if (row?.state === 'sent' && item.state === 'failed') {
+          const back = outbox.store.failSent(row.id, item.error ?? 'LifeOS could not send it')
+          if (back) outbox.toldFailed(back)
+        }
         if (this.seen.has(key)) continue
         this.seen.add(key)
         // A draft made while a fitting grant stood goes at once; any other is told as held. What was already
@@ -428,6 +464,7 @@ export class LifeosHeldItems implements LifeosHeld {
         await outbox.offer(item, { quiet: first })
       }
       if (what === 'mail') await this.settleInterrupted(listed)
+      if (ask) void this.said.pass()
       outbox.changed(null)
     } catch (err) {
       ctx.log(`outbox: LifeOS's held ${what} could not be read: ${errorText(err)}`)

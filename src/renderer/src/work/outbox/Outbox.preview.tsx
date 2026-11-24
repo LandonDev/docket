@@ -9,9 +9,10 @@ import { resetOutboxStore } from "./store";
  * The Outbox over one fixed host, for `bun run ui:preview
  * src/renderer/src/work/outbox/Outbox.preview.tsx#OutboxPreview --props '{"state":"offer"}'`:
  * Sent with the mail whose press completed a run and the grant it earned at
- * its foot (`offer`), the same mail with none (`plain`), and Waiting with an
- * agent's changes to shared files held for his press (`edits`). Rendered by
- * nothing in the app.
+ * its foot (`offer`), the same mail with none (`plain`), Waiting with an
+ * agent's changes to shared files held for his press (`edits`), and Sent with
+ * mail LifeOS has not yet said went (`queued`: queued twelve minutes on, sent,
+ * back in drafts). Rendered by nothing in the app.
  */
 
 const WS = { id: "ws", name: "Purdue Esports", path: "/home/work/Purdue Esports", kind: "work", sector: "purdue", createdAt: 1 };
@@ -116,9 +117,13 @@ const EDITS = [
   ),
 ];
 
+/** What LifeOS said of each sent mail, for `queued`: the newest still queued twelve minutes on, one sent, one taken back. */
+const SAID: Partial<OutboxItem>[] = [{ lifeos: "queued", queuedAsOf: at(20, 9, 53) }, { lifeos: "confirmed" }, { lifeos: "drafts" }];
+const sentList = (): OutboxItem[] => (state === "queued" ? SENT.map((item, i) => ({ ...item, ...SAID[i] })) : SENT);
+
 const OFFER: GrantOffer = { id: "go_1", workspaceId: "ws", kind: "mail.send", label: "Mail to dana.lee@purdue.edu from landon@purdue.edu", routineId: null, from: SENT[0]!.ref, count: 5, createdAt: at(20, 9, 41) };
 
-type State = "offer" | "plain" | "edits";
+type State = "offer" | "plain" | "edits" | "queued";
 let state: State = "offer";
 /** Which held change shows in the detail (the oldest waiting item is the one selected): 0 a Word replace, 1 a deck's two changes, 2 a Word insert, 3 a Doc's replace. */
 let pick = 0;
@@ -132,7 +137,7 @@ const answers = (method: string, params: { show?: string } = {}): unknown => {
     case "project.list":
       return [];
     case "work.outbox.list":
-      if (params.show === "decided") return { items: SENT };
+      if (params.show === "decided") return { items: sentList() };
       return state === "edits" ? { items: waitingEdits(), waiting: EDITS.length } : { items: [], waiting: 0 };
     case "work.outbox.grants":
       return { grants: [] };
@@ -141,7 +146,7 @@ const answers = (method: string, params: { show?: string } = {}): unknown => {
     case "work.outbox.results":
       return { results: [] };
     case "work.outbox.get":
-      return state === "edits" ? waitingEdits()[pick] : SENT[0];
+      return state === "edits" ? waitingEdits()[pick] : sentList()[pick];
   }
   throw new Error(`no ${method}`);
 };

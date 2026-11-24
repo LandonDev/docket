@@ -1380,7 +1380,12 @@ Around the canvas:
   back" stands in for a way back. The right panel gains Results (the
   `outbox` glyph, two groups). The page is the split view only. Send's
   toast has no Undo: the host sends on the press, and the toast says what
-  happened; a press decided elsewhere says so ("Already discarded"). The
+  happened; a press decided elsewhere says so ("Already discarded"). A mail
+  or calendar act LifeOS holds after the press sits in Sent but is not
+  called sent until LifeOS says it went: its row, its detail and its toast
+  say "Queued in LifeOS", the row and detail with its age ("for 12m") and
+  the queued mark, its title in the act's own verb; one he took back reads
+  "Back in drafts in LifeOS". The
   transcript's held line opens the Outbox page. In the grants sheet, under
   each workspace's heading, a grant's line is "Made today from a held
   mail". Each kind draws its own payload view; a kind with none gets the

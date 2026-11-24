@@ -9,6 +9,7 @@ import { OUTBOX_TELLS } from './tells'
 import { ensureResults, resultsOf } from './results'
 import { rulesCard, setRules } from './rules'
 import { ensureEarnedTables } from './earned'
+import { ensureSaidTable } from './confirmed'
 import { ensureOutboxTables } from './store'
 import { PRIVATE_CHANGE, PRIVATE_CHANGE_KINDS, PRIVATE_ERROR, summaryFor } from './words'
 import { pressesFor } from '../files/policy'
@@ -114,6 +115,12 @@ export const outbox: WorkModule = {
       // the Outbox runs without offers (outbox.ts reads them under try)
     }
     ensureResults(db)
+    // What LifeOS says of a sent act is words alone: a fault in its table never takes the Outbox down.
+    try {
+      ensureSaidTable(db)
+    } catch {
+      // the Outbox says Sent as it did (confirmed.ts reads under try)
+    }
   },
   async handle(req, ctx, by, signal) {
     if (!req.method.startsWith('work.outbox.')) return NOT_HANDLED
@@ -195,7 +202,7 @@ export const outbox: WorkModule = {
       const waiting = host.outbox.waiting()
       const unreviewed = unreviewedCount(host)
       const failed = host.outbox.failed()
-      const key = JSON.stringify([waiting, unreviewed, failed, item?.ref ?? null, item?.state ?? null, item?.updatedAt ?? null])
+      const key = JSON.stringify([waiting, unreviewed, failed, item?.ref ?? null, item?.state ?? null, item?.updatedAt ?? null, item?.lifeos ?? null, item?.queuedAsOf ?? null])
       if (key === last) return
       last = key
       ctx.push({ push: 'work.outbox', waiting, unreviewed, failed, ...(item ? { item: light(item) } : {}) }, { need: 'approve' })

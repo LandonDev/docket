@@ -2,10 +2,11 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import type { OutboxGrant, OutboxItem } from '@shared/contract-work-outbox'
 import type { SessionMeta } from '@shared/events'
 import { CHANGED_SINCE, REV_NEEDED } from './outbox'
-import { mailGrantFits, mailWords, type MailSendPayload } from './lifeosHeld'
+import { mailGrantFits, mailWords, type LifeosHeldItems, type MailSendPayload } from './lifeosHeld'
 import { outboxHostOf } from './ctx'
+import { SAID_LIMITS, SAID_TABLE } from './confirmed'
 import { approveKey, cast, makeRig, until, type Rig } from './rig'
-import { INTERRUPTED } from './store'
+import { INTERRUPTED, lifeosRunKey } from './store'
 
 /**
  * The mail LifeOS holds for this host's threads, as the host owns it
@@ -111,11 +112,12 @@ describe("the owner's press on a LifeOS-held mail", () => {
     return (await list()).items.find((i) => i.ref.at === 'lifeos')!
   }
 
-  it('sends through the host as the owner, once, with exactly the mail he was shown, and completes the linked task', async () => {
+  it('sends through the host as the owner, once, with exactly the mail he was shown, and completes the linked task as queued', async () => {
     rig.lifeos.draft({ to: ['dana@purdue.edu'], subject: 'Re: budget' })
     const item = await held()
     const sent = await rig.rpc<OutboxItem>('work.outbox.send', { ref: item.ref, rev: item.updatedAt })
-    expect(sent).toMatchObject({ state: 'sent', decidedBy: 'owner', kind: 'mail.send', n: 1, ref: item.ref })
+    // stored sent at once, as always; LifeOS holds it queued for his undo time, and the item says so
+    expect(sent).toMatchObject({ state: 'sent', decidedBy: 'owner', kind: 'mail.send', n: 1, ref: item.ref, lifeos: 'queued', queuedAsOf: sent.decidedAt })
     expect(sends()).toHaveLength(1)
     expect(sends()[0]!.args).toMatchObject({ id: (item.ref as { id: string }).id, cause: 'press', message: (item.payload as MailSendPayload).message })
     // pressed again, here and from his phone: nothing more goes
@@ -123,15 +125,17 @@ describe("the owner's press on a LifeOS-held mail", () => {
     expect(await rig.rpc<OutboxItem>('work.outbox.send', { ref: item.ref, rev: item.updatedAt }, approveKey)).toMatchObject({ state: 'sent' })
     expect(sends()).toHaveLength(1)
     await settled()
-    expect(rig.lifeos.completed).toEqual([{ sessionId: 't-work', reason: 'Sent: Send to dana@purdue.edu: Re: budget' }])
+    expect(rig.lifeos.completed).toEqual([{ sessionId: 't-work', reason: 'Queued to send: Send to dana@purdue.edu: Re: budget' }])
     // gone from what waits, in what was decided, with who pressed and when
     expect((await list()).items).toEqual([])
     const decided = (await list('decided')).items
-    expect(decided).toMatchObject([{ state: 'sent', decidedBy: 'owner', summary: 'Send to dana@purdue.edu: Re: budget' }])
+    expect(decided).toMatchObject([{ state: 'sent', decidedBy: 'owner', summary: 'Send to dana@purdue.edu: Re: budget', lifeos: 'queued' }])
     expect(decided[0]!.decidedAt).toBeGreaterThan(0)
-    // told to the thread quietly: a sent mail needs no turn
+    // told to the thread quietly, as queued: a sent mail needs no turn
     expect(rig.woke).toEqual([])
-    expect(rig.whispers.map((w) => w.text)).toEqual(['The owner sent held item 1 (Send to dana@purdue.edu: Re: budget).'])
+    expect(rig.whispers.map((w) => w.text)).toEqual([
+      'The owner queued held item 1 (Send to dana@purdue.edu: Re: budget) in LifeOS. It goes after his undo time unless he takes it back; if LifeOS cannot send it, you will be told.'
+    ])
   })
 
   it('names what was read, and is refused when the agent changed the draft since: what goes is what was shown', async () => {
@@ -225,6 +229,151 @@ describe("the owner's press on a LifeOS-held mail", () => {
   })
 })
 
+describe('what LifeOS says of a mail stored sent', () => {
+  const readSent = () => (outboxHostOf(rig.work.ctx)!.outbox.lifeos as LifeosHeldItems).readSent()
+  const sentItem = async (id: string) => (await list('decided')).items.find((i) => i.ref.id === id)
+  const pressed = async (): Promise<{ id: string; item: OutboxItem }> => {
+    const id = rig.lifeos.draft({ to: ['dana@purdue.edu'], subject: 'Re: budget' })
+    rig.lifeos.fire()
+    await settled()
+    const item = (await list()).items.find((i) => i.ref.at === 'lifeos')!
+    await rig.rpc('work.outbox.send', { ref: item.ref, rev: item.updatedAt })
+    await readSent()
+    return { id, item }
+  }
+  /** A mail stored sent at `at`, LifeOS's row queued, made straight in the store as a press leaves it. */
+  const sentAt = (subject: string, at: number, opts: { hang?: boolean } = {}): string => {
+    const id = rig.lifeos.draft({ subject })
+    rig.lifeos.rows.get(id)!.status = 'queued'
+    if (opts.hang) rig.lifeos.hang.add(id)
+    const row = rig.host.store.insert({ workspaceId: 'ws-purdue', sessionId: 't-work', sector: 'purdue', kind: 'mail.send', origin: `lifeos:outbox/${id}`, why: 'lifeos', summary: `Send to dana@purdue.edu: ${subject}`, verb: 'Send', payload: {}, runKey: lifeosRunKey('outbox', id) })
+    rig.host.store.claim(row.id, 'owner')
+    rig.work.ctx.db.prepare(`UPDATE work_held_acts SET decided_at = ? WHERE id = ?`).run(at, row.id)
+    // stored sent last: that is when the host asks
+    rig.host.store.settle(row.id, 'sent')
+    return id
+  }
+  const asked = (id: string) => rig.lifeos.calls.filter((c) => c.fn === 'compose:get' && c.args.id === id).length
+
+  it('reads queued with its age while LifeOS holds it, then Sent once LifeOS says sent; the row is stored sent throughout and nothing is sent by reading', async () => {
+    const { id, item } = await pressed()
+    expect(rig.host.store.byRef(item.ref)).toMatchObject({ state: 'sent' })
+    const mutations = rig.lifeos.mutations().length
+    expect(mutations).toBe(1)
+    expect(await sentItem(id)).toMatchObject({ state: 'sent', lifeos: 'queued' })
+    const asOf = (await sentItem(id))!.queuedAsOf!
+    expect(asOf).toBeGreaterThanOrEqual((await sentItem(id))!.decidedAt!)
+    // still queued: each read moves its age on, and nothing else
+    await new Promise((r) => setTimeout(r, 5))
+    await readSent()
+    expect((await sentItem(id))!.queuedAsOf).toBeGreaterThan(asOf)
+    // a press on it now sends nothing, as on any sent row
+    expect(await rig.rpc<OutboxItem>('work.outbox.send', { ref: item.ref, rev: item.updatedAt, again: true }, approveKey)).toMatchObject({ state: 'sent' })
+    const pushes = rig.pushes.length
+    rig.lifeos.deliver(id)
+    await readSent()
+    expect(await sentItem(id)).toMatchObject({ state: 'sent', lifeos: 'confirmed' })
+    expect((await sentItem(id))!.queuedAsOf).toBeUndefined()
+    expect(rig.pushes.slice(pushes).some((p) => (p as { item?: OutboxItem }).item?.lifeos === 'confirmed')).toBe(true)
+    // confirmed is not asked again
+    const reads = asked(id)
+    await readSent()
+    expect(asked(id)).toBe(reads)
+    expect(rig.lifeos.mutations()).toHaveLength(mutations)
+    expect(rig.host.store.byRef(item.ref)).toMatchObject({ state: 'sent' })
+  })
+
+  it('says so when he took it back to a draft in LifeOS, or LifeOS no longer has it, and stays a sent row that takes no press', async () => {
+    const { id, item } = await pressed()
+    Object.assign(rig.lifeos.rows.get(id)!, { status: 'draft' })
+    rig.lifeos.fire()
+    await settled()
+    await readSent()
+    expect(await sentItem(id)).toMatchObject({ state: 'sent', lifeos: 'drafts' })
+    // the draft he took back is LifeOS's own: the Outbox neither lists it again nor sends it
+    expect((await list()).items).toEqual([])
+    await rig.rpc('work.outbox.send', { ref: item.ref, rev: item.updatedAt }).catch(() => null)
+    rig.lifeos.rows.delete(id)
+    await readSent()
+    expect(await sentItem(id)).toMatchObject({ state: 'sent', lifeos: 'gone' })
+    expect(rig.lifeos.mutations()).toHaveLength(1)
+  })
+
+  it("that LifeOS's lane fails comes back failed and waiting, and its thread, told it was queued, hears it failed, once", async () => {
+    const { id, item } = await pressed()
+    Object.assign(rig.lifeos.rows.get(id)!, { status: 'failed', error: 'Outlook refused the recipient' })
+    rig.lifeos.fire()
+    await settled()
+    rig.lifeos.fire()
+    await settled()
+    expect((await list()).items).toMatchObject([{ ref: item.ref, state: 'failed', error: 'Outlook refused the recipient' }])
+    expect(rig.whispers.map((w) => w.text).filter((t) => t.includes('could not be carried out'))).toEqual([
+      "Held item 1 (Send to dana@purdue.edu: Re: budget) could not be carried out: Outlook refused the recipient. It still waits in the owner's Outbox. Do not try another way to do it."
+    ])
+  })
+
+  it('asks a few rows a pass, those never read first and newest first, then the least lately read; one pass at a time', async () => {
+    const now = Date.now()
+    const ids = Array.from({ length: SAID_LIMITS.rows + 5 }, (_, i) => sentAt(`mail ${i}`, now - i * 1_000))
+    const old = sentAt('two days ago', now - 2 * SAID_LIMITS.dayMs)
+    // the passes each store kicked are done, and their answers forgotten: every row is never read again
+    await readSent()
+    rig.lifeos.calls = []
+    rig.work.ctx.db.exec(`DELETE FROM ${SAID_TABLE}`)
+    await readSent()
+    // never read: the newest `rows`, once each; the five oldest wait for the next pass
+    expect(ids.map(asked)).toEqual([...Array(SAID_LIMITS.rows).fill(1), 0, 0, 0, 0, 0])
+    rig.lifeos.calls = []
+    // two calls at once are one pass (and at most one more): the five never read come first now, so none is starved
+    await Promise.all([readSent(), readSent()])
+    expect(ids.slice(SAID_LIMITS.rows).map(asked).every((n) => n >= 1 && n <= 2)).toBe(true)
+    expect(ids.map(asked).every((n) => n <= 2)).toBe(true)
+    expect(asked(old)).toBe(0)
+    // a row never read and decided more than a day ago says nothing: it reads as a sent row always did
+    expect((await rig.rpc<{ items: OutboxItem[] }>('work.outbox.list', { show: 'decided', limit: 200 })).items.find((i) => i.ref.id === old)?.lifeos).toBeUndefined()
+    expect(rig.lifeos.mutations()).toEqual([])
+  })
+
+  it('a row last read queued and now a day old is asked no more, and reads queued with its age as of that read', async () => {
+    const id = sentAt('slow', Date.now() - 2 * SAID_LIMITS.dayMs)
+    const row = rig.host.store.byRef({ at: 'lifeos', table: 'outbox', id })!
+    const readAt = row.decidedAt! + 3 * 60_000
+    rig.work.ctx.db.prepare(`INSERT INTO ${SAID_TABLE} (held_id, said, read_at) VALUES (?, 'queued', ?)`).run(row.id, readAt)
+    await readSent()
+    expect(asked(id)).toBe(0)
+    expect((await rig.rpc<OutboxItem>('work.outbox.get', { ref: { at: 'lifeos', table: 'outbox', id } }))).toMatchObject({ state: 'sent', lifeos: 'queued', queuedAsOf: readAt })
+  })
+
+  it('a read that fails, whatever its words, is no answer: what LifeOS last said stands', async () => {
+    const { id } = await pressed()
+    rig.lifeos.failNext.set('compose:get', 'ArgumentValidationError: invalid id')
+    await readSent()
+    expect(await sentItem(id)).toMatchObject({ state: 'sent', lifeos: 'queued' })
+    expect(rig.lifeos.mutations()).toHaveLength(1)
+  })
+
+  it('a read that never answers holds its own row past its deadline, never the pass: the next pass reads the rest', async () => {
+    const readMs = SAID_LIMITS.readMs
+    SAID_LIMITS.readMs = 30
+    try {
+      const hung = sentAt('hung', Date.now(), { hang: true })
+      const other = sentAt('other', Date.now() - 1_000)
+      await settled()
+      await readSent()
+      rig.lifeos.deliver(other)
+      const started = Date.now()
+      await readSent()
+      expect(Date.now() - started).toBeLessThan(2_000)
+      expect((await sentItem(other))?.lifeos).toBe('confirmed')
+      expect((await sentItem(hung))?.lifeos).toBe('queued')
+      // the hung row is not asked again while its read is still out
+      expect(asked(hung)).toBe(1)
+    } finally {
+      SAID_LIMITS.readMs = readMs
+    }
+  })
+})
+
 describe('a grant made from a LifeOS-held mail', () => {
   it('releases the next draft that fits and nothing else, by the same rule as a host row', async () => {
     rig.lifeos.draft({ to: ['dana@purdue.edu'], subject: 'first' })
@@ -259,8 +408,8 @@ describe('a grant made from a LifeOS-held mail', () => {
       'Send to dana@purdue.edu: first',
       'Send to dana@purdue.edu: from another job'
     ])
-    // and the task of the thread whose draft went is completed
-    expect(rig.lifeos.completed).toEqual([{ sessionId: 't-work', reason: 'Sent: Send to Dana@Purdue.edu: second' }])
+    // and the task of the thread whose draft went is completed, as queued
+    expect(rig.lifeos.completed).toEqual([{ sessionId: 't-work', reason: 'Queued to send: Send to Dana@Purdue.edu: second' }])
   })
 
   it("made from a routine's draft fits that routine alone: the run is the host's own stamp, never the model's", async () => {

@@ -45,6 +45,19 @@ export function sentNote(row: Told & Pick<HeldRow, 'decidedBy'>, detail?: string
   return detail?.trim() ? `${head} What came back:\n${cut(detail.trim(), 8_000)}` : head
 }
 
+/**
+ * What the thread hears when the owner (or a grant) released a mail or calendar act LifeOS holds: LifeOS took it and
+ * holds it (a mail for his undo time, a calendar act until the calendar takes it), so it is queued, not yet sent.
+ */
+export function queuedNote(row: Told & Pick<HeldRow, 'decidedBy'>): string {
+  const who = row.decidedBy?.startsWith('grant:') ? "A standing grant of the owner's queued" : 'The owner queued'
+  const then =
+    row.kind === 'calendar.op'
+      ? 'It is made once the calendar takes it; if LifeOS cannot carry it out, you will be told.'
+      : 'It goes after his undo time unless he takes it back; if LifeOS cannot send it, you will be told.'
+  return `${who} held item ${row.n} (${toldAs(row)}) in LifeOS. ${then}`
+}
+
 export const failedNote = (row: Told & Pick<HeldRow, 'error'>): string =>
   `Held item ${row.n} (${toldAs(row)}) could not be carried out: ${whyOf(row, 'it failed')}. It still waits in the owner's Outbox. Do not try another way to do it.`
 

@@ -72,6 +72,8 @@ export class FakeOutboxLifeos implements LifeosClient {
   events = new Map<string, Record<string, unknown>>()
   /** fail the next call of this function with this message */
   failNext = new Map<string, string>()
+  /** reads of these ids never answer, as a query on a socket that hangs */
+  hang = new Set<string>()
   completed: { sessionId: string; reason: string }[] = []
   private n = 0
 
@@ -131,6 +133,19 @@ export class FakeOutboxLifeos implements LifeosClient {
     return [...this.rows.values()].filter((r) => (r.status === 'draft' || r.status === 'failed' || (r.status === 'queued' && r.scheduled === true)) && (r.origin as { host?: string } | undefined)?.host === host)
   }
 
+  /** LifeOS's own lane after its undo time: a queued mail is sent, a queued calendar act done, and the watch fires. */
+  deliver(id: string): void {
+    const mail = this.rows.get(id)
+    if (mail) mail.status = 'sent'
+    else Object.assign(this.ops.get(id)!, { status: 'done' })
+    this.fire()
+  }
+
+  /** The functions that change LifeOS, called so far: every send, retry, save and discard. */
+  mutations(): { fn: string; args: Record<string, unknown> }[] {
+    return this.calls.filter((c) => !/:(get|held|list)$/.test(c.fn) && c.fn !== 'events:get' && c.fn !== 'sources:list')
+  }
+
   /** Fire the live queries, as Convex does when a row changes. */
   fire(): void {
     for (const w of this.watchers) {
@@ -150,6 +165,7 @@ export class FakeOutboxLifeos implements LifeosClient {
       this.failNext.delete(fn)
       throw new Error(fail)
     }
+    if (typeof args.id === 'string' && this.hang.has(args.id) && fn.endsWith(':get')) return new Promise<T>(() => {})
     const row = typeof args.id === 'string' ? this.rows.get(args.id) : undefined
     switch (fn) {
       case 'compose:get':

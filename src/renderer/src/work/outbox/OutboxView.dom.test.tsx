@@ -22,6 +22,8 @@ const world = vi.hoisted(() => ({
   getFails: false,
   // a send the host has not answered yet: it answers when the test lets it
   sendHeld: null as Promise<void> | null,
+  // a press LifeOS takes and holds queued: the host stores it sent and says what LifeOS said
+  sendQueued: false,
 }));
 
 vi.mock("../../lib/connection", async (original) => {
@@ -48,7 +50,7 @@ vi.mock("../../lib/connection", async (original) => {
           if (world.sendHeld) await world.sendHeld;
           // as the host: a row another press decided first is answered as it stands, and nothing runs
           if (!["held", "live", "failed"].includes(find().state)) return find();
-          Object.assign(find(), { state: "sent", decidedBy: "owner", decidedAt: now, updatedAt: now });
+          Object.assign(find(), { state: "sent", decidedBy: "owner", decidedAt: now, updatedAt: now, ...(world.sendQueued ? { lifeos: "queued", queuedAsOf: now } : {}) });
           return find();
         case "work.outbox.discard":
           Object.assign(find(), { state: "discarded", decidedBy: "owner", decidedAt: now });
@@ -161,6 +163,7 @@ beforeEach(() => {
   world.resultsDown = false;
   world.listDown.clear();
   world.sendHeld = null;
+  world.sendQueued = false;
   workSwitch.reset();
   setWorkOn("box", true);
   setWorkOn("mac", true);
@@ -178,6 +181,66 @@ async function open() {
   await waitFor(() => expect(screen.getAllByText("Send to Dana Lee").length).toBeGreaterThan(0), { timeout: 5000 });
 }
 const sends = () => world.calls.filter((c) => c.method === "work.outbox.send");
+
+describe("a mail or calendar act LifeOS holds after his press", () => {
+  const MIN = 60_000;
+  const row = (title: string) => screen.getAllByText(title).find((el) => el.closest("li"))!.closest("li")!.textContent;
+
+  it("reads Queued in LifeOS with its age in Sent until LifeOS says it went, then Sent; back in drafts or gone says so; none takes a press", async () => {
+    world.items.set("box", [
+      mail("o1", "Dana Lee", "Budget", { state: "sent", decidedBy: "owner", decidedAt: 10 * MIN, lifeos: "queued", queuedAsOf: 22 * MIN, n: 1 }),
+      mail("o2", "Sam Ortiz", "Scrims", { state: "sent", decidedBy: "owner", decidedAt: 9 * MIN, lifeos: "confirmed", n: 2 }),
+      mail("o3", "Events booking", "Ballroom", { state: "sent", decidedBy: "owner", decidedAt: 8 * MIN, lifeos: "drafts", n: 3 }),
+      mail("o4", "Ana Ruiz", "Roster", { state: "sent", decidedBy: "owner", decidedAt: 7 * MIN, lifeos: "gone", n: 4 }),
+      mail("o5", "Kim Park", "Kits", { state: "sent", decidedBy: "owner", decidedAt: 6 * MIN, n: 5 }),
+    ]);
+    rememberOutboxTab("sent");
+    render(<OutboxView besideRail onClose={() => undefined} />);
+    await waitFor(() => expect(screen.getAllByText("Sent to Sam Ortiz").length).toBeGreaterThan(0), { timeout: 5000 });
+    // in Sent, where a sent row sits, but never called sent before LifeOS says so
+    expect(row("Send to Dana Lee")).toContain("Queued in LifeOS for 12m");
+    expect(screen.queryByText("Sent to Dana Lee")).toBeNull();
+    expect(row("Sent to Sam Ortiz")).toContain("Scrims");
+    expect(row("Send to Events booking")).toContain("Back in drafts in LifeOS");
+    expect(row("Send to Ana Ruiz")).toContain("No longer in LifeOS");
+    expect(row("Sent to Kim Park")).toContain("Kits");
+    // the detail says it as the row does: who and when, the state and its age, and no line about taking it back
+    fireEvent.click(screen.getAllByText("Send to Dana Lee").find((el) => el.closest("li"))!);
+    await waitFor(() => expect(document.querySelector("[data-outbox-detail] p[role=status]")?.textContent).toBe("Queued in LifeOSfor 12m"));
+    expect(screen.getByRole("heading", { level: 1 }).textContent).toBe("Send to Dana Lee");
+    expect(document.querySelector("[data-outbox-detail]")?.textContent).toContain("by you");
+    expect(document.querySelector("[data-outbox-detail]")?.textContent).not.toContain("Sent by you");
+    expect(screen.queryByText("Sent mail cannot be taken back")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Send" })).toBeNull();
+    fireEvent.click(screen.getByText("Sent to Sam Ortiz"));
+    await waitFor(() => expect(screen.getByRole("heading", { level: 1 }).textContent).toBe("Sent to Sam Ortiz"));
+    expect(document.querySelector("[data-outbox-detail] p[role=status]")).toBeNull();
+    expect(screen.getByText("Sent mail cannot be taken back")).toBeTruthy();
+    expect(sends()).toEqual([]);
+  });
+
+  it("a press LifeOS took says Queued in LifeOS in its toast, never Sent", async () => {
+    world.sendQueued = true;
+    const { Toaster } = await import("../../components/ui/toaster");
+    render(<Toaster />);
+    await open();
+    // Send waits until the mail is on screen whole
+    await waitFor(() => expect((screen.getByRole("button", { name: "Send" }) as HTMLButtonElement).disabled).toBe(false), { timeout: 5000 });
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "Send" })));
+    await waitFor(() => expect(document.body.textContent).toContain("Queued in LifeOS: Budget"), { timeout: 5000 });
+    expect(document.body.textContent).not.toContain("Sent: Budget");
+  });
+
+  it("a group's Send that LifeOS holds says how many it queued", async () => {
+    world.sendQueued = true;
+    const { Toaster } = await import("../../components/ui/toaster");
+    render(<Toaster />);
+    await open();
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "Send 3" })));
+    await waitFor(() => expect(document.body.textContent).toMatch(/3 queued in LifeOS from /), { timeout: 5000 });
+    expect(document.body.textContent).not.toMatch(/Sent 3/);
+  });
+});
 
 describe("the Outbox", () => {
   it("lists every host's held acts under their workspace, and shows exactly what goes", async () => {

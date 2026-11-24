@@ -3,9 +3,10 @@ import { ACT_PILLAR, errorText, NotBuilt, PILLAR_MILESTONE, type ActKind, type A
 import type { ActCtx, ActKindDef, WorkCtx } from '../modules'
 import { canonical } from '../../addonStore'
 import { EARN_DAYS, earn, wireOffer, type EarnedStore, type StoredOffer } from './earned'
+import type { SentFact } from './confirmed'
 import { ActNotSent, ActStale, type ActKinds } from './kinds'
 import { itemOfRow, lifeosRunKey, PRESSABLE, type HeldRow, type HeldStore } from './store'
-import { discardedNote, failedNote, sentNote, staleNote } from './words'
+import { discardedNote, failedNote, queuedNote, sentNote, staleNote } from './words'
 
 /**
  * The hold as one service (docs/agents/work-outbox.md): an act is held
@@ -46,6 +47,8 @@ export interface LifeosHeld {
   edit(ref: LifeosRef, payload: unknown): Promise<OutboxItem>
   /** Put an item read now in place of its listed copy, and tell the screens: what they show catches up with LifeOS. */
   relist?(item: OutboxItem): void
+  /** What LifeOS last said of a row stored sent (confirmed.ts): read only, it changes no state. */
+  sentFact?(row: HeldRow): SentFact | undefined
 }
 
 export interface OutboxDeps {
@@ -517,7 +520,8 @@ export class Outbox {
 
   /** A row as a screen gets it: a kind's payload is its own to trim (a picture's file path never leaves the host). */
   wire(row: HeldRow): OutboxItem {
-    const item = itemOfRow(row)
+    const fact = row.state === 'sent' ? this.lifeos?.sentFact?.(row) : undefined
+    const item = { ...itemOfRow(row), ...fact }
     const payload = item.payload as { picture?: { path?: string } | null } | null
     if (row.kind === 'computer.act' && payload?.picture && typeof payload.picture === 'object') {
       const { path: _path, ...picture } = payload.picture
@@ -647,7 +651,9 @@ export class Outbox {
         continue
       }
       try {
-        await this.deps.ctx.links.completeFor(this.deps.rootOf(row.sessionId), `Sent: ${row.summary}`.slice(0, 300))
+        // LifeOS holds what it took for its undo time, or until the calendar takes it: the task says queued, not sent.
+        const done = this.deps.kinds.get(row.kind)?.store === 'lifeos' ? 'Queued to send' : 'Sent'
+        await this.deps.ctx.links.completeFor(this.deps.rootOf(row.sessionId), `${done}: ${row.summary}`.slice(0, 300))
         this.store.taskDone(row.id)
       } catch (err) {
         // Signed out or unreachable: the row stays owed, and the next send or the next start tries again.
@@ -657,13 +663,22 @@ export class Outbox {
     }
   }
 
+  /**
+   * A LifeOS act stored sent came back failed in LifeOS's own lane (lifeosHeld.ts `failSent`): its thread hears so, as
+   * it was told it would. Called once, by the caller whose `failSent` moved the row.
+   */
+  toldFailed(row: HeldRow): void {
+    if (row.state === 'failed' && row.sessionId) this.tell(row, null)
+  }
+
   /** The thread hears how its act ended, as the app's own note. */
   private tell(row: HeldRow, result: ActResult | null): void {
     const sessionId = row.sessionId!
     try {
       if (row.state === 'sent') {
         const detail = WAKES.includes(row.kind) ? textOf(result) : undefined
-        const note = sentNote(row, detail)
+        // A mail or calendar act LifeOS took is queued there, not yet sent: the thread hears that, and is told if it fails.
+        const note = this.deps.kinds.get(row.kind)?.store === 'lifeos' ? queuedNote(row) : sentNote(row, detail)
         if (WAKES.includes(row.kind)) void this.deps.ctx.threads.resume(sessionId, note).catch(() => this.deps.whisper(sessionId, note))
         else this.deps.whisper(sessionId, note)
       } else if (row.state === 'failed') this.deps.whisper(sessionId, failedNote(row))

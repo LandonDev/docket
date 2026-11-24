@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import type { OutboxItem } from '@shared/contract-work-outbox'
 import type { WorkCtx } from '../modules'
 import { opFields } from '../../../../renderer/src/work/agenda/calendarAct'
-import { CalendarFieldsSchema, CalendarOpMatcherSchema, calendarGrantFits, calendarWords, type CalendarOpPayload } from '../outbox/lifeosHeld'
+import { CalendarFieldsSchema, CalendarOpMatcherSchema, calendarGrantFits, calendarWords, type CalendarOpPayload, type LifeosHeldItems } from '../outbox/lifeosHeld'
 import { cast, makeRig, type Rig } from '../outbox/rig'
 import { ensureAgenda, recordPlain } from './index'
 
@@ -54,7 +54,15 @@ describe('a held calendar act', () => {
     expect(sends()).toEqual([{ fn: 'calendarOps:send', args: { id, cause: 'press', editedAt: (item!.payload as CalendarOpPayload).editedAt } }])
     // the act was read again at the press, not taken from the watcher's copy
     expect(rig.lifeos.calls.some((c) => c.fn === 'calendarOps:get' && c.args.id === id)).toBe(true)
-    expect(rig.lifeos.completed.map((c) => c.reason)).toEqual(['Sent: Accept "Big Ten league call"'])
+    expect(rig.lifeos.completed.map((c) => c.reason)).toEqual(['Queued to send: Accept "Big Ten league call"'])
+    // stored sent, as always; queued in LifeOS until the calendar takes it, and Sent once LifeOS says done
+    const sentOne = async () => (await rig.rpc<{ items: OutboxItem[] }>('work.outbox.list', { show: 'decided' })).items.find((i) => i.ref.id === id)
+    expect(await sentOne()).toMatchObject({ state: 'sent', lifeos: 'queued' })
+    expect(rig.whispers.map((w) => w.text)).toEqual(['The owner queued held item 1 (Accept "Big Ten league call") in LifeOS. It is made once the calendar takes it; if LifeOS cannot carry it out, you will be told.'])
+    rig.lifeos.deliver(id)
+    await (rig.host.outbox.lifeos as LifeosHeldItems).readSent()
+    expect(await sentOne()).toMatchObject({ state: 'sent', lifeos: 'confirmed' })
+    expect(sends()).toHaveLength(1)
   })
 
   it('is stale when it changed after it was shown, and goes nowhere twice', async () => {

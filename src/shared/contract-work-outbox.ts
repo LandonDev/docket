@@ -18,6 +18,14 @@ export const HELD_WHYS = ['rule', 'unreviewed', 'screen', 'flag', 'lifeos', 'pil
 export type HeldWhy = (typeof HELD_WHYS)[number]
 
 /**
+ * What LifeOS says of a mail or calendar act the host stored as sent: still `queued` there (its undo time, or until the
+ * calendar takes it), `confirmed` (LifeOS's row reads sent, a calendar act's done), back in its `drafts` (he took it
+ * back), or `gone` from LifeOS. Read only: it changes no state and no press.
+ */
+export const LIFEOS_SAID = ['queued', 'confirmed', 'drafts', 'gone'] as const
+export type LifeosSaid = (typeof LIFEOS_SAID)[number]
+
+/**
  * A held item as a screen lists it: `HeldItem` (src/shared/work/acts.ts) and
  * what the Outbox shows beside it.
  */
@@ -40,6 +48,10 @@ export interface OutboxItem extends HeldItem {
   /** a mail he scheduled (state `sending` until it goes): when it goes, and the IANA zone he picked the time in */
   scheduledFor?: number
   scheduledZone?: string
+  /** a mail or calendar act stored `sent`: what LifeOS last said of it (absent: an act LifeOS does not hold, or one sent before this was asked) */
+  lifeos?: LifeosSaid
+  /** while `lifeos` is `queued`: when LifeOS last said so (the press, before it was first read); its age is this less `decidedAt` */
+  queuedAsOf?: number
   updatedAt: number
 }
 export const OutboxItemSchema = HeldItemSchema.extend({
@@ -54,6 +66,8 @@ export const OutboxItemSchema = HeldItemSchema.extend({
   /** a mail he scheduled: when it goes, and the IANA zone he picked the time in */
   scheduledFor: z.number().int().optional(),
   scheduledZone: z.string().optional(),
+  lifeos: z.enum(LIFEOS_SAID).optional(),
+  queuedAsOf: z.number().int().optional(),
   updatedAt: z.number().int()
 })
 

@@ -30,7 +30,7 @@ import { kindHeading } from "../acts/kindRows";
 import { Calendar, Chat, File, Mail } from "../icons";
 import { EditDialog } from "./EditDialog";
 import { GrantsSheet } from "./GrantsSheet";
-import { byWorkspace, dayOf, decidedWords, EDITABLE, grantFor, offerLine, pastOf, payloadView, timeOf, WORK_CHATS_KEY } from "./model";
+import { byWords, byWorkspace, dayOf, decidedWords, EDITABLE, grantFor, lifeosLine, lifeosWords, offerLine, pastOf, payloadView, timeOf, WORK_CHATS_KEY } from "./model";
 import { heldWhen } from "./when";
 import { loadResults, undoResult, useResults } from "./results";
 import { OfferLine } from "./OfferLine";
@@ -265,11 +265,13 @@ export function OutboxView({ besideRail = false, onClose, onToggleSidebar, onOpe
   };
 
   const sendSeveral = async (items: readonly HostItem[], where?: string): Promise<void> => {
-    const { sent, failed, waiting } = await sendMany(items);
+    const { sent, queued, failed, waiting } = await sendMany(items);
     setTicked(new Set());
-    // What waits for its own look is said plainly, beside what went: never as a failure.
+    // What waits for its own look is said plainly, beside what went: never as a failure. What LifeOS holds queued is
+    // said as queued there, as its row says, never as sent.
     const left = waiting.length ? `${waiting.length} ${waiting.length === 1 ? "waits" : "wait"} for you to open ${waiting.length === 1 ? "it" : "them"}` : null;
-    if (sent || left) toast([sent ? `${batchVerb(items)} ${sent}${where ? ` from ${where}` : ""}` : null, left].filter(Boolean).join(". "));
+    const went = [sent > queued ? `${batchVerb(items)} ${sent - queued}` : null, queued ? `${queued} queued in LifeOS` : null].filter(Boolean).join(" and ");
+    if (went || left) toast([went ? `${went}${where ? ` from ${where}` : ""}` : null, left].filter(Boolean).join(". "));
     if (failed.length) toastError(`${failed.length} could not go: ${failed[0]!.error}`);
   };
 
@@ -524,6 +526,8 @@ function SentList({
               const { act, about } = rowWords(item);
               const active = current !== null && keyOf(current) === keyOf(item);
               const at = item.decidedAt ?? item.updatedAt;
+              // One LifeOS has not said went is named as it waits there, not as sent.
+              const queued = lifeosLine(item);
               return (
                 <li key={keyOf(item)}>
                   <ItemButton
@@ -534,10 +538,10 @@ function SentList({
                   >
                     <span className="flex min-w-0 items-center gap-2">
                       <SectorDot sector={item.sector} className="size-4" />
-                      <span className="min-w-0 flex-1 truncate text-[13px] font-medium leading-5">{pastTense(act, item.verb, item.kind)}</span>
+                      <span className="min-w-0 flex-1 truncate text-[13px] font-medium leading-5">{queued ? act : pastTense(act, item.verb, item.kind)}</span>
                       <time className="shrink-0 text-xs tabular-nums text-muted-foreground">{timeOf(at)}</time>
                     </span>
-                    <span className="truncate ps-6 text-xs leading-4 text-muted-foreground">{about ?? nameOf(item.environmentId, item.workspaceId)}</span>
+                    <span className="truncate ps-6 text-xs leading-4 text-muted-foreground">{queued ?? about ?? nameOf(item.environmentId, item.workspaceId)}</span>
                   </ItemButton>
                 </li>
               );
@@ -580,7 +584,7 @@ function DetailHead({ item, facts, narrowOnly = [], menu }: { item: HostItem; fa
         {menu}
       </div>
       <h1 className="mt-1 text-base font-semibold leading-6 tracking-[-0.01em] text-balance">
-        {kindHeading(item.kind, item.payload, item.state === "sent") ?? (item.state === "sent" ? pastTense(act, item.verb, item.kind) : act)}
+        {kindHeading(item.kind, item.payload, item.state === "sent") ?? (item.state === "sent" && !lifeosWords(item) ? pastTense(act, item.verb, item.kind) : act)}
       </h1>
     </header>
   );
@@ -684,7 +688,14 @@ export function HeldDetail({
       if (which !== "discard" && !wentOut(after)) return void sayFailed(notSentWords(after));
       onPressed(item);
       // A held file change names its file ("Changed Brief.docx"): its summary's first ": " may be in the file's own name.
-      const done = which === "discard" ? "Discarded" : (changeKind(item.kind) ? kindHeading(item.kind, item.payload, true) : null) ?? `${pastOf(item.verb, item.kind)}${about ? `: ${about}` : ""}`;
+      // One LifeOS took and holds queued says so, as its row does.
+      const queued = which === "discard" ? null : lifeosWords(after);
+      const done =
+        which === "discard"
+          ? "Discarded"
+          : queued
+            ? `${queued.word}${about ? `: ${about}` : ""}`
+            : ((changeKind(item.kind) ? kindHeading(item.kind, item.payload, true) : null) ?? `${pastOf(item.verb, item.kind)}${about ? `: ${about}` : ""}`);
       // A plain press may have completed a run: the host makes the offer before it answers.
       const earned = mayTakeOffer && (which === "send" || which === "again") ? await offerAfterPress(item) : null;
       if (earned) toastEarned(done, earned, () => onReview(item));
@@ -818,6 +829,8 @@ function SentDetail({
   });
   const [busy, setBusy] = useState(false);
   const at = item.decidedAt ?? item.updatedAt;
+  // Stored sent, but LifeOS has not said it went: said as it waits there, with nothing about taking it back.
+  const queued = lifeosWords(item);
   const back = async () => {
     if (!result) return;
     setBusy(true);
@@ -834,7 +847,12 @@ function SentDetail({
     <>
       <div className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-none">
         <div className="mx-auto flex w-full max-w-[640px] flex-col gap-4 px-8 py-8">
-          <DetailHead item={item} facts={[workspace, `${decidedWords(item, grantLabel)} ${dayOf(at) === "Today" ? "at" : "on"} ${timeOf(at)}`]} menu={<ThreadMenu item={item} onOpenSession={onOpenSession} />} />
+          <DetailHead item={item} facts={[workspace, `${queued ? byWords(item, grantLabel) : decidedWords(item, grantLabel)} ${dayOf(at) === "Today" ? "at" : "on"} ${timeOf(at)}`]} menu={<ThreadMenu item={item} onOpenSession={onOpenSession} />} />
+          {queued ? (
+            <p role="status" className="text-[13px] leading-5">
+              <StatusMark state={queued.state} word={queued.word} detail={queued.detail ?? undefined} />
+            </p>
+          ) : null}
           <ActView item={item} env={item.environmentId} />
           {item.kind === "computer.act" ? <KeptPicture item={item} picture={picture} /> : null}
           {offer ? <OfferLine offer={offer} /> : null}
@@ -855,7 +873,7 @@ function SentDetail({
           <Button variant="secondary" size="sm" disabled={busy} onClick={() => void back()}>
             <BusyLabel busy={busy} label={result.undo.label ?? "Undo"} />
           </Button>
-        ) : (
+        ) : queued ? null : (
           <span className="text-[13px] text-muted-foreground">{item.kind === "mail.send" || item.kind === "office.mail.send" ? "Sent mail cannot be taken back" : "This cannot be taken back"}</span>
         )}
       </VerbBar>
