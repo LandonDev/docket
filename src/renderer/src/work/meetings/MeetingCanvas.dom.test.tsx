@@ -395,7 +395,7 @@ describe("the meeting canvas", () => {
   it("a host that does not answer says so as the centred failure with Retry, never as an empty meeting", async () => {
     host.down = true;
     const { container } = await seat(sampleMeeting());
-    await waitFor(() => expect(container.querySelector("[data-canvas-failed]")?.textContent).toContain("Couldn't open this recording"));
+    await waitFor(() => expect(container.querySelector("[data-canvas-failed]")?.textContent).toContain("Couldn't open this meeting"));
     expect(container.querySelector("[data-canvas-state=failed]")).toBeNull();
     expect(container.querySelector("[data-meeting-empty]")).toBeNull();
     // Said once: no skeleton pulses under it, and the bar holds no bone.
@@ -461,7 +461,7 @@ describe("the meeting canvas", () => {
   it("a start the host never answered says so in the transcript's place, and Retry asks again", async () => {
     host.refuseStart = true;
     const { container } = await seat(null);
-    await waitFor(() => expect(container.querySelector("[data-canvas-failed]")?.textContent).toContain("Couldn't open this recording"));
+    await waitFor(() => expect(container.querySelector("[data-canvas-failed]")?.textContent).toContain("Couldn't open this meeting"));
     host.refuseStart = false;
     fireEvent.click(screen.getByRole("button", { name: "Retry" }));
     await waitFor(() => expect(container.querySelector("[data-meeting=transcribing]")).toBeTruthy());

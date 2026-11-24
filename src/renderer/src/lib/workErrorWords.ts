@@ -32,6 +32,8 @@ const RULES: Rule[] = [
   [/work is off on this host/i, (c, m) => (c.named ? `Work is off on ${c.host}. Turn it on in Settings, Work.` : m.input)],
   // An answer that never came (files/store.ts, connection/transport.ts).
   [/^no answer in \d+ ?s\b|timed out after \d|\btimed out\b|^timeout\b/i, lost],
+  // The link's own bare word: with a computer named it says which is away; unnamed it stands as it is.
+  [/^not connected\.?$/i, (c, m) => (c.named ? `${c.Host} is not connected. Try again once it is back.` : m.input)],
   [/connection closed|socket closed/i, (c) => `The connection to ${c.host} dropped.${c.write ? " Check whether the change went through." : " Try again once it is back."}`],
   // Work's own parts that did not load (work/ctx.ts, shared/work/ids.ts).
   [/did not start on this host|^not built\b|is not built yet|no handler for/i, (c) => `This part of Work is not running on ${c.host}. Look under Settings, Connections; if the two computers run different versions, update both.`],

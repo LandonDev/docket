@@ -54,5 +54,7 @@ describe("an error as Work says it to him", () => {
     expect(workErrorWords(new Error("No answer in 4 s"))).toBe("That computer did not answer. Try again once it is connected.");
     expect(workErrorWords(new Error("Work is off on this host"))).toBe("Work is off on this host");
     expect(workErrorWords(new Error("not connected"))).toBe("Not connected");
+    // Told which computer, the bare word says which is away.
+    expect(workErrorWords(new Error("not connected"), { host: "the box" })).toBe("The box is not connected. Try again once it is back.");
   });
 });
