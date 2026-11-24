@@ -1,4 +1,5 @@
-import { AnimatePresence, motion, useReducedMotion } from "motion/react";
+import { AnimatePresence, motion } from "motion/react";
+import { useReducedMotion } from "../lib/motion";
 import type { ReactNode } from "react";
 import { FADE_OUT, SPRING_LAYOUT } from "../lib/ease";
 

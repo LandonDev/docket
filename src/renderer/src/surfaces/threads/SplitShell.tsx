@@ -9,6 +9,7 @@ import { useSashKeys } from "../../hooks/useSashKeys";
 import { animate } from "motion/react";
 import { SPRING_GLIDE } from "../../lib/ease";
 import { pushSample, releaseVelocity, rubber, suppressTextSelection, type DragSample } from "../../lib/drag";
+import { reducedMotion } from "../../lib/motion";
 
 /**
  * The board | sash | chat recipe every thread view with a board shares.
@@ -107,7 +108,7 @@ export function useSplit(initial = 50): SplitState {
       document.documentElement.classList.add("is-resizing");
       const glideTo = (to: number, velocity: number, done?: () => void) => {
         const from = splitRef.current;
-        if (from === to || window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+        if (from === to || reducedMotion()) {
           setSplit(to);
           done?.();
           return;

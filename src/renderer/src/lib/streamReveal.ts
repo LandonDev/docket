@@ -23,6 +23,9 @@
  * outside a quote keeps the word fade alone. One rise per branch: an item
  * inside a risen item does not rise again.
  *
+ * Reduced motion changes nothing here: the fades are the reveal, and the
+ * stylesheet drops the rise alone (components.css, lib/motion.ts).
+ *
  * Code is not prose: a fence's lines fade in one element each
  * (surfaces/CodeBlock.tsx), timed by `lineTimes`, a ledger per fence keyed
  * the same way by its code's first characters.
@@ -83,7 +86,7 @@ export interface StreamReveal {
    */
   lineTimes(code: string, count: number): readonly number[];
   /** Which of a fence's lines are still fading in (`lineTimes` younger than
-   *  REVEAL.fadeMs); none under reduced motion. */
+   *  REVEAL.fadeMs). */
   freshLines(code: string, count: number): boolean[];
 }
 
@@ -93,10 +96,7 @@ export const StreamRevealContext = createContext<StreamReveal | null>(null);
 
 let rows = 0;
 
-export function createStreamReveal(
-  now: () => number = () => performance.now(),
-  reduced: () => boolean = prefersReducedMotion,
-): StreamReveal {
+export function createStreamReveal(now: () => number = () => performance.now()): StreamReveal {
   const ledgers = new Map<string, Ledger>();
   const fences = new Map<string, number[]>();
   let armed = false;
@@ -131,7 +131,6 @@ export function createStreamReveal(
       if (at > last) last = at;
     }
     ledger.text = text;
-    if (reduced()) return;
     wrapSteps(tree, ledger.steps, t);
     riseBlocks(tree);
   };
@@ -174,15 +173,10 @@ export function createStreamReveal(
     lineTimes,
     freshLines: (code, count) => {
       const times = lineTimes(code, count);
-      if (reduced()) return times.map(() => false);
       const t = now();
       return times.map((at) => t - at < REVEAL.fadeMs);
     },
   };
-}
-
-function prefersReducedMotion(): boolean {
-  return typeof window !== "undefined" && !!window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
 }
 
 /** Splits every prose text node at the steps' bounds and wraps each piece

@@ -1,5 +1,6 @@
 import { type RefObject, useLayoutEffect, useRef } from "react";
 import { DUR, SPRING_LAYOUT_CSS } from "./ease";
+import { reducedMotion } from "./motion";
 
 /**
  * A box whose content grows or shrinks glides to its new height instead of
@@ -118,5 +119,5 @@ export function useHeightGlide(
 }
 
 function prefersReducedMotion(): boolean {
-  return typeof window !== "undefined" && !!window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+  return reducedMotion();
 }

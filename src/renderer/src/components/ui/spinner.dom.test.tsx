@@ -42,10 +42,12 @@ describe("Spinner", () => {
     expect(cancel).toHaveBeenCalledTimes(1);
   });
 
-  it("does not turn under reduced motion", () => {
+  it("turns under reduced motion too: a turn in place is the sign of work", () => {
     motion(true);
+    localStorage.setItem("monocode.motion", "reduced");
     render(<Spinner />);
-    expect(animate).not.toHaveBeenCalled();
+    expect(animate).toHaveBeenCalledWith(SPINNER_TURN.keyframes, SPINNER_TURN.timing);
+    localStorage.clear();
   });
 
   it("turns on the document timeline from 0, so every spinner turns in phase and a remount picks the turn up", () => {

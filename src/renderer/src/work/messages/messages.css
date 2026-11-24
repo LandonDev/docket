@@ -9,7 +9,7 @@
 
 /* A message that arrives at the foot while he is there rises 4px and fades in
    (the plan's "Motion"); nothing else in the view moves. Reduced motion
-   draws it at once. */
+   keeps the fade alone. */
 .tc-message-arrives {
   transition:
     opacity var(--dur-fast) var(--ease-out),
@@ -19,9 +19,9 @@
     translate: 0 4px;
   }
 }
-@media (prefers-reduced-motion: reduce) {
+:where([data-motion="reduced"]) {
   .tc-message-arrives {
-    transition: none;
+    transition: opacity var(--dur-fast) var(--ease-out);
   }
 }
 

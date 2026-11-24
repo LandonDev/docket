@@ -16,7 +16,7 @@
     box-shadow: inset 0 0 0 0.5px var(--ring);
   }
 
-  @media (prefers-reduced-motion: reduce) {
+  :where([data-motion="reduced"]) & {
     transition-duration: 0ms;
   }
 }
@@ -33,11 +33,6 @@
   animation: stream-step-in var(--dur-reveal) var(--ease-reveal) both;
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .stream-step {
-    animation: none;
-  }
-}
 
 /* A block born mid-stream (a list item, a table row, a heading, a quote
    line, a code fence: lib/streamReveal.ts, CodeBlock.tsx) takes the phrase
@@ -55,7 +50,7 @@
     stream-rise-in var(--dur-base) var(--ease-out) both;
 }
 
-@media (prefers-reduced-motion: reduce) {
+:where([data-motion="reduced"]) {
   .stream-rise {
     animation: stream-step-in var(--dur-reveal) var(--ease-reveal) both;
   }
@@ -71,7 +66,7 @@
   animation: stream-rise-in var(--dur-base) var(--ease-out) both;
 }
 
-@media (prefers-reduced-motion: reduce) {
+:where([data-motion="reduced"]) {
   .agent-markdown [data-streamdown="table-wrapper"]:has(thead tr.stream-rise) thead tr.stream-rise {
     animation: none;
   }
@@ -108,7 +103,7 @@
   }
 }
 
-@media (prefers-reduced-motion: reduce) {
+:where([data-motion="reduced"]) {
   .t-toggle,
   .t-toggle-thumb {
     transition: none;
@@ -134,7 +129,7 @@
   transition: stroke-dashoffset var(--dur-drawer) var(--ease-out);
 }
 
-@media (prefers-reduced-motion: reduce) {
+:where([data-motion="reduced"]) {
   .t-check,
   .t-check svg path {
     transition: none !important;
@@ -152,7 +147,7 @@
   transition-duration: var(--dur-fast);
   transition-timing-function: var(--ease-out);
 
-  @media (prefers-reduced-motion: reduce) {
+  :where([data-motion="reduced"]) & {
     transition-duration: 0ms;
   }
 }
@@ -177,7 +172,7 @@
   transition-duration: var(--dur-fast);
 }
 
-@media (prefers-reduced-motion: reduce) {
+:where([data-motion="reduced"]) {
   .t-push,
   .t-push:active {
     transition-duration: var(--dur-instant);
@@ -195,11 +190,6 @@
   animation: glyph-fade-out var(--spinner-bars-dur) linear infinite;
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .t-spinner-bar {
-    animation: none;
-  }
-}
 
 /* The check badge (work-kit's CheckBadge): a 22px ring whose arc moves while
    the work runs (useDynamicArc), then fills with the primary and draws its
@@ -330,7 +320,7 @@
   stroke: var(--check-outline-color);
 }
 
-@media (prefers-reduced-motion: reduce) {
+:where([data-motion="reduced"]) {
   .t-check-blur-wrap,
   .t-check-blur-wrap.is-crossing {
     filter: none;
@@ -339,7 +329,6 @@
   .t-check-ring,
   .t-check-arc,
   .t-check-fill,
-  .t-check-spinner,
   .t-check-mark,
   .t-check-badge[data-state="done"] .t-check-mark {
     transition: none;
@@ -361,7 +350,7 @@
   transition-duration: var(--dur-base);
 }
 
-@media (prefers-reduced-motion: reduce) {
+:where([data-motion="reduced"]) {
   .collapsible-resize,
   .collapsible-resize[data-starting-style],
   .collapsible-resize[data-ending-style] {
@@ -391,7 +380,7 @@
   opacity: 0;
 }
 
-@media (prefers-reduced-motion: reduce) {
+:where([data-motion="reduced"]) {
   .collapsible-auto,
   .collapsible-auto[data-ending-style] {
     transition-property: opacity;
@@ -412,7 +401,7 @@
   }
 }
 
-@media (prefers-reduced-motion: reduce) {
+:where([data-motion="reduced"]) {
   .table-frame-in {
     animation-duration: var(--dur-fast);
   }
@@ -450,9 +439,9 @@
   }
 }
 
-@media (prefers-reduced-motion: reduce) {
+:where([data-motion="reduced"]) {
   .step-land {
-    transition: none;
+    transition-property: opacity;
   }
 }
 
@@ -494,7 +483,7 @@
   }
 }
 
-@media (prefers-reduced-motion: reduce) {
+:where([data-motion="reduced"]) {
   .glyph-in {
     animation: glyph-fade-in var(--dur-fast) var(--ease-out) both;
   }
@@ -603,7 +592,7 @@
   transition: transform var(--dur-drawer) var(--ease-out) var(--dur-fast);
 }
 
-@media (prefers-reduced-motion: reduce) {
+:where([data-motion="reduced"]) {
   .task-check,
   .task-fill,
   .task-cursor,
@@ -619,7 +608,7 @@
 }
 
 /* The share keeps its fade under reduced motion; only its slide goes. */
-@media (prefers-reduced-motion: reduce) {
+:where([data-motion="reduced"]) {
   .task-share {
     transition: opacity var(--dur-fast) var(--ease-out);
   }

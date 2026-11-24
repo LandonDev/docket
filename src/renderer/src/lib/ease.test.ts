@@ -137,18 +137,18 @@ describe("the folds that open on their own (components.css)", () => {
     expect(reduced).toContain("transition-property: opacity;");
     expect(reduced).toContain("transition-duration: var(--dur-fast) !important;");
     // The reduced-motion block comes after every other .collapsible-auto rule.
-    const reducedAt = components.indexOf("@media (prefers-reduced-motion: reduce) {\n  .collapsible-auto");
+    const reducedAt = components.indexOf(':where([data-motion="reduced"]) {\n  .collapsible-auto');
     expect(reducedAt).toBeGreaterThan(components.indexOf(".collapsible-auto[data-starting-style]"));
     expect(components.indexOf(".collapsible-auto", components.indexOf("\n}\n", reducedAt))).toBe(-1);
   });
 
-  it("lands a step with a 4px rise over --dur-base and keeps it still under reduced motion", () => {
+  it("lands a step with a 4px rise over --dur-base, and only fades it under reduced motion", () => {
     const [land] = rule(".step-land");
     expect(land).toContain("transition-property: opacity, translate;");
     expect(land).toContain("transition-duration: var(--dur-base);");
     expect(land).toContain("transition-timing-function: var(--ease-out);");
     expect(components).toMatch(/@starting-style\s*\{\s*\.step-land\s*\{\s*opacity: 0;\s*translate: 0 4px;/);
-    expect(components).toMatch(/@media \(prefers-reduced-motion: reduce\)\s*\{\s*\.step-land\s*\{\s*transition: none;/);
+    expect(components).toMatch(/:where\(\[data-motion="reduced"\]\)\s*\{\s*\.step-land\s*\{\s*transition-property: opacity;/);
   });
 });
 

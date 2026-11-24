@@ -12,6 +12,7 @@ import {
   type PlaceKind,
   type ThemePreference,
 } from "../../lib/appearance";
+import { loadMotionPreference, onMotionChange, saveMotionPreference, type MotionPreference } from "../../lib/motion";
 import { applyPlaceScheme } from "../../lib/placeScheme";
 import { useWorkOn } from "../../lib/workSwitch";
 
@@ -21,6 +22,12 @@ const THEMES: { value: ThemePreference; label: string }[] = [
   { value: "dark", label: "Dark" },
 ];
 
+const MOTIONS: { value: MotionPreference; label: string }[] = [
+  { value: "system", label: "Follow this computer" },
+  { value: "full", label: "Full" },
+  { value: "reduced", label: "Reduced" },
+];
+
 const FONT_SIZES = EDITOR_FONT_SIZES.map((size) => ({ value: String(size), label: `${size}px` }));
 
 const read = (): Record<PlaceKind, ThemePreference> => ({ code: loadThemePreference("code"), work: loadThemePreference("work") });
@@ -28,11 +35,15 @@ const read = (): Record<PlaceKind, ThemePreference> => ({ code: loadThemePrefere
 /** A theme for each kind of place (docs/DESIGN.md "Appearance by place"):
  *  Code and Work, each System, Light or Dark. Work shows Code's choice until
  *  it has one of its own. With Work off on every host there is one kind of
- *  place, so one row. */
+ *  place, so one row. Motion follows this computer's reduce-motion setting
+ *  unless chosen here (lib/motion.ts): a managed PC whose setting he cannot
+ *  change can still animate. */
 export function AppearancePage() {
   const work = useWorkOn();
   const [themes, setThemes] = useState(read);
   const [fontSize, setFontSize] = useState<EditorFontSize>(loadEditorFontSize);
+  const [motion, setMotion] = useState<MotionPreference>(loadMotionPreference);
+  useEffect(() => onMotionChange(() => setMotion(loadMotionPreference())), []);
   // A choice made in another window shows here too.
   useEffect(() => {
     const onStorage = (event: StorageEvent): void => {
@@ -52,6 +63,11 @@ export function AppearancePage() {
       <ChoiceSelect label={label} value={themes[kind]} options={THEMES} onChange={(next) => choose(kind, next)} />
     </PageRow>
   );
+  const motionRow = (
+    <PageRow title="Motion">
+      <ChoiceSelect label="Motion" value={motion} options={MOTIONS} onChange={saveMotionPreference} />
+    </PageRow>
+  );
   const editor = (
     <PageRow title="Editor font size">
       <ChoiceSelect label="Editor font size" value={String(fontSize)} options={FONT_SIZES} onChange={(next) => setFontSize(saveEditorFontSize(Number(next)))} />
@@ -61,6 +77,7 @@ export function AppearancePage() {
     return (
       <PageSection>
         {theme("code", "Theme")}
+        {motionRow}
         {editor}
       </PageSection>
     );
@@ -70,7 +87,10 @@ export function AppearancePage() {
         {theme("code", "Code")}
         {theme("work", "Work")}
       </PageSection>
-      <PageSection>{editor}</PageSection>
+      <PageSection>
+        {motionRow}
+        {editor}
+      </PageSection>
     </>
   );
 }

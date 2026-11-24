@@ -41,7 +41,7 @@
 .collapsible-panel[data-ending-style] {
   transition-duration: var(--dur-fast);
 }
-@media (prefers-reduced-motion: reduce) {
+:where([data-motion="reduced"]) {
   .collapsible-panel,
   .collapsible-panel[data-starting-style],
   .collapsible-panel[data-ending-style] {

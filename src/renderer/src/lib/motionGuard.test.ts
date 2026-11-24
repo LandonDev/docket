@@ -226,6 +226,6 @@ describe("hover reveals under reduced motion", () => {
 
   it("the task share keeps its fade too; only its slide goes", () => {
     const css = readFileSync(join(ROOT, "assets/components.css"), "utf8");
-    expect(css).toMatch(/@media \(prefers-reduced-motion: reduce\) \{\s*\.task-share \{\s*transition: opacity var\(--dur-fast\) var\(--ease-out\);/);
+    expect(css).toMatch(/:where\(\[data-motion="reduced"\]\) \{\s*\.task-share \{\s*transition: opacity var\(--dur-fast\) var\(--ease-out\);/);
   });
 });

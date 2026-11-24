@@ -8,6 +8,7 @@ import {
 import { animate } from "motion/react";
 import { SPRING_GLIDE } from "../lib/ease";
 import { pushSample, releaseVelocity, rubber, suppressTextSelection, type DragSample } from "../lib/drag";
+import { reducedMotion } from "../lib/motion";
 
 type Options = {
   min: number;
@@ -76,7 +77,7 @@ export function useDragResize({
     setWidth(value);
     onCommitRef.current?.(value);
     if (!pane) return;
-    const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const reduce = reducedMotion();
     if (immediate || from === value || reduce) {
       pane.style.width = `${value}px`;
       return;

@@ -12,6 +12,7 @@ import {
   type PlaceKind,
 } from "./appearance";
 import { WORK_CHATS, workspaceByPath, workspaceStore, type WorkspaceCatalog } from "./tcserver/workspaces";
+import { reducedMotion } from "./motion";
 
 /**
  * A window wears the theme of the place selected in its rail
@@ -42,8 +43,6 @@ let dissolve: { skipTransition(): void } | null = null;
 
 /** The kind of place this window is on. */
 export const currentPlaceKind = (): PlaceKind => kind;
-
-const reducedMotion = (): boolean => !!window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
 
 /** Main keeps the window's theme and kind with its geometry: the next launch
  *  opens with that backing colour and that class (src/main/windows.ts). The

@@ -1,6 +1,6 @@
 // A7 (turn structure): one run of actions, a line that opens onto its rows.
 import { useCallback, useId, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type RefObject } from "react";
-import { useReducedMotion } from "motion/react";
+import { useReducedMotion } from "../../lib/motion";
 import { Bot, ChevronRight, Sparkles, type IconComponent } from "../../chrome/icons";
 import { Button } from "../../components/ui/button";
 import { Collapsible, CollapsibleContent } from "../../components/ui/collapsible";

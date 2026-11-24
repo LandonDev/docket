@@ -11,9 +11,10 @@ import type { Block } from "../lib/session";
 
 vi.mock("../lib/highlight", () => ({ highlightCode: () => Promise.resolve(null) }));
 vi.mock("../lib/sounds", () => ({ playCue: () => {} }));
-vi.mock("motion/react", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("motion/react")>()),
+vi.mock("@renderer/lib/motion", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@renderer/lib/motion")>()),
   useReducedMotion: () => true,
+  reducedMotion: () => true,
 }));
 const handed: Block[][] = [];
 vi.mock("./transcript/ActionGroup", () => ({

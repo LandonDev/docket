@@ -10,6 +10,7 @@ import { animate } from "motion/react";
 import { clampDockSize, DOCK_SIZE_DEFAULT } from "../lib/projectTerminal";
 import { pushSample, releaseVelocity, rubber, suppressTextSelection, type DragSample } from "../lib/drag";
 import { SPRING_GLIDE } from "../lib/ease";
+import { reducedMotion } from "../lib/motion";
 
 /**
  * The bottom dock's shell: the hairline on its top edge, the focus tint,
@@ -90,7 +91,7 @@ export function DockFrame({
       cancelAnimationFrame(frame.current);
       frame.current = null;
     }
-    if (to === Math.round(from) || window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+    if (to === Math.round(from) || reducedMotion()) {
       pending.current = to;
       commit();
       return;

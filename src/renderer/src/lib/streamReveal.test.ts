@@ -9,12 +9,9 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { createStreamReveal, LEDGER_KEY_CHARS, renderedText, RISE_CLASS, STEP_CLASS } from "./streamReveal";
 
-function harness(reduced = false) {
+function harness() {
   let t = 1000;
-  const reveal = createStreamReveal(
-    () => t,
-    () => reduced,
-  );
+  const reveal = createStreamReveal(() => t);
   reveal.arm();
   const processor = unified().use(remarkParse).use(remarkGfm).use(remarkRehype).use(reveal.plugin);
   const run = (markdown: string): Root => processor.runSync(processor.parse(markdown)) as Root;
@@ -100,17 +97,9 @@ describe("streamReveal", () => {
     expect(spans(tree).map(text)).toEqual(["Intro"]);
   });
 
-  it("wraps nothing under reduced motion", () => {
-    const { run } = harness(true);
-    expect(spans(run("Hello there "))).toEqual([]);
-  });
-
   it("shows, without fading, what the row held before it was armed", () => {
     let t = 0;
-    const reveal = createStreamReveal(
-      () => t,
-      () => false,
-    );
+    const reveal = createStreamReveal(() => t);
     const processor = unified().use(remarkParse).use(remarkRehype).use(reveal.plugin);
     const run = (md: string) => processor.runSync(processor.parse(md)) as Root;
     expect(spans(run("Already here ")).some(young)).toBe(false);
@@ -133,7 +122,7 @@ describe("streamReveal", () => {
 describe("lineTimes", () => {
   it("times each line when it first shows; lines held before the row armed are old", () => {
     let t = 100;
-    const reveal = createStreamReveal(() => t, () => false);
+    const reveal = createStreamReveal(() => t);
     expect(reveal.lineTimes("a\nb", 2)).toEqual([-Infinity, -Infinity]);
     reveal.arm();
     t = 200;
@@ -145,7 +134,7 @@ describe("lineTimes", () => {
 
   it("follows a short fence into its longer key, and a fence with other code starts afresh", () => {
     let t = 10;
-    const reveal = createStreamReveal(() => t, () => false);
+    const reveal = createStreamReveal(() => t);
     reveal.arm();
     reveal.lineTimes("x", 1);
     t = 20;
@@ -155,16 +144,13 @@ describe("lineTimes", () => {
     expect(reveal.lineTimes("y = 1", 1)).toEqual([30]);
   });
 
-  it("says which lines still fade: none once REVEAL.fadeMs passed, none under reduced motion", () => {
+  it("says which lines still fade: none once REVEAL.fadeMs passed", () => {
     let t = 0;
-    const reveal = createStreamReveal(() => t, () => false);
+    const reveal = createStreamReveal(() => t);
     reveal.arm();
     expect(reveal.freshLines("a", 1)).toEqual([true]);
     t = REVEAL.fadeMs;
     expect(reveal.freshLines("a\nb", 2)).toEqual([false, true]);
-    const still = createStreamReveal(() => 0, () => true);
-    still.arm();
-    expect(still.freshLines("a", 1)).toEqual([false]);
   });
 });
 
@@ -239,22 +225,22 @@ describe("blocks born mid-stream", () => {
     expect(find(tree, "li").map(rises)).toEqual([true, false]);
   });
 
-  it("raise nothing under reduced motion", () => {
-    const { run, advance } = harness(true);
-    run("- one\n");
-    advance(REVEAL.fadeMs);
-    expect(find(run("- one\n- two\n"), "li").some(rises)).toBe(false);
-  });
 });
 
 describe("the stream's motion rules", () => {
   const css = readFileSync(resolve(__dirname, "../assets/components.css"), "utf8");
   const reduced = css.slice(css.indexOf(".stream-rise {"));
+  const reducedBlocks = css.split(':where([data-motion="reduced"]) {').slice(1).join("\n");
 
   it("raise a block on the fade and a 4px rise, and only fade it under reduced motion", () => {
     expect(css).toMatch(/@keyframes stream-rise-in \{\s*from \{\s*translate: 0 4px;/);
     expect(css).toMatch(/\.stream-rise \{\s*animation:\s*stream-step-in var\(--dur-reveal\) var\(--ease-reveal\) both,\s*stream-rise-in var\(--dur-base\) var\(--ease-out\) both;/);
-    expect(reduced).toMatch(/prefers-reduced-motion: reduce\) \{\s*\.stream-rise \{\s*animation: stream-step-in var\(--dur-reveal\) var\(--ease-reveal\) both;/);
+    expect(reduced).toMatch(/:where\(\[data-motion="reduced"\]\) \{\s*\.stream-rise \{\s*animation: stream-step-in var\(--dur-reveal\) var\(--ease-reveal\) both;/);
+  });
+
+  it("keep the word fade under reduced motion: the reveal is the fade", () => {
+    expect(css).toMatch(/\.stream-step \{\s*animation: stream-step-in var\(--dur-reveal\) var\(--ease-reveal\) both;/);
+    expect(reducedBlocks).not.toContain(".stream-step");
   });
 
   it("fade a table's card with its header row, the row then only rising", () => {
@@ -262,8 +248,8 @@ describe("the stream's motion rules", () => {
     expect(css).toContain("thead tr.stream-rise {\n  animation: stream-rise-in var(--dur-base) var(--ease-out) both;");
   });
 
-  it("delay a landing step by its place in the batch, with no transition under reduced motion", () => {
+  it("delay a landing step by its place in the batch, and only fade it under reduced motion", () => {
     expect(css).toMatch(/\.step-land \{[^}]*transition-delay: calc\(var\(--stagger-step\) \* var\(--stagger, 0\)\);/);
-    expect(css).toMatch(/prefers-reduced-motion: reduce\) \{\s*\.step-land \{\s*transition: none;/);
+    expect(css).toMatch(/:where\(\[data-motion="reduced"\]\) \{\s*\.step-land \{\s*transition-property: opacity;/);
   });
 });

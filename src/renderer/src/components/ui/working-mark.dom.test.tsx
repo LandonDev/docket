@@ -5,10 +5,11 @@ import { PaneVisibilityContext } from "../../hooks/paneVisibility";
 import { MARK } from "../../lib/ease";
 
 const reduced = vi.hoisted(() => ({ value: false }));
-vi.mock("motion/react", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("motion/react")>();
-  return { ...actual, useReducedMotion: () => reduced.value };
-});
+vi.mock("@renderer/lib/motion", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@renderer/lib/motion")>()),
+  useReducedMotion: () => reduced.value,
+  reducedMotion: () => reduced.value,
+}));
 
 import { WorkingMark } from "./working-mark";
 
@@ -62,10 +63,14 @@ describe("WorkingMark", () => {
     for (const h of handles) expect(h.cancel).toHaveBeenCalledTimes(1);
   });
 
-  it("holds still under reduced motion and in a hidden pane", () => {
+  it("moves under reduced motion too, a sign of work a few pixels wide", () => {
     reduced.value = true;
     render(<WorkingMark />);
     reduced.value = false;
+    expect(animate).toHaveBeenCalledTimes(3);
+  });
+
+  it("holds still in a hidden pane", () => {
     render(
       <PaneVisibilityContext.Provider value={false}>
         <WorkingMark />

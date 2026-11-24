@@ -10,6 +10,7 @@ import { animate } from "motion/react";
 import { pushSample, releaseVelocity, setGrabbing, suppressTextSelection, type DragSample } from "../lib/drag";
 import { SPRING_GLIDE } from "../lib/ease";
 import { moveItem } from "../lib/reorder";
+import { reducedMotion } from "../lib/motion";
 
 const THRESHOLD = 5;
 const DROP_ON_INSET = 0.25;
@@ -53,7 +54,7 @@ type DragState = {
  *  list renders in its new order, then glides from there into its slot. */
 type PendingDrop = { id: string; order: string; from: number; velocity: number };
 
-const reduceMotion = () => typeof window.matchMedia === "function" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+const reduceMotion = reducedMotion;
 const orderOf = (ids: readonly string[]) => ids.join("\u0000");
 
 function optionsOf(

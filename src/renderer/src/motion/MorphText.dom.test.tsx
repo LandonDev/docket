@@ -7,10 +7,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { DUR, EASE_SWAP_CSS } from "../lib/ease";
 
 const reduced = vi.hoisted(() => ({ value: false }));
-vi.mock("motion/react", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("motion/react")>();
-  return { ...actual, useReducedMotion: () => reduced.value };
-});
+vi.mock("@renderer/lib/motion", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@renderer/lib/motion")>()),
+  useReducedMotion: () => reduced.value,
+  reducedMotion: () => reduced.value,
+}));
 
 import { MorphText } from "./MorphText";
 

@@ -105,7 +105,7 @@ export function ApprovalCard({
         data-slot="approval"
         className={cn(
           "flex min-h-7 in-data-[table]:min-h-8 items-center pl-5.5 in-data-[table]:pl-8.5 font-sans text-[13px] leading-5 text-muted-foreground",
-          sawWaiting.current && "animate-in fade-in-0 duration-(--dur-fast) ease-(--ease-out) motion-reduce:animate-none",
+          sawWaiting.current && "animate-in fade-in-0 duration-(--dur-fast) ease-(--ease-out)",
         )}
       >
         {approval.decided ? decidedLine(approval) : decidedLine({ ...approval, decided: sent ?? undefined })}

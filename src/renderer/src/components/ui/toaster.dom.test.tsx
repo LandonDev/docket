@@ -203,7 +203,7 @@ describe("a toast's buttons and motion", () => {
 
   it("rides the motion tokens and the toast layer, out-specifying sonner's stylesheet", () => {
     const css = readFileSync(resolve(__dirname, "../../index.css"), "utf8");
-    const block = css.slice(css.indexOf(":root [data-sonner-toaster] {"), css.indexOf("}\n}", css.indexOf("@media (prefers-reduced-motion: reduce) {\n  :root [data-sonner-toaster]")) + 3);
+    const block = css.slice(css.indexOf(":root [data-sonner-toaster] {"), css.indexOf("}\n}", css.indexOf(':where([data-motion="reduced"]) {\n  &:root [data-sonner-toaster]')) + 3);
     expect(block).toContain("z-index: var(--layer-toast)");
     expect(block).toContain("transition-property: transform, opacity;");
     expect(block).toContain("transition-duration: var(--dur-base)");

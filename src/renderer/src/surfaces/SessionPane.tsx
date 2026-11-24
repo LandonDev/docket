@@ -13,7 +13,8 @@ import {
 import { useEnvironmentBlock } from "../chrome/ConnectionLine";
 import { noteActiveSession } from "../lib/appshots";
 import { useFirstPaintReport } from "../lib/firstPaint";
-import { motion, useReducedMotion } from "motion/react";
+import { motion } from "motion/react";
+import { useReducedMotion } from "../lib/motion";
 import { DUR, EASE_OUT } from "../lib/ease";
 import { sessionStore, useSessionMetaValue } from "../lib/tcserver/store";
 import { looksLikeProject, type RecentProject } from "../lib/recents";

@@ -168,6 +168,18 @@ prototypes; no test holds it.
   the browser's system otherwise: from the phone, and from a dark window
   while dark is held (docs/agents/work-sheets.md).
 
+## Motion
+
+Settings → Appearance → Motion: Follow this computer (the default), Full or
+Reduced, one choice per window origin in localStorage (`monocode.motion`,
+absent for the default), as the themes are; a choice in one window reaches
+the others by the `storage` event. lib/motion.ts holds it: `initMotion`
+(main.tsx, the capture page) writes `data-motion="full|reduced"` on `<html>`
+and keeps it in step with the choice and with the system's setting; the
+slideshow's windows copy it (work/slides/show/places.ts `mirrorLook`).
+What reduced means is docs/DESIGN.md "Reduced motion": movement goes, fades
+stay, and the marks of work keep moving.
+
 ## The phone
 
 Checked in light, not redesigned. One value was fixed (the light

@@ -248,6 +248,14 @@ src/main/windowFrame.ts (`frameOptions`), used by windows.ts:
   its accelerators run, Ctrl where the Mac has ⌘.
 - **No Mica.** The plan named it; docs/DESIGN.md has one neutral palette and no glass, and it wins.
   The shell is the opaque `sidebar` tone on every platform.
+- **Reduced motion.** Chromium on Windows reports `prefers-reduced-motion: reduce` whenever
+  Windows' animation effects are off (`SPI_GETCLIENTAREAANIMATION`: Settings → Accessibility →
+  Visual effects, or "Animate controls and elements inside windows" in Performance Options,
+  which managed PCs, remote sessions and VMs often clear), and follows it live. 1.0.377 read that
+  as no motion at all, so spinners, the working mark and the streamed text's fades went still
+  (measured in the rig, .temp-code/plans/landed/F-windows-motion.md). Reduced now keeps the
+  marks of work moving, and Settings → Appearance → Motion can set Full on a PC whose setting
+  he cannot change (appearance.md "Motion").
 - The lock and sleep come from `powerMonitor` (`screenOfIdleState` for the state at boot); the
   display is kept awake while threads work, as on a Mac (`powerSaveBlocker`).
 

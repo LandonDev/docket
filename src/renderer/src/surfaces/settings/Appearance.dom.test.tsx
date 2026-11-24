@@ -3,6 +3,7 @@ import { act, cleanup, fireEvent, render, screen } from "@testing-library/react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../../components/choice-select", async () => await import("../../components/choice-select-body"));
+import { initMotion } from "../../lib/motion";
 import { setWorkOn, workSwitch } from "../../lib/workSwitch";
 import { AppearancePage } from "./Appearance";
 
@@ -24,10 +25,11 @@ async function choose(trigger: string, option: string) {
 }
 
 describe("Appearance", () => {
-  it("is two rows while Work is off everywhere: the theme and the editor's type size", () => {
+  it("is three rows while Work is off everywhere: the theme, motion and the editor's type size", () => {
     render(<AppearancePage />);
-    expect(document.querySelectorAll("[data-slot=page-row]")).toHaveLength(2);
+    expect(document.querySelectorAll("[data-slot=page-row]")).toHaveLength(3);
     expect(screen.getByRole("combobox", { name: "Theme" }).textContent).toContain("Dark");
+    expect(screen.getByRole("combobox", { name: "Motion" }).textContent).toContain("Follow this computer");
     expect(screen.getByRole("combobox", { name: "Editor font size" }).textContent).toContain("13px");
     expect(screen.queryByRole("combobox", { name: "Work" })).toBeNull();
   });
@@ -47,6 +49,26 @@ describe("Appearance", () => {
     expect(screen.getByRole("combobox", { name: "Theme" }).textContent).toContain("Light");
   });
 
+  it("sets motion for this window, and back to following the computer", async () => {
+    const stop = initMotion();
+    render(<AppearancePage />);
+    await choose("Motion", "Reduced");
+    expect(localStorage.getItem("monocode.motion")).toBe("reduced");
+    expect(document.documentElement.dataset.motion).toBe("reduced");
+    await choose("Motion", "Full");
+    expect(document.documentElement.dataset.motion).toBe("full");
+    await choose("Motion", "Follow this computer");
+    expect(localStorage.getItem("monocode.motion")).toBeNull();
+    stop();
+  });
+
+  it("shows a motion choice made in another window", async () => {
+    render(<AppearancePage />);
+    localStorage.setItem("monocode.motion", "full");
+    await act(async () => void window.dispatchEvent(new StorageEvent("storage", { key: "monocode.motion" })));
+    expect(screen.getByRole("combobox", { name: "Motion" }).textContent).toContain("Full");
+  });
+
   it("saves the editor's type size", async () => {
     render(<AppearancePage />);
     await choose("Editor font size", "14px");
@@ -61,7 +83,7 @@ describe("Appearance", () => {
     it("is a Theme section with a row for Code and a row for Work, then the editor's type size", () => {
       render(<AppearancePage />);
       expect(screen.getByText("Theme")).toBeTruthy();
-      expect([...document.querySelectorAll("[data-slot=page-row]")].map((row) => row.querySelector("[role=combobox]")?.getAttribute("aria-label"))).toEqual(["Code", "Work", "Editor font size"]);
+      expect([...document.querySelectorAll("[data-slot=page-row]")].map((row) => row.querySelector("[role=combobox]")?.getAttribute("aria-label"))).toEqual(["Code", "Work", "Motion", "Editor font size"]);
       expect(screen.queryByRole("combobox", { name: "Theme" })).toBeNull();
       // The section's rows are its own; the editor's row sits under it, in a section of its own.
       const sections = document.querySelectorAll("section");

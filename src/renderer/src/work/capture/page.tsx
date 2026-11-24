@@ -1,5 +1,6 @@
 import { createRoot } from "react-dom/client";
 import { loadThemePreference, resolveColorScheme } from "../../lib/appearance";
+import { initMotion } from "../../lib/motion";
 import { captureHost } from "./client";
 import { CapturePage, type CaptureBridge } from "./CapturePage";
 import "../../index.css";
@@ -23,4 +24,5 @@ applyScheme();
 window.addEventListener("storage", applyScheme);
 window.matchMedia("(prefers-color-scheme: light)").addEventListener("change", applyScheme);
 
+initMotion();
 createRoot(document.getElementById("root")!).render(<CapturePage host={captureHost(() => bridge.port())} bridge={bridge} />);

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
-import { animate, useReducedMotion } from "motion/react";
+import { animate } from "motion/react";
+import { useReducedMotion } from "../lib/motion";
 import { usePaneVisible } from "../hooks/paneVisibility";
 import { DUR, EASE_OUT } from "../lib/ease";
 

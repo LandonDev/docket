@@ -1,7 +1,8 @@
 import { modKey } from '../lib/keys'
 import { registry } from '../lib/connection'
 import { environmentOfCwd, hostOfCwd } from '../lib/tcserver/projects'
-import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
+import { AnimatePresence, motion } from 'motion/react'
+import { useReducedMotion } from '../lib/motion'
 import { DUR, EASE_OUT } from '../lib/ease'
 import { recordSendOrigin } from '../lib/sendOrigin'
 import {

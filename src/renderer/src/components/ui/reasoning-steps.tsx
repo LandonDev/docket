@@ -1,4 +1,4 @@
-import { useReducedMotion } from "motion/react";
+import { useReducedMotion } from "../../lib/motion";
 import { memo, useLayoutEffect, useMemo, useRef } from "react";
 import { OVERFLOW_FADE_Y, useOverflowEdges } from "@renderer/hooks/useOverflowEdges";
 import { cn } from "@renderer/lib/cn";

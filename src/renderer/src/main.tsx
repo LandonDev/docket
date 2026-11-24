@@ -8,6 +8,7 @@ import { ConfirmHost } from "./chrome/ConfirmDialog";
 /* The toast stack rides its own chunk: sonner is not part of the first paint. */
 const Toaster = lazy(() => import("./components/ui/toaster").then((m) => ({ default: m.Toaster })));
 import { initAppearance } from "./lib/appearance";
+import { initMotion } from "./lib/motion";
 import { initPlaceScheme } from "./lib/placeScheme";
 import { initSounds } from "./lib/sounds";
 import { focusSignal } from "./lib/tcserver/commands";
@@ -37,6 +38,7 @@ import "./index.css";
 installEditorKeys();
 installScrollActivity();
 initAppearance();
+initMotion();
 initPlaceScheme();
 initSounds();
 // The stores follow the registry: one link per environment, attached as

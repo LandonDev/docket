@@ -97,7 +97,7 @@ describe("ApprovalCard", () => {
     // Decided on screen: the verdict at the words, 13px muted, fading in.
     rerender(<ApprovalCard block={approval("Bash", { command: "ls" }, "allow")} />);
     const decided = container.querySelector<HTMLElement>('[data-slot="approval"]')!;
-    for (const c of ["min-h-7", "pl-5.5", "text-[13px]", "leading-5", "text-muted-foreground", "animate-in", "fade-in-0", "duration-(--dur-fast)", "motion-reduce:animate-none"])
+    for (const c of ["min-h-7", "pl-5.5", "text-[13px]", "leading-5", "text-muted-foreground", "animate-in", "fade-in-0", "duration-(--dur-fast)"])
       expect(decided.className).toContain(c);
   });
 

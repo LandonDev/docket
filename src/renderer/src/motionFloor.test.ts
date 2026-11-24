@@ -18,7 +18,7 @@ describe("the motion floor", () => {
 
   it("keeps a --dur-fast fade on overlays under reduced motion", () => {
     // Overlays move on transitions, so reduced motion narrows them to opacity.
-    const overlays = css.split("@media (prefers-reduced-motion: reduce)").slice(1).find((block) => block.includes('[data-slot="dialog-content"]')) ?? "";
+    const overlays = css.split(':where([data-motion="reduced"])').slice(1).find((block) => block.includes('[data-slot="dialog-content"]')) ?? "";
     for (const slot of ["dialog-content", "sheet-content", "popover-content", "dropdown-menu-content", "select-content", "tooltip-content"]) {
       expect(overlays, slot).toContain(`[data-slot="${slot}"]`);
     }

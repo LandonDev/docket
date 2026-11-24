@@ -14,6 +14,7 @@ import { keyHint } from "../../../lib/keys";
 import { LEAVE_CHORD, VideoInput, attachInput, type DrivenScreen } from "../../../lib/video/videoInput";
 import { sharpWidth } from "../../../lib/video/support";
 import type { ComputerEntry } from "../../../lib/computerSessions";
+import { reducedMotion } from "../../../lib/motion";
 
 /**
  * The Computer section's viewport (docs/DESIGN.md "Panels"): the window as
@@ -61,7 +62,7 @@ export const NO_PICTURE_WORDS: Partial<Record<HistoryPictureNone, string>> = {
   gone: "This picture is no longer kept",
 };
 
-const prefersReducedMotion = (): boolean => typeof window !== "undefined" && !!window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+const prefersReducedMotion = reducedMotion;
 
 /** The ring the agent's click draws: a background halo under a foreground ring, so it reads on any window. */
 export const ClickMark = forwardRef(function ClickMark({ at, frozen }: { at?: [number, number]; frozen?: boolean }, ref: Ref<HTMLDivElement>) {

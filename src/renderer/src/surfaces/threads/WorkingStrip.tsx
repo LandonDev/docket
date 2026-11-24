@@ -12,6 +12,7 @@ import { useSessionMetasWhen } from "../../lib/tcserver/store";
 import { duration } from "../../lib/duration";
 import { COLUMN_MAX_CLASS } from "../transcriptOutlineModel";
 import { DUR } from "../../lib/ease";
+import { reducedMotion } from "../../lib/motion";
 
 /** The longest a Stop spins when nothing settles it: past this, the control takes a click again. */
 export const STOP_DEADLINE_MS = 10_000;
@@ -32,9 +33,6 @@ function sameView(a: RowView | null, b: RowView): boolean {
   );
 }
 
-function reducedMotion(): boolean {
-  return typeof matchMedia === "function" && matchMedia("(prefers-reduced-motion: reduce)").matches;
-}
 
 /**
  * The slot above the composer, permanently reserved at 28px so neither the

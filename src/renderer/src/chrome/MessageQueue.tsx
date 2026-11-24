@@ -1,5 +1,6 @@
 import { useEffect, useState, type ReactNode } from 'react'
-import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
+import { AnimatePresence, motion } from 'motion/react'
+import { useReducedMotion } from '../lib/motion'
 import { useSortable } from '../hooks/useSortable'
 import { DUR, EASE_OUT, FADE_OUT } from '../lib/ease'
 import type { QueuedMessage } from '../lib/tcserver/types'

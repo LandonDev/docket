@@ -31,6 +31,7 @@ import type { RecentProject } from "../lib/recents";
 import { useShell } from "../stores/shell";
 import type { IntentProps } from "../lib/lazyChunk";
 import { settingsChunk } from "../surfaces/chunks";
+import { reducedMotion } from "../lib/motion";
 
 type Props = {
   activeId: string;
@@ -54,7 +55,7 @@ type Props = {
 
 /** How the tab strip's arrows scroll it: a glide, or a jump under reduced motion. */
 export function tabScrollBehavior(): ScrollBehavior {
-  return typeof matchMedia === "function" && matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth";
+  return reducedMotion() ? "auto" : "smooth";
 }
 
 /** Which tab-strip edges still have overflow to scroll toward. */

@@ -155,7 +155,7 @@ describe("lines as elements", () => {
 
   it("fades in a line that lands while the row streams; the lines it mounted with do not", () => {
     let t = 1_000;
-    const reveal = createStreamReveal(() => t, () => false);
+    const reveal = createStreamReveal(() => t);
     const view = render(streaming(reveal, "one\ntwo"));
     reveal.arm();
     expect(lineEls(view.container).map((el) => el.classList.contains("stream-step"))).toEqual([false, false]);
@@ -169,24 +169,19 @@ describe("lines as elements", () => {
 
   it("rises in a fence born while the row streams, never one it mounted with", () => {
     const t = 5_000;
-    const born = createStreamReveal(() => t, () => false);
+    const born = createStreamReveal(() => t);
     born.arm();
     const fresh = render(streaming(born, "x = 1"));
     expect(fresh.container.querySelector('[data-streamdown="code-block"]')!.className).toContain("stream-rise");
     cleanup();
-    const held = createStreamReveal(() => t, () => false);
+    const held = createStreamReveal(() => t);
     const old = render(streaming(held, "x = 1"));
     expect(old.container.querySelector('[data-streamdown="code-block"]')!.className).not.toContain("stream-rise");
   });
 
-  it("fades nothing without a streaming row, nor under reduced motion", () => {
+  it("fades nothing without a streaming row", () => {
     const view = render(<CodeBlock code={"a\nb"} language="ts" />);
     expect(view.container.querySelector(".stream-step, .stream-rise")).toBeNull();
-    cleanup();
-    const still = createStreamReveal(() => 1, () => true);
-    still.arm();
-    const reduced = render(streaming(still, "a\nb"));
-    expect(reduced.container.querySelector(".stream-step, .stream-rise")).toBeNull();
   });
 
   it("glides its body by the line while its row streams, the closing line too, and not once settled", () => {
@@ -201,7 +196,7 @@ describe("lines as elements", () => {
     });
     Object.defineProperty(proto, "offsetParent", { configurable: true, get: () => document.body });
     try {
-      const reveal = createStreamReveal(() => 1, () => false);
+      const reveal = createStreamReveal(() => 1);
       reveal.arm();
       const view = render(streaming(reveal, "a"));
       const body = view.container.querySelector<HTMLElement>('[data-streamdown="code-block-body"]')!;

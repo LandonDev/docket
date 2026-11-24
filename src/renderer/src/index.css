@@ -9,6 +9,12 @@
 /* `dark:` means the default theme; `html.theme-light` is the light one. */
 @custom-variant dark (&:where(html:not(.theme-light), html:not(.theme-light) *));
 
+/* Reduced motion is <html data-motion>, the person's choice over the
+   system's (lib/motion.ts), never the media query; every stylesheet's own
+   reduced rules sit under `:where([data-motion="reduced"])`. */
+@custom-variant motion-reduce (&:where([data-motion="reduced"], [data-motion="reduced"] *));
+@custom-variant motion-safe (&:where([data-motion="full"], [data-motion="full"] *));
+
 /*
  * The token layer (docs/DESIGN.md "Tokens"). One neutral palette in two
  * themes; colour is reserved for status and the one accent. Every colour,
@@ -592,7 +598,7 @@ html.theme-light {
 .t-raise.w-full[data-pressed]::before {
   scale: 0.997 0.985;
 }
-@media (prefers-reduced-motion: reduce) {
+:where([data-motion="reduced"]) {
   .t-raise::before {
     transition-duration: var(--dur-instant);
   }
@@ -671,8 +677,8 @@ html.theme-light {
   transition-duration: var(--dur-fast) !important;
   transition-timing-function: var(--ease-exit) !important;
 }
-@media (prefers-reduced-motion: reduce) {
-  :root [data-sonner-toaster] [data-sonner-toast] {
+:where([data-motion="reduced"]) {
+  &:root [data-sonner-toaster] [data-sonner-toast] {
     /* Positions still jump (sonner stacks by transform); only the fade eases. */
     transition: opacity var(--dur-fast) var(--ease-out) !important;
   }
@@ -1122,11 +1128,6 @@ header[data-tauri-drag-region] button {
   animation: z-fade-quick var(--dur-fast) var(--ease-out);
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .z-fade-in {
-    animation: none;
-  }
-}
 
 /* monaco ------------------------------------------------------------------ */
 .monaco-editor,
@@ -1435,7 +1436,7 @@ header[data-tauri-drag-region] button {
 /* Reduced motion: an overlay keeps a --dur-fast fade and nothing else. Its
    transitions narrow to opacity, so the starting and ending scale and
    translate never move; it never appears in one frame. */
-@media (prefers-reduced-motion: reduce) {
+:where([data-motion="reduced"]) {
   :is(
     [data-slot="dialog-overlay"],
     [data-slot="sheet-overlay"],
@@ -1452,15 +1453,5 @@ header[data-tauri-drag-region] button {
   ) {
     transition-property: opacity;
     transition-duration: var(--dur-fast);
-  }
-}
-
-/* Reduced motion: every keyframe class stops; the static end state stays. */
-@media (prefers-reduced-motion: reduce) {
-  .monaco-editor .reveal-flash-line {
-    animation: none;
-  }
-  .monaco-editor .model-change-line {
-    transition: none;
   }
 }

@@ -35,7 +35,7 @@ describe("the raised button's CSS", () => {
   });
 
   it("holds still under reduced motion", () => {
-    const reduced = block.slice(block.indexOf("@media (prefers-reduced-motion: reduce)"));
+    const reduced = block.slice(block.indexOf(':where([data-motion="reduced"])'));
     expect(decl(".t-raise:active::before", reduced)).toContain("scale: 1");
     expect(decl(".t-raise::before", reduced)).toContain("transition-duration: var(--dur-instant)");
   });

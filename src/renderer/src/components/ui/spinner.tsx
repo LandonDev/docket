@@ -2,16 +2,14 @@ import type { ComponentProps } from "react";
 import { cn } from "@renderer/lib/cn";
 import { SPINNER_TURN } from "@renderer/lib/ease";
 
-const reducedMotion = (): boolean =>
-  typeof matchMedia === "function" && matchMedia("(prefers-reduced-motion: reduce)").matches;
-
 /** Turns the box around the arc as a Web Animation. Chromium leaves that to
  *  the compositor; a turn on the svg itself, CSS or Web Animation, made Blink
  *  run a main-thread frame at every display frame on macOS while any spinner
  *  showed: on a busy board, 35 of them took 37% of a core at 144 Hz, against
- *  13% for this form and 4.5% held still. */
+ *  13% for this form and 4.5% held still. It turns under reduced motion too:
+ *  a turn in place is the sign of work, not movement (lib/motion.ts). */
 function turn(box: HTMLSpanElement | null): (() => void) | undefined {
-  if (!box || typeof box.animate !== "function" || reducedMotion()) return undefined;
+  if (!box || typeof box.animate !== "function") return undefined;
   const animation = box.animate(SPINNER_TURN.keyframes, SPINNER_TURN.timing);
   // On the document timeline from 0, as the working mark and words are: every
   // spinner of a thread turns in phase, and a remount picks the turn up where

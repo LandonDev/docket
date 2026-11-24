@@ -1,4 +1,5 @@
-import { AnimatePresence, motion, useReducedMotion } from "motion/react";
+import { AnimatePresence, motion } from "motion/react";
+import { useReducedMotion } from "../lib/motion";
 import { type ReactNode, useCallback, useEffect, useLayoutEffect, useRef } from "react";
 import { cn } from "../lib/cn";
 import { DUR, EASE_OUT, EASE_SWAP, EASE_SWAP_CSS } from "../lib/ease";

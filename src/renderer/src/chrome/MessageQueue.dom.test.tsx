@@ -4,11 +4,14 @@ import type { QueuedMessage } from "../lib/tcserver/types";
 
 vi.mock("../lib/tcserver/store", () => ({ useSessionMeta: () => undefined }));
 const motionState = vi.hoisted(() => ({ reduce: true }));
+vi.mock("@renderer/lib/motion", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@renderer/lib/motion")>()),
+  useReducedMotion: () => motionState.reduce,
+}));
 vi.mock("motion/react", async (importOriginal) => {
   const real = await importOriginal<typeof import("motion/react")>();
   return {
     ...real,
-    useReducedMotion: () => motionState.reduce,
     // A drop's glide lands at once, so a test reads where it ends; the call keeps its spring.
     animate: vi.fn((_from: number, to: number, options: { onUpdate?: (v: number) => void; onComplete?: () => void }) => {
       options.onUpdate?.(to);

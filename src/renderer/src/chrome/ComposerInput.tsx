@@ -24,6 +24,7 @@ import {
   type ComposerSegment
 } from '../lib/composerText'
 import { tallyRender } from '../lib/devRenders'
+import { reducedMotion } from '../lib/motion'
 
 export type { ComposerChip, ComposerSegment } from '../lib/composerText'
 
@@ -315,7 +316,7 @@ export const ComposerInput = forwardRef<
         clearing.current ||
         !root.textContent ||
         typeof root.animate !== 'function' ||
-        window.matchMedia('(prefers-reduced-motion: reduce)').matches
+        reducedMotion()
       ) {
         wipe()
         return

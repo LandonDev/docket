@@ -11,9 +11,10 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vite
 vi.mock("../lib/highlight", () => ({ highlightCode: () => Promise.resolve(null) }));
 vi.mock("../lib/sounds", () => ({ playCue: () => {} }));
 let reducedMotion = true;
-vi.mock("motion/react", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("motion/react")>()),
+vi.mock("@renderer/lib/motion", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@renderer/lib/motion")>()),
   useReducedMotion: () => reducedMotion,
+  reducedMotion: () => reducedMotion,
 }));
 
 type Callback = (entries: ResizeObserverEntry[]) => void;

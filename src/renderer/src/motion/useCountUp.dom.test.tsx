@@ -6,11 +6,15 @@ import { DUR, EASE_OUT } from "../lib/ease";
 type Options = { duration: number; ease: readonly number[]; onUpdate: (value: number) => void };
 const calls = vi.hoisted(() => [] as { from: number; to: number; options: Options; stop: () => void }[]);
 const reduced = vi.hoisted(() => ({ value: false }));
+vi.mock("@renderer/lib/motion", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@renderer/lib/motion")>()),
+  useReducedMotion: () => reduced.value,
+  reducedMotion: () => reduced.value,
+}));
 vi.mock("motion/react", async (importOriginal) => {
   const actual = await importOriginal<typeof import("motion/react")>();
   return {
     ...actual,
-    useReducedMotion: () => reduced.value,
     animate: (from: number, to: number, options: Options) => {
       const call = { from, to, options, stop: vi.fn() };
       calls.push(call);

@@ -43,6 +43,10 @@ export function mirrorLook(from: Document, to: Document, theme: "app" | "dark"):
     const style = from.documentElement.getAttribute("style");
     if (style === null) to.documentElement.removeAttribute("style");
     else to.documentElement.setAttribute("style", style);
+    // Reduced motion is the window's attribute (lib/motion.ts), not a media query.
+    const motion = from.documentElement.dataset.motion;
+    if (motion === undefined) delete to.documentElement.dataset.motion;
+    else to.documentElement.dataset.motion = motion;
     to.body.className = from.body.className;
   };
   styles();
@@ -58,7 +62,7 @@ export function mirrorLook(from: Document, to: Document, theme: "app" | "dark"):
   const heads = new Observer(styles);
   heads.observe(from.head, { childList: true });
   const roots = new Observer(root);
-  roots.observe(from.documentElement, { attributes: true, attributeFilter: ["class", "style"] });
+  roots.observe(from.documentElement, { attributes: true, attributeFilter: ["class", "style", "data-motion"] });
   roots.observe(from.body, { attributes: true, attributeFilter: ["class"] });
   return () => {
     heads.disconnect();

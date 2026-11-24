@@ -18,13 +18,15 @@ import type { SessionMeta } from "../lib/tcserver/types";
 import { revealDrainForTest } from "./revealDrain";
 import { questionChunk } from "./chunks";
 import { installTranscriptLayout, phaseLog, scene, settle, settleUntil, watch, type Scene } from "./transcriptScenario.testkit";
+import { MARK, SHIMMER } from "@renderer/lib/ease";
 
 const motion = vi.hoisted(() => ({ reduce: false }));
 vi.mock("../lib/highlight", () => ({ highlightCode: () => Promise.resolve(null) }));
 vi.mock("../lib/sounds", () => ({ playCue: () => {} }));
-vi.mock("motion/react", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("motion/react")>()),
+vi.mock("@renderer/lib/motion", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@renderer/lib/motion")>()),
   useReducedMotion: () => motion.reduce,
+  reducedMotion: () => motion.reduce,
 }));
 
 installTranscriptLayout();
@@ -315,7 +317,7 @@ describe("no jerk in any scenario", () => {
     expect(again.container.querySelector(".z-fade-in, .step-land, .stream-step, .stream-rise, .glyph-in, .table-frame-in, [data-height-glide]")).toBeNull();
   });
 
-  it("reduced motion: the closing line settles with no slide, and nothing glides", async () => {
+  it("reduced motion: the closing line settles with no slide, and nothing glides but the marks of work", async () => {
     motion.reduce = true;
     const animate = vi.spyOn(Element.prototype, "animate").mockImplementation(() => ({ cancel() {}, finished: Promise.resolve(), onfinish: null }) as unknown as Animation);
     const view = scene("s", [echoed(), read("a")], true);
@@ -324,7 +326,9 @@ describe("no jerk in any scenario", () => {
       ["settled", [done(3_000), read("a", "completed"), bash("b", "completed"), prose("p", "Done.")], false],
     ]);
     await settleUntil(() => !!view.line()?.textContent?.includes("Worked"));
-    const moved = animate.mock.calls.filter(([frames]) => JSON.stringify(frames).includes("translate"));
+    // The working mark and the shimmer keep moving under reduced motion: signs of work, in place (lib/motion.ts).
+    const marks = new Set([...MARK.dots, SHIMMER.band, SHIMMER.copy].map((frames) => JSON.stringify(frames)));
+    const moved = animate.mock.calls.filter(([frames]) => JSON.stringify(frames).includes("translate") && !marks.has(JSON.stringify(frames)));
     expect(moved).toEqual([]);
     expect(view.line()?.textContent).toBe("Worked for 3s");
   });

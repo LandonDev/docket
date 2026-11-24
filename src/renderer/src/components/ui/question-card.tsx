@@ -1,6 +1,7 @@
 import { DUR, EASE_EXIT, EASE_OUT } from "@renderer/lib/ease";
 import { chordKey, keyCaps, modOrCtrl } from "@renderer/lib/keys";
 import { AnimatePresence, motion, MotionConfig, type Variants } from "motion/react";
+import { useReducedMotion } from "../../lib/motion";
 import { useEffect, useId, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import { cn } from "@renderer/lib/cn";
 import { Button } from "./button";
@@ -120,6 +121,7 @@ export function QuestionCard({
   className?: string;
 }) {
   const id = useId();
+  const motionRule = useReducedMotion() ? "always" : "never";
   const [at, setAt] = useState(0);
   const [picked, setPicked] = useState<Record<number, Array<number>>>({});
   const [typed, setTyped] = useState<Record<number, string>>({});
@@ -311,7 +313,7 @@ export function QuestionCard({
       </div>
 
       <div data-slot="question-actions" className="mt-4 flex items-center justify-end gap-2">
-        <MotionConfig reducedMotion="user">
+        <MotionConfig reducedMotion={motionRule}>
           <AnimatePresence initial={false}>
             {at > 0 ? (
               <motion.span key="back" variants={BACK} initial="hidden" animate="shown" exit="hidden" className="flex">
@@ -328,7 +330,7 @@ export function QuestionCard({
           </Button>
         ) : null}
         <Button size="sm" disabled={!answered} onClick={submit} className="gap-0">
-          <MotionConfig reducedMotion="user">
+          <MotionConfig reducedMotion={motionRule}>
             <AnimatePresence initial={false}>
               <MorphLabel key={last ? "continue" : "next"}>{last ? "Continue" : "Next"}</MorphLabel>
             </AnimatePresence>

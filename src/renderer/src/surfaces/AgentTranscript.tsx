@@ -30,7 +30,7 @@ import {
 import { useKept } from "../lib/keptValue";
 import { RevealTurnContext } from "./revealDrain";
 import { estimateRowHeight, flattenTurns, rowKeyOf, sameRow, turnUserBlock, type RowGap, type TranscriptRow } from "./transcriptRows";
-import { useReducedMotion } from "motion/react";
+import { useReducedMotion } from "../lib/motion";
 import { cubicBezier, DUR, EASE_DRAWER, EASE_OUT } from "../lib/ease";
 import { type Block, type HarnessId } from "../lib/session";
 import { sessionStore } from "../lib/tcserver/store";

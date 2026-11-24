@@ -1,4 +1,3 @@
-import { useReducedMotion } from "motion/react";
 import { useEffect, useRef } from "react";
 import { useDocumentVisible, usePaneVisible } from "@renderer/hooks/paneVisibility";
 import { cn } from "@renderer/lib/cn";
@@ -11,15 +10,15 @@ import { statusToneClass } from "./status";
  * its own span moved by one Web Animation of `transform` alone (MARK in
  * lib/ease.ts), so the compositor runs it; every animation starts at 0 on the
  * document timeline, so a mark that remounts picks the gesture up where every
- * other mark is instead of restarting it. Still (the three dots at rest)
- * under reduced motion, in a hidden pane and while the document is hidden.
+ * other mark is instead of restarting it. It moves under reduced motion too,
+ * a sign of work a few pixels wide (lib/motion.ts); still (the three dots at
+ * rest) in a hidden pane and while the document is hidden.
  * The spinner stays the working glyph everywhere else.
  */
 export function WorkingMark({ className }: { className?: string }) {
-  const reduce = useReducedMotion();
   const pane = usePaneVisible();
   const page = useDocumentVisible();
-  const moving = !reduce && pane && page;
+  const moving = pane && page;
   const dots = useRef<(HTMLSpanElement | null)[]>([]);
 
   useEffect(() => {

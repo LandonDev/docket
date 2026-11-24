@@ -1,4 +1,5 @@
 import { DUR } from "./ease";
+import { reducedMotion } from "./motion";
 
 /**
  * The composer's field sizes itself. At rest its inline height is unset:
@@ -61,9 +62,5 @@ function lineHeight(el: HTMLElement): number {
 }
 
 function prefersReducedMotion(): boolean {
-  return (
-    typeof window !== "undefined" &&
-    typeof window.matchMedia === "function" &&
-    window.matchMedia("(prefers-reduced-motion: reduce)").matches
-  );
+  return reducedMotion();
 }

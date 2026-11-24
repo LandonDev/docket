@@ -1,5 +1,6 @@
 // UI-16: the live turn's one working line, and the closing line it becomes.
-import { AnimatePresence, motion, useReducedMotion } from "motion/react";
+import { AnimatePresence, motion } from "motion/react";
+import { useReducedMotion } from "../../lib/motion";
 import { type ReactNode, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { ChevronRight } from "../../chrome/icons";
 import { Button } from "../../components/ui/button";

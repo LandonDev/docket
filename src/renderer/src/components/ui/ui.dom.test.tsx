@@ -344,7 +344,7 @@ describe("StatusMark", () => {
   it("fades only, and as fast as an exit, under reduced motion", () => {
     const css = readFileSync(resolve(__dirname, "../../assets/components.css"), "utf8");
     expect(css).toMatch(/\.glyph-in\s*\{\s*animation:\s*glyph-in var\(--dur-layout\) var\(--ease-layout\) both;/);
-    expect(css).toMatch(/@media \(prefers-reduced-motion: reduce\)\s*\{\s*\.glyph-in\s*\{\s*animation:\s*glyph-fade-in var\(--dur-fast\)/);
+    expect(css).toMatch(/:where\(\[data-motion="reduced"\]\)\s*\{\s*\.glyph-in\s*\{\s*animation:\s*glyph-fade-in var\(--dur-fast\)/);
   });
 });
 
@@ -633,9 +633,9 @@ describe("Table", () => {
 });
 
 describe("the phrase fade", () => {
-  it("fades on the reveal tokens and stops under reduced motion", () => {
+  it("fades on the reveal tokens, under reduced motion too", () => {
     const css = readFileSync(resolve(__dirname, "../../assets/components.css"), "utf8");
     expect(css).toMatch(/\.stream-step\s*\{\s*animation:\s*stream-step-in var\(--dur-reveal\) var\(--ease-reveal\) both;/);
-    expect(css).toMatch(/@media \(prefers-reduced-motion: reduce\)\s*\{\s*\.stream-step\s*\{\s*animation:\s*none;/);
+    expect(css).not.toMatch(/data-motion="reduced"\]\)\s*\{\s*\.stream-step\s*\{/);
   });
 });

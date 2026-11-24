@@ -7,10 +7,11 @@ import { PaneVisibilityContext } from "../../hooks/paneVisibility";
 import { SHIMMER } from "../../lib/ease";
 
 const reduced = vi.hoisted(() => ({ value: false }));
-vi.mock("motion/react", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("motion/react")>();
-  return { ...actual, useReducedMotion: () => reduced.value };
-});
+vi.mock("@renderer/lib/motion", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@renderer/lib/motion")>()),
+  useReducedMotion: () => reduced.value,
+  reducedMotion: () => reduced.value,
+}));
 
 import { WorkingText } from "./working-text";
 
@@ -80,10 +81,13 @@ describe("WorkingText", () => {
     for (const h of handles) expect(h.cancel).toHaveBeenCalledTimes(1);
   });
 
-  it("mounts no overlay under reduced motion, in a hidden pane, or with no Web Animations", () => {
+  it("keeps its shimmer under reduced motion: light crossing words that stay put", () => {
     reduced.value = true;
-    expect(part(render(<WorkingText>Thinking</WorkingText>).container, "band")).toBeNull();
+    expect(part(render(<WorkingText>Thinking</WorkingText>).container, "band")).not.toBeNull();
     reduced.value = false;
+  });
+
+  it("mounts no overlay in a hidden pane, or with no Web Animations", () => {
     const parked = render(
       <PaneVisibilityContext.Provider value={false}>
         <WorkingText>Thinking</WorkingText>

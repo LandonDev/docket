@@ -16,6 +16,7 @@ import { playReducer, StageContext, useMediaUrls, useStepDocs, type MediaAct, ty
 import { autoAfter, keyAct, motionBetween, nextPress, NOTES_DEFAULT, NOTES_SIZES, showReducer, startShowState, stepNotes, type ShowAct, type ShowMotion, type ShowState, type Slide } from "./state";
 import { pauseTimer, restartTimer, resumeTimer, startTimer, TARGETS, type Target } from "./timer";
 import { actOf, liveOf, usePublish, type ShowRemote } from "./remote";
+import { reducedMotion } from "../../../lib/motion";
 
 /**
  * A show, running (docs/agents/work-slides.md "The show"): the file's
@@ -374,7 +375,7 @@ function ShowRoot({ ask, places: opened, native, onOver }: { ask: ShowAsk; place
   // How the picture now shown came in, decided once each time the place changes.
   const placeKey = state ? `${state.slides[state.at]?.id ?? ""}:${state.step}:${state.blank ? "b" : ""}${state.ended ? "e" : ""}` : "";
   const [moved, setMoved] = useState<{ key: string; state: ShowState | null; motion: ShowMotion }>({ key: placeKey, state, motion: null });
-  if (moved.key !== placeKey) setMoved({ key: placeKey, state, motion: motionBetween(moved.state, shown, window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false) });
+  if (moved.key !== placeKey) setMoved({ key: placeKey, state, motion: motionBetween(moved.state, shown, reducedMotion()) });
   else if (moved.state !== state && state) setMoved({ ...moved, state });
 
   // The step pictures near the show: the slide shown, and what the next press shows.
