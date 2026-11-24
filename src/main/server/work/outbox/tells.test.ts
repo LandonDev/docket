@@ -115,14 +115,14 @@ describe('a held change to a file others can open', () => {
 
 describe("a thread's own lines about its held change", () => {
   it('name the item and the plain line, never the file, the words or a reason that could quote them; other kinds as before', () => {
-    const row = { n: 3, kind: 'office.edit', summary: 'Make the change in Brief.docx: Replace “Q3 draft” With “Q3 final”', error: 'Brief.docx changed since: "Q3 draft" stands in other paragraphs now.', decidedBy: 'owner' }
+    const row = { n: 3, kind: 'office.edit' as const, summary: 'Make the change in Brief.docx: Replace “Q3 draft” With “Q3 final”', error: 'Brief.docx changed since: "Q3 draft" stands in other paragraphs now.', decidedBy: 'owner' }
     const lines = [sentNote(row), failedNote(row), discardedNote(row), staleNote(row), heldChange({ n: 3 }, 'Nothing in the file changed.')]
     for (const line of lines) {
       expect(line).toContain('a change to a file others can open')
       expect(line).not.toMatch(/Brief|Q3/)
     }
     expect(staleNote(row)).toContain('read the file again and propose it again')
-    const mail = { ...row, kind: 'office.mail.send', summary: 'Send to Dana Reyes: Re: budget', error: 'Outlook is not open.' }
+    const mail = { ...row, kind: 'office.mail.send' as const, summary: 'Send to Dana Reyes: Re: budget', error: 'Outlook is not open.' }
     expect(failedNote(mail)).toContain('Send to Dana Reyes: Re: budget')
     expect(failedNote(mail)).toContain('Outlook is not open.')
   })
