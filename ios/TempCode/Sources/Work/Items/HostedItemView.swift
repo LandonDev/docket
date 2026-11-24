@@ -59,6 +59,8 @@ struct HostedItemView: View {
             }
         }
         .task(id: round) {
+            // Back on screen with its page still loaded (from Page Preview, a swipe back): no new ticket, which nothing would redeem.
+            guard url == nil else { return }
             do {
                 let address = try await client.work.canvas.ticket(for: item, source: source)
                 guard let parsed = URL(string: address) else { failed = true; return }

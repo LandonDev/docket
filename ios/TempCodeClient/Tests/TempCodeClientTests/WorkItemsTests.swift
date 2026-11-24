@@ -45,6 +45,10 @@ struct WorkItemsTests {
         // A host that cannot be reached is not a refusal, and a LifeOS row keeps its one failure with Try Again.
         #expect(HostedFailure.of(TransportError.notConnected, item: memo) == .unreachable)
         #expect(HostedFailure.of(word, item: try item("document", source: #"{"at":"lifeos","table":"docs","id":"d1"}"#)) == .unreachable)
+        // A key that may only read is told so on a LifeOS row and a file alike, never offered a Try Again that is refused again.
+        let readOnly = TransportError.server(method: "work.guests.ticket", message: "forbidden: work.guests.ticket needs operate")
+        #expect(HostedFailure.of(readOnly, item: try item("document", source: #"{"at":"lifeos","table":"docs","id":"d1"}"#)) == .refused(HostedFailure.readOnly))
+        #expect(HostedFailure.of(readOnly, item: memo) == .refused(HostedFailure.readOnly))
     }
 
     @Test func eachNativeKindHasItsBody() throws {

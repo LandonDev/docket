@@ -147,7 +147,11 @@ opens the system's print sheet (`ReaderPrint`).
   words, which the phone shows in the file's place (`HostedFailure`): a Word
   or Excel file ("Edit it on your computer": the desktop's editor saves
   those), a file others can open, a computer that serves no public page.
-  Comments and review still work for it natively.
+  Comments and review still work for it natively. A key that may only read
+  is told so on any hosted item, a LifeOS row too (`HostedFailure.readOnly`):
+  the ticket needs `operate`, and a Try Again would be refused for ever. A
+  page already loaded asks no new ticket when it shows again (back from Page
+  Preview, a swipe back to the Item segment).
 
 ## The clicker
 

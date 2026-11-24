@@ -86,12 +86,16 @@ public enum ItemLabel {
 
 /// Why the hosted editor did not open (the phone-files plan, PF4). A file's host may refuse it in words of
 /// its own (a Word file, a file others can open, a computer no phone reaches): those words stand, and there
-/// is nothing to try again. Anything else is a page that did not answer.
+/// is nothing to try again. A key that may only read is told so, whatever the item: the editor needs a key that
+/// may act, and Try Again would be refused for ever. Anything else is a page that did not answer.
 public enum HostedFailure: Equatable, Sendable {
     case refused(String)
     case unreachable
 
+    public static let readOnly = "This key can read but not open the editor. Open it on your computer."
+
     public static func of(_ error: any Error, item: CanvasItem) -> HostedFailure {
+        if case .refused(_, forbidden: true) = ActionError.wrap(error) { return .refused(readOnly) }
         guard ItemBody.of(item).isFileKept, case .refused(let message, _) = ActionError.wrap(error) else { return .unreachable }
         // Another host of his has the file, or a host from before files opened here: the phone says where it opens.
         if message.hasPrefix("served elsewhere") || message.hasPrefix("bad request") { return .refused(ItemBody.elsewhere(item.kind)) }
