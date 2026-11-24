@@ -120,6 +120,35 @@ struct FilesRulesTests {
         #expect(FilesRules.opening(lifeos, place: folder, caps: full) == .item)
     }
 
+    @Test func `a Recent or Starred row opens by its home place, found by its path; with none known, as facts`() throws {
+        let rooted = { (id: String, kind: String, path: String, shared: Bool) in
+            #"{"id":"\#(id)","kind":"\#(kind)","name":"\#(id)","host":"box","env":"env_box","shared":\#(shared),"can":[],"state":{"state":"ok"},"root":{"at":"file","host":"box","path":"\#(path)"}}"#
+        }
+        let places: [FilePlace] = try decode("[\(place("starred", kind: "starred", name: "Starred")),\(rooted("folder", "folder", "/w/Dummy Esports", false)),\(rooted("lib", "teams", "/w/Dummy Esports/Teams", true))]")
+        let starred = places[0]
+        // A starred PDF in a Teams library under the workspace's folder: its home is the library (the longest root), shared.
+        let teamsPdf: FileEntry = try decode(#"{"key":"k1","ref":{"at":"file","host":"box","path":"/w/Dummy Esports/Teams/Bracket.pdf"},"folder":null,"name":"Bracket.pdf","kind":"pdf","starred":true}"#)
+        let home = try #require(FilesRules.knownHome(of: teamsPdf, in: starred, places: places))
+        #expect(home.id == "lib")
+        #expect(FilesRules.opening(teamsPdf, place: home, caps: full) == .quickLook(.facts(host: "box")))
+        // His own folder's PDF opens in the reader, by its home.
+        let ownPdf: FileEntry = try decode(#"{"key":"k2","ref":{"at":"file","host":"box","path":"/w/Dummy Esports/Rules.pdf"},"folder":null,"name":"Rules.pdf","kind":"pdf"}"#)
+        let own = try #require(FilesRules.knownHome(of: ownPdf, in: starred, places: places))
+        #expect(own.id == "folder")
+        #expect(FilesRules.opening(ownPdf, place: own, caps: full) == .item)
+        // A path no place holds, on a folder whose name only starts the same: not known, so facts on the lens.
+        let stray: FileEntry = try decode(#"{"key":"k3","ref":{"at":"file","host":"box","path":"/w/Dummy Esports Old/Plan.pdf"},"folder":null,"name":"Plan.pdf","kind":"pdf"}"#)
+        #expect(FilesRules.knownHome(of: stray, in: starred, places: places) == nil)
+        // A search's row is placed the same way, and one no place holds has none (it opens as facts).
+        #expect(FilesRules.homeId(of: teamsPdf, places: places) == "lib")
+        #expect(FilesRules.homeId(of: stray, places: places) == nil)
+        // His own LifeOS document on a lens still opens.
+        let doc: FileEntry = try decode(#"{"key":"lifeos:docs:d1","ref":{"at":"lifeos","table":"docs","id":"d1"},"folder":null,"name":"Run of show","kind":"document"}"#)
+        #expect(FilesRules.isOwn(doc))
+        #expect(FilesRules.opening(doc, place: starred, caps: full) == .item)
+        #expect(FilesRules.opening(stray, place: starred, caps: full) == .quickLook(.facts(host: "box")))
+    }
+
     @Test func `Quick Look's pager starts over when a page is of another version of the file`() throws {
         #expect(!FilesRules.startsOver(pinned: "a1", answered: "a1"))
         // Saved on the computer between page 1 and page 2: the pager starts over at the new version.

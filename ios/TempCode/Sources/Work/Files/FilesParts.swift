@@ -61,7 +61,7 @@ struct FilesSearchList: View {
             } else {
                 List {
                     ForEach(rows, id: \.key) { entry in
-                        FileRow(client: client, workspaceId: workspaceId, placeId: entry.where?.place ?? FilesRules.workspaceFolder(places)?.id ?? "", entry: entry, inLens: found != nil)
+                        FileRow(client: client, workspaceId: workspaceId, placeId: FilesRules.homeId(of: entry, places: places) ?? (FilesRules.isOwn(entry) ? FilesRules.workspaceFolder(places)?.id : nil) ?? "", entry: entry, inLens: found != nil)
                     }
                 }
                 .listStyle(.plain)

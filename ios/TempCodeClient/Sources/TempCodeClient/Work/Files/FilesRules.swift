@@ -22,8 +22,44 @@ public enum FilesRules {
 
     /// The place a lens's row lives in (`where.place`), else the place being listed.
     public static func home(of entry: FileEntry, in place: FilePlace, places: [FilePlace]) -> FilePlace {
-        guard let id = entry.where?.place, let home = places.first(where: { $0.id == id }) else { return place }
-        return home
+        knownHome(of: entry, in: place, places: places) ?? place
+    }
+
+    /// The place a row's file lives in, so whether others can open it is known: the place itself when it is one, a
+    /// lens row's `where`, else the place whose top folder holds its path on its host (Recent and Starred rows carry
+    /// neither sharing nor home, files/handle.ts `markEntry`). Nil when nothing says: a lens row then opens as facts.
+    public static func knownHome(of entry: FileEntry, in place: FilePlace, places: [FilePlace]) -> FilePlace? {
+        if isHome(place.kind) { return place }
+        return homeId(of: entry, places: places).flatMap { id in places.first { $0.id == id } }
+    }
+
+    /// The id of the place a row's file lives in, for a row with no place of its own (a lens's, a search's): its
+    /// `where`, else the place whose top folder holds its path. Nil when nothing says; the file then opens as facts.
+    public static func homeId(of entry: FileEntry, places: [FilePlace]) -> String? {
+        if let id = entry.where?.place, places.contains(where: { $0.id == id }) { return id }
+        guard case .file(let file)? = entry.ref else { return nil }
+        var best: (place: FilePlace, length: Int)?
+        for candidate in places where isHome(candidate.kind) {
+            guard case .file(let root) = candidate.root, root.host == file.host, holds(root.path, file.path) else { continue }
+            if root.path.count > (best?.length ?? -1) { best = (candidate, root.path.count) }
+        }
+        return best?.place.id
+    }
+
+    /// His own mail's or LifeOS's: a thing no one else opens, wherever its row is listed.
+    public static func isOwn(_ entry: FileEntry) -> Bool {
+        switch entry.ref {
+        case .mail?, .lifeos?: true
+        default: false
+        }
+    }
+
+    /// A folder's path holds a file's: the file's path runs on past the folder's at a separator.
+    static func holds(_ folder: String, _ path: String) -> Bool {
+        let trimmed = folder.hasSuffix("/") || folder.hasSuffix("\\") ? String(folder.dropLast()) : folder
+        guard path.count > trimmed.count, path.hasPrefix(trimmed) else { return false }
+        let next = path[path.index(path.startIndex, offsetBy: trimmed.count)]
+        return next == "/" || next == "\\"
     }
 
     // MARK: - the Files screen
@@ -255,6 +291,9 @@ public enum FilesRules {
         if case .lifeos? = entry.ref, [.document, .sheet].contains(entry.kind) { return caps.operate ? .item : .quickLook(original) }
         // A file others can open shows its facts alone, whatever its kind: no reader reads its bytes to the phone.
         if place.shared || entry.shared == true { return .quickLook(original) }
+        // A lens row (Recent, Starred) whose home is not known (`knownHome`): whether others can open it is not known
+        // either, so it shows facts, unless it is his own mail's or LifeOS's, which no one else opens.
+        if !isHome(place.kind), !isOwn(entry) { return .quickLook(original) }
         // A document or sheet kept as a file in a place of his own is seated too: the hosted editor takes it
         // first, and where its host will not open it there the screen shows Quick Look in its place (`.readOnly`).
         if original == .readOnly, caps.operate { return .item }

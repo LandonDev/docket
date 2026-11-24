@@ -318,6 +318,13 @@ this build's (PF5).
   `FileItemScreen`, which seats the file (`work.files.open`) and shows
   `FileReaderPage(client:item:thread: nil, workspaceId:)`: the same bar, More
   and sheets as a file open from a thread.
+- **A row opens by the place it lives in.** Recent and Starred rows (and a
+  search's) carry no home or sharing from the host (files/handle.ts
+  `markEntry`), so the phone finds the home place itself
+  (`FilesRules.knownHome`, `homeId`): the row's `where`, else the place whose
+  top folder holds its path on its host, the longest such. A file in a
+  library others can open shows facts alone; a file no place is known to hold
+  shows facts too, unless it is his own mail's or LifeOS's (`isOwn`).
 - **The hosted editor first.** A document or sheet kept as a file in a place
   of his own is seated too (`FilesRules.opening` answers `.item` for a key
   that may operate), so a `.tcdoc` or `.tcsheet` edits on the phone. Where
