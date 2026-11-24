@@ -12,6 +12,7 @@ import { libreOffice } from '../formats/index'
 import type { Converter } from '../formats/jobs'
 import type { WorkCtx } from '../modules'
 import { chartsOf, heldOf, host, sharedPreviews, sharedPreviewsRoot, storeKey, type Held, type Sheets } from './held'
+import { KEPT_VALUES } from '@shared/work/sheets'
 import { notWorkedOut } from './jobs'
 import { workbookMap } from './patch/patch'
 import { readText, readZip, writeZip } from './patch/zip'
@@ -239,8 +240,7 @@ export interface Book {
   unworked?: (sheet?: string) => Promise<string | null>
 }
 
-/** What a picture drawn from an opened Excel file's kept values says, when one of them cannot be trusted. */
-export const KEPT_VALUES = 'Its formulas show the values the file kept, which may be out of date'
+export { KEPT_VALUES }
 
 const unworkedSeen = new Map<string, string | null>()
 /** Asks the sheet worker once a content and sheet: the workbook is written to the call's scratch for it. */

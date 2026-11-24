@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { SHEET_PREVIEW_FORMATS, SHEET_PREVIEW_READ_MAX, type SheetExportAnswer, type SheetPreviewAnswer } from "@shared/contract-work-sheets";
 import { previewProblems } from "../formats/previewContract";
 import { READ_MAX, sheetFormats, sheetPreviewSource } from "./preview";
+import { KEPT_VALUES } from "@shared/work/sheets";
 
 /**
  * The sheet's PreviewSource (preview.ts) held to the contract every kind keeps (formats/previewContract.ts), over a
@@ -157,6 +158,34 @@ describe("the sheet's PreviewSource", () => {
     refused = "An edit is not saved: That cell is locked";
     await expect(source.draw("pdf", { signal: new AbortController().signal })).rejects.toThrow(refused);
     expect(order.filter((m) => m === "work.sheets.preview")).toHaveLength(1);
+  });
+
+  it("says the file's kept values may be out of date before it goes to Print or a folder, from the file made then", async () => {
+    // Council r4 (Sol 6): the export's own warning was dropped, so Print handed off old totals with no word.
+    const h = host();
+    const order: string[] = [];
+    const source = sheetPreviewSource({
+      env: "local",
+      itemId: "item1",
+      store: "package",
+      name: "Budget.xlsx",
+      // (the workbook changed since the picture: the file made now is the one that warns)
+      request: async <T,>(env: string, method: string, params: unknown): Promise<T> => {
+        const got = await h.request<T>(env, method, params);
+        return (method === "work.sheets.previewExport" ? { ...(got as object), drops: [KEPT_VALUES] } : got) as T;
+      },
+      save: () => void order.push("save"),
+      print: async () => void order.push("print"),
+      warn: (words) => void order.push(`warn: ${words}`),
+    });
+    await source.export("print");
+    await source.export("pdf");
+    expect(order).toEqual([`warn: ${KEPT_VALUES}`, "print", `warn: ${KEPT_VALUES}`, "save"]);
+    // and nothing is said of a file whose values stand
+    const quiet: string[] = [];
+    const plain = sheetPreviewSource({ env: "local", itemId: "item1", store: "package", name: "Budget.xlsx", request: h.request, save: () => undefined, warn: (w) => void quiet.push(w) });
+    await plain.export("pdf");
+    expect(quiet).toEqual([]);
   });
 
   it("reads a render in frames no larger than the host answers", () => {

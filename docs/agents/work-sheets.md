@@ -508,7 +508,10 @@ the file's own name.
   Print, Excel's pages, OpenDocument, Excel 97-2003 and the web page, and
   their exports, draw the kept values and say so among what the format
   drops ("Its formulas show the values the file kept, which may be out of
-  date", `KEPT_VALUES`); an opened Excel file's own copy says nothing. The copy's saves are held
+  date", `KEPT_VALUES`); an opened Excel file's own copy says nothing.
+  Print and Export say it again as a toast just before the file goes to
+  paper or a folder, from the file made at the press (not the picture on
+  screen, which may be of an older version or not drawn yet). The copy's saves are held
   while it converts and is stamped (`PackageStore.holding`), so the stamp
   names the copy that went back, and the window sends his last edit first
   (sync.ts `written`).

@@ -36,6 +36,9 @@ export function spillingIn(formula: string): string | null {
   return null;
 }
 
+/** What a picture or export drawn from an opened Excel file's kept values says when one of them cannot be trusted (sheets/preview.ts). */
+export const KEPT_VALUES = 'Its formulas show the values the file kept, which may be out of date'
+
 /** A note an opened Excel file cannot take a change to, in his words: its writer rewords a note it has, and makes or removes none. */
 export const NOTE_STOP = { add: "Add a new note in Excel", remove: "Delete this note in Excel" } as const;
 /** The grid's note mutations (work-kit's `NOTE_MUTATIONS`). */

@@ -3,6 +3,8 @@ import { registry } from "../../lib/connection";
 import { saveFile } from "../formats/model";
 import { NotInReach, type Drawn, type PreviewBytes, type PreviewFormat, type PreviewSource } from "../formats/preview";
 import { fromBase64 } from "./host";
+import { KEPT_VALUES } from "@shared/work/sheets";
+import { loadToast } from "../../components/ui/toaster";
 
 /**
  * The sheet's side of Preview (docs/agents/work-sheets.md "Preview and
@@ -78,6 +80,8 @@ export interface SheetPreviewDeps {
   print?(name: string, bytes: Uint8Array): Promise<void>;
   /** settles once his last edit is in the file (sync.ts `written`): every draw and export waits on it, so none reads the workbook from before it */
   written?(): Promise<void>;
+  /** says a word before the file is handed on (a toast); a test hands in its own */
+  warn?(words: string): void;
 }
 
 const cancelled = (): DOMException => new DOMException("The draw was cancelled", "AbortError");
@@ -96,6 +100,7 @@ export function sheetPreviewSource(deps: SheetPreviewDeps): PreviewSource {
       const { printPdf } = await import("../formats/printOut");
       await printPdf(name, bytes);
     });
+  const warn = deps.warn ?? ((words: string) => void loadToast().then((toast) => toast.message(words)));
   const call = <T>(method: string, params: Record<string, unknown>, timeoutMs = DRAW_MS): Promise<T> => request<T>(deps.env, method, { itemId: deps.itemId, ...params }, { timeoutMs });
   // The sheet a CSV or TSV was last drawn for: what its export holds.
   const sheetOf = new Map<SheetPreviewFormat, string>();
@@ -166,6 +171,8 @@ export function sheetPreviewSource(deps: SheetPreviewDeps): PreviewSource {
       const sheet = sheetOf.get(id);
       const made = await call<SheetExportAnswer>("work.sheets.previewExport", { format: id, ...(sheet ? { sheet } : {}) });
       const bytes = await whole(bytesOf(made.rev, made.size));
+      // The file made now, not the picture on screen, says whether its totals may be old: said before it goes to paper or a folder.
+      if (made.drops.includes(KEPT_VALUES)) warn(KEPT_VALUES);
       if (format === "print") await print(made.name, bytes);
       else save(made.name, new Blob([bytes], { type: MIME[made.name.toLowerCase().endsWith(".xlsm") ? "xlsm" : id] }));
       return { name: made.name };
