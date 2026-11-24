@@ -1,12 +1,21 @@
 import { once } from 'node:events'
 import { createConnection, createServer } from 'node:net'
-import { createHmac } from 'node:crypto'
+import { createHash, createHmac, generateKeyPairSync } from 'node:crypto'
 import { execFileSync } from 'node:child_process'
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, utimesSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { expect, it, vi } from 'vitest'
+import { queuedAge } from './J32-held-mail'
+import { earlySent } from './J33-mail-undo'
+import { scheduledWords } from './J34-mail-scheduled'
+import { taskMatches } from './J40-task-today'
+import { honestAdding } from './J41-agenda-clash'
+import { withheldWords } from './J55-connections'
+import { assertSandboxKeys } from './lib/lifeos'
+import { FIRST_MAIL, SECOND_MAIL, seedDay, seedLifeos } from './lib/lifeosSeed'
+import { composeRow } from './lib/mailJourney'
 import { wordBodyLayout } from './J05-document-export'
 import { desktopDrop, rowDrop } from './lib/drop'
 import { documentHas } from './lib/edit'
@@ -39,7 +48,9 @@ it('registers every journey once with its file id, a shape and an end check', as
     expect(JOURNEYS.filter((j) => j === journey)).toHaveLength(1)
     expect(journey.shapes.length).toBeGreaterThan(0)
     expect(journey.shapes.every((shape) => SHAPES.includes(shape))).toBe(true)
-    expect(journey.steps.at(-1)?.name).toMatch(/^end:/)
+    for (const shape of journey.shapes) {
+      expect(journey.steps.filter((step) => !step.shapes || step.shapes.includes(shape)).at(-1)?.name).toMatch(/^end:/)
+    }
   }
 })
 
@@ -64,6 +75,110 @@ it('filters by id, shape and tier and only adds desk when asked or needed', () =
   expect(() => options(['--shape', 'wrong'])).toThrow('Unknown shape')
   expect(() => options(['--only', 'J00'])).toThrow('Unknown journey')
   expect(() => options(['--tier', '0'])).toThrow('positive integer')
+})
+
+it('starts one sandbox for a selected S journey, including its given-computer walk', () => {
+  expect(options(['--only', 'J10']).sandbox).toBe(false)
+  const selected = options(['--only', 'J40,J33', '--no-table'])
+  expect(selected.jobs.map(({ spec, shape }) => [spec.id, shape])).toEqual([['J40', 'S'], ['J33', 'S']])
+  expect(selected.sandbox).toBe(true)
+  expect(selected.noTable).toBe(true)
+  expect(options(['--only', 'J55', '--shape', 'K'])).toMatchObject({ sandbox: true })
+  const runner = readFileSync(join(HERE, 'run.ts'), 'utf8')
+  expect(runner.match(/await startSandbox\(/g)).toHaveLength(1)
+  expect(runner).toMatch(/if \(flags\.sandbox\)[\s\S]+await startSandbox\([\s\S]+not run: no sandbox/)
+})
+
+it('reads tracked source and points deployment, applications, and tool traffic at the sandbox', () => {
+  const source = readFileSync(join(HERE, 'lib/lifeos.ts'), 'utf8')
+  const launcher = readFileSync(join(HERE, 'lib/shape.ts'), 'utf8')
+  const tools = readFileSync(join(HERE, 'lib/lifeosMcp.ts'), 'utf8')
+  for (const code of [source, launcher, tools]) {
+    expect(code).not.toMatch(/lifeos(?:-mcp)?\.landonhale\.com|lifeos-deploy|\bsudo\b/)
+  }
+  expect(source).toMatch(/dirname\(run\) !== runs/)
+  expect(source).toMatch(/git\(repo, \['archive', '--output', tar, rev, '--', \.\.\.files\]\)/)
+  expect(source).toMatch(/await list\(\)[\s\S]+assertSandboxKeys\(names,[\s\S]+await mintDevice\(\)[\s\S]+await seedLifeos\(/)
+  expect(source).toMatch(/CONVEX_SELF_HOSTED_URL: url, CONVEX_SELF_HOSTED_ADMIN_KEY: adminKey/)
+  expect(source).toMatch(/'--interface', '127\.0\.0\.1'/)
+  expect(source).toMatch(/'--convex-http-proxy', OFFLINE/)
+  expect(source).toMatch(/ports\.some[\s\S]+A sandbox listener remains/)
+  expect(tools).toMatch(/target\.origin !== url[\s\S]+redirect: 'error'/)
+  expect(launcher).toMatch(/TEMP_CODE_LIFEOS_URL: options\.sandbox\?\.url \?\? OFFLINE/)
+  expect(launcher).toMatch(/TEMP_CODE_LIFEOS_MCP_URL: options\.sandbox\?\.mcpUrl \?\? OFFLINE/)
+  expect(launcher).toMatch(/this\.rpc\(this\.box, 'work\.lifeos\.setToken', \{ token: this\.sandbox\.deviceToken/)
+  expect(launcher).toMatch(/TEMP_CODE_WARM_HARNESS: '0'/)
+  expect(launcher).toMatch(/!this\.sandbox && existsSync/)
+})
+
+it('accepts only the fresh matching JWT pair and omits its values from the audit line', () => {
+  const { publicKey, privateKey } = generateKeyPairSync('ec', { namedCurve: 'prime256v1' })
+  const { crv, kty, x, y } = publicKey.export({ format: 'jwk' })
+  const kid = createHash('sha256').update(JSON.stringify({ crv, kty, x, y })).digest('base64url')
+  const pem = privateKey.export({ type: 'pkcs8', format: 'pem' }) as string
+  const jwks = 'data:text/plain;charset=utf-8;base64,' + Buffer
+    .from(JSON.stringify({ keys: [{ crv, kty, x, y, kid, alg: 'ES256', use: 'sig' }] })).toString('base64')
+  const names = ['JWT_PRIVATE_KEY', 'JWKS']
+  expect(assertSandboxKeys(names, pem, jwks, kid)).toBe('Sandbox environment verified before seed: JWKS, JWT_PRIVATE_KEY (fresh pair; values omitted)')
+  expect(() => assertSandboxKeys(['GOOGLE_CLIENT_SECRET', ...names], pem, jwks, kid)).toThrow('Unexpected sandbox environment keys')
+  expect(() => assertSandboxKeys(['JWKS'], pem, jwks, kid)).toThrow('Unexpected sandbox environment keys')
+  expect(() => assertSandboxKeys(names, pem, jwks, 'stale')).toThrow('fresh JWT pair')
+  expect(() => assertSandboxKeys(names, 'bad PEM', jwks, kid)).toThrow('fresh JWT pair')
+})
+
+it('seeds twenty invented mail threads and a chat with stored bytes through LifeOS functions', async () => {
+  const internal = vi.fn(async (fn: string) => fn === 'chats:fileStored' ? true : 'seed-id')
+  const mutate = vi.fn(async () => 'seed-id')
+  const query = vi.fn(async (fn: string) => fn === 'chats:list'
+    ? { page: [{ _id: 'chat-id', name: 'Spring LAN' }] }
+    : { page: [{ _id: 'message-id', files: [{ _id: 'chat-file-id', name: 'Spring LAN notes.txt' }] }] })
+  const upload = vi.fn(async () => 'seed-storage')
+  const now = new Date('2026-03-08T02:00:00Z')
+  await seedLifeos({ internal, mutate, query, upload } as unknown as Parameters<typeof seedLifeos>[0], now)
+  const rows = internal.mock.calls as unknown as [string, Record<string, unknown>][]
+  const threadBatches = rows.filter(([fn]) => fn === 'mail:upsertThreads')
+    .flatMap(([, args]) => args.threads as { subject: string; labels: string[]; lastMessageAt: number }[])
+  expect(threadBatches).toHaveLength(20)
+  expect(threadBatches.map(({ subject }) => subject)).toEqual(expect.arrayContaining([FIRST_MAIL, SECOND_MAIL]))
+  expect(threadBatches.find(({ labels }) => labels.includes('SENT'))?.lastMessageAt).toBeLessThan(now.getTime() - 7 * 86_400_000)
+  const addresses = JSON.stringify(rows).match(/@[\w.]+/g)
+  expect(addresses?.length).toBeGreaterThan(0)
+  expect(addresses?.every((address) => /^@example\.(com|org)$/.test(address))).toBe(true)
+  expect(rows.filter(([fn]) => fn === 'mail:upsertAccount')).toHaveLength(2)
+  expect(rows).toContainEqual(['chats:fileStored', { id: 'chat-file-id', storageId: 'seed-storage', contentType: 'text/plain', size: 31 }])
+  expect(mutate).toHaveBeenCalledWith('chats:requestFiles', { messageId: 'message-id' })
+  expect(mutate).toHaveBeenCalledWith('tasks:complete', { id: 'seed-id' })
+  expect(mutate).toHaveBeenCalledWith('tasks:setWaitingOn', expect.objectContaining({ id: 'seed-id' }))
+  expect(upload).toHaveBeenCalledTimes(2)
+  expect(new Date(seedDay(now, 0, 9)).toISOString()).toBe('2026-03-07T14:00:00.000Z')
+  expect(new Date(seedDay(now, 1, 9)).toISOString()).toBe('2026-03-08T13:00:00.000Z')
+})
+
+it('checks the same Purdue task and due time through completion and Undo', () => {
+  const row = { _id: 'task', title: 'Check the doors', sector: 'purdue', status: 'todo', dueAt: 10 }
+  expect(taskMatches(row, 'todo', 10)).toBe(true)
+  expect(taskMatches({ ...row, status: 'done' }, 'done', 10, 'task')).toBe(true)
+  expect(taskMatches(row, 'todo', 10, 'task')).toBe(true)
+  expect(taskMatches({ ...row, _id: 'replacement' }, 'todo', 10, 'task')).toBe(false)
+  expect(taskMatches(row, 'todo', 11, 'task')).toBe(false)
+})
+
+it('reads the backend’s compose row and detects false journey wording', async () => {
+  const row = { _id: 'x', status: 'queued', message: { text: 'Practice reply' } }
+  const query = vi.fn(async () => ({ row, quote: '', urls: {} }))
+  const context = { pair: { sandbox: { query } } } as unknown as Context
+  expect(await composeRow(context, row._id)).toBe(row)
+  expect(query).toHaveBeenCalledWith('compose:get', { id: 'x' })
+  expect(earlySent('Sent', 'queued')).toBe(true)
+  expect(earlySent('Sending to Dana Lee', 'queued')).toBe(false)
+  expect(queuedAge('Queued in LifeOS for <1m')).toBe(true)
+  expect(queuedAge('Queued in LifeOS')).toBe(false)
+  expect(scheduledWords('Scheduled for 9:00 AM Eastern · 8:00 AM CentralUndo')).toBe(true)
+  expect(scheduledWords('Scheduled for 8:00 AM Central\nSending')).toBe(false)
+  expect(honestAdding(['Adding Sort the spare adapters'], 'queued')).toBe(true)
+  expect(honestAdding(['Added Sort the spare adapters'], 'queued')).toBe(false)
+  expect(withheldWords('This computer cannot read LifeOS here')).toBe(true)
+  expect(withheldWords('This computer cannot read LifeOS here\nLifeOS did not answer')).toBe(false)
 })
 
 it('refuses a missing or stale build and checks the worktree sources', () => {
@@ -97,6 +212,8 @@ it('keeps each Fix and rows outside the run when it updates the table', () => {
   ] })
   expect(after).toContain('| J05 | A | PASS |  |\n| J10 | B1 | FAIL · end: open &#124; send | link \\| note |')
   expect(after).toContain('| J11 | A | PASS | old |\n\n## Walls\n| untouched |')
+  expect(updateJourneysTable(before, { journeys: [{ id: 'J40', shape: 'S', title: '', steps: [], notRun: 'no sandbox' }] }))
+    .toContain('| J40 | S | not run: no sandbox |')
 })
 
 it('records a failed step with evidence and skips the rest of that walk', async () => {
@@ -109,8 +226,10 @@ it('records a failed step with evidence and skips the rest of that walk', async 
       page: { shot: vi.fn(async (file: string) => writeFileSync(file, 'picture')), toasts: async () => ['Toast'], saveLine: async () => 'Saved' }
     } as unknown as Pair
     const next = vi.fn()
+    const wrongShape = vi.fn()
     const result = await walk({
       id: 'J00', title: 'test', tier: 1, shapes: ['A'], steps: [
+        step('Another shape', wrongShape, ['S']),
         step('Try it', () => { hostErrors.push('Host refused'); throw new Error('No row') }),
         step('end: next step', next)
       ]
@@ -121,6 +240,7 @@ it('records a failed step with evidence and skips the rest of that walk', async 
     }])
     expect(readFileSync(join(folder, '01-try-it.png'), 'utf8')).toBe('picture')
     expect(next).not.toHaveBeenCalled()
+    expect(wrongShape).not.toHaveBeenCalled()
   } finally {
     rmSync(folder, { recursive: true, force: true })
   }

@@ -32,17 +32,25 @@ import j28 from './J28-templates'
 import j29 from './J29-held-word'
 import j30 from './J30-direct-undo'
 import j31 from './J31-thread-file'
+import j32 from './J32-held-mail'
+import j33 from './J33-mail-undo'
+import j34 from './J34-mail-scheduled'
+import j40 from './J40-task-today'
+import j41 from './J41-agenda-clash'
 import j52 from './J52-return'
 import j53 from './J53-work-switch'
 import j54 from './J54-pair-computer'
+import j55 from './J55-connections'
 import j56 from './J56-link-loss'
 import j57 from './J57-two-windows'
 import j58 from './J58-chat-starts'
-import { mainCheckout, saveResults, walk, type Results } from './lib/record'
+import { startSandbox } from './lib/lifeos'
+import { SECTOR } from './lib/lifeosSeed'
+import { mainCheckout, saveResults, step, walk, type Results } from './lib/record'
 import { Pair, SHAPES, words } from './lib/shape'
 import { writeJourneysTable } from './table'
 
-export const JOURNEYS = [j01, j02, j03, j04, j05, j06, j07, j08, j09, j10, j11, j12, j13, j14, j15, j16, j17, j18, j19, j20, j21, j22, j23, j24, j25, j26, j27, j28, j29, j30, j31, j52, j53, j54, j56, j57, j58]
+export const JOURNEYS = [j01, j02, j03, j04, j05, j06, j07, j08, j09, j10, j11, j12, j13, j14, j15, j16, j17, j18, j19, j20, j21, j22, j23, j24, j25, j26, j27, j28, j29, j30, j31, j32, j33, j34, j40, j41, j52, j53, j54, j55, j56, j57, j58]
 
 export function options(args: string[]) {
   const { values } = parseArgs({
@@ -62,12 +70,17 @@ export function options(args: string[]) {
   if (ids?.some((id) => !JOURNEYS.some((j) => j.id === id))) throw new Error('Unknown journey in --only')
   if (shapes?.some((shape) => !SHAPES.some((s) => s === shape))) throw new Error('Unknown shape in --shape')
   if (values.tier && !/^[1-9]\d*$/.test(values.tier)) throw new Error('--tier must be a positive integer')
-  const jobs = JOURNEYS.flatMap((spec) => {
-    if ((ids && !ids.includes(spec.id)) || (values.tier && spec.tier !== Number(values.tier))) return []
+  const selected = ids ? [...new Set(ids)].map((id) => JOURNEYS.find((spec) => spec.id === id)!) : JOURNEYS
+  const jobs = selected.flatMap((spec) => {
+    if (values.tier && spec.tier !== Number(values.tier)) return []
     return spec.shapes.filter((shape) => !shapes || shapes.includes(shape)).map((shape) => ({ spec, shape }))
   })
   if (!jobs.length) throw new Error('No journeys match those flags')
-  return { jobs, list: values.list, keep: values.keep, noTable: values['no-table'], desk: values.desk || jobs.some(({ shape }) => shape === 'B2') }
+  return {
+    jobs, list: values.list, keep: values.keep, noTable: values['no-table'],
+    sandbox: jobs.some(({ spec }) => spec.shapes.includes('S')),
+    desk: values.desk || jobs.some(({ shape }) => shape === 'B2')
+  }
 }
 
 export function requireBuild(repo: string): void {
@@ -106,6 +119,17 @@ async function main(): Promise<number> {
   process.on('SIGTERM', onSignal)
   console.log(`Journey run ${root}`)
   try {
+    if (flags.sandbox) {
+      try {
+        pair.sandbox = await startSandbox(root, pair.abort.signal, flags.jobs.some(({ spec }) => spec.id === 'J32'))
+      } catch (error) {
+        results.journeys = flags.jobs.filter(({ spec }) => spec.shapes.includes('S')).map(({ spec, shape }) => ({
+          id: spec.id, title: spec.title, shape, steps: [], notRun: 'no sandbox'
+        }))
+        throw new Error('not run: no sandbox: ' + words(error))
+      }
+    }
+    let checkedMail = false
     const setup = {
       fake: flags.jobs.some(({ spec }) => ['J12', 'J31', 'J58'].includes(spec.id)),
       hosted: flags.jobs.some(({ spec }) => spec.id === 'J22' || spec.id === 'J29'),
@@ -115,11 +139,24 @@ async function main(): Promise<number> {
     for (const [i, { spec, shape }] of flags.jobs.entries()) {
       pair.abort.signal.throwIfAborted()
       const name = `${spec.id} ${shape} ${root.slice(-6)}`
-      const workspace = i === 0 ? await pair.open(!!flags.desk, name, setup) : await pair.workspace(name)
+      const sector = spec.shapes.includes('S') ? SECTOR : undefined
+      const workspace = i === 0 ? await pair.open(!!flags.desk, name, { ...setup, sector }) : await pair.workspace(name, sector)
       const folder = join(root, `${spec.id}-${shape}`)
-      results.journeys.push(await walk(spec, { pair, shape, workspace, folder }, stop))
-      saveResults(root, results)
-      await pair.afterWalk()
+      try {
+        const steps = sector && !checkedMail
+          ? [step('See the seeded Spring LAN mail in the window', async () => {
+              await pair.checkSeededMail(workspace)
+              checkedMail = true
+            }), ...spec.steps]
+          : spec.steps
+        results.journeys.push(await walk({ ...spec, steps }, { pair, shape, workspace, folder }, stop))
+        saveResults(root, results)
+      } finally {
+        await pair.afterWalk()
+        if (sector && i < flags.jobs.length - 1 && !pair.abort.signal.aborted) {
+          await pair.rpc(pair.box, 'workspace.delete', { workspaceId: workspace.id })
+        }
+      }
     }
     pair.abort.signal.throwIfAborted()
   } catch (error) {
@@ -127,12 +164,25 @@ async function main(): Promise<number> {
     console.error(results.error)
   } finally {
     try {
+      let sandboxError: string | undefined
+      try {
+        await pair.sandbox?.stop()
+      } catch (error) {
+        sandboxError = words(error)
+      }
       results.cleanup = await pair.stop()
+      if (sandboxError) results.cleanup.errors.push(sandboxError)
       if (!flags.keep && !results.cleanup.remainingPids.length && !results.cleanup.errors.length) {
         for (const seat of ['win', 'box', 'desk', 'given', 'giver']) {
           for (const suffix of ['home', 'data', 'tmp']) rmSync(join(root, seat + '-' + suffix), { recursive: true, force: true })
         }
         rmSync(join(root, 'bin'), { recursive: true, force: true })
+        const lifeos = join(root, 'lifeos')
+        if (existsSync(lifeos)) {
+          for (const entry of readdirSync(lifeos).filter((file) => !file.endsWith('.log'))) {
+            rmSync(join(lifeos, entry), { recursive: true, force: true })
+          }
+        }
       }
     } catch (error) {
       results.error ??= words(error)

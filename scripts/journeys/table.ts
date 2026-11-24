@@ -11,7 +11,7 @@ function rowOf(result: JourneyResult): string[] {
   return [
     result.id,
     result.shape,
-    failure ? `FAIL · ${cell(failure.name)}` : 'PASS',
+    result.notRun ? `not run: ${result.notRun}` : failure ? `FAIL · ${cell(failure.name)}` : 'PASS',
     ''
   ]
 }

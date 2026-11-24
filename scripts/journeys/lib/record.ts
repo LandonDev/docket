@@ -11,7 +11,7 @@ export type Context = {
   folder: string
   evidencePage?: Window
 }
-type Step = { name: string; run(context: Context): void | Promise<void> }
+type Step = { name: string; shapes?: readonly Shape[]; run(context: Context): void | Promise<void> }
 type Journey = { id: string; title: string; tier: number; shapes: readonly Shape[]; steps: readonly Step[] }
 type StepResult = {
   name: string
@@ -22,11 +22,11 @@ type StepResult = {
   hostErrors?: string[]
   evidenceErrors?: string[]
 }
-export type JourneyResult = { id: string; title: string; shape: Shape; steps: StepResult[] }
+export type JourneyResult = { id: string; title: string; shape: Shape; steps: StepResult[]; notRun?: 'no sandbox' }
 export type Results = { journeys: JourneyResult[]; error?: string; cleanup?: Cleanup }
 
-export function step(name: string, run: Step['run']): Step {
-  return { name, run }
+export function step(name: string, run: Step['run'], shapes?: readonly Shape[]): Step {
+  return { name, run, shapes }
 }
 
 export function journey(spec: Journey): Journey {
@@ -43,7 +43,8 @@ export async function walk(spec: Journey, context: Context, stop: Promise<never>
   const result: JourneyResult = { id: spec.id, title: spec.title, shape, steps: [] }
   mkdirSync(folder, { recursive: true })
   const hostErrorStart = pair.hostErrors.length
-  for (const [i, { name, run }] of spec.steps.entries()) {
+  const steps = spec.steps.filter((step) => !step.shapes || step.shapes.includes(shape))
+  for (const [i, { name, run }] of steps.entries()) {
     const entry: StepResult = { name }
     result.steps.push(entry)
     try {

@@ -10,6 +10,8 @@ import { dummyLibrary, gioStub } from './files'
 import { seedFakeAccount, startFakeProvider } from './fakeProvider'
 import { until, Window } from './window'
 import { relay } from './relay'
+import { FIRST_MAIL, ZONE } from './lifeosSeed'
+import type { Sandbox } from './lifeos'
 
 export const SHAPES = ['A', 'B1', 'B2', 'V', 'S', 'K', 'U'] as const
 export type Shape = typeof SHAPES[number]
@@ -64,7 +66,8 @@ async function instance(root: string, name: Seat): Promise<Instance> {
 }
 
 /** xvfb also gives the headless host a display for its hidden preview windows. */
-type LaunchOptions = { fakeOrigin?: string; publicOrigin?: string }
+const OFFLINE = 'http://127.0.0.1:0'
+type LaunchOptions = { fakeOrigin?: string; publicOrigin?: string; sandbox?: Sandbox }
 
 function launch(repo: string, inst: Instance, seed: string, bin: string, options: LaunchOptions, tools?: string): ChildProcess {
   const inherited = isolatedEnvironment(process.env)
@@ -85,6 +88,9 @@ function launch(repo: string, inst: Instance, seed: string, bin: string, options
     TEMP_CODE_ALIAX_DATA_DIR: join(inst.data, 'aliax'),
     TEMP_CODE_CLAIM_SHIM: '0',
     TEMP_CODE_FAKE_PROVIDERS: options.fakeOrigin ?? 'http://127.0.0.1:9',
+    TEMP_CODE_LIFEOS_URL: options.sandbox?.url ?? OFFLINE,
+    TEMP_CODE_LIFEOS_MCP_URL: options.sandbox?.mcpUrl ?? OFFLINE + '/mcp',
+    ...(options.sandbox ? { TZ: ZONE, TEMP_CODE_WARM_HARNESS: '0' } : {}),
     TEMP_CODE_WORK_ROOT: inst.work,
     TEMP_CODE_WORK_PORT: String(inst.workPort),
     ...(inst.name === 'box' && options.publicOrigin ? { TEMP_CODE_WORK_PUBLIC_ORIGIN: options.publicOrigin } : {}),
@@ -193,6 +199,7 @@ export class Pair {
   private givenIdentity?: string
   private giver?: Instance
   guestOrigin?: string
+  sandbox?: Sandbox
   private fakeProvider?: ReturnType<typeof startFakeProvider>
   fakeMessages = 0
   private stopping = false
@@ -228,9 +235,9 @@ export class Pair {
     return rpc(inst, method, params, this.seed, ms, this.abort.signal)
   }
 
-  async fromWindow<T>(method: string, params: unknown = {}): Promise<Reply<T>> {
+  async fromWindow<T>(method: string, params: unknown = {}, page = this.page): Promise<Reply<T>> {
     try {
-      return await this.page.eval(`(async () => {
+      return await page.eval(`(async () => {
         try {
           const value = await window.__monocode.registry.linkOf(${JSON.stringify(this.box.host)})
             .request(${JSON.stringify(method)}, ${JSON.stringify(params)});
@@ -244,15 +251,15 @@ export class Pair {
     }
   }
 
-  async open(withDesk: boolean, name: string, options: { fake?: boolean; hosted?: boolean; guests?: boolean; cut?: boolean } = {}): Promise<Workspace> {
+  async open(withDesk: boolean, name: string, options: { fake?: boolean; hosted?: boolean; guests?: boolean; cut?: boolean; sector?: string } = {}): Promise<Workspace> {
     this.win = await instance(this.root, 'win')
     this.box = await instance(this.root, 'box')
     this.desk = withDesk ? await instance(this.root, 'desk') : undefined
     this.instances.push(this.win, this.box, ...(this.desk ? [this.desk] : []))
     this.l1 = dummyLibrary(this.win.home, 'Journey Teams L1')
     if (this.desk) this.l2 = dummyLibrary(this.desk.home, 'Journey Teams L2')
-    const tools = existsSync(join(TOOLS, 'state.json')) ? realpathSync(TOOLS) : undefined
-    linkTools(this.box.data)
+    const tools = !this.sandbox && existsSync(join(TOOLS, 'state.json')) ? realpathSync(TOOLS) : undefined
+    if (tools) linkTools(this.box.data)
     this.bin = gioStub(this.root)
     if (options.cut) {
       this.winRelay = await relay('127.0.0.1', this.box.remote)
@@ -272,6 +279,7 @@ export class Pair {
       this.fakeProvider = startFakeProvider(() => { this.fakeMessages++ })
     }
     this.launchOptions = {
+      sandbox: this.sandbox,
       fakeOrigin: this.fakeProvider?.url.origin,
       publicOrigin: this.guestOrigin ?? (options.hosted ? 'http://127.0.0.1:' + this.box.workPort : undefined)
     }
@@ -288,7 +296,12 @@ export class Pair {
     await this.page.clickOn('[role="dialog"] button', 'Skip')
     for (const inst of this.instances) inst.host = (await this.rpc<{ environmentId: string }>(inst, 'remote.status')).environmentId
     for (const inst of this.instances) await this.rpc(inst, 'work.set', { enabled: true })
-    const workspace = await this.workspace(name)
+    if (this.sandbox) {
+      await this.rpc(this.box, 'work.lifeos.setToken', { token: this.sandbox.deviceToken })
+      await wait('box signed in to sandbox LifeOS', async () =>
+        (await this.rpc<{ lifeos: { state: string } }>(this.box, 'work.lifeos.status')).lifeos.state === 'connected')
+    }
+    const workspace = await this.workspace(name, options.sector)
     await this.link(this.win)
     if (this.desk) await this.link(this.desk)
     await this.page.eval('window.__monocode.loadSavedEnvironments()')
@@ -298,8 +311,25 @@ export class Pair {
     return workspace
   }
 
-  async workspace(name: string): Promise<Workspace> {
-    const { id, path } = await this.rpc<Workspace>(this.box, 'workspace.create', { kind: 'work', sector: name.toLowerCase().replaceAll(' ', '-'), name })
+  async showWork(workspace: Workspace, view: string, page = this.page): Promise<void> {
+    const rail = 'nav [data-rail-path] button'
+    await page.dismissPopups()
+    if (!await page.centre(rail + '[aria-current="true"]', workspace.name)) await page.clickOn(rail, workspace.name)
+    await page.until(workspace.name + ' selected', 15_000, () => page.centre(rail + '[aria-current="true"]', workspace.name))
+    const label = '[data-rail-row] > button > span.truncate'
+    if (!await page.centre('[data-rail-row] > button[aria-current="true"] > span.truncate', view)) {
+      await page.clickOn(label, view)
+    }
+  }
+
+  async checkSeededMail(workspace: Workspace): Promise<void> {
+    await this.showWork(workspace, 'Mail')
+    await this.page.until('seeded Spring LAN mail in the window', 20_000, () =>
+      this.page.eval(`document.querySelector('[data-mail-list]')?.innerText.includes(${JSON.stringify(FIRST_MAIL)})`))
+  }
+
+  async workspace(name: string, sector?: string): Promise<Workspace> {
+    const { id, path } = await this.rpc<Workspace>(this.box, 'workspace.create', { kind: 'work', sector: sector ?? name.toLowerCase().replaceAll(' ', '-'), name })
     await this.rpc(this.box, 'work.office.filesCopySet', { workspaceId: id, on: true })
     await this.rpc(this.box, 'work.workspace.set', { workspaceId: id, patch: { mayUseDesktop: [this.win.host, ...(this.desk ? [this.desk.host] : [])] } })
     return { id, path, name }

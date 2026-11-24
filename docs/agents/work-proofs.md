@@ -12,7 +12,8 @@ on its host, or what the window shows. The run uses dummy files, a fresh
 workspace for each walk, and loopback provider addresses. J12 uses a local
 stand-in that answers with fixed words. The other walks do not need a reply.
 Each instance has its own home, app data, CLI config, and empty VM path.
-The box reads the shared work tools through a read-only mount.
+Runs without LifeOS can use a read-only mount of the shared work tools.
+Sandbox runs use only their own files and credentials.
 
 One pair serves the whole run. `win` is the window under xvfb. It holds
 the dummy Teams library L1 and reaches the Work workspace on the headless
@@ -26,6 +27,22 @@ It links to `box` so the workspace can use its files.
 - **V**, **S**, **K**, and **U** are for the Windows VM, sandbox LifeOS,
   a given computer's key, and a browser or guest page, in that order.
   The tier-1 shell and hold journeys also use K and U.
+  The tier-2 LifeOS journeys use S. J55 also uses K to check a given computer’s key.
+
+When any selected journey uses LifeOS, the runner starts one Convex
+sandbox. It copies LifeOS from the local `origin/main` ref and work-kit
+from the commit LifeOS pins. It keeps the source cache under
+`.temp-code/journeys/.lifeos-cache/` and gives each run a fresh database,
+file store, admin key, and JWT keys. It lists and checks the deployment
+environment before it mints a device token or writes fixtures.
+
+Every instance connects to the same loopback sandbox. Only box receives
+the device token. The window asks box for a sector JWT, then checks for
+Spring LAN mail in the Purdue workspace. J32 starts LifeOS’s tool
+listener as well, with access only to the sandbox backend. The sandbox
+runs no delivery worker. Queued mail stays queued and calendar writes
+wait for a provider. The seed data includes local events that can move
+without a calendar provider.
 
 Build the worktree with `heavy bunx electron-vite build`, then run this
 from that worktree:
@@ -35,14 +52,17 @@ HEAVY_MAX_MIN=40 /srv/agents/work/temp-code/.temp-code/bin/heavy bun run journey
 ```
 
 Use `--list` to see the walks, `--shape A,B1` to pick file locations,
-or `--tier 1` to pick a tier. A failed step ends that walk, and the run
-moves on to the next one. Any failure gives the command a non-zero exit.
-The run revokes its keys and stops its instances. `--keep` keeps their
-scratch data for a closer look.
+or `--tier 1` to pick a tier. `--only` runs journeys in the order given.
+A failed step ends that walk, and the run moves on to the next one. A run
+that cannot start its sandbox records `not run: no sandbox`. Any failure
+gives the command a non-zero exit. The run revokes its keys, stops its
+instances and sandbox, and checks for leftover processes and listeners.
+`--keep` keeps the scratch data for a closer look.
 
 Find `results.json`, the instance logs and each failed step's picture
 under `.temp-code/journeys/<run>/` in the main checkout. The runner
 also updates the Journeys table in `.temp-code/plans/landed/POLISH-work.md`.
+Use `--no-table` to keep the results in the run folder alone.
 
 To add one, make a `scripts/journeys/JNN-<slug>.ts` file, export
 `journey({ id, title, tier, shapes, steps })`, and add it to `JOURNEYS`
@@ -134,6 +154,17 @@ change. The SharePoint address names the file in the Office protocol.
 J31 and J58 send only through the fake provider. J58 checks each session
 row as soon as it exists. The runner revokes the browser
 sessions, pairings and keys before stopping the instances.
+
+### Tier-2 LifeOS journeys
+
+| Journey | Shapes | What it checks |
+| --- | --- | --- |
+| J40 | S | The same task stays due today as the owner completes it and undoes completion. Today shows it while open. |
+| J33 | S | The same reply goes from draft to queued, back to draft, and to queued again. The window gives the send's state. |
+| J32 | S | A thread’s mail tool makes a draft. The edit reaches the LifeOS queue, and Outbox shows how long it has waited. |
+| J34 | S | Mail and Outbox give the named time zone for a scheduled reply. Cancel returns the same reply to draft. |
+| J41 | S | The New event toast follows the calendar operation. A local move changes the clash shown on Agenda. |
+| J55 | S, K | Connections agrees with the hosts. LifeOS views show the sign-in state, and the given computer sees that its key cannot read them. |
 
 ## Running them
 
