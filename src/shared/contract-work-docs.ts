@@ -141,8 +141,11 @@ export const DocsRequestSchemas = [
   /** → { socket }: a socket to the document on the host that serves it, relayed over this link */
   /** `schema`: the highest document schema the window's editor knows; the host says it to the service for it */
   request('work.docs.connect', z.object({ source: CanvasSourceSchema, schema: z.number().int().min(0).max(1000).optional() })),
-  /** → { ok: true }: frames for the relayed socket, in order */
-  request('work.docs.send', z.object({ socket: socketId, frames })),
+  /**
+   * → { ok: true }: frames for the relayed socket, in order. `stored`: answered once the service has applied every
+   * frame the socket sent and stored the document (a tab's close awaits it before anything judges the file).
+   */
+  request('work.docs.send', z.object({ socket: socketId, frames, stored: z.literal(true).optional() })),
   /** → { frames, closed? }: what the socket received since the last ask; waits up to 20 s for something */
   request('work.docs.recv', z.object({ socket: socketId })),
   /** → { ok: true } */

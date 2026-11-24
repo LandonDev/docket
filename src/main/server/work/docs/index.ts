@@ -121,9 +121,12 @@ export const docs: WorkModule = {
         const known = typeof said === 'number' && Number.isInteger(said) && said > 0 && said <= 1000 ? `?${SCHEMA_PARAM}=${said}` : ''
         return handled({ socket: s.relay.connect(ctx.service.url(`/w/doc/${encodeURIComponent(t.doc)}${known}`), t.doc) })
       }
-      case 'work.docs.send':
+      case 'work.docs.send': {
         s.relay.send(req.params.socket, req.params.frames)
+        // A tab's close waits for this: the file holds what the window sent before anything judges it.
+        if (req.params.stored) await ctx.service.internal('/internal/docs/stored', { name: await s.relay.sent(req.params.socket), fence: { sectors: 'all' } })
         return handled({ ok: true as const })
+      }
       case 'work.docs.recv':
         return handled(await s.relay.recv(req.params.socket, signal))
       case 'work.docs.close':

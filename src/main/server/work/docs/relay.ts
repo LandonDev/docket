@@ -43,6 +43,8 @@ interface Relayed {
 export interface Relay {
   connect(url: string, doc: string): string
   send(id: string, frames: readonly string[]): void
+  /** Once every frame sent so far has left for the service (one sent before its socket opened waits for the open): the socket's document. */
+  sent(id: string): Promise<string>
   recv(id: string, signal?: AbortSignal): Promise<{ frames: string[]; closed?: RelayClosed }>
   close(id: string): void
   /** The documents that have a socket open, for a subscription held only while one does. */
@@ -121,6 +123,23 @@ export function createRelay(opts: { onDocs?(docs: Set<string>): void; now?: () =
         if (s.ws.readyState === WebSocket.OPEN) s.ws.send(bytes)
         else s.early.push(bytes)
       }
+    },
+
+    async sent(id) {
+      const s = get(id)
+      if (s.early.length && !s.closed) {
+        await new Promise<void>((resolve) => {
+          const timer = setTimeout(resolve, waitMs)
+          const done = () => {
+            clearTimeout(timer)
+            resolve()
+          }
+          s.ws.once('open', done)
+          s.ws.once('close', done)
+        })
+      }
+      if (s.closed || s.early.length) throw new Error('that document socket is closed; open the document again')
+      return s.doc
     },
 
     async recv(id, signal) {

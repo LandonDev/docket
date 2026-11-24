@@ -319,6 +319,25 @@ describe("the document kept for a Word file of another computer", () => {
   })
 })
 
+describe("a document's file before its tab closes", () => {
+  it('holds what a window just typed once the host is asked to store it, though the service stores on a pause', async () => {
+    const r = await rig()
+    const { path } = await r.make(join(r.work, 'Plan.tcdoc'))
+    const before = statSync(path).mtimeMs
+    const other = await r.second(path)
+    // His keystrokes in that window: words into the first line's text.
+    const [first] = [...other.document.getXmlFragment('document-store').createTreeWalker((n) => n instanceof Y.XmlText)] as Y.XmlText[]
+    first!.insert(0, 'Bring the keys ')
+    // The service stores a second after the last change: the file does not have it yet.
+    expect(Object.values(zipText(path)).some((body) => body.includes('Bring the keys'))).toBe(false)
+    await r.call('/internal/docs/stored', { name: fileDocName(path), fence: { sectors: 'all' } })
+    expect(statSync(path).mtimeMs).toBeGreaterThan(before)
+    expect(await r.text(path)).toContain('Bring the keys')
+    // A bot key is never let in.
+    await expect(r.call('/internal/docs/stored', { name: fileDocName(path), fence: { sectors: 'all', botId: 'b1' } })).rejects.toThrow(/main's/)
+  })
+})
+
 describe('an exported file', () => {
   it('carries no pending agent suggestion in Word, OpenDocument, Rich Text, Markdown or the preview, and says how many stayed out', async () => {
     const r = await rig()

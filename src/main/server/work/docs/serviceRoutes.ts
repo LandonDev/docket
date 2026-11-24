@@ -130,6 +130,25 @@ export const docsRoutes: InternalRoute[] = [
     }
   },
   {
+    path: '/internal/docs/stored',
+    milestone: 20,
+    /**
+     * A tab's close (work.docs.send with `stored`): every frame a window's socket sent this document is applied, then
+     * every document with an unstored change is stored, so the file says what he left before anything judges it.
+     */
+    async run(body, ctx) {
+      const fence = fenceOf(body)
+      if (fence.botId !== undefined || fence.client !== undefined || fence.draftOnly) throw new RouteError(403, "these routes are main's: a bot key writes through /internal/doc/*")
+      const name = str(body, 'name', 600)
+      // The relay wrote its frames before this was asked: one turn of the loop reads them into each socket's queue.
+      await new Promise((resolve) => setImmediate(resolve))
+      const document = ctx.collab.hocuspocus.documents.get(name)
+      if (document) await Promise.all(document.getConnections().map((c) => c.waitForPendingMessages()))
+      await ctx.collab.flush()
+      return { ok: true }
+    }
+  },
+  {
     path: '/internal/docs/mark',
     milestone: 20,
     /** A comment thread's mark on the first place the words stand (a table's cell included). */

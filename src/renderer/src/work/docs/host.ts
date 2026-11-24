@@ -23,6 +23,12 @@ export interface DocHost {
   onPush(doc: string, listener: (push: DocsPush) => void): () => void;
   /** The class the editor's provider makes its socket with: the relay over this link. */
   socket: new (url: string) => WebSocket;
+  /**
+   * Every frame the editor has sent goes up, and the host has its service store the document: the close of a tab
+   * awaits it (canvas/flush.ts), so whatever judges the file after (a Word file's document he only looked at) reads it
+   * as he left it. No socket open: nothing waits.
+   */
+  flush(): Promise<void>;
 }
 
 /** The host that serves a LifeOS document, from the refusal of one that does not ("served elsewhere: env_box"). */
@@ -36,6 +42,7 @@ export function docHost(env: string, source: CanvasSource): DocHost {
   const link = () => registry.linkOf(env);
   const call = <T>(method: string, params: Record<string, unknown> = {}, timeoutMs?: number): Promise<T> =>
     link().request<T>(method, { source, ...params }, timeoutMs ? { timeoutMs } : undefined);
+  const socket = relaySocket(env, source);
   return {
     env,
     open: () => call("work.docs.open"),
@@ -49,7 +56,8 @@ export function docHost(env: string, source: CanvasSource): DocHost {
       link().onPush((push) => {
         if (push.push === "work.docs" && push.doc === doc) listener(push);
       }),
-    socket: relaySocket(env, source),
+    socket,
+    flush: () => storedAll(socket),
   };
 }
 
@@ -68,13 +76,23 @@ function fromBase64(data: string): ArrayBuffer {
   return bytes.buffer;
 }
 
+/** The sockets each relayed class has open, for its document's flush. */
+const openOf = new WeakMap<object, Set<{ stored(): Promise<void> }>>();
+
+/** Each open socket of the class sends what waits and has the host store the document. */
+export async function storedAll(socket: new (url: string) => WebSocket): Promise<void> {
+  await Promise.all([...(openOf.get(socket) ?? [])].map((s) => s.stored()));
+}
+
 /**
  * A WebSocket-shaped class whose socket lives on the host (work/docs/relay.ts): `connect` opens it
  * there, frames go up in order through `send`, and a long `recv` brings the host's frames down. The
- * provider sees an ordinary socket: open, message, close, error.
+ * provider sees an ordinary socket: open, message, close, error. A close sends what still waits
+ * first, then closes the host's socket behind it: the last words typed are never dropped.
  */
 export function relaySocket(env: string, source: CanvasSource): new (url: string) => WebSocket {
   const link = () => registry.linkOf(env);
+  const open = new Set<{ stored(): Promise<void> }>();
   class RelaySocket extends EventTarget {
     static readonly CONNECTING = READY.CONNECTING;
     static readonly OPEN = READY.OPEN;
@@ -85,11 +103,14 @@ export function relaySocket(env: string, source: CanvasSource): new (url: string
     readyState: number = READY.CONNECTING;
     private id: string | null = null;
     private outbox: string[] = [];
-    private sending = false;
+    private sending: Promise<void> | null = null;
+    /** Closed by its own side: what waits still goes up before the host's socket closes. */
+    private closing = false;
 
     constructor(url: string) {
       super();
       this.url = url;
+      open.add(this);
       void this.start();
     }
 
@@ -118,20 +139,33 @@ export function relaySocket(env: string, source: CanvasSource): new (url: string
       }
     }
 
-    private async flush(): Promise<void> {
-      if (this.sending || !this.id) return;
-      this.sending = true;
+    /** Sends what waits, in order; one send at a time, and what is added meanwhile goes in the same run. */
+    private flush(): Promise<void> {
+      if (!this.id) return Promise.resolve();
+      this.sending ??= this.drain().finally(() => {
+        this.sending = null;
+        if (this.outbox.length > 0 && (this.readyState === READY.OPEN || this.closing)) void this.flush();
+      });
+      return this.sending;
+    }
+
+    private async drain(): Promise<void> {
       try {
-        while (this.outbox.length > 0 && this.readyState === READY.OPEN) {
+        while (this.outbox.length > 0 && (this.readyState === READY.OPEN || this.closing)) {
           const frames = this.outbox.splice(0, 200);
           await link().request("work.docs.send", { socket: this.id, frames });
         }
       } catch (err) {
+        if (this.readyState === READY.CLOSED) return;
         this.dispatchEvent(new Event("error"));
         this.finish(1006, err instanceof Error ? err.message : String(err));
-      } finally {
-        this.sending = false;
       }
+    }
+
+    /** What waits goes up, then the host answers once its service has applied every frame and stored the document. */
+    async stored(): Promise<void> {
+      await this.flush();
+      if (this.id && this.readyState === READY.OPEN) await link().request("work.docs.send", { socket: this.id, frames: [], stored: true });
     }
 
     send(data: ArrayBufferLike | ArrayBufferView): void {
@@ -144,16 +178,24 @@ export function relaySocket(env: string, source: CanvasSource): new (url: string
     close(code = 1000, reason = ""): void {
       if (this.readyState === READY.CLOSED) return;
       const id = this.id;
-      if (id) void link().request("work.docs.close", { socket: id }).catch(() => undefined);
+      if (id) {
+        // Frames still waiting behind a send in flight go up first: the host's socket closes behind them.
+        this.closing = true;
+        void this.flush()
+          .then(() => link().request("work.docs.close", { socket: id }))
+          .catch(() => undefined);
+      }
       this.finish(code, reason);
     }
 
     private finish(code: number, reason: string): void {
       if (this.readyState === READY.CLOSED) return;
       this.readyState = READY.CLOSED;
+      open.delete(this);
       // A plain event with a close's fields: what the provider reads, wherever CloseEvent is missing.
       this.dispatchEvent(Object.assign(new Event("close"), { code, reason, wasClean: code === 1000 }));
     }
   }
+  openOf.set(RelaySocket, open);
   return RelaySocket as unknown as new (url: string) => WebSocket;
 }

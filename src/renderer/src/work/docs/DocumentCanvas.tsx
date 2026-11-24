@@ -28,6 +28,7 @@ import { ItemBones, ItemSkeleton } from "../canvas/ItemBones";
 import type { CanvasBodyProps, CanvasShell, MoreEntry, Presence } from "../canvas/kind";
 import { mailSafeCopy } from "work-kit/formats/clipboard";
 import { useWorkCommands } from "../formats/command";
+import { registerFlush } from "../canvas/flush";
 import { Preview } from "../formats/PreviewFrame";
 import { DropImport, ImportBody, keepAsDocument, readAttachment } from "../formats/Import";
 import { importsFirst, paperFor } from "../formats/model";
@@ -550,6 +551,8 @@ function Opened({
 }) {
   const doc = useDocument(host, open);
   const margin = width >= MARGIN_FROM;
+  // A tab's close waits until the host has stored what he typed (canvas/flush.ts): a Word file's document is judged by its file next.
+  useEffect(() => registerFlush(itemId, () => host.flush()), [itemId, host]);
   // The editor's handle on a styled document's pages: print writes them, Preview's Page section sets them.
   const pagesHandle = useRef<PagesHandle | null>(null);
   const onDocumentHandle = useCallback((handle: PagesHandle | null) => void (pagesHandle.current = handle), []);

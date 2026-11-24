@@ -497,6 +497,8 @@ describe('the relay', () => {
     while (frames.length < 2) frames.push(...(await relay.recv(id)).frames.map((f) => Buffer.from(f, 'base64').toString()))
     expect(seen).toEqual(['one', 'two'])
     expect(frames).toEqual(['echo one', 'echo two'])
+    // Every frame sent so far has left for the service: the socket's document.
+    expect(await relay.sent(id)).toBe('d1')
     relay.send(id, [Buffer.from('bye').toString('base64')])
     let closed: unknown
     while (!closed) closed = (await relay.recv(id)).closed

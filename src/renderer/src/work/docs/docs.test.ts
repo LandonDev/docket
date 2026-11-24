@@ -14,7 +14,7 @@ const link = {
 vi.mock("../../lib/connection", () => ({ registry: { linkOf: () => link } }));
 
 const { changeId, decided, reviewOf } = await import("./review");
-const { relaySocket, servedBy } = await import("./host");
+const { relaySocket, servedBy, storedAll } = await import("./host");
 const { docThreads } = await import("./threads");
 const { presenceOf } = await import("./DocumentCanvas");
 
@@ -152,6 +152,56 @@ describe("the relayed socket", () => {
     expect(ws.readyState).toBe(3);
     // The long ask is given time past the host's 20 s wait.
     expect(link.request.mock.calls.find(([m]) => m === "work.docs.recv")?.[2]).toEqual({ timeoutMs: 45_000 });
+  });
+
+  it("a close sends what waits behind a send in flight before the host's socket closes; the flush asks the host to store after the last frame", async () => {
+    const calls: string[] = [];
+    let release: () => void = () => undefined;
+    const held = new Promise<void>((resolve) => (release = resolve));
+    link.request.mockImplementation(async (method, params) => {
+      if (method === "work.docs.connect") return { socket: "s".repeat(24) };
+      if (method === "work.docs.recv") return new Promise(() => undefined);
+      if (method === "work.docs.send") {
+        calls.push(`send ${(params.frames as string[]).map((f) => atob(f)).join(",")}${params.stored ? " stored" : ""}`);
+        if (calls.length === 1) await held;
+        return { ok: true };
+      }
+      calls.push(method);
+      return { ok: true };
+    });
+    const Socket = relaySocket("env_box", { at: "lifeos", table: "docs", id: "d1" });
+    const ws = new Socket("ws://x/w/doc/d1");
+    await new Promise((resolve) => ws.addEventListener("open", resolve));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    ws.send(new TextEncoder().encode("a"));
+    ws.send(new TextEncoder().encode("b"));
+    ws.send(new TextEncoder().encode("c"));
+    const flushed = storedAll(Socket);
+    release();
+    await flushed;
+    expect(calls).toEqual(["send a", "send b,c", "send  stored"]);
+    // Typed, then closed at once: the frames go up, then the close.
+    calls.length = 0;
+    let again: () => void = () => undefined;
+    const second = new Promise<void>((resolve) => (again = resolve));
+    link.request.mockImplementation(async (method, params) => {
+      if (method === "work.docs.send") {
+        calls.push(`send ${(params.frames as string[]).map((f) => atob(f)).join(",")}`);
+        if (calls.length === 1) await second;
+        return { ok: true };
+      }
+      calls.push(method);
+      return { ok: true };
+    });
+    ws.send(new TextEncoder().encode("d"));
+    ws.send(new TextEncoder().encode("e"));
+    ws.close();
+    expect(ws.readyState).toBe(3);
+    again();
+    await vi.waitFor(() => expect(calls).toEqual(["send d", "send e", "work.docs.close"]));
+    // A closed socket has nothing left to store.
+    await storedAll(Socket);
+    expect(calls).toHaveLength(3);
   });
 
   it("a document another host serves names that host", () => {
