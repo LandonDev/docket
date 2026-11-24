@@ -92,7 +92,12 @@ export function ViewFrame({ view, environmentId, workspaceId, sector }: { view: 
   );
   // React.lazy keeps a rejection for good: the boundary's Retry makes a fresh one, which imports again.
   const [attempt, setAttempt] = useState(0);
-  const View = useMemo(() => lazy(() => def.chunk.load().then((m) => ({ default: m.View }))), [def, attempt]);
+  const Lazy = useMemo(() => lazy(() => def.chunk.load().then((m) => ({ default: m.View }))), [def, attempt]);
+  // A chunk already in hand draws its view in this frame's first commit. A fresh `lazy` suspends once even then, and
+  // React holds what follows a skeleton back 300 ms: every return to a view he had seen cost that much (perf row
+  // view-*, 2026-11-24: 317 ms, all of it the hold). Chosen once a mount, so a chunk landing later never remounts the view.
+  const [Ready] = useState(() => def.chunk.loaded()?.View ?? null);
+  const View = Ready ?? Lazy;
   const Icon = def.icon;
   // A view that reads the host alone (Routines) is never behind LifeOS's sign-in or its line.
   const gated = def.readsLifeos;

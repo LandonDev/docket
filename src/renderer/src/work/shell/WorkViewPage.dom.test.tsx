@@ -301,6 +301,30 @@ describe("a view opened before its chunk has landed", () => {
   });
 });
 
+describe("a view whose chunk is already in hand", () => {
+  it("draws its body in the first commit: no skeleton, and so none of the 300 ms React holds content back after one", async () => {
+    vi.spyOn(registry, "linkOf").mockReturnValue({ environmentId: "env_box", connected: true, onPush: () => () => {}, onOpen: () => () => {}, request: vi.fn(async () => ({})) } as never);
+    setLifeosStatus("env_box", { lifeos: { state: "connected", ownerId: "landon", since: 1 }, keys: [] });
+    const was = WORK_VIEWS.agenda.chunk;
+    const chunk = defineChunk("test-agenda-held", async () => ({ View: () => <p>The week</p> }));
+    await chunk.load();
+    WORK_VIEWS.agenda.chunk = chunk as never;
+    try {
+      // No act(), no await: what is in the document now is the first commit.
+      const { container, unmount } = render(<ViewFrame view="agenda" environmentId="env_box" workspaceId="ws" sector="purdue" />);
+      expect(container.textContent).toContain("The week");
+      expect(container.querySelector("[aria-busy], [data-slot=skeleton]")).toBeNull();
+      unmount();
+      // A second mount (he came back to the view) is the same: the chunk is asked for no more.
+      const again = render(<ViewFrame view="agenda" environmentId="env_box" workspaceId="ws" sector="purdue" />);
+      expect(again.container.textContent).toContain("The week");
+      expect(again.container.querySelector("[aria-busy], [data-slot=skeleton]")).toBeNull();
+    } finally {
+      WORK_VIEWS.agenda.chunk = was;
+    }
+  });
+});
+
 describe("views outside LifeOS's gate, and a view that did not import", () => {
   it("draws Routines, its header and its body, while LifeOS is signed out: its data is the host's", async () => {
     vi.spyOn(registry, "linkOf").mockReturnValue({
