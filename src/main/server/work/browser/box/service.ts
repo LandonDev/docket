@@ -464,6 +464,53 @@ export class BoxComputerService {
     return this.connecting
   }
 
+  // ── the msforms carrier's own page calls (no tool reaches these; carrier.ts in msforms) ──────────
+
+  /** Every page, with its window id and address: the carrier follows the window a press opened by its id. */
+  async carrierPages(): Promise<{ window: number; url: string }[]> {
+    return (await this.pages()).map((p) => ({ window: p.window, url: p.url }))
+  }
+
+  /** Closes one page by its window id. */
+  async carrierClose(window: number): Promise<void> {
+    const page = (await this.pages()).find((p) => p.window === window)
+    if (page) await (await this.browser()).send('Target.closeTarget', { targetId: page.targetId })
+  }
+
+  /**
+   * A request from inside one page, as the signed-in page itself would make it: only to the page's own origin and never
+   * to a Forms host (the carrier reads SharePoint from the folder's site page). The body comes back as bytes or JSON.
+   */
+  async carrierFetch(window: number, url: string, o: { bytes?: boolean; method?: 'GET' | 'POST'; headers?: Record<string, string> } = {}): Promise<{ status: number; json?: unknown; bytes?: Uint8Array }> {
+    const page = (await this.pages()).find((p) => p.window === window)
+    if (!page) throw new Error('no such window in the box browser')
+    const target = new URL(url)
+    if (isFormsHost(target.hostname) || new URL(page.url).origin !== target.origin) throw new Error('the carrier asks only the page\'s own origin')
+    const { cdp, sid } = await this.on(page)
+    const expression = `fetch(${JSON.stringify(url)}, { method: ${JSON.stringify(o.method ?? 'GET')}, credentials: 'include', headers: ${JSON.stringify(o.headers ?? {})} }).then(async (r) => {
+      if (!${o.bytes ? 'true' : 'false'}) return { status: r.status, text: await r.text() }
+      const b = new Uint8Array(await r.arrayBuffer()); let s = ''; for (let i = 0; i < b.length; i += 0x8000) s += String.fromCharCode.apply(null, b.subarray(i, i + 0x8000))
+      return { status: r.status, base64: btoa(s) }
+    })`
+    const { result } = await cdp.send<{ result: { value?: { status: number; text?: string; base64?: string } } }>('Runtime.evaluate', { expression, awaitPromise: true, returnByValue: true }, sid)
+    const v = result.value ?? { status: 0 }
+    if (v.base64 !== undefined) return { status: v.status, bytes: new Uint8Array(Buffer.from(v.base64, 'base64')) }
+    let json: unknown
+    try {
+      json = v.text ? JSON.parse(v.text) : undefined
+    } catch {
+      json = undefined
+    }
+    return { status: v.status, json }
+  }
+
+  /** Clears what the browser stored for these origins, every kind but cookies (his sign-in stays). */
+  async carrierClear(origins: readonly string[]): Promise<void> {
+    const cdp = await this.browser()
+    const storageTypes = 'appcache,file_systems,indexeddb,local_storage,shader_cache,websql,service_workers,cache_storage'
+    for (const origin of origins) await cdp.send('Storage.clearDataForOrigin', { origin, storageTypes }).catch(() => {})
+  }
+
   /** One new page: the stage's window when the browser is headed, else a tab. */
   private async newPage(url: string): Promise<string> {
     if (this.opts.browser.open) return this.opts.browser.open(url)

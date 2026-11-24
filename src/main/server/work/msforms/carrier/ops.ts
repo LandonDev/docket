@@ -1,0 +1,521 @@
+import type { Screen } from '@shared/computer/outward'
+import type { ComputerAction } from '@shared/computer/protocol'
+import { builderOf, diffQuestions, formIdOf, isFormsUrl, isOther, MSFORM_NEW_SETTINGS, respondOf, type MsAnyQuestion, type MsChange, type MsFormSettings, type MsQuestion } from '@shared/work/msforms'
+import { countOf, formOf, linkOf, questionInEdit, questionsOf, settingsOf, titleOf } from './read'
+import { click, first, isOn, one, Page, tab, typeInto, type FormsComputer } from './steps'
+import { CarrierRefused, CarrierStop, checkAuth, type CarrierAuth, type CarrierOp, type FormRead, type MakeAsk, type MsCarrier, type PullAsk } from './types'
+
+/**
+ * The carrier's operations on the box browser (docs/agents/work-msforms.md
+ * "The carrier"): each a fixed program, each checking its authorization
+ * before its first step and every step guarded for its operation
+ * (guard.ts). Before a step that changes settings, who can answer or
+ * collecting, it reads the form fresh and stops on any drift, saying what it
+ * had done.
+ */
+
+const BUTTON = ['button', 'link', 'menu button']
+const ITEM = ['menu item', 'button', 'link', 'option']
+const TOGGLE = ['checkbox', 'switch']
+const TYPE_BUTTON: Record<MsQuestion['type'], RegExp> = { choice: /^Choice$/, text: /^Text$/, rating: /^Rating$/, date: /^Date$/, section: /^Section$/ }
+
+export interface OpsDeps {
+  computer: FormsComputer
+  host: string
+  /** runs one operation with the box browser held: the queue, `useBoxBrowser`, his driving (session.ts) */
+  exclusive<T>(fn: () => Promise<T>): Promise<T>
+  /** the workspace an authorization must name for a form (`formId`) or a folder page (`folderUrl`), from the host's own rows */
+  workspaceOf(at: { formId: string }): string | null
+  /** what the page needs before its controls show (a test's page answers at once) */
+  patience?: { mount?: number; made?: number }
+}
+
+const short = (title: string): string => (title.length > 60 ? `${title.slice(0, 59)}…` : title)
+
+/** A question's title as Forms reads back its at-rest name, for the check after an add. */
+const sameTitle = (a: string, b: string): boolean => a.replace(/\s+/g, ' ').trim() === b.replace(/\s+/g, ' ').trim()
+
+export function opsCarrier(deps: OpsDeps): MsCarrier {
+  const { computer } = deps
+  const mount = deps.patience?.mount ?? 10_000
+  const madeWait = deps.patience?.made ?? 30_000
+
+  /** The authorization for a form, checked against the host's own rows. */
+  const authorized = (auth: CarrierAuth, op: CarrierOp, formId: string, payload: unknown): void => {
+    const workspaceId = deps.workspaceOf({ formId }) ?? ''
+    checkAuth(auth, { host: deps.host, workspaceId, target: { formId }, op, payload, rev: auth.rev })
+  }
+
+  /** Opens the form's builder in a window of its own, read once its title shows. */
+  const openBuilder = async (formId: string, op: CarrierOp, suffix = ''): Promise<Page> => {
+    const window = await computer.open(`${builderOf(formId)}${suffix}`)
+    const page = new Page(computer, window, op)
+    const { screen, got } = await page.until((s) => titleOf(s) !== '' || countOf(s) !== null, mount)
+    if (!got) page.stop('the form did not open in Forms')
+    const shown = formOf(screen).formId
+    if (shown && shown !== formId) page.stop('Forms showed another form than the one asked')
+    return page
+  }
+
+  const closing = async <T>(page: Page | null, fn: () => Promise<T>): Promise<T> => {
+    try {
+      return await fn()
+    } finally {
+      if (page) await computer.close(page.window).catch(() => {})
+    }
+  }
+
+  /** The Settings panel, open. */
+  const openSettings = async (page: Page): Promise<Screen> => {
+    const s = page.last ?? (await page.read())
+    if (one(s, TOGGLE, /^Accept responses$/i)) return s
+    await page.act((x) => {
+      const b = one(x, BUTTON, /^Settings$/i)
+      return b ? [click(b)] : null
+    }, 'Settings')
+    const { screen, got } = await page.until((x) => one(x, TOGGLE, /^Accept responses$/i), mount)
+    if (!got) page.stop('the Settings panel did not open')
+    return screen
+  }
+
+  /** Sets one toggle in the open panel to `want`, read back. */
+  const setToggle = async (page: Page, name: RegExp, want: boolean, words: string): Promise<void> => {
+    const s = page.last ?? (await page.read())
+    const t = one(s, TOGGLE, name)
+    if (!t) return page.stop(`${words} was not in Settings`)
+    if (isOn(t) === want) return
+    await page.act((x) => {
+      const y = one(x, TOGGLE, name)
+      return y && isOn(y) !== want ? [click(y)] : null
+    }, words)
+    const back = one(page.last!, TOGGLE, name)
+    if (isOn(back) !== want) page.stop(`${words} did not turn ${want ? 'on' : 'off'}`)
+  }
+
+  /** Who can answer, as asked: only the org (with its two boxes), or anyone. */
+  const setAudience = async (page: Page, s: MsFormSettings): Promise<void> => {
+    const radio = s.orgOnly ? /^Only people in .+ can respond/i : /^Anyone can respond/i
+    const now = one(page.last!, ['radio'], radio)
+    if (!now) return page.stop('who can fill out the form was not in Settings')
+    if (!isOn(now)) {
+      await page.act((x) => {
+        const r = one(x, ['radio'], radio)
+        return r ? [click(r)] : null
+      }, s.orgOnly ? 'Only people in the organization' : 'Anyone can respond')
+      if (!isOn(one(page.last!, ['radio'], radio))) page.stop('who can fill out the form did not change')
+    }
+    if (s.orgOnly) {
+      await setToggle(page, /^Record name$/i, s.recordName, 'Record name')
+      await setToggle(page, /^One response per person$/i, s.onePerPerson, 'One response per person')
+    }
+  }
+
+  /** A date toggle and its field, as asked: absent turns it off. */
+  const setDate = async (page: Page, name: 'Start date' | 'End date', value: string | undefined): Promise<void> => {
+    const re = new RegExp(`^${name}$`, 'i')
+    const box = one(page.last!, TOGGLE, re)
+    if (!box) return value ? page.stop(`${name} was not in Settings`) : undefined
+    if (!value) return setToggle(page, re, false, name)
+    await setToggle(page, re, true, name)
+    await page.act((x) => {
+      const field = first(x, ['date', 'input'], new RegExp(`^${name}`, 'i'))
+      return field ? [typeInto(field, value), tab(field)] : null
+    }, name)
+  }
+
+  /** The question being edited, mounted, after a click that opens it. */
+  const editing = async (page: Page) => {
+    const { got } = await page.until((x) => questionInEdit(x), mount)
+    return got
+  }
+
+  /** Writes a question's fields into the one in edit: its title, its options, its switches, each committed by Tab. */
+  const fill = async (page: Page, q: MsQuestion): Promise<void> => {
+    let edit = await editing(page)
+    if (!edit) return page.stop(`the question "${short(q.title)}" did not open for editing`)
+    await page.act((x) => {
+      const e = questionInEdit(x)
+      return e ? [typeInto(e.title, q.title), tab(e.title)] : null
+    }, `the title "${short(q.title)}"`)
+    if (q.type === 'choice') {
+      const want = q.options ?? []
+      for (let i = 0; i < want.length; i++) {
+        edit = questionInEdit(page.last!)
+        if (!edit) return page.stop(`the question "${short(q.title)}" closed before its options were written`)
+        if (i >= edit.options.length) {
+          await page.act((x) => {
+            const e = questionInEdit(x)
+            return e?.addOption ? [click(e.addOption)] : null
+          }, 'Add option')
+        }
+        // Never Return in an option field: it takes a suggestion chip.
+        await page.act((x) => {
+          const e = questionInEdit(x)
+          const field = e?.options[i]
+          return field ? [typeInto(field, want[i]), tab(field)] : null
+        }, `the option "${short(want[i])}"`)
+      }
+      // Options Forms put there that were not asked for go.
+      for (let guard = 0; guard < 20; guard++) {
+        edit = questionInEdit(page.last!)
+        const extra = edit?.options[want.length]
+        if (!extra) break
+        await page.act((x) => {
+          const e = questionInEdit(x)
+          const field = e?.options[want.length]
+          const del = field ? one(x, ['button'], new RegExp(`^Delete ${escape(field.value ?? '')}$`)) : null
+          return del ? [click(del)] : null
+        }, 'removing an option Forms added')
+      }
+      await toggleIn(page, 'multiple', Boolean(q.multiple), 'Multiple answers')
+    }
+    if (q.type === 'text') await toggleIn(page, 'long', Boolean(q.long), 'Long answer')
+    // Required is set on every new question: Forms copies it from the last one.
+    if (q.type !== 'section') await toggleIn(page, 'required', q.required, 'Required')
+  }
+
+  const toggleIn = async (page: Page, which: 'required' | 'multiple' | 'long', want: boolean, words: string): Promise<void> => {
+    const e = questionInEdit(page.last!)
+    const t = e?.[which]
+    if (!t) return want ? page.stop(`${words} was not on the question`) : undefined
+    if (isOn(t) === want) return
+    await page.act((x) => {
+      const y = questionInEdit(x)?.[which]
+      return y && isOn(y) !== want ? [click(y)] : null
+    }, words)
+  }
+
+  /** Adds one question at the end and checks it shows. */
+  const addQuestion = async (page: Page, q: MsQuestion, before: number): Promise<void> => {
+    const s = page.last!
+    const add = one(s, BUTTON, /^(Add new question|Quick start with)$/i)
+    const kind = one(s, BUTTON, TYPE_BUTTON[q.type])
+    if (!kind) {
+      if (!add) return page.stop(`"Add new question" was not on the page for "${short(q.title)}"`)
+      await page.act((x) => {
+        const a = one(x, BUTTON, /^(Add new question|Quick start with)$/i)
+        return a ? [click(a)] : null
+      }, 'Add new question')
+    }
+    await page.act((x) => {
+      const k = one(x, BUTTON, TYPE_BUTTON[q.type])
+      return k ? [click(k)] : null
+    }, `the ${q.type} question type`)
+    await fill(page, q)
+    // A click outside the question commits it (Forms saves on leaving it); then it must show at rest, last, by its title.
+    await page.act((x) => {
+      const a = one(x, BUTTON, /^(Add new question|Quick start with)$/i)
+      return a ? [click(a)] : []
+    }, 'leaving the question')
+    const { got } = await page.until((x) => {
+      const list = questionsOf(x)
+      return list.length > before && sameTitle(list[list.length - 1]?.title ?? '', q.title)
+    }, mount)
+    if (!got) page.stop(`the question "${short(q.title)}" did not show after Add`)
+  }
+
+  /** Puts a question at rest into edit by its place. */
+  const openQuestion = async (page: Page, at: number, list: readonly MsAnyQuestion[]): Promise<void> => {
+    await page.act((x) => {
+      const b = one(x, BUTTON, new RegExp(`^${at + 1}\\.\\s*Question title\\b`))
+      return b ? [click(b)] : null
+    }, `the question "${short(list[at]?.title ?? String(at + 1))}"`)
+  }
+
+  /** Reads the builder fresh and stops when its questions are not `before`: someone changed the form since. */
+  const noDrift = (page: Page, before: readonly MsAnyQuestion[], what: string): void => {
+    const now = questionsOf(page.last!)
+    const moved = diffQuestions(before, now)
+    if (moved.length) page.stop(`the form in Forms is not as it was read (${moved.slice(0, 2).join('; ')}), so ${what} was not done`, formOf(page.last!))
+  }
+
+  const changeOne = async (page: Page, c: MsChange, list: MsAnyQuestion[]): Promise<MsAnyQuestion[]> => {
+    switch (c.op) {
+      case 'add': {
+        await addQuestion(page, c.question, list.length)
+        let next = [...list, c.question]
+        const target = (c.after ?? list.length - 1) + 1
+        for (let at = next.length - 1; at > target; at--) {
+          await openQuestion(page, at, next)
+          await page.act((x) => {
+            const up = one(x, BUTTON, new RegExp(`^Move question up\\b`))
+            return up ? [click(up)] : null
+          }, 'Move question up')
+          next = [...next.slice(0, at - 1), next[at], next[at - 1], ...next.slice(at + 1)]
+        }
+        return next
+      }
+      case 'change': {
+        if (isOther(list[c.at])) page.stop(`"${short(list[c.at].title)}" is a kind of question only the Forms page changes`)
+        await openQuestion(page, c.at, list)
+        await fill(page, c.question)
+        const next = [...list]
+        next[c.at] = c.question
+        return next
+      }
+      case 'remove': {
+        await openQuestion(page, c.at, list)
+        await page.act((x) => {
+          const d = one(x, BUTTON, /^Delete question\b/i)
+          return d ? [click(d)] : null
+        }, `Delete "${short(list[c.at].title)}"`)
+        return list.filter((_, i) => i !== c.at)
+      }
+      case 'move': {
+        let at = c.at
+        let next = [...list]
+        while (at !== c.to) {
+          await openQuestion(page, at, next)
+          const up = c.to < at
+          await page.act((x) => {
+            const b = one(x, BUTTON, new RegExp(`^Move question ${up ? 'up' : 'down'}\\b`))
+            return b ? [click(b)] : null
+          }, `Move "${short(list[c.at].title)}"`)
+          const to = up ? at - 1 : at + 1
+          ;[next[at], next[to]] = [next[to], next[at]]
+          next = [...next]
+          at = to
+        }
+        return next
+      }
+    }
+  }
+
+  const changeWordsDone = (c: MsChange, list: readonly MsAnyQuestion[]): string =>
+    c.op === 'add' ? `added "${short(c.question.title)}"` : c.op === 'remove' ? `removed "${short(list[c.at]?.title ?? '')}"` : c.op === 'move' ? `moved "${short(list[c.at]?.title ?? '')}"` : `changed "${short(list[c.at]?.title ?? '')}"`
+
+  /** The form as a final read sees it: the Settings panel opened first (a click there commits a question in edit), then one read of both. */
+  const finalRead = async (page: Page, formId: string, settings = true): Promise<FormRead> => {
+    if (!settings) return formOf(await page.read(), { formId })
+    const panel = await openSettings(page)
+    return formOf(panel, { formId })
+  }
+
+  return {
+    async read(auth, formId) {
+      if (!('formId' in auth.target) || auth.target.formId !== formId) throw new CarrierRefused('The carrier refused: it was authorized for another form. Nothing was done in Forms.')
+      return deps.exclusive(async () => {
+        const page = await openBuilder(formId, auth.op)
+        return closing(page, () => finalRead(page, formId, ['make', 'settings', 'collect', 'audience', 'close'].includes(auth.op)))
+      })
+    },
+
+    async make(auth, ask: MakeAsk) {
+      const workspaceId = ask.workspaceId
+      if (!('folder' in auth.target)) throw new CarrierRefused('The carrier refused: a make names a folder. Nothing was done in Forms.')
+      checkAuth(auth, { host: deps.host, workspaceId, target: auth.target, op: 'make', payload: { title: ask.title, description: ask.description, questions: ask.questions, settings: ask.settings, folder: auth.target.folder }, rev: 0 })
+      return deps.exclusive(async () => {
+        const before = new Set((await computer.windows()).map((w) => w.id))
+        const folderWindow = await computer.open(ask.folderUrl)
+        const folder = new Page(computer, folderWindow, 'make')
+        let formId: string | null = null
+        let window: string | null = null
+        try {
+          const { got } = await folder.until((s) => one(s, BUTTON, /^(Create or upload|New)$/i), mount)
+          if (!got) folder.stop('the folder\'s "Create or upload" was not on its page, so no form was made')
+          await folder.act((x) => {
+            const b = one(x, BUTTON, /^(Create or upload|New)$/i)
+            return b ? [click(b)] : null
+          }, 'Create or upload')
+          await folder.act((x) => {
+            const item = one(x, ITEM, /^Forms survey$/i)
+            return item ? [click(item)] : null
+          }, 'Forms survey')
+          // The new form opens in a window of its own; its id is in the address once Forms has made it.
+          for (let waited = 0; waited <= madeWait && !formId; waited += 1_000) {
+            for (const w of await computer.windows()) {
+              if (before.has(w.id) || w.id === folderWindow || !isFormsUrl(w.url)) continue
+              const id = formIdOf(w.url)
+              if (id) {
+                formId = id
+                window = w.id
+              }
+            }
+            if (!formId) await computer.wait(1_000)
+          }
+        } finally {
+          await computer.close(folderWindow).catch(() => {})
+        }
+        if (!formId || !window) throw new CarrierStop('Forms did not make a form from the folder. Nothing was made in Forms.', null, null)
+        const page = new Page(computer, window, 'make')
+        return closing(page, async () => {
+          const { got } = await page.until((s) => titleOf(s) !== '', mount)
+          // The welcome page has no title: nothing is pressed on it.
+          if (!got) page.stop('Forms opened its welcome page, not the new form; nothing was pressed there', { ...emptyRead(formId!), settings: { ...MSFORM_NEW_SETTINGS, accepting: true } })
+          // The first step on the new form: Accept responses off, read back.
+          try {
+            await openSettings(page)
+            await setToggle(page, /^Accept responses$/i, false, 'Accept responses')
+          } catch {
+            const read = formOf(page.last ?? (await page.read()), { formId: formId! })
+            throw new CarrierStop('The form was made but may take answers: no one has its link. Open it and turn off Accept responses, or delete it.', { ...read, formId: formId!, settings: { ...read.settings, accepting: true } })
+          }
+          page.done.push('made the form with Accept responses off')
+          await setAudience(page, ask.settings)
+          await setDate(page, 'Start date', ask.settings.startDate)
+          await setDate(page, 'End date', ask.settings.endDate)
+          page.done.push('set who can answer')
+          await page.act((x) => {
+            const close = one(x, BUTTON, /^(Close|Close settings)$/i)
+            return close ? [click(close)] : []
+          }, 'closing Settings')
+          // The title first, so the workbook takes it.
+          await page.act((x) => {
+            const b = one(x, BUTTON, /^Form title\b/)
+            return b ? [click(b)] : null
+          }, 'the form title')
+          const { got: field } = await page.until((x) => one(x, ['text area', 'input'], /^Form title$/), mount)
+          if (!field) page.stop('the form title did not open for typing', formOf(page.last!, { formId: formId! }))
+          await page.act((x) => {
+            const f = one(x, ['text area', 'input'], /^Form title$/)
+            return f ? [typeInto(f, ask.title), tab(f)] : null
+          }, 'the form title')
+          if (ask.description) {
+            await page.act((x) => {
+              const d = one(x, ['input', 'text area'], /^Form description$/)
+              return d ? [typeInto(d, ask.description), tab(d)] : null
+            }, 'the description')
+          }
+          page.done.push(`named it "${short(ask.title)}"`)
+          for (let i = 0; i < ask.questions.length; i++) {
+            try {
+              await addQuestion(page, ask.questions[i], i)
+            } catch {
+              const read = formOf(await page.read(), { formId: formId! })
+              throw new CarrierStop(`Made the form and added ${i} of ${ask.questions.length} questions; the next, "${short(ask.questions[i].title)}", did not show after Add. The form holds the first ${i}.`, read)
+            }
+          }
+          return { read: await finalRead(page, formId!) }
+        })
+      })
+    },
+
+    async write(auth, formId, changes, before) {
+      authorized(auth, 'write', formId, { changes, before })
+      return deps.exclusive(async () => {
+        const page = await openBuilder(formId, 'write')
+        return closing(page, async () => {
+          noDrift(page, before, 'no change')
+          let list = [...before]
+          for (let i = 0; i < changes.length; i++) {
+            try {
+              list = await changeOne(page, changes[i], list)
+            } catch (err) {
+              const read = formOf(await page.read(), { formId })
+              const did = changes.slice(0, i).map((c, k) => changeWordsDone(c, k === 0 ? before : list))
+              throw new CarrierStop(`${did.length ? `Did ${i} of ${changes.length} changes (${did.join('; ')}); the next` : 'The first change'}, ${changeWordsDone(changes[i], list)}, did not take: ${(err as Error).message.replace(/\.$/, '')}. The form holds what was done.`, read)
+            }
+            page.done.push(changeWordsDone(changes[i], list))
+          }
+          return { read: await finalRead(page, formId) }
+        })
+      })
+    },
+
+    async settings(auth, formId, patch) {
+      authorized(auth, 'settings', formId, patch)
+      return deps.exclusive(async () => {
+        const page = await openBuilder(formId, 'settings')
+        return closing(page, async () => {
+          const panel = await openSettings(page)
+          const now = settingsOf(panel)
+          // An agent's settings run only on a draft: Accept responses must read off.
+          if (auth.by === 'pillar' && now.accepting) page.stop('the form takes answers now, so its settings were not changed')
+          if (patch.orgOnly === false && now.orgOnly && auth.by === 'pillar') page.stop('who can answer is not widened without the owner\'s press')
+          if (patch.orgOnly !== undefined || patch.recordName !== undefined || patch.onePerPerson !== undefined) await setAudience(page, { ...now, ...patch })
+          if ('startDate' in patch) await setDate(page, 'Start date', patch.startDate)
+          if ('endDate' in patch) await setDate(page, 'End date', patch.endDate)
+          if (patch.accepting === false) await setToggle(page, /^Accept responses$/i, false, 'Accept responses')
+          return { read: await finalRead(page, formId) }
+        })
+      })
+    },
+
+    async collect(auth, formId, settings) {
+      if (!('formId' in auth.target) || auth.target.formId !== formId || auth.op !== 'collect') throw new CarrierRefused('The carrier refused: it was not authorized to collect responses to this form. Nothing was done in Forms.')
+      return deps.exclusive(async () => {
+        const page = await openBuilder(formId, 'collect')
+        return closing(page, async () => {
+          await openSettings(page)
+          await setAudience(page, settings)
+          await setDate(page, 'Start date', settings.startDate)
+          await setDate(page, 'End date', settings.endDate)
+          await setToggle(page, /^Accept responses$/i, true, 'Accept responses')
+          page.done.push('turned Accept responses on')
+          await page.act((x) => {
+            const b = one(x, BUTTON, /^Collect responses$/i)
+            return b ? [click(b)] : null
+          }, 'Collect responses')
+          // The link is read from the dialog, never sent or copied from it.
+          const { got } = await page.until((x) => linkOf(x), mount)
+          const link = got && formIdOf(got) === formId ? got : respondOf(formId)
+          await page.act((x) => {
+            const close = one(x, BUTTON, /^Close$/i)
+            return close ? [click(close)] : []
+          }, 'closing the dialog')
+          const read = await finalRead(page, formId)
+          return { read: { ...read, link }, link }
+        })
+      })
+    },
+
+    async audience(auth, formId, settings) {
+      if (!('formId' in auth.target) || auth.target.formId !== formId || auth.op !== 'audience') throw new CarrierRefused('The carrier refused: it was not authorized to change who can answer this form. Nothing was done in Forms.')
+      return deps.exclusive(async () => {
+        const page = await openBuilder(formId, 'audience')
+        return closing(page, async () => {
+          await openSettings(page)
+          await setAudience(page, settings)
+          return { read: await finalRead(page, formId) }
+        })
+      })
+    },
+
+    async close(auth, formId, open) {
+      authorized(auth, 'close', formId, { open })
+      return deps.exclusive(async () => {
+        const page = await openBuilder(formId, 'close')
+        return closing(page, async () => {
+          await openSettings(page)
+          await setToggle(page, /^Accept responses$/i, open, 'Accept responses')
+          return { read: await finalRead(page, formId) }
+        })
+      })
+    },
+
+    async count(auth, formId) {
+      if (auth.op !== 'count' && auth.op !== 'pull') throw new CarrierRefused('The carrier refused: it was not authorized to read answers. Nothing was done in Forms.')
+      authorized(auth, auth.op, formId, { formId })
+      return deps.exclusive(async () => {
+        const page = await openBuilder(formId, 'count', '&analysis=true')
+        return closing(page, async () => {
+          const { screen, got } = await page.until((x) => countOf(x) !== null, mount)
+          if (got === null) page.stop('the Responses view showed no count')
+          return { count: countOf(screen) ?? 0, read: formOf(screen, { formId }) }
+        })
+      })
+    },
+
+    async pull(auth, formId, ask: PullAsk) {
+      authorized(auth, 'pull', formId, { formId, siteUrl: ask.siteUrl, folder: ask.folderServerPath })
+      const { pullWorkbook } = await import('./pull')
+      return deps.exclusive(() => pullWorkbook({ computer, mount, openResponses: () => openBuilder(formId, 'pull', '&analysis=true') }, formId, ask))
+    },
+
+    async prefill(auth, formId, values) {
+      authorized(auth, 'prefill', formId, values)
+      const { prefillLink } = await import('./prefill')
+      return deps.exclusive(async () => {
+        const page = await openBuilder(formId, 'prefill')
+        return closing(page, () => prefillLink(page, formId, values, mount))
+      })
+    }
+  }
+}
+
+const escape = (s: string): string => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+
+const emptyRead = (formId: string): FormRead => ({ formId, title: '', description: '', questions: [], settings: MSFORM_NEW_SETTINGS, count: null, signedInAs: null, link: null })
+
+/** Steps the guard allows for one operation, exported for tests that send a step straight at it. */
+export type GuardedStep = ComputerAction

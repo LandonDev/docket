@@ -1,6 +1,6 @@
 import type { TeamsLibrary } from '@shared/contract-work-office'
 import { applyChange, MSFORM_NEW_SETTINGS, type MsAnyQuestion, type MsChange, type MsFormSettings } from '@shared/work/msforms'
-import { checkAuth, type CarrierAuth, type CarrierOp, type FormRead, type MakeAsk, type MsCarrier, type PullAsk } from './carrier/types'
+import { CarrierStop, checkAuth, type CarrierAuth, type CarrierOp, type FormRead, type MakeAsk, type MsCarrier, type PullAsk } from './carrier/types'
 
 /**
  * A carrier for tests (no browser): forms kept in memory as Forms would keep
@@ -63,9 +63,8 @@ export class FakeCarrier implements MsCarrier {
     // The first step: Accept responses off.
     if (this.stopAt.make === 'accepting') {
       delete this.stopAt.make
-      throw new (await import('./carrier/types')).CarrierStop('The form was made but may take answers: no one has its link. Open it and turn off Accept responses, or delete it.', this.readOf(f))
+      throw new CarrierStop('The form was made but may take answers: no one has its link. Open it and turn off Accept responses, or delete it.', this.readOf(f))
     }
-    f.settings.accepting = false
     f.title = ask.title
     f.description = ask.description
     f.questions = [...ask.questions]
@@ -86,7 +85,7 @@ export class FakeCarrier implements MsCarrier {
       if (this.stopAt.write && done === 1) {
         const words = this.stopAt.write
         delete this.stopAt.write
-        throw new (await import('./carrier/types')).CarrierStop(words, this.readOf(f))
+        throw new CarrierStop(words, this.readOf(f))
       }
       f.questions = applyChange(f.questions, c)
       done++

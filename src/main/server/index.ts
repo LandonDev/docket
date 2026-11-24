@@ -1919,6 +1919,8 @@ export async function startServer(
         })
         // Watch and Take over draw a box thread's page: its preview relay and its rows, on this host that has no computer use of its own.
         if (!box) return
+        // The Microsoft Forms carrier drives only this browser, on sessions of its own (work/msforms/carrier/wire.ts).
+        void import('./work/msforms/carrier/wire').then((w) => w.wireMsCarrier(db, environmentId), (err) => console.log(`[msforms] the carrier did not load: ${String(err)}`))
         if (!previews) {
           previews = new ComputerPreviews({ service: box.service, sessions: box.previews })
           boxPreviews = true

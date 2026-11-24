@@ -117,6 +117,8 @@ export class CarrierSignIn extends Error {
 export class CarrierBusy extends Error {}
 
 export interface MakeAsk {
+  /** the job the form is made for: the authorization must name it */
+  workspaceId: string
   /** the folder's SharePoint page (the library's web address and the folder) */
   folderUrl: string
   title: string
@@ -140,6 +142,8 @@ export interface PullAsk {
   folderServerPath: string
   /** known once the first pull stored it */
   uniqueId: string | null
+  /** the workbook's name in the folder, for the first pull: the form's title then */
+  name: string
   /** what the last read saw, so a count unchanged with rows cached stops early */
   lastModified: string | null
 }

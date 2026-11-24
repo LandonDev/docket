@@ -160,7 +160,7 @@ export async function make(
     store.get(workspace.id, formId) ??
     store.create({ workspaceId: workspace.id, formId, tenant: folder.tenant, sector: workspace.sector, title: ask.title, folder: { libraryId: folder.libraryId, path: folder.path, siteUrl: folder.siteUrl, label: folder.label }, madeBy: grant.madeBy })
   try {
-    const { read } = await carrier.make(auth, { folderUrl, title: ask.title, description: ask.description ?? '', questions: ask.questions ?? [], settings })
+    const { read } = await carrier.make(auth, { workspaceId: workspace.id, folderUrl, title: ask.title, description: ask.description ?? '', questions: ask.questions ?? [], settings })
     const row = keep(read.formId)
     // A draft only once a fresh read shows Accept responses off.
     return announce(ctx, storeRead(ctx, row, read, { by: grant.madeBy, state: 'draft', stopped: read.settings.accepting ? MAY_TAKE_ANSWERS : null }))

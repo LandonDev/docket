@@ -49,6 +49,8 @@ export interface BoxBrowserHost {
 }
 
 let host: BoxBrowserHost | null = null
+/** the service object the browser's computer sessions run in: the carrier's page calls go to it */
+let liveService: BoxComputerService | null = null
 /** held steps waiting on a page of the box browser, by thread, each with when it was held: it is not stopped for idleness while one waits */
 const waiting = new Map<string, number[]>()
 /** calls in flight that use the browser outside the computer sessions (the Outlook on the web carrier's) */
@@ -111,7 +113,7 @@ export function wireBoxBrowser(o: BoxWiring): BoxBrowserHost | null {
   /** the page each thread, and each pane, last used: what a stream shows after the session that used it stopped */
   const lastPage = new Map<string, string>()
   const make = () =>
-    new BoxComputerService({
+    (liveService = new BoxComputerService({
       browser: {
         endpoint: () => browser.endpoint(),
         pid: () => browser.pid,
@@ -130,7 +132,7 @@ export function wireBoxBrowser(o: BoxWiring): BoxBrowserHost | null {
       },
       use: (cdp) => takeImports(root, cdp, log),
       log
-    })
+    }))
   const service = new ComputerService({
     dataDir: join(root, 'computer'),
     bin: () => 'box-browser',
@@ -381,6 +383,11 @@ export interface CarrierComputer {
   window(): { id: number; title: string | null } | null
   /** Closes the session and drops its mark. */
   end(): Promise<void>
+  /** Every page by window id with its address, a page closed by id, a request from inside a page to its own origin, and what the browser stored for some origins cleared (service.ts `carrier*`). */
+  pages(): Promise<{ window: number; url: string }[]>
+  close(window: number): Promise<void>
+  fetch(window: number, url: string, o?: { bytes?: boolean; method?: 'GET' | 'POST'; headers?: Record<string, string> }): Promise<{ status: number; json?: unknown; bytes?: Uint8Array }>
+  clear(origins: readonly string[]): Promise<void>
 }
 
 /**
@@ -399,6 +406,13 @@ export function carrierComputer(): CarrierComputer | null {
       return h.sessions.run({ threadId: session, permission: () => 'auto', approve: async () => false, ...(signal ? { signal } : {}) }, tool, args)
     },
     window: () => h.sessions.previewTarget(session)?.window ?? null,
+    pages: async () => (liveService ? liveService.carrierPages() : []),
+    close: async (window) => void (await liveService?.carrierClose(window)),
+    fetch: async (window, url, o) => {
+      if (!liveService) throw new Error('the box browser is not running')
+      return liveService.carrierFetch(window, url, o)
+    },
+    clear: async (origins) => void (await liveService?.carrierClear(origins)),
     end: async () => {
       await h.sessions.end([session])
       endCarrierSession(session)
