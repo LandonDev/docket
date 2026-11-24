@@ -68,7 +68,7 @@ export function signInRow(state: LifeosStatus['lifeos']): HealthRow | null {
     case 'connected':
       return { ...row, state: 'working', line: 'Signed in', fix: SIGN_OUT }
     case 'pairing':
-      return { ...row, state: 'needs-you', line: 'A sign-in waits for your approval in LifeOS', fix: { kind: 'page', label: 'Show code…', page: 'lifeos-sign-in' } }
+      return { ...row, state: 'needs-you', line: 'A sign-in waits for your approval in LifeOS', fix: { kind: 'page', label: 'Show the code…', page: 'lifeos-sign-in' } }
     case 'signed-out':
       return { ...row, state: 'needs-you', line: 'Not signed in on this host', fix: SIGN_IN }
     case 'refused':

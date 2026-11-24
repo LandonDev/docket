@@ -26,7 +26,7 @@ const status = (lifeos: LifeosState, keys: LifeosStatus['keys'] = []): LifeosSta
 describe('the LifeOS sign-in row', () => {
   it('carries the button the Settings row had, in each state', () => {
     expect(signInRow({ state: 'connected', ownerId: 'landon', since: NOW })).toMatchObject({ id: 'lifeos.signin', group: 'LifeOS', title: 'LifeOS', state: 'working', line: 'Signed in', fix: { kind: 'run', label: 'Sign out', method: 'work.lifeos.signOut' } })
-    expect(signInRow({ state: 'pairing', code: 'ABCD-1234', expiresAt: NOW + 60_000 })).toMatchObject({ state: 'needs-you', fix: { kind: 'page', label: 'Show code…', page: 'lifeos-sign-in' } })
+    expect(signInRow({ state: 'pairing', code: 'ABCD-1234', expiresAt: NOW + 60_000 })).toMatchObject({ state: 'needs-you', fix: { kind: 'page', label: 'Show the code…', page: 'lifeos-sign-in' } })
     expect(signInRow({ state: 'signed-out' })).toMatchObject({ state: 'needs-you', fix: { kind: 'page', label: 'Sign in…', page: 'lifeos-sign-in' } })
     expect(signInRow({ state: 'refused', error: 'revoked' })).toMatchObject({ state: 'needs-you', fix: { label: 'Sign in…', page: 'lifeos-sign-in' } })
     const down = signInRow({ state: 'unreachable', since: NOW - 3_600_000, error: 'fetch failed' })!
