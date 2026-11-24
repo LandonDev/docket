@@ -80,26 +80,45 @@ export function snapshotMedia(snapshot: { resources?: Array<{ name: string; data
 }
 
 /**
- * What the grid takes after a save named its objects anew (`ObjectIds`): each one the file now calls
- * otherwise taken out under its old id and put back under the file's, with a picture's new part.
- * Every old id goes first, so a picture renumbered into another's old id is not taken out again.
+ * The file's names for objects the grid made: a save may name a chart or a picture anew (`ObjectIds`: a new chart
+ * takes its part's name, pictures are numbered again), and the grid keeps its own id, the one its Undo and Redo name
+ * the object by. A list goes to the host under the file's names (`out`), and one from elsewhere comes in under the
+ * grid's (`in`). A book read again from the file starts a new map: the grid then names each as the file does.
  */
-export function rekeyed(list: SheetObjects, ids: ObjectIds): ObjectChange[] {
-  const out: ObjectChange[] = [];
-  const back: ObjectChange[] = [];
-  for (const chart of list.charts) {
-    const to = ids[chart.id];
-    if (!to || to.id === chart.id) continue;
-    out.push({ kind: "remove", object: { chart } });
-    back.push({ kind: "add", object: { chart: { ...chart, id: to.id } } });
+export class FileIds {
+  /** the grid's id → the file's name for it; for a picture, its part in the file and its part on the grid (what it is drawn from) */
+  private readonly named = new Map<string, { id: string; part?: string; own?: string }>();
+  /** A save's answer, keyed by what was sent: each object of the grid it names takes the file's name. */
+  take(list: SheetObjects, ids: ObjectIds): void {
+    for (const o of [...list.charts, ...list.pictures]) {
+      const was = this.named.get(o.id);
+      const to = ids[was?.id ?? o.id];
+      if (!to) continue;
+      const part = to.part ?? was?.part;
+      this.named.set(o.id, { id: to.id, ...(part ? { part } : {}), ...("part" in o ? { own: o.part } : {}) });
+    }
   }
-  for (const picture of list.pictures) {
-    const to = ids[picture.id];
-    if (!to || (to.id === picture.id && (to.part ?? picture.part) === picture.part)) continue;
-    out.push({ kind: "remove", object: { picture } });
-    back.push({ kind: "add", object: { picture: { ...picture, id: to.id, part: to.part ?? picture.part } } });
+  /** A chart or picture list as the file names its objects. */
+  out(m: SheetMutation): SheetMutation {
+    return this.named.size ? mapped(m, (id) => this.named.get(id)) : m;
   }
-  return [...out, ...back];
+  /** A list from elsewhere as the grid names its objects. */
+  in(m: SheetMutation): SheetMutation {
+    if (!this.named.size) return m;
+    const back = new Map([...this.named].map(([grid, file]) => [file.id, { id: grid, ...(file.own ? { part: file.own } : {}) }]));
+    return mapped(m, (id) => back.get(id));
+  }
+}
+
+/** A list with each object named anew where `to` names it, a picture's part with it. */
+function mapped(m: SheetMutation, to: (id: string) => { id: string; part?: string } | undefined): SheetMutation {
+  const p = m.params as RulesSetParams;
+  if (!Array.isArray(p.list)) return m;
+  const list = (p.list as Array<Record<string, unknown>>).map((x) => {
+    const name = typeof x.id === "string" ? to(x.id) : undefined;
+    return name ? { ...x, id: name.id, ...(name.part && "part" in x ? { part: name.part } : {}) } : x;
+  });
+  return { ...m, params: { ...p, list } };
 }
 
 /** The bytes of the pictures made here, by their part, kept until the grid lets go: what a save sends, and what the grid draws. */
@@ -115,14 +134,6 @@ export class MadePictures {
   /** Bytes that came from elsewhere (another canvas's picture, a restore): kept so the grid draws it. */
   keep(part: string, media: PictureMedia): void {
     this.held.set(part, media);
-  }
-  /** A save gave pictures parts of the file's own: their bytes are kept under those too, so the grid still draws them. */
-  rename(list: SheetObjects, ids: ObjectIds): void {
-    for (const picture of list.pictures) {
-      const to = ids[picture.id]?.part;
-      const media = this.held.get(picture.part);
-      if (to && media) this.held.set(to, media);
-    }
   }
 }
 

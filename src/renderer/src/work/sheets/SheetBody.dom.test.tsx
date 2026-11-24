@@ -1462,16 +1462,27 @@ describe("charts and pictures", () => {
     expect(lists()[0]).toEqual({ id: "tempcode.sheet.rules", params: { kind: "charts", subUnitId: "budget", list: [{ ...CHART, anchor: moved }] } });
   });
 
-  it("takes the ids a save answers, so the next save names the file's parts", async () => {
+  it("keeps the grid's own id when a save names a chart anew: the next save names the file's, and Undo still takes it out of the file", async () => {
+    // Council r1 (Sol 10): the grid took the file's id, and the Undo of the insert, naming the old id, left the chart.
     openWith(sheetView({ row: OBJECTS_ROW }));
     await gridUp();
     const made = { ...CHART, id: "chart-ab12cd34" };
     sheetHost.nextEdit = { ids: { "chart-ab12cd34": { id: "xl/charts/chart2.xml" } } };
     act(() => void grid.handle!.objects.add({ chart: made }));
-    await waitFor(() => expect(grid.handle!.objects.list().charts.map((c) => c.id)).toEqual([CHART.id, "xl/charts/chart2.xml"]));
-    // Taken as the file's, not told back as his change: nothing more is sent.
+    await waitFor(() => expect(lists()).toHaveLength(1), { timeout: EDIT_WAIT * 10 });
+    await waitFor(() => expect(sheetHost.rev).toBe(4));
+    // Nothing is told back as his change, and the grid names it as it made it.
     await new Promise((done) => setTimeout(done, EDIT_WAIT + 50));
     expect(lists()).toHaveLength(1);
+    expect(grid.handle!.objects.list().charts.map((c) => c.id)).toEqual([CHART.id, "chart-ab12cd34"]);
+    // His Undo takes it out by the grid's id: the list sent names what stays, as the file names it.
+    act(() => void grid.handle!.objects.remove("chart-ab12cd34"));
+    await waitFor(() => expect(lists()).toHaveLength(2), { timeout: EDIT_WAIT * 10 });
+    expect((lists()[1]!.params as { list: { id: string }[] }).list.map((c) => c.id)).toEqual([CHART.id]);
+    // and a change to it after a save goes under the file's name
+    act(() => void grid.handle!.objects.add({ chart: made }));
+    await waitFor(() => expect(lists()).toHaveLength(3), { timeout: EDIT_WAIT * 10 });
+    expect((lists()[2]!.params as { list: { id: string }[] }).list.map((c) => c.id)).toEqual([CHART.id, "xl/charts/chart2.xml"]);
   });
 
   it("says a list the file refused once and reads the file again, so the object is as it was", async () => {

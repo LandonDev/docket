@@ -295,7 +295,7 @@ export class PackageStore {
       // A file moved or deleted since it was opened takes no edit: said, not thrown as a raw error.
       if (!existsSync(path)) throw new NotSaved('This file is not where it was: it was moved or deleted.')
       const row = this.sync(path)
-      if (baseRev > row.rev || (baseRev < row.rev && this.reloadSince(path, baseRev))) return { conflict: true as const, rev: row.rev }
+      if (baseRev > row.rev || (baseRev < row.rev && (this.reloadSince(path, baseRev) || this.listSince(path, baseRev, mutations)))) return { conflict: true as const, rev: row.rev }
       if (!this.inspected.has(path)) await this.open(path)
       // An edit that is worked out from the cells (an accepted suggestion, written only over what the agent saw) reads
       // them here, under the save's own turn, from the file this save then checks it writes over: what was checked is
@@ -367,6 +367,18 @@ export class PackageStore {
       rmSync(work, { recursive: true, force: true })
     }
     return ids
+  }
+
+  /**
+   * Whether a list this edit replaces whole (a tab's charts or pictures, its conditional formats, the names) was
+   * replaced after `rev` by another edit: the list sent was made without that one's change, and would take it out of
+   * the file. A shared workbook's log keeps no lists, so any edit after `rev` there counts.
+   */
+  private listSince(path: string, rev: number, mutations: readonly SheetMutationJson[]): boolean {
+    const lists = new Set(mutations.filter((m) => m.id === RULES_SET).map(listKey))
+    if (!lists.size) return false
+    const later = this.db.prepare('SELECT mutations FROM work_sheets_ops WHERE path = ? AND rev > ?').all(path, rev) as { mutations: string }[]
+    return later.some((o) => o.mutations === UNKEPT || (o.mutations !== 'null' && (JSON.parse(o.mutations) as SheetMutationJson[]).some((m) => m.id === RULES_SET && lists.has(listKey(m)))))
   }
 
   /** Whether a change from outside or a restore landed after `rev`: the cells may have moved. */
@@ -663,6 +675,9 @@ function labelOfRules(rules: readonly SheetMutationJson[]): string {
   if (kinds.size !== 1) return 'Rules'
   return { conditional: 'Conditional formatting', validation: 'Validation', names: 'Names', filter: 'Filter', tables: 'Table', pages: 'Page set-up', charts: 'Chart', pictures: 'Picture' }[[...kinds][0]!]
 }
+
+/** A whole list's kind and the tab it is of (none for the names). */
+const listKey = (m: SheetMutationJson): string => `${(m.params as RulesSetParams).kind}\u0000${(m.params as RulesSetParams).subUnitId ?? ''}`
 
 /** A picture list as the op log keeps it: a new picture's bytes are in the file and its kept copy, not the database. */
 function withoutBytes(m: SheetMutationJson): SheetMutationJson {

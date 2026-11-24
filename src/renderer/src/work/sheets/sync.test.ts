@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { SheetMutationJson } from "@shared/contract-work-sheets";
 import { RULE_MUTATIONS, RULE_NOISE, RULES_SET } from "@shared/work/sheets";
 import { forPackage, latestRules, notSavedWords, ofUnit, ruleKinds } from "./sync";
+import { FileIds } from "./objects";
 
 /**
  * A rule changed in an opened Excel file's grid (a conditional format, a validation, a name, the
@@ -127,5 +128,24 @@ describe("what a dropped edit held, in his words", () => {
   });
   it("says a change with no cell's contents (a style, a rule) as one", () => {
     expect(notSavedWords([cellsAt("s1", { 0: { 0: { s: { bl: 1 } } } }), { id: "tempcode.sheet.rules", params: {} }], names)).toBe("The file changed before your last change was saved, so it was not made. Make it again.");
+  });
+});
+
+describe("the file's names for objects the grid made", () => {
+  const anchor = { kind: "oneCell" as const, from: { column: 1, row: 1, columnOffset: 0, rowOffset: 0 }, width: 1, height: 1 };
+  const chart = (id: string) => ({ id, sheet: "Budget", anchor, kind: "column" as const, grouping: "clustered" as const, groups: [], legend: null, axes: {}, series: [], flags: {} });
+  const picture = (id: string, part: string) => ({ id, sheet: "Budget", anchor, part, contentType: "image/png" });
+  const list = (kind: "charts" | "pictures", items: unknown[]): SheetMutationJson => ({ id: RULES_SET, params: { kind, subUnitId: "s1", list: items } });
+  it("sends a list under the file's names, and takes one from elsewhere under the grid's, a picture's part with it", () => {
+    const names = new FileIds();
+    const grid = { charts: [chart("chart-1")], pictures: [picture("picture-1", "media:1")], warnings: [] };
+    expect(names.out(list("charts", [chart("chart-1")]))).toEqual(list("charts", [chart("chart-1")]));
+    names.take(grid, { "chart-1": { id: "xl/charts/chart2.xml" }, "picture-1": { id: "xl/drawings/drawing1.xml#2", part: "xl/media/image2.png" } });
+    expect(names.out(list("pictures", [picture("picture-1", "media:1")]))).toEqual(list("pictures", [picture("xl/drawings/drawing1.xml#2", "xl/media/image2.png")]));
+    expect(names.in(list("charts", [chart("xl/charts/chart2.xml"), chart("xl/charts/chart1.xml")]))).toEqual(list("charts", [chart("chart-1"), chart("xl/charts/chart1.xml")]));
+    expect(names.in(list("pictures", [picture("xl/drawings/drawing1.xml#2", "xl/media/image2.png")]))).toEqual(list("pictures", [picture("picture-1", "media:1")]));
+    // a second save that names it anew again is keyed by what was sent
+    names.take(grid, { "xl/charts/chart2.xml": { id: "xl/charts/chart3.xml" } });
+    expect(names.out(list("charts", [chart("chart-1")]))).toEqual(list("charts", [chart("xl/charts/chart3.xml")]));
   });
 });

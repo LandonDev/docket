@@ -3,7 +3,7 @@ import type { SheetCellJson, SheetMutationJson, SheetView } from "@shared/contra
 import type { ObjectChange, SheetObjects } from "work-kit/sheet";
 import { AUTO_FIT, forPackage, isObjectList, latestRules, ruleKinds, SHEET_MOVES, sheetStopWords, type ObjectIds, type RulesSetParams, type SheetRuleKind } from "@shared/work/sheets";
 import { cellText, holds } from "./model";
-import { listChanges, listMedia, MadePictures, objectListOf, rekeyed, tabList } from "./objects";
+import { FileIds, listChanges, listMedia, MadePictures, objectListOf, tabList } from "./objects";
 import { EDIT_MAX, fromBase64, LOAD_MAX, type SheetHost, type SheetPushed } from "./host";
 
 /**
@@ -164,6 +164,8 @@ export class SheetSync {
   private made = new MadePictures();
   /** the made pictures whose bytes the host has: a list sends them no more */
   private sentMedia = new Set<string>();
+  /** the file's names for the objects this grid made, which keeps its own (its Undo names them so) */
+  private fileIds = new FileIds();
   /** the chart and picture lists of the turn in hand: sent after its other mutations (a row put in, then the list it left) */
   private pendingObjects: SheetMutationJson[] = [];
   /** gathers the turn in hand, while a grid is up */
@@ -241,6 +243,7 @@ export class SheetSync {
     this.detach();
     this.made = new MadePictures();
     this.sentMedia = new Set();
+    this.fileIds = new FileIds();
     this.pendingObjects = [];
     this.set({ book: { ...book, key: ++this.books } });
   }
@@ -479,8 +482,8 @@ export class SheetSync {
     try {
       for (let tries = 0; ; tries++) {
         // A chart or picture list is the tab's as the grid holds it at the send: one queued before a conflict's catch-up
-        // goes as the grid now has it, under the ids the last save gave.
-        const sent = batch.map((m) => this.fresh(m));
+        // goes as the grid now has it, under the names the file gave its objects.
+        const sent = batch.map((m) => (isObjectList(m) ? this.fileIds.out(this.fresh(m)) : m));
         const answer = await this.host.edit(this.rev, sent);
         if (!answer.conflict) {
           this.mine.add(answer.rev);
@@ -687,7 +690,7 @@ export class SheetSync {
           this.made.keep(part, media);
           this.sentMedia.add(part);
         }
-        grid.objects.apply(listChanges(grid.objects.list(), m, tab));
+        grid.objects.apply(listChanges(grid.objects.list(), this.fileIds.in(m), tab));
       }
       flush();
     } finally {
@@ -702,14 +705,13 @@ export class SheetSync {
     return new Blob([got.bytes as BlobPart], { type: got.type });
   };
 
-  /** A save named objects anew: the grid takes the file's ids, and a made picture's bytes go under its new part. */
+  /**
+   * A save named objects anew: the grid keeps its own ids (its Undo and Redo name each object by them) and the next
+   * list names them as the file does, a picture by the file's part.
+   */
   private rekey(ids: ObjectIds): void {
     const objects = this.grid?.objects;
-    if (!objects) return;
-    const list = objects.list();
-    this.made.rename(list, ids);
-    const changes = rekeyed(list, ids);
-    if (changes.length) objects.apply(changes);
+    if (objects) this.fileIds.take(objects.list(), ids);
   }
 }
 
