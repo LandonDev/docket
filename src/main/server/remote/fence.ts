@@ -184,8 +184,12 @@ export function attachmentPaths(req: ClientRequest): string[] | null {
 
 // ── Work: a file is named inside a CanvasSource ─────────────────────────
 
-/** How deep a Work request's params are read for sources; a deeper one is refused, never passed unread. */
-const SOURCE_DEPTH_MAX = 12
+/**
+ * How deep a Work request's params are read for sources; a deeper one is refused, never passed unread. A sheet's
+ * edit carries a cell's rich text (mutation, params, cell value, row, column, text, runs, style, colour…), which
+ * passes 12; at 12 every edit his Mac's window made to such a cell on the box was refused (F-edits-lost.md).
+ */
+export const SOURCE_DEPTH_MAX = 64
 
 /** Collects the file paths of every `CanvasSource` in a value (src/shared/work/canvas.ts `canvasSourcePath`); false when it is deeper than this reads. */
 function sourcePaths(value: unknown, out: WorkSourcePath[], depth = 0): boolean {

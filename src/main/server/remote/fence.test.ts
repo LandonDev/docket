@@ -4,7 +4,8 @@ import { join, resolve } from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { z } from 'zod'
 import { ClientRequestSchema, type ClientRequest } from '@shared/contract'
-import { ATTACHMENT_PARAMS, FENCED_PARAMS, FenceError, attachmentPaths, elsewherePath, expandPath, fenceDenied, fenceRequest, fencedPaths, guestPath, insideRoots, plainWindowsPath, requestBases, workSourcePaths } from './fence'
+import { ATTACHMENT_PARAMS, FENCED_PARAMS, FenceError, attachmentPaths, elsewherePath, expandPath, fenceDenied, fenceRequest, fencedPaths, guestPath, insideRoots, plainWindowsPath, requestBases, workSourcePaths, SOURCE_DEPTH_MAX
+} from './fence'
 import { isWorkMethod } from '@shared/work/wire'
 import { requiredCapability } from '@shared/capabilities'
 
@@ -363,8 +364,13 @@ describe('Work: a file named inside a CanvasSource', () => {
   })
   it('refuses a Work request nested deeper than it reads, never passing it unread', () => {
     let deep: unknown = file('/etc/hosts')
-    for (let i = 0; i < 20; i++) deep = { inner: deep }
+    for (let i = 0; i < SOURCE_DEPTH_MAX + 4; i++) deep = { inner: deep }
     expect(() => fenceRequest(req('work.canvas.open', { deep }), ['/'])).toThrow(FenceError)
+  })
+  it("passes a sheet's edit of a cell with rich text, as his window on another computer sends it", () => {
+    const cell = { v: 'Proof 0253', s: { ff: 'Arial', fs: 11, cl: { rgb: '#000000' } }, p: { id: 'd', body: { dataStream: 'Proof 0253\r\n', textRuns: [{ st: 0, ed: 10, ts: { cl: { rgb: '#000000' }, bl: { v: 1 } } }], paragraphs: [{ startIndex: 10, paragraphStyle: { horizontalAlign: { v: 0 } } }] }, documentStyle: { pageSize: { width: { v: 100 } } } } }
+    const edit = req('work.sheets.edit', { itemId: 'i1', baseRev: 3, mutations: [{ id: 'sheet.mutation.set-range-values', params: { unitId: 'u', subUnitId: 's', cellValue: { 0: { 0: cell } } } }] })
+    expect(() => fenceRequest(edit, ['/r'])).not.toThrow()
   })
   it('a Work workspace names no folder, so workspace.create fences only a path it is given', () => {
     expect(fencedPaths(req('workspace.create', { kind: 'work', name: 'Purdue', sector: 'purdue' }))).toEqual([])
