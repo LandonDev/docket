@@ -27,10 +27,14 @@ export const REQUESTS_TABLE = 'work_outbox_requests'
 export const REQUEST_TTL_MS = 24 * 3_600_000
 /** How many of his newest messages may carry the words, and how old they may be. */
 const OWNER_MESSAGES = 3
+/** The most items of one job a request is judged against; past it the host refuses rather than judge part of them. */
+const REACH_MAX = 1000
 
 export const ASK_NO_THREAD = 'Refused: only a Work thread with a job asks for his press.'
-export const ASK_UNKNOWN = (ref: string): string => `Refused: there is no waiting item ${ref} in this thread's reach. Call outbox_list for the refs.`
-export const ASK_OTHER_JOB = (ref: string): string => `Refused: item ${ref} is another job's; a thread asks only about its own job.`
+/** One refusal for a ref unknown here and one of another job's: a thread learns nothing of what waits elsewhere. */
+export const ASK_UNKNOWN = (ref: string): string => `Refused: there is no waiting item ${ref} in this thread's job. Call outbox_list for the refs.`
+export const ASK_TOO_MANY = 'Refused: too many items wait in this job to check his words against all of them. Ask him to send them from his Outbox.'
+export const ASK_SINCE = 'Refused: some of the items his words cover were decided since he wrote them. Ask him again in words.'
 export const ASK_NOT_WAITING = (ref: string): string => `Refused: item ${ref} is not waiting on him (it is being sent, scheduled or done).`
 export const ASK_OPEN_IT = (ref: string): string => `Refused: item ${ref} goes only from its own page. Tell him to open it in the Outbox; it cannot be sent from a request.`
 export const ASK_STALE = (ref: string): string => `Refused: item ${ref} went out of date. Only a discard can be asked for it.`
@@ -141,6 +145,8 @@ export interface RequestDeps {
   whisper(sessionId: string, text: string): void
   /** his recorded IANA zone */
   zone(): string
+  /** the thread is here and not archived */
+  alive(sessionId: string): boolean
   now?(): number
 }
 
@@ -167,9 +173,11 @@ export class OutboxRequests {
     const job = this.deps.ctx.scopeOf(sessionId)
     if (!job) return []
     const root = this.deps.rootOf(sessionId)
-    return this.deps.outbox
-      .list({ show: 'waiting', limit: 500 })
-      .items.filter((i) => (i.workspaceId ?? null) === (job.workspaceId ?? null) && (i.sector ?? null) === (job.sector ?? null))
+    // The job's whole waiting set, filtered by job before any cap: a cut list could pass part of a group as all of it.
+    const listed = this.deps.outbox.list({ show: 'waiting', ...(job.workspaceId ? { workspaceId: job.workspaceId } : {}), limit: REACH_MAX })
+    if (listed.items.length >= REACH_MAX) throw new Error(ASK_TOO_MANY)
+    return listed.items
+      .filter((i) => needsHim(i) && (i.workspaceId ?? null) === (job.workspaceId ?? null) && (i.sector ?? null) === (job.sector ?? null))
       .flatMap((item) => {
         const own = !!item.sessionId && this.deps.rootOf(item.sessionId) === root
         // A Work Chat sees only its own tree; another thread's items join only when asked for.
@@ -189,20 +197,22 @@ export class OutboxRequests {
   }
 
   /** `outbox_request`: one request stored, or a refusal an agent can act on. Never performs anything. */
-  ask(sessionId: string, args: { items: { ref: string; do: AskAction; at?: number }[]; quote: string }): WorkToolResult {
+  async ask(sessionId: string, args: { items: { ref: string; do: AskAction; at?: number }[]; quote: string }): Promise<WorkToolResult> {
     const refuse = (text: string): WorkToolResult => ({ ...workText(text), isError: true })
     const job = this.deps.ctx.scopeOf(sessionId)
-    if (!job) return refuse(ASK_NO_THREAD)
-    const reach = this.reach(sessionId, 'workspace')
+    if (!job || !this.deps.alive(sessionId)) return refuse(ASK_NO_THREAD)
+    let reach: { item: OutboxItem; own: boolean }[]
+    try {
+      reach = this.reach(sessionId, 'workspace')
+    } catch (err) {
+      return refuse(errorText(err))
+    }
     const byTool = new Map(reach.map((r) => [toolRef(r.item), r]))
     const seen = new Set<string>()
     const asked: Asked[] = []
     for (const a of args.items) {
       const hit = byTool.get(a.ref)
-      if (!hit) {
-        const elsewhere = this.deps.outbox.list({ show: 'waiting', limit: 500 }).items.find((i) => toolRef(i) === a.ref)
-        return refuse(elsewhere ? ASK_OTHER_JOB(a.ref) : ASK_UNKNOWN(a.ref))
-      }
+      if (!hit) return refuse(ASK_UNKNOWN(a.ref))
       const { item } = hit
       if (seen.has(refKey(item.ref))) return refuse(ASK_TWICE)
       seen.add(refKey(item.ref))
@@ -210,12 +220,18 @@ export class OutboxRequests {
       if (item.state === 'live' || item.kind === 'computer.act' || (item.kind === 'mail.send' && (item.payload as { quote?: unknown } | null)?.quote)) return refuse(ASK_OPEN_IT(a.ref))
       if (item.state === 'stale' && a.do !== 'discard') return refuse(ASK_STALE(a.ref))
       if (a.do === 'later' && !LATER[item.kind]) return refuse(ASK_NO_LATER(a.ref))
+      // The list's copy of a LifeOS reply lacks the mail it quotes: read fresh, as the press will.
+      if (item.kind === 'mail.send' && item.ref.at === 'lifeos') {
+        const fresh = await this.deps.outbox.get(item.ref).catch(() => null)
+        if (!fresh || (fresh.payload as { quote?: unknown } | null)?.quote) return refuse(ASK_OPEN_IT(a.ref))
+      }
       asked.push({ ref: item.ref, do: a.do, ...(a.at !== undefined ? { at: a.at } : {}), rev: item.updatedAt })
     }
     const now = this.now()
     const messages = this.deps.ctx.threads.ownerRecent(sessionId, OWNER_MESSAGES).filter((m) => m.at <= now && now - m.at <= REQUEST_TTL_MS)
-    const items: AskItem[] = reach.map(({ item, own }) => ({ ref: toolRef(item), n: item.n, kind: item.kind, names: namesOf(item), own, heldAt: item.createdAt, ...(item.ref.at === 'host' ? { chipId: item.ref.id } : {}) }))
-    const verdict = judgeAsk({ quote: args.quote, messages, items, asked: args.items, zone: this.deps.zone() })
+    const items: AskItem[] = reach.map(({ item, own }) => ({ ref: toolRef(item), n: item.n, kind: item.kind, names: namesOf(item), own, heldAt: item.createdAt, ...(item.ref.at === 'host' ? { chipId: item.ref.id } : {}), ...(opOf(item) ? { op: opOf(item)! } : {}) }))
+    const root = this.deps.rootOf(sessionId)
+    const verdict = judgeAsk({ quote: args.quote, messages, items, asked: args.items, zone: this.deps.zone(), decidedSince: (at) => this.decidedSince(root, job.workspaceId ?? null, at) })
     if (!verdict.ok) return refuse(verdict.refusal)
     const digest = createHash('sha256').update(verdict.clause).digest('hex').slice(0, 32)
     // One message of his gives one request per thread: the same ask again answers the one it made.
@@ -274,7 +290,7 @@ export class OutboxRequests {
     const asked = json<Asked[]>(row.items, []).find((a) => refKey(a.ref) === refKey(this.deps.outbox.canonical(ref)))
     if (!asked) throw new Error(BAD_RECEIPT)
     const item = this.itemOf(asked.ref)
-    if (!item || !needsHim(item)) throw new Error(REQUEST_CLOSED)
+    if (!item || !needsHim(item) || !this.placed(row, [asked.ref])) throw new Error(REQUEST_CLOSED)
     const receipt = this.issue(row, { ref: asked.ref, do: asked.do, ...(asked.at !== undefined ? { at: asked.at } : {}), rev: item.updatedAt })
     return { ref: asked.ref, do: asked.do, ...(asked.at !== undefined ? { at: asked.at } : {}), item: this.shown(item, by), receipt, changed: false, open: true }
   }
@@ -298,6 +314,8 @@ export class OutboxRequests {
     if (refs.size !== chosen.length) throw new Error(BAD_RECEIPT)
     const asked = json<Asked[]>(row.items, [])
     if (chosen.some((r) => !asked.some((a) => refKey(a.ref) === refKey(r!.ref) && a.do === r!.do && a.at === r!.at))) throw new Error(BAD_RECEIPT)
+    // Where it all stands now: the thread still here, in the same job, and each item still of that job.
+    if (!this.placed(row, chosen.map((r) => r!.ref))) return this.view(this.void(row, 'Its thread or an item moved to another job, or the thread was archived.'))
     const claimed = this.db
       .prepare(`UPDATE ${REQUESTS_TABLE} SET state = 'answered', answered_by = ?, answered_at = ?, answer = ? WHERE id = ? AND state = 'open' AND generation = ? AND expires_at > ?`)
       .run(by, this.now(), JSON.stringify(unique), id, row.generation, this.now())
@@ -320,7 +338,8 @@ export class OutboxRequests {
   decline(id: string, by: string): OutboxRequest {
     const row = this.row(id)
     if (!row) throw new Error(NO_SUCH_REQUEST)
-    const done = this.db.prepare(`UPDATE ${REQUESTS_TABLE} SET state = 'declined', answered_by = ?, answered_at = ? WHERE id = ? AND state = 'open'`).run(by, this.now(), id)
+    if (row.state === 'open' && row.expires_at <= this.now()) return this.view(this.void(row, 'It ran out.'))
+    const done = this.db.prepare(`UPDATE ${REQUESTS_TABLE} SET state = 'declined', answered_by = ?, answered_at = ? WHERE id = ? AND state = 'open' AND expires_at > ?`).run(by, this.now(), id, this.now())
     if (Number(done.changes) === 1) {
       this.tellThread(row, `The owner chose Not now on request ${row.n}. The items still wait in his Outbox. Do not ask again unless he asks.`)
       this.deps.ctx.tell.done(requestKey(id))
@@ -347,6 +366,7 @@ export class OutboxRequests {
 
   private settleIfDone(row: Row): OutboxRequest {
     if (row.expires_at <= this.now()) return this.view(this.void(row, 'It ran out.'))
+    if (!this.placed(row, [])) return this.view(this.void(row, 'Its thread moved to another job, or was archived.'))
     const items = json<Asked[]>(row.items, []).map((a) => this.itemOf(a.ref))
     if (items.every((i) => !i || !needsHim(i))) return this.view(this.void(row, 'Every item was decided elsewhere.'))
     return this.view(row)
@@ -362,6 +382,25 @@ export class OutboxRequests {
     return this.row(row.id) ?? row
   }
 
+  /** The asking thread is still here, unarchived, in the request's job, and each named item is still of that job. */
+  private placed(row: Row, refs: readonly HeldRef[]): boolean {
+    if (!this.deps.alive(row.session_id)) return false
+    const job = this.deps.ctx.scopeOf(row.session_id)
+    if (!job || (job.workspaceId ?? null) !== row.workspace_id || (job.sector ?? null) !== row.sector) return false
+    return refs.every((ref) => {
+      const item = this.itemOf(ref)
+      return !!item && (item.workspaceId ?? null) === row.workspace_id && (item.sector ?? null) === row.sector
+    })
+  }
+
+  /** How many of the asking tree's items, held before `at` and waiting then, were decided after it. */
+  private decidedSince(root: string, workspaceId: string | null, at: number): number {
+    const rows = this.db
+      .prepare(`SELECT session_id FROM work_held_acts WHERE ${workspaceId === null ? 'workspace_id IS NULL' : 'workspace_id = ?'} AND created_at <= ? AND decided_at IS NOT NULL AND decided_at > ?`)
+      .all(...(workspaceId === null ? [] : [workspaceId]), at, at) as { session_id: string | null }[]
+    return rows.filter((r) => !!r.session_id && this.deps.rootOf(r.session_id) === root).length
+  }
+
   private itemOf(ref: HeldRef): OutboxItem | null {
     return this.deps.outbox.itemNow(ref)
   }
@@ -371,7 +410,8 @@ export class OutboxRequests {
     const results = json<{ ref: HeldRef; ok: boolean; error?: string; state?: string }[]>(row.results, [])
     const rows: OutboxRequestRow[] = asked.map((a) => {
       const item = this.itemOf(a.ref)
-      const result = results.find((r) => refKey(r.ref) === refKey(a.ref))
+      // A press cut off before its results were kept still says what became of each item it reached.
+      const result = results.find((r) => refKey(r.ref) === refKey(a.ref)) ?? (row.state === 'answered' && item?.via === `request:${row.id}` ? { ok: item.state !== 'failed' && item.state !== 'stale', state: item.state } : undefined)
       return { ref: a.ref, do: a.do, ...(a.at !== undefined ? { at: a.at } : {}), ...(item ? { item } : {}), changed: !!item && item.updatedAt !== a.rev, open: !!item && needsHim(item), ...(result ? { result } : {}) }
     })
     return {
@@ -438,7 +478,8 @@ export class OutboxRequests {
   /** The notice: he asked for it and waits on it, so it does not wait for the digest. It opens the thread, where the card is. */
   private told(r: OutboxRequest): void {
     try {
-      this.deps.ctx.tell({ kind: 'outbox.request', workspaceId: r.workspaceId, title: `Asked: ${r.head}`, detail: `You asked: “${r.quote.slice(0, 160)}”`, key: requestKey(r.id), open: { thread: r.sessionId }, by: this.now() + 60_000 })
+      // Counts and verbs alone: a digest read needs only read, and his quote can name a person or a file.
+      this.deps.ctx.tell({ kind: 'outbox.request', workspaceId: r.workspaceId, title: `Asked: ${r.head}`, key: requestKey(r.id), open: { thread: r.sessionId }, by: this.now() + 60_000 })
     } catch (err) {
       this.deps.ctx.log(`outbox: request ${r.n} was not told: ${errorText(err)}`)
     }
@@ -456,6 +497,14 @@ export class OutboxRequests {
 }
 
 export const requestKey = (id: string): string => `request:${id}`
+
+/** A calendar act's own answer, so "accept" never names a decline. */
+function opOf(item: OutboxItem): string | null {
+  const p = (item.payload ?? {}) as Record<string, unknown>
+  if (item.kind === 'calendar.op') return typeof p.kind === 'string' ? p.kind : null
+  if (item.kind === 'office.calendar.op') return p.op === 'create' ? 'create' : typeof p.answer === 'string' ? p.answer : null
+  return null
+}
 
 /** What names an item exactly, for "a unique full name": its people, its place, its file, its title. */
 function namesOf(item: OutboxItem): string[] {
@@ -485,17 +534,20 @@ function namesOf(item: OutboxItem): string[] {
 /** What the asking thread hears once his press settled: counts and safe reasons, never another thread's words. */
 export function answerNote(n: number, results: readonly DecisionResult[], left: number): string {
   const ok = results.filter((r) => r.ok)
-  const queued = ok.filter((r) => r.item?.kind === 'mail.send' || r.item?.kind === 'calendar.op').length
   const scheduled = ok.filter((r) => r.item?.state === 'scheduled').length
   const discarded = ok.filter((r) => r.item?.state === 'discarded' || (r.item?.state === 'stale' && r.item.dismissedAt)).length
+  const queued = ok.filter((r) => r.item?.state !== 'scheduled' && r.item?.state !== 'discarded' && r.item?.state !== 'stale' && (r.item?.kind === 'mail.send' || r.item?.kind === 'calendar.op')).length
   const sent = ok.length - queued - scheduled - discarded
   const failed = results.filter((r) => !r.ok)
+  // Fixed words only: a provider's own error can quote a file or a person, and the thread's transcript is read by more than his press.
+  const why = (f: DecisionResult): string => (/changed since/i.test(f.error ?? '') ? 'changed since he saw it' : /out of date/i.test(f.error ?? '') ? 'out of date' : /own page/i.test(f.error ?? '') ? 'goes from its own page' : 'not sent')
+  const reasons = [...new Set(failed.map(why))]
   const parts = [
     ...(sent ? [`sent ${sent}`] : []),
     ...(queued ? [`queued ${queued} in LifeOS (they go after his undo time)`] : []),
     ...(scheduled ? [`scheduled ${scheduled}`] : []),
     ...(discarded ? [`discarded ${discarded}`] : []),
-    ...(failed.length ? [`${failed.length} not sent (${failed.map((f) => (f.item && PRIVATE_CHANGE_KINDS.has(f.item.kind) ? 'the file is not as it was' : (f.error ?? 'it failed').replace(/\.$/, ''))).slice(0, 3).join('; ')})`] : []),
+    ...(failed.length ? [`${failed.length} not sent (${reasons.join('; ')})`] : []),
     ...(left ? [`${left} left out`] : [])
   ]
   return `The owner approved request ${n}: ${parts.join(', ') || 'nothing went'}. Do not send any of them another way.`
@@ -540,7 +592,7 @@ export function requestTools(): WorkTool[] {
         "Ask the owner to press for held items, only when he told you in this thread, in words, to send, discard or schedule them. List exactly the items he named (or all of this thread's, when he said all), and quote his words. It only asks: a card shows him the items and nothing goes until his press. Never ask unless he asked.",
       input: AskInputSchema,
       readOnly: true,
-      run: async (args, ctx) => need(ctx).ask(ctx.sessionId, AskInputSchema.parse(args))
+      run: (args, ctx) => need(ctx).ask(ctx.sessionId, AskInputSchema.parse(args))
     }
   ]
 }

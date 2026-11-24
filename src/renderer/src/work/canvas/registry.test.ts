@@ -164,11 +164,12 @@ describe("the act views", () => {
   });
 
   it("falls back to the generic view until a pillar gives a kind its own", () => {
-    // Milestone 25 gave calendar.op its own view, milestone 23 mail.send, milestone 31 share.guestLink, milestone 50 office.calendar.op, the messages pillar chat.reply and Files' F5 file.act; the rest draw the generic view.
-    const own = new Set<string>(["calendar.op", "mail.send", "share.guestLink", "office.calendar.op", "chat.reply", "file.act"]);
+    // Outbox 2 gave every held kind a view but these four, which draw the generic one: a computer act (its picture), an
+    // add-on call (its arguments), Outlook mail (the Outbox's own mail shape) and a portal submit, which no pillar holds yet.
+    const generic = new Set<string>(["computer.act", "addon.call", "office.mail.send", "portal.submit"]);
     for (const kind of ACT_KINDS) {
-      if (own.has(kind)) expect(ACT_VIEWS[kind].chunk, kind).not.toBeNull();
-      else expect(ACT_VIEWS[kind].chunk, kind).toBeNull();
+      if (generic.has(kind)) expect(ACT_VIEWS[kind].chunk, kind).toBeNull();
+      else expect(ACT_VIEWS[kind].chunk, kind).not.toBeNull();
     }
   });
 });

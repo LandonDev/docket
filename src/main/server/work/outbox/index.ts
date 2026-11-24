@@ -59,6 +59,11 @@ export function unreviewedCount(host: OutboxHost): number {
  * payload, to a caller that is not his press (a read or operate key), as the Outbox's own push goes only to `approve`.
  */
 export function seenBy(by: Caller, item: OutboxItem): OutboxItem {
+  // Who wrote back, and their first line, is a read of his mail: his press's screens alone get it.
+  if (!pressesFor(by) && item.replied) {
+    const { replied: _replied, ...rest } = item
+    item = rest
+  }
   if (pressesFor(by) || !PRIVATE_CHANGE_KINDS.has(item.kind)) return item
   const error = item.error ? PRIVATE_ERROR : null
   // A Files act keeps the things it names as they are (a reader draws its card from them), less the name it would give.
@@ -153,7 +158,7 @@ export const outbox: WorkModule = {
           return handled({ request: host.requests.get(req.params.request, by) })
         }
         if (!req.params.items?.length) throw new Error('refused: name the items of this press')
-        return handled({ results: (await box.decide(req.params.items, { by: person(by), ...(req.params.via ? { via: req.params.via } : {}) })).map((r) => (r.item ? { ...r, item: seenBy(by, r.item) } : r)) })
+        return handled({ results: (await box.decide(req.params.items, { by: person(by), ...(req.params.via ? { via: req.params.via } : {}), ...(req.params.many ? { many: true } : {}) })).map((r) => (r.item ? { ...r, item: seenBy(by, r.item) } : r)) })
       }
       case 'work.outbox.requests':
         mustBePerson(by, 'approve')
@@ -169,10 +174,10 @@ export const outbox: WorkModule = {
         return handled(host.requests.decline(req.params.request, person(by)))
       case 'work.outbox.cancelSend':
         mustBePerson(by, 'approve')
-        return handled(await box.cancelSend(req.params.ref))
+        return handled(await box.cancelSend(req.params.ref, req.params.rev !== undefined ? { rev: req.params.rev } : {}))
       case 'work.outbox.sendNow':
         mustBePerson(by, 'approve')
-        return handled(await box.sendScheduledNow(req.params.ref))
+        return handled(await box.sendScheduledNow(req.params.ref, req.params.rev !== undefined ? { rev: req.params.rev } : {}))
       case 'work.outbox.undoSend': {
         mustBePerson(by, 'approve')
         const back = await box.undoSend(req.params.ref)
@@ -261,12 +266,15 @@ export const outbox: WorkModule = {
     const host = outboxHostOf(ctx)
     if (!host) return
     host.forget(ids)
+    // A mail LifeOS was to send at his time is taken back from LifeOS first (outbox.ts `cancelForRemoval`).
+    void host.outbox.cancelForRemoval(host.store.scheduledLifeosOf({ sessionIds: ids }), 'The thread that made this was deleted.')
     host.store.closeSessions(ids, 'The thread that made this was deleted.')
     host.requests.sessionsRemoved(ids)
   },
   workspaceRemoved(id, ctx) {
     const host = outboxHostOf(ctx)
     if (!host) return
+    void host.outbox.cancelForRemoval(host.store.scheduledLifeosOf({ workspaceId: id }), 'The workspace this belonged to was deleted.')
     host.store.closeWorkspace(id, 'The workspace this belonged to was deleted.')
     host.store.removeWorkspaceGrants(id)
     host.earned.dropWorkspace(id)

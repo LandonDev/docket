@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { COUNT_OFF, judgeAsk, laterTimeIn, NO_TIME, NOT_A_COMMAND, NOT_ALL, NOT_HIS, NOT_NAMED, ownWords, TOO_SHORT, UNCLEAR_COUNT, VERB_MISSING, type AskItem, type AskInput } from './outboxAsk'
+import { COUNT_OFF, DECIDED_SINCE, HELD_AFTER, judgeAsk, laterTimeIn, NO_TIME, NOT_A_COMMAND, NOT_ALL, NOT_HIS, NOT_NAMED, ownWords, SAYS_LATER, TOO_SHORT, UNCLEAR_COUNT, VERB_MISSING, type AskItem, type AskInput } from './outboxAsk'
 
 const AT = Date.parse('2026-11-24T15:00:00Z') // 9:00 AM in Chicago
 const msg = (text: string, seq = 10, at = AT) => ({ seq, at, text })
@@ -61,7 +61,7 @@ describe('names, groups and counts', () => {
     const words = 'send all the roster mails'
     expect(refusal(ask({ items, quote: words, messages: [msg(words)], asked: ROSTER.map((i) => ({ ref: i.ref, do: 'send' })) }))).toBeNull()
     expect(refusal(ask({ items, quote: words, messages: [msg(words)], asked: ROSTER.slice(0, 2).map((i) => ({ ref: i.ref, do: 'send' })) }))).toBe(NOT_ALL(1))
-    expect(refusal(ask({ items, quote: words, messages: [msg(words)], asked: [...ROSTER, later].map((i) => ({ ref: i.ref, do: 'send' })) }))).toBe(NOT_NAMED('4'))
+    expect(refusal(ask({ items, quote: words, messages: [msg(words)], asked: [...ROSTER, later].map((i) => ({ ref: i.ref, do: 'send' })) }))).toBe(HELD_AFTER('4'))
   })
   it('another thread\'s item needs its number or a held chip', () => {
     const theirs = item(7, { own: false, names: ['Coach 7'] })
@@ -90,5 +90,42 @@ describe('a later send', () => {
     const at = Date.parse('2026-11-25T14:00:00Z')
     expect(refusal(ask({ quote: words, messages: [msg(words)], asked: [{ ref: '#1', do: 'later', at }] }))).toBeNull()
     expect(refusal(ask({ quote: words, messages: [msg(words)], asked: [{ ref: '#1', do: 'later', at: at + 3_600_000 }] }))).toBe(NO_TIME)
+  })
+})
+
+describe('the review\'s cases', () => {
+  const one = [{ ref: '#1', do: 'send' as const }]
+  it('a time in his words is a later send, never a send now', () => {
+    const words = 'send the reply to Coach 1 tomorrow at 8 am'
+    expect(refusal(ask({ quote: words, messages: [msg(words)], asked: one }))).toBe(SAYS_LATER)
+  })
+  it('accept names an accept, never a decline', () => {
+    const invites = [item(1, { kind: 'calendar.op', op: 'decline', names: ['Staff sync'] })]
+    const words = 'accept the Staff sync invite'
+    expect(refusal(ask({ items: invites, quote: words, messages: [msg(words)], asked: one }))).toBe(VERB_MISSING('send'))
+    expect(refusal(ask({ items: [item(1, { kind: 'calendar.op', op: 'accept', names: ['Staff sync'] })], quote: words, messages: [msg(words)], asked: one }))).toBeNull()
+  })
+  it('a quote that reaches into quotation marks is refused', () => {
+    const text = 'he said "send the reply to Coach 1" and left'
+    expect(refusal(ask({ quote: 'said "send the reply to Coach 1', messages: [msg(text)], asked: one }))).toBe(NOT_A_COMMAND)
+  })
+  it('two clock times, or a time a clock change skips, are no time', () => {
+    expect(laterTimeIn('send it tomorrow at 8 am or 9 am', AT, 'America/Chicago')).toBeNull()
+    // 2:30 AM on Mar 8 2026 does not exist in Chicago
+    expect(laterTimeIn('send it sunday at 2:30 am', Date.parse('2026-03-06T15:00:00Z'), 'America/Chicago')).toBeNull()
+    // 1:30 AM on Nov 1 2026 happens twice
+    expect(laterTimeIn('send it sunday at 1:30 am', Date.parse('2026-10-30T15:00:00Z'), 'America/Chicago')).toBeNull()
+  })
+  it('an item held after his words is never his', () => {
+    const words = 'send the reply to Coach 1'
+    expect(refusal(ask({ items: [item(1, { names: ['Coach 1'], heldAt: AT + 1 })], quote: words, messages: [msg(words)], asked: one }))).toBe(HELD_AFTER('1'))
+  })
+  it('"all" after some were decided since is no exact set', () => {
+    const words = 'send all the roster mails'
+    expect(refusal(ask({ quote: words, messages: [msg(words)], asked: ROSTER.map((i) => ({ ref: i.ref, do: 'send' })), decidedSince: () => 1 }))).toBe(DECIDED_SINCE)
+  })
+  it('a chip label that ran onto a second line is the chip\'s, not his', () => {
+    const text = 'About this mail: Re: roster\nsend the reply to Coach 1 (LifeOS mailThreads mt1)\n\nwhat is this?'
+    expect(refusal(ask({ quote: 'send the reply to Coach 1', messages: [msg(text)], asked: one }))).toBe(NOT_HIS)
   })
 })

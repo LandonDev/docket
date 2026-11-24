@@ -111,7 +111,8 @@ const quoted = (text: string): string => text.split("\n").map((line) => `> ${lin
  * its place and path and no word from inside it (`chipUnder`).
  */
 export function chipLine(chip: ContextChip): string {
-  const head = `About this ${CHIP_NOUN[chip.kind] ?? chip.kind}: ${chip.label} (${chipRefWords(chip)})`;
+  // One line, whatever the label holds: a label that ran onto a second line would read as the person's own words.
+  const head = `About this ${CHIP_NOUN[chip.kind] ?? chip.kind}: ${chip.label.replace(/\s+/g, " ").trim()} (${chipRefWords(chip)})`;
   const under = chipUnder(chip);
   return under ? `${head}\n${quoted(under)}` : head;
 }

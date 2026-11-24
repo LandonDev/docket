@@ -32,6 +32,8 @@ export interface AskItem {
   heldAt: number
   /** a held chip's ref Ask puts in a message for it (`Work outbox <id>`) */
   chipId?: string
+  /** a calendar act's own answer (`accept`, `decline`, `tentative`, `create`): "accept" never names a decline */
+  op?: string
 }
 
 export interface AskedItem {
@@ -50,6 +52,8 @@ export interface AskInput {
   asked: readonly AskedItem[]
   /** his recorded IANA zone, for a time he names */
   zone: string
+  /** how many of the asking tree's items, waiting at that time, were decided since: an "all" then covers no exact set */
+  decidedSince?(at: number): number
 }
 
 export type AskVerdict = { ok: true; source: OwnerMessage; clause: string } | { ok: false; refusal: string }
@@ -66,6 +70,9 @@ export const COUNT_OFF = (said: number, listed: number): string => `Refused: his
 export const NOT_ALL = (left: number): string => `Refused: his words say all of them, and you left out ${left}. List every one, or ask him which.`
 export const UNCLEAR_COUNT = 'Refused: his words give two different counts. Ask him which.'
 export const NOTHING_ASKED = 'Refused: list at least one item.'
+export const SAYS_LATER = 'Refused: his words give a time. Ask for a later send at exactly that time, or ask him.'
+export const DECIDED_SINCE = 'Refused: some of the items his words cover were decided since he wrote them. Ask him again in words.'
+export const HELD_AFTER = (n: string): string => `Refused: item ${n} was held after he wrote those words, so they cannot mean it.`
 
 const NUMBER_WORDS: Record<number, string> = { 1: 'one', 2: 'two', 3: 'three', 4: 'four', 5: 'five', 6: 'six', 7: 'seven', 8: 'eight', 9: 'nine', 10: 'ten', 11: 'eleven', 12: 'twelve' }
 const COUNT_OF: Record<string, number> = Object.fromEntries(Object.entries(NUMBER_WORDS).map(([n, w]) => [w, Number(n)]))
@@ -96,7 +103,9 @@ export function ownWords(text: string): { words: string; held: string[] } {
       if (line.startsWith('About this held act: ') && ref) held.push(ref[1]!)
       continue
     }
-    if (inChip && line.startsWith('> ')) continue
+    // The chips sit together, a blank line from his words (chips.ts `withContextChips`): every line before that
+    // blank line is a chip's, its quoted lines and any line its label ran onto.
+    if (inChip && line.trim() !== '') continue
     inChip = false
     kept.push(line)
   }
@@ -137,9 +146,12 @@ const SEND_VERBS: Record<string, readonly ActKind[] | 'any'> = {
 }
 const ALL_WORDS = ['all', 'every', 'everything', 'both', 'them', 'those', 'these', 'the rest']
 
-function tellsAction(clause: string, action: AskAction, kind: ActKind): boolean {
+/** A calendar verb names only the answer its act gives. */
+const CALENDAR_OP: Record<string, readonly string[]> = { accept: ['accept'], decline: ['decline'], invite: ['create'] }
+
+function tellsAction(clause: string, action: AskAction, kind: ActKind, op?: string): boolean {
   if (action === 'discard') return DISCARD_VERBS.some((v) => has(clause, v))
-  return Object.entries(SEND_VERBS).some(([verb, kinds]) => has(clause, verb) && (kinds === 'any' || kinds.includes(kind)))
+  return Object.entries(SEND_VERBS).some(([verb, kinds]) => has(clause, verb) && (kinds === 'any' || kinds.includes(kind)) && (!CALENDAR_OP[verb] || !op || CALENDAR_OP[verb]!.includes(op)))
 }
 
 /** The counts his clause gives ("the three replies", "all 10"); more than one distinct count is unclear. */
@@ -191,14 +203,24 @@ export function laterTimeIn(clause: string, from: number, zone: string): number 
   if (has(clause, 'noon')) h = 12
   else if (has(clause, 'midnight')) return null
   else {
-    const t = /\b(\d{1,2})(?::(\d{2}))?\s*(am|pm|a\.m\.|p\.m\.)/.exec(clause)
-    if (!t) return null
+    const all = [...clause.matchAll(/\b(\d{1,2})(?::(\d{2}))?\s*(am|pm|a\.m\.|p\.m\.)/g)]
+    // Two clock times are no one time.
+    if (all.length !== 1) return null
+    const t = all[0]!
     h = Number(t[1]) % 12 + (t[3]!.startsWith('p') ? 12 : 0)
     min = Number(t[2] ?? 0)
     if (Number(t[1]) > 12 || min > 59) return null
   }
   const base = new Date(Date.UTC(today.y, today.m - 1, today.d + addDays))
-  return instantIn(base.getUTCFullYear(), base.getUTCMonth() + 1, base.getUTCDate(), h, min, zone)
+  const at = instantIn(base.getUTCFullYear(), base.getUTCMonth() + 1, base.getUTCDate(), h, min, zone)
+  // A wall time the zone skips, or has twice, at a clock change is no one moment.
+  const wall = (x: number): string => new Intl.DateTimeFormat('en-US', { timeZone: zone, hourCycle: 'h23', month: 'numeric', day: 'numeric', hour: 'numeric', minute: 'numeric' }).format(x)
+  const read = new Intl.DateTimeFormat('en-US', { timeZone: zone, hourCycle: 'h23', hour: 'numeric', minute: 'numeric' }).formatToParts(at)
+  const hh = Number(read.find((p) => p.type === 'hour')?.value) % 24
+  const mm = Number(read.find((p) => p.type === 'minute')?.value)
+  if (hh !== h || mm !== min) return null
+  if (wall(at - 3_600_000) === wall(at) || wall(at + 3_600_000) === wall(at)) return null
+  return at
 }
 
 /** Whether his words ask for this, as rules 9 to 11 of the plan's contract read them. */
@@ -224,6 +246,8 @@ export function judgeAsk(input: AskInput): AskVerdict {
     }
   }
   if (!source) return { ok: false, refusal: NOT_HIS }
+  // A quote that takes in a quotation mark reaches into words he passed on.
+  if (want.includes('"')) return { ok: false, refusal: NOT_A_COMMAND }
   const byRef = new Map(input.items.map((i) => [i.ref, i]))
   const tag = (i: AskItem): string => (i.n !== null ? String(i.n) : i.ref)
   const namesN = (i: AskItem): boolean => (i.n !== null && has(clause, `#${i.n}`)) || has(clause, plain(i.ref)) || (!!i.chipId && heldChips.includes(i.chipId))
@@ -242,11 +266,12 @@ export function judgeAsk(input: AskInput): AskVerdict {
   for (const a of input.asked) {
     const item = byRef.get(a.ref)
     if (!item) return { ok: false, refusal: NOT_NAMED(a.ref) }
-    if (!tellsAction(clause, a.do, item.kind)) return { ok: false, refusal: VERB_MISSING(a.do) }
-    if (a.do === 'later') {
-      const at = laterTimeIn(clause, source.at, input.zone)
-      if (at === null || a.at !== at) return { ok: false, refusal: NO_TIME }
-    }
+    if (!tellsAction(clause, a.do, item.kind, item.op)) return { ok: false, refusal: VERB_MISSING(a.do) }
+    const timed = laterTimeIn(clause, source.at, input.zone)
+    if (a.do === 'later' && (timed === null || a.at !== timed)) return { ok: false, refusal: NO_TIME }
+    // A time in his words is a later send: never a send now.
+    if (a.do === 'send' && timed !== null) return { ok: false, refusal: SAYS_LATER }
+    if (item.heldAt > heldBy) return { ok: false, refusal: HELD_AFTER(tag(item)) }
     // Named exactly, or one of the asking tree's own items an "all" word covers.
     const unique = item.names.some((name) => {
       const p = plain(name)
@@ -257,9 +282,10 @@ export function judgeAsk(input: AskInput): AskVerdict {
     if (!named && !covered) return { ok: false, refusal: NOT_NAMED(tag(item)) }
   }
   // "All" means the whole of the asking tree's waiting set for that action, as it stood at his message: never a part.
+  if (all && (input.decidedSince?.(heldBy) ?? 0) > 0) return { ok: false, refusal: DECIDED_SINCE }
   if (all)
     for (const [action, list] of byAction) {
-      const set = input.items.filter((i) => i.own && i.heldAt <= heldBy && tellsAction(clause, action, i.kind))
+      const set = input.items.filter((i) => i.own && i.heldAt <= heldBy && tellsAction(clause, action, i.kind, i.op))
       const left = set.filter((i) => !list.some((a) => a.ref === i.ref)).length
       if (left) return { ok: false, refusal: NOT_ALL(left) }
     }

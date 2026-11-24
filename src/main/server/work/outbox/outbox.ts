@@ -211,6 +211,8 @@ export class Outbox {
   /** the host's one Send later timer, while Work is on (`startSchedules`) */
   private timer: ReturnType<typeof setTimeout> | null = null
   private timing = false
+  /** moves on at every start and stop of the timer: a wake from an earlier Work period claims nothing */
+  private period = 0
 
   constructor(private readonly deps: OutboxDeps) {
     deps.store.onChange((row) => this.changed(this.wire(row)))
@@ -304,6 +306,8 @@ export class Outbox {
       if (opts.rev === undefined) throw new Error(REV_NEEDED)
       const live = await this.readLifeos(ref)
       if (live.scheduledFor !== undefined) throw new Error(SCHEDULED_BY_HIM)
+      // A reply that carries the mail it answers is read whole on its own page: the fresh read has the quote the list lacks.
+      if (opts.many && quotesItsMail(live)) throw new Error(OPEN_TO_SEND)
       // A calendar act binds its event as it was listed to the screens: an event changed since is refused, and the listing
       // catches up (its revision moves on, so every older view is refused too) (milestone 50's hold review, 29).
       if (live.kind === 'calendar.op') {
@@ -354,7 +358,19 @@ export class Outbox {
       // The log records what was discarded as LifeOS holds it now, not as an earlier decision left it.
       if (row && PRESSABLE.includes(row.state)) row = this.store.edit(row.id, { payload: live.payload, summary: live.summary, verb: live.verb, account: live.account }) ?? row
       row ??= this.adopt(live)
-      if (row && PRESSABLE.includes(row.state)) await this.lifeos!.discard(ref)
+      if (!row) throw new Error(NO_SUCH_ITEM)
+      // The row here is claimed first, so nothing of the host's can send it once he discarded it; then LifeOS deletes
+      // its draft. A LifeOS that does not answer leaves a draft no press of the host's will ever send.
+      const gone = this.store.discard(row.id, by, { reason: opts.reason ?? null, via: opts.via ?? null, rev: row.updatedAt })
+      if (gone?.state === 'discarded') {
+        try {
+          await this.lifeos!.discard(ref)
+        } catch (err) {
+          this.deps.ctx.log(`outbox: LifeOS kept the draft of discarded item ${gone.n}: ${errorText(err)}`)
+        }
+        this.settled(gone, null, !!opts.quiet?.(gone))
+      }
+      return this.wire(gone ?? this.store.get(row.id)!)
     }
     if (!row) throw new Error(NO_SUCH_ITEM)
     const hostRev = ref.at === 'host' ? opts.rev : undefined
@@ -409,7 +425,9 @@ export class Outbox {
         }
         if (d.do === 'later') {
           if (d.at === undefined) throw new Error(BAD_TIME)
-          const item = await this.later(ref, { at: d.at, by: opts.by, ...(d.zone ? { zone: d.zone } : {}), ...(d.rev !== undefined ? { rev: d.rev } : {}), ...(d.cancelIfReply !== undefined ? { cancelIfReply: d.cancelIfReply } : {}), ...(opts.via ? { via: opts.via } : {}) })
+          const refusal = this.sendRefusal(ref, many)
+          if (refusal) throw new Error(refusal)
+          const item = await this.later(ref, { at: d.at, by: opts.by, ...(d.zone ? { zone: d.zone } : {}), ...(d.rev !== undefined ? { rev: d.rev } : {}), ...(d.cancelIfReply !== undefined ? { cancelIfReply: d.cancelIfReply } : {}), ...(opts.via ? { via: opts.via } : {}), ...(many ? { many: true } : {}) })
           return { ref, ok: item.state === 'scheduled', item }
         }
         const refusal = this.sendRefusal(ref, many)
@@ -430,7 +448,7 @@ export class Outbox {
    * only timer, and a failure there puts the row back. A host kind waits for the host's timer and its own claim. A
    * time set is his press already: it earns no offered grant.
    */
-  async later(ref: HeldRef, opts: { at: number; by: string; zone?: string; rev?: number; cancelIfReply?: boolean; via?: Via }): Promise<OutboxItem> {
+  async later(ref: HeldRef, opts: { at: number; by: string; zone?: string; rev?: number; cancelIfReply?: boolean; via?: Via; many?: boolean }): Promise<OutboxItem> {
     ref = this.canonical(ref)
     return this.serial(ref, async () => {
       const now = Date.now()
@@ -445,6 +463,7 @@ export class Outbox {
           const live = await this.readLifeos(ref)
           if (live.scheduledFor !== undefined) throw new Error(SCHEDULED_BY_HIM)
           if (live.updatedAt !== opts.rev) throw new Error(CHANGED_SINCE)
+          if (opts.many && quotesItsMail(live)) throw new Error(OPEN_TO_SEND)
           row = row ? (this.store.edit(row.id, { payload: live.payload, summary: live.summary, verb: live.verb, account: live.account }) ?? this.store.get(row.id)) : this.adopt(live)
         }
       }
@@ -463,7 +482,11 @@ export class Outbox {
           if (!this.lifeos?.scheduleMail) throw new Error('LifeOS is not reachable from this host')
           await this.lifeos.scheduleMail(set.payload, { at: opts.at, ...(opts.zone ? { zone: opts.zone } : {}), ...(opts.cancelIfReply !== undefined ? { cancelIfReply: opts.cancelIfReply } : {}) })
         } catch (err) {
-          this.store.unschedule(set.id, `LifeOS did not take the time: ${errorText(err)}`)
+          // An answer lost on the way may hide a time LifeOS took: it is asked, and the row goes back only when LifeOS
+          // still holds a draft. Unsure, the row stays scheduled and the watcher settles it from what LifeOS says.
+          const status = ref.at === 'lifeos' ? await this.lifeos?.mailStatus?.(ref.id).catch(() => undefined) : null
+          if (status === 'draft' || status === 'failed' || status === null) this.store.unschedule(set.id, `LifeOS did not take the time: ${errorText(err)}`, set.scheduleGen)
+          if (status === 'queued' || status === 'sending') return this.wire(this.store.get(set.id)!)
           throw err
         }
       } else this.arm()
@@ -472,11 +495,12 @@ export class Outbox {
   }
 
   /** Cancel send: a scheduled item waits on him again as held. A LifeOS mail only once LifeOS says it took it back. */
-  async cancelSend(ref: HeldRef): Promise<OutboxItem> {
+  async cancelSend(ref: HeldRef, opts: { rev?: number } = {}): Promise<OutboxItem> {
     ref = this.canonical(ref)
     return this.serial(ref, async () => {
       const row = this.store.byRef(ref)
       if (!row || row.state !== 'scheduled') throw new Error(NOT_SCHEDULED)
+      if (opts.rev !== undefined && row.updatedAt !== opts.rev) throw new Error(CHANGED_SINCE)
       if (LATER[row.kind] === 'lifeos' && ref.at === 'lifeos') {
         if (!(await this.lifeos?.cancelMail?.(ref.id))) throw new Error(ON_ITS_WAY)
       }
@@ -487,11 +511,13 @@ export class Outbox {
   }
 
   /** Send now: a scheduled item goes at once, on its own claim (a LifeOS mail after LifeOS's undo time). */
-  async sendScheduledNow(ref: HeldRef): Promise<OutboxItem> {
+  async sendScheduledNow(ref: HeldRef, opts: { rev?: number } = {}): Promise<OutboxItem> {
     ref = this.canonical(ref)
     return this.serial(ref, async () => {
       const row = this.store.byRef(ref)
       if (!row || row.state !== 'scheduled') throw new Error(NOT_SCHEDULED)
+      // The time he saw: a press from an older view never takes a schedule set again since.
+      if (opts.rev !== undefined && row.updatedAt !== opts.rev) throw new Error(CHANGED_SINCE)
       if (LATER[row.kind] === 'lifeos' && ref.at === 'lifeos') {
         if (!this.lifeos?.sendMailNow) throw new Error('LifeOS is not reachable from this host')
         await this.lifeos.sendMailNow(ref.id)
@@ -520,11 +546,47 @@ export class Outbox {
   /** The host's Send later timer runs while Work is on. */
   startSchedules(): () => void {
     this.timing = true
+    this.period++
     this.arm()
     return () => {
       this.timing = false
+      this.period++
       if (this.timer) clearTimeout(this.timer)
       this.timer = null
+    }
+  }
+
+  /** Another time for a scheduled LifeOS mail, under the item's own lock: LifeOS first, then the row. */
+  async rescheduleLifeos(ref: HeldRef, time: { at: number; zone?: string; cancelIfReply?: boolean }): Promise<OutboxItem> {
+    ref = this.canonical(ref)
+    return this.serial(ref, async () => {
+      const row = this.store.byRef(ref)
+      if (!row || row.state !== 'scheduled' || ref.at !== 'lifeos') throw new Error(NOT_SCHEDULED)
+      if (!this.lifeos?.rescheduleMail) throw new Error('LifeOS is not reachable from this host')
+      await this.lifeos.rescheduleMail(ref.id, time)
+      return this.wire(this.store.reschedule(row.id, time.at, time.zone ?? null) ?? row)
+    })
+  }
+
+  /**
+   * A removed thread or workspace's mail LifeOS was to send at his time: taken back from LifeOS first, and only then
+   * put away here. One LifeOS cannot reach now keeps its schedule, marked, and the watcher asks again each pass.
+   */
+  async cancelForRemoval(rows: readonly HeldRow[], why: string): Promise<void> {
+    for (const row of rows) {
+      if (row.state !== 'scheduled' || !row.runKey.startsWith('lifeos:outbox:')) continue
+      const ref = refOfRow(row)
+      await this.serial(ref, async () => {
+        this.store.wantCancel(row.id)
+        let back: boolean | undefined
+        try {
+          back = await this.lifeos?.cancelMail?.(ref.id)
+        } catch (err) {
+          this.deps.ctx.log(`outbox: LifeOS could not take back scheduled item ${row.n}; asking again later: ${errorText(err)}`)
+          return
+        }
+        if (back) this.store.putAwayScheduled(row.id, why)
+      })
     }
   }
 
@@ -547,8 +609,14 @@ export class Outbox {
   /** Every item whose time came, each on its own claim, then the next time. */
   private async due(): Promise<void> {
     this.timer = null
+    // The Work period this wake belongs to: Work turned off (or off and on) in the middle ends the rest of the batch.
+    const period = this.period
+    const live = (): boolean => this.timing && this.period === period
     try {
-      for (const row of this.store.dueScheduled()) await this.serial(refOfRow(row), () => this.fire(row))
+      for (const row of this.store.dueScheduled()) {
+        if (!live()) break
+        await this.serial(refOfRow(row), async () => (live() ? this.fire(row) : row))
+      }
     } catch (err) {
       this.deps.ctx.log(`outbox: a scheduled send did not run: ${errorText(err)}`)
     }

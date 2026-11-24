@@ -93,6 +93,28 @@ describe('Send later on the host timer', () => {
     expect(sent).toHaveLength(1)
   })
 
+  it('Cancel send and Send now from an older view are refused', async () => {
+    const a = post('a')
+    const { results } = await decide([{ ref: a.ref, do: 'later', at: Date.now() + HOUR }])
+    const seen = results[0]!.item!.updatedAt
+    outboxHostOf(rig.work.ctx)!.store.reschedule((a.ref as { id: string }).id, Date.now() + 2 * HOUR, null)
+    await expect(rig.rpc('work.outbox.sendNow', { ref: a.ref, rev: seen })).rejects.toThrow(/changed since/)
+    await expect(rig.rpc('work.outbox.cancelSend', { ref: a.ref, rev: seen })).rejects.toThrow(/changed since/)
+    expect(sent).toEqual([])
+  })
+
+  it('Work turned off in the middle of a due batch claims no more of it', async () => {
+    const a = post('a')
+    const b = post('b')
+    await decide([{ ref: a.ref, do: 'later', at: Date.now() + 2 * 60_000 }, { ref: b.ref, do: 'later', at: Date.now() + 2 * 60_000 }])
+    pastDue(Date.now() - 1_000)
+    const outbox = outboxHostOf(rig.work.ctx)!.outbox as unknown as { due(): Promise<void>; startSchedules(): () => void }
+    const stop = outbox.startSchedules()
+    stop()
+    await outbox.due()
+    expect(sent).toEqual([])
+  })
+
   it('Send now goes at once on the same claim', async () => {
     const a = post('a')
     await decide([{ ref: a.ref, do: 'later', at: Date.now() + HOUR }])
@@ -155,6 +177,32 @@ describe('Send later for a mail LifeOS holds', () => {
     const id = (item.ref as { id: string }).id
     rig.lifeos.rows.get(id)!.status = 'sent'
     await expect(rig.rpc('work.outbox.cancelSend', { ref: item.ref })).rejects.toThrow(ON_ITS_WAY)
+    expect(outboxHostOf(rig.work.ctx)!.store.byRef(item.ref)!.state).toBe('scheduled')
+  })
+
+  it('removing its thread takes the time back from LifeOS before the row is put away; unreachable, it asks again', async () => {
+    const item = await draft()
+    await decide([{ ref: item.ref, do: 'later', at: Date.now() + HOUR, rev: item.updatedAt }])
+    const id = (item.ref as { id: string }).id
+    rig.lifeos.connected = false
+    outboxModule.sessionsRemoved!(['t-work'], rig.work.ctx)
+    await settled()
+    const store = outboxHostOf(rig.work.ctx)!.store
+    expect(store.byRef(item.ref)).toMatchObject({ state: 'scheduled', cancelWanted: true })
+    rig.lifeos.connected = true
+    rig.lifeos.fire()
+    await settled()
+    await settled()
+    expect(store.byRef(item.ref)).toMatchObject({ state: 'stale', dismissedBy: 'host' })
+    expect(rig.lifeos.rows.get(id)!.status).toBe('draft')
+  })
+
+  it('a listing read before his Send later never puts the row back: only a fresh read does', async () => {
+    const item = await draft()
+    await decide([{ ref: item.ref, do: 'later', at: Date.now() + HOUR, rev: item.updatedAt }])
+    // the watcher's list as it stood before the time was set
+    const lifeos = outboxHostOf(rig.work.ctx)!.outbox.lifeos as unknown as { settleScheduled(items: OutboxItem[]): Promise<void> }
+    await lifeos.settleScheduled([{ ...item, scheduledFor: undefined } as OutboxItem])
     expect(outboxHostOf(rig.work.ctx)!.store.byRef(item.ref)!.state).toBe('scheduled')
   })
 

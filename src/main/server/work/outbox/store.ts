@@ -70,6 +70,8 @@ export function ensureOutboxTables(db: DatabaseSync): void {
     db.exec(`ALTER TABLE ${HELD_TABLE} ADD COLUMN schedule_by TEXT`)
     db.exec(`ALTER TABLE ${HELD_TABLE} ADD COLUMN schedule_gen INTEGER NOT NULL DEFAULT 0`)
   }
+  // A removed thread's mail LifeOS was to send at his time: taken back from LifeOS before it is put away here.
+  if (!columns.includes('cancel_wanted') && columns.includes('id')) db.exec(`ALTER TABLE ${HELD_TABLE} ADD COLUMN cancel_wanted INTEGER NOT NULL DEFAULT 0`)
   if (!columns.includes('dismissed_at')) {
     db.exec(`ALTER TABLE ${HELD_TABLE} ADD COLUMN reason TEXT`)
     db.exec(`ALTER TABLE ${HELD_TABLE} ADD COLUMN via TEXT`)
@@ -112,6 +114,7 @@ function ensureTables(db: DatabaseSync): void {
       schedule_zone  TEXT,
       schedule_by    TEXT,
       schedule_gen   INTEGER NOT NULL DEFAULT 0,
+      cancel_wanted  INTEGER NOT NULL DEFAULT 0,
       created_at     INTEGER NOT NULL,
       updated_at     INTEGER NOT NULL
     );
@@ -184,6 +187,7 @@ type Row = {
   schedule_zone: string | null
   schedule_by: string | null
   schedule_gen: number
+  cancel_wanted?: number
   created_at: number
   updated_at: number
 }
@@ -226,6 +230,8 @@ export interface HeldRow {
   scheduleZone: string | null
   scheduleBy: string | null
   scheduleGen: number
+  /** its thread or workspace was removed while LifeOS held its time: taken back from LifeOS before it is put away */
+  cancelWanted: boolean
   createdAt: number
   updatedAt: number
 }
@@ -300,6 +306,7 @@ const decode = (r: Row): HeldRow => ({
   scheduleZone: r.schedule_zone ?? null,
   scheduleBy: r.schedule_by ?? null,
   scheduleGen: Number(r.schedule_gen ?? 0),
+  cancelWanted: Number(r.cancel_wanted ?? 0) === 1,
   createdAt: Number(r.created_at),
   updatedAt: Number(r.updated_at)
 })
@@ -569,6 +576,26 @@ export class HeldStore {
     return (this.db.prepare(`${SELECT} WHERE state = 'scheduled' AND run_key LIKE 'lifeos:%' LIMIT 200`).all() as unknown as Row[]).map(decode)
   }
 
+  /** Mark a scheduled LifeOS mail to be taken back from LifeOS (its thread or workspace was removed). */
+  wantCancel(id: string): void {
+    this.db.prepare(`UPDATE ${HELD_TABLE} SET cancel_wanted = 1 WHERE id = ? AND state = 'scheduled'`).run(id)
+  }
+
+  /** A scheduled LifeOS mail LifeOS took back for a removed thread: put away, never to go. */
+  putAwayScheduled(id: string, why: string): HeldRow | null {
+    const at = this.now()
+    const done = this.db
+      .prepare(`UPDATE ${HELD_TABLE} SET state = 'stale', error = ?, schedule_at = NULL, schedule_gen = schedule_gen + 1, dismissed_by = 'host', dismissed_at = ?, cancel_wanted = 0, updated_at = MAX(updated_at + 1, ?) WHERE id = ? AND state = 'scheduled'`)
+      .run(why, at, at, id)
+    return Number(done.changes) === 1 ? this.told(id) : null
+  }
+
+  /** The scheduled LifeOS mail of these threads, or of this workspace: LifeOS's to take back before they are put away. */
+  scheduledLifeosOf(q: { sessionIds?: readonly string[]; workspaceId?: string }): HeldRow[] {
+    const rows = this.scheduledInLifeos()
+    return rows.filter((r) => (q.sessionIds ? !!r.sessionId && q.sessionIds.includes(r.sessionId) : r.workspaceId === q.workspaceId))
+  }
+
   /** A LifeOS mail he took back in its undo time: it waits on him again as held. */
   unsend(id: string): HeldRow | null {
     const done = this.db.prepare(`UPDATE ${HELD_TABLE} SET state = 'held', decided_by = NULL, decided_at = NULL, via = NULL, result = NULL, updated_at = MAX(updated_at + 1, ?) WHERE id = ? AND state = 'sent'`).run(this.now(), id)
@@ -610,7 +637,7 @@ export class HeldStore {
   closeSessions(sessionIds: readonly string[], why: string): number {
     let n = 0
     for (const id of sessionIds)
-      for (const row of (this.db.prepare(`${SELECT} WHERE session_id = ? AND state IN (${marks(CLOSABLE)})`).all(id, ...CLOSABLE) as unknown as Row[]).map(decode)) {
+      for (const row of (this.db.prepare(`${SELECT} WHERE session_id = ? AND state IN (${marks(CLOSABLE)}) AND NOT (state = 'scheduled' AND run_key LIKE 'lifeos:%')`).all(id, ...CLOSABLE) as unknown as Row[]).map(decode)) {
         // He removed the thread himself: what it made is put away with it, not left waiting for him to discard.
         const done = this.db.prepare(`UPDATE ${HELD_TABLE} SET state = 'stale', error = ?, dismissed_by = 'host', dismissed_at = ?, updated_at = MAX(updated_at + 1, ?) WHERE id = ? AND state IN (${marks(CLOSABLE)})`).run(why, this.now(), this.now(), row.id, ...CLOSABLE)
         if (Number(done.changes) === 1) {
@@ -657,7 +684,7 @@ export class HeldStore {
     const at = this.now()
     return Number(
       this.db
-        .prepare(`UPDATE ${HELD_TABLE} SET state = 'stale', error = ?, dismissed_by = 'host', dismissed_at = ?, updated_at = MAX(updated_at + 1, ?) WHERE workspace_id = ? AND state IN (${marks(CLOSABLE)})`)
+        .prepare(`UPDATE ${HELD_TABLE} SET state = 'stale', error = ?, dismissed_by = 'host', dismissed_at = ?, updated_at = MAX(updated_at + 1, ?) WHERE workspace_id = ? AND state IN (${marks(CLOSABLE)}) AND NOT (state = 'scheduled' AND run_key LIKE 'lifeos:%')`)
         .run(why, at, at, workspaceId, ...CLOSABLE).changes
     )
   }

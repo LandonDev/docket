@@ -7,7 +7,7 @@ import type { ActKindDef, WorkModule } from '../modules'
 import { outbox as outboxModule, NOT_A_PERSON } from './index'
 import { outboxHostOf } from './ctx'
 import { approveKey, cast, makeRig, readKey, type Rig } from './rig'
-import { ASK_ANSWERED, ASK_OTHER_JOB, BAD_RECEIPT, REQUEST_TTL_MS } from './requests'
+import { answerNote, ASK_ANSWERED, ASK_UNKNOWN, BAD_RECEIPT, REQUEST_TTL_MS } from './requests'
 
 /**
  * A thread asks for his press (docs/agents/work-outbox.md "A thread asks for his press"): only on his own words in
@@ -93,7 +93,8 @@ describe('a thread asks', () => {
     const theirs = post('Devs', 't-cosmic')
     rig.say('t-work', `send #${theirs.n} now please`)
     const r = await call('outbox_request', { items: [{ ref: `#${theirs.n}`, do: 'send' }], quote: `send #${theirs.n} now please` })
-    expect(text(r)).toBe(ASK_OTHER_JOB(`#${theirs.n}`))
+    // the same words as for a ref that does not exist: nothing of another job is told
+    expect(text(r)).toBe(ASK_UNKNOWN(`#${theirs.n}`))
   })
 
   it('one message of his gives one request: the same ask again answers it, and after his answer only new words do', async () => {
@@ -200,5 +201,35 @@ describe('his press on the card', () => {
     expect((await card(id)).state).toBe('open')
     expect(rig.cards).toEqual([])
     expect(sent).toEqual([])
+  })
+})
+
+describe('the review\'s cases', () => {
+  it('the notice carries counts and verbs, never his quote', async () => {
+    await threeAsked()
+    const told = rig.tells.find((t) => t.kind === 'outbox.request')!
+    expect(told.title).toBe('Asked: Post 3 messages')
+    expect(told.detail).toBeUndefined()
+  })
+
+  it('an archived thread\'s request ends, and its receipts send nothing', async () => {
+    const { id } = await threeAsked()
+    const r = await card(id)
+    rig.thread('t-work', { scope: 'work', workspaceId: 'ws-purdue', archived: true } as Partial<SessionMeta>)
+    const { request } = await press(id, [r.rows[0]!.receipt!])
+    expect(request.state).toBe('void')
+    expect(sent).toEqual([])
+  })
+
+  it('the thread hears fixed words for what failed, never a provider\'s own', () => {
+    const note = answerNote(4, [{ ref: { at: 'host', id: 'a' }, ok: false, error: 'Plan.docx for Dana is locked by dana@x.edu' }, { ref: { at: 'host', id: 'b' }, ok: false, error: 'This item changed since you opened it.' }], 0)
+    expect(note).toBe('The owner approved request 4: 2 not sent (not sent; changed since he saw it). Do not send any of them another way.')
+  })
+
+  it('outbox_list shows only what waits on him: not a send under way or a scheduled one', async () => {
+    const a = post('Staff')
+    post('Coaches')
+    await rig.rpc('work.outbox.decide', { items: [{ ref: a.ref, do: 'later', at: Date.now() + 3_600_000 }] })
+    expect(text(await call('outbox_list', {}))).toBe('#2 · Post in Coaches · held · this thread')
   })
 })

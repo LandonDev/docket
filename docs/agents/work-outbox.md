@@ -416,6 +416,22 @@ each refusal is words an agent can act on):
   computer act and a LifeOS reply that quotes its mail go only from their
   own page; an item out of date may only be discarded; a later send only for
   a kind in `LATER`.
+- **What he named, then.** An item held after his message is never his,
+  however it is named; an "all" when some of the tree's items were decided
+  since his words is no exact set; a time in his words makes the ask a later
+  send, never a send now; "accept" and "decline" name only an invite whose
+  own answer is that one; a quote that takes in a quotation mark is
+  refused; one clock time, which must exist once in his zone (not skipped
+  or repeated at a clock change). A chip's lines run to the blank line
+  before his words, so a label that ran onto a second line is the chip's,
+  and the composer writes every label on one line.
+- **What a thread learns.** `outbox_list` shows only what waits on him
+  (`needsHim`), from the job's whole set (never a cut list: past 1,000 the
+  host refuses rather than judge part); another job's ref is refused in
+  the same words as one that does not exist; the thread's note after his
+  press names fixed reasons, never a provider's own error. A request whose
+  thread was archived or moved to another job, or whose item moved, ends
+  and sends nothing.
 - **One request a message.** One message of his gives one request per
   thread: the same ask again answers the one it made, and once he answered
   or chose Not now only new words of his give another. A newer request voids
@@ -452,7 +468,8 @@ was decided elsewhere): "Request R ran out; the items still wait in his
 Outbox." A removed thread's requests end with it, unsaid.
 
 **How he hears.** `ctx.tell` as `outbox.request` (group `held`), "Asked:
-Post 3 messages" with his quote under it, key `request:<id>`, opening the
+Post 3 messages" (counts and verbs only: a digest read needs only `read`,
+and his quote can name a person or a file), key `request:<id>`, opening the
 thread where the card is; it interrupts (he asked for it and waits on it),
 and is done when the request is answered, declined or void.
 
@@ -498,7 +515,9 @@ another host of his over the link (`peer`), and a key made for an MCP
 client. No tool of any thread reaches these methods.
 
 **One press, many items.** `work.outbox.decide({items: [{ref, do, rev,
-reason?, again?}], via?})` is the one decision service: each item runs
+reason?, again?}], via?, many?})` is the one decision service (`many`: a
+desktop press across hosts, so each host's part is many even with one
+item): each item runs
 through the same `send` or `discard` a single press does, four at a time,
 and answers its own result (`{ref, ok, item?, error?}`) in the order
 asked. The host decides whether the press is many (more than one item):
@@ -507,7 +526,9 @@ Discard or Ask again only ("This went out of date: discard it, or ask the
 thread again."); a live screen's act, a computer act and a LifeOS reply
 that quotes the mail it answers go only from their own page, alone ("Open
 to send"). One item named twice in a press is refused the second time. A
-desktop press across hosts sends one `decide` to each host.
+desktop press across hosts sends one `decide` to each host. A LifeOS
+reply's quote is read fresh at the press (the list's copy lacks it), and a
+LifeOS discard claims the row here before LifeOS deletes its draft.
 
 **Send later.** Send's menu offers a time on an item whose kind may wait
 (`OutboxItem.later`; the kinds in `LATER`, outbox.ts: a LifeOS mail,
@@ -537,9 +558,21 @@ counted. A scheduled send earns no offered grant.
   mail only after LifeOS's `compose:cancel` says it took it back
   ("It is already on its way" otherwise). **Send now**
   (`work.outbox.sendNow`) runs it at once on its own claim (a LifeOS mail:
-  `compose:sendNow`). Mail's own cancel and move of a thread's draft go
-  through the same row. Removing a thread or workspace settles its
-  schedules.
+  `compose:sendNow`). Both take the `rev` his screen drew, so a press from
+  an older view never takes a time set again since. Mail's own cancel,
+  move and Send now of a thread's draft go through the same row, under the
+  item's own lock. Removing a thread or workspace settles its schedules: a
+  host timer's at once; a LifeOS mail is taken back from LifeOS first
+  (`cancelForRemoval`) and only then put away, and one LifeOS cannot reach
+  then stays scheduled, marked `cancel_wanted`, and the watcher asks again
+  each pass.
+- **What LifeOS's timer did** is read fresh before the row moves, from the
+  generation read then: a listing read before his Send later never puts
+  the row back, an answer lost on the way leaves the row scheduled when
+  LifeOS took the time, and the thread hears it went only once LifeOS says
+  `sent`.
+- **Work off** ends the rest of a due batch: each wake belongs to one Work
+  period, and an item is claimed only while that period lasts.
 - **Undo** (`work.outbox.undoSend`, the press's toast): a LifeOS mail
   LifeOS still holds in its undo time goes back to a draft through
   `compose:cancel`, the row is held again, and the thread hears "The owner

@@ -506,23 +506,32 @@ export class LifeosHeldItems implements LifeosHeld {
    * on him again; gone from the list, LifeOS is asked: queued, sending or sent means it went, and the thread hears it
    * and the linked task completes, once; a draft means it came back; none means LifeOS no longer has it.
    */
-  private async settleScheduled(items: readonly OutboxItem[]): Promise<void> {
+  async settleScheduled(items: readonly OutboxItem[]): Promise<void> {
     const { outbox, ctx } = this.deps
     for (const row of outbox.store.scheduledInLifeos()) {
       const m = /^lifeos:outbox:(.+)$/.exec(row.runKey)
       if (!m) continue
       const listed = items.find((i) => i.ref.at === 'lifeos' && i.ref.id === m[1])
       try {
-        if (listed) {
-          if (listed.scheduledFor === undefined) outbox.store.unschedule(row.id, listed.state === 'failed' ? (listed.error ?? 'LifeOS could not send it') : null)
-          continue
+        // Its thread was removed while LifeOS held the time, and LifeOS could not be reached then: ask again.
+        if (row.cancelWanted) {
+          if (await this.cancelMail(m[1]!).catch(() => false)) {
+            outbox.store.putAwayScheduled(row.id, 'The thread that made this was deleted.')
+            continue
+          }
         }
+        // Listed with its time, it still waits for LifeOS's timer.
+        if (listed?.scheduledFor !== undefined) continue
+        // Anything else is read fresh before the row moves, and moved only from the generation read here: a listing
+        // read before his Send later never puts the row back.
+        const gen = row.scheduleGen
         const status = await this.mailStatus(m[1]!)
         if (status === null) outbox.store.settleScheduled(row.id, 'stale', 'LifeOS no longer has this mail')
-        else if (['queued', 'sending', 'sent'].includes(status)) {
+        else if (status === 'sent') {
+          // Told once, and only once LifeOS says it went.
           const went = outbox.store.settleScheduled(row.id, 'sent')
           if (went) outbox.scheduledWent(went)
-        } else if (status === 'draft' || status === 'failed') outbox.store.unschedule(row.id, status === 'failed' ? 'LifeOS could not send it' : null)
+        } else if (status === 'draft' || status === 'failed') outbox.store.unschedule(row.id, status === 'failed' ? 'LifeOS could not send it' : null, gen)
       } catch (err) {
         ctx.log(`outbox: could not ask LifeOS about scheduled item ${row.n}: ${errorText(err)}`)
       }

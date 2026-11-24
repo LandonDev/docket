@@ -245,7 +245,17 @@ export const heldPart: CtxPart<'held'> = (ctx, deps) => {
     }
   })
 
-  const requests = new OutboxRequests({ ctx, outbox, rootOf, whisper: (sessionId, text) => deps.registry.whisper(sessionId, text), zone: () => hisZone(ctx) })
+  const requests = new OutboxRequests({
+    ctx,
+    outbox,
+    rootOf,
+    whisper: (sessionId, text) => deps.registry.whisper(sessionId, text),
+    zone: () => hisZone(ctx),
+    alive: (sessionId) => {
+      const s = deps.registry.get(sessionId)
+      return !!s && !s.archived
+    }
+  })
   // A request whose items were all decided elsewhere ends at once.
   outbox.onDecided(() => requests.sweep())
   hosts.set(ctx, {

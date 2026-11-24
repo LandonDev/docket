@@ -158,10 +158,13 @@ export async function sendMail(ctx: WorkCtx, by: Caller, id: string, seen: MailS
 /** His press moves a scheduled mail: another time or zone, still scheduled. */
 export async function rescheduleMail(ctx: WorkCtx, by: Caller, id: string, time: MailTime): Promise<null> {
   mustApprove(by)
+  // A thread's draft the hold keeps a time for moves under the item's own lock, LifeOS first, then the row.
+  const host = outboxHostOf(ctx)
+  if (host && heldRowOf(ctx, id)?.state === 'scheduled') {
+    await host.outbox.rescheduleLifeos({ at: 'lifeos', table: 'outbox', id }, { at: time.sendAt, ...(time.sendZone ? { zone: time.sendZone } : {}), ...(time.cancelIfReply !== undefined ? { cancelIfReply: time.cancelIfReply } : {}) })
+    return null
+  }
   await ctx.lifeos.owner().mutation('compose:reschedule', { id, ...timeArgs(time) })
-  // The hold's row keeps the same time as LifeOS, so the Outbox says when it goes.
-  const held = heldRowOf(ctx, id)
-  if (held?.state === 'scheduled') outboxHostOf(ctx)?.store.reschedule(held.id, time.sendAt, time.sendZone ?? null)
   return null
 }
 
@@ -187,6 +190,11 @@ export async function cancelMail(ctx: WorkCtx, by: Caller, id: string): Promise<
 /** His press sends a scheduled mail now, after LifeOS's undo time. */
 export async function sendMailNow(ctx: WorkCtx, by: Caller, id: string): Promise<{ sendAt: number }> {
   mustApprove(by)
+  const host = outboxHostOf(ctx)
+  if (host && heldRowOf(ctx, id)?.state === 'scheduled') {
+    const item = await host.outbox.sendScheduledNow({ at: 'lifeos', table: 'outbox', id })
+    return { sendAt: item.scheduledFor ?? Date.now() }
+  }
   return { sendAt: await ctx.lifeos.owner().mutation<number>('compose:sendNow', { id }) }
 }
 
