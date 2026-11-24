@@ -202,36 +202,55 @@ export function usePublish(remote: ShowRemote | undefined, read: () => Omit<Live
 }
 
 /**
- * The shows of a deck running now, kept current by the push; empty while none runs or where there is no wire. A word
- * older than the one held (a press's answer behind a newer push) changes nothing, and a list read whole (at the start,
- * when the wire comes back) gives way to every word heard while it was read: a show that moved on or ended meanwhile
- * is never put back as it was.
+ * The shows of a deck running now, kept current by the push; empty while none runs or where there is no wire. Every
+ * word goes through one check, a push, a press's answer and a list read whole alike: a show told ended never comes
+ * back (a show's id is never used again), and a word about a state older than the newest heard changes nothing. A
+ * list read whole gives way to what was heard while it was read, and only the newest read counts.
  */
 export function useLiveShows(remote: ShowRemote | null): ShowLive[] {
   const [shows, setShows] = useState<ShowLive[]>([]);
   useEffect(() => {
     if (!remote) return;
     let live = true;
-    let heard: Map<string, ShowLive | null> | null = null;
+    const ended = new Set<string>();
+    const newest = new Map<string, number>();
+    /** Whether a word about a show is news: never one about a show that ended, nor about a state older than the newest. */
+    const news = (showId: string, next: ShowLive | null): boolean => {
+      if (ended.has(showId)) return false;
+      if (!next) {
+        ended.add(showId);
+        newest.delete(showId);
+        return true;
+      }
+      if (next.rev < (newest.get(showId) ?? -1)) return false;
+      newest.set(showId, next.rev);
+      return true;
+    };
+    /** The shows a word told of while the newest read of the list was on its way: newer than what the list says. */
+    let heard: Set<string> | null = null;
     const off = remote.onLive((showId, next) => {
-      heard?.set(showId, next);
-      setShows((was) => {
-        const held = was.find((s) => s.showId === showId);
-        if (next && held && next.rev < held.rev) return was;
-        const rest = was.filter((s) => s.showId !== showId);
-        return next ? [...rest, next] : rest;
-      });
+      if (!news(showId, next)) return;
+      heard?.add(showId);
+      setShows((was) => [...was.filter((s) => s.showId !== showId), ...(next ? [next] : [])]);
     });
+    let reads = 0;
     const read = (): void => {
-      const since = (heard = new Map());
+      const mine = ++reads;
+      const since = (heard = new Set());
       void remote.state().then(
         (got) => {
-          if (!live) return;
-          if (heard === since) heard = null;
-          const newer = [...since.values()].filter((s): s is ShowLive => s !== null);
-          setShows([...got.filter((s) => !since.has(s.showId)), ...newer]);
+          if (!live || mine !== reads) return;
+          heard = null;
+          // What the list says passes the same check; a show it leaves out, and nothing told of meanwhile, ended unheard.
+          for (const id of [...newest.keys()]) if (!since.has(id) && !got.some((g) => g.showId === id)) news(id, null);
+          const listed = got.filter((s) => news(s.showId, s));
+          setShows((was) => {
+            const out = new Map(was.filter((s) => since.has(s.showId)).map((s) => [s.showId, s]));
+            for (const s of listed) if ((out.get(s.showId)?.rev ?? -1) <= s.rev) out.set(s.showId, s);
+            return [...out.values()].filter((s) => !ended.has(s.showId));
+          });
         },
-        () => void (heard === since && (heard = null)),
+        () => void (mine === reads && (heard = null)),
       );
     };
     read();

@@ -237,8 +237,8 @@ describe("the deck's item at phone width", () => {
     answer = { dropped: "ended", live: null };
     await act(async () => void fireEvent.click(document.querySelector("[data-clicker-next]")!));
     expect(document.querySelector("[data-clicker]")).toBeNull();
-    // A show begun while the wire was cut is read once it comes back.
-    wire.set([live({ slide: 2, rev: 11 })]);
+    // A show begun while the wire was cut (a show of its own id) is read once it comes back.
+    wire.set([live({ showId: "show-new00001", slide: 2, rev: 11 })]);
     await act(async () => wire.reopen());
     expect(document.querySelector("[data-clicker-place]")!.textContent).toBe("2 / 12");
   });
@@ -262,6 +262,32 @@ describe("the deck's item at phone width", () => {
     act(() => wire.reopen());
     act(() => wire.push("show-abc12345", null));
     await act(async () => answer([live({ slide: 6, rev: 9 })]));
+    expect(document.querySelector("[data-clicker]")).toBeNull();
+  });
+
+  it("one check for every word: a stale press answer during a read, and a late answer after the show ended, change nothing", async () => {
+    const wire = fakeRemote();
+    wire.set([live()]);
+    let answer: ShowPressAnswer = { dropped: "moved", live: live({ slide: 5, rev: 8 }) };
+    wire.remote.press = async () => answer;
+    let listed!: (shows: ShowLive[]) => void;
+    let hold = false;
+    wire.remote.state = () => (hold ? new Promise((done) => (listed = done)) : Promise.resolve([live()]));
+    const remote = withPressAnswers(wire.remote);
+    render(<Seat remote={remote} />);
+    expect(await screen.findByRole("region", { name: "Clicker: Sponsor deck" })).toBeTruthy();
+    // A read of the whole list starts; the show moves on to rev 9; a press answer about rev 8 comes late.
+    hold = true;
+    act(() => wire.reopen());
+    act(() => wire.push("show-abc12345", live({ slide: 6, rev: 9 })));
+    await act(async () => void fireEvent.click(document.querySelector("[data-clicker-next]")!));
+    await act(async () => listed([live({ slide: 5, rev: 8 })]));
+    expect(document.querySelector("[data-clicker-place]")!.textContent).toBe("6 / 12");
+    // The show ends; a press answer still on its way with the show as it was never brings it back.
+    act(() => wire.push("show-abc12345", null));
+    answer = { dropped: "ended", live: live({ slide: 6, rev: 9 }) };
+    expect(document.querySelector("[data-clicker]")).toBeNull();
+    await act(async () => void (await remote.press("show-abc12345", "next", 9)));
     expect(document.querySelector("[data-clicker]")).toBeNull();
   });
 
