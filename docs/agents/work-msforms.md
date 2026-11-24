@@ -246,6 +246,8 @@ declined, with why, is `review-built-answer.md` beside it):
 
 ## Proofs
 
+**The canary**, by hand, never scheduled: `bun --preload ./scripts/lib/electron-stub.ts scripts/proof-msforms-canary.ts` through `.temp-code/bin/heavy`, on a copy of the box browser's profile (refused while the live Work browser runs). It makes "TempCode proof canary <time>" in his OneDrive, adds and renames a question, reads it back, counts and deletes it (only our item from the Forms recycle bin), and prints `CANARY OK` with each step's time or `CANARY BROKE AT <step>: …`; the dummy is deleted on every way out (the rig is `scripts/lib/msformsRig.ts`, shared with `scripts/proof-msforms.ts`).
+
 **P1 and P2, live, 2026-11-24** (`scripts/proof-msforms.ts`; notes and pictures in `.temp-code/plans/ms-forms/P1/`
 and `P2/`). The box browser on a copy of the box's Work browser profile, the outbox and msforms pillars on their own
 database with the VM's RecWell library record, the real carrier; his presses as owner calls. Dummies only, in a

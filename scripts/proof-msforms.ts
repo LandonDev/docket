@@ -29,94 +29,23 @@
  *   /state                              the tells, pushes and log lines so far, and the form rows
  *   /quit                               stops the browser and the frame
  */
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { DatabaseSync } from 'node:sqlite'
-import { LOCAL_PRINCIPAL } from '../src/shared/capabilities'
-import { ClientRequestSchema, type ClientRequest } from '../src/shared/contract'
-import type { SessionMeta } from '../src/shared/events'
-import { setAttachmentDirContext } from '../src/main/server/attachmentDir'
-import { openDb, Store } from '../src/main/server/db'
-import { setBoxBrowser, wireBoxBrowser } from '../src/main/server/work/browser/box'
-import { carrierSession } from '../src/main/server/work/browser/box/service'
-import { startWork } from '../src/main/server/work/ctx'
-import { ensureDigestTables } from '../src/main/server/work/digest/store'
-import { msforms } from '../src/main/server/work/msforms/index'
-import { outbox } from '../src/main/server/work/outbox/index'
 import { pollAnswers } from '../src/main/server/work/msforms/answers/read'
-import { wireMsCarrier } from '../src/main/server/work/msforms/carrier/wire'
 import { writeChanges } from '../src/main/server/work/msforms/forms'
 import { fileAnswerTasks } from '../src/main/server/work/msforms/routine'
 import { MsformsStore } from '../src/main/server/work/msforms/store'
 import { isFormsWorkbook } from '../src/main/server/work/msforms/workbook'
-import { WORK_MODULES } from '../src/main/server/work/modules'
+import { bootRig } from './lib/msformsRig'
 
 const dir = process.argv[2]
 const port = Number(process.argv[3] ?? 9381)
 if (!dir) throw new Error('usage: proof-msforms.ts <dir> [port]')
-const HOST = 'env_proof'
-const WORKSPACE = 'wproof'
-const LIVE_DB = '/srv/agents/temp-code-data/temp-code.db'
-
-const logs: string[] = []
-const log = (line: string): void => {
-  logs.push(`${new Date().toISOString()} ${line}`)
-  console.log(line)
-}
-
-mkdirSync(join(dir, 'attachments'), { recursive: true })
-mkdirSync(join(dir, 'ws'), { recursive: true })
-setAttachmentDirContext({ dataDir: dir, session: () => null, projectCwd: () => null, workspacePath: () => null })
-
-const db = openDb(join(dir, 'proof.db'))
-// The VM's last record of his libraries, read only from the host's database: RecWell's library is in it.
-{
-  const live = new DatabaseSync(LIVE_DB, { readOnly: true })
-  db.exec('CREATE TABLE IF NOT EXISTS work_office_files (key TEXT PRIMARY KEY, value TEXT NOT NULL)')
-  for (const r of live.prepare("SELECT key, value FROM work_office_files WHERE key IN ('vm:status', 'vm:wanted')").all() as { key: string; value: string }[])
-    db.prepare('INSERT OR REPLACE INTO work_office_files (key, value) VALUES (?, ?)').run(r.key, r.value)
-  live.close()
-}
-db.prepare("INSERT OR IGNORE INTO workspaces (id, name, path, created_at, kind, sector) VALUES (?, 'TempCode proof', ?, 0, 'work', 'purdue')").run(WORKSPACE, join(dir, 'ws'))
-ensureDigestTables(db)
-const store = new Store(db)
-
-const registry = {
-  // No thread has a carrier session's id: as on the host, the registry knows none of them (run.ts would otherwise take
-  // the carrier for a Work thread and refuse it Forms, as it refuses a thread). The proof's one thread is a code thread.
-  get: (_id: string) => null as unknown as SessionMeta,
-  requestApproval: async () => false,
-  awayFor: () => false,
-  rootSessionOf: (id: string) => id,
-  onMeta: () => {},
-  onRemoved: () => () => {},
-  onWorkspaceDeleted: () => () => {}
-}
-
-setBoxBrowser(null)
-const host = wireBoxBrowser({ registry: registry as never, store: store as never, dataDir: dir, log, videoOn: () => true })
-if (!host) throw new Error('no Chromium on this host')
-// The box browser's 2 GB cap (chromium.ts MEMORY_CAP_MB, the sum of each process's VmRSS, shared pages counted again in
-// each) stops the browser with a Forms page, a SharePoint page and a third open (P1: 2053 and 2784 MB, the PSS about
-// half). The proof raises it for itself alone (TC_PROOF_CAP_MB, 6 GB) so the stages can run; the finding is reported.
-;(host.browser as unknown as { opts: { capMb?: number } }).opts.capMb = Number(process.env.TC_PROOF_CAP_MB ?? 6144)
-// the outbox finds an act's kind among the loaded pillars, as the host's own load fills them (msforms.test.ts does the same)
-for (const m of [outbox, msforms]) if (!WORK_MODULES.includes(m)) WORK_MODULES.push(m)
-const pushes: unknown[] = []
-const work = startWork({ db, store, registry: registry as never, environmentId: HOST, dataDir: dir, log, remoteFence: { roots: () => [dir], denied: () => [] } } as never, [outbox, msforms])
-work.pushes.onPush((p) => void pushes.push(p))
-wireMsCarrier(db, HOST)
-
-const request = (method: string, params: unknown): ClientRequest => ClientRequestSchema.parse({ id: 'proof', method, params } as ClientRequest)
-async function call(method: string, params: unknown, thread?: string): Promise<unknown> {
-  const out = thread ? await msforms.handle!(request(method, params), work.ctx, { kind: 'model', caps: [], sessionId: thread }) : await work.handle(request(method, params), LOCAL_PRINCIPAL)
-  return out.handled ? out.result : { notHandled: method }
-}
-await call('work.set', { enabled: true })
-
-// The session the proof's own looks drive the pages on: marked as the carrier's, so Forms opens to it.
-const looks = carrierSession()
-await host.service.request('session.open', { session: looks } as never)
+// the rig (scripts/lib/msformsRig.ts): the box browser on the profile copy in `dir`, the frame, the real carrier
+const rig = await bootRig(dir)
+const { db, host, work, logs, pushes, call, looks } = rig
+const WORKSPACE = rig.workspaceId
+const log = (line: string): void => console.log(line)
 
 const routes: Record<string, (body: Record<string, unknown>) => Promise<unknown>> = {
   work: async (b) => call(String(b.method), b.params ?? {}, b.thread as string | undefined),
