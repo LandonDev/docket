@@ -503,22 +503,6 @@ const cleanup = async (): Promise<void> => {
   } catch (err) {
     log(`tabs left: ${err}`)
   }
-  for (const doc of keptDocs) {
-    try {
-      // The run's own document, removed outright: nothing of it is left in his workspace's folder or its Trash.
-      if (doc.startsWith('/srv/agents/work/Work/Purdue/TempCode proof ')) rmSync(doc, { force: true })
-    } catch (err) {
-      log(`could not remove ${doc}: ${String(err).slice(0, 200)}`)
-    }
-  }
-  // The Word file as it was, kept before the first write over it: the run's own, removed too.
-  for (const n of readdirSync('/srv/agents/work/Work/Purdue')) {
-    try {
-      if (n.startsWith(`TempCode proof ${STAMP}`)) rmSync(join('/srv/agents/work/Work/Purdue', n), { force: true })
-    } catch (err) {
-      log(`could not delete ${doc}: ${String(err).slice(0, 200)}`)
-    }
-  }
   // Save as Word's new file, and the Teams proof folder with what is in it.
   for (const name of keptExtra) {
     try {
@@ -558,6 +542,23 @@ const cleanup = async (): Promise<void> => {
       /* gone */
     }
     await sleep(1500)
+  }
+  // The workspace's folder last, with the window gone: a tab closing as it went writes its document there.
+  for (const doc of keptDocs) {
+    try {
+      // The run's own document, removed outright: nothing of it is left in his workspace's folder or its Trash.
+      if (doc.startsWith('/srv/agents/work/Work/Purdue/TempCode proof ')) rmSync(doc, { force: true })
+    } catch (err) {
+      log(`could not remove ${doc}: ${String(err).slice(0, 200)}`)
+    }
+  }
+  // The Word file as it was, kept before the first write over it: the run's own, removed too.
+  for (const n of readdirSync('/srv/agents/work/Work/Purdue')) {
+    try {
+      if (n.startsWith(`TempCode proof ${STAMP}`)) rmSync(join('/srv/agents/work/Work/Purdue', n), { force: true })
+    } catch (err) {
+      log(`could not delete ${n}: ${String(err).slice(0, 200)}`)
+    }
   }
   rmSync(scratch, { recursive: true, force: true })
   log(`window's folder: ${root}`)
