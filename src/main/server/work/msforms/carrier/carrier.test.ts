@@ -6,7 +6,8 @@ import { FakeForms, type FakeFormState } from './fakePage'
 import { guardStep } from './guard'
 import { opsCarrier } from './ops'
 import { countOf, formOf, linkOf, settingsOf } from './read'
-import { authorize, CarrierRefused, CarrierStop, type CarrierOp } from './types'
+import { Page } from './steps'
+import { authorize, CarrierRefused, CarrierStop, makePayload, pullPayload, readPayload, settingsPayload, type CarrierOp, type FormRead } from './types'
 
 /**
  * The carrier on a fake Forms page in the trial's names: what a read says,
@@ -149,8 +150,20 @@ const form = (over: Partial<FakeFormState> = {}): FakeFormState => ({
   ...over
 })
 
-function rig(page = new FakeForms(), row: { workspaceId: string; rev: number } | null = { workspaceId: WS, rev: 3 }) {
-  const carrier = opsCarrier({ computer: page, host: 'env_box', exclusive: (fn) => fn(), workspaceOf: () => row, patience: { mount: 0, made: 0 } })
+const FOLDER_URL = 'https://purdue0.sharepoint.com/sites/RecWell/Shared%20Documents/Forms/AllItems.aspx?id=x'
+const PULL = { siteUrl: 'https://purdue0.sharepoint.com/sites/RecWell', folderServerPath: '/sites/RecWell/Shared Documents/Esports', uniqueId: 'fce429aa-7efc-4bac-93c5-6219e85183f4', name: 'TempCode proof survey.xlsx' }
+type Row = { workspaceId: string; rev: number; pull?: typeof PULL | null }
+
+function rig(page = new FakeForms(), row: Row | null = { workspaceId: WS, rev: 3, pull: PULL }) {
+  const carrier = opsCarrier({
+    computer: page,
+    host: 'env_box',
+    exclusive: (fn) => fn(),
+    rowOf: () => (row ? { pull: null, ...row } : null),
+    // the host's own page for the folder: only the job's own library folder has one
+    folderOf: (workspaceId, folder) => (workspaceId === WS && folder.libraryId === 'lib' && folder.path === 'Esports' ? { url: FOLDER_URL } : null),
+    patience: { mount: 0, made: 0 }
+  })
   const auth = (op: CarrierOp, payload: unknown, o: { formId?: string; rev?: number; by?: 'owner' | 'pillar' } = {}) =>
     authorize({ host: 'env_box', workspaceId: WS, target: { formId: o.formId ?? 'FakeFormId00000000000001' }, op, rev: o.rev ?? 3, by: o.by ?? 'owner', payload })
   return { page, carrier, auth }
@@ -217,8 +230,8 @@ describe('the operations', () => {
   it("the make's first step is Accept responses off, and a failure there keeps the form, said as taking answers", async () => {
     const { page, carrier } = rig()
     const makeAuth = (payload: unknown) => authorize({ host: 'env_box', workspaceId: WS, target: { folder: { libraryId: 'lib', path: 'Esports' } }, op: 'make', rev: 0, by: 'owner', payload })
-    const ask = { workspaceId: WS, folderUrl: 'https://purdue0.sharepoint.com/sites/RecWell/Shared%20Documents/Forms/AllItems.aspx?id=x', title: 'TempCode proof make', description: '', questions: [{ title: 'Name', type: 'text' as const, required: true }], settings }
-    const payload = { title: ask.title, description: '', questions: ask.questions, settings, folder: { libraryId: 'lib', path: 'Esports' } }
+    const ask = { workspaceId: WS, folder: { libraryId: 'lib', path: 'Esports' }, folderUrl: FOLDER_URL, title: 'TempCode proof make', description: '', questions: [{ title: 'Name', type: 'text' as const, required: true }], settings }
+    const payload = makePayload(ask)
     const { read } = await carrier.make(makeAuth(payload), ask)
     expect(read).toMatchObject({ title: 'TempCode proof make', settings: { accepting: false, orgOnly: true, recordName: true, onePerPerson: true } })
     expect(read.questions).toEqual([{ title: 'Name', type: 'text', required: true }])
@@ -259,7 +272,7 @@ describe('the operations', () => {
   it('collects: Accept responses on, the link read from the dialog, nothing sent or copied', async () => {
     const { page, carrier } = rig()
     page.add(form())
-    const auth = authorize({ host: 'env_box', workspaceId: WS, target: { formId: 'FakeFormId00000000000001' }, op: 'collect', rev: 3, by: 'act', payload: {} })
+    const auth = authorize({ host: 'env_box', workspaceId: WS, target: { formId: 'FakeFormId00000000000001' }, op: 'collect', rev: 3, by: 'act', payload: settingsPayload(settings) })
     const { read, link } = await carrier.collect(auth, 'FakeFormId00000000000001', settings)
     expect(link).toBe('https://forms.cloud.microsoft/Pages/ResponsePage.aspx?id=FakeFormId00000000000001')
     expect(read.settings.accepting).toBe(true)
@@ -294,3 +307,113 @@ describe('the review’s carrier fixes', () => {
     expect(page.forms.get('FakeFormId00000000000001')!.settings.endDate).toBe('12/1/2026')
   })
 })
+
+describe('each grant binds the call that runs (review 15)', () => {
+  const ID = 'FakeFormId00000000000001'
+  const other: MsFormSettings = { ...settings, orgOnly: false }
+
+  it('a read takes a read grant of its own, at the row\'s rev, and nothing else', async () => {
+    const { page, carrier, auth } = rig()
+    page.add(form())
+    await expect(carrier.read(auth('collect', settingsPayload(settings)), ID)).rejects.toThrow('authorized to collect, not read')
+    await expect(carrier.read(auth('settings', { read: ID }, { by: 'pillar' }), ID)).rejects.toThrow(CarrierRefused)
+    await expect(carrier.read(auth('read', readPayload(ID), { rev: 2 }), ID)).rejects.toThrow('the form changed since it was authorized')
+    await expect(carrier.read(auth('read', readPayload('FakeFormId00000000000002')), ID)).rejects.toThrow('not what was authorized')
+    expect(page.log).toEqual([])
+    const read: FormRead = await carrier.read(auth('read', readPayload(ID), { by: 'pillar' }), ID)
+    expect(read.formId).toBe(ID)
+  })
+
+  it('collect and audience run only the settings their grant names, at the row\'s rev', async () => {
+    const { page, carrier, auth } = rig()
+    page.add(form())
+    await expect(carrier.collect(auth('collect', settingsPayload(other)), ID, settings)).rejects.toThrow('not what was authorized')
+    await expect(carrier.collect(auth('collect', settingsPayload(settings), { rev: 2 }), ID, settings)).rejects.toThrow('changed since')
+    await expect(carrier.audience(auth('audience', settingsPayload(settings)), ID, other)).rejects.toThrow('not what was authorized')
+    await expect(carrier.audience(auth('collect', settingsPayload(other)), ID, other)).rejects.toThrow('not audience')
+    expect(page.log).toEqual([])
+    await carrier.audience(auth('audience', settingsPayload(other)), ID, other)
+    expect(page.forms.get(ID)!.settings.orgOnly).toBe(false)
+  })
+
+  it('a make opens only the page the host makes for the folder it names, and its grant binds that page', async () => {
+    const page = new FakeForms()
+    const { carrier } = rig(page)
+    const ask = { workspaceId: WS, folder: { libraryId: 'lib', path: 'Esports' }, folderUrl: FOLDER_URL, title: 'TempCode proof make', description: '', questions: [], settings }
+    const grant = (payload: unknown, folder = ask.folder) => authorize({ host: 'env_box', workspaceId: WS, target: { folder }, op: 'make', rev: 0, by: 'owner', payload })
+    // another folder than the grant names, a page the host did not make, a grant without the page, another job's folder
+    await expect(carrier.make(grant(makePayload(ask), { libraryId: 'lib', path: 'Other' }), ask)).rejects.toThrow('another form')
+    const elsewhere = { ...ask, folderUrl: 'https://evil.sharepoint.com/sites/X/Shared%20Documents/Forms/AllItems.aspx' }
+    await expect(carrier.make(grant(makePayload(elsewhere)), elsewhere)).rejects.toThrow(CarrierRefused)
+    const { folderUrl: _url, ...noUrl } = makePayload(ask)
+    await expect(carrier.make(grant(noUrl), ask)).rejects.toThrow('not what was authorized')
+    const otherJob = { ...ask, workspaceId: 'w2' }
+    await expect(carrier.make(authorize({ host: 'env_box', workspaceId: 'w2', target: { folder: ask.folder }, op: 'make', rev: 0, by: 'owner', payload: makePayload(otherJob) }), otherJob)).rejects.toThrow(CarrierRefused)
+    expect(page.log).toEqual([])
+    await carrier.make(grant(makePayload(ask)), ask)
+    expect(page.log[0]).toBe(`open ${FOLDER_URL}`)
+  })
+
+  it("a pull binds the workbook's own id and name, as the form's row names them", async () => {
+    const { page, carrier, auth } = rig()
+    page.add(form({ count: 1 }))
+    const ask = { ...PULL, lastModified: null }
+    // a grant made without the workbook's id and name, and a call for another workbook than the row's
+    await expect(carrier.pull(auth('pull', { formId: ID, siteUrl: PULL.siteUrl, folder: PULL.folderServerPath }), ID, ask)).rejects.toThrow('not what was authorized')
+    const another = { ...ask, uniqueId: '00000000-0000-0000-0000-000000000000' }
+    await expect(carrier.pull(auth('pull', pullPayload(ID, another)), ID, another)).rejects.toThrow(CarrierRefused)
+    const renamed = { ...ask, name: 'Other.xlsx' }
+    await expect(carrier.pull(auth('pull', pullPayload(ID, renamed)), ID, renamed)).rejects.toThrow(CarrierRefused)
+    expect(page.log).toEqual([])
+  })
+})
+
+describe('the page an operation drives is the one its open made (review 16)', () => {
+  const ID = 'FakeFormId00000000000001'
+  const stub = (addresses: string[]) => {
+    let at = 0
+    return {
+      read: async () => screen(`[1] window "Form"\n  [2] input "Address and search bar" = "${addresses[Math.min(at++, addresses.length - 1)]}"\n  [3] button "Settings"`),
+      act: async () => ({ ok: true }),
+      wait: async () => undefined
+    } as never
+  }
+
+  it('stops at a read that shows another form, or no form id at all', async () => {
+    const builder = (id: string) => `https://forms.cloud.microsoft/Pages/DesignPageV2.aspx?subpage=design&id=${id}`
+    await expect(new Page(stub([builder(ID)]), 't:A', 'write', ID).read()).resolves.toBeTruthy()
+    await expect(new Page(stub([builder('FakeFormId00000000000002')]), 't:A', 'write', ID).read()).rejects.toThrow('another form')
+    await expect(new Page(stub(['https://forms.cloud.microsoft/Pages/DesignPageV2.aspx']), 't:A', 'write', ID).read()).rejects.toThrow('another form')
+    // a page that moved to another form between two steps stops before the second
+    const moving = new Page(stub([builder(ID), builder('FakeFormId00000000000002')]), 't:A', 'write', ID)
+    await moving.read()
+    await expect(moving.act((x) => [click(x, 3)], 'Settings')).rejects.toThrow('another form')
+  })
+
+  it("a make takes its form only from the page Forms survey opened from the folder's own page, never another new Forms page", async () => {
+    const page = new FakeForms()
+    // another Forms page opens at the same moment, from another page (a thread's SharePoint tab), after the make's own
+    page.stray = true
+    const { carrier } = rig(page)
+    const ask = { workspaceId: WS, folder: { libraryId: 'lib', path: 'Esports' }, folderUrl: FOLDER_URL, title: 'TempCode proof make', description: '', questions: [], settings }
+    const { read } = await carrier.make(authorize({ host: 'env_box', workspaceId: WS, target: { folder: ask.folder }, op: 'make', rev: 0, by: 'owner', payload: makePayload(ask) }), ask)
+    expect(read.formId).toBe('FakeFormId00000000000001')
+    expect(page.forms.get(page.strayId!)!.title).toBe('Untitled form')
+    expect(page.forms.get(page.strayId!)!.settings.accepting).toBe(true)
+  })
+
+  it('a make whose new page names no opener takes no form', async () => {
+    const page = new FakeForms()
+    page.noOpener = true
+    const { carrier } = rig(page)
+    const ask = { workspaceId: WS, folder: { libraryId: 'lib', path: 'Esports' }, folderUrl: FOLDER_URL, title: 'TempCode proof make', description: '', questions: [], settings }
+    const err = await carrier.make(authorize({ host: 'env_box', workspaceId: WS, target: { folder: ask.folder }, op: 'make', rev: 0, by: 'owner', payload: makePayload(ask) }), ask).catch((e) => e)
+    expect(err).toBeInstanceOf(CarrierStop)
+    expect(err.message).toContain('did not show the new form')
+  })
+})
+
+const click = (s: ReturnType<typeof screen>, index: number): ComputerAction => {
+  void s
+  return { action: 'left_click', element: index } as ComputerAction
+}

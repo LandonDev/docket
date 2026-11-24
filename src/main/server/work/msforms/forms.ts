@@ -4,7 +4,7 @@ import type { HeldItem } from '@shared/work/acts'
 import type { Principal } from '@shared/work/ids'
 import { applyChange, changeWords, diffQuestions, isOther, questionWords, respondOf, settingsWords, type MsAnyQuestion, type MsChange, type MsFormCheck, type MsFormSettings } from '@shared/work/msforms'
 import type { Caller, WorkCtx } from '../modules'
-import { authorize, CarrierRefused, digestOf, CarrierStop, msCarrier, NO_CARRIER, type CarrierBy, type CarrierOp, type FormRead, type MsCarrier } from './carrier/types'
+import { authorize, CarrierRefused, digestOf, CarrierStop, makePayload, msCarrier, NO_CARRIER, type CarrierBy, type CarrierOp, type FormRead, type MsCarrier } from './carrier/types'
 import { folderOf, folderPageOf, libraryAt } from './place'
 import { formReach, formsReached, jobOf, librariesFor, MsformsError, type Reached } from './reach'
 import { MsformsStore, type MsFormRow } from './store'
@@ -172,14 +172,15 @@ async function makeOnce(ctx: MsCtx, by: Caller, ask: MakeAsked, grant: { by: 'ow
   const folderUrl = folderPageOf(folder, library.web)
   if (!folderUrl) throw new MsformsError('Microsoft forms are made in a Teams or OneDrive folder this computer reaches.')
   const settings = makeSettings(ask.settings)
-  const payload = { title: ask.title, description: ask.description ?? '', questions: ask.questions ?? [], settings, folder: { libraryId: folder.libraryId, path: folder.path } }
-  const auth = authorize({ host: ctx.host, workspaceId: workspace.id, target: { folder: { libraryId: folder.libraryId, path: folder.path } }, op: 'make', rev: 0, by: grant.by, payload })
+  const made = { workspaceId: workspace.id, folder: { libraryId: folder.libraryId, path: folder.path }, folderUrl, title: ask.title, description: ask.description ?? '', questions: ask.questions ?? [], settings }
+  // the grant names the folder and the page that is opened for it: the carrier makes that page again and opens only it
+  const auth = authorize({ host: ctx.host, workspaceId: workspace.id, target: { folder: made.folder }, op: 'make', rev: 0, by: grant.by, payload: makePayload(made) })
   const store = new MsformsStore(ctx.db)
   const keep = (formId: string): MsFormRow =>
     store.get(workspace.id, formId) ??
     store.create({ workspaceId: workspace.id, formId, tenant: folder.tenant, sector: workspace.sector, title: ask.title, folder: { libraryId: folder.libraryId, path: folder.path, siteUrl: folder.siteUrl, label: folder.label }, madeBy: grant.madeBy })
   try {
-    const { read } = await carrier.make(auth, { workspaceId: workspace.id, folderUrl, title: ask.title, description: ask.description ?? '', questions: ask.questions ?? [], settings, ...(stage ? { stage } : {}) })
+    const { read } = await carrier.make(auth, { ...made, ...(stage ? { stage } : {}) })
     const row = keep(read.formId)
     // A draft only once a fresh read shows Accept responses off.
     return announce(ctx, storeRead(ctx, row, read, { by: grant.madeBy, state: 'draft', stopped: read.settings.accepting ? MAY_TAKE_ANSWERS : null }))

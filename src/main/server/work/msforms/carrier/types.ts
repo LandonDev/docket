@@ -10,18 +10,21 @@ import type { MsAnyQuestion, MsChange, MsFormSettings, MsQuestion } from '@share
  * and the form's `rev`. Nothing a model writes reaches a click.
  */
 
-export const CARRIER_OPS = ['make', 'write', 'settings', 'collect', 'audience', 'close', 'count', 'pull'] as const
+export const CARRIER_OPS = ['make', 'read', 'write', 'settings', 'collect', 'audience', 'close', 'count', 'pull'] as const
 export type CarrierOp = (typeof CARRIER_OPS)[number]
 
 /** Who granted the run: his press through the owner RPC, a claimed held act's execute, the pillar under "Agent writes" on a draft, or the poller. */
 export type CarrierBy = 'owner' | 'act' | 'pillar' | 'poller'
 
-/** Which operations each grantor may authorize. The pillar writes only a draft's questions and settings, sets a closing end date, and closes (never reopens); the poller only reads. */
+/**
+ * Which operations each grantor may authorize. The pillar writes only a draft's questions and settings, sets a closing
+ * end date, and closes (never reopens); the poller only reads. `read` changes nothing: a read-only grant of its own.
+ */
 export const OPS_BY: Record<CarrierBy, readonly CarrierOp[]> = {
-  owner: ['make', 'write', 'settings', 'collect', 'audience', 'close', 'count', 'pull'],
-  act: ['make', 'write', 'settings', 'collect', 'audience', 'close'],
-  pillar: ['write', 'settings', 'close'],
-  poller: ['count', 'pull']
+  owner: ['make', 'read', 'write', 'settings', 'collect', 'audience', 'close', 'count', 'pull'],
+  act: ['make', 'read', 'write', 'settings', 'collect', 'audience', 'close'],
+  pillar: ['read', 'write', 'settings', 'close'],
+  poller: ['read', 'count', 'pull']
 }
 
 export type CarrierTarget = { formId: string } | { folder: { libraryId: string; path: string } }
@@ -51,6 +54,23 @@ export function stable(value: unknown): string {
 export const digestOf = (payload: unknown): string => createHash('sha256').update(stable(payload)).digest('hex')
 
 export class CarrierRefused extends Error {}
+
+/**
+ * The payload each operation's grant binds, made by the grantor and again by the carrier from the call it runs: what
+ * runs is what was granted. A read binds its form alone; a pull its form, the folder the workbook must be in and the
+ * workbook's own id and name; collect and audience the settings they set.
+ */
+export const readPayload = (formId: string): { formId: string } => ({ formId })
+export const pullPayload = (formId: string, ask: Pick<PullAsk, 'siteUrl' | 'folderServerPath' | 'uniqueId' | 'name'>) => ({ formId, siteUrl: ask.siteUrl, folder: ask.folderServerPath, uniqueId: ask.uniqueId, name: ask.name })
+export const settingsPayload = (settings: MsFormSettings): { settings: MsFormSettings } => ({ settings })
+export const makePayload = (ask: Pick<MakeAsk, 'title' | 'description' | 'questions' | 'settings' | 'folder' | 'folderUrl'>) => ({
+  title: ask.title,
+  description: ask.description,
+  questions: ask.questions,
+  settings: ask.settings,
+  folder: { libraryId: ask.folder.libraryId, path: ask.folder.path },
+  folderUrl: ask.folderUrl
+})
 
 /** Makes an authorization; refuses an operation its grantor may not grant. */
 export function authorize(o: Omit<CarrierAuth, 'digest'> & { payload: unknown }): CarrierAuth {
@@ -120,7 +140,9 @@ export class CarrierBusy extends Error {}
 export interface MakeAsk {
   /** the job the form is made for: the authorization must name it */
   workspaceId: string
-  /** the folder's SharePoint page (the library's web address and the folder) */
+  /** the folder, by its library and its path there: the authorization's target */
+  folder: { libraryId: string; path: string }
+  /** the folder's SharePoint page (the library's web address and the folder); the carrier makes its own and opens only that */
   folderUrl: string
   title: string
   description: string

@@ -385,7 +385,8 @@ export interface CarrierComputer {
   end(): Promise<void>
   /** Every page by window id with its address, a page closed by id, a request from inside a page to its own origin, and what the browser stored for some origins cleared (service.ts `carrier*`). */
   /** `target` is Chromium's own id for the page: it stays the page's when the service that numbers windows starts again */
-  pages(): Promise<{ window: number; url: string; target: string }[]>
+  /** each page with Chromium's target id and, for a popup, the target that opened it */
+  pages(): Promise<{ window: number; url: string; target: string; opener?: string }[]>
   close(window: number): Promise<void>
   fetch(window: number, url: string, o?: { bytes?: boolean; method?: 'GET' | 'POST'; headers?: Record<string, string> }): Promise<{ status: number; json?: unknown; bytes?: Uint8Array }>
   clear(origins: readonly string[]): Promise<void>

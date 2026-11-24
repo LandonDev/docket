@@ -36,6 +36,13 @@ export class FakeForms implements FormsComputer {
   readonly log: string[] = []
   /** pages by window id: a builder of a form, or a folder */
   private pages = new Map<string, { kind: 'builder'; formId: string; results?: boolean } | { kind: 'folder'; menu: boolean } | { kind: 'site'; url: string }>()
+  /** the page each popup was opened from, as Chromium's openerId says it */
+  private openers = new Map<string, string>()
+  /** another Forms page opens at the same moment as a make's, from some other page, after the make's own */
+  stray = false
+  strayId: string | null = null
+  /** the make's new page reports no opener (a browser that does not say one) */
+  noOpener = false
   private ui = new Map<string, { panel: boolean; dialog: boolean; adding: boolean; editing: Editing | null; titleEdit: boolean }>()
   private hits = new Map<number, Hit>()
   private render = 0
@@ -71,7 +78,11 @@ export class FakeForms implements FormsComputer {
     return id
   }
   async windows() {
-    return [...this.pages.entries()].map(([id, p]) => ({ id, url: p.kind === 'builder' ? builderOf(p.formId) : p.kind === 'site' ? p.url : 'https://purdue0.sharepoint.com/sites/RecWell/Shared%20Documents/Forms/AllItems.aspx' }))
+    return [...this.pages.entries()].map(([id, p]) => ({
+      id,
+      url: p.kind === 'builder' ? builderOf(p.formId) : p.kind === 'site' ? p.url : 'https://purdue0.sharepoint.com/sites/RecWell/Shared%20Documents/Forms/AllItems.aspx',
+      ...(this.openers.has(id) ? { opener: this.openers.get(id)! } : {})
+    }))
   }
   async close(window: string): Promise<void> {
     this.pages.delete(window)
@@ -123,7 +134,17 @@ export class FakeForms implements FormsComputer {
             this.add({ formId, title: this.welcome ? '' : 'Untitled form', description: '', questions: [], settings: { accepting: true, orgOnly: true, recordName: true, onePerPerson: false }, count: 0 })
             const id = `#${this.nextWindow++}`
             this.pages.set(id, { kind: 'builder', formId })
+            if (!this.noOpener) this.openers.set(id, window)
             this.ui.set(id, { panel: false, dialog: false, adding: false, editing: null, titleEdit: false })
+            if (this.stray) {
+              const other = `FakeFormId${String(++this.made).padStart(14, '0')}`
+              this.add({ formId: other, title: 'Untitled form', description: '', questions: [], settings: { accepting: true, orgOnly: true, recordName: true, onePerPerson: false }, count: 0 })
+              const sid = `#${this.nextWindow++}`
+              this.pages.set(sid, { kind: 'builder', formId: other })
+              this.openers.set(sid, '#999')
+              this.ui.set(sid, { panel: false, dialog: false, adding: false, editing: null, titleEdit: false })
+              this.strayId = other
+            }
           }
         })
       }

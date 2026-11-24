@@ -1,6 +1,7 @@
 import type { Screen, ScreenElement } from '@shared/computer/outward'
 import type { ComputerAction } from '@shared/computer/protocol'
 import { guardSteps } from './guard'
+import { formIdOf } from '@shared/work/msforms'
 import { addressOf, signInOf } from './read'
 import { CarrierSignIn, CarrierStop, type CarrierOp, type FormRead } from './types'
 
@@ -8,7 +9,8 @@ import { CarrierSignIn, CarrierStop, type CarrierOp, type FormRead } from './typ
  * The carrier's hands on one page, under the trial's rules
  * (docs/agents/work-msforms.md "The trial's rules"):
  *  - a window is followed by its id, never its title (a form's window title
- *    follows the form's title);
+ *    follows the form's title), and the id is the page the open made;
+ *  - a form's page shows that form's id in its address at every read;
  *  - a step's elements come from a read made just before it, and an index is
  *    never reused across reads;
  *  - a click that mounts a field is followed by a read before typing into it;
@@ -19,14 +21,14 @@ import { CarrierSignIn, CarrierStop, type CarrierOp, type FormRead } from './typ
 
 /** What the carrier needs of the box browser: windows by id, a read, steps read against a screen. */
 export interface FormsComputer {
-  /** opens `url` in a window of its own and answers that window's id */
+  /** opens `url` in a window of its own and answers that window's id: the page the open made, for every later step */
   open(url: string): Promise<string>
   /** a fresh read of the whole window, with the address bar */
   read(window: string): Promise<Screen>
   /** runs steps read against `screen`; answers false (with words) when the page did not take them */
   act(window: string, screen: Screen, steps: readonly ComputerAction[]): Promise<{ ok: boolean; words?: string }>
-  /** the windows open now, with their addresses */
-  windows(): Promise<{ id: string; url: string }[]>
+  /** the windows open now, with their addresses and, for a page another page opened, that page's id */
+  windows(): Promise<{ id: string; url: string; opener?: string }[]>
   close(window: string): Promise<void>
   /** waits; a test's computer answers at once */
   wait(ms: number): Promise<void>
@@ -74,10 +76,16 @@ export class Page {
     readonly formId: string | null = null
   ) {}
 
-  /** A fresh read. Microsoft's sign-in stops the operation and says so. */
+  /**
+   * A fresh read. Microsoft's sign-in stops the operation and says so. A page of a known form must show that form's id
+   * in its address at every read, before any step is taken on it: another form, or none, stops the operation (review 16).
+   */
   async read(): Promise<Screen> {
     const screen = await this.computer.read(this.window)
-    if (signInOf(screen, addressOf(screen))) throw new CarrierSignIn()
+    const address = addressOf(screen)
+    if (signInOf(screen, address)) throw new CarrierSignIn()
+    this.screen = null
+    if (this.formId !== null && (address ? formIdOf(address) : null) !== this.formId) this.stop('Forms showed another form than the one asked')
     this.screen = screen
     return screen
   }

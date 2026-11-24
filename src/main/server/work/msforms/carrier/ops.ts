@@ -4,7 +4,7 @@ import { builderOf, diffQuestions, formIdOf, isFormsUrl, isOther, MSFORM_NEW_SET
 import { ACCEPT_RESPONSES, countOf, formOf, formTitleButton, linkOf, questionInEdit, questionsOf, savingOf, settingsOf, SETTINGS_CLOSE, titleOf } from './read'
 import { click, first, isOn, one, Page, tab, typeInto, type FormsComputer } from './steps'
 import { RESPONSES_VIEW_MS } from './pull'
-import { CarrierRefused, CarrierStop, checkAuth, type CarrierAuth, type CarrierOp, type FormRead, type MakeAsk, type MsCarrier, type PullAsk } from './types'
+import { CarrierRefused, CarrierStop, checkAuth, makePayload, pullPayload, readPayload, settingsPayload, type CarrierAuth, type CarrierOp, type FormRead, type MakeAsk, type MsCarrier, type PullAsk } from './types'
 
 /**
  * The carrier's operations on the box browser (docs/agents/work-msforms.md
@@ -22,13 +22,26 @@ export const FORMS_SURVEY = /^(?:xlsx\s+)?Forms survey$/i
 const TOGGLE = ['checkbox', 'switch']
 const TYPE_BUTTON: Record<MsQuestion['type'], RegExp> = { choice: /^Choice$/, text: /^Text$/, rating: /^Rating$/, date: /^Date$/, section: /^Section$/ }
 
+/**
+ * What the host's own rows say a form is, read inside the queue (review 15): the job and rev a grant must name, and
+ * where its answers workbook must be. Never taken from the grant or the call.
+ */
+export interface RowFacts {
+  workspaceId: string
+  rev: number
+  /** the folder the workbook must sit in and the workbook as the row names it; null where its library is not reached */
+  pull: { siteUrl: string; folderServerPath: string; uniqueId: string | null; name: string } | null
+}
+
 export interface OpsDeps {
   computer: FormsComputer
   host: string
   /** runs one operation with the box browser held: the queue, `useBoxBrowser`, his driving (session.ts) */
   exclusive<T>(fn: () => Promise<T>): Promise<T>
-  /** the workspace an authorization must name for a form (`formId`) or a folder page (`folderUrl`), from the host's own rows */
-  workspaceOf(at: { formId: string }): { workspaceId: string; rev: number } | null
+  /** the form's row as it stands, one row a form id; null when this host keeps none (or two) */
+  rowOf(formId: string): RowFacts | null
+  /** the folder's SharePoint page, made by the host from the library it reaches, for a job of this host; null when there is none */
+  folderOf(workspaceId: string, folder: { libraryId: string; path: string }): { url: string } | null
   /** what the page needs before its controls show (a test's page answers at once) */
   patience?: { mount?: number; made?: number }
 }
@@ -43,22 +56,34 @@ export function opsCarrier(deps: OpsDeps): MsCarrier {
   const mount = deps.patience?.mount ?? 10_000
   const madeWait = deps.patience?.made ?? 30_000
 
-  /** The authorization for a form, checked against the host's own rows. */
-  const authorized = (auth: CarrierAuth, op: CarrierOp, formId: string, payload: unknown): void => {
-    // the job and the rev expected are the form's row as it stands now, read inside the queue (review 15), never the grant's own
-    const row = deps.workspaceOf({ formId })
-    if (!row) throw new CarrierRefused('The carrier refused: that form is not one this computer keeps. Nothing was done in Forms.')
+  const refuse = (why: string): never => {
+    throw new CarrierRefused(`The carrier refused: ${why}. Nothing was done in Forms.`)
+  }
+
+  /**
+   * The authorization for a form, checked against the host's own rows: the job and the rev expected are the form's row
+   * as it stands now (review 15), never the grant's own; the payload is the call that runs.
+   */
+  const authorized = (auth: CarrierAuth, op: CarrierOp, formId: string, payload: unknown): RowFacts => {
+    const row = deps.rowOf(formId)
+    if (!row) return refuse('that form is not one this computer keeps')
     checkAuth(auth, { host: deps.host, workspaceId: row.workspaceId, target: { formId }, op, payload, rev: row.rev })
+    return row
+  }
+  /** Runs `fn` in the queue with the grant checked there, against the row as it stands in its turn. */
+  const checked = <T>(auth: CarrierAuth, op: CarrierOp, formId: string, payload: unknown, fn: (row: RowFacts) => Promise<T>): Promise<T> => {
+    // checked once before waiting (a refusal says so at once), and again in its turn: a row that moved meanwhile refuses
+    authorized(auth, op, formId, payload)
+    return deps.exclusive(() => fn(authorized(auth, op, formId, payload)))
   }
 
   /** Opens the form's builder in a window of its own, read once its title shows. */
   const openBuilder = async (formId: string, op: CarrierOp, suffix = ''): Promise<Page> => {
     const window = await computer.open(`${builderOf(formId)}${suffix}`)
+    // Every read of the page checks its live form id against `formId` (steps.ts `Page.read`): a page with none is refused too.
     const page = new Page(computer, window, op, formId)
-    const { screen, got } = await page.until((s) => titleOf(s) !== '' || countOf(s) !== null, mount)
+    const { got } = await page.until((s) => titleOf(s) !== '' || countOf(s) !== null, mount)
     if (!got) page.stop('the form did not open in Forms')
-    const shown = formOf(screen).formId
-    if (shown && shown !== formId) page.stop('Forms showed another form than the one asked')
     return page
   }
 
@@ -306,21 +331,29 @@ export function opsCarrier(deps: OpsDeps): MsCarrier {
 
   return {
     async read(auth, formId) {
-      if (!('formId' in auth.target) || auth.target.formId !== formId) throw new CarrierRefused('The carrier refused: it was authorized for another form. Nothing was done in Forms.')
-      return deps.exclusive(async () => {
-        const page = await openBuilder(formId, auth.op)
-        return closing(page, () => finalRead(page, formId, ['make', 'settings', 'collect', 'audience', 'close'].includes(auth.op)))
+      // a read grant of its own: it presses only Settings open and closed, and changes nothing
+      return checked(auth, 'read', formId, readPayload(formId), async () => {
+        const page = await openBuilder(formId, 'read')
+        return closing(page, () => finalRead(page, formId))
       })
     },
 
     async make(auth, ask: MakeAsk) {
       const workspaceId = ask.workspaceId
-      if (!('folder' in auth.target)) throw new CarrierRefused('The carrier refused: a make names a folder. Nothing was done in Forms.')
-      checkAuth(auth, { host: deps.host, workspaceId, target: auth.target, op: 'make', payload: { title: ask.title, description: ask.description, questions: ask.questions, settings: ask.settings, folder: auth.target.folder }, rev: 0 })
+      // The folder's page is the host's own, from the library it reaches for this job: the call's address must be it,
+      // the grant must name it, and only it is opened.
+      const expected = (): string => {
+        const page = deps.folderOf(workspaceId, ask.folder)
+        if (!page) return refuse('that folder is not one this job may make a form in on this computer')
+        if (page.url !== ask.folderUrl) refuse("the folder's page is not the one this computer makes for it")
+        checkAuth(auth, { host: deps.host, workspaceId, target: { folder: ask.folder }, op: 'make', payload: makePayload({ ...ask, folderUrl: page.url }), rev: 0 })
+        return page.url
+      }
+      expected()
       return deps.exclusive(async () => {
         ask.stage?.('opening')
-        const before = new Set((await computer.windows()).map((w) => w.id))
-        const folderWindow = await computer.open(ask.folderUrl)
+        const folderUrl = expected()
+        const folderWindow = await computer.open(folderUrl)
         const folder = new Page(computer, folderWindow, 'make')
         let formId: string | null = null
         let window: string | null = null
@@ -337,20 +370,21 @@ export function opsCarrier(deps: OpsDeps): MsCarrier {
             const item = one(x, ITEM, FORMS_SURVEY)
             return item ? [click(item)] : null
           }, 'Forms survey')
-          // The new form opens in a window of its own; its id is in the address once Forms has made it.
+          // The new form opens in a window the folder's page opened (Chromium's opener), or in the folder's page itself;
+          // its id is in that page's address once Forms has made it. No other page is looked at: a Forms page another
+          // tab opened meanwhile is never taken for this job's form (review 16).
           for (let waited = 0; waited <= madeWait && !formId; waited += 1_000) {
-            for (const w of await computer.windows()) {
-              if (before.has(w.id) || w.id === folderWindow || !isFormsUrl(w.url)) continue
-              const id = formIdOf(w.url)
-              if (id) {
-                formId = id
-                window = w.id
-              }
-            }
-            if (!formId) await computer.wait(1_000)
+            const mine = (await computer.windows()).filter((w) => w.id === folderWindow || w.opener === folderWindow)
+            const made = mine.flatMap((w) => (isFormsUrl(w.url) && formIdOf(w.url) ? [{ id: formIdOf(w.url)!, window: w.id }] : []))
+            if (made.length > 1) folder.stop("the folder's page opened more than one form, so none was taken")
+            if (made.length === 1) {
+              formId = made[0]!.id
+              window = made[0]!.window
+            } else await computer.wait(1_000)
           }
         } finally {
-          await computer.close(folderWindow).catch(() => {})
+          // the folder's page may itself be the form's now: then it stays open for the form's steps
+          if (window !== folderWindow) await computer.close(folderWindow).catch(() => {})
         }
         if (!formId || !window) throw new CarrierStop('Forms did not show the new form in time. It may have made one in the folder: look in Forms before trying again.', null, null)
         const page = new Page(computer, window, 'make', formId)
@@ -412,8 +446,7 @@ export function opsCarrier(deps: OpsDeps): MsCarrier {
     },
 
     async write(auth, formId, changes, before) {
-      authorized(auth, 'write', formId, { changes, before })
-      return deps.exclusive(async () => {
+      return checked(auth, 'write', formId, { changes, before }, async () => {
         const page = await openBuilder(formId, 'write')
         return closing(page, async () => {
           // An agent writes only a form that takes no answers, read so inside this very run.
@@ -444,8 +477,7 @@ export function opsCarrier(deps: OpsDeps): MsCarrier {
     },
 
     async settings(auth, formId, patch) {
-      authorized(auth, 'settings', formId, patch)
-      return deps.exclusive(async () => {
+      return checked(auth, 'settings', formId, patch, async () => {
         const page = await openBuilder(formId, 'settings')
         return closing(page, async () => {
           const panel = await openSettings(page)
@@ -467,8 +499,7 @@ export function opsCarrier(deps: OpsDeps): MsCarrier {
     },
 
     async collect(auth, formId, settings) {
-      if (!('formId' in auth.target) || auth.target.formId !== formId || auth.op !== 'collect') throw new CarrierRefused('The carrier refused: it was not authorized to collect responses to this form. Nothing was done in Forms.')
-      return deps.exclusive(async () => {
+      return checked(auth, 'collect', formId, settingsPayload(settings), async () => {
         const page = await openBuilder(formId, 'collect')
         return closing(page, async () => {
           await openSettings(page)
@@ -495,8 +526,7 @@ export function opsCarrier(deps: OpsDeps): MsCarrier {
     },
 
     async audience(auth, formId, settings) {
-      if (!('formId' in auth.target) || auth.target.formId !== formId || auth.op !== 'audience') throw new CarrierRefused('The carrier refused: it was not authorized to change who can answer this form. Nothing was done in Forms.')
-      return deps.exclusive(async () => {
+      return checked(auth, 'audience', formId, settingsPayload(settings), async () => {
         const page = await openBuilder(formId, 'audience')
         return closing(page, async () => {
           await openSettings(page)
@@ -507,9 +537,8 @@ export function opsCarrier(deps: OpsDeps): MsCarrier {
     },
 
     async close(auth, formId, open) {
-      authorized(auth, 'close', formId, { open })
       if (open && auth.by === 'pillar') throw new CarrierRefused('The carrier refused: an agent\'s reopen waits for the owner\'s press. Nothing was done in Forms.')
-      return deps.exclusive(async () => {
+      return checked(auth, 'close', formId, { open }, async () => {
         const page = await openBuilder(formId, 'close')
         return closing(page, async () => {
           await openSettings(page)
@@ -520,9 +549,7 @@ export function opsCarrier(deps: OpsDeps): MsCarrier {
     },
 
     async count(auth, formId) {
-      if (auth.op !== 'count' && auth.op !== 'pull') throw new CarrierRefused('The carrier refused: it was not authorized to read answers. Nothing was done in Forms.')
-      authorized(auth, auth.op, formId, { formId })
-      return deps.exclusive(async () => {
+      return checked(auth, 'count', formId, readPayload(formId), async () => {
         const page = await openBuilder(formId, 'count', '&analysis=true')
         return closing(page, async () => {
           const { screen, got } = await page.until((x) => countOf(x) !== null, Math.max(mount, RESPONSES_VIEW_MS))
@@ -533,9 +560,15 @@ export function opsCarrier(deps: OpsDeps): MsCarrier {
     },
 
     async pull(auth, formId, ask: PullAsk) {
-      authorized(auth, 'pull', formId, { formId, siteUrl: ask.siteUrl, folder: ask.folderServerPath })
       const { pullWorkbook } = await import('./pull')
-      return deps.exclusive(() => pullWorkbook({ computer, mount, openResponses: () => openBuilder(formId, 'pull', '&analysis=true') }, formId, ask))
+      return checked(auth, 'pull', formId, pullPayload(formId, ask), (row) => {
+        // the folder and the workbook the call names must be the row's own, read now: a grant made for them is not enough
+        const want = row.pull
+        if (!want) return refuse('the folder that form was made in is not one this computer reaches now')
+        if (want.siteUrl !== ask.siteUrl || want.folderServerPath !== ask.folderServerPath) refuse("the workbook was asked of another folder than the form's own")
+        if (want.uniqueId !== ask.uniqueId || want.name !== ask.name) refuse("the workbook asked for is not the one the form's row names")
+        return pullWorkbook({ computer, mount, openResponses: () => openBuilder(formId, 'pull', '&analysis=true') }, formId, ask)
+      })
     }
   }
 }

@@ -116,6 +116,8 @@ const MAKE: Control[] = [
 /** What each operation may press. */
 export const ALLOWED: Record<CarrierOp, readonly Control[]> = {
   make: [...MAKE, ...SETTINGS_PANEL, ...ACCEPT_OFF, ...TITLE, ...QUESTIONS, ...NARROW, ...DATES],
+  // a read opens Settings to read it, and closes it: nothing else
+  read: SETTINGS_PANEL,
   write: [...TITLE, ...QUESTIONS, ...SETTINGS_PANEL],
   settings: [...SETTINGS_PANEL, ...ACCEPT_OFF, ...NARROW, ...DATES],
   collect: [...SETTINGS_PANEL, ...NARROW, ...WIDEN, ...DATES, ...ACCEPT_ON, ...COLLECT],

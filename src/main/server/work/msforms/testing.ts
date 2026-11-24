@@ -1,6 +1,6 @@
 import type { TeamsLibrary } from '@shared/contract-work-office'
 import { applyChange, MSFORM_NEW_SETTINGS, type MsAnyQuestion, type MsChange, type MsFormSettings } from '@shared/work/msforms'
-import { CarrierStop, checkAuth, type CarrierAuth, type CarrierOp, type FormRead, type MakeAsk, type MsCarrier, type PullAsk } from './carrier/types'
+import { CarrierStop, checkAuth, makePayload, pullPayload, readPayload, settingsPayload, type CarrierAuth, type CarrierOp, type FormRead, type MakeAsk, type MsCarrier, type PullAsk } from './carrier/types'
 
 /**
  * A carrier for tests (no browser): forms kept in memory as Forms would keep
@@ -58,6 +58,8 @@ export class FakeCarrier implements MsCarrier {
   /** a make waits on this once Forms is asked (a test holds it to ask again meanwhile) */
   makeGate: Promise<void> = Promise.resolve()
   async make(auth: CarrierAuth, ask: MakeAsk) {
+    // the grant names the folder and its page, as the real carrier checks them
+    checkAuth(auth, { host: this.host, workspaceId: ask.workspaceId, target: { folder: ask.folder }, op: 'make', payload: makePayload(ask), rev: 0 })
     this.calls.push({ op: 'make', formId: null, by: auth.by })
     ask.stage?.('opening')
     ask.stage?.('making')
@@ -79,8 +81,8 @@ export class FakeCarrier implements MsCarrier {
     return { read: this.readOf(f) }
   }
   async read(auth: CarrierAuth, formId: string) {
+    this.check(auth, 'read', formId, readPayload(formId))
     this.calls.push({ op: 'read', formId, by: auth.by })
-    if (!('formId' in auth.target) || auth.target.formId !== formId) throw new Error('read of another form')
     return this.readOf(this.form(formId))
   }
   async write(auth: CarrierAuth, formId: string, changes: readonly MsChange[], before: readonly MsAnyQuestion[]) {
@@ -107,6 +109,7 @@ export class FakeCarrier implements MsCarrier {
     return { read: this.readOf(f) }
   }
   async collect(auth: CarrierAuth, formId: string, settings: MsFormSettings) {
+    this.check(auth, 'collect', formId, settingsPayload(settings))
     this.calls.push({ op: 'collect', formId, by: auth.by })
     const f = this.form(formId)
     f.settings = { ...settings, accepting: true }
@@ -114,6 +117,7 @@ export class FakeCarrier implements MsCarrier {
     return { read: this.readOf(f, link), link }
   }
   async audience(auth: CarrierAuth, formId: string, settings: MsFormSettings) {
+    this.check(auth, 'audience', formId, settingsPayload(settings))
     this.calls.push({ op: 'audience', formId, by: auth.by })
     const f = this.form(formId)
     f.settings = { ...settings }
@@ -143,7 +147,7 @@ export class FakeCarrier implements MsCarrier {
   /** what each pull was asked */
   asks: PullAsk[] = []
   async pull(auth: CarrierAuth, formId: string, ask: PullAsk) {
-    this.check(auth, 'pull', formId, { formId, siteUrl: ask.siteUrl, folder: ask.folderServerPath })
+    this.check(auth, 'pull', formId, pullPayload(formId, ask))
     this.calls.push({ op: 'pull', formId, by: auth.by })
     this.asks.push(ask)
     if (this.pullThrows) throw this.pullThrows

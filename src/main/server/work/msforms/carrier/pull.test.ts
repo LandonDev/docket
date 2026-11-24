@@ -9,7 +9,9 @@ import { CarrierStop, type PullAsk } from './types'
 
 const DOC = '58e96313-70b2-4743-8a68-7cc1e71fb62d'
 const SITE = 'https://purdue0.sharepoint.com/sites/RecWell'
-const RESULTS = screenOfObservation('app "Chromium" · window "Forms" · 1280×800\n[1] group "1 responses"\n[2] button "Open results in Excel"\n[3] button "Open results in Excel"', { bundleId: 'org.chromium.Chromium', name: 'Chromium' })!
+/** the form the Responses view is of: every read of its page shows its id (steps.ts `Page.read`, review 16) */
+const FORM = 'FakeFormId00000000000001'
+const RESULTS = screenOfObservation(`app "Chromium" · window "Forms" · 1280×800\n[1] input "Address and search bar" = "https://forms.cloud.microsoft/Pages/DesignPageV2.aspx?subpage=design&id=${FORM}&analysis=true"\n[2] group "1 responses"\n[3] button "Open results in Excel"\n[4] button "Open results in Excel"`, { bundleId: 'org.chromium.Chromium', name: 'Chromium' })!
 
 function rig(o: { paths: string[]; excel?: string | null; uniqueId?: string | null }) {
   const windows: { id: string; url: string }[] = [{ id: '#1', url: 'https://forms.cloud.microsoft/Pages/DesignPageV2.aspx?analysis=true' }]
@@ -33,7 +35,7 @@ function rig(o: { paths: string[]; excel?: string | null; uniqueId?: string | nu
     }
   }
   const ask: PullAsk = { siteUrl: SITE, folderServerPath: '/sites/RecWell/Shared Documents/TempCode proof folder', uniqueId: o.uniqueId ?? null, name: 'TempCode proof make.xlsx', lastModified: null }
-  const run = () => pullWorkbook({ computer, mount: 0, openResponses: async () => new Page(computer, '#1', 'pull', 'F1'), timing: { still: 0, noMove: 0, every: 0 } }, 'F1', ask)
+  const run = () => pullWorkbook({ computer, mount: 0, openResponses: async () => new Page(computer, '#1', 'pull', FORM), timing: { still: 0, noMove: 0, every: 0 } }, FORM, ask)
   return { run }
 }
 

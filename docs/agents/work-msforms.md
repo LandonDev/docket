@@ -49,8 +49,8 @@ refused a step on a Forms page and a `computer_apps` open of one (computer-use.m
 Forms: the `msform_*` tools are the only way, and branching, file upload, Ranking, Likert, themes and quizzes are his
 to do in the page.
 
-- **Operations, not steps** (ops.ts): `make`, `write`, `settings`, `collect`, `audience`, `close`, `count`, `pull`,
-  each a fixed program run one at a time (wire.ts's queue) on a fresh carrier session ended after it.
+- **Operations, not steps** (ops.ts): `make`, `read`, `write`, `settings`, `collect`, `audience`, `close`, `count`,
+  `pull`, each a fixed program run one at a time (wire.ts's queue) on a fresh carrier session ended after it.
 - **Its pages are its own** (review 2; service.ts `CARRIER_TARGETS`): a carrier session's page is made blank and
   reserved before it loads anything, and every page opened from one (a popup, by Chromium's `openerId`, at any depth:
   `inheritCarrierTargets` on each page list) is that session's too, so Excel for the web's workbook tab and the
@@ -72,13 +72,38 @@ to do in the page.
 - **Each runs under an authorization** (types.ts `authorize`, `checkAuth`) bound to the host, workspace, form (or
   folder), operation, a digest of its payload and the form's `rev`, from a grantor allowed it (`OPS_BY`): his press
   (`owner`), a claimed held act's execute (`act`), the pillar under Agent writes on a draft, a closing end date and a
-  close (`pillar`, never a reopen), the poller (`count`, `pull`).
+  close (`pillar`, never a reopen), the poller (`read`, `count`, `pull`).
+- **The grant binds the call that runs** (review 15). The carrier checks it once before it waits and again in its turn
+  in the queue, against what it reads there itself (`OpsDeps.rowOf`, wire.ts `rowFactsOf`): the job and `rev` of the
+  form's row, one row a form id. Its payload is made again from the call (types.ts `readPayload`, `settingsPayload`,
+  `pullPayload`, `makePayload`), so what runs is what was granted:
+  - `read` has a read-only grant of its own (`{formId}`), pressing only Settings open and closed; a collect,
+    audience or settings grant does not read.
+  - `collect` and `audience` bind the settings they set; the held act makes each grant after its fresh read, for
+    exactly the settings it runs.
+  - `make` binds the folder (its library and path) and the folder's page it opens. The carrier makes that page again
+    from the library this host reaches for that Work job (`OpsDeps.folderOf`, wire.ts `folderPagesOf`), refuses a call
+    whose address differs, and opens only its own.
+  - `pull` binds the form, the site, the folder the workbook must be in, and the workbook's own id and name; the
+    carrier refuses a call whose folder or workbook is not the row's as it stands (`RowFacts.pull`).
+  - `write`, `settings`, `close` and `count` bind their payloads as before; an agent's reopen is refused.
 - **The guard** (guard.ts): per operation, the controls it may press by role, name and the names above them; `NEVER`
   (Send, Copy link, Shorten URL, the collaborate and duplicate links, Move to a group, Delete all responses, a summary
   link, Quick import, template cards, the creates other than Forms survey, Print, Delete); toggles that turn answers on
   or widen who can answer only where that is the act; keys Tab and Shift-Tab alone.
 - **The trial's rules** (steps.ts): windows by id; a fresh read before each step, an index never reused across reads;
   Tab to commit, never Escape or Return; Required set on every new question; at most one retry after a fresh read.
+- **The page it drives is the page its open made** (review 16):
+  - wire.ts names each page by Chromium's own target id (`t:<target>`), never the window number the service gives
+    it. Every read, act, close and fetch asks which number that target has now, and a page that is gone is driven no
+    more.
+  - A form's page (steps.ts `Page`, with its `formId`) must show that form's id in its address at every read: another
+    form, or none, stops the operation before its next step.
+  - The wire acts only on the read it checked: the screen an act is guarded against must be that page's last read, at
+    the same window number. An act uses it up, and another read since refuses before anything runs.
+  - A make takes its form only from a page the folder's page opened (Chromium's `openerId`, carried by
+    `carrierPages()` in browser/box/service.ts), or from the folder's page itself. Another new Forms page is never
+    taken, and two from the folder's page are refused.
 - **Reading a form** (read.ts `formOf`): the trial's names (a question at rest "N. Question title <title> <type>
   [Required to answer]", the Settings toggles, the Collect responses link, the Responses count). Tested on fixtures
   in the trial's words and on a fake Forms page (carrier/fakePage.ts) the real operations drive.
@@ -89,7 +114,7 @@ to do in the page.
 
 His New → Form in a Teams or OneDrive folder of Files (Page.tsx; `formKindsFor` in work/msforms/newForm.ts) offers
 "Microsoft Form" and "TempCode Form"; the Forms view's New asks for the place. `work.msforms.make` runs at once: the
-carrier opens the folder's library page, Create or upload → Forms survey, follows the new window to its id, turns
+carrier opens the folder's library page, Create or upload → Forms survey, follows the window that page opened to its id, turns
 **Accept responses off first** and reads it back, then names the form, adds what was asked and sets who can answer
 (org only, record names, one answer each by default). If the first step fails the row keeps the form as a draft that
 may take answers and says "The form was made but may take answers: no one has its link. Open it and turn off Accept

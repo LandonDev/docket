@@ -2,7 +2,7 @@ import { MsFormMakeSchema, MsFormPublishSchema, type MsFormMake, type MsFormPubl
 import type { Principal } from '@shared/work/ids'
 import type { ActCtx, ActKindDef, Caller } from '../modules'
 import { ActStale } from '../outbox/kinds'
-import { CarrierRefused, CarrierStop, msCarrier, type FormRead } from './carrier/types'
+import { CarrierRefused, CarrierStop, msCarrier, readPayload, settingsPayload, type FormRead } from './carrier/types'
 import { announce, authFor, basisOf, formWords, make, storeRead } from './forms'
 import { formReach, MsformsError } from './reach'
 import { MsformsStore } from './store'
@@ -38,11 +38,10 @@ async function carryPublish(act: ActCtx, p: MsFormPublish): Promise<{ summary: s
   if (row.rev !== p.rev) throw new ActStale(MOVED)
   if (p.act === 'collect' && row.state === 'collecting') throw new ActStale(`${row.title} is collecting responses already.`)
   if (p.act === 'reopen' && row.state !== 'closed') throw new ActStale(`${row.title} is not closed.`)
-  const op = p.act === 'audience' ? 'audience' : 'collect'
-  const auth = authFor(act, row, op, 'act', { act: p.act, settings: p.settings })
   let fresh: FormRead
   try {
-    fresh = await carrier.read(auth, row.formId)
+    // a read grant of its own: the press's collect or audience grant is made for exactly what runs, after it
+    fresh = await carrier.read(authFor(act, row, 'read', 'act', readPayload(row.formId)), row.formId)
   } catch (err) {
     if (err instanceof CarrierRefused || err instanceof CarrierStop) throw new ActStale(`${err.message} No one can answer yet.`)
     throw err
@@ -54,12 +53,13 @@ async function carryPublish(act: ActCtx, p: MsFormPublish): Promise<{ summary: s
   try {
     if (p.act === 'audience') {
       // Who can answer alone: Accept responses stays as it is.
-      const { read } = await carrier.audience(auth, row.formId, { ...p.settings, accepting: fresh.settings.accepting })
+      const settings = { ...p.settings, accepting: fresh.settings.accepting }
+      const { read } = await carrier.audience(authFor(act, row, 'audience', 'act', settingsPayload(settings)), row.formId, settings)
       const next = storeRead(act, store.update(row.workspaceId, row.formId, { held: null }), read, { by: principalOf(act), bump: true })
       announce(act, next)
       return { summary: `Changed who can answer ${row.title}`, ref: { workspaceId: row.workspaceId, formId: row.formId } }
     }
-    const { read, link } = await carrier.collect(auth, row.formId, p.settings)
+    const { read, link } = await carrier.collect(authFor(act, row, 'collect', 'act', settingsPayload(p.settings)), row.formId, p.settings)
     const next = storeRead(act, store.update(row.workspaceId, row.formId, { held: null }), read, { by: principalOf(act), bump: true, state: 'collecting' })
     announce(act, next)
     return { summary: `${p.act === 'reopen' ? 'Reopened' : 'Collecting responses to'} ${row.title}`, ref: { workspaceId: row.workspaceId, formId: row.formId, link } }

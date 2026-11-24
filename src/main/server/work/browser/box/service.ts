@@ -71,6 +71,8 @@ interface Page {
   window: number
   title: string
   url: string
+  /** the page that opened this one (Chromium's openerId), for a popup */
+  opener?: string
 }
 
 interface SessionState {
@@ -535,8 +537,8 @@ export class BoxComputerService {
    * Every page this carrier session may see, with its window id and address: its own, the popups they opened, and the
    * pages no carrier owns. The carrier follows the window a press opened by its id.
    */
-  async carrierPages(session?: string): Promise<{ window: number; url: string; target: string }[]> {
-    return (await this.pages()).filter((p) => carrierLets(p.targetId, session)).map((p) => ({ window: p.window, url: p.url, target: p.targetId }))
+  async carrierPages(session?: string): Promise<{ window: number; url: string; target: string; opener?: string }[]> {
+    return (await this.pages()).filter((p) => carrierLets(p.targetId, session)).map((p) => ({ window: p.window, url: p.url, target: p.targetId, ...(p.opener ? { opener: p.opener } : {}) }))
   }
 
   /**
@@ -667,7 +669,7 @@ export class BoxComputerService {
     for (const id of [...this.windows.keys()]) if (!pages.some((t) => t.targetId === id)) this.forgetPage(id)
     return pages.map((t) => {
       if (!this.windows.has(t.targetId)) this.windows.set(t.targetId, this.nextWindow++)
-      return { targetId: t.targetId, window: this.windows.get(t.targetId)!, title: t.title, url: t.url }
+      return { targetId: t.targetId, window: this.windows.get(t.targetId)!, title: t.title, url: t.url, ...(t.openerId ? { opener: t.openerId } : {}) }
     })
   }
 

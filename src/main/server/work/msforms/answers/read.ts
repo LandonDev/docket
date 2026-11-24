@@ -3,7 +3,7 @@ import type { MsFormResponses, MsFormWorkbook } from '@shared/contract-work-msfo
 import { ANSWERS_FRESH_MS, CHECK_MS, workbookNameOf } from '@shared/work/msforms'
 import { workspaceHere } from '../../files/policy'
 import type { Caller } from '../../modules'
-import { CarrierBusy, CarrierRefused, CarrierSignIn, CarrierStop, type CarrierBy, type PulledWorkbook } from '../carrier/types'
+import { CarrierBusy, CarrierRefused, CarrierSignIn, CarrierStop, pullPayload, readPayload, type CarrierBy, type PulledWorkbook } from '../carrier/types'
 import { emitNewAnswers } from '../events'
 import { announce, authFor, carrierOrRefuse, type MsCtx } from '../forms'
 import { folderServerPath } from '../place'
@@ -99,7 +99,7 @@ async function readOnce(ctx: MsCtx, at: Reached, o: { by: ReadBy; rows: boolean 
   const carrier = carrierOrRefuse()
   const kept = cachedAnswers(row.workspaceId, row.formId)
   try {
-    const { count } = await carrier.count(authFor(ctx, row, 'count', o.by, { formId: row.formId }), row.formId)
+    const { count } = await carrier.count(authFor(ctx, row, 'count', o.by, readPayload(row.formId)), row.formId)
     if (count === row.count && (kept || !o.rows)) {
       signIn = false
       if (!kept) return row
@@ -115,7 +115,8 @@ async function readOnce(ctx: MsCtx, at: Reached, o: { by: ReadBy; rows: boolean 
     const folderPath = folderServerPath(row.folder, at.library.web)
     if (!folderPath) throw new MsformsError(LIBRARY_GONE)
     const ask = { siteUrl: row.folder.siteUrl, folderServerPath: folderPath, uniqueId: row.workbook?.uniqueId ?? null, name: row.workbook?.name ?? workbookNameOf(row.title), lastModified: kept?.modified ?? null }
-    const got = await carrier.pull(authFor(ctx, row, 'pull', o.by, { formId: row.formId, siteUrl: ask.siteUrl, folder: folderPath }), row.formId, ask)
+    // the grant binds the workbook's own id and name too, as the carrier checks them against the row in its turn
+    const got = await carrier.pull(authFor(ctx, row, 'pull', o.by, pullPayload(row.formId, ask)), row.formId, ask)
     const now = Date.now()
     signIn = false
     if ('unchanged' in got) {

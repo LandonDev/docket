@@ -6,7 +6,7 @@ import { isOther, MSFORM_NEW_SETTINGS, questionWords, settingsWords, widens, typ
 import type { Caller, ToolCtx, WorkTool } from '../modules'
 import { heldReceipt } from '../outbox/words'
 import { responsesOf } from './answers/read'
-import { CarrierRefused, CarrierStop } from './carrier/types'
+import { CarrierRefused, CarrierStop, readPayload } from './carrier/types'
 import { shortens } from './carrier/ops'
 import { announce, authFor, carrierOrRefuse, formWords, holdPublish, setOpen, storeRead, suggestionOf, writeChanges } from './forms'
 import { folderOf, libraryAt } from './place'
@@ -89,7 +89,7 @@ async function agentChanges(ctx: ToolCtx, at: Reached, changes: MsChange[], reas
     const carrier = carrierOrRefuse()
     // "Agent writes" holds only while the form takes no answers: read so fresh.
     // A Settings read: Accept responses as the panel shows it, and missing reads as on.
-    const fresh = await carrier.read(authFor(ctx, row, 'settings', 'pillar', { eligible: row.formId }), row.formId)
+    const fresh = await carrier.read(authFor(ctx, row, 'read', 'pillar', readPayload(row.formId)), row.formId)
     if (!fresh.settings.accepting) {
       const next = await writeChanges(ctx, row, changes, 'pillar', by)
       announce(ctx, next)
@@ -155,7 +155,7 @@ export const msformsTools: WorkTool[] = [
       run(async () => {
         const at = reached(ctx, args.form)
         const carrier = carrierOrRefuse()
-        const read = await carrier.read(authFor(ctx, at.row, 'settings', 'pillar', { read: at.row.formId }), at.row.formId)
+        const read = await carrier.read(authFor(ctx, at.row, 'read', 'pillar', readPayload(at.row.formId)), at.row.formId)
         const row = storeRead(ctx, at.row, read)
         announce(ctx, row)
         return workText(outline(row, { link: read.link }))
