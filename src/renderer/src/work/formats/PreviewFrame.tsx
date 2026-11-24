@@ -7,6 +7,7 @@ import { Spinner } from "../../components/ui/spinner";
 import { Switch } from "../../components/ui/switch";
 import { Tabs, TabsIndicator, TabsList, TabsTrigger, TABS_PILL_TRIGGER } from "../../components/ui/tabs";
 import { loadToast } from "../../components/ui/toaster";
+import { workErrorWords } from "../../lib/workErrorWords";
 import { EmptyState } from "../../surfaces/SurfaceSkeleton";
 import type { PdfEngine } from "../pdf/engine";
 import { FOLD, PAGED_ZOOMS, PagedSkeleton, PagedView, ZOOM_WORDS, type PagedZoom } from "./PagedView";
@@ -328,7 +329,8 @@ export function Preview({ source, title, kind, initial, readOnly, onClose, pageR
 
   let body: ReactNode;
   if (draw.status === "failed") {
-    const reason = draw.message.trim().replace(/\s+/g, " ").replace(/[.!?]+$/, "");
+    // The host's words as Work says them (workErrorWords): never a line written for no one.
+    const reason = workErrorWords(draw.message).trim().replace(/\s+/g, " ").replace(/[.!?]+$/, "");
     const failure = reason ? ` (${reason})` : "";
     body = (
       <div data-preview-failed className="flex min-h-0 min-w-0 flex-1 justify-center gap-4 overflow-auto bg-(--stage) px-6 pt-4 pb-6">

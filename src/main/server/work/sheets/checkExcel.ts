@@ -72,7 +72,7 @@ export async function excelReach(s: Sheets, item: CanvasItem, by: Caller, ask: A
   return { app: 'excel', state: await ask(false).catch((): Readiness => 'none') }
 }
 
-const revOf = (hash: string): string => createHash('sha256').update('pdf+excel\u0000').update(hash).digest('hex').slice(0, 32)
+const revOf = (key: string, hash: string): string => createHash('sha256').update('pdf+excel\u0000').update(key).update('\u0000').update(hash).digest('hex').slice(0, 32)
 
 async function pagesIn(path: string): Promise<number> {
   const pdf = readFileSync(path)
@@ -100,7 +100,7 @@ export async function checkInExcel(s: Sheets, item: CanvasItem, by: Caller, sign
   if (state === 'none' || state === 'not open') return { notInReach: state }
   const book = await bookOf(s, item)
   try {
-    const rev = revOf(book.hash)
+    const rev = revOf(book.key, book.hash)
     // The file itself, as Excel reads it: what the Excel format keeps, and nothing a picture adds.
     const drops = sheetDrops('xlsx', book.facts, { package: book.package, left: book.left })
     const answer = (meta: { rev: string; size: number; pages?: number }): ExcelCheck => ({ kind: 'paged', rev: meta.rev, size: meta.size, pages: meta.pages ?? 1, drawnBy: 'excel', drops })

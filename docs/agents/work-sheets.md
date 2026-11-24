@@ -807,7 +807,9 @@ Server: `sheets/preview.ts` and `sheets/previewFacts.ts`; canvas:
   `work.sheets.previewRead {itemId, rev, offset, length}` reads one kept
   render by range, 4 MiB a call; a `rev` no longer kept, or another
   sheet's, answers "That preview is gone: draw it again." and the frame
-  draws once more. `work.sheets.previewExport {itemId, format, sheet?}`
+  draws once more by itself; a second loss shows the frame's failed state
+  in Work's words (`workErrorWords`: "This preview is gone. Close it and
+  open it again from the file's tab."), never the host's line. `work.sheets.previewExport {itemId, format, sheet?}`
   makes the file now and answers its `rev`, `size` and `name`, read the
   same way. `by: 'office'` is his press on "Check in Excel" (below). A
   sheet he can only read previews and exports like any other: none of
@@ -849,8 +851,11 @@ Server: `sheets/preview.ts` and `sheets/previewFacts.ts`; canvas:
   still among `drops`.) No estimate is shown as a number. "Draw all" asks
   for every page with no range.
 - **Kept by content hash.** A render's `rev` is the hash of what was drawn
-  (the format, the input's bytes, the range), so the same workbook asked
-  again is answered without LibreOffice. His own files' renders and
+  (the format, the sheet's key, the input's bytes, the range), so the same
+  workbook asked again is answered without LibreOffice. The key is in it
+  because a read names the sheet again: a file and a Files tab's copy of it
+  (a .csv from a library on his Mac) hold the same bytes, and the second
+  drawn used to find the first's render and could not read it. His own files' renders and
   exported files are kept under `<userData>/work-files/previews/sheets/`,
   beside Files' own pictures, which both backups leave out (Files' prune
   reads only the files at its folder's top, so it leaves this one alone):

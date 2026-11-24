@@ -47,7 +47,7 @@ const RULES: Rule[] = [
   [/\b(ECONNREFUSED|ECONNRESET|EHOSTUNREACH|ENETUNREACH|EPIPE)\b/, lost],
   // Conversions and previews (work/formats).
   [/left no output$/i, () => "The conversion made no file. Open the original and export again."],
-  [/not a name a preview is kept under|that item is not open/i, () => "This preview is gone. Close it and open it again from the file's tab."],
+  [/not a name a preview is kept under|that item is not open|that preview is gone/i, () => "This preview is gone. Close it and open it again from the file's tab."],
   // LifeOS, guests, the Windows VM.
   [/lifeos did not start|lifeos is not signed in/i, (c) => `LifeOS is not signed in on ${c.host}. Sign in under Settings, Connections.`],
   [/^no such guest link\b/i, (c) => `This link is not on ${c.host}. Look for it on the computer that made it.`],

@@ -449,6 +449,21 @@ describe('the read by range', () => {
     expect(() => readSheetPreview(ctxOf(), item, { rev: 'f'.repeat(32), offset: 0, length: 4 })).toThrow(/draw it again/)
   })
 
+  it('reads the render of a copy that holds the same bytes as a file drawn before it: each sheet has its own', async () => {
+    const first = itemOf(book('formulas.xlsx'))
+    mkdirSync(join(dir, 'files', 'copy'))
+    const copyPath = join(dir, 'files', 'copy', 'formulas.xlsx')
+    copyFileSync(first.source.at === 'file' ? first.source.path : '', copyPath)
+    const copy = itemOf(copyPath, 'env_test', 'item2')
+    for (const format of ['pdf', 'xlsx'] as const) {
+      const a = await previewSheet(sheetsOf(), first, { format })
+      const b = await previewSheet(sheetsOf(), copy, { format })
+      if (a.kind !== 'paged' || b.kind !== 'paged') throw new Error('paged')
+      expect(Buffer.from(readSheetPreview(ctxOf(), copy, { rev: b.rev, offset: 0, length: 4 }).data, 'base64').toString('latin1')).toBe('%PDF')
+      expect(Buffer.from(readSheetPreview(ctxOf(), first, { rev: a.rev, offset: 0, length: 4 }).data, 'base64').toString('latin1')).toBe('%PDF')
+    }
+  })
+
   it('keeps renders bounded by count and bytes, the least used out first', () => {
     const store = new PreviewStore(join(dir, 'store'), { count: 2, bytes: 1000 })
     const put = (rev: string, bytes: number): void => {

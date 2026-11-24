@@ -259,7 +259,9 @@ describe("the frame", () => {
     expect(document.querySelector("[data-preview-failed]")).toBeNull();
     // The same render lost again is a host that cannot keep it: said, with Retry.
     await f.answer({ picture: paged("r1"), drops: [] });
-    expect(await screen.findByText("Word preview failed (that preview is gone: draw it again).")).toBeTruthy();
+    // In Work's words, never the host's raw line.
+    expect(await screen.findByText("Word preview failed (This preview is gone. Close it and open it again from the file's tab).")).toBeTruthy();
+    expect(screen.queryByText(/draw it again/)).toBeNull();
     expect(f.asked).toHaveLength(2);
     await act(async () => fireEvent.click(screen.getByRole("button", { name: "Retry" })));
     await waitFor(() => expect(f.asked).toHaveLength(3));

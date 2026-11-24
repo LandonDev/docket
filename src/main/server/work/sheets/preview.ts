@@ -72,7 +72,11 @@ interface Meta {
   note?: string
 }
 
-/** Renders by rev in one folder, bounded by count and bytes, the least used out first. */
+/**
+ * Renders by rev in one folder, bounded by count and bytes, the least used out first. A rev is made of the sheet's
+ * key as well as its bytes: a read names the sheet again (`read`), so two sheets that hold the same bytes (a file and
+ * a Files tab's copy of it) each keep their own render.
+ */
 export class PreviewStore {
   constructor(
     readonly dir: string,
@@ -450,7 +454,7 @@ export async function fileOf(job: Job, format: SheetPreviewFormat, sheet?: strin
   if ((format === 'csv' || format === 'tsv') && !tab) throw new Error('The workbook has no sheet of cells.')
   const at = tab ? book.facts.sheets.indexOf(tab) + 1 : undefined
   const ext = format === 'xlsx' ? book.kind : EXT_OF[format]
-  const rev = hashOf('file', format, book.hash, tab?.name)
+  const rev = hashOf('file', format, book.key, book.hash, tab?.name)
   const kept = book.store.get(rev)
   if (kept) return kept
   let made: string
@@ -489,7 +493,7 @@ export async function drawPaged(job: Job, format: 'xlsx' | 'pdf' | 'ods' | 'xls'
     from = format
     input = new Uint8Array(readFileSync(book.store.fileOf(file)))
   }
-  const rev = hashOf('pdf', from, hashOf(input), first, last ?? 'all')
+  const rev = hashOf('pdf', from, book.key, hashOf(input), first, last ?? 'all')
   const kept = book.store.get(rev)
   if (kept) return kept
   // One page past the range: whether the whole goes on.

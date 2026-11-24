@@ -26,6 +26,7 @@ describe("an error as Work says it to him", () => {
     ["There is no file at /srv/agents/work/Purdue/Budget.xlsx.", "The file or folder was moved or removed. Refresh Files and open it from where it is now."],
     ["docx→pdf left no output", "The conversion made no file. Open the original and export again."],
     ["not a name a preview is kept under", "This preview is gone. Close it and open it again from the file's tab."],
+    ["That preview is gone: draw it again.", "This preview is gone. Close it and open it again from the file's tab."],
     ["LifeOS is not signed in on this host", "LifeOS is not signed in on the box. Sign in under Settings, Connections."],
     ["no such guest link on this host", "This link is not on the box. Look for it on the computer that made it."],
     ["A file in the Windows VM is copied on this host (filesCopy): its bytes go to no caller.", "Open this file from its library in Files. The copy is made on the computer that runs the Windows VM."],
