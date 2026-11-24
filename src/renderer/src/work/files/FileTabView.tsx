@@ -263,15 +263,17 @@ export function FileTabView({
   const kindLine = feeds.saved;
   // His window's own ask for a send: under way until the host answers, or refused in the host's words.
   const [sendAsk, setSendAsk] = useState<CopyAsk>({});
+  const copySend = copy?.send;
   const sendBack = useCallback(async (): Promise<void> => {
     setSendAsk({ owed: true });
     try {
-      await sendCopyBack(workspace.environmentId, workspace.id, tab.id);
+      // The copy's own send where the frame gives one (FilesView: the same ask on the workspace's link).
+      await (copySend ? copySend() : sendCopyBack(workspace.environmentId, workspace.id, tab.id));
       setSendAsk({});
     } catch (err: unknown) {
       setSendAsk({ failed: err instanceof Error ? err.message : String(err) });
     }
-  }, [workspace.environmentId, workspace.id, tab.id]);
+  }, [copySend, workspace.environmentId, workspace.id, tab.id]);
   // A Word file opened as its document: whether the Word file holds his changes, and Save as Word (wordSave.ts).
   const saveWord = (): Promise<void> =>
     saveAsWord(tab, {
