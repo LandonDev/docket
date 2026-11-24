@@ -91,11 +91,6 @@ function judge(d: { slides: TextShape[][] }, edits: readonly DeckEdit[]): { held
 }
 
 /**
- * The batch his press sends. A replace-all names the slides it may change (`pageObjectIds`): with none, Google matches
- * every page, a slide's speaker notes, its layout and its master included, which the card never counted. The slides are
- * the ones the card named (`on`), by the ids of the deck just read; a hold from before `on` was kept names every slide.
- */
-/**
  * The slides a replace-all may change, by their ids in the deck just read. Never an empty list, which Google reads as
  * every page: a slide the card named that the deck no longer has, or a deck with no slides, is refused instead.
  */
@@ -105,6 +100,11 @@ export function pagesOf(on: readonly number[] | undefined, pages: readonly strin
   return ids as string[]
 }
 
+/**
+ * The batch his press sends. A replace-all names the slides it may change (`pageObjectIds`): with none, Google matches
+ * every page, a slide's speaker notes, its layout and its master included, which the card never counted. The slides are
+ * the ones the card named (`on`), by the ids of the deck just read; a hold from before `on` was kept names every slide.
+ */
 const requestsOf = (edits: readonly HeldDeckEdit[], pages: readonly string[]): Record<string, unknown>[] =>
   edits.flatMap((e): Record<string, unknown>[] =>
     'find' in e
