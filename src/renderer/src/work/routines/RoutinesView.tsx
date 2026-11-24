@@ -18,8 +18,9 @@ import { EmptyState } from "../../surfaces/SurfaceSkeleton";
 import type { WorkViewProps } from "../views/registry";
 import { routineJobOpenPort } from "./jobOpen";
 import { RoutineDialog } from "./RoutineForm";
-import { usePlays } from "./plays/data";
+import { loadFailure, usePlays } from "./plays/data";
 import { noRunsLine, rowLine, rowMark, runMark, runWords } from "./model";
+import { Tip } from "../../components/tip";
 
 /**
  * A Work workspace's Routines (prototype routines.html, "List and detail"):
@@ -66,7 +67,7 @@ function useRoutines(env: string, workspaceId: string): [Load<RoutineRow[]>, num
       const mine = ++asked;
       return link.request<{ routines: RoutineRow[] }>("work.routines.list", { workspaceId }).then(
         (r) => live && mine === asked && setState({ status: "ready", value: r.routines }),
-        (err: unknown) => live && mine === asked && setState({ status: "error", error: workErrorWords(err) || "The host did not answer" }),
+        (err: unknown) => live && mine === asked && setState({ status: "error", error: loadFailure(env, err, "routines") }),
       );
     };
     void fetch();
@@ -100,7 +101,7 @@ function useRuns(env: string, id: string | null, tick: number): [RoutineRun[] | 
       .request<{ runs: RoutineRun[] }>("work.routines.runs", { id, limit: 30 })
       .then(
         (r) => live && setRuns({ id, runs: r.runs }),
-        (err: unknown) => live && setRuns({ id, runs: { error: workErrorWords(err) || "The host did not answer" } }),
+        (err: unknown) => live && setRuns({ id, runs: { error: loadFailure(env, err, "runs") } }),
       );
     return () => {
       live = false;
@@ -176,7 +177,7 @@ export function View({ env, workspace }: WorkViewProps) {
 function RoutineItem({ row, current, onPick }: { row: RoutineRow; current: boolean; onPick: () => void }) {
   const mark = rowMark(row);
   return (
-    <ItemButton aria-current={current ? "true" : undefined} onClick={onPick} className={cn("flex-col items-stretch gap-0.5 px-2 py-1.5 transition-none", current ? "bg-muted" : "hover:bg-foreground/5")}>
+    <ItemButton aria-current={current ? "true" : undefined} onClick={onPick} className={cn("flex-col flex-nowrap items-stretch gap-0.5 px-2 py-1.5 transition-none", current ? "bg-muted" : "hover:bg-foreground/5")}>
       <span className="flex min-w-0 items-baseline gap-2 text-[13px]">
         <span className="min-w-0 flex-1 truncate font-medium text-foreground">{row.name}</span>
         {mark ? <StatusMark state={mark} word={false} className="shrink-0" /> : null}
@@ -257,9 +258,14 @@ function Detail({ env, row, play, tick, narrowShown, onBack, onEdit }: { env: st
                   </Button>
                 )}
                 {mayOperate ? (
-                  <Button variant="secondary" size="sm" disabled={busy !== null || row.running || row.resumeSessionId !== null} onClick={() => act("run", "work.routines.runNow", { id: row.id })}>
-                    <BusyLabel busy={busy === "run" || row.running} label="Run now" />
-                  </Button>
+                  // Off while its last run's thread is to wake: the tip says why, on a span a key can reach, since a disabled button hears no pointer.
+                  <Tip label="Waits for its last run's thread" disabled={row.resumeSessionId === null}>
+                    <span className="inline-flex rounded-md focus-ring" data-run-now tabIndex={row.resumeSessionId === null ? undefined : 0}>
+                      <Button variant="secondary" size="sm" disabled={busy !== null || row.running || row.resumeSessionId !== null} onClick={() => act("run", "work.routines.runNow", { id: row.id })}>
+                        <BusyLabel busy={busy === "run" || row.running} label="Run now" />
+                      </Button>
+                    </span>
+                  </Tip>
                 ) : null}
               </>
             )}

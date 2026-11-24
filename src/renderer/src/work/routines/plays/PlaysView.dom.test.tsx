@@ -15,6 +15,7 @@ const host: { plays: PlayRow[]; asked: { method: string; params: unknown }[]; an
 vi.mock("../../../lib/connection", async (original) => ({
   ...(await original<object>()),
   registry: {
+    environment: (id: string) => (id === "box" ? { id, name: "The box" } : undefined),
     linkOf: () => ({
       onPush: () => () => {},
       request: async (method: string, params: unknown) => {
@@ -57,7 +58,7 @@ describe("the Plays view", () => {
     const headings = screen.getAllByRole("heading", { level: 2 }).map((h) => h.textContent);
     expect(headings).toEqual(["Proposed", "Starters"]);
     expect(within(screen.getByRole("region", { name: "Starters" })).getAllByRole("button").map((b) => b.textContent)).toEqual(["Month’s payTakes a date"]);
-    expect(within(screen.getByRole("region", { name: "Plays" })).getByRole("button", { name: /^Weekly sweep/ }).textContent).toBe("Weekly sweepTakes nothing");
+    expect(within(screen.getByRole("region", { name: "Plays" })).getByRole("button", { name: /^Weekly sweep/ }).textContent).toBe("Weekly sweep");
   });
 
   it("starts a play that takes nothing on one press, and asks first for what another takes", async () => {

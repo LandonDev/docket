@@ -214,7 +214,12 @@ mark, outcome) that opens its thread (`workOpenPort`, registered by App).
 A key that may not save routines on the host (`work.routines.save`, admin)
 has no New routine or Edit; a proposal says "Changed from a computer that
 manages <host>" in its presses' place; Pause and Run now show where it may
-operate (`linkMay`, docs/agents/work.md "The switch").
+operate (`linkMay`, docs/agents/work.md "The switch"). Run now is off while
+its last run's thread waits to wake, and its tip says so ("Waits for its last
+run's thread"). A list or runs that did not come say why in his words and
+name the computer (`loadFailure` in plays/data.ts: `workErrorWords`, else
+"The box could not list the routines."), never the link's own text; Plays
+says its list the same way.
 The header's New routine and Edit open the form ("A form"): Name, What to
 do, Starts (Schedule, LifeOS, Read, File, each swapping its fields), Ends
 (Never, On a day, After one run), and Runs (a play that takes nothing, when

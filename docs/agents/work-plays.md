@@ -122,7 +122,8 @@ no review round.
 - **Plays** in a linked Work workspace's column, after Files and before
   Routines (`WORK_VIEWS.plays`, the `work-plays-view` chunk; it reads the
   host alone, so no LifeOS sign-in stands over it). His plays, each its
-  name over "Takes a mail and a date" or "Takes nothing"; then Proposed;
+  name over "Takes a mail and a date" (a play that takes nothing has its name
+  alone, centred in a two-line row's height); then Proposed;
   then Starters. A play that takes nothing starts on its row's press (the row
   says Starting… and the thread opens); one that takes something opens the
   run dialog. Edit (a pencil on hover) and a proposal's or a starter's press

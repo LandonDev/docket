@@ -100,7 +100,7 @@ export function View({ env, workspace, sector }: WorkViewProps) {
                   <Row
                     key={p.id}
                     name={p.name}
-                    line={takesLine(p.takes)}
+                    line={p.takes.length ? takesLine(p.takes) : null}
                     busy={starting === p.id}
                     disabled={starting !== null}
                     onPress={mayStart ? () => start(p) : undefined}
@@ -112,14 +112,14 @@ export function View({ env, workspace, sector }: WorkViewProps) {
             {proposed.length ? (
               <Section title="Proposed">
                 {proposed.map((p) => (
-                  <Row key={p.id} name={p.name} line={takesLine(p.takes)} onPress={() => setDialog({ kind: "edit", row: p })} />
+                  <Row key={p.id} name={p.name} line={p.takes.length ? takesLine(p.takes) : null} onPress={() => setDialog({ kind: "edit", row: p })} />
                 ))}
               </Section>
             ) : null}
             {starters.length ? (
               <Section title="Starters">
                 {starters.map((s: StarterPlay) => (
-                  <Row key={s.key} name={s.name} line={takesLine(s.takes)} onPress={() => setDialog({ kind: "starter", starter: s })} />
+                  <Row key={s.key} name={s.name} line={s.takes.length ? takesLine(s.takes) : null} onPress={() => setDialog({ kind: "starter", starter: s })} />
                 ))}
               </Section>
             ) : null}
@@ -135,28 +135,33 @@ export function View({ env, workspace, sector }: WorkViewProps) {
 function Section({ title, children }: { title?: string; children: React.ReactNode }) {
   return (
     <section aria-label={title ?? "Plays"} className="flex flex-col gap-1">
-      {title ? <h2 className="px-2 text-xs font-medium text-muted-foreground">{title}</h2> : null}
+      {/* On the rows' title edge: their 8px inset and the item's 1px border. */}
+      {title ? <h2 className="px-[9px] text-xs font-medium text-muted-foreground">{title}</h2> : null}
       <ul className="flex flex-col gap-px">{children}</ul>
     </section>
   );
 }
 
-/** A play's row; with no press (a key that may not start it) its words alone. */
-function Row({ name, line, busy, disabled, onPress, onEdit }: { name: string; line: string; busy?: boolean; disabled?: boolean; onPress?: () => void; onEdit?: () => void }) {
+/**
+ * A play's row; with no press (a key that may not start it) its words alone. A play that takes nothing has no second
+ * line: its name sits centred in a two-line row's height, so the list keeps one rhythm.
+ */
+function Row({ name, line, busy, disabled, onPress, onEdit }: { name: string; line: string | null; busy?: boolean; disabled?: boolean; onPress?: () => void; onEdit?: () => void }) {
   const words = (
     <>
       <span className="truncate text-[13px] font-medium text-foreground">{name}</span>
-      <span className="truncate text-xs text-muted-foreground">{line}</span>
+      {line ? <span className="truncate text-xs text-muted-foreground">{line}</span> : null}
     </>
   );
+  const shape = cn("flex-col flex-nowrap items-stretch gap-0.5 px-2 py-1.5", !line && "min-h-[52px] justify-center", onEdit && "pr-20");
   return (
     <li className="group/row relative flex flex-col">
       {onPress ? (
-        <ItemButton disabled={disabled} onClick={onPress} className={cn("flex-col items-stretch gap-0.5 px-2 py-1.5", onEdit && "pr-20")}>
+        <ItemButton disabled={disabled} onClick={onPress} className={shape}>
           {words}
         </ItemButton>
       ) : (
-        <Item className={cn("flex-col items-stretch gap-0.5 px-2 py-1.5", onEdit && "pr-20")}>{words}</Item>
+        <Item className={shape}>{words}</Item>
       )}
       {busy ? (
         <span className="absolute top-1/2 right-2 flex -translate-y-1/2 items-center gap-1.5 text-xs text-muted-foreground">

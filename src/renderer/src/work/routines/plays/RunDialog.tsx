@@ -95,7 +95,7 @@ function Pick({ env, workspaceId, chip, onClose, onPick, noun, pending, setPendi
           <ul aria-label="Plays" className="-mx-2 flex flex-col gap-px">
             {plays.map((p) => (
               <li key={p.id} className="flex flex-col">
-                <ItemButton disabled={pending} onClick={() => choose(p)} className="flex-col items-stretch gap-0.5 px-2 py-1.5">
+                <ItemButton disabled={pending} onClick={() => choose(p)} className="flex-col flex-nowrap items-stretch gap-0.5 px-2 py-1.5">
                   <span className="flex min-w-0 items-baseline gap-2 text-[13px]">
                     <span className="min-w-0 flex-1 truncate font-medium text-foreground">{p.name}</span>
                     {starting === p.id ? (

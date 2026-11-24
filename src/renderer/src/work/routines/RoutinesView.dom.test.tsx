@@ -14,6 +14,7 @@ vi.mock("../../lib/connection", async (original) => ({
   ...(await original<object>()),
   useEnvironments: () => [{ id: "box", name: "The box", platform: "linux" }],
   registry: {
+    environment: (id: string) => (id === "box" ? { id, name: "The box" } : undefined),
     linkOf: () => ({
       onPush: () => () => {},
       request: (method: string) => {
@@ -119,6 +120,37 @@ describe("the Routines view", () => {
     fireEvent.click(screen.getByRole("button", { name: "Retry" }));
     await settle();
     expect(screen.getByRole("heading", { level: 1 }).textContent).toBe("Morning brief");
+  });
+
+  it("says a list that did not come in his words, naming the computer, never the link's own text", async () => {
+    host.list = () => Promise.reject(new Error("work.routines.list failed: ECONNRESET at /srv/x"));
+    render(<View {...props} />);
+    await settle();
+    expect(screen.getByText("Routines did not load")).toBeTruthy();
+    expect(screen.getByText("The box did not answer. Try again once it is connected.")).toBeTruthy();
+    cleanup();
+    host.list = () => Promise.reject(new Error("work.routines.list: bad row at /srv/agents/x.json"));
+    render(<View {...props} />);
+    await settle();
+    expect(screen.getByText("The box could not list the routines.")).toBeTruthy();
+  });
+
+  it("says why Run now is off while its last run's thread waits to wake", async () => {
+    const { tooltipChunk, warmTooltips } = await import("../../components/ui/tooltip");
+    await act(async () => {
+      await tooltipChunk.load();
+      warmTooltips();
+    });
+    host.list = async () => ({ routines: [row({ resumeSessionId: "s1", madeIn: "s1" })] });
+    render(<View {...props} />);
+    await settle();
+    expect((screen.getByRole("button", { name: "Run now" }) as HTMLButtonElement).disabled).toBe(true);
+    const at = document.querySelector<HTMLElement>("[data-run-now]")!;
+    await act(async () => {
+      at.focus();
+      await new Promise((r) => setTimeout(r, 50));
+    });
+    expect(document.querySelector('[data-slot="tooltip-content"]')?.textContent).toBe("Waits for its last run's thread");
   });
 
   it("says an empty list in one line, leaving New routine to the header", async () => {

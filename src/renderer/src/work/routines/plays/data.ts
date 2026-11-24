@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import type { PlayInputs, PlayRow } from "@shared/contract-work-routines";
 import { registry } from "../../../lib/connection";
+import { nameInLine } from "../../../lib/hostWords";
 import { workErrorWords } from "../../../lib/workErrorWords";
 import { workOpenPort } from "../../../lib/workSwitch";
 
@@ -9,6 +10,17 @@ import { workOpenPort } from "../../../lib/workSwitch";
  * push, and the one start every screen uses: the host makes the thread, and
  * the window opens it.
  */
+
+/**
+ * Why a list from a workspace's host did not come, in his words and naming the computer: `workErrorWords` for a
+ * known fault, else "<Host> could not list the <what>." (never the link's own text).
+ */
+export function loadFailure(env: string, err: unknown, what: string): string {
+  const name = registry.environment(env)?.name;
+  const host = name ? nameInLine(name) : undefined;
+  const Host = host ? host.charAt(0).toUpperCase() + host.slice(1) : "The computer this workspace runs on";
+  return workErrorWords(err, { host }) || `${Host} could not list the ${what}.`;
+}
 
 export type Load<T> = { status: "loading" } | { status: "ready"; value: T } | { status: "error"; error: string };
 
@@ -24,7 +36,7 @@ export function usePlays(env: string, workspaceId: string): [Load<PlayRow[]>, ()
       const mine = ++asked;
       link.request<{ plays: PlayRow[] }>("work.routines.plays", { workspaceId }).then(
         (r) => live && mine === asked && setState({ status: "ready", value: r.plays }),
-        (err: unknown) => live && mine === asked && setState({ status: "error", error: workErrorWords(err) || "The host did not answer" }),
+        (err: unknown) => live && mine === asked && setState({ status: "error", error: loadFailure(env, err, "plays") }),
       );
     };
     fetch();
