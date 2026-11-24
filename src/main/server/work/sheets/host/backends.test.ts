@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, unlinkSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, symlinkSync, unlinkSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
@@ -30,5 +30,40 @@ describe('a .tcsheet reached through a link', () => {
     expect(readFileSync(join(base, 'Other', 'Budget.tcsheet')).equals(other)).toBe(true)
     // The file it read kept its first write.
     expect((await new TcsheetBackend(join(base, 'Mine', 'Budget.tcsheet')).load()).rev).toBe(rev + 1)
+  })
+
+  it('writes nothing over a newer workbook put at the same path, and goes on writing after its own writes', async () => {
+    const base = mkdtempSync(join(tmpdir(), 'tc-tcsheet-'))
+    dirs.push(base)
+    const path = join(base, 'Budget.tcsheet')
+    TcsheetBackend.create(path, 'Budget')
+    const sheet = new TcsheetBackend(path)
+    const { rev } = await sheet.load()
+    expect(await sheet.append(rev, [{ by: 'owner', mutations: [] }])).toEqual({ rev: rev + 1 })
+    expect(await sheet.append(rev + 1, [{ by: 'owner', mutations: [] }])).toEqual({ rev: rev + 2 })
+    // OneDrive puts a co-author's newer workbook at the same path, as it does: a new file renamed over it.
+    TcsheetBackend.create(join(base, 'incoming.tcsheet'), 'Budget, theirs')
+    renameSync(join(base, 'incoming.tcsheet'), path)
+    const theirs = readFileSync(path)
+    await expect(sheet.append(rev + 2, [{ by: 'owner', mutations: [] }])).rejects.toThrow('changed on disk since this sheet was opened')
+    expect(readFileSync(path).equals(theirs)).toBe(true)
+  })
+
+  it("keeps an agent's proposals by the workbook they were made over: reopened through a link that now names another, it finds none", async () => {
+    const base = mkdtempSync(join(tmpdir(), 'tc-tcsheet-'))
+    dirs.push(base)
+    const side = join(base, 'side')
+    for (const d of ['Mine', 'Other']) mkdirSync(join(base, d))
+    TcsheetBackend.create(join(base, 'Mine', 'Budget.tcsheet'), 'Budget')
+    TcsheetBackend.create(join(base, 'Other', 'Budget.tcsheet'), 'Payroll')
+    symlinkSync(join(base, 'Mine'), join(base, 'Link'))
+    const cell = { sheet: 'Sheet1', row: 1, col: 1, base: null, proposed: { v: 42 } }
+    await new TcsheetBackend(join(base, 'Link', 'Budget.tcsheet'), side).addSuggestions('cs1', 'agent:box:t1', undefined, [cell])
+    // After a restart the link names another folder: its workbook of the same name has no proposals of this one's.
+    unlinkSync(join(base, 'Link'))
+    symlinkSync(join(base, 'Other'), join(base, 'Link'))
+    expect(await new TcsheetBackend(join(base, 'Link', 'Budget.tcsheet'), side).suggestions()).toEqual([])
+    // The workbook they were made over still has them, by any name that reaches it.
+    expect(await new TcsheetBackend(join(base, 'Mine', 'Budget.tcsheet'), side).suggestions()).toEqual([expect.objectContaining({ id: 'cs1:Sheet1:1:1' })])
   })
 })

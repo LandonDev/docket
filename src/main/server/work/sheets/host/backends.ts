@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readFileSync, realpathSync, renameSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, realpathSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { createHash, randomUUID } from 'node:crypto'
 import { dirname, join } from 'node:path'
 import { gunzipSync, gzipSync } from 'node:zlib'
@@ -278,6 +278,12 @@ function readTcsheet(path: string): Tcsheet {
 /** How many snapshots a .tcsheet keeps beside the first: compare replays from the nearest. */
 const KEEP_SNAPSHOTS = 4
 
+/** A file's identity on disk now: a write by anything else changes it (a replace by rename its inode, an edit its time). */
+const stampOf = (path: string): string => {
+  const st = statSync(path)
+  return `${st.ino}:${st.size}:${st.mtimeMs}`
+}
+
 export class TcsheetBackend implements SheetBackend {
   /** The file as last read or written: the service is its one writer, so it is read once. */
   private held: Tcsheet | null = null
@@ -301,10 +307,14 @@ export class TcsheetBackend implements SheetBackend {
   /** The real file the held workbook was read from: a write goes there, and only while the path still names it. */
   private bound: string | null = null
 
+  /** The file on disk as last read or written here (its inode, size and time): another writer's bytes are another workbook. */
+  private stamp: string | null = null
+
   private read(): Tcsheet {
     if (this.held) return this.held
     if (!existsSync(this.path)) throw new Error(`There is no file at ${this.path}.`)
     this.bound = realpathSync(this.path)
+    this.stamp = stampOf(this.bound)
     return (this.held = readTcsheet(this.bound))
   }
   /**
@@ -319,10 +329,15 @@ export class TcsheetBackend implements SheetBackend {
       now = null
     }
     if (this.bound !== null && now !== this.bound) throw new Error(`${this.path} names another file than the one this sheet was opened from: open it again.`)
+    // The same path with other bytes (OneDrive or a co-author put a newer workbook there): the one held here is older.
+    if (this.bound !== null && this.stamp !== null && stampOf(this.bound) !== this.stamp) throw new Error(`${this.path} changed on disk since this sheet was opened: open it again.`)
     return this.bound ?? this.path
   }
+  /** The proposals' file, keyed by the workbook's real path: a link that names another workbook after a restart finds none of these. */
   private sideFile(): string | null {
-    return this.side ? join(this.side, `${createHash('sha256').update(this.path).digest('hex').slice(0, 24)}.json`) : null
+    if (!this.side) return null
+    this.read()
+    return join(this.side, `${createHash('sha256').update(this.bound ?? this.path).digest('hex').slice(0, 24)}.json`)
   }
   /** The suggestions waiting over the file. One a file written before the rule still carries is taken out of it here. */
   private waiting(): StoredSuggestion[] {
@@ -355,8 +370,10 @@ export class TcsheetBackend implements SheetBackend {
     renameSync(tmp, at)
   }
   private write(t: Tcsheet): void {
-    writeTcsheet(this.same(), t)
+    const at = this.same()
+    writeTcsheet(at, t)
     this.held = t
+    this.stamp = stampOf(at)
   }
 
   async load(): Promise<Loaded> {

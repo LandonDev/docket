@@ -955,7 +955,11 @@ lands in his own Drive, shared with nobody. Threads have no upload tool.
   from: every write goes there, and only while its path still names that
   file, so a folder link along the path that came to point at another folder
   is refused ("… names another file than the one this sheet was opened
-  from") rather than writing the held workbook over another one. (A guest
+  from") rather than writing the held workbook over another one; so is the
+  same path holding other bytes than it last read or wrote (its inode, size
+  and time: a newer workbook OneDrive put there). The proposals' side file is
+  keyed by the workbook's real path, so a link that names another workbook
+  after a restart finds none of them. (A guest
   pass bound to the resolved file is the guests pillar's, guests/links.ts.)
 - history lists the ops; compare and restore replay from the nearest
   snapshot in a second engine;
