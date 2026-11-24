@@ -1,20 +1,30 @@
-import { useCallback, useEffect, useRef, useState, type RefObject } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode, type RefObject } from "react";
 import { confirmAction, confirmChoice } from "../../chrome/ConfirmDialog";
 import type { CopyBack, FileTab } from "@shared/contract-work-files";
+import type { OfficeLiveOf } from "@shared/contract-work-office";
 import { filesPaneOf, type CanvasItem, type CanvasKind, type ContextChip } from "@shared/work";
 import { kindOfEntry } from "@shared/work/files";
 import { Maximize2, Minimize2, MoreHorizontal, X } from "../../chrome/icons";
 import { RowsMenu, type MenuRow } from "../../chrome/menuRows";
 import { Tip, TruncateTip } from "../../components/tip";
 import { Button } from "../../components/ui/button";
+import { Progress } from "../../components/ui/progress";
 import { loadToast } from "../../components/ui/toaster";
+import { registry } from "../../lib/connection";
 import { shortcutFor } from "../../lib/settings";
+import { shell as appShell } from "../../stores/shell";
 import type { WorkspaceMeta } from "../../lib/tcserver/types";
 import { CanvasPane } from "../canvas/CanvasPane";
 import { sayError, useFrame } from "../canvas/frame";
 import { ItemSkeleton } from "../canvas/ItemBones";
 import type { CanvasKindDef, CanvasSelection, SavedAction, SavedLine } from "../canvas/kind";
 import { keepItem } from "../canvas/fetched";
+import { flushItem } from "../canvas/flush";
+import { liveLayer, STAGE_SHARE, useLiveState } from "../office/live/layer";
+import { LiveBody } from "../office/live/LiveBody";
+import { leaveLive } from "../office/live/leave";
+import { LiveControl, useLiveOf, type LiveDesktop } from "../office/live/LiveControl";
+import { APP_NAME, liveSourceOf, switchTo, type LiveSetAnswer } from "../office/live/liveSwitch";
 import { Ask } from "../icons";
 import { KindGlyph } from "./KindGlyph";
 import { Dock, DockSash } from "./Dock";
@@ -121,6 +131,9 @@ export function FileHeader({
   rename,
   ask,
   leave,
+  note,
+  progress,
+  end,
 }: {
   name: string;
   line: SavedLine | null;
@@ -137,9 +150,15 @@ export function FileHeader({
   ask: { disabled: boolean; pressed: boolean; run(): void };
   /** in the full window: the way back, and room at the header's start for the window's own controls */
   leave?(): void;
+  /** the frame's own words in the line's place while something is under way ("Opening in Word…") */
+  note?: string | null;
+  /** a load the frame can measure: a 4px bar along the header's foot, in place of its rule */
+  progress?: number | null;
+  /** a control before ⋯ (a shared Office file's Edit here or Live) */
+  end?: ReactNode;
 }) {
   return (
-    <header data-files-header className={`flex h-12 shrink-0 items-center gap-2.5 border-b border-border pe-2 ${leave ? "ps-20" : "ps-3"}`}>
+    <header data-files-header className={`relative flex h-12 shrink-0 items-center gap-2.5 border-b border-border pe-2 ${leave ? "ps-20" : "ps-3"}`}>
       <KindGlyph kind={kindOfEntry(name).kind} />
       <div className="flex min-w-0 flex-1 flex-col">
         {rename?.on ? (
@@ -157,9 +176,16 @@ export function FileHeader({
             )}
           </TruncateTip>
         )}
-        {line ? <SaveLine line={line} where={where} onShowFolder={onShowFolder} /> : where ? <p className="min-w-0 truncate text-xs leading-4 text-muted-foreground">In {where}</p> : null}
+        {note ? (
+          <p className="min-w-0 truncate text-xs leading-4 text-muted-foreground">{note}</p>
+        ) : line ? (
+          <SaveLine line={line} where={where} onShowFolder={onShowFolder} />
+        ) : where ? (
+          <p className="min-w-0 truncate text-xs leading-4 text-muted-foreground">In {where}</p>
+        ) : null}
       </div>
-      {line?.actions?.length ? <SaveActions actions={line.actions} busy={running} onRun={onRun} /> : null}
+      {line?.actions?.length && !note ? <SaveActions actions={line.actions} busy={running} onRun={onRun} /> : null}
+      {end}
       <RowsMenu
         label="File"
         align="end"
@@ -184,6 +210,7 @@ export function FileHeader({
         <Ask />
         Ask
       </Button>
+      {progress != null ? <Progress aria-label={note ?? "Loading"} value={progress} className="absolute inset-x-0 -bottom-px gap-0 [&_[data-slot=progress-track]]:rounded-none" /> : null}
     </header>
   );
 }
@@ -202,6 +229,7 @@ export function FileTabView({
   onShowFolder,
   kinds,
   dockPreset,
+  desktopsOf,
 }: {
   tab: FileTab;
   /** the tab's item; null until the pane's list has come */
@@ -224,6 +252,8 @@ export function FileTabView({
   /** a preview's kinds and docked thread (Dock.preview.tsx); the app passes neither */
   kinds?: Record<CanvasKind, CanvasKindDef>;
   dockPreset?: DockThread;
+  /** the computers whose desktop app opens a shared Office file, from the host's answer, as he names them */
+  desktopsOf?(of: OfficeLiveOf): LiveDesktop[];
 }) {
   const owner = filesPaneOf(workspace.id);
   const [docked, setDocked] = useDock(workspace.id, tab.id);
@@ -352,6 +382,44 @@ export function FileTabView({
     // A Word file's own choice: save it by itself, or ask each time.
     ...(copy && tab.word ? ([{ kind: "sep" }, { kind: "item", id: "word-auto", label: tab.word.auto ? "Ask Before Saving to Word" : "Save to Word Automatically" }] satisfies MenuRow[]) : []),
   ];
+  // A shared Office file opens here or live in Office on the web (docs/agents/work-office-live.md): the header's control
+  // switches it, the line says how far Word has come, and the body is the guest's place (LiveBody).
+  const live = liveSourceOf(item);
+  const liveState = useLiveState(live && item ? item.id : null);
+  const link = workspace.environmentId;
+  // Only the four forms Office for the web edits are asked about (the host's `LIVE_FORMS`).
+  const offersLive = /\.(docx|xlsx|xlsm|pptx)$/i.test(tab.name) || !!live;
+  const liveOf = useLiveOf(() => registry.linkOf(link).request<OfficeLiveOf>("work.office.live.of", { workspaceId: workspace.id, tabId: tab.id }), offersLive ? (item?.id ?? null) : null);
+  const [switching, setSwitching] = useState<string | null>(null);
+  const [switchBusy, setSwitchBusy] = useState(false);
+  const runSwitch = (to: "here" | "live"): void => {
+    if (switchBusy || !item) return;
+    setSwitchBusy(true);
+    void switchTo(
+      to,
+      { name, service: serviceOf(tab), sending: !!(copy && tab.back) },
+      {
+        set: (params) => registry.linkOf(link).request<LiveSetAnswer>("work.office.live.set", { workspaceId: workspace.id, tabId: tab.id, ...params }, { timeoutMs: 120_000, lane: "ui" }),
+        flush: () => flushItem(item.id),
+        leave: () => leaveLive(item.id, name),
+        typed: () => liveLayer.typed(item.id),
+        confirm: confirmAction,
+        saveWord: () =>
+          saveAsWord(tab, {
+            choose: confirmChoice,
+            confirm: confirmAction,
+            save: (keep) => saveWordFile(link, workspace.id, tab.id, keep),
+            said: (text) => void loadToast().then((toast) => toast.message(text)),
+          }).then((done) => done === "saved"),
+        busy: setSwitching,
+      },
+    )
+      .catch((err: unknown) => sayError(err, "The file did not switch"))
+      .finally(() => setSwitchBusy(false));
+  };
+  const liveNote = live && liveState ? (liveState.site ? `Signing in at ${liveState.site}` : liveState.stage !== "ready" && !liveState.failed ? `Opening in ${APP_NAME[live.app]}…` : null) : null;
+  const note = switching ?? liveNote;
+  const liveProgress = live && liveState && liveState.stage !== "ready" && !liveState.failed ? STAGE_SHARE[liveState.stage] : null;
   const [renaming, setRenaming] = useState(false);
   // Escape leaves the full window, unless a menu, a dialog or the thing holding the key took it first.
   useEffect(() => {
@@ -402,11 +470,30 @@ export function FileTabView({
           : {})}
         ask={{ disabled: !item, pressed: docked, run: ask }}
         {...(full ? { leave: () => setFull(false) } : {})}
+        note={note}
+        progress={liveProgress}
+        end={
+          offersLive && registry.has(link) ? (
+            <LiveControl
+              inTab={liveLayer.can()}
+              of={liveOf}
+              live={!!live}
+              busy={switchBusy}
+              desktops={liveOf && desktopsOf ? desktopsOf(liveOf) : []}
+              onSwitch={runSwitch}
+              onNoAddress={(why) =>
+                void loadToast().then((toast) => toast.message(why, { action: { label: "Open Settings", onClick: () => appShell.openSettings("work") } }))
+              }
+            />
+          ) : null
+        }
       />
       <div ref={body} data-files-body className="relative flex min-h-0 min-w-0 flex-1">
         {/* Under the chat that lies over it, the file takes no focus. */}
         <div inert={(docked && shape.over) || sideOver || undefined} className="flex min-h-0 min-w-0 flex-1 flex-col">
-          {item ? (
+          {item && live ? (
+            <LiveBody itemId={item.id} url={live.url} app={live.app} covered={(docked && shape.over) || sideOver || dropSide} full={full} />
+          ) : item ? (
             <CanvasPane
               key={`${item.id}:${fresh}`}
               item={item}

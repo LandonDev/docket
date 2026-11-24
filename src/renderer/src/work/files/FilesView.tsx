@@ -10,6 +10,7 @@ import { ItemButton } from "../../components/ui/item";
 import { ROW_PRESS } from "../../components/ui/press";
 import { loadToast } from "../../components/ui/toaster";
 import { registry, LOCAL_ENVIRONMENT_ID } from "../../lib/connection";
+import { leaveLive } from "../office/live/leave";
 import { filesPort, type FilesCommand } from "../../lib/filesKeys";
 import { refusalWords } from "../../lib/settingsHome";
 import { invoke } from "../../lib/native";
@@ -377,6 +378,8 @@ function Place({ workspace, reach, again, startThread }: WorkViewProps & { reach
     // What the tab's kind still holds (a deck's open box, a text's waiting words) reaches the host before the item goes.
     await flushItem(view.tabs.find((t) => t.id === tabId)?.itemId);
     const gone = view.tabs.find((t) => t.id === tabId);
+    // A live file's guest unloads first; Word may hold it while still saving (office/live/layer.ts).
+    if (gone?.itemId && !(await leaveLive(gone.itemId, gone.name))) return;
     const done = (discard: boolean): Promise<void> => {
       remember(tabId);
       return closeTab(link, workspace.id, tabId, first, discard);
@@ -996,6 +999,13 @@ function OpenFile({
       onClose={onClose}
       {...(manage ? { manage } : {})}
       {...(folder ? { onShowFolder: () => onShowFolder(folder) } : {})}
+      desktopsOf={(of) =>
+        of.desktops.map((d) => {
+          const read = reach.reads.find((r) => r.answer?.host === d.source.host);
+          const at = read?.link ?? link;
+          return { name: d.vm ? "the Windows VM" : (read?.name ?? "this computer"), open: () => void registry.linkOf(at).request("work.office.filesOpen", { source: d.source }, { timeoutMs: 120_000 }).catch((err: unknown) => say(`${tab.name} did not open`, err)) };
+        })
+      }
     />
   );
 }
