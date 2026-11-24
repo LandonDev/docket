@@ -7,6 +7,7 @@ import type { LaunchMirrorSnapshot, MirrorWrite } from '../shared/launchMirror'
 import { aliaxApi } from './aliax'
 import type { EditorChoice, EditorConfig, EditorId, EditorTarget } from '../shared/editor'
 import type { ShowAsk, ShowDisplay, ShowFrames } from '../shared/slidesShow'
+import type { LiveTicketAsk } from '../shared/work/officeLive'
 import type { CodeUpdateStatus } from '../shared/codeUpdate'
 
 type DialogKind = 'info' | 'warning' | 'error'
@@ -284,10 +285,13 @@ const show = {
 }
 export type ShowApi = typeof show
 
-/** A live Office file's guest (src/main/officeLive.ts): the ticket its `<webview>` attaches on, asked by this page alone. */
+/**
+ * A live Office file's or Microsoft form's guest (src/main/officeLive.ts): the ticket its `<webview>` attaches on,
+ * asked by this page alone, with a file's web address or `{forms: {tenant, formId, page}}` (main makes a form's address).
+ */
 const live = {
-  ticket: (url: string): Promise<{ ok: true; src: string; partition: string } | { ok: false; error: string }> =>
-    ipcRenderer.invoke('office-live:ticket', url),
+  ticket: (ask: LiveTicketAsk): Promise<{ ok: true; src: string; partition: string } | { ok: false; error: string }> =>
+    ipcRenderer.invoke('office-live:ticket', ask),
   /** Escape is TempCode's while the tab fills the window (main's `forwardedKey`). */
   fullWindow: (guestId: number, on: boolean): Promise<void> => ipcRenderer.invoke('office-live:full-window', guestId, on),
   typed: (guestId: number): Promise<number> => ipcRenderer.invoke('office-live:typed', guestId),

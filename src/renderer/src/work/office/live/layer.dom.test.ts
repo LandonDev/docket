@@ -1,8 +1,11 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { committed, failedLoad, LiveLayer, MOST_LOADED, navigated, stopped, type LiveState } from "./layer";
+import { committed, failedLoad, liveAskKey, liveAskUrl, LiveLayer, MOST_LOADED, navigated, stopped, type LiveState } from "./layer";
 
 const FILE = "https://purdue0-my.sharepoint.com/personal/x/Documents/Plan.docx?web=1";
+const FORM_ID = "DQSIkWdsW0yxEjajBLZtrQAAAAAAAAAAAAN__abc123ZUQ1JUVEhPQ1A4QS4u";
+const BUILDER = `https://forms.cloud.microsoft/Pages/DesignPageV2.aspx?subpage=design&id=${FORM_ID}`;
+const FORM = { forms: { tenant: "purdue0", formId: FORM_ID, page: "design" as const } };
 const START: LiveState = { stage: "start", site: null, failed: null };
 
 describe("how far the file has come", () => {
@@ -27,6 +30,18 @@ describe("how far the file has come", () => {
     expect(navigated({ ...s, stage: "editor" }, FILE).stage).toBe("editor");
   });
 
+  it("is ready on a form's own page when it stops loading: Forms has no editor frame", () => {
+    for (const top of [BUILDER, "https://forms.office.com/Pages/DesignPageV2.aspx?id=x", "https://forms.microsoft.com/x"]) {
+      let s = navigated(START, top);
+      expect(s).toMatchObject({ stage: "file", site: null });
+      s = committed(s, top, true);
+      expect(s.stage).toBe("file");
+      expect(stopped(s, top).stage).toBe("ready");
+    }
+    // A file's page on top still waits for Office's editor.
+    expect(stopped(navigated(START, FILE), FILE).stage).toBe("file");
+  });
+
   it("fails on a top frame's failure only, never an abort", () => {
     expect(failedLoad(START, -105, "ERR_NAME_NOT_RESOLVED", true).failed).toBe("It did not load (ERR_NAME_NOT_RESOLVED).");
     expect(failedLoad(START, -3, "ERR_ABORTED", true).failed).toBeNull();
@@ -37,7 +52,7 @@ describe("how far the file has come", () => {
 function bridge() {
   let key: ((init: KeyboardEventInit) => void) | null = null;
   return {
-    ticket: vi.fn(async (url: string) => ({ ok: true as const, src: url, partition: "persist:office-live-purdue0" })),
+    ticket: vi.fn(async (ask: string | typeof FORM) => ({ ok: true as const, src: typeof ask === "string" ? ask : BUILDER, partition: "persist:office-live-purdue0" })),
     fullWindow: vi.fn(async () => undefined),
     typed: vi.fn(async () => 3),
     unload: vi.fn(async (): Promise<"unloaded" | "holding" | "gone"> => "unloaded"),
@@ -64,6 +79,35 @@ describe("the layer", () => {
     expect(el.getAttribute("partition")).toBe("persist:office-live-purdue0");
     expect(el.getAttribute("src")).toBe(FILE);
     expect(el.style).toMatchObject({ position: "fixed", left: "10px", top: "60px", width: "800px", height: "600px", visibility: "visible", zIndex: "1" });
+  });
+
+  it("asks a form's ticket by its tenant, id and page, attaches at the address main made, and is ready when it stops", async () => {
+    const b = bridge();
+    const layer = new LiveLayer(() => b as never);
+    layer.show("f", { forms: { ...FORM.forms } }, RECT, false);
+    await flush();
+    expect(b.ticket).toHaveBeenCalledWith(FORM);
+    const [el] = guests();
+    expect(el.getAttribute("src")).toBe(BUILDER);
+    // The same ask made afresh is the same guest; another page is another.
+    layer.show("f", { forms: { ...FORM.forms } }, RECT, false);
+    expect(guests()).toEqual([el]);
+    const fire = (name: string, fields: Record<string, unknown> = {}) => el.dispatchEvent(Object.assign(new Event(name), fields));
+    fire("did-navigate", { url: BUILDER });
+    fire("load-commit", { url: BUILDER, isMainFrame: true });
+    expect(layer.state("f").stage).toBe("file");
+    fire("did-stop-loading");
+    expect(layer.state("f").stage).toBe("ready");
+    layer.show("f", { forms: { ...FORM.forms, page: "respond" } }, RECT, false);
+    await flush();
+    expect(guests()).not.toContain(el);
+  });
+
+  it("names a form's ask by its parts, and opens its address where there is no guest tag", () => {
+    expect(liveAskKey(FILE)).toBe(FILE);
+    expect(liveAskKey(FORM)).toBe(`forms:purdue0:${FORM_ID}:design`);
+    expect(liveAskUrl(FORM)).toBe(BUILDER);
+    expect(liveAskUrl({ forms: { ...FORM.forms, page: "respond" } })).toBe(`https://forms.cloud.microsoft/Pages/ResponsePage.aspx?id=${FORM_ID}`);
   });
 
   it("refused a ticket, says why and draws nothing", async () => {

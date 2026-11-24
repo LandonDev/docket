@@ -1,8 +1,11 @@
 import { useSyncExternalStore } from "react";
+import { builderOf, isFormsHost, isFormsUrl, respondOf } from "@shared/work/msforms";
+import type { LiveTicketAsk } from "@shared/work/officeLive";
 
 /**
  * The live Office guests of this window (docs/agents/work-office-live.md "The live tab"): Word, Excel or PowerPoint
- * for the web, each a `<webview>` on its tenant's session that main fenced at attach (src/main/officeLive.ts).
+ * for the web, or a Microsoft form, each a `<webview>` on its tenant's session that main fenced at attach
+ * (src/main/officeLive.ts).
  *
  * The Files place draws only the tab on screen and is itself drawn only while it is the view, and a `<webview>` moved
  * in the DOM loads again, which costs Word 25 to 35 s. So the guests live here, outside React, in one layer on the
@@ -42,6 +45,14 @@ const hostOf = (url: string): string | null => {
   }
 };
 
+/** What names an ask: the file's address, or the form's tenant, id and page. */
+export const liveAskKey = (ask: LiveTicketAsk): string =>
+  typeof ask === "string" ? ask : `forms:${ask.forms.tenant}:${ask.forms.formId}:${ask.forms.page}`;
+
+/** The address an ask opens, for a window with no guest tag to open in a tab of its own. */
+export const liveAskUrl = (ask: LiveTicketAsk): string =>
+  typeof ask === "string" ? ask : ask.forms.page === "design" ? builderOf(ask.forms.formId) : respondOf(ask.forms.formId);
+
 const ORDER: LiveStage[] = ["start", "file", "editor", "ready"];
 const later = (a: LiveStage, b: LiveStage): LiveStage => (ORDER.indexOf(b) > ORDER.indexOf(a) ? b : a);
 
@@ -49,20 +60,23 @@ const later = (a: LiveStage, b: LiveStage): LiveStage => (ORDER.indexOf(b) > ORD
 export function navigated(state: LiveState, url: string): LiveState {
   const host = hostOf(url);
   if (!host || url === "about:blank") return state;
-  if (FILE_HOST.test(host)) return { ...state, stage: later(state.stage, "file"), site: null };
+  if (FILE_HOST.test(host) || isFormsHost(host)) return { ...state, stage: later(state.stage, "file"), site: null };
   return { ...state, site: host };
 }
 
-/** A frame committed (`load-commit`): Office's editor in a frame of the file's page is the file up. */
+/** A frame committed (`load-commit`): Office's editor in a frame of the file's page is the file up. A form has none. */
 export function committed(state: LiveState, url: string, top: boolean): LiveState {
   const host = hostOf(url);
-  if (!host || !EDITOR_HOST.test(host)) return state;
+  if (!host || !EDITOR_HOST.test(host) || isFormsHost(host)) return state;
   return top || state.site === null ? { ...state, stage: later(state.stage, "editor") } : state;
 }
 
-/** The guest stopped loading: the editor up, or a sign-in page shown, is as far as the bar goes. */
-export function stopped(state: LiveState): LiveState {
-  return state.stage === "editor" || state.site !== null ? { ...state, stage: "ready" } : state;
+/**
+ * The guest stopped loading: the editor up, a sign-in page shown, or a form's own page on top (`top`, the top frame's
+ * address: Forms has no editor frame) is as far as the bar goes.
+ */
+export function stopped(state: LiveState, top = ""): LiveState {
+  return state.stage === "editor" || state.site !== null || isFormsUrl(top) ? { ...state, stage: "ready" } : state;
 }
 
 /** A top-frame load that failed. An abort (-3) is a page replaced by the next, not a failure. */
@@ -81,7 +95,12 @@ export interface LiveRect {
 
 interface Guest {
   el: HTMLElement & { getWebContentsId?(): number; loadURL?(url: string): Promise<void>; focus(): void };
+  /** What it was asked for (`liveAskKey`). */
+  want: string;
+  /** The address its ticket opened: the file's, or the one main made for a form. */
   url: string;
+  /** The top frame's address now (`did-navigate`). */
+  top: string;
   state: LiveState;
   guestId: number | null;
   shownAt: number;
@@ -135,15 +154,18 @@ export class LiveLayer {
     for (const fn of this.listeners.get(key) ?? []) fn();
   }
 
-  /** The guest for `key` over `rect`, made on first show; the one shown least recently past three goes. */
-  show(key: string, url: string, rect: LiveRect, full: boolean, anchor: HTMLElement | null = null): void {
+  /**
+   * The guest for `key` over `rect`, made on first show; the one shown least recently past three goes. `ask` is a
+   * file's web address or `{forms: {tenant, formId, page}}`, whose address main makes.
+   */
+  show(key: string, ask: LiveTicketAsk, rect: LiveRect, full: boolean, anchor: HTMLElement | null = null): void {
     let guest = this.guests.get(key);
-    if (guest && guest.url !== url) {
+    if (guest && guest.want !== liveAskKey(ask)) {
       this.drop(key);
       guest = undefined;
     }
     if (!guest) {
-      const made = this.make(key, url);
+      const made = this.make(key, ask);
       if (!made) return;
       guest = made;
     }
@@ -221,7 +243,7 @@ export class LiveLayer {
     for (const fn of this.listeners.get(key) ?? []) fn();
   }
 
-  private make(key: string, url: string): Guest | null {
+  private make(key: string, ask: LiveTicketAsk): Guest | null {
     const bridge = this.bridge();
     if (!bridge) return null;
     const doc = this.doc();
@@ -234,7 +256,7 @@ export class LiveLayer {
     }
     if (!this.offKey) this.offKey = bridge.onKey((init) => this.replay(init));
     const el = doc.createElement("webview") as Guest["el"];
-    const guest: Guest = { el, url, state: START, guestId: null, shownAt: 0, visible: false, full: false, anchor: null, timer: null };
+    const guest: Guest = { el, want: liveAskKey(ask), url: liveAskUrl(ask), top: "", state: START, guestId: null, shownAt: 0, visible: false, full: false, anchor: null, timer: null };
     this.guests.set(key, guest);
     this.states.set(key, START);
     el.setAttribute("data-office-live", key);
@@ -247,16 +269,20 @@ export class LiveLayer {
       guest.guestId = el.getWebContentsId?.() ?? null;
       if (guest.guestId !== null && guest.full) void bridge.fullWindow(guest.guestId, true);
     });
-    on("did-navigate", (e) => this.set(key, navigated(this.state(key), String(e.url))));
+    on("did-navigate", (e) => {
+      guest.top = String(e.url);
+      this.set(key, navigated(this.state(key), guest.top));
+    });
     on("load-commit", (e) => this.set(key, committed(this.state(key), String(e.url), e.isMainFrame === true)));
-    on("did-stop-loading", () => this.set(key, stopped(this.state(key))));
+    on("did-stop-loading", () => this.set(key, stopped(this.state(key), guest.top)));
     on("did-fail-load", (e) => this.set(key, failedLoad(this.state(key), Number(e.errorCode), String(e.errorDescription ?? ""), e.isMainFrame === true)));
     // Past a minute and a half the bar stops: whatever the guest shows is what there is.
     guest.timer = setTimeout(() => this.set(key, { ...this.state(key), stage: "ready" }), READY_AFTER_MS);
     // The ticket first: main attaches no guest its page did not ask for, for this exact address and session.
-    void bridge.ticket(url).then((ticket) => {
+    void bridge.ticket(ask).then((ticket) => {
       if (this.guests.get(key) !== guest) return;
       if (!ticket.ok) return this.set(key, { ...this.state(key), failed: ticket.error });
+      guest.url = ticket.src;
       el.setAttribute("partition", ticket.partition);
       // New windows reach main's handler, which loads Microsoft's in the guest and sends other pages to his browser.
       el.setAttribute("allowpopups", "");

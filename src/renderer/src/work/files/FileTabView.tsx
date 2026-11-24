@@ -550,7 +550,7 @@ export function FileTabView({
         {/* Under the chat that lies over it, the file takes no focus. */}
         <div data-files-main tabIndex={-1} inert={(docked && shape.over) || sideOver || undefined} className="flex min-h-0 min-w-0 flex-1 flex-col outline-none">
           {item && live ? (
-            <LiveBody itemId={item.id} url={live.url} app={live.app} covered={(docked && shape.over) || sideOver || dropSide} full={full} />
+            <LiveBody itemId={item.id} ask={live.url} app={live.app} covered={(docked && shape.over) || sideOver || dropSide} full={full} />
           ) : item ? (
             <CanvasPane
               key={`${item.id}:${fresh}`}

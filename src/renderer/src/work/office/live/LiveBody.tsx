@@ -1,7 +1,8 @@
 import { useEffect, useRef, useSyncExternalStore } from "react";
 import { Button } from "../../../components/ui/button";
 import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyTitle } from "../../../components/ui/empty";
-import { liveLayer, type LiveLayer, type LiveRect } from "./layer";
+import type { LiveTicketAsk } from "@shared/work/officeLive";
+import { liveAskKey, liveAskUrl, liveLayer, type LiveLayer, type LiveRect } from "./layer";
 import { APP_NAME, type LiveApp } from "./liveSwitch";
 
 /** How often a shown body checks its place: a rail or panel folding moves it without resizing it. */
@@ -12,10 +13,17 @@ const sameRect = (a: LiveRect | null, b: LiveRect): boolean => !!a && a.x === b.
 /**
  * A live file's body in its Files tab: the place its guest is laid over (layer.ts). It reports its rectangle while
  * it is on screen and not lain over (a chat over the tab, the file at the side over it), and hides the guest when it
- * leaves; the guest stays loaded. A file that did not load says why, with Retry; Edit here is the header's.
+ * leaves; the guest stays loaded. A file that did not load says why, with Retry; Edit here is the header's. `ask` is
+ * the file's web address, or `{forms: {tenant, formId, page}}` for a Microsoft form (main makes its address).
  */
-export function LiveBody({ itemId, url, app, covered, full, layer = liveLayer }: { itemId: string; url: string; app: LiveApp; covered: boolean; full: boolean; layer?: LiveLayer }) {
+export function LiveBody({ itemId, ask, app, covered, full, layer = liveLayer }: { itemId: string; ask: LiveTicketAsk; app: LiveApp; covered: boolean; full: boolean; layer?: LiveLayer }) {
   const ref = useRef<HTMLDivElement>(null);
+  // An ask made afresh each render is the same ask: the guest and its watchers follow its key alone.
+  const want = liveAskKey(ask);
+  const asked = useRef(ask);
+  useEffect(() => {
+    asked.current = ask;
+  });
   const state = useSyncExternalStore(
     (fn) => layer.subscribe(itemId, fn),
     () => layer.state(itemId),
@@ -33,7 +41,7 @@ export function LiveBody({ itemId, url, app, covered, full, layer = liveLayer }:
       const rect = { x: r.left, y: r.top, width: r.width, height: r.height };
       if (sameRect(last, rect)) return;
       last = rect;
-      layer.show(itemId, url, rect, full, el);
+      layer.show(itemId, asked.current, rect, full, el);
     };
     place();
     const watch = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(place);
@@ -46,7 +54,7 @@ export function LiveBody({ itemId, url, app, covered, full, layer = liveLayer }:
       clearInterval(timer);
       layer.hide(itemId);
     };
-  }, [itemId, url, covered, full, layer]);
+  }, [itemId, want, covered, full, layer]);
   return (
     // A press on the body (where the guest is not drawn yet) gives the guest the caret once it is.
     <div ref={ref} data-office-live-body className="relative flex min-h-0 min-w-0 flex-1" onPointerDown={() => layer.focus(itemId)}>
@@ -57,7 +65,7 @@ export function LiveBody({ itemId, url, app, covered, full, layer = liveLayer }:
             <EmptyDescription>This window cannot show it in the tab.</EmptyDescription>
           </EmptyHeader>
           <EmptyContent>
-            <Button variant="secondary" size="sm" onClick={() => void window.open(url, "_blank", "noopener")}>
+            <Button variant="secondary" size="sm" onClick={() => void window.open(liveAskUrl(ask), "_blank", "noopener")}>
               Open
             </Button>
           </EmptyContent>

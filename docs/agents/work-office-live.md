@@ -28,7 +28,18 @@ autosave. Plan: `.temp-code/plan-g6gWATXhCtN4.md`; trial: `.temp-code/plans/offi
   Chrome's agent (passkeys show), every permission refused but `clipboard-sanitized-write`, and `webRequest`
   cancels anything not https or wss, or naming this machine, a private, link-local or carrier-NAT network, a single
   label, `*.local`, or a `file:`/`tempcode-*` scheme. Downloads go through his save dialog.
-- **Navigation**: the first page must be a Microsoft file (`isMicrosoftUrl`); after that https anywhere (a school's
+- **A form's ticket**, kept apart from a file's. The page asks `office-live:ticket` with
+  `{forms: {tenant, formId, page: 'design' | 'respond'}}` (`FormsLiveAsk`, src/shared/work/officeLive.ts; the
+  preload's `tcLive.ticket` takes it as well as a file's address). Main makes the address itself, the builder's
+  (`builderOf`) or the response page's (`respondOf`, src/shared/work/msforms.ts), and issues the ticket for that
+  exact `src` on `persist:office-live-<tenant>`, the tenant's Word and Excel session, so one sign-in serves both
+  (`formsTicketOf`). The ask must carry those three keys and no other; the id must pass `isFormId`, the tenant
+  `isFormTenant`, the page be one of the two, and the made address carry only its own query keys. So a create route
+  (`Action=Create`), any other key, an address the window wrote, or a file beside the form is refused ("Only a
+  Microsoft form by its id opens here."). A file's ticket takes no Forms address. Once, 10 s, the frame check and
+  everything at attach are a file's. In the layer a form's guest is `show(key, {forms: …}, …)`, and its bar is ready
+  when the guest stops loading with a Forms page on top (`stopped(state, top)`): Forms has no editor frame.
+- **Navigation**: the first page must be a Microsoft file (`isMicrosoftUrl`) or the form main made; after that https anywhere (a school's
   sign-in). Popups stay on so every new window reaches the handler, which denies it: Microsoft's loads in the guest,
   another web page opens in his browser (one every 2 s at most). WebRTC takes no UDP but through a proxy
   (`disable_non_proxied_udp`), so it reaches no local address around the request block. A name that resolves to a

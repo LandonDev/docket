@@ -47,6 +47,7 @@ import {
   TICKET_MS,
   answerTicket,
   attachLiveFence,
+  formsTicketOf,
   forwardedKey,
   typedKey,
   blockedRequest,
@@ -108,6 +109,70 @@ describe('tickets', () => {
     expect(answerTicket(store, { sender: { id: 1, mainFrame }, senderFrame: {} }, FILE)).toEqual({ ok: false, error: 'Only the window itself can open a live file.' })
     expect(answerTicket(store, { sender: { id: 1, mainFrame }, senderFrame: mainFrame }, 42).ok).toBe(false)
     expect(answerTicket(store, { sender: { id: 1, mainFrame }, senderFrame: mainFrame }, FILE).ok).toBe(true)
+  })
+})
+
+const FORM_ID = 'DQSIkWdsW0yxEjajBLZtrQAAAAAAAAAAAAN__abc123ZUQ1JUVEhPQ1A4QS4u'
+const BUILDER = `https://forms.cloud.microsoft/Pages/DesignPageV2.aspx?subpage=design&id=${FORM_ID}`
+const RESPOND = `https://forms.cloud.microsoft/Pages/ResponsePage.aspx?id=${FORM_ID}`
+const FORM = { tenant: 'purdue0', formId: FORM_ID, page: 'design' as const }
+
+describe('a form\'s ticket', () => {
+  const mainFrame = {}
+  const own = { sender: { id: 1, mainFrame }, senderFrame: mainFrame }
+
+  it('opens the builder or the response page main makes, on the tenant\'s live session', () => {
+    const store = new TicketStore()
+    expect(answerTicket(store, own, { forms: FORM })).toEqual({ ok: true, src: BUILDER, partition: PARTITION })
+    expect(answerTicket(store, own, { forms: { ...FORM, page: 'respond' } })).toEqual({ ok: true, src: RESPOND, partition: PARTITION })
+    expect(store.take(1, BUILDER, PARTITION)?.src).toBe(BUILDER)
+    expect(store.take(1, BUILDER, PARTITION)).toBeNull()
+    expect(store.take(1, RESPOND, 'persist:office-live-contoso')).toBeNull()
+  })
+
+  it('refuses a bad id or tenant, another page, a create route, an extra key or an address the window wrote', () => {
+    const store = new TicketStore()
+    const refused = (forms: unknown): boolean => !answerTicket(store, own, { forms }).ok
+    expect(refused({ ...FORM, formId: 'short' })).toBe(true)
+    expect(refused({ ...FORM, formId: `${FORM_ID}&Action=Create` })).toBe(true)
+    expect(refused({ ...FORM, formId: `${FORM_ID}?subpage=design` })).toBe(true)
+    expect(refused({ ...FORM, formId: 'https://forms.cloud.microsoft/Pages/DesignPageV2.aspx?id=x' })).toBe(true)
+    expect(refused({ ...FORM, tenant: 'Purdue0' })).toBe(true)
+    expect(refused({ ...FORM, tenant: '../microsoft' })).toBe(true)
+    expect(refused({ ...FORM, tenant: 'purdue0.sharepoint.com' })).toBe(true)
+    expect(refused({ ...FORM, page: 'create' })).toBe(true)
+    expect(refused({ ...FORM, Action: 'Create' })).toBe(true)
+    expect(refused({ ...FORM, url: BUILDER })).toBe(true)
+    expect(refused({ ...FORM, src: 'https://forms.office.com/Pages/DesignPage.aspx?Action=Create' })).toBe(true)
+    expect(refused({ url: BUILDER })).toBe(true)
+    expect(refused(BUILDER)).toBe(true)
+    expect(refused(null)).toBe(true)
+    expect(refused([FORM.tenant, FORM.formId, FORM.page])).toBe(true)
+    expect(formsTicketOf(Object.assign(Object.create({ evil: 1 }), FORM))).toBeNull()
+  })
+
+  it('carries no file, and a file\'s ticket carries no form', () => {
+    const store = new TicketStore()
+    expect(answerTicket(store, own, { forms: FORM, url: FILE }).ok).toBe(false)
+    expect(answerTicket(store, own, { forms: { ...FORM, formId: FILE } }).ok).toBe(false)
+    expect(answerTicket(store, own, { url: FILE }).ok).toBe(false)
+    expect(answerTicket(store, own, BUILDER).ok).toBe(false)
+    expect(answerTicket(store, own, RESPOND).ok).toBe(false)
+    expect(answerTicket(store, own, 'https://forms.office.com/Pages/DesignPage.aspx?Action=Create&subpage=design').ok).toBe(false)
+    expect(store.issue(1, 'https://purdue0.forms.office.com/r/abcd1234').ok).toBe(false)
+  })
+
+  it('lasts ten seconds, like a file\'s', () => {
+    let now = 1000
+    const store = new TicketStore(() => now)
+    store.issueForms(7, FORM)
+    now += TICKET_MS + 1
+    expect(store.take(7, BUILDER, PARTITION)).toBeNull()
+  })
+
+  it('is issued to the window itself, never a frame inside it', () => {
+    const store = new TicketStore()
+    expect(answerTicket(store, { sender: { id: 1, mainFrame }, senderFrame: {} }, { forms: FORM })).toEqual({ ok: false, error: 'Only the window itself can open a live file.' })
   })
 })
 
@@ -221,6 +286,25 @@ describe('the fence on a window', () => {
     expect(first.prefs).not.toHaveProperty('preload')
     expect(first.params).toEqual({ src: FILE, partition: PARTITION, allowpopups: 'true' })
     expect(attach(win, { src: FILE, partition: PARTITION }).refused).toBe(true)
+  })
+
+  it('attaches a form\'s guest once on its ticket, at the address main made, hardened as a file\'s', async () => {
+    const formTicket = handlers.get('office-live:ticket')!
+    expect(attach(win, { src: BUILDER, partition: PARTITION }).refused).toBe(true)
+    expect(await formTicket({ sender: win, senderFrame: win.mainFrame }, { forms: FORM })).toEqual({ ok: true, src: BUILDER, partition: PARTITION })
+    expect(attach(win, { src: `${BUILDER}&Action=Create`, partition: PARTITION }).refused).toBe(true)
+    const first = attach(win, { src: BUILDER, partition: PARTITION, preload: 'file:///evil.js' })
+    expect(first.refused).toBe(false)
+    expect(first.prefs).toMatchObject({ sandbox: true, contextIsolation: true, nodeIntegration: false, partition: PARTITION })
+    expect(first.prefs).not.toHaveProperty('preload')
+    expect(first.params).toEqual({ src: BUILDER, partition: PARTITION, allowpopups: 'true' })
+    expect(attach(win, { src: BUILDER, partition: PARTITION }).refused).toBe(true)
+  })
+
+  it('refuses a form\'s ticket asked by a frame inside the window', async () => {
+    const frame = {}
+    expect(await handlers.get('office-live:ticket')!({ sender: win, senderFrame: frame }, { forms: FORM })).toEqual({ ok: false, error: 'Only the window itself can open a live file.' })
+    expect(attach(win, { src: BUILDER, partition: PARTITION }).refused).toBe(true)
   })
 
   it('makes the tenant session ready: plain Chrome, one permission, the block', async () => {

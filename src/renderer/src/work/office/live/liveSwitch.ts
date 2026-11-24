@@ -68,8 +68,8 @@ export async function switchTo(to: LiveMode, from: SwitchFrom, deps: SwitchDeps)
   }
 }
 
-/** "Live in Word", "Live in Excel", "Live in PowerPoint". */
-export const APP_NAME = { word: "Word", excel: "Excel", powerpoint: "PowerPoint" } as const;
+/** "Live in Word", "Live in Excel", "Live in PowerPoint"; Forms names a form's guest (LiveBody), never a file's. */
+export const APP_NAME = { word: "Word", excel: "Excel", powerpoint: "PowerPoint", forms: "Forms" } as const;
 export type LiveApp = keyof typeof APP_NAME;
 export const liveLabel = (app: LiveApp): string => `Live in ${APP_NAME[app]}`;
 

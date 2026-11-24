@@ -2,6 +2,8 @@ import { app, ipcMain, session, shell, type BrowserWindow, type Session, type We
 import { readdirSync } from 'node:fs'
 import { join } from 'node:path'
 import { isMicrosoftUrl, plainChromeUa } from './server/work/office/addin/web'
+import type { FormsLiveAsk } from '../shared/work/officeLive'
+import { builderOf, isFormId, isFormsUrl, isFormTenant, respondOf } from '../shared/work/msforms'
 
 /**
  * The fence round a live Office file (docs/agents/work-office-live.md "The fence"). A Files tab draws Word, Excel or
@@ -14,7 +16,9 @@ import { isMicrosoftUrl, plainChromeUa } from './server/work/office/addin/web'
  * - Each Microsoft tenant has its own session (`persist:office-live-<tenant>`), plain Chrome's agent so passkeys show,
  *   every permission refused but the sanitized clipboard write, and no request that is not https (or wss) or that
  *   names this machine, a private network or a TempCode scheme.
- * - The first page is a Microsoft file; after that the guest may go anywhere over https (a school's sign-in passes
+ * - A Microsoft form has a ticket of its own: the window names a tenant, a form's id and a page (the builder or the
+ *   response page), and main makes the address itself; no address the window writes opens one (`formsTicketOf`).
+ * - The first page is a Microsoft file or form; after that the guest may go anywhere over https (a school's sign-in passes
  *   through its own site). A new window that is Microsoft's loads in the same guest, anything else in his browser.
  */
 
@@ -54,18 +58,55 @@ export interface LiveTicket {
 
 export type TicketAnswer = { ok: true; src: string; partition: string } | { ok: false; error: string }
 
+const FILE_ONLY = 'Only a file in OneDrive, SharePoint or Teams opens live.'
+const FORM_ONLY = 'Only a Microsoft form by its id opens here.'
+/** A form's ask has these keys, sorted, and no other: no address can ride beside them. */
+const FORMS_KEYS: readonly (keyof FormsLiveAsk)[] = ['formId', 'page', 'tenant']
+/** The query each page's address carries, and nothing more: no `Action=Create`, no key a window could add. */
+const PAGE_QUERY = { design: ['id', 'subpage'], respond: ['id'] } as const
+
+const exactKeys = (v: unknown, keys: readonly string[]): v is Record<string, unknown> =>
+  !!v && typeof v === 'object' && !Array.isArray(v) && Object.getPrototypeOf(v) === Object.prototype && Object.keys(v).sort().join() === keys.join()
+
+/**
+ * A form's ticket from the window's ask (a `FormsLiveAsk`, unchecked until here): the builder's or response page's
+ * address made here from the id, on the tenant's live session (one sign-in with its Word and Excel). Null for anything
+ * else, an address among it included.
+ */
+export function formsTicketOf(ask: unknown): { src: string; partition: string } | null {
+  if (!exactKeys(ask, FORMS_KEYS)) return null
+  const { tenant, formId, page } = ask
+  if (typeof tenant !== 'string' || typeof formId !== 'string' || !isFormTenant(tenant) || !isFormId(formId)) return null
+  if (page !== 'design' && page !== 'respond') return null
+  const src = page === 'design' ? builderOf(formId) : respondOf(formId)
+  const u = new URL(src)
+  if (!isFormsUrl(src) || u.protocol !== 'https:' || [...u.searchParams.keys()].sort().join() !== PAGE_QUERY[page].join()) return null
+  return { src, partition: `${LIVE_PARTITION_PREFIX}${tenant}` }
+}
+
 /** The tickets main holds: issued to a window's top frame, taken once by that window's attach. */
 export class TicketStore {
   private readonly tickets: LiveTicket[] = []
   constructor(private readonly now: () => number = Date.now) {}
 
+  /** A file's ticket: its SharePoint address. A Forms address is no file and takes the form's ticket. */
   issue(owner: number, url: string): TicketAnswer {
-    if (!isMicrosoftUrl(url)) return { ok: false, error: 'Only a file in OneDrive, SharePoint or Teams opens live.' }
+    if (!isMicrosoftUrl(url) || isFormsUrl(url)) return { ok: false, error: FILE_ONLY }
     const partition = livePartition(url)
-    if (!partition) return { ok: false, error: 'Only a file in OneDrive, SharePoint or Teams opens live.' }
+    if (!partition) return { ok: false, error: FILE_ONLY }
+    return this.push(owner, url, partition)
+  }
+
+  /** A form's ticket: the address main makes for the ask (`formsTicketOf`). */
+  issueForms(owner: number, ask: unknown): TicketAnswer {
+    const ticket = formsTicketOf(ask)
+    return ticket ? this.push(owner, ticket.src, ticket.partition) : { ok: false, error: FORM_ONLY }
+  }
+
+  private push(owner: number, src: string, partition: string): TicketAnswer {
     this.sweep()
-    this.tickets.push({ owner, src: url, partition, at: this.now() })
-    return { ok: true, src: url, partition }
+    this.tickets.push({ owner, src, partition, at: this.now() })
+    return { ok: true, src, partition }
   }
 
   /** The ticket for this attach, used up; null when none matches exactly. */
@@ -88,10 +129,12 @@ export interface TicketSender {
   senderFrame: unknown
 }
 
-export function answerTicket(store: TicketStore, event: TicketSender, url: unknown): TicketAnswer {
+/** The window asks with a file's address, or with `{forms: FormsAsk}` and nothing beside it. */
+export function answerTicket(store: TicketStore, event: TicketSender, ask: unknown): TicketAnswer {
   if (event.senderFrame !== event.sender.mainFrame) return { ok: false, error: 'Only the window itself can open a live file.' }
-  if (typeof url !== 'string') return { ok: false, error: 'Only a file in OneDrive, SharePoint or Teams opens live.' }
-  return store.issue(event.sender.id, url)
+  if (typeof ask === 'string') return store.issue(event.sender.id, ask)
+  if (exactKeys(ask, ['forms'])) return store.issueForms(event.sender.id, ask.forms)
+  return { ok: false, error: FILE_ONLY }
 }
 
 /**
@@ -188,7 +231,7 @@ export function openTarget(url: string): 'guest' | 'browser' | 'none' {
   return /^https?:/i.test(url) && !blockedRequest(url.replace(/^http:/i, 'https:')) ? 'browser' : 'none'
 }
 
-/** A top-level page move: https only. A frame inside it may also be about:, blob: or data:. */
+/** A top-level page move: https only (a form's guest too, once on its first page). A frame inside it may also be about:, blob: or data:. */
 export const navigationAllowed = (url: string, frame: 'main' | 'sub'): boolean =>
   frame === 'main' ? /^https:/i.test(url) && !blockedRequest(url) : /^(about:|blob:|data:)/i.test(url) || (/^https:/i.test(url) && !blockedRequest(url))
 
@@ -406,9 +449,9 @@ export async function clearLiveCaches(): Promise<void> {
 /** Main's side: the ticket IPC and the caches cleared (`windows.ts` puts `attachLiveFence` on each window). */
 export function registerOfficeLive(): void {
   // No guest attaches before the start's clear is done.
-  ipcMain.handle('office-live:ticket', async (event, url: unknown) => {
+  ipcMain.handle('office-live:ticket', async (event, ask: unknown) => {
     await cleared
-    return answerTicket(store, event, url)
+    return answerTicket(store, event, ask)
   })
   ipcMain.handle('office-live:full-window', (event, guestId: unknown, on: unknown) => {
     const entry = ownGuest(event, guestId)
