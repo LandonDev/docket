@@ -160,7 +160,13 @@ async function rig(o: { ownerSaid?: string[]; routineRunId?: string } = {}) {
   } as unknown as WorkCtx
   open.ctxs.push(ctx)
   const toolCtx = { ...ctx, sessionId: 't1', signal: new AbortController().signal, scope: { shared: () => false, routineRunId: o.routineRunId ?? null, sector: null } } as unknown as ToolCtx
-  const tool = async (name: string, args: Record<string, unknown>) => {
+  const tool = async (name: string, args: Record<string, unknown>): Promise<{ text: string; error: boolean }> => {
+    // A rewrite is written over the text the agent read: these tests read just before, as an agent does.
+    if (name === 'doc_write' && !('revision' in args)) {
+      const { item, doc, file } = args as { item?: string; doc?: string; file?: string }
+      const read = await tool('doc_read', { ...(item ? { item } : {}), ...(doc ? { doc } : {}), ...(file ? { file } : {}) })
+      args = { ...args, revision: /Revision (r[0-9a-f]+)/.exec(read.text)?.[1] }
+    }
     const t = docTools.find((x) => x.name === name)!
     const got = await t.run(t.input.parse(args), toolCtx)
     return { text: (got.content[0] as { text: string }).text, error: got.isError === true }

@@ -389,7 +389,8 @@ try {
   // If OLD's open emptied it, HOST writes it again first, so the rise is still shown against a real old window; the check lines say which document it was.
   let ready4 = intact
   if (!intact) {
-    const rewritten = textOf(await host.tool(threadA, 'doc_write', { item: a.itemId!, markdown: CLASSIC_MD, because: 'own' }))
+    const revision = /Revision (r[0-9a-f]+)/.exec(await readA())?.[1]
+    const rewritten = textOf(await host.tool(threadA, 'doc_write', { item: a.itemId!, markdown: CLASSIC_MD, because: 'own', revision }))
     const lost = await poll(10_000, async () => !wholeA(await readA()))
     ready4 = !lost && wholeA(await readA())
     check('HOST writes the emptied classic document again (doc_write) and it stays whole for 10 s', ready4, `${rewritten.replace(/\n+/g, ' / ').slice(0, 160)}; doc_read now: ${(await readA()).replace(/\n+/g, ' / ').slice(0, 160) || '(empty)'}`)

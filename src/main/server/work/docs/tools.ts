@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto'
 import { z } from 'zod'
 import type { DocFormatResult } from 'work-kit/collab-server'
 import { docFormatFields } from './formatToolInput'
@@ -107,7 +108,14 @@ export function changedParts(before: string, after: string): { count: number; un
 
 const plural = (n: number, unit: string) => `${n} ${unit}${n === 1 ? '' : 's'}`
 
-type WhyWrite = { because: 'asked' | 'routine' | 'own'; quote?: string; suggest?: boolean }
+type WhyWrite = { because: 'asked' | 'routine' | 'own'; quote?: string; suggest?: boolean; revision?: string }
+
+/** The text an agent read, as a word it hands back with its rewrite: the live text since then is what the rewrite replaces. */
+export const revisionOf = (markdown: string): string => `r${createHash('sha256').update(markdown).digest('hex').slice(0, 16)}`
+
+const READ_FIRST = 'Read the document with doc_read first and pass its `revision`: a rewrite replaces the whole text, so it must be written over the text you read.'
+const CHANGED = 'The document changed since you read it (the owner or someone else edited it), so your rewrite would undo their words. Read it again with doc_read and write your change over the text as it is now.'
+
 
 function writeRule(ctx: ToolCtx, a: WhyWrite, t: DocTarget, shared: boolean, title: string) {
   const said = a.because === 'asked' && ownerSaid(ctx, a.quote)
@@ -135,6 +143,9 @@ async function write(ctx: ToolCtx, a: TargetArgs & WhyWrite & { markdown: string
   const { t, shared, fence, title } = await resolve(ctx, a, true)
   const { verdict, suggest, note } = writeRule(ctx, a, t, shared, title)
   const before = ((await ctx.service.internal('/internal/docs/read', serviceTarget(t, shared, fence))) as { markdown: string }).markdown
+  // A whole-text rewrite drafted from an older read would take back what was typed since: refused, never merged by guess.
+  if (!a.suggest && !a.revision) return fail(READ_FIRST)
+  if (a.revision && a.revision !== revisionOf(before)) return fail(CHANGED)
   const principal = agentPrincipal(ctx.host, ctx.sessionId)
   const done = (await ctx.service.internal('/internal/docs/write', { ...serviceTarget(t, shared, fence), markdown: a.markdown, because: verdict, suggest, principal })) as ServiceWrite
   const parts = changedParts(before, a.markdown)
@@ -296,7 +307,9 @@ export const docTools: WorkTool[] = [
         const { readThreads } = await import('./threads')
         const open = (await readThreads(ctx, t)).filter((r) => !r.thread.resolved && r.thread.deletedAt === null)
         const threads = open.map((r) => `- on “${r.thread.quote ?? ''}”: ${r.comments.filter((c) => c.deletedAt === null).map((c) => plainBody(c.body)).join(' / ')}`)
-        return workText(`${shared ? 'Others share this document.\n\n' : ''}${got.markdown}${got.styles ? '\n\n' + got.styles.join('\n') : ''}${threads.length ? `\n\n---\nOpen comments:\n${threads.join('\n')}` : ''}`)
+        // The revision is of the text alone, as doc_write reads it again before it writes.
+        const plainText = a.with ? ((await ctx.service.internal('/internal/docs/read', serviceTarget(t, shared, fence))) as { markdown: string }).markdown : got.markdown
+        return workText(`${shared ? 'Others share this document.\n\n' : ''}${got.markdown}${got.styles ? '\n\n' + got.styles.join('\n') : ''}${threads.length ? `\n\n---\nOpen comments:\n${threads.join('\n')}` : ''}\n\n---\nRevision ${revisionOf(plainText)}: pass it to doc_write as \`revision\`.`)
       } catch (err) {
         return fail(errorText(err))
       }
@@ -305,18 +318,19 @@ export const docTools: WorkTool[] = [
   {
     name: 'doc_write',
     description:
-      'Rewrites a document: pass its whole new text as markdown; blocks you leave as they were keep their place, comments and ids. Say why: `because: "asked"` with `quote`, the owner\'s own words asking for this change, writes at once; ' +
+      'Rewrites a document: pass its whole new text as markdown, and the `revision` doc_read gave (a document changed since is refused: read it again); blocks you leave as they were keep their place, comments and ids. Say why: `because: "asked"` with `quote`, the owner\'s own words asking for this change, writes at once; ' +
       '`"routine"` writes at once when this thread runs a routine; `"own"` is your own idea: on a document others share, or one he set to suggest, it waits as suggestions he steps through; on his own document it is written and he can take it back.',
     input: z.object({
       ...target,
       markdown: z.string().max(900_000),
       because: z.enum(['asked', 'routine', 'own']),
-      quote: z.string().max(2000).optional().describe('With "asked": the owner\'s words, as he typed them in this thread.')
+      quote: z.string().max(2000).optional().describe('With "asked": the owner\'s words, as he typed them in this thread.'),
+      revision: z.string().max(64).optional().describe('The revision doc_read ended with.')
     }),
     readOnly: false,
     run: async (args, ctx) => {
       try {
-        return await write(ctx, args as TargetArgs & { markdown: string; because: 'asked' | 'routine' | 'own'; quote?: string })
+        return await write(ctx, args as TargetArgs & { markdown: string; because: 'asked' | 'routine' | 'own'; quote?: string; revision?: string })
       } catch (err) {
         return fail(errorText(err))
       }
@@ -339,11 +353,11 @@ export const docTools: WorkTool[] = [
     name: 'doc_suggest',
     description:
       'Proposes a rewrite of a document as suggestions: pass its whole new text as markdown. Nothing in the document changes; the owner steps through each change in the text and accepts or rejects it.',
-    input: z.object({ ...target, markdown: z.string().max(900_000) }),
+    input: z.object({ ...target, markdown: z.string().max(900_000), revision: z.string().max(64).optional().describe('The revision doc_read ended with: a document changed since is refused.') }),
     readOnly: false,
     run: async (args, ctx) => {
       try {
-        return await write(ctx, { ...(args as TargetArgs & { markdown: string }), because: 'own', suggest: true })
+        return await write(ctx, { ...(args as TargetArgs & { markdown: string; revision?: string }), because: 'own', suggest: true })
       } catch (err) {
         return fail(errorText(err))
       }

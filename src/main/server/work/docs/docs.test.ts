@@ -104,7 +104,13 @@ async function rig(o: { ownerSaid?: string[]; shared?: boolean; routineRunId?: s
   open.ctxs.push(ctx)
   const toolCtx = { ...ctx, sessionId: 't1', signal: new AbortController().signal, scope: { shared: () => o.shared === true, routineRunId: o.routineRunId ?? null, sector: o.sector ?? null } } as unknown as ToolCtx
   const name = fileDocName(path)
-  const tool = async (tname: string, args: Record<string, unknown>) => {
+  const tool = async (tname: string, args: Record<string, unknown>): Promise<{ text: string; error: boolean }> => {
+    // A rewrite is written over the text the agent read: these tests read just before, as an agent does.
+    if (tname === 'doc_write' && !('revision' in args)) {
+      const { item, doc, file } = args as { item?: string; doc?: string; file?: string }
+      const read = await tool('doc_read', { ...(item ? { item } : {}), ...(doc ? { doc } : {}), ...(file ? { file } : {}) })
+      args = { ...args, revision: /Revision (r[0-9a-f]+)/.exec(read.text)?.[1] }
+    }
     const t = docTools.find((x) => x.name === tname)!
     const got = await t.run(t.input.parse(args), toolCtx)
     return { text: (got.content[0] as { text: string }).text, error: got.isError === true }
@@ -175,6 +181,23 @@ describe('an agent writing a document', () => {
     expect((await mine.tool('doc_write', { item: 'i1', markdown: md('# Week 1', 'Meet the team at 9:00 AM', '# Week 2', 'Shadow at the clinic'), because: 'asked', quote: 'move week 2 to the clinic' })).text).toBe('Wrote 1 section.')
   })
 
+  it('a rewrite drafted from an older read is refused: what he typed since stays', async () => {
+    const r = await rig()
+    const read = await r.tool('doc_read', { item: 'i1' })
+    const revision = /Revision (r[0-9a-f]+)/.exec(read.text)![1]
+    // He adds a line while the agent drafts.
+    await r.service.collab.writeMarkdown(r.name, 'owner', md('# Week 1', 'Meet the team at 9:00 AM', 'Bring the keys', '# Week 2', 'Shadow the front desk'), { path: r.path })
+    const stale = await r.tool('doc_write', { item: 'i1', revision, markdown: md('# Week 1', 'Meet the team at 9:30 AM', '# Week 2', 'Shadow the front desk'), because: 'own' })
+    expect(stale.error).toBe(true)
+    expect(stale.text).toMatch(/changed since you read it/)
+    expect(await r.text()).toContain('Bring the keys')
+    expect(await r.text()).toContain('9:00 AM')
+    // Unread, nothing is written; read again, the rewrite goes over his line.
+    expect((await r.tool('doc_write', { item: 'i1', revision: undefined, markdown: md('# Week 1', 'x'), because: 'own' })).text).toMatch(/doc_read first/)
+    expect(await r.tool('doc_write', { item: 'i1', markdown: md('# Week 1', 'Meet the team at 9:30 AM', 'Bring the keys', '# Week 2', 'Shadow the front desk'), because: 'own' })).toEqual({ text: 'Wrote 1 section.', error: false })
+    expect(await r.text()).toContain('Bring the keys')
+  })
+
   it('"routine" counts only in a routine\'s run; doc_suggest always waits', async () => {
     const r = await rig({ shared: true })
     expect((await r.tool('doc_write', { item: 'i1', markdown: md('# Week 1', 'x'), because: 'routine' })).text).toMatch(/This thread runs no routine/)
@@ -211,7 +234,7 @@ describe("a mail's attachment read as a document", () => {
     await r.service.collab.writeMarkdown(fileDocName(path), 'owner', md('# Brief', 'Doors at nine'), { path })
     // The service holds it open; its file on disk is what says the pane has read the attachment.
     if (!existsSync(path)) writeFileSync(path, '')
-    expect(await r.tool('doc_read', { item: 'm1' })).toEqual({ text: '# Brief\n\nDoors at nine\n', error: false })
+    expect(await r.tool('doc_read', { item: 'm1' })).toEqual({ text: expect.stringMatching(/^# Brief\n\nDoors at nine\n\n\n---\nRevision r[0-9a-f]{16}: /), error: false })
     expect(await r.tool('doc_write', { item: 'm1', markdown: md('# Brief', 'Doors at ten'), because: 'own' })).toEqual({ text: ATTACHMENT_READ_ONLY, error: true })
     expect(await r.tool('doc_write', { file: path, markdown: md('# Brief', 'Doors at ten'), because: 'own' })).toEqual({ text: ATTACHMENT_READ_ONLY, error: true })
     expect(await r.tool('doc_comment', { item: 'm1', quote: 'Doors', body: 'Why nine?' })).toEqual({ text: ATTACHMENT_READ_ONLY, error: true })
@@ -225,7 +248,7 @@ describe('the fence', () => {
       r.convex.docs.set(id, { _id: id, sector, seq: 0, title: id, shared: false, markdown: '', plain: '' })
       await r.post('/internal/doc/write', { docId: id, markdown: `Words of ${sector}`, because: 'own', botId: 'k', fence: { sectors: 'all' } })
     }
-    expect(await r.tool('doc_read', { doc: 'kdp' })).toEqual({ text: 'Words of purdue\n', error: false })
+    expect(await r.tool('doc_read', { doc: 'kdp' })).toEqual({ text: expect.stringMatching(/^Words of purdue\n\n\n---\nRevision r/), error: false })
     for (const [name, args] of [
       ['doc_read', { doc: 'kdc' }],
       ['doc_write', { doc: 'kdc', markdown: 'mine now', because: 'own' }],

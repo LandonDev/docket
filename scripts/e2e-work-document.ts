@@ -61,7 +61,8 @@ d.save(sys.argv[1])`,
   // He sets it to suggest; the agent's rewrite waits as a branch.
   await run.call('work.docs.mode', { source, mode: 'suggests' })
   const rewrite = first.replace('within thirty days', 'within fourteen days').replace('on receipt of the invoice', 'within fifteen days of the invoice')
-  const sugg = await run.tool(thread, 'doc_write', { item, because: 'own', markdown: rewrite })
+  const revision = /Revision (r[0-9a-f]+)/.exec(whole)?.[1]
+  const sugg = await run.tool(thread, 'doc_write', { item, because: 'own', markdown: rewrite, revision })
   run.check("the agent's rewrite waits as suggestions", textOf(sugg).startsWith('Suggested'), textOf(sugg))
   run.check('the text is unchanged while they wait', (await read()).includes('thirty days'))
   await run.show(thread)
