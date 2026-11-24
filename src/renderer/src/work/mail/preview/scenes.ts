@@ -128,7 +128,7 @@ export const SCENES: Scene[] = [
     ),
     ready: `[...document.querySelectorAll("button")].some((b) => b.textContent.trim() === "Undo") && document.body.textContent.includes("Sending to")`,
   },
-  { name: "settings", query: "page=settings", ready: `document.querySelector("h2")?.textContent === "Mail" && document.querySelectorAll("h3").length === 4` },
+  { name: "settings", query: "page=settings", ready: `[...document.querySelectorAll("h2")].some((h) => h.textContent === "Mail") && document.querySelectorAll("h3").length === 4` },
   { name: "settings-signature", query: "page=settings", set: press("section:nth-of-type(3) button.group\\/row"), ready: `document.querySelector("[role=dialog] .tiptap")` },
   { name: "settings-account", query: "page=settings", set: press("section:nth-of-type(4) button.group\\/row"), ready: `document.querySelector("[role=dialog]")` },
   { name: "invite", set: opened("c-invite"), ready: `${FRAMES_READY} && document.querySelector("[data-mail-pane] [aria-label=Invitation]")` },

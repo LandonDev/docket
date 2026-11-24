@@ -19,12 +19,19 @@ export function Section({ environmentId }: { environmentId: string }) {
   return (
     <ConvexProvider client={lifeos.client}>
       <MailClientProvider client={mailClientFor(environmentId, lifeos.client.url, "all")}>
-        <MailKitProvider kit={tempcodeMailKit}>
-          <div data-mail-kit className="tc-mail pt-8">
-            <MailSettings className="max-w-none" />
-          </div>
-        </MailKitProvider>
+        <MailSettingsBody />
       </MailClientProvider>
     </ConvexProvider>
+  );
+}
+
+/** The settings themselves, under whatever mail client is round them (the mail preview's fixture client draws them in a page). */
+export function MailSettingsBody() {
+  return (
+    <MailKitProvider kit={tempcodeMailKit}>
+      <div data-mail-kit className="tc-mail pt-8">
+        <MailSettings className="max-w-none" />
+      </div>
+    </MailKitProvider>
   );
 }

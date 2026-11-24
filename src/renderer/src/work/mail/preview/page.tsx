@@ -1,10 +1,12 @@
 import { createRoot } from "react-dom/client";
-import { MailClientProvider, MailKitProvider, MailSettings, opening, type ComposeState, type MailBox } from "work-kit/mail";
+import { MailClientProvider, MailKitProvider, opening, type ComposeState, type MailBox } from "work-kit/mail";
 import { corpusOutbox, corpusSignatures, corpusThreads, createFixtureMailClient, generateThreads } from "work-kit/mail/fixtures";
+import { Page, PageRow, PageSection } from "../../../components/page";
 import { Toaster } from "../../../components/ui/toaster";
 import { changeScheme } from "../../../lib/placeScheme";
 import { nameOrigins, tempcodeMailKit } from "../kit";
 import { MailScreen, patch, type MailPage } from "../MailView";
+import { MailSettingsBody } from "../MailSettingsSection";
 import { write } from "../client";
 import { ChatActions, ChatSide, chatClient, chatDrafts, CHAT_WORKSPACE, prepareChat } from "./chat";
 
@@ -82,8 +84,14 @@ createRoot(document.getElementById("root")!).render(
     <MailClientProvider client={shown}>
       <MailKitProvider kit={tempcodeMailKit}>
         {params.get("page") === "settings" ? (
-          <div data-mail-kit className="tc-mail h-screen overflow-x-hidden overflow-y-auto bg-background p-6 text-foreground">
-            <MailSettings />
+          // As Settings → Work draws them: the page's title, a section of its own above, then Mail's.
+          <div className="h-screen overflow-x-hidden overflow-y-auto bg-background text-foreground">
+            <Page title="Work">
+              <PageSection title="Models">
+                <PageRow title="Work threads" description="Same as code threads" />
+              </PageSection>
+              <MailSettingsBody />
+            </Page>
           </div>
         ) : (
           <ChatActions>
